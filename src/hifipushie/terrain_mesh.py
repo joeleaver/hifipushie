@@ -202,7 +202,9 @@ class Tube:
 
 
 STACK = {"radius": 0.75}
-STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack (the rest of the relief carves)
+STACK_BUILD = 0.05  # m: the most rock relief may build out from a stack
+STACK_CARVE = 0.3  # m: ... and carve into it (cartoon facets 1.4 x cut a fin of a stack loose 5 m up: the stack's own
+# form carries its shape, the relief is texture on it)
 # a solid sea stack's radius x the sea's stack radius; its form is terrain_stack.FORM (a jointed column), a style's
 # sheet may override it (rock.stack)
 
@@ -1335,7 +1337,9 @@ class Field:
                 near[k] = np.maximum(near[k], w * vol.relief)
                 if getattr(vol, "build", None) is not None and getattr(self, "build_w", None) is not None:
                     # (a volume whose relief may only carve, or build at most `build` m: see Stack)
-                    self.build_w[k] = np.maximum(self.build_w[k], w)
+                    # (1 on and in the stack, whatever share of the relief its size allows: weighted by that share the
+                    # cap held only partly and a 0.46 m carve cut the top of an anime stack loose)
+                    self.build_w[k] = np.maximum(self.build_w[k], smoothstep(NEAR, 0.0, d))
                 if self.floor_guard is not None:
                     self.floor_guard[k] = np.minimum(self.floor_guard[k], np.where(np.isinf(above), 1.0,
                                                                                   smoothstep(0.3, 1.5, above)))
@@ -1409,11 +1413,11 @@ class Field:
                         R, mic = self._styled_relief(p[k], g, jw, fd, u, blk, ts)
                         R = w[k] * R
                     if self.build_w is not None:
-                        # rock relief on a stack carves, building at most STACK_BUILD m: built out over its notch it
+                        # rock relief on a stack builds at most STACK_BUILD m and carves at most STACK_CARVE: built out over its notch it
                         # stood a lip of rock in the air (tl2_island stack2, a 30-triangle piece floating 0.75 m over
                         # the heightmap); blended by the stack's relief weight, so the field stays continuous
                         bw = self.build_w[k]
-                        R = R + bw * (np.maximum(R, -STACK_BUILD) - R)
+                        R = R + bw * (np.clip(R, -STACK_BUILD, STACK_CARVE) - R)
                     F[k] = F[k] + (R if tw is None else self.thin_cap(R, hw, tw))
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):

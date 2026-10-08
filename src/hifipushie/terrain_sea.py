@@ -555,7 +555,11 @@ def apply(T):
             lob = noise.fbm(np.c_[T.P, np.full(len(T.P), 23.0 + i_st)], 0.7 * r, 3, seed=171 + i_st).reshape(T.X.shape)
             k_g = int(rng.integers(5, 9))
             grooves = 0.12 * np.cos(k_g * th + rng.uniform(0, 6.3)) + 0.06 * np.cos((k_g + 3) * th + rng.uniform(0, 6.3))
-            d = d * (1 + 0.5 * (lob - 0.5) + grooves)
+            # (the core stays round: lobed, it reached up to 1.75 x its radius, past the 3D tiles' clip cylinder round
+            # it (terrain_mesh.stacks' rc), and a sliver of it stood beside the solid stack, cut loose 5-12 m up by the
+            # clip under it: ts_slice_a's anime stack, a 124-triangle piece floating 9.6 m up. The solid stack is the
+            # form; `grooves` is still drawn so the random stream is unchanged)
+            del grooves
             tilt = rng.uniform(0.1, 0.35) * hgt / r
             tdir = rng.uniform(0, 2 * math.pi)
             top_z = level + hgt - tilt * np.clip(dx * math.cos(tdir) + dy * math.sin(tdir) + r, 0, 2 * r) * 0.5 \
