@@ -194,6 +194,10 @@ def test_rock_shape_by_zone():
     step, step0 = np.abs(np.diff(Fl)).max(), np.abs(np.diff(F0l)).max()
     print("  steps along the band (styled, realistic):", round(float(step), 3), round(float(step0), 3))
     assert step < max(2.0 * step0, 0.15), (step, step0)  # (no jump where the styles hand over)
+    # blobby takes no turf step at its lips (rock "lip": 0); the realistic side keeps all of it (checked above too)
+    ls = getattr(f1.edits, "lip_scale", None)
+    if f1.edits is not None and f1.edits.lip_cfg["turf"] > 0:
+        assert ls is not None and ls[:, :5].max() < 1e-9 and ls[:, -5:].min() == 1.0
 
 
 def test_pillow_is_smooth_and_bounded():
@@ -204,6 +208,63 @@ def test_pillow_is_smooth_and_bounded():
     assert np.array_equal(c, ts.pillow_carve(p, 3.0, 0.8, 0.4, 5))
     q = p + np.array([0.01, 0, 0])
     assert np.abs(ts.pillow_carve(q, 3.0, 0.8, 0.4, 5) - c).max() < 0.05
+
+
+def test_bands_wander_and_tile():
+    """Anime strata are not ruled stripes: band edges move along the strike (u), some bands wedge out, and the
+    texture still tiles; without the wander keys the op is what it was (straight bands)."""
+    n, L = 256, 24.0
+    plain = {"op": "bands", "thickness": [0.25, 1.8], "edge": 0.015, "wave": 0.0}
+    t0, _ = ts.op_bands(n, L, plain, 7)
+    assert np.allclose(t0[:, 0], t0[:, n // 2])  # (no wander: every column alike)
+    o = {**plain, "pinch": 0.35, "pinch_len": 14, "breaks": 0.2, "break_len": 12, "vary": 0.5, "vary_len": 10}
+    t1, _ = ts.op_bands(n, L, o, 7)
+    cols = [t1[:, j] for j in range(0, n, n // 8)]
+    diff = max(np.abs(a - b).mean() for a in cols for b in cols)
+    assert diff > 0.05, diff
+    st = ts.sheet("anime")
+    S = ts.texture(st, "rock", ts.layer_colour(st, "rock", REFS), 256)
+    assert ts.tileable(S["albedo"]) < 1.5
+    # the plain texture (on small / thin rock) has no strata: its rows vary as little as its columns
+    P = ts.texture(st, "rock", ts.layer_colour(st, "rock", REFS), 256, plain=True)
+    row_var = lambda a: np.abs(np.diff(a.mean(1), axis=0)).mean()
+    assert row_var(P["albedo_linear"]) < 0.5 * row_var(S["albedo_linear"])
+
+
+def test_cartoon_grass_is_flat_with_marks():
+    """Cartoon soft layers: a flat field in a few tones (most of the texture within a couple of colours) with marks;
+    no baked macro variation; crisp layer edges."""
+    st = ts.sheet("cartoon")
+    assert st["macro"] == 0.0 and ts.layer_edge(st)
+    S = ts.texture(st, "grass", ts.layer_colour(st, "grass", REFS), 512)
+    q = np.round(S["albedo"] * 32).reshape(-1, 3)
+    _, counts = np.unique(q, axis=0, return_counts=True)
+    top2 = np.sort(counts)[::-1][:3].sum() / len(q)
+    assert top2 > 0.8, top2  # (three colours hold most of the field: few values, no fbm mush)
+    assert ts.tileable(S["albedo"]) < 1.5
+    # a crisp layer edge: weights that cross over 1 m become a step a few cm wide
+    x = np.linspace(-1, 1, 201)
+    w = np.clip(x / 2 + 0.5, 0, 1)
+    W = np.stack([1 - w, w])
+    E = ts.edge_weights(W, np.zeros_like(W), ts.layer_edge(st))
+    width = ((E[1] > 0.05) & (E[1] < 0.95)).sum() * (x[1] - x[0])
+    assert width < 0.1, width
+    assert ts.edge_weights(W, np.zeros_like(W), None) is W
+
+
+def test_rock_scale_finds_thin_rock():
+    """rock_scale: a sea stack a few metres across reads thin, a headland thick; both stand tall."""
+    T = Stub(n=161, size=160.0)
+    H = np.full(T.X.shape, -5.0)
+    H[T.X < 60] = 20.0  # (a headland, its cliff at x = 60)
+    H[np.hypot(T.X - 110, T.Y - 80) < 3.0] = 18.0  # (a stack 6 m across)
+    T.H = H
+    T.water = np.where(H < 0, 0.0, np.nan)
+    T._slope = lambda: np.degrees(np.arctan(np.hypot(*np.gradient(H, T.cell))))
+    F, Th = ts.rock_scale(T)
+    j = 80
+    assert F[j, 110] > 10 and F[j, 58] > 10
+    assert Th[j, 110] < 5 < 15 < Th[j, 58], (Th[j, 110], Th[j, 58])
 
 
 if __name__ == "__main__":

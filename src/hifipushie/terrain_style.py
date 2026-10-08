@@ -35,8 +35,13 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-CONTRACT = 2
+CONTRACT = 3
 CONTRACT_LOG = {
+    3: "styles[].layer_edge {height, depth} (cartoon, anime; null = cross-fade as before): re-weight the layers by their "
+       "height maps where they meet (recipe step 1) so layer edges are crisp painted shapes; layers[l].small {albedo, "
+       "normal, face_m, thick_m} + maps.rock_scale (RG 8-bit: face height x face_m, half-thickness x thick_m): on "
+       "small or thin rock (sea stacks, fins) show the layer's plain texture instead (anime strata fade off them); "
+       "cartoon macro 0 and anime 0.15 (flat colour fields), new texture sizes (read size_m, never assume)",
     1: "styles: materials/<style>/<layer>_albedo (sRGB) / _normal / _height (+ _overlay_*), styles/<style>_sd.png and "
        "styles/weights<g>.png, manifest `styles` (list, zones, layers, seasons, snow, tiles, recipe)",
     2: "projection: layers with projection 'top' (grass, turf, scrub, forest_floor, sand, earth, snow) are ALWAYS laid "
@@ -50,6 +55,10 @@ PX = 1024           # texture side in pixels
 BAND = 20.0         # m: the default transition band (centred on the zone's edge)
 SD_RANGE = 64.0     # m: the signed distance maps run -SD_RANGE..SD_RANGE
 SEASONS = ("spring", "summer", "autumn", "winter")
+# a layer's `fade_small` ops (e.g. anime strata) give way to its plain texture on small or thin rock: full where the face
+# is over face_m[1] tall AND the rock over thick_m[1] thick (half-thickness in plan), none under the [0]s
+SMALL_FADE = {"face_m": [4.0, 12.0], "thick_m": [3.0, 10.0]}
+ROCK_SCALE = {"face_m": 64.0, "thick_m": 32.0}  # (the rock_scale map's full range: R and G = value / range)
 
 
 # ------------------------------------------------------------------------------------------------ sheets
@@ -162,6 +171,16 @@ def band_noise(n, cycles, seed, width=0.6, stretch=(1.0, 1.0)):
     return np.clip(2 * (z - lo) / max(hi - lo, 1e-12) - 1, -1, 1)
 
 
+def noise_rows(n, cycles, seed, count, width=0.6):
+    """`count` independent periodic 1D noises of n samples, features about n / cycles, -1..1 (1st..99th pct)."""
+    rng = np.random.default_rng(seed)
+    f = np.abs(np.fft.fftfreq(n) * n)
+    amp = np.where(f > 0, np.exp(-0.5 * (np.log(np.maximum(f, 1e-9) / max(cycles, 0.5)) / width) ** 2), 0.0)
+    z = np.real(np.fft.ifft(amp[None, :] * np.exp(2j * np.pi * rng.random((count, n))), axis=1))
+    lo, hi = np.percentile(z, [1, 99])
+    return np.clip(2 * (z - lo) / max(hi - lo, 1e-12) - 1, -1, 1)
+
+
 def _worley(n, L, size, seed, jitter=0.9):
     """F1, F2 (m) and the nearest seed's id on the L x L torus, seeds about `size` m apart (a jittered grid with a
     whole number of cells across, so it tiles)."""
@@ -205,9 +224,13 @@ def _norm(t):
 # each op: (n, L m, numbers, seed) -> (tone -1..1, height m); albedo / height amounts are applied by the caller
 
 def op_blotch(n, L, o, seed):
-    """Large soft blotches (`size` m), quantised to `steps` tones (`soft` edges): blobby / painted colour fields."""
+    """Large soft blotches (`size` m), quantised to `steps` tones (`soft` edges): blobby / painted colour fields.
+    `share`: with 2 steps, the share of the ground in the upper tone (patches on a ground colour, not a 50/50
+    camouflage); `width` the spread of sizes (wider = less regular)."""
     t = band_noise(n, L / float(o.get("size", 3.0)), seed, width=float(o.get("width", 0.5)),
                    stretch=tuple(o.get("stretch", (1.0, 1.0))))
+    if o.get("share") is not None:
+        t = np.clip(t - np.quantile(t, 1 - float(o["share"])), -1, 1)
     q = _steps(t, int(o.get("steps", 0)), float(o.get("soft", 0.5)))
     return q, t  # (height from the unstepped field: the steps' edges drew contour lines in the normal map)
 
@@ -226,7 +249,8 @@ def op_pillow(n, L, o, seed):
 
 def op_strokes(n, L, o, seed):
     """Brush dabs: `per_m2` elongated dabs `length` x `width` m at `angle` deg (+- `spread`), each a tone in
-    `tones` [lo, hi], painted one over another (soft edges): painted grass, a hand-drawn tuft field."""
+    `tones` [lo, hi] (`levels` n: only n evenly spaced tones in that range), painted one over another (soft edges):
+    painted grass, a hand-drawn tuft field."""
     rng = np.random.default_rng(seed)
     px = n / L
     N = int(float(o.get("per_m2", 30)) * L * L)
@@ -236,6 +260,8 @@ def op_strokes(n, L, o, seed):
     widm = widm if isinstance(widm, list) else [0.7 * widm, 1.3 * widm]
     ang0, spread = math.radians(float(o.get("angle", 90))), math.radians(float(o.get("spread", 25)))
     taper = float(o.get("taper", 0.6))
+    levels = int(o.get("levels", 0))
+    levels = levels if levels >= 2 else 0
     tone = np.zeros((n, n))
     alpha_acc = np.zeros((n, n))
     hgt = np.zeros((n, n))
@@ -246,6 +272,8 @@ def op_strokes(n, L, o, seed):
         ln = rng.uniform(*lenm) * px / 2
         wd = rng.uniform(*widm) * px / 2
         tv = rng.uniform(lo, hi) + bias[int(cy) % n, int(cx) % n]
+        if levels:  # (a painter's few mixed tones, not a continuum: a continuum of dab tones read as noise)
+            tv = lo + (hi - lo) * np.round(np.clip((tv - lo) / max(hi - lo, 1e-9), 0, 1) * (levels - 1)) / (levels - 1)
         r = int(ln + wd + 2)
         ii, jj = np.mgrid[int(cy) - r:int(cy) + r + 1, int(cx) - r:int(cx) + r + 1]
         dx, dy = jj - cx, ii - cy
@@ -300,31 +328,55 @@ def op_tufts(n, L, o, seed):
 
 def op_bands(n, L, o, seed):
     """Horizontal strata (rows = up): bands `thickness` [lo, hi] m filling the texture's height exactly, tones cycling
-    through `tones`, edges `edge` m soft, rows wavering `wave` m; each band proud or set back by its tone (height)."""
+    through `tones`, edges `edge` m soft, rows wavering `wave` m; each band proud or set back by its tone (height).
+    Along the strike (columns) the strata need not stay even: `pinch` (each band's thickness wanders by that share
+    over `pinch_len` m: strata swell and thin), `breaks` (share of each band's length where it wedges out to nothing,
+    its neighbours closing over it, in lenses `break_len` m long) and `vary` (each band's tone strength wanders by
+    that share over `vary_len` m). Every wander is periodic along u (the texture tiles); the bands fill the height."""
     rng = np.random.default_rng(seed)
     lo, hi = o.get("thickness", [0.3, 1.2])
     th = []
     while sum(th) < L:
         th.append(rng.uniform(lo, hi))
     th = np.array(th) * (L / sum(th))
-    edges = np.concatenate([[0], np.cumsum(th)])
+    nb = len(th)
     tones = o.get("tones", [-0.8, 0.2, 0.9, -0.2])
-    bt = np.array([tones[i % len(tones)] for i in range(len(th))]) + rng.normal(0, float(o.get("jitter", 0.1)), len(th))
+    bt = np.array([tones[i % len(tones)] for i in range(nb)]) + rng.normal(0, float(o.get("jitter", 0.1)), nb)
     t = (np.arange(n) + 0.5) * (L / n)
     wave = band_noise(n, max(1.0, L / float(o.get("wave_len", 3.0))), seed + 1)[0] * float(o.get("wave", 0.08))
     # (rows: v up; columns: u. Shifted half the first band: an edge on the wrap row was a seam line every tile)
     V = (t[:, None] + wave[None, :] + 0.5 * th[0]) % L
     e = max(float(o.get("edge", 0.02)), 1e-4)
+    pinch, vary, brk = float(o.get("pinch", 0.0)), float(o.get("vary", 0.0)), float(o.get("breaks", 0.0))
+    W = np.repeat(th[:, None], n, 1)  # (each band's thickness along u)
+    if pinch > 0:
+        W = W * (1 + min(pinch, 0.95) * noise_rows(n, max(1.0, L / float(o.get("pinch_len", 8.0))), seed + 2, nb))
+    if brk > 0:  # (a lens: the band thins to nothing over a stretch and comes back; tapering, never a vertical edge)
+        Bn = noise_rows(n, max(1.0, L / float(o.get("break_len", 6.0))), seed + 4, nb)
+        cut = np.quantile(Bn, brk, axis=1)[:, None]
+        B = np.clip((Bn - cut) / 1.2, 0, 1)
+        W = W * (B * B * (3 - 2 * B))
+    # each edge moves by half the change of the bands either side, so a band's change is taken up by its two
+    # neighbours (a cumulative sum let the changes random-walk: whole stacks of strata swung metres up and down)
+    dW = W - th[:, None]
+    d = np.zeros((nb + 1, n))
+    d[1:-1] = 0.5 * (dW[:-1] - dW[1:])
+    E = np.concatenate([[0], np.cumsum(th)])[:, None] + d
+    E = np.clip(np.maximum.accumulate(E, 0), 0.0, L)  # (edges never cross)
+    S = np.ones((nb, n))
+    if vary > 0:
+        S = 1 - vary * (0.5 - 0.5 * noise_rows(n, max(1.0, L / float(o.get("vary_len", 8.0))), seed + 3, nb))
     tone = np.zeros((n, n))
     hgt = np.zeros((n, n))
     step = float(o.get("step", 1.0))
-    for k in range(len(th)):
-        a, b = edges[k], edges[k + 1]
+    for k in range(nb):
+        a, b = E[k][None, :], E[k + 1][None, :]
         inside = np.clip((V - a) / e + 0.5, 0, 1) * np.clip((b - V) / e + 0.5, 0, 1)
         if k == 0:  # (the wrap: the first band also continues past the last edge)
             inside = np.maximum(inside, np.clip((V - (L + a)) / e + 0.5, 0, 1))
-        tone += inside * bt[k]
-        hgt += inside * bt[k] * step
+        v = inside * bt[k] * S[k][None, :]
+        tone += v
+        hgt += v * step
     return np.clip(tone, -1, 1), hgt - hgt.mean()
 
 
@@ -347,7 +399,8 @@ def op_ripples(n, L, o, seed):
 
 
 def op_dots(n, L, o, seed):
-    """Discs `size` [lo, hi] m, `per_m2`, each a tone in `tones`: pebbles, flecks, flowers seen from above."""
+    """Discs `size` [lo, hi] m, `per_m2`, each a tone in `tones`: pebbles, flecks, flowers seen from above.
+    `clusters` [per_m2, radius m]: the dots gathered in clumps (a patch of daisies) instead of strewn evenly."""
     rng = np.random.default_rng(seed)
     px = n / L
     N = int(float(o.get("per_m2", 20)) * L * L)
@@ -355,8 +408,14 @@ def op_dots(n, L, o, seed):
     tl, th_ = o.get("tones", [-1.0, 1.0])
     tone = np.zeros((n, n))
     hgt = np.zeros((n, n))
-    for _ in range(N):
-        cx, cy = rng.random(2) * n
+    if o.get("clusters"):
+        cn, cr = o["clusters"]
+        C = rng.random((max(1, int(round(float(cn) * L * L))), 2)) * n
+        pos = C[rng.integers(0, len(C), N)] + rng.normal(0, float(cr) * px, (N, 2))
+    else:
+        pos = None
+    for q in range(N):
+        cx, cy = rng.random(2) * n if pos is None else pos[q] % n
         r = rng.uniform(lo, hi) / 2 * px
         ri = int(r + 2)
         ii, jj = np.mgrid[int(cy) - ri:int(cy) + ri + 1, int(cx) - ri:int(cx) + ri + 1]
@@ -408,20 +467,29 @@ def _seed(*parts):
     return int(hashlib.sha1("/".join(map(str, parts)).encode()).hexdigest()[:8], 16) % 1_000_000
 
 
-def texture(st: dict, layer: str, colour_srgb, px: int = PX) -> dict:
+def texture(st: dict, layer: str, colour_srgb, px: int = PX, plain: bool = False) -> dict:
     """One style's tileable texture for a layer: {"albedo" (n, n, 3) sRGB 0..1 (linear mean = the colour), "height" m,
-    "normal" (n, n, 3) tangent (+x along the image's x, +y up the image), "size_m", "projection"}. Rows run up."""
+    "normal" (n, n, 3) tangent (+x along the image's x, +y up the image), "size_m", "projection"}. Rows run up.
+    An op with `"paint": sRGB` lays that colour where it marks (|tone| x `albedo` as coverage: flowers, a pale tick)
+    instead of shading the layer's own colour. plain=True: without the ops marked `"fade_small": true` (what the engine
+    shows on small or thin rock, by the manifest's `rock_scale` map)."""
     L = layer_sheet(st, layer)
     size = float(L.get("scale_m", 4.0))
     n = int(px)
     tone = np.zeros((n, n))
     hgt = np.zeros((n, n))
+    paints = []
     for k, o in enumerate(L.get("ops") or []):
         fn = OPS.get(o.get("op"))
         if fn is None:
             raise ValueError(f"style {st['name']}: layer {layer}: unknown op {o.get('op')!r} (ops: {', '.join(OPS)})")
+        if plain and o.get("fade_small"):
+            continue
         t, h = fn(n, size, o, _seed(st["name"], layer, k, o.get("seed", 0)))
-        tone += float(o.get("albedo", 0.0)) * t
+        if o.get("paint") is not None:
+            paints.append((np.clip(np.abs(t), 0, 1) * float(o.get("albedo", 1.0)), _srgb_lin(o["paint"])))
+        else:
+            tone += float(o.get("albedo", 0.0)) * t
         hgt += float(o.get("height", 0.0)) * h
     base = _srgb_lin(colour_srgb)
     warm = np.array(L.get("warm", [1, 1, 1]), float)
@@ -429,6 +497,8 @@ def texture(st: dict, layer: str, colour_srgb, px: int = PX) -> dict:
     tp, tn = np.clip(tone, 0, None)[..., None], np.clip(-tone, 0, None)[..., None]
     tint = 1 + tp * (warm - 1) + tn * (cool - 1)
     lin = base * np.clip(1 + tone, 0.05, None)[..., None] * tint
+    for m, c in paints:
+        lin = lin * (1 - m[..., None]) + c * m[..., None]
     lin = lin * (base / np.maximum(lin.reshape(-1, 3).mean(0), 1e-6))  # (mean = the layer's colour)
     texel = size / n
     gx = (np.roll(hgt, -1, 1) - np.roll(hgt, 1, 1)) / (2 * texel)
@@ -551,10 +621,65 @@ def style_fields(T, styles: list[dict]) -> dict:
     return {"sd": sd, "w": w, "order": order}
 
 
+def layer_edge(st: dict) -> dict | None:
+    """A style's layer-edge numbers ({"height", "depth"}: how far the layers' height maps push where two layers meet,
+    and how wide the crossing is, in weight units), or None (layers cross-fade by weight)."""
+    E = st.get("layer_edge")
+    if not E:
+        return None
+    return {"height": float(E.get("height", 0.4)), "depth": float(E.get("depth", 0.1))}
+
+
+def edge_weights(W, Hn, edge):
+    """The recipe's layer-edge re-weighting: W (k, ...) layer weights, Hn (k, ...) their height maps -1..1."""
+    if not edge:
+        return W
+    S = W + edge["height"] * Hn * np.minimum(1.0, 4 * W)
+    m = S.max(0, keepdims=True)
+    w = np.maximum(S - (m - edge["depth"]), 0.0)
+    return w / np.maximum(w.sum(0, keepdims=True), 1e-9)
+
+
+def rock_scale(T) -> tuple[np.ndarray, np.ndarray]:
+    """Per terrain cell, how big the rock there is: (face height m, half-thickness m in plan). Face height = the visible
+    relief (water at its level) within ~40 m, averaged over the steep cells within ~8 m; thickness = how far the
+    piece standing up (over the middle of the relief within ~100 m) reaches inside, its largest within ~15 m. A sea stack or a
+    thin fin reads a few metres thick, a headland tens. What a layer's `fade_small` ops fade on (the engine reads it
+    from styles/rock_scale.png)."""
+    H = np.asarray(T.H, float)
+    water = getattr(T, "water", None)
+    vis = H if water is None else np.where(np.isnan(water), H, np.maximum(H, np.nan_to_num(water, nan=-1e9)))
+    vb = ndimage.gaussian_filter(vis, 1.0)
+    odd = lambda m: max(3, int(round(m / T.cell)) | 1)
+    w = odd(40.0)
+    top, foot = ndimage.maximum_filter(vb, w), ndimage.minimum_filter(vb, w)
+    rel = top - foot
+    face = (T._slope() > 40).astype(float)
+    sig = max(1.0, 8.0 / T.cell)
+    g = ndimage.gaussian_filter(face, sig)
+    Hf = np.where(g > 1e-3, ndimage.gaussian_filter(rel * face, sig) / np.maximum(g, 1e-3), 0.0)
+    w2 = odd(100.0)  # (the piece standing up, judged over a wider window: a 40 m one lost a plateau's inland part)
+    top2, foot2 = ndimage.maximum_filter(vb, w2), ndimage.minimum_filter(vb, w2)
+    up = (vb > 0.5 * (top2 + foot2)) & (top2 - foot2 > 2.0)
+    thick = ndimage.distance_transform_edt(up) * T.cell
+    thick = ndimage.maximum_filter(thick, odd(30.0))
+    # sea stacks are solid columns in the 3D tiles (terrain_mesh.stacks): the heightfield holds only a slim core, so
+    # round each one its own size is written in (half-thickness = its radius, its height over the sea)
+    st = (getattr(T, "sea", None) or {}).get("stacks") if isinstance(getattr(T, "sea", None), dict) else None
+    if st:
+        from .terrain_mesh import STACK
+        for a in st:
+            r = STACK["radius"] * float(a["radius"])
+            m = np.hypot(T.X - a["xy"][0], T.Y - a["xy"][1]) < r + 3.0 * T.cell
+            thick[m] = r
+            Hf[m] = np.maximum(Hf[m], float(a["height"]))
+    return Hf, thick
+
+
 # ------------------------------------------------------------------------------------------------ rock shape (geometry)
 
 ROCK_BAND = 10.0  # m: the default band over which one style's rock shape hands over to the next (in the field)
-ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind", "stack"}
+ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind", "stack", "lip"}
 
 
 def rock_styles(T) -> list[dict]:
@@ -700,24 +825,31 @@ def write_layers(out: Path, st: dict, refs: dict, layers, px: int = PX) -> dict:
         key = hashlib.sha1(json.dumps([st["name"], nm, Ls, [round(float(x), 6) for x in col], int(px), _code()],
                                       sort_keys=True).encode()).hexdigest()[:24]
         kd = cache / key if cache else None
+        has_plain = any(o.get("fade_small") for o in (Ls.get("ops") or []))
+        kinds = ("albedo", "normal", "height") + (("plain_albedo", "plain_normal") if has_plain else ())
         meta = None
         if kd is not None and (kd / "meta.json").exists():  # (the PNGs as made before: identical bytes)
             meta = json.loads((kd / "meta.json").read_text())
-            for k in ("albedo", "normal", "height"):
+            for k in kinds:
                 shutil.copyfile(kd / f"{k}.png", out / f"materials/{st['name']}/{nm}_{k}.png")
         if meta is None:
             S = texture(st, nm, col, px)
             hr = float(max(np.abs(S["height"]).max(), 1e-5))
-            for k, a in (("albedo", _q8(S["albedo"])), ("normal", _q8(S["normal"] * 0.5 + 0.5)),
-                         ("height", _q16(S["height"] / hr * 0.5 + 0.5))):
+            imgs = [("albedo", _q8(S["albedo"])), ("normal", _q8(S["normal"] * 0.5 + 0.5)),
+                    ("height", _q16(S["height"] / hr * 0.5 + 0.5))]
+            if has_plain:
+                Sp = texture(st, nm, col, px, plain=True)
+                imgs += [("plain_albedo", _q8(Sp["albedo"])), ("plain_normal", _q8(Sp["normal"] * 0.5 + 0.5))]
+            for k, a in imgs:
                 _png(out / f"materials/{st['name']}/{nm}_{k}.png", a[::-1],
                      "I;16" if a.dtype == np.uint16 else None)  # (image rows run down)
             meta = {"size_m": S["size_m"], "projection": S["projection"], "height_m": round(hr, 5),
-                    "roughness": S["roughness"], "wrap_seam": tileable(S["albedo"])}
+                    "roughness": S["roughness"], "wrap_seam": max(tileable(S["albedo"]),
+                                                                  tileable(Sp["albedo"]) if has_plain else 0.0)}
             if kd is not None:
                 try:
                     kd.mkdir(parents=True, exist_ok=True)
-                    for k in ("albedo", "normal", "height"):
+                    for k in kinds:
                         shutil.copyfile(out / f"materials/{st['name']}/{nm}_{k}.png", kd / f"{k}.png")
                     (kd / "meta.json").write_text(json.dumps(meta))
                 except OSError:
@@ -729,6 +861,11 @@ def write_layers(out: Path, st: dict, refs: dict, layers, px: int = PX) -> dict:
                    "roughness": meta["roughness"], "normal_strength": float(Ls.get("normal_strength", 1.0)),
                    "v_jitter_m": float(Ls.get("v_jitter_m", 0.0)) if meta["projection"] == "triplanar" else 0.0,
                    "seasons": season_colours(st, nm, col), "wrap_seam": meta["wrap_seam"]}
+        if has_plain:  # (the layer without its fade_small ops: shown on small or thin rock, by maps.rock_scale)
+            fade = {**SMALL_FADE, **(Ls.get("small_fade") or {})}
+            res[nm]["small"] = {"albedo": f"materials/{st['name']}/{nm}_plain_albedo.png",
+                                "normal": f"materials/{st['name']}/{nm}_plain_normal.png",
+                                "face_m": fade["face_m"], "thick_m": fade["thick_m"]}
     return res
 
 
@@ -776,8 +913,14 @@ RECIPE = (
     "patches into terraces up a slope). Layers with projection 'triplanar' (rock): top plane + side planes blended by "
     "|n|^4 (side planes: u along the face, v = (world z + v_jitter_m x (2 n(u / 23 m) - 1)) / size_m, n = a smooth 1D "
     "value noise 0..1, so painted strata stay level but wander along the strike and don't repeat straight up a "
-    "cliff every size_m). Height-blend the "
-    "layers with <l>_height for crisper layer edges if you like. Anti-tiling as the detail recipe: a second sampling "
+    "cliff every size_m). Layer edges: a style with `layer_edge` {height, depth} (contract 3) re-weights its layers "
+    "by their height maps before the sum, so where two layers meet the edge is a crisp painted shape, not a soft "
+    "cross-fade: h_l = 2 x <l>_height - 1 (-1..1), s_l = wl + height x h_l x min(1, 4 wl), m = max_l s_l, "
+    "wl' = max(s_l - (m - depth), 0) / sum (styles without it: wl as is). On small or thin rock (maps.rock_scale: face "
+    "height F = R x face_m, half-thickness Th = G x thick_m) a layer with a `small` entry shows its plain texture "
+    "instead: k = smoothstep(small.face_m[0], small.face_m[1], F) x smoothstep(small.thick_m[0], small.thick_m[1], "
+    "Th), albedo = mix(small.albedo, albedo, k), normal likewise (anime strata fade off sea stacks and fins). "
+    "Anti-tiling as the detail recipe: a second sampling "
     "at uv / 1.618 + (0.37, 0.71), CHOSEN between by a smooth noise mask over ~3 x size_m patches (not mixed 50/50); "
     "keep strata textures (projection triplanar on rock) unrotated so the bands stay level.\n"
     "2. R = sum_l wl x layers[l].color_linear of the REALISTIC style (what the baked base colour holds, minus its "
@@ -826,6 +969,11 @@ def write(out: Path, T, refs: dict, spec: dict | None = None, tiles: list | None
             fn = f"styles/weights{g // 4}.png"
             Image.fromarray(np.ascontiguousarray(_q8(np.stack(grp, -1))[::-1]), "RGBA").save(out / fn)
             maps["weights"].append(fn)
+    if getattr(T, "H", None) is not None:  # (how big the rock is: where `fade_small` ops give way to plain textures)
+        Hf, thick = rock_scale(T)
+        rg = np.stack([Hf / ROCK_SCALE["face_m"], thick / ROCK_SCALE["thick_m"], np.zeros_like(Hf)], -1)
+        _png(out / "styles/rock_scale.png", _q8(rg)[::-1])
+        maps["rock_scale"] = "styles/rock_scale.png"
     per_tile = []
     for (i, j, (bx0, by0, bx1, by1)) in (tiles or []):
         sel = (T.X >= bx0 - T.cell) & (T.X <= bx1 + T.cell) & (T.Y >= by0 - T.cell) & (T.Y <= by1 + T.cell)
@@ -841,10 +989,16 @@ def write(out: Path, T, refs: dict, spec: dict | None = None, tiles: list | None
                                     if styles else None),
                         "macro": float(st.get("macro", 1.0)), "macro_normal": float(st.get("macro_normal", 1.0)),
                         "detail": float(st.get("detail", 0.0)), "overlay": write_overlay(out, st),
+                        "layer_edge": layer_edge(st),
                         "layers": lay, "snow": snow_numbers(st), "rock": st.get("rock") or {}})
     return {"contract": {"version": CONTRACT, "changes": {str(k): v for k, v in CONTRACT_LOG.items()}},
             "order": order, "styles": entries,
             "maps": {"sd": maps["sd"], "weights": maps["weights"], "range_m": SD_RANGE,
+                     "rock_scale": ({"file": maps["rock_scale"], "face_m": ROCK_SCALE["face_m"],
+                                     "thick_m": ROCK_SCALE["thick_m"],
+                                     "how": "RGB 8-bit, linear, the same grid as the sd maps: face height = R x face_m, "
+                                            "half-thickness in plan = G x thick_m (metres)"}
+                                    if maps.get("rock_scale") else None),
                      "extent": [[x0, y0], [x1, y1]], "cell_m": float(T.cell),
                      "uv": "north-up images over the terrain's extent: pixel centre (c, r) at x = x0 + (c + 0.5) cell, "
                            "y = y1 - (r + 0.5) cell; sd 16-bit, value 0.5 = the edge, (v - 0.5) x 2 x range_m metres, "
@@ -1019,3 +1173,116 @@ def transition_strip(styles: list[dict], refs: dict, layer: str, path, length_m:
     img = _lin_srgb(acc / np.maximum(wsum, 1e-6)[..., None])
     Image.fromarray(_q8(img)).save(path)
     return Path(path)
+
+
+# ------------------------------------------------------------------------------------------------ the game's view
+
+def _pyramid(img):
+    """Box-filtered mip levels of a periodic (n, n, c) image (n a power of two), as a GPU's mipmaps."""
+    lv = [img]
+    while lv[-1].shape[0] > 4:
+        a = lv[-1]
+        lv.append(0.25 * (a[0::2, 0::2] + a[1::2, 0::2] + a[0::2, 1::2] + a[1::2, 1::2]))
+    return lv
+
+
+def _sample(lv, u, v, lod):
+    """Trilinear sample of a pyramid at periodic uv (0..1 = one tile; rows run up) and per-point level."""
+    lod = np.clip(lod, 0, len(lv) - 1)
+    l0 = np.floor(lod).astype(int)
+    f = (lod - l0)[..., None]
+    out = np.zeros(u.shape + (lv[0].shape[2],))
+
+    def bil(a, uu, vv):
+        n = a.shape[0]
+        x, y = uu * n - 0.5, vv * n - 0.5
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+        fx, fy = (x - x0)[..., None], (y - y0)[..., None]
+        x0, y0, x1, y1 = x0 % n, y0 % n, (x0 + 1) % n, (y0 + 1) % n
+        return ((a[y0, x0] * (1 - fx) + a[y0, x1] * fx) * (1 - fy) + (a[y1, x0] * (1 - fx) + a[y1, x1] * fx) * fy)
+
+    for k in np.unique(l0):
+        m = l0 == k
+        a = bil(lv[k], u[m], v[m])
+        b = bil(lv[min(k + 1, len(lv) - 1)], u[m], v[m])
+        out[m] = a * (1 - f[m]) + b * f[m]
+    return out
+
+
+def ground_view(styles: list[dict], refs: dict, path, layers=("grass", "earth"), size=(560, 315), px: int = 1024,
+                light: str = "game") -> Path:
+    """What the ground looks like in the game, per style: a row of eye-level views (1.7 m up, looking along a gently
+    curving path of the second layer through the first) and views from 25 m up, 40 deg down. The ground is flat, so
+    only the textures, their layer edges (`layer_edge`) and mipmaps show: lit as the game's cel styles light flat ground
+    (light "game": albedo x (sun band + flat ambient), no specular), sampled through mip levels as a GPU does. A stand-in
+    for the baked macro colour (realistic's 60 / 15 m colour patches) is applied by each style's `macro`."""
+    from PIL import Image, ImageDraw
+    W, Hh = size
+    fov = math.radians(70.0)
+    cams = [("eye 1.7 m", 1.7, math.radians(-6.0)), ("25 m up", 25.0, math.radians(-40.0))]
+    tiles = []
+    for st in styles:
+        tex = []
+        for nm in layers:
+            S = texture(st, nm, layer_colour(st, nm, refs), px)
+            hr = max(float(np.abs(S["height"]).max()), 1e-6)
+            tex.append((S["size_m"], _pyramid(np.concatenate([S["albedo_linear"], (S["height"] / hr)[..., None]], -1))))
+        row = []
+        for title, h, pitch in cams:
+            jj, ii = np.meshgrid(np.arange(W) + 0.5, np.arange(Hh) + 0.5)
+            t = math.tan(fov / 2)
+            x = (2 * jj / W - 1) * t
+            y = (1 - 2 * ii / Hh) * t * Hh / W
+            # camera looking +y, pitched down
+            dy = math.cos(pitch) - y * math.sin(pitch)
+            dz = math.sin(pitch) + y * math.cos(pitch)
+            dx = x
+            hit = dz < -1e-4
+            tt = np.where(hit, -h / np.minimum(dz, -1e-4), 0.0)
+            px_ang = 2 * t / W
+            dn = np.sqrt(dx * dx + dy * dy + dz * dz)
+            Xw, Yw = dx * tt, dy * tt
+            dist = tt * dn
+            graze = np.clip(-dz / dn, 0.02, 1)
+            across = dist * px_ang
+            foot = across * np.sqrt(np.minimum(1 / graze, 8.0))  # (anisotropic filtering takes some of the stretch)
+            # the second layer as a curving path 3 m wide, soft over ~1 m as the tiles' weight maps are
+            cx = 2.5 * np.sin(Yw / 9.0) + 1.0
+            we = np.clip((1.9 - np.abs(Xw - cx)) / 1.0 + 0.5, 0, 1)
+            we = we * we * (3 - 2 * we)
+            Wl = np.stack([1 - we, we]) if len(layers) == 2 else np.ones((1,) + Xw.shape)
+            cols, hts = [], []
+            for (L, lv) in tex:
+                lod = np.log2(np.maximum(foot / (L / px), 1e-6))
+                # the recipe's anti-tiling: a second sampling at uv / 1.618 + (0.37, 0.71), chosen by patches ~3 tiles
+                pick = (np.sin(Xw / (0.9 * L) + np.sin(Yw / (1.3 * L))) * np.sin(Yw / (1.1 * L) + 0.5)) > 0
+                s = _sample(lv, Xw / L, Yw / L, lod)
+                s2 = _sample(lv, Xw / L / 1.618 + 0.37, Yw / L / 1.618 + 0.71, lod - math.log2(1.618))
+                s = np.where(pick[..., None], s2, s)
+                cols.append(s[..., :3])
+                hts.append(s[..., 3])
+            Wl = edge_weights(Wl, np.stack(hts), layer_edge(st))
+            col = sum(Wl[k][..., None] * cols[k] for k in range(len(cols)))
+            # the baked macro colour's variation (realistic's broad patches), kept by `macro`
+            n1 = np.sin(Xw / 9.3 + 1.3 * np.sin(Yw / 13.0)) * np.sin(Yw / 11.7 + 0.7 * np.sin(Xw / 7.0))
+            n2 = np.sin(Xw / 31.0 + 2.0) * np.sin(Yw / 27.0 + 0.4)
+            var = 1 + 0.10 * n1 + 0.07 * n2
+            col = col * (1 + float(st.get("macro", 1.0)) * (var - 1))[..., None]
+            if light == "game":
+                # (flat ground: fully in the sun band, the flat ambient on top, no specular: one factor)
+                col = col * 0.92
+            sky = np.array([0.42, 0.52, 0.66])
+            haze = 1 - np.exp(-dist / 900.0)
+            col = col * (1 - haze[..., None]) + sky * haze[..., None]
+            img = np.where(hit[..., None], col, sky)
+            im = Image.fromarray(_q8(_lin_srgb(img)))
+            ImageDraw.Draw(im).text((6, 4), f"{st['name']}: {title}", fill=(255, 255, 255))
+            row.append(im)
+        tiles.append(row)
+    out = Image.new("RGB", (W * len(cams) + 4 * (len(cams) - 1), Hh * len(styles) + 4 * (len(styles) - 1)), (30, 30, 30))
+    for r, row in enumerate(tiles):
+        for c, im in enumerate(row):
+            out.paste(im, (c * (W + 4), r * (Hh + 4)))
+    path = Path(path)
+    out.save(path)
+    return path
