@@ -5074,7 +5074,9 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
         pad = np.maximum(pad * covered, 0.5 * pad + 0.5 * acc / np.maximum(wt, 1))
     pad = np.where(pad > 1e-4, pad + air, 0.0)
     P = _unfold_offset(body.V, T, E, vn, pad)
-    b = Body({"V": P, "F": body._faces, "J": body.J})
+    # (with the parts the garment also rests on, garment key "collide": padded for a layer, the trousers lost their
+    # shoes and the hem started inside them: "contact starts overlapping", tr_20)
+    b = Body({"V": P, "F": body._faces, "J": body.J, "worn": getattr(body, "worn", None)})
     b.pad = pad
     return b
 
@@ -6260,6 +6262,7 @@ def _seam_press(X: np.ndarray, M: dict, h: float, stiff: np.ndarray | None, opts
 
 
 KINK = 0.0015  # m: a draped vertex standing this far out of its neighbours' plane, with its faces turned against them
+KINK_MAX = 0.006  # m: the most _unkink moves a vertex in all
 KINK_TURN = 25.0  # deg: (KINK) a face this far turned from its neighbours' mean normal is a kink, not a fold's slope
 
 
@@ -6283,6 +6286,7 @@ def _unkink(X: np.ndarray, M: dict, stiff: np.ndarray | None = None, rounds: int
     a, b = E[:, 0], E[:, 1]
     deg = np.bincount(np.r_[a, b], minlength=len(X)).astype(float)
     hist = []
+    X0 = X.copy()
     for _ in range(rounds):
         fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
         fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
@@ -6305,6 +6309,12 @@ def _unkink(X: np.ndarray, M: dict, stiff: np.ndarray | None = None, rounds: int
         if not k.any():
             break
         X[k] += off[k, None] * vn[k]
+        # (no vertex goes further than KINK_MAX in all: round after round a sleeve's hem, bunched at the wrist in
+        # real folds a triangle across, was walked 15-20 mm flat and squashed: ga_suit su_74 under.R 0.6% crumpled in
+        # the sim -> 3.7% after the clean-up, CORRUPT)
+        D_ = X - X0
+        L_ = np.linalg.norm(D_, axis=1)
+        X = X0 + D_ * np.minimum(1.0, KINK_MAX / np.maximum(L_, 1e-12))[:, None]
     return X, {"kinks": hist}
 
 

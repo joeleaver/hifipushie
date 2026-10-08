@@ -204,6 +204,20 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
     return o
 
 
+def hem_width(pcs: dict, legs: list) -> float:
+    """A leg's hem round (m): each of its pieces measured just over its OWN hem's corners (the highest outline point
+    within 3 cm of its lowest). A hem shaped for a break (the back's dipping 12 mm in its middle, lower than the
+    front's) read at one level 1 cm over the lowest point missed the front and cut the back's V: "165 mm round" for a
+    377 mm hem."""
+    w = 0.0
+    for n in legs:
+        P = np.asarray(pcs[n]["P"], float)
+        lo = float(P[:, 1].min())
+        top = float(P[P[:, 1] < lo + 0.03, 1].max())
+        w += cloth._piece_width_at(P, top + 0.002)
+    return float(w)
+
+
 def leg_ease(c: Ctx, bands: dict) -> list:
     """[(line, ok)]: a leg garment's ease from the flat pattern at the seat (both legs' pieces across the seat line
     against the seat girth, in the fit's band), and per leg at the thigh, knee and hem against the body's own leg
@@ -257,6 +271,11 @@ def leg_ease(c: Ctx, bands: dict) -> list:
             continue
         body_g = max(tailor.girth(L, Z) for L in loops) * 1000
         g = width(y) * 1000
+        if name == "hem":
+            # each piece at its OWN hem: a hem sloped for a break (the back lower than the front) put the front's hem
+            # above the level 1 cm over the lowest point, and the leg read as its back alone (su_garrett: "165 mm
+            # round, must pass 342", a false fail)
+            g = hem_width(pcs, legs) * 1000
         if name == "hem" and "ankle.L" in c.body.J and zw + y < float(c.body.J["ankle.L"][2]) + 0.03 and c.meas.get("heel"):
             # a hem that ends on the foot hangs over it, it doesn't go round it: what it must do is pass the heel
             heel = float(c.meas["heel"])

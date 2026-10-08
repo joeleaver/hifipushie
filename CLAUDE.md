@@ -2624,6 +2624,36 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     Garrett's jacket) and length (length_bonus), sleeves +10 mm; (3) the side-back seam's last pairs; (4) the belt
     against the shirt at the waist (trims over a shirt tucked in?); (5) lapel_gap (made flap carried with its forepart),
     collar_hug 25.
+  - Round 2 (the coordinator's list: shoulders, length, collar_show, sleeves, belt, lapels, trousers; renders su_76/77):
+    - su_garrett v16-20 jacket: `support` [shoulder_pad 12 mm, sleeve_head] + detail shoulder "pad_and_head",
+      length_bonus 0.18 (hem z 0.79-0.81: covers the seat; was 0.86), lapel width 0.095, sleeve length_bonus +0.006,
+      collar stand 19 / fall 31. Shirt colour #bdb8b4 (#d0cbc7 rendered near white under the clay lights; the concept's
+      lit shirt samples ~#a9a5a2).
+    - su_76 with collar stand 16 / fall 28 (+ lapel 100): both lapels UNROLLED to 33-41 deg (a funnel round the
+      neck), as su_57 on ga_suit: lowering the stand unrolls the lapels. Don't lower the stand to fix collar_show.
+    - su_77 (3112 s): fits, lapels roll 142 / 172 deg, lapel_gap 7.9 / 5.7, cuffs 19.8 / 15.7 (was 26-28),
+      collar_show -7.9, collar_hug 27, BUT 14 of 376 sewn pairs open (side-back seams 67-108 mm and the underarm
+      37-98 mm, all at the pit corner where side panel, back and under sleeve meet: they START 150 / 75 mm apart and the
+      pads add tension) and 28 layer crossings. Outfit: cloth_renders/su_77_garrett_outfit_tex.png: longer, greyer
+      shirt, lapels rolled, shoulders squarer; still no belt, pit seams not seen in that view.
+      Tried and reverted: pinning the side panels to the worn back in place() (sleeves then crossed them and went 7-8
+      cm down the arm, pushes 50 mm). Next to try: zozo.stitch_stiffness 3 on the jacket (time), or start the side
+      panel's top in at the pit.
+    - THE BELT: the shirt was never tucked: a free garment over the trousers' waist. trousers `over: shirt` (the
+      shirt pressed under them) is the tuck. `padded_body` now keeps the body's worn parts (shoes): without it the hem
+      started inside the shoes (tr_20: "contact starts overlapping"). tr_21 then failed at frame 44: "Intersection
+      detected", one cloth face vs a collider edge at the right shoe's top (x -0.22, z 0.10). Not traced. su_garrett's
+      trousers are back WITHOUT `over` (the cached tr_19 drape shows).
+    - `_unkink` (main's clean-up) capped at KINK_MAX 6 mm per vertex: it walked a sleeve hem's real folds 15-20 mm
+      flat (ga_suit su_74 under.R 0.6% crumpled in the sim -> 3.7% after the clean-up, CORRUPT; now 1.2%, fits).
+    - Stage 2's hem gate: `cloth_workflow.hem_width` measures each leg piece just over its own hem's corners (a break
+      hem dips in the back's middle: read at one level it was 165 mm for 377 and failed "TOO SMALL to pull on").
+      Test test_sloped_hem_is_the_whole_leg.
+    - NEXT: (1) the pit seams (stitch stiffness / the side panel's start); (2) the trousers over the shirt (the shoe
+      intersection: dump the frame-44 state, check the shoe collider slivers UNDER_SLIVER drops); (3) collar_show by
+      the jacket's back neck, not the stand; (4) collar_hug; (5) trousers slimmer: a sheet's `block_options` REPLACES the
+      kind's draft block options (seat_ease alone made a 165 mm hem): set the leg through fit or extend compile_sheet to
+      merge. A new shirt from the "placket" agent will re-simulate everything layered over it.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
