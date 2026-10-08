@@ -132,7 +132,7 @@ def shell_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
     cs = {**CARDS, **((st.get("crown") or {}).get("cards") or {})}
     lf = spec["leaves"]
     sub = {**st, "crown": {**(st.get("crown") or {}), "dab": {"count": int(cs["count"]), "length": float(cs["length"]), "core": 0.0,
-                                                               "ragged": 0.0, "true": True, "width": float(lf.get("width", 0.5)), "out": 0.9,
+                                                               "ragged": 0.0, "true": True, "width": float(cs.get("width", lf.get("width", 0.5))), "out": 0.9,
                                                                "droop": 0.25, "verts": int(cs.get("verts", 7)), "variants": 4, "size": 256, "tone": [0.8, 1.0]}}}
     return dab_atlas(spec, sub, season)
 

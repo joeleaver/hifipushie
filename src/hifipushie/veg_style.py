@@ -628,7 +628,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
                 e["r"] = np.array([rx, ry, 0.5 * e["cone"]["h"]])
                 e.pop("down", None)
             out.append(e)
-        return _scallops(out, cr, seed)
+        return _scallops(_subclumps(out, X, cr, twig), cr, seed)
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
         X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
     es = float(cr.get("edge_share", 0.0))
