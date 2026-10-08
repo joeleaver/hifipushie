@@ -64,7 +64,7 @@ def checklist() -> list:
         elif it["id"] in LEVERS:
             it["control"] = f"lever {LEVERS[it['id']][0]}"
         elif not any(w in c for w in ("fit_outline", "fit_hood")) and it["measure"]["kind"] != "judge":
-            it["control"] = "GAP: " + c.replace("fit_views", "points by hand (fit_views / nudge)")
+            it["control"] = ("" if c.startswith("GAP") else "GAP: ") + c.replace("fit_views", "points by hand (fit_views / nudge)")
     return out
 
 
@@ -853,7 +853,7 @@ def sheet_text(sheet: dict) -> str:
     return "\n".join(lines)
 
 
-def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh=None) -> dict:
+def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh=None, points_from: str | None = None) -> dict:
     """Photo vs model for every item and view: rows sorted by miss / tolerance (beyond tolerance first, then big items
     before small), plus the pictures the focus panels need."""
     from . import store
@@ -871,7 +871,7 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     from . import likeness_shape as ls
     for md in models:
         md["shape3d"] = md["mesh"].get("shape3d") or {}
-    traces = ls.load_points(name)
+    traces = ls.load_points(points_from or name)
     rows = []
     order = [s["name"] for s in stage_names()]
     for it in checklist():
@@ -931,7 +931,7 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
                 r["why"] = (a if isinstance(a, str) else b if isinstance(b, str) else "").split(": ", 1)[-1]
             rows.append(r)
     rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] if r["score"] > 1.0 else r["tier"], -r["score"]))
-    cmp = {"rows": rows, "photos": photos, "models": models, "name": name}
+    cmp = {"rows": rows, "photos": photos, "models": models, "name": name, "points_from": points_from}
     cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
     return cmp
 
@@ -1148,7 +1148,7 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
                 if g is not None:
                     circles.append((np.asarray(g), 4.0 / max(md["mmpx"], 1e-6), col))
         from . import likeness_shape as ls
-        tr = ls.load_points(cmp.get("name", "")).get(ph["view"]["image"], {})
+        tr = ls.load_points(cmp.get("points_from") or cmp.get("name", "")).get(ph["view"]["image"], {})
         for nm_, uv in tr.get("points", {}).items():
             circles.append((np.asarray(uv, float), 2.5 / max(md["mmpx"], 1e-6), (255, 140, 255)))
         for nm_, ln in tr.get("lines", {}).items():
@@ -1394,6 +1394,11 @@ def _undone(start: dict, cur: dict, k: int) -> list:
         b = bmap.get((r["id"], r["vi"]))
         if b is None or order.index(r["stage"]) >= k:
             continue
+        # pins are the items read steadily: detector distances / angles in a front view. The shading and traced-jaw
+        # readers move by more than a tolerance when anything nearby changes, and a turned view's camera is refitted
+        # per model: holding those vetoed every later stage (first run: eyes, mouth and chin all refused).
+        if r.get("kind") in SPECIAL or r["view"] != "front":
+            continue
         if r["score"] >= 0 and b["score"] >= 0 and r["score"] > max(b["score"], 1.0) + 0.5:
             out.append((b, r))
     return out
@@ -1430,16 +1435,21 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
         f = _signed(c, ids, views)
         und = _undone(start, c, k)
         log.append(f"    {path} = {x:.4g}: miss {f if f is None else round(f, 2)}" + (f", undoes {[u[1]['id'] for u in und]}" if und else ""))
-        if f is None or und:
+        if f is None:
             return None
-        tried.append((abs(f), x, nb, c, f))
-        return f
+        if not und:
+            tried.append((abs(f), x, nb, c, f))
+        return f       # (a vetoed try still tells the secant which way the lever moves the item)
     x1 = x0 + step if x0 + step <= hi else x0 - step
     f1 = ev(x1)
-    if f1 is not None and abs(f1 - f0) > 1e-6:
-        xs = x1 - f1 * (x1 - x0) / (f1 - f0)
-        if abs(xs - x1) > 1e-9:
-            ev(xs)
+    if f1 is not None and abs(f1 - f0) > 0.02 * max(abs(f0), 1e-9):
+        xs = float(np.clip(x1 - f1 * (x1 - x0) / (f1 - f0), lo, hi))
+        if abs(xs - x1) > 1e-9 and abs(xs - x0) > 1e-9:
+            f2 = ev(xs)
+            if f2 is not None and abs(f2) > tol and len(tried) < 2:   # still vetoed or off: one try half way
+                ev(x0 + 0.5 * (xs - x0))
+    elif f1 is not None:
+        log.append(f"    {path}: no effect on the item (lever doesn't reach it)")
     best = min(tried, key=lambda t: t[0])
     return best[2], best[3], f"{path}: {x0:.4g} -> {best[1]:.4g}, miss {f0:+.2f} -> {best[4]:+.2f} (tol {tol:g})"
 

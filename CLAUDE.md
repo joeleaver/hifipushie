@@ -5480,7 +5480,7 @@ model".
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
-## Likeness checklist (2026-10-08, "likeness" agent, branch worktree-agent-a8f70ddf07e7751be)
+## Likeness checklist (2026-10-08, "likeness" agent, branch worktree-agent-a2afc4d19c40fa784; needs onemesh2's branch on main first: it is merged in here)
 
 The user: "a checklist of facial features to specifically look for and match from references ... it works better if
 it knows where to focus"; then (via the coordinator) the same list must drive the FIRST fit, in stages. Guide
@@ -5520,6 +5520,55 @@ seed head)).
   stage moved the middle third (reported as "EARLIER STAGES MADE WORSE").
 - Gaps (no control): canthal tilt, eye shape, brow arch / slant, nose length to tip / projection / nasolabial angle /
   bridge, mouth-corner tilt, lip ratio, lower third / mouth line (ratios), jaw angle height, chin shape, ears.
+
+- Rounds 2-3 (same day; guide rewritten; scratch adds r2.sh / r3.sh (fresh `lk_garrett2` staged + comparison),
+  t4.py (shape rows + light-fit debug strips), t5.py (shape rows per model), t6.py <model> <stage> (a stage's rows +
+  panels, no fit), t7.py (jaw pair), t8.py (brief + check), grid.py (a gridded crop to place points by eye),
+  trace_desk.py (MY by-eye trace of the desk painting's near jaw: a stand-in for onemesh2's), cmpsheet.py with
+  POINTS=<model whose likeness_points to use>, final2.py (om_garrett's report without writing in its folder)).
+  - `likeness_shape.py`. Shape items (kind "shape", stage "structure" after widths): `measures3d(st)` = the model's own
+    mm (cheek_hollow / nasolabial_fold / under_eye = hull deficits of sections, corner_temple / _cheekbone / _jaw =
+    base.plane_measures' corner radius, brow_ridge ahead of the cornea); against the photo by SHADING: `fit_light`
+    (luminance = c0 + w . n on the face's skin over the MODEL's normals, robust) -> `residual` ((photo - predicted) /
+    median: a ratio blew up where the prediction neared 0) -> a region disk minus a reference disk (regions in the
+    json from detector points + mm offsets on the face's axes, mirrored). Tol 8%, FRONT views only scored. It ranks
+    the heads the right way on the planes: cheekbone corner om -8% (3D 15.6 mm) / seed +17.5% (37.3) / and the lever
+    lands shape.planes at 2.85 from the photo alone (om_garrett was hand-set to 2.6). Hollow, under-eye and brow ridge
+    are confounded (stubble, brows, lids): don't trust their percent. Panels of shape / jaw / judge rows show the model
+    lit by the fitted light (`render(light=)`).
+  - The jaw's L (kind "jaw": jaw_ramus, jaw_gonial, jaw_border, jaw_gonion_lobe, jaw_gonion_mouth, jaw_neck_step) from
+    a trace: `likeness_points.json` ({format, views: [{image, points, lines, by}]}; `likeness_shape.set_points /
+    load_points`, MCP `likeness_points`; format sent to onemesh2). `jaw_measures` splits the polyline at its corner
+    (two line fits); the model's side = `model_jaw`: across each traced point the render's depth edge, else the
+    fastest turn of its normals, a running median along the trace. On Garrett's desk painting (my trace: ramus 25 deg,
+    gonial 136): om_garrett after onemesh2's jaw work 27 / 134, the seed 17 / 125, the staged fit 60 / 141 with the
+    angle 62 mm under the mouth line (one diagonal). The model contour is NOISY (a neck step read 7-27 mm on the same
+    head between runs): fine to rank heads, not to pin.
+  - Inferred: `_allowed` lets a profile item be read from a three-quarter view when no profile exists (tol x
+    `INFER_TOL` 1.5, '~'); new profile items chin_projection, lip_projection (E-line), forehead_slope (judge).
+  - Turned cameras refitted per model (`_refit`, `likeness_shape.refit_camera`: the detector's 468 non-oval points on
+    the photo vs the model's surface under the same points of its render, unprojected by the depth pass); `cam` column
+    = the residual at the item's points, half of it added to the tolerance.
+  - Coverage (`coverage_text`, leads the table; `picture_notes`: view + the detector's head yaw, lens from the fitted
+    focal, expression from blendshapes, light hardness and how badly one light fits, ears / forehead skin-coloured or
+    not). Garrett's refs: front has a squint 0.70 and a frown 0.55-0.66 (a generated face: the "hooded eyes" are
+    partly an expression), the desk painting's fitted lens is 12-18 mm (a loose fit, not a wide lens).
+  - Staged fit: `LEVERS` (item -> 1-D secant on shape.hollow / planes / jaw_angle / under_eye, features.brow_ridge,
+    pose.smile, nudges eye_outer z, nose_tip z / y), `_undone` pins = EARLIER STAGES' CHECKLIST ITEMS re-measured, but
+    only steady ones (detector items in front views): pinning shading / jaw / turned-view rows vetoed every later
+    stage in the first run. A solve that undoes a pin is retried at half, else not taken; a vetoed lever try still
+    feeds the secant. Canthal tilt +5.1 -> +0.5 deg by a -2.3 mm nudge of the outer corners.
+  - Fresh Garrett again (`lk_garrett2`, sheet lk_05_staged2_vs_hand.png, table /mnt/data/hifipushie/likeness/
+    cmp_r2.log; ~6 min): beyond tolerance seed 38 -> staged 21; om_garrett (latest, mid-edit by onemesh2) 29, its
+    misses now mostly proportions the hand passes chose (lower / middle third 1.71 vs 1.44, temples -12 mm, mouth -6).
+    READ: the staged head is still the softer one: planes are in, but no hollow (the shading said none was needed:
+    stubble hides it), no jaw L (no control draws one), no brow ridge. The list now SEES the jaw and the planes; the
+    controls to draw a ramus / lower border / fold don't exist.
+  - `likeness_brief.py`: `reference_brief(kind, subject)` (clothlist's format: cloth_reference.reference_brief) and
+    `check_references(views, name)`; MCP `reference_brief`, `check_references`. Not tested on generated sets.
+  - Open: a jaw control (ramus / border / neck step), a fold control; shading with albedo handled (a stubble mask, or
+    the side-light shot from the brief); ears; the jaw contour finder's noise; `human(..., refs=)`; photo scale uses
+    the first model's mm/px in cmpsheet (photo column shifts 1-2% between runs with different models).
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
