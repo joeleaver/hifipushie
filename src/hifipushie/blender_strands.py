@@ -528,7 +528,7 @@ def material(look: dict):
     hb.parametrization = "COLOR"
     # the hair BSDF's colour is not what a lit mass of strands comes out as (multiple scattering lightens and
     # warms it: dark brown rendered ginger-blond): the look colour goes through the inverse of a measured fit,
-    # rendered = A x colour^p per linear channel (hair.CYCLES_FIT, spikes/hair_strands/hs4/cal.py)
+    # rendered = A x colour^p per linear channel (hair_strands.CYCLES_FIT, spikes/hair_strands/hs4/cal2.py)
     A_, p_ = [float(v) for v in look.get("cycles_fit") or (1.0, 1.0)]
     gm = N.new("ShaderNodeGamma")
     gm.inputs["Gamma"].default_value = 1.0 / max(p_, 1e-3)

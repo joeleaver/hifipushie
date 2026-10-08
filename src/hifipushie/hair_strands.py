@@ -33,6 +33,13 @@ STRAND_RADIUS = 0.00004  # m: a real hair (0.03-0.05 mm), at REAL_COUNT strands;
 REAL_COUNT = 100000  # the head stays covered (a path tracer draws true widths: 30k hairs at 0.08 mm were a pale haze)
 UNDER_PER_M2 = 3.6e5  # scalp-layer strands per m2 of scalp at under = 1 and 30k strands
 SEED_SPACING = 0.011  # m between the scalp layer's flow guides
+# Cycles' hair BSDF vs the look colour: a lit mass of strands renders = A x colour^p per linear channel (multiple
+# scattering lightens it: measured on a short grey-brown cut, 7 colours black .. blond under the salon lights:
+# 0.646 x c^0.307, Garrett's #55504b 3.5-4x too light). The look colour goes through the inverse (blender_strands.
+# material); A 0.75 instead of the fitted 0.646 because a colourless floor (~0.09 linear: the white specular lobe and
+# the sky) is in every measure and can't be inverted. After: grey / blond within 5%, #55504b x1.35-1.45 (EEVEE's own
+# strand material: x1.6-1.8), near-blacks stay at the floor. look.cycles_fit overrides ([1, 1] = off).
+CYCLES_FIT = (0.75, 0.307)
 # what each 0..1 dial may reach (the top of each range is where it still reads as hair)
 import os as _os
 SAFE = {
@@ -390,6 +397,8 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     if count:
         S = {**S, "count": int(count)}
     look = {**LOOK, **(h.get("look") or {})}
+    if not look.get("cycles_fit"):
+        look["cycles_fit"] = list(CYCLES_FIT)
     seed = int(g.get("seed", 0))
     bands = [k for k in locks if re.fullmatch(r"t\d*band", k["name"])]
     hair_locks = [k for k in locks if k not in bands]
