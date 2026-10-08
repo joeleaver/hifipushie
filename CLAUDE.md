@@ -4829,12 +4829,50 @@ model".
     quads + mouth_gap 0.003 + interior.slit 0.0003, skin.only eyes. Export /mnt/data/hifipushie/onemesh2/exp_garrett3
     (40k, Khronos 0/0, no TORN, shapes <= 0.13, seated clean, audit 7 BAD vs v23's 9). Stature +2.9 cm (head grows
     from the neck's top): body.height 1.771 would give it back (not done).
-  - Open, in order: (1) the neck bridge: a dotted line of pits at ring A on toddlers (om2_20..22): wider IMLS kernels
-    there made it worse (speckle: reverted); rebuild the bridge in make_asset.py with more rows / gentler reductions;
-    (2) reference passes on Garrett's concept images (human_reference, MediaPipe detector); (3) the head's 46 mm leak
-    onto shoulder skin at Head 33 (rig3's long falloff on bare skin); (4) the sock's texels set the height map's range
-    (+-24.6 mm): leave designed faces out of the height range; (5) own quads cost a fixed ~40.7k body triangles; (6)
-    dense_fit as a tool (a GNM head as the target of human_reference).
+  - Round 2 (same agent): the bridge is five rows (COUNTS 110-94-78-66-54-42, SHEAR 0.85: median aspect 2.36 ->
+    1.71, worst corner cos 0.18 -> 0.31; the toddler's ring of pits at ring A gone; wider IMLS kernels there made it
+    WORSE: speckle, reverted). Asset rebuilt: every one-mesh model's topology changed. Garrett v15: body.height 1.7715
+    + head_size 1.138 (stature 180.6, interocular 69.8), dense fit again (cranium weight 1, lips 0.3: face 0.68 /
+    1.30 mm, head 1.45 / 7.7); export exp_garrett5 (Khronos 0/0, no TORN, height range +-7.6: interior texels keep the
+    low poly's surface in the bake). Lip corners: the sock tucked in behind the corners (SOCK_TUCK), inner rolls pushed
+    by the outer skin's normal. Hair: `hair._measure` (one mesh only) skips pockets in the head (POCKET: GNM's ear canal
+    rooted his nape locks 4 cm in). A groom regrow on Garrett grows tiers over / buries his hand locks: don't; the
+    band of bare volume at his front hairline needs a "re-seat hand locks on a changed scalp" step (hair thread).
+  - Reference pass 1 (concept_v8 front crop + concept_v6 desk painting at -45): detect.py (MediaPipe Face Landmarker
+    from /mnt/data/hifipushie/facerefs_venv, MP68 table) -> hrefs.py (human_reference, drop lists) -> refsheet.py
+    (reference | models through the fitted cameras | blend | landmarks). Copy `om2_gref` (om_garrett untouched):
+    front 6.8 -> 3.3 mm, desk 7.3 -> 3.9 mm reprojection; sheet human_renders/om2_r1_pass1.png. Couldn't: jaw
+    contour (MediaPipe's != GNM's: +21 mm jaw, dropped), iris vs eyeball centre in 3/4 (dropped), hooded lids (lids x3.2
+    BROKEN: dropped), neck_circ measured at the chin's height reads -9 cm when the chin moves (measure bug), no ear /
+    hairline / crown evidence. Next: an outline fit (silhouette chamfer through the fitted cameras), pass 2.
+  - Reference pass 2 (2026-10-08; scratch pass3.py om_garrett om2_gref3 1, sheet human_renders/om2_r2_pass2.png =
+    reference | before | pass 2 | blend | landmarks, model `om2_gref3`; om_garrett untouched apart from its
+    human_refs.json, which holds the cameras the sheet uses). Order: points (identity; eye centres, lid corners, lower
+    lids back in; no jaw, no upper lids) -> `fit_hood` (upper lids) -> `fit_outline` (front view only, 5 rounds).
+    - `humanfit.fit_outline`: the head's silhouette through the fitted camera (vertices whose faces turn front to
+      back, `_silhouette`), each outline point's miss along its normal turned into a move in the image plane at that
+      vertex's depth (capped `OUTLINE_STEP` 4 mm a round), then into GNM's frame and solved as an RBF warp appended to
+      base.head.warp; brows / eyes / nose / lips landmarks and skin far from the targets held (`OUTLINE_HOLD`).
+      Mirrored targets by default (`symmetric`): one view's outline warped only its own jaw (a lump). Putting the
+      outline into fit_views' identity solve folded lids and lips: dropped. Front: silhouette miss 8.3 -> 0.8 mm,
+      widths at eight levels (temple .. chin, MediaPipe oval pairs over the photo's pupil distance) within 1-2.5% of
+      the photo. The DESK painting's outline is not used: its camera is the weak fit and with it the jaw came out 8%
+      wide on both sides.
+    - `base.head.shape.hood` (m | {amount, forward, reach}; `base._hood`): the fold between upper lid and brow comes
+      down (and 0.4 of that forward), the lid margin with it by the falloff, gated off at the corners' height (lower
+      lid and eyeball seat stay), landmarks ride. 3 mm: upper lid landmarks -1.2 mm, eye height 8.9 -> 7.7, 0 folds,
+      lid stretch slightly LOWER. `humanfit.fit_hood`: one number, linear, [0, HOOD_MAX 5 mm], halved until integrity
+      holds. Garrett asks 4.0 mm (upper-lid rms 1.28 -> 0.93 px).
+    - neck_circ: one level (`NECK_AT` 0.35 of neck joint -> body chin) on body + bridge vertices only
+      (`humanfit._neck_girth`; anthro.measure unchanged): 31.9 cm before and after any face fit.
+    - Left: the points step with lid corners + lower lids reads lids x3.2 BROKEN by itself (x2.7 warning after the
+      hood); the model's pupils are 8% closer than the photo's at matching face width (69 mm already: widening
+      them fights plausibility; the photo's eye centres or MediaPipe's oval are suspect); a bald clay head under the
+      hair's silhouette (no crown / hairline evidence); asymmetric pictures are made symmetric by design.
+    Tests: test_humanfit test_neck_girth_ignores_the_face, test_hooded_lids_fitted_from_a_picture,
+    test_outline_fit_is_symmetric_and_holds_features.
+  - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
+    triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

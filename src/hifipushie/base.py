@@ -1196,6 +1196,42 @@ def fit_identity(target: dict, n: int = 80, lam: float = 2e-6) -> dict:
     return out
 
 
+HOOD_FORWARD = 0.4  # a hooded lid's fold comes down and this share of that forward, over the lid
+HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance (and its centre 0.45 of the way up)
+
+
+def _hood(W, lm, hood):
+    """base.head.shape.hood = m | {"amount", "forward", "reach"}: hooded upper lids. The skin between the upper lid
+    and the brow (the fold) comes down by `amount` and forward over the lid; the lid's margin comes down with it by
+    the fold's own falloff (~45%), the lower lid and the eyeball's seat don't move (a gate at the corners' height),
+    and the lid landmarks ride, so the visible opening is lower as on a hooded eye. Per eye from its own landmarks."""
+    h = hood if isinstance(hood, dict) else {"amount": hood}
+    a = float(h["amount"])
+    fw = float(h.get("forward", HOOD_FORWARD))
+    reach = float(h.get("reach", HOOD_REACH))
+    DW, DL = np.zeros_like(W), np.zeros_like(lm)
+    for up, corners, brow, lower in (((37, 38), (36, 39), (18, 19, 20), (40, 41)),
+                                     ((43, 44), (42, 45), (23, 24, 25), (46, 47))):
+        U, Bw = lm[list(up)].mean(0), lm[list(brow)].mean(0)
+        c0, c1 = lm[corners[0]], lm[corners[1]]
+        ex = (c1 - c0) / np.linalg.norm(c1 - c0)
+        dz = float(Bw[2] - U[2])
+        c = U + 0.45 * (Bw - U)
+        sx, sz = 0.65 * float(np.linalg.norm(c1 - c0)), reach * dz
+        zc = 0.5 * (c0[2] + c1[2])
+        op = max(float(U[2] - lm[list(lower)].mean(0)[2]), 1e-4)
+        mv = np.array([0.0, -fw, -1.0]) * a
+
+        def f(X):
+            q = X - c
+            u = q @ ex
+            g_ = np.exp(-(u / sx) ** 2 - (q[:, 2] / sz) ** 2 - (q[:, 1] / (2 * sx)) ** 2)
+            return g_ * _sstep((X[:, 2] - zc) / (0.6 * op))
+        DW += f(W)[:, None] * mv
+        DL += f(lm)[:, None] * mv
+    return W + DW, lm + DL
+
+
 def _sstep(x):
     x = np.clip(x, 0.0, 1.0)
     return x * x * (3 - 2 * x)
@@ -1479,6 +1515,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if shape.get("push_late"):  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
         # lifted upper cheek under the lower lid, filling the socket hollow that shaded as a dark ring)
         W, lm = _pushes(W, lm, list(shape["push_late"]))
+    if shape.get("hood"):
+        W, lm = _hood(W, lm, shape["hood"])
     skin_index, zipped = None, 0
     if head.get("mouth_gap") is not None and float(head["mouth_gap"]) < 0.0015 and head.get("zip_lips", True):
         W, faces, skin_index, zipped = _zip_lips(W, faces, 0.5 * (lm[62] + lm[66]))
