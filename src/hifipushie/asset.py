@@ -1500,8 +1500,10 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
-            fbx: bool = False, face_shapes: bool | list | None = None) -> dict:
+            fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
+    asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
+    importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
     the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own; "uv": "planar" gives
     a swappable flat surface (a dial, a sign, a screen) its own material and upright 0..1 planar UVs.
@@ -1518,6 +1520,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
+    aname = asset_name or name
     defs = spec.get("parts") or {}
     fine, tri_focus = {}, []
     if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
@@ -1639,7 +1642,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                       "islands": b.get("islands"), "joint_decimation_share": b["joint_count"],
                       "mirrored": b["symmetric"], "texel_density": cfg[pn]["density"],
                       "triangle_weight": cfg[pn]["weight"],
-                      **({"uv": "planar", "material": f"{name}_{names[p['atlas']]}_material"} if pn in planar else {})}
+                      **({"uv": "planar", "material": f"{aname}_{names[p['atlas']]}_material"} if pn in planar else {})}
         if pn in pf_of:
             report[pn]["prefab"] = pf_of[pn]
         if "focus_mm_per_texel" in tsz[pn]:
@@ -1702,7 +1705,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                        "material's extras")
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     for ai, an in enumerate(names):
-        stem = name if len(names) == 1 else f"{name}_{an}"
+        stem = aname if len(names) == 1 else f"{aname}_{an}"
         if len(names) > 1:
             log.append(f"atlas {an}:")
         res = bake(parts, sizes[ai], ctx, log, ai, given[ai])
@@ -1775,7 +1778,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             names.append(pn_c)
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_c]["triangles"]
-    glb = out_dir / f"{name}.glb"
+    glb = out_dir / f"{aname}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
     if (spec.get("hair") or {}).get("locks") and locals().get("hair_cards"):
@@ -1864,7 +1867,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                     log.append(f"rig: {pn}: {int(m.sum())} vertices the face shapes move "
                                f"{rigmod.MOVED[1] * 1e3:g} mm or more are Head {b1.min():.2f}+ "
                                f"({int((b0 < 0.99).sum())} weren't: least {b0.min():.2f})")
-    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
+    write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
@@ -1930,7 +1933,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                             "prefabs": "one mesh per prefab (a primitive per part, in the prefab's frame), a node "
                                        "per instance with extras.prefab"},
             "seconds": round(time.time() - t, 1), "log": log}
-    (out_dir / f"{name}.json").write_text(json.dumps(info, indent=1))
+    (out_dir / f"{aname}.json").write_text(json.dumps(info, indent=1))
     return info
 
 
