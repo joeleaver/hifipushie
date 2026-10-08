@@ -204,69 +204,33 @@ class Tube:
 
 
 
-STACK = {"radius": 0.75, "bed": 1.6, "beds": 0.4, "notch": 0.7, "ramp": 1.0, "lean": 10.0, "lobes": 0.55,
-         "twist": 6.0}
-# a solid sea stack: its radius x the sea's stack radius, bed thickness m, how far beds stand out / sit back (x r,
-# +-half), the outline's lobes (x r) and how fast they change up the stack (m), its sides' lean (deg),
-# the waterline notch (x min(0.3 r, 1.6 m)), each bed handing over to the next across `ramp` m (2 voxels: shards)
+STACK = {"radius": 0.75}
+# a solid sea stack's radius x the sea's stack radius; its form is terrain_stack.FORM (a jointed column), a style's
+# sheet may override it (rock.stack)
 
 
 class Stack:
-    """A sea stack as solid rock (op "add" over the heightfield's own stack): a lobed, grooved prism whose sides lean in
-    ~6 deg, a flat top tilted a little and notched, edges bevelled ~0.35 m. The heightfield can't hold a 70-80 deg
-    side on 1-2 m cells: its stacks came out as rounded loaves (the user's p05/L01 views)."""
+    """A sea stack as solid rock (op "add" over the heightfield's own stack): a jointed column (terrain_stack.Column:
+    a plan of joint faces, near-vertical walls stepping back at a few levels, a flat dipping top or a spire, a
+    waterline notch, fallen blocks at the foot). The heightfield can't hold a 70-90 deg side on 1-2 m cells (its
+    stacks came out as rounded loaves); the lobed, bedded prism that stood here before read as a pile of tyres."""
 
-    def __init__(self, name, xy, base, top, r, seed, blend=0.4, clip=None):
+    def __init__(self, name, xy, base, top, r, seed, blend=0.4, clip=None, sea=None, over=None, stage="auto"):
+        from .terrain_stack import Column
         self.name, self.op, self.blend, self.relief = name, "add", float(blend), 1.0
         # the heightfield's own stack (a slim core) taken away within `clip` m of the centre above the plinth, so the
-        # solid stack alone is the form: two steep surfaces crossing inside its notch and lobes meshed as shards
+        # solid stack alone is the form: two steep surfaces crossing inside its notch meshed as shards
         self.clip = None if clip is None else (float(clip), float(base) + 0.5)
         self.xy, self.base, self.top, self.r, self.seed = np.asarray(xy, float), float(base), float(top), float(r), \
             int(seed)
-        rng = np.random.default_rng(self.seed)
-        self.k_g = int(rng.integers(5, 9))
-        self.ph = rng.uniform(0, 6.3, 2)
-        self.tilt = rng.uniform(0.12, 0.35) * (top - base) / max(r, 1e-6)
-        self.tdir = rng.uniform(0, 2 * math.pi)
-        self.lean = math.tan(math.radians(STACK["lean"]))
-        m = max(self.r * (1.6 + STACK["beds"]) + (top - base) * self.lean, self.clip[0] if self.clip else 0.0) + \
-            self.blend + NEAR + 1.0
+        self.col = Column(self.xy, self.base, self.top, self.r, self.seed,
+                          sea=(self.base + 2.0) if sea is None else sea, stage=stage, over=over)
+        m = max(self.col.reach, self.clip[0] if self.clip else 0.0) + self.blend + NEAR + 1.0
         self.lo = np.r_[self.xy - m, self.base - 1.0 - NEAR]
         self.hi = np.r_[self.xy + m, self.top + 1.0 + NEAR]
 
     def sd(self, p, detail=False):
-        q = p[:, :2] - self.xy
-        d = np.hypot(q[:, 0], q[:, 1])
-        th = np.arctan2(q[:, 1], q[:, 0])
-        u = np.c_[np.cos(th), np.sin(th), np.zeros(len(p))]
-        # (the outline's lobes change up the stack, ~6 m: the same polygon all the way up read as a crate)
-        lob = noise.fbm(u * 1.3 + np.c_[np.full(len(p), float(self.seed % 97)), np.zeros(len(p)),
-                                         (p[:, 2] - self.base) / STACK["twist"]], 1.0, 3, seed=self.seed + 17)
-        grooves = 0.06 * np.cos(self.k_g * th + self.ph[0]) + 0.03 * np.cos((self.k_g + 3) * th + self.ph[1])
-        z = p[:, 2]
-        # layered: each bed stands out or sits back on its own (and by a different amount round the stack), handing
-        # over to the next across ~0.6 m (a step: shards); the sea's notch undercuts it at the waterline (a stack
-        # standing on a fat skirt read as a bulky prism)
-        b = STACK["bed"]
-        zb = (z - self.base) / b
-        kb = np.floor(zb)
-        f = zb - kb
-        bo = lambda k: (noise._hash(k.astype(np.int64), np.zeros_like(k, dtype=np.int64),
-                                    np.zeros_like(k, dtype=np.int64), self.seed + 91) - 0.5)
-        lo, hi = bo(kb), bo(kb + 1)
-        e = STACK["ramp"] / b
-        t = smoothstep(1 - e, 1.0, f)
-        bed = (lo * (1 - t) + hi * t) * (1 + 0.6 * (lob - 0.5)) * smoothstep(0.8, 2.5, self.top - z)
-        sea = self.base + 2.0
-        notch = STACK["notch"] * min(self.r * 0.3, 1.6) * np.exp(-((z - sea - 0.9) / 1.2) ** 2)
-        R = self.r * (1 + STACK["lobes"] * (lob - 0.5) + grooves + STACK["beds"] * bed) + (self.top - z) * self.lean \
-            - notch
-        side = (d - R) * 0.92
-        along = q[:, 0] * math.cos(self.tdir) + q[:, 1] * math.sin(self.tdir)
-        topz = self.top - self.tilt * np.clip(along + self.r, 0, 2 * self.r) * 0.5 \
-            - 0.22 * (self.top - self.base) * np.clip(lob - 0.55, 0, None) / 0.45
-        f = smax(side, p[:, 2] - topz, 0.35)
-        f = smax(f, (self.base - 1.0) - p[:, 2], 0.3)
+        f = self.col.sd(p)
         if detail:
             return f, np.full(len(p), np.inf), np.full(len(p), self.r)
         return f
@@ -286,8 +250,12 @@ def stacks(T):
         top = sea + float(a["height"])
         from .terrain_sea import STACK_CORE
         rc = STACK_CORE * float(a["radius"]) + 0.11 * float(a["height"]) + 0.8  # (the core, spread at 84 deg, + margin)
-        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, STACK["radius"] * float(a["radius"]), 3000 + i, clip=rc))
-    note = (f"stacks: {len(out)} as solid rock prisms (sides ~84 deg, flat tilted tops), "
+        from .terrain_style import stack_form
+        out.append(Stack(f"stack{i}", xy, sea - 2.0, top, STACK["radius"] * float(a["radius"]), 3000 + i, clip=rc,
+                         sea=sea, over=stack_form(T, xy)))
+    stages = ", ".join(sorted({s.col.stage for s in out}))
+    note = (f"stacks: {len(out)} as jointed rock columns ({stages}: joint faces, steps at a few levels, notch, "
+            f"fallen blocks), "
             f"{min(a['height'] for a in st):.0f}-{max(a['height'] for a in st):.0f} m out of the water") if out else None
     return out, note
 

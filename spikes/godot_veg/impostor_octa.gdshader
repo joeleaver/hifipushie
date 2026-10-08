@@ -17,6 +17,13 @@ uniform vec3 centre = vec3(0.0, 10.0, 0.0);
 uniform float alpha_cut = 0.5;
 uniform float roughness_value = 0.9;
 uniform float blend_sharp = 2.0;
+// [u0, u1, v0, v1] of a frame the quad covers (extras.hifipushie_impostor.crop, contract 8): every frame's drawn
+// pixels lie inside it, so the quad is no bigger than the plant needs (the full square drew ~2x the pixels)
+uniform vec4 crop = vec4(0.0, 1.0, 0.0, 1.0);
+// per frame (index = column * frames + row) its own [u0, u1, v0, v1] (extras `crops`); the quad for a view is the union
+// of the 4 frames it blends. has_crops 0 = use `crop` alone. Up to 16 x 16 frames.
+uniform vec4 crops[256];
+uniform float has_crops = 0.0;
 
 varying vec3 obj_pos;
 varying vec3 view_dir;
@@ -52,7 +59,23 @@ void vertex() {
 	d = length(d) > 1e-6 ? normalize(d) : vec3(0.0, 0.0, 1.0);
 	vec3 r, u;
 	frame_basis(d, r, u);
-	vec3 p = centre + (UV.x - 0.5) * size * r + (0.5 - UV.y) * size * u;
+	vec4 c = crop;
+	if (has_crops > 0.5) {
+		vec2 g = (hemi_oct(d) * 0.5 + 0.5) * (frames - 1.0);
+		vec2 i0 = clamp(floor(g), vec2(0.0), vec2(frames - 2.0));
+		c = vec4(1.0, 0.0, 1.0, 0.0);
+		for (int k = 0; k < 4; k++) {
+			vec2 ij = i0 + vec2(float(k % 2), float(k / 2));
+			vec4 f = crops[int(ij.x * frames + ij.y)];
+			if (f.y > f.x) {
+				c = vec4(min(c.x, f.x), max(c.y, f.y), min(c.z, f.z), max(c.w, f.w));
+			}
+		}
+		if (c.y <= c.x) {
+			c = crop;
+		}
+	}
+	vec3 p = centre + (mix(c.x, c.y, UV.x) - 0.5) * size * r + (0.5 - mix(c.z, c.w, UV.y)) * size * u;
 	VERTEX = p;
 	NORMAL = d;
 	TANGENT = r;

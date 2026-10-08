@@ -594,6 +594,49 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       in clay it is modest (skin at the neckline); (3) this export's low poly has "TORN OR TANGLED at eye_front.L
       (12)": the left upper lid is a few big triangles with a hard vertical edge, a dark crease up the lid in every
       blink (v23's lid is smoother); the right eye has a small dark notch at the outer corner in a full blink.
+  - Regen round 2 (2026-10-07, "regen2" then "regen3" agents, branch `regen3`; goal: a plain export of Garrett that
+    is a drop-in for the game's hand-patched v23; export /mnt/data/hifipushie/regen/exp_garrett2; renders
+    `rig_renders/rg3_*`; scratch DURABLE in /mnt/data/hifipushie/regen2/ and regen3/: run.sh <script> (worktree
+    code, main workspace), rsq.py model glb tag (re-skin an export's meshes as the export does, Head / Neck audit,
+    layers head33 / nod / game, neck fold numbers; COV_SMOOTH=0 NEAR_FIELD=0 = the old rules), fl.py (which
+    triangles flip when a joint turns, with their Head weights), lk.py / mv.py / hf.py (Head weight, face-shape
+    move and head field along the throat), au.py (audit + layers of any GLB), proof.py (same-camera rows, poses
+    game / seated / head33 / nod / arm60), blinksheet.py out.png 'label|glb' ..., contract.py ref new (joint names
+    in order, targets, rigid parts), rename.py (rg_garrett_* -> garrett_* names, for s0urc3's fix_blink.py
+    --report, which looks for garrett_body), exp.py (the recipe's export), cmp.sh (old vs new on Garrett and
+    wb_dg_talk)).
+    - regen2: `flipfit.py` (after decimation an edge whose two triangles meet sharply and misfit the dense mesh is
+      turned when both then fit: the dark crease up the left upper lid in blinks was a 14 mm edge across the lid
+      fold); the lid seal's 0.3 mm overlap fades toward the eye corners (`LID_FADE`); the quality line leaves the
+      mouth bag's folds out of the TORN alarm (`Face.inside_mouth`) and names clusters by the nearest landmark;
+      `rig.skin_cover`: skin a worn part covers (a ray out along the normal meets it within 3 cm) takes no head rule
+      (Garrett's neck skin under the collar was Head 0.70: through the jacket's collar in the idle and at head 33).
+    - regen3: that cover share was a per-vertex ray test, so at the collar's top edge (nape, throat sides) on the
+      20k low poly it stepped 0 -> 1 inside one triangle, plus single grazing-ray vertices: 38 triangles inside out
+      at a 33 deg head turn, each with a Head ~0 and a Head ~1 corner. Now smoothed `COVER_SMOOTH` 4 rounds over
+      the welded mesh: 38 -> 2 (v23 12). And the open collar's throat notch was Head 0.80 (v23 0.16, the field 0.38):
+      `rigid_near`'s 8 cm band reached down from the throat skin jawOpen moves 3 mm+ (to the Adam's apple), and it
+      blended Head over the head rule's own share (0.38 twice = 0.62). On base bodies (`field=` the head field)
+      past `NEAR_SHORT` 0.375 of the band the share is no more than the field's, and h is the share wanted: notch
+      0.37, a head turn drags it 11 mm instead of 25. Re-skinned previous meshes: head33 collar through body 13 ->
+      1 (v23 8), nod 13 -> 2 (v23 109), neck fold p99 head33 121 -> 22 deg, nod 100 -> 48; wb_dg_talk Head flipped
+      41 -> 16, head33 collar through body 79 -> 5. Kit characters unchanged (no field passed).
+    - regen2's skin_cover result was named `cover` in `_export`, which already held the atlas coverage: KeyError at
+      the json (the first export crashed at 552 s); now `skin_cov`.
+    - PROOF (plain export, no patches): /mnt/data/hifipushie/regen/exp_garrett2 (recipe 20000 / 2048 / 320, rig, fbx,
+      face shapes; Khronos 0 / 0 / 0; 79 joints same order as v23, 14 twist, 53 ARKit targets on body / eyes / teeth /
+      tongue, eyes / teeth / tongue Head 1.0). Body quality: no TORN alarm (19 folded edges, 21 turned faces inside
+      the mouth). Audit 5 BAD of 51 (v23 9): Head flipped 2 (v23 12), Head leak 20 mm on 21 shoulder vertices (v23
+      13 mm / 7). Layers: game idle 0 BAD (previous export: body through jacket_trim 52, BAD); head33 collar through
+      body 2 / 6.4 mm (v23 8 / 23.8); nod 2 + 1 (v23 109 + 122, BAD). fix_blink --report: 0.18 / 0.25, 0.16 / 0.26
+      (v23 0.15 / 0.20, 0.16 / 0.27). Sheets `rig_renders/rg3_game.png`, `rg3_head33.png`, `rg3_nod.png` (v23 |
+      previous | new, same cameras / part colours), `rg3_blink_closeup.png` (+ `rg3_blink_left_front_crop.png`): the
+      vertical crease up the left upper lid is gone; a faint lighter facet wedge on the outer upper lid remains. Second
+      character wb_dg_talk re-exported (36k, /mnt/data/hifipushie/regen3/exp_talk, Khronos 0 / 0): audit 14 -> 9 BAD
+      (Head no longer BAD), nod collar through body 113 -> 22, body through collar 59 -> 0; blink `rg3_talk_blink.png`:
+      the left eye's inner corner shows a white sliver of eyeball in a full blink, there before (smaller), a little
+      larger now (LID_FADE's corner fade is the suspect; not isolated). "69 / 58 moved vertices not Head 1.00" in the
+      export log is old (69 in the first regen export).
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
@@ -2282,6 +2325,53 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
     settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
     and su_garrett.
+- Suit 4 (layers) (2026-10-07, "layers" agent, branch `worktree-agent-a237f0b282ae815f7`;
+  renders `cloth_renders/su_41..45_*`; scratch DURABLE in /mnt/data/hifipushie/layers/: the collar
+  agent's scripts retargeted (env.sh, run.sh, q.sh + run.py, plb.py, cu.py ...) + lay1.py <m> <g> <tag> [k=json] (START:
+  per-seam start gaps, start stretch per piece, pad thickness by region, jacket vs under garment, saves out/<tag>.npz
+  with U/FU), lay2.py <result npz> <start npz> (jacket vertices inside the shirt), lay3.py (open sewn pairs: where,
+  what's under), tape.py / om.py (measures bare vs over the shirt; the draft logs), collarcb.py / prof.py (CB column /
+  CB profiles of body, shirt, pad, collar), laydbg.py (notched lay at CB), fleck.py <result npz> <start npz> [V]
+  (layer crossings + whether the collider dropped those shirt faces), flapchk.py, reststr.py, jobstr.py <job dir>
+  [new] (the runner's rest rebuilt from a job's in.npz: start stretch per triangle: find "ccd failed" before the
+  GPU), setop.py / setkey.py (edit ga_suit's jacket), show.py, wearchk.py, t1.sh <test>, tests.sh).
+  - su_32's open seams were CONSTRUCTION: the jacket was drafted from the bare body. Its armhole sat 12 mm under the
+    shirt's own (underarm seams pinched 20-64 mm open over the shirt in the pit) and its neckline was shorter than the
+    shirt collar it goes round (the made collar climbed it: collar_show -19). `cloth.over_measures` /
+    `draft_measures`: a garment `over` another is drafted from the tape over it: `neck` = the under garment's
+    neckline (`under_neckline`: its neck pieces' sewn edge) + 2 pi `UNDER_COLLAR_T` 3 mm (the raw tape round the
+    pressed shirt collar read +123 mm: its fall stands off), `waistToArmpit` less the under garment's pad in the pit;
+    body girths stay the bare body's (ease bands are against the body). build + the workflow gate (Ctx.meas) use it;
+    log "drafted over shirt: {...}". Guide: cloth_guide.md Layers.
+  - `padded_body`: each vertex padded along its OWN normal line (`PAD_LATERAL` 8 mm, never further than 1.5x the
+    point's own distance), no overhang (`PAD_SLOPE` 1): by nearest vertex the shirt collar's fall made a 3 cm shelf
+    at the back neck and the jacket collar was laid on it 24-27 mm off the shirt.
+  - `_on_seam`: the piece's side of its sewn edge read from its cloth NEXT TO the edge's middle (by the whole piece's
+    centroid, a notched collar drafted round a shirt collar laid its stand DOWNWARD at CB).
+  - Clean-up vs the layer under: the sim had 16 jacket/shirt crossings, the clean-up 247 (white flecks of shirt
+    through sleeves / armholes; NOT the collider's dropped slivers: fleck.py, 2 of 24k faces, far away). Crossings
+    with the under garment now count in build's revert-to-sim (`_layer_crossing_verts`), and a reverted welded seam
+    vertex takes its weld group to the mean of its sides' sim positions (sent back alone: pale slits on the sleeves).
+  - `made_folds` (garment key; `made_flaps`, `_carry(flaps=)`, rest = the folded flat pattern via the runner's restIdx
+    path): the flap past a fold held and carried with the made piece it is sewn to. TRIED on the lapels (su_44b) and
+    WORSE (shoulder seams 131-144 mm, neck 248): held regions stay where they START, and the draped fronts start on
+    the torso cylinder away from the shoulders. Off on ga_suit. A made lapel needs the forepart STARTED where it is
+    worn (next build, below). First attempt failed at frame 0: carried vertices rest as start (world) beside cloth
+    resting on uv: 4.3x stretch across the roll line (jobstr.py found it).
+  - ga_suit jacket now: collar stand 24 / fall 36 (shirt band 20 mm), sleeve length_bonus -0.04, under_cap 0.004,
+    closures front open, interfaced bands (the chest canvas as stiffness) {front.L/R near [break, lapelPoint] within
+    0.1}. su_garrett jacket: the same except the bands (not yet).
+  - su_45 (2 cm, the shirt open-collared by main's no-tie default): fits, 0 crossings, 0 layer crossings, seams p95
+    0.0 (15 of 354 pairs open, all at the collar neck seams: front.L 56 mm, R 16), collar_show 18.3 (ok), cuff_show
+    8.4 / 7.2 (target 10-15), lapel_gap 5.6 / 7.1, collar_hug 23 (jacket collar off the shirt collar; partly the
+    metric: the shirt collar stands open now), left lapel roll ends at 99 deg (half unrolled, the gorge crumpled).
+    Reads as a jacket over a shirt from every side, matte, no flecks, clean back.
+  - OPEN, in order: (1) the forepart started where it is WORN (a worn chart for the fronts' tops, like the collar's:
+    collar, lapel and front start together on the shoulders; then made_folds can hold the lapel) = the gorge and the
+    left lapel; (2) the TENT: from the side the open fronts bow forward from the chest to the hem (suspect front
+    balance / length over the shirt (hpsToBust over the shirt +26 mm, not used by over_measures) or the side panel's
+    hem flare); (3) the shirt collar reads buttoned though its pieces say open (trousers2's neck start); (4) cuff 2-3 mm
+    short of the band; (5) su_garrett (bands, then a sim).
 - Seams (2026-10-07, "seams" agent, branch `worktree-agent-ae98ecda411a37796`; the user on the suits: "seams look huge
   and structural"; renders `cloth_renders/sm_01..08` (before = main 2aea2ac / after, the SAME cached sims: su_31
   blazer, su_05 shirt; sm_05 = raking light across the blazer's side panel seam); scratch DURABLE in
@@ -2366,6 +2456,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (`cloth_workflow.sewn_crossings`): ZOZO starts with existing intersections allowed and su_05 simulated clean from
     them. The shirt's start on su_garrett has back/sleeve, collar/stand, cuff laps crossing: pre-existing (the base
     17ee597 too), open. Its torso pieces still start as slabs (side seams ~125 mm apart).
+  - Since then (sims tr_11..tr_14 on su_garrett; renders `cloth_renders/tr_1N_*`; scripts in the scratch dir:
+    q.sh <queue> + run.py (renders draw the `collide` parts), pp_dbg.py <model> <garment> (cloth.build up to
+    `_press_plan` from the cached coarse sim: each clearing / relax / untangle step's move, start stretch by piece,
+    crossing pairs; stops before the GPU), pp_dbg3/4.py (where the fine start is stretched, edge lengths), sl.py <garment>
+    (the mesh's shortest pattern edges), dumpfix.py (a piece + what it is sewn to as a flat-wrap fixture)):
+    - Built: hem on the shoes (garment key `collide`: model parts joined to the collider, `cloth.worn_parts`);
+      crease as a pressed ridge in the detail maps (`detail.crease_width`); clean-up clears faces off the body EXACTLY
+      against its triangles (Body.clearance over-reads by up to 5.5 mm, p50 0.3: the "white specks" were body through
+      the seat; a note, not changed); a closed zip's fastenings are its seam's sewn pairs (the fly read "0 of 0");
+      clay looks matte (no specular); shirts open as worn without a tie (`kinds.shirt.wear` no_tie: collar `gap` 0.07,
+      front open_top 1, plus folds "open neck.L/R": the fronts roll back from the neck to buttonhole2, angle 125);
+      Simon's sleeve plackets sewn as zip closures; front.L wrap `out_reach` (the lap's offset eased to the plain curve
+      away from the centre: the left-only open seam pairs were the lap pushed out over the whole front); shirt colour
+      #d0cbc7 sampled from the concept; ZOZO stray-solver clearing (`cloth_job.clear_strays`,
+      PPF_SOLVER_SCAN_DESCENDANTS: "solver is already running" was a host-wide process scan, a dead holder blocked
+      every later job).
+    - tr_13 trousers (2 cm + 1 cm fine settle): CORRUPT, back.L/back.R crossing at the crotch, CB seam 55 mm open, a hole
+      behind the left knee; fly 18/18 closed; crease turn only 8 deg; hem not judgeable (no shoes drawn then). Cause,
+      by step (pp_dbg.py): coarse sim clean (fork stretch 1.05), transfer clean (1.13), then `_press_plan`'s
+      `_clear_of_body` ran away in the crotch's hollow (pushing along the body's normal there never clears the faces;
+      the gap grew every round: 35, 80, 69 mm moves, untangle 62 more): 10.9x start stretch. Fixed: `_clear_of_body(
+      grow=)` caps the gap's growth (CLEAR_GROW 4 mm, fine settle only: placement unchanged, coarse caches kept), and
+      cloth further than FINE_REACH from the made pieces (carried, never solved) is only cleared FAR_CLEAR 1.2 mm off
+      the body. Same coarse result re-planned: fork moves <= 3.3 mm, start 1.30 max, 0 crossings.
+    - tr_14 shirt: "ccd failed", max_sigma 11.36: a 0.44 mm sliver edge where the open-neck roll's row passed 0.44 mm
+      inside the front's outline at the neck point (and a buttonhole 0.54 mm beside the front band's row). `cloth.mesh`:
+      a fold row's inner sample within ROW_KEEP 0.25 h of the outline is left out, one near ANOTHER fold's row is that
+      row's vertex, a mark within 0.4 h of a fold row is the row's vertex. Shirt min edge 0.44 -> 2.51 mm. Fixture
+      tests/data/simon_front_neck.json (pattern.from_spec takes "names": {name: outline index}).
+    - `cloth.fine_start_check` (FINE_START_MAX 0.6): before the fine settle's job, draped triangles the solver moves
+      stretched past 1.6x from the flat pattern raise, naming pieces and place: nothing is sent to the GPU.
+    - fit(): trouser legs count as body pieces for the girths, a slice that caught only a band is skipped ("waist
+      -555 mm"). cloth.look draws the collide parts (shoes) dark grey.
+    - NEXT: tr_15 trousers + tr_16 shirt (queue q8.txt) with these fixes: judge crease (turn ~ 8 deg is soft: the
+      fine settle only moves cloth within FINE_REACH of the waistband, so the crease at the knee is the 2 cm sim's),
+      break on the shoes, the open collar V to the 2nd button, points on the collarbones, left seams closed, plackets.
+      Not built: the stand's ends turning back with the open collar. Body.clearance's bias: before / after numbers on
+      the shirt and blazer starts are owed before changing it.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -2458,7 +2586,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   yet); a lone job always runs. The rule, in order: FIFO by when a job started waiting; a waiting job that doesn't
   fit blocks every younger one, except SMALL ones (<= 25% of the budget) that fit now, and each blocked job can be
   passed at most PASS_LIMIT 3 times (no starvation). GPU jobs (`gpu=True`: local ZOZO; `gpu_claim()` for a GPU
-  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory. Pools inside a job
+  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory; an old-code holder
+  of heavy0.lock and a job of unknown kind count as holding the GPU (`_holds_gpu`: an old-code ZOZO sim and a new
+  one ran on the GPU together and one crashed, 2026-10-07). Path-free view for other machines (S0urc3 through the
+  oxidegen sculpt artist): `queue_view` / `queue_text`, MCP tool `heavy_queue` (subject-less, in the artist's
+  SUBJECTLESS_OK + FAST; `heavy_status` stays left out): kind, label (`_label`: path words cut to their last part),
+  GB, minutes, position, why, GB ahead, and the caller's own jobs marked by `caller_tag` (a hash of
+  $HIFIPUSHIE_SESSION or $HIFIPUSHIE_HOME: an artist session's workspace). Wait lines carry no pids and end
+  "3rd in queue, 18 GB ahead of you"; export_asset writes them to the model's progress.log, which the artist sends
+  as the task's progress. Pools inside a job
   size from its GRANT (`workers()` = min(grant - 1 GB, free memory) / per worker): two jobs both seeing "free" memory
   is how the desktop died. $HIFIPUSHIE_HEAVY_SLOTS=1 brings the one-at-a-time behaviour back.
   State in $HIFIPUSHIE_HEAVY_DIR (default $XDG_RUNTIME_DIR/hifipushie): jobs/<id>.json + jobs/<id>.lock (flocked by
@@ -3585,6 +3721,66 @@ regresses, bisect by building one spec at each commit and diffing heights.
       subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
       fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
       height / hollows (numbers only today).
+  - Sea stacks (2026-10-07, "stacks" agent, branch `worktree-agent-aeb27454ed1610793`; the user on pushieworld's Kaze
+    coast in Godot: "Seastacks don't look like real seastacks, they're kind of a mess"; references
+    workspace/level_refs/stacks/ (9 CC photos: Old Harry, Twelve Apostles, Duncansby, Yesnaby, Bedruthan, Reynisdrangar,
+    Old Man of Hoy, Risin og Kellingin; README with licences); sheets /mnt/data/hifipushie/stacks/st_sheet3.png (photos |
+    old clay | new clay | each style) and st_island_before_after.png (tl2_island Kaze, anime textured, preview_tiles);
+    scratch DURABLE there: run.sh / run_main.sh <script> (this worktree's / main's code, orig/ = git archive of main),
+    iso.py (one island stack meshed from the export's field: full | real (styles off) | norelief | alone), col.py /
+    variety.py (Columns alone + 3D measures), styles_row.py (stack0 in each style), tune.py '<json list of FORM
+    overrides>' (silhouette + 3D measures over 8 columns), measure.py (photo masks + the same silhouette measures),
+    clay.sh out.png az el meshes.npz... (Blender workbench, an ortho panel per mesh; CROP=m), sheet.py, prev.py <tag>
+    [styles|baked|clay] (preview_tiles round the island's stacks + sea views; ~40 min of it is the heavy queue),
+    exp.py (tiles export with checks), hang.py / slice.py / pieces.py (a column's loose or hanging pieces),
+    oldstack.py (the old Stack, for before / after)).
+    - DIAGNOSIS (iso.py, r00_base.png): the mess was the Stack prism's OWN form, not the style or the field: the full
+      field (anime), styles off, rock relief off and the Stack's sd alone mesh nearly the same pile of tyres (beds
+      1.6 m thick each +-0.2 r proud / set back all round, lobes 0.55 r changing every 6 m, a lowered broken top that
+      cut sections loose: tiles2's floating pieces at z 38-39 over stack0). The dark stripes in Godot are the anime
+      sheet's rock `bands` texture (still there: even painted strata over every face; terrainstyle's call).
+    - Measures (photos vs ours; measure.py, tune.py): silhouette edges over 15-92% of the height: swell (edge minus its
+      25%-height smoothing / width), bulges (outward maxima per height-in-widths), straight (curvature under 1.5% of the
+      width over 3% of the height), top_over_base (width at 85% / 15% of the height); 3D: vertical_nz (side area's
+      median |nz|), planar (side area within 8 deg of six azimuths), top_flat. Photos (4 Apostles + Hoy; the Duncansby
+      and Reynisdrangar masks are unreliable): swell 0.039, bulges 1.75, straight 0.59, top/base 0.61 (0.48-0.80),
+      h/w 1.9. Old: 0.036 / 3.65 / 0.28, vertical 0.29, planar 0.30. New (Column alone, 8 cases): 0.019 / 1.11 /
+      0.56, top/base 0.64 (batter 4.5), h/w 2.6, vertical 0.14, planar 0.56 (the field's facets add the fine breakup on top). Real
+      stacks DO taper (0.6); they don't end in a point.
+    - `terrain_stack.py` (Column, FORM, form): the plan = two joint families' faces (65-115 deg apart, own offsets,
+      chamfered corners, a stray joint slicing one side off), edges a smooth max (`bevel`); CUTS = box windows in
+      (height, position along the face) with soft edges (`ramp`, wider for deep cuts so |grad| stays < 3): steps where
+      blocks fell above OR below a bed over part of a face, soft beds (1.2 per m, 0.3-0.8 m thick) eroded back 0.15-0.35 m on part of 2-4
+      faces at irregular heights (ledges, never rings: all round on every bed was the pile of tyres), open joints as slots,
+      corners gone from a bed up; faces batter in 4.5 deg (capped at 35% of the offset), wander, light warps (`rough` 0.02: at
+      0.08 they read as draped cloth); the top flat and dipping, 1-3 parts of it fallen lower; stage auto: broad,
+      slender, stump, rarely (p_spire 0.12 of slender ones) a spire tapering IN LEDGES to a crest >= 2 m wide at the
+      top (two planes meeting in a knife edge meshed as a comb of slivers; a smooth taper read as a bullet / cathedral
+      spire); the notch deepest on one exposed side, its height per face in the tide band, uneven along the face; 2-5
+      fallen blocks LEANING on the foot (drawn in until they overlap the column: alone in deep water they float). Every
+      section keeps >= 50% of its plan offset and >= max(1 m, 0.18 x offset). Cut depths scale with height / width on
+      squat stacks (a stump cut like a tower read as a carved chair). terrain_mesh.Stack wraps it (same name and
+      interface + `over`, `sea`, `stage`); `stacks(T)` takes each stack's style form from
+      `terrain_style.stack_form` (the `rock.stack` of the style weighing over half at its centre; "stack" is a
+      ROCK_KEYS key that does NOT count as shaping the field, so the realistic-zone invariant is untouched). Sheets:
+      anime crisp (bevel 0.25, bigger steps, more spires), blobby a rounded pebble pillar (bevel 2.2, no slots or
+      spires), cartoon chunky and battered (few thick beds, big steps), pixar soft (many shallow beds, top-heavy).
+      The field is scaled 0.8 (overlapping cuts steepened it to ~3.5).
+    - tests/test_stacks.py: one piece down to the plinth (every section connected below, face + edge connectivity at
+      0.5 m: a voxel touching only by a corner is what marching cubes cuts loose), continuous (|grad| < 3), vertical
+      and planar walls, deterministic, overrides checked, every sheet's keys known.
+    - Sea cliff talus (terrain_sea): the smooth 13 m domes between the island's stacks were the apron at 0.3 x the
+      cliff's height; now `TALUS_SHARE` 0.08 x height + `TALUS_BASE` 4 m (<= 0.3 x) at `TALUS_SLOPE` 36 deg out from
+      the foot, its blocks the 3D tiles' fallen blocks (fall_zone finds it). Changes every cliffed coast's heightfield.
+      With 2 m / 32 deg the low apron lay in the splash band and its fallen blocks flipped rock / wet rock / sand
+      between LOD 0 and LOD 2 (pebble lod0_vs_lod2 orm p95 0.213 > 0.15); 4 m / 36 deg passes.
+    - pebble_disc tiles (this branch vs main, same machine): the only failure is main's own (lod1 map normals p95
+      15.78 vs main 15.55, limit 15); shards LOD 0/1/2 0.0082 / 0.0252 / 0.230% (main 0.005 / 0.023 / 0.198);
+      floating 0; Khronos 1044 files 0 / 0 (round 3 export). Tests also: no sealed air in a column at 0.2 m, no recess
+      narrower than ~1 m (thin air 0.07-0.22% of the solid: bevel corners), test_level_look, test_terrain_style,
+      test_tiles pass.
+    - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
+      cliff shell on these stacks.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
@@ -4257,6 +4453,55 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       channel); cartoon conifer spring is barely distinct; cartoon oak winter is a few fat limbs (more stubs?); anime
       grass dabs read as flat coins on sticks from the side; realistic small plants' winter primitive; impostor depth
       parallax beyond one step; the guide's styles table for stands / sets.
+  - Vegetation styles 5 (2026-10-07, "vegstyle5" agent, branch `worktree-agent-a0b734a7496db7e3e`; sheets vs_40..vs_46;
+    deliveries /mnt/data/hifipushie/vegstyle/{pixar_oak, pixar_spruce, pixar_grass, pixar_daisy} new + every tree
+    re-exported in place (contract 9); Godot checks /mnt/data/hifipushie/vegstyle5/gd/; references
+    workspace/veg_refs/stylised/ (fetched.jsonl: BBB forest, Spring, Sprite Fright plants; no whole stylised broadleaf tree
+    found: Commons rate-limits after ~4 fetches); scratch in the worktree's untracked `scratchpad/` (vegstyle4's scripts
+    + p1.py <species> [style json] (pixar numbers per LOD, no Blender), q2.py (far | 25 m | crown edge | clay), iou.py
+    <species> <sheet> '<list of crown overrides>' (IoU sweep), od.py (anime overdraw per LOD), foot.py, tieru.py,
+    inject_crops.py / shrink_crops.py (crops into a delivered seasons json: Godot test), fetch_ref.py, q5.sh / q6.sh
+    (export queues, logs q5_*.log / q6_*.log, *_done files)).
+    - Cartoon fixes: big leaves were `leaves.width` read as metres (5x wide plates, horizontal: green shards edge-on from
+      eye level): now leaf-shaped plates on clump EDGES, face turned sideways (`big_leaf_soft`, `big_leaf_roll`); flare =
+      concave foot `flare_height` trunk diameters tall, foot node under the ground (a sphere on the ground = the mound);
+      `head_up` = how far a flower faces the sky (a head along a leaning stalk showed shaded petal backs), petal normals to
+      the sky; anime `heads_kind` "dab" = clusters of blobs along the head (`dabs`, `dab_length`, `dab_size`, `dab_flat`);
+      `seasons.<se>.tips` {color, band [whole, gone]} = a RAMP texture over TEXCOORD_0.x in that season's material
+      (`veg_style.season_ramp` / `ramp_texture`; cartoon fir spring = lime tier rims; contract 7); `seasons.spring.evergreen`.
+    - Impostor crops (contract 8): `veg_impostor.crop` / `crops` / `drawn_share`; extras `crop`, `crops` (per frame,
+      k = column * n + row), shader `crops[256]` + `has_crops` = the union of the 4 blended frames' crops; octa.gd sets them
+      and now applies a season's factor + baseColorTexture from the json. Frames average ~0.62 of the square (oak): ~35%
+      fewer impostor pixels, coverage / IoU in Godot unchanged; a shrunk-crop test proved the shader reads them.
+    - Anime LOD overdraw: `crown.lod_layers` [kept < lod 0.6, < 0.3] (outer layers) + `lod_area` (card growth exponent).
+      Oak [2, 1] / 0.3, spruce [2, 2] / 0.35. At 0.2 the oak's LOD2 covered 0.83 of LOD0 at its switch in Godot.
+    - PIXAR (`vegetation_styles/pixar.json`): masses (`spread` 1.3) + `crown.sub` secondary clumps (`_subclumps`: each
+      mass's own twigs k-meansed again, `sub_spread`, `sub_min`, `sub_join`), `crown.gradient` + `warm_tip` on the shell
+      (`_shell_and_cards`), `crease_dark` / `crease_width` (AO where two clumps meet: the two nearest elements nearly
+      equally near), `thickness` (ray in along -N, TEXCOORD_3.y), `crown.cards` = `veg_cloud.shell_cards` (+ `shell_atlas`:
+      dab_atlas with `true` species outlines; `leaf`, `count`, `length`, `out`, `cover`, `tilt`, `roll`, `cup`, `under`,
+      `tone`, `warm_tip`, `share`, `verts`, `width`, `size_m` (needles), `rim`, `lod_grow`), slot `foliage_cards`
+      (contract 9), extras.translucency. Conifers: tiers `tier_shape` cone + sub-clumps (bough lobes) + needle sprays.
+      Clumps: lush thin blades (`fan` 6), petals, dab spikes. Oak round 1 (vs_41: 8 balloon shells + confetti, the
+      coordinator: "not Pixar yet") -> round 2 (vs_46): IoU 0.941, LOD0 20,000 (cards 14,450), reads as a leafy canopy at
+      two scales. Godot (round 1 file): impostor/LOD2 coverage 0.98-0.99, card coverage at switches 0.88-0.96.
+    - Realistic small plants: slot foliage_winter too (`veg_export` realistic branch: the plant regrown at winter, its
+      cards lying; main foliage hidden in winter / snow by a hidden copy material). test_winter_blades_lie_in_the_export.
+    - Tests: test_veg_style (+ test_pixar, test_cartoon_fixes), test_veg_impostor (+ crops), test_vegetation: 67 passed.
+    - NOT DONE / open: judge pixar against a real feature-animation tree still (none found under CC yet); pixar spruce
+      tiers blur into one lumpy cone with the sub-clumps; pixar oak's limbs visible only low; thickness is ~4 m nearly
+      everywhere on the oak (the core fills it: a shell-only thickness would vary more); impostor octagon instead of a
+      rectangle; cartoon oak winter stubs; anime spruce LOD2 covers 0.79 of LOD0 at its switch (lod_layers [3, 3] /
+      0.45; [2, 2] / 0.35 gave 0.69).
+    - Round 3 of pixar after the coordinator's read of vs_46 ("broccoli in a blur"): `crown.clump_shade` [dark, 1] =
+      each clump's (sub-clumps included) own vertical gradient, lit top / shadowed underside, on shell and cards;
+      `crease_dark` 0.6 (vs_47_oak_pixar_clumpshade.png).
+    - All deliveries re-exported and checked (Khronos 0 errors 0 warnings on every tree; Godot octa impostor vs LOD2
+      coverage 0.99-1.07 except anime spruce 1.02-1.25 (its LOD2 is the thin one)): pixar_oak (IoU 0.941, card coverage
+      at switches 0.96 / 0.97, 0.94 / 0.89, 0.89 / 0.99), pixar_spruce (0.865), anime_oak (switches 0.96-0.97, 0.93 / 0.91,
+      0.90 / 0.94), anime_spruce, cartoon / blobby oak + spruce, pixar / anime / real grass, pixar daisy. Realistic
+      grass: LOD2's clustered atlas has slot `foliage_boughs2_winter` (lying cards: keep 1.0 when the LOD's keep share
+      leaves none).
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

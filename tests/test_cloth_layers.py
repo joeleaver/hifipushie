@@ -65,6 +65,19 @@ def test_support_kinds_are_checked():
     assert cloth.supports(body, None) is None and cloth.supports(body, ["shoulder_pad"]) is None  # no shoulders: none
 
 
+def test_layer_crossing_verts():
+    # an outer shell over an inner one: nothing crosses; one outer vertex pushed inside the inner shell crosses
+    V, F = _sphere()
+    Vi, Fi = _sphere(seed=2)  # its own triangulation (crossings never land on shared edges)
+    outer = V * 1.05
+    assert not cloth._layer_crossing_verts(outer, F, Vi, Fi).any()
+    outer2 = outer.copy()
+    k = int(np.argmax(V[:, 2]))
+    outer2[k] *= 0.9
+    got = cloth._layer_crossing_verts(outer2, F, Vi, Fi)
+    assert got[k] and got.sum() < 12, got.sum()
+
+
 def test_under_neckline_is_the_neck_pieces_sewn_edge():
     # a stand (wrap "neck") 400 mm along its neck edge, sewn to a torso piece; a garment over it is drafted to go round
     # that collar, not the bare neck (over_measures)

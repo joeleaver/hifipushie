@@ -584,8 +584,8 @@ of season blanked in that season's atlas (styled: the `heads` slot hidden); flat
 
 ## Styles: the same plant dressed another way
 
-`"style": "realistic" | "blobby" | "anime" | "cartoon"` on the spec (grow_plant, a set's plants; a pixar sheet is not
-built yet). A style NEVER changes the growth: species, seed, skeleton, height, crown extent and lean are the realistic
+`"style": "realistic" | "blobby" | "anime" | "cartoon" | "pixar"` on the spec (grow_plant, a set's plants; pixar since
+round 5). A style NEVER changes the growth: species, seed, skeleton, height, crown extent and lean are the realistic
 tree's, node for node, so an engine can swap styles on one placement and the outline at 200 m is the same tree. The
 report says what was simplified and measures that claim:
 
@@ -710,6 +710,53 @@ out (a zigzag outline from above and the side). The cones' triangles cover less 
 parallel-sided bands: IoU ~0.8 is the style's price (wider `spread` buys IoU and costs width).
 Cartoon small plants: few big wide blades, `heads_kind` {"ray": "petals", ...}: a daisy's flower as 5-8 fat flat petals
 cupped round a centre disc (COLOR_0: white petals, yellow centre, green stalk), a grass's seed spike as a ball.
+
+Cartoon, second pass: `big_leaves` stand on clumps' EDGES (out of the crown, not under it), pointing out and up, their
+FACE turned sideways (toward the views that see that point on the outline; lying flat, face up, they were seen edge-on
+from eye level as green shards), the species' outline softened by `big_leaf_soft` toward a plain ovate leaf (sharp lobes
+read as a saw blade), `big_leaf` x the leaf length (26: ~3 m on a 20 m oak, as the toy proportion asks). `wood.flare` is a
+concave root foot `flare_height` trunk DIAMETERS tall ((1 - s)^2.5; the trunk resampled finely there) and the trunk's foot
+node stands under the ground (a round cone ends in a sphere: one centred on the ground read as a bulb / mound). Flowers
+face the sky by `head_up` (0..1, the rest along the stalk; a head along a leaning stalk faced sideways and showed its
+petals' shaded backs) and petals shade toward the sky on both faces. A season may paint the masses' EDGES (sheet
+`seasons.<season>.tips` {"color", "band": [whole, gone] in TEXCOORD_0.x}: the cartoon fir's spring = lime new growth on
+every tier's rim): the export writes it as a RAMP TEXTURE over TEXCOORD_0.x in that season's material (contract 7).
+Anime seed / flower heads (`heads_kind` "dab") are small CLUSTERS of soft blobs strung along the head (`dabs`,
+`dab_length`, `dab_size`, `dab_flat`): flat discs read as coins on sticks from the side.
+
+PIXAR (`vegetation_styles/pixar.json`; Pixar / Disney forest sets: Brave, Up, Luca). What artists do: the canopy is
+modelled as a few big sculpted, SOFT shells per branch cluster that hold the shape and the shading, and a layer of real
+leaf cards is scattered over the outside so the silhouette and the near view are leafy while the inside reads solid;
+normals of the cards are taken from the shell, colour is a rich gradient from dark interior to warm, light tips, and
+light through the canopy (translucency / subsurface) is driven by how thick the canopy is
+(https://www.fxguide.com/fxfeatured/pixars-luca/, https://graphics.pixar.com/library/ (tree / foliage papers),
+https://www.blendernation.com/2020/08/20/creating-ghibli-trees-in-3d/ for the shell + cards method in Blender). Here:
+- the shell = the blobby masses (`crown.masses` [8, 16], fewer and bigger: 20 small ones read as pom-poms), joined
+  softly (`blend_share`), coloured per vertex by `crown.gradient` [interior, tip] (0.55 x out-of-the-crown + 0.45 x up),
+  warmer at the tips by `warm_tip`, hue per mass kept; `normals` 0.5 = canopy-centre normals half way;
+- `crown.cards` (a general op: any closed crown can take it): `count` of the species' TRUE leaf outlines per card
+  (`length` x the card's half width each), sized so a leaf is `leaf` x the species' leaf length (1.5); cards stand on
+  the shell at points drawn by area (`under` = less on its underside), `out` [least, most] m outside it (the outer
+  20-30 cm), facing out (tilted `tilt`, rolled `roll`, cupped `cup`), at most `cover` x the shell's area, `share` of the
+  crown's triangles; lower LODs fewer, larger cards (up to `lod_grow` 2x); `size_m` = a needle tree's spray size
+  (needles are too small to size by), `rim` = weight toward the boughs' outer edges; NORMAL = the shell's under the card;
+- TEXCOORD_3 = (gradient, THICKNESS m: how far a ray straight in stays inside the canopy, capped `thick_reach` 4 m;
+  cards 0.02) on both; material extras.translucency {color, amount} = the warm light-through tint for the engine;
+- wood: every structural limb and its forks at TRUE girth (`radius` 1, `limb_mass` 0), bends smoothed, in one mesh,
+  `feed` carries outer clusters; conifers: drooping bough shells (`tier_shape` "cone", fine `teeth`) with needle-spray
+  cards weighted to their rims; small plants: lush fine blades (`fan` 6, narrow), true flowers (petals at the realistic
+  size), seed spikes as dab clusters.
+Export: slot `foliage` = the shell, NEW slot `foliage_cards` = the cards (the foliage mesh's next primitive: MASK,
+double sided, the leaf atlas x factor x COLOR_0, one material per season; contract 9). Budget = the realistic one (20k).
+
+Impostor quad cropped (contract 8): the octahedral frames are squares the bake sphere's size; most frames draw much
+less (a 24 m oak's frame is 33 m square). extras.hifipushie_impostor `crops` = each frame's own [u0, u1, v0, v1] (all
+seasons, 3% margin), `crop` = their union (the stored quad); the reference shader builds the quad from the union of the
+4 frames a view blends (`uniform vec4 crops[256]`, `has_crops`). `drawn_share` in the extras = the average frame's
+share of the square (anime oak 0.63). Anime crowns at LOD1 / LOD2: `crown.lod_layers` [kept under lod 0.6, under 0.3]
+(the OUTER layers: what is inside an outer shell of cards is hidden but still drawn) and `lod_area` (the cards' growth
+exponent: 0.5 keeps the covered area and the pixels drawn; less = fewer pixels): oak [2, 1] at 0.3, spruce [2, 2] at
+0.35; summed card area over covered area (overdraw before alpha) LOD1 7.1 -> ~5, LOD2 4.4 -> ~3.
 
 Forks only when bare: a deciduous styled tree's wood is two primitives: slot `bark` (trunk + limbs, always drawn) and
 slot `bark_forks` (the limbs' forks: hidden while the crown is there, where they cluttered its underside; shown in
