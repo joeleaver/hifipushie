@@ -257,7 +257,7 @@ def grow(spec: dict) -> dict:
     b = build(spec)
     p = b["p"]
     H = float(max((M["V"][:, 2].max() if len(M["V"]) else 0.0) for M in b["lods"]))
-    return {"sward": True, "spec": spec, "built": b, "height": H, "pos": np.zeros((2, 3)), "stats": {"height_m": round(H, 3), "blades": b["info"][0]["blades"]}}
+    return {"sward": True, "spec": spec, "built": b, "height": H, "pos": np.zeros((2, 3)), "stats": {"nodes": int(b["info"][0]["blades"]), "height_m": round(H, 3), "blades": b["info"][0]["blades"]}}
 
 
 FADE_RECIPE = ("past fade.start m from the camera shrink the blades into the ground and stop drawing the tile at fade.end: in the "
