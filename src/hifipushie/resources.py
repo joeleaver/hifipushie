@@ -312,6 +312,13 @@ def _use_gb(pid: int) -> float:
     return _pss_gb(pid) + sum(_pss_gb(c) for c in _descendants(pid))
 
 
+def _holds_gpu(j: dict) -> bool:
+    """Does a running job (or the old code's holder) hold the GPU? A job that says so, and any job we can't tell:
+    the old code's holder of heavy0.lock and jobs of unknown kind (2026-10-07: an old-code ZOZO sim held only
+    heavy0.lock, was counted as memory but not as the GPU, and a new ZOZO sim was admitted beside it: one crashed)."""
+    return bool(j.get("gpu") or j.get("legacy") or j.get("kind") in (None, "heavy"))
+
+
 def _plan(d: Path, jobs: list[dict], legacy: dict | None) -> dict:
     """Who may run now. Simulates the queue in FIFO order: {id: "run" | reason} for every waiting job."""
     budget = heavy_budget_gb()
@@ -321,7 +328,7 @@ def _plan(d: Path, jobs: list[dict], legacy: dict | None) -> dict:
     avail = budget - used
     max_jobs = int(os.environ.get("HIFIPUSHIE_HEAVY_SLOTS", 0) or 0)
     n_run = len(running) + (1 if legacy else 0)
-    gpu_busy = any(j.get("gpu") for j in running)
+    gpu_busy = any(_holds_gpu(j) for j in running) or legacy is not None
     real = None
     if n_run and os.environ.get("HIFIPUSHIE_HEAVY_FREECHECK", "1") != "0":
         unclaimed = 0.0
@@ -371,7 +378,8 @@ def _wait_text(me: dict, jobs: list[dict], legacy: dict | None, reason: str) -> 
     held = "; ".join(_fmt_job(j) if "id" in j else f"{j['name']} (old code, pid {j['pid']})" for j in running) or "nobody"
     if reason == "gpu":
         why = "waiting for the GPU"
-        held = "; ".join(_fmt_job(j) for j in running if j.get("gpu")) or held
+        held = "; ".join(_fmt_job(j) if "id" in j else f"{j['name']} (old code, pid {j['pid']})"
+                         for j in running if _holds_gpu(j)) or held
     elif reason == "memory":
         why = f"waiting for memory: needs {me['gb']:.0f} GB, {used:.0f} of {heavy_budget_gb():.0f} GB declared by running jobs"
     else:
@@ -673,7 +681,7 @@ def status() -> dict:
     return {"budget_gb": round(heavy_budget_gb(), 1),
             "declared_gb": round(sum(j["gb"] for j in running) + (legacy["gb"] if legacy else 0), 1),
             "available_gb": round(meminfo()["available"], 1), "running": running, "waiting": waiting,
-            "legacy": legacy, "gpu": next((clean(j) for j in running if j.get("gpu")), None)}
+            "legacy": legacy, "gpu": next((clean(j) for j in running if _holds_gpu(j)), legacy)}
 
 
 def status_text() -> str:

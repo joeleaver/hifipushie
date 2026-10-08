@@ -259,6 +259,54 @@ def test_old_code_slot_is_respected_both_ways(env):
     env.release("New")
 
 
+def test_old_code_holder_holds_the_gpu(env, monkeypatch):
+    """An old-code job holding heavy0.lock may be a ZOZO sim: a GPU job waits for it even when memory fits; a CPU job
+    beside it still runs (2026-10-07: two ZOZO sims on the GPU at once, one crashed)."""
+    monkeypatch.setenv("HIFIPUSHIE_HEAVY_GB", "40")  # the old job's 12 GB + both new jobs fit in memory
+    lock = env.dir / "state" / "heavy0.lock"
+    resources.heavy_dir()
+    old = subprocess.Popen([sys.executable, "-c", (
+        "import fcntl,sys,time; f=open(sys.argv[1],'a+'); fcntl.flock(f,fcntl.LOCK_EX); f.seek(0); f.truncate();"
+        "f.write('424242 zozo cloth su_41\\n'); f.flush(); time.sleep(60)"), str(lock)])
+    try:
+        env.wait(lambda: resources.status()["legacy"] is not None, "the old job to show")
+        env.start("Gpu", 2, gpu=True)
+        env.wait(lambda: "Gpu" in env.waiting(), "the GPU job to wait")
+        env.start("Cpu", 2)
+        env.wait(lambda: "Cpu" in env.started(), "a CPU job beside the old one")
+        assert resources.status()["waiting"][0]["why"] == "gpu"
+        assert "GPU: zozo cloth su_41" in resources.status_text()
+        env.wait(lambda: (env.dir / "log_Gpu").exists() and "waiting for the GPU" in (env.dir / "log_Gpu").read_text()
+                 and "zozo cloth su_41" in (env.dir / "log_Gpu").read_text(), "the wait to name the old job")
+        assert "Gpu" not in env.started()
+    finally:
+        old.kill(), old.wait()
+    env.wait(lambda: "Gpu" in env.started(), "the GPU job once the old one is gone")
+    env.release("Gpu"), env.release("Cpu")
+
+
+def test_unknown_kind_holds_the_gpu(env):
+    ev = threading.Event()
+
+    def hold():
+        with resources.heavy("mystery job", gb=1, log=lambda m: None):  # no kind: could be anything
+            ev.wait(20)
+
+    th = threading.Thread(target=hold)
+    th.start()
+    try:
+        env.wait(lambda: "mystery job" in env.running(), "the unknown job to run")
+        env.start("Gpu", 1, gpu=True)
+        env.wait(lambda: "Gpu" in env.waiting(), "the GPU job to wait")
+        time.sleep(0.5)
+        assert "Gpu" not in env.started() and resources.status()["waiting"][0]["why"] == "gpu"
+    finally:
+        ev.set()
+        th.join(10)
+    env.wait(lambda: "Gpu" in env.started(), "the GPU job after it")
+    env.release("Gpu")
+
+
 def test_workers_sized_from_the_grant(env, monkeypatch):
     with resources.heavy("sized", gb=3, kind="test", log=lambda m: None):
         assert resources.granted_gb() == 3
