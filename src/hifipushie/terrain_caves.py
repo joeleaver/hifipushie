@@ -430,11 +430,13 @@ def _resample(P, step):
 
 # ---------------------------------------------------------------- walking through
 
-def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None) -> list[str]:
+def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None, paths=None) -> list[str]:
     """Walk a person through every passage (every 0.5 m along its line): the floor under them, headroom, the clear
     width at knee, waist and head height, and the body as a capsule (radius clear of rock from above a step to the top
     of the head, the rule measure.clearance uses in buildings). Steps up to `step` (a scramble in a cave). Water: the
-    depth over the floor where it's under the sea (wading to 1 m, then swimming)."""
+    depth over the floor where it's under the sea (wading to 1 m, then swimming).
+    `paths` (a list): each passage's walk appended as {cave, from, to, step_m, points: [[x, y, floor z | null], ...],
+    width_m, headroom_m} (the tile manifest's `cave_paths`)."""
     lines = []
     for cv in caves:
         for i, e in enumerate(cv.edges):
@@ -512,6 +514,13 @@ def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None)
                 stp = f" ({steps.max():.2f} m at [{P[ks, 0]:.0f}, {P[ks, 1]:.0f}, {base[ks]:.1f}], {s[ks]:.0f} m along)"
             why = [w for w, bad in (("blocked", blocked), ("low headroom", low), ("too tight", tight),
                                     (f"a step over {step} m{stp}", len(steps) and steps.max() > step)) if bad]
+            if paths is not None:  # (the walk as an engine can use it: navigation, lighting, its own walk test)
+                r2 = lambda a: [None if not np.isfinite(x) else round(float(x), 2) for x in a]
+                paths.append({"cave": cv.name, "from": e["from"], "to": e["to"], "step_m": 0.5,
+                              "points": [[round(float(P[q, 0]), 2), round(float(P[q, 1]), 2),
+                                          round(float(base[q]), 2) if ok[q] else None] for q in range(len(P))],
+                              "width_m": r2(np.where(ok, width, np.nan)),
+                              "headroom_m": r2(np.where(ok, np.minimum(head, 99.0), np.nan))})
             lines.append(
                 f"{cv.name} {e['from']} -> {e['to']}: {s[-1]:.0f} m, floor {np.nanmin(base):+.1f}..{np.nanmax(base):+.1f}"
                 f" m, headroom min {np.nanmin(head[ok]) if ok.any() else float('nan'):.1f} m, width min "
