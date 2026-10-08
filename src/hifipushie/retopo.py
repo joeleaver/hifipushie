@@ -1298,6 +1298,9 @@ def base_quads(spec: dict, log: list) -> dict | None:
     return out
 
 
+SOCK_TUCK = 0.006  # m: (one mesh) the mouth sock narrows and sinks back over this distance in from the lips' loop
+
+
 def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     """(onemesh.py) GNM's mouth sock added to the one mesh's own quads: the skin's open mouth loop (the end of the
     inner lip rolls) closed by GNM's own oral cavity, placed as the head places its skin, so a parted or opened mouth
@@ -1319,7 +1322,26 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     if not len(new):
         return V, L, S, gnm
     where[new] = len(V) + np.arange(len(new))
-    Xw = c["eye_mid"] + c["s"] * (np.asarray(c["V"], float)[new] - c["mid"]) @ np.asarray(c["R"], float).T
+    place = lambda X: c["eye_mid"] + c["s"] * (np.asarray(X, float) - c["mid"]) @ np.asarray(c["R"], float).T  # noqa: E731
+    Xw = place(np.asarray(c["V"], float)[new])
+    # what the head did to its skin after placing it (pushes, the drop onto the field), carried onto the sock from
+    # the skin it hangs from: left as placed, a corner push left the sock standing out through the lips' corners
+    own = np.flatnonzero(gnm >= 0)
+    near = own[np.linalg.norm(np.asarray(c["V"], float)[gnm[own]][:, None] - np.asarray(c["V"], float)[new][None], axis=2)
+               .argmin(0)] if len(own) * len(new) < 4e7 else None
+    if near is not None:
+        Xw = Xw + (V[near] - place(np.asarray(c["V"], float)[gnm[near]]))
+    # and tucked in behind the lips: GNM's sock is as wide as ITS mouth, and a narrowed, pushed or fitted face
+    # (Garrett's) left the sock's sides standing out through the lips' corners. Past the loop it narrows toward the
+    # mouth's middle and sinks back, by how far in it is
+    loop = np.unique(where[q][~sock[q]])
+    if len(loop):
+        from scipy.spatial import cKDTree as _T
+        d = _T(V[loop]).query(Xw)[0]
+        t = np.clip(d / SOCK_TUCK, 0, 1)[:, None]
+        mid = V[loop].mean(0)
+        fwd = np.asarray(h["forward"], float)
+        Xw = mid + (Xw - mid) * np.c_[1 - 0.25 * t, np.ones_like(t), np.ones_like(t)] - fwd * (0.5 * SOCK_TUCK * t)
     V = np.r_[V, Xw]
     L = np.r_[L, where[q].ravel()]
     S = np.r_[S, np.full(len(q), 4)]

@@ -322,17 +322,15 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
-    if own_neck or (one and tpl.get("n_body")):  # MakeHuman's neck is rings of long thin quads: with the mean edge
-        # as the kernel's width the field was faceted between the rings (fine level lines down the neck). The longest
-        # edge at each vertex instead. (One mesh: on MakeHuman's body and the bridge only, not on GNM's head.)
+    if own_neck:  # MakeHuman's neck is rings of long thin quads: with the mean edge as the kernel's width the field
+        # was faceted between the rings (fine level lines down the neck). The longest edge at each vertex instead.
+        # (Tried on the one mesh, 2026-10-08: no visible change, and a wider kernel over its neck bridge, or one
+        # never much narrower than its neighbour's, SPECKLED the bridge: the k-nearest truncation. Left out there.)
         E = np.array(sorted({(min(f[k], f[(k + 1) % len(f)]), max(f[k], f[(k + 1) % len(f)])) for f in F for k in range(len(f))}))
         ln = np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1)
         hm = np.zeros(len(V))
         np.maximum.at(hm, E[:, 0], ln)
         np.maximum.at(hm, E[:, 1], ln)
-        if one:  # each subdivided vertex is body if the nearest template vertex is (the body's rows come first)
-            _, nq = cKDTree(W).query(V)
-            hm = np.where(nq < int(tpl["n_body"]), hm, 0.0)
         h = np.maximum(h, 0.9 * hm)
     h = h * float(base.get("smooth", 1.0))
     if head is not None and not one:  # one point set: the body under the graft plane, the head over it (the tube tapers to the
@@ -1432,6 +1430,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         # the cheekbone, a proud cheekbone, a jaw corner. [{"lm": [ids] (their mean), "offset": [x, y, z] (m, world),
         # "radius": m, "amount": m}], Gaussian falloff (GNM's region groups have hard edges: pushed, they left steps)
         Nw = retopo._vnormals(W, np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)]))
+        if head.get("bound") and len(W) == int(skin.sum()):  # (onemesh.py) its lips' inner rolls and lids'
+            # insides are kept as GNM's own surfaces: pushed along THEIR normals (into the mouth, up, down) a corner
+            # push turned the rolls out through the lips' corners. They take the nearest outer skin's normal
+            ext = np.asarray(g["groups"]["skin_exterior"])[skin] > 0.5
+            if (~ext).any() and ext.any():
+                Nw = Nw.copy()
+                Nw[~ext] = Nw[ext][cKDTree(W[ext]).query(W[~ext])[1]]
         mx = float(eye_mid[0])
         # a push with "dir" ([x, y, z] world, e.g. [0, 1, 0] = back) moves everything that way instead: a muzzle
         # pushed back along the normals opened the mouth (the lips' seam faces up and down)
