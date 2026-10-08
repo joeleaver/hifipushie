@@ -33,6 +33,7 @@ CLIP = 2.6       # sigma: an identity component past this is outside the plausib
 CLIP_FORCE = 4.0
 TOL_MM = 0.5     # a face measure counts as met within this
 UNINTENDED_MM = 1.0   # a face measure that wasn't asked for and moved more is flagged
+STRETCH_MIN = 0.0008  # m: edges shorter than this on the plain head don't count in the stretch check
 FOLD_LIMIT = 6    # faces an edit may turn over before the mesh counts as broken
 COLLATERAL = 2.0  # a solve stops where a measure that wasn't asked for would move this many times its tolerance
 UNINTENDED_BODY = 0.01  # ... a body measure: 1%
@@ -601,7 +602,13 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
             r = np.where(hsel, r / max(float(np.median(r[hsel])), 1e-6), r)
         num["stretch"] = {}
         for k in ("lids", "lips", "nose", "ears", "neck bridge", "face"):
-            sel = reg[k][E].all(1)
+            # (edges under STRETCH_MIN on the plain head, or already under it before this edit, are left out: v23's
+            # lip corners had a 1.7 mm edge squeezed to 0.55 mm; 0.12 mm more read as "lips squeezed x0.20, BROKEN"
+            # and refused a face widened 10 mm two cm away. Collapses to nothing are folds: counted above)
+            short = l0 < STRETCH_MIN
+            if Pp is not None:
+                short |= np.linalg.norm(Pp[E[:, 0]] - Pp[E[:, 1]], axis=1) < STRETCH_MIN
+            sel = reg[k][E].all(1) & ~short
             if sel.any():
                 lo, hi = float(r[sel].min()), float(np.percentile(r[sel], 99.5))
                 num["stretch"][k] = [round(lo, 2), round(hi, 2)]
@@ -822,7 +829,7 @@ OUTLINE_HOLD = 0.6      # weight of the features held where they are (eyes, nose
 
 
 def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetric: bool = True,
-                structure: bool = True, force: bool = False) -> tuple:
+                structure: bool = True, force: bool = False, sigma: float | None = None) -> tuple:
     """(new base, report): the head's silhouette through each fitted camera (`cameras`, from fit_views) pulled onto
     each view's `outline` ([[u, v], ...]: the face's edge in the picture, e.g. jaw and cheeks) by a smooth warp in
     GNM's frame (base.head.warp, appended), the features held (eyes, nose, lips, brows: their landmarks stay, so an
@@ -886,6 +893,21 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             miss.append(float(np.sqrt((m ** 2).mean()) * 1000))
         if not tgt_g:
             break
+        if structure and tgt_g:  # the ears ride their side of the head as a whole (left to the warp, the ear's root
+            # went out with the jaw's side and its rim didn't: ears squeezed x0.20 at the full width)
+            ears = np.flatnonzero((np.asarray(g["groups"]["ears"], float) > 0.5) & np.asarray(g["skin"], bool))
+            TG, TD = np.array(tgt_g), np.array(tgt_d)
+            for sg in (-1.0, 1.0):
+                es = ears[np.sign(Vg[ears, 0]) == sg]
+                ts = np.sign(TG[:, 0]) == sg
+                if not len(es) or not ts.any():
+                    continue
+                es = es[np.linspace(0, len(es) - 1, min(len(es), 40)).astype(int)]
+                mv = TD[ts].mean(0)
+                for e_ in es:
+                    tgt_g.append(Vg[e_])
+                    tgt_d.append(mv)
+                    tgt_w.append(0.5)
         if symmetric:  # each target also on the other side, mirrored (GNM's template is symmetric about x = 0): one
             # view's outline alone warped only its own side, a lump on one jaw
             tgt_g = tgt_g + [x * [-1, 1, 1] for x in tgt_g]
@@ -905,17 +927,31 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             front = front[np.linspace(0, len(front) - 1, min(len(front), 120)).astype(int)] if len(front) else front
             hold += list(Vg[front])
             hw += [STRUCTURE_HOLD] * len(front)
+            # and the lips whole (their landmarks alone held the corners while the rolls beside them were pulled:
+            # widening the jaw at mouth level squeezed the lips' edges past the limit)
+            lips = np.flatnonzero(((np.asarray(g["groups"]["upper_lip"], float) > 0.5)
+                                   | (np.asarray(g["groups"]["lower_lip"], float) > 0.5)) & np.asarray(g["skin"], bool))
+            lips = lips[np.linspace(0, len(lips) - 1, min(len(lips), 80)).astype(int)] if len(lips) else lips
+            hold += list(Vg[lips])
+            hw += [STRUCTURE_HOLD] * len(lips)
         A = np.r_[np.array(tgt_g), np.array(hold)]
         Dt = np.r_[np.array(tgt_d), np.zeros((len(hold), 3))]
         wt = np.r_[np.array(tgt_w), np.array(hw)]
-        sig = float((cur.get("head") or {}).get("warp", {}).get("sigma", OUTLINE_SIGMA))
+        ws = (cur.get("head") or {}).get("warp")
+        ws = [] if not ws else (ws if isinstance(ws, list) else [ws])
+        sig = float(sigma if sigma is not None else (ws[-1]["sigma"] if ws else OUTLINE_SIGMA))
         K = np.exp(-((A[:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
         coef = np.linalg.solve((K * wt[:, None]).T @ K + 2e-2 * np.eye(len(A)), (K * wt[:, None]).T @ Dt)
         h = cur.setdefault("head", {})
-        old = h.get("warp")
-        if old:  # (a head has one warp: its centres appended, at its sigma)
-            A, coef = np.r_[np.asarray(old["at"], float), A], np.r_[np.asarray(old["coef"], float), coef]
-        h["warp"] = {"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}
+        # appended to the warp of the same reach (centres added), or a warp of its own (a list of warps)
+        same = [i for i, w in enumerate(ws) if abs(float(w["sigma"]) - sig) < 1e-9]
+        if same:
+            w0 = ws[same[-1]]
+            A, coef = np.r_[np.asarray(w0["at"], float), A], np.r_[np.asarray(w0["coef"], float), coef]
+            ws[same[-1]] = {"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}
+        else:
+            ws = ws + [{"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}]
+        h["warp"] = ws[0] if len(ws) == 1 else ws
         rep["rounds"].append({"miss_mm": [round(x, 2) for x in miss], "targets": len(tgt_g)})
     st1 = state(cur)
     rep["integrity"] = integrity(cur, st1, state(base))
