@@ -35,8 +35,12 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-CONTRACT = 3
+CONTRACT = 4
 CONTRACT_LOG = {
+    4: "every materials/<style>/<layer>_albedo.png (and small.albedo, the plain one) is RGBA: RGB the sRGB albedo as "
+       "before, ALPHA the layer's height (linear 8-bit, 0.5 = 0, (a - 0.5) x 2 x height_m metres; the same values as "
+       "_height.png at 8 bits), flagged by layers[l].albedo_alpha = \"height\"; _height.png (16-bit) is still written "
+       "for older readers. Load the albedo's alpha as data (it is not colour): no packing at runtime",
     3: "styles[].layer_edge {height, depth} (cartoon, anime; null = cross-fade as before): re-weight the layers by their "
        "height maps where they meet (recipe step 1) so layer edges are crisp painted shapes; layers[l].small {albedo, "
        "normal, face_m, thick_m} + maps.rock_scale (RG 8-bit: face height x face_m, half-thickness x thick_m): on "
@@ -835,11 +839,15 @@ def write_layers(out: Path, st: dict, refs: dict, layers, px: int = PX) -> dict:
         if meta is None:
             S = texture(st, nm, col, px)
             hr = float(max(np.abs(S["height"]).max(), 1e-5))
-            imgs = [("albedo", _q8(S["albedo"])), ("normal", _q8(S["normal"] * 0.5 + 0.5)),
+            # (contract 4: the albedo carries the height in its alpha, 8-bit, 0.5 = 0, +- height_m like _height.png:
+            # an engine packing them at load paid seconds of startup)
+            rgba = lambda alb, h: np.concatenate([_q8(alb), _q8(h / hr * 0.5 + 0.5)[..., None]], -1)
+            imgs = [("albedo", rgba(S["albedo"], S["height"])), ("normal", _q8(S["normal"] * 0.5 + 0.5)),
                     ("height", _q16(S["height"] / hr * 0.5 + 0.5))]
             if has_plain:
                 Sp = texture(st, nm, col, px, plain=True)
-                imgs += [("plain_albedo", _q8(Sp["albedo"])), ("plain_normal", _q8(Sp["normal"] * 0.5 + 0.5))]
+                imgs += [("plain_albedo", rgba(Sp["albedo"], Sp["height"])),
+                         ("plain_normal", _q8(Sp["normal"] * 0.5 + 0.5))]
             for k, a in imgs:
                 _png(out / f"materials/{st['name']}/{nm}_{k}.png", a[::-1],
                      "I;16" if a.dtype == np.uint16 else None)  # (image rows run down)
@@ -860,7 +868,8 @@ def write_layers(out: Path, st: dict, refs: dict, layers, px: int = PX) -> dict:
                    "color_linear": [round(float(x), 4) for x in _srgb_lin(col)],
                    "roughness": meta["roughness"], "normal_strength": float(Ls.get("normal_strength", 1.0)),
                    "v_jitter_m": float(Ls.get("v_jitter_m", 0.0)) if meta["projection"] == "triplanar" else 0.0,
-                   "seasons": season_colours(st, nm, col), "wrap_seam": meta["wrap_seam"]}
+                   "seasons": season_colours(st, nm, col), "wrap_seam": meta["wrap_seam"],
+                   "albedo_alpha": "height"}  # (contract 4: alpha = height, 8-bit, (a - 0.5) x 2 x height_m metres)
         if has_plain:  # (the layer without its fade_small ops: shown on small or thin rock, by maps.rock_scale)
             fade = {**SMALL_FADE, **(Ls.get("small_fade") or {})}
             res[nm]["small"] = {"albedo": f"materials/{st['name']}/{nm}_plain_albedo.png",
@@ -907,7 +916,7 @@ RECIPE = (
     "Per pixel, for each style s with weight ws (styles/weights<g>.png, or your own band from styles/<s>_sd.png: ws = "
     "smoothstep(-band/2, band/2, sd + ragged noise), normalised so the weights sum to 1; realistic takes the rest) and "
     "each ground layer l with weight wl (the tiles' layer weights: maps/<tile>_weights<g>.png / splats / _WEIGHTS):\n"
-    "1. A_s = sum_l wl x texture(materials/<s>/<l>_albedo, uv_l) (sRGB -> linear), uv_l = world (x, y) / size_m on the "
+    "1. A_s = sum_l wl x texture(materials/<s>/<l>_albedo, uv_l) (RGB sRGB -> linear; its alpha is the height, contract 4), uv_l = world (x, y) / size_m on the "
     "ground (projection top; image +x east, +y north). Layers with projection 'top' are laid from the top EVERYWHERE, "
     "also on steep ground (what artists do: ground is top-down, rock is triplanar; side planes turned soft layers' tone "
     "patches into terraces up a slope). Layers with projection 'triplanar' (rock): top plane + side planes blended by "

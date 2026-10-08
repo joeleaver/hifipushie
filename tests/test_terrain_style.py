@@ -122,6 +122,18 @@ def test_write_files_manifest_and_cache():
         assert reach[(0, 0)] == ["blobby", "realistic"] or "blobby" in reach[(0, 0)]
         assert reach[(1, 1)] == ["blobby", "realistic"]  # (the band crosses x = 128: both tiles see both)
         json.dumps(sec)  # (the section is plain json)
+        # contract 4: each albedo is RGBA, its alpha the height (the 16-bit height PNG at 8 bits), flagged
+        from PIL import Image
+        for s in sec["styles"]:
+            for lay in layers:
+                L = s["layers"][lay]
+                assert L["albedo_alpha"] == "height"
+                A = np.asarray(Image.open(d / "a" / L["albedo"]))
+                H16 = np.asarray(Image.open(d / "a" / L["height"])).astype(float) / 65535
+                assert A.shape[-1] == 4, A.shape
+                assert np.abs(A[..., 3] / 255.0 - H16).max() <= 0.5 / 255 + 1e-6
+                if L.get("small"):
+                    assert np.asarray(Image.open(d / "a" / L["small"]["albedo"])).shape[-1] == 4
         # a second write from the cache gives the same bytes
         sec2 = ts.write(d / "b", T, refs, tiles=tiles, layers=layers, px=128)
         for p in (d / "a").rglob("*.png"):

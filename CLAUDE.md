@@ -3819,6 +3819,11 @@ regresses, bisect by building one spec at each commit and diffing heights.
       manifest.
     - Item 3 of the brief (the hard wandering edge in island_vale.png) was dropped: pushieworld found it is the tree
       rows' sun shadow (their note 88).
+    - Contract 4 (2026-10-08, branch `terrainstyle2-c4`, pushieworld note 92): every `<layer>_albedo.png` (and the
+      plain `small.albedo`) is RGBA, alpha = the height at 8 bits (same normalisation as `_height.png`, which is still
+      written), flagged `layers[l].albedo_alpha = "height"`; Blender loads style images CHANNEL_PACKED. Test: alpha
+      equals the 16-bit height within half a level, cache bytes identical; ts_slice_a styles-only worst wrap seam over
+      RGB and alpha 1.18.
     - Open: the overlay-crossing lines (above); cartoon tufts / flowers read small at eye level (judge in Godot: one
       flower clump per ~30 m2); anime dabs barely read at eye level now (were mush); a dedicated ground_view for rock
       (strata on a cliff from 40 m) instead of the Blender render; pixar untouched.
