@@ -62,6 +62,14 @@ def test_radius_by_count():
     assert ph["frizz"] <= hs.SAFE["frizz_m"] and ph["flyaway"] <= hs.SAFE["flyaway"]  # dials can't reach a cloud
 
 
+def test_lock_grey_reaches_the_strands():
+    """A lock's own grey (greying temples, sideburns) is the share of grey strands it grows (hp_gr per guide)."""
+    locks = _hanging(2)
+    locks[0]["inputs"]["Grey"] = 0.4
+    G = hs.lock_guides(locks, np.zeros(3), hc.strands_of({}))
+    assert np.allclose(G["free"]["gr"], [0.4, 0.0])
+
+
 def test_gather_reaches_the_tie():
     assert hs.is_gather({"name": "tg0_12"}) and hs.is_gather({"name": "t1g2_3"})
     assert not hs.is_gather({"name": "tt4"}) and not hs.is_gather({"name": "sweep1"})

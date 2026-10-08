@@ -414,7 +414,7 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("k", "INT", "CURVE", "value"), ("fd", "FLOAT", "CURVE", "value"),
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
-                              ("tile", "INT", "CURVE", "value")):
+                              ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -501,13 +501,22 @@ def material(look: dict):
     L.new(ramp.outputs["Color"], hsv.inputs["Color"])
     col = hsv.outputs["Color"]
     ga = float(look.get("grey_amount", 0.0))
-    if ga > 0:  # grey hairs: a share of the strands
+    gl = float(look.get("grey_locks", 1.0))  # x each lock's own grey (its "grey": temples, sideburns)
+    if ga > 0 or gl > 0:  # grey hairs: a share of the strands, the look's + the lock's own (hp_gr)
         mix = N.new("ShaderNodeMix")
         mix.data_type = "RGBA"
         lt = N.new("ShaderNodeMath")
         lt.operation = "LESS_THAN"
         L.new(info.outputs["Random"], lt.inputs[0])
-        lt.inputs[1].default_value = ga
+        gra = N.new("ShaderNodeAttribute")
+        gra.attribute_name = "hp_gr"
+        sh = N.new("ShaderNodeMath")
+        sh.operation = "MULTIPLY_ADD"
+        sh.use_clamp = True
+        L.new(gra.outputs["Fac"], sh.inputs[0])
+        sh.inputs[1].default_value = gl
+        sh.inputs[2].default_value = ga
+        L.new(sh.outputs[0], lt.inputs[1])
         L.new(lt.outputs[0], mix.inputs["Factor"])
         L.new(col, mix.inputs["A"])
         mix.inputs["B"].default_value = (*grey, 1)
