@@ -975,6 +975,23 @@ def test_stand_layout_lods_and_numbers():
         assert "unknown keys" in str(e)
 
 
+def test_bough_card_form_by_budget():
+    """A budget that can reach the finest cut of the tree on cheaper cards takes it (a 20k spruce as 2.7 m fronds);
+    a small one keeps few rich limb cards; the triangle count holds either way."""
+    from hifipushie import veg_bough, veg_export
+    T = v.grow({"species": "norway_spruce", "age": 30})
+    m = veg_bough.most(T)
+    n, form = veg_bough.fit(T, m * veg_bough.tris(1))
+    assert form == 1 and n >= 0.9 * m, (n, form, m)
+    n2, form2 = veg_bough.fit(T, m * veg_bough.tris(1) // 4)
+    assert form2 == 0 and n2 * veg_bough.tris(0) <= m * veg_bough.tris(1) // 4, (n2, form2)
+    at = veg_bough.atlas(T, cards=n)
+    assert at["triangles"] <= veg_bough.tris(1), at["triangles"]
+    bud = veg_export.budget(T, 12000, [0.3, 0.6], 10)
+    if bud.get("boughs"):
+        assert bud["total"] <= 12000, bud["total"]
+
+
 if __name__ == "__main__":
     import sys
     import time

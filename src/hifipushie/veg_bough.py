@@ -18,7 +18,7 @@ BOUGH = {"variants": 4, "size": 384, "verts": 7, "cross": 2, "cup": 0.12}  # cro
 TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles the richest bough card costs (a fan per card)
 # The card's cut, richest first. A budget buys GRANULARITY before polish: a 20k spruce cut into 937 fourteen-triangle
 # cards was 2.7 m boughs (palm fronds from 30 m); the same triangles as six-triangle cards are twice as many, smaller.
-FINE = 0.8
+THIN, THIN_GROW = 0.2, 2.2  # the least share of the finest cut a thinned LOD keeps; the most its cards grow
 FORMS = ({"verts": 7, "centre": True, "cup": 0.12}, {"verts": 5, "centre": False, "cup": 0.06})
 
 
@@ -28,25 +28,36 @@ def tris(form: int = 0) -> int:
 
 
 def fit(tree: dict, triangles: int) -> tuple[int, int]:
-    """(cards, form) for a foliage triangle count: the richest card form that still cuts the tree as fine as it can
-    be cut (`most`), else the cheapest form and as many cards as it buys. Remembered on the tree for atlas / place."""
+    """(cards, form) for a foliage triangle count. While the count buys at least `THIN` of the tree's finest cut
+    (`most`) on the cheapest cards, the LOD is that finest cut THINNED: some of its boughs left out, the rest drawn
+    larger (`place`), all LODs sharing one atlas and one silhouette (what a foliage artist does: remove cards, grow
+    the rest; a spruce's LOD 1 re-cut into 425 whole-limb cards lost 15% of its covered area in Godot and its top).
+    Under that, the tree is re-cut into fewer, larger boughs on the richest cards. Remembered on the tree."""
     m = most(tree)
-    fv = os.environ.get("HIFIPUSHIE_BOUGH_FORM")  # (experiments: force a form)
-    n, form = min(max(triangles, 0) // tris(0), m), 0
-    for i in range(len(FORMS)):
-        # a cheaper cut only where it buys (nearly) the finest cut: mid-sized boughs on cheap cards read as fronds
-        # and round leaves (spruce at 9k: 993 six-triangle 2.5 m boughs were worse than 425 fourteen-triangle limbs)
-        if max(triangles, 0) // tris(i) >= FINE * m or (fv is not None and int(fv) == i):
-            n, form = min(max(triangles, 0) // tris(i), m), i
-            break
-    n2 = len(plan(tree, n)["roots"])
+    mr = len(plan(tree, m)["roots"])
+    cheap = len(FORMS) - 1
+    t = max(int(triangles), 0)
     memo = tree.setdefault("_bough_form", {})
-    memo[n] = memo[n2] = form
-    return n2, form
+    if mr and t // tris(cheap) >= THIN * mr and os.environ.get("HIFIPUSHIE_BOUGH_THIN", "1") != "0":
+        form = 0 if t // tris(0) >= mr else cheap
+        n = min(t // tris(form), mr)
+        memo[n] = (form, m)
+        return n, form
+    n = min(t // tris(0), m)
+    n2 = len(plan(tree, n)["roots"])
+    memo[n] = memo[n2] = (0, None)
+    return n2, 0
 
 
 def form_of(tree: dict, cards: int) -> int:
-    return int((tree.get("_bough_form") or {}).get(cards, 0))
+    return int((tree.get("_bough_form") or {}).get(cards, (0, None))[0])
+
+
+def base_of(tree: dict, cards: int):
+    """The cut a thinned LOD's cards come from (a card count for `plan`), or None: the cut is `cards` itself."""
+    return (tree.get("_bough_form") or {}).get(cards, (0, None))[1]
+
+
 DEAD_SHARE, DEAD_MIN = 0.08, 12  # of a budget's bough cards, the most that draw dead wood (and the fewest a tree with dead wood keeps)
 LEADER = 1.2  # m: the most of the trunk's own top one bough card stands for
 DEAD_THIN = 0.5  # the share of a dead bough's twigs its picture is baked from (real alpha gaps)
@@ -258,8 +269,8 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     atlas (color RGBA, normal, mask, cards, fill, grid, size, triangles), plus "extent" (each picture's length, m)
     and "size_m" (the cut)."""
     leaves = leaves or tree["spec"]["leaves"]
-    pl = plan(tree, cards)
     fi = form_of(tree, cards)
+    pl = plan(tree, base_of(tree, cards) or cards)
     fm = FORMS[fi]
     key = json.dumps([tree["spec"], leaves, list(wood_color), round(pl["size"], 2), fi], sort_keys=True, default=float)
     if key in _CACHE:
@@ -335,7 +346,8 @@ def place(tree: dict, cards: int, at: dict) -> dict:
     """Where the bough cards stand on this tree for a budget of `cards`: one per bough of `plan`, in its own frame,
     scaled to its own length against the picture's, the picture nearest it in length. The same keys as twig
     placements (pos, frame, scale, node, key, card)."""
-    pl = plan(tree, cards)
+    base = base_of(tree, cards)
+    pl = plan(tree, base or cards)
     k = len(pl["roots"])
     if not k or not at["cards"]:
         return {"pos": np.zeros((0, 3)), "frame": np.zeros((0, 3, 3)), "scale": np.zeros(0), "variant": np.zeros(0, int),
@@ -352,8 +364,13 @@ def place(tree: dict, cards: int, at: dict) -> dict:
     pick_ = np.where(cost[np.arange(k), near[np.arange(k), pick_]] >= 100.0, 0, pick_)  # (never the other kind when its own exists)
     card = near[np.arange(k), pick_]
     scale = np.clip(ext / np.maximum(E[card], 1e-6), 0.2, 1.35)  # (0.45 at least: a short bough drew a card twice its size)
-    return {"pos": tree["pos"][pl["roots"]], "frame": Fr, "scale": scale, "variant": card.astype(int), "node": pl["roots"].astype(int),
-            "key": key, "card": card.astype(int), "size_m": pl["size"]}
+    out = {"pos": tree["pos"][pl["roots"]], "frame": Fr, "scale": scale, "variant": card.astype(int), "node": pl["roots"].astype(int),
+           "key": key, "card": card.astype(int)}
+    if base and cards < k:  # a thinned LOD: `cards` of the cut's boughs, evenly by their hash, each larger
+        keep = np.argsort(np.argsort(_u(key, 91))) < cards
+        out = {k_: v_[keep] for k_, v_ in out.items()}
+        out["scale"] = out["scale"] * min(math.sqrt(k / max(cards, 1)), THIN_GROW)
+    return {**out, "size_m": pl["size"]}
 
 
 def most(tree: dict) -> int:

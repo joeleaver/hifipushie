@@ -859,7 +859,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             tw_c = None
             boughs = bool(bud.get("boughs")) and at is not None
             if at is not None and (boughs or lf_c is not s["leaves"]):  # bough cards: their own picture (and its season variants)
-                ck = f"boughs{li}" if boughs else json.dumps(lf_c["card"], sort_keys=True)
+                # (LODs thinned from one cut of the tree share its atlas and material: one foliage_boughs slot)
+                cut_ = (veg_bough.base_of(t, bud["boughs"]), veg_bough.form_of(t, bud["boughs"])) if boughs and len(trees) == 1 else (None, 0)
+                ck = (f"boughs_cut{cut_[0]}_{cut_[1]}" if cut_[0] else f"boughs{li}") if boughs else json.dumps(lf_c["card"], sort_keys=True)
                 if ck not in cluster_mats:
                     # (a set shares one bough atlas per LOD: baked from the first plant that needs it)
                     make = (lambda lf_, twc_, t0=t, nb=bud["boughs"]: veg_bough.atlas(t0, lf_, twc_, nb)) if boughs else veg_leaf.atlas
