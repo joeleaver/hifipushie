@@ -50,7 +50,7 @@ DISCONNECTED = "This computer was disconnected; run hifipushie-artist setup to c
 
 # ---------------------------------------------------------------------------------------------- capabilities
 
-FAST = {"guide", "kit_reference", "get_model", "put_model", "edit_model", "history", "revert", "measure",
+FAST = {"guide", "kit_reference", "heavy_queue", "get_model", "put_model", "edit_model", "history", "revert", "measure",
         "clearance", "set_reference", "set_plan", "check",
         "look"}  # ~10 s at the default resolution: worth waiting for inline (a big close-up becomes a task to poll)
 SLOW = {  # (documentation: anything not fast or very_slow is slow, new tools included)
@@ -69,7 +69,7 @@ PAINTED = {"look", "style_check"}  # render the Blender scene in EEVEE by defaul
 EXCLUDE = {"list_models": "lists every model on this machine, not the session's subject",
            "pull": "takes edits back from a person's Blender on this machine (a standalone feature)"}
 # Tools that take no subject are only offered when known to be harmless (an unknown one might list the host).
-SUBJECTLESS_OK = {"guide", "kit_reference"}
+SUBJECTLESS_OK = {"guide", "kit_reference", "heavy_queue"}  # heavy_queue: no paths, pids or dirs (resources.queue_view)
 
 # Host-path parameters: dropped from the schema. Their values are set by the runner (outputs into the task's
 # scratch dir) or not at all. Unknown tools: any string parameter with a path-like name is dropped too.
