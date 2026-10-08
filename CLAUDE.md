@@ -4522,6 +4522,19 @@ model".
       shapes made for 6 mm of side volume, pushed out 22 mm. A fuller cut needs regrooming the sides (the hair
       thread's tools), not a lift. The face in pass 4/5 is broader and squarer than v23; v23 keeps the long lean face
       the director approved. Tests tests/test_hair_lift.py.
+  - Reference pass 6 = APPLIED (2026-10-08; the coordinator: "v23 is the one that reads as the photo's man"):
+    v23 (om_garrett v15) + base.head.shape hood 0.0035, hollow 0.005 (measured hollow 0.27 -> 1.95 / 2.24 mm),
+    jaw_angle 0.0025, mouth 56.0 -> 56.5 mm by solve (57 squeezed v23's already-broken lip corners 0.24 -> 0.22:
+    refused); no outline warp, no hair lift. om2_gref7 -> om_garrett v16 (scratch pass7.py, applybase.py).
+    Cameras for the sheets fitted to v23's own landmarks with no identity (camfit.py; 4.6 / 5.9 mm rms).
+    Sheet human_renders/om2_r6_pass6.png (v23 | pass 6, front + desk, clay / lit / his locks). Export
+    /mnt/data/hifipushie/onemesh2/exp_garrett6 (30k / 2048, rig + face shapes, Khronos 0 / 0, body quality 16 folded
+    edges / 11 turned (v23's export: 13 / 11), unevenness <= 0.13, height range +-6.7 mm); blink vs v23's export
+    (om2_r6_blink_v23_vs_pass6.png): same clean closed line, lid jag p95 0.95 / 0.88 (v23 0.91 / 0.85).
+  - humanfit's fits (solve, nudge, fit_views, fit_outline, fit_hood) REFUSE a result the edit broke: the input
+    comes back with rep["refused"] (`_guarded`), unless force=True. A region already broken in the input (v23's lip
+    corners squeezed x0.24 against the plain head) counts only if it got `GUARD_WORSE` 8% worse (`_newly_broken`).
+    A 3 cm chin nudge is now refused (test_nudge updated: forced, it still makes its correction layer).
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
