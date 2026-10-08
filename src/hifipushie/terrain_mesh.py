@@ -203,7 +203,7 @@ class Tube:
 
 
 STACK = {"radius": 0.75, "bed": 1.6, "beds": 0.4, "notch": 0.7, "ramp": 1.0, "lean": 10.0, "lobes": 0.55,
-         "twist": 6.0, "core": 0.4}
+         "twist": 6.0}
 # a solid sea stack: its radius x the sea's stack radius, bed thickness m, how far beds stand out / sit back (x r,
 # +-half), the outline's lobes (x r) and how fast they change up the stack (m), its sides' lean (deg),
 # the waterline notch (x min(0.3 r, 1.6 m)), each bed handing over to the next across `ramp` m (2 voxels: shards)
@@ -259,16 +259,10 @@ class Stack:
         notch = STACK["notch"] * min(self.r * 0.3, 1.6) * np.exp(-((z - sea - 0.9) / 1.2) ** 2)
         R = self.r * (1 + STACK["lobes"] * (lob - 0.5) + grooves + STACK["beds"] * bed) + (self.top - z) * self.lean \
             - notch
-        # a core the lobes and beds never cut into (a low lobe and a set-back bed took a section to nothing: the stack
-        # above stood on a neck or on air, pieces of it floating 12-32 m up off the island's Kaze cliffs)
-        core = STACK["core"] * self.r
-        R = smax(R, core, 0.5 * core)
         side = (d - R) * 0.92
         along = q[:, 0] * math.cos(self.tdir) + q[:, 1] * math.sin(self.tdir)
-        # (the broken top is lowered toward the rim only: lowered by direction at the axis too, the sectors' tops
-        # stood apart as separate pieces joined at a line)
         topz = self.top - self.tilt * np.clip(along + self.r, 0, 2 * self.r) * 0.5 \
-            - 0.22 * (self.top - self.base) * np.clip(lob - 0.55, 0, None) / 0.45 * smoothstep(core, 2 * core, d)
+            - 0.22 * (self.top - self.base) * np.clip(lob - 0.55, 0, None) / 0.45
         f = smax(side, p[:, 2] - topz, 0.35)
         f = smax(f, (self.base - 1.0) - p[:, 2], 0.3)
         if detail:
@@ -2255,7 +2249,14 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
                 # back's values aren't metres (slice_a's cave tile: |field| p99 0.59 at the dense mesh's own face
                 # centres, all of it 5-25 m under the ground): counted, they were the tolerance
                 thr = max(0.3, 2 * err)
-                vis = (np.abs(field.front(v)) <= thr)[f].all(1)
+                fv = field.front(v)
+                vis = (np.abs(fv) <= thr)[f].all(1)
+                # the back must stay out of sight: a face off the visible rock whose centre is out in the air (in front
+                # of it) is a buried face pulled through the front, drawn plain in an engine (the island's Kaze stacks
+                # at LOD 1-2: white triangles 10-20 m across). Measured only on the visible faces it went unbounded
+                hid = ~vis & (fv[f].max(1) > -thr)  # (faces near the front: the deep back can't reach the air)
+                if hid.any() and (field.front(v[f[hid]].mean(1)) > thr).any():
+                    return np.inf
                 if vis.sum() >= 16:
                     return float(np.percentile(np.abs(field.front(c[np.r_[vis, vis]])), 99))
             return float(np.percentile(np.abs(field.value(c)), 99))

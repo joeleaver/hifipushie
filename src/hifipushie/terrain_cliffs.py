@@ -640,6 +640,12 @@ def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_ke
         for f in fl["floating"][:5]:
             failures.append(f"a cliff-mesh piece floats clear of the ground ({f['triangles']} triangles, lowest "
                             f"{f['clearance_m']:.2f} m over the heightmap, at {f['at']})")
+        ex = exposed_buried(out, M, R)
+        summary["buried_in_the_open"] = ex[:20]
+        for r in [r for r in ex if r["area_m2"] > EXPOSED_LIMIT][:8]:
+            failures.append(f"tile {r['tile'][0]},{r['tile'][1]} LOD {r['lod']}: {r['area_m2']:.1f} m2 of the cliff "
+                            f"shell's buried back stands in the open ({r['faces']} faces, the largest at {r['at']}): "
+                            f"drawn plain, flat pale triangles in the cliff")
     summary["failures"] = len(failures)
     return {"summary": summary, "failures": failures}
 
