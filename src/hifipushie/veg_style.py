@@ -1239,7 +1239,7 @@ def _head(kind: str, c, up, r: float, cs: dict, seed_u, sides: int):
         for k in range(nd):
             f_ = k / max(nd - 1, 1)
             rr = r * float(cs.get("dab_size", 0.55)) * (1.1 - 0.45 * f_) * (1 + float(cs.get("ragged", 0.35)) * (seed_u(10 + k) - 0.5))
-            off = (f_ - 0.35) * span * up + (seed_u(300 + k) - 0.5) * r * 0.7 * ex + (seed_u(400 + k) - 0.5) * r * 0.7 * ey
+            off = (f_ - 0.8) * span * up + (seed_u(300 + k) - 0.5) * r * 0.7 * ex + (seed_u(400 + k) - 0.5) * r * 0.7 * ey
             Vb, Fb, Nb = _ball(np.zeros(3), 1.0, 3, 6)
             a_ = 2 * math.pi * seed_u(500 + k)
             ax_ = math.cos(a_) * ex + math.sin(a_) * ey  # (squashed across a hashed side, a little longer along the head)
