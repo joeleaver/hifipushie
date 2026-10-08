@@ -1191,6 +1191,8 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
     def march(free_neck):
         P_, D_ = P.copy(), D.copy()
         S_ = S.copy()
+        Dr = D.copy()  # the direction a column runs on in (free_neck): its chord over the last WORN_RUN before it starts
+        kr = max(1, int(round(WORN_RUN / WORN_STEP)))
         for j in range(1, ns):
             n = nrm(P_)
             n = n - t3 * np.sum(n * t3, 1, keepdims=True)
@@ -1212,7 +1214,14 @@ def _worn_top(body: "Body", Cw: np.ndarray, start: np.ndarray, sgn: float, xs: n
                 # in front of / behind the neck the cloth doesn't follow the body up the throat or the nape: past the
                 # neck's base it runs on as it was going (a lapel's flap following the neck was turned out in the air)
                 wz = np.clip((P_[:, 2] - (hz - WORN_NECK)) / 0.02 + 0.5, 0.0, 1.0)
-                st = (1 - wz)[:, None] * st + wz[:, None] * WORN_STEP * D_
+                # (on in the direction the column had over its last few cm, frozen once it starts: the step's own
+                # direction at that moment, over the edge of an open shirt collar's point, sent neighbours 4 mm apart
+                # one up the throat and one back over the shoulder, 7 cm apart: Garrett's right gorge 3.6x)
+                ch = P_ - S_[:, max(j - 1 - kr, 0)]
+                ch -= t3 * np.sum(ch * t3, 1, keepdims=True)
+                ch /= np.maximum(np.linalg.norm(ch, axis=1, keepdims=True), 1e-12)
+                Dr = np.where((wz <= 0)[:, None], ch, Dr)
+                st = (1 - wz)[:, None] * st + wz[:, None] * WORN_STEP * Dr
             st *= (WORN_STEP / np.maximum(np.linalg.norm(st, axis=1), 1e-12))[:, None]  # (arc length kept)
             D_ = st / WORN_STEP
             P_ = P_ + st
@@ -1361,6 +1370,7 @@ WORN_CLEAR = 0.005  # m a worn top starts off the body under it: it RESTS on the
 # started 19 mm over the shirt at the shoulder, and its made collar, carried where it started, held it 27 mm high)
 WORN_NECK_BAND = 0.04  # m out past the neck point (world x) over which a column hands over from running on to following
 WORN_NECK_CLEAR = 0.02  # m out from the neck point (world x) from which a column's ridge is the shoulder's
+WORN_RUN = 0.04  # m: a column running on past the neck's base goes the way its last WORN_RUN went
 WORN_NECK = 0.05  # m under the neck point from which a column in front of / behind the neck stops following the body  # m a worn column may slide along its path to put the piece's top on the shoulder's ridge
 
 
@@ -5019,9 +5029,52 @@ def padded_body(body: "Body", src: dict, U: np.ndarray, air: float = 0.003) -> "
         np.add.at(wt, E[:, 1], 1.0)
         pad = np.maximum(pad * covered, 0.5 * pad + 0.5 * acc / np.maximum(wt, 1))
     pad = np.where(pad > 1e-4, pad + air, 0.0)
-    b = Body({"V": body.V + vn * pad[:, None], "F": body._faces, "J": body.J})
+    P = _unfold_offset(body.V, T, E, vn, pad)
+    b = Body({"V": P, "F": body._faces, "J": body.J})
     b.pad = pad
     return b
+
+
+PAD_UNFOLD = 40  # rounds of untangling a padded body's folds (_unfold_offset)
+
+
+def _unfold_offset(V: np.ndarray, T: np.ndarray, E: np.ndarray, vn: np.ndarray, pad: np.ndarray) -> np.ndarray:
+    """V grown by `pad` along its normals vn, with the folds such an offset makes in hollows taken out: where the pad
+    is deeper than the hollow is wide (the neck's side under an open shirt collar's point, the armpit) neighbouring
+    normals cross, and the padded surface turned over on itself (Garrett: 116 turned faces round the neck, 24 in the
+    pits). Faces turned more than ~70 deg from the body's own are smoothed out (their vertices to their neighbours'
+    mean, never further in along the normal than their pad): what lies over a hollow bridges it, as cloth does. The
+    clearance and push-out read a folded surface's normals backwards (a jacket's gorge vertex 21 mm clear was pushed
+    56 mm out across the shirt collar)."""
+    P = V + vn * pad[:, None]
+    if not (pad > 0).any():
+        return P
+
+    def fnorm(Q):
+        n = np.cross(Q[T[:, 1]] - Q[T[:, 0]], Q[T[:, 2]] - Q[T[:, 0]])
+        return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-15)
+    n0 = fnorm(V)
+    for _ in range(PAD_UNFOLD):
+        bad = (fnorm(P) * n0).sum(1) < 0.35
+        if not bad.any():
+            break
+        mv = np.zeros(len(P), bool)
+        mv[T[bad].ravel()] = True
+        # (and their neighbours: the fold is a few rings wide)
+        nb = np.zeros(len(P), bool)
+        nb[E[mv[E[:, 0]], 1]] = True
+        nb[E[mv[E[:, 1]], 0]] = True
+        mv |= nb
+        acc, wt = np.zeros_like(P), np.zeros(len(P))
+        np.add.at(acc, E[:, 0], P[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], P[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        Q = acc / np.maximum(wt, 1)[:, None]
+        h = ((Q - V) * vn).sum(1)
+        Q = Q + vn * np.maximum(pad - h, 0.0)[:, None]  # never in past the pad
+        P[mv] = Q[mv]
+    return P
 
 
 UNDER_COLLAR_T = 0.003  # m: a shirt collar as it lies under a jacket's (stand, interfacing, fall over it: pressed)
