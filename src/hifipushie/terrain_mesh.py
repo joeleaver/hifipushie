@@ -4155,8 +4155,22 @@ def _job_bake(args):
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines,
-                                    texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
+                                    texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
+                                    border=_bake_border(c, stem, k))
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
+
+
+BORDER_FLAT = 1.5  # texels: LOD 1+ normal maps eased to the low poly's normal this close to a tile's edge
+
+
+def _bake_border(c, stem, k):
+    """(lo, hi, fade m) for a cliff tile's LOD k >= 1 bake (terrain_bake.bake_texels `border`), else None."""
+    import re
+    m = re.match(r"tile_(\d+)_(\d+)_lod(\d+)$", stem)
+    if k < 1 or not m or BORDER_FLAT <= 0:
+        return None
+    lo, hi = c["G"].bounds(int(m.group(1)), int(m.group(2)))
+    return (lo, hi, BORDER_FLAT / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
 
 def _job_finish(stem):
     """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
