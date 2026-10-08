@@ -4046,6 +4046,29 @@ regresses, bisect by building one spec at each commit and diffing heights.
       non-manifold edge 4-6 m inside the rock at every count from its dense mesh ([1047.8, 1649.5, 66.1]: where the
       graded tube runs close under the shell's back), so `_decimate` keeps LOD 1's mesh; border-vertex shards (a
       canonical way for both tiles to split a border corner).
+      The two not-visible shard trips are left as they are (the coordinator's call): Kaze LOD 2 0.5005% at tile-border
+      vertices, Pencil LOD 0 0.0129% (a cluster 3 m under the sea on the 21|22 border).
+    - Tile 16,25 LOD 2 and steps on the collision mesh (2026-10-08, branch `tiles2-tube` from main 4e612c9; scratch
+      col2.py (a column through the shell: every sign change), replay.py (pyfqmr counts on a decimation dump),
+      csteps*.py (collision steps / risers along cave_paths, on any export incl. pushieworld's, read only)).
+      16,25 (crown_tube's switchbacks under it) stays at ~2,800 of 800 triangles: ACCEPTED as valid but heavy.
+      Tried: the shell's rind round a void (dv < cave_wall) read the tube's ROUGH distance, whose level sets 3-5 m out
+      folded into 0.4 m slivers (a column: shell 64.85 | air | 65.75-66.15 | air); with Tube.sd(plain=True) and the
+      back joined to the rind by smin 2.5 m (a 1.2 m air layer between them) the dense mesh decimates manifold at
+      every count in dec2.py, but the block export still stalled (2,840) and a single-tile export of 16,25 reached
+      699: the stall is the border chains' kept vertices with neighbours (skirt edges 696 vs 485), not the folds.
+      Both changes were reverted (not needed for a valid mesh; they move every cave's shell). `budget_check` now
+      names a cave under an over-budget tile and what to change ("route the passage under the middle of a tile or
+      deeper"). Next if it matters: why 16,25 keeps ~700 border edges at LOD 2 (the `thin` rule: rock too thin for a
+      skirt round the tube keeps vertices at every LOD; or collapse failures from a neighbour).
+      Steps (pushieworld note 101: their walker needed a 0.6 m step-up on crown_tube's way to the lower pit):
+      `terrain_caves.collision_steps` walks each cave_paths passage on the LOD `collision` meshes (`collision_floor`:
+      the highest triangle under the walk's floor + 0.9 m) and writes per passage collision_floor,
+      largest_step_m, largest_step_collision_m, tallest_riser_collision_m (+ _at: runs steeper than 45 deg at 0.1 m)
+      into the manifest and a line per passage into the export notes. On THEIR export: centre-line steps 0.29 m,
+      the tallest riser 0.2 m (60 deg) at [1084.4, 1756.4, 3.2] where the lower pit's pile of blocks meets the tube
+      floor; with a 0.4 m body footprint the same. No 0.6 m riser on the path: their controller's 0.6 is either a
+      capsule catching the rough pile (Mound rough 0.25 m at 1.5 m scale) or something off the path: asked them where.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +

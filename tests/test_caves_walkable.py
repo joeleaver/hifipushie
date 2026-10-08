@@ -106,7 +106,21 @@ def test_graded_lava_tube(C):
     assert "PASSES" in line, line
 
 
+def test_collision_floor():
+    """The floor a character stands on, read off a mesh: the highest surface under the walk's floor + a knee, so a
+    riser the mesh has (and the field doesn't) shows as a step."""
+    P = np.array([[0, 0, 0], [10, 0, 0], [0, 10, 0], [10, 10, 0],
+                  [5, 0, 0.6], [10, 0, 0.6], [5, 10, 0.6], [10, 10, 0.6],
+                  [0, 0, 3], [10, 0, 3], [0, 10, 3]], float)
+    F = np.array([[0, 1, 3], [0, 3, 2], [4, 5, 7], [4, 7, 6], [8, 9, 10]])
+    xy = np.array([[2.0, 5.0], [7.0, 5.0], [7.0, 5.0]])
+    z = np.array([0.0, 0.1, -4.0])
+    cz = terrain_caves.collision_floor(xy, z, P, F)
+    assert np.allclose(cz[:2], [0.0, 0.6]) and np.isnan(cz[2]), cz  # (the roof at 3 m is over the knee: not a floor)
+
+
 if __name__ == "__main__":
+    test_collision_floor()
     test_step_advice_names_the_lever()
     T0 = _terrain(KARST)
     test_mouth_meets_the_ground(T0)

@@ -2950,8 +2950,9 @@ class TilesCheckFailed(RuntimeError):
 OVER_BUDGET = 2.0  # a tile LOD with more than this x its triangle budget fails the export's checks (said per tile)
 
 
-def budget_check(manifest_tiles, cfg, lods):
-    """Tile LODs over OVER_BUDGET x their triangle budget, with what the numbers say about why."""
+def budget_check(manifest_tiles, cfg, lods, caves=()):
+    """Tile LODs over OVER_BUDGET x their triangle budget, with what the numbers say about why. `caves`: the caves'
+    names (a tile a cave passes under is heavy for a reason the designer can act on)."""
     over = []
     for e in manifest_tiles:
         for k, L in enumerate(e["lods"]):
@@ -2966,6 +2967,15 @@ def budget_check(manifest_tiles, cfg, lods):
                        "thinner than the voxel)")
             else:
                 why = "decimation stalled above it (folds in thin rock, or its border chain alone is this long)"
+            here = [v for v in e.get("volumes", []) if v in set(caves)]
+            if here:
+                # (the island's 16,25: crown_tube's graded switchbacks run under it; the rock kept round the passage
+                # (cave_wall) and the shell's back lie close together inside the rock, and pyfqmr folds them at every
+                # count below LOD 1's mesh. Measured on the export: a valid mesh, only heavy)
+                why = (f"the cave {', '.join(here)} runs under this tile: the rock kept round its passage and the "
+                       f"shell's back lie close inside the rock and decimation folds them below this count. The mesh "
+                       f"is valid, only heavy; to lighten it, route the passage under the middle of a tile or deeper "
+                       f"(fewer crossings of tile borders, more rock between it and the ground)")
             over.append({"tile": [e["i"], e["j"]], "lod": k, "triangles": L["triangles"], "budget": int(b),
                          "visible_triangles": L.get("visible_triangles"), "marching_cubes_triangles": mc,
                          "volumes": e.get("volumes", []), "why": why})
@@ -3616,8 +3626,16 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         with prof.stage("cave walk (parent)"):
             manifest["cave_paths"] = []
             manifest["caves"] = terrain_caves.check(caves, base, sea=_sea(T), paths=manifest["cave_paths"])
+            # the same walk's floor on what an engine collides with (the collision meshes): its steps can be taller
+            # than the field's (decimation at the collision LOD's error, a pile of blocks simplified to a riser)
+            try:
+                for ln in terrain_caves.collision_steps(manifest["cave_paths"], out, manifest_tiles,
+                                                        int(cfg["collision"])):
+                    manifest["caves"].append(ln)
+            except Exception as ex_:  # (a measure, never the export's failure)
+                log(f"cave steps on the collision meshes not measured: {ex_}")
         timing["cave walk"] = time.time() - t0
-    over = budget_check(manifest_tiles, cfg, G.lods)
+    over = budget_check(manifest_tiles, cfg, G.lods, [cv.name for cv in caves] if caves else [])
     manifest["budget_check"] = {"limit": f"{OVER_BUDGET:g} x the LOD's budget", "over": over}
     manifest["dropped_pieces"] = {"limit_m2": float(cfg.get("float_piece_m2", FLOAT_PIECE)), "pieces": dropped_pieces}
     for o in over[:12]:
