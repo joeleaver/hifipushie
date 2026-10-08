@@ -3891,6 +3891,38 @@ regresses, bisect by building one spec at each commit and diffing heights.
       never reach the pushed heightmap (+0.15 m) under `float_piece_m2` (FLOAT_PIECE 50 m2), from the dense mesh (so
       every LOD agrees); logged and listed in manifest `dropped_pieces`. Bigger ones still fail `floating` (a stack's
       head is a real fault). Pieces on a tile border are never dropped (both tiles would have to agree).
+    - Island checks + the "regression" (2026-10-08, branch `tiles2-seams` from 383bcbf; pushieworld notes 97-100;
+      scratch nrm90b.py (a border's worst normal pair, every copy), shardz.py (shard faces by tile / depth / area),
+      rimprof.py (ground / pushed heightmap / S / holes / front along a line), tubetime.py (field cost of a tile's
+      tubes), dec1/dec2.py (a tile's decimation by count, non-manifold edges)).
+      Their 2:24 export on 383bcbf was COLD (code changed), not an incremental slowdown: tiles 15-16, 25-27 took
+      1,445-1,495 s of marching cubes and 450-728 s of dense LOD0 EACH: crown_tube's graded switchbacks (1,088 m at
+      1.5 m nodes = 731 segments) and `Tube.sd` tested every point against every segment. Now runs of TUBE_RUN 16
+      segments, each at the points within its reach (box widened by the ellipse's aspect: a plain reach box changed
+      values); identical within the reach (test_long_tube_by_runs). 6 crown tiles: marching cubes 54 s, dense 101 s.
+      The summary's "border collapse + skirts 4,621 s" was the settle round's TILES (labels took the last round's
+      span from the previous round's tiles on): stages are summed over rounds, dense LOD0 is its own line, and the
+      summary always says "incremental: cold export (why)" or what was redone.
+      (a) "normals differ by 90.00 deg" at 5,16 / 5,17: both tiles' identical ZERO normals (buried border vertices
+      where the field is flat at the normal stencil; arccos 0 = 90), 54 Khronos ACCESSOR_VECTOR3_NON_UNIT errors on
+      the Kaze block. `_project` retries wider stencils, then up; the seam check reports zero normals as their own
+      failure. (b) LOD 0 shards: Pencil's 3.55 of 3.59 m2 are 3 m under the sea on the 21|22 border, Kaze's mostly
+      grazing (dot -0.01..-0.3) at borders. `_unflip_corners`: a corner turned against its face gets the face's normal
+      (not on tile borders: split there, the two tiles' border normals differed 96-142 deg, since `_compact` drops
+      the canonical copy once no face uses it). Kaze LOD 2 0.79 -> 0.50%, LOD 0/1 0.006 / 0.034%; Pencil LOD 0 still
+      0.0129% (the underwater border cluster). (c) the 4,18 buried non-manifold edge doesn't reproduce on 383bcbf.
+      Visible and missed by every check: a dark crack with the shell's back in it (and teeth) round kaze_cave's
+      doline. Region S was cut at its grown mask (0.64 -> 0 in one lattice step) and openings pushed the heightmap
+      linearly (front 0.3-0.6 m above it). `_grow` bounds the blur 3 sigma out; openings push by op^PUSH_POW. A faint
+      line and a few notches remain (rend/shk3_*). slice_a's weights1 lod0_vs_lod2 is main's (667b4a9 alone fails
+      the same block identically). Manifest `cave_paths` (note 100): per passage the walk's points [x, y, floor | null]
+      every 0.5 m, width_m, headroom_m.
+      Results: pebble 0 failures (266 s, Khronos 1,044 files 0/0), alps 3x3 0, slice_a 0 (the stacks float is gone
+      on main), slice_b incremental 4 of 64 tiles, 0 files differ from cold; Kaze block 1 (LOD 2 shards 0.5005%, at
+      border vertices), Pencil 1 (LOD 0 0.0129%, underwater). OPEN: tile 16,25 LOD 2 2,790 / 800: pyfqmr leaves a
+      non-manifold edge 4-6 m inside the rock at every count from its dense mesh ([1047.8, 1649.5, 66.1]: where the
+      graded tube runs close under the shell's back), so `_decimate` keeps LOD 1's mesh; border-vertex shards (a
+      canonical way for both tiles to split a border corner).
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
