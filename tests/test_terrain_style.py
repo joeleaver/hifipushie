@@ -279,6 +279,45 @@ def test_rock_scale_finds_thin_rock():
     assert Th[j, 110] < 5 < 15 < Th[j, 58], (Th[j, 110], Th[j, 58])
 
 
+def test_style_relief_build_cap():
+    """A style's `rock.build` caps how far its relief builds out (cartoon 0.05 m): its big facets built a slab out
+    over a sheer lip with a groove carved under it, a piece floating clear of the face (tl2_slice_a [291, 104, 23]).
+    On the coast's sheer faces, in the styled zone, relief on - relief off >= -build (carving unlimited), and no solid
+    piece in a box over the cliff's lip comes loose."""
+    from scipy import ndimage
+    T, f = _field({"cartoon": "downs"})
+    build = 0.05
+    assert any(s["name"] == "cartoon" and s["rock"].get("build") == build for s in f.styles)
+    xs = np.linspace(4, 44, 41)  # (west: the cartoon zone, past the band)
+    ys = np.linspace(0, 40, 81)
+    X, Y = np.meshgrid(xs, ys)
+    h, sl = f.column(X.ravel(), Y.ravel())
+    sheer = sl < 0.5
+    assert sheer.sum() > 20, "the coast lost its sheer faces"
+    pts = []
+    for dz in np.linspace(-3, 3, 13):  # (round each sheer column's top and down its face)
+        pts.append(np.c_[X.ravel()[sheer], Y.ravel()[sheer], h[sheer] + dz])
+    P = np.concatenate(pts)
+    a = f.value(P)
+    r0, f0 = f.rock, f.fall
+    f.rock, f.fall = None, None
+    b = f.value(P)
+    f.rock, f.fall = r0, f0
+    near = np.abs(b) < 1.0
+    assert (a - b)[near].min() >= -build - 1e-6, (a - b)[near].min()
+    # loose pieces in a box round the sheerest column's top
+    k = int(np.argmin(sl))
+    c = np.array([X.ravel()[k], Y.ravel()[k], h[k]])
+    vox = 0.2
+    ax = [np.arange(c[i] - 5, c[i] + 5 + vox, vox) for i in range(3)]
+    G = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
+    V = f.value(G).reshape([len(q) for q in ax])
+    lab, n = ndimage.label(V < 0, ndimage.generate_binary_structure(3, 2))
+    edge = set(np.unique(lab[:, :, 0])) | set(np.unique(lab[0])) | set(np.unique(lab[-1])) | \
+        set(np.unique(lab[:, 0])) | set(np.unique(lab[:, -1]))
+    assert all(i in edge for i in range(1, n + 1)), "a loose piece over the lip"
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_") and callable(f):

@@ -683,7 +683,7 @@ def rock_scale(T) -> tuple[np.ndarray, np.ndarray]:
 # ------------------------------------------------------------------------------------------------ rock shape (geometry)
 
 ROCK_BAND = 10.0  # m: the default band over which one style's rock shape hands over to the next (in the field)
-ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind", "stack", "lip"}
+ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind", "stack", "lip", "build"}
 
 
 def rock_styles(T) -> list[dict]:
