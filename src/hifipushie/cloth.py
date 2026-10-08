@@ -1105,7 +1105,7 @@ def _arc_point(H: np.ndarray, start: np.ndarray, s: np.ndarray, sign: float) -> 
 
 
 WORN_DBG: list = []  # (columns' pattern x, their samples, start clearance, target) of the last worn tops laid
-ENVELOPE_ROUNDS = 30  # smoothing rounds of the envelope a worn top is laid on (_envelope)
+ENVELOPE_ROUNDS = 0  # smoothing rounds of the envelope a worn top is laid on (_envelope)
 WORN_STEP = 0.003  # m between a worn top's samples up each column
 WORN_COL = 0.004  # m between its columns (pattern x)
 WORN_RAMP = 0.08  # m of column over which the start's clearance eases from the cylinder's to the worn one
@@ -3516,13 +3516,6 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         # nothing may start through anything else (a solver that keeps its contacts can't undo it): a sleeve whose cap
         # starts through the bodice round the armhole goes 1 cm further down the arm at a time (the sewing pulls it up)
         _xp = sorted(_piece_crossings(Xp, M))
-        if B.get("worn_top"):
-            # (a sleeve crossing the piece it is sewn to by the armhole stays: a contact solver starting with existing
-            # intersections lets pieces sewn together pass, the sewing pulls them right; sent down the arm 6-12 cm
-            # instead, Garrett's whole left sleeve started with its armhole seam 300 mm open)
-            _sw = np.asarray(M["sew"]).reshape(-1, 2)
-            _sewn = {tuple(sorted((names[pid[a_]], names[pid[b_]]))) for a_, b_ in _sw}
-            _xp = [p_ for p_ in _xp if tuple(sorted(p_)) not in _sewn]
         B.setdefault("sleeve_hits", []).append([p_ for p_ in _xp if any(pcs[q_]["wrap"].get("to", "").startswith("arm.") for q_ in p_)])
         hit = {a for a, b in _xp for a in (a, b)
                if pcs[a]["wrap"].get("to", "").startswith("arm.") and "follow" not in pcs[a]["wrap"]}

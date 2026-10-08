@@ -2533,6 +2533,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       column meets a surface rising more steeply than ~60 deg; or draft the jacket's neck over the shirt collar wider
       on Garrett (over_measures' neck: Garrett 407 -> 473 mm drafted, check the gorge against the open stand).
     - Re-pickle (pl0.py) after any spec change before using pl1.py: a stale pickle hid the 4.2x for a round.
+    - ga_suit regression check (su_67 -> su_69): the sewn-crossing exemption for sleeves was WRONG: su_67 started
+      under.R through side.R and ended with the back / side and armhole seams 37-71 mm open (2476 s sim). Reverted
+      (su_68: all seams closed). The `_envelope` raised the worn top over the neck's hollows and the jacket rode up:
+      collar_show 15 -> -5.4. ENVELOPE_ROUNDS is 0 (off; the function stays for the Garrett gorge work). su_69 (ga_suit,
+      cloth_renders/su_69_suit*): fits, all seams closed, 0 crossings, collar_show 13.4, cuffs 12.6 / 10.3 (in band),
+      lapel_gap 9.5-11, under sleeves 2% crumpled. The pressed-lapel change (PRESS_OFF 1e3) is in it. Best ga_suit.
+      Garrett's left sleeve still goes down the arm on the side.L / under.L crossing (open).
   - NEXT, in order: (1) carry made lapel flaps with their forepart (then lapel_gap); (2) su_garrett once its shirt
     builds; (3) collar_hug 17-26 mm. Old list (tent done as above): (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
     the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
