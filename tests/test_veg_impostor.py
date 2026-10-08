@@ -95,6 +95,24 @@ def test_export_one_quad_with_its_recipe():
             sl = sj["seasons"][se]["impostor"]
             assert Path(tmp, sl["baseColorTexture"]["file"]).exists() and Path(tmp, sl["impostorNormalTexture"]["file"]).exists()
         assert sj["seasons"]["winter"]["impostor"]["baseColorTexture"]["file"] != sj["seasons"]["summer"]["impostor"]["baseColorTexture"]["file"]
+        # the quad is cropped to what the frames draw (a ball well inside its frames), and the stored quad matches
+        c = hi["crop"]
+        assert sj["impostor"]["crop"] == c and 0 < c[0] < c[1] < 1 and 0 < c[2] < c[3] < 1 and (c[1] - c[0]) * (c[3] - c[2]) < 0.8
+
+
+def test_crop_covers_every_drawn_pixel():
+    """`crop` holds every pixel any frame of any picture draws, plus a margin, and never leaves 0..1."""
+    n, px = 2, 20
+    a = np.zeros((n * px, n * px, 4), np.float32)
+    a[3:12, 25:31, 3] = 1  # frame (1, 0): u 5..10 px, v 3..11 px of 20
+    b = np.zeros_like(a)
+    b[30:39, 2:18, 3] = 1  # frame (0, 1): u 2..17, v 10..18
+    c = vi.crop([a, b], n, margin=0.0)
+    assert c == [0.1, 0.9, 0.15, 0.95], c
+    assert vi.crop([np.zeros_like(a)], n) == [0.0, 1.0, 0.0, 1.0]
+    cr = vi.crops([a, b], n, margin=0.0)  # (per frame: k = column * n + row)
+    assert cr[1 * n + 0] == [0.25, 0.55, 0.15, 0.6] and cr[0 * n + 1] == [0.1, 0.9, 0.5, 0.95] and cr[0] == [0.5, 0.5, 0.5, 0.5], cr
+    assert vi.drawn_share(cr, n) < 0.5
 
 
 if __name__ == "__main__":

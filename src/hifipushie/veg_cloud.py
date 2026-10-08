@@ -52,7 +52,8 @@ def dab_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
         prof = 0.1 * np.minimum(t / 0.05, 1.0) * np.minimum((1 - t) / 0.5, 1.0) ** 0.7
     else:
         prof = veg_leaf._profile(shape if shape in ("ovate", "triangular", "lanceolate", "lobed", "round") else "ovate", t, int(lf.get("lobes", 4)))
-        prof = np.maximum(prof, 0.55 * np.sin(np.pi * t) ** 0.6)  # (fattened: a dab, not a botanical leaf)
+        if not d.get("true"):
+            prof = np.maximum(prof, 0.55 * np.sin(np.pi * t) ** 0.6)  # (fattened: a dab, not a botanical leaf; `true` = the species outline)
     for v in range(nv):
         u = lambda i, salt: float(vegetation._u(np.array([i + 1000 * v + 100000 * int(spec.get("seed", 1))], np.uint64), salt)[0])
         N = n * ss
@@ -121,6 +122,117 @@ def _fib(n: int) -> np.ndarray:
     return np.c_[r * np.cos(a), r * np.sin(a), z]
 
 
+CARDS = {"leaf": 1.5, "count": 10, "length": 0.34, "out": [0.02, 0.25], "cover": 0.8, "tilt": 30, "roll": 40, "cup": 0.12,
+         "under": 0.3, "tone": [0.7, 1.15], "warm_tip": 0.12}
+
+
+def shell_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
+    """The leaf cards' picture (sheet `crown.cards`): a few of the species' TRUE leaf outlines per tile, no solid
+    middle, no ragged rim (dab_atlas with `true`)."""
+    cs = {**CARDS, **((st.get("crown") or {}).get("cards") or {})}
+    lf = spec["leaves"]
+    sub = {**st, "crown": {**(st.get("crown") or {}), "dab": {"count": int(cs["count"]), "length": float(cs["length"]), "core": 0.0,
+                                                               "ragged": 0.0, "true": True, "width": float(cs.get("width", lf.get("width", 0.5))), "out": 0.9,
+                                                               "droop": 0.25, "verts": int(cs.get("verts", 7)), "variants": 4, "size": 256, "tone": [0.8, 1.0]}}}
+    return dab_atlas(spec, sub, season)
+
+
+def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarray, budget: int, lod: float = 1.0,
+                floor: float = 0.05, along=None) -> dict | None:
+    """A layer of real leaf cards on the OUTSIDE of a closed crown shell (sheet `crown.cards`; pixar: sculpted canopy
+    shells per branch cluster with a leafy edge, the inside solid). Picture = a few of the species' TRUE leaf outlines
+    per tile (dab_atlas with `true` outlines: `count` leaves `length` x the card's half width long), sized so a leaf is
+    `leaf` x the species' leaf length. Cards stand on the shell at points drawn by area (fewer on its underside:
+    `under`), `out` [least, most] m outside it, facing out of the shell tilted / rolled, as many as `budget` triangles
+    buy and at most `cover` x the shell's area in card area (one fixed draw: a lower LOD takes its first share).
+    `along` = a per-shell-vertex value (0 base .. 1 tip) carried to each card for its gradient. NORMAL = the shell's
+    under the card. {"V", "F", "N", "uv", "col", "gain", "grad" (gradient, thickness m), "rim", "atlas", "cards",
+    "card_m"}."""
+    cs = {**CARDS, **((st.get("crown") or {}).get("cards") or {})}
+    spec = tree["spec"]
+    lf = spec["leaves"]
+    at = shell_atlas(spec, st, spec.get("season", "summer"))
+    tri = at["triangles"]
+    leaf_m = float(cs["leaf"]) * float(lf.get("length", 0.08))
+    if cs.get("size_m"):  # (needles: a card is a spray `size_m` across, not 1.5 needles)
+        leaf_m = 0.5 * float(cs["size_m"]) * float(cs["length"])
+    half = leaf_m / max(float(cs["length"]), 1e-6) * float(np.clip(max(lod, 1e-3) ** -0.5, 1.0, float(cs.get("lod_grow", 2.0))))  # (lower LODs: fewer, larger cards)
+    e1, e2 = V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]
+    fn = np.cross(e1, e2)
+    area = 0.5 * np.linalg.norm(fn, axis=1)
+    fz = fn[:, 2] / np.maximum(2 * area, 1e-12)
+    w = area * np.where(fz < -0.3, float(cs["under"]), 1.0)
+    if cs.get("rim"):  # (conifers: the needles on the boughs' outer edges, the shell inside: by distance off the trunk)
+        fc = V[F].mean(1)
+        ra = np.linalg.norm(fc[:, :2] - np.median(V[:, :2], 0), axis=1)
+        w = w * (ra / max(float(ra.max()), 1e-6)) ** float(cs["rim"])
+    card_area = float(np.mean([c_["area"] for c_ in at["cards"]])) * half * half
+    m_all = int(float(cs["cover"]) * float(w.sum()) / max(card_area, 1e-9))
+    want = min(int(budget // max(tri, 1)), m_all)
+    if want < 4 or not len(F):
+        return None
+    seed = int(spec.get("seed", 1))
+    key = np.arange(m_all, dtype=np.uint64) + np.uint64(7919 * seed)
+    u = lambda salt: vegetation._u(key, salt)[:want]
+    cdf = np.cumsum(w) / w.sum()
+    fi = np.minimum(np.searchsorted(cdf, u(81)), len(F) - 1)
+    a_, b_ = u(82), u(83)
+    flip = a_ + b_ > 1
+    a_, b_ = np.where(flip, 1 - a_, a_), np.where(flip, 1 - b_, b_)
+    P = V[F[fi, 0]] + a_[:, None] * e1[fi] + b_[:, None] * e2[fi]
+    bc = np.c_[1 - a_ - b_, a_, b_]
+    Ns = (N[F[fi]] * bc[:, :, None]).sum(1)
+    Ns /= np.maximum(np.linalg.norm(Ns, axis=1, keepdims=True), 1e-9)
+    lo, hi = cs["out"]
+    P = P + Ns * (lo + (hi - lo) * u(84))[:, None]
+    tilt = math.radians(float(cs["tilt"]))
+    nrm = Ns + math.tan(tilt) * (np.c_[u(85), u(86), u(87)] - 0.5) * 2
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
+    B = np.array([0, 0, 1.0])[None] - nrm * nrm[:, 2:3]
+    flat = np.linalg.norm(B, axis=1) < 0.2
+    B[flat] = np.array([1.0, 0, 0])[None] - nrm[flat] * nrm[flat, 0:1]
+    B /= np.maximum(np.linalg.norm(B, axis=1, keepdims=True), 1e-9)
+    T = np.cross(B, nrm)
+    roll = math.radians(float(cs["roll"])) * (u(88) - 0.5) * 2
+    T, B = T * np.cos(roll)[:, None] + B * np.sin(roll)[:, None], B * np.cos(roll)[:, None] - T * np.sin(roll)[:, None]
+    hh = half * (0.85 + 0.3 * u(89))
+    ztop = float(tree["height"]) * 1.01
+    P[:, 2] -= np.maximum(P[:, 2] + hh * np.abs(B[:, 2]) - ztop, 0.0)
+    var = (u(90) * len(at["cards"])).astype(int) % len(at["cards"])
+    cup = float(cs["cup"])
+    Vs, Fs, UVs, own, rim, n0 = [], [], [], [], [], 0
+    for v_ in range(len(at["cards"])):
+        sel = np.flatnonzero(var == v_)
+        if not len(sel):
+            continue
+        c_ = at["cards"][v_]
+        Pc = c_["P"]
+        k = len(Pc)
+        rr = np.linalg.norm(Pc, axis=1)
+        Vc = P[sel, None, :] + hh[sel, None, None] * (Pc[None, :, 0:1] * T[sel, None, :] + Pc[None, :, 1:2] * B[sel, None, :]
+                                                    - cup * (rr ** 2)[None, :, None] * nrm[sel, None, :])
+        Vs.append(Vc.reshape(-1, 3))
+        Fs.append((c_["F"][None] + (np.arange(len(sel)) * k)[:, None, None] + n0).reshape(-1, 3))
+        UVs.append(np.tile(c_["uv"], (len(sel), 1)))
+        own.append(np.repeat(sel, k))
+        r0 = np.linalg.norm(Pc - Pc[0], axis=1)
+        rim.append(np.tile(np.clip(r0 / max(float(r0.max()), 1e-6), 0, 1), len(sel)))
+        n0 += len(sel) * k
+    Vc, Fc, UV, own, rim = np.vstack(Vs), np.vstack(Fs), np.vstack(UVs), np.concatenate(own), np.concatenate(rim)
+    Vc[:, 2] = np.maximum(Vc[:, 2], floor)
+    t_ = (along[F[fi]] * bc).sum(1) if along is not None else np.clip(P[:, 2] / max(ztop, 1e-6), 0, 1)
+    t_ = np.clip(t_ + 0.08 * (u(91) - 0.5), 0, 1)
+    t0, t1 = cs["tone"]
+    tn = t0 + (t1 - t0) * t_
+    wt = float(cs["warm_tip"])
+    ccol = np.stack([tn * (1 + wt * t_), tn, tn * (1 - wt * t_)], 1)
+    gain = float(max(t0, t1) * (1 + wt))
+    return {"V": Vc, "F": Fc, "N": Ns[own], "uv": UV, "col": (ccol / gain)[own], "gain": gain,
+            "grad": np.c_[t_[own], np.full(len(own), 0.02)], "rim": rim, "atlas": at, "cards": int(want),
+            "card_m": float(2 * half), "own": own,
+            "cover": float(want * card_area * at["fill"] / max(float(area.sum()), 1e-9))}
+
+
 def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float = 1.0, floor: float = 0.05) -> dict | None:
     """Leaf clouds: every mass dressed in `layers` shells of alpha cards. A card stands on its shell (the mass's
     ellipsoid x the layer's share), faces out of the mass tilted by up to `tilt` deg, is `card` x the mass's mean
@@ -143,8 +255,17 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
     lw = np.array(([float(x) for x in cr.get("layer_weight", [1.0])] * len(layers))[: len(layers)])
     if lod < 0.6:  # lower LODs: the outer layers carry it
         lw = lw * np.linspace(max(0.0, 2 * lod - 0.3), 1.0, len(layers))
+    # overdraw at a distance (the game, note 84): `lod_layers` = [layers kept under lod 0.6, under 0.3] (the OUTER ones:
+    # what is inside an outer shell of cards is mostly hidden but still drawn); `lod_area` = the exponent of the cards'
+    # growth (0.5: fewer, larger cards cover what all of them did, i.e. as many pixels drawn; less = fewer pixels)
+    kl = cr.get("lod_layers")
+    if kl:
+        n_keep = int(kl[0]) if lod < 0.6 else len(layers)
+        n_keep = int(kl[1]) if lod < 0.3 and len(kl) > 1 else n_keep
+        lw = lw.copy()
+        lw[: max(len(layers) - n_keep, 0)] = 0.0
     n_cards = max(int(foliage_triangles // tri), 4 * len(ells))
-    grow = float(np.clip(1.0 / math.sqrt(max(lod, 1e-3)), 1.0, float(cr.get("lod_grow", 1.9))))
+    grow = float(np.clip(max(lod, 1e-3) ** -float(cr.get("lod_area", 0.5)), 1.0, float(cr.get("lod_grow", 1.9))))
     seed = int(spec.get("seed", 1))
     size = np.array([float(e["r"].mean()) for e in ells])
     area = size ** 2

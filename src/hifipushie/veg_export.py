@@ -19,6 +19,11 @@ import numpy as np
 from . import veg_bark, veg_bough, veg_cloud, veg_ground, veg_impostor, veg_leaf, veg_mesh, veg_style, vegetation
 
 
+def veg_small_state(spec: dict, season: str):
+    from . import veg_small
+    return veg_small.season_state(spec, season)
+
+
 def _normals(V, F):
     fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
     N = np.zeros_like(V)
@@ -381,7 +386,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 6
+CONTRACT = 9
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -407,6 +412,27 @@ CONTRACT_LOG = {
        "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies). Styled small plants whose blades lie down "
        "in winter: slot foliage_winter (the foliage mesh's next primitive: the blades lying, shown only in winter and snow, "
        "when foliage is hidden)",
+    7: "a styled closed crown's (blobby / cartoon masses or tiers) season material MAY carry a baseColorTexture: a RAMP over "
+       "TEXCOORD_0.x (0 = a mass's foot / a cone tier's rim .. 1 its top; clamp sampler; v ignored), albedo = baseColorFactor x "
+       "texture x COLOR_0 (cartoon conifers' spring: lime tips on every tier's rim). The seasons json lists it under that "
+       "season's foliage slot as baseColorTexture {file}: an engine that sets season materials from the json must set the "
+       "texture too (or keep the GLB's variant material). Anime seed / flower heads (slot heads, kind dab) are clusters of "
+       "small closed blobs now, not flat discs (same slot, same channels)",
+    8: "the octahedral impostor's quad is CROPPED: extras.hifipushie_impostor.crop (and the seasons json `impostor.crop`) = "
+       "[u0, u1, v0, v1] of a frame that every frame of every season draws inside; the engine's quad is centre + (mix(u0, u1, "
+       "uv.x) - 0.5) * size * right + (0.5 - mix(v0, v1, uv.y)) * size * up (reference shader: uniform `crop`); frames, atlas "
+       "uv and size unchanged; the GLB's stored quad is that rectangle. A reader that ignores crop still draws correctly, "
+       "just with the old (bigger) square. Anime crowns' LOD1 / LOD2 carry fewer card layers (outer shells only) and smaller "
+       "cards: same slots and channels",
+    9: "style PIXAR: slot foliage = the closed canopy shell (opaque, no texture; COLOR_0 = a gradient base-to-tip, warmer at "
+       "the tips, x the material's baseColorFactor; NORMAL = the shell's, blended half way toward out of the canopy's middle) "
+       "and NEW slot foliage_cards = the foliage mesh's next primitive: real leaf cards on the shell's outside (alpha MASK, "
+       "double sided, baseColorTexture = a grey atlas of the species' own leaf outlines x baseColorFactor x COLOR_0; NORMAL = "
+       "the shell's under the card; TEXCOORD_0 = the atlas uv), its own material per season variant (hidden when the plant "
+       "is bare). On both: TEXCOORD_3 = (gradient 0 base / inside .. 1 tip, THICKNESS = metres of canopy behind the point "
+       "along -NORMAL, capped 4 m; cards 0.02) for the engine's subsurface / back light; material extras.translucency = "
+       "{color sRGB, amount}. Wood: every structural limb in one mesh (no bark_forks slot). REALISTIC small plants whose blades "
+       "lie down in winter now carry slot foliage_winter too (their cards regrown lying; the atlas the season's own)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -584,6 +610,14 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(da_["color"] / 255.0), False)}  # (uint8 x 255 wraps round: the atlas must go in as 0..1)
             m_.update(alphaMode="MASK", alphaCutoff=float(st["crown"].get("alpha_cut", 0.5)), doubleSided=True,
                       extras={"card_fill": round(dabs["fill"], 3)})
+        if st.get("translucency"):  # pixar: what light through the canopy turns (the engine's subsurface / back light)
+            m_["extras"] = {**m_.get("extras", {}), "translucency": {**st["translucency"], "thickness": "TEXCOORD_3.y = metres of canopy behind the point"}}
+        rp_ = veg_style.season_ramp(s, season, st) if (season and dabs is None and rgb is not None) else None
+        if rp_ is not None:  # (a season painting the masses' edges: a ramp over TEXCOORD_0.x, factor x texture = the colour)
+            img_, fac_ = veg_style.ramp_texture(rp_)
+            m_["pbrMetallicRoughness"]["baseColorFactor"] = [*fac_, 1.0]
+            m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(img_), False)}
+            m_["extras"] = {**m_.get("extras", {}), "ramp": "baseColorTexture is a ramp over TEXCOORD_0.x (0 = a mass's foot / a tier's rim)"}
         if rgb is None:
             m_.update(alphaMode="MASK", alphaCutoff=1.01, extras={**m_.get("extras", {}), "hidden": True})  # (bare then: the cut-off above 1 hides it in viewers that read variants)
         materials.append(m_)
@@ -617,6 +651,28 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             mw["pbrMetallicRoughness"]["roughnessFactor"] = 0.4
             materials.append(mw)
             var_fol["wet"] = len(materials) - 1
+    # pixar: a layer of real leaf cards on the closed shell = the foliage mesh's next primitive, slot `foliage_cards`
+    # (alpha MASK, double sided, a grey leaf atlas x baseColorFactor x COLOR_0), its own material per season
+    M_CARDS, var_cards = None, {}
+    if st and has_leaves and (st.get("crown") or {}).get("cards") and not trees[0].get("clump"):
+        cs_ = {**veg_cloud.CARDS, **st["crown"]["cards"]}
+        kg_ = float(max(cs_["tone"]) * (1 + float(cs_["warm_tip"])))
+
+        def cards_material(nm, rgb, season):
+            sub_ = veg_cloud.shell_atlas(s, st, season)
+            c_ = np.array(veg_style.lin(rgb or [0.5, 0.5, 0.5])) * kg_
+            m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*(c_ / max(1.0, float(c_.max()))).tolist(), 1.0], "metallicFactor": 0.0,
+                                                        "roughnessFactor": float(st["crown"].get("roughness", 0.8)),
+                                                        "baseColorTexture": {"index": tex(_png(sub_["color"] / 255.0), False)}},
+                  "alphaMode": "MASK", "alphaCutoff": float(cs_.get("alpha_cut", 0.5)), "doubleSided": True,
+                  "extras": {"card_fill": round(sub_["fill"], 3), **({"translucency": {**st["translucency"], "thickness": "TEXCOORD_3.y = metres (cards: thin)"}} if st.get("translucency") else {})}}
+            if rgb is None:
+                m_.update(alphaCutoff=1.01, extras={**m_["extras"], "hidden": True})
+            materials.append(m_)
+            return len(materials) - 1
+        M_CARDS = cards_material("foliage_cards", veg_style.season_color(s, se0, st), se0)
+        for se in seasons:
+            var_cards[se] = M_CARDS if se == se0 else cards_material(f"foliage_cards_{se}", veg_style.season_color(s, se, st), se)
     # a styled small plant whose blades lie down in winter (veg_small's winter `flatten`): the lying blades are the
     # foliage mesh's own primitive, slot `foliage_winter`, shown only in winter and snow (when `foliage` is hidden).
     # A second primitive rather than a morph target: the engine already hides slots per season from the seasons json,
@@ -683,6 +739,13 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
         return p_
 
     M_IMP = None
+    crop_ = crops_ = None
+    if impostor is not None and impostor.get("kind") == veg_impostor.KIND:
+        # the quad covers only what any frame of any season draws (the game: a square the bake sphere's size spent
+        # half its pixels on nothing)
+        ims_ = [impostor["image"]] + [(v_["image"] if isinstance(v_, dict) else v_) for v_ in (impostor.get("seasons") or {}).values()]
+        crop_ = veg_impostor.crop(ims_, int(impostor["frames"]))
+        crops_ = veg_impostor.crops(ims_, int(impostor["frames"]))
     if impostor is not None:
         def imp_material(nm, im_, nrm_):
             m_ = {"name": nm, "pbrMetallicRoughness": {
@@ -701,7 +764,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                     "centre": [round(float(c_), 4) for c_ in impostor["centre"]],
                     "normal_texture_index": tex(_png(nrm_), False) if nrm_ is not None else None,
                     "normal": "object space, glTF axes: rgb * 2 - 1; alpha = depth behind the frame's middle plane (0 front .. 1 back of "
-                              "the bake sphere, x size)", "recipe": veg_impostor.recipe(int(impostor["frames"]), float(impostor["size"]), impostor["centre"]),
+                              "the bake sphere, x size)", "recipe": veg_impostor.recipe(int(impostor["frames"]), float(impostor["size"]), impostor["centre"], crop_),
+                    "crop": crop_, "crops": crops_, "drawn_share": round(veg_impostor.drawn_share(crops_, int(impostor["frames"])), 3) if crops_ else None,
                     "shader": veg_impostor.SHADER}, "receive_shadows": False}
             elif nrm_ is not None:
                 m_["normalTexture"] = {"index": tex(_png(nrm_), False)}
@@ -745,6 +809,10 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                 if C_ is not None:
                     p_ = prim(C_["V"], C_["F"], C_["uv"], M_FOL, C_["wind"], C_["col"], C_["N"], uv3=C_.get("grad"))
                     fp = [with_variants(p_, var_fol, M_FOL)]
+                    K_ = D.get("cards")
+                    if K_ is not None and M_CARDS is not None:  # pixar: the leaf cards on the shell
+                        fp.append(with_variants(prim(K_["V"], K_["F"], K_["uv"], M_CARDS, K_["wind"], K_["col"], K_["N"], uv3=K_["grad"]), var_cards, M_CARDS))
+                        c["cards_triangles"] = int(len(K_["F"]))
                     Hd = D.get("heads")
                     if Hd is not None:  # a small plant's flower / seed heads: the foliage mesh's second primitive, slot `heads`
                         if "heads" not in head_mats:
@@ -771,7 +839,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                     meshes.append({"name": pre + "foliage", "primitives": fp})
                     nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                     kids.append(len(nodes) - 1)
-                    c["foliage_triangles"] = int(len(C_["F"])) + c.get("heads_triangles", 0)
+                    c["foliage_triangles"] = int(len(C_["F"])) + c.get("heads_triangles", 0) + c.get("cards_triangles", 0)
                 c["triangles"] = c["wood_triangles"] + c["foliage_triangles"]
                 lod_info.append(c)
                 if n_lod == 1 and impostor is None and len(trees) == 1:
@@ -829,16 +897,47 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                  "twigs_kept": round(bud["keep"], 3), "wood_min_radius_m": round(bud["min_radius"], 4),
                  "floating": round(bud["floating"], 3)}
             if L is not None and len(L["F"]):
-                fn = L["node"]
-                wch = (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"])
-                if t.get("clump"):  # a small plant's card bends as a whole from its foot, each in its own phase; long
-                    # cards swing further (the recipe's limb amplitude is 0.25 m: a 30 cm tuft's tip moves ~5 cm)
-                    own = L["flutter"] ** 1.5 * np.clip(L["reach"] / 1.2, 0.08, 1.0)
-                    wch = (wn["trunk"][fn], np.maximum(wn["branch"][fn], own), np.where(wn["branch"][fn] > own, wn["phase"][fn], L["phase"]),
-                           0.5 * L["flutter"])
-                p_ = prim(L["V"], L["F"], L["uv"], m_c, wch,
+                def card_wind(L, wn):
+                    fn = L["node"]
+                    wch = (wn["trunk"][fn], wn["branch"][fn], wn["phase"][fn], L["flutter"])
+                    if t.get("clump"):  # a small plant's card bends as a whole from its foot, each in its own phase; long
+                        # cards swing further (the recipe's limb amplitude is 0.25 m: a 30 cm tuft's tip moves ~5 cm)
+                        own = L["flutter"] ** 1.5 * np.clip(L["reach"] / 1.2, 0.08, 1.0)
+                        wch = (wn["trunk"][fn], np.maximum(wn["branch"][fn], own), np.where(wn["branch"][fn] > own, wn["phase"][fn], L["phase"]),
+                               0.5 * L["flutter"])
+                    return wch
+                p_ = prim(L["V"], L["F"], L["uv"], m_c, card_wind(L, wn),
                           L["tint"], L["N"])
-                meshes.append({"name": pre + "foliage", "primitives": [with_variants(p_, vf_c, m_c)]})
+                fprims = [p_]
+                lie_r = [se for se in seasons if se in ("winter", "snow")]
+                if (t.get("clump") and len(trees) == 1 and lie_r and seasons[0] not in lie_r
+                        and float((veg_small_state(s, "winter") or {}).get("flatten", 0.0)) > 0):
+                    # a realistic small plant whose blades lie down in winter: as the styled ones, slot foliage_winter =
+                    # the cards of the plant regrown at season winter, shown in winter / snow while foliage is hidden
+                    if "_winter_tree" not in t:
+                        t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
+                    tw_ = t["_winter_tree"]
+                    Lw = foliage_mesh(tw_, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c)
+                    if not len(Lw["F"]):  # (a low LOD's keep share can leave the lying plant no cards: keep them all, it is small)
+                        Lw = foliage_mesh(tw_, at_c, 1.0, 0.0, None, cap_c if at_c is not at else cap_i, back_c)
+                    if len(Lw["F"]):
+                        hk = ("lie", m_c)
+                        if hk not in cluster_mats:
+                            hid = [{**json.loads(json.dumps(materials[m_c])), "name": f"{materials[m_c]['name']}_{sfx}", "alphaCutoff": 1.01}
+                                   for sfx in ("winter", "lying")]
+                            for h_ in hid:
+                                h_["extras"] = {**h_.get("extras", {}), "hidden": True}
+                            materials.extend(hid)
+                            cluster_mats[hk] = (len(materials) - 2, len(materials) - 1)
+                        m_w, m_l = cluster_mats[hk]
+                        tab_main = {se: (m_l if se in lie_r else vf_c.get(se, m_c)) for se in seasons}
+                        tab_w = {se: (vf_c.get(se, m_c) if se in lie_r else m_w) for se in seasons}
+                        fprims = [with_variants(p_, tab_main, m_c),
+                                  with_variants(prim(Lw["V"], Lw["F"], Lw["uv"], m_w, card_wind(Lw, wind_nodes(tw_)), Lw["tint"], Lw["N"]), tab_w, m_w)]
+                        c["winter_triangles"] = int(len(Lw["F"]))
+                if len(fprims) == 1:
+                    fprims = [with_variants(p_, vf_c, m_c)]
+                meshes.append({"name": pre + "foliage", "primitives": fprims})
                 c["boughs"] = at_c is not at
                 nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                 kids.append(len(nodes) - 1)
@@ -855,7 +954,10 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             # a vertical square through the bake centre facing +y (glTF +z), uv 0..1 = its corners
             S_, Cg = float(impostor["size"]), np.asarray(impostor["centre"], float)
             Cb = np.array([Cg[0], -Cg[2], Cg[1]])
-            Vq = np.array([Cb + [-0.5 * S_, 0, -0.5 * S_], Cb + [0.5 * S_, 0, -0.5 * S_], Cb + [0.5 * S_, 0, 0.5 * S_], Cb + [-0.5 * S_, 0, 0.5 * S_]])
+            u0_, u1_, v0_, v1_ = crop_ or [0.0, 1.0, 0.0, 1.0]
+            xa_, xb_ = (u0_ - 0.5) * S_, (u1_ - 0.5) * S_
+            za_, zb_ = (0.5 - v1_) * S_, (0.5 - v0_) * S_
+            Vq = np.array([Cb + [xa_, 0, za_], Cb + [xb_, 0, za_], Cb + [xb_, 0, zb_], Cb + [xa_, 0, zb_]])
             Uq = np.array([[0, 1.0], [1, 1], [1, 0], [0, 0]])
             Fq = np.array([[0, 1, 2], [0, 2, 3]])
             Nq = np.tile([0, -1.0, 0], (4, 1))

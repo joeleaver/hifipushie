@@ -446,6 +446,17 @@ def test_winter_blades_lie_in_the_export():
         assert tops["foliage_winter"] < 0.8 * tops["foliage"], tops
         hp = next(p_ for p_ in prims if G["materials"][p_["material"]]["name"] == "heads")
         assert "COLOR_0" in hp["attributes"] and G["materials"][hp["material"]]["pbrMetallicRoughness"]["baseColorFactor"][:3] == [1.0, 1.0, 1.0]
+    # the realistic small plant the same way (its cards lying in slot foliage_winter)
+    R = v.grow({"species": "meadow_grass"})
+    with tempfile.TemporaryDirectory() as tmp:
+        c = veg_export.write_glb(R, str(Path(tmp) / "r.glb"), "r", lods=1, seasons=["summer", "winter", "snow"])
+        sj = veg_export.seasons_json(c["path"])
+        sl = {e["slot"]: e for e in sj["slot_list"]}
+        assert sl["foliage_winter"]["hidden_in"] == ["summer"] and sl["foliage"]["hidden_in"] == ["winter", "snow"], sl
+        G, arr = _glb(c["path"])
+        prims = G["meshes"][[m["name"] for m in G["meshes"]].index("foliage")]["primitives"]
+        tops = {G["materials"][p_["material"]]["name"]: float(arr(p_["attributes"]["POSITION"])[:, 1].max()) for p_ in prims}
+        assert tops["foliage_winter"] < 0.8 * tops["foliage"], tops
 
 
 def test_cartoon():
@@ -487,6 +498,67 @@ def test_head_kinds():
         assert H is not None and H["kind"] == kind and len(H["part_colors"]) == 3 and H["part"].max() <= 2, (sp, style, H and H["kind"])
         if kind == "petals":
             assert (H["part"] == 1).any()  # (a centre)
+
+
+def test_pixar():
+    """Pixar: a closed canopy shell + a layer of real leaf cards on its outside (slot foliage_cards), within the budget,
+    the same individual; TEXCOORD_3 = (gradient, thickness m); lower LODs fewer, larger cards."""
+    T = v.grow({**BASE, "style": "pixar"})
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    i, C, K = D["info"], D["crown"], D["cards"]
+    assert K is not None and i["cards"] > 50 and i["triangles"] <= st["budget"] * 1.05 and i["match"]["iou"] > 0.75, i
+    assert C["grad"].shape[1] == 2 and (C["grad"][:, 1] > 0).all() and 0 <= C["grad"][:, 0].min() and C["grad"][:, 0].max() <= 1
+    d_out = np.einsum("ij,ij->i", K["V"] - C["V"].mean(0), K["N"])  # (cards stand outside, facing out)
+    assert np.median(d_out) > 0
+    D2 = vs.dress(T, st, int(0.18 * st["budget"]))
+    assert D2["cards"]["cards"] < K["cards"] and D2["cards"]["card_m"] > K["card_m"]
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "p.glb"
+        veg_export.write_glb(T, str(p), "p", seasons=["summer", "winter"])
+        sj = veg_export.seasons_json(str(p))
+        slots = {s_["slot"]: s_ for s_ in sj["slot_list"]}
+        assert "foliage_cards" in slots and "TEXCOORD_3" in slots["foliage_cards"]["channels"] and "winter" in slots["foliage_cards"]["hidden_in"]
+        assert sj["seasons"]["summer"]["foliage_cards"]["alphaMode"] == "MASK"
+
+
+def test_cartoon_fixes():
+    """Cartoon round 2: big leaves stand on the outline with their FACE turned sideways (lying flat they were edge-on
+    green shards from eye level); the flared foot is concave and only ~1-1.5 trunk diameters tall (it was a mound);
+    petals shade toward the sky on both faces; anime seed heads are clusters with depth, not flat coins; a conifer's
+    spring paints its tier rims (a ramp texture over TEXCOORD_0.x in that season's material)."""
+    T = v.grow({"species": "oak", "style": "cartoon"})
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    C = D["crown"]
+    n_big = D["info"]["big_leaves"]
+    assert n_big >= 3
+    # the leaves are the crown's last vertices: their face normals (from the triangles) mostly off vertical
+    Vb, Fb = C["V"], C["F"][-n_big * 2 * 28:]
+    fn = np.cross(Vb[Fb[:, 1]] - Vb[Fb[:, 0]], Vb[Fb[:, 2]] - Vb[Fb[:, 0]])
+    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+    assert np.median(np.abs(fn[:, 2])) < 0.7, np.median(np.abs(fn[:, 2]))
+    m = D["mini"]
+    tr = np.flatnonzero(m["axis"] == 0)
+    z, r = m["pos"][tr, 2], m["radius"][tr]
+    r_bole = float(np.interp(4.0, z, r))
+    assert z[0] < 0 and float(np.interp(0.0, z, r)) < 1.8 * r_bole  # (the foot node under the ground; not a bulb twice the bole)
+    assert float(np.interp(3.0 * r_bole, z, r)) < 1.25 * r_bole  # (the flare is over within ~1.5 diameters)
+    S = v.grow({"species": "daisy", "style": "cartoon", "season": "summer"})
+    H = vs.dress(S, vs.sheet(S["spec"]))["heads"]
+    assert (H["N"][H["part"] == 0][:, 2] > 0.3).all()
+    G = v.grow({"species": "meadow_grass", "style": "anime", "season": "summer"})
+    H = vs.dress(G, vs.sheet(G["spec"]))["heads"]
+    P = H["V"][H["part"] == 0]
+    assert np.ptp(P[:, 2]) > 0.03 and np.ptp(P[:, 0]) > 0.01
+    P = v.grow({"species": "norway_spruce", "age": 30, "style": "cartoon"})
+    sp = vs.sheet(P["spec"])
+    rp = vs.season_ramp(P["spec"], "spring", sp)
+    assert rp is not None and vs.season_ramp(P["spec"], "summer", sp) is None
+    c = rp(np.array([0.0, 1.0]))
+    assert c[0, 1] > c[1, 1] and (c <= 1).all()
+    img, fac = vs.ramp_texture(rp)
+    assert img.max() <= 1 and abs(max(fac) - c.max()) < 1e-6
 
 
 if __name__ == "__main__":

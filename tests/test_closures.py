@@ -45,6 +45,12 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     fl = garment_design.wear(g, "folds")
     assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(90 < f["angle"] < 180 for f in fl)
     assert garment_design.wear(dict(g, tie=True), "folds") == []
+    # the UNDER front's roll ends above the first closed fastening (under the over front there): rolled out to the
+    # button both flaps met there and the under one turned out through the over one (29 crossings at su_garrett's start)
+    from hifipushie import pattern
+    under = next(f for f in fl if f["piece"] == "front.R")
+    end = under["line"][-1]
+    assert "+" in end and pattern.eval_vec(end.partition("+")[2])[1] >= 0.03, end
     assert "tie" in garment_design.SHEET_KEYS
     # an unbuttoned stand is laid by the girth it would close at (its fastening's points), not by its length
     M = {"names": ["stand"], "piece": np.zeros(3, int), "uv": np.array([[0.02, 0.0], [0.40, 0.0], [0.2, 0.01]]),
