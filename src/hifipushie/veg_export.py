@@ -386,7 +386,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 10
+CONTRACT = 11
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -443,6 +443,15 @@ CONTRACT_LOG = {
         "the size that tier is seen at. Engine: import the textures WITHOUT mipmaps, or WITH them and alpha scaled by the mip "
         "level in the shader (material extras.alpha_mips: three lines; with mips and without it thin blades vanish past "
         "~4 m), and turn the importer's own mesh LOD generation off for these meshes. Full-grade files are unchanged except this version number",
+    11: "NEW PLANT KIND `sward` (species sward / sward_mown / sward_rough, any style): plain grass as a 2 m TILE of blade "
+        "ribbons, not a clump. Lay tiles edge to edge on a tile_m grid, each turned a random multiple of 90 deg, NO random "
+        "scale and no thinning; LOD by the tile's distance (seasons json `sward.lod_rings_m`, 4 LODs = fewer, wider "
+        "blades). One slot, `foliage`: OPAQUE, no texture, single sided (undersides are triangles of their own), albedo "
+        "= baseColorFactor x COLOR_0 x sward.color_gain (COLOR_0 = root-to-tip gradient x a tone per blade); "
+        "TEXCOORD_3 = (0 root .. 1 tip, blade id); wind channels as every plant. The seasons json has a `sward` block: "
+        "tile_m, fade {start, end} + fade_recipe (past start the engine shrinks the blades into the ground and mixes "
+        "their colour to the terrain's grass colour; nothing is drawn past end), ground_linear / root_linear / "
+        "tip_linear (made for the terrain style's grass colour of that cover kind), blades_per_m2. Other files unchanged",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)

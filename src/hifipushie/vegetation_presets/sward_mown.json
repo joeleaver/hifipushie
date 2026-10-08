@@ -1,0 +1,7 @@
+{
+ "about": "Mown grass (lawn, fairway) as ground cover: a 1 m tile of short dense upright blades. Lay tiles edge to edge",
+ "plant": "sward",
+ "sward": {
+  "variant": "mown"
+ }
+}

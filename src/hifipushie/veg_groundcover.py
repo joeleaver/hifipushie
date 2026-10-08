@@ -154,8 +154,13 @@ def clusters(C: np.ndarray, r: np.ndarray) -> list:
     from scipy.sparse.csgraph import connected_components
     if not len(C):
         return []
-    D = np.linalg.norm(C[:, None] - C[None], axis=2)
-    _, lab = connected_components(D < 1.5 * (r[:, None] + r[None]), directed=False)
+    from scipy.sparse import coo_matrix
+    from scipy.spatial import cKDTree
+    C, r = np.asarray(C, float), np.asarray(r, float)
+    pr = cKDTree(C).query_pairs(3.0 * float(r.max()), output_type="ndarray")  # (no n x n table: a plant may have thousands of parts)
+    if len(pr):
+        pr = pr[np.linalg.norm(C[pr[:, 0]] - C[pr[:, 1]], axis=1) < 1.5 * (r[pr[:, 0]] + r[pr[:, 1]])]
+    _, lab = connected_components(coo_matrix((np.ones(len(pr)), (pr[:, 0], pr[:, 1])), shape=(len(C), len(C))), directed=False)
     out = []
     for k in range(lab.max() + 1):
         m = lab == k

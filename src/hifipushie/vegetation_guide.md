@@ -584,6 +584,39 @@ the geometry is the summer plant's and a season is a material variant: its colou
 of season blanked in that season's atlas (styled: the `heads` slot hidden); flatten and scale are not in the file
 (an engine can lean the cards by the wind channels; said in the reply).
 
+### A field of grass: the sward (`"species": "sward" | "sward_mown" | "sward_rough"`)
+Tufts scattered on a grid read as tufts on bare ground, not as a field. Plain grass is a SWARD: a 2 m TILE of blades
+(no seed heads, no stalks), tiles laid edge to edge. What engines do: blades, not clumps: Ghost of Tsushima draws
+~100k instanced blade ribbons in tiles round the camera, thinned and widened with distance, and past the grass
+distance the terrain's own grass texture takes over in the same colour (Wohllaib, GDC 2021); card patches (alpha
+quads with blades painted on) are the older way. Measured here in Godot with the game's shader (meadow, realistic,
+standing at 1.7 m): card patches at 7 cards / m2 hide the ground as well for a third of the GPU time, but from 2-8 m
+they read as a maze of little hedges (you see every card's line); tufts on the game's 0.9 m grid hide 10-40% of the
+ground; blades hide 38 / 78 / 94 / 100% at 2 / 6 / 12 / 30 m. So: blades.
+- `sward` keys: `variant` mown (4-6 cm, 1100 blades / m2) | meadow (14-30 cm, 520) | rough (22-55 cm, 380, straw
+  mixed in), or the numbers themselves: height [lo, hi], density, width, lean [lo, hi] deg, bend deg, drift (share of
+  blades leaning with the tile's combed direction), clump (patchiness), dry (share of straw blades), tone [lo, hi],
+  ground / tip / straw colours, size (the tile, 2 m), lods [[share of blades, width x, segments], ...], rings (m: LOD k
+  inside rings[k]), fade [start, end] m. Unknown keys are refused.
+- Tileable by construction: roots jittered on a torus, every variation periodic noise over the tile; blades lean out
+  over the edge into the neighbour. Place with random quarter turns, no random scale, no thinning.
+- LODs are subsets of the same blades, wider so the ground covered stays about the same (share x width ~ 1): near 3
+  segments a blade, far one triangle. Undersides are triangles of their own (normals never point down: an engine's
+  back-face flip made black blades). 5,000 / 1,200 / 200 / 80 triangles per m2 for a realistic meadow; with the default
+  rings (8 / 20 / 35 m, fade to 60) about 3.4 M triangles round the player; mown 1.35 M (rings 5 / 10 / 18, fade 30).
+  The rings are the lever: halve them on a weak GPU.
+- The far end: past `fade.start` the engine shrinks the blades into the ground and mixes their colour to the terrain's
+  grass colour (recipe in the seasons json `sward`); root colour = the terrain style's grass colour of that cover kind
+  (mown / rough), through the plant style's `colour`, so nothing steps where the grass ends.
+- Styles (sheet block `sward`: width, density, height, bend, tones, tip point | round, tuft + tuft_fan, round, dry,
+  tip_light, taper, drift): blobby = few fat round-tipped blades in two tones; cartoon = broad pointed blades in fans
+  of three; anime = long sweeping blades in three painted steps, light tips; pixar = half again as many thin blades.
+- Judge it as a FIELD in an engine, never as one tile: spikes/godot_veg/field.gd (tiles over 60 m with their rings and
+  fade, eye level and 25 m up, the ground in the terrain's grass colour) + field_measure.py (ground hidden by
+  distance, triangles, GPU ms). `look_plant` refuses a sward for that reason.
+- Not built: flowers / seed heads mixed into the tile (scatter the groundcover-grade tufts over it), trampling,
+  blades following a slope's normal (tiles are flat: fine to ~20 deg), seasons beyond a colour per season.
+
 ### Groundcover grade: the same clump for scatter (`export_plant(name, grade="groundcover")`)
 A meadow scatters thousands of clumps round the player; the full small plant (270-4,750 triangles at LOD 0, pixar
 grass's lush thin blades the most) is a hero asset. What game artists do for scatter: build the clump once at full

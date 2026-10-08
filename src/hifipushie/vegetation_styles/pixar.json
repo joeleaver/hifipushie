@@ -285,5 +285,6 @@
    0.35
   ],
   "amount": 0.6
- }
+ },
+ "sward": {"width": 0.8, "density": 1.5, "height": 1.05, "bend": 1.1, "tip_light": 1.15, "dry": 0.5}
 }

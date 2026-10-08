@@ -2701,6 +2701,9 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     of season hidden); their lying down in winter is in the looks only.
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
     materials and textures shared (a forest kit); `triangles` is then each plant's own budget.
+    A SWARD (species sward / sward_mown / sward_rough: plain grass as a 2 m tile of blades, see the guide) exports as its
+    own files: <name>_LOD0..3.glb (fewer, wider blades), <name>.glb, <name>_seasons.json with a `sward` block (tile size,
+    LOD rings, the fade into the terrain's grass texture and its colours); triangles / lods / impostor don't apply.
     grade="groundcover" (small plants: grass, daisy, clover, fern... in any style) = the SCATTER grade: the clump as it
     is drawn in full, baked per season onto a few alpha cards: LOD 0 6 cards (288 triangles), LOD 1 4 (96), LOD 2 3 (36).
     Each card shows the slice of the clump in its own wedge round the foot, so every blade is drawn once. Same slots
@@ -2721,6 +2724,13 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                     f"  {q['name']}: {q['height_m']} m, " + "; ".join(f"LOD{l_['lod']} {l_['triangles']}" for l_ in q["lods"]) + " triangles"
                     + (f", {q['floating']:.0%} of the cards floating" if q.get("floating", 0) > 0.2 else "")
                     for q in c["plants"]))
+    if vt.grown(name).get("sward"):
+        c = vt.export(name, out_dir, seasons=tuple(seasons or ()))
+        return (f"exported the sward {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
+                + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['triangles_per_m2']:.0f} per m2, {l_['blades']} blades)" for l_ in c["lods"])
+                + f"\na {c['sward']['tile_m']:g} m TILE: lay tiles edge to edge, quarter turns; fade into the terrain's grass texture "
+                  f"{c['sward']['fade']['start']}-{c['sward']['fade']['end']} m (recipe + root / tip colours in the seasons json `sward`)\n"
+                + "files: " + ", ".join(Path(f).name for f in c["files"]))
     if grade == "groundcover":
         c = vt.export(name, out_dir, seasons=tuple(seasons or ()), grade="groundcover")
         return (f"exported the groundcover grade of {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
