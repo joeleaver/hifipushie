@@ -8,7 +8,7 @@ walls are near-vertical planes, and the outline changes where BLOCKS fell out al
 steps back above a bed over part of its width (a ledge ending in a re-entrant corner), an open joint is a vertical slot,
 a corner is missing over a few beds. Beds show as fine lines and small ledges (the field's rock relief and the
 textures), the top is the bed it broke at (flat, tilted by the dip) or, on a slender stack, two joint faces leaning
-together (a spire), the waterline is undercut by a notch and the foot has fallen blocks round it.
+together (a tapering spire), the waterline is undercut by a notch and the foot has fallen blocks round it.
 
 Every face's offset is the column's polygon offset minus its `cuts` (each a box window in (height, position along the
 face) with soft edges `ramp` m wide, never a jump: a jump meshes as shards), leaning in `batter` deg and wandering
@@ -22,31 +22,35 @@ import math
 import numpy as np
 
 FORM = {
-    "size": [0.95, 1.15],       # the first family's half width x r
+    "size": [1.05, 1.3],        # the first family's half width x r
     "cross": [75.0, 105.0],     # deg between the two joint families
     "aspect": [0.7, 1.0],       # the second family's half width x the first's (oblong plans)
     "chamfer": 0.55,            # probability a corner is cut by the minor (diagonal) family
     "chamfer_cut": [0.72, 0.92],  # where it cuts: x the corner's distance along the diagonal
     "bevel": 0.35,              # m: edges and arrises rounded (smooth max)
-    "levels": 1.1,              # beds a face steps back at, per height-in-widths
+    "levels": 2.0,              # beds a face steps back at, per height-in-widths
     "p_step": 0.5,              # per face per level: a block fell (the face steps back above it)
-    "step": [0.06, 0.22],       # x r: how far
-    "p_partial": 0.6,           # a step only over part of the face (a ledge ending in a re-entrant corner)
-    "slots": 0.5,               # open joints per face (vertical slots over part of the height)
+    "step": [0.05, 0.2],        # x r: how far
+    "p_partial": 0.75,          # a step only over part of the face (a ledge ending in a re-entrant corner)
+    "slots": 0.8,               # open joints per face (vertical slots over part of the height)
     "slot": [0.15, 0.4],        # x r: their depth (width 1.2-3 m)
-    "corners": 0.35,            # per corner: a block missing over a few beds
+    "corners": 0.6,             # per corner: a block missing over a few beds
     "ramp": 1.0,                # m: every cut's soft edge (>= 2 voxels: a sharper one meshes as shards)
     "batter": 2.5,              # deg: each face leans in
     "batter_spread": 2.0,       # deg: +- per face
     "wander": 0.03,             # x r: each face's slow wander over the height
+    "rough": 0.02,              # x r: each face warped a little (waves ~0.3-0.8 x the width up it, slanting across):
+                                # at 0.08 the waves read as draped cloth: the breakup is the cuts and the field's facets
     "dip": [1.0, 6.0],          # deg: the top bed's tilt
     "p_spire": 0.35,            # probability of a spire top for a slender stack (height / width over `slender`)
     "slender": 2.4,
-    "spire": [24.0, 36.0],      # deg from vertical of the spire's faces
     "notch": 0.7,               # x min(0.3 r, 1.6 m): the waterline notch's depth
     "boulders": [2, 5],         # fallen blocks round the foot (count range)
     "boulder": [0.1, 0.22],     # x r, their half size (at least 0.7 m)
 }
+
+
+SPIRE_CREST = 2.0  # m: a spire's crest is never narrower (0.5 m voxels: thinner meshed as loose slivers)
 
 
 def form(over=None):
@@ -118,6 +122,7 @@ class Column:
                 P.append([math.atan2(n[1], n[0]), float(c @ n) * _u(rng, F["chamfer_cut"])])
         self.n = np.array([[math.cos(p[0]), math.sin(p[0])] for p in P])
         self.tg = np.c_[-self.n[:, 1], self.n[:, 0]]  # along each face
+        self.fam = [0, 1, 0, 1] + [2] * (len(P) - 4)
         self.d0 = np.array([p[1] for p in P])
         m = len(P)
         width = da + db
@@ -169,18 +174,29 @@ class Column:
             cuts.append((j, z0, z1, *((tj - 2.5 * s, np.inf) if tj > 0 else (-np.inf, tj + 2.5 * s)), s))
         self.cuts = cuts
         self.batter = np.tan(np.radians(F["batter"] + rng.uniform(-1, 1, m) * F["batter_spread"]))
+        # (a face leans in no more than 35% of its offset over the height: a tall stack with a strong batter came to
+        # a knife edge at the top, which meshed as a comb of slivers)
+        self.batter = np.minimum(self.batter, 0.35 * self.d0 / max(H, 1.0))
+        self.floor = np.maximum(0.5 * SPIRE_CREST, 0.18 * self.d0)  # (no section narrower, whatever cuts it)
         self.wph = rng.uniform(0, 2 * math.pi, (m, 2))
         self.wl = H * rng.uniform(0.35, 0.7, (m, 2))
+        self.rl = width * rng.uniform(0.3, 0.8, (m, 3))  # (the warps' wavelengths up the face)
+        self.rk = rng.uniform(-1.2, 1.2, (m, 3)) / max(width, 1e-6)  # (how they slant across it)
+        self.rph = rng.uniform(0, 2 * math.pi, (m, 3))
         dip = math.radians(_u(rng, F["dip"]))
         dd = rng.uniform(0, 2 * math.pi)
         self.tilt = np.array([math.cos(dd), math.sin(dd)]) * math.tan(dip)
         self.spire = None
         if stage == "spire":
-            # faces of the first family leaning together, each at its own angle, the ridge off-centre; the second
-            # family's faces lean in more gently (a pointed ridge, not a cone)
-            self.spire = (math.radians(_u(rng, F["spire"])), math.radians(_u(rng, F["spire"])),
-                          math.radians(_u(rng, [F["spire"][0] * 0.6, F["spire"][1] * 0.8])),
-                          rng.uniform(-0.25, 0.25) * da, rng.uniform(-0.3, 0.3) * db)
+            # above `z_t` every face leans in, the first family's at `spire` deg, the second's at about half that
+            # (a ridge, not a cone), down to a crest SPIRE_CREST m wide or 18% of the plan; two planes meeting in a
+            # knife edge (the first try) meshed as a comb of slivers along it
+            # (each face is drawn toward the crest by the share of the way from z_t to the top, so it meets the crest
+            # AT the top; a lean of its own reached the crest early and stood a chimney on the spire)
+            zt = self.base + rng.uniform(0.4, 0.6) * H
+            crest = np.maximum(0.5 * SPIRE_CREST, 0.18 * self.d0)
+            share = np.array([1.0 if self.fam_of(i) != 1 else rng.uniform(0.35, 0.6) for i in range(m)])
+            self.spire = (zt, share, crest)
         self.notch = F["notch"] * min(0.3 * r, 1.6) * rng.uniform(0.3, 1.2, m)  # (deeper where the swell hits)
         # boulders: chipped blocks round the foot, tumbled, on the sea floor and awash
         self.boulders = []
@@ -215,6 +231,9 @@ class Column:
         bmax = max([np.linalg.norm(bb[0][:2]) + bb[1].max() * 1.8 for bb in self.boulders], default=0.0)
         self.reach = max(float(self.d0.max()) + F["wander"] * r + 1.0, bmax + 0.5)
 
+    def fam_of(self, i):
+        return self.fam[i]
+
     def offsets(self, q, z):
         """Each face's offset at points (q: plan offsets from the centre, z): (n, m)."""
         F = self.f
@@ -229,6 +248,19 @@ class Column:
         w = F["wander"] * self.r
         d = d + w * (0.6 * np.sin(2 * math.pi * dz / self.wl[None, :, 0] + self.wph[None, :, 0])
                      + 0.4 * np.sin(2 * math.pi * dz / self.wl[None, :, 1] + self.wph[None, :, 1]))
+        if F["rough"] > 0:
+            for i in range(len(self.n)):
+                t = q @ self.tg[i]
+                wv = sum(np.sin(2 * math.pi * (z / self.rl[i, j] + t * self.rk[i, j]) + self.rph[i, j]) * (0.6 ** j)
+                         for j in range(3))
+                d[:, i] += F["rough"] * self.r * wv / 1.96
+        if self.spire is not None:
+            zt, share, crest = self.spire
+            u = np.clip((z - zt) / max(self.top - zt, 1.0), 0, 1)
+            u = u * u * (1.6 - 0.6 * u)  # (eased in: no crease where the taper starts; 1 at the top)
+            w = u[:, None] * share[None, :]
+            d = np.where(d > crest[None, :], crest[None, :] + (d - crest[None, :]) * (1 - w), d)
+        d = np.maximum(d, self.floor[None, :])
         if self.sea is not None:
             d = d - np.exp(-((z - self.sea - 0.9) / 1.2) ** 2)[:, None] * self.notch[None, :]
         return d
@@ -241,11 +273,6 @@ class Column:
         k = self.f["bevel"]
         f = smax_many([q @ self.n[i] - d[:, i] for i in range(len(self.n))], k)
         top = [z - (self.top - q @ self.tilt)]
-        if self.spire is not None:
-            a1, a2, a3, oa, ob = self.spire
-            for nn, ang, off in ((self.n[0], a1, oa), (self.n[2], a2, -oa), (self.n[1], a3, ob), (self.n[3], a3, -ob)):
-                # a face through the ridge line (at `off` across, the top's height) leaning `ang` from vertical
-                top.append((q @ nn - off) * math.cos(ang) + (z - self.top) * math.sin(ang))
         f = smax_many([f] + top, k)
         f = smax_many([f, (self.base - 1.0) - z], 0.3)
         for c, hs, R, chip, cf in self.boulders:
