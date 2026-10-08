@@ -4883,7 +4883,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -4903,7 +4903,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
     blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
     "exposure"}; default the hazy sky every earlier round was judged under. grass=False leaves the turf's tiling
-    detail out (to tell what it adds)."""
+    detail out (to tell what it adds). buried_color: [r, g, b] draws the cliff shells' buried backs flat in that
+    colour (an engine shows any of it that stands in the open: a fault)."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -4942,7 +4943,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                      "fill_at": v.get("fill_at", 8.0),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
-           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
+           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color, "buried_color": buried_color,
            "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
            "haze": (float(haze) * float(_light(light).get("haze_scale", 1.0))) if haze else None, "notes": notes,
            "props": _site_props(T, box) if props else [], "grade": grade,

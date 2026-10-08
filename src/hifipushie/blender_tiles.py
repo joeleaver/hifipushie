@@ -878,7 +878,10 @@ def run(job):
                 # baked tiles keep the importer's material (base colour, ORM, normal map from the GLB); the rest
                 # (untextured tiles, skirts, buried backs) take the vertex-colour one
                 for s, m in enumerate(ob.data.materials):
-                    if not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
+                    if job.get("buried_color") and m and m.name.startswith("terrain_buried"):
+                        # (the cliff shell's buried back in a flat colour: where an engine shows it, it is a fault)
+                        ob.data.materials[s] = _flat("buried", job["buried_color"])
+                    elif not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
                         ob.data.materials[s] = mat
                     elif ch and m.name not in done:  # (first: under the detail recipe a channel view drew everything)
                         _channel(m, ch)
