@@ -61,6 +61,8 @@ def checklist() -> list:
         c = it["control"]
         if it.get("solve"):
             it["control"] = f"solve {it['solve']}"
+        elif it["id"] in LEVERS:
+            it["control"] = f"lever {LEVERS[it['id']][0]}"
         elif not any(w in c for w in ("fit_outline", "fit_hood")) and it["measure"]["kind"] != "judge":
             it["control"] = "GAP: " + c.replace("fit_views", "points by hand (fit_views / nudge)")
     return out
@@ -79,13 +81,22 @@ import mediapipe as mp
 from mediapipe.tasks import python as mpt
 from mediapipe.tasks.python import vision
 from PIL import Image
-opts = vision.FaceLandmarkerOptions(base_options=mpt.BaseOptions(model_asset_path=sys.argv[2]), num_faces=1)
+opts = vision.FaceLandmarkerOptions(base_options=mpt.BaseOptions(model_asset_path=sys.argv[2]), num_faces=1,
+                                    output_face_blendshapes=True, output_facial_transformation_matrixes=True)
 det = vision.FaceLandmarker.create_from_options(opts)
 out = []
 for p in sys.argv[3:]:
     im = Image.open(p).convert("RGB")
     res = det.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(im)))
-    out.append(None if not res.face_landmarks else [[q.x * im.size[0], q.y * im.size[1]] for q in res.face_landmarks[0]])
+    if not res.face_landmarks:
+        out.append(None)
+        continue
+    d = {"P": [[q.x * im.size[0], q.y * im.size[1]] for q in res.face_landmarks[0]]}
+    if res.face_blendshapes:
+        d["bs"] = {b.category_name: round(float(b.score), 4) for b in res.face_blendshapes[0]}
+    if res.facial_transformation_matrixes:
+        d["M"] = np.asarray(res.facial_transformation_matrixes[0], float).tolist()
+    out.append(d)
 json.dump(out, open(sys.argv[1], "w"))
 '''
 
@@ -101,19 +112,18 @@ def _cache_dir() -> Path:
     return d
 
 
-def detect(images: list) -> list:
-    """PIL images -> [(478, 2) pixel array | None] (MediaPipe Face Landmarker), cached by the image's bytes."""
+def detect_info(images: list) -> list:
+    """PIL images -> [{"P": (478, 2) pixels, "bs": blendshape scores, "M": head pose 4x4} | None] (MediaPipe Face
+    Landmarker), cached by the image's bytes."""
     if not detector_available():
         return [None] * len(images)
-    out, todo = [None] * len(images), []
-    keys = []
+    out, todo, keys = [None] * len(images), [], []
     for i, im in enumerate(images):
         k = hashlib.sha1(np.asarray(im.convert("RGB")).tobytes() + str(im.size).encode()).hexdigest()[:20]
         keys.append(k)
-        f = _cache_dir() / f"mp_{k}.json"
+        f = _cache_dir() / f"mp2_{k}.json"
         if f.exists():
-            v = json.loads(f.read_text())
-            out[i] = None if v is None else np.asarray(v, float)
+            out[i] = json.loads(f.read_text())
         else:
             todo.append(i)
     if todo:
@@ -130,23 +140,41 @@ def detect(images: list) -> list:
                            check=True, capture_output=True, timeout=300)
             got = json.loads(Path(res).read_text())
         for i, v in zip(todo, got):
-            (_cache_dir() / f"mp_{keys[i]}.json").write_text(json.dumps(v))
-            out[i] = None if v is None else np.asarray(v, float)
+            (_cache_dir() / f"mp2_{keys[i]}.json").write_text(json.dumps(v))
+            out[i] = v
+    for v in out:
+        if v is not None:
+            v["P"] = np.asarray(v["P"], float)
     return out
 
 
-def detect_region(img, box) -> np.ndarray | None:
+def detect(images: list) -> list:
+    """PIL images -> [(478, 2) pixel array | None]."""
+    return [None if v is None else v["P"] for v in detect_info(images)]
+
+
+def detect_region(img, box, info: bool = False):
     """Detect on a crop of a big picture (a full figure: MediaPipe wants the face to fill the frame), scaled to
-    DETECT_PX; points back in the picture's pixels."""
+    DETECT_PX; points back in the picture's pixels (info=True: the detector's dict with "P" in picture pixels)."""
     from PIL import Image
     x0, y0, x1, y1 = (float(v) for v in box)
     c = img.crop((int(round(x0)), int(round(y0)), int(round(x1)), int(round(y1))))
     s = DETECT_PX / max(c.size)
     c = c.resize((max(1, int(round(c.size[0] * s))), max(1, int(round(c.size[1] * s)))), Image.LANCZOS)
-    P = detect([c])[0]
-    if P is None:
+    d = detect_info([c])[0]
+    if d is None:
         return None
-    return P / s + [int(round(x0)), int(round(y0))]
+    d = dict(d)
+    d["P"] = d["P"] / s + [int(round(x0)), int(round(y0))]
+    return d if info else d["P"]
+
+
+def head_yaw(M) -> float | None:
+    """Degrees the head is turned from the camera (MediaPipe's pose matrix; + = toward the picture's left)."""
+    if M is None:
+        return None
+    R = np.asarray(M, float)[:3, :3]
+    return float(np.degrees(np.arctan2(R[0, 2], R[2, 2])))
 
 
 # ---- the model through a reference's camera: a clay render -----------------------------------------------------------
@@ -222,12 +250,23 @@ def model_mesh(base: dict) -> dict:
     r = float(ht.get("eye_r", 0.012))
     for c in ht["eyes"]:
         eyes.append(_sphere(c, r * 0.985, fwd))
-    return {"V": V, "F": F, "eyes": eyes, "L": st["L"], "state": st}
+    from . import likeness_shape as ls
+    ears = None
+    try:
+        from . import base as basemod, onemesh
+        gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+        eg = np.asarray(basemod._gnm_data()["groups"]["ears"], float) > 0.5
+        ears = np.where((gid >= 0) & eg[np.maximum(gid, 0)])[0]
+    except Exception:  # noqa: BLE001  (not a one-mesh template: no ear vertices known)
+        ears = None
+    return {"V": V, "F": F, "eyes": eyes, "L": st["L"], "state": st, "ears": ears, "shape3d": ls.measures3d(st)}
 
 
-def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True):
+def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, passes: bool = False, light=None):
     """(PIL image, scale px per picture pixel): the model through the reference's camera, cropped to box (picture
-    pixels), lit by a key from the upper left (smooth normals), eyes with irises, brows drawn."""
+    pixels), lit by a key from the upper left (smooth normals), eyes with irises, brows drawn. passes=True also
+    returns {"zb": camera depth (m; inf off the model), "nrm": camera-frame normals, "part": 0 skin / 1 eyes / -1 none}.
+    light = (c0, w) (likeness_shape.fit_light: luminance = c0 + w . n) lights the skin like the photo instead."""
     from PIL import Image, ImageDraw
     from . import humanfit
     if not _RUN:
@@ -237,8 +276,24 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True):
     W, H = int(round((x1 - x0) * k)), int(round((y1 - y0) * k))
     img = np.full((H, W, 3), 238.0)
     zb = np.full((H, W), np.inf)
+    nimg = np.zeros((H, W, 3))
+    pimg = np.full((H, W, 3), -1.0)
+    zn, zq = np.full((H, W), np.inf), np.full((H, W), np.inf)
     Rc = humanfit._cam_rot(cam)
     parts = [(mesh["V"], mesh["F"], None)] + list(mesh["eyes"])
+    for pi, (V, F, col) in enumerate(parts):
+        if passes or light is not None:
+            Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
+            P = humanfit.project(cam, V)
+            fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
+            keep = (fn * Xc[F].mean(1)).sum(1) < 0
+            vn = np.zeros_like(Xc)
+            for c in range(3):
+                np.add.at(vn, F[:, c], fn)
+            vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-15)
+            args = ((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]))
+            _RUN[0](*args, np.ascontiguousarray(vn), W, H, nimg, zn)
+            _RUN[0](*args, np.ascontiguousarray(np.full_like(vn, float(min(pi, 1)))), W, H, pimg, zq)
     for V, F, col in parts:
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
         P = humanfit.project(cam, V)
@@ -249,6 +304,9 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True):
             np.add.at(vn, F[:, c], fn)
         vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-15)
         sh = 0.24 + 0.76 * np.clip(vn @ KEY, 0, 1) ** 1.3 + 0.06 * np.clip(-vn[:, 2], 0, 1)
+        if light is not None and col is None:  # the photo's light (linear luminance -> sRGB grey, skin-tinted)
+            lum = np.clip((light[0] + vn @ np.asarray(light[1])) / max(light[2] if len(light) > 2 else 0.2, 1e-6), 0.0, 3.0)
+            sh = 0.8 * lum ** (1 / 2.2)   # the face's median at 0.8 of the skin colour
         base_c = np.broadcast_to(SKIN, Xc.shape) if col is None else col
         C = np.clip(base_c * sh[:, None], 0, 255)
         _RUN[0]((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]),
@@ -261,6 +319,8 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True):
         for a, b in ((17, 22), (22, 27)):
             pts = [((L[i, 0] - x0) * k, (L[i, 1] - y0) * k) for i in range(a, b)]
             d.line(pts, fill=(70, 52, 40), width=wpx, joint="curve")
+    if passes:
+        return im, k, {"zb": zn, "nrm": nimg, "part": np.where(np.isfinite(zq), pimg[..., 0], -1).round().astype(int)}
     return im, k
 
 
@@ -315,6 +375,10 @@ class Side:
 def points_of(m: dict) -> list:
     """Every point a measure (or a judge item's region) reads."""
     out = []
+    if m.get("kind") == "shape":
+        return sorted({int(r[k]) for r in (m["region"], m["ref"]) for k in ("at", "from", "to") if k in r})
+    if m.get("kind") == "jaw":
+        return []
     for k, v in m.items():
         if k in ("a", "b", "vertex", "level", "from", "to", "pts", "line", "region"):
             out += list(np.ravel(v))
@@ -361,6 +425,11 @@ def _item(iid: str) -> dict:
     return next(it for it in checklist() if it["id"] == iid)
 
 
+def _facing(side: Side, ex) -> float:
+    """+1 when the face points along +ex in the picture (its nose tip ahead of its wings), else -1."""
+    return 1.0 if (side.pt(1) - side.pt([129, 358])) @ ex >= 0 else -1.0
+
+
 def value(side: Side, m: dict, mmpx: float):
     """One measure on one side: mm (distances), degrees (tilts, angles) or a ratio."""
     k = m["kind"]
@@ -374,7 +443,17 @@ def value(side: Side, m: dict, mmpx: float):
             d = side.pt(b) - side.pt(a)
             v = float(np.linalg.norm(d)) if ax is None else float(d @ ax)
             vals.append(abs(v) if m.get("abs") else v)
+        if m.get("forward"):  # signed toward where the face points (+ = b ahead of a): turned views only
+            vals = [v * _facing(side, ex) for v in vals]
         return float(np.mean(vals)) * mmpx
+    if k == "eline":  # signed distance of points from the line a -> b, + = ahead of it (toward where the face points)
+        a, b, q = side.pt(m["a"]), side.pt(m["b"]), side.pt(m["pts"])
+        ex, ey = side.frame()
+        t = (b - a) / max(np.linalg.norm(b - a), 1e-9)
+        n = np.array([-t[1], t[0]])
+        if (n @ ex) * _facing(side, ex) < 0:
+            n = -n
+        return float((q - a) @ n) * mmpx
     if k == "width":
         return _width(side, m["level"]) * mmpx
     if k == "ratio":
@@ -455,7 +534,8 @@ def _box(points: dict, size) -> tuple:
     U = np.array(list(points.values()), float)
     lo, hi = U.min(0), U.max(0)
     pad = 0.5 * (hi - lo).max()
-    return (max(lo[0] - pad, 0.0), max(lo[1] - pad * 1.2, 0.0), min(hi[0] + pad, size[0]), min(hi[1] + pad * 0.6, size[1]))
+    # (below the chin: the jaw's lower border and the neck under it are checklist items)
+    return (max(lo[0] - pad, 0.0), max(lo[1] - pad * 1.2, 0.0), min(hi[0] + pad, size[0]), min(hi[1] + pad * 1.1, size[1]))
 
 
 def photo_sides(refs: dict) -> list:
@@ -465,36 +545,113 @@ def photo_sides(refs: dict) -> list:
     for v, cam in zip(refs["views"], refs["cameras"]):
         img = Image.open(v["image"]).convert("RGB")
         box = _box(v["points"], img.size)
-        P = detect_region(img, box)
+        info = detect_region(img, box, info=True)
+        P = None if info is None else info["P"]
         out.append({"view": v, "cam": cam, "kind": view_kind(cam.get("yaw", v.get("yaw", 0))), "img": img, "box": box,
                     "side": Side(P, _lm_from_points(v["points"]), "detector" if P is not None else "landmarks"),
-                    "mmpx": float(cam["t"][2] / cam["f"] * 1000.0)})
+                    "mmpx": float(cam["t"][2] / cam["f"] * 1000.0), "info": info or {}})
     return out
 
 
-def model_sides(base: dict, photos: list, mesh=None, cameras=None) -> list:
-    """The model through each reference's camera: the clay render, the detector on it, its own landmarks projected."""
+REFIT = ("three_quarter", "profile")  # views whose camera is refitted on the detector's points (a loose painting)
+REFIT_ROUNDS = 2
+INFER_TOL = 1.5     # a profile item read from a three-quarter view ("inferred"): its tolerance x this
+SPECIAL = ("shape", "jaw")   # measured in compare (they need the model's render or a trace), not from points alone
+
+
+def _refit(mesh, ph, cam):
+    """The camera refitted for this picture: the detector's 478 on the photo against the model's surface under the same
+    detector points on its render (unprojected through the render's depth), pose and focal, REFIT_ROUNDS rounds."""
+    from . import likeness_shape as ls
+    if ph["side"].P is None:
+        return cam, None
+    keep = np.setdiff1d(np.arange(468), OVAL)
+    res = None
+    for _ in range(REFIT_ROUNDS):
+        im, k, ps = render(mesh, cam, ph["box"], passes=True)
+        Pm = detect([im])[0]
+        if Pm is None:
+            break
+        ij = np.clip(Pm[keep].astype(int), 0, [ps["zb"].shape[1] - 1, ps["zb"].shape[0] - 1])
+        z = ps["zb"][ij[:, 1], ij[:, 0]]
+        ok = np.isfinite(z) & (ps["part"][ij[:, 1], ij[:, 0]] == 0)
+        uvm = Pm[keep][ok] / k + [ph["box"][0], ph["box"][1]]
+        X = ls.unproject(cam, uvm, z[ok])
+        cam, r = ls.refit_camera(cam, ph["side"].P[keep][ok], X)
+        res = np.full(478, np.nan)
+        res[keep[ok]] = r
+    return cam, res
+
+
+def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool = True) -> list:
+    """The model through each reference's camera (refitted for REFIT views): the clay render, the detector on it, its
+    own landmarks projected, its passes (depth, normals), the light fitted to the photo on its normals and the
+    residual shading, and a render lit like the photo for the panels."""
     from . import humanfit
+    from . import likeness_shape as ls
     mesh = mesh or model_mesh(base)
     out = []
     for i, ph in enumerate(photos):
         cam, box = (cameras[i] if cameras else ph["cam"]), ph["box"]
-        im, k = render(mesh, cam, box)
+        cres = None
+        if refit and ph["kind"] in REFIT and not cameras:
+            cam, cres = _refit(mesh, ph, cam)
+        im, k, ps = render(mesh, cam, box, passes=True)
         P = detect([im])[0]
         P = None if P is None else P / k + [box[0], box[1]]
-        out.append({"img": im, "k": k, "cam": cam, "side": Side(P, humanfit.project(cam, mesh["L"]),
-                                                                  "detector" if P is not None else "landmarks"),
-                    "mmpx": _mm_per_px(cam, mesh["L"])})
+        mmpx = _mm_per_px(cam, mesh["L"])
+        md = {"img": im, "k": k, "cam": cam, "passes": ps, "cam_res": cres, "mmpx": mmpx, "mesh": mesh,
+              "side": Side(P, humanfit.project(cam, mesh["L"]), "detector" if P is not None else "landmarks")}
+        md["shade"] = _shade(ph, md)
+        if md["shade"]:
+            md["img_lit"] = render(mesh, cam, box, light=(md["shade"]["c0"], md["shade"]["w"], md["shade"]["med"]))[0]
+        out.append(md)
     return out
 
 
+def _shade(ph, md) -> dict | None:
+    """The photo's light fitted on the model's normals over the face's skin, and the residual (photo / model lit so - 1)."""
+    from PIL import Image
+    from . import likeness_shape as ls
+    if ph["side"].P is None:
+        return None
+    k, box, ps = md["k"], ph["box"], md["passes"]
+    H, W = ps["zb"].shape
+    crop = ph["img"].crop(tuple(int(round(v)) for v in box)).resize((W, H), Image.LANCZOS)
+    Y = ls._lin(crop)
+    to_px = lambda P: (np.asarray(P, float) - [box[0], box[1]]) * k  # noqa: E731
+    ppm = k / md["mmpx"]
+    mask = ls.skin_mask(ph["side"], (H, W), to_px, ppm) & (ps["part"] == 0)
+    if mask.sum() < 500:
+        return None
+    c0, w, rms = ls.fit_light(Y, ps["nrm"], mask)
+    R = ls.residual(Y, ps["nrm"], c0, w, mask, 1.5 * ppm)
+    ex, ey = ph["side"].frame()
+    hard = float(np.linalg.norm(w) / max(c0 + np.linalg.norm(w), 1e-6))
+    return {"c0": c0, "w": w, "rms": rms, "R": R, "med": float(np.median(Y[mask])), "mask": mask, "to_px": to_px, "ppm": ppm, "ex": ex, "ey": ey,
+            "hard": hard, "fit_share": float(rms / max(np.nanmean(Y[mask]), 1e-6))}
+
+
+def _allowed(it: dict, vk: str, kinds: list) -> tuple:
+    """(measured in this view, inferred): a profile item falls back to a three-quarter view when there's no profile."""
+    if vk in it["views"]:
+        return True, False
+    if "profile" in it["views"] and vk == "three_quarter" and "profile" not in kinds:
+        return True, True
+    return False, False
+
+
 def measure_sides(sides: list, kinds: list, mmpxs: list) -> dict:
-    """{item id: {view index: value | "unmeasurable: why"}}; "-" when no picture has a view the item needs."""
+    """{item id: {view index: value | "unmeasurable: why"}}; "-" when no picture has a view the item needs. Shape and
+    jaw items are left to compare (`SPECIAL`)."""
     out = {}
     for it in checklist():
+        if it["measure"]["kind"] in SPECIAL:
+            continue
         row = {}
         for vi, (s, vk, mp) in enumerate(zip(sides, kinds, mmpxs)):
-            if vk not in it["views"]:
+            ok, _ = _allowed(it, vk, kinds)
+            if not ok:
                 continue
             try:
                 row[vi] = value(s, it["measure"], mp)
@@ -506,6 +663,123 @@ def measure_sides(sides: list, kinds: list, mmpxs: list) -> dict:
     return out
 
 
+def _near_sign(side: Side) -> list:
+    """Sides to read in a picture: both in a front view, only the nearer (wider eye) in a turned one: [-1] = the
+    subject's right, [1] its left."""
+    try:
+        wr = np.linalg.norm(side.pt(33) - side.pt(133))
+        wl = np.linalg.norm(side.pt(263) - side.pt(362))
+    except Unmeasurable:
+        return [-1, 1]
+    if max(wr, wl) / max(min(wr, wl), 1e-6) < 1.25:
+        return [-1, 1]
+    return [-1] if wr > wl else [1]
+
+
+MIRROR = {61: 291, 234: 454, 33: 263, 133: 362, 145: 374, 159: 386, 129: 358, 98: 327, 172: 397, 105: 334, 70: 300,
+          107: 336, 52: 282, 58: 288, 136: 365, 116: 345, 123: 352, 50: 280, 205: 425, 147: 376, 187: 411, 93: 323}
+
+
+def _shape_rows(it, photos, models, kinds) -> list:
+    from . import likeness_shape as ls
+    rows = []
+    m = it["measure"]
+    for vi, (ph, md) in enumerate(zip(photos, models)):
+        ok, inferred = _allowed(it, kinds[vi], kinds)
+        if not ok:
+            continue
+        sh = md.get("shade")
+        r = {"vi": vi, "inferred": inferred, "model3d": md.get("shape3d", {}).get(m.get("model3d"))}
+        if sh is None:
+            r["why"] = "no shading (no detector on the photo)"
+            rows.append(r)
+            continue
+        vals = []
+        for sgn in _near_sign(ph["side"]):
+            pidx = (lambda i, s=sgn: MIRROR.get(i, i) if s > 0 else i)
+            exs = sh["ex"]
+            reg = ls.region_centre(ph["side"], m["region"], sgn, exs, sh["ey"], sh["ppm"], sh["to_px"], pidx)
+            ref = ls.region_centre(ph["side"], m["ref"], sgn, exs, sh["ey"], sh["ppm"], sh["to_px"], pidx)
+            H, W = sh["R"].shape
+            a = sh["R"][ls._disk(H, W, reg, m["region"].get("r_mm", 4) * sh["ppm"])]
+            b = sh["R"][ls._disk(H, W, ref, m["ref"].get("r_mm", 5) * sh["ppm"])]
+            a, b = a[np.isfinite(a)], b[np.isfinite(b)]
+            if len(a) < 10 or len(b) < 10:
+                continue
+            vals.append(100 * (a.mean() - b.mean()))
+            r.setdefault("regions", []).append((reg, ref, m["region"].get("r_mm", 4) * sh["ppm"], m["ref"].get("r_mm", 5) * sh["ppm"]))
+        if vals:
+            r["photo"] = float(np.mean(vals))
+        else:
+            r["why"] = "region off the face's skin in this picture"
+        rows.append(r)
+    return rows
+
+
+def _jaw_rows(it, photos, models, kinds, traces) -> list:
+    from . import likeness_shape as ls
+    rows = []
+    key = it["measure"]["key"]
+    for vi, (ph, md) in enumerate(zip(photos, models)):
+        ok, inferred = _allowed(it, kinds[vi], kinds)
+        if not ok:
+            continue
+        tr = traces.get(ph["view"]["image"], {})
+        r = {"vi": vi, "inferred": inferred}
+        got = False
+        for sd in ("R", "L"):
+            Q = tr.get("lines", {}).get(f"jaw.{sd}")
+            if not Q or len(Q) < 6:
+                continue
+            pv, mv = _jaw_pair(ph, md, tr, sd)
+            if key in pv and key in mv:
+                r.setdefault("pairs", []).append((pv[key], mv[key]))
+                r.setdefault("traces", []).append((np.asarray(Q, float), mv.get("_line"), pv.get("_gonion"), mv.get("_gonion")))
+                got = True
+        if got:
+            r["photo"] = float(np.mean([a for a, b in r["pairs"]]))
+            r["model"] = float(np.mean([b for a, b in r["pairs"]]))
+        else:
+            r["why"] = ("needs a trace on this picture: likeness_points 'jaw.R' / 'jaw.L' (down the ramus, round the angle, "
+                        "forward along the lower border)" + ("; 'ear_lobe.R' for the lobe" if "lobe" in key else "")
+                        + ("; 'neck.R' for the neck" if "neck" in key else ""))
+        rows.append(r)
+    return rows
+
+
+def _jaw_pair(ph, md, tr, sd):
+    """The jaw measures on the photo's trace and on the model's contour found along it (picture pixels)."""
+    from . import likeness_shape as ls
+    from . import humanfit
+    ex, ey = ph["side"].frame()
+    mmpx = md["mmpx"]
+    Q = np.asarray(tr["lines"][f"jaw.{sd}"], float)
+    pts = tr.get("points", {})
+    try:
+        mouth_p = ph["side"].pt([13, 14])
+        mouth_m = md["side"].pt([13, 14])
+    except Unmeasurable:
+        mouth_p = mouth_m = None
+    neck_p = tr.get("lines", {}).get(f"neck.{sd}")
+    pv = ls.jaw_measures(Q, ex, ey, mmpx, pts.get(f"ear_lobe.{sd}"), mouth_p, neck_p)
+    ps, k, box = md["passes"], md["k"], ph["box"]
+    Qm = ls.model_jaw(Q, ps["zb"], k, box, 15.0, mmpx, ps["nrm"])
+    if Qm is None:
+        return pv, {}
+    neck_m = ls.model_jaw(neck_p, ps["zb"], k, box, 15.0, mmpx, ps["nrm"]) if neck_p and len(neck_p) >= 3 else None
+    lobe_m = None
+    ears = md["mesh"].get("ears")
+    if ears is not None and len(ears):
+        V = md["mesh"]["V"][ears]
+        s = V[V[:, 0] < 0] if sd == "R" else V[V[:, 0] > 0]
+        if len(s):
+            lobe_m = humanfit.project(md["cam"], s[np.argmin(s[:, 2])][None])[0]
+    mex, mey = md["side"].frame() if md["side"].P is not None else (ex, ey)
+    mv = ls.jaw_measures(Qm, mex, mey, mmpx, lobe_m, mouth_m, neck_m)
+    mv["_line"] = Qm
+    return pv, mv
+
+
 def measure_reference(name: str, save: bool = True, photos=None) -> dict:
     """The target sheet: every checklist item measured on the model's reference pictures (human_refs.json), with its
     view, tolerance, confidence and source, or why it can't be measured. Saved as <model>/likeness_targets.json.
@@ -515,8 +789,33 @@ def measure_reference(name: str, save: bool = True, photos=None) -> dict:
     photos = photos or photo_sides(refs)
     vals = measure_sides([p["side"] for p in photos], [p["kind"] for p in photos], [p["mmpx"] for p in photos])
     items = {}
+    from . import likeness_shape as ls
+    traces = ls.load_points(name)
+    kinds = [p["kind"] for p in photos]
     for it in checklist():
         rows = {}
+        if it["measure"]["kind"] == "shape":
+            vals[it["id"]] = {"-": "unmeasurable: shading is read against a model lit like the photo (compare / likeness)"}
+        if it["measure"]["kind"] == "jaw":
+            vals[it["id"]] = {}
+            for vi, ph in enumerate(photos):
+                if not _allowed(it, ph["kind"], kinds)[0]:
+                    continue
+                tr = traces.get(ph["view"]["image"], {})
+                got = []
+                for sd in ("R", "L"):
+                    Q = tr.get("lines", {}).get(f"jaw.{sd}")
+                    if Q and len(Q) >= 6:
+                        ex, ey = ph["side"].frame()
+                        try:
+                            mouth = ph["side"].pt([13, 14])
+                        except Unmeasurable:
+                            mouth = None
+                        v = ls.jaw_measures(Q, ex, ey, ph["mmpx"], tr.get("points", {}).get(f"ear_lobe.{sd}"), mouth,
+                                            tr.get("lines", {}).get(f"neck.{sd}")).get(it["measure"]["key"])
+                        if v is not None:
+                            got.append(v)
+                vals[it["id"]][vi] = float(np.mean(got)) if got else "unmeasurable: needs a trace (likeness_points jaw.R / jaw.L)"
         for vi, v in vals[it["id"]].items():
             if vi == "-":
                 rows["-"] = {"value": None, "confidence": "unmeasurable", "why": v.split(": ", 1)[1]}
@@ -569,18 +868,59 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     # where the two readings disagree, the miss depends on the definition, not only on the face
     pl = measure_sides([Side(None, p["side"].lm, "landmarks") for p in photos], kinds, mm)
     ml = measure_sides([Side(None, m["side"].lm, "landmarks") for m in models], kinds, mm)
+    from . import likeness_shape as ls
+    for md in models:
+        md["shape3d"] = md["mesh"].get("shape3d") or {}
+    traces = ls.load_points(name)
     rows = []
     order = [s["name"] for s in stage_names()]
     for it in checklist():
+        kind = it["measure"]["kind"]
+        if kind in SPECIAL:
+            got = _shape_rows(it, photos, models, kinds) if kind == "shape" else _jaw_rows(it, photos, models, kinds, traces)
+            if not got:
+                got = [{"vi": "-", "why": " or ".join(it["views"]) + " view needed"}]
+            for g in got:
+                vi = g["vi"]
+                tol = it["tol"] * (INFER_TOL if g.get("inferred") else 1.0)
+                a = g.get("photo")
+                b = 0.0 if kind == "shape" and a is not None else g.get("model")
+                r = {"id": it["id"], "name": it["name"], "stage": it["stage"], "tier": order.index(it["stage"]) + 1,
+                     "view": kinds[vi] if vi != "-" else "-", "vi": vi, "unit": it["unit"], "tol": tol,
+                     "control": it["control"], "reliability": it.get("reliability", ""), "photo": a, "model": b,
+                     "points": points_of(it["measure"]), "inferred": g.get("inferred", False), "kind": kind,
+                     "model3d": g.get("model3d"), "regions": g.get("regions"), "traces": g.get("traces")}
+                if kind == "shape" and r["view"] != "front" and isinstance(a, float):
+                    r["score"] = -1.0
+                    r["why"] = (f"shading contrast {a:+.1f}% shown in the panel, not scored: a turned / painted view's light "
+                                "is not one light")
+                elif isinstance(a, float) and isinstance(b, float) and np.isfinite(a) and np.isfinite(b):
+                    r["miss"] = b - a
+                    r["score"] = abs(b - a) / tol
+                    r["source"] = "shading" if kind == "shape" else "trace/render contour"
+                else:
+                    r["score"] = -1.0
+                    r["why"] = g.get("why", "")
+                rows.append(r)
+            continue
         for vi in pv[it["id"]]:
             a, b = pv[it["id"]][vi], mv[it["id"]].get(vi)
+            inferred = vi != "-" and _allowed(it, kinds[vi], kinds)[1]
+            tol = (it["tol"] or 0) * (INFER_TOL if inferred else 1.0) or it["tol"]
             r = {"id": it["id"], "name": it["name"], "stage": it["stage"], "tier": order.index(it["stage"]) + 1,
-                 "view": kinds[vi] if vi != "-" else "-", "vi": vi, "unit": it["unit"], "tol": it["tol"],
+                 "view": kinds[vi] if vi != "-" else "-", "vi": vi, "unit": it["unit"], "tol": tol,
                  "control": it["control"], "reliability": it.get("reliability", ""), "photo": a, "model": b,
-                 "points": points_of(it["measure"])}
+                 "points": points_of(it["measure"]), "inferred": inferred, "kind": it["measure"]["kind"]}
+            cres = models[vi]["cam_res"] if vi != "-" else None
+            if cres is not None:
+                pr = [cres[i] for i in r["points"] if i < len(cres) and np.isfinite(cres[i])]
+                if pr:
+                    r["cam_mm"] = float(np.sqrt(np.mean(np.square(pr)))) * models[vi]["mmpx"]
             if isinstance(a, float) and isinstance(b, float) and it["tol"] and np.isfinite(a) and np.isfinite(b):
                 r["miss"] = b - a
-                r["score"] = abs(b - a) / it["tol"]
+                r["score"] = abs(b - a) / tol
+                if r.get("cam_mm") is not None and it["unit"] == "mm":  # a loose camera: its residual widens the tolerance
+                    r["score"] = abs(b - a) / float(np.hypot(tol, 0.5 * r["cam_mm"]))
                 r["source"] = f"{photos[vi]['side'].source}/{models[vi]['side'].source}"
                 c, d = pl[it["id"]].get(vi), ml[it["id"]].get(vi)
                 if isinstance(c, float) and isinstance(d, float) and np.isfinite(c) and np.isfinite(d):
@@ -591,7 +931,122 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
                 r["why"] = (a if isinstance(a, str) else b if isinstance(b, str) else "").split(": ", 1)[-1]
             rows.append(r)
     rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] if r["score"] > 1.0 else r["tier"], -r["score"]))
-    return {"rows": rows, "photos": photos, "models": models}
+    cmp = {"rows": rows, "photos": photos, "models": models, "name": name}
+    cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
+    return cmp
+
+
+# ---- what a set of pictures can support -----------------------------------------------------------------------------
+
+EXPR = {"smile": (("mouthSmileLeft", "mouthSmileRight"), 0.3), "mouth open": (("jawOpen",), 0.15),
+        "eyes closing / squint": (("eyeBlinkLeft", "eyeBlinkRight", "eyeSquintLeft", "eyeSquintRight"), 0.45),
+        "brows raised": (("browInnerUp", "browOuterUpLeft", "browOuterUpRight"), 0.4),
+        "frown": (("browDownLeft", "browDownRight"), 0.45)}
+
+
+def lens_mm(cam: dict) -> float:
+    """35 mm-equivalent focal length of a fitted camera (full-frame diagonal over the picture's)."""
+    w, h = cam["size"]
+    return float(cam["f"] * 43.27 / np.hypot(w, h))
+
+
+def _skinlike(img, box_px, ref_rgb) -> float:
+    """Share of a picture region whose colour is close to the face's skin (chroma and brightness)."""
+    a = np.asarray(img.crop(tuple(int(round(v)) for v in box_px)).convert("RGB"), float).reshape(-1, 3)
+    if len(a) == 0:
+        return float("nan")
+    ch = a / np.maximum(a.sum(1, keepdims=True), 1)
+    cr = np.asarray(ref_rgb, float) / max(sum(ref_rgb), 1)
+    lum = a.mean(1) / max(np.mean(ref_rgb), 1)
+    return float(((np.linalg.norm(ch - cr, axis=1) < 0.035) & (lum > 0.45) & (lum < 1.7)).mean())
+
+
+def picture_notes(ph: dict, md: dict | None = None) -> dict:
+    """What a reference picture is good and bad for: view (and the detector's head yaw), lens, expression, light,
+    ears and hairline showing. Each a short phrase; "problems" lists the ones that cost checklist items."""
+    out = {"image": Path(ph["view"]["image"]).name, "view": ph["kind"], "problems": []}
+    info = ph.get("info") or {}
+    out["head_yaw"] = head_yaw(info.get("M"))
+    cam = md["cam"] if md else ph["cam"]
+    f = lens_mm(cam)
+    out["lens_mm"] = round(f, 0)
+    if f < 60:
+        out["problems"].append(f"short lens (~{f:.0f} mm equivalent): perspective swells the nose, shrinks the ears")
+    bs = info.get("bs") or {}
+    for nm, (keys, lim) in EXPR.items():
+        v = max((bs.get(k, 0.0) for k in keys), default=0.0)
+        if v > lim:
+            out["problems"].append(f"{nm} ({v:.2f}): expression moves the mouth / lids / brows")
+    sh = md.get("shade") if md else None
+    if sh:
+        out["light_hard"] = round(sh["hard"], 2)
+        out["light_fit"] = round(sh["fit_share"], 3)
+        if sh["hard"] > 0.75:
+            out["problems"].append(f"hard light ({sh['hard']:.2f}): shading reads shape and shadow edges together")
+        if sh["fit_share"] > 0.15:
+            out["problems"].append(f"one light explains the shading badly ({100 * sh['fit_share']:.0f}% rms): painted or "
+                                   "mixed light, shape items unreliable")
+    s = ph["side"]
+    if s.P is not None and ph.get("mmpx"):
+        mmpx = ph["mmpx"]
+        try:
+            ref = np.asarray(ph["img"].crop(tuple(int(v) for v in np.r_[s.pt(50) - 3, s.pt(50) + 3])).convert("RGB"),
+                             float).reshape(-1, 3).mean(0)
+            ex, ey = s.frame()
+            ears = []
+            for i, sgn in ((234, -1), (454, 1)):
+                c = s.pt(i) + sgn * ex * 14 / mmpx
+                r = 7 / mmpx
+                ears.append(_skinlike(ph["img"], (c[0] - r, c[1] - r, c[0] + r, c[1] + r), ref))
+            near = _near_sign(s)
+            seen = [e for e, sg in zip(ears, (-1, 1)) if sg in near]
+            out["ears_skin"] = [round(e, 2) for e in ears]
+            if seen and min(seen) < 0.25:
+                out["problems"].append("ears hidden (hair, collar or out of frame): ear items judge-only")
+            top = s.pt([105, 334]) - ey * 12 / mmpx
+            hb = (top[0] - 25 / mmpx, top[1] - 22 / mmpx, top[0] + 25 / mmpx, top[1])
+            out["forehead_skin"] = round(_skinlike(ph["img"], hb, ref), 2)
+            if out["forehead_skin"] < 0.5:
+                out["problems"].append("hair over the forehead / hairline: forehead height unreadable")
+        except (Unmeasurable, ValueError):
+            pass
+    elif s.P is None:
+        out["problems"].append("no face found by the detector: only the stored landmarks are read")
+    return out
+
+
+def coverage_text(cmp: dict) -> str:
+    """One glance: which checklist items these pictures support, which only by eye or inferred, which not, and why."""
+    by = {}
+    for r in cmp["rows"]:
+        by.setdefault(r["id"], []).append(r)
+    meas, inf, judge, none = [], [], [], {}
+    for iid, rs in by.items():
+        ok = [r for r in rs if r["score"] >= 0]
+        if ok:
+            (inf if all(r.get("inferred") for r in ok) else meas).append(iid)
+        elif any(r.get("kind") == "judge" and r["vi"] != "-" for r in rs):
+            judge.append(rs[0]["name"])
+        else:
+            why = (rs[0].get("why") or "").split(":")[0].split(";")[0][:60]
+            none.setdefault(why or "?", []).append(rs[0]["name"])
+    lines = [f"coverage: {len(meas)} items measured, {len(inf)} inferred from a weaker view, {len(judge)} judge by eye, "
+             f"{sum(len(v) for v in none.values())} not supported by these pictures"]
+    if inf:
+        lines.append("  inferred (three-quarter for profile, tolerance x1.5): " + ", ".join(by[i][0]["name"] for i in inf))
+    for why, names in none.items():
+        lines.append(f"  not supported ({why}): " + ", ".join(names))
+    if judge:
+        lines.append("  judge by eye (panels): " + ", ".join(judge))
+    kinds = [p["kind"] for p in cmp["photos"]]
+    if "profile" not in kinds:
+        need = sorted({r["name"] for r in cmp["rows"] if "profile" in _item(r["id"])["views"]})
+        lines.append("  a true profile would measure (now inferred or judged): " + ", ".join(need))
+    for pn in cmp.get("pictures", []):
+        lines.append(f"  picture {pn['image']} ({pn['view']}, head yaw {pn['head_yaw'] if pn['head_yaw'] is None else round(pn['head_yaw'])}, "
+                     f"lens ~{pn['lens_mm']:.0f} mm" + (f", light hardness {pn['light_hard']}" if "light_hard" in pn else "") + "): "
+                     + ("; ".join(pn["problems"]) or "no problems found"))
+    return "\n".join(lines)
 
 
 def _fmt(v, unit):
@@ -604,26 +1059,35 @@ def table_text(cmp: dict, top: int | None = None) -> str:
     rows = cmp["rows"]
     meas = [r for r in rows if r["score"] >= 0]
     over = [r for r in meas if r["score"] > 1.0]
-    res = ", ".join(f"{p['kind']} {m['mmpx']:.2f} mm/px ({p['side'].source} / {m['side'].source})"
+    res = ", ".join(f"{p['kind']} {m['mmpx']:.2f} mm/px ({p['side'].source} / {m['side'].source}"
+                    + (", camera refitted" if m.get("cam_res") is not None else "") + ")"
                     for p, m in zip(cmp["photos"], cmp["models"]))
-    lines = [f"likeness: {len(meas)} item-views measured, {len(over)} beyond tolerance (photo vs model through the same "
-             f"camera; miss = model - photo). Pictures: {res}. lm miss = the same measure on the landmarks alone (the photo's "
-             "stored 68, the model's own); '!' = the two readings differ by more than the tolerance: the miss depends on the "
-             "definition there, look at the panel before trusting it",
-             f"{'#':>2} {'item':40} {'view':13} {'photo':>8} {'model':>8} {'miss':>8} {'tol':>6} {'xtol':>5} {'lm miss':>8}  stage: control"]
+    lines = [coverage_text(cmp), "",
+             f"likeness: {len(meas)} item-views measured, {len(over)} beyond tolerance (photo vs model through the same "
+             f"camera; miss = model - photo). Pictures: {res}.",
+             "  lm miss = the same measure on the landmarks alone; '!' = the readings differ by more than the tolerance (the "
+             "miss depends on the definition: look at the panel). '~' = inferred from a weaker view (tolerance x1.5). cam = "
+             "the refitted camera's residual at the item's points (mm; includes shape misses; widens the tolerance by half). "
+             "Shape rows (%): the photo's shading against the model lit like the photo, region vs reference region; + miss "
+             "= the photo is darker there than the model's shape predicts (deeper hollow, sharper turn); 3D = the model's "
+             "own number in mm.",
+             f"{'#':>2} {'item':40} {'view':14} {'photo':>8} {'model':>8} {'miss':>8} {'tol':>6} {'xtol':>5} {'lm miss':>8} {'cam':>5} {'3D':>6}  stage: control"]
     for i, r in enumerate(meas[:top] if top else meas, 1):
         dp = 3 if r["unit"] == "" else 1
-        lines.append(f"{i:>2} {r['name'][:40]:40} {r['view']:13} {_fmt(r['photo'], r['unit']):>8} {_fmt(r['model'], r['unit']):>8} "
-                     f"{r['miss']:+8.{dp}f} {r['tol']:>6g} {r['score']:5.1f} "
+        view = r["view"] + ("~" if r.get("inferred") else "")
+        lines.append(f"{i:>2} {r['name'][:40]:40} {view:14} {_fmt(r['photo'], r['unit']):>8} {_fmt(r['model'], r['unit']):>8} "
+                     f"{r['miss']:+8.{dp}f} {r['tol']:>6.3g} {r['score']:5.1f} "
                      + (f"{r['miss_lm']:+7.{dp}f}{' ' if r['agree'] else '!'}" if "miss_lm" in r else f"{'-':>8}")
+                     + (f" {r['cam_mm']:5.1f}" if r.get("cam_mm") is not None else f" {'-':>5}")
+                     + (f" {r['model3d']:6.1f}" if isinstance(r.get("model3d"), float) else f" {'-':>6}")
                      + f"  {r['stage']}: {r['control']}"
-                     + ("" if r["source"] == "detector/detector" else f"  [{r['source']}]")
+                     + ("" if r.get("source") == "detector/detector" else f"  [{r.get('source')}]")
                      + (f"  CAUTION {r['reliability']}" if r["reliability"] and r["score"] > 1 else ""))
     rest = [r for r in rows if r["score"] < 0]
     if rest:
-        lines.append("not measured (judge in the focus panels, or the view is missing):")
+        lines.append("not measured (judge in the focus panels, or what is missing):")
         for r in rest:
-            lines.append(f"   {r['name']} [{r['view']}]: {r.get('why') or 'judge by eye'}"
+            lines.append(f"   {r['name']} [{r['view']}{'~' if r.get('inferred') else ''}]: {r.get('why') or 'judge by eye'}"
                          + (f"; {r['reliability']}" if r["reliability"] and r["reliability"] not in (r.get("why") or "") else ""))
     return "\n".join(lines)
 
@@ -667,25 +1131,53 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
                 segs.append((_width_ends(sd, lv), col))
             except Unmeasurable:
                 pass
+    b0 = ph["box"]
+    k = md["k"]
+    circles, polys = [], []   # (centre px, r px, colour), (points, colour) in picture pixels
+    if row.get("kind") == "shape":
+        pp, mp_ = {}, {}
+        for reg, ref, rr, rf in row.get("regions") or []:
+            circles += [(reg / k + b0[:2], rr / k, (255, 220, 60)), (ref / k + b0[:2], rf / k, (120, 230, 120))]
+    if row.get("kind") == "jaw":
+        pp, mp_ = {}, {}
+        for Q, Qm, gp, gm in row.get("traces") or []:
+            polys.append((Q, PHOTO_COL))
+            if Qm is not None:
+                polys.append((Qm, MODEL_COL))
+            for g, col in ((gp, PHOTO_COL), (gm, MODEL_COL)):
+                if g is not None:
+                    circles.append((np.asarray(g), 4.0 / max(md["mmpx"], 1e-6), col))
+        from . import likeness_shape as ls
+        tr = ls.load_points(cmp.get("name", "")).get(ph["view"]["image"], {})
+        for nm_, uv in tr.get("points", {}).items():
+            circles.append((np.asarray(uv, float), 2.5 / max(md["mmpx"], 1e-6), (255, 140, 255)))
+        for nm_, ln in tr.get("lines", {}).items():
+            if not nm_.startswith("jaw"):
+                polys.append((np.asarray(ln, float), (255, 140, 255)))
     allp = list(pp.values()) + list(mp_.values()) + [p for s, _ in segs for p in s]
+    allp += [c_ + d_ for c_, r_, _ in circles for d_ in ([r_, r_], [-r_, -r_])] + [q for Q, _ in polys for q in np.asarray(Q)]
     allp = np.array(allp) if allp else np.array([[(ph["box"][0] + ph["box"][2]) / 2, (ph["box"][1] + ph["box"][3]) / 2]])
     lo, hi = allp.min(0), allp.max(0)
     side = max((hi - lo).max() * 1.4, 30.0 / max(md["mmpx"], 1e-6))   # at least 30 mm across
-    b0 = ph["box"]
     side = min(side, b0[2] - b0[0], b0[3] - b0[1])
     c = (lo + hi) / 2
     c = np.clip(c, [b0[0] + side / 2, b0[1] + side / 2], [b0[2] - side / 2, b0[3] - side / 2])   # inside the render
     box = (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
-    k = md["k"]
     s = px / side
 
     def crop(img, origin, scale):
         return img.crop(tuple(int(round(v)) for v in ((box[0] - origin[0]) * scale, (box[1] - origin[1]) * scale,
                                                        (box[2] - origin[0]) * scale, (box[3] - origin[1]) * scale))).resize((px, px), Image.LANCZOS)
     a = crop(ph["img"], (0, 0), 1.0)
-    b = crop(md["img"], (b0[0], b0[1]), k)
+    lit = row.get("kind") in ("shape", "jaw", "judge") and md.get("img_lit") is not None
+    b = crop(md["img_lit"] if lit else md["img"], (b0[0], b0[1]), k)
     for im in (a, b):
         d = ImageDraw.Draw(im)
+        for cc, rr, col in circles:
+            q = (cc - box[:2]) * s
+            d.ellipse((q[0] - rr * s, q[1] - rr * s, q[0] + rr * s, q[1] + rr * s), outline=col, width=2)
+        for Q, col in polys:
+            d.line([tuple((q - box[:2]) * s) for q in np.asarray(Q, float)], fill=col, width=2)
         for (p, q), col in segs:
             d.line([tuple((p - box[:2]) * s), tuple((q - box[:2]) * s)], fill=col, width=2)
         _draw_feature(d, {i: (p - box[:2]) * s for i, p in pp.items()}, pp, PHOTO_COL)
@@ -695,9 +1187,14 @@ def panel(cmp: dict, row: dict, px: int = PANEL_PX):
     out.paste(b, (px + 6, 34))
     d = ImageDraw.Draw(out)
     miss = f"{row['miss']:+.{3 if row['unit'] == '' else 1}f}{row['unit']} (tol {row['tol']:g})" if row["score"] >= 0 else "judge"
-    d.text((4, 2), f"{row['name'][:46]} [{row['view']}]", fill=(240, 240, 240))
-    d.text((4, 17), f"photo {_fmt(row['photo'], row['unit'])} | model {_fmt(row['model'], row['unit'])}  miss {miss}",
-           fill=(255, 210, 120))
+    tag = (" INFERRED" if row.get("inferred") else "") + (" | model lit like the photo" if lit else "")
+    d.text((4, 2), f"{row['name'][:46]} [{row['view']}{tag}]", fill=(240, 240, 240))
+    extra = f"  3D {row['model3d']:.1f} mm" if isinstance(row.get("model3d"), float) else ""
+    if row.get("kind") == "shape":
+        txt = f"shading contrast photo {_fmt(row['photo'], 'x')}% vs model 0  (yellow region - green ref){extra}"
+    else:
+        txt = f"photo {_fmt(row['photo'], row['unit'])} | model {_fmt(row['model'], row['unit'])}  miss {miss}{extra}"
+    d.text((4, 17), txt, fill=(255, 210, 120))
     return out
 
 
@@ -838,61 +1335,201 @@ def stage_wants(cmp: dict, stage: str) -> tuple:
     return want, pins, gaps
 
 
+LEVERS = {
+    # item id: (path in base.head, step, (lo, hi), default) -- 1-D secant fits on the item's own signed miss
+    "cheek_hollow": ("shape.hollow", 0.002, (0.0, 0.008), 0.0),
+    "corner_temple": ("shape.planes", 0.3, (2.0, 3.2), 2.0),
+    "corner_cheekbone": ("shape.planes", 0.3, (2.0, 3.2), 2.0),
+    "corner_jaw": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
+    "brow_ridge": ("features.brow_ridge", 0.5, (-1.5, 1.5), 0.0),
+    "under_eye": ("shape.under_eye", 0.3, (0.0, 1.0), 0.0),
+    "jaw_gonial": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
+    "jaw_gonion_mouth": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
+    "jaw_gonion_lobe": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
+    "canthal_tilt": ("nudge:eye_outer.L:z", 0.001, (-0.004, 0.004), 0.0),
+    "nose_length": ("nudge:nose_tip:z", 0.002, (-0.006, 0.006), 0.0),
+    "nose_projection": ("nudge:nose_tip:y", -0.002, (-0.006, 0.006), 0.0),
+    "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0),
+}
+LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
+
+
+def lever_value(base: dict, path: str, default: float) -> float:
+    if path.startswith("nudge:"):
+        return 0.0
+    h = base.get("head", {})
+    a, b = path.split(".")
+    return float((h.get(a) or {}).get(b, default))
+
+
+def with_lever(base: dict, path: str, x: float, force: bool = False) -> tuple:
+    """(base, refused?) with the lever set to x (a nudge: the landmark moved x m along its axis from `base`)."""
+    import copy as _copy
+    from . import humanfit
+    if path.startswith("nudge:"):
+        _, lm, ax = path.split(":")
+        mv = [0.0, 0.0, 0.0]
+        mv["xyz".index(ax)] = float(x)
+        if abs(x) < 1e-6:
+            return base, False
+        nb, rep = humanfit.nudge(base, lm, move=mv, force=force)
+        return nb, bool(rep.get("refused"))
+    out = _copy.deepcopy(base)
+    a, b = path.split(".")
+    out.setdefault("head", {}).setdefault(a, {})[b] = round(float(x), 5)
+    return out, False
+
+
+def _signed(cmp: dict, ids, views=None) -> float | None:
+    v = [r["miss"] for r in cmp["rows"] if r["id"] in ids and r["score"] >= 0 and (views is None or r["view"] in views)]
+    return float(np.mean(v)) if v else None
+
+
+def _undone(start: dict, cur: dict, k: int) -> list:
+    """Earlier stages' checklist items (re-measured) that got worse: > 0.5 x tol and past the tolerance."""
+    order = [s["name"] for s in stage_names()]
+    bmap = {(r["id"], r["vi"]): r for r in start["rows"]}
+    out = []
+    for r in cur["rows"]:
+        b = bmap.get((r["id"], r["vi"]))
+        if b is None or order.index(r["stage"]) >= k:
+            continue
+        if r["score"] >= 0 and b["score"] >= 0 and r["score"] > max(b["score"], 1.0) + 0.5:
+            out.append((b, r))
+    return out
+
+
+def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tuple:
+    """1-D secant on the lever for the items' signed miss, from `base` (measured: cmp0); every candidate
+    integrity-guarded and checked against the earlier stages' items (re-measured against `start`). (base, compare,
+    note)."""
+    from . import humanfit
+    path, step, (lo, hi), dflt = lever
+    kind = _item(ids[0])["measure"]["kind"]
+    views = LEVER_VIEWS.get(kind)
+    x0 = lever_value(base, path, dflt)
+    st0 = humanfit.state(base)
+    f0 = _signed(cmp0, ids, views)
+    if f0 is None:
+        return base, cmp0, f"{path}: not measured"
+    tol = _item(ids[0])["tol"]
+    if abs(f0) <= tol:
+        return base, cmp0, f"{path}: already within tolerance ({f0:+.2f})"
+    tried = [(abs(f0), x0, base, cmp0, f0)]
+
+    def ev(x):
+        x = float(np.clip(x, lo, hi))
+        nb, refused = with_lever(base, path, x, force)
+        if refused:
+            return None
+        it = humanfit.integrity(nb, None, st0)
+        if not it["ok"] and not force and humanfit._newly_broken(base, it):
+            log.append(f"    {path} = {x:.4g}: BROKEN ({'; '.join(it['broken'])[:120]})")
+            return None
+        c = compare(name, nb, photos=photos)
+        f = _signed(c, ids, views)
+        und = _undone(start, c, k)
+        log.append(f"    {path} = {x:.4g}: miss {f if f is None else round(f, 2)}" + (f", undoes {[u[1]['id'] for u in und]}" if und else ""))
+        if f is None or und:
+            return None
+        tried.append((abs(f), x, nb, c, f))
+        return f
+    x1 = x0 + step if x0 + step <= hi else x0 - step
+    f1 = ev(x1)
+    if f1 is not None and abs(f1 - f0) > 1e-6:
+        xs = x1 - f1 * (x1 - x0) / (f1 - f0)
+        if abs(xs - x1) > 1e-9:
+            ev(xs)
+    best = min(tried, key=lambda t: t[0])
+    return best[2], best[3], f"{path}: {x0:.4g} -> {best[1]:.4g}, miss {f0:+.2f} -> {best[4]:+.2f} (tol {tol:g})"
+
+
 def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = False, save: bool = False,
               panels: str | None = None) -> dict:
-    """One stage of the likeness fit: the stage's control run on the model (humanfit's guarded fits: a result that
-    breaks the mesh is refused), the checklist measured before and after, the stage's items and any EARLIER stage's
-    item that got worse beyond its tolerance listed, focus panels of the stage's items. save=True stores the result
-    as a new version (and the refitted cameras in human_refs.json) unless it was refused."""
+    """One stage of the likeness fit: the stage's controls run on the model, the checklist measured before and after.
+    Controls: humanfit.solve on the stage's solver measures (front view), fit_outline (widths), fit_hood (eyes), and
+    1-D lever fits (LEVERS: shape.hollow / planes / jaw_angle / under_eye, features.brow_ridge, pose.smile, nudges of
+    eye corners and nose tip) on the items' own misses. Every result is integrity-guarded (refused if it breaks the
+    mesh) and PINNED to the earlier stages' checklist items, re-measured: a step that makes one worse (> 0.5 x tol, past
+    tol) is not taken (a solve is retried with half its asks first). save=True stores the result (and the cameras)."""
     from . import humanfit, store
     sp = store.load(name)
     base = base or sp["base"]
     refs = _refs(name)
     st = _stage(stage)
     photos = _photos(refs)
-    cams0 = refs["cameras"]
-    before = compare(name, base, photos=photos, cameras=cams0)
+    start = compare(name, base, photos=photos)
+    start["_base"] = base
     order = [s["name"] for s in stage_names()]
     k = order.index(stage)
-    rep = {"stage": stage, "control": st["control"], "steps": []}
-    cur, cams = base, cams0
-    want, pins, gaps = stage_wants(before, stage)
-    rep["want"], rep["pins"], rep["gaps"] = want, pins, gaps
+    rep = {"stage": stage, "control": st["control"], "steps": [], "log": []}
+    cur, cur_cmp = base, start
+    want, pins, gaps = stage_wants(start, stage)
+    rep["want"], rep["pins"] = want, pins
     if stage == "widths":
-        cur, r = humanfit.fit_outline(cur, refs["views"], cams, force=force)
+        nb, r = humanfit.fit_outline(cur, refs["views"], [m["cam"] for m in start["models"]], force=force)
+        c = compare(name, nb, photos=photos)
+        und = _undone(start, c, k)
         rep["steps"].append(("fit_outline", r))
+        if und and not force:
+            rep["log"].append(f"  fit_outline not taken: undoes {[u[1]['id'] for u in und]}")
+        elif not r.get("refused"):
+            cur, cur_cmp = nb, c
     if want:
-        cur, r = humanfit.solve(cur, {**pins, **want}, force=force)
-        rep["steps"].append((f"solve {want}" + (f", earlier stages pinned {sorted(pins)}" if pins else ""), r))
+        for frac in (1.0, 0.5):
+            ask = {m: f"{float(v) * frac:+.2f}" for m, v in want.items()}
+            nb, r = humanfit.solve(cur, {**pins, **ask}, force=force)
+            if r.get("refused"):
+                rep["steps"].append((f"solve {ask}", r))
+                break
+            c = compare(name, nb, photos=photos)
+            und = _undone(start, c, k)
+            rep["steps"].append((f"solve {ask}" + (f" (pinned {sorted(pins)})" if pins else ""), r))
+            if not und or force:
+                cur, cur_cmp = nb, c
+                break
+            rep["log"].append(f"  solve x{frac}: undoes {[u[1]['id'] for u in und]}" + ("; retry at half" if frac == 1.0 else "; not taken"))
     if stage == "eyes":
-        cur, r = humanfit.fit_hood(cur, _views_with(refs, list(humanfit.HOOD_LIDS)), cams, force=force)
+        nb, r = humanfit.fit_hood(cur, _views_with(refs, list(humanfit.HOOD_LIDS)), [m["cam"] for m in cur_cmp["models"]], force=force)
+        c = compare(name, nb, photos=photos)
+        if not _undone(start, c, k) and not r.get("refused"):
+            cur, cur_cmp = nb, c
         rep["steps"].append(("fit_hood", r))
+    done = set()
+    for it in checklist():
+        if it["stage"] != stage or it["id"] not in LEVERS or it["id"] in done:
+            continue
+        lever = LEVERS[it["id"]]
+        ids = [i for i, lv in LEVERS.items() if lv[0] == lever[0] and _item(i)["stage"] == stage]
+        done.update(ids)
+        rep["log"].append(f"  lever {lever[0]} for {ids}:")
+        cur_cmp["_base"] = cur
+        cur, cur_cmp, note = _lever_fit(name, cur, photos, start, cur_cmp, k, ids, lever, force, rep["log"])
+        rep["steps"].append((f"lever {note}", {}))
+    gaps = []
+    for r in cur_cmp["rows"]:
+        it = _item(r["id"])
+        if it["stage"] == stage and r["score"] > 1.0 and not it.get("solve") and r["id"] not in LEVERS \
+                and not any(w in it["control"] for w in ("fit_outline", "fit_hood")):
+            gaps.append(f"{it['name']} [{r['view']}] ({r['miss']:+.2f} {it['unit']}): {it['control']}")
+    rep["gaps"] = gaps
     if not rep["steps"]:
-        rep["gap"] = f"nothing to do with the wired controls for {stage}" + (": judge the panels" if gaps else "")
-    after = compare(name, cur, photos=photos, cameras=cams)
+        rep["gap"] = f"nothing wired for {stage}" + (": judge the panels" if gaps else "")
+    after = cur_cmp
     rep["refused"] = [f"{n}: {r['refused']}" for n, r in rep["steps"] if isinstance(r, dict) and r.get("refused")]
     rep["integrity"] = humanfit.verdict(humanfit.integrity(cur, None, humanfit.state(base))) if cur is not base else "unchanged"
-    bmap = {(r["id"], r["vi"]): r for r in before["rows"]}
-    mine, undone = [], []
-    for r in after["rows"]:
-        b = bmap.get((r["id"], r["vi"]))
-        if b is None:
-            continue
-        s = order.index(r["stage"])
-        if s == k:
-            mine.append((b, r))
-        elif s < k and r["score"] >= 0 and b["score"] >= 0 and r["score"] > max(b["score"], 1.0) + 0.5:
-            undone.append((b, r))
-    rep["rows"], rep["undone"] = mine, undone
+    bmap = {(r["id"], r["vi"]): r for r in start["rows"]}
+    rep["rows"] = [(bmap[(r["id"], r["vi"])], r) for r in after["rows"]
+                   if (r["id"], r["vi"]) in bmap and order.index(r["stage"]) == k]
+    rep["undone"] = _undone(start, after, k)
     rep["text"] = stage_text(rep)
-    rep["base"], rep["cameras"] = cur, cams
-    rep["after"] = after
+    rep["base"], rep["after"] = cur, after
     if panels:
-        focus_sheet(after, panels, top=12, rows=[r for _, r in mine])
+        focus_sheet(after, panels, top=14, rows=[r for _, r in rep["rows"]])
         rep["panels"] = panels
-    if save and cur is not base and not rep["refused"]:
-        v = store.save(name, {**sp, "base": cur}, f"likeness stage {stage}: {st['control']}")
-        refs2 = {**refs, "cameras": cams}
+    if save and cur is not base:
+        v = store.save(name, {**sp, "base": cur}, f"likeness stage {stage}")
+        refs2 = {**refs, "cameras": [m["cam"] for m in after["models"]]}
         (store.HOME / name / "human_refs.json").write_text(json.dumps(refs2, indent=1))
         rep["saved"] = v
         rep["text"] += f"\nsaved {name} v{v}"
@@ -910,19 +1547,24 @@ def stage_text(rep: dict) -> str:
                 extra = f"hood {r.get('amount_before')} -> {r.get('amount', r.get('asked_mm'))} mm"
             if r.get("refused"):
                 extra += "  REFUSED: " + r["refused"]
-        lines.append(f"  {n}: {extra}")
+        lines.append(f"  {n}: {extra}".rstrip(": "))
+    lines += rep.get("log") or []
     if rep.get("gap"):
         lines.append("  GAP: " + rep["gap"])
     for g in rep.get("gaps") or []:
-        lines.append("  no solver measure for: " + g)
-    lines.append(f"  {'item':40} {'view':13} {'photo':>8} {'before':>8} {'after':>8} {'tol':>6}  x tol before -> after")
+        lines.append("  GAP (no control): " + g)
+    lines.append(f"  {'item':40} {'view':14} {'photo':>8} {'before':>8} {'after':>8} {'tol':>6}  x tol before -> after")
     for b, a in rep["rows"]:
         if a["score"] < 0:
-            lines.append(f"  {a['name'][:40]:40} {a['view']:13}  (not measured: {a.get('why') or 'judge by eye'})")
+            lines.append(f"  {a['name'][:40]:40} {a['view']:14}  (not measured: {(a.get('why') or 'judge by eye')[:80]})")
             continue
-        lines.append(f"  {a['name'][:40]:40} {a['view']:13} {_fmt(a['photo'], a['unit']):>8} {_fmt(b['model'], a['unit']):>8} "
-                     f"{_fmt(a['model'], a['unit']):>8} {a['tol']:>6g}  {b['score']:.1f} -> {a['score']:.1f}"
-                     + ("  ok" if a["score"] <= 1 else ""))
+        sb = f"{b['score']:.1f}" if b["score"] >= 0 else "-"
+        bm = b["model"] if b.get("kind") != "shape" else (-(b.get("miss") or 0.0) if b["score"] >= 0 else None)
+        am = a["model"] if a.get("kind") != "shape" else -a["miss"]
+        lines.append(f"  {a['name'][:40]:40} {a['view'] + ('~' if a.get('inferred') else ''):14} {_fmt(a['photo'], a['unit']):>8} "
+                     f"{_fmt(bm, a['unit']):>8} {_fmt(am, a['unit']):>8} {a['tol']:>6.3g}  {sb} -> {a['score']:.1f}"
+                     + ("  ok" if a["score"] <= 1 else "")
+                     + (f"  3D {b.get('model3d')} -> {a.get('model3d')} mm" if a.get("kind") == "shape" else ""))
     if rep["undone"]:
         lines.append("  EARLIER STAGES MADE WORSE (review before going on):")
         for b, a in rep["undone"]:
@@ -931,15 +1573,13 @@ def stage_text(rep: dict) -> str:
 
 
 def fit_likeness(name: str, stages: list | None = None, force: bool = False, save: bool = True, panels_dir: str | None = None) -> list:
-    """Run stages in order (all of them by default), each saved before the next. Stops at a refused stage. For a
-    person or an LLM approving stage by stage, call with one stage at a time and look at its panels."""
+    """Run stages in order (all of them by default), each saved before the next. For a person or an LLM approving
+    stage by stage, call with one stage at a time and look at its panels."""
     from . import store
     out = []
     names = stages or [s["name"] for s in stage_names()]
     for s in names:
         pn = str(Path(panels_dir or (store.HOME / "human_renders")) / f"lk_{name}_stage_{s}.png")
-        rep = fit_stage(name, s, force=force, save=save, panels=pn)
-        out.append(rep)
-        if rep["refused"]:
-            break
+        out.append(fit_stage(name, s, force=force, save=save, panels=pn))
     return out
+

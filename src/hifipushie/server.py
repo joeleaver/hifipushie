@@ -2024,6 +2024,12 @@ def likeness(name: str, targets: bool = False, top: int = 8):
     table ranked by miss / tolerance (beyond tolerance first), what can't be measured from these views and why
     ("profile needed", "judge by eye"), and FOCUS PANELS (photo | model at the same crop and camera, the feature's
     points on both: red photo, blue model) for the top misses and the judge-by-eye items: look there, on purpose.
+    It leads with a one-glance COVERAGE: what these pictures support, what is inferred from a weaker view (profile
+    items from a three-quarter view, tolerance x1.5), what only by eye, what not and why, and each picture's problems
+    (lens, expression, light, ears / hairline). SHAPE items (planes, cheek hollow, folds, under-eye, brow ridge) are
+    read from the photo's shading against the model lit like the photo, with the model's own 3D number beside; the JAW's
+    L (ramus, gonial angle, lower border, neck step) from a trace (likeness_points) against the model's contour.
+    Turned views' cameras are refitted on the detector's points; the residual per item is in the table.
     targets=True instead measures the references alone and stores the target sheet (<model>/likeness_targets.json:
     value, view, tolerance, confidence or "unmeasurable" per item) with the stage plan: what fit_likeness will do,
     which items have a control and which are gaps. Measures only; never edits the model."""
@@ -2052,6 +2058,46 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
     if Path(pn).exists():
         out.insert(0, _png(PILImage.open(pn)))
     return out
+
+
+@mcp.tool(structured_output=False)
+def likeness_points(name: str, image: str, points: dict | None = None, lines: dict | None = None, by: str = "",
+                    replace: bool = False) -> str:
+    """Hand-placed points on a reference picture for features the detector can't find (stored in
+    <model>/likeness_points.json; the format onemesh2's traces use). Pixels of the FULL picture (u right, v down);
+    .R / .L = the subject's right / left. points: {"gonion.R", "ear_lobe.R", "tragus.R", "menton", "pogonion",
+    "jaw_notch.R": [u, v]}; lines: {"jaw.R": [[u, v], ...] (from just under the ear lobe DOWN the ramus, round the
+    angle, FORWARD along the lower border to the chin), "neck.R": [[u, v], ...] (the neck's contour under that border,
+    top to bottom)}. Merged name by name (null deletes one) unless replace. The jaw items (ramus angle, gonial angle,
+    lower border, gonion against the ear lobe and the mouth, the neck's step) read them; the focus panels draw them."""
+    from . import likeness_shape as ls
+    d = ls.set_points(name, image, points, lines, by=by, replace=replace)
+    v = next(x for x in d["views"] if x["image"] == image)
+    return f"stored for {Path(image).name}: points {sorted(v['points'])}, lines " + \
+        ", ".join(f"{k} ({len(q)} points)" for k, q in v["lines"].items())
+
+
+@mcp.tool(structured_output=False)
+def reference_brief(kind: str = "head", subject: str = "") -> str:
+    """The REFERENCE BRIEF derived from the likeness checklist, for references we generate or ask for: the shot list
+    (front, true left profile, three-quarter, the side-light passes for the planes, optional back and top; kind
+    "figure" adds full-body A-pose front and side for the body's proportions), what each shot must show (long lens at
+    eye height, neutral closed mouth, eyes level, even soft light + a side-light pass, plain background, hair off the
+    ears and hairline, the same identity / light / scale in every view, nothing over the features), which checklist
+    items each serves, and the prompt wording for an image generator per shot (one shared identity block)."""
+    from . import likeness_brief as lb
+    return lb.reference_brief(kind, subject)["text"]
+
+
+@mcp.tool(structured_output=False)
+def check_references(images: list[str], name: str | None = None) -> str:
+    """What a set of reference pictures can and can't support for the likeness checklist, and why: the views present
+    (the detector's head pose), the lens (a fitted camera's focal, with `name`: the model's human_refs.json), the
+    expression (the detector's blendshapes: smile, mouth open, squint, raised or furrowed brows), the light's evenness,
+    ears / hairline covered (a colour heuristic), and identity consistency between views (vertical proportions that
+    don't change with the head's turn). Ends with which reference_brief shots to ask for."""
+    from . import likeness_brief as lb
+    return lb.check_references(images, name)["text"]
 
 
 @mcp.tool(structured_output=False)
