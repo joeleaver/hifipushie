@@ -206,7 +206,7 @@ def mirror_y(piece: dict) -> dict:
 
 def from_spec(name: str, d: dict) -> dict:
     """A piece written in the spec: {"outline": [[x, y] | {"at": [x, y], "name": n} | {"arc": [cx, cy], "to": ...}...],
-    "marks": {n: [x, y]}, "lines": {n: [[x, y], ...]}, "grain": deg}. Coordinates in metres. A "rect": [w, h]
+    "marks": {n: [x, y]}, "lines": {n: [[x, y], ...]}, "grain": deg, "names": {n: outline index}}. Coordinates in metres. A "rect": [w, h]
     shorthand makes a rectangle with corners named sw, se, ne, nw (and mid-edge points s, e, n, w)."""
     names = {}
     if "rect" in d:
@@ -225,6 +225,8 @@ def from_spec(name: str, d: dict) -> dict:
             else:
                 pts.append(np.asarray(v, float))
         P = np.asarray(pts)
+    for k, i in (d.get("names") or {}).items():  # more names for outline points, by index (a point with two names)
+        names[k] = int(i)
     marks = {k: np.asarray(v, float) for k, v in (d.get("marks") or {}).items()}
     lines = {k: np.asarray(v, float) for k, v in (d.get("lines") or {}).items()}
     return {"name": name, "P": P, "names": names, "marks": marks, "lines": lines, "grain": float(d.get("grain", 90))}

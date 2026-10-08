@@ -275,6 +275,45 @@ def test_relax_strain_takes_out_shear():
     assert s1.max() < 1.035, s1.max()
 
 
+def test_a_stopped_runs_solver_is_cleared():
+    # a ZOZO solver whose cloth_zozo.py runner died (a stopped session) is a stray and is stopped; one whose runner is
+    # alive, or one that isn't ours (no hp_job_ session), is left alone
+    import os, subprocess, tempfile, time
+    from pathlib import Path
+    from hifipushie import cloth_job
+    d = Path(tempfile.mkdtemp())
+    solver = d / "ppf-contact-solver"
+    solver.write_text("#!/bin/sh\nsleep 60\n")
+    solver.chmod(0o755)
+    mark = f"hp_job_t{os.getpid()}_"
+    orphan_path = str(d / f"{mark}a_sim" / "session")
+    live_path = str(d / f"{mark}b_sim" / "session")
+    other = str(d / "someone_else" / "session")
+    # orphan: started in the background by a shell that exits at once (reparented, no runner above it)
+    subprocess.run(["sh", "-c", f"'{solver}' --path '{orphan_path}' >/dev/null 2>&1 &"], check=True)
+    subprocess.run(["sh", "-c", f"'{solver}' --path '{other}' >/dev/null 2>&1 &"], check=True)
+    # held: its parent's command line runs cloth_zozo.py and stays alive
+    held = subprocess.Popen(["sh", "-c", f"'{solver}' --path '{live_path}'; true", "cloth_zozo.py"])
+    try:
+        time.sleep(0.5)
+        strays = cloth_job.stray_solvers(mark)
+        assert [s["session"] for s in strays] == [orphan_path], strays
+        gone = cloth_job.clear_strays(log=lambda *_: None, mark=mark, wait=3)
+        assert len(gone) == 1 and cloth_job._proc(gone[0]["pid"]) is None
+        assert cloth_job.stray_solvers(mark) == []  # the held one stays
+        assert any(live_path in " ".join(cloth_job._proc(int(p.name))[1]) for p in Path("/proc").iterdir()
+                   if p.name.isdigit() and cloth_job._proc(int(p.name)))
+    finally:
+        held.kill()
+        subprocess.run(["pkill", "-f", str(d)], check=False)
+    try:  # ZOZO checks only its own run's solvers: the queue's GPU claim is the exclusion (needs the release)
+        _, env = cloth_job.zozo_command(d)
+    except FileNotFoundError:
+        env = None
+    if env is not None:
+        assert env["PPF_SOLVER_SCAN_DESCENDANTS"] == "1"
+
+
 def test_clay_looks_are_matte():
     # dark wool read as leather under the workbench's specular highlight (tr_11): cloth clay looks switch it off
     # unless a job asks, and textured looks take each object's roughness (Blender isn't run here: read the source)
@@ -419,6 +458,38 @@ def test_cleaned_seam_is_a_smooth_line():
     assert zig < 0.0015, zig  # (4 mm before)
     used = np.unique(cloth.welded_faces(M, W))
     assert not (np.isin(sw[:, 0], used) & np.isin(sw[:, 1], used)).any()  # one row of vertices on the seam
+
+
+def test_clearing_a_hollow_stays_local():
+    # cloth across the hollow where two balls meet (the crotch between the thighs): pushing its vertices along the body's
+    # normal doesn't clear its faces, and a gap grown round after round sent tr_13's fork tips 35-106 mm across the body
+    # (a 10x stretched start). The fine settle's clearing caps the growth (CLEAR_GROW)
+    V1, T1 = _ball()
+    V, T = np.r_[V1, V1 + [0.21, 0, 0]], np.r_[T1, T1 + len(V1)]
+    body = cloth.Body({"V": V, "F": T, "J": {}})
+    body._m = {"mm": {}, "at": {}}
+    X = np.array([[x, 0.0, z] for x in np.linspace(0.06, 0.15, 10) for z in (-0.02, 0.02)])
+    X[:, 1] = -np.sqrt(np.maximum(0.01 - np.minimum(np.abs(X[:, 0]), np.abs(X[:, 0] - 0.21)) ** 2 - X[:, 2] ** 2, 0)) - 0.002
+    F = np.array([f for i in range(9) for f in ([2 * i, 2 * i + 2, 2 * i + 1], [2 * i + 1, 2 * i + 2, 2 * i + 3])])
+    free = np.ones(len(X), bool)
+    far = np.linalg.norm(cloth._clear_of_body(X, F, free, body, 0.0042, 0.0034) - X, axis=1).max()
+    near = np.linalg.norm(cloth._clear_of_body(X, F, free, body, 0.0042, 0.0034, cloth.CLEAR_GROW) - X, axis=1).max()
+    assert far > 0.03 and near < 0.015, (far, near)
+
+
+def test_fine_start_check_fails_loudly():
+    # the fine settle's start is checked before the GPU is spent: draped triangles the solver moves, stretched past
+    # 1 + FINE_START_MAX from the flat pattern, are named (a carried or made triangle isn't the solver's to start)
+    uv = np.array([[0, 0], [0.01, 0], [0, 0.01], [0.01, 0.01]], float)
+    M = {"uv": uv, "F": np.array([[0, 1, 2], [1, 3, 2]]), "piece": np.zeros(4, int), "names": ["back.L"]}
+    X = np.c_[uv, np.zeros(4)]
+    plan = {"start": X.copy(), "idx": np.zeros(0, int), "rest_idx": np.zeros(0, int)}
+    assert cloth.fine_start_check(M, plan) == ""
+    plan["start"][3] = [0.05, 0.05, 0]  # the second triangle 5x
+    msg = cloth.fine_start_check(M, plan)
+    assert "1 triangles" in msg and "back.L" in msg, msg
+    assert cloth.fine_start_check(M, dict(plan, idx=np.array([1, 2, 3]))) == ""  # all carried
+    assert cloth.fine_start_check(M, dict(plan, rest_idx=np.array([3]))) == ""  # made
 
 
 if __name__ == "__main__":
