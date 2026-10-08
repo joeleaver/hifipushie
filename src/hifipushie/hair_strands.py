@@ -39,6 +39,7 @@ SEED_SPACING = 0.011  # m between the scalp layer's flow guides
 # material); A 0.75 instead of the fitted 0.646 because a colourless floor (~0.09 linear: the white specular lobe and
 # the sky) is in every measure and can't be inverted. After: grey / blond within 5%, #55504b x1.35-1.45 (EEVEE's own
 # strand material: x1.6-1.8), near-blacks stay at the floor. look.cycles_fit overrides ([1, 1] = off).
+# Applied to the colour's luminance with the hue kept (per channel the 1/p power tripled every channel ratio).
 CYCLES_FIT = (0.75, 0.307)
 # what each 0..1 dial may reach (the top of each range is where it still reads as hair)
 import os as _os

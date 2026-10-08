@@ -237,7 +237,8 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         # (the strands with the highest ids: a threshold on the id stays a strand's own through the picture's
         # anti-aliasing, and the opaque base under the strands (id 0) stays dark; a hash of the id speckled every
         # blended pixel and turned the cap's bare base grey)
-        isg = np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0)[..., None]
+        isg = (np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0))[..., None]  # (the
+        # base under the strands sits at depth 0.3: it is the shadow between hairs, never grey)
         base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
     col = _srgb(np.clip(base * val * gain, 0, 1))
     x = 0
