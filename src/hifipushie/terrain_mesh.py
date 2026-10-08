@@ -1421,6 +1421,8 @@ class Field:
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
                         F[k] = F[k] + w[k] * (1.0 if mic is None else mic) * self.micro(p[k], fd, u, g, I)
+        # (per call: left on the Field, the incremental fingerprint walked it as a global input that changed every export)
+        self.build_w = None
         return F
 
     def style_w(self, x, y):
