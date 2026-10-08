@@ -918,6 +918,8 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                         t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
                     tw_ = t["_winter_tree"]
                     Lw = foliage_mesh(tw_, at_c, bud["keep"], bud["min_radius"], bud["protect"], cap_c if at_c is not at else cap_i, back_c)
+                    if not len(Lw["F"]):  # (a low LOD's keep share can leave the lying plant no cards: keep them all, it is small)
+                        Lw = foliage_mesh(tw_, at_c, 1.0, 0.0, None, cap_c if at_c is not at else cap_i, back_c)
                     if len(Lw["F"]):
                         hk = ("lie", m_c)
                         if hk not in cluster_mats:
