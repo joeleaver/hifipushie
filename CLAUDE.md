@@ -4141,8 +4141,24 @@ regresses, bisect by building one spec at each commit and diffing heights.
     CHECK `soft_ground_jumps` (seam_check (7), FAILS over JUMP_LIMIT 3 sampled texels per tile LOD): every 7th texel on
     soft ground (rock layers < JUMP_SOFT 0.2 and rock relief weight < JUMP_RELIEF 0.1) compares the bake normal at 3 cm
     and 6 cm (`terrain_bake` JUMP_H); a step in the value reads 1/h, a smooth surface or a designed riser the same. On
-    the rim block (tiles 15-16 x 16-18 of tl2_island7): before 270 texels in 17 tile LODs (15,17 LOD 0: 65) -> 0.
-    Without the relief-weight condition it flagged rock structure creases on a 37 deg grassy rock face.
+    the rim block (tiles 15-16 x 16-18 of tl2_island7): the branch point's code + the check FAILS (10 tile LODs over
+    the limit, 15,17 LOD 0: 40), this branch 0. Left out of the check, each after a false alarm: rock structure
+    (relief weight; creases on a 37 deg grassy rock face), designed steps (`designed_step`: the Edits zone = turf
+    risers, bunker edges and lips; fallen blocks: pebble 588 texels), built edges within cave_wall + 2 m of a volume
+    (`near_volume`: stack feet under the sea).
+    Regressions (cold, a loaded machine, under /mnt/data/hifipushie/bin/capped): pebble 0 failures (1,274 s; shards
+    0.002 / 0.007 / 0.31%, lod1 map normals p95 6.2), alps 3x3 0, slice_a 0, slice_b incremental 4 of 64 tiles and 0 of
+    1,488 files differing from a cold export; the seven terrain test files pass.
+    Note 106 (downs_pond's dam missing from the tile heightmaps), DIAGNOSED, not fixed (dam.py <terrain> x y): the
+    dam's lake-side face is 50-65 deg and 12 m tall (floor 43.7, crest 56.0-57.2, level 56.35), so the cliff Region
+    takes it (S = 1) and the heightmap is eroded by the 3.8 m push ball: 5-9 m down on the face and the 2 m crest
+    with it (heightmap crest 54.4-56.1 on bearings 0-100 and 320-350, under the water level). Proposed: no push
+    (Rg = 0) within a lake's dam / bank mask, or the pushed heightmap clamped >= min(ground, level + freeboard) there;
+    per-lake outline polygons in the manifest; the report should warn "the lake stands on a slope: 12 m deep at the
+    dam for depth 2", freeboard under ~1 m and a crest under 3 cells wide.
+    QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
+    ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
+    the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
     Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
     interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
     lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
