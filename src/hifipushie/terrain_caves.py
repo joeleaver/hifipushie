@@ -542,6 +542,129 @@ MOUTH_EASE = 20.0  # m from a hillside mouth over which a karst floor takes on i
 MOUTH = 15.0  # m from an entrance where the roof may thin out (a mouth daylights by design)
 
 
+STEP_PROBE = 0.9  # m over the walk's floor where a collision floor is looked for (a knee: a step up still counts)
+RISER_STEP = 0.1  # m between samples of the collision floor for risers
+RISER_DEG = 45.0  # a floor steeper than this is a riser (a character controller's wall unless it steps up)
+
+
+def collision_floor(xy, z, P, F, cell=4.0):
+    """Per point (xy, the walk's floor z): the highest collision-mesh surface under z + STEP_PROBE and over z - 3,
+    (vertical rays against the triangles), NaN where there's none."""
+    out = np.full(len(xy), np.nan)
+    if not len(F):
+        return out
+    A, B, C = P[F[:, 0]], P[F[:, 1]], P[F[:, 2]]
+    lo = np.minimum(np.minimum(A, B), C)[:, :2]
+    hi = np.maximum(np.maximum(A, B), C)[:, :2]
+    grid = {}
+    for t, (l, h) in enumerate(zip(np.floor(lo / cell).astype(int), np.floor(hi / cell).astype(int))):
+        for gx in range(l[0], h[0] + 1):
+            for gy in range(l[1], h[1] + 1):
+                grid.setdefault((gx, gy), []).append(t)
+    for q, (p, zz) in enumerate(zip(xy, z)):
+        if not np.isfinite(zz):
+            continue
+        ts = np.array(grid.get(tuple(np.floor(p / cell).astype(int)), []), np.int64)
+        if not len(ts):
+            continue
+        a, b, c = A[ts], B[ts], C[ts]
+        v0, v1 = b[:, :2] - a[:, :2], c[:, :2] - a[:, :2]
+        w = p - a[:, :2]
+        den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
+        ok = np.abs(den) > 1e-12
+        u = np.where(ok, (w[:, 0] * v1[:, 1] - v1[:, 0] * w[:, 1]) / np.where(ok, den, 1), -1)
+        v = np.where(ok, (v0[:, 0] * w[:, 1] - w[:, 0] * v0[:, 1]) / np.where(ok, den, 1), -1)
+        inside = ok & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1 + 1e-9)
+        if not inside.any():
+            continue
+        zt = (a[:, 2] + u * (b[:, 2] - a[:, 2]) + v * (c[:, 2] - a[:, 2]))[inside]
+        zt = zt[(zt <= zz + STEP_PROBE) & (zt >= zz - 3.0)]
+        if len(zt):
+            out[q] = float(zt.max())
+    return out
+
+
+def collision_steps(paths, out, tiles, lod) -> list[str]:
+    """Each cave_paths passage walked again on the collision meshes (what an engine's character stands on): the floor
+    under each point (`collision_floor`, written into the path as "collision_floor") and the largest step between
+    half-metre points, beside the field's ("largest_step_m", "largest_step_collision_m"). Report lines."""
+    from pathlib import Path
+    from . import terrain_mesh as tm
+    out = Path(out)
+    if not paths:
+        return []
+    Ps, Fs, n = [], [], 0
+    have = {(e["i"], e["j"]): e for e in tiles if e.get("collision")}
+    pts = np.array([q[:2] for pth in paths for q in pth["points"]], float)
+    near = set()
+    for e in have.values():
+        lo, hi = np.asarray(e["min"], float)[:2], np.asarray(e["max"], float)[:2]
+        if ((pts >= lo - 1) & (pts <= hi + 1)).all(1).any():
+            near.add((e["i"], e["j"]))
+    for ij in sorted(near):
+        tr, prims = tm.read_glb(out / have[ij]["collision"])
+        o = tm._from_gltf(tr[None])[0]
+        for p in prims:
+            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            Ps.append(P)
+            Fs.append(p["indices"].astype(np.int64) + n)
+            n += len(P)
+    if not Ps:
+        return []
+    P, F = np.vstack(Ps), np.vstack(Fs)
+    lines = []
+    for pth in paths:
+        xy = np.array([q[:2] for q in pth["points"]], float)
+        z = np.array([np.nan if q[2] is None else q[2] for q in pth["points"]], float)
+        cz = collision_floor(xy, z, P, F)
+        pth["collision_floor"] = [None if not np.isfinite(v) else round(float(v), 2) for v in cz]
+        st = np.abs(np.diff(z))
+        st = st[np.isfinite(st)]
+        sc = np.abs(np.diff(cz))
+        good = np.isfinite(sc)
+        pth["largest_step_m"] = round(float(st.max()), 2) if len(st) else None
+        pth["largest_step_collision_m"] = round(float(sc[good].max()), 2) if good.any() else None
+        # risers: runs of the collision floor steeper than RISER_DEG at 0.1 m spacing (a character controller's wall,
+        # unless it steps up): the tallest, and where (crown_tube's lower pile: a 0.2 m lip at 60 deg where the
+        # pile meets the tube's floor, which the half-metre steps don't show)
+        s0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+        sf = np.arange(0, s0[-1], RISER_STEP)
+        xf = np.c_[np.interp(sf, s0, xy[:, 0]), np.interp(sf, s0, xy[:, 1])]
+        zf = np.interp(sf, s0, np.where(np.isfinite(z), z, -1e9))
+        zf[zf < -1e8] = np.nan
+        cf = collision_floor(xf, zf, P, F)
+        d = np.diff(cf)
+        steep = np.isfinite(d) & (np.abs(d) > RISER_STEP * math.tan(math.radians(RISER_DEG)))
+        best_r, at_r = 0.0, None
+        q = 0
+        while q < len(d):
+            if steep[q]:
+                j = q
+                while j + 1 < len(d) and steep[j + 1] and np.sign(d[j + 1]) == np.sign(d[q]):
+                    j += 1
+                h = abs(float(d[q:j + 1].sum()))
+                if h > best_r:
+                    best_r, at_r = h, (xf[q], cf[q], sf[q])
+                q = j + 1
+            else:
+                q += 1
+        pth["tallest_riser_collision_m"] = round(best_r, 2)
+        if at_r is not None:
+            pth["tallest_riser_at"] = [round(float(at_r[0][0]), 1), round(float(at_r[0][1]), 1), round(float(at_r[1]), 1)]
+        if good.any():
+            k = int(np.flatnonzero(good)[np.argmax(sc[good])])
+            miss = int((~np.isfinite(cz) & np.isfinite(z)).sum())
+            lines.append(f"{pth['cave']} {pth['from']} -> {pth['to']}: largest step {pth['largest_step_m']} m on the "
+                         f"field, {pth['largest_step_collision_m']} m on the LOD {lod} collision mesh (at "
+                         f"[{xy[k, 0]:.0f}, {xy[k, 1]:.0f}, {cz[k]:.1f}], {0.5 * k:.0f} m along); the tallest riser "
+                         f"steeper than {RISER_DEG:g} deg {pth['tallest_riser_collision_m']} m"
+                         + (f" at {pth['tallest_riser_at']}" if pth.get("tallest_riser_at") else "")
+                         + ": your character must step at least that high"
+                         + (f"; {miss} of {len(z)} points have no collision floor under them (the heightmap's, or "
+                            f"open)" if miss else ""))
+    return lines
+
+
 def _line_length(L) -> float:
     n = (getattr(L, "props", None) or {}).get("length")
     if n:
