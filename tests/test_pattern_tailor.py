@@ -330,7 +330,7 @@ def test_suit_trousers_kind_drafts_itself():
     gd.validate(sheet)
     out = gd.compile_sheet(sheet)
     pat = out["pattern"]
-    assert pat["block"] == "trouser" and pat["block_options"]["leg"] == "slim" and pat["block_options"]["length"] == "shoe"
+    assert pat["block"] == "trouser" and pat["block_options"]["leg"] == "slim" and pat["block_options"]["length"] == "break"
     assert [o["op"] for o in pat["ops"]] == ["waistband", "fly", "crease"], pat["ops"]
     assert {t["kind"] for t in out["trims"]} == {"belt", "belt_loops"}
     # the sheet's own op of a name wins over the detail's; a fit changes the leg
@@ -371,6 +371,25 @@ def test_trims_ride_a_band():
     rl = np.hypot(out["belt_loops"]["V"][:, 0], out["belt_loops"]["V"][:, 1])
     assert rl.max() > rb.max() - 0.004 and out["belt_loops"]["color"] == "#333333"
     assert out["belt"]["F"].max() < len(out["belt"]["V"])
+
+
+def test_trousers_cut_to_a_break():
+    # length "break": cut to the shoes the garment collides with (the tailor's shoeFront / shoeSide / shoeBack): the
+    # sides BREAK longer than where they rest on the shoe, a sloped hem (the front crease higher where the vamp is,
+    # the back crease down to the heel counter); without shoes measured it falls back to "shoe"
+    from hifipushie import pattern_blocks as pb
+    from hifipushie import pattern
+    m = dict(LEG, shoeFront=110.0, shoeSide=70.0, shoeBack=45.0)
+    B = pb.trouser(m, {"length": "break", "leg": "slim"})
+    fr, bk = B["pieces"]["front"], B["pieces"]["back"]
+    y = lambda pc, nm: -float(pc["P"][pc["names"][nm], 1])  # length down from the waist
+    L = LEG["waistToFloor"] / 1000 - 0.070 + pb.BREAK
+    assert abs(y(fr, "sideHem") - L) < 1e-6 and abs(y(bk, "inHem") - L) < 1e-6
+    assert abs(y(fr, "creaseHem") - (L - 0.040)) < 1e-6  # the vamp 4 cm higher than the sides
+    assert abs(y(bk, "creaseHem") - (LEG["waistToFloor"] / 1000 - 0.045)) < 1e-6  # to the heel counter, no break
+    B0 = pb.trouser(dict(LEG), {"length": "break", "leg": "slim"})
+    assert "creaseHem" not in B0["pieces"]["front"]["names"]
+    assert abs(y(B0["pieces"]["front"], "sideHem") - (LEG["waistToFloor"] / 1000 - pb.TROUSER_LENGTHS["shoe"])) < 1e-6
 
 
 if __name__ == "__main__":

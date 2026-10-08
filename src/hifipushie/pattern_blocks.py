@@ -396,7 +396,12 @@ def skirt(m: dict, opts: dict | None = None) -> dict:
 # where a trouser hem ends, as metres above the floor: "floor" (a wide leg's hem over a heel), "shoe" (a break on
 # the shoe: for a body that wears shoes), "ankle" (the default: these bodies are barefoot, and a hem cut for a shoe
 # pools on the foot), "cropped", "calf"; "knee" and "shorts" are set from the knee and the rise
-TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None, "shorts": None}
+TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "break": None, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None,
+                   "shorts": None}
+# "break": a suit trouser cut to the wearer's shoes (tailor's shoeFront / shoeSide / shoeBack: the shoes' height under
+# the hem's front, side and back, from garment key "collide"): a sloped hem, BREAK longer than where it comes to rest
+# on the shoe at the front and sides (that length is the slight break), the back crease down to the heel counter
+BREAK = 0.015
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
                     "length": None, "back_dart": 0.02, "leg": None, "dart_length": None, "dart_taper": 0.0}
 # the cut of the leg, from the leg itself (tailor.measure: knee, calf, heel girths). Knee and hem are finished
@@ -441,7 +446,14 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     lw = o["length"] if isinstance(o["length"], str) else None
     if lw is not None and lw not in TROUSER_LENGTHS:
         raise ValueError(f"trouser length {lw!r}: metres from the waist, or one of {', '.join(TROUSER_LENGTHS)}")
-    if lw in ("knee", "shorts"):
+    dh_crease = {"front": 0.0, "back": 0.0}
+    if lw == "break" and not all(k in m for k in ("shoeFront", "shoeSide", "shoeBack")):
+        lw = "shoe"  # (no shoes measured: the body has none, or no collide parts)
+    if lw == "break":
+        sf, ss_, sb = mm("shoeFront"), mm("shoeSide"), mm("shoeBack")
+        L = mm("waistToFloor") - ss_ + BREAK
+        dh_crease = {"front": -(sf - ss_), "back": (ss_ - BREAK) - max(sb, 0.02)}
+    elif lw in ("knee", "shorts"):
         knee_ = mm("waistToKnee") if "waistToKnee" in m else rise + 0.33
         L = knee_ - (0.02 if lw == "knee" else 0.5 * (knee_ - rise))
     elif lw:
@@ -505,7 +517,11 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         # one smooth line from the hip to the knee (a straight drop to the crotch line and then a curve kinked)
         pts += _curve_pts(bez([w, Y(wts)], [w, Y(wts + 0.45 * (knee_y - wts))], [crease + kn, Y(knee_y - 0.40 * (knee_y - wts))],
                               [crease + kn, Y(knee_y)]))
-        pts += [("sideKnee", [crease + kn, Y(knee_y)]), ("sideHem", [crease + hm, Y(L)]), ("inHem", [crease - hm, Y(L)]),
+        dh = dh_crease["front" if fr else "back"]
+        pts += [("sideKnee", [crease + kn, Y(knee_y)]), ("sideHem", [crease + hm, Y(L)])]
+        if abs(dh) > 1e-4:  # a sloped hem: the crease's point higher at the front, lower at the back
+            pts += [("creaseHem", [crease, Y(L + dh)])]
+        pts += [("inHem", [crease - hm, Y(L)]),
                 ("inKnee", [crease - kn, Y(knee_y)])]
         pts += _curve_pts(bez([crease - kn, Y(knee_y)], [crease - kn, Y(knee_y - 0.35 * (knee_y - rise))],
                               [-fork + 0.25 * fork, Y(rise + fd + 0.12 * (knee_y - rise))], [-fork, Y(rise + fd)]))
@@ -514,7 +530,7 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         pts += _curve_pts(bez([-fork, Y(rise + fd)], [-fork * 0.35, Y(rise + fd)], [0.0, Y(rise - 0.35 * (rise - wts))], [0.0, Y(wts)]))
         pts += [("cSeat", [0.0, Y(wts)])]
         pc = make_piece(which, pts, "leg_front" if fr else "leg_back", {"to": f"leg.L", "side": which}, "pair", {},
-                        {"crease": [[crease, Y(-up)], [crease, Y(L)]], "seat": [[0, Y(wts)], [w, Y(wts)]],
+                        {"crease": [[crease, Y(-up)], [crease, Y(L + dh)]], "seat": [[0, Y(wts)], [w, Y(wts)]],
                          "knee": [[crease - kn, Y(knee_y)], [crease + kn, Y(knee_y)]]})
         if dart > 0:
             pc["darts"]["dart"] = ("dartA", "dartTip", "dartB")

@@ -793,6 +793,8 @@ class Body:
                 self._m = tailor.measure(self.V, self._faces, self.J)
             except Exception:  # no pelvis/neck/limb joints, sections that miss: not a body
                 self._m = {"mm": {}, "at": {}, "body": False}
+            if self.worn is not None and self._m.get("mm") and "ankle.L" in self.J:
+                self._m["mm"].update(shoe_heights(np.asarray(self.worn["V"], float), np.asarray(self.J["ankle.L"], float)))
         return self._m
 
     @property
@@ -1306,6 +1308,8 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
     # down is compressed along its length (evenly, so the rows stay apart and square) until the hem clears the
     # foot's top (the instep) by the clearance. Compression a strain-limited solver can start from; squeezed into the
     # room over the instep alone the hem's rows lay mm apart and crossed, turned out over it they stretched 1.8x
+    if (to, "ease") not in cache and LEG_BREAK > 0:  # the hem stops on the shoe instead (below): no ease up the leg
+        cache[(to, "ease")] = 1.0
     if (to, "ease") not in cache:  # one compression for the leg (both pieces: their seams stay level)
         f = 1.0
         L_hem = zt - (z_w + min(Pf[:, 1].min(), Pb[:, 1].min()))
@@ -1343,8 +1347,69 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
         for j, i in enumerate(np.where(sel_)[0]):
             A_, ux_, uy_ = frame(float(np.interp(L[i], along, zg)))
             out[i] = A_ + q[j, 0] * ux_ + q[j, 1] * uy_
+    if LEG_BREAK > 0 and ok.any():
+        out = _hem_on_shoe(body, out, U, ok, sgn, z_foot, gap)
     t[~ok] = 0.0
     return out, t
+
+
+SHOE_PROBE = 0.055  # m from the ankle joint (in plan) where a trouser hem's front / side / back stands over the shoe
+
+
+def shoe_heights(W: np.ndarray, ankle: np.ndarray, r: float = SHOE_PROBE) -> dict:
+    """The tailor's tape on the shoes (what a trouser's hem is cut to, measured with the shoes on): the height of the
+    worn parts' top (mm) under the hem's front, outside and back, SHOE_PROBE in plan from the ankle (left side)."""
+    out = {}
+    W = W[W[:, 0] > 0]  # (the left shoe)
+    if not len(W):
+        return out
+    for key, d in (("shoeFront", (0.0, -1.0)), ("shoeSide", (1.0, 0.0)), ("shoeBack", (0.0, 1.0))):
+        p = ankle[:2] + r * np.asarray(d)
+        near = np.linalg.norm(W[:, :2] - p, axis=1) < 0.015
+        if near.any():
+            out[key] = round(float(W[near, 2].max()) * 1000, 1)
+    return out if len(out) == 3 else {}
+
+
+def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: float, z_foot: float,
+                 gap: float) -> np.ndarray:
+    """A trouser leg cut to end on the shoe, laid as worn: each column of the leg (pattern x) hangs straight down to
+    the floor less the hem's height, and where the foot or the shoe (garment key "collide") stands under it the
+    column stops `gap` over that, the length it can't use gathered into the bottom LEG_BREAK of the column (pattern
+    distance from its hem, linearly). That gathered length is the BREAK: a fold over the shoe's front, the back
+    hanging lower, as a tailor cuts it. (Compressed evenly from 35 cm over the ankle the leg stored its length as
+    4-5% crinkle all down the shin, the hem's back 4 cm over the floor and no break.)"""
+    Vall = body.V if not getattr(body, "worn", None) else np.r_[body.V, np.asarray(body.worn["V"], float)]
+    Vb = Vall[(Vall[:, 2] < z_foot + 0.02) & (sgn * Vall[:, 0] > 0)]
+    if not len(Vb):
+        return out
+    from scipy.spatial import cKDTree
+    tree = cKDTree(Vb[:, :2])
+    idx = np.where(ok)[0]
+    floor = np.full(len(out), -np.inf)
+    for j, nb in zip(idx, tree.query_ball_point(out[idx, :2], LEG_FOOT_R)):
+        if nb:
+            floor[j] = float(Vb[nb, 2].max()) + gap
+    deficit = np.where(ok, floor - out[:, 2], -np.inf)
+    col = np.round(U[:, 0] / 0.01).astype(int)
+    cols = np.unique(col[ok])
+    dc = {c: max(0.0, float(deficit[ok & (col == c)].max())) if (ok & (col == c)).any() else 0.0 for c in cols}
+    # (smoothed across neighbouring columns: a step between columns is shear)
+    ds = {c: float(np.mean([dc.get(c + k, dc[c]) for k in range(-2, 3)])) for c in cols}
+    ds = {c: max(ds[c], dc[c]) for c in cols}
+    out = out.copy()
+    for c in cols:
+        if ds[c] <= 0:
+            continue
+        sel = np.where(ok & (col == c))[0]
+        d_hem = U[sel, 1] - U[sel, 1].min()
+        w = np.clip(1.0 - d_hem / LEG_BREAK, 0.0, 1.0)
+        out[sel, 2] += ds[c] * w
+    return out
+
+
+LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
+LEG_FOOT_R = 0.012  # m: the foot or shoe within this of a leg column (in plan) stands under it
 
 
 def _piece_xs_at(P: np.ndarray, y: float) -> list:
