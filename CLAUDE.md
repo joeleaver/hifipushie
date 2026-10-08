@@ -2746,6 +2746,49 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
         exported GLB doesn't have; judge surfaces in clay or through asset.preview.
       - Left: back.L/R self-crossings in the trouser start where the hem gathers at the heel (the sim cleared them);
         the shirt's 24 open sewn pairs at the cuffs; suit trousers have no pockets.
+- Placket (2026-10-08, "placket" agent, branch `worktree-agent-ab49e1b1d94e336bb`; the user: "We're really not getting
+  the shirt placket right"; renders `cloth_renders/pk_*`, sheet `pk_05_placket_before_after.png` (before | after,
+  textured + clay, beside cloth_refs/shirt_collar_worn.jpg); refs `cloth_refs/placket_*` (button macro, a placket with
+  its button; refs.json); scratch DURABLE in /mnt/data/hifipushie/placket/: run.sh, fr.py <model> <garment> <tag>
+  [clay|tex|both] (the CACHED result pickled in out/ after one 100 s load, relief + buttons + maps re-made with the
+  code as it is: front band / open top close-ups, seconds), zb.py (one button close-up), mp.py (crops of the detail
+  maps round the band), mk.py (closure marks vs edges in the pattern), bt.py (one button alone), sheet.py, fetch.py
+  (Commons files + licences into cloth_refs), tests.sh).
+  - Diagnosis: the PATTERN was right (front.L's edge 16 mm past CF, holes on CF, the band's inner line a vertex row
+    at 30 mm; front.R a French front 10 mm past CF). What was missing was everything that shows: the band was a
+    0.8 mm lift over one 1 cm triangle (invisible), the maps drew the front edge as a turned HEM (20 mm plateau, one
+    row 6 mm in), buttonholes were thin outlined slots, buttons a dome on a rim (rivets), roughness 0.6.
+  - Closure keys (closures.py, KEYS): `finish` {"over": box | french | facing | plain, "under": ...} (default box over,
+    french under: a box placket's three layers proud with a crisp fold at the inner edge, the tuck's shadow, a row
+    `topstitch` (default 3 mm, measured off the reference) in from each edge; French = a rounded fold only, no rows),
+    `hole` auto | along | across (`closures.hole_axis`: along the closure edge where there is one: a placket's
+    VERTICAL holes; on a piece closed on itself from the button toward the buttonhole: a cuff's run along it), `button`
+    {holes 4|2, color, roughness 0.42, thickness 2.1 mm}. `resolve(pcs=)` stores each closure's edge polylines
+    (`edge_xy`) in M["closures"]. These keys are construction LOOK only: in the design table they don't move the sim
+    key; in a garment's own `closures` entry they would (g minus NOT_SIM is in the key).
+  - Maps (`cloth._closure_bands` + detail_maps): each band from its edge (pattern polyline carried into the atlas,
+    EDT), the free edge's hem / hem row suppressed inside bands, band rows a shirt's fine stitch (2 mm, 0.5 mm gaps),
+    a `shadow` multiplier into the cavity (stitch dimples, the tuck, the slit: a white shirt's detail reads by shading,
+    its thread is near white); buttonholes from the closures (size + 3 mm, a slit between rounded satin beads, bar
+    tacks), not from mark names. Map buttons (export fallback) flat with a rim. Shirt atlas: 2880 texels/m.
+  - Buttons (`closures.buttons_mesh` -> `_button`): flat sew-through, a low rounded rim, a dished middle, 4 sunk holes
+    (2 = across the axis), the thread's two bars along the hole axis, ~510 triangles; on the cloth at the hole (raised
+    over cloth standing above its plane within its radius: a roll starting at the 2nd button cut it in half);
+    returns color / roughness and `mark` (the button mark: the export samples the button's texel there, not the
+    hole's thread). Scene / look / render take the roughness.
+  - Simon's table: front closure `finish` box / french explicit, `_doc_front` (the table cuts FreeSewing's seamless
+    draft at placketFold1; the classic cut-on box draft's tuck takes back exactly the 2 x fold it adds, so the outline
+    after turning is the same: no re-sim).
+  - Read (pk_04 / pk_05): textured, the placket now reads as a box band with two rows, flat 4-hole buttons, vertical
+    buttonholes showing above / below each button and on the rolled-back top. CLAY STILL SHOWS NO BAND: the crisp step
+    is in the normal map only; the geometry is the 0.8 mm `relief` over one 1 cm triangle. Next if clay must show it:
+    a post-sim split of the triangles crossing a line ~1.5 mm outside the band's inner row (render / export only;
+    appended vertices so closures' vertex ids hold; M must follow: F, uv, piece, border), or a second fold row at
+    mesh time (slivers next to 1 cm triangles: ZOZO's ccd failed on 0.44 mm edges once). Also open: the French front's
+    soft line 18 mm in (the facing's edge; faint, maybe too visible), cuff buttons not judged by render, the button
+    shading has a faint star in the dish (smooth normals across rim and middle), tests at 2048 texels only.
+  - Tests: test_closures (+ test_a_box_placket_in_the_maps, test_flat_sew_through_buttons,
+    test_a_cuffs_holes_run_along_the_cuff), the eleven cloth / pattern files + test_seams green.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg

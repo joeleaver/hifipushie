@@ -734,7 +734,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
     return {"uv": uv_n, "piece": pid_n, "names": names, "F": remap[F], "folds": fold_recs,
             "made": [nm for nm in names if mod[nm][0] == "made"],
             "sew": sew, "sew_seam": sew_seam, "stitch": stitch,
-            "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n, B.get("seams"), sew, sew_seam),
+            "marks": marks_n, "closures": closuremod.resolve(B.get("closures"), marks_n, pts_n, B.get("seams"), sew, sew_seam, pcs=pcs),
             "points": pts_n, "border": border_n,
             # lines drawn as stitching in the detail maps (pattern coordinates; a fly's J)
             "stitch_lines": {f"{nm}:{k_}": np.asarray(L_, float) for nm in names
@@ -5868,6 +5868,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             else:
                 res["closures_seat"] = [dict(r_, reverted="it crossed the cloth") for r_ in res["closures_seat"]]
         res["closures"] = closuremod.measure(res["V"], M)
+        res["V_closed"] = res["V"]  # (before the bands' relief: what relief / buttons_mesh are applied to)
         res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
     res["seam_gaps"] = seam_gaps(res["V_sim"], res["V"], M)
@@ -7258,6 +7259,54 @@ def fine_folds(res: dict, g: dict, uv: np.ndarray, side: float, texture: int | N
     return H
 
 
+def _closure_bands(M: dict, uv: np.ndarray, side: float, T: int, px, inside: np.ndarray):
+    """The closures' bands and buttonholes on the atlas: (bands [(zone (T, T) bool: the band's texels, distance (m)
+    from the closure edge, band width, finish, topstitch)], an empty band mask, holes [(x, y) px, axis (pattern),
+    length (m), vertex])."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    from . import closures as closuremod
+    mpt = side / T
+    bands, holes = [], []
+    for c in M.get("closures") or []:
+        exy = c.get("edge_xy") or {}
+        fin = c.get("finish") or {"over": "box", "under": "french"}
+        ts = float(c.get("topstitch", 0.003))
+        for sd in ("over", "under"):
+            if sd == "under" and c["under"] == c["over"]:
+                continue
+            band = c.get("band")
+            w = band.get(sd) if isinstance(band, dict) else band
+            if not w or exy.get(sd) is None or c[sd] not in M["names"]:
+                continue
+            k_ = M["names"].index(c[sd])
+            ring = np.where((M["piece"] == k_) & M["border"])[0]
+            vs_ = np.where(M["piece"] == k_)[0]
+            if len(ring) < 3 or not len(vs_):
+                continue
+            off_ = uv[vs_[0]] * side - M["uv"][vs_[0]]  # the piece's place in the atlas (one scale, no turn)
+            Q = (np.asarray(exy[sd], float) + off_) / side
+            pm = Image.new("L", (T, T), 0)
+            ImageDraw.Draw(pm).polygon([px(uv[i]) for i in ring], fill=255)
+            pm = np.asarray(pm) > 0
+            em = Image.new("L", (T, T), 0)
+            ImageDraw.Draw(em).line([px(q) for q in Q], fill=255, width=1)
+            ys, xs = np.where(pm)
+            if not len(ys):
+                continue
+            pad = int(float(w) / mpt) + 8
+            sub = (slice(max(ys.min() - pad, 0), min(ys.max() + pad + 1, T)), slice(max(xs.min() - pad, 0), min(xs.max() + pad + 1, T)))
+            db = np.full((T, T), 1.0, np.float32)
+            db[sub] = ndimage.distance_transform_edt(np.asarray(em)[sub] == 0) * mpt
+            zone = pm & inside & (db <= float(w) + 0.002)
+            bands.append((zone, db, float(w), fin.get(sd, "plain"), ts))
+        if c.get("kind") == "buttons":
+            for va, vb in c.get("v") or []:
+                hx, hy = px(uv[va])
+                holes.append((hx, hy, closuremod.hole_axis(c, M, va, vb), float(c.get("size", 0.011)) + 0.003, int(va)))
+    return bands, np.zeros((T, T), bool), holes
+
+
 def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | None = None, extra=None) -> dict:
     """The sewing details a garment artist sculpts or stamps after the sim, drawn from the pattern itself into maps on
     the flat-pattern atlas: a groove along every sewn edge with the seam allowance's ridge beside it, a dashed
@@ -7351,6 +7400,12 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
                 t_ = np.where(m, row(r_) * dash, 0).astype(np.float32)
                 thread = np.maximum(thread, t_)
                 H -= o["stitch_depth"] * t_
+    # closures' bands (closures.py), each as its `finish` makes it, from the closure's edge (its piece's pattern
+    # polyline carried into the atlas): what lies in a band is drawn by the band, not as a turned hem
+    bands, bandzone, holes_done = _closure_bands(M, uv, side, T, px, inside)
+    for z_, _db, _w, _f, _ts in bands:
+        bandzone |= z_
+    free = free & ~bandzone
     # a free edge: a turned hem, the doubled cloth proud up to `hem` in, its fold rounded at the edge
     if o["hem"]:
         hem = np.clip((o["hem"] - d) / (0.15 * o["hem"]), 0, 1) * np.clip(d / 0.0015, 0, 1)
@@ -7362,6 +7417,59 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         t_ = np.where(free, row(ts) * dash, 0).astype(np.float32)
         thread = np.maximum(thread, t_)
         H -= o["stitch_depth"] * t_
+    # the bands: a box placket stands its three layers proud (rounded at its folded outer edge, a crisp fold at the
+    # inner edge where the tuck turns under, a faint shadow just past it) with a row of topstitching `topstitch` in
+    # from each edge; a French front only rounds its folded edge (the facing is inside: no rows); a faced edge has one
+    # row. (Real heights: shirting ~0.3 mm a layer; a sub-millimetre step reads only as the normal map's crisp line.)
+    sstep = lambda x: (lambda t: t * t * (3 - 2 * t))(np.clip(x, 0, 1))
+    rowb = lambda db, at: np.exp(-((db - at) / max(0.0004, 1.2 * mpt)) ** 2)
+    shadow = np.ones((T, T), np.float32)  # darkening the relief alone can't give (stitch dimples, a slit, the tuck)
+    s_b = A[iy, ix] % 0.0025  # band topstitching: a shirt's fine stitch (~10 per inch: 2 mm stitches, 0.5 mm apart)
+    dash_b = np.clip((0.002 - np.abs(2 * s_b - 0.002)) / (1.5 * mpt + 1e-9), 0, 1).astype(np.float32)
+    for z_, db, w, fin, ts in bands:
+        if fin == "plain":
+            continue
+        rise = sstep(db / 0.0012)
+        if fin == "box":
+            h_ = 0.0006 * rise * (1 - sstep((db - w) / 0.0008 + 0.5))
+            h_ -= 0.00025 * np.exp(-((db - w - 0.0007) / 0.0006) ** 2)  # the tuck's shadow past the inner fold
+            rows_ = [ts, w - ts]
+        elif fin == "french":
+            h_ = 0.0004 * rise * (1 - sstep((db - w) / 0.004 + 0.5))
+            rows_ = []
+        else:  # facing
+            h_ = 0.0004 * rise * (1 - sstep((db - w) / 0.004 + 0.5))
+            rows_ = [ts]
+        H += np.where(z_, h_, 0).astype(H.dtype)
+        if fin == "box":  # the tuck under the inner fold throws a thin shadow on the front beside it
+            shadow *= np.where(z_ | (db < w + 0.003), 1 - 0.14 * np.exp(-((db - w - 0.0006) / 0.0007) ** 2), 1).astype(np.float32)
+        for r_ in rows_:
+            t_ = np.where(z_, rowb(db, r_) * dash_b, 0).astype(np.float32)
+            thread = np.maximum(thread, t_)
+            H -= o["stitch_depth"] * t_
+            # the row pulls the layers together: a fine shadowed line either side of the stitches
+            shadow *= np.where(z_, 1 - 0.1 * np.exp(-((db - r_) / max(0.0007, 2 * mpt)) ** 2), 1).astype(np.float32)
+    # buttonholes, from the closures: a slit cut through, satin-stitched both sides (a bead ~1 mm wide) with a bar tack
+    # at each end, `size` + 3 mm long, along the hole's axis (closures.hole_axis: down a placket, along a cuff)
+    for hx_, hy_, ax_, ln_, _v in holes_done:
+        ux, uy = ax_[0], -ax_[1]  # (image rows run down)
+        half = 0.5 * ln_ / mpt
+        bead = 0.0013 / mpt
+        r0 = int(half + bead + 4)
+        sub = (slice(max(int(hy_) - r0, 0), min(int(hy_) + r0 + 1, T)), slice(max(int(hx_) - r0, 0), min(int(hx_) + r0 + 1, T)))
+        yy, xx = np.mgrid[sub]
+        s_ = ((xx - hx_) * ux + (yy - hy_) * uy) * mpt  # along (m)
+        t_ = np.abs(-(xx - hx_) * uy + (yy - hy_) * ux) * mpt  # across
+        a_ = np.abs(s_)
+        e_ = 0.5 * mpt
+        outline = np.clip((0.5 * ln_ - a_) / e_ + 0.5, 0, 1) * np.clip((0.0013 - t_) / e_ + 0.5, 0, 1)
+        slit = np.clip((0.5 * ln_ - 0.0012 - a_) / e_ + 0.5, 0, 1) * np.clip((max(0.00025, 0.4 * mpt) - t_) / e_ + 0.5, 0, 1)
+        thr = np.clip(outline - slit, 0, 1).astype(np.float32)
+        # the beads rounded (dense satin stitches stand ~0.4 mm), the slit a dark cut between them
+        bead_h = np.clip(1 - ((t_ - 0.0007) / 0.0007) ** 2, 0, 1) * np.clip((0.5 * ln_ - a_) / 0.0006, 0, 1)
+        H[sub] += (0.0004 * np.maximum(bead_h, 0.5 * thr) * (1 - slit) - 0.0012 * slit).astype(H.dtype)
+        thread[sub] = np.maximum(thread[sub], 0.6 * thr)
+        shadow[sub] *= (1 - 0.12 * thr) * (1 - 0.5 * slit)
     # stitch lines drawn on a piece (its pattern lines named *_stitch: a fly's J, a pocket's outline): dashes along them
     for key_, Ls in (M.get("stitch_lines") or {}).items():
         k_ = M["names"].index(key_.split(":", 1)[0]) if key_.split(":", 1)[0] in M["names"] else None
@@ -7409,13 +7517,14 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
                 x0, x1, y0, y1 = int(cx - r - 2), int(cx + r + 3), int(cy - r - 2), int(cy + r + 3)
                 sub = (slice(max(y0, 0), min(y1, T)), slice(max(x0, 0), min(x1, T)))
                 rr = np.hypot(xx[:, sub[1]] - cx, yy[sub[0], :] - cy) / r
-                bump = 0.0018 * np.sqrt(np.clip(1 - rr ** 2, 0, 1))
+                # a flat sew-through button: a low rim round a dished middle (a dome read as a rivet)
+                bump = (0.0014 + 0.0004 * np.exp(-((rr - 0.85) / 0.08) ** 2)) * np.clip((1 - rr) / 0.06, 0, 1)
                 for hx, hy in ((-0.28, -0.28), (0.28, -0.28), (-0.28, 0.28), (0.28, 0.28)):
                     hr = np.hypot(xx[:, sub[1]] - (cx + hx * r), yy[sub[0], :] - (cy + hy * r)) / (0.13 * r)
                     bump -= 0.0012 * np.clip(1 - hr ** 2, 0, 1)
                 H[sub] = np.maximum(H[sub], bump)
                 btn[sub] = np.maximum(btn[sub], (rr < 1).astype(np.float32))
-            elif mk.startswith("buttonhole"):
+            elif mk.startswith("buttonhole") and v not in {h_[4] for h_ in holes_done}:
                 w, hh = 0.0075 / mpt, 0.0012 / mpt  # a slot along the placket (pattern y)
                 yy, xx = np.ogrid[:T, :T]
                 sub = (slice(max(int(cy - w - 3), 0), min(int(cy + w + 3), T)),
@@ -7436,7 +7545,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     n /= np.linalg.norm(n, axis=2, keepdims=True)
     N = ((n * 0.5 + 0.5) * 255).round().astype(np.uint8)
     Hc = H - (np.asarray(extra, np.float32) * inside if extra is not None else 0)  # (folds don't darken like grooves)
-    cav = np.clip(1 + Hc / 0.004, 0.7, 1.0).astype(np.float32)
+    cav = (np.clip(1 + Hc / 0.004, 0.7, 1.0) * np.where(inside, shadow, 1)).astype(np.float32)
     btn *= inside
     return {"height": H, "normal": N, "cavity": cav, "thread": thread.astype(np.float32), "button": btn, "inside": inside,
             "texels_per_m": T / side}
@@ -7518,7 +7627,8 @@ def scene_job(name: str, spec: dict, log: list | None = None) -> list:
         if res.get("buttons") is not None:  # the closures' buttons: their own small object beside the garment
             bp_ = store._dir(name) / f"cloth_{gname}_buttons.npz"
             np.savez(bp_, verts=res["buttons"]["V"].astype(np.float32), faces=res["buttons"]["F"].astype(np.int32))
-            e["buttons"] = {"npz": str(bp_), "color": (g.get("detail") or {}).get("button") or "#ebe6dc"}
+            e["buttons"] = {"npz": str(bp_), "color": res["buttons"].get("color") or (g.get("detail") or {}).get("button") or "#ebe6dc",
+                            "roughness": float(res["buttons"].get("roughness", 0.42))}
         entries.append(e)
     return entries
 
@@ -7636,7 +7746,8 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             # their mark (every vertex of a button takes its mark's uv)
             Fall = np.r_[Fall, np.asarray(bt["F"], np.int64) + len(Vall)]
             Vall = np.r_[Vall, bt["V"]]
-            UVall = np.r_[UVall, uv[bt["at"]]]
+            UVall = np.r_[UVall, uv[bt.get("mark", bt["at"])]]  # (the button drawn at its own mark: at a closed
+            # fastening the button sits on the hole, whose texel is thread)
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
         # the shared normals (outer shell; the inner shell the opposite), tangents made orthogonal to them again
@@ -7764,7 +7875,8 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         objs.append(o)
         if res.get("buttons"):
             objs.append({"name": f"buttons_{gn}", "V": res["buttons"]["V"], "F": res["buttons"]["F"],
-                         "color": (g.get("detail") or {}).get("button") or "#ebe6dc"})
+                         "color": res["buttons"].get("color") or (g.get("detail") or {}).get("button") or "#ebe6dc",
+                         "roughness": float(res["buttons"].get("roughness", 0.42))})
         from . import cloth_trims  # belts, loops: built on the finished surface (cloth_trims.py)
         for tm_ in cloth_trims.meshes(res, expanded(g)):
             objs.append({"name": f"{tm_['name']}_{gn}", "V": tm_["V"], "F": tm_["F"], "color": tm_["color"]})
@@ -7962,7 +8074,7 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
         if o.get("uv_corner") is not None:  # (per corner: welded faces whose seam vertices are shared keep each
             # side's own uv)
             data[o["name"] + "_UVC"] = np.asarray(o["uv_corner"], np.float32)
-        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "maps")})
+        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "maps", "roughness")})
     tag = Path(prefix).name
     np.savez(d / f"_{tag}_render.npz", **data)
     job = {"mode": "render", "data": f"_{tag}_render.npz", "objects": objs, "out_prefix": prefix,
