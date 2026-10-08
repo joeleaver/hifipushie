@@ -762,11 +762,34 @@ def _jaw_pair(ph, md, tr, sd):
         mouth_p = mouth_m = None
     neck_p = tr.get("lines", {}).get(f"neck.{sd}")
     pv = ls.jaw_measures(Q, ex, ey, mmpx, pts.get(f"ear_lobe.{sd}"), mouth_p, neck_p)
-    ps, k, box = md["passes"], md["k"], ph["box"]
-    Qm = ls.model_jaw(Q, ps["zb"], k, box, 15.0, mmpx, ps["nrm"])
-    if Qm is None:
-        return pv, {}
-    neck_m = ls.model_jaw(neck_p, ps["zb"], k, box, 15.0, mmpx, ps["nrm"]) if neck_p and len(neck_p) >= 3 else None
+    # the model's jaw line by GEOMETRY, not an image search (the contour found in the render read a neck step of
+    # 7-27 mm on one head between runs): its own jaw-contour landmarks on that side (lm 2..8: the line onemesh2's
+    # shape.jawline moves, the skin following), densified in 3D and projected; the neck under it = the outermost skin
+    # 12-30 mm below the border two thirds of the way to the chin.
+    L3, V3 = md["mesh"]["L"], md["mesh"]["V"]
+    mx = 0.5 * (L3[68, 0] + L3[69, 0])
+    sx = -1.0 if sd == "R" else 1.0
+    ids = [2, 3, 4, 5, 6, 7, 8] if np.sign(L3[3, 0] - mx) == sx else [14, 13, 12, 11, 10, 9, 8]
+    O = L3[ids]
+    seg = np.linalg.norm(np.diff(O, axis=0), axis=1)
+    u = np.r_[0, np.cumsum(seg)] / seg.sum()
+    J3 = np.c_[[np.interp(np.linspace(0, 1, 40), u, O[:, c]) for c in range(3)]].T
+    Qm = humanfit.project(md["cam"], J3)
+    i3 = ls._split_corner(Qm)
+    B = J3[i3 + (2 * (len(J3) - i3)) // 3] if i3 is not None else J3[26]
+    neck_m = None
+    ears_i = md["mesh"].get("ears")
+    skin = np.ones(len(V3), bool)
+    if ears_i is not None:
+        skin[ears_i] = False
+    side_v = skin & (np.sign(V3[:, 0] - mx) == sx) & (np.abs(V3[:, 1] - B[1]) < 0.012)
+    npts = []
+    for z0, z1 in ((0.012, 0.02), (0.02, 0.03)):
+        kk = side_v & (V3[:, 2] < B[2] - z0) & (V3[:, 2] > B[2] - z1)
+        if kk.any():
+            npts.append(V3[kk][np.argmax(np.abs(V3[kk][:, 0] - mx))])
+    if len(npts) == 2 and neck_p and len(neck_p) >= 2:
+        neck_m = humanfit.project(md["cam"], np.array(npts))
     lobe_m = None
     ears = md["mesh"].get("ears")
     if ears is not None and len(ears):
@@ -933,15 +956,44 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] if r["score"] > 1.0 else r["tier"], -r["score"]))
     cmp = {"rows": rows, "photos": photos, "models": models, "name": name, "points_from": points_from}
     cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
+    for r in rows:   # items an expression on that picture biases
+        if r["vi"] != "-":
+            for nm, v in (cmp["pictures"][r["vi"]].get("expressions") or {}).items():
+                if r["id"] in EXPR_BIAS.get(nm, []):
+                    r["expression"] = f"{nm} {v:.2f}"
     return cmp
 
 
 # ---- what a set of pictures can support -----------------------------------------------------------------------------
 
 EXPR = {"smile": (("mouthSmileLeft", "mouthSmileRight"), 0.3), "mouth open": (("jawOpen",), 0.15),
-        "eyes closing / squint": (("eyeBlinkLeft", "eyeBlinkRight", "eyeSquintLeft", "eyeSquintRight"), 0.45),
+        "squint": (("eyeBlinkLeft", "eyeBlinkRight", "eyeSquintLeft", "eyeSquintRight"), 0.45),
         "brows raised": (("browInnerUp", "browOuterUpLeft", "browOuterUpRight"), 0.4),
         "frown": (("browDownLeft", "browDownRight"), 0.45)}
+# THE RULE: an expression read on a reference is not the person's shape. The items it moves are fitted through the
+# model's POSE (base.head.pose: an expression), not its identity; the neutral head keeps typical values.
+EXPR_BIAS = {"squint": ["eye_opening", "eye_aspect", "upper_lid_show", "brow_eye"],
+             "frown": ["brow_eye", "brow_tilt", "brow_arch"],
+             "brows raised": ["brow_eye", "brow_arch", "brow_tilt", "eye_opening", "upper_third"],
+             "smile": ["mouth_corner_tilt", "mouth_width", "nasolabial_fold", "upper_lip", "eye_opening", "width_mouth"],
+             "mouth open": ["lower_third", "lower_over_middle", "face_height", "chin_height", "upper_lip", "lower_lip",
+                            "lip_ratio", "mouth_line"]}
+# item -> the pose lever that takes it when an expression biases it (path, step, range, default)
+EXPR_LEVERS = {"eye_opening": ("pose.lid_upper", 0.001, (-0.003, 0.004), 0.0),
+               "brow_eye": ("pose.brow_inner", -0.001, (-0.004, 0.003), 0.0),
+               "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0)}
+
+
+def expression_bias(pictures: list, view: str | None = "front") -> dict:
+    """{item id: "squint 0.70"}: the items an expression read on the references biases (in pictures of that view)."""
+    out = {}
+    for pn in pictures:
+        if view and pn.get("view") != view:
+            continue
+        for nm, v in (pn.get("expressions") or {}).items():
+            for iid in EXPR_BIAS.get(nm, []):
+                out.setdefault(iid, f"{nm} {v:.2f}")
+    return out
 
 
 def lens_mm(cam: dict) -> float:
@@ -976,7 +1028,9 @@ def picture_notes(ph: dict, md: dict | None = None) -> dict:
     for nm, (keys, lim) in EXPR.items():
         v = max((bs.get(k, 0.0) for k in keys), default=0.0)
         if v > lim:
-            out["problems"].append(f"{nm} ({v:.2f}): expression moves the mouth / lids / brows")
+            out.setdefault("expressions", {})[nm] = float(v)
+            out["problems"].append(f"{nm} ({v:.2f}): an expression, not shape; it biases "
+                                   + ", ".join(EXPR_BIAS[nm]) + " (fit those through the pose)")
     sh = md.get("shade") if md else None
     if sh:
         out["light_hard"] = round(sh["hard"], 2)
@@ -1082,6 +1136,7 @@ def table_text(cmp: dict, top: int | None = None) -> str:
                      + (f" {r['model3d']:6.1f}" if isinstance(r.get("model3d"), float) else f" {'-':>6}")
                      + f"  {r['stage']}: {r['control']}"
                      + ("" if r.get("source") == "detector/detector" else f"  [{r.get('source')}]")
+                     + (f"  EXPRESSION ({r['expression']}): fit through the pose, not the identity" if r.get("expression") else "")
                      + (f"  CAUTION {r['reliability']}" if r["reliability"] and r["score"] > 1 else ""))
     rest = [r for r in rows if r["score"] < 0]
     if rest:
@@ -1305,7 +1360,7 @@ def _photos(refs: dict) -> list:
     return _PHOTOS[k]
 
 
-def stage_wants(cmp: dict, stage: str) -> tuple:
+def stage_wants(cmp: dict, stage: str, skip=()) -> tuple:
     """(want, pins, gaps) for humanfit.solve from a comparison: each of the stage's items with a `solve` measure and a
     miss beyond its tolerance in the FRONT view asks that measure to move by the miss (front views are near
     orthographic: a 2D miss in mm is the 3D measure's, x across and z up); items sharing a measure add up. Earlier
@@ -1324,7 +1379,7 @@ def stage_wants(cmp: dict, stage: str) -> tuple:
             if it.get("solve"):
                 pins[it["solve"]] = None
             continue
-        if r["score"] <= 1.0:
+        if r["score"] <= 1.0 or r["id"] in skip:
             continue
         if it.get("solve"):
             want[it["solve"]] = want.get(it["solve"], 0.0) - r["miss"]
@@ -1343,9 +1398,11 @@ LEVERS = {
     "corner_jaw": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
     "brow_ridge": ("features.brow_ridge", 0.5, (-1.5, 1.5), 0.0),
     "under_eye": ("shape.under_eye", 0.3, (0.0, 1.0), 0.0),
-    "jaw_gonial": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
-    "jaw_gonion_mouth": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
-    "jaw_gonion_lobe": ("shape.jaw_angle", 0.0015, (0.0, 0.005), 0.0),
+    # onemesh2's jaw control (base.head.shape.jawline: the mandible as an L), driven by the traced jaw
+    "jaw_gonion_lobe": ("shape.jawline.below_lobe", 0.008, (0.02, 0.07), 0.045),
+    "jaw_gonion_mouth": ("shape.jawline.below_lobe", 0.008, (0.02, 0.07), 0.045),
+    "jaw_ramus": ("shape.jawline.forward", 0.006, (-0.01, 0.02), 0.004),
+    "jaw_neck_step": ("shape.jawline.tuck", 0.003, (0.0, 0.008), 0.0),
     "canthal_tilt": ("nudge:eye_outer.L:z", 0.001, (-0.004, 0.004), 0.0),
     "nose_length": ("nudge:nose_tip:z", 0.002, (-0.006, 0.006), 0.0),
     "nose_projection": ("nudge:nose_tip:y", -0.002, (-0.006, 0.006), 0.0),
@@ -1357,9 +1414,14 @@ LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo onl
 def lever_value(base: dict, path: str, default: float) -> float:
     if path.startswith("nudge:"):
         return 0.0
-    h = base.get("head", {})
-    a, b = path.split(".")
-    return float((h.get(a) or {}).get(b, default))
+    d = base.get("head", {})
+    keys = path.split(".")
+    for k in keys[:-1]:
+        d = d.get(k) or {}
+        if not isinstance(d, dict):   # (a control given as a bare number: shape.hollow = 0.005)
+            return default
+    v = d.get(keys[-1], default) if isinstance(d, dict) else default
+    return float(v) if isinstance(v, (int, float)) else default
 
 
 def with_lever(base: dict, path: str, x: float, force: bool = False) -> tuple:
@@ -1375,8 +1437,13 @@ def with_lever(base: dict, path: str, x: float, force: bool = False) -> tuple:
         nb, rep = humanfit.nudge(base, lm, move=mv, force=force)
         return nb, bool(rep.get("refused"))
     out = _copy.deepcopy(base)
-    a, b = path.split(".")
-    out.setdefault("head", {}).setdefault(a, {})[b] = round(float(x), 5)
+    d = out.setdefault("head", {})
+    keys = path.split(".")
+    for k in keys[:-1]:
+        if not isinstance(d.get(k), dict):
+            d[k] = {}
+        d = d[k]
+    d[keys[-1]] = round(float(x), 5)
     return out, False
 
 
@@ -1421,6 +1488,7 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
     if abs(f0) <= tol:
         return base, cmp0, f"{path}: already within tolerance ({f0:+.2f})"
     tried = [(abs(f0), x0, base, cmp0, f0)]
+    fresh = path.startswith("shape.jawline") and not isinstance((base.get("head", {}).get("shape") or {}).get("jawline"), dict)
 
     def ev(x):
         x = float(np.clip(x, lo, hi))
@@ -1440,6 +1508,11 @@ def _lever_fit(name, base, photos, start, cmp0, k, ids, lever, force, log) -> tu
         if not und:
             tried.append((abs(f), x, nb, c, f))
         return f       # (a vetoed try still tells the secant which way the lever moves the item)
+    if fresh:   # the control at its default first: that is the lever's real starting point
+        fd = ev(x0)
+        if fd is None:
+            return base, cmp0, f"{path}: its default was refused"
+        f0 = fd
     x1 = x0 + step if x0 + step <= hi else x0 - step
     f1 = ev(x1)
     if f1 is not None and abs(f1 - f0) > 0.02 * max(abs(f0), 1e-9):
@@ -1474,7 +1547,9 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
     k = order.index(stage)
     rep = {"stage": stage, "control": st["control"], "steps": [], "log": []}
     cur, cur_cmp = base, start
-    want, pins, gaps = stage_wants(start, stage)
+    biased = expression_bias(start["pictures"])
+    rep["expression"] = {i: v for i, v in biased.items() if _item(i)["stage"] == stage}
+    want, pins, gaps = stage_wants(start, stage, skip=biased)
     rep["want"], rep["pins"] = want, pins
     if stage == "widths":
         nb, r = humanfit.fit_outline(cur, refs["views"], [m["cam"] for m in start["models"]], force=force)
@@ -1499,7 +1574,7 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
                 cur, cur_cmp = nb, c
                 break
             rep["log"].append(f"  solve x{frac}: undoes {[u[1]['id'] for u in und]}" + ("; retry at half" if frac == 1.0 else "; not taken"))
-    if stage == "eyes":
+    if stage == "eyes" and "eye_opening" not in biased:
         nb, r = humanfit.fit_hood(cur, _views_with(refs, list(humanfit.HOOD_LIDS)), [m["cam"] for m in cur_cmp["models"]], force=force)
         c = compare(name, nb, photos=photos)
         if not _undone(start, c, k) and not r.get("refused"):
@@ -1507,10 +1582,12 @@ def fit_stage(name: str, stage: str, base: dict | None = None, force: bool = Fal
         rep["steps"].append(("fit_hood", r))
     done = set()
     for it in checklist():
-        if it["stage"] != stage or it["id"] not in LEVERS or it["id"] in done:
+        lv_of = lambda i: EXPR_LEVERS[i] if (i in biased and i in EXPR_LEVERS) else LEVERS.get(i)  # noqa: E731
+        if it["stage"] != stage or lv_of(it["id"]) is None or it["id"] in done:
             continue
-        lever = LEVERS[it["id"]]
-        ids = [i for i, lv in LEVERS.items() if lv[0] == lever[0] and _item(i)["stage"] == stage]
+        lever = lv_of(it["id"])
+        ids = [i for i in list(LEVERS) + list(EXPR_LEVERS) if lv_of(i) and lv_of(i)[0] == lever[0] and _item(i)["stage"] == stage]
+        ids = list(dict.fromkeys(ids))
         done.update(ids)
         rep["log"].append(f"  lever {lever[0]} for {ids}:")
         cur_cmp["_base"] = cur
@@ -1558,6 +1635,8 @@ def stage_text(rep: dict) -> str:
             if r.get("refused"):
                 extra += "  REFUSED: " + r["refused"]
         lines.append(f"  {n}: {extra}".rstrip(": "))
+    for i, v in (rep.get("expression") or {}).items():
+        lines.append(f"  EXPRESSION on the reference ({v}): {_item(i)['name']} is fitted through the pose, not the identity")
     lines += rep.get("log") or []
     if rep.get("gap"):
         lines.append("  GAP: " + rep["gap"])

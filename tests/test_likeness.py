@@ -190,6 +190,28 @@ def test_reference_brief_shape():
     assert {it["id"] for it in lk.checklist() if it["measure"]["kind"] != "judge"} <= covered | {"stature"}
 
 
+def test_expression_on_a_reference_goes_to_the_pose():
+    pics = [{"view": "front", "expressions": {"squint": 0.7}}, {"view": "three_quarter", "expressions": {"smile": 0.5}}]
+    b = lk.expression_bias(pics)
+    assert "eye_opening" in b and "brow_eye" in b and "mouth_corner_tilt" not in b     # front pictures only
+    rows = [{"id": "eye_width", "view": "front", "score": 3.0, "miss": 2.5},
+            {"id": "brow_eye", "view": "front", "score": 3.0, "miss": 2.5}]
+    want, _, _ = lk.stage_wants({"rows": rows}, "brows", skip=b)
+    assert want == {}                                                  # the squinted brow isn't an identity ask
+    assert lk.EXPR_LEVERS["eye_opening"][0].startswith("pose.")
+    for ids in lk.EXPR_BIAS.values():
+        assert all(any(it["id"] == i for it in lk.checklist()) for i in ids)
+
+
+def test_nested_levers():
+    base = {"head": {"shape": {"hollow": 0.005}}}
+    nb, _ = lk.with_lever(base, "shape.jawline.below_lobe", 0.05)
+    assert nb["head"]["shape"]["jawline"] == {"below_lobe": 0.05} and "jawline" not in base["head"]["shape"]
+    assert lk.lever_value(nb, "shape.jawline.below_lobe", 0.045) == 0.05
+    assert lk.lever_value(base, "shape.jawline.forward", 0.004) == 0.004
+    assert lk.lever_value(base, "shape.hollow", 0.0) == 0.005
+
+
 def test_stage_wants_pin_earlier_stages():
     rows = [{"id": "face_height", "view": "front", "score": 2.0, "miss": -4.0},
             {"id": "eye_width", "view": "front", "score": 3.0, "miss": 2.5},
