@@ -212,7 +212,7 @@
    12,
    18
   ],
-  "width": 0.07,
+  "width": 0.055,
   "thick": 0.45,
   "curl": 0.45,
   "heads": 3,
@@ -224,16 +224,16 @@
    0.7,
    1.15
   ],
-  "budget": 2400,
+  "budget": 3000,
   "roughness": 0.75,
-  "fan": 3,
-  "fan_angle": 12,
+  "fan": 6,
+  "fan_angle": 9,
   "heads_kind": {
    "ray": "petals",
    "cup": "petals",
    "*": "dab"
   },
-  "dabs": 7,
+  "dabs": 9,
   "ragged": 0.25,
   "petals": [
    11,
@@ -246,7 +246,7 @@
   "head_up": 0.6,
   "petal_size": 1.0,
   "dab_length": 2.2,
-  "dab_size": 0.4,
+  "dab_size": 0.32,
   "dab_flat": 0.7
  },
  "translucency": {
