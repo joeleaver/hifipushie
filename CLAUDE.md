@@ -2691,6 +2691,39 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       the jacket's back neck, not the stand; (4) collar_hug; (5) trousers slimmer: a sheet's `block_options` REPLACES the
       kind's draft block options (seat_ease alone made a 165 mm hem): set the leg through fit or extend compile_sheet to
       merge. A new shirt from the "placket" agent will re-simulate everything layered over it.
+  - Round 3 (the coordinator's order after su_77; ZOZO now on a rented 4090: env.sh sets HIFIPUSHIE_ZOZO_REMOTE to
+    THIS worktree's spikes/gpu_cloth/remote.sh + GPU_SSH_*; LOCAL_ZOZO=1 runs on the laptop; a Garrett jacket is ~6-13
+    min there, 50 min here):
+    - CORRECTION: a design sheet's `block_options` DO merge over the kind's draft options (compile_sheet's `_merge`);
+      the "165 mm hem" was the hem gate's own misread (fixed in round 2), not the merge. Trousers slimmer: the cut is
+      `leg` (LEG_CUTS: tailored = "slim"; "skinny" is the next step) or knee ease; not run yet.
+    - Stage 2 `front_closure button_stand` counted only stitches: a jacket worn OPEN has its buttons as a closure with no
+      stitches and failed "0 stitches". Now a closure's fastening pairs count (garment_design evidence "stitches").
+    - THE PIT SEAMS (su_77: side-back 67-110 mm, underarm 37-100 mm open). su_79 = su_77 + zozo.stitch_stiffness 3
+      (761 s on the 4090): WORSE, 23 of 380 pairs open (both side-backs 109 mm, both underarms 102 mm), collar_show -11.9.
+      Not stiffness. The START: seam 4 (side-back) starts 135-160 mm open over the whole height and sideF 25-35 mm,
+      because smooth placement lays every torso piece on ONE cylinder as big as the garment's widest level
+      (place(): C = hull offset by (Wmax - P0) / 2 pi; Wmax the max span), and at the jacket's suppressed waist the
+      arc left over between front (from CF) and back (from CB) all falls into the side panel's back seam (the panel is
+      side "front", measured from CF). Measured: per side leftover ~170 mm at the waist, side panel 53 mm wide there.
+      Tried and reverted: moving the side panel back by a share of the leftover (SIDE_CENTRE): at 0.5 it overshot, at
+      0.35 both seams started 77 / 127 mm open AND the panel crossed the under sleeves at the pit (the sleeves then
+      went 11 cm down the arm, pushes 50 mm). The real fix is a per-level cylinder (each level's hull out to that
+      level's own span), which clothflow tried once and dropped for 10-30% shear: try it only for worn_top garments
+      below the armpit, arcs measured from CF AND CB at every level, with the start relaxation after.
+    - collar_show / collar_hug (the user's annotated read of su_77: the jacket collar must lie LOW and flat round the
+      back of the neck outside the shirt collar, the notch lower on the chest, the shirt collar showing above the
+      jacket's at the sides): su_garrett v21-22 jacket = op `neckline` {widen 0.012, back 0.035} FIRST in the ops (it
+      must come before style lines), lapel `gorge_drop` 0.12 (was 0.085) and `break_y` 0.46 (0.40). Start (g14): the
+      notch sits on the chest, the jacket's CB neckline 1.550 (was 1.568; the shirt's neckline at CB 1.556, its collar
+      top 1.579). The start lay has the fall OPEN (40 deg), so collar_show can only be read after a sim. NOT SIMULATED:
+      layered Garrett runs are on hold until the placket agent's shirt (new sim key) is on main.
+    - Trousers over the shirt (the tuck): tr_22 on the 4090 passed the coarse sim (the laptop's tr_21 died at frame 44
+      with "Intersection detected" at the shoe top) and then stopped at the fine settle's start check: 103 triangles over
+      1.6x, worst 4.4x at back.L/R pattern [0.227, 0.001] (the side of the back's waist seam: the made waistband
+      rebuilt at its closed girth on the body's hull, under the pressed shirt tail, so the back's top is cleared over
+      the shirt). Next: give the fine settle's band (and `_press_plan`'s clearing) the padded body, or try
+      fine_settle false for the trousers over the shirt.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
