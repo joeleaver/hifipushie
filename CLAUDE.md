@@ -3773,6 +3773,55 @@ regresses, bisect by building one spec at each commit and diffing heights.
       subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
       fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
       height / hollows (numbers only today).
+  - Terrain styles 2 (2026-10-07/08, "terrainstyle2" agent, branch `worktree-agent-a4a49e9b179132f6a`, main merged in;
+    CONTRACT 3; scratch DURABLE in /mnt/data/hifipushie/terrainstyle2/: run.sh / run_base.sh <script> (this worktree /
+    634977c's src in base_src/, its resources.py replaced by the current one: the old slot starved behind new-queue jobs
+    for 40 min), reg.py <pebble|alps> <tag> (cold regression export), cmp.py <a> <b> (every file of two exports),
+    exp.py, prev.py, rend.py, gv.py <out> <style[:before],...> (game-like ground views), ba.py (swatch sheet before /
+    after; before/<style>.json = the sheets at the branch start), bt.py '<bands op json>' <out> (one anime rock
+    texture), rs.py <terrain> <out> (rock_scale fade map), imdiff.py, q1-q3.sh; renders `terrain3d_renders/ts2_*`).
+    - Regressions (the previous agent's owed jobs): pebble (3792 files) and alps 3x3 (297) exported cold with this branch
+      (before the stacks merge) and with 634977c (just before the styles work): BYTE-IDENTICAL, 0 check failures. The
+      styled-geometry ts_slice_a export: on the merged branch 2 failures (lod0_vs_lod2 weights1 p95 0.277 > 0.25, the
+      slice's known one; a 124-triangle piece of the anime STACK column floating 9.6 m up at [359, 57.5]: the stacks'
+      code, reported to main), LOD 0 shards 0.011 -> passing, lod1 map normals 17.1 -> passing.
+    - Turf-lip risers off (ts2_lip_off vs _on, previews at [150, 140]): the faint dark lines on blobby slopes REMAIN
+      without risers: they are where the cliff overlay's shell meets the heightmap (the "line with small dents at the
+      crossing" from the rock5 round), longest in blobby because softening widens the overlay. Not fixed. What the
+      risers did make on blobby: pale crumbs along every lip -> style rock key `lip` (share of the turf step;
+      blobby 0; `Edits.lip_scale`, realistic cells exactly 1: bit-identical, tested).
+    - Cartoon soft layers (the consumer: soft blotches read as gradients under hard-band cel light): flat fields in two
+      crisp tones (`blotch` `share` = the second tone's share, `width` = size spread), dark ink tufts, pale ticks, white
+      and yellow flower dots in clumps (`dots` `clusters`, op key `paint` = an sRGB colour laid where the op marks), no
+      grain; `macro` 0 (the baked colour's soft variation was most of the smudge). Anime: 3 crisp value steps (soft
+      0.08), dabs in 3 tones (`strokes` `levels`), no dark gap between dabs, a few pale flower dabs, `macro` 0.15.
+      Sheet key `layer_edge` {height, depth} (cartoon 0.35 / 0.04, anime 0.4 / 0.08): the layers re-weighted by their
+      height maps where they meet (`terrain_style.edge_weights`, recipe step 1) = crisp painted layer edges; the
+      cartoon layers carry a 0.7 m height-only blotch so the edge wobbles.
+    - `terrain_style.ground_view` (in look_terrain(styles=True), and gv.py): eye level and 25 m up over grass with a
+      winding earth path, mipmapped trilinear sampling, the recipe's anti-tiling, the style's layer_edge and macro
+      stand-in, flat cel light. The judge for ground textures: the swatch sheet's tiles hid both the mush at distance
+      and the soft layer edges. Sheets ts2_ground_ba.png, ts2_swatches_ba.png in the scratch dir.
+    - Anime strata (`bands`): `pinch` (each band's thickness wanders; an edge moves by half the change of the bands
+      either side, so neighbours absorb it: a cumulative sum random-walked whole stacks of strata metres up and down),
+      `breaks` (lenses: a band wedges to nothing and back over `break_len`, never a vertical edge: fading a band's TONE
+      along u drew vertical streaks), `vary` (tone strength along the strike); anime rock 24 m tile (12 was too short
+      for strike variation). Ops marked `fade_small` give way on small / thin rock: the layer ships
+      `<l>_plain_albedo/_normal.png` (texture(plain=True)) and manifest `layers[l].small` {albedo, normal, face_m,
+      thick_m}; `styles/rock_scale.png` (RG: face height / 64 m, half-thickness in plan / 32 m; `rock_scale(T)`: relief
+      within 40 m averaged over steep cells, EDT of the ground standing over the middle of the relief within 100 m,
+      max within 15 m; sea stacks stamped at their solid column's radius, not the heightfield's slim core).
+      `SMALL_FADE` face [4, 12] m, thick [3, 10] m. In Blender's styled render (blender_tiles._styled) too; layer_edge is
+      NOT in the Blender render (ground_view has it). ts2_s3_stack1.png: the stack plain, the cliffs behind in
+      wandering strata.
+    - Consumer changes for contract 3 (CONTRACT_LOG): layer_edge re-weighting; `small` plain textures by rock_scale;
+      read size_m (anime rock 24, cartoon grass 16, anime grass 12) and macro (cartoon 0, anime 0.15) from the
+      manifest.
+    - Item 3 of the brief (the hard wandering edge in island_vale.png) was dropped: pushieworld found it is the tree
+      rows' sun shadow (their note 88).
+    - Open: the overlay-crossing lines (above); cartoon tufts / flowers read small at eye level (judge in Godot: one
+      flower clump per ~30 m2); anime dabs barely read at eye level now (were mush); a dedicated ground_view for rock
+      (strata on a cliff from 40 m) instead of the Blender render; pixar untouched.
   - Sea stacks (2026-10-07, "stacks" agent, branch `worktree-agent-aeb27454ed1610793`; the user on pushieworld's Kaze
     coast in Godot: "Seastacks don't look like real seastacks, they're kind of a mess"; references
     workspace/level_refs/stacks/ (9 CC photos: Old Harry, Twelve Apostles, Duncansby, Yesnaby, Bedruthan, Reynisdrangar,
