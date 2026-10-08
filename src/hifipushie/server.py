@@ -1150,7 +1150,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
                  hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
-                 face_shapes: bool | list[str] = False):
+                 face_shapes: bool | list[str] = False, asset_name: str | None = None):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
     roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic, glTF packing) and height (16-bit; low
@@ -1202,11 +1202,13 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
     The log lists each skin part's most uneven shapes (a vertex moving outside its neighbours' range; smooth ~0) and
     WARNs over 0.2: a sawtooth in whatever is painted there. Check blinks posed: rig(glb=, shapes={"eyeBlinkLeft": 1}).
+    asset_name: what the exported files, nodes, meshes and materials are called (default the model's name; a game
+    that already loads "garrett.glb" with garrett_body etc. gets the same names from a model saved as rg_garrett).
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing, rig, fbx, face_shapes or None)
+                        instancing, rig, fbx, face_shapes or None, asset_name=asset_name)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"

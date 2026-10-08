@@ -637,6 +637,43 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       the left eye's inner corner shows a white sliver of eyeball in a full blink, there before (smaller), a little
       larger now (LID_FADE's corner fade is the suspect; not isolated). "69 / 58 moved vertices not Head 1.00" in the
       export log is old (69 in the first regen export).
+  - Regen round 4 (2026-10-08, "regen4" agent; s0urc3 tested exp_garrett2 in their game: 260/261 tests, idle hands
+    over the lap, a lash smear on the closed left lid). Scratch DURABLE in /mnt/data/hifipushie/regen4/: a COPY of
+    s0urc3's project (`s0urc3/`, never write in /home/joe/dev/s0urc3) with two scratch-only additions
+    (tools/dump_pose.gd: posed body / trousers / bone bases per frame of a baked clip; a FIT print line in
+    test_garrett.gd); game.sh <glb> <tag> (rename rg_garrett -> garrett, swap in, delete the old import AND the
+    extracted garrett_<n>.png (else the old textures land on the new UVs), import, bake + review with a window,
+    dump, test_garrett -> game_<tag>/); twist_bones.gd.fix + motion_retarget.gd.fix = a PROOF patch of their
+    retarget (drive the twist bones before the fit and the bake; copy over the .orig to undo); lap.py / lapmap.py /
+    lapv.py / gskin.py (their posed lap in Python, exact to their skinning; per-joint attribution), jgap.py /
+    palm.py (which joint set the resting hand's height, palm tilt), wmod.py / wcopy.py (weight experiments on a
+    GLB), notex.py / settarget.py / blinkvar.py / blinkL*.py (lid: texture off, normal map off, blink variants
+    rendered), darkface.py / darktri.py / tuck.py, exp.py (the recipe export, asset_name "garrett").
+    - REPRODUCED their numbers exactly in the copy (v23: 18/18, idle hand_thigh L 0.9 / R 8.4 mm, bake 100% / 100%
+      on, lowest 0.5 cm; exp2: 17/18, R 14.3 mm, bake left 0% on, lowest 1.3 cm).
+    - Hands, by measure: (1) their retarget (MotionRetarget: _leg_ik / _arm_offset / the SeatFit corrector set chain
+      bones' GLOBAL rotations) leaves bones not in the clip (our twist joints) where they were: in the baked clip
+      LeftUpLegTwist1 is turned 3.6 deg about a SIDEWAYS axis (a flexion; TwistBones would turn it 23.6 deg about the
+      thigh). SeatFit, GarrettFit and the bake review all read that raw pose (no TwistBones), so on exp2 they see the
+      lap 6.5 mm higher at the hip end than the game draws it. v23 can't show it: its clothes kept v18's weights
+      (no twist joints). (2) GarrettFit's thigh table takes trouser vertices >= 0.5 on UpLeg alone: our trousers
+      share the thigh with UpLegTwist1, so the table is sparse (merging the twist onto UpLeg offline: test passes,
+      L 7.4 / R 2.5 mm). (3) SeatFit lays the palm flat on the lap normal averaged over 5 cm and lifts it until no
+      fingertip joint is within 14 mm: v23's own trouser weights copied onto our trousers (lap within +-2 mm of
+      v23's) still leave the left hand 13.6 mm up (palm 7 deg off v23's). With their retarget patched (proof): R 8.1
+      / L 12.1 mm (fails by 0.1), bake still 1.2-1.4 cm. Nothing on the export side moves these past their
+      thresholds without dropping thigh twist from the clothes; visually (rig_renders/rg4_hands_idle.png) the
+      hands rest on the lap in all three.
+    - Lid smear: texture only (a GLB with the base colour texture removed closes on a clean line; normal map off,
+      seal off, seal without overlap, and a "tuck" of the lid's on-ball skin all keep it: rg4_lidL_isolate.png,
+      rg4_lidL_seal.png, rg4_tuck.png). It is the model's own paint 162_lash_line (near the eyeballs within 2.4 mm)
+      baked thick at the inner end of the upper lid; v23 has it too, smaller, at blink 0.75. Not fixed.
+    - `export_asset(asset_name=)` (server + asset._export): files, nodes, meshes, materials, skin named for the game
+      ("garrett": garrett_body, garrett_0_material, garrett_rig). /mnt/data/hifipushie/regen4/exp_garrett3 =
+      exp_garrett2 vertex for vertex and weight for weight, named garrett (Khronos 0 / 0 / 0).
+    - The tongue's own material in v23 came from the old `skin.part: "tongue"` hack (v20's spec); with skin.only
+      ["eyes"] the tongue is on the shared material, as intended. Head falloff 84 mm (v23 32): rig3's deliberate
+      neck gradient; `spec.rig.rigid_head.fall: 0.032` gives v23's back (at the cost rig3 measured in neck folds).
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
