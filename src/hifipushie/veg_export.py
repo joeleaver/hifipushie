@@ -82,6 +82,8 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
             return foliage_mesh(tree, at, tw={**tw, "pos": np.zeros((0, 3))})
     var = veg_leaf.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
+    if "size_m" in tw:  # bough cards are big: a tone per card as wide as a twig's read as a crown of pale and dark leaves
+        tint = 0.88 + 0.24 * vegetation._u(tw["key"], 77)
     Vs, Fs, Us, Ts, Ns, Fl, Nr, Rc, Ph = [], [], [], [], [], [], [], [], []
     base = 0
     for i, c in enumerate(at["cards"]):
@@ -279,9 +281,8 @@ def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: f
             out["keep"] = float(np.clip(((triangles - len(out["wood"]["F"])) // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))
             out["floating"] = 0.0
         if not tree.get("clump"):  # a grown tree: cards of its own boughs, as many as the foliage's share buys
-            out["boughs"] = int(min(max(triangles - len(out["wood"]["F"]), 0) // veg_bough.TRIS, veg_bough.most(tree)))
-            out["boughs"] = len(veg_bough.plan(tree, out["boughs"])["roots"])
-    fol = out["boughs"] * veg_bough.TRIS if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
+            out["boughs"], out["bough_form"] = veg_bough.fit(tree, max(triangles - len(out["wood"]["F"]), 0))
+    fol = out["boughs"] * veg_bough.tris(out["bough_form"]) if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0
     return out

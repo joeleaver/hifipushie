@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 
 import numpy as np
 
@@ -14,7 +15,38 @@ from . import veg_leaf
 from .vegetation import _child, _u
 
 BOUGH = {"variants": 4, "size": 384, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
-TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles a bough card costs (a fan per card)
+TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles the richest bough card costs (a fan per card)
+# The card's cut, richest first. A budget buys GRANULARITY before polish: a 20k spruce cut into 937 fourteen-triangle
+# cards was 2.7 m boughs (palm fronds from 30 m); the same triangles as six-triangle cards are twice as many, smaller.
+FINE = 0.8
+FORMS = ({"verts": 7, "centre": True, "cup": 0.12}, {"verts": 5, "centre": False, "cup": 0.06})
+
+
+def tris(form: int = 0) -> int:
+    f = FORMS[form]
+    return (f["verts"] if f["centre"] else f["verts"] - 2) * BOUGH["cross"]
+
+
+def fit(tree: dict, triangles: int) -> tuple[int, int]:
+    """(cards, form) for a foliage triangle count: the richest card form that still cuts the tree as fine as it can
+    be cut (`most`), else the cheapest form and as many cards as it buys. Remembered on the tree for atlas / place."""
+    m = most(tree)
+    fv = os.environ.get("HIFIPUSHIE_BOUGH_FORM")  # (experiments: force a form)
+    n, form = min(max(triangles, 0) // tris(0), m), 0
+    for i in range(len(FORMS)):
+        # a cheaper cut only where it buys (nearly) the finest cut: mid-sized boughs on cheap cards read as fronds
+        # and round leaves (spruce at 9k: 993 six-triangle 2.5 m boughs were worse than 425 fourteen-triangle limbs)
+        if max(triangles, 0) // tris(i) >= FINE * m or (fv is not None and int(fv) == i):
+            n, form = min(max(triangles, 0) // tris(i), m), i
+            break
+    n2 = len(plan(tree, n)["roots"])
+    memo = tree.setdefault("_bough_form", {})
+    memo[n] = memo[n2] = form
+    return n2, form
+
+
+def form_of(tree: dict, cards: int) -> int:
+    return int((tree.get("_bough_form") or {}).get(cards, 0))
 DEAD_SHARE, DEAD_MIN = 0.08, 12  # of a budget's bough cards, the most that draw dead wood (and the fewest a tree with dead wood keeps)
 LEADER = 1.2  # m: the most of the trunk's own top one bough card stands for
 DEAD_THIN = 0.5  # the share of a dead bough's twigs its picture is baked from (real alpha gaps)
@@ -227,7 +259,9 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     and "size_m" (the cut)."""
     leaves = leaves or tree["spec"]["leaves"]
     pl = plan(tree, cards)
-    key = json.dumps([tree["spec"], leaves, list(wood_color), round(pl["size"], 2)], sort_keys=True, default=float)
+    fi = form_of(tree, cards)
+    fm = FORMS[fi]
+    key = json.dumps([tree["spec"], leaves, list(wood_color), round(pl["size"], 2), fi], sort_keys=True, default=float)
     if key in _CACHE:
         return _CACHE[key]
     # on disk too, by the tree itself and this module's source (a stand look bakes a dozen of these: half an hour)
@@ -265,7 +299,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
             A["color"][sl][..., 3] = R["alpha"]
             A["normal"][sl] = R["normal"]
             A["mask"][sl] = R["mask"]
-            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], BOUGH["verts"], BOUGH["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext[b]), 0.1), 0)
+            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], fm["verts"], fm["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext[b]), 0.1), 0, centre=fm["centre"])
             if side == 0:
                 fills.append(float((R["alpha"] > 0.5).sum()) * (R["frame"][2] / size) ** 2 / max(cm["area"], 1e-12))
             else:
@@ -291,7 +325,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
         _CACHE.pop(next(iter(_CACHE)))
     A = {k_: np.clip(v_ * 255 + 0.5, 0, 255).astype(np.uint8).astype(np.float32) / 255.0 for k_, v_ in A.items()}  # (as the disk keeps it)
     _CACHE[key] = {**A, "cards": out_cards, "fill": float(np.mean(fills)) if fills else 0.0, "grid": g, "size": size,
-                   "triangles": int(np.mean([len(c["F"]) for c in out_cards])) if out_cards else TRIS,
+                   "triangles": int(np.mean([len(c["F"]) for c in out_cards])) if out_cards else tris(fi),
                    "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick]}
     veg_leaf._disk_put(dkey, _CACHE[key])
     return _CACHE[key]

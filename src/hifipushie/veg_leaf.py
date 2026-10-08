@@ -737,7 +737,7 @@ def _strip_outline(alpha: np.ndarray, strips: int):
 
 
 def card_mesh(alpha: np.ndarray, frame, verts: int = 7, cup: float = 0.1, cross: int = 1, droop: float = 0.0,
-              length: float = 0.3, strips: int = 0) -> dict:
+              length: float = 0.3, strips: int = 0, centre: bool = True) -> dict:
     """A card cut tight round a twig's picture: a convex polygon of at most `verts` corners round the alpha, as a
     fan from its middle (cupped, drooping like the twig), in the twig's own frame; uv = 0..1 in the picture.
     cross 2 adds the same card turned a quarter round the twig (tufts). `strips` n cuts a long thin twig as a
@@ -758,9 +758,13 @@ def card_mesh(alpha: np.ndarray, frame, verts: int = 7, cup: float = 0.1, cross:
         hull = pts[ConvexHull(pts).vertices]
         poly = _enclose(hull, verts)
         uv = np.clip(np.c_[poly[:, 0] / n, 1 - poly[:, 1] / n], -0.05, 1.05)
-        UV = np.vstack([uv.mean(0), uv])
         k = len(poly)
-        F = np.array([[0, 1 + i, 1 + (i + 1) % k] for i in range(k)])
+        if centre:
+            UV = np.vstack([uv.mean(0), uv])
+            F = np.array([[0, 1 + i, 1 + (i + 1) % k] for i in range(k)])
+        else:  # a fan from one corner: k - 2 triangles (no middle vertex: cheaper cards, more of them)
+            UV = uv
+            F = np.array([[0, i, i + 1] for i in range(1, k - 1)])
     X = x0 + UV[:, 0] * side
     Y = y0 + UV[:, 1] * side
     hw = max(np.abs(X).max(), 1e-6)
