@@ -460,6 +460,38 @@ def test_cleaned_seam_is_a_smooth_line():
     assert not (np.isin(sw[:, 0], used) & np.isin(sw[:, 1], used)).any()  # one row of vertices on the seam
 
 
+def test_clearing_a_hollow_stays_local():
+    # cloth across the hollow where two balls meet (the crotch between the thighs): pushing its vertices along the body's
+    # normal doesn't clear its faces, and a gap grown round after round sent tr_13's fork tips 35-106 mm across the body
+    # (a 10x stretched start). The fine settle's clearing caps the growth (CLEAR_GROW)
+    V1, T1 = _ball()
+    V, T = np.r_[V1, V1 + [0.21, 0, 0]], np.r_[T1, T1 + len(V1)]
+    body = cloth.Body({"V": V, "F": T, "J": {}})
+    body._m = {"mm": {}, "at": {}}
+    X = np.array([[x, 0.0, z] for x in np.linspace(0.06, 0.15, 10) for z in (-0.02, 0.02)])
+    X[:, 1] = -np.sqrt(np.maximum(0.01 - np.minimum(np.abs(X[:, 0]), np.abs(X[:, 0] - 0.21)) ** 2 - X[:, 2] ** 2, 0)) - 0.002
+    F = np.array([f for i in range(9) for f in ([2 * i, 2 * i + 2, 2 * i + 1], [2 * i + 1, 2 * i + 2, 2 * i + 3])])
+    free = np.ones(len(X), bool)
+    far = np.linalg.norm(cloth._clear_of_body(X, F, free, body, 0.0042, 0.0034) - X, axis=1).max()
+    near = np.linalg.norm(cloth._clear_of_body(X, F, free, body, 0.0042, 0.0034, cloth.CLEAR_GROW) - X, axis=1).max()
+    assert far > 0.03 and near < 0.015, (far, near)
+
+
+def test_fine_start_check_fails_loudly():
+    # the fine settle's start is checked before the GPU is spent: draped triangles the solver moves, stretched past
+    # 1 + FINE_START_MAX from the flat pattern, are named (a carried or made triangle isn't the solver's to start)
+    uv = np.array([[0, 0], [0.01, 0], [0, 0.01], [0.01, 0.01]], float)
+    M = {"uv": uv, "F": np.array([[0, 1, 2], [1, 3, 2]]), "piece": np.zeros(4, int), "names": ["back.L"]}
+    X = np.c_[uv, np.zeros(4)]
+    plan = {"start": X.copy(), "idx": np.zeros(0, int), "rest_idx": np.zeros(0, int)}
+    assert cloth.fine_start_check(M, plan) == ""
+    plan["start"][3] = [0.05, 0.05, 0]  # the second triangle 5x
+    msg = cloth.fine_start_check(M, plan)
+    assert "1 triangles" in msg and "back.L" in msg, msg
+    assert cloth.fine_start_check(M, dict(plan, idx=np.array([1, 2, 3]))) == ""  # all carried
+    assert cloth.fine_start_check(M, dict(plan, rest_idx=np.array([3]))) == ""  # made
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

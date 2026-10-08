@@ -2366,6 +2366,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (`cloth_workflow.sewn_crossings`): ZOZO starts with existing intersections allowed and su_05 simulated clean from
     them. The shirt's start on su_garrett has back/sleeve, collar/stand, cuff laps crossing: pre-existing (the base
     17ee597 too), open. Its torso pieces still start as slabs (side seams ~125 mm apart).
+  - Since then (sims tr_11..tr_14 on su_garrett; renders `cloth_renders/tr_1N_*`; scripts in the scratch dir:
+    q.sh <queue> + run.py (renders draw the `collide` parts), pp_dbg.py <model> <garment> (cloth.build up to
+    `_press_plan` from the cached coarse sim: each clearing / relax / untangle step's move, start stretch by piece,
+    crossing pairs; stops before the GPU), pp_dbg3/4.py (where the fine start is stretched, edge lengths), sl.py <garment>
+    (the mesh's shortest pattern edges), dumpfix.py (a piece + what it is sewn to as a flat-wrap fixture)):
+    - Built: hem on the shoes (garment key `collide`: model parts joined to the collider, `cloth.worn_parts`);
+      crease as a pressed ridge in the detail maps (`detail.crease_width`); clean-up clears faces off the body EXACTLY
+      against its triangles (Body.clearance over-reads by up to 5.5 mm, p50 0.3: the "white specks" were body through
+      the seat; a note, not changed); a closed zip's fastenings are its seam's sewn pairs (the fly read "0 of 0");
+      clay looks matte (no specular); shirts open as worn without a tie (`kinds.shirt.wear` no_tie: collar `gap` 0.07,
+      front open_top 1, plus folds "open neck.L/R": the fronts roll back from the neck to buttonhole2, angle 125);
+      Simon's sleeve plackets sewn as zip closures; front.L wrap `out_reach` (the lap's offset eased to the plain curve
+      away from the centre: the left-only open seam pairs were the lap pushed out over the whole front); shirt colour
+      #d0cbc7 sampled from the concept; ZOZO stray-solver clearing (`cloth_job.clear_strays`,
+      PPF_SOLVER_SCAN_DESCENDANTS: "solver is already running" was a host-wide process scan, a dead holder blocked
+      every later job).
+    - tr_13 trousers (2 cm + 1 cm fine settle): CORRUPT, back.L/back.R crossing at the crotch, CB seam 55 mm open, a hole
+      behind the left knee; fly 18/18 closed; crease turn only 8 deg; hem not judgeable (no shoes drawn then). Cause,
+      by step (pp_dbg.py): coarse sim clean (fork stretch 1.05), transfer clean (1.13), then `_press_plan`'s
+      `_clear_of_body` ran away in the crotch's hollow (pushing along the body's normal there never clears the faces;
+      the gap grew every round: 35, 80, 69 mm moves, untangle 62 more): 10.9x start stretch. Fixed: `_clear_of_body(
+      grow=)` caps the gap's growth (CLEAR_GROW 4 mm, fine settle only: placement unchanged, coarse caches kept), and
+      cloth further than FINE_REACH from the made pieces (carried, never solved) is only cleared FAR_CLEAR 1.2 mm off
+      the body. Same coarse result re-planned: fork moves <= 3.3 mm, start 1.30 max, 0 crossings.
+    - tr_14 shirt: "ccd failed", max_sigma 11.36: a 0.44 mm sliver edge where the open-neck roll's row passed 0.44 mm
+      inside the front's outline at the neck point (and a buttonhole 0.54 mm beside the front band's row). `cloth.mesh`:
+      a fold row's inner sample within ROW_KEEP 0.25 h of the outline is left out, one near ANOTHER fold's row is that
+      row's vertex, a mark within 0.4 h of a fold row is the row's vertex. Shirt min edge 0.44 -> 2.51 mm. Fixture
+      tests/data/simon_front_neck.json (pattern.from_spec takes "names": {name: outline index}).
+    - `cloth.fine_start_check` (FINE_START_MAX 0.6): before the fine settle's job, draped triangles the solver moves
+      stretched past 1.6x from the flat pattern raise, naming pieces and place: nothing is sent to the GPU.
+    - fit(): trouser legs count as body pieces for the girths, a slice that caught only a band is skipped ("waist
+      -555 mm"). cloth.look draws the collide parts (shoes) dark grey.
+    - NEXT: tr_15 trousers + tr_16 shirt (queue q8.txt) with these fixes: judge crease (turn ~ 8 deg is soft: the
+      fine settle only moves cloth within FINE_REACH of the waistband, so the crease at the knee is the 2 cm sim's),
+      break on the shoes, the open collar V to the 2nd button, points on the collarbones, left seams closed, plackets.
+      Not built: the stand's ends turning back with the open collar. Body.clearance's bias: before / after numbers on
+      the shirt and blazer starts are owed before changing it.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
