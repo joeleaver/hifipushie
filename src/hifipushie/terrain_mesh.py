@@ -1221,6 +1221,12 @@ class Field:
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
         self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg) if gcfg is not None else None
+        if self.edits is not None and any("lip" in s["rock"] for s in getattr(self, "styles", [])):
+            # (a style's share of the turf's step at cliff lips: blobby's pillowed ground had crumbs at every lip)
+            ls = np.ones(self.H.shape)
+            for s in self.styles:
+                ls = ls - s["w"] * (1.0 - float(s["rock"].get("lip", 1.0)))
+            self.edits.lip_scale = np.ascontiguousarray(np.clip(ls, 0.0, None))
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns (with the ground edits:

@@ -194,6 +194,10 @@ def test_rock_shape_by_zone():
     step, step0 = np.abs(np.diff(Fl)).max(), np.abs(np.diff(F0l)).max()
     print("  steps along the band (styled, realistic):", round(float(step), 3), round(float(step0), 3))
     assert step < max(2.0 * step0, 0.15), (step, step0)  # (no jump where the styles hand over)
+    # blobby takes no turf step at its lips (rock "lip": 0); the realistic side keeps all of it (checked above too)
+    ls = getattr(f1.edits, "lip_scale", None)
+    if f1.edits is not None and f1.edits.lip_cfg["turf"] > 0:
+        assert ls is not None and ls[:, :5].max() < 1e-9 and ls[:, -5:].min() == 1.0
 
 
 def test_pillow_is_smooth_and_bounded():

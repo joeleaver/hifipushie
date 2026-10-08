@@ -20,5 +20,5 @@
  },
  "snow": {"color": [0.95, 0.96, 0.98], "coverage": 0.85, "breakup": 0.3, "breakup_m": 8.0, "edge": "soft"},
  "rock": {"kind": "pillow", "pillow": {"size": 6.0, "depth": 1.0, "round": 0.5, "stretch": 1.8}, "relief": {"facets": 0, "bedding": 0, "blocks": false},
-          "soften_m": 3.0, "fallen": 0, "micro": 0}
+          "soften_m": 3.0, "fallen": 0, "micro": 0, "lip": 0}
 }
