@@ -87,6 +87,15 @@ func _octa(sj: Dictionary, slots: Dictionary, dir: String, imeshes: Array) -> vo
 	sh.set_shader_parameter("size", float(info["size"]))
 	var c: Array = info["centre"]
 	sh.set_shader_parameter("centre", Vector3(c[0], c[1], c[2]))
+	if info.has("crop") and info["crop"] != null:
+		var k: Array = info["crop"]
+		sh.set_shader_parameter("crop", Vector4(k[0], k[1], k[2], k[3]))
+	if info.has("crops") and info["crops"] != null:
+		var arr := PackedVector4Array()
+		for q in info["crops"]:
+			arr.append(Vector4(q[0], q[1], q[2], q[3]))
+		sh.set_shader_parameter("crops", arr)
+		sh.set_shader_parameter("has_crops", 1.0)
 	for m in imeshes:
 		m.material_override = sh
 		m.extra_cull_margin = 0.5 * float(info["size"])

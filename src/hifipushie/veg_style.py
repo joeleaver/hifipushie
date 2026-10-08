@@ -775,6 +775,8 @@ def crown_mesh(ells: list[dict], st: dict, voxel: float | None = None, floor: fl
 def color_gain(st: dict) -> float:
     """What the crown material's colour is multiplied by (COLOR_0 holds each mass's tone divided by it)."""
     cr = st.get("crown") or {}
+    if cr.get("gradient"):  # (pixar: a gradient base-to-tip, warmer at the tips)
+        return float(max(cr["gradient"]) * (1 + abs(float(cr.get("warm_tip", 0.1)))) * (1 + abs(float(cr.get("hue_jitter", 0.0)))))
     return float(max(cr.get("tone", [0.85, 1.15])) * (1 + abs(float(cr.get("warm_top", 0.0)))))
 
 
@@ -922,7 +924,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
 
     W = surface(wd_, share * triangles)
     Vw, Fw = W["V"], W["F"]
-    out = {"wood": W, "wood_wind": W["wind"], "crown": None, "mini": mini, "forks": None}
+    out = {"wood": W, "wood_wind": W["wind"], "crown": None, "mini": mini, "forks": None, "cards": None}
     if ft.get("forks") is not None and not evergreen(tree["spec"]):
         # the limbs' forks: drawn only when the plant is bare (in leaf they cluttered the crown's underside), within
         # what the hidden crown's triangles would have cost
@@ -956,7 +958,8 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         cfn = lambda q: field(ells, q, blend, floor=ft["floor"])
         n_big = int(round(int(cr.get("big_leaves", 0) or 0) * min(1.0, triangles / max(full, 1)) ** 0.7))  # (fewer at lower LODs)
         n_base = sum("of" not in e for e in ells)
-        V0, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(triangles - len(Fw) - 112 * n_big, 16 * n_base))
+        cards_share = float((cr.get("cards") or {}).get("share", 0.6)) if cr.get("cards") else 0.0  # (pixar: the leaf cards' share of the crown)
+        V0, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(int((triangles - len(Fw) - 112 * n_big) * (1 - cards_share)), 16 * n_base))
         V, N = onto(cfn, V0)
         # a vertex beside an undercut can land on the other sheet (a tier's underside and the dome below it are a few
         # decimetres apart): faces turned over by the move get their vertices back where the decimation left them
@@ -1035,7 +1038,9 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
                                 "wind": tuple(np.r_[C0["wind"][i], bl["wind"][i]] for i in range(4))}
                 info["big_leaves"] = bl["n"]
                 F = out["crown"]["F"]
-        info["crown_triangles"] = int(len(F))
+        if cr.get("cards"):
+            _shell_and_cards(tree, st, out, cfn, ft["floor"], max(triangles - len(Fw) - len(F), 0), info, triangles / max(full, 1))
+        info["crown_triangles"] = int(len(F)) + (int(len(out["cards"]["F"])) if out.get("cards") else 0)
         info["tones"] = int(len(np.unique(ti)))
         info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist(), "tone": int(ti[j]),
                               **({"bumps": int((own == j).sum() - 1)} if (own == j).sum() > 1 else {}),
@@ -1043,6 +1048,54 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
     info["triangles"] = info["wood_triangles"] + info["crown_triangles"]
     out["info"] = info
     return out
+
+
+def thickness(fn, V, N, reach: float = 4.0, step: float = 0.2) -> np.ndarray:
+    """How far a ray from each surface point straight in (-N) runs inside the field `fn` (m, capped at `reach`): what
+    light passes through a canopy shell there (thin lobes and rims glow, the core does not)."""
+    t = np.full(len(V), reach)
+    inside = np.ones(len(V), bool)
+    for s_ in np.arange(step, reach + step / 2, step):
+        live = np.flatnonzero(inside)
+        if not len(live):
+            break
+        out_ = fn(V[live] - (s_ + 0.01) * N[live]) > 0
+        t[live[out_]] = s_
+        inside[live[out_]] = False
+    return t
+
+
+def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget: int, info: dict, lod: float = 1.0) -> None:
+    """Pixar's crown: the closed shell (the masses) painted with a gradient base-to-tip (sheet `crown.gradient`
+    [dark, light], warmer at the tips by `warm_tip`), TEXCOORD_3 = (that gradient, thickness m), and a layer of real
+    leaf cards on its outside (veg_cloud.shell_cards) in out["cards"]."""
+    from . import veg_cloud
+    cr = st["crown"]
+    C = out["crown"]
+    V, N = C["V"], C["N"]
+    cen = 0.5 * (V.min(0) + V.max(0))
+    half = np.maximum(0.5 * (V.max(0) - V.min(0)), 1e-6)
+    r_ = np.clip(np.linalg.norm((V - cen) / half, axis=1), 0, 1)
+    zn = np.clip((V[:, 2] - V[:, 2].min()) / max(float(np.ptp(V[:, 2])), 1e-6), 0, 1)
+    tg = np.clip(0.55 * r_ ** 1.5 + 0.45 * zn, 0, 1)  # (base / inside dark -> tips / top light)
+    g0, g1 = cr.get("gradient", [0.55, 1.1])
+    wt = float(cr.get("warm_tip", 0.1))
+    tn = g0 + (g1 - g0) * tg
+    col = np.stack([tn * (1 + wt * tg), tn, tn * (1 - wt * tg)], 1) * C["col"] / np.maximum(C["col"].mean(1, keepdims=True), 1e-6)  # (the masses keep only their hue)
+    gain = color_gain(st)
+    th = thickness(cfn, V, N, float(cr.get("thick_reach", 4.0)))
+    out["crown"] = {**C, "col": np.clip(col / gain, 0, 1), "gain": gain, "grad": np.c_[tg, th]}
+    K = veg_cloud.shell_cards(tree, st, V, C["F"], N, budget, lod=lod, floor=floor, along=tg)
+    if K is not None:
+        sw = st.get("wind") or {}
+        # a card moves with the shell under it, its rim fluttering
+        from scipy.spatial import cKDTree
+        idx = cKDTree(V).query(K["V"])[1]
+        K["wind"] = (C["wind"][0][idx], C["wind"][1][idx], C["wind"][2][idx], float(sw.get("flutter", 0.4)) * K["rim"])
+        K["mass"] = C["mass"][idx]
+        out["cards"] = K
+        info.update(cards=K["cards"], card_m=round(K["card_m"], 2), card_fill=round(K["atlas"]["fill"], 3), cards_triangles=int(len(K["F"])),
+                    thickness_m=[round(float(np.percentile(th, 10)), 2), round(float(np.median(th)), 2), round(float(np.percentile(th, 90)), 2)])
 
 
 def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | None:

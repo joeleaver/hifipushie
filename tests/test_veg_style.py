@@ -489,6 +489,28 @@ def test_head_kinds():
             assert (H["part"] == 1).any()  # (a centre)
 
 
+def test_pixar():
+    """Pixar: a closed canopy shell + a layer of real leaf cards on its outside (slot foliage_cards), within the budget,
+    the same individual; TEXCOORD_3 = (gradient, thickness m); lower LODs fewer, larger cards."""
+    T = v.grow({**BASE, "style": "pixar"})
+    st = vs.sheet(T["spec"])
+    D = vs.dress(T, st)
+    i, C, K = D["info"], D["crown"], D["cards"]
+    assert K is not None and i["cards"] > 50 and i["triangles"] <= st["budget"] * 1.05 and i["match"]["iou"] > 0.75, i
+    assert C["grad"].shape[1] == 2 and (C["grad"][:, 1] > 0).all() and 0 <= C["grad"][:, 0].min() and C["grad"][:, 0].max() <= 1
+    d_out = np.einsum("ij,ij->i", K["V"] - C["V"].mean(0), K["N"])  # (cards stand outside, facing out)
+    assert np.median(d_out) > 0
+    D2 = vs.dress(T, st, int(0.18 * st["budget"]))
+    assert D2["cards"]["cards"] < K["cards"] and D2["cards"]["card_m"] > K["card_m"]
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "p.glb"
+        veg_export.write_glb(T, str(p), "p", seasons=["summer", "winter"])
+        sj = veg_export.seasons_json(str(p))
+        slots = {s_["slot"]: s_ for s_ in sj["slot_list"]}
+        assert "foliage_cards" in slots and "TEXCOORD_3" in slots["foliage_cards"]["channels"] and "winter" in slots["foliage_cards"]["hidden_in"]
+        assert sj["seasons"]["summer"]["foliage_cards"]["alphaMode"] == "MASK"
+
+
 def test_cartoon_fixes():
     """Cartoon round 2: big leaves stand on the outline with their FACE turned sideways (lying flat they were edge-on
     green shards from eye level); the flared foot is concave and only ~1-1.5 trunk diameters tall (it was a mound);
