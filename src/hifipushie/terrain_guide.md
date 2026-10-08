@@ -578,7 +578,7 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   (fewer, bigger planes, softened edges: [polycount](https://polycount.com/discussion/comment/2147949)). So a style's
   texture is an op stack with few, big shapes; its rock shape is geometry in the zone's tiles.
 - Files (in every tiles export of a spec with styles, or alone with `export_terrain(name, styles_only=True)`, seconds,
-  beside the last export): `materials/<style>/<layer>_albedo.png` (sRGB, mean = the layer colour), `_normal.png`
+  beside the last export): `materials/<style>/<layer>_albedo.png` (RGB sRGB, mean = the layer colour; ALPHA = the height, 8-bit linear, contract 4), `_normal.png`
   (tangent, glTF: +x east / along the face, +y north / up), `_height.png` (16-bit, 0.5 = 0, +- height_m),
   `materials/<style>/overlay_*`; `styles/<style>_sd.png` (signed distance to the style's zone edge, 16-bit,
   +- range_m, + inside) for a band of your own (ragged, moving), `styles/weights<g>.png` (the weights with `band`);

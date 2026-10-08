@@ -153,6 +153,7 @@ def _styled(m, S):
         if key not in _IMAGES:
             im = bpy.data.images.load(path, check_existing=False)
             im.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
+            im.alpha_mode = "CHANNEL_PACKED"  # (style albedos carry the height in alpha: data, never transparency)
             _IMAGES[key] = im
         return _IMAGES[key]
 
