@@ -712,13 +712,13 @@ def _render_ids(scene, path):
 _IDMAT = []
 
 
-def _flat(name, rgb):
+def _flat(name, rgb, glow=1.5):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     b = m.node_tree.nodes["Principled BSDF"]
     b.inputs["Base Color"].default_value = (*rgb, 1)
     b.inputs["Emission Color"].default_value = (*rgb, 1)
-    b.inputs["Emission Strength"].default_value = 1.5
+    b.inputs["Emission Strength"].default_value = glow
     return m
 
 
@@ -880,7 +880,7 @@ def run(job):
                 for s, m in enumerate(ob.data.materials):
                     if job.get("buried_color") and m and m.name.startswith("terrain_buried"):
                         # (the cliff shell's buried back in a flat colour: where an engine shows it, it is a fault)
-                        ob.data.materials[s] = _flat("buried", job["buried_color"])
+                        ob.data.materials[s] = _flat("buried", job["buried_color"], 0.0)
                     elif not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
                         ob.data.materials[s] = mat
                     elif ch and m.name not in done:  # (first: under the detail recipe a channel view drew everything)
