@@ -2494,6 +2494,25 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       Garrett's open shirt collar (the padded body there is the collar's stand and fall). su_65 queued after the fixes
       above (start: 4.2% of triangles over 5%, front.R 3.6x max, left sleeve moved 11 cm down by crossings at the cap:
       armhole start 300 mm). Read its log (/mnt/data/hifipushie/suit5/su_65_garrett.log) first.
+  - Round 4 (main 667b4a9 merged), Garrett's right gorge, UNSOLVED. su_65 failed CCD like su_60 / su_63. Findings
+    (scripts wdbg2.py / wdbg3.py: worn columns' traces and y/z table across neighbouring columns; worst2.py: worst
+    start triangles tagged flap F / fold row R / sewn s / base b; rows2.py: a triangle's vertices by fold row):
+    - Unrelaxed, both fronts are 3.4-4x at the lapel roll's TOP rows (y -0.03..-0.06, by the neck point): there the
+      flap's mirror image falls past the neckline and the pressed / rigid-turn mix disagree. The relaxation fixes
+      front.L, not front.R (the flap and its rows are held during the relaxation).
+    - Neighbouring worn columns 4 mm apart ended 2-6 cm apart (the columns "running on" past the neck's base beside
+      ones "following the body", and following columns tracking every edge of the shirt collar under them). Now:
+      the two lays are mixed by POSITION over WORN_NECK_BAND 4 cm (0.08 was worse), and columns are laid on
+      `_envelope(body)` (the padded body with hollows / steps filled by 30 rounds of inflate-only smoothing). Garrett
+      front.R start max 3.6 -> 2.95 (p99 1.65); ga_suit unchanged (max 1.13).
+    - Tried and worse: the flap free during relaxation (5.2x), no pull to the collar (WORN_PULL 0: 5.1x), wider neck
+      band (3.8x). Results swing 2.9-5x between runs of small changes: the start relaxation is chaotic there.
+    - The render (out/g14_neck.png) shows the jacket's right collar end and gorge interleaved with Garrett's open shirt
+      collar (trousers2 widened it): the shirt collar's fall lies where the jacket's gorge and collar end must lie.
+      Next idea: lay the jacket collar's front end and the gorge OVER the shirt collar (its fall in the envelope; check
+      the padded body there, `padded_body` PAD_SLOPE bridges steps at 45 deg only), or press the lapel only below the
+      neckline (no rigid-turn part), then re-run su_garrett. Garrett's left sleeve still goes 11 cm down the arm on
+      start crossings at the cap (not looked at).
   - NEXT, in order: (1) carry made lapel flaps with their forepart (then lapel_gap); (2) su_garrett once its shirt
     builds; (3) collar_hug 17-26 mm. Old list (tent done as above): (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
     the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
