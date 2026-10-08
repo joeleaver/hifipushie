@@ -224,6 +224,39 @@ def test_jaw_angle_is_a_symmetric_bony_corner():
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
 
 
+def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
+    """base.head.shape.jawline carries the jaw line onto an L: the jaw-contour landmark that was level with the ear lobe
+    (lm 3 / 13) goes down by centimetres, both sides alike, eyes / nose / lips landmarks stay, the mesh holds. ears
+    and nose_tip move only their own part."""
+    b = base()
+    st0 = hf.state(b)
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["jawline"] = {"below_lobe": 0.055, "tuck": 0.004, "smooth": 5}
+    st1 = hf.state(b1)
+    L0, L1 = st0["L"], st1["L"]
+    down = [float(L0[i][2] - L1[i][2]) for i in (3, 13)]
+    assert min(down) > 0.004 and abs(down[0] - down[1]) < 0.002, down
+    assert np.linalg.norm(L1[17:68] - L0[17:68], axis=1).max() < 0.001
+    assert np.linalg.norm(L1[8] - L0[8]) < 0.002
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"], it["broken"]
+    for key, val, moved in (("ears", {"out": 25, "size": 1.1, "blend": 0.02}, "ears"), ("nose_tip", 8, "nose")):
+        b2 = hf.copy.deepcopy(b)
+        b2["head"].setdefault("shape", {})[key] = val
+        st2 = hf.state(b2)
+        P0, P2 = np.asarray(st0["tpl"]["P"]), np.asarray(st2["tpl"]["P"])
+        d = np.linalg.norm(P2 - P0, axis=1)
+        reg = hf._regions(st0["tpl"])
+        assert d[reg[moved]].max() > 0.002, (key, d.max())
+        other = ~reg[moved] & reg["head"]
+        assert d[other].max() < (0.012 if key == "ears" else 0.004), (key, d[other].max())
+        assert np.linalg.norm(st2["L"][36:48] - L0[36:48], axis=1).max() < 0.0005
+        assert hf.integrity(b2, st2, st0)["ok"], key
+    b3 = hf.copy.deepcopy(b)
+    b3["head"].setdefault("shape", {})["nose_tip"] = -8
+    assert hf.state(b3)["L"][30][2] < L0[30][2] < hf.state(b2)["L"][30][2]
+
+
 def test_a_broken_solve_is_refused():
     """A mouth widened until lip faces fold: solve hands back the base it was given (rep["refused"] says why, the
     broken result's integrity is reported), and returns the broken one only with force=True."""

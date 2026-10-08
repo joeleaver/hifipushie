@@ -1204,29 +1204,34 @@ HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance 
 
 
 def _nose_tip(W, lm, spec, s):
-    """base.head.shape.nose_tip = deg | {"up": deg, "reach": share}: the nose's tip and columella turned up about a
-    line across the middle of the dorsum (lm 28-29), as a surgeon's tip rotation: the nasolabial angle opens, more
-    nostril shows from the front. The turn fades out from the tip (a Gaussian `reach` x the dorsum's length round
-    the tip / columella) and is held off the upper lip (nothing under the subnasale moves). Landmarks ride."""
+    """base.head.shape.nose_tip = deg | {"up": deg, "reach": share}: the nose's BASE line tilted: the tip and columella
+    turned about the line through the two alar bases (lm 31 / 35, where the wings meet the cheek), so with `up` > 0 the
+    tip rises against the alar base (a base line that climbs toward the tip instead of a tip hanging below the
+    wings like a beak), < 0 lowers it. The turn grows from nothing at the alar bases' plane to full half way to the
+    tip, and fades over `reach` x the nose's length away from the tip (the upper bridge stays), nothing on the lip.
+    (A turn about the mid dorsum, tried first, only swung the whole base forward: the tip lies BELOW that pivot.)
+    Landmarks ride."""
     sp = spec if isinstance(spec, dict) else {"up": spec}
     a = np.radians(float(sp.get("up", 0.0)))
     if abs(a) < 1e-9:
         return W, lm
-    piv = 0.5 * (lm[28] + lm[29])
-    tip = 0.5 * (lm[30] + lm[33])
-    r = float(sp.get("reach", 0.75)) * float(np.linalg.norm(lm[30] - lm[27]))
+    piv = 0.5 * (lm[31] + lm[35])
+    tip = lm[30]
+    r = float(sp.get("reach", 0.5)) * float(np.linalg.norm(lm[30] - lm[27]))
     zsub = float(lm[33][2])
+    span = max(float(piv[1] - tip[1]), 1e-6)
+
     def turn(X, ang):
         q = X - piv
         y, z = q[:, 1], q[:, 2]
         return np.c_[q[:, 0], y * np.cos(ang) - z * np.sin(ang), y * np.sin(ang) + z * np.cos(ang)] + piv
     up = abs(a) if (turn(lm[[30]], abs(a)) - lm[[30]])[0, 2] > 0 else -abs(a)  # the turn that lifts the tip
-    ang = up if a > 0 else -up  # + = up (rotation), - = down (the tip lowered toward the lip)
+    ang = up if a > 0 else -up
+
     def w(X):
         g_ = np.exp(-(np.linalg.norm(X - tip, axis=1) / r) ** 2)
-        lip = _sstep((X[:, 2] - (zsub - 0.0015 * s)) / (0.004 * s))  # 0 under the subnasale, 1 a few mm above it
-        ala_y = 0.5 * (lm[31][1] + lm[35][1])  # only what stands in front of the alae's base (not the cheeks)
-        front = _sstep((ala_y + 0.002 * s - X[:, 1]) / (0.005 * s))
+        lip = _sstep((X[:, 2] - (zsub - 0.003 * s)) / (0.005 * s))   # nothing on the lip under the nose
+        front = _sstep((piv[1] - X[:, 1]) / (0.5 * span))             # 0 at the alar bases' plane, 1 half way to the tip
         return (g_ * lip * front)[:, None]
     wW, wl = w(W), w(lm)
     W = W + wW * (turn(W, ang) - W)
@@ -1260,7 +1265,7 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
     out = float(sp.get("out", 0.0)) * k
     tuck = float(sp.get("tuck", 0.0)) * k
     R = float(sp.get("radius", JAWLINE_RADIUS)) * k
-    sig = JAWLINE_SIGMA * k
+    sig = float(sp.get("sharp", JAWLINE_SIGMA)) * k  # smaller = a sharper turn at the angle
     W = W.copy()
     lm = lm.copy()
     W0 = W.copy()
@@ -1331,17 +1336,22 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
         lm[i] = lm[i] + (W - W0)[tr.query(lm[i])[1]]
     return W, lm
 
-EAR_BLEND = 0.008  # m: an ear's move grows from 0 at its root to full this far out (the skin round it is untouched)
+EAR_BLEND = 0.004  # m: the band at an ear's root over which its turn fades in (the skin round it is untouched)
+EAR_ROOT = 0.003   # m: ear vertices this near the rest of the skin are its attachment
 
 
 def _ears(W, ear, spec, mx, s):
-    """base.head.shape.ears = {"out": deg, "size": factor}: each ear turned about its own root line so its back stands
-    further off the head (`out`, degrees: protruding ears), and scaled about the root (`size`). The root = the ear's
-    vertices next to the head's skin; the line = their main direction (near vertical); the move fades in over
-    EAR_BLEND from the root, so the join to the head doesn't tear. Mirrored by construction (each side its own root)."""
+    """base.head.shape.ears = {"out": deg, "size": factor, "blend": m}: each auricle turned RIGIDLY about its
+    attachment line, so the helix rim swings out from the head and the root stays put. The line runs from the lobe's
+    attachment (the lowest attached vertex) up to the top of the ear's FRONT attachment (where the helix leaves the
+    temple): it passes by the lobe, so the lobe hardly moves and the top swings out most, as on a head whose ears
+    stand out. The turn fades in over EAR_BLEND from the root only (nothing but the ear's own vertices move: no web
+    of cheek or mastoid skin); `size` (default 1) scales the auricle about the lobe's attachment the same rigid way.
+    Mirrored by construction (each side its own line)."""
     from scipy.spatial import cKDTree
     out = np.radians(float(spec.get("out", 0.0)))
     size = float(spec.get("size", 1.0))
+    k = s / 1.12
     W = W.copy()
     rest = cKDTree(W[~ear])
     for sg in (-1.0, 1.0):
@@ -1350,18 +1360,18 @@ def _ears(W, ear, spec, mx, s):
             continue
         P = W[idx]
         d_root = rest.query(P)[0]
-        root = P[d_root < np.percentile(d_root, 15)]
-        c = root.mean(0)
-        u, sv, vt = np.linalg.svd(root - c)
-        ax = vt[0] / np.linalg.norm(vt[0])
-        if ax[2] < 0:
-            ax = -ax
-        def rot(v, a):
+        root = P[d_root < max(EAR_ROOT * k, np.percentile(d_root, 10))]
+        low = root[np.argmin(root[:, 2])]
+        front = root[root[:, 1] <= np.median(root[:, 1])]      # (the head faces -y)
+        top = front[np.argmax(front[:, 2])]
+        ax = (top - low) / np.linalg.norm(top - low)
+
+        def rot(v, a, ax=ax):
             return v * np.cos(a) + np.cross(ax, v) * np.sin(a) + ax * (v @ ax)[..., None] * (1 - np.cos(a))
-        w = _sstep(d_root / (float(spec.get("blend", EAR_BLEND)) * s / 1.12))[:, None]
-        # the turn's sign: the ear as a whole goes outward (+x for the left ear)
-        a = out if ((w * (rot(P - c, out) - (P - c)))[:, 0] * sg).sum() > 0 else -out
-        Q = c + rot(P - c, a) * size
+        d0 = float(np.percentile(d_root, 12))                  # the attached ring itself stays (its edges to the head keep their length)
+        w = _sstep((d_root - d0) / (float(spec.get("blend", EAR_BLEND)) * k))[:, None]
+        a = out if ((w * (rot(P - low, out) - (P - low)))[:, 0] * sg).sum() > 0 else -out  # the rim goes outward
+        Q = low + rot(P - low, a) * size
         W[idx] = P + w * (Q - P)
     return W
 
