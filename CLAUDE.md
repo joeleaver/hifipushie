@@ -621,6 +621,22 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       0.37, a head turn drags it 11 mm instead of 25. Re-skinned previous meshes: head33 collar through body 13 ->
       1 (v23 8), nod 13 -> 2 (v23 109), neck fold p99 head33 121 -> 22 deg, nod 100 -> 48; wb_dg_talk Head flipped
       41 -> 16, head33 collar through body 79 -> 5. Kit characters unchanged (no field passed).
+    - regen2's skin_cover result was named `cover` in `_export`, which already held the atlas coverage: KeyError at
+      the json (the first export crashed at 552 s); now `skin_cov`.
+    - PROOF (plain export, no patches): /mnt/data/hifipushie/regen/exp_garrett2 (recipe 20000 / 2048 / 320, rig, fbx,
+      face shapes; Khronos 0 / 0 / 0; 79 joints same order as v23, 14 twist, 53 ARKit targets on body / eyes / teeth /
+      tongue, eyes / teeth / tongue Head 1.0). Body quality: no TORN alarm (19 folded edges, 21 turned faces inside
+      the mouth). Audit 5 BAD of 51 (v23 9): Head flipped 2 (v23 12), Head leak 20 mm on 21 shoulder vertices (v23
+      13 mm / 7). Layers: game idle 0 BAD (previous export: body through jacket_trim 52, BAD); head33 collar through
+      body 2 / 6.4 mm (v23 8 / 23.8); nod 2 + 1 (v23 109 + 122, BAD). fix_blink --report: 0.18 / 0.25, 0.16 / 0.26
+      (v23 0.15 / 0.20, 0.16 / 0.27). Sheets `rig_renders/rg3_game.png`, `rg3_head33.png`, `rg3_nod.png` (v23 |
+      previous | new, same cameras / part colours), `rg3_blink_closeup.png` (+ `rg3_blink_left_front_crop.png`): the
+      vertical crease up the left upper lid is gone; a faint lighter facet wedge on the outer upper lid remains. Second
+      character wb_dg_talk re-exported (36k, /mnt/data/hifipushie/regen3/exp_talk, Khronos 0 / 0): audit 14 -> 9 BAD
+      (Head no longer BAD), nod collar through body 113 -> 22, body through collar 59 -> 0; blink `rg3_talk_blink.png`:
+      the left eye's inner corner shows a white sliver of eyeball in a full blink, there before (smaller), a little
+      larger now (LID_FADE's corner fade is the suspect; not isolated). "69 / 58 moved vertices not Head 1.00" in the
+      export log is old (69 in the first regen export).
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
