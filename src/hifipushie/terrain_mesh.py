@@ -4177,14 +4177,14 @@ def _job_bake(args):
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
 
 
-BORDER_FLAT = 1.5  # texels: LOD 1+ normal maps eased to the low poly's normal this close to a tile's edge
+BORDER_FLAT = 1.5  # texels: every LOD's normal maps eased to the low poly's normal this close to a tile's edge
 
 
 def _bake_border(c, stem, k):
-    """(lo, hi, fade m) for a cliff tile's LOD k >= 1 bake (terrain_bake.bake_texels `border`), else None."""
+    """(lo, hi, fade m) for a cliff tile's LOD k bake (terrain_bake.bake_texels `border`), else None."""
     import re
     m = re.match(r"tile_(\d+)_(\d+)_lod(\d+)$", stem)
-    if k < 1 or not m or BORDER_FLAT <= 0:
+    if not m or BORDER_FLAT <= 0:  # (LOD 0 too: eased at LOD 1-2 only, LOD 0 against LOD 2 read p50 7.3 deg (limit 6))
         return None
     lo, hi = c["G"].bounds(int(m.group(1)), int(m.group(2)))
     return (lo, hi, BORDER_FLAT / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
