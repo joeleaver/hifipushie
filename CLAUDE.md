@@ -2513,6 +2513,26 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       the padded body there, `padded_body` PAD_SLOPE bridges steps at 45 deg only), or press the lapel only below the
       neckline (no rigid-turn part), then re-run su_garrett. Garrett's left sleeve still goes 11 cm down the arm on
       start crossings at the cap (not looked at).
+  - Round 5 (main merged at 0d8517a, trousers2's break included):
+    - Pressed lapels map onto the base by the base's own triangles everywhere (PRESS_OFF 1e3: the rigid-turn mix past
+      the neckline disagreed with the press, 3-4x at the roll's top rows); Garrett front.R start 2.95 -> 2.2 in the
+      re-placement script.
+    - Garrett's left sleeve went 11-12 cm down the arm because under.L crosses side.L at the pit (HITS in pl1.py).
+      Crossings between pieces SEWN together no longer send a worn_top garment's sleeve down (ZOZO starts with
+      existing intersections between linked pieces allowed). Left armhole start seam 300 -> 158 mm max, sleeve seams
+      91-96 mm. (Standing the sleeve out instead did not clear the crossing.)
+    - su_66 (Garrett) failed CCD again: in the BUILD's own start (lay1.py; pl1.py from a stale pickle had shown 2.2x)
+      front.R's gorge (pattern -0.10..-0.12, -0.05..-0.075, base cloth beside the neck point) is 4.2x: "179 triangles
+      start up to 324% stretched", over ZOZO's 100% cap. wdbg3.py shows the cause: the worn columns at world x
+      -0.100..-0.116 (just outside Garrett's neck point) climb the open shirt collar's STAND and then turn back down
+      its far side (their y reverses). Tried and taken back: a 45 deg per-step turn limit (no change), a cap at the
+      neck point's height for the columns beside the neck (worse, 4.9x). Garrett's neck point lies where the shirt's
+      open stand rises; the jacket's neckline there should lie in FRONT of / against the stand, not over it.
+      Ideas, untried: lay the worn columns on the padded body WITHOUT the under garment's neck pieces (the shirt's
+      stand / collar) and push out from the real collider only at the end; or end the march (pattern compressed) where a
+      column meets a surface rising more steeply than ~60 deg; or draft the jacket's neck over the shirt collar wider
+      on Garrett (over_measures' neck: Garrett 407 -> 473 mm drafted, check the gorge against the open stand).
+    - Re-pickle (pl0.py) after any spec change before using pl1.py: a stale pickle hid the 4.2x for a round.
   - NEXT, in order: (1) carry made lapel flaps with their forepart (then lapel_gap); (2) su_garrett once its shirt
     builds; (3) collar_hug 17-26 mm. Old list (tent done as above): (1) the tent: fronts 5 cm forward at the hem with the hem 2 cm high at the front (what to check:
     the front's canvas band / interfacing rest, the side panel's hem spring contour +16 mm, the front's waist
