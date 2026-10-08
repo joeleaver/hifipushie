@@ -20,7 +20,8 @@ import numpy as np
 EDGE_REACH = 4.0      # px either side of the hand-placed line searched for the picture's edge
 STEP_MM = 0.5         # the envelope's height step
 KEYS = ("forehead_slope", "brow_ridge", "cheek_line", "upper_lip", "lower_lip", "mentolabial", "chin_projection", "chin_height",
-        "nose_tip", "nose_length", "bridge_bow", "bridge_angle", "nose_gap")
+        "nose_tip", "nose_length", "bridge_bow", "bridge_angle", "nose_gap", "nose_base_incl", "tip_height", "tip_radius",
+        "columella_show")
 
 
 def _dense(Q, step=0.25):
@@ -220,6 +221,12 @@ def nose_keypoints(v, c, base_v=None, nasion_v=None) -> dict:
         return kp
     i = int(np.argmax(c))
     kp["tip"] = (float(v[i]), float(c[i]))
+    # under the tip: where the contour has turned 3 mm back from the tip going down (the lobule's underside, where the
+    # base line from the wing arrives); the tip's most forward point sits above a hanging underside and hid it
+    lo = (v > v[i]) & (c <= c[i] - 3.0)
+    j = int(np.nonzero(lo)[0][0]) if lo.any() else len(v) - 1
+    if j > i:
+        kp["under"] = (float(v[j]), float(c[j]))
     bv = v[-1] if base_v is None else min(base_v, v[-1])
     if bv > v[i] + 2:
         kp["base"] = (float(bv), float(np.interp(bv, v, c)))
@@ -267,6 +274,23 @@ def measures(kp: dict, nkp: dict | None = None, nose=None, outer=None) -> dict:
             d = c[m] - (ca + (cb - ca) * (v[m] - v0) / (v1 - v0))
             out["bridge_bow"] = float(d[np.argmax(np.abs(d))])
             out["bridge_angle"] = float(np.degrees(np.arctan2(cb - ca, v1 - v0)))
+    # the nose's BASE line: near alar base -> tip. + = it rises toward the tip (the tip above the wing's base); - = the
+    # tip hangs below the wing like a beak. Read at once on a face; the front view can't show it.
+    if nkp.get("tip") and nkp.get("alar"):
+        (vt, ct), (va, ca) = nkp.get("under") or nkp["tip"], nkp["alar"]
+        out["nose_base_incl"] = float(np.degrees(np.arctan2(va - vt, max(ct - ca, 1e-6))))
+        out["tip_height"] = float(va - vt)
+        if nkp.get("base"):
+            out["columella_show"] = float(nkp["base"][0] - va)
+    if nkp.get("tip") and nose is not None:   # bluntness: the radius of the circle through the contour round the tip
+        v, c = nose
+        m = np.abs(v - nkp["tip"][0]) <= 4.0
+        if m.sum() >= 5:
+            A = np.c_[2 * v[m], 2 * c[m], np.ones(m.sum())]
+            sol = np.linalg.lstsq(A, v[m] ** 2 + c[m] ** 2, rcond=None)[0]
+            r2 = sol[2] + sol[0] ** 2 + sol[1] ** 2
+            if r2 > 0:
+                out["tip_radius"] = float(min(np.sqrt(r2), 30.0))
     if nkp.get("tip") and outer is not None:
         vo, co = outer
         if vo.min() < nkp["tip"][0] < vo.max():
@@ -292,7 +316,17 @@ def photo_levels(P, fr, mmpx, lv: dict) -> dict:
         return dict(lv)
 
 
-def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None) -> dict | None:
+def _alar(pts, fr, mmpx):
+    """(v, c) of the NEAR alar base among candidate picture points (the one furthest from the facing side)."""
+    o, ex, ey = fr
+    pts = [np.asarray(q, float) for q in pts if q is not None]
+    if not pts:
+        return None
+    q = min(pts, key=lambda q: (q - o) @ ex)
+    return float((q - o) @ ey * mmpx), float((q - o) @ ex * mmpx)
+
+
+def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None, points: dict | None = None) -> dict | None:
     """Everything for one picture: the photo's contours (the outer one snapped to its edge), the model's, both sets of
     key points and measures. md = likeness.model_sides entry (cam, passes, k, mesh, mmpx, side.lm = the model's
     landmarks projected); P_photo = the detector's points on the photo (heights of its own mouth / brow / chin)."""
@@ -322,6 +356,9 @@ def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None) -> dict | None:
     vn, cn, who = vertex_envelope(Qv, ids, fr, mmpx)
     out["model"]["nose"] = {"v": vn, "c": cn, "ids": who, "line": o + np.outer(cn / mmpx, ex) + np.outer(vn / mmpx, ey)}
     nmk = nose_keypoints(vn, cn, base_v=lv["sn"], nasion_v=max(lv["nasion"], vn.min()))
+    am = _alar([lm[31], lm[35]], fr, mmpx)   # the model's alar bases (lm 31 / 35), the near one
+    if am:
+        nmk["alar"] = am
     npk, nose_p = {}, None
     N = lines.get("nose")
     if N and len(N) >= 4:
@@ -329,6 +366,9 @@ def read(ph_img, lines: dict, md: dict, ph_box, P_photo=None) -> dict | None:
         vq, cq = envelope(Qn, fr, mmpx, smooth=0.75)
         npk = nose_keypoints(vq, cq, nasion_v=max(lp_.get("nasion", 0.0), vq.min()))
         nose_p = (vq, cq)
+        ap = _alar([(points or {}).get("alar_base.R"), (points or {}).get("alar_base.L")], fr, mmpx)
+        if ap:   # hand-placed: the detector's nose-wing points are good in a front view only
+            npk["alar"] = ap
         out["photo"]["nose"] = {"v": vq, "c": cq, "line": Qn}
     out["photo"]["kn"], out["model"]["kn"] = npk, nmk
     out["photo"]["m"] = measures(out["photo"]["kp"], npk, nose_p, (vp, cp))

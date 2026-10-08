@@ -5566,6 +5566,43 @@ seed head)).
     controls to draw a ramus / lower border / fold don't exist.
   - `likeness_brief.py`: `reference_brief(kind, subject)` (clothlist's format: cloth_reference.reference_brief) and
     `check_references(views, name)`; MCP `reference_brief`, `check_references`. Not tested on generated sets.
+  - Round 4 (2026-10-08; Joe on lk_05: the nose soft, the chin weak "even though the profile could have been traced in
+    that 3/4 view"; sheet human_renders/lk_06_profile_contour_fit.png; scratch p1.py (contours + key points overlay),
+    p2.py (yaw cross-check), p3.py (contour rows + panels), pf.py src dst out (the fit on a copy + the desk row),
+    trace_profile.py (my trace), refs_check.py, mem.sh):
+    - `likeness_profile.py`: a turned view's far-side contour (`likeness_points` line "profile", `snap_edge` onto the
+      background edge) and the nose's own edge (line "nose", by hand) against the model's (`model_outline` from the
+      render's depth pass; `vertex_envelope` of `nose_ids`), one frame (inner eye corners -> mouth corners: nasion ->
+      chin moved with the fit), `keypoints` (brow peak, orbit, mouth-height point, chin corner = furthest out of the
+      chord mouth -> under-jaw, lips only where a notch exists), `measures`, `shift` (camera offset over the bony
+      upper face), `targets` (fit_region targets at the vertices that make the contour). 12 checklist items of kind
+      "contour" (`replaces` = the inferred item they supersede on that picture).
+    - `likeness.fit_profile` (MCP fit_likeness stage "profile"; inside stages nose / chin_jaw): fit_region on
+      nose_region / chin_region + lower_lip_region, `_front_holds` (the part's landmarks held in the FRONT picture's
+      plane: free, the subnasale went 3 mm down), ONE camera through the rounds (compare refits turned cameras per
+      model: the camera followed the nose), judged on the contour's rms (judged on the items' score it stopped after
+      one round with a scooped bridge). lk_garrett2 -> lk_garrett3: nose contour rms 7.1 -> 1.8 mm (2.1 sigma), chin
+      9.9 -> 1.2 mm; nose gap to the cheek line 15.7 -> 7.6 (photo 5.8), chin -43.8 -> -35.0 (photo -39.1: 4 mm past).
+      Side effects on the front view: philtrum 0.2 -> 2.4 tolerances, lower third 1.4 -> 2.3.
+    - The painting is not one projection: detector head yaw 31, fitted camera 45, the nose drawn as if turned more
+      (tip - columella base 16 mm in the picture). The model's far cheek at the mouth's height stands 9 mm outside the
+      painting's (prof_cheek_line): the soft lower face, no control wired to the contour but shape.hollow.
+    - Expression rule (`EXPR_BIAS`, `EXPR_LEVERS`, `expression_bias`): an expression read on a reference (squint 0.70,
+      frown 0.64 on Garrett's front) marks its items in the table and sends them to pose levers in the staged fit.
+      Jaw: `shape.jawline.*` levers (nested lever paths), the model's jaw line from its own landmarks 2..8.
+    - Nose base (Joe: the painting's base line, wing base -> under the tip, rises; ours hangs like a beak): hand point
+      `alar_base.R` / `.L`; nose key point "under" (the contour 3 mm back from the tip going down: the tip's most
+      forward point hid a hanging underside); items prof_nose_base (deg, + rising), prof_tip_height, prof_tip_radius,
+      prof_columella, `rank` 2 (sorted above their bare miss / tol), levers on `shape.nose_tip`. Garrett staged: -1.9
+      deg vs the painting's +3.1 (hand points +-1.5 px = +-2.4 mm: the miss is the size of the reading's error);
+      shape.nose_tip moves it 0.1 deg per degree and breaks integrity at 16: NOT a sufficient lever (scratch nt.py).
+    - NOT validated: the jawline levers (structure stage on lk_garrett3: misses got worse or unmeasured, nothing
+      taken) and the landmark jaw line itself: on a head without `shape.jawline`, lm 2..8 are GNM's diagonal, not the
+      visible border (ramus 41 deg where the render search read 17.5).
+    - Designed, not built: stage 0 "character read" (gestalt descriptors bound to item bands in every view, an LLM
+      form on the references as a prior, the same form filled blind on renders of the model, the diff leading the
+      report). See the round-4 report to main.
+    - Memory (capped, /usr/bin/time): staged fit 1.85 GB peak / 15:50, three-model comparison 1.2 GB, report 1.07 GB.
   - Open: a jaw control (ramus / border / neck step), a fold control; shading with albedo handled (a stubble mask, or
     the side-light shot from the brief); ears; the jaw contour finder's noise; `human(..., refs=)`; photo scale uses
     the first model's mm/px in cmpsheet (photo column shifts 1-2% between runs with different models).

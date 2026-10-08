@@ -753,7 +753,8 @@ def profile_read(ph, md, traces):
     if "profile" not in md:
         lines = traces.get(ph["view"]["image"], {}).get("lines", {})
         try:
-            md["profile"] = lp.read(ph["img"], lines, md, ph["box"], ph["side"].P) if lines.get("profile") else None
+            md["profile"] = (lp.read(ph["img"], lines, md, ph["box"], ph["side"].P,
+                                     traces.get(ph["view"]["image"], {}).get("points", {})) if lines.get("profile") else None)
         except Exception as e:  # noqa: BLE001
             md["profile"] = None
             md["profile_error"] = str(e)
@@ -768,7 +769,7 @@ CONTOUR_WHY = {"upper_lip": "the lips don't break this contour (no notch between
 def _contour_rows(it, photos, models, kinds, traces) -> list:
     rows = []
     key = it["measure"]["key"]
-    nose = key.startswith("nose") or key.startswith("bridge")
+    nose = key.startswith(("nose", "bridge", "tip_", "columella"))
     for vi, (ph, md) in enumerate(zip(photos, models)):
         ok, inferred = _allowed(it, kinds[vi], kinds)
         if not ok or kinds[vi] == "front":
@@ -790,11 +791,13 @@ def _contour_rows(it, photos, models, kinds, traces) -> list:
             marks = []
             for sd_ in ("photo", "model"):
                 kk = {**rd[sd_]["kp"], **rd[sd_]["kn"]} if nose else rd[sd_]["kp"]
-                nm = ("tip", "base", "nasion") if nose else names
+                nm = ("tip", "under", "base", "nasion", "alar") if nose else names
                 marks.append([o + ex * kk[n][1] / rd["mmpx"] + ey * kk[n][0] / rd["mmpx"] for n in nm if n in kk])
             r["marks"] = marks
         else:
             r["why"] = CONTOUR_WHY.get(key, "the line 'nose' is not traced on this picture" if nose and "nose" not in rd["photo"]
+                                       else "needs the hand-placed point 'alar_base.R' / '.L' (the near wing's base) on this picture"
+                                       if nose and "alar" not in rd["photo"]["kn"] and key in ("nose_base_incl", "tip_height", "columella_show")
                                        else "not found on this contour")
         rows.append(r)
     return rows
@@ -970,7 +973,7 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
                      "control": it["control"], "reliability": it.get("reliability", ""), "photo": a, "model": b,
                      "points": points_of(it["measure"]), "inferred": g.get("inferred", False), "kind": kind,
                      "model3d": g.get("model3d"), "regions": g.get("regions"), "traces": g.get("traces"),
-                     "marks": g.get("marks")}
+                     "marks": g.get("marks"), "rank": float(it.get("rank", 1.0))}
                 if kind == "shape" and r["view"] != "front" and isinstance(a, float):
                     r["score"] = -1.0
                     r["why"] = (f"shading contrast {a:+.1f}% shown in the panel, not scored: a turned / painted view's light "
@@ -1017,7 +1020,8 @@ def compare(name: str, base: dict | None = None, photos=None, cameras=None, mesh
     gone = {(i, r["vi"]) for r in rows if r.get("kind") == "contour" and r["score"] >= 0
             for i in _item(r["id"]).get("replaces", [])}
     rows = [r for r in rows if not ((r["id"], r["vi"]) in gone and r.get("kind") != "contour")]
-    rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] if r["score"] > 1.0 else r["tier"], -r["score"]))
+    # "rank": identity features people read at once (the nose's base line) sort above their bare miss / tolerance
+    rows.sort(key=lambda r: (-(r["score"] > 1.0), -r["score"] * r.get("rank", 1.0) if r["score"] > 1.0 else r["tier"], -r["score"]))
     cmp = {"rows": rows, "photos": photos, "models": models, "name": name, "points_from": points_from}
     cmp["pictures"] = [picture_notes(p, m) for p, m in zip(photos, models)]
     for r in rows:   # items an expression on that picture biases
@@ -1477,6 +1481,8 @@ LEVERS = {
     "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0),
 }
 LEVERS["prof_brow_ridge"] = ("features.brow_ridge", 0.4, (-1.5, 1.5), 0.0)
+LEVERS["prof_nose_base"] = ("shape.nose_tip", 5.0, (-10.0, 25.0), 0.0)   # the tip turned up / down (deg)
+LEVERS["prof_tip_height"] = ("shape.nose_tip", 5.0, (-10.0, 25.0), 0.0)
 LEVERS["prof_cheek_line"] = ("shape.hollow", 0.002, (0.0, 0.008), 0.0)
 LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
 
