@@ -2570,6 +2570,60 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     over the shirt's; lower the stand or the worn neck); (3) lapel_gap 13 mm (the pressed lapel's roll rows spring
     back: made_folds on the lapel is now possible since the forepart starts worn); (4) su_garrett: carry ga_suit's
     jacket settings + canvas bands, then the layered sim (needs the shirt to build).
+- Suit 6 (2026-10-08, "suit6" agent, branch `worktree-agent-a567f36d476596530`; renders `cloth_renders/su_7*`; scratch
+  DURABLE in /mnt/data/hifipushie/suit6/: suit5's scripts retargeted + lay1.py (the BUILD's start; PKL=<tag> also
+  pickles it WITH the worn body, so pl1.py <pkl> <out> re-places in ~1 min with the current code; NORELAX=1, ENVR=<rounds>,
+  PRESSLAY=<m> overrides), trace.py <pkl> <vertex | piece:point ...> (each place() stage that moves those vertices,
+  TRACE_MM threshold), probe.py <pkl> x y z (clearance on the placing / worn / real body), folds_pad.py <pkl> (turned
+  faces of the padded bodies), selfx.py <npz> <pkl> (crossing vertices at X / X0 / Vsim / V), xing2.py <npz> <piece>
+  <pkl> [key] (a piece's self crossings tagged flap F / fold row R / base b), cbcol.py <pkl> [npz] (centre back: the
+  under garment's collar and neckline heights vs the jacket's back and collar), rise.py <result> (z moves start -> end
+  by piece), at.py, ut.py, envsweep.sh, fig.py <model> <png> [1 = textured] (the whole outfit front + 3/4 beside the
+  concept), tests.sh).
+  - GARRETT'S JACKET SIMULATES THROUGH (su_73, su_75; first time). The frame-0 CCD failure was not the gorge columns:
+    `padded_body` FOLDED. Offsetting the body along its normals by a pad deeper than a hollow is wide crosses neighbouring
+    normals: 116 turned faces round the neck under the open shirt collar, 24 in each pit. Clearance / push-out read a
+    folded surface's normals backwards (a gorge vertex 21 mm clear was pushed 56 mm out across the shirt collar), and the
+    pit's folds made under.L cross side.L (the left sleeve sent 11 cm down the arm). `_unfold_offset` (in padded_body,
+    every padded body): faces turned > ~70 deg from the body's own are smoothed out over up to PAD_UNFOLD rounds, never
+    in past the pad. Garrett start fronts 3.6 -> 1.13x, left armhole start p50 189 -> 73 mm, no sleeve crossings.
+  - Worn columns running on past the neck's base (free_neck) go the way their last WORN_RUN 4 cm went, frozen when they
+    start (the step's own direction at that moment, over the edge of an open collar's point, sent neighbours 4 mm apart
+    7 cm apart). front.L 2.5 -> 1.09x.
+  - su_71 then hung 15-50 mm HIGH (collar_show -45, cuffs 44, side-back / armhole seams 100 mm open): its back started
+    42 mm over the shirt's neckline at CB (ga_suit: 14 under it) and the carried collar held everything up. Two causes:
+    (1) back columns behind the neck ran up the nape with the piece's one slide: now they stop at the under garment's
+    neckline at that x (`worn_body(...).under_top` = the under garment's body cloth round the neck, WORN_NAPE 0);
+    (2) the notched collar's worn neck chain was snapped onto the full padded body (the shirt collar) and its chart
+    (where the jacket's neckline lies worn) is 1.30x the collar's neck edge on Garrett (ga_suit 1.15: his back neck curves
+    round more than the draft), so the chain cut the corner up the nape. Now `_on_seam(chain_body=)` snaps it on the worn
+    body and holds CB (NOTCH_HOLD_CB 4 cm) when the chart is > NOTCH_HOLD_RATIO 1.2 x the edge (ungated, test_collar's
+    made lay failed). Garrett collar start CB 1.577 -> 1.554 m.
+  - Garrett spec (su_garrett v13-15): jacket colour #3a3836 (charcoal from the concept; was slate #3b4252), collar
+    stand 19 / fall 31 (his neck is short: shirt stand 20 / fall 32; ga_suit's 24 / 36 sat over it), sleeve
+    length_bonus -0.02 (cuffs were 44 mm), garment keys `press_lay` 0.005 and `worn_envelope` 10 (NEW general keys:
+    PRESS_LAY / ENVELOPE_ROUNDS per garment; the open shirt collar's points on his chest under the lapels made the
+    pressed left lapel cross its forepart: 13 -> 8 start crossings, and su_73 kept 26 in the sim, su_75 cleaned them).
+  - su_75 (Garrett, 2 cm ZOZO settle, 1893 s): fits, 0 crossings after the clean-up (16 in the sim), 2 of 361 sewn pairs
+    open (side-back seam L, 42 mm, near the hem), collar_show -4.3 (target 10-20: the jacket collar still covers the
+    shirt collar at the back), collar_hug 25, cuffs 27.7 / 26.1 (target 10-15), lapel_gap 7.4 / 6.2 (best so far,
+    target 0-6). Outfit beside the concept: cloth_renders/su_75_garrett_outfit.png (clay), _outfit_tex.png. Read: a
+    charcoal open two-button jacket over a pale open-collared shirt and dark creased trousers on shoes: the concept's
+    outfit. Wrong vs the concept: soft sloping shoulders (no structure), the jacket short and boxy at the hem, sleeves
+    a little short and wrinkled, lapels narrow, the shirt collar hidden at the back, the belt not seen (shirt specks at
+    the waist in 3/4), trousers a little wide.
+  - cloth.look: an under garment shown with the one over it is drawn PRESSED (res["under_V"]: what the outer one was
+    simulated over); drawn as its own sim, the shirt's sleeves showed through the jacket in white patches. The body is
+    taken from a garment with worn parts (shoes show).
+  - ga_suit regression: su_70 (main + worn_body) / su_72 (+ unfold) / su_74 (+ nape cap, chain): fits, all seams
+    closed, 0 crossings, collar_show 14.4 / 16.1 / 17.7, cuffs 11.4-14.7 / 9.2-10.5, lapel gap 9-11. su_74 reads
+    CORRUPT on under.R 4% crumpled (su_72 under.L 2%, su_69 2%): ragged under-sleeve hems; not traced to a change.
+  - Tests: the eleven cloth / pattern files + test_seams green (test_collar after the gate).
+  - NEXT: (1) collar_show on Garrett: the jacket collar still reaches the shirt collar's top at CB (try stand 16, or
+    the jacket's back neck lower: its CB sits at the shirt neckline); (2) shoulder structure (support: shoulder_pad on
+    Garrett's jacket) and length (length_bonus), sleeves +10 mm; (3) the side-back seam's last pairs; (4) the belt
+    against the shirt at the waist (trims over a shirt tucked in?); (5) lapel_gap (made flap carried with its forepart),
+    collar_hug 25.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
