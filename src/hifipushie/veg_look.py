@@ -53,14 +53,31 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
               "uv": cat("uv"), "dead": cat("dead"), "wood_N": cat("N")}
     if C is not None:
         col = np.array(veg_style.material_color(veg_style.season_color(s, s.get("season", "summer"), st), st))
-        sv, sf, sn, scol = C["V"], C["F"], C["N"], np.clip(col[None] * C["col"], 0, 1)
+        rp = veg_style.season_ramp(s, s.get("season", "summer"), st) if C.get("atlas") is None else None
+        if rp is not None:  # (a season painting the masses' edges: what the export's ramp texture gives)
+            col = rp(C["uv"][:, 0])
+        sv, sf, sn, scol = C["V"], C["F"], C["N"], np.clip((col if col.ndim == 2 else col[None]) * C["col"], 0, 1)
         Hd = D.get("heads")
         if Hd is not None and s.get("season", "summer") in Hd["seasons"]:  # a small plant's flower / seed heads: their own colour
             sf = np.vstack([sf, Hd["F"] + len(sv)])
             sv, sn = np.vstack([sv, Hd["V"]]), np.vstack([sn, Hd["N"]])
             scol = np.vstack([scol, np.array([veg_style.lin(c_) for c_ in Hd["part_colors"]])[Hd["part"]]])
         arrays.update(solid_V=sv, solid_F=sf, solid_N=sn, solid_col=scol)
-        if C.get("atlas") is not None:  # leaf clouds: cards cut by the dab atlas's alpha
+        K = D.get("cards")
+        if K is not None:  # pixar: the shell + its leaf cards as one mesh; the shell reads an opaque strip under the atlas
+            from PIL import Image
+            A = K["atlas"]["color"]
+            H, p = A.shape[0], 8
+            A2 = np.concatenate([A, np.full((p, A.shape[1], 4), 255, np.uint8)], 0)
+            uv_c = np.c_[K["uv"][:, 0], 1 - (1 - K["uv"][:, 1]) * H / (H + p)]
+            uv_s = np.tile([0.5, 0.5 * p / (H + p)], (len(sv), 1))
+            kc = np.array(veg_style.lin(veg_style.season_color(s, s.get("season", "summer"), st))) * K["gain"]
+            kc = kc / max(1.0, float(kc.max()))
+            arrays.update(solid_V=np.vstack([sv, K["V"]]), solid_F=np.vstack([sf, K["F"] + len(sv)]), solid_N=np.vstack([sn, K["N"]]),
+                          solid_col=np.vstack([scol, np.clip(kc[None] * K["col"], 0, 1)]), solid_uv=np.vstack([uv_s, uv_c]))
+            Image.fromarray(A2).save(tmp / f"dabs{tag}.png")
+            C = {**C, "atlas": K["atlas"]}
+        elif C.get("atlas") is not None:  # leaf clouds: cards cut by the dab atlas's alpha
             from PIL import Image
             arrays["solid_uv"] = C["uv"]
             Image.fromarray(C["atlas"]["color"]).save(tmp / f"dabs{tag}.png")
