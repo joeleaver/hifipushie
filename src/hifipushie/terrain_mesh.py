@@ -123,6 +123,10 @@ def smoothstep(e0, e1, x):
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
+EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
+BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
+FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
 
 
 class Tube:
@@ -1365,8 +1369,13 @@ class Field:
             if len(kf):
                 from . import terrain_blocks
                 with _span("field.fallen", leaf=True):
-                    sd = terrain_blocks.fallen_sd(p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0],
-                                                  lambda xy: self.fall_at(xy[:, 0], xy[:, 1]), self.rock["blocks"])
+                    # (the ground a block sits on: the column's, less what the rock relief carves there at most:
+                    # seated on the column alone a block hung 0.7 m over relief-carved rock)
+                    carve = FALL_SEAT * self.rock["reach"]
+                    sd = terrain_blocks.fallen_sd(
+                        p[kf], lambda xy: self.column(xy[:, 0], xy[:, 1])[0]
+                        - carve * np.clip(self.relief_at(xy[:, 0], xy[:, 1]), 0, 1),
+                        lambda xy: self.fall_at(xy[:, 0], xy[:, 1]), self.rock["blocks"])
                     F[kf] = smin(F[kf], sd, 0.3)  # (a fillet ~a voxel: a razor contact crease made slivers)
         if self.rock is not None:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
@@ -1422,6 +1431,8 @@ class Field:
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
                         F[k] = F[k] + w[k] * (1.0 if mic is None else mic) * self.micro(p[k], fd, u, g, I)
+        # (per call: left on the Field, the incremental fingerprint walked it as a global input that changed every export)
+        self.build_w = None
         return F
 
     def style_w(self, x, y):
@@ -2233,14 +2244,18 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
         c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
         with _span("decimate.error"):
             if hasattr(field, "front"):
-                # a cliff shell is judged where it is seen: faces with every corner on the visible rock (the rule
-                # that sorts "surface" from "buried" in _job_tile), by the visible rock's own field. The buried
-                # back's values aren't metres (slice_a's cave tile: |field| p99 0.59 at the dense mesh's own face
-                # centres, all of it 5-25 m under the ground): counted, they were the tolerance
+                # a cliff shell is judged where it can be seen: every face whose centre is not deep inside the rock
+                # (front >= -thr), by the visible rock's own field. The buried back's values aren't metres (slice_a's
+                # cave tile: |field| p99 0.59 at the dense mesh's own face centres, all of it 5-25 m under the ground):
+                # counted, they were the tolerance. Judged only on faces with every corner on the rock (until
+                # 2026-10-07), a face pulled out in front of it (corners off, centre in the open air) wasn't judged
+                # at all: the back's faces came out through thin rock at LOD 1-2 (the island's Kaze stacks, Pencil
+                # Bay: white triangles 10-20 m across)
                 thr = max(0.3, 2 * err)
-                vis = (np.abs(field.front(v)) <= thr)[f].all(1)
-                if vis.sum() >= 16:
-                    return float(np.percentile(np.abs(field.front(c[np.r_[vis, vis]])), 99))
+                fc = field.front(c)
+                seen = fc >= -thr
+                if seen.sum() >= 16:
+                    return float(np.percentile(np.abs(fc[seen]), 99))
             return float(np.percentile(np.abs(field.value(c)), 99))
 
     tol = err + error(P, faces)
@@ -2300,6 +2315,18 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
                 break
         break
     return best
+
+
+def _exposed_back(v, f, fv, vis, field, thr):
+    """m2 of a cliff shell's faces off the visible rock (buried) whose centre stands out in front of it, in the air."""
+    hid = np.flatnonzero(~vis & (fv[f].max(1) > -thr))  # (faces near the front: the deep back can't reach the air)
+    if not len(hid):
+        return 0.0
+    out = hid[field.front(v[f[hid]].mean(1)) > thr]
+    if not len(out):
+        return 0.0
+    a = np.linalg.norm(np.cross(v[f[out, 1]] - v[f[out, 0]], v[f[out, 2]] - v[f[out, 0]]), axis=1) / 2
+    return float(a.sum())
 
 
 def _drop_twins(v, f):
@@ -2900,7 +2927,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     _CTX.clear()
     _CTX["work"] = workdir
     timing = {}
-    prof = profiling.Report()  # per stage: wall, workers' busy share, stragglers; spans, field counts (manifest "profile")
+    prof = profiling.Report(progress=log)  # per stage: wall, workers' busy share, stragglers; spans, field counts (manifest "profile")
     tile_key = lambda ij: f"{ij[0]},{ij[1]}"
     t0 = time.time()
     _st = prof.stage("setup (parent)")
@@ -3813,8 +3840,24 @@ def _job_tile(ij):
                 # lip's crease has its centre 0.3 m+ off the rock with every corner on it; taken for buried, it was
                 # drawn with the plain matte material: the pale flat triangles at cliff lips. A face with one corner
                 # on the front is the back's edge where it meets it: still buried)
+                # (and its centre INSIDE the rock: a face whose centre stands out in the open is seen whatever its
+                # corners say; called buried, it was drawn plain: white triangles through the island's cliffs)
                 thr = max(0.3, 2 * cfg["error"][k])
-                bur = (np.abs(field.front(Ps[Fs].mean(1))) > thr) & (np.abs(field.front(Ps))[Fs].max(1) > thr)
+                # (deep for its size: a big flat face over rounded rock has its centre a little inside it: a 570 m2
+                # face of a near-empty tile, centre 0.36 m in, was called buried at LOD 0)
+                fa = np.linalg.norm(np.cross(Ps[Fs[:, 1]] - Ps[Fs[:, 0]], Ps[Fs[:, 2]] - Ps[Fs[:, 0]]), axis=1) / 2
+                bur = (field.front(Ps[Fs].mean(1)) < -np.maximum(thr, BURIED_DEEP * np.sqrt(fa))) & \
+                    (np.abs(field.front(Ps))[Fs].max(1) > thr)
+                # (and still in rock half a metre out along the face's own normal: what faces open air from just under
+                # the surface is seen, as `terrain_cliffs.exposed_buried` judges it)
+                kb = np.flatnonzero(bur)
+                if len(kb):
+                    fn = np.cross(Ps[Fs[kb, 1]] - Ps[Fs[kb, 0]], Ps[Fs[kb, 2]] - Ps[Fs[kb, 0]])
+                    fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-12)
+                    bur[kb] = field.front(Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn) < 0
+                    if hasattr(field, "region"):  # (under the pushed heightmap counts as hidden)
+                        q = Ps[Fs[kb]].mean(1) + EXPOSED_OFF * fn
+                        bur[kb] |= q[:, 2] <= field.region.height(q[:, 0], q[:, 1]) + 0.05
         stem = f"tile_{i}_{j}_lod{k}"
         from .terrain_bake import material as terrain_bake_material
         images, binfo, deferred = None, None, None
@@ -3828,7 +3871,12 @@ def _job_tile(ij):
         tile_mats = mat + ([terrain_bake_material("terrain_baked")] if (cfg.get("maps") and (~bur).any()) else [])
         if bur.any():
             # (its own material name: an importer that drops extras, Godot's, saw the back as a second skirt surface)
-            tile_mats = tile_mats + [{**mat[0], "name": "terrain_buried"}]
+            # (and its own colour: the rock's mean colour there, in shade. White, it showed as pale plates wherever an
+            # engine drew a piece of the back in the open (it ignores COLOR_0 without a vertex-colour material))
+            cb = _linear(np.asarray(C[src][np.unique(Fs[bur])], float)[:, :3].mean(0)) * BURIED_SHADE
+            tile_mats = tile_mats + [{**mat[0], "name": "terrain_buried",
+                                      "pbrMetallicRoughness": {**mat[0]["pbrMetallicRoughness"],
+                                                               "baseColorFactor": [*map(float, cb), 1.0]}}]
             prims.append(_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[bur]), len(tile_mats) - 1,
                                {"role": "buried"}, mats, lo, cfg))
         if len(sf):
@@ -4136,8 +4184,22 @@ def _job_bake(args):
     vals = terrain_bake.bake_texels(surface, c["mats"], d["P"], d["N"], d["T4"], d["uv"], d["F"], tuple(d["size"]),
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines,
-                                    texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
+                                    texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
+                                    border=_bake_border(c, stem, k))
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
+
+
+BORDER_FLAT = 1.5  # texels: every LOD's normal maps eased to the low poly's normal this close to a tile's edge
+
+
+def _bake_border(c, stem, k):
+    """(lo, hi, fade m) for a cliff tile's LOD k bake (terrain_bake.bake_texels `border`), else None."""
+    import re
+    m = re.match(r"tile_(\d+)_(\d+)_lod(\d+)$", stem)
+    if not m or BORDER_FLAT <= 0:  # (LOD 0 too: eased at LOD 1-2 only, LOD 0 against LOD 2 read p50 7.3 deg (limit 6))
+        return None
+    lo, hi = c["G"].bounds(int(m.group(1)), int(m.group(2)))
+    return (lo, hi, BORDER_FLAT / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
 
 def _job_finish(stem):
     """A tile LOD's maps assembled from its baked pieces, and its GLB written. Returns (bytes, the maps report)."""
@@ -4373,15 +4435,21 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                     if (A is None) != (B is None):
                         failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: one side has no mesh")
                     continue
-                ca, na = _on_plane(A["surface"], ax, lim)
-                cb, nb = _on_plane(B["surface"], ax, lim)
+                # (the chains along the plane, by position, without edges ON a tile corner's vertical line: such an
+                # edge's other face may be in the third or fourth tile at that corner (the island's 21,6 / 22,6 at
+                # LOD 2: its partner was 21,7), and the watertight check above covers them. Vertices: only those on a
+                # chain: marching cubes at a lattice node within a hair of the surface left a 0.4 mm sliver face lying
+                # IN the plane (11,8 / 12,8), its third vertex on the plane but on no chain, a vertex of one side)
+                oth = 1 - ax
+                cl = (np.array(tiles[i, j]["min"])[oth], np.array(tiles[i, j]["max"])[oth])
+                ca, na, ea = _plane_chain(A["surface"], ax, lim, cl)
+                cb, nb, eb = _plane_chain(B["surface"], ax, lim, cl)
                 sa = {tuple(p): r for r, p in enumerate(ca)}
                 sb = {tuple(p): r for r, p in enumerate(cb)}
                 if set(sa) != set(sb):
                     failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: border vertices differ "
                                     f"({len(set(sa) - set(sb))} / {len(set(sb) - set(sa))} unmatched)")
                     continue
-                ea, eb = _plane_edges(A["surface"], ax, lim), _plane_edges(B["surface"], ax, lim)
                 if ea != eb:
                     failures.append(f"tiles {i},{j} / {i + di},{j + dj} LOD {k}: border edges differ")
                 common = list(sa)
@@ -4714,6 +4782,26 @@ def _on_plane(surf, ax, lim):
     return P[k], N[k]
 
 
+def _plane_chain(surf, ax, lim, corners):
+    """A tile's border chain on one plane, by position: (vertices, their normals, edges as sets of two positions).
+    Boundary edges of the mesh welded by position (split normals duplicate vertices) lying in the plane, except edges
+    along a tile corner's vertical line (`corners`: the plane's two ends on the other axis); vertices = their ends."""
+    P, N, F = surf
+    if not len(F):
+        return np.zeros((0, 3)), np.zeros((0, 3)), set()
+    Pu, first, uid = np.unique(P, axis=0, return_index=True, return_inverse=True)
+    Fw = uid.ravel()[F]
+    Fw = Fw[(Fw[:, 0] != Fw[:, 1]) & (Fw[:, 1] != Fw[:, 2]) & (Fw[:, 0] != Fw[:, 2])]
+    be = _boundary_edges(Fw)
+    on = (Pu[be[:, 0], ax] == lim) & (Pu[be[:, 1], ax] == lim)
+    oth = 1 - ax
+    cor = lambda v: np.isin(Pu[v, oth], corners)
+    on &= ~(cor(be[:, 0]) & cor(be[:, 1]))
+    be = be[on]
+    vs = np.unique(be.ravel())
+    return Pu[vs], N[first[vs]], {frozenset((tuple(Pu[a]), tuple(Pu[b]))) for a, b in be}
+
+
 def _plane_edges(surf, ax, lim):
     P, _, F = surf
     be = _boundary_edges(F)
@@ -4822,7 +4910,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -4842,7 +4930,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
     0/None: none). grade: a view transform look ("AgX - Punchy"). light: a preset name from LIGHTS ("clear": a deep
     blue clear sky and a strong sun, like a sunny photo) or {"dust", "air", "sun_energy", "sky_strength",
     "exposure"}; default the hazy sky every earlier round was judged under. grass=False leaves the turf's tiling
-    detail out (to tell what it adds)."""
+    detail out (to tell what it adds). buried_color: [r, g, b] draws the cliff shells' buried backs flat in that
+    colour (an engine shows any of it that stands in the open: a fault)."""
     import subprocess
     out = Path(out_dir)
     M = json.loads((out / "manifest.json").read_text())
@@ -4881,7 +4970,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                      "fill_at": v.get("fill_at", 8.0),
                      "borders": v.get("borders", False), "out": str(Path(v["out"]).resolve())})
     job = {"glbs": glbs, "sea": sea, "size": list(size), "samples": samples, "views": jobs,
-           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color,
+           "trees": str(out / "trees.csv") if trees else None, "tree_box": box, "skirt_color": skirt_color, "buried_color": buried_color,
            "textured": bool(textured), "channel": channel, "ids": bool(ids), "kinds": kinds,
            "haze": (float(haze) * float(_light(light).get("haze_scale", 1.0))) if haze else None, "notes": notes,
            "props": _site_props(T, box) if props else [], "grade": grade,

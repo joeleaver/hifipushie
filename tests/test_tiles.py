@@ -123,8 +123,67 @@ def test_failed_checks_are_a_report(T):
     assert H[0, 0] > H[-1, 0] + 3.0  # (row 0 is north: the land; the last row the sea's edge of this tile)
 
 
+def test_plane_chain():
+    """The seam check compares border CHAINS: a sliver lying in the border plane (its third vertex on the plane, on no
+    chain: the island's 11,8 / 12,8 'border vertices differ') and an edge along a tile corner's vertical line (its far
+    face in the diagonal tile: 21,6 / 22,6 at LOD 2) are not border differences."""
+    x = 64.0
+    P = np.array([[x, 0, 0], [x, 10, 0], [x - 5, 5, 0],          # a face with an edge on the plane (the chain)
+                  [x, 10, 0.0004], [x, 10.0004, 0.0002],           # a 0.4 mm sliver in the plane, off the chain
+                  [x, 20, 0], [x, 20, 5], [x - 5, 20, 2]], float)  # an edge on the corner line y = 20
+    N = np.tile([1.0, 0, 0], (len(P), 1))
+    F = np.array([[0, 1, 2], [1, 3, 4], [5, 6, 7]])
+    V, _, E = tm._plane_chain((P, N, F), 0, x, (0.0, 20.0))
+    keys = {tuple(p) for p in V}
+    assert (x, 0.0, 0.0) in keys and (x, 10.0, 0.0) in keys
+    assert not any(abs(p[1] - 20.0) < 1e-9 for p in keys), keys  # (the corner line's edge left out)
+    assert frozenset(((x, 0.0, 0.0), (x, 10.0, 0.0))) in E
+
+
+class _Block:  # (a solid add volume standing deep in the rock, like a sea stack over the heightfield's slim core)
+    op, blend, relief = "add", 0.3, 0.0
+
+    def __init__(self, lo, hi):
+        self.lo, self.hi = np.asarray(lo, float) - 2.0, np.asarray(hi, float) + 2.0
+        self.c, self.h = (np.asarray(lo, float) + hi) / 2, (np.asarray(hi, float) - lo) / 2
+
+    def sd(self, p, detail=False):
+        q = np.abs(p - self.c) - self.h
+        d = np.linalg.norm(np.maximum(q, 0), axis=1) + np.minimum(q.max(1), 0)
+        return (d, np.full(len(p), np.inf), np.full(len(p), 1.0)) if detail else d
+
+    def touches(self, lo, hi):
+        return bool(np.all(self.hi >= lo) and np.all(self.lo <= hi))
+
+
+def test_shell_keeps_add_volumes_whole(cf, region):
+    """Inside a solid add volume the shell is all rock: its back follows the heightfield's ground moved in, and under a
+    stack that ground is the slim core: the island's Kaze stacks were hollow from the sea floor to 16 m up, and their
+    decimated hollow walls (buried faces) came out through the stack as white triangles."""
+    b = cf.base
+    xy = np.array([[20.0, 100.0]])
+    h, _ = b.column(xy[:, 0], xy[:, 1])
+    hb, _ = region.back_at(xy[:, 0], xy[:, 1])
+    z = float(hb[0]) - 3.0  # under the shell's back
+    blk = _Block([xy[0, 0] - 3, xy[0, 1] - 3, z - 4], [xy[0, 0] + 3, xy[0, 1] + 3, float(h[0]) + 6])
+    p = np.array([[xy[0, 0], xy[0, 1], z]])
+    vols = b.vols
+    whole = terrain_cliffs.WHOLE_ADDS
+    try:
+        terrain_cliffs.WHOLE_ADDS = True  # (off by default until sea stacks mesh cleanly solid)
+        b.vols = list(vols) + [blk]
+        cf.__dict__.pop("_add_vols", None)
+        assert cf.value(p)[0] < 0, cf.value(p)  # (inside the block: rock)
+        assert b.value(p)[0] < 0
+    finally:
+        terrain_cliffs.WHOLE_ADDS = whole
+        b.vols = vols
+        cf.__dict__.pop("_add_vols", None)
+
+
 if __name__ == "__main__":
     t0 = time.time()
+    test_plane_chain()
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
     test_cover_named_by_type(T)
@@ -132,6 +191,7 @@ if __name__ == "__main__":
     t0 = time.time()
     cfg, G, region, cf, vols = _shell(T)
     print(f"field {time.time() - t0:.1f} s")
+    test_shell_keeps_add_volumes_whole(cf, region)
     t0 = time.time()
     P, F = test_shell_stops_under_the_cliff_foot(G, region, cf, vols)
     print(f"shell depth ok ({len(F)} triangles, {time.time() - t0:.1f} s)")
