@@ -2856,6 +2856,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     shading has a faint star in the dish (smooth normals across rim and middle), tests at 2048 texels only.
   - Tests: test_closures (+ test_a_box_placket_in_the_maps, test_flat_sew_through_buttons,
     test_a_cuffs_holes_run_along_the_cuff), the eleven cloth / pattern files + test_seams green.
+  - Round 2 (same day; the user on su_77: "two buttons open when there should only be one, and there's still no
+    placket", collar "not-quite-right"; sims pk_10..pk_29 on su_garrett's shirt, 3-5 min each on the rented 4090;
+    renders `cloth_renders/pk_29_shirt*`, outfit framing `pk_30_outfit*.png`; scratch adds pls.py (the START round the
+    neck + front start gaps), st.py (worst start triangles of the coarse mesh), sp.py / prof.py (band split + a section
+    across the band), mem.py (peak memory by step), fig.py (cloth.look beside the concept), kbfold.py (the wear rule's
+    roll angle / strength), resolve.py). su_77 itself was rendered before main had the placket merge (rivet buttons).
+    - The band in the MESH (`closures.split_band_edges`, `press_band`, `relief`, in build after the seat;
+      `cleanup.band_edges: false` turns it off): a vertex row split in 1.5 mm outside a box band's inner fold (interior
+      edges only, new vertices APPENDED, every per-vertex array of M, its fold records and res extended by
+      `closures.extend`), the band pressed flat across (the solver's lap sank 3-4 mm between its edges, deeper than any
+      step: it read as a groove), lifted `BOX_LIFT` 1.5 x lift = 1.2 mm; what would cross the cloth is kept back
+      (`band_kept_back`). Maps: the tuck's shadow and the folded edge's shoulder wider (survive the mip levels). The band
+      now shows in clay and at outfit framing.
+    - Wear rule (garment_kb kinds.shirt.wear.no_tie): only the COLLAR button open, every front button closed, the
+      fronts rolled 95 deg / 0.5 from the neck to 2 cm above button 1 (over) / 6 cm (under): a roll line ending past
+      the band's inner row crosses it at a shallow angle = a sliver (3.9x at frame 0: "ccd failed"; 3.1x: the fine
+      start gate). Simon `extraTopButton` false (a button 4 cm under the neck that no closure counted).
+    - `_spread_open_collar` (in `_place_folds`, after the neck pieces' folds; garment key `collar_spread` [out, down,
+      from deg], default 25 / 12 / 75): the open stand and its collar swing out about a hinge up the neck's side and
+      tip down, so the collar lies spread instead of standing as a ring (made = carried as placed). 40 / 20 / 70 pulled
+      button 1's sides 36 mm apart with 33 crossings; collar gap 6 cm (instead of 10) made the fronts gape between
+      buttons 1 and 2; stitch stiffness 8: 8.8 mm but 18 clean-up crossings and 4x the time. Rolls at 60 / 0.3 or 80:
+      yoke 1.63x fine start / 16 crossings.
+    - Finish by KIND: `kinds.<k>.closure` (shirt box / french, topstitch 3 mm; jacket and coat facing, hole across,
+      topstitch 0) laid under lapped closures in cloth.pieces; rows at 0 are not drawn.
+    - `closures.covered_buttons` / `button_texels`: the maps draw no button under a CLOSED lap (where the sides ended
+      apart it peeked out beside the real one: the "second open button"); the export colours such a button from a
+      drawn button's texel.
+    - MEMORY: `_piece_crossings` used ONE search radius (the largest triangle's): su_garrett's trousers start made
+      12+ GB of candidate pairs in a cached build (killed by the 12 GB guard; possibly the 17 GB process of the
+      13:37 OOM). Now per-size: ordinary triangles through the tree in chunks, the few large ones one by one
+      (trousers build peak 1.5 GB). The shirt's detail maps at 4096 peak 3.8 GB.
+    - pk_29 (final, = pk_21's sim): fits, 0 crossings; front closure 7 of 7 closed but button 1's sides end 19 mm
+      apart (!! in the report; buttons 2-7 2-5 mm): the open collar's stand ends (carried) hold the fronts' top
+      corners apart and the solver's stitch gives. Seat's pull to 25 mm closed it but its crossings were reverted
+      (SEAT_PULL stays 12 mm). OPEN: button 1 (a made top: carry the fronts' corners with the stand, or seat the
+      fastening before the fine settle), a slit of skin beside the band under button 1, the V is shallow (the
+      concept's opens ~10 cm), collar judged only on the shirt alone (the jacket over it is suit6's re-run).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume

@@ -3902,14 +3902,35 @@ def _piece_crossings(X: np.ndarray, M: dict) -> set:
     rad = np.max(np.linalg.norm(X[F] - cen[:, None], axis=2), axis=1)
     mid = 0.5 * (X[E[:, 0]] + X[E[:, 1]])
     half = 0.5 * np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1)
-    cand = cKDTree(cen).query_ball_point(mid, r=half + float(rad.max()), return_sorted=False)
-    ei = np.repeat(np.arange(len(E)), [len(c) for c in cand])
-    ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
-    keep = ~((F[ti] == E[ei, 0][:, None]).any(1) | (F[ti] == E[ei, 1][:, None]).any(1))
-    ei, ti = ei[keep], ti[keep]
-    T = F[ti]
-    hit = _seg_tri(X[E[ei, 0]], X[E[ei, 1]], X[T[:, 0]], X[T[:, 1]], X[T[:, 2]])
-    return {tuple(sorted((names[pid[E[e, 0]]], names[pid[F[t, 0]]]))) for e, t in zip(ei[hit], ti[hit])}
+    # one search radius for all (the largest triangle's) made every edge a candidate of every triangle when ONE
+    # triangle was large (su_garrett's trousers start: 12+ GB of pairs, a process killed for memory, 2026-10-08): the
+    # ordinary triangles through the tree at their own size, the few large ones against the edges near each, in chunks
+    rcap = float(min(rad.max(), max(np.percentile(rad, 99), 2 * np.median(rad))))
+    small = np.where(rad <= rcap)[0]
+    out = set()
+
+    def test(ei, ti):
+        keep = ~((F[ti] == E[ei, 0][:, None]).any(1) | (F[ti] == E[ei, 1][:, None]).any(1))
+        ei, ti = ei[keep], ti[keep]
+        T = F[ti]
+        hit = _seg_tri(X[E[ei, 0]], X[E[ei, 1]], X[T[:, 0]], X[T[:, 1]], X[T[:, 2]])
+        out.update(tuple(sorted((names[pid[E[e, 0]]], names[pid[F[t, 0]]]))) for e, t in zip(ei[hit], ti[hit]))
+    if len(small):
+        tree = cKDTree(cen[small])
+        for s in range(0, len(E), 20000):
+            cand = tree.query_ball_point(mid[s:s + 20000], r=half[s:s + 20000] + rcap, return_sorted=False)
+            ei = np.repeat(np.arange(s, s + len(cand)), [len(c) for c in cand])
+            ti = small[np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))]
+            if len(ei):
+                test(ei, ti)
+    big = np.where(rad > rcap)[0]
+    if len(big):
+        etree = cKDTree(mid)
+        for t in big:
+            ei = np.asarray(etree.query_ball_point(cen[t], r=float(rad[t] + half.max())), np.int64)
+            if len(ei):
+                test(ei, np.full(len(ei), t))
+    return out
 
 
 def _snap(X: np.ndarray, B: dict, M: dict, sigma: float = 0.08) -> np.ndarray:
@@ -5970,6 +5991,18 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 res["band_edges"] = int(len(sp_["t"]))
         res["V_closed"] = res["V"]  # (before the bands' relief: what relief / buttons_mesh are applied to)
         res["V"] = closuremod.relief(res["V"], M, Bp["pieces"], None if hang else body_real)
+        # pressing the band flat must not cross the cloth (the lap's under layer bulging between two buttons): those
+        # vertices and a ring round them stay as they were (pk_27: 16 crossings at the lowest button)
+        bad_ = _crossing_verts(res["V"], M) & ~_crossing_verts(res["V_closed"], M)
+        if bad_.any():
+            A3_, B3_ = _graph(M)
+            for _r in range(2):
+                gr_ = bad_.copy()
+                gr_[A3_[bad_[B3_]]] = True
+                gr_[B3_[bad_[A3_]]] = True
+                bad_ = gr_
+            res["V"] = np.where(bad_[:, None], res["V_closed"], res["V"])
+            res["band_kept_back"] = int(bad_.sum())
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
     res["seam_gaps"] = seam_gaps(res["V_sim"], res["V"], M)
     res["shape"] = {"sim": shape_numbers(res["V_sim"], M), "final": shape_numbers(res["V"], M)}
@@ -7617,11 +7650,13 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
         H += (amp_ * np.clip(1.0 - dc_ / cw_, 0.0, 1.0) ** 2).astype(H.dtype)
     # buttons and buttonholes on the pieces' marks
     btn = np.zeros((T, T), np.float32)
+    from . import closures as closuremod_
+    covered_ = closuremod_.covered_buttons(M)  # (under a closed lap: the 3D button sits on the hole over them)
     if o["buttons"]:
         for nm, v in M["marks"].items():
             mk = nm.split(":", 1)[1]
             cx, cy = px(uv[v])
-            if mk.startswith("button") and not mk.startswith("buttonhole"):
+            if mk.startswith("button") and not mk.startswith("buttonhole") and v not in covered_:
                 r = 0.0055 / mpt
                 yy, xx = np.ogrid[:T, :T]
                 x0, x1, y0, y1 = int(cx - r - 2), int(cx + r + 3), int(cy - r - 2), int(cy + r + 3)
@@ -7819,6 +7854,7 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
     (`detail_maps`: seam grooves, topstitching, hems, buttons) in the base colour and the normal map."""
     from PIL import Image
     from . import hair as hairmod
+    from . import closures as closuremod
     out_dir = Path(out_dir)
     parts = []
     built = garments(name, spec, log, simulate=True)
@@ -7856,7 +7892,7 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             # their mark (every vertex of a button takes its mark's uv)
             Fall = np.r_[Fall, np.asarray(bt["F"], np.int64) + len(Vall)]
             Vall = np.r_[Vall, bt["V"]]
-            UVall = np.r_[UVall, uv[bt.get("mark", bt["at"])]]  # (the button drawn at its own mark: at a closed
+            UVall = np.r_[UVall, uv[closuremod.button_texels(M, bt)]]  # (the button drawn at its own mark: at a closed
             # fastening the button sits on the hole, whose texel is thread)
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)

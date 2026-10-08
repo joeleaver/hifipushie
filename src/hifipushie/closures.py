@@ -739,3 +739,32 @@ def extend(arr: np.ndarray, sp: dict) -> np.ndarray:
     else:
         add = arr[sp["a"]]
     return np.concatenate([arr, add.astype(arr.dtype)])
+
+
+def covered_buttons(M: dict) -> set:
+    """The button marks (vertex ids, on the under piece) of CLOSED fastenings of a lap of two pieces: the over layer
+    lies on them and the 3D button sits on the hole above, so the maps draw no button there (where the solver left a
+    top button's two sides 1-2 cm apart, the drawn one peeked out beside the real one: "two buttons")."""
+    out = set()
+    for c in M.get("closures") or []:
+        if c.get("kind") != "buttons" or c.get("over") == c.get("under"):
+            continue
+        for (va, vb), cl in zip(c.get("v") or [], c.get("closed") or []):
+            if cl:
+                out.add(int(vb))
+    return out
+
+
+def button_texels(M: dict, bt: dict) -> np.ndarray:
+    """Per button-mesh vertex the cloth vertex whose texel colours it in the export: its own button mark where the
+    maps draw a button there, else any mark where they do (a covered button's own texel is plain cloth)."""
+    mark = np.asarray(bt.get("mark", bt["at"]), np.int64).copy()
+    cov = covered_buttons(M)
+    drawn = [int(v) for v in np.unique(mark) if int(v) not in cov]
+    if not drawn:  # no button of these is drawn: any other button mark of the garment
+        drawn = [int(v) for k, v in (M.get("marks") or {}).items()
+                 if k.split(":", 1)[-1].startswith("button") and not k.split(":", 1)[-1].startswith("buttonhole")
+                 and int(v) not in cov]
+    if drawn:
+        mark[np.isin(mark, list(cov))] = drawn[0]
+    return mark

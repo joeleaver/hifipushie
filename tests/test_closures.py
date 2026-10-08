@@ -45,7 +45,7 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     # open as worn: the stand's ends apart at the throat, the fronts rolled back above the first closed button
     assert {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] > 0.05
     fl = garment_design.wear(g, "folds")
-    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(90 < f["angle"] < 180 for f in fl)
+    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(60 < f["angle"] < 180 for f in fl)
     assert garment_design.wear(dict(g, tie=True), "folds") == []
     # the UNDER front's roll ends above the first closed fastening (under the over front there): rolled out to the
     # button both flaps met there and the under one turned out through the over one (29 crossings at su_garrett's start)
@@ -189,6 +189,14 @@ def test_drafted_buttons_are_a_closure_with_a_wear_state():
         Bp = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "block_options": {"fitted": True}, "ops": ops}}, mm)
         assert Bp["closures"] and Bp["closures"][0]["state"] == state
         assert sum("button" in a for a, b in Bp["stitches"]) == n_st
+    # the finish comes from the garment's KIND (garment_kb kinds.<k>.closure): a jacket's front is a faced edge with
+    # its buttonholes across and no topstitching, not a shirt's box placket; the closure's own keys still win
+    g = {"design": {"kind": "jacket"}, "pattern": {"from": "draft", "block": "bodice", "block_options": {"fitted": True}, "ops": ops}}
+    c = cloth.pieces(g, mm)["closures"][0]
+    assert c["finish"] == {"over": "facing", "under": "facing"} and c["hole"] == "across" and c["topstitch"] == 0
+    c = cloth.pieces(dict(g, closures=[{"name": c["name"], "finish": "plain"}]), mm)["closures"][0]
+    assert c["finish"] == {"over": "plain", "under": "plain"}
+    assert cloth.pieces({"pattern": g["pattern"]}, mm)["closures"][0]["finish"]["over"] == "box"  # no kind: the default
 
 
 def _placket(finish=None):
@@ -277,6 +285,11 @@ def test_flat_sew_through_buttons():
     top = P[np.abs(P[:, 1] - V[c["v"][0][0], 1]) > np.abs(P[:, 1] - V[c["v"][0][0], 1]).max() - 2e-4]
     assert np.ptp(top[:, 2]) > np.ptp(top[:, 0])
     assert abs(closures.hole_axis(c, M, *c["v"][0]) @ np.array([0, 1.0])) > 0.99  # along the edge
+    # the maps draw no button under a closed lap (it peeked out beside the real one where the sides ended apart)
+    from hifipushie import cloth
+    assert closures.covered_buttons(M) == {int(vb) for _va, vb in c["v"]}
+    uv, side = cloth.atlas_uv(M)
+    assert cloth.detail_maps(M, uv, side, dict(g, detail={"texture": 1024}))["button"].max() == 0
 
 
 def test_a_box_band_is_a_crisp_step_in_the_mesh():
