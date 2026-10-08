@@ -32,7 +32,8 @@ func tex(dir: String, ref) -> Texture2D:
 	var img := Image.load_from_file(dir.path_join(ref.file))
 	if img == null:
 		return null
-	img.generate_mipmaps()  # (as a game imports a texture used in 3D)
+	if OS.get_environment("NOMIPS") != "1":
+		img.generate_mipmaps()  # (as a game imports a texture used in 3D; NOMIPS=1: as pushieworld imports PNGs today)
 	return ImageTexture.create_from_image(img)
 
 
@@ -77,7 +78,8 @@ func load_plant(dir: String, season: String) -> Dictionary:
 				var al := tex(dir, spec.get("baseColorTexture"))
 				if al == null and base.albedo_texture != null:
 					var img := base.albedo_texture.get_image()
-					img.generate_mipmaps()
+					if OS.get_environment("NOMIPS") != "1":
+						img.generate_mipmaps()
 					al = ImageTexture.create_from_image(img)
 				if al != null:
 					m.set_shader_parameter("albedo_tex", al)
@@ -103,6 +105,7 @@ func load_plant(dir: String, season: String) -> Dictionary:
 ## Mode "solo": <distances m,..> <azimuths deg,..> <label>=<plant dir>:<lod> ...: each LOD ALONE on magenta, eye
 ## 1.7 m up, in the game's shader and light, named as ground.gd names its pictures (ground_measure.py reads them).
 func solo(prefix: String, season: String, args: Array) -> void:
+	load_shaders()
 	var dists: Array = Array(args[0].split(",")).map(func(x): return float(x))
 	var azs: Array = Array(args[1].split(",")).map(func(x): return float(x))
 	get_root().size = Vector2i(1920, 1080)
@@ -160,6 +163,15 @@ func solo(prefix: String, season: String, args: Array) -> void:
 	quit(0)
 
 
+func load_shaders() -> void:
+	if OS.get_environment("MIPALPHA") == "1":  # the shader with alpha scaled up by the mip level (plant_mip.gdshaderinc)
+		SHADER = load("res://game/style/plant_mip.gdshader")
+		SHADER_DOUBLE = load("res://game/style/plant_double_mip.gdshader")
+	else:
+		SHADER = load("res://game/style/plant.gdshader")
+		SHADER_DOUBLE = load("res://game/style/plant_double.gdshader")
+
+
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()
 	var prefix: String = a[0]
@@ -168,8 +180,7 @@ func _initialize() -> void:
 	var mode: String = a[3]
 	if OS.get_environment("MEADOW_CELL") != "":
 		CELL = float(OS.get_environment("MEADOW_CELL"))
-	SHADER = load("res://game/style/plant.gdshader")
-	SHADER_DOUBLE = load("res://game/style/plant_double.gdshader")
+	load_shaders()
 	var w := Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	w.set_pixel(0, 0, Color(1 if style == 1 else 0, 1 if style == 2 else 0, 1 if style == 3 else 0, 1 if style == 4 else 0))
 	RenderingServer.global_shader_parameter_set("style_map", ImageTexture.create_from_image(w))

@@ -84,9 +84,16 @@ def test_front_and_back_mirror_the_normal_map():
     assert np.dot(fn[front][0], fn[~front][0]) < 0
 
 
-def test_alpha_keeps_blades_over_the_cut_through_mips():
+def test_alpha_keeps_blades_over_the_cut_through_mips(monkeypatch):
+    monkeypatch.setattr(g, "HALO", (0.0, 0.0, 0.49))  # (an option, off by default)
     B = g.build({"clump": True, "spec": {}}, baked=_fake_bake())
     A = B["maps"]["summer"][0][..., 3].astype(np.float32) / 255
+    keep = np.zeros_like(A, bool)  # (the far tier's pictures: the near ones carry no halo)
+    for i, f in enumerate(B["frames"]):
+        if f["tier"] == len(g.TIERS) - 1 and B["box"][i] is not None:
+            b, (x, y) = B["box"][i], B["at"][i]
+            keep[y:y + b[3] - b[2], x:x + b[1] - b[0]] = True
+    A = np.where(keep, A, 0.0)
 
     def drawn(a, k):
         for _ in range(k):

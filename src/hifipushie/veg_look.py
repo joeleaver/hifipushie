@@ -43,6 +43,7 @@ def ground_z(spec: dict, at) -> float:
 
 HEAD_SIZE = 0.12   # a part no bigger than this x the plant's height (radius round its middle) ...
 HEAD_UP = 0.4      # ... whose middle stands over this x the height is a HEAD (a flower / seed head): compact and round
+WHOLE_DEG = 12.0   # a part kept whole on one groundcover card points one way from the foot within this (part_middles)
 
 
 def parts(V: np.ndarray, F: np.ndarray, H: float | None = None) -> dict:
@@ -73,7 +74,18 @@ def part_middles(V: np.ndarray, F: np.ndarray, H: float | None = None) -> np.nda
         return np.zeros((0, 3))
     P = parts(V, F, H)
     lab = P["lab"]
-    whole = P["plan"] < 0.3 * max(float(np.hypot(V[:, 0], V[:, 1]).max()), 1e-6)
+    # whole = the part points one way from the foot (a blade, a leaf): its vertices away from the foot within WHOLE_DEG of
+    # its mean direction. A fan of blades joined at its root, or a field-meshed crown, is cut by pixel (its blades go to
+    # the cards they lean toward: kept whole, a pixar fan of six thin blades lay flat on one card as one broad blade)
+    r = np.hypot(V[:, 0], V[:, 1])
+    far = r > 0.2 * max(float(r.max()), 1e-6)
+    u = np.c_[V[:, 0], V[:, 1]] / np.maximum(r, 1e-9)[:, None]
+    m = np.zeros((lab.max() + 1, 2))
+    np.add.at(m, lab[far], u[far])
+    m /= np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-9)
+    dev = np.zeros(lab.max() + 1)
+    np.maximum.at(dev, lab[far], np.degrees(np.arccos(np.clip((u[far] * m[lab[far]]).sum(1), -1, 1))))
+    whole = dev < WHOLE_DEG
     flag = np.where(P["head"], 2.0, whole.astype(float))
     return np.c_[P["centre"][lab, :2], flag[lab]]
 

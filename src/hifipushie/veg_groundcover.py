@@ -44,9 +44,9 @@ from . import vegetation
 
 GRADE = "groundcover"
 # per LOD: cards through the foot, quads across x up each card, the bake's pixels along the frame's longer side
-TIERS = ({"planes": 8, "cols": 3, "rows": 5, "px": 320, "heads": 12},
-         {"planes": 5, "cols": 2, "rows": 4, "px": 224, "heads": 6},
-         {"planes": 3, "cols": 1, "rows": 3, "px": 128, "heads": 3})
+TIERS = ({"planes": 8, "cols": 3, "rows": 5, "px": 448, "heads": 12},
+         {"planes": 5, "cols": 2, "rows": 4, "px": 128, "heads": 6},
+         {"planes": 3, "cols": 1, "rows": 3, "px": 64, "heads": 3})
 HEAD_SPAN = 1.25  # a head card's side, x the head's diameter
 LEAN = 0.6        # card normals: up + LEAN x (where on the card, -1..1) along the card (a dome over the clump) ...
 FACE = 0.7        # ... + FACE x the face's own side (front +, back -): mirror images through the card
@@ -56,15 +56,26 @@ ALPHA_CUT = 0.5
 MARGIN_PX = 2
 ATLAS_W = 1024
 PAD = 6           # px between pictures in the atlas
-# alpha under the cut round every drawn shape, fading out over HALO_PX: never drawn at full size, but when the engine's
-# mipmaps average a thin blade with the air beside it the blade stays over the cut (measured in Godot with generated
-# mipmaps, blobby grass: covered area at 12 / 20 / 32 m fell to 0.41 / 0.20 / 0.0 of the full plant's without it)
 FLAT = 1.15       # a plant lower than FLAT x its radius gets a card lying flat (TOP_AT x its height up), baked from above
 TOP_AT = 0.45
 TOP_PX = 1.0      # (its picture's side, x the tier's px)
-HALO = 0.49
+SUPER = 2         # the bake renders SUPER x the pictures' pixels and averages them down: what share of a pixel a blade
+COVER = 0.55      # covers is its alpha; a pixel covered over COVER/2 is drawn (alpha / COVER: pixar's 2-4 mm blades at
+                  # 3 mm a pixel fell under the cut and the lush clump read as a few thick blades)
+# Alpha through the engine's mipmaps (measured in Godot, pixar grass LOD 0 at 2-12 m): box-filtered mips average a thin
+# blade with the air beside it and an alpha test drops it (covered area 0.50 -> 0.07 of the full plant's by 12 m). A halo
+# (alpha just under the cut round every shape) kept blades but filled the gaps between close ones (a fan of thin blades
+# read as one broad leaf at 2 m); no static picture holds from mip 0 to 3. So: each tier's pictures are baked at the
+# size they are seen at (px), and the engine either imports them without mipmaps or scales alpha by the mip level
+# (MIP_ALPHA_RECIPE: 0.76-0.98 of the full plant's area from 2 to 12 m). HALO stays as a per-tier option, off.
+HALO = (0.0, 0.0, 0.0)  # per tier, 0..0.49: alpha kept just under the cut round every shape, fading over HALO_PX
 HALO_PX = 8.0
 SEASONS = ("summer", "spring", "autumn", "winter", "snow")
+MIP_ALPHA_RECIPE = ("alpha-tested cards through mipmaps (Ben Golus, 'Anti-aliased Alpha Test: The Esoteric Alpha To Coverage'): "
+                    "after reading the albedo, alpha *= 1 + max(0, mip) * 0.25 with mip = 0.5 * log2(max(dot(dx, dx), dot(dy, dy))), "
+                    "dx = dFdx(uv * textureSize), dy = dFdy(uv * textureSize); then the alpha test at the material's alphaCutoff. "
+                    "Godot: in fragment(), vec2 t = UV * vec2(textureSize(albedo_tex, 0)); vec2 x = dFdx(t), y = dFdy(t); "
+                    "ALPHA *= 1.0 + max(0.0, 0.5 * log2(max(dot(x, x), dot(y, y)))) * 0.25;")
 
 
 def season_tree(T: dict, season: str) -> dict:
@@ -210,7 +221,7 @@ def views(frames: list, tmp: str, tag: str) -> list:
         sec = ({"centre": [0.0, 0.0], "head": f["head"]} if f.get("head") else
                {"centre": [0.0, 0.0], "theta": f["theta"], "half": f["half"], "heads": bool(f["top"] or f.get("heads_on_wedges"))})
         for kind in ("albedo", "normal", "shade"):
-            out.append({"out": f"{tmp}/{tag}_{kind}_{fi:02d}.png", "size": [w, h], "azimuth": 0, "elevation": 0, "focus": cen,
+            out.append({"out": f"{tmp}/{tag}_{kind}_{fi:02d}.png", "size": [SUPER * w, SUPER * h], "azimuth": 0, "elevation": 0, "focus": cen,
                         "span": min(f["span_w"], f["span_h"]), "leaves": True, "transparent": True, "no_ground": True, "pass": kind,
                         "samples": 8, "sector": sec,
                         "basis": {"centre": cen, "right": f["right"].tolist(), "up": f["up"].tolist(), "back": f["back"].tolist(),
@@ -238,7 +249,18 @@ def compose(f: dict, albedo: np.ndarray, normal: np.ndarray, shade: np.ndarray, 
     tangent-space normal map in the card's own frame (_card_frame)."""
     from scipy import ndimage
     from .veg_export import _bleed
-    a = albedo
+    k = albedo.shape[1] // max(f["px"][0], 1)
+    if k > 1:  # (rendered SUPER x: coverage-weighted means down to the picture's pixels)
+        h_, w_ = f["px"][1], f["px"][0]
+        blk = lambda x_: x_[:h_ * k, :w_ * k].reshape(h_, k, w_, k, -1).mean((1, 3))
+        al_ = albedo[..., 3:4]
+        cov = blk(al_)
+        albedo = np.concatenate([blk(albedo[..., :3] * al_) / np.maximum(cov, 1e-6), cov], -1)
+        nw_ = normal[..., 3:4]
+        normal = np.concatenate([blk(normal[..., :3] * nw_) / np.maximum(blk(nw_), 1e-6), blk(nw_)], -1)
+        shade = blk(shade)
+    a = albedo.copy()
+    a[..., 3] = np.clip(a[..., 3] / COVER, 0, 1)
     solid = a[..., 3] > 0.5
     got = shade[..., 3] > 0.05
     s_ = ndimage.gaussian_filter(_bleed(np.where(got, shade[..., 0], 1.0), got), 1.0) if got.any() else np.ones(a.shape[:2])
@@ -325,10 +347,12 @@ def atlases(baked: dict, frames: list, box: list) -> tuple[dict, list, int, int]
         al = np.zeros((Ht, W), np.float32)
         nr = np.zeros((Ht, W, 3), np.float32)
         nr[..., 2] = 1.0
+        hal = np.zeros((Ht, W), np.float32)
         for fi, b in enumerate(box):
             if b is None:
                 continue
             x, y = at[fi]
+            hal[max(y - PAD, 0):y + (b[3] - b[2]) + PAD, max(x - PAD, 0):x + (b[1] - b[0]) + PAD] = HALO[frames[fi]["tier"]]
             c = fr[fi]
             sl = (slice(b[2], b[3]), slice(b[0], b[1]))
             hh, ww = b[3] - b[2], b[1] - b[0]
@@ -340,7 +364,7 @@ def atlases(baked: dict, frames: list, box: list) -> tuple[dict, list, int, int]
             rgb = _bleed(rgb, has)
             inside = al >= ALPHA_CUT
             d = ndimage.distance_transform_edt(~inside)
-            al = np.where(inside, al, np.maximum(al * (al < ALPHA_CUT), np.minimum(HALO * np.exp(-d / HALO_PX), ALPHA_CUT - 0.01)))
+            al = np.where(inside, al, np.maximum(al * (al < ALPHA_CUT), np.minimum(hal * np.exp(-d / HALO_PX), ALPHA_CUT - 0.01)))
         A = (np.dstack([rgb, al]) * 255 + 0.5).clip(0, 255).astype(np.uint8)
         N = ((nr * 0.5 + 0.5) * 255 + 0.5).clip(0, 255).astype(np.uint8)
         out[se] = (A, N)
@@ -439,10 +463,11 @@ def write_glb(path: str, name: str, tiers: list, maps: dict, seasons: list, info
                                                    "roughnessFactor": float(info.get("roughness", 0.85))},
                           "normalTexture": {"index": tex(_png(Nm))},
                           "alphaMode": "MASK", "alphaCutoff": ALPHA_CUT, "doubleSided": False,
-                          "extras": {"grade": GRADE, "faces": "front and back are their own single-sided triangles: NORMALs mirror "
+                          "extras": {"grade": GRADE, "alpha_mips": "import WITHOUT mipmaps, or WITH them and this in the shader: " + MIP_ALPHA_RECIPE,
+                                     "faces": "front and back are their own single-sided triangles: NORMALs mirror "
                                                               "images through the card, TANGENT w +1 / -1 (the normal map reads mirrored from behind)"}})
         var_mat[se] = len(materials) - 1
-    variants = list(seasons) if len(seasons) > 1 else []
+    variants = list(seasons)  # (one season too: the seasons json is how an engine maps slots)
     ext = {"KHR_materials_variants"} if variants else set()
     lod_nodes, lod_info = [], []
     for li in which:
@@ -544,7 +569,7 @@ def _finish(renders: dict, frames: list, R: float, H: float) -> dict:
     box = crops(baked, frames)
     maps, at, W, Ht = atlases(baked, frames, box)
     tiers = [cards(frames, box, at, W, Ht, R, H, ti) for ti in range(len(TIERS))]
-    return {"box": box, "maps": maps, "tiers": tiers, "atlas": [W, Ht]}
+    return {"box": box, "maps": maps, "tiers": tiers, "atlas": [W, Ht], "at": at}
 
 
 def export(T: dict, out_dir: str, stem: str, seasons=SEASONS, built: dict | None = None) -> dict:

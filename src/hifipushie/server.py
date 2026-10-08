@@ -2707,8 +2707,9 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     (foliage; seasons as variants of it, winter = the plant lying, snow = winter under snow), wind channels and seasons
     json; adds TANGENT + a normalTexture; no bark / heads slots (stalks and flower heads are in the pictures). Written to
     its own folder (default export_groundcover/) as <name>_LOD0..2.glb, <name>.glb (MSFT_lod) and <name>_seasons.json:
-    point the game's groundcover at that folder. ENGINE: import its PNGs WITH mipmaps (the pictures keep thin blades over
-    the alpha cut through the mips), and turn the importer's own LOD generation off for these meshes. ~5-10 min of
+    point the game's groundcover at that folder. ENGINE: import its PNGs WITHOUT mipmaps, or WITH them and alpha scaled up
+    by the mip level in the shader (recipe in the material's extras.alpha_mips; with plain mipmaps thin blades vanish past
+    ~4 m), and turn the importer's own LOD generation off for these meshes. ~5-10 min of
     Blender the first time (cached by the spec)."""
     from . import veg_tools as vt
     from . import veg_export as _ve
@@ -2726,7 +2727,8 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                 + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['planes']} cards)" for l_ in c["lods"])
                 + f"; clump {c['H']:.2f} m tall, {2 * c['R']:.2f} m across; atlas {c['atlas'][0]} x {c['atlas'][1]} per season\n"
                 + "files: " + ", ".join(Path(f).name for f in c["files"])
-                + "\nENGINE: import the PNGs / GLB textures with mipmaps; turn mesh LOD generation off for these files")
+                + "\nENGINE: import the PNGs without mipmaps, or with them + the mip-scaled alpha (material extras.alpha_mips); "
+                  "turn mesh LOD generation off for these files")
     c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
                   lod_files=lod_files)
     gl = []

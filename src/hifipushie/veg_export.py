@@ -439,9 +439,10 @@ CONTRACT_LOG = {
         "SINGLE sided (front and back are triangles of their own, NORMALs leaning up and toward their own face, mirror "
         "images through the card; TANGENT is NEW: w = +1 on the front, -1 on the back), baseColorTexture (sRGB, shade baked in) + normalTexture (tangent space) per season variant "
         "(winter = the plant lying, snow = winter under snow); no COLOR_0, no bark / heads / foliage_winter slots (stalks, "
-        "flower heads and the lying winter blades are in the pictures). Wind channels as every plant. Engine: import its "
-        "textures WITH mipmaps (the alpha under the cut round every blade keeps thin blades through the mips) and turn the "
-        "importer's own mesh LOD generation off for these meshes. Full-grade files are unchanged except this version number",
+        "flower heads and the lying winter blades are in the pictures). Wind channels as every plant. Each tier's pictures are baked at "
+        "the size that tier is seen at. Engine: import the textures WITHOUT mipmaps, or WITH them and alpha scaled by the mip "
+        "level in the shader (material extras.alpha_mips: three lines; with mips and without it thin blades vanish past "
+        "~4 m), and turn the importer's own mesh LOD generation off for these meshes. Full-grade files are unchanged except this version number",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
