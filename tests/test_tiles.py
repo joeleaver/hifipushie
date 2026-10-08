@@ -168,12 +168,15 @@ def test_shell_keeps_add_volumes_whole(cf, region):
     blk = _Block([xy[0, 0] - 3, xy[0, 1] - 3, z - 4], [xy[0, 0] + 3, xy[0, 1] + 3, float(h[0]) + 6])
     p = np.array([[xy[0, 0], xy[0, 1], z]])
     vols = b.vols
+    whole = terrain_cliffs.WHOLE_ADDS
     try:
+        terrain_cliffs.WHOLE_ADDS = True  # (off by default until sea stacks mesh cleanly solid)
         b.vols = list(vols) + [blk]
         cf.__dict__.pop("_add_vols", None)
         assert cf.value(p)[0] < 0, cf.value(p)  # (inside the block: rock)
         assert b.value(p)[0] < 0
     finally:
+        terrain_cliffs.WHOLE_ADDS = whole
         b.vols = vols
         cf.__dict__.pop("_add_vols", None)
 

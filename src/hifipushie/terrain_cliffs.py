@@ -213,6 +213,10 @@ class Region:
         return bool(self.S[q0:q1, r0:r1].max() > 0)
 
 
+WHOLE_ADDS = False  # (see CliffField._with_adds: off until sea stacks mesh cleanly solid; the decimation's error now
+# counts faces out in front of the rock, which keeps the hollow's walls inside)
+
+
 class CliffField:
     """The shell the cliff meshes are cut from (see the module docstring). Looks like a terrain_mesh.Field to the tile
     exporter: column, solid, value, value_gradient, rock."""
@@ -307,6 +311,8 @@ class CliffField:
         and hollowed them from the sea floor up. The cavity's buried faces, free of the decimation's error (it is
         measured on the visible rock), were pulled out through the stack's wall at LOD 1-2: white triangles 10-20 m
         across in the engine, and pieces of the stack floating free."""
+        if not WHOLE_ADDS:
+            return out
         da = self._adds(p)
         k = np.flatnonzero(da < self.ADD_PAD + 1.0)
         if len(k):

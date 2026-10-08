@@ -123,6 +123,7 @@ def smoothstep(e0, e1, x):
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
 FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
 
 
@@ -2244,28 +2245,20 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
         c = np.r_[v[f].mean(1), (v[f[:, 0]] + v[f[:, 1]]) / 2]
         with _span("decimate.error"):
             if hasattr(field, "front"):
-                # a cliff shell is judged where it is seen: faces with every corner on the visible rock (the rule
-                # that sorts "surface" from "buried" in _job_tile), by the visible rock's own field. The buried
-                # back's values aren't metres (slice_a's cave tile: |field| p99 0.59 at the dense mesh's own face
-                # centres, all of it 5-25 m under the ground): counted, they were the tolerance
+                # a cliff shell is judged where it can be seen: every face whose centre is not deep inside the rock
+                # (front >= -thr), by the visible rock's own field. The buried back's values aren't metres (slice_a's
+                # cave tile: |field| p99 0.59 at the dense mesh's own face centres, all of it 5-25 m under the ground):
+                # counted, they were the tolerance. Judged only on faces with every corner on the rock (until
+                # 2026-10-07), a face pulled out in front of it (corners off, centre in the open air) wasn't judged
+                # at all: the back's faces came out through thin rock at LOD 1-2 (the island's Kaze stacks, Pencil
+                # Bay: white triangles 10-20 m across)
                 thr = max(0.3, 2 * err)
-                fv = field.front(v)
-                vis = (np.abs(fv) <= thr)[f].all(1)
-                # the back must stay out of sight: a face off the visible rock whose centre is out in the air (in front
-                # of it) is a buried face pulled through the front, drawn plain in an engine (the island's Kaze stacks
-                # at LOD 1-2: white triangles 10-20 m across). Measured only on the visible faces it went unbounded
-                # (more of it than the undecimated mesh has: the dense mesh's own few such faces set the floor)
-                if exposed[0] is not None and _exposed_back(v, f, fv, vis, field, thr) > exposed[0]:
-                    return np.inf
-                if vis.sum() >= 16:
-                    return float(np.percentile(np.abs(field.front(c[np.r_[vis, vis]])), 99))
+                fc = field.front(c)
+                seen = fc >= -thr
+                if seen.sum() >= 16:
+                    return float(np.percentile(np.abs(fc[seen]), 99))
             return float(np.percentile(np.abs(field.value(c)), 99))
 
-    exposed = [None]
-    if hasattr(field, "front") and len(faces):
-        thr0 = max(0.3, 2 * err)
-        fv0 = field.front(P)
-        exposed[0] = 1.0 + 1.2 * _exposed_back(P, faces, fv0, (np.abs(fv0) <= thr0)[faces].all(1), field, thr0)
     tol = err + error(P, faces)
     if pre is not None and len(faces) > 1.5 * pre and len(faces) > budget:
         cand = run(pre)
@@ -3848,8 +3841,10 @@ def _job_tile(ij):
                 # lip's crease has its centre 0.3 m+ off the rock with every corner on it; taken for buried, it was
                 # drawn with the plain matte material: the pale flat triangles at cliff lips. A face with one corner
                 # on the front is the back's edge where it meets it: still buried)
+                # (and its centre INSIDE the rock: a face whose centre stands out in the open is seen whatever its
+                # corners say; called buried, it was drawn plain: white triangles through the island's cliffs)
                 thr = max(0.3, 2 * cfg["error"][k])
-                bur = (np.abs(field.front(Ps[Fs].mean(1))) > thr) & (np.abs(field.front(Ps))[Fs].max(1) > thr)
+                bur = (field.front(Ps[Fs].mean(1)) < -thr) & (np.abs(field.front(Ps))[Fs].max(1) > thr)
         stem = f"tile_{i}_{j}_lod{k}"
         from .terrain_bake import material as terrain_bake_material
         images, binfo, deferred = None, None, None
@@ -3863,7 +3858,12 @@ def _job_tile(ij):
         tile_mats = mat + ([terrain_bake_material("terrain_baked")] if (cfg.get("maps") and (~bur).any()) else [])
         if bur.any():
             # (its own material name: an importer that drops extras, Godot's, saw the back as a second skirt surface)
-            tile_mats = tile_mats + [{**mat[0], "name": "terrain_buried"}]
+            # (and its own colour: the rock's mean colour there, in shade. White, it showed as pale plates wherever an
+            # engine drew a piece of the back in the open (it ignores COLOR_0 without a vertex-colour material))
+            cb = _linear(np.asarray(C[src][np.unique(Fs[bur])], float)[:, :3].mean(0)) * BURIED_SHADE
+            tile_mats = tile_mats + [{**mat[0], "name": "terrain_buried",
+                                      "pbrMetallicRoughness": {**mat[0]["pbrMetallicRoughness"],
+                                                               "baseColorFactor": [*map(float, cb), 1.0]}}]
             prims.append(_prim(*_compact(Ps - origin, Ns, C[src], W[src], Fs[bur]), len(tile_mats) - 1,
                                {"role": "buried"}, mats, lo, cfg))
         if len(sf):
