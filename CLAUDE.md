@@ -3665,6 +3665,58 @@ regresses, bisect by building one spec at each commit and diffing heights.
       externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
       (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
+  - The island (2026-10-07, "tiles2" agent, branch `worktree-agent-a84a66da1629ad251`; consumer notes 79-84: the first
+    2048 m island export, 1024 tiles, 10 failed checks + faults seen in Godot; our copies are terrains `tl2_island`,
+    `tl2_slice_a`; scratch DURABLE in /mnt/data/hifipushie/tiles2: run.sh <script> (this worktree's code, main
+    workspace), exp.py <terrain> <tag> '<cfg>' (export into out/<tag>; give `"heavy_gb": 8` for a 3x3 block or the
+    memory queue waits for 16 GB), cave1/2/3.py (early cave walk, report lines, a passage's profile), pair.py /
+    near.py / cedges.py (a border's unmatched vertices / edges between two tiles), sub.py (the seam check on a
+    read-only subset of an export, symlinked into out/), float1-5.py (cliff pieces near a point; field columns; volumes
+    at a point; ASCII section of base vs shell; free solid components in a box), col.py (base / shell / front on a
+    column), white.py (faces by primitive in a box), exposed.py (exposed_buried on any export), probe_ex.py (each
+    exposed buried face with the fields at it), vdist.py (a tile LOD's vertices off the surface), dec1.py / dec2.py (one
+    tile's dense mesh cached, then `_decimate` / pyfqmr counts with error, validity, non-manifold spots), rend.py
+    (Kaze from pushieworld's camera spots, buried backs magenta), rend2.py (any one view), kq.sh (Kaze block with the
+    solid-stack shell off / on)).
+    - CAVES WALKED IN THE REPORT (`terrain_caves.early`, from `Terrain.report`): the export's own `check` walk through
+      `light_field` (Field(T, volumes + cave tubes, rock=None): the height field with the caves cut out, no rock
+      relief; 7-8 s on the island, the export's verdicts on all four passages; the test compares with the full field),
+      plus `survey` per passage (rise over its sloping run, steepest 10 m, rock over the roof away from the mouths) and
+      each chamber's dome cover, WARNINGs with the fix in spec terms (the chamber's `z` / `depth` that makes the climb
+      `GRADE_WALK` 25%, how long the passage would have to be, a lava flow's walkable `from` / `to` stretch or "no
+      stretch"). Island: kaze geo_door -> hall 33% (put hall at z ~37), its passage breaks out under a valley;
+      crown_tube's flow falls 60%. slice_a: the smugglers' hall ("in": 30 past the knoll) breaks out to the sky by 6.5 m.
+      Lava tubes follow their flow (the line's s is a fraction: one via point before). Cached terrains re-register
+      mixture kinds (KeyError 'crater+coast' on a cache hit in a fresh process). `tests/test_caves_early.py`.
+    - PROGRESS: `profiling.Report(progress=log)`: each stage's start, pooled stages' done / total, elapsed, ETA (30 s,
+      a tenth when the count moves); run_jobs names each kind of job; pool_map collects as jobs finish (results in
+      order). export_terrain(tiles) writes <tiles>/export_log.txt and MCP progress (`ctx: Context`,
+      anyio.from_thread). `tests/test_progress.py`.
+    - THE KAZE HOLES / PENCIL SHARD (white triangles 10-20 m across in Godot): the cliff shell's BURIED back drawn in
+      the open. Two causes: the shell's back is the heightfield's ground moved in, and inside a sea stack (solid add
+      volume over the heightfield's slim core) that left the stack hollow from the sea floor to ~16 m; and
+      `_decimate` judged only faces with every corner on the visible rock, so LOD 1-2 pulled the back's faces out
+      unjudged (Pencil 23,6 LOD 2: one 617 m2 buried face). Now: (1) the decimation's error counts every face whose
+      centre is not deep in the rock (`front >= -thr`); (2) a face is buried only if its centre is deeper in the rock
+      than max(thr, `BURIED_DEEP` 0.1 x sqrt(area)) and a corner is off it (a big flat LOD 0 face over rounded rock is
+      surface); (3) `terrain_buried`'s baseColorFactor = the rock's mean colour there x `BURIED_SHADE` 0.6 (Godot
+      ignores COLOR_0: white plates before); (4) check `terrain_cliffs.exposed_buried` (point 0.5 m out of a buried
+      face in the air and over the pushed heightmap; > 2 m2 per tile LOD fails). (5) `CliffField._with_adds`: the
+      shell is the whole rock inside 1 m of an add volume, behind `WHOLE_ADDS` (env HIFIPUSHIE_WHOLE_ADDS=1): on the
+      OLD stacks it broke pyfqmr (a sub-voxel sealed pocket at stack0's waterline notch: a non-manifold edge at every
+      count, the budget search fell to a third of the budget). Kaze block: island as shipped 3,16 LOD 1 / 2 exposed 223 / 104 m2;
+      on the stacks agent's new jointed Column (main dbfe15e) 0 / 0 / 0 at every LOD with the solid shell off (kaze2)
+      and on (kaze3); off stays the default (fewer floats, steadier counts). Seen from pushieworld's camera spots:
+      no wedges (rend/new_*). Pencil block: 0 failures. Crown block: 0 failures. Tried and dropped: decimating front and
+      back as two meshes joined at a locked seam (the front half would not go under ~60k faces at LOD 1); an absolute
+      "no back in the open" rule (it made the dense mesh's tolerance infinite).
+    - False alarms fixed in the seam check (`_plane_chain`, by position, chains only): a sliver in a border plane
+      (11,8 / 12,8) and edges on a tile corner's vertical line (21,6 / 22,6 at LOD 2).
+    - Fallen blocks seat on the lowest ground under their footprint minus `FALL_SEAT` x the relief's reach (a block
+      hung over relief-carved rock: the crown-flank floats). Moves blocks in every export with fallen blocks.
+    - slice_a's cave_mouth picture: the consumer's camera [271, 135, 2] is INSIDE rock (base field -1.2 there; the
+      passage's axis 4.6 m west); from inside the passage (rend2.py mouth1) the cave reads clean at LOD 0.
+    - `render_tiles(buried_color=)` draws the buried backs flat (no glow: it lit a cave magenta).
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
