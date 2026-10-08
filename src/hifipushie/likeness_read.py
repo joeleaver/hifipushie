@@ -25,6 +25,20 @@ CONF = {"clear": 1.0, "likely": 0.6, "hint": 0.3}
 UNSEEN = [("profile_right", -90.0, 0.0), ("profile_left", 90.0, 0.0), ("three_quarter_other", None, 0.0), ("low_angle", 0.0, 25.0)]
 
 
+# what a view cannot show: left out of that view's count (a face shape in a profile is not "missing")
+NOT_JUDGEABLE = {
+    "profile": {"groups": {"face shape"}, "ids": {"chin_broad", "chin_pointed", "chin_cleft", "nose_broad", "jaw_narrow", "eyes_hooded", "eyes_wide"}},
+    "front": {"groups": set(), "ids": {"chin_strong", "chin_weak", "nose_straight", "nose_aquiline", "nose_snub", "brow_flat"}},
+    "low_angle": {"groups": set(), "ids": {"nose_straight", "nose_aquiline", "eyes_deep", "brow_heavy", "brow_flat", "face_long", "chin_strong", "chin_weak"}},
+}
+
+
+def judgeable(d: dict, view: str) -> bool:
+    k = "profile" if view.startswith("profile") else view if view in NOT_JUDGEABLE else None
+    nj = NOT_JUDGEABLE.get(k) if k else None
+    return not nj or (d["group"] not in nj["groups"] and d["id"] not in nj["ids"])
+
+
 def descriptors() -> list:
     from . import likeness
     return json.loads(likeness.CHECKLIST.read_text()).get("descriptors", [])
@@ -57,7 +71,42 @@ def load(name: str) -> dict:
     return json.loads(p.read_text()) if p.exists() else {"format": 1, "reads": {}}
 
 
-def set_read(name: str, tag: str, read: dict, view: str | None = None, by: str = "") -> dict:
+def _against(k, others, by) -> list:
+    return [o for o in others if o in by[k].get("opposite", []) or k in by[o].get("opposite", [])]
+
+
+def effective(by_author: dict) -> dict:
+    """The reference read used as the prior: the USER's wins. The LLM reader's descriptors stay unless one is the
+    opposite of something the user said (lean against the user's chunky, straight nose against snub)."""
+    by = {d["id"]: d for d in descriptors()}
+    user, llm = by_author.get("user") or {}, by_author.get("llm") or {}
+    ud = user.get("descriptors", {})
+    ds = {k: {**v, "author": "llm"} for k, v in llm.get("descriptors", {}).items() if not _against(k, ud, by)}
+    ds.update({k: {**v, "author": "user"} for k, v in ud.items()})
+    return {"descriptors": ds, "summary": user.get("summary") or llm.get("summary", "")}
+
+
+def questions(name: str) -> list:
+    """Where the user's read and the LLM reader's disagree: questions for the user, never settled silently."""
+    by = {d["id"]: d for d in descriptors()}
+    ba = load(name)["reads"].get("reference_by") or {}
+    user, llm = (ba.get("user") or {}).get("descriptors", {}), (ba.get("llm") or {}).get("descriptors", {})
+    if not user or not llm:
+        return []
+    out = []
+    for k in user:
+        opp = _against(k, llm, by)
+        if opp:
+            notes = "; ".join(llm[o].get("note", "") for o in opp if llm[o].get("note"))[:200]
+            out.append(f"{by[k]['group']}: you read {by[k]['name']}; the reader saw {', '.join(by[o]['name'] for o in opp)}"
+                       + (f" ({notes})" if notes else "") + ". Which should the model show? (yours is used until you say otherwise)")
+        elif k not in llm:
+            out.append(f"{by[k]['group']}: you read {by[k]['name']}; the reader did not see it in the pictures. Which picture shows it, "
+                       "or is it from knowing the character? (yours is used)")
+    return out
+
+
+def set_read(name: str, tag: str, read: dict, view: str | None = None, by: str = "", author: str = "llm") -> dict:
     """Store a filled form. tag "reference" = the read of the reference pictures (the prior); any other tag = a blind
     read of renders of a model (then `view` names the render: front, three_quarter, profile_right...)."""
     ids = {d["id"] for d in descriptors()}
@@ -72,6 +121,12 @@ def set_read(name: str, tag: str, read: dict, view: str | None = None, by: str =
     entry = {"descriptors": read.get("descriptors", {}), "summary": read.get("summary", ""), "by": by}
     if view:
         slot.setdefault("views", {})[view] = entry
+    elif tag == "reference":   # kept per author ("user" | "llm"); the prior is `effective` of them
+        if author not in ("user", "llm"):
+            raise ValueError("author must be 'user' or 'llm'")
+        ba = d["reads"].setdefault("reference_by", {})
+        ba[author] = entry
+        d["reads"]["reference"] = effective(ba)
     else:
         slot.update(entry)
     _path(name).parent.mkdir(parents=True, exist_ok=True)
@@ -202,18 +257,49 @@ def diff(name: str, tag: str, ref_from: str | None = None) -> str:
     for view, rd in mod["views"].items():
         got = rd["descriptors"]
         # (an opposite the reference itself also holds, "long" with a hint of "square", is not a contradiction)
-        contra = [(k, o) for k in want for o in by[k].get("opposite", []) if o in got and o not in want and k not in got]
-        missing = [k for k in want if k not in got and not any(c[0] == k for c in contra) and by[k]["group"] != "overall"]
+        can = [k for k in want if judgeable(by[k], view)]
+        contra = [(k, o) for k in can for o in by[k].get("opposite", []) if o in got and o not in want and k not in got]
+        missing = [k for k in can if k not in got and not any(c[0] == k for c in contra) and by[k]["group"] != "overall"]
         extra = [k for k in got if k not in want and not any(c[1] == k for c in contra) and by[k]["group"] != "overall"]
-        kept = [k for k in want if k in got]
-        score.append((len(kept), len(want)))
+        kept = [k for k in can if k in got]
+        score.append((len(kept), len(can)))
         lines.append(f"  model {view}: keeps {nm(kept)}"
                      + ("; CONTRADICTS: " + ", ".join(f"{by[a]['name']} -> reads {by[b]['name']}" for a, b in contra) if contra else "")
                      + (f"; missing: {nm(missing)}" if missing else "") + (f"; adds: {nm(extra)}" if extra else "")
                      + (f"  (\"{rd.get('summary')}\")" if rd.get("summary") else ""))
     k, n = sum(a for a, _ in score), sum(b for _, b in score)
-    lines.insert(1, f"  kept {k} of {n} descriptor-views")
+    lines.insert(1, f"  kept {k} of {n} descriptor-views (views that can't show a descriptor don't count)")
+    qs = questions(ref_from or name)
+    if qs:
+        lines.insert(2, "  QUESTIONS (the user's read and the reader's differ):\n" + "\n".join("    " + q for q in qs))
     gaps = sorted({by[k]["control"] for k in want if "GAP" in by[k]["control"]})
     if gaps:
         lines.append("  controls the read needs and we lack: " + "; ".join(gaps))
+    return "\n".join(lines)
+
+
+def agreement(name: str, tags: list) -> str:
+    """Repeatability of blind reads of ONE head (several tags = several readers of the same sheet): per descriptor, in
+    how many views the readers all agree (all pick it or none does), and Fleiss-style: of the reader-views that
+    picked it, the share where every reader did."""
+    by = {d["id"]: d for d in descriptors()}
+    reads = load(name)["reads"]
+    views = list(reads[tags[0]]["views"])
+    rows = []
+    for k, d in by.items():
+        agree = n = unan = picked = 0
+        for v in views:
+            if not judgeable(d, v):
+                continue
+            c = sum(k in reads[t]["views"].get(v, {}).get("descriptors", {}) for t in tags)
+            n += 1
+            agree += c in (0, len(tags))
+            picked += c > 0
+            unan += c == len(tags)
+        if picked:
+            rows.append((unan / picked, k, unan, picked, agree, n))
+    rows.sort()
+    lines = [f"agreement of {len(tags)} blind readers over {len(views)} views (descriptor: unanimous / views where anyone picked it; all-agree views):"]
+    for share, k, unan, picked, agree, n in rows:
+        lines.append(f"  {by[k]['name']:28s} {unan}/{picked}  ({agree}/{n})" + ("   UNRELIABLE" if share < 0.34 and picked >= 2 else ""))
     return "\n".join(lines)

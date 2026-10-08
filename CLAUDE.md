@@ -5618,7 +5618,19 @@ seed head)).
       long face, square jaw, strong broad chin, straight nose, heavy brow, deep-set hooded eyes, rugged (the reader
       said LEAN where Joe said chunky). om_garrett current (v21): kept 33 of 72 descriptor-views; "chunky" in all six
       views, soft jaw in five, weak chin + flat brow in both profiles. Pass 6 (v16): 46 of 72; lean kept, soft jaw +
-      weak chin in both profiles and the three-quarter. Known: a view that can't show a descriptor (face shape in a
+      weak chin in both profiles and the three-quarter.
+      Round 6: reads carry an author (`set_read(author="user" | "llm")`, `reference_by`); `effective` = the user's
+      win, the reader's stay unless an `opposite` of the user's; `questions(name)` lists the disagreements for the
+      user (Joe: chunky / square jaw / cleft chin / cute nose vs the reader's lean / straight nose / no cleft seen).
+      `NOT_JUDGEABLE` (face shape in a profile, chin projection from the front...) leaves those out of a view's
+      count. `agreement(name, tags)`: three blind readers of pass 6 agreed on gaunt, heavy brow, deep-set, hooded,
+      straight nose, lean (5/6), square jaw (3/4); UNRELIABLE on that head: strong chin (0/2), narrow jaw (0/3),
+      broad nose (1/3). `likeness.report` renders the six-view sheet by default (`<focus>_views.png`). onemesh2's
+      581dc3e wired: levers shape.chin.project (prof_chin), shape.chin.width, shape.nose_tip.round (tip radius),
+      nose_tip as {"up", "round"} (`BARE`); cleft = shape.chin.cleft by hand (no item measures a groove).
+      lk_garrett5 after them (lk_08 six views) is a LEVER TEST BED, not a likeness: crumpled cheeks from the cheek
+      region fit, a blob nose, no visible cleft at 2 mm. NOT done: stubble / hair stand-ins on the read renders.
+      Known: a view that can't show a descriptor (face shape in a
       profile) counts as "missing"; not blind-tested for repeatability; no stubble stand-in; bands uncalibrated.
     - Memory (capped, /usr/bin/time): staged fit 1.85 GB peak / 15:50, three-model comparison 1.2 GB, report 1.07 GB.
   - Open: a jaw control (ramus / border / neck step), a fold control; shading with albedo handled (a stubble mask, or

@@ -178,8 +178,19 @@ checklist's rows can all pass while the read fails. So:
    CONTRADICTS (an opposite read instead) / missing / adds per view, and the controls the read needs that we lack.
    `likeness(name)` leads with it.
 
-Limits: the renders are bald clay with drawn brows; a profile can't show a face shape (it reads "missing"); two
-readers can disagree (lean vs chunky on one front picture): keep the summary sentence and read the diff by eye too.
+The USER's read wins: `character_read(name, "reference", read, author="user")` for their own words ("chunky, square
+jaw, cleft chin, cute nose"). The LLM reader's descriptors stay unless one is the opposite of the user's; every
+disagreement comes back as a QUESTION to put to the user (which should the model show? which picture shows it?),
+never settled silently.
+
+The six-view sheet is stage 0 AND the final check: `likeness(name)` renders it by default and leads with the diff.
+A view that can't show a descriptor (a face shape in a profile, chin projection from the front) is left out of that
+view's count. Repeatability (`likeness_read.agreement`): on one head three blind readers agreed on gaunt, heavy brow,
+deep-set, hooded, straight nose, lean and square jaw; they did NOT agree on strong chin, narrow jaw or broad nose, so
+weigh those by the profile panels and the contour items, not by one reader's word.
+
+Limits: the renders are bald clay with drawn brows (no stubble or hair stand-in yet: a bald clay head reads heavier
+and older); keep the summary sentence and read the sheet by eye too.
 
 ## A profile from a turned view (contours)
 

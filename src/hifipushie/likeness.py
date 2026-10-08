@@ -1381,6 +1381,12 @@ def report(name: str, base: dict | None = None, top: int = 8, save: str | None =
     # report, above the millimetres
     from . import likeness_read as lr
     lead = []
+    try:   # the six-view sheet: what a person judges too (reference cameras + the views no reference shows)
+        views = str(Path(out).with_name(Path(out).stem.replace("_focus", "") + "_views.png"))
+        lr.render_views(name, views, base=base)
+        lead.append(f"six-view sheet (judge this first, and last): {views}")
+    except Exception as e:  # noqa: BLE001
+        lead.append(f"(six-view sheet not rendered: {e})")
     reads = lr.load(name)["reads"]
     if reads.get("reference"):
         for tag in reads:
@@ -1512,10 +1518,17 @@ LEVERS = {
     "mouth_corner_tilt": ("pose.smile", 0.001, (-0.004, 0.004), 0.0),
 }
 LEVERS["prof_brow_ridge"] = ("features.brow_ridge", 0.4, (-1.5, 1.5), 0.0)
-LEVERS["prof_nose_base"] = ("shape.nose_tip", 5.0, (-10.0, 25.0), 0.0)   # the tip turned up / down (deg)
-LEVERS["prof_tip_height"] = ("shape.nose_tip", 5.0, (-10.0, 25.0), 0.0)
+LEVERS["prof_nose_base"] = ("shape.nose_tip.up", 5.0, (-10.0, 25.0), 0.0)   # the tip turned up / down (deg)
+LEVERS["prof_tip_height"] = ("shape.nose_tip.up", 5.0, (-10.0, 25.0), 0.0)
+# onemesh2's controls (581dc3e): the tip blunted, the chin's own form
+LEVERS["prof_tip_radius"] = ("shape.nose_tip.round", 0.4, (0.0, 1.5), 0.0)
+LEVERS["prof_chin"] = ("shape.chin.project", 0.002, (-0.004, 0.010), 0.0)
+LEVERS["width_chin"] = ("shape.chin.width", 0.002, (-0.006, 0.010), 0.0)
 LEVERS["prof_cheek_line"] = ("shape.hollow", 0.002, (0.0, 0.008), 0.0)
 LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
+
+
+BARE = {"nose_tip": "up"}   # controls that may be a bare number: which key of their dict form it is
 
 
 def lever_value(base: dict, path: str, default: float) -> float:
@@ -1525,6 +1538,8 @@ def lever_value(base: dict, path: str, default: float) -> float:
     keys = path.split(".")
     for k in keys[:-1]:
         d = d.get(k) or {}
+        if isinstance(d, (int, float)) and k in BARE:   # shape.nose_tip = 12 means {"up": 12}
+            d = {BARE[k]: d}
         if not isinstance(d, dict):   # (a control given as a bare number: shape.hollow = 0.005)
             return default
     v = d.get(keys[-1], default) if isinstance(d, dict) else default
@@ -1548,7 +1563,7 @@ def with_lever(base: dict, path: str, x: float, force: bool = False) -> tuple:
     keys = path.split(".")
     for k in keys[:-1]:
         if not isinstance(d.get(k), dict):
-            d[k] = {}
+            d[k] = {BARE[k]: d[k]} if isinstance(d.get(k), (int, float)) and k in BARE else {}
         d = d[k]
     d[keys[-1]] = round(float(x), 5)
     return out, False

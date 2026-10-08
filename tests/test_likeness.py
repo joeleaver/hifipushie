@@ -210,6 +210,10 @@ def test_nested_levers():
     assert lk.lever_value(nb, "shape.jawline.below_lobe", 0.045) == 0.05
     assert lk.lever_value(base, "shape.jawline.forward", 0.004) == 0.004
     assert lk.lever_value(base, "shape.hollow", 0.0) == 0.005
+    b2 = {"head": {"shape": {"nose_tip": 12}}}                      # a bare number = {"up": 12}
+    assert lk.lever_value(b2, "shape.nose_tip.up", 0.0) == 12.0
+    nb, _ = lk.with_lever(b2, "shape.nose_tip.round", 0.8)
+    assert nb["head"]["shape"]["nose_tip"] == {"up": 12, "round": 0.8}
 
 
 def test_stage_wants_pin_earlier_stages():
@@ -300,7 +304,7 @@ def test_character_read(tmp_path, monkeypatch):
     lr.set_read("m", "v1", {"descriptors": {"jaw_soft": {"confidence": "likely"}}}, view="profile")
     lr.set_read("m", "v1", {"descriptors": {"jaw_square": {"confidence": "likely"}, "chin_strong": {"confidence": "hint"}}}, view="front")
     t = lr.diff("m", "v1")
-    assert "square jaw -> reads soft jaw" in t and "kept 2 of 6" in t and "GAP" in t           # the cleft has no control
+    assert "square jaw -> reads soft jaw" in t and "kept 1 of 4" in t
     b = lr.bands(lr.load("m")["reads"]["reference"])
     assert b["jaw_gonial"][1] <= 122 and b["prof_chin"][0] >= -36
     rows = [{"id": "jaw_gonial", "name": "Gonial angle", "unit": "deg", "tol": 6.0, "score": 1.0, "photo": 118.0, "model": 136.0, "view": "three_quarter"},
@@ -310,3 +314,24 @@ def test_character_read(tmp_path, monkeypatch):
     import pytest
     with pytest.raises(ValueError):
         lr.set_read("m", "reference", {"descriptors": {"nope": {}}})
+
+
+def test_user_read_wins_and_views_that_cant_show(tmp_path, monkeypatch):
+    from hifipushie import likeness_read as lr, store
+    monkeypatch.setattr(store, "HOME", tmp_path)
+    lr.set_read("m", "reference", {"descriptors": {"build_lean": {"confidence": "likely"}, "nose_straight": {"confidence": "likely"},
+                                                    "brow_heavy": {"confidence": "likely"}, "face_long": {"confidence": "likely"}}})
+    lr.set_read("m", "reference", {"descriptors": {"build_chunky": {"confidence": "clear"}, "nose_snub": {"confidence": "clear"},
+                                                    "chin_cleft": {"confidence": "clear"}}}, author="user")
+    ref = lr.load("m")["reads"]["reference"]["descriptors"]
+    assert "build_lean" not in ref and "nose_straight" not in ref                 # the reader's opposites give way
+    assert ref["build_chunky"]["author"] == "user" and ref["brow_heavy"]["author"] == "llm"
+    q = lr.questions("m")
+    assert len(q) == 3 and any("chunky" in x and "lean" in x for x in q) and any("cleft" in x and "did not see" in x for x in q)
+    lr.set_read("m", "a", {"descriptors": {"build_chunky": {"confidence": "likely"}}}, view="profile_left")
+    t = lr.diff("m", "a")
+    assert "QUESTIONS" in t and "long (oblong)" not in t.split("model profile_left")[1].split("\n")[0]   # not judgeable there
+    for tag, ds in (("b", ["build_chunky", "jaw_soft"]), ("c", ["build_chunky"])):
+        lr.set_read("m", tag, {"descriptors": {k: {"confidence": "likely"} for k in ds}}, view="profile_left")
+    ag = lr.agreement("m", ["a", "b", "c"])
+    assert "chunky" in ag and "1/1" in ag and "0/1" in ag

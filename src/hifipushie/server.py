@@ -2076,12 +2076,15 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
 
 
 @mcp.tool(structured_output=False)
-def character_read(name: str, tag: str = "", read: dict | None = None, view: str = "", render: bool = False):
+def character_read(name: str, tag: str = "", read: dict | None = None, view: str = "", render: bool = False,
+                   author: str = "llm"):
     """Stage 0 of the likeness checklist: the CHARACTER READ (what a person knows from one look: "square jaw, strong
     chin, straight nose"), as a form of gestalt descriptors, each bound to bands on checklist items in every view.
     - character_read(name): the form to fill while LOOKING at the reference pictures.
     - character_read(name, "reference", read={"descriptors": {id: {"confidence": clear|likely|hint, "picture", "note"}},
-      "summary"}): store the references' read (the prior).
+      "summary"}): store the references' read (the prior). author="user" when the read is the USER's own words
+      ("chunky, square jaw, cleft chin, cute nose"): theirs wins group by group, and where it differs from the LLM
+      reader's the reply lists QUESTIONS to ask them (never settle those silently).
     - character_read(name, render=True): a sheet of the model from each reference camera and from views no reference
       shows (both profiles, the other three-quarter, low angle). Give that sheet and the form to a reader that has NOT
       seen the references (a fresh agent), one read per panel, and store each: character_read(name, "<tag>", read, view).
@@ -2093,8 +2096,10 @@ def character_read(name: str, tag: str = "", read: dict | None = None, view: str
         r = lr.render_views(name, pn)
         return [_png(PILImage.open(pn)), f"views {r['views']}: {pn}\n\n" + lr.form()]
     if read is not None:
-        lr.set_read(name, tag or "reference", read, view=view or None)
-        return f"stored read '{tag or 'reference'}'" + (f" view {view}" if view else "")
+        lr.set_read(name, tag or "reference", read, view=view or None, author=author)
+        qs = lr.questions(name) if (tag or "reference") == "reference" else []
+        return f"stored read '{tag or 'reference'}'" + (f" view {view}" if view else f" by {author}") + \
+            ("\nQUESTIONS for the user (their read and the reader's differ; theirs is used):\n" + "\n".join(qs) if qs else "")
     if tag and tag != "reference":
         return lr.diff(name, tag)
     return lr.form()
