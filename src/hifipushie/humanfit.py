@@ -259,6 +259,35 @@ def _skull_basis(st: dict) -> np.ndarray:
     return s_ * LB @ R.T
 
 
+HOLD_CHEEK = 0.25  # weight of holding the cheeks' fronts in image fits (x 1 / mm): the landmarks (mouth, nose, lips)
+# don't see the cheeks, and the identity components that met them filled the cheeks 5 mm (Garrett's pass 2, "jowly")
+
+
+def _cheek_basis(st: dict) -> np.ndarray:
+    """d(cheek front points, world) / d(identity component): (120, n, 3) for GNM's cheek-region vertices facing
+    forward (subsampled)."""
+    from . import base as basemod
+    from . import headfit
+    g = headfit._gnm()
+    gd = basemod._gnm_data()
+    c = st["head"]["carry"]
+    R, s_ = np.asarray(c["R"], float), float(c["s"])
+    key = "_cheek_idx"
+    idx = _CHEEK.get(key)
+    if idx is None:
+        Vg = np.asarray(gd["template_vertex_positions"], float)
+        soft = np.asarray(gd["groups"]["left_cheek_region"], float) + np.asarray(gd["groups"]["right_cheek_region"], float)
+        sk = np.asarray(gd["skin"], bool)
+        idx = np.flatnonzero(sk & (soft > 0.5) & (_gnm_normals(Vg)[:, 2] > 0.35))
+        idx = idx[np.linspace(0, len(idx) - 1, min(len(idx), 80)).astype(int)]
+        _CHEEK[key] = idx
+    VB = np.asarray(gd["vertex_identity_basis"], float)[g["comps"]][:, idx]
+    return s_ * (VB - g["JB"].mean(1, keepdims=True)) @ R.T
+
+
+_CHEEK = {}
+
+
 def _with_identity(base: dict, c: np.ndarray) -> dict:
     from . import headfit
     g = headfit._gnm()
@@ -921,7 +950,8 @@ def fit_hood(base: dict, views: list, cameras: list) -> tuple:
     return cur, rep
 
 
-def fit_views(base: dict, views: list, free=("identity",), force: bool = False, rounds: int = 3, focal: float | None = None) -> tuple:
+def fit_views(base: dict, views: list, free=("identity",), force: bool = False, rounds: int = 3, focal: float | None = None,
+              hold_cheeks: bool = True) -> tuple:
     """(new base, report). views: [{"points": {landmark: [u, v]}, "size": [w, h], "yaw": deg (a hint: 0 front, 45
     three-quarter from its left, 90 its left side)}]: one camera per view (pose + focal; all views share the face) and,
     with "identity" free, the identity components, solved together on the reprojection error, ridged toward the
@@ -953,6 +983,7 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
         st = state(cur) if it else st0
         L, B = st["L"], (_lm_basis(st) if use_id else None)
         S = _skull_basis(st) if use_id else None
+        C = _cheek_basis(st) if (use_id and hold_cheeks) else None
         nc = len(c) if use_id else 0
         # outlines (view["outline"]: [[u, v], ...] along the face's edge in the picture, e.g. the jaw and cheeks): each
         # point pulled onto the model's silhouette through that view's camera, along the outline's own normal (the
@@ -979,6 +1010,8 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
                 r.append(RIDGE * 1.5 * dc)
                 r.append(0.4 * RIDGE * (c + dc - c0))
                 r.append(HOLD_SKULL * 1000.0 * (np.tensordot(c + dc - c0, S, axes=(0, 0))).ravel())  # the skull stays
+                if C is not None:  # and the cheeks' fronts (no landmark sees them)
+                    r.append(HOLD_CHEEK * 1000.0 * (np.tensordot(c + dc - c0, C, axes=(0, 0))).ravel())
             return np.concatenate(r)
         x0 = np.concatenate([np.r_[cam["r"], cam["t"], cam["f"]] for cam in cams] + [np.zeros(nc)])
         sol = least_squares(resid, x0, x_scale=np.r_[np.tile([0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500.0], len(cams)), np.ones(nc)])

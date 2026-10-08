@@ -200,6 +200,27 @@ def test_hollow_cheeks_read_on_the_section():
     assert it["ok"] and it["numbers"]["folded_faces"] == 0, it
 
 
+def test_jaw_angle_is_a_symmetric_bony_corner():
+    """base.head.shape.jaw_angle stands the jaw's angle out (behind and under GNM's lm 3 / 13) and tucks the
+    under-jaw: both sides alike, nothing folded, the face's landmarks above the jaw line held."""
+    b = base()
+    st0 = hf.state(b)
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["jaw_angle"] = 0.004
+    st1 = hf.state(b1)
+    P0, P1 = np.asarray(st0["tpl"]["P"]), np.asarray(st1["tpl"]["P"])
+    d = np.linalg.norm(P1 - P0, axis=1)
+    side = {}
+    for nm, sg in (("right", -1), ("left", 1)):
+        sel = (np.sign(P0[:, 0]) == sg) & (np.abs(P0[:, 0]) > 0.03)
+        side[nm] = d[sel].max()
+    assert 0.003 < min(side.values()) and abs(side["left"] - side["right"]) < 0.0008, side
+    L0, L1 = st0["L"], st1["L"]
+    assert np.linalg.norm(L1[17:48] - L0[17:48], axis=1).max() < 0.0005
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
+
+
 def st0_asym(b):
     return hf.integrity(b)["numbers"]["asymmetry_mm"]
 
@@ -209,6 +230,6 @@ if __name__ == "__main__":
         for fn in (test_measures_and_integrity, test_a_measure_is_met_and_the_rest_holds, test_adversarial_requests_come_back_honest,
                    test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
                    test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features,
-                   test_hollow_cheeks_read_on_the_section):
+                   test_hollow_cheeks_read_on_the_section, test_jaw_angle_is_a_symmetric_bony_corner):
             fn()
             print("ok", fn.__name__)

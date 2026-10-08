@@ -4482,6 +4482,27 @@ model".
       to the photo than pass 2; but the lower face is still broad and soft, the jaw corners rounded (no bony angle),
       a lump at the subject's left jaw in the front view, and the bald clay head reads small against the hair's
       outline. Next: a jaw-angle control (bony corner + the under-jaw tucked), the points step held off the cheeks.
+  - Reference pass 4 (2026-10-08; scratch pass5.py om_garrett om2_gref5 2.5 4 1, sheet human_renders/om2_r4_pass4.png:
+    per view clay | lit | lit WITH the groom's volume (hair.cap_mesh mass=True on each model's own scalp: a stand-in
+    for the locks), columns before | pass 3 | pass 4; model `om2_gref5`; NOT applied to om_garrett).
+    - `fit_views(hold_cheeks=True)` (default): the cheeks' fronts held by `_cheek_basis` (GNM cheek-region vertices
+      facing forward, d/d identity), `HOLD_CHEEK` 0.25 / mm. Points step: cheek hollow 0.26 -> 0.23 (pass 3's
+      points step: -> full), points rms 3.35 -> 3.63 mm. The outline then widens the jaw more (jaw_width 136.7).
+    - `base.head.shape.jaw_angle` (m | {amount, tuck, radius, tuck_radius}): a bump at the jaw's angle, which on the
+      bound head lies ~33 mm behind and 20 mm under GNM's lm 3 (GNM's jaw-contour landmarks are on the cheek's side;
+      measured: section at lm 3's x, the jaw's underside drops to the neck at y ~ -45 mm), plus the under-jaw (under
+      lm 5-6) tucked in, snapped onto the surface in its own x. W-level pushes in gnm_head act on the BOUND head
+      (onemesh.hook returns it before placement), so world offsets measured on the final head are valid there.
+    - The front view's "left-jaw lump" is not asymmetry: the head is symmetric to 3.6 mm at the jaw (asym.py; same
+      before any fit). Straight on (frontal.py) it is both jaw corners standing out past the neck; the fitted
+      camera's roll (-7 deg) and pitch (15 deg) show one of them.
+    - The "8% pupils" is a definition: MediaPipe's eye points are the irises; ours the eyeballs' centres. The outer
+      eye corners are 6% WIDER on the model than the photo (80 vs 75 px). Real miss found: the MOUTH is 15% narrow
+      (lm48-54 38.8 vs 45.9 px); the fit took mouth_width 56 -> 52.5 mm.
+    - Read: inside the hair stand-in, pass 4 is a pear again: the groom's volume is thin at the temples (it was
+      groomed on v23's head) and the jaw now carries the outline's width. The photo's hair outline is clearly wider
+      than its jaw. Next: the cranium / temples and the groom's sides against the HAIR outline (not the face oval),
+      the mouth's width, then the jaw's width re-judged.
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
