@@ -295,6 +295,9 @@ def guide(topic: str = "") -> str:
     topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
     pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
     check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
+    topic="cloth_reference": reading garments from reference art as tech designers, tailors and garment artists do
+    (the checklist, big to small), with garment_from_reference, check_garment_reference and garment_reference_brief
+    (the shot list for getting good references, and a validator for a set of pictures).
     topic="skin": human skin the way character artists texture it, in stages (base tone, colour zones, large
     features, fine features, micro detail, cosmetics, shading check), with skin, look_skin and skin_reference.
     topic="vegetation": trees the way vegetation artists make them (a species' habit, age and setting grown, then
@@ -303,7 +306,11 @@ def guide(topic: str = "") -> str:
     topic="human": whole people on ONE mesh (human(source="human")) and how to measure and fit them without breaking
     what you weren't looking at: measure_human, fit_human (set measures, a solver finds the sliders), nudge_human
     (move a landmark), human_reference (match named points in reference images), with integrity and side-effect
-    reports on every change."""
+    reports on every change.
+    topic="likeness": the facial-likeness checklist (forensic examiners' feature list, likeness artists' order,
+    anthropometry): what to look at and measure on a reference, for the likeness and fit_likeness tools."""
+    if topic.strip().lower() == "likeness":
+        return (Path(__file__).with_name("likeness_guide.md")).read_text()
     if topic.strip().lower() in ("human", "humans"):
         return (Path(__file__).with_name("human_guide.md")).read_text()
     if topic.strip().lower() == "terrain":
@@ -314,10 +321,13 @@ def guide(topic: str = "") -> str:
         return (Path(__file__).with_name("vegetation_guide.md")).read_text()
     if topic.strip().lower() == "cloth":
         return (Path(__file__).with_name("cloth_guide.md")).read_text()
+    if topic.strip().lower() in ("cloth_reference", "cloth reference", "garment_reference"):
+        return (Path(__file__).with_name("cloth_reference_guide.md")).read_text()
     if topic.strip().lower() == "skin":
         return (Path(__file__).with_name("skin_guide.md")).read_text()
     if topic:
-        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "skin", "human", "terrain" or "vegetation"')
+        raise ValueError('topic is "" (the modelling playbook), "hair", "cloth", "cloth_reference", "skin", "human", '
+                         '"terrain" or "vegetation"')
     return (Path(__file__).with_name("guide.md")).read_text()
 
 
@@ -2011,6 +2021,133 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
 
 
 @mcp.tool(structured_output=False)
+def likeness(name: str, targets: bool = False, top: int = 8):
+    """The likeness CHECKLIST on a one-mesh human against its reference pictures (human_refs.json, from
+    human_reference): ~50 facial features in artists' order (proportions, face widths, eyes, brows, nose, mouth,
+    chin / jaw, ears; guide(topic="likeness")), each MEASURED the same way on the photo and on the model through the
+    picture's fitted camera (MediaPipe's 478 points on the photo and on a clay render of the model, so a detector's
+    definition errors cancel; the model's own landmarks as a second reading: '!' where they disagree). The reply: a
+    table ranked by miss / tolerance (beyond tolerance first), what can't be measured from these views and why
+    ("profile needed", "judge by eye"), and FOCUS PANELS (photo | model at the same crop and camera, the feature's
+    points on both: red photo, blue model) for the top misses and the judge-by-eye items: look there, on purpose.
+    It leads with a one-glance COVERAGE: what these pictures support, what is inferred from a weaker view (profile
+    items from a three-quarter view, tolerance x1.5), what only by eye, what not and why, and each picture's problems
+    (lens, expression, light, ears / hairline). SHAPE items (planes, cheek hollow, folds, under-eye, brow ridge) are
+    read from the photo's shading against the model lit like the photo, with the model's own 3D number beside; the JAW's
+    L (ramus, gonial angle, lower border, neck step) from a trace (likeness_points) against the model's contour.
+    Turned views' cameras are refitted on the detector's points; the residual per item is in the table.
+    targets=True instead measures the references alone and stores the target sheet (<model>/likeness_targets.json:
+    value, view, tolerance, confidence or "unmeasurable" per item) with the stage plan: what fit_likeness will do,
+    which items have a control and which are gaps. Measures only; never edits the model."""
+    from . import likeness as lk
+    if targets:
+        sh = lk.measure_reference(name)
+        return lk.sheet_text(sh) + "\n\nstage plan (fit_likeness, big to small):\n" + lk.stage_plan(name)
+    txt, out, _ = lk.report(name, top=top)
+    return [_png(PILImage.open(out)), txt + f"\nfocus sheet: {out}"]
+
+
+@mcp.tool(structured_output=False)
+def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
+    """ONE stage of the likeness fit from the checklist, in artists' order: "proportions" (face height, the thirds),
+    "widths" (the outline, level by level: fit_outline), "eyes" (spacing, size; hooded lids by fit_hood), "brows",
+    "nose", "mouth", "chin_jaw", "ears". The stage's items that miss beyond tolerance (front view) ask humanfit's
+    minimal-change solver for exactly those measures; every earlier stage's measures are pinned, so the nose can't
+    undo the widths. Integrity-guarded: a result that breaks the mesh is refused, not saved. The reply: the stage's
+    items before -> after, items with no solver measure (GAPS: what a person does by hand), earlier stages' items that
+    got worse, and the stage's focus panels. Approve each stage (look at the panels) before calling the next.
+    Run likeness(name, targets=True) first for the target sheet and the plan.
+    stage "profile": only the nose and the chin, fitted to a turned view's CONTOURS (likeness_points lines "profile" =
+    the far side of the face against the background, "nose" = the nose's own edge): GNM components inside the nose /
+    chin region moved until the model's own contour through that camera lies on the traced one, heights and widths
+    held where the front picture has them. The nose and chin_jaw stages run it too when the lines exist."""
+    from . import likeness as lk
+    pn = str(store.HOME / "human_renders" / f"lk_{name}_stage_{stage}.png")
+    if stage == "profile":   # the nose and chin on a turned view's contours alone (likeness_points 'profile' / 'nose')
+        base, cmp, log = lk.fit_profile(name, force=force, save=save)
+        rows = [r for r in cmp["rows"] if r.get("kind") == "contour" and r["score"] >= 0]
+        lk.focus_sheet(cmp, pn, rows=rows, cols=3)
+        return [_png(PILImage.open(pn)), "\n".join(log) + "\n" + lk.table_text({**cmp, "rows": rows}) + f"\npanels: {pn}"]
+    rep = lk.fit_stage(name, stage, force=force, save=save, panels=pn)
+    out = [rep["text"] + f"\npanels: {pn}"]
+    if Path(pn).exists():
+        out.insert(0, _png(PILImage.open(pn)))
+    return out
+
+
+@mcp.tool(structured_output=False)
+def character_read(name: str, tag: str = "", read: dict | None = None, view: str = "", render: bool = False,
+                   author: str = "llm"):
+    """Stage 0 of the likeness checklist: the CHARACTER READ (what a person knows from one look: "square jaw, strong
+    chin, straight nose"), as a form of gestalt descriptors, each bound to bands on checklist items in every view.
+    - character_read(name): the form to fill while LOOKING at the reference pictures.
+    - character_read(name, "reference", read={"descriptors": {id: {"confidence": clear|likely|hint, "picture", "note"}},
+      "summary"}): store the references' read (the prior). author="user" when the read is the USER's own words
+      ("chunky, square jaw, cleft chin, cute nose"): theirs wins group by group, and where it differs from the LLM
+      reader's the reply lists QUESTIONS to ask them (never settle those silently).
+    - character_read(name, render=True): a sheet of the model from each reference camera and from views no reference
+      shows (both profiles, the other three-quarter, low angle). Give that sheet and the form to a reader that has NOT
+      seen the references (a fresh agent), one read per panel, and store each: character_read(name, "<tag>", read, view).
+    - character_read(name, "<tag>"): the diff, reference vs the model's blind reads view by view (kept / CONTRADICTS /
+      missing / adds, and the controls the read needs that we lack). Read it before the millimetres."""
+    from . import likeness_read as lr
+    if render:
+        pn = str(store.HOME / "human_renders" / f"lk_{name}_read_views.png")
+        r = lr.render_views(name, pn)
+        return [_png(PILImage.open(pn)), f"views {r['views']}: {pn}\n\n" + lr.form()]
+    if read is not None:
+        lr.set_read(name, tag or "reference", read, view=view or None, author=author)
+        qs = lr.questions(name) if (tag or "reference") == "reference" else []
+        return f"stored read '{tag or 'reference'}'" + (f" view {view}" if view else f" by {author}") + \
+            ("\nQUESTIONS for the user (their read and the reader's differ; theirs is used):\n" + "\n".join(qs) if qs else "")
+    if tag and tag != "reference":
+        return lr.diff(name, tag)
+    return lr.form()
+
+
+@mcp.tool(structured_output=False)
+def likeness_points(name: str, image: str, points: dict | None = None, lines: dict | None = None, by: str = "",
+                    replace: bool = False) -> str:
+    """Hand-placed points on a reference picture for features the detector can't find (stored in
+    <model>/likeness_points.json; the format onemesh2's traces use). Pixels of the FULL picture (u right, v down);
+    .R / .L = the subject's right / left. points: {"gonion.R", "ear_lobe.R", "tragus.R", "menton", "pogonion",
+    "jaw_notch.R": [u, v]}; lines: {"jaw.R": [[u, v], ...] (from just under the ear lobe DOWN the ramus, round the
+    angle, FORWARD along the lower border to the chin), "neck.R": [[u, v], ...] (the neck's contour under that border,
+    top to bottom), "profile": the far side of the face against the background in a turned view, forehead down round
+    the chin (snapped to the picture's edge when read), "nose": the nose's own edge in that view, from between the
+    brows down the bridge, round the tip, back to the columella's base}. Merged name by name (null deletes one) unless replace. The jaw items (ramus angle, gonial angle,
+    lower border, gonion against the ear lobe and the mouth, the neck's step) read them; the focus panels draw them."""
+    from . import likeness_shape as ls
+    d = ls.set_points(name, image, points, lines, by=by, replace=replace)
+    v = next(x for x in d["views"] if x["image"] == image)
+    return f"stored for {Path(image).name}: points {sorted(v['points'])}, lines " + \
+        ", ".join(f"{k} ({len(q)} points)" for k, q in v["lines"].items())
+
+
+@mcp.tool(structured_output=False)
+def reference_brief(kind: str = "head", subject: str = "") -> str:
+    """The REFERENCE BRIEF derived from the likeness checklist, for references we generate or ask for: the shot list
+    (front, true left profile, three-quarter, the side-light passes for the planes, optional back and top; kind
+    "figure" adds full-body A-pose front and side for the body's proportions), what each shot must show (long lens at
+    eye height, neutral closed mouth, eyes level, even soft light + a side-light pass, plain background, hair off the
+    ears and hairline, the same identity / light / scale in every view, nothing over the features), which checklist
+    items each serves, and the prompt wording for an image generator per shot (one shared identity block)."""
+    from . import likeness_brief as lb
+    return lb.reference_brief(kind, subject)["text"]
+
+
+@mcp.tool(structured_output=False)
+def check_references(images: list[str], name: str | None = None) -> str:
+    """What a set of reference pictures can and can't support for the likeness checklist, and why: the views present
+    (the detector's head pose), the lens (a fitted camera's focal, with `name`: the model's human_refs.json), the
+    expression (the detector's blendshapes: smile, mouth open, squint, raised or furrowed brows), the light's evenness,
+    ears / hairline covered (a colour heuristic), and identity consistency between views (vertical proportions that
+    don't change with the head's turn). Ends with which reference_brief shots to ask for."""
+    from . import likeness_brief as lb
+    return lb.check_references(images, name)["text"]
+
+
+@mcp.tool(structured_output=False)
 def skin_reference() -> str:
     """Everything the `skin` description takes: the anatomical zones (also usable by any paint layer as
     {"zone": name}), the tone model, features, wrinkles, hair, scars, tattoos and make-up with their keys and
@@ -2096,6 +2233,67 @@ def garment_reference(kind: str | None = None, detail: str | None = None, princi
          + "; derivations " + ", ".join(k for k in K["principles"]["derivations"] if not k.startswith("_")),
          "lessons: " + " | ".join(x["lesson"] for x in K["lessons"])]
     return "\n".join(L)
+
+
+@mcp.tool(structured_output=False)
+def garment_from_reference(name: str, garments: dict, views: list[dict] | str, answers: dict | None = None,
+                           save: bool = True) -> str:
+    """Read reference art of an outfit into design sheets and a target table, item by item, with the garment
+    checklist (guide(topic="cloth_reference"); cloth_checklist.json): silhouette and lengths first, then fit,
+    construction details, wear state and layering, fabric and folds. garments: {garment name: kind} (garment_kb kinds:
+    jacket, shirt, suit_trousers...). views: [{"image": path, "kind": "front" | "side" | "back" | "three" | "other",
+    "points": {body landmark: [u, v]}, "crops": {item id: [u0, v0, u1, v1]}}] (u right, v down; landmarks head_top,
+    chin, neck_base, shoulder.L/R, elbow.L/R, wrist.L/R, knee.L/R, ankle.L/R, floor; 3+ on a near-orthographic front
+    view fit its camera to the model's body). Without `answers`: the FORM to fill (one row per item, what to look for,
+    the view, the choices or the points to mark). With answers ({garment: {item id: {"value" | "points": {name:
+    [u, v]}, "view": i, "confidence": "high" | "medium" | "low", "note"} | "not visible"}}): the design-sheet patch per
+    garment (choices -> details, wear -> closures / tie / over, fabric, colour) and the target table (lengths anchored
+    on body landmarks, widths in metres), stored in <model>/cloth_refs.json. The patch is NOT applied: review it, then
+    design_garment / edit the garment. check_garment_reference judges a sim against it."""
+    from . import cloth_reference as cr
+    vs = json.loads(views) if isinstance(views, str) else views
+    out = cr.read(name, garments, vs, answers, save=(store.HOME / name / "cloth_refs.json") if (save and answers) else None)
+    return out["text"]
+
+
+@mcp.tool(structured_output=False)
+def check_garment_reference(name: str, garments: list[str] | None = None, save: str | None = None, top: int = 9):
+    """Judge the model's simulated garments against its reference reading (<model>/cloth_refs.json, written by
+    garment_from_reference): every checklist item measured on the CACHED sims (never simulates), the misses ranked
+    (misses in tolerances x stage weight x confidence: a wrong length outranks a wrong placket), items the picture
+    didn't show judged against the tailoring rule where there is one (collar show, cuff show, tent), what can't be
+    judged and why; and a focus sheet: per ranked miss the reference crop | our garments drawn through the SAME fitted
+    camera, the reading's points in red, ours in blue. Read the panels before believing a number."""
+    from . import cloth_reference as cr
+    import tempfile
+    path = store.HOME / name / "cloth_refs.json"
+    if not path.exists():
+        return f"no reading for {name}: run garment_from_reference first"
+    tmp = Path(save) if save else Path(tempfile.mkdtemp()) / "cloth_ref_focus.png"
+    out = cr.check(name, garments, path, panels=tmp, top=top)
+    return [_out(PILImage.open(out["panels"]), save), out["text"]]
+
+
+@mcp.tool(structured_output=False)
+def garment_reference_brief(garments: dict, subject: str = "a man", outfit: str = "", name: str | None = None,
+                            views: list[dict] | None = None) -> str:
+    """A shot list for getting the best reference images of a garment or outfit (from an image generator or a
+    shoot), derived from the garment checklist: a turnaround (front, side, back, 3/4) in an A-pose with the arms a
+    little away from the body, the wear state said plainly (which buttons are done up, tucked, belt, collar), detail
+    close-ups (collar and lapel, closure and placket, cuff, pockets, hem and break, back vent), even light plus a
+    raking pass for fabric and folds, a plain background, the same figure and garments in every image; each shot's
+    full prompt. garments: {name: kind}. name: a model whose reading (cloth_refs.json) or, without one, whose garments
+    give the wear state. views: a set of pictures to VALIDATE instead ([{"yaw", "framing": "full" | "bust" |
+    "close:<region>", "light": "even" | "raking" | "warm" | "dramatic", "perspective": "ortho-ish" | "perspective",
+    "posed": "a-pose" | "other", "size": [w, h]}]): which checklist items they can and can't support, and why."""
+    from . import cloth_reference as cr
+    if views:
+        return cr.check_references(views, garments)["text"]
+    refs = (store.HOME / name / "cloth_refs.json") if name else None
+    b = cr.reference_brief(garments, subject=subject, outfit=outfit, model=name,
+                           refs=refs if refs is not None and refs.exists() else None)
+    return (b["text"] + "\n\nPROMPTS:\n" + "\n\n".join(f"[{s['id']}] {s['prompt']}" for s in b["shots"])
+            + "\n\nNEGATIVE: " + b["common"]["negative"])
 
 
 @mcp.tool(structured_output=False)
