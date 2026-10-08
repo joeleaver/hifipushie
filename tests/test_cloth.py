@@ -275,6 +275,45 @@ def test_relax_strain_takes_out_shear():
     assert s1.max() < 1.035, s1.max()
 
 
+def test_a_stopped_runs_solver_is_cleared():
+    # a ZOZO solver whose cloth_zozo.py runner died (a stopped session) is a stray and is stopped; one whose runner is
+    # alive, or one that isn't ours (no hp_job_ session), is left alone
+    import os, subprocess, tempfile, time
+    from pathlib import Path
+    from hifipushie import cloth_job
+    d = Path(tempfile.mkdtemp())
+    solver = d / "ppf-contact-solver"
+    solver.write_text("#!/bin/sh\nsleep 60\n")
+    solver.chmod(0o755)
+    mark = f"hp_job_t{os.getpid()}_"
+    orphan_path = str(d / f"{mark}a_sim" / "session")
+    live_path = str(d / f"{mark}b_sim" / "session")
+    other = str(d / "someone_else" / "session")
+    # orphan: started in the background by a shell that exits at once (reparented, no runner above it)
+    subprocess.run(["sh", "-c", f"'{solver}' --path '{orphan_path}' >/dev/null 2>&1 &"], check=True)
+    subprocess.run(["sh", "-c", f"'{solver}' --path '{other}' >/dev/null 2>&1 &"], check=True)
+    # held: its parent's command line runs cloth_zozo.py and stays alive
+    held = subprocess.Popen(["sh", "-c", f"'{solver}' --path '{live_path}'; true", "cloth_zozo.py"])
+    try:
+        time.sleep(0.5)
+        strays = cloth_job.stray_solvers(mark)
+        assert [s["session"] for s in strays] == [orphan_path], strays
+        gone = cloth_job.clear_strays(log=lambda *_: None, mark=mark, wait=3)
+        assert len(gone) == 1 and cloth_job._proc(gone[0]["pid"]) is None
+        assert cloth_job.stray_solvers(mark) == []  # the held one stays
+        assert any(live_path in " ".join(cloth_job._proc(int(p.name))[1]) for p in Path("/proc").iterdir()
+                   if p.name.isdigit() and cloth_job._proc(int(p.name)))
+    finally:
+        held.kill()
+        subprocess.run(["pkill", "-f", str(d)], check=False)
+    try:  # ZOZO checks only its own run's solvers: the queue's GPU claim is the exclusion (needs the release)
+        _, env = cloth_job.zozo_command(d)
+    except FileNotFoundError:
+        env = None
+    if env is not None:
+        assert env["PPF_SOLVER_SCAN_DESCENDANTS"] == "1"
+
+
 def test_clay_looks_are_matte():
     # dark wool read as leather under the workbench's specular highlight (tr_11): cloth clay looks switch it off
     # unless a job asks, and textured looks take each object's roughness (Blender isn't run here: read the source)
