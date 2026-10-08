@@ -203,6 +203,53 @@ def test_roll_at_the_neck_point_leaves_no_sliver():
     assert M["marks"]["a:hole"] in {int(v) for r in M["folds"][0]["rows"] for v in r}
 
 
+def test_roll_line_near_an_edge_keeps_its_row_and_its_points():
+    # a shirt collar's roll line runs 4 mm in from its neck edge all along: at 2 cm its row keeps its inner vertices
+    # (ROW_KEEP drops samples near the outline only next to a row's ends; dropping all left a two-vertex row and the
+    # fall could not turn), and the collar's points, past the line's ends but joined to the fall, are its flap
+    pc = {"outline": [[-0.2, 0.0], [0.2, 0.0], [0.24, 0.08], [0.1, 0.07], [-0.1, 0.07], [-0.24, 0.08]],
+          "names": {"a": 0, "b": 1, "tip": 2}, "wrap": {"to": "flat", "at": [0, 0, 1.0]}}
+    f = {"piece": "c", "line": {"edge": "c:a>b", "offset": 0.004}, "flap": "tip", "angle": 15, "kind": "roll", "radius": 0.003,
+         "strength": 0.6, "name": "collar roll"}
+    M = cloth.mesh(cloth.pieces({"pieces": {"c": pc}, "seams": [], "folds": [f]}, {}), 0.02)
+    fd = M["folds"][0]
+    assert len(fd["rows"][0]) > 10, len(fd["rows"][0])
+    g = folds._geom(M, fd)
+    pts = np.where(np.abs(M["uv"][:, 0]) > 0.21)[0]  # the points, past the ends of the roll line
+    assert len(pts) and g["flap0"][pts].all()
+    X = np.c_[M["uv"], np.zeros(len(M["uv"]))]
+    Xt = folds.turn_flap(X, M, fd, 1.0)
+    E = np.r_[M["F"][:, [0, 1]], M["F"][:, [1, 2]], M["F"][:, [2, 0]]]
+    r = np.linalg.norm(Xt[E[:, 0]] - Xt[E[:, 1]], axis=1) / np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1)
+    assert np.percentile(r, 99) < 1.3, np.percentile(r, 99)  # turned isometrically (it was 4.6x at the points)
+
+
+def test_pressed_ridge_is_sharpened_in_the_geometry():
+    # a trouser crease (a press fold laid by the wrap, angle 205) comes out of the sim as a 6-14 deg bend over 1-2 cm,
+    # which reads as no crease: press_ridges lifts the row along the outside to PRESS_TURN, flattens the cloth beside
+    # it, fades in at the ends, and never moves skipped (made) vertices
+    f = {"piece": "a", "line": [[0.0, -0.2], [0.0, 0.2]], "angle": 205, "kind": "press", "strength": 0.6,
+         "name": "crease", "in_wrap": True, "reach": 0.05}
+    M = cloth.mesh(cloth.pieces({"pieces": {"a": {"rect": [0.2, 0.4], "wrap": {"to": "flat", "at": [0, 0, 1.0]}}},
+                                 "seams": [], "folds": [f]}, {}), 0.01)
+    uv = M["uv"]
+    R = 0.08  # the leg: a cylinder round z, the crease along its front
+    th = uv[:, 0] / R
+    X = np.c_[R * np.sin(th), -R * np.cos(th), uv[:, 1]]
+    N = np.c_[np.sin(th), -np.cos(th), np.zeros(len(th))]
+    W, info = folds.press_ridges(X, M, N)
+    before, after = info["crease"]
+    assert after >= folds.PRESS_TURN - 3 and after > before + 20, info
+    row = np.asarray(M["folds"][0]["rows"][0])
+    lift = np.sum((W[row] - X[row]) * N[row], 1)
+    mid = np.abs(uv[row, 1]) < 0.1
+    assert lift[mid].min() > 0.0005 and np.abs(lift[np.abs(uv[row, 1]) > 0.199]).max() < 1e-4  # faded at the ends
+    skip = np.zeros(len(X), bool)
+    skip[row] = True
+    W2, _ = folds.press_ridges(X, M, N, skip=skip)
+    assert np.allclose(W2[row], X[row])
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

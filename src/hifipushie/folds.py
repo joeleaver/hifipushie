@@ -217,13 +217,17 @@ def _geom(M: dict, fd: dict) -> dict:
         if d0 is None:
             d0 = np.zeros(len(uv))
             d0[sel] = np.abs(sd)
-        flap = (fd["sign"] * sd > 1e-7) & ~in_rows[sel]
-        # only cloth BESIDE the line: what lies past its ends (a front's button stand below the break point, where
-        # a roll line starts on the edge) is not its flap. Counted, that strip was flipped 170 deg into the other front
+        side = (fd["sign"] * sd > 1e-7) & ~in_rows[sel]
+        # the flap is the cloth on its side of the line that is REACHED from beside the line without crossing it:
+        # what lies past a line's end where the line meets the outline (a front's button stand below the break
+        # point) is cut off by the line's end on the outline (counted, that strip was flipped 170 deg into the other
+        # front), while a collar's points, past the ends of its roll line but joined to the fall, turn with it (cut
+        # at the ends' perpendiculars, they stayed: every edge to them stretched 2-5x and the fall couldn't turn)
         Q_ = uv[sel]
         d0_ = (L[1] - L[0]) / max(np.linalg.norm(L[1] - L[0]), 1e-12)
         d1_ = (L[-1] - L[-2]) / max(np.linalg.norm(L[-1] - L[-2]), 1e-12)
-        flap &= ((Q_ - L[0]) @ d0_ > -0.004) & ((Q_ - L[-1]) @ d1_ < 0.004)
+        beside = side & ((Q_ - L[0]) @ d0_ > -0.004) & ((Q_ - L[-1]) @ d1_ < 0.004)
+        flap = _reached(M, sel, side, beside, L)
         seg = np.linalg.norm(np.diff(L, axis=0), axis=1)
         out.append({"row": np.asarray(row), "v": sel[flap], "si": si[flap], "fr": fr[flap], "u": u[flap],
                     "len": float(seg.sum())})
@@ -234,6 +238,36 @@ def _geom(M: dict, fd: dict) -> dict:
     g = {"rows": out, "d0": d0, "base_tris": Fp[~fl0[Fp].any(1)], "tris": Fp, "flap0": fl0, "sel": sel}
     fd["_g"] = g
     return g
+
+
+def _reached(M: dict, sel: np.ndarray, side: np.ndarray, seed: np.ndarray, L: np.ndarray) -> np.ndarray:
+    """Of the piece's vertices `sel` on the flap's `side`, those joined to the `seed` ones through mesh edges between
+    side vertices that don't cross the line L (pattern coordinates)."""
+    loc = -np.ones(len(M["uv"]), np.int64)
+    loc[sel] = np.arange(len(sel))
+    F = M["F"]
+    Fp = F[(loc[F] >= 0).all(1)]
+    E = np.unique(np.sort(np.r_[Fp[:, [0, 1]], Fp[:, [1, 2]], Fp[:, [2, 0]]], 1), axis=0)
+    a, b = loc[E[:, 0]], loc[E[:, 1]]
+    ok = side[a] & side[b]
+    a, b = a[ok], b[ok]
+    if len(a) and len(L) > 1:
+        P, Q = M["uv"][sel[a]], M["uv"][sel[b]]
+        cross = np.zeros(len(a), bool)
+        for A, B in zip(L[:-1], L[1:]):
+            d1, d2 = Q - P, B - A
+            den = d1[:, 0] * d2[1] - d1[:, 1] * d2[0]
+            w = A - P
+            t = np.where(np.abs(den) > 1e-15, (w[:, 0] * d2[1] - w[:, 1] * d2[0]) / np.where(np.abs(den) > 1e-15, den, 1), -1)
+            u = np.where(np.abs(den) > 1e-15, (w[:, 0] * d1[:, 1] - w[:, 1] * d1[:, 0]) / np.where(np.abs(den) > 1e-15, den, 1), -1)
+            cross |= (t > 1e-9) & (t < 1 - 1e-9) & (u >= 0) & (u <= 1)
+        a, b = a[~cross], b[~cross]
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    n = len(sel)
+    _, lab = connected_components(coo_matrix((np.ones(len(a)), (a, b)), shape=(n, n)), directed=False)
+    good = np.unique(lab[seed])
+    return side & np.isin(lab, good) & np.isin(lab, np.unique(lab[side & seed])) if seed.any() else seed
 
 
 def _normals(X: np.ndarray, F: np.ndarray, n: int) -> np.ndarray:
@@ -427,7 +461,93 @@ def measure(V: np.ndarray, M: dict, fd: dict, face: float = 1.0) -> dict:
     bv = np.where(~g["flap0"] & ~in_any & (M["piece"] == M["names"].index(fd["piece"])))[0]
     fv = np.where(fl)[0]
     if len(bv) and len(fv):
+        # (at each first-row vertex: a U's rows can hold different counts of vertices)
         db, ib = cKDTree(V[bv]).query(V[row0])
-        df, jf = cKDTree(V[fv]).query(V[rowk])
+        df, jf = cKDTree(V[fv]).query(V[row0])
         out["across_mm"] = round(float(np.median(np.linalg.norm(V[bv[ib]] - V[fv[jf]], axis=1))) * 1000, 1)
     return out
+
+
+PRESS_FADE = 0.04  # m at each end of a pressed ridge over which it fades in (press_ridges)
+PRESS_SMOOTH = 2  # rows' neighbours averaged along the line (press_ridges): a pressed edge runs straight
+PRESS_TURN = 35.0  # deg: a pressed ridge stands at least this sharp (press_ridges; the fold's own angle if sharper)
+PRESS_BAND = 0.03  # m either side of a pressed ridge the iron flattens the cloth (its crinkle smoothed out)
+PRESS_PASSES = 8
+
+
+def press_ridges(V: np.ndarray, M: dict, N: np.ndarray, skip: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
+    """V with every pressed RIDGE (a press fold laid by the wrap, angle over 180: a trouser crease) sharpened in the
+    geometry to the dihedral its fold asks: each row vertex lifted along the garment's outside N until it stands over
+    the chord between its neighbours on either side by (half that chord) x tan(turn / 2), never lowered, the lift
+    smoothed along the line and faded in at its ends. What an iron does: the sim (a 2 cm drape carried to 1 cm,
+    bending stiffness spread over a triangle) leaves a crease as a 6-14 deg bend over 1-2 cm, which reads as no
+    crease at all; and the cloth within PRESS_BAND either side is flattened along its normal first (the crinkle an
+    iron takes out: next to it a 25 deg ridge didn't read). skip: vertices not to move (made pieces). Returns (V, {fold name: [turn before, after] median deg})."""
+    V = V.copy()
+    F = M["F"]
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    nb = [[] for _ in range(len(V))]
+    for a, b in E:
+        nb[a].append(b)
+        nb[b].append(a)
+    info = {}
+    for fd in M.get("folds") or []:
+        if fd.get("kind") != "press" or not fd.get("in_wrap") or float(fd.get("angle", 180)) <= 180.5 \
+                or len(fd["rows"]) != 1:
+            continue
+        want = math.radians(max(float(fd["angle"]) - 180.0, PRESS_TURN))
+        g = _geom(M, fd)
+        row = np.asarray(fd["rows"][0])
+        on_row = np.zeros(len(V), bool)
+        on_row[row] = True
+        flap = g["flap0"]
+        # the iron flattens the cloth beside the crease: within PRESS_BAND (pattern distance) the surface is smoothed
+        # along its normal only (the shape across the leg kept), fading out at the band's edge
+        band_d = g["d0"]
+        sel = g["sel"]
+        w_ = np.zeros(len(V))
+        w_[sel] = np.clip(1.0 - band_d[sel] / PRESS_BAND, 0, 1)
+        if skip is not None:
+            w_[skip] = 0.0
+        s_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(M["uv"][row], axis=0), axis=1))]
+        mv = np.where((w_ > 0) & ~on_row)[0]
+        if len(mv):
+            # (faded at the line's ends like the ridge: by each vertex's nearest row vertex)
+            j = cKDTree(M["uv"][row]).query(M["uv"][mv])[1]
+            fe = np.clip(np.minimum(s_[j], s_[-1] - s_[j]) / PRESS_FADE, 0, 1)
+            w_[mv] *= fe * fe * (3 - 2 * fe)
+            for _ in range(PRESS_PASSES):
+                L = np.array([V[nb[v]].mean(0) - V[v] if nb[v] else np.zeros(3) for v in mv])
+                V[mv] += 0.5 * w_[mv, None] * np.sum(L * N[mv], 1)[:, None] * N[mv]
+        lift, now = np.zeros(len(row)), np.full(len(row), np.nan)
+        for i, v in enumerate(row):
+            if skip is not None and skip[v]:
+                continue
+            a_ = [u for u in nb[v] if not on_row[u] and flap[u]]
+            b_ = [u for u in nb[v] if not on_row[u] and not flap[u] and M["piece"][u] == M["piece"][v]]
+            if not a_ or not b_:
+                continue
+            qa, qb = V[a_].mean(0), V[b_].mean(0)
+            mid, half = 0.5 * (qa + qb), 0.5 * np.linalg.norm(qa - qb)
+            hgt = float((V[v] - mid) @ N[v])
+            now[i] = math.degrees(2 * math.atan2(max(hgt, 0.0), max(half, 1e-9)))
+            lift[i] = max(0.0, half * math.tan(want / 2) - hgt)
+        # along the line: smoothed (the neighbours' mean), faded in at the ends (the waist, the hem)
+        for _ in range(PRESS_SMOOTH):
+            lift = np.r_[lift[:1], 0.25 * lift[:-2] + 0.5 * lift[1:-1] + 0.25 * lift[2:], lift[-1:]] if len(lift) > 2 else lift
+        fade = np.clip(np.minimum(s_, s_[-1] - s_) / PRESS_FADE, 0, 1)
+        lift *= fade * fade * (3 - 2 * fade)
+        if skip is not None:
+            lift[skip[row]] = 0.0
+        V[row] += N[row] * lift[:, None]
+        after = []
+        for v in row:
+            a_ = [u for u in nb[v] if not on_row[u] and flap[u]]
+            b_ = [u for u in nb[v] if not on_row[u] and not flap[u] and M["piece"][u] == M["piece"][v]]
+            if a_ and b_:
+                qa, qb = V[a_].mean(0), V[b_].mean(0)
+                hgt = float((V[v] - 0.5 * (qa + qb)) @ N[v])
+                after.append(math.degrees(2 * math.atan2(max(hgt, 0.0), max(0.5 * np.linalg.norm(qa - qb), 1e-9))))
+        info[fd["name"]] = [round(float(np.nanmedian(now)), 1) if np.isfinite(now).any() else None,
+                            round(float(np.median(after)), 1) if after else None]
+    return V, info
