@@ -252,7 +252,7 @@ def compile_sheet(sheet: dict) -> dict:
     return out
 
 
-def wear(g: dict) -> list:
+def wear(g: dict, what: str = "closures") -> list:
     """How the garment's kind is WORN (garment_kb.json kinds.<kind>.wear): closure entries laid over the pattern's by
     name, before the garment's own. A shirt without a tie (garment / sheet key "tie", default false) is worn with its
     collar unbuttoned and its top front button undone: the stand parts at the throat, the points spread and the fall
@@ -262,7 +262,7 @@ def wear(g: dict) -> list:
     kind = d.get("kind") or ((kb().get("designs") or {}).get((g.get("pattern") or {}).get("from") or "") or {}).get("kind")
     w = ((kb().get("kinds") or {}).get(kind) or {}).get("wear") or {}
     tie = g.get("tie", d.get("tie", False))
-    return [dict(c) for c in (w.get("tie" if tie else "no_tie") or {}).get("closures") or []]
+    return [dict(c) for c in (w.get("tie" if tie else "no_tie") or {}).get(what) or []]
 
 
 def expand(g: dict) -> dict:
