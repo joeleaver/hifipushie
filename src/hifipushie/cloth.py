@@ -7722,7 +7722,19 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         src = res["body"]
     if not results:
         return None, "\n".join(texts)
-    bod = results[0][2]["body"]
+    # a garment worn under another shown together is drawn as it lies UNDER it (pressed: what that garment was
+    # simulated over); its own free-standing sim blouses through the outer one (Garrett's shirt sleeves showed through
+    # the jacket in white patches)
+    by_ = {gn: k for k, (gn, _, _) in enumerate(results)}
+    for gn, g, res in list(results):
+        ov = g.get("over")
+        if ov in by_ and res.get("under_V") is not None:
+            k = by_[ov]
+            ogn, og, ores = results[k]
+            if len(ores["V"]) == len(res["under_V"]):
+                results[k] = (ogn, og, dict(ores, V=np.asarray(res["under_V"], float)))
+    # (the body from a garment that also rests on the model's worn parts, if any: shoes under trousers show then)
+    bod = next((r_["body"] for _, _, r_ in results if getattr(r_["body"], "worn", None)), results[0][2]["body"])
     hung = [g for _, g, _ in results if isinstance(_state(g), dict) and "hang" in _state(g)]
     if hung and len(hung) == len(results):  # hung garments: the body is gone, the hanger and rail (or rack) show
         body = False
