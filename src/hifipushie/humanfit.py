@@ -125,8 +125,29 @@ def state(base: dict) -> dict:
     if L[EYE_L, 0] < L[EYE_R, 0]:
         L[[EYE_L, EYE_R]] = L[[EYE_R, EYE_L]]
     m = anthro.measure(np.asarray(tpl["P"], float), tpl["J"], float(tpl["chin_mh"]))
+    m["neck_circ"] = _neck_girth(tpl)
     body = {k: float(m[k]) * (1.0 if k == "heads" else 100.0) for k in BODY if k in m}
     return {"tpl": tpl, "head": ht, "L": L, "measures": {**body, **face_measures(L)}, "base": base}
+
+
+NECK_AT = 0.35  # the neck's girth is taken this share of the way from the neck joint up to the body's chin
+
+
+def _neck_girth(tpl: dict) -> float:
+    """The neck's girth at ONE level (NECK_AT of the way from the neck joint to the body's own chin vertex), on the
+    body's and the bridge's vertices only. (anthro's minimum over the levels up to the chin took the jaw in whenever
+    a fit moved the chin: "neck_circ -9 cm" UNINTENDED in every face fit.)"""
+    from scipy.spatial import ConvexHull
+    P = np.asarray(tpl["P"], float)[: int(tpl["n_body"])]
+    zn = float(np.asarray(tpl["J"]["neck"])[2])
+    zl = zn + NECK_AT * (float(tpl["chin_mh"]) - zn)
+    sh = abs(float(np.asarray(tpl["J"]["shoulder.L"])[0]))
+    s = P[(np.abs(P[:, 2] - zl) < 0.004) & (np.abs(P[:, 0]) < 0.6 * sh)][:, :2]
+    if len(s) < 4:
+        return float("nan")
+    h = ConvexHull(s)
+    q = s[h.vertices]
+    return float(np.linalg.norm(q - np.roll(q, 1, 0), axis=1).sum())
 
 
 def measures(base: dict) -> dict:
@@ -613,6 +634,204 @@ def project(cam: dict, X: np.ndarray) -> np.ndarray:
     return np.stack([cam["f"] * Xc[:, 0] / Xc[:, 2] + w / 2, cam["f"] * Xc[:, 1] / Xc[:, 2] + h / 2], 1)
 
 
+OUTLINE_W = 0.6  # weight of an outline point against a landmark
+
+
+def _silhouette(st: dict, cam: dict, outline: np.ndarray) -> dict | None:
+    """The head's silhouette through a camera matched to a reference outline: for each outline point (pixels) the
+    nearest silhouette vertex of the head (edges between faces turned toward and away from the camera; GNM's own
+    vertices above the stitch), its world position, how it moves per identity component (as the landmarks:
+    _lm_basis) and the outline's normal there. None if nothing matched."""
+    from . import base as basemod
+    from . import headfit, onemesh
+    from scipy.spatial import cKDTree
+    tpl, c = st["tpl"], st["head"]["carry"]
+    P = np.asarray(tpl["P"], float)
+    gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+    fade = np.asarray(onemesh.asset()["g_fade"], float)
+    head = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
+    T = np.array([(f[0], f[j], f[j + 1]) for f in _faces(tpl) for j in range(1, len(f) - 1)])
+    T = T[head[T].all(1)]
+    Rc = _cam_rot(cam)
+    Xc = (P - np.asarray(cam["centre"], float)) @ Rc.T + np.asarray(cam["t"], float)
+    n = np.cross(Xc[T[:, 1]] - Xc[T[:, 0]], Xc[T[:, 2]] - Xc[T[:, 0]])
+    front = (n * Xc[T].mean(1)).sum(1) < 0
+    edges = {}
+    for t, f in zip(T, front):
+        for k in range(3):
+            e = (min(t[k], t[(k + 1) % 3]), max(t[k], t[(k + 1) % 3]))
+            edges.setdefault(e, []).append(bool(f))
+    sv = np.unique([v for e, fs in edges.items() if len(fs) == 2 and fs[0] != fs[1] for v in e])
+    if not len(sv):
+        return None
+    uv = project(cam, P[sv])
+    o = np.asarray(outline, float)
+    tan = np.gradient(o, axis=0)
+    nrm = np.c_[-tan[:, 1], tan[:, 0]]
+    nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
+    d, j = cKDTree(uv).query(o)
+    ok = d < 0.06 * max(cam["size"])
+    if not ok.any():
+        return None
+    vs = sv[j[ok]]
+    g = headfit._gnm()
+    Bv = np.asarray(basemod._gnm_data()["vertex_identity_basis"], float)[g["comps"]][:, gid[vs]]
+    Bv = float(c["s"]) * (Bv - g["JB"].mean(1, keepdims=True)) @ np.asarray(c["R"], float).T
+    Bv = Bv * fade[gid[vs]][None, :, None]
+    return {"X": P[vs], "B": Bv, "p": o[ok], "n": nrm[ok]}
+
+
+OUTLINE_SIGMA = 0.022   # GNM units: the outline warp's reach (a jaw, a cheekbone: no single feature)
+OUTLINE_STEP = 0.004    # m: the most an outline point is moved in one round
+OUTLINE_HOLD = 0.6      # weight of the features held where they are (eyes, nose, lips, brows) against the outline
+
+
+def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetric: bool = True) -> tuple:
+    """(new base, report): the head's silhouette through each fitted camera (`cameras`, from fit_views) pulled onto
+    each view's `outline` ([[u, v], ...]: the face's edge in the picture, e.g. jaw and cheeks) by a smooth warp in
+    GNM's frame (base.head.warp, appended), the features held (eyes, nose, lips, brows: their landmarks stay, so an
+    outline can't drag the mouth). Each silhouette vertex's 2D miss along the outline's normal becomes a 3D move in
+    the camera's image plane at its depth. Identity components are left to fit_views (the points)."""
+    from . import base as basemod
+    from . import onemesh
+    g = basemod._gnm_data()
+    cur = copy.deepcopy(base)
+    names = [str(n) for n in g["identity_names"]]
+    rep = {"rounds": []}
+    for rnd in range(rounds):
+        st = state(cur)
+        hd = onemesh.head_desc(cur)
+        c = st["head"]["carry"]
+        Rh, s = np.asarray(c["R"], float), float(c["s"])
+        idn = dict(basemod.fit_identity(hd["fit"])) if hd.get("fit") else {}
+        idn.update(hd.get("identity") or {})
+        call = np.array([float(idn.get(n, 0.0)) for n in names])
+        Vg = np.asarray(g["template_vertex_positions"], float) + np.tensordot(call, np.asarray(g["vertex_identity_basis"], float), 1)
+        gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
+        fade = np.asarray(onemesh.asset()["g_fade"], float)
+        tgt_g, tgt_d, miss = [], [], []
+        for v, cam in zip(views, cameras):
+            if not v.get("outline"):
+                continue
+            sl = _silhouette(st, cam, np.asarray(v["outline"], float))
+            if sl is None:
+                continue
+            uv = project(cam, sl["X"])
+            r = ((uv - sl["p"]) * sl["n"]).sum(1)  # px past the outline along its normal
+            Rc = _cam_rot(cam)
+            Xc = (sl["X"] - np.asarray(cam["centre"], float)) @ Rc.T + np.asarray(cam["t"], float)
+            m = r * Xc[:, 2] / cam["f"]  # m in the image plane at the vertex's depth
+            w = sl["n"][:, :1] * Rc[0] + sl["n"][:, 1:] * Rc[1]  # the outline's normal as a world direction
+            dW = -np.clip(m, -OUTLINE_STEP, OUTLINE_STEP)[:, None] * w  # (a round moves no point further: a silhouette
+            # vertex matched across a gap the first round would throw the warp)
+            P = np.asarray(st["tpl"]["P"], float)
+            vs = np.array([int(np.argmin(np.linalg.norm(P - x, axis=1))) for x in sl["X"]])
+            for k, vi in enumerate(vs):
+                gi = gid[vi]
+                if gi < 0 or fade[gi] < 0.3:
+                    continue
+                dg = (dW[k] @ Rh) / s / fade[gi]
+                dg[0] /= float(c["narrow"])
+                tgt_g.append(Vg[gi])
+                tgt_d.append(dg)
+            miss.append(float(np.sqrt((m ** 2).mean()) * 1000))
+        if not tgt_g:
+            break
+        if symmetric:  # each target also on the other side, mirrored (GNM's template is symmetric about x = 0): one
+            # view's outline alone warped only its own side, a lump on one jaw
+            tgt_g = tgt_g + [x * [-1, 1, 1] for x in tgt_g]
+            tgt_d = tgt_d + [x * [-1, 1, 1] for x in tgt_d]
+        hold = []
+        for row in g["lm68"][17:]:  # brows, nose, eyes, lips stay
+            hold.append(sum(float(wt) * Vg[int(vi)] for vi, wt in zip(row[0::2], row[1::2])))
+        # and the rest of the head where it is: skin vertices farther than two reaches from every target
+        skin = np.flatnonzero(np.asarray(g["skin"], bool))
+        far = skin[np.min(np.linalg.norm(Vg[skin][:, None] - np.array(tgt_g)[None], axis=2), 1) > 2 * OUTLINE_SIGMA]
+        far = far[np.linspace(0, len(far) - 1, min(len(far), 160)).astype(int)] if len(far) else far
+        hold += list(Vg[far])
+        A = np.r_[np.array(tgt_g), np.array(hold)]
+        Dt = np.r_[np.array(tgt_d), np.zeros((len(hold), 3))]
+        wt = np.r_[np.ones(len(tgt_g)), np.full(len(hold), OUTLINE_HOLD)]
+        sig = float((cur.get("head") or {}).get("warp", {}).get("sigma", OUTLINE_SIGMA))
+        K = np.exp(-((A[:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
+        coef = np.linalg.solve((K * wt[:, None]).T @ K + 2e-2 * np.eye(len(A)), (K * wt[:, None]).T @ Dt)
+        h = cur.setdefault("head", {})
+        old = h.get("warp")
+        if old:  # (a head has one warp: its centres appended, at its sigma)
+            A, coef = np.r_[np.asarray(old["at"], float), A], np.r_[np.asarray(old["coef"], float), coef]
+        h["warp"] = {"at": np.round(A, 6).tolist(), "coef": np.round(coef, 7).tolist(), "sigma": sig}
+        rep["rounds"].append({"miss_mm": [round(x, 2) for x in miss], "targets": len(tgt_g)})
+    st1 = state(cur)
+    rep["integrity"] = integrity(cur, st1, state(base))
+    rep["side_effects"] = side_effects(state(base), st1, set(FACE))
+    return cur, rep
+
+
+HOOD_MAX = 0.005   # m: the most a hooded fold comes down
+HOOD_LIDS = (37, 38, 43, 44)  # the upper lids' landmarks: what the hood moves and is fitted on
+
+
+def _hood_amount(base: dict) -> float:
+    h = ((base.get("head") or {}).get("shape") or {}).get("hood") or 0.0
+    return float(h["amount"] if isinstance(h, dict) else h)
+
+
+def _with_hood(base: dict, a: float) -> dict:
+    b = copy.deepcopy(base)
+    sh = b.setdefault("head", {}).setdefault("shape", {})
+    if isinstance(sh.get("hood"), dict):
+        sh["hood"]["amount"] = round(float(a), 6)
+    elif a > 0:
+        sh["hood"] = round(float(a), 6)
+    else:
+        sh.pop("hood", None)
+    return b
+
+
+def fit_hood(base: dict, views: list, cameras: list) -> tuple:
+    """(new base, report): hooded upper lids (base.head.shape.hood) fitted on the upper lids' points (37, 38, 43, 44)
+    through each fitted camera (`cameras`, from fit_views): a picture's upper lid line is where the fold hangs over
+    the lid, which the identity components can't reach without squeezing the lids. One number, solved linearly
+    (the hood moves those landmarks in proportion), clamped to [0, HOOD_MAX] and halved until integrity holds."""
+    st0 = state(base)
+    a0 = _hood_amount(base)
+    step = 0.002 if a0 + 0.002 <= HOOD_MAX else -0.002
+    st1 = state(_with_hood(base, a0 + step))
+    J, r = [], []
+    for v, cam in zip(views, cameras):
+        for j in HOOD_LIDS:
+            p = v["points"].get(f"lm{j}")
+            if p is None:
+                continue
+            u0, u1 = project(cam, st0["L"][j:j + 1])[0], project(cam, st1["L"][j:j + 1])[0]
+            J.append((u1 - u0) / step)
+            r.append(np.asarray(p, float) - u0)
+    rep = {"amount_before": round(a0 * 1000, 2), "points": len(r)}
+    if not r:
+        rep.update(amount=rep["amount_before"], note="no upper-lid points in the views")
+        return base, rep
+    J, r = np.array(J).ravel(), np.array(r).ravel()
+    da = float(J @ r / max(J @ J, 1e-12))
+    a = float(np.clip(a0 + da, 0.0, HOOD_MAX))
+    rep["asked_mm"] = round((a0 + da) * 1000, 2)
+    rep["rms_px_before"] = round(float(np.sqrt((r ** 2).mean())), 2)
+    while True:
+        cur = _with_hood(base, a)
+        st = state(cur)
+        it = integrity(cur, st, st0)
+        if it["ok"] or abs(a - a0) < 1e-4:
+            break
+        a = a0 + 0.5 * (a - a0)
+    rr = r - J * (a - a0)
+    rep.update(amount=round(a * 1000, 2), rms_px_after=round(float(np.sqrt((rr ** 2).mean())), 2), integrity=it,
+               side_effects=side_effects(st0, st, {"eye_height"}))
+    if a0 + da > HOOD_MAX:
+        rep["note"] = f"the picture asks {1000 * (a0 + da):.1f} mm of hood, the most is {1000 * HOOD_MAX:.1f}"
+    elif a0 + da < 0:
+        rep["note"] = "the picture's upper lids are HIGHER than the hood-free face's: open the eyes (pose lid_upper) instead"
+    return cur, rep
+
+
 def fit_views(base: dict, views: list, free=("identity",), force: bool = False, rounds: int = 3, focal: float | None = None) -> tuple:
     """(new base, report). views: [{"points": {landmark: [u, v]}, "size": [w, h], "yaw": deg (a hint: 0 front, 45
     three-quarter from its left, 90 its left side)}]: one camera per view (pose + focal; all views share the face) and,
@@ -638,11 +857,18 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
         cams.append({"r": [0.0, 0.0, 0.0], "t": [(uc[0] - w / 2) / f0 * z0, (uc[1] - h / 2) / f0 * z0, z0], "f": f0,
                      "size": [w, h], "centre": ctr.tolist(), "yaw": float(v.get("yaw", 0.0))})
     cur, c = copy.deepcopy(base), c0.copy()
+    outl = [np.asarray(v["outline"], float) if v.get("outline") else None for v in views]
+    if any(o is not None for o in outl):
+        rounds = max(rounds, 4)  # (the silhouette is found again each round)
     for it in range(rounds if use_id else 1):
         st = state(cur) if it else st0
         L, B = st["L"], (_lm_basis(st) if use_id else None)
         S = _skull_basis(st) if use_id else None
         nc = len(c) if use_id else 0
+        # outlines (view["outline"]: [[u, v], ...] along the face's edge in the picture, e.g. the jaw and cheeks): each
+        # point pulled onto the model's silhouette through that view's camera, along the outline's own normal (the
+        # silhouette vertex nearest it, found again each round; they move with the identity like the landmarks)
+        sil = [_silhouette(st, cam, o) if (o is not None and use_id) else None for cam, o in zip(cams, outl)]
 
         def unpack(x):
             out = []
@@ -655,6 +881,11 @@ def fit_views(base: dict, views: list, free=("identity",), force: bool = False, 
             cs, dc = unpack(x)
             Lc = L + (np.tensordot(dc, B, axes=(0, 0)) if use_id else 0.0)
             r = [(project(cam, Lc[ids]) - uv).ravel() / max(cam["size"]) * 400.0 for cam, (ids, uv) in zip(cs, obs)]
+            for cam, sl in zip(cs, sil):
+                if sl is not None:
+                    X = sl["X"] + np.tensordot(dc, sl["B"], axes=(0, 0))
+                    d = ((project(cam, X) - sl["p"]) * sl["n"]).sum(1)
+                    r.append(OUTLINE_W * d / max(cam["size"]) * 400.0)
             if use_id:
                 r.append(RIDGE * 1.5 * dc)
                 r.append(0.4 * RIDGE * (c + dc - c0))

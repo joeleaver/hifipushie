@@ -123,9 +123,75 @@ def test_fit_back_a_known_face_from_images():
     assert rep1["views"][0]["rms_px"] < 1.5
 
 
+def _front_cam(L):
+    return {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.9], "f": 2400.0, "size": [1024, 1024], "centre": L[:68].mean(0).tolist(),
+            "yaw": 0}
+
+
+def test_neck_girth_ignores_the_face():
+    """neck_circ is taken at one level on the body's own neck: a face fit (identity) can't move it (anthro's minimum
+    up to the chin read the jaw: -9 cm "unintended" in every face fit)."""
+    b = base()
+    nb, _ = hf.solve(b, {"jaw_width": "+6", "chin_height": "+4"})
+    m0, m1 = hf.state(b)["measures"], hf.state(nb)["measures"]
+    assert 25 < m0["neck_circ"] < 50
+    assert abs(m1["neck_circ"] - m0["neck_circ"]) < 1e-6
+
+
+def test_hooded_lids_fitted_from_a_picture():
+    """base.head.shape.hood lowers the upper lids' fold over the lid (upper lid landmarks down, lower lids where they
+    were, no folds); fit_hood finds a known amount back from the upper lids' points in one picture."""
+    b = base()
+    st0 = hf.state(b)
+    tb = hf._with_hood(b, 0.003)
+    st1 = hf.state(tb)
+    d = (st1["L"] - st0["L"]) * 1000
+    assert (d[[37, 38, 43, 44], 2] < -0.8).all() and np.abs(d[[40, 41, 46, 47]]).max() < 0.05
+    assert st1["measures"]["eye_height"] < st0["measures"]["eye_height"] - 0.8
+    it = hf.integrity(tb, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] == 0, it
+    cam = _front_cam(st1["L"])
+    uv = hf.project(cam, st1["L"])
+    views = [{"size": [1024, 1024], "yaw": 0, "points": {f"lm{i}": uv[i].tolist() for i in range(68)}}]
+    nb, rep = hf.fit_hood(b, views, [cam])
+    assert abs(rep["amount"] - 3.0) < 0.4, rep
+    assert rep["rms_px_after"] < rep["rms_px_before"]
+
+
+def test_outline_fit_is_symmetric_and_holds_features():
+    """The silhouette of a wider-jawed face (another seed) through a front camera, as an outline below the eyes:
+    the outline warp brings the silhouette to it, the face stays symmetric, the features (brows, eyes, nose, lips)
+    stay put and nothing breaks."""
+    b, target = base(seed=3), base(seed=3)
+    target = hf.solve(target, {"jaw_width": "+10"})[0]
+    stt, st0 = hf.state(target), hf.state(b)
+    cam = _front_cam(st0["L"])
+    P = np.asarray(stt["tpl"]["P"], float)
+    head = P[:, 2] > stt["L"][8, 2] - 0.005
+    uv = hf.project(cam, P[head])
+    ye, yc = hf.project(cam, stt["L"][[36]])[0][1], hf.project(cam, stt["L"][[8]])[0][1]
+    out = []
+    for y in np.linspace(ye + 0.15 * (yc - ye), ye + 0.8 * (yc - ye), 9):
+        row = uv[np.abs(uv[:, 1] - y) < 1.5]
+        out += [[float(row[:, 0].min()), float(y)], [float(row[:, 0].max()), float(y)]]
+    views = [{"size": [1024, 1024], "yaw": 0, "points": {}, "outline": out}]
+    nb, rep = hf.fit_outline(b, views, [cam], rounds=3)
+    miss = [r["miss_mm"][0] for r in rep["rounds"]]
+    assert miss[-1] < 0.6 * miss[0], miss
+    assert rep["integrity"]["ok"], rep["integrity"]
+    L0, L1 = st0["L"], hf.state(nb)["L"]
+    assert np.linalg.norm(L1[17:68] - L0[17:68], axis=1).max() < 1.5
+    assert rep["integrity"]["numbers"]["asymmetry_mm"] < st0_asym(b) + 0.5
+
+
+def st0_asym(b):
+    return hf.integrity(b)["numbers"]["asymmetry_mm"]
+
+
 if __name__ == "__main__":
     if have():
         for fn in (test_measures_and_integrity, test_a_measure_is_met_and_the_rest_holds, test_adversarial_requests_come_back_honest,
-                   test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images):
+                   test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
+                   test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features):
             fn()
             print("ok", fn.__name__)
