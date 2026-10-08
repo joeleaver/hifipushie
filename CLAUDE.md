@@ -2282,7 +2282,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
     settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
     and su_garrett.
-- Suit 4 (layers) (2026-10-07, "layers" agent, worktree branch of the seams agent's name `worktree-agent-ae98ecda411a37796`
+- Suit 4 (layers) (2026-10-07, "layers" agent, branch `worktree-agent-a237f0b282ae815f7`;
   renders `cloth_renders/su_41..45_*`; scratch DURABLE in /mnt/data/hifipushie/layers/: the collar
   agent's scripts retargeted (env.sh, run.sh, q.sh + run.py, plb.py, cu.py ...) + lay1.py <m> <g> <tag> [k=json] (START:
   per-seam start gaps, start stretch per piece, pad thickness by region, jacket vs under garment, saves out/<tag>.npz
