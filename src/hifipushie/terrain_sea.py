@@ -36,6 +36,8 @@ from . import noise
 from .terrain import compass, smoothstep
 
 CLIFF = math.radians(70)
+TALUS_SHARE, TALUS_BASE, TALUS_SLOPE = 0.08, 4.0, 36.0  # a sea cliff's rubble apron: m tall = share x the cliff + base
+# (at most 0.3 x), its slope (deg) out from the foot
 STACK_CORE = 0.45  # a stack's heightfield core: its radius x this, sheer (the solid stack in the 3D tiles is the form)
 
 
@@ -578,14 +580,18 @@ def apply(T):
         hgt = np.maximum(top_here - level, 0)
         run = face_run
         oof = -sd - run  # metres seaward of the face's foot
-        aw = 0.5 * hgt + 2 * T.cell
+        # a sea cliff's apron is what the waves have not yet taken away: low rubble at the angle of repose, not a fan
+        # 30% of the cliff tall (on the Kaze coast that stood 13 m smooth domes between the stacks); its blocks are the
+        # 3D tiles' fallen blocks (terrain_blocks.fall_zone finds this gentler ground under the face)
+        th = np.minimum(TALUS_SHARE * hgt + TALUS_BASE, 0.3 * hgt)
+        aw = th / math.tan(math.radians(TALUS_SLOPE)) + 2 * T.cell
         patch = smoothstep(0.42, 0.58, noise.fbm(np.c_[T.P, np.full(len(T.P), 47.0)], max(2.5 * hi_h, 25.0), 2,
                                                   seed=197).reshape(T.X.shape))
         lumps = noise.fbm(np.c_[T.P, np.full(len(T.P), 49.0)], max(1.5, 1.5 * T.cell), 2, seed=198).reshape(T.X.shape)
         blocky, _ = facets(T, lumps, max(3.0, 3 * T.cell), tilt=0.08, seed=199, crease=0.08)
         fan = np.clip(1 - np.maximum(oof, 0) / aw, 0, 1) ** 1.3
         # a fan leaning on the foot, its surface blocks a metre or two (steep random facets at this size made spikes)
-        apron = level - 0.8 + tal * patch * (0.3 * hgt * fan + np.minimum(0.06 * hgt, 1.5) * (blocky - 0.5) * 2 * (fan > 0))
+        apron = level - 0.8 + tal * patch * ((th + 0.8) * fan + np.minimum(0.06 * hgt, 1.5) * (blocky - 0.5) * 2 * (fan > 0))
         on = (sd < 0) & (wc > 0.5) & (foot < 0.5) & (oof > -run) & (fan > 0)
         new = np.where(on, np.maximum(new, apron), new)
         T.hard |= on & (apron > level)

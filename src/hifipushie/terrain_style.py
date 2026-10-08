@@ -554,7 +554,7 @@ def style_fields(T, styles: list[dict]) -> dict:
 # ------------------------------------------------------------------------------------------------ rock shape (geometry)
 
 ROCK_BAND = 10.0  # m: the default band over which one style's rock shape hands over to the next (in the field)
-ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind"}
+ROCK_KEYS = {"relief", "pillow", "soften_m", "fallen", "micro", "band_m", "kind", "stack"}
 
 
 def rock_styles(T) -> list[dict]:
@@ -568,7 +568,7 @@ def rock_styles(T) -> list[dict]:
         bad = set(R) - ROCK_KEYS
         if bad:
             raise ValueError(f"style {s['name']}: rock keys {sorted(bad)} unknown ({', '.join(sorted(ROCK_KEYS))})")
-        if set(R) - {"kind", "band_m"}:
+        if set(R) - {"kind", "band_m", "stack"}:  # (a sea stack's form is read by stack_form, not by the field)
             shaped.append(s)
     if not shaped:
         return []
@@ -576,6 +576,22 @@ def rock_styles(T) -> list[dict]:
     F = style_fields(T, geo)
     return [{"name": s["name"], "w": np.ascontiguousarray(F["w"][s["name"]], float), "rock": s["sheet"]["rock"]}
             for s in shaped]
+
+
+def stack_form(T, xy) -> dict:
+    """The sea stack form overrides (terrain_stack.FORM keys) at a stack's centre: the `rock.stack` of the style whose
+    zone weighs over half there (a stack is one rock: it takes one style's form whole), else {} (realistic)."""
+    styles = resolve(T.spec)
+    if not any((s["sheet"].get("rock") or {}).get("stack") for s in styles):
+        return {}
+    geo = [{**s, "band": float((s["sheet"].get("rock") or {}).get("band_m", ROCK_BAND))} for s in styles]
+    F = style_fields(T, geo)
+    iy = int(np.clip(np.rint((xy[1] - T.ys[0]) / T.cell), 0, len(T.ys) - 1))
+    ix = int(np.clip(np.rint((xy[0] - T.xs[0]) / T.cell), 0, len(T.xs) - 1))
+    for s in styles:
+        if float(F["w"][s["name"]][iy, ix]) > 0.5:
+            return dict((s["sheet"].get("rock") or {}).get("stack") or {})
+    return {}
 
 
 def rock_variant(rock: dict, relief: dict | None) -> dict:

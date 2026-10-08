@@ -3721,6 +3721,66 @@ regresses, bisect by building one spec at each commit and diffing heights.
       subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
       fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
       height / hollows (numbers only today).
+  - Sea stacks (2026-10-07, "stacks" agent, branch `worktree-agent-aeb27454ed1610793`; the user on pushieworld's Kaze
+    coast in Godot: "Seastacks don't look like real seastacks, they're kind of a mess"; references
+    workspace/level_refs/stacks/ (9 CC photos: Old Harry, Twelve Apostles, Duncansby, Yesnaby, Bedruthan, Reynisdrangar,
+    Old Man of Hoy, Risin og Kellingin; README with licences); sheets /mnt/data/hifipushie/stacks/st_sheet3.png (photos |
+    old clay | new clay | each style) and st_island_before_after.png (tl2_island Kaze, anime textured, preview_tiles);
+    scratch DURABLE there: run.sh / run_main.sh <script> (this worktree's / main's code, orig/ = git archive of main),
+    iso.py (one island stack meshed from the export's field: full | real (styles off) | norelief | alone), col.py /
+    variety.py (Columns alone + 3D measures), styles_row.py (stack0 in each style), tune.py '<json list of FORM
+    overrides>' (silhouette + 3D measures over 8 columns), measure.py (photo masks + the same silhouette measures),
+    clay.sh out.png az el meshes.npz... (Blender workbench, an ortho panel per mesh; CROP=m), sheet.py, prev.py <tag>
+    [styles|baked|clay] (preview_tiles round the island's stacks + sea views; ~40 min of it is the heavy queue),
+    exp.py (tiles export with checks), hang.py / slice.py / pieces.py (a column's loose or hanging pieces),
+    oldstack.py (the old Stack, for before / after)).
+    - DIAGNOSIS (iso.py, r00_base.png): the mess was the Stack prism's OWN form, not the style or the field: the full
+      field (anime), styles off, rock relief off and the Stack's sd alone mesh nearly the same pile of tyres (beds
+      1.6 m thick each +-0.2 r proud / set back all round, lobes 0.55 r changing every 6 m, a lowered broken top that
+      cut sections loose: tiles2's floating pieces at z 38-39 over stack0). The dark stripes in Godot are the anime
+      sheet's rock `bands` texture (still there: even painted strata over every face; terrainstyle's call).
+    - Measures (photos vs ours; measure.py, tune.py): silhouette edges over 15-92% of the height: swell (edge minus its
+      25%-height smoothing / width), bulges (outward maxima per height-in-widths), straight (curvature under 1.5% of the
+      width over 3% of the height), top_over_base (width at 85% / 15% of the height); 3D: vertical_nz (side area's
+      median |nz|), planar (side area within 8 deg of six azimuths), top_flat. Photos (4 Apostles + Hoy; the Duncansby
+      and Reynisdrangar masks are unreliable): swell 0.039, bulges 1.75, straight 0.59, top/base 0.61 (0.48-0.80),
+      h/w 1.9. Old: 0.036 / 3.65 / 0.28, vertical 0.29, planar 0.30. New (Column alone, 8 cases): 0.019 / 1.11 /
+      0.56, top/base 0.64 (batter 4.5), h/w 2.6, vertical 0.14, planar 0.56 (the field's facets add the fine breakup on top). Real
+      stacks DO taper (0.6); they don't end in a point.
+    - `terrain_stack.py` (Column, FORM, form): the plan = two joint families' faces (65-115 deg apart, own offsets,
+      chamfered corners, a stray joint slicing one side off), edges a smooth max (`bevel`); CUTS = box windows in
+      (height, position along the face) with soft edges (`ramp`, wider for deep cuts so |grad| stays < 3): steps where
+      blocks fell above OR below a bed over part of a face, soft beds (1.2 per m, 0.3-0.8 m thick) eroded back 0.15-0.35 m on part of 2-4
+      faces at irregular heights (ledges, never rings: all round on every bed was the pile of tyres), open joints as slots,
+      corners gone from a bed up; faces batter in 4.5 deg (capped at 35% of the offset), wander, light warps (`rough` 0.02: at
+      0.08 they read as draped cloth); the top flat and dipping, 1-3 parts of it fallen lower; stage auto: broad,
+      slender, stump, rarely (p_spire 0.12 of slender ones) a spire tapering IN LEDGES to a crest >= 2 m wide at the
+      top (two planes meeting in a knife edge meshed as a comb of slivers; a smooth taper read as a bullet / cathedral
+      spire); the notch deepest on one exposed side, its height per face in the tide band, uneven along the face; 2-5
+      fallen blocks LEANING on the foot (drawn in until they overlap the column: alone in deep water they float). Every
+      section keeps >= 50% of its plan offset and >= max(1 m, 0.18 x offset). Cut depths scale with height / width on
+      squat stacks (a stump cut like a tower read as a carved chair). terrain_mesh.Stack wraps it (same name and
+      interface + `over`, `sea`, `stage`); `stacks(T)` takes each stack's style form from
+      `terrain_style.stack_form` (the `rock.stack` of the style weighing over half at its centre; "stack" is a
+      ROCK_KEYS key that does NOT count as shaping the field, so the realistic-zone invariant is untouched). Sheets:
+      anime crisp (bevel 0.25, bigger steps, more spires), blobby a rounded pebble pillar (bevel 2.2, no slots or
+      spires), cartoon chunky and battered (few thick beds, big steps), pixar soft (many shallow beds, top-heavy).
+      The field is scaled 0.8 (overlapping cuts steepened it to ~3.5).
+    - tests/test_stacks.py: one piece down to the plinth (every section connected below, face + edge connectivity at
+      0.5 m: a voxel touching only by a corner is what marching cubes cuts loose), continuous (|grad| < 3), vertical
+      and planar walls, deterministic, overrides checked, every sheet's keys known.
+    - Sea cliff talus (terrain_sea): the smooth 13 m domes between the island's stacks were the apron at 0.3 x the
+      cliff's height; now `TALUS_SHARE` 0.08 x height + `TALUS_BASE` 4 m (<= 0.3 x) at `TALUS_SLOPE` 36 deg out from
+      the foot, its blocks the 3D tiles' fallen blocks (fall_zone finds it). Changes every cliffed coast's heightfield.
+      With 2 m / 32 deg the low apron lay in the splash band and its fallen blocks flipped rock / wet rock / sand
+      between LOD 0 and LOD 2 (pebble lod0_vs_lod2 orm p95 0.213 > 0.15); 4 m / 36 deg passes.
+    - pebble_disc tiles (this branch vs main, same machine): the only failure is main's own (lod1 map normals p95
+      15.78 vs main 15.55, limit 15); shards LOD 0/1/2 0.0082 / 0.0252 / 0.230% (main 0.005 / 0.023 / 0.198);
+      floating 0; Khronos 1044 files 0 / 0 (round 3 export). Tests also: no sealed air in a column at 0.2 m, no recess
+      narrower than ~1 m (thin air 0.07-0.22% of the solid: bevel corners), test_level_look, test_terrain_style,
+      test_tiles pass.
+    - Open: turf / bird lime on the tops (colour); the anime bands on stacks (terrainstyle); tiles2's solid-stack
+      cliff shell on these stacks.
 
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
