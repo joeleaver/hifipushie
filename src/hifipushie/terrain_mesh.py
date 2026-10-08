@@ -124,6 +124,8 @@ def smoothstep(e0, e1, x):
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
+FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
+FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
 EXPOSED_OFF = 0.5  # m out along a face's normal: rock there = behind the visible surface (terrain_cliffs.EXPOSED_OFF)
 BURIED_SHADE = 0.6  # the buried back's material: the rock's mean colour under it x this (never white)
 FALL_SEAT = 0.5  # fallen blocks seat this share of the rock relief's reach (x its weight) under the column's ground
@@ -2728,7 +2730,11 @@ def _job_dense(ij):
     vrow[border] = rows
     vrow[gone] = -1  # (merged into their weld's kept vertex: unused)
     with _span("dense/specks + save"):
-        faces = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)))
+        clr = None
+        if hasattr(field, "region") and float(c["cfg"].get("float_piece_m2", FLOAT_PIECE)) > 0:
+            clr = P[:, 2] - field.region.height(P[:, 0], P[:, 1])
+        faces, dropped = _drop_specks(P, faces, vrow >= 0, float(c["cfg"].get("min_piece_m2", 4.0)), clr,
+                                      float(c["cfg"].get("float_piece_m2", FLOAT_PIECE)))
         np.savez(_work(c, "dense", *ij), P=P, faces=faces, vrow=vrow)
     # the area its maps will cover (a cliff shell's visible front only): the export's texel density is chosen from it
     area = 0.0
@@ -2738,29 +2744,45 @@ def _job_dense(ij):
             with _span("dense/visible area"):
                 a = a[np.abs(_chunks(field.front, P[faces].mean(1))) <= 0.3]
         area = float(a.sum())
-    return True, area
+    return True, area, dropped
 
 
 def _chunks(fn, X, n=200_000):
     return np.concatenate([fn(X[i:i + n]) for i in range(0, len(X), n)]) if len(X) else np.zeros(0)
 
 
-def _drop_specks(P, F, on_border, min_area):
+def _drop_specks(P, F, on_border, min_area, clearance=None, float_area=0.0, tol=FLOAT_TOL):
     """Closed pieces of a tile's mesh smaller than `min_area` m2 that touch no tile border: bubbles where the field
-    grazes zero just off a steep face (rock relief on a 60 deg wall: 14-triangle specks floating 15 m up)."""
+    grazes zero just off a steep face (rock relief on a 60 deg wall: 14-triangle specks floating 15 m up).
+    With `clearance` (each vertex's height over the pushed heightmap: a cliff shell), closed pieces off the border
+    under `float_area` m2 that never come down to the ground (the seam check's `floating` rule) go too: style or
+    rock relief building out over a sheer lip and cut off. Returns (faces, dropped: [{at, triangles, m2,
+    clearance_m}]): the export logs them. Bigger floating pieces stay and fail the check (a stack's head)."""
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
     n = len(P)
     e = np.concatenate([F[:, [0, 1]], F[:, [1, 2]]])
     nc, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
     if nc == 1:
-        return F
+        return F, []
     area = np.linalg.norm(np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]), axis=1) / 2
     ca = np.bincount(lab[F[:, 0]], area, minlength=nc)
     border = np.zeros(nc, bool)
     border[lab[on_border]] = True
     small = (ca < min_area) & ~border
-    return F[~small[lab[F[:, 0]]]] if small.any() else F
+    dropped = []
+    if clearance is not None and float_area > 0:
+        used = np.zeros(n, bool)
+        used[F.ravel()] = True
+        low = np.full(nc, np.inf)
+        np.minimum.at(low, lab[used], clearance[used])
+        fl = (low > tol) & (ca < float_area) & ~border & ~small
+        tri = np.bincount(lab[F[:, 0]], minlength=nc)
+        for c_ in np.flatnonzero(fl):
+            dropped.append({"at": P[lab == c_].mean(0).round(1).tolist(), "triangles": int(tri[c_]),
+                            "m2": round(float(ca[c_]), 1), "clearance_m": round(float(low[c_]), 1)})
+        small |= fl
+    return (F[~small[lab[F[:, 0]]]] if small.any() else F), dropped
 
 
 def _job_collapse(args):
@@ -3078,9 +3100,19 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     if redo:
         with _pool() as ex:
             res = prof.pool_map(ex, _job_dense_full, redo, "dense LOD0 (project, sharp)", tile_key)
-        areas = {ij: a for ij, (_, a) in zip(redo, res)}
+        areas = {ij: r[1] for ij, r in zip(redo, res)}
+        drops = {ij: r[2] for ij, r in zip(redo, res)}
+    else:
+        drops = {}
     for ij in work:
-        ns[ij]["dense"] = {"key": dkey[ij], "area": areas[ij] if ij in areas else old[ij]["dense"]["area"]}
+        ns[ij]["dense"] = {"key": dkey[ij], "area": areas[ij] if ij in areas else old[ij]["dense"]["area"],
+                           "dropped": drops[ij] if ij in drops else old[ij]["dense"].get("dropped", [])}
+    # (small cliff pieces standing clear of everything, dropped from the dense meshes: logged, not failed)
+    dropped_pieces = [{"tile": list(ij), **d} for ij in sorted(work) for d in ns[ij]["dense"]["dropped"]]
+    if dropped_pieces:
+        log(f"dropped {len(dropped_pieces)} small cliff piece(s) standing clear of the ground (under "
+            f"{float(cfg.get('float_piece_m2', FLOAT_PIECE)):g} m2 each; manifest dropped_pieces): "
+            + ", ".join(f"{d['m2']:g} m2 at {d['at']} ({d['clearance_m']:g} m up)" for d in dropped_pieces[:6]))
     dense = set(work)
     _CTX["dense"] = dense
     # one texel density per LOD for every tile: the asked one, or what the tile with the most rock can fit in
@@ -3531,6 +3563,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         timing["cave walk"] = time.time() - t0
     over = budget_check(manifest_tiles, cfg, G.lods)
     manifest["budget_check"] = {"limit": f"{OVER_BUDGET:g} x the LOD's budget", "over": over}
+    manifest["dropped_pieces"] = {"limit_m2": float(cfg.get("float_piece_m2", FLOAT_PIECE)), "pieces": dropped_pieces}
     for o in over[:12]:
         log(f"OVER BUDGET: tile {o['tile'][0]},{o['tile'][1]} LOD {o['lod']}: {o['triangles']} triangles against "
             f"{o['budget']}: {o['why']}")

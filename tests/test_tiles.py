@@ -181,9 +181,42 @@ def test_shell_keeps_add_volumes_whole(cf, region):
         cf.__dict__.pop("_add_vols", None)
 
 
+def _box(c, h):
+    """A closed box mesh (12 triangles) centred at c, half size h."""
+    import itertools
+    V = np.array([[c[0] + sx * h, c[1] + sy * h, c[2] + sz * h] for sx, sy, sz in itertools.product((-1, 1), repeat=3)])
+    F = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+                  [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]])
+    return V, F
+
+
+def test_floating_pieces_dropped():
+    """Closed cliff pieces off the tile border that never come down to the ground: dropped and listed under the size
+    limit (a slab of style relief cut off over a lip), kept above it (a stack's head: the check fails it); pieces
+    on the ground and pieces on the border always kept."""
+    parts = [((0, 0, 0.5), 1.0), ((10, 0, 8), 1.0), ((20, 0, 30), 6.0), ((30, 0, 20), 1.0)]
+    Ps, Fs, off = [], [], 0
+    for c, h in parts:
+        V, F = _box(c, h)
+        Ps.append(V)
+        Fs.append(F + off)
+        off += len(V)
+    P, F = np.vstack(Ps), np.vstack(Fs)
+    border = np.zeros(len(P), bool)
+    border[24:32] = True  # (the fourth box runs off the tile)
+    clear = P[:, 2] - 0.0  # (flat ground at z 0)
+    F2, dropped = tm._drop_specks(P, F, border, 4.0, clear, 50.0)
+    kept = {int(v) // 8 for v in np.unique(F2)}
+    assert kept == {0, 2, 3}, kept
+    assert len(dropped) == 1 and dropped[0]["triangles"] == 12 and dropped[0]["clearance_m"] == 7.0, dropped
+    F3, d3 = tm._drop_specks(P, F, border, 4.0)  # (no clearance: only specks under min_area)
+    assert len(F3) == len(F) and d3 == []
+
+
 if __name__ == "__main__":
     t0 = time.time()
     test_plane_chain()
+    test_floating_pieces_dropped()
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
     test_cover_named_by_type(T)
