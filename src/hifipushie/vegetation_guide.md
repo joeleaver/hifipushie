@@ -499,7 +499,7 @@ lod_files=True)`:
   colour and normal pictures (image index in the GLB + the same PNG written beside it). For engines that drop
   KHR_materials_variants.
 - **The export contract** (`veg_export.CONTRACT`, in the GLB's extras.hifipushie_plant.contract and the seasons
-  json): version 6. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
+  json): version 10. 1 = slots bark / foliage (/ foliage_boughs<n>) / impostor, wind channels, COLOR_0, variants,
   collision file, seasons json. 2 = styled deciduous plants add slot `bark_forks` (the wood mesh's second primitive:
   hidden except in bare seasons); impostor pictures per season. 3 = impostor normal map + TANGENT + 16 vertices, its
   second picture no longer mirrored, baked shade; seasons json contract + slot_list + normal PNGs. 4 = style anime
@@ -510,7 +510,9 @@ lod_files=True)`:
   `extras.hifipushie_impostor`, `impostorNormalTexture` files, the seasons json `impostor`, null for a plant exported
   without one: small plants); `impostor="cross"` = 5's quads;
   slot `heads` carries COLOR_0 (each part's colour: petals / dab / ball, the flower's centre, the stalk) under a white
-  baseColorFactor. Whoever adds,
+  baseColorFactor. 7-9: see CONTRACT_LOG (ramp textures, cropped impostors, pixar's foliage_cards). 10 = the
+  groundcover GRADE of small plants (its own folder; one `foliage` slot of single-sided alpha cards with TANGENT +
+  a normalTexture per season, no COLOR_0; see "Groundcover grade"). Whoever adds,
   renames or re-purposes a slot or a vertex channel bumps the number and adds a line to CONTRACT_LOG and here.
 - What importers do with the file (checked here: Blender 5.1, Godot 4.7; Unity and Unreal are NOT checked: nobody has opened these files there):
   Blender brings in every node (hide LOD1+ and `_collision`), flips v on every uv set (branch = 1 - uv1.v, flutter =
@@ -567,7 +569,7 @@ here: each card bends from its foot in its own phase; long cards swing further.
 
 What goes wrong: cards all upright in a tight ring read as a shaving brush (widen `lean`, add an outer layer of
 shorter, flatter cards); a rosette that floats (lean 70+, `sink`); one picture repeated reads as a stencil (3-4
-`card.variants`); thousands of triangles in one tuft (the report warns over 3000; scatter wants 50-600).
+`card.variants`); thousands of triangles in one tuft (the report warns over 3000; scatter wants 50-600: export the groundcover grade below).
 Not built: scattering on terrain, grass as GPU blades, ivy and creepers that follow a surface, fan palms, bamboo,
 reeds in water, mushrooms, per-plant colour maps from a terrain, bent/trampled states.
 
@@ -581,6 +583,31 @@ sets a winter state. In looks the plant is assembled in its season (flattened, s
 the geometry is the summer plant's and a season is a material variant: its colour, and the pictures of layers out
 of season blanked in that season's atlas (styled: the `heads` slot hidden); flatten and scale are not in the file
 (an engine can lean the cards by the wind channels; said in the reply).
+
+### Groundcover grade: the same clump for scatter (`export_plant(name, grade="groundcover")`)
+A meadow scatters thousands of clumps round the player; the full small plant (270-4,750 triangles at LOD 0, pixar
+grass's lush thin blades the most) is a hero asset. What game artists do for scatter: build the clump once at full
+detail and BAKE it onto a few cards (SpeedTree / Megascans grass billboards); the far tier a few crossed cards. Here the
+bake is the plant exactly as its full export draws it, in its style and in every season, so each style reads as itself.
+- Tiers (LOD 0 / 1 / 2): 8 / 5 / 3 vertical cards through the foot (512 / 192 / 36 triangles with a grass's heads; a
+  card is a grid that bends with the wind, front and back their own faces). Each card shows only what stands in its own
+  wedge round the foot, square on: every blade is drawn ONCE, near where it really is (crossed cards that each show the
+  whole clump draw it n times, doubled where they cross). Parts are kept whole (a blade, a leaf) when they point one way
+  from the foot; a fan joined at its root is cut by pixel. Flower / seed heads (compact parts high on the plant,
+  gathered into heads) get two small crossed cards each (a round head on a wedge card seen along it is a sliver); a
+  low wide plant (clover, a fern's rosette) also gets a card lying flat, baked from above.
+- Pictures: rendered 2x and averaged (a thin blade's coverage is its alpha; drawn from 0.28 coverage), the clump's shade
+  baked in, a tangent-space normal map; each tier at the size it is seen at (448 / 128 / 64 px). Normals lean up (the
+  ground's light) and toward their own face (straight up, a card seen from the side caught the styles' rim light).
+- Seasons are variants of the one `foliage` slot (winter = the plant regrown lying, snow = winter under snow); no bark /
+  heads slots: stalks and heads are in the pictures. Files in their own folder (default export_groundcover/):
+  <name>_LOD0..2.glb, <name>.glb, <name>_seasons.json. First export ~5-10 min of Blender (cached by the spec).
+- ENGINE, alpha through mipmaps: plain mipmaps average a thin blade with the air beside it and an alpha test drops it
+  (pixar grass LOD 0 lost 93% of its area by 12 m in Godot). Import the textures WITHOUT mipmaps (coverage holds,
+  some shimmer), or WITH them and alpha scaled up by the mip level in the shader (recipe in the material's
+  extras.alpha_mips; 0.76-0.98 of the full plant's area from 2 to 12 m). Turn the importer's own mesh LOD generation off.
+- Judge it in the engine against the full LOD 0 (spikes/godot_veg/meadow.gd "solo" + ground_measure.py: area, IoU,
+  colour per distance) and as a meadow (meadow.gd: the game's placement, thinning and budgets).
 
 ## Styles: the same plant dressed another way
 
