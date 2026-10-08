@@ -36,6 +36,11 @@ def _smooth(e0, e1, x):
 
 SINK_EDGE = 0.2   # the cliff front sinks only where S < this (1 - smoothstep(0, SINK_EDGE, S)), all of `sink` at S = 0
 PUSH_POW = 3.0    # the heightmap is pushed back by push x S^PUSH_POW
+# where the front sinks toward the region's edge it dives under the heightmap; the strip that shows before they cross
+# (a few cm) was baked as what it is, a steep dive: rock-coloured (its 0.4 m normal picked the rock layer) and shaded
+# as a crease, a thin dark dashed line on the grass along every overlay edge (pushieworld note 104). Its maps take the
+# true ground's normal instead: fully where S < SINK_EDGE, easing out by SINK_EDGE + UNSUNK_BAND (CliffField.lift)
+UNSUNK_BAND = 0.05
 # (2026-10-01: sunk by sink x (1 - S) and pushed by push x S, the two crossed where both were metres down (pebble: S 0.73,
 # 2.5 m under the true ground) and the visible surface sagged into a trench along every overlay edge, a V crease the
 # arch view at 150 m measured as an overlay edge excess of 2.0. Now they cross near S 0.18, ~0.25 m down.)
@@ -367,7 +372,47 @@ class CliffField:
                 tet = np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]], float)
                 f = cf.front((p[:, None, :] + h * tet[None]).reshape(-1, 3)).reshape(-1, 4)
                 return f.mean(1), (f @ tet) / (4 * h)
+
+            def unsunk(self, p, h):
+                """(w, g): how far the front at p is the sunk construction (0 where it is the true ground, 1 where
+                it sinks: UNSUNK_BAND) and the true ground's field gradient there (the rock unsunk)."""
+                return cf.unsunk(p, h)
+
+            def lift(self, p):
+                return cf.lift(p)
+
+            def relief_at(self, x, y):
+                """The rock character's weight at columns (terrain_mesh.Field.relief_at)."""
+                return cf.base.relief_at(x, y)
         return _Front()
+
+    def lift(self, p):
+        """(w, q): how far the front at points p is the sunk construction (0 where it is the true ground, 1 where
+        it sinks: see UNSUNK_BAND), and the points moved up onto the true ground over them (what their maps should show)."""
+        p = np.asarray(p, float)
+        S = self.region.s(p[:, 0], p[:, 1])
+        # (by S, not by how far it is sunk: the dive starts at SINK_EDGE so steeply that a normal stencil a few cm
+        # across already saw it; past the edge the front IS the true ground, so the two normals agree where w eases)
+        w = 1.0 - _smooth(SINK_EDGE, SINK_EDGE + UNSUNK_BAND, S)
+        q = p.copy()
+        k = np.flatnonzero(w > 0)
+        if len(k):
+            q[k, 2] = self.base.column(p[k, 0], p[k, 1])[0]
+            if self.region.voids:  # (round a void the front is the whole rock, not sunk: nothing to lift)
+                dv = self._void(p[k])
+                near = np.isfinite(dv) & (dv < self.region.wall + 2.0)
+                w[k[near]] = 0.0
+                q[k[near]] = p[k[near]]
+        return w, q
+
+    def unsunk(self, p, h):
+        """See front_field: (w, the true ground's gradient over each point)."""
+        w, q = self.lift(p)
+        g = np.zeros_like(np.asarray(p, float))
+        k = np.flatnonzero(w > 0)
+        if len(k):
+            g[k] = self.base.value_gradient(q[k], h)[1]
+        return w, g
 
     def value_gradient(self, p, h):
         tet = np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]], float)
@@ -777,3 +822,20 @@ def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15, mem
         out_.append({"triangles": int(tri[c]), "clearance_m": float(low[c]), "at": at.round(1).tolist()})
     out_.sort(key=lambda f: -f["triangles"])
     return {"components": int(ncomp), "floating": out_}
+
+
+def lifted(cf: CliffField, P, N):
+    """Vertices of a cliff shell's front moved up onto the true ground where the front is the sunk construction
+    (CliffField.lift), their normals eased to the ground's: where its AO is measured (see UNSUNK_BAND)."""
+    P = np.asarray(P, float)
+    w, q = cf.lift(P)
+    k = np.flatnonzero(w > 0)
+    if not len(k):
+        return P, N
+    P, N = P.copy(), np.asarray(N, float).copy()
+    g = cf.base.value_gradient(q[k], 0.25)[1]
+    g /= np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
+    P[k] += w[k, None] * (q[k] - P[k])
+    n = N[k] * (1 - w[k, None]) + g * w[k, None]
+    N[k] = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    return P, N

@@ -123,6 +123,11 @@ def smoothstep(e0, e1, x):
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+# the rock relief is evaluated only where its weight is over RELIEF_CUT (a cost cull), and eased in from there to
+# RELIEF_FADE, so the field stays continuous where the cull starts (Field._solid)
+RELIEF_CUT = 0.01
+RELIEF_FADE = 0.1
+JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
 FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
 FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
@@ -784,7 +789,9 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None, thin=None):
             # (sqrt: a fin's faces are only partly "thin" by the grid's measure, and the beds should run on across it;
             # not on the volumes' walls)
             wv = 1.0 if uvol is None else (1.0 - np.asarray(uvol, float)[kt]) ** 2
-            out[kt] += np.sqrt(np.asarray(thin, float)[kt]) * wv * strata(p[kt], zoff, r["seed"])
+            # (eased to 0 at the cut: sqrt(1e-3) is 0.03, a step of 3% of the strata's offset where thin rock begins)
+            tk = np.asarray(thin, float)[kt]
+            out[kt] += np.sqrt(tk) * smoothstep(1e-3, 0.02, tk) * wv * strata(p[kt], zoff, r["seed"])
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
         with _span("field.joints", leaf=True):
@@ -1428,8 +1435,13 @@ class Field:
                     rw = rw.copy()
                     rw[j] += nv[j] * (self.steep_at(p[j, 0], p[j, 1]) - rw[j])
             w = np.maximum(rw * guard, near)
-            k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
+            k = np.flatnonzero((w > RELIEF_CUT) & (np.abs(F) < self.rock["reach"]))
             if len(k):
+                # (the weight eased to 0 AT the cut: taken as it was, the relief stepped in at w = 0.01 as 1% of its
+                # full size, a 2-3 cm step in the field along the weight's 0.01 contour, metres out on the grass round
+                # every rock face; the maps' normals drew it as thin dark dashed cracks: pushieworld note 104)
+                w = w.copy()
+                w[k] = w[k] * smoothstep(RELIEF_CUT, RELIEF_FADE, w[k])
                 g = self.grain_at(p[k, 0], p[k, 1]) if self.grain is not None else None
                 fd = self.face_dir(p[k, 0], p[k, 1])
                 a_ = rw[k] * guard[k]
@@ -3286,7 +3298,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             # (the normal over ~0.4 m that picks layer weights and colour: from the rock WITHOUT the per-LOD fine relief,
             # so every LOD picks the same layers at a border; with it, the LOD's own band-limited rock structure moved
             # weights p95 0.26 between LOD 0 and LOD 2)
-            gf = terrain_cliffs.CliffField(base, region).front_field() if region is not None else base
+            # (and from the rock UNSUNK: the cliff front's sink toward the region's edge, metres within a metre, tipped
+            # the 0.4 m normal of texels on the true ground beside it to the horizontal, and their weights to rock:
+            # a dark line on the grass along every overlay edge, pushieworld note 104)
+            gf = base
             _CTX.update(bakefield=bfs, weightfield=gf,
                         layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
         # every tile's LODs (decimation, atlases), and as each tile is done its atlases' texels baked in pieces across
@@ -4241,7 +4256,13 @@ def _textured_prep(P, N, W, F, k, origin, stem):
         o = _morton(np.einsum("nk,nkc->nc", bary, sp["P"][sp["F"][tx["t"]]]), 2.0)
         for key in ("ys", "xs", "t", "inside"):
             tx[key] = tx[key][o]
-    ao_v = terrain_bake.bake_ao(c["base"], sp["P"], sp["N"])
+    Pa, Na = sp["P"], sp["N"]
+    if getattr(c.get("field"), "region", None) is not None and str(stem).startswith("tile"):
+        from . import terrain_cliffs
+        # (a cliff shell's sunk edge takes the AO of the true ground over it: its vertices metres down read 0, and
+        # interpolated up its dive, the strip that shows over the heightmap was black: pushieworld note 104)
+        Pa, Na = terrain_cliffs.lifted(c["field"], Pa, Na)
+    ao_v = terrain_bake.bake_ao(c["base"], Pa, Na)
     info = {}
     if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)
         fn_ = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
@@ -4326,7 +4347,8 @@ def _job_bake(args):
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines,
                                     texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
-                                    border=_bake_border(c, stem, k))
+                                    border=_bake_border(c, stem, k),
+                                    map_texel=1.0 / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
 
 
@@ -4678,6 +4700,23 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                                                         for p, a, b in r.get("worst", {}).get(c, [])[:3])
                                             for c in r["bad"])
                                 + " (a visible seam in shading / ground layers along those borders at that LOD)")
+    # (7) steps in the baked surface on soft ground (terrain_bake.bake_texels' jumps): a sub-texel step in the field's
+    # value, which the normal map draws as a thin dark line across the grass (pushieworld note 104: no other check saw it)
+    jl = []
+    for (i, j), e in tiles.items():
+        for k, L in enumerate(e["lods"]):
+            n = int(((L or {}).get("maps") or {}).get("jumps", 0) or 0)
+            if n:
+                jl.append((n, i, j, k, (L["maps"].get("jump_at") or [None])[0]))
+    summary["soft_ground_jumps"] = {"total": sum(a[0] for a in jl), "tile_lods": len(jl),
+                                    "worst": [[a[1], a[2], a[3], a[0], a[4]] for a in sorted(jl, key=lambda a: -a[0])[:5]]}
+    over = [a for a in jl if a[0] > JUMP_LIMIT]
+    if over:
+        over.sort(key=lambda a: -a[0])
+        failures.append(f"steps in the baked surface on soft ground in {len(over)} tile LODs (over {JUMP_LIMIT} sampled "
+                        "texels each): " + ", ".join(f"{i},{j} LOD {k} {n} at {at[:3] if at else '?'}"
+                                                     for n, i, j, k, at in over[:4])
+                        + " (thin dark lines in the normal map: a step in the field's value, e.g. a weight cut off)")
     summary["failures"] = len(failures)
     (out / "seam_check.json").write_text(json.dumps({"summary": summary, "failures": failures}, indent=1))
     return {"summary": summary, "failures": failures}

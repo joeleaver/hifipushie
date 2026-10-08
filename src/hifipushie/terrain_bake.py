@@ -474,7 +474,7 @@ def _bary(uv, F, size, t, xs, ys):
 
 
 def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0,
-                gfield=None, lines=None, texel=None, border=None):
+                gfield=None, lines=None, texel=None, border=None, map_texel=None):
     """The per-texel part of a bake (pointwise, so an atlas can be baked in pieces): each texel's point on the low poly,
     moved onto the surface (`surface`), and its values quantised as the maps store them. `first`: the index of the
     first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas). `texel` (m): the
@@ -492,6 +492,14 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
     profiling.count("bake texels", len(Pl))
     with _span("bake/surface (Newton + normal)"):
         X, G, bad = _chunked(surface, Pl, Nl)
+    if field is not None and hasattr(field, "unsunk"):  # (a cliff shell's sunk edge: the true ground's normal)
+        with _span("bake/unsunk"):
+            # (bad texels too: a texel that fell back to the low poly on the dive kept the dive's normal, and its
+            # weights picked rock: the dark line stayed)
+            G = _unsunk(field, X, G, max(0.01, 0.25 * (map_texel or 0.125)))
+            w_sunk = _chunked(lambda q: field.lift(q)[0], X)
+    else:
+        w_sunk = None
     height = ((X - Pl) * Nl).sum(1)
     tn = np.stack([(G * Tl).sum(1), (G * Bl).sum(1), (G * Nl).sum(1)], -1)
     tn[:, 2] = np.maximum(tn[:, 2], 0.02)
@@ -501,20 +509,31 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
         db = np.minimum(np.min(Pl[:, :2] - np.asarray(blo, float)[:2], 1), np.min(np.asarray(bhi, float)[:2] - Pl[:, :2], 1))
         wb = np.clip(db / max(fade, 1e-6), 0.0, 1.0)
         wb = wb * wb * (3 - 2 * wb)
+        if w_sunk is not None:  # (not on a shell's sunk edge: its normal is the true ground's, the same in both tiles)
+            wb = wb + (1 - wb) * w_sunk
         tn = _unit(tn * wb[:, None] + np.array([0.0, 0.0, 1.0]) * (1 - wb)[:, None])
     # layer weights and colour from the normal over ~half a metre (the fine relief's own normal flipped rock/grass
     # texel by texel, and two tiles sampling a border a texel apart disagreed). Every value is taken per texel from
     # its own world point, or interpolated from its own triangle's vertices: never filtered across the atlas image,
     # where neighbouring texels belong to unrelated charts (a sparse grid + blur there bled one chart into the next
     # and drew lines along every tile border)
+    # (on a cliff shell's sunk edge, the point moved up onto the true ground over it first: what shows of the sunk
+    # construction is coloured as that ground, and the weights' normal is the rock's unsunk (`gfield`): see
+    # terrain_cliffs.UNSUNK_BAND)
+    Xc = X
+    if field is not None and hasattr(field, "lift"):
+        w_, q_ = _chunked(field.lift, X)
+        Xc = X + w_[:, None] * (q_ - X)
     Gs = G
     if field is not None:
         with _span("bake/normal 0.4 m"):
             gf = field if gfield is None else gfield  # (gfield: the same for every LOD; see terrain_mesh)
-            Gs = _unit(_chunked(lambda q: gf.value_gradient(q, 0.4)[1], X))
+            Gs = _unit(_chunked(lambda q: gf.value_gradient(q, 0.4)[1], Xc))
         Gs = np.where(bad[:, None], G, Gs)
+        if hasattr(gf, "unsunk"):
+            Gs = _unsunk(gf, X, Gs, 0.4)
     with _span("bake/weights + colour"):
-        Wt, col = _chunked(mats.weights, X, Gs)
+        Wt, col = _chunked(mats.weights, Xc, Gs)
     if texel and getattr(mats, "ground", None) is not None and hasattr(mats, "relief"):
         # the ground's own fine relief (grass, scrub, the mower's lean) tilts the normal; the geometry has none of it
         with _span("bake/ground relief"):
@@ -541,12 +560,56 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
         with _span("bake/lines"):
             out["lines"] = _lines_vals(lines, Pl, Nl)
     err = np.zeros(0)
+    jump, jump_at = np.zeros(0, np.float32), np.zeros((0, 3))
     if field is not None:  # texel error: how far the baked points sit off the exact surface (every 7th atlas texel)
         k = np.flatnonzero(inside & ~bad & ((np.arange(len(X)) + first) % 7 == 0))
         with _span("bake/texel error"):
             err = np.abs(field.value(X[k])) if len(k) else err
+        # jumps: the field's normal at two stencils (3 and 6 cm, as the normal map's own) on soft ground. A smooth surface (or
+        # a designed step a few texels wide: the turf's riser) reads the same at both; a step in the field's VALUE reads
+        # 1 / h steep, so the two disagree right at it. That is what drew pushieworld's dashed cracks on the grass (the
+        # rock relief stepping in at its weight's cull, 2-3 cm): the maps' normal shades a sub-texel step as a dark line.
+        ks = k[stony[k] < JUMP_SOFT] if map_texel else k[:0]
+        if len(ks) and hasattr(field, "relief_at"):  # (and where the rock character is all but absent: its own creases
+            # and block edges are designed and band-limited, and on a rock face they read as steps at 3 cm)
+            ks = ks[field.relief_at(X[ks, 0], X[ks, 1]) < JUMP_RELIEF]
+        if len(ks):
+            with _span("bake/jumps"):
+                h1 = JUMP_H
+                nrm = lambda h: _unsunk(field, X[ks], _unit(field.value_gradient(X[ks], h)[1]), h) \
+                    if hasattr(field, "unsunk") else _unit(field.value_gradient(X[ks], h)[1])
+                g1, g2 = nrm(h1), nrm(2 * h1)
+                jump = np.degrees(np.arccos(np.clip((g1 * g2).sum(1), -1, 1))).astype(np.float32)
+                jump_at = X[ks][jump > JUMP_DEG]
+                jump = jump[jump > JUMP_DEG]
     out["err"] = err
+    out["jump"] = jump
+    out["jump_at"] = jump_at
     return out
+
+
+# a step in the bake field's value on soft ground (rock layers under JUMP_SOFT, rock relief weight under JUMP_RELIEF):
+# the normal at JUMP_H and twice that differs by more than JUMP_DEG right at it. Counted per tile LOD (every 7th
+# texel, as the texel error)
+JUMP_SOFT = 0.2
+JUMP_RELIEF = 0.1  # (terrain_mesh.RELIEF_FADE: past it the rock character is in full)
+JUMP_H = 0.03  # m: the surface normal's own stencil scale (terrain_mesh: the voxel / 16)
+JUMP_DEG = 6.0
+
+
+def _unsunk(field, X, G, h):
+    """Normals G at points X on a cliff shell's front, eased to the true ground's where the front is the sunk
+    construction at the region's edge (terrain_cliffs.CliffField.unsunk): what shows of it, a few cm before it dives
+    under the heightmap, must read as the ground there, not as a steep dark crease."""
+    def f(x, g):
+        w, gt = field.unsunk(x, h)
+        k = np.flatnonzero(w > 0)
+        if not len(k):
+            return g
+        g = g.copy()
+        g[k] = _unit(g[k] * (1 - w[k, None]) + _unit(gt[k]) * w[k, None])
+        return g
+    return _chunked(f, X, G)
 
 
 def _lines_vals(lines, Pl, Nl):
@@ -610,6 +673,12 @@ def assemble(tx, vals, ao_v, uv, F, field=True):
     if field and inside.any():
         r = vals["err"] if len(vals["err"]) else np.zeros(1)
         extra["texel_error_mm_p50_p99"] = [round(1000 * float(np.percentile(r, q)), 2) for q in (50, 99)]
+    if "jump" in vals:  # (steps in the field on soft ground: see bake_texels)
+        extra["jumps"] = int(len(vals["jump"]))
+        if len(vals["jump"]):
+            o = np.argsort(-vals["jump"])[:4]
+            extra["jump_at"] = [[round(float(c), 1) for c in vals["jump_at"][i]] + [round(float(vals["jump"][i]), 1)]
+                                for i in o]
     return maps, {**extra, "height_range_m": round(hr, 4), "texels": int(inside.sum()),
                   "fallback_pct": round(100 * float(bad[inside].mean()), 3) if inside.any() else 0.0,
                   "fill_pct": tx["fill_pct"],
