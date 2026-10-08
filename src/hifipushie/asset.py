@@ -43,8 +43,9 @@ def _blender(job: dict, timeout: float = 600):
     with tempfile.TemporaryDirectory(prefix="hifipushie-asset-") as tmp:
         p = Path(tmp) / "job.json"
         p.write_text(json.dumps(job))
-        r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
-                            "--python", str(SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
+        from . import resources  # killed with the job if its tool call is cancelled
+        r = resources.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
+                           "--python", str(SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
 
@@ -1086,8 +1087,9 @@ def scene_maps(name: str, parts: dict, sizes: dict, ctx: dict, resolution: int, 
 
 def write_fbx(glb: Path, fbx: Path) -> None:
     """The GLB as FBX for Unity and Unreal (skeleton, skin, textures embedded): `blender_fbx.py`."""
-    r = subprocess.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
-                        "--python", str(Path(__file__).with_name("blender_fbx.py")), "--", str(glb), str(fbx)],
+    from . import resources
+    r = resources.run([render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1",
+                       "--python", str(Path(__file__).with_name("blender_fbx.py")), "--", str(glb), str(fbx)],
                        capture_output=True, text=True, timeout=900)
     if r.returncode or not fbx.exists():
         raise RuntimeError(f"fbx export failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
@@ -1431,7 +1433,7 @@ def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
 def export(name: str, out_dir: Path, *args, **kw) -> dict:
     """See `_export`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
     from . import resources
-    with resources.heavy(f"export {name}"):
+    with resources.heavy(f"export {name}", kind="export_asset", model=name):
         return _export(name, out_dir, *args, **kw)
 
 

@@ -82,6 +82,21 @@ def test_measure_and_buttons():
     assert 0.005 < rad < 0.0075  # an 11 mm button
 
 
+def test_a_zip_is_measured_along_its_seam():
+    # a closed zip has no button marks: its fastenings are its seam's sewn pairs ("0 of 0 closed" before)
+    zip_ = {"name": "fly", "kind": "zip", "over": "front.L", "under": "front.R", "seam": ["front.L:a>b", "front.R:a>b"],
+            "pairs": [], "closed": [], "state": "closed"}
+    seams = [["x:a>b", "y:a>b"], ["front.L:a>b", "front.R:a>b"]]
+    sew, sew_seam = np.array([[0, 1], [2, 3], [4, 5]]), np.array([0, 1, 1])
+    M = {"closures": closures.resolve([zip_], {}, {}, seams, sew, sew_seam)}
+    V = np.zeros((6, 3))
+    V[3, 0] = 0.002
+    r = closures.measure(V, M)[0]
+    assert r["fastenings"] == 2 and r["closed"] == 2 and r["ok"] and r["gap_max_mm"] == 2.0
+    V[5, 0] = 0.009
+    assert not closures.measure(V, M)[0]["ok"]  # gaping
+
+
 def _grid(x0, x1, n=21, m=61):
     xs, ys = np.meshgrid(np.linspace(x0, x1, n), np.linspace(0, -0.6, m))
     uv = np.c_[xs.ravel(), ys.ravel()]
