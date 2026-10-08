@@ -246,6 +246,13 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             continue  # (a wear rule for a closure this pattern hasn't got)
         base = next((o for o in closures_in if o.get("name") == c.get("name")), {})
         closures_in = [o for o in closures_in if o.get("name") != c.get("name")] + [dict(base, **c)]
+    # how the kind finishes a lapped closure (garment_kb kinds.<k>.closure: a shirt's box placket over a French
+    # front, a jacket's faced fronts with horizontal holes), under the closure's own keys; self-closures (cuffs,
+    # stands, waistbands) keep the defaults
+    kd_ = _kb()["kinds"].get(garment_kind(g) or "", {}).get("closure") or {}
+    if kd_:
+        closures_in = [dict({k_: v_ for k_, v_ in kd_.items() if not k_.startswith("_")}, **c)
+                       if c.get("over") and c.get("under", c["over"]) != c["over"] else c for c in closures_in]
     closuremod.validate(closures_in)
     st_c, folds_c, seams_c, closures_out = closuremod.expand(closures_in, out)
     stitches += [s_ for s_ in st_c if s_ not in stitches]
@@ -3815,7 +3822,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
     return X
 
 
-COLLAR_SPREAD = (40.0, 20.0, 70.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
+COLLAR_SPREAD = (25.0, 12.0, 75.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
 # collarbones, from this far round from the nape (0) toward the front (180)
 
 
