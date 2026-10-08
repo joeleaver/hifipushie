@@ -2808,6 +2808,16 @@ def heavy_status() -> str:
     return resources.status_text()
 
 
+@mcp.tool(structured_output=False)
+def heavy_queue() -> str:
+    """The machine's heavy-job queue (exports, cloth sims, terrain tiles), with nothing about the host in it: each
+    running job's kind, label, GB declared and minutes running; each waiting job's position, GB, why it waits
+    (memory, the GPU, behind older jobs), GB of jobs ahead of it and minutes waited. Your own session's jobs are
+    marked "<- yours", with a last line like "yours: 3rd in queue, 18 GB ahead". Fast; changes nothing."""
+    from . import resources
+    return resources.queue_text()
+
+
 def main():
     mcp.run()
 

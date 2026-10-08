@@ -179,6 +179,30 @@ def test_fold_ending_on_a_seam_keeps_the_seam_paired():
             assert np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1).min() > 0.1 * h, (h, kind)
 
 
+def test_roll_at_the_neck_point_leaves_no_sliver():
+    # su_garrett's shirt front (tests/data/simon_front_neck.json: front.L, what it is sewn to, its front band and its
+    # open-neck roll, which ends at the neck point where the shoulder and neck seams meet): a row's inner sample lay
+    # 0.44 mm inside the outline, a sliver edge the fine settle's start stretched 11x (ZOZO: ccd failed). A fold row's
+    # inner sample within ROW_KEEP h of the outline is left out; one near another fold's row is that row's vertex.
+    import json
+    from pathlib import Path
+    g = json.loads((Path(__file__).parent / "data" / "simon_front_neck.json").read_text())
+    for h in (0.01, 0.02):
+        M = cloth.mesh(cloth.pieces(g, {}), h)
+        uv = M["uv"]
+        E = np.r_[M["F"][:, [0, 1]], M["F"][:, [1, 2]], M["F"][:, [2, 0]]]
+        assert np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1).min() > 0.15 * h, h
+        # (the open-neck roll crosses the front band: a few of its edges cross the band's row and can't both be forced)
+        assert {fd["name"]: fd["missing_edges"] for fd in M["folds"]}["front band front.L"] == 0, h
+    # a mark a fold's row runs past (a buttonhole) is that row's vertex, not a sliver beside it
+    f = {"piece": "a", "line": [[0.15, 0.06], [-0.05, -0.06]], "angle": 125, "name": "f", "flap": "nw", "kind": "press"}
+    m = (0.6 * np.array([0.15, 0.06]) + 0.4 * np.array([-0.05, -0.06])) + [0.0003, -0.0003]
+    g = {"pieces": {"a": {"rect": [0.3, 0.12], "wrap": {"to": "flat", "at": [0, 0, 1.0]}, "marks": {"hole": m.tolist()}}},
+         "seams": [], "folds": [f]}
+    M = cloth.mesh(cloth.pieces(g, {}), 0.01)
+    assert M["marks"]["a:hole"] in {int(v) for r in M["folds"][0]["rows"] for v in r}
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

@@ -525,6 +525,38 @@ def _reduce(name, poly, V, F, target, symmetry):
     return ob, False
 
 
+def _flip_to_fit(obs, pn, src):
+    """Turn the edges of obs[pn] (all triangles) that lie across the surface `src` (vertices, loops, loop sizes: the
+    dense polygons it was collapsed from) bends smoothly under: flipfit.flip_to_fit. Returns the number turned."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import flipfit
+    ob = obs[pn]
+    if any(p.loop_total != 3 for p in ob.data.polygons) or not len(ob.data.polygons):
+        return 0
+    V, F = _tri_arrays(ob)
+    v, lp, sz = src
+    st = np.r_[0, np.cumsum(sz)[:-1]]
+    lp = np.asarray(lp).tolist()
+    tree = BVHTree.FromPolygons(np.asarray(v, np.float64).tolist(), [lp[a:a + k] for a, k in zip(st.tolist(), np.asarray(sz).tolist())])
+
+    def nearest(X):
+        n, d = np.zeros((len(X), 3)), np.full(len(X), 1e9)
+        for i, x in enumerate(X.tolist()):
+            hit = tree.find_nearest(Vector(x))
+            if hit[1] is not None:
+                n[i], d[i] = hit[1], hit[3]
+        return n, d
+    F2, k = flipfit.flip_to_fit(V, F, nearest)
+    if k:
+        old = ob.data
+        new = _mesh(pn, V, F2)
+        obs[pn] = new
+        bpy.data.objects.remove(ob)
+        bpy.data.meshes.remove(old)
+        new.name = pn
+    return k
+
+
 def budgets(counts, faces, weights, total, floor, copies=None):
     """Triangles per part: the joint decimation's counts (what each part needs for one geometric error everywhere)
     scaled by each part's weight and renormalised so the triangles drawn (a part's count x its copies: a shared
@@ -695,6 +727,15 @@ def lowpoly(job):
         info[pn]["symmetric"] = s
     if pre_file:
         os.remove(pre_file)
+    # 4. edges the collapse left lying across a bend are turned (flipfit.py): judged against the dense mesh each part
+    #    was collapsed from (its pre-collapsed polygons; still magnified here when there is a focus warp)
+    if ratio < 1.0 and job.get("flip", True):
+        tf = time.time()
+        for pn in names:
+            n_flip = _flip_to_fit(obs, pn, source[pn])
+            if n_flip:
+                info[pn]["flipped_edges"] = n_flip
+        print(f"@@t edge flips {sum(i.get('flipped_edges', 0) for i in info.values())} {time.time() - tf:.1f}s", flush=True)
     obs = [obs[pn] for pn in names]
     for pn, z in fixed.items():  # as given, its quads split in two (everything downstream reads triangles: kept as
         # quads, corners were read three at a time and the body came out as shards)

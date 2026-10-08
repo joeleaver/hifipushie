@@ -33,9 +33,9 @@ def env(tmp_path, monkeypatch):
         dir = tmp_path
         events = tmp_path / "events"
 
-        def start(self, name, gb, gpu=False, fork=False):
+        def start(self, name, gb, gpu=False, fork=False, env=None):
             args = [sys.executable, str(JOB), name, str(gb), "1" if gpu else "0", str(self.events)]
-            p = subprocess.Popen(args + (["fork"] if fork else []), env=dict(os.environ))
+            p = subprocess.Popen(args + (["fork"] if fork else []), env=dict(os.environ, **(env or {})))
             procs.append(p)
             return p
 
@@ -257,6 +257,97 @@ def test_old_code_slot_is_respected_both_ways(env):
         with pytest.raises(BlockingIOError):
             fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     env.release("New")
+
+
+def test_old_code_holder_holds_the_gpu(env, monkeypatch):
+    """An old-code job holding heavy0.lock may be a ZOZO sim: a GPU job waits for it even when memory fits; a CPU job
+    beside it still runs (2026-10-07: two ZOZO sims on the GPU at once, one crashed)."""
+    monkeypatch.setenv("HIFIPUSHIE_HEAVY_GB", "40")  # the old job's 12 GB + both new jobs fit in memory
+    lock = env.dir / "state" / "heavy0.lock"
+    resources.heavy_dir()
+    old = subprocess.Popen([sys.executable, "-c", (
+        "import fcntl,sys,time; f=open(sys.argv[1],'a+'); fcntl.flock(f,fcntl.LOCK_EX); f.seek(0); f.truncate();"
+        "f.write('424242 zozo cloth su_41\\n'); f.flush(); time.sleep(60)"), str(lock)])
+    try:
+        env.wait(lambda: resources.status()["legacy"] is not None, "the old job to show")
+        env.start("Gpu", 2, gpu=True)
+        env.wait(lambda: "Gpu" in env.waiting(), "the GPU job to wait")
+        env.start("Cpu", 2)
+        env.wait(lambda: "Cpu" in env.started(), "a CPU job beside the old one")
+        assert resources.status()["waiting"][0]["why"] == "gpu"
+        assert "GPU: zozo cloth su_41" in resources.status_text()
+        env.wait(lambda: (env.dir / "log_Gpu").exists() and "waiting for the GPU" in (env.dir / "log_Gpu").read_text()
+                 and "zozo cloth su_41" in (env.dir / "log_Gpu").read_text(), "the wait to name the old job")
+        assert "Gpu" not in env.started()
+    finally:
+        old.kill(), old.wait()
+    env.wait(lambda: "Gpu" in env.started(), "the GPU job once the old one is gone")
+    env.release("Gpu"), env.release("Cpu")
+
+
+def test_unknown_kind_holds_the_gpu(env):
+    ev = threading.Event()
+
+    def hold():
+        with resources.heavy("mystery job", gb=1, log=lambda m: None):  # no kind: could be anything
+            ev.wait(20)
+
+    th = threading.Thread(target=hold)
+    th.start()
+    try:
+        env.wait(lambda: "mystery job" in env.running(), "the unknown job to run")
+        env.start("Gpu", 1, gpu=True)
+        env.wait(lambda: "Gpu" in env.waiting(), "the GPU job to wait")
+        time.sleep(0.5)
+        assert "Gpu" not in env.started() and resources.status()["waiting"][0]["why"] == "gpu"
+    finally:
+        ev.set()
+        th.join(10)
+    env.wait(lambda: "Gpu" in env.started(), "the GPU job after it")
+    env.release("Gpu")
+
+
+def test_queue_view_is_path_free_and_finds_your_job(env, monkeypatch):
+    """What the oxidegen artist's heavy_queue shows: no paths, dirs, pids or cwd; positions, GB ahead, and the
+    caller's own job (same session workspace) marked, as "3rd in queue, 14 GB ahead"."""
+    ws = env.dir / "sessions" / "sess-42"
+    other = {"HIFIPUSHIE_HOME": str(env.dir / "sessions" / "other")}
+    env.start("export_golfer", 6, env=other)
+    env.wait(lambda: "export_golfer" in env.started(), "the holder")
+    env.start("zozo_cloth_su41", 8, env=other)
+    env.wait(lambda: "zozo_cloth_su41" in env.waiting(), "1st")
+    env.start("terrain_tiles_slice_a", 6, env=other)
+    env.wait(lambda: "terrain_tiles_slice_a" in env.waiting(), "2nd")
+    env.start("export_mailbox", 3, env={"HIFIPUSHIE_HOME": str(ws)})
+    env.wait(lambda: "export_mailbox" in env.waiting(), "3rd: ours")
+    monkeypatch.setenv("HIFIPUSHIE_HOME", str(ws))  # the artist worker of that session asks
+    q = resources.queue_view()
+    assert [w["label"] for w in q["waiting"]] == ["zozo_cloth_su41", "terrain_tiles_slice_a", "export_mailbox"]
+    mine = q["waiting"][2]
+    assert mine["yours"] and mine["position"] == 3 and mine["gb_ahead"] == 14 and mine["why"] in ("memory", "behind")
+    assert not q["waiting"][0]["yours"] and q["running"][0]["label"] == "export_golfer"
+    assert q["running"][0]["gb"] == 6 and q["running"][0]["minutes"] >= 0
+    text = resources.queue_text()
+    assert "yours: 3rd in queue, 14 GB ahead" in text and "<- yours" in text
+    pids = [str(p) for p in env_pids(env)]
+    blob = text + repr(q)
+    for bad in [str(env.dir), "/", "cwd", "pid", "sess-42", os.getcwd()] + pids:
+        assert bad not in blob, bad
+    # the waiting job's own progress line: path- and pid-free, with its position
+    logm = (env.dir / "log_export_mailbox").read_text()
+    assert "3rd in queue, 14 GB ahead of you" in logm and "pid" not in logm and str(env.dir) not in logm
+    for n in ("export_golfer", "zozo_cloth_su41", "terrain_tiles_slice_a", "export_mailbox"):
+        env.release(n)
+
+
+def env_pids(env):
+    return [j["pid"] for j in resources.status()["running"] + resources.status()["waiting"]]
+
+
+def test_labels_drop_paths():
+    assert resources._label("terrain tiles /mnt/data/x/out/ts_slice_a") == "terrain tiles ts_slice_a"
+    assert [resources._ordinal(n) for n in (1, 2, 3, 4, 11, 12, 13, 21, 22)] == \
+        ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd"]
 
 
 def test_workers_sized_from_the_grant(env, monkeypatch):

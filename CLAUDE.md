@@ -594,6 +594,49 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       in clay it is modest (skin at the neckline); (3) this export's low poly has "TORN OR TANGLED at eye_front.L
       (12)": the left upper lid is a few big triangles with a hard vertical edge, a dark crease up the lid in every
       blink (v23's lid is smoother); the right eye has a small dark notch at the outer corner in a full blink.
+  - Regen round 2 (2026-10-07, "regen2" then "regen3" agents, branch `regen3`; goal: a plain export of Garrett that
+    is a drop-in for the game's hand-patched v23; export /mnt/data/hifipushie/regen/exp_garrett2; renders
+    `rig_renders/rg3_*`; scratch DURABLE in /mnt/data/hifipushie/regen2/ and regen3/: run.sh <script> (worktree
+    code, main workspace), rsq.py model glb tag (re-skin an export's meshes as the export does, Head / Neck audit,
+    layers head33 / nod / game, neck fold numbers; COV_SMOOTH=0 NEAR_FIELD=0 = the old rules), fl.py (which
+    triangles flip when a joint turns, with their Head weights), lk.py / mv.py / hf.py (Head weight, face-shape
+    move and head field along the throat), au.py (audit + layers of any GLB), proof.py (same-camera rows, poses
+    game / seated / head33 / nod / arm60), blinksheet.py out.png 'label|glb' ..., contract.py ref new (joint names
+    in order, targets, rigid parts), rename.py (rg_garrett_* -> garrett_* names, for s0urc3's fix_blink.py
+    --report, which looks for garrett_body), exp.py (the recipe's export), cmp.sh (old vs new on Garrett and
+    wb_dg_talk)).
+    - regen2: `flipfit.py` (after decimation an edge whose two triangles meet sharply and misfit the dense mesh is
+      turned when both then fit: the dark crease up the left upper lid in blinks was a 14 mm edge across the lid
+      fold); the lid seal's 0.3 mm overlap fades toward the eye corners (`LID_FADE`); the quality line leaves the
+      mouth bag's folds out of the TORN alarm (`Face.inside_mouth`) and names clusters by the nearest landmark;
+      `rig.skin_cover`: skin a worn part covers (a ray out along the normal meets it within 3 cm) takes no head rule
+      (Garrett's neck skin under the collar was Head 0.70: through the jacket's collar in the idle and at head 33).
+    - regen3: that cover share was a per-vertex ray test, so at the collar's top edge (nape, throat sides) on the
+      20k low poly it stepped 0 -> 1 inside one triangle, plus single grazing-ray vertices: 38 triangles inside out
+      at a 33 deg head turn, each with a Head ~0 and a Head ~1 corner. Now smoothed `COVER_SMOOTH` 4 rounds over
+      the welded mesh: 38 -> 2 (v23 12). And the open collar's throat notch was Head 0.80 (v23 0.16, the field 0.38):
+      `rigid_near`'s 8 cm band reached down from the throat skin jawOpen moves 3 mm+ (to the Adam's apple), and it
+      blended Head over the head rule's own share (0.38 twice = 0.62). On base bodies (`field=` the head field)
+      past `NEAR_SHORT` 0.375 of the band the share is no more than the field's, and h is the share wanted: notch
+      0.37, a head turn drags it 11 mm instead of 25. Re-skinned previous meshes: head33 collar through body 13 ->
+      1 (v23 8), nod 13 -> 2 (v23 109), neck fold p99 head33 121 -> 22 deg, nod 100 -> 48; wb_dg_talk Head flipped
+      41 -> 16, head33 collar through body 79 -> 5. Kit characters unchanged (no field passed).
+    - regen2's skin_cover result was named `cover` in `_export`, which already held the atlas coverage: KeyError at
+      the json (the first export crashed at 552 s); now `skin_cov`.
+    - PROOF (plain export, no patches): /mnt/data/hifipushie/regen/exp_garrett2 (recipe 20000 / 2048 / 320, rig, fbx,
+      face shapes; Khronos 0 / 0 / 0; 79 joints same order as v23, 14 twist, 53 ARKit targets on body / eyes / teeth /
+      tongue, eyes / teeth / tongue Head 1.0). Body quality: no TORN alarm (19 folded edges, 21 turned faces inside
+      the mouth). Audit 5 BAD of 51 (v23 9): Head flipped 2 (v23 12), Head leak 20 mm on 21 shoulder vertices (v23
+      13 mm / 7). Layers: game idle 0 BAD (previous export: body through jacket_trim 52, BAD); head33 collar through
+      body 2 / 6.4 mm (v23 8 / 23.8); nod 2 + 1 (v23 109 + 122, BAD). fix_blink --report: 0.18 / 0.25, 0.16 / 0.26
+      (v23 0.15 / 0.20, 0.16 / 0.27). Sheets `rig_renders/rg3_game.png`, `rg3_head33.png`, `rg3_nod.png` (v23 |
+      previous | new, same cameras / part colours), `rg3_blink_closeup.png` (+ `rg3_blink_left_front_crop.png`): the
+      vertical crease up the left upper lid is gone; a faint lighter facet wedge on the outer upper lid remains. Second
+      character wb_dg_talk re-exported (36k, /mnt/data/hifipushie/regen3/exp_talk, Khronos 0 / 0): audit 14 -> 9 BAD
+      (Head no longer BAD), nod collar through body 113 -> 22, body through collar 59 -> 0; blink `rg3_talk_blink.png`:
+      the left eye's inner corner shows a white sliver of eyeball in a full blink, there before (smaller), a little
+      larger now (LID_FADE's corner fade is the suspect; not isolated). "69 / 58 moved vertices not Head 1.00" in the
+      export log is old (69 in the first regen export).
   - `rig` tool: `glb=` judges an exported GLB (its mesh, joints, weights), `pose={}` = rest, `focus` / `zoom` /
     `views`, `shapes`; warns when the look's voxel is too big for the fingers; prints the audit.
     `tests/test_rig_audit.py`.
@@ -2282,6 +2325,53 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
     settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
     and su_garrett.
+- Suit 4 (layers) (2026-10-07, "layers" agent, branch `worktree-agent-a237f0b282ae815f7`;
+  renders `cloth_renders/su_41..45_*`; scratch DURABLE in /mnt/data/hifipushie/layers/: the collar
+  agent's scripts retargeted (env.sh, run.sh, q.sh + run.py, plb.py, cu.py ...) + lay1.py <m> <g> <tag> [k=json] (START:
+  per-seam start gaps, start stretch per piece, pad thickness by region, jacket vs under garment, saves out/<tag>.npz
+  with U/FU), lay2.py <result npz> <start npz> (jacket vertices inside the shirt), lay3.py (open sewn pairs: where,
+  what's under), tape.py / om.py (measures bare vs over the shirt; the draft logs), collarcb.py / prof.py (CB column /
+  CB profiles of body, shirt, pad, collar), laydbg.py (notched lay at CB), fleck.py <result npz> <start npz> [V]
+  (layer crossings + whether the collider dropped those shirt faces), flapchk.py, reststr.py, jobstr.py <job dir>
+  [new] (the runner's rest rebuilt from a job's in.npz: start stretch per triangle: find "ccd failed" before the
+  GPU), setop.py / setkey.py (edit ga_suit's jacket), show.py, wearchk.py, t1.sh <test>, tests.sh).
+  - su_32's open seams were CONSTRUCTION: the jacket was drafted from the bare body. Its armhole sat 12 mm under the
+    shirt's own (underarm seams pinched 20-64 mm open over the shirt in the pit) and its neckline was shorter than the
+    shirt collar it goes round (the made collar climbed it: collar_show -19). `cloth.over_measures` /
+    `draft_measures`: a garment `over` another is drafted from the tape over it: `neck` = the under garment's
+    neckline (`under_neckline`: its neck pieces' sewn edge) + 2 pi `UNDER_COLLAR_T` 3 mm (the raw tape round the
+    pressed shirt collar read +123 mm: its fall stands off), `waistToArmpit` less the under garment's pad in the pit;
+    body girths stay the bare body's (ease bands are against the body). build + the workflow gate (Ctx.meas) use it;
+    log "drafted over shirt: {...}". Guide: cloth_guide.md Layers.
+  - `padded_body`: each vertex padded along its OWN normal line (`PAD_LATERAL` 8 mm, never further than 1.5x the
+    point's own distance), no overhang (`PAD_SLOPE` 1): by nearest vertex the shirt collar's fall made a 3 cm shelf
+    at the back neck and the jacket collar was laid on it 24-27 mm off the shirt.
+  - `_on_seam`: the piece's side of its sewn edge read from its cloth NEXT TO the edge's middle (by the whole piece's
+    centroid, a notched collar drafted round a shirt collar laid its stand DOWNWARD at CB).
+  - Clean-up vs the layer under: the sim had 16 jacket/shirt crossings, the clean-up 247 (white flecks of shirt
+    through sleeves / armholes; NOT the collider's dropped slivers: fleck.py, 2 of 24k faces, far away). Crossings
+    with the under garment now count in build's revert-to-sim (`_layer_crossing_verts`), and a reverted welded seam
+    vertex takes its weld group to the mean of its sides' sim positions (sent back alone: pale slits on the sleeves).
+  - `made_folds` (garment key; `made_flaps`, `_carry(flaps=)`, rest = the folded flat pattern via the runner's restIdx
+    path): the flap past a fold held and carried with the made piece it is sewn to. TRIED on the lapels (su_44b) and
+    WORSE (shoulder seams 131-144 mm, neck 248): held regions stay where they START, and the draped fronts start on
+    the torso cylinder away from the shoulders. Off on ga_suit. A made lapel needs the forepart STARTED where it is
+    worn (next build, below). First attempt failed at frame 0: carried vertices rest as start (world) beside cloth
+    resting on uv: 4.3x stretch across the roll line (jobstr.py found it).
+  - ga_suit jacket now: collar stand 24 / fall 36 (shirt band 20 mm), sleeve length_bonus -0.04, under_cap 0.004,
+    closures front open, interfaced bands (the chest canvas as stiffness) {front.L/R near [break, lapelPoint] within
+    0.1}. su_garrett jacket: the same except the bands (not yet).
+  - su_45 (2 cm, the shirt open-collared by main's no-tie default): fits, 0 crossings, 0 layer crossings, seams p95
+    0.0 (15 of 354 pairs open, all at the collar neck seams: front.L 56 mm, R 16), collar_show 18.3 (ok), cuff_show
+    8.4 / 7.2 (target 10-15), lapel_gap 5.6 / 7.1, collar_hug 23 (jacket collar off the shirt collar; partly the
+    metric: the shirt collar stands open now), left lapel roll ends at 99 deg (half unrolled, the gorge crumpled).
+    Reads as a jacket over a shirt from every side, matte, no flecks, clean back.
+  - OPEN, in order: (1) the forepart started where it is WORN (a worn chart for the fronts' tops, like the collar's:
+    collar, lapel and front start together on the shoulders; then made_folds can hold the lapel) = the gorge and the
+    left lapel; (2) the TENT: from the side the open fronts bow forward from the chest to the hem (suspect front
+    balance / length over the shirt (hpsToBust over the shirt +26 mm, not used by over_measures) or the side panel's
+    hem flare); (3) the shirt collar reads buttoned though its pieces say open (trousers2's neck start); (4) cuff 2-3 mm
+    short of the band; (5) su_garrett (bands, then a sim).
 - Seams (2026-10-07, "seams" agent, branch `worktree-agent-ae98ecda411a37796`; the user on the suits: "seams look huge
   and structural"; renders `cloth_renders/sm_01..08` (before = main 2aea2ac / after, the SAME cached sims: su_31
   blazer, su_05 shirt; sm_05 = raking light across the blazer's side panel seam); scratch DURABLE in
@@ -2366,6 +2456,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (`cloth_workflow.sewn_crossings`): ZOZO starts with existing intersections allowed and su_05 simulated clean from
     them. The shirt's start on su_garrett has back/sleeve, collar/stand, cuff laps crossing: pre-existing (the base
     17ee597 too), open. Its torso pieces still start as slabs (side seams ~125 mm apart).
+  - Since then (sims tr_11..tr_14 on su_garrett; renders `cloth_renders/tr_1N_*`; scripts in the scratch dir:
+    q.sh <queue> + run.py (renders draw the `collide` parts), pp_dbg.py <model> <garment> (cloth.build up to
+    `_press_plan` from the cached coarse sim: each clearing / relax / untangle step's move, start stretch by piece,
+    crossing pairs; stops before the GPU), pp_dbg3/4.py (where the fine start is stretched, edge lengths), sl.py <garment>
+    (the mesh's shortest pattern edges), dumpfix.py (a piece + what it is sewn to as a flat-wrap fixture)):
+    - Built: hem on the shoes (garment key `collide`: model parts joined to the collider, `cloth.worn_parts`);
+      crease as a pressed ridge in the detail maps (`detail.crease_width`); clean-up clears faces off the body EXACTLY
+      against its triangles (Body.clearance over-reads by up to 5.5 mm, p50 0.3: the "white specks" were body through
+      the seat; a note, not changed); a closed zip's fastenings are its seam's sewn pairs (the fly read "0 of 0");
+      clay looks matte (no specular); shirts open as worn without a tie (`kinds.shirt.wear` no_tie: collar `gap` 0.07,
+      front open_top 1, plus folds "open neck.L/R": the fronts roll back from the neck to buttonhole2, angle 125);
+      Simon's sleeve plackets sewn as zip closures; front.L wrap `out_reach` (the lap's offset eased to the plain curve
+      away from the centre: the left-only open seam pairs were the lap pushed out over the whole front); shirt colour
+      #d0cbc7 sampled from the concept; ZOZO stray-solver clearing (`cloth_job.clear_strays`,
+      PPF_SOLVER_SCAN_DESCENDANTS: "solver is already running" was a host-wide process scan, a dead holder blocked
+      every later job).
+    - tr_13 trousers (2 cm + 1 cm fine settle): CORRUPT, back.L/back.R crossing at the crotch, CB seam 55 mm open, a hole
+      behind the left knee; fly 18/18 closed; crease turn only 8 deg; hem not judgeable (no shoes drawn then). Cause,
+      by step (pp_dbg.py): coarse sim clean (fork stretch 1.05), transfer clean (1.13), then `_press_plan`'s
+      `_clear_of_body` ran away in the crotch's hollow (pushing along the body's normal there never clears the faces;
+      the gap grew every round: 35, 80, 69 mm moves, untangle 62 more): 10.9x start stretch. Fixed: `_clear_of_body(
+      grow=)` caps the gap's growth (CLEAR_GROW 4 mm, fine settle only: placement unchanged, coarse caches kept), and
+      cloth further than FINE_REACH from the made pieces (carried, never solved) is only cleared FAR_CLEAR 1.2 mm off
+      the body. Same coarse result re-planned: fork moves <= 3.3 mm, start 1.30 max, 0 crossings.
+    - tr_14 shirt: "ccd failed", max_sigma 11.36: a 0.44 mm sliver edge where the open-neck roll's row passed 0.44 mm
+      inside the front's outline at the neck point (and a buttonhole 0.54 mm beside the front band's row). `cloth.mesh`:
+      a fold row's inner sample within ROW_KEEP 0.25 h of the outline is left out, one near ANOTHER fold's row is that
+      row's vertex, a mark within 0.4 h of a fold row is the row's vertex. Shirt min edge 0.44 -> 2.51 mm. Fixture
+      tests/data/simon_front_neck.json (pattern.from_spec takes "names": {name: outline index}).
+    - `cloth.fine_start_check` (FINE_START_MAX 0.6): before the fine settle's job, draped triangles the solver moves
+      stretched past 1.6x from the flat pattern raise, naming pieces and place: nothing is sent to the GPU.
+    - fit(): trouser legs count as body pieces for the girths, a slice that caught only a band is skipped ("waist
+      -555 mm"). cloth.look draws the collide parts (shoes) dark grey.
+    - NEXT: tr_15 trousers + tr_16 shirt (queue q8.txt) with these fixes: judge crease (turn ~ 8 deg is soft: the
+      fine settle only moves cloth within FINE_REACH of the waistband, so the crease at the knee is the 2 cm sim's),
+      break on the shoes, the open collar V to the 2nd button, points on the collarbones, left seams closed, plackets.
+      Not built: the stand's ends turning back with the open collar. Body.clearance's bias: before / after numbers on
+      the shirt and blazer starts are owed before changing it.
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -2458,7 +2586,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   yet); a lone job always runs. The rule, in order: FIFO by when a job started waiting; a waiting job that doesn't
   fit blocks every younger one, except SMALL ones (<= 25% of the budget) that fit now, and each blocked job can be
   passed at most PASS_LIMIT 3 times (no starvation). GPU jobs (`gpu=True`: local ZOZO; `gpu_claim()` for a GPU
-  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory. Pools inside a job
+  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory; an old-code holder
+  of heavy0.lock and a job of unknown kind count as holding the GPU (`_holds_gpu`: an old-code ZOZO sim and a new
+  one ran on the GPU together and one crashed, 2026-10-07). Path-free view for other machines (S0urc3 through the
+  oxidegen sculpt artist): `queue_view` / `queue_text`, MCP tool `heavy_queue` (subject-less, in the artist's
+  SUBJECTLESS_OK + FAST; `heavy_status` stays left out): kind, label (`_label`: path words cut to their last part),
+  GB, minutes, position, why, GB ahead, and the caller's own jobs marked by `caller_tag` (a hash of
+  $HIFIPUSHIE_SESSION or $HIFIPUSHIE_HOME: an artist session's workspace). Wait lines carry no pids and end
+  "3rd in queue, 18 GB ahead of you"; export_asset writes them to the model's progress.log, which the artist sends
+  as the task's progress. Pools inside a job
   size from its GRANT (`workers()` = min(grant - 1 GB, free memory) / per worker): two jobs both seeing "free" memory
   is how the desktop died. $HIFIPUSHIE_HEAVY_SLOTS=1 brings the one-at-a-time behaviour back.
   State in $HIFIPUSHIE_HEAVY_DIR (default $XDG_RUNTIME_DIR/hifipushie): jobs/<id>.json + jobs/<id>.lock (flocked by

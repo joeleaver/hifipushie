@@ -13,6 +13,7 @@ A closure is a lap held by fastenings, not a seam: the `over` piece runs `band` 
                                                   surface stands `lift` proud there (the placket's extra layers)
    "seam": [arc a, arc b], "from", "to"           a zip: the part of a seam it closes (sewn when closed)
    "size": m (button diameter, default 0.011), "lift": m (default 0.0008),
+   "gap": m (a piece closed on itself worn OPEN: how far its ends stand apart, a collar's stand at the throat),
    "state": "closed" | "open" | {"open_above": mark of `over`} | {"open_top": n} (the n highest fastenings undone:
             a shirt worn without a tie has its top front button open, whatever its marks are called)}
 
@@ -29,7 +30,7 @@ import numpy as np
 
 KINDS = ("buttons", "zip", "hooks", "tie")
 KEYS = {"name", "kind", "over", "under", "holes", "buttons", "at", "edge", "band", "seam", "from", "to", "size", "lift",
-        "state"}
+        "state", "gap"}
 GAP_MAX = 0.006  # m: a closed fastening's two sides further apart than this isn't closed
 
 
@@ -113,7 +114,7 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
                               "angle": 180, "kind": "press", "strength": 0.0, "in_wrap": True, "band": True})
         out.append({"name": c["name"], "kind": kind, "over": over, "under": under, "pairs": pairs, "closed": closed,
                     "edge": edge, "band": band, **({"seam": list(c["seam"])} if c.get("seam") else {}), "size": float(c.get("size", 0.011)), "lift": float(c.get("lift", 0.0008)),
-                    "state": state})
+                    "state": state, **({"gap": float(c["gap"])} if c.get("gap") is not None else {})})
     return stitches, folds, seams, out
 
 
