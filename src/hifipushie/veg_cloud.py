@@ -20,7 +20,7 @@ DAB = {"variants": 4, "size": 256, "count": 34, "length": 0.42, "width": 0.5, "s
        "tone": [0.84, 1.0], "droop": 0.0, "verts": 6, "out": 0.6}
 
 
-def dab_atlas(spec: dict, st: dict) -> dict:
+def dab_atlas(spec: dict, st: dict, season: str | None = None) -> dict:
     """The painted picture a leaf cloud's cards carry: per variant a cluster of brush DABS (the species' leaf outline,
     fattened, `count` of them `length` x the tile long, pointing out of the cluster's middle by `out` and down by
     `droop`, a solid middle of `core` x the tile, a ragged rim), as a grey TONE (`tone` [dark, light] per dab: the
@@ -32,7 +32,11 @@ def dab_atlas(spec: dict, st: dict) -> dict:
     lf = spec["leaves"]
     d = {**DAB, **((st.get("crown") or {}).get("dab") or {})}
     shape = str(lf.get("shape", "ovate"))
-    key = json.dumps([d, shape, lf.get("lobes", 4), int(spec.get("seed", 1))], sort_keys=True)
+    season = season or spec.get("season", "summer")
+    # spring's new growth: the tip of every stroke lighter and fresher (`seasons.spring.tips`: {"share" of the stroke,
+    # "light" its tone x, "tint" rgb x, "body" the rest's tone x}); the alpha (and so the cards) is the same
+    tips = ((st.get("seasons") or {}).get("spring") or {}).get("tips") if season == "spring" else None
+    key = json.dumps([d, shape, lf.get("lobes", 4), int(spec.get("seed", 1)), tips], sort_keys=True)
     if key in _DABS:
         return _DABS[key]
     nv, n, ss = int(d["variants"]), int(d["size"]), 3
@@ -52,7 +56,7 @@ def dab_atlas(spec: dict, st: dict) -> dict:
     for v in range(nv):
         u = lambda i, salt: float(vegetation._u(np.array([i + 1000 * v + 100000 * int(spec.get("seed", 1))], np.uint64), salt)[0])
         N = n * ss
-        col = Image.new("L", (N, N), int(255 * float(np.mean(d["tone"]))))
+        col = Image.new("RGB", (N, N), (int(255 * float(np.mean(d["tone"]))),) * 3)
         alp = Image.new("L", (N, N), 0)
         dc, da = ImageDraw.Draw(col), ImageDraw.Draw(alp)
         px = lambda q: [((x * 0.5 + 0.5) * N, (0.5 - y * 0.5) * N) for x, y in q]
@@ -75,11 +79,19 @@ def dab_atlas(spec: dict, st: dict) -> dict:
             poly = np.vstack([mid + hw[:, None] * side[None], (mid - hw[:, None] * side[None])[::-1]])
             tone = d["tone"][0] + (d["tone"][1] - d["tone"][0]) * u(i, 7)
             da.polygon(px(poly), fill=255)
-            dc.polygon(px(poly), fill=int(255 * tone))
+            if tips:
+                tone_b = tone * float(tips.get("body", 0.85))
+                dc.polygon(px(poly), fill=(int(255 * tone_b),) * 3)
+                k0 = int(len(t) * (1 - float(tips.get("share", 0.3))))
+                tp = np.vstack([(mid + hw[:, None] * side[None])[k0:], (mid - hw[:, None] * side[None])[k0:][::-1]])
+                tl = min(tone * float(tips.get("light", 1.0)), 1.0)
+                dc.polygon(px(tp), fill=tuple(int(255 * min(tl * float(c_), 1.0)) for c_ in tips.get("tint", [1.0, 1.0, 0.6])))
+            else:
+                dc.polygon(px(poly), fill=(int(255 * tone),) * 3)
         col = np.asarray(col.resize((n, n), Image.LANCZOS))
         alp = np.asarray(alp.resize((n, n), Image.LANCZOS))
         r_, c_ = divmod(v, cols)
-        A[r_ * n: (r_ + 1) * n, c_ * n: (c_ + 1) * n, :3] = col[..., None]
+        A[r_ * n: (r_ + 1) * n, c_ * n: (c_ + 1) * n, :3] = col
         A[r_ * n: (r_ + 1) * n, c_ * n: (c_ + 1) * n, 3] = alp
         ys, xs = np.nonzero(alp > 100)
         pts = np.c_[np.r_[xs, xs + 1, xs, xs + 1], np.r_[ys, ys, ys + 1, ys + 1]].astype(float)
@@ -122,7 +134,7 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
     CARD (a dab of paint), "rim" = 0 at a card's middle .. 1 at its corners (wind flutter)."""
     cr = st["crown"]
     spec = tree["spec"]
-    at = dab_atlas(spec, st)
+    at = dab_atlas(spec, st, spec.get("season", "summer"))
     ells = [e for e in ells if not e.get("core")]
     if not ells:
         return None
@@ -145,6 +157,10 @@ def clouds(tree: dict, st: dict, ells: list, foliage_triangles: int, lod: float 
     least = float(cr.get("clump_min_cards", 0)) * min(1.0, lod * 2) / max(n_cards, 1)  # (a small clump of three cards was confetti)
     short = share.sum(1) < least
     share[short] *= (least / np.maximum(share[short].sum(1), 1e-9))[:, None]
+    if short.any() and (~short).any():  # traded within the budget: the big clumps give up what the small ones were raised by
+        rest = 1.0 - float(share[short].sum())
+        share[~short] *= max(rest, 0.0) / max(float(share[~short].sum()), 1e-9)
+    share = share / max(float(share.sum()), 1e-9)
     under = float(cr.get("under", 1.0))  # tiers: what faces the ground under a bough is left open (its shadow, the trunk)
     cp, cn, cm, cl, ch = [], [], [], [], []
     for j, e in enumerate(ells):

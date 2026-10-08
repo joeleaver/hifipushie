@@ -232,7 +232,7 @@ The plan lists:
   a cuff or a waistband). Fastenings are the marks `buttonhole<n>` on `over` paired with `button<n>` on `under`
   (other prefixes: `holes`, `buttons`; or `"at": [[over mark, under mark], ...]`). `band` + `edge` give the placket
   its own edge in the mesh and raise it by its extra layers; `state` is "closed", "open" or `{"open_above": mark}`
-  (the top button undone). The entry makes the button stitches, the buttons as small geometry (also in the export
+  (the top button undone) or `{"open_top": n}`. The entry makes the button stitches, the buttons as small geometry (also in the export
   and the Blender scene) and a line in the report per closure: fastenings closed, how far apart their two sides
   ended (closed is <= 6 mm). A `front_closure`, `cuff` or `fly` chosen on the sheet with no closure entry fails
   here; a closure that didn't hold fails stage 5. `kind: "zip"` takes `"seam": [arc, arc]` (sewn when closed).
@@ -243,6 +243,10 @@ The plan lists:
   stage 3 lists it as "worn open", not as a missing closure). In a drafted garment the op
   `{"op": "buttons", "piece": "front", "n": 2, "state": "open", "size": 0.02}` writes the closure itself (left
   front over right, a fastening per mark; it used to write bare stitches).
+  `{"open_top": n}` undoes the n highest fastenings whatever their marks are called. **A shirt is worn the way its
+  kind is** (garment_kb.json `kinds.shirt.wear`): without a tie (garment / sheet key `"tie"`, default false) the
+  collar button AND the top front button are undone, so the stand parts at the throat and the fall lies open in a
+  V; `"tie": true` closes both. The garment's own `closures` entries still win.
 - **Layers.** `"over": "<garment>"` wears this garment over another of the model (dress that one first). The one
   underneath is frozen and pressed to 8 mm off the body where it is loose (`under_cap`), and is what this garment
   is placed on and collides with. `"support": ["shoulder_pad", "sleeve_head"]` are pads on the body, not cloth.
@@ -250,6 +254,16 @@ The plan lists:
   collar at centre back (10-20 mm), the under cuff past this sleeve (10-15 mm), lapels lying on the fronts, this
   collar hugging the one under it, and no crossings between the layers. The export leaves out what this garment
   hides of the one underneath.
+  A garment worn over another is DRAFTED over it, as a tailor measures for a jacket over the shirt: its neck is the
+  under garment's neckline (its collar size) plus the collar's thickness round, and its armhole is lowered by the
+  under garment's thickness in the armpit (the draft log says "drafted over <garment>"). Drafted from the bare body,
+  a jacket's collar was shorter than the shirt collar it goes round and climbed it (the shirt collar hidden), and
+  its armhole sat 12 mm under the shirt's, so its underarm seams stood open over the shirt. Body girths (chest,
+  waist, seat) stay the bare body's: give the design's ease for what goes under it. Proportions are still yours:
+  the outer collar's stand at centre back is about the under collar's stand less what should show (10-15 mm), so a
+  short neck with a 20 mm shirt band takes a ~24 mm jacket stand; the outer sleeve ends 10-15 mm short of the
+  under cuff (a jacket sleeve near the wrist bone: `length_bonus` about -0.03 over a shirt that reaches the hand).
+  Pressing the under garment harder (`under_cap` 0.004) keeps the outer one's girth for itself.
 - **A piece laid from its seam.** Wrap `{"to": "seam"}` places a piece from the edge it is sewn to (a tailored
   collar's stand on the jacket's neckline, a collar on its stand), along the body, at the pattern's lengths; `"turn":
   {"at": m, "deg": 172, "gap": m}` lays its fall over. List the piece after the pieces it is sewn to. Use it where a
@@ -382,15 +396,27 @@ It does what the sculpt pass does first:
 - Interfaced pieces (collar, stand, cuffs, plackets) aren't smoothed: they don't crinkle, and smoothing their tight
   folds crumpled them.
 - Seams the simulation closed are welded.
+- Seams are PRESSED (`press`, default on): the cloth within 3 cm of each welded seam is smoothed across it, as a
+  tailor's iron leaves it. A solver's stitch passes no bending, so each side tilts on its own and the seam stands as
+  a crease. Interfaced cloth and seams with the finish "welt" are left alone.
 - Anything pulled toward the body is pushed back out to `clear`.
+
+Every look, the scene and the export wind each piece to face out (`piece_flips`) and give a seam's two sides one
+shared normal. Pattern pieces come out wound either way, and half the blazer's pieces faced in.
 
 `cleanup: false` shows the raw simulation.
 
 #### Detail: seams, stitching, hems, buttons
 
 These are drawn from the pattern itself into maps on the flat-pattern atlas (`detail`):
-- a groove along every sewn edge, with the seam allowance's ridge beside it (`seam`, `seam_width`, `allowance`);
-- a dashed topstitch `topstitch` m in from every edge (`stitch` length, `stitch_gap`);
+- every seam by its FINISH (`seam_finish` for the garment, `seam_finishes` {seam index | "pieceA/pieceB" | piece:
+  finish} for single seams; the default is the kind's, garment_kb.json `seam_finishes`): `pressed_open` (tailored
+  jackets, coats, trousers, skirts: a 0.3 mm groove about 1 mm wide, a faint rise over the allowances either side,
+  no stitching), `pressed_to_side` (knits, blouses), `topstitched` (one row 6 mm out), `edgestitched`, `felled`
+  (shirts: two rows on one side), `welt` (a seam made to stand: piping, cording; not pressed). `seam`, `seam_width`
+  and `allowance` override every finish's numbers;
+- a dashed topstitch `topstitch` m in from free edges (hems, a collar's edge). The default comes from the kind's hem:
+  none on blind-stitched hems (jackets, coats, suit trousers, skirts), 6 mm otherwise;
 - a turned-up hem `hem` m deep along free edges;
 - buttons (discs with four holes) on marks named `button*`, and stitched slots on `buttonhole*`;
 - the thread colour (`thread`, default a shade lighter than the cloth);
@@ -477,6 +503,7 @@ The same maps go into `scene.blend` and the export.
 | Puffed sleeve caps, a gathered knotted waist, a collar like a funnel, ruffled cuff joins | Construction, not the solver: cap ease, seam lengths that do not match, a missing piece, a fall too short for its stand, no placket | `look_pattern`: fix every failing seam and evidence line before simulating. Never tune stiffness to hide them |
 | A lapel or collar that will not roll | The piece is wholly interfaced, so it rests as made (frozen as placed), or it has no fold line | Interface a band, add a fold line; stage 3 fails on this |
 | A skirt slides down or one side seam gapes | Lower-body pieces start on a cylinder much wider than the waist and the sewing has to close 10+ cm; the body has no hip to hold a waistband | Keep the fit close (straight / a_line), waist ease under 3%; a waist-fitted start is still to do |
+| Every seam a raised welt with a valley beside it, visible across the room ("huge and structural") | Real seams are pressed and barely show. Three causes of ours: (1) pieces wound opposite ways, so welded normals cancelled and Solidify stepped; (2) the solver's free hinge left a 20-45 deg crease at each seam, where the cloth's own neighbouring normals differ by 10; (3) the maps drew a 1.2 mm groove 5 mm wide between 0.6 mm ridges, 45% darker, with topstitching on every seam and hem | Fixed by `piece_flips` with shared normals, the clean-up's `press` and seam finishes. Measure before you tune: the angle between a seam's two sides' normals against the cloth's own, per seam (blazer 29 -> 14 deg, side seams 20 -> 9). A seam that should stand gets `seam_finishes` "welt" |
 | `dress` says NOT simulated | Stages 1-3 fail | Read the failures, fix the sheet or the pattern; `force=True` only to look at the fault |
 
 ## Sources

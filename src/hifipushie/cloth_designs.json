@@ -2,6 +2,7 @@
  "_doc": "How a FreeSewing design is built (cloth.py): the parts used as pieces (fold = cut on the fold at x = 0, mirrored whole; copies = the same part cut again), alterations every build applies (turned plackets), where each piece starts round the body (wrap), the seam table (edges 'piece:a>b' or 'piece:a>via>b'; a side may be a chain of edges), point stitches (buttons), interfaced pieces, and the tailoring words mapped onto the design's options (ease as a fraction of the body measurement, lengths in m).",
  "simon": {
   "kind": "shirt",
+  "collar_rule": "simon",
   "pieces": {
    "back": {"part": "simon.back", "fold": "x0", "wrap": {"to": "torso", "side": "back"}},
    "yoke": {"part": "simon.yoke", "wrap": {"to": "torso", "side": "back", "out": 0.004}},

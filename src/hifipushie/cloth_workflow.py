@@ -60,12 +60,19 @@ class Ctx:
     @property
     def body(self) -> "cloth.Body":
         if self._body is None:
-            self._body = cloth.Body(cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True)))
+            self._src = cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True))
+            self._body = cloth.Body(self._src)
         return self._body
 
     @property
     def meas(self) -> dict:
-        return self.body.m["mm"] if (self.gx.get("pattern") or {}) else {}
+        if not (self.gx.get("pattern") or {}):
+            return {}
+        if not hasattr(self, "_meas"):
+            # over another garment: the tape over it (cloth.draft_measures), as the sim drafts it
+            body = self.body
+            self._meas, self.meas_info = cloth.draft_measures(self._src, self.gx, body)
+        return self._meas
 
     @property
     def Bp(self) -> dict:
@@ -557,6 +564,15 @@ def _overlap_pairs(Bp: dict) -> list:
     return pairs
 
 
+def sewn_crossings(cr: list, M: dict) -> list:
+    """The crossing piece pairs that are sewn or stitched to each other (or a piece crossing itself)."""
+    jn = set()
+    for key in ("sew", "stitch"):
+        pr = np.asarray(M.get(key, []), np.int64).reshape(-1, 2)
+        jn |= {tuple(sorted((M["names"][M["piece"][a]], M["names"][M["piece"][b]]))) for a, b in pr}
+    return [p for p in cr if p[0] == p[1] or tuple(sorted(p)) in jn]
+
+
 def stage_place(c: Ctx, image: bool = True) -> dict:
     o = _out("place")
     Bp = c.Bp
@@ -569,6 +585,16 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     body_p = c.body.straight_arms()[0] if smooth else c.body
     X = cloth.place(Bp, M, body_p, smooth=smooth)
     cr = sorted(cloth._piece_crossings(X, M))
+    if cr and smooth:
+        # pieces sewn or stitched to each other (or a piece to itself: a cuff's lap) crossing where they join start
+        # through each other by construction; ZOZO starts with allow-existing-intersection and su_05's shirt
+        # simulated clean from such a start (collar / stand, back / sleeve, cuff laps): said, not failed
+        sewn_cr = sewn_crossings(cr, M)
+        if sewn_cr:
+            o["warn"].append("the start has pieces through each other where they are sewn or stitched together: "
+                             f"{', '.join(f'{a}/{b}' for a, b in sewn_cr)} (the solver starts with existing "
+                             "intersections allowed; check the sim's crossings)")
+        cr = [p for p in cr if p not in sewn_cr]
     if cr and smooth:
         o["fail"].append(f"the start has pieces through each other: {', '.join(f'{a}/{b}' for a, b in cr)} (a contact "
                          "solver can't undo a start that is already crossed: move a piece, change its layer (wrap out))")

@@ -139,6 +139,16 @@ def test_pattern_sheet_renders():
     assert len(set(im.resize((64, 64)).getdata())) > 20  # not blank
 
 
+def test_sewn_pairs_crossing_at_the_start_are_said_not_failed():
+    # ZOZO starts with existing intersections allowed: pieces crossing where they are sewn / stitched (a collar on its
+    # stand, a sleeve in its armhole, a cuff's lap) are a warning in stage 4; pieces with nothing joining them fail
+    from hifipushie import cloth_workflow
+    M = {"names": ["back", "sleeve", "cuff", "pocket"], "piece": np.array([0, 0, 1, 1, 2, 2, 3]),
+         "sew": np.array([[0, 2]]), "stitch": np.array([[4, 5]])}
+    cr = [("back", "sleeve"), ("cuff", "cuff"), ("back", "pocket")]
+    assert cloth_workflow.sewn_crossings(cr, M) == [("back", "sleeve"), ("cuff", "cuff")]
+
+
 def test_start_gap_check_names_a_misordered_band():
     """Stage 4's seam check: a waistband whose chain starts part of a turn from the band's own start has gaps of only
     a waist's diameter (under any distance limit a shoulder seam also passes), but they point every way."""

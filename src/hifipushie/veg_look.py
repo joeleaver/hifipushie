@@ -58,7 +58,7 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
         if Hd is not None and s.get("season", "summer") in Hd["seasons"]:  # a small plant's flower / seed heads: their own colour
             sf = np.vstack([sf, Hd["F"] + len(sv)])
             sv, sn = np.vstack([sv, Hd["V"]]), np.vstack([sn, Hd["N"]])
-            scol = np.vstack([scol, np.tile(veg_style.lin(Hd["color"]), (len(Hd["V"]), 1))])
+            scol = np.vstack([scol, np.array([veg_style.lin(c_) for c_ in Hd["part_colors"]])[Hd["part"]]])
         arrays.update(solid_V=sv, solid_F=sf, solid_N=sn, solid_col=scol)
         if C.get("atlas") is not None:  # leaf clouds: cards cut by the dab atlas's alpha
             from PIL import Image
@@ -219,8 +219,9 @@ def render(tree: dict, views: list[dict], save: str | None = None, timeout: floa
         jp = Path(tmp) / "job.json"
         jp.write_text(json.dumps(jb))
         t1 = time.perf_counter()
-        r = subprocess.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python",
-                            str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
+        from . import resources
+        r = resources.run([_render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python",
+                           str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=timeout)
         if r.returncode:
             raise RuntimeError(f"blender failed:\n{r.stdout[-2000:]}\n{r.stderr[-2000:]}")
     info.update(mesh_s=round(t1 - t0, 2), blender_s=round(time.perf_counter() - t1, 2), plants=len(plants), meshed=len(made),

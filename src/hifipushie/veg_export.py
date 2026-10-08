@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import veg_bark, veg_bough, veg_ground, veg_leaf, veg_mesh, veg_style, vegetation
+from . import veg_bark, veg_bough, veg_cloud, veg_ground, veg_impostor, veg_leaf, veg_mesh, veg_style, vegetation
 
 
 def _normals(V, F):
@@ -381,7 +381,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 5
+CONTRACT = 6
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -397,6 +397,16 @@ CONTRACT_LOG = {
        "`style` (name, foliage kind); impostor albedo: baked shade scaled by the season's brightness",
     5: "the `snow` variant of a leaf-dropping plant (realistic or styled) is its WINTER state under snow: foliage (and a style's "
        "heads) hidden, bark_forks shown, the snow impostor the bare tree; evergreens keep their crown in snow (as in 4)",
+    6: "the impostor LOD is HEMI-OCTAHEDRAL by default: ONE quad (2 triangles, uv = its corners) that the engine's shader turns "
+       "to the camera, slot impostor's baseColorTexture = an N x N atlas of views over the upper hemisphere (sRGB + alpha), its "
+       "object-space normal map (+ depth in alpha) in extras.hifipushie_impostor.normal_texture_index (NOT normalTexture), "
+       "frames / size / centre / recipe there and in the seasons json `impostor` (+ impostorNormalTexture files per season); "
+       "reference Godot shader spikes/godot_veg/impostor_octa.gdshader. impostor=\"cross\" keeps the old two crossed quads. A plant exported without an impostor (small plants, clumps) carries \"impostor\": null in the seasons json. "
+       "Slot heads (styled small plants) now carries COLOR_0 = each part's colour (petals / dab / ball, the flower's centre, the "
+       "stalk) with a WHITE baseColorFactor: switch vertex colour on for heads as for foliage. A style's clump block takes "
+       "heads_kind ball | dab | petals (anime: colour dabs; cartoon: petalled daisies). Styled small plants whose blades lie down "
+       "in winter: slot foliage_winter (the foliage mesh's next primitive: the blades lying, shown only in winter and snow, "
+       "when foliage is hidden)",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -564,14 +574,14 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
 
     dabs = None
     if st and (st.get("crown") or {}).get("kind") == "clouds" and not tree.get("clump"):
-        from . import veg_cloud
         dabs = veg_cloud.dab_atlas(s, st)
 
-    def solid_material(nm, rgb):  # a style's closed crown: one colour (x COLOR_0, the tone of each mass); None = bare then
+    def solid_material(nm, rgb, season=None):  # a style's closed crown: one colour (x COLOR_0, the tone of each mass); None = bare then
         m_ = {"name": nm, "pbrMetallicRoughness": {"baseColorFactor": [*veg_style.material_color(rgb or [0.5, 0.5, 0.5], st), 1.0], "metallicFactor": 0.0,
                                                     "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
         if dabs is not None:  # leaf clouds: cards cut by the dab atlas's alpha; its grey tone x the colour x COLOR_0
-            m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(dabs["color"] / 255.0), False)}  # (uint8 x 255 wraps round: the atlas must go in as 0..1)
+            da_ = veg_cloud.dab_atlas(s, st, season) if season else dabs  # (spring may paint fresh tips: its own picture, the same alpha)
+            m_["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex(_png(da_["color"] / 255.0), False)}  # (uint8 x 255 wraps round: the atlas must go in as 0..1)
             m_.update(alphaMode="MASK", alphaCutoff=float(st["crown"].get("alpha_cut", 0.5)), doubleSided=True,
                       extras={"card_fill": round(dabs["fill"], 3)})
         if rgb is None:
@@ -597,9 +607,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
     M_FOL = None
     if st and has_leaves:
         se0 = s.get("season", "summer") if s.get("season") in seasons else seasons[0]
-        M_FOL = solid_material("foliage", veg_style.season_color(s, se0, st))
+        M_FOL = solid_material("foliage", veg_style.season_color(s, se0, st), se0)
         for se in seasons:
-            var_fol[se] = M_FOL if se == se0 else solid_material(f"foliage_{se}", veg_style.season_color(s, se, st))
+            var_fol[se] = M_FOL if se == se0 else solid_material(f"foliage_{se}", veg_style.season_color(s, se, st), se)
         if wet:
             mw = json.loads(json.dumps(materials[M_FOL]))
             mw["name"] = "foliage_wet"
@@ -607,6 +617,22 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             mw["pbrMetallicRoughness"]["roughnessFactor"] = 0.4
             materials.append(mw)
             var_fol["wet"] = len(materials) - 1
+    # a styled small plant whose blades lie down in winter (veg_small's winter `flatten`): the lying blades are the
+    # foliage mesh's own primitive, slot `foliage_winter`, shown only in winter and snow (when `foliage` is hidden).
+    # A second primitive rather than a morph target: the engine already hides slots per season from the seasons json,
+    # blades are a few hundred triangles, and it needs no blend weights kept in step with wind and LODs.
+    M_FW, var_fw, lie = None, {}, [se for se in seasons if se in ("winter", "snow")]
+    if st and has_leaves and len(trees) == 1 and trees[0].get("clump") and lie and se0 not in lie:
+        from . import veg_small
+        if float((veg_small.season_state(s, "winter") or {}).get("flatten", 0.0)) > 0:
+            M_FW = solid_material("foliage_winter", None)
+            gone = solid_material("foliage_lying", None)  # (the upright blades' material in winter: hidden)
+            for se in seasons:
+                if se in lie:
+                    var_fw[se] = solid_material(f"foliage_winter_{se}", veg_style.season_color(s, se, st), se)
+                    var_fol[se] = gone
+                else:
+                    var_fw[se] = M_FW
     if at is not None:
         M_FOL = foliage_material(at, "foliage")
         for se in seasons:
@@ -669,7 +695,15 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                                        "Engine: the material must NOT RECEIVE shadows (Godot: disable_receive_shadows): the two quads "
                                        "shadow each other, a dark wedge down the middle; casting onto the ground is fine",
                            "receive_shadows": False}}
-            if nrm_ is not None:
+            if impostor.get("kind") == veg_impostor.KIND:  # one camera-facing quad: the normal map is OBJECT space (+ depth in alpha),
+                m_["extras"] = {"hifipushie_impostor": {  # so it is not a glTF normalTexture (tangent space): it rides in the extras
+                    "kind": veg_impostor.KIND, "frames": int(impostor["frames"]), "size": round(float(impostor["size"]), 4),
+                    "centre": [round(float(c_), 4) for c_ in impostor["centre"]],
+                    "normal_texture_index": tex(_png(nrm_), False) if nrm_ is not None else None,
+                    "normal": "object space, glTF axes: rgb * 2 - 1; alpha = depth behind the frame's middle plane (0 front .. 1 back of "
+                              "the bake sphere, x size)", "recipe": veg_impostor.recipe(int(impostor["frames"]), float(impostor["size"]), impostor["centre"]),
+                    "shader": veg_impostor.SHADER}, "receive_shadows": False}
+            elif nrm_ is not None:
                 m_["normalTexture"] = {"index": tex(_png(nrm_), False)}
             materials.append(m_)
             return len(materials) - 1
@@ -714,7 +748,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                     Hd = D.get("heads")
                     if Hd is not None:  # a small plant's flower / seed heads: the foliage mesh's second primitive, slot `heads`
                         if "heads" not in head_mats:
-                            shown = {"name": "heads", "pbrMetallicRoughness": {"baseColorFactor": [*veg_style.lin(Hd["color"]), 1.0], "metallicFactor": 0.0,
+                            shown = {"name": "heads", "pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0], "metallicFactor": 0.0,
                                                                                 "roughnessFactor": float(st["crown"].get("roughness", 0.85))}}
                             hid_ = {**json.loads(json.dumps(shown)), "alphaMode": "MASK", "alphaCutoff": 1.01, "extras": {"hidden": True}}
                             d_show = se0 in Hd["seasons"]
@@ -723,8 +757,17 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                             materials.extend([shown, hid_])
                             head_mats["heads"] = {se: len(materials) - (2 if se in Hd["seasons"] else 1) for se in seasons}
                         vh = head_mats["heads"]
-                        fp.append(with_variants(prim(Hd["V"], Hd["F"], Hd["uv"], vh[se0], Hd["wind"], N=Hd["N"]), vh, vh[se0]))
+                        hcol = np.array([veg_style.lin(c_) for c_ in Hd["part_colors"]])[Hd["part"]]  # (COLOR_0 = each part's colour, linear: petals, centre, stalk)
+                        fp.append(with_variants(prim(Hd["V"], Hd["F"], Hd["uv"], vh[se0], Hd["wind"], hcol, N=Hd["N"]), vh, vh[se0]))
                         c["heads_triangles"] = int(len(Hd["F"]))
+                    if M_FW is not None:  # the blades lying down (winter, snow): their own primitive
+                        if "_winter_tree" not in t:
+                            t["_winter_tree"] = vegetation.grow({**t["spec"], "season": "winter"})
+                        Dw = veg_style.dress(t["_winter_tree"], st, int(triangles * share), "winter")
+                        Cw = Dw["crown"]
+                        if Cw is not None:
+                            fp.append(with_variants(prim(Cw["V"], Cw["F"], Cw["uv"], M_FW, Cw["wind"], Cw["col"], Cw["N"], uv3=Cw.get("grad")), var_fw, M_FW))
+                            c["winter_triangles"] = int(len(Cw["F"]))
                     meshes.append({"name": pre + "foliage", "primitives": fp})
                     nodes.append({"name": pre + "foliage", "mesh": len(meshes) - 1})
                     kids.append(len(nodes) - 1)
@@ -807,7 +850,24 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             else:
                 nodes.append({"name": (f"{nm}_" if len(trees) > 1 else f"{nm}_") + f"LOD{li}", "children": kids})
                 lod_nodes.append([len(nodes) - 1])
-        if impostor is not None and k == 0 and len(trees) == 1:
+        if impostor is not None and k == 0 and len(trees) == 1 and impostor.get("kind") == veg_impostor.KIND:
+            # hemi-octahedral: ONE quad, rebuilt to face the camera by the engine's shader (veg_impostor.recipe); stored as
+            # a vertical square through the bake centre facing +y (glTF +z), uv 0..1 = its corners
+            S_, Cg = float(impostor["size"]), np.asarray(impostor["centre"], float)
+            Cb = np.array([Cg[0], -Cg[2], Cg[1]])
+            Vq = np.array([Cb + [-0.5 * S_, 0, -0.5 * S_], Cb + [0.5 * S_, 0, -0.5 * S_], Cb + [0.5 * S_, 0, 0.5 * S_], Cb + [-0.5 * S_, 0, 0.5 * S_]])
+            Uq = np.array([[0, 1.0], [1, 1], [1, 0], [0, 0]])
+            Fq = np.array([[0, 1, 2], [0, 2, 3]])
+            Nq = np.tile([0, -1.0, 0], (4, 1))
+            zt = np.clip(Vq[:, 2] / max(t["height"], 1e-6), 0, 1) ** 1.5
+            z4 = np.zeros(4)
+            p_ = prim(Vq, Fq, Uq[:, [0, 1]] * [1, -1] + [0, 1], M_IMP, (zt, z4, z4, z4), N=Nq)
+            meshes.append({"name": f"LOD{n_lod}_impostor", "primitives": [with_variants(p_, var_imp, M_IMP)],
+                           "extras": {"hifipushie_impostor": veg_impostor.KIND, "cull_margin_m": round(0.5 * S_, 3)}})
+            nodes.append({"name": f"{nm}_LOD{0 if only_impostor else n_lod}", "mesh": len(meshes) - 1})
+            lod_nodes.append([len(nodes) - 1])
+            lod_info.append({"name": nm, "lod": n_lod, "triangles": 2, "impostor": True, "impostor_kind": veg_impostor.KIND})
+        elif impostor is not None and k == 0 and len(trees) == 1:
             S_, H_ = float(impostor["size"]), float(impostor["height"])
             Vq, Fq, Uq, Nq, Tq = [], [], [], [], []
             for j, (r_, o_) in enumerate(impostor_frames()):  # each picture on the quad its camera faced; then that quad's back
@@ -948,16 +1008,20 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
             d["receive_shadows"] = False  # (an impostor's crossed quads shadow each other)
         if "alphaCutoff" in m:
             d["alphaCutoff"] = m["alphaCutoff"]
+        hi_ = (m.get("extras") or {}).get("hifipushie_impostor")
+        if hi_:
+            d["impostor"] = {k_: v_ for k_, v_ in hi_.items() if k_ != "normal_texture_index"}
         for key, src in (("baseColorTexture", pbr.get("baseColorTexture")), ("normalTexture", m.get("normalTexture")),
-                         ("metallicRoughnessTexture", pbr.get("metallicRoughnessTexture"))):
+                         ("metallicRoughnessTexture", pbr.get("metallicRoughnessTexture")),
+                         ("impostorNormalTexture", {"index": hi_["normal_texture_index"]} if hi_ and hi_.get("normal_texture_index") is not None else None)):
             if src is None:
                 continue
             im = G["textures"][src["index"]]["source"]
             d[key] = {"image": im}
-            if images and key in ("baseColorTexture", "normalTexture"):
+            if images and key in ("baseColorTexture", "normalTexture", "impostorNormalTexture"):
                 if im not in written:
                     bv = G["bufferViews"][G["images"][im]["bufferView"]]
-                    f = Path(f"{stem}_{m['name']}{'_normal' if key == 'normalTexture' else ''}.png")
+                    f = Path(f"{stem}_{m['name']}{'_normal' if key != 'baseColorTexture' else ''}.png")
                     f.write_bytes(binp[bv.get("byteOffset", 0): bv.get("byteOffset", 0) + bv["byteLength"]])
                     written[im] = f.name
                 d[key]["file"] = written[im]
@@ -990,6 +1054,7 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
            "slot_list": slot_list,
            "style": {"name": (hp.get("style") or {}).get("name", "realistic"), "foliage": (hp.get("style") or {}).get("kind", "cards")},
            "snow": hp.get("snow_numbers"),
+           "impostor": next((d_["impostor"] for d_ in slots.values() if "impostor" in d_), None),
            "glb": Path(glb).name, "variants": names, "default": names[0], "slots": slots, "seasons": seasons,
            "note": "colours are linear RGBA factors (x the texture when there is one, x COLOR_0 where the mesh has it); "
                    "hidden = don't draw that slot's meshes in that season"}

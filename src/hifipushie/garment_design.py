@@ -36,7 +36,7 @@ DETAIL_KINDS = ("collar", "cuff", "sleeve_placket", "front_closure", "placket", 
                 "pockets", "hem", "yoke", "darts", "pleats", "back_vent", "belt", "lining", "shoulder", "topstitch",
                 "crease", "belt_loops")
 SHEET_KEYS = {"kind", "from", "fit", "fabric", "details", "pattern", "notes", "method", "made", "block",
-              "block_options", "ops", "over", "support", "layer_gap", "open"}
+              "block_options", "ops", "over", "support", "layer_gap", "open", "tie"}
 METHODS = ("simulate", "settle")
 
 
@@ -236,7 +236,7 @@ def compile_sheet(sheet: dict) -> dict:
     out["fabric"] = r["fabric"]["solver"]
     if sheet.get("method"):
         out["method"] = sheet["method"]
-    for k in ("over", "support", "layer_gap"):  # layering: worn over another garment, with its structure pieces
+    for k in ("over", "support", "layer_gap", "tie"):  # layering: worn over another garment, with its structure pieces
         if sheet.get(k) is not None:
             out[k] = sheet[k]
     if drop:
@@ -250,6 +250,19 @@ def compile_sheet(sheet: dict) -> dict:
     if trims:
         out["trims"] = trims
     return out
+
+
+def wear(g: dict) -> list:
+    """How the garment's kind is WORN (garment_kb.json kinds.<kind>.wear): closure entries laid over the pattern's by
+    name, before the garment's own. A shirt without a tie (garment / sheet key "tie", default false) is worn with its
+    collar unbuttoned and its top front button undone: the stand parts at the throat, the points spread and the fall
+    lies open in a V (the user: "a dress shirt with no tie would have top button unbuttoned and open"). The kind is
+    the design sheet's, or the one its pattern's design makes (kb designs.<from>.kind)."""
+    d = g.get("_design") or g.get("design") or {}
+    kind = d.get("kind") or ((kb().get("designs") or {}).get((g.get("pattern") or {}).get("from") or "") or {}).get("kind")
+    w = ((kb().get("kinds") or {}).get(kind) or {}).get("wear") or {}
+    tie = g.get("tie", d.get("tie", False))
+    return [dict(c) for c in (w.get("tie" if tie else "no_tie") or {}).get("closures") or []]
 
 
 def expand(g: dict) -> dict:

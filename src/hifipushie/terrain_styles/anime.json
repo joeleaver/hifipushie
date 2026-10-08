@@ -1,0 +1,28 @@
+{
+ "about": "Painted ground (Ghibli backgrounds, Genshin, BotW): grass as directional brush dabs in warm light / cool shadow tones over painted value patches, rock in 3-4 crisp painted strata bands, sand a painted wash with a few strokes; a small brush-dab overlay up close. Colour turned as the anime plants' (saturation 1.2, value 1.1). Low normals: the paint carries the form.",
+ "colour": {"saturation": 1.2, "value": 1.1},
+ "macro": 0.35,
+ "macro_normal": 0.6,
+ "detail": 0.0,
+ "overlay": {"scale_m": 1.2, "fade_m": [8.0, 40.0], "strength": 1.0,
+             "ops": [{"op": "strokes", "per_m2": 260, "length": 0.09, "width": 0.025, "angle": 70, "spread": 30, "tones": [-1, 1], "gap": 0.0, "albedo": 0.07, "height": 0.0008}]},
+ "layers": {
+  "*": {"scale_m": 6.0, "normal": 0.5, "warm": [1.1, 1.05, 0.86], "cool": [0.84, 0.93, 1.14],
+        "ops": [{"op": "blotch", "size": 1.5, "steps": 3, "soft": 0.3, "albedo": 0.15, "height": 0.0},
+                {"op": "strokes", "per_m2": 25, "length": 0.4, "width": 0.07, "angle": 10, "spread": 20, "tones": [-0.6, 0.7], "gap": 0.0, "albedo": 0.15, "height": 0.003}]},
+  "grass": {"scale_m": 8.0, "roughness": 0.9, "warm": [1.12, 1.07, 0.8], "cool": [0.8, 0.92, 1.16],
+            "ops": [{"op": "blotch", "size": 2.2, "steps": 3, "soft": 0.2, "albedo": 0.24, "height": 0.0},
+                    {"op": "strokes", "per_m2": 45, "length": [0.35, 0.8], "width": [0.08, 0.16], "angle": 80, "spread": 16, "taper": 0.75,
+                     "tones": [-0.5, 0.8], "gap": -0.5, "cluster": 1.2, "cluster_tone": 0.5, "albedo": 0.26, "height": 0.004}]},
+  "rock": {"scale_m": 12.0, "v_jitter_m": 3.0, "projection": "triplanar", "roughness": 0.85, "warm": [1.1, 1.04, 0.88], "cool": [0.84, 0.9, 1.12],
+           "ops": [{"op": "bands", "thickness": [0.25, 1.8], "tones": [-0.75, 0.15, 0.75, -0.3], "edge": 0.015, "wave": 0.05, "wave_len": 2.5,
+                    "jitter": 0.08, "step": 1.0, "albedo": 0.36, "height": 0.03},
+                   {"op": "strokes", "per_m2": 14, "length": 0.7, "width": 0.05, "angle": 0, "spread": 5, "tones": [-0.6, 0.6], "gap": 0.0, "albedo": 0.1, "height": 0.0}]},
+  "sand": {"scale_m": 6.0, "roughness": 0.95,
+           "ops": [{"op": "blotch", "size": 3.0, "steps": 2, "soft": 0.7, "albedo": 0.06, "height": 0.0},
+                   {"op": "strokes", "per_m2": 3, "length": [0.6, 1.3], "width": [0.09, 0.16], "angle": 12, "spread": 8, "taper": 0.6,
+                    "tones": [-0.6, 0.8], "gap": 0.0, "albedo": 0.13, "height": 0.002}]}
+ },
+ "snow": {"color": [0.94, 0.96, 1.0], "shadow_color": [0.7, 0.78, 0.95], "coverage": 0.8, "breakup": 0.4, "breakup_m": 5.0, "edge": "crisp"},
+ "rock": {"kind": "strata", "relief": {"facets": 0.5, "bedding": 1.5, "blocks": false}, "micro": 0.4}
+}

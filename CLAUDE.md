@@ -2199,6 +2199,62 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     "open": do the fronts hang straight or spread? shirt collar "open"); (5) trousers (slim straight leg, crease
     folds, fly, loops / belt); (6) shirt collar proportions as a KB rule from `Body.neck_rows`, the 12 mm front gape
     and the 17.8% waist strain by numbers; (7) all three on su_garrett against the concept. Not touched: 4-7.
+- Suit 3 (trousers, shirt) (2026-10-07, "trousers" agent, branch `worktree-agent-a5aa4e100572bcb0c`; scratch DURABLE
+  in /mnt/data/hifipushie/trousers/: env.sh, run.sh <script>, tests.sh, q.sh <queue file> + run.py (one sim: report,
+  renders incl. trims, `_waist`, `_waist_tex`, `_hem` close-ups for trousers), plr.sh <model> <garment> <tag> (the
+  START: plb.py + a clay render out/<tag>.png, log <tag>.log), st.py (stages with patches), psheet.py (pattern sheet
+  image), meas.py (tailor measures), parts.py (a model's shell parts), mk.py [garrett] (model `tr_trousers` = the
+  test body + suit trousers; su_garrett's cloth.trousers replaced by the same sheet)). PATTERN WORK ONLY: NO SIM RAN
+  (root disk under the sims' 20 GB floor: 14 GB free, /tmp/claude-1000 = 41 GB).
+  - A kind that drafts itself: `kinds.<k>.draft` {block, block_options, fit_options per fit}, and a detail choice's
+    `draft.ops` (its operation, added unless the sheet's own ops hold one of that name; `{"choice", "op": {...}}`
+    patches it) and `trims` (`garment_design.compile_sheet`). `{"kind": "suit_trousers", "fit": "tailored"}` alone
+    -> trouser block + waistband (opening front) + fly + crease + belt / loops. Evidence types `closure` (kind, on
+    role) and `trim`. Sheet -> garment key `trims` (NOT_SIM).
+  - Block (`pattern_blocks.trouser`): `leg` = LEG_CUTS skinny / slim / tapered / straight / wide (`leg_cut`: knee =
+    knee girth x (1 + ease), never under calf x (1 + ease); hem = a share of the knee, never under heel + 20 mm);
+    `tailor.measure` has upperLeg, knee, calf, ankle, heel (`_leg_girths`; heel = a 45 deg plane through the
+    ankle). `dart_taper` (a shaping point on each dart leg 35% from the tip: the tip's angle under half), `dart_length`.
+    Garrett tailored: knee 428 mm round, hem 377 (heel 342), seat +4.7%, thigh +17%.
+  - Ops (pattern_tailor): `crease` (press fold on the piece's `crease` line, angle 205 = a ridge OUT, strength 0.6,
+    `in_wrap`, `reach` 5 cm; a fold must cross its piece so the back's runs to the waist too), `fly` (point flyEnd on
+    the centre front; `edges.centre_front` becomes the part below it; `pair_closures` kind zip -> at unfold a
+    closure {zip, front.L over front.R, seam = the opening}; line `fly_stitch` (a J) kept on the over piece only;
+    `cloth.mesh` carries lines named *_stitch as `M["stitch_lines"]`, `detail_maps` draws them as dashes: NOT yet
+    seen in a render). `waistband` `opening: "front"`: chain front.L -> back -> front.R, `garment_blocks.generate`
+    `extension: "end"` (lapEnd; button on the extension at the high-x end), wrap side "back" + `over: "low"` (the
+    lap ramp in `cloth.place` on the low-x end). No band row for the fly's facing: an offset line would end inside
+    the piece (folds must cross).
+  - `cloth_trims.py` (`validate`, `check`, `meshes(res, g)`): belt (a strap of rectangular section on the band's
+    middle line, the over end a thickness out, a buckle box at the buttonhole mark) and belt_loops (strips from the
+    band's top over the belt to its bottom) built from the finished band's chart (pattern uv -> position / normal);
+    in `cloth.look` and run.py; tested on a synthetic band only (test_trims_ride_a_band), NEVER seen on a sim.
+  - Stage 2 (`cloth_workflow.leg_ease`): seat ease from the centre seam's line to the side seam (the forks lie
+    between the legs: a 5% draft read +13% on the test body, whose seat line is 6 mm above its crotch); a hem that
+    ends on the foot is judged against the heel girth (it read TOO SMALL against the foot's section).
+  - Start (`plr.sh su_garrett trousers pl_g2`, out/pl_g2.png): band closed, 0 crossings, but the leg wrap is ONE
+    vertical cylinder per leg as deep as the seat: a slim leg's front and back start as slabs, side seams 174 /
+    inseams 213 mm apart (p50), the front hem pushed 32 mm off the foot (2 triangles 2.25x), waistband seam p50 223
+    mm (the fronts / backs are far from the band, not a mis-ordered chain: check it once the legs start closer).
+    Stage 4 fails on it (start past the strain limit on 0.8% of the triangles). The fix to build if the sim can't
+    sew it: below the crotch lay each leg's pieces on the leg's own sections (a tube on the hip -> knee -> ankle
+    axis, as sleeves on the arm), blended into the torso cylinder over ~10 cm at the crotch. The foot is left out
+    of the leg hull (z under ankle + 4 cm).
+  - Shoes: his `shoes` part is an 8 mm shell of the foot and the soles lie inside z 0..15 mm: the bare foot stands
+    in for the shoe; length "shoe" (hem 30 mm over the floor) is cut for it. Not added to the collider.
+  - Darts as "open tucks" in su_01: argued, not measured: pucker of the welded seam (suit2's `_seam_relax` came
+    after su_01), the unshaped tip, 10% seat ease. Verify on the first sim's back close-up.
+  - Tests: the nine files green at 9b66b6f (tests.log); new in test_pattern_tailor: leg cut, shaped dart, crease /
+    fly / front waistband, the kind drafting itself, trims.
+  - NEXT, in order: (1) free the disk, then `bash q.sh q1.txt` (tr_01_trousers su_garrett trousers, 2 cm ZOZO
+    draft); judge 4 views + _waist / _waist_tex / _hem against the concept (stays at the waist, crease a line,
+    one break on the foot, no puff, darts, fly J, belt + loops sitting on the band); (2) if the legs don't sew or
+    crumple: the leg-following start above; (3) pattern sheet tr_00_trousers_pattern.png is judged (reads as a
+    tailored trouser); in-seam / slant pockets exist as `pocket` type in_seam, not added to the kind; (4) the
+    SHIRT, untouched: collar rule from `Body.neck_rows` (stand from the neck's height, fall = stand + 10-15 mm,
+    points 65-75 mm, spread for an open collar) through Simon's options, the 12 mm front gape and the "waist
+    strain 17.8%" at +23% ease by numbers, then worn with `{"name": "collar", "state": "open"}`; (5) trims in the
+    scene / export, a hem's break as a stage 5 target, the back crease ending at the seat.
 - Suit 3 (2026-10-07, "collar" agent, branch `worktree-agent-a5c847e94d5c52d32`; renders `cloth_renders/su_30..32_*`;
   scratch DURABLE in /mnt/data/hifipushie/collar/: env.sh, run.sh, q.sh + run.py (renders now draw seams WELDED),
   p.sh <tag> [-o] (blazer alone, collar made, place only; `-o` = the open start; collar numbers, CB column, notched-lay
@@ -2253,6 +2309,90 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     (3) the neck point (front / back / collar on one hps: the worn chart of front.L at hps vs where the draped front
     settles; maybe the front's lapel fold start near hps); (4) Garrett's wear state (front open, shirt collar open)
     and su_garrett.
+- Seams (2026-10-07, "seams" agent, branch `worktree-agent-ae98ecda411a37796`; the user on the suits: "seams look huge
+  and structural"; renders `cloth_renders/sm_01..08` (before = main 2aea2ac / after, the SAME cached sims: su_31
+  blazer, su_05 shirt; sm_05 = raking light across the blazer's side panel seam); scratch DURABLE in
+  /mnt/data/hifipushie/seams/: run.sh / runb.sh (this branch / main 2aea2ac's src in orig/), prof.py (load a cached
+  result: `load(model, garment, patches)`; cross profiles, too few points at 2 cm to trust), m2.py (per stage the
+  angle between a seam's two sides' normals vs the cloth's own: THE measure), orient2.py (winding per seam), rs.py
+  (clay + textured sheets + close-ups of a cached sim), rk.py (raking-light close-up of one seam), cmp.py).
+  Three causes, by measure:
+  - WINDING: the pattern mesh winds each piece as its pattern lies; on the blazer back.L/R, top.L, under.L faced IN,
+    the rest out (side seams' two normals at 160 deg). Welded, the shared normal cancelled into a pale / dark line;
+    Solidify (offset 1) grew one side out and one in; the export's single global flip kept it, its inner shell went
+    out on those pieces. `piece_flips` / `oriented_faces` (seam votes, max spanning tree over pieces, then out from
+    the body) in every look (`welded_faces` orients; textured looks now weld too, with per-corner uv `uv_corner`),
+    the scene's faces and the export (`shared_normals`: a closed seam's vertices one normal). A body-majority rule
+    per piece was wrong for folded pieces (the collar's fall outweighs its stand). M["F"] (the sim's) is unchanged.
+  - The FREE HINGE: a solver stitch passes no bending, so each side's last rows tilt alone: after the weld the sides'
+    normals met at 29 deg median (side seams 20, CB 45, sleeve 30-37) against the cloth's own 10.
+    `cleanup.press` (`_seam_press`, PRESS reach 3 cm, 40 Taubin passes, cap 0.4 h; welded groups move as one, ALONG
+    THE NORMAL only: a uniform Laplacian slid seam vertices 6 mm in plan, a zigzag; interfaced cloth and "welt" seams
+    stay): blazer 29 -> 14 deg (side seams 6-12), shirt 26 -> 14 (yoke 19 -> 7). The shirt's side seams stay 22-31 (a
+    deep fin from the sim, not cap-limited). What's left on sleeves is mostly the 2 cm tube's own curvature.
+  - The MAPS: a 1.2 mm groove 2.5 mm half width with 0.6 mm ridges 5.5 mm out each side, darkened 45% in the base
+    colour, topstitching 6 mm in on EVERY edge. Now seam finishes (garment_kb.json `seam_finishes`, `seam_kinds`,
+    detail `seam_finish` / `seam_finishes`; kind default `kinds.<k>.seam_finish`): pressed_open 0.3 mm x 0.7 mm, a
+    0.12 mm rise over the allowances, no rows; felled two rows on one side (shirts); welt = the old look, not pressed.
+    Hem topstitching from the kind's hem (`hem_topstitch`: blind hems none). Cavity 1 + H / 4 mm, floor 0.7.
+  - Before was rendered with main's textured look on RAW faces: every seam was also an open boundary with Solidify
+    rims (the stair-stepped pale beads in sm_05).
+  - Tests `tests/test_seams.py` (winding, press, finishes in the maps, export normals) + the ten cloth files green.
+  - Open: the shirt's side seams (a fin the press can't flatten: look at why the sim folds there), sleeve seams at
+    2 cm, a "toward" side per seam for pressed_to_side / felled (today the seam's second piece), seam finishes in the
+    pattern sheet, closures / collar seams were not judged one by one (made pieces are interfaced: untouched).
+    Careful: `cloth.export_part` / `garments(simulate=True)` STARTS SIMS for uncached garments (an orphaned ZOZO job
+    of mine had to be killed): test exports on cached models only.
+- Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
+  /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
+  stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
+  vdiag.py / col.py (one band's triangles: row / column stretch and shear; one piece's column of vertices), legsec.py
+  (the leg's sections), wstrain.py <npz> (a sim result's stretch vs the pattern by piece and direction), marks.py (the
+  closures' fastening pairs, flat and at the start), collm.py <model> (neckHeight, collar options, the drafted collar's
+  stand / fall / points), neckrows.py, t1.py <test file> <tests...>, run_base.sh (code at ./base, a detached checkout
+  of another commit: `git worktree add --detach base <commit>`), patch_*.py (the sandbox refuses heredocs with code)).
+  - Trouser legs START ON THE LEG (`cloth._leg_tube`, wrap "follow": false = the old seat cylinder all the way down):
+    below the crotch each leg's front + back go on a tube square to a smooth leg axis (quadratic through the
+    sections' plan middles), its section the leg's own (radius per direction smoothed `LEG_SMOOTH` up and down)
+    pushed out to the cloth's girth (+ `LEG_APART` per seam, >= `LEG_CLEAR` off the leg; `LEG_TAPER` caps how fast
+    the girth may fall, 5 = off), front crease line on its front, the back's half the girth round, pattern length
+    along the axis, the leg under `LEG_EASE` over the ankle compressed until the hem clears the foot; blended into the
+    seat cylinder over `LEG_BLEND` 15 cm under the crotch (the seat cylinder now stops just under that). su_garrett
+    start: side seams 174 -> 15, inseams 213 -> 8 mm (p50), 0 crossings, every triangle within 5%: stage 4 passes.
+  - THE FIND: a start whose edges are all within 5% can be 9-12% stretched (principal) along the diagonal: a column
+    leaning 0.1 against its rows is already ~5% (shear is first order). A tube that narrows down a leg leans its
+    outer columns by about a quarter of the narrowing rate; horizontal rows on a leg splayed 11 deg are a shear of that
+    slope; a row anchor (the piece's row middle) drifting toward the fork shears the top of the thigh. `_relax_strain`
+    (in place()'s start relaxation, after `_relax_stretch`): per triangle the deformation's singular values clamped to
+    1.03 (compression left), vertices drawn toward that shape, Jacobi, 300 iterations, 6 rounds with the body clearance.
+    It took the trousers from 24-27% of the triangles over 5% to none. Fold rows are held there EXCEPT a trouser leg's
+    in-wrap press folds (the crease: held, it pinned a leaning column's shear). It runs for every smooth (ZOZO) start.
+  - Front-opening waistband laid the wrong way round (seam p50 223 mm, "half a turn"): its chain starts on the left
+    front and runs round the back, laid from the back centre it went to the left first; wrap `"dir": -1` (pattern +x
+    round toward -x from the start), set by op_waistband's front opening. Band seam p50 now 54 mm (the seat cylinder
+    is wider than the band at the waist).
+  - Shirts are WORN as their kind is (the user: "a dress shirt with no tie would have top button unbuttoned and
+    open"): garment_kb `kinds.shirt.wear` {no_tie, tie} closure overlays (garment_design.wear, laid in cloth.pieces
+    before the garment's own), garment / sheet key `tie` (default false): collar "open", front `{"open_top": 1}` (new
+    closure state: the n highest fastenings undone, by their mark's height). Every Simon shirt now starts open.
+  - Unbuttoned stand: `_open_closure` (girth from the open closure's fastening pair) and a branch in place()'s neck
+    code: seated and laid like a buttoned stand (hull of the neck's own sections over the band's height, recentred),
+    no lap, its ends `NECK_OPEN` 35 mm apart at the throat. su_garrett: 114 -> 35 mm open, collar 2.2x -> 1.15x.
+    NOT YET SIMULATED: do the fall and points spread into the concept's soft V? The stand is made / carried rigid, so
+    the start's gap is the worn gap: judge it on the first sim and tune NECK_OPEN.
+  - Collar proportions from the neck: garment_kb `kinds.shirt.collar` + `cloth.collar_options` (design tables with
+    `"collar_rule": "simon"`): stand = tailor `neckHeight` (the neck's base up to the jaw landmarks / the girth run) -
+    13 mm in 20-35 mm, fall at CB = stand + 12, points 70 (Simon's collarBend solved on its own collar geometry).
+    Garrett: neckHeight 29 -> 20 / 32 / 69.6 mm (Simon's table defaults gave 22 / 44 / 57); the test body 40 -> 27 /
+    39 / 76. Every Simon shirt's pattern changed. A garment's own pattern options still win.
+  - "STRAINED at waist 17.8%" (su_05) was not fit: the pieces' interiors stretch p95 1.5-2%; the worst triangles are
+    the fronts' x~0 placket fold rows (0.3x across, 1.5-2.3x along). fit() leaves fold rows out like seam rings. Not
+    yet re-read on a sim. The 12 mm front gape: the fastening pairs match in the flat (dy 0) and start 4 mm apart; read
+    it on the next sim (the folded placket's layers + contact gaps, or closures.seat reverted).
+  - Stage 4: pieces crossing where they are sewn / stitched (or a piece itself) warn instead of fail
+    (`cloth_workflow.sewn_crossings`): ZOZO starts with existing intersections allowed and su_05 simulated clean from
+    them. The shirt's start on su_garrett has back/sleeve, collar/stand, cuff laps crossing: pre-existing (the base
+    17ee597 too), open. Its torso pieces still start as slabs (side seams ~125 mm apart).
 - `realism.py`: `spec["story"]` (validated; stripped by `spec.geometry`, like paint; its `directions` can be
   named in paint `facing`) and `audit`, the perfection warnings `check` always appends. `assemble` applies
   `spec["weather"]` ops: instances as rigid bodies first, then elements by tag. `chips`/`lumpy` live in the csg
@@ -2335,6 +2475,34 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   workers and raises MemoryGuardError if free memory falls under half the reserve. Wired into terrain_mesh
   (`_pool`, `export_tiles`), asset (`export`, `flatten_parts`) and blender_asset's worker Blenders. Any new pool or
   batch job must use them, and agents must not run sweeps/exports in parallel with each other.
+  Admission by memory (2026-10-07, "slot" agent; the one slot cost hours of hand coordination between sessions, a
+  waiting export said "running", the lock wasn't FIFO, and a cancelled export_terrain held it for an hour):
+  `resources.heavy(name, log, gb=, kind=, gpu=, model=)` declares a peak (GB; else `estimate(kind, model)` = the
+  `KIND_GB` default, RAISED by peaks measured on earlier runs in ~/.cache/hifipushie/heavy_peaks.json, never lowered:
+  a pool sized from its grant would measure less each run and shrink itself). Admitted when the running jobs'
+  declared peaks + its own fit the budget ($HIFIPUSHIE_HEAVY_GB, default RAM - max(8, RAM/3): 40 GB on this 60 GB
+  laptop) and, if others run, what's really free (MemAvailable - reserve - what running jobs declared but don't use
+  yet); a lone job always runs. The rule, in order: FIFO by when a job started waiting; a waiting job that doesn't
+  fit blocks every younger one, except SMALL ones (<= 25% of the budget) that fit now, and each blocked job can be
+  passed at most PASS_LIMIT 3 times (no starvation). GPU jobs (`gpu=True`: local ZOZO; `gpu_claim()` for a GPU
+  stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory. Pools inside a job
+  size from its GRANT (`workers()` = min(grant - 1 GB, free memory) / per worker): two jobs both seeing "free" memory
+  is how the desktop died. $HIFIPUSHIE_HEAVY_SLOTS=1 brings the one-at-a-time behaviour back.
+  State in $HIFIPUSHIE_HEAVY_DIR (default $XDG_RUNTIME_DIR/hifipushie): jobs/<id>.json + jobs/<id>.lock (flocked by
+  its owner while alive; a lock anyone can take = a dead owner, swept), all decisions under queue.lock, polled every
+  ~1 s (no CPU). Old code's slot heavy0.lock: every new job holds it SHARED (old code's LOCK_EX waits), an old job
+  holding it is counted as LEGACY_GB 12. A waiting job logs "waiting for memory: needs X GB, Y of Z declared; held by
+  <name (pid, GB, since)>; N ahead of you" (cloth also into its progress); export_asset's reply says how long it
+  waited; `resources.status()` / `status_text()` / MCP tool `heavy_status` show running + queue + why.
+  Fork safety: every state fd is closed in forked children (`os.register_at_fork`, never LOCK_UN there: the lock
+  belongs to the parent's open file description) and is O_CLOEXEC; a forked child of a holder passes through
+  `heavy`. Cancellation: server.py runs every sync tool via `anyio.to_thread.run_sync(abandon_on_cancel=True)` under
+  `resources.cancel_scope(event)`, set when the call is cancelled or the client goes; then a waiting job leaves the
+  queue, and a running one has its `track`ed subprocesses (process groups: `resources.run` replaces subprocess.run
+  for Blender in asset / scene / veg_look; cloth Popens tracked) and `guarded` pools killed, `Cancelled` raised IN its
+  thread (PyThreadState_SetAsyncExc, once; cleared if the job ends first; `cancel_scope` releases a grant left
+  behind), and `profiling.run_jobs/pool_map` check between jobs. `dress`'s background sim thread is not under a cancel
+  scope on purpose. Tests: tests/test_heavy.py (+ heavy_job.py), own state dir, ~10 s.
 - `tests/test_tooling.py`: reproductions of the tooling cards' incidents (`uv run python tests/test_tooling.py`).
 
 ## Performance (keep these properties when changing things)
@@ -3388,6 +3556,63 @@ regresses, bisect by building one spec at each commit and diffing heights.
       externalResourceFunction for the detail swatches' uris (val.mjs has it; without, IO_ERROR per image);
       (5) a time estimate before the export (tiles x cliff area) was asked by the consumer, not built.
 
+  - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
+    /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
+    DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
+    strips, no terrain), mk_slice.py (terrain `ts_slice_a` = tl_slice_a + zones dumpling_downs west / painted_east
+    east + styles blobby / anime; writes the styles alone into ts_slice_a_styles/), exp.py (tiles export into out/),
+    prev.py <terrain> <tag> x y r '<views>' (preview_tiles + styled renders), rend.py (renders of an existing export,
+    textured styles | baked), diffield.py / diff2.py / diff3.py (which Field grids differ outside a styled zone)).
+    - `terrain_style.py` + `terrain_styles/<name>.json` over `_base.json` (realistic, blobby, anime, cartoon, pixar):
+      spec `"styles": {style: zone | [addresses] | {"in", "band", "sheet"}}`, everywhere else realistic; zones are a
+      PARTITION (a later style wins overlaps; realistic = no zone), weights = smoothstep over each style's band of the
+      signed distance to its own piece, normalised (two adjacent zones meet 50/50, no realistic between them). Layer
+      textures = op stacks (blotch, strokes, bands, ripples, dots, grain, cracks, facets, pillow: periodic on the torus,
+      tone -1..1 x albedo with warm / cool tints, height m), mean = the layer colour (the terrain's realistic colour turned
+      by the sheet's saturation / value = the plant style's numbers). Written PNGs are cached by their inputs + this
+      module's code ($HIFIPUSHIE_STYLE_CACHE): a cached write is byte-identical (test). `write` / `export_styles` /
+      manifest `styles` (contract 1, order, styles[].layers[l] files / size / colour / roughness / seasons tint_linear,
+      snow numbers, tiles[].styles, maps sd + weights, recipe); in every tiles export of a spec with styles, or alone:
+      `export_terrain(name, styles_only=True)` (seconds, updates manifest.json). `look_terrain(styles=True)`: swatch,
+      season and transition sheets; with tiles=True the views with the recipe (`render_tiles(textured="styles")`,
+      `blender_tiles._styled`). "styles" is in terrain_cache.THREE_D (the 2.5D build never sees it).
+    - Rock shape in the field (`Field.styles` from `terrain_style.rock_styles`, weights on the terrain grid with the
+      sheet's `rock.band_m`, default 10 m): `relief` multipliers on the realistic rock numbers (`rock_variant`), `pillow`
+      (`pillow_carve`: 3D jittered cells, grooves smoothstep^2, C1), `soften_m` (Gaussian on Field.H in the zone, also
+      takes the heightfield's facet_delta out there), `fallen`, `micro`. `_styled_relief` mixes realistic's and each
+      style's relief by weight. INVARIANT kept: with no rock-shaping style the field is the old code path; with one, the
+      realistic zone is bit-identical (test_rock_shape_by_zone) because `_structure_grain` (a GLOBAL percentile) and
+      `_local_thickness` (thin pieces span zones; per-piece height levels) read the UNSOFTENED ground. Any new global
+      statistic in Field must do the same.
+    - First delivery: /mnt/data/hifipushie/terrainstyle/ts_slice_a_styles/ (materials/<style>/..., styles/, styles.json,
+      swatches.png, seasons.png); full export with styles (OLD geometry: before the rock shapes) out/ts_slice_a: same 3
+      known check failures as main (LOD 0 shards 0.012%, ...).
+    - Read so far: textures tile (wrap seam <= 1.4 on every layer); blobby = flat soft fields (good), its rock texture is
+      nearly blank (a first "pillow" texture read as flagstone paving: pillows belong in geometry); anime grass reads as
+      painted dabs, anime rock as crisp painted bands; cartoon tufts are blobs, not ink ticks; pixar blades too subtle.
+      ts_06_top_border (styled recipe, old geometry): flatter and paler than the baked look, faint contour-like lines on
+      the blobby grass slopes (not the bump: still there without it; likely the turf-lip risers' geometry, which the
+      baked colour hides: not isolated).
+    - Styled GEOMETRY seen once (ts_04_*: preview_tiles, 9 tiles round [240, 90], one LOD, no checks): blobby cliffs are
+      rounded pillow lumps (read as melted / pillowy, not yet "pebble-smooth"), anime cliffs carry strong painted strata
+      with bedding ledges, the two meet at the zone line as different rock (the brief allows it). NOT RUN YET (the heavy
+      slot was held for another session): a full ts_slice_a export with styled geometry and its seam / shard / floating
+      checks, and the pebble / alps 3x3 regressions (no styles: the field code path is unchanged when no style shapes
+      rock, so they should be byte-identical; verify).
+    - Round 2 (consumer notes 71-75, Godot): CONTRACT 2 = soft layers always top-projected (side planes at v = world
+      height turned their tone patches into ~0.5-1 m terraces up slopes: the "contour lines"), rock triplanar with
+      `v_jitter_m` (strata wander along the strike; anime rock 12 m, 3 m jitter: its 8 m repeat up a cliff). `tileable`
+      compares the seam with ALL neighbouring rows' mean step + one 8-bit level (one row beside it: a pebble on the
+      seam read 4.04 for cartoon sand; flat blobby swatches read 1.7 on 1e-4 steps); `bands` are shifted half a band
+      off the wrap row (an edge on it was a real seam line). Blobby rock by measure (rockform.py: horizontal sections
+      of the south cliffs x 20-120, band-passed 0.5-8 m): pillows 3.5 m / soften 1.5 -> 6 m, stretch 1.8 (cells taller
+      than wide: seams run up the face), depth 1.0, round 0.5, soften 3: undercut share 0.078 -> 0.001 (unstyled
+      0.041), convex share 0.512 -> 0.534, lobes / 10 m 1.33 -> 1.22. NOT yet rendered.
+    - Open, in order: (1) those exports + checks; (2) the tufts op for cartoon (done) vs dab size of pixar blades (too
+      subtle); (3) blobby rock = rounder, fewer, bigger pillows (size 3.5 -> 6, depth 0.8 -> 1.0?) and pebble-smooth
+      fallen boulders (fallen 0 today: none); (4) the shader recipe as a Godot .gdshader (consumer wish 5); (5) snow by
+      height / hollows (numbers only today).
+
 More lessons (plan C, 2026-09-25): measuring the built ground finds build bugs, not just report bugs. Canyon strata were
 eroded to 51 deg mounds (now restored after erosion: `terrain_forms.settle`, which also fills hollows it would dam);
 basin walls came out 9 deg steeper than asked (sized from the floor's high end: now per stretch from where the floor
@@ -4010,6 +4235,55 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       scalloped edge, big single leaves on the silhouette, per-clump id, S-bend trunk); the anime spruce over budget;
       spruce near-view strokes too big; the guide's "Styles" section does not yet describe anime / clouds / feed /
       edge clouds / fan (add it).
+  - Vegetation styles 4 (2026-10-07, "vegstyle4" agent, branch `worktree-agent-a4adb8908a498b15c`; sheets vs_30..vs_39;
+    deliveries re-exported in place at contract 6 in /mnt/data/hifipushie/vegstyle/{blobby,anime}_{oak,spruce,grass} + new
+    cartoon_{oak,spruce,grass,daisy}; Godot checks /mnt/data/hifipushie/vegstyle4/gd/ (`*_sheet.png`: pairs mesh LOD2 |
+    impostor, 3 elevations x 3 azimuths; `octa_vs_cross_oak_blobby.png`); scratch in the worktree's untracked `scratchpad/`:
+    run.sh, export.py / export_clump.py / oe.py (export through the tools), gdo.sh <tag> <height> <dir> <stem> [season]
+    (octa impostor vs LOD2 in Godot + numbers), gdc.sh (cards at the LOD switches), q.py / sheet.py / seasons.py /
+    clump_sheet.py / close.py (looks), sil.py / csweep.py (styled vs realistic silhouettes, conifer sweeps, no Blender),
+    a1.py (dress numbers, no Blender), hk.py (head kinds), setmany.py / setjson.py (sheet numbers, indent 1), q4-q8.sh
+    (queues), oc1.py (octa bake vs direct renders)).
+    - HEMI-OCTAHEDRAL IMPOSTORS (`veg_impostor.py`, contract 6; the consumer: crossed quads from a 330 m volcano read as
+      crosses / an orange bird). 8 x 8 views on a hemi-oct grid (border = horizon; frames on the grid's corners so the
+      horizon is baked exactly), 256 px each, orthographic through the bake sphere's centre (`bounds`), camera frame
+      from `basis(d)` (right = cross(+Y, d); Blender gets an exact camera matrix: view key `basis` in
+      blender_vegetation), passes albedo / normal / Cycles shade / depth (new pass "depth": Camera Data view Z mapped by
+      the view's `depth_range`); atlas = albedo with half the shade baked in + OBJECT-space normal map with depth in
+      alpha. Seasons with the same shape share normal / depth / shade (`geometry_key`): ~4 min a shape, ~1 min a season.
+      One quad in the GLB (uv = corners), turned by the engine's shader: `spikes/godot_veg/impostor_octa.gdshader` (4
+      nearest frames bilinear, weights ^ `blend_sharp` 2, one depth-parallax step; orthographic shadow pass uses the
+      light's axis); `veg_impostor.view` = the same in numpy (tests). extras.hifipushie_impostor {kind, frames, size,
+      centre, normal_texture_index, recipe, shader}; seasons json top-level `impostor` (null without one) + per season
+      `impostorNormalTexture`. `impostor="cross"` keeps the old quads. Godot: MeshInstance3D.extra_cull_margin = size / 2
+      (required). Measured (impostor / LOD2 at elevation 0 / 20 / 45; coverage, IoU): blobby oak 1.01-1.02, 0.976 /
+      0.938 / 0.902 (crossed: 0.96 / 0.92 / 0.66, IoU 0.89 / 0.84 / 0.63); blobby spruce 0.984 / 0.968 / 0.923; anime oak
+      0.857 / 0.840 / 0.819 (the impostor fuller than LOD2's ragged cards); anime spruce 0.733 / 0.751 / 0.760 (LOD2 is
+      the weak one); cartoon oak 0.929 / 0.888 / 0.863; cartoon spruce 0.987 / 0.972 / 0.918. Consumer: in the game,
+      shader unchanged, impostors from above read as trees.
+    - Anime spruce: budget within 12k (`clump_min_cards` now traded inside the budget: 11,988 / 5,406 / 2,160), cards
+      0.36 x clump (max 0.9 m), 110 finer strokes a tile, conifer `lod_grow` 2.4 (LOD2 covered 0.70 of LOD0 at its
+      switch -> 0.85), spring = `seasons.spring.tips` (the spring dab picture paints stroke tips lighter / yellower;
+      `veg_cloud.dab_atlas(season=)`, the export's foliage_spring has its own texture). IoU 0.796.
+    - Heads: `_head` kinds ball | dab | petals (`_slab`: closed plates, ALWAYS counter-clockwise: a clockwise petal
+      showed its underside), `heads_kind` may be a table by the realistic flower's form, `petal_size` x the realistic
+      flower's radius; heads carry COLOR_0 per part (petals / centre / stalk) under a white factor (contract 6). Daisy
+      preset: flowers spring + summer only.
+    - Small plants' winter IN THE EXPORT: slot `foliage_winter` (the blades lying, the plant regrown at season winter
+      and dressed; shown in winter / snow while foliage is hidden). Second primitive, not a morph target (reasons in the
+      guide). Blobby blades rounder (thick 0.85).
+    - CARTOON (`vegetation_styles/cartoon.json`): crown `scallop` bumps per clump (`of` = their clump; `join` crisper),
+      `normals_clump`, `hue_jitter`, 2 tones, `big_leaves` (`_big_leaves`: leaf-outline plates on the outermost points);
+      wood `taper`, `flare`, `s_bend` (below the crown's base only); conifers `tier_shape` "cone" (`_cone_d`: a cone on a
+      flat foot, `teeth` zigzag rim, `cone_height`); clumps: few big blades, daisies as petals. Oak IoU 0.861 (7k), spruce
+      0.81 (cones lose area against the realistic bands), grass / daisy heights within 2%. Read: a toy cartoon oak of
+      scalloped clumps with leaf tufts on the outline on an S-bent flared trunk; a saw-tooth fir with pleated tiers;
+      fat-bladed tuft with seed balls; white-petalled daisies with yellow eyes.
+    - NOT DONE: PIXAR (brief: sculpted canopy shells per branch cluster + a layer of real leaf cards on the outer 20-30
+      cm: the blobby masses + veg_cloud cards with species leaves at 1.5x, canopy-centre normals 0.5, a thickness
+      channel); cartoon conifer spring is barely distinct; cartoon oak winter is a few fat limbs (more stubs?); anime
+      grass dabs read as flat coins on sticks from the side; realistic small plants' winter primitive; impostor depth
+      parallax beyond one step; the guide's styles table for stands / sets.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.

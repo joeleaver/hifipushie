@@ -1,0 +1,30 @@
+{
+ "about": "Defaults under every terrain style: layer textures, seasons and snow. A style sheet overrides any key.",
+ "colour": {"saturation": 1.0, "value": 1.0},
+ "macro": 1.0,
+ "macro_normal": 1.0,
+ "detail": 0.0,
+ "overlay": null,
+ "layers": {
+  "*": {"scale_m": 4.0, "roughness": 0.9, "ops": [{"op": "grain", "size": 0.12, "albedo": 0.12, "height": 0.004}]},
+  "turf": {"like": "grass", "roughness": 0.85},
+  "scrub": {"like": "grass"},
+  "earth": {"like": "sand", "roughness": 0.95},
+  "rock": {"projection": "triplanar", "v_jitter_m": 2.0},
+  "wet_rock": {"like": "rock", "roughness": 0.55},
+  "forest_floor": {"roughness": 0.95},
+  "snow": {"roughness": 0.7, "ops": [{"op": "blotch", "size": 3.0, "albedo": 0.04, "height": 0.02}]}
+ },
+ "seasons": {
+  "spring": {"grass": {"mix": [0.45, 0.66, 0.22], "amount": 0.3}, "turf": {"mix": [0.4, 0.66, 0.2], "amount": 0.25},
+             "scrub": {"mix": [0.42, 0.55, 0.24], "amount": 0.2}},
+  "summer": {},
+  "autumn": {"grass": {"mix": [0.66, 0.58, 0.3], "amount": 0.4}, "turf": {"mix": [0.5, 0.52, 0.24], "amount": 0.2},
+             "scrub": {"mix": [0.58, 0.36, 0.18], "amount": 0.4}, "forest_floor": {"mix": [0.5, 0.3, 0.14], "amount": 0.45}},
+  "winter": {"grass": {"mix": [0.52, 0.49, 0.37], "amount": 0.55}, "turf": {"mix": [0.4, 0.44, 0.3], "amount": 0.4},
+             "scrub": {"mix": [0.38, 0.33, 0.28], "amount": 0.45}, "forest_floor": {"mix": [0.3, 0.24, 0.18], "amount": 0.3},
+             "earth": {"mix": [0.3, 0.25, 0.2], "amount": 0.3}}
+ },
+ "snow": {"color": [0.93, 0.95, 0.98], "coverage": 0.8, "breakup": 0.5, "breakup_m": 6.0, "edge": "soft"},
+ "rock": {}
+}

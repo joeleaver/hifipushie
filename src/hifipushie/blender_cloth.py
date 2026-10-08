@@ -468,6 +468,8 @@ def render(job, d):
     sh.cavity_type = "BOTH"
     sh.show_shadows = True
     sh.shadow_intensity = 0.35
+    # cloth is matte: the studio light's specular highlight made dark wool read as leather (tr_11)
+    sh.show_specular_highlight = bool(job.get("specular", False))
     sc.render.film_transparent = False
     world = bpy.data.worlds.new("w")
     sc.world = world
@@ -593,7 +595,7 @@ def _render_textured(job, d):
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.32, 0.33, 0.35, 1)
     world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
     sc.world = world
-    for k, (rot, en) in enumerate((((50, 10, -35), 3.0), ((70, 0, 150), 1.0))):
+    for k, (rot, en) in enumerate(job.get("suns") or (((50, 10, -35), 3.0), ((70, 0, 150), 1.0))):
         ld = bpy.data.lights.new(f"sun{k}", "SUN")
         ld.energy = en
         lo = bpy.data.objects.new(f"sun{k}", ld)
@@ -605,7 +607,10 @@ def _render_textured(job, d):
         ob = _mesh(nm, V, F)
         for p in ob.data.polygons:
             p.use_smooth = True
-        if nm + "_UV" in d.files:
+        if nm + "_UVC" in d.files:  # per corner (welded faces: a seam vertex has each side's own uv)
+            uvl = ob.data.uv_layers.new(name="pattern")
+            uvl.data.foreach_set("uv", d[nm + "_UVC"].astype(np.float32).ravel())
+        elif nm + "_UV" in d.files:
             UV = d[nm + "_UV"]
             uvl = ob.data.uv_layers.new(name="pattern")
             uvl.data.foreach_set("uv", UV[np.asarray(F).ravel()].astype(np.float32).ravel())
@@ -613,7 +618,7 @@ def _render_textured(job, d):
             m = ob.modifiers.new("solid", "SOLIDIFY")
             m.thickness = float(o["thickness"])
             m.offset = 1.0
-        ob.data.materials.append(_material(f"m_{nm}", o.get("color", "#cccccc"), 0.85 if o.get("maps") else 0.6,
+        ob.data.materials.append(_material(f"m_{nm}", o.get("color", "#cccccc"), float(o.get("roughness", 0.85 if o.get("maps") else 0.6)),
                                            o.get("maps"), sheen=0.3 if o.get("maps") else 0.0))
     lo = np.min([np.min(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)
     hi = np.max([np.max(d[o["name"] + "_V"], 0) for o in job["objects"]], 0)

@@ -29,6 +29,24 @@ def test_states():
     assert not st and out[0]["closed"] == [False] * 3  # open: nothing sewn, the buttons still exist
     st, _, _, out = closures.expand([dict(ENTRY, state={"open_above": "buttonhole2"})], _pieces())
     assert len(st) == 2 and out[0]["closed"] == [False, True, True]  # the top button undone
+    st, _, _, out = closures.expand([dict(ENTRY, state={"open_top": 1})], _pieces())
+    assert len(st) == 2 and out[0]["closed"] == [False, True, True]  # the highest fastening, by its mark
+
+
+def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
+    # garment_kb kinds.shirt.wear: no tie (the default) -> collar open + the top front button undone; a tie closes both
+    from hifipushie import cloth, garment_design
+    g = {"pattern": {"from": "simon"}}
+    assert {c["name"]: c["state"] for c in garment_design.wear(g)} == {"collar": "open", "front": {"open_top": 1}}
+    assert {c["name"]: c["state"] for c in garment_design.wear(dict(g, tie=True))} == {"collar": "closed", "front": "closed"}
+    assert garment_design.wear({"pattern": {"from": "carlton"}}) == []  # a coat: as its pattern says
+    assert "tie" in garment_design.SHEET_KEYS
+    # an unbuttoned stand is laid by the girth it would close at (its fastening's points), not by its length
+    M = {"names": ["stand"], "piece": np.zeros(3, int), "uv": np.array([[0.02, 0.0], [0.40, 0.0], [0.2, 0.01]]),
+         "closures": [{"name": "collar", "over": "stand", "under": "stand", "closed": [False], "v": [[0, 1]]}]}
+    assert np.isclose(cloth._open_closure(M, "stand")[0], 0.38) and cloth._open_closure(M, "stand")[1] == 0.02
+    M["closures"][0]["closed"] = [True]
+    assert cloth._open_closure(M, "stand") == (0.0, 0.0)  # buttoned: the stitched path
 
 
 def test_a_chosen_closure_must_be_in_the_pattern():
@@ -62,6 +80,21 @@ def test_measure_and_buttons():
     assert b["V"].shape[1] == 3 and b["F"].max() < len(b["V"]) and len(set(b["at"])) == 2
     rad = np.linalg.norm(b["V"][b["at"] == 0] - V[0], axis=1).max()
     assert 0.005 < rad < 0.0075  # an 11 mm button
+
+
+def test_a_zip_is_measured_along_its_seam():
+    # a closed zip has no button marks: its fastenings are its seam's sewn pairs ("0 of 0 closed" before)
+    zip_ = {"name": "fly", "kind": "zip", "over": "front.L", "under": "front.R", "seam": ["front.L:a>b", "front.R:a>b"],
+            "pairs": [], "closed": [], "state": "closed"}
+    seams = [["x:a>b", "y:a>b"], ["front.L:a>b", "front.R:a>b"]]
+    sew, sew_seam = np.array([[0, 1], [2, 3], [4, 5]]), np.array([0, 1, 1])
+    M = {"closures": closures.resolve([zip_], {}, {}, seams, sew, sew_seam)}
+    V = np.zeros((6, 3))
+    V[3, 0] = 0.002
+    r = closures.measure(V, M)[0]
+    assert r["fastenings"] == 2 and r["closed"] == 2 and r["ok"] and r["gap_max_mm"] == 2.0
+    V[5, 0] = 0.009
+    assert not closures.measure(V, M)[0]["ok"]  # gaping
 
 
 def _grid(x0, x1, n=21, m=61):

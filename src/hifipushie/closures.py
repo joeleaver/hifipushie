@@ -13,7 +13,8 @@ A closure is a lap held by fastenings, not a seam: the `over` piece runs `band` 
                                                   surface stands `lift` proud there (the placket's extra layers)
    "seam": [arc a, arc b], "from", "to"           a zip: the part of a seam it closes (sewn when closed)
    "size": m (button diameter, default 0.011), "lift": m (default 0.0008),
-   "state": "closed" | "open" | {"open_above": mark of `over`}}
+   "state": "closed" | "open" | {"open_above": mark of `over`} | {"open_top": n} (the n highest fastenings undone:
+            a shirt worn without a tie has its top front button open, whatever its marks are called)}
 
 `expand` turns the entries into stitches (one per fastening that is closed), fold-line rows for the bands and seams
 for closed zips; `cloth.mesh` records each closure's vertex pairs (`M["closures"]`); after the sim `measure` says per
@@ -58,8 +59,8 @@ def validate(entries, where: str = "closures") -> None:
         if c.get("kind", "buttons") not in KINDS:
             raise ClosureError(f"{where} {c['name']!r}: kind is one of {', '.join(KINDS)}")
         st = c.get("state", "closed")
-        if not (st in ("closed", "open") or (isinstance(st, dict) and set(st) == {"open_above"})):
-            raise ClosureError(f'{where} {c["name"]!r}: state is "closed", "open" or {{"open_above": mark}}')
+        if not (st in ("closed", "open") or (isinstance(st, dict) and set(st) in ({"open_above"}, {"open_top"}))):
+            raise ClosureError(f'{where} {c["name"]!r}: state is "closed", "open", {{"open_above": mark}} or {{"open_top": n}}')
         if c["name"] in seen:
             raise ClosureError(f"{where}: two closures named {c['name']!r}")
         seen.add(c["name"])
@@ -91,8 +92,13 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
             raise ClosureError(f"closure {c['name']!r}: no fastenings found (marks {c.get('holes', 'buttonhole')}<n> on "
                                f"{over} with {c.get('buttons', 'button')}<n> on {under}, or 'at': [[over mark, under mark]])")
         closed = []
+        top_open = set()
+        if isinstance(state, dict) and "open_top" in state:  # the n highest fastenings (by their mark on `over`)
+            top_open = set(sorted(pairs, key=lambda p_: -_y(pcs[over], p_[0]))[:int(state["open_top"])])
         for a, b in pairs:
-            is_closed = state == "closed" or (isinstance(state, dict) and _y(pcs[over], a) <= _y(pcs[over], state["open_above"]) + 1e-9)
+            is_closed = state == "closed" or (isinstance(state, dict) and (
+                (a, b) not in top_open if "open_top" in state else
+                _y(pcs[over], a) <= _y(pcs[over], state["open_above"]) + 1e-9))
             closed.append(bool(is_closed))
             if is_closed:
                 stitches.append([f"{over}:{a}", f"{under}:{b}"])
@@ -106,17 +112,25 @@ def expand(entries: list, pcs: dict) -> tuple[list, list, list, list]:
                 folds.append({"name": f"{c['name']} band {piece}", "piece": piece, "line": {"edge": edge[side], "offset": float(w)},
                               "angle": 180, "kind": "press", "strength": 0.0, "in_wrap": True, "band": True})
         out.append({"name": c["name"], "kind": kind, "over": over, "under": under, "pairs": pairs, "closed": closed,
-                    "edge": edge, "band": band, "size": float(c.get("size", 0.011)), "lift": float(c.get("lift", 0.0008)),
+                    "edge": edge, "band": band, **({"seam": list(c["seam"])} if c.get("seam") else {}), "size": float(c.get("size", 0.011)), "lift": float(c.get("lift", 0.0008)),
                     "state": state})
     return stitches, folds, seams, out
 
 
-def resolve(closures: list, marks: dict, points: dict) -> list:
+def resolve(closures: list, marks: dict, points: dict, seams: list | None = None, sew=None, sew_seam=None) -> list:
     """Each closure with its fastenings' vertex pairs (`v`: [[over vertex, under vertex], ...]; a mark the mesh
-    dropped is left out and counted in `lost`)."""
+    dropped is left out and counted in `lost`). A closed zip's fastenings are its seam's sewn pairs (it is sewn
+    shut: without them the report read "0 of 0 closed" and never checked the fly)."""
     out = []
     for c in closures or []:
         v, ok, lost = [], [], 0
+        if c.get("kind") == "zip" and c.get("seam") and c.get("state", "closed") == "closed" and seams is not None \
+                and sew is not None and len(sew):
+            si = [i for i, sd in enumerate(seams) if list(sd) == list(c["seam"])]
+            if si:
+                pr = np.asarray(sew, np.int64).reshape(-1, 2)[np.isin(np.asarray(sew_seam), si)]
+                out.append(dict(c, v=pr.tolist(), closed=[True] * len(pr), lost=0))
+                continue
         for (a, b), cl in zip(c["pairs"], c["closed"]):
             va = marks.get(f"{c['over']}:{a}", points.get(f"{c['over']}:{a}"))
             vb = marks.get(f"{c['under']}:{b}", points.get(f"{c['under']}:{b}"))
