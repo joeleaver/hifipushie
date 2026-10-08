@@ -5442,6 +5442,47 @@ model".
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
+## Likeness checklist (2026-10-08, "likeness" agent, branch worktree-agent-a8f70ddf07e7751be)
+
+The user: "a checklist of facial features to specifically look for and match from references ... it works better if
+it knows where to focus"; then (via the coordinator) the same list must drive the FIRST fit, in stages. Guide
+`guide(topic="likeness")` = `likeness_guide.md` (FISWG / ASTM E3149 component list, likeness artists' big-to-small
+order, Farkas' anthropometry, sources). Renders `workspace/human_renders/lk_*`; scratch DURABLE in
+/mnt/data/hifipushie/likeness/ (run.sh <script> = this worktree's code on the main workspace, t2.py <model> (sheet +
+report), stages.py <model> [stage..] (sheet, plan, before, stages saved, after), cmpsheet.py out.png label=model[@v]
+... (photo | models through each camera + an item table), mk_fresh.py (model `lk_garrett`: om_garrett v8's body,
+seed head)).
+- `likeness.json` = the checklist as data: 49 items in 8 stages (proportions, widths, eyes, brows, nose, mouth,
+  chin_jaw, ears), each with `look` (a sentence to act on), views, a measure (kinds dist / width / ratio / tilt / level
+  / arch / angle / bow / judge on MediaPipe's 478 indices), unit, tol, control, optional `solve` (the humanfit
+  measure a stage asks), reliability notes. Keep items in stage order (a test checks it). Don't json.dump it (format).
+- `likeness.py`: every measure is a 2D quantity in the reference picture, mm at the face's depth through the
+  picture's FITTED camera (human_refs.json), on the face's own axes (nasion 168 -> menton 152). Both sides use the
+  SAME reader: MediaPipe Face Landmarker (venv $HIFIPUSHIE_MEDIAPIPE, default /mnt/data/hifipushie/facerefs_venv;
+  subprocess, results cached by image bytes in <HOME>/_cache/likeness) on the photo's face crop and on a numba
+  clay render of the model through that camera (`render`: eyeballs with iris discs, brows as strokes through the
+  model's brow landmarks: paint isn't in clay). Without the detector, points of the 68 fall back to the stored /
+  projected landmarks (`Side.pt`); the rest say "needs the detector". `compare` also reads every measure on the
+  landmarks alone (photo's stored 68, model's GNM 68): the table's "lm miss", '!' where the readings differ by more
+  than the tolerance = the miss depends on the definition. `focus_sheet` / `panel`: photo | model at the same crop and
+  camera, red photo points, blue model points (width items draw the level line on both).
+- `measure_reference(name)` -> <model>/likeness_targets.json (value, view, tol, confidence high / medium / low (tol
+  under ~1.2 px) / judge / unmeasurable + why). `stage_plan`, `fit_stage(name, stage)` (one stage: fit_outline for
+  widths; humanfit.solve on the stage's front-view misses mapped by `solve`, earlier stages' solve measures pinned
+  "+0"; fit_hood in eyes; ears none), `fit_likeness` (stages in order, each saved). MCP tools `likeness(name,
+  targets=)`, `fit_likeness(name, stage)`. Tests `tests/test_likeness.py` (synthetic face with known values).
+- Gotchas found: a UV sphere wound inward rendered the eyeball's inside (white eyes, no iris: the detector read the
+  eyes 3 mm too narrow); stored reference points leave the jaw contour out (lm0-16), so the landmark frame falls back
+  to nasion -> mouth; "eye line from nasion" is meaningless (nasion IS at eye level): replaced by the mouth line.
+- Fresh Garrett staged fit (lk_garrett v1 seed head -> v6; 7 stages ~2 min, all INTEGRITY ok, nose / chin_jaw /
+  ears had nothing wired to move): beyond tolerance 39 (seed) -> 25 (staged), om_garrett's hand passes 28
+  (`lk_02_staged_vs_hand.png` + table in the log). Read: the numbers beat the hand passes, the face does NOT: the
+  staged head is soft and generic beside om_garrett's planes and hollows, because the checklist measures distances,
+  not shape (cheek planes, hollows, folds are judge items). Pins hold solver measures, not checklist items: the brows
+  stage moved the middle third (reported as "EARLIER STAGES MADE WORSE").
+- Gaps (no control): canthal tilt, eye shape, brow arch / slant, nose length to tip / projection / nasolabial angle /
+  bridge, mouth-corner tilt, lip ratio, lower third / mouth line (ratios), jaw angle height, chin shape, ears.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.

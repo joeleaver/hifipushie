@@ -303,7 +303,11 @@ def guide(topic: str = "") -> str:
     topic="human": whole people on ONE mesh (human(source="human")) and how to measure and fit them without breaking
     what you weren't looking at: measure_human, fit_human (set measures, a solver finds the sliders), nudge_human
     (move a landmark), human_reference (match named points in reference images), with integrity and side-effect
-    reports on every change."""
+    reports on every change.
+    topic="likeness": the facial-likeness checklist (forensic examiners' feature list, likeness artists' order,
+    anthropometry): what to look at and measure on a reference, for the likeness and fit_likeness tools."""
+    if topic.strip().lower() == "likeness":
+        return (Path(__file__).with_name("likeness_guide.md")).read_text()
     if topic.strip().lower() in ("human", "humans"):
         return (Path(__file__).with_name("human_guide.md")).read_text()
     if topic.strip().lower() == "terrain":
@@ -2008,6 +2012,46 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
     (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
     return _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
+
+
+@mcp.tool(structured_output=False)
+def likeness(name: str, targets: bool = False, top: int = 8):
+    """The likeness CHECKLIST on a one-mesh human against its reference pictures (human_refs.json, from
+    human_reference): ~50 facial features in artists' order (proportions, face widths, eyes, brows, nose, mouth,
+    chin / jaw, ears; guide(topic="likeness")), each MEASURED the same way on the photo and on the model through the
+    picture's fitted camera (MediaPipe's 478 points on the photo and on a clay render of the model, so a detector's
+    definition errors cancel; the model's own landmarks as a second reading: '!' where they disagree). The reply: a
+    table ranked by miss / tolerance (beyond tolerance first), what can't be measured from these views and why
+    ("profile needed", "judge by eye"), and FOCUS PANELS (photo | model at the same crop and camera, the feature's
+    points on both: red photo, blue model) for the top misses and the judge-by-eye items: look there, on purpose.
+    targets=True instead measures the references alone and stores the target sheet (<model>/likeness_targets.json:
+    value, view, tolerance, confidence or "unmeasurable" per item) with the stage plan: what fit_likeness will do,
+    which items have a control and which are gaps. Measures only; never edits the model."""
+    from . import likeness as lk
+    if targets:
+        sh = lk.measure_reference(name)
+        return lk.sheet_text(sh) + "\n\nstage plan (fit_likeness, big to small):\n" + lk.stage_plan(name)
+    txt, out, _ = lk.report(name, top=top)
+    return [_png(PILImage.open(out)), txt + f"\nfocus sheet: {out}"]
+
+
+@mcp.tool(structured_output=False)
+def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
+    """ONE stage of the likeness fit from the checklist, in artists' order: "proportions" (face height, the thirds),
+    "widths" (the outline, level by level: fit_outline), "eyes" (spacing, size; hooded lids by fit_hood), "brows",
+    "nose", "mouth", "chin_jaw", "ears". The stage's items that miss beyond tolerance (front view) ask humanfit's
+    minimal-change solver for exactly those measures; every earlier stage's measures are pinned, so the nose can't
+    undo the widths. Integrity-guarded: a result that breaks the mesh is refused, not saved. The reply: the stage's
+    items before -> after, items with no solver measure (GAPS: what a person does by hand), earlier stages' items that
+    got worse, and the stage's focus panels. Approve each stage (look at the panels) before calling the next.
+    Run likeness(name, targets=True) first for the target sheet and the plan."""
+    from . import likeness as lk
+    pn = str(store.HOME / "human_renders" / f"lk_{name}_stage_{stage}.png")
+    rep = lk.fit_stage(name, stage, force=force, save=save, panels=pn)
+    out = [rep["text"] + f"\npanels: {pn}"]
+    if Path(pn).exists():
+        out.insert(0, _png(PILImage.open(pn)))
+    return out
 
 
 @mcp.tool(structured_output=False)
