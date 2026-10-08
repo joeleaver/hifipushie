@@ -251,6 +251,8 @@ def band_mask(M: dict, pcs: dict, c: dict, side: str) -> np.ndarray:
 
 LAY = 0.002  # m: how far a closed lap's over layer lies off the under layer (at 1.2 mm 1 cm facets cut through each other)
 SEAT_REACH = 0.03  # m past the band's inner line over which the over layer eases back to where the sim left it
+SEAT_PULL = 0.012  # m: a closed fastening's sides further apart than this are left as the sim has them (a button
+# holds: 10-20 mm open at a top button under an open collar, su_garrett, is the solver's weak stitch, not the garment)
 SEAT_MAX = 0.008  # m: a lap further open than this isn't a lap lying a little proud (the fronts parting above the
 # top button were 2-5 cm apart and at 20 mm some of that was "laid" 18 mm): left as the sim has it
 
@@ -369,7 +371,7 @@ def seat(V: np.ndarray, M: dict, pcs: dict, body, fixed: np.ndarray | None = Non
             if g_ < 3e-4:
                 left.append(0.0)
                 continue
-            if g_ > 0.012:
+            if g_ > SEAT_PULL:
                 left.append(round(g_ * 1000, 1))
                 continue
             for v0, sgn in ((va, 0.5), (vb, -0.5)):

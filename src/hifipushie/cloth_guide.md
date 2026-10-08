@@ -584,7 +584,7 @@ The same maps go into `scene.blend` and the export.
 - **The placket must show, in geometry AND maps, and its look depends on the closure's finish** (closure keys
   `finish` {"over", "under"}: `box` (a shirt's buttonhole side: three layers proud, a crisp fold at the inner edge,
   the tuck's shadow, two rows `topstitch` 3 mm in), `french` (a shirt's button side: a rounded folded edge, no rows),
-  `facing` (a faced edge, one row), `plain` (nothing); default by the garment's kind (`kinds.<k>.closure`: shirt box over french, jacket and coat facing with holes across), else box over french. `hole`: auto | along | across (auto:
+  `facing` (a faced edge, one row), `plain` (nothing); default by the garment's kind (`kinds.<k>.closure`: shirt box over french, jacket and coat facing with holes across and no topstitching unless asked), else box over french. `hole`: auto | along | across (auto:
   vertical down a placket, along a cuff); `button` {holes 4|2, color, roughness, thickness}). The pattern alone was
   right and the shirt still read as plain cloth: the band was a 0.8 mm lift over one 1 cm triangle (invisible in
   clay), the front edge was drawn as a hem, buttonholes as outlined slots, buttons as rivets. **A jacket or coat front

@@ -7553,7 +7553,7 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
             # (wide enough to survive the mip levels at outfit distance: the concept reads the band by its two edges)
             shadow *= np.where(z_, 1 - 0.22 * np.exp(-((db - w - 0.0008) / 0.0011) ** 2), 1).astype(np.float32)
             shadow *= np.where(z_, 1 - 0.1 * np.exp(-((db - 0.0006) / 0.0008) ** 2), 1).astype(np.float32)  # the folded edge's shoulder
-        for r_ in rows_:
+        for r_ in [r_ for r_ in rows_ if r_ > 0]:  # (topstitch 0: none, a tailored jacket's front)
             t_ = np.where(z_, rowb(db, r_) * dash_b, 0).astype(np.float32)
             thread = np.maximum(thread, t_)
             H -= o["stitch_depth"] * t_
