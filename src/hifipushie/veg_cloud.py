@@ -156,7 +156,7 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     leaf_m = float(cs["leaf"]) * float(lf.get("length", 0.08))
     if cs.get("size_m"):  # (needles: a card is a spray `size_m` across, not 1.5 needles)
         leaf_m = 0.5 * float(cs["size_m"]) * float(cs["length"])
-    half = leaf_m / max(float(cs["length"]), 1e-6) * float(np.clip(max(lod, 1e-3) ** -0.5, 1.0, float(cs.get("lod_grow", 2.0))))  # (lower LODs: fewer, larger cards)
+    half = leaf_m / max(float(cs["length"]), 1e-6) * float(np.clip(max(lod, 1e-3) ** -float(cs.get("lod_area", 0.5)), 1.0, float(cs.get("lod_grow", 2.0))))  # (lower LODs: fewer, larger cards)
     e1, e2 = V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]
     fn = np.cross(e1, e2)
     area = 0.5 * np.linalg.norm(fn, axis=1)
@@ -169,6 +169,9 @@ def shell_cards(tree: dict, st: dict, V: np.ndarray, F: np.ndarray, N: np.ndarra
     card_area = float(np.mean([c_["area"] for c_ in at["cards"]])) * half * half
     m_all = int(float(cs["cover"]) * float(w.sum()) / max(card_area, 1e-9))
     want = min(int(budget // max(tri, 1)), m_all)
+    lk = cs.get("lod_keep")  # (pixar at a distance: the shell carries the mass, the cards only break its edge: [share kept under lod 0.6, under 0.3])
+    if lk:
+        want = int(want * (float(lk[1]) if lod < 0.3 and len(lk) > 1 else float(lk[0]) if lod < 0.6 else 1.0))
     if want < 4 or not len(F):
         return None
     seed = int(spec.get("seed", 1))

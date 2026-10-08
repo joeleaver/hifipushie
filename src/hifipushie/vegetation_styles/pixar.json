@@ -112,7 +112,12 @@
    "warm_tip": 0.12,
    "share": 0.85,
    "alpha_cut": 0.5,
-   "verts": 5
+   "verts": 5,
+   "lod_keep": [
+    0.45,
+    0.35
+   ],
+   "lod_area": 0.35
   },
   "sub": 8,
   "sub_spread": 1.9,
