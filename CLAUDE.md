@@ -2460,7 +2460,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   passed at most PASS_LIMIT 3 times (no starvation). GPU jobs (`gpu=True`: local ZOZO; `gpu_claim()` for a GPU
   stage inside a job) run one at a time, FIFO among themselves, and don't block others' memory; an old-code holder
   of heavy0.lock and a job of unknown kind count as holding the GPU (`_holds_gpu`: an old-code ZOZO sim and a new
-  one ran on the GPU together and one crashed, 2026-10-07). Pools inside a job
+  one ran on the GPU together and one crashed, 2026-10-07). Path-free view for other machines (S0urc3 through the
+  oxidegen sculpt artist): `queue_view` / `queue_text`, MCP tool `heavy_queue` (subject-less, in the artist's
+  SUBJECTLESS_OK + FAST; `heavy_status` stays left out): kind, label (`_label`: path words cut to their last part),
+  GB, minutes, position, why, GB ahead, and the caller's own jobs marked by `caller_tag` (a hash of
+  $HIFIPUSHIE_SESSION or $HIFIPUSHIE_HOME: an artist session's workspace). Wait lines carry no pids and end
+  "3rd in queue, 18 GB ahead of you"; export_asset writes them to the model's progress.log, which the artist sends
+  as the task's progress. Pools inside a job
   size from its GRANT (`workers()` = min(grant - 1 GB, free memory) / per worker): two jobs both seeing "free" memory
   is how the desktop died. $HIFIPUSHIE_HEAVY_SLOTS=1 brings the one-at-a-time behaviour back.
   State in $HIFIPUSHIE_HEAVY_DIR (default $XDG_RUNTIME_DIR/hifipushie): jobs/<id>.json + jobs/<id>.lock (flocked by

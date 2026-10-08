@@ -365,26 +365,49 @@ def _plan(d: Path, jobs: list[dict], legacy: dict | None) -> dict:
     return out
 
 
-def _fmt_job(j: dict) -> str:
+def _fmt_job(j: dict, pid: bool = True) -> str:
     since = time.strftime("%H:%M", time.localtime(j.get("since", time.time())))
     gpu = ", GPU" if j.get("gpu") else ""
-    return f"{j['name']} (pid {j.get('pid')}, {j.get('gb', 0):.0f} GB{gpu}, since {since})"
+    if "id" not in j:  # the old code's holder
+        return f"{_label(j['name'])} (old hifipushie code" + (f", pid {j.get('pid')})" if pid else ")")
+    p = f"pid {j.get('pid')}, " if pid else ""
+    return f"{_label(j['name'])} ({p}{j.get('gb', 0):.0f} GB{gpu}, since {since})"
+
+
+def _label(name: str) -> str:
+    """A job's name with no host path in it (a word with a "/" keeps its last part)."""
+    return " ".join(w.rstrip("/").rsplit("/", 1)[-1] if "/" in w else w for w in str(name).split()) or "job"
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
 def _wait_text(me: dict, jobs: list[dict], legacy: dict | None, reason: str) -> str:
+    """What a waiting job reports (its tool's log / progress): no paths, no pids (it reaches other machines'
+    departments through the artist's progress line)."""
     running = [j for j in jobs if j["state"] == "running"] + ([legacy] if legacy else [])
     ahead = [j for j in jobs if j["state"] == "waiting" and j["id"] < me["id"]]
     used = sum(j["gb"] for j in running)
-    held = "; ".join(_fmt_job(j) if "id" in j else f"{j['name']} (old code, pid {j['pid']})" for j in running) or "nobody"
+    held = "; ".join(_fmt_job(j, pid=False) for j in running) or "nobody"
     if reason == "gpu":
         why = "waiting for the GPU"
-        held = "; ".join(_fmt_job(j) if "id" in j else f"{j['name']} (old code, pid {j['pid']})"
-                         for j in running if _holds_gpu(j)) or held
+        held = "; ".join(_fmt_job(j, pid=False) for j in running if _holds_gpu(j)) or held
     elif reason == "memory":
         why = f"waiting for memory: needs {me['gb']:.0f} GB, {used:.0f} of {heavy_budget_gb():.0f} GB declared by running jobs"
     else:
         why = "waiting behind older jobs"
-    return f"{me['name']}: {why}; held by {held}; {len(ahead)} ahead of you"
+    pos = f"{_ordinal(len(ahead) + 1)} in queue, {sum(j['gb'] for j in ahead):.0f} GB ahead of you"
+    return f"{_label(me['name'])}: {why}; held by {held}; {pos}"
+
+
+def caller_tag() -> str:
+    """Who is asking, without saying where: a short hash of the session ($HIFIPUSHIE_SESSION, else the workspace
+    $HIFIPUSHIE_HOME: an oxidegen artist session's own), else of this process. A job records the tag of the
+    process that queued it, so `queue_view` can mark the caller's own jobs."""
+    import hashlib
+    key = os.environ.get("HIFIPUSHIE_SESSION") or os.environ.get("HIFIPUSHIE_HOME") or f"pid{os.getpid()}"
+    return hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
 def _job_info(name, kind, model, gb, gpu, state="waiting") -> dict:
@@ -394,7 +417,7 @@ def _job_info(name, kind, model, gb, gpu, state="waiting") -> dict:
     return {"id": f"{time.time_ns():020d}-{os.getpid()}-{threading.get_ident() % 100000}-{seq}", "name": name,
             "kind": kind, "model": model, "gb": float(gb), "gpu": bool(gpu), "pid": os.getpid(),
             "cwd": os.getcwd(), "session": os.environ.get("HIFIPUSHIE_SESSION") or os.environ.get("CLAUDE_SESSION_ID"),
-            "since": time.time(), "state": state, "passed": 0}
+            "since": time.time(), "state": state, "passed": 0, "tag": caller_tag()}
 
 
 def _acquire(d: Path, info: dict, log) -> tuple:
@@ -405,7 +428,7 @@ def _acquire(d: Path, info: dict, log) -> tuple:
         lfd = _open_fd(lock_p, os.O_RDWR | os.O_CREAT | os.O_EXCL)
         fcntl.flock(lfd, fcntl.LOCK_EX)
         _write_json(json_p, info)
-    t0, last, last_t, fence = time.time(), None, 0.0, None
+    t0, last, last_t, fence, last_text = time.time(), None, 0.0, None, None
     try:
         while True:
             ev = current_cancel()
@@ -434,9 +457,9 @@ def _acquire(d: Path, info: dict, log) -> tuple:
                     break
                 text = _wait_text(info, jobs, legacy, p or "behind")
             core = text.rsplit("; ", 1)[0]
-            if core != last or time.time() - last_t > 300:
+            if core != last or time.time() - last_t > (30 if text != last_text else 300):
                 log(text)
-                last, last_t = core, time.time()
+                last, last_t, last_text = core, time.time(), text
             time.sleep(float(os.environ.get("HIFIPUSHIE_HEAVY_POLL", POLL)) * (0.8 + 0.4 * random.random()))
     except BaseException:
         with _queue_lock(d):
@@ -697,6 +720,56 @@ def status_text() -> str:
         lines.append(f"  waiting {i + 1}: {_fmt_job(j)} [{j['kind']}] for {j['why']}; passed {j.get('passed', 0)}x; "
                      f"{j.get('cwd', '')}")
     if not s["running"] and not s["waiting"] and not s["legacy"]:
+        lines.append("  nothing running or waiting")
+    return "\n".join(lines)
+
+
+def queue_view(tag: str | None = None) -> dict:
+    """The heavy-job queue with nothing about the host in it (no paths, session dirs, pids, cwd): for callers on
+    other machines (the oxidegen sculpt artist). Running jobs: kind, label, GB declared, GPU, minutes running.
+    Waiting jobs in the order they're served: position, kind, label, GB, why, GB of the jobs ahead, minutes waited,
+    and `yours` = queued by the caller (`tag`, default `caller_tag()`: the same session / workspace)."""
+    tag = caller_tag() if tag is None else tag
+    s = status()
+    now = time.time()
+    run = [{"kind": j.get("kind"), "label": _label(j["name"]), "gb": round(j["gb"], 1), "gpu": _holds_gpu(j),
+            "minutes": round((now - j.get("started", j.get("since", now))) / 60, 1), "yours": j.get("tag") == tag}
+           for j in s["running"]]
+    if s["legacy"]:
+        run.append({"kind": "unknown (older hifipushie)", "label": _label(s["legacy"]["name"]), "gb": LEGACY_GB,
+                    "gpu": True, "minutes": None, "yours": False})
+    wait, ahead = [], 0.0
+    for i, j in enumerate(s["waiting"]):
+        wait.append({"position": i + 1, "kind": j.get("kind"), "label": _label(j["name"]), "gb": round(j["gb"], 1),
+                     "gpu": bool(j.get("gpu")), "why": j["why"], "gb_ahead": round(ahead, 1),
+                     "minutes": round((now - j.get("since", now)) / 60, 1), "yours": j.get("tag") == tag})
+        ahead += j["gb"]
+    return {"budget_gb": s["budget_gb"], "declared_gb": s["declared_gb"],
+            "gpu": next((r["label"] for r in run if r["gpu"]), None), "running": run, "waiting": wait}
+
+
+WHY = {"memory": "waiting for memory", "gpu": "waiting for the GPU", "behind": "behind older jobs",
+       "admitting": "starting"}
+
+
+def queue_text(tag: str | None = None) -> str:
+    q = queue_view(tag)
+    lines = [f"heavy jobs on this machine: {q['declared_gb']:.0f} of {q['budget_gb']:.0f} GB declared; "
+             f"GPU: {q['gpu'] or 'free'}"]
+    for r in q["running"]:
+        t = f", {r['minutes']:.0f} min" if r["minutes"] is not None else ""
+        lines.append(f"  running: {r['label']} [{r['kind']}] {r['gb']:.0f} GB{', GPU' if r['gpu'] else ''}{t}"
+                     + ("  <- yours" if r["yours"] else ""))
+    for w in q["waiting"]:
+        lines.append(f"  {_ordinal(w['position'])} in queue: {w['label']} [{w['kind']}] {w['gb']:.0f} GB"
+                     f"{', GPU' if w['gpu'] else ''}, {WHY.get(w['why'], w['why'])}, {w['gb_ahead']:.0f} GB ahead, "
+                     f"waited {w['minutes']:.0f} min" + ("  <- yours" if w["yours"] else ""))
+    mine = [w for w in q["waiting"] if w["yours"]]
+    if mine:
+        w = mine[0]
+        lines.append(f"yours: {_ordinal(w['position'])} in queue, {w['gb_ahead']:.0f} GB ahead "
+                     f"({WHY.get(w['why'], w['why'])})")
+    if not q["running"] and not q["waiting"]:
         lines.append("  nothing running or waiting")
     return "\n".join(lines)
 
