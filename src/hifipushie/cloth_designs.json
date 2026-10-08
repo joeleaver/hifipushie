@@ -40,10 +40,12 @@
    {"seam": 9, "ease": [0.0, 0.04], "why": "the cuff is the sleeve hem + the placket's underlap and overlap strips, which this table doesn't cut as pieces (the slit is closed as worn: closures placket.L / .R): the cuff is eased 3% onto the hem"},
    {"seam": 10, "ease": [0.0, 0.04], "why": "as the left cuff"}
   ],
+  "_doc_front": "a dress shirt's front: the wearer's LEFT front carries a box placket (FreeSewing's classic cut-on buttonhole placket: the edge folded out and back, a band of three layers 8% of the neck wide centred on CF, edge-stitched 3 mm in from both folds, vertical buttonholes on CF), the RIGHT front a French front (folded facing, buttons on CF). The table cuts the 'seamless' draft at placketFold1: the classic draft's tuck takes back exactly the 2 x fold it adds, so after turning the two outlines are the same; the closure's finish says how the band is made (detail maps), the band's inner line is a vertex row (closures.expand).",
   "closures": [
    {"name": "front", "kind": "buttons", "over": "front.L", "under": "front.R",
     "edge": {"over": "placketFold1.a>placketFold1.b", "under": "placketOuterFold.a>placketOuterFold.b"},
-    "band": {"over": 0.030, "under": 0.018}},
+    "band": {"over": 0.030, "under": 0.018}, "finish": {"over": "box", "under": "french"}, "topstitch": 0.003,
+    "size": 0.011, "button": {"holes": 4, "roughness": 0.42}},
    {"name": "cuff.L", "kind": "buttons", "over": "cuff.L", "under": "cuff.L"},
    {"name": "cuff.R", "kind": "buttons", "over": "cuff.R", "under": "cuff.R"},
    {"name": "placket.L", "kind": "zip", "over": "sleeve.L", "under": "sleeve.L",
