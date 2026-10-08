@@ -577,6 +577,7 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
             # one vertex, every row's last segment bent to it and the flap turned about bent rows was stretched 150%)
             for S_ in foldmod.row_samples(fr["lines"], ring, h):
                 ids = []
+                ss_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(S_, axis=0), axis=1))]
                 for j, q in enumerate(S_):
                     if j in (0, len(S_) - 1):  # an end: the outline's nearest vertex moves onto it
                         dq = np.linalg.norm(ring - q, axis=1)
@@ -600,9 +601,12 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
                                 taken.add(i)
                             ids.append(("ring", i))
                             continue
-                    if 0 < j < len(S_) - 1 and _seg_dist(q[None], ring)[0] < ROW_KEEP * h:
-                        # (a sample a hair inside the outline beside the row's end: a 0.4 mm sliver edge at a shirt
-                        # front's neck point, 11x stretched by the first mm the fine settle's start moved it)
+                    if 0 < j < len(S_) - 1 and min(ss_[j], ss_[-1] - ss_[j]) < ROW_END * h \
+                            and _seg_dist(q[None], ring)[0] < ROW_KEEP * h:
+                        # (a sample near a row's end a hair inside the outline: a 0.4 mm sliver edge at a shirt
+                        # front's neck point, 11x stretched by the first mm the fine settle's start moved it. Only next
+                        # to the ends: a collar's roll line runs 4 mm in from its edge all along, and dropping every
+                        # sample left its row two vertices at 2 cm: the fall could not turn)
                         continue
                     if 0 < j < len(S_) - 1 and len(FL):
                         dk = np.linalg.norm(FL - q, axis=1)
@@ -3501,6 +3505,8 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
     clear = SMOOTH_CLEAR if smooth else CLEAR
     info = {}
     bn, _ = body.normals() if len(body.V) else (np.zeros((0, 3)), None)
+    # the neck pieces' folds first (a collar's fall), then the body pieces' (a front rolled back under it)
+    fds = sorted(fds, key=lambda f_: pcs[f_["piece"]]["wrap"].get("to", "torso") not in ("neck", "seam"))
     for fd in fds:
         if fd.get("in_wrap"):  # a pleat's folds are laid by the wrap itself (place: wrap "pleats")
             continue
@@ -3521,6 +3527,14 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
                 if pcs[o]["wrap"].get("to", "torso") == to and \
                         pcs[o]["wrap"].get("half", 0) * pcs[nm]["wrap"].get("half", 0) >= 0:
                     obs.append(foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o]))
+        if fd["turn"] > 0 and to == "torso":
+            # a torso piece rolled back at the neck (a shirt worn open) rolls UNDER the collar's fall, laid first (the
+            # fall turned over the fronts and the fronts rolled out through it: 11 crossings at the start). Normals
+            # turned in: the flap stays on the inner side of the neck pieces
+            for j, o in enumerate(names):
+                if pcs[o]["wrap"].get("to", "torso") in ("neck", "seam"):
+                    p_, n_ = foldmod.samples(X, F[pid[F[:, 0]] == j], faces[o])
+                    obs.append((p_, -n_, 0.008))
         hm = float(np.median(np.linalg.norm(M["uv"][F[:, 0]] - M["uv"][F[:, 1]], axis=1)))
         if _pressed(B, M, fd):
             # a forepart laid where it is worn: its lapel is PRESSED onto it (the flap's mirror image across the roll
@@ -3957,6 +3971,47 @@ def _open_start(Bp: dict, M: dict, Xs: np.ndarray, body0: "Body", poses: list, c
 FINE_REACH = 0.10  # m from a made piece within which the fine settle moves the draped cloth
 FINE_FREE = 40.0  # deg a made flap starts open when it is free in the fine settle (it closes by its own stiff fold)
 FINE_OPEN = 55.0  # deg a made flap starts open in the fine settle (clear of the cloth it then presses down)
+MADE_SHAPE = 0.008  # m (p90): a made piece laid this differently at the fine size than the coarse is reported
+HELD_GAP = 0.0015  # m the draped cloth is kept off a made piece's surface at the fine settle's start (_clear_of_held)
+
+
+def _clear_of_held(V: np.ndarray, Vd: np.ndarray, M: dict, held: np.ndarray, reach: float = 0.008,
+                   gap: float = HELD_GAP, rounds: int = 3) -> np.ndarray:
+    """The draped cloth near a made piece put back on the side of it it lies on in the coarse drape Vd (the coarse
+    sim carried onto the fine mesh, where both lie as the sim left them), at least `gap` off it. The made pieces are
+    fitted rigidly from their own fine placement onto the coarse ones, the drape is interpolated: layers a few mm apart
+    come out through each other (ga_suit's shirt: its collar's fall through both fronts, 80 crossings), and smoothing
+    that out moved the fronts 20 mm and stretched their fold rows 3x."""
+    from .closures import _closest_on
+    if not held.any() or held.all():
+        return V
+    V = V.copy()
+    F = M["F"]
+    Fh = F[held[F].all(1)]
+    if not len(Fh):
+        return V
+    free = np.where(~held)[0]
+    tree = cKDTree(V[Fh].mean(1))
+    near = free[tree.query(V[free], distance_upper_bound=reach + 0.02)[0] < reach + 0.02]
+    if not len(near):
+        return V
+    qd, nd, ind = _closest_on(Vd[near], Vd, Fh)
+    sd = np.sum((Vd[near] - qd) * nd, 1)
+    side = np.sign(sd)
+    keep = (np.abs(sd) < reach) & ind & (side != 0)  # (projecting inside a triangle: not round an edge)
+    near, side = near[keep], side[keep]
+    for _ in range(rounds):
+        if not len(near):
+            break
+        q, n, _ = _closest_on(V[near], V, Fh)
+        s_ = np.sum((V[near] - q) * n, 1) * side
+        bad = s_ < gap
+        if not bad.any():
+            break
+        V[near[bad]] += ((gap - s_[bad]) * side[bad])[:, None] * n[bad]
+    return V
+
+
 FAR_CLEAR = 0.0012  # m the carried far cloth is kept off the body at the fine settle's start
 FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth under it (m)
 
@@ -4014,6 +4069,13 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         R1, t1 = carry["moves"][nm]
         V[sel] = (Xf[sel] @ R0.T + t0) @ R1.T + t1
         held[sel] = True
+        # (a made piece laid in another SHAPE at the fine size than at the coarse one puts the cloth the coarse sim
+        # draped round it through it: ga_suit's collar fall stood at 2 cm (its roll row lost its vertices) and lay
+        # down at 1 cm, through both fronts. Reported; the cause is fixed at placement)
+        Rs, ts = _kabsch(V[sel], Vd[sel])
+        dev = float(np.percentile(np.linalg.norm(V[sel] @ Rs.T + ts - Vd[sel], axis=1), 90))
+        if dev > MADE_SHAPE:
+            Bp.setdefault("made_reshaped", {})[nm] = round(dev * 1000, 1)
     # the carried drape's overstretched edges taken back (at piece outlines the transfer runs on past the coarse
     # outline, and seams drawn together: a few dozen triangles 5-70% long, which a strain-limited solver can't start
     # from)
@@ -4033,6 +4095,7 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         V = clear(V)
         V = _relax_stretch(V, M, ~held, 0.03, iters=15)
         V = clear(V)
+        V = _clear_of_held(V, Vd, M, held)
         V, untangled = _untangle(V, M, ~held, reshape=True)
         if len(untangled) > 1:
             V = clear(V)
@@ -4241,8 +4304,20 @@ def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10, reshap
     V_in = V.copy()
     A_, B_ = _graph(M)
     hist = []
+    def crossing(X):
+        # (only crossings the free cloth takes part in: two held pieces through each other (a made collar's ends in
+        # its stand) can't be untangled by moving the cloth round them, and smoothing toward them over the seam
+        # pulled the shirt's front neckline 20 mm and stretched its fold rows 3x: ga_suit's fine-settle start)
+        Eh, Th = _crossing_hits(X, M)
+        out = np.zeros(len(X), bool)
+        if len(Eh):
+            mine = free[Eh].any(1) | free[Th].any(1)
+            out[Eh[mine].ravel()] = True
+            out[Th[mine].ravel()] = True
+        return out
+
     for r in range(rounds):
-        bad = _crossing_verts(V, M)
+        bad = crossing(V)
         hist.append(int(bad.sum()))
         if not bad.any():
             break
@@ -4264,12 +4339,12 @@ def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10, reshap
         g = touched.copy()
         g[A_[touched[B_]]] = True
         g[B_[touched[A_]]] = True
-        before = _crossing_verts(V, M)
+        before = crossing(V)
         mv_ = g & free
         W = V
         for _k in range(5):  # (kept away from the crossings it would make: those vertices held, the rest reshaped again)
             W = _relax_strain(V, M, mv_, UNTANGLE_STRAIN, iters=200)
-            new_ = _crossing_verts(W, M) & ~before
+            new_ = crossing(W) & ~before
             if not new_.any():
                 break
             for _ in range(1 + _k):
@@ -4281,7 +4356,7 @@ def _untangle(V: np.ndarray, M: dict, free: np.ndarray, rounds: int = 10, reshap
         else:
             W = V
         V = W
-        hist.append(int(_crossing_verts(V, M).sum()))
+        hist.append(int(crossing(V).sum()))
     return V, hist
 
 
@@ -5224,7 +5299,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             np.savez_compressed(fcache, V=df["V"], **({"Vprev": df["Vprev"]} if df.get("Vprev") is not None else {}))
         res["V_sim"], res["V_drape"], res["V_prev"] = df["V"], plan["drape"], df.get("Vprev")
         res["constructed"] = {"pieces": plan["pieces"], "folds": plan["info"], "fine_settle": fr,
-                              "untangled": Bp.get("untangled")}
+                              "untangled": Bp.get("untangled"), "made_reshaped": Bp.get("made_reshaped")}
     elif construct:
         res["V_sim"], res["V_drape"], res["constructed"] = _constructed(Bp, Ms, Xs, res["V_coarse"], M, X0, carry, body)
         res["V_prev"] = None
@@ -5279,6 +5354,17 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             res["V"], rms = cloth_detail.displace(M, res["V"], res["fold_dabs"], fabn, do["fold_opts"], interfacing(Bp, M),
                                                   body=body_real)
             res["folds_in_geometry"] = round(rms, 2)
+    if any(fd.get("kind") == "press" and fd.get("in_wrap") and float(fd.get("angle", 180)) > 180.5
+           for fd in M.get("folds") or []) and not hang:
+        # pressed ridges (a trouser crease) sharpened in the geometry: the iron's work (folds.press_ridges)
+        Fo = oriented_faces(M, res["V"], body=body_real)
+        fn_ = np.cross(res["V"][Fo[:, 1]] - res["V"][Fo[:, 0]], res["V"][Fo[:, 2]] - res["V"][Fo[:, 0]])
+        No = np.zeros_like(res["V"])
+        for c_ in range(3):
+            np.add.at(No, Fo[:, c_], fn_)
+        No /= np.maximum(np.linalg.norm(No, axis=1, keepdims=True), 1e-12)
+        made_v = np.isin(M["piece"], [M["names"].index(nm) for nm in (res.get("constructed") or {}).get("pieces", [])])
+        res["V"], res["pressed_ridges"] = foldmod.press_ridges(res["V"], M, No, skip=made_v)
     if not hang:
         # the clean-up (welds, the push off the body) and the folds put into the geometry must not make the cloth
         # cross itself where the sim left it clean: those places go back to the sim's surface. For every garment:
@@ -5500,7 +5586,8 @@ def shape_numbers(V: np.ndarray, M: dict) -> dict:
             "folds_mm": round(float(np.sqrt(np.mean(d_lo ** 2)) * 1000), 1)}
 
 
-ROW_KEEP = 0.25  # x h: a fold row's inner sample this near the outline is left out, near another fold's is shared
+ROW_KEEP = 0.25  # x h: a fold row's inner sample this near the outline (within ROW_END h of the row's ends) is left out
+ROW_END = 2.5  # x h: (ROW_KEEP) how far from a row's ends; a sample near another fold's row is shared
 SEAM_JOIN = 0.15  # x h: a fold line ending this near a seam sample ends ON it (no sliver edge on the seam)
 CLEANUP = {"smooth": 4, "weld": True, "clear": 0.003, "keep": 0.004, "seat": True, "seams": True, "press": True}
 
