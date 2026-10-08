@@ -4915,6 +4915,18 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             gr[A_[sim_bad[B_]]] = True
             gr[B_[sim_bad[A_]]] = True
             sim_bad = gr
+        # the welded seam groups as the clean-up left them (sewn pairs closed within 0.5 mm)
+        wgrp_ = wsize_ = None
+        sw_ = np.asarray(M["sew"]).reshape(-1, 2)
+        if len(sw_):
+            sw_ = sw_[np.linalg.norm(res["V"][sw_[:, 0]] - res["V"][sw_[:, 1]], axis=1) < 5e-4]
+            wgrp_ = np.arange(len(res["V"]))
+            for _ in range(8):
+                m2_ = np.minimum(wgrp_[sw_[:, 0]], wgrp_[sw_[:, 1]])
+                np.minimum.at(wgrp_, sw_[:, 0], m2_)
+                np.minimum.at(wgrp_, sw_[:, 1], m2_)
+                wgrp_ = wgrp_[wgrp_]
+            wsize_ = np.bincount(wgrp_, minlength=len(wgrp_))[wgrp_]
         for it_ in range(8):
             bad = crossed(res["V"]) & ~sim_bad
             if not bad.any():
@@ -4927,6 +4939,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 gr[B_[bad[A_]]] = True
                 bad = gr
             res["V"][bad] = res["V_sim"][bad]
+            # a welded seam vertex that goes back takes its weld with it: the group moves to the mean of its sides'
+            # sim positions (sent back alone, one side of a closed seam stood at the sim's 3-6 mm gap: pale slits on
+            # both upper sleeves in su_43); the seam stays closed where nothing crosses
+            if wgrp_ is not None and bad.any():
+                gb_ = np.unique(wgrp_[bad & (wsize_ > 1)])
+                if len(gb_):
+                    m_ = np.isin(wgrp_, gb_)
+                    acc_ = np.zeros((len(res["V"]), 3))
+                    np.add.at(acc_, wgrp_[m_], res["V_sim"][m_])
+                    res["V"][m_] = acc_[wgrp_[m_]] / wsize_[m_][:, None]
     sc = g.get("sculpt")
     if sc and sc.get("key") == key:
         f = Path(sc["file"])
