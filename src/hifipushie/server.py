@@ -2373,9 +2373,9 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
     A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
     "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
-    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" | "anime" | "cartoon", or
+    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" | "anime" | "cartoon" | "pixar", or
     {"sheet": "blobby", "crown": {"masses": 6}, ...} to override a sheet's numbers: the SAME grown plant (skeleton,
-    height, crown extent, lean) dressed another way (few fat limbs, a crown of smooth closed masses, flat colours); the
+    height, crown extent, lean) dressed another way (blobby: few fat limbs + smooth closed masses; anime: painted leaf clouds; cartoon: scalloped clumps; pixar: every limb + a soft canopy shell with a layer of real leaf cards); the
     report says what was simplified and the outline IoU against the realistic tree. Looks and exports follow the style.
     "season": summer | spring | autumn | winter. The same spec always grows the same plant. Every version is kept
     (plant_history). Returns the report: size, form measured on its own silhouettes, limbs, foliage, guides, the
