@@ -366,9 +366,17 @@ def pressed_flap(X: np.ndarray, M: dict, fd: dict, face: float = 1.0, lay: float
         np.sqrt(np.abs(det))
     wv = np.clip(miss / PRESS_OFF, 0.0, 1.0)
     if (wv > 0).any():
-        full = abs(fd["turn"]) * len(g["rows"])
-        Xt = turn_flap(X, M, fd, min(1.0, PLACE_TURN / max(full, 1e-9)), face)
-        Pn = (1 - wv)[:, None] * Pn + wv[:, None] * Xt[v]
+        # (one rigid turn about the FIRST row, for the flap and the roll's further rows alike: turn_flap turns each row's
+        # flap about its own row and leaves the further rows' own vertices where they lay)
+        full = min(abs(fd["turn"]) * len(g["rows"]), PLACE_TURN)
+        Pr = X[rm["row"]]
+        T = np.gradient(Pr, axis=0)
+        T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-12)
+        Q = Pr[si] * (1 - fr[:, None]) + Pr[si + 1] * fr[:, None]
+        W = T[si] * (1 - fr[:, None]) + T[si + 1] * fr[:, None]
+        W /= np.maximum(np.linalg.norm(W, axis=1, keepdims=True), 1e-12)
+        Xt = Q + _rodrigues(X[v] - Q, fd["sign"] * face * W, np.full(len(v), np.sign(fd["turn"]) * full))
+        Pn = (1 - wv)[:, None] * Pn + wv[:, None] * Xt
     X = X.copy()
     X[v] = Pn
     return X

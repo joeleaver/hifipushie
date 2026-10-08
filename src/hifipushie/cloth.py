@@ -1317,6 +1317,7 @@ WORN_NECK_CLEAR = 0.02  # m out from the neck point (world x) from which a colum
 WORN_NECK = 0.05  # m under the neck point from which a column in front of / behind the neck stops following the body  # m a worn column may slide along its path to put the piece's top on the shoulder's ridge
 
 
+SLEEVE_TAPER = True  # smooth placement: sleeves laid on a cone that follows their own girth (place(): taper)
 LEG_BLEND = 0.15  # m under the crotch over which a trouser leg hands over from the seat's cylinder to the leg's tube
 LEG_TOP = 0.01  # m under the crotch line where the hand-over starts
 LEG_APART = 0.004  # m a trouser leg's side seam and inseam start apart at least
@@ -2794,6 +2795,23 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                             shifts[w["follow"][0]] = (t_anchor, float(t.max() - t_lim))
                         t = t - (t.max() - t_lim)
             rad = np.full(len(U), Rp)
+            taper = smooth and not closed and SLEEVE_TAPER and bool(B.get("worn_top"))  # (jackets, coats: shirts unchanged)
+            if taper:
+                # smooth: a cone, not one cylinder: each row on the radius its own girth needs (this piece's width
+                # there / its share of the sleeve's widest girth) or what clears the arm there, whichever is more,
+                # smoothed along the arm. On the deltoid's cylinder a jacket sleeve's hem (298 mm round) started on
+                # a 610 mm circle, its two seams 150 mm open at the wrist, and the under sleeve sometimes rode up
+                # and left the hindarm seam 40-66 mm open (ga_suit su_54, su_61)
+                share = widest(P) / max(girth, 1e-9)
+                yfit = np.polyfit(t, U[:, 1], 1)
+                tg = np.arange(t.min() - 0.01, t.max() + 0.011, 0.005)
+                wg = np.array([_piece_width_at(P, float(np.polyval(yfit, tt))) for tt in tg])
+                cg = np.interp(tg, ts, rmax) + gap + float(w.get("out", 0)) + (_out or {}).get(nm, 0.0)
+                Rg = np.maximum(wg / max(share, 1e-6) / (2 * np.pi), cg)
+                Rg = np.minimum(Rg, Rp)
+                ker = np.exp(-0.5 * (np.arange(-8, 9) * 0.005 / 0.015) ** 2)
+                Rg = np.convolve(np.pad(Rg, 8, mode="edge"), ker / ker.sum(), mode="valid")
+                rad = np.interp(t, tg, Rg)
             if _blouse and nm in _blouse and smooth:  # the excess taken up along the arm over the sleeve's last part
                 t_h, ex = _blouse[nm]
                 z0 = t_h - max(3 * ex, 0.08)
@@ -2872,7 +2890,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                     ang = float(w.get("front", 1)) * th[i] + turn_w
                     out[i] = at_t(ti, ang, rr[i])[0]
                     continue
-                ang = float(w.get("front", 1)) * (x - cx) / Rp + turn_w
+                ang = float(w.get("front", 1)) * (x - cx) / (rad[i] if taper else Rp) + turn_w
                 arm_ang[vi_[i]] = ang
                 p, u = at_t(ti, ang, rad[i])
                 _, u1 = at_t(seg[0] - 1e-6, ang, rad[i])
@@ -3344,11 +3362,16 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         # a sleeve still pushed off the body where it stands out further already (a coat's under sleeve's corner at
         # the armpit: 12% stretch) goes down the arm too
         hit |= {nm for k, nm in enumerate(names) if pcs[nm]["wrap"].get("to", "").startswith("arm.")
-                and not _closed_girth(M, nm) and "follow" not in pcs[nm]["wrap"] and mv[pid == k].max() > 0.0015}
+                and not _closed_girth(M, nm) and "follow" not in pcs[nm]["wrap"] and "align" not in pcs[nm]["wrap"] and mv[pid == k].max() > 0.0015}
+        # (not a piece aligned to another on its arm, a two-piece sleeve's under sleeve: moved down alone it started 11 cm
+        # below its top sleeve, the seams 130 mm apart, and the hindarm seam stayed 40-66 mm open: su_54, su_61)
         down = dict(_down or {})
+        # (the pieces sharing an arm go down together: the sleeve is one tube)
+        hit |= {o for o in names for h in list(hit) if pcs[o]["wrap"].get("to") == pcs[h]["wrap"].get("to")
+                and "follow" not in pcs[o]["wrap"]}
         if hit and max([down.get(nm, 0.0) for nm in hit]) < 0.10:
             for nm in hit:
-                down[nm] = down.get(nm, 0.0) + 0.01
+                down[nm] = max(down.get(o, 0.0) for o in hit if pcs[o]["wrap"].get("to") == pcs[nm]["wrap"].get("to")) + 0.01
             return place(B, M, body, gap, _blouse=None, smooth=True, _out=_out, _down=down)
         # draped cloth pushed clear of the body starts stretched where the body stands proud of the piece's wrap (an
         # under sleeve at the armpit 37-125%, a back's neck over a shirt collar): a strain-limited solver can't start
@@ -3388,6 +3411,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
         B["start_crossings"] = sorted(_piece_crossings(Xp, M))
+        B["sleeve_down"] = {k_: round(v_, 3) for k_, v_ in (_down or {}).items()}
     # every band fastened to itself (a cuff, a stand, a waistband) must START closed, whatever path placed it: a
     # made band is held as placed, so one that starts with its button far from its buttonhole never closes, and what
     # is sewn to its ends is held apart (the trousers' band ended 77 mm open: only the torso path said band_short)
