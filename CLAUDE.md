@@ -2889,6 +2889,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     shading has a faint star in the dish (smooth normals across rim and middle), tests at 2048 texels only.
   - Tests: test_closures (+ test_a_box_placket_in_the_maps, test_flat_sew_through_buttons,
     test_a_cuffs_holes_run_along_the_cuff), the eleven cloth / pattern files + test_seams green.
+  - Round 2 (same day; the user on su_77: "two buttons open when there should only be one, and there's still no
+    placket", collar "not-quite-right"; sims pk_10..pk_29 on su_garrett's shirt, 3-5 min each on the rented 4090;
+    renders `cloth_renders/pk_29_shirt*`, outfit framing `pk_30_outfit*.png`; scratch adds pls.py (the START round the
+    neck + front start gaps), st.py (worst start triangles of the coarse mesh), sp.py / prof.py (band split + a section
+    across the band), mem.py (peak memory by step), fig.py (cloth.look beside the concept), kbfold.py (the wear rule's
+    roll angle / strength), resolve.py). su_77 itself was rendered before main had the placket merge (rivet buttons).
+    - The band in the MESH (`closures.split_band_edges`, `press_band`, `relief`, in build after the seat;
+      `cleanup.band_edges: false` turns it off): a vertex row split in 1.5 mm outside a box band's inner fold (interior
+      edges only, new vertices APPENDED, every per-vertex array of M, its fold records and res extended by
+      `closures.extend`), the band pressed flat across (the solver's lap sank 3-4 mm between its edges, deeper than any
+      step: it read as a groove), lifted `BOX_LIFT` 1.5 x lift = 1.2 mm; what would cross the cloth is kept back
+      (`band_kept_back`). Maps: the tuck's shadow and the folded edge's shoulder wider (survive the mip levels). The band
+      now shows in clay and at outfit framing.
+    - Wear rule (garment_kb kinds.shirt.wear.no_tie): only the COLLAR button open, every front button closed, the
+      fronts rolled 95 deg / 0.5 from the neck to 2 cm above button 1 (over) / 6 cm (under): a roll line ending past
+      the band's inner row crosses it at a shallow angle = a sliver (3.9x at frame 0: "ccd failed"; 3.1x: the fine
+      start gate). Simon `extraTopButton` false (a button 4 cm under the neck that no closure counted).
+    - `_spread_open_collar` (in `_place_folds`, after the neck pieces' folds; garment key `collar_spread` [out, down,
+      from deg], default 25 / 12 / 75): the open stand and its collar swing out about a hinge up the neck's side and
+      tip down, so the collar lies spread instead of standing as a ring (made = carried as placed). 40 / 20 / 70 pulled
+      button 1's sides 36 mm apart with 33 crossings; collar gap 6 cm (instead of 10) made the fronts gape between
+      buttons 1 and 2; stitch stiffness 8: 8.8 mm but 18 clean-up crossings and 4x the time. Rolls at 60 / 0.3 or 80:
+      yoke 1.63x fine start / 16 crossings.
+    - Finish by KIND: `kinds.<k>.closure` (shirt box / french, topstitch 3 mm; jacket and coat facing, hole across,
+      topstitch 0) laid under lapped closures in cloth.pieces; rows at 0 are not drawn.
+    - `closures.covered_buttons` / `button_texels`: the maps draw no button under a CLOSED lap (where the sides ended
+      apart it peeked out beside the real one: the "second open button"); the export colours such a button from a
+      drawn button's texel.
+    - MEMORY: `_piece_crossings` used ONE search radius (the largest triangle's): su_garrett's trousers start made
+      12+ GB of candidate pairs in a cached build (killed by the 12 GB guard; possibly the 17 GB process of the
+      13:37 OOM). Now per-size: ordinary triangles through the tree in chunks, the few large ones one by one
+      (trousers build peak 1.5 GB). The shirt's detail maps at 4096 peak 3.8 GB.
+    - pk_29 (final, = pk_21's sim): fits, 0 crossings; front closure 7 of 7 closed but button 1's sides end 19 mm
+      apart (!! in the report; buttons 2-7 2-5 mm): the open collar's stand ends (carried) hold the fronts' top
+      corners apart and the solver's stitch gives. Seat's pull to 25 mm closed it but its crossings were reverted
+      (SEAT_PULL stays 12 mm). OPEN: button 1 (a made top: carry the fronts' corners with the stand, or seat the
+      fastening before the fine settle), a slit of skin beside the band under button 1, the V is shallow (the
+      concept's opens ~10 cm), collar judged only on the shirt alone (the jacket over it is suit6's re-run).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
@@ -4250,6 +4288,56 @@ regresses, bisect by building one spec at each commit and diffing heights.
       the tallest riser 0.2 m (60 deg) at [1084.4, 1756.4, 3.2] where the lower pit's pile of blocks meets the tube
       floor; with a 0.4 m body footprint the same. No 0.6 m riser on the path: their controller's 0.6 is either a
       capsule catching the rough pile (Mound rough 0.25 m at 1.5 m scale) or something off the path: asked them where.
+  - Dashed cracks on the grass (2026-10-08, "tiles3" agent, branch `worktree-agent-a2322e8cd3d4f3416`; pushieworld note
+    104, the user saw thin dark dashed "seams" on the crater rim's grass, on the cliff meshes, baked maps only; renders
+    /mnt/data/hifipushie/tiles3/renders/t3_*; scratch DURABLE there: run.sh / run_orig.sh <script> (this worktree /
+    orig/ = the branch point + only the new check, the "before"), exp.py <terrain> <tag> '<cfg>' (OLD=1: the old relief
+    cut), rend.py <terrain> <tiles dir> <prefix> [channel] (rim / close / west views of the rim; env VIEWS, IDS=1,
+    PARTS=ground|cliffs), mirror.py (theirs/ = a symlinked read-only copy of their export, render it like ours),
+    topdown.py + channels.py + comp.py (a top-down raster of which mesh is on top, and the cliff maps decoded there:
+    base, ORM, normal map vs vertex normal), prof2.py (every mesh a vertical line meets along a transect, with its
+    baked colour / AO), rimprof.py (ground / heightmap / S / front along a line), trans.py (the bake field's surface and
+    normal across a line, pieces switched off), px2w.py (render pixel -> world point from the id pass's distance; the
+    id pass's glb index did NOT match render_job.json's list: untrusted), q1.sh (tests + regressions)).
+    Two causes, both in the cliff tiles' maps, neither in any check:
+    (1) THE VISIBLE ONE: the overlay edge. Where the front sinks (S < SINK_EDGE) it dives metres within a metre (S rises
+    0.13/m on the rim: the dive is ~75 deg) and crosses the heightmap a few cm down; the crossing interleaves (heightmap
+    and front 2 cm apart for metres). The texels of the strip that shows were coloured ROCK: the layer weights' 0.4 m
+    normal came from the SUNK front, so on the true ground up to 0.4 m beside the dive it tipped to the horizontal
+    (Gs (-0.70, 0.69, 0.16) at S 0.23), base colour 0.18 vs the grass's 0.43; and the dive's AO was its vertices' (5 m
+    down: 0.04), interpolated up to the strip. Fix: weights from the rock UNSUNK (`weightfield` = base); every texel and
+    AO vertex on the sunk part read the true ground over it (`CliffField.lift`: w = 1 below SINK_EDGE easing out by
+    SINK_EDGE + UNSUNK_BAND 0.05 of S; colour at the lifted point; normal map = the ground's normal, `terrain_bake._unsunk`;
+    AO at the lifted vertex, `terrain_cliffs.lifted`; the tile-border easing to the low poly's normal skipped there).
+    Geometry is unchanged (the dive and the crossing are where they were: the strip just reads as grass now).
+    (2) A real field step, found on the way: `Field._solid` evaluated the rock relief only where its weight > 0.01 and
+    took it at full weight there: 1% of the relief (a 2-3 cm step, up to 22 mm on test_tiles' coast) along the weight's
+    0.01 contour metres out on the grass. Now eased in (RELIEF_CUT / RELIEF_FADE 0.1). Thin rock's strata had the same
+    (sqrt(1e-3) = 3%): eased. Both move field values only where the weight is under 0.1 / 0.02.
+    CHECK `soft_ground_jumps` (seam_check (7), FAILS over JUMP_LIMIT 3 sampled texels per tile LOD): every 7th texel on
+    soft ground (rock layers < JUMP_SOFT 0.2 and rock relief weight < JUMP_RELIEF 0.1) compares the bake normal at 3 cm
+    and 6 cm (`terrain_bake` JUMP_H); a step in the value reads 1/h, a smooth surface or a designed riser the same. On
+    the rim block (tiles 15-16 x 16-18 of tl2_island7): the branch point's code + the check FAILS (10 tile LODs over
+    the limit, 15,17 LOD 0: 40), this branch 0. Left out of the check, each after a false alarm: rock structure
+    (relief weight; creases on a 37 deg grassy rock face), designed steps (`designed_step`: the Edits zone = turf
+    risers, bunker edges and lips; fallen blocks: pebble 588 texels), built edges within cave_wall + 2 m of a volume
+    (`near_volume`: stack feet under the sea).
+    Regressions (cold, a loaded machine, under /mnt/data/hifipushie/bin/capped): pebble 0 failures (1,274 s; shards
+    0.002 / 0.007 / 0.31%, lod1 map normals p95 6.2), alps 3x3 0, slice_a 0, slice_b incremental 4 of 64 tiles and 0 of
+    1,488 files differing from a cold export; the seven terrain test files pass.
+    Note 106 (downs_pond's dam missing from the tile heightmaps), DIAGNOSED, not fixed (dam.py <terrain> x y): the
+    dam's lake-side face is 50-65 deg and 12 m tall (floor 43.7, crest 56.0-57.2, level 56.35), so the cliff Region
+    takes it (S = 1) and the heightmap is eroded by the 3.8 m push ball: 5-9 m down on the face and the 2 m crest
+    with it (heightmap crest 54.4-56.1 on bearings 0-100 and 320-350, under the water level). Proposed: no push
+    (Rg = 0) within a lake's dam / bank mask, or the pushed heightmap clamped >= min(ground, level + freeboard) there;
+    per-lake outline polygons in the manifest; the report should warn "the lake stands on a slope: 12 m deep at the
+    dam for depth 2", freeboard under ~1 m and a crest under 3 cells wide.
+    QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
+    ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
+    the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
+    Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
+    interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
+    lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
