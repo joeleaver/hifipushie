@@ -414,6 +414,10 @@ def test_capabilities_are_derived_and_confined():
     assert caps["guide"]["subject_kinds"] == ["model", "terrain"]
     assert caps["terrain_history"]["subject_kinds"] == ["terrain"]
     assert caps["snapshot"]["returns"] == ["text", "image", "file"]
+    hq = caps["heavy_queue"]  # path-free queue view, subject-less (heavy_status, with pids and dirs, is left out)
+    assert hq["timing"] == "fast" and not hq["mutates_subject"] and not hq["needs"]["blender"]
+    assert hq["input_schema"].get("properties", {}) == {} and hq["subject_kinds"] == ["model", "terrain"]
+    assert "heavy_status" in left
 
 
 def test_unknown_tools_with_host_paths_or_no_subject_are_left_out():

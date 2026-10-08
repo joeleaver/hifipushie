@@ -1433,7 +1433,16 @@ def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
 def export(name: str, out_dir: Path, *args, **kw) -> dict:
     """See `_export`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
     from . import resources
-    with resources.heavy(f"export {name}", kind="export_asset", model=name):
+    prog = store.HOME / name / "progress.log"
+
+    def waiting(msg: str):  # the wait shows where the export's progress does (an oxidegen artist's task progress)
+        print(msg, flush=True)
+        try:
+            with open(prog, "a") as f:
+                f.write(msg + "\n")
+        except OSError:
+            pass
+    with resources.heavy(f"export {name}", kind="export_asset", model=name, log=waiting):
         return _export(name, out_dir, *args, **kw)
 
 
