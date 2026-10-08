@@ -557,7 +557,15 @@ def fallen_sd(p, ground, zone, B):
             bz = size * (0.55 + 0.3 * _h(i[k], j[k], s + 6))
             yaw = 2 * math.pi * _h(i[k], j[k], s + 7)
             tilt = math.radians(25.0) * (2 * _h(i[k], j[k], s + 8) - 1)
-            cz = ground(np.c_[cx[k], cy[k]]) + 0.35 * bz
+            # seated on the LOWEST ground under its footprint (the centre's ground alone left the block's downhill
+            # side in the air on a 30 deg slope: a piece 0.7 m clear of the island's crown flank, 4 m over the
+            # pushed heightmap, failing `floating`); `ground` takes the rock relief's carve off (Field._solid)
+            fp = 0.9 * np.maximum(bx, by)
+            cz = ground(np.c_[cx[k], cy[k]])
+            for a in range(6):
+                cz = np.minimum(cz, ground(np.c_[cx[k] + fp * math.cos(a * math.pi / 3),
+                                                 cy[k] + fp * math.sin(a * math.pi / 3)]))
+            cz = cz + 0.35 * bz
             q = p[k] - np.c_[cx[k], cy[k], cz]
             c_, s_ = np.cos(yaw), np.sin(yaw)
             x1, y1 = c_ * q[:, 0] + s_ * q[:, 1], -s_ * q[:, 0] + c_ * q[:, 1]

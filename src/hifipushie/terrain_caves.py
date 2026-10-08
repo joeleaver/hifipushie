@@ -59,6 +59,7 @@ def _cave(T, name, c, rock):
         raise ValueError(f"cave {name!r}: kind {kind!r}: use one of {sorted(KINDS)}")
     K = {**KINDS[kind], **{k: c[k] for k in ("width", "height") if k in c}}
     sea = _sea(T)
+    notes_pre = []
     if kind == "lava" and c.get("flow") and not c.get("passages"):
         # a tube down a lava flow (terrain_volcano's line): from a collapse pit at `from` to another at `to` (shares
         # of the flow's length), following the flow's line
@@ -70,14 +71,19 @@ def _cave(T, name, c, rock):
         # across the flow's bends)
         L_ = _line_length(T.lines[fl_])
         n_ = max(2, int((f1 - f0) * L_ / 15))
+        via = [f"{fl_}@{t:.4f}" for t in np.linspace(f0, f1, n_ + 1)[1:-1]]
+        if c.get("grade") is not None:  # walkable: switchbacks across the flow (a tube follows its ground's grade)
+            via, zz, land = _switchbacks(T, fl_, f0, f1, float(c["grade"]), float(c.get("swing", SWING)))
+            notes_pre.append(f"cave {name} (lava): {zz}")
         c = {**c, "entrances": {**(c.get("entrances") or {}), "upper_pit": {"at": f"{fl_}@{f0:.4f}"},
                                 "lower_pit": {"at": f"{fl_}@{f1:.4f}"}},
-             "passages": [{"from": "upper_pit", "to": "lower_pit", "wander": 0,
-                           "via": [f"{fl_}@{t:.4f}" for t in np.linspace(f0, f1, n_ + 1)[1:-1]]}]}
+             "passages": [{"from": "upper_pit", "to": "lower_pit", "wander": 0, "via": via,
+                           **({"grade": float(c["grade"]), "_land": land, "_turns": via}
+                              if c.get("grade") is not None else {})}]}
     seed = zlib.crc32(name.encode()) % 10000
     rk = rock or {"bed": 3.0}
     bed = rk["bed"]
-    nodes, notes = {}, []
+    nodes, notes = {}, list(notes_pre)
 
     def boff(xy):  # how far the beds are shifted at xy (the rock's own beds; level beds without it)
         xy = np.atleast_2d(xy)
@@ -129,6 +135,7 @@ def _cave(T, name, c, rock):
         edges.append(p)
     # entrances: a shaft drops from the ground straight down to the passage it serves; a mouth is where that
     # passage, heading out of the rock, meets the open (the cliff foot, a hillside)
+    en_spec = c.get("entrances") or {}
     for n, nd in nodes.items():
         if nd["type"] != "entrance":
             continue
@@ -153,6 +160,13 @@ def _cave(T, name, c, rock):
             back = _daylight(T, nd["xy"], -t, nd["z"] + 0.5 * K["height"], reach=150) or 0.0
             nd["xy"] = nd["xy"] - t * back
         nd["xy"] = nd["xy"] - t * 0.5 * K["width"]
+        if kind != "sea":
+            # the door's floor no higher than the ground it opens onto (where it ended up: pulled back to the rock's
+            # edge and out into the open, the ground there is often lower than at the address: a geo's floor at a
+            # cliff foot. Above it, the passage's floor stood over the open ground as a step)
+            nd["z"] = min(nd["z"], float(T.height(nd["xy"])))
+        if "z" in en_spec.get(n, {}):  # the designer's door floor
+            nd["z"] = float(en_spec[n]["z"])
     tubes, rubble = [], []
     common = dict(op="subtract", blend=float(c.get("blend", 0.8)), rough=float(c.get("rough", K["rough"])),
                   rough_scale=float(c.get("rough_scale", K.get("rough_scale", 3.0))), relief=float(c.get("relief", K.get("relief", 1.0))))
@@ -160,7 +174,7 @@ def _cave(T, name, c, rock):
         a, b = nodes[e["from"]], nodes[e["to"]]
         w, h = float(e.get("width", K["width"])), float(e.get("height", K["height"]))
         pts = [a["xy"], *[_xy(T, v)[0] for v in e.get("via", [])], b["xy"]]
-        xy, s = _resample(np.array(pts), 3.0)
+        xy, s = _resample(np.array(pts), 3.0 if e.get("grade") is None else 1.5)
         L = s[-1]
         # the floor: straight between the nodes' floors, or following the ground (lava), or the beds (karst)
         f = s / max(L, 1e-9)
@@ -183,6 +197,31 @@ def _cave(T, name, c, rock):
             step = float(np.median(np.diff(s))) if len(s) > 1 else 3.0
             g = gaussian_filter1d(T.sample(xy), 12.0 / max(step, 1e-6), mode="nearest")
             fl = np.minimum(g - roof - h, fl + 0.0) if e.get("level") else g - roof - h
+            if e.get("grade") is not None and len(fl) > 1:
+                # a walkable tube: the highest floor no steeper than "grade" that is nowhere above its depth under the
+                # ground (where the ground falls faster than the grade, the tube runs deeper: its pits get deeper).
+                # (kept as near its depth from either end and met half way, it rode out of the ground wherever a
+                # switchback left the flow's sheet: the cone's flank beside a 14 m flow is 14 m lower)
+                gr = float(e["grade"])
+                # (under the ground as sampled across the tube's width, not only its smoothed line: by a flow's
+                # edge the smoothing stood metres over the flank and the roof broke out)
+                tg = np.gradient(xy, axis=0)
+                tg /= np.maximum(np.linalg.norm(tg, axis=1, keepdims=True), 1e-9)
+                sd_ = np.c_[-tg[:, 1], tg[:, 0]]
+                raw = np.min([T.sample(xy + o_ * sd_) for o_ in (-0.5 * w, 0.0, 0.5 * w)], axis=0)
+                fl = np.minimum(fl, raw - roof - h)
+                # (level through each turn's landing: the distance that counts for the grade leaves them out)
+                run = np.r_[0.0, np.diff(s)]
+                for tq in e.get("_turns") or []:
+                    if isinstance(tq, (list, tuple)) and len(tq) == 2:
+                        sc_ = s[int(np.argmin(np.linalg.norm(xy - np.asarray(tq, float), axis=1)))]
+                        run[np.abs(s - sc_) < float(e.get("_land", 0.0))] = 0.0
+                # (and level under each pit's pile of fallen roof: a tube falling away under it left the pile a
+                # slope of blocks with 0.7 m steps)
+                pit_r = 1.7 * (0.6 * K["width"] + 0.5) + 4.0  # (the pile, its blend and its rough toe)
+                run[(s < pit_r) | (s > L - pit_r)] = 0.0
+                se = np.cumsum(run)
+                fl = np.min(fl[None, :] + gr * np.abs(se[:, None] - se[None, :]), axis=1)
             for nd_, k_ in ((a, 0), (b, -1)):  # a pit's floor is the tube's (a chamber keeps its own)
                 if nd_["type"] == "entrance":
                     nd_["z"] = float(fl[k_])
@@ -190,7 +229,25 @@ def _cave(T, name, c, rock):
         if kind == "karst":  # each end's floor carried along its own bedding plane (they dip), handing over between
             off = boff(xy)
             oa, ob = float(boff(a["xy"])[0]), float(boff(b["xy"])[0])
-            fl = (a["z"] + oa - off) * (1 - g_) + (b["z"] + ob - off) * g_
+            lin = a["z"] * (1 - g_) + b["z"] * g_
+            # (eased in from a hillside mouth over MOUTH_EASE m: the floor leaves the door on its plain grade, so
+            # it meets the ground outside. Taken on at once, the beds' wander lifted kaze_cave's floor 1.5 m in the
+            # first 6 m from its geo door and left a 0.7 m step where the passage left the open ground)
+            ease = np.ones(len(s))
+            for nd_, d_ in ((a, s), (b, L - s)):
+                if nd_["type"] == "entrance" and not nd_["shaft"]:
+                    u = np.clip(d_ / MOUTH_EASE, 0, 1)
+                    ease *= u * u * (3 - 2 * u)
+            # (and the beds' wander spread over BED_SPREAD m: by a cliff the beds' offset changes metres in a few
+            # metres of plan, and a floor that took it at once climbed a staircase of 0.6 m steps (the slot's floor
+            # is flat between its nodes, 3 m apart). The ends stay on their own beds)
+            from scipy.ndimage import gaussian_filter1d
+            D = (a["z"] + oa - off) * (1 - g_) + (b["z"] + ob - off) * g_ - lin
+            if len(s) > 2:
+                step = float(np.median(np.diff(s)))
+                Ds = gaussian_filter1d(D, BED_SPREAD / max(step, 1e-6), mode="nearest")
+                D = Ds - (Ds[0] - D[0]) * (1 - f) - (Ds[-1] - D[-1]) * f
+            fl = lin + D * ease
         node_seed = zlib.crc32(f"{name}:{i}".encode()) % 10000
         if kind == "karst":
             # keyhole: the phreatic tube up top, spread wide along a bedding plane that is its flat roof, the vadose
@@ -259,8 +316,11 @@ def _cave(T, name, c, rock):
                 rr_ = 1.7 * r
                 base = min([nd["z"]] + [float(np.min(e["_floor"][np.linalg.norm(e["_xy"] - nd["xy"], axis=1) < rr_]))
                                         for e in edges if n in (e["from"], e["to"]) and "_floor" in e])
-                rubble.append(((*nd["xy"], base), rr_, 0.18 * (nd["ground"] - nd["z"]) + (nd["z"] - base),
-                               zlib.crc32(n.encode()) % 10000))
+                # (no taller than a third of the tube: under a deep pit (a graded tube's) the pile closed the passage)
+                hp_ = max((float(e.get("height", K["height"])) for e in edges if n in (e["from"], e["to"])),
+                          default=K["height"])
+                rubble.append(((*nd["xy"], base), rr_, min(0.18 * (nd["ground"] - nd["z"]), 0.3 * hp_)
+                               + (nd["z"] - base), zlib.crc32(n.encode()) % 10000))
     for k_, (at, rr, hh, sd) in enumerate(rubble):
         # a low cone of blocks (as an ellipsoid or a tube, its round ends made a step or a dome nobody could climb)
         tubes.append(Mound(f"{name}:rubble{k_}", at, rr, hh, seed=sd))
@@ -274,6 +334,93 @@ def _cave(T, name, c, rock):
     return Cave(name, kind, nodes, edges, tubes, notes, dolines)
 
 
+SWING = 30.0  # m: how far a walkable lava tube's switchbacks reach either side of its flow's line
+
+
+def _flow_profile(T, fl_, f0, f1):
+    """A flow's line between shares f0..f1: points, arc length, the ground along it smoothed as a tube follows it."""
+    from scipy.ndimage import gaussian_filter1d
+    L = T.lines[fl_]
+    n = _line_length(L)
+    t = np.linspace(f0, f1, max(20, int((f1 - f0) * n / 2)))
+    xy = np.array([L.at(float(x))[0] for x in t])
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+    g = gaussian_filter1d(T.sample(xy), 12.0 / max(s[-1] / (len(t) - 1), 1e-6), mode="nearest")
+    return t, xy, s, g
+
+
+def _switchbacks(T, fl_, f0, f1, grade, swing):
+    """Via points that zigzag a lava tube across its flow so it falls no faster than `grade`: legs across the flow
+    (nearly along the slope's contours) from one side to the other, `swing` m either side at most, the tube still at
+    its depth under the ground. (via points, a note)"""
+    t, xy, s, g = _flow_profile(T, fl_, f0, f1)
+    Lf, D = float(s[-1]), abs(float(g[-1] - g[0]))
+    need = D / max(grade, 1e-3)
+    if need <= 1.02 * Lf:
+        k = max(2, int(Lf / 15))
+        return ([f"{fl_}@{x:.4f}" for x in np.linspace(f0, f1, k + 1)[1:-1]],
+                f"its flow falls {D:.0f} m in {Lf:.0f} m: no switchbacks needed for a grade of {100 * grade:.0f}%",
+                0.0)
+    # n corners, W m either side: legs of sqrt((Lf / n)^2 + (2 W)^2) m, each turn a level landing as long as the two
+    # legs beside it still overlap (a walker there stood on the next leg's floor, a grade x that far lower: 2 m
+    # steps at every hairpin). The fewest corners nearest the flow that give `need` m of sloping tube
+    wd = KINDS["lava"]["width"] + 1.5
+
+    def fit(W):
+        for n in range(1, 120):
+            a = Lf / n
+            leg = math.hypot(a, 2 * W)
+            land = wd / (2 * math.sin(math.atan2(a, 2 * W)))
+            if leg - 2 * land <= 0:
+                return None
+            if n * (leg - 2 * land) >= need:
+                return n, land
+        return None
+    W, got = None, None
+    for W_ in np.arange(10.0, 400.0, 2.0):
+        got = fit(float(W_))
+        if got:
+            W = float(W_)
+            break
+    if got is None:
+        return ([f"{fl_}@{x:.4f}" for x in np.linspace(f0, f1, max(2, int(Lf / 15)) + 1)[1:-1]],
+                f"its flow falls {D:.0f} m in {Lf:.0f} m: no switchbacks fit (a {100 * grade:.0f}% tube needs "
+                f"{need:.0f} m): a gentler stretch (\"from\", \"to\")", 0.0)
+    short = W > swing
+    need_w = W
+    if short:  # the most that fits within the swing: the report says the tube is still too steep and why
+        W = swing
+        n = max(1, math.ceil(math.sqrt(max(need ** 2 - Lf ** 2, 0.0)) / (2 * swing)))
+        land = wd / (2 * math.sin(math.atan2(Lf / n, 2 * W)))
+    else:
+        n, land = got
+    tang = np.gradient(xy, axis=0)
+    tang /= np.maximum(np.linalg.norm(tang, axis=1, keepdims=True), 1e-9)
+    side = np.c_[-tang[:, 1], tang[:, 0]]
+    # (legs along the slope's own contour, from the ground's broad gradient (a flow is a ridge of its own, and its
+    # line need not run straight down the cone): square across the line, the legs fell where the line ran aslant)
+    r_ = max(swing, 20.0)
+    ring = r_ * np.array([[math.cos(a), math.sin(a)] for a in np.linspace(0, 2 * np.pi, 12, endpoint=False)])
+    hs = T.sample((xy[:, None, :] + ring[None]).reshape(-1, 2)).reshape(len(xy), -1)
+    grad = (hs[:, :, None] * ring[None]).sum(1) / (0.5 * len(ring) * r_ ** 2)
+    cont = np.c_[-grad[:, 1], grad[:, 0]]
+    cont /= np.maximum(np.linalg.norm(cont, axis=1, keepdims=True), 1e-9)
+    side = np.where((np.einsum("ij,ij->i", cont, side) < 0)[:, None], -cont, cont)
+    via = []
+    for k in range(n):  # a corner per leg, alternating sides, half a leg in from either end
+        j = int(np.argmin(np.abs(s - (k + 0.5) / n * Lf)))
+        p = xy[j] + (1 if k % 2 == 0 else -1) * W * side[j]
+        via.append([float(p[0]), float(p[1])])
+    note = (f"{n} switchbacks across its flow, {W:.0f} m either side of its line, a level landing {2 * land:.0f} m "
+            f"long at each turn: {need:.0f} m of sloping tube for the flow's {D:.0f} m fall in {Lf:.0f} m (grade "
+            f"{100 * grade:.0f}%)")
+    if short:
+        note += (f"; that needs switchbacks {need_w:.0f} m either side of the flow, more than its \"swing\" "
+                 f"({swing:g}): with {swing:g} it stays too steep. Give it \"swing\": {need_w:.0f}, a higher "
+                 f"\"grade\", or a gentler stretch (\"from\", \"to\")")
+    return via, note, land
+
+
 def _resample(P, step):
     seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
     sc = np.r_[0, np.cumsum(seg)]
@@ -283,11 +430,13 @@ def _resample(P, step):
 
 # ---------------------------------------------------------------- walking through
 
-def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None) -> list[str]:
+def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None, paths=None) -> list[str]:
     """Walk a person through every passage (every 0.5 m along its line): the floor under them, headroom, the clear
     width at knee, waist and head height, and the body as a capsule (radius clear of rock from above a step to the top
     of the head, the rule measure.clearance uses in buildings). Steps up to `step` (a scramble in a cave). Water: the
-    depth over the floor where it's under the sea (wading to 1 m, then swimming)."""
+    depth over the floor where it's under the sea (wading to 1 m, then swimming).
+    `paths` (a list): each passage's walk appended as {cave, from, to, step_m, points: [[x, y, floor z | null], ...],
+    width_m, headroom_m} (the tile manifest's `cave_paths`)."""
     lines = []
     for cv in caves:
         for i, e in enumerate(cv.edges):
@@ -359,8 +508,19 @@ def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None)
             bad_at = np.flatnonzero(~ok | (clear < radius) | (width < 2 * radius) | (head < height))
             if len(steps) and steps.max() > step:
                 bad_at = np.r_[bad_at, np.flatnonzero(ok)[int(np.argmax(steps))]]
+            stp = ""
+            if len(steps) and steps.max() > step:  # (where the largest is: the advice depends on it)
+                ks = np.flatnonzero(ok)[int(np.argmax(steps))]
+                stp = f" ({steps.max():.2f} m at [{P[ks, 0]:.0f}, {P[ks, 1]:.0f}, {base[ks]:.1f}], {s[ks]:.0f} m along)"
             why = [w for w, bad in (("blocked", blocked), ("low headroom", low), ("too tight", tight),
-                                    (f"a step over {step} m", len(steps) and steps.max() > step)) if bad]
+                                    (f"a step over {step} m{stp}", len(steps) and steps.max() > step)) if bad]
+            if paths is not None:  # (the walk as an engine can use it: navigation, lighting, its own walk test)
+                r2 = lambda a: [None if not np.isfinite(x) else round(float(x), 2) for x in a]
+                paths.append({"cave": cv.name, "from": e["from"], "to": e["to"], "step_m": 0.5,
+                              "points": [[round(float(P[q, 0]), 2), round(float(P[q, 1]), 2),
+                                          round(float(base[q]), 2) if ok[q] else None] for q in range(len(P))],
+                              "width_m": r2(np.where(ok, width, np.nan)),
+                              "headroom_m": r2(np.where(ok, np.minimum(head, 99.0), np.nan))})
             lines.append(
                 f"{cv.name} {e['from']} -> {e['to']}: {s[-1]:.0f} m, floor {np.nanmin(base):+.1f}..{np.nanmax(base):+.1f}"
                 f" m, headroom min {np.nanmin(head[ok]) if ok.any() else float('nan'):.1f} m, width min "
@@ -377,7 +537,134 @@ def check(caves: list[Cave], field, height=1.8, radius=0.25, step=0.6, sea=None)
 GRADE_WALK = 0.25  # the steepest a cave floor stays a walk (sustained, over GRADE_RUN m): ~14 deg
 GRADE_RUN = 10.0
 ROOF_MIN = 1.0  # m of rock over a passage's roof away from its entrances (less: it opens to the sky)
+BED_SPREAD = 12.0  # m (Gaussian sigma) over which a karst floor's climb onto its beds is spread
+MOUTH_EASE = 20.0  # m from a hillside mouth over which a karst floor takes on its bedding planes' wander
 MOUTH = 15.0  # m from an entrance where the roof may thin out (a mouth daylights by design)
+
+
+STEP_PROBE = 0.9  # m over the walk's floor where a collision floor is looked for (a knee: a step up still counts)
+RISER_STEP = 0.1  # m between samples of the collision floor for risers
+RISER_DEG = 45.0  # a floor steeper than this is a riser (a character controller's wall unless it steps up)
+
+
+def collision_floor(xy, z, P, F, cell=4.0):
+    """Per point (xy, the walk's floor z): the highest collision-mesh surface under z + STEP_PROBE and over z - 3,
+    (vertical rays against the triangles), NaN where there's none."""
+    out = np.full(len(xy), np.nan)
+    if not len(F):
+        return out
+    A, B, C = P[F[:, 0]], P[F[:, 1]], P[F[:, 2]]
+    lo = np.minimum(np.minimum(A, B), C)[:, :2]
+    hi = np.maximum(np.maximum(A, B), C)[:, :2]
+    grid = {}
+    for t, (l, h) in enumerate(zip(np.floor(lo / cell).astype(int), np.floor(hi / cell).astype(int))):
+        for gx in range(l[0], h[0] + 1):
+            for gy in range(l[1], h[1] + 1):
+                grid.setdefault((gx, gy), []).append(t)
+    for q, (p, zz) in enumerate(zip(xy, z)):
+        if not np.isfinite(zz):
+            continue
+        ts = np.array(grid.get(tuple(np.floor(p / cell).astype(int)), []), np.int64)
+        if not len(ts):
+            continue
+        a, b, c = A[ts], B[ts], C[ts]
+        v0, v1 = b[:, :2] - a[:, :2], c[:, :2] - a[:, :2]
+        w = p - a[:, :2]
+        den = v0[:, 0] * v1[:, 1] - v1[:, 0] * v0[:, 1]
+        ok = np.abs(den) > 1e-12
+        u = np.where(ok, (w[:, 0] * v1[:, 1] - v1[:, 0] * w[:, 1]) / np.where(ok, den, 1), -1)
+        v = np.where(ok, (v0[:, 0] * w[:, 1] - w[:, 0] * v0[:, 1]) / np.where(ok, den, 1), -1)
+        inside = ok & (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1 + 1e-9)
+        if not inside.any():
+            continue
+        zt = (a[:, 2] + u * (b[:, 2] - a[:, 2]) + v * (c[:, 2] - a[:, 2]))[inside]
+        zt = zt[(zt <= zz + STEP_PROBE) & (zt >= zz - 3.0)]
+        if len(zt):
+            out[q] = float(zt.max())
+    return out
+
+
+def collision_steps(paths, out, tiles, lod) -> list[str]:
+    """Each cave_paths passage walked again on the collision meshes (what an engine's character stands on): the floor
+    under each point (`collision_floor`, written into the path as "collision_floor") and the largest step between
+    half-metre points, beside the field's ("largest_step_m", "largest_step_collision_m"). Report lines."""
+    from pathlib import Path
+    from . import terrain_mesh as tm
+    out = Path(out)
+    if not paths:
+        return []
+    Ps, Fs, n = [], [], 0
+    have = {(e["i"], e["j"]): e for e in tiles if e.get("collision")}
+    pts = np.array([q[:2] for pth in paths for q in pth["points"]], float)
+    near = set()
+    for e in have.values():
+        lo, hi = np.asarray(e["min"], float)[:2], np.asarray(e["max"], float)[:2]
+        if ((pts >= lo - 1) & (pts <= hi + 1)).all(1).any():
+            near.add((e["i"], e["j"]))
+    for ij in sorted(near):
+        tr, prims = tm.read_glb(out / have[ij]["collision"])
+        o = tm._from_gltf(tr[None])[0]
+        for p in prims:
+            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            Ps.append(P)
+            Fs.append(p["indices"].astype(np.int64) + n)
+            n += len(P)
+    if not Ps:
+        return []
+    P, F = np.vstack(Ps), np.vstack(Fs)
+    lines = []
+    for pth in paths:
+        xy = np.array([q[:2] for q in pth["points"]], float)
+        z = np.array([np.nan if q[2] is None else q[2] for q in pth["points"]], float)
+        cz = collision_floor(xy, z, P, F)
+        pth["collision_floor"] = [None if not np.isfinite(v) else round(float(v), 2) for v in cz]
+        st = np.abs(np.diff(z))
+        st = st[np.isfinite(st)]
+        sc = np.abs(np.diff(cz))
+        good = np.isfinite(sc)
+        pth["largest_step_m"] = round(float(st.max()), 2) if len(st) else None
+        pth["largest_step_collision_m"] = round(float(sc[good].max()), 2) if good.any() else None
+        # risers: runs of the collision floor steeper than RISER_DEG at 0.1 m spacing (a character controller's wall,
+        # unless it steps up): the tallest, and where (crown_tube's lower pile: a 0.2 m lip at 60 deg where the
+        # pile meets the tube's floor, which the half-metre steps don't show)
+        s0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))]
+        sf = np.arange(0, s0[-1], RISER_STEP)
+        xf = np.c_[np.interp(sf, s0, xy[:, 0]), np.interp(sf, s0, xy[:, 1])]
+        zf = np.interp(sf, s0, np.where(np.isfinite(z), z, -1e9))
+        zf[zf < -1e8] = np.nan
+        cf = collision_floor(xf, zf, P, F)
+        d = np.diff(cf)
+        steep = np.isfinite(d) & (np.abs(d) > RISER_STEP * math.tan(math.radians(RISER_DEG)))
+        best_r, at_r = 0.0, None
+        q = 0
+        while q < len(d):
+            if steep[q]:
+                j = q
+                while j + 1 < len(d) and steep[j + 1] and np.sign(d[j + 1]) == np.sign(d[q]):
+                    j += 1
+                h = abs(float(d[q:j + 1].sum()))
+                if h > best_r:
+                    best_r, at_r = h, (xf[q], cf[q], sf[q])
+                q = j + 1
+            else:
+                q += 1
+        pth["tallest_riser_collision_m"] = round(best_r, 2)
+        if at_r is not None:
+            pth["tallest_riser_at"] = [round(float(at_r[0][0]), 1), round(float(at_r[0][1]), 1), round(float(at_r[1]), 1)]
+        if good.any():
+            k = int(np.flatnonzero(good)[np.argmax(sc[good])])
+            miss = int((~np.isfinite(cz) & np.isfinite(z)).sum())
+            lines.append(f"{pth['cave']} {pth['from']} -> {pth['to']}: largest step {pth['largest_step_m']} m on the "
+                         f"field, {pth['largest_step_collision_m']} m on the LOD {lod} collision mesh (at "
+                         f"[{xy[k, 0]:.0f}, {xy[k, 1]:.0f}, {cz[k]:.1f}], {0.5 * k:.0f} m along); the tallest riser "
+                         f"steeper than {RISER_DEG:g} deg {pth['tallest_riser_collision_m']} m"
+                         + (f" at {pth['tallest_riser_at']}" if pth.get("tallest_riser_at") else "")
+                         + ": your character must step at least that high (a capsule character meets any riser "
+                           "over ~0.1 m steeper than its floor angle, so it needs a step-up; Godot's "
+                           "CharacterBody3D reads such a riser as a wall)"
+                         + (f"; {miss} of {len(z)} points have no collision floor under them (the heightmap's, or "
+                            f"open)" if miss else ""))
+    return lines
 
 
 def _line_length(L) -> float:
@@ -466,6 +753,37 @@ def _fix(T, cv_spec, cave, sv, nodes) -> str:
     return "; or ".join(ways)
 
 
+def _walk_fix(T, cv, p, why) -> str:
+    """What to change for a passage the walk stops, by what stops it: a step by a mouth is where the passage's floor
+    meets the ground outside (its entrance's floor: "z"), a step further in is the floor climbing too fast onto its
+    beds, too tight / low is the passage's size."""
+    import re
+    out = []
+    m = re.search(r"a step over [\d.]+ m \(([\d.]+) m at \[(-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\], (\d+) m along\)", why)
+    if m:
+        along = float(m[5])
+        at_mouth = False
+        for n_, d_ in ((p["from"], along), (p["to"], p["length"] - along)):
+            nd = cv.nodes[n_]
+            if nd["type"] == "entrance" and not nd.get("shaft") and d_ <= MOUTH:
+                g = float(T.height(nd["xy"]))
+                out.append(f"the step is {d_:.0f} m from the mouth {n_}, where the passage's floor (its door at "
+                           f"{nd['z']:+.1f} m) meets the open ground ({g:+.1f} m at the door): set the door's floor "
+                           f"on the entrance (\"z\": {g:.1f}) or move its \"at\" to where the ground outside is level "
+                           f"with the passage; its width and height don't change a step")
+                at_mouth = True
+                break
+        if not at_mouth:
+            out.append(f"the step ({m[1]} m, {along:.0f} m along) is the floor rising faster than it runs there: make "
+                       f"the passage longer (\"via\" points) or its ends' floors closer (a chamber's \"z\")"
+                       + ("; a lava tube: a lower \"grade\"" if cv.kind == "lava" else "")
+                       + "; width and height don't change a step")
+    if any(w in why for w in ("blocked", "too tight", "low headroom")):
+        out.append("where it is blocked, tight or low: widen or heighten it (\"width\", \"height\" on the passage) or "
+                   "move it clear of the rock in the way")
+    return "; ".join(out) or "move it clear of the rock in the way"
+
+
 def _depth(nd, z):
     d = nd["ground"] - z
     return f" or \"depth\": {d:.0f}" if d > 2 else " (above the ground there: under higher ground too)"
@@ -497,12 +815,17 @@ def _flow_fix(T, c) -> str:
             cur = 0
     i0, i1 = best
     mean = abs(float(g[-1] - g[0])) / n
+    walk = (f"set \"grade\": {GRADE_WALK - 0.05:.2f} on the cave (the tube then switchbacks across the flow, up to "
+            f"\"swing\" m either side of it, default {SWING:.0f}, falling no faster than that)")
+    if c.get("grade") is not None:
+        walk = (f"its \"grade\" ({c['grade']}) is followed by switchbacks, but the ground along them still falls "
+                f"faster: a lower \"grade\", more \"swing\" (now {c.get('swing', SWING)}), or a gentler stretch "
+                f"(\"from\", \"to\")")
     if (i1 - i0) * ds < 30:
         return (f"the flow \"{c['flow']}\" falls {100 * mean:.0f}% on average and has no stretch of 30 m gentler than "
-                f"{100 * GRADE_WALK:.0f}%: a lava tube there can't be walked (a tube follows its flow's grade); use a "
-                f"gentler flow, or a karst or sea cave")
-    return (f"run it on the flow's gentle stretch: \"from\": {t[i0]:.2f}, \"to\": {t[min(i1, len(t) - 1)]:.2f} "
-            f"({(i1 - i0) * ds:.0f} m under {100 * GRADE_WALK:.0f}%)")
+                f"{100 * GRADE_WALK:.0f}% (a tube follows its flow's grade): {walk}")
+    return (f"{walk}; or run it on the flow's gentle stretch: \"from\": {t[i0]:.2f}, \"to\": "
+            f"{t[min(i1, len(t) - 1)]:.2f} ({(i1 - i0) * ds:.0f} m under {100 * GRADE_WALK:.0f}%)")
 
 
 def early(T) -> tuple[list[str], list[str]]:
@@ -531,6 +854,9 @@ def early(T) -> tuple[list[str], list[str]]:
     lines = [f"caves (walked now through the height field with the caves cut out, no rock relief: "
              f"{time.time() - t0:.0f} s; the tile export walks them again in the finished rock):"]
     warns = []
+    for cv in caves:  # what the build chose for a walkable lava tube (switchbacks)
+        lines += ["  " + nt for nt in cv.notes if "switchback" in nt
+                  or (cv.kind == "lava" and "entrance" in nt and any("switchback" in x for x in cv.notes))]
     for wl, p in zip(walk, sv):
         cv = next(c for c in caves if c.name == p["cave"])
         lines.append("  " + wl)
@@ -558,8 +884,7 @@ def early(T) -> tuple[list[str], list[str]]:
             if mine:
                 warns[mine[0]] += f" (the walk: {why})"
             else:
-                warns.append(f"{head} does not pass the walk: {why}; widen or heighten it (\"width\", \"height\" on "
-                             f"the passage) or move it clear of the rock in the way")
+                warns.append(f"{head} does not pass the walk: {why}; " + _walk_fix(T, cv, p, why))
     for cv in caves:  # a chamber under too little rock: its dome opens to the sky
         for n, nd in cv.nodes.items():
             if nd["type"] != "chamber":

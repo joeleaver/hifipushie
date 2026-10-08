@@ -127,7 +127,7 @@ def season_color(spec: dict, season: str, st: dict | None = None):
         c = list(lf.get("autumn", AUTUMN))
     elif season == "spring":
         sp = ss.get("spring") or {"mix": [0.55, 0.78, 0.25], "amount": 0.45}
-        c = list(lf["spring"]) if isinstance(lf.get("spring"), (list, tuple)) else mix(base, sp["mix"], sp["amount"] * (0.4 if eg else 1.0))
+        c = list(lf["spring"]) if isinstance(lf.get("spring"), (list, tuple)) else mix(base, sp["mix"], sp["amount"] * (float(sp.get("evergreen", 0.4)) if eg else 1.0))
     if st:
         co = st.get("colour") or {}
         c = styled(c, co.get("saturation", 1.0), co.get("value", 1.0))
@@ -142,6 +142,46 @@ def material_color(rgb, st: dict) -> list:
     channel would pass 1 (clipped per channel, autumn's orange lost its tone steps and its hue)."""
     c = np.array(lin(rgb)) * color_gain(st)
     return (c / max(1.0, float(c.max()))).tolist()
+
+
+def srgb(c) -> np.ndarray:
+    c = np.clip(np.asarray(c, float), 0, 1)
+    return np.where(c <= 0.0031308, 12.92 * c, 1.055 * c ** (1 / 2.4) - 0.055)
+
+
+def season_ramp(spec: dict, season: str, st: dict | None):
+    """A season that paints the masses' EDGES another colour (sheet `seasons.<season>.tips` = {"color" sRGB, "band"}:
+    an evergreen's spring = the fresh shoots at the rims of its tiers, which a one-colour crown can't show): None, or
+    a function u -> (n, 3) linear colour x the tones' gain, scaled back as material_color is. u = TEXCOORD_0.x of a
+    styled crown (0 at a mass's foot .. 1 at its top: a cone tier's rim is u 0). The export writes it as a ramp
+    texture over u in that season's material (factor x texture = this); looks colour the vertices with it."""
+    if not st or (st.get("crown") or {}).get("kind", "masses") == "clouds" or spec.get("plant") == "clump":
+        return None
+    tp = ((st.get("seasons") or {}).get(season) or {}).get("tips")
+    base = season_color(spec, season, st)
+    if not tp or base is None:
+        return None
+    co = st.get("colour") or {}
+    tip = styled(tp["color"], co.get("saturation", 1.0), co.get("value", 1.0))
+    band = tp.get("band", 0.3)  # u under which the edge colour is whole, fading out by `band` (or [whole, gone])
+    b0, band = (float(band[0]), float(band[1])) if isinstance(band, (list, tuple)) else (0.0, float(band))
+    g = color_gain(st)
+    a0, a1 = np.array(lin(base)) * g, np.array(lin(tip)) * g
+    m = max(1.0, float(a0.max()), float(a1.max()))
+
+    def ramp(u):
+        x = np.clip((np.asarray(u, float) - b0) / max(band - b0, 1e-6), 0, 1)
+        w = 1 - x * x * (3 - 2 * x)
+        return (a0[None] * (1 - w[:, None]) + a1[None] * w[:, None]) / m
+    return ramp
+
+
+def ramp_texture(ramp, n: int = 64) -> tuple[np.ndarray, list]:
+    """(sRGB image n x 4 x 3 in 0..1, factor rgb) whose product is ramp(u) across the image's width."""
+    c = ramp((np.arange(n) + 0.5) / n)
+    s = max(float(c.max()), 1e-6)
+    img = np.repeat(srgb(c / s)[None], 4, axis=0)
+    return img, [s, s, s]
 
 
 def bark_color(spec: dict, st: dict) -> list:
@@ -261,11 +301,42 @@ def wood(tree: dict, st: dict, inside=None, size: float = 0.0, feed=None) -> dic
         dvec = np.array([math.cos(ang), math.sin(ang), 0.0])
         zz = np.clip(tp[:, 2] / max(zc, 1e-3), 0, 1)
         tp = tp + (float(w["s_bend"]) * zc * np.sin(2 * math.pi * zz))[:, None] * dvec[None]
+    tn_ = tn
     if w.get("taper") or w.get("flare"):  # cartoon: thick at the foot, thin at the top, a flared root foot
+        # the flare: a concave root foot `flare_height` trunk diameters tall ((1 - s)^2.5: it rises steeply off the ground
+        # and runs into the trunk; an exponential over 12% of the bole read as a mound). The trunk's first stretch is
+        # resampled finely enough to carry the curve.
+        fh = float(w.get("flare_height", 1.25)) * 2 * fat * r_ref  # (in trunk diameters: the bole's own girth, not the flared foot's)
+        if w.get("flare") and fh > 0:
+            seg = np.vstack([P[0], tp])
+            zs_ = seg[:, 2]
+            k_ = int(np.searchsorted(zs_, fh)) + 1
+            new_p, new_n, new_r = [], [], []
+            for j in range(1, len(seg)):
+                a_, b_ = seg[j - 1], seg[j]
+                if j <= k_:
+                    m_ = int(max(1, math.ceil(np.linalg.norm(b_ - a_) / max(fh / 5, 0.05))))
+                    for q in range(1, m_):
+                        new_p.append(a_ + (b_ - a_) * q / m_); new_n.append(tn[j - 1]); new_r.append(float(tr[j - 1]))
+                new_p.append(b_); new_n.append(tn[j - 1]); new_r.append(float(tr[j - 1]))
+            tp, tn_, tr = np.array(new_p), np.array(new_n), np.array(new_r)
         z_ = np.clip(tp[:, 2], 0, None)
-        tr = tr * (1 + float(w.get("taper", 0.0)) * (1 - z_ / zt)) * (1 + float(w.get("flare", 0.0)) * np.exp(-z_ / max(0.12 * zc, 0.2)))
-    add(tn, 0, tp, tr, 0, 0)
-    radius[0] = float(radius[0] * (1 + float(w.get("taper", 0.0))) * (1 + float(w.get("flare", 0.0))))
+        if w.get("flare"):  # (the grown root swelling goes: the drawn flare replaces it)
+            above = np.flatnonzero(z_ >= fh)
+            if len(above):
+                tr = np.where(z_ < fh, np.minimum(tr, tr[above[0]]), tr)
+        tf_ = lambda zz: (1 + float(w.get("taper", 0.0)) * (1 - zz / zt)) * (1 + float(w.get("flare", 0.0)) * (1 - np.clip(zz / max(fh, 1e-3), 0, 1)) ** 2.5)
+        tr = tr * tf_(z_)
+    add(tn_, 0, tp, tr, 0, 0)
+    if w.get("taper") or w.get("flare"):
+        # the foot node goes UNDER the ground, as wide as the flare carried on down: a round cone ends in a sphere, and a
+        # sphere centred on the ground reads as a bulb / mound; this way the flare meets the ground still widening
+        dz = 0.3
+        r1 = float(tr[0]) / float(tf_(np.array([max(float(tp[0, 2]), 1e-3)]))[0])
+        slope = (float(tr[0]) - r1 * float(tf_(np.array([0.0]))[0])) / max(float(tp[0, 2]), 1e-3)
+        r_g = r1 * float(tf_(np.array([0.0]))[0])
+        pos[0] = P[0] - np.array([0, 0, dz])
+        radius[0] = float(r_g + max(-slope, 0.0) * dz)
     drawn = [np.vstack([P[0], P[tn]])]
     n_ax, n_stub = 1, 0
     for L in kept:
@@ -557,7 +628,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
                 e["r"] = np.array([rx, ry, 0.5 * e["cone"]["h"]])
                 e.pop("down", None)
             out.append(e)
-        return _scallops(out, cr, seed)
+        return _scallops(_subclumps(out, X, cr, twig), cr, seed)
     if len(X) > 6000:  # (a cluster's shape doesn't need every twig)
         X = X[np.argsort(vegetation._u(np.arange(len(X)).astype(np.uint64), 3))[:6000]]
     es = float(cr.get("edge_share", 0.0))
@@ -588,6 +659,7 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         c[2] -= max(0.0, c[2] + ez - ztop)  # never taller than the tree: a rounded-up top mass sinks to the tree's own height
         out.append({"c": c, "R": U.T.copy(), "r": r, "n": int(len(Q))})
     out.sort(key=lambda e: float(e["c"][2]))
+    out = _subclumps(out, X, cr, twig)
     out = _scallops(out, cr, seed)
     if cr.get("core") and len(out) > 1:  # the foliage is a shell: a mass in its hollow makes the crown one body with lobes
         c = X.mean(0)
@@ -597,6 +669,39 @@ def masses(X: np.ndarray, k: int, st: dict, twig: float, seed: int = 0) -> list[
         ez = math.sqrt(float(((U.T[:, 2] * r) ** 2).sum()))
         c[2] -= max(0.0, c[2] + ez - ztop)
         out.append({"c": c, "R": U.T.copy(), "r": r, "n": 0, "core": True})
+    return out
+
+
+def _subclumps(out: list, X: np.ndarray, cr: dict, twig: float) -> list:
+    """`sub` secondary clumps per mass (pixar: a big canopy shape broken into mid-size leaf clumps with their own volume
+    and shadow): each mass's own twigs clustered again, every sub-cluster an ellipsoid (`sub_spread` x its spread +
+    `pad`, no axis under `sub_min` x its mass's mean radius) standing on it, `of` = its mass (tone, id, wind), joined
+    `sub_join` x the blend (crisper than the masses: the clumps keep their shape and shadow). Sub-clusters sit where
+    the twigs are, so they bulge where the real branch clusters are, not on a regular pattern."""
+    n = int(cr.get("sub", 0) or 0)
+    base = [e for e in out if not e.get("core")]
+    if n <= 0 or not base:
+        return out
+    C = np.array([e["c"] for e in base])
+    dn = np.stack([np.linalg.norm(((X - e["c"]) @ e["R"].T) / e["r"], axis=1) for e in base], 1)
+    own = dn.argmin(1)
+    sp, pad, mn = float(cr.get("sub_spread", 1.6)), float(cr.get("pad", 0.5)), float(cr.get("sub_min", 0.3))
+    for j, e in enumerate(base):
+        Q = X[own == j]
+        k = int(min(n, len(Q) // 12))
+        if k < 2:
+            continue
+        lab = _kmeans(Q, k)
+        rm = float(e["r"].mean())
+        for q in range(k):
+            P = Q[lab == q]
+            if len(P) < 6:
+                continue
+            c = P.mean(0)
+            ev, U = np.linalg.eigh(np.cov((P - c).T) + np.eye(3) * 1e-6)
+            r = np.maximum(sp * np.sqrt(np.maximum(ev, 0)) + pad * twig, mn * rm)
+            r = np.maximum(r, float(cr.get("roundness", 0.0)) * r.max())
+            out.append({"c": c, "R": U.T.copy(), "r": r, "n": int(len(P)), "of": next(i for i, x in enumerate(out) if x is e), "join": float(cr.get("sub_join", 0.5))})
     return out
 
 
@@ -704,6 +809,8 @@ def crown_mesh(ells: list[dict], st: dict, voxel: float | None = None, floor: fl
 def color_gain(st: dict) -> float:
     """What the crown material's colour is multiplied by (COLOR_0 holds each mass's tone divided by it)."""
     cr = st.get("crown") or {}
+    if cr.get("gradient"):  # (pixar: a gradient base-to-tip, warmer at the tips)
+        return float(max(cr["gradient"]) * (1 + abs(float(cr.get("warm_tip", 0.1)))) * (1 + abs(float(cr.get("hue_jitter", 0.0)))))
     return float(max(cr.get("tone", [0.85, 1.15])) * (1 + abs(float(cr.get("warm_top", 0.0)))))
 
 
@@ -851,7 +958,7 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
 
     W = surface(wd_, share * triangles)
     Vw, Fw = W["V"], W["F"]
-    out = {"wood": W, "wood_wind": W["wind"], "crown": None, "mini": mini, "forks": None}
+    out = {"wood": W, "wood_wind": W["wind"], "crown": None, "mini": mini, "forks": None, "cards": None}
     if ft.get("forks") is not None and not evergreen(tree["spec"]):
         # the limbs' forks: drawn only when the plant is bare (in leaf they cluttered the crown's underside), within
         # what the hidden crown's triangles would have cost
@@ -885,7 +992,8 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
         cfn = lambda q: field(ells, q, blend, floor=ft["floor"])
         n_big = int(round(int(cr.get("big_leaves", 0) or 0) * min(1.0, triangles / max(full, 1)) ** 0.7))  # (fewer at lower LODs)
         n_base = sum("of" not in e for e in ells)
-        V0, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(triangles - len(Fw) - 64 * n_big, 16 * n_base))
+        cards_share = float((cr.get("cards") or {}).get("share", 0.6)) if cr.get("cards") else 0.0  # (pixar: the leaf cards' share of the crown)
+        V0, F = _decimate(ft["dense"]["V"], ft["dense"]["F"], max(int((triangles - len(Fw) - 112 * n_big) * (1 - cards_share)), 16 * n_base))
         V, N = onto(cfn, V0)
         # a vertex beside an undercut can land on the other sheet (a tier's underside and the dome below it are a few
         # decimetres apart): faces turned over by the move get their vertices back where the decimation left them
@@ -964,7 +1072,9 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
                                 "wind": tuple(np.r_[C0["wind"][i], bl["wind"][i]] for i in range(4))}
                 info["big_leaves"] = bl["n"]
                 F = out["crown"]["F"]
-        info["crown_triangles"] = int(len(F))
+        if cr.get("cards"):
+            _shell_and_cards(tree, st, out, cfn, ft["floor"], max(triangles - len(Fw) - len(F), 0), info, triangles / max(full, 1), ells, blend)
+        info["crown_triangles"] = int(len(F)) + (int(len(out["cards"]["F"])) if out.get("cards") else 0)
         info["tones"] = int(len(np.unique(ti)))
         info["mass_list"] = [{"center": e["c"].round(2).tolist(), "radii": np.sort(e["r"])[::-1].round(2).tolist(), "tone": int(ti[j]),
                               **({"bumps": int((own == j).sum() - 1)} if (own == j).sum() > 1 else {}),
@@ -972,6 +1082,81 @@ def dress(tree: dict, st: dict, triangles: int | None = None, season: str = "sum
     info["triangles"] = info["wood_triangles"] + info["crown_triangles"]
     out["info"] = info
     return out
+
+
+def thickness(fn, V, N, reach: float = 4.0, step: float = 0.2) -> np.ndarray:
+    """How far a ray from each surface point straight in (-N) runs inside the field `fn` (m, capped at `reach`): what
+    light passes through a canopy shell there (thin lobes and rims glow, the core does not)."""
+    t = np.full(len(V), reach)
+    inside = np.ones(len(V), bool)
+    for s_ in np.arange(step, reach + step / 2, step):
+        live = np.flatnonzero(inside)
+        if not len(live):
+            break
+        out_ = fn(V[live] - (s_ + 0.01) * N[live]) > 0
+        t[live[out_]] = s_
+        inside[live[out_]] = False
+    return t
+
+
+def _shell_and_cards(tree: dict, st: dict, out: dict, cfn, floor: float, budget: int, info: dict, lod: float = 1.0, ells=None, blend: float = 0.5) -> None:
+    """Pixar's crown: the closed shell (the masses) painted with a gradient base-to-tip (sheet `crown.gradient`
+    [dark, light], warmer at the tips by `warm_tip`), TEXCOORD_3 = (that gradient, thickness m), and a layer of real
+    leaf cards on its outside (veg_cloud.shell_cards) in out["cards"]."""
+    from . import veg_cloud
+    cr = st["crown"]
+    C = out["crown"]
+    V, N = C["V"], C["N"]
+    cen = 0.5 * (V.min(0) + V.max(0))
+    half = np.maximum(0.5 * (V.max(0) - V.min(0)), 1e-6)
+    r_ = np.clip(np.linalg.norm((V - cen) / half, axis=1), 0, 1)
+    zn = np.clip((V[:, 2] - V[:, 2].min()) / max(float(np.ptp(V[:, 2])), 1e-6), 0, 1)
+    tg = np.clip(0.55 * r_ ** 1.5 + 0.45 * zn, 0, 1)  # (base / inside dark -> tips / top light)
+    g0, g1 = cr.get("gradient", [0.55, 1.1])
+    wt = float(cr.get("warm_tip", 0.1))
+    tn = g0 + (g1 - g0) * tg
+    col = np.stack([tn * (1 + wt * tg), tn, tn * (1 - wt * tg)], 1) * C["col"] / np.maximum(C["col"].mean(1, keepdims=True), 1e-6)  # (the masses keep only their hue)
+    crease = None
+    shade = None
+    if ells is not None and cr.get("clump_shade") and len(ells) > 1:
+        # every clump (sub-clumps included) lit on its own top and shadowed on its own underside: the clump-level
+        # gradient of feature-animation canopies (a canopy-wide gradient alone read as broccoli in a blur)
+        D_ = field(ells, V, blend, each=True)[1]
+        j_ = D_.argmin(1)
+        cz_ = np.array([e["c"][2] for e in ells])
+        ez_ = np.array([math.sqrt(float(((e["R"][:, 2] * e["r"]) ** 2).sum())) for e in ells])
+        u_ = np.clip((V[:, 2] - (cz_[j_] - ez_[j_])) / np.maximum(2 * ez_[j_], 1e-6), 0, 1)
+        s0, s1 = cr["clump_shade"]
+        shade = s0 + (s1 - s0) * (u_ * u_ * (3 - 2 * u_)) ** float(cr.get("clump_shade_power", 0.8))
+        col = col * shade[:, None]
+    if ells is not None and float(cr.get("crease_dark", 0.0)) > 0 and len(ells) > 1:
+        # AO between clumps: where two clumps meet (the two nearest of them almost equally near) the shell darkens,
+        # so each clump keeps its own volume and shadow under the leaves
+        D = field(ells, V, blend, each=True)[1]
+        Ds = np.sort(D, 1)
+        gap = Ds[:, 1] - Ds[:, 0]
+        k_ = max(float(cr.get("crease_width", 0.6)) * blend, 1e-3)
+        crease = np.exp(-np.maximum(gap, 0) / k_)
+        col = col * (1 - float(cr["crease_dark"]) * crease)[:, None]
+        info["crease_share"] = round(float((crease > 0.5).mean()), 3)
+    gain = color_gain(st)
+    th = thickness(cfn, V, N, float(cr.get("thick_reach", 4.0)))
+    out["crown"] = {**C, "col": np.clip(col / gain, 0, 1), "gain": gain, "grad": np.c_[tg, th]}
+    K = veg_cloud.shell_cards(tree, st, V, C["F"], N, budget, lod=lod, floor=floor, along=tg)
+    if K is not None:
+        sw = st.get("wind") or {}
+        # a card moves with the shell under it, its rim fluttering
+        from scipy.spatial import cKDTree
+        idx = cKDTree(V).query(K["V"])[1]
+        K["wind"] = (C["wind"][0][idx], C["wind"][1][idx], C["wind"][2][idx], float(sw.get("flutter", 0.4)) * K["rim"])
+        K["mass"] = C["mass"][idx]
+        if shade is not None:  # (the cards take their clump's light: lit tops, shadowed undersides)
+            K["col"] = K["col"] * shade[idx][:, None]
+        if crease is not None:  # (the cards in a crease between clumps darken with it)
+            K["col"] = K["col"] * (1 - 0.8 * float(cr["crease_dark"]) * crease[idx])[:, None]
+        out["cards"] = K
+        info.update(cards=K["cards"], card_m=round(K["card_m"], 2), leaf_cover=round(K["cover"], 2), card_fill=round(K["atlas"]["fill"], 3), cards_triangles=int(len(K["F"])),
+                    thickness_m=[round(float(np.percentile(th, 10)), 2), round(float(np.median(th)), 2), round(float(np.percentile(th, 90)), 2)])
 
 
 def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | None:
@@ -985,11 +1170,12 @@ def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | Non
     if len(V) < 10:
         return None
     L = float(cr.get("big_leaf", 4.0)) * float(lf.get("length", 0.1))
-    W = L * float(lf.get("width", 0.5 * float(lf.get("length", 0.1)))) / max(float(lf.get("length", 0.1)), 1e-6)
+    W = L * float(lf.get("width", 0.5))  # (`leaves.width` is a share of the length)
     cen = 0.5 * (V.min(0) + V.max(0))
     half = np.maximum(0.5 * (V.max(0) - V.min(0)), 1e-6)
     out_ = np.linalg.norm((V - cen) / half, axis=1)  # (out of the crown's middle in its own proportions: sides and top alike)
-    cand = np.flatnonzero((out_ >= np.quantile(out_, 0.7)) & (N[:, 2] > -0.2))
+    # on a clump's EDGE: facing out of the crown (sides and top), not under it
+    cand = np.flatnonzero((out_ >= np.quantile(out_, 0.75)) & (N[:, 2] > -0.1) & (np.einsum("ij,ij->i", N, (V - cen) / half) > 0.4 * out_))
     if not len(cand):
         return None
     pick = [int(cand[np.argmax(out_[cand])])]
@@ -999,25 +1185,35 @@ def _big_leaves(tree: dict, cr: dict, C: dict, ells: list, n: int) -> dict | Non
         pick.append(int(cand[j]))
         d = np.minimum(d, np.linalg.norm(V[cand] - V[cand[j]], axis=1))
     from . import veg_leaf
-    t = np.linspace(0, 1, 9)
-    prof = veg_leaf._profile(str(lf.get("shape", "ovate")) if str(lf.get("shape", "ovate")) in ("ovate", "triangular", "lanceolate", "lobed", "round") else "ovate",
-                             t, int(lf.get("lobes", 4)))
-    prof = np.maximum(prof, 0.35 * np.sin(np.pi * t))  # (a fat cartoon leaf)
+    t = np.linspace(0, 1, 15)
+    shp = str(lf.get("shape", "ovate"))
+    prof = veg_leaf._profile(shp if shp in ("ovate", "triangular", "lanceolate", "lobed", "round") else "ovate", t, int(lf.get("lobes", 4)))
+    # a cartoon leaf: the species' outline softened toward a plain ovate one (sharp lobes read as a saw blade), rounded at
+    # the tip, never thinner than a fat ellipse
+    prof = (1 - float(cr.get("big_leaf_soft", 0.5))) * prof + float(cr.get("big_leaf_soft", 0.5)) * veg_leaf._profile("ovate", t, 0)
+    prof = np.maximum(prof, 0.45 * np.sin(np.pi * t) ** 0.8)
     poly = np.vstack([np.c_[t * L, 0.5 * W * prof], np.c_[t[::-1][1:-1] * L, -0.5 * W * prof[::-1][1:-1]]])
     up = np.array([0, 0, 1.0])
     Vs, Fs, Ns, uvs, cols, ms, ws, n0 = [], [], [], [], [], [], [], 0
     for q, i in enumerate(pick):
         nrm = N[i] / max(float(np.linalg.norm(N[i])), 1e-9)
+        # the leaf points out of the clump (a little up) and its FACE turns sideways, toward the views that see this point
+        # on the outline: lying flat (face up) it was seen edge-on from eye level, a green shard
         ex = nrm + float(cr.get("big_leaf_up", 0.25)) * up
         ex /= np.linalg.norm(ex)
-        ez = up - ex * (up @ ex)
-        ez = ez / np.linalg.norm(ez) if np.linalg.norm(ez) > 1e-3 else np.cross(ex, [1.0, 0, 0])
+        ez = np.cross(up, ex)
+        if np.linalg.norm(ez) < 0.3:  # (on top of the crown: stand it up, face toward a hashed side)
+            a_ = 2 * math.pi * float(vegetation._u(np.array([i + 7], np.uint64), 98)[0])
+            ez = np.cross(np.array([math.cos(a_), math.sin(a_), 0.0]), ex)
+        ez /= np.linalg.norm(ez)
         ey = np.cross(ez, ex)
-        roll = (float(vegetation._u(np.array([i + 31], np.uint64), 98)[0]) - 0.5) * 0.8
+        roll = (float(vegetation._u(np.array([i + 31], np.uint64), 98)[0]) - 0.5) * float(cr.get("big_leaf_roll", 0.9))
         ey, ez = ey * math.cos(roll) + ez * math.sin(roll), ez * math.cos(roll) - ey * math.sin(roll)
         o = V[i] - float(cr.get("big_leaf_sink", 0.3)) * L * ex
-        Vl, Fl, Nl = _slab(poly, o, ex, ey, ez, 0.04 * L, cup=float(cr.get("big_leaf_cup", 0.15)) / max(L, 1e-6))
-        Nl = Nl * 0.5 + nrm * 0.5  # (shaded with its clump, a little of its own face)
+        Vl, Fl, Nl = _slab(poly, o, ex, ey, ez, 0.03 * L, cup=float(cr.get("big_leaf_cup", 0.15)) / max(L, 1e-6))
+        # shaded with its clump, a little of its own face; both faces lit alike (a back face turned from the sun read black)
+        s_ = np.sign(Nl @ ez)[:, None]
+        Nl = 0.35 * Nl * s_ * np.sign(ez @ nrm + 1e-6) + 0.65 * nrm
         Nl /= np.linalg.norm(Nl, axis=1, keepdims=True)
         along = np.clip((Vl - o) @ ex / L, 0, 1)
         Vs.append(Vl); Fs.append(Fl + n0); Ns.append(Nl)
@@ -1096,14 +1292,24 @@ def _head(kind: str, c, up, r: float, cs: dict, seed_u, sides: int):
     ey = np.cross(up, ex)
     Vs, Fs, Ns, Ps, n0 = [], [], [], [], 0
     if kind == "dab":
-        for k in range(int(cs.get("dabs", 2))):
-            a = np.linspace(0, 2 * math.pi, 10, endpoint=False)
-            rr = r * (0.7 + 0.3 * k / max(int(cs.get("dabs", 2)) - 1, 1)) * (1 + float(cs.get("ragged", 0.35)) * (seed_u(10 + k * 16 + np.arange(10)) - 0.5))
-            sq = 0.75 + 0.25 * seed_u(200 + k)  # (a dab is a little longer one way)
-            poly = np.c_[rr * np.cos(a), sq * rr * np.sin(a)]
-            off = (seed_u(300 + k) - 0.5) * r * 0.6 * ex + (seed_u(400 + k) - 0.5) * r * 0.6 * ey + k * 0.25 * r * up
-            V, F, N = _slab(poly, c + off, ex, ey, up, 0.12 * r, cup=0.0)
-            Vs.append(V); Fs.append(F + n0); Ns.append(N); Ps.append(np.zeros(len(V), int)); n0 += len(V)
+        # a little CLUSTER of soft paint blobs strung along the head's direction (a seed spike, a flower's puff): flat
+        # discs read as coins on sticks from the side. Each blob a squashed ball of its own size and turn; the cluster
+        # `dab_length` x r long, the blobs smaller toward its tip.
+        nd = max(int(cs.get("dabs", 4)), 1)
+        span = float(cs.get("dab_length", 2.2)) * r
+        for k in range(nd):
+            f_ = k / max(nd - 1, 1)
+            rr = r * float(cs.get("dab_size", 0.55)) * (1.1 - 0.45 * f_) * (1 + float(cs.get("ragged", 0.35)) * (seed_u(10 + k) - 0.5))
+            off = (f_ - 0.8) * span * up + (seed_u(300 + k) - 0.5) * r * 0.7 * ex + (seed_u(400 + k) - 0.5) * r * 0.7 * ey
+            Vb, Fb, Nb = _ball(np.zeros(3), 1.0, 3, 6)
+            a_ = 2 * math.pi * seed_u(500 + k)
+            ax_ = math.cos(a_) * ex + math.sin(a_) * ey  # (squashed across a hashed side, a little longer along the head)
+            sc_ = np.outer(Vb @ ax_, ax_) * (float(cs.get("dab_flat", 0.6)) - 1) + np.outer(Vb @ up, up) * 0.25
+            V = c + off + rr * (Vb + sc_)
+            N = Nb + np.outer(Nb @ ax_, ax_) * (1 / float(cs.get("dab_flat", 0.6)) - 1)
+            N = N / np.linalg.norm(N, axis=1, keepdims=True) * 0.6 + 0.4 * np.array([0, 0, 1.0])  # (lit as a soft clump)
+            N /= np.linalg.norm(N, axis=1, keepdims=True)
+            Vs.append(V); Fs.append(Fb + n0); Ns.append(N); Ps.append(np.zeros(len(V), int)); n0 += len(V)
     else:  # petals round a centre
         lo, hi = cs.get("petals", [5, 8])
         n = int(lo + round((hi - lo) * seed_u(7)))
@@ -1113,12 +1319,17 @@ def _head(kind: str, c, up, r: float, cs: dict, seed_u, sides: int):
         side = W * 0.5 * np.sin(np.pi * np.clip(t, 0, 1)) ** 0.6
         out_ = np.vstack([np.c_[t * L, side], np.c_[t[::-1][1:-1] * L, -side[::-1][1:-1]]])
         cen_r = r * float(cs.get("centre", 0.32))
+        petal_n = up + float(cs.get("petal_sky", 0.8)) * np.array([0, 0, 1.0])
+        petal_n /= np.linalg.norm(petal_n)
         for k in range(n):
             a = 2 * math.pi * (k + 0.3 * seed_u(500 + k)) / n
             dx, dy = math.cos(a), math.sin(a)
             R2 = np.array([[dx, -dy], [dy, dx]])
             poly = (out_ + [0.6 * cen_r, 0]) @ R2.T
             V, F, N = _slab(poly, c, ex, ey, up, 0.08 * L, cup=float(cs.get("cup", 0.6)) / max(L, 1e-6))
+            # both faces of a petal shade as its upper face, leaned to the sky: a flower turned from the sun showed its
+            # undersides dark grey (a petal is thin and lit through)
+            N = np.tile(petal_n, (len(V), 1))
             Vs.append(V); Fs.append(F + n0); Ns.append(N); Ps.append(np.zeros(len(V), int)); n0 += len(V)
         V, F, N = _ball(c + 0.04 * L * up, cen_r, 3, max(6, sides))
         V = c + (V - c) * [1, 1, 1] - np.outer((V - c) @ up, up) * 0.5  # (a flattened dome)
@@ -1217,7 +1428,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
 
         def cost(a_, b_):  # triangles of every blade, stalk and head at that many sides and rings
             hs_, hr_, bs_, br_ = max(3, a_ // 2), max(b_, 2), max(5, a_ + 2), max(3, b_ // 2 + 2)
-            head = {"ball": 2 * bs_ * (br_ - 1), "dab": int(cs.get("dabs", 2)) * 40,
+            head = {"ball": 2 * bs_ * (br_ - 1), "dab": int(cs.get("dabs", 4)) * 24,
                     "petals": int(np.mean(cs.get("petals", [5, 8]))) * 4 * (2 * (max(3, a_ // 2) + 1) - 2) + 2 * bs_ * 2}.get(hk, 2 * bs_ * (br_ - 1))
             return len(pick) * 2 * a_ * b_ + len(heads) * (2 * hs_ * hr_ + head)
         sides, rings = next(((a_, b_) for a_, b_ in ((8, 8), (7, 7), (6, 6), (5, 5), (4, 4), (4, 3), (3, 3), (3, 2))
@@ -1268,7 +1479,7 @@ def dress_clump(tree: dict, st: dict, triangles: int | None = None, season: str 
             def su(x, ci=ci):  # the head's own random numbers (array or scalar in, the same out)
                 r_ = vegetation._u(tw["key"][ci] + np.atleast_1d(np.asarray(x)).astype(np.uint64), 70)
                 return r_ if np.ndim(x) else float(r_[0])
-            hd = d - up * d[2] * (1 - float(cs.get("head_up", 0.6)))  # (a flower faces up and a little out along its stalk)
+            hd = d * (1 - float(cs.get("head_up", 0.6))) + up * float(cs.get("head_up", 0.6))  # (a flower faces the sky by `head_up`, the rest along its stalk: a head along a leaning stalk faced sideways, its petals in their own shade)
             r_head = float(cs["ball"]) * L
             fl_ = ((parts[owner[int(tw["card"][ci])]].get("twig") or {}).get("flower") or {})
             if hk in ("petals", "dab") and fl_.get("radius"):  # (a flower: sized from the realistic flower, x `petal_size`)

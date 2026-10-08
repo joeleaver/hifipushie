@@ -254,6 +254,28 @@ class Face:
         self.parts_tongue = {p.part for n, p in prims.items() if n == f"{fb}_tongue"}
         self.tongue = prims.get(f"{fb}_tongue")
 
+    def inside_mouth(self, X: np.ndarray, prims) -> np.ndarray:
+        """Which points (n, 3) lie in the mouth's interior (the slit's walls, the bag): within the mouth's box and
+        with the slit's own part (`prims`, its field) standing in FRONT of them, the lips. The export's mesh report
+        leaves these out of its tear alarm: a bag's corners at a game budget fold, behind closed lips."""
+        from . import sdf
+        X = np.asarray(X, np.float64).reshape(-1, 3)
+        if not len(X):
+            return np.zeros(0, bool)
+        q = X - self.M
+        box = (np.abs(q @ self.side) < 1.3 * self.W2) & (np.abs(q @ self.up) < 2.0 * self.bag[2] + 0.01) \
+            & (-(q @ self.out) < self.thick + 2 * self.bag[1] + 0.01)
+        out = np.zeros(len(X), bool)
+        idx = np.flatnonzero(box)
+        far = self.thick + 2 * self.bag[1] + 0.004  # (from the bag's back wall the lips are this far in front)
+        for t in np.linspace(0.002, far, max(6, int(np.ceil(far / 0.002)))):
+            if not len(idx):
+                break
+            hit = sdf.field_at(prims, X[idx] + t * self.out, clip=False) < -3e-4
+            out[idx[hit]] = True
+            idx = idx[~hit]
+        return out
+
     def neutral(self, Xm: np.ndarray, kind: str, index=None) -> np.ndarray:
         """The neutral's move for a part's meshed vertices: the slit closed (the lips only)."""
         return self.close(self.local(Xm)) if kind == "skin" else np.zeros_like(Xm)
@@ -911,6 +933,8 @@ LID_OVER = 0.0003  # m the upper lid's margin goes past that line
 LID_BAND = 0.0015  # m either side of the line squeezed onto each lid's own side
 LID_REACH = (0.009, 0.004)  # m from its margin (as posed) over which a lid's skin takes the seal: upper, lower
 LID_EDGE = (0.0025, 0.0015)  # m from its lid's posed edge within which a vertex counts as margin: upper, lower
+LID_OVER_FADE = True  # the upper lid's overlap fades out toward the corners (one skin there, not two sheets)
+LID_FADE = (0.36, 0.46)  # of the eye's width from its middle: where that fade starts and ends
 LID_PINCH = 3     # how hard that band is drawn to the line: linear (1) parked the margins ~0.5 mm either side of it, a 1.2 mm slit
 GNM_OPEN = 14.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16)
 
@@ -1367,9 +1391,17 @@ class GnmFace(Face):
             return np.interp(bc, bc[np.isfinite(a_)], a_[np.isfinite(a_)])
         lo_u, hi_l = fill(lo_u), fill(hi_l)
         line = np.polyval(np.polyfit(bc, hi_l, 2), bc)
+        # the upper lid goes `over` past the line only where the lids are two sheets: toward the corners they are one
+        # skin, and the overlap turned over the small triangles there that have a vertex on each lid (Garrett's 20k
+        # export, right eye blinked: 3 triangles at the inner corner, a dark notch; 1 of 0.9 mm2 left)
+        if LID_OVER_FADE:
+            over_b = over * _ss((LID_FADE[1] * width - np.abs(bc)) / ((LID_FADE[1] - LID_FADE[0]) * width))
+            over = over * _ss((LID_FADE[1] * width - np.abs(u)) / ((LID_FADE[1] - LID_FADE[0]) * width))
+        else:
+            over_b = np.full(nb, over)
         ends = _bump(np.abs(u), 0.5 * width, 0.62 * width) * amount  # (fades out past the corners)
         d = d.copy()
-        for sel, cur, tgt, reach, sgn in ((zone & upper, lo_u, line - over, o["reach"][0], 1.0),
+        for sel, cur, tgt, reach, sgn in ((zone & upper, lo_u, line - over_b, o["reach"][0], 1.0),
                                           (zone & ~upper, hi_l, line, o["reach"][1], -1.0)):
             if not sel.any():
                 continue

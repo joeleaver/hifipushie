@@ -347,8 +347,16 @@ and the `"story"`.
       always collapse pits (the roof fallen in, a low cone of blocks to climb down), as wide as the tube.
       `{"kind": "lava", "flow": "<flow name>", "from": 0.25, "to": 0.85}` runs a tube down a volcano's lava flow
       between those shares of its length, a collapse pit at each end (no entrances or passages needed).
+      A flow down a steep cone falls faster than anyone walks. `"grade": 0.2` makes the tube walkable: it
+      switchbacks across the flow (legs along the slope's contours, up to `"swing"` m either side of the flow's
+      line, default 30), a level landing at each turn and under each pit's pile of blocks, never steeper than the
+      grade, and never higher than its depth under the ground (where the ground falls faster it runs deeper, and
+      its pits get deeper). The report says how many switchbacks, how wide, how deep the pits are, and when the
+      swing is too narrow for the grade ("needs switchbacks 54 m either side ... Give it "swing": 54").
   - An entrance is where a passage meets the open: at a cliff or hillside along the way in, or a shaft straight down
-    from the ground with `"shaft": true` (a blowhole, a sinkhole).
+    from the ground with `"shaft": true` (a blowhole, a sinkhole). A hillside mouth's floor is the ground where the
+    door opens (no higher: at a cliff foot, a geo's floor), and a karst floor leaves it on the passage's plain grade,
+    taking on its bedding planes over the first ~20 m. `"z": m` on the entrance sets the door's floor yourself.
   - A chamber's floor is `depth` metres under the ground over it (karst 18 m, lava 7.5 m) or at height `z`; a sea
     cave's chambers sit at the water. `"in": m` puts a chamber that far into the rock from an address with a
     direction: `{"at": "cliff_foot:<address>", "in": 30}` is 30 m in from the foot of that cliff.
@@ -362,7 +370,10 @@ and the `"story"`.
     finished rock), plus each passage's climb ("climbs 49 m over 149 m of slope (33%)": a cave floor walks up to 25%,
     sustained over 10 m), the rock over each passage's roof and each chamber's dome (under 1 m it opens to the sky),
     and a WARNING with what to change: the chamber's `z` / `depth` that makes the climb walkable, how long the passage
-    would have to be, the stretch of a lava flow gentle enough for a tube (`from` / `to`).
+    would have to be, the stretch of a lava flow gentle enough for a tube (`from` / `to`) or its `grade`. A walk that
+    fails names what stops it by kind: a step by a mouth is where the passage's floor meets the ground outside (the
+    entrance's `z` or `at`), a step further in is the floor rising faster than it runs (a longer passage, closer
+    floors), only blocked / tight / low passages change with `width` / `height`.
 - **ground**: gentle ground rolls at player scale on its own: field-scale undulation (1-2 m over ~100 m), swales
   (broad shallow hollows where water gathers, down the slope) and hummocks in patches, by the kind (none in dunes).
   Never on sites, routes, passes or water; it doesn't make ponds. `"ground": {"undulation": 0..2, "swales": 0..2,
@@ -557,7 +568,19 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   the style keeps: 1 realistic, 0 blobby), `macro_normal` (share of the baked normal kept), `detail` (the realistic
   tiling detail swatches), `overlay` (the style's own close-up swatch: anime brush dabs), `seasons` (per season per
   layer `{"mix": sRGB, "amount"}`, as the plants'), `snow` (numbers for the engine's snow, as the plants'), `rock`
-  (the zone's rock shape: geometry, see below).
+  (the zone's rock shape: geometry, see below). Op keys worth knowing: `blotch` `share` (with 2 steps: the share of
+  ground in the second tone, patches on a ground colour instead of a 50/50 camouflage) and `width` (spread of sizes);
+  `strokes` `levels` (a painter's few mixed tones instead of a continuum); `dots` `clusters` [per m2, radius m]
+  (flowers in clumps); any op's `paint` (an sRGB colour laid where it marks: white and yellow flower dots); `bands`
+  `pinch` / `breaks` / `vary` (strata swell, wedge out as lenses and fade along the strike instead of ruled stripes);
+  any op's `fade_small` (it gives way on small or thin rock: the layer then ships a plain texture, and the map
+  `styles/rock_scale.png` says where: sea stacks and fins lose the anime strata). Sheet `layer_edge` {height,
+  depth}: where two layers meet, their height maps decide a crisp painted edge (cartoon, anime) instead of a
+  cross-fade. Contract 3.
+- Cartoon and anime under hard-band cel light (the game's): any soft gradient in a texture or in the baked macro colour
+  reads as a smudge, not as paint. Cartoon soft layers are flat fields in two crisp tones with a few marks (ink tufts,
+  pale ticks, flower dots, pebbles) and `macro` 0; anime keeps 3 crisp value steps and 3-level dabs, `macro` 0.15.
+  Judge with `look_terrain(styles=True)`'s ground view (eye level and 25 m up, mipmapped, anti-tiled, flat cel light).
 - What artists do, and why it is built this way: stylised ground in games is a few tiling layer textures blended by
   weights (slope, height, painted masks), height-blended at layer edges, triplanar on cliffs, with anti-tiling
   ([Unity terrain height blend](https://github.com/unitycoder/TerrainHeightBlend-Shader), [stochastic
@@ -566,7 +589,7 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   (fewer, bigger planes, softened edges: [polycount](https://polycount.com/discussion/comment/2147949)). So a style's
   texture is an op stack with few, big shapes; its rock shape is geometry in the zone's tiles.
 - Files (in every tiles export of a spec with styles, or alone with `export_terrain(name, styles_only=True)`, seconds,
-  beside the last export): `materials/<style>/<layer>_albedo.png` (sRGB, mean = the layer colour), `_normal.png`
+  beside the last export): `materials/<style>/<layer>_albedo.png` (RGB sRGB, mean = the layer colour; ALPHA = the height, 8-bit linear, contract 4), `_normal.png`
   (tangent, glTF: +x east / along the face, +y north / up), `_height.png` (16-bit, 0.5 = 0, +- height_m),
   `materials/<style>/overlay_*`; `styles/<style>_sd.png` (signed distance to the style's zone edge, 16-bit,
   +- range_m, + inside) for a band of your own (ragged, moving), `styles/weights<g>.png` (the weights with `band`);
@@ -580,7 +603,7 @@ through it, so a pixel near a border needs BOTH styles' looks: the textures are 
   (multipliers on this terrain's own rock character: `facets`, `bedding`, `size`; `blocks: false` drops the jointed
   blocks), `pillow` (`size`, `depth`, `round`: rock carved into rounded cushions), `soften_m` (the ground grid
   Gaussian-smoothed in the zone: rounded lips and forms; the heightmap tiles follow), `fallen` (share of fallen blocks),
-  `micro` (share of the bake-only fine relief), `band_m` (default 10: the hand-over between zones, in the field, so
+  `micro` (share of the bake-only fine relief), `lip` (share of the turf's step at cliff lips; blobby 0), `band_m` (default 10: the hand-over between zones, in the field, so
   tiles and LODs agree and the seam checks hold). blobby: pillows, softened 1.5 m, no facets / beds / blocks / fallen;
   anime: facets x0.5, beds x1.5, no blocks; cartoon: facets x1.4 at 2.5x size, no beds / blocks; pixar: facets x0.7,
   beds x0.6, no blocks, softened 0.6 m. The realistic zones' field is unchanged bit for bit.

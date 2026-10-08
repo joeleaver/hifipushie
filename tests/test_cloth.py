@@ -275,6 +275,45 @@ def test_relax_strain_takes_out_shear():
     assert s1.max() < 1.035, s1.max()
 
 
+def test_a_stopped_runs_solver_is_cleared():
+    # a ZOZO solver whose cloth_zozo.py runner died (a stopped session) is a stray and is stopped; one whose runner is
+    # alive, or one that isn't ours (no hp_job_ session), is left alone
+    import os, subprocess, tempfile, time
+    from pathlib import Path
+    from hifipushie import cloth_job
+    d = Path(tempfile.mkdtemp())
+    solver = d / "ppf-contact-solver"
+    solver.write_text("#!/bin/sh\nsleep 60\n")
+    solver.chmod(0o755)
+    mark = f"hp_job_t{os.getpid()}_"
+    orphan_path = str(d / f"{mark}a_sim" / "session")
+    live_path = str(d / f"{mark}b_sim" / "session")
+    other = str(d / "someone_else" / "session")
+    # orphan: started in the background by a shell that exits at once (reparented, no runner above it)
+    subprocess.run(["sh", "-c", f"'{solver}' --path '{orphan_path}' >/dev/null 2>&1 &"], check=True)
+    subprocess.run(["sh", "-c", f"'{solver}' --path '{other}' >/dev/null 2>&1 &"], check=True)
+    # held: its parent's command line runs cloth_zozo.py and stays alive
+    held = subprocess.Popen(["sh", "-c", f"'{solver}' --path '{live_path}'; true", "cloth_zozo.py"])
+    try:
+        time.sleep(0.5)
+        strays = cloth_job.stray_solvers(mark)
+        assert [s["session"] for s in strays] == [orphan_path], strays
+        gone = cloth_job.clear_strays(log=lambda *_: None, mark=mark, wait=3)
+        assert len(gone) == 1 and cloth_job._proc(gone[0]["pid"]) is None
+        assert cloth_job.stray_solvers(mark) == []  # the held one stays
+        assert any(live_path in " ".join(cloth_job._proc(int(p.name))[1]) for p in Path("/proc").iterdir()
+                   if p.name.isdigit() and cloth_job._proc(int(p.name)))
+    finally:
+        held.kill()
+        subprocess.run(["pkill", "-f", str(d)], check=False)
+    try:  # ZOZO checks only its own run's solvers: the queue's GPU claim is the exclusion (needs the release)
+        _, env = cloth_job.zozo_command(d)
+    except FileNotFoundError:
+        env = None
+    if env is not None:
+        assert env["PPF_SOLVER_SCAN_DESCENDANTS"] == "1"
+
+
 def test_clay_looks_are_matte():
     # dark wool read as leather under the workbench's specular highlight (tr_11): cloth clay looks switch it off
     # unless a job asks, and textured looks take each object's roughness (Blender isn't run here: read the source)
@@ -419,6 +458,120 @@ def test_cleaned_seam_is_a_smooth_line():
     assert zig < 0.0015, zig  # (4 mm before)
     used = np.unique(cloth.welded_faces(M, W))
     assert not (np.isin(sw[:, 0], used) & np.isin(sw[:, 1], used)).any()  # one row of vertices on the seam
+
+
+def test_clearing_a_hollow_stays_local():
+    # cloth across the hollow where two balls meet (the crotch between the thighs): pushing its vertices along the body's
+    # normal doesn't clear its faces, and a gap grown round after round sent tr_13's fork tips 35-106 mm across the body
+    # (a 10x stretched start). The fine settle's clearing caps the growth (CLEAR_GROW)
+    V1, T1 = _ball()
+    V, T = np.r_[V1, V1 + [0.21, 0, 0]], np.r_[T1, T1 + len(V1)]
+    body = cloth.Body({"V": V, "F": T, "J": {}})
+    body._m = {"mm": {}, "at": {}}
+    X = np.array([[x, 0.0, z] for x in np.linspace(0.06, 0.15, 10) for z in (-0.02, 0.02)])
+    X[:, 1] = -np.sqrt(np.maximum(0.01 - np.minimum(np.abs(X[:, 0]), np.abs(X[:, 0] - 0.21)) ** 2 - X[:, 2] ** 2, 0)) - 0.002
+    F = np.array([f for i in range(9) for f in ([2 * i, 2 * i + 2, 2 * i + 1], [2 * i + 1, 2 * i + 2, 2 * i + 3])])
+    free = np.ones(len(X), bool)
+    far = np.linalg.norm(cloth._clear_of_body(X, F, free, body, 0.0042, 0.0034) - X, axis=1).max()
+    near = np.linalg.norm(cloth._clear_of_body(X, F, free, body, 0.0042, 0.0034, cloth.CLEAR_GROW) - X, axis=1).max()
+    assert far > 0.03 and near < 0.015, (far, near)
+
+
+def test_fine_start_check_fails_loudly():
+    # the fine settle's start is checked before the GPU is spent: draped triangles the solver moves, stretched past
+    # 1 + FINE_START_MAX from the flat pattern, are named (a carried or made triangle isn't the solver's to start)
+    uv = np.array([[0, 0], [0.01, 0], [0, 0.01], [0.01, 0.01]], float)
+    M = {"uv": uv, "F": np.array([[0, 1, 2], [1, 3, 2]]), "piece": np.zeros(4, int), "names": ["back.L"]}
+    X = np.c_[uv, np.zeros(4)]
+    plan = {"start": X.copy(), "idx": np.zeros(0, int), "rest_idx": np.zeros(0, int)}
+    assert cloth.fine_start_check(M, plan) == ""
+    plan["start"][3] = [0.05, 0.05, 0]  # the second triangle 5x
+    msg = cloth.fine_start_check(M, plan)
+    assert "1 triangles" in msg and "back.L" in msg, msg
+    assert cloth.fine_start_check(M, dict(plan, idx=np.array([1, 2, 3]))) == ""  # all carried
+    assert cloth.fine_start_check(M, dict(plan, rest_idx=np.array([3]))) == ""  # made
+
+
+def test_folds_in_geometry_lift_off_the_body_whatever_the_winding():
+    # cloth_detail.displace moves vertices out along the garment's OUTSIDE (oriented_faces), not the pattern's winding:
+    # on su_garrett's trousers the inward-wound back.L had its folds pushed into the thigh (111 faces inside the body)
+    from hifipushie import cloth_detail
+    V, T = _ball()
+    body = cloth.Body({"V": V, "F": T, "J": {}})
+    body._m = {"mm": {}, "at": {}}
+    th = np.linspace(-0.6, 0.6, 9)
+    zz = np.linspace(-0.04, 0.04, 5)
+    X = np.array([[0.105 * np.cos(t), 0.105 * np.sin(t), z] for z in zz for t in th])
+    uv = np.array([[0.105 * t, z] for z in zz for t in th])
+    F = []
+    for j in range(4):
+        for i in range(8):
+            a, b, c, d = j * 9 + i, j * 9 + i + 1, (j + 1) * 9 + i, (j + 1) * 9 + i + 1
+            F += [[a, c, b], [b, c, d]]  # wound INTO the ball
+    F = np.array(F)
+    M = {"F": F, "uv": uv, "piece": np.zeros(len(X), int), "names": ["p"], "sew": np.zeros((0, 2), int),
+         "border": np.zeros(len(X), bool)}
+    orig = cloth_detail.height_at
+    cloth_detail.height_at = lambda *a, **k: np.full(len(X), 0.004)
+    try:
+        W, _ = cloth_detail.displace(M, X, {}, body=body)
+    finally:
+        cloth_detail.height_at = orig
+    r0, r1 = np.linalg.norm(X, axis=1), np.linalg.norm(W, axis=1)
+    assert np.all(r1 > r0 + 0.003), (r1 - r0).min()
+
+
+def test_unkink_smooths_a_spike_not_a_fold():
+    # the clean-up's kink pass: a single vertex buckled out of its neighbours' plane (a triangle or two across) goes
+    # back onto it; a broad fold (its faces turned a little each) and seam vertices stay
+    n = 15
+    xs = np.linspace(0, 0.14, n)
+    uv = np.array([[x, y] for y in xs for x in xs])
+    F = []
+    for j in range(n - 1):
+        for i in range(n - 1):
+            a, b, c, d = j * n + i, j * n + i + 1, (j + 1) * n + i, (j + 1) * n + i + 1
+            F += [[a, b, c], [b, d, c]]
+    M = {"F": np.array(F), "uv": uv, "piece": np.zeros(len(uv), int), "names": ["p"], "sew": np.zeros((0, 2), int),
+         "folds": []}
+    X = np.c_[uv, 0.01 * np.sin(uv[:, 0] / 0.14 * np.pi)]  # a broad fold
+    k = 7 * n + 7
+    Y = X.copy()
+    Y[k, 2] += 0.006
+    W, info = cloth._unkink(Y, M)
+    assert abs(W[k, 2] - X[k, 2]) < 0.0015, (W[k, 2] - X[k, 2], info)
+    W2, _ = cloth._unkink(X, M)
+    assert np.allclose(W2, X)  # the fold alone is left
+    M["sew"] = np.array([[k, k]])
+    W3, _ = cloth._unkink(Y, M)
+    assert np.isclose(W3[k, 2], Y[k, 2])  # a seam vertex stays
+
+
+def test_hem_stops_on_the_shoe_with_a_break():
+    # _hem_on_shoe: a leg hanging straight down to 3 cm over the floor, a shoe 10 cm high under its front half: those
+    # columns stop gap over the shoe, the length gathered into the bottom LEG_BREAK (the break); the back columns
+    # (no shoe under them) and everything higher up stay as laid
+    xs = np.linspace(-0.03, 0.03, 7)
+    zs = np.linspace(0.03, 0.4, 38)
+    U = np.array([[x, z - 1.0] for z in zs for x in xs])  # pattern: x across the column, y = z - waist
+    out = np.array([[0.15 + x, -0.05 if x < 0 else 0.05, z] for z in zs for x in xs])  # x<0 columns: the front
+    shoe = np.array([[0.15 + a, -0.05 + b, h] for a in np.linspace(-0.04, 0.0, 9) for b in np.linspace(-0.02, 0.02, 9)
+                     for h in (0.0, 0.10)])
+    body = cloth.Body({"V": np.zeros((0, 3)), "F": np.zeros((0, 3), int), "J": {},
+                       "worn": {"V": shoe, "F": np.zeros((0, 3), int), "key": "s"}})
+    ok = np.ones(len(U), bool)
+    gap = 0.004
+    X = cloth._hem_on_shoe(body, out, U, ok, 1.0, 0.2, gap)
+    hem = U[:, 1] == U[:, 1].min()
+    front = hem & (U[:, 0] < -0.015)
+    back = hem & (U[:, 0] > 0.015)
+    assert (X[front, 2] >= 0.10 + gap - 1e-6).all() and np.allclose(X[back], out[back])
+    high = U[:, 1] - U[:, 1].min() > cloth.LEG_BREAK
+    assert np.allclose(X[high], out[high])  # above the break nothing moves
+    # each front column keeps its order (gathered, not turned inside out)
+    for c in xs[xs < -0.015]:
+        zc = X[np.isclose(U[:, 0], c), 2]
+        assert (np.diff(zc) > 0).all()
 
 
 if __name__ == "__main__":

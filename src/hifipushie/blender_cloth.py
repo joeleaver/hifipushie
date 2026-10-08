@@ -759,7 +759,7 @@ def show(entries: list) -> list:
             obb = bpy.data.objects.new(e["name"] + ".buttons", mb)
             coll.objects.link(obb)
             obb.parent = ob
-            mb.materials.append(_material(f"cloth:{e['name']}.buttons", e["buttons"].get("color", "#ebe6dc"), 0.35, None))
+            mb.materials.append(_material(f"cloth:{e['name']}.buttons", e["buttons"].get("color", "#ebe6dc"), float(e["buttons"].get("roughness", 0.42)), None, sheen=0.0))
     return made
 
 

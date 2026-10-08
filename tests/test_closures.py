@@ -40,13 +40,24 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     assert {c["name"]: c["state"] for c in garment_design.wear(g)} == {"collar": "open", "front": {"open_top": 1}}
     assert {c["name"]: c["state"] for c in garment_design.wear(dict(g, tie=True))} == {"collar": "closed", "front": "closed"}
     assert garment_design.wear({"pattern": {"from": "carlton"}}) == []  # a coat: as its pattern says
+    # open as worn: the stand's ends apart at the throat, the fronts rolled back above the first closed button
+    assert {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] > 0.05
+    fl = garment_design.wear(g, "folds")
+    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(90 < f["angle"] < 180 for f in fl)
+    assert garment_design.wear(dict(g, tie=True), "folds") == []
+    # the UNDER front's roll ends above the first closed fastening (under the over front there): rolled out to the
+    # button both flaps met there and the under one turned out through the over one (29 crossings at su_garrett's start)
+    from hifipushie import pattern
+    under = next(f for f in fl if f["piece"] == "front.R")
+    end = under["line"][-1]
+    assert "+" in end and pattern.eval_vec(end.partition("+")[2])[1] >= 0.03, end
     assert "tie" in garment_design.SHEET_KEYS
     # an unbuttoned stand is laid by the girth it would close at (its fastening's points), not by its length
     M = {"names": ["stand"], "piece": np.zeros(3, int), "uv": np.array([[0.02, 0.0], [0.40, 0.0], [0.2, 0.01]]),
          "closures": [{"name": "collar", "over": "stand", "under": "stand", "closed": [False], "v": [[0, 1]]}]}
     assert np.isclose(cloth._open_closure(M, "stand")[0], 0.38) and cloth._open_closure(M, "stand")[1] == 0.02
     M["closures"][0]["closed"] = [True]
-    assert cloth._open_closure(M, "stand") == (0.0, 0.0)  # buttoned: the stitched path
+    assert cloth._open_closure(M, "stand") == (0.0, 0.0, 0.0)  # buttoned: the stitched path
 
 
 def test_a_chosen_closure_must_be_in_the_pattern():
@@ -134,6 +145,24 @@ def test_a_closed_lap_is_laid_closed():
     below = (piece == 0) & (uv[:, 1] < -0.4)
     assert np.abs(X[far] - V[far]).max() < 1e-4 and np.abs(X[below] - V[below]).max() < 1e-4
     assert rows[0]["laid"] > 50 and rows[0]["fastenings_left_mm"] == [0.0, 0.0, 0.0]
+    # fastenings apart IN the surface too (4 mm across, and the lap 3 mm under the over front at the bottom button):
+    # bringing them together moves both layers round each button, so the band is laid on the under layer again after
+    # (laid only before, it came out through the under front round su_garrett's 4th and 5th buttons)
+    V2 = V.copy()
+    V2[piece == 1, 0] -= 0.004
+    V2[(piece == 1) & (uv[:, 1] < -0.25), 1] -= 0.003
+    X2, rows2 = closures.seat(V2, M, pcs, None)
+    band2 = band & (np.abs(uv[:, 1] - pcs["front.L"]["marks"]["buttonhole2"][1]) > 0.03)
+    assert closures.measure(X2, M)[0]["ok"], closures.measure(X2, M)[0]
+    under = X2[piece == 1]
+    # every band vertex on one side of the under front, LAY off it: none through it (without a body seat takes the
+    # under front's own normal: which side is the triangles' winding's)
+    side = []
+    for v in np.where(band2)[0]:
+        q = under[np.argmin(np.linalg.norm(under[:, [0, 2]] - X2[v, [0, 2]], axis=1))]
+        side.append(X2[v, 1] - q[1])
+    side = np.asarray(side)
+    assert (np.sign(side) == np.sign(np.median(side))).all() and np.abs(side).min() > 0.0005, side
 
 
 def test_drafted_buttons_are_a_closure_with_a_wear_state():
@@ -158,6 +187,108 @@ def test_drafted_buttons_are_a_closure_with_a_wear_state():
         Bp = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "block_options": {"fitted": True}, "ops": ops}}, mm)
         assert Bp["closures"] and Bp["closures"][0]["state"] == state
         assert sum("button" in a for a, b in Bp["stitches"]) == n_st
+
+
+def _placket(finish=None):
+    """Two rectangular fronts lapped by a buttoned closure, meshed (cloth.pieces / cloth.mesh): the over front's edge
+    on x = -0.1 with its holes 15 mm in, the under front's on x = 0.1 with its buttons 9 mm in."""
+    from hifipushie import cloth
+    ys = (0.2, 0.0, -0.2)
+    c = dict(ENTRY, edge={"over": "nw>w>sw", "under": "se>e>ne"}, **({"finish": finish} if finish else {}))
+    g = {"pieces": {"front.L": {"rect": [0.2, 0.6], "wrap": {"to": "flat", "at": [0, 0, 1.0]},
+                                "marks": {f"buttonhole{n + 1}": [-0.085, y] for n, y in enumerate(ys)}},
+                    "front.R": {"rect": [0.2, 0.6], "wrap": {"to": "flat", "at": [0, 0, 1.0]},
+                                "marks": {f"button{n + 1}": [0.091, y] for n, y in enumerate(ys)}}},
+         "seams": [], "closures": [c]}
+    Bp = cloth.pieces(g, {})
+    M = cloth.mesh(Bp, 0.01)
+    return g, Bp, M
+
+
+def test_a_box_placket_in_the_maps():
+    """The user on the shirt (2026-10-08): "We're really not getting the shirt placket right": no band, rivets for
+    buttons, no buttonholes. The over front's band is drawn as a box placket: proud, a crisp fold at its inner edge,
+    a topstitch row 3 mm in from each edge, vertical buttonholes (a slit between satin beads, size + 3 mm long, along
+    the band) on its centre line; the free edge's turned hem is not drawn inside the band."""
+    from hifipushie import cloth
+    g, Bp, M = _placket()
+    c = next(c for c in M["closures"] if c["name"] == "front")
+    assert set(c["edge_xy"]) == {"over", "under"} and c["finish"] == {"over": "box", "under": "french"}
+    T = 2048
+    uv, side = cloth.atlas_uv(M)
+    dm = cloth.detail_maps(M, uv, side, dict(g, detail={"texture": T}))
+    H, thr, cav = dm["height"], dm["thread"], dm["cavity"]
+    mpt = side / T
+    k = M["names"].index("front.L")
+    vs = np.where(M["piece"] == k)[0]
+    off = uv[vs[0]] * side - M["uv"][vs[0]]
+    pix = lambda x, y: (int(round((x + off[0]) / side * T)), int(round((1 - (y + off[1]) / side) * T)))
+    row = lambda y, xs: np.array([H[pix(x, y)[1], pix(x, y)[0]] for x in xs])
+    # across the band at y = 0.1 (between buttons): proud inside, a crisp fall at the inner edge (x = -0.07)
+    xs = np.arange(-0.099, -0.05, mpt)
+    h = row(0.1, xs)
+    inside_, outside_ = h[(xs > -0.094) & (xs < -0.076)], h[xs > -0.065]
+    assert np.median(inside_) > np.median(outside_) + 0.0004, (np.median(inside_), np.median(outside_))
+    fall = np.diff(h[(xs > -0.075) & (xs < -0.066)])
+    assert -fall.min() / mpt > 0.25  # steeper than 1 in 4 within a texel or two: a fold, not a slope
+    # two rows of stitching, 3 mm in from each edge of the band
+    t_ = np.array([thr[pix(x, 0.1)[1], pix(x, 0.1)[0]] for x in xs])
+    for at in (-0.097, -0.073):
+        near = np.abs(xs - at) < 0.0008
+        assert t_[near].max() > 0.5, at
+    assert t_[(xs > -0.092) & (xs < -0.078)].max() < 0.1  # (not the old turned hem's row 6 mm in)
+    # the buttonhole at (-0.085, 0): a dark slit along y, about 14 mm long
+    hx, hy = pix(-0.085, 0.0)
+    col = cav[hy - int(0.012 / mpt): hy + int(0.012 / mpt), hx]
+    slit_len = (col < 0.75).sum() * mpt
+    assert 0.009 < slit_len < 0.0135, slit_len
+    across = cav[hy, hx - int(0.006 / mpt): hx + int(0.006 / mpt)]
+    assert (across < 0.75).sum() * mpt < 0.0012  # a slit, not a slot
+    # a French front (the under side) has no rows
+    k2 = M["names"].index("front.R")
+    vs2 = np.where(M["piece"] == k2)[0]
+    off2 = uv[vs2[0]] * side - M["uv"][vs2[0]]
+    pix2 = lambda x, y: (int(round((x + off2[0]) / side * T)), int(round((1 - (y + off2[1]) / side) * T)))
+    t2 = np.array([thr[pix2(x, 0.1)[1], pix2(x, 0.1)[0]] for x in np.arange(0.075, 0.099, mpt)])
+    assert t2.max() < 0.1
+
+
+def test_flat_sew_through_buttons():
+    """Buttons are flat 4-hole discs (a dome on a rim read as a rivet): `size` across, ~2 mm thick, sitting on the
+    cloth at the closed buttonhole, their holes squared with the band (along it)."""
+    g, Bp, M = _placket()
+    V = np.c_[M["uv"][:, 0], np.zeros(len(M["uv"])), M["uv"][:, 1]]  # flat, facing -y
+    k = M["names"].index("front.R")
+    V[M["piece"] == k, 1] += 0.001  # the under front behind
+    b = closures.buttons_mesh(V, M, None)
+    assert len(set(b["at"])) == 3 and set(b["mark"]) != set(b["at"])
+    c = next(c for c in M["closures"] if c["name"] == "front")
+    for va, _vb in c["v"]:
+        P = b["V"][b["at"] == va]
+        d = P - V[va]
+        h = np.abs(d[:, 1])
+        assert h.max() < 0.0025 and np.ptp(d[:, 1]) < 0.0025  # flat, ~2 mm
+        r = np.hypot(d[:, 0], d[:, 2]).max()
+        assert abs(r - 0.0055) < 3e-4
+    # the thread's bars (the vertices standing highest) run along the band: z
+    P = b["V"][b["at"] == c["v"][0][0]]
+    top = P[np.abs(P[:, 1] - V[c["v"][0][0], 1]) > np.abs(P[:, 1] - V[c["v"][0][0], 1]).max() - 2e-4]
+    assert np.ptp(top[:, 2]) > np.ptp(top[:, 0])
+    assert abs(closures.hole_axis(c, M, *c["v"][0]) @ np.array([0, 1.0])) > 0.99  # along the edge
+
+
+def test_a_cuffs_holes_run_along_the_cuff():
+    # a piece closed on itself: no edge, the hole's axis from the button toward the buttonhole
+    M = {"uv": np.array([[0.0, 0.0], [0.2, 0.0]]), "piece": np.array([0, 0])}
+    c = {"name": "cuff", "over": "cuff", "under": "cuff", "hole": "auto"}
+    assert abs(closures.hole_axis(c, M, 1, 0) @ np.array([1.0, 0])) > 0.99
+    assert abs(closures.hole_axis(dict(c, hole="across"), M, 1, 0) @ np.array([0, 1.0])) > 0.99
+    try:
+        closures.validate([dict(ENTRY, finish="lumpy")])
+    except closures.ClosureError:
+        pass
+    else:
+        raise AssertionError("unknown finish accepted")
 
 
 if __name__ == "__main__":

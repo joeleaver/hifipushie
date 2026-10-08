@@ -474,12 +474,14 @@ def _bary(uv, F, size, t, xs, ys):
 
 
 def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_rough, field=None, first=0,
-                gfield=None, lines=None, texel=None):
+                gfield=None, lines=None, texel=None, border=None):
     """The per-texel part of a bake (pointwise, so an atlas can be baked in pieces): each texel's point on the low poly,
     moved onto the surface (`surface`), and its values quantised as the maps store them. `first`: the index of the
     first texel in the whole atlas's order (the texel-error sample is every 7th texel of the atlas). `texel` (m): the
     map's texel, for the ground's maps-only relief (Materials.relief: tussocks, scrub lumps, mower stripes; band-limited
-    to what the texel carries)."""
+    to what the texel carries). `border` (lo, hi, fade m): the normal map eased to flat (the low poly's own normal, the
+    same on both sides) within `fade` of the tile's edges: at LOD 1-2 a border triangle is a few texels, and the two
+    tiles' texels across a sheer crease read different rock (pebble's LOD 1 seams p95 15.8 deg, single borders 30-40)."""
     bary = _bary(uv, F, size, t, xs, ys)
     corner = lambda A: np.einsum("nk,nkc->nc", bary, A[F[t]])
     Pl = corner(P)
@@ -494,6 +496,12 @@ def bake_texels(surface, mats, P, N, T4, uv, F, size, t, xs, ys, inside, layers_
     tn = np.stack([(G * Tl).sum(1), (G * Bl).sum(1), (G * Nl).sum(1)], -1)
     tn[:, 2] = np.maximum(tn[:, 2], 0.02)
     tn = _unit(tn)
+    if border is not None:
+        blo, bhi, fade = border
+        db = np.minimum(np.min(Pl[:, :2] - np.asarray(blo, float)[:2], 1), np.min(np.asarray(bhi, float)[:2] - Pl[:, :2], 1))
+        wb = np.clip(db / max(fade, 1e-6), 0.0, 1.0)
+        wb = wb * wb * (3 - 2 * wb)
+        tn = _unit(tn * wb[:, None] + np.array([0.0, 0.0, 1.0]) * (1 - wb)[:, None])
     # layer weights and colour from the normal over ~half a metre (the fine relief's own normal flipped rock/grass
     # texel by texel, and two tiles sampling a border a texel apart disagreed). Every value is taken per texel from
     # its own world point, or interpolated from its own triangle's vertices: never filtered across the atlas image,

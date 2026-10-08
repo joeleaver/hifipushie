@@ -99,16 +99,51 @@ def _call(args):
 class Report:
     """The whole job's record: stages (pool maps and serial parent steps) in order, plus merged worker spans."""
 
-    def __init__(self):
+    def __init__(self, progress=None, every=30.0):
+        """progress(line): told when each stage starts and, inside pooled stages, every `every` s and at each tenth of
+        the jobs (done / total, elapsed, ETA): a long export isn't silent for 20 minutes."""
         self.stages = []  # dicts
         self.workers = {}  # stage -> merged spans/counts of its pooled jobs
         self.parent0 = None
+        self.progress, self.every, self.t0 = progress, float(every), time.time()
+        self._last = 0.0
         reset()
+
+    @staticmethod
+    def clock(s):
+        s = int(round(s))
+        return f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}" if s >= 3600 else f"{s // 60}:{s % 60:02d}"
+
+    def say(self, text):
+        if self.progress is not None:
+            try:
+                self.progress(f"[{self.clock(time.time() - self.t0)}] {text}")
+            except Exception:  # (a progress sink must never break the job)
+                pass
+
+    def _tick(self, stage, done, total, t, extra="", force=False):
+        """A progress line for a pooled stage: at most every `every` s, at each tenth of the jobs (not closer than
+        5 s), and at its end."""
+        if self.progress is None:
+            return
+        now = time.time()
+        # (a tenth only when the count moved past one: polled every second with the count standing still, the old
+        # test said "a tenth" every 5 s)
+        last = getattr(self, "_last_done", {}).get(stage, -1)
+        tenth = bool(total and done > last and (done * 10 // total) != (max(last, 0) * 10 // total))
+        if not (force or now - self._last >= self.every or (tenth and now - self._last >= 5.0)):
+            return
+        self._last = now
+        self.__dict__.setdefault("_last_done", {})[stage] = done
+        el = now - t
+        eta = f", ETA {self.clock(el / done * (total - done))}" if 0 < done < total else ""
+        self.say(f"{stage}: {done} / {total} done, {self.clock(el)} in{eta}{extra}")
 
     @contextlib.contextmanager
     def stage(self, name):
         """A serial step in the parent (its own spans go into the parent's record)."""
         t = time.time()
+        self.say(f"{name} ...")
         try:
             yield
         finally:
@@ -118,12 +153,24 @@ class Report:
         """ex.map(fn, items) with each job timed in its worker; returns the results in order."""
         items = list(items)
         t = time.time()
+        from concurrent.futures import FIRST_COMPLETED, wait
+        self.say(f"{stage}: {len(items)} jobs on {getattr(ex, '_max_workers', 1)} workers ...")
+        self._last = t
+        # (submitted and collected as they finish, not ex.map: one slow early job held every progress line back)
+        futs = {ex.submit(_call, (fn, it, stage, m)): m for m, it in enumerate(items)}
+        got = [None] * len(items)
+        left, n_done = set(futs), 0
+        while left:
+            done, left = wait(left, return_when=FIRST_COMPLETED, timeout=1.0)
+            from .resources import check_cancel
+            check_cancel(stage)  # (a cancelled tool call stops here)
+            for f in done:
+                got[futs[f]] = f.result()
+                n_done += 1
+            self._tick(stage, n_done, len(items), t, force=not left)
         res, jobs = [], []
-        for idx, (r, snap, t0, t1, pid) in enumerate(ex.map(_call, [(fn, it, stage, m) for m, it in enumerate(items)])):
+        for idx, (r, snap, t0, t1, pid) in enumerate(got):  # (in order, as ex.map gave them)
             res.append(r)
-            if idx % 16 == 0:
-                from .resources import check_cancel
-                check_cancel(stage)
             merge(self.workers.setdefault(stage, {}), snap)
             jobs.append((t0, t1, key(items[idx]) if key else idx))
         self._record(stage, time.time() - t, getattr(ex, "_max_workers", 1), jobs)
@@ -142,8 +189,12 @@ class Report:
             f = ex.submit(_call, (fn, arg, f"{stage}: {fn.__name__}", count[0]))
             pending[f] = (fn, arg, label)
             count[0] += 1
+        root = jobs[0][0].__name__ if jobs else None  # (progress counts the first jobs' function: e.g. tiles)
+        n_root, fin = len(jobs), {}
         for j in jobs:
             go(*j)
+        self.say(f"{stage}: {n_root} jobs on {n} workers (each unlocks more) ...")
+        self._last = t
         from .resources import check_cancel
         while pending:
             done, _ = wait(list(pending), return_when=FIRST_COMPLETED, timeout=1.0)
@@ -154,8 +205,18 @@ class Report:
                 name = f"{stage}: {fn.__name__}"
                 merge(self.workers.setdefault(name, {}), snap)
                 per_fn.setdefault(name, []).append((t0, t1, label))
+                fin[fn.__name__] = fin.get(fn.__name__, 0) + 1
                 for j in on_done(fn, arg, r) or ():
                     go(*j)
+            if self.progress is not None:
+                queued = {}
+                for fn_, _a, _l in pending.values():
+                    queued[fn_.__name__] = queued.get(fn_.__name__, 0) + 1
+                # (the root jobs can all be done long before the work they unlock: the line names every kind)
+                kinds = "; ".join(f"{k} {fin.get(k, 0)} done, {queued.get(k, 0)} left"
+                                  for k in dict.fromkeys(list(fin) + list(queued)))
+                self._tick(stage, fin.get(root, 0), n_root, t, extra=f" ({kinds})" if kinds else "",
+                           force=not pending)
         wall = time.time() - t
         self._record(stage, wall, n, [j for js in per_fn.values() for j in js])
         for name, js in per_fn.items():  # (each job function's share of the same wall)

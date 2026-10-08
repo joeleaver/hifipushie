@@ -235,7 +235,11 @@ def zozo_command(job_dir: Path, args: list | None = None) -> tuple[list, dict]:
     root = zozo_root()
     dev = zozo_device(root)
     env = dict(os.environ, CARGO_TARGET_DIR=str(root / "target" / dev), PYTHONPATH=str(root), PYTHONNOUSERSITE="1",
-               PYTHONDONTWRITEBYTECODE="1")
+               PYTHONDONTWRITEBYTECODE="1",
+               # ZOZO's "is a solver running" scans the whole host by default: another job's solver (a GPU claim held
+               # elsewhere, a peer worktree's run) refused ours. The machine's queue (resources.heavy gpu=True) is the
+               # exclusion; ZOZO only checks its own run's descendants
+               PPF_SOLVER_SCAN_DESCENDANTS="1")
     for k in ("PYTHONHOME", "VIRTUAL_ENV"):
         env.pop(k, None)
     cmd = [str(root / "python" / "bin" / "python3.12"), str(ZOZO_RUNNER), str(job_dir), *(args or [])]
@@ -268,6 +272,77 @@ def _stream(cmd: list, progress, timeout: float, env: dict | None = None, what: 
     return lines
 
 
+SOLVER_NAME = "ppf-contact"  # ZOZO's solver process (its frontend's SOLVER_PROCESS_NAME)
+
+
+def _proc(pid: int) -> tuple[str, list, int] | None:
+    """(comm, argv, parent pid) of a live, non-zombie process, or None."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        comm = stat[stat.index("(") + 1:stat.rindex(")")]
+        fields = stat[stat.rindex(")") + 2:].split()
+        if fields[0] == "Z":
+            return None
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        return comm, [a.decode(errors="replace") for a in argv if a], int(fields[1])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def stray_solvers(mark: str = "hp_job_") -> list[dict]:
+    """ZOZO solver processes of OUR jobs (a `--path` under a session dir named `mark`...) whose runner is gone: no
+    ancestor runs cloth_zozo.py. A stopped session (a usage limit, a killed shell) leaves its solver on the GPU,
+    reparented, and ZOZO's frontend then refuses every later run ("Solver is already running": it scans the whole
+    host for a live solver process; there is no lock file). A solver whose cloth_zozo.py runner is alive is never
+    listed, whoever's it is."""
+    out = []
+    for p in Path("/proc").iterdir():
+        if not p.name.isdigit():
+            continue
+        info = _proc(int(p.name))
+        if info is None or SOLVER_NAME not in info[0]:
+            continue
+        comm, argv, ppid = info
+        path = next((argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--path"), "")
+        if mark not in path:
+            continue
+        anc, seen, held = ppid, set(), False
+        while anc > 1 and anc not in seen:
+            seen.add(anc)
+            a = _proc(anc)
+            if a is None:
+                break
+            if any(x.endswith("cloth_zozo.py") for x in a[1]):
+                held = True
+                break
+            anc = a[2]
+        if not held:
+            out.append({"pid": int(p.name), "session": path, "parent": ppid})
+    return out
+
+
+def clear_strays(log=print, mark: str = "hp_job_", wait: float = 10.0) -> list[dict]:
+    """Stop `stray_solvers` (SIGTERM, then SIGKILL after `wait` s); returns what was stopped."""
+    import signal
+    strays = stray_solvers(mark)
+    for s in strays:
+        log(f"zozo: a solver left by a stopped run (pid {s['pid']}, {s['session']}): stopped")
+        try:
+            os.kill(s["pid"], signal.SIGTERM)
+        except OSError:
+            pass
+    t = time.time()
+    while strays and time.time() - t < wait and any(_proc(s["pid"]) for s in strays):
+        time.sleep(0.2)
+    for s in strays:
+        if _proc(s["pid"]):
+            try:
+                os.kill(s["pid"], signal.SIGKILL)
+            except OSError:
+                pass
+    return strays
+
+
 def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -> tuple:
     """Run a written job with ZOZO: through $HIFIPUSHIE_ZOZO_REMOTE (a GPU box) when set, else here, under the
     machine's heavy slot. Returns (out.npz contents, log lines)."""
@@ -282,6 +357,7 @@ def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -
     with resources.heavy(f"zozo cloth {job_dir.parent.name}", log=both, kind="cloth_zozo", gpu=True,
                          model=job_dir.parent.name):
         progress("zozo started")
+        clear_strays(both)  # (a stopped session's solver would make ZOZO refuse: "Solver is already running")
         _stream(cmd, progress, timeout, env, "zozo cloth job")
     return read_out(job_dir / "out.npz")
 

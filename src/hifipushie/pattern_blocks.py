@@ -80,7 +80,7 @@ def edge_length(pc: dict, arc: str) -> float:
 BODICE_DEFAULTS = {"chest_ease": 0.10, "waist_ease": 0.10, "hips_ease": 0.08, "collar_ease": 0.05,
                    "shoulder_ease": 0.0, "biceps_ease": 0.15, "armhole_depth": 0.02, "length": "hips",
                    "length_bonus": 0.0, "fitted": False, "darts": False, "bust_dart": None, "across_back": 0.98,
-                   "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open"}
+                   "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open", "front_balance": 0.0}
 KNIT_DEFAULTS = dict(BODICE_DEFAULTS, chest_ease=0.0, waist_ease=0.02, hips_ease=0.0, biceps_ease=0.05,
                      armhole_depth=0.0, collar_ease=0.12, cf="fold")
 
@@ -202,6 +202,19 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         marks = {}
         if front and bust is not None:
             marks["bust"] = [bust[0], Y(bust[1])]
+        fb = float(o.get("front_balance", 0.0)) if front else 0.0
+        if fb:
+            # front balance: the front longer between the neck point and the chest line than the back (a man's
+            # chest stands forward of his neck point: cut as long as the back there, an open front is pulled up
+            # over the chest and kicks forward at the hem). The front above the chest line is spread upward: the
+            # neck point and shoulder by the whole amount, easing to nothing at the chest line
+            def _raise(q, fb=fb):
+                q = np.asarray(q, float)
+                return [float(q[0]), float(q[1]) + fb * float(np.clip((ay + q[1]) / max(ay - sy, 1e-6), 0.0, 1.0))]
+            pts = [(n_, _raise(q)) for n_, q in pts]
+            if "bust" in marks:
+                marks["bust"] = _raise(marks["bust"])
+            log.append(f"front balance {fb * 1000:.0f} mm: the front's neck point and shoulder raised over the back's")
         pc = make_piece(which, pts, which, {"to": "torso", "side": which}, sym, marks, lines)
         if "bustDartA" in pc["names"]:
             pc["darts"]["bustDart"] = ("bustDartA", "bustDartTip", "bustDartB")
@@ -396,7 +409,14 @@ def skirt(m: dict, opts: dict | None = None) -> dict:
 # where a trouser hem ends, as metres above the floor: "floor" (a wide leg's hem over a heel), "shoe" (a break on
 # the shoe: for a body that wears shoes), "ankle" (the default: these bodies are barefoot, and a hem cut for a shoe
 # pools on the foot), "cropped", "calf"; "knee" and "shorts" are set from the knee and the rise
-TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None, "shorts": None}
+TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "break": None, "ankle": 0.085, "cropped": 0.16, "calf": 0.30, "knee": None,
+                   "shorts": None}
+# "break": a suit trouser cut for one slight break: the sides and front to "shoe" (30 mm over the floor), the back
+# BREAK_BACK longer (a sloped hem: the back reaches the heel counter), and the front's extra length over the shoe's
+# vamp is the break: the start lays it on the shoe (cloth._hem_on_shoe gathers what the shoe stops into the bottom of
+# the leg). Cut from the shoes' own heights it was wrong both ways: su_garrett's shoe part stands ~10 cm high all round
+# its collar, which cut the leg 5 cm SHORT (the ankle showed between hem and shoe)
+BREAK_BACK = 0.012
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
                     "length": None, "back_dart": 0.02, "leg": None, "dart_length": None, "dart_taper": 0.0}
 # the cut of the leg, from the leg itself (tailor.measure: knee, calf, heel girths). Knee and hem are finished
@@ -441,7 +461,11 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     lw = o["length"] if isinstance(o["length"], str) else None
     if lw is not None and lw not in TROUSER_LENGTHS:
         raise ValueError(f"trouser length {lw!r}: metres from the waist, or one of {', '.join(TROUSER_LENGTHS)}")
-    if lw in ("knee", "shorts"):
+    dh_crease = {"front": 0.0, "back": 0.0}
+    if lw == "break":
+        L = mm("waistToFloor") - TROUSER_LENGTHS["shoe"]
+        dh_crease = {"front": 0.0, "back": BREAK_BACK}
+    elif lw in ("knee", "shorts"):
         knee_ = mm("waistToKnee") if "waistToKnee" in m else rise + 0.33
         L = knee_ - (0.02 if lw == "knee" else 0.5 * (knee_ - rise))
     elif lw:
@@ -505,7 +529,11 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         # one smooth line from the hip to the knee (a straight drop to the crotch line and then a curve kinked)
         pts += _curve_pts(bez([w, Y(wts)], [w, Y(wts + 0.45 * (knee_y - wts))], [crease + kn, Y(knee_y - 0.40 * (knee_y - wts))],
                               [crease + kn, Y(knee_y)]))
-        pts += [("sideKnee", [crease + kn, Y(knee_y)]), ("sideHem", [crease + hm, Y(L)]), ("inHem", [crease - hm, Y(L)]),
+        dh = dh_crease["front" if fr else "back"]
+        pts += [("sideKnee", [crease + kn, Y(knee_y)]), ("sideHem", [crease + hm, Y(L)])]
+        if abs(dh) > 1e-4:  # a sloped hem: the crease's point higher at the front, lower at the back
+            pts += [("creaseHem", [crease, Y(L + dh)])]
+        pts += [("inHem", [crease - hm, Y(L)]),
                 ("inKnee", [crease - kn, Y(knee_y)])]
         pts += _curve_pts(bez([crease - kn, Y(knee_y)], [crease - kn, Y(knee_y - 0.35 * (knee_y - rise))],
                               [-fork + 0.25 * fork, Y(rise + fd + 0.12 * (knee_y - rise))], [-fork, Y(rise + fd)]))
@@ -514,7 +542,7 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         pts += _curve_pts(bez([-fork, Y(rise + fd)], [-fork * 0.35, Y(rise + fd)], [0.0, Y(rise - 0.35 * (rise - wts))], [0.0, Y(wts)]))
         pts += [("cSeat", [0.0, Y(wts)])]
         pc = make_piece(which, pts, "leg_front" if fr else "leg_back", {"to": f"leg.L", "side": which}, "pair", {},
-                        {"crease": [[crease, Y(-up)], [crease, Y(L)]], "seat": [[0, Y(wts)], [w, Y(wts)]],
+                        {"crease": [[crease, Y(-up)], [crease, Y(L + dh)]], "seat": [[0, Y(wts)], [w, Y(wts)]],
                          "knee": [[crease - kn, Y(knee_y)], [crease + kn, Y(knee_y)]]})
         if dart > 0:
             pc["darts"]["dart"] = ("dartA", "dartTip", "dartB")

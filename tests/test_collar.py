@@ -57,7 +57,7 @@ FIXTURE = Path(__file__).parent / "data" / "ga_suit_collar.json"  # ga_suit's sp
 # history 0006): the live workspace model is changed by design work (reading it, this test failed when its collar did)
 
 
-def _placed(stand=None, fall=None):
+def _placed(stand=None, fall=None, worn=False):
     from hifipushie import cloth, stylesheet
     spec = stylesheet.resolve(json.loads(FIXTURE.read_text()))
     g = json.loads(json.dumps(spec["cloth"]["jacket"]))
@@ -71,6 +71,7 @@ def _placed(stand=None, fall=None):
         return None
     g["over"] = None
     g["made"] = {}
+    g["worn_top"] = worn  # (the collar's own lay against the body; the worn forepart: test_worn_forepart)
     return cloth, cloth.build(cloth._garment_for_sim(g), cloth.model_body("ga_suit", spec, g), "ga_suit:jacket",
                               log=lambda *a: None, place_only=True)
 
@@ -136,6 +137,37 @@ def _made_lay(stand, fall, sh, asym_max):
     asym = np.linalg.norm(X[vc[ok]] - X[vc[jm[ok]]] * [-1, 1, 1], axis=1)
     # (3.8 mm p95 with a 24 mm stand at 2 cm triangles, under 3 with the 30 mm one)
     assert ok.sum() > 20 and np.percentile(asym, 95) < asym_max, (ok.sum(), np.percentile(asym, 95))
+
+
+def test_worn_forepart():
+    """A jacket's fronts and backs started where they are worn (cloth._worn_top, garment_kb kinds.jacket.worn_top):
+    the shoulder and centre back seams pinned shut (PIN_GAP apart), the collar's neck seam on the placed neckline, the
+    lapels pressed onto the foreparts, nothing in the foreparts started over 1.3x."""
+    got = _placed(worn=True)
+    if got is None:
+        print("   (the worn forepart is not tested)")
+        return
+    cloth, res = got
+    M, X, Bp = res["coarse"], res["Xs"], res["pieces"]
+    from hifipushie import cloth_detail, folds as foldmod
+    names, pid = M["names"], M["piece"]
+    assert set(Bp["worn_top_pieces"]) == {"front.L", "front.R", "back.L", "back.R"}, Bp.get("worn_top_pieces")
+    sw, ss = np.asarray(M["sew"]).reshape(-1, 2), np.asarray(M["sew_seam"])
+    gp = np.linalg.norm(X[sw[:, 0]] - X[sw[:, 1]], axis=1)
+    for si, sd in enumerate(Bp["seams"]):
+        j = json.dumps(sd)
+        g = gp[ss == si]
+        if "shoulder>hps" in j or ("cbNeck>" in j and "cbHem" in j):
+            assert np.median(g) < 0.006 and g.max() < 0.012, (j[:60], np.median(g), g.max())  # (were 233-249 mm)
+        if j.startswith('["collar'):
+            assert np.median(g) < 0.008, (j[:60], np.median(g))  # (were 131-163 mm)
+    faces = cloth.piece_faces(M, X, res["placed_on"], Bp["pieces"])
+    for fd in M["folds"]:
+        if fd["piece"].startswith("front"):
+            assert foldmod.measure(X, M, fd, faces[fd["piece"]])["turn_deg"] > 170
+    _, hi, _, _ = cloth_detail.strain_field(M, X)
+    fr = np.isin(pid[M["F"][:, 0]], [names.index("front.L"), names.index("front.R")])
+    assert np.percentile(hi[fr], 99) < 1.3, np.percentile(hi[fr], 99)
 
 
 if __name__ == "__main__":

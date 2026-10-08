@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver import Context, Image, MCPServer
 from PIL import Image as PILImage
 
 from . import compare as cmp
@@ -1150,7 +1150,7 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
                  hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
-                 face_shapes: bool | list[str] = False):
+                 face_shapes: bool | list[str] = False, asset_name: str | None = None):
     """Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
     textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
     roughness, metallic, specular, ao, orm (R ao, G roughness, B metallic, glTF packing) and height (16-bit; low
@@ -1202,11 +1202,13 @@ def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int =
     spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine enough to keep the slit open.
     The log lists each skin part's most uneven shapes (a vertex moving outside its neighbours' range; smooth ~0) and
     WARNs over 0.2: a sawtooth in whatever is painted there. Check blinks posed: rig(glb=, shapes={"eyeBlinkLeft": 1}).
+    asset_name: what the exported files, nodes, meshes and materials are called (default the model's name; a game
+    that already loads "garrett.glb" with garrett_body etc. gets the same names from a model saved as rg_garrett).
     Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
     furnished building; progress in workspace/<model>/progress.log."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing, rig, fbx, face_shapes or None)
+                        instancing, rig, fbx, face_shapes or None, asset_name=asset_name)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"
@@ -2272,6 +2274,11 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
         p = terrain_style.season_sheet(sheets, refs, lays, d / f"styles_seasons_v{ver}.png")
         out.append(_out(PILImage.open(p), None))
         notes.append(f"seasons sheet (spring, summer, autumn, winter, snow by the snow numbers): {p}")
+        gl = [nm for nm in ("grass", "earth") if nm in refs]
+        p = terrain_style.ground_view(sheets, refs, d / f"styles_ground_v{ver}.png", layers=tuple(gl))
+        out.append(_out(PILImage.open(p), None))
+        notes.append(f"ground as the game shows it (flat cel light, mipmaps, anti-tiling, layer edges; eye level and "
+                     f"25 m up): {p}")
         for nm in lays:
             q = terrain_style.transition_strip(sheets, refs, nm, d / f"styles_strip_{nm}_v{ver}.png")
             out.append(_out(PILImage.open(q), None))
@@ -2308,9 +2315,37 @@ def look_terrain(name: str, map: bool = True, masks: bool = False, views: list[d
     return out + ["\n".join(notes)]
 
 
+def _progress_log(ctx, path: Path):
+    """A log for a long job run by a tool: each line appended to `path` (tail it while it runs) and sent to the client
+    as an MCP progress notification (when the call carries a progress token; never fails the job)."""
+    import re
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("")
+    n = [0]
+
+    def log(*a):
+        line = " ".join(str(x) for x in a)
+        with open(path, "a") as f:
+            f.write(line + "\n")
+        if ctx is None:
+            return
+        n[0] += 1
+        m = re.search(r"(\d+) / (\d+) done", line)
+        try:
+            import anyio.from_thread
+            first = line.splitlines()[0][:300] if line else ""
+            if m:
+                anyio.from_thread.run(ctx.report_progress, float(m.group(1)), float(m.group(2)), first)
+            else:
+                anyio.from_thread.run(ctx.report_progress, float(n[0]), None, first)
+        except Exception:
+            pass
+    return log
+
+
 @mcp.tool(structured_output=False)
 def export_terrain(name: str, size: int | None = None, engine: str | None = None, out_dir: str | None = None,
-                   tiles: bool = False, styles_only: bool = False) -> str:
+                   tiles: bool = False, styles_only: bool = False, ctx: Context | None = None) -> str:
     """Write the terrain for an engine (default workspace/terrain/<name>/export/): height (.npy float32 absolute,
     16-bit .png and Unity .raw offset to 0), masks per cover layer plus water, roads, sites, playable and walls,
     splat weights for the ground layers, trees.csv, and meta.json (heights, the Unity terrain size and position,
@@ -2320,7 +2355,8 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
     and its volumes (arches, caves, overhangs) as seamless glTF tiles with LODs, skirts, collision, heightmap and
     splat tiles and a manifest.json, tuned by the spec's "export": {"tiles": {...}}; a seam check runs on every
     export; when it (or a tile's triangle budget) fails the reply starts with CHECKS FAILED and lists each failure
-    with its tiles: the files are still written, complete and loadable. A spec with "styles" adds the per-style
+    with its tiles: the files are still written, complete and loadable. While it runs, each stage's start and a tile
+    counter (done / total, elapsed, ETA, every 30 s) go to <tiles dir>/export_log.txt and out as MCP progress. A spec with "styles" adds the per-style
     layer textures, zone maps and the manifest's `styles` section (guide, "Styles"); styles_only=True writes ONLY
     those (seconds, no meshing) into out_dir or beside the last tiles export, updating its manifest.json."""
     from . import terrain_tools as tt
@@ -2338,8 +2374,9 @@ def export_terrain(name: str, size: int | None = None, engine: str | None = None
             terrain_style.summary(sec)
     if tiles:
         from . import terrain_mesh
+        out = Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles"
         try:
-            r = terrain_mesh.export_tiles(T, Path(out_dir).expanduser() if out_dir else tt._dir(name) / "tiles")
+            r = terrain_mesh.export_tiles(T, out, log=_progress_log(ctx, out / "export_log.txt"))
         except terrain_mesh.TilesCheckFailed as e:
             # (the export is written and complete: the report, with what failed on top, not a traceback)
             r = e.result
@@ -2376,9 +2413,9 @@ def grow_plant(name: str, spec: dict | None = None, patch: dict | None = None, n
     {"age": 60, "habit": {"apical": [0.6, 0.5]}, "environment": {"wind": {"from": "w", "strength": 0.5}}}).
     A spec is botanical words: {"species": preset, "age": years, "seed", "height": m, "habit": {...overrides...},
     "environment": {...}, "guides": {...}, "prune": [...], "envelope": {...}, "forces": [...], "leaves": {...},
-    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" | "anime" | "cartoon", or
+    "bark": {...}, "season", "decay", "style"}. "style": "realistic" (default) | "blobby" | "anime" | "cartoon" | "pixar", or
     {"sheet": "blobby", "crown": {"masses": 6}, ...} to override a sheet's numbers: the SAME grown plant (skeleton,
-    height, crown extent, lean) dressed another way (few fat limbs, a crown of smooth closed masses, flat colours); the
+    height, crown extent, lean) dressed another way (blobby: few fat limbs + smooth closed masses; anime: painted leaf clouds; cartoon: scalloped clumps; pixar: every limb + a soft canopy shell with a layer of real leaf cards); the
     report says what was simplified and the outline IoU against the realistic tree. Looks and exports follow the style.
     "season": summer | spring | autumn | winter. The same spec always grows the same plant. Every version is kept
     (plant_history). Returns the report: size, form measured on its own silhouettes, limbs, foliage, guides, the
@@ -2695,7 +2732,9 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     elif impostor:
         ground += ("\nimpostor: hemi-octahedral (one quad + an 8 x 8 atlas of views over the upper hemisphere, object-space normals + depth): it NEEDS "
                    "the engine's impostor shader (recipe in the impostor material's extras.hifipushie_impostor and the seasons json `impostor`; "
-                   "Godot: spikes/godot_veg/impostor_octa.gdshader, extra_cull_margin = size / 2); no shadows received on it")
+                   "Godot: spikes/godot_veg/impostor_octa.gdshader, extra_cull_margin = size / 2); no shadows received on it. "
+                   "Import the impostor atlases WITH mipmaps (Godot: mipmaps/generate=true; the normal atlas as plain RGBA, "
+                   "not a normal map: its alpha is the depth): without mips a far impostor costs ~40x more GPU time")
     if c.get("style"):
         from . import veg_style
         ground += "\n" + "\n".join(veg_style.lines(c["style"]) + veg_style.warnings(c["style"]))
@@ -2809,6 +2848,16 @@ def heavy_status() -> str:
     releases its job."""
     from . import resources
     return resources.status_text()
+
+
+@mcp.tool(structured_output=False)
+def heavy_queue() -> str:
+    """The machine's heavy-job queue (exports, cloth sims, terrain tiles), with nothing about the host in it: each
+    running job's kind, label, GB declared and minutes running; each waiting job's position, GB, why it waits
+    (memory, the GPU, behind older jobs), GB of jobs ahead of it and minutes waited. Your own session's jobs are
+    marked "<- yours", with a last line like "yours: 3rd in queue, 18 GB ahead". Fast; changes nothing."""
+    from . import resources
+    return resources.queue_text()
 
 
 def main():

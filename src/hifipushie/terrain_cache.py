@@ -111,7 +111,13 @@ def build(spec: dict, log=None):
     _STATS["misses"] += 1
     try:
         d.mkdir(parents=True, exist_ok=True)
-        blob = zlib.compress(pickle.dumps(T, protocol=pickle.HIGHEST_PROTOCOL), 1)
+        raw = pickle.dumps(T, protocol=pickle.HIGHEST_PROTOCOL)
+        # (handed back as the cache hands it back: a freshly built terrain's objects are shared differently (the
+        # export's Materials cache held T.cover's own arrays), and the incremental export's fingerprint, which
+        # names a shared array by where it was first seen, read "a global input changed" whenever one export's
+        # terrain was built fresh and the next one's came from the cache)
+        T = pickle.loads(raw)
+        blob = zlib.compress(raw, 1)
         tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
         tmp.write_bytes(blob)
         os.replace(tmp, f)

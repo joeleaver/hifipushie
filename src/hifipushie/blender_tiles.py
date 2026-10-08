@@ -153,6 +153,7 @@ def _styled(m, S):
         if key not in _IMAGES:
             im = bpy.data.images.load(path, check_existing=False)
             im.colorspace_settings.name = "sRGB" if srgb else "Non-Color"
+            im.alpha_mode = "CHANNEL_PACKED"  # (style albedos carry the height in alpha: data, never transparency)
             _IMAGES[key] = im
         return _IMAGES[key]
 
@@ -207,7 +208,30 @@ def _styled(m, S):
             ta.projection = "BOX" if T.get("projection") == "triplanar" else "FLAT"  # (soft layers top-down)
             ta.projection_blend = 0.3
             nt.links.new(mp.outputs["Vector"], ta.inputs["Vector"])
-            t = mixc("MIX", [0, 0, 0], ta.outputs["Color"], wts[lay])
+            tcol = ta.outputs["Color"]
+            sm, rs = T.get("small"), S.get("rock_scale")
+            if sm and rs:  # (on small / thin rock the layer's plain texture: anime strata fade off stacks and fins)
+                tp = L("ShaderNodeTexImage")
+                tp.image = image(sm["albedo"], True)
+                tp.projection = ta.projection
+                tp.projection_blend = 0.3
+                nt.links.new(mp.outputs["Vector"], tp.inputs["Vector"])
+                rsx = L("ShaderNodeTexImage")
+                rsx.image = image(rs["file"], False)
+                rsx.extension = "EXTEND"
+                nt.links.new(uv.outputs["Vector"], rsx.inputs["Vector"])
+                sp = L("ShaderNodeSeparateColor")
+                nt.links.new(rsx.outputs["Color"], sp.inputs["Color"])
+                ks = []
+                for ch, rng, key in ((0, rs["face_m"], "face_m"), (1, rs["thick_m"], "thick_m")):
+                    mr = L("ShaderNodeMapRange")
+                    mr.interpolation_type = "SMOOTHSTEP"
+                    nt.links.new(sp.outputs[ch], mr.inputs["Value"])
+                    mr.inputs["From Min"].default_value = sm[key][0] / rng
+                    mr.inputs["From Max"].default_value = sm[key][1] / rng
+                    ks.append(mr.outputs["Result"])
+                tcol = mixc("MIX", tp.outputs["Color"], tcol, math("MULTIPLY", ks[0], ks[1]))
+            t = mixc("MIX", [0, 0, 0], tcol, wts[lay])
             A = t if A is None else mixc("ADD", A, t)
             th = L("ShaderNodeTexImage")
             th.image = image(T["height"], False)
@@ -712,13 +736,13 @@ def _render_ids(scene, path):
 _IDMAT = []
 
 
-def _flat(name, rgb):
+def _flat(name, rgb, glow=1.5):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     b = m.node_tree.nodes["Principled BSDF"]
     b.inputs["Base Color"].default_value = (*rgb, 1)
     b.inputs["Emission Color"].default_value = (*rgb, 1)
-    b.inputs["Emission Strength"].default_value = 1.5
+    b.inputs["Emission Strength"].default_value = glow
     return m
 
 
@@ -878,7 +902,10 @@ def run(job):
                 # baked tiles keep the importer's material (base colour, ORM, normal map from the GLB); the rest
                 # (untextured tiles, skirts, buried backs) take the vertex-colour one
                 for s, m in enumerate(ob.data.materials):
-                    if not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
+                    if job.get("buried_color") and m and m.name.startswith("terrain_buried"):
+                        # (the cliff shell's buried back in a flat colour: where an engine shows it, it is a fault)
+                        ob.data.materials[s] = _flat("buried", job["buried_color"], 0.0)
+                    elif not (m and m.name.startswith("terrain_baked") and job.get("textured", True)):
                         ob.data.materials[s] = mat
                     elif ch and m.name not in done:  # (first: under the detail recipe a channel view drew everything)
                         _channel(m, ch)

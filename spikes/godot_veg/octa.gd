@@ -47,6 +47,16 @@ func _initialize() -> void:
 			var nm := String(mat.resource_name)
 			if nm.begins_with("foliage"):
 				(mat as BaseMaterial3D).vertex_color_use_as_albedo = true
+			if season != "" and slots.has(nm) and not slots[nm].get("hidden", false) and nm.begins_with("foliage"):
+				# the season's own material as the consumer applies it from the json: factor (linear) + its texture
+				var sm: Dictionary = slots[nm]
+				var mat2 := (mat as BaseMaterial3D).duplicate() as BaseMaterial3D
+				var f: Array = sm.get("baseColorFactor", [1, 1, 1, 1])
+				mat2.albedo_color = Color(f[0], f[1], f[2], f[3]).linear_to_srgb()
+				if sm.has("baseColorTexture"):
+					mat2.albedo_texture = _tex(dir + "/" + String(sm["baseColorTexture"]["file"]))
+					mat2.texture_repeat = false
+				m.set_surface_override_material(s, mat2)
 			if slots.has(nm) and slots[nm].get("hidden", false):
 				var hide := StandardMaterial3D.new()
 				hide.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
@@ -77,6 +87,15 @@ func _octa(sj: Dictionary, slots: Dictionary, dir: String, imeshes: Array) -> vo
 	sh.set_shader_parameter("size", float(info["size"]))
 	var c: Array = info["centre"]
 	sh.set_shader_parameter("centre", Vector3(c[0], c[1], c[2]))
+	if info.has("crop") and info["crop"] != null:
+		var k: Array = info["crop"]
+		sh.set_shader_parameter("crop", Vector4(k[0], k[1], k[2], k[3]))
+	if info.has("crops") and info["crops"] != null:
+		var arr := PackedVector4Array()
+		for q in info["crops"]:
+			arr.append(Vector4(q[0], q[1], q[2], q[3]))
+		sh.set_shader_parameter("crops", arr)
+		sh.set_shader_parameter("has_crops", 1.0)
 	for m in imeshes:
 		m.material_override = sh
 		m.extra_cull_margin = 0.5 * float(info["size"])

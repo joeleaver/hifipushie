@@ -105,7 +105,13 @@ class Region:
     def _grow(self, a, m):
         k = max(1, int(round(m / self.d)))
         g = ndimage.maximum_filter(a, size=2 * k + 1)
-        return np.clip(ndimage.gaussian_filter(g, 0.35 * k), 0, 1) * (g > 0)
+        # (bounded where the blur has died out, 3 sigma past the grown mask: cut at the grown mask itself, S fell from
+        # ~0.6 to 0 in one lattice step. The front there drops from the true ground to `sink` under it and the
+        # heightmap was already pushed (0.6 m round kaze_cave's doline): the front's vertical edge and the shell's
+        # back stood in the open along the region's edge, a dark crack with the buried colour in it)
+        r = int(np.ceil(3 * 0.35 * k))
+        keep = ndimage.maximum_filter(a, size=2 * (k + r) + 1) > 0
+        return np.clip(ndimage.gaussian_filter(g, 0.35 * k), 0, 1) * keep
 
     def _open_rounds(self, X, Y, m):
         if not self.voids:
@@ -134,7 +140,9 @@ class Region:
             node[1:, 1:] = np.maximum(node[1:, 1:], self.holes)
             op = self._grow(node, m)
             self.S = np.maximum(self.steep, op)
-            self.Rg = np.maximum(self.push * self.steep ** PUSH_POW, self.push_open * op)
+            # (round an opening too by op^PUSH_POW: pushed in proportion to op, the heightmap lay 0.3-0.6 m under the
+            # front (the true ground) where the region begins, a step with its shadow round kaze_cave's doline)
+            self.Rg = np.maximum(self.push * self.steep ** PUSH_POW, self.push_open * op ** PUSH_POW)
             if not new.any():
                 break
 
@@ -213,6 +221,10 @@ class Region:
         return bool(self.S[q0:q1, r0:r1].max() > 0)
 
 
+WHOLE_ADDS = __import__("os").environ.get("HIFIPUSHIE_WHOLE_ADDS") == "1"  # (see CliffField._with_adds: off until sea stacks mesh cleanly solid; the decimation's error now
+# counts faces out in front of the rock, which keeps the hollow's walls inside)
+
+
 class CliffField:
     """The shell the cliff meshes are cut from (see the module docstring). Looks like a terrain_mesh.Field to the tile
     exporter: column, solid, value, value_gradient, rock."""
@@ -272,7 +284,7 @@ class CliffField:
         out = np.full(len(p), 1e3)  # outside the region and away from voids: air (the shell can't be there)
         k = np.flatnonzero((S > 0) | near_void)
         if not len(k):
-            return out
+            return self._with_adds(p, Fg, s, out)
         front = self.base.solid(p[k], Fg[k] + R.sink * sink_share(S[k]), s[k])
         # (round a void the shell behind the face reaches 2 m past the cave wall, so it meets the rock round the
         # void: a gap between them left sealed air pockets inside the rock, meshed as floating bubbles)
@@ -286,6 +298,34 @@ class CliffField:
         if len(kv):
             q = k[kv]
             out[q] = tm.smin(out[q], self._void_rock(p[q], Fg[q], s[q], dv[q]), 0.5)
+        return self._with_adds(p, Fg, s, out)
+
+    ADD_PAD = 1.0  # m round a solid volume (a sea stack) where the whole rock is kept
+
+    def _adds(self, p):
+        """Distance to the solid volumes the rock is built of on top of the heightfield (sea stacks, rubble mounds)."""
+        if not hasattr(self, "_add_vols"):
+            self._add_vols = [v for v in self.base.vols if v.op == "add"]
+        d = np.full(len(p), np.inf)
+        for v in self._add_vols:
+            k = np.flatnonzero(np.all((p >= v.lo) & (p <= v.hi), axis=1))
+            if len(k):
+                d[k] = np.minimum(d[k], v.sd(p[k]))
+        return d
+
+    def _with_adds(self, p, Fg, s, out, sunk=None):
+        """A solid volume is all rock in the shell: the shell's back is the heightfield's ground moved in, and inside a
+        sea stack that ground is the heightfield's own slim core: the back stood 16 m up inside the island's Kaze stacks
+        and hollowed them from the sea floor up. The cavity's buried faces, free of the decimation's error (it is
+        measured on the visible rock), were pulled out through the stack's wall at LOD 1-2: white triangles 10-20 m
+        across in the engine, and pieces of the stack floating free."""
+        if not WHOLE_ADDS:
+            return out
+        da = self._adds(p)
+        k = np.flatnonzero(da < self.ADD_PAD + 1.0)
+        if len(k):
+            full = self.base.solid(p[k], Fg[k].copy(), s[k]) if sunk is None else sunk[k]
+            out[k] = tm.smin(out[k], tm.smax(full, da[k] - self.ADD_PAD, 0.5), 0.2)
         return out
 
     TOP = 0.5  # m: the rock round a void stops this far under the ground (the heightmap's place)
@@ -306,7 +346,7 @@ class CliffField:
         kv = np.flatnonzero(np.isfinite(dv) & (dv < self.region.wall + 2.0))
         if len(kv):  # (the full rock there: its buried outer skin and cap read deep inside it, so they're "buried")
             out[kv] = np.minimum(out[kv], self.base.solid(p[kv], Fg[kv].copy(), s[kv]))
-        return out
+        return self._with_adds(p, Fg, s, out)
 
     def value(self, p):
         p = np.asarray(p, float)
@@ -614,8 +654,54 @@ def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_ke
         for f in fl["floating"][:5]:
             failures.append(f"a cliff-mesh piece floats clear of the ground ({f['triangles']} triangles, lowest "
                             f"{f['clearance_m']:.2f} m over the heightmap, at {f['at']})")
+        ex = exposed_buried(out, M, R)
+        summary["buried_in_the_open"] = ex[:20]
+        for r in [r for r in ex if r["area_m2"] > EXPOSED_LIMIT][:8]:
+            failures.append(f"tile {r['tile'][0]},{r['tile'][1]} LOD {r['lod']}: {r['area_m2']:.1f} m2 of the cliff "
+                            f"shell's buried back stands in the open ({r['faces']} faces, the largest at {r['at']}): "
+                            f"drawn with the plain buried material: flat triangles in the cliff")
     summary["failures"] = len(failures)
     return {"summary": summary, "failures": failures}
+
+
+EXPOSED_OFF = 0.5  # m out from a buried face's centre (along its normal) where the open air must not be
+EXPOSED_LIMIT = 2.0  # m2 of buried faces in the open per tile LOD: over it is a failure
+
+
+def exposed_buried(out: Path, M: dict, R: Region, tiles=None) -> list[dict]:
+    """Faces of the "buried" primitive (a cliff shell's back: drawn plain, meant to lie under the heightmap or inside the
+    rock) that stand in the open: the point EXPOSED_OFF m out from the face (along its normal) is air in the true rock
+    field and above the pushed heightmap. Seen in the engine as flat pale triangles through a cliff (the island's Kaze
+    stacks at LOD 1-2, 10-20 m across). Per tile LOD: [{tile, lod, faces, area_m2, at}], worst first."""
+    rows = []
+    for e in M["tiles"]:
+        if tiles is not None and (e["i"], e["j"]) not in tiles:
+            continue
+        for k, L in enumerate(e["lods"]):
+            if not L:
+                continue
+            tr, prims = tm.read_glb(out / L["file"])
+            o = tm._from_gltf(tr[None])[0]
+            for p in prims:
+                if p["extras"].get("role") != "buried":
+                    continue
+                P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+                F = p["indices"]
+                n = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
+                a = np.linalg.norm(n, axis=1) / 2
+                c = P[F].mean(1)
+                q = c + EXPOSED_OFF * n / np.maximum(2 * a, 1e-12)[:, None]
+                above = q[:, 2] > R.height(q[:, 0], q[:, 1]) + 0.05
+                bad = np.zeros(len(F), bool)
+                if above.any():
+                    bad[above] = R.base.value(q[above]) > 0.05
+                if bad.any():
+                    w = np.flatnonzero(bad)
+                    rows.append({"tile": [e["i"], e["j"]], "lod": k, "faces": int(len(w)),
+                                 "area_m2": round(float(a[w].sum()), 2),
+                                 "at": c[w[np.argmax(a[w])]].round(1).tolist()})
+    rows.sort(key=lambda r: -r["area_m2"])
+    return rows
 
 
 def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15, memo=None, tile_keys=None) -> dict:

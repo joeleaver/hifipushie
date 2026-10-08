@@ -108,7 +108,7 @@ def lowpoly(high: Path, out: Path, cfg: dict, triangles: int, sizes: dict, voxel
     # what the decimation depends on (not the atlases): a regroup for other atlas sizes re-unwraps only
     key = hashlib.sha1(json.dumps([str(high), st.st_size, st.st_mtime_ns, int(triangles), float(voxel),
                                    {pn: {k: v for k, v in c.items() if k != "atlas"} for pn, c in cfg.items()},
-                                  tri_focus or []],
+                                  tri_focus or [], "flipfit 1"],
                                   sort_keys=True, default=str).encode()).hexdigest()
     if tri_focus:  # decimate a magnified copy (its own file: flatten and the decimation cache key on the path)
         from . import focuswarp
@@ -1077,12 +1077,22 @@ def defect_regions(spots: np.ndarray, spec: dict) -> list[tuple[str, int]]:
         s = expand_mirror(spec)
         names = [k for k in s.get("joints", {}) if not k.startswith("lm_")]
         J = np.array([resolve_point(s, k) for k in names], float)
+        lms = [k for k in s.get("joints", {}) if k.startswith("lm_")]
+        L = np.array([resolve_point(s, k) for k in lms], float).reshape(-1, 3)
     except Exception:  # noqa: BLE001
-        names, J = [], np.zeros((0, 3))
+        names, J, lms, L = [], np.zeros((0, 3)), [], np.zeros((0, 3))
     if len(names):
         from scipy.spatial import cKDTree
         near = cKDTree(J).query(spots)[1]
         lab = [names[i] for i in near]
+        if len(lms):  # clusters are counted by modelling joint (landmarks are many and close: they'd split one tear
+            # into several small counts), but NAMED by a face landmark where one is nearer their middle: a GNM head
+            # has no mouth joint, and the mouth's cluster read "TORN at eye_front.L", 8 cm away
+            for nm in set(lab):
+                mid = spots[[x == nm for x in lab]].mean(0)
+                d, i = cKDTree(L).query(mid)
+                if d < np.linalg.norm(mid - J[names.index(nm)]):
+                    lab = [f"{lms[i]} (by {nm})" if x == nm else x for x in lab]
     else:
         lab = ["[%.1f, %.1f, %.1f]" % tuple(np.round(q / 0.1) * 0.1) for q in spots]
     u, cnt = np.unique(lab, return_counts=True)
@@ -1475,14 +1485,25 @@ def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
 def export(name: str, out_dir: Path, *args, **kw) -> dict:
     """See `_export`; holds the machine's heavy-job slot (`resources.heavy`) so exports don't stack up."""
     from . import resources
-    with resources.heavy(f"export {name}", kind="export_asset", model=name):
+    prog = store.HOME / name / "progress.log"
+
+    def waiting(msg: str):  # the wait shows where the export's progress does (an oxidegen artist's task progress)
+        print(msg, flush=True)
+        try:
+            with open(prog, "a") as f:
+                f.write(msg + "\n")
+        except OSError:
+            pass
+    with resources.heavy(f"export {name}", kind="export_asset", model=name, log=waiting):
         return _export(name, out_dir, *args, **kw)
 
 
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
-            fbx: bool = False, face_shapes: bool | list | None = None) -> dict:
+            fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
+    asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
+    importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
     Per part (spec["parts"][p]): "triangle_weight" and "texel_density" (relative, default 1) scale its share of
     the triangles and its texels per metre; "atlas" (any name) puts it on an atlas of its own; "uv": "planar" gives
     a swappable flat surface (a dial, a sign, a screen) its own material and upright 0..1 planar UVs.
@@ -1499,6 +1520,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
+    aname = asset_name or name
     defs = spec.get("parts") or {}
     fine, tri_focus = {}, []
     if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
@@ -1620,7 +1642,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                       "islands": b.get("islands"), "joint_decimation_share": b["joint_count"],
                       "mirrored": b["symmetric"], "texel_density": cfg[pn]["density"],
                       "triangle_weight": cfg[pn]["weight"],
-                      **({"uv": "planar", "material": f"{name}_{names[p['atlas']]}_material"} if pn in planar else {})}
+                      **({"uv": "planar", "material": f"{aname}_{names[p['atlas']]}_material"} if pn in planar else {})}
         if pn in pf_of:
             report[pn]["prefab"] = pf_of[pn]
         if "focus_mm_per_texel" in tsz[pn]:
@@ -1633,6 +1655,13 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         for other, st in ctx["streams"].items():  # what lies inside another part is never seen (the skin running
             if other != pn and len(spots):       # on into the socket behind an eyeball, a tooth's root)
                 spots = spots[sdf.field_at(st, spots, clip=False) > 0]
+        if face_shapes and len(spots) and ctx["origin"][pn] == fface.slit_part:
+            # the mouth's interior (slit walls, the bag's corners) folds at a game budget and is behind the lips:
+            # counted, not part of the tear alarm (Garrett's bag read "TORN OR TANGLED at eye_front.L (12)")
+            inm = fface.inside_mouth(spots, ctx["streams"][pn])
+            if inm.any():
+                q["inside_mouth"] = int(inm.sum())
+                spots = spots[~inm]
         where = defect_regions(spots, spec)
         if (defs.get(ctx["origin"][pn]) or {}).get("folds"):  # parts.<p>.folds = true: folded by design (a turned
             where = []                                         # collar, a cuff, pleats): counts stay, no alarm
@@ -1651,6 +1680,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 if bad]
         log.append(f"  {pn} quality: error p50/p99/max {q['err_mm_p50']}/{q['err_mm_p99']}/{q['err_mm_max']} mm, "
                    f"{q['slivers']} slivers, {q['open_edges']} open edges"
+                   + (f" ({q['inside_mouth']} of the folds / turned faces are inside the mouth)" if q.get("inside_mouth") else "")
                    + (f": WARNING {'; '.join(warn)}" if warn else ""))
     for ai, an in enumerate(names):
         fill_a = sum(tsz[pn]["uv_fill"] for pn, p in parts.items() if p["atlas"] == ai)
@@ -1675,7 +1705,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                        "material's extras")
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     for ai, an in enumerate(names):
-        stem = name if len(names) == 1 else f"{name}_{an}"
+        stem = aname if len(names) == 1 else f"{aname}_{an}"
         if len(names) > 1:
             log.append(f"atlas {an}:")
         res = bake(parts, sizes[ai], ctx, log, ai, given[ai])
@@ -1748,7 +1778,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             names.append(pn_c)
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_c]["triangles"]
-    glb = out_dir / f"{name}.glb"
+    glb = out_dir / f"{aname}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
     if (spec.get("hair") or {}).get("locks") and locals().get("hair_cards"):
@@ -1826,7 +1856,10 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 if d and pn in skin_at and len(d[0]) == len(skin_at[pn]):
                     moved[pn] = np.max(d, 0)
             before = {pn: _head_share(rigged, pn, hf["bone"]) for pn in moved}
-            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"])
+            skin_cov = rigmod.skin_cover(rspec, bones, {pn: (skin_at[pn], parts[pn]["corner_vert"].reshape(-1, 3))
+                                                     for pn in skin_at}, hf)
+            rigged["weights"] = rigmod.rigid_near(bones, rigged["weights"], skin_at, moved, hf["band"], skin_cov,
+                                                     hf["h"] if rspec.get("base") else None)
             for pn, mv in moved.items():
                 m = mv >= rigmod.MOVED[1]
                 if m.any():
@@ -1834,7 +1867,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                     log.append(f"rig: {pn}: {int(m.sum())} vertices the face shapes move "
                                f"{rigmod.MOVED[1] * 1e3:g} mm or more are Head {b1.min():.2f}+ "
                                f"({int((b0 < 0.99).sum())} weren't: least {b0.min():.2f})")
-    write_glb(glb, name, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
+    write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
@@ -1900,7 +1933,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                             "prefabs": "one mesh per prefab (a primitive per part, in the prefab's frame), a node "
                                        "per instance with extras.prefab"},
             "seconds": round(time.time() - t, 1), "log": log}
-    (out_dir / f"{name}.json").write_text(json.dumps(info, indent=1))
+    (out_dir / f"{aname}.json").write_text(json.dumps(info, indent=1))
     return info
 
 
