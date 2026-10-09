@@ -786,7 +786,13 @@ The shell run writes its outputs beside the spec:
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD: a tile LOD over twice its budget FAILS the export's
   checks, named with its count and why; `"collision_budget"` caps the collision mesh, default twice its LOD's),
   `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
-  (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none).
+  (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none), `"corridors": true` (or
+  `{"spacing": 0.25, "buffer": 15, "size": 128}`; off by default): fine heightmaps along the water for a nested water
+  solve, `corridors/corridor_<n>.npy` (float32, row 0 north, column 0 west) on rects of at most `size` m round every
+  river's water path, lake shore and fall pool (+ `buffer` m), each listed in the manifest's `corridors.rects` (file,
+  extent [[x0, y0], [x1, y1]] of the outer samples, cols, rows, spacing, follows): the top surface as the tiles build
+  it (the ground with its stream beds and banks, the cliff meshes' rock at fall lips and faces where it stands
+  higher), sampled from the export's field, no clutter.
   - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitives
     by `extras.role` and material: "surface" first (what is seen; material `terrain_baked`), then in cliffs mode
     "buried" (the shell's back under the heightmap: skip it, or draw it; material `terrain_reference`), then "skirt"

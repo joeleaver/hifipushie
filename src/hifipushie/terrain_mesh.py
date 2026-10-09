@@ -75,6 +75,7 @@ DEFAULTS = {
     "texture_max": 2048,
     "ground_density": 4.0,  # (cliffs) the ground tiles' maps, texels per metre at LOD 0
     "micro": 1.0,          # bake-only fine rock relief (facets, cracks, laminae below the voxel); 0 = none
+    "corridors": False,    # river-corridor heightmaps (terrain_corridors): true | {"spacing", "buffer", "size"}
     "detail": True,        # the tiling rock detail (terrain_swatch): swatches in materials/ and, on cliff tiles, a
                            # strike-binned UV set (TEXCOORD_n, metres) + _DETAIL (strike x, y, side share, bed v)
     "detail_source": "procedural",  # the swatch: "procedural" (terrain_swatch.swatch) or "scan:<set>" (a CC0
@@ -3119,7 +3120,7 @@ def _fingerprint(T, cfg, base, field, mats, region, G, hrange):
     roots = {"field": field, "base": base, "materials": mats, "terrain cover": dict(T.cover),
              "terrain frame": (float(T.xs[0]), float(T.ys[0]), float(T.cell), tuple(T.H.shape)),
              "region": region, "detail": _CTX.get("detail"), "detail entry": _CTX.get("detail_entry"),
-             "config": {k: v for k, v in cfg.items() if k not in ("incremental",)}, "heights range": hrange,
+             "config": {k: v for k, v in cfg.items() if k not in ("incremental", "corridors")}, "heights range": hrange,
              "grid": G, "sea": _sea(T), "code": codehash.digest("terrain_mesh")}
     return Fingerprint(roots, frames, base.vols, float(cfg["cave_wall"]) + 3.0)
 
@@ -3820,6 +3821,16 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                        "bed (steep reaches) and rock faces by the water"},
             "bed": "the heightmaps and cliff meshes carry the bed's shape (pools, riffles, bars); the water's level is "
                    "the rivers' own (never raised)"}
+    if cfg.get("corridors"):  # (0.25 m heightmaps along the water for a nested water solve: pushieworld note 118)
+        from . import terrain_corridors
+        cbox = None
+        if cfg.get("only"):
+            (i0, j0), (i1, j1) = cfg["only"]
+            cbox = [G.bounds(i0, j0)[0][:2], G.bounds(i1, j1)[1][:2]]
+        with prof.stage("corridors (parent)"):
+            cm = terrain_corridors.write(T, field, region, out, cfg, box=cbox, log=log)
+        if cm:
+            manifest["corridors"] = cm
     if getattr(T, "falls", None):  # (waterfalls: for the engine's falling sheet and spray; terrain_falls)
         from . import terrain_falls
         manifest["falls"] = {"falls": T.falls, "note": terrain_falls.META_NOTE}
