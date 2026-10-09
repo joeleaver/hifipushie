@@ -952,3 +952,8 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       young pine), nothing like pine_a's dense rounded mass or pine_c's veteran.
     - NOT DONE: floor brash (stand-level, not in the tree folders), pine crown density / form, spruce narrowness, the
       leader's last shoot length (growth), impostor pictures don't use the bark tint, oak / variants.
+
+- 2026-10-09, references (the user on rt3_pine): pine_c.jpg is an ancient wind-blasted Caledonian "granny" pine, not a
+  typical Scots pine, and was leading the realistic pine astray. Moved to workspace/veg_refs/atypical/. Judge the
+  realistic pine against pine_a (dense rounded mature crown) and pine_b (open-grown, flat-topped, orange upper trunk);
+  pine_d is too distant and pine_e is snow-loaded, so use them for colour/context only.
