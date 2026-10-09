@@ -249,6 +249,18 @@ def test_construct_presses_lapels_and_is_not_in_the_sims_key():
     assert not hide.any() and parts == []
 
 
+def test_pressed_flaps_by_fold_prefix():
+    """construct's `press`: which folds' flaps are pressed (default lapels only; others experimental)."""
+    uv, F = _strip_piece(0, 0.2, -0.3, 0, 21, 31)
+    row = np.where(np.abs(uv[:, 0] - 0.08) < 1e-9)[0]
+    M = {"names": ["front"], "piece": np.zeros(len(uv), int), "uv": uv, "F": F,
+         "folds": [{"name": "open neck.L", "piece": "front", "rows": [row.tolist()]}]}
+    assert cm.lapel_flaps(M) == []  # (default: lapels only)
+    fl = cm.lapel_flaps(M, ("open neck",))
+    assert len(fl) == 1 and len(fl[0]["flap"]) == int((uv[:, 0] < 0.08 - 1e-9).sum())
+    assert cm.CONSTRUCT["press"] == ["lapel"]
+
+
 def test_hug_neckline_draws_the_seam_to_what_is_under_it():
     """cloth10: a collar's ease holds the neckline `gap` off the under collar; the gorge (weight 0) stays; the cloth
     near the seam follows, far cloth doesn't; nothing ends inside the under layer."""

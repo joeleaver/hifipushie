@@ -1990,3 +1990,20 @@ NO SIM WAS RUN.
       Drafted (draftchk.py, no sim): gorge_angle 55 passes design/pattern/construction; its lapel point is 45 mm below
       the HPS (gorge_drop 0.12 had it 120 mm: the 33 deg gorge ran down the chest with the collar end a strap beside it,
       the "wing"). A steeper gorge is a real notch HIGHER up; c10_j4 = gorge_angle 45 as the in-between.
+  - Round 3, the "goofed up" shirt (Joe on c10_s9). c10steps.py, one change per panel (c10_dbg_steps.png, jacket
+    hidden): (a) the cached sim alone is clean, its SIMULATED collar reads better than any constructed one; (b) the
+    tuck under the jacket makes the facets / shards (chest moved p95 12.5, max 48 mm onto the jacket's lumpy inner
+    face: hidden when the jacket is drawn); (c) the open-neck press cut the V (front.R's "flap" 7 vertices moved 44 mm:
+    the smaller-side rule on a weak roll); (d) the constructed stand reads tall and tube-like, its end slabs stacked.
+    RENDER RULE (also in the guide): a tucked garment is never drawn without the garment over it; show the untucked
+    under garment alone, or the tucked one with the outer garment on; gate every sheet in both views (no facets,
+    tears, shards). Decisions: the shirt keeps its simulated collar; the open-neck press stays OFF (construct `press`
+    default ["lapel"], other prefixes documented EXPERIMENTAL, tested); lay_points_on_front deleted; the constructed
+    collar is for the jacket only.
+  - Underarm holes (c10_w3 = jacket on, front + three-quarter, NOT clean): the jacket alone has none (c10_w4j); they
+    are the SHIRT through the jacket's side / under-sleeve panels in the armpits (underarm.py: ~100 crossing points a
+    side at |x| 0.18-0.23, z 1.20-1.33; untucked shirt x jacket 3615 crossings, worn 408, welded tuck 258 points).
+    Tried and reverted: pokes always tucked with the oriented normals (underarm 99 -> 131); a crossing-driven
+    untangle pushing shirt vertices in along the body normal (crossings 152 -> 88 vertices, but the shirt then stuck
+    OUT sideways under the arms: the armpit body normal points sideways). Next: decide coverage there from the
+    jacket (shirt inside the jacket's armhole loop = covered) or give the shirt sleeve-head more room in the sim.

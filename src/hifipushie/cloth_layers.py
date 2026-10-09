@@ -151,8 +151,20 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
     members' moves), so a collar or a placket keeps its shape."""
     from .closures import _closest_on
     Vu, Mu = np.asarray(under["V"], float), under["mesh"]
-    Vo, Fo = np.asarray(outer["V"], float), np.asarray(outer["mesh"]["F"])
+    Vo, Mo = np.asarray(outer["V"], float), outer["mesh"]
+    Fo = np.asarray(Mo["F"])
     body = outer["body"]
+    oriented = False
+    if Mo.get("sew") is not None and len(np.asarray(Mo["sew"])) and "piece" in Mo and "names" in Mo:
+        # the outer garment WELDED (its seams one surface: unwelded, beside a seam the nearest point lay on a piece's
+        # edge and cloth standing out through the seam was not "over" it) and each piece wound to face out
+        # (cloth10: shirt through the jacket at the armholes and side seams, 17-29 mm out)
+        from . import cloth as _cloth
+        try:
+            Fo = np.asarray(_cloth.welded_faces(Mo, Vo, body=body))
+            oriented = True
+        except Exception:  # (a mesh the welder can't take: as before)
+            Fo = np.asarray(Mo["F"])
     V = Vu.copy()
     covered = np.zeros(len(V), bool)
     Fu = np.asarray(Mu["F"])
@@ -166,7 +178,10 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
         Q, N, ins = _closest_on(V, Vo, Fo, k=16)
         if tree is not None:  # out = away from the body (a turned lapel's own normal faces in)
             out = Q - body.V[tree.query(Q)[1]]
-            N = np.where(((N * out).sum(1) < 0)[:, None], -N, N)
+            dot = (N * out).sum(1) / np.maximum(np.linalg.norm(out, axis=1), 1e-9)
+            # wound pieces: their own normal, unless the body says clearly otherwise (a turned lapel); in an armpit the
+            # nearest body vertex lies every way and flipped the jacket's side panel inside out
+            N = np.where(((dot < -0.5) if oriented else (dot < 0))[:, None], -N, N)
         d = V - Q
         s = (d * N).sum(1)  # > 0: outside the outer garment
         near = np.linalg.norm(d, axis=1) < TUCK_REACH
