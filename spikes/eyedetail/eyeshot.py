@@ -58,14 +58,25 @@ keys = ["lm45", "lm36"]
 es = 0.3 * s
 eb = [ec[0] - es / 2, ec[1] - es / 2, ec[0] + es / 2, ec[1] + es / 2]
 frames = [stage.fitted_frame(cam, zb, "zoom"), stage.fitted_frame(cam, eb, "eye")]
-shots = stage.shoot(name, frames, LIGHT, size=PX, hair_on=False, flat=os.environ.get("CLAY") == "1")
-img = Image.open(v["image"]).convert("RGB")
-for fn, box in (("zoom", zb), ("eye", eb)):
+crops = [("zoom", zb, v), ("eye", eb, v)]
+if len(refs["views"]) > 1 and {"lm36", "lm45"} <= set(refs["views"][1]["points"]):  # the three-quarter view's eye
+    v1 = refs["views"][1]
+    a1, b1 = np.asarray(v1["points"]["lm45"], float), np.asarray(v1["points"]["lm36"], float)
+    e1 = a1 + 0.2 * (b1 - a1)
+    s1 = 0.75 * float(np.linalg.norm(b1 - a1))
+    qb = [e1[0] - s1 / 2, e1[1] - s1 / 2, e1[0] + s1 / 2, e1[1] + s1 / 2]
+    frames.append(stage.fitted_frame(refs["cameras"][1], qb, "q"))
+    crops.append(("q", qb, v1))
+shots = stage.shoot(name, frames, LIGHT, size=PX, hair_on=False, flat=os.environ.get("CLAY") == "1",
+                    layer=os.environ.get("LAYER") or None)
+for fn, box, vv in crops:
+    img = Image.open(vv["image"]).convert("RGB")
     ref = img.crop(tuple(int(round(x)) for x in box)).resize((PX, PX), Image.LANCZOS)
     S = Image.new("RGB", (2 * PX, PX))
     S.paste(ref, (0, 0))
     S.paste(shots[fn].resize((PX, PX)), (PX, 0))
-    S.save(f"{OUT}/{tag}_{'face' if fn == 'zoom' else 'eye'}.png")
-    shots[fn].save(f"{OUT}/{tag}_{'face' if fn == 'zoom' else 'eye'}_ours.png")
+    lab = {"zoom": "face", "eye": "eye", "q": "eyeq"}[fn]
+    S.save(f"{OUT}/{tag}_{lab}.png")
+    shots[fn].save(f"{OUT}/{tag}_{lab}_ours.png")
 print("eye box", [round(x) for x in eb], "keys", keys[:6])
 print("saved", f"{OUT}/{tag}_face.png", f"{OUT}/{tag}_eye.png")

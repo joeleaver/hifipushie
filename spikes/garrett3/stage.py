@@ -73,7 +73,8 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
     src = Path(skin_look.__file__).parent
     code = hashlib.sha1(b"".join((src / f).read_bytes() for f in
                                  ("skin.py", "skin_features.py", "skin_swatch.py", "paint.py", "paintnodes.py", "blender_scene.py",
-                                  "base.py", "headfit.py", "onemesh.py", "images.py"))).hexdigest()[:12]
+                                  "base.py", "headfit.py", "onemesh.py", "images.py", "lashes.py", "blender_lashes.py",
+                                  "scene.py", "skin_look.py"))).hexdigest()[:12]
     key = hashlib.sha1(json.dumps(geo, sort_keys=True, default=str).encode()).hexdigest()[:16] + code
     d = store._dir(sn)
     d.mkdir(parents=True, exist_ok=True)

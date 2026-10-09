@@ -53,7 +53,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 3
+VERSION = 4  # 4: lash_roots, eye film / occlusion (eyedetail)
 
 # ---- tone: melanin + haemoglobin -> albedo ----------------------------------------------------------------------
 # A two-layer model in the spirit of Donner & Jensen 2006 / Jimenez et al. 2010, with Jacques' skin optics numbers

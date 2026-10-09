@@ -1796,6 +1796,13 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                                                      "clearcoatRoughnessFactor": float(skin_recipe["specular"]["coat_roughness"])},
                          "KHR_materials_sheen": {"sheenColorFactor": [float(skin_recipe["sheen"])] * 3, "sheenRoughnessFactor": 0.5}},
                     extras={"hifipushie_skin": skin_recipe})
+    from .skin_features import eye_base
+    ek = eye_base(spec)
+    if ek:  # the eyes' tear film: a clear coat over the matte iris and sclera (the catchlight)
+        for pn in parts:
+            if origin.get(pn) == ek[0]:
+                looks.setdefault(pn, {}).setdefault("ext", {})["KHR_materials_clearcoat"] = {
+                    "clearcoatFactor": float(ek[1]["coat"]), "clearcoatRoughnessFactor": float(ek[1]["coat_roughness"])}
     rigged = None
     if rig:  # an armature from the skeleton, the parts (not prefabs) skinned to it
         from . import rig as rigmod
