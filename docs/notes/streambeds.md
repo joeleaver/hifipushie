@@ -191,3 +191,19 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
 - pw_island_rivers: vale 6.0 (asked 6, 72 deg), crown 16.8/15 (83), 10.6/10 (80), 1.6/6 (lip 2 m over the sea: the
   ground can't), kaze 13.1/12 (81), 17.2/25 at 0.97 (the cliff is ~20 m), downs 8.0/8 (74), pencil 2.6/10 (bed drawn
   over low ground near the cove). Tests: tests/test_falls.py (inland 3 + 12 m, sea cliff 30 m, clutter, errors).
+
+## Site pads vs water; auto divides (2026-10-09, pushieworld note 116)
+- vale_village at 34 m, -4.0 m "above the water": NOT a regression of the merge: 3f2d1f1's own code builds the same
+  (33.85, -4.5) from their unchanged island.json, and their note 67 saw it long before. The pad was set looking for
+  water only within r + max(20, 0.5 r) (67 m): the vale river is 101 m from the centre, so above_water was never
+  applied; the report judges water out to the edge + max(60, r). Now the pad looks as far as the report: 41.5 m,
+  3.6 m above (their "42 m / 4.1" figure). A pad under its asked above_water (or under the water) is a warning.
+  Other pads moved only where they stood too near the water: t2_farm village 128 -> 130 m (18 m fill), t3_farm fill
+  1 -> 2 m; slice_a, gdamp, island's other four sites unchanged. tests/test_island_sites.py (skips without the spec).
+- Auto divide pencil_spout / vale_river (divides on): crest h = floor + distance x side grade (min of the two rivers'
+  grades: vale's "open" 0.12) over up to ~600 m between them, capped only by the crest field: up to 81 m, and the
+  volcano then stands on it (the same mechanism as the river raise). Measured at the base stage vs island_base:
+  76 ha raised > 5 m, max +95. Capping divides at the ground solved without them: 1.4 ha, but gdamp_river_world's
+  ground moved by up to 646 m (its divides ARE its land): reverted, not committed. Options: divides off for that
+  island (Pushieworld does), pencil_spout's heights onto its ground (its bed is ~32 m above the headland, so it stays a
+  pinned valley-maker), or a cap only where volcano / hill forms will stand (needs their footprint before the solve).
