@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-VERSION = 4
+VERSION = 5
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
 LIFT = 0.5  # the cap stands at this share of the hair's height over the scalp
@@ -181,7 +181,7 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     din = inside(sc, line, AA, EE)
     soft = max(float(S.get("soft", 0.008)), 0.001)
     dens = blur(alpha, 0.003)
-    base = _ss((din - 0.25 * soft) / soft) * _ss((dens - 0.3) / 0.35)
+    base = _ss((din - 0.6 * soft) / (1.2 * soft)) * _ss((dens - 0.3) / 0.35)  # (the line itself is single strands)
     pw = float(g["parting"].get("width", 0.012))
     if str(g["parting"].get("side", "left")) != "none":
         base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
