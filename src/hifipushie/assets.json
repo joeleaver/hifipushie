@@ -1969,5 +1969,27 @@
     "unpack": "release"
    }
   ]
+ },
+ "faceid": {
+  "needed_by": "faceid.py (face-recognition similarity, photo vs render: a likeness measure, never shipped)",
+  "source": "opencv_zoo at commit 47534e27c9851bb1128ccc0102f1145e27f23f98: YuNet face detector + SFace recogniser; InsightFace buffalo_l w600k_r50 (ArcFace) via huggingface public-data/insightface",
+  "licence": "YuNet, SFace: Apache 2.0 (opencv_zoo). w600k_r50 (InsightFace buffalo_l): non-commercial research use only: a measuring tool here, never in an exported asset.",
+  "files": [
+   {
+    "path": "yunet.onnx",
+    "url": "https://github.com/opencv/opencv_zoo/raw/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+    "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+   },
+   {
+    "path": "sface.onnx",
+    "url": "https://github.com/opencv/opencv_zoo/raw/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+    "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79"
+   },
+   {
+    "path": "w600k_r50.onnx",
+    "url": "https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/w600k_r50.onnx",
+    "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+   }
+  ]
  }
 }
