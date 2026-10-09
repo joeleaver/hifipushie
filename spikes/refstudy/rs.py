@@ -349,3 +349,30 @@ def outline(zb, cam, V, levels=None):
     bot = L[8, 1]
     k = (ys > top) & (ys < bot)
     return np.c_[xs[k] + 0.5, ys[k] + 0.5]
+
+
+def set_template(V=None):
+    """Fit about another neutral head than GNM's mean (the one mesh's fresh head is MakeHuman's head for its body:
+    identity components are DIFFERENCES laid on it). V = that head in GNM's world frame; None restores the mean."""
+    g = gnm()
+    if "V0_gnm" not in g:
+        g["V0_gnm"] = g["V0"]
+    g["V0"] = g["V0_gnm"] if V is None else np.asarray(V, float)
+    g["L0"] = g["W"] @ g["V0"]
+
+
+def into_gnm_frame(Vw):
+    """A one-mesh head's GNM vertices (world, nan where the one mesh has none) laid on GNM's template by a similarity
+    on the face; missing vertices take the nearest present vertex's offset. Returns (V, (s, R, t))."""
+    from scipy.spatial import cKDTree
+    g = gnm()
+    V0 = g.get("V0_gnm", g["V0"])
+    ok = np.isfinite(Vw[:, 0])
+    f = g["regions"]["face"]
+    f = f[ok[f]]
+    s, R, t = similarity(Vw[f], V0[f])
+    A = s * Vw @ R.T + t
+    if not ok.all():
+        _, j = cKDTree(V0[ok]).query(V0[~ok])
+        A[~ok] = V0[~ok] + (A[ok] - V0[ok])[j]
+    return A, (s, R, t)

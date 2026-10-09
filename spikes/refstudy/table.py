@@ -104,28 +104,39 @@ def evidence(sub, views, kind, outline=False, **kw):
 
 
 FT = ["front", "tq"]
+
+
+def _tf(e, s):
+    for x, v in zip(e, FT):
+        x["focal"] = s["views"][v]["cam"]["f"]
+    return e
+
+
 METHODS = {
     # -- how much do the 70 landmarks hold at all (no noise, exact definitions)?
     "A0 oracle lm, no noise, MAP": lambda s: fitlib.fit(evidence(s, FT, "oracle", noise=0.0)),
-    "A1 oracle lm +-1.5mm, today's weights": lambda s: fitlib.fit(evidence(s, FT, "oracle", noise=1.5, sig=0.86), lam=0.01, rows=fitlib.cranium_rows(rs.K_FIT)),
+    "A1 oracle lm +-1.5mm, today's weights": lambda s: fitlib.fit(evidence(s, FT, "oracle", noise=1.5, sig=0.86), lam=0.01, rows=fitlib.cranium_rows(rs.K_FIT), clip=2.6, step=0.375, rounds=3),
     "A2 oracle lm +-1.5mm, MAP": lambda s: fitlib.fit(evidence(s, FT, "oracle", noise=1.5)),
     # -- the detector
-    "B0 mp68 with jaw, today's weights": lambda s: fitlib.fit(evidence(s, FT, "mp68", jaw=True), lam=0.01, rows=fitlib.cranium_rows(rs.K_FIT)),
-    "B1 mp68 no jaw, today's weights (fit_views)": lambda s: fitlib.fit(evidence(s, FT, "mp68"), lam=0.01, rows=fitlib.cranium_rows(rs.K_FIT)),
+    "B0 mp68 with jaw, today's weights": lambda s: fitlib.fit(evidence(s, FT, "mp68", jaw=True), lam=0.01, rows=fitlib.cranium_rows(rs.K_FIT), clip=2.6, step=0.375, rounds=3),
+    "B1 mp68 no jaw, today's weights (fit_views)": lambda s: fitlib.fit(evidence(s, FT, "mp68"), lam=0.01, rows=fitlib.cranium_rows(rs.K_FIT), clip=2.6, step=0.375, rounds=3),
     "B2 mp68 no jaw, MAP sigma 3mm": lambda s: fitlib.fit(evidence(s, FT, "mp68", sig=3.0)),
     "B3 mp478 calibrated, MAP": lambda s: fitlib.fit(evidence(s, FT, "mp478"), robust=True),
     "B3b mp478 calibrated, sigma x2": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0), robust=True),
     "B3c mp478 calibrated, sigma x4": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=4.0), robust=True),
-    "B4 B3b + outline": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True), robust=True, rounds=5),
+    "B4 B3b + outline": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True), robust=True),
+    "B4b outline sigma 3mm, from round 4": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True, ), robust=True, outline_from=4, rounds=10),
+    "B4c oracle lm +-1.5 + outline": lambda s: fitlib.fit(evidence(s, FT, "oracle", noise=1.5, outline=True), rounds=10),
+    "B4d mp478 + outline, true cameras' lens": lambda s: fitlib.fit(_tf(evidence(s, FT, "mp478", infl=2.0, outline=True), s), robust=True, rounds=10),
     "B5 B3b + expression": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0), robust=True, expr=True),
-    "B6 B3b + outline + expression": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
+    "B6 B3b + outline + expression": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True), robust=True, expr=True),
     # -- which pictures
-    "V1 front only (B6)": lambda s: fitlib.fit(evidence(s, ["front"], "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
-    "V2 front + tq (B6)": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
-    "V3 front + tq + tq2": lambda s: fitlib.fit(evidence(s, FT + ["tq2"], "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
-    "V4 front + tq + profile": lambda s: fitlib.fit(evidence(s, FT + ["profile"], "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
-    "V5 front + profile": lambda s: fitlib.fit(evidence(s, ["front", "profile"], "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
-    "V6 all four": lambda s: fitlib.fit(evidence(s, FT + ["tq2", "profile"], "mp478", infl=2.0, outline=True), robust=True, expr=True, rounds=5),
+    "V1 front only (B6)": lambda s: fitlib.fit(evidence(s, ["front"], "mp478", infl=2.0, outline=True), robust=True, expr=True),
+    "V2 front + tq (B6)": lambda s: fitlib.fit(evidence(s, FT, "mp478", infl=2.0, outline=True), robust=True, expr=True),
+    "V3 front + tq + tq2": lambda s: fitlib.fit(evidence(s, FT + ["tq2"], "mp478", infl=2.0, outline=True), robust=True, expr=True),
+    "V4 front + tq + profile": lambda s: fitlib.fit(evidence(s, FT + ["profile"], "mp478", infl=2.0, outline=True), robust=True, expr=True),
+    "V5 front + profile": lambda s: fitlib.fit(evidence(s, ["front", "profile"], "mp478", infl=2.0, outline=True), robust=True, expr=True),
+    "V6 all four": lambda s: fitlib.fit(evidence(s, FT + ["tq2", "profile"], "mp478", infl=2.0, outline=True), robust=True, expr=True),
 }
 
 

@@ -14,11 +14,9 @@ CLASSES = {"front": 0.0, "tq": 40.0, "profile": 88.0, "tq2": -38.0}
 N = 36
 
 
-def run():
-    g = rs.gnm()
+def calib_set():
+    """The calibration heads' pictures: [(class, V, cam, depth)], images."""
     rng = np.random.default_rng(7)
-    ext = np.flatnonzero(g["ext"] | g["gr"]["eyes"])
-    recs = {k: [] for k in CLASSES}
     imgs, meta = [], []
     for s in range(N):
         c = np.random.default_rng(5000 + s).normal(0, 1.0, rs.K_TRUE)
@@ -29,6 +27,14 @@ def run():
             img, zb = rs.render(V, cam, albedo=rs.skinned_albedo(s) if s % 2 else None)
             imgs.append(img)
             meta.append((k, V, cam, zb))
+    return meta, imgs
+
+
+def run():
+    g = rs.gnm()
+    ext = np.flatnonzero(g["ext"] | g["gr"]["eyes"])
+    recs = {k: [] for k in CLASSES}
+    meta, imgs = calib_set()
     det = rs.detect(imgs)
     miss = {k: 0 for k in CLASSES}
     lm_err = {k: [] for k in CLASSES}
@@ -60,6 +66,8 @@ def run():
         sd = np.sqrt(np.nanmean(((T - med) ** 2).sum(-1), 0)) * 1000
         frac = np.isfinite(T[..., 0]).mean(0)
         sd[frac < 0.9] = np.inf
+        if len(recs[k]) < 20:
+            sd[:] = np.inf
         dd, jj = tree0.query(np.nan_to_num(med), k=3)
         w = 1.0 / np.maximum(dd, 1e-5)
         out_vid[ci], out_w[ci], out_sd[ci] = ext[jj], w / w.sum(1, keepdims=True), sd

@@ -59,7 +59,7 @@ def _init_cam(view, X):
             "centre": rs.gnm()["L0"][:68].mean(0).tolist(), "yaw": float(view.get("yaw", 0.0))}
 
 
-def fit_cam(cam, X, uv, wt, focal=None, f_prior=None):
+def fit_cam(cam, X, uv, wt, focal=None, f_prior=None, line=None):
     """Pose (+ focal unless given) of one camera on points. f_prior = (f px, relative sigma): a soft lens guess."""
     def unpack(p):
         return {**cam, "r": p[:3], "t": p[3:6], "f": float(focal) if focal else float(p[6])}
@@ -67,6 +67,8 @@ def fit_cam(cam, X, uv, wt, focal=None, f_prior=None):
     def res(p):
         c = unpack(p)
         r = ((humanfit.project(c, X) - uv) * wt[:, None]).ravel()
+        if line is not None:   # outline pixels against their silhouette vertices, along the outline's normal
+            r = np.r_[r, ((humanfit.project(c, line[0]) - line[1]) * line[2]).sum(1) * line[3]]
         if f_prior is not None and not focal:
             r = np.r_[r, np.log(c["f"] / f_prior[0]) / f_prior[1]]
         return r
@@ -110,8 +112,8 @@ def silhouette(V, cam, ears=True):
     return np.unique(E[front[fa] != front[fb]])
 
 
-def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=4, focal=None, f_prior=None, expr=False, lam_e=1.0, rows=None,
-        c_init=None, sig_floor=0.0, robust=False, log=None):
+def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=8, clip=None, step=0.0, focal=None, f_prior=None, expr=False, lam_e=1.0, rows=None,
+        c_init=None, sig_floor=0.0, robust=False, log=None, outline_from=1, outline_ears=True):
     """views: [{"pts": point set, "uv": (n, 2), "sig": mm per point (or a number), "size", "yaw" hint,
                 "outline": (m, 2) pixels | None, "sig_o": mm, "expr": bool (may this picture have an expression)}]
     rows: extra linear evidence on c: (A (m, K), y (m,)) already divided by its sigma (macro priors, holds).
@@ -124,6 +126,7 @@ def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=4, focal=None, f_prior=None,
     ke = _expr_basis().shape[0] if expr else 0
     es = [np.zeros(ke) for _ in views]
     cams = [None] * len(views)
+    lines = [None] * len(views)
     H = None
     for it in range(rounds):
         A_all, y_all = [], []
@@ -139,7 +142,7 @@ def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=4, focal=None, f_prior=None,
             cam = cams[vi] or _init_cam(v, X)
             mmpx0 = cam["t"][2] / cam["f"] * 1000
             fo = v.get("focal", focal)
-            cam = fit_cam(cam, X, v["uv"], mmpx0 / np.maximum(sig, 1e-3), focal=fo, f_prior=v.get("f_prior", f_prior))
+            cam = fit_cam(cam, X, v["uv"], mmpx0 / np.maximum(sig, 1e-3), focal=fo, f_prior=v.get("f_prior", f_prior), line=lines[vi])
             cams[vi] = cam
             J, z = _dudX(cam, X)
             mmpx = z / cam["f"] * 1000
@@ -159,10 +162,10 @@ def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=4, focal=None, f_prior=None,
             xc = np.r_[c, np.concatenate([es[j] for j, EB in enumerate(EBs) if EB is not None]) if ne else np.zeros(0)]
             A_all.append(blk)
             y_all.append(blk @ xc + r.ravel())
-            if v.get("outline") is not None and it >= 1:
+            if v.get("outline") is not None and it >= outline_from:
                 if V is None:
                     V = rs.head(c)
-                sv = silhouette(V, cam)
+                sv = silhouette(V, cam, ears=outline_ears)
                 P = humanfit.project(cam, V[sv])
                 o = v["outline"]
                 d, j = cKDTree(P).query(o)
@@ -179,6 +182,10 @@ def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=4, focal=None, f_prior=None,
                 dens = max(len(oo) * float(np.median(zo / cam["f"] * 1000)) / 3.0, 1.0) / max(len(oo), 1)
                 wo = wo * np.sqrt(min(dens * 3.0, 1.0))
                 ro = ((oo - P[j[ok]]) * nrm).sum(1) * wo
+                if robust:
+                    hw = np.where(np.abs(ro) > 2.0, np.sqrt(2.0 / np.maximum(np.abs(ro), 1e-9)), 1.0)
+                    wo, ro = wo * hw, ro * hw
+                lines[vi] = (V[vs], oo, nrm, wo / (zo / cam["f"] * 1000) * mmpx0)
                 Ao = np.einsum("ni,nij,knj->nk", nrm, Jo, g["IB"][:K, vs]) * wo[:, None]
                 blk = np.zeros((len(oo), K + ne))
                 blk[:, :K] = Ao
@@ -198,8 +205,13 @@ def fit(views, K=rs.K_FIT, lam=1.0, mu=None, rounds=4, focal=None, f_prior=None,
         if rows is not None:
             Hm[:K, :K] += rows[0].T @ rows[0]
             b[:K] += rows[0].T @ rows[1]
+        if step:   # today's solver: each round's step is ridged
+            Hm[np.arange(K), np.arange(K)] += step ** 2
+            b[:K] += step ** 2 * c
         x = np.linalg.solve(Hm, b)
         c = x[:K]
+        if clip:
+            c = np.clip(c, -clip, clip)
         eo = 0
         for vi, EB in enumerate(EBs):
             if EB is not None:
