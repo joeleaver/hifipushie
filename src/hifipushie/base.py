@@ -47,6 +47,7 @@ TUBE_BAND = 0.08  # m: where a garment's torso tube hands over to the cloth from
 OWN_REACH = 0.035  # m (x the head's scale): how far over the graft plane a followed head eases onto its body's own
 LOW_LOOP = 0.004  # the neck loop's least clearance under the graft's overlap (see _neck_tube)
 _CACHE: dict = {}
+_WARNED: set = set()  # deprecation messages already given (faceslide.deprecated)
 
 
 def source(b: dict) -> dict:
@@ -1740,6 +1741,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
     slide = None
+    if head.get("shape"):  # (faceslide.py) the older shape ops still work, but say what replaces them
+        from . import faceslide
+        for msg in faceslide.deprecated(head["shape"]):
+            if msg not in _WARNED:
+                _WARNED.add(msg)
+                import warnings
+                warnings.warn(msg, DeprecationWarning, stacklevel=2)
     if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
         # added like an identity component (everything after rides on them)
         from . import faceslide, gnmloops

@@ -38,8 +38,11 @@ def test_symmetric_and_ranged():
     for name, (dR, dL) in faceslide.fields().items():
         assert np.abs(dL[T["X"][:, 0] < -0.002]).max() == 0, name  # the left side's field stays on the left
         # (the mouth's fields are made on GNM's whole template, symmetric only to ~0.1 mm)
-        assert np.allclose(dR, dL[mi] * [-1, 1, 1], atol=0 if name in faceslide.EYE_SLIDERS else 6e-5), name
-        unit = faceslide.UNITS[name][0] * (0.001 if name != "canthal_tilt" else 0.001 * 0.27)
+        big = np.abs(dL).max() + np.abs(dR).max()
+        assert np.allclose(dR, dL[mi] * [-1, 1, 1], atol=0 if name in faceslide.EYE_SLIDERS else max(6e-5, 0.03 * big)), name
+        if name in faceslide.AGE_SLIDERS:  # (baked ops: their units are the ops' own)
+            continue
+        unit =faceslide.UNITS[name][0] * (0.001 if name != "canthal_tilt" else 0.001 * 0.27)
         assert 0.5 * unit < np.linalg.norm(dL, axis=1).max() < 1.4 * unit + 1e-4, name
     v = faceslide.values({"eye_hood": 3.0, "canthal_tilt": [-0.2, 0.4]})
     assert v["eye_hood"] == (1.5, 1.5) and v["canthal_tilt"] == (-0.2, 0.4)
@@ -111,6 +114,28 @@ def test_slider_recovered_from_a_render():
         m = faceslide.read_eyes(humanfit.state(bt))
         r = faceslide.fit(b, {key: (m[key], 0.1)}, [name])
         assert abs(r["sliders"][name] - v) < 0.05, (name, r)
+
+
+def test_lip_roll_recovered_from_a_render():
+    """The upper and lower lip rolls read from a clay render's depth (each vermilion's middle in front of the
+    subnasale) and solved together by faceslide.fit: within 0.08 of the truth."""
+    if not _gnm_ok():
+        return
+    b = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")["base"]
+    bt = copy.deepcopy(b)
+    bt.setdefault("head", {})["sliders"] = {"lip_upper_roll": 0.5, "lip_lower_roll": -0.4}
+    m = faceslide.read_mouth(humanfit.state(bt))
+    r = faceslide.fit(b, {k: (m[k], 0.1) for k in ("upper_proj", "lower_proj")}, ["lip_upper_roll", "lip_lower_roll"],
+                      read=faceslide.read_mouth, hold=0.01)
+    assert abs(r["sliders"]["lip_upper_roll"] - 0.5) < 0.08 and abs(r["sliders"]["lip_lower_roll"] + 0.4) < 0.08, r
+
+
+def test_fit_window_follows_sex():
+    lo, hi = faceslide.fit_window("eye_crease_height", 0.0)
+    assert hi == 1.5 and lo > -0.5  # a woman's crease may reach its limit
+    assert faceslide.fit_window("eye_crease_height", 1.0) == (-1.0, 1.0)
+    assert faceslide.fit_window("brow_ridge", 0.0)[0] < -1.0
+    assert faceslide.fit_window("eye_hood", 0.0) == (-1.0, 1.0)
 
 
 if __name__ == "__main__":

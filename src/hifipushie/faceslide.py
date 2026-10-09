@@ -54,8 +54,63 @@ UNITS.update({
     "mouth_corner": (0.9, "the commissures tucked in and back (deeper corners); - = fuller corners"),
 })
 MOUTH_SLIDERS = tuple(k for k in UNITS if k not in EYE_SLIDERS)
+# the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
+# morph target by spikes/facesliders/bake_age.py (face_sliders_baked.npz). name: the op's base.head.shape at +1
+BAKED = {
+    "age_nasolabial": {"nasolabial": {"depth": 0.002}},
+    "age_prejowl": {"prejowl": 0.002},
+    "age_cheek_flat": {"cheek_flat": 0.002},
+    "age_lid_fold": {"lid_fold": 0.002},
+    "face_planes": {"planes": 2.6},
+    "face_lean": {"lean": 0.003},
+    "cheek_hollow": {"hollow": 0.004},
+    "chin_cleft": {"chin": {"cleft": 0.0015}},
+}
+UNITS.update({
+    "age_nasolabial": (2.0, "the nasolabial fold: a 2 mm crease on skin.LINES' line, the cheek standing over it"),
+    "age_prejowl": (2.0, "the pre-jowl sulcus (2 mm) and the jowl over the jaw's border"),
+    "age_cheek_flat": (2.0, "the mid cheek flattened 2 mm and slid down (the tear trough shows)"),
+    "age_lid_fold": (2.0, "upper-lid skin come down over the lid (dermatochalasis), mostly the outer half"),
+    "face_planes": (0.6, "front / side planes meeting at a tighter corner (shape.planes 2.0 -> 2.6)"),
+    "face_lean": (3.0, "soft tissue thinned over the jaw's border (under the jaw, jowl, submental)"),
+    "cheek_hollow": (4.0, "the buccal hollow under the cheekbone"),
+    "chin_cleft": (1.5, "a mid-line groove on the chin's front"),
+})
+AGE_SLIDERS = tuple(BAKED)
+# where a woman's mean sits on each slider whose population differs by sex (ESTIMATES from the oculoplastic and
+# anthropometric literature, not measured on scans: women's supratarsal crease ~1-2 mm higher, a less projecting brow
+# ridge, a little more platform show). A fit's window [-1, 1] is shifted by (1 - sex) x this (body.sex: 1 = male,
+# 0 = female; the template is neither), and never past the value's own limit (+-1.5).
+SEX_OFFSET = {"eye_crease_height": 1.2, "brow_ridge": -0.6, "eye_platform": 0.3}
+
+
+def deprecated(shape: dict | None) -> list:
+    """Messages for the older shape ops a head still uses (they work; the sliders replace them)."""
+    out = []
+    for path, sl in DEPRECATED.items():
+        keys = path.split(".")[1:]
+        d = shape or {}
+        for k in keys[:-1]:
+            d = d.get(k) if isinstance(d, dict) else None
+        if isinstance(d, dict) and d.get(keys[-1]) not in (None, 0, 0.0) and not (keys[-1] == "planes" and d.get("planes") == 2.0):
+            out.append(f"base.head.{path} is deprecated: use base.head.sliders {sl} (faceslide.py)")
+    return out
+
+
+def fit_window(name: str, sex: float = 0.5) -> tuple:
+    """(lo, hi) a fit may move `name` within, centred on the head's sex (SEX_OFFSET)."""
+    off = SEX_OFFSET.get(name, 0.0) * (1.0 - float(np.clip(sex, 0.0, 1.0)))  # a woman: the whole offset
+    lo = 0.0 if name in ONE_SIDED else -1.0
+    return float(max(lo + off, 0.0 if name in ONE_SIDED else -1.5)), float(min(1.0 + off, 1.5))
+# the ops they replace (deprecated: they still work, for the models that use them; new work uses the sliders)
+DEPRECATED = {"shape.nasolabial": "age_nasolabial", "shape.prejowl": "age_prejowl", "shape.cheek_flat": "age_cheek_flat",
+              "shape.lid_fold": "age_lid_fold", "shape.planes": "face_planes", "shape.lean": "face_lean",
+              "shape.hollow": "cheek_hollow", "shape.chin.cleft": "chin_cleft", "shape.hood": "eye_hood / eye_hood_lateral",
+              "shape.eye_bag": "eye_bag / eye_lidcheek", "shape.lip_roll": "lip_upper_roll / lip_lower_roll",
+              "shape.lip_bow": "lip_bow / lip_tubercle"}
 # one-sided: the template (GNM's mean) has no epicanthal fold to take away, so [0, 1]
-ONE_SIDED = {"epicanthal"}
+ONE_SIDED = {"epicanthal", "age_nasolabial", "age_prejowl", "age_cheek_flat", "age_lid_fold", "face_lean", "cheek_hollow",
+             "chin_cleft", "face_planes"}  # (the ageing ops and the planes (rounder than 2.0 folded the cheeks): their negative would be a ridge, not youth)
 NAMES = tuple(UNITS)
 _CACHE: dict = {}
 
@@ -278,6 +333,24 @@ def fields() -> dict:
         wl = _ss((T["X"][:, 0] + 0.002) / 0.004)[:, None]
         for k, d in _mouth_fields().items():
             out[k] = (d * (1 - wl), d * wl)
+        from pathlib import Path
+
+        from . import gnmloops
+        baked = Path(__file__).with_name("face_sliders_baked.npz")
+        if baked.exists():  # (step 4: the older shape ops, baked by spikes/facesliders/bake_age.py)
+            z = np.load(baked)
+            # held off the lids' rims and the lips' contact (they were baked on a body's head, a few mm unlike the
+            # template here: around those thin rolls the op's move turned the lips' border over, planes +1)
+            from scipy.spatial import cKDTree
+            X = T["X"]
+            d_rim = cKDTree(X[T["rim"]]).query(X)[0]
+            d_lip = cKDTree(T["lm"][48:68]).query(X)[0]
+            hold = (T["ext"] * _ss((d_rim - 0.003) / 0.008) * _ss((d_lip - 0.003) / 0.005))[:, None]  # (exterior only)
+            for k in BAKED:
+                if k in z.files:
+                    d = gnmloops.ext(z[k].astype(float))
+                    d = hold * 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])  # (baked on a body's head: made exactly mirror symmetric)
+                    out[k] = (d * (1 - wl), d * wl)
         _CACHE["fields"] = out
     return _CACHE["fields"]
 
@@ -365,12 +438,37 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     return out
 
 
+def read_mouth(st: dict, cam: dict | None = None, px: int = 500) -> dict:
+    """The lips read from a clay render's depth pass through a front camera at the mouth: {"upper_proj", "lower_proj":
+    mm the upper / lower vermilion's middle stands in front of the subnasale (lm 33), sampled over 1.5 mm}."""
+    from . import humanfit, likeness
+    L = np.asarray(st["L"], float)
+    c3 = 0.5 * (L[51] + L[57])
+    cam = cam or {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0, "size": [2000, 2000],
+                  "centre": c3.tolist(), "yaw": 0.0}
+    mm_px = 0.001 * cam["f"] / float(cam["t"][2])
+    c = humanfit.project(cam, c3[None])[0]
+    box = (c[0] - 30 * mm_px, c[1] - 30 * mm_px, c[0] + 30 * mm_px, c[1] + 20 * mm_px)
+    _, k, ps = likeness.render(likeness.model_mesh_from_state(st), cam, box, px=px, brows=False, passes=True)
+    zb = ps["zb"]
+
+    def z_at(p):
+        q = (humanfit.project(cam, np.asarray(p)[None])[0] - box[:2]) * k
+        r = max(1, int(round(0.75 * mm_px * k)))
+        y, x = int(round(q[1])), int(round(q[0]))
+        w = zb[max(y - r, 0):y + r + 1, max(x - r, 0):x + r + 1]
+        return float(np.median(w[np.isfinite(w)])) if np.isfinite(w).any() else float("nan")
+    z0 = z_at(L[33])
+    return {"upper_proj": 1000 * (z0 - z_at(0.4 * L[62] + 0.6 * L[51])),
+            "lower_proj": 1000 * (z0 - z_at(0.5 * L[66] + 0.5 * L[57]))}
+
+
 def fit(base: dict, targets: dict, names, read=None, hold: float = 0.15, iters: int = 4, step: float = 0.15,
         log=None) -> dict:
     """The least change of the named sliders (both eyes together) that brings the read measures to their targets:
     targets {measure: (value, tolerance)}; read(state) -> {measure: value} (default read_eyes). Gauss-Newton on
     sum(((m - target) / tol)^2) + hold * sum((x - x0)^2), the Jacobian by central differences THROUGH the built head
-    (humanfit.state: GNM's vertices, the loops' and every op after the sliders), x clipped to [-1, 1].
+    (humanfit.state: GNM's vertices, the loops' and every op after the sliders), x held to fit_window (centred on body.sex).
     Returns {"sliders", "before", "after", "steps"}."""
     import copy
 
@@ -380,6 +478,9 @@ def fit(base: dict, targets: dict, names, read=None, hold: float = 0.15, iters: 
     b0 = copy.deepcopy(base)
     sl0 = dict((b0.get("head") or {}).get("sliders") or {})
     x0 = np.array([float(np.mean(sl0.get(n, 0.0))) for n in names])
+    sex = (b0.get("body") or {}).get("sex", 0.5)
+    sex = {"female": 0.0, "male": 1.0}.get(sex, 0.5) if isinstance(sex, str) else float(sex)
+    lo_, hi_ = np.array([fit_window(n, sex) for n in names]).T  # (centred on the head's sex: SEX_OFFSET)
     keys = list(targets)
     t = np.array([targets[k][0] for k in keys], float)
     tol = np.array([targets[k][1] for k in keys], float)
@@ -409,10 +510,10 @@ def fit(base: dict, targets: dict, names, read=None, hold: float = 0.15, iters: 
             Jc[:, j] = (r_of(x + e)[0] - r_of(x - e)[0]) / (2 * step)
         A = Jc / tol[:, None]
         dx = -np.linalg.solve(A.T @ A + hold * np.eye(len(names)), A.T @ ((m - t) / tol) + hold * (x - x0))
-        xn = np.clip(x + dx, -1.0, 1.0)
+        xn = np.clip(x + dx, lo_, hi_)
         mn, _ = r_of(xn)
         if cost(mn, xn) > cost(m, x):
-            xn = np.clip(x + 0.5 * dx, -1.0, 1.0)
+            xn = np.clip(x + 0.5 * dx, lo_, hi_)
             mn, _ = r_of(xn)
         steps.append({"x": [round(float(v), 4) for v in xn], "miss": [round(float(v), 3) for v in (mn - t) / tol]})
         if log:
