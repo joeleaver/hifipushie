@@ -23,7 +23,7 @@
  },
  "makehuman": {
   "needed_by": "base.body {\"source\": \"makehuman\"} (makehuman.py)",
-  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target, targets/measure/measure-{hips-circ,waist-circ,shoulder-dist,bust-circ}-{decr,incr}.target",
+  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target, targets/measure/measure-{hips-circ,waist-circ,shoulder-dist,bust-circ,neck-circ}-{decr,incr}.target",
   "licence": "CC0 for the MakeHuman core assets (base mesh, targets, skeleton; makehumancommunity.org license page). The program code is AGPL and is NOT used: hifipushie reads these files with its own loader.",
   "files": [
    {
@@ -1700,6 +1700,16 @@
     "path": "targets/measure/measure-bust-circ-incr.target",
     "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-bust-circ-incr.target",
     "sha256": "46394c7f9cdfac31654f14950b57bbfb874c9a2fa68e48c9cc3e7bba619b75f4"
+   },
+   {
+    "path": "targets/measure/measure-neck-circ-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-neck-circ-decr.target",
+    "sha256": "897528bbe50e0c7193d3032eae062ae1878ec5965cbd93fc2f4091d5d69c2d47"
+   },
+   {
+    "path": "targets/measure/measure-neck-circ-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-neck-circ-incr.target",
+    "sha256": "caa38a399ef4dcdd713e5cb3e496afa8c6c938dea41fd848703d4549a48a74c0"
    }
   ]
  },
