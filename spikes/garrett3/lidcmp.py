@@ -37,6 +37,16 @@ def numbers(d, mm):
     out["mouth"] = {"corners_up": float(mid[1] - 0.5 * (m0[1] + m1[1])) * mm, "width": float(np.linalg.norm(m1 - m0)) * mm,
                     "upper_lip": float(np.linalg.norm(P[0] - P[13])) * mm, "lower_lip": float(np.linalg.norm(P[17] - P[14])) * mm,
                     "nose_width": nose, "nose_len": float(np.linalg.norm(P[168] - P[2])) * mm, "philtrum": float(np.linalg.norm(P[2] - P[0])) * mm}
+    d_ = lambda i, j: float(np.linalg.norm(P[i] - P[j])) * mm   # noqa: E731
+    io = d_(468, 473)
+    out["face"] = {"iris_dist": io, "inner_corners": d_(133, 362), "outer_corners": d_(33, 263), "w_cheek_234": d_(234, 454),
+                   "w_132": d_(132, 361), "w_jaw_58": d_(58, 288), "w_172": d_(172, 397), "w_136": d_(136, 365), "w_chin_150": d_(150, 379)}
+    out["heights"] = {"nasion_chin": d_(168, 152), "nasion_subnasale": d_(168, 2), "subnasale_seam": d_(2, 13), "seam_chin": d_(14, 152),
+                      "lowerlip_chin": d_(17, 152), "brow_nasion_top10": d_(10, 168)}
+    out["ratios_x100"] = {"jaw58/cheek": 100 * d_(58, 288) / d_(234, 454), "172/cheek": 100 * d_(172, 397) / d_(234, 454),
+                          "chin150/cheek": 100 * d_(150, 379) / d_(234, 454), "height/cheek": 100 * d_(168, 152) / d_(234, 454),
+                          "seam_chin/height": 100 * d_(14, 152) / d_(168, 152), "nose/height": 100 * d_(168, 2) / d_(168, 152),
+                          "io/cheek": 100 * io / d_(234, 454), "outer/cheek": 100 * d_(33, 263) / d_(234, 454)}
     return out
 
 
@@ -57,6 +67,7 @@ def patched(b, p):
     h = b["head"]
     if "eyes" in p:
         h["eyes"] = p["eyes"]
+    h.update(p.get("head") or {})        # any other head key (e.g. {"narrow": 0.97})
     if "expression" in p:
         if p["expression"]:
             h["expression"] = p["expression"]
