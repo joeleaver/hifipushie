@@ -21,6 +21,10 @@ same landmarks (skin.LINES "nasolabial", "marionette"): the crease here runs on 
         the upper lip's Cupid's bow: the vermilion border's peaks (lm 50 / 52) up and its dip (51) down by half the
         depth each (+ = a deeper V; - flattens it), and the tubercle: the upper lip's middle (62) down and forward by
         `tubercle`, the lower lip held.
+  "lip_roll": m | {"upper": m, "lower": m}
+        everted, fuller lips as VOLUME (not height): each vermilion rolled forward by up to this, peaking in its upper
+        part on the upper lip (it catches light on top and shades under it) and its middle on the lower lip (a shadow
+        beneath it), full over the middle and tucked at the corners; the skin just past the vermilion's edges follows.
   "cheek_flat": m | {"amount": m, "descend": 0..1 (0.35)}
         the mid cheek flattened: the tissue under the orbit (infraorbital + the front of the cheekbone) thins in by
         `amount` and slides down by descend x amount (the malar fat's descent; the tear trough shows).
@@ -32,7 +36,7 @@ from __future__ import annotations
 
 import numpy as np
 
-KEYS = ("nasolabial", "prejowl", "lid_fold", "eye_bag", "lip_bow", "cheek_flat", "lips_thin")
+KEYS = ("nasolabial", "prejowl", "lid_fold", "eye_bag", "lip_bow", "lip_roll", "cheek_flat", "lips_thin")
 FOLD_WIDTH = 0.0032   # m: half-width of the nasolabial crease
 SULCUS_RADIUS = 0.009  # m
 LIP_FADE = 0.008      # m: how far above / below the vermilion the skin follows thinner lips
@@ -166,6 +170,31 @@ def apply(W: np.ndarray, lm: np.ndarray, shape: dict, faces: list, groups: dict,
             above = _sstep((W[:, 2] - lm[66][2]) / max(0.5 * float(lm[62][2] - lm[66][2]), 0.0008 * k))
             g = np.exp(-(q[:, 0] / (0.14 * mw)) ** 2 - (q[:, 2] / (0.08 * mw)) ** 2 - (q[:, 1] / (0.15 * mw)) ** 2) * above
             D += (tub * g)[:, None] * np.array([0.0, -0.5, -1.0])
+    if shape.get("lip_roll"):
+        o = _opt(shape["lip_roll"], "upper")
+        mw = float(np.linalg.norm(lm[54] - lm[48]))
+        mxm = 0.5 * float(lm[48][0] + lm[54][0])
+        fr = _sstep((-N[:, 1] - 0.1) / 0.4)
+        x = W[:, 0]
+
+        def line(ids):
+            P_ = lm[list(ids)]
+            o_ = np.argsort(P_[:, 0])
+            return np.interp(x, P_[o_, 0], P_[o_, 2])
+        along = np.exp(-((x - mxm) / (0.42 * mw)) ** 4)          # full over the middle, tucked at the corners
+        front = np.abs(W[:, 1] - float(lm[62][1])) < 0.015 * k
+        for key, top_ids, bot_ids, peak in (("upper", (48, 49, 50, 51, 52, 53, 54), (48, 60, 61, 62, 63, 64, 54), 0.62),
+                                            ("lower", (48, 60, 67, 66, 65, 64, 54), (48, 59, 58, 57, 56, 55, 54), 0.45)):
+            a = 1.8 * float(o.get(key, 0.0)) * k                    # (the shared smoothing takes ~half of a narrow bump)
+            if not a:
+                continue
+            zt, zb = line(top_ids), line(bot_ids)
+            t = (zt - W[:, 2]) / np.maximum(zt - zb, 1e-4)          # 0 at the vermilion's top edge, 1 at its bottom
+            pad = 0.35
+            tt = (t + pad) / (1 + 2 * pad)
+            bump = np.clip(np.sin(np.pi * np.clip(tt, 0, 1)), 0, None) ** 1.5
+            bump = bump * np.exp(-((tt - peak) / 0.45) ** 2)
+            D += (a * bump * along * fr * front)[:, None] * np.array([0.0, -1.0, 0.15 if key == "upper" else -0.15])
     if shape.get("cheek_flat"):
         o = _opt(shape["cheek_flat"], "amount")
         a, desc = float(o.get("amount", 0.0)) * k, float(o.get("descend", 0.35))

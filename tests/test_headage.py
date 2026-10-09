@@ -225,6 +225,26 @@ def test_lip_bow_and_tubercle():
     assert it["ok"], it
 
 
+def test_lip_roll_projects_the_vermilion():
+    """lip_roll: the upper lip's vermilion comes forward (-y) by about the amount over the middle, much less at the
+    corners; the nose's base, the chin and (upper only) the lower lip stay."""
+    b, st0, st1, P0, P1, d = moved({"lip_roll": {"upper": 0.0015}})
+    L0, L1 = st0["L"], st1["L"]
+    mid = 0.5 * (L0[51] + L0[62])
+    near = np.linalg.norm(P0 - mid, axis=1) < 0.002
+    assert 0.0011 < (-d[near][:, 1]).max() < 0.0022, (-d[near][:, 1]).max()
+    corner = np.linalg.norm(P0 - L0[48], axis=1) < 0.002
+    assert (-d[corner][:, 1]).max() < 0.5 * (-d[near][:, 1]).max()
+    for i in (33, 8, 57):
+        assert np.linalg.norm(L1[i] - L0[i]) < 0.0003, (i, np.linalg.norm(L1[i] - L0[i]))
+    b2, _, st2, _, _, d2 = moved({"lip_roll": {"lower": 0.0015}})
+    lo = np.linalg.norm(P0 - 0.5 * (L0[57] + L0[66]), axis=1) < 0.002
+    assert (-d2[lo][:, 1]).max() > 0.0011
+    for bb, s in ((b, st1), (b2, st2)):
+        it = hf.integrity(bb, s, st0)
+        assert it["ok"], it
+
+
 if __name__ == "__main__":
     if _have():
         names = sys.argv[1:] or [k for k in dict(globals()) if k.startswith("test_")]
