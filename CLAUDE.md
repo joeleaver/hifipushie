@@ -6354,7 +6354,7 @@ mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/da
   definitions: 2.5 -> ~1.3 mm; a synthetic-data training job); photo calibration of the table; the read's sd per
   author; `humanfit_map` in fit_likeness's first stage.
 
-## Reference modelling study 2 (2026-10-08/09, "refstudy2" agent, branch `worktree-agent-aaf6ba14fbb49e2c5`)
+## Reference modelling study 2 (2026-10-08/09, "refstudy2" agent, branch `worktree-agent-ae4b2050b31cc1395`)
 
 Takes over from refstudy. Scripts `spikes/refstudy2/` (structure.py = the step driver: `mk <dst>` builds the steps of
 steps.json ({dst: {src, patch of base.head, macros (identity, held), idscale}}), prints the evidence residual through
