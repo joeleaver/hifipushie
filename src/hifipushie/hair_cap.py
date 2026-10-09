@@ -16,13 +16,13 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-VERSION = 6
+VERSION = 7
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
-LIFT = 0.5  # the cap stands at this share of the hair's height over the scalp
-LIFT_MAX = 0.012  # m
-RELIEF = 0.35  # x the strands' real slopes in the normal map (clamped at SLOPE)
-SLOPE = 0.6
+LIFT = 0.7  # the cap stands at this share of the hair's height over the scalp
+LIFT_MAX = 0.015  # m
+RELIEF = 0.7  # x the strands' real slopes in the normal map (clamped at SLOPE)
+SLOPE = 1.0
 
 
 def _ss(x):
@@ -170,7 +170,8 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     # depth: how far the top strand stands over the hair around it (the shade between hairs and clumps)
     rel = hs - blur(hgt, 0.0022)
     occ = hs - blur(hgt, 0.006)
-    dep = np.clip(0.66 + rel / 0.002 + 0.5 * np.minimum(occ, 0.0) / 0.004, 0.08, 1.0)
+    occ2 = blur(hgt, 0.004) - blur(hgt, 0.014)  # hollows between tufts, a centimetre across
+    dep = np.clip(0.66 + rel / 0.002 + 0.5 * np.minimum(occ, 0.0) / 0.004 + 0.6 * np.clip(occ2, -0.004, 0.002) / 0.004, 0.08, 1.0)
     su = np.gradient(hs, axis=1) / mur
     sv = -np.gradient(hs, axis=0) / mvr  # (up the image = up the head)
     su, sv = np.clip(RELIEF * su, -SLOPE, SLOPE), np.clip(RELIEF * sv, -SLOPE, SLOPE)
@@ -214,7 +215,7 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
         for j in range(len(b) - 1):
             seg = hv[b[j]:b[j + 1]]
             if len(seg) >= 12:
-                Hg[ks[b[j]]] = np.percentile(seg, 65)
+                Hg[ks[b[j]]] = np.percentile(seg, 85)
     Hg = ndimage.gaussian_filter(Hg.reshape(ne, na), (1.0, 1.0), mode=("nearest", "wrap"))
     return {"alpha": a_out.astype(np.float32), "id": np.clip(idm, 0, 1).astype(np.float32),
             "depth": dep.astype(np.float32), "grey": np.clip(grey, 0, 1).astype(np.float32),

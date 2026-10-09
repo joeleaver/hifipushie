@@ -10,6 +10,9 @@ capability, `groom.loose`:
    "lift": 0.006,           m the hair stands off the scalp at its roots (root volume)
    "stiff": 0.3,            0 = hangs at once .. 1 = keeps the direction it left the scalp in (short hair, an afro)
    "out": 0.0,              0 = combed along the scalp .. 1 = straight out of the scalp
+   "lay": 0.0,              0..1 (or per region): the hair is pressed onto the head along its flow, as a comb or a
+                            hand lays it: each step loses that share of its outward direction. Lowers a crop's top
+                            without `stiff` (which, low, lets gravity curl short locks into hooks)
    "back": 0.0,             0..1: the top and front combed back over the crown (with parting "none": slicked back)
    "flow": {"front": [0.4, -0.5, 0.7], "top": [0.6, -0.2, 0.2], "sides": [0, 0.7, -0.7]},
                             optional, per region: the way the hair is combed there as a world direction (x his left,
@@ -39,7 +42,7 @@ import json
 
 import numpy as np
 
-LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0,
+LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
          "flow": None}
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
@@ -234,7 +237,9 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     out = float(out_r.mean())
     outi = np.clip(out_r + float(p["messy"]) * rng.uniform(-0.3, 0.3, m), 0, 1)
     outi[is_fr] = np.minimum(outi[is_fr], 0.25)
-    d = _unit(tang * (1 - outi)[:, None] + nrm * (outi + 0.12)[:, None])
+    lay = np.clip(by_region(p.get("lay", 0.0), 0.0), 0, 1)
+    lay[is_fr] = 0.0
+    d = _unit(tang * (1 - outi)[:, None] + nrm * (outi + 0.12 * (1 - lay))[:, None])
     stiff = np.clip(by_region(p["stiff"], 0.3), 0, 1)
     if fr:
         stiff[is_fr] = float(fr["stiff"])
@@ -257,6 +262,9 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         s = ds * k
         t = k / (n - 1)
         d = _unit(d + (kg * ds)[:, None] * DOWN)
+        if lay.any():  # laid: the direction's outward part (off the head, about its centre) is combed away
+            rn_ = _unit(P[:, k - 1] - sc.C)
+            d = _unit(d - (lay * np.maximum((d * rn_).sum(1), 0.0))[:, None] * rn_)
         if rest.any():  # lying on a shoulder: hair slides off it to the front or the back, never out along the arm
             # (long hair fanned out over both arms to the elbows)
             sx = np.sign(P[:, k - 1, 0] - sc.C[0])
