@@ -5619,6 +5619,19 @@ def pressed(under: dict, body: "Body", cap: float = UNDER_CAP) -> np.ndarray:
     n = vn[tree.query(V)[1]]
     cl = body.clearance(V)
     made = np.isin(M["piece"], [M["names"].index(nm) for nm in made_pieces(M, interfacing(res["pieces"], M)) if nm in M["names"]])
+    # (and what was rolled or folded back stays as it lies: an open shirt neck's fronts, rolled back from the neck
+    # to the first closed button, pressed flat along the body's normals drew as a ragged, torn-looking edge under a
+    # jacket: om_13)
+    from . import folds as foldmod
+    for fd in M.get("folds") or []:
+        if fd.get("kind") == "roll" or fd.get("name", "").startswith("open neck"):
+            try:
+                g_ = foldmod._geom(M, fd)
+                made[np.asarray(g_["rows"][0]["v"], np.int64)] = True
+                for row in fd["rows"]:
+                    made[np.asarray(row, np.int64)] = True
+            except Exception:
+                pass
     keep = np.where(made, 1.0, 0.0)  # 1 = stays as simulated
     F = M["F"]
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]], np.asarray(M["sew"]).reshape(-1, 2)], 1), axis=0)
