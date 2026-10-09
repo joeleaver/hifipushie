@@ -61,7 +61,7 @@ def test_perfect_normals_move_the_identity_toward_the_truth(monkeypatch):
     Vt = V0 + np.tensordot(c_true, IB, 1)
     nmap = _normal_map(hn, humanfit, likeness, G, Vt, cam)
     nv = len(V0)
-    monkeypatch.setitem(hn._C, "cal", {"g": np.ones((4, nv)), "s": np.full((4, nv), 0.02), "p": np.ones((4, nv)), "flip": np.ones(3)})
+    monkeypatch.setitem(hn._C, "caldavid", {"g": np.ones((4, nv)), "s": np.full((4, nv), 0.02), "p": np.ones((4, nv)), "flip": np.ones(3)})
     c = np.zeros(K)
     for _ in range(4):
         A, y, info = hn.rows(nmap, V0 + np.tensordot(c, IB, 1), IB, c, cam, 0, inflate=1.0)
@@ -83,3 +83,22 @@ def test_hidden_pixels_and_restriction_are_left_out():
     A2, y2, info2 = hn.rows(nmap, V0, IB, c, cam, 0, hide=hide)
     assert 0 < info2["vertices"] < info["vertices"]
     assert np.abs(y).max() < 1.0                 # the mean head against its own normals: nothing to say
+
+
+def test_model_option_and_photo_gain():
+    hn, humanfit, likeness, G, IB, V0, cam = _setup()
+    for m in hn.MODELS:
+        cal = hn.calibration(m)
+        assert cal["g"].shape == hn.calibration()["g"].shape and np.isfinite(cal["s"][0]).sum() > 2000
+    with pytest.raises(ValueError):
+        hn.calibration("nonesuch")
+    K = IB.shape[0]
+    c_true = np.random.default_rng(5).normal(0, 1.0, K)
+    nmap = _normal_map(hn, humanfit, likeness, G, V0 + np.tensordot(c_true, IB, 1), cam)
+    c = np.zeros(K)
+    A1, y1, i1 = hn.rows(nmap, V0, IB, c, cam, 0)
+    A2, y2, i2 = hn.rows(nmap, V0, IB, c, cam, 0, gain_scale=hn.PHOTO_GAIN)
+    assert i2["gain_scale"] == hn.PHOTO_GAIN and A1.shape == A2.shape
+    assert np.linalg.norm(y2) > 1.2 * np.linalg.norm(y1)        # larger gains ask for more of the picture's relief
+    A3, y3, i3 = hn.rows(nmap, V0, IB, c, cam, 0, model="marigold")
+    assert i3["model"] == "marigold" and i3["vertices"] > 100
