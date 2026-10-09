@@ -202,7 +202,7 @@ VARIANTS = 4
 
 
 CLUTTER_KINDS = ("bush", "tussock", "tallgrass", "boulder", "river_rock", "cobbles", "slab", "driftwood", "reeds",
-                 "litter")
+                 "litter", "sedge")
 CLUTTER_VARIANTS = 4
 
 
@@ -428,7 +428,7 @@ def _scrub(rng, v):
     return V, F, cols
 
 
-STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter")
+STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter", "sedge")
 
 
 def _lump(bm, rng, centre, size, rough, sub=2):
@@ -458,6 +458,9 @@ def _stream_piece(kind, rng):
         V = np.asarray(V, float)
         V[:, :2] *= 1.0
         return V, F, np.asarray(C) * np.array([0.9, 1.0, 0.8]), True
+    if kind == "sedge":  # (1 m across at scale 1: a dense arching tussock)
+        V, F, C = _tuft(rng, 90, 1.0, 0.3, 0.55, 0.2)
+        return np.asarray(V, float), F, np.asarray(C) * np.array([0.85, 1.0, 0.7]), True
     bm = bmesh.new()
     cols = []
     stone = lambda: np.array([0.085, 0.08, 0.07]) * rng.uniform(0.7, 1.5) * (1 + rng.normal(0, 0.06) * np.array([1, 0.2, -1]))

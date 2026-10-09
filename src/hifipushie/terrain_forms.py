@@ -247,6 +247,27 @@ def _cells(T, p):
     return iy * len(T.xs) + ix
 
 
+def _ease_level(hl, xy, reach=12.0):
+    """A river's water level along its path, eased: where a low bank holds the level down it dropped a few dm within
+    one sample and ran level to the next low bank (a staircase: water simulated or drawn on it stood in steps). The
+    eased level is smooth over ~`reach` m, falls downstream all the way and is nowhere above the stepped one (so still
+    never above a bank)."""
+    step = np.linalg.norm(np.diff(xy, axis=0), axis=1)
+    sig = max(1.0, reach / max(float(np.mean(step)), 1e-3))
+    s = hl.copy()
+    w = max(1.0, sig / 3.0)
+    pad = min(len(hl) - 1, int(4 * w) + 1)
+
+    def sm(a, width):  # (the ends carried on at their own slope: held level, the source end sagged metres)
+        return ndimage.gaussian_filter1d(np.pad(a, pad, mode="reflect", reflect_type="odd"), width)[pad:-pad]
+    for _ in range(60):  # (a smooth curve hung under the steps' inner corners: smooth a little, cap at the steps, again;
+        # one wide smoothing shifted down until it cleared them sank the river metres under its banks)
+        s = np.minimum(hl, sm(s, w))
+    s = sm(s, 1.0)
+    s = s - ndimage.maximum_filter1d(np.maximum(s - hl, 0.0), 5, mode="nearest")  # (the last smoothing's corners: mm)
+    return np.minimum.accumulate(np.minimum(s, hl))
+
+
 def water(T):
     """Rivers carry water (a channel a metre or so deep) except where they're dry; fords are wide and shallow."""
     fords = []
@@ -286,6 +307,7 @@ def water(T):
         bmin = -ndimage.maximum_filter1d(-bmin, 9, mode="nearest")  # (a few points either way: one low cell isn't a bank)
         hl = np.where(np.isfinite(bmin), np.minimum(hl, bmin - 0.3), hl)
         hl = np.minimum.accumulate(hl)
+        hl = _ease_level(hl, L.xy)
         spill = np.zeros(len(L.xy), bool)
         for lk in T.lakes.values():
             if lk.get("area", 1) == 0:

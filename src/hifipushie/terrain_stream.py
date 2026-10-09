@@ -43,8 +43,13 @@ CFG = {
     # level's rivers are compressed in length, so steeper than their character; see the guide)
     "spacing": [6.0, 2.5],   # pool-to-pool spacing in channel widths, at energy 0 (riffle-pool) .. 1 (step-pool)
     "bend": 0.2,             # half-width / radius of curvature that counts as a full bend
-    "pool": 0.55,            # m: a pool's extra depth (x the channel's size)
-    "riffle": 0.45,          # share of the depth a riffle's crest takes back
+    "pool": 0.8,             # m: a pool's extra depth (x the channel's size)
+    "riffle": 0.6,           # share of the depth a riffle's crest takes back
+    "alternate": 0.75,       # how strongly pools and bars alternate from bank to bank along a straight reach (the
+    # thalweg's wander: alternate bars), as a share of a full bend; 0 = only real bends sort the bed
+    "cut": [0.35, 0.85],     # m: the cut outer bank's height over the water (wandering between; x the channel's size);
+    # [0, 0] = banks as the terrain graded them
+    "cut_riser": 0.35,       # m: the cut face's width in plan in the meshed ground (the maps bake it crisper)
     "bar": 0.10,             # m: a point bar's top over the water (0: bars stay awash)
     "lump": 0.07,            # m: the bed's unevenness (metre-scale)
     "min_depth": 0.08,       # m of water the shaped bed keeps (bars aside)
@@ -66,9 +71,13 @@ KINDS = {  # clutter kinds: size = the largest plan dimension (m) at scale 1 x s
                   "axis (0 = along world +x)"},
     "reeds": {"scale": [0.5, 1.4], "squash": [0.75, 1.35], "what": "a reed / sedge clump rooted at the water line"},
     "litter": {"scale": [0.8, 2.5], "squash": [1.0, 1.0], "what": "a leaf and twig debris patch (a decal)"},
+    "sedge": {"scale": [0.4, 0.9], "squash": [0.8, 1.3], "what": "a sedge / tall bank grass tussock along the wet "
+              "margin and the bank's foot"},
+    "bush": {"scale": [0.6, 1.9], "squash": [0.45, 1.1], "what": "a bank bush (willow / alder scrub) on the bank top"},
 }
 PLACES = ("", "water", "margin", "bank", "bar")
-SPACING = {"river_rock": 1.1, "cobbles": 0.8, "slab": 1.5, "driftwood": 2.2, "reeds": 0.9, "litter": 2.0}
+SPACING = {"river_rock": 1.1, "cobbles": 0.8, "slab": 1.5, "driftwood": 2.2, "reeds": 0.9, "litter": 2.0, "sedge": 0.7,
+           "bush": 2.4}
 
 
 def _ss(e0, e1, x):
@@ -113,7 +122,7 @@ class Streams:
         reach = float(cfg["reach"])
         self.far = far = reach + 4.0
         sd = np.full(shape, far)
-        G = {k: np.zeros(shape) for k in ("level", "energy", "bend", "phi", "w", "tx", "ty")}
+        G = {k: np.zeros(shape) for k in ("level", "energy", "bend", "phi", "w", "tx", "ty", "side")}
         rid = np.zeros(shape, np.int8)
         c = self.c
         X, Y = np.asarray(T.X, float), np.asarray(T.Y, float)
@@ -187,6 +196,8 @@ class Streams:
             put(G["energy"], at(en))
             put(G["bend"], at(bend) * side)  # (> 0: the inside of the bend)
             put(G["phi"], at(phi))
+            # (which bank: +1 left of the flow; easing through 0 over the middle of the channel)
+            put(G["side"], side * np.clip(best_d / np.maximum(0.35 * wv, 0.5), 0, 1))
             put(G["w"], wv)
             put(G["tx"], tx)
             put(G["ty"], ty)
@@ -197,7 +208,7 @@ class Streams:
             # reaches for the report: stretches of one character
             cls = np.digitize(en, [0.15, 0.4, 0.7])
             self.reaches.append({"name": name, "s": s, "energy": en, "grade": grade, "width": 2 * ws, "live": live,
-                                 "class": cls, "xy": xy, "level": lv})
+                                 "class": cls, "xy": xy, "level": lv, "bend": bend})
         self.any = bool(self.names)
         self.zone = (sd < reach + 1.0).astype(np.uint8)
         if not self.any:
@@ -236,9 +247,14 @@ class Streams:
         level, energy 0..1, bend (-1 outside .. 1 inside of a bend), phi (pool phase, cycles), w (half width m),
         t (flow direction, (n, 2)), ford 0..1, u (0 mid-channel .. 1 at the edge)."""
         g = {k: self._at(getattr(self, k), xy) for k in ("sd", "level", "energy", "bend", "phi", "w", "tx", "ty",
-                                                         "ford")}
+                                                         "ford", "side")}
         g["energy"] = np.clip(g["energy"], 0, 1)
-        g["bend"] = np.clip(g["bend"], -1, 1)
+        g["side"] = np.clip(g["side"], -1, 1)
+        g["curve"] = np.clip(g["bend"], -1, 1)  # (the path's own bends)
+        # along a straight reach the thalweg still wanders from bank to bank (alternate bars): a pool against one
+        # bank, the next against the other, a bar opposite each; real bends override it
+        alt = self.cfg["alternate"] * _ss(2.0, 4.0, g["w"]) * np.sin(np.pi * g["phi"]) * g["side"]
+        g["bend"] = np.clip(g["curve"] - alt * (1 - np.abs(g["curve"])), -1, 1)
         g["ford"] = np.clip(g["ford"], 0, 1)
         g["u"] = np.clip(1 + g["sd"] / np.maximum(g["w"], 0.5), 0, 1.5)
         t = np.c_[g.pop("tx"), g.pop("ty")]
@@ -259,9 +275,26 @@ class Streams:
         return pool, riffle, bar
 
     # ---- the bed's shape (terrain_ground.Edits.column)
-    def dz(self, x, y, h):
-        """The height change of columns whose ground is h: only under the water (the banks keep their ground), the
-        bed kept `min_depth` under the water's level except a bar's top."""
+    def cut(self, xy, g):
+        """(outer 0..1, cut height m, inner 0..1, cut distance m) at points: where the bank is a cut bank and how
+        high, where it is the bar's side, and how far from the water's nominal edge the cut stands at most (on low
+        flat ground the bank never reaches the cut's height: cut by height alone the channel widened to the zone's
+        edge)."""
+        lo, hi = self.cfg["cut"]
+        near = _ss(6.0, 4.0, g["sd"]) * (1 - g["ford"])
+        n = noise.fbm(np.c_[xy, np.zeros(len(xy))], 7.0, 2, seed=751)
+        hc = (lo + (hi - lo) * n) * np.clip(g["w"] / 5.0, 0.5, 1.2)
+        outer = _ss(0.15, 0.5, -g["bend"]) * near * (1.0 if hi > 0 else 0.0)
+        inner = _ss(0.15, 0.5, g["bend"]) * near
+        return outer, hc, inner, 0.5 + 2.4 * hc
+
+    def dz(self, x, y, h, riser=None):
+        """The height change of columns whose ground is h. Under the water: pools, riffles, bars, an uneven bed, kept
+        `min_depth` under the water's level except a bar's top. The bank's foot within a few metres of the water: on
+        the OUTER side (of a bend, or of the thalweg's wander) the graded ramp is cut back to a low near-vertical step
+        (`cut` m high: the turf ends at its top, the water stands at its foot); on the inner side the ramp's foot is
+        flattened into the bar. Ground higher than the cut, fords, routes and sites keep theirs. riser: the cut
+        face's half-width in plan (the maps bake it crisper than the mesh)."""
         cfg = self.cfg
         out = np.zeros(len(x))
         if not self.any or not cfg["shape"]:
@@ -272,6 +305,15 @@ class Streams:
         xy = np.c_[x[k], y[k]]
         g = self.sample(xy)
         dep = g["level"] - h[k]
+        # the banks' foot (above the water, and the first dm under it so the two meet)
+        outer, hc, inner, sdc = self.cut(xy, g)
+        hb = -dep
+        rp = float(self.cfg["cut_riser"] if riser is None else riser)
+        e = max(0.33 * rp, 0.04)  # (the riser, as a height)
+        face = (1 - _ss(hc - e, hc + e, hb)) * _ss(sdc + rp, sdc - rp, g["sd"])
+        b = -(np.maximum(hb, 0.0) + 0.2 * _ss(-0.35, 0.0, hb)) * face * outer * (hb > -0.35)
+        b -= 0.65 * np.maximum(hb, 0.0) * _ss(0.8, 0.1, hb) * inner  # (the bar's side: the ramp's foot laid flat)
+        out[k] = b
         m = _ss(0.05, 0.4, dep) * _ss(1.5, 0.0, g["sd"]) * (1 - g["ford"])
         kk = np.flatnonzero(m > 1e-4)
         if not len(kk):
@@ -291,7 +333,7 @@ class Streams:
         d += bar * (dep + cfg["bar"] * _ss(0.45, 0.9, g["u"]))
         top = dep - cfg["min_depth"] + bar * (cfg["min_depth"] + cfg["bar"])  # (the most the bed may rise)
         d = np.minimum(d, np.maximum(top, 0.0))
-        out[k[kk]] = m * d
+        out[k[kk]] += m * d
         return out
 
     # ---- materials
@@ -318,6 +360,17 @@ class Streams:
             (1 - bed)
         pool, riffle, bar = self.forms(xy, g)
         e = g["energy"]
+        # the cut bank's face (bare damp earth from the water up to the turf's edge) and the bar's dry side
+        outer, hc, inner, sdc = self.cut(xy, g)
+        hb = -dep
+        cutf = outer * _ss(hc + 0.12, hc - 0.06, hb) * _ss(sdc + 0.6, sdc + 0.2, g["sd"]) * (hb > -0.1) * (1 - bed)
+        damp = np.maximum(damp, cutf)
+        dry = inner * _ss(0.5, 0.15, hb) * _ss(3.5, 1.5, g["sd"]) * (1 - bed) * \
+            _ss(0.35, 0.55, noise.fbm(Pf, 3.0, 2, seed=752) + 0.3 * inner)
+        damp = damp * (1 - dry)
+        # sorting across the channel: coarse along the thalweg (toward the outer bank), finer toward the inner margin
+        v = -np.tanh(4 * g["bend"]) * np.clip(g["u"], 0, 1)  # (+1 at the outer bank, -1 at the inner)
+        coarse = _ss(1.0, 0.3, np.abs(v - 0.45 * np.abs(g["bend"]))) * (1 - 0.6 * _ss(0.7, 1.0, g["u"]))
         n5 = noise.fbm(Pf, 5.0, 2, seed=712)
         n2 = noise.fbm(Pf, 1.6, 3, seed=713)
         rock = _ss(0.55, 0.95, e + 0.5 * (n5 - 0.5)) * _ss(0.42, 0.6, noise.fbm(Pf, 3.5, 3, seed=714)) * \
@@ -329,11 +382,17 @@ class Streams:
         # (and fines in patches a few metres across wherever the water is slow: a bed of nothing but cobbles from bank
         # to bank read as one texture)
         silt = np.maximum(silt, 0.75 * slow * _ss(0.5, 0.64, noise.fbm(Pf, 5.5, 3, seed=719)) * (1 - 0.7 * riffle))
+        silt = np.maximum(silt, 0.8 * (1 - coarse) * (1 - 0.8 * e) * _ss(0.42, 0.6, noise.fbm(Pf, 3.0, 3, seed=720)))
         silt = np.clip(silt * (1 - bar) * (1 - rock) * (1 - g["ford"]), 0, 1)
+        # (the bar's dry side is bed too: gravel above the water)
+        tot = bed + dry
+        rock = np.where(tot > 1e-6, rock * bed / np.maximum(tot, 1e-6), rock)
+        silt = np.where(tot > 1e-6, silt * bed / np.maximum(tot, 1e-6), silt)
+        bed = tot
         moss = np.exp(-((dep + 0.06) / 0.16) ** 2) * (0.4 + 0.6 * noise.fbm(Pf, 0.9, 2, seed=715))
         return {"k": k, "bed": bed, "damp": damp, "gravel": np.clip(1 - rock - silt, 0, 1), "silt": silt, "rock": rock,
                 "dep": dep, "moss": moss, "bar": bar, "pool": pool, "riffle": riffle, "energy": e, "u": g["u"],
-                "sd": g["sd"]}
+                "sd": g["sd"], "coarse": coarse, "cut": cutf, "hc": hc}
 
     def colour(self, P, c, rc, st):
         """The display colour (sRGB) at the stream's points P (= the rows st["k"]): c the ground's colour as painted,
@@ -346,7 +405,10 @@ class Streams:
         # cobbles and gravel: stones' tones at 0.6 m and patches at 2.5 m (the stones themselves are the swatch's)
         mot = 0.55 * (noise.fbm(Pf, 0.6, 2, seed=721) - 0.5) + 0.45 * (noise.fbm(Pf, 2.5, 2, seed=722) - 0.5)
         warm = noise.fbm(Pf, 3.0, 2, seed=723) - 0.5
-        gr = np.asarray(LOOK["gravel"]) * (1 + 0.5 * mot)[:, None] * (1 + warm[:, None] * np.array([0.10, 0.0, -0.12]))
+        # (coarse along the thalweg: bigger, more contrasted stones; the fine margins evener and a shade paler)
+        co = st["coarse"]
+        gr = np.asarray(LOOK["gravel"]) * (1 + (0.3 + 0.45 * co) * mot)[:, None] * \
+            (1 + warm[:, None] * np.array([0.10, 0.0, -0.12])) * (1.08 - 0.14 * co)[:, None]
         # (wet stone is darker, not black: the water over it darkens it again in the engine; riffles' clean coarse
         # stones paler, the pools' duller)
         gr = gr * (1.12 - 0.24 * wetd - 0.10 * _ss(0.2, 1.0, dep))[:, None]
@@ -357,18 +419,25 @@ class Streams:
         br = rc * (1.0 - 0.5 * wetd)[:, None]
         bedc = gr * st["gravel"][:, None] + si * st["silt"][:, None] + br * st["rock"][:, None]
         # moss and algae on the stones at the water line (not on silt)
-        ms = (st["moss"] * (st["gravel"] + st["rock"]) * 0.55)[:, None]
+        ms = (st["moss"] * (st["gravel"] + st["rock"]) * 0.7)[:, None]
         bedc = bedc * (1 - ms) + np.asarray(LOOK["moss"]) * ms
         al = (_ss(0.05, 0.4, dep) * st["pool"] * 0.25 * (st["gravel"] + st["rock"]))[:, None]
         bedc = bedc * (1 - al) + np.asarray(LOOK["algae"]) * al
         # the bank's damp band: the ground's own colour darker, bare damp earth showing through it
         dm = st["damp"][:, None]
         bank = c * 0.62 * 0.45 + np.asarray(LOOK["bank"]) * 0.55 * (1 + 0.3 * mot[:, None])
+        # the cut face: bare earth, darkest under the turf's overhanging edge, roots and stones as flecks
+        cf = st["cut"][:, None]
+        hb = -dep
+        under = _ss(st["hc"] - 0.3, st["hc"] - 0.05, hb)[:, None]
+        fleck = (noise.fbm(P * np.array([1.0, 1.0, 4.0]), 0.25, 2, seed=725) - 0.5)[:, None]
+        face = np.asarray(LOOK["bank"]) * (1.05 - 0.35 * under) * (1 + 0.5 * fleck)
+        bank = bank * (1 - cf) + face * cf
         out = c * (1 - dm) + bank * dm
         b = st["bed"][:, None]
         return np.clip(out * (1 - b) + bedc * b, 0, 1)
 
-    def relief(self, P, w, texel):
+    def relief(self, P, w, texel, coarse=None):
         """The bed's fine relief as a plan gradient (n, 2), for the maps' normals: cobble and boulder lumps where the
         gravel layer weighs w (each octave fading where the texel can't carry it)."""
         n = len(P)
@@ -411,6 +480,13 @@ class Streams:
                                  f"{r['width'][i:j + 1].mean():.0f} m wide)")
                 i = j + 1
             out.append(f"stream bed {r['name']}: " + "; ".join(parts))
+            wide = live & (r["width"] > 5.0)
+            bmax = float(np.abs(r["bend"][wide]).max()) if wide.any() else 0.0
+            if bmax < 0.5:
+                out.append(f"stream bed {r['name']}: its path hardly bends (the tightest bend is {bmax:.1f} of a full one: a "
+                           f"radius under ~5 half-widths), so pools, bars and cut banks alternate from side to side as in a "
+                           f"straight channel; for point bars inside real bends give the river more `through` points "
+                           f"(meanders with a radius of 2-4 channel widths)")
         return out
 
 
@@ -506,6 +582,8 @@ def clutter(T, mats, field, box=None, seed=11):
         elif kind == "slab":
             p = 0.22 * _ss(0.35, 0.75, e) * _ss(-1.2, -0.2, sd) * _ss(2.0, 0.6, sd) * \
                 _ss(0.45, 0.65, noise.fbm(Pf, 5.0, 2, seed=743))
+            # (and a few big flat slabs out in the channel on any reach: on the riffles, awash)
+            p = np.maximum(p, 0.035 * (0.4 + riffle) * inwater * _ss(0.6, 0.72, noise.fbm(Pf, 6.0, 2, seed=747)))
             scale = lo + (hi - lo) * u_a ** 1.3
             yaw = flow + 40 * (u_b - 0.5)
             place = np.where(dep > 0.03, 1, 2)
@@ -527,6 +605,22 @@ def clutter(T, mats, field, box=None, seed=11):
                 (1 - 0.7 * _ss(0.2, 0.6, -g["bend"]))  # (the outer bank is cut, not reedy)
             scale = lo + (hi - lo) * u_a
             place = np.full(n, 2)
+        elif kind == "sedge":  # tussocks along the wet margin and up the bank's foot: denser on the slow inner side,
+            # thin on a cut bank (its turf ends at the edge); in rows of clumps, with gaps
+            outer, hc, inner, _ = S.cut(xy, g)
+            hb = -dep
+            p = 0.55 * _ss(-0.08, 0.05, hb) * _ss(1.1, 0.5, hb) * (sd < 4.0) * (0.3 + 0.6 * inner) * (1 - 0.75 * outer) * \
+                (0.25 + 0.75 * _ss(0.4, 0.6, noise.fbm(Pf, 4.0, 2, seed=748))) * (1 - 0.6 * _ss(0.5, 0.9, e))
+            p = p + 0.5 * outer * np.exp(-((hb - hc - 0.15) / 0.12) ** 2)  # (the turf's fringe along a cut bank's top)
+            scale = lo + (hi - lo) * u_a
+            place = np.where(hb < 0.2, 2, 3)
+        elif kind == "bush":  # scrub on the bank top in clumps (a willow or alder line), fewer on fast reaches
+            hb = -dep
+            p = 0.3 * _ss(0.25, 0.5, hb) * _ss(2.6, 1.8, hb) * (sd < 6.5) * (sd > 1.2) * \
+                _ss(0.56, 0.7, noise.fbm(Pf, 11.0, 2, seed=749)) * (1 - 0.5 * e)
+            scale = lo + (hi - lo) * u_a
+            squash = 0.8 + 0.3 * u_c
+            place = np.full(n, 3)
         else:  # litter: leaf and twig drifts in the slack of pools and on the bank's foot
             p = 0.22 * pool * (np.abs(sd) < 1.0) * _ss(0.6, 0.2, e) + 0.05 * (sd > 0.4) * (sd < 4.0) * (-dep < 1.0)
             p = p * _ss(0.4, 0.6, noise.fbm(Pf, 6.0, 2, seed=746))
@@ -636,7 +730,7 @@ def summary(S, C, box=None):
 def manifest(S, C):
     """The export manifest's "clutter" section for the stream kinds."""
     return {"kinds": {k: {"scale_m": v["scale"], "squash": v["squash"], "what": v["what"], "z": "surface"}
-                      for k, v in KINDS.items()},
+                      for k, v in KINDS.items() if k != "bush"},  # (bush: the older kind's entry stands)
             "places": {"water": "in the channel, its base on the bed under the water", "margin": "at the water line",
                        "bank": "on the bank beside the water", "bar": "on a gravel bar inside a bend",
                        "": "dry ground (the older kinds)"},
@@ -662,7 +756,7 @@ def cobble_swatch(size=2.0, res=256, seed=4251):
     hgt = 0.004 * spectral(n, 1.2, seed + 1, lo=10)
     tone = 0.62 + 0.10 * spectral(n, 0.8, seed + 2, lo=12)  # (the gravel between: darker)
     tint = np.zeros((n, n, 3))
-    ns = int(1500 * (L / 2.0) ** 2)
+    ns = int(1150 * (L / 2.0) ** 2)  # (gravel shows between: wall-to-wall domes read as bubble wrap)
     rad = np.clip(0.028 * np.exp(0.55 * rng.standard_normal(ns)), 0.012, 0.11)
     order = np.argsort(rad)  # (small first: the big stones lie on top)
     cen = rng.random((ns, 2)) * n
@@ -676,7 +770,7 @@ def cobble_swatch(size=2.0, res=256, seed=4251):
         dx, dy = jj - cx, ii - cy
         ca, sa = np.cos(a), np.sin(a)
         d2 = ((dx * ca + dy * sa) / r) ** 2 + ((-dx * sa + dy * ca) / (r * el)) ** 2
-        dome = rad[q] * 0.55 * np.sqrt(np.clip(1 - d2, 0, 1))
+        dome = rad[q] * 0.42 * np.sqrt(np.clip(1 - d2, 0, 1)) ** 0.8  # (flattish water-worn tops)
         sl = (ii % n, jj % n)
         m = (d2 < 1) & (dome + 0.2 * rad[q] > hgt[sl])
         if not m.any():

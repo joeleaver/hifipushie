@@ -84,7 +84,16 @@ def test_bed_shape_only_under_water(T, field, mats):
     g = S.sample(p)
     dep0 = g["level"] - h1
     assert np.abs(dz).max() > 0.2, "no pools or riffles were shaped"
-    assert np.all(dz[dep0 <= 0.05] == 0), "the banks moved"
+    # the banks: only their foot moves (a cut bank on the outer side, the bar's flat on the inner), only down, and
+    # ground higher than the tallest cut keeps its height
+    hb = -dep0
+    assert np.all(dz[hb > 1.4] == 0), "ground above the banks' foot moved"
+    assert dz[hb > 0].max() <= 1e-9, "a bank rose"
+    outer, hc, inner, sdc = S.cut(p, g)
+    cutb = (outer > 0.9) & (hb > 0.05) & (hb < hc - 0.15) & (g["sd"] < sdc - 0.5)
+    assert cutb.sum() > 20 and np.all((h1 + dz)[cutb] < g["level"][cutb]), "no cut bank: the outer ramp still stands"
+    keepb = (outer > 0.9) & ((hb > hc + 0.2) | (g["sd"] > sdc + 0.5))
+    assert keepb.sum() > 20 and np.abs(dz[keepb]).max() < 1e-9, ("the turf above a cut bank moved", keepb.sum(), np.abs(dz[keepb]).max() if keepb.any() else 0, float(outer.max()), float(hb.max()))
     # the water never ends above ground it stood over, except on a bar's top (a few cm)
     new = h1 + dz
     wet = dep0 > 0.4

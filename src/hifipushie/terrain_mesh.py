@@ -5174,7 +5174,8 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None,
+                 styles_bump=False):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -5253,6 +5254,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         wl = {L["name"]: (L["weights"], L["channel"]) for L in M["materials"]["layers"]}
         maps = [(str((out / fn).resolve()), SM["order"][4 * g:4 * g + 4]) for g, fn in enumerate(SM["maps"]["weights"])]
         job["styles"] = {
+            "bump": bool(styles_bump),  # (the layers' heights as a bump: an engine uses their normal maps)
             "weights": wl, "ref": {k: lin(v["color"]) for k, v in real["layers"].items()},
             "extent": SM["maps"]["extent"], "maps": maps,
             "rock_scale": ({**SM["maps"]["rock_scale"], "file": str((out / SM["maps"]["rock_scale"]["file"]).resolve())}
@@ -5300,8 +5302,8 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             if len(SC):
                 de, _ = cKDTree(eyes[:, :2]).query(SC[:, :2])
                 SC = SC[(de < clutter) & (de > 1.2)]
-            for i, k in enumerate(terrain_stream.KINDS):
-                job["clutter"][k] = SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
+            for i, k in enumerate(terrain_stream.KINDS):  # (bush: with the dry ground's bushes)
+                job["clutter"][k] = job["clutter"].get(k, []) + SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
     if not channel:  # the rivers' water: a ribbon at each river's own level, wider than the channel (the banks hide it)
         if True:
             rv = []

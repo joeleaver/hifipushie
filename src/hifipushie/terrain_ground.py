@@ -254,7 +254,7 @@ class Edits:
         h = np.array(h, float, copy=True)
         h[k] = h[k] + self.dz(x[k], y[k], riser, wmin)
         if self.streams is not None:  # (a stream's bed: pools, riffles, bars; only under its water)
-            h[k] = h[k] + self.streams.dz(x[k], y[k], h[k])
+            h[k] = h[k] + self.streams.dz(x[k], y[k], h[k], riser)
         return h, s
 
 
