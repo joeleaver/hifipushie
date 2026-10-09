@@ -2827,6 +2827,80 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       rebuilt at its closed girth on the body's hull, under the pressed shirt tail, so the back's top is cleared over
       the shirt). Next: give the fine settle's band (and `_press_plan`'s clearing) the padded body, or try
       fine_settle false for the trousers over the shirt.
+- Suit 7 (2026-10-08, "suit7" agent, branch `worktree-agent-af71a3f0c0a4e3d8a`, continues suit6; renders
+  `cloth_renders/su_8*`, `tr_24*`, `om_0*`, checklist sheets `cr_81*`; scratch DURABLE in /mnt/data/hifipushie/suit7/:
+  suit6's scripts retargeted + run.sh (EVERY script through /mnt/data/hifipushie/bin/capped, peak RSS printed,
+  PYTHONUNBUFFERED), q.sh <queue> / qlocal.sh (LOCAL_ZOZO=1), env.sh (sources /mnt/data/hifipushie/gpubox/env.sh, then
+  points HIFIPUSHIE_ZOZO_REMOTE at this worktree's remote.sh), mkq.py (a queue line with design ops patched, compact
+  JSON), check.py <tag> <jacket npz> [trousers npz] [shirt npz] [model] (the reference checklist + cr_<tag>_focus /
+  _figure), section.py <result npz> (jacket vs body per direction and height + where the two front edges are: THE
+  tent measure), tent.py, near1.py, dbg_place.py (place_only with every _piece_crossings call's largest triangle;
+  TRACE=1 names the cloth function that moves rows > 5 cm; NOWAIST=1), dbgrun.py <secs> <script> (stack dump when RSS
+  passes 4 GB), pp_dbg.py (OVER=shirt UCAP=0.003: the fine settle's start step by step), patdump.py (pieces' boxes and
+  x extents by height), meas2.py (tape + hull girths under the waist), gate1.sh / gates3.sh, st_tb.py (a stage with
+  its traceback), mk_om.py, cpmodel.py, ed_om1.py, ed_pk.py, patch_*.py (every code edit as a script: the sandbox
+  refuses heredocs / loops / pipes it can't verify: write files with the Write tool and run one plain command).
+  - THE OOM OF 13:37 WAS THIS THREAD'S (a 17 GB python): every "trousers over shirt" build hit it (suit6's tr_22 too).
+    `_leg_tube.level()` read the FRONT leg piece at a row under its own hem (a break hem's back is 12 mm longer; rows
+    are rounded to cm levels), got no width, and the front hem's vertices fell back to the seat cylinder at centre
+    front between the feet (27 cm triangles in the first placement pass; the relaxation pulled them back, so nobody
+    saw); `_piece_crossings` / `_pair_crossing_verts` searched with ONE radius = the largest triangle, so on a 12.7k
+    vertex fine mesh every edge paired with every triangle within 14 cm. Fixed: each piece is read no lower than its
+    own hem; both searches raise ClothError "the start is broken: a triangle of <piece> is X m across" (main's chunked
+    search sits behind that raise); `_clear_of_worn` moves are bounded (WORN_STEP 12 mm a round, WORN_REACH 30 mm).
+  - suit6's `_worn_levels` VERIFIED: Garrett su_81: all seams closed (su_79: 23 pairs open to 110 mm), 0 crossings,
+    cuffs 13 / 14, collar_show 3.8 (suit6's lower back neck: was -11.9). ga_suit su_82: fits, all closed, collar_show
+    12.1, cuffs in band.
+  - `cloth._clear_exact` (EXACT_GAP 3 mm): draped start vertices and edge points against the collider's TRIANGLES,
+    two-sided for an under garment's cloth (wound as its pattern lies), signed for the closed body. In build after
+    place() for a layered smooth start (the start is laid on the PADDED body; the collider is body + the under
+    garment's own mesh: ga_suit's top sleeve seam sat 1.8 mm from a pressed shirt-sleeve fold at the elbow, "contact
+    starts overlapping" at frame 0 on the 4090), and for the fine settle's start over an under garment (there the
+    old code read the collider as a closed Body: the shirt's normals pushed the trousers' back INTO the tucked tail,
+    102 triangles 1.6-3.9x: suit6's tr_22 failure). Unlayered garments' starts and keys untouched.
+  - THE TUCK WORKS: tr_24 (su_garrett trousers `over: shirt`, `under_cap` 0.003, 461 s on the 4090): fits, 0
+    crossings, all seams closed, fly 18 of 18; reads as trousers over a tucked shirt. `cloth.waist_hung` /
+    over_measures(waist=layer gap): a garment hung from the waist is taped over what is tucked in, incl. the layer
+    gap (793 -> 833 mm; without the gap the band started 13.6 mm short of closing).
+  - `collar_hug_mm` (cloth_layers.tells + cloth_reference) is read on the outer collar BEHIND the neck's axis: a
+    notched collar's ends lie on the chest. su_81 27.0 -> 18.4 (still a miss; target 0-6).
+  - THE TENT, by measure (section.py on su_81): from z 1.40 to 1.00 the fronts lean forward ~10 deg and are plumb below
+    the break; the two front edges OVERLAP 15 mm at the centre and the sides hug the hips at 2-8 mm: the jacket hangs
+    closed with all its ease in front. Two causes. (1) The stiff front: canvas bands + lapel roll strength 1.0 make
+    a board that continues the upper chest's slope down to the break. su_83 (interfaced [], roll_strength 0.2): fronts
+    37-47 mm off the body from the chest down (were 57-99), plumb; cost: lapel gap unchanged, 6 crossings at the left
+    gorge. (2) The start: an OPEN jacket was started lapped like a buttoned one. `open_gap` (garment key; OPEN_GAP 0.16
+    m at the hem, linear from the armpit's level; `cloth.open_gap`, in `_worn_levels`): fronts and side panels start
+    that far from CF and every level's curve is that much longer: the loose tube an open jacket is. NOT YET VERIFIED
+    BY A SIM (om_02 / om_05 failed at their starts, below).
+  - Trouser block option `waist_drop` (m under the natural waist; `pattern_blocks.dropped_waist`): girth there, rise,
+    seat line, knee and lengths follow, pieces + band carry wrap "drop" (place(), stage 2 leg ease, the band's
+    dimension checks and the waistband height target read it). 0.07 on a scratch copy (su_om_tr): gates pass, band
+    860 mm. Not simulated.
+  - KB: jacket fit "relaxed" (waist +18..+32%: a straight, unsuppressed body on a V torso). Stage 3 crashed on a
+    shirt with no hem topstitch row (None * 1000): fixed. cloth_reference.render_front draws the garments' `collide`
+    parts (shoes).
+  - `su_om_garrett` (mk_om.py: om_garrett's base + su_garrett's shoes / socks / soles and cloth sheets; head-fit keys
+    that need onemesh2's code, base.head.warp as a list and shape hood / hollow / jaw_angle, are LEFT OUT until that
+    is on main: take the head at the end, it changes only above the neck). Its tape vs the old body: shoulder slope
+    11 deg (22), shoulder to shoulder 468 (481), hps to waist 493 (508), waist to armpit 254 (236), waist 785 (793).
+    Sheets (ed_om1.py): jacket length_bonus 0.12, lapel 0.075 + roll_strength 0.3, take_in 0.008 / 0.010, CB waist
+    0.012, interfaced [], fit relaxed; trousers over shirt + under_cap 0.003. Scratch copies su_om_pk (+ flap pockets
+    [0.125, -0.585] 150 x 55 and breast welts [0.135, -0.275] 100 x 22 on "front": gates pass; flaps / welts are MADE
+    pieces carried with the body: expect them to stand off a draped front, as a held lapel did) and su_om_tr
+    (waist_drop 0.07).
+  - Shirts on the new body: om_01 (main before placket) and om_04 (placket's: one button open, spread collar) both
+    read "CORRUPT: collar 4-5% crumpled | fits" with 28-35 sewn pairs open to 4-13 mm: usable as an under garment,
+    not finished (placket's thread).
+  - FAILED AT THE START on su_om_garrett, not yet diagnosed (the GPU box was deleted at the usage-limit stop):
+    om_02 jacket (old shirt): "contact starts overlapping", dynamic vertex 1752 vs the collider, 1.87 mm (so
+    _clear_exact's 3 mm did not hold there: check whether that vertex is MADE (collar: not moved), or moved back by
+    _carry / _open_start after the clearing: the clearing runs on Xs before `_open_start` makes Xstart); om_05 jacket
+    (placket's shirt): Newton stalled at frame 0, "a prescribed pin driven into geometry that cannot yield", held by
+    vertex 2097 (a carried made piece, the collar, against the new spread shirt collar?); om_03 trousers: ZOZO's
+    builder assertion `left > right` 0.0 / 0.0 while "computing constraints" (a zero-length or zero-area element
+    in the job: look at in.npz's rest triangles and stitch pairs; tr_24 on the old body built). Use jobstr.py /
+    gapchk.py on workspace/_cache/cloth/job_<key>/sim.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /

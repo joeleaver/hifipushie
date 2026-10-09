@@ -413,7 +413,11 @@ def dims(Bp: dict, meas_mm: dict) -> dict:
         out["waistband_height"] = _band_height(pcs[wb]) * 1000
         cg = _closed_girth(Bp, wb)
         if cg and meas_mm.get("waist"):
-            out["waistband_over_waist"] = cg * 1000 - meas_mm["waist"]
+            # (against the girth where the band sits: a dropped waist, block option waist_drop)
+            from .pattern_blocks import dropped_waist
+            wdrop_ = float((pcs[wb].get("wrap") or {}).get("drop", 0.0))
+            out["waistband_over_waist"] = cg * 1000 - (dropped_waist(meas_mm, wdrop_) if wdrop_ else meas_mm["waist"])
+            out["_waist_at_band"] = dropped_waist(meas_mm, wdrop_) if wdrop_ else float(meas_mm["waist"])
         P = pcs[wb]["P"]
         if cg:
             out["waistband_overlap"] = (P[:, 0].max() - P[:, 0].min() - cg) * 1000

@@ -177,7 +177,7 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
             ease = v["ease"]
             how = "flat pattern"
             if reg == "waist" and "waistband" in R and "waistband_over_waist" in D:
-                ease = D["waistband_over_waist"] / c.meas["waist"]
+                ease = D["waistband_over_waist"] / D.get("_waist_at_band", c.meas["waist"])
                 how = "waistband closed"
             band = bands.get(reg)
             line = f"ease at {reg}: {ease * 100:+.1f}% ({how}; body {v['body_mm']:.0f} mm)"
@@ -193,7 +193,7 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
     for line, ok in leg_ease(c, bands):
         (o["info"] if ok else o["fail"]).append(line)
     if D:
-        o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items()))
+        o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items() if not k.startswith("_")))
     if (Bp.get("draft") or {}).get("derived_mm"):
         o["info"].append("draft: " + json.dumps(Bp["draft"]["derived_mm"]))
     if image:
@@ -228,7 +228,7 @@ def leg_ease(c: Ctx, bands: dict) -> list:
     if not legs or not c.meas or "waist_z" not in c.body.at:
         return []
     from . import tailor
-    at, zw = c.body.at, float(c.body.at["waist_z"])
+    at, zw = c.body.at, float(c.body.at["waist_z"]) - max(float(pcs[n]["wrap"].get("drop", 0.0)) for n in legs)
     Z = np.array([0, 0, 1.0])
     width = lambda y: sum(cloth._piece_width_at(pcs[n]["P"], y) for n in legs)
     out = []
@@ -803,7 +803,9 @@ def sim_measures(res: dict, c: Ctx) -> dict:
         wv = ix(R["waistband"][0])
         y = M["uv"][wv, 1]
         bot = wv[y < y.min() + 0.004]
-        out["waistband_at_waist_mm"] = round(float(np.median(V[bot, 2]) - res["body"].at["waist_z"]) * 1000, 1)
+        # (against where it was cut to sit: a dropped waist's line, block option waist_drop)
+        drop_ = float((res["pieces"]["pieces"][R["waistband"][0]].get("wrap") or {}).get("drop", 0.0))
+        out["waistband_at_waist_mm"] = round(float(np.median(V[bot, 2]) - (res["body"].at["waist_z"] - drop_)) * 1000, 1)
     if res.get("sleeves"):
         out["sleeve_angle_hung_deg"] = res["sleeves"]
     vis = [n for n in pcs if n not in {e for e in Bp["interfaced"] if isinstance(e, str)}]

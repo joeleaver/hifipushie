@@ -1737,6 +1737,7 @@ def unfold(D: dict) -> dict:
                               "overlap": float(wb.get("overlap", 0.035)), "interfaced": True,
                               **({"extension": "end"} if front else {}),
                               "wrap": {"to": "torso", "side": "back" if front else "front", "level": "waist", "out": 0.004,
+                                       **({"drop": float(D["meta"]["waist_drop"])} if (D.get("meta") or {}).get("waist_drop") else {}),
                                        **({"dir": -1} if front else {}),  # (from the back centre the chain runs to the RIGHT back)
                                        **({"over": "low"} if front else {})}})
     D.update(pieces=out, seams=seams, notes=notes, edges=edges, folds=folds, interfaced=inter, unfolded=True)
