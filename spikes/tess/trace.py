@@ -4,8 +4,8 @@
   as short ticks with their coherence as strength
 - hand strokes from the trace json (picked on a grid): "part" (a polyline), "flow" {name: polyline, root first},
   "wisps" {name: polyline}
-Writes <out png> (the photo dimmed + the mask's outline + ticks + strokes) and <trace json> gains "mask" (png path)
-and "field" (sampled [x, y, angle deg, coherence])."""
+Writes <out png> (the photo dimmed + the mask's outline + ticks + strokes), <trace>_mask.png and <trace>_field.json
+(sampled [x, y, angle deg, coherence])."""
 import json, sys
 
 import numpy as np
@@ -51,9 +51,8 @@ for y in range(step // 2, mask.shape[0], step):
     for x in range(step // 2, mask.shape[1], step):
         if mask[y, x]:
             field.append([x, y, round(float(np.degrees(ang[y, x])) % 180, 1), round(float(coh[y, x]), 3)])
-tr["mask"] = mp
-tr["field"] = field
-json.dump(tr, open(tj, "w"), indent=1)
+fp = tj.replace(".json", "_field.json")
+json.dump({"mask": mp, "field": field}, open(fp, "w"))  # (kept out of the stroke file: that one is hand-written)
 # overlay
 base = Image.fromarray((np.clip(a * 0.55 + 0.25, 0, 1) * 255).astype(np.uint8))
 ov = base.copy()
