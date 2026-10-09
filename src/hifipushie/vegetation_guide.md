@@ -385,11 +385,18 @@ it kept; the export WARNS when cards would float.
 When a budget buys fewer than a quarter of the twigs, the foliage is drawn as **bough cards** instead: the tree's own
 limb ends (wood, branchlets, every twig) baked into pictures, each bough seen from its face and from its side on two
 crossed cards, standing where the tree has such a bough. How the foliage is cut for a budget (`veg_bough.fit`):
-- While the foliage's triangles buy at least a fifth of the tree's FINEST cut (boughs of about two twig lengths) on
-  cheap five-corner cards (6 triangles a crossed pair), the LOD is that finest cut THINNED: some boughs left out, the
-  rest drawn larger until they cover what all of them covered (measured on the cards' own polygons from two sides).
+- While the foliage's triangles buy at least 8% of the tree's FINEST cut (boughs of about two twig lengths) on
+  seven-corner cards (10 triangles a crossed pair), the LOD is that finest cut THINNED: at most 45% of its boughs
+  even at LOD 0 (more only stack layers: overdraw), spread evenly through the crown, each drawn larger until together
+  they cover what the whole cut covered (measured on the cards' own polygons from two sides).
   LOD 0, 1 and 2 then share ONE atlas, one material slot and one silhouette, and nothing pops at a switch. This is
-  what a foliage artist does (remove cards, grow the rest). A 20k conifer's three LODs are all of this kind.
+  what a foliage artist does (remove cards, grow the rest). A 20k conifer's three LODs are all of this kind; the
+  triangles the foliage doesn't use go to finer wood.
+- OVERDRAW is the cost of card foliage, not triangles: a stand of 20k spruces that drew 6.6 card layers per covered
+  pixel cost 1.6x the GPU time of a stylised spruce with as many triangles. Read `card area / covered` per LOD
+  (the export's check, /mnt/data/hifipushie/realtrees/od_glb.py) and aim at 4-5 for LOD 0, 3-4 for LOD 1. And give a
+  FOREST its stand forms (`environment.setting: "forest"`, `spacing`): open-grown conifers planted 3.5 m apart put
+  the player's eye inside six skirts of foliage; an interior tree has a bare stem at eye level and a tenth of the cards.
 - Under that, the tree is re-cut into fewer, larger boughs (whole limbs at a few hundred cards) on seven-corner
   cupped cards, its own atlas. A re-cut next to a fine cut does pop: in Godot a spruce's whole-limb LOD 1 covered
   0.85 of its LOD 0 and lost its top; and MID-sized boughs (2-3 m) on any card read as palm fronds or round leaves

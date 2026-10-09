@@ -5187,6 +5187,40 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
   terrain integration not started.
 
+- Realistic trees for the consumer (2026-10-08, "realtrees" agent, branch `worktree-agent-aaf6ba14fbb49e2c5`; pushieworld's
+  realistic region showed anime stand-ins; deliveries /mnt/data/hifipushie/vegstyle/real_spruce, real_pine (+ _interior,
+  _edge), real_oak, plants `vs_<species>_real[_in|_edge|_b|_c]`, contract 9 unchanged, budget 20k like pixar_oak; sheets
+  `workspace/veg_renders/rt_*`; scratch DURABLE in /mnt/data/hifipushie/realtrees/: run.sh <script> (capped, worktree
+  code, main workspace), grow.py, lod.py <plant> <png> [budget] (each LOD at the PIXEL size a 1080p / 70 deg camera
+  gives it at 5 / 30 / 64 / 128 / 192 m), view.py (game-resolution crops, full vs budgets), atl.py (the atlas each
+  budget draws), cov.py <plant> [budget] (per LOD: cards, grow, covered area vs LOD 0, card area / covered: seconds, no
+  Blender), export.py, check.sh <tag> <height> <dir> <stem> (od_glb.py triangles / overdraw / under ground, Khronos,
+  gd.sh = octa impostor vs LOD 2 + cards at the switches through godot-quiet), bench.sh (impostor forest GPU ms),
+  stand.sh <tag> name=dir/stem ... (spikes/godot_veg/stand.gd: 64 trees at 3.5 m seen from inside: GPU ms, fragments
+  per pixel), sheet.py, sil.py, variants.sh, q*.sh (export queues), tests.sh).
+  - The realistic export at 20k as it was FAILED by eye: a spruce's 937 fourteen-triangle bough cards were 2.7 m
+    boughs = a heap of palm fronds at 30 m (its LOD 2, whole limbs, read better than its LOD 0). `veg_bough.fit` now:
+    the FINEST cut of the tree (boughs of ~2 twig lengths: `most`), on seven-corner cards without a middle vertex (10
+    triangles a crossed pair, `FORMS[1]`); a LOD draws at most `FULL` 0.45 of that cut's boughs (never fewer than
+    `FULL_LEAST` 500 or all of them), chosen evenly in space (`place`: one per grid cell, then by hash), each grown
+    until the kept cards cover what the whole cut covered (the cards' own polygons from two sides; sqrt(k / n) made a
+    sparse pine's LOD 2 25% fat in Godot). All LODs: one atlas, one slot `foliage_boughs1`, one silhouette. Under
+    `THIN` 0.08 of the cut the old re-cut into whole-limb cards (form 0). Triangles the foliage can't use go to
+    the wood (`_budget`: spare > 10%). Bough tone per card 0.88-1.12 (0.75-1.25 read as pale and dark leaves).
+  - Overdraw (consumer note 108: real_spruce stand 46 ms vs 17-22 with the anime stand-in on the 890M). Reproduced
+    with stand.gd (1280x720, 37 LOD 0 + 27 LOD 1 trees, no shadows): real 8.4 ms / 121 card fragments per pixel, anime
+    5.2 / 76, pixar 4.8 / 99. Card area / covered area in the file (od_glb.py) LOD 0 / 1 / 2: spruce 6.6 / 6.4 / 5.8 ->
+    4.1-4.5 / 3.8-4.0 / 2.8-3.1; pine 8.3 / 7.3 / 6.0 -> 4.3-4.7 / 3.6-3.9 / 2.4-2.6 (anime spruce 5.6 / 4.3 / 3.2, pixar
+    3.5 / 2.0). What did it: fewer boughs grown to the same cover, spread evenly, tighter cards.
+    DEAD ENDS: culling boughs hidden behind others (`outer`: 22 directions, first two card layers): a spruce's and a
+    pine's boughs are ALL first-layer from somewhere, the crown is already a shell (`CULL` off); one card of each
+    crossed pair, the one facing out (`SINGLE` off): overdraw 3.0-4.2 but the spruce went ragged and see-through, its
+    flank cards edge-on; a whole-limb re-cut for LOD 1 (covered 0.85 of LOD 0, lost its top).
+    What a STAND needs most is the stand FORM: 64 open-grown spruces at 3.5 m put the eye inside six skirts; the
+    interior tree (`environment.setting` forest, spacing 3.5: bare stem, live crown the top 31%) has ~170 boughs.
+  - Variants = separate plants (seed / age / a small `forces` lean on order 0), stand forms = `environment.setting`
+    forest / edge + spacing. An export takes 27-75 min on the loaded machine (the impostor's 64 views x 4 passes).
+
 ## One human mesh (2026-10-06, "onemesh" agent, branch worktree-agent-aac6bb85823bc8809; renders `workspace/human_renders/om_*`)
 
 The user: "we seem to always be fighting the makehuman/GAN mesh combination ... So we had one mesh?", then a stretch
