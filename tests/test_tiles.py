@@ -297,6 +297,39 @@ def test_sunk_edge_reads_as_ground(cf, G):
     return worst_raw, worst
 
 
+def test_dam_stays_in_the_heightmap():
+    """A dammed lake on a slope: its embankment is ground, so the tile heightmap (the pushed ground) holds the lake.
+    Taken for a cliff, the heightmap was pushed down the dam's face and its crest eroded away: flooded to the lake's
+    level the heightmaps held 134,000 m2 for a 3,300 m2 pond (pushieworld note 106)."""
+    from scipy import ndimage
+    spec = json.loads(json.dumps(SPEC))
+    spec["landforms"] = {"pond": {"type": "lake", "at": [64, 96], "radius": 10, "depth": 2, "dam": True}}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    lk = T.lakes["pond"]
+    assert lk["area"] > 100 and T.dams["pond"].any(), (lk, T.dams["pond"].sum())
+    rep = "\n".join(T.report()) if isinstance(T.report(), list) else str(T.report())
+    assert "dammed:" in rep, "the report says nothing of the dam"
+    lakes = tm.lake_outlines(T)
+    assert len(lakes["pond"]["outline"][0]) >= 8 and abs(lakes["pond"]["level"] - lk["level"]) < 1e-3
+    cfg, G, region, cf, vols = _shell(T)
+    # the pushed heightmap on its lattice, flooded to the level from the lake's centre
+    xs = G.origin[0] + np.arange(region.nx) * region.d
+    ys = G.origin[1] + np.arange(region.ny) * region.d
+    X, Y = np.meshgrid(xs, ys)
+    Hm = region.height(X.ravel(), Y.ravel()).reshape(X.shape)
+    lab, _ = ndimage.label(Hm < lk["level"])
+    k = lab[int(round((96 - ys[0]) / region.d)), int(round((64 - xs[0]) / region.d))]
+    assert k > 0, "the heightmap is dry at the lake's centre"
+    area = float((lab == k).sum()) * region.d ** 2
+    assert area < terrain_cliffs.LAKE_AREA * lk["area"], f"the heightmap holds {area:.0f} m2 for a {lk['area']:.0f} m2 lake"
+    on = T.dams["pond"]
+    S = region.s(T.X[on], T.Y[on])
+    assert S.max() < 0.05, f"the dam is in the cliff region (S up to {S.max():.2f})"
+    return area, lk["area"]
+
+
 def test_projected_normals_never_zero():
     """A field flat at the normal's stencil (a capped constant) still gives unit normals (zero ones are invalid glTF,
     and read as "normals differ by 90 deg" across a tile border)."""
@@ -353,6 +386,7 @@ if __name__ == "__main__":
     test_floating_pieces_dropped()
     test_region_edge_is_smooth()
     test_projected_normals_never_zero()
+    print("dam stays in the heightmap (flooded %.0f m2, lake %.0f m2)" % test_dam_stays_in_the_heightmap())
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
     test_cover_named_by_type(T)

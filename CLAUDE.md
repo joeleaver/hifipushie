@@ -4325,13 +4325,22 @@ regresses, bisect by building one spec at each commit and diffing heights.
     Regressions (cold, a loaded machine, under /mnt/data/hifipushie/bin/capped): pebble 0 failures (1,274 s; shards
     0.002 / 0.007 / 0.31%, lod1 map normals p95 6.2), alps 3x3 0, slice_a 0, slice_b incremental 4 of 64 tiles and 0 of
     1,488 files differing from a cold export; the seven terrain test files pass.
-    Note 106 (downs_pond's dam missing from the tile heightmaps), DIAGNOSED, not fixed (dam.py <terrain> x y): the
-    dam's lake-side face is 50-65 deg and 12 m tall (floor 43.7, crest 56.0-57.2, level 56.35), so the cliff Region
-    takes it (S = 1) and the heightmap is eroded by the 3.8 m push ball: 5-9 m down on the face and the 2 m crest
-    with it (heightmap crest 54.4-56.1 on bearings 0-100 and 320-350, under the water level). Proposed: no push
-    (Rg = 0) within a lake's dam / bank mask, or the pushed heightmap clamped >= min(ground, level + freeboard) there;
-    per-lake outline polygons in the manifest; the report should warn "the lake stands on a slope: 12 m deep at the
-    dam for depth 2", freeboard under ~1 m and a crest under 3 cells wide.
+    Note 106 (downs_pond's dam missing from the tile heightmaps; scratch dam.py <terrain> x y, lakechk.py <tiles dir>
+    [name x y r level area], rep.py <terrain> <words>): the dam's lake-side face was a 12 m wall at 50-65 deg, so the
+    cliff Region took it (S = 1) and the heightmap was eroded by the 3.8 m push ball, crest and all. The wall was the
+    BUILD's: `terrain._lake`'s bank started at the water's edge (nothing inside the radius), so on a slope it stood
+    as tall as the fall across the lake. Now: the bank runs on down at 1:2 under the water, crest >= 3 cells,
+    `T.dams[name]` = the cells the embankment raised; `Region` takes those cells (+ margin + push) out of the cliff
+    region (no cliff mesh, no push: the heightmap carries the dam); `Terrain._bank_report` (measured: depth at the
+    dam vs asked, freeboard by raising the water 0.25 m at a time until it leaves, the dam's thickness half the
+    freeboard up) with warnings (on a slope, freeboard < 1 m, under 3 cells thick); manifest `lakes` {level, at,
+    area_m2, depth_m, outline rings} (`terrain_mesh.lake_outlines`); check `terrain_cliffs.lake_check` (each lake
+    flooded on the written heightmaps from its outline: fails over LAKE_AREA 1.5x, under 1 / 1.5, or leaking).
+    Their export: 87,490 m2+ and leaking for 3,300 (FAILS); the pond block re-exported: 2,954 for 2,964 m2. The
+    island's pond is now 9 m deep at the dam for depth 2 (warned), freeboard >= 1 m, dam 12 m thick.
+    tests/test_tiles.py::test_dam_stays_in_the_heightmap. Every dammed lake's ground changes.
+    The pond block (tiles 8-10 x 8-10) alone fails LOD 2 shards 1.12% (5 faces, none at the pond; 3 cliff tiles, a
+    tiny visible area): not compared with main.
     QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
     ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
     the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
