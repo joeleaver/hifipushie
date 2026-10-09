@@ -586,3 +586,28 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     "cards over the cap's surface". The groom is handed to garrett4 as spec["hair"] keys groom / strands / look /
     style of h6_garrett (locks regrown by hair.groom(replace=True, patch={"loose": ...})).
 
+  Garrett, longer and swept back (2026-10-09, "hair7" agent; the user on h6_x2: "a little shorter than I visually read
+  in the photo. In the photo, it's longer but feathered and kind of pushed back, which makes it look shorter"; model
+  `workspace/h7_garrett` = a copy of h6_garrett (h6 untouched); sheet `hair_renders/h7_p7_sheet.png` = reference |
+  before (hair6's groom regrown on this code: b0) | after (p7), front through the photo's fitted camera, three-quarter
+  and side at 1.6 m long lens, Cycles strands, lookcam.SOFT; scratch DURABLE /mnt/data/hifipushie/hair7/: hair6's
+  scripts retargeted (run.sh: M / CAM_MODEL = h7_garrett, this worktree's code), base.json = THE groom now (p7;
+  base_hair6.json = hair6's), p1..p7 patches + logs, h7sheet.py <before> <after> <out>). No code changed.
+  - p7 = hair6's groom with: lengths front 58 / top 50 / sides 28 / back 28 / nape 14 mm (were 29 / 30 / 20 / 22 /
+    12); flow front [-0.3, 0.85, 0.4] (back, a little up, over to HIS RIGHT), top [-0.35, 0.9, 0], sides [0, 0.85,
+    -0.55]; lay front 0.38 / top 0.68 (were 0 / 0.4); stiff front 0.5; out front 0.15, sides 0.18; uneven 1.0, messy
+    0.4; groom.volume front 8 / sides 7 mm; strands clump 0.32, stray 0.7, frizz 0.08, tip_spread 0.75, tips 0.95.
+    Hairline, grey, colours untouched.
+  - Measured through the photo's camera (strandfit / headtop): hair over the bare head's top 15.3 mm (photo 12.7,
+    before 11.5); across the top 8.9-12.7 mm vs the photo's 7.6-14 column by column (the highest point is the upper
+    side over his left, 22.9 vs 19.1); IoU above the ears 0.923 (before 0.944); hairline centre -1.1 / outer -1.2 mm,
+    forehead half-width +0.9 mm; colour unchanged (light share 0.38 vs 0.39, R/B 1.15). Lay is what holds a 5-6 cm
+    top down: at lay top 0.5 the top stood +3.8 mm over the photo; 0.6-0.68 holds it.
+  - Width: his right side (strandfit "L") reads 4-9 mm narrow, his left 0-8 mm wide at the lower levels in EVERY
+    variant, whichever way the top is combed (+x, 0, -x changed it by <= 3 mm): a ~6 mm lateral offset of head vs photo
+    at ear level, not the groom. Laying the sides (lay sides 0.2) took 8-10 mm off both: keep the sides unlaid.
+  - BLUNT READ of h7_p7_sheet: three-quarter and side now show length: strands run back from the front in long
+    sweeps (before: a short brushed crop). Front: the silhouette stays the photo's, but the top reads as a smoother,
+    darker combed cap with a dark band along the front edge; the photo's front is paler, a little lifted and greyer on
+    top. The painting has more lift at the front and more broken, feathered tips than ours; the tips' feathering
+    (tip_spread, uneven) hardly shows at these distances. Cards not re-exported (strands first).
