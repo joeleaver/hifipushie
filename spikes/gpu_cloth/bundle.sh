@@ -3,14 +3,14 @@
 # as its last argument: HIFIPUSHIE_GPU=bundle (cloth_job.run_zozo picks this script) or HIFIPUSHIE_ZOZO_REMOTE=<this>.
 # The folder goes up as ONE job of its own batch with this checkout's cloth_zozo.py as the runner (unedited: its hash
 # is part of every sim's cache key), the call waits for it and leaves out.npz in the folder. Exit 0 when it did.
-# Auth: OXIDEGEN_TOKEN, else read from $OXIDEGEN_TOKEN_FILE (default /mnt/data/hifipushie/gpubox/oxidegen_token,
+# Auth: OXIDEGEN_TOKEN, else read from $OXIDEGEN_TOKEN_FILE (default ~/.config/oxidegen/hifipushie-cloth-token,
 # chmod 600). The token is never printed. spikes/gpu_cloth/remote.sh (a rented box over ssh) is the legacy fallback.
 set -euo pipefail
 job="${@: -1}"
 job="$(cd "$job" && pwd)"
 here="$(cd "$(dirname "$0")" && pwd)"
 if [ -z "${OXIDEGEN_TOKEN:-}" ]; then
-  tf="${OXIDEGEN_TOKEN_FILE:-/mnt/data/hifipushie/gpubox/oxidegen_token}"
+  tf="${OXIDEGEN_TOKEN_FILE:-$HOME/.config/oxidegen/hifipushie-cloth-token}"
   if [ ! -r "$tf" ]; then echo "bundle.sh: no OXIDEGEN_TOKEN and no token file ($tf): not run" >&2; exit 9; fi
   OXIDEGEN_TOKEN="$(tr -d '[:space:]' < "$tf")"
   export OXIDEGEN_TOKEN
