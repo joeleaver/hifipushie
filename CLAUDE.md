@@ -2951,6 +2951,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       Left: shards at the jacket's armpits (its own open pit seams show the shirt), layer crossings 3823 -> ~400.
       `cloth.button_color`, kind closure `size` / `button` (jacket 20 mm, tone 0.55). Not done: band edge lines in
       the reference figure; the tucked surface in `cloth_layers.tells` (still the pressed one).
+    - HANDOVER (placket, 2026-10-09, context full; branch worktree-agent-ab49e1b1d94e336bb, NOT mergeable as asked).
+      The shirt's fine-settle START is fragile round the open neck and no collar gap builds on all three models:
+      gap 0.008: su_garrett fits (pk_45: button 1 2.0 mm, 0 crossings), su_om_garrett builds (pk_44_om: 2.0 mm, stand
+      9-11 mm off the skin, fall to |x| 83 / 88), ga_suit FAILS (pk_46: fine start collar 2.98x at pattern x -0.2,
+      ccd failed). gap 0.03 (committed default): su_om_garrett builds (pk_51_om: button 1 2.7 mm, stand 10.6 / 12.6-13
+      mm off the skin, fall to |x| 86 / 93, 17-18 mm over the shoulder, collar 5% crumpled = verdict CORRUPT, the
+      wearer's-left collar point curls), ga_suit builds as a garment override (pk_49: 2.2 mm, 0 crossings; the KB run
+      pk_53 died on the GPU box's disk, not on the shirt), su_garrett REFUSED by fine_start_check (pk_52: front.L
+      11.5x at pattern [0.014, -0.12]: the over front's band just under the roll's end). The coarse sims are fine
+      in every case: the fault is in `_press_plan` / `_constructed` (the made collar "made_reshaped" 9.8 mm: the
+      fine placement's spread differs from the coarse one's and the collar takes the coarse shape by transfer; then
+      `_clear_of_held` / `_untangle` round the roll's end). Next: make the spread identical at both mesh sizes
+      (compute hinge, centre, radius once from the pattern + neck, not from each mesh's stand vertices), then look at
+      the 11.5x triangle with pp_dbg.py (trousers2's scratch). Tools: jb3.py <job dir> (start edges vs flat by piece).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
