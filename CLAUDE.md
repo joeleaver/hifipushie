@@ -5831,6 +5831,21 @@ external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, 
 - Open: the clutter bush close up; driftwood is plain (bark patches, broken ends and a root-plate variant exist, no
   splintered detail); realistic litter clusters in the middle; no `sedge` / pebbles / wrack assets; photo silhouette
   measures were read by eye (no traced masks); the consumer has not loaded any of it yet.
+- Takeover read (2026-10-09, a fresh agent judging the sheets cold; scratch adds val_all.sh, tests3.sh; scratch
+  scripts must be given to run.sh by ABSOLUTE path: it cds into the worktree):
+  - ck_16_family_<style>: blobby / pixar boulders sit in their cliffs' colour family. CARTOON FAILS: the boulders are
+    near-black charcoal with pale tops beside warm tan cliffs (the cartoon rock's dark facet tones x the tint; the
+    cliff is lit by the terrain recipe's macro colour, the boulder by its own atlas): the tint recipe (terrain rock
+    color_linear / kit color_linear) matches MEANS, not the tone range: a cartoon boulder needs its dark tone lifted
+    or the tint taken from the lit cliff. Anime close: boulders paler and chalkier than the cliff, fracture lines
+    read as ink scribbles. Realistic terrain has no style manifest: no tint is applied (rock colour None); the
+    untinted boulders read a little greyer than the cliff: acceptable.
+  - ck_14 reeds: blobby / cartoon read as bulrush (cartoon heads are tulip-sized balls); anime as sedge with seed
+    spikes; realistic near is a dense ragged tuft and at 20 m a green blob with detached pixels; PIXAR is too thin
+    (wiry blades, at 20 m a few specks: it will vanish in a field).
+  - ck_15 bush: realistic / pixar LOD 0 read as open shrubs; LOD 1 at 10 m is a different plant (a few big leaf
+    cards on bare stems: a sapling) and will pop at 14 m; anime leaves are hand-sized; blobby / cartoon are
+    mushroom clouds on wire legs; none resembles the gorse / broom / heather references (no flowers, hazel leaves).
 
 ## One human mesh (2026-10-06, "onemesh" agent, branch worktree-agent-aac6bb85823bc8809; renders `workspace/human_renders/om_*`)
 
