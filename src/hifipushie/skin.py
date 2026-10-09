@@ -353,8 +353,20 @@ def zone(spec: dict, name: str, grow: float = 1.0, what: str = "zone") -> list:
             if any(e not in J for e in eyes):
                 raise KeyError(eyes[0])
             up = stem == "lash_upper"
-            return [{"near": eyes, "within": round((0.0024 if up else 0.0015) * grow, 5), "soft": round(0.0018 * grow, 5)},
-                    {"axis": {"dir": [0, 0, 1], "at": eyes[0], "from": 0.0003 if up else -0.0003, "to": 0.0022 if up else -0.0022}}]
+            out = [{"near": eyes, "within": round((0.0024 if up else 0.0015) * grow, 5), "soft": round(0.0018 * grow, 5)},
+                   {"axis": {"dir": [0, 0, 1], "at": eyes[0], "from": 0.0003 if up else -0.0003, "to": 0.0022 if up else -0.0022}}]
+            # ... and only along the margin itself: the pretarsal lid lies on the eyeball too, so "near the eyeball"
+            # alone painted the whole lid up to the fold (a dark grey band over the iris on an open lid, Tess 2026-10-09).
+            # A tube through the margin's landmarks (corner -> the two margin points -> corner) keeps it a line.
+            mid = ("lm_lid_upper_in", "lm_lid_upper_out") if up else ("lm_lid_lower_in", "lm_lid_lower_out")
+            if all(f"{m}{sd}" in J for m in mid for sd in sides):
+                tube = []
+                for sd in sides:
+                    pl = [J[f"lm_eye_inner{sd}"], J[f"{mid[0]}{sd}"], J[f"{mid[1]}{sd}"], J[f"lm_eye_outer{sd}"]]
+                    r = io * grow * (0.03 if up else 0.022)
+                    tube.append({"mask": [_sp(pl, [0.6 * r, r, r, 0.8 * r], soft=0.7, line=True)], **({"blend": "max"} if tube else {})})
+                out.append({"mask": tube})
+            return out
         if stem in OUTLINES:
             return [{"outline": {"points": OUTLINES[stem], "dir": [0, 1, 0], "soft": 0.0012 * grow, "depth": 0.03}}]
         key = stem + ".L" if stem + ".L" in FACE or stem + ".L" in UNIONS or stem + ".L" in LINES or stem + ".L" in BODY else stem

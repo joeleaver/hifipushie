@@ -305,6 +305,27 @@ def test_makehuman_sex():
     assert np.abs(f["P"] - a["P"]).max() > 0.01 and np.abs(m["P"] - 0.5 * (f["P"] + a["P"])).max() < 0.02
 
 
+def test_lash_line_is_a_line():
+    """The upper lash line stays on the lid's margin: the pretarsal lid lies on the eyeball too, so "near the eyeball"
+    alone painted the whole open lid up to the fold, a dark grey band over the iris (Tess, 2026-10-09)."""
+    from hifipushie.surface import Points
+    c, R = np.array(LM["eye.L"]), 0.0125
+    on = lambda deg: c + R * np.array([0.0, -np.cos(np.radians(deg)), np.sin(np.radians(deg))])  # noqa: E731
+    pts = np.array([on(22), on(48)])  # the margin (lashes) | the lid 9 mm up, still on the ball (no lashes)
+    for with_margin, want in ((False, [1, 1]), (True, [1, 0])):
+        spec = head_spec(age=25)
+        spec["blobs"]["eye.L"]["size"] = [R] * 3
+        if with_margin:
+            for k, x in (("lm_lid_upper_in.L", -0.007), ("lm_lid_upper_out.L", 0.007)):
+                spec["joints"][k] = {"pos": (on(21) + [x, 0.001, 0]).tolist(), "r": 0.003}
+            spec["joints"]["lm_eye_inner.L"]["pos"] = (on(5) + [-0.012, 0.002, 0]).tolist()
+            spec["joints"]["lm_eye_outer.L"]["pos"] = (on(5) + [0.013, 0.004, 0]).tolist()
+        P = Points(spec, pts, np.tile([0, -1.0, 0], (2, 1)), np.zeros(2, int), ["body"], 0.002)
+        ly = skin.expand_zones(spec, {"color": [0, 0, 0], "zone": "lash_upper.L"})
+        m = paint.layer_mask(spec, "t", ly, paint._View(P, np.arange(2)))
+        assert (m > 0.5).astype(int).tolist() == want, (with_margin, m)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
