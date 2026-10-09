@@ -245,8 +245,26 @@ and the `"story"`.
 - **rivers** (optional detail):
   ```
   {"name": {"source": [x, y, z], "through": [[x, y] or [x, y, z]], "mouth": [x, y, z] | "into": river,
-            "hanging": m, "valley": {"profile": "U" | "V" | "gorge" | "open", "floor": m}}}
+            "hanging": m, "valley": {"profile": "U" | "V" | "gorge" | "open", "floor": m, "cut"?: true | false},
+            "falls"?: [{"at": 0..1, "drop": m, "width"?: m}]}}
   ```
+  Unknown keys are a report warning. **A river drawn on ground the design already made** (down a volcano's or hill's
+  flank, or with its heights read off the existing ground) **cuts its own valley**: the base is solved without it and
+  its valley (floor at the bed, sides at the profile's grade) is cut in, so the land beyond the valley stays put (held
+  as the solve's low ground it raised the land round it by tens of metres). Automatic (the report says which rivers
+  cut and why); `valley.cut` forces it either way. Rivers well above or below the ground made without them (they make
+  the valley: a vale, alpine and basin rivers) are solved as before. Set a cutting river's heights under the ground by
+  the depth of valley you want.
+  **Waterfalls** `falls`: each a step of `drop` m at `at` (0..1 along the river; 1 = its mouth: a river ending at the
+  foot of a sea cliff falls off the cliff's top into the sea). The drops come out of the river's own fall (source and
+  mouth keep their heights, the reaches between grow gentler; together under 90% of it; falls at least 3 drops apart).
+  Built: a band of hard rock across the valley at the upstream level (the lip), a face one cell across (the report
+  gives its angle: under 60 deg the cells are too coarse for the drop; `detail` / `cell`), an amphitheatre cut back
+  round a plunge pool (radius ~ half the width + 0.15-0.6 x the drop, 1.2-6 m deep), the river running on from the
+  pool. `width` = the falling sheet (default the water's width). meta.json and the tiles' manifest carry `falls`:
+  the lip line (two xyz at the lip's water level), drop, width, flow direction, the pool (centre xyz at its level,
+  radius, depth) and `into` (river | lake | sea), for the engine's falling sheet and spray; the stream clutter puts
+  boulders round the pool and fallen blocks at the face's foot.
   The source and the mouth need a height (z); through points may leave it out. The river's heights are its bed: set
   them near the ground they cross (the report warns of a **trench**, the bed far below the ground either side: a
   basin floor above the river's heights cut it into a slot gorge). Its water never stands above its banks, and the banks

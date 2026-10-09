@@ -88,12 +88,13 @@ def segments(n, falls):
 
 
 def guard(s, falls, cell):
-    """Samples whose bank-height rule is lifted: just above each lip (the ground beside them is the pool's)."""
+    """Samples whose bank-height rule is lifted: just above each lip (the ground beside them is the pool's) and
+    through the amphitheatre below it (its own stamp lowered those banks on the build's first pass)."""
     m = np.zeros(len(s), bool)
     for f in falls:
         R = max(3 * cell, 1.2 * f["drop"])
         i = f["i"]
-        m |= (s <= s[i - 1] + 1e-9) & (s >= s[i - 1] - R)
+        m |= (s >= s[i - 1] - R) & (s <= s[i] + 1.5 * R + 6.0)
     return m
 
 

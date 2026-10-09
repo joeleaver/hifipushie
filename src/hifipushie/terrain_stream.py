@@ -247,6 +247,21 @@ class Streams:
         for k, v in G.items():
             setattr(self, k, np.ascontiguousarray(v))
         self.rid = rid
+        # waterfalls (terrain_falls): the plunge pool (1 inside, 0 past 1.4 radii) and the face's foot (fallen blocks)
+        falls = [f for f in (getattr(T, "falls", None) or []) if f.get("into") != "sea"]  # (local: the grids are
+        if falls:  # what tiles read, windowed; a list on self made every fall edit a global change)
+            plunge, foot = np.zeros(shape), np.zeros(shape)
+            for f in falls:
+                pc, R = np.array(f["pool"]["xyz"][:2]), float(f["pool"]["radius"])
+                plunge = np.maximum(plunge, _ss(1.4 * R, 0.8 * R, np.hypot(X - pc[0], Y - pc[1])))
+                lip = np.mean(np.array(f["lip"])[:, :2], 0)
+                t_ = np.array(f["flow"], float)
+                al = (X - lip[0]) * t_[0] + (Y - lip[1]) * t_[1]
+                ac = np.abs(-(X - lip[0]) * t_[1] + (Y - lip[1]) * t_[0])
+                reach = 0.35 * float(f["drop"]) + 3.0
+                foot = np.maximum(foot, _ss(-0.5, 0.5, al) * _ss(reach, 0.5 * reach, al) *
+                                  _ss(0.5 * f["width"] + reach, 0.5 * f["width"], ac))
+            self.plunge, self.foot = np.ascontiguousarray(plunge), np.ascontiguousarray(foot)
         ford = np.zeros(shape)
         for f in (getattr(T, "fords", None) or {}).values():
             fw = float(f.get("width", 8.0))
@@ -287,6 +302,8 @@ class Streams:
                                                          "ford", "side", "still")}
         g["still"] = np.clip(g["still"], 0, 1)
         g["energy"] = np.clip(g["energy"], 0, 1)
+        for k in ("plunge", "foot"):  # (waterfalls only)
+            g[k] = np.clip(self._at(getattr(self, k), xy), 0, 1) if hasattr(self, k) else np.zeros(len(xy))
         g["side"] = np.clip(g["side"], -1, 1)
         g["curve"] = np.clip(g["bend"], -1, 1)  # (the path's own bends)
         # along a straight reach the thalweg still wanders from bank to bank (alternate bars): a pool against one
@@ -311,7 +328,8 @@ class Streams:
         riffle = _ss(0.15, 0.8, -pr) * (1 - outer)
         bar = _ss(0.2, 0.6, g["bend"]) * _ss(0.3, 0.75, g["u"]) * (1 - 0.6 * e) * (1 - g["ford"])
         run = 1 - g["still"]  # (still water has none of them)
-        return pool * run, riffle * run, bar * run
+        pl = g.get("plunge", 0.0)  # (a waterfall's plunge pool: a pool, nothing else)
+        return np.maximum(pool * run, pl), riffle * run * (1 - pl), bar * run * (1 - pl)
 
     # ---- the bed's shape (terrain_ground.Edits.column)
     def cut(self, xy, g):
@@ -632,8 +650,11 @@ def clutter(T, mats, field, box=None, seed=11):
             p_b = (0.012 + 0.12 * e) * clus * _ss(5.0, 1.0, sd) * (hb < 1.6) * (0.6 + 0.8 * _ss(0.1, 0.6, -g["bend"]))
             # (steep reaches: fewer round boulders, more angular slabs; see "slab")
             p = np.where(inwater, p_w * (1 - 0.35 * _ss(0.6, 0.95, e)), np.where(sd > -0.5, p_b, 0.0))
+            # a waterfall's plunge pool: big boulders round its rim (thrown out by the fall), few in the pool itself
+            ring = 4 * g["plunge"] * (1 - g["plunge"])
+            p = np.maximum(p, 0.55 * ring)
             # sorted along the channel: the big ones on riffles and steps, small ones in the pools
-            med = (0.42 + 0.55 * e + 0.25 * rows) * (1 + 0.35 * riffle - 0.4 * pool * (1 - rows))
+            med = (0.42 + 0.55 * e + 0.25 * rows) * (1 + 0.35 * riffle - 0.4 * pool * (1 - rows)) * (1 + 0.9 * ring)
             scale = np.clip(med * np.exp(0.5 * _normal(u_a)), lo, np.minimum(hi, np.maximum(0.5, 1.3 * g["w"])))
             squash = np.where(scale > 1.0, sq0 + (1.0 - sq0) * u_c, squash)  # (big ones sit lower: slabby)
             place = np.where(inwater, 1, np.where(-dep < 0.3, 2, 3))
@@ -662,7 +683,8 @@ def clutter(T, mats, field, box=None, seed=11):
             p = np.maximum(p, 0.16 * _ss(0.55, 0.9, e) * inwater * (0.5 + riffle) *
                            _ss(0.4, 0.6, noise.fbm(Pf, 3.0, 2, seed=753)))
             p = p * (1 - g["still"])
-            scale = lo + (hi - lo) * u_a ** 1.3
+            p = np.maximum(p, 0.45 * g["foot"])  # (blocks fallen from a waterfall's face, at its foot)
+            scale = lo + (hi - lo) * u_a ** (1.3 - 0.8 * g["foot"])
             sink = (0.1 + 0.15 * u_s) * FOOTPRINT["slab"]["height"] * scale * squash
             yaw = flow + 40 * (u_b - 0.5)
             place = np.where(dep > 0.03, 1, 2)
