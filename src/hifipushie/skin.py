@@ -53,7 +53,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 2
+VERSION = 3
 
 # ---- tone: melanin + haemoglobin -> albedo ----------------------------------------------------------------------
 # A two-layer model in the spirit of Donner & Jensen 2006 / Jimenez et al. 2010, with Jacques' skin optics numbers
@@ -186,6 +186,14 @@ LINES = {  # tapered lines: [(anchor, offset)], radius (interocular distances)
     "marionette.L": ([("lm_mouth_corner.L", (0.06, 0.02, -0.03)), ("lm_mouth_corner.L", (0.12, 0.05, -0.42))], [0.06, 0.035]),
     "brow.L": ([("lm_brow_inner.L", (0.0, 0, 0)), ("lm_brow_mid.L", (0, 0, 0)), ("lm_brow_outer.L", (0, 0, -0.01))],
                [0.085, 0.09, 0.045]),
+}
+_VN = 17  # base.VERM_N
+_V = lambda k, rev=False: [f"verm_{k}{i:02d}" for i in (range(_VN - 1, -1, -1) if rev else range(_VN))]  # noqa: E731
+OUTLINES_DENSE = {  # on a GNM head (base._vermilion_joints): right corner -> left along the outer edge, back along
+    # the inner one; "lips" border to border
+    "lip_upper": _V("u") + _V("iu", True),
+    "lip_lower": _V("il") + _V("l", True),
+    "lips": _V("u") + _V("l", True)[1:-1],
 }
 OUTLINES = {  # closed landmark outlines seen from the front
     "lips": ["lm_mouth_corner.R", "lm_lip_upper_side.R", "lm_lip_peak.R", "lm_lip_upper", "lm_lip_peak.L",
@@ -368,7 +376,13 @@ def zone(spec: dict, name: str, grow: float = 1.0, what: str = "zone") -> list:
                 out.append({"mask": tube})
             return out
         if stem in OUTLINES:
-            return [{"outline": {"points": OUTLINES[stem], "dir": [0, 1, 0], "soft": 0.0012 * grow, "depth": 0.03}}]
+            pts = OUTLINES[stem]
+            if stem in OUTLINES_DENSE and "verm_u00" in J:  # (a GNM head: the vermilion's own edges, base.VERM_N
+                # points each; the 68 landmarks' seven chords cut the bow and corners off, and the face's pale
+                # pores / stubble layers ("lips" subtracted) painted there: the upper lip read pale whatever
+                # skin.lips said)
+                pts = OUTLINES_DENSE[stem]
+            return [{"outline": {"points": pts, "dir": [0, 1, 0], "soft": 0.0012 * grow, "depth": 0.03}}]
         key = stem + ".L" if stem + ".L" in FACE or stem + ".L" in UNIONS or stem + ".L" in LINES or stem + ".L" in BODY else stem
         if key in UNIONS:
             out = []
@@ -641,7 +655,10 @@ def _build(spec: dict, J: dict) -> dict:
         le = 0.5 + 0.4 * dark  # dark lips keep most of their pigment: the upper one browner, the lower pinker
         out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=le,
                                                            oxygenation=0.62), "opacity": 0.85, "roughness": lp["roughness"] + 0.04,
-                                  "mask": _z("lip_upper", grow=2.2)}
+                                  "mask": _z("lips", grow=2.2)}  # (all the vermilion: the lower layer paints over its own
+        # part next. Drawn as lip_upper (border -> the contact ring) it missed ~2/3 of the upper vermilion: seen from the
+        # front the contact ring lies ABOVE the lip's own lower front, so the face's pale layers showed there and
+        # skin.lips never reached the upper lip; the likeloop agent's "lip colour stuck")
         out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=7.0 * lp["blood"], epidermis=le - 0.08, oxygenation=0.68),
                                   "opacity": 0.85, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=2.2)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)

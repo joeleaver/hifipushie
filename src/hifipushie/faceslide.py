@@ -359,7 +359,8 @@ def _lip_rings() -> dict:
         ring = nxt
         rings.append(sorted(ring))
     _CACHE["lip_rings"] = {"rings": [np.array(r, int) for r in rings], "contact": basemod.LIP_RING,
-                           "adj": {int(v): [int(u) for u in adj[v]] for r in rings for v in r}}
+                           "adj": {int(v): [int(u) for u in adj[v]] for r in rings for v in r},
+                           "upper": np.asarray(g["groups"]["upper_lip"]) > np.asarray(g["groups"]["lower_lip"])}
     return _CACHE["lip_rings"]
 
 
@@ -377,6 +378,7 @@ def seal_delta(V: np.ndarray, amount: float = 1.0) -> np.ndarray:
 
 
 SEAL_PASSES = 3
+CORNER_FREE = 0.0  # share of the mouth's width at each corner where the rolls are left to the membrane
 
 
 def _seal_step(V, amount, R):
@@ -384,40 +386,71 @@ def _seal_step(V, amount, R):
     C = rings[kc]
     x = V[C, 0]
     lo_x, hi_x = x.min(), x.max()
-    # upper / lower half: above / below the line through the ring's two corners (its extremes in x)
-    a, b = V[C[np.argmin(x)]], V[C[np.argmax(x)]]
-    side = (V[C, 1] - (a[1] + (x - a[0]) / max(b[0] - a[0], 1e-9) * (b[1] - a[1]))) > 0
+    # upper / lower half: GNM's own upper_lip / lower_lip groups (each ring splits 29 / 29). By height (above the
+    # corners' line) a downturned, wide-open mouth put lower-lip vertices in the upper half: their edges to the
+    # rolls stretched x6 (Tess)
+    up_g = R["upper"]
+    side = up_g[C]
     U, Lw = C[side], C[~side]
     if len(U) < 3 or len(Lw) < 3:
         return np.zeros_like(V)
     ou, ol = np.argsort(V[U, 0]), np.argsort(V[Lw, 0])
     U, Lw = U[ou], Lw[ol]
     gap_at = lambda xx: np.c_[[np.interp(xx, V[Lw, 0], V[Lw, k]) - np.interp(xx, V[U, 0], V[U, k]) for k in (1, 2)]].T  # noqa: E731
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
     D = np.zeros_like(V)
-    # which lip every ring vertex belongs to, by topology from the contact ring (by height, the inner rolls' quads
-    # straddle the middle and half of each went the other way: 29 turned over)
+    # the contact ring's own move: each half halfway to the other (per x; touching or crossed: nothing)
+    xx = np.clip(V[C, 0], lo_x, hi_x)
+    gp = gap_at(xx)
+    sgn = np.where(side, 0.5, -0.5)
+    tgt = np.c_[np.zeros(len(C)), amount * sgn * np.minimum(gp[:, 0], 0.0), amount * sgn * gp[:, 1]]
+    # everything else as a MEMBRANE over the lips' rings (a harmonic fill: the contact ring held at its move, the
+    # outermost ring at 0, the rolls inside free): the travel spreads over every row in between. (Moving whole bands
+    # with a fade by height stretched edges x4 and turned quads on wide-open, thin-lipped heads: Tess)
+    ids = np.unique(np.concatenate(rings))
+    loc = {int(v): i for i, v in enumerate(ids)}
+    rows, cols = [], []
+    for v in ids:
+        for u in R["adj"].get(int(v), []):
+            if u in loc:
+                rows.append(loc[int(v)])
+                cols.append(loc[u])
+    n = len(ids)
+    A = sp.coo_matrix((np.ones(len(rows)), (rows, cols)), (n, n)).tocsr()
+    deg = np.asarray(A.sum(1)).ravel()
+    Lp = sp.diags(deg) - A
+    fixed = np.zeros(n, bool)
+    val = np.zeros((n, 3))
+    ci = np.array([loc[int(v)] for v in C])
+    fixed[ci] = True
+    val[ci] = tgt
+    # the rolls inside the contact move whole with their own lip (by topology from the contact ring: by height the
+    # rolls' quads straddle the middle; left free, the corners' rolls averaged both lips and turned over)
     up_of = {int(v): bool(s) for v, s in zip(C, side)}
-    order = list(range(kc - 1, -1, -1)) + list(range(kc + 1, len(rings)))
-    for k in order:
+    for k in range(kc - 1, -1, -1):
         for v in rings[k]:
             nb = [up_of[u] for u in R["adj"].get(int(v), []) if u in up_of]
-            up_of[int(v)] = bool(np.mean(nb) > 0.5) if nb else bool(V[v, 1] > np.interp(V[v, 0], V[U, 0], V[U, 1]))
-    inner = np.unique(np.concatenate(rings[:kc + 1]))
-    outer = np.unique(np.concatenate(rings[kc + 1:]))
-    for ids, full in ((inner, True), (outer, False)):
-        xx = np.clip(V[ids, 0], lo_x, hi_x)
-        gp = gap_at(xx)  # (k, 2): lower - upper, (y, z)
-        up = np.array([up_of[int(v)] for v in ids])
-        if not full:  # past the contact: fading with the distance from it
-            ref = np.where(up, np.interp(xx, V[U, 0], V[U, 1]), np.interp(xx, V[Lw, 0], V[Lw, 1]))
-            w = np.exp(-((V[ids, 1] - ref) / 0.005) ** 2)
-        else:
-            w = np.ones(len(ids))
-        sgn = np.where(up, 0.5, -0.5)
-        open_ = np.minimum(gp[:, 0], 0.0)  # (lower - upper y: negative when apart; crossed or touching: nothing)
-        D[ids, 1] += amount * w * sgn * open_
-        D[ids, 2] += amount * w * sgn * gp[:, 1]
-    # held off where the lips already touch or cross (no compression)
+            up_of[int(v)] = bool(R["upper"][v])  # (GNM's groups: see above)
+    inner = np.array([int(v) for k in range(kc) for v in rings[k]], int)
+    # ... except near the corners, where the two lips' rolls join: there the membrane spreads it (held whole, an
+    # upper roll vertex going down beside a lower one going up stretched their edge x4: Tess's wide-open mouth)
+    span = max(hi_x - lo_x, 1e-6)
+    inner = inner[np.minimum(V[inner, 0] - lo_x, hi_x - V[inner, 0]) > CORNER_FREE * span]
+    if len(inner):
+        g_in = gap_at(np.clip(V[inner, 0], lo_x, hi_x))
+        s_in = np.where([up_of[int(v)] for v in inner], 0.5, -0.5)
+        ii = np.array([loc[int(v)] for v in inner])
+        fixed[ii] = True
+        val[ii] = np.c_[np.zeros(len(inner)), amount * s_in * np.minimum(g_in[:, 0], 0.0), amount * s_in * g_in[:, 1]]
+    oi = np.array([loc[int(v)] for v in rings[-1]])
+    fixed[oi] = True
+    free = ~fixed
+    if free.any():
+        Lff = Lp[free][:, free].tocsc()
+        rhs = -(Lp[free][:, fixed] @ val[fixed])
+        val[free] = np.column_stack([spsolve(Lff, rhs[:, k]) for k in range(3)])
+    D[ids] = val
     return D
 
 
