@@ -685,6 +685,7 @@ The same maps go into `scene.blend` and the export.
 | Trousers read high-waisted; the belt sits far above the concept's | The block puts its top at the NATURAL waist | Block option `waist_drop` (m under the waist; men's tailored trousers 0.04-0.08): girth there, rise, lengths and placement follow |
 | On another body the same jacket's sleeves start 3-6 cm down the arm, seams 10-12 cm open, and the sim stalls in the first frames | The armhole is too high for that body's shoulder line (hps lower: armhole depth from hps 263 mm where 294 worked): the under sleeve crosses back / side panel at the pit and is sent down the arm round after round | A jacket's armhole sits ~3 cm under the pit: bodice option `armhole_depth` 0.12-0.14 (default 0.02 is a shirt's); check `sleeve_down` <= 0.02 and armhole start gaps ~9 cm at the start |
 | A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |
+| An open jacket's fronts hang together below the button where the reference's hang 12-15 cm apart | The pose: the reference's arms are raised further (45 deg vs 25): raised arms lift the sleeves and pull the fronts round to the sides | Judge against a reference in ITS pose (turn the arm joints about the shoulder on a copy of the model and dress that): same jacket, arms 25 -> 45 deg: front edges 2 -> 12 cm apart at the hips. Sleeve length and cuff show are read in that pose too |
 
 ## Sources
 
