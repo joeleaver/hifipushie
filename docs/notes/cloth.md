@@ -1967,3 +1967,26 @@ NO SIM WAS RUN.
       points shrank to crumples by the stand's ends. NOT FIXED: the points need laying on the shirt front as a board
       (like the notched collar's ends), not marched.
     - Tests: test_cloth_made::test_hug_neckline_draws_the_seam_to_what_is_under_it.
+  - Round 2 (shirt collar points, flecks, gorge job):
+    - The "twisted ribbons" at the shirt's open front were NOT the collar: highlighted (c10jk.py `hl`), they are the
+      shirt FRONTS' top corners, the simulated "open neck.L/R" roll flaps standing up; the constructed fall's points
+      lay buried under them. construct key `press` (fold-name prefixes, default ["lapel"]): ["open neck"] presses
+      them flat like lapels (front.L 77 vertices 9 mm, front.R only 7: the known asymmetric roll). Then
+      `lay_points_on_front` lays the fall's rows past the stand on the FRONT's pattern as a board (on_pattern; from
+      the neck edge at the column's station, into the front by what is left of the row, turned by the column's
+      angle), kept `lay` over the shirt; blended in over u 0.45-0.85. c10_s8 (pressneck + board): ribbons gone,
+      points visible lying on the fronts; collar x shirt crossings 9, x its stand 2; fall stretch p95 1.26 max 3.4.
+      Points read short (end near the neckline). Laying the tails on the nearest cloth instead (tried first): stretch
+      max 5.7, bunched by the stand's ends.
+    - The white flecks at the left chest / armholes in c10_j2's after column are in the SIMULATED pair already
+      (flecks.py: raw om_21 + worn shirt 43 shirt vertices out through the jacket; constructed 34, the same armhole
+      clusters at |x| 0.17-0.21, z 1.21-1.32, plus 6-8 at the left lapel's top). Not from hug / over_under. Cause
+      (fleckprobe.py): at the armpit tucked's "out" (away from the nearest body vertex) disagrees with the faces' own
+      winding, so they count as tucked 4 mm in; others sit over the jacket's unwelded seams (nearest point on a
+      piece's edge: `ins` false). Tried in tucked: pokes exempt from the neighbour vote (34 -> 32), pokes over seams
+      (crossings 268 -> 349): both reverted. The +29 jacket x shirt crossings come with over_under's lift.
+    - gorge_angle job: q1.txt c10_j3 = the jacket with op:lapel gorge_drop removed, gorge_angle 55 (run.py takes
+      op:<op>.<field>=json); every jacket job now has construct={"collar": true} (post-sim, no key change).
+      Drafted (draftchk.py, no sim): gorge_angle 55 passes design/pattern/construction; its lapel point is 45 mm below
+      the HPS (gorge_drop 0.12 had it 120 mm: the 33 deg gorge ran down the chest with the collar end a strap beside it,
+      the "wing"). A steeper gorge is a real notch HIGHER up; c10_j4 = gorge_angle 45 as the in-between.

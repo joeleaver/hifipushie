@@ -24,7 +24,8 @@ from scipy.spatial import cKDTree
 
 SHIRT = {"stand": 0.027, "fall_over": 0.012, "points": 0.070, "spread": 32.0, "off": 0.004, "lay": 0.0015,
          "fold": 0.0022, "inset": 0.012, "open": 22.0, "step": 0.006, "rows_stand": 5, "rows_fall": 10,
-         "thickness": 0.0024, "end_round": 0.014, "tilt": 12.0, "seam_smooth": 30, "bury": 0.03, "fall_hug": 0.003}
+         "thickness": 0.0024, "end_round": 0.014, "tilt": 12.0, "seam_smooth": 30, "bury": 0.03, "fall_hug": 0.003,
+         "lay_from": 0.45, "lay_full": 0.85}
 NOTCHED = {"stand": 0.024, "fall": 0.036, "show": 0.014, "lay": 0.002, "fold": 0.003, "step": 0.010, "rows_stand": 4,
            "rows_fall": 7, "thickness": 0.003, "off": 0.003}
 
@@ -355,7 +356,85 @@ def shirt_collar(chain_P: np.ndarray, body: dict, cloth_layers: list, axis: tupl
             "stand_stretch": stretch(st_V, st_F, st_uv), "fall_stretch": stretch(fa_V, fa_F, fa_uv), "params": p}
     return {"parts": [{"name": "stand", "V": st_V, "F": st_Fo, "uv": st_uv, "grid": (n, ns + 1), "seam_row": np.arange(n) * (ns + 1)},
                       {"name": "collar", "V": fa_V, "F": fa_F, "uv": fa_uv, "grid": (len(idx), m)}],
-            "info": info, "roll": R, "stations": {"s": s, "idx": idx}}
+            "info": info, "roll": R, "stations": {"s": s, "idx": idx},
+            "fall_cols": {"u": u, "alpha": alpha, "along": along, "h": h[idx], "na": na, "lay": lay, "side": np.sign(a)}}
+
+
+def lay_points_on_front(sc: dict, V: np.ndarray, M: dict, ch: dict, bV: np.ndarray, bFo: np.ndarray, **kw) -> tuple:
+    """A shirt collar's POINTS laid on the shirt's fronts as a board, the way the notched collar's ends lie on the
+    pressed lapel (on_pattern): marched, a point over the open V found no cloth under it and hung on as a twisted
+    ribbon; drawn down onto what was nearest it went onto the skin under the shirt front, or bunched by the stand's end.
+    sc: shirt_collar's result (its fall_cols); V, M: the shirt as it lies (names, piece, uv, F); ch: the neckline's
+    seam_chain (its garment-side vertices in order, as passed to shirt_collar). Each fall row that has run down over
+    the stand (along > the stand's height) is put in the FRONT's pattern: from the neck edge at its station, into the
+    front by what is left of it, turned toward the front's end by the column's own angle; on_pattern lays it on the
+    front as it lies, `lay` out. Blended in by the column's u (lay_from -> lay_full) and over the first cm past the
+    seam. -> (fall part with new V, info)."""
+    p = dict(SHIRT, **{k: v for k, v in kw.items() if v is not None})
+    fc, st = sc["fall_cols"], sc["stations"]
+    part = dict(sc["parts"][1])
+    ncol, m = part["grid"]
+    G = part["V"].reshape(ncol, m, 3).copy()
+    names, piece, uv, F = list(M["names"]), np.asarray(M["piece"]), np.asarray(M["uv"]), np.asarray(M["F"])
+    P = np.asarray(ch["P"], float)
+    sp = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    Euv = uv[ch["idx"]]
+    pc = piece[ch["idx"]]
+    s_col = st["s"][st["idx"]]
+    t = np.clip((fc["u"] - p["lay_from"]) / max(p["lay_full"] - p["lay_from"], 1e-6), 0, 1)
+    w = t * t * (3 - 2 * t)
+    vn = np.zeros_like(V)
+    laid = 0
+    for k in sorted(set(pc.tolist())):
+        if not names[k].startswith("front"):
+            continue
+        sel = np.where(piece == k)[0]
+        Fk = away(V, F[np.isin(F, sel).all(1)], bV, bFo)
+        if not len(Fk):
+            continue
+        fn = np.cross(V[Fk[:, 1]] - V[Fk[:, 0]], V[Fk[:, 2]] - V[Fk[:, 0]])
+        vn[:] = 0
+        for a_ in range(3):
+            np.add.at(vn, Fk[:, a_], fn)
+        out = _unit(vn)
+        on_k = pc == k
+        sk = sp[on_k]
+        cols = np.where((w > 0) & (s_col >= sk.min() - 0.002) & (s_col <= sk.max() + 0.002))[0]
+        if not len(cols) or on_k.sum() < 2:
+            continue
+        cen = uv[sel].mean(0)
+        imgs, where = [], []
+        for c in cols:
+            E = np.array([np.interp(s_col[c], sk, Euv[on_k, j]) for j in range(2)])
+            E2 = np.array([np.interp(s_col[c] + 0.005, sk, Euv[on_k, j]) for j in range(2)])
+            E1 = np.array([np.interp(s_col[c] - 0.005, sk, Euv[on_k, j]) for j in range(2)])
+            tan = _unit(E2 - E1)
+            t_end = tan if fc["side"][c] > 0 else -tan
+            n_in = np.array([-tan[1], tan[0]])
+            if (cen - E) @ n_in < 0:
+                n_in = -n_in
+            for r in range(fc["na"] + 1, m):
+                ell = fc["along"][c, r] - fc["h"][c]
+                if ell <= 0.0:
+                    continue
+                al = fc["alpha"][c]
+                imgs.append(E + n_in * ell * np.cos(al) + t_end * ell * np.sin(al))
+                where.append((c, r, ell))
+        if not imgs:
+            continue
+        X, N = on_pattern(V, Fk, uv, np.array(imgs), out=out, board=p.get("point_board", 0.02))
+        X = X + (fc["lay"] + 0.0005) * N
+        # (a board's plane runs under the front where the front curves out: kept `lay` over the shirt's cloth)
+        Fall = away(V, F, bV, bFo)
+        X, _, _ = Under([{"V": V, "F": Fall, "sheet": True, "depth": 0.02}]).settle(X, fc["lay"])
+        for (c, r, ell), x in zip(where, X):
+            rw = np.clip(ell / 0.01, 0, 1)
+            b = w[c] * rw * rw * (3 - 2 * rw)
+            G[c, r] = (1 - b) * G[c, r] + b * x
+        laid += len(cols)
+    G[:, fc["na"] + 1:] = smooth_rows(G[:, fc["na"] + 1:], 1, keep_rows=())
+    part["V"] = G.reshape(-1, 3)
+    return part, {"columns_laid": int(laid), "fall_stretch": stretch(part["V"], part["F"], part["uv"])}
 
 
 def press_flap(V: np.ndarray, F: np.ndarray, uv: np.ndarray, flap: np.ndarray, line: tuple, lay: float = 0.003,
@@ -899,7 +978,7 @@ def collar_pattern(uv: np.ndarray, F_piece: np.ndarray, chain_made: np.ndarray, 
 
 # ---- wiring: what cloth.build calls after its clean-up (garment key `construct`)
 
-CONSTRUCT = {"lapels": True, "collar": False, "lapel_lay": 0.003, "wedge": 0.35}
+CONSTRUCT = {"lapels": True, "collar": False, "lapel_lay": 0.003, "wedge": 0.35, "press": ["lapel"]}
 
 
 def away(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bFo: np.ndarray) -> np.ndarray:
@@ -942,12 +1021,12 @@ def options(g: dict) -> dict | None:
     return dict(CONSTRUCT, **(c if isinstance(c, dict) else {}))
 
 
-def lapel_flaps(M: dict) -> list:
+def lapel_flaps(M: dict, prefixes: tuple = ("lapel",)) -> list:
     """Folds named lapel*: [{"piece", "sel" (its vertices), "flap", "line" (point, direction in the pattern)}]."""
     names, piece, uv = list(M["names"]), np.asarray(M["piece"]), np.asarray(M["uv"])
     out = []
     for fd in M.get("folds") or []:
-        if not str(fd.get("name", "")).startswith("lapel") or fd.get("piece") not in names or not fd.get("rows"):
+        if not str(fd.get("name", "")).startswith(tuple(prefixes)) or fd.get("piece") not in names or not fd.get("rows"):
             continue
         sel = np.where(piece == names.index(fd["piece"]))[0]
         row = np.asarray(fd["rows"][0], np.int64)
@@ -969,7 +1048,7 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
     the simulated piece stays in V (hidden by what draws made["parts"]). under: {"V", "F", "made" (per vertex: its
     collar / stand)} the garment worn under it, as it lies."""
     opt = options(g)
-    flaps = lapel_flaps(M) if opt else []
+    flaps = lapel_flaps(M, tuple(opt.get("press") or ("lapel",))) if opt else []
     if not opt or not flaps or not (opt["lapels"] or opt["collar"]):
         return V, None
     V = np.array(V, float)
