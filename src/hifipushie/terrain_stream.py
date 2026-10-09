@@ -80,15 +80,26 @@ KINDS = {  # clutter kinds: size = the largest plan dimension (m) at scale 1 x s
     "bush": {"scale": [0.6, 1.9], "squash": [0.45, 1.1], "what": "a bank bush (willow / alder scrub) on the bank top"},
 }
 PLACES = ("", "water", "margin", "bank", "bar", "shore")
-COLS = 11  # (a clutter row: x, y, z, kind, scale, yaw, squash, place, river, water, sink)
+COLS = 18  # (a clutter row: x, y, z, kind, scale, yaw, squash, place, river, water, sink, then a capsule's x0, y0,
+# z0, x1, y1, z1, diameter: NaN but for snags and limbs)
 from . import terrain_shore as _shore  # noqa: E402  (lake margins and sea beaches: the same rows)
 KINDS.update(_shore.KINDS)
+from . import terrain_snags as _snags  # noqa: E402  (snags and limbs: capsules resting on the bed, banks, boulders)
+KINDS.update({k: {kk: v[kk] for kk in ("scale", "squash", "what")} for k, v in _snags.KINDS.items()})
 SPACING = {"river_rock": 1.1, "cobbles": 0.8, "slab": 1.5, "driftwood": 2.2, "reeds": 0.9, "litter": 2.0, "sedge": 0.7,
            "bush": 2.4}
 
 
-CSV_COLUMNS = "x,y,z,kind,scale,yaw,squash,place,water,sink"
-CSV_VERSION = 2  # (1: ..., place; 2: + water, sink)
+CSV_COLUMNS = "x,y,z,kind,scale,yaw,squash,place,water,sink,x0,y0,z0,x1,y1,z1,diameter"
+CSV_VERSION = 3  # (1: ..., place; 2: + water, sink; 3: + a capsule's ends and diameter, snags and limbs only)
+
+
+def pad(R):
+    """Rows of 11 columns (or more) padded to COLS with NaN (no capsule)."""
+    R = np.asarray(R, float)
+    if R.ndim != 2 or R.shape[1] >= COLS:
+        return R
+    return np.c_[R, np.full((len(R), COLS - R.shape[1]), np.nan)]
 FOOTPRINT = {  # what stands in the water's way, per kind: plan axes and height as shares of scale (x squash);
     # the clutter kit's realistic assets' means (height above the pivot: its seasons json has each variant's)
     "river_rock": {"shape": "ellipsoid", "plan": [1.0, 0.85], "height": 0.44},
@@ -763,7 +774,18 @@ def clutter(T, mats, field, box=None, seed=11):
                     R = np.concatenate([R, np.c_[pos, hz, np.full(len(q), ki), ln, np.mod(yw, 360.0),
                                                  0.9 + 0.5 * h2[sel], np.ones(len(q)), q[:, 8], lvq - hz,
                                                  np.zeros(len(q))]])
-        out.append(R)
+        out.append(pad(R))
+    # snags and limbs (terrain_snags): resting on the bed, banks and the boulders just placed, never through them
+    trees_xy = getattr(T, "_snag_trees", None)
+    if trees_xy is None:
+        from . import terrain_design
+        tr = terrain_design.trees(T) if getattr(T, "cover", None) else []
+        trees_xy = np.asarray(tr, float)[:, :2] if len(tr) else np.zeros((0, 2))
+        T._snag_trees = trees_xy
+    SR, SCp = _snags.snags(S, field, rocks[0] if rocks is not None else None, trees_xy, (zx0, zx1, zy0, zy1),
+                           dens=dens)
+    if len(SR):
+        out.append(np.c_[SR, SCp])
     return np.concatenate(out) if out else empty
 
 
@@ -804,7 +826,7 @@ def all_clutter(T, mats, field, box=None):
     dens = float(S.cfg["clutter"]) if S is not None else float((config(T) or {"clutter": 0.0})["clutter"])
     parts = [clutter(T, mats, field, box)]
     if dens > 0:
-        parts.append(_shore.beach_clutter(T, mats, field, list(KINDS), box, density=dens))
+        parts.append(pad(_shore.beach_clutter(T, mats, field, list(KINDS), box, density=dens)))
     return np.concatenate([p for p in parts if len(p)]) if any(len(p) for p in parts) else np.zeros((0, COLS))
 
 
@@ -851,7 +873,8 @@ def manifest(S, C):
     """The export manifest's "clutter" section for the stream kinds."""
     return {"kinds": {k: {"scale_m": v["scale"], "squash": v["squash"], "what": v["what"], "z": "surface",
                           **({"footprint": FOOTPRINT[k]} if k in FOOTPRINT else {})}
-                      for k, v in KINDS.items() if k != "bush"},  # (bush: the older kind's entry stands)
+                      for k, v in KINDS.items() if k != "bush" and k not in _snags.KINDS}  # (bush: the older kind's
+                     | _snags.manifest_kinds(),  # entry stands; snags and limbs: capsules)
             "places": {"water": "in the channel, its base on the bed under the water", "margin": "at the water line",
                        "bank": "on the bank beside the water", "bar": "on a gravel bar inside a bend",
                        "shore": "on a sea beach above the water",
@@ -867,7 +890,14 @@ def manifest(S, C):
                    "footprint (per kind) is what a water or flow simulation stamps for a row, at its own resolution: "
                    "the upper half of an ellipsoid with plan axes scale x plan (the long one along yaw) and height "
                    "scale x squash x height over (z - sink); the tile heightmaps hold none of these pieces (they "
-                   "are 1 m cells; the pieces are their own meshes and colliders).",
+                   "are 1 m cells; the pieces are their own meshes and colliders). csv_version 3 adds seven columns "
+                   "at the END (a v2 reader that indexes by header keeps working): x0,y0,z0,x1,y1,z1,diameter, "
+                   "filled only for the kinds whose footprint is a \"capsule\" (snag, limb; empty for the rest): "
+                   "the capsule's axis end points (m; end 0 the lower) and its diameter (m). Each end rests on what "
+                   "holds it (the axis end a radius over the bed, a bank or a boulder); nothing of it is inside the "
+                   "ground, rock or a boulder row's footprint. Stamp it as that capsule; the asset is a stem 1 m "
+                   "along +x at scale 1 (scale = the length), turned by yaw (from end 0 to end 1 in plan) and "
+                   "pitched to the ends' heights.",
             "rivers": counts(S, C)}
 
 
