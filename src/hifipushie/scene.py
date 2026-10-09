@@ -187,6 +187,38 @@ def part_voxel(ps: list, voxel: float) -> tuple[float, str]:
     return float(np.round(max(need, floor), 4)), why
 
 
+def refine_box(ps: list, verts, faces, normals, voxel: float, r: dict):
+    """A finer mesh inside one box of a part (parts.<p>.refine: [{"lo", "hi", "voxel"}]): the box meshed on its own
+    grid at r["voxel"] and projected onto the same exact field, spliced into the coarse mesh. The coarse faces wholly
+    inside the box go; the fine faces reach one coarse voxel past it, so the two overlap in a thin band instead of
+    leaving a crack (both lie on the field's zero set with the field's normals and paint, so the band doesn't show).
+    The grid is uniform per part: this is how a face stage gets 0.5 mm lids (a 1 mm voxel can't hold the lid margin,
+    which came out ragged) without four times the mesh everywhere. Returns (verts, faces, normals, fine faces kept)."""
+    lo, hi, fv = np.asarray(r["lo"], float), np.asarray(r["hi"], float), float(r["voxel"])
+    a = np.floor((lo - 3 * voxel) / fv) * fv
+    shape = np.ceil((hi + 3 * voxel - a) / fv).astype(int) + 1
+    field, _ = sdf.PartGrid().update(ps, (a, fv, shape))
+    m = store._mesh_part(ps, field, a, fv, [], {})
+    if m is False:
+        return verts, faces, normals, 0
+    fvv, ffc, fn, _ = m
+    inside = lambda V, e: np.all((V >= lo - e) & (V <= hi + e), axis=1)  # noqa: E731
+    keep_f = inside(fvv, voxel)[ffc].all(1)
+    drop_c = inside(verts, 0.0)[faces].all(1)
+    fc = faces[~drop_c]
+    used_c = np.unique(fc)
+    rc = np.full(len(verts), -1)
+    rc[used_c] = np.arange(len(used_c))
+    ffc = ffc[keep_f]
+    used_f = np.unique(ffc)
+    rf = np.full(len(fvv), -1)
+    rf[used_f] = np.arange(len(used_f)) + len(used_c)
+    V = np.r_[np.asarray(verts)[used_c], np.asarray(fvv)[used_f]]
+    N = np.r_[np.asarray(normals)[used_c], np.asarray(fn)[used_f]]
+    F = np.r_[rc[fc], rf[ffc]].astype(np.int32)
+    return V, F, N, int(len(ffc))
+
+
 def _frame(ps: list, voxel: float, pad: float = 0.03):
     """A grid around a stream's primitives, snapped to a lattice of `voxel` fixed in space."""
     own = [q for q in ps if q.kind != "shell" and q.op in ("add", "intersect")]
@@ -247,8 +279,9 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
                          np.min([q.lo for q in own if q.op == "add"], 0)).max())
             fr = _frame(ps, min(vx, float(np.round(max(thinnest(own) / 2.5, ext / 400), 4))))
         M0 = ctx["prefabs"][pf]["instances"][ctx["prefabs"][pf]["bake"]] if pf else None
+        refine = (defs.get(key) or {}).get("refine") if pf is None else None
         if pf is None:
-            h = _hash(ps, fr)
+            h = _hash(ps, fr, json.dumps(refine, sort_keys=True) if refine else "")
         else:  # the same shape in its own frame wherever its first instance stands: keyed on the definition
             h = hashlib.sha1(json.dumps([spec["prefabs"][pf], key, fr[1], round(float(np.cbrt(np.linalg.det(M0[:3, :3]))), 6)],
                                         sort_keys=True).encode()).hexdigest()[:16]
@@ -269,6 +302,11 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
             if m is False:
                 continue
             verts, faces, normals, _ = m
+            for r in refine or []:
+                t0 = time.time()
+                verts, faces, normals, nf = refine_box(ps, verts, faces, normals, fr[1], r)
+                log.append(f"{key}: refined {np.round(r['lo'], 3).tolist()}..{np.round(r['hi'], 3).tolist()} at "
+                           f"{float(r['voxel']) * 1000:.2f} mm ({nf} faces, {time.time() - t0:.1f} s)")
             if M0 is not None:  # into the prefab's own frame
                 A = np.linalg.inv(M0[:3, :3])
                 verts = (verts.astype(np.float64) - M0[:3, 3]) @ A.T

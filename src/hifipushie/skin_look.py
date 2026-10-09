@@ -35,7 +35,8 @@ PHOTO = {"octaves_mm": [0.35, 0.7, 1.4, 2.8, 5.6, 11.2], "L": [1.2, 1.26, 0.83, 
          "highlight_share": [0.05, 0.13], "highlight_breakup": [1.6, 2.4], "cheek_a": 1.2, "nose_a": 0.9}
 VIEWS = {"bust": "head", "face": "head", "three_quarter": "head", "side": "head", "cheek": "head", "eye": "head",
          "mouth": "head", "forehead": "head", "brows": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
-DEFAULT = ("face", "three_quarter", "cheek", "eye", "mouth", "ear")
+EYE_VOXEL = 0.0005  # m: the head stage's orbits (lids, folds, brows) are meshed this fine
+DEFAULT = ("face","three_quarter", "cheek", "eye", "mouth", "ear")
 
 
 def _J(spec: dict) -> dict:
@@ -98,6 +99,14 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
     s["blobs"]["skin_look_crop"] = {"at": c, "shape": "box", "size": size, "op": "intersect", "blend": 0.0, "part": part}
     s["parts"].setdefault(part, {})
     s["parts"][part]["voxel"] = float(voxel or min(vx, s["parts"][part].get("voxel", 1.0)))
+    if region == "head" and "eye.L" in J and "eye.R" in J and EYE_VOXEL < s["parts"][part]["voxel"]:
+        # the orbits, lids to brows, finer (scene.refine_box): at 1 mm the lid margins came out ragged and the
+        # lid's folds and rims (2-3 mm features) were a voxel or two wide
+        e = np.array([J["eye.L"], J["eye.R"]])
+        s["parts"][part]["refine"] = [{"lo": [round(float(e[:, 0].min()) - 0.024, 4), round(float(e[:, 1].min()) - 0.03, 4),
+                                              round(float(e[:, 2].min()) - 0.016, 4)],
+                                       "hi": [round(float(e[:, 0].max()) + 0.024, 4), round(float(e[:, 1].max()) + 0.004, 4),
+                                              round(float(e[:, 2].max()) + 0.026, 4)], "voxel": EYE_VOXEL}]
     s.pop("symmetry", None) if False else None
     return s
 
