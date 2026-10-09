@@ -2872,6 +2872,13 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       upper arm is 45 deg from the vertical, the concept's A-pose; ours hang at 25.5). po_01_jacket was running at the
       stop (it builds the shirt on that body first): read section.py on out/po_01_jacket.npz (the last column = where
       the two front edges are) against om_13's 8-10 cm at the chest, 2 cm at the hips.
+    - po_01 (su_om_pose jacket over its own shirt, 1027 s): THE POSE DECIDES WHETHER AN OPEN JACKET HANGS OPEN. Arms at
+      45 deg: front edges 207 mm apart at the chest, 171 / 156 / 131 / 115 / 121 mm at z 1.25 / 1.15 / 1.05 / 0.95 / 0.88
+      (the concept: 12-15 cm at the waist); arms at 25.5 deg (om_13): 106 / 78 / 50 / 33 / 21 / 21. Raised arms lift
+      the sleeves and pull the fronts round to the sides. fits, 0 crossings, seams closed bar 3 collar pairs (1.5 mm),
+      collar_show 22.1, cuffs 32.6 / 32.8 (the sleeves ride up the raised arms: judge sleeve length at the pose the
+      reference is in), lapel gap 9.8 / 10.2. Render po_01_jacket.png. So: compare with a reference IN ITS POSE
+      (su_om_pose for this concept), and don't chase "fronts apart" on a body whose arms hang lower.
     - NEXT, in order: (1) the jacket over placket's hugging shirt when it is on main: re-run om jacket, cbcol2.py
       both sections, collar_cmp.py; (2) if wings remain: collar ends draped; (3) po_01's fronts; (4) the right neck
       seam; (5) belt + loops drawn in the figure (cloth_trims.meshes on the trousers' result; check.py's light npz has
