@@ -513,3 +513,11 @@ model".
   ala + the domes a little forward, 0.8 mm), lip_lower_width (the lower border laterally toward / away from the seam,
   2 mm: - = a short cushion inside the corners). Tests (symmetry, folds) pass; sheets human_renders/fs_10_*. First
   pass: nostril_show reads (mostly the columella), tip_definition is faint, lip_lower_width subtle on the template.
+- jaw_square (Tess: -0.8 made her jaw WIDER): the sign is right (lower jaw lm 5-11 / upper lm 2-14); its free
+  population direction reaches the ratio partly by widening the face at the ears (+0.14 sigma face_width at -0.8),
+  which reads wider from the front. held=True: only the lower jaw narrows (jawsq.py).
+- Neck (cloth10: chin -> shoulder 28 mm vs 68 on the concept): Garrett's only references ARE the concept (front
+  A-pose) and the desk painting; a silhouette through the face-fitted camera can't isolate the neck (jacket collar,
+  jaw, body not on the camera). In 3D: head height 26.4 cm (6.8 heads; style head_size 1.138), neck_circ 31.9 cm.
+  The oversize head (chin lower) and a thin neck are the likely read; proposals sent (head_size toward 1, a neck-girth
+  MakeHuman measure in BODY_SHAPE).
