@@ -462,7 +462,10 @@ CONTRACT_LOG = {
         "shows; pick a tile's mesh by its NEAREST point (rings moved in: meadow 5 / 12 / 24 m, last LOD 5% of the blades "
         "at 20 x width); `sward.fade.blend_from`: albedo, normal and roughness go to the ground's from there to fade.end; "
         "`sward.renderer` = the steps to build a tile renderer; `sward.wind`. A contract-11 sward drawn the old way still "
-        "works (the new channels are extra)"
+        "works (the new channels are extra). Later the same day, no bump (values and added recipe keys only): a sward's "
+        "season factors are the terrain style's seasonal grass tints (whole in the json, may exceed 1; snow = winter's "
+        "straw), `sward.density` (how a sward ends: a 0..1 density thins and shortens blades), `sward.winter` (lying "
+        "straw), `sward.snow` (the tile sinks by the snow depth; fade to the snow colour), `sward.season_ground_linear`"
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -1142,6 +1145,8 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
             d["receive_shadows"] = False  # (an impostor's crossed quads shadow each other)
         if "alphaCutoff" in m:
             d["alphaCutoff"] = m["alphaCutoff"]
+        if (m.get("extras") or {}).get("factor_over_one"):  # (a factor over 1 is not glTF; this file may carry it whole)
+            d["baseColorFactor"] = [*m["extras"]["factor_over_one"], 1.0]
         hi_ = (m.get("extras") or {}).get("hifipushie_impostor")
         if hi_:
             d["impostor"] = {k_: v_ for k_, v_ in hi_.items() if k_ != "normal_texture_index"}
@@ -1185,8 +1190,8 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
     hp = (G.get("extras") or {}).get("hifipushie_plant") or {}
     out = {"contract": {"version": CONTRACT, "changes": {str(k_): v_ for k_, v_ in CONTRACT_LOG.items()},
                         "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
-           "grade": hp.get("grade", "full"), "lods": hp.get("lods"),
            "slot_list": slot_list,
+           "grade": hp.get("grade", "full"), "lods": hp.get("lods"),
            "style": {"name": (hp.get("style") or {}).get("name", "realistic"), "foliage": (hp.get("style") or {}).get("kind", "cards")},
            "snow": hp.get("snow_numbers"),
            "impostor": next((d_["impostor"] for d_ in slots.values() if "impostor" in d_), None),

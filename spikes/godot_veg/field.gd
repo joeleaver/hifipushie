@@ -17,6 +17,7 @@ var SHADER: Shader
 var SHADER_DOUBLE: Shader
 var SHADER_SWARD: Shader
 var SHADER_SWARD1: Shader
+var season_ground = null
 
 
 func rnd(cx: int, cy: int, salt: int) -> float:
@@ -94,7 +95,19 @@ func load_plant(dir: String, season: String, sward := false) -> Dictionary:
 					m.set_shader_parameter("fade_start", js.sward.fade.start)
 					m.set_shader_parameter("fade_end", js.sward.fade.end)
 					var gg: Array = js.sward.ground_srgb
-					m.set_shader_parameter("fade_ground", Color(gg[0], gg[1], gg[2]))
+					var fg := Color(gg[0], gg[1], gg[2])
+					if js.sward.has("season_ground_linear") and js.sward.season_ground_linear.has(season):
+						var sg: Array = js.sward.season_ground_linear[season]
+						fg = Color(sg[0], sg[1], sg[2]).linear_to_srgb()
+					if season in ["winter", "snow"] and js.sward.has("winter"):
+						m.set_shader_parameter("winter_flatten", js.sward.winter.flatten)
+						m.set_shader_parameter("winter_height", js.sward.winter.height)
+					if season == "snow" and js.sward.has("snow"):
+						var snc: Array = js.sward.snow.color_linear
+						fg = Color(snc[0], snc[1], snc[2]).linear_to_srgb()
+						m.set_shader_parameter("snow_depth", js.sward.snow.depth_m)
+					season_ground = fg
+					m.set_shader_parameter("fade_ground", fg)
 					m.set_shader_parameter("fade_blend", js.sward.fade.get("blend_from", js.sward.fade.start))
 					if js.sward.has("lod") and OS.get_environment("FIELD_NOLOD") == "":
 						var ld: Array = js.sward.lod.dist
@@ -103,6 +116,7 @@ func load_plant(dir: String, season: String, sward := false) -> Dictionary:
 						m.set_shader_parameter("lod_share", Vector4(ls[0], ls[1], ls[2], ls[3]))
 						m.set_shader_parameter("lod_band", js.sward.lod.band)
 						m.set_shader_parameter("lod_blades", true)
+						m.set_shader_parameter("demo_path", OS.get_environment("FIELD_PATH") != "")
 					else:
 						m.set_shader_parameter("lod_blades", false)
 				mesh.surface_set_material(s, m)
@@ -141,7 +155,7 @@ func _initialize() -> void:
 		var rings: Array = P.js.sward.lod_rings_m  # LOD k inside rings[k]; the last LOD out to the fade's end
 		var far: float = P.js.sward.fade.end
 		var gs: Array = P.js.sward.ground_srgb
-		ground = Color(gs[0], gs[1], gs[2])
+		ground = Color(gs[0], gs[1], gs[2]) if season_ground == null else season_ground
 		var n := int(ceil(minf(far, RADIUS) / S))
 		for cy in range(-n, n + 1):
 			for cx in range(-n, n + 1):
@@ -216,6 +230,25 @@ func _initialize() -> void:
 	plane.mesh = pm
 	plane.material_override = gm
 	root.add_child(plane)
+	if OS.get_environment("FIELD_PATH") != "":  # the demo path's earth (the same curve as the shader's density)
+		var stt := SurfaceTool.new()
+		stt.begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+		var z := -70.0
+		while z <= 70.0:
+			var cx := 1.5 + 3.0 * sin(z * 0.15)
+			stt.set_normal(Vector3.UP)
+			stt.add_vertex(Vector3(cx - 1.0, 0.02, z))
+			stt.set_normal(Vector3.UP)
+			stt.add_vertex(Vector3(cx + 1.0, 0.02, z))
+			z += 0.5
+		var em := ShaderMaterial.new()
+		em.shader = SHADER
+		em.set_shader_parameter("colour", Color(0.42, 0.33, 0.22))
+		em.set_shader_parameter("roughness", 1.0)
+		var pmi := MeshInstance3D.new()
+		pmi.mesh = stt.commit()
+		pmi.material_override = em
+		root.add_child(pmi)
 	var sky := Sky.new()
 	sky.sky_material = ProceduralSkyMaterial.new()
 	var env := Environment.new()
