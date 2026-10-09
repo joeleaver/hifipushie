@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 104  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 105  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -1313,7 +1313,13 @@ def _chin(W, lm, spec, mx, s):
             ln = float(sp.get("cleft_length", 0.014)) * k
             zm = c[2] + 0.004 * k + 0.5 * ln
             front = _sstep((yc + 0.012 * k - X[:, 1]) / (0.01 * k))  # the chin's front only
-            D[:, 1] += cl * np.exp(-(ax / (0.0028 * k)) ** 2) * np.exp(-((X[:, 2] - zm) / (0.6 * ln)) ** 2) * front
+            cw = float(sp.get("cleft_width", 0.0028)) * k
+            along = np.exp(-((X[:, 2] - zm) / (0.6 * ln)) ** 2) * front
+            D[:, 1] += cl * np.exp(-(ax / cw) ** 2) * along
+            lb = float(sp.get("cleft_lobes", 0.0)) * k
+            if lb:  # the two pads of a cleft chin: a groove alone is a scratch on a round chin; a cleft reads because
+                # the chin's front is TWO rounded lobes with the groove between them
+                D[:, 1] -= lb * np.exp(-((ax - 2.6 * cw) / (2.0 * cw)) ** 2) * along
         return D
     return W + field(W), lm + field(lm)
 
@@ -1420,6 +1426,61 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
     for i in range(0, 17):
         lm[i] = lm[i] + (W - W0)[tr.query(lm[i])[1]]
     return W, lm
+
+LEAN_RADIUS = 0.03    # m: how far from the jaw's border the thinning reaches
+LEAN_KEEP = 0.004     # m: the border itself (this near the line) keeps its place: the bone doesn't thin
+
+
+def _lean(W, lm, ear, spec, mx, s, faces):
+    """base.head.shape.lean = m | {"under_jaw", "jowl", "submental", "radius", "smooth"} (m): soft tissue THINNED over
+    the bone, which is not the weight slider run backwards (fat goes everywhere and takes the skull's width with it)
+    and not a hollow (a dent under the cheekbone). The mandible's border (the jaw contour, lm 2..14) and the chin keep
+    their place; the skin moves IN along its own normal in three bands measured from that border: `under_jaw` = the
+    band below and behind it (the submandibular fullness that hides a border into the neck: thinned, the border stands
+    as an edge with the neck stepping in under it), `submental` = the same under the chin (default = under_jaw),
+    `jowl` = the lower cheek just above the border, outside the mouth's corners (the pouch that hangs over the border
+    with age and weight). Each band rises from nothing at the border (LEAN_KEEP) to full ~12 mm away and fades over
+    `radius`; the move is smoothed over the mesh. Nothing moves on the ears, lips, or above the mouth line.
+    Landmarks ride. Mirrored by construction (each vertex against the whole contour)."""
+    from scipy.spatial import cKDTree
+    sp = spec if isinstance(spec, dict) else {"under_jaw": spec}
+    k = s / 1.12
+    und = float(sp.get("under_jaw", 0.0)) * k
+    sub = float(sp.get("submental", sp.get("under_jaw", 0.0))) * k
+    jow = float(sp.get("jowl", 0.0)) * k
+    R = float(sp.get("radius", LEAN_RADIUS)) * k
+    O = np.array([lm[i] for i in range(2, 15)])
+    seg = np.linalg.norm(np.diff(O, axis=0), axis=1)
+    u = np.r_[0, np.cumsum(seg)] / seg.sum()
+    uu = np.linspace(0, 1, 160)
+    Od = np.c_[[np.interp(uu, u, O[:, c]) for c in range(3)]].T
+    d, j = cKDTree(Od).query(W)
+    q = Od[j]
+    T = np.array([(f[0], f[i], f[i + 1]) for f in faces for i in range(1, len(f) - 1)])
+    N = retopo._vnormals(W, T)
+    h = q[:, 2] - W[:, 2]                                   # > 0: below the border
+    rise = _sstep((d - LEAN_KEEP * k) / (0.008 * k)) * np.exp(-(np.maximum(d - 0.012 * k, 0) / R) ** 2)
+    below = _sstep(h / (0.004 * k))
+    above = _sstep(-h / (0.004 * k))
+    ax = np.abs(W[:, 0] - mx)
+    mid = np.exp(-(ax / (0.022 * k)) ** 2)                  # under the chin
+    mouth_w = 0.5 * abs(lm[54][0] - lm[48][0])
+    dear = cKDTree(W[ear]).query(W)[0] if ear.any() else np.full(len(W), 1.0)
+    off_ear = _sstep((dear - 0.002 * k) / (0.008 * k))
+    w_under = rise * below * (und * (1 - mid) + sub * mid)
+    zmouth = 0.5 * (lm[48][2] + lm[54][2])
+    w_jowl = (jow * rise * above * _sstep((ax - mouth_w - 0.004 * k) / (0.008 * k))
+              * _sstep((zmouth + 0.004 * k - W[:, 2]) / (0.01 * k)))
+    amt = (w_under + w_jowl) * off_ear
+    Dm = -amt[:, None] * N
+    E = np.array(sorted({(min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)])) for f in faces
+                         for i in range(len(f))}))
+    deg = np.bincount(E.ravel(), minlength=len(W))
+    for _ in range(int(sp.get("smooth", 4))):
+        Dm = Dm + 0.5 * retopo._lap(Dm, E, deg)
+    lm = lm + Dm[cKDTree(W).query(lm)[1]]
+    return W + Dm, lm
+
 
 EAR_BLEND = 0.004  # m: the band at an ear's root over which its turn fades in (the skin round it is untouched)
 EAR_ROOT = 0.003   # m: ear vertices this near the rest of the skin are its attachment
@@ -1819,6 +1880,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         W, lm = _pushes(W, lm, late)
     if shape.get("jawline"):
         W, lm = _jawline(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["jawline"], float(eye_mid[0]), s, faces)
+    if shape.get("lean"):
+        W, lm = _lean(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["lean"], float(eye_mid[0]), s, faces)
     if shape.get("hood"):
         W, lm = _hood(W, lm, shape["hood"])
     if shape.get("nose_tip"):

@@ -274,6 +274,39 @@ def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
     assert hf.state(b3)["L"][30][2] < L0[30][2] < hf.state(b2)["L"][30][2]
 
 
+def test_lean_thins_under_the_jaw_and_keeps_the_border():
+    """base.head.shape.lean: the skin under the jaw's border moves in by millimetres, the border's own landmarks
+    (jaw contour, chin) and the face above the mouth stay, both sides alike, nothing folds. cleft_lobes makes two
+    pads either side of the chin's groove."""
+    b = base()
+    st0 = hf.state(b)
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["lean"] = {"under_jaw": 0.006, "jowl": 0.002}
+    st1 = hf.state(b1)
+    P0, P1 = np.asarray(st0["tpl"]["P"]), np.asarray(st1["tpl"]["P"])
+    d = np.linalg.norm(P1 - P0, axis=1)
+    L0, L1 = st0["L"], st1["L"]
+    jaw_z = float(np.mean(L0[[4, 5, 11, 12], 2]))
+    head = hf._regions(st0["tpl"])["head"]
+    under = head & (P0[:, 2] < jaw_z - 0.012) & (np.abs(P0[:, 0] - L0[8][0]) > 0.02)
+    assert d[under].max() > 0.003, d[under].max()
+    assert np.linalg.norm(L1[2:15] - L0[2:15], axis=1).max() < 0.0015       # the border keeps its place
+    assert np.linalg.norm(L1[17:48] - L0[17:48], axis=1).max() < 0.0003     # brows, nose, eyes
+    side = [d[head & (np.sign(P0[:, 0] - L0[8][0]) == sg)].max() for sg in (-1, 1)]
+    assert abs(side[0] - side[1]) < 0.0008, side
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
+    b2 = hf.copy.deepcopy(b)
+    b2["head"].setdefault("shape", {})["chin"] = {"cleft": 0.004, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.02}
+    P2 = np.asarray(hf.state(b2)["tpl"]["P"])
+    dy = (P2 - P0)[:, 1]                                                     # (the head faces -y: back = +)
+    near = head & (np.linalg.norm(P0 - (L0[8] + [0, 0, 0.012]), axis=1) < 0.03)
+    assert dy[near].max() > 0.002 and dy[near].min() < -0.0012, (dy[near].max(), dy[near].min())
+    groove = P0[near][np.argmax(dy[near])]
+    pad = P0[near][np.argmin(dy[near])]
+    assert abs(groove[0] - L0[8][0]) < 0.004 < abs(pad[0] - L0[8][0])
+
+
 def test_a_broken_solve_is_refused():
     """A mouth widened until lip faces fold: solve hands back the base it was given (rep["refused"] says why, the
     broken result's integrity is reported), and returns the broken one only with force=True."""
@@ -299,6 +332,7 @@ if __name__ == "__main__":
                    test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
                    test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features,
                    test_hollow_cheeks_read_on_the_section, test_jaw_angle_is_a_symmetric_bony_corner,
+                   test_lean_thins_under_the_jaw_and_keeps_the_border,
                    test_a_broken_solve_is_refused):
             fn()
             print("ok", fn.__name__)

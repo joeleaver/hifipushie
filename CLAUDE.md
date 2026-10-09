@@ -6354,6 +6354,58 @@ mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/da
   definitions: 2.5 -> ~1.3 mm; a synthetic-data training job); photo calibration of the table; the read's sd per
   author; `humanfit_map` in fit_likeness's first stage.
 
+## Reference modelling study 2 (2026-10-08/09, "refstudy2" agent, branch `worktree-agent-aaf6ba14fbb49e2c5`)
+
+Takes over from refstudy. Scripts `spikes/refstudy2/` (structure.py = the step driver: `mk <dst>` builds the steps of
+steps.json ({dst: {src, patch of base.head, macros (identity, held), idscale}}), prints the evidence residual through
+both references (this head's own best cameras, identity not free), integrity against src, plausibility, and writes
+the six-view sheet; `rd <model>...` stores $D2/reads/<model>_<n>.json and prints the score table; score.py = the
+readers' picks per descriptor against Joe's read (WANT x2 for his words, AVOID); sheet.py = the judging sheet
+(reference | models, lit, his locks on each model's own scalp, six views under it; "om16" = a copy of om_garrett
+v16); litrender.py, hairmesh.py (onemesh2's), t1.py). Scratch DURABLE /mnt/data/hifipushie/refstudy2/ (run.sh
+<script>: capped, one BLAS thread; reader_prompt.txt + read_form.txt = what a blind reader gets; reads/; out/six_*).
+The sandbox refuses JSON on the command line and heredocs: steps go in steps.json, scripts in files. Don't name a
+script struct.py (it shadows the stdlib's).
+- B, STRUCTURE ON THE MAP HEAD (Garrett; sheet human_renders/rs2_01_structure_on_map.png; models rs2_g0 = read3 with
+  the deviation x1.5, ..., rs2_h = final). Blind reads: 3 fresh readers per head, six-view sheet + form only.
+  - READER NOISE: the score of three readers swings about +-1.5 between heads that differ by a gentle op: planes 2.3
+    alone +2.4, hood 1.75 mm +0.6, hollow 2.5 mm +2.0 against the base's +0.4, and all three TOGETHER -0.1. Gentle
+    planes / hood / hollow are below what this protocol can see. Stable across all 18 of those reads: chunky 0.6-0.9,
+    square jaw ~0, soft jaw 0.4-0.8, strong chin 0, weak chin 0.25, cleft 0. So only big steps were read after that.
+  - Table (score; evidence residual front / desk mm; verdict):
+    rs2_g0 base +0.43; 1.31 / 1.87 | planes 2.3 +2.44; +0.02 / +0.05; kept by eye (noise) | hood +0.64, hollow +2.01,
+    all three -0.14: NOT kept (unproven; "heavy" rose 0.10 -> 0.48) | planes 2.6 (2 readers) +0.14: no | brow push
+    2 mm, cheekbone push 2 mm: built, unread (usage limit), not kept | shape.jawline (corner 36 mm under the lobe, no
+    tuck): REJECTED by eye: a jowl pouch with a crease in three-quarter and both profiles = rs_12's lump, residual
+    unchanged, integrity ok (the checks can't see it) | shape.chin project 5 + under 8: REJECTED by eye: a button
+    chin with a hook under it | NEW shape.lean 5 / 2 mm alone +1.14 (soft jaw 0.47, no lump) | + lean 7 / 3 + identity
+    macros chin_projection +1.5, jaw_angle +2 (held) = rs2_e +3.25; 1.43 / 2.03: KEPT (square 0.28, soft 0.28) |
+    macro nose_upturn +1: REJECTED, +0.30 mm front and a component past 2.6 sigma | + cleft (3 mm deep, 4 wide, lobes
+    2) + brow_ridge +1 + nose_upturn +0.5 = rs2_g +5.70; 1.58 / 2.08: KEPT (square 0.53, soft 0.07, heavy brow 0.66,
+    deep-set 0.63, rugged 0.34; cleft still 0.00, snub 0.36 -> 0.16 "broad blunt nose") | + cleft 4.5 / 5 / lobes 3 /
+    20 long, chin_projection +0.75, nose_tip up 8 round 0.5 = rs2_h +7.80; 1.75 / 2.26: KEPT (square jaw 0.64, cleft
+    0.22, strong chin 0.42, weak 0, soft 0.02, snub 0.30, chunky 0.87).
+  - The rule "residual may rise 0.3 per step" let the SUM drift: +0.44 / +0.39 mm from g0 to h, two identity
+    components past 2.6 sigma. h still fits the pictures better than pass 6 (2.88 / 2.5).
+  - What was wrong in KIND: (1) bone as local Gaussian bumps (shape.chin.project, pushes): use the identity's HELD
+    macro directions (humanmacro.apply(held=True)); (2) shape.jawline moves the jaw LINE down on a face whose soft
+    tissue is full: the tissue goes with it as a pouch. On a wide skull the jaw reads when the tissue under the border
+    is thinned: new `base.head.shape.lean` {under_jaw, jowl, submental, radius, smooth} (base._lean; border + chin
+    held, bands measured from the jaw contour, moved along the normals, smoothed; base.VERSION 105); (3) the cleft
+    was a 2.8 mm scratch: `chin.cleft_width` + `cleft_lobes` (two pads). Test
+    test_humanfit::test_lean_thins_under_the_jaw_and_keeps_the_border. Guide: human_guide.md "Structure after a MAP fit".
+  - BLUNT READ of rs2_h: every reader now says "square-jawed, broad chin, heavy brow, deep-set hooded eyes, rugged
+    bruiser, stern scowl, grim downturned mouth", some "cleft". That is Joe's square jaw / cleft / chunky, but NOT
+    "handsome" and not "cute nose" (readers: short broad fleshy nose). Beside the photo the head is too wide and
+    round in the lower face and too heavy in the neck, the mouth's corners turn down (the photo's set mouth fitted
+    into the identity: every read since g0 says "grim downturned mouth"), the brow strokes scowl, and the groom sits
+    low on this head's forehead. The lit sheet has no eyeballs (the template mesh).
+  - NOT DONE in B: no squint / frown pose render; hood / hollow / under-eye never proven either way; cheekbone, brow
+    push unread; the mouth's downturn; nose (a "cute" nose costs evidence in the identity: the front picture's
+    nostril points hold it); the face's width against the photo (the MAP + read made it broad because the read said
+    so: read3's jaw_width +1, cheekbone_width +0.8, neck +1: try the read without widths).
+- C, A2, D: see below if present; otherwise not started.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.

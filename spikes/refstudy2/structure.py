@@ -53,13 +53,16 @@ def info(tag, b, prev=None):
     return r
 
 
-def mk(src, dst, patch, idscale=None):
+def mk(src, dst, patch, idscale=None, macros=None):
     sp = store.load(src)
     b = copy.deepcopy(sp["base"])
     merge(b["head"], patch)
     if idscale:
         idn = b["head"]["identity"]
         b["head"]["identity"] = {k: float(v) * idscale for k, v in idn.items()}
+    if macros:   # macros moved in the IDENTITY (humanmacro's held directions: the other macros stay), in sigmas
+        c = hm.apply(humanfit.identity(b), macros, held=True)
+        b = humanfit._with_identity(b, c)
     info(dst, b, sp["base"])
     store.save(dst, {**copy.deepcopy(sp), "base": b}, f"refstudy2: {src} + {json.dumps(patch)[:200]}" + (f" identity x{idscale}" if idscale else ""))
     for f in ("human_refs.json", lr.READ):
@@ -98,7 +101,7 @@ if __name__ == "__main__":
         S = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "steps.json")))
         for dst in a[1:]:
             s = S[dst]
-            mk(s["src"], dst, s.get("patch", {}), s.get("idscale"))
+            mk(s["src"], dst, s.get("patch", {}), s.get("idscale"), s.get("macros"))
     elif a[0] == "ev":
         for n in [x for x in a[1:] if x != "-q"]:
             info(n, store.load(n)["base"])
