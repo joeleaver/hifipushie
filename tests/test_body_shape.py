@@ -42,6 +42,20 @@ def test_measure_modifiers_shape_the_body():
     assert np.array_equal(makehuman.body({**b, "hips": 0.5})["P"], P0)  # 0.5 = none
 
 
+def test_neck_girth_solvable():
+    """base.body.neck_circ (MakeHuman's measure-neck-circ targets): humanfit's neck_circ follows it, and a solve for a
+    thicker neck moves it, not weight."""
+    if not _mh_ok():
+        return
+    sp = humans.spec(age=45, sex=1.0, seed=3, skin=False, source="human")
+    m0 = humanfit.state(sp["base"])["measures"]["neck_circ"]
+    nb, rep = humanfit.solve(sp["base"], {"neck_circ": "+3"}, free=("body",))
+    m1 = humanfit.state(nb)["measures"]["neck_circ"]
+    assert abs(m1 - (m0 + 3)) < 1.0, (m0, m1, nb["body"])
+    assert nb["body"].get("neck_circ", 0.5) > 0.5
+    assert abs(float(nb["body"].get("weight", 0.5)) - float(sp["base"]["body"].get("weight", 0.5))) < 0.05
+
+
 def test_hips_fit_without_weight():
     """A slim woman's hips narrowed by the solve: the hips modifier takes it, weight hardly moves."""
     if not _mh_ok():

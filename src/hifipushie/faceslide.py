@@ -44,6 +44,8 @@ UNITS = {
     "brow_lateral": (1.8, "the brow's outer half (and the skin under it) down: lateral brow descent"),
     "canthal_tilt": (4.0, "the eye's fissure turned outer corner up, degrees at +1 (the lids turn on the ball)"),
     "epicanthal": (1.8, "an epicanthal fold: the inner upper lid's skin over the inner canthus (medial, down)"),
+    "eye_setback": (2.0, "the eyeball and the orbit's contents back (deep-set), the brow ridge held; - = prominent eyes"),
+    "malar_rise": (2.0, "the cheek's front plane under the lower lid forward and up (the zygoma's prominence), not its width"),
 }
 EYE_SLIDERS = tuple(UNITS)
 UNITS.update({
@@ -177,7 +179,9 @@ def template() -> dict:
     rim = np.unique(ue[ce == 1])
     eyes = np.asarray(g["template_joint_positions"], float)[2:4]
     rim = rim[np.min([np.linalg.norm(X[rim] - j, axis=1) for j in eyes], axis=0) < 0.03]
-    _CACHE["tpl"] = {"X": X, "n": n, "ext": ext, "skin": skin, "rim": rim, "lm": lm, "mirror": mi, "J": g["template_joint_positions"].astype(float)}
+    eyes_m = gnmloops.ext(np.asarray(g["groups"]["eyes"]) > 0.5, how="all")
+    _CACHE["tpl"] = {"X": X, "n": n, "ext": ext, "skin": skin, "eyes": eyes_m, "rim": rim, "lm": lm, "mirror": mi,
+                     "J": g["template_joint_positions"].astype(float)}
     return _CACHE["tpl"]
 
 
@@ -344,7 +348,36 @@ def _left_fields(T: dict | None = None) -> dict:
     hold_c = _ss((np.linalg.norm(X - c_in, axis=1) - 0.5 * mm) / (4.0 * mm))
     F["epicanthal"] = (nears * _ss((h + 1.5 * mm) / (3.0 * mm)) * hold_c * _g(r_in, 0, 4.5 * mm))[:, None] \
         * (-0.75 * ex - 0.55 * up + 0.3 * n)
+    # eye setback: the eyeball (with the eye joint: joint_delta) and the orbit's contents (lids, their insides, the
+    # canthi) back as one, fading out across the orbital rim; the brow ridge above held (Tess needed eye_depth +
+    # brow_ridge together for this: a heavy brow, an identity component past 2.6 sigma)
+    rxy = np.linalg.norm((X - ce)[:, :2], axis=1)
+    orbit = (T["skin"] | T["eyes"]) & (X[:, 0] > 0.004) & (X[:, 2] > ce[2] - 0.03)
+    w_orb = np.where(T["eyes"] & (np.linalg.norm(X - ce, axis=1) < 0.02), 1.0,
+                     (1 - _ss((rxy - 0.55 * w) / (0.45 * w))) * (1 - _ss((t - 0.55) / 0.35) * (h > 0)))
+    F["eye_setback"] = (orbit * w_orb)[:, None] * -fwd[None]
+    # malar rise: the cheek's front plane under the lower lid / bag (the zygoma's prominence) forward and up; the lid's
+    # margin, the nasolabial side and the jaw held. Not the cheek's width
+    pm = 0.5 * (lm[46] + lm[47]) + np.array([0.15 * w, -0.016, -0.004])
+    rm = np.linalg.norm(((X - pm) * [1.0, 1.25, 0.6]), axis=1)
+    mal = T["ext"] & (X[:, 0] > 0.004) & (X[:, 2] > pm[2] - 0.03) & (dl > 0)
+    F["malar_rise"] = (mal * low_off * _g(rm, 0, 9.0 * mm))[:, None] * (0.8 * n + 0.45 * up[None])
     return {k: v * (UNITS[k][0] * mm) for k, v in F.items()}
+
+
+def joint_delta(sliders: dict | None) -> np.ndarray | None:
+    """(4, 3) GNM-frame move of GNM's joints by the sliders (eye_setback takes the eye joints back with the balls),
+    or None."""
+    vals = values(sliders)
+    if "eye_setback" not in vals or vals["eye_setback"] == (0.0, 0.0):
+        return None
+    J = template()["J"]
+    D = np.zeros((4, 3))
+    r, l_ = vals["eye_setback"]
+    u = UNITS["eye_setback"][0] * 0.001
+    for j in (2, 3):
+        D[j, 2] = -u * (l_ if J[j][0] > 0 else r)
+    return D
 
 
 def _mouth_fields() -> dict:
