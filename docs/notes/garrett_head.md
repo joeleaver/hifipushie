@@ -133,3 +133,40 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
   green, bright sclera, wide (his are dark and hooded: the upper lid's outer third hangs over the corner; we have no
   hood that does that); mouth a thin downturned slit (his fuller lower lip, softer corners); lower face still fuller
   than his flat planes; ears: his stand out more (ear_out -0.19 sigma: not touched).
+- (likeloop, rounds 6+) Merged main 04ad344. test_likeness_texture: the worktree's 4/4 failures were ENV (no
+  workspace/ in a worktree: set HIFIPUSHIE_HOME / HIFIPUSHIE_ASSETS, likeloop/tests.sh); main's real failure was the
+  code: `harmonise` ramped the hand-over over all of BLEND from the edge, so where the alpha was still fading in the
+  picture kept 60%+ of its own low frequencies (a seam). Now fully ours across EDGE_FADE, back to the picture's over
+  the rest of BLEND. test_faceid / test_likeness_texture / test_skin / test_hair_loose: 24 passed.
+- NOSE (Joe: "his nose IS turned up"; R3 was wrong). Like with like on the desk painting (lk_garrett5's traces,
+  nose.py): base line photo +0.6..1.3 deg (rising); R3's head -4.2, R2 -3.2, shape.nose_tip up 5 -2.5, up 10 +0.65
+  (match), tip height in 3/4 0.41 vs 0.46; tip RADIUS photo 8.4 mm vs ours 4.2-4.9 at up 0-5, 10.0 at up 10: his tip
+  is the bigger, rounder one in profile, so "bulbous" isn't the tip's size there. Front alar width photo 46.8: R3's
+  narrowing (45.1) not supported: undone (nose_width +0.6, nose_upturn +0.5 held back). Kept: nose_tip {up 10,
+  round 0}. Cost: front nose length 47.2 vs 49.9 (-1.4 tol). ll_6_pair.png.
+- EYES (Joe: "focus on the eyes"). `likeness_eyes.py`: per-eye measures by the same detector on the photo and on the
+  DRESSED render through the photo's camera (eyes.py; shot.py's big render mapped to photo pixels): open, width,
+  aspect, iris_r, cover (upper lid over the iris top), white_below, brow_gap (brow's lower edge -> lid), brow_height,
+  brow_tilt, canthal_tilt. Sheets ll_eyes_0..7.png (photo | start | previous | new, 2x row, table).
+  Photo: open 7.39, width 28.6, iris_r 6.52, cover 3.46 (27% of the iris), white_below -2.2, brow_gap 12.1, brow_h
+  21.0, brow_tilt -12.5, canthal -0.45. Start (g4): 7.43 / 29.2 / 6.43 / 2.83 / -2.6 / 12.5 / 21.5 / -9.3 / +3.6.
+  End (e7): 6.53 / 28.4 / 6.36 / 3.35 / -2.84 / 13.5 / 21.8 / -11.5 / -0.2.
+  - New general controls (tests/test_headage.py): shape.hood `lateral` 0..1 (fold weight ramps to the outer corner,
+    centre shifts out, the lower-lid gate drops past the outer corner so the fold can hang over it; 0 = the old hood
+    to the bit) and `extent`; headage `eye_bag` {amount, crease, height} (a bag under the lower lid + the lid-cheek
+    crease, margin held).
+  - Kept (ll_garrett / dressed ll_e7): hood {0.0012, lateral 1}, eye_bag {0.0012, crease 0.6}, nudges lid_lower -1.0,
+    lid_upper -0.6, eye_outer -0.7 mm, head.eyes 0.9 -> 1.0 (iris and width back to his: 0.9 was garrett3's way to a
+    lower opening, the hood does that now); skin: brows drop 4 mm, arch 0.3, thickness 1.2; iris #4a5156 (grey),
+    sclera #a39a90 (dull); under_eye wrinkles 0.6 tried (crepey stripes, not a bag): back to 0.25.
+  - Findings: the detector can't see a hood's fold (no crease point): opening / cover matched while the lids still
+    read open; judge the fold by eye. Clay and dressed disagree on the lower lid by ~1.3 mm (white_below clay -1.8,
+    dressed -3.0) and lower-lid nudges move the clay but NOT the dressed reading: the dressed opening stays ~0.9 mm
+    short from a lower lid sitting high on the iris (cause not found: lid-margin paint / tear line?). Eye depth in 3/4
+    (prof_brow_ridge, painting): photo 10.7 mm vs ours 6.0, but tol 8.5 (painting not one projection) and neither
+    features.brow_ridge nor macros brow_ridge / eye_depth move it the right way (eye_depth +1 doubled the forehead
+    slope): unmeasurable here. skin.eyes.iris_size 0.0125 changed nothing measurable.
+  - STILL DIFFERS (eyes): his sockets sit in shadow under the brow (ours bright, flat lid skin); his brows are
+    straighter and their inner heads lower; a dark dot at our brow's inner end (garrett4's known brow-image clip);
+    the dressed lower lid high. NOT DONE: mouth / Cupid's bow (queued after the eyes). Hair: hair7's base.json still
+    renders ginger with main 04ad344 (its swoop "body" / "lay" keys are newer than main's hair.py: stripped in mkd.py).
