@@ -3646,14 +3646,18 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             if SC is not None and not len(SC) and mats.streams is None:
                 SC = None
             with open(out / "clutter.csv", "w") as f:
-                f.write(terrain_stream.CSV_COLUMNS + "\n")  # (csv_version 2: + water, sink; empty on dry ground)
+                # (csv_version 3: + water, sink (empty on dry ground), + a capsule's x0..z1, diameter (snags, limbs))
+                f.write(terrain_stream.CSV_COLUMNS + "\n")
                 for r in C:
-                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},,,\n")
+                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},,,"
+                            f",,,,,,,\n")
                 if SC is not None:
                     sk = list(terrain_stream.KINDS)
                     for r in SC:
+                        cap = "" if np.isnan(r[11]) else ",".join(f"{v:.2f}" for v in r[11:17]) + f",{r[17]:.3f}"
                         f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{sk[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},"
-                                f"{terrain_stream.PLACES[int(r[7])]},{r[9]:.2f},{r[10]:.2f}\n")
+                                f"{terrain_stream.PLACES[int(r[7])]},{r[9]:.2f},{r[10]:.2f},"
+                                f"{cap if cap else ',,,,,,'}\n")
             notes.append(f"clutter.csv: {int((C[:, 3] == 0).sum())} bushes, {int((C[:, 3] == 1).sum())} boulders")
             clutter_sec = {"kinds": {"bush": {"scale_m": [0.6, 1.9], "squash": [0.45, 1.0], "z": "surface",
                                               "what": "a scrub / heath bush (squash < 1: wind-shorn by a cliff lip)"},
@@ -5487,6 +5491,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                 SC = SC.copy()
                 SC[:, 2] -= SC[:, 10]
             for i, k in enumerate(terrain_stream.KINDS):  # (bush: with the dry ground's bushes)
+                k = "driftwood" if k in ("snag", "limb") else k  # (drawn as driftwood stand-ins)
                 job["clutter"][k] = job["clutter"].get(k, []) + SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
     if not channel:  # the rivers' water: a ribbon at each river's own level, wider than the channel (the banks hide it)
         if True:

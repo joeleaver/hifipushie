@@ -26,7 +26,8 @@ HAIR (skin.hair; colours sRGB):
              brow turned, tail up +), "fall": 1 (x how far the tail drops past the arch: 0.3 = a straight, rising
              brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one)}: hairs as strokes, growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
-  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color"),
+  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
+             "shadow_breakup": its noise, 0 = an even field: a dense stubble shadow reads as one grey-brown field),
              "grey": 0..1 (+ "grey_color": a share of white hairs: salt and pepper)}: the beard area: a shadow under the
              skin plus hair dots.
   scalp      {"amount", "color", "hairline": 0..1 (0.5: how far it comes down the forehead)}: a shaved or cropped
@@ -183,7 +184,10 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
               [{"noise": {"scale": 0.012, "range": [0.25, 0.8], "seed": seed + 41, "warp": 0.8}, "weight": 0.6}])
 
     # ---- pigment spots
-    o = _opt(f.get("freckles"), "features.freckles", ("size",))
+    o = _opt(f.get("freckles"), "features.freckles", ("size", "clump", "dark", "zones", "engine"))
+    if o and o.get("engine", "map") == "map" and ctx["face"] and "lm_jaw_1.L" in J:
+        _freckle_map(ctx["spec"], p, J, o, layer, T, ctx)
+        o = None
     if o:
         a = float(o["amount"])
         k = float(o.get("size", 0.0018)) / 0.0018
@@ -451,7 +455,7 @@ def _hair(p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
                   mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
-        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "grey", "grey_color",
+        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color",
                                                      "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine"))
         if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:
             _stubble_map(ctx["spec"], p, J, o, layer, T, ctx)
@@ -467,7 +471,8 @@ def _hair(p, J, layer, T, ctx) -> None:
             sz_, shd, gr = float(o.get("size", 1.0)), float(o.get("shadow", 1.0)), float(o.get("grey", 0.0))
             cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
             layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.42 * min(a, 1.2) * shd, 0.95), 3),
-                  mask=area + [{"noise": {"scale": 0.012, "range": [0.15, 0.6], "seed": seed + 100}, "weight": 0.45 if "shadow" not in o else 0.2}])
+                  mask=area + [{"noise": {"scale": 0.012, "range": [0.15, 0.6], "seed": seed + 100},
+                                "weight": float(o.get("shadow_breakup", 0.45 if "shadow" not in o else 0.2))}])  # (breakup: 0 = an even field)
             layer("stubble", o.get("mask"), color=col, opacity=0.9 * min(0.5 + 0.5 * a, 1), roughness=min(base_r + 0.12, 0.9),
                   height=round(0.00007 * (1 + float(o.get("length", 0.0)) / 0.001), 7),
                   mask=[{"tile": {"swatch": "stubble", **({"size": round(0.012 * sz_, 5)} if sz_ != 1.0 else {}),
@@ -548,7 +553,7 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     # colour measured on Garrett's photo under the matched light: Lab ~45/4/13 at ~0.8 coverage)
     grow = float(np.clip(q["length"] / 0.001, 0, 1))
     cool = np.array(T(grey=0.8, melanin=1.1)) * (0.5 + 0.3 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
-    warm = np.array(T(grey=0.3, melanin=2.5, blood=0.8)) * (0.62 + 0.25 * t["melanin"])
+    warm = np.array(T(grey=0.25, melanin=2.3, blood=1.05)) * (0.62 + 0.25 * t["melanin"])   # (warm grey: less read as green)
     cast = (1 - grow) * cool + grow * warm + (0.04 + 0.12 * grow) * (np.array(col) - 0.3)
     cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]
     cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
@@ -560,6 +565,40 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     if q["grey"] > 0:
         layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#d2cec8")), opacity=0.95, roughness=r, specular=0.4,
               height=hgt, mask=[im("g"), lips])
+
+
+def freckle_options(o: dict) -> dict:
+    from . import skin_marks
+    z = dict(skin_marks.FRECKLE_ZONES)
+    zo = o.get("zones") or {}
+    if not isinstance(zo, dict) or set(zo) - set(z):
+        raise SpecError(f"skin features.freckles: zones is {{zone: weight}} over {', '.join(z)}")
+    z.update({k: float(v) for k, v in zo.items()})
+    return {"amount": float(np.clip(o["amount"], 0, 3)), "size": float(o.get("size", 0.0016)), "clump": float(np.clip(o.get("clump", 0.6), 0, 1)),
+            "dark": float(np.clip(o.get("dark", 0.2), 0, 1)), "moles": 0, "zones": z, "seed": int(o.get("seed", 0))}
+
+
+def _freckle_map(spec, p, J, o, layer, T, ctx) -> None:
+    """Freckles on the face as a unique map (skin_marks.freckle_map: irregular macules, clustered, where the sun falls),
+    on the body (shoulders, forearms, the chest's V) from the freckle swatch at two sizes mixed (vary: no repeat)."""
+    from . import skin_marks
+    t = p["tone"]
+    dark = t["melanin"]
+    show = ctx["show"]
+    a = float(o["amount"])
+    q = freckle_options(o)
+    path, place, _ = skin_marks.freckle_map(spec, p["part"], J, q)
+    im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
+    # ephelides: more melanin in the same skin (light tan to brown on fair skin; on dark skin hardly a change)
+    # (one layer: each freckle's darkness is its value in the map, faint tan to brown)
+    layer("freckles", o.get("mask"), color=T(melanin=3.4 + 2.2 * (1 - dark), blood=1.15), opacity=round(min(0.75 + 0.12 * a, 0.95) * show, 3), mask=[im("r")])
+    body = [z for z in ("shoulder", "forearm", "chest") if _has(z, ctx)] + (["collarbone"] if ctx["torso"] else [])
+    if body:
+        lo = float(np.clip(0.42 - 0.3 * min(a, 1.2), 0.04, 0.6))
+        k = q["size"] / 0.0016
+        layer("freckles_body", o.get("mask"), color=T(melanin=2.6 + 1.6 * (1 - dark), blood=1.3), opacity=min(0.4 + 0.3 * a, 0.75) * show,
+              mask=[{"tile": {"swatch": "freckles", "size": round(0.042 * k, 5), "range": [round(lo, 3), round(lo + 0.55, 3)], "vary": True, "rotate": True}},
+                    {"vertex": True, "mask": _zones(body)}])
 
 
 def _points(v, what):

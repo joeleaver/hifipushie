@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 3
+VERSION = 5
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -108,7 +108,40 @@ def head_mesh(spec: dict, part: str, J: dict, voxel: float = 0.0015):
     return out
 
 
-def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000):
+def head_curvature(spec: dict, part: str, J: dict, h: float = 0.01):
+    """Per head-mesh vertex: the surface's mean curvature over ~h (the field's Laplacian / 2 by central differences
+    h apart), in units of 1 / interocular (a ball one interocular round = 1): > 0 convex (the cheek's front, the
+    nasolabial bulge, the chin), < 0 hollow (under the cheekbone, beside the nose). Cached with the mesh."""
+    from . import images, sdf, store
+    from .skin import interocular
+    V, N, F = head_mesh(spec, part, J)
+    prims = images.prims_on(spec, [part])
+    key = hashlib.sha1(json.dumps([sorted(sdf.fingerprint(p) for p in prims), len(V), np.asarray(V[:20]).round(5).tolist(), h,
+                                   VERSION]).encode()).hexdigest()[:16]
+    f = store.HOME / "_images" / f"mk_curv_{key}.npy"
+    if f.exists():
+        return np.load(f)
+    P = V.astype(np.float64)
+    lap = -6.0 * sdf.field_at(prims, P)
+    for ax in range(3):
+        e = np.zeros(3)
+        e[ax] = h
+        lap = lap + sdf.field_at(prims, P + e) + sdf.field_at(prims, P - e)
+    k = (0.5 * lap / (h * h) * interocular(J)).astype(np.float32)
+    np.save(f, k)
+    return k
+
+
+def curvature_at(spec: dict, part: str, J: dict):
+    """A function P -> head_curvature at the nearest head-mesh vertex."""
+    from scipy.spatial import cKDTree
+    V, _, _ = head_mesh(spec, part, J)
+    k = head_curvature(spec, part, J)
+    tree = cKDTree(np.asarray(V, float))
+    return lambda P: k[tree.query(np.asarray(P, float), k=1)[1]].astype(float)
+
+
+def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000, keep_all: bool = False):
     """Points on the mesh at `per_m2` x density(points, normals) (0..1) per square metre: (P, Nrm, d)."""
     V, N, F = (np.asarray(a) for a in (V, N, F))
     dv = density(V.astype(np.float64), N.astype(np.float64))
@@ -126,6 +159,8 @@ def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000):
     P = w[:, :1] * a[fi] + w[:, 1:2] * b[fi] + w[:, 2:] * c[fi]
     Nn = _unit(w[:, :1] * N[F[fi, 0]] + w[:, 1:2] * N[F[fi, 1]] + w[:, 2:] * N[F[fi, 2]])
     d = np.concatenate([density(P[i:i + chunk], Nn[i:i + chunk]) for i in range(0, len(P), chunk)]) if len(P) else np.zeros(0)
+    if keep_all:
+        return P, Nn, d
     m = rng.random(len(P)) < d
     return P[m], Nn[m], d[m]
 
@@ -248,75 +283,93 @@ def _lips_path(J):
     return _Poly([[J[n][0], J[n][2]] for n in names if n in J])
 
 
-def beard_density(J: dict, o: dict):
-    """density(P, N) -> 0..1: where the beard grows and how thickly (landmarks, interocular units); o = the stubble's
-    options (cheek_line, neckline, trim, cheeks, patchy, density, seed)."""
+def beard_density(J: dict, o: dict, curv=None):
+    """density(P, N) -> 0..1: where the beard grows and how thickly, from the face's landmarks (interocular units) and,
+    given `curv` (a function P -> head_curvature at those points), the surface's own forms. o = the stubble's options
+    (cheek_line, neckline, trim, cheeks, patchy, density, seed).
+
+    Untrimmed growth has no edge: the density tapers over 2-3 cm into sparse single hairs (Joe, 2026-10-09: "the edges
+    are too hard, and don't follow the face shapes the way that stubble does"), with a few stragglers past it; only
+    `trim` makes a line. The upper boundary runs under the cheekbone (a curve from the sideburn, sagging to the
+    nostril's level mid-cheek, up to the moustache's corner), the neckline follows the jaw's underside and fades down
+    the neck, the cheek's rounded front and the nasolabial bulge are thinner (convex), the moustache, chin and jaw
+    full, the lower lip's corners sparse beside a denser soul patch."""
     from .skin import interocular
     from .paint import noise
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     trim = float(o["trim"])
-    soft_c = io * (0.012 + 0.22 * (1 - trim))     # the cheek line's feather (grown back after a shave: diffuse)
-    soft_n = io * (0.012 + 0.35 * (1 - trim))     # the neckline's
-    # cheek line: from the front of the sideburn to above the moustache's corner (a plane across the cheek)
-    S = L("lm_jaw_1.L") + io * np.array([-0.04, -0.28, 0.05 + float(o["cheek_line"])])
-    M = L("lm_mouth_corner.L") + io * np.array([0.3, -0.02, 0.45 + 0.6 * float(o["cheek_line"])])
-    out = _unit(np.array([0.75, -0.65, 0.0]))
-    nc = _unit(np.cross(M - S, out))
-    if nc[2] < 0:
-        nc = -nc
-    # neckline: under the jaw's angles through the throat ~2 fingers above the larynx; trimmed lines sit higher
-    A = L("lm_jaw_2.L") + io * np.array([-0.05, 0.3, -0.55])
-    Ar = A * np.array([-1, 1, 1])
-    B = L("lm_chin") + io * np.array([0.0, 0.85, -0.62 - float(o["neckline"]) + 0.25 * (1 - trim)])
-    nn = _unit(np.cross(Ar - B, A - B))
-    if nn @ (L("lm_chin") - B) < 0:
-        nn = -nn
+    soft = io * (0.015 + 0.3 * (1 - trim))        # the boundaries' half-width: ~2.2 cm across untrimmed, ~2 mm trimmed
+    cl, nl = float(o["cheek_line"]), float(o["neckline"])
+    nose_b, nos, mc = L("lm_nose_base"), L("lm_nostril.L"), L("lm_mouth_corner.L")
+    j1 = L("lm_jaw_1.L")
+    y_ax = j1[1] + 0.3 * io                       # a vertical axis inside the head: angle round it from the front
+
+    def theta(q):
+        return np.degrees(np.arctan2(q[:, 0], -(q[:, 1] - y_ax)))
+    # the upper boundary as a height over that angle: sideburn front, mid-cheek under the zygoma, moustache corner
+    S = j1 + io * np.array([-0.04, -0.28, 0.05 + cl])
+    M = mc + io * np.array([0.3, -0.02, 0.45 + 0.6 * cl])
+    Cm = 0.5 * (S + M)
+    Cm[2] = nos[2] - 0.02 * io + 0.8 * cl * io      # (a straight S-M line cut across the cheekbone's front)
+    tS, tM, tC = (float(theta(p[None])[0]) for p in (S, M, Cm))
+    tC = 0.5 * (tS + tM)
+
+    def z_top(t):
+        t = np.clip(t, tM, tS)
+        return (S[2] * (t - tM) * (t - tC) / ((tS - tM) * (tS - tC)) + M[2] * (t - tS) * (t - tC) / ((tM - tS) * (tM - tC)) +
+                Cm[2] * (t - tS) * (t - tM) / ((tC - tS) * (tC - tM)))
+    # the jaw's edge (its landmark chain, mirrored to the chin) as a height over |x|: the neckline hangs below it
+    chain = [L(f"lm_jaw_{k}.L") for k in range(2, 8)] + [L("lm_chin")]
+    jx = np.array([abs(p[0]) for p in chain])[::-1]
+    jz = np.array([p[2] for p in chain])[::-1]
     lips = _lips_path(J)
-    nose_b, nos = L("lm_nose_base"), L("lm_nostril.L")
-    mc = L("lm_mouth_corner.L")
-    y_ear = L("lm_jaw_1.L")[1]
-    z_top = L("lm_jaw_0.L")[2] - 0.05 * io
-    cheeks = float(o["cheeks"])
-    patchy = float(o["patchy"])
-    seed = int(o.get("seed", 0))
+    y_ear = j1[1]
+    ztop_sb = L("lm_jaw_0.L")[2] - 0.05 * io
+    cheeks, patchy, seed = float(o["cheeks"]), float(o["patchy"]), int(o.get("seed", 0))
+
+    def region(q, P, grow):
+        """1 inside the beard's area, its boundaries feathered by `soft` and moved out by `grow` (m)."""
+        t = theta(q)
+        lat = _ramp(q[:, 0], M[0] - 0.12 * io, M[0] + 0.02 * io)
+        top_c = _ramp(q[:, 2] - grow, z_top(t) + soft, z_top(t) - soft)
+        top_m = _ramp(q[:, 2] - grow, nos[2] + 0.02 * io + soft, nos[2] + 0.02 * io - soft)
+        d = lat * top_c + (1 - lat) * top_m
+        drop = np.interp(q[:, 0], jx, jz) - q[:, 2]           # how far below the jaw's edge
+        d *= _ramp(drop - grow, (0.55 + nl) * io + soft, (0.55 + nl) * io - soft)
+        d *= _ramp(q[:, 2] - grow, ztop_sb + 0.1 * io, ztop_sb - 0.1 * io)
+        back = y_ear + io * (0.04 + 0.35 * _ramp(q[:, 2], L("lm_jaw_3.L")[2], L("lm_jaw_4.L")[2] - 0.2 * io))
+        d *= _ramp(q[:, 1] - 0.5 * grow, back + 0.06 * io, back - 0.06 * io)
+        return d
 
     def dens(P, Nrm):
         q = P.copy()
         q[:, 0] = np.abs(q[:, 0])
-        s_c = (q - S) @ nc                           # > 0 above the cheek line
-        s_n = (P - B) @ nn                           # > 0 on the chin's side of the neckline
-        # (the cheek line is the beard's top only out beside the moustache: inside, the nose is)
-        lat = _ramp(q[:, 0], M[0] - 0.12 * io, M[0] + 0.02 * io)
-        top = _ramp(q[:, 2], nos[2] + 0.02 * io + soft_c, nos[2] + 0.02 * io - soft_c)   # beside the nose: its wing's base
-        d = (lat * _ramp(s_c, soft_c, -soft_c) + (1 - lat) * top) * _ramp(s_n, -soft_n, soft_n)
-        d *= _ramp(q[:, 2], z_top + 0.1 * io, z_top - 0.1 * io)        # the sideburn stops at the ear's middle
-        # behind: in front of the ear at its height, back to under the ear lower down
-        back = y_ear + io * (0.04 + 0.55 * _ramp(q[:, 2], L("lm_jaw_3.L")[2], L("lm_jaw_4.L")[2] - 0.2 * io))
-        d *= _ramp(q[:, 1], back + 0.06 * io, back - 0.06 * io)
-        # the nose and the nostrils' floor above the moustache
-        nose = _ramp(q[:, 2], nose_b[2] - 0.005 * io, nose_b[2] + 0.04 * io) * _ramp(q[:, 0], nos[0] + 0.2 * io, nos[0] + 0.06 * io)  # (hair reaches the nostril sill)
+        d = region(q, P, 0.0)
+        if trim < 0.5:   # stragglers: a few single hairs out past the fade
+            d = np.maximum(d, 0.06 * (1 - 2 * trim) * region(q, P, 1.4 * soft))
+        nose = _ramp(q[:, 2], nose_b[2] - 0.005 * io, nose_b[2] + 0.04 * io) * _ramp(q[:, 0], nos[0] + 0.2 * io, nos[0] + 0.06 * io)
         d *= 1 - nose
-        # the lips (the vermilion and 0.4 mm round it)
         front = q[:, 1] < mc[1] + 0.25 * io
-        inl = lips.contains_points(P[:, [0, 2]], radius=0.0004)
-        d[front & inl] = 0
-        # zones: the cheeks thin toward the cheek line, the connector beside the mouth's corners, the philtrum
-        band = _ramp(-s_c, 0.0, 0.55 * io)
-        jaw = _ramp(q[:, 2], L("lm_mouth_corner.L")[2] - 0.1 * io, L("lm_mouth_corner.L")[2] + 0.35 * io)  # 1 above the mouth
-        side = _ramp(q[:, 0], mc[0] + 0.05 * io, mc[0] + 0.35 * io)                                   # 1 out on the cheek
-        w = 1 - (1 - (cheeks + (1 - cheeks) * 0.6 * band)) * jaw * side
-        con = np.exp(-(((q[:, 0] - (mc[0] + 0.14 * io)) / (0.12 * io)) ** 2 + ((q[:, 2] - (mc[2] - 0.2 * io)) / (0.14 * io)) ** 2))
-        w *= 1 - (0.25 + 0.45 * patchy) * con
-        phil = np.exp(-(q[:, 0] / (0.045 * io)) ** 2) * _ramp(q[:, 2], mc[2], mc[2] + 0.1 * io)
-        w *= 1 - 0.2 * phil
-        # the neck below the jaw: a little thinner
-        under = _ramp(P[:, 2], L("lm_chin")[2] - 0.15 * io, L("lm_chin")[2] - 0.5 * io)
-        w *= 1 - 0.25 * under
+        d[front & lips.contains_points(P[:, [0, 2]], radius=0.0004)] = 0
+        # zones: the cheek (out beside the mouth, above the jaw) thinner; the neck a little thinner
+        jaw = _ramp(q[:, 2], mc[2] - 0.1 * io, mc[2] + 0.35 * io)
+        side = _ramp(q[:, 0], mc[0] + 0.05 * io, mc[0] + 0.35 * io)
+        cheek = jaw * side
+        w = 1 - (1 - cheeks) * cheek
+        if curv is not None:   # rounded forms carry less: the cheek's front, the nasolabial bulge
+            k = curv(P)
+            w *= 1 - 0.45 * _ramp(k, 0.6, 1.8) * np.maximum(cheek, _ramp(q[:, 0], mc[0] - 0.05 * io, mc[0] + 0.1 * io) * jaw)
+        # round the mouth: sparse at the lower lip's corners and the connector beside them, a denser soul patch
+        g = lambda cx, cz, rx, rz: np.exp(-(((q[:, 0] - cx) / rx) ** 2 + ((q[:, 2] - cz) / rz) ** 2))  # noqa: E731
+        w *= 1 - (0.3 + 0.4 * patchy) * g(mc[0] + 0.14 * io, mc[2] - 0.2 * io, 0.12 * io, 0.14 * io)
+        w *= 1 - 0.35 * g(mc[0] - 0.05 * io, mc[2] - 0.22 * io, 0.1 * io, 0.1 * io)
+        w = np.minimum(w * (1 + 0.15 * g(0.0, L("lm_lip_lower")[2] - 0.2 * io, 0.12 * io, 0.12 * io)), 1.0)
+        w *= 1 - 0.2 * np.exp(-(q[:, 0] / (0.045 * io)) ** 2) * _ramp(q[:, 2], mc[2], mc[2] + 0.1 * io)   # the philtrum
+        w *= 1 - 0.2 * _ramp(np.interp(q[:, 0], jx, jz) - q[:, 2], 0.15 * io, 0.6 * io)                  # the neck
         if patchy > 0:
             nz = noise(P, {"scale": 0.014, "octaves": 2, "seed": 300 + seed})
             w *= (1 - patchy) + patchy * _ramp(nz, 0.32 + 0.12 * patchy, 0.6)
-        # no hair on what faces away inside (nostrils, the mouth's inside)
         return np.clip(d * w * float(o["density"]), 0, 1)
     return dens
 
@@ -352,7 +405,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     if path.exists() and stats_f.exists():
         return str(path), sp["img"], json.loads(stats_f.read_text())
     rng = np.random.default_rng(900 + int(o.get("seed", 0)))
-    dens = beard_density(J, o)
+    dens = beard_density(J, o, curvature_at(spec, part, J))
     P, Nrm, d = scatter(V, N, F, dens, HAIRS_PER_M2, rng)
     n = len(P)
     W, H = sp["W"], sp["H"]
@@ -363,10 +416,13 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         ang = rng.normal(0, np.radians(18), n)              # each hair its own way, a little
         t1, t2 = frames(Nrm, g)
         x0, A = jacobians(sp, P, t1, t2)
-        Lh = float(o["length"]) * rng.lognormal(0, 0.22, n)                       # grown since the shave, unevenly
+        # where the beard thins out (its fading edges, stragglers) the hairs are finer, shorter and lighter: terminal
+        # beard hair gives way to vellus
+        fine = np.clip(d / 0.6, 0, 1) ** 0.5
+        Lh = float(o["length"]) * rng.lognormal(0, 0.22, n) * (0.55 + 0.45 * fine)  # grown since the shave, unevenly
         elev = np.radians(np.clip(42 - 3.2 * Lh * 1000, 14, 42))                 # longer hairs lie flatter
         proj = Lh * np.cos(elev)
-        wid = 0.000105 * float(o["size"]) * rng.uniform(0.8, 1.2, n)
+        wid = 0.000105 * float(o["size"]) * rng.uniform(0.8, 1.2, n) * (0.5 + 0.5 * fine)
         curl = rng.normal(0, 1, n) * np.clip(Lh / 0.006, 0, 1.2) * 0.25          # bend (rad over the hair's length)
         ca, sa = np.cos(ang), np.sin(ang)
         pxm = _px_m(A)
@@ -388,17 +444,23 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
                 r = np.hypot(s, t)
                 cov = _ramp(r, hw + aa, max(hw - aa, 0.0))
             return cov * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
-        draw(R, x0, A, reach, shape, (1 - tone) * 0.95)
-        draw(G, x0, A, reach, shape, tone * 0.95)
-        # the shadow: the dark roots' local count (hair in the skin), blurred to ~1.5 mm
+        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine))
+        draw(G, x0, A, reach, shape, tone * 0.95 * (0.35 + 0.65 * fine))
+        # the shadow: the EXPECTED density of dark roots (hair in the skin), from a dense sample of the density field
+        # (not the drawn roots' count: blurred enough to hide its Poisson noise, ~3 mm, it fell off 3 mm short of every
+        # edge and left a pale band over the lip), each sample weighted by 1 / its pixel's area on the skin
+        K = 12
+        Pc, Nc, dc = scatter(V, N, F, dens, K * HAIRS_PER_M2, np.random.default_rng(950 + int(o.get("seed", 0))), keep_all=True)
+        _, Ac = jacobians(sp, Pc, *frames(Nc, np.tile([1.0, 0, 0], (len(Pc), 1))))
+        xc = pix(sp, Pc)
+        ok = np.isfinite(xc).all(1)
+        xi = np.clip(np.round(xc[ok]).astype(int), [0, 0], [W - 1, H - 1])
+        area = np.abs(Ac[ok, 0, 0] * Ac[ok, 1, 1] - Ac[ok, 0, 1] * Ac[ok, 1, 0])
         Bc = np.zeros((H, W), np.float32)
-        xi = np.clip(np.round(x0).astype(int), [0, 0], [W - 1, H - 1])
-        # each root weighted by 1 / its pixel's area on the skin: the blurred sum is roots per m2 wherever the map stretches
-        area = np.abs(A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0])
-        np.add.at(Bc, (xi[:, 1], xi[:, 0]), ((1 - tone) * area).astype(np.float32))
+        np.add.at(Bc, (xi[:, 1], xi[:, 0]), (dc[ok] * (1 - float(o["grey"])) * area).astype(np.float32))
         pm = float(np.median(pxm))
-        Bc = gaussian_filter(Bc, 0.003 / pm)   # (~1.5 mm left the count's Poisson noise as blotches)
-        Bs = np.clip(Bc / (0.7 * HAIRS_PER_M2), 0, 1) ** 0.8   # full at ~70% of a full dark beard
+        Bc = gaussian_filter(Bc, 0.0012 / pm)
+        Bs = np.clip(Bc / (K * HAIRS_PER_M2) / 0.7, 0, 1) ** 1.2   # full at ~70% of a full dark beard; thin edges fade faster
     else:
         Bs = np.zeros((H, W), np.float32)
         pm = 0.0
@@ -484,7 +546,7 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         ph = rng.uniform(0, 2 * np.pi, (n, 4))
         aspect = rng.uniform(0.75, 1.0, n)
         rot = rng.uniform(0, np.pi, n)
-        inten = np.clip(rng.uniform(0.35, 0.9, n) * (0.7 + 0.5 * d), 0, 1)
+        inten = np.clip(rng.uniform(0.25, 0.7, n) * (0.75 + 0.45 * d), 0, 1)   # most are faint
         dark = rng.random(n) < float(o["dark"])
 
         def shape(i, s, t):
@@ -497,8 +559,9 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             aa = pxm[i]
             return _ramp(r, edge * (1 + 0.5 * soft[i]) + aa, edge * (1 - soft[i]))
         reach = rad * 1.9 + 2 * pxm
-        draw(R, x0, A, reach, shape, np.where(dark, 0, inten))
-        draw(G, x0, A, reach, shape, np.where(dark, inten, 0))
+        inten = np.where(dark, rng.uniform(0.8, 1.0, n), inten)
+        draw(R, x0, A, reach, shape, inten)                  # every freckle, its darkness in its value
+        draw(G, x0, A, reach, shape, np.where(dark, 1.0, 0.0))  # the darker ones alone
     # moles: a few, anywhere on the face, rounder, sharper, darker
     nm = int(o["moles"])
     if nm:

@@ -1045,6 +1045,31 @@ regresses, bisect by building one spec at each commit and diffing heights.
     0.006, p95 0.029, p99 0.066, max 0.19 m (the 1 m ground grid can't hold the bed's finer shape); crown_beck's fall
     tile 20,23 (cliff on top): p50 0.018, p95 0.064, p99 0.13, max 0.71 m (vertical differences on 70-85 deg faces:
     the mesh's 0.04 m is along the normal). tests/test_corridors.py.
+  - Note 119 (2026-10-09, "terrain117"): snags and limbs for gdamp's 0.25 m pass (V wakes, pile-ups),
+    `terrain_snags.py`, rows in terrain_stream's clutter (all_clutter). Kinds `snag` (2-6.5 m, 0.14-0.4 m: top on the
+    bed in the water, the stem leaning up onto the bank, pointing downstream; outer bends, and steep wooded reaches
+    near trees: energy 0.3-0.6+, trees within 6-14 m from terrain_design.trees, cached on T) and `limb` (1-6 m,
+    0.05-0.2 m: across the current on a boulder's upstream side (the river_rock rows in the water over 0.7 m), on a
+    bar's head leaning up from the shallows, wedged bank to bank over a channel under 4.4 m wide). Rows grow to COLS
+    18: + x0, y0, z0, x1, y1, z1, diameter (NaN for every other kind; `terrain_stream.pad`); clutter.csv csv_version
+    3 with the seven columns at the END (empty for other kinds; bush / boulder rows too), manifest kinds with
+    footprint {"shape": "capsule"}, diameter_m, an `asset` line, and the `how` text. The row's own columns: x, y the
+    middle, z the ground there, scale the length, yaw from end 0 (lower) to end 1.
+    Physics (`rest`, `lean`): each axis end a radius over the ground at its own column; between, the axis's
+    underside over the ground (+ CLEAR 2 cm), in the air in the export's field, and outside every boulder row's
+    footprint ellipsoid, or the candidate is dropped (never lifted: a lifted end floats). `lean` puts a leaning
+    stem's upper end where it comes to rest: the point between lmin and lmax whose ground makes the steepest line
+    from the lower end (all ground between is under that line; beyond it the stem would float, so it ends there).
+    Without it 2 of 3 snags failed (a straight bank-to-water line went through the cut bank's lip).
+    Island (t117_island, 27 s for all its stream clutter): 59 snags (length p50 3.7 m, diameter 0.26, 85% with the
+    lower end under the water, rise p50 1.6 m), 61 limbs (44 on boulders, 20 on bar heads, 0 wedged: the island's
+    channels are wider; length p50 2.6 m); per river vale 23 / 29, crown 15 / 18, kaze 9 / 7, downs 10 / 6, pencil
+    2 / 1. Placement counts per rule in `terrain_snags.LAST`. The render path draws them as driftwood stand-ins.
+    The ASSET is the clutter kit's job (clutter.TERRAIN_KINDS has no entry yet): a bare stem 1 m along +x at scale
+    1 (scaled to the row's length; unit diameter scaled to the row's diameter), pitched to the ends; snag = broken
+    branch stubs, a root plate or snapped butt at -x, tapering to +x; limb = straight or forked at +x with a few
+    twigs; 5 styles. tests/test_snags.py (rows, capsule columns, ends resting, axis clear, no boulder crossed, snags
+    sloping out of the water, manifest; a hump between the ends drops the candidate).
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +

@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 _CACHE: dict = {}
-VERSION = 11  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+VERSION = 13  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
@@ -330,7 +330,8 @@ def template(base: dict) -> dict:
         inside = np.concatenate(R["rings"][:kc + 1])
         C = R["rings"][kc]
         rows = lambda ids: row_of[np.asarray(ids, int)][row_of[np.asarray(ids, int)] >= 0]  # noqa: E731
-        seal_field = {"drop": rows(inside), "up": rows(C[R["upper"][C]]), "lo": rows(C[~R["upper"][C]])}
+        seal_field = {"drop": rows(inside), "up": rows(C[R["upper"][C]]), "lo": rows(C[~R["upper"][C]]),
+                      "outer": [(rows(r[R["upper"][r]]), rows(r[~R["upper"][r]])) for r in R["rings"][kc + 1:kc + 4]]}
     V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
     if len(loop_rows) and ht.get("loop_offsets") is not None:  # (faceslide.py) the sliders on the loops' vertices
         V[loop_rows] += ht["loop_offsets"]

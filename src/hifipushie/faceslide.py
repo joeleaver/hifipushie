@@ -44,6 +44,8 @@ UNITS = {
     "brow_lateral": (1.8, "the brow's outer half (and the skin under it) down: lateral brow descent"),
     "canthal_tilt": (4.0, "the eye's fissure turned outer corner up, degrees at +1 (the lids turn on the ball)"),
     "epicanthal": (1.8, "an epicanthal fold: the inner upper lid's skin over the inner canthus (medial, down)"),
+    "eye_setback": (2.0, "the eyeball and the orbit's contents back (deep-set), the brow ridge held; - = prominent eyes"),
+    "malar_rise": (2.0, "the cheek's front plane under the lower lid forward and up (the zygoma's prominence), not its width"),
 }
 EYE_SLIDERS = tuple(UNITS)
 UNITS.update({
@@ -60,6 +62,24 @@ UNITS.update({
     "lip_lower_height": (3.0, "more lower vermilion shows: its border down, the seam held"),
 })
 MOUTH_SLIDERS = tuple(k for k in UNITS if k not in EYE_SLIDERS)
+# the nose (Joe: "we don't have good control over the width of the middle of the nose"; nose_width is the alar base,
+# lm 31-35). Per side, mm at +1 (estimates from adult spreads: the nasal root ~17-20 mm wide, SD ~2; verify): the
+# side walls out / in, the dorsal line, the alar base and the tip's position held
+UNITS.update({
+    "nose_radix_width": (1.5, "the root between the eyes wider (each side wall out), the inner canthi held"),
+    "nose_dorsum_width": (2.0, "the middle vault wider: the bony / cartilage dorsum's side walls out"),
+    "nose_tip_width": (1.5, "the tip's domes (the lobule) wider, separate from the alae"),
+    "nose_dorsum_hump": (2.0, "a dorsal hump (the bony-cartilage junction forward); - = a scooped dorsum"),
+})
+NOSE_SLIDERS = ("nose_radix_width", "nose_dorsum_width", "nose_tip_width", "nose_dorsum_hump")
+# Tess's measured misses (2026-10-09): her nostrils show from the front under a small defined lobule; her lower
+# vermilion is a short cushion ending well inside the corners (its visible width 0.40 of the mouth's, ours 0.82)
+UNITS.update({
+    "nostril_show": (1.2, "the alar rims up and the columella down: the nostrils show from the front"),
+    "tip_definition": (0.8, "the lobule set off from the alae by a soft groove (a small, defined tip)"),
+    "lip_lower_width": (2.0, "the lower vermilion's lateral reach: + = out to the corners, - = a short cushion "
+                             "ending inside them (its border drawn up to the seam laterally)"),
+})
 # the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
 # morph target by spikes/facesliders/bake_age.py (face_sliders_baked.npz). name: the op's base.head.shape at +1
 BAKED = {
@@ -159,14 +179,66 @@ def template() -> dict:
     rim = np.unique(ue[ce == 1])
     eyes = np.asarray(g["template_joint_positions"], float)[2:4]
     rim = rim[np.min([np.linalg.norm(X[rim] - j, axis=1) for j in eyes], axis=0) < 0.03]
-    _CACHE["tpl"] = {"X": X, "n": n, "ext": ext, "skin": skin, "rim": rim, "lm": lm, "mirror": mi, "J": g["template_joint_positions"].astype(float)}
+    eyes_m = gnmloops.ext(np.asarray(g["groups"]["eyes"]) > 0.5, how="all")
+    _CACHE["tpl"] = {"X": X, "n": n, "ext": ext, "skin": skin, "eyes": eyes_m, "rim": rim, "lm": lm, "mirror": mi,
+                     "J": g["template_joint_positions"].astype(float)}
     return _CACHE["tpl"]
 
 
-def _left_fields() -> dict:
-    """Every slider's field for the subject's LEFT eye (+x), GNM frame, metres at +1."""
+def head_template(V: np.ndarray) -> dict:
+    """template()'s dict for a head of GNM's raw vertices V (its frame): positions with the loops, normals, landmarks;
+    masks, rims and the mirror map are the template's."""
+    from . import base as basemod
+    from . import gnmloops
+    T = dict(template())
+    X = gnmloops.ext(np.asarray(V, float))
+    Q = gnmloops.plan()["quads"]
+    n = np.zeros_like(X)
+    for a, b, c in ((0, 1, 3), (1, 2, 0), (2, 3, 1), (3, 0, 2)):
+        np.add.at(n, Q[:, a], np.cross(X[Q[:, b]] - X[Q[:, a]], X[Q[:, c]] - X[Q[:, a]]))
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-15)
+    g = basemod._gnm_data()
+    T.update(X=X, n=n, lm=np.array([sum(float(w) * X[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]]),
+             own=True)
+    return T
+
+
+def _fold_turn(X, u, h, sel, H0, NY=None):
+    """The crease's height over the margin per vertex (by its u): where the lid's own profile turns into its fold (the
+    most concave point of depth against height, 2.5-8.5 mm, per u band: on a hooded lid the platform meets the fold's
+    underside there), else the template's H0 (a smooth, convex lid has no turn of its own)."""
+    mm = 0.001
+    bands = np.linspace(0.05, 1.0, 8)
+    hc_b, uc_b = [], []
+    for u0, u1 in zip(bands[:-1], bands[1:]):
+        s = sel & (u >= u0) & (u < u1) & (h > 1.0 * mm) & (h < 11 * mm)
+        if s.sum() < 4:
+            continue
+        hs = np.arange(1.5, 10.6, 0.5) * mm
+        o = np.argsort(h[s])  # (the lid's rows are 0.7-2.5 mm apart: the profile interpolated between them)
+        ny = np.interp(hs, h[s][o], NY[s][o])
+        ny = np.convolve(np.r_[ny[0], ny, ny[-1]], [0.25, 0.5, 0.25], "valid")
+        # the turn: going up the lid, where the skin stops facing up (the platform) and faces down (the fold's
+        # underside). (By the profile's concavity the margin roll's foot at ~3 mm won on every smooth lid)
+        cross = np.flatnonzero((ny[:-1] > 0) & (ny[1:] <= 0) & (hs[:-1] >= 2.0 * mm) & (hs[1:] <= 9.0 * mm))
+        if len(cross):
+            i = int(cross[0])
+            hc_b.append(hs[i] + (hs[i + 1] - hs[i]) * ny[i] / max(ny[i] - ny[i + 1], 1e-9))
+            uc_b.append(0.5 * (u0 + u1))
+    if len(hc_b) < 2:
+        return H0
+    hc = np.interp(np.clip(u, 0, 1), uc_b, np.convolve(np.r_[hc_b[0], hc_b, hc_b[-1]], [1 / 3] * 3, "valid"))
+    return np.clip(hc, 2.5 * mm, 8.5 * mm)
+
+
+
+
+
+def _left_fields(T: dict | None = None) -> dict:
+    """Every slider's field for the subject's LEFT eye (+x), GNM frame, metres at +1 (T: template() or a head's
+    head_template(V): the crease then sits on that head's own fold turn)."""
     from scipy.spatial import cKDTree
-    T = template()
+    T = T or template()
     X, n, lm = T["X"], T["n"], T["lm"]
     mm = 0.001
     c_in, c_out = lm[42], lm[45]
@@ -207,10 +279,21 @@ def _left_fields() -> dict:
     # margin, back to nothing 4 mm over the crease: whatever crease rides on these vertices goes with them
     bump = np.where(h < H0, _ss(h / np.maximum(H0, 1e-6)), _ss((H0 + 4 * mm - h) / (4 * mm)))
     F["eye_crease_height"] = (m * Ec * bump)[:, None] * tang_up
-    # crease depth: a groove at the crease along the margin's arch, the skin over it standing a little forward (a
-    # fold edge, not a trench)
-    prof = -_g(h, H0, 0.75 * mm) + 0.35 * _g(h, H0 + 1.7 * mm, 0.9 * mm)
-    F["eye_crease_depth"] = (m * Ec * prof)[:, None] * n
+    # crease depth: a FOLD, not a dimple: a shallow groove at the crease line and the skin just over it coming down and
+    # forward over it, so the line is in its shadow (a Gaussian dent alone, at the template's height, sat on a hooded
+    # lid's fold underside where it read as a row of divots: Tess). On a head (T["own"]) the line follows its own
+    # fold turn
+    Hc = _fold_turn(X, u, h, upper & (dm > 1.5 * mm), H0, n[:, 1]) if T.get("own") else H0
+    _CACHE["last_crease"] = (Hc, H0, u, upper)  # (diagnostics: creasechk.py)
+    # (widths: every feature >= ~2.5 mm across (FWHM): a 0.55 mm groove under a 0.85 mm lip read as a thin dark CUT
+    # with a bright rim, a slit not a fold; a real fold is a rounded roll of skin with a broad soft shadow under it)
+    groove = -0.55 * _g(h, Hc - 0.3 * mm, 1.2 * mm)
+    over = 0.9 * _g(h, Hc + 1.9 * mm, 1.4 * mm)
+    od = 0.55 * n - 0.6 * up[None]
+    od /= np.maximum(np.linalg.norm(od, axis=1, keepdims=True), 1e-9)
+    # (held off the margin less than the other lid fields: a low crease (Tess: 3 mm over the margin) was half faded)
+    mc = upper * _ss((h - 1.0 * mm) / (2.0 * mm)) * _ss((dm - 1.2 * mm) / (2.0 * mm))
+    F["eye_crease_depth"] = (mc * Ec)[:, None] * (groove[:, None] * n + over[:, None] * od)
     # platform show: the fold's edge (just over the crease) up and back
     Ef = _ss((u + 0.02) / 0.15) * _ss((1.08 - u) / 0.2)
     pf = _g(h, H0 + 1.4 * mm, 1.3 * mm)
@@ -265,7 +348,36 @@ def _left_fields() -> dict:
     hold_c = _ss((np.linalg.norm(X - c_in, axis=1) - 0.5 * mm) / (4.0 * mm))
     F["epicanthal"] = (nears * _ss((h + 1.5 * mm) / (3.0 * mm)) * hold_c * _g(r_in, 0, 4.5 * mm))[:, None] \
         * (-0.75 * ex - 0.55 * up + 0.3 * n)
+    # eye setback: the eyeball (with the eye joint: joint_delta) and the orbit's contents (lids, their insides, the
+    # canthi) back as one, fading out across the orbital rim; the brow ridge above held (Tess needed eye_depth +
+    # brow_ridge together for this: a heavy brow, an identity component past 2.6 sigma)
+    rxy = np.linalg.norm((X - ce)[:, :2], axis=1)
+    orbit = (T["skin"] | T["eyes"]) & (X[:, 0] > 0.004) & (X[:, 2] > ce[2] - 0.03)
+    w_orb = np.where(T["eyes"] & (np.linalg.norm(X - ce, axis=1) < 0.02), 1.0,
+                     (1 - _ss((rxy - 0.55 * w) / (0.45 * w))) * (1 - _ss((t - 0.55) / 0.35) * (h > 0)))
+    F["eye_setback"] = (orbit * w_orb)[:, None] * -fwd[None]
+    # malar rise: the cheek's front plane under the lower lid / bag (the zygoma's prominence) forward and up; the lid's
+    # margin, the nasolabial side and the jaw held. Not the cheek's width
+    pm = 0.5 * (lm[46] + lm[47]) + np.array([0.15 * w, -0.016, -0.004])
+    rm = np.linalg.norm(((X - pm) * [1.0, 1.25, 0.6]), axis=1)
+    mal = T["ext"] & (X[:, 0] > 0.004) & (X[:, 2] > pm[2] - 0.03) & (dl > 0)
+    F["malar_rise"] = (mal * low_off * _g(rm, 0, 9.0 * mm))[:, None] * (0.8 * n + 0.45 * up[None])
     return {k: v * (UNITS[k][0] * mm) for k, v in F.items()}
+
+
+def joint_delta(sliders: dict | None) -> np.ndarray | None:
+    """(4, 3) GNM-frame move of GNM's joints by the sliders (eye_setback takes the eye joints back with the balls),
+    or None."""
+    vals = values(sliders)
+    if "eye_setback" not in vals or vals["eye_setback"] == (0.0, 0.0):
+        return None
+    J = template()["J"]
+    D = np.zeros((4, 3))
+    r, l_ = vals["eye_setback"]
+    u = UNITS["eye_setback"][0] * 0.001
+    for j in (2, 3):
+        D[j, 2] = -u * (l_ if J[j][0] > 0 else r)
+    return D
 
 
 def _mouth_fields() -> dict:
@@ -326,6 +438,10 @@ def _mouth_fields() -> dict:
     F["lip_upper_height"] = (upper * taper * hu * _ss((su - 0.15) / 0.85))[:, None] * up[None]  # (the seam
     # rows held: at -1 the lip went down through the lower one)
     F["lip_lower_height"] = (lower * taper * hl * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
+    # lower lip width: its border laterally (the outer half, toward the corners) away from / toward the seam: + more red
+    # out to the corners, - the lower lip a short cushion ending inside them (the seam and the middle held)
+    lat_l = _ss((ax - 0.3) / 0.45) * (1 - _ss((ax - 1.05) / 0.15))
+    F["lip_lower_width"] = (lower * hl * lat_l * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
     F["mouth_corner"] = np.zeros_like(X)
     for c in (lm[48], lm[54]):
         r = np.linalg.norm(X - c, axis=1)
@@ -463,6 +579,65 @@ def _seal_step(V, amount, R):
     return D
 
 
+def _nose_fields() -> dict:
+    """The nose's sliders (whole nose, GNM frame, metres at +1). s along the dorsal line (lm 27 nasion = 0 .. lm 30 the
+    tip = 1), x across from the midline: the widths move the side walls sideways in proportion to x (the dorsal line,
+    x = 0, and the tip's position stay), held round the alar base (lm 31 / 35, the nostrils) and off the eyes' rims."""
+    from scipy.spatial import cKDTree
+    T = template()
+    X, n, lm = T["X"], T["n"], T["lm"]
+    mm = 0.001
+    a, b = lm[27], lm[30]
+    d = b - a
+    L2 = float(d @ d)
+    s = (X - a) @ d / L2
+    x = X[:, 0] - 0.5 * (lm[31][0] + lm[35][0])
+    ax = np.abs(x)
+    hw_alar = 0.5 * abs(float(lm[35][0] - lm[31][0]))
+    # the nose's own half-width along it: ~0.45 of the alar base at the root, 0.5 mid, 0.7 at the tip
+    hw = hw_alar * np.interp(s, [0.0, 0.5, 0.85, 1.1], [0.45, 0.5, 0.65, 0.7])
+    front = T["ext"] & (X[:, 2] > lm[27][2] - 0.02) & (s > -0.25) & (s < 1.2) & (ax < hw + 0.012)
+    front &= X[:, 1] > lm[33][1] - 0.002  # (above the nostrils' floor)
+    lat = _ss(ax / np.maximum(hw, 1e-4)) * (1 - _ss((ax - hw) / (6 * mm)))
+    side = np.sign(x)[:, None] * np.array([1.0, 0.0, 0.0])
+    alar = np.min([np.linalg.norm(X - lm[i], axis=1) for i in (31, 35, 32, 34)], axis=0)
+    hold_alar = _ss((alar - 3.0 * mm) / (5.0 * mm))
+    hold_eye = _ss((cKDTree(X[T["rim"]]).query(X)[0] - 4.0 * mm) / (5.0 * mm))
+    F = {}
+    F["nose_radix_width"] = (front * lat * _g(s, 0.1, 0.13) * hold_eye * hold_alar)[:, None] * side
+    F["nose_dorsum_width"] = (front * lat * _g(s, 0.5, 0.15) * hold_alar * hold_eye)[:, None] * side
+    # (held off the nostrils' insides: moving the rim's outside alone folded it against them)
+    inner = T["skin"] & ~T["ext"] & (np.abs(x) < hw_alar + 0.005) & (X[:, 1] < lm[30][1]) & (X[:, 1] > lm[33][1] - 0.006)
+    hold_nos = _ss((cKDTree(X[inner]).query(X)[0] - 1.5 * mm) / (3.5 * mm)) if inner.any() else 1.0
+    tip = front * _g(s, 0.92, 0.1) * _ss(ax / (0.4 * hw_alar)) * (1 - _ss((ax - 0.75 * hw_alar) / (4 * mm)))
+    F["nose_tip_width"] = (tip * hold_alar * hold_nos)[:, None] * side
+    hump = front * _g(s, 0.45, 0.13) * _g(ax, 0, 0.6 * hw_alar)
+    F["nose_dorsum_hump"] = hump[:, None] * np.array([0.0, 0.0, 1.0])[None]
+    # nostril show: the alar rims (round lm 31 / 35, below the wings' middle) up, the columella (lm 33 up to the tip's
+    # underside, the midline) down; the tip held
+    up = np.array([0.0, 1.0, 0.0])
+    rim = (front | (T["skin"] & (ax < hw_alar + 0.005))) & (X[:, 1] < lm[30][1])
+    wing = np.min([np.linalg.norm(X - (lm[i] + np.array([0.0, -0.001, 0.0])), axis=1) for i in (31, 35)], axis=0)
+    col = np.linalg.norm((X - 0.5 * (lm[33] + lm[30]))[:, [0, 1]] * [1.0, 0.6], axis=1)
+    tipd = np.linalg.norm(X - lm[30], axis=1)
+    hold_tip = _ss((tipd - 2.5 * mm) / (4 * mm))
+    F["nostril_show"] = (rim * hold_tip)[:, None] * (_g(wing, 0, 3.0 * mm)[:, None] * up[None]
+                                                    - 0.6 * (_g(col, 0, 2.0 * mm) * (ax < 3 * mm))[:, None] * up[None])
+    # tip definition: a soft groove where the lobule meets each ala (from over the wing toward the domes), the
+    # lobule's domes a little forward
+    gp0 = lm[35] + np.array([-0.001, 0.0045, 0.002])
+    gp1 = lm[30] + np.array([0.006, -0.002, -0.003])
+    q = np.c_[np.abs(X[:, 0]), X[:, 1], X[:, 2]]
+    seg = gp1 - gp0
+    tt = np.clip((q - gp0) @ seg / float(seg @ seg), 0, 1)
+    dseg = np.linalg.norm(q - (gp0 + tt[:, None] * seg), axis=1)
+    groove = front * _g(dseg, 0, 1.3 * mm) * _ss(tt / 0.2) * _ss((1 - tt) / 0.25)
+    domes = front * _g(np.linalg.norm(q - np.c_[np.full(len(X), 0.004), np.full(len(X), lm[30][1]), np.full(len(X), lm[30][2])], axis=1), 0, 2.5 * mm)
+    F["tip_definition"] = -groove[:, None] * n + 0.35 * domes[:, None] * n
+    mi = T["mirror"]  # (made exactly mirror symmetric: GNM's template is symmetric only to ~0.1 mm)
+    return {k: 0.5 * (v + v[mi] * [-1.0, 1.0, 1.0]) * (UNITS[k][0] * mm) for k, v in F.items()}
+
+
 def fields() -> dict:
     """{name: ((n, 3) right side's, (n, 3) left side's)} metres at +1, GNM frame (n = GNM's + the loops' vertices).
     The eyes' are each eye's own (mirrored); the mouth's split at the centre line (smoothly)."""
@@ -474,7 +649,7 @@ def fields() -> dict:
             dR = dL[mi] * [-1.0, 1.0, 1.0]
             out[k] = (dR, dL)
         wl = _ss((T["X"][:, 0] + 0.002) / 0.004)[:, None]
-        for k, d in _mouth_fields().items():
+        for k, d in {**_mouth_fields(), **_nose_fields()}.items():
             out[k] = (d * (1 - wl), d * wl)
         from pathlib import Path
 
@@ -510,12 +685,36 @@ def values(sliders: dict | None) -> dict:
     return out
 
 
-def delta(sliders: dict | None) -> np.ndarray | None:
-    """The sliders' sum, (n, 3) GNM frame, or None when none is set."""
+HEAD_FIELDS = ("eye_crease_depth",)  # sliders laid on the head's own shape (base.gnm_head passes V)
+
+
+def head_fields(V: np.ndarray, names=HEAD_FIELDS) -> dict:
+    """The HEAD_FIELDS on head V (GNM's raw vertices, its frame): ((n, 3) right, (n, 3) left), as fields()."""
+    from . import gnmloops
+    V = np.asarray(V, float)
+    key = ("head_fields", hash(V.tobytes()), tuple(names))
+    if key in _CACHE:
+        return _CACHE[key]
+    mi_raw = gnmloops._raw()["mirror"]
+    mi = template()["mirror"]
+    dL = _left_fields(head_template(V))
+    dLm = _left_fields(head_template(V[mi_raw] * [-1.0, 1.0, 1.0]))  # the right eye as a left one
+    out = {k: (dLm[k][mi] * [-1.0, 1.0, 1.0], dL[k]) for k in names}
+    if len([k for k in _CACHE if isinstance(k, tuple) and k[0] == "head_fields"]) > 8:
+        _CACHE.pop(next(k for k in _CACHE if isinstance(k, tuple) and k[0] == "head_fields"))
+    _CACHE[key] = out
+    return out
+
+
+def delta(sliders: dict | None, V: np.ndarray | None = None) -> np.ndarray | None:
+    """The sliders' sum, (n, 3) GNM frame, or None when none is set. V (the head's GNM vertices): HEAD_FIELDS are
+    laid on its own shape (the crease on its own fold turn), not the template's."""
     vals = {k: v for k, v in values(sliders).items() if v != (0.0, 0.0)}
     if not vals:
         return None
-    F = fields()
+    F = dict(fields())
+    if V is not None and any(k in vals for k in HEAD_FIELDS):
+        F.update(head_fields(V, tuple(k for k in HEAD_FIELDS if k in vals)))
     D = np.zeros_like(template()["X"])
     for k, (r, l_) in vals.items():
         D += r * F[k][0] + l_ * F[k][1]
@@ -578,6 +777,38 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     out["crease"] = float(hs[j] + 0.1 * off)
     under = prof[(hs >= 1.0) & (hs <= max(hs[j] - 1.0, 1.0))]
     out["crease_dark"] = float(np.median(under) / max(prof[j], 1e-6))
+    return out
+
+
+def nose_widths(img, P, mmpx: float) -> dict:
+    """The nose's dorsal width read by SHADING, like with like on any picture lit by one light (the photo, or a render
+    under the photo's fitted light): across the face (the detector's own axes) at the radix (MediaPipe 168) and the
+    mid-dorsum (between 6 and 4), the luminance profile +-14 mm, smoothed over 1 mm; the dorsum is the bright band
+    round the middle: its width at half the drop from its peak to the side walls' darkest (mm). The detector has
+    no point on the dorsal lines: this is what an eye reads as the nose's width partway down."""
+    from scipy.ndimage import gaussian_filter1d, map_coordinates
+
+    from .likeness_eyes import frame
+    P = np.asarray(P, float)
+    a = np.asarray(img.convert("RGB"), float) / 255.0
+    Y = 0.2126 * a[..., 0] + 0.7152 * a[..., 1] + 0.0722 * a[..., 2]
+    ex, _ = frame(P)
+    out = {}
+    for name, c in (("radix_w", P[168]), ("dorsum_w", 0.5 * (P[6] + P[4]))):
+        t = np.arange(-14.0, 14.01, 0.1)
+        pts = c[None] + (t / mmpx)[:, None] * ex[None]
+        prof = gaussian_filter1d(map_coordinates(Y, [pts[:, 1], pts[:, 0]], order=1), 1.0 / 0.1 / 2.355)
+        mid = np.abs(t) <= 3.0
+        j = int(np.flatnonzero(mid)[np.argmax(prof[mid])])
+        peak = prof[j]
+        edges = []
+        for sgn in (-1, 1):
+            k = np.arange(j, len(t)) if sgn > 0 else np.arange(j, -1, -1)
+            low = float(prof[k].min())
+            half = peak - 0.5 * (peak - low)
+            hit = k[np.argmax(prof[k] <= half)] if (prof[k] <= half).any() else k[-1]
+            edges.append(t[hit])
+        out[name] = float(edges[1] - edges[0])
     return out
 
 

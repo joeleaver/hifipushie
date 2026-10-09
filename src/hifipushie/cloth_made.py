@@ -993,6 +993,64 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
         L.update(Fp=Fp, Fb=Fb, out=_unit(bn))
         before = V[L["flap"]].copy()
         V = press_flap(V, Fp, uv, L["flap"], L["line"], lay=opt["lapel_lay"], wedge=opt["wedge"], out=L["out"])
+        # the pressed flap kept over its OWN forepart: pressed in the plane of a board, a forepart that curves out
+        # (the chest) came through it (cloth10 j1/j6: 13-29 integrity crossings on front.R, pale patches on the lapel);
+        # the flap is lifted `lapel_lay` over it, eased over its neighbours like the lift over the under garment
+        Pf0 = V[L["flap"]]
+        Qs, _, _ = Under([{"V": V, "F": Fb, "sheet": True, "depth": 0.03}]).settle(Pf0, opt["lapel_lay"])
+        ds = Qs - Pf0
+        hs = np.linalg.norm(ds, axis=1) > 1e-5
+        if hs.any():
+            d_, j_ = cKDTree(Pf0[hs]).query(Pf0, k=min(6, int(hs.sum())))
+            d_, j_ = d_.reshape(len(Pf0), -1), j_.reshape(len(Pf0), -1)
+            wv = np.clip(1 - d_ / 0.02, 0, 1) ** 2
+            ease = (wv[..., None] * ds[hs][j_]).sum(1) / np.maximum(wv.sum(1), 1e-9)[:, None] * wv.max(1)[:, None]
+            V[L["flap"]] = Pf0 + np.where(hs[:, None], ds, ease)
+        self_lift = int(hs.sum())
+        # ... and where flap EDGES still pass through it (the lapel's outer edge over the front edge's turn: no surface
+        # under it along a normal for the settle to see; cloth10 j6 front.R: 29 crossings 47-70 mm from the roll): the
+        # edges' ends step out along the flap's own outward normal until none crosses, their neighbours half
+        from .cloth import _seg_tri
+        Ff_ = Fp[np.isin(Fp, L["flap"]).all(1)]
+        Ef_ = np.unique(np.sort(np.r_[Ff_[:, [0, 1]], Ff_[:, [1, 2]], Ff_[:, [2, 0]]], 1), axis=0)
+        for _r in range(12):
+            cen_ = V[Fb].mean(1)
+            mid_ = 0.5 * (V[Ef_[:, 0]] + V[Ef_[:, 1]])
+            cand_ = cKDTree(cen_).query_ball_point(mid_, r=0.03)
+            ei_ = np.repeat(np.arange(len(Ef_)), [len(c_) for c_ in cand_])
+            ti_ = np.fromiter((t_ for c_ in cand_ for t_ in c_), dtype=np.int64, count=len(ei_))
+            if not len(ei_):
+                break
+            T_ = Fb[ti_]
+            hit_ = _seg_tri(V[Ef_[ei_, 0]], V[Ef_[ei_, 1]], V[T_[:, 0]], V[T_[:, 1]], V[T_[:, 2]])
+            # (and the forepart's edges through the flap's faces: a bump of the chest through the lapel's middle)
+            Eb_ = np.unique(np.sort(np.r_[Fb[:, [0, 1]], Fb[:, [1, 2]], Fb[:, [2, 0]]], 1), axis=0)
+            cf_ = V[Ff_].mean(1)
+            mb_ = 0.5 * (V[Eb_[:, 0]] + V[Eb_[:, 1]])
+            cb_ = cKDTree(cf_).query_ball_point(mb_, r=0.03)
+            eb_ = np.repeat(np.arange(len(Eb_)), [len(c_) for c_ in cb_])
+            tb_ = np.fromiter((t_ for c_ in cb_ for t_ in c_), dtype=np.int64, count=len(eb_))
+            hb_ = np.zeros(0, bool)
+            if len(eb_):
+                Tb_ = Ff_[tb_]
+                hb_ = _seg_tri(V[Eb_[eb_, 0]], V[Eb_[eb_, 1]], V[Tb_[:, 0]], V[Tb_[:, 1]], V[Tb_[:, 2]])
+            if not hit_.any() and not hb_.any():
+                break
+            mv_ = np.zeros(len(V), bool)
+            mv_[Ef_[ei_[hit_]].ravel()] = True
+            if hb_.any():
+                mv_[Ff_[tb_[hb_]].ravel()] = True
+            nb_ = mv_.copy()
+            for e_ in Ef_:
+                if mv_[e_[0]] or mv_[e_[1]]:
+                    nb_[e_] = True
+            # (out = the base's own outward normal at its nearest vertex: a pressed flap's faces are turned over)
+            bvid_ = np.unique(Fb)
+            near_ = bvid_[cKDTree(V[bvid_]).query(V)[1]]
+            step_ = 0.0015 * L["out"][near_]
+            V[mv_] += step_[mv_]
+            V[nb_ & ~mv_] += 0.5 * step_[nb_ & ~mv_]
+            self_lift += int(mv_.sum())
         lifted = 0
         if under is not None and opt.get("over_under", True):
             # the pressed lapel lies OVER what is worn under the jacket: pressed onto its forepart, its top by the neck
@@ -1035,7 +1093,7 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
                 wv = np.clip(1 - d_ / 0.02, 0, 1) ** 2
                 ease = (wv[..., None] * dl[hit][j_]).sum(1) / np.maximum(wv.sum(1), 1e-9)[:, None] * wv.max(1)[:, None]
                 V[L["flap"]] = Pf + np.where(hit[:, None], dl, ease)
-        made["lapels"].append({"piece": L["piece"], "vertices": int(len(L["flap"])), "lifted_over_under": lifted,
+        made["lapels"].append({"piece": L["piece"], "vertices": int(len(L["flap"])), "lifted_over_under": lifted, "lifted_over_own": self_lift,
                                "moved_mm": round(float(np.median(np.linalg.norm(V[L["flap"]] - before, axis=1))) * 1000, 1)})
     names, piece = list(M["names"]), np.asarray(M["piece"])
     if opt["collar"] and "collar" in names and M.get("sew") is not None and any("Fb" in L for L in flaps):
@@ -1052,7 +1110,11 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
             w_ = 1 - (1 - gw) * np.clip(2 * _smooth_curve(fl_[ch["idx"]].astype(float)[:, None], 4)[:, 0], 0, 1)
             uV, uF = np.asarray(under["V"], float), np.asarray(under["F"])
             um = np.asarray(under.get("made") if under.get("made") is not None else np.zeros(len(uV), bool), bool)
-            tgt = [{"V": uV, "F": uF[um[uF].all(1)]}] if um.any() else [{"V": uV, "F": uF}]
+            # the target: the under collar's FALL when it has one (its outer layer at the back: drawn to the nearest of
+            # stand or fall, the neckline went under the fall and the jacket stand crossed it, cloth10 c10_j4)
+            fm_ = np.asarray(under.get("fall") if under.get("fall") is not None else um, bool)
+            tm_ = fm_ if fm_.any() else um
+            tgt = [{"V": uV, "F": uF[tm_[uF].all(1)]}] if tm_.any() else [{"V": uV, "F": uF}]
             V, hinfo = hug_neckline(V, ch["idx"], w_, tgt, np.asarray(bV, float), bFo, clear=[{"V": uV, "F": uF}],
                                     **{"reach": 0.12, "max_pull": 0.02, **hk})
             made["info"]["hug"] = {k: v for k, v in hinfo.items() if k != "params"}

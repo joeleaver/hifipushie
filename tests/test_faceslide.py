@@ -88,6 +88,13 @@ def test_no_fold_or_slot_at_the_extremes():
             ang = lambda a: np.degrees(np.arccos(np.clip(a, -1, 1)))  # noqa: E731
             fold = (a1 < np.cos(np.radians(60))) & (ang(a1) - ang(a0) > 10)  # (the vermilion border is 67 deg already)
             assert not fold.any(), (name, v, int(fold.sum()))
+            if name == "eye_setback":  # the balls go back whole, the rims with them (their distance to the ball held)
+                ball = D[eyes]
+                assert np.abs(ball - ball.mean(0)).max() < 1e-9 or np.ptp(np.linalg.norm(ball, axis=1)) < 1e-9, name
+                Jd = J + faceslide.joint_delta({name: v})[2:4]
+                dist = lambda Y, JJ: np.min([np.linalg.norm(Y[rim] - j, axis=1) for j in JJ], axis=0)  # noqa: E731
+                assert np.abs(dist(X1, Jd) - dist(X, J)).max() < 2.5e-4, (name, np.abs(dist(X1, Jd) - dist(X, J)).max())
+                continue
             assert np.abs(D[eyes]).max() == 0, name
             if name in faceslide.MOUTH_SLIDERS:  # no lip through the other: the contact ring's upper side never down,
                 # its lower side never up
@@ -97,7 +104,7 @@ def test_no_fold_or_slot_at_the_extremes():
             if name == "canthal_tilt":
                 dist = lambda Y: np.min([np.linalg.norm(Y[rim] - j, axis=1) for j in J], axis=0)  # noqa: E731
                 assert np.abs(dist(X1) - dist(X)).max() < 5e-5, name
-            elif name != "epicanthal":
+            elif name not in ("epicanthal",):
                 assert np.linalg.norm(D[rim], axis=1).max() < 5e-5, (name, np.linalg.norm(D[rim], axis=1).max())
 
 
@@ -206,6 +213,46 @@ def test_sealed_mouth_has_no_pocket_or_slit_in_the_field():
         sp["base"]["head"].pop("mouth_gap", None)
         sp["base"]["head"]["lip_seal"] = 1.0
         assert seam.check(sp, log=lambda *a: None) == 0, seed
+
+
+def test_crease_sits_on_the_heads_own_fold():
+    """faceslide._fold_turn: on a lid whose skin turns from facing up (the platform) to facing down (a fold's underside)
+    the crease goes where it turns (here 4 mm over the margin, against the template's ~6 mm); on a lid that never turns
+    (a smooth one) the template's height stays. And the fold-profile crease on a head is finite and off the rims."""
+    if not _gnm_ok():
+        return
+    mm = 0.001
+    rng = np.random.default_rng(0)
+    u = rng.uniform(0.05, 1.0, 4000)
+    h = rng.uniform(1.0 * mm, 11 * mm, 4000)
+    X = np.zeros((4000, 3))
+    H0 = np.full(4000, 6.2 * mm)
+    sel = np.ones(4000, bool)
+    ny = np.clip((4.0 * mm - h) / (2 * mm), -0.6, 0.6)  # up below 4 mm, down above
+    Hc = faceslide._fold_turn(X, u, h, sel, H0, ny)
+    assert np.abs(np.asarray(Hc) - 4.0 * mm).max() < 0.4 * mm, (np.min(Hc), np.max(Hc))
+    assert np.array_equal(faceslide._fold_turn(X, u, h, sel, H0, np.full(4000, 0.3)), H0)
+    X0 = np.asarray(base._gnm_data()["template_vertex_positions"], float)
+    D = faceslide.delta({"eye_crease_depth": 1.0}, X0)
+    T0 = faceslide.template()
+    assert D is not None and np.isfinite(D).all() and np.abs(D[T0["rim"]]).max() < 5e-5
+
+
+def test_nose_sliders_hold_the_alar_base_and_the_tip():
+    """The nose set moves its own part: the alar base (lm 31-35), the tip (lm 30) and the inner canthi stay (< 0.1
+    mm), the side walls move (> 0.5 unit), symmetric (the left wall out as the right)."""
+    if not _gnm_ok():
+        return
+    T = faceslide.template()
+    lmr = base._gnm_data()["lm68"]
+
+    def at(D, i):
+        return sum(float(w) * D[int(v)] for v, w in zip(lmr[i][0::2], lmr[i][1::2]))
+    for name in faceslide.NOSE_SLIDERS:
+        D = faceslide.delta({name: 1.0})
+        for i in (30, 31, 33, 35, 39, 42):
+            assert np.linalg.norm(at(D, i)) < 1e-4, (name, i, np.linalg.norm(at(D, i)))
+        assert np.linalg.norm(D, axis=1).max() > 0.5 * faceslide.UNITS[name][0] * 0.001, name
 
 
 def test_fit_window_follows_sex():
