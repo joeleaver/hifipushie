@@ -7,6 +7,13 @@ description: Model characters and creatures with the hifipushie MCP server (skel
 
 Call the hifipushie `guide` tool first and follow it: it is the full playbook. The essentials:
 
+- **Toolsets:** the server starts with the core (guide, enable_toolset, list_models, get_model, kit_reference,
+  put_model, edit_model, look, check, measure, history, revert). Everything else is a toolset you turn on with
+  `enable_toolset(name)`: plan (set_plan, set_reference, compare, fit, clearance, style_check), scene (sync, pull,
+  heavy_status, heavy_queue), export (export, export_asset, rig), human, likeness, hair, cloth, terrain, plants,
+  clutter; `enable_toolset("")` lists them. New tools may arrive deferred: load them with ToolSearch. Tool
+  descriptions are short: `guide(topic="<tool>")` has any tool's full parameters, `guide(topic="tools")` the table.
+
 0. **Realistic humans start from `spec["base"]`** (MakeHuman body + GNM head, shaped by parameters: guide 4d),
    never from blobs and kits. The blob/kit route below is for creatures, cartoons and props.
 
