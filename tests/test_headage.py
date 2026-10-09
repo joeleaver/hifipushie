@@ -210,6 +210,21 @@ def test_hood_crease_is_a_groove_over_the_lid():
     assert it["ok"], it
 
 
+def test_lip_bow_and_tubercle():
+    """lip_bow: the bow's peaks rise against its dip (the V deepens by about `depth`), the tubercle (lm 62) comes down,
+    the lower lip (lm 57, 66) and the nose's base (33) stay; nothing breaks."""
+    b, st0, st1, P0, P1, d = moved({"lip_bow": {"depth": 0.0012, "tubercle": 0.0008}})
+    L0, L1 = st0["L"], st1["L"]
+    v0 = 0.5 * (L0[50][2] + L0[52][2]) - L0[51][2]
+    v1 = 0.5 * (L1[50][2] + L1[52][2]) - L1[51][2]
+    assert 0.0005 < v1 - v0 < 0.0016, v1 - v0
+    assert L0[62][2] - L1[62][2] > 0.0003, L0[62][2] - L1[62][2]
+    for i in (57, 66, 33):
+        assert np.linalg.norm(L1[i] - L0[i]) < 0.00025, (i, np.linalg.norm(L1[i] - L0[i]))
+    it = hf.integrity(b, st1, st0)
+    assert it["ok"], it
+
+
 if __name__ == "__main__":
     if _have():
         names = sys.argv[1:] or [k for k in dict(globals()) if k.startswith("test_")]

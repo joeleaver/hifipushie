@@ -211,3 +211,14 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
   still rejects the per-lock key `swoop` (11 of 641 locks: "hair lock 'l211': unknown keys ['swoop']"): dropped from
   the snapshot. It renders blond-brown because base.json's own look says so: grey_amount 0.0, grey "#c6a684" (tan),
   lit "#664126": not a dropped key.
+- CUPID'S BOW (likeloop; `likeness_lips.py`, REGION=lips eyes.py; sheets ll_lips_0/1.png). Like with like under the
+  matched light (photo | e16 dressed | clay): bow width 16.6 | 17.9 | 17.1 mm, bow DEPTH (peaks 37/267 over the dip 0)
+  1.97 | 1.88 | 1.72, bow angle 153 | 156 | 157 deg, tubercle (13 below the 82-312 line) 0.42 | 0.30 | 0.19, upper
+  lip 6.8 | 6.5 | 5.9, lower 10.8 | 9.3 | 8.0 (stubble shadow under his lip: garrett3's caveat), width 58.6 | 60.6.
+  The photo's mouth is ~45 px wide: depth and tubercle agree within 1 px. What reads as "no bow" on ours is CONTRAST:
+  his upper vermilion is a dark red M (lip L60 a14 against the skin round the mouth L54 a8: +6 a), ours a pale band
+  (L76 a12 against L74 a11: +1 a) with no stubble shadow round it. New general control headage `lip_bow` {depth,
+  tubercle} (test_headage): l1 = depth 0.8 mm + tubercle 0.6 mm moved the detector's bow by < 0.1 mm (sub-pixel
+  here) and skin.lips blood 0.9 -> 1.1 / melanin 2.6 -> 3.4 moved the lips' colour by < 1 L / a: the lips layers
+  (T(blood = 6 x ...)) look saturated. Next: why skin.lips doesn't move the colour, then the stubble shadow round
+  the mouth (his lower face is 15-20 L darker than ours).
