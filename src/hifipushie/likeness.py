@@ -1539,6 +1539,11 @@ LEVERS["upper_lid_show"] = ("sliders.eye_platform", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["under_eye"] = ("sliders.eye_tear_trough", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["brow_ridge"] = ("sliders.brow_ridge", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["prof_brow_ridge"] = ("sliders.brow_ridge", 0.25, (-1.0, 1.0), 0.0)
+# the mouth's: the bow's depth, the lips' eversion (volume forward: what the profile and the E-line see)
+LEVERS["cupid_bow"] = ("sliders.lip_bow", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["lip_projection"] = ("sliders.lip_upper_roll", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["prof_upper_lip"] = ("sliders.lip_upper_roll", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["prof_lower_lip"] = ("sliders.lip_lower_roll", 0.25, (-1.0, 1.0), 0.0)
 LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
 
 
