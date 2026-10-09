@@ -110,8 +110,9 @@ def test_under_garment_shown_finished_and_tucked_only_where_covered():
     low = z < 0.02
     assert (r[low] < 0.108 - 0.002).all(), r[low].max()  # under the outer cloth everywhere it covers
     assert cov[low].mean() > 0.97
-    top = (z > 0.092) & ~bulge  # (past the feather: 3 rings of ~9 mm beside the outer cloth's edge follow it)
-    assert np.abs(Vt[top] - under["V"][top]).max() < 1e-9 and not cov[top].any()  # the opening: as finished
+    top = (z > 0.092) & ~bulge  # (past the feather: TUCK_FEATHER rings of ~9 mm beside the outer cloth's edge follow it)
+    # the opening: as finished (to 1 um: the 5-ring feather's geometric fall leaves ~0.1 um this far out)
+    assert np.abs(Vt[top] - under["V"][top]).max() < 1e-6 and not cov[top].any()
     assert (bulge & low).sum() > 20 and (np.linalg.norm(under['V'], axis=1)[bulge & low] > 0.108).all()  # (it did poke through)
     # a rigid group (a made piece) moves by one vector: its shape is kept
     rigid = np.where((z < -0.06), 0, -1)
