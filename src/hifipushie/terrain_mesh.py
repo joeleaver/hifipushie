@@ -3689,6 +3689,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                        "bed (steep reaches) and rock faces by the water"},
             "bed": "the heightmaps and cliff meshes carry the bed's shape (pools, riffles, bars); the water's level is "
                    "the rivers' own (never raised)"}
+    if getattr(T, "falls", None):  # (waterfalls: for the engine's falling sheet and spray; terrain_falls)
+        from . import terrain_falls
+        manifest["falls"] = {"falls": T.falls, "note": terrain_falls.META_NOTE}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
         from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)

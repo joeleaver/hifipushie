@@ -22,6 +22,7 @@ from scipy import ndimage
 from scipy.spatial import cKDTree
 
 from . import noise
+from . import terrain_falls as _falls
 from .terrain import smoothstep
 
 TALUS = math.radians(34)
@@ -277,6 +278,7 @@ def water(T):
     T.fords = {n: {"xy": xy.tolist(), "width": w, "depth": dp,
                    "river": (T.spec.get("fords") or {})[n]["on"].split("@")[0]} for n, xy, w, dp in fords}
     T.river_water_lines = {}
+    T.falls = []
     T.river_water = np.zeros(T.X.shape, bool)
     T.ford_mask = np.zeros(T.X.shape, bool)
     for L in (L for L in T.lines.values() if L.kind == "river"):
@@ -286,8 +288,9 @@ def water(T):
             continue
         # steep reaches carry a torrent, not a pool: the water narrows with the grade (a 25 m wide sheet of water
         # stood down a 66% volcano flank), to a few metres at 20%+
+        falls = L.props.get("falls") or []
         step = np.linalg.norm(np.diff(L.xy, axis=0), axis=1)
-        grade = np.r_[np.abs(np.diff(L.h)) / np.maximum(step, 1e-6), 0]
+        grade = np.r_[np.abs(np.diff(_falls.no_steps(L.h, falls))) / np.maximum(step, 1e-6), 0]  # (a fall isn't a torrent)
         grade = ndimage.uniform_filter1d(grade, max(3, int(30 / max(float(np.mean(step)), 1e-3))), mode="nearest")
         width = np.where(grade > 0.04, np.maximum(2.0, wd * np.clip((0.2 - grade) / 0.16, 0, 1)), wd)
         reach = max(3 * T.cell, 30.0)  # (the banks: graded down to the water within this)
@@ -305,9 +308,15 @@ def water(T):
         bmin = np.full(len(L.xy), np.inf)
         np.minimum.at(bmin, i[bank], T.H[bank])
         bmin = -ndimage.maximum_filter1d(-bmin, 9, mode="nearest")  # (a few points either way: one low cell isn't a bank)
+        if falls:  # (the ground beside a lip's last metres is the pool's: the lip's own stamp makes its banks)
+            bmin[_falls.guard(L.s * L.props["length"], falls, T.cell)] = np.inf
         hl = np.where(np.isfinite(bmin), np.minimum(hl, bmin - 0.3), hl)
         hl = np.minimum.accumulate(hl)
-        hl = _ease_level(hl, L.xy)
+        if falls:  # each reach eased on its own: the steps stay steps
+            hl = np.concatenate([_ease_level(hl[a:b], L.xy[a:b]) if b - a > 2 else hl[a:b]
+                                 for a, b in _falls.segments(len(hl), falls)])
+        else:
+            hl = _ease_level(hl, L.xy)
         spill = np.zeros(len(L.xy), bool)
         for lk in T.lakes.values():
             if lk.get("area", 1) == 0:
@@ -337,6 +346,9 @@ def water(T):
         T.H = np.where(wet, np.minimum(T.H, bed), T.H)
         T.water = np.where(wet, level, T.water)
         T.river_water |= wet
+        if falls:  # lip, face, amphitheatre and plunge pool on the finished ground
+            T.falls = [f for f in getattr(T, "falls", []) if f["river"] != L.name] + \
+                _falls.stamp(T, L, falls, hl + 0.2, width, d, i, L.props["floor"] / 2)
         under = ~np.isnan(T.water.ravel()[_cells(T, L.xy)]) & ~T.river_water.ravel()[_cells(T, L.xy)]
         T.river_water_lines[L.name] = {"xy": L.xy, "level": hl + 0.2, "width": np.where(under, 0.0, width)}
 
