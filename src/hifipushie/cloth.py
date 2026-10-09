@@ -6642,7 +6642,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         if under is not None and under.get("res") is not None:
             Mu_ = under["res"]["mesh"]
             und_ = {"V": under["V"], "F": Mu_["F"],
-                    "made": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] in ("collar", "stand")])}
+                    "made": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] in ("collar", "stand")]),
+                    "fall": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] == "collar"])}
         try:
             res["V"], res["made"] = cloth_made.construct(res["V"], M, body_real.V, body_real.T, g, und_)
         except Exception as ex_:  # (a construction that can't be made leaves the simulated result, and says so)
