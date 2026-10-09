@@ -2131,6 +2131,22 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
 
 
 @mcp.tool(structured_output=False)
+def project_reference(name: str, view: int = 0, save: str = ""):
+    """The fastest honest judge of a fitted head's GEOMETRY: reference picture number `view` (of the model's fitted
+    references: human_reference first) projected onto the model through its fitted camera as an unlit texture, then
+    shown from the reference cameras, both profiles, the other three-quarter and a low angle. A clay bust beside a
+    photo of a skinned, haired person compares two different things; this compares like with like. Where the
+    likeness holds when the head is turned, the geometry carries it; where the picture smears, doubles or slides
+    (ears landing on cheeks = the face too narrow; the nose's side, the jaw's edge, the chin in profile), the
+    geometry is wrong THERE. Skin the reference's camera does not see is dim clay. The picture's own light is on the
+    surface: judge outlines and proportions in turned views, not shading."""
+    from . import likeness_read as lr
+    pn = save or str(store.HOME / "human_renders" / f"lk_{name}_projected.png")
+    r = lr.project_reference(name, pn, view=view)
+    return [_png(PILImage.open(pn)), f"reference {view} projected on {name}; share of each view's head that carries the picture: {r['seen']}\n{pn}"]
+
+
+@mcp.tool(structured_output=False)
 def character_read(name: str, tag: str = "", read: dict | None = None, view: str = "", render: bool = False,
                    author: str = "llm"):
     """Stage 0 of the likeness checklist: the CHARACTER READ (what a person knows from one look: "square jaw, strong

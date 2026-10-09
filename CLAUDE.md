@@ -6477,6 +6477,156 @@ mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/da
   definitions: 2.5 -> ~1.3 mm; a synthetic-data training job); photo calibration of the table; the read's sd per
   author; `humanfit_map` in fit_likeness's first stage.
 
+## Reference modelling study 2 (2026-10-08/09, "refstudy2" agent, branch `worktree-agent-ae4b2050b31cc1395`)
+
+Takes over from refstudy. Scripts `spikes/refstudy2/` (structure.py = the step driver: `mk <dst>` builds the steps of
+steps.json ({dst: {src, patch of base.head, macros (identity, held), idscale}}), prints the evidence residual through
+both references (this head's own best cameras, identity not free), integrity against src, plausibility, and writes
+the six-view sheet; `rd <model>...` stores $D2/reads/<model>_<n>.json and prints the score table; score.py = the
+readers' picks per descriptor against Joe's read (WANT x2 for his words, AVOID); sheet.py = the judging sheet
+(reference | models, lit, his locks on each model's own scalp, six views under it; "om16" = a copy of om_garrett
+v16); litrender.py, hairmesh.py (onemesh2's), t1.py). Scratch DURABLE /mnt/data/hifipushie/refstudy2/ (run.sh
+<script>: capped, one BLAS thread; reader_prompt.txt + read_form.txt = what a blind reader gets; reads/; out/six_*).
+The sandbox refuses JSON on the command line and heredocs: steps go in steps.json, scripts in files. Don't name a
+script struct.py (it shadows the stdlib's).
+- B, STRUCTURE ON THE MAP HEAD (Garrett; sheet human_renders/rs2_01_structure_on_map.png; models rs2_g0 = read3 with
+  the deviation x1.5, ..., rs2_h = final). Blind reads: 3 fresh readers per head, six-view sheet + form only.
+  - READER NOISE: the score of three readers swings about +-1.5 between heads that differ by a gentle op: planes 2.3
+    alone +2.4, hood 1.75 mm +0.6, hollow 2.5 mm +2.0 against the base's +0.4, and all three TOGETHER -0.1. Gentle
+    planes / hood / hollow are below what this protocol can see. Stable across all 18 of those reads: chunky 0.6-0.9,
+    square jaw ~0, soft jaw 0.4-0.8, strong chin 0, weak chin 0.25, cleft 0. So only big steps were read after that.
+  - Table (score; evidence residual front / desk mm; verdict):
+    rs2_g0 base +0.43; 1.31 / 1.87 | planes 2.3 +2.44; +0.02 / +0.05; kept by eye (noise) | hood +0.64, hollow +2.01,
+    all three -0.14: NOT kept (unproven; "heavy" rose 0.10 -> 0.48) | planes 2.6 (2 readers) +0.14: no | brow push
+    2 mm, cheekbone push 2 mm: built, unread (usage limit), not kept | shape.jawline (corner 36 mm under the lobe, no
+    tuck): REJECTED by eye: a jowl pouch with a crease in three-quarter and both profiles = rs_12's lump, residual
+    unchanged, integrity ok (the checks can't see it) | shape.chin project 5 + under 8: REJECTED by eye: a button
+    chin with a hook under it | NEW shape.lean 5 / 2 mm alone +1.14 (soft jaw 0.47, no lump) | + lean 7 / 3 + identity
+    macros chin_projection +1.5, jaw_angle +2 (held) = rs2_e +3.25; 1.43 / 2.03: KEPT (square 0.28, soft 0.28) |
+    macro nose_upturn +1: REJECTED, +0.30 mm front and a component past 2.6 sigma | + cleft (3 mm deep, 4 wide, lobes
+    2) + brow_ridge +1 + nose_upturn +0.5 = rs2_g +5.70; 1.58 / 2.08: KEPT (square 0.53, soft 0.07, heavy brow 0.66,
+    deep-set 0.63, rugged 0.34; cleft still 0.00, snub 0.36 -> 0.16 "broad blunt nose") | + cleft 4.5 / 5 / lobes 3 /
+    20 long, chin_projection +0.75, nose_tip up 8 round 0.5 = rs2_h +7.80; 1.75 / 2.26: KEPT (square jaw 0.64, cleft
+    0.22, strong chin 0.42, weak 0, soft 0.02, snub 0.30, chunky 0.87).
+  - The rule "residual may rise 0.3 per step" let the SUM drift: +0.44 / +0.39 mm from g0 to h, two identity
+    components past 2.6 sigma. h still fits the pictures better than pass 6 (2.88 / 2.5).
+  - What was wrong in KIND: (1) bone as local Gaussian bumps (shape.chin.project, pushes): use the identity's HELD
+    macro directions (humanmacro.apply(held=True)); (2) shape.jawline moves the jaw LINE down on a face whose soft
+    tissue is full: the tissue goes with it as a pouch. On a wide skull the jaw reads when the tissue under the border
+    is thinned: new `base.head.shape.lean` {under_jaw, jowl, submental, radius, smooth} (base._lean; border + chin
+    held, bands measured from the jaw contour, moved along the normals, smoothed; base.VERSION 105); (3) the cleft
+    was a 2.8 mm scratch: `chin.cleft_width` + `cleft_lobes` (two pads). Test
+    test_humanfit::test_lean_thins_under_the_jaw_and_keeps_the_border. Guide: human_guide.md "Structure after a MAP fit".
+  - BLUNT READ of rs2_h: every reader now says "square-jawed, broad chin, heavy brow, deep-set hooded eyes, rugged
+    bruiser, stern scowl, grim downturned mouth", some "cleft". That is Joe's square jaw / cleft / chunky, but NOT
+    "handsome" and not "cute nose" (readers: short broad fleshy nose). Beside the photo the head is too wide and
+    round in the lower face and too heavy in the neck, the mouth's corners turn down (the photo's set mouth fitted
+    into the identity: every read since g0 says "grim downturned mouth"), the brow strokes scowl, and the groom sits
+    low on this head's forehead. The lit sheet has no eyeballs (the template mesh).
+  - NOT DONE in B: no squint / frown pose render; hood / hollow / under-eye never proven either way; cheekbone, brow
+    push unread; the mouth's downturn; nose (a "cute" nose costs evidence in the identity: the front picture's
+    nostril points hold it); the face's width against the photo (the MAP + read made it broad because the read said
+    so: read3's jaw_width +1, cheekbone_width +0.8, neck +1: try the read without widths).
+- THE REFIT (the coordinator on rs2_01: "h is a bruiser, pass 6 too gaunt: the man is between"; sheet
+  human_renders/rs2_02_refit_between.png = reference | pass 6 | rs2_h | rs2_m3 | rs2_m3 with the photo's pose | 50%
+  blend, eyeballs in the lit tiles; garrett3.py measure / fit; models rs2_m0 (MAP) .. rs2_m3, rs2_m3_posed):
+  - Widths from the PICTURE, two ways. (a) widths.py, the outline at a few levels as silhouette evidence in the fit
+    (runs of edge pixels at nose base / mouth / jaw / neck, sigma 1.5-3 mm, lens unknown): WORSE on the truth set
+    in every variant (face 2.48 -> 2.7-3.0 mm, jaw 4.1 -> 4.4-5.0, width macros worse): the nearest-silhouette-vertex
+    row trades skull size against perspective, as the full outline did. Don't. (b) measured.py (item C): width MACROS
+    regressed from scale-free features (detector points + outline widths over the interocular), given to the MAP as
+    evidence with their own sigma: works (below). On Garrett's photo (mask = colour distance from the backdrop; only
+    the levels 0.6 / 0.75 of eye line -> chin are usable: lower, the jacket's collar is the edge, so NO neck width;
+    higher, ears and hair): jaw_width +1.7 +-0.8, chin_width +1.7 +-0.85, face_length +1.3 +-0.6, face_width +0.8,
+    cheekbone +0.4. The "measuremodels" agent measured the same photo independently (rows against 300 GNM heads):
+    lower jaw +2.1 sigma, jaw at the mouth +0.8, face length +0.6: wide LOW in the face, not wide all over. So the
+    jaw's width was the picture's, the bruiser was the neck (+1 said), the brow, the scowl.
+  - Read = shape words only (garrett3.SHAPE_READ: jaw_square, jaw_angle, chin_projection, under_chin, nose short /
+    slightly up / straight bridge, brow_ridge 0, eye_depth 0); no widths, neck or cheek words.
+  - Expression out of the identity: the MAP is fitted with the photo's squint / frown / set mouth as `head.pose`
+    ({lid_upper 1.3 mm, brow_inner -1.5, brow_outer -1.2, smile -1.5}), the saved head is that identity without it.
+    Fit 1.35 / 1.84 mm at 0.32 sigma; deviation x1.25.
+  - Structure on it: planes 2.3 + lean 6 / 2.5, held macros chin_projection +1.2, jaw_angle +2, cleft 4 / 5 / lobes
+    3 / 18 mm, nose_tip up 5 round 0.5. Residual SUM over the steps +0.09 / +0.17 mm (cap 0.3), 0.56 sigma, nothing
+    past 2.6.
+  - Reads (opus x3, same scale as the table): rs2_m3 +3.78, between g0 +0.43 and h +7.80 as asked: heavy brow 0.76
+    -> 0.12, rugged 0.53 -> 0.12, square jaw 0.38, soft jaw 0.22, weak chin 0.20, cleft 0.15, chunky 0.84; still
+    "stocky, thick-necked, full cheeks, stern mouth" from all three. (score.WANT still counts heavy brow / deep-set /
+    rugged as wanted, from the old reference read: under "handsome" they should not; compare descriptors, not totals.)
+  - Cheaper readers: haiku x3 on g0 / h / m3 = -0.21 / +1.92 / +1.43 (opus +0.43 / +7.80 / +3.78): the same ORDER
+    but far fewer picks (no cleft, no chin, no nose descriptor from any haiku reader): too coarse for single ops.
+    The model flag does NOT cut tokens: every sub-agent inherits ~315k of context whatever its model.
+  - BLUNT: in the 50% blend rs2_m3's face lies inside the photo's (the photo's ears and hair stand outside it): it
+    is not too wide. It still reads round, young and soft: big open eyes (base head `eyes` 1.05 + the lid-opening
+    expression regions every Garrett copy carries), a smooth clay skin, a low hair cap on this forehead, a thick
+    neck (unmeasurable in the photo: prior). The posed variant hardly differs from the neutral one. Not him yet.
+- C, MEASURED MACROS (measured.py; 1200 sampled heads, one front render each with random pose / lens / light / look,
+  a third with an expression; features: the detector's 478 points Procrustes-aligned on the irises, outline widths at
+  17 levels over the interocular, luminance at the points over its mean; PCA + ridge per macro; logs
+  $D2/out/measured_train.log, measured_truth.log; model $D2/measured_model.pkl):
+  - Held-out rms in population sigmas (1 = knows nothing), points | + outline | + shading | all: mean 0.68 | 0.63 |
+    0.56 | 0.53. Best: brow_height 0.26, bridge_height 0.32, brow_ridge 0.33, face_length 0.34, eye_depth 0.36,
+    jaw_width 0.37, nose_length / width 0.38, lip_projection 0.39, chin_height 0.40, chin_width 0.44. SHADING is
+    what gives the depth macros (bridge 0.57 -> 0.33, brow_ridge 0.62 -> 0.35, eye_depth 0.61 -> 0.36, nose
+    projection 0.69 -> 0.47); the OUTLINE gives neck 0.84 -> 0.50, ear_out 0.90 -> 0.51, jaw_width 0.52 -> 0.41.
+    A picture cannot measure (> 0.7): jaw_angle, jaw_square 0.68, forehead_slope, bridge_hump, ear_size, chin_cleft
+    0.94; weak: chin_projection 0.59, nose_upturn 0.62, under_chin 0.59 (profile things: a read or a profile).
+  - On the 10 truth heads (never seen; extreme by design, sd 1.27): measured 0.80 mean, the MAP fit's own macros
+    1.05, a simulated said read 0.96. The said read still wins on chin_width, nose_upturn, eye_spacing, nose_width.
+  - Fit rows, front picture only, face mm S / O: detector MAP 2.48 / 2.51; + said read 2.17 / 2.11; + MEASURED macros
+    1.94 / 2.15 (profile 2.51 -> 1.49, chin 3.44 -> 2.33, nose 2.61 -> 1.72 in-model); + measured (sigma x2) + said
+    2.05 / 2.06; exact macros 1.64 / 2.13. So measured macros replace a said read in-model and equal it out-of-model;
+    together they add little.
+  - CAVEAT: the shading features know only our render's shader (random light, clay or tinted skin): on a photo
+    (stubble, hair, real light) they are untested and NOT used on Garrett; the outline features need a mask and
+    levels free of ears, hair and collar. Not wired into humanfit_map (a script): the next step is `human_reference`
+    measuring width macros itself when a view has a plain backdrop.
+- D so far: `humanfit.nudge` size guards (NUDGE_CORR 0.35 x radius for the correction bump, NUDGE_MAX 12 mm for the
+  move, unless forced; the 3 cm chin nudge is refused again: the sliders alone took 24.5 mm of it inside 2.6 sigma).
+  XR Blocks' MediaPipe <-> GNM correspondence (xr_compare.py; google/xrblocks FaceCorrespondence.js, Apache-2.0, 473
+  points, 166 flagged skull-fixed) against our front table: 301 of our 306 usable points are in it; their GNM vertex
+  vs our calibrated surface point: median 1.6 mm (1.8 on the skull-fixed ones), p90 3.7; ours sit 0.9 mm higher and
+  0.7 mm further forward on average; disagreements > 6 mm: the irises (mp468-476: they use the corneal apex, we the
+  iris on the eyeball), mp206 / mp426 (57 mm: mirrored left / right in one of the tables: CHECK before trusting those
+  two), a few lid points. Their own note matches ours: points sit ~0.7 mm off vertices and slide in turned views.
+- ROUND 3 (the coordinator on rs2_02: "the right skeleton of the answer; we compare smooth clay with a textured
+  photo of a 50-year-old"; garrett4.py; models rs2_n0 / rs2_n3 / rs2_n4; sheets human_renders/rs2_03_projection_test.png
+  (pass 6 | rs2_h | rs2_m3), rs2_04_projection_n4.png):
+  - THE PROJECTION TEST (`likeness_read.project_reference`, MCP `project_reference`, proj.py): the reference photo
+    projected onto the head through its fitted camera as an unlit texture, seen from the six views (source visibility
+    by the source camera's depth + a grazing cut; unseen skin = dim clay). Wearing the photo, rs2_m3 and rs2_h read as
+    the man in front, the other three-quarter and low angle, and stay a plausible same man turned to the desk view
+    and in profile; on pass 6 the photo's ears and hair edge land on the cheeks (the face too narrow). So the
+    clay's "young, round, soft" was mostly the clay. No test yet (it is a render path): add one on a synthetic head.
+  - Eyes: `eyes` 1.0, the lid-opening expression regions at HALF. With them out and the squint posed, fit_hood said
+    "the picture's upper lids are HIGHER than the hood-free face's" (-7.5 mm asked; at half -4.1): GNM's lids rest
+    low and the stored 68 lid points are the detector's (definition bias): NO hood from fit_hood on this head. brow
+    height measured on the photo -0.86 +-0.47 (low), in the MAP (got -0.34); eye_depth is only measurable with
+    shading (0.36), points alone 0.61: not usable on a photo.
+  - Neck: humanfit's neck_circ is read on the BODY's neck (body + bridge vertices): 31.9 cm on every Garrett copy
+    whatever the identity does. The head's own neck_width macro was +0.25 on the refit (the bruiser's read had asked
+    +1): set to 0. The "thick neck" every reader still says is the body's 31.9 cm neck under a bald clay head.
+  - Age: headfit._body_axes()[:, 1] (MakeHuman's age move in GNM's components) is an ORTHONORMAL direction: x1 of it
+    moves no macro by more than 0.1 sigma; as applied (x0.8 + lip_fullness -0.5 + hollow 2 mm / 30 mm radius) it is
+    close to nothing. A real age control needs the field's own magnitude (headfit.shape_delta(age) through
+    head_fields) or soft-tissue ops (nasolabial fold, pre-jowl sulcus, upper-lid skin): NOT built.
+  - Reads of rs2_n4 (opus x3): all three say age ~50 (45-55) and "handsome / regular: no" ("dour, heavy-lidded,
+    grim downturned mouth, thick neck, big domed skull"); score +1.97 (m3 +3.78: square jaw 0.38 -> 0.17, soft jaw
+    0.22 -> 0.51; inside the +-1.5 reader noise or the price of smaller heavy-lidded eyes; not separated).
+- HANDOVER (refstudy2, context full, 2026-10-09). Branch worktree-agent-ae4b2050b31cc1395. Tests: see
+  $D2/out/tests.log (tests.sh runs test_humanmacro / test_humanfit / test_likeness through run.sh). Best head so far by
+  the coordinator's eye: rs2_m3 (workspace; refs + cameras in its human_refs.json); rs2_n4 = the eyes / neck variant.
+  To rebuild: garrett3.py measure, fit (-> rs2_m0), structure.py mk rs2_m1 rs2_m2 rs2_m3; garrett4.py (-> rs2_n*).
+  Open, in the coordinator's order: (1) the grim downturned mouth and scowl still in every read although the fit is
+  made with a pose: the pose is set by hand (pass 6's numbers): solve it from the detector's blendshapes, or lift
+  the mouth corners in the neutral head; (2) age as real ops (above); (3) the FAIR render: skinned (garrett_v20's
+  skin spec), strand hair or locks, soft frontal light, through the fitted cameras; the lit sheet's hair cap sits low
+  on these foreheads (the groom was made on v23's head); (4) measured macros into human_reference behind a flag
+  ("renders only" for the shading features; the outline needs a plain backdrop and collar-free levels); (5) mp206 /
+  mp426, 57 mm apart from XR Blocks' table: render a truth head, see which side the detector's 206 / 426 land (a
+  left / right swap in OUR table would be a real bug); (6) A2 (traced polylines by real placers), skinned / EEVEE
+  calibration of the 478 table; (7) score.py's WANT still rewards heavy brow / deep-set / rugged.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.

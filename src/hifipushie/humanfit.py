@@ -485,7 +485,21 @@ def nudge(base: dict, landmark: str | int, move=None, to=None, radius: float = 0
            "by_sliders_mm": round(float(np.linalg.norm(mv - rest)) * 1000, 2), "by_correction_mm": round(corr * 1000, 2),
            "plausibility": plausibility(cur), "side_effects": side_effects(st0, st1, set(), near=L0[[i] + ([mir] if mir is not None else [])]),
            "integrity": integrity(cur, st1, st0)}
+    asked = float(np.linalg.norm(mv))
+    if not force and (corr > NUDGE_CORR * float(radius) or asked > NUDGE_MAX):
+        # size guards of its own: a Gaussian bump taller than about a third of its radius is a knob on the head, and
+        # one landmark moved centimetres with every other held is not a nudge, whatever the edge lengths say
+        # (integrity passes a 3 cm chin drop once slivers stopped counting)
+        why = (f"a {asked * 1000:.0f} mm move of one landmark with the rest held (limit {NUDGE_MAX * 1000:.0f} mm)" if asked > NUDGE_MAX else
+               f"a correction bump of {corr * 1000:.1f} mm, taller than {NUDGE_CORR:.2f} x its radius ({radius * 1000:.0f} mm): a knob, not a feature")
+        rep["refused"] = (f"not returned (the input is): {why}. The sliders reach {rep['by_sliders_mm']} mm. Ask for less, use a measure "
+                          "(solve) or a base.head.shape control, or force=True.")
+        return base, rep
     return _guarded(base, cur, rep, force)
+
+
+NUDGE_CORR = 0.35  # a nudge's correction layer (push_more) may be at most this share of its radius, unless forced
+NUDGE_MAX = 0.012  # m: the largest move of one landmark that is still a nudge, unless forced
 
 
 def side_effects(st0: dict, st1: dict, asked: set, near=None) -> dict:

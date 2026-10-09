@@ -112,6 +112,26 @@ the reference rows), not on the measure it was made for.
   the top swings out, the lobe stays. Check with the auricle's own edge lengths (rigid = unchanged).
 - `nose_tip` deg | {up, round}: the nose's base line (alar base -> under the tip) tilted about the alar bases; `round`
   blunts the tip. `hood`, `hollow`, `jaw_angle` as before.
+- `lean` m | {under_jaw, jowl, submental, radius}: soft tissue THINNED over the bone. The jaw's border and the chin
+  keep their place; the skin under and behind the border (and under the chin) moves in along its own normal, `jowl`
+  thins the lower cheek just over it. This is what turns "soft jaw, the border lost into the neck" into a jaw that
+  reads, on ANY skull width, without a lump (5-7 mm under_jaw, 2-3 jowl). It is not weight run backwards (that
+  narrows the skull) and not `hollow` (a dent under the cheekbone).
+- `chin.cleft` needs `cleft_width` (4-5 mm) and `cleft_lobes` (2-3 mm: the two pads either side) to be SEEN: a
+  3 mm groove 2.8 mm wide on a round chin was read by no one.
+
+### Structure after a MAP fit: the order that worked (Garrett, blind-read by 3 readers per head)
+
+1. The MAP head (`human_reference`, with a read), its deviation x1.5 at most.
+2. BONE in the identity, not as local bumps: `humanmacro.apply(identity, {...}, held=True)` moves one macro with the
+   others held (chin_projection +1.5..2.3, jaw_angle +2, brow_ridge +1). A chin pushed forward by `shape.chin.project`
+   is a button with a hook under it; the macro brings the whole mandible's front. Check the evidence residual after
+   each (nose_upturn +1 cost 0.3 mm in the front picture and was refused; +0.5 passes).
+3. SOFT TISSUE by `shape.lean`. `shape.jawline` (the L) on a wide, full lower face drags the cheek into a jowl pouch
+   with a crease: don't.
+4. Surface marks last: cleft (with width and lobes), nose tip.
+Gentle planes / hood / hollow at half strength are below what three blind readers can tell apart (their score
+swings +-1.5 between identical heads' reads): judge those by eye, or leave them out.
 
 Lessons from one hard likeness (a lean man fitted toward a broader reference):
 - Numbers in tolerance are not a likeness. A width warp plus a moved jaw measured right and read as a bulldog; a

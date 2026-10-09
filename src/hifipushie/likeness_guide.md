@@ -184,6 +184,13 @@ disagreement comes back as a QUESTION to put to the user (which should the model
 never settled silently.
 
 The six-view sheet is stage 0 AND the final check: `likeness(name)` renders it by default and leads with the diff.
+
+**The projection test** (`project_reference(name)`): the reference picture projected onto the fitted head through its
+camera as an unlit texture, seen from the six views. A smooth clay bust beside a photo of a skinned 50-year-old with
+hair is not a fair comparison (on Garrett the clay read "young, round, soft" while the same head wearing the photo
+read as the man); this one is. Where the picture smears or lands on the wrong part when the head turns (ears on the
+cheeks = the face too narrow, as pass 6; the nose's side; the jaw's edge), the geometry is wrong there. Run it before
+spending blind readers or skin renders.
 A view that can't show a descriptor (a face shape in a profile, chin projection from the front) is left out of that
 view's count. Repeatability (`likeness_read.agreement`): on one head three blind readers agreed on gaunt, heavy brow,
 deep-set, hooded, straight nose, lean and square jaw; they did NOT agree on strong chin, narrow jaw or broad nose, so
