@@ -5765,6 +5765,26 @@ COLLAR_ENDS = "draped"  # a notched collar's ends past where its roll line meets
 END_FREE = 0.5  # the share of the end's plane (the lay's ease-in weight) from which a collar vertex is draped
 
 
+END_EASE = 0.05  # m of neck edge before a notched collar's draped part over which the held band's opening eases out
+
+
+def _open_share(g: dict, Bp: dict, M: dict) -> np.ndarray:
+    """Per vertex, how much of a notched collar's OPEN start (the fall standing while it is sewn on) it takes: 1 on the
+    held band's middle, easing to 0 over END_EASE of neck edge before the draped part, 0 on it. 1 elsewhere."""
+    ce = g.get("collar_ends", COLLAR_ENDS)
+    back = float(ce["back"]) if isinstance(ce, dict) and "back" in ce else END_BACK
+    w = np.ones(len(M["piece"]))
+    for nm, ol in (Bp.get("open_lay") or {}).items():
+        eu = ol.get("end_u")
+        if eu is None or nm not in M["names"]:
+            continue
+        sel = np.where(M["piece"] == M["names"].index(nm))[0]
+        if len(eu) == len(sel):
+            s = np.clip((-back - np.asarray(eu, float)) / END_EASE, 0.0, 1.0)
+            w[sel] = s * s * (3 - 2 * s)
+    return w
+
+
 def _draped_ends(g: dict, Bp: dict, M: dict) -> np.ndarray:
     """The vertices of a notched collar's ENDS (place: B["open_lay"][piece]["end_w"], the lay's weight of the end's
     flat plane) that are draped, not held (garment key "collar_ends": "draped" (default) | "made"). A made collar is a
@@ -6012,7 +6032,16 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         Bp["thru"] = sorted(carry.get("pieces") or [])
     Xstart = Xs
     if carry is not None and Bp.get("open_lay"):
+        carry0_ = carry
         Xstart, carry = _open_start(Bp, Ms, Xs, body_p, poses_c, carry)
+        if len(ends_):
+            # what is draped starts CLOSED (as made: nothing turns a free fall down but its own stiffness, and started
+            # open the collar's sides stood up as flaps: om_22), and the held band's opening eases out to nothing over
+            # END_EASE before the draped part, at the start and in every carried pose
+            wo_ = _open_share(g, Bp, Ms)
+            Xstart = Xs + wo_[:, None] * (Xstart - Xs)
+            ci_ = carry["idx"]
+            carry = dict(carry, poses=carry0_["poses"] + wo_[ci_][None, :, None] * (carry["poses"] - carry0_["poses"]))
     if carry is not None and len(ends_):
         # a notched collar's ENDS are draped: interfaced cloth sewn to the gorge that rests as made and is solved
         # with the lapel it lies on; only the band round the neck is held and carried

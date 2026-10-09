@@ -53,6 +53,17 @@ def test_collar_is_draped_from_the_necks_side():
     assert len(cloth._draped_ends({}, {}, M)) == 0  # no notched collar: nothing
 
 
+def test_draped_part_starts_closed():
+    M = {"names": ["collar"], "piece": np.zeros(6, int)}
+    end_u = np.array([-0.20, -0.13, -0.10, -0.07, -0.02, 0.03])
+    Bp = {"open_lay": {"collar": {"end_w": np.zeros(6), "end_u": end_u}}}
+    w = cloth._open_share({}, Bp, M)
+    assert w[0] == 1.0 and 0.0 < w[2] < 1.0  # the held band opens in full in its middle, less toward the draped part
+    assert (w[end_u >= -cloth.END_BACK] == 0.0).all()  # what is draped starts as made (closed)
+    assert (np.diff(w) <= 1e-12).all()
+    assert (cloth._open_share({}, {}, M) == 1.0).all()
+
+
 def test_worn_top_pad_rule():
     assert 1.0 < cloth.PAD_OVER_WORN < 1.5
 
