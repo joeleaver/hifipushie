@@ -2164,6 +2164,19 @@ TERRAIN_KINDS = {
 }
 
 
+def glb_size(path) -> dict:
+    """A GLB's extent from its POSITION accessors' min / max (glTF: Y up): {"width_m" (largest plan dimension), "height_m"}."""
+    d = open(path, "rb").read()
+    n = struct.unpack("<I", d[12:16])[0]
+    G = json.loads(d[20: 20 + n])
+    lo, hi = np.full(3, 1e9), np.full(3, -1e9)
+    for m in G.get("meshes", []):
+        for pr in m["primitives"]:
+            a = G["accessors"][pr["attributes"]["POSITION"]]
+            lo, hi = np.minimum(lo, a["min"]), np.maximum(hi, a["max"])
+    return {"width_m": round(float(max(hi[0] - lo[0], hi[2] - lo[2])), 3), "height_m": round(float(hi[1]), 3)}
+
+
 def manifest(root) -> dict:
     """Write <root>/clutter.json: terrain clutter kind -> the folder to draw it with, per style (what exists under
     root), with the instance convention. An engine reads this once, then each folder's <stem>_seasons.json."""
@@ -2179,6 +2192,11 @@ def manifest(root) -> dict:
                 J = json.loads(js[0].read_text())
                 per[st] = {"folder": f.name, "json": js[0].name, "grade": J.get("grade"), "contract": J.get("contract", {}).get("version"),
                            "variants": len(J["clutter"]["variants"]) if J.get("clutter") else 1}
+                if not J.get("clutter"):  # a plant is at its own size: the row's scale is a width in metres
+                    g0 = f / (J["glb"][:-4] + "_LOD0.glb")
+                    if g0.exists():
+                        per[st].update(glb_size(g0))
+                        per[st]["instance_scale"] = "row scale / width_m (a plant is exported at its own size, not 1 m across)"
         pre = HERE / "clutter_presets" / f"{how.get('asset')}.json"
         info = json.loads(pre.read_text()) if how.get("asset") and pre.exists() else {}
         kinds[kind] = {"what": how["what"], "z": how["z"], "kit": "clutter" if how.get("asset") else "plant (groundcover grade)",
