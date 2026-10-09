@@ -3719,6 +3719,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
                 if worn_k:  # (the base moved: its pressed flaps with it)
                     Xp = _repress(Xp, B, M, smooth)
+            if worn_k:
+                # a worn top lies ON the body: when the loop ends (or never runs: nothing stretched) its faces must
+                # still be clear of it (a shirt's worn back started 1.5 mm off a shoulder blade inside ZOZO's 2 mm
+                # offset: "contact starts overlapping" at frame 0)
+                Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
+                Xp, _n = _clear_exact(Xp, M["F"], ~made_v, body.V, body.T)
             Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
             _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
             B["start_stretch"] = round(float(hi_[~made_v[M["F"]].any(1)].max()) - 1, 3)
@@ -3918,7 +3924,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
     return X
 
 
-COLLAR_SPREAD = (25.0, 12.0, 75.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
+COLLAR_SPREAD = (12.0, 14.0, 75.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
 # collarbones, from this far round from the nape (0) toward the front (180)
 
 
