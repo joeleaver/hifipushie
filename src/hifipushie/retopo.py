@@ -1269,12 +1269,15 @@ def base_quads(spec: dict, log: list) -> dict | None:
     if one:  # (onemesh.py) which GNM vertex each is (-1: MakeHuman's body or the bridge): face shapes go by index
         from . import onemesh
         tpl = basemod.source(spec["base"])
-        gnm = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+        gnm = np.asarray(onemesh.asset()["gnm_exact"], int)[np.asarray(tpl["fid"])]  # (gnmloops: the lids' new
+        # vertices carry their own ids, >= gnmloops.N_RAW; GNM's tables are read at their first parent's: raw_id)
         g = basemod._gnm_data()
+        from . import gnmloops
+        rid = np.maximum(gnmloops.raw_id(gnm), 0)
         ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5
-        inner = (gnm >= 0) & ~ext[np.maximum(gnm, 0)]  # lid insides, inner lip rolls, nostrils' depths
+        inner = (gnm >= 0) & ~ext[rid]  # lid insides, inner lip rolls, nostrils' depths
         ears = np.asarray(g["groups"]["ears"]) > 0.5  # (thin folded shells: dropped onto the smoothed field their
-        inner |= (gnm >= 0) & ears[np.maximum(gnm, 0)]  # quads folded: TORN at the head, 60 spots on Garrett's ears)
+        inner |= (gnm >= 0) & ears[rid]  # quads folded: TORN at the head, 60 spots on Garrett's ears)
     V = surface.newton(prims, V, voxel * 0.125, voxel, iterations=12)[0]
     # (the cage stands <= ~2.5 mm off; what moves further is the neck tube's upper rings inside a grafted head, cut
     # away below, or a step that went astray)
@@ -1316,7 +1319,8 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     c = h["carry"]
     sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
     where = np.full(len(sock), -1)
-    where[gnm[gnm >= 0]] = np.flatnonzero(gnm >= 0)
+    ok = (gnm >= 0) & (gnm < len(sock))  # (gnmloops' new vertices: not GNM's own, never by the sock)
+    where[gnm[ok]] = np.flatnonzero(ok)
     Q = np.asarray(g["quads"])
     skin = np.asarray(g["skin"], bool)
     q = Q[(sock[Q] | skin[Q]).all(1) & sock[Q].any(1) & ((where[Q] >= 0) | sock[Q]).all(1)]
@@ -1328,7 +1332,7 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
     Xw = place(np.asarray(c["V"], float)[new])
     # what the head did to its skin after placing it (pushes, the drop onto the field), carried onto the sock from
     # the skin it hangs from: left as placed, a corner push left the sock standing out through the lips' corners
-    own = np.flatnonzero(gnm >= 0)
+    own = np.flatnonzero(ok)
     near = own[np.linalg.norm(np.asarray(c["V"], float)[gnm[own]][:, None] - np.asarray(c["V"], float)[new][None], axis=2)
                .argmin(0)] if len(own) * len(new) < 4e7 else None
     if near is not None:

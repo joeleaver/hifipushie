@@ -1739,6 +1739,15 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         np.tensordot(ce, g["expression_basis"], 1)
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
+    slide = None
+    if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
+        # added like an identity component (everything after rides on them)
+        from . import faceslide, gnmloops
+        slide = faceslide.delta(head["sliders"])
+        if slide is not None:
+            V = V + slide[:gnmloops.N_RAW]
+            par = gnmloops.plan()["parents"]
+            slide = slide[gnmloops.N_RAW:] - slide[par].mean(1)  # what the loops' vertices add over their parents'
     if head.get("field"):  # (headfit.py) MakeHuman's head of an age / sex / weight, as a displacement of the vertices
         from . import headfit
         V = V + headfit.field_vertices(head["field"]) * float(abs(J[2][0] - J[3][0]))
@@ -1973,7 +1982,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             "eyes": eyes, "eye_r": r_ball, "forward": -back,
             "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height
             "lm68": lm, "skin_index": skin_index, "lips_zipped": zipped, "carry": carry,
-            "plane": (cut, pn, s * GNM_BAND)}
+            "plane": (cut, pn, s * GNM_BAND),
+            # (faceslide.py) the sliders' own move of the lids' loop vertices over their parents' mean (world)
+            "loop_offsets": None if slide is None else s * (slide * [float(head.get("narrow", 1.0)), 1, 1]) @ R.T}
 
 
 def _zip_lips(W, faces, seam, reach=0.045, ring=LIP_RING):

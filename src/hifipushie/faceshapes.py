@@ -1740,7 +1740,8 @@ class GnmFace(Face):
         idx = np.asarray(index, int)
         own = idx >= 0
         D = np.array(D, float)
-        D[own] = self._by_index(dV)[idx[own]]
+        from . import gnmloops  # (the lids' new vertices, ids >= GNM's count: their parents' mean)
+        D[own] = gnmloops.take(self._by_index(dV), idx[own])
         return D
 
     def displacements(self, Xm, Xn, nrm, kind, names, lower=None, index=None) -> dict:
