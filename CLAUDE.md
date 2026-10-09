@@ -6466,8 +6466,43 @@ script struct.py (it shadows the stdlib's).
   0.7 mm further forward on average; disagreements > 6 mm: the irises (mp468-476: they use the corneal apex, we the
   iris on the eyeball), mp206 / mp426 (57 mm: mirrored left / right in one of the tables: CHECK before trusting those
   two), a few lid points. Their own note matches ours: points sit ~0.7 mm off vertices and slide in turned views.
-- NOT DONE: A2 (polylines by real placers, a guided placing mode), D's skinned / EEVEE calibration and out-of-sample
-  numbers, the squint-pose fitted from blendshapes rather than set by hand, eyes (size / lids) on the refit.
+- ROUND 3 (the coordinator on rs2_02: "the right skeleton of the answer; we compare smooth clay with a textured
+  photo of a 50-year-old"; garrett4.py; models rs2_n0 / rs2_n3 / rs2_n4; sheets human_renders/rs2_03_projection_test.png
+  (pass 6 | rs2_h | rs2_m3), rs2_04_projection_n4.png):
+  - THE PROJECTION TEST (`likeness_read.project_reference`, MCP `project_reference`, proj.py): the reference photo
+    projected onto the head through its fitted camera as an unlit texture, seen from the six views (source visibility
+    by the source camera's depth + a grazing cut; unseen skin = dim clay). Wearing the photo, rs2_m3 and rs2_h read as
+    the man in front, the other three-quarter and low angle, and stay a plausible same man turned to the desk view
+    and in profile; on pass 6 the photo's ears and hair edge land on the cheeks (the face too narrow). So the
+    clay's "young, round, soft" was mostly the clay. No test yet (it is a render path): add one on a synthetic head.
+  - Eyes: `eyes` 1.0, the lid-opening expression regions at HALF. With them out and the squint posed, fit_hood said
+    "the picture's upper lids are HIGHER than the hood-free face's" (-7.5 mm asked; at half -4.1): GNM's lids rest
+    low and the stored 68 lid points are the detector's (definition bias): NO hood from fit_hood on this head. brow
+    height measured on the photo -0.86 +-0.47 (low), in the MAP (got -0.34); eye_depth is only measurable with
+    shading (0.36), points alone 0.61: not usable on a photo.
+  - Neck: humanfit's neck_circ is read on the BODY's neck (body + bridge vertices): 31.9 cm on every Garrett copy
+    whatever the identity does. The head's own neck_width macro was +0.25 on the refit (the bruiser's read had asked
+    +1): set to 0. The "thick neck" every reader still says is the body's 31.9 cm neck under a bald clay head.
+  - Age: headfit._body_axes()[:, 1] (MakeHuman's age move in GNM's components) is an ORTHONORMAL direction: x1 of it
+    moves no macro by more than 0.1 sigma; as applied (x0.8 + lip_fullness -0.5 + hollow 2 mm / 30 mm radius) it is
+    close to nothing. A real age control needs the field's own magnitude (headfit.shape_delta(age) through
+    head_fields) or soft-tissue ops (nasolabial fold, pre-jowl sulcus, upper-lid skin): NOT built.
+  - Reads of rs2_n4 (opus x3): all three say age ~50 (45-55) and "handsome / regular: no" ("dour, heavy-lidded,
+    grim downturned mouth, thick neck, big domed skull"); score +1.97 (m3 +3.78: square jaw 0.38 -> 0.17, soft jaw
+    0.22 -> 0.51; inside the +-1.5 reader noise or the price of smaller heavy-lidded eyes; not separated).
+- HANDOVER (refstudy2, context full, 2026-10-09). Branch worktree-agent-ae4b2050b31cc1395. Tests: see
+  $D2/out/tests.log (tests.sh runs test_humanmacro / test_humanfit / test_likeness through run.sh). Best head so far by
+  the coordinator's eye: rs2_m3 (workspace; refs + cameras in its human_refs.json); rs2_n4 = the eyes / neck variant.
+  To rebuild: garrett3.py measure, fit (-> rs2_m0), structure.py mk rs2_m1 rs2_m2 rs2_m3; garrett4.py (-> rs2_n*).
+  Open, in the coordinator's order: (1) the grim downturned mouth and scowl still in every read although the fit is
+  made with a pose: the pose is set by hand (pass 6's numbers): solve it from the detector's blendshapes, or lift
+  the mouth corners in the neutral head; (2) age as real ops (above); (3) the FAIR render: skinned (garrett_v20's
+  skin spec), strand hair or locks, soft frontal light, through the fitted cameras; the lit sheet's hair cap sits low
+  on these foreheads (the groom was made on v23's head); (4) measured macros into human_reference behind a flag
+  ("renders only" for the shading features; the outline needs a plain backdrop and collar-free levels); (5) mp206 /
+  mp426, 57 mm apart from XR Blocks' table: render a truth head, see which side the detector's 206 / 426 land (a
+  left / right swap in OUR table would be a real bug); (6) A2 (traced polylines by real placers), skinned / EEVEE
+  calibration of the 478 table; (7) score.py's WANT still rewards heavy brow / deep-set / rugged.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
