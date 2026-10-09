@@ -38,7 +38,7 @@ style + the manifest). Reeds are a plant: `grow_plant` with species `reed`, then
 | `boulder` | loose angular block: talus, field boulders | 300 / 100 / 44 | convex hull, ~24 |
 | `river_rock` | water-worn, flattened, a mossy band above the water line, darker foot | 300 / 100 / 44 | hull |
 | `cobbles` | a PATCH of 14-24 cobbles as one asset (lay patches overlapping) | 420 / 150 / 48 | none |
-| `slab` | flat bank stone / ledge piece | 220 / 80 / 24 | hull |
+| `slab` | flat bank stone / ledge piece | 220 / 80 / 32 | hull |
 | `driftwood` | log, forked branch, a butt with its root plate, a small jam (the four variants); broken ends, bark patches; scale = length | 220 / 88 / 24 (jam x2.3) | none |
 | `bush` | low evergreen scrub: a closed leafy dome + leaf sprays on alpha cards; seasons; wind | ~250 / 120 / 55 | none |
 | `litter` | a leaf / twig debris card; a picture per season; hidden under snow | 8 / 2 | none |
