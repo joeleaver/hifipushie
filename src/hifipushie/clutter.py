@@ -148,7 +148,7 @@ BUSH_PAINT = {
     "leaf_bump": 0.004,       # m: each leaf a small dome in the normal map
     "steps": 0,               # tones cut into this many flat steps (painted look); 0 = continuous
     "flowers": 0.25, "flower_color": [0.95, 0.8, 0.15], "flower_size": 0.014,  # in the spring picture
-    "spray": {"leaves": [10, 16], "leaf": [0.07, 0.1], "round": 0.42, "tones": 0.25, "outline": 0.0, "midrib": 0.3},  # a card's picture
+    "spray": {"leaves": [16, 22], "leaf": [0.045, 0.068], "round": 0.4, "tones": 0.28, "outline": 0.0, "midrib": 0.2},  # a card's picture
 }
 LITTER = {  # a debris patch: fallen leaves, twigs and bits lying on the ground, as one alpha card (a decal with a mesh)
     "leaves": [70, 110],      # in the summer picture (autumn x `autumn`, winter x `winter`)
@@ -1855,7 +1855,7 @@ TINT_RECIPE = ("ROCK MATCHES ITS CLIFFS BY A PER-INSTANCE COLOUR: the pictures h
                "instance_tints[hash(row) % n] x (0.92 + 0.16 x hash). Lichen, moss and the damp foot shift a little with it, which reads fine. "
                "The four variants already differ in mineral tone (baked); instance_tints adds warm / cool / brown stones on top")
 INSTANCE_TINTS = [[1.0, 1.0, 1.0], [1.05, 1.0, 0.94], [0.96, 0.99, 1.03], [1.04, 0.98, 0.91], [0.95, 0.95, 0.95]]
-INSTANCE_RECIPE = ("one MultiMesh per variant per LOD (per cell of the world): instance = translate(row x, y, z) * rotate_up(yaw) * "
+INSTANCE_RECIPE = ("(the last LOD casts no shadow: a bush's two crossed cards shadow each other) one MultiMesh per variant per LOD (per cell of the world): instance = translate(row x, y, z) * rotate_up(yaw) * "
                    "scale(s, s, s * squash); variant = hash(row) % variants; switch LODs by distance / s at `lod_switch_m` "
                    "(x the instance's scale), fade out over the last fifth before `cull`. The pivot is the ground line: the "
                    "mesh below it (sink_m x scale) is buried. Never scale below ~0.6 or above ~1.8 of size_range without "
@@ -2175,7 +2175,7 @@ def look(folders, out: str, distances=(2.5, 10.0, 40.0), lods=(0, 1, 2), scale: 
         for di, (d0, lod) in enumerate(zip(distances, lods)):
             oy = 300.0 * di
             items += [{"glb": str(fo / v["lods"][min(lod, len(v["lods"]) - 1)]["file"]), "at": [(i - (n - 1) / 2) * 1.25 * scale, oy, 0],
-                       "yaw": 25 * i, "scale": scale} for i, v in enumerate(vs)]
+                       "yaw": 25 * i, "scale": scale, "shadow": lod < len(v["lods"]) - 1 or len(v["lods"]) < 3} for i, v in enumerate(vs)]
             d = max(d0, width * 0.95 + 0.8) if di == 0 else d0
             png = tmp / f"r{fi}_{di}.png"
             views.append({"eye": [0.35 * d, oy - d, 1.6 if d > 3 else 1.1], "look": [0, oy, cl["height_m"] * scale * 0.35], "fov": 50, "out": str(png), "res": [1280, 720]})

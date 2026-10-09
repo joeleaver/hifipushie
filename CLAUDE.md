@@ -5795,14 +5795,29 @@ external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, 
   one weather side (small bright ones read as confetti), rain streaks down steep faces, a damp soil-stained foot band,
   each variant's mineral tone (`minerals`; at +-10% the stones were brown and blue: +-5%), `instance_tints` in the json.
   Rock matches its cliffs by a per-instance colour (json `clutter.tint`): terrain rock colour / color_linear x a tint.
-- Bush (`Bush`, `bush_cards`, `spray_tile`): an opaque leafy dome down to the ground with lobes (cells painted as leaves)
-  + 24-30 leaf sprays on alpha cards (each drawn from both sides with the SAME up-and-out normal), one material (alpha
-  MASK), the plants' wind channels, a season = another albedo picture (spring flowers), blobby / cartoon have no cards.
-  Reads as a bush from 10 m; at 2.5 m a leafy lump with sprigs.
-  Light grey patches on a bush's shaded side were not holes, flipped faces or the normal map (all three chased): a dark
-  albedo (0.18, 0.25, 0.12) at roughness 0.8 shows the sky's sheen. Leaf domes are roughness 0.96, gaps and AO lighter.
-  A ray that meets another lobe first gives that lobe's normal: flat there (`off` in bake_variant); faces a decimation
-  turned inside out are turned back (lod_mesh).
+- Bush, round 2 (the coordinator on the first one: "a solid mossy green lump with sprigs stuck on reads as a moss-covered rock"):
+  `clutter_bush.py`: an OPEN bush from a grown shrub (vegetation.grow of the `shrub` preset, 1 m across; variants = height,
+  stem count and lean): LOD 0 = its 6 stoutest stems as 3-sided tubes + 36-42 spray cards on k-means clusters of the
+  plant's own twigs (a card runs the way its twigs run, faces out, inner ones take darker pictures: `bough_tile`), LOD 1
+  = 7 bough cards whose pictures are the LOD 0 sprays composited in software into each bough's plane (`composite`:
+  PIL perspective warps, far first) + 3 stems, LOD 2 = 2 crossed cards with the whole bush; ~260 / 64 / 8 triangles;
+  58-67% of the side view is gaps; "cover kept" LOD 1 0.62-0.69, LOD 2 0.67-0.85 (alpha-aware IoU, `_mask`). Far pictures'
+  alpha is grown 2 texels (`_fatten`) or they vanish under mipmaps. A card's back has its own vertices (Blender's
+  importer merges two faces on the same three vertices: half the cards were missing in every look). Blobby / cartoon
+  (`form.open` false): 3-5 separate closed lumps on stems (`Bush` lumpy mode, a hull per lump, stems appended as tubes
+  with a bark patch in the atlas's last cell). The old dome path (`bush_cards`, `spray_tile`) is dead code kept for
+  the lumps' field. Read: LOD 0 is a shrub in realistic / anime / pixar; LOD 1 reads as a small tree (boughs up top,
+  bare stems); the leaves are hazel-like, not gorse needles.
+  Light grey patches on the first bush's shaded side were sky sheen on a too-dark albedo at roughness 0.8, not holes.
+- Reed (`vegetation_presets/reed.json`): the first one was ONE thin stem per card (0.37% of the atlas opaque, fill 0.05:
+  near-invisible; test_vegetation's test_atlas_and_cards failed on main and I had not run it or looked at a reed).
+  Now fans of 20 strap leaves (1.15 m x 5.5 cm, wider than life) + plume stalks with a 7.5 cm head: 2.7% opaque, fill
+  0.24, 1.86 m x 1.02 m. Seen in Godot (ground.gd, 2 / 8 / 20 m): ck_14_reed_godot_vs_refs.png; reads as bulrush.
+  RULE: the whole vegetation set (test_vegetation, test_veg_style, test_veg_groundcover, test_veg_impostor, test_veg_sward,
+  test_clutter) before any report, and a picture of every delivered asset.
+- `terrain_mesh.render_tiles(extra=[{glb, at, yaw, scale, squash, tint}])` stands GLBs in a tiles render (blender_tiles
+  imports them, multiplies the tint into the base colour): boulders beside styled cliff tiles (scratch fam.py,
+  sheets ck_16_family_<style>.png). render_tiles(clutter=0) raised KeyError 'clutter' on main (guarded).
 - Litter (`litter_tile`, `_export_litter`): an 8-triangle domed octagon / a quad with an RGBA picture per season (the
   same patch, leaves added in autumn), hidden under snow.
 - Engine (Godot 4.7.2, `spikes/godot_veg/clutter_field.gd`, 1280 x 720, 890M, shadows on): 5,000 boulders + 20,000

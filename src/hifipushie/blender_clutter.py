@@ -29,6 +29,12 @@ for it in job["items"]:
     sc.collection.objects.link(e)
     for r in roots:
         r.parent = e
+    if it.get("shadow") is False:  # (the last LOD casts none in an engine)
+        for o in obs:
+            try:
+                o.visible_shadow = False
+            except Exception:
+                pass
     e.location = it.get("at", [0, 0, 0])
     e.rotation_euler = (0, 0, math.radians(it.get("yaw", 0)))
     e.scale = (s, s, s * it.get("squash", 1.0))
