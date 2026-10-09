@@ -50,6 +50,9 @@ def test_beard_zones_from_landmarks():
     dt, dn = mk.beard_density(J, o_t)(V, N), mk.beard_density(J, o_n)(V, N)
     mid = lambda x: np.mean((x > 0.05) & (x < 0.5 * x.max()))  # noqa: E731  share of the half-tone edge
     assert mid(dt) < mid(dn)
+    # untrimmed: no edge but a taper, and a few stragglers out past it (density < 0.1 where trimmed has none)
+    strag = (dn > 0) & (dn < 0.1) & (dt == 0)
+    assert strag.sum() > 0.02 * (dn > 0.5).sum()
 
 
 @_tmp
