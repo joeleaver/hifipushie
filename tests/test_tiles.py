@@ -405,11 +405,39 @@ def test_long_tube_by_runs():
     assert (got[0][~near] >= tb.reach - 1.0 - 1e-9).all()
 
 
+def _closed(P, F):
+    """Faces turned outward (a convex piece's centroid inside)."""
+    c = P[np.unique(F)].mean(0)
+    n = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
+    out = np.einsum("ij,ij->i", n, P[F].mean(1) - c) > 0
+    return np.where(out[:, None], F, F[:, ::-1])
+
+
+def test_pinched_sheets_split():
+    """Two closed pieces pyfqmr pinched onto one shared edge (4 faces on it: the island's 16,25, where crown_tube's
+    wall and the rock kept round it lie within a voxel, folded at every count and kept its 250k-face dense mesh at
+    every LOD: pushieworld note 117) come apart into two manifold pieces touching there: same faces and positions,
+    the edge's two vertices copied once; a pinch on an open edge (a tile border) is left alone."""
+    P = np.array([[0, 0, 0], [1, 0, 0], [0.5, 1, 0.2], [0.5, 0.5, 1], [0.5, -1, 0.2], [0.5, -0.5, -1.0]])
+    A = _closed(P, np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]))
+    B = _closed(P, np.array([[0, 1, 4], [0, 1, 5], [0, 4, 5], [1, 4, 5]]))
+    F = np.r_[A, B]
+    assert not tm._manifold(F)
+    P2, F2 = tm._split_nonmanifold(P, F)
+    assert tm._manifold(F2) and len(P2) == len(P) + 2 and len(F2) == len(F), (len(P2), F2)
+    assert np.abs(P2[F2] - P[F]).max() <= tm.PINCH_GAP + 1e-9 and len(tm._boundary_edges(F2)) == 0
+    assert len(np.unique(P2, axis=0)) == len(P2)  # (apart: a GLB read back by position stays unpinched)
+    assert tm._split_nonmanifold(P, np.r_[A, B[1:]]) is None  # (open there)
+    # the export's decimation takes such a mesh instead of calling it a fold
+    assert tm._manifold(tm._split_nonmanifold(P, F[::-1])[1])
+
+
 if __name__ == "__main__":
     t0 = time.time()
     test_plane_chain()
     test_long_tube_by_runs()
     test_unflip_corners()
+    test_pinched_sheets_split()
     test_floating_pieces_dropped()
     test_region_edge_is_smooth()
     test_projected_normals_never_zero()

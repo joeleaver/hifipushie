@@ -119,9 +119,15 @@ elif stage in ("eyes", "lips"):
         tg = {"canthal_tilt": (ph0["canthal_tilt"], 0.75), "brow_gap": (ph0["brow_gap"], 0.6),
               "brow_tilt": (ph0["brow_tilt"], 1.5)}
     else:
+        # the rest mouth closed (lip_seal), then the vermilion's heights (how much red shows) and the bow; the rolls
+        # (projection) are kept: the front detector hardly sees them
+        h = spec["base"]["head"]
+        h.pop("mouth_gap", None)
+        h["lip_seal"] = 1.0
+        save(spec)
         ph0, _, _ = gm.measure("fs_garrett", spec["base"])
-        names = ["lip_upper_roll", "lip_lower_roll", "lip_bow"]
-        tg = {"upper_lip": (ph0["upper_lip"], 0.5), "lower_lip": (min(ph0["lower_lip"], 9.5), 1.0),
+        names = ["lip_upper_height", "lip_lower_height", "lip_bow"]
+        tg = {"upper_lip": (ph0["upper_lip"], 0.5), "lower_lip": (ph0["lower_lip"], 0.8),
               "cupid_bow": (ph0["cupid_bow"], 1.2)}
     ph0, md0, _ = gm.measure("fs_garrett", spec["base"])
 

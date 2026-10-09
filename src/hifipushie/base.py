@@ -211,6 +211,27 @@ def mouth_interior(head: dict, hd: dict) -> dict:
     return o.blobs
 
 
+SEAL_OVERLAP = 0.0004  # m: each lip's contact row pushed past the seam for the FIELD (sealed lips: see _sealed_field)
+
+
+def _sealed_field(W, faces, sf: dict):
+    """A sealed mouth (lip_seal) for the field only (the template's quads, the export's and the face shapes', keep the
+    lips' inner rolls): the rolls from the open mouth loop to the contact ring are left out, and the two lips' contact
+    rows overlap by 2 x SEAL_OVERLAP. With the rolls in, the lips touching closed a pocket of 'outside' behind the
+    seam, and with them only touching the slit between them was a zero-thickness sliver: the mesher left a row of
+    pits and fragments along the seam (Tess, ts_w / ts_x). Returns (vertices, faces) with unused vertices dropped."""
+    drop = np.zeros(len(W), bool)
+    drop[np.asarray(sf["drop"], int)] = True
+    F = [f for f in faces if not drop[np.asarray(f)].all()]
+    W = np.array(W, float)
+    W[np.asarray(sf["up"], int), 2] -= SEAL_OVERLAP
+    W[np.asarray(sf["lo"], int), 2] += SEAL_OVERLAP
+    used = np.unique(np.concatenate([np.asarray(f) for f in F]))
+    rm = np.full(len(W), -1)
+    rm[used] = np.arange(len(used))
+    return W[used], [list(rm[np.asarray(f)]) for f in F]
+
+
 def _catmull_clark(V, faces):
     """One Catmull-Clark step on a closed polygon mesh: (verts, quads)."""
     V = np.asarray(V, float)
@@ -320,6 +341,8 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     else:
         src = np.arange(len(W))
     V, F = W, faces
+    if one and tpl.get("seal_field"):  # (faceslide: lip_seal) the closed mouth as the field sees it
+        V, F = _sealed_field(W, faces, tpl["seal_field"])
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
