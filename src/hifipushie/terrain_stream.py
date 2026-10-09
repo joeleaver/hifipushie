@@ -48,7 +48,7 @@ CFG = {
     "bar": 0.10,             # m: a point bar's top over the water (0: bars stay awash)
     "lump": 0.07,            # m: the bed's unevenness (metre-scale)
     "min_depth": 0.08,       # m of water the shaped bed keeps (bars aside)
-    "damp": 0.5,             # m above the water the bank is damp (wandering)
+    "damp": 0.9,             # m above the water the bank is damp (wandering; the bank starts ~0.3 m over the water)
     "shape": True,           # the bed's shape (False: material and clutter only)
     "clutter": 1.0,          # density of the stream clutter (0: none)
 }
@@ -311,7 +311,11 @@ class Streams:
         dep = g["level"] - z
         gate = _ss(3.0, 1.0, g["sd"])
         bed = _ss(-0.07, 0.07, dep + 0.08 * wob) * gate
-        damp = _ss(self.cfg["damp"] * (1 + 1.2 * wob), 0.05, -dep) * _ss(4.5, 2.0, g["sd"]) * (1 - bed)
+        top = self.cfg["damp"] * (1 + 1.2 * wob)
+        # (wet through for `damp` m above the water, moist and fading to twice that: on a steep bank the wet band alone
+        # was a line a metre wide)
+        damp = np.maximum(_ss(top, 0.15, -dep), 0.45 * _ss(2.2 * top, 0.5 * top, -dep)) * _ss(7.0, 3.5, g["sd"]) * \
+            (1 - bed)
         pool, riffle, bar = self.forms(xy, g)
         e = g["energy"]
         n5 = noise.fbm(Pf, 5.0, 2, seed=712)
@@ -322,6 +326,9 @@ class Streams:
         slack = _ss(0.72, 1.0, g["u"]) * (1 - _ss(0.0, 0.4, g["bend"]))  # (the margins' slack water)
         silt = slow * np.maximum(pool * _ss(0.85, 0.3, g["u"]), 0.7 * slack) * _ss(0.3, 0.5, n2 + 0.35 * pool) + \
             (1 - slow) * 0.5 * pool * _ss(0.55, 0.7, n2)  # (sand in a torrent's plunge pools)
+        # (and fines in patches a few metres across wherever the water is slow: a bed of nothing but cobbles from bank
+        # to bank read as one texture)
+        silt = np.maximum(silt, 0.75 * slow * _ss(0.5, 0.64, noise.fbm(Pf, 5.5, 3, seed=719)) * (1 - 0.7 * riffle))
         silt = np.clip(silt * (1 - bar) * (1 - rock) * (1 - g["ford"]), 0, 1)
         moss = np.exp(-((dep + 0.06) / 0.16) ** 2) * (0.4 + 0.6 * noise.fbm(Pf, 0.9, 2, seed=715))
         return {"k": k, "bed": bed, "damp": damp, "gravel": np.clip(1 - rock - silt, 0, 1), "silt": silt, "rock": rock,
@@ -399,7 +406,7 @@ class Streams:
                 j = i
                 while j < end and cls[j + 1] == cls[i]:
                     j += 1
-                if s[j] - s[i] >= 15 or not parts:
+                if s[j] - s[i] >= 15:
                     parts.append(f"{s[i]:.0f}-{s[j]:.0f} m {names[cls[i]]} (grade {100 * r['grade'][i:j + 1].mean():.0f}%, "
                                  f"{r['width'][i:j + 1].mean():.0f} m wide)")
                 i = j + 1
@@ -525,6 +532,8 @@ def clutter(T, mats, field, box=None, seed=11):
             p = p * _ss(0.4, 0.6, noise.fbm(Pf, 6.0, 2, seed=746))
             scale = lo + (hi - lo) * u_a
             place = np.where(sd > 0.4, 3, 2)
+        if kind == "driftwood":  # (a log lies at the water's surface or on the ground, never sunk on the bed)
+            z = np.maximum(z, g["level"] - 0.06)
         keep = u_keep < np.clip(p * dens, 0, 1)
         if not keep.any():
             continue
@@ -553,6 +562,7 @@ def clutter(T, mats, field, box=None, seed=11):
                     wq = S.sample(pos)["w"]
                     ln = np.clip(1.2 + 2.2 * h2[sel], lo, np.minimum(hi, 2.2 * wq + 1.0))
                     yw = np.degrees(np.arctan2(td[:, 1], td[:, 0])) + 90 + 70 * (hh[sel] / (0.3 * dens) - 0.5)
+                    hz = np.maximum(hz, S.sample(pos)["level"] - 0.06)  # (afloat against the rock, not on the bed)
                     R = np.concatenate([R, np.c_[pos, hz, np.full(len(q), ki), ln, np.mod(yw, 360.0),
                                                  0.9 + 0.5 * h2[sel], np.ones(len(q)), q[:, 8]]])
         out.append(R)

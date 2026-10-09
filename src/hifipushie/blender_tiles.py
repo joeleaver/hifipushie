@@ -868,7 +868,13 @@ def _rivers(rivers):
     nt.links.new(bp.outputs["Normal"], gl.inputs["Normal"])
     nt.links.new(bp.outputs["Normal"], fr.inputs["Normal"])
     mx = nt.nodes.new("ShaderNodeMixShader")
-    nt.links.new(fr.outputs["Fac"], mx.inputs["Fac"])
+    # (a share of the Fresnel mirror: at eye level real water mirrors the sky and hides its bed; these views are for
+    # judging the bed)
+    fm = nt.nodes.new("ShaderNodeMath")
+    fm.operation = "MULTIPLY"
+    fm.inputs[1].default_value = 0.45
+    nt.links.new(fr.outputs["Fac"], fm.inputs[0])
+    nt.links.new(fm.outputs[0], mx.inputs["Fac"])
     nt.links.new(tr.outputs["BSDF"], mx.inputs[1])
     nt.links.new(gl.outputs["BSDF"], mx.inputs[2])
     nt.links.new(mx.outputs["Shader"], out.inputs["Surface"])

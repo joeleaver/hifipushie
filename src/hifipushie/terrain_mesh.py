@@ -5312,6 +5312,9 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                     live &= (xy_[:, 0] >= box[0][0]) & (xy_[:, 0] <= box[1][0]) & (xy_[:, 1] >= box[0][1]) & \
                         (xy_[:, 1] <= box[1][1])
                 if live.sum() >= 2:
+                    # (the level eased along the path: its own steps, a few dm where a bank holds it down, drew the
+                    # ribbon as a staircase)
+                    lv_ = ndimage.gaussian_filter1d(lv_, 5.0, mode="nearest") - 0.04
                     rv.append(np.c_[xy_, lv_, w_ + 4.0][live].round(3).tolist())
             job["rivers"] = rv
         notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))

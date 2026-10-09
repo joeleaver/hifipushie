@@ -485,7 +485,7 @@ def _stream_piece(kind, rng):
             vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.004), (sz, sz * 0.5, 0.008), 0.0, 1)
             cols += [np.array([0.06, 0.04, 0.02]) * rng.uniform(0.6, 1.5)] * len(vs)
     else:  # driftwood: a bare log along +x, a little bent, tapering, with a branch stub or two
-        wood = np.array([0.2, 0.18, 0.15]) * rng.uniform(0.75, 1.2)
+        wood = np.array([0.11, 0.095, 0.075]) * rng.uniform(0.75, 1.2)
 
         def tube(pts, r0, r1, sides=7):
             rings = []
@@ -505,7 +505,7 @@ def _stream_piece(kind, rng):
                     bm.faces.new((ra[k], ra[(k + 1) % sides], rb[(k + 1) % sides], rb[k]))
             for ring in (rings[0], rings[-1][::-1]):
                 bm.faces.new(ring[::-1])
-        r0 = rng.uniform(0.035, 0.06)
+        r0 = rng.uniform(0.022, 0.04)
         bow = rng.uniform(-0.06, 0.06)
         pts = np.array([[x, bow * math.sin(math.pi * (x + 0.5)), r0 * 0.6 + 0.02 * math.sin(3 * x)]
                         for x in np.linspace(-0.5, 0.5, 7)])
