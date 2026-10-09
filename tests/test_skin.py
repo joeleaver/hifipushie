@@ -342,6 +342,11 @@ def test_brow_tilt_and_fall():
             assert abs(b["rotate"] - a["rotate"] - 6) < 1e-6
             assert b["file"] == a["file"] and c["file"] != a["file"]
             assert img(fall=1.0)["file"] == a["file"]
+            # each end on its own: the inner head down 3 mm, the tail level: the centre down 1.5 mm, turned tail-up
+            e = img(lift=[-0.003, 0.0])
+            assert abs(e["at"][2] - a["at"][2] + 0.0015) < 1e-6 and e["rotate"] > a["rotate"]
+            f = img(apart=0.002)
+            assert abs(f["at"][0] - a["at"][0] - 0.002) < 1e-6
         finally:
             store.HOME = home
 
