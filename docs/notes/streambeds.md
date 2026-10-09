@@ -149,3 +149,45 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
 - Still wrong (judged on sb2_shallows): placeholder egg rocks (smooth, one colour: the consumer's "garden stones" is
   the kit's asset look, no csv field for wet / angular yet); the cobble bed swatch still reads alike bank to bank in a
   close view; logs float at the surface everywhere (none half-sunk in the bed).
+
+## Rivers on existing ground cut their own valley (2026-10-09, "streambeds3"; pushieworld note 115)
+- Cause: a river's bed is a low pin of the harmonic base (floor field). crown_beck (bed heights read off the final
+  ground, down the volcano's flank) pinned the floor at 99-172 m where it had been ~seabed, and the volcano then stood
+  on the raised base: +69 m, 122 ha (our numbers at the base stage: 143 ha > 5 m, max +74; divides part of it).
+- `Terrain._river_base`: a probe solve without the auto rivers; a river CUTS (excluded from the solve and divides,
+  its valley cut in after: floor at its bed, sides at clip(profile side grade, 0.3, 3), smooth-min shoulder ~6 m,
+  only lowers, floor cells join `_fixed_river`) when it runs over a volcano / lone hill (median height of those forms
+  under its path > max(5 m, 0.15 x its fall): `_before_forms` = H before volcano/hills) or its bed follows the ground
+  made without it (|median gap| < 5 m) and it isn't in a basin. `valley.cut` true/false forces it. Report line per
+  cutting river; the trench warning allows the cut's own sides (grade x offset).
+- Regression (base-stage H, before vs after, max |d| 0.0): b2_alps, gdamp_river_world, gdamp_tarn_coast, t2_alps,
+  t2_farm, t3_alps, t3_coast, t3_farm, tl2_island7, tl2_slice_a, island (pw_island_base). A first rule ("bed not above
+  the ground made without it") cut alpine / gdamp valley-making rivers (changes up to 1.4 km): don't.
+- pw_island_rivers: crown_beck, downs_brook (over the volcano / knolls) and kaze_burn (bed = ground) cut; raised
+  > 5 m: 0.5 ha, all at pencil_spout, whose bed runs ~32 m ABOVE the headland's ground (pinned: it makes land there).
+- Unknown river keys: report warning (`RIVER_KEYS`). Test: tests/test_river_cut.py (ground beyond 2 valley widths
+  unchanged at the base stage).
+- Scratch: rbase.py (raise/lower by distance band between two specs), hsave.py / hreg.py + hcmp.py (base H old vs
+  new; run_main.sh = mainsrc/ = this branch before the change), specs copied as workspace/terrain/pw_* (theirs).
+
+## Waterfalls (2026-10-09, "streambeds3"; terrain_falls.py)
+- Spec `rivers.<r>.falls: [{"at", "drop", "width"?}]` (Pushieworld drafted exactly this). Profile: the drop comes out
+  of the reach below the lip (compressed to the next fall / mouth; the river above keeps its heights); too little
+  left below (at 1, a sea cliff) -> the reach above is raised evenly. First version took the drops out of the whole
+  river and raised the reaches above by up to the drop: on ground-following rivers the lip stood in the air, the bank
+  rule pulled the water down and 4 of 8 island falls came out 0-2 m.
+- forms.water: grade without the steps (a fall isn't a torrent), the bank rule lifted round each lip (guard), easing
+  per reach, `step_levels` keeps each step in the WATER (lower below the lip down a 1% line until it meets its own
+  level, never under the mouth's): a gorge below the fall where the ground was low. `stamp` on the finished ground
+  (both water passes): amphitheatre (pool's edge + 1:1 sides) below, lip band across the valley at the upstream level
+  (Wz = half width + max(4, 0.8 drop)), shallow sheet over the lip, plunge pool (r = clip(0.5 w + 0.15 d, 0.6 d, ...),
+  depth clip(0.25 d + 0.8, 1.2, 6)), face + lip hard (hardness 0.03). Face = one cell: 80-88 deg at 0.5-2 m cells for
+  drops over ~6 m; the report warns under 60 deg and when the ground can't hold the drop.
+- Meta: meta.json `falls` + `falls_note` (only when there are falls), tiles manifest `falls` {falls, note}: lip line
+  (2 xyz at the lip's water level), drop, asked, width, flow, pool {xyz at its level, radius, depth (null in the sea)},
+  into river | lake | sea.
+- Streams: `plunge` / `foot` grids (only with falls): pool form forced, river_rock ring round the pool (bigger),
+  slabs at the face's foot. Vocabulary: "waterfall" no longer a limit (cascade = several falls).
+- pw_island_rivers: vale 6.0 (asked 6, 72 deg), crown 16.8/15 (83), 10.6/10 (80), 1.6/6 (lip 2 m over the sea: the
+  ground can't), kaze 13.1/12 (81), 17.2/25 at 0.97 (the cliff is ~20 m), downs 8.0/8 (74), pencil 2.6/10 (bed drawn
+  over low ground near the cove). Tests: tests/test_falls.py (inland 3 + 12 m, sea cliff 30 m, clutter, errors).
