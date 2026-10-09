@@ -36,8 +36,9 @@ def test_symmetric_and_ranged():
     T = faceslide.template()
     X, mi = T["X"], T["mirror"]
     for name, (dR, dL) in faceslide.fields().items():
-        assert np.abs(dL[T["X"][:, 0] < -0.002]).max() == 0, name  # the left eye's field stays on the left
-        assert np.allclose(dR, dL[mi] * [-1, 1, 1]), name
+        assert np.abs(dL[T["X"][:, 0] < -0.002]).max() == 0, name  # the left side's field stays on the left
+        # (the mouth's fields are made on GNM's whole template, symmetric only to ~0.1 mm)
+        assert np.allclose(dR, dL[mi] * [-1, 1, 1], atol=0 if name in faceslide.EYE_SLIDERS else 6e-5), name
         unit = faceslide.UNITS[name][0] * (0.001 if name != "canthal_tilt" else 0.001 * 0.27)
         assert 0.5 * unit < np.linalg.norm(dL, axis=1).max() < 1.4 * unit + 1e-4, name
     v = faceslide.values({"eye_hood": 3.0, "canthal_tilt": [-0.2, 0.4]})
@@ -51,7 +52,7 @@ def test_symmetric_and_ranged():
 
 def test_no_fold_or_slot_at_the_extremes():
     """At -1 and +1 (both eyes): no skin quad turns over, no two neighbouring quads fold (normals turned > 60 deg
-    more than in the template), the lids' rims stay put (or, for the canthal tilt, on the ball: distance to the
+    more (past 60 deg, by 10 deg or more) than in the template), the lids' rims stay put (or, for the canthal tilt, on the ball: distance to the
     eye's centre held) and the eyeballs don't move."""
     if not _gnm_ok():
         return
@@ -81,9 +82,15 @@ def test_no_fold_or_slot_at_the_extremes():
             turned = int((np.einsum("ij,ij->i", n0, n1) < 0).sum())
             assert turned == 0, (name, v, turned)
             a1 = np.einsum("ij,ij->i", n1[pairs[:, 0]], n1[pairs[:, 1]])
-            fold = (a1 < np.cos(np.radians(60))) & (a1 < a0 - 0.05)
+            ang = lambda a: np.degrees(np.arccos(np.clip(a, -1, 1)))  # noqa: E731
+            fold = (a1 < np.cos(np.radians(60))) & (ang(a1) - ang(a0) > 10)  # (the vermilion border is 67 deg already)
             assert not fold.any(), (name, v, int(fold.sum()))
             assert np.abs(D[eyes]).max() == 0, name
+            if name in faceslide.MOUTH_SLIDERS:  # no lip through the other: the contact ring's upper side never down,
+                # its lower side never up
+                lmr = base._gnm_data()["lm68"]
+                dy = lambda i: sum(float(w) * D[int(vv)][1] for vv, w in zip(lmr[i][0::2], lmr[i][1::2]))  # noqa: E731
+                assert min(dy(i) for i in (61, 62, 63)) > -5e-5 and max(dy(i) for i in (65, 66, 67)) < 5e-5, name
             if name == "canthal_tilt":
                 dist = lambda Y: np.min([np.linalg.norm(Y[rim] - j, axis=1) for j in J], axis=0)  # noqa: E731
                 assert np.abs(dist(X1) - dist(X)).max() < 5e-5, name

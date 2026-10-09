@@ -11,7 +11,7 @@ from hifipushie import faceslide, humanfit, humans, likeness
 
 out = sys.argv[1]
 names = sys.argv[2].split(",") if len(sys.argv) > 2 and sys.argv[2] != "all" else list(faceslide.NAMES)
-view = sys.argv[3] if len(sys.argv) > 3 else "front"
+view = sys.argv[3] if len(sys.argv) > 3 else "front"  # front | tq | mouth | mouthtq
 sp = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")
 b0 = sp["base"]
 
@@ -25,9 +25,9 @@ def st_of(sl):
 
 st0 = st_of({})
 L0 = np.asarray(st0["L"])
-eyeL = 0.5 * (L0[42] + L0[45])
-cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 4000.0, "size": [2000, 2000], "centre": eyeL.tolist(),
-       "yaw": 0.0 if view == "front" else -35.0}
+eyeL = 0.5 * (L0[42] + L0[45]) if not view.startswith("mouth") else 0.5 * (L0[51] + L0[57])
+cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0 if view.startswith("mouth") else 4000.0, "size": [2000, 2000], "centre": eyeL.tolist(),
+       "yaw": 0.0 if view in ("front", "mouth") else -35.0}
 c = humanfit.project(cam, eyeL[None])[0]
 print("eye L at", c, "eye R at", humanfit.project(cam, (0.5 * (L0[36] + L0[39]))[None])[0])
 box = (c[0] - 260, c[1] - 230, c[0] + 260, c[1] + 160)
@@ -46,7 +46,7 @@ def tile(st, label):
     im = im.convert("RGB")
     d = ImageDraw.Draw(im)
     Ls = np.asarray(st["L"])
-    m = 0.5 * (Ls[43] + Ls[44])
+    m = 0.5 * (Ls[43] + Ls[44]) if not view.startswith("mouth") else 0.5 * (Ls[62] + Ls[66])
     for i in range(0, 16):
         p = humanfit.project(cam, (m + np.array([0, 0, 1.0]) * i * 0.001)[None])[0]
         x, y = (p[0] - box[0]) * k - 60, (p[1] - box[1]) * k

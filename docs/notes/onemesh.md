@@ -403,3 +403,9 @@ model".
     crease height 0.6 / -0.5 and canthal tilt -0.5 come back within 0.01. The crease reader needs a defined crease
     (eye_crease_depth > 0): on the template's soft lid the darkest line jumps. likeness LEVERS: canthal_tilt,
     upper_lid_show, under_eye, brow_ridge, prof_brow_ridge now drive sliders.
+  - MOUTH SLIDERS (same module): lip_upper_roll, lip_lower_roll (eversion as volume forward, tucked at the corners),
+    lip_bow, lip_tubercle, mouth_corner (tuck; one direction per corner: the corner's normals turn too fast). Lips read
+    between landmark curves (border / seam, s 0..1); the contact ring held (test: upper seam never down, lower never
+    up). Fields split L/R smoothly at the centre line. LEVERS: cupid_bow, lip_projection, prof_upper_lip,
+    prof_lower_lip. Hood pinch at the outer corner softened (the fold tapers into the corner over 2.5-11.5 mm).
+    Sliders are sex-neutral (0 = GNM's mean); women's higher creases may want crease_height > 1 (range 1.5).
