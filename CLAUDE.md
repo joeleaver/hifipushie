@@ -2798,6 +2798,50 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     builder assertion `left > right` 0.0 / 0.0 while "computing constraints" (a zero-length or zero-area element
     in the job: look at in.npz's rest triangles and stitch pairs; tr_24 on the old body built). Use jobstr.py /
     gapchk.py on workspace/_cache/cloth/job_<key>/sim.
+  - Round 2 (same day, after the usage-limit stop; main 3eb0b2b with placket's shirt merged in; commits d3cf2a1 /
+    e3edfb6; scratch adds job0.py / job1.py / job2.py / job3.py / job4.py / job5.py <job dir> (a failed job's in.npz
+    against its FRAME-0 collider `bodyV0`: least separation, what crosses the under garment and where, degenerate /
+    faceless elements, what is near a named vertex; gapchk.py reads the BENT body and calls every straight-arm
+    forearm a contact: don't use it for sleeves), slv.py, jts.py, ed_om2.py, patch_exact4 / made / thru / orphan /
+    drop / docs.py, resolve1.py; tests/test_suit7.py).
+    - The three start failures on su_om_garrett, each a general fault: (1) `_clear_exact` was one-way: now the
+      collider's vertices and edge middles are also tested against the CLOTH's triangles (a shirt placket under the
+      middle of a 2 cm jacket triangle: 0.013 mm with every cloth vertex and edge point clear). (2) A made collar is
+      never cleared: `_lift_made` (made pieces lifted along the body's normal to the padded body's height + 3 mm, at
+      most MADE_LIFT 15 mm, evened over the piece), and a layered collar that is sewn on open and turned down by its
+      carried poses gets pins that pass through the collider (`Bp["thru"]` -> the runner's hugIdx; no body_offset
+      change): prescribed onto the open shirt collar's wings the solver stalled at frame 2-3, "a prescribed pin driven
+      into geometry that cannot yield" (om_05 / 07 / 09 / 11; open_gap 0 stalled too: not the open start). (3) ZOZO's
+      builder asserts `left > right` 0.0 / 0.0 on a collider vertex with no face area: 10 shoe faces of 5e-11 m2 on the
+      new body, then 12 faceless shoe vertices once those faces were dropped: `_collider` leaves out faces under
+      0.0005 mm2 AND the vertices they orphan, for the under garment and for worn parts (cleaned before they join the
+      poses).
+    - Armhole depth is per body: the same sheet on su_om_garrett (hps 33 mm lower, armpit the same) had its armhole
+      31 mm shallower from hps: under sleeves crossed back / side panel at the pit, `sleeve_down` 3-6 cm, sleeve seams
+      100-125 mm and armholes 110-130 mm open at the start (su_garrett: 1-2 cm, 70-80, 88). bodice `armhole_depth`
+      0.14 on its jacket: 1-2 cm, 43-80, 90.
+    - om_13 = THE FIRST JACKET THROUGH ON THE NEW BODY, over placket's shirt (524 s): fits, 0 crossings, 0 layer
+      crossings, seams closed bar 3 collar pairs (4.5 mm), collar_show 9.6, collar_hug 19.6, cuffs 24.6 / 20.8, lapel gap
+      11.5 / 14. section.py: the fronts are 8-10 cm apart at the chest and come together again below the button (2 cm
+      at the hips), 53-71 mm off the body in front at the hem (plumb from the chest), sides at the hips +4..6 mm.
+      Trousers om_12 (su_om_tr: waist_drop 0.07, over the shirt): 0 crossings, seams closed, STRAINED at hips / seat
+      13% (seat ease 5% over a tucked shirt); om_14 (su_om_garrett batch 2: straight leg, drop 0.10, seat ease 7%):
+      STRAINED at seat 13.3% still, 0 crossings, fly 9 of 9.
+    - Checklist on om_13 + om_12 + om_04 (cr_om13_figure.png with shoes, cr_om13_focus.png): 13 misses (su_81: 18).
+      Gone: body length, silhouette, lapel width, tuck, layering, leg opening. Left: collar_hug 20, hem sweep -21%,
+      pockets, belt (trims aren't in light results), shoulder +12%, front_hang 55 (84), rise +50 mm (+121), waist
+      width 335 vs 414, sleeve width -21%, knee -11%.
+    - THE COLLARS ARE NOT RIGHT (the coordinator's and the user's read of om_13_jacket_collar.png): the jacket
+      collar's ends stand up as wings 4-6 cm over the shoulder line at both sides of the neck, the back is a thick
+      roll, the pressed shirt collar under it draws ragged. The ruff is in the START (out/o2_start.png; collar start
+      stretch p99 1.48, max 1.8-1.9 on both bodies) and the collar is made = held as laid. Top item for the next
+      round; the coordinator's direction: stand ~2.5 cm up the back of the neck, fall over the neck seam, and from the
+      neck's side collar and lapel one flat surface to the notch; consider the collar's ENDS (past where the roll
+      line meets the neck edge) as draped interfaced cloth sewn to the gorge, not carried.
+    - su_om_garrett's sheets now (ed_om1 + ed_om2): jacket fit relaxed, armhole_depth 0.14, length_bonus 0.12, lapel
+      0.075 / roll_strength 0.3, take_in 0.008 / 0.010, CB waist 0.012, panel hem spring 0.006, interfaced [],
+      support [sleeve_head] (no pad: shoulder width read +12%), sleeve length_bonus 0.018 / hem_width 0.32; trousers
+      over shirt, under_cap 0.003, waist_drop 0.10, leg straight, seat_ease 0.07. om_15 (that jacket) was queued.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
