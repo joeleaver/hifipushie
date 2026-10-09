@@ -6,8 +6,8 @@ Three tiers, each made FROM the one before (what vegetation artists do at clutte
 - LOD 0: the grown shrub's stoutest stems as 3-sided tubes + 20-30 alpha spray cards standing where the plant's own
   twigs are (its ~200 twigs clustered; a card runs the way its twigs run and faces out of the bush), darker pictures
   on the inner ones.
-- LOD 1: 7 bough cards, each the picture of the LOD 0 sprays of one part of the bush seen from outside (composited
-  here in software: every spray quad warped into the bough's plane, far ones first) + the three stoutest stems.
+- LOD 1: the same plant thinner: ~40% of the LOD 0 sprays (spread over the bush, each moved toward the sprays it stands
+  for and a little larger, with its own picture) + the two stoutest stems.
 - LOD 2: 2 crossed upright cards with the whole bush (sprays and stems) seen from two sides.
 One atlas (a picture per season), one alpha-MASK material, the plants' wind channels; normals lean up and out of the
 bush on both faces of a card. No Blender."""
@@ -19,8 +19,11 @@ import numpy as np
 
 from . import clutter
 
-N_BOUGH = 7
-STEMS = (6, 3)   # stems drawn as tubes at LOD 0, LOD 1
+LOD1_KEEP = 0.42  # share of LOD 0's sprays LOD 1 keeps
+LOD1_MIN = 12
+LOD1_GROW = 1.3   # each kept spray's size (x)
+LOD2_FAT = 0      # texels the crossed cards' alpha is grown by
+STEMS = (6, 2)   # stems drawn as tubes at LOD 0, LOD 1
 DARK = 0.6       # the inner sprays' pictures, x the colour
 
 
@@ -165,8 +168,9 @@ def _fatten(im, px: int):
     from PIL import Image, ImageFilter
     a = np.asarray(im, float) / 255.0
     a = _bleed(a)
-    al = Image.fromarray((a[..., 3] * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(2 * px + 1))
-    a[..., 3] = np.asarray(al, float) / 255.0
+    if px > 0:  # (MaxFilter(1) dies with a floating-point exception in PIL: three bush exports were killed by it)
+        al = Image.fromarray((a[..., 3] * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(2 * px + 1))
+        a[..., 3] = np.asarray(al, float) / 255.0
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8), "RGBA")
 
 
@@ -332,36 +336,37 @@ def build(spec: dict, progress=None) -> dict:
             m_ = 1.5
             l0.append(card_mesh(Q, [[x0 + m_, c4 - m_], [x0 + c4 - m_, c4 - m_], [x0 + c4 - m_, m_], [x0 + m_, m_]], nn, rt, ph))
         L0 = join(l0, len(quads))
-        # ---- LOD 1: bough cards, each the picture of its sprays from outside
+        # ---- LOD 1: the SAME plant thinner: a share of LOD 0's own sprays, spread over the bush (farthest point first,
+        # each standing for the sprays nearest it), where they stood and with their own pictures, a little larger.
+        # (Seven bough cards with composited pictures read as another plant: big leaf plates on bare stems, a pop.)
         cen = np.array([q.mean(0) for q, _ in quads])
-        blab, BC = _kmeans(cen, N_BOUGH)
+        n1 = min(len(quads), max(LOD1_MIN, int(round(LOD1_KEEP * len(quads)))))
+        sc_ = cen / [R, R, Htop]
+        # outer, upper sprays first: they are the outline; the inside is filled by the ones that follow
+        pick = [int(np.argmax(np.linalg.norm(sc_[:, :2], axis=1) + 0.3 * sc_[:, 2]))]
+        dmin = np.linalg.norm(sc_ - sc_[pick[0]], axis=1)
+        while len(pick) < n1:
+            i = int(np.argmax(dmin))
+            pick.append(i)
+            dmin = np.minimum(dmin, np.linalg.norm(sc_ - sc_[i], axis=1))
+        owner = np.linalg.norm(sc_[:, None] - sc_[pick][None], axis=2).argmin(1)
         l1 = stems_mesh(STEMS[1], 3)
         bq = []
-        for g in range(len(BC)):
-            mem = [quads[i] for i in np.flatnonzero(blab == g)]
-            if not mem:
-                continue
-            od = np.r_[BC[g, :2], 0.0]
-            od = od / np.linalg.norm(od) if np.linalg.norm(od) > 1e-3 else np.array([1.0, 0, 0])
-            nn = od * 0.9 + np.array([0, 0, 0.45])
-            nn /= np.linalg.norm(nn)
-            r_ = np.cross([0, 0, 1.0], nn)
-            r_ /= np.linalg.norm(r_)
-            u_ = np.cross(nn, r_)
-            pts = np.concatenate([q for q, _ in mem])
-            pr, pu = (pts - BC[g]) @ r_, (pts - BC[g]) @ u_
-            ext = (float(pr.min()), float(pr.max()), float(pu.min()), float(pu.max()))
-            cx_, cy_ = (g % 8) * c8, c4 + k * c8
-            for se in seasons:
-                pic = _fatten(composite(mem, tiles[se], BC[g], r_, u_, ext, (c8, c8)), 2)
-                atl[se].paste(pic, (cx_, cy_))
-            Q = np.array([BC[g] + r_ * ext[0] + u_ * ext[2], BC[g] + r_ * ext[1] + u_ * ext[2],
-                          BC[g] + r_ * ext[1] + u_ * ext[3], BC[g] + r_ * ext[0] + u_ * ext[3]])
-            m_ = 1.0
-            n2 = od * 0.6 + np.array([0, 0, 0.8])
-            l1.append(card_mesh(Q, [[cx_ + m_, cy_ + c8 - m_], [cx_ + c8 - m_, cy_ + c8 - m_], [cx_ + c8 - m_, cy_ + m_], [cx_ + m_, cy_ + m_]],
-                                n2 / np.linalg.norm(n2), r_, float(rng.uniform()), branch=(0.4, 0.9), flutter=(0.1, 0.6)))
-            bq.append((Q, (se, cx_, cy_)))
+        ztop = float(L0["V"][:, 2].max()) * 1.03
+        for g, i in enumerate(pick):
+            Q0, ti = quads[i]
+            nn, rt, ph = frames[i]
+            mem = np.flatnonzero(owner == g)
+            # it grows toward the sprays it stands for (never past the bush), so the mass stays where it was
+            c0 = Q0.mean(0) * 0.6 + cen[mem].mean(0) * 0.4
+            dz = float(np.ptp(Q0[:, 2]))  # (grown, a tall spray would raise the bush past LOD 0's top: a pop)
+            Q = c0 + (Q0 - Q0.mean(0)) * min(LOD1_GROW, max(1.0, (ztop - 0.01) / max(dz, 1e-6)))
+            Q[:, 2] -= max(0.0, float(Q[:, 2].max()) - ztop)
+            Q[:, 2] += max(0.0, 0.01 - float(Q[:, 2].min()))
+            x0 = ti * c4
+            m_ = 1.5
+            l1.append(card_mesh(Q, [[x0 + m_, c4 - m_], [x0 + c4 - m_, c4 - m_], [x0 + c4 - m_, m_], [x0 + m_, m_]], nn, rt, ph))
+            bq.append((Q, ti))
         L1 = join(l1, len(bq))
         # the bark patch (variant k's eighth bough cell)
         for se in seasons:
@@ -376,7 +381,7 @@ def build(spec: dict, progress=None) -> dict:
             ext = (-R, R, 0.0, Htop)
             cx_, cy_ = (k * 2 + ci) * c8, 3 * c4
             for se in seasons:
-                pic = _fatten(composite(quads, tiles[se], np.zeros(3), r_, u_, ext, (c8, c4), stems=G["stems"][:STEMS[0]], stem_color=bark), 2)
+                pic = _fatten(composite(quads, tiles[se], np.zeros(3), r_, u_, ext, (c8, c4), stems=G["stems"][:STEMS[0]], stem_color=bark), LOD2_FAT)
                 atl[se].paste(pic, (cx_, cy_))
             Q = np.array([r_ * -R, r_ * R, r_ * R + u_ * Htop, r_ * -R + u_ * Htop])
             m_ = 1.0
@@ -390,9 +395,7 @@ def build(spec: dict, progress=None) -> dict:
         for az in (20.0, 110.0):
             m0 = _mask(quads, tiles[se0], az, R, Htop)
             A = np.asarray(atl[se0])
-            b1 = [(Q, i) for i, (Q, _) in enumerate(bq)]
-            t1 = [Image.fromarray(A[cy: cy + c8, cx: cx + c8]) for _, (_, cx, cy) in bq]
-            m1 = _mask(b1, t1, az, R, Htop)
+            m1 = _mask(bq, tiles[se0], az, R, Htop)
             t2 = [Image.fromarray(A[3 * c4: 4 * c4, (k * 2 + ci) * c8: (k * 2 + ci + 1) * c8]) for ci in range(2)]
             m2 = _mask([(Q, i) for i, Q in enumerate(cq)], t2, az, R, Htop)
             for i_, m_ in enumerate((m1, m2)):
@@ -404,7 +407,7 @@ def build(spec: dict, progress=None) -> dict:
                     "bounds": [[-R, -R, 0.0], [R, R, round(Htop, 4)]], "open": round(1 - hull_fill, 3)})
         if progress:
             progress(f"bush {cfg['style']} variant {k}: {L0['triangles']} / {L1['triangles']} / {L2['triangles']} triangles, "
-                     f"{len(quads)} sprays -> {len(bq)} boughs -> 2 crossed cards; cover kept {L1['iou']:.2f} / {L2['iou']:.2f}; "
+                     f"{len(quads)} sprays -> {len(bq)} kept -> 2 crossed cards; cover kept {L1['iou']:.2f} / {L2['iou']:.2f}; "
                      f"{1 - hull_fill:.0%} of its side view is gaps")
     albs = {se: _bleed(np.asarray(im, float) / 255.0) for se, im in atl.items()}
     nrm = np.zeros((16, 16, 3))

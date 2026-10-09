@@ -35,6 +35,10 @@
    "lean": 0.0
   },
   "paint": {
+   "tone_range": [
+    0.8,
+    1.22
+   ],
    "lichen": 0.0,
    "streaks": 0.0,
    "foot_tint": 0.0,
@@ -94,7 +98,7 @@
     0.24,
     0.34
    ],
-   "join": 0.16,
+   "join": 0.075,
    "lumps": 0.02,
    "lump_size": 0.4
   },

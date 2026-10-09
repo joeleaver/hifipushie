@@ -45,6 +45,10 @@
    "lean": 0.0
   },
   "paint": {
+   "tone_range": [
+    0.72,
+    1.32
+   ],
    "lichen": 0.0,
    "streaks": 0.0,
    "foot_tint": 0.0,

@@ -9,7 +9,7 @@
   "card": {"variants": 4, "size": 384, "cross": 1, "cup": 0.03, "scale": 1.0},
   "parts": {
    "plume": {"shape": "linear", "length": 0.45, "width": 0.1, "color": [0.42, 0.5, 0.22],
-             "twig": {"length": 1.3, "leaves": 7, "arrangement": "alternate", "angle": 26, "droop": 0.05, "radius": 0.009,
+             "twig": {"length": 1.3, "leaves": 7, "arrangement": "alternate", "angle": 26, "droop": 0.05, "radius": 0.014,
                       "flower": {"form": "spike", "petals": 120, "radius": 0.075, "color": [0.45, 0.32, 0.26], "spike": 0.24}},
              "card": {"variants": 2, "size": 384, "cross": 1, "cup": 0.0}}
   }

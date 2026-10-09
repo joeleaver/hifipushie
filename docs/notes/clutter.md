@@ -100,3 +100,24 @@ external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, 
     cards on bare stems: a sapling) and will pop at 14 m; anime leaves are hand-sized; blobby / cartoon are
     mushroom clouds on wire legs; none resembles the gorse / broom / heather references (no flowers, hazel leaves).
 
+- Round 3 (2026-10-09, "clutterkit3", Pushieworld note 114):
+  - `"snow": null` fixed: absent states are {} or say so (litter snow = numbers with coverage 0, hidden true), lists [],
+    only text / file / single number may be null; written into CONTRACT_LOG[13] (number unchanged); test_no_state_is_null.
+  - River rocks: 2 of 4 variants angular / broken (round <= 0.3), moss only on up-facing faces (`moss_up`) and per
+    variant (`moss_vary`, some stones none). Wet: clutter.wet.row = "water" (csv column, m over the row's z) + `sink`
+    column; streambeds3 asked to write them (terrain_stream.py writes neither yet).
+  - Rock tone: `tone_range` step (clutter.tone_range) sets the pictures' mean to the stated colour and squeezes
+    luminance p5..p95 into a cliff-like range. Cartoon family sheet ck_17: boulders now grey-tan in the cliff's family,
+    no charcoal. Measured (scratch tone.py): kit p5..p95 0.6-1.5 x mean vs cliff textures 0.8-1.2: still wider than cliffs.
+  - Bush: closed styles (blobby / cartoon) = gumdrop lumps standing on the ground (no stems). Open bush LOD 1 = ~42% of
+    LOD 0's own sprays, x1.3 larger, growth capped so LOD 1 never rises past LOD 0's top (a tall low spray grown 1.3x
+    stood 18% above the bush: test caught it).
+  - Reeds: plume stalk radius 0.009 -> 0.014; pixar redone with clump width 0.095 (gdr/n_pixar_sheet.png): broad blades,
+    a clump at 20 m, plume stalks break to specks at 20 m.
+  - Closed bushes' last LOD 24 -> 44 triangles (bush.json lods): at 24 the greedy hull read as a box / a house shape at 40 m.
+  - Delivered (/mnt/data/hifipushie/vegstyle/<style>_<kind>, clutter.json manifest, contract 13): Khronos 515 GLBs 0 / 0;
+    tests: test_clutter 27 passed, test_vegetation + test_veg_style 63 passed. Sheet ck_10_bush_styles: open LOD 1 now
+    the same plant (pop gone); the tall closed variant is still box-sided at 40 m.
+  - Still wrong: no gorse / broom / heather look (hazel leaves, no flowers); pixar reed plume stalks dotted at 20 m;
+    kit rock tones still wider than cliff textures; wet line needs streambeds to write `water` / `sink`; nobody has
+    judged river rocks in the consumer's scene.
