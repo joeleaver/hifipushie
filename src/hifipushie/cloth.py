@@ -2827,7 +2827,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             dxs[nm] = dxs.get(nm, 0.0) + float(w["shift"][0])
             dzs[nm] = dzs.get(nm, 0.0) + float(w["shift"][1])
         if w.get("level"):  # pattern y = 0 at the body's <level> line (a skirt or waistband hangs from the waist)
-            dzs[nm] = dzs.get(nm, 0.0) + float(at[f"{w['level']}_z"]) - float(hps[2])
+            dzs[nm] = dzs.get(nm, 0.0) + float(at[f"{w['level']}_z"]) - float(w.get("drop", 0.0)) - float(hps[2])
     if torso:
         ylo = min(pcs[nm]["P"][:, 1].min() + dzs.get(nm, 0) for nm in torso)
         ytop = max(pcs[nm]["P"][:, 1].max() + dzs.get(nm, 0) for nm in torso)
@@ -3452,7 +3452,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             sgn = 1.0 if to.endswith("L") else -1.0
             if to not in leg_curve:
                 mine_ = [o for o in names if pcs[o]["wrap"].get("to") == to]
-                z_w = float(at["waist_z"])
+                z_w = float(at["waist_z"]) - float(w.get("drop", 0.0))  # (a dropped waist: pattern y = 0 under the waist line)
                 ylo_ = min(pcs[o]["P"][:, 1].min() for o in mine_)
                 yhi_ = max(pcs[o]["P"][:, 1].max() for o in mine_)
                 x0 = float(w.get("mid", 0.004))  # the flat's distance from the body's middle plane
@@ -7070,7 +7070,7 @@ def sizing(res: dict) -> dict:
                 mine, other, op = al
                 dz = float(pcs[other]["P"][pcs[other]["names"][op], 1] - P[pcs[nm]["names"][mine], 1])
             if pcs[nm]["wrap"].get("level"):  # pattern y = 0 at that body line
-                dz += float(body.at[f"{pcs[nm]['wrap']['level']}_z"]) - hps_z
+                dz += float(body.at[f"{pcs[nm]['wrap']['level']}_z"]) - float(pcs[nm]["wrap"].get("drop", 0.0)) - hps_z
             L = pcs[nm]["lines"].get(reg)
             y = float(np.mean(L[:, 1])) if L is not None else body.at[zk] - hps_z - dz  # the draft's line, or the
             # body's height (pattern y, hps at 0); the chest at the armhole's bottom (where a chest line ends: the
