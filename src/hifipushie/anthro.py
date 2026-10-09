@@ -170,8 +170,30 @@ def measure(P, J: dict, chin_z: float, top_z: float | None = None) -> dict:
     if len(mid):
         out["bust_circ"], out["bust_height"] = float(np.nanmax(G[at])), float(zs[kb] - z0)
         out["bust_projection"] = float(mid[:, 1].min() - fr[kb])
-    out["hip_circ"] = float(np.nanmax(G[(f > 0.02) & (f < 0.3)]))
-    out["hip_breadth"] = float(np.nanmax(B[(f > 0.02) & (f < 0.3)]))
+    # the hips: cut at the shoulder joints, a woman's hips (wider than her shoulder joints) were capped there: the
+    # breadth didn't move with weight or the hips modifier (Tess). Wider slabs instead, the arms (beside the thighs,
+    # an A pose) cut off at the first gap out from the centre line
+    hb, hg = [], []
+    gap = 0.1 * H / 1.75  # (the arms hang ~30 cm out in the template's A pose; the mesh's own vertex gaps reach ~7 cm)
+    for z, fz in zip(zs, f):
+        if not (0.02 < fz < 0.3):
+            continue
+        s_ = slab(z, 3.0 * abs(sh[0]))
+        if len(s_) < 8:
+            continue
+        keep = np.ones(len(s_), bool)
+        for sgn in (1, -1):
+            x = np.sort(sgn * s_[:, 0][sgn * s_[:, 0] > 0])
+            d = np.diff(x)
+            cut = np.flatnonzero((d > gap) & (x[:-1] > abs(float(J["hip.L"][0]))))  # (outward of the hip joint: the
+            # thighs part at the centre line below the crotch)
+            if len(cut):
+                keep &= ~(sgn * s_[:, 0] > x[cut[0]] + 1e-9)
+        t = s_[keep]
+        hb.append(float(np.ptp(t[:, 0])))
+        hg.append(_hull_len(t[:, :2]))
+    out["hip_circ"] = float(max(hg)) if hg else float(np.nanmax(G[(f > 0.02) & (f < 0.3)]))
+    out["hip_breadth"] = float(max(hb)) if hb else float(np.nanmax(B[(f > 0.02) & (f < 0.3)]))
     out["waist_breadth"] = float(np.nanmin(B[(f > 0.35) & (f < 0.65)]))
     zn = np.linspace(J["neck"][2], chin_z, 10) if chin_z > J["neck"][2] + 0.01 * H else [float(J["neck"][2])]
     out["neck_circ"] = float(np.nanmin([_hull_len(slab(z, 0.6 * abs(sh[0]))[:, :2]) for z in zn]))
