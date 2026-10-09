@@ -64,6 +64,19 @@ def test_draped_part_starts_closed():
     assert (cloth._open_share({}, {}, M) == 1.0).all()
 
 
+def test_open_front_lap_offset():
+    """Suit 9: the over front of a closure worn open can start without its lap's layers (garment key open_lap)."""
+    torso = ["front.L", "front.R", "back"]
+    cl = [{"name": "front", "state": "open", "over": "front.L", "under": "front.R"}]
+    assert cloth.open_unlapped({"closures": cl}, torso) == (set() if cloth.OPEN_LAP else {"front.L"})
+    assert cloth.open_unlapped({"closures": cl, "open_lap": False}, torso) == {"front.L"}
+    assert cloth.open_unlapped({"closures": cl, "open_lap": True}, torso) == set()
+    shut = [dict(cl[0], state="closed")]
+    assert cloth.open_unlapped({"closures": shut, "open_lap": False}, torso) == set()  # a buttoned front keeps its lap
+    cuff = [{"name": "cuff", "state": "open", "over": "cuff.L", "under": "cuff.L"}]
+    assert cloth.open_unlapped({"closures": cuff, "open_lap": False}, torso) == set()
+
+
 def test_worn_top_pad_rule():
     assert 1.0 < cloth.PAD_OVER_WORN < 1.5
 
