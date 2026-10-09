@@ -1,0 +1,1162 @@
+"""Clutter kit: the small solids a terrain is scattered with by the ten thousand (boulders, water-worn river rocks,
+cobble patches, bank slabs, driftwood), as game assets in a style.
+
+How prop artists make them: sculpt a HIGH form, decimate to a few LODs, bake the high form's normals / occlusion /
+colour onto the low ones, scatter with yaw / scale / squash so three or four shapes never read as clones. Here the high
+form is a signed distance (as the terrain's rock is), so the rock speaks the cliffs' language: a block bounded by two
+JOINT families and BEDDING planes (terrain_stack / terrain_blocks), corners chipped off, soft beds set back, weathered
+round by a smooth max (`bevel`) or water-worn toward an ellipsoid (`round`). Driftwood is crooked round cones with
+stubs. A preset (`clutter_presets/<kind>.json`) says what the thing is; a style sheet (`clutter_styles/<style>.json`)
+says how that style shapes and paints it (blobby = pebbles, anime = crisp planes + painted bands, cartoon = few big
+facets + a dark edge, pixar = soft sculpt + gradient); colours start from the terrain's rock colour turned by the
+terrain style's saturation / value.
+
+Each variant (a seed) is meshed once, decimated per LOD (pyfqmr), put back on the field; ONE atlas per asset holds
+every variant: six box-projected charts a variant (a texel = the first surface a ray along that axis meets, so every
+LOD reads the same picture by POSITION and nothing is unwrapped), baked from the field itself + a bake-only micro
+relief: albedo, tangent normal (TANGENT written: the chart's own axes), occlusion / roughness. Files and json follow
+the plant contract (veg_export.CONTRACT; `<stem>_seasons.json` with grade "clutter").
+
+Metres, Z up; the asset is authored at scale 1 = 1 m largest plan dimension, pivot at the ground line (`sink_m` of it
+is below)."""
+from __future__ import annotations
+
+import json
+import math
+import struct
+from pathlib import Path
+
+import numpy as np
+
+from . import noise
+
+HERE = Path(__file__).parent
+ROCK_SRGB = [0.36, 0.34, 0.31]  # terrain_rock.base_colour's grey rock: the reference a style turns
+WOOD_SRGB = [0.52, 0.5, 0.46]   # weathered, barkless wood (silver grey)
+
+FORM = {  # a rock's form; ranges are drawn per variant
+    "aspect": [[0.62, 0.95], [0.42, 0.75]],  # y / x and z / x of the block (x = 1: the largest plan dimension)
+    "cross": [65.0, 115.0],   # deg between the two joint families
+    "tilt": 10.0,             # deg: each joint face leans off the vertical by up to this
+    "dip": [2.0, 14.0],       # deg: the bedding's tilt (the block tumbled: any way)
+    "tumble": 25.0,           # deg: the whole block tipped
+    "chips": [6, 11],         # corners / edges broken off (planes)
+    "chip": [0.06, 0.36],     # how deep each cuts, as a share of the block's reach in that direction
+    "bevel": 0.05,            # m: arrises rounded (weathering)
+    "round": 0.0,             # 0..1: toward an ellipsoid (water-worn)
+    "beds": [0, 2],           # soft beds set back (ledges round part of the block)
+    "bed_set": [0.012, 0.03],  # m
+    "bed_thick": [0.015, 0.045],
+    "lumps": 0.02,            # m: slow unevenness of the faces
+    "lump_size": 0.35,        # m
+    "sink": 0.14,             # share of the height below the ground line
+    "cluster": None,          # {"count": [7, 13], "stone": [0.1, 0.26], "pile": 0.3}: many small stones as one asset
+}
+PAINT = {  # how the surface is painted (albedo multipliers round 1) and what relief only the maps carry
+    "tone": 0.1, "tone_size": 0.25,   # slow tone patches
+    "face_tone": 0.06,                # each joint / chip face its own tone
+    "speckle": 0.05,                  # mineral grain (per texel-ish)
+    "edge_light": 0.12,               # worn arrises paler (convex)
+    "cavity": 0.25,                   # cracks and hollows darker (concave)
+    "ink": 0.0, "ink_width": 0.012,   # a dark line along arrises (cartoon)
+    "bands": 0.0, "band_thick": [0.03, 0.12], "band_tones": [-0.6, 0.2, 0.7, -0.25],  # painted strata along the bedding
+    "gradient": 0.0,                  # lighter top, darker foot (0..1)
+    "top": 0.25, "top_color": [0.5, 0.52, 0.36], "top_size": 0.12,  # lichen / moss on up-facing rock
+    "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.15, 0.6],  # a mossy band (share of height)
+    "ao": 0.6,                        # occlusion strength (also baked half into the albedo's foot)
+    "roughness": 0.9,
+    "grain": 0.0015, "grain_size": 0.02,     # m: bake-only relief
+    "cracks": 0.004, "crack_size": 0.3,
+    "laminae": 0.0, "lamina": 0.012,
+    "pits": 0.0,
+    "normals": 30.0,                  # deg: LOD faces meeting sharper than this keep their own normals (0 = all smooth)
+}
+WOOD = {
+    "pieces": [1, 1],          # logs in the asset (a jam: several)
+    "length": [0.85, 1.0],     # of the main piece (x = 1)
+    "radius": [0.045, 0.075],  # at the butt
+    "taper": [0.45, 0.8],      # tip radius / butt radius
+    "crook": 0.05,             # sideways wander of the axis, x length
+    "stubs": [1, 4],           # broken branch stubs
+    "stub": [0.05, 0.16],      # their length
+    "fork": 0.3,               # probability the piece forks (a branch)
+    "bevel": 0.012,
+    "lumps": 0.006, "lump_size": 0.12,
+    "sink": 0.18,
+    "pile": 0.5,               # a jam: how far pieces lie across each other (0 = parallel)
+}
+WOOD_PAINT = {
+    "tone": 0.12, "tone_size": 0.2, "streak": 0.2, "streak_size": [0.25, 0.012], "speckle": 0.03,
+    "edge_light": 0.1, "cavity": 0.3, "ink": 0.0, "ink_width": 0.008, "gradient": 0.1, "ao": 0.6, "roughness": 0.85,
+    "grooves": 0.003, "groove_size": 0.012, "cracks": 0.003, "crack_size": 0.2, "normals": 40.0,
+    "top": 0.0, "top_color": [0.5, 0.52, 0.36], "top_size": 0.1, "moss": 0.0, "moss_color": [0.25, 0.36, 0.14],
+    "moss_band": [0.0, 0.5],
+}
+LODS = {"rock": [300, 100, 30], "cluster": [360, 120, 40], "wood": [220, 80, 24], "jam": [520, 170, 56]}
+LOD_SWITCH = [14.0, 40.0, 130.0]  # m x the instance's scale: LOD 1 from, LOD 2 from, gone at (fade over the last fifth)
+ATLAS = 1024
+
+
+# ---------------------------------------------------------------------------------------------------------- specs
+def presets() -> list:
+    return sorted(p.stem for p in (HERE / "clutter_presets").glob("*.json"))
+
+
+def styles() -> list:
+    return ["realistic"] + sorted(p.stem for p in (HERE / "clutter_styles").glob("*.json") if p.stem != "realistic")
+
+
+def _merge(a, b):
+    out = dict(a)
+    for k, v in (b or {}).items():
+        if v is None:
+            out.pop(k, None)
+        elif isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def style_sheet(style) -> dict:
+    """A style's clutter sheet (name or {"sheet": name, ...overrides})."""
+    over = {}
+    if isinstance(style, dict):
+        over = {k: v for k, v in style.items() if k != "sheet"}
+        style = style.get("sheet", "realistic")
+    style = style or "realistic"
+    p = HERE / "clutter_styles" / f"{style}.json"
+    if not p.exists():
+        raise ValueError(f"clutter style {style!r} unknown ({', '.join(styles())})")
+    st = _merge(json.loads(p.read_text()), over)
+    st["name"] = style
+    return st
+
+
+def resolve(spec: dict) -> dict:
+    """A clutter spec with its preset under it and its style's numbers laid over the form and paint:
+    {"kind": preset, "style": name | {...}, "seed", "variants", "form": {...}, "paint": {...}, "color": sRGB,
+    "lods": [triangles...], "atlas": px, "moss", "wet"}. Unknown keys are refused."""
+    kind = spec.get("kind", "boulder")
+    p = HERE / "clutter_presets" / f"{kind}.json"
+    if not p.exists():
+        raise ValueError(f"clutter kind {kind!r} unknown ({', '.join(presets())})")
+    pre = json.loads(p.read_text())
+    st = style_sheet(spec.get("style"))
+    mat = pre.get("material", "rock")
+    base_form, base_paint = (WOOD, WOOD_PAINT) if mat == "wood" else (FORM, PAINT)
+    S = st.get(mat) or {}
+    form = _merge(_merge(_merge(base_form, pre.get("form")), S.get("form")), spec.get("form"))
+    for k, x in (S.get("scale") or {}).items():  # multipliers on the preset's own numbers
+        if k in form and form[k] is not None:
+            form[k] = (np.asarray(form[k], float) * x).tolist() if isinstance(form[k], list) else form[k] * x
+    paint = _merge(_merge(_merge(base_paint, pre.get("paint")), S.get("paint")), spec.get("paint"))
+    for name, d, ref in (("form", form, base_form), ("paint", paint, base_paint)):
+        bad = set(d) - set(ref)
+        if bad:
+            raise ValueError(f"clutter {name} keys {sorted(bad)} unknown ({', '.join(sorted(ref))})")
+    known = {"kind", "style", "seed", "variants", "form", "paint", "color", "lods", "atlas", "name", "moss", "wet"}
+    bad = set(spec) - known
+    if bad:
+        raise ValueError(f"clutter spec keys {sorted(bad)} unknown ({', '.join(sorted(known))})")
+    if spec.get("moss") is not None:
+        paint["moss"] = float(spec["moss"])
+    from .terrain_style import _hsv
+    col = st.get("colour") or {}
+    ref = spec.get("color") or S.get("color") or pre.get("color") or (WOOD_SRGB if mat == "wood" else ROCK_SRGB)
+    color = spec.get("color") or _hsv(ref, col.get("saturation", 1.0) * S.get("saturation", 1.0),
+                                      col.get("value", 1.0) * S.get("value", 1.0))
+    shape = pre.get("shape") or ("cluster" if form.get("cluster") else "rock")
+    return {"kind": kind, "material": mat, "shape": shape, "style": st["name"], "seed": int(spec.get("seed", 1)),
+            "variants": int(spec.get("variants", pre.get("variants", 4))), "form": form, "paint": paint,
+            "color": [float(c) for c in color], "lods": list(spec.get("lods") or pre.get("lods") or LODS[shape]),
+            "atlas": int(spec.get("atlas", pre.get("atlas", ATLAS))), "about": pre.get("about", ""),
+            "collision": pre.get("collision", "convex" if shape == "rock" else None),
+            "wet": _merge({"darken": 0.55, "roughness": 0.25, "band": pre.get("wet_band", 0.0)}, spec.get("wet") if isinstance(spec.get("wet"), dict) else None),
+            "variant_forms": pre.get("variant_forms"),
+            "snow": st.get("snow"), "size_range": pre.get("size_range"), "place": pre.get("place")}
+
+
+# ------------------------------------------------------------------------------------------------------- the forms
+def _smax(vals, k):
+    out = vals[0]
+    for v in vals[1:]:
+        if k <= 0:
+            out = np.maximum(out, v)
+        else:
+            h = np.clip(0.5 + 0.5 * (v - out) / k, 0, 1)
+            out = out * (1 - h) + v * h + k * h * (1 - h)
+    return out
+
+
+def _rot(axis, deg):
+    a = math.radians(deg)
+    c, s = math.cos(a), math.sin(a)
+    x, y, z = axis
+    return np.array([[c + x * x * (1 - c), x * y * (1 - c) - z * s, x * z * (1 - c) + y * s],
+                     [y * x * (1 - c) + z * s, c + y * y * (1 - c), y * z * (1 - c) - x * s],
+                     [z * x * (1 - c) - y * s, z * y * (1 - c) + x * s, c + z * z * (1 - c)]])
+
+
+def _u(rng, r):
+    return float(rng.uniform(r[0], r[1])) if isinstance(r, (list, tuple)) else float(r)
+
+
+class Stone:
+    """One block: planes (joints, bedding, chips) met in a smooth max, blended toward an ellipsoid, soft beds set back."""
+
+    def __init__(self, rng, form, size=1.0, centre=(0, 0, 0), flat=False):
+        f = form
+        self.size = size
+        ay, az = _u(rng, f["aspect"][0]), _u(rng, f["aspect"][1])
+        self.half = 0.5 * size * np.array([1.0, ay, az])
+        self.c = np.asarray(centre, float)
+        t = f["tumble"] * (0.3 if flat else 1.0)
+        ax = rng.normal(0, 1, 3)
+        ax[2] *= 0.3
+        self.R = _rot([0, 0, 1], rng.uniform(0, 360)) @ _rot(ax / np.linalg.norm(ax), rng.uniform(-t, t))
+        a, b, c = self.half
+        th = math.radians(_u(rng, f["cross"]))
+        tl = f["tilt"]
+        N, D, kinds = [], [], []
+
+        def plane(n, d, kind):
+            N.append(np.asarray(n, float) / np.linalg.norm(n))
+            D.append(d)
+            kinds.append(kind)
+        lean = lambda: math.radians(rng.uniform(-tl, tl))
+        for sgn in (1, -1):  # family 1 (across x), family 2 (at the cross angle), bedding
+            l = lean()
+            w = math.radians(rng.uniform(-1.5, 1.5) * tl)  # (a face of a family is never quite parallel to its twin)
+            plane([sgn * math.cos(l) * math.cos(w), math.sin(w), math.sin(l)], a * rng.uniform(0.8, 1.0), 0)
+            l = lean()
+            w = th + math.radians(rng.uniform(-1.5, 1.5) * tl)
+            plane([sgn * math.cos(w) * math.cos(l), sgn * math.sin(w) * math.cos(l), math.sin(l)], b * rng.uniform(0.8, 1.0), 1)
+        for sgn in (1, -1):  # the minor family squares off the parallelogram's acute corners (terrain_stack's chamfer)
+            l = lean()
+            plane([0.2 * rng.normal(), sgn * math.cos(l), math.sin(l)], b * rng.uniform(0.9, 1.05), 1)
+        dip, daz = math.radians(_u(rng, f["dip"])), rng.uniform(0, 2 * math.pi)
+        self.bed_n = np.array([math.sin(dip) * math.cos(daz), math.sin(dip) * math.sin(daz), math.cos(dip)])
+        plane(self.bed_n, c * rng.uniform(0.85, 1.0), 2)
+        plane(-self.bed_n + 0.1 * rng.normal(0, 1, 3), c * rng.uniform(0.85, 1.0), 2)
+        base = (np.array(N), np.array(D))
+        corners = self._corners(*base)
+        for _ in range(int(rng.integers(f["chips"][0], f["chips"][1] + 1))):
+            n = rng.normal(0, 1, 3)
+            n /= np.linalg.norm(n)
+            reach = float((corners @ n).max()) if len(corners) else float(np.abs(n) @ self.half)
+            plane(n, reach * (1 - _u(rng, f["chip"])), 3)
+        self.N, self.D = np.array(N), np.array(D)
+        self.tone = rng.uniform(-1, 1, len(N))
+        self.bevel = f["bevel"] * size
+        self.round = f["round"]
+        self.beds = []
+        for _ in range(int(rng.integers(f["beds"][0], f["beds"][1] + 1))):
+            self.beds.append((rng.uniform(-0.7, 0.7) * c, _u(rng, f["bed_thick"]) * size, _u(rng, f["bed_set"]) * size,
+                              rng.uniform(0, 2 * math.pi), rng.uniform(0.3, 1.0)))
+        self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
+        self.r_bound = (float(np.linalg.norm(corners, axis=1).max()) if len(corners) else float(np.linalg.norm(self.half))) * 1.05 + 0.02
+        cw = (corners if len(corners) else np.array([self.half, -self.half])) @ self.R.T + self.c
+        self.lo, self.hi = cw.min(0) - 0.04 * size - 0.01, cw.max(0) + 0.04 * size + 0.01
+
+    def _corners(self, N, D):
+        """Vertices of the polyhedron {N p <= D} (triples of planes), for chip depths."""
+        out = []
+        n = len(N)
+        for i in range(n):
+            for j in range(i + 1, n):
+                for k in range(j + 1, n):
+                    A = N[[i, j, k]]
+                    if abs(np.linalg.det(A)) < 1e-3:
+                        continue
+                    p = np.linalg.solve(A, D[[i, j, k]])
+                    if (N @ p <= D + 1e-6).all():
+                        out.append(p)
+        return np.array(out) if out else np.zeros((0, 3))
+
+    def local(self, p):
+        return (p - self.c) @ self.R
+
+    def sd(self, p, info=False):
+        q = self.local(p)
+        vals = q @ self.N.T - self.D  # (n, planes)
+        d = _smax([vals[:, i] for i in range(vals.shape[1])], self.bevel)
+        if self.round > 0:
+            k = np.linalg.norm(q / self.half, axis=1)
+            de = (k - 1.0) * self.half.min() * (0.6 + 0.4 * np.minimum(k, 2.0) / 2.0) / 0.8
+            d = (1 - self.round) * d + self.round * de
+        zb = q @ self.bed_n
+        for z0, th, dep, az, cover in self.beds:  # a soft bed set back round part of the block
+            w = np.clip(1 - np.abs(zb - z0) / th, 0, 1)
+            w = w * w * (3 - 2 * w)
+            ang = np.arctan2(q[:, 1], q[:, 0])
+            along = np.clip((np.cos(ang - az) - (1 - 2 * cover)) / 0.4, 0, 1)
+            d = d + dep * w * along
+        if self.lumps:
+            d = d + self.lumps * (noise.fbm(q, self.lump_size, 2, self.seed) - 0.5) * 2
+        if not info:
+            return d
+        o = np.argsort(vals, axis=1)
+        i1, i2 = o[:, -1], o[:, -2]
+        r = np.arange(len(q))
+        return d, {"face": i1, "edge": vals[r, i1] - vals[r, i2], "tone": self.tone[i1], "bed": zb, "q": q,
+                   "axis": None}
+
+
+class Wood:
+    """A piece of driftwood: a crooked tapering stem, broken stubs, maybe a fork; round cones met softly."""
+
+    def __init__(self, rng, form, size=1.0, centre=(0, 0, 0), yaw=0.0, pitch=0.0):
+        f = form
+        L = _u(rng, f["length"]) * size
+        r0 = _u(rng, f["radius"]) * size
+        r1 = r0 * _u(rng, f["taper"])
+        n = 6
+        t = np.linspace(-0.5, 0.5, n)
+        ph = rng.uniform(0, 6.28, 2)
+        P = np.c_[t * L, f["crook"] * L * np.sin(3.0 * t + ph[0]) + 0.3 * f["crook"] * L * np.sin(9 * t + ph[1]),
+                  0.5 * f["crook"] * L * np.sin(2.3 * t + ph[1])]
+        Rr = np.linspace(r0, r1, n)
+        segs = [(P[i], P[i + 1], Rr[i], Rr[i + 1]) for i in range(n - 1)]
+        for _ in range(int(rng.integers(f["stubs"][0], f["stubs"][1] + 1))):
+            i = int(rng.integers(0, n - 2))
+            a = P[i] + (P[i + 1] - P[i]) * rng.uniform()
+            d = np.array([rng.uniform(0.2, 0.8), rng.normal(), rng.normal()])
+            d /= np.linalg.norm(d)
+            l = _u(rng, f["stub"]) * size
+            segs.append((a, a + d * l, Rr[i] * 0.55, Rr[i] * 0.3))
+        if rng.uniform() < f["fork"]:
+            i = int(rng.integers(1, n - 2))
+            d = np.array([0.8, rng.choice([-1, 1]) * rng.uniform(0.4, 0.8), rng.uniform(-0.2, 0.4)])
+            d /= np.linalg.norm(d)
+            l = rng.uniform(0.25, 0.45) * L
+            m = P[i] + d * l * 0.5 + 0.03 * L * rng.normal(0, 1, 3)
+            segs.append((P[i], m, Rr[i] * 0.7, Rr[i] * 0.5))
+            segs.append((m, P[i] + d * l, Rr[i] * 0.5, Rr[i] * 0.3))
+        R = _rot([0, 0, 1], math.degrees(yaw)) @ _rot([0, 1, 0], math.degrees(pitch))
+        c = np.asarray(centre, float)
+        self.segs = [(a @ R.T + c, b @ R.T + c, ra, rb) for a, b, ra, rb in segs]
+        self.bevel = f["bevel"] * size
+        self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
+        self.c = c
+        self.tone = rng.uniform(-1, 1, len(self.segs))
+        self.r_bound = 0.5 * L + r0 * 2 + 0.2 * size
+        ends = np.array([[a - ra, a + ra, b - rb, b + rb] for a, b, ra, rb in self.segs]).reshape(-1, 3)
+        self.lo, self.hi = ends.min(0) - 0.02 * size, ends.max(0) + 0.02 * size
+
+    def sd(self, p, info=False):
+        best = np.full(len(p), 1e9)
+        soft = None
+        ax = np.zeros((len(p), 3))
+        sc = np.zeros(len(p))
+        ton = np.zeros(len(p))
+        second = np.full(len(p), 1e9)
+        s0 = 0.0
+        for k, (a, b, ra, rb) in enumerate(self.segs):
+            ab = b - a
+            l2 = float(ab @ ab)
+            t = np.clip(((p - a) @ ab) / l2, 0, 1)
+            # a blunt broken end: beyond the end the distance grows along the axis (no round cap)
+            d = np.linalg.norm(p - a - t[:, None] * ab, axis=1) - (ra + (rb - ra) * t)
+            better = d < best
+            second = np.where(better, best, np.minimum(second, d))
+            if info:
+                ax[better] = ab / math.sqrt(l2)
+                sc[better] = s0 + t[better] * math.sqrt(l2)
+                ton[better] = self.tone[k]
+            best = np.minimum(best, d)
+            h = self.bevel
+            soft = d if soft is None else (lambda x, y: np.minimum(x, y) - h * np.clip(1 - np.abs(x - y) / (4 * h), 0, 1) ** 2)(soft, d) if h > 0 else np.minimum(soft, d)
+            s0 += math.sqrt(l2)
+        d = soft
+        if self.lumps:
+            d = d + self.lumps * (noise.fbm(p - self.c, self.lump_size, 2, self.seed) - 0.5) * 2
+        if not info:
+            return d
+        return d, {"face": np.zeros(len(p), int), "edge": np.full(len(p), 1.0), "tone": ton, "bed": sc,
+                   "q": p - self.c, "axis": ax}
+
+
+class Solid:
+    """A variant: one or more pieces as a hard union (a cluster of cobbles, a jam of logs), seated on the ground."""
+
+    def __init__(self, cfg: dict, k: int):
+        rng = np.random.default_rng([cfg["seed"], k, 77])
+        f = cfg["form"]
+        vf = cfg.get("variant_forms")
+        self.lods_x = 1.0
+        if vf:
+            o = dict(vf[k % len(vf)])
+            self.lods_x = float(o.pop("lods_x", 1.0))
+            f = _merge(f, o)
+        self.wood = cfg["material"] == "wood"
+        if self.wood:
+            n = int(rng.integers(f["pieces"][0], f["pieces"][1] + 1))
+            self.parts = []
+            for i in range(n):
+                if n == 1:
+                    self.parts.append(Wood(rng, f))
+                    continue
+                s = 1.0 if i == 0 else rng.uniform(0.45, 0.85)
+                yaw = rng.uniform(-1, 1) * f["pile"] * math.pi * 0.5 if i else 0.0
+                z = 0.5 * i * _u(rng, f["radius"]) * 1.6
+                self.parts.append(Wood(rng, f, s, (rng.uniform(-0.15, 0.15), rng.uniform(-0.12, 0.12), z), yaw,
+                                       rng.uniform(-0.25, 0.25) * (i > 0)))
+        elif f.get("cluster"):
+            cl = f["cluster"]
+            n = int(rng.integers(cl["count"][0], cl["count"][1] + 1))
+            self.parts, placed = [], []
+            for i in range(n * 30):
+                if len(self.parts) >= n:
+                    break
+                s = _u(rng, cl["stone"])
+                r = 0.5 * math.sqrt(rng.uniform()) * (1 - s)
+                a = rng.uniform(0, 2 * math.pi)
+                xy = np.array([r * math.cos(a), r * math.sin(a) * 0.8])
+                if any(np.linalg.norm(xy - q) < (0.5 - 0.5 * cl.get("pile", 0.3)) * (s + t) for q, t in placed):
+                    continue
+                placed.append((xy, s))
+                self.parts.append(Stone(rng, f, s, (xy[0], xy[1], 0.0), flat=True))
+        else:
+            self.parts = [Stone(rng, f, 1.0, flat=cfg["kind"] == "slab")]
+        self.cluster = len(self.parts) > 1
+        self.sink_share = f["sink"]
+        lo = np.min([p.lo for p in self.parts], 0)
+        hi = np.max([p.hi for p in self.parts], 0)
+        self.lo, self.hi = lo, hi
+        self.sink_share = f["sink"]
+
+    def sd(self, p, info=False):
+        if not info:
+            out = self.parts[0].sd(p)
+            for q in self.parts[1:]:
+                near = np.linalg.norm(p - q.c, axis=1) < q.r_bound + 0.05
+                d = np.full(len(p), 1e3)
+                d[near] = q.sd(p[near])
+                # far from a piece its distance is at least its bound's
+                d[~near] = np.linalg.norm(p[~near] - q.c, axis=1) - q.r_bound
+                out = np.minimum(out, d)
+            return out
+        d, I = self.parts[0].sd(p, True)
+        I = {k: (np.array(v) if v is not None else None) for k, v in I.items()}
+        I["part"] = np.zeros(len(p), int)
+        for j, q in enumerate(self.parts[1:], 1):
+            d2, I2 = q.sd(p, True)
+            b = d2 < d
+            for k in I:
+                if k != "part" and I[k] is not None:
+                    I[k][b] = I2[k][b]
+            I["part"][b] = j
+            d = np.minimum(d, d2)
+        return d, I
+
+
+# -------------------------------------------------------------------------------------------------- mesh and LODs
+def _grad(fn, p, h):
+    g = np.empty_like(p)
+    for a in range(3):
+        e = np.zeros(3)
+        e[a] = h
+        g[:, a] = fn(p + e) - fn(p - e)
+    return g / (2 * h)
+
+
+def _onto(fn, V, h, steps=3):
+    for _ in range(steps):
+        g = _grad(fn, V, h)
+        st = g * (fn(V) / np.maximum((g * g).sum(1), 1e-9))[:, None]
+        ln = np.linalg.norm(st, axis=1, keepdims=True)
+        V = V - st * np.minimum(1.0, 0.03 / np.maximum(ln, 1e-9))  # (never a long jump: a far vertex's Newton step can leave the form)
+    return V
+
+
+def _volume(solid: Solid, n=88):
+    span = solid.hi - solid.lo
+    vox = float(span.max()) / n
+    ax = [solid.lo[i] + np.arange(int(span[i] / vox) + 2) * vox for i in range(3)]
+    G = np.stack(np.meshgrid(*ax, indexing="ij"), -1).reshape(-1, 3)
+    v = np.concatenate([solid.sd(G[i: i + 200000]) for i in range(0, len(G), 200000)]).reshape([len(a) for a in ax])
+    return v, ax, vox
+
+
+def _mesh(vol, ax, vox):
+    from skimage import measure
+    V, F, _, _ = measure.marching_cubes(vol, 0.0, spacing=(vox,) * 3)
+    V = V + [ax[0][0], ax[1][0], ax[2][0]]
+    F = np.ascontiguousarray(F[:, ::-1])  # (skimage winds for an increasing-inward field: ours is negative inside)
+    c = V[F].mean(1)
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    if (np.einsum("ij,ij->i", fn, c - V.mean(0))).sum() < 0:
+        F = np.ascontiguousarray(F[:, ::-1])
+    return V, F
+
+
+def _decimate(V, F, target):
+    if len(F) <= target:
+        return V, F
+    import pyfqmr
+    best = (V, F)
+    for agg in (4, 6, 8):
+        s = pyfqmr.Simplify()
+        s.setMesh(np.ascontiguousarray(V, np.float64), np.ascontiguousarray(F, np.int32))
+        s.simplify_mesh(target_count=int(target), aggressiveness=agg, preserve_border=True, verbose=False)
+        V2, F2, _ = s.getMesh()
+        best = (np.asarray(V2, float), np.asarray(F2, np.int64))
+        if len(F2) <= 1.1 * target:
+            break
+    for _ in range(4):  # (stalled far above the target: go on from where it stopped)
+        if len(best[1]) <= 1.25 * target:
+            break
+        s = pyfqmr.Simplify()
+        s.setMesh(np.ascontiguousarray(best[0], np.float64), np.ascontiguousarray(best[1], np.int32))
+        s.simplify_mesh(target_count=int(target), aggressiveness=9, preserve_border=False, verbose=False, max_iterations=200)
+        V2, F2, _ = s.getMesh()
+        if len(F2) >= len(best[1]):
+            break
+        best = (np.asarray(V2, float), np.asarray(F2, np.int64))
+    return best
+
+
+def _drop_specks(V, F, keep_share=0.02):
+    """Pieces of a mesh too small to matter (a cluster's stone decimated to a sliver)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    n = len(V)
+    e = np.r_[F[:, [0, 1]], F[:, [1, 2]]]
+    _, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), (n, n)), directed=False)
+    area = 0.5 * np.linalg.norm(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]), axis=1)
+    fl = lab[F[:, 0]]
+    tot = np.bincount(fl, area, minlength=lab.max() + 1)
+    cnt = np.bincount(fl, minlength=lab.max() + 1)
+    ok = (tot[fl] > keep_share * tot.max()) & (cnt[fl] >= 4)
+    return F[ok]
+
+
+def mesh_check(V, F) -> dict:
+    """A LOD's soundness with its chart seams welded: edges with one face (open) or more than two (non-manifold),
+    faces of no area."""
+    _, inv = np.unique(np.round(V, 6), axis=0, return_inverse=True)
+    G = inv.reshape(-1)[F]
+    e = np.sort(np.r_[G[:, [0, 1]], G[:, [1, 2]], G[:, [2, 0]]], axis=1)
+    _, cnt = np.unique(e, axis=0, return_counts=True)
+    ar = np.linalg.norm(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]), axis=1)
+    return {"triangles": int(len(F)), "open_edges": int((cnt == 1).sum()), "nonmanifold_edges": int((cnt > 2).sum()),
+            "degenerate": int((ar < 1e-10).sum())}
+
+
+CHARTS = [(0, 1), (0, -1), (1, 1), (1, -1), (2, 1), (2, -1)]  # (axis, sign)
+
+
+def _chart_axes(a, s):
+    """A chart's picture axes in the solid's frame: (u axis index, u sign, row axis index, row sign). Side charts are
+    upright (rows run down = -z), the top chart is a map (rows run -y), mirrored as seen from that side."""
+    if a == 2:
+        return (0, 1, 1, -s)
+    h = 1 if a == 0 else 0
+    return (h, (s if a == 0 else -s), 2, -1)
+
+
+def _chart_rect(k, cell):
+    """Chart k's pixel rectangle inside a variant's cell (3 x 2 charts): x0, y0, w, h."""
+    w, h = cell // 3, cell // 2
+    return (k % 3) * w, (k // 3) * h, w, h
+
+
+def _uv_of(P, a, s, lo, hi, rect, margin=3):
+    ui, us, ri, rs = _chart_axes(a, s)
+    x0, y0, w, h = rect
+    fu = (P[:, ui] - lo[ui]) / (hi[ui] - lo[ui])
+    fr = (P[:, ri] - lo[ri]) / (hi[ri] - lo[ri])
+    if us < 0:
+        fu = 1 - fu
+    if rs < 0:
+        fr = 1 - fr
+    return np.c_[x0 + margin + fu * (w - 2 * margin), y0 + margin + fr * (h - 2 * margin)]
+
+
+def lod_mesh(solid: Solid, V, F, target, cfg, cell, origin, base, h, hull=False):
+    """One LOD: decimated, back on the field, split into charts (uv by position), smooth normals from the field
+    (split where faces meet sharply), tangents from the charts."""
+    if hull:
+        V2, F2 = _hull(V, target)
+    else:
+        V2, F2 = _decimate(V, F, target)
+        F2 = _drop_specks(V2, F2) if solid.cluster else F2
+        V2 = _onto(solid.sd, V2, h, 2)
+    # (degenerate faces after the move)
+    ar = np.linalg.norm(np.cross(V2[F2[:, 1]] - V2[F2[:, 0]], V2[F2[:, 2]] - V2[F2[:, 0]]), axis=1)
+    F2 = F2[ar > 1e-9]
+    fnorm = np.cross(V2[F2[:, 1]] - V2[F2[:, 0]], V2[F2[:, 2]] - V2[F2[:, 0]])
+    fnorm /= np.maximum(np.linalg.norm(fnorm, axis=1, keepdims=True), 1e-12)
+    N = _smooth_normal(solid, V2, h)
+    # a flipped smooth normal (thin parts): take the faces' own
+    vn = np.zeros_like(V2)
+    for c in range(3):
+        np.add.at(vn, F2[:, c], fnorm)
+    vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
+    bad = (N * vn).sum(1) < 0.2
+    N[bad] = vn[bad]
+    chart = np.array([CHARTS.index((int(a), int(np.sign(n[a]) or 1))) for n, a in zip(fnorm, np.abs(fnorm).argmax(1))])
+    sharp = math.cos(math.radians(cfg["paint"]["normals"])) if cfg["paint"]["normals"] > 0 else -2.0
+    # corners: (vertex, chart, own-normal flag) -> output vertex
+    P, Nn, UV, T, idx, key = [], [], [], [], np.zeros_like(F2), {}
+    for fi in range(len(F2)):
+        a, s = CHARTS[chart[fi]]
+        for c in range(3):
+            v = int(F2[fi, c])
+            own = (fnorm[fi] @ N[v]) < sharp
+            kk = (v, int(chart[fi]), fi if own else -1)
+            if kk not in key:
+                key[kk] = len(P)
+                P.append(V2[v])
+                Nn.append(fnorm[fi] if own else N[v])
+            idx[fi, c] = key[kk]
+    P, Nn = np.array(P), np.array(Nn)
+    UV = np.zeros((len(P), 2))
+    T = np.zeros((len(P), 4))
+    vchart = np.zeros(len(P), int)
+    for (v, ch, _), o in key.items():
+        vchart[o] = ch
+    for ch, (a, s) in enumerate(CHARTS):
+        m = vchart == ch
+        if not m.any():
+            continue
+        rect = _chart_rect(ch, cell)
+        px = _uv_of(P[m], a, s, solid.lo, solid.hi, rect)
+        UV[m] = (px + origin) / base
+        T[m] = _tangents(Nn[m], a, s)
+    return {"V": P, "N": Nn, "UV": UV, "T": T, "F": idx, "triangles": int(len(idx)), "chart": chart}
+
+
+def _smooth_normal(solid, P, h):
+    g = _grad(solid.sd, P, max(h * 4, 0.012))
+    return g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
+
+
+def _tangents(N, a, s):
+    """glTF TANGENT for a chart: xyz = the picture's +u direction made square to the normal, w so that
+    cross(N, T) * w points UP the picture (glTF's +Y of a normal map; rows run down)."""
+    ui, us, ri, rs = _chart_axes(a, s)
+    tu = np.zeros(3)
+    tu[ui] = us
+    up = np.zeros(3)
+    up[ri] = -rs
+    T = tu[None] - N * (N @ tu)[:, None]
+    ln = np.linalg.norm(T, axis=1, keepdims=True)
+    T = np.where(ln > 1e-6, T / np.maximum(ln, 1e-6), np.cross(N, up)[..., :])
+    w = np.sign((np.cross(N, T) * up[None]).sum(1))
+    w[w == 0] = 1
+    return np.c_[T, w]
+
+
+# ---------------------------------------------------------------------------------------------------------- the bake
+def _cracks(p, q, seed):
+    """0..1.5: fracture lines (two sizes), present in patches."""
+    r = np.abs(noise.fbm(q, p["crack_size"], 2, seed + 2) - 0.5) * 2
+    r2 = np.abs(noise.fbm(q + 7.3, p["crack_size"] * 0.45, 2, seed + 3) - 0.5) * 2
+    w = max(0.03, 0.009 / p["crack_size"])
+    on = np.clip((noise.fbm(q + 3.3, p["crack_size"] * 1.5, 1, seed + 8) - 0.4) / 0.15, 0, 1)
+    return np.clip(1 - r / w, 0, 1) ** 2 + 0.5 * on * np.clip(1 - r2 / w, 0, 1) ** 2
+
+
+def _micro(cfg, I, P, seed):
+    """Bake-only relief (m, + = out of the rock): grain, cracks, laminae along the bedding, grooves along wood."""
+    p = cfg["paint"]
+    q = I["q"]
+    h = np.zeros(len(P))
+    if p.get("grain"):
+        h += p["grain"] * (noise.fbm(q, p["grain_size"], 2, seed + 1) - 0.5) * 2
+    if p.get("cracks"):
+        h -= p["cracks"] * _cracks(p, q, seed)
+    if p.get("laminae"):
+        zb = I["bed"] + 0.004 * noise.fbm(q, 0.15, 2, seed + 4)
+        t = np.abs(((zb / p["lamina"]) % 1.0) - 0.5) * 2
+        h -= p["laminae"] * np.clip(1 - t / 0.25, 0, 1) * (noise.fbm(q, 0.2, 1, seed + 5) > 0.4)
+    if p.get("pits"):
+        r = noise.fbm(q, 0.03, 2, seed + 6)
+        h -= p["pits"] * np.clip((r - 0.62) / 0.1, 0, 1)
+    if p.get("grooves") and I.get("axis") is not None:
+        ax = I["axis"]
+        perp = q - ax * (q * ax).sum(1, keepdims=True)
+        st = perp / p["groove_size"] + ax * (q * ax).sum(1, keepdims=True) / (p["groove_size"] * 30)
+        h += p["grooves"] * (noise.fbm(st, 1.0, 2, seed + 7) - 0.5) * 2
+    return h
+
+
+def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed):
+    """Albedo (sRGB) and roughness at surface points."""
+    p = cfg["paint"]
+    q = I["q"]
+    tone = 1.0 + p["tone"] * (noise.fbm(q, p["tone_size"], 3, seed + 11) - 0.5) * 2
+    tone = tone * (1 + p.get("face_tone", 0) * I["tone"])
+    if p.get("speckle"):
+        tone = tone * (1 + p["speckle"] * ((noise.fbm(q, 0.012, 2, seed + 12) - 0.5) * 2 + (noise.fbm(q, 0.05, 2, seed + 22) - 0.5) * 2))
+    if p.get("streak") and I.get("axis") is not None:
+        ax = I["axis"]
+        al = (q * ax).sum(1, keepdims=True)
+        st = (q - ax * al) / p["streak_size"][1] + ax * al / p["streak_size"][0]
+        tone = tone * (1 + p["streak"] * (noise.fbm(st, 1.0, 3, seed + 13) - 0.5) * 2)
+    if p.get("bands"):
+        zb = I["bed"] + 0.01 * (noise.fbm(q, 0.3, 2, seed + 14) - 0.5)
+        lo, hi = p["band_thick"]
+        # bands of wandering thickness: a warped coordinate cut into unit cells, each cell one of the tones
+        wz = zb / (0.5 * (lo + hi)) + 0.8 * (noise.fbm(np.c_[zb, zb * 0, zb * 0] + 3.1, hi * 2.0, 1, seed + 15) - 0.5) * (hi - lo) / (lo + hi) * 4
+        cell = np.floor(wz).astype(np.int64)
+        tn = np.asarray(p["band_tones"], float)
+        pick = tn[(noise._hash(cell, cell * 0 + 5, cell * 0 + 9, seed + 16) * len(tn)).astype(int) % len(tn)]
+        tone = tone * (1 + p["bands"] * pick)
+    if p.get("cracks"):
+        tone = tone * (1 - min(0.6, p["cavity"] * 1.6) * np.clip(_cracks(p, q, seed), 0, 1))
+    col = np.asarray(cfg["color"], float)[None] * tone[:, None]
+    # curvature: convex arrises worn pale, concave darker; an ink line along arrises
+    cv = np.clip(curv, -1, 1)
+    col = col * (1 + p["edge_light"] * np.clip(cv, 0, 1) - p["cavity"] * np.clip(-cv, 0, 1))[:, None]
+    if p.get("ink"):
+        e = np.clip(1 - np.abs(I["edge"]) / p["ink_width"], 0, 1)
+        e = np.maximum(e, np.clip(cv * 1.5 - 0.35, 0, 1))
+        col = col * (1 - p["ink"] * e * e * (3 - 2 * e))[:, None]
+    up = Nrm[:, 2]
+    if p.get("gradient"):
+        col = col * (1 + p["gradient"] * (np.clip(zrel, 0, 1) - 0.5) + 0.5 * p["gradient"] * (up * 0.5))[:, None]
+    if p.get("top"):
+        m = np.clip((up - 0.45) / 0.35, 0, 1) * np.clip((noise.fbm(q, p["top_size"], 3, seed + 17) - 0.42) / 0.14, 0, 1)
+        m = m * p["top"]
+        col = col * (1 - m[:, None]) + np.asarray(p["top_color"], float)[None] * (0.85 + 0.3 * noise.fbm(q, 0.02, 2, seed + 18))[:, None] * m[:, None]
+    if p.get("moss"):
+        b0, b1 = p["moss_band"]
+        band = np.clip((zrel - b0) / 0.08, 0, 1) * np.clip((b1 - zrel) / 0.15, 0, 1)
+        m = band * np.clip((noise.fbm(q, 0.09, 3, seed + 19) - 0.5 + 0.5 * p["moss"]) / 0.15, 0, 1) * np.clip(0.6 + up, 0, 1)
+        m = np.clip(m * min(1.0, 2 * p["moss"]), 0, 1)
+        col = col * (1 - m[:, None]) + np.asarray(p["moss_color"], float)[None] * (0.8 + 0.4 * noise.fbm(q, 0.015, 2, seed + 20))[:, None] * m[:, None]
+    col = col * (1 - 0.5 * p["ao"] * (1 - ao))[:, None]
+    rough = np.clip(p["roughness"] * (1 + 0.08 * (tone - 1) * 4), 0.05, 1.0)
+    return np.clip(col, 0, 1), rough
+
+
+def _dilate(img, solid_mask, rounds=6):
+    """Filled texels spread into empty ones (nearest), so mips and bilinear taps at chart edges read rock."""
+    from scipy import ndimage
+    if solid_mask.all() or not solid_mask.any():
+        return img
+    idx = ndimage.distance_transform_edt(~solid_mask, return_distances=False, return_indices=True)
+    return img[idx[0], idx[1]]
+
+
+def _raster_normals(L, pix, ch, rect):
+    """LOD 0's interpolated vertex normals per texel of chart ch: (h, w, 3) and a mask (what the engine's shading
+    starts from there; the baked normal is told apart from THIS, so flat faces with their own normals stay flat)."""
+    x0, y0, w, h = rect
+    out = np.zeros((h, w, 3))
+    got = np.zeros((h, w), bool)
+    F, N = L["F"], L["N"]
+    for f in F[L["chart"] == ch]:
+        p = pix[f] - [x0, y0]
+        lo = np.maximum(np.floor(p.min(0)).astype(int) - 1, 0)
+        hi = np.minimum(np.ceil(p.max(0)).astype(int) + 2, [w, h])
+        if (hi <= lo).any():
+            continue
+        X, Y = np.meshgrid(np.arange(lo[0], hi[0]) + 0.5, np.arange(lo[1], hi[1]) + 0.5)
+        d = (p[1, 1] - p[2, 1]) * (p[0, 0] - p[2, 0]) + (p[2, 0] - p[1, 0]) * (p[0, 1] - p[2, 1])
+        if abs(d) < 1e-9:
+            continue
+        a = ((p[1, 1] - p[2, 1]) * (X - p[2, 0]) + (p[2, 0] - p[1, 0]) * (Y - p[2, 1])) / d
+        b = ((p[2, 1] - p[0, 1]) * (X - p[2, 0]) + (p[0, 0] - p[2, 0]) * (Y - p[2, 1])) / d
+        c = 1 - a - b
+        m = (a > -0.15) & (b > -0.15) & (c > -0.15)
+        if not m.any():
+            continue
+        n = a[..., None] * N[f[0]] + b[..., None] * N[f[1]] + c[..., None] * N[f[2]]
+        sl = (slice(lo[1], hi[1]), slice(lo[0], hi[0]))
+        inside = (a >= 0) & (b >= 0) & (c >= 0)
+        take = m & (inside | ~got[sl])
+        out[sl][take] = n[take]
+        got[sl] |= take
+    ln = np.linalg.norm(out, axis=2, keepdims=True)
+    return out / np.maximum(ln, 1e-9), got
+
+
+def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None):
+    """A variant's six charts: (albedo (cell, cell, 3) sRGB, normal (.., 3) tangent, orm (.., 3), filled mask)."""
+    from scipy import ndimage
+    p = cfg["paint"]
+    alb = np.zeros((cell, cell, 3))
+    nrm = np.zeros((cell, cell, 3))
+    nrm[..., 2] = 1
+    orm = np.ones((cell, cell, 3))
+    orm[..., 2] = 0
+    filled = np.zeros((cell, cell), bool)
+    lo, hi = solid.lo, solid.hi
+    zbot = None
+    for ch, (a, s) in enumerate(CHARTS):
+        x0, y0, w, h = _chart_rect(ch, cell)
+        ui, us, ri, rs = _chart_axes(a, s)
+        m = 3
+        fu = (np.arange(w) + 0.5 - m) / (w - 2 * m)
+        fr = (np.arange(h) + 0.5 - m) / (h - 2 * m)
+        if us < 0:
+            fu = 1 - fu
+        if rs < 0:
+            fr = 1 - fr
+        cu = lo[ui] + fu * (hi[ui] - lo[ui])
+        cr = lo[ri] + fr * (hi[ri] - lo[ri])
+        # the volume resampled on (depth along a) x (rows) x (cols)
+        vo = np.moveaxis(vol, (a, ri, ui), (0, 1, 2))
+        gi = (cr - ax[ri][0]) / vox
+        gj = (cu - ax[ui][0]) / vox
+        JJ, II = np.meshgrid(gj, gi)
+        nd = vo.shape[0]
+        stack = np.stack([ndimage.map_coordinates(vo[d], [II, JJ], order=1, mode="nearest") for d in range(nd)])
+        if s > 0:
+            stack = stack[::-1]
+        inside = stack < 0
+        first = inside.argmax(0)
+        hit = inside.any(0) & (first > 0)
+        f1 = np.take_along_axis(stack, first[None], 0)[0]
+        f0 = np.take_along_axis(stack, np.maximum(first - 1, 0)[None], 0)[0]
+        frac = np.where(hit, f0 / np.maximum(f0 - f1, 1e-9), 0)
+        dpos = (first - 1 + frac)
+        depth = ax[a][-1] - dpos * vox if s > 0 else ax[a][0] + dpos * vox
+        rr, cc = np.nonzero(hit)
+        if not len(rr):
+            continue
+        P = np.zeros((len(rr), 3))
+        P[:, a] = depth[rr, cc]
+        P[:, ri] = cr[rr]
+        P[:, ui] = cu[cc]
+        e = np.zeros(3)
+        e[a] = 1
+        for _ in range(3):  # onto the exact field along the ray
+            P[:, a] -= np.clip(solid.sd(P), -vox, vox) * s * 0.9
+        d, I = solid.sd(P, True)
+        hstep = max(0.0025, vox * 0.25)
+
+        def fine(X):
+            dd, II_ = solid.sd(X, True)
+            return dd - _micro(cfg, II_, X, seed)
+        g = _grad(fine, P, hstep)
+        nh = g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
+        Ns = _smooth_normal(solid, P, vox)
+        if low is not None:
+            Nl, got = _raster_normals(low[0], low[1], ch, (x0, y0, w, h))
+            use = got[rr, cc] & ((Nl[rr, cc] * Ns).sum(1) > 0.2)
+            Ns = np.where(use[:, None], Nl[rr, cc], Ns)
+        T4 = _tangents(Ns, a, s)
+        Bt = np.cross(Ns, T4[:, :3]) * T4[:, 3:4]
+        nt = np.c_[(nh * T4[:, :3]).sum(1), (nh * Bt).sum(1), np.maximum((nh * Ns).sum(1), 0.05)]
+        nt /= np.linalg.norm(nt, axis=1, keepdims=True)
+        # curvature (the field's Laplacian at two sizes) and occlusion (the field a little way out)
+        r1 = max(0.02, 3 * vox)
+        lap = sum(solid.sd(P + o) for o in (np.eye(3)[i] * r1 * sg for i in range(3) for sg in (1, -1))) - 6 * d
+        curv = lap / r1 * 0.35 - 0.12 / 1.0
+        curv = np.clip((lap / r1 - 0.25) * 0.9, -1, 1)
+        ao = np.ones(len(P))
+        for r in (0.03, 0.08, 0.18):
+            ao = np.minimum(ao, np.clip(solid.sd(P + Ns * r) / r, 0, 1) * 0.5 + 0.5 * ao)
+        ztop, zbot = hi[2] - 0.05, lo[2] + 0.05
+        zrel = (P[:, 2] - zbot) / max(ztop - zbot, 1e-6)
+        col, rough = _paint(cfg, solid, P, nh, I, curv, ao, zrel, seed)
+        Y, X = y0 + rr, x0 + cc
+        alb[Y, X] = col
+        nrm[Y, X] = nt
+        orm[Y, X, 0] = 1 - p["ao"] * (1 - ao)
+        orm[Y, X, 1] = rough
+        filled[Y, X] = True
+    # dilate per chart so charts don't bleed into each other
+    for ch in range(6):
+        x0, y0, w, h = _chart_rect(ch, cell)
+        sl = (slice(y0, y0 + h), slice(x0, x0 + w))
+        for im in (alb, nrm, orm):
+            im[sl] = _dilate(im[sl], filled[sl])
+    return alb, nrm, orm, filled
+
+
+# -------------------------------------------------------------------------------------------------------- building
+def build(spec: dict, progress=None) -> dict:
+    """Make the asset: every variant's LODs + collision hull and the shared atlas. Returns {"cfg", "variants": [{"name",
+    "lods": [mesh...], "collision": (V, F) | None, "size", "height", "sink"}], "albedo", "normal", "orm"} (pictures
+    0..1 floats; meshes Z up in metres, pivot on the ground line)."""
+    cfg = resolve(spec)
+    nv = cfg["variants"]
+    grid = 1 if nv == 1 else 2 if nv <= 4 else 3
+    base = cfg["atlas"]
+    cell = base // grid
+    alb = np.zeros((base, base, 3))
+    alb[:] = cfg["color"]
+    nrm = np.zeros((base, base, 3))
+    nrm[..., 2] = 1
+    orm = np.ones((base, base, 3))
+    orm[..., 2] = 0
+    out = []
+    for k in range(nv):
+        solid = Solid(cfg, k)
+        vol, ax, vox = _volume(solid, 96 if solid.cluster or solid.wood else 80)
+        V, F = _mesh(vol, ax, vox)
+        V = _onto(solid.sd, V, vox * 0.5, 1)
+        solid.lo, solid.hi = V.min(0) - vox, V.max(0) + vox  # (the charts' frame: tight round the form)
+        # normalise: largest plan dimension 1 m, centred in plan, the ground line `sink` of the height above the bottom
+        lo, hi = V.min(0), V.max(0)
+        plan = float(max(hi[0] - lo[0], hi[1] - lo[1]))
+        height = float(hi[2] - lo[2])
+        sink = cfg["form"]["sink"] * height
+        scale = 1.0 / plan
+        shift = np.array([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -(lo[2] + sink)])
+        origin = np.array([(k % grid) * cell, (k // grid) * cell], float)
+        seed = cfg["seed"] * 1000 + k
+        lods = []
+        for j, tgt in enumerate(cfg["lods"]):
+            hull = cfg["shape"] == "rock" and tgt <= 40  # (a near-convex stone's last LOD: its hull, never a folded sliver)
+            lods.append(lod_mesh(solid, V, F, int(round(tgt * solid.lods_x)), cfg, cell, origin, base, vox * 0.5, hull=hull))
+        a_, n_, o_, _ = bake_variant(cfg, solid, vol, ax, vox, cell, seed, low=(lods[0], lods[0]["UV"] * base - origin))
+        sl = (slice(int(origin[1]), int(origin[1]) + cell), slice(int(origin[0]), int(origin[0]) + cell))
+        alb[sl], nrm[sl], orm[sl] = a_, n_, o_
+        for L in lods:
+            L["V"] = (L["V"] + shift) * scale
+        col = None
+        if cfg["collision"] == "convex":
+            col = _hull((lods[min(1, len(lods) - 1)]["V"]), 24)
+        out.append({"name": f"v{k}", "lods": lods, "collision": col, "height": round(height * scale, 4),
+                    "sink": round(sink * scale, 4), "bounds": [((lo + shift) * scale).round(4).tolist(), ((hi + shift) * scale).round(4).tolist()]})
+        if progress:
+            progress(f"{cfg['kind']} {cfg['style']} variant {k}: " + " / ".join(str(L["triangles"]) for L in lods) + " triangles")
+    return {"cfg": cfg, "variants": out, "albedo": alb, "normal": nrm * 0.5 + 0.5, "orm": orm}
+
+
+def _hull(V, faces):
+    """A convex hull with at most ~`faces` triangles: (V, F) outward."""
+    from scipy.spatial import ConvexHull
+    h = ConvexHull(V)
+    P = V[h.vertices]
+    if len(h.simplices) > faces:  # fewer points: the extreme ones in spread directions
+        g = (1 + 5 ** 0.5) / 2
+        n = faces // 2 + 2
+        i = np.arange(n)
+        z = 1 - 2 * (i + 0.5) / n
+        d = np.c_[np.sqrt(1 - z * z) * np.cos(2 * np.pi * i / g), np.sqrt(1 - z * z) * np.sin(2 * np.pi * i / g), z]
+        P = P[np.unique((P @ d.T).argmax(0))]
+        h = ConvexHull(P)
+        P = P[h.vertices]
+        h = ConvexHull(P)
+    F = h.simplices.copy()
+    c = P.mean(0)
+    fn = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
+    flip = (fn * (P[F].mean(1) - c)).sum(1) < 0
+    F[flip] = F[flip][:, ::-1]
+    return P, F
+
+
+# ------------------------------------------------------------------------------------------------------------ files
+def _png(a) -> bytes:
+    import io
+    from PIL import Image
+    b = io.BytesIO()
+    Image.fromarray(np.clip(np.asarray(a) * 255 + 0.5, 0, 255).astype(np.uint8)).save(b, "PNG")
+    return b.getvalue()
+
+
+def _yup(v):
+    return np.stack([v[:, 0], v[:, 2], -v[:, 1]], 1)
+
+
+class Glb:
+    """A small glTF 2.0 writer: meshes with POSITION / NORMAL / TANGENT / TEXCOORD_0 / COLOR_0, external or embedded
+    images, extras."""
+
+    def __init__(self):
+        self.buf = bytearray()
+        self.views, self.acc, self.meshes, self.nodes, self.mats, self.tex, self.images, self.scene = [], [], [], [], [], [], [], []
+        self.samplers = [{"magFilter": 9729, "minFilter": 9987, "wrapS": 33071, "wrapT": 33071}]
+
+    def _view(self, data: bytes, target=None):
+        while len(self.buf) % 4:
+            self.buf.append(0)
+        v = {"buffer": 0, "byteOffset": len(self.buf), "byteLength": len(data)}
+        if target:
+            v["target"] = target
+        self.buf += data
+        self.views.append(v)
+        return len(self.views) - 1
+
+    def accessor(self, a, kind, ctype=5126, target=34962, minmax=False):
+        a = np.ascontiguousarray(a, {5126: np.float32, 5125: np.uint32, 5123: np.uint16}[ctype])
+        acc = {"bufferView": self._view(a.tobytes(), target), "componentType": ctype, "count": int(len(a) if kind != "SCALAR" else a.size), "type": kind}
+        if minmax:
+            acc["min"], acc["max"] = a.min(0).tolist(), a.max(0).tolist()
+        self.acc.append(acc)
+        return len(self.acc) - 1
+
+    def image(self, uri=None, data=None):
+        if uri is not None:
+            self.images.append({"uri": uri})
+        else:
+            self.images.append({"bufferView": self._view(data), "mimeType": "image/png"})
+        self.tex.append({"source": len(self.images) - 1, "sampler": 0})
+        return len(self.tex) - 1
+
+    def material(self, m: dict):
+        self.mats.append(m)
+        return len(self.mats) - 1
+
+    def mesh(self, name, V, F, N=None, T=None, UV=None, C=None, material=None, extras=None):
+        at = {"POSITION": self.accessor(_yup(V), "VEC3", minmax=True)}
+        if N is not None:
+            n = _yup(N)
+            n = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+            at["NORMAL"] = self.accessor(n, "VEC3")
+        if T is not None:
+            t = _yup(T[:, :3])
+            t = t / np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+            at["TANGENT"] = self.accessor(np.c_[t, T[:, 3]], "VEC4")
+        if UV is not None:
+            at["TEXCOORD_0"] = self.accessor(UV, "VEC2")
+        if C is not None:
+            at["COLOR_0"] = self.accessor(np.clip(C, 0, 1), "VEC3" if C.shape[1] == 3 else "VEC4")
+        F = np.asarray(F)
+        big = len(V) > 65535
+        prim = {"attributes": at, "indices": self.accessor(F.reshape(-1), "SCALAR", 5125 if big else 5123, 34963), "mode": 4}
+        if material is not None:
+            prim["material"] = material
+        m = {"name": name, "primitives": [prim]}
+        if extras:
+            m["extras"] = extras
+        self.meshes.append(m)
+        return len(self.meshes) - 1
+
+    def node(self, name, mesh=None, translation=None, in_scene=True, extras=None):
+        n = {"name": name}
+        if mesh is not None:
+            n["mesh"] = mesh
+        if translation is not None:
+            n["translation"] = [float(translation[0]), float(translation[2]), float(-translation[1])]
+        if extras:
+            n["extras"] = extras
+        self.nodes.append(n)
+        if in_scene:
+            self.scene.append(len(self.nodes) - 1)
+        return len(self.nodes) - 1
+
+    def write(self, path, extras=None, generator="hifipushie clutter"):
+        while len(self.buf) % 4:
+            self.buf.append(0)
+        G = {"asset": {"version": "2.0", "generator": generator}, "scene": 0, "scenes": [{"nodes": self.scene}],
+             "nodes": self.nodes, "meshes": self.meshes, "accessors": self.acc, "bufferViews": self.views,
+             "buffers": [{"byteLength": len(self.buf)}]}
+        if self.mats:
+            G["materials"] = self.mats
+        if self.tex:
+            G["textures"], G["images"], G["samplers"] = self.tex, self.images, self.samplers
+        if extras:
+            G["asset"]["extras"] = extras
+        js = json.dumps(G, separators=(",", ":")).encode()
+        js += b" " * (-len(js) % 4)
+        with open(path, "wb") as f:
+            f.write(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(js) + 8 + len(self.buf)))
+            f.write(struct.pack("<I4s", len(js), b"JSON") + js)
+            f.write(struct.pack("<I4s", len(self.buf), b"BIN\x00") + bytes(self.buf))
+        return str(path)
+
+
+WET_RECIPE = ("wet rock: below the water line + `band` x the instance's height (and anywhere it rains), albedo *= mix(1, darken, wet), "
+              "roughness = mix(roughness, wet roughness, wet); a river rock standing in water: wet = 1 below the line, fading "
+              "over ~5 cm above it")
+TINT_RECIPE = ("the pictures hold the style's default rock colour (`color_srgb`); to match a terrain whose rock layer is another colour, "
+               "multiply the albedo by your colour / color_linear (linear RGB): moss and lichen shift a little, which reads fine")
+INSTANCE_RECIPE = ("one MultiMesh per variant per LOD (per cell of the world): instance = translate(row x, y, z) * rotate_up(yaw) * "
+                   "scale(s, s, s * squash); variant = hash(row) % variants; switch LODs by distance / s at `lod_switch_m` "
+                   "(x the instance's scale), fade out over the last fifth before `cull`. The pivot is the ground line: the "
+                   "mesh below it (sink_m x scale) is buried. Never scale below ~0.6 or above ~1.8 of size_range without "
+                   "another kind: texel and facet sizes are made for that range")
+
+
+def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
+    """Write a clutter asset into out_dir: <stem>_v<k>_LOD<j>.glb per variant and LOD, <stem>_v<k>_collision.glb
+    (convex hull, node `..-convcolonly`), the shared <stem>_albedo / _normal / _orm.png (referenced by uri),
+    <stem>.glb (every variant's LOD 0 in a row, to look at), <stem>_seasons.json (the plant contract's shape: grade
+    "clutter", kind, slots, lods, variants, sizes, recipes). Returns the json."""
+    from . import veg_export
+    B = build(spec, progress)
+    cfg = B["cfg"]
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    stem = stem or f"ck_{cfg['kind']}_{cfg['style']}"
+    slot = "wood" if cfg["material"] == "wood" else "rock"
+    tex = {}
+    for nm, im in (("albedo", B["albedo"]), ("normal", B["normal"]), ("orm", B["orm"])):
+        tex[nm] = f"{stem}_{nm}.png"
+        (out / tex[nm]).write_bytes(_png(im))
+    rough = float(cfg["paint"]["roughness"])
+    mext = {"hifipushie_clutter": {"kind": cfg["kind"], "style": cfg["style"], "grade": "clutter", "wet": cfg["wet"]}}
+
+    def mat(g):
+        a, n, o = g.image(tex["albedo"]), g.image(tex["normal"]), g.image(tex["orm"])
+        return g.material({"name": slot, "pbrMetallicRoughness": {"baseColorTexture": {"index": a}, "metallicRoughnessTexture": {"index": o},
+                                                                    "metallicFactor": 0.0, "roughnessFactor": 1.0},
+                           "normalTexture": {"index": n}, "occlusionTexture": {"index": o}, "extras": mext})
+    variants, on = [], []
+    for v in B["variants"]:
+        files = []
+        for j, L in enumerate(v["lods"]):
+            g = Glb()
+            g.node(f"{slot}", g.mesh(f"{v['name']}_LOD{j}_{slot}", L["V"], L["F"], L["N"], L["T"], L["UV"], material=mat(g)))
+            fn = f"{stem}_{v['name']}_LOD{j}.glb"
+            g.write(out / fn)
+            files.append({"lod": j, "file": fn, "triangles": L["triangles"], "vertices": int(len(L["V"]))})
+            on.append({"file": fn, "mesh": f"{v['name']}_LOD{j}_{slot}", "primitive": 0})
+        colf = None
+        if v["collision"] is not None:
+            g = Glb()
+            g.node(f"{stem}_{v['name']}-convcolonly", g.mesh("collision", v["collision"][0], v["collision"][1]))
+            colf = f"{stem}_{v['name']}_collision.glb"
+            g.write(out / colf)
+        variants.append({"name": v["name"], "lods": files, "collision": colf, "collision_triangles": int(len(v["collision"][1])) if colf else 0,
+                         "height_m": v["height"], "sink_m": v["sink"], "bounds": v["bounds"]})
+    g = Glb()
+    m = mat(g)
+    for i, v in enumerate(B["variants"]):
+        L = v["lods"][0]
+        g.node(f"{v['name']}", g.mesh(f"{v['name']}_LOD0_{slot}", L["V"], L["F"], L["N"], L["T"], L["UV"], material=m), translation=(1.4 * i, 0, 0))
+    g.write(out / f"{stem}.glb", extras={"hifipushie_clutter": {"kind": cfg["kind"], "style": cfg["style"]}})
+    from .terrain_style import _srgb_lin as _lin
+    slot_state = {"material": slot, "baseColorFactor": [1, 1, 1, 1], "roughnessFactor": 1.0, "alphaMode": "OPAQUE", "doubleSided": False,
+                  "hidden": False, "baseColorTexture": {"file": tex["albedo"]}, "normalTexture": {"file": tex["normal"]},
+                  "ormTexture": {"file": tex["orm"], "channels": "R occlusion, G roughness, B metallic (0)"}}
+    snow = veg_export.snow_numbers({}, None)
+    snow.pop("variant", None)
+    J = {"contract": {"version": veg_export.CONTRACT, "changes": veg_export.CONTRACT_LOG,
+                      "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
+         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": None},
+         "about": cfg["about"],
+         "glb": f"{stem}.glb",
+         "lods": [{"lod": j, "triangles": [v["lods"][j]["triangles"] for v in variants], "grade": "clutter"} for j in range(len(cfg["lods"]))],
+         "slot_list": [{"slot": slot, "on": on, "hidden_in": [], "channels": ["NORMAL", "POSITION", "TANGENT", "TEXCOORD_0"]}],
+         "slots": {slot: slot_state},
+         "default": "summer", "variants": [],
+         "seasons": {se: {slot: slot_state} for se in ("spring", "summer", "autumn", "winter", "snow")},
+         "snow": snow, "impostor": None,
+         "clutter": {"size_m": 1.0, "what_scale_means": "instance scale = the largest plan dimension in metres (the mesh is 1 m at scale 1)",
+                     "height_m": round(float(np.mean([v["height_m"] for v in variants])), 3),
+                     "sink_m": round(float(np.mean([v["sink_m"] for v in variants])), 3),
+                     "pivot": "the ground line: place it ON the surface; sink_m (x scale) of the mesh is below it",
+                     "size_range_m": cfg["size_range"], "place": cfg["place"],
+                     "variants": variants, "lod_switch_m": {"lod1": LOD_SWITCH[0], "lod2": LOD_SWITCH[1], "cull": LOD_SWITCH[2], "times": "the instance's scale"},
+                     "color_srgb": [round(c, 4) for c in cfg["color"]], "color_linear": [round(float(c), 4) for c in _lin(cfg["color"])],
+                     "wet": {**cfg["wet"], "recipe": WET_RECIPE}, "tint": TINT_RECIPE, "instancing": INSTANCE_RECIPE,
+                     "collision": ("convex hull per variant (<stem>_v<k>_collision.glb, node name ends -convcolonly); scale with the instance"
+                                   if cfg["collision"] else None),
+                     "textures": {"atlas_px": cfg["atlas"], "shared_by": "every variant and LOD of this folder (uv by position: box charts)",
+                                  "mipmaps": True, "normal": "tangent space, OpenGL (+Y up), TANGENT written in the meshes"}},
+         "note": "a clutter solid has one slot and no season variants: seasons are the same material (snow = the snow numbers on the vertex NORMAL)"}
+    (out / f"{stem}_seasons.json").write_text(json.dumps(J, indent=1))
+    return J
+
+
+def report(J: dict) -> str:
+    c = J["clutter"]
+    v = c["variants"]
+    lines = [f"clutter {J['kind']} in style {J['style']['name']} (contract {J['contract']['version']}, grade clutter): {len(v)} variants, "
+             f"height {c['height_m']} m at 1 m across, {c['sink_m']} m of it below the ground line",
+             "triangles per LOD: " + "; ".join(f"LOD{l['lod']} " + "/".join(str(t) for t in l["triangles"]) for l in J["lods"]),
+             f"LOD switch at {c['lod_switch_m']['lod1']} / {c['lod_switch_m']['lod2']} m x scale, gone at {c['lod_switch_m']['cull']} m x scale",
+             "collision: " + (f"convex hulls of {'/'.join(str(x['collision_triangles']) for x in v)} triangles" if c["collision"] else "none (walked over)"),
+             f"textures: {c['textures']['atlas_px']} px albedo / normal / orm shared by all variants and LODs",
+             f"files: {J['glb']} (all variants, to look at), <stem>_v<k>_LOD<j>.glb, <stem>_seasons.json"]
+    return "\n".join(lines)

@@ -1,0 +1,66 @@
+{
+ "about": "Crisp painted planes: sharp joint faces, small bevels, painted strata bands along the bedding, a pale top plane and cool shadowed foot; wood with bold painted streaks",
+ "colour": {
+  "saturation": 1.2,
+  "value": 1.1
+ },
+ "rock": {
+  "form": {
+   "bevel": 0.012,
+   "chips": [
+    4,
+    7
+   ],
+   "chip": [
+    0.1,
+    0.34
+   ],
+   "lumps": 0.004,
+   "beds": [
+    1,
+    2
+   ],
+   "bed_set": [
+    0.02,
+    0.05
+   ]
+  },
+  "paint": {
+   "tone": 0.05,
+   "face_tone": 0.16,
+   "speckle": 0.0,
+   "edge_light": 0.2,
+   "cavity": 0.2,
+   "bands": 0.3,
+   "band_thick": [
+    0.03,
+    0.14
+   ],
+   "top": 0.12,
+   "top_color": [
+    0.62,
+    0.66,
+    0.42
+   ],
+   "gradient": 0.3,
+   "grain": 0.0,
+   "cracks": 0.002,
+   "crack_size": 0.4,
+   "roughness": 0.85,
+   "normals": 22.0
+  }
+ },
+ "wood": {
+  "paint": {
+   "streak": 0.38,
+   "streak_size": [
+    0.4,
+    0.02
+   ],
+   "speckle": 0.0,
+   "edge_light": 0.2,
+   "gradient": 0.25,
+   "grooves": 0.001
+  }
+ }
+}

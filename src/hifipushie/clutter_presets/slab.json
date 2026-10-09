@@ -1,0 +1,12 @@
+{
+ "about": "A bank stone / ledge slab: a flat piece broken along its bedding (a third as thick as wide), square-ish joint edges, lying nearly level. Terrain kind `slab` (banks, ledges, a ford's stepping stones)",
+ "material": "rock",
+ "variants": 4,
+ "size_range": [0.5, 2.0],
+ "place": "bank | margin",
+ "wet_band": 0.1,
+ "lods": [220, 80, 24],
+ "form": {"aspect": [[0.6, 0.9], [0.2, 0.32]], "chips": [3, 6], "chip": [0.04, 0.16], "bevel": 0.035, "dip": [0.0, 5.0], "tumble": 6.0, "tilt": 8.0,
+          "beds": [1, 2], "bed_thick": [0.02, 0.05], "bed_set": [0.015, 0.04], "sink": 0.22},
+ "paint": {"top": 0.4, "laminae": 0.002, "lamina": 0.016, "cracks": 0.003}
+}

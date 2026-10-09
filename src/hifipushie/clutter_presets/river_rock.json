@@ -1,0 +1,12 @@
+{
+ "about": "A water-worn river boulder: the same jointed block rolled round (toward an ellipsoid, wide bevels), smooth faces, a mossy band above the water line. Terrain kind `river_rock` (in and beside a channel)",
+ "material": "rock",
+ "variants": 4,
+ "size_range": [0.35, 1.8],
+ "place": "water | bank; draw wet below the water line + wet.band x height",
+ "wet_band": 0.12,
+ "form": {"aspect": [[0.7, 0.92], [0.5, 0.7]], "chips": [3, 6], "chip": [0.05, 0.2], "bevel": 0.14, "round": 0.55, "beds": [0, 1], "bed_set": [0.01, 0.025],
+          "lumps": 0.012, "tumble": 35.0, "sink": 0.2},
+ "paint": {"top": 0.08, "moss": 0.45, "moss_band": [0.3, 0.85], "cracks": 0.002, "grain": 0.0008, "edge_light": 0.06, "cavity": 0.18, "roughness": 0.8,
+           "face_tone": 0.03, "pits": 0.001}
+}

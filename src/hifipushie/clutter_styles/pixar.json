@@ -1,0 +1,51 @@
+{
+ "about": "Soft sculpted rock: generous bevels, gentle hollows, a warm lit top and darker foot, fine grain only up close; wood smooth with soft grain",
+ "colour": {
+  "saturation": 1.15,
+  "value": 1.05
+ },
+ "rock": {
+  "form": {
+   "lumps": 0.03,
+   "lump_size": 0.4,
+   "beds": [
+    0,
+    1
+   ]
+  },
+  "scale": {
+   "bevel": 2.0,
+   "bed_set": 0.7
+  },
+  "paint": {
+   "tone": 0.08,
+   "tone_size": 0.35,
+   "face_tone": 0.04,
+   "speckle": 0.025,
+   "edge_light": 0.1,
+   "cavity": 0.2,
+   "gradient": 0.28,
+   "top": 0.15,
+   "top_size": 0.18,
+   "grain": 0.0008,
+   "cracks": 0.0015,
+   "roughness": 0.85,
+   "normals": 0.0
+  }
+ },
+ "wood": {
+  "form": {
+   "bevel": 0.02
+  },
+  "scale": {
+   "radius": 1.15
+  },
+  "paint": {
+   "streak": 0.14,
+   "speckle": 0.01,
+   "gradient": 0.2,
+   "grooves": 0.0015,
+   "normals": 0.0
+  }
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "about": "An angular boulder fallen from a jointed, bedded face: joint faces at 65-115 deg, a tilted bedding top, corners broken off, a soft bed or two set back, arrises weathered. Terrain kind `boulder` (on rock, near cliff lips, the splash zone)",
+ "material": "rock",
+ "variants": 4,
+ "size_range": [0.3, 1.8],
+ "place": "on rock and shores; old terrain rows are already sunk 0.12 x scale in z: lift them back by sink_m x scale or accept 12% more buried",
+ "form": {"aspect": [[0.7, 0.95], [0.5, 0.72]], "chips": [5, 9], "chip": [0.06, 0.3], "bevel": 0.05, "beds": [0, 2], "sink": 0.14},
+ "paint": {"top": 0.3, "cracks": 0.004, "grain": 0.0015}
+}
