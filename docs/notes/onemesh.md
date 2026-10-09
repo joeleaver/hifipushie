@@ -419,3 +419,19 @@ model".
     fit windows follow body.sex (SEX_OFFSET, estimates: a woman's crease_height +1.2, brow_ridge -0.6, platform
     +0.3). read_mouth (the render's depth pass: each vermilion's middle in front of the subnasale) recovers the two
     lip rolls (0.5 / -0.4) within 0.08. Sheet human_renders/fs_04_age_sliders.png.
+  - GARRETT ON SLIDERS (step 5; model workspace/fs_garrett, from ll_garrett; spikes/facesliders/garrett.py strip | brow |
+    eyes | lips, deliver.py <n>; gm.py = the matched pair's eye / lip measures by one detector on photo and clay).
+    Stripped: hood, eye_bag, lip_roll, lid_fold and the ageing ops; the identity = history 0004 + (0009 - 0008), i.e.
+    without the eye rounds' hand nudges (0005-0008) but with every macro move (nose, jaw, mouth width). NOT separable:
+    R1's eye_outer nudge is inside 0001's identity together with R2's macros (kept). Ageing ops -> sliders at their
+    old amounts (planes 0.5, lean 1.5 (capped), cleft 1.5 (capped, the lobes lost), hollow 0.62, nasolabial 0.5,
+    cheek_flat 1.0, prejowl 0.75, lid_fold 1.0). Brow height by a least-change identity solve (brow_height -2.55 mm:
+    the brows were the stripped brow nudges), the opening by the lid POSE (pose.lid_upper 1.5 mm: the sliders hold
+    the margins, so none of them opens or closes an eye), then sliders: canthal_tilt -0.03, brow_lateral 1.0,
+    lip_upper_roll 0.54; by eye (the detector has no crease / fold point): eye_hood_lateral 0.5, eye_crease_depth
+    0.4, lip_lower_roll 0.6 (the fit wanted -1: the photo's lower lip reads 10.8 mm from the stubble shadow under it).
+    The detector fit is noisy (~0.3 mm a reading): fit() now stops when no step improves. Results (photo | before |
+    after): open 7.39 | 7.71 | 7.71 (gate 7.2), cover 3.46 | 3.69 | 3.71, canthal -0.45 | -0.95 | -0.37, brow gap
+    12.14 | 13.89 | 12.66, upper lip 6.82 | 5.35 | 6.44, lower lip 10.82 | 6.94 | 7.87. Sheets human_renders/
+    ll_s_1_summary.png (photo | before | after, whole face + eyes + mouth), ll_s_1_before_pair / _after_pair.png.
+    Lower face NOT refitted beyond the conversion.
