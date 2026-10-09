@@ -21,10 +21,13 @@ WRINKLES (skin.wrinkles; every amount defaults from age, 0 turns one off, > 1 ex
   forehead, glabella (the "11" between the brows), crows_feet, under_eye, nasolabial, marionette, lip_lines (round
   the mouth), neck (rings), crepe (fine cross-hatched skin: cheeks, neck, hands, with age).
 HAIR (skin.hair; colours sRGB):
-  brows      {"color", "density": 0..1 (0.8), "thickness": 1, "length": m (0.006), "grey": 0..1}: hairs as strokes,
-             growing up at the inner end and out along the brow.
+  brows      {"color", "density": 0..1 (0.8), "thickness": 1, "length": m (0.006), "grey": 0..1, "drop": m (0: the
+             brow lower, onto the orbital rim), "arch": 1 (its slope: 0 = level), "soft": 0..1 (a soft mass rather
+             than hairs one by one)}: hairs as strokes, growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
-  stubble    {"amount", "color", "where"}: the beard area: a shadow under the skin plus hair dots.
+  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color"),
+             "grey": 0..1 (+ "grey_color": a share of white hairs: salt and pepper)}: the beard area: a shadow under the
+             skin plus hair dots.
   scalp      {"amount", "color", "hairline": 0..1 (0.5: how far it comes down the forehead)}: a shaved or cropped
              head: the shadow of hair under the scalp's skin plus cut hairs, with a hairline. (Longer hair is geometry:
              groom_hair.)
@@ -405,7 +408,7 @@ def _hair(p, J, layer, T, ctx) -> None:
     dflt = hair_default(t, age)
     if ctx["face"]:
         io = interocular(J)
-        o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey"))
+        o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch"))
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
@@ -421,22 +424,24 @@ def _hair(p, J, layer, T, ctx) -> None:
             c = 0.5 * (a_ + b_)
             c[2] = (a_[2] + 2 * m_[2] + b_[2]) / 4 - 0.02 * io
             c[1] = m_[1]
+            c[2] -= float(o.get("drop", 0.0))   # a heavy brow sits on the orbital rim, its lower edge at the lid's fold
             d = np.array([0.42, -1.0, 0.12])
             d /= np.linalg.norm(d)
-            slope = float(np.degrees(np.arctan2(b_[2] - a_[2], np.linalg.norm((b_ - a_)[:2]))))
+            slope = float(np.degrees(np.arctan2(b_[2] - a_[2], np.linalg.norm((b_ - a_)[:2])))) * float(o.get("arch", 1.0))
+            soft = float(o.get("soft", 0.0))    # 0..1: hairs read less one by one (fine, greying brows: a soft mass)
             img = {"file": str(path), "at": [round(float(x), 5) for x in c], "dir": [round(float(x), 4) for x in d],
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,
                    "mirror": True, "mirror_image": True, "channel": "alpha"}  # (unmirrored, the other brow's hairs ran
             # toward the nose: "the left eyebrow is backwards")
-            layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col, opacity=0.3 * min(dens, 1) + 0.06,
-                  mask=_zones(["brow"], 0.9 * thick))
-            layer("brow_hairs", color=col, opacity=0.95, roughness=0.42, specular=0.45, height=0.00012, image=img)
+            layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col,
+                  opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9), mask=_zones(["brow"], 0.9 * thick))
+            layer("brow_hairs", color=col, opacity=round(0.95 * (1 - 0.45 * soft), 3), roughness=0.42, specular=0.45, height=0.00012, image=img)
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
                   mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
-        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length"))
+        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "grey", "grey_color"))
         if o:
             a = float(o["amount"])
             col = _hex(o["color"]) if "color" in o else dflt
@@ -445,11 +450,19 @@ def _hair(p, J, layer, T, ctx) -> None:
             area = [{"vertex": True, "mask": _zones(zs)}, {"zone": "lips", "blend": "subtract"}]
             # hair under the skin: on light skin a cool grey-blue cast, on dark skin just darker
             cast = [round(float(c), 4) for c in (np.array(T(grey=0.75, melanin=1.0)) * (0.55 + 0.25 * t["melanin"]) + 0.2 * np.array(col))]
-            layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=0.42 * min(a, 1.2),
-                  mask=area + [{"noise": {"scale": 0.012, "range": [0.15, 0.6], "seed": seed + 100}, "weight": 0.45}])
+            sz_, shd, gr = float(o.get("size", 1.0)), float(o.get("shadow", 1.0)), float(o.get("grey", 0.0))
+            cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
+            layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.42 * min(a, 1.2) * shd, 0.95), 3),
+                  mask=area + [{"noise": {"scale": 0.012, "range": [0.15, 0.6], "seed": seed + 100}, "weight": 0.45 if "shadow" not in o else 0.2}])
             layer("stubble", o.get("mask"), color=col, opacity=0.9 * min(0.5 + 0.5 * a, 1), roughness=min(base_r + 0.12, 0.9),
                   height=round(0.00007 * (1 + float(o.get("length", 0.0)) / 0.001), 7),
-                  mask=[{"tile": {"swatch": "stubble", "range": [round(0.45 - 0.35 * min(a, 1), 3), round(0.75 - 0.35 * min(a, 1), 3)]}}, {"mask": area}])
+                  mask=[{"tile": {"swatch": "stubble", **({"size": round(0.012 * sz_, 5)} if sz_ != 1.0 else {}),
+                                  "range": [round(0.45 - 0.35 * min(a, 1), 3), round(0.75 - 0.35 * min(a, 1), 3)]}}, {"mask": area}])
+            if gr > 0:   # salt and pepper: a share of the hairs white (their own dots, another size so they never coincide)
+                layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#cfcbc4")), opacity=round(0.9 * min(gr, 1.0), 3),
+                      roughness=min(base_r + 0.05, 0.9), height=round(0.00007 * (1 + float(o.get("length", 0.0)) / 0.001), 7),
+                      mask=[{"tile": {"swatch": "stubble", "size": round(0.012 * sz_ * 1.37, 5), "vary": False,
+                                      "range": [round(0.45 - 0.35 * min(gr, 1), 3), round(0.75 - 0.35 * min(gr, 1), 3)]}}, {"mask": area}])
     o = _opt(h.get("scalp"), "hair.scalp", ("color", "hairline")) if ctx["face"] and "head" in J else None
     if o:
         from .skin import interocular

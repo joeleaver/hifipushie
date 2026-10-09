@@ -164,6 +164,9 @@ FACE = {
     "chin": [("lm_chin", (0, 0.05, 0.22), (0.42, 0.4, 0.3))],
     "under_chin": [("lm_chin", (0, 0.45, -0.1), (0.7, 0.6, 0.3))],
     "jaw.L": [(f"lm_jaw_{k}.L", (-0.08, -0.1, 0.15), (0.3, 0.3, 0.3)) for k in range(1, 8)],
+    # where a beard grows beside the mouth and under the jaw (the jaw's own spots are a string of beads along its edge)
+    "jowl.L": [("lm_mouth_corner.L", (0.5, 0.38, -0.12), (0.52, 0.75, 0.47)), ("lm_mouth_corner.L", (0.25, 0.12, -0.45), (0.45, 0.5, 0.4))],
+    "beard_neck": [("lm_chin", (0, 0.75, -0.42), (0.85, 0.75, 0.42))],
     "ear.L": [("lm_jaw_0.L", (0.12, 0.3, 0.2), (0.28, 0.42, 0.48))],
     "ear_lobe.L": [("lm_jaw_0.L", (0.1, 0.22, -0.12), (0.18, 0.22, 0.16))],
     "neck": [("neck", (0, -0.3, -0.45), (0.85, 0.95, 0.8))],
@@ -174,7 +177,7 @@ FACE = {
 UNIONS = {
     "nose": ["nose_bridge", "nose_tip", "nose_wing"], "eye_socket.L": ["under_eye.L", "eyelid.L", "eye_corner.L"],
     "t_zone": ["forehead", "glabella", "nose_bridge", "nose_tip", "chin"],
-    "beard.L": ["jaw.L", "cheek_side.L", "upper_lip", "soul_patch", "chin", "under_chin"],
+    "beard.L": ["jaw.L", "cheek_side.L", "jowl.L", "upper_lip", "soul_patch", "chin", "under_chin", "beard_neck"],
     "moustache": ["upper_lip"], "mid_face": ["cheek", "nose", "ear"],
 }
 LINES = {  # tapered lines: [(anchor, offset)], radius (interocular distances)

@@ -68,6 +68,8 @@ def patched(b, p):
     if "eyes" in p:
         h["eyes"] = p["eyes"]
     h.update(p.get("head") or {})        # any other head key (e.g. {"narrow": 0.97})
+    if p.get("style"):                   # base.style.human sliders (eye_spacing moves the orbits on the one mesh)
+        b.setdefault("style", {}).setdefault("human", {}).update(p["style"])
     if "expression" in p:
         if p["expression"]:
             h["expression"] = p["expression"]

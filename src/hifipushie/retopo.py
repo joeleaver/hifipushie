@@ -1298,7 +1298,9 @@ def base_quads(spec: dict, log: list) -> dict | None:
     return out
 
 
-SOCK_TUCK = 0.006  # m: (one mesh) the mouth sock narrows and sinks back over this distance in from the lips' loop
+SOCK_TUCK = 0.004  # m: (one mesh) the mouth sock narrows and sinks back over this distance in from the lips' loop
+SOCK_NARROW, SOCK_SINK = 0.45, 0.004  # its width taken in by this share, and m sunk back, at full tuck (0.25 / 3 mm left Garrett's
+# narrower mouth with the sock's sides out through both lip corners in the exported neutral)
 
 
 def _with_mouth_sock(V, L, S, gnm, spec, s, log):
@@ -1341,7 +1343,7 @@ def _with_mouth_sock(V, L, S, gnm, spec, s, log):
         t = np.clip(d / SOCK_TUCK, 0, 1)[:, None]
         mid = V[loop].mean(0)
         fwd = np.asarray(h["forward"], float)
-        Xw = mid + (Xw - mid) * np.c_[1 - 0.25 * t, np.ones_like(t), np.ones_like(t)] - fwd * (0.5 * SOCK_TUCK * t)
+        Xw = mid + (Xw - mid) * np.c_[1 - SOCK_NARROW * t, np.ones_like(t), np.ones_like(t)] - fwd * (SOCK_SINK * t)
     V = np.r_[V, Xw]
     L = np.r_[L, where[q].ravel()]
     S = np.r_[S, np.full(len(q), 4)]

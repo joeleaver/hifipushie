@@ -118,6 +118,42 @@ def test_layers_and_stale(tmp_path=None):
         store.HOME = home
 
 
+def test_harmonise_hands_the_edge_over_to_our_skin():
+    """The picture against "our" unlit skin through the decal's camera: its confident skin takes our median colour,
+    at its outer edge its low frequencies become ours (no colour step when the head turns) while its fine detail and
+    its middle stay the picture's; the eyes' holes are not edges."""
+    from scipy import ndimage
+    n, ppm = 400, 2000.0
+    yy, xx = np.mgrid[0:n, 0:n]
+    r = np.hypot(xx - n / 2, yy - n / 2)
+    A = np.clip((150 - r) / 8.0, 0, 1)
+    A[(np.hypot(xx - 160, yy - 170) < 14)] = 0.0                      # an eye hole
+    pic = np.zeros((n, n, 4), np.uint8)
+    base = np.array([150.0, 110.0, 90.0])                             # the picture: darker and redder than ours ...
+    pic[..., :3] = np.clip(base + 25 * (np.sin(xx / 3.0) > 0)[..., None] - 30 * (xx > n / 2)[..., None], 0, 255)  # fine stripes, a darker half
+    pic[..., 3] = (A * 255).astype(np.uint8)
+    ours = np.zeros((n, n, 3), np.uint8)
+    ours[:] = (200, 160, 140)
+    out = lt.harmonise({"rgba": pic, "px_per_m": ppm}, ours, np.ones((n, n), bool))
+    o = out["rgba"].astype(float)
+    lin = lambda c: lt._to_lin(c)                                     # noqa: E731
+    # the confident skin's median is ours
+    conf = A > 0.9
+    assert np.allclose(np.median(lin(o[..., :3])[conf], 0), np.median(lin(ours.astype(float))[conf], 0), rtol=0.12), out["gain_to_ours"]
+    # at the outer edge the low frequencies are ours (both halves), the fine stripes stay
+    ring = (r > 135) & (r < 146)
+    low = ndimage.gaussian_filter(lin(o[..., :3]), (12, 12, 0))
+    assert np.abs(np.log(low[ring] / lin(ours.astype(float))[ring])).max() < 0.12
+    mid = (r < 60)
+    left, right = lin(o[..., :3])[mid & (xx < n / 2 - 10)].mean(0), lin(o[..., :3])[mid & (xx > n / 2 + 10)].mean(0)
+    assert left[0] / right[0] > 1.25                                   # the middle keeps the picture's own darker half
+    row = lin(o[n // 2, 60:120, :3])[:, 0]
+    assert row.std() / row.mean() > 0.05                               # stripes survive near the edge
+    # alpha fades to the edge, and the eye's hole made no fade round itself
+    assert o[..., 3][ring].max() < 255 * 0.9 and o[..., 3][(r < 100) & (np.hypot(xx - 160, yy - 170) > 30)].min() > 250
+    assert o[170, 160 + 20, 3] > 250
+
+
 if __name__ == "__main__":
     if _have():
         for k in sys.argv[1:] or [k for k in dict(globals()) if k.startswith("test_")]:
