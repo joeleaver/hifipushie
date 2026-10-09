@@ -146,3 +146,49 @@ can't give numbers, a close item too small in a full-length shot, folds without 
 dramatic light) and which brief shot would supply it. Garrett's two concepts (an A-pose front + a seated 3/4 oil
 painting) support 57 of 73 items; the back, side and raking shots are what's missing (back length, vent, collar show,
 the tent, collar hug, the trouser break, drape and folds).
+
+## Tool reference
+
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` toolset: enable_toolset("cloth") turns it on.
+
+### `garment_from_reference`
+
+`garment_from_reference(name, garments, views, answers=None, save=True)`
+
+Read reference art of an outfit into design sheets and a target table, item by item, with the garment
+checklist (guide(topic="cloth_reference"); cloth_checklist.json): silhouette and lengths first, then fit,
+construction details, wear state and layering, fabric and folds. garments: {garment name: kind} (garment_kb kinds:
+jacket, shirt, suit_trousers...). views: [{"image": path, "kind": "front" | "side" | "back" | "three" | "other",
+"points": {body landmark: [u, v]}, "crops": {item id: [u0, v0, u1, v1]}}] (u right, v down; landmarks head_top,
+chin, neck_base, shoulder.L/R, elbow.L/R, wrist.L/R, knee.L/R, ankle.L/R, floor; 3+ on a near-orthographic front
+view fit its camera to the model's body). Without `answers`: the FORM to fill (one row per item, what to look for,
+the view, the choices or the points to mark). With answers ({garment: {item id: {"value" | "points": {name:
+[u, v]}, "view": i, "confidence": "high" | "medium" | "low", "note"} | "not visible"}}): the design-sheet patch per
+garment (choices -> details, wear -> closures / tie / over, fabric, colour) and the target table (lengths anchored
+on body landmarks, widths in metres), stored in <model>/cloth_refs.json. The patch is NOT applied: review it, then
+design_garment / edit the garment. check_garment_reference judges a sim against it.
+
+### `check_garment_reference`
+
+`check_garment_reference(name, garments=None, save=None, top=9)`
+
+Judge the model's simulated garments against its reference reading (<model>/cloth_refs.json, written by
+garment_from_reference): every checklist item measured on the CACHED sims (never simulates), the misses ranked
+(misses in tolerances x stage weight x confidence: a wrong length outranks a wrong placket), items the picture
+didn't show judged against the tailoring rule where there is one (collar show, cuff show, tent), what can't be
+judged and why; and a focus sheet: per ranked miss the reference crop | our garments drawn through the SAME fitted
+camera, the reading's points in red, ours in blue. Read the panels before believing a number.
+
+### `garment_reference_brief`
+
+`garment_reference_brief(garments, subject='a man', outfit='', name=None, views=None)`
+
+A shot list for getting the best reference images of a garment or outfit (from an image generator or a
+shoot), derived from the garment checklist: a turnaround (front, side, back, 3/4) in an A-pose with the arms a
+little away from the body, the wear state said plainly (which buttons are done up, tucked, belt, collar), detail
+close-ups (collar and lapel, closure and placket, cuff, pockets, hem and break, back vent), even light plus a
+raking pass for fabric and folds, a plain background, the same figure and garments in every image; each shot's
+full prompt. garments: {name: kind}. name: a model whose reading (cloth_refs.json) or, without one, whose garments
+give the wear state. views: a set of pictures to VALIDATE instead ([{"yaw", "framing": "full" | "bust" |
+"close:<region>", "light": "even" | "raking" | "warm" | "dramatic", "perspective": "ortho-ish" | "perspective",
+"posed": "a-pose" | "other", "size": [w, h]}]): which checklist items they can and can't support, and why.

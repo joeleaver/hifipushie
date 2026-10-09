@@ -827,3 +827,130 @@ root gradient, a normal from depth), not a Cycles bake; a short cut's cap has fl
 strands' heights, long hair's cards only a constant flow. Clearance is checked
 against the head as the scalp's rays see it, not against a game's decimated skin. Loose long hair has no core
 surface (only tied tails do): its coverage is the dense first layer.
+
+## Tool reference
+
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `hair` toolset: enable_toolset("hair") turns it on.
+
+### `groom_hair`
+
+`groom_hair(name, groom=None, replace=False, stage=None, note='', style=None, strands=None, look=None, fuller=None, trim=None)`
+
+Grow the hair's locks from spec["hair"]["groom"] (the designer's words and numbers) and save them.
+Hair is curve locks (Bezier curves swept with a cupped lens profile) in the model's Blender scene, not part of
+the SDF body; guide(topic="hair") is the workflow. Needs a head with face landmarks (a `base` head) or a
+groom "centre" joint.
+groom: a patch merged into the stored groom first (objects merge key by key, null deletes), e.g.
+  {"volume": {"top": 0.04}, "parting": {"side": "left", "offset": 0.03}, "drawn": [...]}.
+  Keys: hairline (front, temples, sideburns, nape, ear, front_points), parting (side, offset, length, line, flat,
+  full, depth), volume (front, top, crown, sides, back, nape: m of hair over the scalp; ramp, across, crest: x of the top's crest, taper: {from, to, floor} short tapered sides and back), length
+  (per region, m), flow (per region: {"back"|"down"|"up"|"away"|...: weight}), tiers ({tier: {width, thickness,
+  spacing, where, length, taper, belly, root, ...} | false}: strip = shingled side/back strips, gap = covers
+  bare volume, big/crown = the generated top, fill, edge), drawn (big clumps drawn by hand: [{"name", "top":
+  [[x, y] m from the head centre seen from above, root first] | "azel": [[az, el] deg], "width", "thickness"?,
+  "taper"?, "lie"?, "root"? (width at the root: 0.1 grows out of the layer), "climb"? (m the root takes to rise),
+  "to_hairline"? (inset m or {inset, reach}: the edge laid on the hairline), "split"?}]; name rows stem+number so
+  an under-layer clump fills between neighbours; patch one by name: {"drawn": {"sweep2": {...}, "qf*": {...},
+  "old": null}}), hairline_edge ({inset, reach} for every clump near the hairline), volume.edge_sink,
+  parting.front, grey, noise, seed.
+  tie ({"at": [az, el] deg (az 180 = the back, el up), "out": m off the scalp, "gather": {rows, locks, lift,
+  width, uneven}, "tail": {length, fullness, locks, stiff, uneven, taper, coil, plait}, "escape": n wisps the tie
+  missed, "band": m}: hair gathered over the head into a tie and a tail leaving it; set parting.side "none"),
+  loose ({"length": m | {front, top, sides, back, nape}, "level": m from the head centre (a one-length cut ends
+  there: about -0.10 the jaw, -0.17 the shoulders), "spacing": m between lock roots, "body": m the mass builds
+  up, "lift": m of root volume, "stiff": 0 hangs .. 1 keeps its root direction, "out": 0 combed along the scalp
+  .. 1 straight out of it, "back": 0..1 combed back over the crown, "messy", "uneven", "ends": + under / - out,
+  "face": 1 = kept off the face, "fringe": {length, span deg, depth, sweep, level, stiff}}: hair grown all over
+  the scalp that FALLS on the neck, shoulders and back (or stands: an afro is out 1 + stiff 1 + curl): a bob,
+  loose waves, long straight hair, a fringe, a crop, tousled hair. guide(topic="hair") has recipes per style).
+style: "locks" (solid sculpted locks: stylised hair, the default), "strands" (the locks become GUIDES of a strand
+  groom on Blender's Hair Curves: realistic hair; the game export cuts cards from those strands), "cards".
+strands: a patch of the strand dials (hair.strands; guide(topic="hair"), "Strand grooms"): count, thickness,
+  taper, clump, clump_size, clump_shape, stray, tip_spread, loose, wave (m), wavelength (m), curl, random, frizz,
+  flyaway, tips, roots, under, under_length, flat, soft, baby. look: a patch of the material (lit, gap, tip,
+  tip_amount, vary, root, roughness, light "salon" | "flat").
+  look also: grey_amount (share of grey strands everywhere), grey_locks (x each lock's own "grey": greying
+  temples and sideburns are locks with more grey), grey (its colour), scalp_tint, cycles_fit.
+fuller: {region: m} (front, top, sides, back, nape): the EXISTING locks made fuller there, as a barber's "more at
+  the sides": every lock point rises by that much (eased in from the hairline) and the lock grows thicker by twice
+  its lift, so a strand groom fills from the scalp up; negative = closer. Measure the outline against the
+  reference first (hair_reference's outline_regions, in mm) and give the miss. Solid sculpted locks ("locks")
+  are only lifted (thickened they'd be slabs). trim: {"below": m, "where": [regions]} (or a list): every lock is
+  cut where it runs more than `below` outside the hairline in those regions (negative = cut that far INSIDE it:
+  a tapered nape is {"below": -0.015, "where": ["nape"]}). With only fuller / trim given nothing is regrown.
+stage: "mass" shows only the groom's volume as one shell (judge the silhouette first), "locks" the locks.
+Locks edited by hand (in Blender and pulled, or by edit_model) carry "hand": true and are kept; locks deleted in
+Blender (hair.removed) aren't grown again; replace=True regrows everything and forgets both.
+Edit single locks with edit_model: {"op": "set", "kind": "hair.locks", "name": lock, "value": {"width": 0.07}};
+the material with {"op": "set", "kind": "hair", "name": "look", "value": {"lit": "#5a3a2c"}}.
+Then look_hair. Returns the counts per tier.
+
+### `look_hair`
+
+`look_hair(name, views=None, size=480, clay=True, layout=False, reference=None, save=None, only=None, tier=None, debug=None, engine='eevee')`
+
+A fast look at the hair (4-30 s): the head cropped from the model's Blender scene with the hair from the spec,
+rendered in EEVEE. Rows: the material, the same in clay (shape without colour: judge clumps there), and with a
+matched reference camera (hair_reference) the matched render, its clay, the reference, a 50% blend and the traced
+lines over the render (reference yellow, model cyan). A thumbnail shows how it reads small.
+views: any of front, three_quarter, three_quarter_r, side, back, top, close, close_back (default front,
+three_quarter, side, back, top). layout=True adds the groom seen from above as a sketch: hairline, parting, every
+lock's spine (drawn clumps black with names, others by tier), roots and tips; views=["layout"] gives only that
+(no render). reference: an image to show beside the views (default: the traced reference). only: lock names or
+patterns (["sweep*", "pside0"]) shown alone on the underlayer, to see which locks make a busy patch (the gates
+then measure that subset).
+Returns the images and the measured gates: the outline's dents (front, 3/4: a pinched temple reads as a divot),
+the bare-volume share per view (the volume showing between locks reads as a helmet), and with a trace the fit to
+the reference (part start px / direction deg, hairline px, silhouette IoU, outline px, clump directions).
+A strand groom (hair.style "strands") renders its strands; engine="cycles" path-traces them with the hair BSDF
+(the truthful look; minutes, and it waits for the machine's heavy slot). tier: "hero" | "main" | "npc" | "far"
+shows the game CARDS of that tier instead (cut from the strands); debug then isolates what makes a fault:
+"layers" (cards as solid quads coloured by layer: cap grey, 0 red, 1 green, 2 blue, 3 yellow), "cap_only",
+"cards_only", "no_normal", "unlit". export_hair judges the exported files themselves.
+Needs the scene once: `sync` the model first.
+
+### `hair_reference`
+
+`hair_reference(name, trace=None, image_path=None, apply=False, widen=1.8, save=None)`
+
+Match the hair to a reference picture: store its trace, fit the reference's camera to the model's face, and
+ optionally carry the traced groom onto the head. From then on every look_hair adds a matched row and fit numbers.
+ trace (or the stored one when omitted): see below; trace it by reading pixels off the image (zoomed crops with
+ a grid help). image_path sets/overrides trace["image"].
+ The camera (pose + focal length) is solved by least squares from trace["landmarks"] (the model's lm_* joints ->
+ their pixels); expect a few px of error per landmark, more means a mislabelled point.
+ apply=True: the trace carried through the camera onto the head becomes the groom's parting line, hairline
+ front_points and drawn clumps (rays onto the groom's volume; hidden roots carried back to the part; rows behind
+ the traced ones; widths = traced px x mm/px x widen, since clumps overlap) and is merged into spec.hair.groom.
+ Then groom_hair to grow the locks, and look_hair.
+ Returns the trace drawn on the reference (landmarks green, the fitted camera's reprojection cyan) and the errors.
+ A trace is reference-image pixels (u right, v down) of the picture you're matching:
+   {"image": path (or pass image_path), "landmarks": {lm joint: [u, v], ...} (8-10 face points: eye corners, brow
+    middles, nose tip, mouth corners, chin; the model's lm_* joints), "part": [[u, v], ...] (the parting from its front
+    end back), "hairline": [[u, v], ...] (temple to temple across the forehead), "hair": [[u, v], ...] (closed outline of
+    the visible hair above clip_y), "clip_y": v (below it ear, sideburn and beard aren't traced), "clumps": [{"name",
+    "line": [[u, v], ...] root -> tip along the strands, "width": px across the clump}], "crop"?: [x0, y0, x1, y1] (the
+    square the matched views show; default: round the hair and landmarks), "views"?: {name: {the same keys for
+another view of the character: another figure in the same picture (same lens), or a turnaround's side/back with
+its own "image"; landmarks, hair, hairline, clip_y and crop needed}}}. Every view gets its own matched row and
+outline numbers in look_hair.
+ Clump names: one starting "part_side" is the short clump falling from the part toward the near ear; one whose root is
+ across the head from the part is the sweep's fall down the far side; the rest are the rows sweeping from the part,
+ front first.
+
+### `export_hair`
+
+`export_hair(name, out_dir, tiers=None, groom=True, check=True, save=None)`
+
+The hair alone, game-ready, from a strand groom (hair.style "strands"; guide(topic="hair"), "Strand grooms"):
+one GLB a tier in out_dir (`<name>_hair_<tier>.glb`; tiers hero 40k / main 16k / npc 6k / far 1.5k triangles;
+default main, npc, far), all on ONE atlas: cards cut from the groom's own strands (a lower tier = fewer, wider
+cards from bigger clumps; far = the cap + a solid tail), the cap wearing the scalp's chart, alpha MASK, two
+sided, the recipe for an engine's hair shader in the material's extras. groom=True also writes the strands
+(`<name>_groom.abc` in cm for Unreal's groom import, `<name>_groom.usdc` with groom_* primvars).
+check=True re-imports every GLB on the head (as an engine gets it) and judges it against the strands in the same
+views and light, under a hard alpha TEST and dithered: per view iou / bare (strand silhouette left uncovered),
+value and saturation x the strands', detached rectangular blobs (cards showing as stamps), straight outline
+share (plank ends), with WARNING lines. save: the sheet (strands | each tier alpha test, dithered, cards as solid
+quads by layer | the atlas); each row is also written beside it as <save stem>_<tier>_<test|dither|solid>.png.
+Minutes with check (about one a tier). Returns the sheet and the table.
