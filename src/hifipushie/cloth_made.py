@@ -437,7 +437,8 @@ def _dist(under: Under, P: np.ndarray) -> np.ndarray:
 
 
 def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, body: dict, inner: list, own: list,
-                   axis: tuple, top_z: float | None = None, **kw) -> dict:
+                   axis: tuple, top_z: float | None = None, pattern: dict | None = None, ends: list | None = None,
+                   **kw) -> dict:
     """A jacket's notched collar built on its finished neck seam, ONE sheet: at the back a stand rising from the seam
     outside what is worn under it, rolled over, the fall lying down over the seam; from the neck's side the stand
     runs out to nothing where the roll line meets the seam, and past it the collar leaves the seam flat, as the
@@ -446,7 +447,18 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     seam vertex is sewn to; gorge: which seam vertices are sewn to a turned lapel; inner: layers the stand must clear
     (the under garment, its collar); own: the jacket's own cloth (lapels pressed) the fall lies on; top_z: the stand's
     top at centre back no higher than this (the under collar's top less `show`).
-    The sheet's face is the upper collar: toward the neck on the stand, outward on the fall and the ends."""
+    The sheet's face is the upper collar: toward the neck on the stand, outward on the fall and the ends.
+    pattern (`collar_pattern`: the drafted outline): the columns run from the sewn edge to the outer edge as cut
+    (the end edges are the first and last columns: the NOTCH's collar side is the draft's), the stand's height per
+    station is the draft's roll line, the uv is the pattern's own.
+    ends: [{"side": -1 | +1 (which end, by the chain's order), "edge_a": the collar's sewn edge in its pattern where
+    it is sewn to this front (neck point -> gorge end), "edge_b": the front's edge at the same pairs, "uv_a", "uv_b":
+    the two pieces' pattern vertices, "line": (point, direction) the lapel's roll line in the front's pattern, "V",
+    "F", "uv": the front as it lies with its lapel pressed (F: its base, flap left out), "out": per-vertex outward
+    normals, "lay", "wedge", "before", "after"}]: past where the roll line meets the seam the collar is laid as ONE
+    surface with the turned lapel: each point carried across the gorge seam into the front's pattern, mirrored
+    across the lapel's roll line and laid on the forepart as a board (`on_pattern`), blended in over `before` m
+    of seam ahead of the meeting point and `after` m past it."""
     p = dict(NOTCHED, **{"end": 0.034, "end_angle": 12.0, "tilt": 15.0, "stand_power": 2.0})
     p.update({k: v for k, v in kw.items() if v is not None})
     ap, ad = np.asarray(axis[0], float), _unit(np.asarray(axis[1], float))
@@ -474,6 +486,32 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     if top_z is not None:  # the stand no taller than leaves the under collar showing
         st = float(np.clip((top_z - C[k_cb, 2]) / max(up[k_cb, 2], 0.3), 0.008, st))
     h = st * np.clip(1 - np.clip(np.abs(a) / am, 0, 1) ** p["stand_power"], 0, 1) * (1 - g)
+    pat = None
+    if pattern is not None:  # the draft's own columns: sewn edge -> outer edge, the stand up to its roll line
+        pe = np.asarray(pattern["edge"], float)
+        Eu = np.stack([np.interp(s, sc, pe[:, k]) for k in range(2)], 1)
+        po = np.asarray(pattern["outer"], float)
+        ao = _arc(po)
+        Ou = _at_arc(po, s / L * ao[-1])
+        colv = Ou - Eu
+        coll = np.maximum(np.linalg.norm(colv, axis=1), 1e-6)
+        tE = _unit(np.gradient(Eu, axis=0))
+        hp = np.zeros(n)
+        if pattern.get("roll") is not None:
+            pr = np.asarray(pattern["roll"], float)
+            rr = np.linspace(0, 1, 160)
+            for i in range(n):
+                pts = Eu[i] + rr[:, None] * colv[i]
+                dd = np.abs(edge_coords(pts, pr)[1])
+                sr = edge_coords(pts, pr)[0]
+                dd = np.where((sr < 0) | (sr > _arc(pr)[-1]), np.inf, dd)
+                j = int(np.argmin(dd))
+                hp[i] = rr[j] * coll[i] if dd[j] < 0.0015 else 0.0
+        if hp[k_cb] > 1e-4:
+            h = hp * min(1.0, st / hp[k_cb])
+            st = float(h[k_cb])
+        pat = {"E": Eu, "col": colv, "len": coll,
+               "alpha": np.arcsin(np.clip(np.sign(a) * (colv / coll[:, None] * tE).sum(1), -0.95, 0.95))}
     w = np.clip(h / 0.008, 0, 1)
     w = w * w * (3 - 2 * w)
     top = Cs + h[:, None] * up
@@ -511,7 +549,9 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     uu = np.clip(np.abs(a) / half, 0, 1)
     Fw = p["fall"] + (p["end"] - p["fall"]) * (uu * uu * (3 - 2 * uu))
     alpha = np.radians(p["end_angle"]) * uu ** 3
-    d_f = _unit(np.cos(alpha)[:, None] * d_end + np.sin(alpha)[:, None] * side)
+    if pat is not None:
+        Fw, alpha = np.maximum(pat["len"] - h, 0.004), pat["alpha"]
+    d_f =_unit(np.cos(alpha)[:, None] * d_end + np.sin(alpha)[:, None] * side)
     stand_layer = []
     keep = h > 0.006
     if keep.sum() > 2:
@@ -541,12 +581,91 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         for k in range(3):
             G[i, :, k] = np.interp(want[i], pl, poly[i, :, k])
     G = smooth_rows(G, 2, keep_rows=(0,))
-    tail = G[:, 1:].reshape(-1, 3)
-    tail, _, _ = Under(u_own.layers).settle(tail, np.where(want[:, 1:] > (h + arc_len)[:, None] + 1e-9, lay, 0.001).ravel(), hug=0.0)
-    G[:, 1:] = tail.reshape(n, -1, 3)
     past = np.maximum(want - (h + arc_len)[:, None], 0)
     uvu = s[:, None] + np.sign(a)[:, None] * np.sin(alpha)[:, None] * past
-    uv = np.stack([uvu, want], -1).reshape(-1, 2)
+    uv = np.stack([uvu, want], -1)
+    if pat is not None:
+        uv = pat["E"][:, None] + pat["col"][:, None] * (want / np.maximum(tot, 1e-9)[:, None])[..., None]
+    wE = np.zeros(n)
+    einfo = []
+    for e in ends or []:
+        if pat is None:
+            break
+        sd_ = float(e["side"])
+        ea, eb = np.asarray(e["edge_a"], float), np.asarray(e["edge_b"], float)
+        # where the roll line meets the seam: the lapel's roll line through the front's sewn edge
+        p0, d2 = np.asarray(e["line"][0], float), _unit(np.asarray(e["line"][1], float))
+        n2 = np.array([-d2[1], d2[0]])
+        sgn = (eb - p0) @ n2
+        kx = int(np.argmin(np.abs(sgn)))
+        s_meet_a = _arc(ea)[kx]
+        # the stations' arc along this end's edge_a (in the collar's pattern)
+        sa_st, _ = edge_coords(pat["E"], ea)
+        mine = np.sign(a) == sd_
+        t = (sa_st - s_meet_a + e.get("before", 0.03)) / (e.get("before", 0.03) + e.get("after", 0.015))
+        t = np.clip(t, 0, 1)
+        we = np.where(mine, t * t * (3 - 2 * t), 0.0)
+        sel = np.where(we > 0)[0]
+        if not len(sel):
+            continue
+        pts = uv[sel].reshape(-1, 2)
+        img = sewn_image(pts, ea, eb, np.asarray(e["uv_a"], float), np.asarray(e["uv_b"], float))
+        # ONE fold line: the lapel's roll line run on by the collar's own roll line (carried into the front's pattern)
+        xc = p0 + ((eb[kx] - p0) @ d2) * d2
+        away = d2 * np.sign((np.asarray(e["uv_b"], float).mean(0) - xc) @ d2)
+        fold = [xc + 0.6 * away, xc]
+        if pattern.get("roll") is not None:
+            pr = np.asarray(pattern["roll"], float)
+            sr, _ = edge_coords(pr, ea)
+            keep = np.where((sr > 0.004) & (sr < s_meet_a - 0.004))[0]
+            if len(keep):
+                ri = sewn_image(pr[keep], ea, eb, np.asarray(e["uv_a"], float), np.asarray(e["uv_b"], float))
+                ri = ri[np.argsort(-sr[keep])]  # from the meeting point back toward the neck point
+                fold += list(ri)
+        fold = np.array(fold)
+        fs, fd_ = edge_coords(img, fold)
+        past_ = edge_coords(pts, ea)[0] > s_meet_a
+        flap_side = np.sign(np.median(fd_[past_])) if past_.any() else np.sign(np.median(fd_))
+        dist = np.maximum(fd_ * flap_side, 0.0)  # (the collar's end lies on the flap's side of the fold)
+        fT = _unit(_at_arc(fold, fs + 1e-4) - _at_arc(fold, fs - 1e-4))
+        mir = img - 2 * (dist * flap_side)[:, None] * np.stack([-fT[:, 1], fT[:, 0]], 1)
+        X, Nn = on_pattern(np.asarray(e["V"], float), np.asarray(e["F"]), np.asarray(e["uv"], float), mir, e.get("out"),
+                           board=e.get("board", 0.02))
+        X = X + np.minimum(e.get("lay", 0.003), e.get("wedge", 0.35) * dist)[:, None] * Nn
+        X = X.reshape(len(sel), m, 3)
+        # the seam row is the seam as it lies (the pressed lapel's own edge): the board is carried onto it
+        dl = (C[sel] - X[:, 0])[:, None, :] * np.exp(-(want[sel] / 0.03) ** 2)[..., None]
+        einfo.append({"side": sd_, "stations": int(len(sel)), "seam_carry_max_mm": round(float(np.linalg.norm(C[sel] - X[:, 0], axis=1).max()) * 1000, 1),
+                      "meets_seam_at_mm": round(float(s_meet_a) * 1000, 1)})
+        X = X + dl
+        G[sel] = (1 - we[sel])[:, None, None] * G[sel] + we[sel][:, None, None] * X
+        wE = np.maximum(wE, we)
+    gp = np.where(want[:, 1:] > (h + arc_len)[:, None] + 1e-9, lay, 0.001)
+    gp = np.where(wE[:, None] > 0.5, np.minimum(gp, 0.0015 + p["thickness"]), gp)
+    if wE.any():
+        mix = ((wE > 0) & (wE < 1)).astype(float)
+        for _ in range(int(p.get("blend_reach", 2))):
+            mix[1:-1] = np.maximum(mix[1:-1], np.maximum(mix[:-2], mix[2:]))
+        mix = _smooth_curve(mix[:, None], 2)[:, 0]
+        rowf = np.clip(np.arange(m) / 3.0, 0, 1)  # (the seam row stays, the first rows follow it)
+        for _ in range(int(p.get("blend_smooth", 5))):  # (two lays meet in the blend: evened along the seam)
+            Y = G.copy()
+            Y[1:-1] = 0.5 * G[1:-1] + 0.25 * (G[:-2] + G[2:])
+            G = G + (mix[:, None, None] * rowf[None, :, None]) * (Y - G)
+        he = float(p.get("end_hug", 0.006))
+        if he > 0:  # the end lies DOWN on what is under it (a board bridges hollows only that deep)
+            en = np.where(wE > 0.5)[0]
+            te = G[en, 1:].reshape(-1, 3)
+            te, _, _ = Under(u_own.layers).settle(te, gp[en].ravel(), hug=he)
+            G[en, 1:] = te.reshape(len(en), -1, 3)
+            Y = G.copy()
+            Y[1:-1] = 0.5 * G[1:-1] + 0.25 * (G[:-2] + G[2:])
+            Y[:, 1:-1] = 0.5 * Y[:, 1:-1] + 0.25 * (Y[:, :-2] + Y[:, 2:])
+            G[en[1:-1], 1:] = Y[en[1:-1], 1:]
+    tail = G[:, 1:].reshape(-1, 3)
+    tail, _, _ = Under(u_own.layers).settle(tail, gp.ravel(), hug=0.0)
+    G[:, 1:] = tail.reshape(n, -1, 3)
+    uv = uv.reshape(-1, 2)
     Vg, Fg = G.reshape(-1, 3), grid_faces(n, m)
     kk = k_cb * m + m - 2
     cf = Fg[np.any(Fg == kk, axis=1)][0]
@@ -554,5 +673,161 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         Fg = Fg[:, ::-1]
     info = {"seam_mm": round(L * 1000, 1), "stand_cb_mm": round(st * 1000, 1), "fall_cb_mm": round(p["fall"] * 1000, 1),
             "roll_meets_seam_mm_from_cb": [round(float(am_l) * 1000, 1), round(float(am_r) * 1000, 1)],
-            "top_cb_z": round(float(G[k_cb, :, 2].max()), 4), "stations": int(n), "stretch": stretch(Vg, Fg, uv), "params": p}
+            "top_cb_z": round(float(G[k_cb, :, 2].max()), 4), "stations": int(n), "stretch": stretch(Vg, Fg, uv),
+            "ends": einfo, "params": p}
     return {"parts": [{"name": "collar", "V": Vg, "F": Fg, "uv": uv, "grid": (n, m), "seam_row": np.arange(n) * m}], "info": info}
+
+
+# ---- a made piece's END lying in the plane of the turned flap it is sewn to (a notched collar past its roll line)
+
+def boundary_loop(F: np.ndarray) -> np.ndarray:
+    """The longest boundary loop of a piece's triangles, as ordered vertex ids."""
+    E = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    key = np.sort(E, axis=1)
+    _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True)
+    B = E[cnt[inv.ravel()] == 1]
+    nxt = {}
+    for a, b in B:
+        nxt.setdefault(int(a), []).append(int(b))
+    best, seen = [], set()
+    for a0 in list(nxt):
+        if a0 in seen:
+            continue
+        loop, a = [a0], a0
+        seen.add(a0)
+        while True:
+            cand = [b for b in nxt.get(a, []) if b not in seen]
+            if not cand:
+                break
+            a = cand[0]
+            seen.add(a)
+            loop.append(a)
+        if len(loop) > len(best):
+            best = loop
+    return np.array(best, np.int64)
+
+
+def _arc(P: np.ndarray) -> np.ndarray:
+    return np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+
+
+def _at_arc(P: np.ndarray, s: np.ndarray) -> np.ndarray:
+    """Points at arc lengths s along the polyline P, run on straight past its ends."""
+    a = _arc(P)
+    s = np.asarray(s, float)
+    out = np.stack([np.interp(s, a, P[:, k]) for k in range(P.shape[1])], -1)
+    d0, d1 = _unit(P[1] - P[0]), _unit(P[-1] - P[-2])
+    lo, hi = s < 0, s > a[-1]
+    out[lo] = P[0] + s[lo][:, None] * d0
+    out[hi] = P[-1] + (s[hi] - a[-1])[:, None] * d1
+    return out
+
+
+def edge_coords(P: np.ndarray, E: np.ndarray) -> tuple:
+    """2D points against a polyline E (run on straight past its ends): (arc along it, signed distance, + to the
+    left of its direction)."""
+    P, E = np.asarray(P, float), np.asarray(E, float)
+    a = _arc(E)
+    best = np.full(len(P), np.inf)
+    s, d = np.zeros(len(P)), np.zeros(len(P))
+    for k in range(len(E) - 1):
+        t = E[k + 1] - E[k]
+        ln = np.linalg.norm(t)
+        t = t / ln
+        u = (P - E[k]) @ t
+        lo = -np.inf if k == 0 else 0.0
+        hi = np.inf if k == len(E) - 2 else ln
+        uc = np.clip(u, lo, hi)
+        q = E[k] + uc[:, None] * t
+        dist = np.linalg.norm(P - q, axis=1)
+        m = dist < best
+        r = P - E[k]
+        sd = t[0] * r[:, 1] - t[1] * r[:, 0]
+        best[m], s[m] = dist[m], a[k] + uc[m]
+        d[m] = np.where(np.abs(uc - u)[m] < 1e-12, sd[m], np.sign(sd[m] + 1e-15) * dist[m])
+    return s, d
+
+
+def _inside_sign(uv_piece: np.ndarray, E: np.ndarray) -> float:
+    """Which side of the edge E the piece's own cloth lies on, next to it (+1 left, -1 right)."""
+    a = _arc(E)
+    s, d = edge_coords(uv_piece, E)
+    m = (s > 0) & (s < a[-1]) & (np.abs(d) > 0.004) & (np.abs(d) < 0.03)
+    if not m.any():
+        m = (np.abs(d) > 0.002)
+    return 1.0 if np.median(d[m]) > 0 else -1.0
+
+
+def sewn_image(P: np.ndarray, edge_a: np.ndarray, edge_b: np.ndarray, uv_a: np.ndarray, uv_b: np.ndarray) -> np.ndarray:
+    """Pattern points P of piece a carried into piece b's pattern across the seam that sews a's edge_a to b's edge_b
+    (paired polylines, same order): the same arc along the seam, the same distance from it, on the side of b's edge
+    away from b's cloth. (The two pieces laid edge to edge on the table: where a's points lie in b's frame.)"""
+    sa, sb = _arc(edge_a), _arc(edge_b)
+    s, d = edge_coords(P, edge_a)
+    d = d * _inside_sign(uv_a, edge_a)  # > 0: into a's cloth
+    sB = np.interp(s, sa, sb) + np.where(s < 0, s, 0) + np.where(s > sa[-1], s - sa[-1], 0)
+    Q = _at_arc(edge_b, sB)
+    eps = 1e-4
+    T = _unit(_at_arc(edge_b, sB + eps) - _at_arc(edge_b, sB - eps))
+    left = np.stack([-T[:, 1], T[:, 0]], 1)
+    return Q - (d * _inside_sign(uv_b, edge_b))[:, None] * left
+
+
+def on_pattern(V: np.ndarray, F: np.ndarray, uv: np.ndarray, img: np.ndarray, out: np.ndarray | None = None,
+               board: float = 0.02) -> tuple:
+    """Where pattern points `img` of a piece lie in space, on the piece as it lies (V, its triangles F, pattern uv):
+    (points, unit normals). A BOARD, not the cloth's every wrinkle: a weighted plane fit (Gaussian, `board` m in the
+    pattern) through the piece's vertices round each point, so points past the piece's edge lie in its plane run on
+    and an interfaced end bridges the hollows of what it lies on. out: per-vertex normals that say which side is up."""
+    vid = np.unique(F)
+    tree = cKDTree(uv[vid])
+    k = min(40, len(vid))
+    dd, jj = tree.query(img, k=k)
+    X, N = np.zeros((len(img), 3)), np.zeros((len(img), 3))
+    for i in range(len(img)):
+        sg = max(board, 1.2 * dd[i, min(3, k - 1)])
+        w = np.exp(-(dd[i] / sg) ** 2)
+        ids = vid[jj[i]]
+        A = np.c_[uv[ids] - img[i], np.ones(k)]
+        W = w[:, None]
+        coef, *_ = np.linalg.lstsq(A * W, V[ids] * W, rcond=None)
+        X[i] = coef[2]
+        nn = np.cross(coef[0], coef[1])
+        if out is not None:
+            o = (w[:, None] * out[ids]).sum(0)
+            if nn @ o < 0:
+                nn = -nn
+        N[i] = nn
+    return X, _unit(N)
+
+
+def collar_pattern(uv: np.ndarray, F_piece: np.ndarray, chain_made: np.ndarray, roll_row: np.ndarray | None = None,
+                   corner_within: float = 0.07, corner_deg: float = 25.0) -> dict:
+    """A collar's drafted outline read off its pattern mesh: {"edge": the sewn (neck) edge's uv in chain order,
+    "outer": the outer edge from the corner of the first end to the corner of the last (the end edges are the lines
+    edge[0] -> outer[0], edge[-1] -> outer[-1]), "roll": the roll line's uv}."""
+    loop = boundary_loop(F_piece)
+    ch = np.asarray(chain_made, np.int64)
+    pos = {int(v): i for i, v in enumerate(loop)}
+    i0, i1 = pos[int(ch[0])], pos[int(ch[-1])]
+    n = len(loop)
+    fwd = [loop[(i1 + k) % n] for k in range((i0 - i1) % n + 1)]
+    bwd = [loop[(i1 - k) % n] for k in range((i1 - i0) % n + 1)]
+    inner = set(int(v) for v in ch[1:-1])
+    path = fwd if not (set(int(v) for v in fwd) & inner) else bwd
+    path = np.array(path[::-1], np.int64)  # from the first end round the outside to the last
+    P = uv[path]
+    a = _arc(P)
+
+    def corner(Pp, ap):
+        best = 0
+        for j in range(1, len(Pp) - 1):
+            if ap[j] > corner_within:
+                break
+            u, v = _unit(Pp[j] - Pp[j - 1]), _unit(Pp[j + 1] - Pp[j])
+            if np.degrees(np.arccos(np.clip(u @ v, -1, 1))) > corner_deg:
+                best = j
+        return best
+    c0 = corner(P, a)
+    c1 = len(P) - 1 - corner(P[::-1], a[-1] - a[::-1])
+    return {"edge": uv[ch], "outer": P[c0:c1 + 1], "roll": None if roll_row is None else uv[np.asarray(roll_row, np.int64)]}

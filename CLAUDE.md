@@ -7135,6 +7135,50 @@ NO SIM WAS RUN.
   rule), a Blender hand edit (offsets per built vertex on (piece, row, station): stable ids while the pattern
   parameters hold). Tests `tests/test_cloth_made.py` (a synthetic neck: stand, fall and point lengths honoured,
   seam welded, no crossings, clearances; a pressed flap is the mirror image).
+- Round 2 ("collarbuild2", same day; sheet `workspace/cloth_renders/cb_02_notched_collar.png` = concept | simulated |
+  round 1 | round 2, front / three-quarter / side / back + the notch close; NO SIM RUN; scratch adds jk2.py <tag> [s2]
+  [conshirt] [noends] [nopat] [notuck] [hl] [drawin=<mm>] [jacket.k=v] [end.k=v] [views=wide,notch,sh] (12-30 s on
+  out/su_om_garrett.pkl; `s2` = shirt2's s2_12 shirt, same mesh, swapped in by V), sheet2.py <jk tag> <jk2 tag>,
+  pat.py (the collar and fronts in the pattern with seam pairs and roll rows -> out/pat.png: LOOK AT IT FIRST),
+  in2.py, dbg3.py, ins_tests.py).
+  - The jacket collar is built from its DRAFT: `collar_pattern` reads the sewn edge, the outer edge between the end
+    corners and the roll line off the collar's own pattern mesh; `notched_collar(pattern=)` runs its columns sewn edge
+    -> outer edge (first / last column = the drafted end edges), stand height per station = the draft's roll line,
+    uv = the pattern's. `ends=`: past where the lapel's roll line meets the neck seam each collar point is carried
+    across the gorge seam into the FRONT's pattern (`sewn_image`: same arc along the paired edges, same distance,
+    other side), mirrored across ONE fold line (the lapel's roll line run on by the collar's own roll line), and laid
+    on the forepart as a board (`on_pattern`: a Gaussian-weighted plane fit in the pattern, 2 cm; runs on past the
+    piece's edge), carried onto the pressed seam vertices, blended with the band lay over 3 cm before / 1.5 cm after
+    the meeting point, evened along the seam, drawn down onto what is under it (`end_hug` 6 mm).
+  - Shards through the lapel: the shirt had been tucked under the UNPRESSED lapels (cloth.worn_together) and round 1
+    pushed only the flap's vertices off it. Now the order is press -> build the collar -> `cloth_layers.tucked` again
+    under the pressed jacket + collar slab (a body shim with V + normals() is all tucked needs). Lapel flaps x shirt
+    crossings: simulated 59, round 1 110, round 2 25.
+  - Numbers (simulated | round 1 | round 2): collar_show 14.8 | 13.9 | 15.9; collar_hug 15.3 | 14.6 | 14.5; lapel gap
+    6.8 / 6.3 | 3 / 3 | 3 / 3; collar x jacket crossings 49 | 2 | 0, x shirt 0 | 6 | 0; collar pattern stretch p95
+    - | 1.37 | 1.16 (max 2.66 -> 1.84); notch angle 104 / 108 deg, collar end edge 50 / 48 mm, lapel notch edge
+    37 mm, end's face 8-9 deg off the pressed lapel's, end 3.5 mm (max 7) off the forepart.
+  - BLUNT READ: collar and lapel now read as one turned surface with a notch, nothing stands at the shoulder, the
+    back is clean, with shirt2's shirt under it nothing comes through. A tailor would NOT accept the notch, and the
+    reason is the DRAFT, which the construction now shows faithfully: the front's neck edge is one straight diagonal
+    hps -> cfNeck -> lapel point, only 33 deg off the roll line (gorge_drop 0.12 made it steeper), so turned over the
+    gorge runs nearly straight DOWN the chest (19 deg off vertical), the lapel's top is a thin wedge and the collar's
+    end is a 48 mm strap lying beside it down the chest, the notch opening sideways. The concept's gorge runs ~55-60
+    deg off vertical: the gorge must be CUT at 65-75 deg to the roll line from a point ON the roll line (not the
+    whole neckline tilted), collar end ~35 mm. That is a redraft + re-sim of the jacket (the front's outline changes).
+  - collar_hug: the seam lies 20 mm (CB) / 15.8 mm (back median) off the shirt collar. `drawin=5` (the back seam ring
+    moved to 5 mm off it after the drape, eased 8 cm into the cloth): hug 8.5, but the back ring goes 272 -> 248 mm
+    (9% compression along the seam, edges 0.84-1.22): the draped neckline is 24 mm too LONG to lie there, so a
+    post-drape draw-in is a HACK; the fix is the back neck's drafted length / a sim without the carried collar.
+    And the metric counts the fall's vertices: a perfect collar reads ~8, not 0-6.
+  - Not done: the cuff as a second case; the `ends` path of notched_collar has no synthetic end-to-end test (its
+    steps do: sewn_image, on_pattern, collar_pattern, the mirrored lay on a flat front, the draft-following collar);
+    wiring into cloth.build. A faint transverse lip remains across the collar where band and end lays blend
+    (`blend_smooth` 5 / `blend_reach` 2; 8 / 3 made 7 crossings with the jacket).
+  - RECOMMENDATION given to main: wire lapel PRESSING + the re-tuck now (cheap, always better); wire the constructed
+    jacket collar behind a key once the gorge is redrafted; the sim should stop carrying the jacket collar as a rigid
+    made piece (sew a soft, uninterfaced stand-in strip or leave the neck seam free) so the neckline settles where
+    its length puts it.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

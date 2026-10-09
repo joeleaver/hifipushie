@@ -111,6 +111,110 @@ def test_press_flap_lays_the_mirror_image():
     assert np.allclose(Vn[keep], V[keep])
 
 
+def _strip_piece(x0, x1, y0, y1, nx, ny):
+    xs, ys = np.linspace(x0, x1, nx), np.linspace(y0, y1, ny)
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    return np.stack([X.ravel(), Y.ravel()], 1), cm.grid_faces(nx, ny)
+
+
+def test_sewn_image_lays_two_pieces_edge_to_edge():
+    # piece a: a strip above its sewn edge y = 0 (x 0..0.1); piece b: below ITS edge, which runs along x = 1 downward
+    uv_a, _ = _strip_piece(0, 0.1, 0, 0.04, 11, 5)
+    uv_b = np.stack([1 - np.linspace(0, 0.05, 6)[:, None].repeat(11, 1).ravel(),
+                     -np.linspace(0, 0.1, 11)[None].repeat(6, 0).ravel()], 1)
+    ea = np.stack([np.linspace(0, 0.1, 11), np.zeros(11)], 1)
+    eb = np.stack([np.ones(11), -np.linspace(0, 0.1, 11)], 1)
+    P = np.array([[0.03, 0.02], [0.1, 0.04], [0.12, 0.01]])  # (the last one past the seam's end: run on straight)
+    Q = cm.sewn_image(P, ea, eb, uv_a, uv_b)
+    assert np.allclose(Q, [[1.02, -0.03], [1.04, -0.1], [1.01, -0.12]], atol=1e-9), Q
+    s, d = cm.edge_coords(np.array([[0.05, 0.01], [-0.02, -0.01]]), ea)
+    assert np.allclose(s, [0.05, -0.02]) and np.allclose(d, [0.01, -0.01])
+
+
+def test_on_pattern_is_the_piece_run_on_as_a_board():
+    uv, F = _strip_piece(0, 0.2, 0, 0.2, 21, 21)
+    V = np.c_[uv[:, 0], 0.8 * uv[:, 1], 0.6 * uv[:, 1]]  # a tilted plane, isometric
+    img = np.array([[0.1, 0.1], [0.25, 0.1], [0.1, -0.03]])  # inside, and past two edges
+    X, N = cm.on_pattern(V, F, uv, img, out=np.tile([0, -0.6, 0.8], (len(V), 1)))
+    assert np.allclose(X, np.c_[img[:, 0], 0.8 * img[:, 1], 0.6 * img[:, 1]], atol=1e-9)
+    assert np.allclose(N, [[0, -0.6, 0.8]] * 3, atol=1e-9)
+
+
+def test_collar_pattern_reads_the_drafted_outline():
+    # a collar strip with slanted ends (a notch's collar side): sewn along y = 0
+    nx = 21
+    xs = np.linspace(-0.1, 0.1, nx)
+    uv = np.concatenate([np.c_[xs, np.zeros(nx)], np.c_[xs * 1.2, np.full(nx, 0.02)], np.c_[xs * 1.4, np.full(nx, 0.04)]])
+    F = np.concatenate([cm.grid_faces(3, nx)[:, ::1]])
+    uv = uv.reshape(3, nx, 2).reshape(-1, 2)
+    pat = cm.collar_pattern(uv, F, np.arange(nx), roll_row=np.arange(nx, 2 * nx))
+    assert np.allclose(pat["edge"], uv[:nx])
+    assert np.allclose(pat["outer"][0], [-0.14, 0.04]) and np.allclose(pat["outer"][-1], [0.14, 0.04])  # the end corners
+    assert len(pat["roll"]) == nx
+
+
+def test_notched_end_lies_in_the_turned_lapels_plane():
+    """The end lay's steps on a flat synthetic front: a collar end sewn to the gorge edge, carried across the seam,
+    mirrored across the roll line and laid on the forepart: one plane with the pressed lapel, isometric, and the
+    notch between the collar's end edge and the lapel's top edge is the drafted one."""
+    # the front: x 0..0.2, y -0.3..0; roll line x = 0.08 (flap: x < 0.08); gorge = the top edge y = 0, x 0.08 -> 0.02
+    uv, F = _strip_piece(0, 0.2, -0.3, 0, 21, 31)
+    V = np.c_[uv, np.zeros(len(uv))]
+    up = np.tile([0, 0, 1.0], (len(V), 1))
+    flap = np.where(uv[:, 0] < 0.08 - 1e-9)[0]
+    Vp = cm.press_flap(V, F, uv, flap, ((0.08, 0.0), (0.0, 1.0)), lay=0.003, wedge=0.35, out=up)
+    isf = np.zeros(len(V), bool); isf[flap] = True
+    Fb = F[~isf[F].any(1)]
+    # the collar's end in its own pattern: sewn edge along its y = 0 from x = 0 (the meeting point) to 0.06, 0.04 deep,
+    # its end edge square to the seam
+    cuv, _ = _strip_piece(0, 0.06, 0, 0.04, 7, 5)
+    ea = np.stack([np.linspace(0, 0.06, 7), np.zeros(7)], 1)
+    eb = np.stack([0.08 - np.linspace(0, 0.06, 7), np.zeros(7)], 1)
+    img = cm.sewn_image(cuv, ea, eb, cuv, uv)
+    assert np.allclose(img, np.c_[0.08 - cuv[:, 0], cuv[:, 1]], atol=1e-9)  # past the top edge, on the flap's side
+    mir = np.c_[0.16 - img[:, 0], img[:, 1]]
+    X, N = cm.on_pattern(Vp, Fb, uv, mir, out=up)
+    X = X + 0.003 * N
+    assert np.allclose(X[:, 2], 0.003, atol=1e-9)  # the lapel's own height: one surface with it
+    assert np.allclose(X[:, :2], mir, atol=1e-9)  # isometric (a mirror image), running on past the piece's top edge
+    seam = np.where(np.abs(cuv[:, 1]) < 1e-12)[0]
+    fl_top = np.where((np.abs(uv[:, 1]) < 1e-12) & (uv[:, 0] < 0.08 + 1e-9))[0]
+    d = np.linalg.norm(X[seam][:, None, :2] - Vp[fl_top][None, :, :2], axis=2).min(1)
+    assert d.max() < 1e-9  # the collar's seam row lies on the pressed lapel's gorge edge
+    # the notch: the collar's end edge (square to the gorge) against the lapel's top edge run on past the gorge's end
+    end = X[np.abs(cuv[:, 0] - 0.06) < 1e-12]
+    ce = end[np.argmax(end[:, 1])] - end[np.argmin(end[:, 1])]
+    lapel_pt = Vp[flap[np.argmin(uv[flap, 0] + 10 * np.abs(uv[flap, 1]))]]  # the flap's top corner (x = 0, y = 0)
+    le = lapel_pt - end[np.argmin(end[:, 1])]
+    ang = np.degrees(np.arccos(ce[:2] @ le[:2] / np.linalg.norm(ce[:2]) / np.linalg.norm(le[:2])))
+    assert abs(ang - 90) < 1e-6 and abs(np.linalg.norm(le[:2]) - 0.02) < 1e-9
+
+
+def test_notched_collar_follows_its_draft():
+    V, F = _neck()
+    P = _neckline(open_deg=60.0, n=41, z=-0.02, off=0.006)
+    L = np.linalg.norm(np.diff(P, axis=0), axis=1).sum()
+    s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+    edge = np.c_[s - L / 2, np.zeros(len(P))]
+    xo = np.linspace(-L / 2 - 0.02, L / 2 + 0.02, 30)
+    outer = np.c_[xo, np.full(30, 0.06)]
+    xr = np.linspace(-0.6 * L / 2, 0.6 * L / 2, 25)
+    roll = np.c_[xr, 0.022 * (1 - (xr / xr[-1]) ** 2)]
+    into = np.tile([0, 0, -1.0], (len(P), 1))
+    out = cm.notched_collar(P, into, np.zeros(len(P), bool), {"V": V, "F": F}, [], [], (np.zeros(3), np.array([0, 0, 1.0])),
+                            pattern={"edge": edge, "outer": outer, "roll": roll})
+    pt = out["parts"][0]
+    n, m = pt["grid"]
+    uv, G = pt["uv"].reshape(n, m, 2), pt["V"].reshape(n, m, 3)
+    assert np.allclose(uv[0, 0], edge[0]) and np.allclose(uv[0, -1], outer[0], atol=1e-6)  # the end edge is the draft's
+    assert np.allclose(uv[-1, -1], outer[-1], atol=1e-6)
+    cb = n // 2
+    assert abs(np.linalg.norm(uv[cb, -1] - uv[cb, 0]) - 0.06) < 1e-3
+    assert 0.019 < G[cb, :, 2].max() - G[cb, 0, 2] < 0.028  # it stands to the draft's roll line (22 mm + the roll)
+    assert G[0, :, 2].max() - G[0, 0, 2] < 0.012  # and not at its ends
+    assert np.linalg.norm(G[:, 0] - np.array([cm._stations(P, 0.010)[0]])[0], axis=1).max() < 1e-9  # on the seam
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
