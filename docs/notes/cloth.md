@@ -1914,3 +1914,24 @@ tells of both, strips; 17 s), sc.py (shirt collar alone on any saved shirt npz),
 stations; the fall against the shirt's cloth), t.py (the tests), patch*.py / append.py (edits as scripts).
 NO SIM WAS RUN.
 
+
+- cloth10 (2026-10-09, "cloth10" agent, branch `worktree-agent-a7cfe1a69c368b0db`; replaces suit9, shirt2, collarbuild2).
+  Scratch DURABLE in /mnt/data/hifipushie/cloth10/: env.sh (sims ONLY remote: box from $BOXENV or gpubox/env.sh, no
+  answer -> nobox.sh fails; BROKER=1 -> have.sh hands back results/<job_key>_<mode>/out.npz, else writes the job and
+  stops), run.sh <script> (capped, $G on PYTHONPATH, peak RSS), q.sh <queue> + run.py (shirt2's), pl.py (place only),
+  check.py <tag> <jacket> [trousers] [shirt] [model] (checklist + figure), runcb.sh jk.py <tag> (collarbuild's
+  constructed collars on its pickle, this code), vram.sh [peak] (box nvidia-smi log), tests.sh (15 cloth files),
+  broker_test/ (the broker's first real batch: 2 known-good jobs from s2_11 + om / pose shirt coarse jobs, README).
+  - Step 0: the three branches merged (main fa9538b). Their uncommitted worktree edits were committed here as WIP
+    commits (an isolated agent can't run git in another worktree); their worktrees are still dirty, deletable now.
+    test_cloth_layers' tucked-opening assert loosened 1e-9 -> 1e-6 m (failed on shirt2's own branch: the 5-ring feather).
+  - Baseline checklist (om_21 jacket + s2_12 shirt + om_24 trousers on su_om_garrett, cr_c10_base_*): collar_hug 17.4
+    mm, front_hang 80 mm, hem_sweep -21%, no pockets, shoulders +9%, trousers 23 mm short, rise +20 mm; the shirt
+    within tolerance everywhere visible; button 1 2-3 mm (the old 19 mm is gone).
+  - Constructed collars on that pair (jk.py, 8 s): notch + pressed lapels crisp (lapel gap 3 mm vs 6.8 simulated),
+    but the jacket collar flares as wings beside the neck, shirt cloth pokes through the left lapel, the constructed
+    shirt collar reads as thin edges with gaps (out/c10_j1_front.png).
+  - su_om_pose shirt place-only: fronts start up to 2.03x stretched (front.R at the hem and the neck's CF), 159 coarse
+    start crossings; may fail in the solver.
+  - Batching limit: a garment is coarse sim -> fine settle -> (outer garment over its finished result); each job
+    exists only after the previous result, so one broker batch per stage, or a live box driving q1.txt.
