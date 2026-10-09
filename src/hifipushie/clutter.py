@@ -129,7 +129,7 @@ BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on
     "lobe_out": [0.5, 0.85],  # how far out from the middle they sit (1 = at the dome's edge)
     "join": 0.1,              # m: how softly lobes run together (small = distinct clumps)
     "lumps": 0.03, "lump_size": 0.22,
-    "cards": [24, 30],        # leaf sprays standing out of the dome at LOD 0 (0 = none: a closed style)
+    "cards": [36, 42],        # leaf sprays standing out of the dome at LOD 0 (0 = none: a closed style)
     "card": [0.3, 0.46],      # their length, m
     "card_out": 0.58,          # the share of a spray standing out past the dome's surface
     "card_up": 0.35,          # how far sprays turn upward from straight out
@@ -582,10 +582,10 @@ class Bush:
             n = int(rng.integers(f["clumps"][0], f["clumps"][1] + 1))
             a0 = rng.uniform(0, 2 * math.pi)
             for i in range(n):
-                r = (0.3 if i == 0 else rng.uniform(0.15, 0.24)) * size
-                a = a0 + 2 * math.pi * i / n + rng.uniform(-0.4, 0.4)
-                d = (0.06 if i == 0 else rng.uniform(0.2, 0.34)) * size
-                zc = (0.72 if i == 0 else rng.uniform(0.32, 0.6)) * H
+                r = (0.26 if i == 0 else rng.uniform(0.14, 0.2)) * size
+                a = a0 + 2 * math.pi * i / n + rng.uniform(-0.3, 0.3)
+                d = (0.1 if i == 0 else rng.uniform(0.27, 0.37)) * size
+                zc = (0.6 if i == 0 else rng.uniform(0.28, 0.5)) * H
                 c = np.array([d * math.cos(a), d * math.sin(a) * ay, max(zc, r * 0.95 + 0.06)])
                 self.ell.append((c, np.array([r, r, 0.82 * r]) * rng.uniform(0.92, 1.12, 3)))
                 foot = np.array([0.04 * math.cos(a), 0.04 * math.sin(a), 0.0]) * size
@@ -604,7 +604,7 @@ class Bush:
             c[2] = min(c[2], H - 0.8 * r)
             self.ell.append((c, np.array([r, r, 0.85 * r]) * rng.uniform(0.9, 1.15, 3)))
         self.tone = rng.uniform(-1, 1, len(self.ell))
-        self.join = f["join"] * size
+        self.join = (0.025 if self.lumpy else f["join"]) * size  # (lumps stay separate lumps)
         self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
         self.lo = np.array([-R * 1.25, -R * 1.25, -0.12 * size])
         self.hi = np.array([R * 1.25, R * 1.25, H * 1.2])

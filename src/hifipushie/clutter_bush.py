@@ -20,7 +20,7 @@ import numpy as np
 from . import clutter
 
 N_BOUGH = 7
-STEMS = (5, 3)   # stems drawn as tubes at LOD 0, LOD 1
+STEMS = (6, 3)   # stems drawn as tubes at LOD 0, LOD 1
 DARK = 0.6       # the inner sprays' pictures, x the colour
 
 
@@ -78,7 +78,7 @@ def grown(cfg: dict, k: int) -> dict:
 def _tube(pts, rad, sides, keep):
     """A stem as an open tube: (V, N, F); `keep` points along it (ends kept)."""
     idx = np.unique(np.round(np.linspace(0, len(pts) - 1, min(keep, len(pts)))).astype(int))
-    pts, rad = pts[idx], np.maximum(rad[idx], 0.006)
+    pts, rad = pts[idx], np.clip(rad[idx], 0.005, 0.014)
     V, N, F = [], [], []
     for i, (c, r) in enumerate(zip(pts, rad)):
         d = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]
@@ -117,9 +117,8 @@ def bough_tile(px: int, paint: dict, color, season: dict, seed: int, dark: float
     col = col * dark
     steps = int(paint.get("steps") or 0)
     wood = tuple(int(255 * c) for c in np.clip(col * [1.1, 0.8, 0.7] * 0.55, 0, 1)) + (255,)
-    shoots = [(0.0, 1.0)] + [(sg * rng.uniform(0.38, 0.62), rng.uniform(0.6, 0.8)) for sg in (-1, 1)]
-    if rng.uniform() < 0.5:
-        shoots.append((rng.choice([-1, 1]) * rng.uniform(0.15, 0.3), rng.uniform(0.7, 0.9)))
+    shoots = [(0.0, 1.0)] + [(sg * rng.uniform(0.4, 0.62), rng.uniform(0.62, 0.82)) for sg in (-1, 1)] + \
+             [(sg * rng.uniform(0.16, 0.3), rng.uniform(0.75, 0.95)) for sg in (-1, 1)]
     for lean, length in sorted(shoots, key=lambda t: -abs(t[0])):
         bend = rng.uniform(-0.1, 0.1)
         base0 = np.array([0.5, 0.99])
@@ -157,6 +156,18 @@ def bough_tile(px: int, paint: dict, color, season: dict, seed: int, dark: float
                 r = paint["flower_size"] / 0.34 * S * rng.uniform(0.9, 1.4)
                 dr.ellipse([ce[0] - r, ce[1] - r, ce[0] + r, ce[1] + r], fill=tuple(int(255 * x) for x in paint["flower_color"]) + (255,))
     return im.resize((px, px), Image.LANCZOS)
+
+
+def _fatten(im, px: int):
+    """A far card's picture with its alpha grown by `px` (and the colour under it): thin leaves average under the
+    cut-off in the first mip levels and a far bush vanishes; grown, its cover holds (what vegetation artists do to
+    billboard atlases)."""
+    from PIL import Image, ImageFilter
+    a = np.asarray(im, float) / 255.0
+    a = _bleed(a)
+    al = Image.fromarray((a[..., 3] * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(2 * px + 1))
+    a[..., 3] = np.asarray(al, float) / 255.0
+    return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8), "RGBA")
 
 
 def _bleed(a):
@@ -238,7 +249,7 @@ def build(spec: dict, progress=None) -> dict:
     for se in seasons:
         for t in range(4):
             atl[se].paste(tiles[se][t], (t * c4, 0))
-    bark = tuple(int(255 * c) for c in np.clip(np.asarray(cfg["color"]) * [1.15, 0.8, 0.65] * 0.5, 0, 1))
+    bark = tuple(int(255 * c) for c in np.clip(np.asarray(cfg["color"]) * [1.3, 0.9, 0.7] * 0.8, 0, 1))
     out = []
     for k in range(nv):
         G = grown(cfg, k)
@@ -268,6 +279,7 @@ def build(spec: dict, progress=None) -> dict:
             b[2] = max(b[2], 0.02)
             w = 0.5 * L
             Q = np.array([b - rt * w, b + rt * w, b + rt * w + a * L, b - rt * w + a * L])
+            Q[:, 2] += max(0.0, 0.01 - float(Q[:, 2].min()))  # (no spray under the ground)
             ti = int(rng.integers(0, 2)) + (2 if inner[j] else 0)
             quads.append((Q, ti))
             nn = out_dir * 0.6 + np.array([0, 0, 0.8])
@@ -282,8 +294,11 @@ def build(spec: dict, progress=None) -> dict:
             trk = lambda z: float(np.clip(z / max(Htop, 1e-6), 0, 1.3) ** 1.5)
             wind = [[trk(Q[0][2]), branch[0], phase, flutter[0]], [trk(Q[1][2]), branch[0], phase, flutter[0]],
                     [trk(Q[2][2]), branch[1], phase, flutter[1]], [trk(Q[3][2]), branch[1], phase, flutter[1]]]
-            return {"V": Q, "N": np.tile(nn, (4, 1)), "UV": np.asarray(uvpx, float) / base, "T": np.tile(np.r_[tt, wsg], (4, 1)),
-                    "F": np.array([[0, 1, 2], [0, 2, 3], [0, 2, 1], [0, 3, 2]]), "wind": np.array(wind)}
+            # front and back are triangles on vertices of their own (the same normal on both: a card lit by its face flickers):
+            # two faces on the same three vertices are one face to Blender's importer, and the back went missing
+            uv = np.asarray(uvpx, float) / base
+            return {"V": np.r_[Q, Q], "N": np.tile(nn, (8, 1)), "UV": np.r_[uv, uv], "T": np.tile(np.r_[tt, wsg], (8, 1)),
+                    "F": np.array([[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6]]), "wind": np.r_[np.array(wind), np.array(wind)]}
 
         def stems_mesh(n, keep):
             parts = []
@@ -338,7 +353,7 @@ def build(spec: dict, progress=None) -> dict:
             ext = (float(pr.min()), float(pr.max()), float(pu.min()), float(pu.max()))
             cx_, cy_ = (g % 8) * c8, c4 + k * c8
             for se in seasons:
-                pic = composite(mem, tiles[se], BC[g], r_, u_, ext, (c8, c8))
+                pic = _fatten(composite(mem, tiles[se], BC[g], r_, u_, ext, (c8, c8)), 1)
                 atl[se].paste(pic, (cx_, cy_))
             Q = np.array([BC[g] + r_ * ext[0] + u_ * ext[2], BC[g] + r_ * ext[1] + u_ * ext[2],
                           BC[g] + r_ * ext[1] + u_ * ext[3], BC[g] + r_ * ext[0] + u_ * ext[3]])
@@ -361,7 +376,7 @@ def build(spec: dict, progress=None) -> dict:
             ext = (-R, R, 0.0, Htop)
             cx_, cy_ = (k * 2 + ci) * c8, 3 * c4
             for se in seasons:
-                pic = composite(quads, tiles[se], np.zeros(3), r_, u_, ext, (c8, c4), stems=G["stems"][:STEMS[0]], stem_color=bark)
+                pic = _fatten(composite(quads, tiles[se], np.zeros(3), r_, u_, ext, (c8, c4), stems=G["stems"][:STEMS[0]], stem_color=bark), 2)
                 atl[se].paste(pic, (cx_, cy_))
             Q = np.array([r_ * -R, r_ * R, r_ * R + u_ * Htop, r_ * -R + u_ * Htop])
             m_ = 1.0
