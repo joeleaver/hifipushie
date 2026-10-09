@@ -335,7 +335,10 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
             "marionette": _age_curve(age, 42, 82), "lip_lines": _age_curve(age, 48, 85), "neck": 0.1 + 0.9 * _age_curve(age, 35, 80),
             "crepe": _age_curve(age, 50, 88)}
     amt = {k: float(w.get(k, d)) * k_all for k, d in dflt.items()}
-    crease = [0.7, 0.58, 0.55]  # multiplied in: a crease is darker and a little redder (shadow + thin skin)
+    # multiplied in: a crease is a little darker and redder (thin skin); its shadow is the geometry's. (It was [0.7, 0.58,
+    # 0.55] at 0.75: over a stubble shadow on facesliders' joint Garrett, where the landmark line lay beside his own
+    # deep fold, it painted a dark red-brown streak beside the mouth.)
+    crease = [0.84, 0.77, 0.75]
 
     def groove(name, a, depth, mask, tint=0.5):
         if a <= 0.02:
@@ -365,7 +368,10 @@ def _wrinkles(p, J, layer, T, ctx) -> None:
                                   ("lm_eye_outer.L", (0.06, 0.03, -0.05), (0.33, 0.22, -0.18)), ("lm_eye_outer.L", (0.05, 0.03, -0.09), (0.24, 0.16, -0.3))], 0.014)),
         ("under_eye_rays", 0.65, rays([("lm_lid_lower.L", (-0.22, 0.02, -0.07), (0.24, 0.06, -0.11)), ("lm_lid_lower.L", (-0.2, 0.02, -0.15), (0.28, 0.08, -0.2)),
                                   ("lm_lid_lower.L", (-0.12, 0.01, -0.24), (0.3, 0.1, -0.3))], 0.014)),
-        ("nasolabial", 1.0, _zones(["nasolabial"], 1.45)), ("marionette", 0.9, _zones(["marionette"], 1.4))]
+        # the folds lie where the surface itself folds: the landmark line finds the region, the surface's concavity the
+        # fold (a head with its own deep fold beside the line keeps only a trace of the line)
+        ("nasolabial", 1.0, [{"mask": _zones(["nasolabial"], 1.8)}, {"cavity": "concave", "radius": [0.06, 0.012], "weight": 0.7}]),
+        ("marionette", 0.9, [{"mask": _zones(["marionette"], 1.7)}, {"cavity": "concave", "radius": [0.06, 0.012], "weight": 0.7}])]
     amt["crows_feet_rays"], amt["under_eye_rays"] = 0.5 * amt["crows_feet"], 0.4 * amt["under_eye"]
     for nm, zs, size, rot in (("crows_feet", ["crows_feet"], 0.022, False), ("under_eye", ["under_eye"], 0.026, False)):
         a = amt[nm]

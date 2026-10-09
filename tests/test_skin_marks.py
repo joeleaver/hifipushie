@@ -87,6 +87,34 @@ def test_stubble_map_deterministic_and_styles():
 
 
 @_tmp
+def test_fade_band_never_darker_than_full():
+    """Where the beard thins out (its fade band), nothing is darker or more saturated than where it is full: the
+    shadow channel and the hairs' darkness there stay below the full beard's, and the fold lines that cross the band
+    (nasolabial, marionette) are a pale, nearly grey multiply confined to the surface's own concavity (on facesliders'
+    joint Garrett a saturated red-brown fold line beside his own fold read as streaks beside the mouth)."""
+    import colorsys
+    spec = head_spec(hair={"stubble": {"style": "short"}})
+    J = skin._joints(spec)
+    o = stubble_options({"amount": 1.0, "style": "short"})
+    path, place, _ = mk.stubble_map(spec, "body", J, o)
+    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N = V.astype(float), N.astype(float)
+    d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
+    fr = images.frame(spec, {"file": path, **place, "channel": "b"}, parts=["body"])
+    u, v, w = images.project(fr, V, N)
+    px = images.sample(images.pixels(pathlib.Path(path)), u, v)
+    inside = (w > 0.9) & (u > 0.02) & (u < 0.98) & (v > 0.05) & (v < 0.98)
+    full, band = (d > 0.85) & inside, (d > 0.03) & (d < 0.4) & inside
+    assert full.sum() > 50 and band.sum() > 50
+    assert np.percentile(px[band, 2], 99) <= np.percentile(px[full, 2], 50) + 0.02
+    L = paint.layers(head_spec(age=60, hair={"stubble": {"style": "short"}}))
+    folds = L["skin:wrinkle_folds"]
+    h, s, val = colorsys.rgb_to_hsv(*folds["color"])
+    assert s < 0.15 and val > 0.8, folds["color"]
+    assert '"cavity": "concave"' in __import__("json").dumps(folds["mask"])
+
+
+@_tmp
 def test_freckles_no_repeat_and_sun():
     """Freckles are unique: two windows of the map 6 cm apart (the old swatch's period) don't match; they gather on
     the nose and cheeks, not under the chin."""
@@ -112,6 +140,7 @@ def test_freckles_no_repeat_and_sun():
 
 
 if __name__ == "__main__":
-    for t in (test_beard_zones_from_landmarks, test_stubble_map_deterministic_and_styles, test_freckles_no_repeat_and_sun):
+    for t in (test_beard_zones_from_landmarks, test_stubble_map_deterministic_and_styles, test_fade_band_never_darker_than_full,
+              test_freckles_no_repeat_and_sun):
         t()
         print("ok", t.__name__)
