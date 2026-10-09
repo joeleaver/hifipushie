@@ -368,8 +368,42 @@ def place(tree: dict, cards: int, at: dict) -> dict:
            "key": key, "card": card.astype(int)}
     if base and cards < k:  # a thinned LOD: `cards` of the cut's boughs, evenly by their hash, each larger
         keep = np.argsort(np.argsort(_u(key, 91))) < cards
+        # how much larger: until the kept cards cover what all of them covered, seen from two sides (sqrt(k / cards)
+        # is right only where cards overlap heavily: a sparse pine's LOD 2 came out 25% fatter than its LOD 0 in Godot)
+        from PIL import Image, ImageDraw
+        cV = [np.asarray(c_["V"], float) for c_ in at["cards"]]
+        cF = [np.asarray(c_["F"], int) for c_ in at["cards"]]
+        reach = max(float(np.abs(v_).max()) for v_ in cV) * float(scale.max()) * THIN_GROW
+        lo3 = out["pos"].min(0) - reach
+        px = max(0.08 * float(np.median(ext)), 0.04)
+        wh = np.ceil((out["pos"].max(0) + reach - lo3) / px).astype(int) + 2
+
+        def covered(sel, s):  # the cards' own polygons, drawn from the front and from the side
+            tot = 0
+            for ax in (0, 1):
+                im = Image.new("1", (int(wh[ax]), int(wh[2])), 0)
+                dr = ImageDraw.Draw(im)
+                for ci in range(len(cV)):
+                    ii = np.flatnonzero(sel & (card == ci))
+                    if not len(ii):
+                        continue
+                    W = np.einsum("nij,kj->nki", Fr[ii], cV[ci]) * (scale[ii] * s)[:, None, None] + out["pos"][ii][:, None, :]
+                    q = (W[:, :, [ax, 2]] - lo3[[ax, 2]]) / px
+                    for t_ in q[:, cF[ci]].reshape(-1, 3, 2):
+                        dr.polygon([(float(t_[0, 0]), float(t_[0, 1])), (float(t_[1, 0]), float(t_[1, 1])), (float(t_[2, 0]), float(t_[2, 1]))], fill=1)
+                tot += int(np.asarray(im).sum())
+            return tot
+        want = covered(np.ones(k, bool), 1.0)
+        lo_, hi_ = 1.0, min(math.sqrt(k / max(cards, 1)), THIN_GROW)
+        for _ in range(7):
+            m_ = 0.5 * (lo_ + hi_)
+            if covered(keep, m_) < want:
+                lo_ = m_
+            else:
+                hi_ = m_
         out = {k_: v_[keep] for k_, v_ in out.items()}
-        out["scale"] = out["scale"] * min(math.sqrt(k / max(cards, 1)), THIN_GROW)
+        out["scale"] = out["scale"] * hi_
+        out["grow"] = float(hi_)
     return {**out, "size_m": pl["size"]}
 
 
