@@ -14,7 +14,19 @@ dst, head = sys.argv[1], sys.argv[2]
 sp = json.loads((store.HOME / "g4_garrett" / "spec.json").read_text())
 sp["base"] = json.loads((store.HOME / head / "spec.json").read_text())["base"]
 sp["hair"] = json.loads((store.HOME / "h7_garrett" / "spec.json").read_text())["hair"]
-sp["hair"].get("groom", {}).get("loose", {}).pop("swoop", None)  # hair7 in progress: not in the merged hair.py
+hb = json.load(open("/mnt/data/hifipushie/hair7/base.json"))   # hair7/8's groom (loose -> groom.loose; merged)
+
+
+def merge(a, b):
+    for k, v in b.items():
+        a[k] = merge(a[k], v) if isinstance(v, dict) and isinstance(a.get(k), dict) else v
+    return a
+
+
+sp["hair"]["groom"]["loose"] = hb["loose"]
+for k in ("body", "lay"):   # hair7's newer swoop keys, not in main's hair.py yet (2026-10-09 afternoon)
+    hb["loose"].get("swoop", {}).pop(k, None)
+merge(sp["hair"], {k: v for k, v in hb.items() if k != "loose"})
 if len(sys.argv) > 3:
     apply(sp, json.load(open(sys.argv[3])))
 store.save(dst, sp, f"likeloop: g4_garrett's skin, {head}'s head, hair7's groom")

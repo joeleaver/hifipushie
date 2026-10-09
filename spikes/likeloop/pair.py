@@ -10,6 +10,8 @@ from hifipushie import likeness_pair, store
 
 def apply(spec, patch):
     for path, v in patch.items():
+        if isinstance(v, str) and v.startswith("@"):   # "@file.json": the value read from a file
+            v = json.load(open(v[1:]))
         d, ks = spec, path.split(".")
         for k in ks[:-1]:
             d = d.setdefault(k, {})
