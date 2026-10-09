@@ -326,6 +326,26 @@ def test_lash_line_is_a_line():
         assert (m > 0.5).astype(int).tolist() == want, (with_margin, m)
 
 
+def test_brow_tilt_and_fall():
+    """A brow's own shape beside its landmarks (Tess, 2026-10-09: hers rises outward with a short tail, ours sat as a
+    level bar hooked down at the end; `arch` only scales the landmarks' slope, which was ~0): `tilt` turns the whole
+    brow (tail up), `fall` scales the tail's drop (a new picture), and the defaults leave the brow as it was."""
+    import tempfile
+    from hifipushie import store
+    with tempfile.TemporaryDirectory() as d:
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            def img(**b):
+                ly = paint.layers(head_spec(hair={"brows": {"density": 0.8, **b}}))["skin:brow_hairs"]
+                return next(e["image"] for e in [ly] + list(ly.get("mask") or []) if isinstance(e, dict) and "image" in e)
+            a, b, c = img(), img(tilt=6), img(fall=0.3)
+            assert abs(b["rotate"] - a["rotate"] - 6) < 1e-6
+            assert b["file"] == a["file"] and c["file"] != a["file"]
+            assert img(fall=1.0)["file"] == a["file"]
+        finally:
+            store.HOME = home
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
