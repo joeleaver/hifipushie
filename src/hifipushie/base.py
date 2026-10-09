@@ -1884,6 +1884,11 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         W, lm = _lean(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["lean"], float(eye_mid[0]), s, faces)
     if shape.get("hood"):
         W, lm = _hood(W, lm, shape["hood"])
+    from . import headage
+    if headage.wanted(shape):  # age as soft-tissue ops: nasolabial, prejowl, lid_fold, cheek_flat, lips_thin
+        W, lm = headage.apply(W, lm, shape, faces, {k_: np.asarray(v_)[skin] for k_, v_ in g["groups"].items()
+                                                     if len(np.asarray(v_)) == len(skin)},
+                              float(eye_mid[0]), s, np.asarray(g["groups"]["skin_exterior"])[skin] > 0.5)
     if shape.get("nose_tip"):
         W, lm = _nose_tip(W, lm, shape["nose_tip"], s)
         if isinstance(shape["nose_tip"], dict) and shape["nose_tip"].get("round"):
