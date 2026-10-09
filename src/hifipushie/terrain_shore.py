@@ -58,9 +58,9 @@ def signed_distance(mask, cell, far):
 
 def beach_clutter(T, mats, field, kinds, box=None, seed=17, density=1.0):
     """Sea beach clutter rows [x, y, z, kind index (into `kinds`, a list of names), scale, yaw, squash, place index,
-    river index -1]: pebbles, wrack, driftwood where the maps paint sand above the sea near the coast. place =
+    river index -1, water (the sea's level minus z: negative on the beach), sink 0]: pebbles, wrack, driftwood where the maps paint sand above the sea near the coast. place =
     PLACES.index("shore") is filled by the caller's `place` value 5."""
-    empty = np.zeros((0, 9))
+    empty = np.zeros((0, 11))
     g = getattr(mats, "ground", None)
     if mats.sea is None or g is None or g.sea_d is None or "sand" not in mats.layers or density <= 0:
         return empty
@@ -142,5 +142,5 @@ def beach_clutter(T, mats, field, kinds, box=None, seed=17, density=1.0):
             if keep.any():
                 k = int(keep.sum())
                 out.append(np.c_[P[keep], np.full(k, ki), scale[keep], np.mod(yaw[keep], 360.0), squash[keep],
-                                 np.full(k, 5), np.full(k, -1)])
+                                 np.full(k, 5), np.full(k, -1), sea - P[keep, 2], np.zeros(k)])
     return np.concatenate(out) if out else empty

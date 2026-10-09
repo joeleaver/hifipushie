@@ -4727,6 +4727,23 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
     (top-projected) layers' NORMAL MAPS are added as a tilt to the surface normal; height images are no longer loaded.
   - Lake water in tile renders: strips over the lake's own wet cells at its level (a sheet over its box hung in the
     air beyond a dam). Render only. A lake's damp foot is 0.45 of a river's (a 3-4 m bare brown drawdown ring).
+  - Pushieworld's verdict in the game (their note 114; pictures pushieworld docs/img/streambeds/): GOOD (cobbles
+    through the water, damp foot, rocks and wood sit right); asked for water that flows round the rocks, rocks that
+    don't read as garden stones, bank-to-bank variety, banks that aren't ramps. Their export predates round 2 (no cut
+    banks, no alternate bars).
+  - clutter.csv `csv_version` 2 (batch announced through the coordinator, agreed with clutterkit2): columns `water`
+    (m, the water surface minus z; empty on dry ground) and `sink` (m the pivot goes below z) after `place`; manifest
+    `clutter.columns` / `csv_version` / `kinds.<k>.footprint` (plan axes and height as shares of scale: the kit's
+    realistic means, river_rock 0.44 above the pivot, slab 0.27). Rows in code are 11 wide (`terrain_stream.COLS`:
+    ..., place, river, water, sink). NO "rocks as height" raster: the heightmaps are 1 m cells and the rocks 0.35-1.8 m;
+    a consumer's water sim stamps rows itself from the footprint. A third of the river rocks sink 0.2-0.45 of their
+    height, sizes follow riffle / pool, steep reaches get slabs in the channel and fewer round rocks.
+  - Kaze tile 3,16 at 127,497 triangles for 12,000 (LOD 0) in the island export: main's own (the block (2,15)-(4,17)
+    reads the same number with main c3d50e1's code); not a stream fault. For the tiles thread.
+  - "cartoon gravel wrap seam 1.48-1.53": the seam row's step (4.3 levels) lies inside the spread of ORDINARY rows
+    (mean 2.9, p95 4.0, max 5.8; realistic gravel the same picture: 3.9 against p95 3.8, max 4.5): no visible seam, the
+    one-row measure is noisy on flat-toned stones with ink outlines. Left as it is; the check would be fairer against
+    a high percentile of rows than their mean.
 
 ## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
 

@@ -80,10 +80,22 @@ KINDS = {  # clutter kinds: size = the largest plan dimension (m) at scale 1 x s
     "bush": {"scale": [0.6, 1.9], "squash": [0.45, 1.1], "what": "a bank bush (willow / alder scrub) on the bank top"},
 }
 PLACES = ("", "water", "margin", "bank", "bar", "shore")
+COLS = 11  # (a clutter row: x, y, z, kind, scale, yaw, squash, place, river, water, sink)
 from . import terrain_shore as _shore  # noqa: E402  (lake margins and sea beaches: the same rows)
 KINDS.update(_shore.KINDS)
 SPACING = {"river_rock": 1.1, "cobbles": 0.8, "slab": 1.5, "driftwood": 2.2, "reeds": 0.9, "litter": 2.0, "sedge": 0.7,
            "bush": 2.4}
+
+
+CSV_COLUMNS = "x,y,z,kind,scale,yaw,squash,place,water,sink"
+CSV_VERSION = 2  # (1: ..., place; 2: + water, sink)
+FOOTPRINT = {  # what stands in the water's way, per kind: plan axes and height as shares of scale (x squash);
+    # the clutter kit's realistic assets' means (height above the pivot: its seasons json has each variant's)
+    "river_rock": {"shape": "ellipsoid", "plan": [1.0, 0.85], "height": 0.44},
+    "slab": {"shape": "ellipsoid", "plan": [1.0, 0.95], "height": 0.27},
+    "driftwood": {"shape": "ellipsoid", "plan": [1.0, 0.14], "height": 0.14},
+    "cobbles": {"shape": "ellipsoid", "plan": [1.0, 0.9], "height": 0.12},
+}
 
 
 def _ss(e0, e1, x):
@@ -545,13 +557,14 @@ class Streams:
 
 def clutter(T, mats, field, box=None, seed=11):
     """Stream clutter as rows [x, y, z, kind index (into KINDS), scale, yaw deg, squash, place index (PLACES), river
-    index]: rounded boulders in the channel (more and bigger with the stream's energy, in clusters and in rows across
+    index, water (m: the water's surface minus z; > 0 standing in that much water, < 0 above it), sink (m the piece's
+    pivot goes below z: half-buried stones)]: rounded boulders in the channel (more and bigger with the stream's energy, in clusters and in rows across
     the steps; the bigger ones stand proud of the water) and on the banks, cobble patches on bars, riffles and
     margins, slabs along steep margins, driftwood caught on boulders and stranded on outer bends and bar heads, reeds
     along slow margins, litter in the slack. Deterministic; nothing on fords, routes or sites. box: [[x0, y0],
     [x1, y1]]."""
     S = getattr(mats, "streams", None)
-    empty = np.zeros((0, 9))
+    empty = np.zeros((0, COLS))
     if S is None or not S.any or S.cfg["clutter"] <= 0:
         return empty
     dens = float(S.cfg["clutter"])
@@ -578,18 +591,18 @@ def clutter(T, mats, field, box=None, seed=11):
         h3 = lambda a, b: noise._hash(np.rint(xy[:, 0] / sp).astype(np.int64), np.rint(xy[:, 1] / sp).astype(np.int64),
                                       np.full(len(xy), a, np.int64), seed + b)
         xy = xy + (np.c_[h3(1, ki), h3(2, ki)] - 0.5) * 0.9 * sp
-        u_keep, u_a, u_b, u_c = h3(3, ki), h3(4, ki), h3(5, ki), h3(6, ki)
+        u_keep, u_a, u_b, u_c, u_s = h3(3, ki), h3(4, ki), h3(5, ki), h3(6, ki), h3(9, ki)
         k = S.in_zone(xy[:, 0], xy[:, 1])
         k = k[(xy[k, 0] >= zx0) & (xy[k, 0] < zx1) & (xy[k, 1] >= zy0) & (xy[k, 1] < zy1)]
         if not len(k):
             continue
-        xy, u_keep, u_a, u_b, u_c = xy[k], u_keep[k], u_a[k], u_b[k], u_c[k]
+        xy, u_keep, u_a, u_b, u_c, u_s = xy[k], u_keep[k], u_a[k], u_b[k], u_c[k], u_s[k]
         h, cs = field.column(xy[:, 0], xy[:, 1])
         g = S.sample(xy)
         ok = (cs > 0.75) & (g["ford"] < 0.25) & (g["sd"] < S.cfg["reach"])
         if mats.sea is not None:
             ok &= h > mats.sea + 0.1
-        xy, h, u_keep, u_a, u_b, u_c = xy[ok], h[ok], u_keep[ok], u_a[ok], u_b[ok], u_c[ok]
+        xy, h, u_keep, u_a, u_b, u_c, u_s = xy[ok], h[ok], u_keep[ok], u_a[ok], u_b[ok], u_c[ok], u_s[ok]
         g = {a: b[ok] for a, b in g.items()}
         n = len(xy)
         if not n:
@@ -606,6 +619,7 @@ def clutter(T, mats, field, box=None, seed=11):
         yaw = 360.0 * u_b
         place = np.zeros(n, int)
         z = h.copy()
+        sink = np.zeros(n)
         if kind == "river_rock":
             clus = 0.25 + 1.5 * _ss(0.42, 0.68, noise.fbm(Pf, 4.0, 2, seed=741))
             rows = _ss(0.7, 0.95, -np.sin(2 * np.pi * g["phi"])) * _ss(0.3, 0.7, e)  # (the steps of a step-pool reach)
@@ -616,11 +630,17 @@ def clutter(T, mats, field, box=None, seed=11):
             p_w = p_w * (1 - g["still"] * (1 - _ss(-5.0, -1.5, sd)))  # (a lake: stones along its shore only)
             hb = -dep
             p_b = (0.012 + 0.12 * e) * clus * _ss(5.0, 1.0, sd) * (hb < 1.6) * (0.6 + 0.8 * _ss(0.1, 0.6, -g["bend"]))
-            p = np.where(inwater, p_w, np.where(sd > -0.5, p_b, 0.0))
-            med = 0.42 + 0.55 * e + 0.25 * rows
+            # (steep reaches: fewer round boulders, more angular slabs; see "slab")
+            p = np.where(inwater, p_w * (1 - 0.35 * _ss(0.6, 0.95, e)), np.where(sd > -0.5, p_b, 0.0))
+            # sorted along the channel: the big ones on riffles and steps, small ones in the pools
+            med = (0.42 + 0.55 * e + 0.25 * rows) * (1 + 0.35 * riffle - 0.4 * pool * (1 - rows))
             scale = np.clip(med * np.exp(0.5 * _normal(u_a)), lo, np.minimum(hi, np.maximum(0.5, 1.3 * g["w"])))
             squash = np.where(scale > 1.0, sq0 + (1.0 - sq0) * u_c, squash)  # (big ones sit lower: slabby)
             place = np.where(inwater, 1, np.where(-dep < 0.3, 2, 3))
+            # a third lie half buried in the bed (0.2-0.45 of their height; height ~0.55 x scale x squash), the rest
+            # bedded a little: stones set ON the gravel read as garden stones
+            ht = FOOTPRINT["river_rock"]["height"] * scale * squash
+            sink = np.where(u_s < 0.33, 0.2 + 0.75 * u_s, 0.04 + 0.08 * u_s) * ht
         elif kind == "cobbles":
             margin = _ss(-1.4, -0.3, sd) * _ss(1.2, 0.2, sd)
             shallow = _ss(0.55, 0.15, dep)
@@ -638,8 +658,12 @@ def clutter(T, mats, field, box=None, seed=11):
                 _ss(0.45, 0.65, noise.fbm(Pf, 5.0, 2, seed=743))
             # (and a few big flat slabs out in the channel on any reach: on the riffles, awash)
             p = np.maximum(p, 0.035 * (0.4 + riffle) * inwater * _ss(0.6, 0.72, noise.fbm(Pf, 6.0, 2, seed=747)))
+            # (and on steep reaches broken slabs and blocks in the channel itself)
+            p = np.maximum(p, 0.16 * _ss(0.55, 0.9, e) * inwater * (0.5 + riffle) *
+                           _ss(0.4, 0.6, noise.fbm(Pf, 3.0, 2, seed=753)))
             p = p * (1 - g["still"])
             scale = lo + (hi - lo) * u_a ** 1.3
+            sink = (0.1 + 0.15 * u_s) * FOOTPRINT["slab"]["height"] * scale * squash
             yaw = flow + 40 * (u_b - 0.5)
             place = np.where(dep > 0.03, 1, 2)
         elif kind == "driftwood":
@@ -686,7 +710,8 @@ def clutter(T, mats, field, box=None, seed=11):
         keep = u_keep < np.clip(p * dens, 0, 1)
         if not keep.any():
             continue
-        R = np.c_[xy, z, np.full(n, ki), scale, np.mod(yaw, 360.0), squash, place, S.river_of(xy)][keep]
+        R = np.c_[xy, z, np.full(n, ki), scale, np.mod(yaw, 360.0), squash, place, S.river_of(xy), g["level"] - z,
+                  sink][keep]
         if kind == "river_rock":
             R = _thin(R, 0.42)
             rocks = (R, g["t"][keep], g["w"][keep])
@@ -711,9 +736,11 @@ def clutter(T, mats, field, box=None, seed=11):
                     wq = S.sample(pos)["w"]
                     ln = np.clip(1.2 + 2.2 * h2[sel], lo, np.minimum(hi, 2.2 * wq + 1.0))
                     yw = np.degrees(np.arctan2(td[:, 1], td[:, 0])) + 90 + 70 * (hh[sel] / (0.3 * dens) - 0.5)
-                    hz = np.maximum(hz, S.sample(pos)["level"] - 0.06)  # (afloat against the rock, not on the bed)
+                    lvq = S.sample(pos)["level"]
+                    hz = np.maximum(hz, lvq - 0.06)  # (afloat against the rock, not on the bed)
                     R = np.concatenate([R, np.c_[pos, hz, np.full(len(q), ki), ln, np.mod(yw, 360.0),
-                                                 0.9 + 0.5 * h2[sel], np.ones(len(q)), q[:, 8]]])
+                                                 0.9 + 0.5 * h2[sel], np.ones(len(q)), q[:, 8], lvq - hz,
+                                                 np.zeros(len(q))]])
         out.append(R)
     return np.concatenate(out) if out else empty
 
@@ -756,7 +783,7 @@ def all_clutter(T, mats, field, box=None):
     parts = [clutter(T, mats, field, box)]
     if dens > 0:
         parts.append(_shore.beach_clutter(T, mats, field, list(KINDS), box, density=dens))
-    return np.concatenate([p for p in parts if len(p)]) if any(len(p) for p in parts) else np.zeros((0, 9))
+    return np.concatenate([p for p in parts if len(p)]) if any(len(p) for p in parts) else np.zeros((0, COLS))
 
 
 def counts(S, C):
@@ -776,12 +803,12 @@ def summary(S, C, box=None):
     a river with none."""
     lines = []
     kinds = list(KINDS)
-    sb = C[C[:, 8] == -1] if len(C) else np.zeros((0, 9))
+    sb = C[C[:, 8] == -1] if len(C) else np.zeros((0, COLS))
     if len(sb):
         lines.append("shore clutter (sea beaches): " + ", ".join(
             f"{int((sb[:, 3] == i).sum())} {k}" for i, k in enumerate(kinds) if (sb[:, 3] == i).any()))
     for r, name in enumerate(S.names if S is not None else []):
-        sel = C[C[:, 8] == r] if len(C) else np.zeros((0, 9))
+        sel = C[C[:, 8] == r] if len(C) else np.zeros((0, COLS))
         if not len(sel):
             if box is None:
                 lines.append(f"WARNING stream clutter {name}: none placed (the channel has no rocks, wood or reeds; is "
@@ -792,7 +819,7 @@ def summary(S, C, box=None):
         proud = ""
         if len(rk):
             dep = S.sample(rk[:, :2])["level"] - rk[:, 2]
-            top = 0.6 * rk[:, 4] * rk[:, 6] * 0.8
+            top = FOOTPRINT["river_rock"]["height"] * rk[:, 4] * rk[:, 6] - rk[:, 10]
             proud = f" ({int((top > dep).sum())} of {len(rk)} rocks in the water stand proud of it)"
         lines.append(f"stream clutter {name}: " + ", ".join(f"{v} {k}" for k, v in n.items() if v) + proud)
     return lines
@@ -800,17 +827,25 @@ def summary(S, C, box=None):
 
 def manifest(S, C):
     """The export manifest's "clutter" section for the stream kinds."""
-    return {"kinds": {k: {"scale_m": v["scale"], "squash": v["squash"], "what": v["what"], "z": "surface"}
+    return {"kinds": {k: {"scale_m": v["scale"], "squash": v["squash"], "what": v["what"], "z": "surface",
+                          **({"footprint": FOOTPRINT[k]} if k in FOOTPRINT else {})}
                       for k, v in KINDS.items() if k != "bush"},  # (bush: the older kind's entry stands)
             "places": {"water": "in the channel, its base on the bed under the water", "margin": "at the water line",
                        "bank": "on the bank beside the water", "bar": "on a gravel bar inside a bend",
                        "shore": "on a sea beach above the water",
                        "": "dry ground (the older kinds)"},
-            "how": "clutter.csv rows x,y,z,kind,scale,yaw,squash,place: scale = the piece's largest plan dimension in "
+            "columns": CSV_COLUMNS, "csv_version": CSV_VERSION,
+            "how": "clutter.csv rows x,y,z,kind,scale,yaw,squash,place,water,sink: scale = the piece's largest plan dimension in "
                    "metres, squash = its height relative to the asset's own proportions (instance scale (s, s, s x "
                    "squash) on an asset 1 m across), yaw degrees about up (driftwood: its long axis, 0 = along +x), z "
                    "= the ground or bed under its pivot (kinds with \"z\": \"surface\"; the asset's pivot sinks it). "
-                   "Water depth at a row = the river's level there (rivers in meta / the manifest) minus z.",
+                   "Two more columns after place: water = the water surface's height minus z at the row, in metres (> "
+                   "0: the piece stands in that much water; < 0: that far above it; empty: no water near), and sink "
+                   "= metres the pivot goes below z on top of the asset's own sink (half-buried stones; empty = 0). "
+                   "footprint (per kind) is what a water or flow simulation stamps for a row, at its own resolution: "
+                   "the upper half of an ellipsoid with plan axes scale x plan (the long one along yaw) and height "
+                   "scale x squash x height over (z - sink); the tile heightmaps hold none of these pieces (they "
+                   "are 1 m cells; the pieces are their own meshes and colliders).",
             "rivers": counts(S, C)}
 
 

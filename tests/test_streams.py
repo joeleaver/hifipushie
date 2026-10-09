@@ -125,6 +125,27 @@ def test_clutter_rules(T, field, mats):
     kinds = list(ts.KINDS)
     n = {k: int((C[:, 3] == i).sum()) for i, k in enumerate(kinds)}
     assert n["river_rock"] > 5 and n["cobbles"] > 20 and n["driftwood"] >= 1, n
+    # the row's water and sink columns (csv_version 2) and the manifest's footprint / column list
+    assert C.shape[1] == ts.COLS == len(ts.CSV_COLUMNS.split(",")) + 1  # (+ the river index, not written)
+    hz, _ = field.column(C[:, 0], C[:, 1])
+    rr = C[:, 3] == kinds.index("river_rock")
+    lv = S.sample(C[:, :2])["level"]
+    assert np.allclose(C[rr, 9], lv[rr] - C[rr, 2], atol=1e-6) and np.allclose(C[rr, 2], hz[rr], atol=1e-6)
+    wet = rr & (C[:, 7] == ts.PLACES.index("water"))
+    assert (C[wet, 9] > 0).all() and (C[rr & (C[:, 7] == ts.PLACES.index("bank")), 9] < 0).all()
+    top = ts.FOOTPRINT["river_rock"]["height"] * C[rr, 4] * C[rr, 6]
+    share = C[rr, 10] / top
+    assert (share >= 0).all() and share.max() < 0.5 and 0.15 < (share > 0.2).mean() < 0.5, (share.max(), (share > 0.2).mean())
+    assert (C[C[:, 3] == kinds.index("reeds"), 10] == 0).all()
+    man = ts.manifest(S, C)
+    assert man["columns"] == ts.CSV_COLUMNS and man["csv_version"] == 2
+    fp = man["kinds"]["river_rock"]["footprint"]
+    assert fp["shape"] == "ellipsoid" and len(fp["plan"]) == 2 and 0.3 < fp["height"] < 0.6
+    assert "footprint" in man["kinds"]["slab"] and "footprint" not in man["kinds"]["reeds"]
+    # sorted along the channel: rocks on riffles are bigger than rocks in pools
+    pool, riffle, _ = S.forms(C[wet, :2])
+    if (riffle > 0.6).sum() > 5 and (pool > 0.6).sum() > 5:
+        assert np.median(C[wet, 4][riffle > 0.6]) > np.median(C[wet, 4][pool > 0.6])
     # a block of the level holds the same rows as the whole level does there
     box = [[64.0, 64.0], [192.0, 192.0]]
     Cb = ts.clutter(T, mats, field, box=box)

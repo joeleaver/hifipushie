@@ -599,6 +599,14 @@ write for the default; the numbers below steer it.
   along a cut bank's top) and `bush` rows with place `bank` (scrub on the bank top, in clumps). `scale` = the piece's largest plan dimension in metres, `squash` = its height relative to the asset's own
   proportions, `z` = the bed or ground under it. The manifest's `clutter` section names every kind with its ranges
   and the counts per river; `streams.rivers` gives each river's path with level, width and energy.
+- two more columns after `place` (the manifest's `clutter.columns` lists them, `clutter.csv_version` is 2): `water`
+  = the water surface's height minus the row's z in metres (> 0: the piece stands in that much water, so an engine
+  darkens it below z + water; < 0: that far above the water; empty on dry ground) and `sink` = metres its pivot goes
+  below z (about a third of the river rocks lie 0.2-0.45 of their height in the bed; empty = 0). Rocks are sorted
+  along the channel (bigger on riffles and steps, smaller in pools) and steep reaches carry more `slab` rows.
+  `clutter.kinds.<kind>.footprint` (`{"shape": "ellipsoid", "plan": [1, 0.85], "height": 0.44}`: shares of scale,
+  the height x squash, over z - sink) is what a water simulation stamps per row at its own resolution: the tile
+  heightmaps hold none of these pieces (1 m cells; the pieces are their own meshes and colliders).
 - the export's notes say each river's reaches by character and its clutter ("stream clutter vale_river: 99
   river_rock, 205 cobbles, ... (23 of 76 rocks in the water stand proud of it)"), and WARN when a river has none.
 
