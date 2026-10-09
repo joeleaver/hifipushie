@@ -1030,6 +1030,21 @@ regresses, bisect by building one spec at each commit and diffing heights.
     collision still holds the cave (the walk on the LOD 1 collision: largest step 0.24 m). Not run: the full island
     or a block with neighbours (the coordinator: single tiles on a loaded machine); unpinching never touches a border
     vertex. tests/test_tiles::test_pinched_sheets_split.
+  - Note 118 (2026-10-09, "terrain117"): river-corridor heightmaps for gdamp's nested 0.25 m water solve,
+    `terrain_corridors.py`, opt-in export.tiles `"corridors": true | {spacing 0.25, buffer 15, size 128}` (kept out of
+    the tiles' incremental fingerprint). Rects (axis aligned, <= 128 m, overlapping) along each river's water line
+    (half width + 15 m), each lake's outline ring (+ 15 m) and each fall's pool (dropped when a river's rect holds it);
+    `corridors/corridor_<n>.npy` float32, row 0 north; manifest `corridors.rects` [{file, extent, cols, rows, spacing,
+    follows}]. Value = the top surface as the tiles build it: the ground tile's pushed heightmap (`Region.height`,
+    with the stream bed edits) and over it the meshed (cliff) field's topmost crossing (down from 10 m over the
+    ground in steps of half the field's value, <= 0.5 m, then bisection to 1 mm). `pushed_grid`: Region.height's push
+    ball on a 0.25 m grid by shifted views (its offsets are -push + 0.25 k: a grid moved by -push), equal to it
+    exactly, 0.1 s where the ball took 15-25 s for a fall's 40 k samples. Island: 24 rects, 3.4 M samples, 13 MB,
+    143 s (+ ~40 s field setup alone; inside an export the field exists). Against LOD 0 (scratch corcmp.py: vertical
+    rays on the ground + cliff GLBs, surface primitives): lowland vale_river tile 27,13 (ground on top): |dz| p50
+    0.006, p95 0.029, p99 0.066, max 0.19 m (the 1 m ground grid can't hold the bed's finer shape); crown_beck's fall
+    tile 20,23 (cliff on top): p50 0.018, p95 0.064, p99 0.13, max 0.71 m (vertical differences on 70-85 deg faces:
+    the mesh's 0.04 m is along the normal). tests/test_corridors.py.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
