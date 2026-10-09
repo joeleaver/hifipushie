@@ -633,3 +633,23 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
       value: don't go lighter by measure; if anything warmer.
     - BLUNT READ: the swoop shows as a lift at the front centre and a forelock flick in the side view, but as a frayed
       tuft, not one coherent lock curling over (the photo's is a clean wave); front sides narrower than the photo.
+  - Round 9 (the coordinator on h8_p10: back and texture good; the swoop "a thin frayed tuft standing up" that pokes
+    FORWARD past the forehead in profile). Sheet `hair_renders/h9_p12_sheet.png` (before p10 | after p12 + front
+    close-up). base.json = p12 (base_p10.json kept).
+    - The photo's front close-up read at its own scale (out/photo_front_zoom.png): no visible part; the front lock
+      rises from the hairline just left of centre (his left, ~10 deg) and sweeps up and over to HIS RIGHT (image left),
+      its ends feathering out over his right temple; the painting agrees (back over the right temple).
+    - swoop reworked (hair_loose): the lift is UP-and-back by `rise` (world [0, 0.45, 1]), not along the scalp's
+      normal (on the forehead the normal points forward: the cowlick); messy is off inside it (its locks in step);
+      new keys `body` (its locks x wider and thicker, per-lock strands tip_spread 0.15, no wave: one coherent lock)
+      and `lay` (0.06: at 0.3 the per-step lay killed the lift). Test asserts no swoop lock pokes > 3 mm forward of
+      its root. Garrett: at 10, span 40, depth 0.04, rise 0.28, sweep -1, stiff 0.75, length 0.02, body 1.8.
+    - Sides back to p7 (lay 0, out 0.18, stiff 0.55; sides p90 12.5 mm). The "4-9 mm narrow" on his right ("L") is
+      there in EVERY variant incl. p7 at 50-84 mm down: the head-vs-photo offset noted in round 7, not the groom; his
+      left is +0..+6. Top lay 0.8: across the top columns 12.7 / 12.7 / 12.7 / 10.2 mm vs the photo's 14 / 14 / 10.2 /
+      7.6 (~13 as asked); the "top of hair" 16.6 is the upper side over his left (21.7 vs 19.1). IoU 0.923.
+    - Warmer, not lighter: lit #664126, grey #c6a684, sheen #a88c70, grey front 0.45 / top 0.35: hair p50 (101, 92,
+      85), lum 93, light 0.39, R/B 1.19 (p10 117 / 110 / 0.49 / 1.14; photo 96, 84, 74 / 86 / 0.19 / 1.30).
+    - BLUNT READ: the swoop is now a darker, combed lock rolling from the front centre over to his right, behind the
+      hairline in profile (no cowlick); it is subtle, a little flat, and reads as part of the combed mass more than as
+      a lifted wave. Back and texture as round 8.

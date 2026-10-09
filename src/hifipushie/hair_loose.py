@@ -24,11 +24,15 @@ capability, `groom.loose`:
    "face": 1.0,             0..1: how far the hair is kept from hanging over the face (1 = it frames it: curtains
                             beside the cheeks; 0 = it falls where it falls); the fringe is not held back
    "ends": 0.0,             -1..1: the ends turn under toward the neck (a bob's bevel, +) or flick out (-)
-   "swoop": {"at": 0, "span": 30, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01},
+   "swoop": {"at": 0, "span": 30, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01, "body": 1.6,
+             "lay": 0.06},
                             a front lock lifting off the forehead and curving up and back: hair rooted within `depth`
                             m of the hairline and `span` deg of azimuth `at` (0 = the face's centre, + toward his
-                            left) is combed up-and-back (sweep -1..1: over to his right / left), stands `rise` more
-                            out of the scalp, is stiffer and `length` m longer, unlaid; weights fade smoothly
+                            left) is combed up-and-back (sweep -1..1: over to his right / left), lifts UP and back by
+                            `rise` (not along the forehead's normal: that pokes forward past the brow), is stiffer,
+                            `length` m longer, laid by `lay` so the wave rolls back behind the hairline, not tousled
+                            by messy, and its locks are `body` x wider and thicker with their strands kept together
+                            (one coherent lock); weights fade smoothly
    "fringe": {"length": 0.07, "span": 40, "depth": 0.045, "sweep": 0.0, "level": None}}
                             hair rooted within `depth` m of the front hairline, `span` deg either side of the
                             centre, combed forward over the forehead (sweep -1..1: to his right / left); level
@@ -51,7 +55,8 @@ LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
          "flow": None, "swoop": None}
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
-SWOOP = {"at": 0.0, "span": 30.0, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01}
+SWOOP = {"at": 0.0, "span": 30.0, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01, "body": 1.6,
+         "lay": 0.06}
 DOWN = np.array([0.0, 0.0, -1.0])
 FACE_AZ = 58.0  # deg either side of the face's centre line that hair (not a fringe) is kept out of
 LAY_EL = (48.0, 66.0)  # deg of scalp elevation over which the "top" region's lay comes in (below: the sides' lay)
@@ -252,7 +257,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     bad = np.linalg.norm(tang, axis=1) < 1e-3
     tang[bad] = np.cross(nrm[bad], [1.0, 0, 0])
     tang = _unit(tang)
-    turn = rng.uniform(-1, 1, m) * float(p["messy"]) * np.pi / 2
+    turn = rng.uniform(-1, 1, m) * float(p["messy"]) * np.pi / 2 * (1 - wsw)  # (a swoop is combed: its locks in step)
     tang = _unit(tang * np.cos(turn)[:, None] + np.cross(nrm, tang) * np.sin(turn)[:, None])
     out_r = np.clip(by_region(p["out"], 0.0), 0, 1)
     out = float(out_r.mean())
@@ -274,9 +279,13 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         lay = np.clip(by_region(lay_v, 0.0), 0, 1)
     lay[is_fr] = 0.0
     if sw:
-        outi = np.clip(outi + float(sw["rise"]) * wsw, 0, 1)
-        lay = lay * (1 - wsw)
+        # the lift is UP and back, not along the scalp's normal (on the forehead that points forward: a cowlick
+        # poking out past the brow in profile); the lock keeps a little lay so its wave rolls back over the head
+        outi = outi * (1 - wsw)
+        lay = lay * (1 - wsw) + float(sw["lay"]) * wsw
     d = _unit(tang * (1 - outi)[:, None] + nrm * (outi + 0.12 * (1 - lay))[:, None])
+    if sw:
+        d = _unit(d + (float(sw["rise"]) * 2.0 * wsw)[:, None] * _unit(np.array([0.0, 0.45, 1.0]))[None])
     stiff = np.clip(by_region(p["stiff"], 0.3), 0, 1)
     if fr:
         stiff[is_fr] = float(fr["stiff"])
@@ -376,6 +385,11 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             lk["radius"] = [round(float(v), 3) for v in fan]
         if short:
             lk["strands"] = {"tip_spread": 0.6}
+        if sw and wsw[i] > 0.3:  # one lock with body: broader, thicker, strands kept together to the tip, no wave
+            k_ = 1 + (float(sw["body"]) - 1) * float(wsw[i])
+            lk["width"] = round(lk["width"] * k_, 4)
+            lk["thickness"] = round(lk["thickness"] * k_, 4)
+            lk["strands"] = {"tip_spread": 0.15, "wave": 0.0, "random": 0.1}
         gy = max(_grey(g, float(az[i]), float(el[i]), line), float(GR[i]))  # greying temples / sideburns / regions
         if gy > 0.01:
             lk["grey"] = round(gy, 3)

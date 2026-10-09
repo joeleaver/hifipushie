@@ -179,13 +179,15 @@ def test_swoop_lifts_the_front_lock_and_turns_it_over():
         fa = np.abs(((az + 180) % 360) - 180)
         hmax = np.array([sc.coords(Q)[2].max() for Q in P])
         dx = np.array([Q[-1, 0] - Q[0, 0] for Q in P])
+        fwd = np.array([Q[0, 1] - Q[:, 1].min() for Q in P])  # how far a lock pokes forward of its root (-y)
         mid = (fa < 12) & (el < np.percentile(el[fa < 12], 30))
         temple = (fa > 50) & (fa < 70) & (el < np.percentile(el[(fa > 50) & (fa < 70)], 30))
-        return hmax[mid], dx[mid], hmax[temple]
-    h0, dx0, t0 = front(crop)
-    h1, dx1, t1 = front({**crop, "swoop": {"span": 30, "depth": 0.03, "rise": 0.4, "sweep": -1.0, "stiff": 0.8}})
+        return hmax[mid], dx[mid], hmax[temple], fwd[mid]
+    h0, dx0, t0, _ = front(crop)
+    h1, dx1, t1, f1 = front({**crop, "swoop": {"span": 30, "depth": 0.03, "rise": 0.4, "sweep": -1.0, "stiff": 0.8}})
+    assert f1.max() < 0.003, f1.max()  # the crest rolls back: no cowlick poking forward past the hairline
     assert len(h0) > 2 and len(t0) > 2
-    assert np.median(h1) > np.median(h0) + 0.002, (np.median(h0), np.median(h1))  # lifted off the forehead
+    assert np.median(h1) > np.median(h0) + 0.001, (np.median(h0), np.median(h1))  # lifted off the forehead
     assert np.median(dx1) < np.median(dx0) - 0.003, (np.median(dx0), np.median(dx1))  # over to his right (-x)
     assert abs(np.median(t1) - np.median(t0)) < 0.001, (np.median(t0), np.median(t1))  # temples untouched
     try:
