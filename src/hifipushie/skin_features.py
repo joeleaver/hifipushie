@@ -140,7 +140,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     part, t, seed, age = p["part"], p["tone"], p["seed"], p["age"]
     old, child, thin, base_r = ctx["old"], ctx["child"], ctx["thin"], ctx["base_r"]
     dark = t["melanin"]
-    ctx = {**ctx, "torso": "chest" in J}
+    ctx = {**ctx, "torso": "chest" in J, "spec": spec}
     ctx["smooth"] = []
     from . import paint as _paint
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
@@ -443,7 +443,11 @@ def _hair(p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
                   mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
-        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "grey", "grey_color"))
+        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "grey", "grey_color",
+                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine"))
+        if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:
+            _stubble_map(ctx["spec"], p, J, o, layer, T, ctx)
+            o = None
         if o:
             a = float(o["amount"])
             col = _hex(o["color"]) if "color" in o else dflt
@@ -502,6 +506,52 @@ def _hair(p, J, layer, T, ctx) -> None:
             lo = 0.55 - 0.35 * min(o["amount"], 1.2)
             layer("body_hair", o.get("mask"), color=col, opacity=0.75,
                   mask=[{"tile": {"swatch": "hairs", "rotate": bool(rot), "range": [round(lo, 3), round(lo + 0.35, 3)], "vary": False}}, {"vertex": True, "mask": _zones(zs)}])
+
+
+def stubble_options(o: dict, age: float = 35) -> dict:
+    """hair.stubble's options resolved against its style (skin_marks.STUBBLE_STYLES)."""
+    from . import skin_marks
+    st = o.get("style", "short")
+    if st not in skin_marks.STUBBLE_STYLES:
+        raise SpecError(f"skin hair.stubble: style is one of {', '.join(skin_marks.STUBBLE_STYLES)}")
+    base = dict(skin_marks.STUBBLE_STYLES[st])
+    a = float(o["amount"])
+    return {"length": float(o.get("length", base["length"])), "density": float(np.clip(o.get("density", base["density"]) * min(a, 1.0), 0.02, 1.0)),
+            "grey": float(np.clip(o.get("grey", 0.0), 0, 1)), "patchy": float(np.clip(o.get("patchy", base["patchy"]), 0, 1)),
+            "trim": float(np.clip(o.get("trim", base["trim"]), 0, 1)), "cheeks": float(np.clip(o.get("cheeks", base["cheeks"]), 0, 1)),
+            "cheek_line": float(o.get("cheek_line", 0.0)), "neckline": float(o.get("neckline", 0.0)),
+            "size": float(o.get("size", 1.0)), "seed": int(o.get("seed", 0)), "shadow": float(o.get("shadow", base["shadow"]))}
+
+
+def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
+    """Stubble as a unique map on the head (skin_marks.stubble_map): the shadow of hair in the skin (per vertex,
+    from the dark roots' count) + dark and white hairs as cut strokes along the growth direction, with relief."""
+    from . import skin_marks
+    t = p["tone"]
+    a = float(o["amount"])
+    q = stubble_options(o, p["age"])
+    path, place, _ = skin_marks.stubble_map(spec, p["part"], J, q)
+    col = _hex(o["color"]) if "color" in o else hair_default(t, p["age"])
+    im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
+    lips = {"zone": "lips", "blend": "subtract"}
+    # hair seen through the skin: on light skin a cool blue-grey cast (the dark shaft under a scattering layer), on dark
+    # skin just darker; the hair's own colour mixed in as it grows out
+    # (a freshly shaved jaw: the cool cast; a few days' growth: the cut hairs at the surface warm it to a grey-brown, the
+    # colour measured on Garrett's photo under the matched light: Lab ~45/4/13 at ~0.8 coverage)
+    grow = float(np.clip(q["length"] / 0.001, 0, 1))
+    cool = np.array(T(grey=0.8, melanin=1.1)) * (0.5 + 0.3 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
+    warm = np.array(T(grey=0.3, melanin=2.5, blood=0.8)) * (0.62 + 0.25 * t["melanin"])
+    cast = (1 - grow) * cool + grow * warm + (0.04 + 0.12 * grow) * (np.array(col) - 0.3)
+    cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]
+    cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
+    layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.85 * min(a, 1.3) * q["shadow"], 0.95), 3),
+          mask=[im("b"), lips])
+    hgt = round(float(np.clip(0.00003 + 0.012 * q["length"], 0.00003, 0.00012)), 7)   # a hair stands ~0.1 mm proud
+    r = min(ctx["base_r"] + 0.1, 0.9)
+    layer("stubble", o.get("mask"), color=col, opacity=0.97, roughness=r, specular=0.35, height=hgt, mask=[im("r"), lips])
+    if q["grey"] > 0:
+        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#d2cec8")), opacity=0.95, roughness=r, specular=0.4,
+              height=hgt, mask=[im("g"), lips])
 
 
 def _points(v, what):
