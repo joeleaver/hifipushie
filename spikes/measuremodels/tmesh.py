@@ -100,16 +100,19 @@ def offsets(mesh, H, idx):
     return a, ok, q, nq
 
 
-def rows(mesh, c, idx, sig_mm, K=rs.K_FIT, huber=2.5, realign=True):
+def rows(mesh, c, idx, sig_mm, K=rs.K_FIT, huber=2.5, realign=True, gain=None, face_align=False):
     """Evidence rows on the identity c from the mesh: at head vertices idx (current head = head(c)), the mesh's
     surface point q and normal n: n . (V0 + IB c - q) = 0, sigma sig_mm (array per idx)."""
     g = rs.gnm()
     H = rs.head(c)
     if realign:
-        align(mesh, H, idx=idx, T0=mesh.T)   # on everything used: on the face alone the head's size and the mesh's scale trade off
+        align(mesh, H, idx=None if face_align else idx, T0=mesh.T)   # on everything used: on the face alone the head's size and the mesh's scale trade off
     a, ok, q, nq = offsets(mesh, H, idx)
     sg = np.broadcast_to(np.asarray(sig_mm, float), (len(idx),)) / 1000.0
     A = np.einsum("nd,knd->nk", nq, g["IB"][:K, idx].astype(float)) / sg[:, None]
+    if gain is not None:      # the mesh's deviation from the MEAN head, scaled (it exaggerates): the target surface point
+        q = g["V0"][idx] + np.asarray(gain)[:, None] * (q - g["V0"][idx])
+        a = ((q - H[idx]) * nq).sum(1)
     y = (nq * (q - g["V0"][idx])).sum(1) / sg
     r = a / sg
     w = np.where(np.abs(r) > huber, np.sqrt(huber / np.maximum(np.abs(r), 1e-9)), 1.0) * ok

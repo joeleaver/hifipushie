@@ -86,7 +86,37 @@ def methods(model):
 # ---- generated meshes (TRELLIS.2) ------------------------------------------------------------------------------------
 SIG = {"face": 2.2, "nose": 3.0, "chin": 3.0, "lips": 2.0, "eyes": 1.6, "brow": 2.3, "cheeks": 2.1, "forehead": 1.5, "jaw": 2.8,
        "ears": 4.1, "cranium": 5.9, "neck": 6.8}      # mm rms of the meshes' surface offset from truth, by region (score_mesh)
+GAIN = {"nose": 0.49, "chin": 0.26, "lips": 0.51, "eyes": 0.46, "brow": 0.47, "cheeks": 0.62, "forehead": 0.71, "jaw": 0.73, "cranium": 0.75,
+        "neck": 0.70, "ears": 0.6}     # truth's deviation from the mean ~ gain x the mesh's (score_mesh, the same heads: in-sample)
+LEFT = {"nose": 1.85, "chin": 2.7, "lips": 1.6, "eyes": 1.1, "brow": 1.6, "cheeks": 1.4, "forehead": 1.3, "jaw": 1.75, "cranium": 5.3, "neck": 5.2, "ears": 3.2}
 _M = {}
+
+
+def gain_fit(s, lm_views, mesh_views, infl=2.0, extra=None, rounds=20, regions=None, face_align=True, normals=None):
+    ev = fits.evs(s, lm_views)
+    vs = [v for v in lm_views if fits.ev478(f"{s}_{v}") is not None]
+    idx, _ = mesh_idx(s, regions)
+    reg, _ = mm.region_of()
+    gq = np.array([GAIN[r] for r in reg[idx]])
+    sg = np.array([LEFT[r] for r in reg[idx]]) * infl
+    meshes = []
+    for v in mesh_views:
+        k = f"{s}_{v}"
+        if not (tmesh.TR / f"{k}.npz").exists():
+            return None
+        _M.setdefault(k, tmesh.Mesh(k))
+        meshes.append(_M[k])
+    f = fitlib.fit(ev, robust=True, rows=extra)
+    for me in meshes:
+        tmesh.align(me, rs.head(f["c"]))
+    for _ in range(rounds):
+        rr = [tmesh.rows(me, f["c"], idx, sg, gain=gq, face_align=face_align) for me in meshes]
+        if normals:
+            for v, cam in zip(vs, f["cams"]):
+                it = mm.item(f"{s}_{v}")
+                rr.append(dense.rows(normals, mm.pred(normals, f"{s}_{v}"), f["c"], cam, v, hair=it["hair"] if it["look"]["hair"] else None, use=("n",), infl=4.0))
+        f = fitlib.fit(ev, robust=True, rows=stack(extra, *rr), c_init=f["c"])
+    return f
 
 
 def mesh_idx(s, regions=None, step=5):
@@ -168,6 +198,14 @@ MESH = {
     "T0 mesh(front) ALONE, no landmarks": lambda s: mesh_fit(s, [], ["front"]),
     "T1 front lm + mesh(front), all regions": lambda s: mesh_fit(s, ["front"], ["front"]),
     "T1a   same, sigma x1": lambda s: mesh_fit(s, ["front"], ["front"], infl=1.0),
+    "G1 front lm + mesh(front) with gains": lambda s: gain_fit(s, ["front"], ["front"]),
+    "G2 front lm + mesh(front) with gains, sigma x1": lambda s: gain_fit(s, ["front"], ["front"], infl=1.0),
+    "G3 front lm + mesh(front) gains, hidden regions only": lambda s: gain_fit(s, ["front"], ["front"], regions=HIDDEN),
+    "G4 front+tq lm + normals + mesh(front) gains + read": lambda s: gain_fit(s, FT, ["front"], normals="david", extra=read_rows(s)),
+    "G5 front+tq lm + normals + mesh(front) gains": lambda s: gain_fit(s, FT, ["front"], normals="david"),
+    "G7 front+tq lm + mesh(tq) with gains": lambda s: gain_fit(s, FT, ["tq"]),
+    "G6 front+tq lm + mesh(front) + mesh(tq) gains": lambda s: gain_fit(s, FT, ["front", "tq"]),
+    "T1c   same, sigma x0.5": lambda s: mesh_fit(s, ["front"], ["front"], infl=0.5),
     "T1b   same, sigma x4": lambda s: mesh_fit(s, ["front"], ["front"], infl=4.0),
     "T2 front lm + mesh(front), hidden regions only": lambda s: mesh_fit(s, ["front"], ["front"], regions=HIDDEN),
     "T3 front+tq lm + mesh(front)": lambda s: mesh_fit(s, FT, ["front"]),
@@ -196,3 +234,110 @@ if __name__ == "__main__" and sys.argv[1] != "mesh":
     res = fits.run(M, sys.argv[2:], out="fits")
 
 
+
+
+# ---- the generated mesh read at FEATURES (a few numbers, gains from the OTHER heads) ---------------------------------
+def _feat_cal(view, leave):
+    import json
+    import score_mesh
+    key = ("fc", view, leave)
+    if key not in _M:
+        F = json.loads((mm.MM / "out" / "mesh_feats.json").read_text())
+        out = {}
+        names = [n for n in F if n.endswith("_" + view) and not n.startswith(leave)]
+        for k in list(score_mesh.FEATS) + ["under-chin", "neck side", "crown", "occiput"]:
+            ab = np.array([F[n][k] for n in names if k in F[n]])
+            if len(ab) < 5:
+                continue
+            dm, dt = ab[:, 0] - ab[:, 1], -ab[:, 1]
+            gq = float((dm @ dt) / max(dm @ dm, 1e-9))
+            out[k] = (gq, float(np.sqrt(((dt - gq * dm) ** 2).mean())), float(np.sqrt((dt ** 2).mean())))
+        _M[key] = out
+    return _M[key]
+
+
+def mesh_feat_rows(me, c, view, leave, K=rs.K_FIT, infl=1.3, cut=0.85):
+    import score_mesh
+    g = rs.gnm()
+    H = rs.head(c)
+    tmesh.align(me, H, T0=me.T)
+    cal = _feat_cal(view, leave)
+    A, y = [], []
+    for k, idx in score_mesh.feature_sets(H).items():
+        if k not in cal or len(idx) < 4:
+            continue
+        gq, left, pop = cal[k]
+        if left > cut * pop or gq < 0.1:
+            continue
+        a, ok, q, nq = tmesh.offsets(me, H, idx)
+        if ok.sum() < 4:
+            continue
+        i = idx[ok]
+        tgt = g["V0"][i] + gq * (q[ok] - g["V0"][i])
+        Ak = np.einsum("nd,knd->k", nq[ok], g["IB"][:K, i].astype(float)) / len(i)
+        yk = float((nq[ok] * (tgt - g["V0"][i])).sum(1).mean())
+        sg = left * infl / 1000.0
+        A.append(Ak / sg)
+        y.append(yk / sg)
+    return (np.array(A), np.array(y)) if A else (np.zeros((0, K)), np.zeros(0))
+
+
+def featmesh_fit(s, lm_views, mesh_views, normals=None, read=False, rounds=6, infl=1.3):
+    ev = fits.evs(s, lm_views)
+    vs = [v for v in lm_views if fits.ev478(f"{s}_{v}") is not None]
+    extra = read_rows(s) if read else None
+    meshes = []
+    for v in mesh_views:
+        k = f"{s}_{v}"
+        if not (tmesh.TR / f"{k}.npz").exists():
+            return None
+        _M.setdefault(k, tmesh.Mesh(k))
+        meshes.append((_M[k], v))
+    f = fitlib.fit(ev, robust=True, rows=extra)
+    for me, v in meshes:
+        tmesh.align(me, rs.head(f["c"]))
+    for _ in range(rounds):
+        rr = [mesh_feat_rows(me, f["c"], v, s, infl=infl) for me, v in meshes]
+        if normals:
+            for v, cam in zip(vs, f["cams"]):
+                it = mm.item(f"{s}_{v}")
+                rr.append(dense.rows(normals, mm.pred(normals, f"{s}_{v}"), f["c"], cam, v, hair=it["hair"] if it["look"]["hair"] else None, use=("n",), infl=4.0))
+        f = fitlib.fit(ev, robust=True, rows=stack(extra, *rr), c_init=f["c"])
+    return f
+
+
+FEATM = {
+    "F1 front lm + mesh(front) features": lambda s: featmesh_fit(s, ["front"], ["front"]),
+    "F2 front+tq lm + mesh(tq) features": lambda s: featmesh_fit(s, FT, ["tq"]),
+    "F3 front+tq lm + mesh(front) + mesh(tq) features": lambda s: featmesh_fit(s, FT, ["front", "tq"]),
+    "F4 front+tq lm + david normals + mesh features (both)": lambda s: featmesh_fit(s, FT, ["front", "tq"], normals="david"),
+    "F5 front+tq lm + david normals + mesh features + read": lambda s: featmesh_fit(s, FT, ["front", "tq"], normals="david", read=True),
+    "F6 front+tq lm + sapiens2 normals + mesh features + read": lambda s: featmesh_fit(s, FT, ["front", "tq"], normals="sapiens2", read=True),
+    "F7 front lm + david normals + mesh(front) features + read": lambda s: featmesh_fit(s, ["front"], ["front"], normals="david", read=True),
+}
+if __name__ == "__main__" and sys.argv[1] == "featmesh":
+    fits.run(FEATM, sys.argv[2:], out="fits")
+
+
+def oracle_align_fit(s, view="tq", infl=2.0, rounds=20, gain=True):
+    """Diagnosis: the mesh laid on the TRUE head once (not available in practice), then dense rows."""
+    ev = fits.evs(s, ["front"])
+    idx, sg0 = mesh_idx(s)
+    reg, _ = mm.region_of()
+    gq = np.array([GAIN[r] for r in reg[idx]]) if gain else None
+    sg = (np.array([LEFT[r] for r in reg[idx]]) if gain else sg0) * infl
+    k = f"{s}_{view}"
+    if not (tmesh.TR / f"{k}.npz").exists():
+        return None
+    me = tmesh.Mesh(k)
+    tmesh.align(me, mm.item(k)["V"] if mm.item(k)["V"] is not None else None)
+    f = fitlib.fit(ev, robust=True)
+    for _ in range(rounds):
+        R = tmesh.rows(me, f["c"], idx, sg, gain=gq, realign=False)
+        f = fitlib.fit(ev, robust=True, rows=R, c_init=f["c"])
+    return f
+
+
+if __name__ == "__main__" and sys.argv[1] == "oracle":
+    fits.run({"X1 front lm + mesh(tq), ORACLE alignment, gains": lambda s: oracle_align_fit(s),
+              "X2 front lm + mesh(tq), ORACLE alignment, no gains x1": lambda s: oracle_align_fit(s, gain=False, infl=1.0)}, sys.argv[2:], out="fits")

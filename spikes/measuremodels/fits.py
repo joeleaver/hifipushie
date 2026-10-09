@@ -219,6 +219,8 @@ BASE = {
     "L0 mp478 clay table, front+tq": lambda s: fitlib.fit(evs(s, FT, tab="clay"), robust=True),
     "L1 mp478 skin table, front+tq": lambda s: fitlib.fit(evs(s, FT, tab="skin"), robust=True),
     "L1f mp478 skin table, front only": lambda s: fitlib.fit(evs(s, ["front"], tab="skin"), robust=True),
+    "L1c mp478 skin table, scatter cut 4 mm, front+tq": lambda s: fitlib.fit(evs(s, FT, tab="skin", cut=4.0), robust=True),
+    "L1d mp478 skin table, scatter cut 6 mm, front+tq": lambda s: fitlib.fit(evs(s, FT, tab="skin", cut=6.0), robust=True),
     "L2 xr vertices (sigma 1.5), front+tq": lambda s: fitlib.fit(evs(s, FT, tab="xr"), robust=True),
     "L2f xr vertices, front only": lambda s: fitlib.fit(evs(s, ["front"], tab="xr"), robust=True),
     "L3 xr vertices + xr reference offsets, front+tq": lambda s: fitlib.fit(evs(s, FT, tab="xrref"), robust=True),

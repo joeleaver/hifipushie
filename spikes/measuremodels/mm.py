@@ -106,7 +106,17 @@ def image(iid):
 
 def pred(model, iid):
     f = PRED / model / f"{iid}.npz"
-    return dict(np.load(f)) if f.exists() else None
+    if not f.exists():
+        return None
+    d = dict(np.load(f))
+    j = SET / f"{iid}.json"
+    if j.exists():            # maps predicted at another size are brought to the picture's
+        w, h = json.loads(j.read_text())["cam"]["size"]
+        for k in ("depth", "points", "normal", "mask", "conf"):
+            if k in d and d[k].ndim >= 2 and d[k].shape[:2] != (h, w):
+                zz = (h / d[k].shape[0], w / d[k].shape[1]) + ((1,) if d[k].ndim == 3 else ())
+                d[k] = ndimage.zoom(d[k].astype(np.float32), zz, order=1)
+    return d
 
 
 def sample(M, pix):

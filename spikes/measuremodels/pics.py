@@ -100,7 +100,7 @@ def profile_line(V, zs, half=0.004):
 
 def trellis(names=None, out="mm_02_trellis"):
     g = rs.gnm()
-    names = names or ["S1_bignose_front", "S6_plain_front", "O1_mh_heavy_man_front", "O2_mh_old_woman_tq", "O1_mh_heavy_man_profile"]
+    names = names or ["S1_bignose_front", "S3_recedingchin_tq", "S2_squarejaw_front", "O1_mh_heavy_man_front", "O2_mh_old_woman_tq", "S2_squarejaw_profile"]
     names = [n for n in names if (tmesh.TR / f"{n}.npz").exists()]
     sheet = Image.new("RGB", (S * 6, S * len(names)), (30, 30, 30))
     for r, n in enumerate(names):
@@ -147,4 +147,56 @@ def trellis(names=None, out="mm_02_trellis"):
 
 
 if __name__ == "__main__":
-    {"normals": normals, "trellis": trellis}[sys.argv[1]]()
+    {"normals": normals, "trellis": trellis, "garrett": lambda: None}[sys.argv[1]]()
+
+
+def garrett():
+    """Garrett's generated meshes beside the study's fitted head (points + DAViD normals): no truth here."""
+    import json
+    g = rs.gnm()
+    fj = json.loads((mm.MM / "out" / "garrett_fits.json").read_text())
+    c = np.array(fj["points + DAViD normals (front picture's normals only)"]["c"])
+    H = rs.head(c)
+    names = ["garrett_front", "garrett_desk"]
+    sheet = Image.new("RGB", (S * 5, S * len(names)), (30, 30, 30))
+    for r, n in enumerate(names):
+        me = tmesh.Mesh(n)
+        e = tmesh.align(me, H)
+        MV, MN = me.placed()
+        L = rs.landmarks(H)
+        zc = L[27, 2] - 0.03
+        box_f = ((-0.15, 0.15), (zc - 0.15, zc + 0.15))
+        yc = H[g["regions"]["head"], 1].mean()
+        box_p = ((-(yc + 0.15), -(yc - 0.15)), (zc - 0.15, zc + 0.15))
+        sheet.paste(tile(np.asarray(Image.open(mm.MM / "img" / f"{n}.png").convert("RGB")), n), (0, r * S))
+        sheet.paste(tile(ortho(MV, me.F, MN, "front", box_f), f"generated mesh, front (icp {e * 1000:.1f} mm)"), (S, r * S))
+        sheet.paste(tile(ortho(MV, me.F, MN, "profile", box_p), "generated mesh, profile"), (2 * S, r * S))
+        T = g["T"][g["ext"][g["T"]].all(1)]
+        sheet.paste(tile(ortho(H, T, mm.vnormals(H), "profile", box_p), "fitted head (points + normals)"), (3 * S, r * S))
+        zs = np.linspace(zc - 0.15, zc + 0.15, 240)
+        im = Image.new("RGB", (S, S), (30, 30, 30))
+        dr = ImageDraw.Draw(im)
+        sc = S / 0.30
+        for V, col, wd in ((g["V0"][g["ext"]], (90, 140, 255), 1), (MV, (255, 150, 40), 2), (H[g["ext"]], (255, 255, 255), 1)):
+            y = profile_line(V, zs)
+            pts = [((-(yy) - box_p[0][0]) * sc, (zc + 0.15 - zz) * sc) for yy, zz in zip(y, zs) if np.isfinite(yy)]
+            if len(pts) > 1:
+                dr.line(pts, fill=col, width=wd)
+        dr.text((6, 4), "profile: fit white, mesh orange, mean blue", fill=(255, 255, 0))
+        sheet.paste(im, (4 * S, r * S))
+        # what the mesh says where the fit has no evidence: signed offsets by region and at features
+        import score_mesh
+        ext = np.flatnonzero(g["ext"])
+        a, ok, q, nq = tmesh.offsets(me, H, ext)
+        A = np.full(len(H), np.nan)
+        A[ext] = np.where(ok, a, np.nan) * 1000
+        print(n, "mesh surface minus the fitted head, mm (+ = the mesh is outside):")
+        for k, i in score_mesh.feature_sets(H).items():
+            if np.isfinite(A[i]).sum() > 3:
+                print(f"   {k:16s} {np.nanmean(A[i]):+6.2f}")
+    sheet.save(f"{R}/mm_03_garrett_trellis.png")
+    print(f"{R}/mm_03_garrett_trellis.png")
+
+
+if __name__ == "__main__" and sys.argv[1] == "garrett":
+    garrett()

@@ -78,6 +78,7 @@ def main():
         r = one(n)
         rows.append(r)
         print(f"{n:28s} icp {r['icp_mm']:5.2f} mm  start yaw {r['start'][0]:4d} head share {r['start'][1]:.2f}  scale {r['scale']:.4f}", flush=True)
+    (mm.MM / "out" / "mesh_feats.json").write_text(json.dumps({r["name"]: r["feat"] for r in rows}))
     res = {}
     for vw in ("front", "tq", "profile"):
         rr = [r for r in rows if r["view"] == vw]
