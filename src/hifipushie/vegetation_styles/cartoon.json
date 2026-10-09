@@ -232,5 +232,6 @@
   "cup": 0.35,
   "head_up": 0.6,
   "petal_size": 2.2
- }
+ },
+ "sward": {"width": 2.4, "density": 0.4, "tones": 2, "tuft": 3, "tuft_fan": 24, "round": 0.2, "dry": 0.0, "bend": 0.6, "taper": 1.2}
 }

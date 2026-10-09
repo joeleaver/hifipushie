@@ -386,7 +386,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 9
+CONTRACT = 12
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -433,6 +433,39 @@ CONTRACT_LOG = {
        "along -NORMAL, capped 4 m; cards 0.02) for the engine's subsurface / back light; material extras.translucency = "
        "{color sRGB, amount}. Wood: every structural limb in one mesh (no bark_forks slot). REALISTIC small plants whose blades "
        "lie down in winter now carry slot foliage_winter too (their cards regrown lying; the atlas the season's own)",
+    10: "NEW GRADE for small plants, `groundcover` (export_plant(grade=\"groundcover\"), its own folder): LOD 0..2 = 6 / 4 / 3 "
+        "vertical alpha cards through the clump's foot (+ one lying flat for low plants: clover, ferns), 288 / 96 / 36 triangles "
+        "(+16 / 8 / 2 flat), the full plant in its style BAKED onto them per season. One slot, `foliage`: alpha MASK (cut 0.5), "
+        "SINGLE sided (front and back are triangles of their own, NORMALs leaning up and toward their own face, mirror "
+        "images through the card; TANGENT is NEW: w = +1 on the front, -1 on the back), baseColorTexture (sRGB, shade baked in) + normalTexture (tangent space) per season variant "
+        "(winter = the plant lying, snow = winter under snow); no COLOR_0, no bark / heads / foliage_winter slots (stalks, "
+        "flower heads and the lying winter blades are in the pictures). Wind channels as every plant. Each tier's pictures are baked at "
+        "the size that tier is seen at. Engine: import the textures WITHOUT mipmaps, or WITH them and alpha scaled by the mip "
+        "level in the shader (material extras.alpha_mips: three lines; with mips and without it thin blades vanish past "
+        "~4 m), and turn the importer's own mesh LOD generation off for these meshes. Full-grade files are unchanged except this version number",
+    11: "NEW PLANT KIND `sward` (species sward / sward_mown / sward_rough, any style): plain grass as a 2 m TILE of blade "
+        "ribbons, not a clump. Lay tiles edge to edge on a tile_m grid, each turned a random multiple of 90 deg, NO random "
+        "scale and no thinning; LOD by the tile's distance (seasons json `sward.lod_rings_m`, 4 LODs = fewer, wider "
+        "blades). One slot, `foliage`: OPAQUE, no texture, single sided (undersides are triangles of their own), albedo "
+        "= baseColorFactor x COLOR_0 x sward.color_gain (COLOR_0 = root-to-tip gradient x a tone per blade); "
+        "TEXCOORD_3 = (0 root .. 1 tip, blade id); wind channels as every plant. The seasons json has a `sward` block: "
+        "tile_m, fade {start, end} + fade_recipe (past start the engine shrinks the blades into the ground and mixes "
+        "their colour to the terrain's grass colour; nothing is drawn past end), ground_linear / root_linear / "
+        "tip_linear (made for the terrain style's grass colour of that cover kind), blades_per_m2. Other files unchanged",
+    12: "<name>_seasons.json says what the files are: top-level `grade` (\"full\" | \"groundcover\" | \"sward\": engines that drop "
+        "material extras, Godot, read it here, not from the folder's name), `lods` (triangles per LOD) and, for the "
+        "groundcover grade, `alpha_mips` (the mip-scaled alpha recipe). A full plant whose slots never change with the "
+        "season now writes the json too. No groundcover grade for ferns (the export refuses: use the full plant). "
+        "SWARD: per-blade LOD. New channels TEXCOORD_4 = across (a vertex's offset from its blade's centre line, model "
+        "x, z), TEXCOORD_5 = (blade rank 0..1, this mesh's width multiple) (Godot CUSTOM1.xy / .zw); json `sward.lod` "
+        "{dist, share, band, recipe}: the vertex shader thins and widens blades by distance so no ring or tile edge "
+        "shows; pick a tile's mesh by its NEAREST point (rings moved in: meadow 5 / 12 / 24 m, last LOD 5% of the blades "
+        "at 20 x width); `sward.fade.blend_from`: albedo, normal and roughness go to the ground's from there to fade.end; "
+        "`sward.renderer` = the steps to build a tile renderer; `sward.wind`. A contract-11 sward drawn the old way still "
+        "works (the new channels are extra). Later the same day, no bump (values and added recipe keys only): a sward's "
+        "season factors are the terrain style's seasonal grass tints (whole in the json, may exceed 1; snow = winter's "
+        "straw), `sward.density` (how a sward ends: a 0..1 density thins and shortens blades), `sward.winter` (lying "
+        "straw), `sward.snow` (the tile sinks by the snow depth; fade to the snow colour), `sward.season_ground_linear`"
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
@@ -1064,7 +1097,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
                                             "snow_numbers": snow_numbers(s, st),
                                             "collision": [{"plant": p_["name"], "capsules": p_["collision"],
                                                            "mesh_node": p_.get("collision_node")} for p_ in per]}}}
-    if variants and ext_used & {"KHR_materials_variants"}:
+    if variants:  # (declared even when no slot changes with the season: <name>_seasons.json is the contract's first file,
+        # and a styled clover that looks the same all year wrote none)
+        ext_used.add("KHR_materials_variants")
         gltf["extensions"] = {"KHR_materials_variants": {"variants": [{"name": v_} for v_ in variants]}}
     if ext_used:
         gltf["extensionsUsed"] = sorted(ext_used)
@@ -1110,6 +1145,8 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
             d["receive_shadows"] = False  # (an impostor's crossed quads shadow each other)
         if "alphaCutoff" in m:
             d["alphaCutoff"] = m["alphaCutoff"]
+        if (m.get("extras") or {}).get("factor_over_one"):  # (a factor over 1 is not glTF; this file may carry it whole)
+            d["baseColorFactor"] = [*m["extras"]["factor_over_one"], 1.0]
         hi_ = (m.get("extras") or {}).get("hifipushie_impostor")
         if hi_:
             d["impostor"] = {k_: v_ for k_, v_ in hi_.items() if k_ != "normal_texture_index"}
@@ -1154,12 +1191,16 @@ def seasons_json(glb: str, images: bool = True) -> dict | None:
     out = {"contract": {"version": CONTRACT, "changes": {str(k_): v_ for k_, v_ in CONTRACT_LOG.items()},
                         "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
            "slot_list": slot_list,
+           "grade": hp.get("grade", "full"), "lods": hp.get("lods"),
            "style": {"name": (hp.get("style") or {}).get("name", "realistic"), "foliage": (hp.get("style") or {}).get("kind", "cards")},
            "snow": hp.get("snow_numbers"),
            "impostor": next((d_["impostor"] for d_ in slots.values() if "impostor" in d_), None),
            "glb": Path(glb).name, "variants": names, "default": names[0], "slots": slots, "seasons": seasons,
            "note": "colours are linear RGBA factors (x the texture when there is one, x COLOR_0 where the mesh has it); "
                    "hidden = don't draw that slot's meshes in that season"}
+    am = next((m_["extras"]["alpha_mips"] for m_ in G["materials"] if "alpha_mips" in (m_.get("extras") or {})), None)
+    if am:
+        out["alpha_mips"] = am
     Path(f"{stem}_seasons.json").write_text(json.dumps(out, indent=1))
     out["path"] = f"{stem}_seasons.json"
     return out
