@@ -13,6 +13,10 @@ same landmarks (skin.LINES "nasolabial", "marionette"): the crease here runs on 
   "lid_fold": m | {"amount": m, "lateral": 0..1 (0.7)}
         upper-lid skin come down over the lid (dermatochalasis), mostly at the outer half: the fold between lid
         crease and brow drops; the lid's margin hardly moves (that is `hood`).
+  "eye_bag": m | {"amount": m, "crease": share of amount (0.5), "height": x (1)}
+        a soft bag under the lower lid (orbital fat behind thin lid skin): the skin from just under the lid's margin
+        down ~0.2 eye widths stands out by `amount` (along the normal), and the lid-cheek junction under it dents by
+        crease x amount (the lower-lid crease); the margin itself stays. Per eye from its corners and lower-lid points.
   "cheek_flat": m | {"amount": m, "descend": 0..1 (0.35)}
         the mid cheek flattened: the tissue under the orbit (infraorbital + the front of the cheekbone) thins in by
         `amount` and slides down by descend x amount (the malar fat's descent; the tear trough shows).
@@ -24,7 +28,7 @@ from __future__ import annotations
 
 import numpy as np
 
-KEYS = ("nasolabial", "prejowl", "lid_fold", "cheek_flat", "lips_thin")
+KEYS = ("nasolabial", "prejowl", "lid_fold", "eye_bag", "cheek_flat", "lips_thin")
 FOLD_WIDTH = 0.0032   # m: half-width of the nasolabial crease
 SULCUS_RADIUS = 0.009  # m
 LIP_FADE = 0.008      # m: how far above / below the vermilion the skin follows thinner lips
@@ -124,6 +128,24 @@ def apply(W: np.ndarray, lm: np.ndarray, shape: dict, faces: list, groups: dict,
             g = np.exp(-(uu / (0.7 * wid)) ** 2 - (q[:, 2] / (0.42 * dz)) ** 2 - (q[:, 1] / (1.3 * wid)) ** 2)
             g = g * (1 - lat + lat * _sstep(uu / wid + 0.5)) * _sstep((W[:, 2] - U[2] - 0.0005 * k) / (0.35 * dz))
             D += (a * g)[:, None] * np.array([0.0, -0.45, -1.0])
+    if shape.get("eye_bag"):
+        o = _opt(shape["eye_bag"], "amount")
+        a, cr = float(o.get("amount", 0.0)) * k, float(o.get("crease", 0.5))
+        for lower, corners in (((40, 41), (36, 39)), ((46, 47), (42, 45))):
+            Lw = lm[list(lower)].mean(0)
+            c0, c1 = lm[corners[0]], lm[corners[1]]
+            ex = (c1 - c0) / np.linalg.norm(c1 - c0)
+            wid = float(np.linalg.norm(c1 - c0))
+            ctr = 0.5 * (c0 + c1)
+            q = W - np.array([ctr[0], Lw[1], Lw[2]])
+            uu, h, dep = q @ ex, -q[:, 2], q[:, 1]                    # along the eye, down from the lid, depth
+            near = _sstep((-N[:, 1] - 0.2) / 0.4) * (np.abs(dep) < 0.02 * k)   # the face's front surface there
+            below = _sstep((h - 0.0006 * k) / (0.0015 * k))           # the lid's margin and above stay
+            hb = 0.2 * wid * float(o.get("height", 1.0))              # the bag's height under the margin
+            along = np.exp(-(uu / (0.42 * wid)) ** 2)
+            bag = along * below * np.exp(-((h - 0.5 * hb) / (0.45 * hb)) ** 2) * near
+            crease = along * np.exp(-((h - 1.25 * hb) / (0.3 * hb)) ** 2) * near
+            D += (a * (bag - cr * crease))[:, None] * N
     if shape.get("cheek_flat"):
         o = _opt(shape["cheek_flat"], "amount")
         a, desc = float(o.get("amount", 0.0)) * k, float(o.get("descend", 0.35))

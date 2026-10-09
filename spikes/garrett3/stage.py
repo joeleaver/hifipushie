@@ -64,7 +64,9 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
     if tex is not None:
         from hifipushie import likeness_texture as lt
         store._dir(sn).mkdir(parents=True, exist_ok=True)
-        r = lt.make(name, base=st["base"], views=tex, out_dir=str(store._dir(sn)), spec=spec)
+        plain = ensure(name, with_hair=False, log=log, posed=posed) if os.environ.get("HARMONISE", "1") == "1" else None
+        r = lt.make(name, base=st["base"], views=tex, out_dir=str(store._dir(sn)), spec=spec, opacity=1.0,
+                    ours=lt.scene_albedo(plain) if plain else None)
         st["paint"].update(r["layers"])
         log(r["text"])
     geo = {k: v for k, v in st.items() if k != "hair"}

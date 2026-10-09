@@ -1525,14 +1525,22 @@ def _ears(W, ear, spec, mx, s):
 
 
 def _hood(W, lm, hood):
-    """base.head.shape.hood = m | {"amount", "forward", "reach"}: hooded upper lids. The skin between the upper lid
+    """base.head.shape.hood = m | {"amount", "forward", "reach", "lateral", "extent"}: hooded upper lids. The skin between the upper lid
     and the brow (the fold) comes down by `amount` and forward over the lid; the lid's margin comes down with it by
     the fold's own falloff (~45%), the lower lid and the eyeball's seat don't move (a gate at the corners' height),
-    and the lid landmarks ride, so the visible opening is lower as on a hooded eye. Per eye from its own landmarks."""
+    and the lid landmarks ride, so the visible opening is lower as on a hooded eye. Per eye from its own landmarks.
+    `lateral` 0..1 (0): the hood weighted to the OUTER part of the eye (lateral hooding, the common ageing form: the
+    fold hangs over the outer third and the outer corner, the inner lid still shows): the fold's weight ramps from
+    1 - lateral at the inner corner to full past the outer one, its centre shifts out by 0.2 x lateral x the eye's
+    width, and the gate that holds the lower lid drops by `lateral` x half the opening outside the outer corner, so
+    the fold can come down to and over the corner's own height there. `extent` (1): the fold's width along the eye."""
     h = hood if isinstance(hood, dict) else {"amount": hood}
     a = float(h["amount"])
     fw = float(h.get("forward", HOOD_FORWARD))
     reach = float(h.get("reach", HOOD_REACH))
+    lat = float(h.get("lateral", 0.0))
+    ext = float(h.get("extent", 1.0))
+    mx = float(lm[27][0])
     DW, DL = np.zeros_like(W), np.zeros_like(lm)
     for up, corners, brow, lower in (((37, 38), (36, 39), (18, 19, 20), (40, 41)),
                                      ((43, 44), (42, 45), (23, 24, 25), (46, 47))):
@@ -1540,8 +1548,10 @@ def _hood(W, lm, hood):
         c0, c1 = lm[corners[0]], lm[corners[1]]
         ex = (c1 - c0) / np.linalg.norm(c1 - c0)
         dz = float(Bw[2] - U[2])
-        c = U + 0.45 * (Bw - U)
-        sx, sz = 0.65 * float(np.linalg.norm(c1 - c0)), reach * dz
+        wid = float(np.linalg.norm(c1 - c0))
+        out_ = ex if abs(c1[0] - mx) > abs(c0[0] - mx) else -ex   # toward the outer corner
+        c = U + 0.45 * (Bw - U) + 0.2 * lat * wid * out_
+        sx, sz = 0.65 * wid * ext, reach * dz
         zc = 0.5 * (c0[2] + c1[2])
         op = max(float(U[2] - lm[list(lower)].mean(0)[2]), 1e-4)
         mv = np.array([0.0, -fw, -1.0]) * a
@@ -1550,7 +1560,12 @@ def _hood(W, lm, hood):
             q = X - c
             u = q @ ex
             g_ = np.exp(-(u / sx) ** 2 - (q[:, 2] / sz) ** 2 - (q[:, 1] / (2 * sx)) ** 2)
-            return g_ * _sstep((X[:, 2] - zc) / (0.6 * op))
+            if not lat:
+                return g_ * _sstep((X[:, 2] - zc) / (0.6 * op))
+            uo = (X - U) @ out_ / wid                              # 0 at the lid's middle, +0.5 at the outer corner
+            g_ = g_ * (1 - lat + lat * _sstep(uo + 0.5))
+            drop = lat * 0.5 * op * _sstep((uo - 0.3) / 0.4)       # the gate lowered past the outer corner
+            return g_ * _sstep((X[:, 2] - zc + drop) / (0.6 * op))
         DW += f(W)[:, None] * mv
         DL += f(lm)[:, None] * mv
     return W + DW, lm + DL

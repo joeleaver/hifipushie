@@ -979,6 +979,9 @@ LIPS_MEET = True  # (one mesh, own quads) close the neutral's lips on GNM's cont
 def basemod_lip_ring() -> int:
     from . import base as basemod
     return basemod.LIP_RING
+ROLL_SMOOTH, ROLL_PASSES = float(__import__("os").environ.get("HIFIPUSHIE_ROLL_SMOOTH", 0.85)), 12  # the lip rings smoothed along themselves at the corners
+CORNER_TUCK, TUCK_SPAN = 0.006, 0.3  # (one mesh) m the inner rolls sink back at the corners (the contact ring a third),
+# over this share of the mouth's width from each corner: they stood out through the lips as lumps (reduced, not cured)
 CORNER_CLOSE, LIP_CORNER = 1.0, 0.2  # (one mesh) the rings in front of the contact ring close at the corners
 LIP_TAPER = 0.04  # share of the mouth's width over which the close tapers to nothing at each corner
 LIP_HOLD, LIP_FADE = 2, 4  # rings past the contact ring that ride with it fully (the lip's front), then fade out over
@@ -1601,11 +1604,32 @@ class GnmFace(Face):
         the rolls showing; taken back with the lips' close in shapes, it tore jawOpen's rolls (so it stays)."""
         R = self._lip_rings()
         D = np.zeros_like(X)
+        Tk = np.zeros(len(X))
         if not R["ok"]:
             return D
         from . import base as basemod
         ring = basemod.LIP_RING
         row = {int(v): i for i, v in enumerate(np.asarray(index, int)) if v >= 0}
+        # first the rings themselves near the corners: a fitted identity with a narrow mouth bunches the inner rolls
+        # there (each ring a zigzag: lumps and tatters at both corners of the neutral, on every export of Garrett);
+        # each half ring is smoothed along itself, by how near the corner it is, its ends held
+        X0, X = X, X.copy()
+        rings_ = dict(R.get("outer") or {})
+        rings_[ring] = (R["up"], R["lo"])
+        for k, hk in rings_.items():
+            if k > ring + 2 or not hk or not all(v in row for v in hk[0] + hk[1]):
+                continue
+            for verts in hk:
+                ids = [row[v] for v in verts]
+                P = X[ids].copy()
+                if len(P) < 5:
+                    continue
+                span_ = max(float(P[:, 0].max() - P[:, 0].min()), 1e-9)
+                edge_ = np.minimum(P[:, 0] - P[:, 0].min(), P[:, 0].max() - P[:, 0])
+                w_ = ROLL_SMOOTH * (1 - _ss(np.clip(edge_ / (TUCK_SPAN * span_), 0, 1)))
+                for _ in range(ROLL_PASSES):
+                    P[1:-1] += w_[1:-1, None] * (0.5 * (P[:-2] + P[2:]) - P[1:-1])
+                X[ids] = P
         for k, hk in (R.get("outer") or {}).items():
             if not hk or not all(v in row for v in hk[0] + hk[1]):
                 continue
@@ -1624,7 +1648,11 @@ class GnmFace(Face):
                 wc = CORNER_CLOSE * wk * (1 - _ss(np.clip(edge / (LIP_CORNER * span), 0, 1)))
                 for j, v in enumerate(verts):
                     D[row[v]] += wc[j] * 0.5 * (other[j] - P[j])
-        return D
+                if k <= ring and CORNER_TUCK:   # the rolls (and a share of the contact ring) sink back at the corners:
+                    tk = CORNER_TUCK * (ring + 1 - k) / (ring + 1) * (1 - _ss(np.clip(edge / (TUCK_SPAN * span), 0, 1)))
+                    for j, v in enumerate(verts):   # bunched there, they stood out through the lips as lumps
+                        Tk[row[v]] = max(Tk[row[v]], float(tk[j]))   # (a corner vertex is in both halves: once)
+        return (X - X0) + D - Tk[:, None] * self.out
 
     def _meet_share(self, D: np.ndarray, M: np.ndarray, index) -> float:
         """How much of the neutral's lip close a shape takes back: 0 if it keeps the lips together, 1 once it parts

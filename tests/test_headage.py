@@ -150,6 +150,47 @@ def test_lips_thin():
     assert it["ok"], it
 
 
+def test_eye_bag_under_the_lower_lid():
+    """eye_bag: the skin under each lower lid stands out (toward the face's front), a crease under it goes in, the
+    lid's margin landmarks barely move, the upper lid and brow not at all; both eyes alike."""
+    b, st0, st1, P0, P1, d = moved({"eye_bag": {"amount": 0.0015, "crease": 0.6}})
+    L0, L1 = st0["L"], st1["L"]
+    out = []
+    for low, corners, up in (((40, 41), (36, 39), (37, 38)), ((46, 47), (42, 45), (43, 44))):
+        Lw = L0[list(low)].mean(0)
+        wid = float(np.linalg.norm(L0[corners[0]] - L0[corners[1]]))
+        bag = np.linalg.norm(P0 - (Lw - [0, 0, 0.1 * wid]), axis=1) < 0.003
+        fwd = -d[bag][:, 1]
+        assert fwd.max() > 0.0006, fwd.max()
+        out.append(fwd.max())
+        crease = np.linalg.norm(P0 - (Lw - [0, 0, 0.25 * wid]), axis=1) < 0.004
+        assert d[crease][:, 1].max() > 0.0001                       # pushed back somewhere along the crease
+        assert np.linalg.norm(L1[list(low)] - L0[list(low)], axis=1).max() < 0.4 * fwd.max()
+        assert np.linalg.norm(L1[list(up)] - L0[list(up)], axis=1).max() < 1e-4
+    assert abs(out[0] - out[1]) < 0.25 * max(out)
+    it = hf.integrity(b, st1, st0)
+    assert it["ok"], it
+
+
+def test_hood_lateral_hangs_over_the_outer_corner():
+    """shape.hood "lateral": the fold comes down more over the outer part of the lid than the inner; lateral 0 is the
+    old hood to the bit."""
+    b0, st0, sth, P0, Ph, dh = moved({"hood": 0.002})
+    b1, _, st1, _, P1, d1 = moved({"hood": {"amount": 0.002, "lateral": 0.0}})
+    assert np.array_equal(Ph, P1)
+    b2, _, st2, _, P2, d2 = moved({"hood": {"amount": 0.002, "lateral": 1.0}})
+    L0 = st0["L"]
+    for up, (c_in, c_out), brow in (((37, 38), (39, 36), (18, 19, 20)), ((43, 44), (42, 45), (23, 24, 25))):
+        U, B = L0[list(up)].mean(0), L0[list(brow)].mean(0)
+        zone = np.linalg.norm(P0 - (U + 0.3 * (B - U)), axis=1) < 0.016
+        inner = zone & (np.abs(P0[:, 0] - L0[c_in][0]) < 0.005)
+        outer = zone & (np.abs(P0[:, 0] - L0[c_out][0]) < 0.005)
+        assert (-d2[outer][:, 2]).max() > 2.0 * (-d2[inner][:, 2]).max()
+        assert (-d2[outer][:, 2]).max() > 0.8 * (-dh[outer][:, 2]).max()
+    it = hf.integrity(b2, st2, st0)
+    assert it["ok"], it
+
+
 if __name__ == "__main__":
     if _have():
         names = sys.argv[1:] or [k for k in dict(globals()) if k.startswith("test_")]
