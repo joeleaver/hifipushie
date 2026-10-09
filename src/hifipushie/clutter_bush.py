@@ -353,7 +353,7 @@ def build(spec: dict, progress=None) -> dict:
             ext = (float(pr.min()), float(pr.max()), float(pu.min()), float(pu.max()))
             cx_, cy_ = (g % 8) * c8, c4 + k * c8
             for se in seasons:
-                pic = _fatten(composite(mem, tiles[se], BC[g], r_, u_, ext, (c8, c8)), 1)
+                pic = _fatten(composite(mem, tiles[se], BC[g], r_, u_, ext, (c8, c8)), 2)
                 atl[se].paste(pic, (cx_, cy_))
             Q = np.array([BC[g] + r_ * ext[0] + u_ * ext[2], BC[g] + r_ * ext[1] + u_ * ext[2],
                           BC[g] + r_ * ext[1] + u_ * ext[3], BC[g] + r_ * ext[0] + u_ * ext[3]])
