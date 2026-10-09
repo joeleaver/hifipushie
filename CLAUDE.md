@@ -5799,11 +5799,16 @@ external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, 
   + 24-30 leaf sprays on alpha cards (each drawn from both sides with the SAME up-and-out normal), one material (alpha
   MASK), the plants' wind channels, a season = another albedo picture (spring flowers), blobby / cartoon have no cards.
   Reads as a bush from 10 m; at 2.5 m a leafy lump with sprigs.
+  Light grey patches on a bush's shaded side were not holes, flipped faces or the normal map (all three chased): a dark
+  albedo (0.18, 0.25, 0.12) at roughness 0.8 shows the sky's sheen. Leaf domes are roughness 0.96, gaps and AO lighter.
+  A ray that meets another lobe first gives that lobe's normal: flat there (`off` in bake_variant); faces a decimation
+  turned inside out are turned back (lod_mesh).
 - Litter (`litter_tile`, `_export_litter`): an 8-triangle domed octagon / a quad with an RGBA picture per season (the
   same patch, leaves added in autumn), hidden under snow.
 - Engine (Godot 4.7.2, `spikes/godot_veg/clutter_field.gd`, 1280 x 720, 890M, shadows on): 5,000 boulders + 20,000
   bushes over 400 x 400 m as MultiMeshes per variant per LOD with the json's LOD distances and cull: 6,922 drawn,
-  462k triangles, GPU 4.5 ms (eye) / 4.8 (30 m up); all 25,000 at LOD 0 with no cull: 7.0M triangles, 15-17 ms.
+  462k triangles, GPU 2.7 ms on a quiet GPU (4.5 with other jobs on it); cartoon 319k, 2.4 ms; all 25,000 at LOD 0
+  with no cull: 7.0M triangles, 15-17 ms. Khronos validator: 515 GLBs (495 clutter + 20 reed), 0 errors, 0 warnings.
   A Godot script error leaves the process idle for ever under godot-quiet: always run with a timeout and log to a file.
 - Kinds agreed with the "streambeds" agent (terrain_stream.py): scale = largest plan dimension in m (assets are 1 m at
   scale 1), squash RELATIVE, yaw 0 = +X, z = surface (pivot on the ground line, `sink_m` below); old `boulder` rows are

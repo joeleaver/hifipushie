@@ -133,13 +133,13 @@ BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on
 }
 BUSH_PAINT = {
     "tone": 0.1, "tone_size": 0.3, "face_tone": 0.1, "speckle": 0.0, "edge_light": 0.1, "cavity": 0.35, "ink": 0.0, "ink_width": 0.02,
-    "gradient": 0.3, "top_light": 0.15, "foot": 0.12, "foot_height": 0.1, "ao": 0.6, "roughness": 0.8, "normals": 0.0,
+    "gradient": 0.3, "top_light": 0.15, "foot": 0.12, "foot_height": 0.1, "ao": 0.45, "roughness": 0.96, "normals": 0.0,
     "top": 0.0, "top_color": [0.5, 0.52, 0.36], "top_size": 0.1, "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.0, 0.5],
     "lichen": 0.0, "lichen_size": 0.05, "lichen_colors": [[0.6, 0.6, 0.5]], "streaks": 0.0, "streak_width": 0.03, "foot_color": [0.12, 0.14, 0.08],
     "foot_tint": 0.0, "minerals": [[1.0, 1.0, 1.0], [1.06, 1.02, 0.9], [0.92, 1.0, 1.0], [1.0, 0.95, 0.85]],
     "leaf_size": 0.04,        # m: the painted leaves on the dome (cells); 0 = none (a flat colour)
     "leaf_tone": 0.25,        # each leaf's own tone
-    "leaf_gap": 0.55,         # how dark the gaps between leaves are
+    "leaf_gap": 0.42,         # how dark the gaps between leaves are
     "leaf_bump": 0.004,       # m: each leaf a small dome in the normal map
     "steps": 0,               # tones cut into this many flat steps (painted look); 0 = continuous
     "flowers": 0.25, "flower_color": [0.95, 0.8, 0.15], "flower_size": 0.014,  # in the spring picture
@@ -1160,6 +1160,13 @@ def lod_mesh(solid: Solid, V, F, target, cfg, cell, origin, base, h, hull=False,
     F2 = F2[ar > 1e-9]
     fnorm = np.cross(V2[F2[:, 1]] - V2[F2[:, 0]], V2[F2[:, 2]] - V2[F2[:, 0]])
     fnorm /= np.maximum(np.linalg.norm(fnorm, axis=1, keepdims=True), 1e-12)
+    if pre is None and not hull:  # a face the decimation turned inside out (between a bush's lobes) is culled: a hole. Turn it back
+        gc = _grad(solid.sd, V2[F2].mean(1), max(h * 4, 0.012))
+        turned = (fnorm * gc).sum(1) < 0
+        if turned.any():
+            F2 = F2.copy()
+            F2[turned] = F2[turned][:, ::-1]
+            fnorm[turned] *= -1
     N = _smooth_normal(solid, V2, h)
     # a flipped smooth normal (thin parts): take the faces' own
     vn = np.zeros_like(V2)
@@ -1485,6 +1492,10 @@ def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None, ground=N
         Bt = np.cross(Ns, T4[:, :3]) * T4[:, 3:4]
         nt = np.c_[(nh * T4[:, :3]).sum(1), (nh * Bt).sum(1), np.maximum((nh * Ns).sum(1), 0.05)]
         nt /= np.linalg.norm(nt, axis=1, keepdims=True)
+        # where the ray met another part of a lobed form (a bush's neighbouring lobe, a stone behind a stone) the high
+        # normal has nothing to do with this face: flat there (it shaded as a grey grazing sheen)
+        off = (nh * Ns).sum(1) < 0.35
+        nt[off] = [0.0, 0.0, 1.0]
         # curvature (the field's Laplacian at two sizes) and occlusion (the field a little way out)
         r1 = max(0.02, 3 * vox)
         lap = sum(solid.sd(P + o) for o in (np.eye(3)[i] * r1 * sg for i in range(3) for sg in (1, -1))) - 6 * d
