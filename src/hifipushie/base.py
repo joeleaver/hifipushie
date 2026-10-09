@@ -211,9 +211,11 @@ def mouth_interior(head: dict, hd: dict) -> dict:
     return o.blobs
 
 
-SEAL_OVERLAP = 0.0004  # m: each lip's contact row pushed past the seam for the FIELD (sealed lips: see _sealed_field)
-SEAL_H = 2.0  # the field's kernel widened this much at a sealed seam, fading out over SEAL_H_REACH (m)
+SEAL_OVERLAP = 0.0  # m: the contact rows pushed past each other for the FIELD (0.4 mm made the two lip sheets cross:
+# small holes in the field along the seam, Tess ts_h7)
+SEAL_H = 1.0  # the field's kernel widened this much at a sealed seam (2.0 tried: it blurred the seam's V into bigger holes)
 SEAL_H_REACH = 0.0025
+SEAL_V = (0.5, 0.25, 0.1)  # share of the vertical gap the 1st, 2nd, 3rd rows out from a sealed contact close (field only)
 
 
 def _sealed_field(W, faces, sf: dict):
@@ -228,6 +230,20 @@ def _sealed_field(W, faces, sf: dict):
     W = np.array(W, float)
     W[np.asarray(sf["up"], int), 2] -= SEAL_OVERLAP
     W[np.asarray(sf["lo"], int), 2] += SEAL_OVERLAP
+    # the V between the closed lips' fronts made shallower: the next rows out drawn toward the seam (by the vertical
+    # gap between the two lips' rows at that x). Left as GNM shapes them, the V narrowed to the mesher's ~1 mm before
+    # it closed and came out as a row of specks along the seam (Tess ts_h7)
+    for (ru, rl), wgt in zip(sf.get("outer") or [], SEAL_V):
+        ru, rl = np.asarray(ru, int), np.asarray(rl, int)
+        if len(ru) < 3 or len(rl) < 3:
+            continue
+        ou, ol = ru[np.argsort(W[ru, 0])], rl[np.argsort(W[rl, 0])]
+        zl_at_u = np.interp(W[ou, 0], W[ol, 0], W[ol, 2])
+        zu_at_l = np.interp(W[ol, 0], W[ou, 0], W[ou, 2])
+        du = np.maximum(W[ou, 2] - zl_at_u, 0.0)
+        dl = np.maximum(zu_at_l - W[ol, 2], 0.0)
+        W[ou, 2] -= 0.5 * wgt * du
+        W[ol, 2] += 0.5 * wgt * dl
     used = np.unique(np.concatenate([np.asarray(f) for f in F]))
     rm = np.full(len(W), -1)
     rm[used] = np.arange(len(used))

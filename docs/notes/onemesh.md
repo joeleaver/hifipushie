@@ -496,3 +496,8 @@ model".
   under an overhang (the skin 1 mm above comes down and forward over it), held off the margin less than the other lid
   fields. Tess ts_v: 3.1-4.6 mm (was 6.2, her fold's underside), Garrett 3.5-4.2. 0 quads turned at 1.5 on both.
   Sheet human_renders/fs_06_crease_fold.png.
+  - SEAM SPECKS (Tess ts_h7 with lip sliders, clay too): the 0.4 mm contact overlap made the two lip sheets CROSS (small
+    holes in the field); wider kernels at the seam made them bigger (tried, SEAL_H 1.0). Now no overlap, and the three
+    rows out from the contact drawn toward the seam by 0.5 / 0.25 / 0.1 of the lips' vertical gap (base.SEAL_V, field
+    only): the V between the closed lips no longer narrows to the mesher's ~1 mm. ts_h7 clay: two tiny specks left (was
+    a row). onemesh.VERSION 13. Sheet human_renders/fs_07_ts_h7_seam.png.
