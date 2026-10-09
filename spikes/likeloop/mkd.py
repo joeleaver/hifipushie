@@ -24,8 +24,11 @@ def merge(a, b):
 
 
 sp["hair"]["groom"]["loose"] = hb["loose"]
-for k in ("body", "lay"):   # hair7's newer swoop keys, not in main's hair.py yet (2026-10-09 afternoon)
-    hb["loose"].get("swoop", {}).pop(k, None)
+from hifipushie import hair as _hair  # noqa: E402
+locks = sp["hair"].get("locks")
+for lk in (locks.values() if isinstance(locks, dict) else locks or []):   # h7_garrett is edited live by the hair
+    for k in [k for k in lk if k not in _hair.LOCK_KEYS]:                  # agent: keys newer than this code dropped
+        lk.pop(k)
 merge(sp["hair"], {k: v for k, v in hb.items() if k != "loose"})
 if len(sys.argv) > 3:
     apply(sp, json.load(open(sys.argv[3])))

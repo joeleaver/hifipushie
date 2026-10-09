@@ -271,9 +271,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
     e = e if isinstance(e, dict) else {}
-    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera", "tear"}
+    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline"}
     if bad:
-        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera, tear)")
+        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera, tear, waterline)")
     from . import paint as _paint
     from . import skin_swatch
     from .skin import interocular
@@ -308,7 +308,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
     layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
           mask=[{"spot": {"at": pts, "radius": round(0.036 * io, 5), "soft": 0.6}}])
-    layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=0.5, roughness=0.15, mask=_zones(["lash_lower"], 0.7))
+    if float(e.get("waterline", 1.0)) > 0:   # 0..1 (1): the pink wet rim; on a lid whose rim faces the camera it reads as lid
+        layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=round(0.5 * float(e.get("waterline", 1.0)), 3),
+              roughness=0.15, mask=_zones(["lash_lower"], 0.7))
 
 
 def _wrinkles(p, J, layer, T, ctx) -> None:
