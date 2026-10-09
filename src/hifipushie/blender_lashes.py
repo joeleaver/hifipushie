@@ -48,6 +48,7 @@ def show(entry: dict) -> list:
             return [NAME]
         return []
     if ob is not None and ob.get("hp_lash_key") == entry["key"]:
+        ob["hp_part"] = "lashes"
         return []
     if ob is not None:
         me_old = ob.data
@@ -79,5 +80,6 @@ def show(entry: dict) -> list:
     ob = bpy.data.objects.new(NAME, me)
     ob["hp_lash_key"] = entry["key"]
     ob["hp_lashes"] = 1
+    ob["hp_part"] = "lashes"  # (renders can hide it: job["hide"], e.g. a part-ID aperture pass)
     bpy.context.scene.collection.objects.link(ob)
     return [NAME]

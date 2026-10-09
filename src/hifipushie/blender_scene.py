@@ -1074,6 +1074,25 @@ def render(job):
         for m in bpy.data.materials:
             if m.get("hp_prog") and m.node_tree:
                 _emit(m, "color")
+    if job.get("id_parts") is not None:  # a part-ID pass (not saved): the listed parts in flat colours, all else black
+        mats = {}
+        for ob in bpy.data.objects:
+            if ob.type not in ("MESH", "CURVE", "CURVES") or ob.data is None or not hasattr(ob.data, "materials"):
+                continue
+            col = job["id_parts"].get(ob.get("hp_part"), [0.0, 0.0, 0.0])
+            key = tuple(col)
+            if key not in mats:
+                m = bpy.data.materials.new(f"hp_id_{len(mats)}")
+                m.use_nodes = True
+                nt = m.node_tree
+                nt.nodes.clear()
+                em = nt.nodes.new("ShaderNodeEmission")
+                em.inputs["Color"].default_value = (*col, 1.0)
+                o = nt.nodes.new("ShaderNodeOutputMaterial")
+                nt.links.new(em.outputs[0], o.inputs[0])
+                mats[key] = m
+            ob.data.materials.clear()
+            ob.data.materials.append(mats[key])
     if job.get("clip"):  # section planes: every material turns transparent beyond them (this render only)
         for m in bpy.data.materials:
             if m.node_tree is not None:

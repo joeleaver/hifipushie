@@ -175,6 +175,7 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
     rng = np.random.default_rng(int(cfg.get("seed", 0)))
     seg = int(cfg.get("segments", 4))
     V, T, Nn, UV, AL, RT, LID, EYE, COL = [], [], [], [], [], [], [], [], []
+    CUR: dict = {"upper": [], "lower": []}
     lines = lid_lines(head)
     r_ball = float(head["eye_r"])
     tree = head["tree"]
@@ -189,6 +190,11 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
             rim2 = L["o2"] + np.c_[(L["dirs"][idx] @ L["side"]) * L["rho"][idx], (L["dirs"][idx] @ L["up"]) * L["rho"][idx]]
             seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(rim2, axis=0), axis=1))]
             s_all = seglen / seglen[-1]
+            # the lash line itself (no scatter): where the painted root tone goes (skin.hair.lashes with geometry)
+            sc = np.linspace(p["start"], p["end"], 24)
+            C2 = np.c_[np.interp(sc, s_all, rim2[:, 0]), np.interp(sc, s_all, rim2[:, 1])]
+            oc = (C2 - L["o2"]) / np.maximum(np.linalg.norm(C2 - L["o2"], axis=1, keepdims=True), 1e-9)
+            CUR[lid].append(_on_skin(L, C2 + oc * p["offset"] * 1e-3))
             cnt = int(p["count"])
             s = np.sort(rng.uniform(p["start"], p["end"], cnt))
             s = np.clip(s + rng.normal(0, 0.004, cnt), 0, 1)
@@ -263,7 +269,8 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
             T.append((base + np.arange(cnt)[:, None, None] * per + quad[None]).reshape(-1, 3))
     return {"verts": np.concatenate(V), "tris": np.concatenate(T).astype(np.int32), "normal": np.concatenate(Nn),
             "uv": np.concatenate(UV), "along": np.concatenate(AL), "root": np.concatenate(RT),
-            "lid": np.concatenate(LID), "eye": np.concatenate(EYE), "col": np.concatenate(COL)}
+            "lid": np.concatenate(LID), "eye": np.concatenate(EYE), "col": np.concatenate(COL),
+            "curves": CUR}
 
 
 def _hex(h):
@@ -303,5 +310,89 @@ def scene_job(name: str, spec: dict, cache_dir) -> dict | None:
         return None
     f = cache_dir / f"lashes_{m['key']}.npz"
     if not f.exists():
-        np.savez(f, **{k: v for k, v in m.items() if k != "key"})
+        np.savez(f, **{k: v for k, v in m.items() if k not in ("key", "curves")})
     return {"key": m["key"], "npz": str(f), "roughness": float(cfg["roughness"]), "tris": int(len(m["tris"]))}
+
+
+def triangles(spec: dict) -> int:
+    """How many triangles the lashes take (both eyes), without building them: export budgets subtract it."""
+    cfg = wanted(spec)
+    if cfg is None:
+        return 0
+    return 2 * 2 * int(cfg["segments"]) * (int(cfg["upper"]["count"]) + int(cfg["lower"]["count"]))
+
+
+def export_part(spec: dict, out_dir, log=print):
+    """The lashes as an export part (asset's low-poly dict: verts, corner_vert, uv, normal, tangent, sign) with tiny
+    maps (upper colour | lower colour, roughness, no relief), and per vertex its lash's root and eye centre
+    ("lash_root", "lash_centre": what shapes_from_lids turns them with; asset pops them before writing). Two-sided
+    material (asset's look "double_sided"). None without lashes."""
+    from pathlib import Path
+
+    from PIL import Image
+
+    from . import base as basemod
+    from . import hair as hairmod
+    from .spec import expand_mirror
+    cfg = wanted(spec)
+    if cfg is None:
+        return None
+    m = for_spec(spec, cfg)
+    if m is None:
+        return None
+    s = expand_mirror(spec)
+    head = basemod.head_of(s, s["base"])
+    V = np.asarray(m["verts"], np.float64)
+    T = np.asarray(m["tris"], np.int64)
+    uv_v = np.c_[np.where(m["lid"] == 0, 0.25, 0.75), 0.1 + 0.8 * m["along"]]
+    UVc = uv_v[T.ravel()]
+    _, tt, sg = hairmod._tangents(V, T, UVc)
+    nv = np.asarray(m["normal"], np.float64)[T.ravel()]  # the ribbons' own normals (facing forward), not the faces'
+    tt = tt - np.sum(tt * nv, 1, keepdims=True) * nv
+    tt /= np.linalg.norm(tt, axis=1, keepdims=True) + 1e-12
+    part = {"verts": V.astype(np.float32), "corner_vert": T.ravel(), "uv": UVc.astype(np.float32),
+            "normal": nv.astype(np.float32), "tangent": tt.astype(np.float32), "sign": sg.astype(np.float32),
+            "lash_root": np.asarray(m["root"], np.float64),
+            "lash_centre": np.asarray(head["eyes"], np.float64)[m["eye"]]}
+    out_dir = Path(out_dir)
+    files = {k: out_dir / f"lashes_{k}.png" for k in ("basecolor", "normal", "orm", "specular")}
+    up, lo = (tuple(int(round(255 * c)) for c in _hex(h)) for h in (cfg["color"], cfg.get("lower_color", cfg["color"])))
+    im = Image.new("RGB", (16, 16), up)
+    im.paste(lo, (8, 0, 16, 16))
+    im.save(files["basecolor"])
+    Image.new("RGB", (16, 16), (128, 128, 255)).save(files["normal"])
+    Image.new("RGB", (16, 16), (255, int(255 * float(cfg["roughness"])), 0)).save(files["orm"])
+    Image.new("RGBA", (16, 16), (255, 255, 255, 128)).save(files["specular"])
+    per = 2 * (int(cfg["segments"]) + 1)
+    log(f"lashes: {len(T)} triangles ({int((m['lid'] == 0).sum() // per)} upper, {int((m['lid'] == 1).sum() // per)} "
+        "lower lashes), two-sided")
+    return "lashes", part, files
+
+
+def shapes_from_lids(part: dict, skin: list, names) -> dict:
+    """The lashes' face shapes from the lids': each lash turns rigidly about its eye's horizontal (x) axis by the angle
+    its root's nearest lid vertex turns about it (a blink rolls the lid over the ball; the lashes ride the margin),
+    plus what is left of the root's move as a shift. skin: [(verts (n, 3), {name: delta (n, 3)})] of the parts that
+    carry the lids. Returns {name: (verts, 3) delta}. (Blender axes: -y forward, z up.)"""
+    from scipy.spatial import cKDTree
+    R = np.asarray(part["lash_root"], np.float64)
+    C = np.asarray(part["lash_centre"], np.float64)
+    V = np.asarray(part["verts"], np.float64)
+    allX = np.concatenate([x for x, _ in skin])
+    _, k = cKDTree(allX).query(R)
+    out = {}
+    for nm in names:
+        D = np.concatenate([sh.get(nm, np.zeros((len(x), 3))) for x, sh in skin])
+        dr = D[k]
+        if not np.abs(dr).max() > 1e-9:
+            out[nm] = np.zeros_like(V)
+            continue
+        a0, a1 = R - C, R + dr - C
+        ang = np.arctan2(a1[:, 2], -a1[:, 1]) - np.arctan2(a0[:, 2], -a0[:, 1])  # forward toward up
+        c, s_ = np.cos(ang), np.sin(ang)
+
+        def rot(q):
+            return np.c_[q[:, 0], c * q[:, 1] + s_ * q[:, 2], -s_ * q[:, 1] + c * q[:, 2]]
+        shift = (R + dr) - (C + rot(a0))
+        out[nm] = (C + rot(V - C) + shift) - V
+    return out

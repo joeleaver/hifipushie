@@ -147,6 +147,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
     from . import lashes as _lashes
     ctx["lash_geometry"] = ctx["eyes"] and bool(_lashes.wanted(spec))  # lash ribbons (lashes.py) over the painted lines
+    if ctx["lash_geometry"]:
+        lm_ = _lashes.for_spec(spec)
+        ctx["lash_curves"] = None if lm_ is None else {k: [np.round(c, 5).tolist() for c in v] for k, v in lm_["curves"].items()}
     f0 = p["makeup"].get("foundation")
     cover = float(np.clip(f0 if isinstance(f0, (int, float)) else (f0 or {}).get("amount", 1.0 if f0 else 0.0), 0, 1)) if f0 else 0.0
     ctx["show"] = 1.0 - 0.75 * cover  # how much of the skin's own marks shows through foundation
@@ -482,13 +485,23 @@ def _hair(p, J, layer, T, ctx) -> None:
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
-            layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
-                  mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
-            if ctx.get("lash_geometry"):  # with lash geometry: the dense roots' tone along the margin (a tightline: what
-                # makes a photographed upper lash line a dark band, not a fringe of separate hairs)
-                layer("lash_roots", color=_shade(col, 0.45), mix="multiply", opacity=round(min(0.75 * o["amount"], 0.9), 3),
-                      roughness=0.45, mask=_zones(["lash_upper"], 1.15) + [{"zone": {"name": "lash_lower", "grow": 1.1},
-                                                                         "blend": "max", "weight": 0.45}])
+            op = 0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1)
+            cu = ctx.get("lash_curves")
+            if cu:  # with lash geometry (lashes.py): only the roots' tone, a tight line along the lash line itself (the
+                # margin zone's broad band painted the waterline and the lid's edge dark: the detector read the opening
+                # 1.4 mm smaller than the clay's on Garrett)
+                from .skin import _sp
+                tubes = []
+                for lid, rad, wgt in (("upper", 0.00055, 1.0), ("lower", 0.0004, 0.55)):
+                    for c in cu[lid]:
+                        n = len(c)
+                        taper = 0.35 + 0.65 * np.sin(np.linspace(0.15, np.pi - 0.35, n)) ** 0.5
+                        tubes.append({"mask": [_sp(c, rad * taper, soft=0.6, line=True)], **({"blend": "max"} if tubes else {}),
+                                      **({"weight": wgt} if wgt < 1 else {})})
+                layer("lashes", color=col, opacity=op, roughness=0.42, mask=tubes)
+            else:
+                layer("lashes", color=col, opacity=op, roughness=0.4,
+                      mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color"))
         if o:
             a = float(o["amount"])

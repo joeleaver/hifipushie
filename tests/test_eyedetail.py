@@ -78,6 +78,47 @@ def test_lashes_build():
     assert (m["verts"][~up & tips, 2] < m["root"][~up & tips, 2]).mean() > 0.9
 
 
+def test_lash_shapes_ride_the_lid():
+    """A lid vertex turned 25 deg down about the eye's x axis: its lash turns rigidly with it."""
+    c = np.array([0.03, 0.0, 1.6])
+    root = c + np.array([0.0, -0.012, 0.004])
+    ang = np.radians(-25)
+
+    def rot(q, a):
+        return np.c_[q[:, 0], np.cos(a) * q[:, 1] + np.sin(a) * q[:, 2], -np.sin(a) * q[:, 1] + np.cos(a) * q[:, 2]]
+    lash = root + np.array([[0, 0, 0], [0, -0.003, 0.001], [0, -0.006, 0.003]])
+    part = {"verts": lash, "lash_root": np.repeat(root[None], 3, 0), "lash_centre": np.repeat(c[None], 3, 0)}
+    skinX = np.array([root, root + [0.01, 0, 0]])
+    d = rot(skinX - c, ang) + c - skinX
+    D = lashes.shapes_from_lids(part, [(skinX, {"eyeBlinkLeft": d, "jawOpen": np.zeros_like(d)})],
+                                ["eyeBlinkLeft", "jawOpen"])
+    want = rot(lash - c, ang) + c - lash
+    assert np.allclose(D["eyeBlinkLeft"], want, atol=1e-9)
+    assert np.abs(D["jawOpen"]).max() == 0
+
+
+def test_aperture_from_mask():
+    """Two almond openings (picture left / right): heights, widths and corner angles from the mask."""
+    from hifipushie import aperture
+    H, W = 200, 400
+    y, x = np.mgrid[0:H, 0:W].astype(float)
+    m = np.zeros((H, W), bool)
+    for cx in (100, 300):
+        # a lens: two circular arcs meeting at the corners, 120 px wide, 40 px tall
+        half, h = 60.0, 20.0
+        R = (half ** 2 + h ** 2) / (2 * h)
+        up = np.hypot(x - cx, y - (100 + R - h)) < R
+        lo = np.hypot(x - cx, y - (100 - R + h)) < R
+        m |= up & lo
+    r = aperture.from_mask(m, 0.1)
+    assert len(r) == 2
+    for e in r:
+        assert abs(e["open"] - 4.0) < 0.25, e
+        assert abs(e["width"] - 12.0) < 0.3, e
+        # a lens of half-width 60, sagitta 20: each arc leaves the corner at atan(2 h / half) ~ 33.7 deg -> ~67 deg
+        assert 50 < e["inner_angle"] < 80 and 50 < e["outer_angle"] < 80, e
+
+
 def test_lashes_default_and_off():
     assert lashes.wanted({"base": {"body": {"source": "human"}, "head": {"seed": 1}}}) is not None
     assert lashes.wanted({"base": {"body": {"source": "human"}, "head": {"seed": 1}, "lashes": False}}) is None
