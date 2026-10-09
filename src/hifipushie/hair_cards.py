@@ -139,7 +139,7 @@ def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
     return out
 
 
-SHORT_TILE = {"medium": (36, 4.0), "sparse": (22, 3.5), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
+SHORT_TILE = {"medium": (36, 3.2), "sparse": (22, 3.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
 
 
 def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None, short: bool = False) -> dict:
@@ -169,7 +169,7 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
         lines = [lines[i] for i in np.linspace(0, len(lines) - 1, min(n_, len(lines))).astype(int)]
         # (a tile's strands run 16 cm; a short cut's card is 2-3 cm of it: their waves, squeezed five times along,
         # were white squiggles over the cap. Straightened: each keeps a third of its wander)
-        lines = [(float(np.mean(x_)) + 0.3 * (np.asarray(x_, float) - float(np.mean(x_))), v_, d_, i_) for x_, v_, d_, i_ in lines]
+        lines = [(float(np.mean(x_)) + 0.12 * (np.asarray(x_, float) - float(np.mean(x_))), v_, d_, i_) for x_, v_, d_, i_ in lines]
         thick = th_ * ss * w / 272
     for x, v, dp, idn in sorted(lines, key=lambda q: q[2]):
         x = np.clip(np.asarray(x, float), *((0.12, 0.88) if kind in ("fly", "baby") else (0.025, 0.975)))

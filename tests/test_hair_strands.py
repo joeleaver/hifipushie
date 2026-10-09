@@ -229,7 +229,7 @@ def test_short_tiles_are_few_thick_strands():
     x0, x1 = int(t0["u0"] * 512), int(t0["u1"] * 512)
     cov = lambda at: float((at["color"][100:300, x0:x1, 3] > 0.5).mean())  # noqa: E731
     c0, c1 = cov(a0), cov(a1)
-    assert 0.08 < c1 < 0.5 and c1 < 0.75 * c0, (c0, c1)  # open: the cap shows between a card's strands
+    assert 0.05 < c1 < 0.5 and c1 < 0.75 * c0, (c0, c1)  # open: the cap shows between a card's strands
     assert a1["flow"].shape[2] == 3 and abs(float(a1["flow"][5, 5, 1]) - 1.0) < 1e-6  # a card's hair runs down its picture
 
 

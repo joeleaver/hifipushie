@@ -1962,7 +1962,7 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
                "npc": {"triangles": 4000, "cap_step": 10.0, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
                "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
 SHORT_TOP = 1.3  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
-SHORT_TIP = 0.005  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
+SHORT_TIP = 0.003  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
 CARD_TIERS = {
