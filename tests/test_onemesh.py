@@ -49,15 +49,16 @@ def test_asset_topology():
     fs = {tuple(sorted(f)) for f in F.tolist()}
     assert all(tuple(sorted(m[f].tolist())) in fs for f in F)
     n0, n_ring, n_all, nb0 = (int(x) for x in a["bridge"])
-    assert n_all == n
+    assert n_all == int(a["n_raw_v"])  # (then the lids' loops' vertices, gnmloops.py)
+    nf = int(a["n_raw_f"])
     deg = np.zeros(n, int)
     for u, v in cnt:
         deg[u] += 1
         deg[v] += 1
-    br = np.r_[a["loop_a"], a["loop_c"], np.arange(n0, n)]
+    br = np.r_[a["loop_a"], a["loop_c"], np.arange(n0, n_all)]
     assert deg[br].min() >= 3 and deg[br].max() <= 5, collections.Counter(deg[br].tolist())
-    ax = V[n0:].mean(0)
-    for f in F[nb0:]:
+    ax = V[n0:n_all].mean(0)
+    for f in F[nb0:nf]:
         X = V[f]
         out = X.mean(0) - ax
         out[2] = 0
@@ -67,7 +68,7 @@ def test_asset_topology():
     assert np.abs(a["w"].sum(1) - 1).max() < 1e-5
     assert a["uv"].min() >= 0 and a["uv"].max() <= 1
     # every skin vertex is the body's, GNM's or the bridge's, once
-    assert ((a["mh_id"] >= 0).astype(int) + (a["gnm_id"] >= 0) + (np.arange(n) >= n0) == 1).all()
+    assert ((a["mh_id"] >= 0).astype(int) + (a["gnm_id"] >= 0) + ((np.arange(n) >= n0) & (np.arange(n) < n_all)) == 1).all()
 
 
 def test_the_stitch_follows_every_body():

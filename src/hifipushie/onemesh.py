@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 _CACHE: dict = {}
-VERSION = 9  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+VERSION = 10  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
@@ -42,7 +42,8 @@ def applies(base: dict | None) -> bool:
 def asset() -> dict:
     if "asset" not in _CACHE:
         z = np.load(Path(__file__).with_name("human_mesh.npz"))
-        _CACHE["asset"] = {k: z[k] for k in z.files}
+        from . import gnmloops  # the lids' extra edge loops, appended (gnmloops.py)
+        _CACHE["asset"] = gnmloops.extend_asset({k: z[k] for k in z.files})
     return _CACHE["asset"]
 
 
@@ -305,7 +306,7 @@ def template(base: dict) -> dict:
     f2d[fid] = np.arange(len(fid))
     F = a["faces"]
     mh_f = F[(a["mh_id"][F] >= 0).all(1)]
-    faces = [list(q) for q in f2d[mh_f]] + [list(q) for q in f2d[F[nb0:]]]
+    faces = [list(q) for q in f2d[mh_f]] + [list(q) for q in f2d[F[nb0:int(a["n_raw_f"])]]]
     h2d = np.full(len(ht["verts"]), -1)
     h2d[hrow] = len(mh_rows) + len(br) + np.arange(len(hrow))
     for f in ht["faces"]:
@@ -313,6 +314,7 @@ def template(base: dict) -> dict:
         if (q >= 0).all():
             faces.append([int(v) for v in q])
     assert min(min(f) for f in faces) >= 0
+    V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
     from . import humanstyle
     Jb, bones, chin_z, face, chin_lm, carry_fn = mb["J"], mb["bones"], mb["chin_z"], mb["face"], float(ht["lm68"][8][2]), None
     chin_mh_ = float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])
@@ -333,11 +335,31 @@ def template(base: dict) -> dict:
         _CACHE[("style_carry", key[1])] = (carry_fn, dz)
     out = {"name": "human", "P": V, "L": np.array([v for f in faces for v in f]), "S": np.array([len(f) for f in faces]),
            "J": Jb, "bones": bones, "rig": mb["rig"], "chin_z": chin_z, "face": face, "styled": bool(bs),
-           "fid": fid, "head_rows": hrow, "n_body": len(mh_rows) + len(br), "n_mh": len(mh_rows),
+           "fid": fid, "head_rows": hrow, "loop_rows": loop_rows, "n_body": len(mh_rows) + len(br), "n_mh": len(mh_rows),
            # the chin: the head's own landmark (clothes stay under it), and the body's vertex the old path measures at
            "chin_lm": chin_lm, "chin_mh": chin_mh_}
     _CACHE[key] = out
     return out
+
+
+def _with_loops(V, fid, faces, head_gid, h0):
+    """The lids' extra edge loops (gnmloops.py) cut into the fused mesh: each new vertex the mean of its parents
+    (appended after every other vertex; asset ids after the asset's own), each cut face's first child in its place,
+    the others appended. Old vertices and their order are untouched."""
+    from . import gnmloops
+    a = asset()
+    par = gnmloops.plan()["parents"]
+    row = np.full(gnmloops.N_RAW + len(par), -1)
+    row[np.asarray(head_gid, int)] = h0 + np.arange(len(head_gid))
+    rp = row[par]
+    if not gnmloops.ENABLED or (rp < 0).any():  # (a lip zip or a cut that dropped one of the lid's vertices: no loops)
+        return V, fid, faces, np.zeros(0, int)
+    n = len(V)
+    row[gnmloops.N_RAW:] = n + np.arange(len(par))
+    V = np.r_[V, V[rp].mean(1)]
+    fid = np.r_[fid, int(a["n_raw_v"]) + np.arange(len(par))]
+    faces, _, _ = gnmloops._cut_faces(faces, row)
+    return V, fid, faces, n + np.arange(len(par))
 
 
 def _carried(ht: dict, mv, dz: float = 0.0) -> dict:
