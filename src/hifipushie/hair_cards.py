@@ -139,7 +139,7 @@ def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
     return out
 
 
-SHORT_TILE = {"medium": (16, 6.0), "sparse": (9, 5.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
+SHORT_TILE = {"medium": (36, 4.0), "sparse": (22, 3.5), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
 
 
 def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None, short: bool = False) -> dict:

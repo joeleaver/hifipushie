@@ -1812,6 +1812,12 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
     if isinstance(budget, str) and budget in CARD_TIERS:
         cap_step = float(CARD_TIERS[budget]["cap_step"])
     locks = [] if stage == "mass" else resolve(spec, sc)
+    if isinstance(budget, str) and "cap_step" in SHORT_TIERS.get(budget, {}) and g.get("loose") and locks:
+        # a short cut's cap is a smooth dome under its picture: at the long tiers' step it took 4,400 of a main
+        # tier's 8,000 triangles and left its cards 4 triangles each (shards poking out of a swim cap)
+        ln_ = [float(np.linalg.norm(np.diff(np.asarray(k_["pts"], float), axis=0), axis=1).sum()) for k_ in locks]
+        if float(np.mean(ln_)) < MASS_MIN:
+            cap_step = float(SHORT_TIERS[budget]["cap_step"])
     if only:
         from fnmatch import fnmatch
         pats = [only] if isinstance(only, str) else list(only)
@@ -1951,11 +1957,13 @@ MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no ma
 # sparse layer of cards for what stands off the head (the lifted front, the silhouette's breakup), each on a tile of
 # many fine strands with soft tips and no opaque base, plus single-hair cards along the hairline. Cards cut one per
 # clump and worn on the dense tile read as torn paper / leaf litter at bust distance (Garrett's crop).
-SHORT_TIERS = {"hero": {"triangles": 16000, "group": "pair", "layers": 2, "baby": 0.0, "fly": 2},
-               "main": {"triangles": 8000, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
-               "npc": {"triangles": 4000, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
+SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "layers": 2, "baby": 0.0, "fly": 2},
+               "main": {"triangles": 8000, "cap_step": 7.5, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
+               "npc": {"triangles": 4000, "cap_step": 10.0, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
                "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
 SHORT_TOP = 1.3  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
+SHORT_TIP = 0.005  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
+SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
 CARD_TIERS = {
     "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
@@ -2030,6 +2038,12 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             # stands off the cap (the lifted front, the outline) and the hairline's cards stay longest, the rest go
             # at random, so the whole top keeps a broken, layered surface instead of a rim of tufts round a dome
             edge_ = {k_["name"] for k_ in hair_locks if k_.get("at_hairline")}
+            grey_ = {k_["name"]: float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in hair_locks}
+            gmax_ = float(np.percentile(list(grey_.values()), 90)) if grey_ else 0.0
+            from scipy.spatial import cKDTree as _KD
+            va_, ve_, vh_ = sc.coords(np.asarray(V, float))
+            capt_ = _KD(dirs(va_, ve_))
+            capb_ = np.maximum(vh_, 0.0) + 0.1 * (1 - np.cos(np.radians(cap_step) / 2)) * 1.6 + 0.002
             hr_ = np.random.default_rng(int(g.get("seed", 0)) + 17)
             kept_ = []
             for c_ in cards:
@@ -2053,14 +2067,23 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                     sn_ = np.broadcast_to(np.asarray(c_.get("sn", 0.0), float), (len(P_),))
                     P_ = P_ + (SHORT_TOP * sn_ * _ss(din_ / 0.015))[:, None] * np.asarray(c_["N"], float)
                     a_, e_, h_ = sc.coords(P_)
-                cz_ = hair_cap.cap_height(chart["lift"], din_, a_, e_)
+                # (+ where the cap's own mesh stands before that lift: the groom's volume, a few mm over the scalp.
+                # Without it the cards lay UNDER the cap they were meant to break up: nothing of them showed)
+                cz_ = hair_cap.cap_height(chart["lift"], din_, a_, e_) + capb_[capt_.query(dirs(a_, e_))[1]]
                 f_ = (c_["s"] - c_["s"][0]) / max(float(c_["s"][-1] - c_["s"][0]), 1e-9)
                 need_ = cz_ + 0.0012 + 0.0006 * c_["layer"] - 0.002 * (1 - _ss(f_ / 0.25))  # (the root dives into the cap)
-                up_ = np.where(h_ > -0.004, np.clip(need_ - h_, 0.0, 0.02), 0.0)  # (not where a ray meets the ear first)
+                # the tip leaves the cap (SHORT_TIP, uneven card to card): lying IN the cap's surface every card was a
+                # decal on a helmet; a crop's outline is tufts' ends
+                need_ = need_ + SHORT_TIP * float(hr_.uniform(0.2, 1.6)) * f_ ** 1.5
+                up_ = np.where(h_ > -0.004, np.clip(need_ - h_, 0.0, 0.03), 0.0)  # (not where a ray meets the ear first)
                 c_["P"] = P_ + up_[:, None] * _unit(P_ - sc.C)
                 c_["hw"] = np.asarray(c_["hw"], float) * (1 - 0.45 * _ss((f_ - 0.55) / 0.45))  # no square end
                 if c_["kind"] != "fly":
                     c_["kind"] = "medium" if c_["layer"] == 0 else "sparse"
+                # grey by region: the tiles are drawn with ONE grey share (the locks' mean); a card of a less grey
+                # lock is darker by its vertex colour (the cap's own picture has the per-lock grey, but the cards
+                # now cover it: greying temples under a uniform top)
+                c_["value"] = float(c_.get("value", 1.0)) * (1.0 - SHORT_GREY * (gmax_ - grey_.get(c_.get("lock"), gmax_)))
                 off_ = float((h_ - cz_).max())
                 c_["prio"] = ((0.0 if off_ > 0.005 else 0.45 if c_.get("lock") in edge_ else 1.0)
                               + 0.5 * min(c_["layer"], 1) + float(hr_.uniform(0.0, 0.9)))

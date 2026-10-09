@@ -19,8 +19,9 @@ from numba import njit
 VERSION = 7
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
-LIFT = 0.7  # the cap stands at this share of the hair's height over the scalp
-LIFT_MAX = 0.015  # m
+LIFT = 0.9  # the cap stands at this share of the hair's height over the scalp
+LIFT_MAX = 0.024  # m
+EASE, EASE_FRONT = 0.012, 0.006  # m inside the hairline over which the cap rises to its height (sides / forehead)
 RELIEF = 0.7  # x the strands' real slopes in the normal map (clamped at SLOPE)
 SLOPE = 1.0
 
@@ -236,4 +237,8 @@ def lift_at(lift: dict, az, el) -> np.ndarray:
 
 def cap_height(lift: dict, d_in, az, el) -> np.ndarray:
     """How far the cap stands over the scalp (m): LIFT x the hair's height there, easing to 0 at the hairline."""
-    return np.minimum(LIFT * lift_at(lift, az, el), LIFT_MAX) * _ss(np.asarray(d_in, float) / 0.012)
+    # (over the forehead the hair stands at the line itself: the ease is EASE_FRONT there, else a lifted front's cap
+    # was a ramp leaning back from the hairline while the strands rose straight off it)
+    fa = np.abs(((np.asarray(az, float) + 180) % 360) - 180)
+    ease = EASE - (EASE - EASE_FRONT) * (1 - _ss((fa - 40.0) / 25.0))
+    return np.minimum(LIFT * lift_at(lift, az, el), LIFT_MAX) * _ss(np.asarray(d_in, float) / ease)
