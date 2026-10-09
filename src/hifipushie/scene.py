@@ -192,6 +192,14 @@ def _frame(ps: list, voxel: float, pad: float = 0.03):
     own = [q for q in ps if q.kind != "shell" and q.op in ("add", "intersect")]
     a = np.min([q.lo for q in own], 0) - pad
     b = np.max([q.hi for q in own], 0) + pad
+    # region primitives that come after every add (a crop box round a head: skin_look's stages) bound the part: the
+    # grid is theirs, not the whole body's (a 1 mm head stage of a 1.8 m base was a 1e9-cell grid: 12 GB, killed)
+    last_add = max([i for i, q in enumerate(own) if q.op == "add"], default=-1)
+    tail = [q for q in own[last_add + 1:] if q.op == "intersect"]
+    if tail and last_add >= 0:
+        ra = np.min([q.lo - float(np.max(q.blend)) for q in tail], 0) - pad
+        rb = np.max([q.hi + float(np.max(q.blend)) for q in tail], 0) + pad
+        a, b = np.maximum(a, ra), np.minimum(b, rb)
     a = np.floor(a / voxel) * voxel
     return a, voxel, np.ceil((b - a) / voxel).astype(int) + 1
 

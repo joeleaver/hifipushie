@@ -1143,12 +1143,14 @@ def pose_expression(pose: dict, V: np.ndarray, scale: float) -> np.ndarray:
              + [i for i, n in enumerate(names) if n.startswith("left_eye")][:40]
              + [i for i, n in enumerate(names) if n.startswith("right_eye")][:40])
     rows = g["lm68"]
-    Wlm = np.zeros((68, len(V)))
-    for i, r in enumerate(rows):
-        for v, w in zip(r[0::2], r[1::2]):
-            Wlm[i, int(v)] += float(w)
-    B = g["expression_basis"][comps]  # (c, n, 3)
-    A = np.einsum("ln,cnd->ldc", Wlm, B).reshape(68 * 3, len(comps))
+    if "pose_A" not in _CACHE:  # (constant: the landmarks' rows of the expression basis; 0.5e9 multiplies a call before)
+        Wlm = np.zeros((68, len(V)))
+        for i, r in enumerate(rows):
+            for v, w in zip(r[0::2], r[1::2]):
+                Wlm[i, int(v)] += float(w)
+        B = g["expression_basis"][comps]  # (c, n, 3)
+        _CACHE["pose_A"] = (Wlm, B, np.einsum("ln,cnd->ldc", Wlm, B).reshape(68 * 3, len(comps)))
+    Wlm, B, A = _CACHE["pose_A"]
     t = np.zeros((68, 3))
     w = np.full((68, 3), POSE_HOLD)
     X0 = Wlm @ V
@@ -1884,6 +1886,11 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         W, lm = _lean(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["lean"], float(eye_mid[0]), s, faces)
     if shape.get("hood"):
         W, lm = _hood(W, lm, shape["hood"])
+    from . import headage
+    if headage.wanted(shape):  # age as soft-tissue ops: nasolabial, prejowl, lid_fold, cheek_flat, lips_thin
+        W, lm = headage.apply(W, lm, shape, faces, {k_: np.asarray(v_)[skin] for k_, v_ in g["groups"].items()
+                                                     if len(np.asarray(v_)) == len(skin)},
+                              float(eye_mid[0]), s, np.asarray(g["groups"]["skin_exterior"])[skin] > 0.5)
     if shape.get("nose_tip"):
         W, lm = _nose_tip(W, lm, shape["nose_tip"], s)
         if isinstance(shape["nose_tip"], dict) and shape["nose_tip"].get("round"):
