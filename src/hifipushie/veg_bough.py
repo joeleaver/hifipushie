@@ -215,6 +215,7 @@ def base_of(tree: dict, cards: int):
 
 
 DEAD_SHARE, DEAD_MIN = 0.08, 12  # of a budget's bough cards, the most that draw dead wood (and the fewest a tree with dead wood keeps)
+APEX_TOP = 0.85  # the top limbs (above this share of the height) get a picture of one of their own
 LEADER = 1.2  # m: the most of the trunk's own top one bough card stands for
 DEAD_THIN = 0.5  # the share of a dead bough's twigs its picture is baked from (real alpha gaps)
 _CACHE: dict = {}
@@ -288,7 +289,8 @@ def plan(tree: dict, cards: int) -> dict:
     # dead wood is a haze, not a mass: at a budget it gets few cards (`DEAD_SHARE` of them at most, the longest boughs),
     # and the rest of its twigs are simply not drawn (every dead bough carded, a stand tree's bare stem wore a brown fur)
     isd = dead_boughs(tree, pl)
-    cap = int(max(DEAD_SHARE * cards, min(DEAD_MIN, isd.sum())))
+    share = float((((tree["spec"].get("leaves") or {}).get("parts") or {}).get("dead") or {}).get("card", {}).get("share", DEAD_SHARE))
+    cap = int(max(share * cards, min(DEAD_MIN, isd.sum())))
     if isd.sum() > cap:
         di = np.flatnonzero(isd)
         # spread up the stem: the longest bough of each height band first
@@ -460,6 +462,19 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
             b_ = int(oL[int(q * (len(oL) - 1))])
             jobs.append((plL, FrL, extL, b_, FORMS[0]))
             limb_extent.append(float(extL[b_]))
+        # the short limbs of the top: their own picture (drawn with a long limb's picture shrunk, the spire was a blob)
+        zL = tree["pos"][plL["roots"][liveL], 2]
+        top = liveL[(zL > APEX_TOP * tree["height"]) & (extL[liveL] > 0.15)]
+        if len(top):
+            b_ = int(top[np.argsort(extL[top])[len(top) // 2]])
+            jobs.append((plL, FrL, extL, b_, FORMS[0]))
+            limb_extent.append(float(extL[b_]))
+    apex = None
+    if limbs_on(tree) and base_of(tree, cards):  # the leader's tip: its own picture (it drew some limb's, upright: a lollipop)
+        ld = np.flatnonzero((tree["order"][pl["roots"]] == 0) & ~isd)
+        if len(ld):
+            apex = float(ext[int(ld[0])])
+            jobs.append((pl, Fr, ext, int(ld[0]), FORMS[0]))
     g = int(math.ceil(math.sqrt(max(len(jobs) * BOUGH["cross"], 1))))
     A = {"color": np.zeros((g * size, g * size, 4), np.float32), "normal": np.zeros((g * size, g * size, 3), np.float32),
          "mask": np.zeros((g * size, g * size, 3), np.float32)}
@@ -516,7 +531,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
         seen = float(np.median(lum(A["color"][leaf_px][:, :3]) * A["mask"][leaf_px][:, 2]))
         k_ = float(np.clip(lum(np.asarray(col, float)) / max(seen, 1e-6), 1.0, 1.8))
         g_ = len(out_cards) and A["color"].shape[0] // size
-        for j_, dead_ in enumerate([isd[b_] for b_ in pick] + [False] * len(limb_extent)):  # (the foliage's pictures only: dead boughs keep their grey)
+        for j_, dead_ in enumerate([isd[b_] for b_ in pick] + [False] * (len(jobs) - len(pick))):  # (the foliage's pictures only: dead boughs keep their grey)
             if not dead_:
                 for side in range(BOUGH["cross"]):
                     r, c = divmod(BOUGH["cross"] * j_ + side, g_)
@@ -527,7 +542,8 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     _CACHE[key] = {**A, "cards": out_cards, "fill": float(np.mean(fills)) if fills else 0.0, "grid": g, "size": size,
                    "triangles": int(np.mean([len(c["F"]) for c in out_cards[:len(pick)]])) if out_cards else tris(fi), "pairs": len(pick),
                    "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick],
-                   "limb_first": limb_first if limb_extent else None, "limb_extent": limb_extent}
+                   "limb_first": limb_first if limb_extent else None, "limb_extent": limb_extent,
+                   "apex_card": (limb_first + len(limb_extent)) if apex is not None else None, "apex_extent": apex}
     veg_leaf._disk_put(dkey, _CACHE[key])
     return _CACHE[key]
 
@@ -637,6 +653,11 @@ def place(tree: dict, cards: int, at: dict) -> dict:
         out["scale"] = out["scale"] * hi_
         out["grow"] = float(hi_)
     n_out = len(out["pos"])
+    if at.get("apex_card") is not None and base:  # the leader's tip draws its own picture, at its own size
+        lead = tree["order"][out["node"]] == 0
+        out["card"] = np.where(lead, at["apex_card"], out["card"])
+        out["variant"] = np.where(lead, at["apex_card"], out["variant"])
+        out["scale"] = np.where(lead, 1.0, out["scale"])
     out["core"] = np.zeros(n_out)
     if at.get("limb_first") is not None and limbs_on(tree) and base:
         plL = limb_plan(tree)
