@@ -1644,6 +1644,9 @@ class Terrain:
             bed = self.sample(p)
             banks = np.minimum(self.sample(p + nrm * off), self.sample(p - nrm * off))
             deep = np.where(L.s[::step] > 0.15, banks - bed, 0)  # (a source is often set into its valley head)
+            if L.name in getattr(self, "_cut_rivers", ()):  # (a river cutting its own valley: its sides rise at their
+                # grade by design; a trench is deeper than that)
+                deep = deep - float(np.clip(L.props["side"], 0.3, 3.0)) * (off - fl / 2)
             k = int(np.argmax(deep))
             if deep[k] > max(12.0, 2 * self.world["gully"]):
                 out.append(f"    trench: the bed runs up to {deep[k]:.0f} m below the ground {off:.0f} m either side "
