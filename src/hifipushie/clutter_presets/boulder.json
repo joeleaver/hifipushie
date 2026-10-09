@@ -1,9 +1,83 @@
 {
- "about": "An angular boulder fallen from a jointed, bedded face: joint faces at 65-115 deg, a tilted bedding top, corners broken off, a soft bed or two set back, arrises weathered. Terrain kind `boulder` (on rock, near cliff lips, the splash zone)",
+ "about": "A loose angular boulder (talus block, field boulder): an irregular polyhedron of 6-9 oblique faces with a pair of off-parallel bedding faces, one or two corners broken off, thin partings, the top weathered rounder than the foot, a broad base sunk in the ground. Variants differ in proportion: a lump, a flat block, a tall wedge, a split block with a second leaning on it. Terrain kind `boulder`",
  "material": "rock",
  "variants": 4,
- "size_range": [0.3, 1.8],
- "place": "on rock and shores; old terrain rows are already sunk 0.12 x scale in z: lift them back by sink_m x scale or accept 12% more buried",
- "form": {"aspect": [[0.7, 0.95], [0.5, 0.72]], "chips": [5, 9], "chip": [0.06, 0.3], "bevel": 0.05, "beds": [0, 2], "sink": 0.14},
- "paint": {"top": 0.3, "cracks": 0.004, "grain": 0.0015}
+ "size_range": [
+  0.3,
+  1.8
+ ],
+ "place": "on rock, under cliffs, shores; old terrain `boulder` rows are already sunk 0.12 x scale in z (lift them by that, or accept more buried)",
+ "form": {},
+ "variant_forms": [
+  {
+   "aspect": [
+    [
+     0.72,
+     0.85
+    ],
+    [
+     0.55,
+     0.65
+    ]
+   ]
+  },
+  {
+   "aspect": [
+    [
+     0.62,
+     0.78
+    ],
+    [
+     0.36,
+     0.44
+    ]
+   ],
+   "dip": [
+    3.0,
+    14.0
+   ],
+   "taper": 0.12,
+   "bedded": 1.0
+  },
+  {
+   "aspect": [
+    [
+     0.6,
+     0.72
+    ],
+    [
+     0.62,
+     0.72
+    ]
+   ],
+   "taper": 0.32,
+   "faces": [
+    6,
+    8
+   ],
+   "broken": [
+    2,
+    2
+   ]
+  },
+  {
+   "aspect": [
+    [
+     0.66,
+     0.8
+    ],
+    [
+     0.48,
+     0.58
+    ]
+   ],
+   "split": 1.0,
+   "lean": 1.0
+  }
+ ],
+ "paint": {
+  "top": 0.3,
+  "cracks": 0.004,
+  "grain": 0.0015
+ }
 }

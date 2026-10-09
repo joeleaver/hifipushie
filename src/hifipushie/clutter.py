@@ -35,21 +35,33 @@ ROCK_SRGB = [0.36, 0.34, 0.31]  # terrain_rock.base_colour's grey rock: the refe
 WOOD_SRGB = [0.52, 0.5, 0.46]   # weathered, barkless wood (silver grey)
 
 FORM = {  # a rock's form; ranges are drawn per variant
-    "aspect": [[0.62, 0.95], [0.42, 0.75]],  # y / x and z / x of the block (x = 1: the largest plan dimension)
-    "cross": [65.0, 115.0],   # deg between the two joint families
-    "tilt": 10.0,             # deg: each joint face leans off the vertical by up to this
-    "dip": [2.0, 14.0],       # deg: the bedding's tilt (the block tumbled: any way)
-    "tumble": 25.0,           # deg: the whole block tipped
-    "chips": [6, 11],         # corners / edges broken off (planes)
-    "chip": [0.06, 0.36],     # how deep each cuts, as a share of the block's reach in that direction
-    "bevel": 0.05,            # m: arrises rounded (weathering)
+    "aspect": [[0.6, 0.85], [0.42, 0.62]],  # mid / long and short / long axis (long = 1: the largest plan dimension)
+    "faces": [6, 9],          # major faces, at oblique angles all round
+    "jitter": 16.0,           # deg: how far each face's direction strays from an even spread
+    "face_in": [0.7, 0.95],   # each face's distance from the middle, as a share of the ellipsoid's reach that way
+    "bedded": 0.7,            # probability of a pair of off-parallel bedding faces (a flat-ish top and underside)
+    "tilt": 8.0,              # deg: how far off parallel they are
+    "dip": [5.0, 35.0],       # deg: the bedding's tilt (a fallen block's beds are never level)
+    "tumble": 14.0,           # deg: the whole block tipped
+    "chips": [4, 8],          # corners / edges broken off (planes), of which
+    "broken": [1, 2],         # are deep breaks
+    "break": [0.2, 0.42],     # a deep break's depth, as a share of the block's reach in that direction
+    "chip": [0.04, 0.14],     # a shallow chip's
+    "bevel": 0.06,            # m: arrises rounded (weathering)
+    "top_round": 1.5,         # the top's arrises rounded this much more than the foot's (x bevel, added)
+    "taper": 0.22,            # wider at the base than at the top (0 = a prism)
     "round": 0.0,             # 0..1: toward an ellipsoid (water-worn)
-    "beds": [0, 2],           # soft beds set back (ledges round part of the block)
-    "bed_set": [0.012, 0.03],  # m
-    "bed_thick": [0.015, 0.045],
+    "bend": 0.0,              # a bean: the long axis bowed, x the height
+    "dent": 0.0,              # probability of one soft dent
+    "split": 0.0,             # probability of a crack through the block
+    "split_gap": [0.012, 0.03],  # m: its half width
+    "beds": [1, 3],           # partings along the bedding (thin grooves round part of the block)
+    "bed_set": [0.008, 0.02],  # m: their depth
+    "bed_thick": [0.006, 0.016],  # m: their half width
     "lumps": 0.02,            # m: slow unevenness of the faces
     "lump_size": 0.35,        # m
-    "sink": 0.14,             # share of the height below the ground line
+    "sink": 0.26,             # share of the height below the ground line (the mass sits IN the ground)
+    "lean": 0.0,              # probability of a second, smaller block leaning on the first
     "cluster": None,          # {"count": [7, 13], "stone": [0.1, 0.26], "pile": 0.3}: many small stones as one asset
 }
 PAINT = {  # how the surface is painted (albedo multipliers round 1) and what relief only the maps carry
@@ -61,6 +73,8 @@ PAINT = {  # how the surface is painted (albedo multipliers round 1) and what re
     "ink": 0.0, "ink_width": 0.012,   # a dark line along arrises (cartoon)
     "bands": 0.0, "band_thick": [0.03, 0.12], "band_tones": [-0.6, 0.2, 0.7, -0.25],  # painted strata along the bedding
     "gradient": 0.0,                  # lighter top, darker foot (0..1)
+    "top_light": 0.0,                 # up-facing faces lighter (a clear top plane)
+    "foot": 0.3, "foot_height": 0.1,  # the band above the ground line darker (damp, soil-stained): m at 1 m across
     "top": 0.25, "top_color": [0.5, 0.52, 0.36], "top_size": 0.12,  # lichen / moss on up-facing rock
     "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.15, 0.6],  # a mossy band (share of height)
     "ao": 0.6,                        # occlusion strength (also baked half into the albedo's foot)
@@ -90,9 +104,39 @@ WOOD_PAINT = {
     "edge_light": 0.1, "cavity": 0.3, "ink": 0.0, "ink_width": 0.008, "gradient": 0.1, "ao": 0.6, "roughness": 0.85,
     "grooves": 0.003, "groove_size": 0.012, "cracks": 0.003, "crack_size": 0.2, "normals": 40.0,
     "top": 0.0, "top_color": [0.5, 0.52, 0.36], "top_size": 0.1, "moss": 0.0, "moss_color": [0.25, 0.36, 0.14],
-    "moss_band": [0.0, 0.5],
+    "moss_band": [0.0, 0.5], "top_light": 0.0, "foot": 0.25, "foot_height": 0.03,
 }
-LODS = {"rock": [300, 100, 30], "cluster": [360, 120, 40], "wood": [220, 80, 24], "jam": [520, 170, 56]}
+BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on alpha cards breaking its outline
+    "aspect": [[0.8, 1.0], [0.6, 0.8]],  # depth / width and height / width of the dome
+    "lobes": [3, 6],          # lobes round the main dome
+    "lobe": [0.2, 0.3],       # their radius, x the width
+    "lobe_out": [0.5, 0.85],  # how far out from the middle they sit (1 = at the dome's edge)
+    "join": 0.1,              # m: how softly lobes run together (small = distinct clumps)
+    "lumps": 0.03, "lump_size": 0.22,
+    "cards": [18, 24],        # leaf sprays standing out of the dome at LOD 0 (0 = none: a closed style)
+    "card": [0.3, 0.42],      # their length, m
+    "card_out": 0.5,          # the share of a spray standing out past the dome's surface
+    "card_up": 0.35,          # how far sprays turn upward from straight out
+    "cards_lod": [1.0, 0.5, 0.2],  # the share of the sprays each LOD keeps (kept ones drawn larger)
+    "sink": 0.0,
+}
+BUSH_PAINT = {
+    "tone": 0.1, "tone_size": 0.3, "face_tone": 0.1, "speckle": 0.0, "edge_light": 0.1, "cavity": 0.35, "ink": 0.0, "ink_width": 0.02,
+    "gradient": 0.3, "top_light": 0.15, "foot": 0.12, "foot_height": 0.1, "ao": 0.6, "roughness": 0.8, "normals": 0.0,
+    "top": 0.0, "top_color": [0.5, 0.52, 0.36], "top_size": 0.1, "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.0, 0.5],
+    "leaf_size": 0.04,        # m: the painted leaves on the dome (cells); 0 = none (a flat colour)
+    "leaf_tone": 0.25,        # each leaf's own tone
+    "leaf_gap": 0.55,         # how dark the gaps between leaves are
+    "leaf_bump": 0.004,       # m: each leaf a small dome in the normal map
+    "steps": 0,               # tones cut into this many flat steps (painted look); 0 = continuous
+    "flowers": 0.25, "flower_color": [0.95, 0.8, 0.15], "flower_size": 0.014,  # in the spring picture
+    "spray": {"leaves": [10, 16], "leaf": [0.07, 0.1], "round": 0.42, "tones": 0.25, "outline": 0.0, "midrib": 0.3},  # a card's picture
+}
+LEAF_SRGB = [0.26, 0.36, 0.17]  # scrub (sage / gorse green)
+LEAF_SEASONS = {"spring": {"mix": [0.42, 0.6, 0.2], "amount": 0.35, "flowers": 1.0}, "summer": {},
+                "autumn": {"mix": [0.5, 0.44, 0.2], "amount": 0.3}, "winter": {"mix": [0.27, 0.3, 0.22], "amount": 0.5}}
+LODS = {"bush": [170, 80, 40], "rock": [300, 100, 44], "cluster": [360, 120, 40], "wood": [220, 80, 24], "jam": [520, 170, 56]}
+LOD_IOU = 0.9  # a LOD's outline against LOD 0's, mean of 8 directions: under it a single stone's LOD is its hull
 LOD_SWITCH = [14.0, 40.0, 130.0]  # m x the instance's scale: LOD 1 from, LOD 2 from, gone at (fade over the last fifth)
 ATLAS = 1024
 
@@ -133,6 +177,17 @@ def style_sheet(style) -> dict:
     return st
 
 
+def _layered(layers, variant):
+    """A form from its layers: the preset's, a variant's own (proportions), the style's, the style's multipliers, the
+    spec's. The style comes after the variant: a pebble style rounds every variant, whatever its proportions."""
+    pre, st_form, st_scale, own = layers
+    form = _merge(_merge(_merge(pre, variant), st_form), own)
+    for k, x in (st_scale or {}).items():
+        if k in form and form[k] is not None:
+            form[k] = (np.asarray(form[k], float) * x).tolist() if isinstance(form[k], list) else form[k] * x
+    return form
+
+
 def resolve(spec: dict) -> dict:
     """A clutter spec with its preset under it and its style's numbers laid over the form and paint:
     {"kind": preset, "style": name | {...}, "seed", "variants", "form": {...}, "paint": {...}, "color": sRGB,
@@ -144,12 +199,10 @@ def resolve(spec: dict) -> dict:
     pre = json.loads(p.read_text())
     st = style_sheet(spec.get("style"))
     mat = pre.get("material", "rock")
-    base_form, base_paint = (WOOD, WOOD_PAINT) if mat == "wood" else (FORM, PAINT)
+    base_form, base_paint = (WOOD, WOOD_PAINT) if mat == "wood" else (BUSH, BUSH_PAINT) if mat == "leaf" else (FORM, PAINT)
     S = st.get(mat) or {}
-    form = _merge(_merge(_merge(base_form, pre.get("form")), S.get("form")), spec.get("form"))
-    for k, x in (S.get("scale") or {}).items():  # multipliers on the preset's own numbers
-        if k in form and form[k] is not None:
-            form[k] = (np.asarray(form[k], float) * x).tolist() if isinstance(form[k], list) else form[k] * x
+    layers = (_merge(base_form, pre.get("form")), S.get("form"), S.get("scale"), spec.get("form"))
+    form = _layered(layers, None)
     paint = _merge(_merge(_merge(base_paint, pre.get("paint")), S.get("paint")), spec.get("paint"))
     for name, d, ref in (("form", form, base_form), ("paint", paint, base_paint)):
         bad = set(d) - set(ref)
@@ -163,7 +216,7 @@ def resolve(spec: dict) -> dict:
         paint["moss"] = float(spec["moss"])
     from .terrain_style import _hsv
     col = st.get("colour") or {}
-    ref = spec.get("color") or S.get("color") or pre.get("color") or (WOOD_SRGB if mat == "wood" else ROCK_SRGB)
+    ref = spec.get("color") or S.get("color") or pre.get("color") or (WOOD_SRGB if mat == "wood" else LEAF_SRGB if mat == "leaf" else ROCK_SRGB)
     color = spec.get("color") or _hsv(ref, col.get("saturation", 1.0) * S.get("saturation", 1.0),
                                       col.get("value", 1.0) * S.get("value", 1.0))
     shape = pre.get("shape") or ("cluster" if form.get("cluster") else "rock")
@@ -173,7 +226,9 @@ def resolve(spec: dict) -> dict:
             "atlas": int(spec.get("atlas", pre.get("atlas", ATLAS))), "about": pre.get("about", ""),
             "collision": pre.get("collision", "convex" if shape == "rock" else None),
             "wet": _merge({"darken": 0.55, "roughness": 0.25, "band": pre.get("wet_band", 0.0)}, spec.get("wet") if isinstance(spec.get("wet"), dict) else None),
-            "variant_forms": pre.get("variant_forms"),
+            "variant_forms": pre.get("variant_forms"), "_layers": layers,
+            "seasons": ({se: dict(v, mix=_hsv(v["mix"], col.get("saturation", 1.0), col.get("value", 1.0))) if v else {} for se, v in LEAF_SEASONS.items()}
+                        if mat == "leaf" else {"summer": {}}),
             "snow": st.get("snow"), "size_range": pre.get("size_range"), "place": pre.get("place")}
 
 
@@ -181,7 +236,7 @@ def resolve(spec: dict) -> dict:
 def _smax(vals, k):
     out = vals[0]
     for v in vals[1:]:
-        if k <= 0:
+        if np.ndim(k) == 0 and k <= 0:
             out = np.maximum(out, v)
         else:
             h = np.clip(0.5 + 0.5 * (v - out) / k, 0, 1)
@@ -203,7 +258,12 @@ def _u(rng, r):
 
 
 class Stone:
-    """One block: planes (joints, bedding, chips) met in a smooth max, blended toward an ellipsoid, soft beds set back."""
+    """One loose block. Its faces are planes at oblique angles round an ellipsoid of three unequal axes (a loose block
+    broke along three or four joint sets at random obliquity, never a box), a pair of off-parallel bedding faces
+    (`bedded`), one or two corners broken off deep and several shallow chips; met in a smooth max whose radius grows
+    upward (tops weather rounder than undersides), wider low than high (`taper`: a stable base), blended toward a
+    bent ellipsoid (`round`: water-worn; `bend`: a bean), with thin partings along tilted beds (`beds`), maybe a
+    split (`split`) and a dent (`dent`)."""
 
     def __init__(self, rng, form, size=1.0, centre=(0, 0, 0), flat=False):
         f = form
@@ -216,48 +276,88 @@ class Stone:
         ax[2] *= 0.3
         self.R = _rot([0, 0, 1], rng.uniform(0, 360)) @ _rot(ax / np.linalg.norm(ax), rng.uniform(-t, t))
         a, b, c = self.half
-        th = math.radians(_u(rng, f["cross"]))
-        tl = f["tilt"]
-        N, D, kinds = [], [], []
+        N, D = [], []
 
-        def plane(n, d, kind):
-            N.append(np.asarray(n, float) / np.linalg.norm(n))
-            D.append(d)
-            kinds.append(kind)
-        lean = lambda: math.radians(rng.uniform(-tl, tl))
-        for sgn in (1, -1):  # family 1 (across x), family 2 (at the cross angle), bedding
-            l = lean()
-            w = math.radians(rng.uniform(-1.5, 1.5) * tl)  # (a face of a family is never quite parallel to its twin)
-            plane([sgn * math.cos(l) * math.cos(w), math.sin(w), math.sin(l)], a * rng.uniform(0.8, 1.0), 0)
-            l = lean()
-            w = th + math.radians(rng.uniform(-1.5, 1.5) * tl)
-            plane([sgn * math.cos(w) * math.cos(l), sgn * math.sin(w) * math.cos(l), math.sin(l)], b * rng.uniform(0.8, 1.0), 1)
-        for sgn in (1, -1):  # the minor family squares off the parallelogram's acute corners (terrain_stack's chamfer)
-            l = lean()
-            plane([0.2 * rng.normal(), sgn * math.cos(l), math.sin(l)], b * rng.uniform(0.9, 1.05), 1)
+        def support(n):  # the ellipsoid's reach along n
+            return float(np.linalg.norm(np.asarray(n) * self.half))
+
+        def plane(n, share):
+            n = np.asarray(n, float) / np.linalg.norm(n)
+            N.append(n)
+            D.append(support(n) * share)
+        # bedding: a top and an underside, off parallel
         dip, daz = math.radians(_u(rng, f["dip"])), rng.uniform(0, 2 * math.pi)
         self.bed_n = np.array([math.sin(dip) * math.cos(daz), math.sin(dip) * math.sin(daz), math.cos(dip)])
-        plane(self.bed_n, c * rng.uniform(0.85, 1.0), 2)
-        plane(-self.bed_n + 0.1 * rng.normal(0, 1, 3), c * rng.uniform(0.85, 1.0), 2)
+        if rng.uniform() < f["bedded"]:
+            w = math.radians(f["tilt"])
+            plane(self.bed_n + w * rng.normal(0, 1, 3), rng.uniform(0.78, 0.95))
+            plane(-self.bed_n + 1.5 * w * rng.normal(0, 1, 3), rng.uniform(0.7, 0.9))
+        # the major faces: directions spread over the sphere (a golden spiral turned at random), each jittered
+        nf = int(rng.integers(f["faces"][0], f["faces"][1] + 1))
+        g = (1 + 5 ** 0.5) / 2
+        i = np.arange(nf)
+        z = 1 - 2 * (i + 0.5) / nf
+        dirs = np.c_[np.sqrt(1 - z * z) * np.cos(2 * np.pi * i / g), np.sqrt(1 - z * z) * np.sin(2 * np.pi * i / g), z]
+        axq = rng.normal(0, 1, 3)
+        Q = _rot([0.0, 0.0, 1.0], rng.uniform(0, 360)) @ _rot(axq / np.linalg.norm(axq), rng.uniform(0, 360))
+        jit = math.radians(f["jitter"])
+        for d_ in dirs @ Q.T:
+            n = d_ + jit * rng.normal(0, 1, 3)
+            if N and max(float(n @ m) / np.linalg.norm(n) for m in N) > 0.93:
+                continue  # (nearly a face that is already there)
+            plane(n, rng.uniform(f["face_in"][0], f["face_in"][1]))
+        for ax_ in range(3):  # (never unbounded: a few faces may leave a side open; these lie outside a closed block)
+            for sg in (1.0, -1.0):
+                n = np.zeros(3)
+                n[ax_] = sg
+                if not N or max(float(n @ m) for m in N) < 0.8:
+                    N.append(n)
+                    D.append(self.half[ax_] * 1.12)
         base = (np.array(N), np.array(D))
         corners = self._corners(*base)
-        for _ in range(int(rng.integers(f["chips"][0], f["chips"][1] + 1))):
-            n = rng.normal(0, 1, 3)
+        # corners broken off: one or two deep, the rest shallow
+        nch = int(rng.integers(f["chips"][0], f["chips"][1] + 1))
+        deep = int(rng.integers(f["broken"][0], f["broken"][1] + 1))
+        for j in range(nch):
+            if len(corners):
+                n = corners[int(rng.integers(len(corners)))] / self.half + 0.35 * rng.normal(0, 1, 3)
+            else:
+                n = rng.normal(0, 1, 3)
             n /= np.linalg.norm(n)
-            reach = float((corners @ n).max()) if len(corners) else float(np.abs(n) @ self.half)
-            plane(n, reach * (1 - _u(rng, f["chip"])), 3)
+            if j < deep and n[2] < -0.2:
+                n[2] = abs(n[2])  # (the big breaks are where they show: not under the block)
+            reach = float((corners @ n).max()) if len(corners) else support(n)
+            N.append(n)
+            D.append(reach * (1 - (_u(rng, f["break"]) if j < deep else _u(rng, f["chip"]))))
         self.N, self.D = np.array(N), np.array(D)
         self.tone = rng.uniform(-1, 1, len(N))
         self.bevel = f["bevel"] * size
+        self.top_round = f["top_round"]
+        self.taper = f["taper"]
         self.round = f["round"]
+        self.bend = f["bend"] * rng.choice([-1, 1]) * rng.uniform(0.6, 1.0)
         self.beds = []
         for _ in range(int(rng.integers(f["beds"][0], f["beds"][1] + 1))):
-            self.beds.append((rng.uniform(-0.7, 0.7) * c, _u(rng, f["bed_thick"]) * size, _u(rng, f["bed_set"]) * size,
-                              rng.uniform(0, 2 * math.pi), rng.uniform(0.3, 1.0)))
+            n = self.bed_n + math.radians(12.0) * rng.normal(0, 1, 3)  # (partings are never quite parallel)
+            self.beds.append((n / np.linalg.norm(n), rng.uniform(-0.6, 0.6) * c, _u(rng, f["bed_thick"]) * size, _u(rng, f["bed_set"]) * size,
+                              rng.uniform(0, 2 * math.pi), rng.uniform(0.35, 0.9)))
+        self.split = None
+        if rng.uniform() < f["split"]:
+            n = np.array([rng.normal(), rng.normal(), 0.35 * rng.normal()])
+            n /= np.linalg.norm(n)
+            self.split = (n, rng.uniform(-0.25, 0.25) * a, _u(rng, f["split_gap"]) * size, int(rng.integers(1 << 30)))
+        self.dent = None
+        if rng.uniform() < f["dent"]:
+            n = np.array([rng.normal(), rng.normal(), abs(rng.normal()) * 0.6 + 0.2])
+            n /= np.linalg.norm(n)
+            r = rng.uniform(0.3, 0.5) * size * az
+            self.dent = (n * self.half * 1.0 + n * r * 0.72, r)
         self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
-        self.r_bound = (float(np.linalg.norm(corners, axis=1).max()) if len(corners) else float(np.linalg.norm(self.half))) * 1.05 + 0.02
-        cw = (corners if len(corners) else np.array([self.half, -self.half])) @ self.R.T + self.c
-        self.lo, self.hi = cw.min(0) - 0.04 * size - 0.01, cw.max(0) + 0.04 * size + 0.01
+        ext = np.abs(corners).max(0) if len(corners) else self.half
+        ext = np.maximum(ext, self.half) * (1 + abs(self.taper) * 0.5) + abs(self.bend) * c
+        self.r_bound = float(np.linalg.norm(ext)) * 1.05 + 0.02
+        cw = np.array([[sx * ext[0], sy * ext[1], sz * ext[2]] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]) @ self.R.T + self.c
+        self.lo, self.hi = cw.min(0) - 0.03 * size - 0.01, cw.max(0) + 0.03 * size + 0.01
 
     def _corners(self, N, D):
         """Vertices of the polyhedron {N p <= D} (triples of planes), for chip depths."""
@@ -278,28 +378,45 @@ class Stone:
         return (p - self.c) @ self.R
 
     def sd(self, p, info=False):
-        q = self.local(p)
+        q0 = self.local(p)
+        q = q0
+        zr = np.clip(q0[:, 2] / self.half[2], -1.3, 1.3)
+        if self.taper or self.bend:
+            q = q0.copy()
+            if self.bend:  # a bean: the long axis bowed
+                q[:, 2] = q[:, 2] + self.bend * self.half[2] * ((q0[:, 0] / self.half[0]) ** 2 - 0.4)
+            if self.taper:  # wider low, narrower high
+                q[:, :2] = q[:, :2] / (1 - 0.5 * self.taper * zr)[:, None]
         vals = q @ self.N.T - self.D  # (n, planes)
-        d = _smax([vals[:, i] for i in range(vals.shape[1])], self.bevel)
+        k = self.bevel * (1 + self.top_round * np.clip(0.5 + 0.5 * zr, 0, 1)) if self.top_round else self.bevel
+        d = _smax([vals[:, i] for i in range(vals.shape[1])], k)
         if self.round > 0:
-            k = np.linalg.norm(q / self.half, axis=1)
-            de = (k - 1.0) * self.half.min() * (0.6 + 0.4 * np.minimum(k, 2.0) / 2.0) / 0.8
+            kk = np.linalg.norm(q / self.half, axis=1)
+            de = (kk - 1.0) * self.half.min() * (0.6 + 0.4 * np.minimum(kk, 2.0) / 2.0) / 0.8
             d = (1 - self.round) * d + self.round * de
-        zb = q @ self.bed_n
-        for z0, th, dep, az, cover in self.beds:  # a soft bed set back round part of the block
-            w = np.clip(1 - np.abs(zb - z0) / th, 0, 1)
+        zb = q0 @ self.bed_n
+        for n, z0, th, dep, az, cover in self.beds:  # a parting: a thin groove round part of the block
+            w = np.clip(1 - np.abs(q0 @ n - z0) / th, 0, 1)
             w = w * w * (3 - 2 * w)
-            ang = np.arctan2(q[:, 1], q[:, 0])
+            ang = np.arctan2(q0[:, 1], q0[:, 0])
             along = np.clip((np.cos(ang - az) - (1 - 2 * cover)) / 0.4, 0, 1)
             d = d + dep * w * along
+        if self.split is not None:  # a crack through the block: a V groove along a wandering plane
+            n, off, gap, sd_ = self.split
+            x = q0 @ n - off + 0.03 * self.size * (noise.fbm(q0, 0.25 * self.size, 2, sd_) - 0.5) * 2
+            d = d + np.clip(1 - np.abs(x) / gap, 0, 1) ** 2 * 2.5 * gap
+        if self.dent is not None:
+            pc, r = self.dent
+            dd = r - np.linalg.norm(q0 - pc, axis=1)
+            d = _smax([d, dd], 0.35 * r)
         if self.lumps:
-            d = d + self.lumps * (noise.fbm(q, self.lump_size, 2, self.seed) - 0.5) * 2
+            d = d + self.lumps * (noise.fbm(q0, self.lump_size, 2, self.seed) - 0.5) * 2
         if not info:
             return d
         o = np.argsort(vals, axis=1)
         i1, i2 = o[:, -1], o[:, -2]
         r = np.arange(len(q))
-        return d, {"face": i1, "edge": vals[r, i1] - vals[r, i2], "tone": self.tone[i1], "bed": zb, "q": q,
+        return d, {"face": i1, "edge": vals[r, i1] - vals[r, i2], "tone": self.tone[i1], "bed": zb, "q": q0,
                    "axis": None}
 
 
@@ -377,6 +494,214 @@ class Wood:
                    "q": p - self.c, "axis": ax}
 
 
+class Bush:
+    """A bush's body: a dome going straight down to the ground with lobes round it, met softly."""
+
+    def __init__(self, rng, form, size=1.0):
+        f = form
+        ay, H = _u(rng, f["aspect"][0]), _u(rng, f["aspect"][1]) * size
+        self.H = H
+        self.c = np.zeros(3)
+        R = 0.5 * size
+        # (centre, radii): the main dome, then the lobes
+        self.ell = [(np.array([0.0, 0.0, 0.1 * H]), np.array([0.86 * R, 0.86 * R * ay, 0.86 * H]))]  # (a dome: widest at the ground)
+        for _ in range(int(rng.integers(f["lobes"][0], f["lobes"][1] + 1))):
+            a = rng.uniform(0, 2 * math.pi)
+            r = _u(rng, f["lobe"]) * size
+            o = _u(rng, f["lobe_out"])
+            zc = rng.uniform(0.12, 0.62) * H
+            shrink = math.sqrt(max(1 - (zc / H) ** 2, 0.15))  # (the dome is narrower up there)
+            c = np.array([(R - 0.6 * r) * o * shrink * math.cos(a), (R * ay - 0.6 * r) * o * shrink * math.sin(a), zc])
+            c[2] = min(c[2], H - 0.8 * r)
+            self.ell.append((c, np.array([r, r, 0.85 * r]) * rng.uniform(0.9, 1.15, 3)))
+        self.tone = rng.uniform(-1, 1, len(self.ell))
+        self.join = f["join"] * size
+        self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
+        self.lo = np.array([-R * 1.25, -R * 1.25, -0.12 * size])
+        self.hi = np.array([R * 1.25, R * 1.25, H * 1.2])
+        self.r_bound = 2.0 * size
+        self.ground_z = 0.0
+
+    def sd(self, p, info=False):
+        ds = []
+        for i, (c, r) in enumerate(self.ell):
+            q = p - c
+            if i == 0:
+                q = q.copy()
+                q[:, 2] = np.maximum(q[:, 2], 0.0)  # (straight down below its middle: a bush stands on the ground)
+            else:
+                q = q.copy()
+                q[:, 2] = np.where(q[:, 2] < 0, q[:, 2] * 0.6, q[:, 2])  # (lobes hang a little)
+            k = np.linalg.norm(q / r, axis=1)
+            ds.append((k - 1.0) * r.min())
+        D = np.stack(ds, 1)
+        d = D[:, 0]
+        for i in range(1, D.shape[1]):
+            h = np.clip(0.5 + 0.5 * (d - D[:, i]) / self.join, 0, 1)
+            d = d * (1 - h) + D[:, i] * h - self.join * h * (1 - h)
+        if self.lumps:
+            d = d + self.lumps * (noise.fbm(p, self.lump_size, 2, self.seed) - 0.5) * 2
+        d = np.maximum(d, -(p[:, 2] + 0.1))  # closed under the ground
+        if not info:
+            return d
+        o = np.argsort(D, axis=1)
+        r_ = np.arange(len(p))
+        return d, {"face": o[:, 0], "edge": D[r_, o[:, 1]] - D[r_, o[:, 0]] if D.shape[1] > 1 else np.full(len(p), 1.0),
+                   "tone": self.tone[o[:, 0]], "bed": p[:, 2], "q": p, "axis": None}
+
+    def surface(self, dirs, origin):
+        """Where rays from `origin` along unit `dirs` leave the body (bisection)."""
+        lo, hi = np.zeros(len(dirs)), np.full(len(dirs), 1.5)
+        for _ in range(22):
+            mid = 0.5 * (lo + hi)
+            ins = self.sd(origin + dirs * mid[:, None]) < 0
+            lo, hi = np.where(ins, mid, lo), np.where(ins, hi, mid)
+        return origin + dirs * (0.5 * (lo + hi))[:, None]
+
+
+def _cells(q, size, seed):
+    """3D cells (jittered points on a lattice): (distance to the nearest point, to the second nearest, the nearest's
+    own random 0..1), distances in m."""
+    g = q / size
+    b = np.floor(g).astype(np.int64)
+    f1 = np.full(len(q), 1e9)
+    f2 = np.full(len(q), 1e9)
+    cid = np.zeros(len(q))
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                c = b + [dx, dy, dz]
+                jx = noise._hash(c[:, 0], c[:, 1], c[:, 2], seed)
+                jy = noise._hash(c[:, 0], c[:, 1], c[:, 2], seed + 1)
+                jz = noise._hash(c[:, 0], c[:, 1], c[:, 2], seed + 2)
+                d = np.linalg.norm(c + np.stack([jx, jy, jz], 1) - g, axis=1)
+                nearer = d < f1
+                f2 = np.where(nearer, f1, np.minimum(f2, d))
+                cid = np.where(nearer, noise._hash(c[:, 0], c[:, 1], c[:, 2], seed + 3), cid)
+                f1 = np.minimum(f1, d)
+    return f1 * size, f2 * size, cid
+
+
+def spray_tile(px: int, paint: dict, color, season: dict, seed: int):
+    """A leaf spray's picture for a card: (rgb (px, px, 3) sRGB, alpha (px, px)); the stem runs up the middle from the
+    bottom edge, leaves alternate along it. The colour is bled under the alpha."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    sp = paint["spray"]
+    rng = np.random.default_rng(seed)
+    S = 4 * px
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    dr = ImageDraw.Draw(im)
+    col = np.asarray(color, float)
+    if season.get("mix") is not None:
+        col = col * (1 - season["amount"]) + np.asarray(season["mix"], float) * season["amount"]
+    n = int(rng.integers(sp["leaves"][0], sp["leaves"][1] + 1))
+    bend = rng.uniform(-0.12, 0.12)
+    stem = lambda t: np.array([0.5 + bend * math.sin(t * 2.2) + 0.02 * math.sin(t * 9), 1.0 - 0.9 * t])
+    pts = [tuple((stem(t) * S).tolist()) for t in np.linspace(0, 1, 20)]
+    wood = tuple(int(255 * c) for c in np.clip(col * [1.1, 0.8, 0.7] * 0.6, 0, 1)) + (255,)
+    dr.line(pts, fill=wood, width=max(2, S // 90))
+    steps = int(paint.get("steps") or 0)
+    order = sorted(range(n), key=lambda i: i)  # (from the base up: later leaves over earlier ones)
+    for i in order:
+        t = (i + 0.6) / (n + 0.4) * rng.uniform(0.95, 1.05)
+        t = min(t, 1.0)
+        base = stem(t)
+        side = 1 if i % 2 == 0 else -1
+        ang = math.radians(rng.uniform(32, 62)) * side if i < n - 1 else rng.uniform(-0.2, 0.2)
+        d = np.array([math.sin(ang), -math.cos(ang)])
+        L = _u(rng, sp["leaf"]) / 0.34 * (0.75 + 0.35 * math.sin(math.pi * min(t + 0.15, 1.0)))  # (in tile units: a tile is ~0.34 m)
+        W = L * sp["round"]
+        nrm = np.array([-d[1], d[0]])
+        poly = []
+        for u in np.linspace(0, 1, 9):
+            w = W * 0.5 * math.sin(math.pi * u ** 0.8) * (1 if u < 1 else 0)
+            poly.append(base + d * L * u + nrm * w)
+        for u in np.linspace(1, 0, 9)[1:]:
+            w = W * 0.5 * math.sin(math.pi * u ** 0.8)
+            poly.append(base + d * L * u - nrm * w)
+        tone = 1 + sp["tones"] * rng.uniform(-1, 1) - 0.25 * (1 - t)
+        if steps:
+            tone = round(tone * steps) / steps
+        c = tuple(int(255 * x) for x in np.clip(col * tone, 0, 1)) + (255,)
+        xy = [tuple((np.asarray(q_) * S).tolist()) for q_ in poly]
+        dr.polygon(xy, fill=c, outline=(tuple(int(255 * x) for x in np.clip(col * 0.25, 0, 1)) + (255,)) if sp.get("outline") else None)
+        if sp.get("outline"):
+            dr.line(xy + [xy[0]], fill=tuple(int(255 * x) for x in np.clip(col * 0.25, 0, 1)) + (255,), width=max(2, int(sp["outline"] * S)))
+        if sp.get("midrib"):
+            dr.line([tuple((base * S).tolist()), tuple(((base + d * L * 0.9) * S).tolist())],
+                    fill=tuple(int(255 * x) for x in np.clip(col * tone * (1 + sp["midrib"]), 0, 1)) + (255,), width=max(1, S // 300))
+        if season.get("flowers") and paint.get("flowers") and rng.uniform() < paint["flowers"] * 1.6:
+            fc = tuple(int(255 * x) for x in paint["flower_color"]) + (255,)
+            ce = (base + d * L * rng.uniform(0.1, 0.5)) * S
+            r = paint["flower_size"] / 0.34 * S * rng.uniform(0.9, 1.4)
+            dr.ellipse([ce[0] - r, ce[1] - r, ce[0] + r, ce[1] + r], fill=fc)
+    im = im.resize((px, px), Image.LANCZOS)
+    a = np.asarray(im, float) / 255.0
+    alpha = a[..., 3]
+    rgb = a[..., :3]
+    solid = alpha > 0.5
+    if solid.any():
+        idx = ndimage.distance_transform_edt(~solid, return_distances=False, return_indices=True)
+        rgb = rgb[idx[0], idx[1]]
+    return rgb, alpha
+
+
+def bush_cards(solid, cfg, k: int, share: float, grow: float, tiles: list, base: int):
+    """The leaf sprays of variant k: quads standing out of the dome, each drawn from both sides with the SAME normal
+    (out of the bush and up: a spray lit by its own face flickers). share = how many of them (the first ones), grow =
+    drawn this much larger. Returns {"V", "N", "UV", "T", "F", "wind"} or None."""
+    f = solid.form
+    rng = np.random.default_rng([cfg["seed"], k, 911])
+    n0 = int(rng.integers(f["cards"][0], f["cards"][1] + 1)) if f["cards"][1] > 0 else 0
+    if n0 <= 0 or not tiles:
+        return None
+    B = solid.parts[0]
+    az = rng.uniform(0, 2 * math.pi) + np.arange(n0) * 2.399963  # golden angle: spread round
+    el = np.radians(np.degrees(np.arcsin(rng.uniform(0.0, 0.97, n0))))  # (even over the dome: most on its sides)
+    dirs = np.c_[np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)]
+    org = np.array([0.0, 0.0, 0.3 * B.H])
+    P = B.surface(dirs, org)
+    g = _grad(B.sd, P, 0.02)
+    Nn = g / np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-9)
+    size = rng.uniform(f["card"][0], f["card"][1], n0)
+    roll = rng.uniform(0, math.pi, n0)
+    pick = rng.integers(0, len(tiles), n0)
+    phase = rng.uniform(0, 1, n0)
+    n = max(0, int(round(n0 * share)))
+    if n == 0:
+        return None
+    V, N, UV, T, F, W = [], [], [], [], [], []
+    for i in range(n):
+        a = Nn[i] * (1 - f["card_up"]) + np.array([0, 0, 1.0]) * f["card_up"]
+        a /= np.linalg.norm(a)
+        r0 = np.cross(a, [0, 0, 1.0])
+        r0 = r0 / np.linalg.norm(r0) if np.linalg.norm(r0) > 1e-6 else np.array([1.0, 0, 0])
+        r1 = np.cross(a, r0)
+        rt = r0 * math.cos(roll[i]) + r1 * math.sin(roll[i])
+        L = size[i] * grow
+        b = P[i] - a * L * (1 - f["card_out"])
+        w = 0.5 * L
+        q = [b - rt * w, b + rt * w, b + rt * w + a * L, b - rt * w + a * L]
+        nn = Nn[i] * 0.6 + np.array([0, 0, 0.8])
+        nn /= np.linalg.norm(nn)
+        x0, y0, tw = tiles[pick[i]]
+        m = 1.5
+        uv = [[x0 + m, y0 + tw - m], [x0 + tw - m, y0 + tw - m], [x0 + tw - m, y0 + m], [x0 + m, y0 + m]]
+        o = len(V)
+        V += q
+        N += [nn] * 4
+        UV += uv
+        tt = rt - nn * (nn @ rt)
+        tt /= np.linalg.norm(tt)
+        wsg = 1.0 if np.cross(nn, tt) @ a > 0 else -1.0
+        T += [np.r_[tt, wsg]] * 4
+        F += [[o, o + 1, o + 2], [o, o + 2, o + 3], [o, o + 2, o + 1], [o, o + 3, o + 2]]
+        tr = lambda z: float(np.clip(z / B.H, 0, 1.3) ** 1.5)
+        W += [[tr(q[0][2]), 0.5, phase[i], 0.0], [tr(q[1][2]), 0.5, phase[i], 0.0], [tr(q[2][2]), 1.0, phase[i], 1.0], [tr(q[3][2]), 1.0, phase[i], 1.0]]
+    return {"V": np.array(V), "N": np.array(N), "UV": np.array(UV, float) / base, "T": np.array(T), "F": np.array(F), "wind": np.array(W)}
+
+
 class Solid:
     """A variant: one or more pieces as a hard union (a cluster of cobbles, a jam of logs), seated on the ground."""
 
@@ -388,9 +713,12 @@ class Solid:
         if vf:
             o = dict(vf[k % len(vf)])
             self.lods_x = float(o.pop("lods_x", 1.0))
-            f = _merge(f, o)
+            f = _layered(cfg["_layers"], o)
         self.wood = cfg["material"] == "wood"
-        if self.wood:
+        self.form = f
+        if cfg["shape"] == "bush":
+            self.parts = [Bush(rng, f)]
+        elif self.wood:
             n = int(rng.integers(f["pieces"][0], f["pieces"][1] + 1))
             self.parts = []
             for i in range(n):
@@ -419,6 +747,11 @@ class Solid:
                 self.parts.append(Stone(rng, f, s, (xy[0], xy[1], 0.0), flat=True))
         else:
             self.parts = [Stone(rng, f, 1.0, flat=cfg["kind"] == "slab")]
+            if rng.uniform() < f["lean"]:  # a second block against the first
+                a0 = rng.uniform(0, 2 * math.pi)
+                s2 = rng.uniform(0.38, 0.55)
+                h = self.parts[0].half
+                self.parts.append(Stone(rng, f, s2, (0.75 * h[0] * math.cos(a0) * 1.0, 0.9 * h[1] * math.sin(a0), -h[2] + 0.42 * s2 * 0.5)))
         self.cluster = len(self.parts) > 1
         self.sink_share = f["sink"]
         lo = np.min([p.lo for p in self.parts], 0)
@@ -492,28 +825,34 @@ def _mesh(vol, ax, vox):
 
 
 def _decimate(V, F, target):
+    """pyfqmr to a count: the result nearest the target from several aggressiveness values (a smooth pebble overshoots
+    far below the target at a high one, a crisp block stalls above it at a low one), going on from a stall."""
     if len(F) <= target:
         return V, F
     import pyfqmr
-    best = (V, F)
-    for agg in (4, 6, 8):
-        s = pyfqmr.Simplify()
-        s.setMesh(np.ascontiguousarray(V, np.float64), np.ascontiguousarray(F, np.int32))
-        s.simplify_mesh(target_count=int(target), aggressiveness=agg, preserve_border=True, verbose=False)
-        V2, F2, _ = s.getMesh()
-        best = (np.asarray(V2, float), np.asarray(F2, np.int64))
-        if len(F2) <= 1.1 * target:
+
+    def run(V_, F_, agg, border=True):
+        q = pyfqmr.Simplify()
+        q.setMesh(np.ascontiguousarray(V_, np.float64), np.ascontiguousarray(F_, np.int32))
+        q.simplify_mesh(target_count=int(target), aggressiveness=agg, preserve_border=border, verbose=False)
+        V2, F2, _ = q.getMesh()
+        return np.asarray(V2, float), np.asarray(F2, np.int64)
+    best = None
+    for agg in (5, 3, 7, 2, 1, 0.5, 9):
+        r = run(V, F, agg)
+        miss = abs(len(r[1]) - target) / target + (0.5 if len(r[1]) < 0.9 * target else 0.0)
+        if best is None or miss < best[0]:
+            best = (miss, r)
+        if 0.95 * target <= len(r[1]) <= 1.08 * target:
             break
+    best = best[1]
     for _ in range(4):  # (stalled far above the target: go on from where it stopped)
         if len(best[1]) <= 1.25 * target:
             break
-        s = pyfqmr.Simplify()
-        s.setMesh(np.ascontiguousarray(best[0], np.float64), np.ascontiguousarray(best[1], np.int32))
-        s.simplify_mesh(target_count=int(target), aggressiveness=9, preserve_border=False, verbose=False, max_iterations=200)
-        V2, F2, _ = s.getMesh()
-        if len(F2) >= len(best[1]):
+        r = run(best[0], best[1], 9, False)
+        if len(r[1]) >= len(best[1]) or len(r[1]) < 0.9 * target:
             break
-        best = (np.asarray(V2, float), np.asarray(F2, np.int64))
+        best = r
     return best
 
 
@@ -542,6 +881,70 @@ def mesh_check(V, F) -> dict:
     ar = np.linalg.norm(np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]), axis=1)
     return {"triangles": int(len(F)), "open_edges": int((cnt == 1).sum()), "nonmanifold_edges": int((cnt > 2).sum()),
             "degenerate": int((ar < 1e-10).sum())}
+
+
+def silhouette(V, F, azimuth, elevation=10.0, px=220.0, frame=None):
+    """A mesh's filled outline from a direction (deg), orthographic: (mask, frame); frame = (x0, y0, w, h) px."""
+    from PIL import Image, ImageDraw
+    a, e = math.radians(azimuth), math.radians(elevation)
+    d = np.array([math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)])
+    r = np.array([-math.sin(a), math.cos(a), 0.0])
+    u = np.cross(d, r)
+    X, Y = V @ r * px, -(V @ u) * px
+    if frame is None:
+        x0, y0 = math.floor(X.min()) - 3, math.floor(Y.min()) - 3
+        frame = (x0, y0, int(math.ceil(X.max()) - x0 + 4), int(math.ceil(Y.max()) - y0 + 4))
+    im = Image.new("L", (frame[2], frame[3]), 0)
+    dr = ImageDraw.Draw(im)
+    T = np.stack([X[F] - frame[0], Y[F] - frame[1]], -1).reshape(len(F), 6)
+    for t in T.tolist():
+        dr.polygon(t, fill=255)
+    return np.asarray(im) > 0, frame
+
+
+def silhouette_iou(A, B, directions=8) -> list:
+    """Outline IoU of mesh B against mesh A ((V, F) each) from `directions` azimuths round it (10 and 35 deg up)."""
+    out = []
+    for i in range(directions):
+        m0, fr = silhouette(A[0], A[1], 360.0 * i / directions, 10.0 if i % 2 == 0 else 35.0)
+        m1, _ = silhouette(B[0], B[1], 360.0 * i / directions, 10.0 if i % 2 == 0 else 35.0, frame=fr)
+        out.append(float((m0 & m1).sum() / max((m0 | m1).sum(), 1)))
+    return out
+
+
+def outline_measures(V, F, directions=8) -> dict:
+    """What a boulder's side outlines say (the measures read off reference photos): height / width, corners (the
+    outline simplified to 4% of its size), the share of the outline that is straight (within 1.5% over a tenth of
+    its length), top width / base width (at 80% / 20% of the height)."""
+    hw, corners, taper = [], [], []
+    for i in range(directions):
+        m, _ = silhouette(V, F, 360.0 * i / directions, 5.0)
+        rows = np.flatnonzero(m.any(1))
+        cols = np.flatnonzero(m.any(0))
+        h, w = len(rows), len(cols)
+        hw.append(h / w)
+        wid = lambda fr: m[rows[0] + int(fr * (h - 1))].sum()
+        taper.append(wid(0.2) / max(wid(0.8), 1))
+        # the outline as the row extents, simplified
+        L = np.array([[np.flatnonzero(m[r])[0], r] for r in rows], float)
+        Rr = np.array([[np.flatnonzero(m[r])[-1], r] for r in rows[::-1]], float)
+        poly = np.r_[L, Rr]
+        corners.append(len(_rdp(poly, 0.04 * max(h, w))))
+    return {"height_over_width": round(float(np.mean(hw)), 3), "hw_range": [round(float(min(hw)), 2), round(float(max(hw)), 2)],
+            "corners": round(float(np.mean(corners)), 1), "top_over_base": round(float(np.mean(taper)), 3)}
+
+
+def _rdp(P, eps):
+    if len(P) < 3:
+        return P
+    a, b = P[0], P[-1]
+    ab = b - a
+    l = np.linalg.norm(ab)
+    d = np.abs(ab[0] * (P[:, 1] - a[1]) - ab[1] * (P[:, 0] - a[0])) / l if l > 1e-9 else np.linalg.norm(P - a, axis=1)
+    i = int(d.argmax())
+    if d[i] <= eps:
+        return np.array([a, b])
+    return np.r_[_rdp(P[: i + 1], eps)[:-1], _rdp(P[i:], eps)]
 
 
 CHARTS = [(0, 1), (0, -1), (1, 1), (1, -1), (2, 1), (2, -1)]  # (axis, sign)
@@ -675,6 +1078,9 @@ def _micro(cfg, I, P, seed):
     if p.get("pits"):
         r = noise.fbm(q, 0.03, 2, seed + 6)
         h -= p["pits"] * np.clip((r - 0.62) / 0.1, 0, 1)
+    if p.get("leaf_bump") and p.get("leaf_size"):
+        f1, _, _ = _cells(q, p["leaf_size"], seed + 31)
+        h += p["leaf_bump"] * np.clip(1 - f1 / (0.6 * p["leaf_size"]), 0, 1)
     if p.get("grooves") and I.get("axis") is not None:
         ax = I["axis"]
         perp = q - ax * (q * ax).sum(1, keepdims=True)
@@ -683,7 +1089,7 @@ def _micro(cfg, I, P, seed):
     return h
 
 
-def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed):
+def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed, zg=None, season=None):
     """Albedo (sRGB) and roughness at surface points."""
     p = cfg["paint"]
     q = I["q"]
@@ -707,6 +1113,19 @@ def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed):
         tone = tone * (1 + p["bands"] * pick)
     if p.get("cracks"):
         tone = tone * (1 - min(0.6, p["cavity"] * 1.6) * np.clip(_cracks(p, q, seed), 0, 1))
+    flower = None
+    if p.get("leaf_size"):
+        f1, f2, cid = _cells(q, p["leaf_size"], seed + 31)
+        tone = tone * (1 + p["leaf_tone"] * (cid - 0.5) * 2)
+        gap = np.clip(1 - (f2 - f1) / (0.3 * p["leaf_size"]), 0, 1)
+        tone = tone * (1 - p["leaf_gap"] * gap * gap)
+        if season and season.get("flowers") and p.get("flowers"):
+            g1, _, gid = _cells(q, p["flower_size"] * 3.2, seed + 41)
+            flower = (g1 < p["flower_size"]) & (gid < p["flowers"]) & (Nrm[:, 2] > -0.1)
+    if p.get("steps"):
+        tone = np.round(tone * p["steps"] * 2) / (p["steps"] * 2)
+    if season and season.get("mix") is not None:
+        cfg = dict(cfg, color=(np.asarray(cfg["color"], float) * (1 - season["amount"]) + np.asarray(season["mix"], float) * season["amount"]).tolist())
     col = np.asarray(cfg["color"], float)[None] * tone[:, None]
     # curvature: convex arrises worn pale, concave darker; an ink line along arrises
     cv = np.clip(curv, -1, 1)
@@ -718,6 +1137,11 @@ def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed):
     up = Nrm[:, 2]
     if p.get("gradient"):
         col = col * (1 + p["gradient"] * (np.clip(zrel, 0, 1) - 0.5) + 0.5 * p["gradient"] * (up * 0.5))[:, None]
+    if p.get("top_light"):
+        col = col * (1 + p["top_light"] * (np.clip(up, 0, 1) ** 1.5 - 0.3))[:, None]
+    if p.get("foot") and zg is not None:
+        fz = np.clip(1 - zg / p["foot_height"], 0, 1)
+        col = col * (1 - p["foot"] * fz * fz * (0.7 + 0.6 * noise.fbm(q, 0.08, 2, seed + 23)))[:, None]
     if p.get("top"):
         m = np.clip((up - 0.45) / 0.35, 0, 1) * np.clip((noise.fbm(q, p["top_size"], 3, seed + 17) - 0.42) / 0.14, 0, 1)
         m = m * p["top"]
@@ -729,6 +1153,8 @@ def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed):
         m = np.clip(m * min(1.0, 2 * p["moss"]), 0, 1)
         col = col * (1 - m[:, None]) + np.asarray(p["moss_color"], float)[None] * (0.8 + 0.4 * noise.fbm(q, 0.015, 2, seed + 20))[:, None] * m[:, None]
     col = col * (1 - 0.5 * p["ao"] * (1 - ao))[:, None]
+    if flower is not None and flower.any():
+        col[flower] = np.asarray(p["flower_color"], float)
     rough = np.clip(p["roughness"] * (1 + 0.08 * (tone - 1) * 4), 0.05, 1.0)
     return np.clip(col, 0, 1), rough
 
@@ -775,11 +1201,11 @@ def _raster_normals(L, pix, ch, rect):
     return out / np.maximum(ln, 1e-9), got
 
 
-def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None):
+def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None, ground=None):
     """A variant's six charts: (albedo (cell, cell, 3) sRGB, normal (.., 3) tangent, orm (.., 3), filled mask)."""
     from scipy import ndimage
     p = cfg["paint"]
-    alb = np.zeros((cell, cell, 3))
+    albs = {se: np.zeros((cell, cell, 3)) for se in cfg["seasons"]}
     nrm = np.zeros((cell, cell, 3))
     nrm[..., 2] = 1
     orm = np.ones((cell, cell, 3))
@@ -854,9 +1280,10 @@ def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None):
             ao = np.minimum(ao, np.clip(solid.sd(P + Ns * r) / r, 0, 1) * 0.5 + 0.5 * ao)
         ztop, zbot = hi[2] - 0.05, lo[2] + 0.05
         zrel = (P[:, 2] - zbot) / max(ztop - zbot, 1e-6)
-        col, rough = _paint(cfg, solid, P, nh, I, curv, ao, zrel, seed)
         Y, X = y0 + rr, x0 + cc
-        alb[Y, X] = col
+        for se, sv in cfg["seasons"].items():
+            col, rough = _paint(cfg, solid, P, nh, I, curv, ao, zrel, seed, zg=P[:, 2] - ground if ground is not None else None, season=sv)
+            albs[se][Y, X] = col
         nrm[Y, X] = nt
         orm[Y, X, 0] = 1 - p["ao"] * (1 - ao)
         orm[Y, X, 1] = rough
@@ -865,9 +1292,9 @@ def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None):
     for ch in range(6):
         x0, y0, w, h = _chart_rect(ch, cell)
         sl = (slice(y0, y0 + h), slice(x0, x0 + w))
-        for im in (alb, nrm, orm):
+        for im in list(albs.values()) + [nrm, orm]:
             im[sl] = _dilate(im[sl], filled[sl])
-    return alb, nrm, orm, filled
+    return albs, nrm, orm, filled
 
 
 # -------------------------------------------------------------------------------------------------------- building
@@ -877,11 +1304,24 @@ def build(spec: dict, progress=None) -> dict:
     0..1 floats; meshes Z up in metres, pivot on the ground line)."""
     cfg = resolve(spec)
     nv = cfg["variants"]
-    grid = 1 if nv == 1 else 2 if nv <= 4 else 3
+    bush = cfg["shape"] == "bush"
+    grid = 3 if bush else 1 if nv == 1 else 2 if nv <= 4 else 3
     base = cfg["atlas"]
     cell = base // grid
-    alb = np.zeros((base, base, 3))
-    alb[:] = cfg["color"]
+    albs = {se: np.zeros((base, base, 4)) for se in cfg["seasons"]}
+    for a_ in albs.values():
+        a_[..., :3] = cfg["color"]
+        a_[..., 3] = 1.0
+    tiles = []
+    if bush and cfg["form"]["cards"][1] > 0:  # the sprays' pictures: the cells after the variants'
+        for t in range(grid * grid - nv):
+            c = nv + t
+            x0, y0 = (c % grid) * cell, (c // grid) * cell
+            tiles.append((x0, y0, cell))
+            for se, sv in cfg["seasons"].items():
+                rgb, al = spray_tile(cell, cfg["paint"], cfg["color"], sv, cfg["seed"] * 100 + t)
+                albs[se][y0: y0 + cell, x0: x0 + cell, :3] = rgb
+                albs[se][y0: y0 + cell, x0: x0 + cell, 3] = al
     nrm = np.zeros((base, base, 3))
     nrm[..., 2] = 1
     orm = np.ones((base, base, 3))
@@ -898,18 +1338,45 @@ def build(spec: dict, progress=None) -> dict:
         plan = float(max(hi[0] - lo[0], hi[1] - lo[1]))
         height = float(hi[2] - lo[2])
         sink = cfg["form"]["sink"] * height
+        if bush:
+            sink = float(solid.parts[0].ground_z - lo[2])
         scale = 1.0 / plan
         shift = np.array([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -(lo[2] + sink)])
         origin = np.array([(k % grid) * cell, (k // grid) * cell], float)
         seed = cfg["seed"] * 1000 + k
-        lods = []
+        lods, ious = [], []
         for j, tgt in enumerate(cfg["lods"]):
-            hull = cfg["shape"] == "rock" and tgt <= 40  # (a near-convex stone's last LOD: its hull, never a folded sliver)
-            lods.append(lod_mesh(solid, V, F, int(round(tgt * solid.lods_x)), cfg, cell, origin, base, vox * 0.5, hull=hull))
-        a_, n_, o_, _ = bake_variant(cfg, solid, vol, ax, vox, cell, seed, low=(lods[0], lods[0]["UV"] * base - origin))
+            tgt = int(round(tgt * solid.lods_x))
+            single = cfg["shape"] in ("rock", "bush") and not solid.cluster
+            hull = single and tgt <= 40  # (a near-convex stone's last LOD: its hull, never a folded sliver)
+            L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=hull)
+            iou = float(np.mean(silhouette_iou((lods[0]["V"], lods[0]["F"]), (L["V"], L["F"])))) if j else 1.0
+            if j and cfg["shape"] == "rock" and not hull and iou < LOD_IOU and not (solid.cluster and len(solid.parts) > 2):  # the decimation changed the outline: the hull keeps it
+                L2 = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=True)
+                i2 = float(np.mean(silhouette_iou((lods[0]["V"], lods[0]["F"]), (L2["V"], L2["F"]))))
+                if i2 > iou:
+                    L, iou = L2, i2
+            L["iou"] = round(iou, 3)
+            lods.append(L)
+        a_, n_, o_, _ = bake_variant(cfg, solid, vol, ax, vox, cell, seed, low=(lods[0], lods[0]["UV"] * base - origin), ground=float(lo[2] + sink))
         sl = (slice(int(origin[1]), int(origin[1]) + cell), slice(int(origin[0]), int(origin[0]) + cell))
-        alb[sl], nrm[sl], orm[sl] = a_, n_, o_
-        for L in lods:
+        nrm[sl], orm[sl] = n_, o_
+        for se in albs:
+            albs[se][sl][..., :3] = a_[se]
+        for j, L in enumerate(lods):
+            if bush:  # wind channels; the sprays joined on
+                Bz = solid.parts[0].H
+                tr = np.clip(L["V"][:, 2] / Bz, 0, 1.3) ** 1.5
+                L["wind"] = np.c_[tr, 0.2 * tr, np.full(len(tr), 0.37 * k % 1.0), np.zeros(len(tr))]
+                sh = cfg["form"]["cards_lod"]
+                C = bush_cards(solid, cfg, k, sh[min(j, len(sh) - 1)], 1.0 + 0.25 * j, tiles, base)
+                if C is not None:
+                    o = len(L["V"])
+                    for key in ("V", "N", "UV", "T", "wind"):
+                        L[key] = np.r_[L[key], C[key]]
+                    L["F"] = np.r_[L["F"], C["F"] + o]
+                    L["triangles"] = int(len(L["F"]))
+                    L["cards"] = int(len(C["F"]) // 4)
             L["V"] = (L["V"] + shift) * scale
         col = None
         if cfg["collision"] == "convex":
@@ -918,21 +1385,37 @@ def build(spec: dict, progress=None) -> dict:
                     "sink": round(sink * scale, 4), "bounds": [((lo + shift) * scale).round(4).tolist(), ((hi + shift) * scale).round(4).tolist()]})
         if progress:
             progress(f"{cfg['kind']} {cfg['style']} variant {k}: " + " / ".join(str(L["triangles"]) for L in lods) + " triangles")
-    return {"cfg": cfg, "variants": out, "albedo": alb, "normal": nrm * 0.5 + 0.5, "orm": orm}
+    return {"cfg": cfg, "variants": out, "albedo": albs, "normal": nrm * 0.5 + 0.5, "orm": orm}
 
 
 def _hull(V, faces):
-    """A convex hull with at most ~`faces` triangles: (V, F) outward."""
+    """A convex hull with at most `faces` triangles: (V, F) outward. Grown greedily: from the six axis extremes, the
+    point farthest outside the hull so far is added until the count is reached (the best outline for the count)."""
     from scipy.spatial import ConvexHull
     h = ConvexHull(V)
     P = V[h.vertices]
-    if len(h.simplices) > faces:  # fewer points: the extreme ones in spread directions
-        g = (1 + 5 ** 0.5) / 2
-        n = faces // 2 + 2
-        i = np.arange(n)
-        z = 1 - 2 * (i + 0.5) / n
-        d = np.c_[np.sqrt(1 - z * z) * np.cos(2 * np.pi * i / g), np.sqrt(1 - z * z) * np.sin(2 * np.pi * i / g), z]
-        P = P[np.unique((P @ d.T).argmax(0))]
+    if len(h.simplices) > faces:
+        pick = list(dict.fromkeys([int(P[:, a].argmax()) for a in range(3)] + [int(P[:, a].argmin()) for a in range(3)]))
+        while True:
+            try:
+                hh = ConvexHull(P[pick])
+            except Exception:
+                hh = None
+            if hh is not None and len(hh.simplices) + 2 > faces:
+                break
+            if hh is None:
+                rest = [i for i in range(len(P)) if i not in pick]
+                if not rest:
+                    break
+                pick.append(rest[0])
+                continue
+            out = (P @ hh.equations[:, :3].T + hh.equations[:, 3]).max(1)
+            out[pick] = -1
+            i = int(out.argmax())
+            if out[i] <= 1e-6:
+                break
+            pick.append(i)
+        P = P[pick]
         h = ConvexHull(P)
         P = P[h.vertices]
         h = ConvexHull(P)
@@ -996,7 +1479,7 @@ class Glb:
         self.mats.append(m)
         return len(self.mats) - 1
 
-    def mesh(self, name, V, F, N=None, T=None, UV=None, C=None, material=None, extras=None):
+    def mesh(self, name, V, F, N=None, T=None, UV=None, C=None, material=None, extras=None, wind=None):
         at = {"POSITION": self.accessor(_yup(V), "VEC3", minmax=True)}
         if N is not None:
             n = _yup(N)
@@ -1008,6 +1491,10 @@ class Glb:
             at["TANGENT"] = self.accessor(np.c_[t, T[:, 3]], "VEC4")
         if UV is not None:
             at["TEXCOORD_0"] = self.accessor(UV, "VEC2")
+        if wind is not None:  # the plants' wind channels (veg_export.WIND_RECIPE)
+            at["TEXCOORD_1"] = self.accessor(wind[:, :2], "VEC2")
+            at["TEXCOORD_2"] = self.accessor(wind[:, 2:], "VEC2")
+            at["_WIND"] = self.accessor(wind, "VEC4")
         if C is not None:
             at["COLOR_0"] = self.accessor(np.clip(C, 0, 1), "VEC3" if C.shape[1] == 3 else "VEC4")
         F = np.asarray(F)
@@ -1055,6 +1542,9 @@ class Glb:
         return str(path)
 
 
+ALPHA_MIPS = ("import the albedo WITH mipmaps and scale alpha up by the mip level in the shader so thin leaves survive (as the groundcover grade): "
+              "alpha = (a - cutoff) * (1 + lod * 0.25) / max(fwidth(a), 1e-4) + 0.5 for alpha to coverage, or a *= 1 + lod * 0.25 before the "
+              "cut; the dome itself is opaque (alpha 1), so a far bush never thins to nothing")
 WET_RECIPE = ("wet rock: below the water line + `band` x the instance's height (and anywhere it rains), albedo *= mix(1, darken, wet), "
               "roughness = mix(roughness, wet roughness, wet); a river rock standing in water: wet = 1 below the line, fading "
               "over ~5 cm above it")
@@ -1069,37 +1559,50 @@ INSTANCE_RECIPE = ("one MultiMesh per variant per LOD (per cell of the world): i
 
 def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     """Write a clutter asset into out_dir: <stem>_v<k>_LOD<j>.glb per variant and LOD, <stem>_v<k>_collision.glb
-    (convex hull, node `..-convcolonly`), the shared <stem>_albedo / _normal / _orm.png (referenced by uri),
+    (convex hull, node `..-convcolonly`), the shared <stem>_albedo[_<season>] / _normal / _orm.png (referenced by uri),
     <stem>.glb (every variant's LOD 0 in a row, to look at), <stem>_seasons.json (the plant contract's shape: grade
     "clutter", kind, slots, lods, variants, sizes, recipes). Returns the json."""
     from . import veg_export
+    from .terrain_style import _srgb_lin as _lin
     B = build(spec, progress)
     cfg = B["cfg"]
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     stem = stem or f"ck_{cfg['kind']}_{cfg['style']}"
-    slot = "wood" if cfg["material"] == "wood" else "rock"
-    tex = {}
-    for nm, im in (("albedo", B["albedo"]), ("normal", B["normal"]), ("orm", B["orm"])):
+    leaf = cfg["material"] == "leaf"
+    slot = {"wood": "wood", "leaf": "foliage"}.get(cfg["material"], "rock")
+    tex, season_tex = {}, {}
+    for se, im in B["albedo"].items():
+        fn = f"{stem}_albedo.png" if se == "summer" else f"{stem}_albedo_{se}.png"
+        (out / fn).write_bytes(_png(im if leaf else im[..., :3]))
+        season_tex[se] = fn
+    tex["albedo"] = season_tex["summer"]
+    for nm, im in (("normal", B["normal"]), ("orm", B["orm"])):
         tex[nm] = f"{stem}_{nm}.png"
         (out / tex[nm]).write_bytes(_png(im))
-    rough = float(cfg["paint"]["roughness"])
     mext = {"hifipushie_clutter": {"kind": cfg["kind"], "style": cfg["style"], "grade": "clutter", "wet": cfg["wet"]}}
+    if leaf:
+        mext["alpha_mips"] = ALPHA_MIPS
+        mext["wind"] = veg_export.WIND_RECIPE
 
     def mat(g):
-        a, n, o = g.image(tex["albedo"]), g.image(tex["normal"]), g.image(tex["orm"])
-        return g.material({"name": slot, "pbrMetallicRoughness": {"baseColorTexture": {"index": a}, "metallicRoughnessTexture": {"index": o},
-                                                                    "metallicFactor": 0.0, "roughnessFactor": 1.0},
-                           "normalTexture": {"index": n}, "occlusionTexture": {"index": o}, "extras": mext})
+        a_, n_, o_ = g.image(tex["albedo"]), g.image(tex["normal"]), g.image(tex["orm"])
+        m = {"name": slot, "pbrMetallicRoughness": {"baseColorTexture": {"index": a_}, "metallicRoughnessTexture": {"index": o_},
+                                                      "metallicFactor": 0.0, "roughnessFactor": 1.0},
+             "normalTexture": {"index": n_}, "occlusionTexture": {"index": o_}, "extras": mext}
+        if leaf:
+            m["alphaMode"], m["alphaCutoff"] = "MASK", 0.5
+        return g.material(m)
     variants, on = [], []
     for v in B["variants"]:
         files = []
         for j, L in enumerate(v["lods"]):
             g = Glb()
-            g.node(f"{slot}", g.mesh(f"{v['name']}_LOD{j}_{slot}", L["V"], L["F"], L["N"], L["T"], L["UV"], material=mat(g)))
+            g.node(f"{slot}", g.mesh(f"{v['name']}_LOD{j}_{slot}", L["V"], L["F"], L["N"], L["T"], L["UV"], material=mat(g), wind=L.get("wind")))
             fn = f"{stem}_{v['name']}_LOD{j}.glb"
             g.write(out / fn)
-            files.append({"lod": j, "file": fn, "triangles": L["triangles"], "vertices": int(len(L["V"]))})
+            files.append({"lod": j, "file": fn, "triangles": L["triangles"], "vertices": int(len(L["V"])), "outline_iou": L.get("iou", 1.0),
+                          **({"cards": L.get("cards", 0)} if leaf else {})})
             on.append({"file": fn, "mesh": f"{v['name']}_LOD{j}_{slot}", "primitive": 0})
         colf = None
         if v["collision"] is not None:
@@ -1113,26 +1616,32 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     m = mat(g)
     for i, v in enumerate(B["variants"]):
         L = v["lods"][0]
-        g.node(f"{v['name']}", g.mesh(f"{v['name']}_LOD0_{slot}", L["V"], L["F"], L["N"], L["T"], L["UV"], material=m), translation=(1.4 * i, 0, 0))
+        g.node(f"{v['name']}", g.mesh(f"{v['name']}_LOD0_{slot}", L["V"], L["F"], L["N"], L["T"], L["UV"], material=m, wind=L.get("wind")), translation=(1.4 * i, 0, 0))
     g.write(out / f"{stem}.glb", extras={"hifipushie_clutter": {"kind": cfg["kind"], "style": cfg["style"]}})
-    from .terrain_style import _srgb_lin as _lin
-    slot_state = {"material": slot, "baseColorFactor": [1, 1, 1, 1], "roughnessFactor": 1.0, "alphaMode": "OPAQUE", "doubleSided": False,
-                  "hidden": False, "baseColorTexture": {"file": tex["albedo"]}, "normalTexture": {"file": tex["normal"]},
-                  "ormTexture": {"file": tex["orm"], "channels": "R occlusion, G roughness, B metallic (0)"}}
+
+    def state(se):
+        st = {"material": slot, "baseColorFactor": [1, 1, 1, 1], "roughnessFactor": 1.0, "alphaMode": "MASK" if leaf else "OPAQUE", "doubleSided": False,
+              "hidden": False, "baseColorTexture": {"file": season_tex.get(se, season_tex.get("winter" if se == "snow" else "summer", tex["albedo"]))},
+              "normalTexture": {"file": tex["normal"]},
+              "ormTexture": {"file": tex["orm"], "channels": "R occlusion, G roughness, B metallic (0)"}}
+        if leaf:
+            st["alphaCutoff"] = 0.5
+        return st
     snow = veg_export.snow_numbers({}, None)
     snow.pop("variant", None)
+    channels = ["NORMAL", "POSITION", "TANGENT", "TEXCOORD_0"] + (["TEXCOORD_1", "TEXCOORD_2", "_WIND"] if leaf else [])
     J = {"contract": {"version": veg_export.CONTRACT, "changes": veg_export.CONTRACT_LOG,
                       "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
-         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": None},
+         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": "a closed leafy dome + leaf sprays on alpha cards (one material)" if leaf else None},
          "about": cfg["about"],
          "glb": f"{stem}.glb",
          "lods": [{"lod": j, "triangles": [v["lods"][j]["triangles"] for v in variants], "grade": "clutter"} for j in range(len(cfg["lods"]))],
-         "slot_list": [{"slot": slot, "on": on, "hidden_in": [], "channels": ["NORMAL", "POSITION", "TANGENT", "TEXCOORD_0"]}],
-         "slots": {slot: slot_state},
+         "slot_list": [{"slot": slot, "on": on, "hidden_in": [], "channels": channels}],
+         "slots": {slot: state("summer")},
          "default": "summer", "variants": [],
-         "seasons": {se: {slot: slot_state} for se in ("spring", "summer", "autumn", "winter", "snow")},
+         "seasons": {se: {slot: state(se)} for se in ("spring", "summer", "autumn", "winter", "snow")},
          "snow": snow, "impostor": None,
-         "clutter": {"size_m": 1.0, "what_scale_means": "instance scale = the largest plan dimension in metres (the mesh is 1 m at scale 1)",
+         "clutter": {"size_m": 1.0, "what_scale_means": "instance scale = the largest plan dimension in metres (the mesh is 1 m at scale 1" + (", its sprays a little more)" if leaf else ")"),
                      "height_m": round(float(np.mean([v["height_m"] for v in variants])), 3),
                      "sink_m": round(float(np.mean([v["sink_m"] for v in variants])), 3),
                      "pivot": "the ground line: place it ON the surface; sink_m (x scale) of the mesh is below it",
@@ -1143,8 +1652,13 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
                      "collision": ("convex hull per variant (<stem>_v<k>_collision.glb, node name ends -convcolonly); scale with the instance"
                                    if cfg["collision"] else None),
                      "textures": {"atlas_px": cfg["atlas"], "shared_by": "every variant and LOD of this folder (uv by position: box charts)",
-                                  "mipmaps": True, "normal": "tangent space, OpenGL (+Y up), TANGENT written in the meshes"}},
-         "note": "a clutter solid has one slot and no season variants: seasons are the same material (snow = the snow numbers on the vertex NORMAL)"}
+                                  "mipmaps": True, "normal": "tangent space, OpenGL (+Y up), TANGENT written in the meshes",
+                                  "seasons": "a season changes only the albedo picture (same uv): seasons.<season>.<slot>.baseColorTexture.file" if leaf else None}},
+         "note": ("a clutter bush has ONE slot (foliage: the dome and its sprays, alpha MASK); a season = another albedo picture; snow = the winter picture + the snow numbers on the vertex NORMAL"
+                  if leaf else "a clutter solid has one slot and no season variants: seasons are the same material (snow = the snow numbers on the vertex NORMAL)")}
+    if leaf:
+        J["alpha_mips"] = ALPHA_MIPS
+        J["wind"] = veg_export.WIND_RECIPE
     (out / f"{stem}_seasons.json").write_text(json.dumps(J, indent=1))
     return J
 
@@ -1155,6 +1669,9 @@ def report(J: dict) -> str:
     lines = [f"clutter {J['kind']} in style {J['style']['name']} (contract {J['contract']['version']}, grade clutter): {len(v)} variants, "
              f"height {c['height_m']} m at 1 m across, {c['sink_m']} m of it below the ground line",
              "triangles per LOD: " + "; ".join(f"LOD{l['lod']} " + "/".join(str(t) for t in l["triangles"]) for l in J["lods"]),
+             "outline IoU against LOD 0 (8 directions): " + "; ".join(
+                 f"LOD{j} " + "/".join(f"{x['lods'][j]['outline_iou']:.2f}" for x in v) for j in range(1, len(J["lods"])))
+             + ("  WARNING: a LOD under 0.9 pops" if any(l_["outline_iou"] < 0.9 for x in v for l_ in x["lods"]) else ""),
              f"LOD switch at {c['lod_switch_m']['lod1']} / {c['lod_switch_m']['lod2']} m x scale, gone at {c['lod_switch_m']['cull']} m x scale",
              "collision: " + (f"convex hulls of {'/'.join(str(x['collision_triangles']) for x in v)} triangles" if c["collision"] else "none (walked over)"),
              f"textures: {c['textures']['atlas_px']} px albedo / normal / orm shared by all variants and LODs",

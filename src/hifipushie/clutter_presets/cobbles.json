@@ -1,13 +1,92 @@
 {
- "about": "A patch of 7-13 rounded cobbles (6-25 cm each) as ONE asset, half bedded in the ground: gravel bars, stream beds, the foot of banks. Terrain kind `cobbles`; lay patches overlapping",
+ "about": "A patch of 14-24 rounded cobbles (6-25 cm each) as ONE asset, packed and half bedded in the ground: gravel bars, stream beds, the foot of banks. Terrain kind `cobbles`; lay patches overlapping",
  "material": "rock",
  "variants": 4,
- "size_range": [0.6, 1.6],
+ "size_range": [
+  0.6,
+  1.6
+ ],
  "place": "water | bar | margin",
  "wet_band": 0.5,
  "collision": null,
- "form": {"aspect": [[0.65, 0.95], [0.45, 0.7]], "chips": [2, 5], "chip": [0.05, 0.2], "bevel": 0.2, "round": 0.6, "beds": [0, 0], "lumps": 0.02,
-          "lump_size": 0.5, "tumble": 30.0, "tilt": 14.0, "sink": 0.3, "cluster": {"count": [7, 13], "stone": [0.1, 0.27], "pile": 0.25}},
- "paint": {"top": 0.05, "moss": 0.15, "moss_band": [0.3, 1.0], "cracks": 0.0015, "crack_size": 0.12, "grain": 0.0006, "edge_light": 0.05, "cavity": 0.3,
-           "roughness": 0.8, "face_tone": 0.02, "tone": 0.2, "tone_size": 0.5, "ao": 0.8}
+ "lods": [
+  420,
+  150,
+  48
+ ],
+ "form": {
+  "aspect": [
+   [
+    0.62,
+    0.9
+   ],
+   [
+    0.42,
+    0.62
+   ]
+  ],
+  "faces": [
+   5,
+   7
+  ],
+  "face_in": [
+   0.82,
+   1.0
+  ],
+  "chips": [
+   0,
+   2
+  ],
+  "broken": [
+   0,
+   0
+  ],
+  "chip": [
+   0.03,
+   0.1
+  ],
+  "bevel": 0.2,
+  "round": 0.65,
+  "beds": [
+   0,
+   0
+  ],
+  "lumps": 0.02,
+  "lump_size": 0.5,
+  "tumble": 25.0,
+  "taper": 0.1,
+  "top_round": 0.3,
+  "sink": 0.34,
+  "cluster": {
+   "count": [
+    14,
+    24
+   ],
+   "stone": [
+    0.1,
+    0.3
+   ],
+   "pile": 0.42
+  }
+ },
+ "paint": {
+  "top": 0.04,
+  "moss": 0.1,
+  "moss_band": [
+   0.4,
+   1.0
+  ],
+  "cracks": 0.001,
+  "crack_size": 0.12,
+  "grain": 0.0006,
+  "edge_light": 0.05,
+  "cavity": 0.3,
+  "roughness": 0.8,
+  "face_tone": 0.02,
+  "tone": 0.22,
+  "tone_size": 0.5,
+  "ao": 0.8,
+  "foot": 0.4,
+  "foot_height": 0.03
+ }
 }

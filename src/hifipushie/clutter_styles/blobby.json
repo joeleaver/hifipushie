@@ -6,18 +6,33 @@
  },
  "rock": {
   "form": {
-   "round": 0.8,
+   "round": 0.82,
    "bevel": 0.25,
+   "faces": [
+    4,
+    6
+   ],
+   "bedded": 0.0,
    "beds": [
     0,
     0
    ],
    "chips": [
-    2,
-    4
+    0,
+    1
    ],
-   "lumps": 0.03,
-   "lump_size": 0.6
+   "broken": [
+    0,
+    0
+   ],
+   "lumps": 0.05,
+   "lump_size": 0.55,
+   "bend": 0.28,
+   "dent": 0.7,
+   "taper": 0.32,
+   "top_round": 0.3,
+   "split": 0.0,
+   "lean": 0.0
   },
   "paint": {
    "tone": 0.09,
@@ -27,6 +42,8 @@
    "edge_light": 0.0,
    "cavity": 0.08,
    "top": 0.0,
+   "moss": 0.0,
+   "foot": 0.2,
    "grain": 0.0,
    "cracks": 0.0,
    "laminae": 0.0,
@@ -35,6 +52,38 @@
    "gradient": 0.18,
    "ao": 0.45,
    "normals": 0.0
+  }
+ },
+ "leaf": {
+  "form": {
+   "cards": [
+    0,
+    0
+   ],
+   "lobes": [
+    2,
+    4
+   ],
+   "lobe": [
+    0.24,
+    0.34
+   ],
+   "join": 0.16,
+   "lumps": 0.02,
+   "lump_size": 0.4
+  },
+  "paint": {
+   "leaf_size": 0.0,
+   "leaf_bump": 0.0,
+   "tone": 0.06,
+   "face_tone": 0.12,
+   "edge_light": 0.0,
+   "cavity": 0.15,
+   "gradient": 0.35,
+   "top_light": 0.2,
+   "flowers": 0.0,
+   "ao": 0.5,
+   "roughness": 0.9
   }
  },
  "wood": {
