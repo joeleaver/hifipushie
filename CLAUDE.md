@@ -3051,6 +3051,20 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     fronts' tops): scratch model `su8_g` = shirt fine_settle false. Not needed once the shirt branch is on main.
   - Tests: tests/test_suit8.py (fall pressed on the shoulder not the nape, draped collar vertices, the open share,
     key defaults).
+  - HANDOVER (suit8, context near full, 2026-10-09). Branch worktree-agent-ab5c5e673a635ca9a. NOT merged: the
+    coordinator's order is shirt2's branch -> main, merge main here, verify, then this branch. A new GPU box is up
+    (gpubox/env.sh; solver installed by suit8/boxsetup.sh; deleted after 45 idle minutes). RUNNING when written:
+    `q.sh q210.txt` = om_23 (su_om_garrett jacket, the draped collar started closed), om_24 (su_om_garrett trousers:
+    tapered, seat taped over the tail), po_10 (su_om_pose jacket: mk_pose.py 45 re-made the model from the current
+    su_om_garrett; builds its shirt first), po_11 (su_om_pose trousers); logs suit8/<tag>.log end "DONE rc", arrays
+    out/<tag>.npz (with the pressed shirt as U), renders cloth_renders/<tag>*.png. TO JUDGE, in order: om_23:
+    `run.sh cu.py out/om_23.npz out/om23_c.png 0,-0.04,1.50 0.17 collar`, sheet8.py with om_21 / om_22 rows (flaps
+    behind the neck gone? notch? crossings < 12? lapel gap <= 7?), mv8.py, hang8.py; if flaps or crumple remain set
+    COLLAR_ENDS back to "made". Then the symmetric-start test for the left front (NOT written: in place() the over
+    front's lap offset = the `lay_` / LAYER ramp + wrap "out" of front.L; make it 0 when the front closure's state is
+    open, one sim, hang8.py). om_24: report + check.py (leg opening, length, seat strain). po_10 / po_11: hang8.py
+    (fronts apart 12-15 cm at the waist), then the outfit sheet `run.sh lk9.py su_om_pose <png> - 0 front,three all`
+    (cached garments; pass jacket=<job out.npz> if the cache misses) beside the concept, clay and `tex`.
   - NEXT, in order: (1) om_23 (above); if the notch still crumples, look at the collar ends' rest (made = the lay's
     plane on the START's chest) vs the flat pattern (`zozo.rest_flat` for the draped part only); (2) the right neck
     seam's open pairs (5-9 of 17, <= 2.3 mm after the clean-up, sim max 4-7 mm); (3) collar_hug 17 (the tell reads
