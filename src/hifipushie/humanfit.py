@@ -67,6 +67,10 @@ FACE = {
 BODY = ("stature", "heads", "head_height", "sitting_height", "biacromial", "hip_breadth", "trochanter_height",
         "hand_length", "foot_length", "chest_circ", "waist_circ", "neck_circ")
 BODY_FREE = ("weight", "muscle", "height")
+# MakeHuman's measure modifiers (makehuman.MEASURES; 0..1, 0.5 = none) and the cup size, free only when a measure
+# they shape is asked (each is one more body build per round): a slim woman's hips aren't the weight slider
+BODY_SHAPE = {"hips": ("hip_breadth", "hip_circ"), "waist": ("waist_circ", "waist_breadth"),
+              "shoulders": ("shoulder_breadth", "biacromial"), "chest": ("chest_circ",), "bust": ("bust_circ",)}
 AX = {"x": 0, "y": 1, "z": 2}
 LANDMARKS = {"chin": 8, "nose_tip": 30, "nose_base": 33, "nose_bridge": 27, "lip_upper": 51, "lip_lower": 57,
              "mouth_corner.L": 54, "mouth_corner.R": 48, "jaw.L": 12, "jaw.R": 4, "jaw_back.L": 15, "jaw_back.R": 1,
@@ -324,7 +328,8 @@ def _tol(name: str, v: float) -> float:
 def solve(base: dict, want: dict, free=("identity",), hold: bool = True, force: bool = False, rounds: int = 5,
           release=()) -> tuple:
     """(new base, report). want: {measure or "a/b": value | "+2" | "-1.5" | "x1.1"}. free: "identity" (the face),
-    "body" (weight, muscle, height). release: measures let go (not held). See the module docstring."""
+    "body" (weight, muscle, height; and hips / waist / shoulders / chest / bust (makehuman.MEASURES, BODY_SHAPE) when a
+    measure they shape is asked). release: measures let go (not held). See the module docstring."""
     st0 = state(base)
     m0 = st0["measures"]
     tgt = _parse(m0, want)
@@ -335,6 +340,9 @@ def solve(base: dict, want: dict, free=("identity",), hold: bool = True, force: 
     use_id = "identity" in free and any(p in FACE for p in asked_parts)
     use_body = "body" in free
     bkeys = [k for k in BODY_FREE if k != "height" or any(p in ("stature", "heads") for p in asked_parts)] if use_body else []
+    if use_body:
+        bkeys += [k for k, ms in BODY_SHAPE.items() if any(p in ms for p in asked_parts)
+                  and (k != "bust" or float(base["body"].get("sex", 1.0)) < 1.0)]
     c0 = identity(base)
     c = c0.copy()
     L0 = st0["L"]

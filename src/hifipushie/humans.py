@@ -159,6 +159,12 @@ def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: f
     if source == "human":  # one human mesh (onemesh.py): the head is the body's own, nothing to graft or follow
         body["source"] = "human"
         hd = {k: v for k, v in hd.items() if k not in ("source", "follow_body")}
+        if not (head or {}).get("expression") and not (head or {}).get("pose"):
+            # GNM's own neutral lids: the opened-lid expression and lid pose were for the grafted head (its neutral
+            # lids sat lower) and gave every one-mesh human a stare (Garrett and Tess both took them out). Written
+            # into each spec, so existing models keep theirs
+            hd.pop("expression", None)
+            hd["pose"] = {k: v for k, v in (hd.get("pose") or {}).items() if k not in ("lid_upper", "lid_lower")}
     elif source != "makehuman":
         raise ValueError('human: source is "makehuman" (a GNM head grafted onto the body) or "human" (one mesh)')
     base = {"body": body, "eyes": "eyes", "cornea": True, "head": hd}
@@ -198,9 +204,10 @@ def face(age: float, sex: float, seed: int) -> dict:
     old = float(np.clip((age - 45) / 30, 0, 1))
     u = lambda a: float(rng.uniform(-a, a))  # noqa: E731
     f = {"nose": u(0.7) - 0.25 * fem - 0.2 * child, "lips": u(0.5) + 0.2 * child + 0.3 * fem * old,
-         "cheeks": u(0.4) + 0.25 * child + 0.15 * fem, "chin": u(0.6) - 0.3 * fem * (0.5 + old),
+         "cheeks": u(0.4) + 0.25 * child, "chin": u(0.6) - 0.3 * fem * (0.5 + old),
          "jaw": u(0.5) - 0.5 * fem * (0.4 + old) - 0.2 * child, "brow_ridge": u(0.4) - 0.5 * fem * (0.4 + old),
-         "eyes": u(0.35) + 0.25 * child + 0.15 * fem}
+         "eyes": u(0.35) + 0.25 * child}  # (2026-10-09: no +0.15 x fem on eyes / cheeks: no data for it, and bigger
+    # eyes for every woman read doll-like (Tess). The values are written into each spec: existing models keep theirs)
     lid = 0.0026 + u(0.0006)
     return {"source": "gnm", "follow_body": True, "seed": int(seed), "spread": round(0.6 - 0.15 * max(fem, child), 3),
             "features": {k: round(float(np.clip(v, -1.5, 1.5)), 2) for k, v in f.items()},

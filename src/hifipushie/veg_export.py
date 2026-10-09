@@ -82,6 +82,9 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
             return foliage_mesh(tree, at, tw={**tw, "pos": np.zeros((0, 3))})
     var = veg_leaf.card_variant(tw, nv)
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
+    if "size_m" in tw:  # bough cards are big: a tone per card as wide as a twig's read as a crown of pale and dark leaves
+        tint = 0.88 + 0.24 * vegetation._u(tw["key"], 77)
+    core = np.asarray(tw["core"], float) if tw.get("core") is not None and len(np.atleast_1d(tw["core"])) == len(tw["pos"]) else None
     Vs, Fs, Us, Ts, Ns, Fl, Nr, Rc, Ph = [], [], [], [], [], [], [], [], []
     base = 0
     for i, c in enumerate(at["cards"]):
@@ -93,7 +96,11 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         Vs.append(V.reshape(-1, 3))
         Fs.append((c["F"][None] + (base + np.arange(len(sel)) * k)[:, None, None]).reshape(-1, 3))
         Us.append(np.tile(c["uv"], (len(sel), 1)))
-        Ts.append(np.repeat(tint[sel], k))
+        if core is not None and core[sel].any():  # a whole limb's card: dark toward the trunk (the crown's shadowed inside), full tone at its tip
+            fl_ = np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1)
+            Ts.append((tint[sel][:, None] * (1.0 - CORE_DARK * core[sel][:, None] * np.clip(1.0 - fl_[None] / 0.7, 0, 1) ** 1.2)).ravel())
+        else:
+            Ts.append(np.repeat(tint[sel], k))
         Ns.append(np.repeat(tw["node"][sel], k))
         Fl.append(np.tile(np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1), len(sel)))
         Nr.append(np.repeat(tw["frame"][sel][:, :, 2], k, axis=0))  # the card's own upper side
@@ -279,14 +286,17 @@ def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: f
             out["keep"] = float(np.clip(((triangles - len(out["wood"]["F"])) // max(card_triangles, 1)) / max(n_tw, 1), 0.0, 1.0))
             out["floating"] = 0.0
         if not tree.get("clump"):  # a grown tree: cards of its own boughs, as many as the foliage's share buys
-            out["boughs"] = int(min(max(triangles - len(out["wood"]["F"]), 0) // veg_bough.TRIS, veg_bough.most(tree)))
-            out["boughs"] = len(veg_bough.plan(tree, out["boughs"])["roots"])
-    fol = out["boughs"] * veg_bough.TRIS if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
+            out["boughs"], out["bough_form"] = veg_bough.fit(tree, max(triangles - len(out["wood"]["F"]), 0))
+            spare = triangles - len(out["wood"]["F"]) - out["boughs"] * veg_bough.cost(tree, out["boughs"]) - veg_bough.extra(tree)
+            if spare > 0.1 * triangles:  # the foliage can't use more (cards beyond its cut only stack layers): finer wood
+                out.update(_wood_for(tree, tile, len(out["wood"]["F"]) + spare, pr))
+    fol = out["boughs"] * veg_bough.tris(out["bough_form"]) + veg_bough.extra(tree) if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0
     return out
 
 
+CORE_DARK = 0.45  # how much darker a limb card is at the trunk than at its tip
 LODS = ((1.0, 2.5), (0.45, 2.5), (0.18, 4.0))  # (share of the budget, how much larger a kept card may be drawn)
 AUTUMN = [0.78, 0.56, 0.16]
 WIND_RECIPE = ("vertex shader: TEXCOORD_1 = (trunk, branch) weights, TEXCOORD_2 = (phase, flutter); the same four in _WIND "
@@ -632,8 +642,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             at_["TEXCOORD_3"] = acc(np.asarray(uv3, np.float32), "VEC2", 5126, 34962)
         return {"attributes": at_, "indices": acc(F.astype(np.uint32).ravel(), "SCALAR", 5125, 34963), "material": material}
 
-    col = np.asarray(bark.get("color", [0.5, 0.45, 0.4]), float)
-    base = np.clip(bm["albedo"][..., None] * col[None, None], 0, 1)  # (sRGB colour x a multiplier: near enough)
+    base = veg_bark.rgb(bm, bark)  # (sRGB colour x a multiplier: near enough)
     orm = np.stack([np.ones_like(bm["rough"]), bm["rough"], np.zeros_like(bm["rough"])], -1)
     if st and st["wood"].get("flat", True):  # a style's bark: one colour
         materials.append({"name": "bark", "pbrMetallicRoughness": {
@@ -906,7 +915,9 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             tw_c = None
             boughs = bool(bud.get("boughs")) and at is not None
             if at is not None and (boughs or lf_c is not s["leaves"]):  # bough cards: their own picture (and its season variants)
-                ck = f"boughs{li}" if boughs else json.dumps(lf_c["card"], sort_keys=True)
+                # (LODs thinned from one cut of the tree share its atlas and material: one foliage_boughs slot)
+                cut_ = (veg_bough.base_of(t, bud["boughs"]), veg_bough.form_of(t, bud["boughs"])) if boughs and len(trees) == 1 else (None, 0)
+                ck = (f"boughs_cut{cut_[0]}_{cut_[1]}" if cut_[0] else f"boughs{li}") if boughs else json.dumps(lf_c["card"], sort_keys=True)
                 if ck not in cluster_mats:
                     # (a set shares one bough atlas per LOD: baked from the first plant that needs it)
                     make = (lambda lf_, twc_, t0=t, nb=bud["boughs"]: veg_bough.atlas(t0, lf_, twc_, nb)) if boughs else veg_leaf.atlas

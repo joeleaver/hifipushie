@@ -860,3 +860,95 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
   terrain integration not started.
 
+
+## Realistic trees (realtrees agents, branch worktree-agent-aaf6ba14fbb49e2c5)
+- Realistic trees for the consumer (2026-10-08, "realtrees" agent, branch `worktree-agent-aaf6ba14fbb49e2c5`; pushieworld's
+  realistic region showed anime stand-ins; deliveries /mnt/data/hifipushie/vegstyle/real_spruce, real_pine (+ _interior,
+  _edge), real_oak, plants `vs_<species>_real[_in|_edge|_b|_c]`, contract 9 unchanged, budget 20k like pixar_oak; sheets
+  `workspace/veg_renders/rt_*`; scratch DURABLE in /mnt/data/hifipushie/realtrees/: run.sh <script> (capped, worktree
+  code, main workspace), grow.py, lod.py <plant> <png> [budget] (each LOD at the PIXEL size a 1080p / 70 deg camera
+  gives it at 5 / 30 / 64 / 128 / 192 m), view.py (game-resolution crops, full vs budgets), atl.py (the atlas each
+  budget draws), cov.py <plant> [budget] (per LOD: cards, grow, covered area vs LOD 0, card area / covered: seconds, no
+  Blender), export.py, check.sh <tag> <height> <dir> <stem> (od_glb.py triangles / overdraw / under ground, Khronos,
+  gd.sh = octa impostor vs LOD 2 + cards at the switches through godot-quiet), bench.sh (impostor forest GPU ms),
+  stand.sh <tag> name=dir/stem ... (spikes/godot_veg/stand.gd: 64 trees at 3.5 m seen from inside: GPU ms, fragments
+  per pixel), sheet.py, sil.py, variants.sh, q*.sh (export queues), tests.sh).
+  - The realistic export at 20k as it was FAILED by eye: a spruce's 937 fourteen-triangle bough cards were 2.7 m
+    boughs = a heap of palm fronds at 30 m (its LOD 2, whole limbs, read better than its LOD 0). `veg_bough.fit` now:
+    the FINEST cut of the tree (boughs of ~2 twig lengths: `most`), on seven-corner cards without a middle vertex (10
+    triangles a crossed pair, `FORMS[1]`); a LOD draws at most `FULL` 0.45 of that cut's boughs (never fewer than
+    `FULL_LEAST` 500 or all of them), chosen evenly in space (`place`: one per grid cell, then by hash), each grown
+    until the kept cards cover what the whole cut covered (the cards' own polygons from two sides; sqrt(k / n) made a
+    sparse pine's LOD 2 25% fat in Godot). All LODs: one atlas, one slot `foliage_boughs1`, one silhouette. Under
+    `THIN` 0.08 of the cut the old re-cut into whole-limb cards (form 0). Triangles the foliage can't use go to
+    the wood (`_budget`: spare > 10%). Bough tone per card 0.88-1.12 (0.75-1.25 read as pale and dark leaves).
+  - Overdraw (consumer note 108: real_spruce stand 46 ms vs 17-22 with the anime stand-in on the 890M). Reproduced
+    with stand.gd (1280x720, 37 LOD 0 + 27 LOD 1 trees, no shadows): real 8.4 ms / 121 card fragments per pixel, anime
+    5.2 / 76, pixar 4.8 / 99. Card area / covered area in the file (od_glb.py) LOD 0 / 1 / 2: spruce 6.6 / 6.4 / 5.8 ->
+    4.1-4.5 / 3.8-4.0 / 2.8-3.1; pine 8.3 / 7.3 / 6.0 -> 4.3-4.7 / 3.6-3.9 / 2.4-2.6 (anime spruce 5.6 / 4.3 / 3.2, pixar
+    3.5 / 2.0). What did it: fewer boughs grown to the same cover, spread evenly, tighter cards.
+    DEAD ENDS: culling boughs hidden behind others (`outer`: 22 directions, first two card layers): a spruce's and a
+    pine's boughs are ALL first-layer from somewhere, the crown is already a shell (`CULL` off); one card of each
+    crossed pair, the one facing out (`SINGLE` off): overdraw 3.0-4.2 but the spruce went ragged and see-through, its
+    flank cards edge-on; a whole-limb re-cut for LOD 1 (covered 0.85 of LOD 0, lost its top).
+    What a STAND needs most is the stand FORM: 64 open-grown spruces at 3.5 m put the eye inside six skirts; the
+    interior tree (`environment.setting` forest, spacing 3.5: bare stem, live crown the top 31%) has ~170 boughs.
+  - Variants = separate plants (seed / age / a small `forces` lean on order 0), stand forms = `environment.setting`
+    forest / edge + spacing. An export takes 27-75 min on the loaded machine (the impostor's 64 views x 4 passes).
+  - Limb layer (`leaves.card.limbs`: true = every first-order limb, a number = masses of that size in m, a pine's
+    plates; `veg_bough.limbs_on / limb_plan / extra`): under the fine bough cards every whole limb on its own crossed
+    pair in the same atlas (tiles `size_limbs` 512), tinted dark toward the trunk (`veg_export.CORE_DARK`), its top card a
+    ladder of `LIMB_STRIPS` rungs at the heights the limb's foliage has (flat, a sweeping limb was a shelf). It is what
+    closes a spruce seen from 30 m; from below at 5 m the limb cards are blurred green blobs (few texels): open.
+  - Round 2 (2026-10-09, "realtrees2"; sheets `veg_renders/rt2_spruce.png`, `rt2_pine.png`, `rt2_bark.png`,
+    `rt2_stand_godot.png`, `rt2_interior.png`; scratch adds q6.sh <tag> (quick LOD exports without impostor of the four
+    main plants + gview frames + a stand: ~25 min), q7.sh (the six folders), tg.py, deadcnt.py, tile.py, ab.sh).
+    - Bark by the photos (workspace/veg_refs/bark/, barksheet.py): spruce "scales" as steps of a noise with drawn rims
+      were worms / camouflage (isolines close into loops, as terrain found); now SHINGLES: Voronoi cells of every size
+      (`_cells(loose=)`: that share of the seeds anywhere; `local=` = each pixel's offset from its seed), each flake
+      rising toward its lower edge, no grout, a thin shadow only under a proud edge, ragged edges by a fine warp.
+      Pine "plates": the jittered grid of tall cells with smooth warps was a woven basket; loose seeds + ragged warp +
+      less columnar blocks read as furrowed plated bark. Pine bark colours browner (it rendered purple).
+      `test_bark_maps_tile` now averages the seam over six seeds (one tile can have a plate's edge on the seam by chance).
+    - Spray: `twig.curl` (side shoots sweep forward: straight ones at one angle were a fern frond / fishbone) and
+      `twig.tips` (lighter toward every shoot's end); spruce card: curl 0.6, tips 0.45, sub_shoots 1, 7 side shoots.
+    - Spruce limbs turn up (tropism[1] 0.45, sag 0.6): the open tree's skirt stands 0.6 m clear; the interior / open
+      crown-base gap shrank to 0.195 of the height (test margin 0.2 -> 0.15).
+    - The gv/new_* "before" frames of 02:20-02:40 predate commit 1a4d43f: the interior spruce's dense dead haze in
+      them was already gone in what q5 delivered (dead bough cards "keep their size"): compare against a fresh export
+      of HEAD, not old frames.
+    - BLUNT: spruce = a plausible dark conifer, too broad and lumpy against spruce_a's narrow tiered spire, foliage
+      still reads cedar / cypress at 5 m; pine = a young clumpy pine with blue-dark blobs, nothing like an old
+      Caledonian pine; bark is the clear win (both read as their bark in a stand). Interior spruce: bare poles with
+      straight stub spikes and a few black tangles: the dead haze is too thin and its cards shade black from behind
+      in Godot's standard material.
+    - NOT DONE: stand debris (dead haze density / tone, floor brash), the 5 m view from under limb cards, spruce
+      silhouette (narrower, tiers), oak and variants (no real_oak folder exists), impostor re-judged by eye.
+
+  - Round 3 (2026-10-09, "realtrees3"; scratch adds q8.sh <tag> <plant> <budget> <height> <half-width> (one quick
+    export + Godot frames gv/<tag>_*), row.py (photo | ours at one height, crops by fractions), prof.py (width / height
+    at 10 heights vs a photo mask), apex.py (top limb extents vs the limb pictures)).
+    - Pine bark in TWO colours: `veg_bark.bark_maps("plates")` returns `tint` (1 = `color`, the grey-mauve weathered
+      plate top; 0 = `color2`, the orange-red layers under it: rims, lower flake steps, fissure walls, a fifth of the
+      plates freshly shed); the export bakes `veg_bark.rgb(maps, bark)`. One brown x a grey multiplier read as brown
+      worms beside pine_bark_a. Colours from the photo by brightness bands: color [0.47,0.42,0.40], color2 [0.56,0.31,0.20].
+      The Blender look (impostor pictures) still draws its own ramp, not the tint.
+    - Spruce apex: the top limbs (0.3-1 m) were drawn with the shortest of four limb pictures (2.4 m) shrunk to the
+      0.25 clip, and the leader's tip with some bough's picture: a lollipop on a fat spire. Now the atlas has a picture
+      of a top limb (`APEX_TOP` 0.85 of the height) and one of the leader's own tip (`apex_card`, drawn at scale 1).
+      Better, not a spike yet: the grown leader's last shoot is short against its whorl (the growth, not the cards).
+    - Spruce dead haze: `deadwood` {break 0.4, droop [14, 38], bow 0.18, twig [0.0008, 0.0035]} (spruce dead limbs
+      persist long and hang; the default broke them to a ladder of straight stubs) and `leaves.parts.dead.card.share`
+      0.2 (per species; DEAD_SHARE 0.08 default). The interior spruce now reads like spruce_in_a's grey dead haze.
+    - Needles: spruce [0.21, 0.28, 0.13] (was yellow-olive; [0.17, 0.26, 0.15] went teal / cypress in Godot), tips 0.4;
+      pine [0.27, 0.33, 0.20].
+    - Delivered (2026-10-09, code 943e17a, tests green: 71 ok, the three files exit 0): the six folders real_spruce,
+      real_pine (+ _interior, _edge) at CONTRACT 13, LOD0-2 + LOD3 octa impostor, _collision.glb, _seasons.json; Khronos
+      0 errors. Sheets `veg_renders/rt3_spruce.jpg`, `rt3_pine.jpg` (photo | ours in Godot).
+    - BLUNT: spruce = a dark plausible conifer at 30 m, still broad and blobby beside spruce_a, apex still a small knob,
+      5 m view still soft frond cards (limb tiles too few texels). Interior spruce: the dead haze reads now but is
+      darker / sparser than spruce_in_a's silver tangle, and its trunk is pale smooth grey (photo: red-brown scaly with
+      a root flare). Pine: bark reads as pine (grey plates, orange-red layers); the crown is thin flat clumps (an acacia /
+      young pine), nothing like pine_a's dense rounded mass or pine_c's veteran.
+    - NOT DONE: floor brash (stand-level, not in the tree folders), pine crown density / form, spruce narrowness, the
+      leader's last shoot length (growth), impostor pictures don't use the bark tint, oak / variants.

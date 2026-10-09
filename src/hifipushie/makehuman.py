@@ -180,7 +180,24 @@ def _shaped(params: dict, slider: float, sex: float) -> np.ndarray:
                     idx, d = _target(f"{r}-{g}-{age}.target")
                     V[idx] += (a * rw / tot * d) if s == 1.0 else (s * a * rw / tot * d)
     _bust(V, params, wa, wm, ww, 1 - sex)
+    _measures(V, params)
     return np.c_[V[:, 0], -V[:, 2], V[:, 1]] * 0.1  # dm, Y up, facing +Z -> m, Z up, facing -Y
+
+
+# MakeHuman's measure modifiers (targets/measure, CC0): base.body key -> target stem. 0..1, 0.5 = none (the macro
+# body's own), 0 / 1 = the decr / incr target whole (MakeHuman's -1 / +1). Fit-solvable (humanfit.BODY_FREE).
+MEASURES = {"hips": "measure-hips-circ", "waist": "measure-waist-circ", "shoulders": "measure-shoulder-dist",
+            "chest": "measure-bust-circ"}
+
+
+def _measures(V, params: dict) -> None:
+    for key, stem in MEASURES.items():
+        v = params.get(key)
+        if v is None or abs(float(v) - 0.5) < 1e-6:
+            continue
+        s = 2.0 * (float(v) - 0.5)
+        idx, d = _target(f"{stem}-{'incr' if s > 0 else 'decr'}.target", "measure")
+        V[idx] += abs(s) * d
 
 
 def _bust(V, params: dict, wa: dict, wm: dict, ww: dict, female: float) -> None:
@@ -309,7 +326,7 @@ def body(params: dict) -> dict:
     """A shaped MakeHuman body as a template dict (as retopo.load_template): {"name", "P" (metres, Z up, facing -Y,
     feet at z = 0), "L", "S", "J", "face": {"landmarks": {"eye.L"}}, "chin_z"}."""
     grow = grows(params)
-    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples", "bust", "firmness")} | ({"growth": True} if grow else {}), sort_keys=True)
+    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples", "bust", "firmness", *MEASURES)} | ({"growth": True} if grow else {}), sort_keys=True)
     if ("body", key) in _CACHE:
         return _CACHE[("body", key)]
     V0, faces, joints = _raw()
