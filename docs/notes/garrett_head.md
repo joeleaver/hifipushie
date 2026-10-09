@@ -194,3 +194,31 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
   - Still: his upper lid shows a lit warm shelf under a dark fold line (hood); ours a smooth plane. Hair: h7_garrett
     is edited live (per-lock `swoop` keys newer than main): mkd.py drops lock keys not in hair.LOCK_KEYS; it still
     renders blond-ginger here.
+- (likeloop e15-e16, form round; ll_eyes_15/16.png, ll_16_dressed_pair.jpg) shape.hood `crease` / `crease_at` /
+  `crease_width` (a groove pressed back along the fold's lower edge, lateral-weighted; test in test_headage.py):
+  crease 1.8 mm at 0.35 shows a dark line over a lit lid shelf on one eye, faint on the other. Brows: drop 5 mm put
+  the brow hair ON the lid (no shelf at all, e15): back to 3 mm; darker #544c45, thickness 1.3, arch 0.4, brow.L
+  nudged -1.5 mm: brow_tilt only -9.5 (photo -12.5: the paint's slope follows its landmarks, the nudge hardly turns
+  it). Lashes amount 1.0, colour #1c1612: still a faint line, not his dark frame (the lash zone is narrow at this
+  size; no width option). Wrinkles back: glabella 1.4, forehead 0.5, crows feet 0.45, under-eye 0.25 (0.4 = crepey
+  stripes), skin.detail 1.3. e16: open 7.48, cover 3.01, brow gap 11.6, canthal +1.1.
+- SKIN TONE by skinm.py under the matched light (L/a/b, photo | ours): forehead 75/10/18 | 78/12/20, cheeks 62/13/22,
+  54/11/20 | 78/12/20, 71/12/20, upper lip 54/8/15 | 74/11/20, chin 53/7/16 | 64/10/17. Ours is ~2 a and b warmer
+  and, mostly, 15-20 L BRIGHTER from the cheeks down: his lower face is darkened by stubble / beard shadow. skin.tone
+  (melanin 0.04 -> 0.06, blood 0.15 -> 0.10) and stubble 1.2 -> 1.5 / shadow 0.65 -> 0.85 moved none of these by
+  more than 1: g4_garrett's own broad `_pre` tone layers set the colour, not skin.tone. Next: those layers.
+- HAIR: a snapshot of h7_garrett's hair (likeloop/hair_snapshot.json) + hair7/base.json. main 0dc8f94's hair.py
+  still rejects the per-lock key `swoop` (11 of 641 locks: "hair lock 'l211': unknown keys ['swoop']"): dropped from
+  the snapshot. It renders blond-brown because base.json's own look says so: grey_amount 0.0, grey "#c6a684" (tan),
+  lit "#664126": not a dropped key.
+- CUPID'S BOW (likeloop; `likeness_lips.py`, REGION=lips eyes.py; sheets ll_lips_0/1.png). Like with like under the
+  matched light (photo | e16 dressed | clay): bow width 16.6 | 17.9 | 17.1 mm, bow DEPTH (peaks 37/267 over the dip 0)
+  1.97 | 1.88 | 1.72, bow angle 153 | 156 | 157 deg, tubercle (13 below the 82-312 line) 0.42 | 0.30 | 0.19, upper
+  lip 6.8 | 6.5 | 5.9, lower 10.8 | 9.3 | 8.0 (stubble shadow under his lip: garrett3's caveat), width 58.6 | 60.6.
+  The photo's mouth is ~45 px wide: depth and tubercle agree within 1 px. What reads as "no bow" on ours is CONTRAST:
+  his upper vermilion is a dark red M (lip L60 a14 against the skin round the mouth L54 a8: +6 a), ours a pale band
+  (L76 a12 against L74 a11: +1 a) with no stubble shadow round it. New general control headage `lip_bow` {depth,
+  tubercle} (test_headage): l1 = depth 0.8 mm + tubercle 0.6 mm moved the detector's bow by < 0.1 mm (sub-pixel
+  here) and skin.lips blood 0.9 -> 1.1 / melanin 2.6 -> 3.4 moved the lips' colour by < 1 L / a: the lips layers
+  (T(blood = 6 x ...)) look saturated. Next: why skin.lips doesn't move the colour, then the stubble shadow round
+  the mouth (his lower face is 15-20 L darker than ours).

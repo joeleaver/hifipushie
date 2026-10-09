@@ -10,7 +10,11 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import sheet1
-from hifipushie import likeness, likeness_eyes as le, likeness_pair, store
+from hifipushie import likeness, likeness_pair, store
+from hifipushie import likeness_eyes, likeness_lips
+
+REGION = os.environ.get("REGION", "eyes")   # "lips": likeness_lips and the mouth box
+le = likeness_lips if REGION == "lips" else likeness_eyes
 
 L = os.environ["L"]
 NAME = "ll_garrett"
@@ -47,7 +51,7 @@ def cut(im, box_img, box, w):
 
 def main(out, srcs):
     refs, ph = photo()
-    box = le.eye_box(ph["side"].P)
+    box = (le.lip_box if REGION == "lips" else le.eye_box)(ph["side"].P)
     rows = {"photo": le.measures(ph["side"].P, ph["mmpx"])}
     tiles = [("photo", cut(ph["img"], (0, 0, ph["img"].size[0], ph["img"].size[1]), box, 600))]
     for s in srcs:

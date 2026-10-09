@@ -191,6 +191,40 @@ def test_hood_lateral_hangs_over_the_outer_corner():
     assert it["ok"], it
 
 
+def test_hood_crease_is_a_groove_over_the_lid():
+    """shape.hood "crease": a groove pressed back (+y) along a line between the lid margin and the brow, deepest on
+    that line, the lid margin and the brow barely moving; crease 0 is the hood without it to the bit."""
+    _, st0, _, P0, Ph, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0}})
+    _, _, _, _, P1, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0, "crease": 0.0}})
+    assert np.array_equal(Ph, P1)
+    b2, _, st2, _, P2, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0, "crease": 0.0012}})
+    d = P2 - Ph
+    L0 = st0["L"]
+    for up, brow in (((37, 38), (18, 19, 20)), ((43, 44), (23, 24, 25))):
+        U, B = L0[list(up)].mean(0), L0[list(brow)].mean(0)
+        line = np.linalg.norm(P0 - (U + 0.3 * (B - U)), axis=1) < 0.003
+        assert d[line][:, 1].max() > 0.0006, d[line][:, 1].max()
+        brow_pts = np.linalg.norm(P0 - B, axis=1) < 0.003
+        assert np.abs(d[brow_pts]).max() < 0.0002
+    it = hf.integrity(b2, st2, st0)
+    assert it["ok"], it
+
+
+def test_lip_bow_and_tubercle():
+    """lip_bow: the bow's peaks rise against its dip (the V deepens by about `depth`), the tubercle (lm 62) comes down,
+    the lower lip (lm 57, 66) and the nose's base (33) stay; nothing breaks."""
+    b, st0, st1, P0, P1, d = moved({"lip_bow": {"depth": 0.0012, "tubercle": 0.0008}})
+    L0, L1 = st0["L"], st1["L"]
+    v0 = 0.5 * (L0[50][2] + L0[52][2]) - L0[51][2]
+    v1 = 0.5 * (L1[50][2] + L1[52][2]) - L1[51][2]
+    assert 0.0005 < v1 - v0 < 0.0016, v1 - v0
+    assert L0[62][2] - L1[62][2] > 0.0003, L0[62][2] - L1[62][2]
+    for i in (57, 66, 33):
+        assert np.linalg.norm(L1[i] - L0[i]) < 0.00025, (i, np.linalg.norm(L1[i] - L0[i]))
+    it = hf.integrity(b, st1, st0)
+    assert it["ok"], it
+
+
 if __name__ == "__main__":
     if _have():
         names = sys.argv[1:] or [k for k in dict(globals()) if k.startswith("test_")]

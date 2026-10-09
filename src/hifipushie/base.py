@@ -1533,13 +1533,19 @@ def _hood(W, lm, hood):
     fold hangs over the outer third and the outer corner, the inner lid still shows): the fold's weight ramps from
     1 - lateral at the inner corner to full past the outer one, its centre shifts out by 0.2 x lateral x the eye's
     width, and the gate that holds the lower lid drops by `lateral` x half the opening outside the outer corner, so
-    the fold can come down to and over the corner's own height there. `extent` (1): the fold's width along the eye."""
+    the fold can come down to and over the corner's own height there. `extent` (1): the fold's width along the eye.
+    `crease` m (0): the lid crease as geometry, a groove pressed into the head along the fold's lower edge at
+    `crease_at` (0.3) of the way from the lid margin to the brow, `crease_width` (0.9 mm) half wide, weighted outward
+    with `lateral`: under a light from above it shades as a dark line over a lit shelf of lid skin."""
     h = hood if isinstance(hood, dict) else {"amount": hood}
     a = float(h["amount"])
     fw = float(h.get("forward", HOOD_FORWARD))
     reach = float(h.get("reach", HOOD_REACH))
     lat = float(h.get("lateral", 0.0))
     ext = float(h.get("extent", 1.0))
+    cr = float(h.get("crease", 0.0))                 # m: the crease's depth (0: none)
+    cr_at = float(h.get("crease_at", 0.3))           # its height: share of the lid-margin -> brow distance
+    cr_w = float(h.get("crease_width", 0.0009))      # m: its half width (a few voxels at close-up resolution)
     mx = float(lm[27][0])
     DW, DL = np.zeros_like(W), np.zeros_like(lm)
     for up, corners, brow, lower in (((37, 38), (36, 39), (18, 19, 20), (40, 41)),
@@ -1568,6 +1574,17 @@ def _hood(W, lm, hood):
             return g_ * _sstep((X[:, 2] - zc + drop) / (0.6 * op))
         DW += f(W)[:, None] * mv
         DL += f(lm)[:, None] * mv
+        if cr:   # the lid crease: a groove (into the head) along the fold's lower edge, the lid's shelf below it
+            zcr = U[2] + cr_at * dz
+
+            def fc(X):
+                q = X - U
+                u = q @ ex
+                g_ = np.exp(-(u / (0.55 * wid)) ** 2 - ((X[:, 2] - zcr) / cr_w) ** 2 - ((X[:, 1] - U[1]) / (0.6 * wid)) ** 2)
+                if lat:
+                    g_ = g_ * (1 - 0.5 * lat + 0.5 * lat * _sstep((X - U) @ out_ / wid + 0.5))
+                return g_
+            DW += fc(W)[:, None] * np.array([0.0, cr, 0.0])
     return W + DW, lm + DL
 
 
