@@ -1316,6 +1316,112 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     coverage in mips (engines make the mips), per-tier cap_step for short tiers, card colour by view, the
     "detached wisp ... 3300000 mm" line in check_tiers (inside() far from the line), strands' top the last 6 mm,
     the re-seat.
+  - hair5 round 2 (2026-10-09; the coordinator on h5_h6: "a flat combed cap", hairline "RECEDED with wisps: my call
+    to trust the trace was wrong for this head"; sheet `hair_renders/h5_r2_sheet.png`, export hair5/exp_r2 (hero +
+    main), Godot out/gd_r2.png; q8.sh <tag> = export + check_tiers + Godot, q9.sh = the sheet with fresh Cycles):
+    - Cards' volume: cap at LIFT 0.7 of the hair's 85th-percentile height (max 15 mm), every card moved to the TOP of
+      its clump (`SHORT_TOP` 1.3 x the clump's spread along its normal; cards now carry `sn`), fly cards (hero 2 /
+      main 1 a clump), cards CUT at the hairline (2 mm inside: their thick strands past it were the wires on the
+      forehead and round the ear), no baby cards in short tiers. check_tiers bare front / three-quarter 29-32% ->
+      16-19% (target 12 not met), iou 0.68-0.70 -> 0.79-0.81, side / back 6-9%.
+    - Colour by view: RELIEF 0.7 / SLOPE 1.0 + a centimetre-scale hollow term in the depth + root ramp 0.7 over 45%
+      of a card; with it roughness had to go to >= 0.85 (at 0.72 the side shone like gel in Godot). Against the
+      Cycles strands (sheet3): front value 0.98 x, three-quarter 1.22 x, saturation 1.3 x: three-quarter NOT fixed
+      (check_tiers against EEVEE strands reads 1.07-1.09 there).
+    - `groom.loose.lay` (hair_loose.py; test_lay_presses_a_crop_onto_the_head): each step loses that share of its
+      outward direction. Garrett: lay top 0.4 / front 0.15 at stiff 0.5 / 0.4: outline top +6.4 -> 0.0 mm, hair over
+      the bare head 12.8 mm = the photo's, IoU 0.92, no hooks; sides -6.7 mm (region "top" reaches the upper sides;
+      out sides 0.14 gave 1 mm back). Hairline middle half-way: front_points [0, 1.760] .. [54, 1.748].
+    - READ of h5_r2: strands = a tidy dark crop combed across, forehead still a little tall, greying barely shows
+      in Cycles. Cards in Godot = a full head of dark greying combed hair, matte, soft hairline; the lifted front /
+      tousle is gone in BOTH (the lay flattened the strands too). Blender's glTF look draws the cards paler and
+      browner than Godot does.
+    - Not done: bare < 12%, three-quarter colour, the sides' width, npc / far re-exported, the re-seat (head is now
+      garrett4's g4_a / g4_garrett; told it: copy groom + strands + look, regrow, re-trace front_points).
+  - HANDOVER (hair5, 2026-10-09, context full; NOTHING of the list below is started). Branch
+    `worktree-agent-adfa8889e1104d88e`, last commit = this note; tests: test_hair_strands (minus the Blender export
+    test) + test_hair_loose pass. Model `workspace/hs_garrett` (still on om_garrett v17's head) holds the groom of
+    h5_r2 (mkcut.py's defaults + lay top 0.4 / front 0.15, out sides 0.14 / back 0.08, lift 0.002; look card_gain
+    0.56, card_sat 0.38, card_grey 0.9). Scratch /mnt/data/hifipushie/hair5/ (run.sh <script>; the fast loops:
+    `mkcut.py <tag> '<loose patch>' '<strands patch>' '<look patch>' eevee|cycles <views>` = regrow + look +
+    strandfit (3 min in EEVEE), `headtop.py`, `hstat.py`, `cap1.py <tag> main` = a tier's job timed + EEVEE look,
+    `q8.sh <tag> hero,main` = export + check_tiers + Godot, `q9.sh <tag>` = the sheet with fresh Cycles strands,
+    `setlook.py '<json>'`). The sandbox refuses heredocs, JSON-with-loops and `cd` chains: write a script, run one
+    plain command. Godot only through gd.sh.
+    The coordinator's read of h5_r2 and the next agent's list, in its order, ON garrett4's head (`g4_garrett`: copy
+    groom + strands + look from hs_garrett without "locks", regrow with mkcut.py's call; strandfit / headtop /
+    hairline_trace read the camera from $CAM_MODEL's human_refs.json):
+    (1) HAIRLINE by PROPORTION, not by the trace (it misled twice): measure on the photo and on our render, like
+    with like, hairline height above the brows / brow-to-chin (the photo: forehead about a third of the face, ours
+    about half), and the temple corners' depth; the photo's line runs nearly straight across with shallow corners.
+    Set `groom.hairline.front_points` ([azimuth deg, world z]) from that; the temple values (42-54 deg) are the
+    trace's and make deep recessions: raise / straighten them too.
+    (2) Front `lay` 0, standing (out 0.2-0.3, flow up and forward-left as round 3: [0.75, 0.1, 0.45]); top laid.
+    Keep the upper sides' volume: "top"'s region weight reaches them (hair_loose.grow's `by_region`; hair.REGIONS
+    weights W): gate the lay by elevation (e.g. x smoothstep(el 45..65)) or add an "upper sides" exception.
+    (3) GREY: photo = salt and pepper, pale grey sides / temples (photocol.py: grey pixels 12% top, 21-24% sides,
+    dark #5a4f46 + grey #968e85). Ours: groom.grey top 0.28 / sides 0.55 / temples 0.75 x look.grey_locks 0.75,
+    grey #b39f88, lit #4a3524: reads dark brown-black in Cycles (true-width hairs bury the grey). Raise grey_locks
+    to 1+, sides 0.6+, a lighter cooler grey, lit less red (R/B toward 1.3 at the photo's value (96, 84, 74));
+    thicker grey strands would need a per-strand radius by `hp_gr` in blender_strands (not there). Cards carry the
+    per-region grey already (hair_cap.strand_grey x look.card_grey); check card_sat again after the hue change.
+    (4) Cards: standing cards at the lifted front follow from (2) (cards stand at their clump's top, SHORT_TOP);
+    then bare < 12% (16-19% now) and three-quarter value (1.22 x the Cycles strands: one gain can't fix it; try a
+    stronger depth term or baking the strands' own Cycles shading from two lights into the chart).
+  Garrett on the NEW head (2026-10-09, "hair6" agent, branch `worktree-agent-a46ee6e0f7cd8c23d`; model
+  `workspace/h6_garrett` = garrett4's `g4_a` (head) + the groom; sheet `hair_renders/h6_x2_sheet.png`; export
+  /mnt/data/hifipushie/hair6/exp_x2 (hero + main); scratch DURABLE in /mnt/data/hifipushie/hair6/: run.sh <script>
+  (M / CAM_MODEL = h6_garrett), mk6.py (h6_garrett from g4_a + scene.sync; g4_garrett's skin has keys this branch
+  lacks), base.json (THE groom: loose / strands / look / groom) + mergebase.py <patches>, cut.py <tag> [patch.json ..]
+  [engine=cycles] [views=] [grow=0] (regrow + look + every measure below), photoline.py / rline.py <tag> (the hairline
+  measure on the photo / on a render), modelline.py (the hairline CURVE projected, + a solve), photocol.py, lookcam.py
+  (views `matched_photo` = the photo's fitted camera, `tq_desk` / `side_long` / `back_long` = 1.6 m / 11.5 deg lens;
+  light SOFT), cards.py <tag> <tier> [strands=0] [cyc=<cut tag>] [debug=layers|cards_only] [look=file] (a tier's cards
+  against the strands, ~90 s), q8.sh <tag> hero,main (export + check_tiers + Godot on garrett4's g4_tex.glb),
+  sheet6.py <tag> <export dir> <cycles cut tag>).
+  - THE "HIGH HAIRLINE" WAS MOSTLY THE SHEET'S CAMERA. hair.look's "front" is a 30 deg lens 0.62 m from the head: it
+    swells the forehead against a long-lens portrait. Measured like with like (`photoline.line`: skin = colour near
+    the forehead's own; per station across the forehead the hairline's height over the eye-corner line in units of
+    eye line -> mouth-corner line; per level the forehead's half-width in outer-eye-corner spans), the photo against a
+    render THROUGH THE PHOTO'S FITTED CAMERA: hair5's round-2 groom on this head was +2.8 mm high at the centre, +0.8
+    at the corners, forehead half-width +3.5 mm: nearly right already. Not usable for this: the id pass (the scalp
+    layer's and baby hairs' fuzz reads 9 mm low), a hue / saturation skin test on renders (our skin is too pale for
+    it), EEVEE strands (grey hairs read as skin). After front_points -3.5 mm in the middle: centre -1.7 mm, outer
+    -0.4, half-width -2 mm. Judge a hairline only through the photo's camera (sheet6 does).
+  - Front standing, top laid: `hair_loose.LAY_EL` (48-66 deg): the "top" region's lay counts only on the head's top,
+    below it that weight takes the sides' lay (test_top_lay_leaves_the_upper_sides). Groom: lay front 0 / top 0.4,
+    out front 0.2, stiff front 0.55, flow front [0.85, 0, 0.3], lengths front 29 / top 30 / sides 20 / back 22 mm.
+    Outline: IoU 0.944, top -1.3 mm, sides +1.6 mm a side (round 2 on this head: 0.946, -2.5, 0.0), hair over the
+    bare head 11.5 mm (photo 12.7).
+  - Grey, by measure in CYCLES through the photo's camera (EEVEE's strand material is orange-blond with these
+    colours: useless for colour). The salon light's rim blew his left side (lum 185 vs the photo's 103): looks for the
+    photo use lookcam.SOFT (a broad frontal key, weak hair light). lit #5e3f28, grey #c8ad8e, grey_locks 0.9, groom
+    grey temples 0.8 / sides 0.68 / back 0.5 / top 0.3: hair median (102, 94, 88) vs the photo's (96, 84, 74), R/B
+    1.16 vs 1.30 (colours must be asked far warmer than they come out: #5e3f28 has R/B 2.3), light share 0.39 vs
+    0.19. Grey #c2bbb1 at sides 0.7 under the salon light = a white-haired man (r1c); #a89d90 at 0.55 = charcoal with
+    no grey showing (r2). No per-strand radius for grey strands (not built).
+  - CARDS WERE UNDER THEIR CAP. cards_job put a short cut's cards at cap_height + 1.2 mm over the SCALP, but the cap
+    mesh starts at the groom's volume (4-7 mm up) + its sagitta lift: every card lay inside the cap, the look was the
+    cap's picture alone (the "flat combed cap"; debug=cards_only showed faint wisps, debug=layers shards poking out).
+    Now cards stand over the cap's own surface (`capb_`), `SHORT_TIP` 3 mm of tip lift (x 0.2-1.6 a card),
+    `SHORT_TIERS.cap_step` (hero 6 / main 7.5 / npc 10 deg: at the long tiers' 5 deg the cap took 4,416 of main's
+    8,000 triangles, 1,984 now: 1,414 cards instead of 843), hair_cap LIFT 0.9 / LIFT_MAX 24 mm, the cap's ease at
+    the hairline 6 mm over the forehead (`EASE_FRONT`), SHORT_TILE medium 36 x 3.2 px / sparse 22 x 3 (straighter:
+    0.12 of their wander), `SHORT_GREY` (a card of a less grey lock is darker by its vertex colour).
+    check_tiers (EEVEE strands, its own views): bare close_front / three_quarter 16-19% -> 9-11%, iou 0.79-0.81 ->
+    0.83-0.85. Against the Cycles strands through the photo's camera / tq_desk (card_gain 0.62, card_sat 0.42):
+    bare 10 / 7-8%, value 0.97 / 1.06-1.07 x, saturation 1.30 / 1.03 x.
+  - BLUNT READ of h6_x2_sheet: strands = the right cut on the right hairline: a short greying crop, lifted front,
+    pale sides; still browner on top and less visibly salt-and-pepper than the photo, sides stand off a little behind
+    the ear. Cards = no longer a cap: volume and a broken outline, right colour and value; but the texture is WRONG,
+    a tight tufted wool (astrakhan) in Blender's glTF look and coarse chopped fibre in Godot, not fine combed hair;
+    the lifted front is only hinted; hero = main to the eye; a ragged wispy edge at the hairline in Godot.
+  - NOT DONE: the wool (cards are 2 cm scraps each turned by `messy` 0.35 and tipped up: try longer cards along the
+    flow, 2 layers in step, or tip lift only at the outline), a card front that stands like the strands' quiff,
+    per-strand radius for grey, R/B the last 0.14, npc / far tiers, Khronos on exp_x2, the painting's own camera
+    (cameras[1]) as the second view, g4_garrett's skin on the sheet (this branch lacks its skin keys), a test for
+    "cards over the cap's surface". The groom is handed to garrett4 as spec["hair"] keys groom / strands / look /
+    style of h6_garrett (locks regrown by hair.groom(replace=True, patch={"loose": ...})).
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
@@ -5873,14 +5979,29 @@ external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, 
   one weather side (small bright ones read as confetti), rain streaks down steep faces, a damp soil-stained foot band,
   each variant's mineral tone (`minerals`; at +-10% the stones were brown and blue: +-5%), `instance_tints` in the json.
   Rock matches its cliffs by a per-instance colour (json `clutter.tint`): terrain rock colour / color_linear x a tint.
-- Bush (`Bush`, `bush_cards`, `spray_tile`): an opaque leafy dome down to the ground with lobes (cells painted as leaves)
-  + 24-30 leaf sprays on alpha cards (each drawn from both sides with the SAME up-and-out normal), one material (alpha
-  MASK), the plants' wind channels, a season = another albedo picture (spring flowers), blobby / cartoon have no cards.
-  Reads as a bush from 10 m; at 2.5 m a leafy lump with sprigs.
-  Light grey patches on a bush's shaded side were not holes, flipped faces or the normal map (all three chased): a dark
-  albedo (0.18, 0.25, 0.12) at roughness 0.8 shows the sky's sheen. Leaf domes are roughness 0.96, gaps and AO lighter.
-  A ray that meets another lobe first gives that lobe's normal: flat there (`off` in bake_variant); faces a decimation
-  turned inside out are turned back (lod_mesh).
+- Bush, round 2 (the coordinator on the first one: "a solid mossy green lump with sprigs stuck on reads as a moss-covered rock"):
+  `clutter_bush.py`: an OPEN bush from a grown shrub (vegetation.grow of the `shrub` preset, 1 m across; variants = height,
+  stem count and lean): LOD 0 = its 6 stoutest stems as 3-sided tubes + 36-42 spray cards on k-means clusters of the
+  plant's own twigs (a card runs the way its twigs run, faces out, inner ones take darker pictures: `bough_tile`), LOD 1
+  = 7 bough cards whose pictures are the LOD 0 sprays composited in software into each bough's plane (`composite`:
+  PIL perspective warps, far first) + 3 stems, LOD 2 = 2 crossed cards with the whole bush; ~260 / 64 / 8 triangles;
+  58-67% of the side view is gaps; "cover kept" LOD 1 0.62-0.69, LOD 2 0.67-0.85 (alpha-aware IoU, `_mask`). Far pictures'
+  alpha is grown 2 texels (`_fatten`) or they vanish under mipmaps. A card's back has its own vertices (Blender's
+  importer merges two faces on the same three vertices: half the cards were missing in every look). Blobby / cartoon
+  (`form.open` false): 3-5 separate closed lumps on stems (`Bush` lumpy mode, a hull per lump, stems appended as tubes
+  with a bark patch in the atlas's last cell). The old dome path (`bush_cards`, `spray_tile`) is dead code kept for
+  the lumps' field. Read: LOD 0 is a shrub in realistic / anime / pixar; LOD 1 reads as a small tree (boughs up top,
+  bare stems); the leaves are hazel-like, not gorse needles.
+  Light grey patches on the first bush's shaded side were sky sheen on a too-dark albedo at roughness 0.8, not holes.
+- Reed (`vegetation_presets/reed.json`): the first one was ONE thin stem per card (0.37% of the atlas opaque, fill 0.05:
+  near-invisible; test_vegetation's test_atlas_and_cards failed on main and I had not run it or looked at a reed).
+  Now fans of 20 strap leaves (1.15 m x 5.5 cm, wider than life) + plume stalks with a 7.5 cm head: 2.7% opaque, fill
+  0.24, 1.86 m x 1.02 m. Seen in Godot (ground.gd, 2 / 8 / 20 m): ck_14_reed_godot_vs_refs.png; reads as bulrush.
+  RULE: the whole vegetation set (test_vegetation, test_veg_style, test_veg_groundcover, test_veg_impostor, test_veg_sward,
+  test_clutter) before any report, and a picture of every delivered asset.
+- `terrain_mesh.render_tiles(extra=[{glb, at, yaw, scale, squash, tint}])` stands GLBs in a tiles render (blender_tiles
+  imports them, multiplies the tint into the base colour): boulders beside styled cliff tiles (scratch fam.py,
+  sheets ck_16_family_<style>.png). render_tiles(clutter=0) raised KeyError 'clutter' on main (guarded).
 - Litter (`litter_tile`, `_export_litter`): an 8-triangle domed octagon / a quad with an RGBA picture per season (the
   same patch, leaves added in autumn), hidden under snow.
 - Engine (Godot 4.7.2, `spikes/godot_veg/clutter_field.gd`, 1280 x 720, 890M, shadows on): 5,000 boulders + 20,000
@@ -5894,6 +6015,21 @@ external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, 
 - Open: the clutter bush close up; driftwood is plain (bark patches, broken ends and a root-plate variant exist, no
   splintered detail); realistic litter clusters in the middle; no `sedge` / pebbles / wrack assets; photo silhouette
   measures were read by eye (no traced masks); the consumer has not loaded any of it yet.
+- Takeover read (2026-10-09, a fresh agent judging the sheets cold; scratch adds val_all.sh, tests3.sh; scratch
+  scripts must be given to run.sh by ABSOLUTE path: it cds into the worktree):
+  - ck_16_family_<style>: blobby / pixar boulders sit in their cliffs' colour family. CARTOON FAILS: the boulders are
+    near-black charcoal with pale tops beside warm tan cliffs (the cartoon rock's dark facet tones x the tint; the
+    cliff is lit by the terrain recipe's macro colour, the boulder by its own atlas): the tint recipe (terrain rock
+    color_linear / kit color_linear) matches MEANS, not the tone range: a cartoon boulder needs its dark tone lifted
+    or the tint taken from the lit cliff. Anime close: boulders paler and chalkier than the cliff, fracture lines
+    read as ink scribbles. Realistic terrain has no style manifest: no tint is applied (rock colour None); the
+    untinted boulders read a little greyer than the cliff: acceptable.
+  - ck_14 reeds: blobby / cartoon read as bulrush (cartoon heads are tulip-sized balls); anime as sedge with seed
+    spikes; realistic near is a dense ragged tuft and at 20 m a green blob with detached pixels; PIXAR is too thin
+    (wiry blades, at 20 m a few specks: it will vanish in a field).
+  - ck_15 bush: realistic / pixar LOD 0 read as open shrubs; LOD 1 at 10 m is a different plant (a few big leaf
+    cards on bare stems: a sapling) and will pop at 14 m; anime leaves are hand-sized; blobby / cartoon are
+    mushroom clouds on wire legs; none resembles the gorse / broom / heather references (no flowers, hazel leaves).
 
 ## One human mesh (2026-10-06, "onemesh" agent, branch worktree-agent-aac6bb85823bc8809; renders `workspace/human_renders/om_*`)
 
@@ -6786,6 +6922,151 @@ g3_f + skin description + groom (the candidate). Sheets `workspace/human_renders
   untouched (like-with-like: width -0.1 mm, length -0.2 mm against the photo: already right); under-chin line;
   the texture layer through an export bake; measuremodels' normals as evidence (humannormals, branch
   `measuremodels`: proposal received, not wired).
+
+## Measurement models (2026-10-09, "measuremodels" agent, branch `measuremodels`)
+
+Joe: "are we still looking at measurement models and trying some out?" Until now only MediaPipe had been tried. A
+licence-checked survey, then trials on the refstudy truth set re-rendered SKINNED. Code `spikes/measuremodels/` (mm.py
+= ground truth per picture; mkset.py + bl_skin.py = the set; score_geo.py = a dense model in its own terms; dense.py =
+depth / normals as calibrated evidence; score_mesh.py + tmesh.py = generated meshes; fits.py / fits2.py = the method
+table (fitlib's MAP); widths.py, lens.py, macro_table.py, garrett_fit.py, pics.py; remote/ = inference scripts).
+Scratch DURABLE in /mnt/data/hifipushie/measuremodels/ (run.sh <script>; gpu.sh / rjob.sh = the rented box; survey.md
+= the survey with a source per licence claim; set/ = pictures; pred/<model>/ = outputs; out/fits.json = every row with
+its fitted identity; trellis/ = Oxidegen's meshes as arrays). Sheets `workspace/human_renders/mm_01_normals.png`,
+`mm_02_trellis.png`, `mm_03_garrett_trellis.png`. Module that came out: `src/hifipushie/humannormals.py`.
+- The set: the 10 truth heads through their own cameras + 20 other heads (calibration: front / tq / profile / tq2),
+  Blender EEVEE: subsurface skin in 8 tones, lips, brows, irises, pores, stubble on some, a hair stand-in on some, sun
+  + sky, coloured backgrounds. They read as CG busts, NOT photographs: every number below is "on renders". The
+  baseline holds there: detector 478 + prior, front + tq: face 2.53 / 2.34 mm (S in-model / O out) with the clay
+  table, 2.45 / 2.39 with the table recalibrated on skinned renders (`calib_skin.npz`; the two tables' definitions
+  differ by 1.0 mm median); + read 2.13 / 2.20; mean head 3.61 / 3.05. MediaPipe finds 0 of 20 skinned profiles.
+  A looser scatter cut (4 mm instead of 2.5) is a free 0.1 mm (2.36 / 2.33, chin 3.73 -> 3.39): worth taking.
+- A second score: distance from each fitted vertex to the TRUE SURFACE (fits.surf_score). Vertices slide along a skull
+  or a jaw without the shape being wrong, and dense evidence can't stop that: judge dense methods by it. Mean head
+  1.75 / 1.66 face, detector MAP 1.28 / 1.40, + read 1.10 / 1.17, the basis's reach 0.24 / 0.80.
+- "Does it see THIS head" = correlation and gain of (model - mean head) against (truth - mean head). Every model
+  exaggerates or mutes: use it through a gain calibrated on other heads, with what it leaves as sigma, or not at all.
+- SURVEY (licences of code AND weights; details + URLs in survey.md). Usable commercially: DAViD (Microsoft, MIT,
+  synthetic data only, ONNX), MoGe-2 / MoGe-3 (MIT), Depth Anything V2 Small and DA3 Small / Base / Mono-L / Metric-L
+  (Apache; the larger ones CC-BY-NC), MapAnything-apache, VGGT-1B-Commercial (gated), Marigold v1-1 (OpenRAIL++-M),
+  MediaPipe (+ selfie multiclass), BiRefNet (MIT), SAM 2.1, BlazeEar / Ear_Landmarker (Apache; labels seeded from an
+  iBUG-trained model), TRELLIS.2 (MIT model; nvdiffrast in its texture path is NVIDIA non-commercial; DINOv3's licence
+  unverified), Hi3DGen, TripoSG. NOT usable: Depth Pro (Apple research licence), Sapiens v1, DSINE, UniDepth, DUSt3R /
+  MASt3R / Pi3, every FLAME / Basel reconstructor (DECA, EMOCA, MICA, SMIRK, Pixel3DMM, 3DDFA), InsightFace packs,
+  OpenFace, dlib-68, YOLO (AGPL). UNCLEAR: Sapiens2 (no non-commercial clause, but forbids "biometric processing" and
+  lets Meta audit: a legal read before any use beyond a bench test), face-alignment / SPIGA / RTMPose (research-only
+  training data), StableNormal / Lotus, Hunyuan3D (excludes EU / UK / Korea). No profile-landmark model with a clean
+  licence exists; Microsoft's 703 dense landmarks: no release.
+- TRIED, in the fit (face mm vertex S / O | to the true surface S / O; front + tq unless said):
+  baseline 2.45 / 2.39 | 1.28 / 1.40.
+  - DAViD NORMALS, calibrated per vertex (gain ~0.5, sigma x4): 2.21 / 2.13 | 1.08 / 1.09; profile 2.33 -> 2.07 / 3.07
+    -> 2.74; chin 3.73 -> 2.65; jaw 4.12 -> 3.65 / 4.40 -> 3.83 (surface 2.41 -> 1.76 / 2.79 -> 1.72); front only 2.33 /
+    2.14; + read 2.06 / 2.03 | 1.02 / 1.04 (read alone 2.13-2.20 / 2.12-2.20: the simulated reader's noise is seeded
+    by Python's hash, rows with a read move +-0.05 between runs). Stable for sigma x3..x6; at x1 it overfits (0.7-0.85
+    sigma rms) and gets worse. Macros it sharpens (error in sigmas): jaw_width 0.92 -> 0.77, chin_projection 1.30 ->
+    0.92, under_chin 0.94 -> 0.76, bridge_height r 0.75 -> 0.97, brow_ridge r 0.63 -> 0.84, eye_depth r 0.38 -> 0.78,
+    cheek_fullness r 0.64 -> 0.87, lip_projection 0.92 -> 0.61. In its own terms: angle to the true normal chin 5.8
+    deg (mean head 9.0), cheeks 6.4 (7.7), jaw from tq 4.0 (5.6). = ABOUT ONE CHARACTER READ, measured, and it adds to
+    one. Nothing on cranium / ears / neck. 14 s a picture on a 128-core CPU box; ONNX.
+  - Sapiens2 normals (1B; FLAGGED licence, run as an upper bound only): 1.92 / 2.19 | 0.90 / 1.01; raw angles chin
+    4.5, brow 3.7, cheeks 4.2, nose 5.4 deg, correlations 0.8-0.9 at gain 0.7-0.95. What better normals would buy:
+    another ~0.15 mm of surface. Do not ship.
+  - MoGe-2: normals weaker than DAViD's (2.45 / 2.16), depth worse than the mean head's (3.7 vs 2.2 mm rms on the
+    face). Marigold normals: as MoGe's (14.3 deg on the face vs DAViD 11.4, mean head 10.8). Not wired.
+  - DEPTH from any model (MoGe-2, DAViD, Depth Anything V2 Small, MapAnything two-view) is DEAD as evidence: per
+    feature it correlates (nose tip from a front picture: DAViD 0.86, MoGe 0.7-0.9 at gain 0.5; brow 0.7-0.8; chin
+    0.3) but the field carries low-frequency warp: dense depth rows 2.9-3.5 mm (harmful), a few feature depths 2.4-2.5
+    (nothing). MapAnything-apache on front + tq pairs of these busts: 9-12 mm depth error (untextured CG: maybe
+    unfair, but nothing to build on).
+  - MoGe's LENS: 0.81 x true front (0.69 turned), scatter x1.27, correlation 0.74 over 35-105 mm. A better prior than
+    70 mm +-40% for anything that needs one (points don't).
+  - XR Blocks' MediaPipe <-> GNM table is THIRD-PARTY (ported from edualvarado/gnm-webcam-puppet, nearest vertices,
+    "tuned on synthetic faces"): no real-photo provenance. Its vertices agree with our front table to 1.4 mm median
+    (p90 3.8, a few 13-57 mm). Fits: front only 2.56 / 2.49 (ours 2.51 / 2.40), front + tq 2.99 / 2.79 (one table for
+    all views), with its reference-cloud offsets 3.17 / 2.78. Keep ours.
+  - WIDTHS from a front picture (widths.py: any matte cut at rows set by the detector's points, in pupil distances):
+    the mask is not the problem (0.5%); a silhouette can give face_length (r 0.91 with the true macro), chin_height
+    0.73, jaw_width 0.71, chin_width 0.7; NOT cheekbone / face width (ears, hair) or neck (collar). refstudy2 found
+    silhouette rows in the fit hurt; as regressed macros they help. Garrett: lower jaw row +2.1 sigma, mouth row +0.8.
+- GENERATED MESHES (TRELLIS.2-4B through Oxidegen's mesh_reference; one picture -> one mesh; +Y up, +Z front, scale
+  per image; 25 meshes, 10 of the first batch died on Oxidegen's watchdog and were rerun). In their own terms (ICP on
+  the TRUE face; surface offset mm, mesh vs mean head; correlation of deviations): from a FRONT picture face 1.64 vs
+  1.78 (0.70), jaw 1.46 vs 2.94 (0.91), cheeks 1.54 vs 1.95 (0.79), chin 2.60 vs 3.52 (0.73), cranium 4.6 vs 5.1
+  (0.53; bald heads only), neck 6.2 vs 7.2 (0.87), ears 3.1 vs 3.6; features: nose tip 2.9 vs 4.8 (0.81), cheekbone
+  1.2 vs 3.4 (0.95), neck side 7.1 vs 11.4 (0.94), chin 4.4 vs 5.5 (0.67). From a THREE-QUARTER picture better:
+  chin 1.7 vs 5.4 (0.95), jaw angle 1.7 vs 3.3 (0.87), brow 1.15 vs 2.15 (0.92), neck side 4.8 vs 11.4 (0.97). From a
+  profile (3): the profile it was shown, to ~1 mm, and a plausible invented front. Gains 0.5-0.8: it exaggerates.
+  It sculpts invented detail (folds, wrinkles, hair strands) and reads a hair stand-in as hair.
+  IN THE FIT it does NOT pay like its own terms promise: dense point-to-surface rows (20 rounds of re-registration:
+  4 rounds do not converge; ears left out; gains and sigmas per region) front + mesh: vertex 2.68 / 2.36, surface
+  1.33 / 1.24 (baseline front only 1.38 both), jaw surface 2.2 -> 1.9; without gains or tighter it HURTS (2.9-3.5).
+  Read at features with leave-one-out gains: 2.27 / 2.62. With normals + read: no better than normals + read. With
+  the mesh laid on the TRUE head (not available) the O heads' surface jaw goes 2.8 -> 1.7: registration to an
+  unknown head is half the loss; a PERFECT surface through the same pipeline gives only 1.2 / 2.1 vertex, 0.45 / 0.75
+  surface. The one thing only the mesh measures: neck_width (macro error 1.61 -> 0.76 sigma, r 0.42 -> 0.88). So:
+  not evidence for the face; a measured NECK, a second opinion on jaw / chin from a three-quarter picture, and a
+  synthesised profile for a person or an LLM to look at (mm_02, mm_03). Costs a GPU job ($0.03-0.08, 1-5 min).
+- `humannormals.py` (+ `david_normals_gnm.npz`, tests/test_humannormals.py): `predict(image)` (DAViD ONNX in its own
+  venv, $HIFIPUSHIE_DAVID, default /mnt/data/hifipushie/measuremodels/david; cached), `rows(normal, V, IB, c, cam,
+  cls, hide=, only=)` -> (A, y, info) linear evidence about the current head, identical to the study's rows. NOT yet
+  called by humanfit_map (garrett3 owns it; the 3-line hook is in the module's docstring terms: H += A.T @ A, b +=
+  A.T @ y once per round for a view with normals). Hair must be masked (`hide`). Calibrated on RENDERS only.
+- Garrett (study fast lane, GNM frame; out/garrett_fits.json): points vs + the front photo's normals: brow_ridge +1.5
+  -> +0.7, eye_depth +1.4 -> +0.9, chin_height +1.3 -> +1.0; stable: eye_height -1.4 (hooded), philtrum +1.2, thin lips
+  -0.9, mouth_width +0.7, nose_projection +0.7. On the desk PAINTING DAViD's normals are brush strokes: front only.
+  His two meshes are low in detail (the head is a small part of a suited bust) but read as him; against the fitted
+  head the front mesh says chin -7 mm / jaw -5..-8 (smaller) and neck +12; the desk mesh nose +5: they disagree with
+  each other beyond their own noise on a truth head: look at them (mm_03), don't fit them.
+- Not run: ear models (BlazeEar / Ear_Landmarker), MoGe-3, DA3, Hi3DGen, a second TRELLIS seed (repeatability by
+  region), DAViD on PHOTOGRAPHS (the calibration's real test), a hair matte from selfie-multiclass feeding `hide`.
+- Dead ends, so nobody re-tries: monocular or two-view DEPTH as fit evidence (any model); dense generated-mesh rows
+  without gains; the XR Blocks table for turned views; MapAnything on untextured busts; Marigold / MoGe normals where
+  DAViD's exist; silhouette widths for cheekbones or neck.
+
+### Measurement models, photographs (2026-10-09, same agent; Joe on mm_01: "visually, the Marigold model looks amazing", DAViD "noisy / framed")
+
+Does the render calibration transfer to photographs? Scripts in spikes/measuremodels/: photo.py (head | crops | photo |
+renders | pairs | depth | sheet: a model's normals against a head fitted WITHOUT normals, g3_f through its human_refs
+camera, with the crop's off-axis view taken out; the calibration's own quantities gain / corr / left with the same code
+on photo, renders and scan), lps.py (prep | render | stats | gains | depth | sheet) + bl_scan.py, lps_fit.py,
+david_local.py, remote/run_marigold.py <src> <out> v11|lcm. Sheets human_renders/mm_04_photo_normals.png,
+mm_05_scan_normals.png. Scratch as before (/mnt/data/hifipushie/measuremodels: lps/, out/photo_all.txt, pred/).
+- A head with TRUTH and real skin: Lee Perry-Smith's scan (Infinite-Realities, CC BY 3.0; from three.js's examples:
+  17.7k triangles, photographed albedo, its normal map), path-traced in Cycles (SSS), 3 views x 2 lights, truth = its
+  shading normals rendered through the same cameras; laid on GNM's mean head by tmesh.align for regions. NOT a
+  photograph and ONE head (eyes closed), but real pores, stubble, brows and a real face's relief. glTF's v is flipped
+  against Blender's (the first render had lips on the chin).
+- Normals on the scan, trusted regions (forehead, cheeks, nose), deg from truth after one global rotation | gain | corr
+  of deviations from the mean head; the same on our skinned renders' 10 truth fronts in brackets:
+  DAViD 8.1 | 0.81 | 0.80 (8.0 | 0.50 | 0.56); Marigold v1-1 10.3 | 0.65 | 0.72 (9.6 | 0.33 | 0.40); Marigold LCM 11.6 |
+  0.63 | 0.66 (10.6 | 0.30 | 0.36); MoGe-2 12.7 | 0.59 | 0.60 (9.6 | 0.37 | 0.45); mean head 13.7 (8.2). DAViD wins in
+  6 of 6 pictures. Every model reads real skin much better than our plastic renders (Marigold most: Joe's eye was
+  right that the render numbers under-rated it), so the render gains are ~1.6-2x too LOW for real skin: the
+  render-calibrated DAViD normal is 9.5 deg from truth, raw 8.1. Marigold carries a ~5 deg global tilt (raw 11.4).
+- End to end on the scan (lps_fit.py: detector points front + three-quarter, then + calibrated normals; the fitted
+  head's distance to the scan's surface, face mm rms): mean head 2.81, points 2.25, + DAViD 1.88, gains x1.6 1.63,
+  x2 1.55; + Marigold 2.29 (x2 2.16), + LCM x2 2.55, + MoGe-2 normals 2.53. On our renders (truth set, D1b): Marigold
+  2.53 / 2.19 against DAViD 2.21 / 2.13 and the baseline 2.45 / 2.39.
+- Garrett's front picture (no truth; itself a generated image, 0.78 px/mm on the face): (a) DAViD on a tight crop at
+  768 or 384 = the wide crop (trusted regions 16.8 / 16.6 / 17.3 deg from g3_f, corr 0.30 / 0.31 / 0.27; forehead
+  noise 1.7-2.1 deg against Marigold 1.8-2.5, MoGe-2 0.8, the head's own 1.0): the "noise and frame" in mm_01 was
+  DAViD's output OUTSIDE its foreground mask, which that sheet did not apply. (c) against g3_f no model beats the mean
+  head (13.4 deg; DAViD 17, Marigold 18-19, MoGe-2 16.7, Sapiens2 15.7; corr 0.14-0.34): g3_f is not good enough to
+  judge normals by. Model against model (corr of deviations, photo | renders): Marigold - Sapiens2 0.72 | 0.42,
+  MoGe-2 - Sapiens2 0.71 | 0.55, DAViD - Sapiens2 0.60 | 0.62, DAViD - Marigold 0.56-0.61 | 0.62: the photo-trained
+  models converge on a photo, DAViD is where it was.
+- Depth again (Joe asked): MoGe-2 on Garrett's photo against g3_f 5.8 mm rms on the face after scale + shift (the mean
+  head 3.8), corr 0.0 (forehead 0.54); on the scan with truth 4.5 mm (mean head 2.4), corr 0.10; DAViD's depth on the
+  scan 3.5 mm, corr 0.50 (forehead / brow 0.9). Renders had said 3.7 / 0.30 and 2.7 / 0.43. Depth is no better on
+  real skin: still worse than the mean head. No.
+- `humannormals`: `model=` "david" (default) | "marigold" (v1-1: CreativeML OpenRAIL++-M, use restrictions travel
+  with the weights) | "marigold_lcm" (LCM v0-1, Apache-2.0) in predict / calibration / rows (calibration files
+  <model>_normals_gnm.npz; Marigold runs from a venv at $HIFIPUSHIE_MARIGOLD, not installed), and `gain_scale`
+  (PHOTO_GAIN 1.6 for photographs of real skin). VERDICT: wire DAViD for photographs, gains x1.6, its mask applied;
+  Marigold is the prettier picture and the worse measurement everywhere we have truth.
+- Not done: real photographs with 3D truth (NoW, FaceScape, H3DS are research-only and behind forms; none fetched),
+  more than one scanned head, the hook in humanfit_map (garrett4's), a photo-domain re-calibration (gains per vertex
+  from scans rather than one multiplier).
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

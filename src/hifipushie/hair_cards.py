@@ -139,7 +139,7 @@ def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
     return out
 
 
-SHORT_TILE = {"medium": (16, 6.0), "sparse": (9, 5.0), "baby": (5, 5.0), "fly": (4, 5.0)}  # strands per 272 px, px thick
+SHORT_TILE = {"medium": (36, 3.2), "sparse": (22, 3.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
 
 
 def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None, short: bool = False) -> dict:
@@ -169,7 +169,7 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
         lines = [lines[i] for i in np.linspace(0, len(lines) - 1, min(n_, len(lines))).astype(int)]
         # (a tile's strands run 16 cm; a short cut's card is 2-3 cm of it: their waves, squeezed five times along,
         # were white squiggles over the cap. Straightened: each keeps a third of its wander)
-        lines = [(float(np.mean(x_)) + 0.3 * (np.asarray(x_, float) - float(np.mean(x_))), v_, d_, i_) for x_, v_, d_, i_ in lines]
+        lines = [(float(np.mean(x_)) + 0.12 * (np.asarray(x_, float) - float(np.mean(x_))), v_, d_, i_) for x_, v_, d_, i_ in lines]
         thick = th_ * ss * w / 272
     for x, v, dp, idn in sorted(lines, key=lambda q: q[2]):
         x = np.clip(np.asarray(x, float), *((0.12, 0.88) if kind in ("fly", "baby") else (0.025, 0.975)))
@@ -467,7 +467,7 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         by.setdefault(t["kind"], []).append(i)
     V, F, UV, Nn, Tn, COL, AL, LAY, CID = [], [], [], [], [], [], [], [], []
     off = 0
-    rootd, rootl = (0.86 if S.get("short") else 0.62), float(look.get("root", 0.12))  # (a short cut's cards
+    rootd, rootl = (0.7 if S.get("short") else 0.62), (0.45 if S.get("short") else float(look.get("root", 0.12)))  # (a short cut's cards
     # root in the cap, which carries the shade: darkened roots were dark flakes on it)
     tip_amt = float(look.get("tip_amount", 0.0))
     rnd = float(S["round"])
@@ -734,7 +734,7 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                                 "s": s[keep], "kind": kind, "layer": la,
                                 "prio": la + 0.3 * off_c + (0.25 if (thin and la > 0) else 0.0),
                                 "cval": 1 + Rr * rng.uniform(-0.2, 0.2), "bend": c["bend"][keep], "T": c["T"][keep],
-                                "lock": lk["name"], "value": val})
+                                "lock": lk["name"], "value": val, "sn": np.asarray(c["sn"])[keep] if np.ndim(c["sn"]) else c["sn"]})
             nf = int(S.get("fly", 0))
             if nf and not gather and len(Ag) >= 6:  # single strands that stand off the clump: a card each
                 with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():

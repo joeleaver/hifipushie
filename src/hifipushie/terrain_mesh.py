@@ -5203,7 +5203,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None, extra=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -5346,7 +5346,11 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                     lv_ = ndimage.gaussian_filter1d(lv_, 5.0, mode="nearest") - 0.04
                     rv.append(np.c_[xy_, lv_, w_ + 4.0][live].round(3).tolist())
             job["rivers"] = rv
-        notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+        if job.get("clutter"):
+            notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+    if extra:  # GLBs stood in the scene: [{"glb", "at": [x, y, z], "yaw": deg, "scale", "squash", "tint": linear rgb}] (clutter kit
+        # assets beside the cliffs they should belong to; the tint is the per-instance colour an engine multiplies in)
+        job["extra"] = extra
     GD = M.get("ground_detail")
     if GD and textured and not channel and grass:  # the turf's tiling detail over the baked maps (as an engine draws it)
         job["grass"] = [{"albedo": str((out / g["albedo"]).resolve()), "normal": str((out / g["normal"]).resolve()),
