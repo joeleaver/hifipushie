@@ -454,7 +454,9 @@ def _site(T, name, s):
     inside = dist <= r
     # the water that could reach the pad: what's beside it, not a river's level 200 m upstream (that put a lakeside
     # village 198 m up on a mound)
-    wet = ~np.isnan(T.water) & (dist < r + max(20.0, 0.5 * r))
+    # (out to where the report judges "the water beside it" (edge within max(60, r)): a village 56 m from the vale river
+    # was set from no water at all and stood 4 m under the river's level, above_water: 3 ignored; pushieworld 67, 116)
+    wet = ~np.isnan(T.water) & (dist < r + max(60.0, r))
     if "level" in s:
         level = float(s["level"])
     elif shore_lake is not None:  # a lakeside pad: just above its lake, cut into the bank behind
@@ -531,7 +533,7 @@ def _site(T, name, s):
     _earthworks(T, w)
     T.sites[name] = {"xy": xy.tolist(), "level": level, "radius": r, "cut": float((before - T.H).max()),
                      "fill": float((T.H - before).max()), "note": note, "fall": fall, "toward": dvec.tolist(),
-                     "shore": shore_lake, "above": s.get("above_water", 3.0)}
+                     "shore": shore_lake, "above": s.get("above_water", 3.0), "above_asked": s.get("above_water")}
     if s.get("prop"):  # a prop the engine drops here (a basket, a bench): its name; which way it faces is resolved
         T.sites[name]["prop"] = {"name": s["prop"], "yaw": 0.0, "facing": s.get("facing")}  # once every site stands
     if max(T.sites[name]["cut"], T.sites[name]["fill"]) > 25:
@@ -1412,6 +1414,11 @@ def report(T):
             k = int(np.argmin(np.where(wet, dist, np.inf)))
             wl = float(T.water.ravel()[k])
             above = f"; {s['level'] - wl:.1f} m above the water beside it"
+            want = s.get("above_asked")
+            if (want is not None and s["level"] - wl < float(want) - 0.5) or s["level"] - wl < 0:
+                T.warnings.append(f"site {name!r} stands {s['level'] - wl:.1f} m above the water beside it"
+                                  + (f" (asked above_water {float(want):g})" if want is not None else " (under it: it floods)")
+                                  + f": the water settled at {wl:.1f} m. Give the site a level, or move it")
             if s["level"] - wl > 6 and s.get("shore"):
                 T.warnings.append(f"site {name!r} was set {s.get('above', 3):.0f} m above {s['shore']!r}, but the water "
                                   f"settled at {wl:.1f} m: it stands {s['level'] - wl:.1f} m above it. Give the lake a "
