@@ -39,7 +39,7 @@ style + the manifest). Reeds are a plant: `grow_plant` with species `reed`, then
 | `river_rock` | water-worn, flattened, a mossy band above the water line, darker foot | 300 / 100 / 44 | hull |
 | `cobbles` | a PATCH of 14-24 cobbles as one asset (lay patches overlapping) | 420 / 150 / 48 | none |
 | `slab` | flat bank stone / ledge piece | 220 / 80 / 24 | hull |
-| `driftwood` | log, forked branch, pole, a small jam (the four variants); scale = length | 220 / 80 / 24 (jam x2.3) | none |
+| `driftwood` | log, forked branch, a butt with its root plate, a small jam (the four variants); broken ends, bark patches; scale = length | 220 / 88 / 24 (jam x2.3) | none |
 | `bush` | low evergreen scrub: a closed leafy dome + leaf sprays on alpha cards; seasons; wind | ~250 / 120 / 55 | none |
 | `litter` | a leaf / twig debris card; a picture per season; hidden under snow | 8 / 2 | none |
 | `reeds` | the `reed` plant preset, groundcover grade (cards baked from the full plant) | 504 / 184 / 60 | none |
@@ -67,8 +67,10 @@ Override any number: `make_clutter("boulder", style={"sheet": "anime", "rock": {
 `aspect` [[mid/long], [short/long]], `faces`, `jitter`, `face_in`, `bedded`, `tilt`, `dip`, `tumble`, `chips`,
 `broken`, `break`, `chip`, `bevel`, `top_round`, `taper`, `round`, `bend`, `dent`, `split`, `split_gap`, `beds`,
 `bed_set`, `bed_thick`, `lumps`, `lump_size`, `sink`, `lean`, `cluster` {count, stone, pile}.
-Paint: `tone`, `face_tone`, `speckle`, `edge_light`, `cavity`, `ink`, `bands`, `gradient`, `top_light`, `foot`,
-`top` (lichen), `moss` + `moss_band`, `ao`, `roughness`; bake-only relief `grain`, `cracks`, `laminae`, `pits`;
+Paint: `tone`, `face_tone`, `speckle`, `edge_light`, `cavity`, `ink`, `bands`, `gradient`, `top_light`, `foot` +
+`foot_tint` / `foot_color` (the damp, soil-stained band above the ground line), `top` (moss film on up-facing rock),
+`lichen` + `lichen_size` / `lichen_colors` (crusts in blotches, on tops and one weather side), `streaks` (rain streaks
+down steep faces), `minerals` (each variant's own rock tone), `moss` + `moss_band`, `ao`, `roughness`; bake-only relief `grain`, `cracks`, `laminae`, `pits`;
 `normals` (deg: faces meeting sharper keep their own normals).
 
 ## What an engine gets
@@ -79,12 +81,19 @@ A folder per kind x style, beside the plants: `<stem>_v<k>_LOD<j>.glb` (one mesh
 the plant contract's shape (`contract`, `grade: "clutter"`, `kind`, `slot_list`, `seasons`, `snow` numbers) plus a
 `clutter` block: `size_m` 1 (scale = the largest plan dimension in metres), `height_m`, `sink_m`, `size_range_m`,
 `variants` (files, triangles, outline IoU, collision), `lod_switch_m` (x the instance's scale: LOD 1 from 14 m,
-LOD 2 from 40 m, gone at 130 m), `wet` (darken, roughness, the band above the water line), `tint` (how to retint to
-another terrain's rock colour), `instancing` (one MultiMesh per variant per LOD; instance = T * Rz(yaw) *
+LOD 2 from 40 m, gone at 130 m), `wet` (darken, roughness, the band above the water line), `tint` + `instance_tints`
+(ROCK MATCHES ITS CLIFFS BY A PER-INSTANCE COLOUR: tint = the terrain's rock colour where it stands / `color_linear` x
+one of `instance_tints` x 0.92-1.08, multiplied into the albedo in linear RGB), `instancing` (one MultiMesh per variant per LOD; instance = T * Rz(yaw) *
 S(scale, scale, scale * squash)). `clutter.json` at the root maps every terrain kind to its folder per style.
 
 Bushes carry the plants' wind channels (TEXCOORD_1 = trunk, branch; TEXCOORD_2 = phase, flutter; `_WIND`) and are
 alpha MASK (the dome is opaque: a far bush never thins to nothing; scale alpha by the mip level for the sprays).
+
+`sedge`, `tussock` and `tallgrass` rows map to the grass tuft's groundcover grade (`<style>_grass_ground`).
+
+Engine cost measured (Godot 4.7.2, `spikes/godot_veg/clutter_field.gd`, 1280 x 720, a Radeon 890M, shadows on): 5,000
+boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull = 6,900 drawn, 462k triangles, GPU
+4.5 ms; everything at LOD 0 with no cull = 7.0M triangles, 15-17 ms. Use the LODs and the cull.
 
 ## Judging
 
@@ -104,5 +113,9 @@ alpha MASK (the dome is opaque: a far bush never thins to nothing; scale alpha b
 - pyfqmr overshoots far below the target on smooth pebbles at high aggressiveness and stalls above it on crisp
   blocks at low: try several, keep the nearest.
 - A form bounded by few oblique faces can be open on one side (a 12 m "boulder"): always cap with far axis planes.
+- Fracture lines from a noise's isolines are closed loops (worm doodles). A crack is where a wandering PLANE meets
+  the stone. Lichen as small bright dots is confetti: big, thin, merging crusts in two or three dull colours.
+- Mineral tints of +-10% made brown and blue stones; +-5%.
+- A script error in Godot under a hidden compositor leaves the process idle for ever: run with a timeout, log to a file.
 - A styled tree shrub at 400 triangles is one ball on a stalk; its LODs don't go down (style floors). A clutter bush
   is its own thing: an opaque leafy dome (blocks see-through, holds at any distance) + a few spray cards.

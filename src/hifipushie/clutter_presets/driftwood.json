@@ -1,5 +1,5 @@
 {
- "about": "Driftwood: barkless, silvered wood. Variants: a log (crooked, tapering, broken stubs), a forked branch, a thinner pole, a small jam of pieces lying across each other. Terrain kind `driftwood` (scale = length; yaw 0 = along +X)",
+ "about": "Driftwood: barkless, silvered wood. Variants: a log (crooked, tapering, broken stubs), a forked branch, a butt with its root plate, a small jam of pieces lying across each other. Terrain kind `driftwood` (scale = length; yaw 0 = along +X)",
  "material": "wood",
  "shape": "wood",
  "variants": 4,
@@ -16,8 +16,8 @@
  "variant_forms": [
   {
    "radius": [
-    0.055,
-    0.07
+    0.08,
+    0.1
    ],
    "stubs": [
     2,
@@ -27,8 +27,8 @@
   },
   {
    "radius": [
-    0.04,
-    0.05
+    0.055,
+    0.07
    ],
    "stubs": [
     1,
@@ -39,18 +39,21 @@
   },
   {
    "radius": [
-    0.03,
-    0.038
+    0.07,
+    0.085
    ],
    "stubs": [
-    0,
+    1,
     2
    ],
    "fork": 0.0,
-   "crook": 0.07,
-   "taper": [
-    0.35,
-    0.55
+   "roots": [
+    5,
+    7
+   ],
+   "length": [
+    0.8,
+    0.9
    ]
   },
   {
@@ -59,8 +62,8 @@
     6
    ],
    "radius": [
-    0.03,
-    0.048
+    0.04,
+    0.06
    ],
    "stubs": [
     0,

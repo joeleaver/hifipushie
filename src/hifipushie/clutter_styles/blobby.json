@@ -35,6 +35,31 @@
    "lean": 0.0
   },
   "paint": {
+   "lichen": 0.0,
+   "streaks": 0.0,
+   "foot_tint": 0.0,
+   "minerals": [
+    [
+     1,
+     1,
+     1
+    ],
+    [
+     1.05,
+     1.0,
+     0.93
+    ],
+    [
+     0.95,
+     0.99,
+     1.05
+    ],
+    [
+     1.03,
+     0.97,
+     0.92
+    ]
+   ],
    "tone": 0.09,
    "tone_size": 0.4,
    "face_tone": 0.0,
@@ -120,6 +145,8 @@
    "stub": 0.8
   },
   "paint": {
+   "bark": 0.0,
+   "lichen": 0.0,
    "streak": 0.05,
    "speckle": 0.0,
    "edge_light": 0.0,

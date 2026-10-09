@@ -55,7 +55,7 @@ FORM = {  # a rock's form; ranges are drawn per variant
     "dent": 0.0,              # probability of one soft dent
     "split": 0.0,             # probability of a crack through the block
     "split_gap": [0.012, 0.03],  # m: its half width
-    "beds": [1, 3],           # partings along the bedding (thin grooves round part of the block)
+    "beds": [0, 2],           # partings along the bedding (thin grooves round part of the block)
     "bed_set": [0.008, 0.02],  # m: their depth
     "bed_thick": [0.006, 0.016],  # m: their half width
     "lumps": 0.02,            # m: slow unevenness of the faces
@@ -76,6 +76,11 @@ PAINT = {  # how the surface is painted (albedo multipliers round 1) and what re
     "top_light": 0.0,                 # up-facing faces lighter (a clear top plane)
     "foot": 0.3, "foot_height": 0.1,  # the band above the ground line darker (damp, soil-stained): m at 1 m across
     "top": 0.25, "top_color": [0.5, 0.52, 0.36], "top_size": 0.12,  # lichen / moss on up-facing rock
+    "lichen": 0.35, "lichen_size": 0.13,  # crusts: round patches in clusters, on tops and on one side (the weather side)
+    "lichen_colors": [[0.5, 0.53, 0.45], [0.56, 0.57, 0.5], [0.62, 0.55, 0.3], [0.6, 0.61, 0.56], [0.47, 0.5, 0.44]],  # grey-greens, one ochre, pale
+    "streaks": 0.2, "streak_width": 0.035,  # darker rain streaks running down steep faces from the top
+    "foot_color": [0.2, 0.2, 0.12], "foot_tint": 0.35,  # the foot band stained toward soil / algae (with `foot`)
+    "minerals": [[1.0, 1.0, 1.0], [1.05, 1.0, 0.94], [0.96, 0.99, 1.03], [1.03, 0.98, 0.92]],  # each variant's own rock: x the colour
     "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.15, 0.6],  # a mossy band (share of height)
     "ao": 0.6,                        # occlusion strength (also baked half into the albedo's foot)
     "roughness": 0.9,
@@ -88,12 +93,14 @@ PAINT = {  # how the surface is painted (albedo multipliers round 1) and what re
 WOOD = {
     "pieces": [1, 1],          # logs in the asset (a jam: several)
     "length": [0.85, 1.0],     # of the main piece (x = 1)
-    "radius": [0.06, 0.09],    # at the butt
+    "radius": [0.075, 0.105],  # at the butt
     "taper": [0.45, 0.8],      # tip radius / butt radius
     "crook": 0.05,             # sideways wander of the axis, x length
     "stubs": [1, 4],           # broken branch stubs
     "stub": [0.05, 0.16],      # their length
     "fork": 0.3,               # probability the piece forks (a branch)
+    "roots": [0, 0],           # root stubs fanning from the butt (a root plate)
+    "broken": 0.6,             # how jagged the broken ends are (0 = sawn)
     "bevel": 0.012,
     "lumps": 0.006, "lump_size": 0.12,
     "sink": 0.18,
@@ -105,6 +112,10 @@ WOOD_PAINT = {
     "grooves": 0.003, "groove_size": 0.012, "cracks": 0.003, "crack_size": 0.2, "normals": 40.0,
     "top": 0.0, "top_color": [0.5, 0.52, 0.36], "top_size": 0.1, "moss": 0.0, "moss_color": [0.25, 0.36, 0.14],
     "moss_band": [0.0, 0.5], "top_light": 0.0, "foot": 0.25, "foot_height": 0.03,
+    "lichen": 0.1, "lichen_size": 0.04, "lichen_colors": [[0.62, 0.65, 0.56], [0.72, 0.62, 0.3]], "streaks": 0.0, "streak_width": 0.03,
+    "foot_color": [0.2, 0.2, 0.12], "foot_tint": 0.3, "minerals": [[1.0, 1.0, 1.0], [1.06, 1.0, 0.92], [0.94, 0.98, 1.04], [1.04, 0.97, 0.9]],
+    "bark": 0.35, "bark_color": [0.2, 0.14, 0.09], "bark_size": 0.18,   # patches of bark still on (dark, rough, proud)
+    "bleach": 0.25,           # sun-bleached paler on top
 }
 BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on alpha cards breaking its outline
     "aspect": [[0.8, 1.0], [0.6, 0.8]],  # depth / width and height / width of the dome
@@ -113,9 +124,9 @@ BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on
     "lobe_out": [0.5, 0.85],  # how far out from the middle they sit (1 = at the dome's edge)
     "join": 0.1,              # m: how softly lobes run together (small = distinct clumps)
     "lumps": 0.03, "lump_size": 0.22,
-    "cards": [18, 24],        # leaf sprays standing out of the dome at LOD 0 (0 = none: a closed style)
+    "cards": [24, 30],        # leaf sprays standing out of the dome at LOD 0 (0 = none: a closed style)
     "card": [0.3, 0.42],      # their length, m
-    "card_out": 0.5,          # the share of a spray standing out past the dome's surface
+    "card_out": 0.58,          # the share of a spray standing out past the dome's surface
     "card_up": 0.35,          # how far sprays turn upward from straight out
     "cards_lod": [1.0, 0.5, 0.2],  # the share of the sprays each LOD keeps (kept ones drawn larger)
     "sink": 0.0,
@@ -124,6 +135,8 @@ BUSH_PAINT = {
     "tone": 0.1, "tone_size": 0.3, "face_tone": 0.1, "speckle": 0.0, "edge_light": 0.1, "cavity": 0.35, "ink": 0.0, "ink_width": 0.02,
     "gradient": 0.3, "top_light": 0.15, "foot": 0.12, "foot_height": 0.1, "ao": 0.6, "roughness": 0.8, "normals": 0.0,
     "top": 0.0, "top_color": [0.5, 0.52, 0.36], "top_size": 0.1, "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.0, 0.5],
+    "lichen": 0.0, "lichen_size": 0.05, "lichen_colors": [[0.6, 0.6, 0.5]], "streaks": 0.0, "streak_width": 0.03, "foot_color": [0.12, 0.14, 0.08],
+    "foot_tint": 0.0, "minerals": [[1.0, 1.0, 1.0], [1.06, 1.02, 0.9], [0.92, 1.0, 1.0], [1.0, 0.95, 0.85]],
     "leaf_size": 0.04,        # m: the painted leaves on the dome (cells); 0 = none (a flat colour)
     "leaf_tone": 0.25,        # each leaf's own tone
     "leaf_gap": 0.55,         # how dark the gaps between leaves are
@@ -362,8 +375,8 @@ class Stone:
         self.beds = []
         for _ in range(int(rng.integers(f["beds"][0], f["beds"][1] + 1))):
             n = self.bed_n + math.radians(12.0) * rng.normal(0, 1, 3)  # (partings are never quite parallel)
-            self.beds.append((n / np.linalg.norm(n), rng.uniform(-0.6, 0.6) * c, _u(rng, f["bed_thick"]) * size, _u(rng, f["bed_set"]) * size,
-                              rng.uniform(0, 2 * math.pi), rng.uniform(0.35, 0.9)))
+            self.beds.append((n / np.linalg.norm(n), rng.choice([-1, 1]) * rng.uniform(0.25, 0.8) * c, _u(rng, f["bed_thick"]) * size, _u(rng, f["bed_set"]) * size,
+                              rng.uniform(0, 2 * math.pi), rng.uniform(0.15, 0.5)))
         self.split = None
         if rng.uniform() < f["split"]:
             n = np.array([rng.normal(), rng.normal(), 0.35 * rng.normal()])
@@ -474,8 +487,26 @@ class Wood:
             m = P[i] + d * l * 0.5 + 0.03 * L * rng.normal(0, 1, 3)
             segs.append((P[i], m, Rr[i] * 0.7, Rr[i] * 0.5))
             segs.append((m, P[i] + d * l, Rr[i] * 0.5, Rr[i] * 0.3))
+        nr = int(rng.integers(f["roots"][0], f["roots"][1] + 1))
+        if nr:  # a root plate: the butt swells, roots fan out square to the stem and a little back
+            ax0 = (P[1] - P[0]) / np.linalg.norm(P[1] - P[0])
+            e1 = np.cross(ax0, [0, 0, 1.0])
+            e1 /= np.linalg.norm(e1)
+            e2 = np.cross(ax0, e1)
+            segs[0] = (segs[0][0], segs[0][1], r0 * 1.45, segs[0][3])
+            for i in range(nr):
+                a = 2 * math.pi * (i + rng.uniform(-0.3, 0.3)) / nr
+                d = math.cos(a) * e1 + math.sin(a) * e2 - ax0 * rng.uniform(0.1, 0.45)
+                d /= np.linalg.norm(d)
+                l = rng.uniform(0.1, 0.2) * size
+                m_ = P[0] + d * l * 0.55 + 0.02 * size * rng.normal(0, 1, 3)
+                segs.append((P[0] + ax0 * 0.01, m_, r0 * 0.75, r0 * 0.42))
+                segs.append((m_, P[0] + d * l - ax0 * 0.03 * size, r0 * 0.42, r0 * 0.16))
+        self.broken = f["broken"]
+        self.ends = (P[0].copy(), P[-1].copy(), (P[1] - P[0]) / np.linalg.norm(P[1] - P[0]), (P[-1] - P[-2]) / np.linalg.norm(P[-1] - P[-2]), r0, r1, nr > 0)
         R = _rot([0, 0, 1], math.degrees(yaw)) @ _rot([0, 1, 0], math.degrees(pitch))
         c = np.asarray(centre, float)
+        self.ends = (self.ends[0] @ R.T + c, self.ends[1] @ R.T + c, self.ends[2] @ R.T, self.ends[3] @ R.T, r0, r1, nr > 0)
         self.segs = [(a @ R.T + c, b @ R.T + c, ra, rb) for a, b, ra, rb in segs]
         self.bevel = f["bevel"] * size
         self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
@@ -512,6 +543,18 @@ class Wood:
         d = soft
         if self.lumps:
             d = d + self.lumps * (noise.fbm(p - self.c, self.lump_size, 2, self.seed) - 0.5) * 2
+        if self.broken:  # the stem's ends broken off: a jagged oblique face instead of a round cap (splinters along the grain)
+            e0, e1, a0, a1, r0, r1, rooted = self.ends
+            for e, a, r, sgn, skip in ((e0, a0, r0, -1.0, rooted), (e1, a1, r1, 1.0, False)):
+                if skip:
+                    continue
+                x = (p - e) @ a * sgn
+                near = np.linalg.norm(p - e, axis=1) < 4 * r
+                if near.any():
+                    q = p[near] - e
+                    perp = q - np.outer(q @ a, a)
+                    jag = self.broken * r * (1.6 * (noise.fbm(perp / (0.35 * r) + self.seed % 97, 1.0, 2, self.seed + 3) - 0.5) + 0.8 * perp @ np.cross(a, [0.3, 0.2, 1.0]) / r)
+                    d[near] = np.maximum(d[near], x[near] + 0.4 * r - jag)
         if not info:
             return d
         return d, {"face": np.zeros(len(p), int), "edge": np.full(len(p), 1.0), "tone": ton, "bed": sc,
@@ -528,7 +571,7 @@ class Bush:
         self.c = np.zeros(3)
         R = 0.5 * size
         # (centre, radii): the main dome, then the lobes
-        self.ell = [(np.array([0.0, 0.0, 0.1 * H]), np.array([0.86 * R, 0.86 * R * ay, 0.86 * H]))]  # (a dome: widest at the ground)
+        self.ell = [(np.array([0.0, 0.0, 0.1 * H]), np.array([0.8 * R, 0.8 * R * ay, 0.84 * H]))]  # (a dome: widest at the ground)
         for _ in range(int(rng.integers(f["lobes"][0], f["lobes"][1] + 1))):
             a = rng.uniform(0, 2 * math.pi)
             r = _u(rng, f["lobe"]) * size
@@ -1216,6 +1259,11 @@ def _micro(cfg, I, P, seed):
     if p.get("leaf_bump") and p.get("leaf_size"):
         f1, _, _ = _cells(q, p["leaf_size"], seed + 31)
         h += p["leaf_bump"] * np.clip(1 - f1 / (0.6 * p["leaf_size"]), 0, 1)
+    if p.get("bark") and I.get("axis") is not None:
+        ax_ = I["axis"]
+        al_ = (q * ax_).sum(1, keepdims=True)
+        bq = (q - ax_ * al_) / (0.4 * p["bark_size"]) + ax_ * al_ / p["bark_size"]
+        h += 0.004 * np.clip((noise.fbm(bq, 1.0, 2, seed + 51) - (0.62 - 0.3 * p["bark"])) / 0.05, 0, 1)
     if p.get("grooves") and I.get("axis") is not None:
         ax = I["axis"]
         perp = q - ax * (q * ax).sum(1, keepdims=True)
@@ -1224,7 +1272,7 @@ def _micro(cfg, I, P, seed):
     return h
 
 
-def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed, zg=None, season=None):
+def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed, zg=None, season=None, variant=0):
     """Albedo (sRGB) and roughness at surface points."""
     p = cfg["paint"]
     q = I["q"]
@@ -1262,6 +1310,23 @@ def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed, zg=None, season=None):
     if season and season.get("mix") is not None:
         cfg = dict(cfg, color=(np.asarray(cfg["color"], float) * (1 - season["amount"]) + np.asarray(season["mix"], float) * season["amount"]).tolist())
     col = np.asarray(cfg["color"], float)[None] * tone[:, None]
+    mn = p.get("minerals")
+    if mn:
+        col = col * np.asarray(mn[variant % len(mn)], float)[None]
+    if p.get("bark") and I.get("axis") is not None:  # bark still on in patches
+        ax_ = I["axis"]
+        al_ = (q * ax_).sum(1, keepdims=True)
+        bq = (q - ax_ * al_) / (0.4 * p["bark_size"]) + ax_ * al_ / p["bark_size"]
+        bm = np.clip((noise.fbm(bq, 1.0, 2, seed + 51) - (0.62 - 0.3 * p["bark"])) / 0.05, 0, 1)
+        rib = 0.75 + 0.5 * noise.fbm((q - ax_ * al_) / 0.012 + ax_ * al_ / 0.2, 1.0, 2, seed + 52)
+        col = col * (1 - bm[:, None]) + np.asarray(p["bark_color"], float)[None] * rib[:, None] * bm[:, None]
+    if p.get("bleach"):
+        col = col * (1 + p["bleach"] * np.clip(Nrm[:, 2], 0, 1))[:, None]
+    if p.get("streaks"):  # rain streaks: narrow in plan, long down the face, strongest under the top edge
+        st_ = noise.fbm(np.c_[q[:, 0] / p["streak_width"], q[:, 1] / p["streak_width"], q[:, 2] / 0.9], 1.0, 2, seed + 53)
+        steep = np.clip(1 - np.abs(Nrm[:, 2]) / 0.7, 0, 1)
+        sm = np.clip((st_ - 0.56) / 0.1, 0, 1) * steep * np.clip(0.35 + zrel, 0, 1)
+        col = col * (1 - p["streaks"] * sm)[:, None]
     # curvature: convex arrises worn pale, concave darker; an ink line along arrises
     cv = np.clip(curv, -1, 1)
     col = col * (1 + p["edge_light"] * np.clip(cv, 0, 1) - p["cavity"] * np.clip(-cv, 0, 1))[:, None]
@@ -1277,6 +1342,21 @@ def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed, zg=None, season=None):
     if p.get("foot") and zg is not None:
         fz = np.clip(1 - zg / p["foot_height"], 0, 1)
         col = col * (1 - p["foot"] * fz * fz * (0.7 + 0.6 * noise.fbm(q, 0.08, 2, seed + 23)))[:, None]
+    if p.get("foot_tint") and zg is not None:
+        fz = np.clip(1 - zg / (1.4 * p["foot_height"]), 0, 1) * np.clip((noise.fbm(q, 0.1, 2, seed + 54) - 0.3) / 0.3, 0, 1)
+        col = col * (1 - p["foot_tint"] * fz[:, None]) + np.asarray(p["foot_color"], float)[None] * (p["foot_tint"] * fz)[:, None]
+    if p.get("lichen"):  # crusts: round patches (cells), in clusters, on tops and the weather side
+        f1, _, cid = _cells(q, p["lichen_size"], seed + 55)
+        wx = np.array([math.cos(seed * 1.7), math.sin(seed * 1.7), 0.0])
+        where = np.clip(np.maximum((up - 0.2) / 0.5, (Nrm @ wx - 0.2) / 0.5), 0, 1)
+        clus = np.clip((noise.fbm(q, 0.3, 2, seed + 56) - 0.5 + 0.35 * p["lichen"]) / 0.1, 0, 1)
+        r_ = p["lichen_size"] * (0.35 + 0.4 * cid)  # (big enough that neighbours run together into blotches)
+        ragged = 1 + 0.5 * (noise.fbm(q, 0.02, 2, seed + 57) - 0.5) * 2
+        m = np.clip((r_ * ragged - f1) / 0.008, 0, 1) * where * clus * (cid < 0.3 + 0.7 * p["lichen"])
+        m = m * (0.45 + 0.3 * noise.fbm(q, 0.01, 2, seed + 58))  # (a thin crust: the rock shows through)
+        lc = np.asarray(p["lichen_colors"], float)
+        pick = lc[(cid * 97).astype(int) % len(lc)]
+        col = col * (1 - m[:, None]) + pick * m[:, None]
     if p.get("top"):
         m = np.clip((up - 0.45) / 0.35, 0, 1) * np.clip((noise.fbm(q, p["top_size"], 3, seed + 17) - 0.42) / 0.14, 0, 1)
         m = m * p["top"]
@@ -1417,7 +1497,7 @@ def bake_variant(cfg, solid: Solid, vol, ax, vox, cell, seed, low=None, ground=N
         zrel = (P[:, 2] - zbot) / max(ztop - zbot, 1e-6)
         Y, X = y0 + rr, x0 + cc
         for se, sv in cfg["seasons"].items():
-            col, rough = _paint(cfg, solid, P, nh, I, curv, ao, zrel, seed, zg=P[:, 2] - ground if ground is not None else None, season=sv)
+            col, rough = _paint(cfg, solid, P, nh, I, curv, ao, zrel, seed, zg=P[:, 2] - ground if ground is not None else None, season=sv, variant=seed % 1000)
             albs[se][Y, X] = col
         nrm[Y, X] = nt
         orm[Y, X, 0] = 1 - p["ao"] * (1 - ao)
@@ -1487,18 +1567,32 @@ def build(spec: dict, progress=None) -> dict:
             pre = None
             if solid.wood and (j or len(solid.parts) > 1):  # built tubes: LOD 1 five sides, LOD 2 three; a jam always
                 sides, rings = ((7, 6) if j == 0 else (5, 5) if j == 1 else (3, 4))
+                stubs = j < 2
                 while True:
-                    pre = wood_lod(solid, sides, rings, stubs=j < 2)
-                    if len(pre[1]) <= 1.1 * tgt or (sides == 3 and rings == 2):
+                    pre = wood_lod(solid, sides, rings, stubs=stubs)
+                    if len(pre[1]) <= 1.1 * tgt or (sides == 3 and rings == 2 and not stubs):
                         break
+                    if sides == 3 and rings == 2:  # still over with every stub and root as a tube: the stems alone
+                        stubs, sides, rings = False, 5, 5
+                        continue
                     sides, rings = (sides - 1, rings) if sides > 3 else (sides, rings - 1)
             elif solid.cluster and cfg["shape"] != "wood" and len(solid.parts) > 2:  # a patch of stones: a hull each
                 pre = cluster_lod(V, F, tgt)
             L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=hull, pre=pre)
-            if pre is None and L["triangles"] > 1.3 * tgt and cfg["shape"] in ("rock", "bush"):  # the decimator stalled: its hull
+            bad = False
+            if pre is None and not hull:
+                chk = mesh_check(L["V"], L["F"])
+                bad = L["triangles"] > 1.3 * tgt or chk["open_edges"] > 0 or chk["nonmanifold_edges"] > 0
+            if bad and cfg["shape"] in ("rock", "bush") and not (solid.cluster and len(solid.parts) > 2):  # stalled or torn: its hull
                 L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=True)
-            if pre is None and solid.wood and L["triangles"] > 1.3 * tgt:
-                L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, pre=wood_lod(solid, 7, 6, True))
+            if bad and solid.wood:  # built tubes
+                sides, rings = 8, 6
+                while True:
+                    pre = wood_lod(solid, sides, rings, True)
+                    if len(pre[1]) <= 1.1 * tgt or sides == 3:
+                        break
+                    sides -= 1
+                L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, pre=pre)
             iou = float(np.mean(silhouette_iou((lods[0]["V"], lods[0]["F"]), (L["V"], L["F"])))) if j else 1.0
             if j and pre is None and cfg["shape"] == "rock" and not hull and iou < LOD_IOU and not (solid.cluster and len(solid.parts) > 2):  # the decimation changed the outline: the hull keeps it
                 L2 = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=True)
@@ -1697,8 +1791,12 @@ ALPHA_MIPS = ("import the albedo WITH mipmaps and scale alpha up by the mip leve
 WET_RECIPE = ("wet rock: below the water line + `band` x the instance's height (and anywhere it rains), albedo *= mix(1, darken, wet), "
               "roughness = mix(roughness, wet roughness, wet); a river rock standing in water: wet = 1 below the line, fading "
               "over ~5 cm above it")
-TINT_RECIPE = ("the pictures hold the style's default rock colour (`color_srgb`); to match a terrain whose rock layer is another colour, "
-               "multiply the albedo by your colour / color_linear (linear RGB): moss and lichen shift a little, which reads fine")
+TINT_RECIPE = ("ROCK MATCHES ITS CLIFFS BY A PER-INSTANCE COLOUR: the pictures hold this style's default rock colour (`color_linear`). Per "
+               "instance (MultiMesh instance colour / INSTANCE_CUSTOM, multiplied into the albedo in linear RGB): tint = (the rock colour of the "
+               "terrain where it stands: the terrain styles manifest's rock layer colour for the style region, linear) / color_linear x "
+               "instance_tints[hash(row) % n] x (0.92 + 0.16 x hash). Lichen, moss and the damp foot shift a little with it, which reads fine. "
+               "The four variants already differ in mineral tone (baked); instance_tints adds warm / cool / brown stones on top")
+INSTANCE_TINTS = [[1.0, 1.0, 1.0], [1.05, 1.0, 0.94], [0.96, 0.99, 1.03], [1.04, 0.98, 0.91], [0.95, 0.95, 0.95]]
 INSTANCE_RECIPE = ("one MultiMesh per variant per LOD (per cell of the world): instance = translate(row x, y, z) * rotate_up(yaw) * "
                    "scale(s, s, s * squash); variant = hash(row) % variants; switch LODs by distance / s at `lod_switch_m` "
                    "(x the instance's scale), fade out over the last fifth before `cull`. The pivot is the ground line: the "
@@ -1961,7 +2059,8 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
                      "size_range_m": cfg["size_range"], "place": cfg["place"],
                      "variants": variants, "lod_switch_m": {"lod1": LOD_SWITCH[0], "lod2": LOD_SWITCH[1], "cull": LOD_SWITCH[2], "times": "the instance's scale"},
                      "color_srgb": [round(c, 4) for c in cfg["color"]], "color_linear": [round(float(c), 4) for c in _lin(cfg["color"])],
-                     "wet": {**cfg["wet"], "recipe": WET_RECIPE}, "tint": TINT_RECIPE, "instancing": INSTANCE_RECIPE,
+                     "wet": {**cfg["wet"], "recipe": WET_RECIPE}, "tint": TINT_RECIPE if slot == "rock" else None,
+                     "instance_tints": INSTANCE_TINTS if slot == "rock" else None, "instancing": INSTANCE_RECIPE,
                      "collision": ("convex hull per variant (<stem>_v<k>_collision.glb, node name ends -convcolonly); scale with the instance"
                                    if cfg["collision"] else None),
                      "textures": {"atlas_px": cfg["atlas"], "shared_by": "every variant and LOD of this folder (uv by position: box charts)",
@@ -2059,6 +2158,7 @@ TERRAIN_KINDS = {
     "driftwood": {"asset": "driftwood", "z": "surface, or the water surface - 6 cm when afloat", "what": "logs, branches, a jam (variants)"},
     "litter": {"asset": "litter", "z": "surface", "what": "a leaf / twig debris card"},
     "reeds": {"plant": "reed_ground", "z": "surface (root at or just under the water line)", "what": "reed clump, groundcover grade: scale = width / the json's clump width"},
+    "sedge": {"plant": "grass_ground", "z": "surface", "what": "a bank tussock: the grass tuft (groundcover grade, cards), scale = width / 0.45; a `sedge` preset of its own is not made yet"},
     "tussock": {"plant": "grass_ground", "z": "surface", "what": "a grass tuft (groundcover grade), 0.45 m"},
     "tallgrass": {"plant": "grass_ground", "z": "surface", "what": "the same tuft drawn taller (scale 1.5); or leave it to the sward"},
 }

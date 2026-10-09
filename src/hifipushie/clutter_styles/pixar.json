@@ -34,6 +34,11 @@
    "bed_set": 0.7
   },
   "paint": {
+   "lichen": 0.25,
+   "lichen_size": 0.1,
+   "streaks": 0.15,
+   "streak_width": 0.05,
+   "foot_tint": 0.3,
    "tone": 0.08,
    "tone_size": 0.35,
    "face_tone": 0.04,

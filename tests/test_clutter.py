@@ -167,3 +167,22 @@ def test_manifest(tmp_path):
     assert M["kinds"]["litter"]["styles"]["realistic"]["folder"] == "real_litter"
     assert "blobby" in M["kinds"]["litter"]["missing"] and set(M["kinds"]) >= {"bush", "boulder", "reeds", "tussock"}
     assert (tmp_path / "clutter.json").exists()
+
+
+@pytest.mark.parametrize("kind", ["cobbles", "driftwood"])
+def test_patches_and_wood_hold_their_budgets(kind):
+    # a patch of stones (a hull per stone) and driftwood (built tubes at LOD 1 / 2, a jam always): never over budget, sound
+    B = clutter.build({"kind": kind, "style": "realistic", "atlas": 128})
+    cfg = B["cfg"]
+    vf = cfg.get("variant_forms") or [{}]
+    for k, v in enumerate(B["variants"]):
+        x = float(vf[k % len(vf)].get("lods_x", 1.0))
+        for j, (L, tgt) in enumerate(zip(v["lods"], cfg["lods"])):
+            chk = clutter.mesh_check(L["V"], L["F"])
+            assert L["triangles"] <= 1.15 * tgt * x, (kind, v["name"], j, L["triangles"], tgt * x)
+            assert chk["open_edges"] == 0 and chk["degenerate"] == 0, (kind, v["name"], j, chk)
+
+
+def test_contract_has_the_clutter_grade():
+    from hifipushie import veg_export
+    assert veg_export.CONTRACT >= 13 and "clutter" in veg_export.CONTRACT_LOG[13]

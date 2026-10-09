@@ -37,6 +37,28 @@
    ]
   },
   "paint": {
+   "lichen": 0.25,
+   "lichen_size": 0.11,
+   "lichen_colors": [
+    [
+     0.6,
+     0.66,
+     0.48
+    ],
+    [
+     0.64,
+     0.68,
+     0.52
+    ],
+    [
+     0.72,
+     0.62,
+     0.32
+    ]
+   ],
+   "streaks": 0.25,
+   "streak_width": 0.06,
+   "foot_tint": 0.25,
    "tone": 0.05,
    "face_tone": 0.16,
    "speckle": 0.0,
