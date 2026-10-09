@@ -1,0 +1,11 @@
+{
+ "rs2_g0": {"src": "rs_garrett_read3", "patch": {}, "idscale": 1.5, "what": "the MAP + read head, deviation x1.5"},
+ "rs2_a_planes": {"src": "rs2_g0", "patch": {"shape": {"planes": 2.3}}, "what": "planes 2.3 (half of pass 6's 2.6)"},
+ "rs2_a_hood": {"src": "rs2_g0", "patch": {"shape": {"hood": 0.00175}}, "what": "hood 1.75 mm (half of pass 6)"},
+ "rs2_a_hollow": {"src": "rs2_g0", "patch": {"shape": {"hollow": 0.0025}}, "what": "hollow 2.5 mm (half of pass 6)"},
+ "rs2_b": {"src": "rs2_g0", "patch": {"shape": {"planes": 2.3, "hood": 0.00175, "hollow": 0.0025}}, "what": "batch 1 kept: planes 2.3 + hood 1.75 + hollow 2.5"},
+ "rs2_b_planes26": {"src": "rs2_b", "patch": {"shape": {"planes": 2.6}}, "what": "planes 2.6 (pass 6's)"},
+ "rs2_b_brow": {"src": "rs2_b", "patch": {"shape": {"push_more": [{"lm": [19, 20, 21], "amount": 0.002, "dir": [0, -1, 0], "radius": 0.018}]}}, "what": "brow ridge forward 2 mm (push over lm 19-21)"},
+ "rs2_b_cheekbone": {"src": "rs2_b", "patch": {"shape": {"push": [{"amount": 0.002, "lm": [1, 36], "offset": [0, 0, -0.005], "radius": 0.014}]}}, "what": "cheekbone out 2 mm (pass 6's push at half)"},
+ "rs2_b_jaw": {"src": "rs2_b", "patch": {"shape": {"jawline": {"below_lobe": 0.036, "forward": -0.004, "out": 0.0, "tuck": 0.0, "sharp": 0.007, "smooth": 5}}}, "what": "jaw corner 36 mm under the lobe, no tuck"}
+}
