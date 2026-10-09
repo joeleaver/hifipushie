@@ -611,3 +611,25 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     darker combed cap with a dark band along the front edge; the photo's front is paler, a little lifted and greyer on
     top. The painting has more lift at the front and more broken, feathered tips than ours; the tips' feathering
     (tip_spread, uneven) hardly shows at these distances. Cards not re-exported (strands first).
+  - Round 8 (same agent; Joe: "a little front swoop which adds a lot of the character"; the coordinator on h7_p7:
+    too dark / brown, frizzy, a helmet at the back from the side). Sheet `hair_renders/h8_p10_sheet.png` = reference |
+    before (p7) | after (p10), same three rows + a front close-up row at the same crop and scale. base.json = p10
+    (base_p7.json kept; patch p10.json on p7).
+    - NEW `groom.loose.swoop` {at, span, depth, rise, sweep, stiff, length} (hair_loose.grow): locks rooted within
+      `depth` m of the hairline and `span` deg of azimuth `at` are combed up-and-back (over to the `sweep` side),
+      stand `rise` more out, are stiffer and longer and unlaid; smooth weights. Test
+      test_swoop_lifts_the_front_lock_and_turns_it_over. Garrett: at 8, span 35, depth 0.035, rise 0.4, sweep -1
+      (his right), stiff 0.75, length 0.018.
+    - Straighter: strands frizz 0.03, stray 0.5, wave 0.0002, loose 0.08 (tips kept: tip_spread 0.75). Back / crown:
+      lengths back 20 / nape 8 mm, lay back 0.8 / nape 0.6 / sides 0.1, stiff back 0.7 / sides 0.6, out back 0,
+      volume crown 4 / back 3 / nape 1.5 mm, under_length 16 -> 12 mm. hstat (hair over the scalp, p90): sides
+      12.3 -> 9.7 mm, back 7.0 -> 6.7; reads closer to the skull and straight from the side, nape cut short.
+    - Front outline: IoU 0.923 -> 0.930, hair over the bare head 15.3 -> 17.8 mm (photo 12.7: the swoop's lift), but
+      the sides went 4-9 mm narrow at 50-84 mm down (lay sides 0.1): the price of the slimmer back.
+    - COLOUR, measured on the photo's hair region through its camera (cut.py's regions; photo_hair.json): the photo
+      is NOT lighter than ours. Photo hair p50 (96, 84, 74), lum p50 86, light share 0.19; p7 (99, 91, 86) / 92 / 0.38;
+      p10 (117, 109, 103) / 110 / 0.49 (grey front 0.55 / top 0.42). By these numbers ours is lighter and greyer
+      (R/B 1.14 vs 1.30: the photo is warmer). The "light salt and pepper" read on a white backdrop is contrast, not
+      value: don't go lighter by measure; if anything warmer.
+    - BLUNT READ: the swoop shows as a lift at the front centre and a forelock flick in the side view, but as a frayed
+      tuft, not one coherent lock curling over (the photo's is a clean wave); front sides narrower than the photo.
