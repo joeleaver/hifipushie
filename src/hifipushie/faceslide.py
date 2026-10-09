@@ -52,8 +52,12 @@ UNITS.update({
     "lip_bow": (0.7, "a deeper Cupid's bow: the border's peaks up, its dip down"),
     "lip_tubercle": (0.8, "the upper lip's tubercle down and forward over the seam"),
     "mouth_corner": (0.9, "the commissures tucked in and back (deeper corners); - = fuller corners"),
-    "lip_upper_height": (1.0, "more upper vermilion shows: its border up, the seam held (red lip height, not projection)"),
-    "lip_lower_height": (1.2, "more lower vermilion shows: its border down, the seam held"),
+    # vermilion heights: Farkas' adult norms (North American Caucasian) put the upper vermilion (ls-sto) at ~8.6 mm
+    # (men) / 7.4 (women), SD ~1.5-1.8, and the lower (sto-li) at ~10 / 9, SD ~1.6-1.8 (from memory of the published
+    # tables: verify before relying on the decimals). +-1 = about +-1.5 SD; at 1.0 / 1.2 mm a full lip was out of
+    # reach (Tess: 5.1 -> 5.5 of her 6.4 at +1)
+    "lip_upper_height": (2.5, "more upper vermilion shows: its border up, the seam held (red lip height, not projection)"),
+    "lip_lower_height": (3.0, "more lower vermilion shows: its border down, the seam held"),
 })
 MOUTH_SLIDERS = tuple(k for k in UNITS if k not in EYE_SLIDERS)
 # the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
@@ -294,8 +298,11 @@ def _mouth_fields() -> dict:
     upper = front & (y > ySu(x) - 0.3 * mm)
     lower = front & (y < ySl(x) + 0.3 * mm)
     # how far past each border the skin follows (fading over ~3 mm)
-    past_u = np.where(su > 1, _ss(1 - (su - 1) * (yU(x) - ySu(x)) / (3 * mm)), 1.0)
-    past_l = np.where(sl > 1, _ss(1 - (sl - 1) * (ySl(x) - yL(x)) / (3 * mm)), 1.0)
+    past_u = np.where(su > 1, _ss(1 - (su - 1) * (yU(x) - ySu(x)) / (PAST * mm)), 1.0)
+    past_l = np.where(sl > 1, _ss(1 - (sl - 1) * (ySl(x) - yL(x)) / (PAST * mm)), 1.0)
+    # (the heights move the border up to 2.5-3 mm: the skin past it follows over 8 mm, not 3: at 3 it folded)
+    hu = np.where(su > 1, _ss(1 - (su - 1) * (yU(x) - ySu(x)) / (8 * mm)), 1.0)
+    hl = np.where(sl > 1, _ss(1 - (sl - 1) * (ySl(x) - yL(x)) / (8 * mm)), 1.0)
     seam_hold_u = _ss(su / 0.25)  # the contact ring stays where it is (no lip through the other)
     seam_hold_l = _ss(sl / 0.25)
     F = {}
@@ -316,8 +323,9 @@ def _mouth_fields() -> dict:
     # corner tuck: the commissures in and back (a deeper corner; - = fuller corners)
     # vermilion height: the border slides away from the seam (the seam held, the skin past the border following over
     # ~3 mm): how much red lip shows, apart from how far it stands forward (the rolls)
-    F["lip_upper_height"] = (upper * taper * past_u * np.clip(su, 0, 1))[:, None] * up[None]
-    F["lip_lower_height"] = (lower * taper * past_l * np.clip(sl, 0, 1))[:, None] * -up[None]
+    F["lip_upper_height"] = (upper * taper * hu * _ss((su - 0.15) / 0.85))[:, None] * up[None]  # (the seam
+    # rows held: at -1 the lip went down through the lower one)
+    F["lip_lower_height"] = (lower * taper * hl * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
     F["mouth_corner"] = np.zeros_like(X)
     for c in (lm[48], lm[54]):
         r = np.linalg.norm(X - c, axis=1)
@@ -378,6 +386,7 @@ def seal_delta(V: np.ndarray, amount: float = 1.0) -> np.ndarray:
 
 
 SEAL_PASSES = 3
+PAST = 3.0  # mm: how far past the vermilion border the skin follows the rolls and the bow
 CORNER_FREE = 0.0  # share of the mouth's width at each corner where the rolls are left to the membrane
 
 
