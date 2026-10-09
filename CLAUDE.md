@@ -3030,6 +3030,15 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     "om_23 su_om_garrett jacket", then mv8.py + cu.py collar + sheet8.py against om_21 / om_22.
     Sheet: cloth_renders/su8_collars_before_after.png (om_15 | om_21 made | om_22 draped-open, front / 3/4 / side /
     back beside the concept; the shirt there is the pressed stand-in).
+  - front_hang 80 mm (om_15: 28), by measure (hang8.py <results> = each front's edge and how far it stands ahead of the
+    body by height, KEY=X0 for the start; hang9.py = the same for the pressed shirt): it is the LEFT front alone. Right
+    front 40-65 mm ahead of the body from waist to hem in om_15 and om_20-22 alike (plumb from the chest); left front
+    85-130 mm in om_20 / 21 / 22 (om_15: 44-65), its edge at x +50..+70, y 5 cm further forward than the right's: swung
+    out like a door. NOT the start (om_15's and om_21's starts are the same and symmetric but for the lap) and NOT the
+    shirt holding it out (pressed shirt 5-11 mm ahead of the body both sides). What changed: over the hugging shirt the
+    fronts end 6-12 cm APART (om_15: nearly closed, edges x -7 / +4, the left lying on the right); freed of the right
+    front the over side swings. Untested guesses: the left lapel's roll (the over side's lap adds a layer under it), the
+    left collar end; test with a symmetric start (the over front's lap offset 0 when the front closure is worn open).
   - Trousers: `over_measures` tapes the HIPS over the tucked tail too, and the seat by half the hips' share when the
     tail ends above the seat line (hips alone made a dropped waist wider than the seat's quarter allows: band 8 mm
     short of the girth it sits on, stage 2). su_om_garrett's trousers: leg "tapered", no seat_ease override (gates
