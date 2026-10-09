@@ -99,6 +99,32 @@
    "normals": 0.0
   }
  },
+ "litter": {
+  "form": {
+   "leaves": [
+    26,
+    40
+   ],
+   "leaf": [
+    0.09,
+    0.13
+   ],
+   "round": 0.62,
+   "lobed": 0.5,
+   "tones": 0.15,
+   "steps": 2,
+   "outline": 0.006,
+   "bits": [
+    0,
+    0
+   ],
+   "twigs": [
+    2,
+    4
+   ],
+   "shadow": 0.0
+  }
+ },
  "wood": {
   "form": {
    "bevel": 0.006,

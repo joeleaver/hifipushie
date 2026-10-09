@@ -86,6 +86,30 @@
    "roughness": 0.9
   }
  },
+ "litter": {
+  "form": {
+   "leaves": [
+    22,
+    34
+   ],
+   "leaf": [
+    0.1,
+    0.15
+   ],
+   "round": 0.8,
+   "twigs": [
+    0,
+    2
+   ],
+   "bits": [
+    0,
+    0
+   ],
+   "tones": 0.15,
+   "steps": 2,
+   "shadow": 0.25
+  }
+ },
  "wood": {
   "form": {
    "bevel": 0.03,

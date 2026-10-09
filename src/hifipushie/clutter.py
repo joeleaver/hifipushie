@@ -132,6 +132,26 @@ BUSH_PAINT = {
     "flowers": 0.25, "flower_color": [0.95, 0.8, 0.15], "flower_size": 0.014,  # in the spring picture
     "spray": {"leaves": [10, 16], "leaf": [0.07, 0.1], "round": 0.42, "tones": 0.25, "outline": 0.0, "midrib": 0.3},  # a card's picture
 }
+LITTER = {  # a debris patch: fallen leaves, twigs and bits lying on the ground, as one alpha card (a decal with a mesh)
+    "leaves": [70, 110],      # in the summer picture (autumn x `autumn`, winter x `winter`)
+    "leaf": [0.05, 0.085],    # m: a leaf's length at 1 m across
+    "round": 0.55,            # width / length
+    "lobed": 0.0,             # 0..1: how deeply lobed (oak)
+    "twigs": [5, 10], "twig": [0.12, 0.3],
+    "bits": [20, 40],         # bark and stone crumbs
+    "tones": 0.3,             # each leaf's own tone
+    "steps": 0,               # tones cut into steps (painted)
+    "outline": 0.0,           # a dark line round each leaf (x the tile)
+    "shadow": 0.45,           # each leaf darkens what lies under its edge
+    "autumn": 1.7, "winter": 0.8, "spring": 0.7,
+    "colors": {"summer": [[0.36, 0.27, 0.16], [0.42, 0.33, 0.2], [0.3, 0.24, 0.15]],
+               "autumn": [[0.72, 0.5, 0.14], [0.66, 0.3, 0.1], [0.78, 0.62, 0.2], [0.5, 0.3, 0.14]],
+               "winter": [[0.24, 0.18, 0.12], [0.3, 0.23, 0.15], [0.2, 0.16, 0.12]],
+               "spring": [[0.3, 0.23, 0.15], [0.36, 0.28, 0.17], [0.38, 0.44, 0.2]]},
+    "twig_color": [0.22, 0.17, 0.12],
+    "dome": 0.02,             # m: the patch's middle lifted (it lies over the ground's small bumps)
+    "sink": 0.0,
+}
 LEAF_SRGB = [0.26, 0.36, 0.17]  # scrub (sage / gorse green)
 LEAF_SEASONS = {"spring": {"mix": [0.42, 0.6, 0.2], "amount": 0.35, "flowers": 1.0}, "summer": {},
                 "autumn": {"mix": [0.5, 0.44, 0.2], "amount": 0.3}, "winter": {"mix": [0.27, 0.3, 0.22], "amount": 0.5}}
@@ -199,7 +219,8 @@ def resolve(spec: dict) -> dict:
     pre = json.loads(p.read_text())
     st = style_sheet(spec.get("style"))
     mat = pre.get("material", "rock")
-    base_form, base_paint = (WOOD, WOOD_PAINT) if mat == "wood" else (BUSH, BUSH_PAINT) if mat == "leaf" else (FORM, PAINT)
+    base_form, base_paint = ((WOOD, WOOD_PAINT) if mat == "wood" else (BUSH, BUSH_PAINT) if mat == "leaf" else (LITTER, {}) if mat == "litter"
+                             else (FORM, PAINT))
     S = st.get(mat) or {}
     layers = (_merge(base_form, pre.get("form")), S.get("form"), S.get("scale"), spec.get("form"))
     form = _layered(layers, None)
@@ -220,6 +241,8 @@ def resolve(spec: dict) -> dict:
     color = spec.get("color") or _hsv(ref, col.get("saturation", 1.0) * S.get("saturation", 1.0),
                                       col.get("value", 1.0) * S.get("value", 1.0))
     shape = pre.get("shape") or ("cluster" if form.get("cluster") else "rock")
+    if mat == "litter":
+        LODS.setdefault("litter", [8, 2])
     return {"kind": kind, "material": mat, "shape": shape, "style": st["name"], "seed": int(spec.get("seed", 1)),
             "variants": int(spec.get("variants", pre.get("variants", 4))), "form": form, "paint": paint,
             "color": [float(c) for c in color], "lods": list(spec.get("lods") or pre.get("lods") or LODS[shape]),
@@ -824,6 +847,15 @@ def _mesh(vol, ax, vox):
     return V, F
 
 
+def _sound(V, F) -> bool:
+    """Closed and manifold: every edge has exactly two faces (pyfqmr can leave a fin: twin faces on one edge)."""
+    if not len(F):
+        return False
+    e = np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=1)
+    _, cnt = np.unique(e, axis=0, return_counts=True)
+    return bool((cnt == 2).all())
+
+
 def _decimate(V, F, target):
     """pyfqmr to a count: the result nearest the target from several aggressiveness values (a smooth pebble overshoots
     far below the target at a high one, a crisp block stalls above it at a low one), going on from a stall."""
@@ -840,17 +872,18 @@ def _decimate(V, F, target):
     best = None
     for agg in (5, 3, 7, 2, 1, 0.5, 9):
         r = run(V, F, agg)
-        miss = abs(len(r[1]) - target) / target + (0.5 if len(r[1]) < 0.9 * target else 0.0)
+        ok = _sound(*r)
+        miss = abs(len(r[1]) - target) / target + (0.5 if len(r[1]) < 0.9 * target else 0.0) + (0.0 if ok else 10.0)
         if best is None or miss < best[0]:
             best = (miss, r)
-        if 0.95 * target <= len(r[1]) <= 1.08 * target:
+        if ok and 0.95 * target <= len(r[1]) <= 1.08 * target:
             break
     best = best[1]
     for _ in range(4):  # (stalled far above the target: go on from where it stopped)
         if len(best[1]) <= 1.25 * target:
             break
         r = run(best[0], best[1], 9, False)
-        if len(r[1]) >= len(best[1]) or len(r[1]) < 0.9 * target:
+        if len(r[1]) >= len(best[1]) or len(r[1]) < 0.9 * target or not _sound(*r):
             break
         best = r
     return best
@@ -1557,6 +1590,168 @@ INSTANCE_RECIPE = ("one MultiMesh per variant per LOD (per cell of the world): i
                    "another kind: texel and facet sizes are made for that range")
 
 
+def litter_tile(px: int, f: dict, season: str, sat_val, seed: int):
+    """A debris patch's picture from above: (rgb (px, px, 3) sRGB, alpha). Leaves lie thickest in the middle and thin
+    out raggedly; each casts a little shade on what is under it; twigs and crumbs between."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    from .terrain_style import _hsv
+    rng = np.random.default_rng(seed)  # (the same seed every season: the same patch, leaves added or gone)
+    S = 3 * px
+    im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    dr = ImageDraw.Draw(im)
+    pal = [np.asarray(_hsv(c, sat_val[0], sat_val[1])) for c in f["colors"].get(season, f["colors"]["summer"])]
+    n0 = int(rng.integers(f["leaves"][0], f["leaves"][1] + 1))
+    lobe = rng.uniform(0, 2 * math.pi, 3)
+
+    def spot():  # a ragged round patch: denser in the middle, lobed outline
+        while True:
+            a = rng.uniform(0, 2 * math.pi)
+            r = 0.44 * rng.uniform() ** 0.7 * (1 + 0.18 * math.sin(3 * a + lobe[0]) + 0.1 * math.sin(5 * a + lobe[1]))
+            if r < 0.44:
+                return np.array([0.5 + r * math.cos(a), 0.5 + r * math.sin(a)])
+    tw = tuple(int(255 * c) for c in _hsv(f["twig_color"], sat_val[0], sat_val[1])) + (255,)
+    for _ in range(int(rng.integers(f["bits"][0], f["bits"][1] + 1))):
+        c = spot() * S
+        r = rng.uniform(0.004, 0.01) * S
+        dr.ellipse([c[0] - r, c[1] - r * 0.7, c[0] + r, c[1] + r * 0.7], fill=tw)
+    leaves = []
+    for i in range(n0):
+        leaves.append((spot(), rng.uniform(0, 2 * math.pi), _u(rng, f["leaf"]), rng.uniform(-1, 1), int(rng.integers(0, 8)), rng.uniform()))
+    keep = {"summer": 1.0, "autumn": f["autumn"], "winter": f["winter"], "spring": f["spring"]}.get(season, 1.0)
+    extra = np.random.default_rng(seed + 5)
+    if keep > 1:
+        for i in range(int(n0 * (keep - 1))):
+            leaves.append((spot(), extra.uniform(0, 2 * math.pi), _u(extra, f["leaf"]), extra.uniform(-1, 1), int(extra.integers(0, 8)), extra.uniform()))
+    else:
+        leaves = [l for l in leaves if l[5] < keep]
+    for j in range(int(rng.integers(f["twigs"][0], f["twigs"][1] + 1))):
+        c, a, L = spot(), rng.uniform(0, 2 * math.pi), _u(rng, f["twig"])
+        d = np.array([math.cos(a), math.sin(a)])
+        k = rng.uniform(-0.15, 0.15)
+        pts = [tuple(((c + d * L * (t - 0.5) + np.array([-d[1], d[0]]) * k * L * math.sin(math.pi * t)) * S).tolist()) for t in np.linspace(0, 1, 8)]
+        dr.line(pts, fill=tw, width=max(2, int(0.006 * S)))
+    for c, a, L, tn, ci, _ in leaves:
+        d = np.array([math.cos(a), math.sin(a)])
+        nrm = np.array([-d[1], d[0]])
+        W = L * f["round"]
+        poly = []
+        us = np.linspace(0, 1, 13)
+        for sgn, seq in ((1, us), (-1, us[::-1][1:-1])):
+            for u in seq:
+                w = W * 0.5 * math.sin(math.pi * u ** 0.75)
+                if f["lobed"]:
+                    w *= 1 - f["lobed"] * 0.5 * (0.5 + 0.5 * math.cos(u * 5 * 2 * math.pi))
+                poly.append(c + d * L * (u - 0.5) + nrm * w * sgn)
+        tone = 1 + f["tones"] * tn
+        if f["steps"]:
+            tone = round(tone * f["steps"]) / f["steps"]
+        col = np.clip(pal[ci % len(pal)] * tone, 0, 1)
+        xy = [tuple((q * S).tolist()) for q in poly]
+        if f["shadow"]:
+            sh = [tuple((q * S + [0.004 * S, 0.006 * S]).tolist()) for q in poly]
+            dr.polygon(sh, fill=tuple(int(255 * x * (1 - f["shadow"])) for x in col) + (255,))
+        dr.polygon(xy, fill=tuple(int(255 * x) for x in col) + (255,))
+        if f["outline"]:
+            dr.line(xy + [xy[0]], fill=tuple(int(255 * x * 0.3) for x in col) + (255,), width=max(2, int(f["outline"] * S)))
+        else:
+            dr.line([tuple(((c - d * L * 0.5) * S).tolist()), tuple(((c + d * L * 0.45) * S).tolist())],
+                    fill=tuple(int(255 * x * 0.75) for x in col) + (255,), width=max(1, S // 400))
+    im = im.resize((px, px), Image.LANCZOS)
+    a = np.asarray(im, float) / 255.0
+    alpha, rgb = a[..., 3], a[..., :3]
+    solid = alpha > 0.5
+    if solid.any():
+        idx = ndimage.distance_transform_edt(~solid, return_distances=False, return_indices=True)
+        rgb = rgb[idx[0], idx[1]]
+    return rgb, alpha
+
+
+def _export_litter(cfg: dict, out: Path, stem: str, progress=None) -> dict:
+    """A debris patch: LOD 0 an octagon lifted a little in the middle (8 triangles), LOD 1 a quad; one RGBA picture
+    per season (all variants in it); no normal map (a flat lie: the vertex normal is the ground's up)."""
+    from . import veg_export
+    f = cfg["form"]
+    nv = cfg["variants"]
+    grid = 1 if nv == 1 else 2
+    base = cfg["atlas"]
+    cell = base // grid
+    st = style_sheet(cfg["style"]).get("colour") or {}
+    sv = (st.get("saturation", 1.0), st.get("value", 1.0))
+    season_tex = {}
+    for se in ("summer", "spring", "autumn", "winter"):
+        im = np.zeros((base, base, 4))
+        for k in range(nv):
+            rgb, al = litter_tile(cell, f, se, sv, cfg["seed"] * 100 + k)
+            x0, y0 = (k % grid) * cell, (k // grid) * cell
+            im[y0: y0 + cell, x0: x0 + cell, :3], im[y0: y0 + cell, x0: x0 + cell, 3] = rgb, al
+        fn = f"{stem}_albedo.png" if se == "summer" else f"{stem}_albedo_{se}.png"
+        (out / fn).write_bytes(_png(im))
+        season_tex[se] = fn
+    mext = {"hifipushie_clutter": {"kind": cfg["kind"], "style": cfg["style"], "grade": "clutter"}, "alpha_mips": ALPHA_MIPS}
+
+    def mat(g):
+        return g.material({"name": "litter", "pbrMetallicRoughness": {"baseColorTexture": {"index": g.image(season_tex["summer"])}, "metallicFactor": 0.0, "roughnessFactor": 0.9},
+                           "alphaMode": "MASK", "alphaCutoff": 0.5, "extras": mext})
+
+    def mesh(k, lod):
+        x0, y0 = (k % grid) * cell, (k // grid) * cell
+        if lod == 0:
+            a = np.arange(8) * math.pi / 4 + math.pi / 8
+            r = 0.5 / math.cos(math.pi / 8)
+            V = np.r_[[[0, 0, f["dome"]]], np.c_[r * np.cos(a), r * np.sin(a), np.zeros(8)]]
+            F = np.array([[0, 1 + i, 1 + (i + 1) % 8] for i in range(8)])
+        else:
+            V = np.array([[-0.5, -0.5, 0.004], [0.5, -0.5, 0.004], [0.5, 0.5, 0.004], [-0.5, 0.5, 0.004]])
+            F = np.array([[0, 1, 2], [0, 2, 3]])
+        V = np.clip(V, [-0.5, -0.5, 0], [0.5, 0.5, 1])
+        UV = np.c_[(x0 + (V[:, 0] + 0.5) * cell) / base, (y0 + (0.5 - V[:, 1]) * cell) / base]
+        N = np.tile([0, 0, 1.0], (len(V), 1))
+        return V, F, N, UV
+    variants, on = [], []
+    for k in range(nv):
+        files = []
+        for lod in (0, 1):
+            V, F, N, UV = mesh(k, lod)
+            g = Glb()
+            g.node("litter", g.mesh(f"v{k}_LOD{lod}_litter", V, F, N, None, UV, material=mat(g)))
+            fn = f"{stem}_v{k}_LOD{lod}.glb"
+            g.write(out / fn)
+            files.append({"lod": lod, "file": fn, "triangles": int(len(F)), "vertices": int(len(V)), "outline_iou": 1.0})
+            on.append({"file": fn, "mesh": f"v{k}_LOD{lod}_litter", "primitive": 0})
+        variants.append({"name": f"v{k}", "lods": files, "collision": None, "collision_triangles": 0, "height_m": f["dome"], "sink_m": 0.0,
+                         "bounds": [[-0.5, -0.5, 0], [0.5, 0.5, f["dome"]]]})
+    g = Glb()
+    m = mat(g)
+    for k in range(nv):
+        V, F, N, UV = mesh(k, 0)
+        g.node(f"v{k}", g.mesh(f"v{k}_LOD0_litter", V, F, N, None, UV, material=m), translation=(1.2 * k, 0, 0))
+    g.write(out / f"{stem}.glb")
+
+    def state(se):
+        hidden = se == "snow"
+        return {"material": "litter", "baseColorFactor": [1, 1, 1, 1], "roughnessFactor": 0.9, "alphaMode": "MASK", "alphaCutoff": 0.5, "doubleSided": False,
+                "hidden": hidden, "baseColorTexture": {"file": season_tex.get(se, season_tex["winter"])}}
+    J = {"contract": {"version": veg_export.CONTRACT, "changes": veg_export.CONTRACT_LOG,
+                      "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
+         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": None}, "about": cfg["about"], "glb": f"{stem}.glb",
+         "lods": [{"lod": j, "triangles": [v["lods"][j]["triangles"] for v in variants], "grade": "clutter"} for j in (0, 1)],
+         "slot_list": [{"slot": "litter", "on": on, "hidden_in": ["snow"], "channels": ["NORMAL", "POSITION", "TEXCOORD_0"]}],
+         "slots": {"litter": state("summer")}, "default": "summer", "variants": [],
+         "seasons": {se: {"litter": state(se)} for se in ("spring", "summer", "autumn", "winter", "snow")},
+         "snow": None, "impostor": None, "alpha_mips": ALPHA_MIPS,
+         "clutter": {"size_m": 1.0, "what_scale_means": "instance scale = the patch's width in metres", "height_m": f["dome"], "sink_m": 0.0,
+                     "pivot": "the ground: lay it ON the surface, turned to the ground's normal (a decal with a mesh); draw after the terrain with a small depth bias, or lift it 1 cm",
+                     "size_range_m": cfg["size_range"], "place": cfg["place"], "variants": variants,
+                     "lod_switch_m": {"lod1": 8.0, "lod2": None, "cull": 30.0, "times": "the instance's scale"},
+                     "instancing": INSTANCE_RECIPE, "collision": None, "wet": None, "tint": None,
+                     "textures": {"atlas_px": base, "shared_by": "every variant and LOD", "mipmaps": True, "normal": None,
+                                  "seasons": "a season is another albedo picture (same uv, the same patch with leaves added or gone): seasons.<season>.litter.baseColorTexture.file; hidden under snow"}},
+         "note": "a debris patch is one alpha-MASK card per variant; cast no shadow, receive shadows"}
+    (out / f"{stem}_seasons.json").write_text(json.dumps(J, indent=1))
+    return J
+
+
 def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     """Write a clutter asset into out_dir: <stem>_v<k>_LOD<j>.glb per variant and LOD, <stem>_v<k>_collision.glb
     (convex hull, node `..-convcolonly`), the shared <stem>_albedo[_<season>] / _normal / _orm.png (referenced by uri),
@@ -1564,11 +1759,13 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     "clutter", kind, slots, lods, variants, sizes, recipes). Returns the json."""
     from . import veg_export
     from .terrain_style import _srgb_lin as _lin
-    B = build(spec, progress)
-    cfg = B["cfg"]
+    cfg = resolve(spec)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     stem = stem or f"ck_{cfg['kind']}_{cfg['style']}"
+    if cfg["material"] == "litter":
+        return _export_litter(cfg, out, stem, progress)
+    B = build(spec, progress)
     leaf = cfg["material"] == "leaf"
     slot = {"wood": "wood", "leaf": "foliage"}.get(cfg["material"], "rock")
     tex, season_tex = {}, {}
@@ -1674,6 +1871,118 @@ def report(J: dict) -> str:
              + ("  WARNING: a LOD under 0.9 pops" if any(l_["outline_iou"] < 0.9 for x in v for l_ in x["lods"]) else ""),
              f"LOD switch at {c['lod_switch_m']['lod1']} / {c['lod_switch_m']['lod2']} m x scale, gone at {c['lod_switch_m']['cull']} m x scale",
              "collision: " + (f"convex hulls of {'/'.join(str(x['collision_triangles']) for x in v)} triangles" if c["collision"] else "none (walked over)"),
-             f"textures: {c['textures']['atlas_px']} px albedo / normal / orm shared by all variants and LODs",
+             f"textures: {c['textures']['atlas_px']} px " + ("albedo / normal / orm" if c['textures'].get('normal') else "albedo (alpha), a picture per season") + " shared by all variants and LODs",
              f"files: {J['glb']} (all variants, to look at), <stem>_v<k>_LOD<j>.glb, <stem>_seasons.json"]
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------------------------------------- looks, kits, manifest
+def look(folders, out: str, distances=(2.5, 10.0, 40.0), lods=(0, 1, 2), scale: float = 1.0, clay: bool = False, season: str = "summer") -> str:
+    """A sheet of exported clutter folders (a row each): every variant side by side on rough grass at each distance
+    with the LOD drawn there; the far views are centre crops of a 1280 x 720 frame at a 50 deg lens, enlarged (real
+    pixels). Blender (EEVEE), ~10 s a picture. Returns `out`."""
+    import os
+    import subprocess
+    import tempfile
+    from PIL import Image, ImageDraw
+    from .render import BLENDER
+    tmp = Path(tempfile.mkdtemp(prefix="cklook"))
+    rows = []
+    for fi, fo in enumerate([folders] if isinstance(folders, (str, Path)) else folders):
+        fo = Path(fo)
+        J = json.loads(next(fo.glob("*_seasons.json")).read_text())
+        cl = J["clutter"]
+        vs = cl["variants"]
+        n = len(vs)
+        width = n * 1.25 * scale
+        tiles = []
+        for di, (d0, lod) in enumerate(zip(distances, lods)):
+            items = [{"glb": str(fo / v["lods"][min(lod, len(v["lods"]) - 1)]["file"]), "at": [(i - (n - 1) / 2) * 1.25 * scale, 0, 0],
+                      "yaw": 25 * i, "scale": scale} for i, v in enumerate(vs)]
+            d = max(d0, width * 0.95 + 0.8) if di == 0 else d0
+            png = tmp / f"r{fi}_{di}.png"
+            job = {"items": items, "clay": clay, "views": [{"eye": [0.35 * d, -d, 1.6 if d > 3 else 1.1], "look": [0, 0, cl["height_m"] * scale * 0.35],
+                                                         "fov": 50, "out": str(png), "res": [1280, 720]}]}
+            tex = (J.get("seasons", {}).get(season) or {})
+            job["albedo"] = next((v_["baseColorTexture"]["file"] for v_ in tex.values() if isinstance(v_, dict) and v_.get("baseColorTexture")), None) if season != "summer" else None
+            jp = tmp / f"j{fi}_{di}.json"
+            jp.write_text(json.dumps(job))
+            subprocess.run([BLENDER, "-b", "--factory-startup", "-P", str(HERE / "blender_clutter.py"), "--", str(jp)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={**os.environ})
+            im = Image.open(png).convert("RGB")
+            ppm = 640 / 0.4663 / (d * 1.06)
+            cw = int(min(1280, max(120, (width + 0.6) * ppm)))
+            ch = int(cw * 360 / 960)
+            z = max(1, 960 // cw)
+            cy = 360 + int(0.02 * 720)
+            t = im.crop((640 - cw // 2, cy - ch // 2, 640 + cw // 2, cy + ch // 2)).resize((960, 360), Image.NEAREST if z > 1 else Image.LANCZOS)
+            ImageDraw.Draw(t).text((6, 4), f"{fo.name}  {d0:g} m  LOD{lod}" + (f"  (x{z} pixels)" if z > 1 else ""), fill=(255, 255, 255))
+            tiles.append(t)
+        rows.append(tiles)
+    sheet = Image.new("RGB", (960 * len(distances), 360 * len(rows)))
+    for r, tiles in enumerate(rows):
+        for c, t in enumerate(tiles):
+            sheet.paste(t, (960 * c, 360 * r))
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out)
+    return str(out)
+
+
+SHORT = {"realistic": "real"}
+# terrain clutter kinds -> what to draw them with (assets of this kit, or plants delivered beside them)
+TERRAIN_KINDS = {
+    "bush": {"asset": "bush", "z": "surface", "what": "scrub bush; squash < 1 near cliff lips (wind-shorn)"},
+    "boulder": {"asset": "boulder", "z": "sunk 0.12 x scale already (old rows): lift by sink_m x scale, or accept it", "what": "angular boulders on rock and shores"},
+    "river_rock": {"asset": "river_rock", "z": "surface", "what": "water-worn boulders in and beside a channel"},
+    "cobbles": {"asset": "cobbles", "z": "surface", "what": "a patch of cobbles as one asset"},
+    "slab": {"asset": "slab", "z": "surface", "what": "flat bank stones"},
+    "driftwood": {"asset": "driftwood", "z": "surface, or the water surface - 6 cm when afloat", "what": "logs, branches, a jam (variants)"},
+    "litter": {"asset": "litter", "z": "surface", "what": "a leaf / twig debris card"},
+    "reeds": {"plant": "reed_ground", "z": "surface (root at or just under the water line)", "what": "reed clump, groundcover grade: scale = width / the json's clump width"},
+    "tussock": {"plant": "grass_ground", "z": "surface", "what": "a grass tuft (groundcover grade), 0.45 m"},
+    "tallgrass": {"plant": "grass_ground", "z": "surface", "what": "the same tuft drawn taller (scale 1.5); or leave it to the sward"},
+}
+
+
+def manifest(root) -> dict:
+    """Write <root>/clutter.json: terrain clutter kind -> the folder to draw it with, per style (what exists under
+    root), with the instance convention. An engine reads this once, then each folder's <stem>_seasons.json."""
+    root = Path(root)
+    sts = styles()
+    kinds = {}
+    for kind, how in TERRAIN_KINDS.items():
+        per = {}
+        for st in sts:
+            f = root / f"{SHORT.get(st, st)}_{how.get('asset') or how['plant']}"
+            js = list(f.glob("*_seasons.json")) if f.is_dir() else []
+            if js:
+                J = json.loads(js[0].read_text())
+                per[st] = {"folder": f.name, "json": js[0].name, "grade": J.get("grade"), "contract": J.get("contract", {}).get("version"),
+                           "variants": len(J["clutter"]["variants"]) if J.get("clutter") else 1}
+        pre = HERE / "clutter_presets" / f"{how.get('asset')}.json"
+        info = json.loads(pre.read_text()) if how.get("asset") and pre.exists() else {}
+        kinds[kind] = {"what": how["what"], "z": how["z"], "kit": "clutter" if how.get("asset") else "plant (groundcover grade)",
+                       "size_range_m": info.get("size_range"), "place": info.get("place"), "styles": per,
+                       "missing": [st for st in sts if st not in per]}
+    M = {"about": "terrain clutter kinds (clutter.csv / the tiles manifest's clutter.kinds) -> the asset folder that draws each, per style",
+         "row": "x, y, z, kind, scale, yaw, squash[, place]: scale = the largest plan dimension in m (assets are 1 m at scale 1), yaw deg about up (0 = the "
+                "asset's +X along world +X), squash = RELATIVE height (1 = the asset's own proportions): instance = T(x, y, z) * Rz(yaw) * S(scale, scale, scale * squash)",
+         "variant": "variant = hash(row) % variants (a folder's json lists them); mirror in x for every other row if you want more",
+         "lods": "each folder's json: clutter.lod_switch_m x the instance's scale",
+         "kinds": kinds}
+    (root / "clutter.json").write_text(json.dumps(M, indent=1))
+    return M
+
+
+def kit(root, kinds=None, style_names=None, progress=None, **over) -> dict:
+    """Export a whole kit into root (<style>_<kind>/ folders, "realistic" -> "real") and write the manifest."""
+    out = {}
+    for st in style_names or styles():
+        for kind in kinds or presets():
+            sh = SHORT.get(st, st)
+            J = export({"kind": kind, "style": st, **over}, Path(root) / f"{sh}_{kind}", stem=f"ck_{kind}_{sh}", progress=progress)
+            out[f"{sh}_{kind}"] = J
+            if progress:
+                progress(report(J))
+    manifest(root)
+    return out

@@ -87,6 +87,25 @@
    }
   }
  },
+ "litter": {
+  "form": {
+   "leaves": [
+    50,
+    80
+   ],
+   "leaf": [
+    0.06,
+    0.1
+   ],
+   "round": 0.6,
+   "tones": 0.22,
+   "shadow": 0.4,
+   "bits": [
+    10,
+    20
+   ]
+  }
+ },
  "wood": {
   "form": {
    "bevel": 0.02
