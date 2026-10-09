@@ -150,7 +150,10 @@ def limb_plan(tree: dict) -> dict:
     """The tree cut into whole limbs (each first-order branch one bough; the leader's top its own)."""
     if "_limb_plan" not in tree:
         st = subtrees(tree)
+        lim = (tree["spec"]["leaves"].get("card") or {}).get("limbs")
         hi = max(0.7 * tree["height"], st["twig_length"] * 2)
+        if not isinstance(lim, bool) and float(lim) > 0:  # a size in m: the crown's MASSES (a pine's foliage plates), not whole limbs
+            hi = max(float(lim), st["twig_length"] * 2)
         tree["_limb_plan"] = plan(tree, len(roots(tree, hi)))
     return tree["_limb_plan"]
 
@@ -607,9 +610,10 @@ def place(tree: dict, cards: int, at: dict) -> dict:
                         dr.polygon([(float(t_[0, 0]), float(t_[0, 1])), (float(t_[1, 0]), float(t_[1, 1])), (float(t_[2, 0]), float(t_[2, 1]))], fill=1)
                 tot += int(np.asarray(im).sum())
             return tot
-        want = covered(seen, 1.0, card_full)
-        lo_, hi_ = 1.0, THIN_GROW
-        for _ in range(7):
+        # (under a limb layer the fine cards are detail on a mass that is already there: they keep their size)
+        want = covered(seen, 1.0, card_full) if not limbs_on(tree) else 0.0
+        lo_, hi_ = 1.0, (THIN_GROW if not limbs_on(tree) else 1.0)
+        for _ in range(7 if not limbs_on(tree) else 0):
             m_ = 0.5 * (lo_ + hi_)
             if covered(keep, m_) < want:
                 lo_ = m_

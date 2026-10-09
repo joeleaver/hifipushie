@@ -91,7 +91,7 @@
   ],
   "tip_life": [
    0,
-   0,
+   17,
    13
   ],
   "uneven": [
@@ -114,9 +114,9 @@
   "shape": "needle_spray",
   "length": 0.018,
   "color": [
-   0.241,
-   0.34,
-   0.17
+   0.25,
+   0.3,
+   0.12
   ],
   "translucency": 0.05,
   "twig": {
