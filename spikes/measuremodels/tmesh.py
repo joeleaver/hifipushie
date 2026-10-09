@@ -63,7 +63,7 @@ def align(mesh, H, idx=None, yaw_hint=None, T0=None, scale=True):
     f = g["regions"]["face"] if idx is None else idx
     X = H[f]
     if T0 is not None:
-        T, e = _icp(mesh, X, T0, 25)
+        T, e = _icp(mesh, X, T0, 8)
         mesh.T = T
         return e
     hz = H[g["regions"]["head"]]
@@ -106,7 +106,7 @@ def rows(mesh, c, idx, sig_mm, K=rs.K_FIT, huber=2.5, realign=True):
     g = rs.gnm()
     H = rs.head(c)
     if realign:
-        align(mesh, H, T0=mesh.T)
+        align(mesh, H, idx=idx, T0=mesh.T)   # on everything used: on the face alone the head's size and the mesh's scale trade off
     a, ok, q, nq = offsets(mesh, H, idx)
     sg = np.broadcast_to(np.asarray(sig_mm, float), (len(idx),)) / 1000.0
     A = np.einsum("nd,knd->nk", nq, g["IB"][:K, idx].astype(float)) / sg[:, None]

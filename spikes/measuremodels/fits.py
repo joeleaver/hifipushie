@@ -134,12 +134,37 @@ def truth(sub):
     return subjects.load(sub)
 
 
+_SURF = {}
+
+
+def surf_score(V, sub):
+    """Like rs.score, but the distance from each fitted vertex to the TRUE SURFACE (mm; vertices may slide along a
+    skull or a neck without the shape being wrong), after the same similarity on the face."""
+    from scipy.spatial import cKDTree
+    g = rs.gnm()
+    Vt = truth(sub)["V"]
+    if sub not in _SURF:
+        T = g["T"][g["ext"][g["T"]].all(1)]
+        P = np.r_[Vt[g["ext"]], Vt[T].mean(1), (Vt[T[:, 0]] + Vt[T[:, 1]]) / 2, (Vt[T[:, 1]] + Vt[T[:, 2]]) / 2, (Vt[T[:, 2]] + Vt[T[:, 0]]) / 2]
+        fn = np.cross(Vt[T[:, 1]] - Vt[T[:, 0]], Vt[T[:, 2]] - Vt[T[:, 0]])
+        fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-15)
+        N = np.r_[mm.vnormals(Vt)[g["ext"]], fn, fn, fn, fn]
+        _SURF[sub] = (cKDTree(P), P, N)
+    tree, P, N = _SURF[sub]
+    f = g["regions"]["face"]
+    s, R, t = rs.similarity(V[f], Vt[f])
+    A = s * V @ R.T + t
+    _, j = tree.query(A)
+    d = np.abs(((A - P[j]) * N[j]).sum(1)) * 1000
+    return {k: float(d[i].mean()) for k, i in g["regions"].items()}
+
+
 def run(methods, want=None, out="fits"):
     res_f = mm.MM / "out" / f"{out}.json"
     res = json.loads(res_f.read_text()) if res_f.exists() else {}
     subs = subjects.names()
     mean = rs.head()
-    res["-- mean head (no fit)"] = {s: rs.score(mean, truth(s)["V"]) for s in subs}
+    res["-- mean head (no fit)"] = {s: {**rs.score(mean, truth(s)["V"]), "surf": surf_score(mean, s)} for s in subs}
     for m, fn in methods.items():
         if want and not any(m.startswith(w) for w in want):
             continue
@@ -153,6 +178,8 @@ def run(methods, want=None, out="fits"):
                 c = f["c"] if isinstance(f, dict) else f
                 sc = rs.score(rs.head(c), truth(s)["V"])
                 sc["sigma"] = float(np.sqrt((np.asarray(c) ** 2).mean()))
+                sc["c"] = [round(float(x), 4) for x in c]
+                sc["surf"] = surf_score(rs.head(c), s)
                 res[m][s] = sc
             except Exception as ex:  # noqa: BLE001
                 import traceback
@@ -173,9 +200,13 @@ def show(res, only=None):
             rows = [v for k, v in r.items() if k.startswith(tag)]
             if not rows:
                 continue
+            rows = [x for x in rows if isinstance(x, dict)]
             avg = {k: float(np.mean([x[k] for x in rows])) for k in rs.REGIONS}
             sg = np.mean([x.get("sigma", 0.0) for x in rows])
             print(f"{m[:52]:52s} {tag:3s} {len(rows):2d} " + rs.row(avg) + f"  {sg:5.2f} {r.get('_time', 0):4.1f}", flush=True)
+            if all("surf" in x for x in rows):
+                av = {k: float(np.mean([x["surf"][k] for x in rows])) for k in rs.REGIONS}
+                print(f"{'      to the true SURFACE:':52s} {tag:3s} {len(rows):2d} " + rs.row(av), flush=True)
 
 
 def mp_points(iid):

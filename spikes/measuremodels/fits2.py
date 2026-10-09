@@ -83,13 +83,116 @@ def methods(model):
     }
 
 
+# ---- generated meshes (TRELLIS.2) ------------------------------------------------------------------------------------
+SIG = {"face": 2.2, "nose": 3.0, "chin": 3.0, "lips": 2.0, "eyes": 1.6, "brow": 2.3, "cheeks": 2.1, "forehead": 1.5, "jaw": 2.8,
+       "ears": 4.1, "cranium": 5.9, "neck": 6.8}      # mm rms of the meshes' surface offset from truth, by region (score_mesh)
+_M = {}
+
+
+def mesh_idx(s, regions=None, step=5):
+    g = rs.gnm()
+    reg, _ = mm.region_of()
+    ok = g["ext"] & (reg != "") & (reg != "ears")      # nearest-point pairs on ears are garbage
+    if regions:
+        ok &= np.isin(reg, regions)
+    if mm.item(f"{s}_front")["look"]["hair"]:
+        ok &= reg != "cranium"            # under the hair stand-in the picture showed no skull
+    idx = np.flatnonzero(ok)[::step]
+    return idx, np.array([SIG[r] for r in reg[idx]])
+
+
+def mesh_fit(s, lm_views, mesh_views, regions=None, infl=2.0, extra=None, rounds=20, step=5, sig_scale=None):
+    ev = fits.evs(s, lm_views) if lm_views else []
+    idx, sg = mesh_idx(s, regions, step)
+    if sig_scale:
+        reg, _ = mm.region_of()
+        sg = sg * np.array([sig_scale.get(r, 1.0) for r in reg[idx]])
+    meshes = []
+    for v in mesh_views:
+        k = f"{s}_{v}"
+        if not (tmesh.TR / f"{k}.npz").exists():
+            return None
+        if k not in _M:
+            _M[k] = tmesh.Mesh(k)
+        meshes.append(_M[k])
+    if ev:
+        f = fitlib.fit(ev, robust=True, rows=extra)
+    else:
+        f = {"c": np.zeros(rs.K_FIT)}
+        if extra is not None:
+            f["c"] = np.linalg.solve(extra[0].T @ extra[0] + np.eye(rs.K_FIT), extra[0].T @ extra[1])
+    for me in meshes:
+        tmesh.align(me, rs.head(f["c"]))        # from scratch: the mesh's yaw and scale are not known
+    for _ in range(rounds):
+        rr = [tmesh.rows(me, f["c"], idx, sg * infl) for me in meshes]
+        R = stack(extra, *rr)
+        if ev:
+            f = fitlib.fit(ev, robust=True, rows=R, c_init=f["c"])
+        else:
+            f = {"c": np.linalg.solve(R[0].T @ R[0] + np.eye(rs.K_FIT), R[0].T @ R[1])}
+    return f
+
+
+def normals_rows_fn(model="david", infl=4.0):
+    return lambda s, views: None
+
+
+def stack_fit(s, lm_views, mesh_views, normals="david", read=False, infl=2.0, regions=None, rounds=20):
+    """Detector points + calibrated normals + generated mesh (+ read)."""
+    ev = fits.evs(s, lm_views)
+    vs = [v for v in lm_views if fits.ev478(f"{s}_{v}") is not None]
+    extra = read_rows(s) if read else None
+    idx, sg = mesh_idx(s, regions)
+    meshes = []
+    for v in mesh_views:
+        k = f"{s}_{v}"
+        if not (tmesh.TR / f"{k}.npz").exists():
+            return None
+        _M.setdefault(k, tmesh.Mesh(k))
+        meshes.append(_M[k])
+    f = fitlib.fit(ev, robust=True, rows=extra)
+    for me in meshes:
+        tmesh.align(me, rs.head(f["c"]))
+    for _ in range(rounds):
+        rr = [tmesh.rows(me, f["c"], idx, sg * infl) for me in meshes]
+        if normals:
+            for v, cam in zip(vs, f["cams"]):
+                it = mm.item(f"{s}_{v}")
+                rr.append(dense.rows(normals, mm.pred(normals, f"{s}_{v}"), f["c"], cam, v, hair=it["hair"] if it["look"]["hair"] else None, use=("n",), infl=4.0))
+        f = fitlib.fit(ev, robust=True, rows=stack(extra, *rr), c_init=f["c"])
+    return f
+
+
+HIDDEN = ["jaw", "cranium", "ears", "neck"]
+MESH = {
+    "T0 mesh(front) ALONE, no landmarks": lambda s: mesh_fit(s, [], ["front"]),
+    "T1 front lm + mesh(front), all regions": lambda s: mesh_fit(s, ["front"], ["front"]),
+    "T1a   same, sigma x1": lambda s: mesh_fit(s, ["front"], ["front"], infl=1.0),
+    "T1b   same, sigma x4": lambda s: mesh_fit(s, ["front"], ["front"], infl=4.0),
+    "T2 front lm + mesh(front), hidden regions only": lambda s: mesh_fit(s, ["front"], ["front"], regions=HIDDEN),
+    "T3 front+tq lm + mesh(front)": lambda s: mesh_fit(s, FT, ["front"]),
+    "T4 front+tq lm + mesh(front) + mesh(tq)": lambda s: mesh_fit(s, FT, ["front", "tq"]),
+    "T5 front+tq lm + mesh(tq)": lambda s: mesh_fit(s, FT, ["tq"]),
+    "T6 front lm + mesh(front) + read": lambda s: mesh_fit(s, ["front"], ["front"], extra=read_rows(s)),
+    "T7 front+tq lm + david normals + mesh(front)": lambda s: stack_fit(s, FT, ["front"]),
+    "T8 front+tq lm + david normals + mesh(front) + read": lambda s: stack_fit(s, FT, ["front"], read=True),
+    "T9 front+tq lm + normals + mesh(front) + mesh(tq) + read": lambda s: stack_fit(s, FT, ["front", "tq"], read=True),
+    "T10 front lm + david normals + mesh(front) + read": lambda s: stack_fit(s, ["front"], ["front"], read=True),
+}
+
+if __name__ == "__main__" and sys.argv[1] == "mesh":
+    fits.run(MESH, sys.argv[2:], out="fits")
+
+
 BASE2 = {
     "R1 mp478 skin + read, front+tq": lambda s: fitlib.fit(fits.evs(s, FT), robust=True, rows=read_rows(s)),
     "R1f mp478 skin + read, front only": lambda s: fitlib.fit(fits.evs(s, ["front"]), robust=True, rows=read_rows(s)),
 }
 
-if __name__ == "__main__":
+if __name__ == "__main__" and sys.argv[1] != "mesh":
     model = sys.argv[1]
     M = dict(BASE2)
     M.update(methods(model))
     res = fits.run(M, sys.argv[2:], out="fits")
+
+
