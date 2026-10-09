@@ -3615,7 +3615,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         return place(B, M, body, gap, _blouse=shifts, smooth=smooth, _out=_out, _down=_down)
     # the made pieces' (cuff, collar) shape before the push: their rest (the push only clears the start)
     faces_ = piece_faces(M, X, body, pcs) if any(pcs[nm]["wrap"].get("lies_on") for nm in names) else {}
-    B["start_unpushed"] = _lay_on(B, M, _place_folds(B, M, body, X, smooth), faces_)
+    # ("_made_as": the made pieces' construction given from outside (build: the fine mesh's, sampled here), unpushed
+    # "U" and final "X": they replace what this mesh's own placement made of them, see _place_folds)
+    ma_ = B.get("_made_as")
+    ma_v = np.isin(pid, [names.index(nm) for nm in ma_["pieces"] if nm in names]) if ma_ else None
+    B["start_unpushed"] = _lay_on(B, M, _place_folds(B, M, body, X, smooth,
+                                                     made=(ma_v, ma_["U"]) if ma_ and ma_.get("U") is not None else None), faces_)
     for k, nm in enumerate(names):  # a piece with another laid inside it starts that layer further off the body
         if any(pcs[o]["wrap"].get("lies_on") == nm for o in names):
             gaps[pid == k] += LIES
@@ -3662,7 +3667,9 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     if fl_.any():
         # fold lines: the flaps are turned about their rows after the rest of the piece is pushed clear of the body
         # (pushed after, a stand moved out through the fall lying on it)
-        Xp = _place_folds(B, M, body, np.where(fl_[:, None], X, Xp), smooth)
+        Xp = _place_folds(B, M, body, np.where(fl_[:, None], X, Xp), smooth, made=(ma_v, ma_["X"]) if ma_ else None)
+    elif ma_:
+        Xp = np.where(ma_v[:, None], ma_["X"], Xp)
     Xp = _lay_on(B, M, Xp, faces_)
     laid_ = np.isin(pid, [k for k, nm in enumerate(names) if pcs[nm]["wrap"].get("lies_on") in names])
     mv = np.where(fl_ | laid_, 0.0, np.linalg.norm(Xp - X, axis=1))
@@ -3752,6 +3759,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     # every band fastened to itself (a cuff, a stand, a waistband) must START closed, whatever path placed it: a
     # made band is held as placed, so one that starts with its button far from its buttonhole never closes, and what
     # is sewn to its ends is held apart (the trousers' band ended 77 mm open: only the torso path said band_short)
+    if ma_:  # (the given made pieces exactly, whatever the pushes above did to this mesh's own)
+        Xp = np.where(ma_v[:, None], ma_["X"], Xp)
     st_ = np.asarray(M["stitch"]).reshape(-1, 2)
     if len(st_) and smooth:  # (Blender sews a band shut with its springs from wherever it starts)
         own = M["piece"][st_[:, 0]] == M["piece"][st_[:, 1]]
@@ -3875,13 +3884,16 @@ PRESS_LAY = 0.003  # how far a pressed lapel lies off its forepart (it bridges a
 FOLD_LAY = 0.0015  # how far a placed flap starts off what it lies on (a contact solver's gap, with room for chords)
 
 
-def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) -> np.ndarray:
+def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool, made: tuple | None = None) -> np.ndarray:
     """The garment's fold lines made in the placement (folds.apply): each piece was laid on its wrap unfolded; its
     flaps are turned about their rows as far as the fold asks or as they clear what they lie on (the piece's own base
-    side, the pieces placed before it on the same part of the body, the body)."""
+    side, the pieces placed before it on the same part of the body, the body). `made` (vertex mask, positions): the
+    made pieces' construction given from outside (place: B["_made_as"]); it replaces this mesh's own once the neck
+    pieces' folds and spread are made, BEFORE the body pieces' flaps are turned (a front rolls back under the collar
+    it will really meet), and those pieces' own folds are not turned again."""
     fds = M.get("folds") or []
     if not fds:
-        return X
+        return X if made is None else np.where(made[0][:, None], made[1], X)
     from . import folds as foldmod
     pcs, names, pid, F = B["pieces"], M["names"], M["piece"], M["F"]
     faces = piece_faces(M, X, body, pcs)
@@ -3898,6 +3910,10 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
             # the neck pieces' folds are made: an open collar spreads before the fronts roll back under it
             X = _spread_open_collar(B, M, body, X, smooth)
             spread_done = True
+            if made is not None:
+                X = np.where(made[0][:, None], made[1], X)
+        if made is not None and spread_done and made[0][pid == names.index(fd["piece"])].all():
+            continue  # (a given made piece's fold is in what was given)
         if fd.get("in_wrap"):  # a pleat's folds are laid by the wrap itself (place: wrap "pleats")
             continue
         nm = fd["piece"]
@@ -3939,6 +3955,8 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
         info[fd["name"]].pop("_tv", None)
     if not spread_done:
         X = _spread_open_collar(B, M, body, X, smooth)
+        if made is not None:
+            X = np.where(made[0][:, None], made[1], X)
     B["fold_info"] = info
     return X
 
@@ -5875,7 +5893,23 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         if wb is not None:
             Bp["_worn_body"] = wb.straight_arms()[0] if smooth else wb
             Bp["_worn_body"].under_top = wb.under_top
+    M_f = X0_f = None
+    if construct and smooth and g.get("made_from", "fine") == "fine":
+        # ONE construction of the made pieces, at the fine size; the coarse sim carries a sampled copy of it. Placed
+        # at each size by itself the two differed (a collar's fall turns "as far as clears what is under it", and what
+        # is under it is sampled by the mesh; its spread hinges on the stand's own vertices: collar p90 8-10 mm on
+        # the Garretts, 38 mm on ga_suit), so the fine settle got either a collar its drape wasn't solved round or
+        # the coarse sim's faceted one carried onto the fine mesh, and its start flipped between "builds", "refused
+        # at the gate (front 11.5x)" and "ccd failed (collar 3-6x)" with 2 cm of collar gap or another body
+        M_f = mesh(Bp, h, FOLD_WIDTH_MADE)
+        Bf = dict(Bp)
+        X0_f = place(Bf, M_f, body_p, smooth=smooth)
+        mk_ = [nm for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in M_f["names"]]
+        if mk_:
+            Bp["_made_as"] = {"pieces": mk_, "X": transfer(M_f, X0_f, Ms),
+                              "U": transfer(M_f, Bf["start_unpushed"], Ms) if Bf.get("start_unpushed") is not None else None}
     Xs = place(Bp, Ms, body_p, smooth=smooth)
+    Bp.pop("_made_as", None)
     if smooth and under is not None:
         # placed on the PADDED body; the sim's collider is the body + the under garment's own mesh, and where that
         # stands proud of the pad (a pressed sleeve's fold at the elbow) draped cloth started on it
@@ -5910,9 +5944,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     elif construct:
         # the fine mesh is never simulated: its folds are a U as wide as two layers of cloth lie apart (a sim's start
         # needs a contact gap at its first ring of vertices, so a simulated crease is a wedge 5-7 deg open)
-        M = mesh(Bp, h, FOLD_WIDTH_MADE)
-        Bf = dict(Bp)
-        X0 = place(Bf, M, body_p, smooth=smooth)  # the fine mesh's own placement: its made pieces as constructed
+        if M_f is not None:
+            M, X0 = M_f, X0_f
+        else:
+            M = mesh(Bp, h, FOLD_WIDTH_MADE)
+            Bf = dict(Bp)
+            X0 = place(Bf, M, body_p, smooth=smooth)  # the fine mesh's own placement: its made pieces as constructed
         Bp["faces"] = Bf.get("faces", Bp.get("faces"))
     else:
         M, X0 = Ms, Xs
