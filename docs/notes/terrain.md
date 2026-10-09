@@ -999,6 +999,37 @@ regresses, bisect by building one spec at each commit and diffing heights.
     WARNING. Island before: 8.8 ha at -8.4 m around [377, 123] + 0.6 ha, steps 469 m and 133 m, 39% of the box's sea
     cells at -8.4; after: 0 / 0 / 0.2%. Every beach's seabed changes. tests/test_tiles.py
     ::test_beach_shelves_on_to_the_sea_floor.
+  - Note 117 (2026-10-09, "terrain117" agent; their island re-export on 0168d10, 5 rivers / 8 falls; our copy terrain
+    `t117_island`; scratch DURABLE /mnt/data/hifipushie/terrain117/: run.sh / run_orig.sh (this worktree / HEAD before,
+    niced + capped), fullwalk.py (the caves walked in the export's field), timing.py (light vs export walk side by side),
+    probe.py / probe2.py x y z (a column through the export field, each volume's d; relief weights there and the
+    ground round it), steep.py (a tube under a steep tilt), dec.py i j (a tile's dense mesh, pyfqmr counts, what
+    folds), exp.py, tests.sh).
+    (a) crown_tube failed the tile walk (width 0, 1.3 m step at [998, 1676]) though set_terrain's passed: the face's
+    rock relief. `Field._solid` weights relief by `relief_at` (a COLUMN grid: the ground's steepness) wherever |F| <
+    reach, and inside a void F is small however deep it is: 12 m under a 56 deg slope (relief weight 0.94; 0.44 on
+    the old spec's ground, the rivers' base made it steeper and moved the switchbacks) the 1.8 m facets came in at
+    full size and built a sheet of rock across the tube 1.3 m over its floor. The light field (set_terrain) has no
+    relief, so never saw it. Not the river cut or a fall (crown_beck is 400 m east). Now within NEAR of a cave void
+    (dvoid, arches excluded) the face's weight fades out between 1 and 2 x the relief's reach under the open ground;
+    the cave's own passage-scaled share (`near`, `_relief_cap`) stays. Walks: export field crown 3.2 m headroom / 4.8
+    width / 0.35 step (light 3.7 / 4.8 / 0.35); kaze and pencil unchanged. The two walks still differ by that
+    passage-scaled relief (kaze headroom 4.4 light vs 3.4 export; pencil 3.9 vs 5.4, the light field has no stacks):
+    same verdicts, numbers within ~1 m. Exact agreement means walking the export field in set_terrain: 41 s instead
+    of 18 s on the island (field 14 s + walk 27 s): not done. tests/test_caves_walkable::test_deep_cave_under_a_steep_face
+    (HEAD: headroom 0.85 m / width 1.55 m short of the plain field; now < 0.5).
+    (b) 16,25 at ~250k triangles at every LOD: not the shell's thickness as budget_check guessed. pyfqmr pinched two
+    sheets (crown_tube's wall and the rock kept round it / the shell's back, within a voxel) onto one shared edge
+    (4 faces) at EVERY count (2-4 such edges), `valid` called each a fold, and the tile kept its dense mesh. Now
+    `_split_nonmanifold` / `_unpinch` (in `_decimate.run`): faces round a pinched edge paired by angle (alternating
+    direction; both ways round tried), each pinched vertex copied once per fan and stepped PINCH_GAP 5 mm into its
+    own sheet (at one position the seam check, welding GLBs by position, found the pinch again); never on an open
+    edge (tile borders stay canonical). Single-tile export of 16,25: LOD 0/1/2 11,991 / 3,000 / 800 (before 250,951
+    / 250,602 / 250,442), collision 3,000, 0 check failures (watertight per LOD, 0 floating, 0 buried in the open),
+    228 s (was 918). Buried passages are NOT dropped from LOD 1/2: forcing the decimation was enough, and the
+    collision still holds the cave (the walk on the LOD 1 collision: largest step 0.24 m). Not run: the full island
+    or a block with neighbours (the coordinator: single tiles on a loaded machine); unpinching never touches a border
+    vertex. tests/test_tiles::test_pinched_sheets_split.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
