@@ -222,3 +222,25 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
   here) and skin.lips blood 0.9 -> 1.1 / melanin 2.6 -> 3.4 moved the lips' colour by < 1 L / a: the lips layers
   (T(blood = 6 x ...)) look saturated. Next: why skin.lips doesn't move the colour, then the stubble shadow round
   the mouth (his lower face is 15-20 L darker than ours).
+- (likeloop e17-e18, "western fold"; ll_eyes_17/18.png, ll_eyes_18_zoom.jpg (each eye, 2 mm ticks up from the
+  photo's lid margin), ll_eyes_18_threequarter.jpg) The hood's `crease` now follows the lid margin's arch corner to
+  corner (a parabola through the corners and the mid margin) at crease_at x lid->brow above it, even across the lid
+  (`crease_lateral` 0 default; the hood itself stays outer-third). crease 2.5 mm, crease_at 0.45, width 1.2 mm: a
+  supratarsal crease on BOTH eyes with a lit platform under it; brows lifted (drop 2 mm, thickness 1.1) off the
+  fold (at 3-5 mm drop the brow hair covered the fold: the "monolid" read). crease.py (luminance up the lid at three
+  places): the photo's crease is at the edge of resolution (1.3 mm a pixel; a plateau 3.5-4.5 mm on his left eye);
+  ours 4-6 mm, deeper than his. Inner corners: caruncle and medial canthus visible on ours, no epicanthal skin.
+  e18 vs photo: open 7.56 / 7.39, cover 2.77 / 3.46, brow gap 13.3 / 12.1, canthal +1.5 / -0.45. The three-quarter
+  render doesn't line up with the painting (its camera is the loose fit noted before): judged only that the
+  crease shows turned.
+- LIPS (l2; ll_lips_2.png, ll_lips_2_dressed_pair.jpg). New headage `lip_roll` {upper, lower} (volume: the vermilion
+  rolled forward, peak high on the upper lip, mid on the lower, tucked corners; test). Kept: mouth_width macro -1
+  held (1.1 -> 0.1 sigma), lip_roll upper 1.5 / lower 1.2 mm. Front, dressed (photo | e18 | l2): width 58.6 | 60.9 |
+  59.0, lower lip 10.8 | 9.3 | 10.2, upper 6.8 | 7.0 | 7.0, bow depth 1.97 | 1.94 | 1.95, corner tilt -1.1 | -1.5 |
+  -1.3 (level: the "downturned" read is the long seam into the cheeks, shorter now). Painting (E-line): his lips
+  -2.1 mm, ours -0.8: ours do NOT project less there (loose fit, tol 3).
+  LIP COLOUR IS STUCK: skin.lips blood 5 / melanin 8 (ll_lips_test_extreme_colour.jpg) leaves the upper vermilion
+  as pale as blood 0.9 (lipprof.py: a 12-13 where his is 17-21) and the lower lip within 3 L. Not the stubble shadow
+  (shadow 0: everything 3-5 L brighter, lips no redder), and the landmark ring of the lip_upper zone is valid (lipslm.py:
+  inner 1 mm, peaks 7 mm above the corners). Next: why the lips_upper `_pre` layer doesn't show (its mask on this
+  mesh, or a later layer: g4's over_lip_seam / lip_border).
