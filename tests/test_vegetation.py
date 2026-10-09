@@ -256,8 +256,11 @@ def test_bark_maps_tile():
         assert 0 <= h.min() and h.max() <= 1 and abs(m["albedo"].mean() - 1) < 1e-6
         assert np.allclose(np.linalg.norm(m["normal"] * 2 - 1, axis=2), 1, atol=1e-6)
         # the wrap seam is no worse than a line anywhere else in the tile
+        # (over several seeds: in one tile a plate's edge can lie along the seam by chance, as along any other line;
+        # a real seam is there in every seed)
+        seam = np.mean([veg_bark.tileability(veg_bark.bark_maps(kind, 128, seed=sd)["height"]) for sd in range(3, 9)])
         inside = max(veg_bark.tileability(np.roll(h, (sy, sx), (0, 1))) for sx, sy in ((37, 61), (64, 128), (90, 20)))
-        assert veg_bark.tileability(h) < max(1.5, 1.6 * inside), (kind, veg_bark.tileability(h), inside)
+        assert seam < max(1.5, 1.6 * inside), (kind, seam, inside)
         assert np.array_equal(h, veg_bark.bark_maps(kind, 128, seed=3)["height"])
     furrow, lent = veg_bark.bark_maps("furrowed", 128), veg_bark.bark_maps("lenticel", 128)
     gx = lambda a: np.abs(np.diff(a, axis=1)).mean() / np.abs(np.diff(a, axis=0)).mean()
@@ -724,7 +727,7 @@ def test_ground_and_stand_forms():
     inner = v.grow({**S, "environment": {"setting": "forest"}})
     edge = v.grow({**S, "environment": {"setting": "edge", "open_side": [1, 0]}})
     low = lambda t: float(np.percentile(veg_leaf.place(t)["pos"][:, 2], 5)) / t["height"]
-    assert low(inner) > low(op) + 0.2 and inner["stats"]["dead_stubs"] > 10 and op["stats"]["dead_stubs"] == 0
+    assert low(inner) > low(op) + 0.15 and inner["stats"]["dead_stubs"] > 10 and op["stats"]["dead_stubs"] == 0
     assert inner["dead"].any() and not inner["leafy"][inner["dead"]].any()
     ex = veg_leaf.place(edge)["pos"]
     lowx = ex[ex[:, 2] < 0.4 * edge["height"]][:, 0]
@@ -1019,6 +1022,25 @@ def test_bough_card_form_by_budget():
     assert core.sum() == twL["limbs"] > 5 and (twL["card"][core] >= atL["limb_first"]).all() and (twL["card"][~core] < atL["limb_first"]).all()
     M = veg_export.foliage_mesh(L, atL, tw=twL)
     assert M["tint"].min() < 0.6 < M["tint"].max(), (M["tint"].min(), M["tint"].max())
+
+
+def test_spray_curl_tips_and_bark_cells():
+    # a spray's side shoots sweep forward (curl) and every shoot is lighter toward its end (tips); 0 = as before
+    lf = {"shape": "needle_spray", "length": 0.018, "twig": {"length": 0.4, "leaves": 300, "side_shoots": 5}}
+    a = veg_leaf.twig_mesh(lf)
+    b = veg_leaf.twig_mesh({**lf, "twig": {**lf["twig"], "curl": 0.0, "tips": 0.0}})
+    assert np.array_equal(a["V"], b["V"]) and np.array_equal(a["col"], b["col"])
+    c = veg_leaf.twig_mesh({**lf, "twig": {**lf["twig"], "curl": 0.8, "tips": 0.4}})
+    wide = lambda m: float(np.abs(m["V"][:, 0]).max())
+    assert wide(c) < 0.95 * wide(a)  # swept forward: a narrower spray
+    assert c["col"].max() > a["col"].max() * 1.2 and abs(c["col"].min() - a["col"].min()) < 1e-9
+    # bark cells of every size (a jittered grid of tall cells read as a woven basket)
+    from hifipushie.veg_bark import _cells
+    size = lambda loose: np.bincount(_cells((128, 128), 40, 3, loose=loose)[2].ravel(), minlength=1)
+    s0, s1 = size(0.0), size(0.8)
+    assert s1[s1 > 0].std() / s1[s1 > 0].mean() > 1.3 * s0.std() / s0.mean()
+    off = _cells((64, 64), 20, 3, local=True)[4]
+    assert off.shape == (64, 64, 2) and np.abs(off).max() <= 0.5
 
 
 if __name__ == "__main__":

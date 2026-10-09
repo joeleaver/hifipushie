@@ -47,7 +47,7 @@
   ],
   "tropism": [
    0.5,
-   0.14,
+   0.45,
    -0.2
   ],
   "plagio": [
@@ -75,7 +75,7 @@
    3,
    2
   ],
-  "sag": 0.75,
+  "sag": 0.6,
   "pipe": 2.4,
   "flare": 1.3,
   "max_order": 2,
@@ -141,11 +141,13 @@
    "limbs": true,
    "twig": {
     "leaves": 1900,
-    "side_shoots": 8,
-    "sub_shoots": 0,
+    "side_shoots": 7,
+    "sub_shoots": 1,
     "length": 0.5,
     "droop": 0.25,
-    "spray_angle": 42
+    "spray_angle": 48,
+    "curl": 0.6,
+    "tips": 0.45
    },
    "leaf": {
     "needle_width": 0.09,

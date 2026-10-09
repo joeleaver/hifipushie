@@ -16,13 +16,14 @@ from numba import njit
 from . import veg_leaf
 from .vegetation import _child, _u
 
-BOUGH = {"variants": 4, "size": 384, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
+BOUGH = {"variants": 4, "size": 384, "size_limbs": 512, "verts": 7, "cross": 2, "cup": 0.12}  # cross 2 = the bough from its face AND from its side
 TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles the richest bough card costs (a fan per card)
 # The card's cut, richest first. A budget buys GRANULARITY before polish: a 20k spruce cut into 937 fourteen-triangle
 # cards was 2.7 m boughs (palm fronds from 30 m); the same triangles as six-triangle cards are twice as many, smaller.
 SINGLE = os.environ.get("HIFIPUSHIE_BOUGH_SINGLE", "0") != "0"  # (tried: one card of each pair, the one facing out: a spruce went ragged and see-through from the front, its flank cards edge-on)
 FULL = float(os.environ.get("HIFIPUSHIE_BOUGH_FULL", "0.45"))  # the share of the finest cut's boughs the fullest LOD draws
 FULL_LEAST = 500
+LIMB_STRIPS = 4  # rungs of a limb's top card (it follows the limb's sweep)
 PAIR_BELOW = 7.0  # m over the ground: boughs a player stands beside keep their crossed pair
 CULL = os.environ.get("HIFIPUSHIE_BOUGH_CULL", "0") != "0"  # (tried: a spruce's or a pine's boughs are ALL seen from somewhere; nothing to cull)
 THIN, THIN_GROW = 0.08, 2.4  # the least share of the finest cut a thinned LOD keeps; the most its cards grow
@@ -163,7 +164,7 @@ def extra(tree: dict) -> int:
     if not limbs_on(tree):
         return 0
     pl = limb_plan(tree)
-    return int((~dead_boughs(tree, pl)).sum()) * tris(0)
+    return int((~dead_boughs(tree, pl)).sum()) * (2 * LIMB_STRIPS + tris(0) // BOUGH["cross"])
 
 
 def fit(tree: dict, triangles: int) -> tuple[int, int]:
@@ -441,7 +442,7 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
         _CACHE[key] = got
         return got
     Fr, ext, cnt = _frames(tree, pl)
-    nv, size = BOUGH["variants"], BOUGH["size"]
+    nv, size = BOUGH["variants"], (BOUGH["size_limbs"] if limbs_on(tree) and base_of(tree, cards) else BOUGH["size"])
     order = np.argsort(cnt * (0.5 + ext / max(ext.max(), 1e-9)), kind="stable")
     isd = dead_boughs(tree, pl)
     lv_, dd_ = order[~isd[order]], order[isd[order]]  # live boughs' pictures, and (when the shade killed limbs) dead ones'
@@ -477,7 +478,20 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
             A["color"][sl][..., 3] = R["alpha"]
             A["normal"][sl] = R["normal"]
             A["mask"][sl] = R["mask"]
-            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], fm_j["verts"], fm_j["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext_j[b]), 0.1), 0, centre=fm_j["centre"])
+            is_limb = i >= n_fine
+            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], fm_j["verts"], fm_j["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext_j[b]), 0.1),
+                                    LIMB_STRIPS if is_limb and side == 0 else 0, centre=fm_j["centre"])
+            if is_limb and side == 0:
+                # a limb seen from above is not a flat shelf: the card is a ladder along it, each rung at the height
+                # the limb's foliage really has there (it sweeps down and its end turns up)
+                yb = np.linspace(mesh["V"][:, 1].min(), mesh["V"][:, 1].max(), 2 * LIMB_STRIPS + 1)
+                which = np.clip(np.searchsorted(yb, mesh["V"][:, 1]) - 1, 0, len(yb) - 2)
+                tot = np.bincount(which, weights=mesh["V"][:, 2], minlength=len(yb) - 1)
+                cnt_ = np.bincount(which, minlength=len(yb) - 1)
+                okb = cnt_ > 0
+                if okb.sum() >= 2:
+                    zc = np.interp(0.5 * (yb[1:] + yb[:-1]), (0.5 * (yb[1:] + yb[:-1]))[okb], (tot[okb] / cnt_[okb]))
+                    cm["V"][:, 2] += np.interp(cm["V"][:, 1], 0.5 * (yb[1:] + yb[:-1]), zc)
             if side == 0:
                 (fills if i < n_fine else []).append(float((R["alpha"] > 0.5).sum()) * (R["frame"][2] / size) ** 2 / max(cm["area"], 1e-12))
             else:

@@ -25,6 +25,8 @@ TWIG = {"length": 0.3, "leaves": 9, "arrangement": "alternate", "angle": 55, "dr
         # {"form": "ray" | "cup" | "spike", "petals", "radius" m, "color", "center", "center_size", "spike": share of the stalk}
         "fascicle": 1, "needle_angle": None, "bud": 0.0,  # fascicles: needles per bundle (pines 2 / 3 / 5); [deg off the
         # shoot at the foliage's base, at its tip] (old needles stand out, young ones lie forward: a bottlebrush); a bud (m)
+        "curl": 0.0, "tips": 0.0,  # a spray's side shoots: curl = they sweep forward along the twig (straight ones at
+        # one angle read as a fern frond / a fishbone); tips = this much lighter toward every shoot's end (the year's growth)
         "face": 0.5}  # face: 1 = every twig's upper side to the sky (a roof of plates), 0 = rolled any way round its shoot
 CARD = {"variants": 4, "size": 384, "verts": 7, "cup": 0.1, "cross": 1, "scale": 1.0, "twig": {}, "leaf": {}, "strips": 0,
         "end": False}  # end: one more card across the shoot with the twig's picture seen from its tip (a tuft is round)
@@ -252,6 +254,8 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                     out = _norm(np.array([side * math.sin(sa_), math.cos(sa_), -0.12 - 0.15 * rnd(60 + j)]))
                     tt = np.linspace(0, 1, 4)[:, None]
                     pts = p + out * ln * tt + np.array([0, 0, -0.1 * ln]) * tt ** 2
+                    if tw["curl"]:
+                        pts = pts + (d - out * float(d @ out)) * (tw["curl"] * 0.45 * ln * (0.6 + 0.8 * rnd(130 + 2 * j + (side > 0)))) * tt ** 2
                     V, F = _stem(pts, tw["radius"] * 0.6, tw["radius"] * 0.3)
                     add(V, F, 0, 1.0, -1)
                     shoots.append((pts, 0.8))
@@ -302,6 +306,8 @@ def twig_mesh(leaves: dict, variant: int = 0) -> dict:
                 ln = nl * sc * (0.8 + 0.4 * float(_u(_child(key, 200 + si), j)))
                 wv = _norm(np.cross(out, d)) * (0.5 * nl * lf["needle_width"])
                 tone = 0.8 + 0.35 * float(_u(_child(key, 300 + si), j))
+                if tw["tips"]:
+                    tone *= 1.0 + tw["tips"] * float(np.clip((u - 0.5) / 0.4, 0, 1)) ** 2
                 nf = int(tw["fascicle"]) if arr == "fascicles" else 1
                 for q_ in range(nf):  # a bundle's needles part in a narrow V from one sheath
                     o_ = out if nf == 1 else _norm(out + 0.11 * (math.cos(2.1 * q_ + j) * _norm(wv) + math.sin(2.1 * q_ + j) * np.cross(out, _norm(wv))))

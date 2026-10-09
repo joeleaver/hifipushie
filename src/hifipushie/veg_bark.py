@@ -35,14 +35,19 @@ def _noise(shape, lo, hi, seed, stretch=(1.0, 1.0)):
     return n / max(n.max(), 1e-12)
 
 
-def _cells(shape, count, seed, aspect=1.0, warp=None):
-    """Voronoi on the torus: F1, F2 (tile units, across-the-cell distances with cells `aspect` x taller) and ids."""
+def _cells(shape, count, seed, aspect=1.0, warp=None, loose=0.0, local=False):
+    """Voronoi on the torus: F1, F2 (tile units, across-the-cell distances with cells `aspect` x taller) and ids.
+    `loose` 0..1: that share of the seeds lie anywhere instead of near their grid place (cells of every size: a
+    jittered grid of tall cells read as a woven basket). `local`: also each pixel's offset from its cell's seed."""
     rng = np.random.default_rng(seed)
     h, w = shape
     nx = max(2, int(round(np.sqrt(count * aspect))))
     ny = max(2, int(round(count / nx)))
     gx, gy = np.meshgrid(np.arange(nx), np.arange(ny))
     pts = np.c_[(gx.ravel() + 0.15 + 0.7 * rng.random(nx * ny)) / nx, (gy.ravel() + 0.5 * (gx.ravel() % 2) + 0.1 + 0.8 * rng.random(nx * ny)) / ny % 1.0]
+    if loose > 0:
+        free = rng.random(len(pts)) < loose
+        pts = np.where(free[:, None], rng.random((len(pts), 2)), pts)
     sc = np.array([1.0, 1.0 / aspect])  # compress y: cells come out `aspect` x taller
     yy, xx = np.mgrid[:h, :w]
     q = np.c_[(xx.ravel() + 0.5) / w, (yy.ravel() + 0.5) / h]
@@ -50,6 +55,9 @@ def _cells(shape, count, seed, aspect=1.0, warp=None):
         q = (q + warp.reshape(-1, 2)) % 1.0
     tree = cKDTree((pts % 1.0) * sc, boxsize=sc)
     d, i = tree.query((q % 1.0) * sc, k=2)
+    if local:
+        off = ((q % 1.0) - (pts % 1.0)[i[:, 0]] + 0.5) % 1.0 - 0.5
+        return d[:, 0].reshape(h, w), d[:, 1].reshape(h, w), i[:, 0].reshape(h, w), len(pts), off.reshape(h, w, 2)
     return d[:, 0].reshape(h, w), d[:, 1].reshape(h, w), i[:, 0].reshape(h, w), len(pts)
 
 
@@ -83,11 +91,13 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
         rough = 0.95 - 0.1 * ridge
     elif kind == "plates":  # pine: long irregular plates of flaky layers between deep fissures of uneven width
         # (the first version, one even Voronoi with a thin black outline, read as tidy lozenges drawn in ink)
-        warp2 = warp * 1.5
-        f1, f2, ids, n = _cells(shape, 20, seed, aspect=2.8, warp=warp2)  # the plates
+        grit = _noise(shape, 20, 110, seed + 11)
+        rag = np.stack([_noise(shape, 6, 30, seed + 15) - 0.5, _noise(shape, 6, 30, seed + 16) - 0.5], -1) * 0.03
+        warp2 = warp * 1.1 + rag
+        f1, f2, ids, n = _cells(shape, 22, seed, aspect=2.4, warp=warp2, loose=0.7)  # the plates (of every size)
         wide = 0.012 + 0.04 * _noise(shape, 1, 5, seed + 7) ** 1.5  # a fissure opens and pinches along its run
         plate = np.clip((f2 - f1) / (0.35 * wide), 0, 1) ** 0.7  # thin cracks between neighbouring plates...
-        b1, b2, bid, bn = _cells(shape, 7, seed + 31, aspect=3.6, warp=warp * 2.5)  # ...and the deep wide fissures between blocks of them
+        b1, b2, bid, bn = _cells(shape, 9, seed + 31, aspect=2.6, warp=warp * 1.6 + rag, loose=0.8)  # ...and the deep wide fissures between blocks of them
         deep = np.clip((b2 - b1) / (1.6 * wide), 0, 1)
         plate = plate * (0.25 + 0.75 * deep ** 0.8)
         tone_b = np.random.default_rng(seed + 12).random(bn)[bid]
@@ -97,22 +107,25 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
         tone = rng.random(n)[ids]
         lay = mid + 0.5 * _noise(shape, 2, 6, seed + 5) + 0.35 * rng.random(gn)[gid]
         flakes = np.floor(lay * 4.5) / 4.5  # stepped papery layers on the plate
-        grit = _noise(shape, 20, 110, seed + 11)
         height = plate * (0.42 + 0.38 * flakes + 0.1 * tone) * (0.8 + 0.2 * crack) + 0.12 * (0.5 * fine + 0.5 * grit) * plate
-        albedo = 0.55 + 0.45 * plate + 0.2 * (tone - 0.5) + 0.2 * (tone_b - 0.5) + 0.34 * (flakes - 0.5) - 0.15 * (1 - crack) + 0.2 * (fine - 0.5) + 0.2 * (grit - 0.5)
+        albedo = 0.5 + 0.5 * plate + 0.36 * (tone - 0.5) + 0.2 * (tone_b - 0.5) + 0.34 * (flakes - 0.5) - 0.15 * (1 - crack) + 0.2 * (fine - 0.5) + 0.2 * (grit - 0.5)
         rough = 0.92 - 0.1 * plate
     elif kind == "scales":  # spruce: thin irregular flakes lying over one another, low contrast, fine at arm's length
         # (the first version, round Voronoi cells with dark grout, read as cobblestones / giraffe skin in the engine)
-        lay = _noise(shape, 3, 11, seed + 5, stretch=(1.0, 1.6)) + 0.6 * _noise(shape, 7, 22, seed + 6) + 0.25 * mid
-        lay = (lay - lay.min()) / max(float(np.ptp(lay)), 1e-9)
-        L = 9.0
-        lvl = np.floor(lay * L)
-        frac = lay * L - lvl  # across one flake: its free edge stands a little proud of the flake under it
-        rim = ((lvl != np.roll(lvl, 1, 0)) | (lvl != np.roll(lvl, 1, 1)) | (lvl != np.roll(lvl, -1, 0)) | (lvl != np.roll(lvl, -1, 1))).astype(float)
-        rim = ndimage.gaussian_filter(rim, 0.8, mode="wrap")
-        tone = np.random.default_rng(seed + 9).random(int(L) + 2)[lvl.astype(int)]
-        height = 0.35 + 0.3 * (lvl / L) + 0.3 * frac ** 0.6 - 0.25 * rim + 0.08 * fine
-        albedo = 0.95 + 0.14 * (tone - 0.5) + 0.12 * (frac - 0.5) - 0.3 * np.clip(rim * 1.6, 0, 1) + 0.12 * (fine - 0.5) + 0.1 * (mid - 0.5)
+        # (the second, steps of a noise with their rims drawn, read as worms / camouflage: isolines close into loops)
+        # Now shingles: cells of every size, each a flake fixed at its top whose lower edge stands proud of the one
+        # under it; no grout, only the thin shadow under each free edge; pale patches a hand wide (lichen, wear).
+        rag = np.stack([_noise(shape, 8, 40, seed + 15) - 0.5, _noise(shape, 8, 40, seed + 16) - 0.5], -1) * 0.02  # ragged flake edges
+        f1, f2, ids, n, off = _cells(shape, 520, seed, aspect=1.3, warp=warp * 0.5 + rag, loose=0.75, local=True)
+        rng = np.random.default_rng(seed + 9)
+        tone = rng.random(n)[ids]
+        lift = rng.random(n)[ids]
+        ramp = np.clip(0.5 + off[..., 1] * 17.0, 0, 1)  # (image y runs down the trunk: the flake rises toward its lower edge)
+        height = 0.3 + 0.38 * ramp * (0.5 + 0.5 * lift) + 0.16 * tone + 0.1 * fine + 0.08 * mid
+        drop = np.clip(ndimage.maximum_filter(height, 3, mode="wrap") - height - 0.06, 0, 1)  # under a proud edge
+        drop = ndimage.gaussian_filter(drop, 0.6, mode="wrap")
+        patch = _noise(shape, 1, 4, seed + 14)
+        albedo = 0.97 + 0.16 * (tone - 0.5) + 0.07 * (ramp - 0.5) - 1.5 * drop + 0.14 * (fine - 0.5) + 0.16 * (_smooth(patch, 0.4, 0.8) - 0.4)
         rough = 0.9 * np.ones(shape)
     else:  # lenticel: smooth, with dark lens dashes round the stem, peeling bands and a few black scars
         f1, f2, ids, n = _cells(shape, 110, seed, aspect=0.14)

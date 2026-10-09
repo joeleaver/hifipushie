@@ -98,7 +98,7 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         Us.append(np.tile(c["uv"], (len(sel), 1)))
         if core is not None and core[sel].any():  # a whole limb's card: dark toward the trunk (the crown's shadowed inside), full tone at its tip
             fl_ = np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1)
-            Ts.append((tint[sel][:, None] * (1.0 - CORE_DARK * core[sel][:, None] * (1.0 - fl_[None]) ** 1.5)).ravel())
+            Ts.append((tint[sel][:, None] * (1.0 - CORE_DARK * core[sel][:, None] * np.clip(1.0 - fl_[None] / 0.7, 0, 1) ** 1.2)).ravel())
         else:
             Ts.append(np.repeat(tint[sel], k))
         Ns.append(np.repeat(tw["node"][sel], k))
@@ -296,7 +296,7 @@ def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: f
     return out
 
 
-CORE_DARK = 0.55  # how much darker a limb card is at the trunk than at its tip
+CORE_DARK = 0.45  # how much darker a limb card is at the trunk than at its tip
 LODS = ((1.0, 2.5), (0.45, 2.5), (0.18, 4.0))  # (share of the budget, how much larger a kept card may be drawn)
 AUTUMN = [0.78, 0.56, 0.16]
 WIND_RECIPE = ("vertex shader: TEXCOORD_1 = (trunk, branch) weights, TEXCOORD_2 = (phase, flutter); the same four in _WIND "
