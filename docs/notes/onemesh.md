@@ -509,3 +509,7 @@ model".
   the detector has no dorsal-line point); checklist items radix_width / dorsum_width (kind shape) wired as levers.
   Garrett: dorsum 14.4 -> 10.8 mm (photo 10.6) at nose_dorsum_width -0.44, radix 14.0 = photo, alae held (46.2).
   Sheets human_renders/fs_09_nose_front.png / _threequarter.png (units then 1.0-1.5: since raised).
+- nostril_show (alar rims up 1.2 mm, columella down 0.7), tip_definition (a soft groove where the lobule meets each
+  ala + the domes a little forward, 0.8 mm), lip_lower_width (the lower border laterally toward / away from the seam,
+  2 mm: - = a short cushion inside the corners). Tests (symmetry, folds) pass; sheets human_renders/fs_10_*. First
+  pass: nostril_show reads (mostly the columella), tip_definition is faint, lip_lower_width subtle on the template.

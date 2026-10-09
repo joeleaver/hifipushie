@@ -70,6 +70,14 @@ UNITS.update({
     "nose_dorsum_hump": (2.0, "a dorsal hump (the bony-cartilage junction forward); - = a scooped dorsum"),
 })
 NOSE_SLIDERS = ("nose_radix_width", "nose_dorsum_width", "nose_tip_width", "nose_dorsum_hump")
+# Tess's measured misses (2026-10-09): her nostrils show from the front under a small defined lobule; her lower
+# vermilion is a short cushion ending well inside the corners (its visible width 0.40 of the mouth's, ours 0.82)
+UNITS.update({
+    "nostril_show": (1.2, "the alar rims up and the columella down: the nostrils show from the front"),
+    "tip_definition": (0.8, "the lobule set off from the alae by a soft groove (a small, defined tip)"),
+    "lip_lower_width": (2.0, "the lower vermilion's lateral reach: + = out to the corners, - = a short cushion "
+                             "ending inside them (its border drawn up to the seam laterally)"),
+})
 # the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
 # morph target by spikes/facesliders/bake_age.py (face_sliders_baked.npz). name: the op's base.head.shape at +1
 BAKED = {
@@ -397,6 +405,10 @@ def _mouth_fields() -> dict:
     F["lip_upper_height"] = (upper * taper * hu * _ss((su - 0.15) / 0.85))[:, None] * up[None]  # (the seam
     # rows held: at -1 the lip went down through the lower one)
     F["lip_lower_height"] = (lower * taper * hl * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
+    # lower lip width: its border laterally (the outer half, toward the corners) away from / toward the seam: + more red
+    # out to the corners, - the lower lip a short cushion ending inside them (the seam and the middle held)
+    lat_l = _ss((ax - 0.3) / 0.45) * (1 - _ss((ax - 1.05) / 0.15))
+    F["lip_lower_width"] = (lower * hl * lat_l * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
     F["mouth_corner"] = np.zeros_like(X)
     for c in (lm[48], lm[54]):
         r = np.linalg.norm(X - c, axis=1)
@@ -568,6 +580,27 @@ def _nose_fields() -> dict:
     F["nose_tip_width"] = (tip * hold_alar * hold_nos)[:, None] * side
     hump = front * _g(s, 0.45, 0.13) * _g(ax, 0, 0.6 * hw_alar)
     F["nose_dorsum_hump"] = hump[:, None] * np.array([0.0, 0.0, 1.0])[None]
+    # nostril show: the alar rims (round lm 31 / 35, below the wings' middle) up, the columella (lm 33 up to the tip's
+    # underside, the midline) down; the tip held
+    up = np.array([0.0, 1.0, 0.0])
+    rim = (front | (T["skin"] & (ax < hw_alar + 0.005))) & (X[:, 1] < lm[30][1])
+    wing = np.min([np.linalg.norm(X - (lm[i] + np.array([0.0, -0.001, 0.0])), axis=1) for i in (31, 35)], axis=0)
+    col = np.linalg.norm((X - 0.5 * (lm[33] + lm[30]))[:, [0, 1]] * [1.0, 0.6], axis=1)
+    tipd = np.linalg.norm(X - lm[30], axis=1)
+    hold_tip = _ss((tipd - 2.5 * mm) / (4 * mm))
+    F["nostril_show"] = (rim * hold_tip)[:, None] * (_g(wing, 0, 3.0 * mm)[:, None] * up[None]
+                                                    - 0.6 * (_g(col, 0, 2.0 * mm) * (ax < 3 * mm))[:, None] * up[None])
+    # tip definition: a soft groove where the lobule meets each ala (from over the wing toward the domes), the
+    # lobule's domes a little forward
+    gp0 = lm[35] + np.array([-0.001, 0.0045, 0.002])
+    gp1 = lm[30] + np.array([0.006, -0.002, -0.003])
+    q = np.c_[np.abs(X[:, 0]), X[:, 1], X[:, 2]]
+    seg = gp1 - gp0
+    tt = np.clip((q - gp0) @ seg / float(seg @ seg), 0, 1)
+    dseg = np.linalg.norm(q - (gp0 + tt[:, None] * seg), axis=1)
+    groove = front * _g(dseg, 0, 1.3 * mm) * _ss(tt / 0.2) * _ss((1 - tt) / 0.25)
+    domes = front * _g(np.linalg.norm(q - np.c_[np.full(len(X), 0.004), np.full(len(X), lm[30][1]), np.full(len(X), lm[30][2])], axis=1), 0, 2.5 * mm)
+    F["tip_definition"] = -groove[:, None] * n + 0.35 * domes[:, None] * n
     mi = T["mirror"]  # (made exactly mirror symmetric: GNM's template is symmetric only to ~0.1 mm)
     return {k: 0.5 * (v + v[mi] * [-1.0, 1.0, 1.0]) * (UNITS[k][0] * mm) for k, v in F.items()}
 
