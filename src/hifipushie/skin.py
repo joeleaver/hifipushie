@@ -29,8 +29,8 @@ spec["skin"] = {
   "tattoos": [{"image": {...paint image...}, "age": years, "opacity"}]
   "eyes": {"iris": "#5a3a1e", "iris_size": m (0.0118), "pupil": 0..1 (0.36 of the iris), "veins": 0..1 (0.4),
            "sclera": colour} | false   the eyeballs (the base's eyes part): see EYES
-  "makeup": {"foundation", "concealer", "blush", "contour", "highlight", "eyeshadow", "eyeliner", "mascara",
-             "brows", "lipstick", "nails"}                                                         (see MAKEUP)
+  "makeup": {"look": "natural" | "everyday" | "evening", "foundation", "concealer", "bronzer", "contour", "blush", "highlight",
+             "eyeshadow", "eyeliner", "mascara", "brows", "lipstick", "nails"}                       (see MAKEUP)
   "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1}
   "only": [groups]                lay only these groups of the description and nothing else, for a character whose skin
                                   is already painted by hand: "eyes" (the eyeball pictures, on the eyes part),

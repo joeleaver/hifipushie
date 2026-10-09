@@ -145,7 +145,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     ctx["smooth"] = []
     from . import paint as _paint
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
-    f0 = p["makeup"].get("foundation")
+    from .skin_makeup import resolve as _mk_resolve
+    f0 = _mk_resolve(p["makeup"]).get("foundation")
     cover = float(np.clip(f0 if isinstance(f0, (int, float)) else (f0 or {}).get("amount", 1.0 if f0 else 0.0), 0, 1)) if f0 else 0.0
     ctx["show"] = 1.0 - 0.75 * cover  # how much of the skin's own marks shows through foundation
 
