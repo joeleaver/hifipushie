@@ -403,3 +403,19 @@ model".
     crease height 0.6 / -0.5 and canthal tilt -0.5 come back within 0.01. The crease reader needs a defined crease
     (eye_crease_depth > 0): on the template's soft lid the darkest line jumps. likeness LEVERS: canthal_tilt,
     upper_lid_show, under_eye, brow_ridge, prof_brow_ridge now drive sliders.
+  - MOUTH SLIDERS (same module): lip_upper_roll, lip_lower_roll (eversion as volume forward, tucked at the corners),
+    lip_bow, lip_tubercle, mouth_corner (tuck; one direction per corner: the corner's normals turn too fast). Lips read
+    between landmark curves (border / seam, s 0..1); the contact ring held (test: upper seam never down, lower never
+    up). Fields split L/R smoothly at the centre line. LEVERS: cupid_bow, lip_projection, prof_upper_lip,
+    prof_lower_lip. Hood pinch at the outer corner softened (the fold tapers into the corner over 2.5-11.5 mm).
+    Sliders are sex-neutral (0 = GNM's mean); women's higher creases may want crease_height > 1 (range 1.5).
+  - AGE SLIDERS (step 4): the older shape ops baked ONCE into morph targets (spikes/facesliders/bake_age.py ->
+    src/hifipushie/face_sliders_baked.npz, 240 KB): each op at its unit on a sex-neutral template adult minus the same
+    head without it, taken into GNM's frame, made mirror-exact, held off the lids' rims (3-11 mm) and the lips' contact
+    and to the exterior skin (baked on a body's head, near those thin rolls the op's move turned quads over on the
+    template). age_nasolabial, age_prejowl, age_cheek_flat, age_lid_fold, face_planes, face_lean, cheek_hollow,
+    chin_cleft: one-sided [0, 1.5] (a negative ageing op is a ridge, not youth; planes < 2 folded the cheeks). The old
+    ops still work and warn once (DeprecationWarning, faceslide.DEPRECATED: also hood, eye_bag, lip_roll, lip_bow).
+    fit windows follow body.sex (SEX_OFFSET, estimates: a woman's crease_height +1.2, brow_ridge -0.6, platform
+    +0.3). read_mouth (the render's depth pass: each vermilion's middle in front of the subnasale) recovers the two
+    lip rolls (0.5 / -0.4) within 0.08. Sheet human_renders/fs_04_age_sliders.png.
