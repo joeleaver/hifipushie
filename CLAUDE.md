@@ -2939,7 +2939,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       pk_36 (gap 0.05, spread 12/14/75): button 1 3.0 mm, 0 crossings, V open to button 1, no skin slit. Gap 0.02:
       the ends met and tangled with the collar's (pk_35). A worn start on the bare body needs `_clear_exact`.
     - Hug (suit7 / suit8: the jacket collar rode up over the shirt collar's wing): `gap` is laid round the neck, 1.6
-      mm of radius a cm. Defaults now gap 0.008 + COLLAR_SPREAD (18, 14, 65): start stand ~10 mm off the skin (the
+      mm of radius a cm. Defaults now gap 0.03 (0.008 built on su_garrett / su_om_garrett, button 1 2.0 mm, stand 9-11 mm off the skin, but ga_suit's fine settle died: collar end 2.98x at the start, lapped ends; 0.03 builds there, pk_49) + COLLAR_SPREAD (18, 14, 65): start stand ~10 mm off the skin (the
       buttoned stand's own number by nearest body vertex), centre-front points 80 mm, fall 6 mm wider than the
       stand at the neck's side. `_spread_open_collar` sides by pattern half (lapping ends crossed). SIMS OF THESE
       DEFAULTS: pk_44_om (su_om_garrett), pk_45_shirt (su_garrett), pk_46_gashirt (ga_suit): read their logs.
