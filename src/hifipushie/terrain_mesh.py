@@ -1249,7 +1249,8 @@ class Field:
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
         self.streams = None  # (terrain_stream: the rivers' beds; None without running water)
-        if gcfg is not None and getattr(T, "river_water_lines", None):
+        if gcfg is not None and (getattr(T, "river_water_lines", None) or
+                                 any(not lk.get("sea") for lk in (getattr(T, "lakes", None) or {}).values())):
             from . import terrain_stream
             scfg = terrain_stream.config(T)
             if scfg is not None:
@@ -3151,7 +3152,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     with prof.stage("border vertices (parent)"):
         a, b, fixed = _key_geometry(keys, G, 0)
         Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
-        tt = Fa / (Fa - Fb)
+        with np.errstate(divide="ignore", invalid="ignore"):  # (the placeholder key of a block with no borders: Fa == Fb)
+            tt = np.where(Fa != Fb, Fa / np.where(Fa != Fb, Fa - Fb, 1.0), 0.0)
         CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
         CW, CC = mats.weights(CP, CN)
     pos = {tuple(p): r for r, p in enumerate(CP)}
@@ -3505,30 +3507,34 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 (i0, j0), (i1, j1) = cfg["only"]
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
             C = terrain_ground.clutter(T, mats, base, ks, box=cb)
-            SC = None
-            if mats.streams is not None:  # (a stream's rocks, cobbles, driftwood, reeds: terrain_stream.clutter)
-                from . import terrain_stream
-                SC = terrain_stream.clutter(T, mats, base, box=cb)
+            # (a stream's rocks, cobbles, driftwood, reeds, a lake's margin, a beach's pebbles and wrack:
+            # terrain_stream.all_clutter)
+            from . import terrain_stream
+            SC = terrain_stream.all_clutter(T, mats, base, box=cb) if terrain_stream.config(T) is not None else None
+            if SC is not None and not len(SC) and mats.streams is None:
+                SC = None
             with open(out / "clutter.csv", "w") as f:
-                f.write("x,y,z,kind,scale,yaw,squash,place\n")
+                f.write(terrain_stream.CSV_COLUMNS + "\n")  # (csv_version 2: + water, sink; empty on dry ground)
                 for r in C:
-                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},\n")
+                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},,,\n")
                 if SC is not None:
                     sk = list(terrain_stream.KINDS)
                     for r in SC:
                         f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{sk[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},"
-                                f"{terrain_stream.PLACES[int(r[7])]}\n")
+                                f"{terrain_stream.PLACES[int(r[7])]},{r[9]:.2f},{r[10]:.2f}\n")
             notes.append(f"clutter.csv: {int((C[:, 3] == 0).sum())} bushes, {int((C[:, 3] == 1).sum())} boulders")
             clutter_sec = {"kinds": {"bush": {"scale_m": [0.6, 1.9], "squash": [0.45, 1.0], "z": "surface",
                                               "what": "a scrub / heath bush (squash < 1: wind-shorn by a cliff lip)"},
                                      "boulder": {"scale_m": [0.36, 1.96], "squash": [1.0, 1.0],
                                                  "z": "sunk 0.12 x scale", "what": "an angular rock (shore, rock "
                                                  "breaking through near cliff lips)"}},
-                           "columns": "x,y,z,kind,scale,yaw,squash,place"}
+                           "columns": terrain_stream.CSV_COLUMNS, "csv_version": terrain_stream.CSV_VERSION}
             if SC is not None:
                 sm = terrain_stream.manifest(mats.streams, SC)
-                clutter_sec = {**sm, "kinds": {**clutter_sec["kinds"], **sm["kinds"]}, "columns": clutter_sec["columns"]}
-                notes.extend(mats.streams.report())
+                clutter_sec = {**sm, "kinds": {**clutter_sec["kinds"], **sm["kinds"]}, "columns": clutter_sec["columns"],
+                               "csv_version": clutter_sec["csv_version"]}
+                if mats.streams is not None:
+                    notes.extend(mats.streams.report())
                 notes.extend(terrain_stream.summary(mats.streams, SC, cb))
 
     # ---- 5. trees and the manifest
@@ -3683,6 +3689,9 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                        "bed (steep reaches) and rock faces by the water"},
             "bed": "the heightmaps and cliff meshes carry the bed's shape (pools, riffles, bars); the water's level is "
                    "the rivers' own (never raised)"}
+    if getattr(T, "falls", None):  # (waterfalls: for the engine's falling sheet and spray; terrain_falls)
+        from . import terrain_falls
+        manifest["falls"] = {"falls": T.falls, "note": terrain_falls.META_NOTE}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
         from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)
@@ -5203,7 +5212,8 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None, extra=None):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None, extra=None,
+                 styles_bump=False):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -5282,6 +5292,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
         wl = {L["name"]: (L["weights"], L["channel"]) for L in M["materials"]["layers"]}
         maps = [(str((out / fn).resolve()), SM["order"][4 * g:4 * g + 4]) for g, fn in enumerate(SM["maps"]["weights"])]
         job["styles"] = {
+            "bump": bool(styles_bump),  # (the layers' heights as a bump: an engine uses their normal maps)
             "weights": wl, "ref": {k: lin(v["color"]) for k, v in real["layers"].items()},
             "extent": SM["maps"]["extent"], "maps": maps,
             "rock_scale": ({**SM["maps"]["rock_scale"], "file": str((out / SM["maps"]["rock_scale"]["file"]).resolve())}
@@ -5289,6 +5300,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             "styles": [{"name": s["name"], "macro": s["macro"], "macro_normal": s["macro_normal"],
                         "layers": {k: {"albedo": str((out / v["albedo"]).resolve()),
                                        "height": str((out / v["height"]).resolve()), "size": v["size_m"],
+                                       "normal": (str((out / v["normal"]).resolve()) if v.get("normal") else None),
                                        "height_m": v["height_m"], "projection": v.get("projection", "top"),
                                        "small": ({**v["small"], "albedo": str((out / v["small"]["albedo"]).resolve())}
                                                  if v.get("small") else None)}
@@ -5322,15 +5334,18 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             de, _ = cKDTree(eyes[:, :2]).query(C[:, :2])
             C = C[(de > 2.5) | np.isin(C[:, 3], [ks.index("tussock"), ks.index("tallgrass")])]
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
-        if cm.streams is not None:  # (a stream's rocks, cobbles, wood and reeds: terrain_stream.clutter)
+        from . import terrain_stream
+        if terrain_stream.config(T) is not None:  # (stream, lake and beach clutter: terrain_stream.all_clutter)
             from scipy.spatial import cKDTree
-            from . import terrain_stream
-            SC = terrain_stream.clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
+            SC = terrain_stream.all_clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
             if len(SC):
                 de, _ = cKDTree(eyes[:, :2]).query(SC[:, :2])
                 SC = SC[(de < clutter) & (de > 1.2)]
-            for i, k in enumerate(terrain_stream.KINDS):
-                job["clutter"][k] = SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
+            if len(SC):  # (half-buried stones: the row's sink)
+                SC = SC.copy()
+                SC[:, 2] -= SC[:, 10]
+            for i, k in enumerate(terrain_stream.KINDS):  # (bush: with the dry ground's bushes)
+                job["clutter"][k] = job["clutter"].get(k, []) + SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
     if not channel:  # the rivers' water: a ribbon at each river's own level, wider than the channel (the banks hide it)
         if True:
             rv = []
@@ -5345,6 +5360,20 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                     # ribbon as a staircase)
                     lv_ = ndimage.gaussian_filter1d(lv_, 5.0, mode="nearest") - 0.04
                     rv.append(np.c_[xy_, lv_, w_ + 4.0][live].round(3).tolist())
+            # (lakes: a level sheet over each lake's own wet cells, a strip per grid row and run, a cell past each end
+            # so it meets the shore; over the lake's whole box it hung in the air beyond a dam)
+            from . import terrain_shore
+            c_ = float(T.cell)
+            for _, m_, lv_ in terrain_shore.still_waters(T):
+                m_ = ndimage.binary_dilation(m_)
+                for iy_ in np.flatnonzero(m_.any(1)):
+                    y_ = float(T.ys[iy_])
+                    if box is not None and not (box[0][1] - c_ <= y_ <= box[1][1] + c_):
+                        continue
+                    d_ = np.diff(np.r_[0, m_[iy_].astype(np.int8), 0])
+                    for a_, b_ in zip(np.flatnonzero(d_ == 1), np.flatnonzero(d_ == -1) - 1):
+                        rv.append([[float(T.xs[a_]) - 0.5 * c_, y_, lv_ - 0.02, 0.5 * c_],
+                                   [float(T.xs[b_]) + 0.5 * c_, y_, lv_ - 0.02, 0.5 * c_]])
             job["rivers"] = rv
         if job.get("clutter"):
             notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))

@@ -112,7 +112,8 @@ LIMITS = [
      "the ground is a height field: no caves, arches, overhangs or natural bridges"),
     (("glacier", "ice", "icefall", "crevasse"), "no glaciers: snow and ice are cover layers only"),
     (("dune", "erg"), "no dune forms: sand is a cover, dunes would be hand-placed hills"),
-    (("waterfall", "cascade"), "no falling water: a hanging river makes the step, the water doesn't fall"),
+    (("cascade", "cascades"), "falls are single steps (rivers.<r>.falls, each at least 3 drops from the next): a cascade "
+     "is a few falls in a row; the falling water itself is the game's to draw from meta \"falls\""),
     (("swamp", "marsh", "bog", "wetland", "delta"), "no wetland forms: mud cover and shallow lakes (fans for deltas)"),
     (("city", "town", "castle", "buildings", "houses", "ruin", "ruins"), "no buildings: sites are the flat pads they stand on"),
 ]

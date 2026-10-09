@@ -34,6 +34,8 @@ from scipy.spatial import cKDTree
 from . import noise
 
 PROFILES = {"V": 1.0, "U": 2.2, "gorge": 0.6, "open": 1.5, "straight": 1.0, "concave": 1.6, "convex": 0.7}
+RIVER_KEYS = {"source", "through", "mouth", "into", "hanging", "concavity", "valley", "water", "bed", "falls"}
+CUT_GAP, CUT_SHARE = 5.0, 0.15  # a river over this much volcano / lone hill (m, x its fall) cuts its own valley
 SIDE_GRADE = {"V": 0.45, "U": 0.6, "gorge": 0.8, "open": 0.12}  # how fast an automatic divide rises
 CRESTS = {"arete": 0.0, "rounded": 1.0}
 RELIEF_CAP = 600.0  # texture/lumpiness scale with relief up to this: beyond it they made pinnacles
@@ -302,7 +304,7 @@ class Terrain:
         self.water = np.full(self.X.shape, np.nan)
         self._ridges()
         self._rivers()
-        self.H = self._base()
+        self.H = self._river_base()
         from . import terrain_forms as forms
         forms.carve(self)  # canyons cut into the plateau, mesas stood on it
         for c in self.canyons.values():  # water ends in a canyon's river: base level for erosion
@@ -390,8 +392,85 @@ class Terrain:
             env[a:b + 1] = np.sin(np.pi * np.linspace(0, 1, b - a + 1)) * min(0.07 * span, 150 * self.k)
         return xy + nrm * (2 * n * env * amount)[:, None]
 
+    def _river_base(self):
+        """The harmonic base, with each river either MAKING its valley or CUTTING one. A river's bed holds the low
+        ground of the solve, so a river drawn down ground the rest of the design already made (a beck down a volcano's
+        flank, its bed heights read off the old ground) raised everything round it by tens of metres (pushieworld note
+        115: +69 m, 122 ha). Such a river cuts its valley instead: the base is solved without it and its valley is cut
+        into that ground (its floor at the bed, sides at its profile's grade, never steeper than 1:0.3 nor gentler than
+        1:3), so the ground beyond the valley stays as it was. Which: `valley.cut` true / false, else automatic: a river
+        running over a volcano or a lone hill (forms stood on the base after the solve: their own height under its path,
+        median, over max(CUT_GAP, CUT_SHARE x its fall); pinned there, the form stood on the raised base), or one whose
+        bed follows the ground made without it (median within CUT_GAP m: its heights read off that ground; not in a
+        basin), cuts. Rivers that make their valleys (beds well above or below the ground made without them: the vale
+        river 40 m above, alpine and basin rivers) are solved as before."""
+        from .terrain_forms import canyon_rivers
+        names = [n for n, L in self.lines.items() if L.kind == "river" and n not in canyon_rivers(self.spec)]
+        given = {n: ((self.spec.get("rivers") or {}).get(n, {}).get("valley") or {}).get("cut") for n in names}
+        self._cut_rivers = {n for n, v in given.items() if v}
+        auto = [n for n, v in given.items() if v is None]
+        self.cut_report = {}
+        others = any(self.spec.get(k) for k in ("sea", "basins", "ridges")) or any(
+            v != "open" for v in (self.spec.get("border", "open") if isinstance(self.spec.get("border", "open"), dict)
+                                  else {"all": self.spec.get("border", "open")}).values())
+        if auto and others:  # (with nothing else holding the ground the rivers make the land: a plain's rivers)
+            keep = {k: (v.copy() if isinstance(v, (list, dict, set)) else v) for k, v in self.__dict__.items()}
+            self._cut_rivers = self._cut_rivers | set(auto)
+            try:
+                H0 = self._base()
+                forms = H0 - self._before_forms
+                basin = np.zeros(H0.shape)
+                for b in self.basins.values():
+                    basin = np.maximum(basin, b["inside"] if "inside" in b and b["inside"] is not None else b["floor"])
+            except ValueError:  # (nothing low without them: they make the land)
+                H0 = None
+            self.__dict__.clear()
+            self.__dict__.update(keep)
+            if H0 is not None:
+                for n in auto:
+                    L = self.lines[n]
+                    on = float(np.median(self.sample(L.xy, forms)))
+                    gap = float(np.median(self.sample(L.xy, H0) - L.h))
+                    inside = float(np.mean(self.sample(L.xy, basin.astype(float)) > 0.5))
+                    if on > max(CUT_GAP, CUT_SHARE * float(L.h.max() - L.h.min())) or (abs(gap) < CUT_GAP and inside < 0.5):
+                        self._cut_rivers.add(n)
+                        self.cut_report[n] = (on, gap)
+        H = self._base()
+        for n in sorted(self._cut_rivers):
+            H = self._cut_valley(H, self.lines[n])
+        return H
+
+    def _cut_valley(self, H, L):
+        """A river's own valley cut into the ground: floor at its bed, `floor` m wide, sides rising at its profile's
+        grade (0.3..3), a rounded shoulder where they meet the ground; only ever lowers. The floor is erosion's base
+        level, like a valley-making river's."""
+        fh = L.props["floor"] / 2
+        g = float(np.clip(L.props["side"], 0.3, 3.0))
+        deep = float(np.max(self.sample(L.xy, H) - L.h)) if len(L.xy) else 0.0
+        if deep <= 0:
+            return H
+        reach = fh + deep / g + 3 * self.cell
+        d, i = cKDTree(L.xy).query(self.P, distance_upper_bound=reach)
+        ok = np.isfinite(d)
+        d = d.reshape(H.shape)
+        i = np.minimum(i, len(L.xy) - 1).reshape(H.shape)
+        ok = ok.reshape(H.shape)
+        d = np.where(ok, d, reach)
+        z = L.h[i] + g * np.maximum(d - fh, 0.0)
+        k = max(2 * self.cell, 6.0)  # (the shoulder: a smooth min over ~k m of height)
+        hh = np.clip(0.5 + 0.5 * (H - z) / k, 0, 1)
+        cutz = z * hh + H * (1 - hh) - k * hh * (1 - hh)
+        out = np.where(ok, np.minimum(H, cutz), H)
+        self._fixed_river |= ok & (d <= max(fh, 0.75 * self.cell))
+        return out
+
     def _rivers(self):
         todo = dict(self.spec.get("rivers") or {})
+        for name, r in todo.items():  # (an unknown key was dropped silently: pushieworld's `falls` before they existed)
+            odd = sorted(k for k in r if k not in RIVER_KEYS and not str(k).startswith("_"))
+            if odd:
+                self.warnings.append(f"river {name!r}: unknown key(s) {odd} ignored (a river takes "
+                                     f"{', '.join(sorted(RIVER_KEYS))})")
         while todo:
             progressed = False
             for name, r in list(todo.items()):
@@ -420,12 +499,14 @@ class Terrain:
                 for (a, ha), (b, hb) in zip(known[:-1], known[1:]):
                     u = (s[a:b + 1] - s[a]) / max(s[b] - s[a], 1e-9)
                     h[a:b + 1] = hb + (ha - hb) * (1 - u) ** k
+                from . import terrain_falls  # (waterfalls: steps in the profile, the rest of its fall gentler)
+                h, falls = terrain_falls.profile(name, h, s, terrain_falls.parse(name, r, length))
                 v = r.get("valley") or {}
                 prof = v.get("profile", "V")
                 self.lines[name] = Line(name, "river", xy, h, s, {
                     "p": PROFILES[prof], "side": float(v.get("sides", SIDE_GRADE[prof])),
                     "floor": float(v.get("floor", 30 * self.k)), "length": length,
-                    "into": r.get("into"), "hanging": r.get("hanging", 0)})
+                    "into": r.get("into"), "hanging": r.get("hanging", 0), "falls": falls})
                 del todo[name]
                 progressed = True
             if not progressed:
@@ -479,7 +560,8 @@ class Terrain:
         river_id = np.zeros(shape, int)
         from .terrain_forms import canyon_rivers
         cut = canyon_rivers(self.spec)
-        rivers = [L for L in self.lines.values() if L.kind == "river" and L.name not in cut]
+        rivers = [L for L in self.lines.values() if L.kind == "river" and L.name not in cut
+                  and L.name not in getattr(self, "_cut_rivers", ())]  # (rivers cutting their own valley: _river_base)
         for k, L in enumerate(rivers, 1):
             m, i = self._stamp(L, L.props["floor"] / 2)
             if L.props["hanging"]:  # the lip: leave the last stretch free, so the step is steep, not a wall
@@ -649,6 +731,7 @@ class Terrain:
             along = (self.X - (x0 + x1) / 2) * math.sin(b) + (self.Y - (y0 + y1) / 2) * math.cos(b)
             H = H - float(tilt.get("grade", 0.05)) * along  # lower toward `down`
         from . import terrain_volcano
+        self._before_forms = H  # (what the volcanoes and lone hills stand on: _river_base)
         H = terrain_volcano.build(self, self._hills(H))  # volcanoes stand on the base, as large-scale ground
         from .terrain_forms import peak_forms
         return peak_forms(self, H)  # summits carved to their form (pyramid, horn)
@@ -1561,6 +1644,9 @@ class Terrain:
             bed = self.sample(p)
             banks = np.minimum(self.sample(p + nrm * off), self.sample(p - nrm * off))
             deep = np.where(L.s[::step] > 0.15, banks - bed, 0)  # (a source is often set into its valley head)
+            if L.name in getattr(self, "_cut_rivers", ()):  # (a river cutting its own valley: its sides rise at their
+                # grade by design; a trench is deeper than that)
+                deep = deep - float(np.clip(L.props["side"], 0.3, 3.0)) * (off - fl / 2)
             k = int(np.argmax(deep))
             if deep[k] > max(12.0, 2 * self.world["gully"]):
                 out.append(f"    trench: the bed runs up to {deep[k]:.0f} m below the ground {off:.0f} m either side "
@@ -1578,6 +1664,14 @@ class Terrain:
         out += terrain_volcano.report(self)
         from . import terrain_lines
         out += terrain_lines.report(self)
+        for n, (on, gap) in sorted(getattr(self, "cut_report", {}).items()):
+            why = (f"it runs over a volcano or hill, {on:.0f} m of it under its path" if on > CUT_GAP else
+                   f"its bed follows the ground the rest of the design made, {gap:+.0f} m")
+            out.append(f"river {n} cuts its own valley ({why} at the median): the ground beyond its valley is left as "
+                       f"it was. \"valley\": {{\"cut\": false}} makes it hold the solve's low ground instead (that "
+                       f"raised the land round it)")
+        from . import terrain_falls
+        out += terrain_falls.report(self)
         if getattr(self, "ground_rms", None) is not None:
             out.append(f"ground texture (measured): gentle ground varies {self.ground_rms:.2f} m rms about its ~50 m "
                        f"trend ({self.ground_before:.2f} m before the undulation, swales and hummocks; plaster-smooth "
@@ -1853,6 +1947,8 @@ class Terrain:
                 "trees": "trees.csv (x, y, z, kind, layer), world metres; tree layers aren't in the splats",
                 "rivers": rivers, "rivers_water": "per point [x, y, water surface z, water width m] (0 where it's dry "
                                                   "or in a lake)",
+                **({"falls": self.falls, "falls_note": __import__("hifipushie.terrain_falls", fromlist=["x"]).META_NOTE}
+                   if getattr(self, "falls", None) else {}),  # (waterfalls, terrain_falls)
                 "fords": {nm: {"at": f["xy"], "river": f["river"], "width": f["width"], "depth": f["depth"],
                                "bed": round(self.height(f["xy"]), 2)} for nm, f in getattr(self, "fords", {}).items()},
                 "cover": {nm: (self.spec.get("cover") or {}).get(nm, {}).get("type", nm) for nm in self.cover},

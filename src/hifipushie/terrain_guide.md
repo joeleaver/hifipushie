@@ -245,8 +245,26 @@ and the `"story"`.
 - **rivers** (optional detail):
   ```
   {"name": {"source": [x, y, z], "through": [[x, y] or [x, y, z]], "mouth": [x, y, z] | "into": river,
-            "hanging": m, "valley": {"profile": "U" | "V" | "gorge" | "open", "floor": m}}}
+            "hanging": m, "valley": {"profile": "U" | "V" | "gorge" | "open", "floor": m, "cut"?: true | false},
+            "falls"?: [{"at": 0..1, "drop": m, "width"?: m}]}}
   ```
+  Unknown keys are a report warning. **A river drawn on ground the design already made** (down a volcano's or hill's
+  flank, or with its heights read off the existing ground) **cuts its own valley**: the base is solved without it and
+  its valley (floor at the bed, sides at the profile's grade) is cut in, so the land beyond the valley stays put (held
+  as the solve's low ground it raised the land round it by tens of metres). Automatic (the report says which rivers
+  cut and why); `valley.cut` forces it either way. Rivers well above or below the ground made without them (they make
+  the valley: a vale, alpine and basin rivers) are solved as before. Set a cutting river's heights under the ground by
+  the depth of valley you want.
+  **Waterfalls** `falls`: each a step of `drop` m at `at` (0..1 along the river; 1 = its mouth: a river ending at the
+  foot of a sea cliff falls off the cliff's top into the sea). The drops come out of the river's own fall (source and
+  mouth keep their heights, the reaches between grow gentler; together under 90% of it; falls at least 3 drops apart).
+  Built: a band of hard rock across the valley at the upstream level (the lip), a face one cell across (the report
+  gives its angle: under 60 deg the cells are too coarse for the drop; `detail` / `cell`), an amphitheatre cut back
+  round a plunge pool (radius ~ half the width + 0.15-0.6 x the drop, 1.2-6 m deep), the river running on from the
+  pool. `width` = the falling sheet (default the water's width). meta.json and the tiles' manifest carry `falls`:
+  the lip line (two xyz at the lip's water level), drop, width, flow direction, the pool (centre xyz at its level,
+  radius, depth) and `into` (river | lake | sea), for the engine's falling sheet and spray; the stream clutter puts
+  boulders round the pool and fallen blocks at the face's foot.
   The source and the mouth need a height (z); through points may leave it out. The river's heights are its bed: set
   them near the ground they cross (the report warns of a **trench**, the bed far below the ground either side: a
   basin floor above the river's heights cut it into a slot gorge). Its water never stands above its banks, and the banks
@@ -578,16 +596,35 @@ write for the default; the numbers below steer it.
   terrain with rivers). They are in the weights, base colour, roughness and the baked relief, each has a tiling detail
   swatch (`ground_detail.swatches`: packed cobbles; silt with pebbles and flecks) and a texture in every terrain style
   (styles contract 5).
-- the bed's SHAPE in the heightmaps, cliff meshes and collision: pools deeper (against the outer bank in bends),
-  riffles shallower, a bar rising on the inside of bends (its top a few cm over the water), an uneven bed. Only
-  ground that was under the water moves; the banks, fords, routes and sites keep theirs, and the water's level is
-  the river's own (never raised).
+- the bed's SHAPE in the heightmaps, cliff meshes and collision: pools deeper (against the outer bank), riffles
+  shallower, a bar rising on the inner side (its top a few cm over the water), an uneven bed; sorted across the
+  channel (coarse along the thalweg, fines toward the inner margin and in patches).
+- the BANKS' foot: on the outer side the terrain's graded ramp is cut back to a low near-vertical step (0.35-0.85 m
+  x the channel's size: bare damp earth, darkest under the turf's edge, the turf ending at its top, the water at
+  its foot); on the inner side the ramp's foot is laid flat into the bar (dry gravel above the water). On a straight
+  reach the sides ALTERNATE with the pools (the thalweg wanders from bank to bank: alternate bars), so even a river
+  drawn as a gentle curve has bars and cut banks; a real bend (a radius of 2-4 channel widths: more `through`
+  points) puts the cut bank on its outside. Ground above the cut, fords, routes and sites keep theirs, and the
+  water's level is the river's own (never raised). A heightfield can't overhang: the cut is a steep step about a
+  metre wide in the ground mesh, crisp in the baked maps.
+- the river's water LEVEL is eased along its path in the terrain build (smooth, falling all the way, nowhere above
+  the level a low bank allows): it used to drop a few dm to 2 m within one sample and run level between (a
+  staircase for any water drawn or simulated on it).
 - `clutter.csv` rows with a `place` column (`water` | `margin` | `bank` | `bar`; empty for the dry kinds): kinds
   `river_rock` (rounded boulders 0.35-1.8 m), `cobbles` (a patch of 5-15 cobbles, 0.6-1.6 m), `slab` (flat bank
   stones), `driftwood` (0.8-4.5 m; yaw = the log's long axis), `reeds` (clumps 0.5-1.4 m), `litter` (leaf and twig
-  patches). `scale` = the piece's largest plan dimension in metres, `squash` = its height relative to the asset's own
+  patches), `sedge` (tussocks along the wet margin and the bank's foot: denser on the slow inner side, a fringe
+  along a cut bank's top) and `bush` rows with place `bank` (scrub on the bank top, in clumps). `scale` = the piece's largest plan dimension in metres, `squash` = its height relative to the asset's own
   proportions, `z` = the bed or ground under it. The manifest's `clutter` section names every kind with its ranges
   and the counts per river; `streams.rivers` gives each river's path with level, width and energy.
+- two more columns after `place` (the manifest's `clutter.columns` lists them, `clutter.csv_version` is 2): `water`
+  = the water surface's height minus the row's z in metres (> 0: the piece stands in that much water, so an engine
+  darkens it below z + water; < 0: that far above the water; empty on dry ground) and `sink` = metres its pivot goes
+  below z (about a third of the river rocks lie 0.2-0.45 of their height in the bed; empty = 0). Rocks are sorted
+  along the channel (bigger on riffles and steps, smaller in pools) and steep reaches carry more `slab` rows.
+  `clutter.kinds.<kind>.footprint` (`{"shape": "ellipsoid", "plan": [1, 0.85], "height": 0.44}`: shares of scale,
+  the height x squash, over z - sink) is what a water simulation stamps per row at its own resolution: the tile
+  heightmaps hold none of these pieces (1 m cells; the pieces are their own meshes and colliders).
 - the export's notes say each river's reaches by character and its clutter ("stream clutter vale_river: 99
   river_rock, 205 cobbles, ... (23 of 76 rocks in the water stand proud of it)"), and WARN when a river has none.
 
@@ -595,12 +632,24 @@ write for the default; the numbers below steer it.
 - `rivers.<name>.bed = {"energy": 0.1}` says what the river IS whatever its grade (0 a slow silty lowland stream with
   reeds; 0.3 a gravel riffle-pool stream; 0.6 cobbles, boulders and steps; 1 a boulder and bedrock torrent); a list
   runs from source to mouth (`[0.9, 0.5, 0.15]`).
-- `"streams": {"pool": 0.55, "riffle": 0.45, "bar": 0.10, "lump": 0.07, "damp": 0.5, "clutter": 1.0, "shape": true,
-  "spacing": [6, 2.5]}`: pool depth (m, scaled by the channel's size), how much of the depth a riffle takes back, a
-  bar's top over the water, the bed's unevenness, the damp band's height on the bank, clutter density, the bed's
-  shape on / off, pool spacing in channel widths at energy 0 and 1. `"streams": false` = the river as it was before
+- `"streams": {"pool": 0.8, "riffle": 0.85, "bar": 0.10, "lump": 0.07, "damp": 0.9, "cut": [0.35, 0.85],
+  "alternate": 0.75, "clutter": 1.0, "shape": true, "spacing": [2.5, 1.5]}`: pool depth (m, scaled by the channel's
+  size), how much of the depth a riffle takes back, a bar's top over the water, the bed's unevenness, the damp band's
+  height on the bank, the cut bank's height range (`[0, 0]` = banks as graded), how strongly the sides alternate
+  along a straight reach (0 = only real bends sort the bed), clutter density, the shape on / off, pool spacing in
+  channel widths at energy 0 and 1. `"streams": false` = the river as it was before
   (grass to the water, nothing in it).
 - Reeds want a slow reach: if the report calls a reach you meant as a meadow stream "cascade", set its energy.
+
+**Lake shores and beaches** use the same machinery. A lake (not the sea) is still water: its shallows' bed is gravel
+and pebbles along the shore (in patches) and silt from a few metres in, the shore's foot is damp, and its margin
+gets reeds (in stands, with gaps), sedge, cobble patches, a few rounded rocks, a little driftwood and litter; no
+pools, bars or cut banks, and its bed's shape is the terrain's own (`"streams": {"lakes": false}` = rivers only). A
+sea beach (wherever the tiles paint sand above the water near the coast) gets `pebbles` (patches on the shingle up
+the beach, thin lower down), `wrack` (strips of weed and drift lying along the high water mark, where the sand's
+colour already draws the wrack line; yaw = along the shore) and `driftwood` above that line, all with place
+`shore`. The notes count them ("shore clutter (sea beaches): 150 pebbles, 87 wrack, 6 driftwood"; "stream clutter
+lake pond: ...").
 
 ## Styles: the ground in the plants' art styles, zone by zone
 

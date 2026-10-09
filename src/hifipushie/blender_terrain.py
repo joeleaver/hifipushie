@@ -202,7 +202,7 @@ VARIANTS = 4
 
 
 CLUTTER_KINDS = ("bush", "tussock", "tallgrass", "boulder", "river_rock", "cobbles", "slab", "driftwood", "reeds",
-                 "litter")
+                 "litter", "sedge", "pebbles", "wrack")
 CLUTTER_VARIANTS = 4
 
 
@@ -428,7 +428,7 @@ def _scrub(rng, v):
     return V, F, cols
 
 
-STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter")
+STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter", "sedge", "pebbles", "wrack")
 
 
 def _lump(bm, rng, centre, size, rough, sub=2):
@@ -458,6 +458,9 @@ def _stream_piece(kind, rng):
         V = np.asarray(V, float)
         V[:, :2] *= 1.0
         return V, F, np.asarray(C) * np.array([0.9, 1.0, 0.8]), True
+    if kind == "sedge":  # (1 m across at scale 1: a dense arching tussock)
+        V, F, C = _tuft(rng, 90, 1.0, 0.3, 0.55, 0.2)
+        return np.asarray(V, float), F, np.asarray(C) * np.array([0.85, 1.0, 0.7]), True
     bm = bmesh.new()
     cols = []
     stone = lambda: np.array([0.085, 0.08, 0.07]) * rng.uniform(0.7, 1.5) * (1 + rng.normal(0, 0.06) * np.array([1, 0.2, -1]))
@@ -477,6 +480,20 @@ def _stream_piece(kind, rng):
             vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.18 * sz), (sz, sz * rng.uniform(0.65, 0.95),
                                                                                sz * rng.uniform(0.45, 0.7)), 0.08, 2)
             cols += [stone()] * len(vs)
+    elif kind == "pebbles":
+        for _ in range(int(rng.integers(14, 24))):
+            r = 0.45 * math.sqrt(rng.random())
+            a = rng.uniform(0, 2 * math.pi)
+            sz = float(np.clip(rng.lognormal(math.log(0.07), 0.4), 0.03, 0.15))
+            vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.1 * sz), (sz, sz * rng.uniform(0.6, 0.9),
+                                                                              sz * rng.uniform(0.3, 0.5)), 0.05, 1)
+            cols += [stone() * rng.uniform(0.9, 1.6)] * len(vs)
+    elif kind == "wrack":  # (a dark ragged strip along +x)
+        for _ in range(34):
+            x = rng.uniform(-0.5, 0.5)
+            sz = rng.uniform(0.08, 0.2)
+            vs = _lump(bm, rng, (x, rng.normal(0, 0.05), 0.006), (sz, sz * 0.5, 0.015), 0.0, 1)
+            cols += [np.array([0.03, 0.028, 0.012]) * rng.uniform(0.6, 1.6)] * len(vs)
     elif kind == "litter":
         for _ in range(26):
             r = 0.5 * math.sqrt(rng.random())
