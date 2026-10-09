@@ -4697,7 +4697,18 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
     as `reaches` it made any river edit a global change. `"streams": {...}` numbers are scalars: global (cold).
   - Styled beds: the style layers always had normal + height maps; the Blender styles recipe leaves bump off (an
     earlier round's contour lines), so my render was albedo only. `render_tiles(styles_bump=True)`; stones taller
-    in every sheet (0.045-0.1 m).
+    in every sheet (0.045-0.1 m). `terrain_style.ground_view(sheets, refs, path, layers=("grass", "gravel"))` IS a
+    styled look with normals and layer_edge: sb_styles_ground*.png (all five styles: stones in each style's
+    language).
+  - The cut bank in the ground mesh: the heightmap tiles sample the ground every metre, so a 0.35 m riser was a
+    sawtooth of pale triangles along the bank; `cut_riser` 0.9 m in the mesh (a steep ramp), crisper in the maps.
+  - Shores (`terrain_shore.py`): lakes (not the sea) join the Streams grids as STILL water (`still` grid: no pools,
+    bars, cut banks, bed shape; bed gravel by the shore and silt from ~3 m in; reeds, sedge, cobbles, a few rocks at
+    the margin; names "lake <name>"), so a terrain with a lake and no river also gains the layers. Sea beaches:
+    `beach_clutter` (kinds pebbles, wrack, driftwood, place shore) where the tiles paint sand 0.15-3.4 m over the
+    sea, wrack on terrain_ground.tint's own wrack line (same noise, seed 641). `terrain_stream.all_clutter` = both.
+  - Checks: river block (6 tiles, every LOD) 0 failures; incremental on a river edit (energy along the whole river,
+    36-tile block): 24 tiles redone, 0 of 998 files differ from a cold export.
 
 ## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
 

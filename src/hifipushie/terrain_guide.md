@@ -615,6 +615,16 @@ write for the default; the numbers below steer it.
   (grass to the water, nothing in it).
 - Reeds want a slow reach: if the report calls a reach you meant as a meadow stream "cascade", set its energy.
 
+**Lake shores and beaches** use the same machinery. A lake (not the sea) is still water: its shallows' bed is gravel
+and pebbles along the shore (in patches) and silt from a few metres in, the shore's foot is damp, and its margin
+gets reeds (in stands, with gaps), sedge, cobble patches, a few rounded rocks, a little driftwood and litter; no
+pools, bars or cut banks, and its bed's shape is the terrain's own (`"streams": {"lakes": false}` = rivers only). A
+sea beach (wherever the tiles paint sand above the water near the coast) gets `pebbles` (patches on the shingle up
+the beach, thin lower down), `wrack` (strips of weed and drift lying along the high water mark, where the sand's
+colour already draws the wrack line; yaw = along the shore) and `driftwood` above that line, all with place
+`shore`. The notes count them ("shore clutter (sea beaches): 150 pebbles, 87 wrack, 6 driftwood"; "stream clutter
+lake pond: ...").
+
 ## Styles: the ground in the plants' art styles, zone by zone
 
 One terrain can hold regions drawn in different styles (the vegetation styles' worlds: blobby, anime, ... and
