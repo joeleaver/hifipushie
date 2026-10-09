@@ -114,7 +114,7 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "cycles_fit": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
-             "handles", "tier", "edge", "hand", "free", "space", "core", "strands"}
+             "handles", "tier", "edge", "hand", "free", "space", "core", "strands", "swoop"}
 # free: 0..1, the lock hangs clear of the head (its underside is hair too, not the dark gap side); space "xyz": pts
 # are metres from the head centre [x, y, z] (hair that leaves the head: a tail), not [az, el, h]; core: a polyline
 # (same space) the lock's outward side faces away from (a tail's own axis); strands: this lock's own card numbers
@@ -1291,7 +1291,7 @@ def resolve(spec: dict, sc: Scalp) -> list:
         inputs["Centre"] = [float(v) for v in sc.C]
         out.append({"name": n, "pts": W.tolist(), "handles": H, "radius": lk.get("radius"), "tilt": lk.get("tilt"),
                     "inputs": inputs, "hash": lock_hash(lk, sc), "free": float(lk.get("free", 0.0)),
-                    "strands": lk.get("strands"), "tier": lk.get("tier"),
+                    "strands": lk.get("strands"), "tier": lk.get("tier"), "swoop": float(lk.get("swoop", 0.0)),
                     "core": lock_world(sc, lk, lk["core"]).tolist() if lk.get("core") else None})
     return out
 
@@ -1963,6 +1963,12 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
                "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
 SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
 SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
+SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
+SWOOP_WIDTH = 0.02  # m: their width
+SWOOP_BACK = 0.006  # m inside the hairline where they start
+SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
+SWOOP_GAP = 0.0012  # m between those layers
+SWOOP_LIFT = 0.004  # m the swoop's cards rise mid-lock over where its strands lie (its wave)
 SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it their thick strands stood as wires)
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
@@ -2089,6 +2095,43 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 c_["prio"] = ((0.0 if off_ > 0.005 else 0.45 if c_.get("lock") in edge_ else 1.0)
                               + 0.5 * min(c_["layer"], 1) + float(hr_.uniform(0.0, 0.9)))
             cards = kept_
+            # a swoop (groom.loose.swoop) is ONE lock with body: clump cards cut it into fine scraps lying at the
+            # cap's height (Garrett: no swoop in the cards). It gets SWOOP_CARDS dedicated cards on the dense tile
+            # along its strongest locks' own spines (their lift included), wide, kept first by the budget
+            sw_ = sorted([k_ for k_ in hair_locks if float(k_.get("swoop", 0.0)) >= 0.5], key=lambda k_: -float(k_["swoop"]))
+            if sw_:
+                pick_ = [sw_[int(i_)] for i_ in np.unique(np.linspace(0, len(sw_) - 1, min(SWOOP_CARDS, len(sw_))).round())]
+                S1_ = {**S, "layers": 1, "card_width": SWOOP_WIDTH, "flyaway": 0.0}
+                for c_ in hc.cards_of(pick_, sc.C, S1_, lk):
+                    P_ = np.asarray(c_["P"], float)
+                    a_, e_, h_ = sc.coords(P_)
+                    din_ = inside(sc, line, a_, e_)
+                    # its root starts behind the hairline (the dense tile's square root end on the forehead read as
+                    # a plate's edge); the hairline's own fine cards and the cap carry the line
+                    ok_ = np.cumsum(din_ >= SWOOP_BACK) > 0
+                    if ok_.sum() < 3:
+                        continue
+                    for k__ in ("P", "X", "N", "hw", "u", "s", "bend", "T"):
+                        c_[k__] = np.asarray(c_[k__])[ok_]
+                    P_, a_, e_, h_, din_ = P_[ok_], a_[ok_], e_[ok_], h_[ok_], din_[ok_]
+                    cz_ = hair_cap.cap_height(chart["lift"], din_, a_, e_) + capb_[capt_.query(dirs(a_, e_))[1]]
+                    f_ = (c_["s"] - c_["s"][0]) / max(float(c_["s"][-1] - c_["s"][0]), 1e-9)
+                    need_ = cz_ + 0.0015 - 0.002 * (1 - _ss(f_ / 0.2))
+                    up_ = np.where(h_ > -0.004, np.clip(need_ - h_, 0.0, 0.03), 0.0)
+                    # the wave: the lock rises off the hair round it and rolls back down (cards lying at the cap's height
+                    # read as part of the combed mass)
+                    up_ = up_ + SWOOP_LIFT * np.sin(np.pi * np.clip(f_, 0, 1)) ** 0.7
+                    c_["P"] = P_ + up_[:, None] * _unit(P_ - sc.C)
+                    c_["hw"] = (np.asarray(c_["hw"], float) * (1 - 0.6 * _ss((f_ - 0.5) / 0.5))  # a tapered, feathered end
+                                * (0.35 + 0.65 * _ss(f_ / 0.25)))  # and a narrow root
+                    # body from LAYERS of the fine short tiles, not the dense tile (its 16 cm strands squeezed onto a
+                    # 4 cm card read as a smooth grey plate on the forehead in Godot)
+                    for li_ in range(SWOOP_LAYERS):
+                        d_ = dict(c_)
+                        d_["P"] = np.asarray(c_["P"]) + (SWOOP_GAP * li_ * _ss(f_ / 0.3))[:, None] * np.asarray(c_["N"], float)
+                        d_["hw"] = np.asarray(c_["hw"]) * (1.0 - 0.15 * li_)
+                        d_["kind"], d_["layer"], d_["prio"] = ("medium" if li_ < SWOOP_LAYERS - 1 else "sparse"), li_, -1.0
+                        cards.append(d_)
         tc = hc.tail_cores(D, hair_locks, sides=int(S.get("core_sides", 10)))
         core = hc.core_mesh(tc, at["tiles"]) if tc is not None else None
         # (not for a short cut: hair under MASS_MIN long has no inside; its shell stood OUTSIDE the cards on the
