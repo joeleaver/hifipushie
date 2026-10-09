@@ -723,12 +723,14 @@ What the tools build when a loose groom's mean lock is under 6 cm (`hair.SHORT_T
    is a grey hair (each lock's own share, x `look.card_grey`, default 0.5: the top strand of every texel, fully lit,
    reads twice as silver as the same share among a path tracer's shadowed hairs), depth (how far it stands over the
    hair around it: the shade between hairs and clumps), a normal map from the strands' heights (`hair_cap.RELIEF`
-   0.35: at the real slopes, glossy, the cap was tin foil), the strand's direction (the flow map). Under the
+   0.7 of the real slopes: the relief is what shades the hair darker away from the light), the strand's direction (the flow map). Under the
    strands an OPAQUE base wherever the groom is dense, from `strands.soft` inside the hairline: skin shows only
    where real strands are sparse. The chart is 2048 px; the atlas (tiles | chart) 4096 x 2048.
-2. **The cap stands in the hair**, at half the hair's height over the scalp (`hair_cap.LIFT`, at most 12 mm), easing
+2. **The cap stands in the hair**, at 0.7 of the hair's height (its 85th percentile) over the scalp (`hair_cap.LIFT`, at most 15 mm), easing
    down to the skin over 12 mm at the hairline: the head's outline is hair, not a skull under a fringe.
-3. **Cards everywhere the groom has length**, lying just over the cap with their roots sunk in it, on tiles of a few
+3. **Cards everywhere the groom has length**, each standing at the TOP of its clump of strands (`hair.SHORT_TOP` x
+   the clump's spread along its normal: a card on the clump's mean line is under the hair's outline), never under
+   the cap, roots sunk in it, ending at the hairline (a card's few thick strands past it were wires on the skin), on tiles of a few
    THICK strands (16 / 9 strands a tile, 5-6 texels: a 1 cm card is seen 3-4 mips down, where a hundred 1-texel
    hairs are a grey film that an alpha test turns into a flake). The budget thins them evenly: cards that stand off
    the cap (the lifted front, the outline) and the hairline's go last. Tile strands are straightened (16 cm of
@@ -737,7 +739,7 @@ What the tools build when a loose groom's mean lock is under 6 cm (`hair.SHORT_T
    normal / orm / aux / flow PNGs once and each `<name>_hair_<tier>.glb` refers to them by file name (they were
    embedded four times: 4 x 24 MB). `textures="embedded"` for a single self-contained GLB.
 5. The material says KHR_materials_anisotropy with the flow map as its texture (direction in tangent space: red =
-   along u, green = up the picture; blue = strength), roughness >= 0.72.
+   along u, green = up the picture; blue = strength), roughness >= 0.85 (lower, with the strands' relief in the normal map, it shone like gel).
 
 In an engine (checked in Godot 4.7, `spikes/godot_hair/look.gd`):
 
@@ -767,6 +769,15 @@ based hair shading in Unreal" (https://blog.selfshadow.com/publications/s2016-sh
 Godot forum, run-time glTF textures without mipmaps (https://forum.godotengine.org/t/not-applied-mipmap-at-gltf-runtime-loaded-model/94799);
 Godot's gltf_document.cpp (no anisotropy / specular / sheen extension). No numbers for a short cut from a named
 studio talk were found; a strand's width in texels and "bent normals for caps" have no source (ours by measure).
+
+### Laying a crop: `groom.loose.lay`
+
+A short cut's height is not its length. Measured on Garrett's crop: `stiff` 0.6 on top stands it up as a brush
+(+15 mm over the photo's outline), `stiff` under ~0.3 lets gravity curl 3 cm locks into hooks, and cutting the
+length changes little. `lay` (0..1, or per region) presses each lock's direction onto the head as a comb does:
+`{"top": 0.4, "front": 0.15}` took the top from +6-10 mm to 0 at `stiff` 0.4-0.5 with no hooks. Regions are broad:
+"top" reaches the upper sides, so check the sides' width after laying the top (they thinned 4-7 mm) and give them
+`out` back. A hairline moved up adds height (the front roots stand higher on the head).
 
 ## What went wrong on the way (so you can recognise it)
 

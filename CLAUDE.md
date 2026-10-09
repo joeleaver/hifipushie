@@ -1316,6 +1316,58 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     coverage in mips (engines make the mips), per-tier cap_step for short tiers, card colour by view, the
     "detached wisp ... 3300000 mm" line in check_tiers (inside() far from the line), strands' top the last 6 mm,
     the re-seat.
+  - hair5 round 2 (2026-10-09; the coordinator on h5_h6: "a flat combed cap", hairline "RECEDED with wisps: my call
+    to trust the trace was wrong for this head"; sheet `hair_renders/h5_r2_sheet.png`, export hair5/exp_r2 (hero +
+    main), Godot out/gd_r2.png; q8.sh <tag> = export + check_tiers + Godot, q9.sh = the sheet with fresh Cycles):
+    - Cards' volume: cap at LIFT 0.7 of the hair's 85th-percentile height (max 15 mm), every card moved to the TOP of
+      its clump (`SHORT_TOP` 1.3 x the clump's spread along its normal; cards now carry `sn`), fly cards (hero 2 /
+      main 1 a clump), cards CUT at the hairline (2 mm inside: their thick strands past it were the wires on the
+      forehead and round the ear), no baby cards in short tiers. check_tiers bare front / three-quarter 29-32% ->
+      16-19% (target 12 not met), iou 0.68-0.70 -> 0.79-0.81, side / back 6-9%.
+    - Colour by view: RELIEF 0.7 / SLOPE 1.0 + a centimetre-scale hollow term in the depth + root ramp 0.7 over 45%
+      of a card; with it roughness had to go to >= 0.85 (at 0.72 the side shone like gel in Godot). Against the
+      Cycles strands (sheet3): front value 0.98 x, three-quarter 1.22 x, saturation 1.3 x: three-quarter NOT fixed
+      (check_tiers against EEVEE strands reads 1.07-1.09 there).
+    - `groom.loose.lay` (hair_loose.py; test_lay_presses_a_crop_onto_the_head): each step loses that share of its
+      outward direction. Garrett: lay top 0.4 / front 0.15 at stiff 0.5 / 0.4: outline top +6.4 -> 0.0 mm, hair over
+      the bare head 12.8 mm = the photo's, IoU 0.92, no hooks; sides -6.7 mm (region "top" reaches the upper sides;
+      out sides 0.14 gave 1 mm back). Hairline middle half-way: front_points [0, 1.760] .. [54, 1.748].
+    - READ of h5_r2: strands = a tidy dark crop combed across, forehead still a little tall, greying barely shows
+      in Cycles. Cards in Godot = a full head of dark greying combed hair, matte, soft hairline; the lifted front /
+      tousle is gone in BOTH (the lay flattened the strands too). Blender's glTF look draws the cards paler and
+      browner than Godot does.
+    - Not done: bare < 12%, three-quarter colour, the sides' width, npc / far re-exported, the re-seat (head is now
+      garrett4's g4_a / g4_garrett; told it: copy groom + strands + look, regrow, re-trace front_points).
+  - HANDOVER (hair5, 2026-10-09, context full; NOTHING of the list below is started). Branch
+    `worktree-agent-adfa8889e1104d88e`, last commit = this note; tests: test_hair_strands (minus the Blender export
+    test) + test_hair_loose pass. Model `workspace/hs_garrett` (still on om_garrett v17's head) holds the groom of
+    h5_r2 (mkcut.py's defaults + lay top 0.4 / front 0.15, out sides 0.14 / back 0.08, lift 0.002; look card_gain
+    0.56, card_sat 0.38, card_grey 0.9). Scratch /mnt/data/hifipushie/hair5/ (run.sh <script>; the fast loops:
+    `mkcut.py <tag> '<loose patch>' '<strands patch>' '<look patch>' eevee|cycles <views>` = regrow + look +
+    strandfit (3 min in EEVEE), `headtop.py`, `hstat.py`, `cap1.py <tag> main` = a tier's job timed + EEVEE look,
+    `q8.sh <tag> hero,main` = export + check_tiers + Godot, `q9.sh <tag>` = the sheet with fresh Cycles strands,
+    `setlook.py '<json>'`). The sandbox refuses heredocs, JSON-with-loops and `cd` chains: write a script, run one
+    plain command. Godot only through gd.sh.
+    The coordinator's read of h5_r2 and the next agent's list, in its order, ON garrett4's head (`g4_garrett`: copy
+    groom + strands + look from hs_garrett without "locks", regrow with mkcut.py's call; strandfit / headtop /
+    hairline_trace read the camera from $CAM_MODEL's human_refs.json):
+    (1) HAIRLINE by PROPORTION, not by the trace (it misled twice): measure on the photo and on our render, like
+    with like, hairline height above the brows / brow-to-chin (the photo: forehead about a third of the face, ours
+    about half), and the temple corners' depth; the photo's line runs nearly straight across with shallow corners.
+    Set `groom.hairline.front_points` ([azimuth deg, world z]) from that; the temple values (42-54 deg) are the
+    trace's and make deep recessions: raise / straighten them too.
+    (2) Front `lay` 0, standing (out 0.2-0.3, flow up and forward-left as round 3: [0.75, 0.1, 0.45]); top laid.
+    Keep the upper sides' volume: "top"'s region weight reaches them (hair_loose.grow's `by_region`; hair.REGIONS
+    weights W): gate the lay by elevation (e.g. x smoothstep(el 45..65)) or add an "upper sides" exception.
+    (3) GREY: photo = salt and pepper, pale grey sides / temples (photocol.py: grey pixels 12% top, 21-24% sides,
+    dark #5a4f46 + grey #968e85). Ours: groom.grey top 0.28 / sides 0.55 / temples 0.75 x look.grey_locks 0.75,
+    grey #b39f88, lit #4a3524: reads dark brown-black in Cycles (true-width hairs bury the grey). Raise grey_locks
+    to 1+, sides 0.6+, a lighter cooler grey, lit less red (R/B toward 1.3 at the photo's value (96, 84, 74));
+    thicker grey strands would need a per-strand radius by `hp_gr` in blender_strands (not there). Cards carry the
+    per-region grey already (hair_cap.strand_grey x look.card_grey); check card_sat again after the hue change.
+    (4) Cards: standing cards at the lifted front follow from (2) (cards stand at their clump's top, SHORT_TOP);
+    then bare < 12% (16-19% now) and three-quarter value (1.22 x the Cycles strands: one gain can't fix it; try a
+    stronger depth term or baking the strands' own Cycles shading from two lights into the chart).
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,

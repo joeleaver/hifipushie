@@ -1951,9 +1951,11 @@ MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no ma
 # sparse layer of cards for what stands off the head (the lifted front, the silhouette's breakup), each on a tile of
 # many fine strands with soft tips and no opaque base, plus single-hair cards along the hairline. Cards cut one per
 # clump and worn on the dense tile read as torn paper / leaf litter at bust distance (Garrett's crop).
-SHORT_TIERS = {"hero": {"triangles": 16000, "group": "pair", "layers": 2}, "main": {"triangles": 8000, "group": "lock", "layers": 1},
-               "npc": {"triangles": 4000, "group": "lock", "layers": 1}, "far": {"triangles": 1500, "group": "lock", "layers": 1}}
-SHORT_OFF = 0.008  # m over the scalp: a card whose line never rises this far lies in the cap's own layer: left out
+SHORT_TIERS = {"hero": {"triangles": 16000, "group": "pair", "layers": 2, "baby": 0.0, "fly": 2},
+               "main": {"triangles": 8000, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
+               "npc": {"triangles": 4000, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
+               "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
+SHORT_TOP = 1.3  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
 SHORT_ATLAS = 2048
 CARD_TIERS = {
     "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
@@ -1977,6 +1979,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     lens_ = [float(np.linalg.norm(np.diff(np.asarray(k_["pts"], float), axis=0), axis=1).sum())
              for k_ in locks] if g.get("loose") else []
     short = bool(lens_) and float(np.mean(lens_)) < MASS_MIN
+    tier_given = isinstance(budget, str)
     if isinstance(budget, str):  # a tier: its triangles, and how fine the cards are cut to spend them
         if budget not in CARD_TIERS:
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
@@ -1984,7 +1987,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         budget = int(tier["triangles"])
     if short:
-        S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": 0, "short": True}
+        S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
+             "short": True}
     lk = {**LOOK, **(h.get("look") or {})}
     # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
     gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
@@ -2027,19 +2031,40 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             # at random, so the whole top keeps a broken, layered surface instead of a rim of tufts round a dome
             edge_ = {k_["name"] for k_ in hair_locks if k_.get("at_hairline")}
             hr_ = np.random.default_rng(int(g.get("seed", 0)) + 17)
+            kept_ = []
             for c_ in cards:
                 P_ = np.asarray(c_["P"], float)
                 a_, e_, h_ = sc.coords(P_)
-                cz_ = hair_cap.cap_height(chart["lift"], inside(sc, line, a_, e_), a_, e_)
+                din_ = inside(sc, line, a_, e_)
+                # a card ends at the hairline: past it (over the forehead, round the ear) its few thick strands
+                # stood off the skin as wires. The cap's own thinned strands are the hairline.
+                ok_ = np.cumprod(din_ > 0.002).astype(bool) if din_[0] > 0.002 else np.zeros(len(din_), bool)
+                if ok_.sum() < 3:
+                    continue
+                if not ok_.all():
+                    for k__ in ("P", "X", "N", "hw", "u", "s", "bend", "T"):
+                        c_[k__] = np.asarray(c_[k__])[ok_]
+                    if np.ndim(c_.get("sn", 0.0)):
+                        c_["sn"] = np.asarray(c_["sn"])[ok_]
+                    P_, a_, e_, h_, din_ = P_[ok_], a_[ok_], e_[ok_], h_[ok_], din_[ok_]
+                kept_.append(c_)
+                if c_["kind"] != "fly":  # the card stands at the TOP of its clump (its line is the clump's mean: the
+                    # hair's outline is the strands above it), along the strands' own direction
+                    sn_ = np.broadcast_to(np.asarray(c_.get("sn", 0.0), float), (len(P_),))
+                    P_ = P_ + (SHORT_TOP * sn_ * _ss(din_ / 0.015))[:, None] * np.asarray(c_["N"], float)
+                    a_, e_, h_ = sc.coords(P_)
+                cz_ = hair_cap.cap_height(chart["lift"], din_, a_, e_)
                 f_ = (c_["s"] - c_["s"][0]) / max(float(c_["s"][-1] - c_["s"][0]), 1e-9)
                 need_ = cz_ + 0.0012 + 0.0006 * c_["layer"] - 0.002 * (1 - _ss(f_ / 0.25))  # (the root dives into the cap)
                 up_ = np.where(h_ > -0.004, np.clip(need_ - h_, 0.0, 0.02), 0.0)  # (not where a ray meets the ear first)
                 c_["P"] = P_ + up_[:, None] * _unit(P_ - sc.C)
                 c_["hw"] = np.asarray(c_["hw"], float) * (1 - 0.45 * _ss((f_ - 0.55) / 0.45))  # no square end
-                c_["kind"] = "medium" if c_["layer"] == 0 else "sparse"
+                if c_["kind"] != "fly":
+                    c_["kind"] = "medium" if c_["layer"] == 0 else "sparse"
                 off_ = float((h_ - cz_).max())
                 c_["prio"] = ((0.0 if off_ > 0.005 else 0.45 if c_.get("lock") in edge_ else 1.0)
-                              + 0.5 * c_["layer"] + float(hr_.uniform(0.0, 0.9)))
+                              + 0.5 * min(c_["layer"], 1) + float(hr_.uniform(0.0, 0.9)))
+            cards = kept_
         tc = hc.tail_cores(D, hair_locks, sides=int(S.get("core_sides", 10)))
         core = hc.core_mesh(tc, at["tiles"]) if tc is not None else None
         # (not for a short cut: hair under MASS_MIN long has no inside; its shell stood OUTSIDE the cards on the
@@ -2962,7 +2987,7 @@ def export_cards(name: str, out_dir: Path, spec: dict, log: list) -> tuple[dict,
         Image.open(cd["flow"]).convert("RGB").save(files["flow"])
     rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.5) * (1.25 - 0.4 * aux[..., 2]), 0.05, 1.0)
     if cd.get("short"):  # a baked cap is a surface of many hairs' highlights already in its picture and normal map:
-        rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.72) * (1.15 - 0.2 * aux[..., 2]), 0.05, 1.0)  # glossy, it was tin foil
+        rough = np.clip(max(float(lk.get("roughness", 0.42)), 0.85) * (1.12 - 0.15 * aux[..., 2]), 0.05, 1.0)  # glossy, it was tin foil
     occ = 0.55 + 0.45 * aux[..., 2]
     Image.fromarray((np.stack([occ, rough, np.zeros_like(occ)], -1) * 255 + 0.5).astype(np.uint8)).save(files["orm"])
     Image.fromarray(np.full((4, 4, 4), [255, 255, 255, 128], np.uint8), "RGBA").save(files["specular"])

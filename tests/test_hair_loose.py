@@ -60,6 +60,28 @@ def test_loose_hair_falls_and_stays_out():
     assert face == 0, face
 
 
+def test_lay_presses_a_crop_onto_the_head():
+    """`lay`: a short stiff crop stands off the head as a brush; laid, its tips lie close over the scalp, without
+    the low stiffness that lets gravity curl short locks. Per region: only the top is laid."""
+    crop = {"length": 0.03, "spacing": 0.012, "stiff": 0.6, "out": 0.1, "lift": 0.001, "body": 0.002}
+
+    def tips(loose):
+        sc, _col, locks = _grow(loose, parting="none")
+        P = np.array([np.asarray(lk["pts"])[-1] + sc.C for lk in locks.values()])
+        az, el, h = sc.coords(P)
+        side = np.abs(np.abs(((az + 180) % 360) - 180) - 90) < 30
+        return np.where(side, el, el + 1000 * (el < 30)), h  # (low tips count only at the head's sides)
+    el0, h0 = tips(crop)
+    el1, h1 = tips({**crop, "lay": 0.8})
+    top0, top1 = h0[(el0 > 55) & (el0 < 100)], h1[(el1 > 55) & (el1 < 100)]
+    assert np.median(top0) > 0.006, np.median(top0)  # the brush
+    assert np.median(top1) < 0.5 * np.median(top0), (np.median(top0), np.median(top1))
+    el2, h2 = tips({**crop, "lay": {"top": 0.8, "front": 0.0, "sides": 0.0, "back": 0.0, "nape": 0.0}})
+    assert np.median(h2[(el2 > 60) & (el2 < 100)]) < 0.6 * np.median(top0)
+    low0, low2 = h0[(el0 > -20) & (el0 < 15)], h2[(el2 > -20) & (el2 < 15)]
+    assert abs(np.median(low2) - np.median(low0)) < 0.002, (np.median(low0), np.median(low2))  # the sides as they were
+
+
 def test_level_fringe_and_afro():
     sc, col, bob = _grow({"length": 0.3, "level": -0.08, "uneven": 0.0, "spacing": 0.03,
                           "fringe": {"length": 0.06, "level": -0.01}}, parting="none")
