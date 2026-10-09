@@ -2350,6 +2350,11 @@ def _decimate(P, faces, err, budget, field, border_ok=None, pre=None):
                                 verbose=False)
                 v, f, _ = s.getMesh()
                 out = _drop_twins(np.asarray(v, float), np.asarray(f, np.int64))
+                if len(out[1]) and not _manifold(out[1]):  # (two sheets pinched onto one edge: unpinched)
+                    sp = _split_nonmanifold(*out)
+                    if sp is not None:
+                        profiling.count("decimate: pinched sheets split")
+                        out = sp
             with _span("decimate.valid", leaf=True):
                 ok = valid(*out)
             if ok and len(out[1]) <= 1.15 * n + 64:  # (a low aggressiveness can stall far above n)
@@ -2461,6 +2466,120 @@ def _drop_twins(v, f):
     remap = np.full(len(v), -1, np.int64)
     remap[used] = np.arange(len(used))
     return v[used], remap[f]
+
+
+PINCH_GAP = 0.005  # m each copy of a pinched vertex steps into its own sheet (`_unpinch`)
+
+
+def _split_nonmanifold(v, f):
+    """`_unpinch` until no edge has more than two faces: a pinch whose faces were paired across the sheets (the other
+    of the two ways round) stays shared after a pass, and the next pass pairs it the other way. None if it can't."""
+    for k in range(4):
+        if _manifold(f):
+            return v, f
+        got = _unpinch(v, f, k % 2)
+        if got is None:
+            return None
+        v, f = got
+    return (v, f) if _manifold(f) else None
+
+
+def _unpinch(v, f, offset=0):
+    """pyfqmr's other fold where two sheets of a shell lie within a voxel (a cave's wall and the rock kept round it, or
+    the shell's back, close under crown_tube): it collapses them onto one shared edge (4 faces on it) or vertex. The
+    geometry is fine, only the topology pinches: each such edge's faces are paired round it (sorted by angle, a pair
+    taking it in opposite directions) and every vertex on one is copied once per fan of faces joined through its
+    edges, so the two sheets touch without sharing anything. (v, f) manifold, or None when the faces round an edge
+    don't alternate in direction or a pinch is on an open edge (a tile's border: its vertices are canonical).
+    Rejected as a fold instead, every count folded somewhere and the island's 16,25 kept its dense mesh at every LOD
+    (250k triangles for budgets of 12,000 / 3,000 / 800: pushieworld note 117)."""
+    n = len(v)
+    e = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
+    fid = np.tile(np.arange(len(f)), 3)
+    und = np.minimum(e[:, 0], e[:, 1]) * n + np.maximum(e[:, 0], e[:, 1])
+    u, inv, cnt = np.unique(und, return_inverse=True, return_counts=True)
+    inv = inv.ravel()
+    bad = np.flatnonzero(cnt > 2)
+    if not len(bad):
+        return v, f
+    if np.any(cnt[bad] % 2):  # (an odd count: not two sheets)
+        return None
+    opn = np.c_[u[cnt == 1] // n, u[cnt == 1] % n]
+    if len(opn) and np.isin(np.c_[u[bad] // n, u[bad] % n], opn).any():  # (a pinch on the tile's border)
+        return None
+    # faces joined across each edge: manifold edges join their two faces, a pinched edge its pairs
+    join = {}  # (face, undirected edge) -> the face across it
+    order = np.argsort(inv, kind="stable")
+    starts = np.r_[0, np.cumsum(cnt)]
+    for q in range(len(u)):
+        rows = order[starts[q]:starts[q + 1]]
+        fs = fid[rows]
+        if len(rows) == 2:
+            join[(fs[0], u[q])] = fs[1]
+            join[(fs[1], u[q])] = fs[0]
+            continue
+        if len(rows) == 1:
+            continue
+        a, b = e[rows[0]]
+        a, b = min(a, b), max(a, b)
+        ax = v[b] - v[a]
+        ax = ax / max(np.linalg.norm(ax), 1e-12)
+        ref = None
+        ang, dirs = [], []
+        for r, fi in zip(rows, fs):
+            c = int(np.setdiff1d(f[fi], [a, b])[0])
+            w = v[c] - v[a]
+            w = w - ax * (w @ ax)
+            if ref is None:
+                ref = w / max(np.linalg.norm(w), 1e-12)
+            ang.append(math.atan2(np.cross(ref, w) @ ax, ref @ w))
+            dirs.append(1 if e[r, 0] == a else -1)
+        srt = np.argsort(ang)
+        d_ = np.asarray(dirs)[srt]
+        if np.any(d_[1:] == d_[:-1]) or d_[0] == d_[-1]:
+            return None
+        fs = fs[srt]
+        fs = np.roll(fs, -offset)
+        for k in range(0, len(fs), 2):
+            join[(fs[k], u[q])] = fs[k + 1]
+            join[(fs[k + 1], u[q])] = fs[k]
+    pinched = np.unique(np.c_[u[bad] // n, u[bad] % n])
+    v2, f2 = list(v), f.copy()
+    for p in pinched:
+        fan = np.flatnonzero((f == p).any(1))
+        seen, comps = set(), []
+        for s in fan:
+            if s in seen:
+                continue
+            comp, stack = [], [s]
+            seen.add(s)
+            while stack:
+                x = stack.pop()
+                comp.append(x)
+                for o in f[x]:
+                    if o == p:
+                        continue
+                    key = (x, min(p, o) * n + max(p, o))
+                    y = join.get(key)
+                    if y is not None and y not in seen:
+                        seen.add(y)
+                        stack.append(y)
+            comps.append(comp)
+        if len(comps) < 2:
+            continue
+        for ci, comp in enumerate(comps):
+            # (each copy stepped PINCH_GAP into its own fan: at one position the export's GLBs, welded by position
+            # when read back, were the same pinched edge again)
+            ix = np.array(comp)
+            nb = np.setdiff1d(f[ix], [p])
+            dv = v[nb].mean(0) - v[p]
+            q = v[p] + PINCH_GAP * dv / max(np.linalg.norm(dv), 1e-12)
+            if ci == 0:
+                v2[p] = q
+                continue
+            v2.append(q)
+            f2[ix] = np.where(f2[ix] == p, len(v2) - 1, f2[ix])
+    return np.asarray(v2, float), f2
 
 
 def _manifold(f):
