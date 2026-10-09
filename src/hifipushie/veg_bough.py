@@ -22,6 +22,7 @@ TRIS = BOUGH["verts"] * BOUGH["cross"]  # triangles the richest bough card costs
 # cards was 2.7 m boughs (palm fronds from 30 m); the same triangles as six-triangle cards are twice as many, smaller.
 SINGLE = os.environ.get("HIFIPUSHIE_BOUGH_SINGLE", "0") != "0"  # (tried: one card of each pair, the one facing out: a spruce went ragged and see-through from the front, its flank cards edge-on)
 FULL = float(os.environ.get("HIFIPUSHIE_BOUGH_FULL", "0.45"))  # the share of the finest cut's boughs the fullest LOD draws
+FULL_LEAST = 500
 PAIR_BELOW = 7.0  # m over the ground: boughs a player stands beside keep their crossed pair
 CULL = os.environ.get("HIFIPUSHIE_BOUGH_CULL", "0") != "0"  # (tried: a spruce's or a pine's boughs are ALL seen from somewhere; nothing to cull)
 THIN, THIN_GROW = 0.08, 2.4  # the least share of the finest cut a thinned LOD keeps; the most its cards grow
@@ -154,7 +155,7 @@ def fit(tree: dict, triangles: int) -> tuple[int, int]:
         # them grown to the same cover 4.7; a stand of the first cost 1.6x the anime spruce's GPU time in Godot).
         # The triangles this leaves go to the wood (veg_export._budget).
         form = cheap
-        n = min(t // tris(form), int(FULL * mr))
+        n = min(t // tris(form), max(int(FULL * mr), min(mr, FULL_LEAST)))  # (a thin crown keeps all its boughs)
         memo[n] = (form, m, False)
         return n, form
     n = min(t // tris(0), m)
