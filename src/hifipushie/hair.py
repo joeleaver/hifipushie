@@ -1961,8 +1961,9 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
                "main": {"triangles": 8000, "cap_step": 7.5, "group": "pair", "layers": 1, "baby": 0.0, "fly": 1},
                "npc": {"triangles": 4000, "cap_step": 10.0, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0},
                "far": {"triangles": 1500, "group": "lock", "layers": 1, "baby": 0.0, "fly": 0}}
-SHORT_TOP = 1.3  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
-SHORT_TIP = 0.003  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
+SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
+SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
+SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it their thick strands stood as wires)
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
 CARD_TIERS = {
@@ -2052,7 +2053,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                 din_ = inside(sc, line, a_, e_)
                 # a card ends at the hairline: past it (over the forehead, round the ear) its few thick strands
                 # stood off the skin as wires. The cap's own thinned strands are the hairline.
-                ok_ = np.cumprod(din_ > 0.002).astype(bool) if din_[0] > 0.002 else np.zeros(len(din_), bool)
+                ok_ = np.cumprod(din_ > SHORT_EDGE).astype(bool) if din_[0] > SHORT_EDGE else np.zeros(len(din_), bool)
                 if ok_.sum() < 3:
                     continue
                 if not ok_.all():

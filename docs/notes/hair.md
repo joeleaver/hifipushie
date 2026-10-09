@@ -653,3 +653,30 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     - BLUNT READ: the swoop is now a darker, combed lock rolling from the front centre over to his right, behind the
       hairline in profile (no cowlick); it is subtle, a little flat, and reads as part of the combed mass more than as
       a lifted wave. Back and texture as round 8.
+  - Round 10, the GAME-READY p12 (Joe: "if we can get the game-ready version of it to look like that"). Sheet
+    `hair_renders/h10_c6_sheet.png` = photo | Cycles strands (target) | hero | main through Blender's glTF importer in
+    EEVEE at the SAME cameras (front through the photo's camera, tq_desk, side_long; lookcam.SOFT) + front close-up +
+    a Godot 4 row (look.gd a2c, its own cameras). h10_c1_sheet.png = the first export with round-6 constants (before).
+    Scratch: exp.py `set=mod.CONST:json;...` (module constants for one export), cardsheet.py <strands tag> <export>
+    <out> [tiers=] (the sheet + IoU + colour per tier/view), olap.py (where the outlines differ, row by row + mask),
+    exports exp_c1 .. exp_c6.
+    - Budgets (unchanged short tiers): hero 16,000 / main 7,998 / npc 4,000 / far 1,498 triangles; GLBs 1.34 MB /
+      660 KB / 322 KB / 114 KB; ONE shared texture set 4096 x 2048 (basecolor RGBA 5.6 MB, normal 6.8, aux RGBA 5.6,
+      flow 3.8, ORM 3.1 MB PNG): 27 MB for all four tiers.
+    - Cause of the gap, by measure (olap.py on the front): the cards' outline stood 3-5 mm OUTSIDE the strands' all
+      round the upper head (a helmet: cap at 0.9 of the hair's height + cards lifted to the top of their clump x1.3 +
+      3 mm tips), and the card strands were thick and lit (beige wire). New defaults: hair.SHORT_TOP 1.3 -> 0.6,
+      SHORT_TIP 3 -> 1.5 mm, SHORT_EDGE (new constant) 2 -> 0 mm, hair_cap.LIFT 0.9 -> 0.7 (VERSION 8),
+      hair_cards.SHORT_TILE medium 36 x 3.2 px -> 56 x 2.2, sparse 22 x 3.0 -> 34 x 2.0, SHORT_DEPTH (new, was an
+      inline 0.62) 0.45; the atlas cache key now includes both. look.card_sat 0.38 -> 0.2 (h7_garrett's spec).
+    - Front IoU vs strands: hero 0.729 -> 0.754, main 0.721 -> 0.757; three-quarter 0.83 -> 0.85, side 0.89 -> 0.90.
+      Colour (hair pixels, front): strands lum 104 / sat 0.146 / R/B 1.15; cards c1 103 / 0.201 / 1.24, c6 102 / 0.168
+      / 1.20. Three-quarter and side: cards stay brighter (lum 88 / 80 vs the strands' 73 / 55): cards don't
+      self-shadow. Left of the IoU gap: the strands' fuzz along the hairline (the cap's thinned edge reads ~4 mm
+      higher than the strands' baby / scalp hairs) and the swoop side's upper rim.
+    - BLUNT READ: in Godot the hero tier now reads as short greying combed-back hair of the right colour family, finer
+      than round 6; in EEVEE's glTF look it is still coarser and browner than the strands. Wrong still: ragged card
+      ends over the ears / sideburns, a pale speckled patch at the nape (the cap's sparse short hair: the nape is 8
+      mm), the swoop only a faint lift (no card stands as one lock), hero = main to the eye, tiers' sides lighter than
+      the strands. Not done: Godot through the photo's fitted camera (look.gd has its own cameras), Khronos on c6,
+      baked depth / two-light shading in the cap chart for the three-quarter value.
