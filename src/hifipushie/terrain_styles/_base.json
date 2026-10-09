@@ -6,6 +6,9 @@
  "detail": 0.0,
  "overlay": null,
  "layers": {
+  "gravel": {"scale_m": 3.0, "roughness": 0.7, "ops": [{"op": "stones", "size": 0.14, "gap": 0.06, "round": 0.22, "vary": 0.55, "dome": 0.3, "albedo": 0.42, "height": 0.03}, {"op": "grain", "size": 0.03, "albedo": 0.05, "height": 0.001}]},
+  "silt": {"like": "sand", "roughness": 0.6},
+  "bank": {"like": "sand", "roughness": 0.8},
   "*": {"scale_m": 4.0, "roughness": 0.9, "ops": [{"op": "grain", "size": 0.12, "albedo": 0.12, "height": 0.004}]},
   "turf": {"like": "grass", "roughness": 0.85},
   "scrub": {"like": "grass"},

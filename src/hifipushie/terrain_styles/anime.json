@@ -8,6 +8,9 @@
  "overlay": {"scale_m": 1.2, "fade_m": [8.0, 40.0], "strength": 1.0,
              "ops": [{"op": "strokes", "per_m2": 260, "length": 0.09, "width": 0.025, "angle": 70, "spread": 30, "tones": [-1, 1], "gap": 0.0, "albedo": 0.07, "height": 0.0008}]},
  "layers": {
+  "gravel": {"scale_m": 6.0, "roughness": 0.85, "warm": [1.1, 1.04, 0.88], "cool": [0.84, 0.9, 1.12], "ops": [{"op": "stones", "size": 0.3, "gap": 0.06, "vary": 0.7, "steps": 4, "dome": 0.5, "flat": 0.4, "gap_tone": 0.9, "bare": 0.1, "albedo": 0.45, "height": 0.025}, {"op": "strokes", "per_m2": 10, "length": 0.14, "width": 0.035, "angle": 20, "spread": 40, "tones": [0.5, 1.0], "gap": 0.0, "albedo": 0.1, "height": 0.0}]},
+  "silt": {"scale_m": 6.0, "roughness": 0.75, "ops": [{"op": "blotch", "size": 2.5, "steps": 3, "soft": 0.1, "albedo": 0.1, "height": 0.0}, {"op": "strokes", "per_m2": 4, "length": [0.5, 1.1], "width": [0.06, 0.1], "angle": 8, "spread": 8, "taper": 0.6, "tones": [-0.6, 0.5], "gap": 0.0, "albedo": 0.1, "height": 0.001}]},
+  "bank": {"scale_m": 6.0, "roughness": 0.9, "ops": [{"op": "blotch", "size": 2.0, "steps": 3, "soft": 0.08, "albedo": 0.14, "height": 0.0}, {"op": "strokes", "per_m2": 12, "length": 0.3, "width": 0.06, "angle": 80, "spread": 25, "tones": [-0.6, 0.4], "levels": 3, "gap": 0.0, "albedo": 0.14, "height": 0.002}]},
   "*": {"scale_m": 6.0, "normal": 0.5, "warm": [1.1, 1.05, 0.86], "cool": [0.84, 0.93, 1.14],
         "ops": [{"op": "blotch", "size": 2.5, "steps": 3, "soft": 0.08, "albedo": 0.15, "height": 0.0},
                 {"op": "strokes", "per_m2": 20, "length": 0.4, "width": 0.07, "angle": 10, "spread": 20, "tones": [-0.5, 0.6], "levels": 3, "gap": 0.0, "albedo": 0.15, "height": 0.003}]},
