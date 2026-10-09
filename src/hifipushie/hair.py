@@ -1964,11 +1964,13 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
 SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
 SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
 SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
-SWOOP_WIDTH = 0.02  # m: their width
-SWOOP_BACK = 0.006  # m inside the hairline where they start
+SWOOP_WIDTH = 0.026  # m: their width
+SWOOP_BACK = 0.003  # m inside the hairline where they start
 SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
 SWOOP_GAP = 0.0012  # m between those layers
-SWOOP_LIFT = 0.004  # m the swoop's cards rise mid-lock over where its strands lie (its wave)
+SWOOP_LIFT = 0.007  # m the swoop's cards rise mid-lock over where its strands lie (its wave)
+SHORT_BABY_PRIO = 0.3  # a short cut's baby hairs (the hero tier's soft hairline) are kept before second-layer cards
+SHORT_STRAIGHT = 0.6  # share a short cut's card is drawn toward its straight chord (no hooks)
 SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it their thick strands stood as wires)
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
@@ -2069,6 +2071,13 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
                         c_["sn"] = np.asarray(c_["sn"])[ok_]
                     P_, a_, e_, h_, din_ = P_[ok_], a_[ok_], e_[ok_], h_[ok_], din_[ok_]
                 kept_.append(c_)
+                if SHORT_STRAIGHT > 0 and len(P_) > 2:  # a 2 cm card along its clump's mean path keeps the hook where
+                    # the strands leave the scalp and are laid down: from behind, rows of hooks read as curls / kinks
+                    # (Garrett's back). Drawn toward the chord root -> tip, its length kept by the chord's end
+                    s__ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P_, axis=0), axis=1))]
+                    f__ = (s__ / max(s__[-1], 1e-9))[:, None]
+                    P_ = P_ * (1 - SHORT_STRAIGHT) + SHORT_STRAIGHT * (P_[:1] + f__ * (P_[-1:] - P_[:1]))
+                    a_, e_, h_ = sc.coords(P_)
                 if c_["kind"] != "fly":  # the card stands at the TOP of its clump (its line is the clump's mean: the
                     # hair's outline is the strands above it), along the strands' own direction
                     sn_ = np.broadcast_to(np.asarray(c_.get("sn", 0.0), float), (len(P_),))
@@ -2156,7 +2165,9 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     cap = card_cap(sc, g, S, at["tiles"], Vc, F, e0=e_chart)
     baby = hc.cards_of(baby_locks(sc, g, S, int(g.get("seed", 0))), sc.C, S, lk)
     for c in baby:  # (the first to go under a budget, after single fly-aways)
-        c["kind"], c["layer"], c["prio"] = "baby", 1, float(S["layers"]) + 0.6
+        # (a short cut's soft line: on the hairline tile they were opaque stamps on the forehead; the baby tile
+        # needs enough hairs to show: SHORT_TILE["baby"])
+        c["kind"], c["layer"], c["prio"] = "baby", 1, (SHORT_BABY_PRIO if short else float(S["layers"]) + 0.6)
     info = {}
     seg = None
     if budget:  # baby hairs are cards like any others: they go before coverage does

@@ -19,7 +19,7 @@ capability, `groom.loose`:
                             y back, z up; laid in the scalp, `out` lifts it off): a front brushed up and forward to
                             his left, sides back and down. Regions left out keep the default (gravity, away from the
                             parting, `back`). `out` and `stiff` may also be given per region ({"front": 0.5, ...}).
-   "messy": 0.15,           0..1: each lock's root direction turned at random (tousled)
+   "messy": 0.15,           0..1 (or per region): each lock's root direction turned at random (tousled)
    "uneven": 0.3,           0..1: lengths differ lock to lock
    "face": 1.0,             0..1: how far the hair is kept from hanging over the face (1 = it frames it: curtains
                             beside the cheeks; 0 = it falls where it falls); the fringe is not held back
@@ -257,11 +257,12 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     bad = np.linalg.norm(tang, axis=1) < 1e-3
     tang[bad] = np.cross(nrm[bad], [1.0, 0, 0])
     tang = _unit(tang)
-    turn = rng.uniform(-1, 1, m) * float(p["messy"]) * np.pi / 2 * (1 - wsw)  # (a swoop is combed: its locks in step)
+    messy_ = by_region(p["messy"], 0.15)  # (a number, or per region: a crop tousled on top, combed down at the back)
+    turn = rng.uniform(-1, 1, m) * messy_ * np.pi / 2 * (1 - wsw)  # (a swoop is combed: its locks in step)
     tang = _unit(tang * np.cos(turn)[:, None] + np.cross(nrm, tang) * np.sin(turn)[:, None])
     out_r = np.clip(by_region(p["out"], 0.0), 0, 1)
     out = float(out_r.mean())
-    outi = np.clip(out_r + float(p["messy"]) * rng.uniform(-0.3, 0.3, m), 0, 1)
+    outi = np.clip(out_r + messy_ * rng.uniform(-0.3, 0.3, m), 0, 1)
     outi[is_fr] = np.minimum(outi[is_fr], 0.25)
     lay_v = p.get("lay", 0.0)
     if isinstance(lay_v, dict) and "top" in lay_v:

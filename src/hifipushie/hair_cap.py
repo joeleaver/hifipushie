@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-VERSION = 10
+VERSION = 11
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
 LIFT = 0.7  # the cap stands at this share of the hair's height over the scalp
@@ -24,7 +24,7 @@ LIFT_MAX = 0.024  # m
 EASE, EASE_FRONT = 0.012, 0.006  # m inside the hairline over which the cap rises to its height (sides / forehead)
 RELIEF = 0.7  # x the strands' real slopes in the normal map (clamped at SLOPE)
 SLOPE = 1.0
-BASE_DEPTH = 0.5  # the base's shade (depth): a scalp tint in the hair's own colour; at 0.22 a near-black band at the nape
+BASE_DEPTH = 0.75  # the base's shade (depth): a scalp tint in the hair's own colour; at 0.22 a near-black band at the nape
 BASE_DENSE = (0.05, 0.2)  # the opaque base (the hair's dark inside) where the strands' coverage passes this ramp: at
 # (0.3, 0.35) a short sparse nape (8 mm) had none and showed as pale speckled skin (game: a scalp tint under hair)
 

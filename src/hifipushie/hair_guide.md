@@ -779,6 +779,22 @@ length changes little. `lay` (0..1, or per region) presses each lock's direction
 "top" reaches the upper sides, so check the sides' width after laying the top (they thinned 4-7 mm) and give them
 `out` back. A hairline moved up adds height (the front roots stand higher on the head).
 
+### A front swoop and a combed-down back
+`groom.loose.swoop` {at, span, depth, rise, sweep, stiff, length, body, lay} lifts the front lock up and back and
+over to one side as ONE lock (its locks combed in step, wider and thicker, strands kept together); the game cards
+give it its own layered cards (hair.SWOOP_*). `messy` takes regions too: tousled on top, low at the back and nape
+(`{"front": 0.45, "top": 0.4, "sides": 0.2, "back": 0.08, "nape": 0.05}`). A short back that reads curly is short
+locks hooked by `stiff` + `lay`: give the back and nape some length (25-30 / 15-20 mm), `lay` 0.6-0.7, `flow`
+straight down; an 8 mm nape left the scalp tint showing as a dark band even in the strand look.
+
+### Drawing the cards in an engine
+Judge game hair in the game's renderer. `spikes/godot_hair/hair_cards.gdshader` (README beside it) is a reference
+Godot shader for the exported cards: two shifted strand highlights along TANGENT's bitangent, wrapped diffuse, the
+aux texture's root / clump shade, alpha-to-coverage. Godot's own StandardMaterial reads none of the aux texture
+and draws the cards as a fine uniform hatch. Back faces: the cards share one normal on both faces; an engine that
+flips it on back faces (Godot does) draws a black fringe round the outline: un-flip it in the material. Not yet in
+any game.
+
 ## What went wrong on the way (so you can recognise it)
 
 - Hair painted onto the face and shoulders like a stain: the collision proxy mesh was inside out (Shrinkwrap pulls

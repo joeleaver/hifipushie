@@ -723,3 +723,29 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     - BLUNT READ (Godot): combed greying hair with soft highlight bands, no bald spot, no black outline; still: the
       back's texture curly, a darker nape band, the hairline a little hard and higher than the strands' fuzz, the
       swoop weak from the front, hero = main.
+  - Round 12, judged in Godot (sheet `hair_renders/h12_c19_sheet.png`, same layout as h11; export
+    /mnt/data/hifipushie/hair7/exp_c19, Khronos 0 / 0; groom = base.json = p13 + p14 + p15; strand panels p16 (front,
+    three-quarter) and p15 (side, back)). Scratch adds naped.py (lum by height band from behind, Godot vs strands).
+    - THE CURLY BACK was the GROOM, not the cards: the Cycles strands were curly from behind too, with an orange-brown
+      scalp-tint band at the 8 mm nape (a bald-looking strip in the target itself). Straightening card paths toward
+      their chord (hair.SHORT_STRAIGHT 0.6, kept: no harm) and `messy` per region (new: `groom.loose.messy` takes
+      regions; Garrett front 0.45 / top 0.4 / sides 0.2 / back 0.08 / nape 0.05) changed nothing visible. What fixed it:
+      back 28 / nape 18 mm (were 20 / 8), stiff back 0.6 / nape 0.65, lay back 0.7 / nape 0.6, flow back [0, 0.15, -1],
+      volume nape 3 mm. Strands and cards from behind now read as short hair combed down.
+    - Nape value (naped.py, back view, lum per fifth of the hair's height): Godot c13 [100, 111, 78, 57, 41], nape /
+      band above 0.72; c19 [101, 111, 78, 66, 70], 1.06; strands 1.12. hair_cap.BASE_DEPTH 0.5 -> 0.75 (VERSION 11).
+      Godot's back is still lighter at the top than the strands' (its key light from above; the strands' back is an
+      even 50): lighting, not the asset.
+    - Hero's soft hairline: NOT achieved. Baby-hair cards on hero (baby 3 / cm, kept by the budget:
+      hair.SHORT_BABY_PRIO, constant kept) are invisible: the baby tile is 1.5-3% covered (a handful of hairs from the
+      groom's tile lines, which cap the count); on the hairline tile they were opaque stamps on the forehead. Reverted
+      (hero baby 0, SHORT_TILE baby (9, 3.0)). A real soft line needs its own tile drawn as many fine short hairs at
+      the strands' height (or the cap chart's edge drawn finer and lower), not a re-use of the long-hair tiles.
+    - HERO vs MAIN: still not visibly different in Godot at any of the five views (same atlas and cap; hero's extra
+      triangles are a second overlapping card layer). Recommend dropping hero: ship main (8k) as LOD0, npc, far.
+    - Swoop from the front: neither the Cycles strands nor the cards read as one lock lifting and rolling over to his
+      right from the photo's camera; in profile both lift and roll back. The swoop's strands lie too flat at the
+      front for a front-view silhouette; it needs a higher, more forward rise at the root (the cowlick limit) or a
+      side-swept front edge: not done.
+    - Consumer: spikes/godot_hair/README.md (textures, parameters, the back-face note; not in any game yet) and
+      hair_guide.md "Drawing the cards in an engine" + "A front swoop and a combed-down back".
