@@ -40,7 +40,7 @@ style + the manifest). Reeds are a plant: `grow_plant` with species `reed`, then
 | `cobbles` | a PATCH of 14-24 cobbles as one asset (lay patches overlapping) | 420 / 150 / 48 | none |
 | `slab` | flat bank stone / ledge piece | 220 / 80 / 32 | hull |
 | `driftwood` | log, forked branch, a butt with its root plate, a small jam (the four variants); broken ends, bark patches; scale = length | 220 / 88 / 24 (jam x2.3) | none |
-| `bush` | low scrub, OPEN: stems + spray cards on a grown shrub's twigs -> 7 bough cards -> 2 crossed cards; seasons; wind (blobby / cartoon: separate lumps on stems) | ~260 / 64 / 8 (lumps ~310 / 140 / 45) | none |
+| `bush` | low scrub, OPEN: stems + spray cards on a grown shrub's twigs -> ~40% of the same sprays, larger -> 2 crossed cards; seasons; wind (blobby / cartoon: closed lumps standing on the ground) | ~260 / 90 / 8 (lumps 270 / 100 / 24) | none |
 | `litter` | a leaf / twig debris card; a picture per season; hidden under snow | 8 / 2 | none |
 | `reeds` | the `reed` plant preset (fans of strap leaves + plume stalks, 1.9 m), groundcover grade (cards baked from the full plant) | 480 / 160 / 36 | none |
 
@@ -119,9 +119,15 @@ boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull
 - A script error in Godot under a hidden compositor leaves the process idle for ever: run with a timeout, log to a file.
 - A closed leafy dome with sprigs on it is a moss-covered rock, whatever its texture (the first clutter bush). A shrub
   is OPEN: thin stems from the ground, foliage in separate sprays with sky and ground between them (60% of its side
-  view is gaps), darker inside. Build it from a grown shrub: sprays on the plant's own twig clusters, then bough cards
-  composited FROM those sprays, then two crossed cards FROM the whole; far pictures get their alpha grown a texel or
-  two or they vanish under mipmaps; the last LOD casts no shadow (crossed cards shadow each other).
+  view is gaps), darker inside. Build it from a grown shrub: sprays on the plant's own twig clusters; the middle LOD is
+  a SHARE OF THE SAME SPRAYS (spread over the bush, each a little larger, where they stood): bough cards composited
+  from the sprays read as another plant (big leaf plates on bare stems) and popped at the switch; then two crossed
+  cards FROM the whole; the last LOD casts no shadow (crossed cards shadow each other).
+- Closed styles (blobby, cartoon): the lumps stand ON THE GROUND (round above, a tucked foot), never on stems:
+  lumps on stalks read as mushroom clouds on wire legs.
+- A rock's pictures must hold a CLIFF's tone range (`paint.tone_range`: luminance p5 .. p95 over its mean) and its
+  stated colour as their mean, or a per-instance tint cannot land it beside its cliff (painted gradients, top light
+  and ink spread a cartoon boulder over 0.15 .. 2.9 of its mean, 40% under its stated colour: charcoal with chalk tops).
 - A card's back needs vertices of its own: two triangles on the same three vertices are one face to Blender's importer
   (half of every bush's cards went missing in looks, unnoticed until the two-card LOD showed one card).
 - A plant's card must be FILLED by its picture: the first reed was one thin stem on a metre-wide card (0.4% of the

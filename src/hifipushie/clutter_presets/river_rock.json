@@ -1,5 +1,5 @@
 {
- "about": "A water-worn river boulder: the same block rolled round and flattened (toward a bowed ellipsoid, wide bevels), smooth, a darker foot and a mossy band above the water line. Variants: a round lump, a flat one, a long bean, an egg. Terrain kind `river_rock`",
+ "about": "A water-worn river boulder: the same block rolled round and flattened (toward a bowed ellipsoid, wide bevels), smooth, a darker foot and a mossy band above the water line. Variants: a round lump, a flat one, an angular broken block (fallen in lately, edges still sharp), a split wedge. Moss only on tops, more on some stones than others; wet below the row's water line. Terrain kind `river_rock`",
  "material": "rock",
  "variants": 4,
  "size_range": [
@@ -83,37 +83,78 @@
   {
    "aspect": [
     [
-     0.52,
-     0.6
+     0.6,
+     0.72
     ],
     [
-     0.4,
-     0.46
+     0.46,
+     0.56
     ]
    ],
-   "bend": 0.3
+   "round": 0.2,
+   "bevel": 0.04,
+   "top_round": 0.2,
+   "broken": [
+    2,
+    3
+   ],
+   "break": [
+    0.25,
+    0.45
+   ],
+   "chips": [
+    3,
+    5
+   ],
+   "chip": [
+    0.05,
+    0.12
+   ],
+   "taper": 0.1
   },
   {
    "aspect": [
     [
-     0.7,
-     0.8
+     0.66,
+     0.78
     ],
     [
-     0.6,
-     0.68
+     0.5,
+     0.6
     ]
    ],
-   "taper": 0.3,
-   "dent": 1.0
+   "round": 0.3,
+   "bevel": 0.06,
+   "top_round": 0.3,
+   "broken": [
+    1,
+    2
+   ],
+   "break": [
+    0.3,
+    0.5
+   ],
+   "chips": [
+    2,
+    4
+   ],
+   "split": 1.0,
+   "taper": 0.3
   }
  ],
  "paint": {
   "top": 0.06,
-  "moss": 0.3,
+  "moss": 0.26,
   "moss_band": [
-   0.35,
-   0.9
+   0.55,
+   1.0
+  ],
+  "moss_up": 0.4,
+  "moss_vary": [
+   1.0,
+   0.45,
+   0.0,
+   0.7
   ],
   "cracks": 0.0015,
   "grain": 0.0008,

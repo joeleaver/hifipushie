@@ -82,7 +82,9 @@ PAINT = {  # how the surface is painted (albedo multipliers round 1) and what re
     "foot_color": [0.2, 0.2, 0.12], "foot_tint": 0.35,  # the foot band stained toward soil / algae (with `foot`)
     "minerals": [[1.0, 1.0, 1.0], [1.05, 1.0, 0.94], [0.96, 0.99, 1.03], [1.03, 0.98, 0.92]],  # each variant's own rock: x the colour
     "moss": 0.0, "moss_color": [0.25, 0.36, 0.14], "moss_band": [0.15, 0.6],  # a mossy band (share of height)
+    "moss_up": 0.0, "moss_vary": None,  # moss only on faces turned up that far (0 = sides too); x moss per variant
     "ao": 0.6,                        # occlusion strength (also baked half into the albedo's foot)
+    "tone_range": [0.62, 1.45],       # the albedo's linear luminance p5 .. p95 over its mean (see tone_range): a cliff's rock
     "roughness": 0.9,
     "grain": 0.0015, "grain_size": 0.02,     # m: bake-only relief
     "cracks": 0.004, "crack_size": 0.3,
@@ -118,11 +120,11 @@ WOOD_PAINT = {
     "bleach": 0.25,           # sun-bleached paler on top
 }
 BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on alpha cards breaking its outline
-    "open": True,             # an OPEN bush made from a grown shrub (clutter_bush: stems + spray cards -> bough cards -> crossed
-                              # cards); False = closed leafy lumps on stems (the blobby / cartoon way)
+    "open": True,             # an OPEN bush made from a grown shrub (clutter_bush: stems + spray cards -> a share of them -> crossed
+                              # cards); False = closed leafy lumps standing on the ground (the blobby / cartoon way)
     "height": 0.75,           # an open bush's height / width
     "stems": 6, "stem_angle": 28.0,  # the shrub's stems from its stool and how far they lean out (deg)
-    "clumps": [3, 5],         # closed lumps (when not open): separate, of different sizes, each on its own stem
+    "clumps": [4, 6],         # closed lumps (when not open): separate, of different sizes, each on its own stem
     "aspect": [[0.8, 1.0], [0.6, 0.8]],  # depth / width and height / width of the dome
     "lobes": [3, 6],          # lobes round the main dome
     "lobe": [0.2, 0.3],       # their radius, x the width
@@ -576,25 +578,27 @@ class Bush:
         self.c = np.zeros(3)
         R = 0.5 * size
         self.stems = []
-        self.lumpy = not f.get("open", True)
-        if self.lumpy:  # separate lumps of different sizes, each at the end of its own stem from the stool
+        # closed styles (blobby, cartoon): a cluster of gumdrop lumps of different sizes, every one standing ON THE GROUND
+        # (straight down below its middle) and run softly into its neighbours: a toy bush. (Lumps held up on stems read
+        # as mushroom clouds on wire legs.) One closed body: its LODs are the rocks' decimation, not a hull per lump.
+        self.gum = not f.get("open", True)
+        self.lumpy = False
+        if self.gum:
             self.ell = []
             n = int(rng.integers(f["clumps"][0], f["clumps"][1] + 1))
             a0 = rng.uniform(0, 2 * math.pi)
             for i in range(n):
-                r = (0.26 if i == 0 else rng.uniform(0.14, 0.2)) * size
+                r = (0.3 if i == 0 else rng.uniform(0.17, 0.25)) * size
                 a = a0 + 2 * math.pi * i / n + rng.uniform(-0.3, 0.3)
-                d = (0.1 if i == 0 else rng.uniform(0.27, 0.37)) * size
-                zc = (0.6 if i == 0 else rng.uniform(0.28, 0.5)) * H
-                c = np.array([d * math.cos(a), d * math.sin(a) * ay, max(zc, r * 0.95 + 0.06)])
-                self.ell.append((c, np.array([r, r, 0.82 * r]) * rng.uniform(0.92, 1.12, 3)))
-                foot = np.array([0.04 * math.cos(a), 0.04 * math.sin(a), 0.0]) * size
-                mid = foot + (c - foot) * 0.5 + np.array([0.06 * math.cos(a), 0.06 * math.sin(a), -0.04]) * size
-                self.stems.append((np.array([foot, mid, c]), np.array([0.026, 0.02, 0.016]) * size * (1.3 if i == 0 else 1.0)))
+                d = (0.07 if i == 0 else rng.uniform(0.24, 0.33)) * size
+                top = (1.0 if i == 0 else rng.uniform(0.45, 0.78)) * H
+                rz = 0.85 * r
+                c = np.array([d * math.cos(a), d * math.sin(a) * ay, max(top - rz, 0.25 * r)])
+                self.ell.append((c, np.array([r, r, rz]) * rng.uniform(0.94, 1.08, 3)))
         else:
             # (centre, radii): the main dome, then the lobes
             self.ell = [(np.array([0.0, 0.0, 0.1 * H]), np.array([0.8 * R, 0.8 * R * ay, 0.84 * H]))]  # (a dome: widest at the ground)
-        for _ in range(0 if self.lumpy else int(rng.integers(f["lobes"][0], f["lobes"][1] + 1))):
+        for _ in range(0 if self.gum else int(rng.integers(f["lobes"][0], f["lobes"][1] + 1))):
             a = rng.uniform(0, 2 * math.pi)
             r = _u(rng, f["lobe"]) * size
             o = _u(rng, f["lobe_out"])
@@ -604,7 +608,7 @@ class Bush:
             c[2] = min(c[2], H - 0.8 * r)
             self.ell.append((c, np.array([r, r, 0.85 * r]) * rng.uniform(0.9, 1.15, 3)))
         self.tone = rng.uniform(-1, 1, len(self.ell))
-        self.join = (0.025 if self.lumpy else f["join"]) * size  # (lumps stay separate lumps)
+        self.join = f["join"] * size
         self.lumps, self.lump_size, self.seed = f["lumps"] * size, f["lump_size"] * size, int(rng.integers(1 << 30))
         self.lo = np.array([-R * 1.25, -R * 1.25, -0.12 * size])
         self.hi = np.array([R * 1.25, R * 1.25, H * 1.2])
@@ -615,8 +619,9 @@ class Bush:
         ds = []
         for i, (c, r) in enumerate(self.ell):
             q = p - c
-            if self.lumpy:
-                pass
+            if self.gum:  # round above its middle, below it a longer half that the ground cuts at 0.8 of its width: a tucked foot
+                q = q.copy()
+                q[:, 2] = np.where(q[:, 2] < 0, q[:, 2] * r[2] / max(1.65 * c[2], 1e-3), q[:, 2])
             elif i == 0:
                 q = q.copy()
                 q[:, 2] = np.maximum(q[:, 2], 0.0)  # (straight down below its middle: a bush stands on the ground)
@@ -632,8 +637,7 @@ class Bush:
             d = d * (1 - h) + D[:, i] * h - self.join * h * (1 - h)
         if self.lumps:
             d = d + self.lumps * (noise.fbm(p, self.lump_size, 2, self.seed) - 0.5) * 2
-        if not self.lumpy:
-            d = np.maximum(d, -(p[:, 2] + 0.1))  # closed under the ground
+        d = np.maximum(d, -(p[:, 2] + 0.1))  # closed under the ground
         if not info:
             return d
         o = np.argsort(D, axis=1)
@@ -1397,8 +1401,12 @@ def _paint(cfg, solid, P, Nrm, I, curv, ao, zrel, seed, zg=None, season=None, va
     if p.get("moss"):
         b0, b1 = p["moss_band"]
         band = np.clip((zrel - b0) / 0.08, 0, 1) * np.clip((b1 - zrel) / 0.15, 0, 1)
-        m = band * np.clip((noise.fbm(q, 0.09, 3, seed + 19) - 0.5 + 0.5 * p["moss"]) / 0.15, 0, 1) * np.clip(0.6 + up, 0, 1)
-        m = np.clip(m * min(1.0, 2 * p["moss"]), 0, 1)
+        mv = p.get("moss_vary")
+        amt = p["moss"] * (float(mv[variant % len(mv)]) if mv else 1.0)
+        # moss_up: only on faces turned up that far (a river stone is mossy on its top, above the water: never a green coat)
+        face = np.clip(0.6 + up, 0, 1) if not p.get("moss_up") else np.clip((up - p["moss_up"]) / 0.3, 0, 1)
+        m = band * np.clip((noise.fbm(q, 0.09, 3, seed + 19) - 0.5 + 0.5 * amt) / 0.15, 0, 1) * face
+        m = np.clip(m * min(1.0, 2 * amt), 0, 1)
         col = col * (1 - m[:, None]) + np.asarray(p["moss_color"], float)[None] * (0.8 + 0.4 * noise.fbm(q, 0.015, 2, seed + 20))[:, None] * m[:, None]
     col = col * (1 - 0.5 * p["ao"] * (1 - ao))[:, None]
     if flower is not None and flower.any():
@@ -1646,7 +1654,9 @@ def build(spec: dict, progress=None) -> dict:
                     L, iou = L2, i2
             L["iou"] = round(iou, 3)
             lods.append(L)
-        a_, n_, o_, _ = bake_variant(cfg, solid, vol, ax, vox, cell, seed, low=(lods[0], lods[0]["UV"] * base - origin), ground=float(lo[2] + sink))
+        a_, n_, o_, fill_ = bake_variant(cfg, solid, vol, ax, vox, cell, seed, low=(lods[0], lods[0]["UV"] * base - origin), ground=float(lo[2] + sink))
+        if cfg["material"] == "rock" and cfg["paint"].get("tone_range"):
+            a_ = tone_range(a_, fill_, cfg["color"], cfg["paint"]["tone_range"])
         sl = (slice(int(origin[1]), int(origin[1]) + cell), slice(int(origin[0]), int(origin[0]) + cell))
         nrm[sl], orm[sl] = n_, o_
         for se in albs:
@@ -1687,6 +1697,34 @@ def build(spec: dict, progress=None) -> dict:
         if progress:
             progress(f"{cfg['kind']} {cfg['style']} variant {k}: " + " / ".join(str(L["triangles"]) for L in lods) + " triangles")
     return {"cfg": cfg, "variants": out, "albedo": albs, "normal": nrm * 0.5 + 0.5, "orm": orm}
+
+
+def tone_range(albs: dict, filled, color, rng) -> dict:
+    """A rock variant's pictures brought into the tone RANGE of a cliff of the same rock. The painted shading (gradient,
+    top light, cavity, face tones, ink) spread the albedo's linear luminance over 0.15 .. 2.9 of its mean (cartoon) where
+    the terrain's rock texture holds 0.9 .. 1.1, and its mean sat 40% under the colour the json states: tinted by
+    mean colour alone a boulder was charcoal with chalk tops beside a tan cliff. Here the luminance over its mean is
+    raised to the power that brings p5 .. p95 inside `rng` (never widened), and the picture's mean luminance is set to
+    the stated colour's, so `color_linear` in the json is what the pictures hold. Hue is kept (lichen, minerals).
+    The power and the scale come from the summer picture and are used for every season. sRGB in, sRGB out."""
+    from .terrain_style import _srgb_lin as lin
+    w = np.array([0.2126, 0.7152, 0.0722])
+    ref = albs.get("summer", next(iter(albs.values())))
+    m = filled if filled is not None and filled.any() else np.ones(ref.shape[:2], bool)
+    L = np.maximum(lin(ref) @ w, 1e-5)
+    mu = float(L[m].mean())
+    p5, p95 = np.percentile(L[m] / mu, [5, 95])
+    g = min(1.0, math.log(rng[1] / rng[0]) / max(math.log(max(p95, 1e-4) / max(p5, 1e-4)), 1e-6))
+    target = float(np.asarray(lin(np.asarray(color, float))) @ w)
+    k = target / float((((L[m] / mu) ** g)).mean())
+    out = {}
+    for se, a in albs.items():
+        al = lin(a)
+        Ls = np.maximum(al @ w, 1e-5)
+        al = al * (k * (Ls / mu) ** g / Ls)[..., None]
+        al = np.clip(al, 0, 1)
+        out[se] = np.where(al <= 0.0031308, al * 12.92, 1.055 * al ** (1 / 2.4) - 0.055)
+    return out
 
 
 def _hull(V, faces):
@@ -1846,13 +1884,18 @@ class Glb:
 ALPHA_MIPS = ("import the albedo WITH mipmaps and scale alpha up by the mip level in the shader so thin leaves survive (as the groundcover grade): "
               "alpha = (a - cutoff) * (1 + lod * 0.25) / max(fwidth(a), 1e-4) + 0.5 for alpha to coverage, or a *= 1 + lod * 0.25 before the "
               "cut; the dome itself is opaque (alpha 1), so a far bush never thins to nothing")
-WET_RECIPE = ("wet rock: below the water line + `band` x the instance's height (and anywhere it rains), albedo *= mix(1, darken, wet), "
-              "roughness = mix(roughness, wet roughness, wet); a river rock standing in water: wet = 1 below the line, fading "
-              "over ~5 cm above it")
+WET_RECIPE = ("wet rock, per instance from the clutter.csv row's `water` column (m: the water surface over the row's z; > 0 standing in "
+              "water, <= 0 that far above it, empty = dry land): line = z + water; wet = 1 below the line, fading to 0 over `band` x the "
+              "instance's height (height_m x scale x squash) above it (splash and capillary rise), and anywhere it rains; "
+              "albedo *= mix(1, darken, wet), roughness = mix(roughness, wet roughness, wet). The row's `sink` column (m) buries the "
+              "instance that much deeper than its own sink_m x scale (half-buried river rocks)")
 TINT_RECIPE = ("ROCK MATCHES ITS CLIFFS BY A PER-INSTANCE COLOUR: the pictures hold this style's default rock colour (`color_linear`). Per "
                "instance (MultiMesh instance colour / INSTANCE_CUSTOM, multiplied into the albedo in linear RGB): tint = (the rock colour of the "
-               "terrain where it stands: the terrain styles manifest's rock layer colour for the style region, linear) / color_linear x "
-               "instance_tints[hash(row) % n] x (0.92 + 0.16 x hash). Lichen, moss and the damp foot shift a little with it, which reads fine. "
+               "terrain where it stands, linear: the terrain styles manifest's styles[].layers.rock.color_linear for the style region; with no "
+               "styles manifest (realistic terrain) the tiles manifest's materials.layers[name = rock].color, sRGB -> linear) / color_linear x "
+               "instance_tints[hash(row) % n] x (0.92 + 0.16 x hash). The pictures' mean luminance IS color_linear's and their tone range "
+               "is a cliff's (p5 .. p95 of the luminance within `tone_range` x the mean), so the tint alone lands a stone in its cliff's tones. "
+               "Lichen, moss and the damp foot shift a little with it, which reads fine. "
                "The four variants already differ in mineral tone (baked); instance_tints adds warm / cool / brown stones on top")
 INSTANCE_TINTS = [[1.0, 1.0, 1.0], [1.05, 1.0, 0.94], [0.96, 0.99, 1.03], [1.04, 0.98, 0.91], [0.95, 0.95, 0.95]]
 INSTANCE_RECIPE = ("(the last LOD casts no shadow: a bush's two crossed cards shadow each other) one MultiMesh per variant per LOD (per cell of the world): instance = translate(row x, y, z) * rotate_up(yaw) * "
@@ -2011,12 +2054,12 @@ def _export_litter(cfg: dict, out: Path, stem: str, progress=None) -> dict:
          "slot_list": [{"slot": "litter", "on": on, "hidden_in": ["snow"], "channels": ["NORMAL", "POSITION", "TEXCOORD_0"]}],
          "slots": {"litter": state("summer")}, "default": "summer", "variants": [],
          "seasons": {se: {"litter": state(se)} for se in ("spring", "summer", "autumn", "winter", "snow")},
-         "snow": None, "impostor": None, "alpha_mips": ALPHA_MIPS,
+         "snow": {**veg_export.snow_numbers({}, None), "coverage": 0.0, "hidden": True, "note": "a debris patch is not snowed on: it is hidden under snow (slot_list hidden_in)"}, "impostor": None, "alpha_mips": ALPHA_MIPS,
          "clutter": {"size_m": 1.0, "what_scale_means": "instance scale = the patch's width in metres", "height_m": f["dome"], "sink_m": 0.0,
                      "pivot": "the ground: lay it ON the surface, turned to the ground's normal (a decal with a mesh); draw after the terrain with a small depth bias, or lift it 1 cm",
                      "size_range_m": cfg["size_range"], "place": cfg["place"], "variants": variants,
                      "lod_switch_m": {"lod1": 8.0, "lod2": None, "cull": 30.0, "times": "the instance's scale"},
-                     "instancing": INSTANCE_RECIPE, "collision": None, "wet": None, "tint": None,
+                     "instancing": INSTANCE_RECIPE, "collision": None, "wet": {}, "tint": None, "instance_tints": [],
                      "textures": {"atlas_px": base, "shared_by": "every variant and LOD", "mipmaps": True, "normal": None,
                                   "seasons": "a season is another albedo picture (same uv, the same patch with leaves added or gone): seasons.<season>.litter.baseColorTexture.file; hidden under snow"}},
          "note": "a debris patch is one alpha-MASK card per variant; cast no shadow, receive shadows"}
@@ -2101,9 +2144,9 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     channels = ["NORMAL", "POSITION", "TANGENT", "TEXCOORD_0"] + (["TEXCOORD_1", "TEXCOORD_2", "_WIND"] if leaf else [])
     J = {"contract": {"version": veg_export.CONTRACT, "changes": veg_export.CONTRACT_LOG,
                       "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
-         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": (("an open bush from a grown shrub: stems + spray cards (LOD 0), bough cards baked from them (LOD 1), "
+         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": (("an open bush from a grown shrub: stems + spray cards (LOD 0), a share of the same sprays, larger (LOD 1), "
                                                        "two crossed cards (LOD 2); one alpha-MASK material") if cfg["form"].get("open", True)
-                                                      else "closed leafy lumps on stems (one material)") if leaf else None},
+                                                      else "closed leafy lumps standing on the ground (one material)") if leaf else None},
          "about": cfg["about"],
          "glb": f"{stem}.glb",
          "lods": [{"lod": j, "triangles": [v["lods"][j]["triangles"] for v in variants], "grade": "clutter"} for j in range(len(cfg["lods"]))],
@@ -2119,8 +2162,8 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
                      "size_range_m": cfg["size_range"], "place": cfg["place"],
                      "variants": variants, "lod_switch_m": {"lod1": LOD_SWITCH[0], "lod2": LOD_SWITCH[1], "cull": LOD_SWITCH[2], "times": "the instance's scale"},
                      "color_srgb": [round(c, 4) for c in cfg["color"]], "color_linear": [round(float(c), 4) for c in _lin(cfg["color"])],
-                     "wet": {**cfg["wet"], "recipe": WET_RECIPE}, "tint": TINT_RECIPE if slot == "rock" else None,
-                     "instance_tints": INSTANCE_TINTS if slot == "rock" else None, "instancing": INSTANCE_RECIPE,
+                     "wet": {**cfg["wet"], "row": "water", "recipe": WET_RECIPE}, "tint": TINT_RECIPE if slot == "rock" else None, "tone_range": cfg["paint"].get("tone_range") if slot == "rock" else None,
+                     "instance_tints": INSTANCE_TINTS if slot == "rock" else [], "instancing": INSTANCE_RECIPE,
                      "collision": ("convex hull per variant (<stem>_v<k>_collision.glb, node name ends -convcolonly); scale with the instance"
                                    if cfg["collision"] else None),
                      "textures": {"atlas_px": cfg["atlas"], "shared_by": "every variant and LOD of this folder (uv by position: box charts)",

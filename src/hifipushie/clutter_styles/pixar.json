@@ -34,6 +34,10 @@
    "bed_set": 0.7
   },
   "paint": {
+   "tone_range": [
+    0.7,
+    1.36
+   ],
    "lichen": 0.25,
    "lichen_size": 0.1,
    "streaks": 0.15,
@@ -47,7 +51,7 @@
    "cavity": 0.2,
    "gradient": 0.28,
    "top_light": 0.12,
-   "top": 0.45,
+   "top": 0.3,
    "top_color": [
     0.42,
     0.52,

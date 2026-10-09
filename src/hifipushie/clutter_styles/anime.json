@@ -37,6 +37,10 @@
    ]
   },
   "paint": {
+   "tone_range": [
+    0.66,
+    1.4
+   ],
    "lichen": 0.25,
    "lichen_size": 0.11,
    "lichen_colors": [
@@ -77,7 +81,7 @@
    "gradient": 0.3,
    "top_light": 0.22,
    "grain": 0.0,
-   "cracks": 0.002,
+   "cracks": 0.0,
    "crack_size": 0.4,
    "roughness": 0.85,
    "normals": 22.0

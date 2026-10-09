@@ -475,7 +475,12 @@ CONTRACT_LOG = {
         "shared by every variant and LOD), `foliage` on a bush (alpha MASK; the same maps; + TEXCOORD_1 / TEXCOORD_2 / _WIND as plants; a season = "
         "another albedo picture in seasons.<season>.foliage.baseColorTexture.file) or `litter` (alpha MASK albedo only, a picture per season, hidden "
         "under snow). No <name>_LOD<k>.glb at the folder's top: files are per variant (<stem>_v<k>_LOD<j>.glb). <root>/clutter.json maps terrain "
-        "clutter kinds to folders per style. Plants are unchanged.",
+        "clutter kinds to folders per style. Plants are unchanged. ABSENT VALUES in a clutter json (added 2026-10-09, no number change: a "
+        "first loader crashed on \"snow\": null): a STATE or block that does not apply is an EMPTY OBJECT {} or an object saying so (litter: "
+        "snow = the snow numbers with coverage 0 and hidden true; clutter.wet {}), an absent LIST is [] (instance_tints), and only an absent "
+        "TEXT, FILE or single NUMBER is null (tint, collision, textures.normal, textures.seasons, lod_switch_m.lod2, style.foliage, impostor). "
+        "Same day: rock pictures hold their stated colour as their mean and a cliff's tone range (clutter.tone_range); clutter.wet.row names "
+        "the clutter.csv column (`water`, m) the wet line comes from, `sink` (m) buries a row deeper.",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)
