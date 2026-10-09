@@ -38,6 +38,10 @@ OFF_SKIN = 42.0        # ... past which a pixel anywhere off the features is not
 JAW_CUT = (0.001, 0.008)   # m: the picture ends this far above the jaw's border, fading over this
 EAR_REACH = 0.006      # m: no picture this near an ear vertex
 FEATHER = 0.004        # m: the mask's soft edge
+BLEND = 0.018         # m: inside the picture's OUTER edge its low frequencies are handed over to ours over this distance
+BLEND_SIGMA = 0.006   # m: what "low frequencies" means there (a Gaussian's sigma)
+EDGE_FADE = 0.010     # m: and its alpha fades over this (on top of FEATHER)
+SHINE = (1.22, 0.35)  # a baked highlight: luminance over this x the local (1 cm) mean is compressed to this share
 LAYER = "ref_texture"
 ORTHO_D = 800.0        # m: the "orthographic" camera's distance
 
@@ -184,6 +188,18 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
         med = np.median(lin[core], 0)
         gain = (tgt / np.maximum(med, 1e-4)).tolist() if match == "tone" else [float((tgt @ [0.2126, 0.7152, 0.0722]) / max(med @ [0.2126, 0.7152, 0.0722], 1e-4))] * 3
         lin = lin * np.asarray(gain)
+    if delight and SHINE:                                    # a highlight baked in the picture (forehead, nose): the
+        Yl = np.zeros((n, n))                                # de-lighting only knows diffuse light
+        Wl = np.zeros((n, n))
+        yy = lin @ np.array([0.2126, 0.7152, 0.0722])
+        ok = conf > 0.3
+        Yl[ii[ok], jj[ok]] = yy[ok]
+        Wl[ii[ok], jj[ok]] = 1.0
+        sgl = 0.01 * px_per_m
+        loc = (ndimage.gaussian_filter(Yl, sgl) / np.maximum(ndimage.gaussian_filter(Wl, sgl), 1e-3))[ii, jj]
+        top = SHINE[0] * np.maximum(loc, 1e-4)
+        over = np.maximum(yy - top, 0.0)
+        lin = lin * ((np.minimum(yy, top) + SHINE[1] * over) / np.maximum(yy, 1e-5))[:, None]
     rgba = np.zeros((n, n, 4), np.uint8)
     A = np.zeros((n, n))
     A[ii, jj] = conf
@@ -207,11 +223,81 @@ def project(mesh: dict, src_cam: dict, photo: np.ndarray, px_per_m: float | None
             "up": [round(float(x), 5) for x in up_w], "right": right.tolist(), "size": [round(2 * half, 5), round(2 * half, 5)],
             "light": light, "coverage": round(float((A[on] > 0.5).mean()) if on.any() else 0.0, 3), "px_per_m": px_per_m,
             "gain": [round(float(g), 3) for g in gain], "picture_px_per_m": round(float(density), 1),
-            "skin_lab": [round(float(x), 1) for x in skin_lab], "head_texels": int(head_px.sum())}
+            "skin_lab": [round(float(x), 1) for x in skin_lab], "head_texels": int(head_px.sum()), "cam": cam}
+
+
+def near_camera(cam: dict, dist: float = 8.0) -> dict:
+    """The orthographic camera brought to `dist` m on its axis (same picture to ~0.5 mm over a head): one a renderer's
+    depth buffer can hold."""
+    k = dist / cam["t"][2]
+    return {**cam, "t": [0.0, 0.0, dist], "f": cam["f"] * k}
+
+
+def frame_of(cam: dict, name: str = "ref") -> dict:
+    """A humanfit-style camera (its whole picture) as a render frame (perspective)."""
+    from . import humanfit
+    R = humanfit._cam_rot(cam)
+    eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
+    fwd, up = R.T @ np.array([0.0, 0.0, 1.0]), R.T @ np.array([0.0, -1.0, 0.0])
+    w, h = cam["size"]
+    return {"name": name, "eye": eye.tolist(), "dir": (-fwd).tolist(), "up": up.tolist(),
+            "fov": float(np.degrees(2 * np.arctan(max(w, h) / 2 / cam["f"]))), "shift": [0.0, 0.0],
+            "center": (eye + fwd).tolist(), "near": max(cam["t"][2] - 1.0, 0.01), "scale": None, "axes": None}
+
+
+def scene_albedo(model: str, size: int = 768):
+    """ours(cam) for `make`: the model's OWN painted skin, unlit, from its synced scene.blend (which must not hold
+    reference-texture layers: sync before `apply`, or sync a copy), through the decal's camera."""
+    def ours(cam):
+        import tempfile
+        from PIL import Image
+        from . import scene
+        with tempfile.TemporaryDirectory() as tmp:
+            fr = {**frame_of(near_camera(cam)), "out": str(Path(tmp) / "o.png")}
+            scene._blender({"blend": str(scene.blend_path(model)), "views": [fr], "size": size, "samples": 8, "hide": [],
+                            "flat": True, "transparent": True, "mode": "render"}, 1200)
+            im = Image.open(fr["out"]).convert("RGBA").resize(tuple(cam["size"]), Image.BILINEAR)
+        a = np.asarray(im)
+        return a[..., :3], a[..., 3] > 200
+    return ours
+
+
+def harmonise(r: dict, ours_rgb: np.ndarray, ours_ok: np.ndarray) -> dict:
+    """The picture handed over to OUR skin at its outer edge, so no seam shows when the head turns: within BLEND of
+    the edge the picture's low frequencies (BLEND_SIGMA) become ours (its fine detail stays), and its alpha fades over
+    EDGE_FADE. Holes inside the picture (the eyes) are not edges. ours_rgb: our unlit skin through r["cam"]."""
+    from scipy import ndimage
+    rgba = r["rgba"].astype(float)
+    ppm = r["px_per_m"]
+    A = rgba[..., 3] / 255.0
+    inside = ndimage.binary_fill_holes(A > 0.05)
+    dist = ndimage.distance_transform_edt(inside) / ppm
+    w = _sstep(dist / BLEND)
+    sg = BLEND_SIGMA * ppm
+    P, O = _to_lin(rgba[..., :3]), _to_lin(ours_rgb)
+    # one colour for both first: the picture's confident skin takes OUR painted skin's median there (zones and all,
+    # not the bare tone: matched to the tone alone, a picture whose trusted skin is mostly cheek came out pale)
+    both = (A > 0.9) & ours_ok
+    gain = [1.0, 1.0, 1.0]
+    if both.sum() > 200:
+        gain = (np.median(O[both], 0) / np.maximum(np.median(P[both], 0), 1e-4)).tolist()
+        P = P * np.asarray(gain)
+    mp = (A > 0.3).astype(float)
+    mo = (ours_ok & inside).astype(float)
+    Pl = ndimage.gaussian_filter(P * mp[..., None], (sg, sg, 0)) / np.maximum(ndimage.gaussian_filter(mp, sg), 1e-3)[..., None]
+    Ol = ndimage.gaussian_filter(O * mo[..., None], (sg, sg, 0)) / np.maximum(ndimage.gaussian_filter(mo, sg), 1e-3)[..., None]
+    have = (ndimage.gaussian_filter(mo, sg) > 0.2) & (ndimage.gaussian_filter(mp, sg) > 0.2)
+    ratio = np.where(have[..., None], np.clip(Ol / np.maximum(Pl, 1e-4), 0.5, 2.0), 1.0)
+    out = P * ratio ** (1.0 - w)[..., None]
+    rgba[..., :3] = _to_srgb8(out)
+    rgba[..., 3] = 255.0 * A * _sstep(dist / EDGE_FADE)
+    seam = float(np.sqrt(np.mean((np.log(np.maximum(Ol, 1e-4) / np.maximum(Pl, 1e-4))[have & (dist < 0.004) & inside]) ** 2))) if (have & (dist < 0.004) & inside).any() else 0.0
+    return {**r, "rgba": np.clip(rgba, 0, 255).astype(np.uint8), "seam_before": round(seam, 3),
+            "gain_to_ours": [round(float(g), 3) for g in gain]}
 
 
 def make(name: str, base: dict | None = None, views=None, opacity: float = 0.9, delight: bool = True,
-         match: str | None = "tone", out_dir: str | None = None, spec: dict | None = None) -> dict:
+         match: str | None = "tone", out_dir: str | None = None, spec: dict | None = None, ours=None) -> dict:
     """The reference textures of a model: {"layers": {layer name: paint layer}, "views": [per view: file, coverage,
     light, picture density...], "text"}. views = indices into human_refs' views (default: every view with an image and
     a camera, the front first so later views only fill where it is transparent... each layer lies OVER the ones before:
@@ -240,14 +326,16 @@ def make(name: str, base: dict | None = None, views=None, opacity: float = 0.9, 
             continue
         photo = np.asarray(Image.open(v["image"]).convert("RGB"), float)
         r = project(mesh, cam, photo, delight=delight, skin_tone=tone, match=match)
-        f = out_dir / f"{LAYER}_{i}_{key}.png"
+        if ours is not None:      # ours(cam) -> (our unlit skin, sRGB uint8 (n, n, 3), valid (n, n)): `scene_albedo`
+            r = harmonise(r, *ours(r["cam"]))
+        f = out_dir / f"{LAYER}_{i}_{key}{'h' if ours is not None else ''}.png"
         Image.fromarray(r["rgba"], "RGBA").save(f)
         layers[f"{LAYER}_{i}"] = {"color": "image", "opacity": float(opacity), "part": part,
                                   "image": {"file": str(f), "at": r["at"], "dir": r["dir"], "up": r["up"], "size": r["size"],
                                             "depth": 0.2, "facing": 0.05, "channel": "alpha"}}
         info.append({"view": i, "image": v["image"], "file": str(f), "coverage": r["coverage"], "light": r["light"],
                      "picture_mm_per_px": round(1000.0 / r["picture_px_per_m"], 2), "texture_mm_per_px": round(1000.0 / r["px_per_m"], 2),
-                     "gain": r["gain"]})
+                     "gain": r["gain"], "seam_before": r.get("seam_before"), "gain_to_ours": r.get("gain_to_ours")})
     lines = [f"reference texture for {name} (head {key}):"]
     for x in info:
         lt = x["light"]
@@ -255,6 +343,8 @@ def make(name: str, base: dict | None = None, views=None, opacity: float = 0.9, 
                      f"its camera; the picture has {x['picture_mm_per_px']} mm a pixel there (no detail finer than that is the "
                      f"picture's); " + (f"light taken out (fit rms {lt[2]:.3f}, direction share {np.linalg.norm(lt[1]) / max(lt[3], 1e-6):.2f} of the mean)"
                                          if lt else "not de-lit") + f"; colour gain {x['gain']}")
+        if x.get("seam_before") is not None:
+            lines.append(f"    handed over to our skin at its outer edge (colour x {x.get('gain_to_ours')} onto our painted skin's median; then rms log colour step {x['seam_before']} at the edge before the hand-over)")
     lines.append("  the PICTURE: colour where its camera saw skin square-on. OURS: ears, under chin and nose, hair, eyeballs, skin "
                  "turned away, neck and body; all relief, roughness and scattering.")
     return {"layers": layers, "views": info, "text": "\n".join(lines), "head_key": key}
@@ -273,7 +363,7 @@ def stale(spec: dict) -> list:
 
 
 def apply(name: str, views=None, opacity: float = 0.9, delight: bool = True, match: str | None = "tone",
-          remove: bool = False, note: str = "") -> dict:
+          remove: bool = False, note: str = "", ours=None) -> dict:
     """Make the reference textures and save them as paint layers (spec["paint"]["ref_texture_<view>"]); remove=True
     takes them out. Returns make()'s dict."""
     from . import store
@@ -282,7 +372,7 @@ def apply(name: str, views=None, opacity: float = 0.9, delight: bool = True, mat
     if remove:
         store.save(name, {**spec, "paint": paint}, note or "reference textures removed")
         return {"layers": {}, "views": [], "text": f"{name}: reference textures removed"}
-    r = make(name, views=views, opacity=opacity, delight=delight, match=match, spec=spec)
+    r = make(name, views=views, opacity=opacity, delight=delight, match=match, spec=spec, ours=ours)
     paint.update(r["layers"])
     store.save(name, {**spec, "paint": paint}, note or "reference textures: the fitted pictures projected as albedo")
     return r
