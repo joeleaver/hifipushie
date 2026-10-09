@@ -61,7 +61,7 @@ def tells(outer: dict, under: dict) -> dict:
     collar_show_mm  the under collar's top above the outer collar's at centre back (a shirt collar shows 10-20 mm);
     cuff_show_mm    the under cuff past the outer sleeve's hem, along the forearm, per arm (10-15 mm);
     lapel_gap_mm    the lapels' flaps off the fronts they lie on (median; folds named lapel*);
-    collar_hug_mm   the outer collar and stand off the under collar's surface (median);
+    collar_hug_mm   the outer collar and stand off the under collar's surface, behind the neck's axis (median);
     crossings       edges of either garment through the other's triangles."""
     Vo, Vu = outer["V"], under["V"]
     Mo, Mu = outer["mesh"], under["mesh"]
@@ -83,7 +83,11 @@ def tells(outer: dict, under: dict) -> dict:
         bo = co[(np.abs(Vo[co, 0]) < 0.025) & (Vo[co, 1] > yc)]
         bu = cu[(np.abs(Vu[cu, 0]) < 0.025) & (Vu[cu, 1] > yc)]
         put("collar_show_mm", (Vu[bu, 2].max() - Vo[bo, 2].max()) * 1000 if len(bo) and len(bu) else None)
-        d, _ = cKDTree(_samples(Vu, Mu["F"][np.isin(Mu["piece"][Mu["F"][:, 0]], np.unique(Mu["piece"][cu]))])).query(Vo[co])
+        # (the outer collar where it goes ROUND the neck: behind the neck's axis. A notched collar's ends lie on the
+        # chest with the lapels, 5-10 cm from an under collar: with them in the median Garrett's jacket read 27 mm
+        # whatever its back did)
+        hb = co[Vo[co, 1] > yc]
+        d, _ = cKDTree(_samples(Vu, Mu["F"][np.isin(Mu["piece"][Mu["F"][:, 0]], np.unique(Mu["piece"][cu]))])).query(Vo[hb if len(hb) else co])
         put("collar_hug_mm", float(np.median(d)) * 1000)
     else:
         out["collar_show_mm"] = out["collar_hug_mm"] = None

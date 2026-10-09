@@ -36,6 +36,11 @@ def _smooth(e0, e1, x):
 
 SINK_EDGE = 0.2   # the cliff front sinks only where S < this (1 - smoothstep(0, SINK_EDGE, S)), all of `sink` at S = 0
 PUSH_POW = 3.0    # the heightmap is pushed back by push x S^PUSH_POW
+# where the front sinks toward the region's edge it dives under the heightmap; the strip that shows before they cross
+# (a few cm) was baked as what it is, a steep dive: rock-coloured (its 0.4 m normal picked the rock layer) and shaded
+# as a crease, a thin dark dashed line on the grass along every overlay edge (pushieworld note 104). Its maps take the
+# true ground's normal instead: fully where S < SINK_EDGE, easing out by SINK_EDGE + UNSUNK_BAND (CliffField.lift)
+UNSUNK_BAND = 0.05
 # (2026-10-01: sunk by sink x (1 - S) and pushed by push x S, the two crossed where both were metres down (pebble: S 0.73,
 # 2.5 m under the true ground) and the visible surface sagged into a trench along every overlay edge, a V crease the
 # arch view at 150 m measured as an overlay edge excess of 2.0. Now they cross near S 0.18, ~0.25 m down.)
@@ -89,6 +94,21 @@ class Region:
             st = np.maximum(st, np.clip(base.steep_at(X.ravel(), Y.ravel()).reshape(X.shape) * 4, 0, 1))
         if getattr(base, "fall", None) is not None:  # (and where fallen blocks lie: the heightmap can't hold them)
             st = np.maximum(st, np.clip(base.fall_at(X.ravel(), Y.ravel()).reshape(X.shape) * 4, 0, 1))
+        # a dammed lake's embankment is ground, not a cliff: taken for one (a steep lake-side face), the heightmap was
+        # pushed 5-9 m down its face and its 2 m crest eroded away with it, so the dam stood only in the cliff meshes
+        # and the tile heightmaps held no lake (pushieworld note 106: flooded, 134,000 m2 for 3,300)
+        dams = getattr(T, "dams", None) or {}
+        if dams:
+            dm = np.zeros(base.H.shape)
+            for a in dams.values():
+                if np.shape(a) == dm.shape:
+                    dm = np.maximum(dm, a)
+            if dm.any():
+                k_ = max(1, int(math.ceil((m + self.push) / base.c)))
+                dm = ndimage.gaussian_filter(ndimage.maximum_filter(dm, size=2 * k_ + 1), 1.0)
+                w = ndimage.map_coordinates(dm, [(Y.ravel() - base.y0) / base.c, (X.ravel() - base.x0) / base.c],
+                                            order=1, mode="nearest").reshape(X.shape)
+                st = st * (1.0 - np.clip(w, 0, 1))
         self.steep = self._grow(st, m)
         self.S = self.steep.copy()
         # how far the heightmap is pushed in: the full push under cliffs; round an opening only a little (the cliff
@@ -367,7 +387,62 @@ class CliffField:
                 tet = np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]], float)
                 f = cf.front((p[:, None, :] + h * tet[None]).reshape(-1, 3)).reshape(-1, 4)
                 return f.mean(1), (f @ tet) / (4 * h)
+
+            def unsunk(self, p, h):
+                """(w, g): how far the front at p is the sunk construction (0 where it is the true ground, 1 where
+                it sinks: UNSUNK_BAND) and the true ground's field gradient there (the rock unsunk)."""
+                return cf.unsunk(p, h)
+
+            def lift(self, p):
+                return cf.lift(p)
+
+            def relief_at(self, x, y):
+                """The rock character's weight at columns (terrain_mesh.Field.relief_at)."""
+                return cf.base.relief_at(x, y)
+
+            def designed_step(self, x, y):
+                """True at columns where the ground has designed steps finer than the grid (terrain_ground.Edits'
+                zone: the turf's riser at a lip, a bunker's cut edge and raised lip)."""
+                e = getattr(cf.base, "edits", None)
+                out = np.zeros(len(x), bool)
+                if e is not None and e.any:
+                    out[e._in_zone(np.asarray(x, float), np.asarray(y, float))] = True
+                if getattr(cf.base, "fall", None) is not None:  # (and fallen blocks: chipped boxes on the ground)
+                    out |= np.asarray(cf.base.fall_at(x, y)) > 0
+                return out
+
+            def near_volume(self, p):
+                """True at points within a few metres of a volume (a cave's mouth, a stack's foot: built edges)."""
+                return np.minimum(cf._void(p), cf._adds(p)) < cf.region.wall + 2.0
         return _Front()
+
+    def lift(self, p):
+        """(w, q): how far the front at points p is the sunk construction (0 where it is the true ground, 1 where
+        it sinks: see UNSUNK_BAND), and the points moved up onto the true ground over them (what their maps should show)."""
+        p = np.asarray(p, float)
+        S = self.region.s(p[:, 0], p[:, 1])
+        # (by S, not by how far it is sunk: the dive starts at SINK_EDGE so steeply that a normal stencil a few cm
+        # across already saw it; past the edge the front IS the true ground, so the two normals agree where w eases)
+        w = 1.0 - _smooth(SINK_EDGE, SINK_EDGE + UNSUNK_BAND, S)
+        q = p.copy()
+        k = np.flatnonzero(w > 0)
+        if len(k):
+            q[k, 2] = self.base.column(p[k, 0], p[k, 1])[0]
+            if self.region.voids:  # (round a void the front is the whole rock, not sunk: nothing to lift)
+                dv = self._void(p[k])
+                near = np.isfinite(dv) & (dv < self.region.wall + 2.0)
+                w[k[near]] = 0.0
+                q[k[near]] = p[k[near]]
+        return w, q
+
+    def unsunk(self, p, h):
+        """See front_field: (w, the true ground's gradient over each point)."""
+        w, q = self.lift(p)
+        g = np.zeros_like(np.asarray(p, float))
+        k = np.flatnonzero(w > 0)
+        if len(k):
+            g[k] = self.base.value_gradient(q[k], h)[1]
+        return w, g
 
     def value_gradient(self, p, h):
         tet = np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]], float)
@@ -777,3 +852,85 @@ def floating(out: Path, M: dict, R: Region, lod: int = 0, tol: float = 0.15, mem
         out_.append({"triangles": int(tri[c]), "clearance_m": float(low[c]), "at": at.round(1).tolist()})
     out_.sort(key=lambda f: -f["triangles"])
     return {"components": int(ncomp), "floating": out_}
+
+
+def lifted(cf: CliffField, P, N):
+    """Vertices of a cliff shell's front moved up onto the true ground where the front is the sunk construction
+    (CliffField.lift), their normals eased to the ground's: where its AO is measured (see UNSUNK_BAND)."""
+    P = np.asarray(P, float)
+    w, q = cf.lift(P)
+    k = np.flatnonzero(w > 0)
+    if not len(k):
+        return P, N
+    P, N = P.copy(), np.asarray(N, float).copy()
+    g = cf.base.value_gradient(q[k], 0.25)[1]
+    g /= np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
+    P[k] += w[k, None] * (q[k] - P[k])
+    n = N[k] * (1 - w[k, None]) + g * w[k, None]
+    N[k] = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+    return P, N
+
+
+LAKE_AREA = 1.5  # a lake flooded on the tile heightmaps may cover this x its designed area (or 1 / this) at most
+
+
+def lake_check(out: Path, M: dict) -> dict:
+    """Each lake of the manifest flooded on the written tile heightmaps to its level, from its outline: the water's
+    area against the designed lake. A dam the heightmaps lost (taken for a cliff and pushed away) floods the valley
+    below (pushieworld note 106: 134,000 m2 for 3,300)."""
+    from skimage.draw import polygon as _poly
+    failures, summary = [], {}
+    lakes = M.get("lakes") or {}
+    tiles = {(e["i"], e["j"]): e for e in M.get("ground", []) if e.get("heightmap")}
+    if not lakes or not tiles:
+        return {"summary": summary, "failures": failures}
+    T = float(M["tile_size"])
+    e0 = next(iter(tiles.values()))
+    n = int(np.load(out / e0["heightmap"], mmap_mode="r").shape[0])
+    d = T / (n - 1)
+    ox, oy = e0["min"][0] - e0["i"] * T, e0["min"][1] - e0["j"] * T
+    for name, lk in lakes.items():
+        rings = lk.get("outline") or []
+        if not rings:
+            continue
+        pts = np.array(rings[0])
+        pad = max(3.0 * float(np.ptp(pts, axis=0).max()), 60.0)
+        lo, hi = pts.min(0) - pad, pts.max(0) + pad
+        i0, i1 = int(np.floor((lo[0] - ox) / T)), int(np.floor((hi[0] - ox) / T))
+        j0, j1 = int(np.floor((lo[1] - oy) / T)), int(np.floor((hi[1] - oy) / T))
+        ni, nj = i1 - i0 + 1, j1 - j0 + 1
+        Hm = np.full((nj * (n - 1) + 1, ni * (n - 1) + 1), np.nan)  # rows south -> north
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                if (i, j) in tiles:
+                    h = np.load(out / tiles[i, j]["heightmap"])[::-1]  # (files are north row first)
+                    Hm[(j - j0) * (n - 1):(j - j0) * (n - 1) + n, (i - i0) * (n - 1):(i - i0) * (n - 1) + n] = h
+        x0, y0 = ox + i0 * T, oy + j0 * T
+        rr, cc = _poly((pts[:, 1] - y0) / d, (pts[:, 0] - x0) / d, Hm.shape)
+        inside = np.zeros(Hm.shape, bool)
+        inside[rr, cc] = True
+        if np.isnan(Hm[inside]).any() or not inside.any():
+            summary[name] = {"skipped": "its tiles are not all in this export"}
+            continue
+        level = float(lk["level"])
+        below = Hm < level
+        lab, _ = ndimage.label(below)
+        ids = np.unique(lab[inside & below])
+        wet = np.isin(lab, ids[ids > 0])
+        area = float(wet.sum()) * d * d
+        # (water reaching tiles the export doesn't hold, or the window's edge: at least this much, and leaking)
+        gap = ndimage.binary_dilation(np.isnan(Hm))
+        leaks = bool((wet & gap).any() or wet[[0, -1], :].any() or wet[:, [0, -1]].any())
+        want = float(lk["area_m2"])
+        ratio = area / max(want, 1e-6)
+        summary[name] = {"level": level, "designed_m2": round(want), "flooded_m2": round(area), "ratio": round(ratio, 2),
+                         "leaks": leaks}
+        if ratio > LAKE_AREA or leaks:
+            failures.append(f"lake {name}: flooded to its level {level:.2f} m on the tile heightmaps the water covers "
+                            f"{area:,.0f} m2{' and runs on out of the area checked' if leaks else ''} where the lake is "
+                            f"{want:,.0f} m2 (limit x{LAKE_AREA}): the heightmaps don't hold it (its dam or bank is "
+                            f"missing from them)")
+        elif ratio < 1.0 / LAKE_AREA:
+            failures.append(f"lake {name}: the tile heightmaps hold only {area:,.0f} m2 of water under its level "
+                            f"{level:.2f} m where the lake is {want:,.0f} m2: its bed stands too high in them")
+    return {"summary": summary, "failures": failures}

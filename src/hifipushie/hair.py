@@ -110,7 +110,7 @@ GROOM = {
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
-        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "eevee_gain": 1.6, "light": None, "card_gain": 1.0,
+        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "light": None, "card_gain": 1.0, "card_sat": 1.0,
         "cycles_fit": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
@@ -1423,12 +1423,15 @@ def fins(sc: Scalp, g: dict, locks: list, n: int = 60) -> dict:
 LIFT_RAMP = 0.03  # m: a lift grows to its full height this far in from the hairline
 
 
-def lift(spec: dict, sc: Scalp, by: dict) -> tuple:
+def lift(spec: dict, sc: Scalp, by: dict, fill: bool = False) -> tuple:
     """(new spec, report): the whole groom made fuller (or closer) by region, as a barber's "more at the sides":
     by = {region: m} (REGIONS: front, top, sides, back, nape). Every lock point on the head ([az, el, h] locks; their
     handles too) rises by the region weights there (`weights`, the volume's own) x those metres, and groom.volume
     takes the same amounts, so the underlayer stays under the locks. Hand locks stay hand locks (their shapes are
-    kept, only lifted); locks in "xyz" space are left alone and listed."""
+    kept, only lifted); locks in "xyz" space are left alone and listed.
+    fill=True (strand grooms): each lock also grows THICKER by twice its mean lift, so its lens still reaches down to
+    where it lay and its strands fill the new volume from the scalp up (lifted alone, a strand groom's sides stood off
+    the head as a shell over the short scalp layer; solid locks lifted alone read as a stiff helmet)."""
     import copy as _copy
     bad = set(by) - set(REGIONS)
     if bad:
@@ -1455,6 +1458,9 @@ def lift(spec: dict, sc: Scalp, by: dict) -> tuple:
         d_ = dh(P[:, 0], P[:, 1])
         P[:, 2] += d_
         lk["pts"] = [[round(float(a), 2), round(float(e), 2), round(float(h), 4)] for a, e, h in P]
+        if fill and float(np.mean(d_)) > 0:
+            th0 = float(lk.get("thickness", LOCK_DEFAULTS.get("thickness", 0.004)))
+            lk["thickness"] = round(th0 + 2.0 * float(np.mean(d_)), 5)
         mx = max(mx, float(np.abs(d_).max()))
         if lk.get("handles"):
             nh = []
@@ -1474,6 +1480,54 @@ def lift(spec: dict, sc: Scalp, by: dict) -> tuple:
             vol[r] = round(float(vol.get(r, GROOM["volume"][r])) + float(v), 5)
     return out, {"locks": moved, "skipped_xyz": skipped, "max_lift_mm": round(mx * 1000, 2),
                  "volume": {r: vol.get(r) for r in REGIONS}}
+
+
+def trim(spec: dict, sc: Scalp, below: float, where=("sides", "back", "nape")) -> tuple:
+    """(new spec, report): a barber's clean-up of the outline: every lock on the head ([az, el, h]) is cut where it
+    runs more than `below` m outside the hairline (over the skin of the neck or past the sideburns) in the regions
+    `where` (a point counts when its region weight there is over a half). The cut point is interpolated along the
+    lock; per-point radius / tilt / handles are cut with it. Locks that would keep under two points are left whole
+    and listed. A short back and sides: below 0.01 (strands fall past their lock's end by their own spread)."""
+    import copy as _copy
+    bad = set(where) - set(REGIONS)
+    if bad:
+        raise HairError(f"hair trim: unknown regions {sorted(bad)} (have {', '.join(REGIONS)})")
+    out = _copy.deepcopy(spec)
+    hs = out.setdefault("hair", {})
+    line = hairline(sc, groom_params(out))
+    wi = [REGIONS.index(r) for r in where]
+    cut, kept, short = 0, 0, []
+    for n, lk in (hs.get("locks") or {}).items():
+        if lk.get("space") == "xyz":
+            continue
+        P = np.asarray(lk["pts"], float).reshape(-1, 3)
+        d_in = inside(sc, line, P[:, 0], P[:, 1])
+        w = weights(P[:, 0], P[:, 1], d_in)[:, wi].sum(1)
+        over = (d_in < -below) & (w > 0.5)
+        over[0] = False
+        if not over.any():
+            kept += 1
+            continue
+        k = int(np.argmax(over))  # the first point past the line: cut between k - 1 and k
+        if k < 1:
+            short.append(n)
+            continue
+        a, b = d_in[k - 1] + below, d_in[k] + below  # a >= 0 > b
+        t = float(np.clip(a / max(a - b, 1e-9), 0.0, 1.0))
+        end = P[k - 1] + t * (P[k] - P[k - 1])
+        Q = np.r_[P[:k], end[None]]
+        if len(Q) < 2 or np.linalg.norm(Q[-1] - Q[0]) < 1e-6:
+            short.append(n)
+            continue
+        lk["pts"] = [[round(float(x), 2), round(float(y), 2), round(float(z), 4)] for x, y, z in Q]
+        for key in ("radius", "tilt"):
+            if isinstance(lk.get(key), list) and len(lk[key]) == len(P):
+                v = lk[key]
+                lk[key] = v[:k] + [round(float(v[k - 1] + t * (v[k] - v[k - 1])), 4)]
+        if isinstance(lk.get("handles"), list) and len(lk["handles"]) == len(P):
+            lk["handles"] = lk["handles"][:k] + [None]
+        cut += 1
+    return out, {"cut": cut, "untouched": kept, "too_short": short}
 
 
 def lock_meshes(sc: Scalp, locks: list, n: int = 40, across: int = 7) -> tuple:
@@ -1777,11 +1831,11 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
            "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
            "centre": sc.C.tolist()}
     if h.get("style") == "cards" and stage != "mass":
-        colc = None
-        if g.get("loose"):
-            from . import hair_loose
-            colc = hair_loose.collider(name, spec, sc)
-        out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget, cap_step=cap_step, col=colc)
+        from . import hair_loose
+        body = hair_loose.collider(name, spec, sc)
+        colc = body if g.get("loose") else None
+        out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget, cap_step=cap_step, col=colc,
+                                 clear_col=body)
     if h.get("style") == "strands" and stage != "mass":
         from . import hair_strands
         col = None
@@ -1890,6 +1944,7 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # group: how big a clump of strands one card stands for (hair_cards.clump_cards): a lower tier has FEWER, WIDER cards
 # from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
 # (the scalp chart) and the tail's core carry the rest.
+MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no mass shell under its cards
 CARD_TIERS = {
     "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
              "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000},
@@ -1903,7 +1958,7 @@ CARD_TIERS = {
 
 
 def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None,
-              cap_step: float = 1.0, col=None) -> dict:
+              cap_step: float = 1.0, col=None, clear_col=None) -> dict:
     """The hair as cards (hair_cards.py): the card mesh of every lock + baby hairs, the underlayer wearing the strand
     atlas, and the atlas's pictures. `budget`: triangles for the cards (segments lengthen, then layers go)."""
     from . import hair_cards as hc
@@ -1916,6 +1971,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         budget = int(tier["triangles"])
     lk = {**LOOK, **(h.get("look") or {})}
+    # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
+    gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
+    lk["grey_share"] = round(float(np.clip(float(lk.get("grey_amount", 0.0))
+                                           + float(lk.get("grey_locks", 1.0)) * (np.mean(gl) if gl else 0.0), 0, 1)), 3)
     D, e_chart = None, None
     if S.get("source", "groom") == "groom":  # the pictures are the groom's own strands (hair_strands.py)
         from . import hair_strands as hs
@@ -1939,7 +1998,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
         tc = hc.tail_cores(D, hair_locks, sides=int(S.get("core_sides", 10)))
         core = hc.core_mesh(tc, at["tiles"]) if tc is not None else None
-        if g.get("loose"):  # a loose mass: a solid surface inside it (no air or skin between the cards)
+        # (not for a short cut: hair under MASS_MIN long has no inside; its shell stood OUTSIDE the cards on the
+        # sides and back as a pale dome with a dark rim at the temples (Garrett's crop). The cap, wearing the
+        # scalp chart, is the surface under short cards.)
+        lens = [float(np.linalg.norm(np.diff(np.asarray(k_["pts"], float), axis=0), axis=1).sum()) for k_ in hair_locks]
+        if g.get("loose") and lens and float(np.mean(lens)) > MASS_MIN:  # a loose mass: a solid surface inside it
             shell = hc.mass_shell(D, hair_locks, sc.C, at["tiles"], col=col, triangles=int(S.get("mass", 3000)))
             if shell is not None:
                 core = hc.join(core, shell)
@@ -1969,7 +2032,12 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
         info["asked"], info["fixed"] = int(budget), int(fixed)
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
-    clearance = card_clearance(sc, mc, [c.get("lock", "?") for c in cards], fix=CARD_CLEAR, col=col)
+    # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
+    # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
+    # moved out to the ear's silhouette (Garrett: 936 hero vertices, the ragged dark patches behind the ear and at
+    # the temple)
+    clearance = card_clearance(sc, mc, [c.get("lock", "?") for c in cards], fix=CARD_CLEAR,
+                               col=col if col is not None else clear_col)
     # hair off the head must come OUT of the hair: a free card whose root lies on bare skin outside the hairline
     # is a detached wisp
     free_names = {k_["name"] for k_ in hair_locks if float(k_.get("free", 0.0)) > 0.5 and k_.get("core") is None}

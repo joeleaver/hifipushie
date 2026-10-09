@@ -9,6 +9,13 @@
 #   zozo: GPU_PPF_ROOT (the unpacked ZOZO release on the box; default $GPU_WORKDIR/ppf), GPU_ZOZO_DEVICE (cuda);
 #   newton: GPU_PYTHON (a python with warp + newton; default python3), GPU_RUN_ARGS.
 set -euo pipefail
+# one job at a time per box: ZOZO refuses to start while any solver runs on the host ("Solver is already running"),
+# so callers (several agents sharing one box) queue on a local lock named by the host
+if [ -z "${GPU_BOX_LOCKED:-}" ] && command -v flock >/dev/null; then
+  lockdir="${XDG_RUNTIME_DIR:-/tmp}/hifipushie"; mkdir -p "$lockdir"
+  export GPU_BOX_LOCKED=1
+  exec flock "$lockdir/gpubox_${GPU_SSH_HOST//[^A-Za-z0-9]/_}_${GPU_SSH_PORT:-22}.lock" "$0" "$@"
+fi
 job="${@: -1}"
 here="$(cd "$(dirname "$0")" && pwd)"
 name="$(basename "$(dirname "$job")")_$(basename "$job")"

@@ -85,3 +85,32 @@ nose_width/mouth_width ~0.63, jaw_width/face_width ~0.67.
 - Asking the identity for a style (huge eyes, a tiny nose): it comes back held. Use the style layer.
 - Wide `spread` on women and children masculinises a bald head: keep it at or under ~0.5.
 - Measuring the old path: these tools need `base.body.source == "human"`.
+
+## Feature controls on a head (base.head.shape), and what they taught
+
+Each is a smooth field on the head's own landmarks, mirrored, with the landmarks riding. They are for a feature the
+identity space can't give; every one must pass the integrity check and be judged in ALL views (six-view sheet +
+the reference rows), not on the measure it was made for.
+
+- `jawline` {below_lobe, forward, out, tuck, neck, sharp, smooth}: the jaw's visible edge (GNM's jaw contour, one
+  diagonal from the ear lobe to the chin) carried onto an L: a ramus under the lobe, an angle `below_lobe` m under it,
+  a straight border to the chin's corner; `sharp` = how far along the line the turn is spread (4-5 mm crisp);
+  `tuck` draws the band outside the edge in, `neck` narrows the neck's sides under the corner.
+- `chin` {width, square, project, height, under, cleft}: mental corners apart, the bottom levelled, the chin forward,
+  the submental skin lifted (`under`: the chin-to-throat line runs back level before it turns down), a mid-line groove.
+- `ears` {out, blend}: the auricle turned RIGIDLY about its attachment line (lobe -> top of the front attachment);
+  the top swings out, the lobe stays. Check with the auricle's own edge lengths (rigid = unchanged).
+- `nose_tip` deg | {up, round}: the nose's base line (alar base -> under the tip) tilted about the alar bases; `round`
+  blunts the tip. `hood`, `hollow`, `jaw_angle` as before.
+
+Lessons from one hard likeness (a lean man fitted toward a broader reference):
+- Numbers in tolerance are not a likeness. A width warp plus a moved jaw measured right and read as a bulldog; a
+  full eye narrowing measured right and read as sad slits. Look, in every view, after every change.
+- A squint, a frown, a set mouth in the reference are EXPRESSION: fit at most part of them into the neutral head.
+- Choose the pivot from the anatomy: a nose tip turned about the mid bridge only swings the nose forward (the tip
+  lies below that pivot); about the alar bases it tilts the base line. An ear turned about its root's middle makes a
+  fin; about its attachment line it stands out as an ear does.
+- A head bigger than its body's (style head_size) or warped at the nape must hand over through the whole neck, not
+  at the stitch: a collar ring round the neck's base means the hand-over is too short.
+- A blind read by one reader moves by ~10 descriptor-views between readers of similar heads: use several, and trust
+  only what all of them say.

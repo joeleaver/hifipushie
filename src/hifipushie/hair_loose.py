@@ -11,6 +11,11 @@ capability, `groom.loose`:
    "stiff": 0.3,            0 = hangs at once .. 1 = keeps the direction it left the scalp in (short hair, an afro)
    "out": 0.0,              0 = combed along the scalp .. 1 = straight out of the scalp
    "back": 0.0,             0..1: the top and front combed back over the crown (with parting "none": slicked back)
+   "flow": {"front": [0.4, -0.5, 0.7], "top": [0.6, -0.2, 0.2], "sides": [0, 0.7, -0.7]},
+                            optional, per region: the way the hair is combed there as a world direction (x his left,
+                            y back, z up; laid in the scalp, `out` lifts it off): a front brushed up and forward to
+                            his left, sides back and down. Regions left out keep the default (gravity, away from the
+                            parting, `back`). `out` and `stiff` may also be given per region ({"front": 0.5, ...}).
    "messy": 0.15,           0..1: each lock's root direction turned at random (tousled)
    "uneven": 0.3,           0..1: lengths differ lock to lock
    "face": 1.0,             0..1: how far the hair is kept from hanging over the face (1 = it frames it: curtains
@@ -35,7 +40,8 @@ import json
 import numpy as np
 
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0,
-         "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006}
+         "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
+         "flow": None}
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
 DOWN = np.array([0.0, 0.0, -1.0])
 FACE_AZ = 58.0  # deg either side of the face's centre line that hair (not a fringe) is kept out of
@@ -195,6 +201,21 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         back = 1.0  # (no parting: the top has to go somewhere)
     comb = DOWN[None] * (1 - 0.8 * frontw[:, None]) + tw[:, None] * (
         (1 - 0.6 * back) * away[:, None] * np.array([1.0, 0, 0]) + back * np.array([0, 1.0, -0.15]))
+    from .hair import REGIONS
+    if p.get("flow"):  # a combing direction per region, by the region weights (what a traced flow gives)
+        bad = set(p["flow"]) - set(REGIONS)
+        if bad:
+            raise ValueError(f"hair loose flow: unknown regions {sorted(bad)} (have {', '.join(REGIONS)})")
+        for i_, r_ in enumerate(REGIONS):
+            if r_ in p["flow"]:
+                w_ = W[:, i_:i_ + 1]
+                comb = comb * (1 - w_) + w_ * _unit(np.asarray(p["flow"][r_], float))[None]
+
+    def by_region(v, default):  # a number, or {region: number} (others: the mean of those given)
+        if isinstance(v, dict):
+            base = float(np.mean([float(x) for x in v.values()])) if v else default
+            return sum(W[:, i_] * float(v.get(r_, base)) for i_, r_ in enumerate(REGIONS)) / np.maximum(W.sum(1), 1e-9)
+        return np.full(m, float(v))
     fr = p["fringe"]
     is_fr = np.zeros(m, bool)
     if fr:
@@ -209,11 +230,12 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     tang = _unit(tang)
     turn = rng.uniform(-1, 1, m) * float(p["messy"]) * np.pi / 2
     tang = _unit(tang * np.cos(turn)[:, None] + np.cross(nrm, tang) * np.sin(turn)[:, None])
-    out = float(np.clip(p["out"], 0, 1))
-    outi = np.clip(out + float(p["messy"]) * rng.uniform(-0.3, 0.3, m), 0, 1)
+    out_r = np.clip(by_region(p["out"], 0.0), 0, 1)
+    out = float(out_r.mean())
+    outi = np.clip(out_r + float(p["messy"]) * rng.uniform(-0.3, 0.3, m), 0, 1)
     outi[is_fr] = np.minimum(outi[is_fr], 0.25)
     d = _unit(tang * (1 - outi)[:, None] + nrm * (outi + 0.12)[:, None])
-    stiff = np.full(m, float(np.clip(p["stiff"], 0, 1)))
+    stiff = np.clip(by_region(p["stiff"], 0.3), 0, 1)
     if fr:
         stiff[is_fr] = float(fr["stiff"])
     kg = (1 - stiff) ** 3 * 400.0  # how fast the direction falls, per metre
@@ -273,6 +295,9 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         d = _unit(q - P[:, k - 1])
         P[:, k] = P[:, k - 1] + d * ds[:, None]
     locks = {}
+    from .hair import _grey
+    gq = g.get("grey") or {}
+    GR = sum(W[:, i_] * float(gq.get(r_, 0.0)) for i_, r_ in enumerate(REGIONS)) / np.maximum(W.sum(1), 1e-9)
     w0 = float(p["width"]) * sp
     order = np.argsort(-el)
     for j, i in enumerate(order):
@@ -304,5 +329,8 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             lk["radius"] = [round(float(v), 3) for v in fan]
         if short:
             lk["strands"] = {"tip_spread": 0.6}
+        gy = max(_grey(g, float(az[i]), float(el[i]), line), float(GR[i]))  # greying temples / sideburns / regions
+        if gy > 0.01:
+            lk["grey"] = round(gy, 3)
         locks[("lf" if is_fr[i] else "l") + str(j)] = lk
     return locks

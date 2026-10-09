@@ -33,6 +33,14 @@ STRAND_RADIUS = 0.00004  # m: a real hair (0.03-0.05 mm), at REAL_COUNT strands;
 REAL_COUNT = 100000  # the head stays covered (a path tracer draws true widths: 30k hairs at 0.08 mm were a pale haze)
 UNDER_PER_M2 = 3.6e5  # scalp-layer strands per m2 of scalp at under = 1 and 30k strands
 SEED_SPACING = 0.011  # m between the scalp layer's flow guides
+# Cycles' hair BSDF vs the look colour: a lit mass of strands renders = A x colour^p per linear channel (multiple
+# scattering lightens it: measured on a short grey-brown cut, 7 colours black .. blond under the salon lights:
+# 0.646 x c^0.307, Garrett's #55504b 3.5-4x too light). The look colour goes through the inverse (blender_strands.
+# material); A 0.75 instead of the fitted 0.646 because a colourless floor (~0.09 linear: the white specular lobe and
+# the sky) is in every measure and can't be inverted. After: grey / blond within 5%, #55504b x1.35-1.45 (EEVEE's own
+# strand material: x1.6-1.8), near-blacks stay at the floor. look.cycles_fit overrides ([1, 1] = off).
+# Applied to the colour's luminance with the hue kept (per channel the 1/p power tripled every channel ratio).
+CYCLES_FIT = (0.75, 0.307)
 # what each 0..1 dial may reach (the top of each range is where it still reads as hair)
 import os as _os
 SAFE = {
@@ -109,7 +117,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         if key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
-        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_ = ([] for _ in range(12))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_ = ([] for _ in range(13))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
@@ -162,6 +170,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
             R_.append(4.0 if lk.get("at_hairline") else 1.0)
             TS_.append(0.0 if gather else 1.0)
+            GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
             WS_.append(ws)
             WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
@@ -171,7 +180,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
                     "weight": np.asarray(W_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
                     "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
-                    "names": np.asarray(N_)}
+                    "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_)}
     return out
 
 
@@ -282,18 +291,23 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
     # lies on the head before it falls: the scalp layer follows it there)
     tree = None
     if head:
-        LP, LT = [], []
+        LP, LT, LG = [], [], []
         for lk in head:
             P, *_ = hc.spine(lk, 16 if float(lk.get("free", 0.0)) <= 0.5 else 40)
             LP.append(P)
             LT.append(_unit(np.gradient(P, axis=0)))
-        LP, LT = np.concatenate(LP), np.concatenate(LT)
+            LG.append(np.full(len(P), float((lk.get("inputs") or {}).get("Grey", lk.get("grey", 0.0)))))
+        LP, LT, LG = np.concatenate(LP), np.concatenate(LT), np.concatenate(LG)
         _, _, LH = sc.coords(LP)
         near = LH < 0.035
         if near.sum() >= 8:
-            LP, LT, LH = LP[near], LT[near], LH[near]
+            LP, LT, LH, LG = LP[near], LT[near], LH[near], LG[near]
         tree = cKDTree(LP)
     p = sc.point(az, el, 0.0003)
+    gr = np.zeros(len(p), np.float32)
+    if tree is not None:  # the scalp layer under a lock is as grey as the lock (greying temples, sideburns)
+        _, j0 = tree.query(p)
+        gr = LG[j0].astype(np.float32)
     pts = [p]
     h = np.full(len(az), 0.0003)
     for k in range(1, n):
@@ -318,7 +332,7 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
         p = sc.point(az, el, h)
         pts.append(p)
     P = np.stack(pts, 1)  # (seeds, n, 3)
-    return {"counts": np.full(len(P), n, np.int32), "pts": P.reshape(-1, 3).astype(np.float32),
+    return {"counts": np.full(len(P), n, np.int32), "pts": P.reshape(-1, 3).astype(np.float32), "gr": gr,
             "names": np.asarray([f"u{i}" for i in range(len(P))])}
 
 
@@ -384,6 +398,8 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     if count:
         S = {**S, "count": int(count)}
     look = {**LOOK, **(h.get("look") or {})}
+    if not look.get("cycles_fit"):
+        look["cycles_fit"] = list(CYCLES_FIT)
     seed = int(g.get("seed", 0))
     bands = [k for k in locks if re.fullmatch(r"t\d*band", k["name"])]
     hair_locks = [k for k in locks if k not in bands]
