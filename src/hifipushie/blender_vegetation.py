@@ -621,6 +621,9 @@ def add_plant(pj, tag, clay):
     a.data.foreach_set("value", d["dead"].astype(np.float32) if "dead" in d else np.zeros(len(d["V"]), np.float32))
     a = wood.data.attributes.new("radius", "FLOAT", "POINT")
     a.data.foreach_set("value", d["radius"].astype(np.float32))
+    if "cen" in d:  # (each part's middle in plan: a sector cut keeps a part whole, see _pass_material)
+        a = wood.data.attributes.new("hp_c", "FLOAT_VECTOR", "POINT")
+        a.data.foreach_set("vector", d["cen"].astype(np.float32).ravel())
     wood.data.materials.append(bark)
     wood.data.polygons.foreach_set("use_smooth", np.ones(len(wood.data.polygons), bool))
     if "wood_N" in d:  # (a style's wood is meshed from a field: its own normals)
@@ -658,6 +661,8 @@ def add_plant(pj, tag, clay):
                                           ("tint", "FLOAT", "tw_tint", "value")):
                 at_ = pts.data.attributes.new(nm_, kind, "POINT")
                 at_.data.foreach_set(field, d[key][sel].astype(np.float32).ravel())
+            at_ = pts.data.attributes.new("hp_c", "FLOAT_VECTOR", "POINT")  # (a card stands where its point is: kept whole by a sector cut)
+            at_.data.foreach_set("vector", np.c_[d["tw_pos"][sel][:, :2], np.ones(int(sel.sum()))].astype(np.float32).ravel())
             _instancer(pts, proto, lf_["crown"], yaw)
             pts.location = at.tolist()  # (the instances' own frames ride the object's turn)
             pts.rotation_euler = (0, 0, yaw)
@@ -668,6 +673,9 @@ def add_plant(pj, tag, clay):
         solid = _mesh(f"crown{tag}", d["solid_V"], d["solid_F"], d["solid_uv"] if "solid_uv" in d else None)
         ca = solid.data.color_attributes.new("col", "FLOAT_COLOR", "POINT")
         ca.data.foreach_set("color", np.c_[d["solid_col"], np.ones(len(d["solid_col"]))].astype(np.float32).ravel())
+        if "solid_cen" in d:
+            a = solid.data.attributes.new("hp_c", "FLOAT_VECTOR", "POINT")
+            a.data.foreach_set("vector", d["solid_cen"].astype(np.float32).ravel())
         solid.data.polygons.foreach_set("use_smooth", np.ones(len(solid.data.polygons), bool))
         solid.data.normals_split_custom_set_from_vertices(d["solid_N"].astype(np.float32).tolist())
         solid_mat = bpy.data.materials.new(f"crown{tag}")
@@ -844,13 +852,88 @@ def _pass_material(m, kind):
         ao.inputs["Normal"].default_value = (0, 0, 1)
         L.new(ao.outputs["AO"], em.inputs["Color"])
     last = em.outputs[0]
-    if alpha is not None:
-        tp = N.new("ShaderNodeBsdfTransparent")
-        am = N.new("ShaderNodeMixShader")
-        L.new(alpha, am.inputs[0])
-        L.new(tp.outputs[0], am.inputs[1])
-        L.new(last, am.inputs[2])
-        last = am.outputs[0]
+    # a view may keep only what stands in a double wedge round a vertical axis (`sector`: a groundcover card's slice of
+    # its clump): azimuth about (hp_sec_cx, hp_sec_cy) within hp_sec_half of hp_sec_theta (mod 180 deg); half >= 90 deg
+    # = everything (set per view in render)
+    # a part is kept or cut WHOLE by where its middle stands (attribute hp_c = (x, y, 1) on the mesh, or on the instance
+    # for cards): cut by pixel a blade or a flower head split across two cards, half on each
+    geo = N.new("ShaderNodeNewGeometry")
+    sxyz = N.new("ShaderNodeSeparateXYZ")
+    L.new(geo.outputs["Position"], sxyz.inputs[0])
+    px_, py_ = sxyz.outputs["X"], sxyz.outputs["Y"]
+    for typ in ("INSTANCER", "GEOMETRY"):
+        at_ = N.new("ShaderNodeAttribute")
+        at_.attribute_type = typ
+        at_.attribute_name = "hp_c"
+        sp_ = N.new("ShaderNodeSeparateXYZ")
+        L.new(at_.outputs["Vector"], sp_.inputs[0])
+        nx_, ny_ = [], []
+        for cur, comp in ((px_, "X"), (py_, "Y")):
+            mx = N.new("ShaderNodeMix")
+            mx.data_type = "FLOAT"
+            mx.clamp_factor = True  # (flag 2 = a head: still its middle)
+            L.new(sp_.outputs["Z"], mx.inputs["Factor"])
+            L.new(cur, mx.inputs["A"])
+            L.new(sp_.outputs[comp], mx.inputs["B"])
+            (nx_ if comp == "X" else ny_).append(mx.outputs["Result"])
+        px_, py_ = nx_[0], ny_[0]
+        if typ == "GEOMETRY":
+            flag_ = sp_.outputs["Z"]
+
+    def _m(op, a, b=None, name=None, val=None):
+        n_ = N.new("ShaderNodeMath")
+        n_.operation = op
+        if name:
+            n_.name = name
+        for i_, x_ in enumerate((a, b)):
+            if x_ is None:
+                continue
+            if isinstance(x_, (int, float)):
+                n_.inputs[i_].default_value = float(x_)
+            else:
+                L.new(x_, n_.inputs[i_])
+        return n_
+    dx = _m("SUBTRACT", px_, 0.0, "hp_sec_cx")
+    dy = _m("SUBTRACT", py_, 0.0, "hp_sec_cy")
+    az = _m("ARCTAN2", dy.outputs[0], dx.outputs[0])
+    rel = _m("SUBTRACT", az.outputs[0], 0.0, "hp_sec_theta")
+    wr = N.new("ShaderNodeMath")
+    wr.operation = "WRAP"
+    L.new(rel.outputs[0], wr.inputs[0])
+    wr.inputs[1].default_value, wr.inputs[2].default_value = math.pi / 2, -math.pi / 2
+    ab = _m("ABSOLUTE", wr.outputs[0])
+    wedge = _m("LESS_THAN", ab.outputs[0], 10.0, "hp_sec_half").outputs[0]
+    # heads (hp_c flag 2) go on cards of their own: a wedge view (mode 0) leaves them out unless hp_sec_heads, a head
+    # view (mode 1) keeps only the head whose middle is within hp_sec_rho of (hp_sec_hx, hp_sec_hy); hp_sec_on 0 = no cut
+    is_head = _m("GREATER_THAN", flag_, 1.5).outputs[0]
+    not_head = _m("SUBTRACT", 1.0, is_head).outputs[0]
+    keep_h = _m("MAXIMUM", not_head, 0.0, "hp_sec_heads").outputs[0]
+    w_term = _m("MULTIPLY", wedge, keep_h).outputs[0]
+    hx = _m("SUBTRACT", px_, 0.0, "hp_sec_hx")
+    hy = _m("SUBTRACT", py_, 0.0, "hp_sec_hy")
+    r2 = _m("ADD", _m("MULTIPLY", hx.outputs[0], hx.outputs[0]).outputs[0], _m("MULTIPLY", hy.outputs[0], hy.outputs[0]).outputs[0])
+    hd = _m("LESS_THAN", _m("SQRT", r2.outputs[0]).outputs[0], 0.0, "hp_sec_rho").outputs[0]
+    h_term = _m("MULTIPLY", is_head, hd).outputs[0]
+    mode = _m("ADD", 0.0, 0.0, "hp_sec_mode").outputs[0]
+    sel = N.new("ShaderNodeMix")
+    sel.data_type = "FLOAT"
+    L.new(mode, sel.inputs["Factor"])
+    L.new(w_term, sel.inputs["A"])
+    L.new(h_term, sel.inputs["B"])
+    on = N.new("ShaderNodeMix")
+    on.data_type = "FLOAT"
+    on.name = "hp_sec_on"
+    on.inputs["Factor"].default_value = 0.0
+    on.inputs["A"].default_value = 1.0
+    L.new(sel.outputs["Result"], on.inputs["B"])
+    inside = on.outputs["Result"]
+    fac = inside if alpha is None else _m("MULTIPLY", alpha, inside).outputs[0]
+    tp = N.new("ShaderNodeBsdfTransparent")
+    am = N.new("ShaderNodeMixShader")
+    L.new(fac, am.inputs[0])
+    L.new(tp.outputs[0], am.inputs[1])
+    L.new(last, am.inputs[2])
+    last = am.outputs[0]
     L.new(last, out.inputs["Surface"])
     _PASS[key] = c
     return c
@@ -1047,6 +1130,21 @@ def build(job):
         swapped = None
         if v.get("pass"):  # one unlit thing per pixel (see _pass_material); "shade" needs rays: Cycles
             swapped = _pass_swap(v["pass"])
+            sec = v.get("sector") or {}
+            for m_ in bpy.data.materials:
+                if m_.use_nodes and "hp_sec_half" in m_.node_tree.nodes:
+                    nt_ = m_.node_tree.nodes
+                    nt_["hp_sec_cx"].inputs[1].default_value = float((sec.get("centre") or [0, 0])[0])
+                    nt_["hp_sec_cy"].inputs[1].default_value = float((sec.get("centre") or [0, 0])[1])
+                    nt_["hp_sec_theta"].inputs[1].default_value = float(sec.get("theta", 0.0))
+                    nt_["hp_sec_half"].inputs[1].default_value = float(sec.get("half", 10.0))
+                    nt_["hp_sec_on"].inputs["Factor"].default_value = 1.0 if sec else 0.0
+                    nt_["hp_sec_mode"].inputs[0].default_value = 1.0 if sec.get("head") is not None else 0.0
+                    nt_["hp_sec_heads"].inputs[1].default_value = 1.0 if sec.get("heads", False) else 0.0
+                    hh_ = sec.get("head") or [0.0, 0.0, 0.0]
+                    nt_["hp_sec_hx"].inputs[1].default_value = float(hh_[0])
+                    nt_["hp_sec_hy"].inputs[1].default_value = float(hh_[1])
+                    nt_["hp_sec_rho"].inputs[1].default_value = float(hh_[2])
             if v["pass"] == "depth":
                 for m_ in bpy.data.materials:
                     if m_.use_nodes and "hp_depth" in m_.node_tree.nodes:

@@ -5491,6 +5491,113 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       can go (t reaches 1 by itself at ring 4 distances; keeping it maps cheap -> t = 1); thinning is theirs to keep;
       (4) optional: compress/mode=2 (VRAM, DXT5) for another ~0.5 ms in the bench and 4x less VRAM (53 atlases x 21 MB with
       mips uncompressed). Tests: test_veg_impostor (+ far mode lands the plant, shader keeps its uniforms).
+  - Groundcover grade (2026-10-08, "groundcover" agent, branch `worktree-agent-a8f70ddf07e7751be`; consumer note 102:
+    pixar grass 4,752 / 2,430 triangles a clump, the vale 6.5 M of grass unthinned, so the game thinned to 1,200 / 300 a
+    clump and the meadow read sparse; the user's steer: judge quality first, near may be 500-800 triangles, target
+    mainstream GPUs not the 890M). `veg_groundcover.py`, `export_plant(grade="groundcover")` (veg_tools.export(grade=)),
+    contract 10, guide "Groundcover grade". Scratch DURABLE in /mnt/data/hifipushie/groundcover/: run.sh <script>
+    (worktree code on the main workspace), t1.py <plant> <seasons|all> [rebake] (bake cached in bakes/<plant>.pkl, export
+    into out/<plant>), q.py <plants> (through the MCP tool into the delivery folders; logs q3.log), gs.sh <tag> <style 0-4>
+    <full dir> <gc dir> (each LOD ALONE in the GAME's shader + light, measured against the full LOD 0: gdm/<tag>_sheet.png
+    + numbers), g3.sh (gs three ways: mips / no mips / mips + mip-scaled alpha), gm.sh (the same in Godot's
+    StandardMaterial: spikes/godot_veg/ground.gd), mw.sh <tag> <style> <season> <full|gc> <grass dir> [flower dir]
+    (meadow.gd: a meadow placed, thinned and budgeted as pushieworld's groundcover.gd does; MEADOW_CELL, NOMIPS, MIPALPHA
+    env), msheet.py (meadow rows into one sheet), gd/ = a Godot project with a COPY of pushieworld's plant / style shaders
+    (+ plant_mip*.gdshader: the mip-scaled alpha), mkplants.py (vs_{grass,daisy,clover,fern}_{real,blobby,anime,cartoon,
+    pixar} in workspace/plants), h.py (heads / extent per plant), tris.py (a delivery's triangles by part).
+    - How: per LOD a star of vertical cards through the foot (TIERS: 8 / 5 / 3 planes, grids 3x5 / 2x4 / 1x3, pictures
+      448 / 128 / 64 px), each card baked square on from the full plant AS THE FULL EXPORT DRAWS IT (veg_look.render, the
+      styled dress or the realistic cards) with only what stands in its own double wedge round the foot: a `sector` view
+      key in blender_vegetation (pass materials get nodes hp_sec_*: cut by azimuth about the foot). Parts are cut WHOLE by
+      their middle (attribute hp_c = (x, y, flag) on the solid / wood meshes and on twig instances, veg_look.part_middles):
+      flag 1 = a part pointing one way from the foot (within WHOLE_DEG 12; a fan of blades joined at its root is cut by
+      pixel, flag 0: kept whole, pixar's 6-blade fans lay on one card as one broad leaf), 2 = a HEAD (veg_look.parts:
+      compact, < HEAD_SIZE 0.12 H, middle over HEAD_UP 0.4 H; gathered into heads by single linkage, veg_groundcover.clusters)
+      -> two crossed cards of its own per head (a round head on a wedge card seen along it was a sliver), phase of its
+      stalk's card; tiers with more heads than TIERS.heads leave them on the wedges. Low wide plants (H < FLAT 1.15 R:
+      clover, fern) add a card lying flat at 0.45 H baked from above. Bake: SUPER 2x renders averaged to coverage, alpha /
+      COVER 0.55 (thin blades kept), the clump's shade baked in (as impostors), a tangent-space normal map against each
+      face's frame. Front and back single sided, NORMAL = up + LEAN 0.6 out from the foot + FACE 0.7 toward its own face
+      (mirror images; TANGENT w +-1): straight-up normals caught blobby's rim light from the side (pale far clumps, colour
+      off 0.12-0.14; with FACE 0.02-0.035). Seasons = variants of one `foliage` slot (winter regrown lying, snow = winter +
+      spec snow 0.8); one atlas per season holds every tier; the picture extents are the union over seasons. Bakes are
+      cached by spec + code (~/.cache/hifipushie/groundcover); 1-10 min of Blender a plant for 5 seasons.
+    - ALPHA THROUGH MIPS (the main finding): with generated mipmaps an alpha test drops thin blades (pixar LOD 0 covered
+      0.50 / 0.44 / 0.23 / 0.07 of the full plant's area at 2 / 4 / 8 / 12 m). A halo (alpha just under the cut round every
+      shape) kept far coverage but fused close blades into broad leaves near (HALO kept as a per-tier option, off). No
+      static picture holds from mip 0 to 3, so the engine must either import WITHOUT mipmaps (pushieworld's PNG imports
+      already do: 0.59-0.80 at 2-12 m, shimmer) or scale alpha by the mip level (MIP_ALPHA_RECIPE, Golus: alpha *= 1 +
+      mip * 0.25; 0.76-0.98 at 2-12 m) — in the material extras `alpha_mips` and the contract log.
+    - Numbers (game shader, pixar grass, mips + mip alpha): LOD 0 512 triangles (was 4,752 full LOD 0), LOD 2 36; meadow
+      (meadow/px_sheet.png): BEFORE 405 clumps / 1.32 M triangles (the game's thinning), AFTER all 2,587 clumps / 0.36 M.
+      Blobby grass: LOD 0 504 / LOD 2 60 vs 720 / 246; colour within 0.02-0.035, IoU 0.6-0.7 near.
+    - Read: the meadow is dense and reads as the style; near, cards are a touch paler and sparser per clump than the full
+      plant, a blade seen exactly along its card thins out, heads are flat discs on crossed cards (no ball shading in
+      blobby: the style ignores normal maps; `FORM` paints the part's own shading into the albedo instead).
+    - Bakes are cached by spec + `BAKE_VERSION` + the growth / style / Blender code (not this module's bytes: composing
+      never re-renders). The style SHEET's content is not in the key: after editing a sheet's `clump` block, rebake.
+    - STATE (2026-10-08, evening; contract 12): deliveries /mnt/data/hifipushie/vegstyle/<style>_<species>_ground/:
+      grass x 5 and daisy x 5 and real clover stand (in pushieworld's game: grass + the four styled daisies, "GOOD");
+      fern x 5 and styled clover x 4 are WITHDRAWN (a DROPPED.json in the folder). Judged in Godot against the full
+      plants (allm.sh / jm.sh / clm.sh; full references by qfull.py in full/): fern FAILS (real: lies flat from 8 m, the
+      full one is a standing shuttlecock and only 172 triangles; cartoon: the bold 8-leaf rosette becomes a thicket of
+      strokes with the flat top card's edge as a bar): `veg_groundcover.UNSUITED`, the export refuses. Styled clover: the
+      full plant is 288 triangles, the grade 378. Real daisy: 0.17 of the full plant's area (thin stalks), full 406
+      triangles: delivered, not worth loading. Real clover 1,102 -> 498, a denser mat than the full one at distance.
+      Pixar daisy: heads read, leaves thin (IoU 0.3-0.4). Rule of thumb: under ~1,000 full triangles, scatter the full plant.
+      A fix for rosettes, not built: fronds on the wedges square to each card, no top card when H > ~0.5 R.
+      The bake cache is zlib'd (was 300 MB a plant, 4.8 GB). `<name>_seasons.json` carries grade / lods / alpha_mips
+      (Godot drops material extras) and is written even when no slot changes with the season.
+      Godot under godot-quiet: quit() hangs for minutes after the files are written; the harnesses end with OS.kill.
+  - SWARD (2026-10-08, the same agent; the user on the tuft meadow: "what about just grass?"; contract 11;
+    `veg_sward.py`, species presets sward / sward_mown / sward_rough, sheet block `sward` in every style, guide "A field
+    of grass"; sheets workspace/veg_renders/gs_01_grass_three_ways.png, gs_02_sward_styles.png, gs_03_sward_variants.png;
+    deliveries /mnt/data/hifipushie/vegstyle/<style>_sward_<variant>/ (15, plants vs_sward<variant>_<style>); scratch in
+    /mnt/data/hifipushie/groundcover/: sw1.py <out> name=<spec json> (swards straight to files), swall.sh "<variants>"
+    (all styles exported + judged), fd.sh <tag> <style> sward|tufts|tufts_full|bare <dir> (spikes/godot_veg/field.gd in
+    gd/ + field_measure.py -> field/<tag>_eye.png, _high.png, table.txt), fsheet.py (rows + numbers), swc.py (the card
+    patch alternative, veg_sward_cards.py), qs.py (deliveries through the tools)).
+    - A 2 m TILE of blade ribbons (opaque geometry, no alpha): roots jittered on a torus, height / lean direction / tone
+      / clumping from periodic noise, so tiles laid edge to edge with quarter turns show no grid; 4 LODs = nested subsets
+      of the blades, wider (share x width = 1), 3 / 2 / 1 / 1 segments, rings 8 / 20 / 35 m then the fade (mown: 2-segment
+      blades, rings 5 / 10 / 18). Undersides are their own triangles with normals mirrored through the blade and never
+      pointing down (double sided, Godot flipped the up-leaning normals: black blades; straight-up normals caught the
+      blobby / anime rim light: white blades).
+    - Picked by measure (Godot, the game's shader, realistic meadow, standing): card patches (7 alpha cards / m2) cost a
+      third of the GPU time and hide as much ground, but read as a maze of little hedges from 2-8 m; tufts on the game's
+      grid hide 2-14% (full plants thinned) or 10-40% (groundcover grade); blades 38 / 78 / 94 / 100% at 2 / 6 / 12 / 30 m.
+    - Numbers (this laptop's 890M under load: an upper bound; bare scene 1.4 ms): realistic meadow 3.37 M triangles /
+      16 ms, mown 1.35 M / 8 ms, rough 2.37 M / 11 ms; blobby meadow 1.17 M / 7 ms; cartoon 1.32 M / 8 ms; anime 2.57 M /
+      12 ms; pixar 4.99 M / 22 ms (1.5 x the blades: the heaviest). Per m2 (realistic meadow): 5,025 / 1,206 / 201 / 80.
+    - The far end: the engine shrinks blades into the ground and mixes their colour to the terrain grass colour past
+      `fade.start` (recipe + ground / root / tip colours in the seasons json `sward`); roots take the terrain's grass
+      colour for the cover kind through the plant style's `colour`.
+    - PER-BLADE LOD (contract 12; the coordinator from 25 m up: darker tile-aligned squares where the rings change, a
+      brightness step at the fade): each vertex carries `across` (its offset from the blade's centre line, TEXCOORD_4)
+      and (rank, this mesh's width multiple) (TEXCOORD_5); the vertex shader draws the share S(d) of the blades for the
+      vertex's distance (log-interpolated through the rings): a blade of rank r sinks as S passes r and the rest widen,
+      so mesh k at its ring draws what mesh k - 1 draws there (tested in numpy: test_lod_thins_per_blade...). Tiles pick
+      their mesh by their NEAREST point. Rings moved in (meadow 5 / 12 / 24, last LOD 5% of the blades x 20 wide):
+      60 m field real 3.37 -> 2.03 M triangles at the same ground hidden, pixar 4.99 -> 2.22 M (density 1.5 -> 1.1),
+      anime 1.49, cartoon 0.77, blobby 0.69; mown 0.6-1.9 M, rough 0.5-1.6 M. The fade: albedo, NORMAL and ROUGHNESS go
+      to the ground's from `fade.blend_from` (roughness alone left an arc in pixar's specular light).
+      Reference lines spikes/godot_veg/sward_blades.gdshaderinc; the scratch project's copy of the game's shader
+      (gd/game/style/plant_mip.gdshaderinc, SWARD_FADE) is what the pictures were made with.
+    - Density (`sward.density`): how a sward ends; shader-only (no channel): Sd = S x density in the threshold, the
+      width factor keeps S, blades shorten. FIELD_PATH=1 ./fd.sh draws a path through the field.
+    - Seasons: factors = terrain_style.season_colours of the grass / turf layer in the same style (`season_factors`);
+      winter = lying straw by a world-drifting direction (per-blade by NORMAL tore blades into confetti: the two edges'
+      normals differ and the underside's is mirrored); snow = the tile sunk by `snow.depth_m` (clamping buried vertices
+      to y 0 would z-fight the ground), fade colour = the snow's. SEASON=winter|snow|autumn ./fd.sh.
+    - In pushieworld's game (their note 111): "the best single change to the ground so far", 2.0 M triangles / 24 ms in
+      the vale on the 890M, renderer built from the json's recipes alone. They asked for contract discipline: batch
+      changes, announce a bump to the coordinator BEFORE files change, never three bumps in an afternoon.
+    - Sheets: workspace/veg_renders/gs_04_sward_styles_blade_lod.png, gs_05_sward_path_winter_snow.png,
+      gs_06_sward_mown_rough_styles.png (gs_01-03 = before the per-blade LOD).
+    - Open: winter straw is thin (~30% of the ground hidden near) and one tint; snow depth is a constant (the engine
+      should drive it); tiles are flat (the renderer recipe says tilt or sample the height); no flowers in the tile;
+      the styled swards' winter / snow were not rendered (realistic only); the card-patch path (veg_sward_cards.py) is
+      dead code kept for the comparison: delete it.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
