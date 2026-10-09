@@ -578,14 +578,25 @@ write for the default; the numbers below steer it.
   terrain with rivers). They are in the weights, base colour, roughness and the baked relief, each has a tiling detail
   swatch (`ground_detail.swatches`: packed cobbles; silt with pebbles and flecks) and a texture in every terrain style
   (styles contract 5).
-- the bed's SHAPE in the heightmaps, cliff meshes and collision: pools deeper (against the outer bank in bends),
-  riffles shallower, a bar rising on the inside of bends (its top a few cm over the water), an uneven bed. Only
-  ground that was under the water moves; the banks, fords, routes and sites keep theirs, and the water's level is
-  the river's own (never raised).
+- the bed's SHAPE in the heightmaps, cliff meshes and collision: pools deeper (against the outer bank), riffles
+  shallower, a bar rising on the inner side (its top a few cm over the water), an uneven bed; sorted across the
+  channel (coarse along the thalweg, fines toward the inner margin and in patches).
+- the BANKS' foot: on the outer side the terrain's graded ramp is cut back to a low near-vertical step (0.35-0.85 m
+  x the channel's size: bare damp earth, darkest under the turf's edge, the turf ending at its top, the water at
+  its foot); on the inner side the ramp's foot is laid flat into the bar (dry gravel above the water). On a straight
+  reach the sides ALTERNATE with the pools (the thalweg wanders from bank to bank: alternate bars), so even a river
+  drawn as a gentle curve has bars and cut banks; a real bend (a radius of 2-4 channel widths: more `through`
+  points) puts the cut bank on its outside. Ground above the cut, fords, routes and sites keep theirs, and the
+  water's level is the river's own (never raised). A heightfield can't overhang: the cut is a steep step about a
+  metre wide in the ground mesh, crisp in the baked maps.
+- the river's water LEVEL is eased along its path in the terrain build (smooth, falling all the way, nowhere above
+  the level a low bank allows): it used to drop a few dm to 2 m within one sample and run level between (a
+  staircase for any water drawn or simulated on it).
 - `clutter.csv` rows with a `place` column (`water` | `margin` | `bank` | `bar`; empty for the dry kinds): kinds
   `river_rock` (rounded boulders 0.35-1.8 m), `cobbles` (a patch of 5-15 cobbles, 0.6-1.6 m), `slab` (flat bank
   stones), `driftwood` (0.8-4.5 m; yaw = the log's long axis), `reeds` (clumps 0.5-1.4 m), `litter` (leaf and twig
-  patches). `scale` = the piece's largest plan dimension in metres, `squash` = its height relative to the asset's own
+  patches), `sedge` (tussocks along the wet margin and the bank's foot: denser on the slow inner side, a fringe
+  along a cut bank's top) and `bush` rows with place `bank` (scrub on the bank top, in clumps). `scale` = the piece's largest plan dimension in metres, `squash` = its height relative to the asset's own
   proportions, `z` = the bed or ground under it. The manifest's `clutter` section names every kind with its ranges
   and the counts per river; `streams.rivers` gives each river's path with level, width and energy.
 - the export's notes say each river's reaches by character and its clutter ("stream clutter vale_river: 99
@@ -595,10 +606,12 @@ write for the default; the numbers below steer it.
 - `rivers.<name>.bed = {"energy": 0.1}` says what the river IS whatever its grade (0 a slow silty lowland stream with
   reeds; 0.3 a gravel riffle-pool stream; 0.6 cobbles, boulders and steps; 1 a boulder and bedrock torrent); a list
   runs from source to mouth (`[0.9, 0.5, 0.15]`).
-- `"streams": {"pool": 0.55, "riffle": 0.45, "bar": 0.10, "lump": 0.07, "damp": 0.5, "clutter": 1.0, "shape": true,
-  "spacing": [6, 2.5]}`: pool depth (m, scaled by the channel's size), how much of the depth a riffle takes back, a
-  bar's top over the water, the bed's unevenness, the damp band's height on the bank, clutter density, the bed's
-  shape on / off, pool spacing in channel widths at energy 0 and 1. `"streams": false` = the river as it was before
+- `"streams": {"pool": 0.8, "riffle": 0.6, "bar": 0.10, "lump": 0.07, "damp": 0.9, "cut": [0.35, 0.85],
+  "alternate": 0.75, "clutter": 1.0, "shape": true, "spacing": [6, 2.5]}`: pool depth (m, scaled by the channel's
+  size), how much of the depth a riffle takes back, a bar's top over the water, the bed's unevenness, the damp band's
+  height on the bank, the cut bank's height range (`[0, 0]` = banks as graded), how strongly the sides alternate
+  along a straight reach (0 = only real bends sort the bed), clutter density, the shape on / off, pool spacing in
+  channel widths at energy 0 and 1. `"streams": false` = the river as it was before
   (grass to the water, nothing in it).
 - Reeds want a slow reach: if the report calls a reach you meant as a meadow stream "cascade", set its energy.
 

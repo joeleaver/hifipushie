@@ -116,7 +116,7 @@ class Streams:
     def __init__(self, T, cfg=None):
         self.cfg = cfg = cfg or config(T) or dict(CFG)
         self.x0, self.y0, self.c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
-        self.names, self.reaches = [], []
+        self.names, self.report_reaches = [], []
         lines = getattr(T, "river_water_lines", None) or {}
         shape = T.H.shape
         reach = float(cfg["reach"])
@@ -207,7 +207,7 @@ class Streams:
             self.names.append(name)
             # reaches for the report: stretches of one character
             cls = np.digitize(en, [0.15, 0.4, 0.7])
-            self.reaches.append({"name": name, "s": s, "energy": en, "grade": grade, "width": 2 * ws, "live": live,
+            self.report_reaches.append({"name": name, "s": s, "energy": en, "grade": grade, "width": 2 * ws, "live": live,
                                  "class": cls, "xy": xy, "level": lv, "bend": bend})
         self.any = bool(self.names)
         self.zone = (sd < reach + 1.0).astype(np.uint8)
@@ -226,6 +226,13 @@ class Streams:
             if m_ in getattr(T, "masks", {}):
                 keep = np.maximum(keep, np.clip(np.asarray(T.masks[m_], float), 0, 1))
         self.ford = np.ascontiguousarray(np.maximum(ford, ndimage.gaussian_filter(keep, 1.0)))
+
+    @property
+    def reaches(self):
+        """Per river, its samples along the path (s, energy, grade, width, bend, level, xy): for the report and the
+        manifest only. Kept under `report_reaches`, which the incremental export's fingerprint skips: what the tiles
+        read is the grids (windowed per tile), and these whole-river arrays made any river edit a global change."""
+        return self.report_reaches
 
     # ---- at points
     def _at(self, a, xy):
@@ -483,8 +490,8 @@ class Streams:
             wide = live & (r["width"] > 5.0)
             bmax = float(np.abs(r["bend"][wide]).max()) if wide.any() else 0.0
             if bmax < 0.5:
-                out.append(f"stream bed {r['name']}: its path hardly bends (the tightest bend is {bmax:.1f} of a full one: a "
-                           f"radius under ~5 half-widths), so pools, bars and cut banks alternate from side to side as in a "
+                out.append(f"stream bed {r['name']}: its path hardly bends (the tightest bend is {bmax:.1f} of a full one; a "
+                           f"full bend turns on a radius of 5 half-widths), so pools, bars and cut banks alternate from side to side as in a "
                            f"straight channel; for point bars inside real bends give the river more `through` points "
                            f"(meanders with a radius of 2-4 channel widths)")
         return out
