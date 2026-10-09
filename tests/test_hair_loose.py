@@ -164,3 +164,32 @@ def test_mass_shell():
     assert V[:, 2].min() > -0.32 and V[:, 2].max() < 0.03 and np.abs(V[:, 1] - 0.12).max() < 0.04
     assert (m["layer"] == -1).all() and m["uv"][:, 0].max() <= 0.13 + 1e-6
     assert hc.mass_shell(D, _hanging(4), np.zeros(3), tiles) is None  # (a tail's locks: tail_cores' job)
+
+def test_swoop_lifts_the_front_lock_and_turns_it_over():
+    """`swoop`: locks rooted at the front hairline near `at` stand higher off the forehead and their tips go over to
+    the `sweep` side; locks away from it (the temples) stand as without it."""
+    crop = {"length": 0.04, "spacing": 0.01, "stiff": 0.5, "out": 0.1, "lift": 0.001, "body": 0.002, "messy": 0.0,
+            "uneven": 0.0, "lay": 0.4}
+
+    def front(loose):
+        sc, _col, locks = _grow(loose, parting="none")
+        R = np.array([np.asarray(lk["pts"])[0] + sc.C for lk in locks.values()])
+        P = [np.asarray(lk["pts"]) + sc.C for lk in locks.values()]
+        az, el, _ = sc.coords(R)
+        fa = np.abs(((az + 180) % 360) - 180)
+        hmax = np.array([sc.coords(Q)[2].max() for Q in P])
+        dx = np.array([Q[-1, 0] - Q[0, 0] for Q in P])
+        mid = (fa < 12) & (el < np.percentile(el[fa < 12], 30))
+        temple = (fa > 50) & (fa < 70) & (el < np.percentile(el[(fa > 50) & (fa < 70)], 30))
+        return hmax[mid], dx[mid], hmax[temple]
+    h0, dx0, t0 = front(crop)
+    h1, dx1, t1 = front({**crop, "swoop": {"span": 30, "depth": 0.03, "rise": 0.4, "sweep": -1.0, "stiff": 0.8}})
+    assert len(h0) > 2 and len(t0) > 2
+    assert np.median(h1) > np.median(h0) + 0.002, (np.median(h0), np.median(h1))  # lifted off the forehead
+    assert np.median(dx1) < np.median(dx0) - 0.003, (np.median(dx0), np.median(dx1))  # over to his right (-x)
+    assert abs(np.median(t1) - np.median(t0)) < 0.001, (np.median(t0), np.median(t1))  # temples untouched
+    try:
+        hl.params({"swoop": {"bogus": 1}})
+        raise AssertionError("unknown swoop key accepted")
+    except ValueError:
+        pass
