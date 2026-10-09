@@ -1,7 +1,7 @@
 """wid.py <src> <dst> [strength 0..1]: widths toward the front picture by humanfit.fit_outline: the outline is the
 detector's face oval below the eyes (cheek, jaw, chin) on the FRONT picture only (the turned views are not one
 projection). strength < 1 moves the outline that share of the way from the model's own silhouette (a partial step)."""
-import copy, json, sys
+import copy, json, os, sys
 
 import numpy as np
 from PIL import Image
@@ -23,9 +23,9 @@ for v in views[1:]:
     v.pop("outline", None)
 if k < 1.0:
     views[0]["outline_weight"] = k
-nb, rep = humanfit.fit_outline(copy.deepcopy(sp["base"]), views, refs["cameras"])
+nb, rep = humanfit.fit_outline(copy.deepcopy(sp["base"]), views, refs["cameras"], rounds=int(os.environ.get("ROUNDS", "3")))
 for r in rep.get("rounds", []):
-    print({a: (round(b, 2) if isinstance(b, float) else b) for a, b in r.items() if not isinstance(b, (list, dict))})
+    print(str(r)[:400])
 st0, st1 = humanfit.state(sp["base"]), humanfit.state(nb)
 print(humanfit.verdict(humanfit.integrity(nb, st1, st0))[:300])
 for m in ("face_width", "jaw_width", "chin_width", "face_height"):
