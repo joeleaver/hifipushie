@@ -19,5 +19,9 @@
  "rs2_f2": {"src": "rs2_f1", "macros": {"brow_ridge": 1.0}, "what": "+ macro brow_ridge +1 (held)"},
  "rs2_f3": {"src": "rs2_f1", "macros": {"nose_upturn": 1.0}, "what": "+ macro nose_upturn +1 (held)"},
  "rs2_g": {"src": "rs2_f2", "macros": {"nose_upturn": 0.5}, "what": "+ macro nose_upturn +0.5 (held)"},
- "rs2_h": {"src": "rs2_g", "macros": {"chin_projection": 0.75}, "patch": {"shape": {"chin": {"cleft": 0.0045, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.02}, "nose_tip": {"up": 8, "round": 0.5}}}, "what": "+ bigger cleft (4.5 mm deep, 5 wide, lobes 3, 20 long) + chin_projection +0.75 more + nose_tip up 8 / round 0.5"}
+ "rs2_h": {"src": "rs2_g", "macros": {"chin_projection": 0.75}, "patch": {"shape": {"chin": {"cleft": 0.0045, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.02}, "nose_tip": {"up": 8, "round": 0.5}}}, "what": "+ bigger cleft (4.5 mm deep, 5 wide, lobes 3, 20 long) + chin_projection +0.75 more + nose_tip up 8 / round 0.5"},
+ "rs2_m1": {"src": "rs2_m0", "patch": {"shape": {"planes": 2.3, "lean": {"under_jaw": 0.006, "jowl": 0.0025}}}, "what": "REFIT: planes 2.3 + lean 6 / 2.5"},
+ "rs2_m2": {"src": "rs2_m1", "macros": {"chin_projection": 1.2, "jaw_angle": 2.0}, "what": "+ held macros chin_projection +1.2, jaw_angle +2"},
+ "rs2_m3": {"src": "rs2_m2", "patch": {"shape": {"chin": {"cleft": 0.004, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.018}, "nose_tip": {"up": 5, "round": 0.5}}}, "what": "+ cleft (4 / 5 / lobes 3 / 18) + nose tip up 5, round 0.5"},
+ "rs2_m3_posed": {"src": "rs2_m3", "patch": {"pose": {"lid_upper": 0.0013, "brow_inner": -0.0015, "brow_outer": -0.0012, "smile": -0.0015}}, "what": "rs2_m3 with the photo's squint / frown / set mouth as POSE (comparison renders only)"}
 }

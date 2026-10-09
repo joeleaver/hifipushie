@@ -34,10 +34,18 @@ def mesh_of(name):
     Lf = np.asarray(tpl["L"]).reshape(-1, 4)
     F = np.r_[Lf[:, [0, 1, 2]], Lf[:, [0, 2, 3]]]
     col = two = None
+    col = np.tile([225.0, 205.0, 185.0], (len(F), 1))
+    two = np.zeros(len(F), bool)
+    from hifipushie import likeness
+    for Ve, Fe, ce in likeness.model_mesh(sp["base"])["eyes"]:      # eyeballs with irises (the template has none)
+        col = np.r_[col, ce[Fe].mean(1)]
+        two = np.r_[two, np.zeros(len(Fe), bool)]
+        F = np.r_[F, Fe + len(V)]
+        V = np.r_[V, Ve]
     gm = hairmesh.groom_mesh(name, sp) if os.environ.get("HAIR", "1") == "1" else None
     if gm is not None:
-        col = np.r_[np.tile([225, 205, 185], (len(F), 1)), gm[2]].astype(float)
-        two = np.r_[np.zeros(len(F), bool), np.ones(len(gm[1]), bool)]
+        col = np.r_[col, gm[2]].astype(float)
+        two = np.r_[two, np.ones(len(gm[1]), bool)]
         F = np.r_[F, gm[1] + len(V)]
         V = np.r_[V, gm[0]]
     return sp, V, F, col, two
@@ -66,6 +74,9 @@ def main(out, models, six=None):
             im = im.resize(sz)
             ImageDraw.Draw(im).text((6, 5), f"{label}  [{rms[vi]} mm]", fill=(20, 20, 20))
             tiles.append(im)
+        bl = Image.blend(tiles[0], tiles[-1], 0.5)
+        ImageDraw.Draw(bl).text((6, 5), "reference + " + ms[-1][0] + " (50%)", fill=(255, 255, 255))
+        tiles.append(bl)
         rows.append(litrender.row(tiles, sz[1]))
     if six:
         s6 = Image.open(six).convert("RGB")

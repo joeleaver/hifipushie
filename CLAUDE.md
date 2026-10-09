@@ -6404,7 +6404,70 @@ script struct.py (it shadows the stdlib's).
     push unread; the mouth's downturn; nose (a "cute" nose costs evidence in the identity: the front picture's
     nostril points hold it); the face's width against the photo (the MAP + read made it broad because the read said
     so: read3's jaw_width +1, cheekbone_width +0.8, neck +1: try the read without widths).
-- C, A2, D: see below if present; otherwise not started.
+- THE REFIT (the coordinator on rs2_01: "h is a bruiser, pass 6 too gaunt: the man is between"; sheet
+  human_renders/rs2_02_refit_between.png = reference | pass 6 | rs2_h | rs2_m3 | rs2_m3 with the photo's pose | 50%
+  blend, eyeballs in the lit tiles; garrett3.py measure / fit; models rs2_m0 (MAP) .. rs2_m3, rs2_m3_posed):
+  - Widths from the PICTURE, two ways. (a) widths.py, the outline at a few levels as silhouette evidence in the fit
+    (runs of edge pixels at nose base / mouth / jaw / neck, sigma 1.5-3 mm, lens unknown): WORSE on the truth set
+    in every variant (face 2.48 -> 2.7-3.0 mm, jaw 4.1 -> 4.4-5.0, width macros worse): the nearest-silhouette-vertex
+    row trades skull size against perspective, as the full outline did. Don't. (b) measured.py (item C): width MACROS
+    regressed from scale-free features (detector points + outline widths over the interocular), given to the MAP as
+    evidence with their own sigma: works (below). On Garrett's photo (mask = colour distance from the backdrop; only
+    the levels 0.6 / 0.75 of eye line -> chin are usable: lower, the jacket's collar is the edge, so NO neck width;
+    higher, ears and hair): jaw_width +1.7 +-0.8, chin_width +1.7 +-0.85, face_length +1.3 +-0.6, face_width +0.8,
+    cheekbone +0.4. The "measuremodels" agent measured the same photo independently (rows against 300 GNM heads):
+    lower jaw +2.1 sigma, jaw at the mouth +0.8, face length +0.6: wide LOW in the face, not wide all over. So the
+    jaw's width was the picture's, the bruiser was the neck (+1 said), the brow, the scowl.
+  - Read = shape words only (garrett3.SHAPE_READ: jaw_square, jaw_angle, chin_projection, under_chin, nose short /
+    slightly up / straight bridge, brow_ridge 0, eye_depth 0); no widths, neck or cheek words.
+  - Expression out of the identity: the MAP is fitted with the photo's squint / frown / set mouth as `head.pose`
+    ({lid_upper 1.3 mm, brow_inner -1.5, brow_outer -1.2, smile -1.5}), the saved head is that identity without it.
+    Fit 1.35 / 1.84 mm at 0.32 sigma; deviation x1.25.
+  - Structure on it: planes 2.3 + lean 6 / 2.5, held macros chin_projection +1.2, jaw_angle +2, cleft 4 / 5 / lobes
+    3 / 18 mm, nose_tip up 5 round 0.5. Residual SUM over the steps +0.09 / +0.17 mm (cap 0.3), 0.56 sigma, nothing
+    past 2.6.
+  - Reads (opus x3, same scale as the table): rs2_m3 +3.78, between g0 +0.43 and h +7.80 as asked: heavy brow 0.76
+    -> 0.12, rugged 0.53 -> 0.12, square jaw 0.38, soft jaw 0.22, weak chin 0.20, cleft 0.15, chunky 0.84; still
+    "stocky, thick-necked, full cheeks, stern mouth" from all three. (score.WANT still counts heavy brow / deep-set /
+    rugged as wanted, from the old reference read: under "handsome" they should not; compare descriptors, not totals.)
+  - Cheaper readers: haiku x3 on g0 / h / m3 = -0.21 / +1.92 / +1.43 (opus +0.43 / +7.80 / +3.78): the same ORDER
+    but far fewer picks (no cleft, no chin, no nose descriptor from any haiku reader): too coarse for single ops.
+    The model flag does NOT cut tokens: every sub-agent inherits ~315k of context whatever its model.
+  - BLUNT: in the 50% blend rs2_m3's face lies inside the photo's (the photo's ears and hair stand outside it): it
+    is not too wide. It still reads round, young and soft: big open eyes (base head `eyes` 1.05 + the lid-opening
+    expression regions every Garrett copy carries), a smooth clay skin, a low hair cap on this forehead, a thick
+    neck (unmeasurable in the photo: prior). The posed variant hardly differs from the neutral one. Not him yet.
+- C, MEASURED MACROS (measured.py; 1200 sampled heads, one front render each with random pose / lens / light / look,
+  a third with an expression; features: the detector's 478 points Procrustes-aligned on the irises, outline widths at
+  17 levels over the interocular, luminance at the points over its mean; PCA + ridge per macro; logs
+  $D2/out/measured_train.log, measured_truth.log; model $D2/measured_model.pkl):
+  - Held-out rms in population sigmas (1 = knows nothing), points | + outline | + shading | all: mean 0.68 | 0.63 |
+    0.56 | 0.53. Best: brow_height 0.26, bridge_height 0.32, brow_ridge 0.33, face_length 0.34, eye_depth 0.36,
+    jaw_width 0.37, nose_length / width 0.38, lip_projection 0.39, chin_height 0.40, chin_width 0.44. SHADING is
+    what gives the depth macros (bridge 0.57 -> 0.33, brow_ridge 0.62 -> 0.35, eye_depth 0.61 -> 0.36, nose
+    projection 0.69 -> 0.47); the OUTLINE gives neck 0.84 -> 0.50, ear_out 0.90 -> 0.51, jaw_width 0.52 -> 0.41.
+    A picture cannot measure (> 0.7): jaw_angle, jaw_square 0.68, forehead_slope, bridge_hump, ear_size, chin_cleft
+    0.94; weak: chin_projection 0.59, nose_upturn 0.62, under_chin 0.59 (profile things: a read or a profile).
+  - On the 10 truth heads (never seen; extreme by design, sd 1.27): measured 0.80 mean, the MAP fit's own macros
+    1.05, a simulated said read 0.96. The said read still wins on chin_width, nose_upturn, eye_spacing, nose_width.
+  - Fit rows, front picture only, face mm S / O: detector MAP 2.48 / 2.51; + said read 2.17 / 2.11; + MEASURED macros
+    1.94 / 2.15 (profile 2.51 -> 1.49, chin 3.44 -> 2.33, nose 2.61 -> 1.72 in-model); + measured (sigma x2) + said
+    2.05 / 2.06; exact macros 1.64 / 2.13. So measured macros replace a said read in-model and equal it out-of-model;
+    together they add little.
+  - CAVEAT: the shading features know only our render's shader (random light, clay or tinted skin): on a photo
+    (stubble, hair, real light) they are untested and NOT used on Garrett; the outline features need a mask and
+    levels free of ears, hair and collar. Not wired into humanfit_map (a script): the next step is `human_reference`
+    measuring width macros itself when a view has a plain backdrop.
+- D so far: `humanfit.nudge` size guards (NUDGE_CORR 0.35 x radius for the correction bump, NUDGE_MAX 12 mm for the
+  move, unless forced; the 3 cm chin nudge is refused again: the sliders alone took 24.5 mm of it inside 2.6 sigma).
+  XR Blocks' MediaPipe <-> GNM correspondence (xr_compare.py; google/xrblocks FaceCorrespondence.js, Apache-2.0, 473
+  points, 166 flagged skull-fixed) against our front table: 301 of our 306 usable points are in it; their GNM vertex
+  vs our calibrated surface point: median 1.6 mm (1.8 on the skull-fixed ones), p90 3.7; ours sit 0.9 mm higher and
+  0.7 mm further forward on average; disagreements > 6 mm: the irises (mp468-476: they use the corneal apex, we the
+  iris on the eyeball), mp206 / mp426 (57 mm: mirrored left / right in one of the tables: CHECK before trusting those
+  two), a few lid points. Their own note matches ours: points sit ~0.7 mm off vertices and slide in turned views.
+- NOT DONE: A2 (polylines by real placers, a guided placing mode), D's skinned / EEVEE calibration and out-of-sample
+  numbers, the squint-pose fitted from blendshapes rather than set by hand, eyes (size / lids) on the refit.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

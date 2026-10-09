@@ -112,15 +112,16 @@ if __name__ == "__main__":
         import score
         rows = []
         for n in [x for x in a[1:] if x != "-q"]:
-            fs = sorted(glob.glob(f"{D2}/reads/{n}_*.json"))
+            pfx = os.environ.get("PFX", "")
+            fs = sorted(glob.glob(f"{D2}/reads/{pfx}{n}_[0-9].json"))
             if "-q" not in a:
-                reads(n, "b", fs)
+                reads(n, os.environ.get("TAG", "b"), fs)
             else:
                 import contextlib
                 import io
                 with contextlib.redirect_stdout(io.StringIO()):
-                    reads(n, "b", fs)
-            rows.append((n, score.shares(n, score.tags_of(n, "b"))))
+                    reads(n, os.environ.get("TAG", "b"), fs)
+            rows.append((n, score.shares(n, score.tags_of(n, os.environ.get("TAG", "b")))))
         ks = list(score.WANT) + list(score.AVOID)
         print("\n" + " " * 16 + " ".join(f"{k.split('_', 1)[1][:6]:>6s}" for k in ks) + "   score")
         for n, sh in rows:
