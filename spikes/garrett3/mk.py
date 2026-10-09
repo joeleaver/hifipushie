@@ -64,9 +64,12 @@ def main(dst="g3_garrett", src="rs2_m3"):
     sp = json.loads((store.HOME / src / "spec.json").read_text())
     n4 = json.loads((store.HOME / "rs2_n4" / "spec.json").read_text())
     h = sp["base"]["head"]
-    h["eyes"] = n4["base"]["head"]["eyes"]
-    h["expression"] = copy.deepcopy(n4["base"]["head"]["expression"])
+    if src.startswith("rs2_"):       # (the study's heads carry the old eye settings; refit.py's heads have their own)
+        h["eyes"] = n4["base"]["head"]["eyes"]
+        h["expression"] = copy.deepcopy(n4["base"]["head"]["expression"])
     tone, got, rgb, info = measure_tone()
+    tone = {**tone, "blood": round(0.75 * tone["blood"], 3), "undertone": round(tone["undertone"] / 3, 3)}  # (under the
+    # look's light the measured tone rendered more orange than the photo: the photo's lit skin is paler and greyer)
     iris = iris_colour()
     print("photo skin (sRGB 0..1):", got)
     print("tone:", tone, "-> albedo", rgb, info)
@@ -77,7 +80,7 @@ def main(dst="g3_garrett", src="rs2_m3"):
         "eyes": {"iris": "#3f4a52", "pupil": 0.32, "veins": 0.4},
         "hair": {"brows": {"color": "#4a4541", "density": 0.85, "thickness": 1.15, "grey": 0.2},
                  "lashes": {"amount": 0.55}, "stubble": {"amount": 0.75, "color": "#6f6a66"}, "body": 0},
-        "features": {"flush": 0.25},
+        "features": {"flush": 0.12},
     }
     pf = os.path.join(D3, "skin_patch.json")
     if os.path.exists(pf):

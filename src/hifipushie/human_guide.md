@@ -144,3 +144,34 @@ Lessons from one hard likeness (a lean man fitted toward a broader reference):
   at the stitch: a collar ring round the neck's base means the hand-over is too short.
 - A blind read by one reader moves by ~10 descriptor-views between readers of similar heads: use several, and trust
   only what all of them say.
+
+### Analysis by synthesis: the same detector on the picture and on the model's render
+
+A detector's points are not the model's landmarks (lids: its upper-lid points sit 0.6-0.9 mm under GNM's, its
+lower-lid points 1.5 mm over: an opening reads 2-2.5 mm small), so "the picture's lid is higher than the model's"
+from points against landmarks means nothing. Run the SAME detector on the model's own render through the fitted
+camera and compare its numbers with the picture's: definitions cancel. On one hard head this found what ten passes
+of point fitting had not: eyes 4 mm too wide and 3 mm too open, lips a third too thin, mouth corners 1 mm low, and
+that the picture's "frown / squint" scores (browDown 0.6, eyeSquint 0.6) are reproduced by the NEUTRAL head once its
+eyes and brows are right: they were the man's face, not an expression. So:
+- Don't pose a reference's "expression" by hand, and don't read it from the detector's blendshape scores: learnt on
+  600 of our renders with known poses, the scores tell a pose from an identity hardly at all (cross-validated rms /
+  sampled spread: smile 0.80, upper lid 0.83, brows 0.97, mouth width 0.92; 1 = nothing).
+- Change one control, measure again: `base.head.eyes` (the eyes' size), held identity macros (eye_height, eye_width,
+  lip_fullness, brow_height), a landmark moved by the identity alone (mouth corners). Each step is seconds.
+
+### Age is soft tissue (base.head.shape; `headage.py`)
+
+The identity has no age (the age direction of the body's field moves no macro by 0.1 sigma). An older face is the
+same skull with tissue that has thinned, slid and folded: `nasolabial` (depth, length, bulge: the crease runs on the
+skin description's own nasolabial line, so the painted fold and the form agree), `prejowl` (the sulcus on the jaw's
+border + a slight jowl), `lid_fold` (upper-lid skin over the outer half; `hood` is the margin), `cheek_flat` (the
+mid cheek thinned and slid down), `lips_thin`. Millimetres: 2 mm of fold reads; 4 mm of `hollow` under frontal light
+reads as a bruise. Don't thin lips because a face is old: measure them (above) first.
+
+### A picture as the albedo (`texture_from_reference`)
+
+The projection test kept as paint: the fitted picture, de-lit roughly, as a decal layer over the skin description
+where its camera saw skin square-on; ours on ears, under chin and nose, hair, eyeballs, neck, and for all relief and
+highlights. It is the picture's resolution (say it: 1.3 mm a pixel is no pores) and the picture's shadows. Make it
+again after the head's shape changes.
