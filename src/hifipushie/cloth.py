@@ -5761,7 +5761,7 @@ def _fall_down(res: dict, M: dict, V: np.ndarray, body: "Body", vn: np.ndarray, 
 
 
 END_BACK = 0.07  # m of neck edge before the roll line's meeting point from which a notched collar is draped (collar_ends {"back"})
-COLLAR_ENDS = "draped"  # a notched collar's ends past where its roll line meets the neck edge: "draped" | "made"
+COLLAR_ENDS = "made"  # (default back to made: the closed-start draped run om_23 died in the solver, non-PD blocks at frame 0-1) a notched collar's ends past where its roll line meets the neck edge: "draped" | "made"
 END_FREE = 0.5  # the share of the end's plane (the lay's ease-in weight) from which a collar vertex is draped
 
 

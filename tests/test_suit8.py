@@ -46,18 +46,18 @@ def test_collar_is_draped_from_the_necks_side():
     Bp = {"open_lay": {"collar": {"end_w": end_w, "end_u": end_u}}}
     made = cloth._draped_ends({"collar_ends": "made"}, Bp, M)
     assert len(made) == 0
-    dr = cloth._draped_ends({}, Bp, M)  # default: from END_BACK before the meeting point
+    dr = cloth._draped_ends({"collar_ends": "draped"}, Bp, M)  # from END_BACK before the meeting point
     assert list(dr) == [5 + i for i in range(10) if end_u[i] >= -cloth.END_BACK], dr
     only = cloth._draped_ends({"collar_ends": {"back": 0.0}}, Bp, M)  # the ends alone
     assert list(only) == [12, 13, 14], only
-    assert len(cloth._draped_ends({}, {}, M)) == 0  # no notched collar: nothing
+    assert len(cloth._draped_ends({"collar_ends": "draped"}, {}, M)) == 0 and len(cloth._draped_ends({}, Bp, M)) == 0  # no notched collar: nothing; the default is made
 
 
 def test_draped_part_starts_closed():
     M = {"names": ["collar"], "piece": np.zeros(6, int)}
     end_u = np.array([-0.20, -0.13, -0.10, -0.07, -0.02, 0.03])
     Bp = {"open_lay": {"collar": {"end_w": np.zeros(6), "end_u": end_u}}}
-    w = cloth._open_share({}, Bp, M)
+    w = cloth._open_share({"collar_ends": "draped"}, Bp, M)
     assert w[0] == 1.0 and 0.0 < w[2] < 1.0  # the held band opens in full in its middle, less toward the draped part
     assert (w[end_u >= -cloth.END_BACK] == 0.0).all()  # what is draped starts as made (closed)
     assert (np.diff(w) <= 1e-12).all()

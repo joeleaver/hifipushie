@@ -3051,6 +3051,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     fronts' tops): scratch model `su8_g` = shirt fine_settle false. Not needed once the shirt branch is on main.
   - Tests: tests/test_suit8.py (fall pressed on the shoulder not the nape, draped collar vertices, the open share,
     key defaults).
+  - om_23 (the draped part started CLOSED, the band's opening eased out before it) DIED in the solver at frame 0-1:
+    "2 block-Jacobi diagonal block(s) are not positive definite" with the strain limit's step at 2e-5 (log
+    suit8/om_23.log; job workspace/_cache/cloth/job_7740081fdabcf726). Not diagnosed (suspects: the eased band's start
+    is a blend of the open and closed lays = not the made rest's shape beside free cloth that rests as made; check
+    jobstr.py on that job's in.npz). `COLLAR_ENDS` is back to "made" (om_21's behaviour, verified); "draped" stays as
+    an experimental key value.
   - HANDOVER (suit8, context near full, 2026-10-09). Branch worktree-agent-ab5c5e673a635ca9a. NOT merged: the
     coordinator's order is shirt2's branch -> main, merge main here, verify, then this branch. A new GPU box is up
     (gpubox/env.sh; solver installed by suit8/boxsetup.sh; deleted after 45 idle minutes). RUNNING when written:
