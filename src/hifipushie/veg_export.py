@@ -282,6 +282,9 @@ def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: f
             out["floating"] = 0.0
         if not tree.get("clump"):  # a grown tree: cards of its own boughs, as many as the foliage's share buys
             out["boughs"], out["bough_form"] = veg_bough.fit(tree, max(triangles - len(out["wood"]["F"]), 0))
+            spare = triangles - len(out["wood"]["F"]) - out["boughs"] * veg_bough.cost(tree, out["boughs"])
+            if spare > 0.1 * triangles:  # the foliage can't use more (cards beyond its cut only stack layers): finer wood
+                out.update(_wood_for(tree, tile, len(out["wood"]["F"]) + spare, pr))
     fol = out["boughs"] * veg_bough.tris(out["bough_form"]) if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0

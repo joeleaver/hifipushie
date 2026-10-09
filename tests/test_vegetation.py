@@ -976,17 +976,34 @@ def test_stand_layout_lods_and_numbers():
 
 
 def test_bough_card_form_by_budget():
-    """A budget that can reach the finest cut of the tree on cheaper cards takes it (a 20k spruce as 2.7 m fronds);
-    a small one keeps few rich limb cards; the triangle count holds either way."""
+    """A budget's bough cards: the finest cut of the tree, never more than `FULL` of its boughs (more only stack
+    layers), lower LODs the same cut thinned and grown to the same cover (one atlas, no pop at a switch); a tiny
+    budget re-cuts the tree into few rich limb cards. The triangle count holds either way."""
     from hifipushie import veg_bough, veg_export
     T = v.grow({"species": "norway_spruce", "age": 30})
-    m = veg_bough.most(T)
+    m = len(veg_bough.plan(T, veg_bough.most(T))["roots"])
     n, form = veg_bough.fit(T, m * veg_bough.tris(1))
-    assert form == 1 and n >= 0.9 * m, (n, form, m)
-    n2, form2 = veg_bough.fit(T, m * veg_bough.tris(1) // 4)
-    assert form2 == 0 and n2 * veg_bough.tris(0) <= m * veg_bough.tris(1) // 4, (n2, form2)
+    assert form == 1 and n == int(veg_bough.FULL * m), (n, form, m)
+    n1, form1 = veg_bough.fit(T, m * veg_bough.tris(1) // 4)
+    assert form1 == 1 and n1 < n and veg_bough.base_of(T, n1) == veg_bough.base_of(T, n), (n1, form1)
+    n2, form2 = veg_bough.fit(T, int(0.05 * m) * veg_bough.tris(0))
+    assert form2 == 0 and veg_bough.base_of(T, n2) is None, (n2, form2)
     at = veg_bough.atlas(T, cards=n)
     assert at["triangles"] <= veg_bough.tris(1), at["triangles"]
+    a, b = veg_bough.place(T, n, at), veg_bough.place(T, n1, at)
+    assert len(b["pos"]) == n1 and 1.0 < b["grow"] <= veg_bough.THIN_GROW and b["grow"] > a.get("grow", 1.0), (len(b["pos"]), b.get("grow"))
+
+    def cover(tw):  # the cards' polygons from the side, 10 cm pixels
+        from PIL import Image, ImageDraw
+        L = veg_export.foliage_mesh(T, at, tw=tw)
+        q = (L["V"][:, [0, 2]] - [-12, -1]) / 0.1
+        im = Image.new("1", (240, 320), 0)
+        dr = ImageDraw.Draw(im)
+        for f in q[L["F"]]:
+            dr.polygon([tuple(x) for x in f], fill=1)
+        return float(np.asarray(im).sum())
+    ca, cb = cover(a), cover(b)
+    assert 0.9 < cb / ca < 1.1, (ca, cb)
     bud = veg_export.budget(T, 12000, [0.3, 0.6], 10)
     if bud.get("boughs"):
         assert bud["total"] <= 12000, bud["total"]

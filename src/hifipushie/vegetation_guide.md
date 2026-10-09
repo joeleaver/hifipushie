@@ -384,10 +384,20 @@ marked, dead wood and drawn guides, stays down to a quarter of that girth), and 
 it kept; the export WARNS when cards would float.
 When a budget buys fewer than a quarter of the twigs, the foliage is drawn as **bough cards** instead: the tree's own
 limb ends (wood, branchlets, every twig) baked into pictures, each bough seen from its face and from its side on two
-crossed cards, standing where the tree has such a bough. The smaller the budget, the larger the boughs the foliage is
-cut into, so LODs step down from the same tree (a set shares one bough atlas per LOD). Judge them at the distance
-they are for: `look_plant(name, views=["far"], triangles=8000)`. Broadleaves and pines hold up to 8k; a spruce's
-low LODs are gappier than the full tree. Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
+crossed cards, standing where the tree has such a bough. How the foliage is cut for a budget (`veg_bough.fit`):
+- While the foliage's triangles buy at least a fifth of the tree's FINEST cut (boughs of about two twig lengths) on
+  cheap five-corner cards (6 triangles a crossed pair), the LOD is that finest cut THINNED: some boughs left out, the
+  rest drawn larger until they cover what all of them covered (measured on the cards' own polygons from two sides).
+  LOD 0, 1 and 2 then share ONE atlas, one material slot and one silhouette, and nothing pops at a switch. This is
+  what a foliage artist does (remove cards, grow the rest). A 20k conifer's three LODs are all of this kind.
+- Under that, the tree is re-cut into fewer, larger boughs (whole limbs at a few hundred cards) on seven-corner
+  cupped cards, its own atlas. A re-cut next to a fine cut does pop: in Godot a spruce's whole-limb LOD 1 covered
+  0.85 of its LOD 0 and lost its top; and MID-sized boughs (2-3 m) on any card read as palm fronds or round leaves
+  from 30 m. Fine or whole limbs, not between.
+Judge every LOD at the distance and PIXEL SIZE it is drawn at (a 26 m tree at 64 m is ~310 px of a 1080p screen: a
+6 m piece of crown is 150 px; needle detail is not there, silhouette and tone patches are), and in the engine
+(`spikes/godot_veg/cards.gd`: covered area at each switch; overdraw = summed card area / covered area).
+Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
 
 ## From a botanical description to our keys
 
