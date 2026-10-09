@@ -130,6 +130,44 @@ def test_lip_roll_recovered_from_a_render():
     assert abs(r["sliders"]["lip_upper_roll"] - 0.5) < 0.08 and abs(r["sliders"]["lip_lower_roll"] + 0.4) < 0.08, r
 
 
+def _contact_gaps(V):
+    R = faceslide._lip_rings()
+    C = R["rings"][R["contact"]]
+    x = V[C, 0]
+    a, b = V[C[np.argmin(x)]], V[C[np.argmax(x)]]
+    side = (V[C, 1] - (a[1] + (x - a[0]) / (b[0] - a[0]) * (b[1] - a[1]))) > 0
+    U, L = C[side], C[~side]
+    U, L = U[np.argsort(V[U, 0])], L[np.argsort(V[L, 0])]
+    xs = np.linspace(x.min(), x.max(), 21)[1:-1]
+    return np.interp(xs, V[U, 0], V[U, 1]) - np.interp(xs, V[L, 0], V[L, 1])  # + = apart
+
+
+def test_lip_seal_closes_along_the_width_and_opens_again():
+    """head.lip_seal 1: the contact ring's halves meet along the whole width (< 0.3 mm apart, never crossed), no
+    skin quad of the lips turns over; a mouth-opening expression on top still opens it (it is measured without the
+    expression); an explicit mouth_gap wins."""
+    if not _gnm_ok():
+        return
+    from hifipushie import onemesh
+    g = base._gnm_data()
+    b = humans.spec(age=40, sex=1.0, seed=None, skin=False, source="human")["base"]
+    b["head"].pop("mouth_gap", None)
+    got = {}
+    for seal, ex in ((0.0, None), (1.0, None), (1.0, {"lower_face_region_001": 1.0})):
+        bt = copy.deepcopy(b)
+        bt["head"]["lip_seal"] = seal
+        if ex:
+            bt["head"]["expression"] = ex
+        got[(seal, bool(ex))] = np.asarray(onemesh.head_template(bt)["carry"]["V"], float)
+    g0, g1, g2 = (_contact_gaps(got[k]) for k in ((0.0, False), (1.0, False), (1.0, True)))
+    assert g0.mean() > 0.002 and g1.max() < 0.0003 and g1.min() > -0.00005, (g0.mean(), g1.min(), g1.max())
+    assert g2.mean() > 0.001  # opens again
+    Q = gnmloops._raw()["quads"]
+    lips = (np.asarray(g["groups"]["upper_lip"]) > 0.5) | (np.asarray(g["groups"]["lower_lip"]) > 0.5)
+    Q = Q[lips[Q].any(1) & np.asarray(g["skin"], bool)[Q].all(1)]
+    assert int((np.einsum("ij,ij->i", _normals(got[(0.0, False)], Q), _normals(got[(1.0, False)], Q)) < 0).sum()) == 0
+
+
 def test_fit_window_follows_sex():
     lo, hi = faceslide.fit_window("eye_crease_height", 0.0)
     assert hi == 1.5 and lo > -0.5  # a woman's crease may reach its limit
