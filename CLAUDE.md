@@ -3057,6 +3057,11 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     is a blend of the open and closed lays = not the made rest's shape beside free cloth that rests as made; check
     jobstr.py on that job's in.npz). `COLLAR_ENDS` is back to "made" (om_21's behaviour, verified); "draped" stays as
     an experimental key value.
+  - Queue q210's end (2026-10-09): om_24 (su_om_garrett trousers, tapered, seat taped over the tucked tail, 1627 s):
+    0 crossings, seams closed (sim p95 3.3 mm), fly 9 of 9, still "STRAINED at seat" (seat +94 mm 13.7%, hips 6.6%;
+    strain p95 3.5%): the seat strain did not go with the tape; not rendered or judged. po_10 / po_11 (su_om_pose)
+    never reached the GPU: the pose model's SHIRT fails `fine_start_check` (11 triangles over 1.6x, worst 2.15x,
+    front.L pattern [-0.014, -0.156]): shirt2's thread; nothing layered runs on su_om_pose until it builds.
   - HANDOVER (suit8, context near full, 2026-10-09). Branch worktree-agent-ab5c5e673a635ca9a. NOT merged: the
     coordinator's order is shirt2's branch -> main, merge main here, verify, then this branch. A new GPU box is up
     (gpubox/env.sh; solver installed by suit8/boxsetup.sh; deleted after 45 idle minutes). RUNNING when written:
