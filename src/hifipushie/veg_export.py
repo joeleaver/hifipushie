@@ -84,6 +84,7 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
     tint = 0.75 + 0.5 * vegetation._u(tw["key"], 77)
     if "size_m" in tw:  # bough cards are big: a tone per card as wide as a twig's read as a crown of pale and dark leaves
         tint = 0.88 + 0.24 * vegetation._u(tw["key"], 77)
+    core = np.asarray(tw["core"], float) if tw.get("core") is not None and len(np.atleast_1d(tw["core"])) == len(tw["pos"]) else None
     Vs, Fs, Us, Ts, Ns, Fl, Nr, Rc, Ph = [], [], [], [], [], [], [], [], []
     base = 0
     for i, c in enumerate(at["cards"]):
@@ -95,7 +96,11 @@ def foliage_mesh(tree: dict, at: dict, keep: float = 1.0, min_radius: float = 0.
         Vs.append(V.reshape(-1, 3))
         Fs.append((c["F"][None] + (base + np.arange(len(sel)) * k)[:, None, None]).reshape(-1, 3))
         Us.append(np.tile(c["uv"], (len(sel), 1)))
-        Ts.append(np.repeat(tint[sel], k))
+        if core is not None and core[sel].any():  # a whole limb's card: dark toward the trunk (the crown's shadowed inside), full tone at its tip
+            fl_ = np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1)
+            Ts.append((tint[sel][:, None] * (1.0 - CORE_DARK * core[sel][:, None] * (1.0 - fl_[None]) ** 1.5)).ravel())
+        else:
+            Ts.append(np.repeat(tint[sel], k))
         Ns.append(np.repeat(tw["node"][sel], k))
         Fl.append(np.tile(np.clip(c["V"][:, 1] / max(float(c["V"][:, 1].max()), 1e-6), 0, 1), len(sel)))
         Nr.append(np.repeat(tw["frame"][sel][:, :, 2], k, axis=0))  # the card's own upper side
@@ -282,15 +287,16 @@ def _budget(tree: dict, triangles: int | None, tile, card_triangles: int, cap: f
             out["floating"] = 0.0
         if not tree.get("clump"):  # a grown tree: cards of its own boughs, as many as the foliage's share buys
             out["boughs"], out["bough_form"] = veg_bough.fit(tree, max(triangles - len(out["wood"]["F"]), 0))
-            spare = triangles - len(out["wood"]["F"]) - out["boughs"] * veg_bough.cost(tree, out["boughs"])
+            spare = triangles - len(out["wood"]["F"]) - out["boughs"] * veg_bough.cost(tree, out["boughs"]) - veg_bough.extra(tree)
             if spare > 0.1 * triangles:  # the foliage can't use more (cards beyond its cut only stack layers): finer wood
                 out.update(_wood_for(tree, tile, len(out["wood"]["F"]) + spare, pr))
-    fol = out["boughs"] * veg_bough.tris(out["bough_form"]) if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
+    fol = out["boughs"] * veg_bough.tris(out["bough_form"]) + veg_bough.extra(tree) if out.get("boughs") else int(np.floor(n_tw * out["keep"] + 1e-9)) * card_triangles
     out["total"] = int(len(out["wood"]["F"]) + fol)
     out["over"] = max(0, out["total"] - int(triangles)) if triangles else 0
     return out
 
 
+CORE_DARK = 0.55  # how much darker a limb card is at the trunk than at its tip
 LODS = ((1.0, 2.5), (0.45, 2.5), (0.18, 4.0))  # (share of the budget, how much larger a kept card may be drawn)
 AUTUMN = [0.78, 0.56, 0.16]
 WIND_RECIPE = ("vertex shader: TEXCOORD_1 = (trunk, branch) weights, TEXCOORD_2 = (phase, flutter); the same four in _WIND "

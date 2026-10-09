@@ -138,6 +138,31 @@ def outer(tree: dict, cards: int) -> np.ndarray:
     return keep
 
 
+def limbs_on(tree: dict) -> bool:
+    """`leaves.card.limbs`: the species' crown is built of flat LIMBS (a spruce's tiers: long boughs sweeping out with
+    hanging branchlets), so every LOD draws each whole limb on a crossed pair of cards (seen from above and from its
+    side: the drooping comb) UNDER the fine bough cards. The limbs carry the tiers, the dark mass toward the trunk and
+    a dense silhouette; without them a spruce thinned for overdraw was a cone of separate round pads."""
+    return bool((tree["spec"]["leaves"].get("card") or {}).get("limbs")) and not tree.get("clump")
+
+
+def limb_plan(tree: dict) -> dict:
+    """The tree cut into whole limbs (each first-order branch one bough; the leader's top its own)."""
+    if "_limb_plan" not in tree:
+        st = subtrees(tree)
+        hi = max(0.7 * tree["height"], st["twig_length"] * 2)
+        tree["_limb_plan"] = plan(tree, len(roots(tree, hi)))
+    return tree["_limb_plan"]
+
+
+def extra(tree: dict) -> int:
+    """Triangles the limb layer costs at every LOD (0 without one)."""
+    if not limbs_on(tree):
+        return 0
+    pl = limb_plan(tree)
+    return int((~dead_boughs(tree, pl)).sum()) * tris(0)
+
+
 def fit(tree: dict, triangles: int) -> tuple[int, int]:
     """(cards, form) for a foliage triangle count. While the count buys at least `THIN` of the tree's finest cut
     (`most`) on the cheapest cards, the LOD is that finest cut THINNED: some of its boughs left out, the rest drawn
@@ -155,7 +180,8 @@ def fit(tree: dict, triangles: int) -> tuple[int, int]:
         # them grown to the same cover 4.7; a stand of the first cost 1.6x the anime spruce's GPU time in Godot).
         # The triangles this leaves go to the wood (veg_export._budget).
         form = cheap
-        n = min(t // tris(form), max(int(FULL * mr), min(mr, FULL_LEAST)))  # (a thin crown keeps all its boughs)
+        t_fine = max(t - extra(tree), tris(form))  # (the limb layer, where the species has one, comes first)
+        n = max(min(t_fine // tris(form), max(int(FULL * mr), min(mr, FULL_LEAST))), 1)  # (a thin crown keeps all its boughs)
         memo[n] = (form, m, False)
         return n, form
     n = min(t // tris(0), m)
@@ -418,14 +444,26 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     lv_, dd_ = order[~isd[order]], order[isd[order]]  # live boughs' pictures, and (when the shade killed limbs) dead ones'
     pick = [int(lv_[int(q * (len(lv_) - 1))]) for q in np.linspace(0.6, 0.97, nv)] if len(lv_) else []
     pick += [int(dd_[int(q * (len(dd_) - 1))]) for q in np.linspace(0.6, 0.95, 2)] if len(dd_) else []
-    g = int(math.ceil(math.sqrt(max(len(pick) * BOUGH["cross"], 1))))
+    jobs = [(pl, Fr, ext, b, fm) for b in pick]
+    n_fine = len(pick)
+    limb_extent = []
+    if limbs_on(tree) and base_of(tree, cards):
+        plL = limb_plan(tree)
+        FrL, extL, cntL = _frames(tree, plL)
+        liveL = np.flatnonzero(~dead_boughs(tree, plL))
+        oL = liveL[np.argsort(cntL[liveL] * (0.5 + extL[liveL] / max(extL.max(), 1e-9)), kind="stable")]
+        for q in (np.linspace(0.35, 0.95, nv) if len(oL) else []):  # short upper limbs to the long low ones
+            b_ = int(oL[int(q * (len(oL) - 1))])
+            jobs.append((plL, FrL, extL, b_, FORMS[0]))
+            limb_extent.append(float(extL[b_]))
+    g = int(math.ceil(math.sqrt(max(len(jobs) * BOUGH["cross"], 1))))
     A = {"color": np.zeros((g * size, g * size, 4), np.float32), "normal": np.zeros((g * size, g * size, 3), np.float32),
          "mask": np.zeros((g * size, g * size, 3), np.float32)}
     A["normal"][...] = (0.5, 0.5, 1.0)
     out_cards, fills, extent, singles = [], [], [], []
     col = leaves.get("color", [0.16, 0.3, 0.08])
-    for i, b in enumerate(pick):
-        mesh = _mesh(tree, pl, b, Fr[b], leaves)
+    for i, (pl_j, Fr_j, ext_j, b, fm_j) in enumerate(jobs):
+        mesh = _mesh(tree, pl_j, b, Fr_j[b], leaves)
         parts = []
         for side in range(BOUGH["cross"]):  # its face, then the same bough seen from its side on a card across the first
             V = mesh["V"] if side == 0 else np.c_[mesh["V"][:, 2], mesh["V"][:, 1], -mesh["V"][:, 0]]
@@ -436,9 +474,9 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
             A["color"][sl][..., 3] = R["alpha"]
             A["normal"][sl] = R["normal"]
             A["mask"][sl] = R["mask"]
-            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], fm["verts"], fm["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext[b]), 0.1), 0, centre=fm["centre"])
+            cm = veg_leaf.card_mesh(R["alpha"], R["frame"], fm_j["verts"], fm_j["cup"] if side == 0 else 0.0, 1, 0.0, max(float(ext_j[b]), 0.1), 0, centre=fm_j["centre"])
             if side == 0:
-                fills.append(float((R["alpha"] > 0.5).sum()) * (R["frame"][2] / size) ** 2 / max(cm["area"], 1e-12))
+                (fills if i < n_fine else []).append(float((R["alpha"] > 0.5).sum()) * (R["frame"][2] / size) ** 2 / max(cm["area"], 1e-12))
             else:
                 cm["V"] = np.c_[-cm["V"][:, 2], cm["V"][:, 1], cm["V"][:, 0]]
             cm["uv"] = np.c_[(c + cm["uv"][:, 0]) / g, 1 - (r + 1 - cm["uv"][:, 1]) / g]
@@ -446,17 +484,22 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
         nv0 = np.cumsum([0] + [len(q["V"]) for q in parts])
         out_cards.append({"V": np.vstack([q["V"] for q in parts]), "F": np.vstack([q["F"] + nv0[j] for j, q in enumerate(parts)]),
                           "uv": np.vstack([q["uv"] for q in parts]), "area": sum(q["area"] for q in parts)})
-        singles.append(parts)
-        extent.append(float(ext[b]))
-    # after the n crossed pairs: each pair's face card alone (n .. 2n - 1), then its side card alone (2n .. 3n - 1)
+        if i < n_fine:
+            singles.append(parts)
+            extent.append(float(ext[b]))
+    # after the n crossed pairs: each pair's face card alone (n .. 2n - 1), then its side card alone (2n .. 3n - 1),
+    # then the limb pairs (`limb_first` ..)
+    limb_cards, out_cards = out_cards[n_fine:], out_cards[:n_fine]
     out_cards += [{"V": q[j]["V"], "F": q[j]["F"], "uv": q[j]["uv"], "area": q[j]["area"]} for j in (0, 1) for q in singles]
+    limb_first = len(out_cards)
+    out_cards += limb_cards
     leaf_px = (A["color"][..., 3] > 0.6) & (A["mask"][..., 0] > 0.5)
     if leaf_px.any():  # (as the twig atlas: `leaves.color` is the leaf as seen lit)
         lum = lambda c_: 0.2126 * c_[..., 0] + 0.7152 * c_[..., 1] + 0.0722 * c_[..., 2]
         seen = float(np.median(lum(A["color"][leaf_px][:, :3]) * A["mask"][leaf_px][:, 2]))
         k_ = float(np.clip(lum(np.asarray(col, float)) / max(seen, 1e-6), 1.0, 1.8))
         g_ = len(out_cards) and A["color"].shape[0] // size
-        for j_, dead_ in enumerate(isd[b_] for b_ in pick):  # (the foliage's pictures only: dead boughs keep their grey)
+        for j_, dead_ in enumerate([isd[b_] for b_ in pick] + [False] * len(limb_extent)):  # (the foliage's pictures only: dead boughs keep their grey)
             if not dead_:
                 for side in range(BOUGH["cross"]):
                     r, c = divmod(BOUGH["cross"] * j_ + side, g_)
@@ -466,7 +509,8 @@ def atlas(tree: dict, leaves: dict | None = None, wood_color=(0.3, 0.25, 0.2), c
     A = {k_: np.clip(v_ * 255 + 0.5, 0, 255).astype(np.uint8).astype(np.float32) / 255.0 for k_, v_ in A.items()}  # (as the disk keeps it)
     _CACHE[key] = {**A, "cards": out_cards, "fill": float(np.mean(fills)) if fills else 0.0, "grid": g, "size": size,
                    "triangles": int(np.mean([len(c["F"]) for c in out_cards[:len(pick)]])) if out_cards else tris(fi), "pairs": len(pick),
-                   "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick]}
+                   "extent": extent, "size_m": pl["size"], "bough": True, "dead": [bool(isd[b_]) for b_ in pick],
+                   "limb_first": limb_first if limb_extent else None, "limb_extent": limb_extent}
     veg_leaf._disk_put(dkey, _CACHE[key])
     return _CACHE[key]
 
@@ -574,6 +618,23 @@ def place(tree: dict, cards: int, at: dict) -> dict:
         out = {k_: v_[keep] for k_, v_ in out.items()}
         out["scale"] = out["scale"] * hi_
         out["grow"] = float(hi_)
+    n_out = len(out["pos"])
+    out["core"] = np.zeros(n_out)
+    if at.get("limb_first") is not None and limbs_on(tree) and base:
+        plL = limb_plan(tree)
+        FrL, extL, cntL = _frames(tree, plL)
+        live = np.flatnonzero(~dead_boughs(tree, plL))
+        EL = np.asarray(at["limb_extent"])
+        cL = np.argmin(np.abs(np.log(np.maximum(extL[live, None], 1e-3) / np.maximum(EL[None], 1e-3))), axis=1)
+        keyL = _child(tree["key"][plL["roots"][live]], 33)
+        add = {"pos": tree["pos"][plL["roots"][live]], "frame": FrL[live], "scale": np.clip(extL[live] / np.maximum(EL[cL], 1e-6), 0.25, 1.3),
+               "variant": (at["limb_first"] + cL).astype(int), "node": plL["roots"][live].astype(int), "key": keyL,
+               "card": (at["limb_first"] + cL).astype(int), "core": np.ones(len(live))}
+        grow_ = out.get("grow")
+        out = {k_: np.concatenate([out[k_], add[k_]]) for k_ in add}
+        if grow_ is not None:
+            out["grow"] = grow_
+        out["limbs"] = int(len(live))
     return {**out, "size_m": pl["size"]}
 
 

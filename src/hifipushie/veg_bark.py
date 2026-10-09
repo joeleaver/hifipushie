@@ -81,23 +81,38 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
         height *= 0.8 + 0.2 * _smooth(g2 - g1, 0.0, 0.02)
         albedo = 0.55 + 0.65 * _smooth(height, 0.15, 0.85) + 0.25 * (tone - 0.5) + 0.2 * (fine - 0.5)
         rough = 0.95 - 0.1 * ridge
-    elif kind == "plates":  # big plates, flaky in steps, between dark cracks
-        f1, f2, ids, n = _cells(shape, 34, seed, aspect=2.2, warp=warp)
-        edge = f2 - f1
-        plate = _smooth(edge, 0.0, 0.018)
+    elif kind == "plates":  # pine: long irregular plates of flaky layers between deep fissures of uneven width
+        # (the first version, one even Voronoi with a thin black outline, read as tidy lozenges drawn in ink)
+        warp2 = warp * 1.5
+        f1, f2, ids, n = _cells(shape, 20, seed, aspect=2.8, warp=warp2)  # the plates
+        wide = 0.012 + 0.04 * _noise(shape, 1, 5, seed + 7) ** 1.5  # a fissure opens and pinches along its run
+        plate = np.clip((f2 - f1) / (0.35 * wide), 0, 1) ** 0.7  # thin cracks between neighbouring plates...
+        b1, b2, bid, bn = _cells(shape, 7, seed + 31, aspect=3.6, warp=warp * 2.5)  # ...and the deep wide fissures between blocks of them
+        deep = np.clip((b2 - b1) / (1.6 * wide), 0, 1)
+        plate = plate * (0.25 + 0.75 * deep ** 0.8)
+        tone_b = np.random.default_rng(seed + 12).random(bn)[bid]
+        g1, g2, gid, gn = _cells(shape, 70, seed + 21, aspect=2.0, warp=warp2)  # cracks across a plate: shallow, broken
+        crack = 1 - (1 - np.clip((g2 - g1) / 0.012, 0, 1)) * _smooth(_noise(shape, 2, 9, seed + 8), 0.45, 0.6)
         rng = np.random.default_rng(seed + 9)
         tone = rng.random(n)[ids]
-        flakes = np.floor((mid + 0.5 * _noise(shape, 2, 6, seed + 5)) * 4) / 4  # stepped layers
-        height = plate * (0.55 + 0.3 * flakes + 0.1 * tone) + 0.06 * fine * plate
-        albedo = 0.5 + 0.55 * plate + 0.35 * (tone - 0.5) + 0.3 * (flakes - 0.4) + 0.15 * (fine - 0.5)
-        rough = 0.92 - 0.12 * plate
-    elif kind == "scales":
-        f1, f2, ids, n = _cells(shape, 90, seed, aspect=1.2, warp=warp * 0.5)
-        edge = f2 - f1
-        sc = _smooth(edge, 0.0, 0.02)
-        tone = np.random.default_rng(seed + 9).random(n)[ids]
-        height = sc * (0.6 + 0.3 * (1 - np.clip(f1 / 0.05, 0, 1)) + 0.1 * tone) + 0.08 * fine
-        albedo = 0.6 + 0.45 * sc + 0.3 * (tone - 0.5) + 0.15 * (fine - 0.5)
+        lay = mid + 0.5 * _noise(shape, 2, 6, seed + 5) + 0.35 * rng.random(gn)[gid]
+        flakes = np.floor(lay * 4.5) / 4.5  # stepped papery layers on the plate
+        grit = _noise(shape, 20, 110, seed + 11)
+        height = plate * (0.42 + 0.38 * flakes + 0.1 * tone) * (0.8 + 0.2 * crack) + 0.12 * (0.5 * fine + 0.5 * grit) * plate
+        albedo = 0.55 + 0.45 * plate + 0.2 * (tone - 0.5) + 0.2 * (tone_b - 0.5) + 0.34 * (flakes - 0.5) - 0.15 * (1 - crack) + 0.2 * (fine - 0.5) + 0.2 * (grit - 0.5)
+        rough = 0.92 - 0.1 * plate
+    elif kind == "scales":  # spruce: thin irregular flakes lying over one another, low contrast, fine at arm's length
+        # (the first version, round Voronoi cells with dark grout, read as cobblestones / giraffe skin in the engine)
+        lay = _noise(shape, 3, 11, seed + 5, stretch=(1.0, 1.6)) + 0.6 * _noise(shape, 7, 22, seed + 6) + 0.25 * mid
+        lay = (lay - lay.min()) / max(float(np.ptp(lay)), 1e-9)
+        L = 9.0
+        lvl = np.floor(lay * L)
+        frac = lay * L - lvl  # across one flake: its free edge stands a little proud of the flake under it
+        rim = ((lvl != np.roll(lvl, 1, 0)) | (lvl != np.roll(lvl, 1, 1)) | (lvl != np.roll(lvl, -1, 0)) | (lvl != np.roll(lvl, -1, 1))).astype(float)
+        rim = ndimage.gaussian_filter(rim, 0.8, mode="wrap")
+        tone = np.random.default_rng(seed + 9).random(int(L) + 2)[lvl.astype(int)]
+        height = 0.35 + 0.3 * (lvl / L) + 0.3 * frac ** 0.6 - 0.25 * rim + 0.08 * fine
+        albedo = 0.95 + 0.14 * (tone - 0.5) + 0.12 * (frac - 0.5) - 0.3 * np.clip(rim * 1.6, 0, 1) + 0.12 * (fine - 0.5) + 0.1 * (mid - 0.5)
         rough = 0.9 * np.ones(shape)
     else:  # lenticel: smooth, with dark lens dashes round the stem, peeling bands and a few black scars
         f1, f2, ids, n = _cells(shape, 110, seed, aspect=0.14)
