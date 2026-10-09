@@ -464,7 +464,7 @@ def read_mouth(st: dict, cam: dict | None = None, px: int = 500) -> dict:
 
 
 def fit(base: dict, targets: dict, names, read=None, hold: float = 0.15, iters: int = 4, step: float = 0.15,
-        log=None) -> dict:
+        log=None, on_base: bool = False) -> dict:
     """The least change of the named sliders (both eyes together) that brings the read measures to their targets:
     targets {measure: (value, tolerance)}; read(state) -> {measure: value} (default read_eyes). Gauss-Newton on
     sum(((m - target) / tol)^2) + hold * sum((x - x0)^2), the Jacobian by central differences THROUGH the built head
@@ -493,7 +493,7 @@ def fit(base: dict, targets: dict, names, read=None, hold: float = 0.15, iters: 
         return b
 
     def r_of(x):
-        m = read(humanfit.state(with_x(x)))
+        m = read(with_x(x)) if on_base else read(humanfit.state(with_x(x)))  # (on_base: read(base), e.g. a matched pair)
         return np.array([m[k] for k in keys], float), m
 
     def cost(m_, x_):
@@ -515,6 +515,10 @@ def fit(base: dict, targets: dict, names, read=None, hold: float = 0.15, iters: 
         if cost(mn, xn) > cost(m, x):
             xn = np.clip(x + 0.5 * dx, lo_, hi_)
             mn, _ = r_of(xn)
+            if cost(mn, xn) > cost(m, x):  # no better (a noisy reading, e.g. a detector): keep what we had
+                steps.append({"x": [round(float(v), 4) for v in x], "miss": [round(float(v), 3) for v in (m - t) / tol],
+                              "stopped": "no step improved"})
+                break
         steps.append({"x": [round(float(v), 4) for v in xn], "miss": [round(float(v), 3) for v in (mn - t) / tol]})
         if log:
             log(steps[-1])
