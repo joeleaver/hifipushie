@@ -84,3 +84,52 @@ g3_f + skin description + groom (the candidate). Sheets `workspace/human_renders
   the texture layer through an export bake; measuremodels' normals as evidence (humannormals, branch
   `measuremodels`: proposal received, not wired).
 
+
+## Likeness loop (2026-10-09, "likeloop" agent, branch `worktree-agent-acaab377fb132321d`, garrett4's branch merged in)
+
+One question per round: does Garrett's head look like the front photo? Scratch DURABLE /mnt/data/hifipushie/likeloop/
+(run.sh, try.py <model> <tag> <ops.json> [save] (ops: nudge / held macros / solve / set paths; matched pair in out/),
+mkd.py <dst> <head model> [patch] (= g4_garrett's skin + the head + h7_garrett's groom), shot.py from garrett4 with
+D3=likeloop, calib.py, fid.py, view.py / small.py (crops to look at once), deliver.sh). Models: `ll_garrett` (head,
+g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sheets `human_renders/ll_*_pair.png`,
+`ll_summary.png` (photo | start | end, dressed over clay).
+- HARNESS: `likeness_pair.matched(name, base)` / `sheet()` (src; photo crop and the clay render through the photo's
+  fitted camera, NOT refitted, lit by the photo's fitted light; photo | model | 50/50, canthal lines, a flicker GIF,
+  20 checklist rows by the same detector; ~7 s, no Blender). `faceid.py` (asset pack `faceid`: YuNet + SFace (Apache)
+  + ArcFace w600k_r50 (InsightFace, non-commercial: measuring only); runs in the detector venv; tests/test_faceid.py).
+- FACE-ID CALIBRATION (cosine, sface / arcface): photo vs altered copies (blur, brightness, 4 deg turn, grey, 1/6
+  size) 0.91-0.97; vs Garrett's desk painting (same man, painted, turned) 0.36 / 0.26; vs 8 unrelated photos -0.13..0.09;
+  clay vs clay of OTHER people 0.47-0.79 (renders cluster); photo vs ANY render, clay or procedural skin, his or a
+  stranger's: -0.16..+0.11 (his start -0.04 / -0.01). Only the photo-as-albedo renders reach "same person" (g4 s5
+  front_tex 0.40 / 0.33, three-quarter 0.30 / 0.25), and that is the photo's texture talking. VERDICT: the score
+  can't see our geometry across the render / photo domain gap; per round it stayed in noise (clay: r0 -0.04/-0.01,
+  r1 +0.03/+0.01, r2 +0.04/-0.03, r3 +0.02/-0.03, r5 +0.03/-0.05; dressed d0 -0.02/-0.09, d2 -0.01/-0.08). Don't
+  steer by it; it would need a render that crosses the gap (photoreal skin, hair) before it means anything.
+- R1 EYE ROTATION. Like with like (same detector, same camera): canthal tilt photo -0.45 deg, g4_a +3.38 (outer
+  corners up). Why the checklist didn't catch it: it was never run on the g3 / g4 heads (garrett3 / garrett4 checked
+  opening, width, brows by lidcmp / silw), and lk_garrett's correction (-2.3 mm eye_outer nudge) lived in another
+  lineage: g3's MAP refit made the identity again. The miss (3.8 deg) IS beyond the 2 deg tolerance. Also: GNM's own
+  3D landmark macro eye_tilt reads -3.2 sigma (DOWN) on the same head: the 3D landmark corners and the detector's
+  visible corners disagree by several degrees, so a fit on landmarks can't hold this item. Fix: humanfit.nudge
+  eye_outer.L z -2.0 mm (mirrored): -0.51 deg. Eyes read level and tired instead of alert. KEPT.
+- R2 WIDE / SQUARE / PUFFY. Measured first: every width (temple 153.6 / 151.3, cheekbone 165.4 / 164.1, mouth level,
+  jaw 135.4 / 134.7, chin), face index, jaw taper are within tolerance (garrett4 fixed them): the "wide" read is the
+  SHAPE inside the outline: macros jaw_square +1.07 sigma, jaw_angle +2.48 sigma (a very square gonial corner).
+  Held macros jaw_square -1.5, jaw_angle -1.8, cheek_fullness -1.5, chin_height -0.6 (-> -0.35 / 0.96 / -1.6 / 1.41
+  sigma, max 2.46 sigma, fewer flipped triangles): a slightly tapering lower jaw, widths still in tolerance (mouth
+  level +2.5 mm, 0.8 tol). Small visible change at this size; KEPT. shape.cheek_flat / hollow / prejowl changes
+  were invisible (r2a / r2b) and not kept. Still: the dark under-jaw border + a neck as wide as the jaw.
+- R3 NOSE. Detector: alar width 45.1 vs photo 46.9 (ours NARROWER), length right: what read "wide bulbous" was the
+  tip: shape.nose_tip up 5 / round 0.5 showed the nostrils from the front and balled the tip. nose_tip {up 0, round 0}
+  + held nose_width -0.6, nose_projection +0.5, nose_upturn -0.5: tip hangs, wings tuck, nostrils hidden. KEPT.
+- R4 FOREHEAD WRINKLES (dressed, procedural skin): skin.wrinkles had no "forehead" key, so age 52 x detail 1.8 gave
+  deep bands over the whole forehead. forehead 0.2, glabella 1.4 -> 0.7, nasolabial 1.0 -> 0.45. KEPT (smooth
+  forehead like his).
+- R5 EXPRESSION (scowl): the scowl was the brows (thickness 1.3, drop 2 mm, arch 0.4 = a level dark bar pressed on
+  the eyes) and the nasolabial SHAPE (headage depth 2 mm + bulge). brows thickness 1.0, density 0.9, drop 0.5 mm,
+  arch 1.0; shape.nasolabial depth 1 mm, bulge 0. KEPT: reads less angry.
+- STILL DIFFERS (blunt, ll_summary): hair7's groom renders BLONDE / ginger with the merged code (h7_garrett's spec has
+  hair7's uncommitted `swoop` key: stripped by mkd.py); skin pink and clean vs his grey-olive stubbled skin; eyes
+  green, bright sclera, wide (his are dark and hooded: the upper lid's outer third hangs over the corner; we have no
+  hood that does that); mouth a thin downturned slit (his fuller lower lip, softer corners); lower face still fuller
+  than his flat planes; ears: his stand out more (ear_out -0.19 sigma: not touched).
