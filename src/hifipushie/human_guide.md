@@ -38,6 +38,16 @@ state evidence and a solver finds them, and every reply tells you what ELSE happ
    - `human_reference(name, views=[{"size": [w, h], "yaw": 0, "points": {"nose_tip": [u, v], ...}}, ...])`: cameras
      and the face fitted together on named 2D points of one or more reference images (front + side + three-quarter
      share one face). The reply gives the reprojection error per view in px and mm and names the three worst points.
+     Give each view its `"image"`: the face detector then reads it (478 points, each used where the detector really
+     puts it on the head, with its own noise), and the fit is a MAP estimate: what the pictures don't show comes out
+     as what usually goes with what they do. Add what you SEE at a glance as `read={"jaw_square": 1.5,
+     "chin_projection": 1, "cheek_fullness": 1, "under_chin": 0.8, "nose_upturn": 1}` (macros in population sigmas:
+     jaw / chin / nose / cheeks / brow / eyes / neck / ears / skull; say the negatives too: "square jaw" alone brings
+     fat with it, "clean under the chin" keeps it bone). Measured on heads of known shape: one front picture + a read
+     is as good as two pictures; ~20 clicked points (eye and mouth corners, nose tip / base / wings, chin, brow ends)
+     beat the detector; a profile needs clicked points (no detection); a view that disagrees with the others by
+     > 5 mm is dropped and named. The result is the most probable head, so it is SOFT: bony structure (jaw corner,
+     brow ridge, hollows, a cleft) comes after it, from base.head.shape controls, never before.
 3. Read the reply from the top:
    - `INTEGRITY: ok` or `BROKEN: ...` (faces folded by the change, edges stretched at lids / lips / nose / ears /
      the neck bridge, an eyeball through its lids, crossed lips). **A broken result is not saved.**

@@ -103,7 +103,7 @@ def _evidence(st, views) -> list:
         lm68 = {k: p for k, p in named.items() if str(k).startswith("lm") and str(k)[2:].isdigit()}
         clicks = {k: p for k, p in named.items() if k not in lm68}
         det = detector_points(v) if v.get("detector", True) else None
-        k = view_class(float(v.get("yaw", 0.0)))
+        k = int(v["_class"]) if "_class" in v else view_class(float(v.get("yaw", 0.0)))
         if det is not None and np.isfinite(tab["sd"][k]).any():
             ok = (tab["sd"][k] < CUT) & (of[tab["vid"][k]] >= 0).all(1)
             vid, w = tab["vid"][k][ok], tab["w"][k][ok]
@@ -131,12 +131,59 @@ def _evidence(st, views) -> list:
     return out
 
 
+VIEW_BAD = 5.0     # mm rms of a view's points after the fit: past this the picture disagrees with the others (a painting
+# that is not one projection, another person, a wrong yaw hint): it is left out of the identity and said so
+
+
 def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8, lam: float = 1.0, force: bool = False,
-        free=("identity",)) -> tuple:
+        free=("identity",), drop_bad: bool = True) -> tuple:
+    """(new base, report); see _fit. A view whose points still miss by more than VIEW_BAD mm rms after the fit is
+    dropped from the identity's evidence (its camera is still fitted and returned) and the fit run again."""
+    nb, rep = _fit(base, views, read, read_sd, lam, force, free, None)
+    bad = [i for i, v in enumerate(rep["views"]) if v["rms_mm"] > VIEW_BAD]
+    if drop_bad and bad and len(bad) < len(views) and "identity" in free:
+        nb, rep = _fit(base, views, read, read_sd, lam, force, free, set(bad))
+        for i in bad:
+            rep["views"][i]["dropped"] = True
+        rep["dropped"] = bad
+    return nb, rep
+
+
+def _resolve(st, views: list) -> list:
+    """Turned views: which side shows is taken from the picture, not from the hint's sign (hints in stored references
+    carry either sign): the table's class and starting yaw whose camera-only fit on the current head is the better."""
+    from . import humanfit
+    out = []
+    for v in views:
+        yaw = float(v.get("yaw", 0.0))
+        if "_class" in v or not (20 <= abs(yaw) <= 70) or detector_points(v) is None:
+            out.append(v)
+            continue
+        best = None
+        det = detector_points(v)
+        for cls, sgn in ((1, 1.0), (3, -1.0)):
+            cand = {**v, "yaw": sgn * abs(yaw), "_class": cls, "mp478": det}
+            e = _evidence(st, [cand])[0]
+            w_, h_ = cand["size"]
+            f0 = LENS[0] / 36.0 * w_
+            z0 = f0 * np.ptp(e["X"], axis=0).max() / max(np.ptp(e["uv"], axis=0).max(), 1.0)
+            uc = e["uv"].mean(0)
+            cam = {"r": [0.0, 0.0, 0.0], "t": [(uc[0] - w_ / 2) / f0 * z0, (uc[1] - h_ / 2) / f0 * z0, z0], "f": f0, "size": [w_, h_],
+                   "centre": st["L"][:68].mean(0).tolist(), "yaw": cand["yaw"]}
+            cam = _fit_cam(cam, e["X"], e["uv"], (z0 / f0 * 1000) / e["sig"])
+            r = float(np.sqrt((((humanfit.project(cam, e["X"]) - e["uv"]) * (cam["t"][2] / cam["f"] * 1000 / e["sig"])[:, None]) ** 2).mean()))
+            if best is None or r < best[0]:
+                best = (r, cand)
+        out.append(best[1])
+    return out
+
+
+def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip) -> tuple:
     """(new base, report). views as humanfit.fit_views' ({"image", "size", "yaw", "points": clicks}); read = a
     character read in humanmacro's macros (sigmas). free without "identity": cameras only."""
     from . import humanfit, humanmacro
     st0 = humanfit.state(base)
+    views = _resolve(st0, views)
     c0 = humanfit.identity(base)
     K = len(c0)
     c = c0.copy()
@@ -177,6 +224,8 @@ def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8,
                 r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
                 a = np.linalg.norm(r, axis=1)
                 hw = np.where(a > 2.5, np.sqrt(2.5 / np.maximum(a, 1e-9)), 1.0)   # Huber at 2.5 sigma
+                if skip and vi in skip:   # a camera only: this picture says nothing about the identity
+                    continue
                 A = (np.einsum("nij,knj->nik", J, e["XB"]) * (wt * hw)[:, None, None]).reshape(-1, K)
                 y = A @ c + (r * hw[:, None]).ravel()
                 H += A.T @ A

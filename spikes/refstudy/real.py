@@ -74,6 +74,7 @@ def main():
     V0, st0 = gnm_verts(b0)
     print(f"state() {(time.time() - t0) / 2:.1f} s each")
     res = {"R0 the fresh (mean) head": score(V0, Vt)}
+    print("integrity of the TRUTH head itself, judged as an edit of the fresh head:", humanfit.verdict(humanfit.integrity(bt, stt, st0))[:200])
     mesh = likeness.model_mesh(bt)
     views = []
     for vn, yaw, pitch, lens in (("front", 3.0, 4.0, 70.0), ("tq", -41.0, -3.0, 50.0)):
@@ -126,7 +127,7 @@ def main():
                     ("R6 front picture only + read", {"read": {k: v[0] for k, v in exp2.reader({"name": name, "V": rs.head(sub["c"])}).items()}, "front": True})):
         t0 = time.time()
         front = kw.pop("front", False)
-        bm, repm = humanfit_map.fit(b0, vm[:1] if front else vm, **kw)
+        bm, repm = humanfit_map.fit(b0, vm[:1] if front else vm, force=True, **kw)
         Vm, _ = gnm_verts(bm)
         res[tag] = score(Vm, Vt)
         print(f"{tag}: {time.time() - t0:.0f} s; refused {bool(repm.get('refused'))}; {repm['plausibility']}; {humanfit.verdict(repm['integrity'])[:90]}")

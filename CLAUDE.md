@@ -5913,6 +5913,90 @@ seed head)).
     the side-light shot from the brief); ears; the jaw contour finder's noise; `human(..., refs=)`; photo scale uses
     the first model's mm/px in cmpsheet (photo column shifts 1-2% between runs with different models).
 
+## Reference modelling study (2026-10-08, "refstudy" agent, branch `worktree-agent-a0066266ffbf99948`)
+
+Joe, after ~10 passes on Garrett: "we're not getting there ... figure out what works and what doesn't". A study on
+heads whose 3D shape is KNOWN, then a prototype. Code: `spikes/refstudy/` (rs.py = GNM-frame fast lane: heads, numba
+render, detector with depth, scoring by region; subjects.py = the truth set; calib.py = where the detector's 478
+points land on GNM; fitlib.py = one least-squares fitter where every method is a choice of evidence / noise / prior;
+table.py, exp2.py = the method tables; real.py <subject> [staged] = the REAL tools on one-mesh truth models;
+mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/data/hifipushie/refstudy/ (run.sh
+<script>: capped, ONE BLAS thread; out/*.log, out/table.json, table2.json; truth/; calib.npz). Sheets
+`workspace/human_renders/rs_*`.
+- SET BLAS TO ONE THREAD under load: OPENBLAS_NUM_THREADS=1 made these fits 50x faster at load 110 (57 s -> 1 s);
+  the package's default of 4 spins.
+- Truth set: 6 GNM seeds (170 components, sigma 1, picked for big nose / square jaw / receding chin / long / broad /
+  plain) + 4 MakeHuman-field heads (NOT in GNM's basis) + half seeds; pictures front / three-quarter / profile / other
+  three-quarter, unknown pose, lens 50-85 (one 28), a squint + smile in 4 fronts, clay or tinted. Score = mean 3D
+  vertex distance by region after a similarity alignment on the face; "profile" = fore-aft rms of the mid-line.
+- Numbers (face mm, in-model S / out-of-model O; front + three-quarter): mean head 3.61 / 3.05; exact landmarks MAP
+  1.16 / 2.04 (the out-of-model 2.0 face, 3.6-3.8 jaw is the identity basis's reach); the same clean points +-1.5 mm
+  with today's weights 2.49 / 2.83, as a MAP 1.27 / 2.00; detector's 68 through the MP68 table, today's weights
+  4.71 / 4.31; detector's 478 at calibrated places, MAP 2.50 / 2.41; + outline 3.40 / 2.95 (2.30 with the TRUE lens);
+  + a per-picture expression solve 2.69 (worse, also on the pictures that have an expression); + a noisy character
+  read 2.21 / 2.14 (jaw 4.16 -> 3.00, profile 2.59 -> 2.09); the read ALONE, no fit, 2.62; front picture only + read
+  2.19 (= two pictures + read); front only = front + 3/4 = + the other 3/4 (2.48 / 2.50 / 2.47: a second detector
+  view adds nothing); + a true profile with clicked points and its traced contour: profile 2.59 -> 1.87, chin 3.39
+  -> 2.48, nose 2.67 -> 1.96; 21 clicked right-definition points +-1.5 mm in two views alone 2.18; detector + clicks +
+  read 1.91; + clicked jaw line + profile 1.85 (profile 1.45); macros known exactly 1.66 (profile 1.27); the lens
+  given or guessed 60 mm +-35%: 2.42 (points hardly see the lens). Jaw 1.8-4.2, cranium 4-10, ears 4-8, neck 7-14 mm
+  in the BEST rows: no picture evidence reaches them.
+- REAL tools on one-mesh truth models (4 subjects, likeness's own render, forced): fresh head 4.78 -> fit_views
+  6.66 (2.9 sigma rms, INTEGRITY BROKEN) -> + fit_outline 6.83; staged checklist fit from fresh 4.5-4.8 (a no-op
+  in 3D: its pins veto most stages; 16-26 min); humanfit_map 3.18 -> + read 2.96 (4-10 s, 0.4 sigma, sound).
+- Causes, ranked: (1) point DEFINITIONS: MediaPipe's points read as GNM's 68 are 9-12 mm off on the jaw contour, 8 on
+  the brows, 3 at nose / mouth (noise only 1-2.5 mm); it finds 1 profile in 36; (2) the PRIOR: today's weights trust
+  a point to ~0.9 mm and let the identity go to ~10 sigma; GNM's components are in standard deviations, so 1 per
+  sigma + honest point sigma is the conditional mean ("what the front predicts for the profile"); (3) under-constraint
+  no weighting fixes; (4) outlines (nearest silhouette vertex) trade skull size against perspective: harmful without
+  the lens; (5) MediaPipe's own depth is WORSE than the mean head's (z residual 2.6 vs 2.0 mm, correlation with a
+  head's true depth deviations 0.10): dead. Licences: FLAME-based reconstructors (DECA / EMOCA / MICA; Pixel3DMM CC
+  BY-NC; DenseMarks weights) are non-commercial; 3DDFA_V2's code is MIT, its BFM separate; Microsoft's dense
+  landmarks (700 points with uncertainty + model prior, the design this converges on, as GNM's own paper describes)
+  has no public code. Not checked: XR Blocks' MediaPipe <-> GNM table, TRELLIS as a skull prior, photo / EEVEE
+  calibration (the table is from numba renders; it held on likeness's renderer).
+- `humanmacro.py` (prototype, tests/test_humanmacro.py): 37 artist macros as MEASURES on GNM's head (jaw_square,
+  jaw_width, jaw_angle, chin_projection / width / height / cleft, under_chin, nose_length / projection / width /
+  upturn, bridge, brow_ridge, eye_depth / width / height / spacing / tilt, lips, cheek_fullness, forehead_slope,
+  cranium, neck_width, ears, head_size) calibrated on 2500 sampled heads (`table()`, cached): each is near linear in
+  the identity (r2 >= 0.975), its DIRECTION = the conditional mean (one unit = one population sigma; what goes with it
+  moves too), `held=True` = the others held; `read(c | V)` (a head in sigmas), `apply`, `solve`, `prior_rows` (a read
+  as evidence), `soundness`. All monotone and sound to +-2..6 sigma. WEAK (the space barely holds it: a shape op):
+  chin_cleft (sd 0.22 mm). A head rebuilt from its 37 macros alone is 0.98 mm from itself (mean head 2.64): macros
+  are a sufficient parameterisation (a macro-only fit = the 120-component MAP). What goes with what: eye_depth /
+  bridge / brow_ridge r 0.9; nose_projection vs upturn -0.84; a square jaw brings cheek fullness (+0.44) and a full
+  under-chin: say the negatives in a read ("under_chin": +0.8) or it reads as fat. The readout diagnoses heads:
+  om_garrett v15 / v16 = face_width -2.6, nose_upturn -2.55 (hooked), nose_projection +2.6, chin_height +2.9 at 1.4
+  sigma rms: a long narrow beak-nosed face, the opposite of "chunky, square jaw, cute nose".
+- `humanfit_map.py` + `mp478_gnm.npz` (the calibrated table: per view class front / left / right, vertex triples +
+  weights + scatter per MediaPipe point; 306 usable front, 131-148 turned): `fit(base, views, read=)`; MCP
+  `human_reference(..., read=, method="map")` is the default now (`method="points"` = the old fit_views). A view with
+  its image is detected again (its lm0..lm67 ignored); clicked named points +-1.5 mm; lens prior 70 mm +-40%; a turned
+  view's side is taken from the picture, not from the hint's sign (Garrett's desk painting is stored as -45 and is
+  the OTHER class: read as the wrong side it fitted at 12 mm and looked like "not one projection"; right, it fits at
+  1.6 mm together with the photo); a view missing by > 5 mm rms is dropped from the identity and named.
+- Garrett (models rs_garrett_map / _read / _read2 / _read3 from lk_garrett v1's fresh head; sheets
+  rs_10_garrett_reference_vs_fits.png, rs_11_garrett_six_views_*.png): both references fit at 1.3 / 1.6 mm (pass 6 and
+  v23: 2.9 / 2.5 on the same evidence) at 0.23-0.31 sigma. READ: the build and proportions are the photo's (broad
+  lower face, short nose) in every view, but it is a SOFT, young, generic head: the posterior mean. Two blind readers:
+  chunky 6/6 views, broad / square chin 4/4, snub nose in both profiles; soft jaw and weak chin in both profiles, flat
+  brow, no cleft; "kept 21-22 of 62" against the stored reference read (pass 6: 35, v21: 33), though that reference
+  mixes Joe's words with a reader's "long, gaunt, rugged". Not a likeness yet: it is the base the structure ops
+  (jawline L, chin, brow ridge, hollow, hood, cleft) should be laid on, as small residuals AFTER the MAP.
+- Found on the way: humanfit's integrity calls plain sigma-1 identities BROKEN at the lids ("x3.4 against the plain
+  head") and so refused a correct MAP result on one truth subject; the guard's lid rule is too strict (onemesh2's).
+- What to ask an image generator for: ONE neutral front picture, long lens, even light, + a TRUE profile (the only
+  second view that pays: chin, nose, profile), hair off the forehead and ears; a three-quarter adds nothing to the
+  detector. Then: ~20 clicks, a read with negatives, a traced jaw line.
+- Stop doing: fitting the detector's 68 as GNM landmarks; outline warps without a known lens; a per-picture
+  expression solve; local shape ops before the identity is settled; judging by mm tolerances of 1-2 mm on detector
+  measures (the detector's own scatter is 1-2.5 mm front, 2-4.4 turned, on top of 3-12 mm of definition bias).
+- Open, in order: structure ops fitted as residuals after the MAP (what closes the out-of-model 3.6 mm jaw); clicks
+  as a tool (a gridded crop + named points; an LLM clicking to +-1.5 mm is untested); measured macros from pictures
+  instead of said ones (the ceiling: 1.66 mm); a GNM-space dense landmark detector trained on our own renders (exact
+  definitions: 2.5 -> ~1.3 mm; a synthetic-data training job); photo calibration of the table; the read's sd per
+  author; `humanfit_map` in fit_likeness's first stage.
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.
