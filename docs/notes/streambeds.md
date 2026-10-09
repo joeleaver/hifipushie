@@ -134,3 +134,18 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
     (mean 2.9, p95 4.0, max 5.8; realistic gravel the same picture: 3.9 against p95 3.8, max 4.5): no visible seam, the
     one-row measure is noisy on flat-toned stones with ink outlines. Left as it is; the check would be fairer against
     a high percentile of rows than their mean.
+
+## Round 4 (2026-10-09, "streambeds3": merged main's slim CLAUDE.md, verified the csv_version 2 batch)
+- The batch (befcc0b) is the delivery: clutter.csv `csv_version` 2 (`water`, `sink` after `place`), manifest
+  `clutter.columns` / `csv_version` / `kinds.<k>.footprint`; styles contract stays 5. Row check (scratch vrows.py) on
+  the river block: river_rock in water n=244, water 0.05-1.9 m (median 0.29), every one sunk (sink/scale 0.02-0.24,
+  a third deep); slabs on margins / riffles sunk 0.02-0.07 x scale; cobbles in water / on bars / margins; driftwood in
+  water lies at the surface (water = 0.06 on all 30: lodged floating, never on the bed, by design).
+- Pebble (no river) cold vs main: every mesh / map identical; clutter.csv + manifest differ only by the two new
+  columns and the sea-beach rows (pebbles 118, wrack 7, driftwood 4); main's boulder / bush rows identical on their 8
+  columns.
+- Fix: a one-tile block export (`only` one tile, no shared borders) crashed: the placeholder border key had Fa == Fb,
+  0/0 -> a NaN vertex -> `fieldjit._blocks_tables` OverflowError. `terrain_mesh` border vertices now take t = 0 there.
+- Still wrong (judged on sb2_shallows): placeholder egg rocks (smooth, one colour: the consumer's "garden stones" is
+  the kit's asset look, no csv field for wet / angular yet); the cobble bed swatch still reads alike bank to bank in a
+  close view; logs float at the surface everywhere (none half-sunk in the bed).

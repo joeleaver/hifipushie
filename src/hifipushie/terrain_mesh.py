@@ -3152,7 +3152,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
     with prof.stage("border vertices (parent)"):
         a, b, fixed = _key_geometry(keys, G, 0)
         Fa, Fb = _lattice_values(field, a, v0), _lattice_values(field, b, v0)
-        tt = Fa / (Fa - Fb)
+        with np.errstate(divide="ignore", invalid="ignore"):  # (the placeholder key of a block with no borders: Fa == Fb)
+            tt = np.where(Fa != Fb, Fa / np.where(Fa != Fb, Fa - Fb, 1.0), 0.0)
         CP, CN = project(field, a + tt[:, None] * (b - a), v0, fixed=fixed)
         CW, CC = mats.weights(CP, CN)
     pos = {tuple(p): r for r, p in enumerate(CP)}
