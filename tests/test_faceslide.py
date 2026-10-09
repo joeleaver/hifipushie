@@ -135,7 +135,7 @@ def _contact_gaps(V):
     C = R["rings"][R["contact"]]
     x = V[C, 0]
     a, b = V[C[np.argmin(x)]], V[C[np.argmax(x)]]
-    side = (V[C, 1] - (a[1] + (x - a[0]) / (b[0] - a[0]) * (b[1] - a[1]))) > 0
+    side = R["upper"][C]
     U, L = C[side], C[~side]
     U, L = U[np.argsort(V[U, 0])], L[np.argsort(V[L, 0])]
     xs = np.linspace(x.min(), x.max(), 21)[1:-1]
@@ -165,7 +165,30 @@ def test_lip_seal_closes_along_the_width_and_opens_again():
     Q = gnmloops._raw()["quads"]
     lips = (np.asarray(g["groups"]["upper_lip"]) > 0.5) | (np.asarray(g["groups"]["lower_lip"]) > 0.5)
     Q = Q[lips[Q].any(1) & np.asarray(g["skin"], bool)[Q].all(1)]
+    X0 = got[(0.0, False)]  # (GNM's near-degenerate commissure quads, < 0.15 mm2, turn with any change at all: the
+    # mouth_corner slider and humanfit.integrity's 6-face allowance know them)
+    Q = Q[0.5 * np.linalg.norm(np.cross(X0[Q[:, 2]] - X0[Q[:, 0]], X0[Q[:, 3]] - X0[Q[:, 1]]), axis=1) > 1.5e-7]
     assert int((np.einsum("ij,ij->i", _normals(got[(0.0, False)], Q), _normals(got[(1.0, False)], Q)) < 0).sum()) == 0
+
+
+def test_lip_seal_holds_across_identities():
+    """The seal over a spread of identities (wide seeds, both sexes, and a wide-open rest mouth from a lower-face
+    expression baked into the identity's starting shape): humanfit.integrity unbroken (no lip face turned, no edge
+    stretched past its limit) and the lips in contact."""
+    if not _gnm_ok():
+        return
+    from hifipushie import onemesh
+    cases = [(s, sx) for s, sx in ((1, 0.0), (2, 1.0), (5, 0.0), (8, 1.0))]
+    for seed, sex in cases:
+        b = humans.spec(age=35, sex=sex, seed=seed, skin=False, source="human")["base"]
+        b["head"]["spread"] = 1.2
+        b["head"].pop("mouth_gap", None)
+        b["head"]["lip_seal"] = 1.0
+        st = humanfit.state(b)
+        integ = humanfit.integrity(b, st)
+        assert not [x for x in integ["broken"] if "lip" in x or "face" in x], (seed, integ["broken"])
+        gp = _contact_gaps(np.asarray(onemesh.head_template(b)["carry"]["V"], float))
+        assert gp.max() < 0.0005, (seed, gp.max())
 
 
 def test_fit_window_follows_sex():

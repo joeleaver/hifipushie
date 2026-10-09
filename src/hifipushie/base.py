@@ -612,6 +612,58 @@ def _landmark_joints(head: dict) -> dict:
                     ("lm_lid_lower_out.L", 46)):
         out[name] = {"pos": [round(float(x), 4) for x in lm[i]], "r": 0.003}
     out["lm_lip_seam"] = {"pos": [round(float(x), 4) for x in 0.5 * (lm[62] + lm[66])], "r": 0.003}  # between the lips
+    out.update(_vermilion_joints(head))
+    return out
+
+
+VERM_N = 17  # points along each edge of the lips' outlines (skin.OUTLINES_DENSE)
+
+
+def _vermilion_edges() -> dict:
+    """GNM's lips' outline edges (its raw ids, right corner -> left, VERM_N each): the upper / lower vermilion's outer
+    border (the upper_lip / lower_lip groups' edge against the skin: the 68 landmarks 48-59 lie on it, but seven
+    chords cut the Cupid's bow and the corners off) and the inner edges (the contact ring's upper / lower halves)."""
+    if "verm_edges" in _CACHE:
+        return _CACHE["verm_edges"]
+    from . import faceslide
+    g = _gnm_data()
+    X = np.asarray(g["template_vertex_positions"], float)
+    ext = np.asarray(g["groups"]["skin_exterior"]) > 0.5
+    Q = np.asarray(g["quads"])
+    e = np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]]
+    out = {}
+    for key, grp in (("u", "upper_lip"), ("l", "lower_lip")):
+        m = (np.asarray(g["groups"][grp]) > 0.5) & ext
+        edge = np.unique(e[m[e[:, 0]] & ~m[e[:, 1]] & ext[e[:, 1]] & np.asarray(g["skin"], bool)[e[:, 1]], 0])
+        out[key] = edge[np.argsort(X[edge, 0])]
+    R = faceslide._lip_rings()
+    C = R["rings"][R["contact"]]
+    x = X[C, 0]
+    a, b = X[C[np.argmin(x)]], X[C[np.argmax(x)]]
+    side = R["upper"][C]  # (GNM's own upper_lip / lower_lip groups)
+    out["iu"], out["il"] = C[side][np.argsort(X[C[side], 0])], C[~side][np.argsort(X[C[~side], 0])]
+    # VERM_N samples of each by index along x (the edges are single-valued enough in x for an outline)
+    _CACHE["verm_edges"] = {k: v[np.round(np.linspace(0, len(v) - 1, VERM_N)).astype(int)] for k, v in out.items()}
+    return _CACHE["verm_edges"]
+
+
+def _vermilion_joints(head: dict) -> dict:
+    """Joints verm_<u|l|iu|il><i> on the lips' outline edges (_vermilion_edges), at this head's vertices: what the skin's
+    lip zones are drawn through on a GNM head (skin.OUTLINES_DENSE). {} when the head's vertices aren't GNM's skin."""
+    g = _gnm_data()
+    skin_ids = np.flatnonzero(g["skin"])
+    W = np.asarray(head.get("verts", []), float)
+    if head.get("skin_index") is not None or len(W) != len(skin_ids):
+        return {}  # (zipped lips renumber the skin: the 68-landmark outlines then)
+    row = np.full(len(g["skin"]), -1)
+    row[skin_ids] = np.arange(len(skin_ids))
+    out = {}
+    for k, ids in _vermilion_edges().items():
+        r = row[ids]
+        if (r < 0).any():
+            return {}
+        for i, p in enumerate(W[r]):
+            out[f"verm_{k}{i:02d}"] = {"pos": [round(float(x), 5) for x in p], "r": 0.001}
     return out
 
 
