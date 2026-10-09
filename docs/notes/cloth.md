@@ -1935,3 +1935,35 @@ NO SIM WAS RUN.
     start crossings; may fail in the solver.
   - Batching limit: a garment is coarse sim -> fine settle -> (outer garment over its finished result); each job
     exists only after the previous result, so one broker batch per stage, or a live box driving q1.txt.
+  - Constructed collar geometry on the cached pair (no sims; c10con.py = the PRODUCTION cloth_made.construct with
+    collar on the collarbuild pickle, over a constructed shirt collar; c10jk.py = collarbuild's round-1 harness +
+    `diag` (c10diag.py: per-station distances seam/stand/edge to shirt collar, shirt body, neck; shirt points over the
+    lapels)). Sheet `cloth_renders/c10_j2_front.png` (simulated | constructed before | after).
+    - WINGS / hug: the collar build was not the cause. At centre back the simulated jacket NECKLINE lay 16-19 mm off
+      the shirt collar (1.7 mm over the shirt's yoke, below the shirt collar's fall) and 20-40 mm off the neck at its
+      sides, so any collar built on it stood off. `hug_neckline` (construct key `hug`, on with collar + an under
+      garment): the collar's ease drawing the neckline to `gap` 3 mm off the under COLLAR (nearest point, not along
+      a normal: beside the stand's foot no surface lies under the seam along one and centre back moved 0), weight 0
+      on the gorge, max pull 20 mm, the cloth within 12 cm following (IDW of the 4 nearest seam moves, smoothstep),
+      then kept clear of the whole under garment. Pulling to the nearest layer of the WHOLE shirt did nothing at CB
+      (the yoke is right under the seam). Numbers (checklist's measure): collar_hug 15.4 -> 9.1 mm, collar_show 20.2 ->
+      10.0 mm, seam pull p50 7.4 / max 16.6 mm, neck-zone stretch p95 1.04 -> 1.08. Pulling the gorge too (gorge=1):
+      stretch max 2.37, collar x jacket 17 crossings, rejected; gorge 0.4: no visible gain.
+      The rest of hug's 9 mm is the fall's lower rows over the jacket (by design further out); 0-6 needs the
+      jacket's back neck higher (pattern/drape), not construction.
+      What still reads as a wing: the notch sits at the shoulder top (roll meets the seam 167 mm from CB), so the
+      collar end and lapel point lie across the shoulder: pattern (gorge_angle, collarbuild's pattern_styles key),
+      needs a sim.
+    - SHIRT THROUGH THE LEFT LAPEL: pressed onto its forepart, the lapel's top by the gorge went UNDER the shirt's
+      neckline corner (12-33 shirt points over the lapel face, up to 19 mm). Construct key `over_under` (default on
+      with an under garment): the pressed flap lifted out over the under garment, both as the flap sees it (shirt
+      points over its outer face lift that face's corners: the shirt's neckline EDGE is no surface a settle can see)
+      and as a settle sees it, eased over 2 cm. 0 shirt points over either lapel; jacket x shirt crossings 235 -> 264
+      (most from the sim, sleeves). Plus the shirt laid under the jacket AS CONSTRUCTED (tucked against the pressed
+      jacket, not the simulated one): production already does this (worn_together runs on res["V"] after construct).
+    - SHIRT COLLAR: thickness 1.6 -> 2.4 mm (SHIRT default; two plies + interlining) reads as a collar not a sheet.
+      The fall's points still hang as twisted ribbons at the open front: drawing them down (fall_hug 7-15 mm) pulled
+      them onto the SKIN under the shirt front (now `nohug` layers: kept clear of, never drawn onto); with that, the
+      points shrank to crumples by the stand's ends. NOT FIXED: the points need laying on the shirt front as a board
+      (like the notched collar's ends), not marched.
+    - Tests: test_cloth_made::test_hug_neckline_draws_the_seam_to_what_is_under_it.

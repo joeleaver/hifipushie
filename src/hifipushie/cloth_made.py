@@ -24,7 +24,7 @@ from scipy.spatial import cKDTree
 
 SHIRT = {"stand": 0.027, "fall_over": 0.012, "points": 0.070, "spread": 32.0, "off": 0.004, "lay": 0.0015,
          "fold": 0.0022, "inset": 0.012, "open": 22.0, "step": 0.006, "rows_stand": 5, "rows_fall": 10,
-         "thickness": 0.0016, "end_round": 0.014, "tilt": 12.0, "seam_smooth": 30, "bury": 0.03}
+         "thickness": 0.0024, "end_round": 0.014, "tilt": 12.0, "seam_smooth": 30, "bury": 0.03, "fall_hug": 0.003}
 NOTCHED = {"stand": 0.024, "fall": 0.036, "show": 0.014, "lay": 0.002, "fold": 0.003, "step": 0.010, "rows_stand": 4,
            "rows_fall": 7, "thickness": 0.003, "off": 0.003}
 
@@ -78,7 +78,7 @@ class Under:
                     near &= sd > -L.get("depth", 0.012)  # (behind a sheet by more: the sheet's other side, not through it)
                 m = near & (sd < g)
                 P[m] += (g[m] - sd[m])[:, None] * N[m]
-                over = np.where(near, np.maximum(sd, g) - g, np.inf)
+                over = np.where(near & (not L.get("nohug")), np.maximum(sd, g) - g, np.inf)  # (nohug: kept clear of, never drawn onto)
                 b = over < best
                 best[b], nrm[b] = over[b], N[b]
             if hug > 0 and r == rounds - 1:
@@ -324,11 +324,12 @@ def shirt_collar(chain_P: np.ndarray, body: dict, cloth_layers: list, axis: tupl
     nf = p["rows_fall"]
     rest = np.maximum(col - arc_len, 0.004)
     lens_f = rest[:, None] * np.linspace(0, 1, nf + 1)[None, 1:]
-    layers = [{"V": bV, "F": bF}] + [dict(Lc, sheet=True, depth=p["bury"]) for Lc in cloth_layers] + [{"V": st_V, "F": st_Fo, "sheet": True}]
+    # (the body: kept clear of, never drawn onto: a fall drawn onto the skin went UNDER the shirt's own front)
+    layers = [{"V": bV, "F": bF, "nohug": True}] + [dict(Lc, sheet=True, depth=p["bury"]) for Lc in cloth_layers] + [{"V": st_V, "F": st_Fo, "sheet": True}]
     uf = Under(layers, box)
     Dn = _unit(-ca * upt[idx] + sa * side)
     lay = p["lay"] + p["thickness"]  # (the sheet is the piece's outer face: its thickness lies under it)
-    Fl, FN = march(arc[:, -1], Dn, outt[idx], np.c_[np.zeros(len(idx)), lens_f], uf, lay, hug=0.003, step=0.003)
+    Fl, FN = march(arc[:, -1], Dn, outt[idx], np.c_[np.zeros(len(idx)), lens_f], uf, lay, hug=p["fall_hug"], step=0.003)
     G = np.concatenate([R[:, None], arc, Fl[:, 1:]], axis=1)
     G = smooth_rows(G, 2, keep_rows=tuple(range(0, na + 1)))
     tail = G[:, na + 1:].reshape(-1, 3)
@@ -423,6 +424,69 @@ def into_cloth(V: np.ndarray, F: np.ndarray, idx: np.ndarray) -> np.ndarray:
     return _unit(D)
 
 
+HUG = {"gap": 0.003, "reach": 0.07, "max_pull": 0.03, "smooth": 6}
+
+
+def hug_neckline(V: np.ndarray, idx: np.ndarray, weight: np.ndarray, layers: list, bV: np.ndarray, bFo: np.ndarray,
+                 clear: list | None = None, **kw) -> tuple:
+    """A collar's EASE, which pulls the neckline in to the neck: the collar is cut shorter than the neckline it is
+    sewn to and holds it `gap` outside what is worn under it (the shirt collar, the neck). A simulated jacket's
+    neckline ends where its drape left it (Garrett om_21: 19 mm off the shirt collar at centre back, 20-40 mm at the
+    neck's sides, so a collar built on it stood off the neck in wings; collar_hug 17 mm against a 0-6 rule).
+    Each seam vertex idx[i] is drawn straight toward the nearest point of what is under it (layers [{"V", "F"}], sheets
+    allowed; normals turned away from the body) to `gap` over it, by weight[i] (0 where the seam is sewn to a turned
+    lapel: the gorge stays), at most max_pull, smoothed along the chain; the cloth within `reach` of the seam follows
+    (inverse-distance mix of the 4 nearest seam moves, smoothstep falloff), then is kept `gap` / 2 outside the layers.
+    `clear` (default: layers): what the moved cloth is kept outside of, when the target is only part of it (the
+    under collar as the target, the whole shirt to clear). Returns (V, info). Vertex ids and topology stay (looks,
+    tells, export and the tuck read it)."""
+    p = dict(HUG, **{k: v for k, v in kw.items() if v is not None})
+    V = np.array(V, float)
+    idx = np.asarray(idx, np.int64)
+    wind = lambda Ls: [{"V": np.asarray(L["V"], float), "F": away(np.asarray(L["V"], float), np.asarray(L["F"]), bV, bFo)}  # noqa: E731
+                       for L in Ls if len(L["F"])]
+    clear = wind(layers if clear is None else clear)
+    layers = wind(layers)
+    P = V[idx]
+    best = np.full(len(P), np.inf)
+    move = np.zeros_like(P)
+    for L in layers:
+        # the NEAREST point of what is worn under it, wherever it is (beside the shirt stand's foot the seam is over
+        # no surface along a normal: measured that way the centre back moved 0): drawn straight toward it to `gap`
+        Q, N, _ = closest(P, np.asarray(L["V"], float), np.asarray(L["F"]))
+        dv = P - Q
+        d = np.linalg.norm(dv, axis=1)
+        inside = (dv * N).sum(1) < 0  # (faces wound away from the body: behind the layer = pushed back out)
+        ok = d < best
+        best = np.where(ok, d, best)
+        mv = np.where(inside[:, None], -dv + p["gap"] * N, -dv * (1 - p["gap"] / np.maximum(d, 1e-9))[:, None])
+        mv = np.where(((~inside) & (d <= p["gap"]))[:, None], 0.0, mv)
+        move = np.where(ok[:, None], mv, move)
+    mag = np.linalg.norm(move, axis=1)
+    move = move * (np.minimum(mag, p["max_pull"]) / np.maximum(mag, 1e-12))[:, None]
+    move = _smooth_curve(move * np.asarray(weight, float)[:, None], int(p["smooth"]))
+    # the cloth near the seam follows its nearest seam moves
+    tree = cKDTree(P)
+    near = np.where(tree.query(V, distance_upper_bound=p["reach"])[0] < p["reach"])[0]
+    k = min(4, len(P))
+    d, j = tree.query(V[near], k=k)
+    d, j = d.reshape(len(near), k), j.reshape(len(near), k)
+    wi = 1.0 / np.maximum(d, 1e-4) ** 2
+    Dv = (wi[..., None] * move[j]).sum(1) / wi.sum(1)[:, None]
+    t = np.clip(1 - d[:, 0] / p["reach"], 0, 1)
+    V0 = V[near].copy()
+    V[near] = V0 + (t * t * (3 - 2 * t))[:, None] * Dv
+    V[idx] = P + move
+    moved = near[np.linalg.norm(V[near] - V0, axis=1) > 2e-4]
+    if len(moved) and clear:
+        Vm, _, _ = Under([{"V": L["V"], "F": L["F"], "sheet": True} for L in clear]).settle(V[moved], 0.5 * p["gap"])
+        V[moved] = Vm
+    sm = np.linalg.norm(move, axis=1) * 1000
+    info = {"seam_pull_mm": {"p50": round(float(np.median(sm)), 1), "max": round(float(sm.max()), 1)},
+            "moved_vertices": int(len(moved)), "params": p}
+    return V, info
+
+
 def _dist(under: Under, P: np.ndarray) -> np.ndarray:
     """How far each point stands outside the nearest layer under it (inf where nothing is near)."""
     best = np.full(len(P), np.inf)
@@ -459,7 +523,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     surface with the turned lapel: each point carried across the gorge seam into the front's pattern, mirrored
     across the lapel's roll line and laid on the forepart as a board (`on_pattern`), blended in over `before` m
     of seam ahead of the meeting point and `after` m past it."""
-    p = dict(NOTCHED, **{"end": 0.034, "end_angle": 12.0, "tilt": 15.0, "stand_power": 2.0})
+    p = dict(NOTCHED, **{"end": 0.034, "end_angle": 12.0, "tilt": 15.0, "stand_power": 2.0, "fall_hug": 0.004})
     p.update({k: v for k, v in kw.items() if v is not None})
     ap, ad = np.asarray(axis[0], float), _unit(np.asarray(axis[1], float))
     Pc = np.asarray(chain_P, float)
@@ -566,7 +630,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     lens_f = rest[:, None] * np.linspace(0, 1, nf + 1)[None]
     n0 = _unit((1 - g)[:, None] * outt + g[:, None] * n_un)
     lay = p["lay"] + p["thickness"]
-    Fl, FN = march(arc[:, -1], d_f, n0, lens_f, u_f, lay, hug=0.004, step=0.003)
+    Fl, FN = march(arc[:, -1], d_f, n0, lens_f, u_f, lay, hug=p["fall_hug"], step=0.003)
     # one polyline per column in pattern length; the rows are read off it
     poly = np.concatenate([S, arc, Fl[:, 1:]], axis=1)
     plen = np.concatenate([lens_s, h[:, None] + arc_len[:, None] * (np.arange(1, na + 1) / na)[None],
@@ -869,7 +933,9 @@ def _weld(V: np.ndarray, F: np.ndarray, tol: float = 0.0006) -> np.ndarray:
 
 def options(g: dict) -> dict | None:
     """The garment's `construct` key resolved (None: nothing is constructed): true / {} = the defaults (lapels
-    pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options"}."""
+    pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options", "hug" (with
+    collar and an under garment: the neckline drawn in to the under collar, hug_neckline; false or {gap, reach, max_pull,
+    gorge}), "over_under" (pressed lapels lifted out over the under garment; default on)}."""
     c = g.get("construct", True)
     if c is False or c is None:
         return None
@@ -925,12 +991,70 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
         L.update(Fp=Fp, Fb=Fb, out=_unit(bn))
         before = V[L["flap"]].copy()
         V = press_flap(V, Fp, uv, L["flap"], L["line"], lay=opt["lapel_lay"], wedge=opt["wedge"], out=L["out"])
-        made["lapels"].append({"piece": L["piece"], "vertices": int(len(L["flap"])),
+        lifted = 0
+        if under is not None and opt.get("over_under", True):
+            # the pressed lapel lies OVER what is worn under the jacket: pressed onto its forepart, its top by the neck
+            # went under the shirt's front there (Garrett om_21: shirt cloth showing through the left lapel, up to
+            # 15-19 mm); the flap is lifted out over it, the lift eased over its neighbours (no dents)
+            uV_, uF_ = np.asarray(under["V"], float), np.asarray(under["F"])
+            uF_ = away(uV_, uF_, np.asarray(bV, float), bFo)
+            Pf = V[L["flap"]]
+            Q_, _, _ = Under([{"V": uV_, "F": uF_, "sheet": True, "depth": 0.025}]).settle(Pf, opt["lapel_lay"])
+            dl = Q_ - Pf
+            # ... and seen from the lapel: under-garment points over the flap's outer face (the shirt's neckline edge by
+            # the gorge is no surface the flap lies over, so the settle above can't see it) lift the face's corners
+            isf_ = np.zeros(len(V), bool)
+            isf_[L["flap"]] = True
+            Ff_ = away(V, L["Fp"][isf_[L["Fp"]].all(1)], np.asarray(bV, float), bFo)
+            lo_, hi_ = Pf.min(0) - 0.01, Pf.max(0) + 0.01
+            ub_ = np.where(((uV_ > lo_) & (uV_ < hi_)).all(1))[0]
+            if len(ub_) and len(Ff_):
+                from .closures import _closest_on
+                Qf, Nf, _ = _closest_on(uV_[ub_], V, Ff_, k=16)
+                tf = cKDTree(V[Ff_].mean(1)).query(Qf)[1]  # (the face each lies over: the nearest centre to its foot)
+                dvf = uV_[ub_] - Qf
+                sdf = (dvf * Nf).sum(1)
+                tgf = np.linalg.norm(dvf - sdf[:, None] * Nf, axis=1)
+                bad = (tgf < 0.003) & (sdf > -opt["lapel_lay"]) & (sdf < 0.03)
+                if bad.any():
+                    pos = {int(v): i for i, v in enumerate(L["flap"])}
+                    for q, f_ in zip(np.where(bad)[0], np.asarray(tf)[bad]):
+                        need = (sdf[q] + opt["lapel_lay"]) * Nf[q]
+                        for v in Ff_[int(f_)]:
+                            i = pos.get(int(v))
+                            if i is not None and need @ need > dl[i] @ dl[i]:
+                                dl[i] = need
+            hit = np.linalg.norm(dl, axis=1) > 1e-5
+            lifted = int(hit.sum())
+            if hit.any():
+                tr = cKDTree(Pf[hit])
+                d_, j_ = tr.query(Pf, k=min(6, int(hit.sum())))
+                d_, j_ = d_.reshape(len(Pf), -1), j_.reshape(len(Pf), -1)
+                wv = np.clip(1 - d_ / 0.02, 0, 1) ** 2
+                ease = (wv[..., None] * dl[hit][j_]).sum(1) / np.maximum(wv.sum(1), 1e-9)[:, None] * wv.max(1)[:, None]
+                V[L["flap"]] = Pf + np.where(hit[:, None], dl, ease)
+        made["lapels"].append({"piece": L["piece"], "vertices": int(len(L["flap"])), "lifted_over_under": lifted,
                                "moved_mm": round(float(np.median(np.linalg.norm(V[L["flap"]] - before, axis=1))) * 1000, 1)})
     names, piece = list(M["names"]), np.asarray(M["piece"])
     if opt["collar"] and "collar" in names and M.get("sew") is not None and any("Fb" in L for L in flaps):
         mj = piece == names.index("collar")
         ch = seam_chain(V, M, ("collar",))
+        hug = opt.get("hug", True)
+        if hug and under is not None:
+            # the collar's ease: the neckline drawn in to the under collar (hug_neckline), the gorge left (mostly) be
+            hk = dict(hug) if isinstance(hug, dict) else {}
+            fl_ = np.zeros(len(V), bool)
+            for L in flaps:
+                fl_[L["flap"]] = True
+            gw = float(hk.pop("gorge", 0.0))
+            w_ = 1 - (1 - gw) * np.clip(2 * _smooth_curve(fl_[ch["idx"]].astype(float)[:, None], 4)[:, 0], 0, 1)
+            uV, uF = np.asarray(under["V"], float), np.asarray(under["F"])
+            um = np.asarray(under.get("made") if under.get("made") is not None else np.zeros(len(uV), bool), bool)
+            tgt = [{"V": uV, "F": uF[um[uF].all(1)]}] if um.any() else [{"V": uV, "F": uF}]
+            V, hinfo = hug_neckline(V, ch["idx"], w_, tgt, np.asarray(bV, float), bFo, clear=[{"V": uV, "F": uF}],
+                                    **{"reach": 0.12, "max_pull": 0.02, **hk})
+            made["info"]["hug"] = {k: v for k, v in hinfo.items() if k != "params"}
+            ch = seam_chain(V, M, ("collar",))
         Fnc = F[~mj[F].any(1)]
         own = away(V, _weld(V, Fnc), bV, bFo)
         flap_all = np.zeros(len(V), bool)

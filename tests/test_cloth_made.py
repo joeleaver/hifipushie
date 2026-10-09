@@ -249,6 +249,28 @@ def test_construct_presses_lapels_and_is_not_in_the_sims_key():
     assert not hide.any() and parts == []
 
 
+def test_hug_neckline_draws_the_seam_to_what_is_under_it():
+    """cloth10: a collar's ease holds the neckline `gap` off the under collar; the gorge (weight 0) stays; the cloth
+    near the seam follows, far cloth doesn't; nothing ends inside the under layer."""
+    V, F = _neck()
+    under = {"V": V * np.array([1.08, 1.08, 1.0]), "F": F}  # an under collar ~5 mm out from the neck
+    th = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+    seam = np.c_[0.085 * np.cos(th), 0.085 * np.sin(th), np.full(48, 0.03)]  # 20 mm off the under layer
+    below = seam + np.array([0, 0, -0.05])  # garment cloth 5 cm below the seam
+    far = seam * np.array([1.0, 1.0, 0.0]) + np.array([0, 0, -0.10])
+    Vg = np.concatenate([seam, below, far])
+    w = np.ones(48)
+    w[:6] = 0.0  # (a gorge)
+    Vn, info = cm.hug_neckline(Vg, np.arange(48), w, [under], V, cm.outward(V, F), gap=0.003, reach=0.07, smooth=0)
+    r = np.linalg.norm(Vn[:48, :2], axis=1)
+    r_under = 0.060 * 1.08
+    assert np.allclose(r[10:40], r_under + 0.003, atol=0.0015), r[10:40]
+    assert np.allclose(Vn[:6], Vg[:6])  # the gorge stays
+    assert (np.linalg.norm(Vn[58:88] - Vg[58:88], axis=1) > 0.001).all()  # near cloth follows (beside the gorge: less)
+    assert np.allclose(Vn[96:], Vg[96:])  # far cloth stays
+    assert info["seam_pull_mm"]["max"] <= 30.0 + 1e-6
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
