@@ -1,0 +1,318 @@
+# hifipushie notes: skin
+
+Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history.
+
+- Skin (2026-10-05, "skin" agent; the user: humans read "flat, plastic-like"; textures "for humans of all sexes, ages,
+  and genders", incl. cosmetics, scars, tattoos, wrinkles, freckles; renders `workspace/skin_renders/sk_*`, references
+  `workspace/skin_refs/` (24 CC photos, README + refs.json with skin-only boxes; never in the repo)). Guide:
+  `guide(topic="skin")` = `skin_guide.md` (the artists' stages with sources); tools `skin`, `look_skin`, `skin_reference`.
+  - Diagnosis (`skin_measure.py`: CIE Lab contrast per octave of feature size inside skin-only boxes, zone colour,
+    highlight share / blob size / breakup, micro contrast; same code on renders and photos; a*/b* hardly see the light, so
+    they read albedo). Flat colour + one roughness vs 13 photographed faces: lightness contrast at 0.35-1.4 mm 0.04-0.08 vs
+    0.8-1.3; a* contrast at 1.4-11 mm 0.04-0.11 vs 0.4-0.6; no highlight at all vs 5-13% of a patch; cheek a* +0.3 vs
+    +1..7. Ranked: no fine relief / highlight breakup, one albedo colour, no visible specular, no scattering colour, flat
+    painted lips/brows.
+  - `skin.py`: `spec["skin"]` (tone, age, variation, detail, oil, thin, sun, zones, lips, features, wrinkles, hair, scars,
+    tattoos, makeup, shading) expands into ORDINARY paint layers "skin:<x>" laid under the model's own (`paint.layers`),
+    plus the skin part's base (`part_base`: tone colour, roughness, specular 0.36 = F0 0.028, subsurface by tone, a coat
+    lobe scaled by `oil` on the same bump, sheen; `scene.sync` merges it under the part's own keys). `spec.geometry`
+    strips it. Tone = pigments, not a colour: melanosome fraction of the epidermis x haemoglobin fraction of the dermis ->
+    spectral reflectance (Jacques' numbers, Kubelka-Munk dermis, Wyman CIE fits) -> sRGB (`tone_rgb(tone, melanin=,
+    blood=, oxygenation=, epidermis=, yellow=, grey=)`); every layer is "this skin with more/less of a pigment", so
+    cheeks, lips, palms, scars are right on any tone. Calibrated by eye to F1 #cda590 .. F6 #55331c (the raw model went
+    orange at high melanin: a 130/cm flat term on melanin and a small back-scatter term fixed hue and floor).
+  - Zones (`skin.zone`, paint generator `{"zone": name | {"name", "grow"}}`, expanded in `paint.layers` before anything
+    else sees them): FACE (spots at lm_* landmarks in interocular units), LINES (tapered polylines: nasolabial, brow,
+    lash lines), OUTLINES (lips), UNIONS (beard, nose, t_zone), BODY (shoulder, elbow/knee on the extensor side, hand,
+    palm = hand x facing the palm normal from the finger chains, knuckles, fingertips, nails, forearm, sole). ".L"/".R"
+    or both. A missing joint says which.
+  - New general paint pieces: generator `spot` (soft ellipsoids / tapered polylines at joints, native per pixel), `tile`
+    (a tiling grey image triplanar, `vary` = a second copy at 1.618x mixed by a 7 cm noise, `rotate`; native image nodes:
+    mip-mapped), layer `mix` (multiply/screen/overlay/soft_light), entry op `"vertex": true` (measure this entry per
+    vertex), a breakup-only entry.
+  - THE LIMIT that shaped it: a renderer's shader holds a few dozen layers. EEVEE compiles a material into one GPU
+    shader: the first 96-layer skin took > 5 min and 10 GB before I killed it (stage 1's 42 layers: 60 s). Cycles ran out
+    of SVM stack ("out of SVM stack space": black skin, no exception) from exposed Value/RGB leaf nodes (every leaf is
+    computed first and held: 96 colours x 3 slots), then from the Bump node (it compiles its height subgraph three
+    times; one mask of ~20 tapered lines alone overflowed). So: (1) layers marked `_pre` (broad, soft: zones, mottling,
+    lips, roughness patches, flush/tan, shadows under hair, foundation/blush...) are composited per VERTEX in Python
+    (`paint.precomposite`, linear colour) into five measured scalars the material starts from (`prog["pre"]`); (2) what
+    needs detail finer than the mesh is built ONLY from tiling swatches, images and a few line spots, never procedural
+    noise/Voronoi (`skin_swatch.py`: depth swatches pores / lines / coarse / lips with the 0.5-3 mm grain folded in; mark
+    swatches stubble / freckles / wrinkles / hairs; `brow_image` = a drawn picture of ~900 tapered hairs laid as a decal
+    from the brow landmarks: noise strokes read as a smudge); (3) zone masks confining fine layers are measured per
+    vertex (`"vertex": true`); (4) skin layers expose no named nodes, unexposed colours are socket constants; (5) one
+    layer carries relief + cavity tint + roughness (one mask instance). Heavy test character (63 layers, 26 fine): EEVEE
+    compile 130 s -> 75 s, 6-7 s a frame; export bakes (no Bump in emission passes) compile.
+    Also: node LINKING is quadratic in tree size (1000 nodes 10 s, 2000 65 s, 3000 168 s in a bare Blender): every mask
+    is now its own node group (`_Nodes.group/subtree/instance`, groups named `hpm:<part>:<n>`, dropped on rebuild; pull
+    reads `hp:` nodes inside them). Round trip on a copy of dg_fix2: renders mean 0.18/255 apart (every object was
+    re-meshed), both pulls empty, spec unchanged.
+  - Features (`skin_features.py`, each a number or {"amount", "where": [zones], "mask": [...], ...}): freckles, moles
+    (scattered or `at`), age_spots (default age x sun), blemishes, veins (default from age / thin), flush, sunburn, tan
+    (`mask` for tan lines); wrinkles default from age (folds / crow's feet / under-eye as tapered lines, forehead / neck /
+    lip lines / cheek lines from the wrinkles swatch, crepe from the coarse one); hair: brows, lashes (lash lines only),
+    stubble (cool shadow pre + dots), body; scars cut / surgical (stitch dots) / keloid / burn / pockmarks with age 0..1
+    and no pores on scar tissue; tattoos (`tattoo_image`: the picture blurred by years in its own mm, black toward
+    blue-green, colours faded; multiplied into the skin under its relief). Make-up (`skin_makeup.py`): foundation (also
+    hides 75% x coverage of the fine pigment layers, which composite after the pre base), concealer, contour, blush,
+    highlight, eyeshadow, eyeliner + wing, mascara, brows, lipstick, nails; each with a finish (roughness / specular /
+    metallic).
+  - Eyes (`skin.eyes`, on where the base has eyeballs; `_eyes`): a painted picture per eyeball (`skin_swatch.eye_image`:
+    radial iris fibres, collarette, limbal ring, soft pupil, a sclera pinker toward its edge with forking vessels) laid
+    as a decal on the eyes part, wet (roughness 0.04), a shadow under the upper lid; caruncle and waterline on the skin.
+    Flat iris/pupil paint on `eye_front` read as toy eyes at bust distance. No cornea bulge, no lash geometry yet.
+  - Shaved / cropped heads (`hair.scalp`: amount, color, hairline): the hair's shadow under the scalp skin (pre) + cut
+    hairs from the stubble swatch, inside ONE ellipsoid bigger than the skull whose exit from the skull is the hairline,
+    nape and the line over the ears. The head joint is at brow height and the cranium ~1.5 interoculars round it
+    (interocular = pupil distance, 6-9 cm on these heads): the first version's spots, sized by guess, ended just inside
+    the skull and nothing showed, though the mask read 1 at test points (which were inside the head). Test masks at
+    points found on the surface (a ray through `sdf.field_at`), not at joint + offset.
+  - Wrinkle swatch: three families of wandering lines (main, a branch family crossing them at a slight angle, fine),
+    each line's depth from noise much longer along the line than across (`_smooth_noise(cells, cells_u)`), so creases run
+    on for centimetres, fade at their ends and fork. Isotropic depth noise chopped them into dashes ("scratches").
+  - `skin_look.py` (`look_skin`): cropped stage models `workspace/_skin_<model>_<head|arm>` (bare skin + eyes, ~1 mm),
+    re-synced when the spec or the skin code changes, EEVEE under fixed lights (studio / soft / back) or `engine=
+    "cycles"`; views bust, face, three_quarter, side, cheek, eye, mouth, forehead, ear, hand, palm, forearm; `layer=`
+    shows one mask; prints the face's measurements beside the photographs' with hints.
+  - MakeHuman: the female macro targets are in assets.json (48 files) and `base.body.sex` is the continuous gender
+    slider (1 male default: byte-identical; 0 female). GNM heads have no age/sex controls of their own (seeded
+    identities): see headfit below.
+  - Heads follow the body (2026-10-05, `headfit.py`, renders sk_07 / sk_08; the main session: every head was the same
+    adult face). MakeHuman's topology is fixed, so `makehuman_lm68.json` (made once by `spikes/headfit/make_table.py`:
+    the two neutral heads aligned by eye centres, similarity ICP on the face, a local ICP per feature, nearest
+    vertices, pairs forced symmetric; checked in a picture) names its vertices at GNM's 68 landmarks + 4 cranium
+    points. For a body, the landmarks' MOVE from MakeHuman's reference head (25 years, sex 0.5) to the body's own, in
+    interocular units round the eye midpoint, is added to the seeded GNM head's landmarks (delta transfer: the
+    table's millimetres of mismatch cancel, the seed's individuality stays) and solved in 120 identity components
+    (ridge, components past +-2.6 sigma fixed and the rest re-solved), eye centres held. Head scale = the body's
+    interocular / the fitted GNM's (0.74 for a 7-year-old, ~0.92 adults; the old default 1.4 made every head a
+    doll's). OFF unless asked: `base.head.follow_body: true` or a strength 0..1.5 (the main session: existing
+    characters with seed-only heads, s0urc3's Garrett, must not change; without the key the built base is
+    bit-identical to main's, checked by checksum on three bodies and in `tests/test_headfit.py`); the `skin` tool
+    hints at it and the skin guide's stage 0 recommends it for new characters. 60-70% of the asked move is made.
+    What it took: lids and lips weighted 0.3 / 0.5 / 0.15 (in full, the child's lips twisted and lid margins tore);
+    the neck and bib HELD (90 skin vertices under the chin: no landmark sees them, and left free the fit flared the
+    bib up to the graft plane = the stand-up collar round old bodies' necks; with them held the head's neck matches
+    the body's within a few mm); the graft plane follows the chin; a monotone neck taper. `tests/test_headfit.py`.
+    Honest read: the child and the men read as their age; the old woman reads as an old man (GNM's space and a
+    bald head), the adult woman androgynous.
+  - Heads by age / sex / weight, second pass (2026-10-05, renders sk_10 grid, sk_h_*; supersedes the solve described
+    above): MakeHuman isn't needed at runtime. `head_axes.npz` (spikes/headfit/make_axes.py) samples how the table's
+    points (68 landmarks, 4 cranium points, ~350 dense pairs over face / cranium / neck) MOVE from MakeHuman's
+    reference head (25 y, sex 0.5, weight 0.5) across ages x sex and with weight (`headfit.shape_delta`). The move is
+    made in two steps: GNM identity components by ridge (60-70% of it), then the residual as a Gaussian RBF warp of
+    the head (`head["warp"]`: jaw / chin width, brow ridge, neck girth; lids and lips take little of either). The seed
+    first loses its OWN component along the sex / age / weight directions (`_body_axes`: a heavy-jawed seed left a
+    woman a man). Keys, all opt-in (without them the base is bit-identical): `base.head.follow_body` (true |
+    strength: age, sex, weight and scale from the MakeHuman body), `base.head.like` {"age", "sex" 0 female .. 1 male,
+    "weight"} (set apart from the body, or on any body incl. the stylised template), `base.head.features`
+    {brow_ridge, jaw, chin, nose, lips, cheeks, eyes, cranium: -1.5..1.5} (one part of the sex / child move on its
+    own). `headfit.report(base)`: asked move, share reached by identity / after the warp, largest local stretch.
+  - `skin.sex` (0 female .. 1 male, unset = neither; `params` -> `fem` / `masc`): sex-linked DEFAULTS, each still
+    settable: finer thinner brows, darker lash lines, finer pores (detail x 0.78), lips with 25% more blood for a
+    woman; heavier brows and coarser skin for a man. Stubble stays `hair.stubble` (off unless asked).
+  - Eyes, second pass: `base.cornea` (a smaller sphere proud of the eyeball where the gaze leaves it, ONE group with
+    its eyeball: as two elements with different blends the scene's chunked evaluation blew the mirrored eye up to
+    twice its size, in the scene only, the clay look was fine); look lights take `"window"` (the highlight from a
+    rectangular area light, the sun keeps diffuse + shadow) and `"specular": 0` on fills: one window catchlight, not
+    two discs; a tear line on the eyeball where the lower lid meets it (paint `near: ["base"]` works).
+    `look_skin`'s stage key now includes base.py / headfit.py: a stale stage hid two fixes for an hour.
+    Not done: lash cards, re-measuring against the 24 photos, export fixes, grooms; nostrils show a pale thing
+    behind them on followed heads.
+  - Mirrored decals (the user on sk_07: "the left eyebrow is backwards"): a mirrored image decal kept the picture
+    reading the same way round (right for text), so the other brow's hairs ran toward the nose. Image key
+    `mirror_image: true` reflects the whole frame (`images.mirrored`: right = the reflected right, planar decals);
+    the brows set it. Lashes, lip lines and wrinkles are zone masks / tiling swatches, not mirrored pictures; eyes
+    are one decal per side; tattoos and text stay unmirrored. `look_skin` view "brows"; sk_09; tests in
+    test_images (`test_mirror_image`) and test_skin (`test_brows_mirror`).
+  - Heads as MakeHuman FIELDS (2026-10-05, "skin2" agent, branch worktree-agent-acd58d9aa9f53c1da; renders sk_20_*,
+    sk_2w_*, sk_21_*; replaces the identity solve + RBF warp for age / sex / weight, which reached "93%" of 426 sampled
+    points and still made a woman a soft man). Diagnosis by rendering MakeHuman's OWN heads beside ours: MakeHuman's f32
+    reads female, its f78 an old woman; ours didn't, because (1) only the DELTA from MakeHuman's neutral was added to a
+    GNM seed, and GNM's mean head is itself wider-jawed and heavier than MakeHuman's neutral (mean vs reference rms
+    0.14 interoculars: more than the whole female move, 0.11); (2) a seed's individuality at spread 0.7 is as large
+    as the sex move and reads male on a bald head; stripping the seed along a linear sex axis (landmark- or
+    dense-fitted) does not change that. Now `spikes/headfit/make_field.py` registers GNM's mean head onto MakeHuman's
+    reference head once (pairs RBF as a first guess, 4 rounds of closest point on MakeHuman's triangles facing the same
+    way for the OUTER skin, each displacement smoothed over GNM's mesh by Laplacian least squares; lids' insides, mouth
+    sock, ears ride; lips weighted 0.2; eyeballs / teeth carried by the skin beside them) and stores, per GNM vertex,
+    `ref` (GNM mean -> MakeHuman reference) and the moves to every age x sex and weight (`head_fields.npz`, 2.6 MB,
+    float16, interoculars; no MakeHuman pack at runtime). `headfit.field_vertices(desc)` -> `base.gnm_head` adds it
+    x the head's interocular (head["field"] = a small descriptor, not the array: head dicts are cache keys).
+    `follow` = seed stripped (`_body_axes`: the fields fitted in GNM's components) + field; `features` alone still go
+    through the identity solve + warp and get NO field. New opt-in keys: `base.head.dimorphism` (default 0.8: the
+    sex difference pushed past MakeHuman's own, half as far on the male side: a man at 0.8 read as a brute),
+    `base.head.toward` (share of the absolute move, 1). Abs transfer through the 426 pairs alone made a lumpy skull;
+    identity-space-only abs made a pouting boy. base.VERSION 76. `headfit.solved_points(h)` for tests.
+    READ: woman 32 and teen girl read female bald; the old woman reads as an old woman or an ambiguous elder (was: a
+    man); child fine; use `spread` <= ~0.45 for women and children (0.7 masculinises). The head's `scale` now comes
+    out ~0.88 child / 0.97 adult (the field carries the size ratio).
+  - Skin realism pass 2 (same agent): the "dried mud" was the `lines` / `coarse` swatches' Voronoi NET (every cell
+    outlined at one depth) + crepe laid at 2-4 mm with a dark tint. Now `skin_swatch._glyphics`: families of nearly
+    parallel furrows crossing at an angle with whole-number line counts (tiles), each fading in and out. Wrinkle
+    swatch: rounded troughs 2-3 mm wide with rolls between (a 0.7 mm V = a scratch), forehead tint 0.2 -> 0.08; crepe
+    relief 0.16 mm, tint 0.1, off forehead / chin; coat 0.04 + 0.16 oil -> 0.015 + 0.07 oil at roughness 0.34 (the
+    varnish), base roughness +0.03, pores 0.21 -> 0.34 mm relief with less tint. Elder woman, measured: lightness
+    contrast 0.7 / 1.4 / 2.8 / 5.6 mm 0.54 / 0.49 / 0.56 / 0.58 -> 0.38 / 0.47 / 0.57 / 0.61 (photos 1.26 / 0.83 / 0.78 /
+    1.2), highlight 10% blobs 4.8 mm breakup 1.69 -> 5% / 4.6 / 1.33, micro 0.019 -> 0.010 (photos 0.05): it reads
+    less like mud and MORE airbrushed by the numbers: fine relief is still 2-3x under the photographs. Dark woman:
+    micro 0.033, highlight 15% in 11 mm blobs: still oily.
+  - Whole humans by age, first honest line-up (the user: "we haven't seen any whole face-and-body children or
+    babies"; `spikes/headfit/lineup.py`, sk_21_ages_lineup_clay.png + sk_21_ages_lineup_measures.txt; clay, no skin
+    yet, the sheet's columns are mis-cropped). `base.body.age` goes to 1 through put_model; the pack has baby / child
+    targets. MEASURED (ours | MakeHuman's own head | reference charts): stature 60 / 74 / 103 / 131 cm at 1 / 3 / 7 / 11
+    (refs 75 / 95 / 122 / 144: MakeHuman's children are 10-20% short; pass `height`); heads in the height 4.87 / 5.51 /
+    6.52 / 7.29 (MakeHuman's own 4.59 / 5.20 / 6.16 / 6.89; refs 4 / 5 / 6 / 6.75; adults 7.7-8.3 vs 7.5): heads are
+    too SMALL at every age, MakeHuman's own by ~12% at 1 year, ours a further ~6% (partly lm_chin vs MakeHuman's
+    chin_z: not untangled); hip joint / stature 0.43 at 1 (crotch ref 0.36: legs too long); interocular 37.8 mm at 1.
+    FAILS seen: the baby's nose is torn open (a ragged hole at the nostrils: the field at age 1 turns the nostril
+    walls inside out); the toddler has a long thin neck (graft) and an adult-ish torso; every face is the same stern
+    seed; no fat rolls; rig / hands / skin zones on a baby NOT checked.
+  - Whole children and babies (2026-10-05/06, "humans3" agent, branch `humans3`; renders sk_30_* (clay line-up),
+    measures sk_30_ages_lineup_measures.txt; references `workspace/skin_refs/ages/` (README = spikes/humans/
+    REFERENCES.md): WHO stature + head circumference, Snyder 1977 children's anthropometry from NIST AnthroKids,
+    compiled by `spikes/humans/make_growth.py` into `growth.json`). The sk_21 line-up failed; by MEASUREMENT the
+    causes were not the ones guessed:
+    - Heads were NOT too small. The "reference" heads-in-height (4 / 5 / 6 / 6.75) were artists' chart numbers from
+      memory; measured children (WHO stature / Snyder vertex-to-chin) are 4.6 at 1 y, 5.4 at 3, 6.4 at 7, 7.1-7.3 at
+      11, 8.0 adult. MakeHuman's proportions were within 2-3% of that at every age. Its SIZES were wrong: baby ->
+      child (10 y, not 11) -> young (25 y) blended in straight lines of age gave 60 / 74 / 103 / 149 cm at 1 / 3 / 7 /
+      16 (medians 75 / 96 / 122 / 173 for boys), and a 20-year-old was a third child. `makehuman.grows`: under 25 (and
+      unless `base.body.growth: false`) the age slider is SOLVED so the shape's heads-in-height = `anthro.heads(age,
+      sex)`, then the body is scaled to `anthro.stature(age, sex)` x (MakeHuman's adult / WHO's at 19: 0.98 / 0.975,
+      so 19-24 = the 25-year-old). From 25 nothing changes (bit-identical). `height` still overrides the size.
+      After: stature, heads, head height, sitting height, trochanter height, hand length within 0-5% of the
+      references from 1 to 19 y, both sexes. Off: MakeHuman's women have narrow shoulders (joint breadth 0.85 of
+      the taped biacromial; men 0.94-0.97), small feet (0.84-0.89) and slim waists (0.85); under 1 year the shape
+      stays a one-year-old's (heads 4.7 vs ~4.4 at 6 months).
+    - `anthro.py`: `stature`, `head_height`, `heads`, `head_circumference`, `reference(age, sex)` (Snyder's segment
+      means scaled to WHO's stature), `measure(P, J, chin_z)` (the same measures off a body mesh; girths = hulls of
+      level slices cut at the shoulder joints, so toddlers' waists read small) and `table`.
+    - The toddler's "long thin neck", the baby "cropped below the chest": the graft's neck tube. A followed head
+      brought GNM's adult neck, and `_neck_tube` took the loop `loops[-1]` when no loop cleared the plane (a baby's
+      chin lies on its chest): `_stitch` then cut the shoulders and arms off with the head. Now a head that follows
+      its body fully (`follow_body` true, no `like`, toward 1; `headfit.follow` sets `own_neck`; `base.head.neck:
+      "tube"` opts out) keeps the body's own neck: no cut, no tube (`src` = every template vertex: the hand-made
+      weights reach the whole neck), the head's points above the plane eased onto the body's own head along their
+      normals over `OWN_REACH` 3.5 cm x scale, the two point sets cross-faded as before. The GNM field head is the
+      body's own head within 2.5 mm mean (p95 6-9 mm; chin landmark 5-8 mm higher than the table's: definition).
+    - The "torn nose" at age 1 / the pale thing in followed heads' nostrils / flecks at the lip corners: the
+      mouth fill (`base.inject`) was sized in absolute metres for a head of scale ~1.1; in a child's head (0.74-0.84)
+      it came out through the nostrils and lips. Scaled by the head's scale for followed heads.
+    - The stern thin mouth: `mouth_gap: 0` (the least-change lip closing + zip) presses the lips into a line. With
+      the key left out the lips are GNM's own, a hair parted and full: `humans.spec` leaves it out. (Face shapes
+      still need `mouth_gap` >= 0.002 + `interior`.)
+    - "Breasts" on the toddler / child: mostly clay shading of MakeHuman's modelled nipples and the sk_21 strip's
+      crop (arms cut off, so the torso read narrow-shouldered); MakeHuman's female child (10 y) does have a waist
+      (waist / hip girth 0.70 vs a woman's 0.69, a toddler's 0.86). `base.body.nipples: 0` moves the skin round each
+      nipple (found as the smallest mesh rings near the breast bone's tail) onto a quadratic sheet fitted through the
+      ring outside it. Relaxing those vertices puckered the pole; a centre found by "most forward" landed on the
+      belly, by "most proud of its ring" 2.5 cm off (the pole then stayed and the body's field creased in a star).
+    - `humans.py` + tool `human(name, age, sex, weight, muscle, height, seed, outfit, tone, skin, head)`: a whole
+      DRESSED person as an ordinary spec (body with growth, followed head, eyes + cornea, outfit, skin) and its
+      measures against the references in the reply. Outfits (`humans.outfit`): tee_shorts, onesie (under 2),
+      underwear, none: plain shell parts whose region boxes / sleeve cones / neck hole are placed from the body's
+      joints, crotch and chin. The garment option (`close` / `hang` / tube) made studs at the nipples' rings, ruffs
+      in the armpits and a line at the tube's top on small bodies: not used. Children get muscle 0.35, nipples 0.
+      `tests/test_humans.py` (references, proportions 1-22 y both sexes, adults / opt-out unchanged, dressed by
+      default, own neck). `spikes/humans/lineup.py [clay|skin]`.
+    - Never render or send a child's figure unclothed: the tool dresses by default; diagnosis used numbers and
+      scratch-only clay.
+    - The head tables (head_axes / head_fields) were sampled along MakeHuman's OWN straight-line ages, so a head
+      following a grown body is looked up at `makehuman.table_age(body)` (the age whose old slider has this shape:
+      a grown 11-year-old -> ~13); `like.age` under 25 is converted the same way when the pack is there.
+      spikes/headfit/make_axes.py / make_field.py pass `"growth": false`. base.VERSION 85.
+    - STATE AT THE STOP (usage limit, 2026-10-06; branch `humans3`, last commit = this note): tests green at commit
+      0f967b6 + the table_age fix (test_humans, test_headfit alone, test_skin, test_images, test_bodywarp; the last
+      seq1 run's test results are in the worktree's `scratchpad/seq1.log`, read it first). NOT YET REPORTED to main
+      and NOT JUDGED: the final clay line-up `workspace/skin_renders/sk_30_ages_lineup.png` + `_measures.txt` (14
+      dressed figures, front + side, at true height, faces under). The copy I last looked at still showed the OLD
+      composition (one face per person, 12 + 2 rows) and nipples as RINGS on the adults' tees although the script
+      (`spikes/humans/lineup.py`, face row = front + three-quarter, two rows) and the smoothing (r 0.04 H, blend
+      0.9 r) had changed: check whether the file was really rewritten (COMPOSE=1 re-lays the sheet from the
+      panels in the session scratchpad `humans3/lineup/` without rebuilding) before believing it.
+      My read of the previous render: babies, toddlers, 7s, 11s read as their ages and sizes (72-74 / 93-94 / 118-119 /
+      140-141 cm), whole, arms on, no long necks, no torn noses. Still failing: tees are skin-tight shells (adults'
+      muscles, navels and nipple rings print through: they read as body paint, not cloth); all faces are near one
+      face (seeds at spread 0.35-0.5 after the seed loses its sex / age part: raise spread per person or add
+      `features`); eyes read half shut at line-up size; a hatch of fine marks on the throat where head and body
+      point sets cross-fade (own neck: try a wider band than +-SEAM); faint ring where a nipple was; shorts' box hem.
+    - NEXT, in order: (1) verify + judge sk_30, SendMessage to "main" with branch, commit, tests, sheet path, the
+      measured table and a blunt read; (2) looser cloth without the garment option's studs (a patch over each
+      nipple pole, or fix `base.garment` closing at dense poles), varied faces, open eyes; (3) skin on
+      (`lineup.py skin`: needs scene syncs, heavy), per-person front / three-quarter / side rows, face close-ups
+      (look_skin stages take the base: check they handle own_neck and the onesie); (4) rig, hands, skin zones on a
+      baby (rig_template reads `src`: now every vertex has one; rig.humanoid Neck / Head on a neckless toddler
+      unchecked; retopo.graft_head / export topology "wrap" with own_neck UNTESTED and likely needs the no-cut
+      path); (5) the `human` tool in guide.md / the skill; (6) priority 2 list from the task (elder woman, fine
+      relief, oiliness, lashes, export of one human).
+    - Scratch (worktree `scratchpad/`, untracked): run.sh (env), one.py <age> <sex> <outfit> [zoom] (one clay human),
+      face.py (face variants), t4.py (bodies vs references table), t5.py (GNM head vs the body's own), quick.py (a
+      PIL clay view of a mesh without Blender), seq1.sh (line-up then tests).
+  - Chests, clothes with volume, faces, the throat (2026-10-06, "humans4" agent, branch
+    `worktree-agent-ab7ea373ab4099300`; sheet sk_40_ages_lineup.png + _measures.txt; the user on sk_30, arrows at the
+    woman's chest: "What is going on with this poor woman's boobs?"). Scratch in the worktree's untracked
+    `scratchpad/`: run.sh, d1.py / d3.py (bare adult chest views + bust numbers; scratch only), g1.py (one clothed
+    clay human, ZOOM=2.4 for a torso close-up), f1.py (face rows for a list of people), n1-n3.py (throat field
+    probes), z1.py (a close look at a joint), tile.py.
+    - THE CHEST, by measure (`anthro.measure` -> `bust_projection`: how far the fullest level of the chest's front
+      stands ahead of the breast bone; ~10-20 mm flat, 30-40 an A/B cup, 50-60 C/D): (1) `base.body.nipples: 0`
+      smoothed a patch 4% of the stature wide (6.4 cm on a woman) onto a sheet fitted through the ring outside it:
+      it scooped a crater out of each breast = the dented ring. (2) MakeHuman's own female at average cup stands
+      18 mm ahead of the breast bone, a small pointed AA cup, and our loader read only the macro targets: its
+      breast modifiers were never fetched. (3) The tee was a shell of the skin (see below). Now the pack has
+      targets/breast (228 files, CC0, in assets.json; `makehuman._bust`): `base.body.bust` / `firmness` 0..1
+      (female x age x muscle x weight x cup x firmness, as MakeHuman blends them; no target at average / average, so
+      a body without the keys is bit-identical), `nipples` = MakeHuman's nipple-point / nipple-size targets scaled
+      by the body's size (an adult's millimetres turned a baby's chest inside out), then `_smooth_nipples` over 1.2%
+      of the stature (wide, 4%, only under 11 years: MakeHuman models a mound under a child's nipple).
+      `humans.bust_default`: bust 0.7 growing in from 11 to 17, firmness 0.65 at 30 -> 0.4 at 75, +0.2 dressed (a
+      bra). Woman 30: 32 mm; children and men 0-2 mm. base.VERSION must be bumped when makehuman.py changes a body
+      (the build cache is keyed on it, not on makehuman's code: a stale build hid two fixes).
+    - CLOTHES: `humans.outfit` now uses `parts.<p>.garment` (close + hang + a torso tube; legs tubes for shorts),
+      lengths scaled by stature / 1.7. What had made it unusable on these bodies: (1) the garment's field was
+      EXACTLY 0 between 6 cm and the mesh's largest face size from the cloth (`_imls`'s far value, max(d - hmax, 0)),
+      so the region's box showed as slabs in the air before a loose tee: garment point sets carry `far_fit` (the
+      plane fit, capped at half the nearest vertex's distance; the body's own field is untouched); (2) the "studs
+      at the nipples" were the nipples (flattened now); (3) notches in the hem at the side: the torso's region box
+      was as wide as the shoulder joints and a woman's hips are wider (`tee_hips` box, `breadth()` = the torso's
+      half breadth with the arms left out), and the shorts lay outside the tee (thinner shorts, tube_ease 12 mm);
+      (4) tube key `"arms": "taper"` (what counts as arm narrows toward the wrist) and `"band"` (the hand-over's
+      length, scaled). Onesie: close 60 + a nappy (a layer-1 blob round the seat). Underwear: close 12 / 6.
+    - FACES (`humans.face(age, sex, seed)`): per-seed `features` (nose, lips, cheeks, chin, jaw, brow_ridge, eyes)
+      leaning with age and sex, spread 0.45 (women, children) .. 0.6, lids opened by `pose` (lid_upper -2.6 mm:
+      eye height 0.19-0.23 of the pupils' distance, was 0.15 = half shut), a trace of a smile, `mouth_gap` 0.001
+      (lips together; parted, the fill behind showed as ragged teeth).
+    - THE THROAT (own-neck graft, `base.surface`): three things were tangled. (1) Fine level lines down the whole
+      neck = MakeHuman's neck rings of long thin quads with the IMLS kernel at the MEAN edge length: now the
+      longest edge at each vertex (own-neck bodies only). (2) A ragged slot with shards under a child's jaw: there
+      the body's and the head's skins are different surfaces 5-10 mm apart inside the overlap, each with a
+      few-mm kernel, so the sheets ended in free edges: each point's kernel is now as wide as the gap (they blend
+      into one closed skin). (3) The head is eased onto the body's TRIANGLES (closest point facing the same way,
+      `rig_template.from_surface`) with trust falling off smoothly by distance and facing. Tried and dropped: a
+      step onto the body's IMLS field (tore a ring round the neck), snapping the overlap's points sideways onto the
+      body with its normals (a ribbed band). The mouth fill of a followed head is lower and flatter.
+    - NOT the cause, for the record: the IMLS and `soften` do not flatten the chest (the tool sets no soften).
+    - Read of sk_40 (clay, 14 dressed figures): the clothes read as cloth (tees hang from the bust and belly, no
+      navel / muscles / nipples; the woman's chest is a normal chest under a tee, 33 mm; teen girl 28, woman 75
+      11 (MakeHuman's old shape hangs low), children and men -6..+4). Still wrong: shorts are puffed tubes, a level
+      crease across the bust where the tube takes over, one boat neckline for everyone, no sleeves' drape; babies'
+      mouths are lumpy and grim, children still stern; the woman of 75 still reads as an old man; a faint line
+      across the 11-year-old girl's throat; nostril interiors are lit pale dishes in clay.
+    - `look_skin`'s head stage is BARE skin: for a body under 18 it is cut just under the neck (never a child's bare
+      chest or shoulders).
+    - Tests: test_humans (+ test_bust, test_faces_differ), test_headfit, test_skin, test_images, test_bodywarp pass.
+    - NEXT, in the coordinator's order: (4) skin on (`lineup.py skin`: scene syncs, heavy, one at a time),
+      per-person front / three-quarter / side rows, face close-ups; rig, hands, skin zones, export topology on baby
+      proportions (retopo.graft_head / topology "wrap" with own_neck UNTESTED); (5) fine relief vs the photographs,
+      the dark woman's oiliness, lashes, nostril interior (a dark paint zone inside the nostrils), one human
+      exported. Also open from this round: baby / child mouths (try `features.lips` lower and no smile pose under
+      3), the elder woman (longer `dimorphism`, or hair), shorts as a real garment, a neckline per outfit, the
+      `human` tool in guide.md / the skill.
+  - Open: EEVEE shows no light through ears/nostrils (Principled subsurface + thickness set, nothing visible); the
+    shadow edge's colour is unmeasured against a matched light; real lashes and long brow hairs want geometry; nipples
+    / areolae have no landmarks; freckle swatch repeats at 6 cm if a zone is large; a Cycles LOOK still fails on a heavy
+    skin (Bump x3); per-vertex pre layers need a body voxel <= ~1.5 mm to hold 3 mm mottling (look_skin's stages do).
+    `tests/test_skin.py`.
+
