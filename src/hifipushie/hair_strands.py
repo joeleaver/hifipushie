@@ -140,7 +140,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                 lw = lw + np.clip(floor - lw, 0.0, None) * _ss((u - belly) / 0.3)
             fr = float(lk.get("free", 0.0))
             R = float(Sl["random"])
-            A = 0.6 * float(Sl["wave"]) * (0.3 + 0.7 * fr) * (1 + R * rng.uniform(-0.4, 0.4))
+            # (hair lying on the head barely swings: at 0.3 of the free swing, locks in step drew ridges round the
+            # scalp, finger waves that read wet and slicked (Tess, 2026-10-09))
+            A = 0.6 * float(Sl["wave"]) * (0.12 + 0.88 * fr) * (1 + R * rng.uniform(-0.4, 0.4))
             # a wisp swings less and slower than a lock (at a lock's wave a few hairs side by side are ramen)
             ws = float(np.clip(W / 0.03, 0.2, 1.0))
             wl = 1.0 + 1.2 * float(np.clip(1.0 - W / 0.02, 0.0, 1.0))

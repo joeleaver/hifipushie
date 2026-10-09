@@ -22,8 +22,9 @@ WRINKLES (skin.wrinkles; every amount defaults from age, 0 turns one off, > 1 ex
   the mouth), neck (rings), crepe (fine cross-hatched skin: cheeks, neck, hands, with age).
 HAIR (skin.hair; colours sRGB):
   brows      {"color", "density": 0..1 (0.8), "thickness": 1, "length": m (0.006), "grey": 0..1, "drop": m (0: the
-             brow lower, onto the orbital rim), "arch": 1 (its slope: 0 = level), "soft": 0..1 (a soft mass rather
-             than hairs one by one)}: hairs as strokes, growing up at the inner end and out along the brow.
+             brow lower, onto the orbital rim), "arch": 1 (x the landmarks' slope: 0 = level), "tilt": deg (the whole
+             brow turned, tail up +), "fall": 1 (x how far the tail drops past the arch: 0.3 = a straight, rising
+             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one)}: hairs as strokes, growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
   stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
              "shadow_breakup": its noise, 0 = an even field: a dense stubble shadow reads as one grey-brown field),
@@ -414,7 +415,8 @@ def _hair(p, J, layer, T, ctx) -> None:
     dflt = hair_default(t, age)
     if ctx["face"]:
         io = interocular(J)
-        o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch"))
+        o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch",
+                                                     "tilt", "fall", "lift", "apart"))
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
@@ -426,14 +428,20 @@ def _hair(p, J, layer, T, ctx) -> None:
             a_, m_, b_ = J["lm_brow_inner.L"], J["lm_brow_mid.L"], J["lm_brow_outer.L"]
             span = float(np.linalg.norm(b_ - a_))
             width = 1.22 * span
-            path, (wmm, hmm) = skin_swatch.brow_image(dens, thick, float(o.get("length", 0.006)) * 1000, width * 1000, seed)
+            path, (wmm, hmm) = skin_swatch.brow_image(dens, thick, float(o.get("length", 0.006)) * 1000, width * 1000, seed,
+                                                       fall=float(o.get("fall", 1.0)))
             c = 0.5 * (a_ + b_)
             c[2] = (a_[2] + 2 * m_[2] + b_[2]) / 4 - 0.02 * io
             c[1] = m_[1]
             c[2] -= float(o.get("drop", 0.0))   # a heavy brow sits on the orbital rim, its lower edge at the lid's fold
+            li, lo_ = (float(x) for x in (o.get("lift") or (0.0, 0.0)))  # m: the inner head / the tail up (+) or down
+            c[2] += 0.5 * (li + lo_)
+            c[0] += float(o.get("apart", 0.0))  # m: both brows away from the mid-line (+: the heads less pinched)
             d = np.array([0.42, -1.0, 0.12])
             d /= np.linalg.norm(d)
             slope = float(np.degrees(np.arctan2(b_[2] - a_[2], np.linalg.norm((b_ - a_)[:2])))) * float(o.get("arch", 1.0))
+            slope += float(o.get("tilt", 0.0))  # deg: the whole brow turned, its tail up (+) or down (-)
+            slope += float(np.degrees(np.arctan2(lo_ - li, width)))  # (lift: the two ends placed on their own)
             soft = float(o.get("soft", 0.0))    # 0..1: hairs read less one by one (fine, greying brows: a soft mass)
             img = {"file": str(path), "at": [round(float(x), 5) for x in c], "dir": [round(float(x), 4) for x in d],
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,

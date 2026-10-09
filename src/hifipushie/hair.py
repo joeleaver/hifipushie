@@ -140,6 +140,14 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
+def _part_side(side) -> float:
+    """parting.side as the part's offset direction: left / right / centre (or center)."""
+    v = {"left": 1.0, "right": -1.0, "centre": 0.0, "center": 0.0}.get(side)
+    if v is None:
+        raise ValueError(f"hair parting side {side!r}: one of left, right, centre (or center), none")
+    return v
+
+
 def dirs(az, el):
     """Unit directions for azimuth / elevation in degrees (0 = front -Y, 90 = +X his left)."""
     a, e = np.radians(az), np.radians(el)
@@ -542,7 +550,7 @@ def _part(sc: Scalp, g: dict, az, el, width):
     side = pt.get("side", "left")
     if side == "none":
         return np.zeros(np.shape(az))
-    xp = {"left": 1.0, "right": -1.0, "centre": 0.0}[side] * float(pt.get("offset", 0.03))
+    xp = _part_side(side) * float(pt.get("offset", 0.03))
     P = sc.point(az, el, 0.0)
     if pt.get("line"):  # a drawn/traced part: distance to its polyline on the scalp, faded in past its front end
         q = np.asarray(pt["line"], float)
@@ -584,7 +592,7 @@ def part_line(sc: Scalp, g: dict):
 def _part_x(g):
     pt = g["parting"]
     side = pt.get("side", "left")
-    return None if side == "none" else {"left": 1.0, "right": -1.0, "centre": 0.0}[side] * float(pt.get("offset", 0.03))
+    return None if side == "none" else _part_side(side) * float(pt.get("offset", 0.03))
 
 
 def flow(sc: Scalp, g: dict, P, W, away):
