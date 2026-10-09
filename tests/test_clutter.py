@@ -136,9 +136,11 @@ def test_export_files_and_json(tmp_path):
 
 
 def test_bush_has_wind_cards_and_seasons(tmp_path):
-    J = clutter.export({"kind": "bush", "style": "realistic", "variants": 1, "atlas": 384}, tmp_path, stem="b")
+    J = clutter.export({"kind": "bush", "style": "realistic", "variants": 1, "atlas": 512}, tmp_path, stem="b")
     v = J["clutter"]["variants"][0]
-    assert v["lods"][0]["cards"] > v["lods"][2]["cards"] and v["lods"][0]["triangles"] < 320 and v["lods"][2]["triangles"] < 70
+    t = [l["triangles"] for l in v["lods"]]
+    assert t[0] <= 290 and t[1] <= 110 and t[2] <= 24, t  # sprays + stems / bough cards + stems / two crossed cards
+    assert v["lods"][0]["cards"] >= 20 and v["lods"][1]["cards"] in (6, 7, 8) and v["lods"][2]["cards"] == 2
     G = _glb_json(tmp_path / v["lods"][0]["file"])
     assert {"TEXCOORD_1", "TEXCOORD_2", "_WIND"} <= set(G["meshes"][0]["primitives"][0]["attributes"])
     assert G["materials"][0]["alphaMode"] == "MASK"
@@ -146,9 +148,41 @@ def test_bush_has_wind_cards_and_seasons(tmp_path):
     assert len(files) == 4 and all((tmp_path / f).exists() for f in files)
     from PIL import Image
     a = np.asarray(Image.open(tmp_path / J["slots"]["foliage"]["baseColorTexture"]["file"]))
-    assert a.shape[2] == 4 and (a[..., 3] < 128).mean() > 0.05 and (a[..., 3] > 128).mean() > 0.1  # sprays cut out, dome opaque
-    blob = clutter.resolve({"kind": "bush", "style": "blobby"})
-    assert blob["form"]["cards"][1] == 0  # a closed style: no cards
+    assert a.shape[2] == 4 and 0.1 < (a[..., 3] > 128).mean() < 0.7  # pictures of sprays, boughs and the whole bush, cut out
+
+
+def test_an_open_bush_is_open_and_its_tiers_come_from_it():
+    from hifipushie import clutter_bush
+    B = clutter_bush.build({"kind": "bush", "style": "realistic", "variants": 2, "atlas": 512})
+    for v in B["variants"]:
+        assert v["open"] > 0.3, v["open"]  # a shrub has sky and ground between its sprays: never a closed dome
+        L0, L1, L2 = v["lods"]
+        assert L1["iou"] > 0.45 and L2["iou"] > 0.45, (L1["iou"], L2["iou"])  # the far tiers cover what the sprays cover
+        # every card has its back on vertices of its own (two faces on the same three vertices are one to some importers)
+        for L in (L0, L1, L2):
+            f = np.sort(L["F"], axis=1)
+            assert len(np.unique(f, axis=0)) == len(f)
+        assert L0["V"][:, 2].min() >= -0.02 and 0.3 < v["height"] < 1.3
+    # the same shrub every time
+    B2 = clutter_bush.build({"kind": "bush", "style": "realistic", "variants": 1, "atlas": 512})
+    assert np.array_equal(B["variants"][0]["lods"][0]["V"], B2["variants"][0]["lods"][0]["V"])
+
+
+def test_closed_styles_are_separate_lumps_on_stems():
+    cfg = clutter.resolve({"kind": "bush", "style": "blobby"})
+    assert cfg["form"]["open"] is False and cfg["form"]["cards"][1] == 0
+    B = clutter.build({"kind": "bush", "style": "blobby", "variants": 1, "atlas": 384, "lods": [250, 100]})
+    L = B["variants"][0]["lods"][0]
+    _, inv = np.unique(np.round(L["V"], 5), axis=0, return_inverse=True)
+    G = inv.reshape(-1)[L["F"]]
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    n = int(G.max()) + 1
+    e = np.r_[G[:, [0, 1]], G[:, [1, 2]]]
+    k, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), (n, n)), directed=False)
+    big = np.bincount(lab[G[:, 0]], minlength=k)
+    assert (big >= 12).sum() >= 3, big  # three lumps or more, not one dome
+    assert "wind" in L and L["wind"].shape[1] == 4
 
 
 def test_litter_card(tmp_path):

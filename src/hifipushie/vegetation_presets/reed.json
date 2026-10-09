@@ -1,17 +1,17 @@
 {
- "about": "Common reed / tall sedge at a water's edge: a stand 1.3-1.8 m tall and under a metre wide, upright stems with long leaves held out to the sides, feathery brown plumes above from summer; stands straw-coloured through winter. Terrain kind `reeds` (root at or just under the water line); scatter many, varied by seed",
+ "about": "Common reed / tall sedge at a water's edge: a stand 1.4-1.8 m tall and under a metre wide: narrow upright fans of long strap leaves, taller stalks carrying feathery brown plumes from summer; stands straw-coloured through winter. Terrain kind `reeds` (root at or just under the water line); scatter many, varied by seed. Leaves are drawn wider than life (5 cm): a 1.5 cm leaf over a metre long is under a texel on its card",
  "plant": "clump",
  "age": 1,
  "leaves": {
-  "shape": "linear", "length": 0.42, "width": 0.05, "fold": 0.3, "curl": 0.12, "petiole": 0.0, "bend": 0.3,
+  "shape": "linear", "length": 1.15, "width": 0.048, "fold": 0.3, "curl": 0.08, "petiole": 0.0, "bend": 0.16,
   "color": [0.4, 0.52, 0.22], "translucency": 0.45, "evergreen": true,
-  "twig": {"length": 1.35, "leaves": 9, "arrangement": "alternate", "angle": 32, "droop": 0.08, "radius": 0.004, "light": 0.0, "variants": 4},
-  "card": {"variants": 4, "size": 512, "cross": 1, "cup": 0.03, "scale": 1.0},
+  "twig": {"length": 0.06, "leaves": 20, "arrangement": "basal", "angle": 17, "droop": 0.0, "radius": 0.004, "light": 0.0, "variants": 4},
+  "card": {"variants": 4, "size": 384, "cross": 1, "cup": 0.03, "scale": 1.0},
   "parts": {
-   "plume": {"shape": "lanceolate", "length": 0.3, "width": 0.07, "color": [0.42, 0.5, 0.22],
-             "twig": {"length": 1.65, "leaves": 4, "arrangement": "alternate", "angle": 28, "droop": 0.1, "radius": 0.004,
-                      "flower": {"form": "spike", "petals": 60, "radius": 0.04, "color": [0.45, 0.32, 0.26], "spike": 0.16}},
-             "card": {"variants": 2, "size": 512, "cross": 1, "cup": 0.0}}
+   "plume": {"shape": "linear", "length": 0.45, "width": 0.1, "color": [0.42, 0.5, 0.22],
+             "twig": {"length": 1.3, "leaves": 7, "arrangement": "alternate", "angle": 26, "droop": 0.05, "radius": 0.009,
+                      "flower": {"form": "spike", "petals": 120, "radius": 0.075, "color": [0.45, 0.32, 0.26], "spike": 0.24}},
+             "card": {"variants": 2, "size": 384, "cross": 1, "cup": 0.0}}
   }
  },
  "bark": {"kind": "lenticel", "color": [0.5, 0.52, 0.28], "twig_color": [0.52, 0.54, 0.3]},
@@ -20,8 +20,8 @@
               "autumn": {"color": {"mix": [0.72, 0.62, 0.32], "amount": 0.6}, "flatten": 0.03, "scale": 1.0},
               "winter": {"color": {"mix": [0.74, 0.66, 0.42], "amount": 0.9}, "flatten": 0.12, "scale": 0.95}},
   "layers": [
-   {"name": "stems", "part": "main", "count": 11, "ring": [0.0, 0.26], "lean": [0, 9], "scale": [0.8, 1.15], "facing": "any"},
-   {"name": "outer", "part": "main", "count": 7, "ring": [0.2, 0.42], "lean": [5, 18], "scale": [0.55, 0.85], "facing": "any"},
-   {"name": "plumes", "part": "plume", "count": 5, "ring": [0.0, 0.24], "lean": [0, 8], "scale": [0.9, 1.1], "facing": "any", "seasons": ["summer", "autumn", "winter"]}
+   {"name": "stems", "part": "main", "count": 10, "ring": [0.0, 0.24], "lean": [0, 8], "scale": [0.8, 1.15], "facing": "any"},
+   {"name": "outer", "part": "main", "count": 7, "ring": [0.18, 0.38], "lean": [5, 16], "scale": [0.55, 0.85], "facing": "any"},
+   {"name": "plumes", "part": "plume", "count": 5, "ring": [0.0, 0.22], "lean": [0, 7], "scale": [0.9, 1.1], "facing": "any", "seasons": ["summer", "autumn", "winter"]}
   ]}
 }
