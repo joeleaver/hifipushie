@@ -88,7 +88,8 @@ def test_nudge_moves_one_landmark():
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03])
     # (its refusal used to rest on sub-millimetre lid edges read as "x3.3": slivers no longer count (hf.SLIVER, the
     # reference-modelling study), so within the plausible range it may pass; forced past it, it is still BROKEN)
-    assert (nb2 is b and "refused" in rep2) or rep2["integrity"]["ok"]
+    # and the correction layer has a size guard of its own (hf.NUDGE_CORR x radius): 3 cm is refused, unforced
+    assert nb2 is b and "refused" in rep2, rep2.get("by_correction_mm")
     assert not hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)[1]["integrity"]["ok"]
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
     assert rep2["by_correction_mm"] > 1.0 and abs(rep2["got_mm"][2] + 30) < 1.5
