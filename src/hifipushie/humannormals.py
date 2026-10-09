@@ -11,8 +11,19 @@ rows on the identity components, to add to a least-squares fit (humanfit_map's H
 
 On the truth set (skinned EEVEE renders, front + three-quarter): face 2.45 -> 2.21 mm in-model / 2.39 -> 2.13 out,
 profile 2.33 -> 2.07 / 3.07 -> 2.74, chin 3.7 -> 2.7, jaw 4.1 -> 3.7; with a read on top 2.06 / 2.03.
-CAVEATS: calibrated on RENDERS only (20 heads, 8 skin tones, plain backgrounds), not on photographs; a painting's
-brush strokes come out as relief; hair must be masked (pass `hide`); it says nothing on cranium, ears, neck.
+CAVEATS: calibrated on RENDERS only (20 heads, 8 skin tones, plain backgrounds); a painting's brush strokes come out
+as relief; hair must be masked (pass `hide`); it says nothing on cranium, ears, neck.
+
+PHOTOGRAPHS (the study's second round; CLAUDE.md "Measurement models, photographs"): on real skin every model reads
+relief better than on our plastic renders, so the render gains are too LOW there. On a scanned real head with its
+photographed albedo, path-traced (Lee Perry-Smith, CC BY 3.0; truth = the scan), trusted regions: DAViD 8.1 deg from
+truth with gain 0.81 (renders: 8.0 deg, gain 0.50), Marigold v1-1 10.3 deg / 0.65 (renders 9.6 / 0.33), its LCM
+variant 11.6, MoGe-2 12.7. In a fit of that head (points -> + normals, surface mm): 2.25 -> 1.88 (DAViD, gains x1)
+-> 1.63 (x1.6) -> 1.55 (x2); Marigold 2.29 / 2.16 (x2). So: DAViD for photographs too, with `gain_scale=PHOTO_GAIN`.
+`model=` picks another calibrated model: "marigold" (prs-eth/marigold-normals-v1-1, CreativeML OpenRAIL++-M: use
+restrictions travel with it) or "marigold_lcm" (marigold-normals-lcm-v0-1, Apache-2.0); neither beat DAViD anywhere
+we could measure. DAViD's normals mean nothing outside its own foreground mask (a picture of them looks framed and
+noisy there): use predict()'s "mask".
 
 Camera frame: x right, y down, z into the picture. World: z up, the head faces -y, its left is +x.
 """
@@ -25,7 +36,11 @@ from pathlib import Path
 
 import numpy as np
 
+MODELS = ("david", "marigold", "marigold_lcm")
 CAL = Path(__file__).with_name("david_normals_gnm.npz")
+PHOTO_GAIN = 1.6  # gain_scale for photographs of real skin (measured on one scanned head: 0.81 / 0.50; x1.6..x2 fit alike)
+MARIGOLD = {"marigold": "prs-eth/marigold-normals-v1-1", "marigold_lcm": "prs-eth/marigold-normals-lcm-v0-1"}
+MG_HOME = Path(os.environ.get("HIFIPUSHIE_MARIGOLD", "/mnt/data/hifipushie/measuremodels/marigold"))   # venv/ (torch, diffusers), hf/
 CLASSES = ("front", "left", "profile", "right")      # as humanfit_map's table
 HOME = Path(os.environ.get("HIFIPUSHIE_DAVID", "/mnt/data/hifipushie/measuremodels/david"))   # venv/, DAViD/, the .onnx
 MODEL = "multi-task-model-vitl16_384.onnx"
@@ -47,8 +62,41 @@ np.savez_compressed(sys.argv[4], normal=o["normal"].astype(np.float16), mask=(np
 '''
 
 
-def available() -> str | None:
-    """None when DAViD can run here, else what is missing and how to get it."""
+_RUN_MG = r'''
+import sys
+import numpy as np, torch, diffusers, cv2
+from PIL import Image
+dev = "cuda" if torch.cuda.is_available() else "cpu"
+dt = torch.float16 if dev == "cuda" else torch.float32
+try:
+    pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(sys.argv[1], variant="fp16", torch_dtype=dt).to(dev)
+except Exception:
+    pipe = diffusers.MarigoldNormalsPipeline.from_pretrained(sys.argv[1], torch_dtype=dt).to(dev)
+pipe.set_progress_bar_config(disable=True)
+im = Image.open(sys.argv[2]).convert("RGB")
+with torch.no_grad():
+    n = pipe(im, num_inference_steps=4, ensemble_size=3 if dev == "cuda" else 1, generator=torch.Generator(dev).manual_seed(0)).prediction[0]
+n = np.asarray(n, np.float32)
+if n.shape[:2] != im.size[::-1]:
+    n = cv2.resize(n, im.size, interpolation=cv2.INTER_LINEAR)
+np.savez_compressed(sys.argv[3], normal=n.astype(np.float16))
+'''
+
+
+def _check(model):
+    if model not in MODELS:
+        raise ValueError(f"humannormals: model {model!r}; one of {MODELS}")
+
+
+def available(model: str = "david") -> str | None:
+    """None when the model can run here, else what is missing and how to get it."""
+    _check(model)
+    if model != "david":
+        if not (MG_HOME / "venv" / "bin" / "python").exists():
+            return (f"Marigold's runtime is not at {MG_HOME}: `uv venv venv && uv pip install --python venv/bin/python torch diffusers "
+                    f"transformers accelerate safetensors pillow numpy opencv-python-headless` there (weights, ~2.5 GB, are fetched on first use; "
+                    f"a GPU takes seconds, a CPU 1-3 min a picture)")
+        return None
     if not (HOME / "venv" / "bin" / "python").exists() or not (HOME / "DAViD" / "runtime").exists():
         return (f"DAViD's runtime is not at {HOME}: git clone https://github.com/microsoft/DAViD there, and "
                 f"`uv venv venv && uv pip install --python venv/bin/python onnxruntime opencv-python-headless numpy`")
@@ -57,13 +105,25 @@ def available() -> str | None:
     return None
 
 
-def predict(image: str | Path) -> dict:
-    """{"normal": (H, W, 3) unit normals in the CAMERA frame of this module, "mask": (H, W) 0..1 person, "depth":
-    relative depth} for a picture file. ~15-40 s on CPU; cached by the file's content beside the model."""
-    miss = available()
+def predict(image: str | Path, model: str = "david") -> dict:
+    """{"normal": (H, W, 3) unit normals in the CAMERA frame of this module, "mask": (H, W) 0..1 person (ones for
+    Marigold: it has none), "depth": relative depth (DAViD only)} for a picture file. DAViD ~15-40 s on CPU; cached
+    by the file's content beside the model."""
+    miss = available(model)
     if miss:
         raise RuntimeError(miss)
     key = hashlib.sha1(Path(image).read_bytes()).hexdigest()[:20]
+    if model != "david":
+        out = MG_HOME / "cache" / f"{model}_{key}.npz"
+        if not out.exists():
+            out.parent.mkdir(parents=True, exist_ok=True)
+            src = MG_HOME / "cache" / "_run.py"
+            src.write_text(_RUN_MG)
+            subprocess.run([str(MG_HOME / "venv" / "bin" / "python"), str(src), MARIGOLD[model], str(image), str(out)], check=True, capture_output=True,
+                           timeout=3600, env={**os.environ, "HF_HOME": str(MG_HOME / "hf"), "OMP_NUM_THREADS": "8"})
+        n = np.load(out)["normal"].astype(float) * calibration(model)["flip"]
+        n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-9)
+        return {"normal": n, "mask": np.ones(n.shape[:2]), "depth": None}
     out = HOME / "cache" / f"{key}.npz"
     if not out.exists():
         out.parent.mkdir(exist_ok=True)
@@ -77,11 +137,12 @@ def predict(image: str | Path) -> dict:
     return {"normal": n, "mask": z["mask"].astype(float) / 255.0, "depth": z["depth"]}
 
 
-def calibration() -> dict:
-    if "cal" not in _C:
-        z = np.load(CAL)
-        _C["cal"] = {"g": z["g"].astype(float), "s": z["s"].astype(float), "p": z["p"].astype(float), "flip": z["flip"].astype(float)}
-    return _C["cal"]
+def calibration(model: str = "david") -> dict:
+    _check(model)
+    if "cal" + model not in _C:
+        z = np.load(CAL.with_name(f"{model}_normals_gnm.npz"))
+        _C["cal" + model] = {"g": z["g"].astype(float), "s": z["s"].astype(float), "p": z["p"].astype(float), "flip": z["flip"].astype(float)}
+    return _C["cal" + model]
 
 
 def gnm() -> dict:
@@ -156,15 +217,17 @@ def visible(V, cam, hide=None):
 
 
 def rows(normal: np.ndarray, V: np.ndarray, IB: np.ndarray, c: np.ndarray, cam: dict, cls: int, hide=None, only=None,
-         inflate: float = INFLATE, cut: float = CUT, step: int = STEP) -> tuple:
+         inflate: float = INFLATE, cut: float = CUT, step: int = STEP, model: str = "david", gain_scale: float = 1.0) -> tuple:
     """Evidence rows (A (m, K), y (m,), info) on the identity from one picture's normal map, about the current head.
 
     normal: (H, W, 3) from `predict` (this module's camera frame); V: the current head's GNM vertices (world, m);
     IB: (K, V, 3) how they move per identity component (world); c: the current components (the rows are linear
     about it: A c' ~ y); cam: the picture's fitted camera (humanfit's dict); cls: the view class (CLASSES);
     hide: a boolean picture mask of what covers the head (hair!); only: a boolean vertex mask to restrict to.
+    model: whose calibration (the normal map must be that model's, from predict(image, model)); gain_scale: the
+    render calibration's gains x this, capped at 1.2 (PHOTO_GAIN for a photograph of real skin, 1 for our renders).
     Add to a normal-equations fit as H += A.T @ A, b += A.T @ y."""
-    cal = calibration()
+    cal = calibration(model)
     g = gnm()
     K = len(c)
     idx, pix, n_head, Rc = visible(V, cam, hide)
@@ -173,6 +236,7 @@ def rows(normal: np.ndarray, V: np.ndarray, IB: np.ndarray, c: np.ndarray, cam: 
     n_mean = (vnormals(s * g["V0"] @ R.T + t, g["T"]) @ Rc.T)[idx]
     gq, sq, pq = cal["g"][cls][idx], cal["s"][cls][idx], cal["p"][cls][idx]
     ok = np.isfinite(sq) & (sq < cut * pq) & (gq > 0.05)
+    gq = np.clip(gq * float(gain_scale), 0.0, 1.2)
     if only is not None:
         ok &= np.asarray(only, bool)[idx]
     j = np.flatnonzero(ok)[::step]
@@ -198,4 +262,4 @@ def rows(normal: np.ndarray, V: np.ndarray, IB: np.ndarray, c: np.ndarray, cam: 
         A.append(An / sg[:, None] * w[:, None])
         y.append((res[:, e] + An @ c) / sg * w)
     ang = np.degrees(np.arccos(np.clip((target * n_head[j]).sum(1), -1, 1)))
-    return np.vstack(A), np.concatenate(y), {"vertices": int(len(j)), "mean_angle_deg": float(ang.mean())}
+    return np.vstack(A), np.concatenate(y), {"vertices": int(len(j)), "mean_angle_deg": float(ang.mean()), "model": model, "gain_scale": float(gain_scale)}

@@ -6939,6 +6939,51 @@ its fitted identity; trellis/ = Oxidegen's meshes as arrays). Sheets `workspace/
   without gains; the XR Blocks table for turned views; MapAnything on untextured busts; Marigold / MoGe normals where
   DAViD's exist; silhouette widths for cheekbones or neck.
 
+### Measurement models, photographs (2026-10-09, same agent; Joe on mm_01: "visually, the Marigold model looks amazing", DAViD "noisy / framed")
+
+Does the render calibration transfer to photographs? Scripts in spikes/measuremodels/: photo.py (head | crops | photo |
+renders | pairs | depth | sheet: a model's normals against a head fitted WITHOUT normals, g3_f through its human_refs
+camera, with the crop's off-axis view taken out; the calibration's own quantities gain / corr / left with the same code
+on photo, renders and scan), lps.py (prep | render | stats | gains | depth | sheet) + bl_scan.py, lps_fit.py,
+david_local.py, remote/run_marigold.py <src> <out> v11|lcm. Sheets human_renders/mm_04_photo_normals.png,
+mm_05_scan_normals.png. Scratch as before (/mnt/data/hifipushie/measuremodels: lps/, out/photo_all.txt, pred/).
+- A head with TRUTH and real skin: Lee Perry-Smith's scan (Infinite-Realities, CC BY 3.0; from three.js's examples:
+  17.7k triangles, photographed albedo, its normal map), path-traced in Cycles (SSS), 3 views x 2 lights, truth = its
+  shading normals rendered through the same cameras; laid on GNM's mean head by tmesh.align for regions. NOT a
+  photograph and ONE head (eyes closed), but real pores, stubble, brows and a real face's relief. glTF's v is flipped
+  against Blender's (the first render had lips on the chin).
+- Normals on the scan, trusted regions (forehead, cheeks, nose), deg from truth after one global rotation | gain | corr
+  of deviations from the mean head; the same on our skinned renders' 10 truth fronts in brackets:
+  DAViD 8.1 | 0.81 | 0.80 (8.0 | 0.50 | 0.56); Marigold v1-1 10.3 | 0.65 | 0.72 (9.6 | 0.33 | 0.40); Marigold LCM 11.6 |
+  0.63 | 0.66 (10.6 | 0.30 | 0.36); MoGe-2 12.7 | 0.59 | 0.60 (9.6 | 0.37 | 0.45); mean head 13.7 (8.2). DAViD wins in
+  6 of 6 pictures. Every model reads real skin much better than our plastic renders (Marigold most: Joe's eye was
+  right that the render numbers under-rated it), so the render gains are ~1.6-2x too LOW for real skin: the
+  render-calibrated DAViD normal is 9.5 deg from truth, raw 8.1. Marigold carries a ~5 deg global tilt (raw 11.4).
+- End to end on the scan (lps_fit.py: detector points front + three-quarter, then + calibrated normals; the fitted
+  head's distance to the scan's surface, face mm rms): mean head 2.81, points 2.25, + DAViD 1.88, gains x1.6 1.63,
+  x2 1.55; + Marigold 2.29 (x2 2.16), + LCM x2 2.55, + MoGe-2 normals 2.53. On our renders (truth set, D1b): Marigold
+  2.53 / 2.19 against DAViD 2.21 / 2.13 and the baseline 2.45 / 2.39.
+- Garrett's front picture (no truth; itself a generated image, 0.78 px/mm on the face): (a) DAViD on a tight crop at
+  768 or 384 = the wide crop (trusted regions 16.8 / 16.6 / 17.3 deg from g3_f, corr 0.30 / 0.31 / 0.27; forehead
+  noise 1.7-2.1 deg against Marigold 1.8-2.5, MoGe-2 0.8, the head's own 1.0): the "noise and frame" in mm_01 was
+  DAViD's output OUTSIDE its foreground mask, which that sheet did not apply. (c) against g3_f no model beats the mean
+  head (13.4 deg; DAViD 17, Marigold 18-19, MoGe-2 16.7, Sapiens2 15.7; corr 0.14-0.34): g3_f is not good enough to
+  judge normals by. Model against model (corr of deviations, photo | renders): Marigold - Sapiens2 0.72 | 0.42,
+  MoGe-2 - Sapiens2 0.71 | 0.55, DAViD - Sapiens2 0.60 | 0.62, DAViD - Marigold 0.56-0.61 | 0.62: the photo-trained
+  models converge on a photo, DAViD is where it was.
+- Depth again (Joe asked): MoGe-2 on Garrett's photo against g3_f 5.8 mm rms on the face after scale + shift (the mean
+  head 3.8), corr 0.0 (forehead 0.54); on the scan with truth 4.5 mm (mean head 2.4), corr 0.10; DAViD's depth on the
+  scan 3.5 mm, corr 0.50 (forehead / brow 0.9). Renders had said 3.7 / 0.30 and 2.7 / 0.43. Depth is no better on
+  real skin: still worse than the mean head. No.
+- `humannormals`: `model=` "david" (default) | "marigold" (v1-1: CreativeML OpenRAIL++-M, use restrictions travel
+  with the weights) | "marigold_lcm" (LCM v0-1, Apache-2.0) in predict / calibration / rows (calibration files
+  <model>_normals_gnm.npz; Marigold runs from a venv at $HIFIPUSHIE_MARIGOLD, not installed), and `gain_scale`
+  (PHOTO_GAIN 1.6 for photographs of real skin). VERDICT: wire DAViD for photographs, gains x1.6, its mask applied;
+  Marigold is the prettier picture and the worse measurement everywhere we have truth.
+- Not done: real photographs with 3D truth (NoW, FaceScape, H3DS are research-only and behind forms; none fetched),
+  more than one scanned head, the hook in humanfit_map (garrett4's), a photo-domain re-calibration (gains per vertex
+  from scans rather than one multiplier).
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.
