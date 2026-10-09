@@ -1213,6 +1213,16 @@ def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
     W, H = int(w * scale), int(h * scale)
     rank = _layer_rank(c)
     layers = [(c.body.V, c.body.T, (198, 170, 150), 0)]
+    # the model's own worn parts the garments rest on (garment key "collide": shoes under a hem): a barefoot figure
+    # beside a shod reference reads wrong at the hem
+    worn = sorted({p for gg in (c.spec.get("cloth") or {}).values() for p in (gg.get("collide") or [])})
+    if worn:
+        try:
+            from . import cloth
+            wp = cloth.worn_parts(c.model, c.spec, worn)
+            layers.append((wp["V"], wp["F"], _faces_colour(((c.spec.get("parts") or {}).get(worn[0]) or {}).get("color")), 0))
+        except Exception:
+            pass
     for g, R in c.results.items():
         layers.append((R["V"], R["F"], _faces_colour(c.g(g).get("color")), rank.get(g, 1)))
     Ps, Fs, Ss, Cs = [], [], [], []

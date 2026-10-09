@@ -1,0 +1,156 @@
+{
+ "about": "Crisp painted planes: sharp joint faces, small bevels, painted strata bands along the bedding, a pale top plane and cool shadowed foot; wood with bold painted streaks",
+ "colour": {
+  "saturation": 1.2,
+  "value": 1.1
+ },
+ "rock": {
+  "form": {
+   "bevel": 0.012,
+   "top_round": 0.5,
+   "faces": [
+    5,
+    7
+   ],
+   "jitter": 22.0,
+   "chips": [
+    3,
+    5
+   ],
+   "broken": [
+    1,
+    2
+   ],
+   "break": [
+    0.25,
+    0.45
+   ],
+   "lumps": 0.004,
+   "beds": [
+    1,
+    2
+   ],
+   "bedded": 1.0,
+   "dip": [
+    12.0,
+    40.0
+   ]
+  },
+  "paint": {
+   "lichen": 0.25,
+   "lichen_size": 0.11,
+   "lichen_colors": [
+    [
+     0.6,
+     0.66,
+     0.48
+    ],
+    [
+     0.64,
+     0.68,
+     0.52
+    ],
+    [
+     0.72,
+     0.62,
+     0.32
+    ]
+   ],
+   "streaks": 0.0,
+   "foot_tint": 0.25,
+   "tone": 0.05,
+   "face_tone": 0.16,
+   "speckle": 0.0,
+   "edge_light": 0.2,
+   "cavity": 0.2,
+   "bands": 0.3,
+   "band_thick": [
+    0.03,
+    0.14
+   ],
+   "top": 0.12,
+   "top_color": [
+    0.62,
+    0.66,
+    0.42
+   ],
+   "gradient": 0.3,
+   "top_light": 0.22,
+   "grain": 0.0,
+   "cracks": 0.002,
+   "crack_size": 0.4,
+   "roughness": 0.85,
+   "normals": 22.0
+  }
+ },
+ "leaf": {
+  "form": {
+   "cards": [
+    30,
+    36
+   ],
+   "card": [
+    0.34,
+    0.5
+   ],
+   "join": 0.07
+  },
+  "paint": {
+   "leaf_size": 0.09,
+   "leaf_tone": 0.3,
+   "leaf_gap": 0.35,
+   "leaf_bump": 0.0,
+   "steps": 3,
+   "gradient": 0.45,
+   "top_light": 0.25,
+   "cavity": 0.3,
+   "spray": {
+    "leaves": [
+     6,
+     9
+    ],
+    "leaf": [
+     0.11,
+     0.15
+    ],
+    "round": 0.5,
+    "tones": 0.3,
+    "outline": 0.0,
+    "midrib": 0.0
+   }
+  }
+ },
+ "litter": {
+  "form": {
+   "leaves": [
+    40,
+    60
+   ],
+   "leaf": [
+    0.07,
+    0.11
+   ],
+   "round": 0.5,
+   "tones": 0.3,
+   "steps": 3,
+   "bits": [
+    0,
+    8
+   ],
+   "shadow": 0.35
+  }
+ },
+ "wood": {
+  "paint": {
+   "streak": 0.38,
+   "streak_size": [
+    0.4,
+    0.02
+   ],
+   "speckle": 0.0,
+   "edge_light": 0.2,
+   "gradient": 0.25,
+   "grooves": 0.001
+  }
+ }
+}

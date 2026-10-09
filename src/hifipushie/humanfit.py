@@ -485,7 +485,21 @@ def nudge(base: dict, landmark: str | int, move=None, to=None, radius: float = 0
            "by_sliders_mm": round(float(np.linalg.norm(mv - rest)) * 1000, 2), "by_correction_mm": round(corr * 1000, 2),
            "plausibility": plausibility(cur), "side_effects": side_effects(st0, st1, set(), near=L0[[i] + ([mir] if mir is not None else [])]),
            "integrity": integrity(cur, st1, st0)}
+    asked = float(np.linalg.norm(mv))
+    if not force and (corr > NUDGE_CORR * float(radius) or asked > NUDGE_MAX):
+        # size guards of its own: a Gaussian bump taller than about a third of its radius is a knob on the head, and
+        # one landmark moved centimetres with every other held is not a nudge, whatever the edge lengths say
+        # (integrity passes a 3 cm chin drop once slivers stopped counting)
+        why = (f"a {asked * 1000:.0f} mm move of one landmark with the rest held (limit {NUDGE_MAX * 1000:.0f} mm)" if asked > NUDGE_MAX else
+               f"a correction bump of {corr * 1000:.1f} mm, taller than {NUDGE_CORR:.2f} x its radius ({radius * 1000:.0f} mm): a knob, not a feature")
+        rep["refused"] = (f"not returned (the input is): {why}. The sliders reach {rep['by_sliders_mm']} mm. Ask for less, use a measure "
+                          "(solve) or a base.head.shape control, or force=True.")
+        return base, rep
     return _guarded(base, cur, rep, force)
+
+
+NUDGE_CORR = 0.35  # a nudge's correction layer (push_more) may be at most this share of its radius, unless forced
+NUDGE_MAX = 0.012  # m: the largest move of one landmark that is still a nudge, unless forced
 
 
 def side_effects(st0: dict, st1: dict, asked: set, near=None) -> dict:
@@ -584,6 +598,9 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
             # an EDIT's folds: faces that turned over against the state before it
             np_ = fn(Pp)
             new = (n1 * np_).sum(1) < 0
+            # (slivers don't count: see SLIVER)
+            big = np.maximum(np.linalg.norm(P[F] - P[np.roll(F, 1, 1)], axis=2).max(1), np.linalg.norm(Pp[F] - Pp[np.roll(F, 1, 1)], axis=2).max(1)) >= SLIVER
+            new &= big
             num["folded_faces"] = int(new.sum())
             if new.sum() >= FOLD_LIMIT:
                 broken.append(f"{int(new.sum())} faces folded over by this change ({where_(new)})")
@@ -612,7 +629,7 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
                 continue
             lo, hi = float(r[sel].min()), float(np.percentile(r[sel], 99.5))
             num["stretch"][k] = [round(lo, 2), round(hi, 2)]
-            past = sel & ((r > 3.0) | (r < 0.25))
+            past = sel & (((r > 3.0) & (l1 >= SLIVER)) | ((r < 0.25) & (l0 >= SLIVER_SQUEEZE)))
             if rp is not None:
                 # judged against the INPUT: an edge past the limit counts only if this edit made it worse by
                 # GUARD_WORSE (v23's lip corners: a 1.7 mm edge already squeezed to 0.55 mm on the plain head), or
@@ -621,7 +638,7 @@ def integrity(base: dict, st: dict | None = None, prev: dict | None = None) -> d
                 # under a face widened 10 mm two cm away: the mouth's re-solved closure, below the mesh's own noise
                 moved = np.abs(l1 - lp) >= GUARD_MM
                 worse = ((r < rp * (1 - GUARD_WORSE)) & (r < 1) | (r > rp * (1 + GUARD_WORSE)) & (r > 1)) & moved
-                own = (r / np.maximum(rp, 1e-9) > 3.0) | (r / np.maximum(rp, 1e-9) < 0.25)
+                own = ((r / np.maximum(rp, 1e-9) > 3.0) & (l1 >= SLIVER)) | ((r / np.maximum(rp, 1e-9) < 0.25) & (lp >= SLIVER_SQUEEZE))
                 past = (past & worse) | (sel & own)
             if past.any():
                 bl, bh = float(r[past].min()), float(r[past].max())
@@ -679,6 +696,10 @@ def _guarded(base: dict, cur: dict, rep: dict, force: bool) -> tuple:
     return base, rep
 
 
+SLIVER = 0.0015  # m: an edge (a face's longest edge) shorter than this before AND after is a sliver: its stretch ratio
+# and its turning over mean nothing. Plain sigma-1 identities (the study's truth heads) read "lids BROKEN x3.4" on
+# 0.25 -> 0.9 mm lid edges and "40 faces folded" on sub-mm lid faces, and a correct fit was refused for it.
+SLIVER_SQUEEZE = 0.0011  # m: a squeezed edge counts when it was at least this long (a stretched one when it ends >= SLIVER)
 GUARD_MM = 0.0001  # m: an edge's length change under this is not a change (integrity against the input)
 GUARD_WORSE = 0.08  # a region broken in the input too counts as broken BY the edit when its stretch got this much worse
 

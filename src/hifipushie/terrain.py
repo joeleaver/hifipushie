@@ -292,6 +292,7 @@ class Terrain:
         self.zones = dict(spec.get("zones") or {})
         self.lines: dict[str, Line] = {}
         self.lakes: dict[str, dict] = {}
+        self.dams: dict[str, np.ndarray] = {}  # per dammed lake: the cells its embankment raised
         self.sites: dict[str, dict] = {}
         self.routes: dict[str, Line] = {}
         self.walls: dict[str, dict] = {}
@@ -1155,13 +1156,19 @@ class Terrain:
             # downhill side only ("downhill": a farm pond); uphill the dug bank is the shore. (A ring raised on the dug
             # ground left an uphill rim; a separate berm below the pond left a trough and spilled at its ends)
             crest = level + float(lf.get("freeboard", 1.0 if dam == "downhill" else 1.5))
-            top = float(lf.get("crest_width", max(3.0, 0.1 * r)))
+            # (a crest at least 3 cells wide: at 1.6 cells the later smoothing left one cell with 0.8 m of freeboard)
+            top = float(lf.get("crest_width", max(3.0, 0.1 * r, 3 * self.cell)))
             rise = crest - (level - 0.3)
             d_in = r + 2.0 * rise
-            bank = np.where(d < r, -np.inf, np.where(d < d_in, level - 0.3 + (d - r) / 2.0,
-                                                     np.where(d < d_in + top, crest, crest - (d - d_in - top) / 2.5)))
+            # (the lake's side runs on down at 1:2 under the water to the ground: starting at the water's edge, on a
+            # slope the bank stood as a wall as tall as the fall across the lake, 12 m at 60 deg on the island's pond,
+            # which the tile export took for a cliff)
+            bank = np.where(d < r, level - 0.3 - (r - d) / 2.0,
+                            np.where(d < d_in, level - 0.3 + (d - r) / 2.0,
+                                     np.where(d < d_in + top, crest, crest - (d - d_in - top) / 2.5)))
             low = self._smooth(before, 2 * self.cell) < crest
             fill = np.where(low & (true_d < 3 * r), np.minimum(bank, crest), -np.inf)
+            self.dams[name] = fill > self.H + 0.05
             self.H = np.maximum(self.H, fill)
         # dam false: a natural lake, holding only what the ground holds (the report says if it leaks)
         self.lakes[name] = {"xy": xy.tolist(), "level": level, "r": r, "id": len(self.lakes) + 1,
@@ -1278,6 +1285,57 @@ class Terrain:
         return (f"; held by a {dm['kind']} across the valley (crest ~{crest - lk['level']:+.1f} m over the water, "
                 f"spillway lip {lip - lk['level']:+.1f} m at [{sp[0]:.0f}, {sp[1]:.0f}]); the water runs {up:.0f} m up "
                 f"the valley from the lake's centre; the floor below the dam is {lk['level'] - below:.0f} m lower")
+
+    def _bank_report(self, name, lk):
+        """A dammed lake's embankment as built (measured): how deep the water stands against it, its lowest crest over
+        the water, the crest's width; warnings when the lake stands on a slope or the bank is too slight to hold."""
+        m = self.dams.get(name)
+        if m is None or not m.any() or not lk.get("area"):
+            return ""
+        lf = (self.spec.get("landforms") or {}).get(name) or {}
+        level = lk["level"]
+        wet = self.lake_id == lk["id"]
+        by = ndimage.binary_dilation(m, iterations=2) & wet
+        deep = float((level - self.H[by]).max()) if by.any() else 0.0
+        d = np.hypot(self.X - lk["xy"][0], self.Y - lk["xy"][1])
+        near = wet & (d < max(lk["r"] / 3, 2 * self.cell))
+
+        def spilt(f):  # the water raised f m: does it leave the lake (past its banks' own widening)?
+            lab, _ = ndimage.label(self.H < level + f)
+            ids = np.unique(lab[near if near.any() else wet])
+            w = np.isin(lab, ids[ids > 0])
+            room = ndimage.binary_dilation(wet, iterations=int(math.ceil(3.0 * f / self.cell)) + 2)
+            return bool((w & ~room).any())
+        free = 0.0
+        for f in np.arange(0.25, 4.01, 0.25):
+            if spilt(float(f)):
+                break
+            free = float(f)
+        # how thick the ground that holds the water is, half the freeboard up: from the water to lower ground outside
+        hold = level + 0.5 * max(free, 0.25)
+        lab, _ = ndimage.label(self.H < hold)
+        ids = np.unique(lab[wet])
+        inner = np.isin(lab, ids[ids > 0])
+        outer = (self.H < hold) & ~inner
+        dist = ndimage.distance_transform_edt(~outer) * self.cell if outer.any() else np.full(self.H.shape, np.inf)
+        edge = ndimage.binary_dilation(inner) & ~inner
+        width = float(dist[edge].min()) if edge.any() else float("inf")
+        asked = float(lf.get("depth", 10))
+
+        def warn(w):
+            if w not in self.warnings:
+                self.warnings.append(w)
+        if deep > max(2 * asked, asked + 3):
+            warn(f"lake {name!r} stands on a slope: the water is {deep:.0f} m deep against its dam where depth {asked:g} "
+                 f"was asked. Put it on flatter ground, make it smaller, or lower its level")
+        if free < 1.0:
+            warn(f"lake {name!r}: raised {free + 0.25:.2f} m its water leaves over the dam (freeboard under {free + 0.25:.2f} "
+                 f"m: a coarse mesh of the ground can dip under the water): raise \"freeboard\"")
+        if width < 3 * self.cell:
+            warn(f"lake {name!r}: its dam is only {width:.1f} m thick half the freeboard over the water, under 3 cells "
+                 f"of {self.cell:g} m: set \"crest_width\" or a finer cell")
+        return (f"; dammed: {deep:.0f} m deep at the dam (asked {asked:g}), freeboard {free:.2f} m+, the dam "
+                f"{width:.0f} m thick at {hold - level:+.2f} m")
 
     def _lf_fan(self, name, lf):
         """A debris cone where a steep stream meets flatter ground: spreads downslope from the stream's mouth."""
@@ -1543,7 +1601,7 @@ class Terrain:
                 continue
             out.append(f"lake {name}: level {lk['level']:.0f} m, {lk.get('area', 0) / 1e4:.1f} ha, "
                        f"deepest {lk.get('depth', 0):.0f} m, lowest shore {lk.get('freeboard', 0):+.1f} m above the water"
-                       + self._dam_report(name, lk))
+                       + self._dam_report(name, lk) + self._bank_report(name, lk))
         out += design.report(self)
         if self.spec.get("caves"):  # (walked now: the tile export takes an hour on a big level)
             from . import terrain_caves

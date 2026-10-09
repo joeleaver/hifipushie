@@ -35,6 +35,23 @@ LIGHT = {"even": "Soft, even, frontal light (a large softbox or overcast dayligh
                    "the face's planes, hollows and folds shown by shading; everything else as the other shots."}
 
 
+# what each shot is worth to the FIT, measured on heads of known shape (CLAUDE.md "Reference modelling study"):
+# 3D error after a MAP fit of the detector's points, front picture alone = 2.48 mm on the face
+ORDER = ["front", "profile_left", "front_raking", "three_quarter_left", "three_quarter_raking"]
+WORTH = {"front": "ESSENTIAL: with a character read it is worth as much as front + three-quarter (2.19 vs 2.21 mm). Neutral "
+                  "expression and a long lens matter more than a second view: an expression can't be solved out afterwards",
+         "profile_left": "THE second view that pays: chin 3.4 -> 2.5 mm, nose 2.7 -> 2.0, mid-line profile 2.6 -> 1.9. The face "
+                         "detector does not find profiles: its points are clicked (nasion, nose tip, base, lips, chin) and "
+                         "its contour traced, so the background must be plain and the hair off the forehead",
+         "three_quarter_left": "optional for the fit: a three-quarter adds NOTHING to the detector fit (2.50 vs 2.48 mm; a second "
+                               "one 2.47). Worth having to JUDGE the result and to trace the jaw line and far contour",
+         "three_quarter_raking": "for judging planes and hollows by eye; not used by the fit",
+         "front_raking": "for the shading rows (planes, hollows, folds); not used by the identity fit"}
+STUDY = ("priority (measured): 1 a neutral long-lens FRONT, 2 a TRUE PROFILE, 3 a character read in words (worth more than any "
+         "third picture), 4 a three-quarter for judging. Every picture of one set must be the same head: a view that "
+         "disagrees with the others by more than 5 mm is dropped by the fit.")
+
+
 def _items(stages=None, views=None) -> list:
     from . import likeness
     out = []
@@ -101,9 +118,14 @@ def reference_brief(kind: str = "head", subject: str = "") -> dict:
              "line": "Full-body left side view, standing straight, arms relaxed, head to feet."}]
     for s in shots:
         s["prompt"] = f"{common} {s['line']} {LIGHT[s['light']]}"
+        s["worth"] = WORTH.get(s["id"], "")
+    shots.sort(key=lambda s: ORDER.index(s["id"]) if s["id"] in ORDER else len(ORDER))
     text = [f"REFERENCE BRIEF ({kind}){sub}: shoot or generate these; optional ones help but aren't needed.",
             f"common to every shot: {common}", f"avoid: {NEGATIVE}"]
+    text.append(STUDY)
     for s in shots:
+        if s["worth"]:
+            text.append(f"  [{s['worth']}]")
         text.append(f"- {s['id']}{' (optional)' if s.get('optional') else ''}: yaw {s['view']['yaw']}, {s['view']['framing']}, "
                     f"{s['light']} light; serves {len(s['purpose'])} checklist items; must show: " + "; ".join(s["must_show"]))
         text.append(f"    prompt: {s['prompt']}")

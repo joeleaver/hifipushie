@@ -239,6 +239,77 @@ def render_views(name: str, out: str, base: dict | None = None, px: int = 520, l
     return {"sheet": out, "views": names}
 
 
+PROJECT_TOL = 0.004   # m: a point counts as seen by the reference's camera when it lies this near that camera's own depth
+PROJECT_GRAZE = 0.2   # and its normal faces that camera by at least this (grazing skin smears the picture)
+
+
+def project_reference(name: str, out: str, base: dict | None = None, view: int = 0, px: int = 520) -> dict:
+    """The fastest honest judge of a head's GEOMETRY: the reference picture projected onto the model through its
+    fitted camera as an unlit texture, then looked at from the other views (reference cameras, both profiles, the other
+    three-quarter, low angle). Where the likeness holds when turned, the geometry carries it; where the picture
+    smears, doubles or slides (the nose's side, the jaw's edge, the chin in profile) the geometry is wrong there.
+    Skin the reference's camera does not see (hidden, or grazing) is drawn as dim clay. No light is added: the
+    picture's own shading is on the surface, so a turned view is only fair near the reference's own direction and
+    for outlines / proportions. Returns {"sheet", "views", "seen": share of each panel's head pixels that carry the
+    picture}."""
+    from PIL import Image, ImageDraw
+    from . import humanfit, likeness as lk, store
+    base = base or store.load(name)["base"]
+    refs = lk._refs(name)
+    src_v, src_cam = refs["views"][view], refs["cameras"][view]
+    photo = np.asarray(Image.open(src_v["image"]).convert("RGB"), float)
+    mesh = lk.model_mesh(base)
+    w, h = src_cam["size"]
+    sbox = (0.0, 0.0, float(w), float(h))
+    spx = int(min(max(w, h), 1600))
+    _, ks, sp = lk.render(mesh, src_cam, sbox, px=spx, passes=True)
+    zs = sp["zb"]
+    Rs = humanfit._cam_rot(src_cam)
+    cells, names, seen = [], [], {}
+    for nm, cam, box in _views(name):
+        im, k, ps = lk.render(mesh, cam, box, px=px, passes=True)
+        zb, nrm = ps["zb"], ps["nrm"]
+        H, W = zb.shape
+        on = np.isfinite(zb)
+        ii, jj = np.nonzero(on)
+        z = zb[ii, jj]
+        u, v = box[0] + (jj + 0.5) / k, box[1] + (ii + 0.5) / k
+        cw, ch = cam["size"]
+        Xc = np.c_[(u - cw / 2) / cam["f"] * z, (v - ch / 2) / cam["f"] * z, z]
+        Rc = humanfit._cam_rot(cam)
+        X = (Xc - np.asarray(cam["t"], float)) @ Rc + np.asarray(cam["centre"], float)
+        Xs = (X - np.asarray(src_cam["centre"], float)) @ Rs.T + np.asarray(src_cam["t"], float)
+        us, vs = src_cam["f"] * Xs[:, 0] / Xs[:, 2] + w / 2, src_cam["f"] * Xs[:, 1] / Xs[:, 2] + h / 2
+        a, b = np.round(vs * ks - 0.5).astype(int), np.round(us * ks - 0.5).astype(int)
+        inside = (a >= 0) & (a < zs.shape[0]) & (b >= 0) & (b < zs.shape[1]) & (us >= 0) & (us < w - 1) & (vs >= 0) & (vs < h - 1)
+        vis = np.zeros(len(z), bool)
+        vis[inside] = Xs[inside, 2] < zs[a[inside], b[inside]] + PROJECT_TOL
+        nw = nrm[ii, jj] @ Rc                      # the surface normal in world axes
+        to_src = -(Xs / np.linalg.norm(Xs, axis=1, keepdims=True)) @ Rs
+        vis &= (nw * to_src).sum(1) > PROJECT_GRAZE
+        img = np.asarray(im.convert("RGB"), float) * 0.45 + 40.0
+        img[~on] = 238.0
+        x0, y0 = np.floor(us[vis]).astype(int), np.floor(vs[vis]).astype(int)
+        fx, fy = (us[vis] - x0)[:, None], (vs[vis] - y0)[:, None]
+        col = (photo[y0, x0] * (1 - fx) * (1 - fy) + photo[y0, x0 + 1] * fx * (1 - fy)
+               + photo[y0 + 1, x0] * (1 - fx) * fy + photo[y0 + 1, x0 + 1] * fx * fy)
+        img[ii[vis], jj[vis]] = col
+        seen[nm] = round(float(vis.mean()) if len(vis) else 0.0, 2)
+        c = Image.new("RGB", (px, px + 20), (238, 238, 238))
+        c.paste(Image.fromarray(img.astype(np.uint8)), ((px - W) // 2, 20 + (px - H) // 2))
+        ImageDraw.Draw(c).text((6, 4), f"{nm}  (picture on {int(100 * seen[nm])}% of the head)", fill=(20, 20, 20))
+        cells.append(c)
+        names.append(nm)
+    cols = 3
+    rows = (len(cells) + cols - 1) // cols
+    S = Image.new("RGB", (cols * px + (cols - 1) * 6, rows * (px + 20) + (rows - 1) * 6), (24, 24, 28))
+    for i, c in enumerate(cells):
+        S.paste(c, ((i % cols) * (px + 6), (i // cols) * (px + 26)))
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    S.save(out)
+    return {"sheet": out, "views": names, "seen": seen}
+
+
 def diff(name: str, tag: str, ref_from: str | None = None) -> str:
     """The reference's read against a model's blind reads, view by view: what the reference has that a view of the
     model lacks (or contradicts: an `opposite` descriptor read instead), and what the model shows that the reference

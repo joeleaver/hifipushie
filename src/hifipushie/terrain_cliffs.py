@@ -94,6 +94,21 @@ class Region:
             st = np.maximum(st, np.clip(base.steep_at(X.ravel(), Y.ravel()).reshape(X.shape) * 4, 0, 1))
         if getattr(base, "fall", None) is not None:  # (and where fallen blocks lie: the heightmap can't hold them)
             st = np.maximum(st, np.clip(base.fall_at(X.ravel(), Y.ravel()).reshape(X.shape) * 4, 0, 1))
+        # a dammed lake's embankment is ground, not a cliff: taken for one (a steep lake-side face), the heightmap was
+        # pushed 5-9 m down its face and its 2 m crest eroded away with it, so the dam stood only in the cliff meshes
+        # and the tile heightmaps held no lake (pushieworld note 106: flooded, 134,000 m2 for 3,300)
+        dams = getattr(T, "dams", None) or {}
+        if dams:
+            dm = np.zeros(base.H.shape)
+            for a in dams.values():
+                if np.shape(a) == dm.shape:
+                    dm = np.maximum(dm, a)
+            if dm.any():
+                k_ = max(1, int(math.ceil((m + self.push) / base.c)))
+                dm = ndimage.gaussian_filter(ndimage.maximum_filter(dm, size=2 * k_ + 1), 1.0)
+                w = ndimage.map_coordinates(dm, [(Y.ravel() - base.y0) / base.c, (X.ravel() - base.x0) / base.c],
+                                            order=1, mode="nearest").reshape(X.shape)
+                st = st * (1.0 - np.clip(w, 0, 1))
         self.steep = self._grow(st, m)
         self.S = self.steep.copy()
         # how far the heightmap is pushed in: the full push under cliffs; round an opening only a little (the cliff
@@ -854,3 +869,68 @@ def lifted(cf: CliffField, P, N):
     n = N[k] * (1 - w[k, None]) + g * w[k, None]
     N[k] = n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
     return P, N
+
+
+LAKE_AREA = 1.5  # a lake flooded on the tile heightmaps may cover this x its designed area (or 1 / this) at most
+
+
+def lake_check(out: Path, M: dict) -> dict:
+    """Each lake of the manifest flooded on the written tile heightmaps to its level, from its outline: the water's
+    area against the designed lake. A dam the heightmaps lost (taken for a cliff and pushed away) floods the valley
+    below (pushieworld note 106: 134,000 m2 for 3,300)."""
+    from skimage.draw import polygon as _poly
+    failures, summary = [], {}
+    lakes = M.get("lakes") or {}
+    tiles = {(e["i"], e["j"]): e for e in M.get("ground", []) if e.get("heightmap")}
+    if not lakes or not tiles:
+        return {"summary": summary, "failures": failures}
+    T = float(M["tile_size"])
+    e0 = next(iter(tiles.values()))
+    n = int(np.load(out / e0["heightmap"], mmap_mode="r").shape[0])
+    d = T / (n - 1)
+    ox, oy = e0["min"][0] - e0["i"] * T, e0["min"][1] - e0["j"] * T
+    for name, lk in lakes.items():
+        rings = lk.get("outline") or []
+        if not rings:
+            continue
+        pts = np.array(rings[0])
+        pad = max(3.0 * float(np.ptp(pts, axis=0).max()), 60.0)
+        lo, hi = pts.min(0) - pad, pts.max(0) + pad
+        i0, i1 = int(np.floor((lo[0] - ox) / T)), int(np.floor((hi[0] - ox) / T))
+        j0, j1 = int(np.floor((lo[1] - oy) / T)), int(np.floor((hi[1] - oy) / T))
+        ni, nj = i1 - i0 + 1, j1 - j0 + 1
+        Hm = np.full((nj * (n - 1) + 1, ni * (n - 1) + 1), np.nan)  # rows south -> north
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                if (i, j) in tiles:
+                    h = np.load(out / tiles[i, j]["heightmap"])[::-1]  # (files are north row first)
+                    Hm[(j - j0) * (n - 1):(j - j0) * (n - 1) + n, (i - i0) * (n - 1):(i - i0) * (n - 1) + n] = h
+        x0, y0 = ox + i0 * T, oy + j0 * T
+        rr, cc = _poly((pts[:, 1] - y0) / d, (pts[:, 0] - x0) / d, Hm.shape)
+        inside = np.zeros(Hm.shape, bool)
+        inside[rr, cc] = True
+        if np.isnan(Hm[inside]).any() or not inside.any():
+            summary[name] = {"skipped": "its tiles are not all in this export"}
+            continue
+        level = float(lk["level"])
+        below = Hm < level
+        lab, _ = ndimage.label(below)
+        ids = np.unique(lab[inside & below])
+        wet = np.isin(lab, ids[ids > 0])
+        area = float(wet.sum()) * d * d
+        # (water reaching tiles the export doesn't hold, or the window's edge: at least this much, and leaking)
+        gap = ndimage.binary_dilation(np.isnan(Hm))
+        leaks = bool((wet & gap).any() or wet[[0, -1], :].any() or wet[:, [0, -1]].any())
+        want = float(lk["area_m2"])
+        ratio = area / max(want, 1e-6)
+        summary[name] = {"level": level, "designed_m2": round(want), "flooded_m2": round(area), "ratio": round(ratio, 2),
+                         "leaks": leaks}
+        if ratio > LAKE_AREA or leaks:
+            failures.append(f"lake {name}: flooded to its level {level:.2f} m on the tile heightmaps the water covers "
+                            f"{area:,.0f} m2{' and runs on out of the area checked' if leaks else ''} where the lake is "
+                            f"{want:,.0f} m2 (limit x{LAKE_AREA}): the heightmaps don't hold it (its dam or bank is "
+                            f"missing from them)")
+        elif ratio < 1.0 / LAKE_AREA:
+            failures.append(f"lake {name}: the tile heightmaps hold only {area:,.0f} m2 of water under its level "
+                            f"{level:.2f} m where the lake is {want:,.0f} m2: its bed stands too high in them")
+    return {"summary": summary, "failures": failures}

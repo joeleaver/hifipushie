@@ -308,5 +308,6 @@
   "dab_length": 1.6,
   "dab_size": 0.45,
   "dab_flat": 0.6
- }
+ },
+ "sward": {"width": 1.1, "density": 0.8, "height": 1.15, "tones": 3, "tuft": 3, "tuft_fan": 14, "bend": 1.3, "tip_light": 1.25, "dry": 0.3, "drift": 1.4}
 }

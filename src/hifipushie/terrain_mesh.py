@@ -3615,6 +3615,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                      "the heightmap's grid with the hole cells left out). A tile's collision is decimated further "
                      "when its LOD came out over collision_budget (tiles[].collision_triangles)",
         "sea_level": _sea(T),
+        "lakes": lake_outlines(T),
         "materials": {
             "layers": [{"name": nm, **mats.layer_ref(nm), "weights": f"_WEIGHTS{g}", "channel": c,
                         **({"textures": layer_tex[nm]} if nm in layer_tex else {}),
@@ -3763,6 +3764,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                                  tile_keys={ij: fkey[ij][0] for ij in tiles})
             check["summary"]["ground"] = gc["summary"]
             check["failures"] += gc["failures"]
+            with prof.stage("check: lakes (parent)"):
+                lc = terrain_cliffs.lake_check(out, manifest)
+            check["summary"]["lakes"] = lc["summary"]
+            check["failures"] += lc["failures"]
         # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
         # colour, and texel density jumping between neighbouring tiles (sharp rock beside soft)
         from . import terrain_seams
@@ -4805,6 +4810,30 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
     return {"summary": summary, "failures": failures}
 
 
+def lake_outlines(T) -> dict:
+    """Per lake (not the sea): its level, centre, area and the water's outline as closed rings of [x, y] (m), for an
+    engine's water system. The tile heightmaps hold each lake under its level (the export's lake check floods them)."""
+    from skimage import measure
+    out = {}
+    lid = getattr(T, "lake_id", None)
+    for name, lk in (getattr(T, "lakes", None) or {}).items():
+        if lk.get("sea") or lid is None or not lk.get("area"):
+            continue
+        m = np.pad((lid == lk["id"]).astype(float), 1)
+        rings = []
+        for c in measure.find_contours(m, 0.5):
+            if len(c) < 8:
+                continue
+            step = max(1, len(c) // 400)
+            xy = np.c_[T.xs[0] + (c[::step, 1] - 1) * T.cell, T.ys[0] + (c[::step, 0] - 1) * T.cell]
+            rings.append(np.round(xy, 2).tolist())
+        rings.sort(key=len, reverse=True)
+        out[name] = {"level": round(float(lk["level"]), 3), "at": [round(float(v), 2) for v in lk["xy"]],
+                     "area_m2": round(float(lk["area"]), 1), "depth_m": round(float(lk.get("depth", 0)), 2),
+                     "outline": rings}
+    return out
+
+
 def read_glb_images(path, n=None):
     """The images embedded in a GLB, decoded (float arrays 0..1, rows top first), in texture order (the first `n`)."""
     import io
@@ -5179,7 +5208,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None,
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None, extra=None,
                  styles_bump=False):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
@@ -5342,7 +5371,11 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                         rv.append([[float(T.xs[a_]) - 0.5 * c_, y_, lv_ - 0.02, 0.5 * c_],
                                    [float(T.xs[b_]) + 0.5 * c_, y_, lv_ - 0.02, 0.5 * c_]])
             job["rivers"] = rv
-        notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+        if job.get("clutter"):
+            notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+    if extra:  # GLBs stood in the scene: [{"glb", "at": [x, y, z], "yaw": deg, "scale", "squash", "tint": linear rgb}] (clutter kit
+        # assets beside the cliffs they should belong to; the tint is the per-instance colour an engine multiplies in)
+        job["extra"] = extra
     GD = M.get("ground_detail")
     if GD and textured and not channel and grass:  # the turf's tiling detail over the baked maps (as an engine draws it)
         job["grass"] = [{"albedo": str((out / g["albedo"]).resolve()), "normal": str((out / g["normal"]).resolve()),

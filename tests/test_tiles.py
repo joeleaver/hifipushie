@@ -297,6 +297,66 @@ def test_sunk_edge_reads_as_ground(cf, G):
     return worst_raw, worst
 
 
+def test_dam_stays_in_the_heightmap():
+    """A dammed lake on a slope: its embankment is ground, so the tile heightmap (the pushed ground) holds the lake.
+    Taken for a cliff, the heightmap was pushed down the dam's face and its crest eroded away: flooded to the lake's
+    level the heightmaps held 134,000 m2 for a 3,300 m2 pond (pushieworld note 106)."""
+    from scipy import ndimage
+    spec = json.loads(json.dumps(SPEC))
+    spec["landforms"] = {"pond": {"type": "lake", "at": [64, 96], "radius": 10, "depth": 2, "dam": True}}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    lk = T.lakes["pond"]
+    assert lk["area"] > 100 and T.dams["pond"].any(), (lk, T.dams["pond"].sum())
+    rep = "\n".join(T.report()) if isinstance(T.report(), list) else str(T.report())
+    assert "dammed:" in rep, "the report says nothing of the dam"
+    lakes = tm.lake_outlines(T)
+    assert len(lakes["pond"]["outline"][0]) >= 8 and abs(lakes["pond"]["level"] - lk["level"]) < 1e-3
+    cfg, G, region, cf, vols = _shell(T)
+    # the pushed heightmap on its lattice, flooded to the level from the lake's centre
+    xs = G.origin[0] + np.arange(region.nx) * region.d
+    ys = G.origin[1] + np.arange(region.ny) * region.d
+    X, Y = np.meshgrid(xs, ys)
+    Hm = region.height(X.ravel(), Y.ravel()).reshape(X.shape)
+    lab, _ = ndimage.label(Hm < lk["level"])
+    k = lab[int(round((96 - ys[0]) / region.d)), int(round((64 - xs[0]) / region.d))]
+    assert k > 0, "the heightmap is dry at the lake's centre"
+    area = float((lab == k).sum()) * region.d ** 2
+    assert area < terrain_cliffs.LAKE_AREA * lk["area"], f"the heightmap holds {area:.0f} m2 for a {lk['area']:.0f} m2 lake"
+    on = T.dams["pond"]
+    S = region.s(T.X[on], T.Y[on])
+    assert S.max() < 0.05, f"the dam is in the cliff region (S up to {S.max():.2f})"
+    return area, lk["area"]
+
+
+def test_beach_shelves_on_to_the_sea_floor():
+    """Offshore of a beach the sand shelves on down to the sea's floor. Its profile was held 3 beach widths out
+    (-8.4 m): a dead-flat shelf to the frame's edge with straight one-step sides, a pale rectangle in depth-coloured
+    water (pushieworld note 107). The report's sea-floor measure names such shelves and steps."""
+    from hifipushie import terrain_sea
+    spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [384, 384]], "cell": 1.92,
+            "tilt": {"down": "south", "grade": 0.12},
+            "sea": {"level": 0, "depth": 30, "shore": "rocky", "beaches": {"strand": {"at": [192, 120], "length": 160}}},
+            "cover": [{"type": "meadow", "in": "everywhere"}]}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    sea = T.H < -1.5
+    assert sea.sum() * T.cell ** 2 > 2e4, "the test terrain has no sea"
+    held = float((np.abs(T.H[sea] + 8.4) < 0.05).mean())
+    sb = terrain_sea.seabed(T)
+    assert held < 0.02 and not sb["plateaus"] and not sb["steps"], (held, sb["warnings"])
+    # the measure sees a shelf when there is one
+    keep = T.H.copy()
+    T.H = np.where(sea & (T.H < -3), np.maximum(T.H, -4.0), T.H)
+    try:
+        assert terrain_sea.seabed(T)["plateaus"], "a flat shelf went unseen"
+    finally:
+        T.H = keep
+    return held
+
+
 def test_projected_normals_never_zero():
     """A field flat at the normal's stencil (a capped constant) still gives unit normals (zero ones are invalid glTF,
     and read as "normals differ by 90 deg" across a tile border)."""
@@ -353,6 +413,8 @@ if __name__ == "__main__":
     test_floating_pieces_dropped()
     test_region_edge_is_smooth()
     test_projected_normals_never_zero()
+    print("beach shelves on to the sea floor (cells held at -8.4 m: %.3f)" % test_beach_shelves_on_to_the_sea_floor())
+    print("dam stays in the heightmap (flooded %.0f m2, lake %.0f m2)" % test_dam_stays_in_the_heightmap())
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
     test_cover_named_by_type(T)

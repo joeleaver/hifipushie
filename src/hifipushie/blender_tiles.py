@@ -1055,6 +1055,43 @@ def run(job):
             rng = np.random.default_rng(len(rows))
             rows = np.c_[rows, rng.uniform(0.7, 1.3, len(rows)), rng.uniform(0, 360, len(rows)), np.ones(len(rows))]
         bt.clutter(kind, rows, job.get("sea"))
+    _tinted = {}
+    for it in job.get("extra") or []:  # GLBs stood in the scene (clutter kit assets), each with its instance tint
+        import math as _m
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=it["glb"])
+        obs = [o for o in bpy.data.objects if o not in before]
+        hold = bpy.data.objects.new("extra", None)
+        bpy.context.scene.collection.objects.link(hold)
+        for o in obs:
+            if o.parent is None or o.parent not in obs:
+                o.parent = hold
+        sc_ = float(it.get("scale", 1.0))
+        hold.location = it.get("at", [0, 0, 0])
+        hold.rotation_euler = (0, 0, _m.radians(float(it.get("yaw", 0.0))))
+        hold.scale = (sc_, sc_, sc_ * float(it.get("squash", 1.0)))
+        tint = it.get("tint")
+        if tint:
+            for o in obs:
+                if o.type != "MESH":
+                    continue
+                for si, m_ in enumerate(o.data.materials):
+                    key = (m_.name.split(".")[0], tuple(round(float(c), 4) for c in tint), it["glb"].rsplit("/", 2)[-2])
+                    if key not in _tinted:
+                        m2 = m_.copy()
+                        nt_ = m2.node_tree
+                        bs = next((n_ for n_ in nt_.nodes if n_.type == "BSDF_PRINCIPLED"), None)
+                        if bs is not None and bs.inputs["Base Color"].links:
+                            src = bs.inputs["Base Color"].links[0].from_socket
+                            mx = nt_.nodes.new("ShaderNodeMix")
+                            mx.data_type = "RGBA"
+                            mx.blend_type = "MULTIPLY"
+                            mx.inputs[0].default_value = 1.0
+                            mx.inputs[7].default_value = (float(tint[0]), float(tint[1]), float(tint[2]), 1.0)
+                            nt_.links.new(src, mx.inputs[6])
+                            nt_.links.new(mx.outputs[2], bs.inputs["Base Color"])
+                        _tinted[key] = m2
+                    o.data.materials[si] = _tinted[key]
     if job.get("props"):  # the sites' props as stand-ins (scale cues: a basket, a tee pad, the lodge)
         pr = job["props"]
         bt.props(np.array([p_[:4] for p_ in pr], float), [p_[4] for p_ in pr])

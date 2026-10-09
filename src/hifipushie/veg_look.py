@@ -41,6 +41,55 @@ def ground_z(spec: dict, at) -> float:
     return float(-math.tan(math.radians(g["slope"])) * (np.asarray(at, float)[:2] @ t))
 
 
+HEAD_SIZE = 0.12   # a part no bigger than this x the plant's height (radius round its middle) ...
+HEAD_UP = 0.4      # ... whose middle stands over this x the height is a HEAD (a flower / seed head): compact and round
+WHOLE_DEG = 12.0   # a part kept whole on one groundcover card points one way from the foot within this (part_middles)
+
+
+def parts(V: np.ndarray, F: np.ndarray, H: float | None = None) -> dict:
+    """The mesh's connected parts (a blade, a flower head, a stalk): per vertex `lab`; per part `centre` (3D), `radius`
+    (farthest vertex from it), `plan` (farthest in plan), `head` (compact and high: HEAD_SIZE, HEAD_UP of `H`)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    V = np.asarray(V, float)
+    n = len(V)
+    F = np.asarray(F, np.int64).reshape(-1, 3)
+    e = np.r_[F[:, [0, 1]], F[:, [1, 2]]]
+    _, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n)), directed=False)
+    cnt = np.bincount(lab, minlength=lab.max() + 1)
+    C = np.stack([np.bincount(lab, V[:, k], len(cnt)) / cnt for k in range(3)], 1)
+    rad, plan = np.zeros(len(cnt)), np.zeros(len(cnt))
+    np.maximum.at(rad, lab, np.linalg.norm(V - C[lab], axis=1))
+    np.maximum.at(plan, lab, np.hypot(V[:, 0] - C[lab, 0], V[:, 1] - C[lab, 1]))
+    H = float(V[:, 2].max()) if H is None else H
+    return {"lab": lab, "centre": C, "radius": rad, "plan": plan, "head": (rad < HEAD_SIZE * H) & (C[:, 2] > HEAD_UP * H)}
+
+
+def part_middles(V: np.ndarray, F: np.ndarray, H: float | None = None) -> np.ndarray:
+    """Per vertex (x, y, flag) of the middle of its connected part, flag 1 = kept whole, 0 = cut by pixel (a part
+    spreading over much of the plant: a field-meshed crown), 2 = a head (parts()): a groundcover bake's sector cut
+    keeps whole parts on one card and draws heads on their own cards (blender_vegetation._pass_material)."""
+    V = np.asarray(V, float)
+    if not len(V):
+        return np.zeros((0, 3))
+    P = parts(V, F, H)
+    lab = P["lab"]
+    # whole = the part points one way from the foot (a blade, a leaf): its vertices away from the foot within WHOLE_DEG of
+    # its mean direction. A fan of blades joined at its root, or a field-meshed crown, is cut by pixel (its blades go to
+    # the cards they lean toward: kept whole, a pixar fan of six thin blades lay flat on one card as one broad blade)
+    r = np.hypot(V[:, 0], V[:, 1])
+    far = r > 0.2 * max(float(r.max()), 1e-6)
+    u = np.c_[V[:, 0], V[:, 1]] / np.maximum(r, 1e-9)[:, None]
+    m = np.zeros((lab.max() + 1, 2))
+    np.add.at(m, lab[far], u[far])
+    m /= np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-9)
+    dev = np.zeros(lab.max() + 1)
+    np.maximum.at(dev, lab[far], np.degrees(np.arccos(np.clip((u[far] * m[lab[far]]).sum(1), -1, 1))))
+    whole = dev < WHOLE_DEG
+    flag = np.where(P["head"], 2.0, whole.astype(float))
+    return np.c_[P["centre"][lab, :2], flag[lab]]
+
+
 def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None) -> tuple[dict, dict]:
     """A plant in a style (veg_style.dress): its drawn wood, flat bark, and the crown as one coloured closed mesh."""
     from . import veg_style
@@ -81,6 +130,10 @@ def _styled_job(tree: dict, st: dict, tmp: Path, tag: str, triangles: int | None
             from PIL import Image
             arrays["solid_uv"] = C["uv"]
             Image.fromarray(C["atlas"]["color"]).save(tmp / f"dabs{tag}.png")
+    Hp = float(max(arrays["V"][:, 2].max(), arrays["solid_V"][:, 2].max() if "solid_V" in arrays else 0.0))
+    arrays["cen"] = part_middles(arrays["V"], arrays["F"], Hp)
+    if "solid_V" in arrays:
+        arrays["solid_cen"] = part_middles(arrays["solid_V"], arrays["solid_F"], Hp)
     npz = tmp / f"plant{tag}.npz"
     np.savez(npz, **arrays)
     info = {"triangles": int(len(arrays["F"])), "twigs": 0, "foliage": "masses", "leaf_triangles": int(len(C["F"])) if C is not None else 0,

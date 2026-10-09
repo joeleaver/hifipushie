@@ -307,8 +307,12 @@ def guide(topic: str = "") -> str:
     what you weren't looking at: measure_human, fit_human (set measures, a solver finds the sliders), nudge_human
     (move a landmark), human_reference (match named points in reference images), with integrity and side-effect
     reports on every change.
+    topic="clutter": the small things a terrain is scattered with (boulders, river rocks, cobbles, slabs, driftwood,
+    bushes, litter, reeds) as game assets in five styles, with make_clutter, look_clutter and clutter_kit.
     topic="likeness": the facial-likeness checklist (forensic examiners' feature list, likeness artists' order,
     anthropometry): what to look at and measure on a reference, for the likeness and fit_likeness tools."""
+    if topic.strip().lower() == "clutter":
+        return (Path(__file__).with_name("clutter_guide.md")).read_text()
     if topic.strip().lower() == "likeness":
         return (Path(__file__).with_name("likeness_guide.md")).read_text()
     if topic.strip().lower() in ("human", "humans"):
@@ -2028,7 +2032,8 @@ def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: l
 
 @mcp.tool(structured_output=False)
 def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: list[str] | None = None,
-                    force: bool = False, save: bool = True, note: str = "", figure: bool = True):
+                    force: bool = False, save: bool = True, note: str = "", figure: bool = True,
+                    read: dict | str | None = None, method: str = "map", measure: bool = False):
     """Match a one-mesh human's FACE to reference images by named points: views = [{"image": path (optional, kept for
     the record), "size": [w, h] (pixels), "yaw": 0 front / 45 three-quarter from its left / 90 its left side (a hint),
     "points": {landmark: [u, v]}}] with u right, v down. One camera per view is fitted (pose + focal) and, with fit,
@@ -2036,14 +2041,46 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     the nudge_human landmarks, eye.L / eye.R (eyeball centres) or lm0..lm67 (the 68-point face convention, e.g. from
     a detector). The reply: reprojection error per view in px and mm with the three worst points named, INTEGRITY,
     what moved, the picture. Stored in <model>/human_refs.json with the fitted cameras. A single frontal image says
-    nothing about depth (nose projection, jaw depth stay as they were); the fit matches SHAPE at the points given."""
+    nothing about depth (nose projection, jaw depth stay as they were); the fit matches SHAPE at the points given.
+    method "map" (default; humanfit_map, the reference-modelling study): a view WITH its image is read by the face
+    detector (MediaPipe's 478 points, each used at its calibrated place on the head with its own noise); clicked
+    points (the named landmarks) count +-1.5 mm; the identity is pulled toward the population's mean by its own
+    statistics, so what the pictures don't show comes out as what usually goes with what they do. Points lm0..lm67
+    (a detector's 68) are ignored when the image is there. read = a CHARACTER READ as evidence, in macros and
+    population sigmas: {"jaw_square": 1.5, "chin_projection": 1, "cheek_fullness": 1, "nose_upturn": 1} (names:
+    humanmacro.MACROS; say what a person sees at a glance: it is worth more than a second picture). A profile needs
+    clicked points (the detector doesn't find profiles). The reply adds the head's strongest macros.
+    measure=True (method map): macros MEASURED on the front picture join the read as evidence (humanmeasure: face
+    length, jaw / chin / face widths, brow height, nose length ... regressed from the detector's points; each with
+    its own sigma; what you say in `read` wins). RENDERS ONLY: the regression is calibrated on rendered heads and not
+    validated on photographs; on the study's truth renders it replaced a said read in-model (face 2.17 -> 1.94 mm).
+    method "points" = the old least-squares on the given points alone (it makes heads WORSE than the untouched one
+    on detector points: kept for comparison)."""
     from . import humanfit
     sp, b = _human_base(name)
     vs = json.loads(views) if isinstance(views, str) else views
     st0 = humanfit.state(b)
-    nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
+    if method == "map":
+        from . import humanfit_map
+        rd = json.loads(read) if isinstance(read, str) else read
+        nb, rep = humanfit_map.fit(b, vs, read=rd, force=force, free=tuple(free or ("identity",)) if fit else (), measure=measure)
+    else:
+        nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
     (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
-    return _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
+    out = _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
+    if rep.get("method") == "map":
+        extra = "\n".join(f"view {i}: {v['evidence']}, lens ~{v['lens_mm']:.0f} mm" + (" (its lm0..lm67 points ignored: detector re-read)" if v["ignored_lm68"] else "") + (f" DROPPED from the identity: {v['rms_mm']} mm rms against the other pictures (not one projection / another face / wrong yaw?)" if v.get("dropped") else "")
+                          for i, v in enumerate(rep["views"]))
+        if rep.get("read"):
+            extra += "\nread: " + ", ".join(f"{k} asked {v['asked']:+.1f} got {v['got']:+.2f}" for k, v in rep["read"].items())
+        if rep.get("measured"):
+            m_ = rep["measured"]
+            extra += (f"\nMEASURED on view {m_['view']} ({m_['used']}; RENDERS ONLY: not validated on photographs): "
+                      + ", ".join(f"{k} {v[0]:+.1f}+-{v[1]:.1f}" for k, v in sorted(m_["macros"].items(), key=lambda t: -abs(t[1][0]))[:12]))
+        out[-1] = (out[-1] + "\n" + extra + "\nmacros (population sigmas):\n" + rep.get("macros", "")
+                   + "\n(method map: the detector's point table is validated on RENDERS of heads of known shape only, not yet on "
+                   "photographs. The result is the most probable head for this evidence: soft; structure comes after.)")
+    return out
 
 
 @mcp.tool(structured_output=False)
@@ -2099,6 +2136,47 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
     if Path(pn).exists():
         out.insert(0, _png(PILImage.open(pn)))
     return out
+
+
+@mcp.tool(structured_output=False)
+def project_reference(name: str, view: int = 0, save: str = ""):
+    """The fastest honest judge of a fitted head's GEOMETRY: reference picture number `view` (of the model's fitted
+    references: human_reference first) projected onto the model through its fitted camera as an unlit texture, then
+    shown from the reference cameras, both profiles, the other three-quarter and a low angle. A clay bust beside a
+    photo of a skinned, haired person compares two different things; this compares like with like. Where the
+    likeness holds when the head is turned, the geometry carries it; where the picture smears, doubles or slides
+    (ears landing on cheeks = the face too narrow; the nose's side, the jaw's edge, the chin in profile), the
+    geometry is wrong THERE. Skin the reference's camera does not see is dim clay. The picture's own light is on the
+    surface: judge outlines and proportions in turned views, not shading."""
+    from . import likeness_read as lr
+    pn = save or str(store.HOME / "human_renders" / f"lk_{name}_projected.png")
+    r = lr.project_reference(name, pn, view=view)
+    return [_png(PILImage.open(pn)), f"reference {view} projected on {name}; share of each view's head that carries the picture: {r['seen']}\n{pn}"]
+
+
+@mcp.tool(structured_output=False)
+def texture_from_reference(name: str, views: list[int] | None = None, opacity: float = 0.9, delight: bool = True,
+                           match: str = "tone", remove: bool = False) -> str:
+    """The fitted reference pictures as the head's ALBEDO (the projection test, kept as paint): each picture is
+    projected onto the model through its fitted camera (human_reference first), its light taken out roughly (one
+    fitted light on the model's own normals), and laid over the skin as an ordinary paint layer "ref_texture_<view>"
+    (an image decal along that camera's axis, colour = the image, alpha = how far to trust it).
+    What is the picture and what is ours: the PICTURE gives colour where its camera saw skin square-on (zones, brows,
+    stubble shadow, lips, lines: at the picture's own resolution, said in the reply); OURS stays on ears, under the
+    chin and nose, hair, eyeballs, skin turned away, neck and body, and for ALL relief, roughness and scattering (the
+    skin description's pores and highlights still shape the surface). Cast shadows and a painter's strokes stay in:
+    use a photograph with even light; a painting's brushwork lands on the skin.
+    views: which of the model's fitted pictures (default all with an image; each later one lies OVER the earlier:
+    list the most trusted last). opacity: the layer's strength. delight=False keeps the picture's light.
+    match: "tone" (default: the picture's median skin colour is brought to the skin description's tone, so the
+    picture gives its variation and the join with the procedural skin doesn't show), "level" (lightness only), ""
+    (as de-lit). remove=True takes the layers out.
+    The decal is made on the head's shape as it is NOW: after any change of the head's shape call this again (a
+    stale layer is reported by name). Then sync + look, or look_skin."""
+    from . import likeness_texture as lt
+    r = lt.apply(name, views=views, opacity=opacity, delight=delight, match=match or None, remove=remove)
+    st = lt.stale(store.load(name))
+    return r["text"] + (f"\nSTALE (made on another head shape, make again): {st}" if st else "")
 
 
 @mcp.tool(structured_output=False)
@@ -2895,7 +2973,7 @@ def plant_reference(name: str, image_path: str, crop: list[int] | None = None, f
 @mcp.tool(structured_output=False)
 def export_plant(name: str, out_dir: str | None = None, triangles: int | None = None, set: bool = False,
                  lods: int = 1, impostor: bool | str = False, seasons: list[str] | None = None, wet: bool = False,
-                 lod_files: bool = False) -> str:
+                 lod_files: bool = False, grade: str = "full") -> str:
     """Export the plant as a GLB (workspace/plants/<name>/export/<name>.glb unless out_dir): a `wood` mesh (bark
     colour, normal and roughness as tiling textures on the branch uv) and a `foliage` mesh (every twig's card; the
     twig atlas with alpha MASK, double sided, normals bent out from the crown, COLOR_0 = a per-twig tint).
@@ -2926,7 +3004,20 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
     version or slot it doesn't know. Small plants (clumps) export their seasons as variants too (colour; layers out
     of season hidden); their lying down in winter is in the looks only.
     set=True writes the plant's `set` as ONE file (<name>_set.glb): a node per plant in a row, the bark and foliage
-    materials and textures shared (a forest kit); `triangles` is then each plant's own budget."""
+    materials and textures shared (a forest kit); `triangles` is then each plant's own budget.
+    A SWARD (species sward / sward_mown / sward_rough: plain grass as a 2 m tile of blades, see the guide) exports as its
+    own files: <name>_LOD0..3.glb (fewer, wider blades), <name>.glb, <name>_seasons.json with a `sward` block (tile size,
+    LOD rings, the fade into the terrain's grass texture and its colours); triangles / lods / impostor don't apply.
+    grade="groundcover" (small plants: grass, daisy, clover, fern... in any style) = the SCATTER grade: the clump as it
+    is drawn in full, baked per season onto a few alpha cards: LOD 0 6 cards (288 triangles), LOD 1 4 (96), LOD 2 3 (36).
+    Each card shows the slice of the clump in its own wedge round the foot, so every blade is drawn once. Same slots
+    (foliage; seasons as variants of it, winter = the plant lying, snow = winter under snow), wind channels and seasons
+    json; adds TANGENT + a normalTexture; no bark / heads slots (stalks and flower heads are in the pictures). Written to
+    its own folder (default export_groundcover/) as <name>_LOD0..2.glb, <name>.glb (MSFT_lod) and <name>_seasons.json:
+    point the game's groundcover at that folder. ENGINE: import its PNGs WITHOUT mipmaps, or WITH them and alpha scaled up
+    by the mip level in the shader (recipe in the material's extras.alpha_mips; with plain mipmaps thin blades vanish past
+    ~4 m), and turn the importer's own LOD generation off for these meshes. ~5-10 min of
+    Blender the first time (cached by the spec)."""
     from . import veg_tools as vt
     from . import veg_export as _ve
     vt_contract = lambda: _ve.CONTRACT
@@ -2937,6 +3028,21 @@ def export_plant(name: str, out_dir: str | None = None, triangles: int | None = 
                     f"  {q['name']}: {q['height_m']} m, " + "; ".join(f"LOD{l_['lod']} {l_['triangles']}" for l_ in q["lods"]) + " triangles"
                     + (f", {q['floating']:.0%} of the cards floating" if q.get("floating", 0) > 0.2 else "")
                     for q in c["plants"]))
+    if vt.grown(name).get("sward"):
+        c = vt.export(name, out_dir, seasons=tuple(seasons or ()))
+        return (f"exported the sward {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
+                + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['triangles_per_m2']:.0f} per m2, {l_['blades']} blades)" for l_ in c["lods"])
+                + f"\na {c['sward']['tile_m']:g} m TILE: lay tiles edge to edge, quarter turns; fade into the terrain's grass texture "
+                  f"{c['sward']['fade']['start']}-{c['sward']['fade']['end']} m (recipe + root / tip colours in the seasons json `sward`)\n"
+                + "files: " + ", ".join(Path(f).name for f in c["files"]))
+    if grade == "groundcover":
+        c = vt.export(name, out_dir, seasons=tuple(seasons or ()), grade="groundcover")
+        return (f"exported the groundcover grade of {name} into {Path(c['path']).parent} (contract {vt_contract()}): "
+                + "; ".join(f"LOD{l_['lod']} {l_['triangles']} triangles ({l_['planes']} cards)" for l_ in c["lods"])
+                + f"; clump {c['H']:.2f} m tall, {2 * c['R']:.2f} m across; atlas {c['atlas'][0]} x {c['atlas'][1]} per season\n"
+                + "files: " + ", ".join(Path(f).name for f in c["files"])
+                + "\nENGINE: import the PNGs without mipmaps, or with them + the mip-scaled alpha (material extras.alpha_mips); "
+                  "turn mesh LOD generation off for these files")
     c = vt.export(name, out_dir, triangles, lods=lods, seasons=tuple(seasons or ("summer",)), wet=wet, impostor_lod=impostor,
                   lod_files=lod_files)
     gl = []
@@ -3082,6 +3188,75 @@ def heavy_queue() -> str:
     marked "<- yours", with a last line like "yours: 3rd in queue, 18 GB ahead". Fast; changes nothing."""
     from . import resources
     return resources.queue_text()
+
+
+@mcp.tool(structured_output=False)
+def make_clutter(kind: str = "", style: str = "realistic", out_dir: str | None = None, seed: int = 1, variants: int | None = None,
+                 form: dict | None = None, paint: dict | None = None, color: list | None = None, moss: float | None = None,
+                 lods: list | None = None, look: bool = False):
+    """Make a terrain CLUTTER asset (guide(topic="clutter")): the small things scattered by the thousand. kind (a preset;
+    "" lists them with what they are): boulder (loose angular block), river_rock (water-worn), cobbles (a patch of
+    stones as one asset), slab (flat bank stone), driftwood (log / fork / pole / jam as variants), bush (a low scrub
+    bush: leafy dome + leaf sprays on cards, seasons, wind), litter (a leaf / twig debris card, seasons). style:
+    realistic | blobby (pebbles, smooth lumps) | anime (crisp planes, painted bands) | cartoon (chunky facets, a dark
+    edge line) | pixar (soft sculpt, mossy top), or {"sheet": name, ...overrides}; rock colours start from the
+    terrain's rock colour turned by the style (color = your own sRGB).
+    A rock is a signed distance in the cliffs' language (oblique joint faces round three unequal axes, off-parallel
+    bedding faces, broken corners, thin partings, weathered rounder on top, wider at its base, water-worn toward an
+    ellipsoid): form = overrides of those numbers, e.g. {"round": 0.5, "bevel": 0.1, "faces": [5, 7], "split": 1.0,
+    "taper": 0.3, "sink": 0.3}; paint = {"top": lichen 0..1, "moss": 0..1, "bands": painted strata, "ink": edge line,
+    "cracks", "gradient", ...}; unknown keys are refused with the list. variants (default 4) differ in PROPORTION, not
+    only seed. Written into out_dir (default workspace/clutter/<style>_<kind>/): per variant and LOD a GLB
+    (<stem>_v<k>_LOD<j>.glb; rocks 300 / 100 / 44 triangles, the last a hull that keeps the outline; bushes ~250 / 120 /
+    55; litter 8 / 2), a convex collision hull for boulders, ONE atlas (albedo, tangent normal, occlusion + roughness)
+    shared by every variant and LOD, and <stem>_seasons.json in the plant contract's shape (grade "clutter", kind,
+    slots, variants, size / height / sink, LOD distances, wet / tint / instancing recipes). Assets are 1 m across at
+    scale 1, pivot on the ground line with `sink_m` below it. 10-60 s, no Blender. look=True also returns a sheet at
+    2.5 / 10 / 40 m (Blender, ~1 min)."""
+    from . import clutter as ck
+    if not kind:
+        return json.dumps({"kinds": {k: json.loads((ck.HERE / "clutter_presets" / f"{k}.json").read_text()).get("about", "") for k in ck.presets()},
+                           "styles": {s_: ck.style_sheet(s_).get("about", "") for s_ in ck.styles()}}, indent=1)
+    spec = {"kind": kind, "style": style, "seed": seed}
+    for k_, v_ in (("variants", variants), ("form", form), ("paint", paint), ("color", color), ("moss", moss), ("lods", lods)):
+        if v_ is not None:
+            spec[k_] = v_
+    st = ck.style_sheet(style)["name"]
+    sh = ck.SHORT.get(st, st)
+    out = Path(out_dir) if out_dir else store.HOME / "clutter" / f"{sh}_{kind}"
+    J = ck.export(spec, out, stem=f"ck_{kind}_{sh}")
+    text = f"wrote {out}\n" + ck.report(J)
+    if not look:
+        return text
+    png = out / "look.png"
+    ck.look(out, str(png))
+    return [Image(data=png.read_bytes(), format="png"), text]
+
+
+@mcp.tool(structured_output=False)
+def look_clutter(folders: list[str], season: str = "summer", clay: bool = False, scale: float = 1.0, save: str | None = None):
+    """A sheet of exported clutter folders (make_clutter's out_dir; a row each): every variant side by side on rough
+    grass at 2.5 / 10 / 40 m with the LOD drawn at that distance (the far views enlarged: real pixels). Judge: does it
+    read as what it is and in its style, do the LODs keep the outline, do the variants look like clones? season = a
+    bush's or a debris card's other pictures; clay = no textures (the mesh alone). Blender, ~30 s a row."""
+    from . import clutter as ck
+    png = Path(save) if save else Path(folders[0]) / f"look_{season}.png"
+    ck.look(folders, str(png), scale=scale, clay=clay, season=season)
+    return [Image(data=png.read_bytes(), format="png"), f"saved {png}"]
+
+
+@mcp.tool(structured_output=False)
+def clutter_kit(out_dir: str, kinds: list[str] | None = None, styles: list[str] | None = None) -> str:
+    """Export a whole clutter kit: every kind (default all presets) in every style (default all five) into
+    out_dir/<style>_<kind>/ ("realistic" -> "real"), then out_dir/clutter.json: terrain clutter kind (clutter.csv's
+    `kind`) -> the folder that draws it per style, the instance convention (scale = largest plan dimension in m, yaw,
+    squash relative) and what is missing. ~20-60 s a folder."""
+    from . import clutter as ck
+    lines = []
+    K = ck.kit(out_dir, kinds, styles, progress=lines.append)
+    M = json.loads((Path(out_dir) / "clutter.json").read_text())
+    miss = {k: v["missing"] for k, v in M["kinds"].items() if v["missing"]}
+    return f"{len(K)} folders in {out_dir}; manifest clutter.json" + (f"; missing: {miss}" if miss else "") + "\n" + "\n".join(lines)
 
 
 def main():

@@ -1,0 +1,77 @@
+{
+ "about": "Driftwood: barkless, silvered wood. Variants: a log (crooked, tapering, broken stubs), a forked branch, a butt with its root plate, a small jam of pieces lying across each other. Terrain kind `driftwood` (scale = length; yaw 0 = along +X)",
+ "material": "wood",
+ "shape": "wood",
+ "variants": 4,
+ "size_range": [
+  0.8,
+  4.5
+ ],
+ "place": "water (caught on rocks) | margin | bar",
+ "wet_band": 0.3,
+ "collision": null,
+ "form": {
+  "sink": 0.2
+ },
+ "variant_forms": [
+  {
+   "radius": [
+    0.08,
+    0.1
+   ],
+   "stubs": [
+    2,
+    4
+   ],
+   "fork": 0.0
+  },
+  {
+   "radius": [
+    0.055,
+    0.07
+   ],
+   "stubs": [
+    1,
+    3
+   ],
+   "fork": 1.0,
+   "crook": 0.08
+  },
+  {
+   "radius": [
+    0.07,
+    0.085
+   ],
+   "stubs": [
+    1,
+    2
+   ],
+   "fork": 0.0,
+   "roots": [
+    5,
+    7
+   ],
+   "length": [
+    0.8,
+    0.9
+   ]
+  },
+  {
+   "pieces": [
+    4,
+    6
+   ],
+   "radius": [
+    0.04,
+    0.06
+   ],
+   "stubs": [
+    0,
+    2
+   ],
+   "fork": 0.4,
+   "pile": 0.55,
+   "lods_x": 2.3
+  }
+ ]
+}
