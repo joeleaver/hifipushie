@@ -7079,6 +7079,63 @@ its fitted identity; trellis/ = Oxidegen's meshes as arrays). Sheets `workspace/
   without gains; the XR Blocks table for turned views; MapAnything on untextured busts; Marigold / MoGe normals where
   DAViD's exist; silhouette widths for cheekbones or neck.
 
+## Made pieces constructed after the drape (2026-10-09, "collarbuild" agent, branch `worktree-agent-a1bfddd1d86ae3edf`; a SPIKE)
+
+The user after ten collar rounds: "Do we need a different tack? Less simulation, more hand-editing?"; the coordinator:
+simulate the garment's body, BUILD the collar onto the finished neckline; then the user: "that same principle probably
+applies to other parts of clothing". suit8's branch is merged in here. Sheet `workspace/cloth_renders/
+cb_01_constructed_vs_sim.png` (concept | simulated om_21 | constructed on the same sim; front, three-quarter, side,
+back). Scratch DURABLE in /mnt/data/hifipushie/collarbuild/: run.sh <script> (this worktree's code, capped), run8.sh
+(the same with the suit8 worktree's SOURCE first on the path: its cache keys; this worktree's own code found neither
+garment cached), dump.py su_om_garrett jacket=<job out.npz> (cached shirt + a job's jacket -> out/su_om_garrett.pkl:
+arrays, sew pairs, folds, the shirt as worn; 24 min at load 80, almost all of it cloth.build), jk.py <tag>
+[shirt.k=v] [jacket.k=v] [nojacket] [hl] [zoom] [nolapel] [sheet] (both collars + pressed lapels built on the pickle,
+tells of both, strips; 17 s), sc.py (shirt collar alone on any saved shirt npz), dbg.py / dbg2.py (a part's rows at
+stations; the fall against the shirt's cloth), t.py (the tests), patch*.py / append.py (edits as scripts).
+NO SIM WAS RUN.
+- `cloth_made.py`, one interface for a made piece: its SEAM as it ended (`seam_chain`: the sewn pairs of the made
+  piece against the rest, ordered by the made piece's pattern; or seam vertices lying together), a PATTERN as columns
+  leaving that edge (angle + row lengths in metres = the uv), FOLDS (a roll of radius r about the edge), and what it
+  lies ON (`Under`: layers wound outward, sheets or closed, each with a clearance). One operation, `march`: every
+  column walks its pattern length from the seam, straight where free, along a surface where it touches, never nearer
+  than its clearance. `shirt_collar` (stand + fall, two grids), `notched_collar` (one sheet: stand running out to
+  nothing where the roll line meets the seam, the ends leaving the gorge seam flat, away from the turned lapel they
+  are sewn to: `into_cloth`), `press_flap` (a flap of a DRAPED piece laid as its mirror image across the fold line
+  on the piece's own triangles: no topology change, vertex ids kept: the lapels), `solid`, `stretch`.
+  The seam's own vertices are vertices of the built piece's first row (join 0.000 mm on both garments).
+- Numbers on su_om_garrett (om_21's sim | constructed): collar_show 14.8 | 13.9 mm (the jacket stand's height is SET
+  from the shirt collar's top less `show`); collar_hug 15.3 | 14.6; lapel gap 6.8 / 6.3 | 3.0 / 3.0 (pressed: by
+  construction); crossings jacket collar x jacket 49 | 2, jacket collar x shirt 0 | 6, shirt collar x shirt 2 | 5,
+  x body 0 | 0; pattern stretch p50 0.97-0.99, p95 1.19 (shirt fall) / 1.37 (jacket collar), max 2.7-3.6 at the
+  ends. 17 s for everything. (Jacket cloth x the worn shirt reads 402-444 either way: cloth_layers.tucked's shirt
+  against a 2 cm jacket, not this work.)
+- BLUNT READ. Back and sides: yes. The shirt collar is a crisp stand with a pressed fall where the sim had a crumpled
+  ruff; the jacket collar lies flat round the back; the lapels lie flat on the foreparts. FRONT: no. The shirt's
+  points are thin spikes hanging at the throat (the simulated fronts under them stand 30-35 mm off the chest,
+  rolled back and crumpled, and the leaf has nothing sound to lie on); the jacket collar's ENDS are stiff straps
+  along the gorge standing proud at the shoulder, not one surface with the lapel, and no readable notch; shards of
+  the worn shirt still come through the left lapel. It does not yet read as the concept's collar from the front.
+- What went wrong on the way (each cost a round): a stand that "hugs the neck" lay down on the shoulder (a stand
+  RISES from the seam along the neck's axis, tipped in at most ~12 deg; where the seam ended 17 mm off the neck the
+  fall of a hugging stand came down INSIDE the neckline); a fold whose angle faded with the stand's height made
+  wings (the fold is always a full turn, the stand's HEIGHT runs out); a slab's thickness lies under its sheet, so
+  the clearance is lay + thickness; frames from the seam's own tangent carry its kinks (normals out from the neck's
+  axis instead); the pressed stand-in of an under garment is not coincident with its own collar at the back (use
+  the finished result).
+- The lesson for the principle: construction is only as good as what it stands on. Where the drape under the made
+  piece is sound (back neck, shoulders, foreparts) it is immediately better than the sim and takes seconds; where
+  the drape itself is the sim's mess (an open shirt's rolled-back fronts) it inherits the mess. So the made piece's
+  NEIGHBOURHOOD must be simulated without the made piece's errors too: sim with a soft stand-in (or the seam only),
+  not with a carried rigid collar whose placement error the neckline keeps.
+- Not built: wiring (a `construct` key per made piece in cloth.build after the clean-up, results in res["made"] like
+  res["buttons"], through look / scene / export as closures.buttons_mesh and cloth_trims.meshes go), the collar's
+  ends as a continuation of the pressed lapel's own plane (today they march from the gorge seam on their own), the
+  notch's drafted outline (ends are a plain width), the stand's button extension, detail maps for built pieces
+  (they have pattern uv, no atlas), rig weights (from the body by surface like other cloth; the under collar worn
+  rule), a Blender hand edit (offsets per built vertex on (piece, row, station): stable ids while the pattern
+  parameters hold). Tests `tests/test_cloth_made.py` (a synthetic neck: stand, fall and point lengths honoured,
+  seam welded, no crossings, clearances; a pressed flap is the mirror image).
+
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;
 `look` returns `[Image, str]` and `Image.data` is PNG bytes you can write to a file.

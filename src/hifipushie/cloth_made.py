@@ -24,7 +24,7 @@ from scipy.spatial import cKDTree
 
 SHIRT = {"stand": 0.027, "fall_over": 0.012, "points": 0.070, "spread": 32.0, "off": 0.004, "lay": 0.0015,
          "fold": 0.0022, "inset": 0.012, "open": 22.0, "step": 0.006, "rows_stand": 5, "rows_fall": 10,
-         "thickness": 0.0016, "end_round": 0.014, "tilt": 38.0}
+         "thickness": 0.0016, "end_round": 0.014, "tilt": 12.0, "seam_smooth": 30, "bury": 0.03}
 NOTCHED = {"stand": 0.024, "fall": 0.036, "show": 0.014, "lay": 0.002, "fold": 0.003, "step": 0.010, "rows_stand": 4,
            "rows_fall": 7, "thickness": 0.003, "off": 0.003}
 
@@ -73,9 +73,9 @@ class Under:
                 sd = (dv * N).sum(1)
                 tang = np.linalg.norm(dv - sd[:, None] * N, axis=1)
                 g = gap + L.get("gap", 0.0)
-                near = (np.abs(sd) < reach) & (tang < (0.004 if L.get("sheet") else 1e9))
+                near = (np.abs(sd) < reach) & (tang < (0.008 if L.get("sheet") else 1e9))
                 if L.get("sheet"):
-                    near &= sd > -0.012  # (behind a sheet by more: the sheet's other side, not through it)
+                    near &= sd > -L.get("depth", 0.012)  # (behind a sheet by more: the sheet's other side, not through it)
                 m = near & (sd < g)
                 P[m] += (g[m] - sd[m])[:, None] * N[m]
                 over = np.where(near, np.maximum(sd, g) - g, np.inf)
@@ -278,15 +278,19 @@ def shirt_collar(chain_P: np.ndarray, body: dict, cloth_layers: list, axis: tupl
     dirs = _unit(np.cos(tilt)[:, None] * up - np.sin(tilt)[:, None] * out)
     S, SN = march(C, dirs, out, lens, ub, np.minimum(d0, p["off"]), hug=0.0, step=0.003)
     S[:, 0] = C
+    ease = (_smooth_curve(C, p["seam_smooth"]) - C)[:, None, :] * (np.linspace(0, 1, ns + 1) ** 0.7)[None, :, None]
+    S = S + ease
+    S, _, _ = ub.settle(S.reshape(-1, 3), 0.0015)
+    S = S.reshape(n, ns + 1, 3)
+    S[:, 0] = C
     S = smooth_rows(S, 3, keep_rows=(0,))
-    S[:, 1] = 0.5 * S[:, 1] + 0.5 * smooth_rows(S, 1, keep_rows=())[:, 1]
     st_uv = np.stack([np.repeat(s[:, None], ns + 1, 1), lens], -1).reshape(-1, 2)
     st_V, st_F = S.reshape(-1, 3), grid_faces(n, ns + 1)
     # the stand's own frame at its top: up along its last rows, out = its outward normal
     upt = _unit(S[:, -1] - S[:, -2])
     Tt = _unit(np.gradient(_smooth_curve(S[:, -1]), axis=0))
-    outt = _unit(np.cross(Tt, upt))
-    outt *= np.sign((outt * out).sum(1))[:, None]
+    outt = _unit(out - (out * upt).sum(1)[:, None] * upt)
+    Tt = _unit(np.cross(upt, outt)) * np.sign((np.cross(upt, outt) * Tt).sum(1))[:, None]
     fn = np.cross(st_V[st_F[:, 1]] - st_V[st_F[:, 0]], st_V[st_F[:, 2]] - st_V[st_F[:, 0]])
     k0 = n // 2 * (ns + 1) + ns // 2
     cf = st_F[np.any(st_F == k0, axis=1)][0]
@@ -308,7 +312,7 @@ def shirt_collar(chain_P: np.ndarray, body: dict, cloth_layers: list, axis: tupl
     col = np.hypot(x1 - np.abs(a), b1)
     alpha = np.arctan2(x1 - np.abs(a), b1)
     side = np.sign(a)[:, None] * Tt[idx]  # along the roll line toward this column's own end
-    rf = p["fold"]
+    rf = max(p["fold"], 0.5 * (p["lay"] + 2 * p["thickness"]))
     na = 4
     th = np.linspace(0, np.pi, na + 1)[1:]
     ca, sa = np.cos(alpha)[:, None], np.sin(alpha)[:, None]
@@ -320,14 +324,15 @@ def shirt_collar(chain_P: np.ndarray, body: dict, cloth_layers: list, axis: tupl
     nf = p["rows_fall"]
     rest = np.maximum(col - arc_len, 0.004)
     lens_f = rest[:, None] * np.linspace(0, 1, nf + 1)[None, 1:]
-    layers = [{"V": bV, "F": bF}] + [dict(Lc, sheet=True) for Lc in cloth_layers] + [{"V": st_V, "F": st_Fo, "sheet": True}]
+    layers = [{"V": bV, "F": bF}] + [dict(Lc, sheet=True, depth=p["bury"]) for Lc in cloth_layers] + [{"V": st_V, "F": st_Fo, "sheet": True}]
     uf = Under(layers, box)
     Dn = _unit(-ca * upt[idx] + sa * side)
-    Fl, FN = march(arc[:, -1], Dn, outt[idx], np.c_[np.zeros(len(idx)), lens_f], uf, p["lay"], hug=0.003, step=0.003)
+    lay = p["lay"] + p["thickness"]  # (the sheet is the piece's outer face: its thickness lies under it)
+    Fl, FN = march(arc[:, -1], Dn, outt[idx], np.c_[np.zeros(len(idx)), lens_f], uf, lay, hug=0.003, step=0.003)
     G = np.concatenate([R[:, None], arc, Fl[:, 1:]], axis=1)
     G = smooth_rows(G, 2, keep_rows=tuple(range(0, na + 1)))
     tail = G[:, na + 1:].reshape(-1, 3)
-    tail, _, _ = uf.settle(tail, p["lay"], hug=0.0)
+    tail, _, _ = uf.settle(tail, lay, hug=0.0)
     G[:, na + 1:] = tail.reshape(len(idx), -1, 3)
     m = G.shape[1]
     frac = np.concatenate([[0.0], np.tile((rf * th)[None], (len(idx), 1))[0] * 0, np.zeros(nf)])  # placeholder
@@ -442,7 +447,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     (the under garment, its collar); own: the jacket's own cloth (lapels pressed) the fall lies on; top_z: the stand's
     top at centre back no higher than this (the under collar's top less `show`).
     The sheet's face is the upper collar: toward the neck on the stand, outward on the fall and the ends."""
-    p = dict(NOTCHED, **{"end": 0.034, "end_angle": 12.0, "tilt": 30.0})
+    p = dict(NOTCHED, **{"end": 0.034, "end_angle": 12.0, "tilt": 15.0, "stand_power": 2.0})
     p.update({k: v for k, v in kw.items() if v is not None})
     ap, ad = np.asarray(axis[0], float), _unit(np.asarray(axis[1], float))
     Pc = np.asarray(chain_P, float)
@@ -468,8 +473,8 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     k_cb = int(np.argmin(np.abs(a)))
     if top_z is not None:  # the stand no taller than leaves the under collar showing
         st = float(np.clip((top_z - C[k_cb, 2]) / max(up[k_cb, 2], 0.3), 0.008, st))
-    h = st * np.clip(1 - np.clip(np.abs(a) / am, 0, 1) ** 2.5, 0, 1)
-    w = np.clip(h / (0.5 * st), 0, 1)
+    h = st * np.clip(1 - np.clip(np.abs(a) / am, 0, 1) ** p["stand_power"], 0, 1) * (1 - g)
+    w = np.clip(h / 0.008, 0, 1)
     w = w * w * (3 - 2 * w)
     top = Cs + h[:, None] * up
     dt = _dist(u_in, top)
@@ -485,24 +490,24 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     outn = _unit((1 - g)[:, None] * out + g[:, None] * n_un)
     ns, na, nf = p["rows_stand"], 4, p["rows_fall"]
     lens_s = h[:, None] * np.linspace(0, 1, ns + 1)[None]
-    S, _ = march(C, dir0, outn, np.maximum(lens_s, 1e-6 * np.arange(ns + 1)[None]), u_in, p["off"] * (1 - g) + p["lay"] * g,
+    S, _ = march(C, d_st, out, np.maximum(lens_s, 1e-6 * np.arange(ns + 1)[None]), u_in, p["off"] * (1 - g) + 0.001 * g,
                  hug=0.0, step=0.003)
     S[:, 0] = C
     S = smooth_rows(S, 2, keep_rows=(0,))
-    upt = np.where((h > 0.004)[:, None], _unit(S[:, -1] - S[:, -2]), dir0)
+    upt = np.where((h > 0.004)[:, None], _unit(S[:, -1] - S[:, -2]), d_st)
     upt = _unit(_smooth_curve(upt, 2))
     Tt = _unit(np.gradient(_smooth_curve(S[:, -1]), axis=0))
     outt = _unit(outn - (outn * upt).sum(1)[:, None] * upt)
     R = S[:, -1]
-    rf = p["fold"] * w
-    thm = np.pi * w
+    rf = np.minimum(p["fold"], 0.45 * h)
+    thm = np.full(n, np.pi)
     side = np.sign(a)[:, None] * Tt
     arc = np.zeros((n, na, 3))
     for j in range(1, na + 1):
         t = thm * j / na
         arc[:, j - 1] = R + (rf * (1 - np.cos(t)))[:, None] * outt + (rf * np.sin(t))[:, None] * upt
     arc_len = rf * thm
-    d_end = _unit(np.cos(thm)[:, None] * upt + np.sin(thm)[:, None] * outt)
+    d_end = _unit((1 - g)[:, None] * (-upt) + g[:, None] * flat)
     uu = np.clip(np.abs(a) / half, 0, 1)
     Fw = p["fall"] + (p["end"] - p["fall"]) * (uu * uu * (3 - 2 * uu))
     alpha = np.radians(p["end_angle"]) * uu ** 3
@@ -519,8 +524,9 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     u_f = Under(u_own.layers + stand_layer)
     rest = np.maximum(Fw - arc_len, 0.004)
     lens_f = rest[:, None] * np.linspace(0, 1, nf + 1)[None]
-    n0 = _unit(w[:, None] * outt + (1 - w)[:, None] * n_un)
-    Fl, FN = march(arc[:, -1], d_f, n0, lens_f, u_f, p["lay"], hug=0.004, step=0.003)
+    n0 = _unit((1 - g)[:, None] * outt + g[:, None] * n_un)
+    lay = p["lay"] + p["thickness"]
+    Fl, FN = march(arc[:, -1], d_f, n0, lens_f, u_f, lay, hug=0.004, step=0.003)
     # one polyline per column in pattern length; the rows are read off it
     poly = np.concatenate([S, arc, Fl[:, 1:]], axis=1)
     plen = np.concatenate([lens_s, h[:, None] + arc_len[:, None] * (np.arange(1, na + 1) / na)[None],
@@ -536,7 +542,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
             G[i, :, k] = np.interp(want[i], pl, poly[i, :, k])
     G = smooth_rows(G, 2, keep_rows=(0,))
     tail = G[:, 1:].reshape(-1, 3)
-    tail, _, _ = Under(u_own.layers).settle(tail, p["lay"], hug=0.0)
+    tail, _, _ = Under(u_own.layers).settle(tail, np.where(want[:, 1:] > (h + arc_len)[:, None] + 1e-9, lay, 0.001).ravel(), hug=0.0)
     G[:, 1:] = tail.reshape(n, -1, 3)
     past = np.maximum(want - (h + arc_len)[:, None], 0)
     uvu = s[:, None] + np.sign(a)[:, None] * np.sin(alpha)[:, None] * past
