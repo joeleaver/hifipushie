@@ -61,7 +61,11 @@ def test_zone_and_layers(T, field, mats):
     assert lw("gravel", "silt", "bank")[dry].max() < 0.02  # away from the water: nothing of it
     # the damp bank: just above the water beside the channel
     foot = (dep < -0.05) & (dep > -0.2) & (g["sd"] < 1.5)
-    assert foot.sum() > 20 and np.median(lw("bank")[foot]) > 0.4, (foot.sum(), np.median(lw("bank")[foot]))
+    # (damp earth on the cut side, a bar's dry gravel on the other: with pools every few widths the sides alternate
+    # within any stretch, so the foot is one or the other, not grass)
+    fb, fg = lw("bank")[foot], lw("bank", "gravel", "silt")[foot]
+    assert foot.sum() > 20 and np.median(fg) > 0.4 and np.percentile(fb, 75) > 0.4, (foot.sum(), np.median(fg),
+                                                                                    np.percentile(fb, 75))
     # shares sum to one, and the bed is darker than dry gravel but not black
     st = S.shares(P)
     assert np.allclose(st["gravel"] + st["silt"] + st["rock"], 1, atol=1e-6)

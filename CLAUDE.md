@@ -4709,6 +4709,24 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
     sea, wrack on terrain_ground.tint's own wrack line (same noise, seed 641). `terrain_stream.all_clutter` = both.
   - Checks: river block (6 tiles, every LOD) 0 failures; incremental on a river edit (energy along the whole river,
     36-tile block): 24 tiles redone, 0 of 998 files differ from a cold export.
+- Round 3 (2026-10-09, "streambeds2" agent took the thread over; renders `terrain3d_renders/sb2_*`; scratch adds
+  sw.py (the cobble swatch lit high and grazing), run_main.sh (main's src in mainsrc/), q9-q13.sh, rend.py BUMP=1).
+  - Pools and riffles did not read because there was less than ONE in any view: spacing 6 channel widths on an 18 m
+    river is a pool every ~110 m. `spacing` [2.5, 1.5] (a level compresses a river's length, not its width),
+    `riffle` 0.85 (the crest keeps ~0.2 m of water: stones awash; at 0.6 a "riffle" was 0.6 m deep). Dry gravel on
+    bars is PALE (x1.38 of the layer colour, wet x0.88): in the photos the bar is the brightest thing in a channel.
+    With sides alternating every few widths the bank's foot is damp earth on one side and bar gravel on the other
+    (test_streams' foot assertion changed to say so).
+  - "Bubble wrap": two things. The baked relief was fbm ** 2 at one strength over the whole gravel layer; now
+    flat-topped lumps on a threshold (stones standing on gravel), their share and strength from the bed's own
+    sorting (`shares` inside `relief`: coarse thalweg and riffles rough, pools / inner margins / fines nearly
+    smooth) and a 2.2 m boulder octave on steep reaches. The cobble detail swatch: stones in drifts with plain gravel
+    between (a periodic density field), each sunk to its own depth and tilted, more elongated.
+  - Styled beds in Blender: `render_tiles(styles_bump=True)` rendered the ground BLACK: a Bump node over the summed
+    heights of every layer of every style = Cycles out of SVM stack (the skin thread's lesson again). Now the soft
+    (top-projected) layers' NORMAL MAPS are added as a tilt to the surface normal; height images are no longer loaded.
+  - Lake water in tile renders: strips over the lake's own wet cells at its level (a sheet over its box hung in the
+    air beyond a dam). Render only. A lake's damp foot is 0.45 of a river's (a 3-4 m bare brown drawdown ring).
 
 ## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
 

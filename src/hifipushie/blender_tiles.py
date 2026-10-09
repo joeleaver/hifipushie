@@ -233,14 +233,28 @@ def _styled(m, S):
                 tcol = mixc("MIX", tp.outputs["Color"], tcol, math("MULTIPLY", ks[0], ks[1]))
             t = mixc("MIX", [0, 0, 0], tcol, wts[lay])
             A = t if A is None else mixc("ADD", A, t)
-            th = L("ShaderNodeTexImage")
-            th.image = image(T["height"], False)
-            th.projection = "BOX" if T.get("projection") == "triplanar" else "FLAT"  # (soft layers top-down)
-            th.projection_blend = 0.3
-            nt.links.new(mp.outputs["Vector"], th.inputs["Vector"])
-            h = math("MULTIPLY", math("SUBTRACT", th.outputs["Color"], 0.5), 2 * T["height_m"])
-            h = math("MULTIPLY", h, wts[lay])
-            H = h if H is None else math("ADD", H, h)
+            # the layer's own relief: its NORMAL MAP, for the soft layers laid from above (there the map's x, y are the
+            # world's: its tilt is added to the surface normal). A Bump node over the summed heights made Cycles
+            # evaluate every layer of every style three times: out of SVM stack, the ground rendered black.
+            if S.get("bump", False) and T.get("normal") and T.get("projection") != "triplanar":
+                tn = L("ShaderNodeTexImage")
+                tn.image = image(T["normal"], False)
+                nt.links.new(mp.outputs["Vector"], tn.inputs["Vector"])
+                d = L("ShaderNodeVectorMath")
+                d.operation = "SUBTRACT"
+                nt.links.new(tn.outputs["Color"], d.inputs[0])
+                d.inputs[1].default_value = (0.5, 0.5, 1.0)  # (x, y tilt only: z stays the surface's)
+                dw = L("ShaderNodeVectorMath")
+                dw.operation = "SCALE"
+                nt.links.new(d.outputs["Vector"], dw.inputs[0])
+                nt.links.new(wts[lay], dw.inputs["Scale"])
+                if H is None:
+                    H = dw.outputs["Vector"]
+                else:
+                    ad = L("ShaderNodeVectorMath")
+                    nt.links.new(H, ad.inputs[0])
+                    nt.links.new(dw.outputs["Vector"], ad.inputs[1])
+                    H = ad.outputs["Vector"]
         if A is None:
             continue
         a = mixc("MULTIPLY", A, mixc("MIX", [1, 1, 1], ratio, st["macro"]))
@@ -249,8 +263,18 @@ def _styled(m, S):
             continue
         a = mixc("MIX", [0, 0, 0], a, w)
         col = a if col is None else mixc("ADD", col, a)
-        hw = math("MULTIPLY", H, w)
-        hgt = hw if hgt is None else math("ADD", hgt, hw)
+        if H is not None:
+            hw = L("ShaderNodeVectorMath")
+            hw.operation = "SCALE"
+            nt.links.new(H, hw.inputs[0])
+            nt.links.new(w, hw.inputs["Scale"])
+            if hgt is None:
+                hgt = hw.outputs["Vector"]
+            else:
+                ad = L("ShaderNodeVectorMath")
+                nt.links.new(hgt, ad.inputs[0])
+                nt.links.new(hw.outputs["Vector"], ad.inputs[1])
+                hgt = ad.outputs["Vector"]
         mw = math("MULTIPLY", w, st["macro_normal"])
         mn = mw if mn is None else math("ADD", mn, mw)
     if col is None:
@@ -264,12 +288,18 @@ def _styled(m, S):
         nt.links.new(nrm_in, nmix.inputs[5])
     else:
         nt.links.new(geo.outputs["Normal"], nmix.inputs[5])
-    if S.get("bump", False):  # (the style layers' heights as a bump: off by default, Blender's bump over box-projected
-        bump = L("ShaderNodeBump")  # textures drew thin contour-like lines on slopes; an engine uses the normal maps)
-        bump.inputs["Distance"].default_value = 1.0
-        nt.links.new(hgt, bump.inputs["Height"])
-        nt.links.new(nmix.outputs[1], bump.inputs["Normal"])
-        nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    if S.get("bump", False) and hgt is not None:  # (the style layers' normal maps: their tilt added to the normal)
+        tl = L("ShaderNodeVectorMath")
+        tl.operation = "SCALE"
+        tl.inputs["Scale"].default_value = 2.0
+        nt.links.new(hgt, tl.inputs[0])
+        ad = L("ShaderNodeVectorMath")
+        nt.links.new(nmix.outputs[1], ad.inputs[0])
+        nt.links.new(tl.outputs["Vector"], ad.inputs[1])
+        nz = L("ShaderNodeVectorMath")
+        nz.operation = "NORMALIZE"
+        nt.links.new(ad.outputs["Vector"], nz.inputs[0])
+        nt.links.new(nz.outputs["Vector"], bsdf.inputs["Normal"])
     else:
         nt.links.new(nmix.outputs[1], bsdf.inputs["Normal"])
 

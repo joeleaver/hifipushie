@@ -41,10 +41,12 @@ CFG = {
     "reach": 14.0,           # m beyond the water's nominal edge the stream's zone runs (banks, bank stones)
     "grade": [0.04, 0.30],   # bed grade where the energy is 0 .. 1 (real reach types change at 1.5 / 3 / 6.5%: a game
     # level's rivers are compressed in length, so steeper than their character; see the guide)
-    "spacing": [6.0, 2.5],   # pool-to-pool spacing in channel widths, at energy 0 (riffle-pool) .. 1 (step-pool)
+    "spacing": [2.5, 1.5],   # pool-to-pool spacing in channel widths, at energy 0 (riffle-pool) .. 1 (step-pool).
+    # Real rivers: 5-7 and 1-4. A level compresses a river's length, not its width: at 6 widths an 18 m river had
+    # one pool in 110 m and nothing alternated in any view
     "bend": 0.2,             # half-width / radius of curvature that counts as a full bend
     "pool": 0.8,             # m: a pool's extra depth (x the channel's size)
-    "riffle": 0.6,           # share of the depth a riffle's crest takes back
+    "riffle": 0.85,          # share of the depth (past 0.18 m) a riffle's crest takes back: shallow, stones awash
     "alternate": 0.75,       # how strongly pools and bars alternate from bank to bank along a straight reach (the
     # thalweg's wander: alternate bars), as a share of a full bend; 0 = only real bends sort the bed
     "cut": [0.35, 0.85],     # m: the cut outer bank's height over the water (wandering between; x the channel's size);
@@ -378,7 +380,9 @@ class Streams:
         dep = g["level"] - z
         gate = _ss(3.0, 1.0, g["sd"])
         bed = _ss(-0.07, 0.07, dep + 0.08 * wob) * gate
-        top = self.cfg["damp"] * (1 + 1.2 * wob)
+        # (a lake's level hardly moves: its damp foot is half a river's; at the full height a gentle shore wore a
+        # bare brown ring 3-4 m wide, a reservoir's drawdown)
+        top = self.cfg["damp"] * (1 + 1.2 * wob) * (1 - 0.55 * g["still"])
         # (wet through for `damp` m above the water, moist and fading to twice that: on a steep bank the wet band alone
         # was a line a metre wide)
         damp = np.maximum(_ss(top, 0.15, -dep), 0.45 * _ss(2.2 * top, 0.5 * top, -dep)) * _ss(7.0, 3.5, g["sd"]) * \
@@ -440,8 +444,10 @@ class Streams:
             (1 + warm[:, None] * np.array([0.10, 0.0, -0.12])) * (1.08 - 0.14 * co)[:, None]
         # (wet stone is darker, not black: the water over it darkens it again in the engine; riffles' clean coarse
         # stones paler, the pools' duller)
-        gr = gr * (1.12 - 0.24 * wetd - 0.10 * _ss(0.2, 1.0, dep))[:, None]
-        gr = gr * (1 + 0.16 * st["riffle"] - 0.14 * st["pool"])[:, None]
+        # (dry gravel on a bar is pale, far paler than the wet bed beside it: the photos' bars are the brightest thing
+        # in the channel)
+        gr = gr * (1.38 - 0.50 * wetd - 0.10 * _ss(0.2, 1.0, dep))[:, None]
+        gr = gr * (1 + 0.22 * st["riffle"] - 0.24 * st["pool"] * _ss(0.15, 0.6, dep))[:, None]
         si = np.asarray(LOOK["silt"]) * (1 + 0.16 * (noise.fbm(Pf, 1.8, 2, seed=724) - 0.5))[:, None]
         deep = _ss(0.3, 1.2, dep)[:, None]
         si = (si * (1 - 0.5 * deep) + np.asarray(LOOK["deep"]) * 0.5 * deep) * (1.0 - 0.3 * wetd)[:, None]
@@ -467,23 +473,39 @@ class Streams:
         return np.clip(out * (1 - b) + bedc * b, 0, 1)
 
     def relief(self, P, w, texel, coarse=None):
-        """The bed's fine relief as a plan gradient (n, 2), for the maps' normals: cobble and boulder lumps where the
-        gravel layer weighs w (each octave fading where the texel can't carry it)."""
+        """The bed's fine relief as a plan gradient (n, 2), for the maps' normals, where the gravel layer weighs w
+        (each octave fading where the texel can't carry it). Stones are flat-topped lumps standing on gravel, not a
+        sheet of domes (fbm ** 2 everywhere at one strength was the "bubble wrap"), and how many and how big follows
+        the bed: big and close along the thalweg and on riffles, few and small toward the inner margin, nearly none
+        in pools and on the fines; a boulder-sized octave on steep reaches."""
         n = len(P)
         g = np.zeros((n, 2))
         k = np.flatnonzero(w > 1e-3)
         if not len(k):
             return g
         Pf = np.c_[P[k, :2], np.zeros(len(k))]
+        # the bed's sorting at these points (points outside the zone keep a middling bed)
+        co, rough, big = np.full(len(k), 0.5), np.ones(len(k)), np.zeros(len(k))
+        st = self.shares(P[k]) if self.any else None
+        if st is not None:
+            j = st["k"]
+            co[j] = st["coarse"]
+            rough[j] = (0.45 + 0.9 * st["coarse"]) * (1 + 0.5 * st["riffle"]) * (1 - 0.65 * st["pool"]) * \
+                (1 - 0.5 * _ss(0.6, 1.0, st["u"]) * (1 - st["bar"]))
+            big[j] = _ss(0.35, 0.8, st["energy"]) * (0.4 + 0.6 * st["coarse"])
         e = 0.04
         O = np.array([[e, 0, 0], [-e, 0, 0], [0, e, 0], [0, -e, 0]])
         vis = lambda size: float(_ss(3.0 * texel, 5.0 * texel, size))
-        for amp, size, seed in ((0.05, 0.9, 731), (0.03, 0.4, 732)):
+        Q = np.concatenate([Pf + o for o in O])
+        thr = np.tile(0.62 - 0.2 * co, 4)  # (coarse bed: more of it is stone)
+        for amp, size, seed, wt in ((0.06, 0.9, 731, rough), (0.03, 0.4, 732, rough), (0.14, 2.2, 733, big)):
             v = vis(size)
-            if v <= 1e-3:
+            if v <= 1e-3 or not (wt > 1e-3).any():
                 continue
-            f = (noise.fbm(np.concatenate([Pf + o for o in O]), size, 2, seed=seed) ** 2).reshape(4, -1)
-            g[k] += (w[k] * v * amp)[:, None] * np.c_[(f[0] - f[1]) / (2 * e), (f[2] - f[3]) / (2 * e)]
+            f = noise.fbm(Q, size, 2, seed=seed)
+            f = _ss(thr - 0.02, thr + 0.1, f) * (0.8 + 0.2 * f)  # (a steep side, a nearly flat top)
+            f = f.reshape(4, -1)
+            g[k] += (w[k] * wt * v * amp)[:, None] * np.c_[(f[0] - f[1]) / (2 * e), (f[2] - f[3]) / (2 * e)]
         return g
 
     # ---- the report
@@ -810,17 +832,26 @@ def cobble_swatch(size=2.0, res=256, seed=4251):
     rad = np.clip(0.028 * np.exp(0.55 * rng.standard_normal(ns)), 0.012, 0.11)
     order = np.argsort(rad)  # (small first: the big stones lie on top)
     cen = rng.random((ns, 2)) * n
+    # stones gather: patches of plain gravel between drifts of cobbles (evenly spread domes of one height were the
+    # "bubble wrap"); the big ones stand anywhere
+    drift = spectral(n, 3.0, seed + 5, lo=2)
+    drift = (drift - drift.min()) / max(float(np.ptp(drift)), 1e-9)
     for q in order:
         r = rad[q] / t
         cx, cy = cen[q]
-        el = rng.uniform(0.6, 1.0)
+        if rad[q] < 0.06 and rng.random() > _ss(0.3, 0.6, float(drift[int(cy) % n, int(cx) % n])) + 0.12:
+            continue
+        el = rng.uniform(0.45, 1.0)
         a = rng.uniform(0, np.pi)
         ri = int(r + 2)
         ii, jj = np.mgrid[int(cy) - ri:int(cy) + ri + 1, int(cx) - ri:int(cx) + ri + 1]
         dx, dy = jj - cx, ii - cy
         ca, sa = np.cos(a), np.sin(a)
         d2 = ((dx * ca + dy * sa) / r) ** 2 + ((-dx * sa + dy * ca) / (r * el)) ** 2
-        dome = rad[q] * 0.42 * np.sqrt(np.clip(1 - d2, 0, 1)) ** 0.8  # (flattish water-worn tops)
+        # (flattish water-worn tops, each stone sunk to its own depth and lying at its own tilt)
+        sunk, tl, ta = rng.uniform(0.2, 0.55), rng.uniform(0.0, 0.45), rng.uniform(0, 2 * np.pi)
+        dome = rad[q] * sunk * np.sqrt(np.clip(1 - d2, 0, 1)) ** 0.6 * \
+            (1 + tl * (dx * np.cos(ta) + dy * np.sin(ta)) / r)
         sl = (ii % n, jj % n)
         m = (d2 < 1) & (dome + 0.2 * rad[q] > hgt[sl])
         if not m.any():

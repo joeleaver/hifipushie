@@ -5266,6 +5266,7 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             "styles": [{"name": s["name"], "macro": s["macro"], "macro_normal": s["macro_normal"],
                         "layers": {k: {"albedo": str((out / v["albedo"]).resolve()),
                                        "height": str((out / v["height"]).resolve()), "size": v["size_m"],
+                                       "normal": (str((out / v["normal"]).resolve()) if v.get("normal") else None),
                                        "height_m": v["height_m"], "projection": v.get("projection", "top"),
                                        "small": ({**v["small"], "albedo": str((out / v["small"]["albedo"]).resolve())}
                                                  if v.get("small") else None)}
@@ -5322,6 +5323,20 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
                     # ribbon as a staircase)
                     lv_ = ndimage.gaussian_filter1d(lv_, 5.0, mode="nearest") - 0.04
                     rv.append(np.c_[xy_, lv_, w_ + 4.0][live].round(3).tolist())
+            # (lakes: a level sheet over each lake's own wet cells, a strip per grid row and run, a cell past each end
+            # so it meets the shore; over the lake's whole box it hung in the air beyond a dam)
+            from . import terrain_shore
+            c_ = float(T.cell)
+            for _, m_, lv_ in terrain_shore.still_waters(T):
+                m_ = ndimage.binary_dilation(m_)
+                for iy_ in np.flatnonzero(m_.any(1)):
+                    y_ = float(T.ys[iy_])
+                    if box is not None and not (box[0][1] - c_ <= y_ <= box[1][1] + c_):
+                        continue
+                    d_ = np.diff(np.r_[0, m_[iy_].astype(np.int8), 0])
+                    for a_, b_ in zip(np.flatnonzero(d_ == 1), np.flatnonzero(d_ == -1) - 1):
+                        rv.append([[float(T.xs[a_]) - 0.5 * c_, y_, lv_ - 0.02, 0.5 * c_],
+                                   [float(T.xs[b_]) + 0.5 * c_, y_, lv_ - 0.02, 0.5 * c_]])
             job["rivers"] = rv
         notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
     GD = M.get("ground_detail")

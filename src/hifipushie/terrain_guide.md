@@ -606,8 +606,8 @@ write for the default; the numbers below steer it.
 - `rivers.<name>.bed = {"energy": 0.1}` says what the river IS whatever its grade (0 a slow silty lowland stream with
   reeds; 0.3 a gravel riffle-pool stream; 0.6 cobbles, boulders and steps; 1 a boulder and bedrock torrent); a list
   runs from source to mouth (`[0.9, 0.5, 0.15]`).
-- `"streams": {"pool": 0.8, "riffle": 0.6, "bar": 0.10, "lump": 0.07, "damp": 0.9, "cut": [0.35, 0.85],
-  "alternate": 0.75, "clutter": 1.0, "shape": true, "spacing": [6, 2.5]}`: pool depth (m, scaled by the channel's
+- `"streams": {"pool": 0.8, "riffle": 0.85, "bar": 0.10, "lump": 0.07, "damp": 0.9, "cut": [0.35, 0.85],
+  "alternate": 0.75, "clutter": 1.0, "shape": true, "spacing": [2.5, 1.5]}`: pool depth (m, scaled by the channel's
   size), how much of the depth a riffle takes back, a bar's top over the water, the bed's unevenness, the damp band's
   height on the bank, the cut bank's height range (`[0, 0]` = banks as graded), how strongly the sides alternate
   along a straight reach (0 = only real bends sort the bed), clutter density, the shape on / off, pool spacing in
