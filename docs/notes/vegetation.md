@@ -942,3 +942,13 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       0.2 (per species; DEAD_SHARE 0.08 default). The interior spruce now reads like spruce_in_a's grey dead haze.
     - Needles: spruce [0.21, 0.28, 0.13] (was yellow-olive; [0.17, 0.26, 0.15] went teal / cypress in Godot), tips 0.4;
       pine [0.27, 0.33, 0.20].
+    - Delivered (2026-10-09, code 943e17a, tests green: 71 ok, the three files exit 0): the six folders real_spruce,
+      real_pine (+ _interior, _edge) at CONTRACT 13, LOD0-2 + LOD3 octa impostor, _collision.glb, _seasons.json; Khronos
+      0 errors. Sheets `veg_renders/rt3_spruce.jpg`, `rt3_pine.jpg` (photo | ours in Godot).
+    - BLUNT: spruce = a dark plausible conifer at 30 m, still broad and blobby beside spruce_a, apex still a small knob,
+      5 m view still soft frond cards (limb tiles too few texels). Interior spruce: the dead haze reads now but is
+      darker / sparser than spruce_in_a's silver tangle, and its trunk is pale smooth grey (photo: red-brown scaly with
+      a root flare). Pine: bark reads as pine (grey plates, orange-red layers); the crown is thin flat clumps (an acacia /
+      young pine), nothing like pine_a's dense rounded mass or pine_c's veteran.
+    - NOT DONE: floor brash (stand-level, not in the tree folders), pine crown density / form, spruce narrowness, the
+      leader's last shoot length (growth), impostor pictures don't use the bark tint, oak / variants.
