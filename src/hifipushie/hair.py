@@ -1945,6 +1945,15 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
 # (the scalp chart) and the tail's core carry the rest.
 MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no mass shell under its cards
+# A SHORT cut (loose hair under MASS_MIN) as game artists build it: the cap, wearing the scalp chart with EVERY strand
+# of the groom drawn where it lies (1 texel a strand at a 2048 chart: ~0.3 mm), carries the look; over it only a
+# sparse layer of cards for what stands off the head (the lifted front, the silhouette's breakup), each on a tile of
+# many fine strands with soft tips and no opaque base, plus single-hair cards along the hairline. Cards cut one per
+# clump and worn on the dense tile read as torn paper / leaf litter at bust distance (Garrett's crop).
+SHORT_TIERS = {"hero": {"triangles": 16000, "group": "pair", "layers": 2}, "main": {"triangles": 8000, "group": "lock", "layers": 1},
+               "npc": {"triangles": 4000, "group": "lock", "layers": 1}, "far": {"triangles": 1500, "group": "lock", "layers": 1}}
+SHORT_OFF = 0.008  # m over the scalp: a card whose line never rises this far lies in the cap's own layer: left out
+SHORT_ATLAS = 2048
 CARD_TIERS = {
     "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
              "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000},
@@ -1964,12 +1973,17 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     from . import hair_cards as hc
     h = hair_of(spec)
     S = hc.strands_of(spec)
+    lens_ = [float(np.linalg.norm(np.diff(np.asarray(k_["pts"], float), axis=0), axis=1).sum())
+             for k_ in locks] if g.get("loose") else []
+    short = bool(lens_) and float(np.mean(lens_)) < MASS_MIN
     if isinstance(budget, str):  # a tier: its triangles, and how fine the cards are cut to spend them
         if budget not in CARD_TIERS:
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
-        tier = CARD_TIERS[budget]
+        tier = {**CARD_TIERS[budget], **(SHORT_TIERS[budget] if short else {})}
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
         budget = int(tier["triangles"])
+    if short:
+        S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": 0}
     lk = {**LOOK, **(h.get("look") or {})}
     # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
     gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
@@ -1981,8 +1995,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         import re as _re
         sd = hs.job(sc, g, spec, [k_ for k_ in locks if not _re.fullmatch(r"t\d*band", k_["name"])], tmp, col=col)
         D, e_chart = hs.strands_of_model(sd), sd["e0"]
-        chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]))
-        at = hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=hs.key(sd))
+        chart = hs.cap_chart(sc, g, hairline(sc, g), S, D, e_chart, int(S["atlas"]), short=short)
+        at = hc.atlas(S, lk, lines=hs.tile_lines(S), cap=chart, key=hs.key(sd) + ("short" if short else ""))
     else:
         at = hc.atlas(S, lk)
     import re
@@ -1996,6 +2010,15 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     core = None
     if D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
+        if short:  # only what stands off the head, on the open tiles (no opaque base: a card is fine strands)
+            keep_ = []
+            for c_ in cards:
+                _a, _e, h_ = sc.coords(np.asarray(c_["P"], float))
+                if float(h_.max()) < SHORT_OFF:
+                    continue
+                c_["kind"] = "medium" if c_["layer"] == 0 else "sparse"
+                keep_.append(c_)
+            cards = keep_
         tc = hc.tail_cores(D, hair_locks, sides=int(S.get("core_sides", 10)))
         core = hc.core_mesh(tc, at["tiles"]) if tc is not None else None
         # (not for a short cut: hair under MASS_MIN long has no inside; its shell stood OUTSIDE the cards on the
@@ -2811,6 +2834,9 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
         part, files = export_cards(name, out_dir, sp, log)
         hc_ = part.pop("hair")
         hc_["aux_texture"] = list(files).index("aux")
+        # (engines: COLOR_0 multiplies the base colour (the root-to-tip ramp, a value per card). glTF says so, but
+        # Godot's importer leaves BaseMaterial3D.vertex_color_use_as_albedo off: set it, or the hair is pale and flat)
+        hc_["vertex_color"] = "multiplies base colour; Godot: set vertex_color_use_as_albedo = true"
         part["atlas"] = 0
         glb = out_dir / f"{name}_hair_{tier}.glb"
         sheen = [round(float(c), 3) for c in srgb_to_linear(lk["sheen"])]
