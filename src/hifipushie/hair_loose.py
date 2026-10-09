@@ -48,6 +48,7 @@ LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
 DOWN = np.array([0.0, 0.0, -1.0])
 FACE_AZ = 58.0  # deg either side of the face's centre line that hair (not a fringe) is kept out of
+LAY_EL = (48.0, 66.0)  # deg of scalp elevation over which the "top" region's lay comes in (below: the sides' lay)
 STEP = 0.005  # m: the collider grid's cell
 BOX = ((-0.34, -0.3, -0.72), (0.34, 0.32, 0.2))  # round the head centre: down to the small of the back
 
@@ -237,7 +238,20 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     out = float(out_r.mean())
     outi = np.clip(out_r + float(p["messy"]) * rng.uniform(-0.3, 0.3, m), 0, 1)
     outi[is_fr] = np.minimum(outi[is_fr], 0.25)
-    lay = np.clip(by_region(p.get("lay", 0.0), 0.0), 0, 1)
+    lay_v = p.get("lay", 0.0)
+    if isinstance(lay_v, dict) and "top" in lay_v:
+        # "top"'s region weight is full from 42 deg of elevation, i.e. on the upper SIDES of the head too: laid there,
+        # the sides lost 6.7 mm of width (Garrett). The top's lay counts only where the scalp is the head's top
+        # (LAY_EL); below it that share of the weight takes the sides' lay.
+        base_ = float(np.mean([float(x) for x in lay_v.values()]))
+        up_ = _ss((el - LAY_EL[0]) / (LAY_EL[1] - LAY_EL[0]))
+        vals_ = [float(lay_v.get(r_, base_)) for r_ in REGIONS]
+        it_, is_ = REGIONS.index("top"), REGIONS.index("sides")
+        lay = sum(W[:, i_] * vals_[i_] for i_ in range(len(REGIONS)) if i_ != it_)
+        lay = (lay + W[:, it_] * (up_ * vals_[it_] + (1 - up_) * vals_[is_])) / np.maximum(W.sum(1), 1e-9)
+        lay = np.clip(lay, 0, 1)
+    else:
+        lay = np.clip(by_region(lay_v, 0.0), 0, 1)
     lay[is_fr] = 0.0
     d = _unit(tang * (1 - outi)[:, None] + nrm * (outi + 0.12 * (1 - lay))[:, None])
     stiff = np.clip(by_region(p["stiff"], 0.3), 0, 1)

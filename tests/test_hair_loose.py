@@ -82,6 +82,27 @@ def test_lay_presses_a_crop_onto_the_head():
     assert abs(np.median(low2) - np.median(low0)) < 0.002, (np.median(low0), np.median(low2))  # the sides as they were
 
 
+def test_top_lay_leaves_the_upper_sides():
+    """The "top" region's weight is full from 42 deg of elevation: the head's upper SIDES. A top lay must not press
+    those (Garrett's sides lost 6.7 mm of width): locks rooted at 30-46 deg stand as without any lay."""
+    crop = {"length": 0.03, "spacing": 0.012, "stiff": 0.6, "out": 0.1, "lift": 0.001, "body": 0.002, "messy": 0.0,
+            "uneven": 0.0}
+
+    def stand(loose):
+        sc, _col, locks = _grow(loose, parting="none")
+        R = np.array([np.asarray(lk["pts"])[0] + sc.C for lk in locks.values()])
+        T = np.array([np.asarray(lk["pts"])[-1] + sc.C for lk in locks.values()])
+        az, el, _ = sc.coords(R)
+        _, _, h = sc.coords(T)
+        fa = np.abs(((az + 180) % 360) - 180)
+        return h[(el > 30) & (el < 46) & (fa > 50)], h[el > 70]
+    up0, top0 = stand(crop)
+    up1, top1 = stand({**crop, "lay": {"top": 0.8, "front": 0.0, "sides": 0.0, "back": 0.0, "nape": 0.0}})
+    assert len(up0) > 5 and len(top0) > 3
+    assert abs(np.median(up1) - np.median(up0)) < 0.0015, (np.median(up0), np.median(up1))
+    assert np.median(top1) < 0.6 * np.median(top0), (np.median(top0), np.median(top1))
+
+
 def test_level_fringe_and_afro():
     sc, col, bob = _grow({"length": 0.3, "level": -0.08, "uneven": 0.0, "spacing": 0.03,
                           "fringe": {"length": 0.06, "level": -0.01}}, parting="none")
