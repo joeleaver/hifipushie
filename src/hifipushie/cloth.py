@@ -5031,6 +5031,44 @@ def _start_separation(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bT: np.ndarr
 
 
 EXACT_GAP = 0.003  # m: a smooth (contact-solver) start's cloth stands at least this far off the collider's triangles
+MADE_LIFT = 0.015  # m: the most a made piece's vertex is lifted over the garment under it at the start (_lift_made)
+
+
+def _lift_made(X: np.ndarray, M: dict, made: np.ndarray, body: "Body", padded: "Body", gap: float = EXACT_GAP) -> tuple[np.ndarray, int]:
+    """A layered garment's MADE pieces (a jacket's collar: laid by construction, held and carried, never cleared)
+    lifted over the garment under them where they start under or in it: along the body's normal to the padded body's
+    height there (`padded.pad`: how far out the under garment lies over each body vertex) + `gap`, at most MADE_LIFT,
+    the lift evened over the piece's own mesh so it stays a smooth surface. Laid on the body without the under
+    garment's neck pieces, a jacket collar's side passed through an open shirt collar's wing at the neck's side (10
+    edges; a held piece in contact that cannot yield: "newton stalled" at frame 0, om_05)."""
+    pad = getattr(padded, "pad", None)
+    idx = np.where(made)[0]
+    if pad is None or not len(idx):
+        return X, 0
+    vn, tree = body.normals()
+    d, j = tree.query(X[idx])
+    h = ((X[idx] - body.V[j]) * vn[j]).sum(1)
+    lift = np.clip(pad[j] + gap - h, 0.0, MADE_LIFT)
+    lift[d > 0.06] = 0.0
+    if not (lift > 1e-5).any():
+        return X, 0
+    # evened over the made pieces' own edges (a vertex is lifted at least by what it needs)
+    L = np.zeros(len(X))
+    L[idx] = lift
+    F = M["F"]
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    E = E[made[E].all(1)]
+    for _ in range(4):
+        acc, wt = L.copy(), np.ones(len(X))
+        np.add.at(acc, E[:, 0], L[E[:, 1]])
+        np.add.at(wt, E[:, 0], 1.0)
+        np.add.at(acc, E[:, 1], L[E[:, 0]])
+        np.add.at(wt, E[:, 1], 1.0)
+        Ls = acc / wt
+        L[idx] = np.maximum(Ls[idx], lift)
+    X = X.copy()
+    X[idx] += L[idx][:, None] * vn[j]
+    return X, int((L[idx] > 1e-5).sum())
 
 
 def _clear_exact(X: np.ndarray, F: np.ndarray, free: np.ndarray, bV: np.ndarray, bT: np.ndarray, gap: float = EXACT_GAP,
@@ -5060,11 +5098,57 @@ def _clear_exact(X: np.ndarray, F: np.ndarray, free: np.ndarray, bV: np.ndarray,
     ib = np.r_[vi, E[:, 1], E[:, 1], E[:, 1]]
     tt = np.r_[np.zeros(len(vi)), np.full(len(E), 0.25), np.full(len(E), 0.5), np.full(len(E), 0.75)]
     moved = np.zeros(len(X), bool)
+    # the other way round too: the collider's vertices and edge middles against the CLOTH's triangles (a 2 cm cloth
+    # triangle's middle dips under a finer collider's ridge with all its own vertices and edge points clear: a shirt
+    # placket under a jacket front, least separation 0.013 mm, "newton stalled" at frame 0: om_05)
+    lo_, hi_ = X[free].min(0) - 0.03, X[free].max(0) + 0.03
+    bE = np.unique(np.sort(np.r_[bT[:, [0, 1]], bT[:, [1, 2]], bT[:, [2, 0]]], 1), axis=0)
+    Cs = np.r_[bV, 0.5 * (bV[bE[:, 0]] + bV[bE[:, 1]])]
+    Cs = Cs[np.all((Cs > lo_) & (Cs < hi_), 1)]
+    Ff = F[free[F].any(1)]
     for _ in range(rounds):
+        any_ = False
+        if len(Cs) and len(Ff):
+            cc = X[Ff].mean(1)
+            rr = float(np.percentile(np.linalg.norm(X[Ff[:, 0]] - cc, axis=1), 95))
+            tc = cKDTree(cc)
+            d0c, _ = tc.query(Cs)
+            nc = np.where(d0c < gap + rr)[0]
+            if len(nc):
+                _, nbc = tc.query(Cs[nc], k=min(8, len(Ff)))
+                nbc = nbc.reshape(len(nc), -1)
+                mvc = np.zeros_like(X)
+                lnc = np.zeros(len(X))
+                for k in range(nbc.shape[1]):
+                    T = Ff[nbc[:, k]]
+                    bary, d = _closest_on_triangles(Cs[nc], X[T[:, 0]], X[T[:, 1]], X[T[:, 2]])
+                    hitc = d < gap
+                    if not hitc.any():
+                        continue
+                    Q = bary[:, :1] * X[T[:, 0]] + bary[:, 1:2] * X[T[:, 1]] + bary[:, 2:] * X[T[:, 2]]
+                    away = Q - Cs[nc]
+                    nrm = np.cross(X[T[:, 1]] - X[T[:, 0]], X[T[:, 2]] - X[T[:, 0]])
+                    nrm /= np.maximum(np.linalg.norm(nrm, axis=1), 1e-12)[:, None]
+                    # (the side the collider point is on: away from it; on the surface itself, along the cloth's
+                    # normal, whichever way the triangle's own middle lies from the collider's nearest centre)
+                    dirn = np.where((d > 3e-4)[:, None], away / np.maximum(d, 1e-9)[:, None], nrm)
+                    amt = (gap - d)[hitc]
+                    for c_ in range(3):
+                        vi_ = T[hitc, c_]
+                        better = amt > lnc[vi_]
+                        mvc[vi_[better]] = dirn[hitc][better] * amt[better][:, None]
+                        lnc[vi_[better]] = amt[better]
+                mvc[~free] = 0.0
+                if np.linalg.norm(mvc, axis=1).max() > 1e-6:
+                    any_ = True
+                    moved |= np.linalg.norm(mvc, axis=1) > 1e-6
+                    X += mvc * 1.05
         P = X[ia] * (1 - tt)[:, None] + X[ib] * tt[:, None]
         d0, _ = tree.query(P)
         near = np.where(d0 < gap + r_t)[0]
         if not len(near):
+            if any_:
+                continue
             break
         _, nb = tree.query(P[near], k=min(12, len(bT)))
         nb = nb.reshape(len(near), -1)
@@ -5088,6 +5172,8 @@ def _clear_exact(X: np.ndarray, F: np.ndarray, free: np.ndarray, bV: np.ndarray,
             push = np.where(better[:, None], n * np.maximum(need, 0.0)[:, None], push)
         hit = best < gap
         if not hit.any():
+            if any_:
+                continue
             break
         mv = np.zeros_like(X)
         # (each vertex takes the largest move any of its samples asks for)
@@ -5097,6 +5183,8 @@ def _clear_exact(X: np.ndarray, F: np.ndarray, free: np.ndarray, bV: np.ndarray,
         mv[idx[order]] = cand[order]
         mv[~free] = 0.0
         if not np.linalg.norm(mv, axis=1).max() > 1e-6:
+            if any_:
+                continue
             break
         moved |= np.linalg.norm(mv, axis=1) > 1e-6
         X += mv * 1.05
@@ -5602,8 +5690,19 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
         e1, e2 = P[FU[:, 1]] - P[FU[:, 0]], P[FU[:, 2]] - P[FU[:, 0]]
         a2 = np.linalg.norm(np.cross(e1, e2), axis=1)
         lmax = np.max([np.linalg.norm(e1, axis=1), np.linalg.norm(e2, axis=1), np.linalg.norm(e2 - e1, axis=1)], axis=0)
-        keep &= (a2 > 1e-10) & (a2 > UNDER_SLIVER * lmax ** 2)
+        # (and no face under 0.0005 mm2: ZOZO's builder asserts on a zero-area collider face in single precision;
+        # 10 faces of 5e-11 m2 in a shirt with its placket in the mesh stopped every trousers job over it: om_03, om_06)
+        keep &= (a2 > 1e-9) & (a2 > UNDER_SLIVER * lmax ** 2)
     FU = FU[keep]
+    # (and no vertex left without a face: ZOZO's builder averages each collider vertex's parameters over its faces'
+    # areas and asserts the sum > 0: a seam-welded vertex whose only faces were slivers stopped the job, om_06 / om_08)
+    used = np.unique(FU)
+    if len(used) < len(U) and under.get("res") is not None:  # (a garment; worn parts joined above keep their rows)
+        remap = np.full(len(U), -1, np.int64)
+        remap[used] = np.arange(len(used))
+        FU = remap[FU]
+        U, w, i = U[used], w[used], i[used]
+        carry = lambda P: U + np.einsum("nk,nkd->nd", w, (P - V)[i])
     out = {"bodyV": np.r_[V, U], "bodyT": np.r_[T, FU + len(V)]}
     if smooth:
         out.update(bodyV0=np.r_[poses[0], carry(poses[0])],
@@ -5728,9 +5827,13 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         c0_ = _collider(body_real, under, smooth)
         free_ = ~np.isin(Ms["piece"], [Ms["names"].index(nm) for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in Ms["names"]])
         Xs, n_ex = _clear_exact(Xs, Ms["F"], free_, c0_.get("bodyV0", c0_["bodyV"]), c0_["bodyT"],
-                                signed=len(c0_["bodyT"]) - int((c0_["bodyT"] >= len(c0_["bodyV"]) - len(under["V"])).all(1).sum()))
+                                signed=len(body_real.T))
         if n_ex:
             log(f"   start: {n_ex} vertices moved off the collider's own triangles (exact, {EXACT_GAP * 1000:.0f} mm)")
+        if under.get("res") is not None and getattr(body, "pad", None) is not None:
+            Xs, n_ml = _lift_made(Xs, Ms, ~free_, body_real, body)
+            if n_ml:
+                log(f"   start: {n_ml} vertices of made pieces lifted over the garment under them")
     push = dict(Bp.get("push") or {})
     poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
     carry = _carry(Bp, Ms, Xs, body_p, poses_c, flaps=made_flaps(g, Ms)) if settle else None
