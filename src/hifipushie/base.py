@@ -1372,7 +1372,7 @@ def _jawline(W, lm, ear, spec, mx, s, faces=None):
         uc = l1 / (l1 + l2)
         Nd = np.where((uu <= uc)[:, None], top + (uu / uc)[:, None] * (g - top),
                       g + ((uu - uc) / (1 - uc))[:, None] * (end - g))
-        D = Nd - Od
+        D = (Nd - Od) * _sstep(uu / 0.18)[:, None]  # nothing moves at the line's top (tiny faces by the lobe folded)
         d2 = ((W[:, None, :] - Od[None]) ** 2).sum(2)
         dmin = np.sqrt(d2.min(1))
         wg = np.exp(-(d2 - d2.min(1, keepdims=True)) / sig ** 2)
