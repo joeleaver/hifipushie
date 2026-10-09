@@ -3119,6 +3119,92 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       pass; never simulated); (8) the outfit sheet through cloth.look (fig.py su_om_garrett <png> [1]) once jacket,
       trousers and shirt are all cached for the saved sheets; (9) the head at the end (mk_om.py NOHEADFIT=0 once
       onemesh2's base code is on main).
+- Suit 8 (2026-10-09, "suit8" agent, branch `worktree-agent-ab5c5e673a635ca9a`, continues suit7; placket's shirt branch
+  merged in at 59be3f1; renders `cloth_renders/su8_*`, `om_2*`; scratch DURABLE in /mnt/data/hifipushie/suit8/: suit7's
+  scripts retargeted (run.sh sets OPENBLAS_NUM_THREADS=1) + sec.py <start or result npz> [V] [shirt npz] (THE collar
+  sections in mm: A centre back, B the neck's side, C the collar by |u| off the body / the under garment, the WING
+  number, and R = columns along the shoulder's RIDGE: body | under garment's top | jacket's lowest cloth over what is
+  under it), lay.sh <tag> <model> [key=json] (place-only start pickled, sections, a clay close-up of the CLOSED lay;
+  lay1.py now saves X = the closed lay, Xopen, the carried idx and the under garment's pieces), dbg8.py <model> (where
+  `_worn_top` put each front / back top, the collar's worn chart and chain, the closed start), pad8.py <tag> (the pad
+  along the ridge and which shirt piece stands over each vertex), mv8.py <result> (collar moves start -> end by |u|,
+  stretched triangles, the edges that folded most), lk9.py (garments drawn `worn_together` beside the concept, from the
+  cache or a job's out.npz), sheet8.py (concept crop over rows of cu.py collar sheets), dm8.py (drafting measures bare
+  vs over), mk8.py, ed8_tr.py, boxdf.sh (the GPU box's disk), after.sh <log> <queue>, patch_*.py).
+  - THE WINGS, by measure. Along the shoulder's ridge beside the neck (pad8.py, su_om_garrett, the old shirt): the
+    shirt's stand + fall stood 23-33 mm over the ridge out to x 90 mm, and `padded_body` raised the ridge 30-34 mm
+    there and still 12-16 mm at x 100-110 (PAD_SLOPE spreads a pad 1 mm per mm); `_worn_top` slid the fronts' tops onto
+    that ridge (neck point at z 1.542 where the shoulder is 1.50-1.52), the made collar went on top. Section B through
+    the neck's axis is IN FRONT of the ridge on this square-shouldered body: read the ridge columns (R), not B.
+    Three parts: (1) THE SHIRT (placket's: stand 9-13 mm off the neck, fall to |x| 83-88): with it alone the jacket's
+    lowest cloth is +8..14 mm over what is under it at x 80-140 (was 30-45); (2) `pressed(fall=)` / `_fall_down`
+    (garment key `under_fall`, UNDER_FALL 4 mm over the cap for worn tops, off for anything else: trousers' keys
+    untouched): the under garment's collar FALL (the flap of a fold on a piece wrapped round the neck) pressed down
+    along the body's normal where the body faces up (FALL_UP nz 0.25..0.6: shoulder tops, not the nape) past FALL_KEEP
+    12 mm from its fold; (3) `padded_body(over=)` (garment key `pad_over`, PAD_OVER_WORN 1.1 for worn tops, 1.5
+    otherwise): a garment point pads a body vertex only when it lies no more than 1.1 x its own distance to the body up
+    that vertex's normal (a collar standing against the neck padded the shoulder under it). With all three: +6..11 mm.
+  - om_20 (su_om_garrett jacket over placket's shirt, 2 cm, 107 s on the 4090): fits, collar_show 14.8, seams max
+    1.4 mm, cuffs 18.5 / 18, lapel gap 7.3 / 4.7, no wings, clean back (su8_om20_collar_clay.png: drawn with the
+    finished shirt, band + buttons, one open). Its collar ENDS (draped: below) crumpled at the hinge.
+  - `collar_ends` (garment key; `_draped_ends`, `_open_share`; place keeps `end_w` / `end_u` per collar vertex in
+    B["open_lay"]): "draped" (default) = from END_BACK 7 cm of neck edge before the roll line meets it (the neck's
+    side) the collar is NOT carried: solved with the lapel, resting as made (the runner's rest for made pieces),
+    cleared like draped cloth; "made" = the whole collar held; {"back": m}. Why: the fronts' tops move 14 mm from start
+    to end (10 out, 4-8 down: an open jacket's fronts swing out) and a held end stays. Ends only (back 0, om_20): the
+    ends follow, 60-95 deg folds at the hinge with the held band. From the neck's side, started OPEN with the band
+    (om_22): lapel gap 5.7 / 7.0 (in band, first time), crossings 12 (made: 19), the notch reads from the front, BUT
+    the freed fall stood up as flaps at both sides of the neck (nothing turns a free fall down but its own stiffness).
+    Now the draped part starts CLOSED and the held band's opening eases out over END_EASE 5 cm before it, at the start
+    and in every carried pose. NOT SIMULATED (the GPU box was deleted): first job when a box is up = `q.sh` with
+    "om_23 su_om_garrett jacket", then mv8.py + cu.py collar + sheet8.py against om_21 / om_22.
+    Sheet: cloth_renders/su8_collars_before_after.png (om_15 | om_21 made | om_22 draped-open, front / 3/4 / side /
+    back beside the concept; the shirt there is the pressed stand-in).
+  - front_hang 80 mm (om_15: 28), by measure (hang8.py <results> = each front's edge and how far it stands ahead of the
+    body by height, KEY=X0 for the start; hang9.py = the same for the pressed shirt): it is the LEFT front alone. Right
+    front 40-65 mm ahead of the body from waist to hem in om_15 and om_20-22 alike (plumb from the chest); left front
+    85-130 mm in om_20 / 21 / 22 (om_15: 44-65), its edge at x +50..+70, y 5 cm further forward than the right's: swung
+    out like a door. NOT the start (om_15's and om_21's starts are the same and symmetric but for the lap) and NOT the
+    shirt holding it out (pressed shirt 5-11 mm ahead of the body both sides). What changed: over the hugging shirt the
+    fronts end 6-12 cm APART (om_15: nearly closed, edges x -7 / +4, the left lying on the right); freed of the right
+    front the over side swings. Untested guesses: the left lapel's roll (the over side's lap adds a layer under it), the
+    left collar end; test with a symmetric start (the over front's lap offset 0 when the front closure is worn open).
+  - Trousers: `over_measures` tapes the HIPS over the tucked tail too, and the seat by half the hips' share when the
+    tail ends above the seat line (hips alone made a dropped waist wider than the seat's quarter allows: band 8 mm
+    short of the girth it sits on, stage 2). su_om_garrett's trousers: leg "tapered", no seat_ease override (gates
+    pass: band +0.8 mm, seat +4.7% over 970 mm; start clean: stretch 0.038, band closed). NOT SIMULATED.
+  - The GPU box's disk: `GPU_MIN_FREE_GB` (gpubox/env.sh) -> remote.sh sets the runner's floor on the BOX's copy
+    (cloth_zozo.py itself untouched: its hash is in every ZOZO sim's cache key). On main as 75cdc09.
+  - cloth.look did not find the jacket run.py had just cached ("not simulated (idle)"): not traced (lk9.py passes the
+    job's out.npz as `result=` instead). Check with om_23: build twice, compare keys (place() bit-for-bit?).
+  - Main's shirt (before placket's branch) fails fine_start_check on su_om_garrett (83 triangles over 1.6x at the
+    fronts' tops): scratch model `su8_g` = shirt fine_settle false. Not needed once the shirt branch is on main.
+  - Tests: tests/test_suit8.py (fall pressed on the shoulder not the nape, draped collar vertices, the open share,
+    key defaults).
+  - HANDOVER (suit8, context near full, 2026-10-09). Branch worktree-agent-ab5c5e673a635ca9a. NOT merged: the
+    coordinator's order is shirt2's branch -> main, merge main here, verify, then this branch. A new GPU box is up
+    (gpubox/env.sh; solver installed by suit8/boxsetup.sh; deleted after 45 idle minutes). RUNNING when written:
+    `q.sh q210.txt` = om_23 (su_om_garrett jacket, the draped collar started closed), om_24 (su_om_garrett trousers:
+    tapered, seat taped over the tail), po_10 (su_om_pose jacket: mk_pose.py 45 re-made the model from the current
+    su_om_garrett; builds its shirt first), po_11 (su_om_pose trousers); logs suit8/<tag>.log end "DONE rc", arrays
+    out/<tag>.npz (with the pressed shirt as U), renders cloth_renders/<tag>*.png. TO JUDGE, in order: om_23:
+    `run.sh cu.py out/om_23.npz out/om23_c.png 0,-0.04,1.50 0.17 collar`, sheet8.py with om_21 / om_22 rows (flaps
+    behind the neck gone? notch? crossings < 12? lapel gap <= 7?), mv8.py, hang8.py; if flaps or crumple remain set
+    COLLAR_ENDS back to "made". Then the symmetric-start test for the left front (NOT written: in place() the over
+    front's lap offset = the `lay_` / LAYER ramp + wrap "out" of front.L; make it 0 when the front closure's state is
+    open, one sim, hang8.py). om_24: report + check.py (leg opening, length, seat strain). po_10 / po_11: hang8.py
+    (fronts apart 12-15 cm at the waist), then the outfit sheet `run.sh lk9.py su_om_pose <png> - 0 front,three all`
+    (cached garments; pass jacket=<job out.npz> if the cache misses) beside the concept, clay and `tex`.
+  - NEXT, in order: (1) om_23 (above); if the notch still crumples, look at the collar ends' rest (made = the lay's
+    plane on the START's chest) vs the flat pattern (`zozo.rest_flat` for the draped part only); (2) the right neck
+    seam's open pairs (5-9 of 17, <= 2.3 mm after the clean-up, sim max 4-7 mm); (3) collar_hug 17 (the tell reads
+    the jacket collar off the SHIRT collar behind the neck: shirt stand 11-18 mm off the nape + the jacket's own lay
+    23-35 mm off the body at CB: lower by seating the jacket's stand against the shirt's, `_lift_made` lifts it to the
+    pad + 3 mm); (4) trousers om_24 (su_om_garrett trousers) then check.py; belt + loops in the figure (lk9.py draws
+    cloth_trims.meshes); pockets (su_om_pk); (5) su_om_pose: re-run mk_pose.py 45 from the current su_om_garrett, then
+    shirt + jacket + trousers there, the outfit sheet (lk9.py su_om_pose <png> - 0 front,three all) beside the concept;
+    (6) the head: mk_om.py NOHEADFIT=0 (om_garrett's base is on main), hair locks if cheap. shirt2 (the shirt's new
+    owner) will change every settle garment's coarse key (`made_from`): re-run after its merge.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
@@ -3322,6 +3408,30 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       (SEAT_PULL stays 12 mm). OPEN: button 1 (a made top: carry the fronts' corners with the stand, or seat the
       fastening before the fine settle), a slit of skin beside the band under button 1, the V is shallow (the
       concept's opens ~10 cm), collar judged only on the shirt alone (the jacket over it is suit6's re-run).
+  - Round 3 (2026-10-08/09, same agent; sims pk_31..pk_46; scratch adds plsec.sh <tag> <gap> <spread> (start: centre-
+    front gap + stand sections), sec.py <npz> [key] (centre back / neck's side: skin | stand | fall in mm), thr.py
+    <tag> [V|Vsim|X0] (throat close-up, pieces coloured), jb2.py <job dir> (exact start distance cloth -> collider),
+    shw7.py (run through suit7's run.sh: its cached shirt + a saved jacket surface drawn by my rule)).
+    - Button 1 (19 mm open) was GEOMETRY, not the solver: the made stand's centre-front points (button to
+      buttonhole) started 167 mm apart (gap 0.10 + spread 25: the swing adds ~4 mm a degree), and a front's neck
+      corner lies 31 mm from its roll line, so the corners can part by ~5.3 cm x (1 - cos roll) at most. Fix =
+      consistent numbers + `kinds.shirt.worn_top` (the fronts' tops start on the body, neck seam pinned to the
+      stand: start gap 95 -> 2 mm; this is fix (a): the fronts' corners start AT the stand; no made flap needed).
+      pk_36 (gap 0.05, spread 12/14/75): button 1 3.0 mm, 0 crossings, V open to button 1, no skin slit. Gap 0.02:
+      the ends met and tangled with the collar's (pk_35). A worn start on the bare body needs `_clear_exact`.
+    - Hug (suit7 / suit8: the jacket collar rode up over the shirt collar's wing): `gap` is laid round the neck, 1.6
+      mm of radius a cm. Defaults now gap 0.008 + COLLAR_SPREAD (18, 14, 65): start stand ~10 mm off the skin (the
+      buttoned stand's own number by nearest body vertex), centre-front points 80 mm, fall 6 mm wider than the
+      stand at the neck's side. `_spread_open_collar` sides by pattern half (lapping ends crossed). SIMS OF THESE
+      DEFAULTS: pk_44_om (su_om_garrett), pk_45_shirt (su_garrett), pk_46_gashirt (ga_suit): read their logs.
+    - `cloth_layers.tucked` + `cloth.worn_together` (in `garments()`, `look`, `cloth_reference.render_front`):
+      the under garment's finished surface, covered cloth laid 4 mm under the outer's inner face. Covered = outer
+      cloth along the body's normal from the vertex (TUCK_SIDE 1 cm), or the vertex outside the outer face within
+      3 cm. Dead ends: "projects inside a triangle" (fails outside convex sleeves), "not near an open edge" (pulled
+      the chest in the V under the lapels). Proof pk_43 / pk_47 (`_front_tex`, `_whole_tex`) vs om_13_jacket_front_tex.
+      Left: shards at the jacket's armpits (its own open pit seams show the shirt), layer crossings 3823 -> ~400.
+      `cloth.button_color`, kind closure `size` / `button` (jacket 20 mm, tone 0.55). Not done: band edge lines in
+      the reference figure; the tucked surface in `cloth_layers.tells` (still the pressed one).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
