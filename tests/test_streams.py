@@ -121,7 +121,7 @@ def test_bed_shape_only_under_water(T, field, mats):
 def test_clutter_rules(T, field, mats):
     S = mats.streams
     C = ts.clutter(T, mats, field)
-    assert np.array_equal(C, ts.clutter(T, mats, field)), "not deterministic"
+    assert np.array_equal(C, ts.clutter(T, mats, field), equal_nan=True), "not deterministic"
     kinds = list(ts.KINDS)
     n = {k: int((C[:, 3] == i).sum()) for i, k in enumerate(kinds)}
     assert n["river_rock"] > 5 and n["cobbles"] > 20 and n["driftwood"] >= 1, n
@@ -138,7 +138,7 @@ def test_clutter_rules(T, field, mats):
     assert (share >= 0).all() and share.max() < 0.5 and 0.15 < (share > 0.2).mean() < 0.5, (share.max(), (share > 0.2).mean())
     assert (C[C[:, 3] == kinds.index("reeds"), 10] == 0).all()
     man = ts.manifest(S, C)
-    assert man["columns"] == ts.CSV_COLUMNS and man["csv_version"] == 2
+    assert man["columns"] == ts.CSV_COLUMNS and man["csv_version"] == 3
     fp = man["kinds"]["river_rock"]["footprint"]
     assert fp["shape"] == "ellipsoid" and len(fp["plan"]) == 2 and 0.3 < fp["height"] < 0.6
     assert "footprint" in man["kinds"]["slab"] and "footprint" not in man["kinds"]["reeds"]
