@@ -234,7 +234,11 @@ def head_desc(base: dict) -> dict:
         f = headfit.follow(pseudo, pseudo["head"])
         hd["identity"] = f["identity"]
         if user.get("features"):
-            hd["warp"] = f["warp"]
+            # the features' warp first, then the head's own stored warps (fit_outline appends there): replacing them
+            # dropped every outline fit on a human() with features (Tess, 2026-10-09: widths moved 0.0 mm in 3 rounds)
+            own = hd.get("warp")
+            own = [] if not own else (own if isinstance(own, list) else [own])
+            hd["warp"] = [f["warp"], *own] if own else f["warp"]
         hd.pop("seed", None)  # (it is in the identity now)
     from . import humanstyle
     hs = humanstyle.active(base, humanstyle.HEAD + ("exaggerate",))
