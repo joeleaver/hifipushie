@@ -665,9 +665,12 @@ def _build(spec: dict, J: dict) -> dict:
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
                                   "mask": [{"zone": {"name": "lips", "grow": 3.5}},
                                                               {"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
+        # (the seam ends at the vermilion's own corners on a GNM head: lm_mouth_corner sits ~6 mm further out on the cheek
+        # there, and the line ran on past the mouth as a dark slit; Garrett 2026-10-09)
+        cr, cl = ("verm_u00", f"verm_u{_VN - 1:02d}") if f"verm_u{_VN - 1:02d}" in J else ("lm_mouth_corner.R", "lm_mouth_corner.L")
         out["skin:lip_seam"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.6, blood=3.2, oxygenation=0.5), "opacity": 0.7,
-                                "mask": [{"spot": {"at": ["lm_mouth_corner.R", "lm_lip_inner_upper.R", "lm_lip_seam",
-                                                          "lm_lip_inner_upper.L", "lm_mouth_corner.L"],
+                                "mask": [{"spot": {"at": [cr, "lm_lip_inner_upper.R", "lm_lip_seam",
+                                                          "lm_lip_inner_upper.L", cl],
                                                    "radius": [0.0008, 0.0016, 0.0018, 0.0016, 0.0008], "soft": 0.8, "line": True}}]}
     if hands:
         add("nails", 1.0, color=T(melanin=0.12, blood=2.4, epidermis=0.4), opacity=0.75, roughness=0.22, specular=0.5,

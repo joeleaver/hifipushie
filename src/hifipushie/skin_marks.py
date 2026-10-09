@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 3
+VERSION = 4
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -108,7 +108,7 @@ def head_mesh(spec: dict, part: str, J: dict, voxel: float = 0.0015):
     return out
 
 
-def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000):
+def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000, keep_all: bool = False):
     """Points on the mesh at `per_m2` x density(points, normals) (0..1) per square metre: (P, Nrm, d)."""
     V, N, F = (np.asarray(a) for a in (V, N, F))
     dv = density(V.astype(np.float64), N.astype(np.float64))
@@ -126,6 +126,8 @@ def scatter(V, N, F, density, per_m2: float, rng, chunk: int = 200000):
     P = w[:, :1] * a[fi] + w[:, 1:2] * b[fi] + w[:, 2:] * c[fi]
     Nn = _unit(w[:, :1] * N[F[fi, 0]] + w[:, 1:2] * N[F[fi, 1]] + w[:, 2:] * N[F[fi, 2]])
     d = np.concatenate([density(P[i:i + chunk], Nn[i:i + chunk]) for i in range(0, len(P), chunk)]) if len(P) else np.zeros(0)
+    if keep_all:
+        return P, Nn, d
     m = rng.random(len(P)) < d
     return P[m], Nn[m], d[m]
 
@@ -390,15 +392,21 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             return cov * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
         draw(R, x0, A, reach, shape, (1 - tone) * 0.95)
         draw(G, x0, A, reach, shape, tone * 0.95)
-        # the shadow: the dark roots' local count (hair in the skin), blurred to ~1.5 mm
+        # the shadow: the EXPECTED density of dark roots (hair in the skin), from a dense sample of the density field
+        # (not the drawn roots' count: blurred enough to hide its Poisson noise, ~3 mm, it fell off 3 mm short of every
+        # edge and left a pale band over the lip), each sample weighted by 1 / its pixel's area on the skin
+        K = 12
+        Pc, Nc, dc = scatter(V, N, F, dens, K * HAIRS_PER_M2, np.random.default_rng(950 + int(o.get("seed", 0))), keep_all=True)
+        _, Ac = jacobians(sp, Pc, *frames(Nc, np.tile([1.0, 0, 0], (len(Pc), 1))))
+        xc = pix(sp, Pc)
+        ok = np.isfinite(xc).all(1)
+        xi = np.clip(np.round(xc[ok]).astype(int), [0, 0], [W - 1, H - 1])
+        area = np.abs(Ac[ok, 0, 0] * Ac[ok, 1, 1] - Ac[ok, 0, 1] * Ac[ok, 1, 0])
         Bc = np.zeros((H, W), np.float32)
-        xi = np.clip(np.round(x0).astype(int), [0, 0], [W - 1, H - 1])
-        # each root weighted by 1 / its pixel's area on the skin: the blurred sum is roots per m2 wherever the map stretches
-        area = np.abs(A[:, 0, 0] * A[:, 1, 1] - A[:, 0, 1] * A[:, 1, 0])
-        np.add.at(Bc, (xi[:, 1], xi[:, 0]), ((1 - tone) * area).astype(np.float32))
+        np.add.at(Bc, (xi[:, 1], xi[:, 0]), (dc[ok] * (1 - float(o["grey"])) * area).astype(np.float32))
         pm = float(np.median(pxm))
-        Bc = gaussian_filter(Bc, 0.003 / pm)   # (~1.5 mm left the count's Poisson noise as blotches)
-        Bs = np.clip(Bc / (0.7 * HAIRS_PER_M2), 0, 1) ** 0.8   # full at ~70% of a full dark beard
+        Bc = gaussian_filter(Bc, 0.0012 / pm)
+        Bs = np.clip(Bc / (K * HAIRS_PER_M2) / 0.7, 0, 1) ** 0.8   # full at ~70% of a full dark beard
     else:
         Bs = np.zeros((H, W), np.float32)
         pm = 0.0
@@ -484,7 +492,7 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         ph = rng.uniform(0, 2 * np.pi, (n, 4))
         aspect = rng.uniform(0.75, 1.0, n)
         rot = rng.uniform(0, np.pi, n)
-        inten = np.clip(rng.uniform(0.35, 0.9, n) * (0.7 + 0.5 * d), 0, 1)
+        inten = np.clip(rng.uniform(0.25, 0.7, n) * (0.75 + 0.45 * d), 0, 1)   # most are faint
         dark = rng.random(n) < float(o["dark"])
 
         def shape(i, s, t):
@@ -497,8 +505,9 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             aa = pxm[i]
             return _ramp(r, edge * (1 + 0.5 * soft[i]) + aa, edge * (1 - soft[i]))
         reach = rad * 1.9 + 2 * pxm
-        draw(R, x0, A, reach, shape, np.where(dark, 0, inten))
-        draw(G, x0, A, reach, shape, np.where(dark, inten, 0))
+        inten = np.where(dark, rng.uniform(0.8, 1.0, n), inten)
+        draw(R, x0, A, reach, shape, inten)                  # every freckle, its darkness in its value
+        draw(G, x0, A, reach, shape, np.where(dark, 1.0, 0.0))  # the darker ones alone
     # moles: a few, anywhere on the face, rounder, sharper, darker
     nm = int(o["moles"])
     if nm:

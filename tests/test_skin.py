@@ -250,11 +250,11 @@ def test_features_and_shader_budget(tmp=None):
 def test_beard_area_and_stubble_options():
     """The beard is an area (jowls and under the jaw, not only beads along the jaw's edge), and stubble takes size /
     shadow / grey; brows take drop / arch / soft. Defaults make no new layer."""
-    spec = head_spec(hair={"stubble": 0.8})
+    spec = head_spec(hair={"stubble": {"amount": 0.8, "engine": "tile"}})
     names = list(paint.layers(spec))
     assert "skin:stubble" in names and "skin:stubble_grey" not in names
     assert "jowl.L" in skin.UNIONS["beard.L"] and "beard_neck" in skin.UNIONS["beard.L"]
-    spec = head_spec(hair={"stubble": {"amount": 1.0, "size": 2.0, "shadow": 1.5, "shadow_color": "#83705f", "grey": 0.5},
+    spec = head_spec(hair={"stubble": {"amount": 1.0, "size": 2.0, "shadow": 1.5, "shadow_color": "#83705f", "grey": 0.5, "engine": "tile"},
                            "brows": {"drop": 0.003, "arch": 0.5, "soft": 0.4}})
     ly = paint.layers(spec)
     assert "skin:stubble_grey" in ly
