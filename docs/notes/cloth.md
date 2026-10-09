@@ -2012,3 +2012,18 @@ NO SIM WAS RUN.
     108/100, white shirt still out at both armpits (c10_w4 views front / three / pitL / pitR). The shirt there is
     wedged between the side panel and the under-sleeve with no room: pushed behind one panel it crosses the other.
     Reverted. A geometry pass can't clear it: the shirt needs underarm / sleeve-head room in the SIM (GPU queue).
+  - Round 4, the SHIP layering (Joe: s2_12 "at one point you had the shirt like perfect" = the target). c10ship.py:
+    shirt = s2_12 drawn exactly as simulated, jacket constructed over it, shirt faces the jacket covers CUT
+    (cloth_layers.hidden, margin 3 cm), not tucked. On the CACHED om_21 jacket it fails: that jacket was simulated over
+    another shirt (the pickle's, p50 3 / max 95 mm from s2_12), s2_12 is fuller, 1803 crossings of the visible shirt
+    with the jacket (c10_w5.png: shirt through the jacket's chest and sleeves). The jacket has to be simulated over
+    s2_12 itself. This code no longer meshes the shirt as s2_12 did (13123 vs 13284 vertices, key f7ab... vs a441...):
+    run.py `under_pin=<npz>` builds the under garment place-only and puts the pinned shape on it through the pattern
+    (pinmap.carry, per piece barycentric in uv; miss 0.0 mm), key pin_<hash>. q1.txt = the jackets (as is, gorge 55,
+    gorge 45, open_lap false) and trousers over pinned s2_12; q_optional.txt = a dress-shirt trim (armholeDepthFactor
+    0.52, bicepsEase 0.10, sleevecapEase 0, chestEase 0.10) + the pose shirt, only if it beats s2_12.
+  - GPU fleet (oxidegen bundle jobs, live 2026-10-09): HIFIPUSHIE_GPU=bundle -> spikes/gpu_cloth/bundle.sh (one job =
+    one batch, this checkout's cloth_zozo.py as runner, waits, leaves out.npz; token from OXIDEGEN_TOKEN or
+    /mnt/data/hifipushie/gpubox/oxidegen_token). First test batch 4/4, $0.10, peak VRAM 1.3 GB, the pose shirt did not
+    fail (78 s). known_good_sim: same in.npz and runner, seam gaps 2.9 / 8.5 mm vs 2.8 / 8.0 originally, vertices p50
+    1.4 / p95 4.9 mm from the original result; its fine settle p95 0.1 mm: solver nondeterminism, not code.
