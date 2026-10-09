@@ -3308,6 +3308,66 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       `_clear_of_held` / `_untangle` round the roll's end). Next: make the spread identical at both mesh sizes
       (compute hinge, centre, radius once from the pattern + neck, not from each mesh's stand vertices), then look at
       the 11.5x triangle with pp_dbg.py (trousers2's scratch). Tools: jb3.py <job dir> (start edges vs flat by piece).
+- Shirt 2 (2026-10-09, "shirt2" agent, branch `worktree-agent-aadad0f70eefaeafd`, takes over from placket; renders
+  `cloth_renders/s2_*`; scratch DURABLE in /mnt/data/hifipushie/shirt2/: placket's scripts retargeted + env.sh (main's
+  remote.sh through gpubox/env.sh; when the box does not answer the remote is nobox.sh, which FAILS: nothing runs
+  locally unless LOCAL_ZOZO=1), q.sh <queue> (run.py sims: log <tag>.log, arrays out/<tag>.npz), qs.sh <script.py>
+  <queue> (any script over queue lines, logs out/<script>_<tag>.log), pl.py <model> <garment> <tag> [key=json]
+  (place only, ~8 min under load: made pieces fine vs their coarse copy, coarse start stretch / crossings, closure and
+  neck seam start gaps; saves out/pl_<tag>.npz coarse and plf_<tag>.npz fine), fs.py (the fine settle's START step by
+  step from a CACHED coarse sim, no GPU: stretch by piece after each clearing step, gate, made start vs rest; STEPS=1),
+  sec.py <npz> [V|X0] (stand / fall sections in mm), bodycmp.py a.npz b.npz (did the body move between two results),
+  sh7.sh <tag> [SH_NOFOLD=1 SH_NOMAPS=normal SH_NOBODY=1 SH_THICK=0 SH_NOJACKET=1] (the under garment drawn finished
+  under suit7's cached om_15 jacket, front close-up, ~4 min), fleck.py <tucked npz> [zmax] (sharp edges in the visible
+  front), tk.py (tucked shirt vs the body), box.sh ['cmd'] (the GPU box: disk, jobs, GPU), t1.py <test file> <tests>,
+  tests.sh (the thirteen cloth files: + test_cloth_reference, test_suit7), q4.txt = the seven sims still owed).
+  - Merge: placket's branch into main's head; conflicts in cloth_reference.render_front (worn parts AND the finished
+    under garment + buttons: both kept) and the KB's jacket kind (button defaults + the relaxed fit band).
+  - THE FINE START, the cause: the made pieces were constructed TWICE, once per mesh size (place() on the 2 cm mesh
+    for the coarse sim, again on the 1 cm mesh for the result), and the two differed: a fall turns "as far as clears
+    what is under it" and what is under it is sampled by the mesh; the fold's wedge and the neck layer are functions
+    of the mesh size; the spread hinges on the stand's own vertices. Collar p90 8-10 mm on the Garretts, 38 mm on
+    ga_suit. `_press_plan` then either set a collar the drape wasn't solved round, or (over MADE_SHAPE) took the
+    coarse sim's faceted collar carried onto the fine mesh as the made shape AND its rest, cleared its layers apart
+    vertex by vertex and opened the flap station by station (-70 .. 0 deg): made pieces 160-640% off their rest, fronts
+    pushed 3-11x round the roll's end. Which of those a body got flipped with 2 cm of collar gap.
+    Now ONE construction (`build`: garment key `made_from`, default "fine"; "each" = the old two): the fine mesh is
+    placed FIRST, the coarse placement takes its made pieces as a sampled copy (`transfer(M_f, X0_f, Ms)`; place():
+    `B["_made_as"]` {pieces, X, U}; `_place_folds(made=)` lays the copy once the neck pieces' folds and spread are
+    made, BEFORE the body pieces' flaps turn, and doesn't turn a given piece's fold again; laid again at the end of
+    place() after the pushes; `start_unpushed` takes the fine one's too). Carried back onto the fine mesh the copy is
+    the construction within the coarse facets' chords (collar p50 0.4 / p90 3.7 mm at the roll; MADE_SHAPE is 8).
+    EVERY settle garment with made pieces has a new coarse sim key (jackets and trousers too).
+    Test tests/test_folds.py::test_made_pieces_are_one_construction_at_both_sizes.
+  - Default open collar gap 0.008 (garment_kb kinds.shirt.wear.no_tie; the coordinator's choice: Garrett is the goal).
+  - Results at 0.008 (4090): su_garrett s2_11: fits, 0 crossings (2 at the cuffs' own laps), nothing crumpled, button
+    1 2.0 mm, fine start stretch 32% (placket's same gap: 157%), made pieces 85% off rest (179%), no made_reshaped,
+    876 s. su_om_garrett s2_12: fits, nothing crumpled (placket: CORRUPT, collar 4-5%), button 1 2.2 mm, fine start
+    54% (gate 60%: thin margin), 1248 s; s2_12_om_collar.png = a clean symmetric open collar, both points down
+    (pk_51_om_collar.png: the wearer's-left wing crumpled). ga_suit and the 0.02 / 0.03 margin runs: NOT RUN (two GPU
+    boxes died under the queue): `bash q.sh q4.txt`.
+  - Collar as worn (sec.py, su_om_garrett s2_12, mm): stand off the skin 15.7 at centre back, 13-15 at the neck's
+    sides; a BUTTONED stand on the same body by the same measure (place only, tie=true): 12.9 / 6-7, so the open one
+    is +3 / +7. Fall to |x| 87-88 (inside the jacket's neck point at 94), 14-17 mm over the BODY's shoulder under
+    it, 6 mm (median) over the shirt cloth under it. su_om_garrett's body MOVED since placket's runs (bodycmp.py: neck
+    zone 3.2 mm median, the one-mesh neck change on main): placket's 9-11 mm was the same stand on a fuller nape. A
+    buttoned stand on the new body starts 20.8 mm OPEN (place only): band_short there, not looked into.
+  - Still in the start, not fixed: the fine PLACEMENT itself has the collar's fall through both fronts' rolled tops
+    (69 + 61 crossing pairs), collar / yoke 32, front.L / front.R 122 on su_garrett, the same before this change;
+    `_press_plan`'s untangle ends with 41-84 crossing vertices it can't clear (the collar is held). The under front's
+    open-neck roll turns 17.7 deg where the over one turns 85 (blocked by the collar's fall): asymmetric by
+    construction.
+  - Tucked under garment (`cloth_layers.tucked`): covered is taken by the majority of a vertex's neighbours (single
+    vertices flipped at an opening's edge), the move falls off over TUCK_FEATHER 5 rings x TUCK_FALL 0.6, a covered
+    vertex moves no less than TUCK_EVEN 0.7 x its neighbours' mean. Layer crossings 486 -> 351 on suit7's om_15 pair.
+    The PALE FLECKS on the shirt beside the lapel (pk_43) are NOT this: they stay with the normal map off, fine folds
+    off, the body out, thickness 0 (s2_b..s2_e) and there is no sharp edge there in the geometry (fleck.py: the only
+    sharp edges under the neck are the band's own fold rows). They only show with the jacket over the shirt and lie
+    in the lapel's shadow: read as the textured EEVEE look's light leak (the Overboard tooling card), not proven.
+  - NOT DONE: ga_suit + margins (q4.txt); the open stand as a hug band (HUG_CLEAR instead of SMOOTH_CLEAR + 0.5 mm:
+    3.3 mm of the +3 / +7); band edge lines in cloth_reference.render_front; the jacket drawn with its 20 mm buttons
+    (needs a jacket sim on this code: suit8's); export_part / scene sync with the tucked surface checked on a cached
+    pair; the lumpy yoke seen from the side in s2_12.
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
