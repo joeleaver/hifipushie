@@ -170,3 +170,27 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
     straighter and their inner heads lower; a dark dot at our brow's inner end (garrett4's known brow-image clip);
     the dressed lower lid high. NOT DONE: mouth / Cupid's bow (queued after the eyes). Hair: hair7's base.json still
     renders ginger with main 04ad344 (its swoop "body" / "lay" keys are newer than main's hair.py: stripped in mkd.py).
+- (likeloop, eyes under MATCHED LIGHT, e8-e14; sheets ll_eyes_8..14.png, ll_eyes_layers.png, ll_14_dressed_pair.jpg)
+  - LIGHT (lightfit.py: likeness_shape.fit_light on the photo and on each render over one skin mask and one set of
+    normals): the photo's light comes from [-0.17, -0.88, 0.45] (26 deg up, hardness 0.82); garrett4's light.json key
+    was 43 deg up. light_m.json = that key direction, world 0.22: refit on our render [-0.16, -0.85, 0.51], 0.87.
+    Socket luminance / cheek (photo | ours e14): upper lid 0.81 | 0.65, the fold under the brow 1.13 | 0.47,
+    under-eye 0.82 | 0.75: his orbits are NOT darker than ours under the fitted light (the fold is lit; the "deep in
+    shadow" read is the low-res photo's dark lash line + iris): socket deepening NOT done (the measure says no).
+  - Detector readings move ~1 mm with light alone (eye width 28.4 -> 26.9, nasion point 2.6 mm): compare only under
+    matched light; vertical rows are referenced to the lips' seam (the nasion drifts).
+  - LOWER LID HIGH in the skinned render (not in clay): split by experiment, one change each: stage rendered flat (no
+    paint: shotf.py) opening 8.46, lower lid 80.9 above the seam (photo 80.5); painted 6.3-6.5 / 82.0. Not the
+    waterline (new skin.eyes "waterline" 0..1: off changed nothing), not the lash lines (0.55 -> 0.25: nothing), not
+    veins / tear line (nothing), not the gaze (straight; the camera is 9 deg BELOW the eyes, which would lower his
+    irises, the other way). MY dull sclera (#a39a90, round E2) was 0.75 mm of it: the reader (and an eye) takes a
+    dark sclera for lid. The rest moved with geometry once the sclera was light again: lid_lower nudge -0.8 mm.
+  - GATE: opening >= 7.2 mm. Kept (e14, ll_garrett + dressed ll_e14): sclera #c4bcb2, waterline 0 (kept off: no
+    effect, cleaner), lid_lower -0.8 mm, eye_outer -0.5 mm, brow_inner -1.5 mm (nudges), brows arch 0 / drop 5 mm /
+    soft 0.5 / thickness 1.1, skin.detail 1.8 -> 1.3 (the forehead's crumpled-paper relief), zones eyelids 2.2 /
+    under_eye 1.8. e14 vs photo: open 7.35 / 7.39, aspect 0.27 / 0.26, cover 3.24 / 3.46, white below -2.16 / -2.20,
+    brow gap 11.6 / 12.1, brow height 19.8 / 21.0, brow tilt -9.9 / -12.5, canthal +0.5 / -0.45, upper lid 88.3 /
+    87.9 and lower lid 80.9 / 80.5 mm above the seam, pupil 85.7 / 84.8 mm above the seam (ours ~0.9 mm high).
+  - Still: his upper lid shows a lit warm shelf under a dark fold line (hood); ours a smooth plane. Hair: h7_garrett
+    is edited live (per-lock `swoop` keys newer than main): mkd.py drops lock keys not in hair.LOCK_KEYS; it still
+    renders blond-ginger here.

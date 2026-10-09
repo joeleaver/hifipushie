@@ -10,7 +10,8 @@ iris' radius from its four rim points), cover (how far the upper lid comes down 
 cover_share (cover / iris diameter), white_below (lower lid under the iris' bottom: + = white shows under it),
 brow_gap (the brow's LOWER edge over the pupil -> the upper lid margin: a low heavy brow close to the eye is small),
 brow_height (pupil centre -> the brow's UPPER edge), brow_tilt (head -> tail, + = tail higher), canthal_tilt (inner ->
-outer corner, + = outer higher). Brow points read paint (a render's brows are the skin's brow hairs).
+outer corner, + = outer higher), pupil_y (the iris centre BELOW the nasion, 168), pupil_seam (the lips' seam below the
+iris centre), upper_y / lower_y (each lid margin ABOVE the lips. seam: which lid moved; the nasion point drifts with the light). Brow points read paint (a render's brows are the skin's brow hairs).
 """
 from __future__ import annotations
 
@@ -23,9 +24,10 @@ EYES = {
     "brow_low": (52, 282), "brow_up": (105, 334), "brow_head": (107, 336), "brow_tail": (70, 300),
 }
 NAMES = ("open", "width", "aspect", "iris_r", "cover", "cover_share", "white_below", "brow_gap", "brow_height",
-         "brow_tilt", "canthal_tilt")
+         "brow_tilt", "canthal_tilt", "pupil_y", "pupil_seam", "upper_y", "lower_y")
 TOL = {"open": 0.8, "width": 1.2, "aspect": 0.03, "iris_r": 0.4, "cover": 0.6, "cover_share": 0.06, "white_below": 0.5,
-       "brow_gap": 1.2, "brow_height": 1.5, "brow_tilt": 3.0, "canthal_tilt": 1.5}
+       "brow_gap": 1.2, "brow_height": 1.5, "brow_tilt": 3.0, "canthal_tilt": 1.5, "pupil_y": 1.0, "pupil_seam": 1.5,
+       "upper_y": 0.8, "lower_y": 0.8}
 
 
 def frame(P) -> tuple:
@@ -38,6 +40,7 @@ def measures(P, mmpx: float) -> dict:
     P = np.asarray(P, float)
     ex, ey = frame(P)
     out = {k: [] for k in NAMES}
+    nas, seam = P[168], 0.5 * (P[13] + P[14])
     for s in (0, 1):
         g = lambda k: P[EYES[k][s]]  # noqa: E731
         c = g("iris")
@@ -55,6 +58,10 @@ def measures(P, mmpx: float) -> dict:
         out["white_below"].append((lo - (float(c @ ey) + r)) * mmpx)
         out["brow_gap"].append((up - float(g("brow_low") @ ey)) * mmpx)
         out["brow_height"].append((float(c @ ey) - float(g("brow_up") @ ey)) * mmpx)
+        out["pupil_y"].append(float((c - nas) @ ey) * mmpx)
+        out["pupil_seam"].append(float((seam - c) @ ey) * mmpx)
+        out["upper_y"].append((float(seam @ ey) - up) * mmpx)
+        out["lower_y"].append((float(seam @ ey) - lo) * mmpx)
         for name, a, b in (("brow_tilt", "brow_head", "brow_tail"), ("canthal_tilt", "inner", "outer")):
             d = g(b) - g(a)
             out[name].append(float(np.degrees(np.arctan2(-(d @ ey), abs(d @ ex)))))
