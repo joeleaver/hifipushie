@@ -6014,6 +6014,26 @@ mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/da
     still BROKEN; test_humanfit changed to say so). Open: a size guard on nudge's correction layer.
   - `likeness_brief.reference_brief`: shots ordered and annotated with what each is worth to the fit (`worth`,
     `STUDY`): neutral long-lens front, TRUE profile, a read in words, three-quarter only for judging.
+- Round 3, the point-placing test as a measurement (Joe: "what about testing how well the agent places the points
+  itself"; clicks.py, clicks2.py, clicks3.py; pictures + answers in /mnt/data/hifipushie/refstudy/clicks/; placers =
+  fresh sub-agents with a gridded crop and one sentence per point; 16 placer runs):
+  - FRONT (4 pictures, 6 placements): placers agree with EACH OTHER to 0.35 mm (median sd between two placers on the
+    same picture, max 1.7): the error is definition, not noise. Scatter about each point's bias 0.6-0.7 mm for inner
+    eye corners, subnasale, nostril wings, mouth corners, lip seam; bias: wings 7 mm above GNM's lm 31 / 35, nasion
+    and nose tip 3.3-3.6 mm low (no feature on the mid-line from the front), lip seam 2.3; the chin's lowest point
+    6 +- 9 mm: not placeable. With the other pictures' per-point bias taken out a held-out picture's points are off by
+    1.0-1.4 mm median. A zoomed refine round (21 tiles at 6x with a fine grid) does NOT help (median 2.2 -> 2.5 mm).
+    And front clicks hardly matter to the fit even calibrated: detector 2.51 -> + placed (bias out) 2.42; with a read
+    2.06 -> 1.99. DROP front clicks.
+  - PROFILE (6 pictures, 9 points; the detector finds no profiles): eye corner 0.7, mouth corner 0.6, nose tip 1.2,
+    subnasale 1.4, nasion 1.7, lower lip 2.1, lip seam 2.7, upper lip's red 4.4, chin bottom 6.4 (rms mm incl. bias).
+    Fit, front detector + profile: 2.54 -> 2.31 face, mid-line profile 2.73 -> 2.06, nose 2.74 -> 1.94 with REAL
+    clicks (bias out) = the simulated +-1.5 mm row (2.32 / 2.02 / 2.24); the CHIN does not improve (3.31 -> 3.55;
+    simulated 2.51) because its point can't be placed: it needs the traced chin / jaw line (polylines by real placers:
+    NOT tested). So "the view that pays" holds with real clicks for profile and nose; keep profile clicks, sized by
+    `humanfit_map.CLICK_SIGMAS` (per point, front / profile, from these numbers).
+  - Not tested: definition cards with diagrams as a separate arm, polylines, skinned / hair / stubble pictures,
+    three-quarter views, tokens (a placer run is ~15 s and one picture).
 - Open, in order: structure ops fitted as residuals after the MAP (what closes the out-of-model 3.6 mm jaw); clicks
   as a tool (a gridded crop + named points; an LLM clicking to +-1.5 mm is untested); measured macros from pictures
   instead of said ones (the ceiling: 1.66 mm); a GNM-space dense landmark detector trained on our own renders (exact

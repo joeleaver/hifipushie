@@ -2065,7 +2065,9 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
                           for i, v in enumerate(rep["views"]))
         if rep.get("read"):
             extra += "\nread: " + ", ".join(f"{k} asked {v['asked']:+.1f} got {v['got']:+.2f}" for k, v in rep["read"].items())
-        out[-1] = out[-1] + "\n" + extra + "\nmacros (population sigmas):\n" + rep.get("macros", "")
+        out[-1] = (out[-1] + "\n" + extra + "\nmacros (population sigmas):\n" + rep.get("macros", "")
+                   + "\n(method map: the detector's point table is validated on RENDERS of heads of known shape only, not yet on "
+                   "photographs. The result is the most probable head for this evidence: soft; structure comes after.)")
     return out
 
 

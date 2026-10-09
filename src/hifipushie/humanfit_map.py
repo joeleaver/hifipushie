@@ -34,6 +34,18 @@ CUT = 2.5          # mm: detector points scattering more than this over the cali
 FLOOR = 0.7        # mm added in quadrature to every detector point's sigma
 INFLATE = 2.0      # the detector's errors are not independent point to point: sigma x this
 CLICK_SIGMA = 1.5  # mm: a clicked point
+# how well an LLM places a named point on a gridded crop, measured on pictures of heads of known shape (rms mm against
+# GNM's landmark of that name, bias included; placers agree with each other to 0.35 mm: the error is DEFINITION):
+# front pictures add ~0.1 mm to the detector's fit whatever is clicked; a PROFILE's nose tip / base / nasion / eye and
+# mouth corner are good to ~1-1.7 mm and are the only evidence there. The chin's lowest point can't be placed in
+# either view (6-11 mm): trace the chin and jaw as a line instead. A point not listed counts CLICK_SIGMA.
+CLICK_SIGMAS = {
+    "front": {"chin": 10.0, "ala.L": 7.0, "ala.R": 7.0, "nose_bridge": 4.4, "nose_tip": 3.9, "lip_upper": 2.7, "nose_base": 2.0,
+              "eye_outer.L": 2.5, "eye_outer.R": 2.5, "eye_inner.L": 1.7, "eye_inner.R": 1.7, "mouth_corner.L": 1.2,
+              "mouth_corner.R": 1.2, "lip_lower": 1.6, "eye.L": 1.8, "eye.R": 1.8, "brow.L": 2.5, "brow.R": 2.5,
+              "brow_inner.L": 2.5, "brow_inner.R": 2.5},
+    "profile": {"chin": 6.4, "lip_upper": 4.4, "lip_lower": 2.1, "nose_bridge": 1.7, "nose_base": 1.4, "nose_tip": 1.2,
+                "eye_outer.L": 1.0, "eye_outer.R": 1.0, "mouth_corner.L": 1.0, "mouth_corner.R": 1.0}}
 LM68_SIGMA = 4.0   # mm: a detector's 68 given without their image (definitions 3-12 mm off)
 LENS = (70.0, 0.4)  # the lens prior: 35 mm-equivalent focal, relative sigma (a portrait; points alone hardly see the lens)
 ROUNDS = 3         # rebuilds of the head (the one mesh is not exactly linear in the identity)
@@ -121,7 +133,8 @@ def _evidence(st, views) -> list:
             X.append(st["L"][ids])
             XB.append(LB[:, ids])
             uv.append(np.array([clicks[n] for n in clicks], float))
-            sig.append(np.array([LM68_SIGMA if n in lm68 else float(v.get("click_sigma", CLICK_SIGMA)) for n in clicks]))
+            cs = CLICK_SIGMAS["profile" if k == 2 else "front"]
+            sig.append(np.array([LM68_SIGMA if n in lm68 else float(v.get("click_sigma") or cs.get(n, CLICK_SIGMA)) for n in clicks]))
             src.append(f"{len(clicks)} given points")
         if not X:
             raise ValueError(f"humanfit_map: view {v.get('image') or v.get('yaw')} has no evidence (no detection, no points). "
