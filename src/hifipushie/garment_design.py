@@ -487,6 +487,11 @@ def _check(ev: dict, Bp: dict, R: dict, D: dict, entry: dict, lap: str | None) -
         r = ev["stitches"]
         names = set(R.get(r, []))
         n = sum(1 for a, b in Bp["stitches"] if a.split(":")[0] in names or b.split(":")[0] in names)
+        # (and the fastenings of closures on it, whatever their wear state: a jacket worn open has its buttons as a
+        # closure with no stitches, and its button stand read "0 stitches")
+        nc = sum(len(c.get("pairs") or [])
+                 for c in (Bp.get("closures") or []) if c.get("over") in names or c.get("under") in names)
+        n += nc
         return n >= int(ev.get("min", 1)), f"{n} stitches (buttons) on {r} (need {ev.get('min', 1)})"
     if "lap" in ev:
         r = ev["lap"]

@@ -1135,6 +1135,64 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     fail the silhouette gate 4.1 / 6.6 mm vs 1.3 / 1.4; my read: keep stylised hair on locks, no migration), the
     round trip (`blender_strands.read` exists; nothing consumes it), strand measures in
     look_hair beyond the @@strands counts, hair_r3 / golfer card exports re-checked with the new cards.
+  Garrett as strands (2026-10-08, "hairgarrett" agent, branch `worktree-agent-a3e326852c098a6dd`; the user: "one-mesh +
+  new hair + clothes as the new default human path"; model `workspace/hs_garrett` = om_garrett v17's head + his 624 hand
+  locks as guides; sheets `workspace/hair_renders/hg_*` (hg_v4_sheet.png = concept | solid locks | strands in Cycles |
+  hero cards | main cards, front / three-quarter / side, + the four tiers at their distances; hg_v4_tiers.png =
+  check_tiers); export /mnt/data/hifipushie/hairgarrett/exp_v4; scratch DURABLE in /mnt/data/hifipushie/hairgarrett/:
+  run.sh <script> (worktree code, main workspace, through `capped`), mkcopy.py, reseat.py (hs_garrett takes
+  om_garrett's spec for everything but the hair, then scene.sync: 6.5 min), look1.py <tag> <engine> '<strands json,
+  "_look": {...}, "_style">' <views> <save> (a look with patches), fuller.py <tag> '<{region: m}>' <save> '<patch>'
+  '<trim json>' (hair.lift(fill) + trim + look + outline), strandfit.py (the front photo's head + hair outline vs the
+  model's head + the last look's hair points through om_garrett's fitted camera: mm per level and side; needs
+  onemesh2's hairfit.py on PYTHONPATH), cal2.py <model> <engine> [fit=A,p] (rendered vs asked colour over 7 hair
+  colours; also spikes/hair_strands/hs4/cal2.py), haircol.py (hair pixels' sRGB percentiles vs the concept's),
+  exp.py <tag> (hair.export_hair + check_tiers, with a watchdog that dumps stacks past 3 GB), sheet.py <tag> <export
+  dir>, q3.sh <tag> (export then sheet), dbg_job.py <tier> (a tier's cards job step by step with peak memory: 0.53 GB),
+  napeq.py).
+  - His locks ARE the guides: `groom_hair(style="strands")` on the existing hand locks, no regroom. Dials for a short
+    combed cut: count 100000, clump 0.3, clump_size 0.006, clump_shape 0.5, stray 0.8, loose 0.4, frizz 0.2, flyaway
+    0.03, tips 0.6, tip_spread 0.5, roots 0.4, under_length 0.015, wave 0.003 (clump 0.4 / stray 0.6 at 60k: strings).
+    The scalp layer takes 60% of the strands whatever `under` says (its cap in hair_strands.job).
+  - Grey: a lock's `grey` is the SHARE of grey strands it grows (per-curve `hp_gr`; the scalp layer takes the nearest
+    lock's), x `look.grey_locks` (default 1) + `look.grey_amount`. Before, strands ignored the locks' grey. In EEVEE
+    0.37 x 1.0 is striped silver; in Cycles the same share is a faint greying (true-width hairs average).
+    The card atlas draws the same share (the locks' mean: `look.grey_share`, set in cards_job) by a THRESHOLD on the
+    strand id above the base's depth: a hash of the id speckled every anti-aliased pixel and turned the cap's base grey.
+  - Side volume by measure (strandfit.py): his hair was 9-18 mm thinner per side than the photo's outline at the
+    lower levels (mean -8.8). `hair.lift(fill=True)`: locks lifted AND thickened by twice their mean lift, so the
+    strands fill from the scalp (strands live in each lock's lens: lifted alone they are a shell over the short
+    scalp layer). sides +12 mm, back +4: mean side miss +1.0 mm (L -5 / R +6: the photo's sweep is the other way),
+    IoU above the ears 0.874 -> 0.909, top +5 mm. It reads as volume, not a helmet. `hair.trim(spec, sc, below,
+    where)`: locks cut where they run past the hairline; his nape hung as a mullet of strand tips until
+    {"below": -0.015, "where": ["nape"]} (cut 15 mm INSIDE the line: the scalp layer carries the edge).
+    MCP: `groom_hair(fuller=, trim=)` (no regrow when only those are given: a regrow buries hand locks).
+  - Cycles colour: measured (cal2.py: the brighter half of the hair pixels vs the colour asked, linear, 7 colours)
+    rendered = 0.646 x asked^0.307 (rms log 0.024): #55504b came out 3.5-4x too light, black at 0.15. The floor
+    (~0.09 linear) is the white specular lobe + thin strands, not invertible. `hair_strands.CYCLES_FIT` (0.75, 0.307)
+    is now the default inverse (`look.cycles_fit` [1, 1] = off): grey / blond within 5%, #55504b x1.35-1.45 (EEVEE's
+    strand material reads x1.6-1.8 by the same measure). It is applied to the colour's LUMINANCE with the hue kept:
+    per channel (first version) the 1/p power tripled every channel ratio and a faintly warm grey (#5a4f47) rendered
+    light brown (hg_v3_sheet). A Cycles look of 4 views at 100k strands: 330 s; 3 views at 420 px: ~100 s.
+  - `look.scalp_tint` 0.85 (made for dark hair) shows as black slits between layers of grey hair; 0.5 lets skin
+    through at the crown in Cycles; Garrett 0.7.
+  - Card tiers (exp_v4; Khronos 0 errors 0 warnings on all four; 39,998 / 15,486 / 6,000 / 660 triangles; his solid
+    locks in exp_garrett6: 25,803): `hair_cards.join` of nothing raised (a far tier of a short cut has no cards and
+    no baby hairs: the first export died after writing nothing); fixed. check_tiers vs the strands: iou 0.83-0.87
+    hero / main / npc (far 0.75-0.85), bare 4-13%, value 1.06-1.18 x (cards are lighter and more silver than the
+    Cycles strands: two materials, the sat warning reads 1.4 x), stamps 0. "936 card vertices under the skin, deepest
+    64 mm" at hero (baby locks and locks by the ear: moved out by the clearance; not looked into).
+  - BLUNT READ of hg_v4_sheet: the Cycles strands read as a real man's combed greying hair, the best of the three,
+    but darker and more slicked than the concept's lighter, tousled salt-and-pepper, and the denoiser makes it waxy
+    at 420 px. The cards at bust distance are WORSE than his solid locks: a streaky silver thatch, ragged dark
+    patches along the temple hairline and behind the ear, a pale plate at the front of the crown (the cap); from
+    1.6 m they read as short grey hair, at 3 m+ fine. The solid locks stay the cleanest game look up close.
+  - The 13:37 OOM was not this: the 4-tier export + check never passed 3 GB of python (watchdog in exp.py).
+  - NOT DONE: the head is not settled (re-seat + strandfit once it is: `reseat.py`, then `fuller.py`); cards'
+    hairline and colour against the strands (bake the atlas colour from the strand look, a hairline tile that
+    follows his temple); a tousled top (his locks are combed back; the concept's front lifts and breaks); per-region
+    grey in the cards (one share for the whole head today); Godot render of the tiers; the round trip of strands;
+    `under` has no effect past the 60% cap; test_hair_strands' Blender test not re-run.
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
@@ -2691,6 +2749,39 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       the jacket's back neck, not the stand; (4) collar_hug; (5) trousers slimmer: a sheet's `block_options` REPLACES the
       kind's draft block options (seat_ease alone made a 165 mm hem): set the leg through fit or extend compile_sheet to
       merge. A new shirt from the "placket" agent will re-simulate everything layered over it.
+  - Round 3 (the coordinator's order after su_77; ZOZO now on a rented 4090: env.sh sets HIFIPUSHIE_ZOZO_REMOTE to
+    THIS worktree's spikes/gpu_cloth/remote.sh + GPU_SSH_*; LOCAL_ZOZO=1 runs on the laptop; a Garrett jacket is ~6-13
+    min there, 50 min here):
+    - CORRECTION: a design sheet's `block_options` DO merge over the kind's draft options (compile_sheet's `_merge`);
+      the "165 mm hem" was the hem gate's own misread (fixed in round 2), not the merge. Trousers slimmer: the cut is
+      `leg` (LEG_CUTS: tailored = "slim"; "skinny" is the next step) or knee ease; not run yet.
+    - Stage 2 `front_closure button_stand` counted only stitches: a jacket worn OPEN has its buttons as a closure with no
+      stitches and failed "0 stitches". Now a closure's fastening pairs count (garment_design evidence "stitches").
+    - THE PIT SEAMS (su_77: side-back 67-110 mm, underarm 37-100 mm open). su_79 = su_77 + zozo.stitch_stiffness 3
+      (761 s on the 4090): WORSE, 23 of 380 pairs open (both side-backs 109 mm, both underarms 102 mm), collar_show -11.9.
+      Not stiffness. The START: seam 4 (side-back) starts 135-160 mm open over the whole height and sideF 25-35 mm,
+      because smooth placement lays every torso piece on ONE cylinder as big as the garment's widest level
+      (place(): C = hull offset by (Wmax - P0) / 2 pi; Wmax the max span), and at the jacket's suppressed waist the
+      arc left over between front (from CF) and back (from CB) all falls into the side panel's back seam (the panel is
+      side "front", measured from CF). Measured: per side leftover ~170 mm at the waist, side panel 53 mm wide there.
+      Tried and reverted: moving the side panel back by a share of the leftover (SIDE_CENTRE): at 0.5 it overshot, at
+      0.35 both seams started 77 / 127 mm open AND the panel crossed the under sleeves at the pit (the sleeves then
+      went 11 cm down the arm, pushes 50 mm). The real fix is a per-level cylinder (each level's hull out to that
+      level's own span), which clothflow tried once and dropped for 10-30% shear: try it only for worn_top garments
+      below the armpit, arcs measured from CF AND CB at every level, with the start relaxation after.
+    - collar_show / collar_hug (the user's annotated read of su_77: the jacket collar must lie LOW and flat round the
+      back of the neck outside the shirt collar, the notch lower on the chest, the shirt collar showing above the
+      jacket's at the sides): su_garrett v21-22 jacket = op `neckline` {widen 0.012, back 0.035} FIRST in the ops (it
+      must come before style lines), lapel `gorge_drop` 0.12 (was 0.085) and `break_y` 0.46 (0.40). Start (g14): the
+      notch sits on the chest, the jacket's CB neckline 1.550 (was 1.568; the shirt's neckline at CB 1.556, its collar
+      top 1.579). The start lay has the fall OPEN (40 deg), so collar_show can only be read after a sim. NOT SIMULATED:
+      layered Garrett runs are on hold until the placket agent's shirt (new sim key) is on main.
+    - Trousers over the shirt (the tuck): tr_22 on the 4090 passed the coarse sim (the laptop's tr_21 died at frame 44
+      with "Intersection detected" at the shoe top) and then stopped at the fine settle's start check: 103 triangles over
+      1.6x, worst 4.4x at back.L/R pattern [0.227, 0.001] (the side of the back's waist seam: the made waistband
+      rebuilt at its closed girth on the body's hull, under the pressed shirt tail, so the back's top is cleared over
+      the shirt). Next: give the fine settle's band (and `_press_plan`'s clearing) the padded body, or try
+      fine_settle false for the trousers over the shirt.
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
@@ -2856,6 +2947,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     shading has a faint star in the dish (smooth normals across rim and middle), tests at 2048 texels only.
   - Tests: test_closures (+ test_a_box_placket_in_the_maps, test_flat_sew_through_buttons,
     test_a_cuffs_holes_run_along_the_cuff), the eleven cloth / pattern files + test_seams green.
+  - Round 2 (same day; the user on su_77: "two buttons open when there should only be one, and there's still no
+    placket", collar "not-quite-right"; sims pk_10..pk_29 on su_garrett's shirt, 3-5 min each on the rented 4090;
+    renders `cloth_renders/pk_29_shirt*`, outfit framing `pk_30_outfit*.png`; scratch adds pls.py (the START round the
+    neck + front start gaps), st.py (worst start triangles of the coarse mesh), sp.py / prof.py (band split + a section
+    across the band), mem.py (peak memory by step), fig.py (cloth.look beside the concept), kbfold.py (the wear rule's
+    roll angle / strength), resolve.py). su_77 itself was rendered before main had the placket merge (rivet buttons).
+    - The band in the MESH (`closures.split_band_edges`, `press_band`, `relief`, in build after the seat;
+      `cleanup.band_edges: false` turns it off): a vertex row split in 1.5 mm outside a box band's inner fold (interior
+      edges only, new vertices APPENDED, every per-vertex array of M, its fold records and res extended by
+      `closures.extend`), the band pressed flat across (the solver's lap sank 3-4 mm between its edges, deeper than any
+      step: it read as a groove), lifted `BOX_LIFT` 1.5 x lift = 1.2 mm; what would cross the cloth is kept back
+      (`band_kept_back`). Maps: the tuck's shadow and the folded edge's shoulder wider (survive the mip levels). The band
+      now shows in clay and at outfit framing.
+    - Wear rule (garment_kb kinds.shirt.wear.no_tie): only the COLLAR button open, every front button closed, the
+      fronts rolled 95 deg / 0.5 from the neck to 2 cm above button 1 (over) / 6 cm (under): a roll line ending past
+      the band's inner row crosses it at a shallow angle = a sliver (3.9x at frame 0: "ccd failed"; 3.1x: the fine
+      start gate). Simon `extraTopButton` false (a button 4 cm under the neck that no closure counted).
+    - `_spread_open_collar` (in `_place_folds`, after the neck pieces' folds; garment key `collar_spread` [out, down,
+      from deg], default 25 / 12 / 75): the open stand and its collar swing out about a hinge up the neck's side and
+      tip down, so the collar lies spread instead of standing as a ring (made = carried as placed). 40 / 20 / 70 pulled
+      button 1's sides 36 mm apart with 33 crossings; collar gap 6 cm (instead of 10) made the fronts gape between
+      buttons 1 and 2; stitch stiffness 8: 8.8 mm but 18 clean-up crossings and 4x the time. Rolls at 60 / 0.3 or 80:
+      yoke 1.63x fine start / 16 crossings.
+    - Finish by KIND: `kinds.<k>.closure` (shirt box / french, topstitch 3 mm; jacket and coat facing, hole across,
+      topstitch 0) laid under lapped closures in cloth.pieces; rows at 0 are not drawn.
+    - `closures.covered_buttons` / `button_texels`: the maps draw no button under a CLOSED lap (where the sides ended
+      apart it peeked out beside the real one: the "second open button"); the export colours such a button from a
+      drawn button's texel.
+    - MEMORY: `_piece_crossings` used ONE search radius (the largest triangle's): su_garrett's trousers start made
+      12+ GB of candidate pairs in a cached build (killed by the 12 GB guard; possibly the 17 GB process of the
+      13:37 OOM). Now per-size: ordinary triangles through the tree in chunks, the few large ones one by one
+      (trousers build peak 1.5 GB). The shirt's detail maps at 4096 peak 3.8 GB.
+    - pk_29 (final, = pk_21's sim): fits, 0 crossings; front closure 7 of 7 closed but button 1's sides end 19 mm
+      apart (!! in the report; buttons 2-7 2-5 mm): the open collar's stand ends (carried) hold the fronts' top
+      corners apart and the solver's stitch gives. Seat's pull to 25 mm closed it but its crossings were reverted
+      (SEAT_PULL stays 12 mm). OPEN: button 1 (a made top: carry the fronts' corners with the stand, or seat the
+      fastening before the fine settle), a slit of skin beside the band under button 1, the V is shallow (the
+      concept's opens ~10 cm), collar judged only on the shirt alone (the jacket over it is suit6's re-run).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
@@ -4217,6 +4346,56 @@ regresses, bisect by building one spec at each commit and diffing heights.
       the tallest riser 0.2 m (60 deg) at [1084.4, 1756.4, 3.2] where the lower pit's pile of blocks meets the tube
       floor; with a 0.4 m body footprint the same. No 0.6 m riser on the path: their controller's 0.6 is either a
       capsule catching the rough pile (Mound rough 0.25 m at 1.5 m scale) or something off the path: asked them where.
+  - Dashed cracks on the grass (2026-10-08, "tiles3" agent, branch `worktree-agent-a2322e8cd3d4f3416`; pushieworld note
+    104, the user saw thin dark dashed "seams" on the crater rim's grass, on the cliff meshes, baked maps only; renders
+    /mnt/data/hifipushie/tiles3/renders/t3_*; scratch DURABLE there: run.sh / run_orig.sh <script> (this worktree /
+    orig/ = the branch point + only the new check, the "before"), exp.py <terrain> <tag> '<cfg>' (OLD=1: the old relief
+    cut), rend.py <terrain> <tiles dir> <prefix> [channel] (rim / close / west views of the rim; env VIEWS, IDS=1,
+    PARTS=ground|cliffs), mirror.py (theirs/ = a symlinked read-only copy of their export, render it like ours),
+    topdown.py + channels.py + comp.py (a top-down raster of which mesh is on top, and the cliff maps decoded there:
+    base, ORM, normal map vs vertex normal), prof2.py (every mesh a vertical line meets along a transect, with its
+    baked colour / AO), rimprof.py (ground / heightmap / S / front along a line), trans.py (the bake field's surface and
+    normal across a line, pieces switched off), px2w.py (render pixel -> world point from the id pass's distance; the
+    id pass's glb index did NOT match render_job.json's list: untrusted), q1.sh (tests + regressions)).
+    Two causes, both in the cliff tiles' maps, neither in any check:
+    (1) THE VISIBLE ONE: the overlay edge. Where the front sinks (S < SINK_EDGE) it dives metres within a metre (S rises
+    0.13/m on the rim: the dive is ~75 deg) and crosses the heightmap a few cm down; the crossing interleaves (heightmap
+    and front 2 cm apart for metres). The texels of the strip that shows were coloured ROCK: the layer weights' 0.4 m
+    normal came from the SUNK front, so on the true ground up to 0.4 m beside the dive it tipped to the horizontal
+    (Gs (-0.70, 0.69, 0.16) at S 0.23), base colour 0.18 vs the grass's 0.43; and the dive's AO was its vertices' (5 m
+    down: 0.04), interpolated up to the strip. Fix: weights from the rock UNSUNK (`weightfield` = base); every texel and
+    AO vertex on the sunk part read the true ground over it (`CliffField.lift`: w = 1 below SINK_EDGE easing out by
+    SINK_EDGE + UNSUNK_BAND 0.05 of S; colour at the lifted point; normal map = the ground's normal, `terrain_bake._unsunk`;
+    AO at the lifted vertex, `terrain_cliffs.lifted`; the tile-border easing to the low poly's normal skipped there).
+    Geometry is unchanged (the dive and the crossing are where they were: the strip just reads as grass now).
+    (2) A real field step, found on the way: `Field._solid` evaluated the rock relief only where its weight > 0.01 and
+    took it at full weight there: 1% of the relief (a 2-3 cm step, up to 22 mm on test_tiles' coast) along the weight's
+    0.01 contour metres out on the grass. Now eased in (RELIEF_CUT / RELIEF_FADE 0.1). Thin rock's strata had the same
+    (sqrt(1e-3) = 3%): eased. Both move field values only where the weight is under 0.1 / 0.02.
+    CHECK `soft_ground_jumps` (seam_check (7), FAILS over JUMP_LIMIT 3 sampled texels per tile LOD): every 7th texel on
+    soft ground (rock layers < JUMP_SOFT 0.2 and rock relief weight < JUMP_RELIEF 0.1) compares the bake normal at 3 cm
+    and 6 cm (`terrain_bake` JUMP_H); a step in the value reads 1/h, a smooth surface or a designed riser the same. On
+    the rim block (tiles 15-16 x 16-18 of tl2_island7): the branch point's code + the check FAILS (10 tile LODs over
+    the limit, 15,17 LOD 0: 40), this branch 0. Left out of the check, each after a false alarm: rock structure
+    (relief weight; creases on a 37 deg grassy rock face), designed steps (`designed_step`: the Edits zone = turf
+    risers, bunker edges and lips; fallen blocks: pebble 588 texels), built edges within cave_wall + 2 m of a volume
+    (`near_volume`: stack feet under the sea).
+    Regressions (cold, a loaded machine, under /mnt/data/hifipushie/bin/capped): pebble 0 failures (1,274 s; shards
+    0.002 / 0.007 / 0.31%, lod1 map normals p95 6.2), alps 3x3 0, slice_a 0, slice_b incremental 4 of 64 tiles and 0 of
+    1,488 files differing from a cold export; the seven terrain test files pass.
+    Note 106 (downs_pond's dam missing from the tile heightmaps), DIAGNOSED, not fixed (dam.py <terrain> x y): the
+    dam's lake-side face is 50-65 deg and 12 m tall (floor 43.7, crest 56.0-57.2, level 56.35), so the cliff Region
+    takes it (S = 1) and the heightmap is eroded by the 3.8 m push ball: 5-9 m down on the face and the 2 m crest
+    with it (heightmap crest 54.4-56.1 on bearings 0-100 and 320-350, under the water level). Proposed: no push
+    (Rg = 0) within a lake's dam / bank mask, or the pushed heightmap clamped >= min(ground, level + freeboard) there;
+    per-lake outline polygons in the manifest; the report should warn "the lake stands on a slope: 12 m deep at the
+    dam for depth 2", freeboard under ~1 m and a crest under 3 cells wide.
+    QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
+    ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
+    the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
+    Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
+    interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
+    lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +

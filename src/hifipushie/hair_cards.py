@@ -203,7 +203,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "frizz", "curl", "tips", "atlas")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain")}, key], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "grey", "grey_share")}, key], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -230,7 +230,17 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     # a value per strand: what makes a card read as hairs, not a painted sheet (strands: +-vary and more)
     val = (1 + float(look.get("vary", 0.25)) * 3.0 * (idm - 0.5))[..., None]
     gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
-    col = _srgb(np.clip((gap[None, None] * (1 - shade) + lit[None, None] * shade) * val * gain, 0, 1))
+    base = gap[None, None] * (1 - shade) + lit[None, None] * shade
+    gs = float(look.get("grey_share") or 0.0)  # grey hairs: that share of the strands (by their id) in the grey colour
+    if gs > 0:  # (the strand look's own rule: look.grey_amount + the locks' grey x look.grey_locks; cards_job sets it)
+        grey = _lin(look.get("grey", "#9a948d"))
+        # (the strands with the highest ids: a threshold on the id stays a strand's own through the picture's
+        # anti-aliasing, and the opaque base under the strands (id 0) stays dark; a hash of the id speckled every
+        # blended pixel and turned the cap's bare base grey)
+        isg = (np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0))[..., None]  # (the
+        # base under the strands sits at depth 0.3: it is the shadow between hairs, never grey)
+        base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
+    col = _srgb(np.clip(base * val * gain, 0, 1))
     x = 0
     for c in cols:  # the tie's own colour
         w = c["alpha"].shape[1]
@@ -929,6 +939,8 @@ def fit_budget(cards: list, S: dict, budget: int) -> tuple[list, float, dict]:
 def join(*meshes) -> dict:
     """Card meshes joined into one."""
     ms = [m for m in meshes if m is not None and len(m["verts"])]
+    if not ms:  # nothing to join (a far tier of a short cut: no hair off the head, no baby hairs): an empty mesh
+        return next(m for m in meshes if m is not None)
     out, off, nc = {}, 0, 0
     tris = []
     for m in ms:

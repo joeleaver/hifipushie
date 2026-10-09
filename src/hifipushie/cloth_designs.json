@@ -55,7 +55,7 @@
    {"name": "collar", "kind": "buttons", "over": "stand", "under": "stand", "at": [["buttonhole", "button"]]}
   ],
   "_doc_collar": "the stand is buttoned: a made band constructed closed 1.2 mm off the neck (cloth.place HUG_CLEAR). collarEase 0.115 over the tape's neck (taken at the narrowest, 2 cm up) is 13 mm over the neck's BASE, where the stand sits: a finger's room. collarStandWidth 0.055 (20 mm) because the standard body's neck is 35 mm from trapezius to jaw: the default 30 mm stand was pushed 7 mm off the chin and its fall could not turn (15 deg); collarWidth 2.0 keeps the fall 44 mm",
-  "options": {"collarGap": 0, "collarWidth": 2.0, "collarEase": 0.115, "collarStandWidth": 0.055},
+  "options": {"collarGap": 0, "collarWidth": 2.0, "collarEase": 0.115, "collarStandWidth": 0.055, "extraTopButton": false},
   "tacks": [{"piece": "collar", "point": "leftTopEdge"}, {"piece": "collar", "point": "rightTopEdge"}],
   "folds": [
    {"name": "collar roll", "piece": "collar", "line": {"edge": "leftBottomEdge>bottomMid>rightBottomEdge", "offset": 0.004}, "angle": 0, "kind": "roll", "radius": 0.0015, "strength": 0.6}

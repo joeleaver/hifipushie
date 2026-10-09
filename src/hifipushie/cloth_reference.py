@@ -910,7 +910,9 @@ def m_tell(c: Ctx, g: str, which: str):
         cu = _verts(U, roles=("collar_stand", "collar_fall"))
         if not (len(co) and len(cu)):
             raise NotMeasured("no collars")
-        d, _ = cKDTree(U["V"][cu]).query(O["V"][co])
+        yc = float(c.body.J["neck"][1]) if "neck" in c.body.J else 0.0
+        hb = co[O["V"][co, 1] > yc]  # (behind the neck's axis: a notched collar's ends lie on the chest; cloth_layers.tells)
+        d, _ = cKDTree(U["V"][cu]).query(O["V"][hb if len(hb) else co])
         return {"mm": float(np.median(d)) * 1000}
     if which == "lapel_gap_mm":
         full = c.full.get(g)
