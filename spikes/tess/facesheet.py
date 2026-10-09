@@ -15,7 +15,10 @@ refs = json.loads((store.HOME / name / "human_refs.json").read_text())
 LIGHT = {**stage.FRONT_LIGHT, "exposure": float(os.environ.get("EXPO", "-0.1"))}
 PX = 640
 boxes, frames, imgs = [], [], []
+ONLY = [int(x) for x in os.environ["ONLY"].split(",")] if os.environ.get("ONLY") else None
 for i, (v, cam) in enumerate(zip(refs["views"], refs["cameras"])):
+    if ONLY is not None and i not in ONLY:
+        continue
     U = np.array(list(v["points"].values()), float)
     lo, hi = U.min(0), U.max(0)
     yaw = abs(float(v.get("yaw", 0)))
@@ -44,13 +47,13 @@ def lab(im, t):
     return im
 
 
-names = ["front", "three-quarter (director's pick)", "true left profile", "front close-up"]
+names = {"v0": "front", "v1": "three-quarter (director's pick)", "v2": "true left profile", "zoom": "front close-up"}
 rows = []
 for i, f in enumerate(frames):
     ref = imgs[i].crop(tuple(int(round(x)) for x in boxes[i])).resize((PX, PX), Image.LANCZOS)
     ours = shots[f["name"]].resize((PX, PX))
     row = Image.new("RGB", (PX * 3, PX), (230, 230, 230))
-    row.paste(lab(ref.copy(), f"reference: {names[i]}"), (0, 0))
+    row.paste(lab(ref.copy(), f"reference: {names[f['name']]}"), (0, 0))
     row.paste(lab(ours, "ours, its fitted camera"), (PX, 0))
     row.paste(lab(Image.blend(ref, shots[f["name"]].resize((PX, PX)), 0.5), "50/50 overlay"), (2 * PX, 0))
     rows.append(row)
