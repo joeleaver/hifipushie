@@ -56,7 +56,8 @@ CFG = {
     "min_depth": 0.08,       # m of water the shaped bed keeps (bars aside)
     "damp": 0.9,             # m above the water the bank is damp (wandering; the bank starts ~0.3 m over the water)
     "shape": True,           # the bed's shape (False: material and clutter only)
-    "clutter": 1.0,          # density of the stream clutter (0: none)
+    "clutter": 1.0,          # density of the stream, lake and beach clutter (0: none)
+    "lakes": True,           # lakes get a shore too (bed, damp foot, margin clutter); False: rivers only
 }
 LAYERS = ("gravel", "silt", "bank")  # the layers a terrain with running rivers gains (plus rock / wet_rock: bedrock)
 LOOK = {  # sRGB
@@ -76,7 +77,9 @@ KINDS = {  # clutter kinds: size = the largest plan dimension (m) at scale 1 x s
               "margin and the bank's foot"},
     "bush": {"scale": [0.6, 1.9], "squash": [0.45, 1.1], "what": "a bank bush (willow / alder scrub) on the bank top"},
 }
-PLACES = ("", "water", "margin", "bank", "bar")
+PLACES = ("", "water", "margin", "bank", "bar", "shore")
+from . import terrain_shore as _shore  # noqa: E402  (lake margins and sea beaches: the same rows)
+KINDS.update(_shore.KINDS)
 SPACING = {"river_rock": 1.1, "cobbles": 0.8, "slab": 1.5, "driftwood": 2.2, "reeds": 0.9, "litter": 2.0, "sedge": 0.7,
            "bush": 2.4}
 
@@ -123,7 +126,7 @@ class Streams:
         reach = float(cfg["reach"])
         self.far = far = reach + 4.0
         sd = np.full(shape, far)
-        G = {k: np.zeros(shape) for k in ("level", "energy", "bend", "phi", "w", "tx", "ty", "side")}
+        G = {k: np.zeros(shape) for k in ("level", "energy", "bend", "phi", "w", "tx", "ty", "side", "still")}
         rid = np.zeros(shape, np.int8)
         c = self.c
         X, Y = np.asarray(T.X, float), np.asarray(T.Y, float)
@@ -210,6 +213,18 @@ class Streams:
             cls = np.digitize(en, [0.15, 0.4, 0.7])
             self.report_reaches.append({"name": name, "s": s, "energy": en, "grade": grade, "width": 2 * ws, "live": live,
                                  "class": cls, "xy": xy, "level": lv, "bend": bend})
+        # lakes (not the sea): still water with a shore (terrain_shore): no pools, riffles, bars or cut banks
+        for name, mask, level in (_shore.still_waters(T) if cfg.get("lakes", True) else ()):
+            sdl = _shore.signed_distance(mask, c, far)
+            take = (sdl < sd) & (sdl < far - 1e-6)
+            if not take.any():
+                continue
+            sd[take] = sdl[take]
+            for k_, v_ in (("level", level), ("energy", 0.0), ("bend", 0.0), ("phi", 0.25), ("w", 6.0), ("tx", 1.0),
+                           ("ty", 0.0), ("side", 0.0), ("still", 1.0)):
+                G[k_][take] = v_
+            rid[take] = len(self.names) + 1
+            self.names.append("lake " + name)
         self.any = bool(self.names)
         self.zone = (sd < reach + 1.0).astype(np.uint8)
         if not self.any:
@@ -255,13 +270,14 @@ class Streams:
         level, energy 0..1, bend (-1 outside .. 1 inside of a bend), phi (pool phase, cycles), w (half width m),
         t (flow direction, (n, 2)), ford 0..1, u (0 mid-channel .. 1 at the edge)."""
         g = {k: self._at(getattr(self, k), xy) for k in ("sd", "level", "energy", "bend", "phi", "w", "tx", "ty",
-                                                         "ford", "side")}
+                                                         "ford", "side", "still")}
+        g["still"] = np.clip(g["still"], 0, 1)
         g["energy"] = np.clip(g["energy"], 0, 1)
         g["side"] = np.clip(g["side"], -1, 1)
         g["curve"] = np.clip(g["bend"], -1, 1)  # (the path's own bends)
         # along a straight reach the thalweg still wanders from bank to bank (alternate bars): a pool against one
         # bank, the next against the other, a bar opposite each; real bends override it
-        alt = self.cfg["alternate"] * _ss(2.0, 4.0, g["w"]) * np.sin(np.pi * g["phi"]) * g["side"]
+        alt = self.cfg["alternate"] * _ss(2.0, 4.0, g["w"]) * np.sin(np.pi * g["phi"]) * g["side"] * (1 - g["still"])
         g["bend"] = np.clip(g["curve"] - alt * (1 - np.abs(g["curve"])), -1, 1)
         g["ford"] = np.clip(g["ford"], 0, 1)
         g["u"] = np.clip(1 + g["sd"] / np.maximum(g["w"], 0.5), 0, 1.5)
@@ -280,7 +296,8 @@ class Streams:
         pool = np.maximum(_ss(0.15, 0.8, pr) * (1 - 0.35 * np.abs(g["bend"])), outer) * (1 - g["ford"])
         riffle = _ss(0.15, 0.8, -pr) * (1 - outer)
         bar = _ss(0.2, 0.6, g["bend"]) * _ss(0.3, 0.75, g["u"]) * (1 - 0.6 * e) * (1 - g["ford"])
-        return pool, riffle, bar
+        run = 1 - g["still"]  # (still water has none of them)
+        return pool * run, riffle * run, bar * run
 
     # ---- the bed's shape (terrain_ground.Edits.column)
     def cut(self, xy, g):
@@ -292,8 +309,8 @@ class Streams:
         near = _ss(6.0, 4.0, g["sd"]) * (1 - g["ford"])
         n = noise.fbm(np.c_[xy, np.zeros(len(xy))], 7.0, 2, seed=751)
         hc = (lo + (hi - lo) * n) * np.clip(g["w"] / 5.0, 0.5, 1.2)
-        outer = _ss(0.15, 0.5, -g["bend"]) * near * (1.0 if hi > 0 else 0.0)
-        inner = _ss(0.15, 0.5, g["bend"]) * near
+        outer = _ss(0.15, 0.5, -g["bend"]) * near * (1.0 if hi > 0 else 0.0) * (1 - g["still"])
+        inner = _ss(0.15, 0.5, g["bend"]) * near * (1 - g["still"])
         return outer, hc, inner, 0.5 + 2.4 * hc
 
     def dz(self, x, y, h, riser=None):
@@ -322,7 +339,7 @@ class Streams:
         b = -(np.maximum(hb, 0.0) + 0.2 * _ss(-0.35, 0.0, hb)) * face * outer * (hb > -0.35)
         b -= 0.65 * np.maximum(hb, 0.0) * _ss(0.8, 0.1, hb) * inner  # (the bar's side: the ramp's foot laid flat)
         out[k] = b
-        m = _ss(0.05, 0.4, dep) * _ss(1.5, 0.0, g["sd"]) * (1 - g["ford"])
+        m = _ss(0.05, 0.4, dep) * _ss(1.5, 0.0, g["sd"]) * (1 - g["ford"]) * (1 - g["still"])
         kk = np.flatnonzero(m > 1e-4)
         if not len(kk):
             return out
@@ -392,6 +409,10 @@ class Streams:
         silt = np.maximum(silt, 0.75 * slow * _ss(0.5, 0.64, noise.fbm(Pf, 5.5, 3, seed=719)) * (1 - 0.7 * riffle))
         silt = np.maximum(silt, 0.8 * (1 - coarse) * (1 - 0.8 * e) * _ss(0.42, 0.6, noise.fbm(Pf, 3.0, 3, seed=720)))
         silt = np.clip(silt * (1 - bar) * (1 - rock) * (1 - g["ford"]), 0, 1)
+        # a lake's bed: gravel and pebbles along the shore (in patches), silt from a few metres in
+        lake = np.clip(_ss(-0.8, -3.5, g["sd"]) + 0.6 * _ss(0.45, 0.6, n2), 0, 1)
+        silt = silt * (1 - g["still"]) + lake * g["still"]
+        rock = rock * (1 - g["still"])
         # (the bar's dry side is bed too: gravel above the water)
         tot = bed + dry
         rock = np.where(tot > 1e-6, rock * bed / np.maximum(tot, 1e-6), rock)
@@ -524,6 +545,8 @@ def clutter(T, mats, field, box=None, seed=11):
     out = []
     rocks = None
     for ki, kind in enumerate(kinds):
+        if kind not in SPACING:  # (the sea beach kinds: terrain_shore.beach_clutter)
+            continue
         sp = SPACING[kind]
         # (the lattice is anchored at the world's origin, so a block's rows are the whole level's rows)
         xs = np.arange(np.floor(zx0 / sp) - 1, np.ceil(zx1 / sp) + 2) * sp  # (a cell past the box: jitter crosses it)
@@ -568,6 +591,7 @@ def clutter(T, mats, field, box=None, seed=11):
             p_w = (0.03 + 0.42 * e ** 1.5) * clus * (edge + (1 - edge) * (0.4 + 0.6 * _ss(0.1, 0.5, e))) + 0.5 * rows
             p_w = p_w * (1 + 0.8 * riffle)
             p_w = p_w * (1 - 0.7 * pool * (1 - rows))
+            p_w = p_w * (1 - g["still"] * (1 - _ss(-5.0, -1.5, sd)))  # (a lake: stones along its shore only)
             hb = -dep
             p_b = (0.012 + 0.12 * e) * clus * _ss(5.0, 1.0, sd) * (hb < 1.6) * (0.6 + 0.8 * _ss(0.1, 0.6, -g["bend"]))
             p = np.where(inwater, p_w, np.where(sd > -0.5, p_b, 0.0))
@@ -592,6 +616,7 @@ def clutter(T, mats, field, box=None, seed=11):
                 _ss(0.45, 0.65, noise.fbm(Pf, 5.0, 2, seed=743))
             # (and a few big flat slabs out in the channel on any reach: on the riffles, awash)
             p = np.maximum(p, 0.035 * (0.4 + riffle) * inwater * _ss(0.6, 0.72, noise.fbm(Pf, 6.0, 2, seed=747)))
+            p = p * (1 - g["still"])
             scale = lo + (hi - lo) * u_a ** 1.3
             yaw = flow + 40 * (u_b - 0.5)
             place = np.where(dep > 0.03, 1, 2)
@@ -701,14 +726,26 @@ def _thin(R, share):
     return R[np.lexsort((R[:, 0], R[:, 1]))]
 
 
+def all_clutter(T, mats, field, box=None):
+    """Stream and lake clutter (when the terrain has running or still water) and the sea beaches' (terrain_shore), as
+    one array of `clutter` rows; river index -1 = a sea beach."""
+    S = getattr(mats, "streams", None)
+    dens = float(S.cfg["clutter"]) if S is not None else float((config(T) or {"clutter": 0.0})["clutter"])
+    parts = [clutter(T, mats, field, box)]
+    if dens > 0:
+        parts.append(_shore.beach_clutter(T, mats, field, list(KINDS), box, density=dens))
+    return np.concatenate([p for p in parts if len(p)]) if any(len(p) for p in parts) else np.zeros((0, 9))
+
+
 def counts(S, C):
     """{river: {kind: n}} and per river the share of in-water river rocks standing proud of the water is not known
     here (it needs the water's depth): see `summary`."""
     out = {}
     kinds = list(KINDS)
-    for r, name in enumerate(S.names):
+    for r, name in [(-1, "sea beaches")] + list(enumerate(S.names if S is not None else [])):
         sel = C[C[:, 8] == r] if len(C) else C
-        out[name] = {k: int((sel[:, 3] == i).sum()) for i, k in enumerate(kinds)}
+        if r >= 0 or len(sel):
+            out[name] = {k: int((sel[:, 3] == i).sum()) for i, k in enumerate(kinds)}
     return out
 
 
@@ -717,7 +754,11 @@ def summary(S, C, box=None):
     a river with none."""
     lines = []
     kinds = list(KINDS)
-    for r, name in enumerate(S.names):
+    sb = C[C[:, 8] == -1] if len(C) else np.zeros((0, 9))
+    if len(sb):
+        lines.append("shore clutter (sea beaches): " + ", ".join(
+            f"{int((sb[:, 3] == i).sum())} {k}" for i, k in enumerate(kinds) if (sb[:, 3] == i).any()))
+    for r, name in enumerate(S.names if S is not None else []):
         sel = C[C[:, 8] == r] if len(C) else np.zeros((0, 9))
         if not len(sel):
             if box is None:
@@ -741,6 +782,7 @@ def manifest(S, C):
                       for k, v in KINDS.items() if k != "bush"},  # (bush: the older kind's entry stands)
             "places": {"water": "in the channel, its base on the bed under the water", "margin": "at the water line",
                        "bank": "on the bank beside the water", "bar": "on a gravel bar inside a bend",
+                       "shore": "on a sea beach above the water",
                        "": "dry ground (the older kinds)"},
             "how": "clutter.csv rows x,y,z,kind,scale,yaw,squash,place: scale = the piece's largest plan dimension in "
                    "metres, squash = its height relative to the asset's own proportions (instance scale (s, s, s x "

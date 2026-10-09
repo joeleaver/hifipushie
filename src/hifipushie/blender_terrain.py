@@ -202,7 +202,7 @@ VARIANTS = 4
 
 
 CLUTTER_KINDS = ("bush", "tussock", "tallgrass", "boulder", "river_rock", "cobbles", "slab", "driftwood", "reeds",
-                 "litter", "sedge")
+                 "litter", "sedge", "pebbles", "wrack")
 CLUTTER_VARIANTS = 4
 
 
@@ -428,7 +428,7 @@ def _scrub(rng, v):
     return V, F, cols
 
 
-STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter", "sedge")
+STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter", "sedge", "pebbles", "wrack")
 
 
 def _lump(bm, rng, centre, size, rough, sub=2):
@@ -480,6 +480,20 @@ def _stream_piece(kind, rng):
             vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.18 * sz), (sz, sz * rng.uniform(0.65, 0.95),
                                                                                sz * rng.uniform(0.45, 0.7)), 0.08, 2)
             cols += [stone()] * len(vs)
+    elif kind == "pebbles":
+        for _ in range(int(rng.integers(14, 24))):
+            r = 0.45 * math.sqrt(rng.random())
+            a = rng.uniform(0, 2 * math.pi)
+            sz = float(np.clip(rng.lognormal(math.log(0.07), 0.4), 0.03, 0.15))
+            vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.1 * sz), (sz, sz * rng.uniform(0.6, 0.9),
+                                                                              sz * rng.uniform(0.3, 0.5)), 0.05, 1)
+            cols += [stone() * rng.uniform(0.9, 1.6)] * len(vs)
+    elif kind == "wrack":  # (a dark ragged strip along +x)
+        for _ in range(34):
+            x = rng.uniform(-0.5, 0.5)
+            sz = rng.uniform(0.08, 0.2)
+            vs = _lump(bm, rng, (x, rng.normal(0, 0.05), 0.006), (sz, sz * 0.5, 0.015), 0.0, 1)
+            cols += [np.array([0.03, 0.028, 0.012]) * rng.uniform(0.6, 1.6)] * len(vs)
     elif kind == "litter":
         for _ in range(26):
             r = 0.5 * math.sqrt(rng.random())

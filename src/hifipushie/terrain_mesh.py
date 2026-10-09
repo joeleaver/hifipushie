@@ -1249,7 +1249,8 @@ class Field:
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
         self.streams = None  # (terrain_stream: the rivers' beds; None without running water)
-        if gcfg is not None and getattr(T, "river_water_lines", None):
+        if gcfg is not None and (getattr(T, "river_water_lines", None) or
+                                 any(not lk.get("sea") for lk in (getattr(T, "lakes", None) or {}).values())):
             from . import terrain_stream
             scfg = terrain_stream.config(T)
             if scfg is not None:
@@ -3505,10 +3506,12 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 (i0, j0), (i1, j1) = cfg["only"]
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
             C = terrain_ground.clutter(T, mats, base, ks, box=cb)
-            SC = None
-            if mats.streams is not None:  # (a stream's rocks, cobbles, driftwood, reeds: terrain_stream.clutter)
-                from . import terrain_stream
-                SC = terrain_stream.clutter(T, mats, base, box=cb)
+            # (a stream's rocks, cobbles, driftwood, reeds, a lake's margin, a beach's pebbles and wrack:
+            # terrain_stream.all_clutter)
+            from . import terrain_stream
+            SC = terrain_stream.all_clutter(T, mats, base, box=cb) if terrain_stream.config(T) is not None else None
+            if SC is not None and not len(SC) and mats.streams is None:
+                SC = None
             with open(out / "clutter.csv", "w") as f:
                 f.write("x,y,z,kind,scale,yaw,squash,place\n")
                 for r in C:
@@ -3528,7 +3531,8 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             if SC is not None:
                 sm = terrain_stream.manifest(mats.streams, SC)
                 clutter_sec = {**sm, "kinds": {**clutter_sec["kinds"], **sm["kinds"]}, "columns": clutter_sec["columns"]}
-                notes.extend(mats.streams.report())
+                if mats.streams is not None:
+                    notes.extend(mats.streams.report())
                 notes.extend(terrain_stream.summary(mats.streams, SC, cb))
 
     # ---- 5. trees and the manifest
@@ -5295,10 +5299,10 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             de, _ = cKDTree(eyes[:, :2]).query(C[:, :2])
             C = C[(de > 2.5) | np.isin(C[:, 3], [ks.index("tussock"), ks.index("tallgrass")])]
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
-        if cm.streams is not None:  # (a stream's rocks, cobbles, wood and reeds: terrain_stream.clutter)
+        from . import terrain_stream
+        if terrain_stream.config(T) is not None:  # (stream, lake and beach clutter: terrain_stream.all_clutter)
             from scipy.spatial import cKDTree
-            from . import terrain_stream
-            SC = terrain_stream.clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
+            SC = terrain_stream.all_clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
             if len(SC):
                 de, _ = cKDTree(eyes[:, :2]).query(SC[:, :2])
                 SC = SC[(de < clutter) & (de > 1.2)]

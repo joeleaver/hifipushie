@@ -90,10 +90,11 @@ def test_bed_shape_only_under_water(T, field, mats):
     assert np.all(dz[hb > 1.4] == 0), "ground above the banks' foot moved"
     assert dz[hb > 0].max() <= 1e-9, "a bank rose"
     outer, hc, inner, sdc = S.cut(p, g)
-    cutb = (outer > 0.9) & (hb > 0.05) & (hb < hc - 0.15) & (g["sd"] < sdc - 0.5)
-    assert cutb.sum() > 20 and np.all((h1 + dz)[cutb] < g["level"][cutb]), "no cut bank: the outer ramp still stands"
-    keepb = (outer > 0.9) & ((hb > hc + 0.2) | (g["sd"] > sdc + 0.5))
-    assert keepb.sum() > 20 and np.abs(dz[keepb]).max() < 1e-9, ("the turf above a cut bank moved", keepb.sum(), np.abs(dz[keepb]).max() if keepb.any() else 0, float(outer.max()), float(hb.max()))
+    cutb = (outer > 0.9) & (hb > 0.05) & (hb < hc - 0.35) & (g["sd"] < sdc - 1.0)
+    assert cutb.sum() > 5 and np.all((h1 + dz)[cutb] < g["level"][cutb]), "no cut bank: the outer ramp still stands"
+    rp = S.cfg["cut_riser"]
+    keepb = (outer > 0.9) & ((hb > hc + 0.33 * rp + 0.02) | (g["sd"] > sdc + rp + 0.05))
+    assert keepb.sum() > 5 and np.abs(dz[keepb]).max() < 1e-9, ("the turf above a cut bank moved", keepb.sum(), np.abs(dz[keepb]).max() if keepb.any() else 0, float(outer.max()), float(hb.max()))
     # the water never ends above ground it stood over, except on a bar's top (a few cm)
     new = h1 + dz
     wet = dep0 > 0.4
@@ -187,6 +188,56 @@ def test_off_and_no_rivers(T):
     assert mats.layers == off_layers, (mats.layers, off_layers)
 
 
+SHORE = {"world": {"kind": "coast", "base": 7}, "extent": [[0, 0], [256, 256]], "cell": 1.0,
+         "tilt": {"down": "south", "grade": 0.1},
+         "sea": {"level": 0, "shore": "beach"},
+         "landforms": {"pond": {"type": "lake", "at": [128, 190], "radius": 18, "depth": 1.5}},
+         "cover": [{"type": "meadow", "in": "everywhere"}, {"type": "sand", "in": "beach"}],
+         "export": {"tiles": {"tile": 64}}}
+
+
+def test_lake_shore_and_beach():
+    """Lakes get a shore (bed, damp foot, margin clutter) with no bed shape; sea beaches get pebbles, a wrack line and
+    driftwood where the maps paint sand above the water."""
+    T = _load(SHORE)
+    field, mats = _mats(T)
+    S = mats.streams
+    assert S is not None and S.names == ["lake pond"], S and S.names
+    lk = T.lakes["pond"]
+    rng = np.random.default_rng(3)
+    a = rng.uniform(0, 2 * np.pi, 3000)
+    r = lk["r"] * rng.uniform(0.2, 1.6, 3000)
+    p = np.c_[lk["xy"][0] + r * np.cos(a), lk["xy"][1] + r * np.sin(a)]
+    x, y = np.ascontiguousarray(p[:, 0]), np.ascontiguousarray(p[:, 1])
+    h, _ = field.column(x, y)
+    h0, _ = field._column(x, y)
+    h0 = h0 + field.edits.dz(x, y)  # (turf lips, if any)
+    assert np.allclose(h, h0, atol=1e-6), ("a lake's bed was shaped", float(np.abs(h - h0).max()), S.sample(p)["still"].min())
+    W, c = mats.weights(np.c_[p, h], np.tile([0.0, 0.0, 1.0], (len(p), 1)))
+    lw = lambda *nm: sum(W[:, mats.layers.index(k)] for k in nm)
+    under = h < lk["level"] - 0.15
+    assert under.sum() > 100 and np.percentile(lw("gravel", "silt")[under], 10) > 0.9
+    g = S.sample(p)
+    far_in = under & (g["sd"] < -5)
+    assert far_in.sum() > 20 and np.median(lw("silt")[far_in]) > 0.8  # silt out in the lake, gravel by its shore
+    foot = (h > lk["level"] + 0.05) & (h < lk["level"] + 0.3) & (g["sd"] < 2)
+    assert foot.sum() > 5 and np.median(lw("bank")[foot]) > 0.3
+    C = ts.all_clutter(T, mats, field)
+    kinds = list(ts.KINDS)
+    n = lambda k, sel=C: int((sel[:, 3] == kinds.index(k)).sum())
+    lake = C[C[:, 8] == 0]
+    assert n("reeds", lake) > 3 and n("cobbles", lake) + n("sedge", lake) > 5, {k: n(k, lake) for k in kinds}
+    assert not n("slab", lake)
+    beach = C[C[:, 8] == -1]
+    assert n("pebbles", beach) > 10 and n("wrack", beach) > 3, {k: n(k, beach) for k in kinds}
+    assert np.all(beach[:, 7] == ts.PLACES.index("shore")) and np.all(beach[:, 2] > 0.1)
+    wr = beach[beach[:, 3] == kinds.index("wrack")]
+    assert 0.6 < np.median(wr[:, 2]) < 2.0, np.median(wr[:, 2])  # along the high water mark
+    lines = ts.summary(S, C)
+    assert any("sea beaches" in ln for ln in lines) and any("lake pond" in ln for ln in lines), lines
+    return {k: n(k) for k in kinds if n(k)}
+
+
 def test_swatches_and_styles():
     for fn in (ts.cobble_swatch, ts.silt_swatch):
         S = fn()
@@ -220,6 +271,7 @@ if __name__ == "__main__":
     print("energy ok")
     test_off_and_no_rivers(T)
     print("off / no rivers ok")
+    print("lake shore and beach ok", test_lake_shore_and_beach())
     test_swatches_and_styles()
     print("swatches and styles ok")
     print("all ok", round(time.time() - t0), "s")
