@@ -404,6 +404,66 @@ def press_flap(V: np.ndarray, F: np.ndarray, uv: np.ndarray, flap: np.ndarray, l
     return Vn
 
 
+BOARD = {"ease": 0.04, "ends": 0.03}
+
+
+def board_lapel(V: np.ndarray, uv: np.ndarray, sel: np.ndarray, flap: np.ndarray, line: tuple, roll: np.ndarray,
+                under: list | None = None, lay: float = 0.003, **kw) -> tuple:
+    """The forepart under a lapel laid as a BOARD before the lapel is pressed onto it: a tailored lapel is canvassed
+    and pressed, its roll line straight from the gorge to the break and its outer edge straight (the concept; the
+    drape left both curved: 18-44 mm off their chords in front view on Garrett, the concept 3-8). The base cloth beside
+    the roll line, as far as the lapel is wide, is put on a ruled strip: the roll row on the straight 3D chord between
+    its ends, each base point `across` (pattern distance from the line) along the strip's mean cross direction; eased
+    back to the drape over `ease` m past the lapel's width and `ends` m past the roll's ends; then kept `lay` over the
+    garment `under` (layers {"V", "F"} wound outward). Run it before press_flap (the flap is laid on this base).
+    sel: the piece's vertices; flap: those past the line; roll: the fold row's vertex ids. -> (V, info)."""
+    p = dict(BOARD, **{k: v for k, v in kw.items() if v is not None})
+    V = np.array(V, float)
+    p0, d2 = np.asarray(line[0], float), _unit(np.asarray(line[1], float))
+    n2 = np.array([-d2[1], d2[0]])
+    a_s = (uv[sel] - p0) @ d2
+    s_s = (uv[sel] - p0) @ n2
+    fside = np.sign(np.median((uv[flap] - p0) @ n2)) or 1.0
+    width = float(np.abs((uv[flap] - p0) @ n2).max())
+    roll = np.asarray(roll, np.int64)
+    a_r = (uv[roll] - p0) @ d2
+    o = np.argsort(a_r)
+    roll, a_r = roll[o], a_r[o]
+    R0, R1 = V[roll[0]], V[roll[-1]]
+    a0, a1 = float(a_r[0]), float(a_r[-1])
+    ch = R1 - R0
+    # the strip's cross direction: the base's mean direction away from the roll line, square to the chord
+    base = s_s * fside < 0
+    db = -s_s * fside  # (distance into the base, m in the pattern)
+    near = base & (db > 0.01) & (db < width) & (a_s > a0) & (a_s < a1)
+    if near.sum() < 3:
+        return V, {"boarded": 0}
+    t_n = np.clip((a_s[near] - a0) / max(a1 - a0, 1e-9), 0, 1)
+    rel = V[sel[near]] - (R0 + t_n[:, None] * ch)
+    cross = (rel / np.maximum(db[near], 1e-6)[:, None]).mean(0)
+    cu = _unit(ch)
+    cross = _unit(cross - (cross @ cu) * cu)
+    t = np.clip((a_s - a0) / max(a1 - a0, 1e-9), 0, 1)
+    T = R0 + t[:, None] * ch + np.clip(db, 0, None)[:, None] * cross
+    # weights: 1 on the roll row and the base within the lapel's width and the roll's span, easing out past them
+    def ss(x):
+        x = np.clip(x, 0, 1)
+        return x * x * (3 - 2 * x)
+    w_across = 1 - ss((db - width) / p["ease"])
+    w_along = (1 - ss((a0 - a_s) / p["ends"])) * (1 - ss((a_s - a1) / p["ends"]))
+    w = np.where(base | np.isin(sel, roll), w_across * w_along, 0.0)
+    w[np.isin(sel, roll)] = w_along[np.isin(sel, roll)]
+    moved = sel[w > 1e-3]
+    V0 = V[moved].copy()
+    V[sel] = V[sel] + w[:, None] * (T - V[sel])
+    if under:
+        Vm, _, _ = Under([dict(L, sheet=True, depth=0.03) for L in under]).settle(V[moved], lay)
+        V[moved] = Vm
+    mv = np.linalg.norm(V[moved] - V0, axis=1) * 1000
+    return V, {"boarded": int(len(moved)), "moved_mm_p50": round(float(np.median(mv)), 1), "moved_mm_max": round(float(mv.max()), 1),
+               "roll_chord_mm": round(float(np.linalg.norm(ch)) * 1000, 1)}
+
+
 def into_cloth(V: np.ndarray, F: np.ndarray, idx: np.ndarray) -> np.ndarray:
     """Per vertex of a seam chain: the unit direction into the cloth it belongs to (toward its mesh neighbours,
     two rings), as the cloth lies."""
@@ -935,7 +995,8 @@ def options(g: dict) -> dict | None:
     """The garment's `construct` key resolved (None: nothing is constructed): true / {} = the defaults (lapels
     pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options", "hug" (with
     collar and an under garment: the neckline drawn in to the under collar, hug_neckline; false or {gap, reach, max_pull,
-    gorge}), "over_under" (pressed lapels lifted out over the under garment; default on), "press" (fold-name prefixes whose
+    gorge}), "over_under" (pressed lapels lifted out over the under garment; default on), "board" (the forepart under a
+    lapel laid as a ruled strip first: straight roll line and outer edge, board_lapel; default on), "press" (fold-name prefixes whose
     flaps are pressed, default ["lapel"]; EXPERIMENTAL for others: ["open neck"] on a shirt chose the wrong side of
     front.R's weak roll and cut the V, cloth10 c10_dbg_steps (c))}."""
     c = g.get("construct", True)
@@ -958,7 +1019,7 @@ def lapel_flaps(M: dict, prefixes: tuple = ("lapel",)) -> list:
         d2 = vt[0]
         sd = (uv[sel] - p0) @ np.array([-d2[1], d2[0]])
         side = 1.0 if (sd > 1e-6).sum() < (sd < -1e-6).sum() else -1.0  # (the flap is the smaller side)
-        out.append({"piece": fd["piece"], "sel": sel, "flap": sel[side * sd > 1e-6], "line": (p0, d2)})
+        out.append({"piece": fd["piece"], "sel": sel, "flap": sel[side * sd > 1e-6], "line": (p0, d2), "row": row})
     return out
 
 
@@ -980,6 +1041,13 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
     bFo = outward(np.asarray(bV, float), np.asarray(bT))
     made = {"lapels": [], "parts": [], "info": {}}
     for L in flaps:
+        if opt.get("board", True) and len(L.get("row", [])) >= 3:
+            und_l = []
+            if under is not None:
+                und_l = [{"V": np.asarray(under["V"], float), "F": away(np.asarray(under["V"], float), np.asarray(under["F"]), np.asarray(bV, float), bFo)}]
+            und_l.append({"V": np.asarray(bV, float), "F": bFo})
+            V, binfo = board_lapel(V, uv, L["sel"], L["flap"], L["line"], L["row"], und_l, lay=0.004)
+            made["info"].setdefault("board", {})[L["piece"]] = binfo
         Fp = away(V, F[np.isin(F, L["sel"]).all(1)], bV, bFo)
         isf = np.zeros(len(V), bool)
         isf[L["flap"]] = True

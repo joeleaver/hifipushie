@@ -2046,3 +2046,17 @@ NO SIM WAS RUN.
     Broker: the jacket START is not deterministic run to run (X 1 cm, even the mesh: 3479 vs 3492 vertices), so
     stage.sh's write-then-consume rounds re-key every time for some builds; q.sh straight through (place once,
     wait for the fleet) is the safe path until that is found. Sheet cloth_renders/c10_w9_sheet.png.
+  - Round 7. DETERMINISM: the jacket start moved 1 cm run to run (top.L 10 mm down the arm in 1 of 3 runs; seed-free,
+    so every rebuild re-keyed the sim). Cause: place()'s sleeve-down retry updated `down` IN PLACE while iterating a
+    SET of piece names, so an arm-mate read the new value or not by the set's per-process order (string hashing).
+    Fixed (from the old values, sorted); det3.sh: 3 fresh runs identical. Found with det.py (step fingerprints) +
+    per-piece X0 hashes. GATE was weak: magenta tested at full brightness only; shaded skin passed. Now any magenta
+    hue + a LOW camera set (hem / front edges): j9 had 1597-3186 skin px at the front edges below the break (the cut).
+    CUT BY VISIBILITY (cloth_layers.occluded + view_dirs: numpy z-buffer of the jacket from 61 directions, a shirt
+    vertex hidden when the jacket is in front from all, eroded 3 rings, collar never cut): 0 skin px on j9 / j10.
+    Depth-fleck count (shirt in front of the jacket's outer side by 2-30 mm) reported, not gated: oblique views see
+    the V's shirt in front of the far lapel legitimately. LAPELS: cloth_made.board_lapel (construct key board,
+    default on): the forepart under each lapel laid as a ruled strip (roll row on its straight chord, across = the
+    strip's mean direction) before press_flap. lapelgate.py (front view, max deviation from the chord): concept roll
+    edges 2.8 / 8.0 mm; j9 roll 18-34, outer edge 29-44; j10 (boarded) roll 8.5-8.8, outer edge 21. Outer edge still
+    curved: not found yet.
