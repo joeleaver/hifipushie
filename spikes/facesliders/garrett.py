@@ -8,6 +8,8 @@
   lips  : fit lip_upper_roll, lip_lower_roll, lip_bow to upper / lower lip height and the bow.
 Each stage saves the spec and prints before / after."""
 import json
+
+import numpy as np
 import shutil
 import sys
 from pathlib import Path
@@ -54,6 +56,28 @@ if stage == "strip":
     ph, md, _ = gm.measure("fs_garrett", spec["base"])
     show("stripped:", ph, md, ("open", "cover", "canthal_tilt", "brow_gap", "brow_tilt", "upper_lip", "lower_lip",
                                "cupid_bow", "mouth_width"))
+elif stage == "jaw":  # the lower face against the photo's jaw contour (the detector's oval points, like with like)
+    spec = load(DST / "spec.json")
+    sl = spec["base"]["head"].setdefault("sliders", {})
+    sl["age_lid_fold"] = 0.4  # (stacked with the hood and crease it drew heavy lines round the eyes: by eye)
+    ph0, md0, _ = gm.measure("fs_garrett", spec["base"])
+    keys = [k for k in ph0 if k.startswith("ox") and k in md0]
+    miss = {k: round(md0[k] - ph0[k], 1) for k in keys}
+    print("jaw contour x miss (model - photo, mm; + = the model's point further right in the picture):", miss)
+    tg = {k: (ph0[k], 1.5) for k in keys}
+    tg.update({"width_jaw": (ph0["width_jaw"], 2.0), "jaw_taper": (ph0["jaw_taper"], 0.02)})
+    names = ["age_prejowl", "face_lean", "cheek_hollow", "age_cheek_flat"]
+
+    def read(b):
+        return gm.measure("fs_garrett", b)[1]
+    r = faceslide.fit(spec["base"], tg, names, read=read, on_base=True, log=print, iters=3, step=0.4)
+    sl.update(r["sliders"])
+    save(spec)
+    print("SLIDERS", r["sliders"])
+    for k in ("width_jaw", "jaw_taper", "width_cheekbone", "face_index", "lower_third"):
+        print(f"{k:14s} photo {ph0[k]:.2f}  before {md0[k]:.2f}  after {r['after'].get(k, float('nan')):.2f}")
+    print("contour |miss| mean before", round(float(np.mean([abs(md0[k] - ph0[k]) for k in keys])), 2),
+          "after", round(float(np.mean([abs(r["after"][k] - ph0[k]) for k in keys])), 2))
 elif stage == "brow":  # the brows' height: an identity move (humanfit.solve, least change, everything else held)
     from hifipushie import humanfit
     spec = load(DST / "spec.json")
