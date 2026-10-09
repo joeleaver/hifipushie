@@ -49,7 +49,8 @@ CFG = {
     # thalweg's wander: alternate bars), as a share of a full bend; 0 = only real bends sort the bed
     "cut": [0.35, 0.85],     # m: the cut outer bank's height over the water (wandering between; x the channel's size);
     # [0, 0] = banks as the terrain graded them
-    "cut_riser": 0.35,       # m: the cut face's width in plan in the meshed ground (the maps bake it crisper)
+    "cut_riser": 0.9,        # m: the cut face's half-width in plan in the meshed ground (the heightmap tiles sample the
+    # ground every metre: at 0.35 the step was a sawtooth of triangles along the bank; the maps bake it crisper)
     "bar": 0.10,             # m: a point bar's top over the water (0: bars stay awash)
     "lump": 0.07,            # m: the bed's unevenness (metre-scale)
     "min_depth": 0.08,       # m of water the shaped bed keeps (bars aside)
@@ -69,7 +70,7 @@ KINDS = {  # clutter kinds: size = the largest plan dimension (m) at scale 1 x s
     "slab": {"scale": [0.5, 2.0], "squash": [0.7, 1.3], "what": "a flat bank stone / ledge piece"},
     "driftwood": {"scale": [0.8, 4.5], "squash": [0.7, 1.5], "what": "a bare log, branch or small jam; yaw = its long "
                   "axis (0 = along world +x)"},
-    "reeds": {"scale": [0.5, 1.4], "squash": [0.75, 1.35], "what": "a reed / sedge clump rooted at the water line"},
+    "reeds": {"scale": [0.5, 1.4], "squash": [0.6, 0.95], "what": "a reed / sedge clump rooted at the water line"},
     "litter": {"scale": [0.8, 2.5], "squash": [1.0, 1.0], "what": "a leaf and twig debris patch (a decal)"},
     "sedge": {"scale": [0.4, 0.9], "squash": [0.8, 1.3], "what": "a sedge / tall bank grass tussock along the wet "
               "margin and the bank's foot"},

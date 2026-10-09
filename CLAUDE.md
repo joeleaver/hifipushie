@@ -4669,6 +4669,35 @@ layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble c
   recipe is flat speckle (albedo only); placeholders are eggs and pool noodles until clutterkit's meshes; the
   water's level steps are the terrain's own (not touched); no undercut outer banks (a heightfield can't), no lake
   shores / beaches yet (pebbles, wrack: same machinery, next).
+- Round 2 (2026-10-09, the coordinator on sb_ref_*: "reads as a stream now"; still fake: banks as smooth bare ramps
+  the same both sides, cobbles bank to bank, pools / riffles not reading, level steps, styled bed albedo only).
+  - Banks (`Streams.cut`, `dz`): the bank's foot is shaped too. Outer side: the graded ramp cut back to a step
+    (`cut` 0.35-0.85 m x channel size; everything lower than the cut's height within `0.5 + 2.4 x height` m of the
+    nominal edge drops to 0.2 m under the water, the face a riser `cut_riser` wide; by height alone, on flat land
+    lower than the cut the channel widened to the zone's edge); inner side: the ramp's foot laid flat into the bar
+    (dry gravel above the water: `dry` in `shares`, counted as bed). The cut face is bank layer / bare damp earth,
+    darkest under the turf's edge. A heightfield can't overhang: ~1 m wide step in the ground mesh, crisp in maps.
+  - Alternate bars: the vale river hardly bends (tightest bend 0.4 of a full one), so real bends gave no bars. A
+    `side` grid (+-1 by bank, 0 mid-channel) and `alternate` 0.75: the effective bend = the path's own minus
+    side x sin(pi x phi), so pools sit against one bank then the other, a bar and the gentle bank opposite, as in a
+    straight channel; real bends override. The report says when a river hardly bends and what the designer can do.
+  - Sorting: `coarse` (along the thalweg, toward the outer bank) drives stone contrast, fines at the inner margin
+    and in 3 m patches (silt layer), a few slabs awash on riffles, more moss at the water line; cobble swatch with
+    fewer, flatter stones (gravel shows between). Pool 0.8 m, riffle 0.6.
+  - Bank vegetation rows: kind `sedge` (tussocks along the wet margin and bank foot, denser inside, a fringe on a
+    cut bank's top) and `bush` rows with place bank (clumps on the bank top).
+  - LEVEL: `terrain_forms._ease_level` (in `water`, the 2.5D build): the level, min of the profile and the banks
+    - 0.3 then a running min, dropped up to 2.45 m in one 2 m sample and ran level between (67 of 279 samples
+    level). Now a smooth curve hung under the steps (60 x small Gaussian + cap, ends carried on at their own slope:
+    held level, the source end sagged 5.8 m), falling everywhere: largest drop per sample 0.73 m, 0 level samples,
+    lowered by 0.46 m on average / 2.35 m at the tallest step. One wide smoothing shifted under the steps sank it
+    4.3 m. CONSUMER: river levels (meta `rivers`, manifest `streams.rivers`) and the bed heights under them change
+    by those amounts on every terrain with rivers.
+  - Incremental: `Streams.report_reaches` (whole-river arrays for the report) is in the fingerprint's SKIP_ATTRS;
+    as `reaches` it made any river edit a global change. `"streams": {...}` numbers are scalars: global (cold).
+  - Styled beds: the style layers always had normal + height maps; the Blender styles recipe leaves bump off (an
+    earlier round's contour lines), so my render was albedo only. `render_tiles(styles_bump=True)`; stones taller
+    in every sheet (0.045-0.1 m).
 
 ## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
 
