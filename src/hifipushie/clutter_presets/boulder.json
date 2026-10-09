@@ -1,0 +1,85 @@
+{
+ "about": "A loose angular boulder (talus block, field boulder): an irregular polyhedron of 6-9 oblique faces with a pair of off-parallel bedding faces, one or two corners broken off, thin partings, the top weathered rounder than the foot, a broad base sunk in the ground. Variants differ in proportion: a lump, a flat block, a tall wedge, a split block with a second leaning on it. Terrain kind `boulder`",
+ "material": "rock",
+ "variants": 4,
+ "size_range": [
+  0.3,
+  1.8
+ ],
+ "place": "on rock, under cliffs, shores; old terrain `boulder` rows are already sunk 0.12 x scale in z (lift them by that, or accept more buried)",
+ "form": {},
+ "variant_forms": [
+  {
+   "aspect": [
+    [
+     0.72,
+     0.85
+    ],
+    [
+     0.6,
+     0.7
+    ]
+   ]
+  },
+  {
+   "aspect": [
+    [
+     0.62,
+     0.78
+    ],
+    [
+     0.3,
+     0.38
+    ]
+   ],
+   "dip": [
+    0.0,
+    8.0
+   ],
+   "tumble": 5.0,
+   "taper": 0.12,
+   "bedded": 1.0
+  },
+  {
+   "aspect": [
+    [
+     0.6,
+     0.72
+    ],
+    [
+     0.74,
+     0.86
+    ]
+   ],
+   "taper": 0.34,
+   "faces": [
+    6,
+    8
+   ],
+   "broken": [
+    2,
+    2
+   ],
+   "tumble": 8.0
+  },
+  {
+   "aspect": [
+    [
+     0.66,
+     0.8
+    ],
+    [
+     0.48,
+     0.58
+    ]
+   ],
+   "split": 1.0,
+   "lean": 1.0
+  }
+ ],
+ "paint": {
+  "top": 0.3,
+  "cracks": 0.004,
+  "grain": 0.0015
+ }
+}

@@ -386,7 +386,7 @@ def collision(tree: dict, limit: int = 24) -> list[dict]:
 
 # The export contract an engine maps by name: material slots, vertex channels, files. Bump it whenever a slot or a
 # channel is added, renamed or changes meaning (and say so in vegetation_guide.md "The export contract").
-CONTRACT = 12
+CONTRACT = 13
 CONTRACT_LOG = {
     1: "slots bark, foliage (+ foliage_boughs<n>), impostor; TEXCOORD_1 = (trunk, branch), TEXCOORD_2 = (phase, flutter), _WIND; "
        "COLOR_0 on foliage; season variants; <name>_collision.glb; <name>_seasons.json",
@@ -465,7 +465,17 @@ CONTRACT_LOG = {
         "works (the new channels are extra). Later the same day, no bump (values and added recipe keys only): a sward's "
         "season factors are the terrain style's seasonal grass tints (whole in the json, may exceed 1; snow = winter's "
         "straw), `sward.density` (how a sward ends: a 0..1 density thins and shortens blades), `sward.winter` (lying "
-        "straw), `sward.snow` (the tile sinks by the snow depth; fade to the snow colour), `sward.season_ground_linear`"
+        "straw), `sward.snow` (the tile sinks by the snow depth; fade to the snow colour), `sward.season_ground_linear`",
+    13: "NEW GRADE `clutter` (clutter.py; make_clutter / clutter_kit; its own folders <style>_<kind>/): terrain clutter as assets. Top-level "
+        "`grade`: \"clutter\", `kind` (boulder | river_rock | cobbles | slab | driftwood | bush | litter) and a `clutter` block: size_m (1: instance "
+        "scale = the largest plan dimension in m), height_m, sink_m (the pivot is the ground line; that much of the mesh is below it), size_range_m, "
+        "variants [{name, lods [{file, triangles, outline_iou}], collision (a convex hull GLB, node ...-convcolonly) | null}], lod_switch_m (x the "
+        "instance's scale), wet / tint / instancing recipes. ONE slot per folder: `rock` or `wood` (OPAQUE; baseColorTexture + normalTexture + "
+        "ormTexture = R occlusion, G roughness; POSITION, NORMAL, TANGENT, TEXCOORD_0; textures are separate PNGs referenced by uri, one atlas "
+        "shared by every variant and LOD), `foliage` on a bush (alpha MASK; the same maps; + TEXCOORD_1 / TEXCOORD_2 / _WIND as plants; a season = "
+        "another albedo picture in seasons.<season>.foliage.baseColorTexture.file) or `litter` (alpha MASK albedo only, a picture per season, hidden "
+        "under snow). No <name>_LOD<k>.glb at the folder's top: files are per variant (<stem>_v<k>_LOD<j>.glb). <root>/clutter.json maps terrain "
+        "clutter kinds to folders per style. Plants are unchanged.",
 }
 IMPOSTOR_AZIMUTHS = (0, 90)  # the two pictures: looking along +y (image right = +x), then along +x (image right = -y)
 IMPOSTOR = {"shade": 0.5, "depth": 1.0, "depth_cards": 0.5, "shade_bright": 0.7}  # (measured in Godot: spikes/godot_veg; cards let light through a crown)

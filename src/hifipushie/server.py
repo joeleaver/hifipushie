@@ -307,8 +307,12 @@ def guide(topic: str = "") -> str:
     what you weren't looking at: measure_human, fit_human (set measures, a solver finds the sliders), nudge_human
     (move a landmark), human_reference (match named points in reference images), with integrity and side-effect
     reports on every change.
+    topic="clutter": the small things a terrain is scattered with (boulders, river rocks, cobbles, slabs, driftwood,
+    bushes, litter, reeds) as game assets in five styles, with make_clutter, look_clutter and clutter_kit.
     topic="likeness": the facial-likeness checklist (forensic examiners' feature list, likeness artists' order,
     anthropometry): what to look at and measure on a reference, for the likeness and fit_likeness tools."""
+    if topic.strip().lower() == "clutter":
+        return (Path(__file__).with_name("clutter_guide.md")).read_text()
     if topic.strip().lower() == "likeness":
         return (Path(__file__).with_name("likeness_guide.md")).read_text()
     if topic.strip().lower() in ("human", "humans"):
@@ -3151,6 +3155,75 @@ def heavy_queue() -> str:
     marked "<- yours", with a last line like "yours: 3rd in queue, 18 GB ahead". Fast; changes nothing."""
     from . import resources
     return resources.queue_text()
+
+
+@mcp.tool(structured_output=False)
+def make_clutter(kind: str = "", style: str = "realistic", out_dir: str | None = None, seed: int = 1, variants: int | None = None,
+                 form: dict | None = None, paint: dict | None = None, color: list | None = None, moss: float | None = None,
+                 lods: list | None = None, look: bool = False):
+    """Make a terrain CLUTTER asset (guide(topic="clutter")): the small things scattered by the thousand. kind (a preset;
+    "" lists them with what they are): boulder (loose angular block), river_rock (water-worn), cobbles (a patch of
+    stones as one asset), slab (flat bank stone), driftwood (log / fork / pole / jam as variants), bush (a low scrub
+    bush: leafy dome + leaf sprays on cards, seasons, wind), litter (a leaf / twig debris card, seasons). style:
+    realistic | blobby (pebbles, smooth lumps) | anime (crisp planes, painted bands) | cartoon (chunky facets, a dark
+    edge line) | pixar (soft sculpt, mossy top), or {"sheet": name, ...overrides}; rock colours start from the
+    terrain's rock colour turned by the style (color = your own sRGB).
+    A rock is a signed distance in the cliffs' language (oblique joint faces round three unequal axes, off-parallel
+    bedding faces, broken corners, thin partings, weathered rounder on top, wider at its base, water-worn toward an
+    ellipsoid): form = overrides of those numbers, e.g. {"round": 0.5, "bevel": 0.1, "faces": [5, 7], "split": 1.0,
+    "taper": 0.3, "sink": 0.3}; paint = {"top": lichen 0..1, "moss": 0..1, "bands": painted strata, "ink": edge line,
+    "cracks", "gradient", ...}; unknown keys are refused with the list. variants (default 4) differ in PROPORTION, not
+    only seed. Written into out_dir (default workspace/clutter/<style>_<kind>/): per variant and LOD a GLB
+    (<stem>_v<k>_LOD<j>.glb; rocks 300 / 100 / 44 triangles, the last a hull that keeps the outline; bushes ~250 / 120 /
+    55; litter 8 / 2), a convex collision hull for boulders, ONE atlas (albedo, tangent normal, occlusion + roughness)
+    shared by every variant and LOD, and <stem>_seasons.json in the plant contract's shape (grade "clutter", kind,
+    slots, variants, size / height / sink, LOD distances, wet / tint / instancing recipes). Assets are 1 m across at
+    scale 1, pivot on the ground line with `sink_m` below it. 10-60 s, no Blender. look=True also returns a sheet at
+    2.5 / 10 / 40 m (Blender, ~1 min)."""
+    from . import clutter as ck
+    if not kind:
+        return json.dumps({"kinds": {k: json.loads((ck.HERE / "clutter_presets" / f"{k}.json").read_text()).get("about", "") for k in ck.presets()},
+                           "styles": {s_: ck.style_sheet(s_).get("about", "") for s_ in ck.styles()}}, indent=1)
+    spec = {"kind": kind, "style": style, "seed": seed}
+    for k_, v_ in (("variants", variants), ("form", form), ("paint", paint), ("color", color), ("moss", moss), ("lods", lods)):
+        if v_ is not None:
+            spec[k_] = v_
+    st = ck.style_sheet(style)["name"]
+    sh = ck.SHORT.get(st, st)
+    out = Path(out_dir) if out_dir else store.HOME / "clutter" / f"{sh}_{kind}"
+    J = ck.export(spec, out, stem=f"ck_{kind}_{sh}")
+    text = f"wrote {out}\n" + ck.report(J)
+    if not look:
+        return text
+    png = out / "look.png"
+    ck.look(out, str(png))
+    return [Image(data=png.read_bytes(), format="png"), text]
+
+
+@mcp.tool(structured_output=False)
+def look_clutter(folders: list[str], season: str = "summer", clay: bool = False, scale: float = 1.0, save: str | None = None):
+    """A sheet of exported clutter folders (make_clutter's out_dir; a row each): every variant side by side on rough
+    grass at 2.5 / 10 / 40 m with the LOD drawn at that distance (the far views enlarged: real pixels). Judge: does it
+    read as what it is and in its style, do the LODs keep the outline, do the variants look like clones? season = a
+    bush's or a debris card's other pictures; clay = no textures (the mesh alone). Blender, ~30 s a row."""
+    from . import clutter as ck
+    png = Path(save) if save else Path(folders[0]) / f"look_{season}.png"
+    ck.look(folders, str(png), scale=scale, clay=clay, season=season)
+    return [Image(data=png.read_bytes(), format="png"), f"saved {png}"]
+
+
+@mcp.tool(structured_output=False)
+def clutter_kit(out_dir: str, kinds: list[str] | None = None, styles: list[str] | None = None) -> str:
+    """Export a whole clutter kit: every kind (default all presets) in every style (default all five) into
+    out_dir/<style>_<kind>/ ("realistic" -> "real"), then out_dir/clutter.json: terrain clutter kind (clutter.csv's
+    `kind`) -> the folder that draws it per style, the instance convention (scale = largest plan dimension in m, yaw,
+    squash relative) and what is missing. ~20-60 s a folder."""
+    from . import clutter as ck
+    lines = []
+    K = ck.kit(out_dir, kinds, styles, progress=lines.append)
+    M = json.loads((Path(out_dir) / "clutter.json").read_text())
+    miss = {k: v["missing"] for k, v in M["kinds"].items() if v["missing"]}
+    return f"{len(K)} folders in {out_dir}; manifest clutter.json" + (f"; missing: {miss}" if miss else "") + "\n" + "\n".join(lines)
 
 
 def main():

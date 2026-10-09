@@ -5749,6 +5749,74 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   muddied by alpha dithering; collision mesh 2.5k triangles on a birch; stages 3 (small plants, palm), 5 (styles) and
   terrain integration not started.
 
+## Clutter kit (2026-10-08/09, "clutterkit" agent, branch `worktree-agent-af12ac948388331b2`; sheets `workspace/veg_renders/ck_*`)
+
+The consumer (pushieworld notes 110) had never drawn the terrain export's clutter.csv: no assets for its kinds. Now:
+`clutter.py` + `clutter_presets/*.json` (boulder, river_rock, cobbles, slab, driftwood, bush, litter) + `clutter_styles/*.json`
+(realistic, blobby, anime, cartoon, pixar) + `blender_clutter.py` (looks) + the `reed` plant preset (groundcover grade).
+Tools `make_clutter`, `look_clutter`, `clutter_kit`; `guide(topic="clutter")` = `clutter_guide.md`; `tests/test_clutter.py`.
+Deliveries: /mnt/data/hifipushie/vegstyle/<style>_<kind>/ (35 folders, "realistic" -> "real") + <style>_reed_ground/ +
+clutter.json (terrain kind -> folder per style, instance rule). CONTRACT 13 = grade "clutter" (plants unchanged).
+Scratch DURABLE in /mnt/data/hifipushie/clutterkit/: run.sh <script>, ex.py <root> <kinds> <styles> (export), go.sh <tag>
+<kinds> <styles> (export + sheet), kit.py <root> (everything + sheets per kind), mkstyles.py / mkpresets.py (the style and
+preset JSON are WRITTEN from these: edit there, re-run with the target dir), scat2.py <folder> <png> (nine instances close,
+in the ground), scatter.py, gd.py <tag> <style> <boulder root> <bush root> <lod 1|0> (Godot field), v2.mjs (Khronos with
+external images), prof.py / dbg1.py / dbg2.py (profile, a variant's decimation, proportions), reeds.sh, plant.py, fetchb.py
+(reference photos into workspace/level_refs/boulders/), p1..p19.py (the patches as applied: history only).
+- What existed before (asked by the consumer): a styled `shrub` exports through grow_plant + export_plant at 400 triangles
+  but is one ball on a stalk and its LODs don't go down (anime 448 / 420 / 420, pixar 276 x3: style floors); boulders had
+  nothing callable (terrain_ground places rows, blender_terrain's protos are render-only, fallen blocks live in the tiles'
+  field). export_asset would take minutes of Blender per rock with no LODs.
+- A rock = a signed distance (class `Stone`): 6-9 faces at oblique angles round an ellipsoid of three unequal axes (a golden
+  spiral of directions, jittered; each face at 0.7-0.95 of the ellipsoid's reach), an off-parallel bedding pair, 1-2 corners
+  broken deep + shallow chips, thin partings on tilted planes, a smooth max whose radius grows upward (`top_round`), wider
+  low (`taper`), blended toward a bowed ellipsoid (`round`, `bend`), `split`, `dent`, a second block leaning (`lean`).
+  The FIRST version (two joint families at right angles + level bedding with a mid-height setback) read as quarried
+  bricks (the coordinator's call): a loose block is never a box. Far axis planes always cap it: few oblique faces left
+  one side open (a 12 m "boulder", a 60-triangle dense mesh).
+- Variants differ in PROPORTION (preset `variant_forms`: lump, flat block, tall wedge, split + leaning), not only seed;
+  forms layer as preset < variant < style < spec (`_layered`), so a pebble style still rounds every variant.
+- LODs: pyfqmr (several aggressiveness values, the nearest count that is closed and manifold: it overshoots far under the
+  target on pebbles and stalls above it on crisp blocks, and can leave fins), back onto the field (Newton steps capped at
+  3 cm: a far vertex's step left the form), outline IoU against LOD 0 from 8 directions written per LOD
+  (`silhouette_iou`; under `LOD_IOU` 0.9 a single stone's LOD becomes its hull). The last LOD of a stone is a convex hull
+  grown greedily (`_hull`: the point farthest outside is added until the count): at 30 triangles a decimator folded crisp
+  blocks into shards. A cobble patch = a hull per stone, faces shared by surface (`cluster_lod`); driftwood LOD 1 / 2 and
+  jams = built tubes (`wood_lod`: 5 / 3 sides). Thin things read low IoU honestly (driftwood 0.65-0.85, cobbles LOD 2
+  0.5-0.9).
+- The bake: ONE atlas (1024) per kind x style for all variants and LODs: six box charts a variant (`CHARTS`), a texel = the
+  first surface a ray along the axis meets (found on the marching-cubes volume, refined on the exact field), so uv is a
+  function of POSITION and nothing is unwrapped. Albedo (`_paint`), tangent normal against LOD 0's own interpolated
+  normals (`_raster_normals`: baked against a smooth guess, flat faces with split normals shaded pillowy and dented),
+  ORM; relief only in the maps (`_micro`: grain, fracture traces, laminae, pits, leaf bumps, bark). TANGENT is written
+  (the chart's axes; w from the picture's up).
+- Paint that made it read as rock: fracture traces = wandering PLANES cutting the stone, present along stretches
+  (isolines of a noise drew closed worm loops), lichen crusts = cells merging into blotches at 45-75% opacity on tops and
+  one weather side (small bright ones read as confetti), rain streaks down steep faces, a damp soil-stained foot band,
+  each variant's mineral tone (`minerals`; at +-10% the stones were brown and blue: +-5%), `instance_tints` in the json.
+  Rock matches its cliffs by a per-instance colour (json `clutter.tint`): terrain rock colour / color_linear x a tint.
+- Bush (`Bush`, `bush_cards`, `spray_tile`): an opaque leafy dome down to the ground with lobes (cells painted as leaves)
+  + 24-30 leaf sprays on alpha cards (each drawn from both sides with the SAME up-and-out normal), one material (alpha
+  MASK), the plants' wind channels, a season = another albedo picture (spring flowers), blobby / cartoon have no cards.
+  Reads as a bush from 10 m; at 2.5 m a leafy lump with sprigs.
+  Light grey patches on a bush's shaded side were not holes, flipped faces or the normal map (all three chased): a dark
+  albedo (0.18, 0.25, 0.12) at roughness 0.8 shows the sky's sheen. Leaf domes are roughness 0.96, gaps and AO lighter.
+  A ray that meets another lobe first gives that lobe's normal: flat there (`off` in bake_variant); faces a decimation
+  turned inside out are turned back (lod_mesh).
+- Litter (`litter_tile`, `_export_litter`): an 8-triangle domed octagon / a quad with an RGBA picture per season (the
+  same patch, leaves added in autumn), hidden under snow.
+- Engine (Godot 4.7.2, `spikes/godot_veg/clutter_field.gd`, 1280 x 720, 890M, shadows on): 5,000 boulders + 20,000
+  bushes over 400 x 400 m as MultiMeshes per variant per LOD with the json's LOD distances and cull: 6,922 drawn,
+  462k triangles, GPU 2.7 ms on a quiet GPU (4.5 with other jobs on it); cartoon 319k, 2.4 ms; all 25,000 at LOD 0
+  with no cull: 7.0M triangles, 15-17 ms. Khronos validator: 515 GLBs (495 clutter + 20 reed), 0 errors, 0 warnings.
+  A Godot script error leaves the process idle for ever under godot-quiet: always run with a timeout and log to a file.
+- Kinds agreed with the "streambeds" agent (terrain_stream.py): scale = largest plan dimension in m (assets are 1 m at
+  scale 1), squash RELATIVE, yaw 0 = +X, z = surface (pivot on the ground line, `sink_m` below); old `boulder` rows are
+  sunk 0.12 x scale already. `sedge`, `tussock`, `tallgrass` map to <style>_grass_ground in clutter.json (no sedge preset).
+- Open: the clutter bush close up; driftwood is plain (bark patches, broken ends and a root-plate variant exist, no
+  splintered detail); realistic litter clusters in the middle; no `sedge` / pebbles / wrack assets; photo silhouette
+  measures were read by eye (no traced masks); the consumer has not loaded any of it yet.
+
 ## One human mesh (2026-10-06, "onemesh" agent, branch worktree-agent-aac6bb85823bc8809; renders `workspace/human_renders/om_*`)
 
 The user: "we seem to always be fighting the makehuman/GAN mesh combination ... So we had one mesh?", then a stretch

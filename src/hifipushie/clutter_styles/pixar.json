@@ -1,0 +1,129 @@
+{
+ "about": "Soft sculpted rock: generous bevels, gentle hollows, a warm lit top and darker foot, fine grain only up close; wood smooth with soft grain",
+ "colour": {
+  "saturation": 1.15,
+  "value": 1.05
+ },
+ "rock": {
+  "form": {
+   "lumps": 0.03,
+   "lump_size": 0.4,
+   "beds": [
+    0,
+    1
+   ],
+   "faces": [
+    5,
+    7
+   ],
+   "chips": [
+    2,
+    3
+   ],
+   "broken": [
+    2,
+    2
+   ],
+   "break": [
+    0.25,
+    0.45
+   ]
+  },
+  "scale": {
+   "bevel": 2.0,
+   "bed_set": 0.7
+  },
+  "paint": {
+   "lichen": 0.25,
+   "lichen_size": 0.1,
+   "streaks": 0.15,
+   "streak_width": 0.05,
+   "foot_tint": 0.3,
+   "tone": 0.08,
+   "tone_size": 0.35,
+   "face_tone": 0.04,
+   "speckle": 0.025,
+   "edge_light": 0.1,
+   "cavity": 0.2,
+   "gradient": 0.28,
+   "top_light": 0.12,
+   "top": 0.45,
+   "top_color": [
+    0.42,
+    0.52,
+    0.26
+   ],
+   "top_size": 0.2,
+   "grain": 0.0008,
+   "cracks": 0.0015,
+   "roughness": 0.85,
+   "normals": 0.0
+  }
+ },
+ "leaf": {
+  "form": {
+   "cards": [
+    12,
+    16
+   ],
+   "join": 0.12
+  },
+  "paint": {
+   "leaf_size": 0.055,
+   "leaf_tone": 0.18,
+   "leaf_gap": 0.3,
+   "leaf_bump": 0.003,
+   "gradient": 0.45,
+   "top_light": 0.22,
+   "cavity": 0.3,
+   "spray": {
+    "leaves": [
+     9,
+     13
+    ],
+    "leaf": [
+     0.085,
+     0.115
+    ],
+    "round": 0.5,
+    "tones": 0.18,
+    "outline": 0.0,
+    "midrib": 0.15
+   }
+  }
+ },
+ "litter": {
+  "form": {
+   "leaves": [
+    50,
+    80
+   ],
+   "leaf": [
+    0.06,
+    0.1
+   ],
+   "round": 0.6,
+   "tones": 0.22,
+   "shadow": 0.4,
+   "bits": [
+    10,
+    20
+   ]
+  }
+ },
+ "wood": {
+  "form": {
+   "bevel": 0.02
+  },
+  "scale": {
+   "radius": 1.15
+  },
+  "paint": {
+   "streak": 0.14,
+   "speckle": 0.01,
+   "gradient": 0.2,
+   "grooves": 0.0015,
+   "normals": 0.0
+  }
+ }
+}

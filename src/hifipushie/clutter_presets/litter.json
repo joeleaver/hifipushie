@@ -1,0 +1,13 @@
+{
+ "about": "A debris patch: fallen leaves, twigs and crumbs lying on the ground, one alpha card (a decal with a mesh). Thick and bright in autumn, dark and thinner in winter, gone under snow. Terrain kind `litter` (stream margins, banks, under trees and bushes)",
+ "material": "litter",
+ "shape": "litter",
+ "variants": 4,
+ "size_range": [
+  0.8,
+  2.5
+ ],
+ "place": "margin | bank | under trees",
+ "collision": null,
+ "form": {}
+}
