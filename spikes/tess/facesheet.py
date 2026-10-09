@@ -34,7 +34,7 @@ zb = [c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2]
 boxes.append(zb)
 frames.append(stage.fitted_frame(refs["cameras"][0], zb, "zoom"))
 imgs.append(imgs[0])
-shots = stage.shoot(name, frames, LIGHT, size=PX, hair_on=False)
+shots = stage.shoot(name, frames, LIGHT, size=PX, hair_on=os.environ.get("HAIR") == "1")
 
 
 def lab(im, t):
