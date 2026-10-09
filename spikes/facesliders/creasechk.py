@@ -2,6 +2,7 @@
 camera and fitted light (clay, likeness_pair.matched), the eyes cropped at 2x; prints where the crease sits on that
 head (its own fold turn, mm over the margin, per u band) against the template's 6.2 mm."""
 import copy
+import os
 import sys
 
 import numpy as np
@@ -32,7 +33,7 @@ for name in sys.argv[2:]:
         b = copy.deepcopy(b0)
         b["head"].setdefault("sliders", {})["eye_crease_depth"] = v
         m = lp.matched(name, b, face_id=False)
-        img = (m.get("render") or m["clay"]).convert("RGB")
+        img = (m["clay"] if os.environ.get("CLAY") else (m.get("render") or m["clay"])).convert("RGB")  # (CLAY=1: the key light from the upper left, rakes the lid)
         P = np.asarray(m["md"]["side"].P, float)
         k = img.size[0] / (m["box"][2] - m["box"][0])
         x0, y0, x1, y1 = le.eye_box(P)

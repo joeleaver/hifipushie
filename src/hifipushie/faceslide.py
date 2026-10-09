@@ -263,8 +263,10 @@ def _left_fields(T: dict | None = None) -> dict:
     # fold turn
     Hc = _fold_turn(X, u, h, upper & (dm > 1.5 * mm), H0, n[:, 1]) if T.get("own") else H0
     _CACHE["last_crease"] = (Hc, H0, u, upper)  # (diagnostics: creasechk.py)
-    groove = -0.45 * _g(h, Hc, 0.55 * mm)
-    over = 0.8 * _g(h, Hc + 1.0 * mm, 0.85 * mm) * _ss((h - Hc) / (0.5 * mm))
+    # (widths: every feature >= ~2.5 mm across (FWHM): a 0.55 mm groove under a 0.85 mm lip read as a thin dark CUT
+    # with a bright rim, a slit not a fold; a real fold is a rounded roll of skin with a broad soft shadow under it)
+    groove = -0.55 * _g(h, Hc - 0.3 * mm, 1.2 * mm)
+    over = 0.9 * _g(h, Hc + 1.9 * mm, 1.4 * mm)
     od = 0.55 * n - 0.6 * up[None]
     od /= np.maximum(np.linalg.norm(od, axis=1, keepdims=True), 1e-9)
     # (held off the margin less than the other lid fields: a low crease (Tess: 3 mm over the margin) was half faded)
