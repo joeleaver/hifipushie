@@ -43,7 +43,9 @@ def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
     assert {c["name"]: c["state"] for c in garment_design.wear(dict(g, tie=True))} == {"collar": "closed", "front": "closed"}
     assert garment_design.wear({"pattern": {"from": "carlton"}}) == []  # a coat: as its pattern says
     # open as worn: the stand's ends apart at the throat, the fronts rolled back above the first closed button
-    assert {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] > 0.05
+    # (no wider than the fronts can follow with button 1 closed: at 0.10 it ended 19 mm open, pk_29)
+    assert 0 < {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] <= 0.035  # (the stand hugs: the spread opens it)
+    assert cloth.worn_top(g)  # a shirt's fronts start on the body, their neck seam at the stand
     fl = garment_design.wear(g, "folds")
     assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(60 < f["angle"] < 180 for f in fl)
     assert garment_design.wear(dict(g, tie=True), "folds") == []

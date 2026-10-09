@@ -93,6 +93,43 @@ def test_under_neckline_is_the_neck_pieces_sewn_edge():
     assert cloth.under_neckline(res) == 0.0
 
 
+def test_under_garment_shown_finished_and_tucked_only_where_covered():
+    """cloth_layers.tucked: what the outer garment covers is laid under its inner face; what shows in its opening
+    stays exactly the finished surface (the user: "where the placket?": drawn pressed, the shirt's visible front had
+    no band and no buttons)."""
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    under = _shell(V, F, 0.103)
+    # the under garment blouses THROUGH the outer one on one side (a shirt sleeve through a jacket's)
+    bulge = under["V"][:, 0] > 0.06
+    under["V"] = np.where(bulge[:, None], under["V"] * (0.112 / 0.103), under["V"])
+    outer = dict(_shell(V, F, 0.108, zmax=0.05), body=body)  # open above z = 0.05
+    Vt, cov = cloth_layers.tucked(under, outer)
+    r = np.linalg.norm(Vt, axis=1)
+    z = under["V"][:, 2]
+    low = z < 0.02
+    assert (r[low] < 0.108 - 0.002).all(), r[low].max()  # under the outer cloth everywhere it covers
+    assert cov[low].mean() > 0.97
+    top = (z > 0.092) & ~bulge  # (past the feather: TUCK_FEATHER rings of ~9 mm beside the outer cloth's edge follow it)
+    # the opening: as finished (to 1 um: the 5-ring feather's geometric fall leaves ~0.1 um this far out)
+    assert np.abs(Vt[top] - under["V"][top]).max() < 1e-6 and not cov[top].any()
+    assert (bulge & low).sum() > 20 and (np.linalg.norm(under['V'], axis=1)[bulge & low] > 0.108).all()  # (it did poke through)
+    # a rigid group (a made piece) moves by one vector: its shape is kept
+    rigid = np.where((z < -0.06), 0, -1)
+    Vr, _ = cloth_layers.tucked(under, outer, rigid=rigid)
+    d = (Vr - under["V"])[rigid == 0]
+    assert np.abs(d - d.mean(0)).max() < 1e-9
+
+
+def test_button_colour_by_kind():
+    g = {"color": "#404040", "design": {"kind": "jacket"}}
+    kd = cloth._kb()["kinds"]["jacket"]["closure"]
+    assert kd["size"] >= 0.018 and kd["button"]["tone"] < 1 and kd["button"]["roughness"] > 0.5
+    assert cloth.button_color(g, {"color": None, "tone": kd["button"]["tone"]}) == "#232323"
+    assert cloth.button_color(g, {"color": "#112233", "tone": 0.5}) == "#112233"  # the closure's own colour wins
+    assert cloth.button_color({"color": "#ffffff"}, {"color": None, "tone": None}) == "#ebe6dc"  # a shirt's pearl
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

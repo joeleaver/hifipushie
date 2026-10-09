@@ -201,10 +201,22 @@ def op_lapel(D: dict, piece: str = "front", break_y: float | None = None, stand:
     if o.get("gorge") == "straight":
         # a tailored gorge: the front neck is ONE straight line from the neck point to the lapel's point; the collar
         # ends `notch` short of the point (the lapel's own top edge beyond it is the notch's lower side)
-        if o.get("gorge_drop") is not None:  # the lapel point's height below the neck point, kept `width` off the roll
-            yv = hps[1] - abs(float(o["gorge_drop"]))
+        if o.get("gorge_angle") is not None or o.get("gorge_drop") is not None:
             base = B + n * width
-            P_new = base + u * ((yv - base[1]) / u[1])
+            if o.get("gorge_angle") is not None:
+                # the gorge's angle to the roll line (deg, between the gorge running out from the neck point and the
+                # roll line running DOWN): turned over, the gorge lies that angle less the roll line's own lean off
+                # the vertical. 33 (what a gorge_drop of 0.12 gave) runs straight down the chest, the collar's end a
+                # strap beside it; 60-70 is a notch opening high on the chest. The lapel point stays `width` off the
+                # roll line, so a steeper angle is a higher point and a shorter gorge.
+                phi = math.radians(float(np.clip(float(o["gorge_angle"]), 20.0, 85.0)))
+                wp = width - float((hps - B) @ n)
+                t_ = float((hps - B) @ u) - wp / math.tan(phi)
+                P_new = base + u * t_
+                D["meta"]["gorge_angle"] = math.degrees(phi)
+            else:  # the lapel point's height below the neck point, kept `width` off the roll
+                yv = hps[1] - abs(float(o["gorge_drop"]))
+                P_new = base + u * ((yv - base[1]) / u[1])
             pc["P"][pc["names"]["lapelPoint"]] = P_new
             ix = pattern.arc_indices(pc, "break>lapelPoint")
             for k, i in enumerate(ix[1:-1], start=1):
