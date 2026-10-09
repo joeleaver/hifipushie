@@ -79,6 +79,17 @@ def test_part_spelling():
         assert "centre" in str(e)
 
 
+def test_one_sided_style():
+    """An asymmetric look: framing pieces on her right only ([right, left] counts), and the curtain dropping over the
+    right ear while the left sweeps back higher (a side's own values)."""
+    locks = _tie(frame={"count": [3, 0]}, curtain={"over": 20, "right": {"over": 0}})
+    fr = [lk for k, lk in locks.items() if k.startswith("tf")]
+    assert len(fr) == 3 and all(np.asarray(lk["pts"])[0, 0] < 0 for lk in fr)  # her right = -x
+    lo = {sd: min(_el(lk).min() for k, lk in locks.items() if k.startswith("tg0_") and np.sign(_az(lk)[0]) == sd
+                  and abs(_az(lk)[0]) < 30) for sd in (-1.0, 1.0)}
+    assert lo[-1.0] < lo[1.0] - 8, lo
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
