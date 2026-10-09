@@ -129,7 +129,9 @@ def tells_text(t: dict) -> str:
 TUCK_GAP = 0.004  # m under the outer garment's inner face a covered vertex of the under garment is laid
 TUCK_SIDE = 0.010  # m: outer cloth whose nearest point lies further than this to the SIDE of a vertex doesn't cover it
 TUCK_REACH = 0.08  # m: outer cloth further than this from a vertex doesn't cover it
-TUCK_FEATHER = 3  # rings of uncovered cloth that follow the covered cloth beside them (halving a ring)
+TUCK_FEATHER = 5  # rings of uncovered cloth that follow the covered cloth beside them
+TUCK_FALL = 0.6  # the share of its neighbours' mean move an uncovered vertex beside covered cloth takes, ring by ring
+TUCK_EVEN = 0.7  # a covered vertex moves no less than this share of its neighbours' mean move
 
 
 def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | None = None) -> tuple:
@@ -177,12 +179,23 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
             cov = near & ((side < TUCK_SIDE) | (ins & (s > 0) & (np.linalg.norm(d, axis=1) < 0.03)))
         else:
             cov = near & ins
+        # (covered is decided per vertex by a nearest point: at an opening's edge single vertices flip, and each
+        # pushed 4 mm by itself was a dent catching the light: the pale flecks on the shirt beside a lapel. A vertex
+        # goes with the majority of its neighbours)
+        deg = np.bincount(E.ravel(), minlength=len(V)).astype(float)
+        for _m in range(2):
+            nbc = np.bincount(E[:, 0], weights=cov[E[:, 1]].astype(float), minlength=len(V)) + \
+                np.bincount(E[:, 1], weights=cov[E[:, 0]].astype(float), minlength=len(V))
+            share = nbc / np.maximum(deg, 1)
+            cov = np.where(cov, share >= 0.34, share > 0.67)
         need = np.where(cov, np.maximum(s + gap, 0.0), 0.0)
         covered |= cov
         if need.max() < 2e-4:
             break
         D = -N * need[:, None]
-        # the cloth beside covered cloth follows a little (no step at the outer garment's edge)
+        # the cloth beside covered cloth follows a little (no step at the outer garment's edge): the move falls off
+        # smoothly over TUCK_FEATHER rings, and a covered vertex moves no less than its neighbours' mean x TUCK_EVEN
+        # (one vertex needing 0 among ones needing 4 mm was a bump)
         fixed = need > 0
         for _r in range(TUCK_FEATHER):
             acc, wt = np.zeros_like(D), np.zeros(len(V))
@@ -190,7 +203,9 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
             np.add.at(wt, E[:, 0], 1.0)
             np.add.at(acc, E[:, 1], D[E[:, 0]])
             np.add.at(wt, E[:, 1], 1.0)
-            D = np.where(fixed[:, None], D, 0.5 * acc / np.maximum(wt, 1)[:, None])
+            avg = acc / np.maximum(wt, 1)[:, None]
+            low = fixed & (np.linalg.norm(D, axis=1) < TUCK_EVEN * np.linalg.norm(avg, axis=1))
+            D = np.where(fixed[:, None] & ~low[:, None], D, np.where(low[:, None], TUCK_EVEN * avg, TUCK_FALL * avg))
         if rigid is not None:
             for gid in np.unique(rigid[rigid >= 0]):
                 m = rigid == gid

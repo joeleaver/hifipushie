@@ -83,6 +83,30 @@ def test_placed_fold_lies_on_its_base():
     assert m3["gap_mm"][1] <= 2.2 and not cloth._piece_crossings(cloth.place(Bp, M3, body, smooth=True), M3), m3
 
 
+def test_made_pieces_are_one_construction_at_both_sizes():
+    """build(): a made piece is constructed once, at the fine size; the coarse mesh takes a sampled copy (place:
+    B["_made_as"]) instead of constructing it again (its fold then differed by mesh size and the fine settle's start
+    was built from two shapes: the open collar's 3-11x starts)."""
+    f = {"piece": "strip", "line": {"mid": "x"}, "angle": 0, "name": "f"}
+    Bp, Mf = _strip([f], h=0.01)
+    body = cloth.Body({"V": np.array([[0, 0, -9.0], [1, 0, -9.0], [1, 1, -9.0], [0, 1, -9.0], [0.5, 0.5, -9.5]]),
+                       "F": [[0, 1, 2, 3], [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]], "J": {}})
+    Mf = cloth.mesh(Bp, 0.01, cloth.FOLD_WIDTH_MADE)
+    Bf = dict(Bp)
+    Xf = cloth.place(Bf, Mf, body, smooth=True)
+    Ms = cloth.mesh(Bp, 0.02)
+    own = cloth.place(dict(Bp), Ms, body, smooth=True)
+    given = cloth.transfer(Mf, Xf, Ms)
+    B2 = dict(Bp, _made_as={"pieces": ["strip"], "X": given, "U": cloth.transfer(Mf, Bf["start_unpushed"], Ms)})
+    Xs = cloth.place(B2, Ms, body, smooth=True)
+    assert np.abs(Xs - given).max() < 1e-9  # the copy exactly, its fold not turned again
+    assert np.abs(B2["start_unpushed"] - B2["_made_as"]["U"]).max() < 1e-9
+    # and carried back onto the fine mesh it is the fine construction to within the coarse facets' chords
+    back = np.linalg.norm(cloth.transfer(Ms, Xs, Mf) - Xf, axis=1)
+    assert np.percentile(back, 90) < 0.004, np.percentile(back, [50, 90, 100])
+    assert np.linalg.norm(own - given, axis=1).max() > 1e-4  # (constructed again it is another shape)
+
+
 def test_fold_must_cross_the_piece():
     try:
         _strip([{"piece": "strip", "line": [[-0.05, 0.0], [0.05, 0.0]], "angle": 0, "reach": 0.001}])
