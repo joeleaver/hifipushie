@@ -151,14 +151,19 @@ A detector's points are not the model's landmarks (lids: its upper-lid points si
 lower-lid points 1.5 mm over: an opening reads 2-2.5 mm small), so "the picture's lid is higher than the model's"
 from points against landmarks means nothing. Run the SAME detector on the model's own render through the fitted
 camera and compare its numbers with the picture's: definitions cancel. On one hard head this found what ten passes
-of point fitting had not: eyes 4 mm too wide and 3 mm too open, lips a third too thin, mouth corners 1 mm low, and
+of point fitting had not: eyes 4 mm too wide and 3 mm too open, brows 1.4 mm high, the face 3% too wide for its
+height, and
 that the picture's "frown / squint" scores (browDown 0.6, eyeSquint 0.6) are reproduced by the NEUTRAL head once its
 eyes and brows are right: they were the man's face, not an expression. So:
 - Don't pose a reference's "expression" by hand, and don't read it from the detector's blendshape scores: learnt on
   600 of our renders with known poses, the scores tell a pose from an identity hardly at all (cross-validated rms /
   sampled spread: smile 0.80, upper lid 0.83, brows 0.97, mouth width 0.92; 1 = nothing).
 - Change one control, measure again: `base.head.eyes` (the eyes' size), held identity macros (eye_height, eye_width,
-  lip_fullness, brow_height), a landmark moved by the identity alone (mouth corners). Each step is seconds.
+  brow_height, face / jaw / chin widths). Each step is seconds.
+- It only holds where the picture and the render look alike to the detector. NOT for lips on a stubbled face (the
+  shadow under the lip read as a 10.8 mm lower lip; matching it made duck lips) and weakly for mouth corners (the
+  measure moves with lip fullness). On the one mesh the eyes' spacing is the body's: the eye_spacing macro moves
+  nothing; compare widths as ratios to the pupils' distance.
 
 ### Age is soft tissue (base.head.shape; `headage.py`)
 

@@ -6763,6 +6763,25 @@ g3_f + skin description + groom (the candidate). Sheets `workspace/human_renders
 - BLUNT READ of g3_01 (procedural skin): proportions and eyes are the photo's; it still reads as a heavier, waxier
   man: flat orange-pink skin without the photo's planes, brows as drawn bars, lips thin and set, stubble as grey
   patches, the groom a dark solid cap with a hard hairline. Of g3_04 (the photo as albedo): reads as him.
+- Round 2 start (the coordinator on g3_01 / g3_04: "lower face heavy, chin big, eyes small and close, mid-face
+  short": checked like with like, lidcmp.py's face / heights / ratios rows, g3_f against the photo): every width
+  +5..6.5 mm (cheek 170.3 vs 165.1, jaw 155.7 vs 150.0, chin 101.1 vs 96.0) while pupils are 1.4 mm CLOSER: the face
+  is ~3-4% too wide for its eyes at every level, not heavy low down (jaw / cheek 91.4 vs 90.8%); nasion -> chin
+  4.5 mm SHORT (subnasale -> lip seam -1.7, seam -> chin -2.9): the chin is short, not long; height / cheek width
+  80.8 vs 86.0. Tried (patches p9-p11, nothing adopted): `head.narrow` 0.97 fixes the cheek width but scales the eyes
+  with it (pupils -4.3 mm); eye_spacing macro +2 moves NOTHING (the one mesh's eye spacing is the body's);
+  chin_height +1..1.5 barely moves seam -> chin; macros face_width -1.2, cheekbone -1, jaw_width -1, chin_width -1.5,
+  jaw_square -0.5, face_length +0.8, philtrum +0.5, chin_height +1.5 (saved as `g3_g`, EXPERIMENTAL) overshoot the
+  widths (cheek -3, jaw -4.6 mm), shorten the nose 3.7 mm and put a component past 2.6 sigma: about HALF of that
+  with nose_length held is the next try. The candidate stays g3_f / g3_garrett.
+- HANDOVER (garrett3, context full, 2026-10-09). The coordinator's order for the next agent: (1a) the texture layer
+  through an export bake (image decals already bake through Cycles: untested with this layer; the painting only as
+  low-frequency tone); (1b) the skin description's own look against the photo with skin_measure (zones, stubble as
+  dots over a blue-grey shadow, brows as hairs at the photo's thickness, vermilion edge, specular break-up); (2)
+  the widths / heights above, the under-chin line; (3) hair5's cut on g3_garrett in the sheets (told: model
+  g3_garrett); (4) measuremodels' humannormals rows in humanfit_map._fit (its message gives the call: once per
+  outer round, front photo only, hair hidden); (5) 3 blind readers on the textured head, then the export. To redo
+  the sheets: /mnt/data/hifipushie/garrett3/go2.sh <head model>.
 - NOT DONE: blind readers (none run); the neck (body's 31.9 cm); the desk painting's own lighting match; nose
   untouched (like-with-like: width -0.1 mm, length -0.2 mm against the photo: already right); under-chin line;
   the texture layer through an export bake; measuremodels' normals as evidence (humannormals, branch
