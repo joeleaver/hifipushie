@@ -191,21 +191,30 @@ def test_hood_lateral_hangs_over_the_outer_corner():
     assert it["ok"], it
 
 
-def test_hood_crease_is_a_groove_over_the_lid():
-    """shape.hood "crease": a groove pressed back (+y) along a line between the lid margin and the brow, deepest on
-    that line, the lid margin and the brow barely moving; crease 0 is the hood without it to the bit."""
-    _, st0, _, P0, Ph, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0}})
-    _, _, _, _, P1, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0, "crease": 0.0}})
+def test_hood_crease_is_a_soft_fold_edge():
+    """shape.hood "crease": a soft S at `show` above the lid margin (the platform's top back, the skin above it
+    forward), within the eye's width (nothing past its corners), capped so it can't fold the surface over itself (no
+    lid quad turns over, even asked 5 mm deep), the brow untouched; crease 0 is the hood without it to the bit."""
+    hood = {"amount": 0.0012, "lateral": 1.0}
+    _, st0, _, P0, Ph, _ = moved(dict(hood=hood))
+    _, _, _, _, P1, _ = moved({"hood": {**hood, "crease": 0.0}})
     assert np.array_equal(Ph, P1)
-    b2, _, st2, _, P2, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0, "crease": 0.0012}})
+    b2, _, st2, _, P2, _ = moved({"hood": {**hood, "crease": 0.005, "show": 0.004}})
     d = P2 - Ph
     L0 = st0["L"]
-    for up, brow in (((37, 38), (18, 19, 20)), ((43, 44), (23, 24, 25))):
+    Q = np.asarray(st0["tpl"]["L"]).reshape(-1, 4)
+    assert np.abs(d).max() <= 0.4 * 0.0018 * 1.15 + 1e-6, np.abs(d).max()   # the cap (x the head's scale)
+    for up, (ci, co), brow in (((37, 38), (39, 36), (18, 19, 20)), ((43, 44), (42, 45), (23, 24, 25))):
         U, B = L0[list(up)].mean(0), L0[list(brow)].mean(0)
-        line = np.linalg.norm(P0 - (U + 0.3 * (B - U)), axis=1) < 0.003
-        assert d[line][:, 1].max() > 0.0006, d[line][:, 1].max()
-        brow_pts = np.linalg.norm(P0 - B, axis=1) < 0.003
-        assert np.abs(d[brow_pts]).max() < 0.0002
+        tuck = np.linalg.norm(P0 - (U + [0, 0, 0.0025]), axis=1) < 0.0025
+        assert d[tuck][:, 1].max() > 0.0003, d[tuck][:, 1].max()          # back (+y) just under the fold's edge
+        assert np.abs(d[np.linalg.norm(P0 - B, axis=1) < 0.004]).max() < 1e-4
+        past = (np.abs(P0[:, 0]) > abs(L0[co][0]) + 0.004) & (np.abs(P0[:, 2] - U[2]) < 0.01) & (np.sign(P0[:, 0]) == np.sign(L0[co][0]))
+        assert np.abs(d[past]).max() < 1e-4
+    near = np.linalg.norm(P0[Q].mean(1)[:, None, :] - L0[[37, 38, 43, 44]][None], axis=2).min(1) < 0.012
+    q = Q[near]
+    n = lambda P: np.cross(P[q[:, 2]] - P[q[:, 0]], P[q[:, 3]] - P[q[:, 1]])  # noqa: E731
+    assert int(((n(P2) * n(Ph)).sum(1) < 0).sum()) == 0
     it = hf.integrity(b2, st2, st0)
     assert it["ok"], it
 

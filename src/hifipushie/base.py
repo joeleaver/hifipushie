@@ -1524,8 +1524,8 @@ def _ears(W, ear, spec, mx, s):
     return W
 
 
-def _hood(W, lm, hood):
-    """base.head.shape.hood = m | {"amount", "forward", "reach", "lateral", "extent"}: hooded upper lids. The skin between the upper lid
+def _hood(W, lm, hood, exterior=None):
+    """base.head.shape.hood = m | {"amount", "forward", "reach", "lateral", "extent", "crease", "show", "crease_width"}: hooded upper lids. The skin between the upper lid
     and the brow (the fold) comes down by `amount` and forward over the lid; the lid's margin comes down with it by
     the fold's own falloff (~45%), the lower lid and the eyeball's seat don't move (a gate at the corners' height),
     and the lid landmarks ride, so the visible opening is lower as on a hooded eye. Per eye from its own landmarks.
@@ -1534,20 +1534,22 @@ def _hood(W, lm, hood):
     1 - lateral at the inner corner to full past the outer one, its centre shifts out by 0.2 x lateral x the eye's
     width, and the gate that holds the lower lid drops by `lateral` x half the opening outside the outer corner, so
     the fold can come down to and over the corner's own height there. `extent` (1): the fold's width along the eye.
-    `crease` m (0): the lid crease as geometry, a groove pressed into the head along the fold's lower edge at
-    `crease_at` (0.3) of the lid margin -> brow distance above the margin, `crease_width` (0.9 mm) half wide,
-    along the lid margin's own arch (a supratarsal crease across the whole lid; `crease_lateral` 0..1 (0) weights it
-    outward): under a light from above it shades as a dark line over a lit platform of lid skin."""
+    `crease` m (0): the fold's edge as geometry, a soft S across the lid along the margin's own arch: the tarsal
+    platform's top tucked back and the skin just above it brought forward, so the fold's edge stands over the
+    platform and shades a soft line at `show` (4 mm) above the lash line (the pretarsal show; on a hooded lid the true
+    supratarsal crease, ~7-8 mm up, is hidden under the fold). It runs from just lateral of the inner corner and fades
+    out before the outer corner (under the hood), the show 0.75 x at its ends; `crease_width` (1.8 mm) is the S's
+    half width (wider than the head's mesh spacing), the depth is capped at 0.4 x that so the surface can't fold over
+    itself."""
     h = hood if isinstance(hood, dict) else {"amount": hood}
     a = float(h["amount"])
     fw = float(h.get("forward", HOOD_FORWARD))
     reach = float(h.get("reach", HOOD_REACH))
     lat = float(h.get("lateral", 0.0))
     ext = float(h.get("extent", 1.0))
-    cr = float(h.get("crease", 0.0))                 # m: the crease's depth (0: none)
-    cr_at = float(h.get("crease_at", 0.3))           # its height: share of the lid-margin -> brow distance
-    cr_w = float(h.get("crease_width", 0.0009))      # m: its half width (a few voxels at close-up resolution)
-    cr_lat = float(h.get("crease_lateral", 0.0))     # 0: as deep across the whole lid; 1: only at the outer corner
+    cr_w = float(h.get("crease_width", 0.0018))     # m: the S's half width
+    cr = min(float(h.get("crease", 0.0)), 0.4 * cr_w)  # m: depth, capped (no fold-over)
+    show = float(h.get("show", 0.004))               # m: the visible platform under the fold's edge
     mx = float(lm[27][0])
     DW, DL = np.zeros_like(W), np.zeros_like(lm)
     for up, corners, brow, lower in (((37, 38), (36, 39), (18, 19, 20), (40, 41)),
@@ -1576,19 +1578,21 @@ def _hood(W, lm, hood):
             return g_ * _sstep((X[:, 2] - zc + drop) / (0.6 * op))
         DW += f(W)[:, None] * mv
         DL += f(lm)[:, None] * mv
-        if cr:   # the lid crease: a groove (into the head) following the lid margin's arch at cr_at x lid->brow above it
+        if cr:   # the fold's edge over the tarsal platform: a soft S along the margin's arch (see the docstring)
             um = 0.5 * (c0 + c1)
             zm, ze = float(U[2]), 0.5 * float(c0[2] + c1[2])      # the margin's height: middle, corners (a parabola)
+            nf = np.array([0.0, -1.0, 0.3]) / np.linalg.norm([0.0, -1.0, 0.3])   # the lid's outward direction
+            sgn = 1.0 if (out_ @ ex) > 0 else -1.0
 
             def fc(X):
-                q = X - um
-                u = q @ ex / (0.5 * wid)                          # -1 .. 1 corner to corner
-                zcr = ze + (zm - ze) * (1 - np.clip(u, -1.2, 1.2) ** 2) + cr_at * dz
-                g_ = np.exp(-(u / 1.15) ** 6 - ((X[:, 2] - zcr) / cr_w) ** 2 - ((X[:, 1] - U[1]) / (0.6 * wid)) ** 2)
-                if cr_lat:
-                    g_ = g_ * (1 - cr_lat + cr_lat * _sstep((X - U) @ out_ / wid + 0.5))
-                return g_
-            DW += fc(W)[:, None] * np.array([0.0, cr, 0.0])
+                u = sgn * ((X - um) @ ex) / (0.5 * wid)          # -1 inner corner .. +1 outer corner
+                hh = X[:, 2] - (ze + (zm - ze) * (1 - np.clip(u, -1.2, 1.2) ** 2))   # height over the margin
+                e = show * (1 - 0.25 * np.clip(u, -1, 1) ** 2)
+                along = _sstep((u + 0.9) / 0.3) * _sstep((0.85 - u) / 0.3)
+                depth = (np.abs(X[:, 1] - U[1]) < 0.6 * wid) & (True if exterior is None else exterior)   # outer skin only
+                prof = np.exp(-((hh - e + cr_w) / cr_w) ** 2) - 0.6 * np.exp(-((hh - e - cr_w) / cr_w) ** 2)
+                return cr * prof * along * depth
+            DW += -fc(W)[:, None] * nf
     return W + DW, lm + DL
 
 
@@ -1921,7 +1925,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if shape.get("lean"):
         W, lm = _lean(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["lean"], float(eye_mid[0]), s, faces)
     if shape.get("hood"):
-        W, lm = _hood(W, lm, shape["hood"])
+        W, lm = _hood(W, lm, shape["hood"], np.asarray(g["groups"]["skin_exterior"])[skin] > 0.5)
     from . import headage
     if headage.wanted(shape):  # age as soft-tissue ops: nasolabial, prejowl, lid_fold, cheek_flat, lips_thin
         W, lm = headage.apply(W, lm, shape, faces, {k_: np.asarray(v_)[skin] for k_, v_ in g["groups"].items()
