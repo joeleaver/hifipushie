@@ -191,6 +191,25 @@ def test_hood_lateral_hangs_over_the_outer_corner():
     assert it["ok"], it
 
 
+def test_hood_crease_is_a_groove_over_the_lid():
+    """shape.hood "crease": a groove pressed back (+y) along a line between the lid margin and the brow, deepest on
+    that line, the lid margin and the brow barely moving; crease 0 is the hood without it to the bit."""
+    _, st0, _, P0, Ph, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0}})
+    _, _, _, _, P1, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0, "crease": 0.0}})
+    assert np.array_equal(Ph, P1)
+    b2, _, st2, _, P2, _ = moved({"hood": {"amount": 0.0012, "lateral": 1.0, "crease": 0.0012}})
+    d = P2 - Ph
+    L0 = st0["L"]
+    for up, brow in (((37, 38), (18, 19, 20)), ((43, 44), (23, 24, 25))):
+        U, B = L0[list(up)].mean(0), L0[list(brow)].mean(0)
+        line = np.linalg.norm(P0 - (U + 0.3 * (B - U)), axis=1) < 0.003
+        assert d[line][:, 1].max() > 0.0006, d[line][:, 1].max()
+        brow_pts = np.linalg.norm(P0 - B, axis=1) < 0.003
+        assert np.abs(d[brow_pts]).max() < 0.0002
+    it = hf.integrity(b2, st2, st0)
+    assert it["ok"], it
+
+
 if __name__ == "__main__":
     if _have():
         names = sys.argv[1:] or [k for k in dict(globals()) if k.startswith("test_")]
