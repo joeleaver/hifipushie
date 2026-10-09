@@ -44,6 +44,8 @@ UNITS = {
     "brow_lateral": (1.8, "the brow's outer half (and the skin under it) down: lateral brow descent"),
     "canthal_tilt": (4.0, "the eye's fissure turned outer corner up, degrees at +1 (the lids turn on the ball)"),
     "epicanthal": (1.8, "an epicanthal fold: the inner upper lid's skin over the inner canthus (medial, down)"),
+    "eye_setback": (2.0, "the eyeball and the orbit's contents back (deep-set), the brow ridge held; - = prominent eyes"),
+    "malar_rise": (2.0, "the cheek's front plane under the lower lid forward and up (the zygoma's prominence), not its width"),
 }
 EYE_SLIDERS = tuple(UNITS)
 UNITS.update({
@@ -70,6 +72,14 @@ UNITS.update({
     "nose_dorsum_hump": (2.0, "a dorsal hump (the bony-cartilage junction forward); - = a scooped dorsum"),
 })
 NOSE_SLIDERS = ("nose_radix_width", "nose_dorsum_width", "nose_tip_width", "nose_dorsum_hump")
+# Tess's measured misses (2026-10-09): her nostrils show from the front under a small defined lobule; her lower
+# vermilion is a short cushion ending well inside the corners (its visible width 0.40 of the mouth's, ours 0.82)
+UNITS.update({
+    "nostril_show": (1.2, "the alar rims up and the columella down: the nostrils show from the front"),
+    "tip_definition": (0.8, "the lobule set off from the alae by a soft groove (a small, defined tip)"),
+    "lip_lower_width": (2.0, "the lower vermilion's lateral reach: + = out to the corners, - = a short cushion "
+                             "ending inside them (its border drawn up to the seam laterally)"),
+})
 # the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
 # morph target by spikes/facesliders/bake_age.py (face_sliders_baked.npz). name: the op's base.head.shape at +1
 BAKED = {
@@ -169,7 +179,9 @@ def template() -> dict:
     rim = np.unique(ue[ce == 1])
     eyes = np.asarray(g["template_joint_positions"], float)[2:4]
     rim = rim[np.min([np.linalg.norm(X[rim] - j, axis=1) for j in eyes], axis=0) < 0.03]
-    _CACHE["tpl"] = {"X": X, "n": n, "ext": ext, "skin": skin, "rim": rim, "lm": lm, "mirror": mi, "J": g["template_joint_positions"].astype(float)}
+    eyes_m = gnmloops.ext(np.asarray(g["groups"]["eyes"]) > 0.5, how="all")
+    _CACHE["tpl"] = {"X": X, "n": n, "ext": ext, "skin": skin, "eyes": eyes_m, "rim": rim, "lm": lm, "mirror": mi,
+                     "J": g["template_joint_positions"].astype(float)}
     return _CACHE["tpl"]
 
 
@@ -336,7 +348,36 @@ def _left_fields(T: dict | None = None) -> dict:
     hold_c = _ss((np.linalg.norm(X - c_in, axis=1) - 0.5 * mm) / (4.0 * mm))
     F["epicanthal"] = (nears * _ss((h + 1.5 * mm) / (3.0 * mm)) * hold_c * _g(r_in, 0, 4.5 * mm))[:, None] \
         * (-0.75 * ex - 0.55 * up + 0.3 * n)
+    # eye setback: the eyeball (with the eye joint: joint_delta) and the orbit's contents (lids, their insides, the
+    # canthi) back as one, fading out across the orbital rim; the brow ridge above held (Tess needed eye_depth +
+    # brow_ridge together for this: a heavy brow, an identity component past 2.6 sigma)
+    rxy = np.linalg.norm((X - ce)[:, :2], axis=1)
+    orbit = (T["skin"] | T["eyes"]) & (X[:, 0] > 0.004) & (X[:, 2] > ce[2] - 0.03)
+    w_orb = np.where(T["eyes"] & (np.linalg.norm(X - ce, axis=1) < 0.02), 1.0,
+                     (1 - _ss((rxy - 0.55 * w) / (0.45 * w))) * (1 - _ss((t - 0.55) / 0.35) * (h > 0)))
+    F["eye_setback"] = (orbit * w_orb)[:, None] * -fwd[None]
+    # malar rise: the cheek's front plane under the lower lid / bag (the zygoma's prominence) forward and up; the lid's
+    # margin, the nasolabial side and the jaw held. Not the cheek's width
+    pm = 0.5 * (lm[46] + lm[47]) + np.array([0.15 * w, -0.016, -0.004])
+    rm = np.linalg.norm(((X - pm) * [1.0, 1.25, 0.6]), axis=1)
+    mal = T["ext"] & (X[:, 0] > 0.004) & (X[:, 2] > pm[2] - 0.03) & (dl > 0)
+    F["malar_rise"] = (mal * low_off * _g(rm, 0, 9.0 * mm))[:, None] * (0.8 * n + 0.45 * up[None])
     return {k: v * (UNITS[k][0] * mm) for k, v in F.items()}
+
+
+def joint_delta(sliders: dict | None) -> np.ndarray | None:
+    """(4, 3) GNM-frame move of GNM's joints by the sliders (eye_setback takes the eye joints back with the balls),
+    or None."""
+    vals = values(sliders)
+    if "eye_setback" not in vals or vals["eye_setback"] == (0.0, 0.0):
+        return None
+    J = template()["J"]
+    D = np.zeros((4, 3))
+    r, l_ = vals["eye_setback"]
+    u = UNITS["eye_setback"][0] * 0.001
+    for j in (2, 3):
+        D[j, 2] = -u * (l_ if J[j][0] > 0 else r)
+    return D
 
 
 def _mouth_fields() -> dict:
@@ -397,6 +438,10 @@ def _mouth_fields() -> dict:
     F["lip_upper_height"] = (upper * taper * hu * _ss((su - 0.15) / 0.85))[:, None] * up[None]  # (the seam
     # rows held: at -1 the lip went down through the lower one)
     F["lip_lower_height"] = (lower * taper * hl * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
+    # lower lip width: its border laterally (the outer half, toward the corners) away from / toward the seam: + more red
+    # out to the corners, - the lower lip a short cushion ending inside them (the seam and the middle held)
+    lat_l = _ss((ax - 0.3) / 0.45) * (1 - _ss((ax - 1.05) / 0.15))
+    F["lip_lower_width"] = (lower * hl * lat_l * _ss((sl - 0.15) / 0.85))[:, None] * -up[None]
     F["mouth_corner"] = np.zeros_like(X)
     for c in (lm[48], lm[54]):
         r = np.linalg.norm(X - c, axis=1)
@@ -568,6 +613,27 @@ def _nose_fields() -> dict:
     F["nose_tip_width"] = (tip * hold_alar * hold_nos)[:, None] * side
     hump = front * _g(s, 0.45, 0.13) * _g(ax, 0, 0.6 * hw_alar)
     F["nose_dorsum_hump"] = hump[:, None] * np.array([0.0, 0.0, 1.0])[None]
+    # nostril show: the alar rims (round lm 31 / 35, below the wings' middle) up, the columella (lm 33 up to the tip's
+    # underside, the midline) down; the tip held
+    up = np.array([0.0, 1.0, 0.0])
+    rim = (front | (T["skin"] & (ax < hw_alar + 0.005))) & (X[:, 1] < lm[30][1])
+    wing = np.min([np.linalg.norm(X - (lm[i] + np.array([0.0, -0.001, 0.0])), axis=1) for i in (31, 35)], axis=0)
+    col = np.linalg.norm((X - 0.5 * (lm[33] + lm[30]))[:, [0, 1]] * [1.0, 0.6], axis=1)
+    tipd = np.linalg.norm(X - lm[30], axis=1)
+    hold_tip = _ss((tipd - 2.5 * mm) / (4 * mm))
+    F["nostril_show"] = (rim * hold_tip)[:, None] * (_g(wing, 0, 3.0 * mm)[:, None] * up[None]
+                                                    - 0.6 * (_g(col, 0, 2.0 * mm) * (ax < 3 * mm))[:, None] * up[None])
+    # tip definition: a soft groove where the lobule meets each ala (from over the wing toward the domes), the
+    # lobule's domes a little forward
+    gp0 = lm[35] + np.array([-0.001, 0.0045, 0.002])
+    gp1 = lm[30] + np.array([0.006, -0.002, -0.003])
+    q = np.c_[np.abs(X[:, 0]), X[:, 1], X[:, 2]]
+    seg = gp1 - gp0
+    tt = np.clip((q - gp0) @ seg / float(seg @ seg), 0, 1)
+    dseg = np.linalg.norm(q - (gp0 + tt[:, None] * seg), axis=1)
+    groove = front * _g(dseg, 0, 1.3 * mm) * _ss(tt / 0.2) * _ss((1 - tt) / 0.25)
+    domes = front * _g(np.linalg.norm(q - np.c_[np.full(len(X), 0.004), np.full(len(X), lm[30][1]), np.full(len(X), lm[30][2])], axis=1), 0, 2.5 * mm)
+    F["tip_definition"] = -groove[:, None] * n + 0.35 * domes[:, None] * n
     mi = T["mirror"]  # (made exactly mirror symmetric: GNM's template is symmetric only to ~0.1 mm)
     return {k: 0.5 * (v + v[mi] * [-1.0, 1.0, 1.0]) * (UNITS[k][0] * mm) for k, v in F.items()}
 

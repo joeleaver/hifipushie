@@ -1856,6 +1856,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         slide = faceslide.delta(head["sliders"], V)  # (V: the crease on this head's own fold)
         if slide is not None:
             V = V + slide[:gnmloops.N_RAW]
+            jd = faceslide.joint_delta(head["sliders"])  # (eye_setback: the eye joints go back with the balls)
+            if jd is not None:
+                J = J + jd
             par = gnmloops.plan()["parents"]
             slide = slide[gnmloops.N_RAW:] - slide[par].mean(1)  # what the loops' vertices add over their parents'
     if head.get("field"):  # (headfit.py) MakeHuman's head of an age / sex / weight, as a displacement of the vertices

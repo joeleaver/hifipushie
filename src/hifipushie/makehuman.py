@@ -187,7 +187,7 @@ def _shaped(params: dict, slider: float, sex: float) -> np.ndarray:
 # MakeHuman's measure modifiers (targets/measure, CC0): base.body key -> target stem. 0..1, 0.5 = none (the macro
 # body's own), 0 / 1 = the decr / incr target whole (MakeHuman's -1 / +1). Fit-solvable (humanfit.BODY_FREE).
 MEASURES = {"hips": "measure-hips-circ", "waist": "measure-waist-circ", "shoulders": "measure-shoulder-dist",
-            "chest": "measure-bust-circ"}
+            "chest": "measure-bust-circ", "neck_circ": "measure-neck-circ"}
 
 
 def _measures(V, params: dict) -> None:

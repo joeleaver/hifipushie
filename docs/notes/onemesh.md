@@ -509,3 +509,21 @@ model".
   the detector has no dorsal-line point); checklist items radix_width / dorsum_width (kind shape) wired as levers.
   Garrett: dorsum 14.4 -> 10.8 mm (photo 10.6) at nose_dorsum_width -0.44, radix 14.0 = photo, alae held (46.2).
   Sheets human_renders/fs_09_nose_front.png / _threequarter.png (units then 1.0-1.5: since raised).
+- nostril_show (alar rims up 1.2 mm, columella down 0.7), tip_definition (a soft groove where the lobule meets each
+  ala + the domes a little forward, 0.8 mm), lip_lower_width (the lower border laterally toward / away from the seam,
+  2 mm: - = a short cushion inside the corners). Tests (symmetry, folds) pass; sheets human_renders/fs_10_*. First
+  pass: nostril_show reads (mostly the columella), tip_definition is faint, lip_lower_width subtle on the template.
+- jaw_square (Tess: -0.8 made her jaw WIDER): the sign is right (lower jaw lm 5-11 / upper lm 2-14); its free
+  population direction reaches the ratio partly by widening the face at the ears (+0.14 sigma face_width at -0.8),
+  which reads wider from the front. held=True: only the lower jaw narrows (jawsq.py).
+- Neck (cloth10: chin -> shoulder 28 mm vs 68 on the concept): Garrett's only references ARE the concept (front
+  A-pose) and the desk painting; a silhouette through the face-fitted camera can't isolate the neck (jacket collar,
+  jaw, body not on the camera). In 3D: head height 26.4 cm (6.8 heads; style head_size 1.138), neck_circ 31.9 cm.
+  The oversize head (chin lower) and a thin neck are the likely read; proposals sent (head_size toward 1, a neck-girth
+  MakeHuman measure in BODY_SHAPE).
+- eye_setback (2 mm at +1): the eyeball (and the eye joints: faceslide.joint_delta, base.gnm_head) and the orbit's
+  contents (lids, their insides, canthi) back as one, fading out across the orbital rim, the brow ridge held (Tess had
+  needed eye_depth + brow_ridge: a heavy brow, an identity component past 2.6 sigma). Test: the balls move whole, the
+  rims keep their distance to the ball. malar_rise (2 mm): the cheek's front plane under the lower lid forward and up,
+  the lid margin held. neck_circ: base.body key (MakeHuman measure-neck-circ), solvable when neck_circ is asked (test).
+  Sheets human_renders/fs_11_setback_malar_front.png / _threequarter.png.
