@@ -991,7 +991,8 @@ def _designed_interior(topo, verts, creases: bool = True) -> np.ndarray | None:
         return None
     from . import base as basemod
     g = basemod._gnm_data()
-    gid = np.asarray(z["gnm"], int)
+    from . import gnmloops
+    gid = gnmloops.raw_id(np.asarray(z["gnm"], int))  # (the lids' new vertices: as their first parent)
     gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
     # (+ the lips and the lid margins: closed in the neutral, their seams are creases by design; measured on the
     # adult's export they were the rest of the TORN clusters at both eyes and the mouth)

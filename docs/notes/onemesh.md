@@ -378,3 +378,28 @@ model".
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
+- Face sliders (2026-10-09, "facesliders" agent; the user: "If we need more control around the eye area, we will have to
+  update the mesh and/or sliders on the one-mesh, we should not just randomly sculpt"; sheets human_renders/fs_*; scratch
+  DURABLE /mnt/data/hifipushie/facesliders/: run.sh <script> (spikes/facesliders/), tests.sh).
+  - LOOPS (`gnmloops.py`, test_gnmloops): three edge loops cut down the middle of the closed edge rings 5.4-7.2,
+    7.2-9.3, 9.3-11.8 mm above the upper lid margin (template): 530 vertices APPENDED (GNM ids 17821+, asset ids
+    after 25847; 12 quads where the rings cross at the inner canthi cut in four), each the mean of its parents.
+    `base._gnm_data` and every fit / Laplacian / binding stay GNM's; the loops are cut in at the end of
+    `onemesh.template` (old vertices bit-identical; the built field moves <= 0.026 mm). The asset is extended at load
+    (`extend_asset`: weights = parents' bones, uv per corner, faces = first child keeps the index); `gnm_id` of a new
+    vertex = its first parent (lookups in GNM tables), `gnm_exact` = its own id (face shapes by index interpolate via
+    `gnmloops.take`; retopo / asset masks via `raw_id`). HIFIPUSHIE_NO_LOOPS=1 builds without them. onemesh.VERSION 10.
+    Garrett's rows above the lashes: 5.9, 6.5, 7.1, 7.8, 8.6, 9.9, 11.2, 14.9 (was 5.9, 7.1, 8.6, 11.2, 14.9).
+    Export: "wrap" topology exports the quads as they are (+530 vertices, +~1060 triangles); the decimated path keeps
+    its budget. No character LODs exist.
+  - SLIDERS (`faceslide.py`, test_faceslide): base.head.sliders {name: v | [right, left]}, morph targets on GNM's
+    template + loops (GNM frame), authored from the template's landmarks (u along the corners, h over the margin's
+    parabola), added in base.gnm_head right after the identity (landmarks and every later op ride; the loops' own
+    share goes through gnm_head["loop_offsets"]). Every field is held off the lids' rims (3D distance from the
+    exterior skin's edge round the eye: a ramp in h alone turned the margin's 0.3 mm rows over), and the canthal tilt
+    turns the fissure about the eyeball's forward axis (lifting the corner region opened a slot). epicanthal is one-
+    sided (GNM's mean has none). `read_eyes` (crease from luminance up the lid in a clay render, tilt / opening from
+    the projected rim) + `fit` (least change, central differences through humanfit.state, so through the loops):
+    crease height 0.6 / -0.5 and canthal tilt -0.5 come back within 0.01. The crease reader needs a defined crease
+    (eye_crease_depth > 0): on the template's soft lid the darkest line jumps. likeness LEVERS: canthal_tilt,
+    upper_lid_show, under_eye, brow_ridge, prof_brow_ridge now drive sliders.

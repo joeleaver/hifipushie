@@ -240,7 +240,11 @@ def model_mesh(base: dict) -> dict:
     """The model's head as the clay render draws it: skin (template quads), eyeballs with irises, and the brows (paint
     on the real model: drawn as strokes through the model's brow landmarks)."""
     from . import humanfit
-    st = humanfit.state(base)
+    return model_mesh_from_state(humanfit.state(base))
+
+
+def model_mesh_from_state(st: dict) -> dict:
+    """model_mesh of a humanfit.state."""
     tpl, ht = st["tpl"], st["head"]
     Lf = np.asarray(tpl["L"]).reshape(-1, 4)
     F = np.r_[Lf[:, [0, 1, 2]], Lf[:, [0, 2, 3]]].astype(np.int64)
@@ -1525,6 +1529,16 @@ LEVERS["prof_tip_radius"] = ("shape.nose_tip.round", 0.4, (0.0, 1.5), 0.0)
 LEVERS["prof_chin"] = ("shape.chin.project", 0.002, (-0.004, 0.010), 0.0)
 LEVERS["width_chin"] = ("shape.chin.width", 0.002, (-0.006, 0.010), 0.0)
 LEVERS["prof_cheek_line"] = ("shape.hollow", 0.002, (0.0, 0.008), 0.0)
+# (facesliders, 2026-10-09) the eye items on the one mesh's face sliders (faceslide.py: morph targets in [-1, 1]):
+# the corner tilt turns the fissure on the ball (it was a landmark nudge), the platform's show is the fold's edge,
+# the under-eye's depth the tear trough, the brow ridge the skin over the supraorbital rim (features.brow_ridge moved
+# the forehead's slope instead: likeloop). Crease height / depth are read by faceslide.read_eyes (the detector has no
+# crease point) and solved by faceslide.fit.
+LEVERS["canthal_tilt"] = ("sliders.canthal_tilt", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["upper_lid_show"] = ("sliders.eye_platform", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["under_eye"] = ("sliders.eye_tear_trough", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["brow_ridge"] = ("sliders.brow_ridge", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["prof_brow_ridge"] = ("sliders.brow_ridge", 0.25, (-1.0, 1.0), 0.0)
 LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
 
 
