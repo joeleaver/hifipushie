@@ -118,6 +118,19 @@ def main():
         print(f"fit_outline {time.time() - t0:.0f} s; integrity {humanfit.verdict(rep2['integrity'])[:120]}")
     except Exception as ex:  # noqa: BLE001
         print("fit_outline FAILED", repr(ex)[:300])
+    from hifipushie import humanfit_map, humanmacro as hm
+    import exp2
+    vm = [{k: v for k, v in vw.items() if k not in ("outline", "_true_cam")} for vw in views]
+    for tag, kw in (("R4 humanfit_map.fit (calibrated 478, MAP)", {}),
+                    ("R5 R4 + character read (noisy reader)", {"read": {k: v[0] for k, v in exp2.reader({"name": name, "V": rs.head(sub["c"])}).items()}}),
+                    ("R6 front picture only + read", {"read": {k: v[0] for k, v in exp2.reader({"name": name, "V": rs.head(sub["c"])}).items()}, "front": True})):
+        t0 = time.time()
+        front = kw.pop("front", False)
+        bm, repm = humanfit_map.fit(b0, vm[:1] if front else vm, **kw)
+        Vm, _ = gnm_verts(bm)
+        res[tag] = score(Vm, Vt)
+        print(f"{tag}: {time.time() - t0:.0f} s; refused {bool(repm.get('refused'))}; {repm['plausibility']}; {humanfit.verdict(repm['integrity'])[:90]}")
+        print("   ", [(v["evidence"], v["rms_mm"], v["lens_mm"]) for v in repm["views"]])
     if staged:
         mname = f"rs_real_{name.split('_')[0]}"
         sp = copy.deepcopy(sp0)

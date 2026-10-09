@@ -234,8 +234,9 @@ def table(samples: int = SAMPLES, seed: int = 0) -> dict:
     else:
         rng = np.random.default_rng(seed)
         C = rng.normal(0, 1, (samples, K))
-        F = np.array([[measures(head(c))[k] for k in NAMES] for c in C])
-        f0 = np.array([measures(head())[k] for k in NAMES])
+        row = lambda m: [m[k] for k in NAMES]  # noqa: E731
+        F = np.array([row(measures(head(c))) for c in C])
+        f0 = np.array(row(measures(head())))
         A = np.linalg.lstsq(C, F - F.mean(0), rcond=None)[0].T   # (M, K)
         pred = C @ A.T + F.mean(0)
         r2 = 1 - ((F - pred) ** 2).sum(0) / np.maximum(((F - F.mean(0)) ** 2).sum(0), 1e-30)

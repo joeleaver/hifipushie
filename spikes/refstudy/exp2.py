@@ -84,6 +84,76 @@ METHODS = {
 }
 
 
+def far_contour(e, s, view, sig=1.0):
+    """A hand trace of the face's far-side contour in a turned picture (brow, cheek / nose, lips, chin against the
+    background): the true outline's pixels on the side the nose points to."""
+    cam, V = tb.view_true(s, view)
+    zb = np.load(subjects.OUT / f"{s['name']}_{view}_zb.npy")
+    o = rs.outline(zb, cam, V)
+    L = rs.humanfit.project(cam, rs.landmarks(V))
+    sgn = np.sign(L[30, 0] - L[36:48, 0].mean())
+    far_eye = L[36:48, 0].max() if sgn > 0 else L[36:48, 0].min()
+    k = (o[:, 0] - far_eye) * sgn > -3
+    rng = np.random.default_rng(5)
+    mmpx = cam["t"][2] / cam["f"] * 1000
+    return {**e, "outline": o[k][::2] + rng.normal(0, 0.5 / mmpx, (int(np.ceil(k.sum() / 2)), 2)), "sig_o": sig}
+
+
+def jaw_points(s, view, noise=1.5):
+    """Hand-clicked jaw line points with the right definition (GNM's own jaw contour, the visible ones)."""
+    e = tb.ev_oracle(s, view, noise=noise, ids=np.arange(0, 17), seed=11)
+    return e
+
+
+def traced(s, contour=True, jaw=True, views=FT, profile=False):
+    out = []
+    for e, v in zip(ev(s, views), views):
+        if contour and v != "front":
+            e = far_contour(e, s, v)
+        out.append(e)
+        if jaw:
+            out.append(jaw_points(s, v))
+    if profile:
+        e = tb.ev_oracle(s, "profile", noise=1.5, ids=tb.HAND, seed=3)
+        out.append(far_contour(e, s, "profile"))
+    return out
+
+
+METHODS.update({
+    "C1 M0 + traced far contour in the 3/4": lambda s: fitlib.fit(traced(s, jaw=False), robust=True, rounds=10),
+    "C2 M0 + clicked jaw line (right definition)": lambda s: fitlib.fit(traced(s, contour=False), robust=True),
+    "C3 M0 + contour + jaw line": lambda s: fitlib.fit(traced(s), robust=True, rounds=10),
+    "C4 C3 + character read": lambda s: fitlib.fit(traced(s), robust=True, rounds=10, rows=hm.prior_rows(reader(s))),
+    "C5 C4 + a true profile (clicked points + traced contour)": lambda s: fitlib.fit(traced(s, profile=True), robust=True, rounds=10, rows=hm.prior_rows(reader(s))),
+    "W1 front only": lambda s: fitlib.fit(ev(s, ["front"]), robust=True),
+    "W2 front + 3/4": lambda s: fitlib.fit(ev(s, FT), robust=True),
+    "W3 front + both 3/4": lambda s: fitlib.fit(ev(s, FT + ["tq2"]), robust=True),
+    "W4 front + 3/4 + profile (clicked + contour)": lambda s: fitlib.fit(traced(s, contour=False, jaw=False, profile=True), robust=True, rounds=10),
+    "W5 front + profile (clicked + contour)": lambda s: fitlib.fit(traced(s, contour=False, jaw=False, views=["front"], profile=True), robust=True, rounds=10),
+    "W6 front + 3/4, both neutral & 85 mm known": None,
+})
+del METHODS["W6 front + 3/4, both neutral & 85 mm known"]
+
+CLICK = [36, 39, 42, 45, 27, 30, 31, 33, 35, 48, 54, 51, 57, 62, 8, 17, 21, 22, 26, 68, 69]   # points a person can find
+
+
+def clicked(s, noise, views=FT, with_det=False, ids=CLICK):
+    out = list(ev(s, views)) if with_det else []
+    for v in views:
+        out.append(tb.ev_oracle(s, v, noise=noise, ids=ids, seed=21))
+    return out
+
+
+METHODS.update({
+    "D1 21 clicked points +-1.5 mm, 2 views, MAP": lambda s: fitlib.fit(clicked(s, 1.5)),
+    "D2 21 clicked points +-2.5 mm, 2 views, MAP": lambda s: fitlib.fit(clicked(s, 2.5)),
+    "D3 detector + 21 clicked +-1.5": lambda s: fitlib.fit(clicked(s, 1.5, with_det=True), robust=True),
+    "D4 D3 + character read": lambda s: fitlib.fit(clicked(s, 1.5, with_det=True), robust=True, rows=hm.prior_rows(reader(s))),
+    "D5 D4 + clicked jaw line + profile picture": lambda s: fitlib.fit(clicked(s, 1.5, with_det=True) + [jaw_points(s, v) for v in FT] + traced(s, contour=False, jaw=False, views=[], profile=True), robust=True, rounds=10, rows=hm.prior_rows(reader(s))),
+    "D6 D1 front only + read": lambda s: fitlib.fit(clicked(s, 1.5, views=["front"]), rows=hm.prior_rows(reader(s))),
+})
+
+
 def main():
     want = sys.argv[1:]
     res_f = rs.D / "out" / "table2.json"
