@@ -980,7 +980,7 @@ def test_bough_card_form_by_budget():
     layers), lower LODs the same cut thinned and grown to the same cover (one atlas, no pop at a switch); a tiny
     budget re-cuts the tree into few rich limb cards. The triangle count holds either way."""
     from hifipushie import veg_bough, veg_export
-    T = v.grow({"species": "norway_spruce", "age": 30})
+    T = v.grow({"species": "norway_spruce", "age": 30, "leaves": {"card": {"limbs": False}}})
     m = len(veg_bough.plan(T, veg_bough.most(T))["roots"])
     n, form = veg_bough.fit(T, m * veg_bough.tris(1))
     assert form == 1 and n == max(int(veg_bough.FULL * m), min(m, veg_bough.FULL_LEAST)), (n, form, m)
@@ -1007,6 +1007,18 @@ def test_bough_card_form_by_budget():
     bud = veg_export.budget(T, 12000, [0.3, 0.6], 10)
     if bud.get("boughs"):
         assert bud["total"] <= 12000, bud["total"]
+    # a species built of flat limbs (leaves.card.limbs): every whole limb on its own card pair under the fine cards,
+    # in the same atlas, dark toward the trunk, and inside the budget
+    L = v.grow({"species": "norway_spruce", "age": 30})
+    assert veg_bough.limbs_on(L) and veg_bough.extra(L) > 0
+    budL = veg_export.budget(L, 12000, [0.3, 0.6], 10)
+    assert budL["boughs"] and budL["total"] <= 12000, budL["total"]
+    atL = veg_bough.atlas(L, cards=budL["boughs"])
+    twL = veg_bough.place(L, budL["boughs"], atL)
+    core = twL["core"] > 0
+    assert core.sum() == twL["limbs"] > 5 and (twL["card"][core] >= atL["limb_first"]).all() and (twL["card"][~core] < atL["limb_first"]).all()
+    M = veg_export.foliage_mesh(L, atL, tw=twL)
+    assert M["tint"].min() < 0.6 < M["tint"].max(), (M["tint"].min(), M["tint"].max())
 
 
 if __name__ == "__main__":
