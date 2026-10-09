@@ -699,7 +699,9 @@ TEXCOORD_2 and `_DETAIL` belong to the tiling
     faces whose corner normals point away from them, over 0.01% / 0.05% / 0.5% of LOD 0 / 1 / 2; baked maps decoded
     from both sides of every shared border; in cliffs mode the ground tiles' borders, heightmap never standing in a
     void, never showing through a cliff face, no cliff-mesh piece floating clear of the ground; no step in the baked
-    surface on soft ground, which the normal map would draw as a thin dark line on the grass) and fails loudly. The
+    surface on soft ground, which the normal map would draw as a thin dark line on the grass; every lake flooded on
+    the tile heightmaps to its level covers no more than 1.5x its area) and fails loudly. The manifest's `lakes`
+    gives each lake's level, area and outline rings ([x, y] m) for a water system. The
     manifest's `memory_gb` says what the export used (it runs one heavy job at a time, workers sized by free memory).
 - `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
   by a thin red pole 12 m tall (to judge what a view sees).
