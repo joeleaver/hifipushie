@@ -54,7 +54,9 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
     hd.pop("mouth_gap", None)    # the stage has no teeth or tongue parts), GNM's own lips
     st["paint"] = {k: v for k, v in (st.get("paint") or {}).items() if "face_mouth_bag" not in json.dumps(v)}
     if posed:
-        hd["pose"] = {**(hd.get("pose") or {}), **(posed if isinstance(posed, dict) else POSE)}
+        pf = store.HOME / name / "pose.json"      # the pose its fit was made with (refit.py), else the hand-set one
+        own = json.loads(pf.read_text()) if pf.exists() else POSE
+        hd["pose"] = {**(hd.get("pose") or {}), **(posed if isinstance(posed, dict) else own)}
     if with_hair and spec.get("hair"):
         st["hair"] = copy.deepcopy(spec["hair"])
         st["parts"]["hair"] = copy.deepcopy((spec.get("parts") or {}).get("hair") or {})
@@ -126,7 +128,8 @@ def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=F
     with tempfile.TemporaryDirectory() as tmp:
         fr = [{**f, "out": str(Path(tmp) / f"{f['name']}.png")} for f in frames]
         lt = {**lighting, "target": fr[0]["center"]} if lighting else None
-        job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": size, "samples": samples, "hide": [], "flat": flat}
+        job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": size, "samples": samples, "hide": [], "flat": flat,
+               "transparent": True}
         if lt:
             job["lighting"] = lt
         if hair_on and st.get("hair"):

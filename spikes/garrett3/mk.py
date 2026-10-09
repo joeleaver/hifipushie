@@ -74,9 +74,9 @@ def main(dst="g3_garrett", src="rs2_m3"):
     sp["skin"] = {
         "part": "body", "sex": 1, "age": 52, "tone": tone, "variation": 1.0, "detail": 1.0, "oil": 0.35, "thin": 0.5,
         "sun": 0.45,
-        "eyes": {"iris": "#4f5d66", "pupil": 0.32, "veins": 0.4},
-        "hair": {"brows": {"color": "#3d3935", "density": 1.0, "thickness": 1.5, "grey": 0.15},
-                 "lashes": {"amount": 0.55}, "stubble": {"amount": 1.0, "color": "#5a5550"}, "body": 0},
+        "eyes": {"iris": "#3f4a52", "pupil": 0.32, "veins": 0.4},
+        "hair": {"brows": {"color": "#4a4541", "density": 0.85, "thickness": 1.15, "grey": 0.2},
+                 "lashes": {"amount": 0.55}, "stubble": {"amount": 0.75, "color": "#6f6a66"}, "body": 0},
         "features": {"flush": 0.25},
     }
     pf = os.path.join(D3, "skin_patch.json")
@@ -90,9 +90,10 @@ def main(dst="g3_garrett", src="rs2_m3"):
     lk = sp["hair"].setdefault("look", {})   # the photo's hair: grey-brown, greyer at the temples
     lk.update({"lit": "#6b6661", "sheen": "#b9b5af", "gap": "#4a4541", "grey": "#b5b1ab"})
     store.save(dst, sp, f"garrett3: {src}'s head, n4's eyes, the skin pipeline (tone from the photo), groom as is")
-    rf = store.HOME / src / "human_refs.json"
-    if rf.exists():
-        (store.HOME / dst / "human_refs.json").write_text(rf.read_text())
+    for fn in ("human_refs.json", "pose.json"):
+        rf = store.HOME / src / fn
+        if rf.exists():
+            (store.HOME / dst / fn).write_text(rf.read_text())
     print("saved", dst)
 
 

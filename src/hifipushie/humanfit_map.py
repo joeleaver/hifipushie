@@ -148,17 +148,40 @@ VIEW_BAD = 5.0     # mm rms of a view's points after the fit: past this the pict
 # that is not one projection, another person, a wrong yaw hint): it is left out of the identity and said so
 
 
+def measured_read(views: list) -> dict | None:
+    """humanmeasure's macros of the first front view that has its image and detector points: {"macros": {name: (z,
+    sigma)}, "used", "note", "view": index} (None without one)."""
+    from . import humanmeasure
+    for i, v in enumerate(views):
+        if abs(float(v.get("yaw", 0.0))) > 15 or not v.get("image"):
+            continue
+        P = detector_points(v)
+        if P is None:
+            continue
+        from PIL import Image
+        return {**humanmeasure.measure(np.asarray(Image.open(v["image"]).convert("RGB")), P, backdrop=False), "view": i}
+    return None
+
+
 def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8, lam: float = 1.0, force: bool = False,
-        free=("identity",), drop_bad: bool = True) -> tuple:
+        free=("identity",), drop_bad: bool = True, measure: bool = False) -> tuple:
     """(new base, report); see _fit. A view whose points still miss by more than VIEW_BAD mm rms after the fit is
-    dropped from the identity's evidence (its camera is still fitted and returned) and the fit run again."""
+    dropped from the identity's evidence (its camera is still fitted and returned) and the fit run again.
+    measure=True: macros MEASURED on the front picture (humanmeasure: a regression calibrated on renders only, not
+    validated on photographs) join the read as evidence with their own sigmas; a said read wins where both speak.
+    rep["measured"] lists them."""
+    meas = measured_read(views) if measure and "identity" in free else None
+    if meas:
+        read = {**{k: tuple(v) for k, v in meas["macros"].items()}, **(read or {})}
     nb, rep = _fit(base, views, read, read_sd, lam, force, free, None)
-    bad = [i for i, v in enumerate(rep["views"]) if v["rms_mm"] > VIEW_BAD]
+    bad =[i for i, v in enumerate(rep["views"]) if v["rms_mm"] > VIEW_BAD]
     if drop_bad and bad and len(bad) < len(views) and "identity" in free:
         nb, rep = _fit(base, views, read, read_sd, lam, force, free, set(bad))
         for i in bad:
             rep["views"][i]["dropped"] = True
         rep["dropped"] = bad
+    if meas:
+        rep["measured"] = meas
     return nb, rep
 
 
