@@ -925,3 +925,20 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     - NOT DONE: stand debris (dead haze density / tone, floor brash), the 5 m view from under limb cards, spruce
       silhouette (narrower, tiers), oak and variants (no real_oak folder exists), impostor re-judged by eye.
 
+  - Round 3 (2026-10-09, "realtrees3"; scratch adds q8.sh <tag> <plant> <budget> <height> <half-width> (one quick
+    export + Godot frames gv/<tag>_*), row.py (photo | ours at one height, crops by fractions), prof.py (width / height
+    at 10 heights vs a photo mask), apex.py (top limb extents vs the limb pictures)).
+    - Pine bark in TWO colours: `veg_bark.bark_maps("plates")` returns `tint` (1 = `color`, the grey-mauve weathered
+      plate top; 0 = `color2`, the orange-red layers under it: rims, lower flake steps, fissure walls, a fifth of the
+      plates freshly shed); the export bakes `veg_bark.rgb(maps, bark)`. One brown x a grey multiplier read as brown
+      worms beside pine_bark_a. Colours from the photo by brightness bands: color [0.47,0.42,0.40], color2 [0.56,0.31,0.20].
+      The Blender look (impostor pictures) still draws its own ramp, not the tint.
+    - Spruce apex: the top limbs (0.3-1 m) were drawn with the shortest of four limb pictures (2.4 m) shrunk to the
+      0.25 clip, and the leader's tip with some bough's picture: a lollipop on a fat spire. Now the atlas has a picture
+      of a top limb (`APEX_TOP` 0.85 of the height) and one of the leader's own tip (`apex_card`, drawn at scale 1).
+      Better, not a spike yet: the grown leader's last shoot is short against its whorl (the growth, not the cards).
+    - Spruce dead haze: `deadwood` {break 0.4, droop [14, 38], bow 0.18, twig [0.0008, 0.0035]} (spruce dead limbs
+      persist long and hang; the default broke them to a ladder of straight stubs) and `leaves.parts.dead.card.share`
+      0.2 (per species; DEAD_SHARE 0.08 default). The interior spruce now reads like spruce_in_a's grey dead haze.
+    - Needles: spruce [0.21, 0.28, 0.13] (was yellow-olive; [0.17, 0.26, 0.15] went teal / cypress in Godot), tips 0.4;
+      pine [0.27, 0.33, 0.20].
