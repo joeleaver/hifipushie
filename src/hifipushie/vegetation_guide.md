@@ -614,6 +614,14 @@ ground; blades hide 38 / 78 / 94 / 100% at 2 / 6 / 12 / 30 m. So: blades.
   ring) to `fade.end` their albedo, NORMAL and roughness go to the ground's (a blade lit by its own normal is lighter
   than flat ground of the same colour, and a specular style shows roughness as a sheen: either left an arc where the
   field ended). Root colour = the terrain style's grass colour of that cover kind, through the plant style's `colour`.
+- How a sward ENDS (a path, a pad, forest floor): never by leaving tiles out (a 2 m staircase). The engine gives a
+  density 0..1 per blade (the terrain's grass weight at its world xz, or four corner values per tile); the same
+  per-blade threshold thins them and they shorten toward the edge (`sward.density`; the blades left do not widen).
+- Seasons: each season's factor is the TERRAIN style's seasonal tint of the grass (turf for mown) layer, so blades and
+  ground turn together (whole in the json, may exceed 1). Winter is lying straw, not a tint (`sward.winter`: blades
+  laid over along a direction that drifts over the world, shorter; laying each blade along its own normal tore
+  blades). Snow buries the tile (`sward.snow`: it sinks by the snow depth, tips poke through in straw, the fade colour
+  is the snow's); the old snow variant was summer blades tinted pale blue: a green field on white ground.
 - Opaque geometry: no alpha, no texture, no mipmaps to set up. Wind = every plant's channels; `sward.wind` says how to
   run gusts across tiles. `sward.renderer` in the json = the six steps of a tile renderer (grid, quarter turns, LOD by
   nearest point, shader order, colour, what the terrain draws under it).

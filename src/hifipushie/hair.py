@@ -110,7 +110,7 @@ GROOM = {
 LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d", "roughness": 0.42,
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
-        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "light": None, "card_gain": 1.0,
+        "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "light": None, "card_gain": 1.0, "card_sat": 1.0,
         "cycles_fit": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
@@ -1831,11 +1831,11 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
            "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
            "centre": sc.C.tolist()}
     if h.get("style") == "cards" and stage != "mass":
-        colc = None
-        if g.get("loose"):
-            from . import hair_loose
-            colc = hair_loose.collider(name, spec, sc)
-        out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget, cap_step=cap_step, col=colc)
+        from . import hair_loose
+        body = hair_loose.collider(name, spec, sc)
+        colc = body if g.get("loose") else None
+        out["cards"] = cards_job(sc, g, spec, locks, tmp, V, F, budget=budget, cap_step=cap_step, col=colc,
+                                 clear_col=body)
     if h.get("style") == "strands" and stage != "mass":
         from . import hair_strands
         col = None
@@ -1944,6 +1944,7 @@ def baby_locks(sc: Scalp, g: dict, S: dict, seed: int = 0) -> list:
 # group: how big a clump of strands one card stands for (hair_cards.clump_cards): a lower tier has FEWER, WIDER cards
 # from bigger clumps, never the same thin cards thinned out; "free" = only hair off the head gets cards, the cap
 # (the scalp chart) and the tail's core carry the rest.
+MASS_MIN = 0.06  # m: loose hair shorter than this (mean lock length) gets no mass shell under its cards
 CARD_TIERS = {
     "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
              "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000},
@@ -1957,7 +1958,7 @@ CARD_TIERS = {
 
 
 def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None,
-              cap_step: float = 1.0, col=None) -> dict:
+              cap_step: float = 1.0, col=None, clear_col=None) -> dict:
     """The hair as cards (hair_cards.py): the card mesh of every lock + baby hairs, the underlayer wearing the strand
     atlas, and the atlas's pictures. `budget`: triangles for the cards (segments lengthen, then layers go)."""
     from . import hair_cards as hc
@@ -1997,7 +1998,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
         tc = hc.tail_cores(D, hair_locks, sides=int(S.get("core_sides", 10)))
         core = hc.core_mesh(tc, at["tiles"]) if tc is not None else None
-        if g.get("loose"):  # a loose mass: a solid surface inside it (no air or skin between the cards)
+        # (not for a short cut: hair under MASS_MIN long has no inside; its shell stood OUTSIDE the cards on the
+        # sides and back as a pale dome with a dark rim at the temples (Garrett's crop). The cap, wearing the
+        # scalp chart, is the surface under short cards.)
+        lens = [float(np.linalg.norm(np.diff(np.asarray(k_["pts"], float), axis=0), axis=1).sum()) for k_ in hair_locks]
+        if g.get("loose") and lens and float(np.mean(lens)) > MASS_MIN:  # a loose mass: a solid surface inside it
             shell = hc.mass_shell(D, hair_locks, sc.C, at["tiles"], col=col, triangles=int(S.get("mass", 3000)))
             if shell is not None:
                 core = hc.join(core, shell)
@@ -2027,7 +2032,12 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
         cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
         info["asked"], info["fixed"] = int(budget), int(fixed)
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
-    clearance = card_clearance(sc, mc, [c.get("lock", "?") for c in cards], fix=CARD_CLEAR, col=col)
+    # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
+    # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
+    # moved out to the ear's silhouette (Garrett: 936 hero vertices, the ragged dark patches behind the ear and at
+    # the temple)
+    clearance = card_clearance(sc, mc, [c.get("lock", "?") for c in cards], fix=CARD_CLEAR,
+                               col=col if col is not None else clear_col)
     # hair off the head must come OUT of the hair: a free card whose root lies on bare skin outside the hairline
     # is a detached wisp
     free_names = {k_["name"] for k_ in hair_locks if float(k_.get("free", 0.0)) > 0.5 and k_.get("core") is None}

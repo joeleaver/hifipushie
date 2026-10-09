@@ -21,7 +21,7 @@ import time
 import zlib
 from pathlib import Path
 
-THREE_D = ("caves", "volumes", "export", "views", "styles")
+THREE_D = ("caves", "volumes", "export", "views", "styles", "streams")
 SUFFIX = ".terrain.z"
 _STATS = {"hits": 0, "misses": 0, "last": None}
 

@@ -1193,6 +1193,51 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     follows his temple); a tousled top (his locks are combed back; the concept's front lifts and breaks); per-region
     grey in the cards (one share for the whole head today); Godot render of the tiers; the round trip of strands;
     `under` has no effect past the 60% cap; test_hair_strands' Blender test not re-run.
+  Garrett's CUT (hairgarrett round 2, same day; the coordinator on hg_v4: "real hair but the WRONG HAIRCUT: slicked
+  back like a 1950s banker"; sheets hg_c3_sheet.png = photo | strands Cycles | hero | main + tiers at distance,
+  hg_c3_godot.png; export /mnt/data/hifipushie/hairgarrett/exp_c3; scratch adds mkcut.py <tag> '<loose>' '<strands>'
+  '<look>' <engine> <views> (the cut regrown from nothing + look + outline), photocol.py (the photo's hair by region:
+  dark / grey cluster colours and the grey's share), sheet2.py (+ card vs strand value / saturation on hair pixels),
+  capdbg.py <tag> <tier> cap_only,cards_only,layers (what each part of a tier draws), q4.sh, gd.sh + centre.py (Godot)).
+  - The sculpted locks were dropped; the cut is `groom.loose` regrown (replace=True, tiers off, parting none):
+    length front 26 / top 20 / sides 22 / back 22 / nape 12 mm, spacing 9 mm, width 2.4, lift 1 mm, body 2 mm, messy
+    0.35, uneven 0.8, and NEW per-region keys: `flow` {region: world direction} (front [0.55, -0.45, 0.7] = up and
+    forward to his left, top [0.6, -0.15, 0.2], sides [0, 0.75, -0.65] back and down), `out` and `stiff` as
+    {region: v} (front out 0.3 / stiff 0.9; sides out 0 / stiff 0.55). Loose locks take `groom.grey` (temples,
+    sideburns and now any region: top 0.2, sides 0.45). Strands: count 140000, thickness 1.6, clump 0.15, stray 0.9,
+    roots 0.9, tip_spread 0.5, loose 0.18, frizz 0.15, wave 0.0004, under_length 0.022. `groom.volume` back to 3-4 mm
+    (round 1's fuller sides had left it at 18 mm: the cap then stood over the side cards).
+  - What went wrong on the way: wave 4 mm at wavelength 3 cm + curl on 2-3 cm hair = ringlets and hooks at the nape;
+    out 0.6 / 4 cm front = 23 mm too tall; sides at out > 0 or stiff 0.3 = each lock a curled leaf with skin between;
+    in CYCLES 100k true-width hairs on a crop are see-through (orange scalp glow, ginger cast): thickness 1.6 +
+    140k + scalp_tint 0.85-0.93 closed it. Cycles look of 2 views at 640 px: 240-380 s on a loaded machine.
+  - Colour by measure: the photo's hair (photocol.py) is dark #5a4f46 + grey #968e85, grey pixels 12% on top, 21-24%
+    at the sides, median (96, 84, 74). Cycles strands with lit #74655a / grey #b3aaa0: front median (115, 104, 98),
+    three-quarter (84, 75, 70) (lit #5a4f46: (84, 78, 74) / (61, 55, 52), too dark in the shade). Hue ratio R/B 1.17-
+    1.20 vs the photo's 1.30: the hue-keeping CYCLES_FIT holds the asked hue within ~10% (the look colour's own R/B
+    is 1.29; the rest is white highlight).
+  - Outline (strandfit): IoU above the ears 0.88, mean side miss +0.2 mm per side, top +10 mm (still a little tall).
+  - Cards on a short cut, by cause (capdbg.py): (1) the pale dome + dark rim at the temples was the loose groom's
+    MASS SHELL standing outside the side cards: no shell under `MASS_MIN` 6 cm mean lock length (the cap is the
+    surface under short cards); (2) "936 vertices under the skin, 64 mm" was the clearance measured against the
+    scalp's RAYS, which meet the ear first: cards on the head behind / over the ear were pushed out to the ear's
+    silhouette (the ragged patches). Clearance is now against the body's signed distance for every groom
+    (`cards_job(clear_col=)`): deepest 19.5 mm, 3.8% of hero vertices (short flat cards cutting chords); (3) the
+    cap over the cards (volume, above). After: hero 40,000 / main 15,188 / npc 5,474 / far 1,498 triangles;
+    check_tiers hero / main iou 0.86-0.90, bare 5-9%, stamps 0.
+  - Card colour vs the Cycles strands (sheet2.py, hair pixels): `look.card_gain` 1.1 + NEW `look.card_sat` 1.4 ->
+    value 0.99 / 0.93 x (front / three-quarter), saturation 1.24 / 0.93 x; before 0.88-0.94 and 0.57-0.89. Within 5%
+    only on average: the two differ by view (cards don't transmit light).
+  - Godot 4 (`spikes/godot_hair/look.gd` through godot-quiet; hg_c3_godot.png): the GLBs import as alpha scissor
+    0.33, cull disabled; a2c only softens the edge. Godot does NOT use COLOR_0 unless the material's
+    vertex_color_use_as_albedo is set (the root-tip ramp is lost: hair reads paler and flatter than in Blender).
+  - BLUNT READ of hg_c3_sheet: the strands are now the concept's haircut: a short tousled greying crop with a lifted
+    front; still a little tall and even on top, the hairline cleaner and higher than the photo's broken one. The
+    cards carry the same cut and silhouette but read as chunky torn-paper tufts, not strands, at bust distance;
+    main looks like hero; from 1.6 m fine. In Godot the front hairline shows rectangular card ends.
+  - NOT DONE: card texture finer (the tiles are 16 cm strands squeezed onto 2 cm cards: a short-hair tile set),
+    a broken hairline (baby / fringe hairs forward of the line), Godot with vertex colour on, the re-seat on the
+    settled head, test for loose `flow`.
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
@@ -2782,6 +2827,168 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       rebuilt at its closed girth on the body's hull, under the pressed shirt tail, so the back's top is cleared over
       the shirt). Next: give the fine settle's band (and `_press_plan`'s clearing) the padded body, or try
       fine_settle false for the trousers over the shirt.
+- Suit 7 (2026-10-08, "suit7" agent, branch `worktree-agent-af71a3f0c0a4e3d8a`, continues suit6; renders
+  `cloth_renders/su_8*`, `tr_24*`, `om_0*`, checklist sheets `cr_81*`; scratch DURABLE in /mnt/data/hifipushie/suit7/:
+  suit6's scripts retargeted + run.sh (EVERY script through /mnt/data/hifipushie/bin/capped, peak RSS printed,
+  PYTHONUNBUFFERED), q.sh <queue> / qlocal.sh (LOCAL_ZOZO=1), env.sh (sources /mnt/data/hifipushie/gpubox/env.sh, then
+  points HIFIPUSHIE_ZOZO_REMOTE at this worktree's remote.sh), mkq.py (a queue line with design ops patched, compact
+  JSON), check.py <tag> <jacket npz> [trousers npz] [shirt npz] [model] (the reference checklist + cr_<tag>_focus /
+  _figure), section.py <result npz> (jacket vs body per direction and height + where the two front edges are: THE
+  tent measure), tent.py, near1.py, dbg_place.py (place_only with every _piece_crossings call's largest triangle;
+  TRACE=1 names the cloth function that moves rows > 5 cm; NOWAIST=1), dbgrun.py <secs> <script> (stack dump when RSS
+  passes 4 GB), pp_dbg.py (OVER=shirt UCAP=0.003: the fine settle's start step by step), patdump.py (pieces' boxes and
+  x extents by height), meas2.py (tape + hull girths under the waist), gate1.sh / gates3.sh, st_tb.py (a stage with
+  its traceback), mk_om.py, cpmodel.py, ed_om1.py, ed_pk.py, patch_*.py (every code edit as a script: the sandbox
+  refuses heredocs / loops / pipes it can't verify: write files with the Write tool and run one plain command).
+  - THE OOM OF 13:37 WAS THIS THREAD'S (a 17 GB python): every "trousers over shirt" build hit it (suit6's tr_22 too).
+    `_leg_tube.level()` read the FRONT leg piece at a row under its own hem (a break hem's back is 12 mm longer; rows
+    are rounded to cm levels), got no width, and the front hem's vertices fell back to the seat cylinder at centre
+    front between the feet (27 cm triangles in the first placement pass; the relaxation pulled them back, so nobody
+    saw); `_piece_crossings` / `_pair_crossing_verts` searched with ONE radius = the largest triangle, so on a 12.7k
+    vertex fine mesh every edge paired with every triangle within 14 cm. Fixed: each piece is read no lower than its
+    own hem; both searches raise ClothError "the start is broken: a triangle of <piece> is X m across" (main's chunked
+    search sits behind that raise); `_clear_of_worn` moves are bounded (WORN_STEP 12 mm a round, WORN_REACH 30 mm).
+  - suit6's `_worn_levels` VERIFIED: Garrett su_81: all seams closed (su_79: 23 pairs open to 110 mm), 0 crossings,
+    cuffs 13 / 14, collar_show 3.8 (suit6's lower back neck: was -11.9). ga_suit su_82: fits, all closed, collar_show
+    12.1, cuffs in band.
+  - `cloth._clear_exact` (EXACT_GAP 3 mm): draped start vertices and edge points against the collider's TRIANGLES,
+    two-sided for an under garment's cloth (wound as its pattern lies), signed for the closed body. In build after
+    place() for a layered smooth start (the start is laid on the PADDED body; the collider is body + the under
+    garment's own mesh: ga_suit's top sleeve seam sat 1.8 mm from a pressed shirt-sleeve fold at the elbow, "contact
+    starts overlapping" at frame 0 on the 4090), and for the fine settle's start over an under garment (there the
+    old code read the collider as a closed Body: the shirt's normals pushed the trousers' back INTO the tucked tail,
+    102 triangles 1.6-3.9x: suit6's tr_22 failure). Unlayered garments' starts and keys untouched.
+  - THE TUCK WORKS: tr_24 (su_garrett trousers `over: shirt`, `under_cap` 0.003, 461 s on the 4090): fits, 0
+    crossings, all seams closed, fly 18 of 18; reads as trousers over a tucked shirt. `cloth.waist_hung` /
+    over_measures(waist=layer gap): a garment hung from the waist is taped over what is tucked in, incl. the layer
+    gap (793 -> 833 mm; without the gap the band started 13.6 mm short of closing).
+  - `collar_hug_mm` (cloth_layers.tells + cloth_reference) is read on the outer collar BEHIND the neck's axis: a
+    notched collar's ends lie on the chest. su_81 27.0 -> 18.4 (still a miss; target 0-6).
+  - THE TENT, by measure (section.py on su_81): from z 1.40 to 1.00 the fronts lean forward ~10 deg and are plumb below
+    the break; the two front edges OVERLAP 15 mm at the centre and the sides hug the hips at 2-8 mm: the jacket hangs
+    closed with all its ease in front. Two causes. (1) The stiff front: canvas bands + lapel roll strength 1.0 make
+    a board that continues the upper chest's slope down to the break. su_83 (interfaced [], roll_strength 0.2): fronts
+    37-47 mm off the body from the chest down (were 57-99), plumb; cost: lapel gap unchanged, 6 crossings at the left
+    gorge. (2) The start: an OPEN jacket was started lapped like a buttoned one. `open_gap` (garment key; OPEN_GAP 0.16
+    m at the hem, linear from the armpit's level; `cloth.open_gap`, in `_worn_levels`): fronts and side panels start
+    that far from CF and every level's curve is that much longer: the loose tube an open jacket is. NOT YET VERIFIED
+    BY A SIM (om_02 / om_05 failed at their starts, below).
+  - Trouser block option `waist_drop` (m under the natural waist; `pattern_blocks.dropped_waist`): girth there, rise,
+    seat line, knee and lengths follow, pieces + band carry wrap "drop" (place(), stage 2 leg ease, the band's
+    dimension checks and the waistband height target read it). 0.07 on a scratch copy (su_om_tr): gates pass, band
+    860 mm. Not simulated.
+  - KB: jacket fit "relaxed" (waist +18..+32%: a straight, unsuppressed body on a V torso). Stage 3 crashed on a
+    shirt with no hem topstitch row (None * 1000): fixed. cloth_reference.render_front draws the garments' `collide`
+    parts (shoes).
+  - `su_om_garrett` (mk_om.py: om_garrett's base + su_garrett's shoes / socks / soles and cloth sheets; head-fit keys
+    that need onemesh2's code, base.head.warp as a list and shape hood / hollow / jaw_angle, are LEFT OUT until that
+    is on main: take the head at the end, it changes only above the neck). Its tape vs the old body: shoulder slope
+    11 deg (22), shoulder to shoulder 468 (481), hps to waist 493 (508), waist to armpit 254 (236), waist 785 (793).
+    Sheets (ed_om1.py): jacket length_bonus 0.12, lapel 0.075 + roll_strength 0.3, take_in 0.008 / 0.010, CB waist
+    0.012, interfaced [], fit relaxed; trousers over shirt + under_cap 0.003. Scratch copies su_om_pk (+ flap pockets
+    [0.125, -0.585] 150 x 55 and breast welts [0.135, -0.275] 100 x 22 on "front": gates pass; flaps / welts are MADE
+    pieces carried with the body: expect them to stand off a draped front, as a held lapel did) and su_om_tr
+    (waist_drop 0.07).
+  - Shirts on the new body: om_01 (main before placket) and om_04 (placket's: one button open, spread collar) both
+    read "CORRUPT: collar 4-5% crumpled | fits" with 28-35 sewn pairs open to 4-13 mm: usable as an under garment,
+    not finished (placket's thread).
+  - FAILED AT THE START on su_om_garrett, not yet diagnosed (the GPU box was deleted at the usage-limit stop):
+    om_02 jacket (old shirt): "contact starts overlapping", dynamic vertex 1752 vs the collider, 1.87 mm (so
+    _clear_exact's 3 mm did not hold there: check whether that vertex is MADE (collar: not moved), or moved back by
+    _carry / _open_start after the clearing: the clearing runs on Xs before `_open_start` makes Xstart); om_05 jacket
+    (placket's shirt): Newton stalled at frame 0, "a prescribed pin driven into geometry that cannot yield", held by
+    vertex 2097 (a carried made piece, the collar, against the new spread shirt collar?); om_03 trousers: ZOZO's
+    builder assertion `left > right` 0.0 / 0.0 while "computing constraints" (a zero-length or zero-area element
+    in the job: look at in.npz's rest triangles and stitch pairs; tr_24 on the old body built). Use jobstr.py /
+    gapchk.py on workspace/_cache/cloth/job_<key>/sim.
+  - Round 2 (same day, after the usage-limit stop; main 3eb0b2b with placket's shirt merged in; commits d3cf2a1 /
+    e3edfb6; scratch adds job0.py / job1.py / job2.py / job3.py / job4.py / job5.py <job dir> (a failed job's in.npz
+    against its FRAME-0 collider `bodyV0`: least separation, what crosses the under garment and where, degenerate /
+    faceless elements, what is near a named vertex; gapchk.py reads the BENT body and calls every straight-arm
+    forearm a contact: don't use it for sleeves), slv.py, jts.py, ed_om2.py, patch_exact4 / made / thru / orphan /
+    drop / docs.py, resolve1.py; tests/test_suit7.py).
+    - The three start failures on su_om_garrett, each a general fault: (1) `_clear_exact` was one-way: now the
+      collider's vertices and edge middles are also tested against the CLOTH's triangles (a shirt placket under the
+      middle of a 2 cm jacket triangle: 0.013 mm with every cloth vertex and edge point clear). (2) A made collar is
+      never cleared: `_lift_made` (made pieces lifted along the body's normal to the padded body's height + 3 mm, at
+      most MADE_LIFT 15 mm, evened over the piece), and a layered collar that is sewn on open and turned down by its
+      carried poses gets pins that pass through the collider (`Bp["thru"]` -> the runner's hugIdx; no body_offset
+      change): prescribed onto the open shirt collar's wings the solver stalled at frame 2-3, "a prescribed pin driven
+      into geometry that cannot yield" (om_05 / 07 / 09 / 11; open_gap 0 stalled too: not the open start). (3) ZOZO's
+      builder asserts `left > right` 0.0 / 0.0 on a collider vertex with no face area: 10 shoe faces of 5e-11 m2 on the
+      new body, then 12 faceless shoe vertices once those faces were dropped: `_collider` leaves out faces under
+      0.0005 mm2 AND the vertices they orphan, for the under garment and for worn parts (cleaned before they join the
+      poses).
+    - Armhole depth is per body: the same sheet on su_om_garrett (hps 33 mm lower, armpit the same) had its armhole
+      31 mm shallower from hps: under sleeves crossed back / side panel at the pit, `sleeve_down` 3-6 cm, sleeve seams
+      100-125 mm and armholes 110-130 mm open at the start (su_garrett: 1-2 cm, 70-80, 88). bodice `armhole_depth`
+      0.14 on its jacket: 1-2 cm, 43-80, 90.
+    - om_13 = THE FIRST JACKET THROUGH ON THE NEW BODY, over placket's shirt (524 s): fits, 0 crossings, 0 layer
+      crossings, seams closed bar 3 collar pairs (4.5 mm), collar_show 9.6, collar_hug 19.6, cuffs 24.6 / 20.8, lapel gap
+      11.5 / 14. section.py: the fronts are 8-10 cm apart at the chest and come together again below the button (2 cm
+      at the hips), 53-71 mm off the body in front at the hem (plumb from the chest), sides at the hips +4..6 mm.
+      Trousers om_12 (su_om_tr: waist_drop 0.07, over the shirt): 0 crossings, seams closed, STRAINED at hips / seat
+      13% (seat ease 5% over a tucked shirt); om_14 (su_om_garrett batch 2: straight leg, drop 0.10, seat ease 7%):
+      STRAINED at seat 13.3% still, 0 crossings, fly 9 of 9.
+    - Checklist on om_13 + om_12 + om_04 (cr_om13_figure.png with shoes, cr_om13_focus.png): 13 misses (su_81: 18).
+      Gone: body length, silhouette, lapel width, tuck, layering, leg opening. Left: collar_hug 20, hem sweep -21%,
+      pockets, belt (trims aren't in light results), shoulder +12%, front_hang 55 (84), rise +50 mm (+121), waist
+      width 335 vs 414, sleeve width -21%, knee -11%.
+    - THE COLLARS ARE NOT RIGHT (the coordinator's and the user's read of om_13_jacket_collar.png): the jacket
+      collar's ends stand up as wings 4-6 cm over the shoulder line at both sides of the neck, the back is a thick
+      roll, the pressed shirt collar under it draws ragged. The ruff is in the START (out/o2_start.png; collar start
+      stretch p99 1.48, max 1.8-1.9 on both bodies) and the collar is made = held as laid. Top item for the next
+      round; the coordinator's direction: stand ~2.5 cm up the back of the neck, fall over the neck seam, and from the
+      neck's side collar and lapel one flat surface to the notch; consider the collar's ENDS (past where the roll
+      line meets the neck edge) as draped interfaced cloth sewn to the gorge, not carried.
+    - su_om_garrett's sheets now (ed_om1 + ed_om2): jacket fit relaxed, armhole_depth 0.14, length_bonus 0.12, lapel
+      0.075 / roll_strength 0.3, take_in 0.008 / 0.010, CB waist 0.012, panel hem spring 0.006, interfaced [],
+      support [sleeve_head] (no pad: shoulder width read +12%), sleeve length_bonus 0.018 / hem_width 0.32; trousers
+      over shirt, under_cap 0.003, waist_drop 0.10, leg straight, seat_ease 0.07. om_15 (that jacket) was queued.
+    - THE COLLARS, DIAGNOSED (coll_dbg.py <result npz>, cbcol2.py <jacket npz> <shirt npz>; om_13): the jacket collar's
+      117 vertices move 0.0-0.5 mm from start to end: the wings are 100% the START LAY of a made, carried piece (not
+      the `thru` pins, the open-then-turn schedule or the gorge seam). Sections of the end state (mm). Centre back (y
+      behind the neck's axis, z): skin (26-30, 1534-1590) | shirt stand (51-53, 1537-1557) | shirt fall out to (63,
+      1534) | jacket back's top (74, 1532) | jacket collar neck edge (74, 1532), stand top (75, 1548), fall edge (85,
+      1520): the jacket collar sits correctly outside the shirt's (11 mm out, 11 mm lower); the "thick roll" is the
+      SHIRT's open stand standing 23-25 mm off the nape. Neck's side (x, z): neck skin (49-63), shoulder line down to
+      (249, 1442) | shirt stand x 80 (20 mm off the neck) | shirt fall = a spread wing out to x 105, z 1508, 15-20 mm
+      over the shoulder | jacket front's neck point (94, 1546-1556), its cloth at x 112-128 30 mm over the shoulder |
+      jacket collar on top, a shelf out to (149, 1530), 50 mm over the shoulder = the wing. Cause: the jacket's neck
+      point (x 94; neck drafted 470 mm over the shirt collar) lies INSIDE the shirt collar's spread wing: the forepart,
+      laid on the body without the shirt's neck pieces, is cleared up over the wing and the made collar bridges
+      outward. What the jacket needs of the shirt (sent to placket): an open stand within ~5-8 mm of the neck at back
+      and sides, a fall within ~12 mm of its stand until past the jacket's neck point. placket is making the stand hug
+      (its pk_38: still 16 mm off the nape). If a wing remains over a hugging shirt: the collar's ENDS (past where the
+      roll line meets the neck edge) as draped interfaced cloth sewn to the gorge, not the made lay's rigid plane.
+    - `pressed()` keeps roll folds' rows and flaps (an open shirt neck's rolled-back fronts) as simulated: pressed flat
+      to the cap they drew as a ragged, torn edge under the jacket.
+    - Batch 2 on su_om_garrett: jacket om_15 (no pad, sleeves +12 mm / hem 0.32, panel hem spring 6 mm; 619 s): fits,
+      0 crossings, collar_show 15.7 (in band), collar_hug 19.2, cuffs 18.7 / 15.1, lapel gap 9.8 / 6.9; the RIGHT collar
+      neck seam 6 of 17 pairs open to 16 mm (collar / front.R: watch it). Checklist cr_om15 (11 misses): front_hang
+      27.6 mm (su_81 84, om_13 55), rise +20 mm, shoulder still +9.6% without the pad (the block's shoulder: try
+      shoulder_ease negative or a narrower across-back), straight legs overshoot (leg opening +25%, length +40 mm: go
+      "tapered" or give knee / hem), hem sweep -21%, waist width -16%, pockets, belt.
+      su7_collar_om15_vs_concept.png = the concept's collar crop | ours front | 3/4 | back: ours is BAD (wings at both
+      sides of the neck, shirt edge ragged: that run predates the pressed() fix).
+    - Posed figure for "fronts apart": `su_om_pose` (mk_pose.py 45: every arm joint turned about the shoulder until the
+      upper arm is 45 deg from the vertical, the concept's A-pose; ours hang at 25.5). po_01_jacket was running at the
+      stop (it builds the shirt on that body first): read section.py on out/po_01_jacket.npz (the last column = where
+      the two front edges are) against om_13's 8-10 cm at the chest, 2 cm at the hips.
+    - po_01 (su_om_pose jacket over its own shirt, 1027 s): THE POSE DECIDES WHETHER AN OPEN JACKET HANGS OPEN. Arms at
+      45 deg: front edges 207 mm apart at the chest, 171 / 156 / 131 / 115 / 121 mm at z 1.25 / 1.15 / 1.05 / 0.95 / 0.88
+      (the concept: 12-15 cm at the waist); arms at 25.5 deg (om_13): 106 / 78 / 50 / 33 / 21 / 21. Raised arms lift
+      the sleeves and pull the fronts round to the sides. fits, 0 crossings, seams closed bar 3 collar pairs (1.5 mm),
+      collar_show 22.1, cuffs 32.6 / 32.8 (the sleeves ride up the raised arms: judge sleeve length at the pose the
+      reference is in), lapel gap 9.8 / 10.2. Render po_01_jacket.png. So: compare with a reference IN ITS POSE
+      (su_om_pose for this concept), and don't chase "fronts apart" on a body whose arms hang lower.
+    - NEXT, in order: (1) the jacket over placket's hugging shirt when it is on main: re-run om jacket, cbcol2.py
+      both sections, collar_cmp.py; (2) if wings remain: collar ends draped; (3) po_01's fronts; (4) the right neck
+      seam; (5) belt + loops drawn in the figure (cloth_trims.meshes on the trousers' result; check.py's light npz has
+      no trims: the checklist reads "belt False"); (6) trousers leg "tapered", length; (7) pockets (su_om_pk: gates
+      pass; never simulated); (8) the outfit sheet through cloth.look (fig.py su_om_garrett <png> [1]) once jacket,
+      trousers and shirt are all cached for the saved sheets; (9) the head at the end (mk_om.py NOHEADFIT=0 once
+      onemesh2's base code is on main).
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
@@ -4383,19 +4590,33 @@ regresses, bisect by building one spec at each commit and diffing heights.
     Regressions (cold, a loaded machine, under /mnt/data/hifipushie/bin/capped): pebble 0 failures (1,274 s; shards
     0.002 / 0.007 / 0.31%, lod1 map normals p95 6.2), alps 3x3 0, slice_a 0, slice_b incremental 4 of 64 tiles and 0 of
     1,488 files differing from a cold export; the seven terrain test files pass.
-    Note 106 (downs_pond's dam missing from the tile heightmaps), DIAGNOSED, not fixed (dam.py <terrain> x y): the
-    dam's lake-side face is 50-65 deg and 12 m tall (floor 43.7, crest 56.0-57.2, level 56.35), so the cliff Region
-    takes it (S = 1) and the heightmap is eroded by the 3.8 m push ball: 5-9 m down on the face and the 2 m crest
-    with it (heightmap crest 54.4-56.1 on bearings 0-100 and 320-350, under the water level). Proposed: no push
-    (Rg = 0) within a lake's dam / bank mask, or the pushed heightmap clamped >= min(ground, level + freeboard) there;
-    per-lake outline polygons in the manifest; the report should warn "the lake stands on a slope: 12 m deep at the
-    dam for depth 2", freeboard under ~1 m and a crest under 3 cells wide.
-    QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
-    ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
-    the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
-    Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
-    interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
-    lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
+    Note 106 (downs_pond's dam missing from the tile heightmaps; scratch dam.py <terrain> x y, lakechk.py <tiles dir>
+    [name x y r level area], rep.py <terrain> <words>): the dam's lake-side face was a 12 m wall at 50-65 deg, so the
+    cliff Region took it (S = 1) and the heightmap was eroded by the 3.8 m push ball, crest and all. The wall was the
+    BUILD's: `terrain._lake`'s bank started at the water's edge (nothing inside the radius), so on a slope it stood
+    as tall as the fall across the lake. Now: the bank runs on down at 1:2 under the water, crest >= 3 cells,
+    `T.dams[name]` = the cells the embankment raised; `Region` takes those cells (+ margin + push) out of the cliff
+    region (no cliff mesh, no push: the heightmap carries the dam); `Terrain._bank_report` (measured: depth at the
+    dam vs asked, freeboard by raising the water 0.25 m at a time until it leaves, the dam's thickness half the
+    freeboard up) with warnings (on a slope, freeboard < 1 m, under 3 cells thick); manifest `lakes` {level, at,
+    area_m2, depth_m, outline rings} (`terrain_mesh.lake_outlines`); check `terrain_cliffs.lake_check` (each lake
+    flooded on the written heightmaps from its outline: fails over LAKE_AREA 1.5x, under 1 / 1.5, or leaking).
+    Their export: 87,490 m2+ and leaking for 3,300 (FAILS); the pond block re-exported: 2,954 for 2,964 m2. The
+    island's pond is now 9 m deep at the dam for depth 2 (warned), freeboard >= 1 m, dam 12 m thick.
+    tests/test_tiles.py::test_dam_stays_in_the_heightmap. Every dammed lake's ground changes.
+    The pond block (tiles 8-10 x 8-10) alone fails LOD 2 shards 1.12% (5 faces, none at the pond; 3 cliff tiles, a
+    tiny visible area): not compared with main.
+    Note 107 (a dead-flat seabed shelf at -8.4 m off the island's downs_beach, ruler-straight sides; scratch
+    depth.py <terrain> <png> x0 x1 y0 y1 = a depth map + the measure, run_orig.sh for the before; picture
+    terrain3d_renders/t3_seabed_before_after.png): `terrain_sea`'s beach profile was level - 0.6 + max(sd, -3 widths)
+    x 2.6 / width, i.e. held at -8.4 m from 3 beach widths out, and the beach's share is carried offshore from each
+    cell's NEAREST coast point, so the shelf ran to the frame's edge and ended in one step along the lines where the
+    nearest coast point stops being beach. Now the profile runs on at its own grade until it meets the sea's floor (a
+    soft max) and the share fades between 3 and 8 widths out. `terrain_sea.seabed(T)` (in the report: "sea floor
+    (measured)"; SHELF): flat shelves over 0.4 ha above the sea's depth, straight steps over 60 m offshore, each a
+    WARNING. Island before: 8.8 ha at -8.4 m around [377, 123] + 0.6 ha, steps 469 m and 133 m, 39% of the box's sea
+    cells at -8.4; after: 0 / 0 / 0.2%. Every beach's seabed changes. tests/test_tiles.py
+    ::test_beach_shelves_on_to_the_sea_floor.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
@@ -4614,6 +4835,61 @@ breaks through cliffs, peak forms and wall structure, surroundings beyond the fr
    designer's words matched to options).
 4. DONE: MCP tools.
 Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
+
+## Streambeds (2026-10-08, "streambeds" agent, branch `worktree-agent-aaf90ea1699c43e77`)
+
+Joe through pushieworld (their note 110): "streambeds aren't textured right, and they aren't typically empty, they
+have clutter and debris, rocks". With real water in the vale river its bed showed: meadow grass and earth, banks
+included, nothing in the channel. Renders `workspace/terrain3d_renders/sb_*` (sb_pair_<view>.png = before | after
+from the consumer's two cameras, the shallows and above; sb_after_styles_*; sb_up_* the steep upper reach);
+references `workspace/level_refs/streams/` (8 CC photos, README); our copy of their spec v8 = terrain `sb_island`.
+Scratch DURABLE in /mnt/data/hifipushie/streambeds/: run.sh <script> (this worktree's code, main workspace, capped),
+run_base.sh (main 98df684 in base/src), tload.py (the built terrain from a PICKLE: the build cache is keyed on the
+code of everything terrain.py imports, terrain_mesh included, so every edit was a 5.5 min rebuild; REBUILD=1 after
+changing the 2.5D build), plan.py <terrain> <png> x0 y0 x1 y1 [res] (top-down colour + clutter + report, no export:
+30-60 s, the fast loop), xsec.py <terrain> x y (a cross-section's shares, weights, colour), prev.py / rend.py /
+views.json (preview_tiles round the river, views with river water and clutter placeholders), sheet.py (the stream
+layers in every style + the detail swatches), pair.py, reg.py + cmp.py (pebble cold, branch vs main), tests.sh
+(the terrain test files -> tests.log), q*.sh (queues).
+- `terrain_stream.py`. `Streams(T)`: grids on the terrain's cells (so the incremental export windows them) round
+  every river with water, from `T.river_water_lines` (path, level, half width): `sd` (distance to the water's nominal
+  edge), `level`, `energy` (0..1 from the grade smoothed over ~15 m, or `rivers.<n>.bed.energy`), `bend` (signed: +
+  inside), `phi` (pool phase: a pool every 6 channel widths at energy 0, 2.5 at 1), flow direction, `ford` (fords,
+  routes, sites: left alone). Per point: `shares` (bed = ground under the water's level near the channel; of it
+  gravel / silt / bedrock by energy, pool / riffle / bar and noise; `damp` = the bank's foot up to ~0.9 m over the
+  water, moist to twice that), `colour`, `relief` (cobble lumps for the maps' normals), `dz` (the bed's shape).
+  Hooked in three places only: `Field.__init__` builds it (None without rivers or with `"streams": false`),
+  `terrain_ground.Edits` adds `dz` in `column` (so heightmaps, cliff meshes, collision and bakes agree),
+  `Materials` appends the layers (`wet_rock` + gravel, silt, bank, LAST) and mixes weights / colour / relief.
+- Real grades are no guide on a game level: the island's "farmland river with a ford" falls 95 m in 620 m (9-34%),
+  all cascade by Montgomery & Buffington's 1.5 / 3 / 6.5%. Energy reads 0 at 4% and 1 at 30% (`streams.grade`), and
+  the designer can say what a river is (`bed.energy`). The report names each reach's character.
+- The bed's shape only moves ground that was under water (weight by depth, 0 at 5 cm), stays `min_depth` under the
+  level except a bar's top (+10 cm inside bends), nothing at fords / routes / sites. Tests hold all of it.
+- Clutter (`terrain_stream.clutter`, rows in clutter.csv with a new `place` column; kinds agreed with the
+  "clutterkit" agent, which builds the meshes: river_rock, cobbles (a cluster patch), slab, driftwood, reeds,
+  litter; scale = largest plan dimension in m, squash RELATIVE to the asset's own proportions, z = the surface, no
+  sink (the old `boulder` rows stay sunk 0.12 x scale: said per kind in the manifest's `clutter.kinds`)). Candidates
+  on a lattice anchored at the world's origin with hashed jitter (a block's rows are the level's rows), kept by
+  probability from energy / pool / riffle / bar / bend / depth, rocks and logs thinned greedily by size (spacing
+  follows size: no comb), logs afloat against the upstream side of big rocks lying across the flow, or stranded on
+  outer bends and bar heads along it; reeds only on slow margins.
+- Styles contract 5: gravel / silt / bank in every sheet, new op `stones` (round discs sized by their nearest
+  neighbour + a smaller fill generation; Voronoi cells read as cracked mud). Detail swatches `cobble_swatch`
+  (ellipsoid domes, small first so big stones lie on top) and `silt_swatch` in `ground_detail.swatches`.
+- Renders: `render_tiles` draws the rivers' water (a ribbon per river at its level eased along the path: the raw
+  level has steps of a few dm where a bank holds it down, a staircase as a ribbon; 45% of the Fresnel mirror so the
+  bed shows at eye level) and the stream clutter as placeholders (`blender_terrain._stream_piece`).
+- What misled on the way: the damp band "missing" in renders was there in the maps (xsec.py) but a metre wide on a
+  30% bank under tall-grass placeholders; a `st` variable shadowed in `Materials._weights`; logs placed on the bed
+  lay sunk under a metre of water (now at the surface); `swatch_sheet` takes SHEETS, not the resolved style dicts.
+- Read (blunt): from the consumer's cameras the channel now reads as a cobble stream bed with boulders, a few
+  logs and reeds, darker fines in patches; the steep upper reach is a boulder-choked torrent. Weak: the cobble
+  swatch's relief is "bubble wrap" at grazing angles and the same from bank to bank; pools / riffles / bars barely
+  read by eye (this river hardly bends: bend 0.65 at most on the lower reach); the styled (pixar) bed in the Blender
+  recipe is flat speckle (albedo only); placeholders are eggs and pool noodles until clutterkit's meshes; the
+  water's level steps are the terrain's own (not touched); no undercut outer banks (a heightfield can't), no lake
+  shores / beaches yet (pebbles, wrack: same machinery, next).
 
 ## Vegetation (2026-10-05, branch `vegetation`; stages 1-2 of 6: trees, foliage, bark)
 
@@ -5403,11 +5679,19 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
       blobby: the style ignores normal maps; `FORM` paints the part's own shading into the albedo instead).
     - Bakes are cached by spec + `BAKE_VERSION` + the growth / style / Blender code (not this module's bytes: composing
       never re-renders). The style SHEET's content is not in the key: after editing a sheet's `clump` block, rebake.
-    - STATE (2026-10-08): deliveries /mnt/data/hifipushie/vegstyle/<style>_<species>_ground/ for grass x 5 styles done;
-      daisy / clover / fern x 5 were still baking in queue q5 (`q5.log`; q.py is safe to re-run, cached plants take
-      seconds, and a re-run stamps contract 11 on all). NOT yet seen by anyone: clover and fern (the flat card), any
-      daisy; `allm.sh` (every delivery against its full plant, table.txt) and qfull.py (full references for
-      combinations without a delivery) were written and not run; Khronos only on pixar grass.
+    - STATE (2026-10-08, evening; contract 12): deliveries /mnt/data/hifipushie/vegstyle/<style>_<species>_ground/:
+      grass x 5 and daisy x 5 and real clover stand (in pushieworld's game: grass + the four styled daisies, "GOOD");
+      fern x 5 and styled clover x 4 are WITHDRAWN (a DROPPED.json in the folder). Judged in Godot against the full
+      plants (allm.sh / jm.sh / clm.sh; full references by qfull.py in full/): fern FAILS (real: lies flat from 8 m, the
+      full one is a standing shuttlecock and only 172 triangles; cartoon: the bold 8-leaf rosette becomes a thicket of
+      strokes with the flat top card's edge as a bar): `veg_groundcover.UNSUITED`, the export refuses. Styled clover: the
+      full plant is 288 triangles, the grade 378. Real daisy: 0.17 of the full plant's area (thin stalks), full 406
+      triangles: delivered, not worth loading. Real clover 1,102 -> 498, a denser mat than the full one at distance.
+      Pixar daisy: heads read, leaves thin (IoU 0.3-0.4). Rule of thumb: under ~1,000 full triangles, scatter the full plant.
+      A fix for rosettes, not built: fronds on the wedges square to each card, no top card when H > ~0.5 R.
+      The bake cache is zlib'd (was 300 MB a plant, 4.8 GB). `<name>_seasons.json` carries grade / lods / alpha_mips
+      (Godot drops material extras) and is written even when no slot changes with the season.
+      Godot under godot-quiet: quit() hangs for minutes after the files are written; the harnesses end with OS.kill.
   - SWARD (2026-10-08, the same agent; the user on the tuft meadow: "what about just grass?"; contract 11;
     `veg_sward.py`, species presets sward / sward_mown / sward_rough, sheet block `sward` in every style, guide "A field
     of grass"; sheets workspace/veg_renders/gs_01_grass_three_ways.png, gs_02_sward_styles.png, gs_03_sward_variants.png;
@@ -5431,11 +5715,32 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     - The far end: the engine shrinks blades into the ground and mixes their colour to the terrain grass colour past
       `fade.start` (recipe + ground / root / tip colours in the seasons json `sward`); roots take the terrain's grass
       colour for the cover kind through the plant style's `colour`.
-    - Open: from straight above (25 m up) the LOD 0 patch reads a little darker than the rings round it, plainest in
-      pixar; the game's pixar light adds a broad pale sheen to every lit surface (their style_light: grass fields go
-      milky); no MCP look for a sward (look_plant refuses: judge as a field); no flowers in the tile (scatter the
-      groundcover tufts over it); tiles are flat (no slope following); winter is a colour, the blades don't lie down;
-      not seen in the consumer's game.
+    - PER-BLADE LOD (contract 12; the coordinator from 25 m up: darker tile-aligned squares where the rings change, a
+      brightness step at the fade): each vertex carries `across` (its offset from the blade's centre line, TEXCOORD_4)
+      and (rank, this mesh's width multiple) (TEXCOORD_5); the vertex shader draws the share S(d) of the blades for the
+      vertex's distance (log-interpolated through the rings): a blade of rank r sinks as S passes r and the rest widen,
+      so mesh k at its ring draws what mesh k - 1 draws there (tested in numpy: test_lod_thins_per_blade...). Tiles pick
+      their mesh by their NEAREST point. Rings moved in (meadow 5 / 12 / 24, last LOD 5% of the blades x 20 wide):
+      60 m field real 3.37 -> 2.03 M triangles at the same ground hidden, pixar 4.99 -> 2.22 M (density 1.5 -> 1.1),
+      anime 1.49, cartoon 0.77, blobby 0.69; mown 0.6-1.9 M, rough 0.5-1.6 M. The fade: albedo, NORMAL and ROUGHNESS go
+      to the ground's from `fade.blend_from` (roughness alone left an arc in pixar's specular light).
+      Reference lines spikes/godot_veg/sward_blades.gdshaderinc; the scratch project's copy of the game's shader
+      (gd/game/style/plant_mip.gdshaderinc, SWARD_FADE) is what the pictures were made with.
+    - Density (`sward.density`): how a sward ends; shader-only (no channel): Sd = S x density in the threshold, the
+      width factor keeps S, blades shorten. FIELD_PATH=1 ./fd.sh draws a path through the field.
+    - Seasons: factors = terrain_style.season_colours of the grass / turf layer in the same style (`season_factors`);
+      winter = lying straw by a world-drifting direction (per-blade by NORMAL tore blades into confetti: the two edges'
+      normals differ and the underside's is mirrored); snow = the tile sunk by `snow.depth_m` (clamping buried vertices
+      to y 0 would z-fight the ground), fade colour = the snow's. SEASON=winter|snow|autumn ./fd.sh.
+    - In pushieworld's game (their note 111): "the best single change to the ground so far", 2.0 M triangles / 24 ms in
+      the vale on the 890M, renderer built from the json's recipes alone. They asked for contract discipline: batch
+      changes, announce a bump to the coordinator BEFORE files change, never three bumps in an afternoon.
+    - Sheets: workspace/veg_renders/gs_04_sward_styles_blade_lod.png, gs_05_sward_path_winter_snow.png,
+      gs_06_sward_mown_rough_styles.png (gs_01-03 = before the per-blade LOD).
+    - Open: winter straw is thin (~30% of the ground hidden near) and one tint; snow depth is a constant (the engine
+      should drive it); tiles are flat (the renderer recipe says tilt or sample the height); no flowers in the tile;
+      the styled swards' winter / snow were not rendered (realistic only); the card-patch path (veg_sward_cards.py) is
+      dead code kept for the comparison: delete it.
 - Open (read of vg_36, 2026-10-06; superseded by Vegetation 2 above for pine, spruce, willows): pine still an umbrella with a pole trunk and ribbon-like needle cards; spruce a
   good cone but bare wood shows through low down; weeping willow a mushroom (dome envelope over a stalk of curtains);
   white_willow thin after the shadow change; birch good at range, bark marks not judged close; oak the best.
@@ -6039,6 +6344,133 @@ seed head)).
   - Open: a jaw control (ramus / border / neck step), a fold control; shading with albedo handled (a stubble mask, or
     the side-light shot from the brief); ears; the jaw contour finder's noise; `human(..., refs=)`; photo scale uses
     the first model's mm/px in cmpsheet (photo column shifts 1-2% between runs with different models).
+
+## Reference modelling study (2026-10-08, "refstudy" agent, branch `worktree-agent-a0066266ffbf99948`)
+
+Joe, after ~10 passes on Garrett: "we're not getting there ... figure out what works and what doesn't". A study on
+heads whose 3D shape is KNOWN, then a prototype. Code: `spikes/refstudy/` (rs.py = GNM-frame fast lane: heads, numba
+render, detector with depth, scoring by region; subjects.py = the truth set; calib.py = where the detector's 478
+points land on GNM; fitlib.py = one least-squares fitter where every method is a choice of evidence / noise / prior;
+table.py, exp2.py = the method tables; real.py <subject> [staged] = the REAL tools on one-mesh truth models;
+mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/data/hifipushie/refstudy/ (run.sh
+<script>: capped, ONE BLAS thread; out/*.log, out/table.json, table2.json; truth/; calib.npz). Sheets
+`workspace/human_renders/rs_*`.
+- SET BLAS TO ONE THREAD under load: OPENBLAS_NUM_THREADS=1 made these fits 50x faster at load 110 (57 s -> 1 s);
+  the package's default of 4 spins.
+- Truth set: 6 GNM seeds (170 components, sigma 1, picked for big nose / square jaw / receding chin / long / broad /
+  plain) + 4 MakeHuman-field heads (NOT in GNM's basis) + half seeds; pictures front / three-quarter / profile / other
+  three-quarter, unknown pose, lens 50-85 (one 28), a squint + smile in 4 fronts, clay or tinted. Score = mean 3D
+  vertex distance by region after a similarity alignment on the face; "profile" = fore-aft rms of the mid-line.
+- Numbers (face mm, in-model S / out-of-model O; front + three-quarter): mean head 3.61 / 3.05; exact landmarks MAP
+  1.16 / 2.04 (the out-of-model 2.0 face, 3.6-3.8 jaw is the identity basis's reach); the same clean points +-1.5 mm
+  with today's weights 2.49 / 2.83, as a MAP 1.27 / 2.00; detector's 68 through the MP68 table, today's weights
+  4.71 / 4.31; detector's 478 at calibrated places, MAP 2.50 / 2.41; + outline 3.40 / 2.95 (2.30 with the TRUE lens);
+  + a per-picture expression solve 2.69 (worse, also on the pictures that have an expression); + a noisy character
+  read 2.21 / 2.14 (jaw 4.16 -> 3.00, profile 2.59 -> 2.09); the read ALONE, no fit, 2.62; front picture only + read
+  2.19 (= two pictures + read); front only = front + 3/4 = + the other 3/4 (2.48 / 2.50 / 2.47: a second detector
+  view adds nothing); + a true profile with clicked points and its traced contour: profile 2.59 -> 1.87, chin 3.39
+  -> 2.48, nose 2.67 -> 1.96; 21 clicked right-definition points +-1.5 mm in two views alone 2.18; detector + clicks +
+  read 1.91; + clicked jaw line + profile 1.85 (profile 1.45); macros known exactly 1.66 (profile 1.27); the lens
+  given or guessed 60 mm +-35%: 2.42 (points hardly see the lens). Jaw 1.8-4.2, cranium 4-10, ears 4-8, neck 7-14 mm
+  in the BEST rows: no picture evidence reaches them.
+- REAL tools on one-mesh truth models (4 subjects, likeness's own render, forced): fresh head 4.78 -> fit_views
+  6.66 (2.9 sigma rms, INTEGRITY BROKEN) -> + fit_outline 6.83; staged checklist fit from fresh 4.5-4.8 (a no-op
+  in 3D: its pins veto most stages; 16-26 min); humanfit_map 3.18 -> + read 2.96 (4-10 s, 0.4 sigma, sound).
+- Causes, ranked: (1) point DEFINITIONS: MediaPipe's points read as GNM's 68 are 9-12 mm off on the jaw contour, 8 on
+  the brows, 3 at nose / mouth (noise only 1-2.5 mm); it finds 1 profile in 36; (2) the PRIOR: today's weights trust
+  a point to ~0.9 mm and let the identity go to ~10 sigma; GNM's components are in standard deviations, so 1 per
+  sigma + honest point sigma is the conditional mean ("what the front predicts for the profile"); (3) under-constraint
+  no weighting fixes; (4) outlines (nearest silhouette vertex) trade skull size against perspective: harmful without
+  the lens; (5) MediaPipe's own depth is WORSE than the mean head's (z residual 2.6 vs 2.0 mm, correlation with a
+  head's true depth deviations 0.10): dead. Licences: FLAME-based reconstructors (DECA / EMOCA / MICA; Pixel3DMM CC
+  BY-NC; DenseMarks weights) are non-commercial; 3DDFA_V2's code is MIT, its BFM separate; Microsoft's dense
+  landmarks (700 points with uncertainty + model prior, the design this converges on, as GNM's own paper describes)
+  has no public code. Not checked: XR Blocks' MediaPipe <-> GNM table, TRELLIS as a skull prior, photo / EEVEE
+  calibration (the table is from numba renders; it held on likeness's renderer).
+- `humanmacro.py` (prototype, tests/test_humanmacro.py): 37 artist macros as MEASURES on GNM's head (jaw_square,
+  jaw_width, jaw_angle, chin_projection / width / height / cleft, under_chin, nose_length / projection / width /
+  upturn, bridge, brow_ridge, eye_depth / width / height / spacing / tilt, lips, cheek_fullness, forehead_slope,
+  cranium, neck_width, ears, head_size) calibrated on 2500 sampled heads (`table()`, cached): each is near linear in
+  the identity (r2 >= 0.975), its DIRECTION = the conditional mean (one unit = one population sigma; what goes with it
+  moves too), `held=True` = the others held; `read(c | V)` (a head in sigmas), `apply`, `solve`, `prior_rows` (a read
+  as evidence), `soundness`. All monotone and sound to +-2..6 sigma. WEAK (the space barely holds it: a shape op):
+  chin_cleft (sd 0.22 mm). A head rebuilt from its 37 macros alone is 0.98 mm from itself (mean head 2.64): macros
+  are a sufficient parameterisation (a macro-only fit = the 120-component MAP). What goes with what: eye_depth /
+  bridge / brow_ridge r 0.9; nose_projection vs upturn -0.84; a square jaw brings cheek fullness (+0.44) and a full
+  under-chin: say the negatives in a read ("under_chin": +0.8) or it reads as fat. The readout diagnoses heads:
+  om_garrett v15 / v16 = face_width -2.6, nose_upturn -2.55 (hooked), nose_projection +2.6, chin_height +2.9 at 1.4
+  sigma rms: a long narrow beak-nosed face, the opposite of "chunky, square jaw, cute nose".
+- `humanfit_map.py` + `mp478_gnm.npz` (the calibrated table: per view class front / left / right, vertex triples +
+  weights + scatter per MediaPipe point; 306 usable front, 131-148 turned): `fit(base, views, read=)`; MCP
+  `human_reference(..., read=, method="map")` is the default now (`method="points"` = the old fit_views). A view with
+  its image is detected again (its lm0..lm67 ignored); clicked named points +-1.5 mm; lens prior 70 mm +-40%; a turned
+  view's side is taken from the picture, not from the hint's sign (Garrett's desk painting is stored as -45 and is
+  the OTHER class: read as the wrong side it fitted at 12 mm and looked like "not one projection"; right, it fits at
+  1.6 mm together with the photo); a view missing by > 5 mm rms is dropped from the identity and named.
+- Garrett (models rs_garrett_map / _read / _read2 / _read3 from lk_garrett v1's fresh head; sheets
+  rs_10_garrett_reference_vs_fits.png, rs_11_garrett_six_views_*.png): both references fit at 1.3 / 1.6 mm (pass 6 and
+  v23: 2.9 / 2.5 on the same evidence) at 0.23-0.31 sigma. READ: the build and proportions are the photo's (broad
+  lower face, short nose) in every view, but it is a SOFT, young, generic head: the posterior mean. Two blind readers:
+  chunky 6/6 views, broad / square chin 4/4, snub nose in both profiles; soft jaw and weak chin in both profiles, flat
+  brow, no cleft; "kept 21-22 of 62" against the stored reference read (pass 6: 35, v21: 33), though that reference
+  mixes Joe's words with a reader's "long, gaunt, rugged". Not a likeness yet: it is the base the structure ops
+  (jawline L, chin, brow ridge, hollow, hood, cleft) should be laid on, as small residuals AFTER the MAP.
+- Found on the way: humanfit's integrity calls plain sigma-1 identities BROKEN at the lids ("x3.4 against the plain
+  head") and so refused a correct MAP result on one truth subject; the guard's lid rule is too strict (onemesh2's).
+- What to ask an image generator for: ONE neutral front picture, long lens, even light, + a TRUE profile (the only
+  second view that pays: chin, nose, profile), hair off the forehead and ears; a three-quarter adds nothing to the
+  detector. Then: ~20 clicks, a read with negatives, a traced jaw line.
+- Stop doing: fitting the detector's 68 as GNM landmarks; outline warps without a known lens; a per-picture
+  expression solve; local shape ops before the identity is settled; judging by mm tolerances of 1-2 mm on detector
+  measures (the detector's own scatter is 1-2.5 mm front, 2-4.4 turned, on top of 3-12 mm of definition bias).
+- Round 2 (same day, the coordinator's list; scripts exp3.py, clicks.py, garrett2.py, dbg_lids.py, dbg_chin.py):
+  - "Why soft": restoring the norm does NOT sharpen. The fitted deviation x1.5: face 2.50 -> 2.37 (with a read 2.18
+    -> 1.95 in-model, 2.22 -> 2.19 out); x2 no better than x1; x3 (the norm of a real head) 3.7 mm, worse than the
+    mean; a draw from the posterior 2.76. So at most a mild x1.5; character has to come from evidence.
+  - The CLICK TEST failed its promise: four fresh LLM readers clicking 21 named points on a gridded 2.5x crop (clay
+    and tinted, two with an expression): median 1.6-2.6 mm, mean 2.1-3.7, worst 7-17; by point: mouth corners 1.0,
+    eye corners 1.5-2.5, pupils 1.6, lips 1.5-2.5, nasion 3.8, nose tip 2.9, chin bottom 6.8, nostril wings 6-7 (their
+    "outermost wing" is not GNM's lm 31 / 35). Front picture, face mm: detector MAP 2.51 | real clicks alone 3.29 |
+    detector + clicks 2.40 | + read 2.06 | detector + read WITHOUT clicks 2.11. LLM clicks add nothing over the
+    read; the "+-1.5 mm" rows above are a ceiling for a careful person with calibrated definitions, not for this.
+  - Structure on the MAP head (Garrett; models rs_garrett_s1 = + pass 6's shape / pose, rs_garrett_s2 = + v22's;
+    sheet rs_12_garrett_map_plus_structure.png, six views rs_13_*): pass 6's planes / hollow / hood / pushes give
+    hooded lids and an older face but its pose frown and pushes read grumpy and heavy; v22's jawline L / chin / ears
+    on this wider skull make a lumpy jowl with a notch. The evidence's residual rises 1.31 -> 1.8 -> 2.05 mm. Controls
+    tuned on the narrow head do NOT transplant: structure must be refitted on the new skull, one op at a time. Not
+    done (nor the truth-set "residual" row for the O subjects, nor 3 readers per head).
+  - `humanfit.SLIVER` / `SLIVER_SQUEEZE` (integrity): a stretched edge counts when it ends >= 1.5 mm, a squeezed one
+    when it was >= 1.1 mm, a folded face when its longest edge is >= 1.5 mm. Plain sigma-1 truth identities read
+    "lids BROKEN x3.4" on 0.25 -> 0.9 mm lid edges (5 of 6 truth heads; now 1 of 6: S5, 40 lid faces folded). Side
+    effect: the unforced 3 cm chin nudge is no longer refused (its refusal rested on those slivers; forced it is
+    still BROKEN; test_humanfit changed to say so). Open: a size guard on nudge's correction layer.
+  - `likeness_brief.reference_brief`: shots ordered and annotated with what each is worth to the fit (`worth`,
+    `STUDY`): neutral long-lens front, TRUE profile, a read in words, three-quarter only for judging.
+- Round 3, the point-placing test as a measurement (Joe: "what about testing how well the agent places the points
+  itself"; clicks.py, clicks2.py, clicks3.py; pictures + answers in /mnt/data/hifipushie/refstudy/clicks/; placers =
+  fresh sub-agents with a gridded crop and one sentence per point; 16 placer runs):
+  - FRONT (4 pictures, 6 placements): placers agree with EACH OTHER to 0.35 mm (median sd between two placers on the
+    same picture, max 1.7): the error is definition, not noise. Scatter about each point's bias 0.6-0.7 mm for inner
+    eye corners, subnasale, nostril wings, mouth corners, lip seam; bias: wings 7 mm above GNM's lm 31 / 35, nasion
+    and nose tip 3.3-3.6 mm low (no feature on the mid-line from the front), lip seam 2.3; the chin's lowest point
+    6 +- 9 mm: not placeable. With the other pictures' per-point bias taken out a held-out picture's points are off by
+    1.0-1.4 mm median. A zoomed refine round (21 tiles at 6x with a fine grid) does NOT help (median 2.2 -> 2.5 mm).
+    And front clicks hardly matter to the fit even calibrated: detector 2.51 -> + placed (bias out) 2.42; with a read
+    2.06 -> 1.99. DROP front clicks.
+  - PROFILE (6 pictures, 9 points; the detector finds no profiles): eye corner 0.7, mouth corner 0.6, nose tip 1.2,
+    subnasale 1.4, nasion 1.7, lower lip 2.1, lip seam 2.7, upper lip's red 4.4, chin bottom 6.4 (rms mm incl. bias).
+    Fit, front detector + profile: 2.54 -> 2.31 face, mid-line profile 2.73 -> 2.06, nose 2.74 -> 1.94 with REAL
+    clicks (bias out) = the simulated +-1.5 mm row (2.32 / 2.02 / 2.24); the CHIN does not improve (3.31 -> 3.55;
+    simulated 2.51) because its point can't be placed: it needs the traced chin / jaw line (polylines by real placers:
+    NOT tested). So "the view that pays" holds with real clicks for profile and nose; keep profile clicks, sized by
+    `humanfit_map.CLICK_SIGMAS` (per point, front / profile, from these numbers).
+  - Not tested: definition cards with diagrams as a separate arm, polylines, skinned / hair / stubble pictures,
+    three-quarter views, tokens (a placer run is ~15 s and one picture).
+- Open, in order: structure ops fitted as residuals after the MAP (what closes the out-of-model 3.6 mm jaw); clicks
+  as a tool (a gridded crop + named points; an LLM clicking to +-1.5 mm is untested); measured macros from pictures
+  instead of said ones (the ceiling: 1.66 mm); a GNM-space dense landmark detector trained on our own renders (exact
+  definitions: 2.5 -> ~1.3 mm; a synthetic-data training job); photo calibration of the table; the read's sd per
+  author; `humanfit_map` in fit_likeness's first stage.
 
 ## Testing without restarting the MCP
 Call the tool functions directly: `uv run python -c "from hifipushie import server; ..."`;

@@ -53,8 +53,24 @@ SWARD = {"variant": "meadow", "size": 2.0, "two_faces": True, "taper": 1.6, "ton
 # a style's way with blades (sheet block `sward`): multipliers on the realistic numbers + how a blade is drawn
 STYLE = {"width": 1.0, "density": 1.0, "height": 1.0, "bend": 1.0, "tones": 0, "tip": "point", "tuft": 1, "tuft_fan": 20,
          "round": None, "dry": 1.0, "tip_light": 1.0, "taper": None, "drift": 1.0}
-SEASONS = {"summer": [1.0, 1.0, 1.0], "spring": [0.9, 1.1, 0.75], "autumn": [1.25, 1.02, 0.7], "winter": [1.2, 0.92, 0.62],
-           "snow": [1.75, 1.8, 2.1]}  # the foliage factor against summer (linear multipliers; snow toward white)
+SEASONS = ("summer", "spring", "autumn", "winter", "snow")
+WINTER = {"flatten": 0.65, "height": 0.7}   # winter grass lies (share of the way down) and is shorter
+SNOW_DEPTH = 0.5    # x the tallest LYING winter blade: a light snow, tips poking through (drive it from the engine's snow)
+
+
+def season_factors(p: dict) -> dict:
+    """{season: linear factor on the blades' colour}: the TERRAIN's own seasonal tint of the grass layer under this
+    sward (terrain_style.season_colours: turf for mown, grass otherwise, in the same style), so blades and ground turn
+    together. Snow = winter's (what pokes through the snow is winter straw; the white is the snow, not the blades)."""
+    from . import terrain_style
+    try:
+        st = terrain_style.sheet(p["style_name"])
+    except Exception:
+        st = terrain_style.sheet("realistic")
+    sc = terrain_style.season_colours(st, "turf" if p["variant"] == "mown" else "grass", p["ground"])
+    out = {se: [float(x) for x in sc[se]["tint_linear"]] if se in sc else [1.0, 1.0, 1.0] for se in SEASONS if se != "snow"}
+    out["snow"] = out["winter"]
+    return out, [round(float(x), 4) for x in terrain_style.snow_numbers(st)["color_linear"]]
 KEYS = set(SWARD) | set(VARIANTS["meadow"]) | {"rings"}
 
 
@@ -300,6 +316,29 @@ RENDERER = ["1. Load <name>_LOD0..3.glb once; one MultiMesh (instanced draw) per
             "the terrain grass colour; opaque, cull back (undersides are their own triangles); no texture.",
             "6. Under and beyond the tiles the terrain draws its own grass texture; ground_linear is the colour these blades "
             "were made to stand on."]
+DENSITY_RECIPE = ("how a sward ENDS (a path, a pad, forest floor): never by leaving tiles out (a 2 m staircase). Lay tiles "
+                  "wherever any corner has grass and give the shader a density 0..1 per blade: best the terrain's grass weight "
+                  "sampled at the blade's world xz (vertex shader), else the tile's four corner values as instance custom data "
+                  "(tile-local order -x-z, +x-z, -x+z, +x+z), mixed bilinearly by VERTEX.xz / tile_m + 0.5 (before the LOD lines). "
+                  "Then in the LOD recipe draw with Sd = S(d) x density in place of S in the THRESHOLD only (lo and vis from Sd; the "
+                  "width factor keeps S: the blades left must not widen to fill the gap) and VERTEX.y *= mix(0.45, 1, "
+                  "smoothstep(0, 0.7, density)) (shorter toward the edge). Density 1 = the recipe unchanged; 0 = nothing drawn. "
+                  "Reference: sward_vertex() in spikes/godot_veg/sward_blades.gdshaderinc.")
+SEASON_NOTE = ("a season's baseColorFactor here is the TERRAIN style's seasonal tint of the grass layer under this sward (it may "
+               "exceed 1: multiply as it is), so blades and ground turn together; fade to season_ground_linear[season] (or the "
+               "engine's own ground colour there).")
+WINTER_RECIPE = ("winter is flattened straw, not a tint. In the `winter` and `snow` seasons, vertex shader after the LOD lines and "
+                 "before the fade: h = VERTEX.y; VERTEX.xz += dir * h * height * flatten, dir = a unit direction that drifts slowly "
+                 "over the WORLD (angle = a smooth noise of world xz over ~6 m x 2 pi, turned into the tile's space): the grass "
+                 "lies combed one way, patch by patch; VERTEX.y = h * height * (1 - flatten). Colour = the winter factor "
+                 "(straw). (Laying each blade along its own normal tore blades: the two edges' normals differ.)")
+SNOW_RECIPE = ("snow BURIES a sward; blades are not painted white. In the `snow` season: first the winter lines, then VERTEX.y -= "
+               "depth_m: the whole tile sinks and the snow surface (the ground the engine draws, opaque) hides what is under "
+               "it; tips taller than the snow poke through in winter straw; a mown sward is gone (clamping buried vertices "
+               "to the surface instead left flat strips fighting the ground for depth). The ground under the tiles is the "
+               "snow: fade colour = snow.color_linear (not the green ground), and the tiles may be skipped wholly where the "
+               "terrain's snow depth exceeds the tallest lying blade. depth_m is a default (a light snow: half the tallest lying blade): drive it from "
+               "the engine's snow amount.")
 WIND_NOTE = ("opaque geometry: no alpha, no texture, no mipmaps to set up (MSAA does the edges). Wind as every plant's recipe: "
              "TEXCOORD_1 = (trunk, branch) = height up the blade ^ 1.5, TEXCOORD_2 = (phase, flutter); the phase is a slow "
              "noise over the tile, so add a WORLD term to it (e.g. dot(world xz, wind direction) * 0.15 - time * speed) for "
@@ -330,10 +369,11 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
     seasons = list(seasons)
     gain = max(1.0, max(float(M["col"].max()) if len(M["col"]) else 1.0 for M in b["lods"]))  # (COLOR_0 must stay <= 1)
     var_mat = {}
+    fac, snow_lin = season_factors(p)
     for se in seasons:
-        f = np.array(SEASONS[se]) * gain
+        f = np.array(fac[se])
         ext = {"grade": "sward"}
-        if f.max() > 1:  # (a factor over 1 is not glTF: the rest rides in the extras for engines that take it)
+        if f.max() > 1:  # (a factor over 1 is not glTF: the whole one is in the extras and in <name>_seasons.json)
             ext["factor_over_one"] = [round(float(x), 4) for x in f]
         materials.append({"name": "foliage" if se == seasons[0] else f"foliage_{se}",
                           "pbrMetallicRoughness": {"baseColorFactor": [*np.clip(f / max(1.0, f.max()), 0, 1).tolist(), 1.0], "metallicFactor": 0.0,
@@ -378,7 +418,10 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
              "blades_per_m2": round(b["info"][0]["blades"] / S ** 2, 1), "lod_rings_m": list(p["rings"]),
              "lod": {"dist": [round(0.5 * p["rings"][0], 2), *[float(r) for r in p["rings"]]], "share": [float(l_[0]) for l_ in p["lods"]],
                      "band": LOD_BAND, "recipe": LOD_RECIPE},
-             "fade_recipe": FADE_RECIPE, "place": PLACE_RECIPE, "wind": WIND_NOTE, "renderer": RENDERER,
+             "fade_recipe": FADE_RECIPE, "seasons_note": SEASON_NOTE, "place": PLACE_RECIPE, "wind": WIND_NOTE, "renderer": RENDERER, "density": DENSITY_RECIPE,
+             "season_ground_linear": {se: [round(float(a_ * b_), 4) for a_, b_ in zip(veg_style.lin(p["ground"]), fac[se])] for se in fac if se != "snow"},
+             "winter": {**WINTER, "recipe": WINTER_RECIPE},
+             "snow": {"depth_m": round(SNOW_DEPTH * p["height"][1] * WINTER["height"] * (1 - WINTER["flatten"]), 3), "color_linear": snow_lin, "recipe": SNOW_RECIPE},
              "ground_roughness": 1.0}
     gltf = {"asset": {"version": "2.0", "generator": "hifipushie vegetation (sward)"}, "scene": 0, "scenes": [{"nodes": [lod_nodes[0]]}],
             "nodes": nodes, "meshes": meshes, "materials": materials, "accessors": accessors, "bufferViews": views,

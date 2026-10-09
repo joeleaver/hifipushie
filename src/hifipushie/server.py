@@ -2032,7 +2032,8 @@ def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: l
 
 @mcp.tool(structured_output=False)
 def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: list[str] | None = None,
-                    force: bool = False, save: bool = True, note: str = "", figure: bool = True):
+                    force: bool = False, save: bool = True, note: str = "", figure: bool = True,
+                    read: dict | str | None = None, method: str = "map"):
     """Match a one-mesh human's FACE to reference images by named points: views = [{"image": path (optional, kept for
     the record), "size": [w, h] (pixels), "yaw": 0 front / 45 three-quarter from its left / 90 its left side (a hint),
     "points": {landmark: [u, v]}}] with u right, v down. One camera per view is fitted (pose + focal) and, with fit,
@@ -2040,14 +2041,38 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     the nudge_human landmarks, eye.L / eye.R (eyeball centres) or lm0..lm67 (the 68-point face convention, e.g. from
     a detector). The reply: reprojection error per view in px and mm with the three worst points named, INTEGRITY,
     what moved, the picture. Stored in <model>/human_refs.json with the fitted cameras. A single frontal image says
-    nothing about depth (nose projection, jaw depth stay as they were); the fit matches SHAPE at the points given."""
+    nothing about depth (nose projection, jaw depth stay as they were); the fit matches SHAPE at the points given.
+    method "map" (default; humanfit_map, the reference-modelling study): a view WITH its image is read by the face
+    detector (MediaPipe's 478 points, each used at its calibrated place on the head with its own noise); clicked
+    points (the named landmarks) count +-1.5 mm; the identity is pulled toward the population's mean by its own
+    statistics, so what the pictures don't show comes out as what usually goes with what they do. Points lm0..lm67
+    (a detector's 68) are ignored when the image is there. read = a CHARACTER READ as evidence, in macros and
+    population sigmas: {"jaw_square": 1.5, "chin_projection": 1, "cheek_fullness": 1, "nose_upturn": 1} (names:
+    humanmacro.MACROS; say what a person sees at a glance: it is worth more than a second picture). A profile needs
+    clicked points (the detector doesn't find profiles). The reply adds the head's strongest macros.
+    method "points" = the old least-squares on the given points alone (it makes heads WORSE than the untouched one
+    on detector points: kept for comparison)."""
     from . import humanfit
     sp, b = _human_base(name)
     vs = json.loads(views) if isinstance(views, str) else views
     st0 = humanfit.state(b)
-    nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
+    if method == "map":
+        from . import humanfit_map
+        rd = json.loads(read) if isinstance(read, str) else read
+        nb, rep = humanfit_map.fit(b, vs, read=rd, force=force, free=tuple(free or ("identity",)) if fit else ())
+    else:
+        nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
     (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
-    return _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
+    out = _human_apply(name, sp, nb, rep, note or "human_reference fit", force, save and fit, st0, None, figure)
+    if rep.get("method") == "map":
+        extra = "\n".join(f"view {i}: {v['evidence']}, lens ~{v['lens_mm']:.0f} mm" + (" (its lm0..lm67 points ignored: detector re-read)" if v["ignored_lm68"] else "") + (f" DROPPED from the identity: {v['rms_mm']} mm rms against the other pictures (not one projection / another face / wrong yaw?)" if v.get("dropped") else "")
+                          for i, v in enumerate(rep["views"]))
+        if rep.get("read"):
+            extra += "\nread: " + ", ".join(f"{k} asked {v['asked']:+.1f} got {v['got']:+.2f}" for k, v in rep["read"].items())
+        out[-1] = (out[-1] + "\n" + extra + "\nmacros (population sigmas):\n" + rep.get("macros", "")
+                   + "\n(method map: the detector's point table is validated on RENDERS of heads of known shape only, not yet on "
+                   "photographs. The result is the most probable head for this evidence: soft; structure comes after.)")
+    return out
 
 
 @mcp.tool(structured_output=False)
