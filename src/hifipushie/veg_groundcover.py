@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import struct
 import tempfile
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -543,7 +544,8 @@ def build(T: dict, seasons=SEASONS, baked: dict | None = None) -> dict:
     if ck is not None and ck.exists():
         import pickle
         try:
-            baked = pickle.loads(ck.read_bytes())
+            raw = ck.read_bytes()
+            baked = pickle.loads(zlib.decompress(raw) if raw[:1] == b"x" else raw)  # (older files are plain pickles)
         except Exception:
             baked = None
     if baked is None:
@@ -554,7 +556,7 @@ def build(T: dict, seasons=SEASONS, baked: dict | None = None) -> dict:
         if ck is not None:
             import pickle
             ck.parent.mkdir(parents=True, exist_ok=True)
-            ck.write_bytes(pickle.dumps(baked))
+            ck.write_bytes(zlib.compress(pickle.dumps(baked), 1))  # renders are mostly empty: ~20x smaller
             for old_ in sorted(ck.parent.glob("*.pkl"), key=lambda q: q.stat().st_mtime)[:-40]:
                 old_.unlink(missing_ok=True)
     R, H, frames = baked["R"], baked["H"], baked["frames"]
