@@ -390,6 +390,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             lk["width"] = round(lk["width"] * k_, 4)
             lk["thickness"] = round(lk["thickness"] * k_, 4)
             lk["strands"] = {"tip_spread": 0.15, "wave": 0.0, "random": 0.1}
+            lk["swoop"] = round(float(wsw[i]), 3)  # (game cards: the swoop gets its own lock cards, hair.cards_job)
         gy = max(_grey(g, float(az[i]), float(el[i]), line), float(GR[i]))  # greying temples / sideburns / regions
         if gy > 0.01:
             lk["grey"] = round(gy, 3)

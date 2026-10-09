@@ -680,3 +680,46 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
       mm), the swoop only a faint lift (no card stands as one lock), hero = main to the eye, tiers' sides lighter than
       the strands. Not done: Godot through the photo's fitted camera (look.gd has its own cameras), Khronos on c6,
       baked depth / two-light shading in the cap chart for the three-quarter value.
+  - Round 11, cards judged in GODOT (the coordinator: "a wiry steel-wool cap"; Joe: "a bald spot on the back of his
+    head, and a black fringe"). Sheet `hair_renders/h11_c13_sheet.png` = photo | Cycles strands | hero GODOT | main
+    GODOT | hero EEVEE (glTF import); rows front (photo camera), tq_desk, side_long, back_long, tq_back (new lookcam
+    view, az -140) + a front close-up. Export /mnt/data/hifipushie/hair7/exp_c13 (Khronos 0 errors 0 warnings).
+    Scratch: gdcams.py (the sheet's cameras for Godot in glTF axes; the photo camera as an OFF-AXIS frustum
+    = Camera3D PROJECTION_FRUSTUM size / offset per near distance), gd2.sh <tag> <tier|-> <std|kk> <name> (look2.gd),
+    q11.sh (bald + before + tiers, then covg.py: bare share inside the hair's outline vs the bald render, and the
+    outline's dark-rim share), iougd.py, h11sheet.py, swdbg.py.
+    - What shipped real-time hair does vs ours (UE groom cards / Scheuermann-Kajiya-Kay / the Sucker Punch, EA and
+      Naughty Dog talks): two shifted highlight lobes along the strand tangent (one white, one tinted), wrapped diffuse,
+      root-to-tip and in-clump shade, a scalp tint under the hair, alpha-to-coverage. Our Godot check used Godot's
+      StandardMaterial: ONE GGX anisotropic lobe from the flow map and nothing of the aux texture (root gradient,
+      strand id, clump depth): the uniform fine hatch. NEW `spikes/godot_hair/hair_cards.gdshader` (Kajiya-Kay two
+      lobes shifted by aux G, wrap diffuse, aux R / B shade, softened shadow, a2c) + `look2.gd` (given cameras, std |
+      kk). Biggest single change in the look: broad soft highlight bands, reads as combed hair.
+    - BLACK FRINGE: not black RGB under the alpha (atlas tiles: clear / rim / core lum 52 / 49 / 48; cap 103 / 53 / 59)
+      but BACK FACES: Godot flips NORMAL on back faces of cull-disabled meshes, and our two-sided cards share one bent
+      normal (the recipe says so), so every card seen from behind (silhouettes, over the ears) was lit from inside.
+      The shader un-flips (FRONT_FACING). Outline pixels darker than lum 40: 4-14% (std) -> 0.3-2.8% (kk). An engine
+      on a StandardMaterial keeps the fringe: the recipe's "do not flip them on back faces" is the requirement.
+      Also edge padding from the strand core (hair_cards.EDGE_SOLID 0.5: the rim takes the core's values; it was
+      0.03), test test_atlas_edges_are_padded_not_black (passes either way on the drawn atlas: the fringe was shading).
+    - BALD SPOT: the cap chart's opaque base needed coverage 0.3+; the 8 mm nape is sparser, so skin showed in a big
+      pale patch. hair_cap.BASE_DENSE (0.3, 0.35) -> (0.05, 0.2) and BASE_DEPTH 0.22 -> 0.5 (the base is a scalp tint
+      in the hair's own colour, at 0.22 a near-black band), VERSION 10. Bare share inside the hair from behind 9.7% ->
+      0.7%, three-quarter back 4.9% -> 1.3% (hero; far 0.6 / 1.5%). The nape still reads as a darker band (Cycles has one
+      too), and the back's card texture is curlier than the strands'.
+    - SWOOP as cards: `lk["swoop"]` (hair_loose marks the swoop's locks; LOCK_KEYS, resolve), hair.cards_job gives the
+      strongest SWOOP_CARDS 3 locks their own cards: starting SWOOP_BACK 6 mm inside the hairline, narrow root,
+      tapered tip, SWOOP_LAYERS 3 stacked fine short-tile cards SWOOP_GAP 1.2 mm apart, risen SWOOP_LIFT 4 mm mid-lock
+      (the wave), kept first by the budget. On the DENSE tile they were a smooth grey plate on the forehead (its 16 cm
+      strands squeezed onto 4 cm). In Godot the front now lifts and rolls back in profile; from the front it is still
+      not a distinct lock.
+    - Godot front IoU vs the strands' id pass is ~0.6 for every tier (c6 std 0.648, c13 hero / main / far 0.617 /
+      0.613 / 0.595): NOT comparable with EEVEE's 0.75, Godot's body is garrett4's exported head (g4_tex.glb), a
+      different face, and the hair sits a little smaller in the frame. Godot hair colour: lum 118, sat 0.14, R/B 1.14
+      (std: 117 / 0.067 / 1.06, grey-blue).
+    - Hero vs main: the same atlas, the same cap; hero's extra 8k triangles go to a second card layer that overlaps
+      the first: nothing reads at bust distance. Ship main as LOD0, or give hero a different job (a denser hairline
+      and sideburn of fine cards, more swoop layers) before it earns its triangles.
+    - BLUNT READ (Godot): combed greying hair with soft highlight bands, no bald spot, no black outline; still: the
+      back's texture curly, a darker nape band, the hairline a little hard and higher than the strands' fuzz, the
+      swoop weak from the front, hero = main.

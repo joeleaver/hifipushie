@@ -371,6 +371,21 @@ def test_export_tier_as_an_engine_gets_it():
         assert not (t["clearance"] or {}).get("detached") or len(t["clearance"]["detached"]) <= 1, t["clearance"]
 
 
+def test_atlas_edges_are_padded_not_black():
+    """Transparent and anti-aliased texels carry the strands' own colour (edge padding): black or dark RGB under
+    the alpha bleeds in through filtering and mips as a dark fringe round every card (Godot)."""
+    S = {**hc.strands_of({}), "atlas": 512, "short": True}
+    lk = {"lit": "#54463c", "gap": "#3a312b", "grey": "#cfc7bd"}
+    at = hc.atlas(S, lk, key="edges")
+    c = at["color"]
+    a = c[..., 3]
+    lum = c[..., :3] @ np.array([0.2126, 0.7152, 0.0722])
+    core, rim, clear = a > 0.8, (a > 0.03) & (a < 0.5), a < 0.03
+    assert core.any() and rim.any() and clear.any()
+    assert np.median(lum[clear]) > 0.5 * np.median(lum[core]), (np.median(lum[clear]), np.median(lum[core]))
+    assert np.median(lum[rim]) > 0.85 * np.median(lum[core]), (np.median(lum[rim]), np.median(lum[core]))
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
