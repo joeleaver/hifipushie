@@ -4383,19 +4383,33 @@ regresses, bisect by building one spec at each commit and diffing heights.
     Regressions (cold, a loaded machine, under /mnt/data/hifipushie/bin/capped): pebble 0 failures (1,274 s; shards
     0.002 / 0.007 / 0.31%, lod1 map normals p95 6.2), alps 3x3 0, slice_a 0, slice_b incremental 4 of 64 tiles and 0 of
     1,488 files differing from a cold export; the seven terrain test files pass.
-    Note 106 (downs_pond's dam missing from the tile heightmaps), DIAGNOSED, not fixed (dam.py <terrain> x y): the
-    dam's lake-side face is 50-65 deg and 12 m tall (floor 43.7, crest 56.0-57.2, level 56.35), so the cliff Region
-    takes it (S = 1) and the heightmap is eroded by the 3.8 m push ball: 5-9 m down on the face and the 2 m crest
-    with it (heightmap crest 54.4-56.1 on bearings 0-100 and 320-350, under the water level). Proposed: no push
-    (Rg = 0) within a lake's dam / bank mask, or the pushed heightmap clamped >= min(ground, level + freeboard) there;
-    per-lake outline polygons in the manifest; the report should warn "the lake stands on a slope: 12 m deep at the
-    dam for depth 2", freeboard under ~1 m and a crest under 3 cells wide.
-    QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
-    ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
-    the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
-    Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
-    interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
-    lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
+    Note 106 (downs_pond's dam missing from the tile heightmaps; scratch dam.py <terrain> x y, lakechk.py <tiles dir>
+    [name x y r level area], rep.py <terrain> <words>): the dam's lake-side face was a 12 m wall at 50-65 deg, so the
+    cliff Region took it (S = 1) and the heightmap was eroded by the 3.8 m push ball, crest and all. The wall was the
+    BUILD's: `terrain._lake`'s bank started at the water's edge (nothing inside the radius), so on a slope it stood
+    as tall as the fall across the lake. Now: the bank runs on down at 1:2 under the water, crest >= 3 cells,
+    `T.dams[name]` = the cells the embankment raised; `Region` takes those cells (+ margin + push) out of the cliff
+    region (no cliff mesh, no push: the heightmap carries the dam); `Terrain._bank_report` (measured: depth at the
+    dam vs asked, freeboard by raising the water 0.25 m at a time until it leaves, the dam's thickness half the
+    freeboard up) with warnings (on a slope, freeboard < 1 m, under 3 cells thick); manifest `lakes` {level, at,
+    area_m2, depth_m, outline rings} (`terrain_mesh.lake_outlines`); check `terrain_cliffs.lake_check` (each lake
+    flooded on the written heightmaps from its outline: fails over LAKE_AREA 1.5x, under 1 / 1.5, or leaking).
+    Their export: 87,490 m2+ and leaking for 3,300 (FAILS); the pond block re-exported: 2,954 for 2,964 m2. The
+    island's pond is now 9 m deep at the dam for depth 2 (warned), freeboard >= 1 m, dam 12 m thick.
+    tests/test_tiles.py::test_dam_stays_in_the_heightmap. Every dammed lake's ground changes.
+    The pond block (tiles 8-10 x 8-10) alone fails LOD 2 shards 1.12% (5 faces, none at the pond; 3 cliff tiles, a
+    tiny visible area): not compared with main.
+    Note 107 (a dead-flat seabed shelf at -8.4 m off the island's downs_beach, ruler-straight sides; scratch
+    depth.py <terrain> <png> x0 x1 y0 y1 = a depth map + the measure, run_orig.sh for the before; picture
+    terrain3d_renders/t3_seabed_before_after.png): `terrain_sea`'s beach profile was level - 0.6 + max(sd, -3 widths)
+    x 2.6 / width, i.e. held at -8.4 m from 3 beach widths out, and the beach's share is carried offshore from each
+    cell's NEAREST coast point, so the shelf ran to the frame's edge and ended in one step along the lines where the
+    nearest coast point stops being beach. Now the profile runs on at its own grade until it meets the sea's floor (a
+    soft max) and the share fades between 3 and 8 widths out. `terrain_sea.seabed(T)` (in the report: "sea floor
+    (measured)"; SHELF): flat shelves over 0.4 ha above the sea's depth, straight steps over 60 m offshore, each a
+    WARNING. Island before: 8.8 ha at -8.4 m around [377, 123] + 0.6 ha, steps 469 m and 133 m, 39% of the box's sea
+    cells at -8.4; after: 0 / 0 / 0.2%. Every beach's seabed changes. tests/test_tiles.py
+    ::test_beach_shelves_on_to_the_sea_floor.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
@@ -5705,6 +5719,40 @@ model".
       bottom is a small hook in profile after `under`; brow ridge by a push, not judged; face width at the mouth
       went back to -8 mm on v21 (out -12; v22 uses -6: re-read); the profile-contour fit (likeness.fit_profile,
       trace in workspace/lk_garrett3/likeness_points.json) not run on om_garrett; squint / frown as pose.
+  - Neck hand-over + the reset (2026-10-08, same agent; sheets human_renders/om2_r9_neck_seam.png, om2_r9_garrett.png =
+    per reference: reference | pass 6 | new | 50% blend, lit with his locks, + the six-view sheet; scratch:
+    neckdiag.py <model> <png> [variants: full | plain | "no X" | "only X"] (the neck in four views with raking light per
+    variant), levdbg.py (GNM ring levels vs height), reset.sh (pass 6 + one change at a time -> om2_s0..s4 with their
+    six-view sheets), six.py, readstore.py (store blind reads read_<model>.json, print likeness_read.diff), bigsheet.py,
+    folds.py (which faces an edit turned over, where), read_form.txt).
+    - THE SEAM (the user on the six-view sheet: "are we using the unified mesh? There's a hell of a seam between head
+      and neck"): the mesh is fine (a plain one-mesh head is smooth). Adding Garrett's settings one at a time: head_size
+      1.138 alone = a collar ring all round; the dense-fit warp alone = a shelf at the nape; `fit` a thin step; shape /
+      identity / regions / narrow alone: smooth. Cause: the head's own shape was handed over to the body's neck over
+      the asset's g_fade = 7 rings (~2.7 cm) above the stitch. Now `onemesh.neck_fade()` (NECK_RINGS 10 at the throat,
+      ending under the chin, 20 at the nape, by how far back a vertex lies; never above g_fade), used by `hook` and
+      the style's head ops; onemesh.VERSION 9. By HEIGHT it did nothing: GNM's neck rings climb toward the nape, so
+      the nape had no length. Garrett: stature 180.6 -> 180.2 cm, interocular 69.8 -> 69.2 mm (the throat and nape
+      take less of the head's scale). g_fade is still what face shapes' carry uses.
+    - THE RESET (the coordinator, after v19-v22 read as "a different man: heavy, thick-necked, soft"): back to pass 6
+      and one change at a time, each read BLIND (a fresh sub-agent given only likeness_read.form() and that model's
+      six-view sheet; never read your own render with the reference in mind), descriptor-views kept of 62 against the
+      reference read: pass 6 24, + rigid ears 35, + nose base / round tip 27, + chin 39, + jaw corner at the photo's
+      height + submental lift 40. ONE reader per head and the noise is ~10 (the ears step "fixed" the jaw read, the
+      nose step "lost" it): use several readers (likeness_read.agreement) before trusting a step. Consistent across
+      readers: profiles go from "soft jaw, receding chin" to "square jaw, strong chin" only with jawline + chin.under;
+      the chin reads broad with shape.chin. Never achieved: "snub / cute" nose, a visible cleft, "chunky" (every
+      reader says lean). om_garrett v23 = that reset (v16 pass 6 stays the fallback). Exported:
+      /mnt/data/hifipushie/onemesh2/exp_garrett8 (30k / 2048, rig + face shapes, 1110 s, Khronos 0 / 0, no TORN, shape
+      unevenness <= 0.13, blink lid jag p95 0.96 / 0.89 = exp_garrett6's; sheets om2_r9_shapes.png, om2_r9_rig_head33 /
+      _nod.png: the neck turns and nods as one column, no seam).
+    - What LOCAL WARPS did wrong on this head, each caught by eye, not by the numbers (likeness had them "in
+      tolerance"): the face-width outline warp at 75% + a moved jaw = a bulldog lower face; the eyes stage's full
+      narrowing + tilt in identity = sad slits (the photo squints 0.70: that is pose); ears turned about the root's
+      main axis with scale and a wide blend = fins with a web of skin; a nose tip turned about the mid dorsum = no
+      change, then about the alar bases = a beak until rounded; jaw tuck 10 mm = a mask's edge; the jawline folded
+      tiny faces by the lobe until its top was held. The method question (macro sliders in the identity space instead
+      of local warps) went to the "refstudy" agent: no more face fitting on this branch.
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 

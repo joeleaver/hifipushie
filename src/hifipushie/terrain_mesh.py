@@ -3546,6 +3546,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                      "the heightmap's grid with the hole cells left out). A tile's collision is decimated further "
                      "when its LOD came out over collision_budget (tiles[].collision_triangles)",
         "sea_level": _sea(T),
+        "lakes": lake_outlines(T),
         "materials": {
             "layers": [{"name": nm, **mats.layer_ref(nm), "weights": f"_WEIGHTS{g}", "channel": c,
                         **({"textures": layer_tex[nm]} if nm in layer_tex else {}),
@@ -3680,6 +3681,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                                  tile_keys={ij: fkey[ij][0] for ij in tiles})
             check["summary"]["ground"] = gc["summary"]
             check["failures"] += gc["failures"]
+            with prof.stage("check: lakes (parent)"):
+                lc = terrain_cliffs.lake_check(out, manifest)
+            check["summary"]["lakes"] = lc["summary"]
+            check["failures"] += lc["failures"]
         # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
         # colour, and texel density jumping between neighbouring tiles (sharp rock beside soft)
         from . import terrain_seams
@@ -4720,6 +4725,30 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
     summary["failures"] = len(failures)
     (out / "seam_check.json").write_text(json.dumps({"summary": summary, "failures": failures}, indent=1))
     return {"summary": summary, "failures": failures}
+
+
+def lake_outlines(T) -> dict:
+    """Per lake (not the sea): its level, centre, area and the water's outline as closed rings of [x, y] (m), for an
+    engine's water system. The tile heightmaps hold each lake under its level (the export's lake check floods them)."""
+    from skimage import measure
+    out = {}
+    lid = getattr(T, "lake_id", None)
+    for name, lk in (getattr(T, "lakes", None) or {}).items():
+        if lk.get("sea") or lid is None or not lk.get("area"):
+            continue
+        m = np.pad((lid == lk["id"]).astype(float), 1)
+        rings = []
+        for c in measure.find_contours(m, 0.5):
+            if len(c) < 8:
+                continue
+            step = max(1, len(c) // 400)
+            xy = np.c_[T.xs[0] + (c[::step, 1] - 1) * T.cell, T.ys[0] + (c[::step, 0] - 1) * T.cell]
+            rings.append(np.round(xy, 2).tolist())
+        rings.sort(key=len, reverse=True)
+        out[name] = {"level": round(float(lk["level"]), 3), "at": [round(float(v), 2) for v in lk["xy"]],
+                     "area_m2": round(float(lk["area"]), 1), "depth_m": round(float(lk.get("depth", 0)), 2),
+                     "outline": rings}
+    return out
 
 
 def read_glb_images(path, n=None):
