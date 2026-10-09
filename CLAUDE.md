@@ -2842,6 +2842,43 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       0.075 / roll_strength 0.3, take_in 0.008 / 0.010, CB waist 0.012, panel hem spring 0.006, interfaced [],
       support [sleeve_head] (no pad: shoulder width read +12%), sleeve length_bonus 0.018 / hem_width 0.32; trousers
       over shirt, under_cap 0.003, waist_drop 0.10, leg straight, seat_ease 0.07. om_15 (that jacket) was queued.
+    - THE COLLARS, DIAGNOSED (coll_dbg.py <result npz>, cbcol2.py <jacket npz> <shirt npz>; om_13): the jacket collar's
+      117 vertices move 0.0-0.5 mm from start to end: the wings are 100% the START LAY of a made, carried piece (not
+      the `thru` pins, the open-then-turn schedule or the gorge seam). Sections of the end state (mm). Centre back (y
+      behind the neck's axis, z): skin (26-30, 1534-1590) | shirt stand (51-53, 1537-1557) | shirt fall out to (63,
+      1534) | jacket back's top (74, 1532) | jacket collar neck edge (74, 1532), stand top (75, 1548), fall edge (85,
+      1520): the jacket collar sits correctly outside the shirt's (11 mm out, 11 mm lower); the "thick roll" is the
+      SHIRT's open stand standing 23-25 mm off the nape. Neck's side (x, z): neck skin (49-63), shoulder line down to
+      (249, 1442) | shirt stand x 80 (20 mm off the neck) | shirt fall = a spread wing out to x 105, z 1508, 15-20 mm
+      over the shoulder | jacket front's neck point (94, 1546-1556), its cloth at x 112-128 30 mm over the shoulder |
+      jacket collar on top, a shelf out to (149, 1530), 50 mm over the shoulder = the wing. Cause: the jacket's neck
+      point (x 94; neck drafted 470 mm over the shirt collar) lies INSIDE the shirt collar's spread wing: the forepart,
+      laid on the body without the shirt's neck pieces, is cleared up over the wing and the made collar bridges
+      outward. What the jacket needs of the shirt (sent to placket): an open stand within ~5-8 mm of the neck at back
+      and sides, a fall within ~12 mm of its stand until past the jacket's neck point. placket is making the stand hug
+      (its pk_38: still 16 mm off the nape). If a wing remains over a hugging shirt: the collar's ENDS (past where the
+      roll line meets the neck edge) as draped interfaced cloth sewn to the gorge, not the made lay's rigid plane.
+    - `pressed()` keeps roll folds' rows and flaps (an open shirt neck's rolled-back fronts) as simulated: pressed flat
+      to the cap they drew as a ragged, torn edge under the jacket.
+    - Batch 2 on su_om_garrett: jacket om_15 (no pad, sleeves +12 mm / hem 0.32, panel hem spring 6 mm; 619 s): fits,
+      0 crossings, collar_show 15.7 (in band), collar_hug 19.2, cuffs 18.7 / 15.1, lapel gap 9.8 / 6.9; the RIGHT collar
+      neck seam 6 of 17 pairs open to 16 mm (collar / front.R: watch it). Checklist cr_om15 (11 misses): front_hang
+      27.6 mm (su_81 84, om_13 55), rise +20 mm, shoulder still +9.6% without the pad (the block's shoulder: try
+      shoulder_ease negative or a narrower across-back), straight legs overshoot (leg opening +25%, length +40 mm: go
+      "tapered" or give knee / hem), hem sweep -21%, waist width -16%, pockets, belt.
+      su7_collar_om15_vs_concept.png = the concept's collar crop | ours front | 3/4 | back: ours is BAD (wings at both
+      sides of the neck, shirt edge ragged: that run predates the pressed() fix).
+    - Posed figure for "fronts apart": `su_om_pose` (mk_pose.py 45: every arm joint turned about the shoulder until the
+      upper arm is 45 deg from the vertical, the concept's A-pose; ours hang at 25.5). po_01_jacket was running at the
+      stop (it builds the shirt on that body first): read section.py on out/po_01_jacket.npz (the last column = where
+      the two front edges are) against om_13's 8-10 cm at the chest, 2 cm at the hips.
+    - NEXT, in order: (1) the jacket over placket's hugging shirt when it is on main: re-run om jacket, cbcol2.py
+      both sections, collar_cmp.py; (2) if wings remain: collar ends draped; (3) po_01's fronts; (4) the right neck
+      seam; (5) belt + loops drawn in the figure (cloth_trims.meshes on the trousers' result; check.py's light npz has
+      no trims: the checklist reads "belt False"); (6) trousers leg "tapered", length; (7) pockets (su_om_pk: gates
+      pass; never simulated); (8) the outfit sheet through cloth.look (fig.py su_om_garrett <png> [1]) once jacket,
+      trousers and shirt are all cached for the saved sheets; (9) the head at the end (mk_om.py NOHEADFIT=0 once
+      onemesh2's base code is on main).
 - Suit 4 (trousers, shirt) (2026-10-07, "trousers2" agent, branch `worktree-agent-a06095d1485fd23a1`; scratch DURABLE in
   /mnt/data/hifipushie/trousers2/: the trousers agent's scripts with W = this worktree, + sdiag.py <tag> [1.05] (start
   stretch: largest principal stretch by piece and height band, p90 per band, the waistband's seam pairs), tdiag.py /
