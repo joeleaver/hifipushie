@@ -72,6 +72,10 @@ UNITS.update({
     "nose_dorsum_hump": (2.0, "a dorsal hump (the bony-cartilage junction forward); - = a scooped dorsum"),
 })
 NOSE_SLIDERS = ("nose_radix_width", "nose_dorsum_width", "nose_tip_width", "nose_dorsum_hump")
+# coupled only (base.head.slider_mode "coupled": faceatlas; whole-model directions with no local morph): +1 = +1 sd
+UNITS.update({"eye_opening": (1.0, "the lids' aperture (coupled only)"), "gonion_height": (1.0, "the jaw angle's height (coupled only)"),
+              "ramus_angle": (1.0, "the ramus' slope from vertical (coupled only)")})
+COUPLED_ONLY = ("eye_opening", "gonion_height", "ramus_angle")
 # Tess's measured misses (2026-10-09): her nostrils show from the front under a small defined lobule; her lower
 # vermilion is a short cushion ending well inside the corners (its visible width 0.40 of the mouth's, ours 0.82)
 UNITS.update({
@@ -717,6 +721,8 @@ def delta(sliders: dict | None, V: np.ndarray | None = None) -> np.ndarray | Non
         F.update(head_fields(V, tuple(k for k in HEAD_FIELDS if k in vals)))
     D = np.zeros_like(template()["X"])
     for k, (r, l_) in vals.items():
+        if k not in F:  # (a coupled-only slider: faceatlas.COUPLED, nothing local to lay)
+            continue
         D += r * F[k][0] + l_ * F[k][1]
     return D
 
