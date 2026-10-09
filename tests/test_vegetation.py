@@ -929,7 +929,8 @@ def test_dead_boughs_are_few_at_a_budget():
     F = v.grow({"species": "norway_spruce", "age": 50, "environment": {"setting": "forest", "spacing": 3.0}})
     pl = veg_bough.plan(F, 500)
     isd = veg_bough.dead_boughs(F, pl)
-    assert 0 < isd.sum() <= max(int(veg_bough.DEAD_SHARE * 500), veg_bough.DEAD_MIN), isd.sum()
+    share = F["spec"]["leaves"]["parts"]["dead"]["card"].get("share", veg_bough.DEAD_SHARE)  # (a spruce's dead haze: 0.2)
+    assert share <= 0.25 and 0 < isd.sum() <= max(int(share * 500), veg_bough.DEAD_MIN), isd.sum()
     assert pl.get("dead_left_out", 0) > 0
     z = F["pos"][pl["roots"][isd], 2]
     assert np.ptp(z) > 0.3 * F["height"]  # spread up the stem
@@ -1019,7 +1020,12 @@ def test_bough_card_form_by_budget():
     atL = veg_bough.atlas(L, cards=budL["boughs"])
     twL = veg_bough.place(L, budL["boughs"], atL)
     core = twL["core"] > 0
-    assert core.sum() == twL["limbs"] > 5 and (twL["card"][core] >= atL["limb_first"]).all() and (twL["card"][~core] < atL["limb_first"]).all()
+    fine_ = twL["card"][~core]
+    assert core.sum() == twL["limbs"] > 5 and (twL["card"][core] >= atL["limb_first"]).all() and ((fine_ < atL["limb_first"]) | (fine_ == atL["apex_card"])).all()
+    # the leader's tip draws its own picture (not a long limb's shrunk: a lollipop on the spire), the top limbs one of theirs
+    lead_ = L["order"][twL["node"]] == 0
+    assert atL["apex_card"] is not None and lead_.any() and (twL["card"][lead_] == atL["apex_card"]).all()
+    assert min(atL["limb_extent"]) < 0.5 * float(np.median(atL["limb_extent"])), atL["limb_extent"]
     M = veg_export.foliage_mesh(L, atL, tw=twL)
     assert M["tint"].min() < 0.6 < M["tint"].max(), (M["tint"].min(), M["tint"].max())
 

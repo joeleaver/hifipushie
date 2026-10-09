@@ -114,9 +114,9 @@
   "shape": "needle_spray",
   "length": 0.018,
   "color": [
-   0.17,
-   0.26,
-   0.15
+   0.21,
+   0.28,
+   0.13
   ],
   "translucency": 0.05,
   "twig": {
@@ -147,7 +147,7 @@
     "droop": 0.25,
     "spray_angle": 48,
     "curl": 0.6,
-    "tips": 0.3
+    "tips": 0.4
    },
    "leaf": {
     "needle_width": 0.09,
