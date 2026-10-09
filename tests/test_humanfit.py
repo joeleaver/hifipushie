@@ -86,7 +86,10 @@ def test_nudge_moves_one_landmark():
     # past what the sliders can do: the rest is a correction layer, said so, and it survives a later change
     # (3 cm squeezes the face's edges past the limit: refused, the input handed back, unless forced)
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03])
-    assert nb2 is b and "refused" in rep2
+    # (its refusal used to rest on sub-millimetre lid edges read as "x3.3": slivers no longer count (hf.SLIVER, the
+    # reference-modelling study), so within the plausible range it may pass; forced past it, it is still BROKEN)
+    assert (nb2 is b and "refused" in rep2) or rep2["integrity"]["ok"]
+    assert not hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)[1]["integrity"]["ok"]
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
     assert rep2["by_correction_mm"] > 1.0 and abs(rep2["got_mm"][2] + 30) < 1.5
     assert nb2["head"]["shape"]["push_more"]

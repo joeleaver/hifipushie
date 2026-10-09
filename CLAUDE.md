@@ -5991,6 +5991,29 @@ mpdepth.py, macros.py, garrett.py, reads.py, pic.py). Scratch DURABLE in /mnt/da
 - Stop doing: fitting the detector's 68 as GNM landmarks; outline warps without a known lens; a per-picture
   expression solve; local shape ops before the identity is settled; judging by mm tolerances of 1-2 mm on detector
   measures (the detector's own scatter is 1-2.5 mm front, 2-4.4 turned, on top of 3-12 mm of definition bias).
+- Round 2 (same day, the coordinator's list; scripts exp3.py, clicks.py, garrett2.py, dbg_lids.py, dbg_chin.py):
+  - "Why soft": restoring the norm does NOT sharpen. The fitted deviation x1.5: face 2.50 -> 2.37 (with a read 2.18
+    -> 1.95 in-model, 2.22 -> 2.19 out); x2 no better than x1; x3 (the norm of a real head) 3.7 mm, worse than the
+    mean; a draw from the posterior 2.76. So at most a mild x1.5; character has to come from evidence.
+  - The CLICK TEST failed its promise: four fresh LLM readers clicking 21 named points on a gridded 2.5x crop (clay
+    and tinted, two with an expression): median 1.6-2.6 mm, mean 2.1-3.7, worst 7-17; by point: mouth corners 1.0,
+    eye corners 1.5-2.5, pupils 1.6, lips 1.5-2.5, nasion 3.8, nose tip 2.9, chin bottom 6.8, nostril wings 6-7 (their
+    "outermost wing" is not GNM's lm 31 / 35). Front picture, face mm: detector MAP 2.51 | real clicks alone 3.29 |
+    detector + clicks 2.40 | + read 2.06 | detector + read WITHOUT clicks 2.11. LLM clicks add nothing over the
+    read; the "+-1.5 mm" rows above are a ceiling for a careful person with calibrated definitions, not for this.
+  - Structure on the MAP head (Garrett; models rs_garrett_s1 = + pass 6's shape / pose, rs_garrett_s2 = + v22's;
+    sheet rs_12_garrett_map_plus_structure.png, six views rs_13_*): pass 6's planes / hollow / hood / pushes give
+    hooded lids and an older face but its pose frown and pushes read grumpy and heavy; v22's jawline L / chin / ears
+    on this wider skull make a lumpy jowl with a notch. The evidence's residual rises 1.31 -> 1.8 -> 2.05 mm. Controls
+    tuned on the narrow head do NOT transplant: structure must be refitted on the new skull, one op at a time. Not
+    done (nor the truth-set "residual" row for the O subjects, nor 3 readers per head).
+  - `humanfit.SLIVER` / `SLIVER_SQUEEZE` (integrity): a stretched edge counts when it ends >= 1.5 mm, a squeezed one
+    when it was >= 1.1 mm, a folded face when its longest edge is >= 1.5 mm. Plain sigma-1 truth identities read
+    "lids BROKEN x3.4" on 0.25 -> 0.9 mm lid edges (5 of 6 truth heads; now 1 of 6: S5, 40 lid faces folded). Side
+    effect: the unforced 3 cm chin nudge is no longer refused (its refusal rested on those slivers; forced it is
+    still BROKEN; test_humanfit changed to say so). Open: a size guard on nudge's correction layer.
+  - `likeness_brief.reference_brief`: shots ordered and annotated with what each is worth to the fit (`worth`,
+    `STUDY`): neutral long-lens front, TRUE profile, a read in words, three-quarter only for judging.
 - Open, in order: structure ops fitted as residuals after the MAP (what closes the out-of-model 3.6 mm jaw); clicks
   as a tool (a gridded crop + named points; an LLM clicking to +-1.5 mm is untested); measured macros from pictures
   instead of said ones (the ceiling: 1.66 mm); a GNM-space dense landmark detector trained on our own renders (exact
