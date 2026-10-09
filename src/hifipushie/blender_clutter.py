@@ -46,7 +46,7 @@ if job.get("clay"):
         if o.type == "MESH":
             o.data.materials.clear()
             o.data.materials.append(m)
-bpy.ops.mesh.primitive_plane_add(size=400)
+bpy.ops.mesh.primitive_plane_add(size=3000)
 g = bpy.context.object
 gm = bpy.data.materials.new("ground")
 gm.use_nodes = True

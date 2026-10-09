@@ -32,7 +32,7 @@ from . import noise
 
 HERE = Path(__file__).parent
 ROCK_SRGB = [0.36, 0.34, 0.31]  # terrain_rock.base_colour's grey rock: the reference a style turns
-WOOD_SRGB = [0.52, 0.5, 0.46]   # weathered, barkless wood (silver grey)
+WOOD_SRGB = [0.44, 0.41, 0.36]   # weathered, barkless wood (silver grey)
 
 FORM = {  # a rock's form; ranges are drawn per variant
     "aspect": [[0.6, 0.85], [0.42, 0.62]],  # mid / long and short / long axis (long = 1: the largest plan dimension)
@@ -88,7 +88,7 @@ PAINT = {  # how the surface is painted (albedo multipliers round 1) and what re
 WOOD = {
     "pieces": [1, 1],          # logs in the asset (a jam: several)
     "length": [0.85, 1.0],     # of the main piece (x = 1)
-    "radius": [0.045, 0.075],  # at the butt
+    "radius": [0.06, 0.09],    # at the butt
     "taper": [0.45, 0.8],      # tip radius / butt radius
     "crook": 0.05,             # sideways wander of the axis, x length
     "stubs": [1, 4],           # broken branch stubs
@@ -461,13 +461,13 @@ class Wood:
         for _ in range(int(rng.integers(f["stubs"][0], f["stubs"][1] + 1))):
             i = int(rng.integers(0, n - 2))
             a = P[i] + (P[i + 1] - P[i]) * rng.uniform()
-            d = np.array([rng.uniform(0.2, 0.8), rng.normal(), rng.normal()])
+            d = np.array([rng.uniform(0.2, 0.8), rng.normal(), 0.45 * rng.normal()])
             d /= np.linalg.norm(d)
             l = _u(rng, f["stub"]) * size
             segs.append((a, a + d * l, Rr[i] * 0.55, Rr[i] * 0.3))
         if rng.uniform() < f["fork"]:
             i = int(rng.integers(1, n - 2))
-            d = np.array([0.8, rng.choice([-1, 1]) * rng.uniform(0.4, 0.8), rng.uniform(-0.2, 0.4)])
+            d = np.array([0.8, rng.choice([-1, 1]) * rng.uniform(0.4, 0.8), rng.uniform(-0.08, 0.18)])
             d /= np.linalg.norm(d)
             l = rng.uniform(0.25, 0.45) * L
             m = P[i] + d * l * 0.5 + 0.03 * L * rng.normal(0, 1, 3)
@@ -752,7 +752,7 @@ class Solid:
                 yaw = rng.uniform(-1, 1) * f["pile"] * math.pi * 0.5 if i else 0.0
                 z = 0.5 * i * _u(rng, f["radius"]) * 1.6
                 self.parts.append(Wood(rng, f, s, (rng.uniform(-0.15, 0.15), rng.uniform(-0.12, 0.12), z), yaw,
-                                       rng.uniform(-0.25, 0.25) * (i > 0)))
+                                       rng.uniform(-0.1, 0.1) * (i > 0)))
         elif f.get("cluster"):
             cl = f["cluster"]
             n = int(rng.integers(cl["count"][0], cl["count"][1] + 1))
@@ -1896,19 +1896,23 @@ def look(folders, out: str, distances=(2.5, 10.0, 40.0), lods=(0, 1, 2), scale: 
         n = len(vs)
         width = n * 1.25 * scale
         tiles = []
+        items, views, meta = [], [], []
         for di, (d0, lod) in enumerate(zip(distances, lods)):
-            items = [{"glb": str(fo / v["lods"][min(lod, len(v["lods"]) - 1)]["file"]), "at": [(i - (n - 1) / 2) * 1.25 * scale, 0, 0],
-                      "yaw": 25 * i, "scale": scale} for i, v in enumerate(vs)]
+            oy = 300.0 * di
+            items += [{"glb": str(fo / v["lods"][min(lod, len(v["lods"]) - 1)]["file"]), "at": [(i - (n - 1) / 2) * 1.25 * scale, oy, 0],
+                       "yaw": 25 * i, "scale": scale} for i, v in enumerate(vs)]
             d = max(d0, width * 0.95 + 0.8) if di == 0 else d0
             png = tmp / f"r{fi}_{di}.png"
-            job = {"items": items, "clay": clay, "views": [{"eye": [0.35 * d, -d, 1.6 if d > 3 else 1.1], "look": [0, 0, cl["height_m"] * scale * 0.35],
-                                                         "fov": 50, "out": str(png), "res": [1280, 720]}]}
-            tex = (J.get("seasons", {}).get(season) or {})
-            job["albedo"] = next((v_["baseColorTexture"]["file"] for v_ in tex.values() if isinstance(v_, dict) and v_.get("baseColorTexture")), None) if season != "summer" else None
-            jp = tmp / f"j{fi}_{di}.json"
-            jp.write_text(json.dumps(job))
-            subprocess.run([BLENDER, "-b", "--factory-startup", "-P", str(HERE / "blender_clutter.py"), "--", str(jp)],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={**os.environ})
+            views.append({"eye": [0.35 * d, oy - d, 1.6 if d > 3 else 1.1], "look": [0, oy, cl["height_m"] * scale * 0.35], "fov": 50, "out": str(png), "res": [1280, 720]})
+            meta.append((d0, d, lod, png))
+        job = {"items": items, "clay": clay, "views": views}
+        tex = (J.get("seasons", {}).get(season) or {})
+        job["albedo"] = next((v_["baseColorTexture"]["file"] for v_ in tex.values() if isinstance(v_, dict) and v_.get("baseColorTexture")), None) if season != "summer" else None
+        jp = tmp / f"j{fi}.json"
+        jp.write_text(json.dumps(job))
+        subprocess.run([BLENDER, "-b", "--factory-startup", "-P", str(HERE / "blender_clutter.py"), "--", str(jp)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env={**os.environ})
+        for d0, d, lod, png in meta:
             im = Image.open(png).convert("RGB")
             ppm = 640 / 0.4663 / (d * 1.06)
             cw = int(min(1280, max(120, (width + 0.6) * ppm)))
