@@ -435,3 +435,14 @@ model".
     12.14 | 13.89 | 12.66, upper lip 6.82 | 5.35 | 6.44, lower lip 10.82 | 6.94 | 7.87. Sheets human_renders/
     ll_s_1_summary.png (photo | before | after, whole face + eyes + mouth), ll_s_1_before_pair / _after_pair.png.
     Lower face NOT refitted beyond the conversion.
+- Tess's three (facesliders, 2026-10-09): (a) humans.spec(source="human") no longer writes the opened-lid expression
+  (eye_region_000 0.6) or the lid pose (lid_upper ~-2.6 mm, lid_lower -0.8 mm): GNM's neutral lids; a given head
+  pose / expression is kept. (b) no +0.15 x fem on features.eyes / cheeks (no data). Both are values humans.spec
+  WRITES into the spec, so existing models keep theirs (nothing re-derives them at build time). (c) MakeHuman's
+  measure modifiers (assets: targets/measure/measure-{hips-circ,waist-circ,shoulder-dist,bust-circ}-{decr,incr}, CC0,
+  the pack's pinned commit) as base.body hips / waist / shoulders / chest (0..1, 0.5 = none; makehuman.MEASURES), and
+  humanfit.BODY_SHAPE: hips / waist / shoulders / chest / bust (cup) join a body solve when a measure they shape is
+  asked. anthro's hip_breadth / hip_circ were CAPPED at the shoulder joints' x (to leave the arms out): a woman's
+  hips, wider than that, read 29.7 cm whatever her weight; now wider slabs with the arms cut at the first 10 cm gap
+  outward of the hip joint (36.8 cm; hips modifier at 1 = +6 cm). Every model's hip readings change (not its shape).
+  Test tests/test_body_shape.py.

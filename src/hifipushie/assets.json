@@ -23,7 +23,7 @@
  },
  "makehuman": {
   "needed_by": "base.body {\"source\": \"makehuman\"} (makehuman.py)",
-  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target",
+  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target, targets/measure/measure-{hips-circ,waist-circ,shoulder-dist,bust-circ}-{decr,incr}.target",
   "licence": "CC0 for the MakeHuman core assets (base mesh, targets, skeleton; makehumancommunity.org license page). The program code is AGPL and is NOT used: hifipushie reads these files with its own loader.",
   "files": [
    {
@@ -1660,6 +1660,46 @@
     "path": "targets/breast/nipple-size-incr.target",
     "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/breast/nipple-size-incr.target",
     "sha256": "4b23e80e1f7678951900c903b3d6a90fedad2f023c57e4d164dd47701c33a8a7"
+   },
+   {
+    "path": "targets/measure/measure-hips-circ-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-hips-circ-decr.target",
+    "sha256": "8a98e80047ab89148d60067aad3b452ce715eadcaf7a1e28402140dd1ac8fb11"
+   },
+   {
+    "path": "targets/measure/measure-hips-circ-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-hips-circ-incr.target",
+    "sha256": "e4294db231dd3283680e6be4b9d3d8d81aa7c575a32f937f8d0751b1ec3d6512"
+   },
+   {
+    "path": "targets/measure/measure-waist-circ-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-waist-circ-decr.target",
+    "sha256": "6a976bd7819fa037a290b381bb3e04dfd04220dddeac194c476472295d2baba8"
+   },
+   {
+    "path": "targets/measure/measure-waist-circ-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-waist-circ-incr.target",
+    "sha256": "4949212ec9a5e227b177a029ee42b0be3fd3b273a211bc91c6f4d4dbf0334856"
+   },
+   {
+    "path": "targets/measure/measure-shoulder-dist-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-shoulder-dist-decr.target",
+    "sha256": "15034d390da69ce7a3e46dfee0e248d0649bf6fc0bfec575b4cacf48b7a1ba5a"
+   },
+   {
+    "path": "targets/measure/measure-shoulder-dist-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-shoulder-dist-incr.target",
+    "sha256": "af7394300c91d64fb0b032377aae72e546c778d1d5c00daed88858c04ee9150b"
+   },
+   {
+    "path": "targets/measure/measure-bust-circ-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-bust-circ-decr.target",
+    "sha256": "3d4c9f8c7d084e4d6c35ffc3a798bc35bdbe80fd56929d03e0c6f1b31ec5c736"
+   },
+   {
+    "path": "targets/measure/measure-bust-circ-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-bust-circ-incr.target",
+    "sha256": "46394c7f9cdfac31654f14950b57bbfb874c9a2fa68e48c9cc3e7bba619b75f4"
    }
   ]
  },
