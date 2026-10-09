@@ -5705,6 +5705,37 @@ model".
       bottom is a small hook in profile after `under`; brow ridge by a push, not judged; face width at the mouth
       went back to -8 mm on v21 (out -12; v22 uses -6: re-read); the profile-contour fit (likeness.fit_profile,
       trace in workspace/lk_garrett3/likeness_points.json) not run on om_garrett; squint / frown as pose.
+  - Neck hand-over + the reset (2026-10-08, same agent; sheets human_renders/om2_r9_neck_seam.png, om2_r9_garrett.png =
+    per reference: reference | pass 6 | new | 50% blend, lit with his locks, + the six-view sheet; scratch:
+    neckdiag.py <model> <png> [variants: full | plain | "no X" | "only X"] (the neck in four views with raking light per
+    variant), levdbg.py (GNM ring levels vs height), reset.sh (pass 6 + one change at a time -> om2_s0..s4 with their
+    six-view sheets), six.py, readstore.py (store blind reads read_<model>.json, print likeness_read.diff), bigsheet.py,
+    folds.py (which faces an edit turned over, where), read_form.txt).
+    - THE SEAM (the user on the six-view sheet: "are we using the unified mesh? There's a hell of a seam between head
+      and neck"): the mesh is fine (a plain one-mesh head is smooth). Adding Garrett's settings one at a time: head_size
+      1.138 alone = a collar ring all round; the dense-fit warp alone = a shelf at the nape; `fit` a thin step; shape /
+      identity / regions / narrow alone: smooth. Cause: the head's own shape was handed over to the body's neck over
+      the asset's g_fade = 7 rings (~2.7 cm) above the stitch. Now `onemesh.neck_fade()` (NECK_RINGS 10 at the throat,
+      ending under the chin, 20 at the nape, by how far back a vertex lies; never above g_fade), used by `hook` and
+      the style's head ops; onemesh.VERSION 9. By HEIGHT it did nothing: GNM's neck rings climb toward the nape, so
+      the nape had no length. Garrett: stature 180.6 -> 180.2 cm, interocular 69.8 -> 69.2 mm (the throat and nape
+      take less of the head's scale). g_fade is still what face shapes' carry uses.
+    - THE RESET (the coordinator, after v19-v22 read as "a different man: heavy, thick-necked, soft"): back to pass 6
+      and one change at a time, each read BLIND (a fresh sub-agent given only likeness_read.form() and that model's
+      six-view sheet; never read your own render with the reference in mind), descriptor-views kept of 62 against the
+      reference read: pass 6 24, + rigid ears 35, + nose base / round tip 27, + chin 39, + jaw corner at the photo's
+      height + submental lift 40. ONE reader per head and the noise is ~10 (the ears step "fixed" the jaw read, the
+      nose step "lost" it): use several readers (likeness_read.agreement) before trusting a step. Consistent across
+      readers: profiles go from "soft jaw, receding chin" to "square jaw, strong chin" only with jawline + chin.under;
+      the chin reads broad with shape.chin. Never achieved: "snub / cute" nose, a visible cleft, "chunky" (every
+      reader says lean). om_garrett v23 = that reset (v16 pass 6 stays the fallback); NOT exported when written.
+    - What LOCAL WARPS did wrong on this head, each caught by eye, not by the numbers (likeness had them "in
+      tolerance"): the face-width outline warp at 75% + a moved jaw = a bulldog lower face; the eyes stage's full
+      narrowing + tilt in identity = sad slits (the photo squints 0.70: that is pose); ears turned about the root's
+      main axis with scale and a wide blend = fins with a web of skin; a nose tip turned about the mid dorsum = no
+      change, then about the alar bases = a beak until rounded; jaw tuck 10 mm = a mask's edge; the jawline folded
+      tiny faces by the lobe until its top was held. The method question (macro sliders in the identity space instead
+      of local warps) went to the "refstudy" agent: no more face fitting on this branch.
   - Open: the head's 46 mm leak onto shoulder skin at Head 33 (rig thread); own quads cost a fixed ~40.7k body
     triangles; dense_fit as a tool (a GNM head as the target of human_reference).
 
