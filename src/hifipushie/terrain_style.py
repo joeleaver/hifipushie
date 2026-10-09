@@ -35,8 +35,14 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-CONTRACT = 4
+CONTRACT = 5
 CONTRACT_LOG = {
+    5: "stream beds: three new layers on terrains with running rivers, in every style: `gravel` (cobbles and gravel under "
+       "the water and on bars), `silt` (fine sediment in pools and slack margins), `bank` (the bank's damp foot), all "
+       "top-projected; they come LAST in the tiles' layer list, so a terrain with rivers has a third weights group "
+       "(_WEIGHTS2 / weights map 2) and the older layers keep their channels; `wet_rock` is present on any terrain "
+       "with rivers (bedrock in the bed), sea or not. New texture op `stones`. Nothing changes on a terrain without "
+       "rivers",
     4: "every materials/<style>/<layer>_albedo.png (and small.albedo, the plain one) is RGBA: RGB the sRGB albedo as "
        "before, ALPHA the layer's height (linear 8-bit, 0.5 = 0, (a - 0.5) x 2 x height_m metres; the same values as "
        "_height.png at 8 bits), flagged by layers[l].albedo_alpha = \"height\"; _height.png (16-bit) is still written "
@@ -54,7 +60,8 @@ CONTRACT_LOG = {
        "`v_jitter_m` (strata wander along the strike, so a band texture doesn't repeat straight up a cliff)",
 }
 DIR = Path(__file__).parent / "terrain_styles"
-STYLE_LAYERS = ("grass", "turf", "scrub", "forest_floor", "sand", "earth", "rock", "wet_rock", "snow")
+STYLE_LAYERS = ("grass", "turf", "scrub", "forest_floor", "sand", "earth", "rock", "wet_rock", "snow", "gravel", "silt",
+                "bank")
 PX = 1024           # texture side in pixels
 BAND = 20.0         # m: the default transition band (centred on the zone's edge)
 SD_RANGE = 64.0     # m: the signed distance maps run -SD_RANGE..SD_RANGE
@@ -463,7 +470,61 @@ def op_facets(n, L, o, seed):
     return tone, h / max(float(np.abs(h).max()), 1e-9)  # (-1..1: `height` is the planes' amplitude in m)
 
 
-OPS = {"blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "tufts": op_tufts, "bands": op_bands, "ripples": op_ripples,
+def _discs(n, L, size, seed, jitter, gap):
+    """Round stones on the L x L torus: seeds about `size` m apart (a jittered grid), each a disc as big as its
+    nearest neighbour allows (so sizes vary and none overlap). Returns (d: distance from the stone's centre over its
+    radius (< 1 inside), id per texel, count)."""
+    from scipy.spatial import cKDTree
+    k = max(1, int(round(L / size)))
+    rng = np.random.default_rng(seed)
+    g = (np.arange(k) + 0.5) / k * L
+    sx, sy = np.meshgrid(g, g)
+    pts = np.c_[sx.ravel(), sy.ravel()] + (rng.random((k * k, 2)) - 0.5) * jitter * L / k
+    allp = np.concatenate([pts + np.array([dx, dy]) * L for dx in (-1, 0, 1) for dy in (-1, 0, 1)])
+    tree = cKDTree(allp)
+    nn = tree.query(pts, k=2)[0][:, 1]
+    r = np.minimum(0.5 * nn * (1 - gap), 0.62 * L / k)
+    t = (np.arange(n) + 0.5) * (L / n)
+    X, Y = np.meshgrid(t, t)
+    d, i = tree.query(np.c_[X.ravel(), Y.ravel()])
+    cid = (i % (k * k)).reshape(n, n)
+    return d.reshape(n, n) / np.maximum(r[cid], 1e-6), cid, k * k
+
+
+def op_stones(n, L, o, seed):
+    """Rounded stones about `size` m apart (a pebble or cobble bed, seen from above), smaller ones (`fill` x the size)
+    in the gaps between: each a dome with its own tone (`vary`), dark gravel between (`gap`, a share of the size;
+    `gap_tone`); `dome` lights each stone's top against its foot; `flat` 0..1 flattens the domes' tops (painted
+    stones); `outline` (a share of a stone's radius) draws an ink ring inside each stone's edge (cartoon); `steps`
+    quantises the stones' tones; `bare` = the share of seeds left without a stone."""
+    size = float(o.get("size", 0.15))
+    gap = float(o.get("gap", 0.07))
+    rng = np.random.default_rng(seed + 3)
+    tone = np.full((n, n), -float(o.get("gap_tone", 0.8)))
+    hgt = np.zeros((n, n))
+    ol = float(o.get("outline", 0.0))
+    flat = float(o.get("flat", 0.0))
+    for lev, (sz, amp) in enumerate(((size * float(o.get("fill", 0.45)), 0.5), (size, 1.0))):
+        if sz <= 0 or sz < 2.5 * L / n:
+            continue
+        d, cid, k = _discs(n, L, sz, seed + 11 * lev, float(o.get("jitter", 0.95)), gap)
+        has = rng.random(k) >= float(o.get("bare", 0.0)) * (1.0 if lev else 0.3)
+        tc = rng.uniform(-1, 1, k)
+        if o.get("steps"):
+            tc = _steps(tc, int(o["steps"]), 0.0)
+        inside = (d < 1) & has[cid]
+        dome = np.sqrt(np.clip(1 - d * d, 0, 1))
+        dome = dome * (1 - flat) + flat * np.clip(dome * 3, 0, 1)
+        t = tc[cid] * float(o.get("vary", 0.5)) + float(o.get("dome", 0.3)) * (dome - 0.7)
+        if ol > 0:
+            t = np.where(d > 1 - ol, -1.0, t)
+        m = np.clip((1 - d) * sz * (n / L) * 0.5, 0, 1) * inside  # (an edge a couple of texels soft)
+        tone = tone * (1 - m) + t * m
+        hgt = np.maximum(hgt, amp * dome * inside)
+    return np.clip(tone, -1, 1), hgt
+
+
+OPS = {"stones": op_stones, "blotch": op_blotch, "pillow": op_pillow, "strokes": op_strokes, "tufts": op_tufts, "bands": op_bands, "ripples": op_ripples,
        "dots": op_dots, "grain": op_grain, "cracks": op_cracks, "facets": op_facets}
 
 

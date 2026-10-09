@@ -100,6 +100,10 @@ LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling sca
     "wet_rock": {"color": [0.17, 0.16, 0.15], "roughness": 0.55, "scale": 6.0},
     "earth": {"color": [0.42, 0.34, 0.24], "roughness": 0.95, "scale": 2.5},
     "snow": {"color": [0.93, 0.94, 0.96], "roughness": 0.7, "scale": 4.0},
+    # a stream's bed and banks (terrain_stream; only on terrains with running rivers)
+    "gravel": {"color": [0.44, 0.41, 0.36], "roughness": 0.7, "scale": 2.0},   # cobbles and gravel
+    "silt": {"color": [0.33, 0.29, 0.22], "roughness": 0.6, "scale": 2.0},     # fine sediment in pools and slack water
+    "bank": {"color": [0.25, 0.21, 0.15], "roughness": 0.8, "scale": 2.0},     # the bank's damp foot
 }
 
 
@@ -1244,7 +1248,14 @@ class Field:
                     self.fall = self.fall * (1 - s["w"] * (1 - float(s["rock"].get("fallen", 1.0))))
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
-        self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg) if gcfg is not None else None
+        self.streams = None  # (terrain_stream: the rivers' beds; None without running water)
+        if gcfg is not None and getattr(T, "river_water_lines", None):
+            from . import terrain_stream
+            scfg = terrain_stream.config(T)
+            if scfg is not None:
+                st_ = terrain_stream.Streams(T, scfg)
+                self.streams = st_ if st_.any else None
+        self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg, self.streams) if gcfg is not None else None
         if self.edits is not None and any("lip" in s["rock"] for s in getattr(self, "styles", [])):
             # (a style's share of the turf's step at cliff lips: blobby's pillowed ground had crumbs at every lip)
             ls = np.ones(self.H.shape)
@@ -1642,6 +1653,12 @@ class Materials:
             order.append(layer)
         self.layers = list(dict.fromkeys(order + ["rock", "earth"] + (["sand", "wet_rock"] if self.sea is not None
                                                                       else [])))
+        # a stream's bed and banks (terrain_stream): its layers come last, so the older layers keep their channels
+        ed0 = getattr(field, "edits", None) or getattr(getattr(field, "base", None), "edits", None)
+        self.streams = getattr(ed0, "streams", None)
+        if self.streams is not None:
+            from . import terrain_stream
+            self.layers = list(dict.fromkeys(self.layers + ["wet_rock", *terrain_stream.LAYERS]))
         col = ground_colours(T, cover=True)
         wet = ~np.isnan(T.water)
         col[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
@@ -1785,7 +1802,10 @@ class Materials:
         if not np.isscalar(w):
             kinds = {k: v * w for k, v in kinds.items()}
             mown = [(m * w, st) for m, st in mown]
-        return self.ground.relief(self, P, kinds, mown, texel)
+        g = self.ground.relief(self, P, kinds, mown, texel)
+        if self.streams is not None:  # (a stream bed's cobble lumps)
+            g = g + self.streams.relief(P, np.asarray(Wt[:, self.layers.index("gravel")], float), texel)
+        return g
 
     def kinds(self, P):
         """The cover kinds (terrain_ground.KIND_OF: mown, rough, scrub; "cut": the first cut round mown pieces) at
@@ -1840,6 +1860,25 @@ class Materials:
         W["rock"] += rock * (1 - tide)
         if "wet_rock" in W:
             W["wet_rock"] += rock * tide
+        sbed = self.streams.shares(P, N) if self.streams is not None else None
+        if sbed is not None:
+            # a stream's bed under its water (gravel and cobbles, silt in the slack, bedrock on steep reaches) and the
+            # damp foot of its banks, over whatever the ground had there; steep faces stay rock (wet near the water)
+            ks = sbed["k"]
+            away = 1.0 if self.sea is None else 1 - smoothstep(0.2, 1.2, self.sea - P[ks, 2])  # (the sea's own bed)
+            sbed["bed"], sbed["damp"] = sbed["bed"] * away, sbed["damp"] * away
+            face = rock[ks]
+            wetn = np.clip(sbed["bed"] + sbed["damp"], 0, 1)
+            W["wet_rock"][ks] += W["rock"][ks] * wetn
+            W["rock"][ks] *= 1 - wetn
+            bed, damp = sbed["bed"] * (1 - face), sbed["damp"] * (1 - face)
+            for key in W:
+                if key not in ("rock", "wet_rock"):
+                    W[key][ks] *= 1 - bed - damp
+            W["gravel"][ks] += bed * sbed["gravel"]
+            W["silt"][ks] += bed * sbed["silt"]
+            W["wet_rock"][ks] += bed * sbed["rock"]
+            W["bank"][ks] += damp
         Wm = np.stack([W[k] for k in self.layers], 1)
         Wm /= np.maximum(Wm.sum(1, keepdims=True), 1e-9)
         # display colour: the terrain's own preview colours (cover, roads, slope), rock over steep faces and caves
@@ -1907,6 +1946,10 @@ class Materials:
         if under is not None:  # (the rock just under the turf's lip: shaded by the overhanging mat)
             from .terrain_ground import LOOK
             rc = rc * (1 - (1 - LOOK["undercut"]) * under)[:, None]
+        if sbed is not None:  # (the bed and the damp bank, under the rock faces: those wet and darker by the water)
+            ks = sbed["k"]
+            c[ks] = self.streams.colour(P[ks], c[ks], rc[ks], sbed)
+            rc[ks] = rc[ks] * (1 - 0.45 * np.clip(sbed["bed"] + sbed["damp"], 0, 1)[:, None])
         c = c * (1 - rock[:, None]) + rc * (1 - 0.55 * tide[:, None]) * rock[:, None]  # wet: its own rock, darker
         return Wm.astype(np.float32), c
 
@@ -3451,6 +3494,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         e.update(extra)
     timing["heightmaps + splats"] = time.time() - t0
 
+    clutter_sec = None
     # ---- 4b. ground clutter (bushes on the scrub, boulders on the shore): placements an engine's detail scatter can use
     if T.spec.get("ground_character", True) is not False and mats.ground is not None:
         from . import terrain_ground
@@ -3461,11 +3505,31 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 (i0, j0), (i1, j1) = cfg["only"]
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
             C = terrain_ground.clutter(T, mats, base, ks, box=cb)
+            SC = None
+            if mats.streams is not None:  # (a stream's rocks, cobbles, driftwood, reeds: terrain_stream.clutter)
+                from . import terrain_stream
+                SC = terrain_stream.clutter(T, mats, base, box=cb)
             with open(out / "clutter.csv", "w") as f:
-                f.write("x,y,z,kind,scale,yaw,squash\n")
+                f.write("x,y,z,kind,scale,yaw,squash,place\n")
                 for r in C:
-                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f}\n")
+                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},\n")
+                if SC is not None:
+                    sk = list(terrain_stream.KINDS)
+                    for r in SC:
+                        f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{sk[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},"
+                                f"{terrain_stream.PLACES[int(r[7])]}\n")
             notes.append(f"clutter.csv: {int((C[:, 3] == 0).sum())} bushes, {int((C[:, 3] == 1).sum())} boulders")
+            clutter_sec = {"kinds": {"bush": {"scale_m": [0.6, 1.9], "squash": [0.45, 1.0], "z": "surface",
+                                              "what": "a scrub / heath bush (squash < 1: wind-shorn by a cliff lip)"},
+                                     "boulder": {"scale_m": [0.36, 1.96], "squash": [1.0, 1.0],
+                                                 "z": "sunk 0.12 x scale", "what": "an angular rock (shore, rock "
+                                                 "breaking through near cliff lips)"}},
+                           "columns": "x,y,z,kind,scale,yaw,squash,place"}
+            if SC is not None:
+                sm = terrain_stream.manifest(mats.streams, SC)
+                clutter_sec = {**sm, "kinds": {**clutter_sec["kinds"], **sm["kinds"]}, "columns": clutter_sec["columns"]}
+                notes.extend(mats.streams.report())
+                notes.extend(terrain_stream.summary(mats.streams, SC, cb))
 
     # ---- 5. trees and the manifest
     _st = prof.stage("trees + layer textures (parent)")
@@ -3604,6 +3668,20 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         manifest["detail"] = detail
     if style_sec is not None:
         manifest["styles"] = style_sec
+    if clutter_sec is not None:
+        manifest["clutter"] = clutter_sec
+    if mats.streams is not None:  # (the rivers as the bed rules read them: for an engine's water, wet shading, audio)
+        manifest["streams"] = {
+            "rivers": {r["name"]: [[round(float(a), 2) for a in row] for row in
+                                   np.c_[r["xy"], r["level"], r["width"], r["energy"]][r["live"]]]
+                       for r in mats.streams.reaches},
+            "columns": "x, y, water level (m), water width (m, across), energy 0..1 (0 slow and silty .. 1 a boulder "
+                       "torrent)",
+            "layers": {"gravel": "cobbles and gravel under the water and on bars", "silt": "fine sediment in pools and "
+                       "slack margins", "bank": "the bank's damp foot above the water", "wet_rock": "bedrock in the "
+                       "bed (steep reaches) and rock faces by the water"},
+            "bed": "the heightmaps and cliff meshes carry the bed's shape (pools, riffles, bars); the water's level is "
+                   "the rivers' own (never raised)"}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
         from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)
@@ -5215,6 +5293,27 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             de, _ = cKDTree(eyes[:, :2]).query(C[:, :2])
             C = C[(de > 2.5) | np.isin(C[:, 3], [ks.index("tussock"), ks.index("tallgrass")])]
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
+        if cm.streams is not None:  # (a stream's rocks, cobbles, wood and reeds: terrain_stream.clutter)
+            from scipy.spatial import cKDTree
+            from . import terrain_stream
+            SC = terrain_stream.clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
+            if len(SC):
+                de, _ = cKDTree(eyes[:, :2]).query(SC[:, :2])
+                SC = SC[(de < clutter) & (de > 1.2)]
+            for i, k in enumerate(terrain_stream.KINDS):
+                job["clutter"][k] = SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
+    if not channel:  # the rivers' water: a ribbon at each river's own level, wider than the channel (the banks hide it)
+        if True:
+            rv = []
+            for rw in (getattr(T, "river_water_lines", None) or {}).values():
+                xy_, lv_, w_ = np.asarray(rw["xy"], float), np.asarray(rw["level"], float), np.asarray(rw["width"], float)
+                live = w_ > 0
+                if box is not None:
+                    live &= (xy_[:, 0] >= box[0][0]) & (xy_[:, 0] <= box[1][0]) & (xy_[:, 1] >= box[0][1]) & \
+                        (xy_[:, 1] <= box[1][1])
+                if live.sum() >= 2:
+                    rv.append(np.c_[xy_, lv_, w_ + 4.0][live].round(3).tolist())
+            job["rivers"] = rv
         notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
     GD = M.get("ground_detail")
     if GD and textured and not channel and grass:  # the turf's tiling detail over the baked maps (as an engine draws it)

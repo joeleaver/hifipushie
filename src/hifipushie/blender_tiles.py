@@ -820,6 +820,61 @@ def _horizon(scene, cam, look_dir, tmp):
     return a
 
 
+def _rivers(rivers):
+    """The rivers' water: per river a ribbon along its path at its own level ([x, y, level, half width] rows), clear
+    enough that the bed shows through (transparent tinted by a little green, a glossy rippled surface by Fresnel)."""
+    V, F = [], []
+    for rows in rivers:
+        R = np.asarray(rows, float)
+        if len(R) < 2:
+            continue
+        t = np.gradient(R[:, :2], axis=0)
+        t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+        nrm = np.c_[-t[:, 1], t[:, 0]]
+        k0 = len(V)
+        for i in range(len(R)):
+            for sgn in (-1, 1):
+                V.append((R[i, 0] + sgn * R[i, 3] * nrm[i, 0], R[i, 1] + sgn * R[i, 3] * nrm[i, 1], R[i, 2]))
+        for i in range(len(R) - 1):
+            F.append((k0 + 2 * i, k0 + 2 * i + 1, k0 + 2 * i + 3, k0 + 2 * i + 2))
+    if not F:
+        return
+    me = bpy.data.meshes.new("river_water")
+    me.from_pydata(V, [], F)
+    ob = bpy.data.objects.new("river_water", me)
+    bpy.context.scene.collection.objects.link(ob)
+    m = bpy.data.materials.new("river_water")
+    m.use_nodes = True
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        if n.type != "OUTPUT_MATERIAL":
+            nt.nodes.remove(n)
+    out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    tr.inputs["Color"].default_value = (0.72, 0.84, 0.78, 1)
+    gl = nt.nodes.new("ShaderNodeBsdfGlossy")
+    gl.inputs["Roughness"].default_value = 0.06
+    fr = nt.nodes.new("ShaderNodeFresnel")
+    fr.inputs["IOR"].default_value = 1.33
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    nz = nt.nodes.new("ShaderNodeTexNoise")
+    nz.inputs["Scale"].default_value = 3.0
+    nz.inputs["Detail"].default_value = 3.0
+    nt.links.new(geo.outputs["Position"], nz.inputs["Vector"])
+    bp = nt.nodes.new("ShaderNodeBump")
+    bp.inputs["Distance"].default_value = 0.03
+    bp.inputs["Strength"].default_value = 0.6
+    nt.links.new(nz.outputs["Fac"], bp.inputs["Height"])
+    nt.links.new(bp.outputs["Normal"], gl.inputs["Normal"])
+    nt.links.new(bp.outputs["Normal"], fr.inputs["Normal"])
+    mx = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(fr.outputs["Fac"], mx.inputs["Fac"])
+    nt.links.new(tr.outputs["BSDF"], mx.inputs[1])
+    nt.links.new(gl.outputs["BSDF"], mx.inputs[2])
+    nt.links.new(mx.outputs["Shader"], out.inputs["Surface"])
+    ob.data.materials.append(m)
+
+
 def _water(level, L=None):
     """The sea: a plane with a noise ripple. L (the light preset) may set "water" (linear base colour) and
     "water_roughness"; water's IOR is 1.33 (the Principled default 1.5 reflected ~40% more of the pale low sky)."""
@@ -931,6 +986,8 @@ def run(job):
                     _grass(m, g)  # (one swatch per kind: mown turf, long grass)
     if job.get("sea") is not None:
         _water(job["sea"], job.get("light") or {})
+    if job.get("rivers"):
+        _rivers(job["rivers"])
     if job.get("trees"):
         by = {}
         with open(job["trees"]) as f:
