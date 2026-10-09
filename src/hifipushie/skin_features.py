@@ -141,7 +141,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     part, t, seed, age = p["part"], p["tone"], p["seed"], p["age"]
     old, child, thin, base_r = ctx["old"], ctx["child"], ctx["thin"], ctx["base_r"]
     dark = t["melanin"]
-    ctx = {**ctx, "torso": "chest" in J}
+    ctx = {**ctx, "torso": "chest" in J, "spec": spec}
     ctx["smooth"] = []
     from . import paint as _paint
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
@@ -183,7 +183,10 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
               [{"noise": {"scale": 0.012, "range": [0.25, 0.8], "seed": seed + 41, "warp": 0.8}, "weight": 0.6}])
 
     # ---- pigment spots
-    o = _opt(f.get("freckles"), "features.freckles", ("size",))
+    o = _opt(f.get("freckles"), "features.freckles", ("size", "clump", "dark", "zones", "engine"))
+    if o and o.get("engine", "map") == "map" and ctx["face"] and "lm_jaw_1.L" in J:
+        _freckle_map(ctx["spec"], p, J, o, layer, T, ctx)
+        o = None
     if o:
         a = float(o["amount"])
         k = float(o.get("size", 0.0018)) / 0.0018
@@ -444,7 +447,11 @@ def _hair(p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
             layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
                   mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
-        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color"))
+        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color",
+                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine"))
+        if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:
+            _stubble_map(ctx["spec"], p, J, o, layer, T, ctx)
+            o = None
         if o:
             a = float(o["amount"])
             col = _hex(o["color"]) if "color" in o else dflt
@@ -504,6 +511,86 @@ def _hair(p, J, layer, T, ctx) -> None:
             lo = 0.55 - 0.35 * min(o["amount"], 1.2)
             layer("body_hair", o.get("mask"), color=col, opacity=0.75,
                   mask=[{"tile": {"swatch": "hairs", "rotate": bool(rot), "range": [round(lo, 3), round(lo + 0.35, 3)], "vary": False}}, {"vertex": True, "mask": _zones(zs)}])
+
+
+def stubble_options(o: dict, age: float = 35) -> dict:
+    """hair.stubble's options resolved against its style (skin_marks.STUBBLE_STYLES)."""
+    from . import skin_marks
+    st = o.get("style", "short")
+    if st not in skin_marks.STUBBLE_STYLES:
+        raise SpecError(f"skin hair.stubble: style is one of {', '.join(skin_marks.STUBBLE_STYLES)}")
+    base = dict(skin_marks.STUBBLE_STYLES[st])
+    a = float(o["amount"])
+    return {"length": float(o.get("length", base["length"])), "density": float(np.clip(o.get("density", base["density"]) * min(a, 1.0), 0.02, 1.0)),
+            "grey": float(np.clip(o.get("grey", 0.0), 0, 1)), "patchy": float(np.clip(o.get("patchy", base["patchy"]), 0, 1)),
+            "trim": float(np.clip(o.get("trim", base["trim"]), 0, 1)), "cheeks": float(np.clip(o.get("cheeks", base["cheeks"]), 0, 1)),
+            "cheek_line": float(o.get("cheek_line", 0.0)), "neckline": float(o.get("neckline", 0.0)),
+            "size": float(o.get("size", 1.0)), "seed": int(o.get("seed", 0)), "shadow": float(o.get("shadow", base["shadow"]))}
+
+
+def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
+    """Stubble as a unique map on the head (skin_marks.stubble_map): the shadow of hair in the skin (per vertex,
+    from the dark roots' count) + dark and white hairs as cut strokes along the growth direction, with relief."""
+    from . import skin_marks
+    t = p["tone"]
+    a = float(o["amount"])
+    q = stubble_options(o, p["age"])
+    path, place, _ = skin_marks.stubble_map(spec, p["part"], J, q)
+    col = _hex(o["color"]) if "color" in o else hair_default(t, p["age"])
+    im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
+    lips = {"zone": "lips", "blend": "subtract"}
+    # hair seen through the skin: on light skin a cool blue-grey cast (the dark shaft under a scattering layer), on dark
+    # skin just darker; the hair's own colour mixed in as it grows out
+    # (a freshly shaved jaw: the cool cast; a few days' growth: the cut hairs at the surface warm it to a grey-brown, the
+    # colour measured on Garrett's photo under the matched light: Lab ~45/4/13 at ~0.8 coverage)
+    grow = float(np.clip(q["length"] / 0.001, 0, 1))
+    cool = np.array(T(grey=0.8, melanin=1.1)) * (0.5 + 0.3 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
+    warm = np.array(T(grey=0.25, melanin=2.3, blood=1.05)) * (0.62 + 0.25 * t["melanin"])   # (warm grey: less read as green)
+    cast = (1 - grow) * cool + grow * warm + (0.04 + 0.12 * grow) * (np.array(col) - 0.3)
+    cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]
+    cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
+    layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.85 * min(a, 1.3) * q["shadow"], 0.95), 3),
+          mask=[im("b"), lips])
+    hgt = round(float(np.clip(0.00003 + 0.012 * q["length"], 0.00003, 0.00012)), 7)   # a hair stands ~0.1 mm proud
+    r = min(ctx["base_r"] + 0.1, 0.9)
+    layer("stubble", o.get("mask"), color=col, opacity=0.97, roughness=r, specular=0.35, height=hgt, mask=[im("r"), lips])
+    if q["grey"] > 0:
+        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#d2cec8")), opacity=0.95, roughness=r, specular=0.4,
+              height=hgt, mask=[im("g"), lips])
+
+
+def freckle_options(o: dict) -> dict:
+    from . import skin_marks
+    z = dict(skin_marks.FRECKLE_ZONES)
+    zo = o.get("zones") or {}
+    if not isinstance(zo, dict) or set(zo) - set(z):
+        raise SpecError(f"skin features.freckles: zones is {{zone: weight}} over {', '.join(z)}")
+    z.update({k: float(v) for k, v in zo.items()})
+    return {"amount": float(np.clip(o["amount"], 0, 3)), "size": float(o.get("size", 0.0016)), "clump": float(np.clip(o.get("clump", 0.6), 0, 1)),
+            "dark": float(np.clip(o.get("dark", 0.2), 0, 1)), "moles": 0, "zones": z, "seed": int(o.get("seed", 0))}
+
+
+def _freckle_map(spec, p, J, o, layer, T, ctx) -> None:
+    """Freckles on the face as a unique map (skin_marks.freckle_map: irregular macules, clustered, where the sun falls),
+    on the body (shoulders, forearms, the chest's V) from the freckle swatch at two sizes mixed (vary: no repeat)."""
+    from . import skin_marks
+    t = p["tone"]
+    dark = t["melanin"]
+    show = ctx["show"]
+    a = float(o["amount"])
+    q = freckle_options(o)
+    path, place, _ = skin_marks.freckle_map(spec, p["part"], J, q)
+    im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
+    # ephelides: more melanin in the same skin (light tan to brown on fair skin; on dark skin hardly a change)
+    # (one layer: each freckle's darkness is its value in the map, faint tan to brown)
+    layer("freckles", o.get("mask"), color=T(melanin=3.4 + 2.2 * (1 - dark), blood=1.15), opacity=round(min(0.75 + 0.12 * a, 0.95) * show, 3), mask=[im("r")])
+    body = [z for z in ("shoulder", "forearm", "chest") if _has(z, ctx)] + (["collarbone"] if ctx["torso"] else [])
+    if body:
+        lo = float(np.clip(0.42 - 0.3 * min(a, 1.2), 0.04, 0.6))
+        k = q["size"] / 0.0016
+        layer("freckles_body", o.get("mask"), color=T(melanin=2.6 + 1.6 * (1 - dark), blood=1.3), opacity=min(0.4 + 0.3 * a, 0.75) * show,
+              mask=[{"tile": {"swatch": "freckles", "size": round(0.042 * k, 5), "range": [round(lo, 3), round(lo + 0.55, 3)], "vary": True, "rotate": True}},
+                    {"vertex": True, "mask": _zones(body)}])
 
 
 def _points(v, what):
