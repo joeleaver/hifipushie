@@ -1262,8 +1262,9 @@ TWIST_RECIPE = {
 
 def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[str, Path]]],
               prefabs: dict | None = None, looks: dict | None = None, rig: dict | None = None,
-              extra_ext: dict | None = None):
-    """One mesh per part, one material per atlas: atlases is [(atlas name, {basecolor, orm, normal, specular: png})]
+              extra_ext: dict | None = None, external: bool = False):
+    """external: the images are referenced by file name (they lie beside the GLB) instead of embedded: several GLBs
+    (LOD tiers) share one set of maps. One mesh per part, one material per atlas: atlases is [(atlas name, {basecolor, orm, normal, specular: png})]
     in atlas index order; each part uses the material of its "atlas" index. A shared prefab (prefabs: {prefab:
     {"bake", "instances": {instance: local -> world}, "parts"}}) is one mesh, a primitive per part in its own
     frame, and a node per instance (extras.prefab names it). looks: {part: {"transmission", "ior", "alpha"}}: such a
@@ -1288,7 +1289,7 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
 
     # the images go into the buffer first: they are views 0..n-1, and texture i shows image i
     images = [p for _, imgs in atlases for p in imgs.values()]
-    for p in images:
+    for p in ([] if external else images):
         while len(bin_) % 4:
             bin_.append(0)
         raw = Path(p).read_bytes()
@@ -1444,7 +1445,8 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
            "scenes": [{"nodes": top}], "nodes": nodes, "meshes": meshes, **({"skins": skins} if skins else {}),
            "materials": materials, "textures": [{"source": i, "sampler": 0} for i in range(len(images))],
            "samplers": [{"magFilter": 9729, "minFilter": 9987}],
-           "images": [{"bufferView": i, "mimeType": "image/png"} for i in range(len(images))],
+           "images": ([{"uri": Path(p).name} for p in images] if external else
+                      [{"bufferView": i, "mimeType": "image/png"} for i in range(len(images))]),
            "accessors": accessors, "bufferViews": views, "buffers": [{"byteLength": 0}],
            "extensionsUsed": used}
     while len(bin_) % 4:

@@ -456,14 +456,28 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     return out
 
 
+def _npz_hash(hsh, path) -> None:
+    """An npz's arrays into a hash (its bytes carry the zip's timestamps: the same job hashed differently a second
+    later, so every look and every export tier re-evaluated the groom in Blender and filled the cache)."""
+    z = np.load(path, allow_pickle=False)
+    for k in sorted(z.files):
+        a = np.ascontiguousarray(z[k])
+        hsh.update(k.encode())
+        hsh.update(str(a.dtype).encode() + str(a.shape).encode())
+        hsh.update(a.tobytes())
+
+
 def key(sd: dict) -> str:
-    """A content hash of a strands job (its numbers and files): the cards / atlas caches are keyed on it."""
-    hsh = hashlib.sha1(json.dumps({k: v for k, v in sd.items() if k not in ("scalp", "groups", "band")},
+    """A content hash of a strands job's GEOMETRY (its numbers and files; not its colours, not where its files
+    lie): the evaluated strands, the cards and the cap chart are cached on it."""
+    hsh = hashlib.sha1(json.dumps({k: v for k, v in sd.items() if k not in ("scalp", "groups", "band", "collide", "look")},
                                   sort_keys=True, default=float).encode())
     for grp in sd["groups"]:
-        hsh.update(Path(grp["guides"]).read_bytes())
+        _npz_hash(hsh, grp["guides"])
         hsh.update(json.dumps(grp["stack"], sort_keys=True, default=float).encode())
-    hsh.update(Path(sd["scalp"]).read_bytes())
+    for k in ("scalp", "collide"):
+        if sd.get(k) and Path(sd[k]).exists():
+            _npz_hash(hsh, sd[k])
     return hsh.hexdigest()[:16]
 
 
@@ -490,11 +504,19 @@ def _code() -> str:
     return hashlib.sha1(b"".join((here / f).read_bytes() for f in ("hair_strands.py", "blender_strands.py"))).hexdigest()[:12]
 
 
+GROOM_KEEP = 12  # evaluated grooms kept on disk (most recently used)
+
+
 def strands_of_model(sd: dict) -> dict:
     """The model's evaluated strands (cached on disk by the job's content + this code)."""
     f = _cache() / f"groom_{key(sd)}_{_code()}.npz"
     if not f.exists():
         evaluate(sd, out=str(f))
+        old = sorted(_cache().glob("groom_*.npz"), key=lambda p: p.stat().st_mtime)[:-GROOM_KEEP]
+        for p in old:  # (each is 10-40 MB)
+            p.unlink(missing_ok=True)
+    else:
+        f.touch()
     return dict(np.load(f, allow_pickle=False))
 
 
@@ -575,7 +597,7 @@ def tile_lines(S: dict) -> dict:
     return out
 
 
-def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int = 1024) -> dict:
+def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int = 1024, short: bool = False) -> dict:
     """The scalp's hair as a picture on the scalp chart (u = azimuth / 360, v = elevation over e0..90, row 0 = the
     top): every strand that runs close over the scalp drawn where it lies, over an opaque base that starts `soft` m
     inside the hairline. So the hairline is an alpha edge of single hairs, and no skin shows under the cards: the
@@ -592,11 +614,13 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
         names = [str(n) for n in D["names"]]
         free = names.index("hair_guides_free") if "hair_guides_free" in names else -1
         for j in range(len(D["counts"])):
-            if D["obj"][j] == free:
-                continue
+            if D["obj"][j] == free and not short:  # (short=True: a short cut's own hair lies ON the head: the
+                continue  # cap carries it, every strand drawn where it lies, 1 texel wide)
             sl = slice(first[j], first[j + 1])
             a, e, h_ = az[sl], el[sl], hh[sl]
-            ok = (h_ < 0.012) & (e < 78.0)  # (round the pole the chart stretches a strand into an arc)
+            # (round the pole the chart stretches a strand into an arc; a short cut is drawn up to it all the same:
+            # left out, the crown was a plain dark disc on the cap)
+            ok = (h_ < (0.035 if short else 0.012)) & (e < (88.5 if short else 78.0))
             if ok.sum() < 2:
                 continue
             a = np.unwrap(np.radians(a)) * 180 / np.pi
@@ -606,8 +630,9 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
                     continue
                 v = (1 - (e - e0) / (90.0 - e0)) * H * ss
                 pts = [(float(x), float(y)) for x, y, k_ in zip(u, v, ok) if k_]
-                da.line(pts, fill=255, width=2)
-                di.line(pts, fill=int(1 + 254 * float(D["rand"][j])), width=2)
+                wd = 1 if short else 2
+                da.line(pts, fill=255, width=wd)
+                di.line(pts, fill=int(1 + 254 * float(D["rand"][j])), width=wd)
     a_, idm = (np.asarray(i.resize((W, H), Image.BOX), np.float32) / 255 for i in ims)
     idm = np.clip(idm / np.maximum(a_, 1e-3), 0, 1)
     AA, EE = np.meshgrid((np.arange(W) + 0.5) / W * 360.0, 90.0 - (np.arange(H) + 0.5) / H * (90.0 - e0), indexing="xy")
@@ -618,6 +643,8 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
     base = _ss((d_in - 0.25 * soft) / soft)
     pw = float(g["parting"].get("width", 0.012))
     base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
+    if short:  # the crown is hair whatever the parting's mask says there (a bald disc at the pole of a crop)
+        base = np.where((EE > 72.0) & (d_in > 0.02), 1.0, base)
     a_ = np.where(d_in > -0.004, a_, 0.0)
     from scipy import ndimage
     idm = np.where(a_ > 0.05, idm, 0.5 + 0.3 * (ndimage.gaussian_filter1d(streak, 2.0, axis=1, mode="wrap") - 0.5))
