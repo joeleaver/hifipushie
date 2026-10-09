@@ -25,12 +25,12 @@ def st_of(sl):
 
 st0 = st_of({})
 L0 = np.asarray(st0["L"])
-eyeL = 0.5 * (L0[42] + L0[45]) if not view.startswith("mouth") else 0.5 * (L0[51] + L0[57])
-cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0 if view.startswith("mouth") else 4000.0, "size": [2000, 2000], "centre": eyeL.tolist(),
-       "yaw": 0.0 if view in ("front", "mouth") else -35.0}
+eyeL = L0[30] if view == "face" else 0.5 * (L0[42] + L0[45]) if not view.startswith("mouth") else 0.5 * (L0[51] + L0[57])
+cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.5], "f": 6000.0 if view.startswith("mouth") else 2200.0 if view == "face" else 4000.0, "size": [2000, 2000], "centre": eyeL.tolist(),
+       "yaw": 0.0 if view in ("front", "mouth") else -20.0 if view == "face" else -30.0}
 c = humanfit.project(cam, eyeL[None])[0]
 print("eye L at", c, "eye R at", humanfit.project(cam, (0.5 * (L0[36] + L0[39]))[None])[0])
-box = (c[0] - 260, c[1] - 230, c[0] + 260, c[1] + 160)
+box = (c[0] - 260, c[1] - 230, c[0] + 260, c[1] + 160) if view != "face" else (c[0] - 200, c[1] - 130, c[0] + 200, c[1] + 300)
 PX = 420
 Q0 = np.asarray(st0["tpl"]["L"]).reshape(-1, 4)
 
