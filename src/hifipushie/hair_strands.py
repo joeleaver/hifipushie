@@ -456,14 +456,28 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     return out
 
 
+def _npz_hash(hsh, path) -> None:
+    """An npz's arrays into a hash (its bytes carry the zip's timestamps: the same job hashed differently a second
+    later, so every look and every export tier re-evaluated the groom in Blender and filled the cache)."""
+    z = np.load(path, allow_pickle=False)
+    for k in sorted(z.files):
+        a = np.ascontiguousarray(z[k])
+        hsh.update(k.encode())
+        hsh.update(str(a.dtype).encode() + str(a.shape).encode())
+        hsh.update(a.tobytes())
+
+
 def key(sd: dict) -> str:
-    """A content hash of a strands job (its numbers and files): the cards / atlas caches are keyed on it."""
-    hsh = hashlib.sha1(json.dumps({k: v for k, v in sd.items() if k not in ("scalp", "groups", "band")},
+    """A content hash of a strands job's GEOMETRY (its numbers and files; not its colours, not where its files
+    lie): the evaluated strands, the cards and the cap chart are cached on it."""
+    hsh = hashlib.sha1(json.dumps({k: v for k, v in sd.items() if k not in ("scalp", "groups", "band", "collide", "look")},
                                   sort_keys=True, default=float).encode())
     for grp in sd["groups"]:
-        hsh.update(Path(grp["guides"]).read_bytes())
+        _npz_hash(hsh, grp["guides"])
         hsh.update(json.dumps(grp["stack"], sort_keys=True, default=float).encode())
-    hsh.update(Path(sd["scalp"]).read_bytes())
+    for k in ("scalp", "collide"):
+        if sd.get(k) and Path(sd[k]).exists():
+            _npz_hash(hsh, sd[k])
     return hsh.hexdigest()[:16]
 
 
@@ -490,11 +504,19 @@ def _code() -> str:
     return hashlib.sha1(b"".join((here / f).read_bytes() for f in ("hair_strands.py", "blender_strands.py"))).hexdigest()[:12]
 
 
+GROOM_KEEP = 12  # evaluated grooms kept on disk (most recently used)
+
+
 def strands_of_model(sd: dict) -> dict:
     """The model's evaluated strands (cached on disk by the job's content + this code)."""
     f = _cache() / f"groom_{key(sd)}_{_code()}.npz"
     if not f.exists():
         evaluate(sd, out=str(f))
+        old = sorted(_cache().glob("groom_*.npz"), key=lambda p: p.stat().st_mtime)[:-GROOM_KEEP]
+        for p in old:  # (each is 10-40 MB)
+            p.unlink(missing_ok=True)
+    else:
+        f.touch()
     return dict(np.load(f, allow_pickle=False))
 
 
