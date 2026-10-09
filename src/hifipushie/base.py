@@ -211,7 +211,11 @@ def mouth_interior(head: dict, hd: dict) -> dict:
     return o.blobs
 
 
-SEAL_OVERLAP = 0.0004  # m: each lip's contact row pushed past the seam for the FIELD (sealed lips: see _sealed_field)
+SEAL_OVERLAP = 0.0  # m: the contact rows pushed past each other for the FIELD (0.4 mm made the two lip sheets cross:
+# small holes in the field along the seam, Tess ts_h7)
+SEAL_H = 1.0  # the field's kernel widened this much at a sealed seam (2.0 tried: it blurred the seam's V into bigger holes)
+SEAL_H_REACH = 0.0025
+SEAL_V = (0.5, 0.25, 0.1)  # share of the vertical gap the 1st, 2nd, 3rd rows out from a sealed contact close (field only)
 
 
 def _sealed_field(W, faces, sf: dict):
@@ -226,6 +230,20 @@ def _sealed_field(W, faces, sf: dict):
     W = np.array(W, float)
     W[np.asarray(sf["up"], int), 2] -= SEAL_OVERLAP
     W[np.asarray(sf["lo"], int), 2] += SEAL_OVERLAP
+    # the V between the closed lips' fronts made shallower: the next rows out drawn toward the seam (by the vertical
+    # gap between the two lips' rows at that x). Left as GNM shapes them, the V narrowed to the mesher's ~1 mm before
+    # it closed and came out as a row of specks along the seam (Tess ts_h7)
+    for (ru, rl), wgt in zip(sf.get("outer") or [], SEAL_V):
+        ru, rl = np.asarray(ru, int), np.asarray(rl, int)
+        if len(ru) < 3 or len(rl) < 3:
+            continue
+        ou, ol = ru[np.argsort(W[ru, 0])], rl[np.argsort(W[rl, 0])]
+        zl_at_u = np.interp(W[ou, 0], W[ol, 0], W[ol, 2])
+        zu_at_l = np.interp(W[ol, 0], W[ou, 0], W[ou, 2])
+        du = np.maximum(W[ou, 2] - zl_at_u, 0.0)
+        dl = np.maximum(zu_at_l - W[ol, 2], 0.0)
+        W[ou, 2] -= 0.5 * wgt * du
+        W[ol, 2] += 0.5 * wgt * dl
     used = np.unique(np.concatenate([np.asarray(f) for f in F]))
     rm = np.full(len(W), -1)
     rm[used] = np.arange(len(used))
@@ -346,6 +364,11 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
+    if one and tpl.get("seal_field"):  # the seam's narrow V between closed lips, wider kernels there: at the field's
+        # own width the mesher (~1 mm) cut it into a row of pits (Tess ts_h7: dark specks along the seam)
+        cs = np.asarray(W, float)[np.r_[np.asarray(tpl["seal_field"]["up"], int), np.asarray(tpl["seal_field"]["lo"], int)]]
+        dz = cKDTree(cs).query(V)[0]
+        h = h * (1 + (SEAL_H - 1) * np.clip(1 - dz / SEAL_H_REACH, 0, 1))
     if own_neck:  # MakeHuman's neck is rings of long thin quads: with the mean edge as the kernel's width the field
         # was faceted between the rings (fine level lines down the neck). The longest edge at each vertex instead.
         # (Tried on the one mesh, 2026-10-08: no visible change, and a wider kernel over its neck bridge, or one
@@ -1830,7 +1853,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
         # added like an identity component (everything after rides on them)
         from . import faceslide, gnmloops
-        slide = faceslide.delta(head["sliders"])
+        slide = faceslide.delta(head["sliders"], V)  # (V: the crease on this head's own fold)
         if slide is not None:
             V = V + slide[:gnmloops.N_RAW]
             par = gnmloops.plan()["parents"]
