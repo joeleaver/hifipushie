@@ -78,3 +78,4 @@ addendum: conditioned on v1's face, a front smile, the hair as worn).
 - Eye area (ts_e1): the refit profile camera shows the brow 5.9 mm BEHIND hers; sliders brow_ridge 0.3 (was -0.8),
   eye_sulcus -0.4, held macros brow_ridge +1.2, eye_depth +0.8: brow band -1.9 mm, profile ALL 2.17 mm (2.57).
   One identity component over 2.6 sigma.
+- Front jaw kink (e1): jawline sharp 0.008 + tuck made a corner under the ears in front. Front widths like with like are all NARROWER than hers (every level), so it is the contour's shape, not width. sharp 0.014 / out -0.002 / tuck 0 (e2): smooth front but profile ramus 33.8 vs 16.9 (out). Compromise ts_e3: sharp 0.01, out -0.002, tuck 0: front kink mostly gone (out/jaw_front_cmp.png), profile ramus 23.9 (1.7 tol), heights in tolerance, profile ALL 2.17. Conflict = missing control: the gonion's corner sharpness in profile independent of its lateral flare in front.
