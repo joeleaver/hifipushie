@@ -7079,7 +7079,7 @@ its fitted identity; trellis/ = Oxidegen's meshes as arrays). Sheets `workspace/
   without gains; the XR Blocks table for turned views; MapAnything on untextured busts; Marigold / MoGe normals where
   DAViD's exist; silhouette widths for cheekbones or neck.
 
-## Made pieces constructed after the drape (2026-10-09, "collarbuild" agent, branch `worktree-agent-a1bfddd1d86ae3edf`; a SPIKE)
+## Made pieces constructed after the drape (2026-10-09, "collarbuild" agent, branch `worktree-agent-a5a0bbd568c7f3c68`; a SPIKE)
 
 The user after ten collar rounds: "Do we need a different tack? Less simulation, more hand-editing?"; the coordinator:
 simulate the garment's body, BUILD the collar onto the finished neckline; then the user: "that same principle probably
