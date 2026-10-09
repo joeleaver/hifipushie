@@ -139,7 +139,8 @@ def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
     return out
 
 
-SHORT_TILE = {"medium": (36, 3.2), "sparse": (22, 3.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
+SHORT_TILE = {"medium": (56, 2.2), "sparse": (34, 2.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
+SHORT_DEPTH = 0.45  # a short cut's card strands: the least of the depth shade (they lie over the cap, which is the shade)
 
 
 def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None, short: bool = False) -> dict:
@@ -189,7 +190,7 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     if kind in ("fly", "baby"):  # single hairs in the open are lit, not deep in a clump: no depth shade
         dep = 0.8 + 0.2 * dep
     elif short and kind in SHORT_TILE:  # a few hairs over the cap: lit (the cap under them is the shade)
-        dep = 0.62 + 0.38 * dep
+        dep = SHORT_DEPTH + (1 - SHORT_DEPTH) * dep
     if kind in ("fly", "baby"):  # nothing touches the quad's border: a card's rectangle must never show
         xx = (np.arange(w) + 0.5) / w
         vv_ = (np.arange(H)[:, None] + 0.5) / H
@@ -218,7 +219,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount")}, key], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage

@@ -16,10 +16,10 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-VERSION = 7
+VERSION = 8
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
-LIFT = 0.9  # the cap stands at this share of the hair's height over the scalp
+LIFT = 0.7  # the cap stands at this share of the hair's height over the scalp
 LIFT_MAX = 0.024  # m
 EASE, EASE_FRONT = 0.012, 0.006  # m inside the hairline over which the cap rises to its height (sides / forehead)
 RELIEF = 0.7  # x the strands' real slopes in the normal map (clamped at SLOPE)
