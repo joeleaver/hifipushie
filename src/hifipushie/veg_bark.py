@@ -98,7 +98,7 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
         wide = 0.012 + 0.04 * _noise(shape, 1, 5, seed + 7) ** 1.5  # a fissure opens and pinches along its run
         plate = np.clip((f2 - f1) / (0.35 * wide), 0, 1) ** 0.7  # thin cracks between neighbouring plates...
         b1, b2, bid, bn = _cells(shape, 9, seed + 31, aspect=2.6, warp=warp * 1.6 + rag, loose=0.8)  # ...and the deep wide fissures between blocks of them
-        deep = np.clip((b2 - b1) / (1.6 * wide), 0, 1)
+        deep = np.clip((b2 - b1) / (2.6 * wide), 0, 1)
         plate = plate * (0.25 + 0.75 * deep ** 0.8)
         tone_b = np.random.default_rng(seed + 12).random(bn)[bid]
         g1, g2, gid, gn = _cells(shape, 70, seed + 21, aspect=2.0, warp=warp2)  # cracks across a plate: shallow, broken
@@ -108,7 +108,13 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
         lay = mid + 0.5 * _noise(shape, 2, 6, seed + 5) + 0.35 * rng.random(gn)[gid]
         flakes = np.floor(lay * 4.5) / 4.5  # stepped papery layers on the plate
         height = plate * (0.42 + 0.38 * flakes + 0.1 * tone) * (0.8 + 0.2 * crack) + 0.12 * (0.5 * fine + 0.5 * grit) * plate
-        albedo = 0.5 + 0.5 * plate + 0.36 * (tone - 0.5) + 0.2 * (tone_b - 0.5) + 0.34 * (flakes - 0.5) - 0.15 * (1 - crack) + 0.2 * (fine - 0.5) + 0.2 * (grit - 0.5)
+        # Two colours (the photos, veg_refs/bark/pine_bark_*): the weathered top of each plate is grey-mauve
+        # (`color`), the layers under it orange-red (`color2`): plate rims, the lower flake steps, fissure walls and
+        # freshly shed plates; only the fissure floor is dark. One brown x a grey multiplier read as brown worms.
+        fresh = (np.random.default_rng(seed + 13).random(n) < 0.2)[ids]
+        top = _smooth(flakes + 0.25 * (tone - 0.5), 0.3, 0.75)
+        tint = _smooth(plate, 0.2, 0.65) * (0.2 + 0.8 * top) * (1 - 0.5 * fresh * (1 - top)) + 0.25 * (grit - 0.5) * plate
+        albedo = (0.42 + 0.58 * _smooth(plate, 0.0, 0.35)) * (0.6 + 0.4 * deep ** 0.6) + 0.25 * (tone - 0.5) + 0.12 * (tone_b - 0.5) + 0.14 * (flakes - 0.5) - 0.2 * (1 - crack) + 0.22 * (fine - 0.5) + 0.3 * (grit - 0.5)
         rough = 0.92 - 0.1 * plate
     elif kind == "scales":  # spruce: thin irregular flakes lying over one another, low contrast, fine at arm's length
         # (the first version, round Voronoi cells with dark grout, read as cobblestones / giraffe skin in the engine)
@@ -151,8 +157,23 @@ def bark_maps(kind: str = "furrowed", size: int = 256, seed: int = 0) -> dict:
     dzdy = (np.roll(height, 1, 0) - np.roll(height, -1, 0)) * K["depth"] / (2 * px)
     nrm = np.stack([-dzdx, -dzdy, np.ones(shape)], -1)
     nrm /= np.linalg.norm(nrm, axis=2, keepdims=True)
-    return {"height": height, "normal": nrm * 0.5 + 0.5, "albedo": albedo, "rough": np.clip(rough, 0.2, 1.0),
-            "tile": list(K["tile"]), "depth": K["depth"]}
+    out = {"height": height, "normal": nrm * 0.5 + 0.5, "albedo": albedo, "rough": np.clip(rough, 0.2, 1.0),
+           "tile": list(K["tile"]), "depth": K["depth"]}
+    if kind == "plates":
+        out["tint"] = np.clip(ndimage.gaussian_filter(tint, 0.6, mode="wrap"), 0, 1)
+    return out
+
+
+def rgb(maps: dict, bark: dict) -> np.ndarray:
+    """The bark's colour picture (h, w, 3) 0..1 in sRGB: albedo x `color`, or, for kinds with two colours (a `tint`
+    map: 1 = `color`, 0 = `color2`), albedo x their mix."""
+    c1 = np.asarray(bark.get("color", [0.5, 0.45, 0.4]), float)
+    if "tint" in maps and bark.get("color2") is not None:
+        t = maps["tint"][..., None]
+        col = c1[None, None] * t + np.asarray(bark["color2"], float)[None, None] * (1 - t)
+    else:
+        col = c1[None, None]
+    return np.clip(maps["albedo"][..., None] * col, 0, 1)
 
 
 def tileability(a: np.ndarray) -> float:

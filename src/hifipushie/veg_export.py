@@ -637,8 +637,7 @@ def write_glb(tree, path: str, name="plant", triangles: int | None = None, spaci
             at_["TEXCOORD_3"] = acc(np.asarray(uv3, np.float32), "VEC2", 5126, 34962)
         return {"attributes": at_, "indices": acc(F.astype(np.uint32).ravel(), "SCALAR", 5125, 34963), "material": material}
 
-    col = np.asarray(bark.get("color", [0.5, 0.45, 0.4]), float)
-    base = np.clip(bm["albedo"][..., None] * col[None, None], 0, 1)  # (sRGB colour x a multiplier: near enough)
+    base = veg_bark.rgb(bm, bark)  # (sRGB colour x a multiplier: near enough)
     orm = np.stack([np.ones_like(bm["rough"]), bm["rough"], np.zeros_like(bm["rough"])], -1)
     if st and st["wood"].get("flat", True):  # a style's bark: one colour
         materials.append({"name": "bark", "pbrMetallicRoughness": {
