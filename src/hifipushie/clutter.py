@@ -118,6 +118,11 @@ WOOD_PAINT = {
     "bleach": 0.25,           # sun-bleached paler on top
 }
 BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on alpha cards breaking its outline
+    "open": True,             # an OPEN bush made from a grown shrub (clutter_bush: stems + spray cards -> bough cards -> crossed
+                              # cards); False = closed leafy lumps on stems (the blobby / cartoon way)
+    "height": 0.75,           # an open bush's height / width
+    "stems": 6, "stem_angle": 28.0,  # the shrub's stems from its stool and how far they lean out (deg)
+    "clumps": [3, 5],         # closed lumps (when not open): separate, of different sizes, each on its own stem
     "aspect": [[0.8, 1.0], [0.6, 0.8]],  # depth / width and height / width of the dome
     "lobes": [3, 6],          # lobes round the main dome
     "lobe": [0.2, 0.3],       # their radius, x the width
@@ -125,7 +130,7 @@ BUSH = {  # a clutter bush: a lumpy leafy dome (closed, opaque) + leaf sprays on
     "join": 0.1,              # m: how softly lobes run together (small = distinct clumps)
     "lumps": 0.03, "lump_size": 0.22,
     "cards": [24, 30],        # leaf sprays standing out of the dome at LOD 0 (0 = none: a closed style)
-    "card": [0.3, 0.42],      # their length, m
+    "card": [0.3, 0.46],      # their length, m
     "card_out": 0.58,          # the share of a spray standing out past the dome's surface
     "card_up": 0.35,          # how far sprays turn upward from straight out
     "cards_lod": [1.0, 0.5, 0.2],  # the share of the sprays each LOD keeps (kept ones drawn larger)
@@ -570,9 +575,26 @@ class Bush:
         self.H = H
         self.c = np.zeros(3)
         R = 0.5 * size
-        # (centre, radii): the main dome, then the lobes
-        self.ell = [(np.array([0.0, 0.0, 0.1 * H]), np.array([0.8 * R, 0.8 * R * ay, 0.84 * H]))]  # (a dome: widest at the ground)
-        for _ in range(int(rng.integers(f["lobes"][0], f["lobes"][1] + 1))):
+        self.stems = []
+        self.lumpy = not f.get("open", True)
+        if self.lumpy:  # separate lumps of different sizes, each at the end of its own stem from the stool
+            self.ell = []
+            n = int(rng.integers(f["clumps"][0], f["clumps"][1] + 1))
+            a0 = rng.uniform(0, 2 * math.pi)
+            for i in range(n):
+                r = (0.3 if i == 0 else rng.uniform(0.15, 0.24)) * size
+                a = a0 + 2 * math.pi * i / n + rng.uniform(-0.4, 0.4)
+                d = (0.06 if i == 0 else rng.uniform(0.2, 0.34)) * size
+                zc = (0.72 if i == 0 else rng.uniform(0.32, 0.6)) * H
+                c = np.array([d * math.cos(a), d * math.sin(a) * ay, max(zc, r * 0.95 + 0.06)])
+                self.ell.append((c, np.array([r, r, 0.82 * r]) * rng.uniform(0.92, 1.12, 3)))
+                foot = np.array([0.04 * math.cos(a), 0.04 * math.sin(a), 0.0]) * size
+                mid = foot + (c - foot) * 0.5 + np.array([0.06 * math.cos(a), 0.06 * math.sin(a), -0.04]) * size
+                self.stems.append((np.array([foot, mid, c]), np.array([0.026, 0.02, 0.016]) * size * (1.3 if i == 0 else 1.0)))
+        else:
+            # (centre, radii): the main dome, then the lobes
+            self.ell = [(np.array([0.0, 0.0, 0.1 * H]), np.array([0.8 * R, 0.8 * R * ay, 0.84 * H]))]  # (a dome: widest at the ground)
+        for _ in range(0 if self.lumpy else int(rng.integers(f["lobes"][0], f["lobes"][1] + 1))):
             a = rng.uniform(0, 2 * math.pi)
             r = _u(rng, f["lobe"]) * size
             o = _u(rng, f["lobe_out"])
@@ -593,7 +615,9 @@ class Bush:
         ds = []
         for i, (c, r) in enumerate(self.ell):
             q = p - c
-            if i == 0:
+            if self.lumpy:
+                pass
+            elif i == 0:
                 q = q.copy()
                 q[:, 2] = np.maximum(q[:, 2], 0.0)  # (straight down below its middle: a bush stands on the ground)
             else:
@@ -608,7 +632,8 @@ class Bush:
             d = d * (1 - h) + D[:, i] * h - self.join * h * (1 - h)
         if self.lumps:
             d = d + self.lumps * (noise.fbm(p, self.lump_size, 2, self.seed) - 0.5) * 2
-        d = np.maximum(d, -(p[:, 2] + 0.1))  # closed under the ground
+        if not self.lumpy:
+            d = np.maximum(d, -(p[:, 2] + 0.1))  # closed under the ground
         if not info:
             return d
         o = np.argsort(D, axis=1)
@@ -785,6 +810,7 @@ class Solid:
         self.form = f
         if cfg["shape"] == "bush":
             self.parts = [Bush(rng, f)]
+            self.lumpy = self.parts[0].lumpy
         elif self.wood:
             n = int(rng.integers(f["pieces"][0], f["pieces"][1] + 1))
             self.parts = []
@@ -819,7 +845,7 @@ class Solid:
                 s2 = rng.uniform(0.38, 0.55)
                 h = self.parts[0].half
                 self.parts.append(Stone(rng, f, s2, (0.75 * h[0] * math.cos(a0) * 1.0, 0.9 * h[1] * math.sin(a0), -h[2] + 0.42 * s2 * 0.5)))
-        self.cluster = len(self.parts) > 1
+        self.cluster = len(self.parts) > 1 or getattr(self, "lumpy", False)
         self.sink_share = f["sink"]
         lo = np.min([p.lo for p in self.parts], 0)
         hi = np.max([p.hi for p in self.parts], 0)
@@ -1529,6 +1555,9 @@ def build(spec: dict, progress=None) -> dict:
     "lods": [mesh...], "collision": (V, F) | None, "size", "height", "sink"}], "albedo", "normal", "orm"} (pictures
     0..1 floats; meshes Z up in metres, pivot on the ground line)."""
     cfg = resolve(spec)
+    if cfg["shape"] == "bush" and cfg["form"].get("open", True):
+        from . import clutter_bush
+        return clutter_bush.build(spec, progress)
     nv = cfg["variants"]
     bush = cfg["shape"] == "bush"
     grid = 3 if bush else 1 if nv == 1 else 2 if nv <= 4 else 3
@@ -1538,9 +1567,13 @@ def build(spec: dict, progress=None) -> dict:
     for a_ in albs.values():
         a_[..., :3] = cfg["color"]
         a_[..., 3] = 1.0
+    if bush:  # a bark patch for stems: the last cell
+        bk = np.clip(np.asarray(cfg["color"]) * [1.15, 0.8, 0.65] * 0.5, 0, 1)
+        for a_ in albs.values():
+            a_[2 * cell: 3 * cell, 2 * cell: 3 * cell, :3] = bk
     tiles = []
     if bush and cfg["form"]["cards"][1] > 0:  # the sprays' pictures: the cells after the variants'
-        for t in range(grid * grid - nv):
+        for t in range(grid * grid - nv - 1):
             c = nv + t
             x0, y0 = (c % grid) * cell, (c // grid) * cell
             tiles.append((x0, y0, cell))
@@ -1566,6 +1599,7 @@ def build(spec: dict, progress=None) -> dict:
         sink = cfg["form"]["sink"] * height
         if bush:
             sink = float(solid.parts[0].ground_z - lo[2])
+            height = float(hi[2] - solid.parts[0].ground_z)
         scale = 1.0 / plan
         shift = np.array([-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -(lo[2] + sink)])
         origin = np.array([(k % grid) * cell, (k // grid) * cell], float)
@@ -1587,7 +1621,7 @@ def build(spec: dict, progress=None) -> dict:
                         stubs, sides, rings = False, 5, 5
                         continue
                     sides, rings = (sides - 1, rings) if sides > 3 else (sides, rings - 1)
-            elif solid.cluster and cfg["shape"] != "wood" and len(solid.parts) > 2:  # a patch of stones: a hull each
+            elif solid.cluster and cfg["shape"] != "wood" and (len(solid.parts) > 2 or getattr(solid, "lumpy", False)):  # a patch of stones / a bush's lumps: a hull each
                 pre = cluster_lod(V, F, tgt)
             L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=hull, pre=pre)
             bad = False
@@ -1631,12 +1665,25 @@ def build(spec: dict, progress=None) -> dict:
                     L["F"] = np.r_[L["F"], C["F"] + o]
                     L["triangles"] = int(len(L["F"]))
                     L["cards"] = int(len(C["F"]) // 4)
+                if solid.parts[0].stems:  # the lumps' stems: 3-sided tubes, their colour a bark patch in the atlas's last cell
+                    from .clutter_bush import _tube
+                    for pts, rr in solid.parts[0].stems:
+                        Vs, Ns, Fs = _tube(pts, rr, 3, 3 if j < 2 else 2)
+                        o = len(L["V"])
+                        ts = np.clip(Vs[:, 2] / Bz, 0, 1.3) ** 1.5
+                        L["V"] = np.r_[L["V"], Vs]
+                        L["N"] = np.r_[L["N"], Ns]
+                        L["UV"] = np.r_[L["UV"], np.tile([(2.5 * cell) / base, (2.5 * cell) / base], (len(Vs), 1))]
+                        L["T"] = np.r_[L["T"], np.tile([1.0, 0, 0, 1.0], (len(Vs), 1))]
+                        L["wind"] = np.r_[L["wind"], np.c_[ts, 0.2 * ts, np.full(len(ts), 0.37 * k % 1.0), np.zeros(len(ts))]]
+                        L["F"] = np.r_[L["F"], Fs + o]
+                    L["triangles"] = int(len(L["F"]))
             L["V"] = (L["V"] + shift) * scale
         col = None
         if cfg["collision"] == "convex":
             col = _hull((lods[min(1, len(lods) - 1)]["V"]), 24)
         out.append({"name": f"v{k}", "lods": lods, "collision": col, "height": round(height * scale, 4),
-                    "sink": round(sink * scale, 4), "bounds": [((lo + shift) * scale).round(4).tolist(), ((hi + shift) * scale).round(4).tolist()]})
+                    "sink": round(max(sink, 0.0) * scale, 4), "bounds": [((lo + shift) * scale).round(4).tolist(), ((hi + shift) * scale).round(4).tolist()]})
         if progress:
             progress(f"{cfg['kind']} {cfg['style']} variant {k}: " + " / ".join(str(L["triangles"]) for L in lods) + " triangles")
     return {"cfg": cfg, "variants": out, "albedo": albs, "normal": nrm * 0.5 + 0.5, "orm": orm}
@@ -2054,7 +2101,9 @@ def export(spec: dict, out_dir, stem: str | None = None, progress=None) -> dict:
     channels = ["NORMAL", "POSITION", "TANGENT", "TEXCOORD_0"] + (["TEXCOORD_1", "TEXCOORD_2", "_WIND"] if leaf else [])
     J = {"contract": {"version": veg_export.CONTRACT, "changes": veg_export.CONTRACT_LOG,
                       "rule": "an engine should refuse a version or a slot it doesn't know: every slot is in slot_list"},
-         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": "a closed leafy dome + leaf sprays on alpha cards (one material)" if leaf else None},
+         "grade": "clutter", "kind": cfg["kind"], "style": {"name": cfg["style"], "foliage": (("an open bush from a grown shrub: stems + spray cards (LOD 0), bough cards baked from them (LOD 1), "
+                                                       "two crossed cards (LOD 2); one alpha-MASK material") if cfg["form"].get("open", True)
+                                                      else "closed leafy lumps on stems (one material)") if leaf else None},
          "about": cfg["about"],
          "glb": f"{stem}.glb",
          "lods": [{"lod": j, "triangles": [v["lods"][j]["triangles"] for v in variants], "grade": "clutter"} for j in range(len(cfg["lods"]))],
