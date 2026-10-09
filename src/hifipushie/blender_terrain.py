@@ -201,7 +201,8 @@ def _species(kind, v):
 VARIANTS = 4
 
 
-CLUTTER_KINDS = ("bush", "tussock", "tallgrass", "boulder")
+CLUTTER_KINDS = ("bush", "tussock", "tallgrass", "boulder", "river_rock", "cobbles", "slab", "driftwood", "reeds",
+                 "litter")
 CLUTTER_VARIANTS = 4
 
 
@@ -427,6 +428,101 @@ def _scrub(rng, v):
     return V, F, cols
 
 
+STREAM_KINDS = ("river_rock", "cobbles", "slab", "driftwood", "reeds", "litter")
+
+
+def _lump(bm, rng, centre, size, rough, sub=2):
+    """A rounded stone: an icosphere scaled to `size` (full extents x, y, z), turned about z, its surface varied by
+    noise (`rough`), at `centre`. Returns its vertices."""
+    import bmesh
+    from mathutils import noise as mn
+    res = bmesh.ops.create_icosphere(bm, subdivisions=sub, radius=0.5)
+    off = Vector(rng.uniform(-50, 50, 3))
+    a = rng.uniform(0, math.pi)
+    ca, sa = math.cos(a), math.sin(a)
+    for vert in res["verts"]:
+        n = vert.co.normalized()
+        f = 1 + rough * mn.fractal(n * 1.3 + off, 0.6, 2.0, 2)
+        x, y, z = n.x * size[0] * 0.5 * f, n.y * size[1] * 0.5 * f, n.z * size[2] * 0.5 * f
+        vert.co = Vector((centre[0] + x * ca - y * sa, centre[1] + x * sa + y * ca, centre[2] + z))
+    return res["verts"]
+
+
+def _stream_piece(kind, rng):
+    """A stream clutter placeholder, 1 m across at scale 1 (its largest plan dimension), pivot at the ground with the
+    piece part sunk: a water-worn boulder, a patch of cobbles, a flat bank slab, a bare log with a stub or two, a reed
+    clump, a patch of leaf litter. Returns (V, F, colours, smooth)."""
+    import bmesh
+    if kind == "reeds":
+        V, F, C = _tuft(rng, 70, 1.5, 0.32, 0.1, 0.3)
+        V = np.asarray(V, float)
+        V[:, :2] *= 1.0
+        return V, F, np.asarray(C) * np.array([0.9, 1.0, 0.8]), True
+    bm = bmesh.new()
+    cols = []
+    stone = lambda: np.array([0.085, 0.08, 0.07]) * rng.uniform(0.7, 1.5) * (1 + rng.normal(0, 0.06) * np.array([1, 0.2, -1]))
+    if kind == "river_rock":
+        hz = rng.uniform(0.5, 0.7)
+        vs = _lump(bm, rng, (0, 0, 0.3 * hz), (1.0, rng.uniform(0.7, 0.9), hz), 0.12, 3)
+        c = stone()
+        cols += [c * (0.85 + 0.3 * rng.random())] * 0 + [c] * len(vs)
+    elif kind == "slab":
+        vs = _lump(bm, rng, (0, 0, 0.08), (1.0, rng.uniform(0.6, 0.85), rng.uniform(0.25, 0.35)), 0.22, 2)
+        cols += [stone()] * len(vs)
+    elif kind == "cobbles":
+        for _ in range(int(rng.integers(8, 15))):
+            r = 0.42 * math.sqrt(rng.random())
+            a = rng.uniform(0, 2 * math.pi)
+            sz = float(np.clip(rng.lognormal(math.log(0.13), 0.4), 0.06, 0.26))
+            vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.18 * sz), (sz, sz * rng.uniform(0.65, 0.95),
+                                                                               sz * rng.uniform(0.45, 0.7)), 0.08, 2)
+            cols += [stone()] * len(vs)
+    elif kind == "litter":
+        for _ in range(26):
+            r = 0.5 * math.sqrt(rng.random())
+            a = rng.uniform(0, 2 * math.pi)
+            sz = rng.uniform(0.05, 0.12)
+            vs = _lump(bm, rng, (r * math.cos(a), r * math.sin(a), 0.004), (sz, sz * 0.5, 0.008), 0.0, 1)
+            cols += [np.array([0.06, 0.04, 0.02]) * rng.uniform(0.6, 1.5)] * len(vs)
+    else:  # driftwood: a bare log along +x, a little bent, tapering, with a branch stub or two
+        wood = np.array([0.11, 0.095, 0.075]) * rng.uniform(0.75, 1.2)
+
+        def tube(pts, r0, r1, sides=7):
+            rings = []
+            for i, p in enumerate(pts):
+                t = i / (len(pts) - 1)
+                d = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]
+                d = d / max(np.linalg.norm(d), 1e-9)
+                a_ = np.cross(d, [0.0, 0.0, 1.0])
+                a_ = a_ / max(np.linalg.norm(a_), 1e-9)
+                b_ = np.cross(d, a_)
+                r = r0 * (1 - t) + r1 * t
+                rings.append([bm.verts.new(tuple(p + r * (math.cos(k * 2 * math.pi / sides) * a_ +
+                                                       math.sin(k * 2 * math.pi / sides) * b_))) for k in range(sides)])
+                cols.extend([wood * rng.uniform(0.85, 1.15)] * sides)
+            for ra, rb in zip(rings, rings[1:]):
+                for k in range(sides):
+                    bm.faces.new((ra[k], ra[(k + 1) % sides], rb[(k + 1) % sides], rb[k]))
+            for ring in (rings[0], rings[-1][::-1]):
+                bm.faces.new(ring[::-1])
+        r0 = rng.uniform(0.022, 0.04)
+        bow = rng.uniform(-0.06, 0.06)
+        pts = np.array([[x, bow * math.sin(math.pi * (x + 0.5)), r0 * 0.6 + 0.02 * math.sin(3 * x)]
+                        for x in np.linspace(-0.5, 0.5, 7)])
+        tube(pts, r0, r0 * rng.uniform(0.45, 0.8))
+        for _ in range(int(rng.integers(1, 4))):
+            x = rng.uniform(-0.3, 0.4)
+            s0 = np.array([x, bow * math.sin(math.pi * (x + 0.5)), r0 * 0.6])
+            az = rng.uniform(0.5, 1.3) * rng.choice([-1, 1])
+            e = s0 + rng.uniform(0.12, 0.3) * np.array([math.cos(az), math.sin(az), rng.uniform(0.1, 0.6)])
+            tube(np.array([s0, 0.5 * (s0 + e) + [0, 0, 0.02], e]), r0 * 0.4, r0 * 0.15, 5)
+    bm.verts.index_update()
+    V = np.array([tuple(vv.co) for vv in bm.verts])
+    F = [tuple(vv.index for vv in f.verts) for f in bm.faces]
+    bm.free()
+    return V, F, np.array(cols), kind != "slab"
+
+
 def _clutter_variant(kind, v, sea=None):
     """Variant v of a clutter placeholder (hidden; instanced): grass tufts (tussock: a dense clump ~0.45 m; tallgrass:
     a looser sheaf ~0.7 m), a coastal scrub bush (sage-green lumps, some in yellow flower, ~1 m), a boulder (a
@@ -441,6 +537,9 @@ def _clutter_variant(kind, v, sea=None):
     elif kind == "bush":
         V, F, cols = _scrub(rng, v)
         ob = _mesh_ob(f"clutter_bush_{v}", V, F, np.array(cols))
+    elif kind in STREAM_KINDS:
+        V, F, C, smooth = _stream_piece(kind, rng)
+        ob = _mesh_ob(f"clutter_{kind}_{v}", V, F, C, smooth=smooth)
     else:
         import bmesh
         from mathutils import noise as mn

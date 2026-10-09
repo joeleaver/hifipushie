@@ -127,8 +127,9 @@ class Edits:
     and bunkers cut crisp into the turf. `zone` (cells, on the terrain grid) says where any of it can be: elsewhere
     the column is untouched (and costs one lookup)."""
 
-    def __init__(self, T, H, bunkers=(), cfg=None):
+    def __init__(self, T, H, bunkers=(), cfg=None, streams=None):
         cfg = cfg or config(T) or {"lip": dict(LIP), "bunker": dict(BUNKER)}
+        self.streams = streams if streams is not None and streams.any else None  # (terrain_stream: the beds' shape)
         self.lip_cfg, self.bunker_cfg = cfg["lip"], cfg["bunker"]
         self.x0, self.y0, self.c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
         c = self.c
@@ -166,6 +167,8 @@ class Edits:
             self.bunkers.append((parts, float(depth)))
             self.bunker_names.append(name[0] if name else None)
             zone |= ndimage.binary_dilation(m > 0.05, iterations=2)
+        if self.streams is not None and self.streams.cfg["shape"]:
+            zone |= self.streams.zone > 0
         self.zone = zone.astype(np.uint8)
         self.any = bool(zone.any())
 
@@ -250,6 +253,8 @@ class Edits:
             return h, s
         h = np.array(h, float, copy=True)
         h[k] = h[k] + self.dz(x[k], y[k], riser, wmin)
+        if self.streams is not None:  # (a stream's bed: pools, riffles, bars; only under its water)
+            h[k] = h[k] + self.streams.dz(x[k], y[k], h[k])
         return h, s
 
 
@@ -503,6 +508,9 @@ SWATCHES = {  # the tiling grass detail per ground layer: blades per 4 m2, blade
     "grass": {"layers": ["grass", "scrub"], "blades": 22000, "length": (0.05, 0.16), "dry": 0.2, "clump": 1.0,
               "seed": 4243},  # long grass: clumpy, straw blades among the green
     "sand": {"layers": ["sand"], "gen": "sand", "seed": 4245},  # wind ripples in patches, grit, pebbles and shell
+    # a stream's bed (terrain_stream): packed cobbles and pebbles; fine silt and damp earth with pebbles and flecks
+    "gravel": {"layers": ["gravel"], "gen": "cobble", "seed": 4251, "fade": (25.0, 80.0)},
+    "silt": {"layers": ["silt", "bank"], "gen": "silt", "seed": 4253},
 }
 
 
@@ -618,8 +626,12 @@ def write_grass(out_dir, layers=None):
         lay = [nm for nm in P["layers"] if layers is None or nm in layers]
         if not lay:
             continue
-        S = sand_swatch(seed=P["seed"]) if P.get("gen") == "sand" else \
-            grass_swatch(seed=P["seed"], blades=P["blades"], length=P["length"], dry=P["dry"], clump=P["clump"])
+        if P.get("gen") in ("cobble", "silt"):
+            from . import terrain_stream
+            S = (terrain_stream.cobble_swatch if P["gen"] == "cobble" else terrain_stream.silt_swatch)(seed=P["seed"])
+        else:
+            S = sand_swatch(seed=P["seed"]) if P.get("gen") == "sand" else \
+                grass_swatch(seed=P["seed"], blades=P["blades"], length=P["length"], dry=P["dry"], clump=P["clump"])
         hr = float(max(np.abs(S["height"]).max(), 1e-4))
         imgs = {"albedo": q8(0.5 * S["albedo"]), "normal": q8(S["normal"] * 0.5 + 0.5),
                 "height": np.round((S["height"] / hr * 0.5 + 0.5) * 65535).astype(np.uint16)}
