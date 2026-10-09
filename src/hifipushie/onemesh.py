@@ -315,6 +315,8 @@ def template(base: dict) -> dict:
             faces.append([int(v) for v in q])
     assert min(min(f) for f in faces) >= 0
     V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
+    if len(loop_rows) and ht.get("loop_offsets") is not None:  # (faceslide.py) the sliders on the loops' vertices
+        V[loop_rows] += ht["loop_offsets"]
     from . import humanstyle
     Jb, bones, chin_z, face, chin_lm, carry_fn = mb["J"], mb["bones"], mb["chin_z"], mb["face"], float(ht["lm68"][8][2]), None
     chin_mh_ = float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])
