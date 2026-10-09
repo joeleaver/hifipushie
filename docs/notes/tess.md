@@ -65,3 +65,16 @@ addendum: conditioned on v1's face, a front smile, the hair as worn).
   Parting "centre" (not "center"), volume front 0.009 / top 0.011 / crown 0.014 / sides 0.013, tie escape 10, gather
   lift 0.014 -> 0.005 (the lift made a tall crest over the forehead), width 0.07, out 0.022; look lit #4a3528,
   sheen #76593f, gap #150d09. facesheet.py HAIR=1 renders the stage with the groom (hair_look job).
+- Profile camera: the 8-click fit had wandered to a 60 deg view (fwd [-0.87, 0.5, 0]); refitprof.py refits it
+  with yaw -90, f fixed 2600, r regularised (rms 11.5 px; old one kept as human_refs "camera_8pt"). Profile gate
+  numbers before / after the refit are NOT comparable (0.48 vs 0.44 mm a px, and the brow band moved -6 mm).
+- Hair trace: trace.py (mask, structure-tensor field, hand strokes) on front / 3/4 / profile; lift.py lifts strokes
+  through a fitted camera; tri.py triangulates a point seen in two views. Tie: az 151, el -6, 36 mm off the scalp
+  (rays miss 4.5 mm). ts_t1 = first groom from those numbers.
+- Jaw (jawpts.py = likeness_points jaw.L / ear_lobe.L on 3/4 + profile): ts_h13's jaw angle 13-18 mm too low,
+  ramus 36 deg too slanted (profile). shape.jawline {below_lobe 0.02, forward 0.002, sharp 0.008, tuck 0.002}
+  (ts_j2): angle heights in tolerance in both views, profile ramus 15.2 vs 16.9; the gonial ANGLE disagrees
+  between views (profile 124 vs 91, 3/4 122 vs 143): my traced corner, not trusted.
+- Eye area (ts_e1): the refit profile camera shows the brow 5.9 mm BEHIND hers; sliders brow_ridge 0.3 (was -0.8),
+  eye_sulcus -0.4, held macros brow_ridge +1.2, eye_depth +0.8: brow band -1.9 mm, profile ALL 2.17 mm (2.57).
+  One identity component over 2.6 sigma.
