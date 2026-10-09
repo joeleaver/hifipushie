@@ -1990,3 +1990,13 @@ NO SIM WAS RUN.
       Drafted (draftchk.py, no sim): gorge_angle 55 passes design/pattern/construction; its lapel point is 45 mm below
       the HPS (gorge_drop 0.12 had it 120 mm: the 33 deg gorge ran down the chest with the collar end a strap beside it,
       the "wing"). A steeper gorge is a real notch HIGHER up; c10_j4 = gorge_angle 45 as the in-between.
+  - Round 3, the "goofed up" shirt (Joe on c10_s9). c10steps.py, one change per panel (c10_dbg_steps.png, jacket
+    hidden): (a) the cached sim alone is clean, its SIMULATED collar reads better than any constructed one; (b) the
+    tuck under the jacket makes the facets / shards (chest moved p95 12.5, max 48 mm onto the jacket's lumpy inner
+    face: hidden when the jacket is drawn); (c) the open-neck press cut the V (front.R's "flap" 7 vertices moved 44 mm:
+    the smaller-side rule on a weak roll); (d) the constructed stand reads tall and tube-like, its end slabs stacked.
+    RENDER RULE (also in the guide): a tucked garment is never drawn without the garment over it; show the untucked
+    under garment alone, or the tucked one with the outer garment on; gate every sheet in both views (no facets,
+    tears, shards). Decisions: the shirt keeps its simulated collar; the open-neck press stays OFF (construct `press`
+    default ["lapel"], other prefixes documented EXPERIMENTAL, tested); lay_points_on_front deleted; the constructed
+    collar is for the jacket only.
