@@ -458,6 +458,7 @@ class Wood:
                   0.5 * f["crook"] * L * np.sin(2.3 * t + ph[1])]
         Rr = np.linspace(r0, r1, n)
         segs = [(P[i], P[i + 1], Rr[i], Rr[i + 1]) for i in range(n - 1)]
+        self.n_main = len(segs)
         for _ in range(int(rng.integers(f["stubs"][0], f["stubs"][1] + 1))):
             i = int(rng.integers(0, n - 2))
             a = P[i] + (P[i + 1] - P[i]) * rng.uniform()
@@ -1010,10 +1011,102 @@ def _uv_of(P, a, s, lo, hi, rect, margin=3):
     return np.c_[x0 + margin + fu * (w - 2 * margin), y0 + margin + fr * (h - 2 * margin)]
 
 
-def lod_mesh(solid: Solid, V, F, target, cfg, cell, origin, base, h, hull=False):
-    """One LOD: decimated, back on the field, split into charts (uv by position), smooth normals from the field
-    (split where faces meet sharply), tangents from the charts."""
-    if hull:
+def _pieces(V, F):
+    """A mesh's connected pieces [(V, F)], largest surface first."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    n = len(V)
+    e = np.r_[F[:, [0, 1]], F[:, [1, 2]]]
+    k, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), (n, n)), directed=False)
+    out = []
+    for c in range(k):
+        f = F[lab[F[:, 0]] == c]
+        if len(f) < 4:
+            continue
+        used = np.unique(f)
+        re = np.full(n, -1)
+        re[used] = np.arange(len(used))
+        Vc, Fc = V[used], re[f]
+        area = 0.5 * np.linalg.norm(np.cross(Vc[Fc[:, 1]] - Vc[Fc[:, 0]], Vc[Fc[:, 2]] - Vc[Fc[:, 0]]), axis=1).sum()
+        out.append((area, Vc, Fc))
+    out.sort(key=lambda t: -t[0])
+    return out
+
+
+def _join(parts):
+    V, F, o = [], [], 0
+    for v, f in parts:
+        V.append(v)
+        F.append(f + o)
+        o += len(v)
+    return np.concatenate(V), np.concatenate(F)
+
+
+def cluster_lod(V, F, target):
+    """A patch of stones at a budget: every stone its own greedy hull, faces shared by surface; the smallest stones
+    are left out when their share would be under a tetrahedron-and-a-bit (never a folded sliver, never over budget)."""
+    P = _pieces(V, F)
+    while True:
+        tot = sum(a ** 0.75 for a, _, _ in P)
+        share = [max(int(target * a ** 0.75 / tot), 0) for a, _, _ in P]
+        if len(P) > 1 and share[-1] < 8:
+            P = P[:-1]
+            continue
+        break
+    return _join([_hull(v, max(8, sh)) for (a, v, f), sh in zip(P, share)])
+
+
+def wood_lod(solid, sides: int, rings: int, stubs: bool):
+    """Driftwood at a low budget, built: every piece a tube of `sides` round its own axis (rings along the main stem,
+    2 on a fork or stub), ends capped. A decimator leaves a thin stem a string of slivers."""
+    out = []
+    for W in solid.parts:
+        main = W.segs[: W.n_main]
+        chains = [main] + ([[sg] for sg in W.segs[W.n_main:]] if stubs else [[sg] for sg in W.segs[W.n_main:] if np.linalg.norm(sg[1] - sg[0]) > 0.2])
+        for ch in chains:
+            pts = [ch[0][0]] + [sg[1] for sg in ch]
+            rad = [ch[0][2]] + [sg[3] for sg in ch]
+            if len(pts) > rings:  # fewer rings: keep the ends, even picks between
+                idx = np.unique(np.round(np.linspace(0, len(pts) - 1, rings)).astype(int))
+                pts, rad = [pts[i] for i in idx], [rad[i] for i in idx]
+            pts, rad = np.array(pts), np.array(rad)
+            V, F = [], []
+            up = np.array([0.0, 0.0, 1.0])
+            for i, (c, r) in enumerate(zip(pts, rad)):
+                d = pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]
+                d /= np.linalg.norm(d)
+                a = np.cross(d, up if abs(d[2]) < 0.9 else np.array([1.0, 0, 0]))
+                a /= np.linalg.norm(a)
+                b = np.cross(d, a)
+                for k in range(sides):
+                    t = 2 * math.pi * (k + 0.5) / sides
+                    V.append(c + r * 1.08 * (math.cos(t) * a + math.sin(t) * b))
+            for i in range(len(pts) - 1):
+                for k in range(sides):
+                    p0, p1 = i * sides + k, i * sides + (k + 1) % sides
+                    q0, q1 = p0 + sides, p1 + sides
+                    F += [[p0, p1, q1], [p0, q1, q0]]
+            n = len(V)
+            V += [pts[0], pts[-1]]
+            for k in range(sides):
+                F.append([n, (k + 1) % sides, k])
+                e = (len(pts) - 1) * sides
+                F.append([n + 1, e + k, e + (k + 1) % sides])
+            V, F = np.array(V), np.array(F)
+            # outward: flip if the first face points at the axis
+            fn = np.cross(V[F[0, 1]] - V[F[0, 0]], V[F[0, 2]] - V[F[0, 0]])
+            if fn @ (V[F[0]].mean(0) - pts[0]) < 0:
+                F = F[:, ::-1]
+            out.append((V, F))
+    return _join(out)
+
+
+def lod_mesh(solid: Solid, V, F, target, cfg, cell, origin, base, h, hull=False, pre=None):
+    """One LOD: decimated (or `pre` = a mesh built for it), back on the field, split into charts (uv by position),
+    smooth normals from the field (split where faces meet sharply), tangents from the charts."""
+    if pre is not None:
+        V2, F2 = pre
+    elif hull:
         V2, F2 = _hull(V, target)
     else:
         V2, F2 = _decimate(V, F, target)
@@ -1087,12 +1180,21 @@ def _tangents(N, a, s):
 
 # ---------------------------------------------------------------------------------------------------------- the bake
 def _cracks(p, q, seed):
-    """0..1.5: fracture lines (two sizes), present in patches."""
-    r = np.abs(noise.fbm(q, p["crack_size"], 2, seed + 2) - 0.5) * 2
-    r2 = np.abs(noise.fbm(q + 7.3, p["crack_size"] * 0.45, 2, seed + 3) - 0.5) * 2
-    w = max(0.03, 0.009 / p["crack_size"])
-    on = np.clip((noise.fbm(q + 3.3, p["crack_size"] * 1.5, 1, seed + 8) - 0.4) / 0.15, 0, 1)
-    return np.clip(1 - r / w, 0, 1) ** 2 + 0.5 * on * np.clip(1 - r2 / w, 0, 1) ** 2
+    """0..1: fracture traces. A crack is where a wandering PLANE meets the surface (a joint's trace: a line that runs
+    on across faces and stops), a handful per stone, each present along stretches. Isolines of a noise drew closed
+    loops: worm doodles."""
+    rng = np.random.default_rng(seed + 2)
+    size = p["crack_size"]
+    out = np.zeros(len(q))
+    for i in range(6):
+        n = rng.normal(0, 1, 3)
+        n /= np.linalg.norm(n)
+        off = rng.uniform(-0.28, 0.28)
+        w = rng.uniform(0.0025, 0.006)
+        x = q @ n - off + 0.035 * size / 0.3 * (noise.fbm(q, 0.5 * size, 2, seed + 30 + i) - 0.5) * 2
+        on = np.clip((noise.fbm(q + 7.1 * i, 1.2 * size, 1, seed + 40 + i) - 0.45) / 0.08, 0, 1)
+        out = np.maximum(out, np.clip(1 - np.abs(x) / w, 0, 1) * on * rng.uniform(0.5, 1.0))
+    return out
 
 
 def _micro(cfg, I, P, seed):
@@ -1382,9 +1484,23 @@ def build(spec: dict, progress=None) -> dict:
             tgt = int(round(tgt * solid.lods_x))
             single = cfg["shape"] in ("rock", "bush") and not solid.cluster
             hull = single and tgt <= 40  # (a near-convex stone's last LOD: its hull, never a folded sliver)
-            L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=hull)
+            pre = None
+            if solid.wood and (j or len(solid.parts) > 1):  # built tubes: LOD 1 five sides, LOD 2 three; a jam always
+                sides, rings = ((7, 6) if j == 0 else (5, 5) if j == 1 else (3, 4))
+                while True:
+                    pre = wood_lod(solid, sides, rings, stubs=j < 2)
+                    if len(pre[1]) <= 1.1 * tgt or (sides == 3 and rings == 2):
+                        break
+                    sides, rings = (sides - 1, rings) if sides > 3 else (sides, rings - 1)
+            elif solid.cluster and cfg["shape"] != "wood" and len(solid.parts) > 2:  # a patch of stones: a hull each
+                pre = cluster_lod(V, F, tgt)
+            L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=hull, pre=pre)
+            if pre is None and L["triangles"] > 1.3 * tgt and cfg["shape"] in ("rock", "bush"):  # the decimator stalled: its hull
+                L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=True)
+            if pre is None and solid.wood and L["triangles"] > 1.3 * tgt:
+                L = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, pre=wood_lod(solid, 7, 6, True))
             iou = float(np.mean(silhouette_iou((lods[0]["V"], lods[0]["F"]), (L["V"], L["F"])))) if j else 1.0
-            if j and cfg["shape"] == "rock" and not hull and iou < LOD_IOU and not (solid.cluster and len(solid.parts) > 2):  # the decimation changed the outline: the hull keeps it
+            if j and pre is None and cfg["shape"] == "rock" and not hull and iou < LOD_IOU and not (solid.cluster and len(solid.parts) > 2):  # the decimation changed the outline: the hull keeps it
                 L2 = lod_mesh(solid, V, F, tgt, cfg, cell, origin, base, vox * 0.5, hull=True)
                 i2 = float(np.mean(silhouette_iou((lods[0]["V"], lods[0]["F"]), (L2["V"], L2["F"]))))
                 if i2 > iou:
