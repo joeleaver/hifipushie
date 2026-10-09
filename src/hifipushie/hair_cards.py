@@ -203,7 +203,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "frizz", "curl", "tips", "atlas")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "grey", "grey_share")}, key], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share")}, key], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -240,7 +240,12 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         isg = (np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0))[..., None]  # (the
         # base under the strands sits at depth 0.3: it is the shadow between hairs, never grey)
         base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
-    col = _srgb(np.clip(base * val * gain, 0, 1))
+    lin = base * val * gain
+    cs = float(look.get("card_sat", 1.0))  # x the colour's saturation (cards measured against the strand look)
+    if cs != 1.0:
+        yl = (lin @ np.array([0.2126, 0.7152, 0.0722]))[..., None]
+        lin = yl + (lin - yl) * cs
+    col = _srgb(np.clip(lin, 0, 1))
     x = 0
     for c in cols:  # the tie's own colour
         w = c["alpha"].shape[1]
