@@ -8,6 +8,11 @@ gp = json.loads(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else {}
 lp = json.loads(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[4] else {}
 spp = json.loads(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5] else {}
 sp = copy.deepcopy(store.load(src))
+import os
+if os.environ.get("HAIR_FROM"):  # the groom of another model on this head
+    hf = store.load(os.environ["HAIR_FROM"])
+    sp["hair"] = {k: copy.deepcopy(v) for k, v in hf["hair"].items() if k != "locks"}
+    sp.setdefault("parts", {})["hair"] = copy.deepcopy((hf.get("parts") or {}).get("hair") or {})
 if not sp.get("hair"):
     hs = store.load("hs_tess")
     sp["hair"] = {k: copy.deepcopy(v) for k, v in hs["hair"].items() if k != "locks"}
