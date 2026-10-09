@@ -15,6 +15,7 @@ from hifipushie import humanfit_map, store
 
 D3 = os.environ.get("D3")
 PX = int(os.environ.get("PX", 900))
+POSED = os.environ.get("POSED", "1") == "1"   # the matched views wear the photo's pose (squint, frown, set mouth)
 
 
 def cameras(name, refit=True):
@@ -52,7 +53,7 @@ def main(name, out, hair_on=True, tag=None):
         crop = crop_of(view)
         fr = stage.fitted_frame(cam, crop, lit)
         lt = stage.FRONT_LIGHT if lit == "front" else {**stage.desk_light(fr), "backdrop": [0.12, 0.15, 0.22]}
-        im = stage.shoot(name, [fr], lt, size=PX, hair_on=hair_on)[lit]
+        im = stage.shoot(name, [fr], lt, size=PX, hair_on=hair_on, posed=POSED)[lit]
         im.save(f"{D3}/out/{name}_{lit}.png")
         ref = Image.open(view["image"]).convert("RGB").crop(tuple(int(round(v)) for v in crop)).resize((PX, PX), Image.LANCZOS)
         bl = Image.blend(ref, im, 0.5)

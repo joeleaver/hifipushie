@@ -17,13 +17,14 @@ from PIL import Image
 
 from hifipushie import hair, humanfit, render, scene, skin_look, store, stylesheet
 
-FRONT_LIGHT = {"lights": [{"dir": [-0.12, -0.95, 0.3], "energy": 2.3, "color": [1.0, 0.975, 0.94], "angle": 30,
-                           "window": {"size": [1.2, 1.2], "distance": 2.2, "gain": 0.25}},
-                          {"dir": [0.55, -0.75, 0.15], "energy": 1.3, "color": [1.0, 0.98, 0.96], "angle": 40, "shadow": False,
-                           "specular": 0.0},
-                          {"dir": [-0.6, -0.7, 0.1], "energy": 0.9, "color": [1.0, 0.98, 0.96], "angle": 40, "shadow": False,
+# the photo's light: a big soft source above and in front (shade under the brow, nose, lower lip and chin, the
+# cheeks falling off a little to the sides), a weak frontal fill, a pale room
+FRONT_LIGHT = {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [1.0, 0.975, 0.95], "angle": 38,
+                           "window": {"size": [1.4, 1.0], "distance": 2.2, "gain": 0.2}},
+                          {"dir": [0.0, -1.0, 0.05], "energy": 0.7, "color": [1.0, 0.98, 0.97], "angle": 40, "shadow": False,
                            "specular": 0.0}],
-               "world": {"color": [0.82, 0.82, 0.82], "strength": 0.9}, "view": "Khronos PBR Neutral", "exposure": -0.75}
+               "world": {"color": [0.8, 0.8, 0.8], "strength": 0.45}, "view": "Khronos PBR Neutral", "exposure": -0.55}
+POSE = {"lid_upper": 0.0013, "brow_inner": -0.0015, "brow_outer": -0.0012, "smile": -0.0015}  # the photo's (garrett3.POSE)
 
 
 def desk_light(cam_frame):
@@ -39,17 +40,31 @@ def desk_light(cam_frame):
             "world": {"color": [0.16, 0.2, 0.3], "strength": 0.6}, "view": "Khronos PBR Neutral", "exposure": -0.3}
 
 
-def stage_name(name):
-    return f"_g3_{name}"
+def stage_name(name, posed=False, tex=None):
+    return f"_g3_{name}" + ("_posed" if posed else "") + ("_tex" + "".join(str(i) for i in tex) if tex is not None else "")
 
 
-def ensure(name, with_hair=True, log=print):
+def ensure(name, with_hair=True, log=print, posed=False, tex=None):
+    """posed: True (the photo's hand-set pose) | a head.pose dict | False. tex: None | [reference views]: the
+    reference pictures projected as albedo (likeness_texture) on THIS stage's own head shape."""
     spec = store.load(name)
     st = skin_look.stage_spec(spec, "head")
+    hd = st["base"]["head"]
+    hd.pop("interior", None)     # a look of the closed mouth: no slit / bag (its ends showed as holes at the corners:
+    hd.pop("mouth_gap", None)    # the stage has no teeth or tongue parts), GNM's own lips
+    st["paint"] = {k: v for k, v in (st.get("paint") or {}).items() if "face_mouth_bag" not in json.dumps(v)}
+    if posed:
+        hd["pose"] = {**(hd.get("pose") or {}), **(posed if isinstance(posed, dict) else POSE)}
     if with_hair and spec.get("hair"):
         st["hair"] = copy.deepcopy(spec["hair"])
         st["parts"]["hair"] = copy.deepcopy((spec.get("parts") or {}).get("hair") or {})
-    sn = stage_name(name)
+    sn = stage_name(name, bool(posed), tex)
+    if tex is not None:
+        from hifipushie import likeness_texture as lt
+        store._dir(sn).mkdir(parents=True, exist_ok=True)
+        r = lt.make(name, base=st["base"], views=tex, out_dir=str(store._dir(sn)), spec=spec)
+        st["paint"].update(r["layers"])
+        log(r["text"])
     geo = {k: v for k, v in st.items() if k != "hair"}
     src = Path(skin_look.__file__).parent
     code = hashlib.sha1(b"".join((src / f).read_bytes() for f in
@@ -97,15 +112,15 @@ def view_frames(spec, names=("front", "three_quarter", "profile_right", "profile
     for i, n in enumerate(names):
         d = np.asarray(D[n], float)
         d /= np.linalg.norm(d)
-        f = render.camera_frame({"eye": (c + d * 0.95).tolist(), "target": c.tolist(), "fov": 19.0, "name": n}, i)
+        f = render.camera_frame({"eye": (c + d * 1.25).tolist(), "target": (c - [0, 0, 0.02]).tolist(), "fov": 19.0, "name": n}, i)
         out.append(f)
     return out
 
 
-def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=False, samples=24, layer=None):
+def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=False, samples=24, layer=None, posed=False,
+          tex=None):
     """Render frames of the stage (one lighting). Returns {frame name: RGB image}."""
-    spec = store.load(name)
-    sn = ensure(name)
+    sn = ensure(name, posed=posed, tex=tex)
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     out = {}
     with tempfile.TemporaryDirectory() as tmp:

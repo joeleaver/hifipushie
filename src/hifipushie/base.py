@@ -1143,12 +1143,14 @@ def pose_expression(pose: dict, V: np.ndarray, scale: float) -> np.ndarray:
              + [i for i, n in enumerate(names) if n.startswith("left_eye")][:40]
              + [i for i, n in enumerate(names) if n.startswith("right_eye")][:40])
     rows = g["lm68"]
-    Wlm = np.zeros((68, len(V)))
-    for i, r in enumerate(rows):
-        for v, w in zip(r[0::2], r[1::2]):
-            Wlm[i, int(v)] += float(w)
-    B = g["expression_basis"][comps]  # (c, n, 3)
-    A = np.einsum("ln,cnd->ldc", Wlm, B).reshape(68 * 3, len(comps))
+    if "pose_A" not in _CACHE:  # (constant: the landmarks' rows of the expression basis; 0.5e9 multiplies a call before)
+        Wlm = np.zeros((68, len(V)))
+        for i, r in enumerate(rows):
+            for v, w in zip(r[0::2], r[1::2]):
+                Wlm[i, int(v)] += float(w)
+        B = g["expression_basis"][comps]  # (c, n, 3)
+        _CACHE["pose_A"] = (Wlm, B, np.einsum("ln,cnd->ldc", Wlm, B).reshape(68 * 3, len(comps)))
+    Wlm, B, A = _CACHE["pose_A"]
     t = np.zeros((68, 3))
     w = np.full((68, 3), POSE_HOLD)
     X0 = Wlm @ V
