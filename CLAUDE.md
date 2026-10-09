@@ -5728,7 +5728,10 @@ model".
       nose step "lost" it): use several readers (likeness_read.agreement) before trusting a step. Consistent across
       readers: profiles go from "soft jaw, receding chin" to "square jaw, strong chin" only with jawline + chin.under;
       the chin reads broad with shape.chin. Never achieved: "snub / cute" nose, a visible cleft, "chunky" (every
-      reader says lean). om_garrett v23 = that reset (v16 pass 6 stays the fallback); NOT exported when written.
+      reader says lean). om_garrett v23 = that reset (v16 pass 6 stays the fallback). Exported:
+      /mnt/data/hifipushie/onemesh2/exp_garrett8 (30k / 2048, rig + face shapes, 1110 s, Khronos 0 / 0, no TORN, shape
+      unevenness <= 0.13, blink lid jag p95 0.96 / 0.89 = exp_garrett6's; sheets om2_r9_shapes.png, om2_r9_rig_head33 /
+      _nod.png: the neck turns and nods as one column, no seam).
     - What LOCAL WARPS did wrong on this head, each caught by eye, not by the numbers (likeness had them "in
       tolerance"): the face-width outline warp at 75% + a moved jaw = a bulldog lower face; the eyes stage's full
       narrowing + tilt in identity = sad slits (the photo squints 0.70: that is pose); ears turned about the root's
