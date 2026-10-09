@@ -40,7 +40,7 @@ style + the manifest). Reeds are a plant: `grow_plant` with species `reed`, then
 | `cobbles` | a PATCH of 14-24 cobbles as one asset (lay patches overlapping) | 420 / 150 / 48 | none |
 | `slab` | flat bank stone / ledge piece | 220 / 80 / 32 | hull |
 | `driftwood` | log, forked branch, a butt with its root plate, a small jam (the four variants); broken ends, bark patches; scale = length | 220 / 88 / 24 (jam x2.3) | none |
-| `bush` | low scrub, OPEN: stems + spray cards on a grown shrub's twigs -> ~40% of the same sprays, larger -> 2 crossed cards; seasons; wind (blobby / cartoon: closed lumps standing on the ground) | ~260 / 90 / 8 (lumps 270 / 100 / 24) | none |
+| `bush` | low scrub, OPEN: stems + spray cards on a grown shrub's twigs -> ~40% of the same sprays, larger -> 2 crossed cards; seasons; wind (blobby / cartoon: closed lumps standing on the ground) | ~260 / 90 / 8 (lumps 270 / 100 / 44) | none |
 | `litter` | a leaf / twig debris card; a picture per season; hidden under snow | 8 / 2 | none |
 | `reeds` | the `reed` plant preset (fans of strap leaves + plume stalks, 1.9 m), groundcover grade (cards baked from the full plant) | 480 / 160 / 36 | none |
 
