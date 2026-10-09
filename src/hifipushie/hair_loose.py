@@ -24,6 +24,11 @@ capability, `groom.loose`:
    "face": 1.0,             0..1: how far the hair is kept from hanging over the face (1 = it frames it: curtains
                             beside the cheeks; 0 = it falls where it falls); the fringe is not held back
    "ends": 0.0,             -1..1: the ends turn under toward the neck (a bob's bevel, +) or flick out (-)
+   "swoop": {"at": 0, "span": 30, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01},
+                            a front lock lifting off the forehead and curving up and back: hair rooted within `depth`
+                            m of the hairline and `span` deg of azimuth `at` (0 = the face's centre, + toward his
+                            left) is combed up-and-back (sweep -1..1: over to his right / left), stands `rise` more
+                            out of the scalp, is stiffer and `length` m longer, unlaid; weights fade smoothly
    "fringe": {"length": 0.07, "span": 40, "depth": 0.045, "sweep": 0.0, "level": None}}
                             hair rooted within `depth` m of the front hairline, `span` deg either side of the
                             centre, combed forward over the forehead (sweep -1..1: to his right / left); level
@@ -44,8 +49,9 @@ import numpy as np
 
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
-         "flow": None}
+         "flow": None, "swoop": None}
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
+SWOOP = {"at": 0.0, "span": 30.0, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01}
 DOWN = np.array([0.0, 0.0, -1.0])
 FACE_AZ = 58.0  # deg either side of the face's centre line that hair (not a fringe) is kept out of
 LAY_EL = (48.0, 66.0)  # deg of scalp elevation over which the "top" region's lay comes in (below: the sides' lay)
@@ -79,6 +85,12 @@ def params(lo) -> dict:
         if bad:
             raise ValueError(f"hair loose fringe: unknown keys {sorted(bad)} (have {', '.join(sorted(FRINGE))})")
         p["fringe"] = {**FRINGE, **fr}
+    if p.get("swoop"):
+        sw = {} if p["swoop"] is True else p["swoop"]
+        bad = set(sw) - set(SWOOP)
+        if bad:
+            raise ValueError(f"hair loose swoop: unknown keys {sorted(bad)} (have {', '.join(sorted(SWOOP))})")
+        p["swoop"] = {**SWOOP, **sw}
     return p
 
 
@@ -228,6 +240,14 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         comb[is_fr] = np.array([swp * 1.2, -1.0, -0.8])
         L[is_fr] = float(fr["length"]) * (1 - 0.5 * float(p["uneven"]) * rng.uniform(0, 0.3, int(is_fr.sum())))
         L[is_fr] += d_in[is_fr] * 0.9  # (rooted further back, it has further to go to the same edge)
+    sw = p.get("swoop")
+    wsw = np.zeros(m)
+    if sw:  # a front lock lifting off the forehead and curving up and back (over to one side): a weight that is 1
+        # at the hairline at `at` deg and fades over `span` deg and `depth` m into the scalp
+        fs = np.abs(((az - float(sw["at"]) + 180) % 360) - 180)
+        wsw = (1 - _ss(fs / float(sw["span"]))) * (1 - _ss(d_in / float(sw["depth"]))) * ~is_fr
+        comb = comb * (1 - wsw[:, None]) + wsw[:, None] * _unit(np.array([0.9 * float(sw["sweep"]), 0.55, 0.85]))[None]
+        L = L + float(sw["length"]) * wsw
     tang = comb - (comb * nrm).sum(1, keepdims=True) * nrm
     bad = np.linalg.norm(tang, axis=1) < 1e-3
     tang[bad] = np.cross(nrm[bad], [1.0, 0, 0])
@@ -253,10 +273,15 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     else:
         lay = np.clip(by_region(lay_v, 0.0), 0, 1)
     lay[is_fr] = 0.0
+    if sw:
+        outi = np.clip(outi + float(sw["rise"]) * wsw, 0, 1)
+        lay = lay * (1 - wsw)
     d = _unit(tang * (1 - outi)[:, None] + nrm * (outi + 0.12 * (1 - lay))[:, None])
     stiff = np.clip(by_region(p["stiff"], 0.3), 0, 1)
     if fr:
         stiff[is_fr] = float(fr["stiff"])
+    if sw:
+        stiff = stiff * (1 - wsw) + float(sw["stiff"]) * wsw
     kg = (1 - stiff) ** 3 * 400.0  # how fast the direction falls, per metre
     # layers: locks rooted higher (and further from the hairline) lie over the ones under them
     rank = np.clip((el - line.min()) / max(90.0 - line.min(), 1.0), 0, 1)
