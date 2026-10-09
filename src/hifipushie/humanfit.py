@@ -825,6 +825,8 @@ def _silhouette(st: dict, cam: dict, outline: np.ndarray, skip_ears: bool = True
 
 STRUCTURE_SOFT = 0.25  # weight of an outline target on the soft mid-cheek (structure mode)
 STRUCTURE_HOLD = 1.0   # weight of holding the cheeks' fronts (structure mode)
+EAR_RIDE = 2.0   # weight of the ears riding their side as one piece (structure mode)
+EAR_FREE = 0.012  # m: holds this close to an ear let go so it can ride (structure mode)
 
 
 def _gnm_normals(Vg: np.ndarray) -> np.ndarray:
@@ -906,21 +908,6 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
             miss.append(float(np.sqrt((m ** 2).mean()) * 1000))
         if not tgt_g:
             break
-        if structure and tgt_g:  # the ears ride their side of the head as a whole (left to the warp, the ear's root
-            # went out with the jaw's side and its rim didn't: ears squeezed x0.20 at the full width)
-            ears = np.flatnonzero((np.asarray(g["groups"]["ears"], float) > 0.5) & np.asarray(g["skin"], bool))
-            TG, TD = np.array(tgt_g), np.array(tgt_d)
-            for sg in (-1.0, 1.0):
-                es = ears[np.sign(Vg[ears, 0]) == sg]
-                ts = np.sign(TG[:, 0]) == sg
-                if not len(es) or not ts.any():
-                    continue
-                es = es[np.linspace(0, len(es) - 1, min(len(es), 40)).astype(int)]
-                mv = TD[ts].mean(0)
-                for e_ in es:
-                    tgt_g.append(Vg[e_])
-                    tgt_d.append(mv)
-                    tgt_w.append(0.5)
         if symmetric:  # each target also on the other side, mirrored (GNM's template is symmetric about x = 0): one
             # view's outline alone warped only its own side, a lump on one jaw
             tgt_g = tgt_g + [x * [-1, 1, 1] for x in tgt_g]
@@ -961,6 +948,29 @@ def fit_outline(base: dict, views: list, cameras: list, rounds: int = 3, symmetr
         sig = float(sigma if sigma is not None else (ws[-1]["sigma"] if ws else OUTLINE_SIGMA))
         K = np.exp(-((A[:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
         coef = np.linalg.solve((K * wt[:, None]).T @ K + 2e-2 * np.eye(len(A)), (K * wt[:, None]).T @ Dt)
+        if structure:  # the ears ride their side of the head as ONE piece: the first solve's move at the ear, averaged
+            # over it, is laid on every ear vertex and the warp solved again (left to the warp the ear's front went out
+            # with the face's side and its back didn't: the tragus squeezed x0.21-0.24 at 75-100% of the width)
+            ears = np.flatnonzero((np.asarray(g["groups"]["ears"], float) > 0.5) & np.asarray(g["skin"], bool))
+            add_g, add_d = [], []
+            for sg in (-1.0, 1.0):
+                es = ears[np.sign(Vg[ears, 0]) == sg]
+                if not len(es):
+                    continue
+                Ke = np.exp(-((Vg[es][:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
+                mv = (Ke @ coef).mean(0)
+                es = es[np.linspace(0, len(es) - 1, min(len(es), 60)).astype(int)]
+                add_g += list(Vg[es])
+                add_d += [mv] * len(es)
+            if add_g:
+                ag = np.array(add_g)
+                near_ear = np.min(np.linalg.norm(A[:, None] - ag[None], axis=2), 1) < EAR_FREE
+                keep = np.r_[np.ones(len(tgt_g), bool), ~near_ear[len(tgt_g):]]  # holds round the ear let go
+                A = np.r_[A[keep], ag]
+                Dt = np.r_[Dt[keep], np.array(add_d)]
+                wt = np.r_[wt[keep], np.full(len(ag), EAR_RIDE)]
+                K = np.exp(-((A[:, None] - A[None]) ** 2).sum(-1) / (2 * sig ** 2))
+                coef = np.linalg.solve((K * wt[:, None]).T @ K + 2e-2 * np.eye(len(A)), (K * wt[:, None]).T @ Dt)
         h = cur.setdefault("head", {})
         # appended to the warp of the same reach (centres added), or a warp of its own (a list of warps)
         same = [i for i, w in enumerate(ws) if abs(float(w["sigma"]) - sig) < 1e-9]
@@ -997,6 +1007,105 @@ def _with_hood(base: dict, a: float) -> dict:
     else:
         sh.pop("hood", None)
     return b
+
+
+REGION_K = 60        # identity components a regional fit may use (GNM's first, broadest ones)
+REGION_RIDGE = 0.6   # weight of each component's step (per sigma) in a regional fit
+REGION_HOLD = 3.0    # weight of holding the face's other landmarks where they are in a regional fit (x 1 / mm)
+
+
+def fit_region(base: dict, cameras: list, targets: list, group, feather: int = 8, hold=None, force: bool = False,
+               name: str | None = None) -> tuple:
+    """(new base, report): GNM identity components applied inside ONE region (base.head.regions: a feathered group,
+    e.g. "nose_region"), fitted so given SURFACE points land where a picture has them. targets = [{"view": i, "tpl":
+    [vertex index x 3], "bary": [w x 3], "uv": [x, y]}]: a point on the template mesh (a triangle's corners and
+    barycentric weights, as a render's id pass gives it) and where it should project through cameras[view]. Points are
+    linear in the components (GNM vertex basis x region weight, placed by the head's scale / rotation / narrowing),
+    so the step is one ridge least squares; `hold` = 68-landmark indices kept where they are (default: everything
+    outside the nose and the brows' inner ends). A region of the same `name` (default the group) is replaced
+    (re-fitted on top of its own components). Refused if it breaks the mesh (unless force)."""
+    from . import base as basemod
+    from . import onemesh
+    g = basemod._gnm_data()
+    names = [str(n) for n in g["identity_names"]][:REGION_K]
+    VB = np.asarray(g["vertex_identity_basis"], float)[:REGION_K]
+    st0 = state(base)
+    c = st0["head"]["carry"]
+    Rh, s, nar = np.asarray(c["R"], float), float(c["s"]), float(c["narrow"])
+    gid_all = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st0["tpl"]["fid"])]
+    fade = np.asarray(onemesh.asset()["g_fade"], float)
+    rw = basemod.region_weight(group, int(feather))
+    rname = name or (group if isinstance(group, str) else "+".join(group))
+    regs = list((base.get("head") or {}).get("regions") or [])
+    old = next((r for r in regs if r.get("name") == rname), None)
+    c0 = np.array([float((old or {}).get("identity", {}).get(n, 0.0)) for n in names])
+
+    def basis_at(gids, w):  # (K, 3) world move per component of a surface point
+        B = np.zeros((len(names), 3))
+        for gi, wi in zip(gids, w):
+            if gi < 0:
+                continue
+            d = VB[:, gi, :] * rw[gi] * fade[gi]
+            d = d * [nar, 1.0, 1.0]
+            B += wi * s * d @ Rh.T
+        return B
+
+    def cam_jac(cam, X):  # 2 x 3 numerical
+        e = 1e-5
+        u0 = project(cam, X[None])[0]
+        return np.stack([(project(cam, (X + e * np.eye(3)[k])[None])[0] - u0) / e for k in range(3)], 1), u0
+
+    rows, rhs, miss = [], [], []
+    P = np.asarray(st0["tpl"]["P"], float)
+    for t in targets:
+        cam = cameras[int(t["view"])]
+        idx, w = np.asarray(t["tpl"], int), np.asarray(t["bary"], float)
+        X = (w[:, None] * P[idx]).sum(0)
+        Jc, u0 = cam_jac(cam, X)
+        B = basis_at(gid_all[idx], w)
+        Xc = (X - np.asarray(cam["centre"])) @ _cam_rot(cam).T + np.asarray(cam["t"])
+        k = Xc[2] / cam["f"] * 1000  # mm per px there
+        A = (B @ Jc.T) * k  # (K, 2) mm per component
+        r = (np.asarray(t["uv"], float) - u0) * k
+        miss.append(float(np.linalg.norm(r)))
+        rows += list(A.T)
+        rhs += list(r)
+    hold = list(hold) if hold is not None else [i for i in range(17, 68) if not (27 <= i <= 35)]
+    L0 = st0["L"]
+    for i in hold:  # the landmark's own vertices: a world move per component, held at zero (x, y, z)
+        row = g["lm68"][i]
+        B = basis_at(np.asarray(row[0::2], int), np.asarray(row[1::2], float))
+        for a in range(3):
+            rows.append(B[:, a] * 1000 * REGION_HOLD)
+            rhs.append(0.0)
+    for kk in range(len(names)):
+        e = np.zeros(len(names))
+        e[kk] = REGION_RIDGE * 10
+        rows.append(e)
+        rhs.append(-REGION_RIDGE * 10 * c0[kk] * 0.0)
+    dc = np.linalg.lstsq(np.array(rows), np.array(rhs), rcond=None)[0]
+    clip = CLIP_FORCE if force else CLIP
+    # the step is cut back until the mesh holds (the share reached is reported): a nose turned up in full folded its
+    # nostrils' insides
+    for share in ((1.0,) if force else (1.0, 0.75, 0.55, 0.4, 0.28, 0.2)):
+        cn = np.clip(c0 + share * dc, -clip, clip)
+        cur = copy.deepcopy(base)
+        h = cur.setdefault("head", {})
+        entry = {"name": rname, "group": group, "feather": int(feather),
+                 "identity": {n: round(float(v), 4) for n, v in zip(names, cn) if abs(v) > 1e-4}}
+        h["regions"] = [r for r in regs if r.get("name") != rname] + [entry]
+        st1 = state(cur)
+        it = integrity(cur, st1, st0)
+        if it["ok"] or not _newly_broken(base, it):
+            break
+    rep = {"region": rname, "points": len(targets), "miss_mm_before": round(float(np.sqrt(np.mean(np.square(miss)))), 2),
+           "share": share, "components_used": int((np.abs(cn) > 1e-4).sum()), "largest_sigma": round(float(np.abs(cn).max()), 2),
+           "plausibility": plausibility(cur), "side_effects": side_effects(st0, st1, set(FACE)), "integrity": it}
+    # what the step reached (linear prediction at the points)
+    A_t = np.array(rows[:2 * len(targets)])
+    rr = np.array(rhs[:2 * len(targets)]) - A_t @ (cn - c0)
+    rep["miss_mm_after"] = round(float(np.sqrt(np.mean(rr.reshape(-1, 2) ** 2) * 2)), 2)
+    return _guarded(base, cur, rep, force)
 
 
 def fit_hood(base: dict, views: list, cameras: list, force: bool = False) -> tuple:
