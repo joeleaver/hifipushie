@@ -418,7 +418,11 @@ TROUSER_LENGTHS = {"floor": 0.015, "shoe": 0.03, "break": None, "ankle": 0.085, 
 # its collar, which cut the leg 5 cm SHORT (the ankle showed between hem and shoe)
 BREAK_BACK = 0.012
 TROUSER_DEFAULTS = {"seat_ease": 0.05, "waist_ease": 0.02, "rise": None, "rise_ease": 0.01, "knee": None, "hem": None,
-                    "length": None, "back_dart": 0.02, "leg": None, "dart_length": None, "dart_taper": 0.0}
+                    "length": None, "back_dart": 0.02, "leg": None, "dart_length": None, "dart_taper": 0.0, "waist_drop": 0.0}
+# waist_drop (m): the trousers' top sits that far BELOW the natural waist (men's tailored trousers today sit 4-8 cm
+# under it, on the hip bones; at the natural waist they read high-waisted: Garrett's concept, belt 8 cm under ours).
+# Everything is then drafted from that line: the girth there (between the waist's and the hips', by the body's own
+# widening), the rise, seat line, knee and length all that much shorter; the pieces carry wrap "drop"
 # the cut of the leg, from the leg itself (tailor.measure: knee, calf, heel girths). Knee and hem are finished
 # circumferences: knee = the knee girth x (1 + knee ease), never under the calf x (1 + calf ease) (the leg must hang
 # clear of the calf or it catches there); hem = the knee's x `hem` share, never under heel + `heel` (the heel-and-
@@ -448,8 +452,28 @@ def leg_cut(m: dict, cut: str) -> tuple[float, float, str]:
                                f"({c['hem'] * 100:.0f}% of the knee, heel {hg * 1000:.0f} + {c['heel'] * 1000:.0f} mm at least)")
 
 
+def dropped_waist(m: dict, drop: float) -> float:
+    """The body's girth (mm) `drop` m under the natural waist, from the tape: between the waist's and the hips' (a
+    body widens slowly just under the waist and faster toward the hips: measured hull girths 784 / 810 / 852 / 901 mm
+    at 0 / 4 / 8 / 12 cm under a 785 mm waist with 936 mm hips 15 cm down)."""
+    if not drop:
+        return float(m["waist"])
+    wth = float(m.get("waistToHips", 0.75 * float(m["waistToSeat"])))
+    gh = float(m.get("hips", m["seat"]))
+    return float(m["waist"]) + (gh - float(m["waist"])) * min(1.0, drop * 1000 / max(wth, 1.0)) ** 1.3
+
+
 def trouser(m: dict, opts: dict | None = None) -> dict:
     o = dict(TROUSER_DEFAULTS, **(opts or {}))
+    wdrop = float(o.get("waist_drop") or 0.0)
+    if wdrop:
+        if not 0.0 < wdrop <= 0.12:
+            raise ValueError(f"trouser waist_drop {wdrop}: metres under the natural waist, up to 0.12")
+        m = dict(m, waist=dropped_waist(m, wdrop))
+        for k_ in ("waistToSeat", "waistToUpperLeg", "waistToFloor", "waistToKnee", "waistToHips"):
+            if k_ in m:
+                m[k_] = float(m[k_]) - wdrop * 1000
+        m["waistToSeat"] = max(m["waistToSeat"], 40.0)
     mm = lambda k: float(m[k]) / 1000.0
     waist, seat = mm("waist"), mm("seat")
     wts = mm("waistToSeat")
@@ -541,7 +565,8 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
         # the crotch curve: from the fork round into the centre seam at the seat line
         pts += _curve_pts(bez([-fork, Y(rise + fd)], [-fork * 0.35, Y(rise + fd)], [0.0, Y(rise - 0.35 * (rise - wts))], [0.0, Y(wts)]))
         pts += [("cSeat", [0.0, Y(wts)])]
-        pc = make_piece(which, pts, "leg_front" if fr else "leg_back", {"to": f"leg.L", "side": which}, "pair", {},
+        pc = make_piece(which, pts, "leg_front" if fr else "leg_back",
+                        {"to": f"leg.L", "side": which, **({"drop": wdrop} if wdrop else {})}, "pair", {},
                         {"crease": [[crease, Y(-up)], [crease, Y(L + dh)]], "seat": [[0, Y(wts)], [w, Y(wts)]],
                          "knee": [[crease - kn, Y(knee_y)], [crease + kn, Y(knee_y)]]})
         if dart > 0:
@@ -562,6 +587,8 @@ def trouser(m: dict, opts: dict | None = None) -> dict:
     ins = [edge_length(out[k], "fork>inKnee>inHem") for k in ("front", "back")]
     log.append(f"inseams front {ins[0] * 1000:.0f} / back {ins[1] * 1000:.0f} mm: the back fork dropped {drop * 1000:.0f} mm "
                "so the back is 5 mm shorter (stretched onto the front above the knee)")
+    if wdrop:
+        log.append(f"waist dropped {wdrop * 1000:.0f} mm under the natural waist: drafted from the girth there, {waist * 1000:.0f} mm")
     return {"pieces": out, "seams": seams, "meta": {"kind": "trouser", "rise": rise, "options": o, "low": "sideHem",
-                                                     "centre_seams": centre_seams},
+                                                     "centre_seams": centre_seams, "waist_drop": wdrop},
             "log": log, "centre": {"front": "seam", "back": "seam"}, "notes": notes}

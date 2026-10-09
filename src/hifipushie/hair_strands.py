@@ -33,6 +33,14 @@ STRAND_RADIUS = 0.00004  # m: a real hair (0.03-0.05 mm), at REAL_COUNT strands;
 REAL_COUNT = 100000  # the head stays covered (a path tracer draws true widths: 30k hairs at 0.08 mm were a pale haze)
 UNDER_PER_M2 = 3.6e5  # scalp-layer strands per m2 of scalp at under = 1 and 30k strands
 SEED_SPACING = 0.011  # m between the scalp layer's flow guides
+# Cycles' hair BSDF vs the look colour: a lit mass of strands renders = A x colour^p per linear channel (multiple
+# scattering lightens it: measured on a short grey-brown cut, 7 colours black .. blond under the salon lights:
+# 0.646 x c^0.307, Garrett's #55504b 3.5-4x too light). The look colour goes through the inverse (blender_strands.
+# material); A 0.75 instead of the fitted 0.646 because a colourless floor (~0.09 linear: the white specular lobe and
+# the sky) is in every measure and can't be inverted. After: grey / blond within 5%, #55504b x1.35-1.45 (EEVEE's own
+# strand material: x1.6-1.8), near-blacks stay at the floor. look.cycles_fit overrides ([1, 1] = off).
+# Applied to the colour's luminance with the hue kept (per channel the 1/p power tripled every channel ratio).
+CYCLES_FIT = (0.75, 0.307)
 # what each 0..1 dial may reach (the top of each range is where it still reads as hair)
 import os as _os
 SAFE = {
@@ -109,7 +117,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         if key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
-        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_ = ([] for _ in range(12))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_ = ([] for _ in range(13))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
@@ -162,6 +170,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
             R_.append(4.0 if lk.get("at_hairline") else 1.0)
             TS_.append(0.0 if gather else 1.0)
+            GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
             WS_.append(ws)
             WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
@@ -171,7 +180,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
                     "weight": np.asarray(W_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
                     "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
-                    "names": np.asarray(N_)}
+                    "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_)}
     return out
 
 
@@ -282,18 +291,23 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
     # lies on the head before it falls: the scalp layer follows it there)
     tree = None
     if head:
-        LP, LT = [], []
+        LP, LT, LG = [], [], []
         for lk in head:
             P, *_ = hc.spine(lk, 16 if float(lk.get("free", 0.0)) <= 0.5 else 40)
             LP.append(P)
             LT.append(_unit(np.gradient(P, axis=0)))
-        LP, LT = np.concatenate(LP), np.concatenate(LT)
+            LG.append(np.full(len(P), float((lk.get("inputs") or {}).get("Grey", lk.get("grey", 0.0)))))
+        LP, LT, LG = np.concatenate(LP), np.concatenate(LT), np.concatenate(LG)
         _, _, LH = sc.coords(LP)
         near = LH < 0.035
         if near.sum() >= 8:
-            LP, LT, LH = LP[near], LT[near], LH[near]
+            LP, LT, LH, LG = LP[near], LT[near], LH[near], LG[near]
         tree = cKDTree(LP)
     p = sc.point(az, el, 0.0003)
+    gr = np.zeros(len(p), np.float32)
+    if tree is not None:  # the scalp layer under a lock is as grey as the lock (greying temples, sideburns)
+        _, j0 = tree.query(p)
+        gr = LG[j0].astype(np.float32)
     pts = [p]
     h = np.full(len(az), 0.0003)
     for k in range(1, n):
@@ -318,7 +332,7 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
         p = sc.point(az, el, h)
         pts.append(p)
     P = np.stack(pts, 1)  # (seeds, n, 3)
-    return {"counts": np.full(len(P), n, np.int32), "pts": P.reshape(-1, 3).astype(np.float32),
+    return {"counts": np.full(len(P), n, np.int32), "pts": P.reshape(-1, 3).astype(np.float32), "gr": gr,
             "names": np.asarray([f"u{i}" for i in range(len(P))])}
 
 
@@ -384,6 +398,8 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     if count:
         S = {**S, "count": int(count)}
     look = {**LOOK, **(h.get("look") or {})}
+    if not look.get("cycles_fit"):
+        look["cycles_fit"] = list(CYCLES_FIT)
     seed = int(g.get("seed", 0))
     bands = [k for k in locks if re.fullmatch(r"t\d*band", k["name"])]
     hair_locks = [k for k in locks if k not in bands]
@@ -440,14 +456,28 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     return out
 
 
+def _npz_hash(hsh, path) -> None:
+    """An npz's arrays into a hash (its bytes carry the zip's timestamps: the same job hashed differently a second
+    later, so every look and every export tier re-evaluated the groom in Blender and filled the cache)."""
+    z = np.load(path, allow_pickle=False)
+    for k in sorted(z.files):
+        a = np.ascontiguousarray(z[k])
+        hsh.update(k.encode())
+        hsh.update(str(a.dtype).encode() + str(a.shape).encode())
+        hsh.update(a.tobytes())
+
+
 def key(sd: dict) -> str:
-    """A content hash of a strands job (its numbers and files): the cards / atlas caches are keyed on it."""
-    hsh = hashlib.sha1(json.dumps({k: v for k, v in sd.items() if k not in ("scalp", "groups", "band")},
+    """A content hash of a strands job's GEOMETRY (its numbers and files; not its colours, not where its files
+    lie): the evaluated strands, the cards and the cap chart are cached on it."""
+    hsh = hashlib.sha1(json.dumps({k: v for k, v in sd.items() if k not in ("scalp", "groups", "band", "collide", "look")},
                                   sort_keys=True, default=float).encode())
     for grp in sd["groups"]:
-        hsh.update(Path(grp["guides"]).read_bytes())
+        _npz_hash(hsh, grp["guides"])
         hsh.update(json.dumps(grp["stack"], sort_keys=True, default=float).encode())
-    hsh.update(Path(sd["scalp"]).read_bytes())
+    for k in ("scalp", "collide"):
+        if sd.get(k) and Path(sd[k]).exists():
+            _npz_hash(hsh, sd[k])
     return hsh.hexdigest()[:16]
 
 
@@ -474,11 +504,19 @@ def _code() -> str:
     return hashlib.sha1(b"".join((here / f).read_bytes() for f in ("hair_strands.py", "blender_strands.py"))).hexdigest()[:12]
 
 
+GROOM_KEEP = 12  # evaluated grooms kept on disk (most recently used)
+
+
 def strands_of_model(sd: dict) -> dict:
     """The model's evaluated strands (cached on disk by the job's content + this code)."""
     f = _cache() / f"groom_{key(sd)}_{_code()}.npz"
     if not f.exists():
         evaluate(sd, out=str(f))
+        old = sorted(_cache().glob("groom_*.npz"), key=lambda p: p.stat().st_mtime)[:-GROOM_KEEP]
+        for p in old:  # (each is 10-40 MB)
+            p.unlink(missing_ok=True)
+    else:
+        f.touch()
     return dict(np.load(f, allow_pickle=False))
 
 
@@ -559,7 +597,7 @@ def tile_lines(S: dict) -> dict:
     return out
 
 
-def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int = 1024) -> dict:
+def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int = 1024, short: bool = False) -> dict:
     """The scalp's hair as a picture on the scalp chart (u = azimuth / 360, v = elevation over e0..90, row 0 = the
     top): every strand that runs close over the scalp drawn where it lies, over an opaque base that starts `soft` m
     inside the hairline. So the hairline is an alpha edge of single hairs, and no skin shows under the cards: the
@@ -576,11 +614,13 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
         names = [str(n) for n in D["names"]]
         free = names.index("hair_guides_free") if "hair_guides_free" in names else -1
         for j in range(len(D["counts"])):
-            if D["obj"][j] == free:
-                continue
+            if D["obj"][j] == free and not short:  # (short=True: a short cut's own hair lies ON the head: the
+                continue  # cap carries it, every strand drawn where it lies, 1 texel wide)
             sl = slice(first[j], first[j + 1])
             a, e, h_ = az[sl], el[sl], hh[sl]
-            ok = (h_ < 0.012) & (e < 78.0)  # (round the pole the chart stretches a strand into an arc)
+            # (round the pole the chart stretches a strand into an arc; a short cut is drawn up to it all the same:
+            # left out, the crown was a plain dark disc on the cap)
+            ok = (h_ < (0.035 if short else 0.012)) & (e < (88.5 if short else 78.0))
             if ok.sum() < 2:
                 continue
             a = np.unwrap(np.radians(a)) * 180 / np.pi
@@ -590,8 +630,9 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
                     continue
                 v = (1 - (e - e0) / (90.0 - e0)) * H * ss
                 pts = [(float(x), float(y)) for x, y, k_ in zip(u, v, ok) if k_]
-                da.line(pts, fill=255, width=2)
-                di.line(pts, fill=int(1 + 254 * float(D["rand"][j])), width=2)
+                wd = 1 if short else 2
+                da.line(pts, fill=255, width=wd)
+                di.line(pts, fill=int(1 + 254 * float(D["rand"][j])), width=wd)
     a_, idm = (np.asarray(i.resize((W, H), Image.BOX), np.float32) / 255 for i in ims)
     idm = np.clip(idm / np.maximum(a_, 1e-3), 0, 1)
     AA, EE = np.meshgrid((np.arange(W) + 0.5) / W * 360.0, 90.0 - (np.arange(H) + 0.5) / H * (90.0 - e0), indexing="xy")
@@ -602,6 +643,8 @@ def cap_chart(sc, g: dict, line, S: dict, D: dict | None, e0: float, size: int =
     base = _ss((d_in - 0.25 * soft) / soft)
     pw = float(g["parting"].get("width", 0.012))
     base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
+    if short:  # the crown is hair whatever the parting's mask says there (a bald disc at the pole of a crop)
+        base = np.where((EE > 72.0) & (d_in > 0.02), 1.0, base)
     a_ = np.where(d_in > -0.004, a_, 0.0)
     from scipy import ndimage
     idm = np.where(a_ > 0.05, idm, 0.5 + 0.3 * (ndimage.gaussian_filter1d(streak, 2.0, axis=1, mode="wrap") - 0.5))

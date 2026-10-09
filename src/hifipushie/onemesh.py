@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 _CACHE: dict = {}
-VERSION = 8  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+VERSION = 9  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
@@ -145,6 +145,41 @@ def bound(params: dict, toward: float = 1.0) -> dict:
     return out
 
 
+NECK_RINGS = (10, 20)  # rings above the stitch over which the hand-over runs: at the throat, at the nape
+NECK_FADE = True  # the head's own shape handed over to the body's through the whole neck (stitch -> chin level)
+
+
+def neck_fade() -> np.ndarray:
+    """Per GNM vertex 0..1: how much of the head's OWN shape (identity, warp, fit, head size) a vertex takes. The
+    asset's g_fade reaches 1 seven rings (~2 cm) above the stitch: a head 14% bigger than the body's, or a warp that
+    moves the nape, then met the body's neck in a ledge (a collar round the neck's base; Garrett, 2026-10-08). This
+    one rises over the neck's whole length (by ring: see NECK_RINGS), never above g_fade."""
+    key = ("neck_fade",)
+    if key in _CACHE:
+        return _CACHE[key]
+    from . import base as basemod
+    g = basemod._gnm_data()
+    a = asset()
+    f = a["g_fade"].astype(float)
+    Vt = g["template_vertex_positions"].astype(float)
+    if not NECK_FADE:
+        _CACHE[key] = f
+        return f
+    # by RING above the stitch (GNM's neck rings climb toward the nape, so a height rule gave the nape no length at
+    # all): the hand-over ends NECK_RINGS[0] rings up at the throat (under the chin, which keeps its whole shape) and
+    # NECK_RINGS[1] rings up at the nape (the skull's base), in between by how far back a vertex lies (GNM: z forward)
+    lev = a["g_lev"].astype(float)
+    l0 = float(lev[(f > 0) & (f < 0.1)].min()) if ((f > 0) & (f < 0.1)).any() else float(lev[f > 0].min())
+    ring = Vt[(lev >= l0) & (lev <= l0 + 2)]
+    zc, zr = float(np.median(ring[:, 2])), max(float(np.ptp(ring[:, 2])) / 2, 1e-6)
+    back = np.clip((zc - Vt[:, 2]) / zr * 0.5 + 0.5, 0, 1)
+    n = NECK_RINGS[0] + (NECK_RINGS[1] - NECK_RINGS[0]) * back * back * (3 - 2 * back)
+    t = np.clip((lev - l0) / n, 0, 1)
+    out = np.where(lev >= 0, np.minimum(f, t * t * (3 - 2 * t)), f)
+    _CACHE[key] = out
+    return out
+
+
 def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     """Called by base.gnm_head just before it places the head (GNM's frame): everything it made of GNM's template
     (identity, expression, regions, pose, eye size, planes...) is kept as a DIFFERENCE from the template, faded out
@@ -156,7 +191,7 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     Vt = g["template_vertex_positions"].astype(float)
     Jt = g["template_joint_positions"].astype(float)
     shift = mid - 0.5 * (Jt[2] + Jt[3])
-    fade = a["g_fade"].astype(float)[:, None]
+    fade = neck_fade()[:, None]
     Vn = mid + (bd["B"] - eye_mid) @ R / s + fade * ((V - Vt) - shift)
     if head.get("dim"):  # the sexes' difference a little past MakeHuman's own, on the head only (headfit's fields)
         from . import headfit
@@ -167,7 +202,7 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     Jn[2:4] = mid + (bd["eyes"] - eye_mid) @ R / s + ((J[2:4] - Jt[2:4]) - shift)
     if head.get("human_style"):  # (humanstyle.py) the style's head sliders, on the same vertices
         from . import humanstyle
-        Vn, Jn = humanstyle.head_ops(Vn, Jn, head["human_style"], g, a["g_fade"].astype(float), g["lm68"])
+        Vn, Jn = humanstyle.head_ops(Vn, Jn, head["human_style"], g, neck_fade(), g["lm68"])
     return Vn, Jn
 
 

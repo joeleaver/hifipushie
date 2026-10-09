@@ -413,7 +413,11 @@ def dims(Bp: dict, meas_mm: dict) -> dict:
         out["waistband_height"] = _band_height(pcs[wb]) * 1000
         cg = _closed_girth(Bp, wb)
         if cg and meas_mm.get("waist"):
-            out["waistband_over_waist"] = cg * 1000 - meas_mm["waist"]
+            # (against the girth where the band sits: a dropped waist, block option waist_drop)
+            from .pattern_blocks import dropped_waist
+            wdrop_ = float((pcs[wb].get("wrap") or {}).get("drop", 0.0))
+            out["waistband_over_waist"] = cg * 1000 - (dropped_waist(meas_mm, wdrop_) if wdrop_ else meas_mm["waist"])
+            out["_waist_at_band"] = dropped_waist(meas_mm, wdrop_) if wdrop_ else float(meas_mm["waist"])
         P = pcs[wb]["P"]
         if cg:
             out["waistband_overlap"] = (P[:, 0].max() - P[:, 0].min() - cg) * 1000
@@ -487,6 +491,11 @@ def _check(ev: dict, Bp: dict, R: dict, D: dict, entry: dict, lap: str | None) -
         r = ev["stitches"]
         names = set(R.get(r, []))
         n = sum(1 for a, b in Bp["stitches"] if a.split(":")[0] in names or b.split(":")[0] in names)
+        # (and the fastenings of closures on it, whatever their wear state: a jacket worn open has its buttons as a
+        # closure with no stitches, and its button stand read "0 stitches")
+        nc = sum(len(c.get("pairs") or [])
+                 for c in (Bp.get("closures") or []) if c.get("over") in names or c.get("under") in names)
+        n += nc
         return n >= int(ev.get("min", 1)), f"{n} stitches (buttons) on {r} (need {ev.get('min', 1)})"
     if "lap" in ev:
         r = ev["lap"]

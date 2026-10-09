@@ -86,7 +86,11 @@ def test_nudge_moves_one_landmark():
     # past what the sliders can do: the rest is a correction layer, said so, and it survives a later change
     # (3 cm squeezes the face's edges past the limit: refused, the input handed back, unless forced)
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03])
-    assert nb2 is b and "refused" in rep2
+    # (its refusal used to rest on sub-millimetre lid edges read as "x3.3": slivers no longer count (hf.SLIVER, the
+    # reference-modelling study), so within the plausible range it may pass; forced past it, it is still BROKEN)
+    # and the correction layer has a size guard of its own (hf.NUDGE_CORR x radius): 3 cm is refused, unforced
+    assert nb2 is b and "refused" in rep2, rep2.get("by_correction_mm")
+    assert not hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)[1]["integrity"]["ok"]
     nb2, rep2 = hf.nudge(b, "chin", move=[0.0, 0.0, -0.03], force=True)
     assert rep2["by_correction_mm"] > 1.0 and abs(rep2["got_mm"][2] + 30) < 1.5
     assert nb2["head"]["shape"]["push_more"]
@@ -224,6 +228,86 @@ def test_jaw_angle_is_a_symmetric_bony_corner():
     assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
 
 
+def test_jawline_is_an_L_and_ears_nose_controls_hold_the_face():
+    """base.head.shape.jawline carries the jaw line onto an L: the jaw-contour landmark that was level with the ear lobe
+    (lm 3 / 13) goes down by centimetres, both sides alike, eyes / nose / lips landmarks stay, the mesh holds. ears
+    and nose_tip move only their own part."""
+    b = base()
+    st0 = hf.state(b)
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["jawline"] = {"below_lobe": 0.055, "tuck": 0.004, "smooth": 5}
+    st1 = hf.state(b1)
+    L0, L1 = st0["L"], st1["L"]
+    down = [float(L0[i][2] - L1[i][2]) for i in (3, 13)]
+    assert min(down) > 0.004 and abs(down[0] - down[1]) < 0.002, down
+    assert np.linalg.norm(L1[17:68] - L0[17:68], axis=1).max() < 0.001
+    assert np.linalg.norm(L1[8] - L0[8]) < 0.002
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"], it["broken"]
+    for key, val, moved in (("ears", {"out": 25, "size": 1.1, "blend": 0.02}, "ears"), ("nose_tip", 8, "nose")):
+        b2 = hf.copy.deepcopy(b)
+        b2["head"].setdefault("shape", {})[key] = val
+        st2 = hf.state(b2)
+        P0, P2 = np.asarray(st0["tpl"]["P"]), np.asarray(st2["tpl"]["P"])
+        d = np.linalg.norm(P2 - P0, axis=1)
+        reg = hf._regions(st0["tpl"])
+        assert d[reg[moved]].max() > 0.002, (key, d.max())
+        other = ~reg[moved] & reg["head"]
+        assert d[other].max() < (0.012 if key == "ears" else 0.004), (key, d[other].max())
+        assert np.linalg.norm(st2["L"][36:48] - L0[36:48], axis=1).max() < 0.0005
+        assert hf.integrity(b2, st2, st0)["ok"], key
+    # the chin: wider between the mental corners, a level bottom, a mid-line cleft; the tip rounded; all symmetric
+    b4 = hf.copy.deepcopy(b)
+    b4["head"].setdefault("shape", {}).update({"chin": {"width": 0.006, "square": 0.7, "cleft": 0.002},
+                                                "nose_tip": {"up": 10, "round": 1.0}})
+    st4 = hf.state(b4)
+    L4 = st4["L"]
+    w0, w4 = abs(L0[9][0] - L0[7][0]), abs(L4[9][0] - L4[7][0])
+    assert 0.003 < w4 - w0 < 0.008, (w0, w4)
+    assert (L4[8][2] - L4[7][2]) > (L0[8][2] - L0[7][2]) - 1e-6          # the bottom's middle no lower against the corners
+    P0, P4 = np.asarray(st0["tpl"]["P"]), np.asarray(st4["tpl"]["P"])
+    mid = (np.abs(P0[:, 0]) < 0.002) & (np.linalg.norm(P0 - L0[8], axis=1) < 0.02)
+    assert (P4[mid, 1] - P0[mid, 1]).max() > 0.001                      # the groove goes in (the head faces -y)
+    assert np.linalg.norm(L4[36:48] - L0[36:48], axis=1).max() < 0.0005
+    assert hf.integrity(b4, st4, st0)["ok"]
+    b3 = hf.copy.deepcopy(b)
+    b3["head"].setdefault("shape", {})["nose_tip"] = -8
+    assert hf.state(b3)["L"][30][2] < L0[30][2] < hf.state(b2)["L"][30][2]
+
+
+def test_lean_thins_under_the_jaw_and_keeps_the_border():
+    """base.head.shape.lean: the skin under the jaw's border moves in by millimetres, the border's own landmarks
+    (jaw contour, chin) and the face above the mouth stay, both sides alike, nothing folds. cleft_lobes makes two
+    pads either side of the chin's groove."""
+    b = base()
+    st0 = hf.state(b)
+    b1 = hf.copy.deepcopy(b)
+    b1["head"].setdefault("shape", {})["lean"] = {"under_jaw": 0.006, "jowl": 0.002}
+    st1 = hf.state(b1)
+    P0, P1 = np.asarray(st0["tpl"]["P"]), np.asarray(st1["tpl"]["P"])
+    d = np.linalg.norm(P1 - P0, axis=1)
+    L0, L1 = st0["L"], st1["L"]
+    jaw_z = float(np.mean(L0[[4, 5, 11, 12], 2]))
+    head = hf._regions(st0["tpl"])["head"]
+    under = head & (P0[:, 2] < jaw_z - 0.012) & (np.abs(P0[:, 0] - L0[8][0]) > 0.02)
+    assert d[under].max() > 0.003, d[under].max()
+    assert np.linalg.norm(L1[2:15] - L0[2:15], axis=1).max() < 0.0015       # the border keeps its place
+    assert np.linalg.norm(L1[17:48] - L0[17:48], axis=1).max() < 0.0003     # brows, nose, eyes
+    side = [d[head & (np.sign(P0[:, 0] - L0[8][0]) == sg)].max() for sg in (-1, 1)]
+    assert abs(side[0] - side[1]) < 0.0008, side
+    it = hf.integrity(b1, st1, st0)
+    assert it["ok"] and it["numbers"]["folded_faces"] < hf.FOLD_LIMIT, it
+    b2 = hf.copy.deepcopy(b)
+    b2["head"].setdefault("shape", {})["chin"] = {"cleft": 0.004, "cleft_width": 0.005, "cleft_lobes": 0.003, "cleft_length": 0.02}
+    P2 = np.asarray(hf.state(b2)["tpl"]["P"])
+    dy = (P2 - P0)[:, 1]                                                     # (the head faces -y: back = +)
+    near = head & (np.linalg.norm(P0 - (L0[8] + [0, 0, 0.012]), axis=1) < 0.03)
+    assert dy[near].max() > 0.002 and dy[near].min() < -0.0012, (dy[near].max(), dy[near].min())
+    groove = P0[near][np.argmax(dy[near])]
+    pad = P0[near][np.argmin(dy[near])]
+    assert abs(groove[0] - L0[8][0]) < 0.004 < abs(pad[0] - L0[8][0])
+
+
 def test_a_broken_solve_is_refused():
     """A mouth widened until lip faces fold: solve hands back the base it was given (rep["refused"] says why, the
     broken result's integrity is reported), and returns the broken one only with force=True."""
@@ -249,6 +333,7 @@ if __name__ == "__main__":
                    test_nudge_moves_one_landmark, test_fit_back_a_known_face_from_images, test_neck_girth_ignores_the_face,
                    test_hooded_lids_fitted_from_a_picture, test_outline_fit_is_symmetric_and_holds_features,
                    test_hollow_cheeks_read_on_the_section, test_jaw_angle_is_a_symmetric_bony_corner,
+                   test_lean_thins_under_the_jaw_and_keeps_the_border,
                    test_a_broken_solve_is_refused):
             fn()
             print("ok", fn.__name__)

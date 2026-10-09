@@ -47,6 +47,7 @@ DEAD = {"break": 0.75, "stub": 0.25, "twig": [0.0012, 0.009], "droop": [6, 28], 
 DEFAULT = {
     "plant": "tree",  # "tree" = grown (this module); "clump" = assembled from cards in layers (veg_small: grass, ferns, flowers, palms)
     "clump": None,  # {"layers": [...], "size": 1.0}: see veg_small.LAYER
+    "sward": None,  # plant "sward": plain grass as a tile of blades (veg_sward: variant mown | meadow | rough, height, density...)
     "age": 40, "seed": 1, "height": None,
     "habit": {
         "years_per_step": 1.5,  # one simulated flush = this many years (old trees: > 1)
@@ -202,8 +203,12 @@ def resolve(spec: dict) -> dict:
             raise ValueError(f"dead {i} needs a limb's name or one of {sorted(vol)}")
     if s.get("roots"):
         keys("roots", s["roots"], {"count", "spread", "height", "under"})
+    if s.get("plant") == "sward":
+        from . import veg_sward
+        veg_sward.validate(s)
+        return s
     if s.get("plant") not in ("tree", "clump"):
-        raise ValueError(f'plant {s.get("plant")!r}: "tree" (grown) or "clump" (assembled from cards in layers)')
+        raise ValueError(f'plant {s.get("plant")!r}: "tree" (grown), "clump" (assembled from cards in layers) or "sward" (a tile of grass blades)')
     if s.get("plant") == "clump":
         from . import veg_small
         veg_small.validate(s)
@@ -703,6 +708,9 @@ def grow(spec: dict, unit_scale: float | None = None, log=None) -> dict:
     """Grow the tree. Returns arrays in metres (pos, parent, radius, order, born, axis, key, tip, leafy), axes, and
     stats. With `height`, an unedited run is grown first and its height sets the unit, so edits stay in metres."""
     s = resolve(spec)
+    if s.get("plant") == "sward":  # a tile of blades, not a plant with a skeleton
+        from . import veg_sward
+        return veg_sward.grow(s)
     if s.get("plant") == "clump":  # assembled, not grown
         from . import veg_small
         return veg_small.grow(s)

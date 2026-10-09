@@ -34,16 +34,18 @@ def test_states():
 
 
 def test_a_shirt_without_a_tie_is_worn_open_at_the_neck():
-    # garment_kb kinds.shirt.wear: no tie (the default) -> collar open + the top front button undone; a tie closes both
+    # garment_kb kinds.shirt.wear: no tie (the default) -> only the collar button undone (the user on su_77: "two
+    # buttons open when there should only be one"), the fronts rolled softly back to the first, closed, button
     from hifipushie import cloth, garment_design
     g = {"pattern": {"from": "simon"}}
-    assert {c["name"]: c["state"] for c in garment_design.wear(g)} == {"collar": "open", "front": {"open_top": 1}}
+    assert {c["name"]: c["state"] for c in garment_design.wear(g)} == {"collar": "open", "front": "closed"}
+    assert all(f["line"][-1].startswith(("buttonhole1", "button1")) for f in garment_design.wear(g, "folds"))
     assert {c["name"]: c["state"] for c in garment_design.wear(dict(g, tie=True))} == {"collar": "closed", "front": "closed"}
     assert garment_design.wear({"pattern": {"from": "carlton"}}) == []  # a coat: as its pattern says
     # open as worn: the stand's ends apart at the throat, the fronts rolled back above the first closed button
     assert {c["name"]: c.get("gap") for c in garment_design.wear(g)}["collar"] > 0.05
     fl = garment_design.wear(g, "folds")
-    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(90 < f["angle"] < 180 for f in fl)
+    assert {f["piece"] for f in fl} == {"front.L", "front.R"} and all(60 < f["angle"] < 180 for f in fl)
     assert garment_design.wear(dict(g, tie=True), "folds") == []
     # the UNDER front's roll ends above the first closed fastening (under the over front there): rolled out to the
     # button both flaps met there and the under one turned out through the over one (29 crossings at su_garrett's start)
@@ -187,6 +189,14 @@ def test_drafted_buttons_are_a_closure_with_a_wear_state():
         Bp = cloth.pieces({"pattern": {"from": "draft", "block": "bodice", "block_options": {"fitted": True}, "ops": ops}}, mm)
         assert Bp["closures"] and Bp["closures"][0]["state"] == state
         assert sum("button" in a for a, b in Bp["stitches"]) == n_st
+    # the finish comes from the garment's KIND (garment_kb kinds.<k>.closure): a jacket's front is a faced edge with
+    # its buttonholes across and no topstitching, not a shirt's box placket; the closure's own keys still win
+    g = {"design": {"kind": "jacket"}, "pattern": {"from": "draft", "block": "bodice", "block_options": {"fitted": True}, "ops": ops}}
+    c = cloth.pieces(g, mm)["closures"][0]
+    assert c["finish"] == {"over": "facing", "under": "facing"} and c["hole"] == "across" and c["topstitch"] == 0
+    c = cloth.pieces(dict(g, closures=[{"name": c["name"], "finish": "plain"}]), mm)["closures"][0]
+    assert c["finish"] == {"over": "plain", "under": "plain"}
+    assert cloth.pieces({"pattern": g["pattern"]}, mm)["closures"][0]["finish"]["over"] == "box"  # no kind: the default
 
 
 def _placket(finish=None):
@@ -275,6 +285,45 @@ def test_flat_sew_through_buttons():
     top = P[np.abs(P[:, 1] - V[c["v"][0][0], 1]) > np.abs(P[:, 1] - V[c["v"][0][0], 1]).max() - 2e-4]
     assert np.ptp(top[:, 2]) > np.ptp(top[:, 0])
     assert abs(closures.hole_axis(c, M, *c["v"][0]) @ np.array([0, 1.0])) > 0.99  # along the edge
+    # the maps draw no button under a closed lap (it peeked out beside the real one where the sides ended apart)
+    from hifipushie import cloth
+    assert closures.covered_buttons(M) == {int(vb) for _va, vb in c["v"]}
+    uv, side = cloth.atlas_uv(M)
+    assert cloth.detail_maps(M, uv, side, dict(g, detail={"texture": 1024}))["button"].max() == 0
+
+
+def test_a_box_band_is_a_crisp_step_in_the_mesh():
+    """The coordinator on su_77: at outfit distance the placket "doesn't read at all". A box band in the MESH: a row
+    split in 1.5 mm outside its inner fold (vertices appended: old ids keep their meaning), the band pressed flat
+    across (a solver's lap sank 3-4 mm between its edges) and standing proud, so the step is 1.5 mm wide."""
+    g, Bp, M = _placket()
+    pcs = Bp["pieces"]
+    nV, nF = len(M["uv"]), len(M["F"])
+    k = M["names"].index("front.L")
+    uv = M["uv"].copy()
+    V = np.c_[uv[:, 0], np.zeros(nV), uv[:, 1]]
+    V[M["piece"] != k, 1] += 0.004  # the under front behind (+y = in)
+    band = (M["piece"] == k) & (uv[:, 0] > -0.095) & (uv[:, 0] < -0.075)
+    V[band, 1] += 0.003  # the sim's lap sunk 3 mm between the band's edges
+    old = V.copy()
+    sp = closures.split_band_edges(M, pcs)
+    assert sp is not None and len(M["uv"]) == nV + len(sp["t"]) and len(M["F"]) > nF
+    V = closures.extend(V, sp)
+    assert np.allclose(V[:nV], old) and M["F"].max() == len(V) - 1
+    new = M["uv"][nV:]
+    assert np.allclose(new[:, 0], -0.1 + 0.03 + closures.EDGE_ROW, atol=2e-4)  # the row 1.5 mm outside the fold
+    # no face folded: every triangle keeps its winding in the pattern
+    P = M["uv"][M["F"]]
+    e1, e2 = P[:, 1] - P[:, 0], P[:, 2] - P[:, 0]
+    area = e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0]
+    assert (np.sign(area) == np.sign(np.median(area))).all()
+    X = closures.relief(V, M, pcs, None)
+    sel = np.where((M["piece"] == k) & (np.abs(M["uv"][:, 1] - 0.1) < 0.02))[0]
+    out_ = -X[sel, 1]  # (out = -y)
+    xs = M["uv"][sel, 0]
+    inb, row, past = (xs > -0.095) & (xs < -0.072), np.abs(xs + 0.07) < 3e-4, np.abs(xs + 0.0685) < 3e-4
+    assert np.ptp(out_[inb]) < 0.0012  # flat across (was a 3 mm groove)
+    assert out_[row].mean() - out_[past].mean() > 0.0008  # a step of ~1 mm over 1.5 mm
 
 
 def test_a_cuffs_holes_run_along_the_cuff():

@@ -173,7 +173,7 @@ Tailoring numbers the knowledge base carries (all checked in stage 2 where the p
 |---|---|---|
 | `tie` | garment / sheet | false (default): a shirt worn with only its collar button open; true: closed to the top |
 | `closures` `[{"name", "state"}]` | garment | How an opening is worn: `{"name": "front", "state": "open"}` hangs a jacket open (buttons stay on); laid over the design's entry by name |
-| `collar_spread` | garment | An open shirt collar's spread [out, down, from] deg (default [40, 20, 70]); false keeps it a ring |
+| `collar_spread` | garment | An open shirt collar's spread [out, down, from] deg (default [25, 12, 75]); false keeps it a ring |
 | closure `finish`, `topstitch`, `hole`, `button` | closure entry | How the placket / faced edge, buttonholes and buttons look (Closures and bands, stage 6) |
 | `block_options.leg` | sheet (trousers) | skinny, slim, tapered, straight, wide: the leg's cut from the leg's own girths |
 | `block_options.length` | sheet (trousers) | `"break"` (suit trousers' default): 30 mm over the floor, back 12 mm longer, the hem resting on the shoe with one soft break. Not cut from the shoe's heights (that came out 5 cm short) |
@@ -294,7 +294,7 @@ The plan lists:
   The garment's own `closures` entries still win. (Until 2026-10-08 the rule also undid the top front button: two
   buttons open, which the user called wrong. Simon's `extraTopButton` must stay false: an extra top button with
   nothing fastened to it draws as a hole on the open collar.)
-  **An open collar is laid SPREAD** (garment key `collar_spread` [out deg, down deg, from deg], default [40, 20, 70],
+  **An open collar is laid SPREAD** (garment key `collar_spread` [out deg, down deg, from deg], default [25, 12, 75],
   or false): the stand still hugs the back and sides of the neck, and from about the neck's side forward it swings out
   and tips down so the points lie on the collarbones. A made stand is carried as constructed, so an open collar laid
   as a ring stands up round the neck as a ring to the end of the sim. The stand's ends start ~10 cm apart at the throat
@@ -584,12 +584,12 @@ The same maps go into `scene.blend` and the export.
 - **The placket must show, in geometry AND maps, and its look depends on the closure's finish** (closure keys
   `finish` {"over", "under"}: `box` (a shirt's buttonhole side: three layers proud, a crisp fold at the inner edge,
   the tuck's shadow, two rows `topstitch` 3 mm in), `french` (a shirt's button side: a rounded folded edge, no rows),
-  `facing` (a faced edge, one row), `plain` (nothing); default box over french. `hole`: auto | along | across (auto:
+  `facing` (a faced edge, one row), `plain` (nothing); default by the garment's kind (`kinds.<k>.closure`: shirt box over french, jacket and coat facing with holes across and no topstitching unless asked), else box over french. `hole`: auto | along | across (auto:
   vertical down a placket, along a cuff); `button` {holes 4|2, color, roughness, thickness}). The pattern alone was
   right and the shirt still read as plain cloth: the band was a 0.8 mm lift over one 1 cm triangle (invisible in
   clay), the front edge was drawn as a hem, buttonholes as outlined slots, buttons as rivets. **A jacket or coat front
   is not a box placket**: its edge is faced and its buttonholes run ACROSS (horizontal); give its closure
-  `"finish": "facing"` (or no `band`) and `"hole": "across"`. These keys are look only: in the design table they
+  the jacket and coat kinds default to `"finish": "facing"` and `"hole": "across"`. These keys are look only: in the design table they
   don't re-simulate; in a garment's own `closures` entry they change the sim key (re-sim).
 
 #### States
@@ -649,6 +649,8 @@ The same maps go into `scene.blend` and the export.
 | A lapel or collar that will not roll | The piece is wholly interfaced, so it rests as made (frozen as placed), or it has no fold line | Interface a band, add a fold line; stage 3 fails on this |
 | A skirt slides down or one side seam gapes | Lower-body pieces start on a cylinder much wider than the waist and the sewing has to close 10+ cm; the body has no hip to hold a waistband | Keep the fit close (straight / a_line), waist ease 2-3%; the band now starts closed at the waist (a waist-SHAPED start for the panels was tried and dropped: 10-30% shear); `zozo.stitch_stiffness` 8 closes the seams |
 | Every seam a raised welt with a valley beside it, visible across the room ("huge and structural") | Real seams are pressed and barely show. Three causes of ours: (1) pieces wound opposite ways, so welded normals cancelled and Solidify stepped; (2) the solver's free hinge left a 20-45 deg crease at each seam, where the cloth's own neighbouring normals differ by 10; (3) the maps drew a 1.2 mm groove 5 mm wide between 0.6 mm ridges, 45% darker, with topstitching on every seam and hem | Fixed by `piece_flips` with shared normals, the clean-up's `press` and seam finishes. Measure before you tune: the angle between a seam's two sides' normals against the cloth's own, per seam (blazer 29 -> 14 deg, side seams 20 -> 9). A seam that should stand gets `seam_finishes` "welt" |
+| The placket band invisible in clay and at outfit distance | The solver's lap sank 3-4 mm between the band's edges (deeper than any step), and the step was spread over a 1 cm triangle | After the sim `closures.split_band_edges` cuts a vertex row 1.5 mm outside a box band's inner fold (vertices appended: ids hold), `press_band` lays the band flat across, `relief` lifts it 1.2 mm: a step 1.5 mm wide (`cleanup.band_edges` false turns it off) |
+| `ccd failed` at frame 0, or the fine settle refuses its start, with a triangle 3-4x stretched next to a placket | A roll fold's line ends just past the band's inner row and crosses it at a shallow angle: a sliver | End the roll a few cm above the fastening (the over front's 2 cm above button 1, the under front's 6 cm) |
 | `dress` says NOT simulated | Stages 1-3 fail | Read the failures, fix the sheet or the pattern; `force=True` only to look at the fault |
 | An open jacket's fronts bow forward to the hem (a tent from the side) | The side panel's hem spring (`contour` +16 mm per edge at the hem = 64 mm of flare a side), not the canvas, not front balance | Panel seams straight below the waist (`contour` [["waist", 0], ["hem", 0]]); hip room from `hips_ease` |
 | Both lapels unroll into a funnel round the neck | The collar stand was lowered (to show more shirt collar): the roll line comes down from it and the collar's turn pulls the lapels up | Keep the stand (shirt stand + a few mm); lower the back neck (`neckline` op first) and the notch (`gorge_drop`, `break_y`) |
@@ -660,7 +662,9 @@ The same maps go into `scene.blend` and the export.
 | A layered start: a piece pushed far out, a sleeve started 11 cm down the arm, ZOZO "ccd failed" at frame 0 | The padded body folded in a hollow (the neck under an open collar, the pit) and clearances read it backwards | Unfolded automatically now; if it recurs, the pad (`under_cap`, the under garment's collar) |
 | White flecks of shirt through a jacket's sleeves / armholes | The clean-up moved jacket cloth through the shirt under it | Fixed: crossings with the under garment send those vertices back to the sim's surface |
 | A shirt worn without a tie shows two buttons open | The old wear rule also undid the top front button | Only the collar button opens now (`tie` false); Simon's `extraTopButton` stays false (a stray top button draws as a hole) |
-| An open shirt collar stands up round the neck like a ring | A made stand is carried as constructed: laid ring-like, it stays a ring | `collar_spread` (default on): the front swings out and down onto the collarbones |
+| An open shirt collar stands up round the neck like a ring | A made stand is carried as constructed: laid ring-like, it stays a ring | `collar_spread` (default [25, 12, 75]): the front swings out and down onto the collarbones. More (40 / 20) drags the fronts' top corners apart: button 1 ended 36 mm open; a narrower collar gap (6 cm) made the fronts gape between buttons 1 and 2 |
+| A second, undone-looking button beside a closed one | The solver left that fastening's two sides 1-2 cm apart and the maps drew the under front's button, which peeked out beside the real one | The maps draw no button under a closed lap (`closures.covered_buttons`); the report still says `!! closure ... sides N mm apart` |
+| A cached build or a look killed for memory (exit 137) with one huge start triangle | `_piece_crossings` searched every edge against every triangle at the largest triangle's radius | Fixed (per-size search, chunked); a start with a huge triangle is still worth reading (st.py-style: worst start triangles) |
 | A shirt's placket doesn't show (plain cloth with dots for buttons) | The band was a 0.8 mm lift on one 1 cm triangle; maps drew a hem, outlined slots, rivet buttons | Closure `finish` (box over, french under for shirts): band edge in the mesh, rows, buttonholes, flat 4-hole buttons. A jacket front is `facing` with holes `across` |
 | A shirt collar's fall stands up (won't turn) | The stand is taller than the neck between trapezius and jaw, so it is pushed off the chin | `collar_rule` sizes it from the neck (stand = neck height - 13 mm, >= 20 mm); or Simon `collarStandWidth` 0.055 (20 mm) |
 | A buttoned collar starts 17-30 mm open | Too little collar ease at the neck's base | Simon `collarEase` 0.115 (13 mm over the neck base) |
@@ -674,6 +678,14 @@ The same maps go into `scene.blend` and the export.
 | A jacket front reads open "0 stitches" in stage 2 | A front worn open has its buttons as a closure with no stitches | Fixed (closures' fastenings count); state "open" is fine |
 | A sleeve sewn in rotated (the top notch 27 mm off the shoulder seam) | The armhole's seam chain started at the front pitch, not the shoulder | Start an armhole chain where the sleeve's top meets the shoulder seam |
 | ZOZO "ccd failed", max_sigma ~11 at frame 0 | A sliver edge (under 1 mm) in the mesh: a fold row or a mark next to the outline | Fixed in the mesher; the fine start check names the place if one comes back |
+| An open jacket hangs CLOSED and stands 5-12 cm forward of the body below the chest (a tent) | (1) It was started lapped like a buttoned one: the fronts stay lapped, the sides hug the hips and all the ease stands in front. (2) A stiff front (canvas bands + a lapel roll at strength 1) is a board that carries the upper chest's slope down to the break | A front closure worn `open` starts the fronts apart (`open_gap`, default 0.16 m at the hem: the loose tube an open jacket is). Keep the roll soft (`roll_strength` ~0.3) and the canvas light; read `section.py`-style numbers: where the two front edges are, and the stand-off by height |
+| A layered job stops at frame 0: "contact starts overlapping" / "newton stalled ... a prescribed pin driven into geometry that cannot yield" | The start is laid on the PADDED body, but the collider is the body + the under garment's own mesh: a pressed sleeve fold, a placket ridge under a 2 cm triangle's middle, an open collar's wing under a made (held) jacket collar | Fixed: the start is cleared against the collider's triangles both ways (3 mm), made pieces are lifted over the garment under them. If it comes back: look at the job's in.npz against its frame-0 collider (`bodyV0`), not the bent body |
+| Trousers over a shirt fail before the sim ("the fine settle's start is stretched ... back 3.9x at the waist corner") or the band sits under the shirt tail | The waist was taped on the bare body, and the start was cleared against the shirt read as a closed body | Fixed: a garment hung from the waist (`over`) is drafted from the waist taped over the tucked garment + the layer gap; give the trousers `under_cap` ~0.003 (the shirt pressed close) |
+| ZOZO builder: assertion `left > right` 0.0 / 0.0 while "computing constraints" | A collider vertex whose faces have no area (an under garment's welded seam slivers), or none at all | Fixed in the collider (faces under 0.0005 mm2 and the vertices they orphan are left out) |
+| Trousers read high-waisted; the belt sits far above the concept's | The block puts its top at the NATURAL waist | Block option `waist_drop` (m under the waist; men's tailored trousers 0.04-0.08): girth there, rise, lengths and placement follow |
+| On another body the same jacket's sleeves start 3-6 cm down the arm, seams 10-12 cm open, and the sim stalls in the first frames | The armhole is too high for that body's shoulder line (hps lower: armhole depth from hps 263 mm where 294 worked): the under sleeve crosses back / side panel at the pit and is sent down the arm round after round | A jacket's armhole sits ~3 cm under the pit: bodice option `armhole_depth` 0.12-0.14 (default 0.02 is a shirt's); check `sleeve_down` <= 0.02 and armhole start gaps ~9 cm at the start |
+| A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |
+| An open jacket's fronts hang together below the button where the reference's hang 12-15 cm apart | The pose: the reference's arms are raised further (45 deg vs 25): raised arms lift the sleeves and pull the fronts round to the sides | Judge against a reference in ITS pose (turn the arm joints about the shoulder on a copy of the model and dress that): same jacket, arms 25 -> 45 deg: front edges 2 -> 12 cm apart at the hips. Sleeve length and cuff show are read in that pose too |
 
 ## Sources
 
@@ -977,7 +989,7 @@ Garrett):
 | Don't lower a jacket stand to show the shirt collar | NONE: `layer_collar_show_mm` measures the result; the lapels' roll angles are in the report's fold lines |
 | A shirt without a tie: only the collar open, collar spread | Kind default (`kinds.shirt.wear`, `collar_spread`); no check |
 | Collar size from the neck | Applied by `collar_rule` on Simon; stage 4 HINT when a neck band is pushed > 8 mm off the neck |
-| A placket / faced edge shows by its finish | Closure defaults (box / french); NONE for a jacket given a box placket by mistake: set `finish` yourself |
+| A placket / faced edge shows by its finish | Closure defaults by kind (`kinds.<k>.closure`: shirt box / french, jacket and coat facing, holes across); no check |
 | Pit seams start too far apart on a fitted jacket | NONE yet: stage 4 lists seam start gaps; read them |
 | The padded body folds in hollows | Fixed in the code; no check |
 | Judge in clay / GLB, not the textured look; renders before a change show old code | NONE: discipline |

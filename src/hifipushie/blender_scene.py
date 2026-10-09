@@ -1122,8 +1122,9 @@ def render(job):
     ee.taa_render_samples = int(job.get("samples", RENDER_SAMPLES))
     ee.ray_tracing_options.resolution_scale = str(job.get("rt_scale", RT_SCALE))  # 1 full, 2 half, ...
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
-    scene.render.film_transparent = bool(job.get("show_layer"))  # alpha: surface vs sky, for coverage
-    scene.render.image_settings.color_mode = "RGBA" if job.get("show_layer") else "RGB"
+    alpha = bool(job.get("show_layer") or job.get("transparent"))  # alpha: surface vs sky, for coverage; or a look
+    scene.render.film_transparent = alpha                            # to be laid on a backdrop of the caller's
+    scene.render.image_settings.color_mode = "RGBA" if alpha else "RGB"
     lt = job.get("lighting") or {}  # a style's look preset (spec["style"]["look"]): key/fill/rim suns, world, view
     # "view": the view transform (AgX by default; "Khronos PBR Neutral" keeps albedo hue and saturation, as glTF
     # viewers show an export: AgX rolled lit skin off to V 0.78 whatever its colour)

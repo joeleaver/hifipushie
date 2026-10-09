@@ -188,5 +188,6 @@
   "cup": 0.6,
   "head_up": 0.6,
   "petal_size": 1.0
- }
+ },
+ "sward": {"width": 3.2, "density": 0.22, "height": 0.9, "bend": 0.7, "tones": 2, "tip": "round", "round": 0.8, "dry": 0.0}
 }

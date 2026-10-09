@@ -100,6 +100,10 @@ LAYERS = {  # reference look (sRGB colour, roughness) and a triplanar tiling sca
     "wet_rock": {"color": [0.17, 0.16, 0.15], "roughness": 0.55, "scale": 6.0},
     "earth": {"color": [0.42, 0.34, 0.24], "roughness": 0.95, "scale": 2.5},
     "snow": {"color": [0.93, 0.94, 0.96], "roughness": 0.7, "scale": 4.0},
+    # a stream's bed and banks (terrain_stream; only on terrains with running rivers)
+    "gravel": {"color": [0.44, 0.41, 0.36], "roughness": 0.7, "scale": 2.0},   # cobbles and gravel
+    "silt": {"color": [0.33, 0.29, 0.22], "roughness": 0.6, "scale": 2.0},     # fine sediment in pools and slack water
+    "bank": {"color": [0.25, 0.21, 0.15], "roughness": 0.8, "scale": 2.0},     # the bank's damp foot
 }
 
 
@@ -123,6 +127,11 @@ def smoothstep(e0, e1, x):
 
 NORMAL_H = 0.125  # the normals' stencil, voxels: exact on each side of a crease (split_normals splits at creases)
 NEAR = 2.5  # how far from a volume's surface the rock character reaches (m)
+# the rock relief is evaluated only where its weight is over RELIEF_CUT (a cost cull), and eased in from there to
+# RELIEF_FADE, so the field stays continuous where the cull starts (Field._solid)
+RELIEF_CUT = 0.01
+RELIEF_FADE = 0.1
+JUMP_LIMIT = 3  # sampled texels with a step under them (terrain_bake.bake_texels) a tile LOD may have (seam_check)
 BURIED_DEEP = 0.1  # a face is buried when its centre is deeper in the rock than this x sqrt(its area) (and > the LOD threshold)
 FLOAT_PIECE = 50.0  # m2: closed cliff pieces off the tile border that never reach the ground, under this: dropped, logged
 FLOAT_TOL = 0.15  # m over the pushed heightmap that still counts as reaching the ground (terrain_cliffs.floating's tol)
@@ -784,7 +793,9 @@ def rock_relief(p, r, g=None, jw=None, fd=None, u=None, blk=None, thin=None):
             # (sqrt: a fin's faces are only partly "thin" by the grid's measure, and the beds should run on across it;
             # not on the volumes' walls)
             wv = 1.0 if uvol is None else (1.0 - np.asarray(uvol, float)[kt]) ** 2
-            out[kt] += np.sqrt(np.asarray(thin, float)[kt]) * wv * strata(p[kt], zoff, r["seed"])
+            # (eased to 0 at the cut: sqrt(1e-3) is 0.03, a step of 3% of the strata's offset where thin rock begins)
+            tk = np.asarray(thin, float)[kt]
+            out[kt] += np.sqrt(tk) * smoothstep(1e-3, 0.02, tk) * wv * strata(p[kt], zoff, r["seed"])
     if r.get("joints") and r["joints"]["depth"] > 0:
         # (jw: 1 at the open ground, 0 a few metres in: joints on cave walls deep in the rock made black shards)
         with _span("field.joints", leaf=True):
@@ -1237,7 +1248,14 @@ class Field:
                     self.fall = self.fall * (1 - s["w"] * (1 - float(s["rock"].get("fallen", 1.0))))
         # ground edits finer than the grid, per point in `column` (terrain_ground.Edits): the turf's step back from
         # every cliff lip, bunkers cut crisp (as a 2-cell blur on the grid they read as soft dishes)
-        self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg) if gcfg is not None else None
+        self.streams = None  # (terrain_stream: the rivers' beds; None without running water)
+        if gcfg is not None and getattr(T, "river_water_lines", None):
+            from . import terrain_stream
+            scfg = terrain_stream.config(T)
+            if scfg is not None:
+                st_ = terrain_stream.Streams(T, scfg)
+                self.streams = st_ if st_.any else None
+        self.edits = terrain_ground.Edits(T, self.H, bunkers or (), gcfg, self.streams) if gcfg is not None else None
         if self.edits is not None and any("lip" in s["rock"] for s in getattr(self, "styles", [])):
             # (a style's share of the turf's step at cliff lips: blobby's pillowed ground had crumbs at every lip)
             ls = np.ones(self.H.shape)
@@ -1428,8 +1446,13 @@ class Field:
                     rw = rw.copy()
                     rw[j] += nv[j] * (self.steep_at(p[j, 0], p[j, 1]) - rw[j])
             w = np.maximum(rw * guard, near)
-            k = np.flatnonzero((w > 0.01) & (np.abs(F) < self.rock["reach"]))
+            k = np.flatnonzero((w > RELIEF_CUT) & (np.abs(F) < self.rock["reach"]))
             if len(k):
+                # (the weight eased to 0 AT the cut: taken as it was, the relief stepped in at w = 0.01 as 1% of its
+                # full size, a 2-3 cm step in the field along the weight's 0.01 contour, metres out on the grass round
+                # every rock face; the maps' normals drew it as thin dark dashed cracks: pushieworld note 104)
+                w = w.copy()
+                w[k] = w[k] * smoothstep(RELIEF_CUT, RELIEF_FADE, w[k])
                 g = self.grain_at(p[k, 0], p[k, 1]) if self.grain is not None else None
                 fd = self.face_dir(p[k, 0], p[k, 1])
                 a_ = rw[k] * guard[k]
@@ -1630,6 +1653,12 @@ class Materials:
             order.append(layer)
         self.layers = list(dict.fromkeys(order + ["rock", "earth"] + (["sand", "wet_rock"] if self.sea is not None
                                                                       else [])))
+        # a stream's bed and banks (terrain_stream): its layers come last, so the older layers keep their channels
+        ed0 = getattr(field, "edits", None) or getattr(getattr(field, "base", None), "edits", None)
+        self.streams = getattr(ed0, "streams", None)
+        if self.streams is not None:
+            from . import terrain_stream
+            self.layers = list(dict.fromkeys(self.layers + ["wet_rock", *terrain_stream.LAYERS]))
         col = ground_colours(T, cover=True)
         wet = ~np.isnan(T.water)
         col[wet] = np.array(LAYERS["sand"]["color"]) * 0.8
@@ -1773,7 +1802,10 @@ class Materials:
         if not np.isscalar(w):
             kinds = {k: v * w for k, v in kinds.items()}
             mown = [(m * w, st) for m, st in mown]
-        return self.ground.relief(self, P, kinds, mown, texel)
+        g = self.ground.relief(self, P, kinds, mown, texel)
+        if self.streams is not None:  # (a stream bed's cobble lumps)
+            g = g + self.streams.relief(P, np.asarray(Wt[:, self.layers.index("gravel")], float), texel)
+        return g
 
     def kinds(self, P):
         """The cover kinds (terrain_ground.KIND_OF: mown, rough, scrub; "cut": the first cut round mown pieces) at
@@ -1828,6 +1860,25 @@ class Materials:
         W["rock"] += rock * (1 - tide)
         if "wet_rock" in W:
             W["wet_rock"] += rock * tide
+        sbed = self.streams.shares(P, N) if self.streams is not None else None
+        if sbed is not None:
+            # a stream's bed under its water (gravel and cobbles, silt in the slack, bedrock on steep reaches) and the
+            # damp foot of its banks, over whatever the ground had there; steep faces stay rock (wet near the water)
+            ks = sbed["k"]
+            away = 1.0 if self.sea is None else 1 - smoothstep(0.2, 1.2, self.sea - P[ks, 2])  # (the sea's own bed)
+            sbed["bed"], sbed["damp"] = sbed["bed"] * away, sbed["damp"] * away
+            face = rock[ks]
+            wetn = np.clip(sbed["bed"] + sbed["damp"], 0, 1)
+            W["wet_rock"][ks] += W["rock"][ks] * wetn
+            W["rock"][ks] *= 1 - wetn
+            bed, damp = sbed["bed"] * (1 - face), sbed["damp"] * (1 - face)
+            for key in W:
+                if key not in ("rock", "wet_rock"):
+                    W[key][ks] *= 1 - bed - damp
+            W["gravel"][ks] += bed * sbed["gravel"]
+            W["silt"][ks] += bed * sbed["silt"]
+            W["wet_rock"][ks] += bed * sbed["rock"]
+            W["bank"][ks] += damp
         Wm = np.stack([W[k] for k in self.layers], 1)
         Wm /= np.maximum(Wm.sum(1, keepdims=True), 1e-9)
         # display colour: the terrain's own preview colours (cover, roads, slope), rock over steep faces and caves
@@ -1895,6 +1946,10 @@ class Materials:
         if under is not None:  # (the rock just under the turf's lip: shaded by the overhanging mat)
             from .terrain_ground import LOOK
             rc = rc * (1 - (1 - LOOK["undercut"]) * under)[:, None]
+        if sbed is not None:  # (the bed and the damp bank, under the rock faces: those wet and darker by the water)
+            ks = sbed["k"]
+            c[ks] = self.streams.colour(P[ks], c[ks], rc[ks], sbed)
+            rc[ks] = rc[ks] * (1 - 0.45 * np.clip(sbed["bed"] + sbed["damp"], 0, 1)[:, None])
         c = c * (1 - rock[:, None]) + rc * (1 - 0.55 * tide[:, None]) * rock[:, None]  # wet: its own rock, darker
         return Wm.astype(np.float32), c
 
@@ -3286,7 +3341,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             # (the normal over ~0.4 m that picks layer weights and colour: from the rock WITHOUT the per-LOD fine relief,
             # so every LOD picks the same layers at a border; with it, the LOD's own band-limited rock structure moved
             # weights p95 0.26 between LOD 0 and LOD 2)
-            gf = terrain_cliffs.CliffField(base, region).front_field() if region is not None else base
+            # (and from the rock UNSUNK: the cliff front's sink toward the region's edge, metres within a metre, tipped
+            # the 0.4 m normal of texels on the true ground beside it to the horizontal, and their weights to rock:
+            # a dark line on the grass along every overlay edge, pushieworld note 104)
+            gf = base
             _CTX.update(bakefield=bfs, weightfield=gf,
                         layer_rough=np.array([LAYERS[nm]["roughness"] for nm in mats.layers]))
         # every tile's LODs (decimation, atlases), and as each tile is done its atlases' texels baked in pieces across
@@ -3436,6 +3494,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         e.update(extra)
     timing["heightmaps + splats"] = time.time() - t0
 
+    clutter_sec = None
     # ---- 4b. ground clutter (bushes on the scrub, boulders on the shore): placements an engine's detail scatter can use
     if T.spec.get("ground_character", True) is not False and mats.ground is not None:
         from . import terrain_ground
@@ -3446,11 +3505,31 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                 (i0, j0), (i1, j1) = cfg["only"]
                 cb = [G.bounds(i0, j0)[0][:2].tolist(), G.bounds(i1, j1)[1][:2].tolist()]
             C = terrain_ground.clutter(T, mats, base, ks, box=cb)
+            SC = None
+            if mats.streams is not None:  # (a stream's rocks, cobbles, driftwood, reeds: terrain_stream.clutter)
+                from . import terrain_stream
+                SC = terrain_stream.clutter(T, mats, base, box=cb)
             with open(out / "clutter.csv", "w") as f:
-                f.write("x,y,z,kind,scale,yaw,squash\n")
+                f.write("x,y,z,kind,scale,yaw,squash,place\n")
                 for r in C:
-                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f}\n")
+                    f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{ks[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},\n")
+                if SC is not None:
+                    sk = list(terrain_stream.KINDS)
+                    for r in SC:
+                        f.write(f"{r[0]:.2f},{r[1]:.2f},{r[2]:.2f},{sk[int(r[3])]},{r[4]:.2f},{r[5]:.0f},{r[6]:.2f},"
+                                f"{terrain_stream.PLACES[int(r[7])]}\n")
             notes.append(f"clutter.csv: {int((C[:, 3] == 0).sum())} bushes, {int((C[:, 3] == 1).sum())} boulders")
+            clutter_sec = {"kinds": {"bush": {"scale_m": [0.6, 1.9], "squash": [0.45, 1.0], "z": "surface",
+                                              "what": "a scrub / heath bush (squash < 1: wind-shorn by a cliff lip)"},
+                                     "boulder": {"scale_m": [0.36, 1.96], "squash": [1.0, 1.0],
+                                                 "z": "sunk 0.12 x scale", "what": "an angular rock (shore, rock "
+                                                 "breaking through near cliff lips)"}},
+                           "columns": "x,y,z,kind,scale,yaw,squash,place"}
+            if SC is not None:
+                sm = terrain_stream.manifest(mats.streams, SC)
+                clutter_sec = {**sm, "kinds": {**clutter_sec["kinds"], **sm["kinds"]}, "columns": clutter_sec["columns"]}
+                notes.extend(mats.streams.report())
+                notes.extend(terrain_stream.summary(mats.streams, SC, cb))
 
     # ---- 5. trees and the manifest
     _st = prof.stage("trees + layer textures (parent)")
@@ -3531,6 +3610,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                      "the heightmap's grid with the hole cells left out). A tile's collision is decimated further "
                      "when its LOD came out over collision_budget (tiles[].collision_triangles)",
         "sea_level": _sea(T),
+        "lakes": lake_outlines(T),
         "materials": {
             "layers": [{"name": nm, **mats.layer_ref(nm), "weights": f"_WEIGHTS{g}", "channel": c,
                         **({"textures": layer_tex[nm]} if nm in layer_tex else {}),
@@ -3589,6 +3669,20 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
         manifest["detail"] = detail
     if style_sec is not None:
         manifest["styles"] = style_sec
+    if clutter_sec is not None:
+        manifest["clutter"] = clutter_sec
+    if mats.streams is not None:  # (the rivers as the bed rules read them: for an engine's water, wet shading, audio)
+        manifest["streams"] = {
+            "rivers": {r["name"]: [[round(float(a), 2) for a in row] for row in
+                                   np.c_[r["xy"], r["level"], r["width"], r["energy"]][r["live"]]]
+                       for r in mats.streams.reaches},
+            "columns": "x, y, water level (m), water width (m, across), energy 0..1 (0 slow and silty .. 1 a boulder "
+                       "torrent)",
+            "layers": {"gravel": "cobbles and gravel under the water and on bars", "silt": "fine sediment in pools and "
+                       "slack margins", "bank": "the bank's damp foot above the water", "wet_rock": "bedrock in the "
+                       "bed (steep reaches) and rock faces by the water"},
+            "bed": "the heightmaps and cliff meshes carry the bed's shape (pools, riffles, bars); the water's level is "
+                   "the rivers' own (never raised)"}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
         from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)
@@ -3665,6 +3759,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
                                                  tile_keys={ij: fkey[ij][0] for ij in tiles})
             check["summary"]["ground"] = gc["summary"]
             check["failures"] += gc["failures"]
+            with prof.stage("check: lakes (parent)"):
+                lc = terrain_cliffs.lake_check(out, manifest)
+            check["summary"]["lakes"] = lc["summary"]
+            check["failures"] += lc["failures"]
         # what the eye sees that the per-channel border comparison can't: squares locked to the terrain's grid in the
         # colour, and texel density jumping between neighbouring tiles (sharp rock beside soft)
         from . import terrain_seams
@@ -4241,7 +4339,13 @@ def _textured_prep(P, N, W, F, k, origin, stem):
         o = _morton(np.einsum("nk,nkc->nc", bary, sp["P"][sp["F"][tx["t"]]]), 2.0)
         for key in ("ys", "xs", "t", "inside"):
             tx[key] = tx[key][o]
-    ao_v = terrain_bake.bake_ao(c["base"], sp["P"], sp["N"])
+    Pa, Na = sp["P"], sp["N"]
+    if getattr(c.get("field"), "region", None) is not None and str(stem).startswith("tile"):
+        from . import terrain_cliffs
+        # (a cliff shell's sunk edge takes the AO of the true ground over it: its vertices metres down read 0, and
+        # interpolated up its dive, the strip that shows over the heightmap was black: pushieworld note 104)
+        Pa, Na = terrain_cliffs.lifted(c["field"], Pa, Na)
+    ao_v = terrain_bake.bake_ao(c["base"], Pa, Na)
     info = {}
     if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)
         fn_ = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])
@@ -4326,7 +4430,8 @@ def _job_bake(args):
                                     d["t"][a:b], d["xs"][a:b], d["ys"][a:b], d["inside"][a:b], c["layer_rough"],
                                     bf, first=a, gfield=c.get("weightfield"), lines=lines,
                                     texel=RELIEF_CHART / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)],
-                                    border=_bake_border(c, stem, k))
+                                    border=_bake_border(c, stem, k),
+                                    map_texel=1.0 / c["cfg"]["_density"][min(k, len(c["cfg"]["_density"]) - 1)])
     np.savez(c["work"] / f"baked_{stem}_{a:09d}.npz", **vals)
 
 
@@ -4678,9 +4783,50 @@ def seam_check(out_dir, normal_deg=1.0, memo=None) -> dict:
                                                         for p, a, b in r.get("worst", {}).get(c, [])[:3])
                                             for c in r["bad"])
                                 + " (a visible seam in shading / ground layers along those borders at that LOD)")
+    # (7) steps in the baked surface on soft ground (terrain_bake.bake_texels' jumps): a sub-texel step in the field's
+    # value, which the normal map draws as a thin dark line across the grass (pushieworld note 104: no other check saw it)
+    jl = []
+    for (i, j), e in tiles.items():
+        for k, L in enumerate(e["lods"]):
+            n = int(((L or {}).get("maps") or {}).get("jumps", 0) or 0)
+            if n:
+                jl.append((n, i, j, k, (L["maps"].get("jump_at") or [None])[0]))
+    summary["soft_ground_jumps"] = {"total": sum(a[0] for a in jl), "tile_lods": len(jl),
+                                    "worst": [[a[1], a[2], a[3], a[0], a[4]] for a in sorted(jl, key=lambda a: -a[0])[:5]]}
+    over = [a for a in jl if a[0] > JUMP_LIMIT]
+    if over:
+        over.sort(key=lambda a: -a[0])
+        failures.append(f"steps in the baked surface on soft ground in {len(over)} tile LODs (over {JUMP_LIMIT} sampled "
+                        "texels each): " + ", ".join(f"{i},{j} LOD {k} {n} at {at[:3] if at else '?'}"
+                                                     for n, i, j, k, at in over[:4])
+                        + " (thin dark lines in the normal map: a step in the field's value, e.g. a weight cut off)")
     summary["failures"] = len(failures)
     (out / "seam_check.json").write_text(json.dumps({"summary": summary, "failures": failures}, indent=1))
     return {"summary": summary, "failures": failures}
+
+
+def lake_outlines(T) -> dict:
+    """Per lake (not the sea): its level, centre, area and the water's outline as closed rings of [x, y] (m), for an
+    engine's water system. The tile heightmaps hold each lake under its level (the export's lake check floods them)."""
+    from skimage import measure
+    out = {}
+    lid = getattr(T, "lake_id", None)
+    for name, lk in (getattr(T, "lakes", None) or {}).items():
+        if lk.get("sea") or lid is None or not lk.get("area"):
+            continue
+        m = np.pad((lid == lk["id"]).astype(float), 1)
+        rings = []
+        for c in measure.find_contours(m, 0.5):
+            if len(c) < 8:
+                continue
+            step = max(1, len(c) // 400)
+            xy = np.c_[T.xs[0] + (c[::step, 1] - 1) * T.cell, T.ys[0] + (c[::step, 0] - 1) * T.cell]
+            rings.append(np.round(xy, 2).tolist())
+        rings.sort(key=len, reverse=True)
+        out[name] = {"level": round(float(lk["level"]), 3), "at": [round(float(v), 2) for v in lk["xy"]],
+                     "area_m2": round(float(lk["area"]), 1), "depth_m": round(float(lk.get("depth", 0)), 2),
+                     "outline": rings}
+    return out
 
 
 def read_glb_images(path, n=None):
@@ -5057,7 +5203,7 @@ def _site_props(T, box=None):
 
 def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=True, box=None, skirt_color=None,
                  parts="all", textured=True, channel=None, ids=False, detail_fade=True, detail_show=None, haze=5000.0,
-                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None):
+                 props=True, clutter=120.0, grade=None, light=None, grass=True, buried_color=None, extra=None):
     """Cycles renders of the written tiles, imported by Blender's glTF importer. views: {"name", "eye": address |
     [x, y] | [x, y, z], "lift" (m above the ground or the sea), "look": address | [x, y, z], "fov", "sun": [bearing,
     height], "borders": bool, "lamp": watts (a headlamp at the eye, for inside caves), "out"}. box: [[x0, y0],
@@ -5176,7 +5322,35 @@ def render_tiles(T, out_dir, views, lod=0, size=(1400, 800), samples=48, trees=T
             de, _ = cKDTree(eyes[:, :2]).query(C[:, :2])
             C = C[(de > 2.5) | np.isin(C[:, 3], [ks.index("tussock"), ks.index("tallgrass")])]
         job["clutter"] = {k: C[C[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist() for i, k in enumerate(ks)}
-        notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+        if cm.streams is not None:  # (a stream's rocks, cobbles, wood and reeds: terrain_stream.clutter)
+            from scipy.spatial import cKDTree
+            from . import terrain_stream
+            SC = terrain_stream.clutter(T, cm, cf, box=[lo_.tolist(), hi_.tolist()])
+            if len(SC):
+                de, _ = cKDTree(eyes[:, :2]).query(SC[:, :2])
+                SC = SC[(de < clutter) & (de > 1.2)]
+            for i, k in enumerate(terrain_stream.KINDS):
+                job["clutter"][k] = SC[SC[:, 3] == i][:, [0, 1, 2, 4, 5, 6]].round(3).tolist()
+    if not channel:  # the rivers' water: a ribbon at each river's own level, wider than the channel (the banks hide it)
+        if True:
+            rv = []
+            for rw in (getattr(T, "river_water_lines", None) or {}).values():
+                xy_, lv_, w_ = np.asarray(rw["xy"], float), np.asarray(rw["level"], float), np.asarray(rw["width"], float)
+                live = w_ > 0
+                if box is not None:
+                    live &= (xy_[:, 0] >= box[0][0]) & (xy_[:, 0] <= box[1][0]) & (xy_[:, 1] >= box[0][1]) & \
+                        (xy_[:, 1] <= box[1][1])
+                if live.sum() >= 2:
+                    # (the level eased along the path: its own steps, a few dm where a bank holds it down, drew the
+                    # ribbon as a staircase)
+                    lv_ = ndimage.gaussian_filter1d(lv_, 5.0, mode="nearest") - 0.04
+                    rv.append(np.c_[xy_, lv_, w_ + 4.0][live].round(3).tolist())
+            job["rivers"] = rv
+        if job.get("clutter"):
+            notes.append("clutter: " + ", ".join(f"{len(v)} {k}" for k, v in job["clutter"].items()))
+    if extra:  # GLBs stood in the scene: [{"glb", "at": [x, y, z], "yaw": deg, "scale", "squash", "tint": linear rgb}] (clutter kit
+        # assets beside the cliffs they should belong to; the tint is the per-instance colour an engine multiplies in)
+        job["extra"] = extra
     GD = M.get("ground_detail")
     if GD and textured and not channel and grass:  # the turf's tiling detail over the baked maps (as an engine draws it)
         job["grass"] = [{"albedo": str((out / g["albedo"]).resolve()), "normal": str((out / g["normal"]).resolve()),

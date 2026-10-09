@@ -228,6 +228,135 @@ def test_region_edge_is_smooth():
     assert S[0, 0] == 0.0 and S[40, 40] > 0.99, (S[0, 0], S[40, 40])
 
 
+def test_relief_fades_in_at_its_cut(base, G):
+    """The rock relief is evaluated only where its weight is over RELIEF_CUT; it must ease in from there. Taken at
+    once it stepped in at 1% of its size: a 2-3 cm step in the field along the weight's 0.01 contour, metres out on
+    the grass round every rock face, drawn by the maps' normals as thin dark dashed cracks (pushieworld note 104)."""
+    lo, hi = np.min([G.bounds(i, j)[0] for i in range(4) for j in range(4)], 0), \
+        np.max([G.bounds(i, j)[1] for i in range(4) for j in range(4)], 0)
+    xs, ys = np.arange(lo[0] + 1, hi[0] - 1, 0.5), np.arange(lo[1] + 1, hi[1] - 1, 0.5)
+    X, Y = np.meshgrid(xs, ys)
+    w = base.relief_at(X.ravel(), Y.ravel()).reshape(X.shape)
+    cut = tm.RELIEF_CUT
+    a = np.argwhere((w[:, :-1] - cut) * (w[:, 1:] - cut) < 0)  # (grid pairs straddling the cut, along x)
+    assert len(a) > 20, len(a)
+    a = a[np.linspace(0, len(a) - 1, 60).astype(int)]
+    y = Y[a[:, 0], a[:, 1]]
+    x0, x1 = X[a[:, 0], a[:, 1]], X[a[:, 0], a[:, 1] + 1]
+    for _ in range(30):  # (bisect onto the cut)
+        xm = 0.5 * (x0 + x1)
+        up = (base.relief_at(xm, y) > cut) == (base.relief_at(x0, y) > cut)
+        x0, x1 = np.where(up, xm, x0), np.where(up, x1, xm)
+    jumps = []
+    for e in (-0.001, 0.001):
+        x = 0.5 * (x0 + x1) + e
+        h, _ = base.column(x, y)
+        jumps.append(base.value(np.c_[x, y, h]))
+    j = np.abs(jumps[1] - jumps[0])
+    assert j.max() < 2e-3, f"the field steps by up to {1000 * j.max():.1f} mm where the rock relief's weight is cut"
+    return float(j.max())
+
+
+def test_sunk_edge_reads_as_ground(cf, G):
+    """Where the cliff front sinks toward the region's edge it dives under the heightmap; the few cm of the dive that
+    show were baked as a steep dark crease (rock weights from a tipped 0.4 m normal, AO from metres down): a thin dark
+    dashed line along every overlay edge (pushieworld note 104). Its maps read the true ground over it: the normal the
+    bake uses (terrain_bake._unsunk) is the ground's on both sides of SINK_EDGE."""
+    from hifipushie import terrain_bake as tb
+    R = cf.region
+    lo, hi = G.bounds(0, 0)[0], G.bounds(3, 3)[1]
+    xs, ys = np.arange(lo[0] + 1, hi[0] - 1, 0.5), np.arange(lo[1] + 1, hi[1] - 1, 0.5)
+    X, Y = np.meshgrid(xs, ys)
+    S = R.s(X.ravel(), Y.ravel()).reshape(X.shape)
+    e = terrain_cliffs.SINK_EDGE
+    a = np.argwhere((S[:, :-1] - e) * (S[:, 1:] - e) < 0)
+    assert len(a) > 20, len(a)
+    a = a[np.linspace(0, len(a) - 1, 40).astype(int)]
+    y = Y[a[:, 0], a[:, 1]]
+    ff = cf.front_field()
+    worst_raw, worst = 0.0, 0.0
+    for t in np.linspace(-0.6, 0.6, 13):  # (across the edge, along x)
+        x = 0.5 * (X[a[:, 0], a[:, 1]] + X[a[:, 0], a[:, 1] + 1]) + t
+        h, _ = cf.base.column(x, y)
+        P = np.c_[x, y, h]
+        for _ in range(8):  # (onto the front)
+            f, g = ff.value_gradient(P, 0.03)
+            P = P - (f / np.maximum((g * g).sum(1), 1e-9))[:, None] * g
+        # (the normal map's normal: the front's at 3 cm, eased to the ground's; the true ground's over the same column)
+        g0 = tb._unit(ff.value_gradient(P, 0.03)[1])
+        gu = tb._unsunk(ff, P, g0, 0.03)
+        hq, _ = cf.base.column(P[:, 0], P[:, 1])
+        gt = tb._unit(cf.base.value_gradient(np.c_[P[:, :2], hq], 0.03)[1])
+        soft = gt[:, 2] > 0.85  # (gentle ground: where the line showed)
+        ang = lambda u, v: np.degrees(np.arccos(np.clip((u * v).sum(1), -1, 1)))
+        if soft.any():
+            worst_raw = max(worst_raw, float(ang(g0, gt)[soft].max()))
+            worst = max(worst, float(ang(gu, gt)[soft].max()))
+    assert worst_raw > 20, f"the transects never crossed the dive ({worst_raw:.1f} deg)"
+    assert worst < 8, f"the sunk edge's normal is {worst:.1f} deg off the true ground's"
+    return worst_raw, worst
+
+
+def test_dam_stays_in_the_heightmap():
+    """A dammed lake on a slope: its embankment is ground, so the tile heightmap (the pushed ground) holds the lake.
+    Taken for a cliff, the heightmap was pushed down the dam's face and its crest eroded away: flooded to the lake's
+    level the heightmaps held 134,000 m2 for a 3,300 m2 pond (pushieworld note 106)."""
+    from scipy import ndimage
+    spec = json.loads(json.dumps(SPEC))
+    spec["landforms"] = {"pond": {"type": "lake", "at": [64, 96], "radius": 10, "depth": 2, "dam": True}}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    lk = T.lakes["pond"]
+    assert lk["area"] > 100 and T.dams["pond"].any(), (lk, T.dams["pond"].sum())
+    rep = "\n".join(T.report()) if isinstance(T.report(), list) else str(T.report())
+    assert "dammed:" in rep, "the report says nothing of the dam"
+    lakes = tm.lake_outlines(T)
+    assert len(lakes["pond"]["outline"][0]) >= 8 and abs(lakes["pond"]["level"] - lk["level"]) < 1e-3
+    cfg, G, region, cf, vols = _shell(T)
+    # the pushed heightmap on its lattice, flooded to the level from the lake's centre
+    xs = G.origin[0] + np.arange(region.nx) * region.d
+    ys = G.origin[1] + np.arange(region.ny) * region.d
+    X, Y = np.meshgrid(xs, ys)
+    Hm = region.height(X.ravel(), Y.ravel()).reshape(X.shape)
+    lab, _ = ndimage.label(Hm < lk["level"])
+    k = lab[int(round((96 - ys[0]) / region.d)), int(round((64 - xs[0]) / region.d))]
+    assert k > 0, "the heightmap is dry at the lake's centre"
+    area = float((lab == k).sum()) * region.d ** 2
+    assert area < terrain_cliffs.LAKE_AREA * lk["area"], f"the heightmap holds {area:.0f} m2 for a {lk['area']:.0f} m2 lake"
+    on = T.dams["pond"]
+    S = region.s(T.X[on], T.Y[on])
+    assert S.max() < 0.05, f"the dam is in the cliff region (S up to {S.max():.2f})"
+    return area, lk["area"]
+
+
+def test_beach_shelves_on_to_the_sea_floor():
+    """Offshore of a beach the sand shelves on down to the sea's floor. Its profile was held 3 beach widths out
+    (-8.4 m): a dead-flat shelf to the frame's edge with straight one-step sides, a pale rectangle in depth-coloured
+    water (pushieworld note 107). The report's sea-floor measure names such shelves and steps."""
+    from hifipushie import terrain_sea
+    spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [384, 384]], "cell": 1.92,
+            "tilt": {"down": "south", "grade": 0.12},
+            "sea": {"level": 0, "depth": 30, "shore": "rocky", "beaches": {"strand": {"at": [192, 120], "length": 160}}},
+            "cover": [{"type": "meadow", "in": "everywhere"}]}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    sea = T.H < -1.5
+    assert sea.sum() * T.cell ** 2 > 2e4, "the test terrain has no sea"
+    held = float((np.abs(T.H[sea] + 8.4) < 0.05).mean())
+    sb = terrain_sea.seabed(T)
+    assert held < 0.02 and not sb["plateaus"] and not sb["steps"], (held, sb["warnings"])
+    # the measure sees a shelf when there is one
+    keep = T.H.copy()
+    T.H = np.where(sea & (T.H < -3), np.maximum(T.H, -4.0), T.H)
+    try:
+        assert terrain_sea.seabed(T)["plateaus"], "a flat shelf went unseen"
+    finally:
+        T.H = keep
+    return held
+
+
 def test_projected_normals_never_zero():
     """A field flat at the normal's stencil (a capped constant) still gives unit normals (zero ones are invalid glTF,
     and read as "normals differ by 90 deg" across a tile border)."""
@@ -284,6 +413,8 @@ if __name__ == "__main__":
     test_floating_pieces_dropped()
     test_region_edge_is_smooth()
     test_projected_normals_never_zero()
+    print("beach shelves on to the sea floor (cells held at -8.4 m: %.3f)" % test_beach_shelves_on_to_the_sea_floor())
+    print("dam stays in the heightmap (flooded %.0f m2, lake %.0f m2)" % test_dam_stays_in_the_heightmap())
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
     test_cover_named_by_type(T)
@@ -292,6 +423,9 @@ if __name__ == "__main__":
     cfg, G, region, cf, vols = _shell(T)
     print(f"field {time.time() - t0:.1f} s")
     test_shell_keeps_add_volumes_whole(cf, region)
+    print(f"relief fades in at its cut (largest step {1000 * test_relief_fades_in_at_its_cut(cf.base, G):.2f} mm)")
+    print("sunk edge reads as ground (raw / baked normal off the ground's: %.1f / %.1f deg)"
+          % test_sunk_edge_reads_as_ground(cf, G))
     t0 = time.time()
     P, F = test_shell_stops_under_the_cliff_foot(G, region, cf, vols)
     print(f"shell depth ok ({len(F)} triangles, {time.time() - t0:.1f} s)")

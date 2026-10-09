@@ -29,6 +29,14 @@ rsync -az -e "$rsh" --exclude out.npz "$job/" "$GPU_SSH_HOST:$wd/jobs/$name/"
 case "$runner" in
   zozo)
     rsync -az -e "$rsh" "$here/../../src/hifipushie/cloth_zozo.py" "$GPU_SSH_HOST:$wd/cloth_zozo.py"
+    # GPU_MIN_FREE_GB: the runner's free-disk floor ON THE BOX (default: the runner's own 20 GB; it stops a running
+    # session under half of it). A rented box's disk is small and shared (80 GB with 63 GB of others' files, 2026-10-09)
+    # and our session prunes itself under 1 GB. Set on the box's COPY of the runner: an edit of cloth_zozo.py itself
+    # changes every ZOZO sim's cache key (cloth_job.solver_code hashes the file)
+    if [ -n "${GPU_MIN_FREE_GB:-}" ]; then
+      half="$(awk "BEGIN {print ${GPU_MIN_FREE_GB} / 2}")"
+      ssh -n "${ssh_opts[@]}" "$GPU_SSH_HOST" "sed -i -E 's/^MIN_FREE_GB = [0-9.]+/MIN_FREE_GB = ${GPU_MIN_FREE_GB}/; s/^STOP_FREE_GB = [0-9.]+/STOP_FREE_GB = ${half}/' $wd/cloth_zozo.py"
+    fi
     ppf="${GPU_PPF_ROOT:-$wd/ppf}"
     dev="${GPU_ZOZO_DEVICE:-cuda}"
     ssh -n "${ssh_opts[@]}" "$GPU_SSH_HOST" "cd $wd && CARGO_TARGET_DIR=$ppf/target/$dev PYTHONPATH=$ppf PYTHONNOUSERSITE=1 \

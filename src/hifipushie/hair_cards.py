@@ -139,7 +139,10 @@ def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
     return out
 
 
-def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None) -> dict:
+SHORT_TILE = {"medium": (36, 3.2), "sparse": (22, 3.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
+
+
+def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | None = None, short: bool = False) -> dict:
     """One tile: strands drawn root (row 0) to tip, lower ones first. alpha, id (a value per strand), depth (0 deep ..
     1 on top), all (H, w) floats."""
     from PIL import Image, ImageDraw
@@ -158,6 +161,16 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     thick = (3.0 * ss if kind == "fly" else max(k["thick"] * ss * w / 160, 1.15 * ss)) if kind in ("fly", "baby") else k["thick"] * ss
     if lines is None:  # drawn strands (no groom at hand); else `lines` = real strands of the groom's own clumps
         lines = _drawn_lines(kind, w, S, rng)
+    if short and kind in SHORT_TILE:  # a short cut's card is ~1 cm wide and seen 3-4 mips down: a few strands, each
+        # several texels thick (0.3-0.5 mm on the card), survive the minification as strands; a hundred 1-texel ones
+        # average to a grey film that an alpha test turns into a solid flake or into sparkle
+        n_, th_ = SHORT_TILE[kind]
+        n_ = max(2, int(round(n_ * w / 272)))
+        lines = [lines[i] for i in np.linspace(0, len(lines) - 1, min(n_, len(lines))).astype(int)]
+        # (a tile's strands run 16 cm; a short cut's card is 2-3 cm of it: their waves, squeezed five times along,
+        # were white squiggles over the cap. Straightened: each keeps a third of its wander)
+        lines = [(float(np.mean(x_)) + 0.12 * (np.asarray(x_, float) - float(np.mean(x_))), v_, d_, i_) for x_, v_, d_, i_ in lines]
+        thick = th_ * ss * w / 272
     for x, v, dp, idn in sorted(lines, key=lambda q: q[2]):
         x = np.clip(np.asarray(x, float), *((0.12, 0.88) if kind in ("fly", "baby") else (0.025, 0.975)))
         pts = list(zip((x * W2).tolist(), (np.asarray(v, float) * H2).tolist()))
@@ -175,6 +188,8 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     idm, dep = np.clip(idm / cov, 0, 1), np.clip(dep / cov, 0, 1)
     if kind in ("fly", "baby"):  # single hairs in the open are lit, not deep in a clump: no depth shade
         dep = 0.8 + 0.2 * dep
+    elif short and kind in SHORT_TILE:  # a few hairs over the cap: lit (the cap under them is the shade)
+        dep = 0.62 + 0.38 * dep
     if kind in ("fly", "baby"):  # nothing touches the quad's border: a card's rectangle must never show
         xx = (np.arange(w) + 0.5) / w
         vv_ = (np.arange(H)[:, None] + 0.5) / H
@@ -202,8 +217,8 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     """The strand atlas: {"color" (H, W, 4) sRGB floats, straight alpha; "normal" (H, W, 3); "aux" (H, W, 4): root
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
-    key = hashlib.sha1(json.dumps([{k: S[k] for k in ("clump", "frizz", "curl", "tips", "atlas")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain")}, key], sort_keys=True).encode()).hexdigest()
+    key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount")}, key], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -213,7 +228,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     cols, tiles, x = [], [], 0
     for kind, w0 in TILES:
         w = int(round(w0 * size / 1024))
-        cols.append(_tile(kind, w, H, S, rng, lines=(lines or {}).get(len(cols))))
+        cols.append(_tile(kind, w, H, S, rng, lines=(lines or {}).get(len(cols)), short=bool(S.get("short"))))
         tiles.append({"kind": kind, "u0": (x + 2.0) / size, "u1": (x + w - 2.0) / size})
         x += w
     if cap is not None:  # the scalp's own chart beside the tiles (hair_strands.cap_chart): the atlas is 2 : 1
@@ -221,6 +236,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
         rs = lambda m: np.asarray(Image.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(  # noqa: E731
             (size, H), Image.BILINEAR), np.float32) / 255
         cols.append({k: rs(cap[k]) for k in ("alpha", "id", "depth")})
+        cap_x0 = sum(c["alpha"].shape[1] for c in cols[:-1])
         for t_ in tiles:
             t_["u0"], t_["u1"] = t_["u0"] / 2, t_["u1"] / 2
         tiles.append({"kind": "cap", "u0": 0.5, "u1": 1.0})
@@ -230,7 +246,24 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     # a value per strand: what makes a card read as hairs, not a painted sheet (strands: +-vary and more)
     val = (1 + float(look.get("vary", 0.25)) * 3.0 * (idm - 0.5))[..., None]
     gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
-    col = _srgb(np.clip((gap[None, None] * (1 - shade) + lit[None, None] * shade) * val * gain, 0, 1))
+    base = gap[None, None] * (1 - shade) + lit[None, None] * shade
+    gs = float(look.get("grey_share") or 0.0) * (float(look.get("card_grey", 0.5)) if S.get("short") else 1.0)  # grey hairs: that share of the strands (by their id) in the grey colour
+    if gs > 0:  # (the strand look's own rule: look.grey_amount + the locks' grey x look.grey_locks; cards_job sets it)
+        grey = _lin(look.get("grey", "#9a948d"))
+        # (the strands with the highest ids: a threshold on the id stays a strand's own through the picture's
+        # anti-aliasing, and the opaque base under the strands (id 0) stays dark; a hash of the id speckled every
+        # blended pixel and turned the cap's bare base grey)
+        isg = (np.clip((idm - (1.0 - gs)) / 0.04, 0.0, 1.0) * np.clip((dep - 0.32) / 0.2, 0.0, 1.0))[..., None]  # (the
+        # base under the strands sits at depth 0.3: it is the shadow between hairs, never grey)
+        if cap is not None and cap.get("grey") is not None:  # a baked chart knows which of its strands are grey
+            isg[:, cap_x0:cap_x0 + size, 0] = rs(cap["grey"])  # (per region: the locks' own shares)
+        base = base * (1 - isg) + grey[None, None] * (0.6 + 0.4 * shade) * isg
+    lin = base * val * gain
+    cs = float(look.get("card_sat", 1.0))  # x the colour's saturation (cards measured against the strand look)
+    if cs != 1.0:
+        yl = (lin @ np.array([0.2126, 0.7152, 0.0722]))[..., None]
+        lin = yl + (lin - yl) * cs
+    col = _srgb(np.clip(lin, 0, 1))
     x = 0
     for c in cols:  # the tie's own colour
         w = c["alpha"].shape[1]
@@ -240,9 +273,20 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     hgt = ndimage.gaussian_filter(dep * (a > 0.1), 0.8)
     gx, gy = np.gradient(hgt, axis=1) * 2.2, np.gradient(hgt, axis=0) * 0.6
     nrm = _unit(np.stack([-gx, gy, np.ones_like(gx)], -1)) * 0.5 + 0.5
+    # flow: the hair's direction in tangent space (east, up) + strength: a card's strands run down its picture; a
+    # baked chart brings its own directions and its normals from the strands' heights
+    flow = np.zeros(a.shape + (3,), np.float32)
+    flow[..., 1], flow[..., 2] = 1.0, 1.0
+    if cap is not None and cap.get("normal") is not None:
+        rs3 = lambda m: np.stack([rs(m[..., i] * 0.5 + 0.5) * 2 - 1 for i in range(3)], -1)  # noqa: E731
+        nrm[:, cap_x0:cap_x0 + size] = _unit(rs3(cap["normal"])) * 0.5 + 0.5
+        fl = rs3(np.concatenate([cap["flow"][..., :2], cap["flow"][..., 2:3] * 2 - 1], -1))
+        flow[:, cap_x0:cap_x0 + size, :2] = _unit(fl[..., :2])
+        flow[:, cap_x0:cap_x0 + size, 2] = np.clip(fl[..., 2] * 0.5 + 0.5, 0, 1)
     root = np.repeat(1 - (np.arange(H)[:, None] + 0.5) / H, a.shape[1], 1)
     out = {"color": np.concatenate([col, a[..., None]], -1).astype(np.float32), "normal": nrm.astype(np.float32),
            "aux": np.stack([root, idm, dep, a], -1).astype(np.float32), "tiles": tiles, "size": size,
+           "flow": np.concatenate([flow[..., :2] * 0.5 + 0.5, flow[..., 2:]], -1).astype(np.float32),
            "coverage": {t["kind"]: round(float(c["alpha"].mean()), 2) for t, c in zip(tiles, cols)},
            "source": "groom" if lines else "drawn"}
     if len(_ATLAS) > 6:
@@ -252,10 +296,11 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
 
 
 def write_atlas(at: dict, stem: str) -> dict:
-    """<stem>_color.png (RGBA), _normal.png, _aux.png (root, id, depth, alpha)."""
+    """<stem>_color.png (RGBA), _normal.png, _aux.png (root, id, depth, alpha), _flow.png (direction east / up as
+    0..1, strength: KHR_materials_anisotropy's texture)."""
     from PIL import Image
     out = {}
-    for k in ("color", "normal", "aux"):
+    for k in ("color", "normal", "aux", "flow"):
         out[k] = f"{stem}_{k}.png"
         Image.fromarray(np.clip(at[k] * 255 + 0.5, 0, 255).astype(np.uint8)).save(out[k])
     return out
@@ -422,7 +467,8 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         by.setdefault(t["kind"], []).append(i)
     V, F, UV, Nn, Tn, COL, AL, LAY, CID = [], [], [], [], [], [], [], [], []
     off = 0
-    rootd, rootl = 0.62, float(look.get("root", 0.12))
+    rootd, rootl = (0.7 if S.get("short") else 0.62), (0.45 if S.get("short") else float(look.get("root", 0.12)))  # (a short cut's cards
+    # root in the cap, which carries the shade: darkened roots were dark flakes on it)
     tip_amt = float(look.get("tip_amount", 0.0))
     rnd = float(S["round"])
     lam = max(float(S["wavelength"]), 0.01)
@@ -688,7 +734,7 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                                 "s": s[keep], "kind": kind, "layer": la,
                                 "prio": la + 0.3 * off_c + (0.25 if (thin and la > 0) else 0.0),
                                 "cval": 1 + Rr * rng.uniform(-0.2, 0.2), "bend": c["bend"][keep], "T": c["T"][keep],
-                                "lock": lk["name"], "value": val})
+                                "lock": lk["name"], "value": val, "sn": np.asarray(c["sn"])[keep] if np.ndim(c["sn"]) else c["sn"]})
             nf = int(S.get("fly", 0))
             if nf and not gather and len(Ag) >= 6:  # single strands that stand off the clump: a card each
                 with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
@@ -929,6 +975,8 @@ def fit_budget(cards: list, S: dict, budget: int) -> tuple[list, float, dict]:
 def join(*meshes) -> dict:
     """Card meshes joined into one."""
     ms = [m for m in meshes if m is not None and len(m["verts"])]
+    if not ms:  # nothing to join (a far tier of a short cut: no hair off the head, no baby hairs): an empty mesh
+        return next(m for m in meshes if m is not None)
     out, off, nc = {}, 0, 0
     tris = []
     for m in ms:

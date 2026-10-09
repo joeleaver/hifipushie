@@ -5,6 +5,9 @@
  "macro_normal": 0.5,
  "detail": 0.0,
  "layers": {
+  "gravel": {"scale_m": 8.0, "roughness": 0.85, "warm": [1.05, 1.02, 0.94], "cool": [0.94, 0.97, 1.05], "ops": [{"op": "stones", "size": 0.55, "gap": 0.04, "fill": 0.35, "vary": 0.6, "dome": 0.25, "gap_tone": 0.5, "albedo": 0.34, "height": 0.07}]},
+  "silt": {"scale_m": 8.0, "roughness": 0.7, "ops": [{"op": "blotch", "size": 3.0, "steps": 2, "soft": 0.6, "albedo": 0.06, "height": 0.01}]},
+  "bank": {"scale_m": 8.0, "roughness": 0.85, "ops": [{"op": "blotch", "size": 2.5, "steps": 2, "soft": 0.5, "albedo": 0.08, "height": 0.015}]},
   "*": {"scale_m": 12.0, "normal": 1.0, "ops": [{"op": "blotch", "size": 4.0, "steps": 3, "soft": 0.5, "albedo": 0.08, "height": 0.02}]},
   "grass": {"scale_m": 16.0, "warm": [1.06, 1.04, 0.9], "cool": [0.92, 0.98, 1.06], "roughness": 0.95,
             "ops": [{"op": "blotch", "size": 3.0, "steps": 3, "soft": 0.45, "albedo": 0.11, "height": 0.03},

@@ -542,6 +542,66 @@ is raised to stand clear of it (the run says so).
   eye (flat light) or ahead of it (against the light). The auto sun can come from the north: it is for judging forms,
   not a claim about the level's lighting.
 
+## Stream beds: what lies under and beside a river's water
+
+A river's bed is never the meadow carried on under the water, and it is never empty. In the 3D tiles every river
+with water gets a bed, a damp bank and clutter, made from the river's own path, level, width and grade. Nothing to
+write for the default; the numbers below steer it.
+
+**What real streams look like** (what the rules copy; reference photos with licences in
+`workspace/level_refs/streams/`):
+- **Bed material follows energy** (the grade). Montgomery & Buffington's reach types (GSA Bulletin 1997;
+  [the paper](https://fs.usda.gov/rm/boise/publications/watershed/rmrs_1997_montomeryr001.pdf)): *cascade* (over
+  ~6.5%: boulders and bedrock, tumbling water), *step-pool* (3-6.5%: rows of boulders across the channel with a
+  plunge pool below each, one to four channel widths apart), *plane-bed* (1.5-3%: an even bed of cobbles and
+  gravel), *pool-riffle* (under 1.5%: shallow coarse riffles and deep fine pools alternating every 5-7 channel
+  widths, bars beside them), down to sand and silt where the water is slow. A game level's river is far shorter than
+  a real one for the same fall, so its grades are several times steeper than its character: the rules read energy 0
+  at a 4% grade and 1 at 30% (`"streams": {"grade": [0.04, 0.30]}`), and you can simply say what a river is (below).
+- **Bends sort the bed.** The fast water runs against the OUTER bank and cuts it (a pool at its foot, a steep or
+  undercut bank); the inside of the bend is slack and a bar of gravel and cobbles builds there, awash or just dry.
+- **The wet margin.** The bank's foot is damp and darker for a hand or two above the water; stones at the water
+  line carry moss and algae; under the water everything is darker, and pools collect fine dark sediment.
+- **It is full of things.** Boulders (the big ones standing proud of the water, in clusters and rows, never evenly
+  spaced or one size), cobble patches on bars and riffles, flat slabs along steep margins, driftwood caught on the
+  upstream side of boulders and stranded on outer bends and bar heads, reeds and sedges along SLOW margins (never
+  in a torrent, rarely on the cut outer bank), leaf litter in the slack.
+- **How environment artists build it:** the bed's form first (it sells the river more than the water shader
+  does), a bed material blended by a flow / wetness mask from wet silt and gravel up to dry soil, a small kit of
+  rocks, pebble clusters, logs and bank plants scattered densest in the shallows and along the mask's edge, the wet
+  zone darkened and glossier last.
+
+**What the tiles carry** (when the spec has rivers with water; nothing changes on a terrain without):
+- three more ground LAYERS, last in the layer list (so a terrain with rivers has a third weights group and the
+  older layers keep their channels): `gravel` (cobbles and gravel under the water and on bars), `silt` (fine sediment
+  in pools and slack margins), `bank` (the bank's damp foot); bedrock in the bed is `wet_rock` (present on any
+  terrain with rivers). They are in the weights, base colour, roughness and the baked relief, each has a tiling detail
+  swatch (`ground_detail.swatches`: packed cobbles; silt with pebbles and flecks) and a texture in every terrain style
+  (styles contract 5).
+- the bed's SHAPE in the heightmaps, cliff meshes and collision: pools deeper (against the outer bank in bends),
+  riffles shallower, a bar rising on the inside of bends (its top a few cm over the water), an uneven bed. Only
+  ground that was under the water moves; the banks, fords, routes and sites keep theirs, and the water's level is
+  the river's own (never raised).
+- `clutter.csv` rows with a `place` column (`water` | `margin` | `bank` | `bar`; empty for the dry kinds): kinds
+  `river_rock` (rounded boulders 0.35-1.8 m), `cobbles` (a patch of 5-15 cobbles, 0.6-1.6 m), `slab` (flat bank
+  stones), `driftwood` (0.8-4.5 m; yaw = the log's long axis), `reeds` (clumps 0.5-1.4 m), `litter` (leaf and twig
+  patches). `scale` = the piece's largest plan dimension in metres, `squash` = its height relative to the asset's own
+  proportions, `z` = the bed or ground under it. The manifest's `clutter` section names every kind with its ranges
+  and the counts per river; `streams.rivers` gives each river's path with level, width and energy.
+- the export's notes say each river's reaches by character and its clutter ("stream clutter vale_river: 99
+  river_rock, 205 cobbles, ... (23 of 76 rocks in the water stand proud of it)"), and WARN when a river has none.
+
+**Steering it:**
+- `rivers.<name>.bed = {"energy": 0.1}` says what the river IS whatever its grade (0 a slow silty lowland stream with
+  reeds; 0.3 a gravel riffle-pool stream; 0.6 cobbles, boulders and steps; 1 a boulder and bedrock torrent); a list
+  runs from source to mouth (`[0.9, 0.5, 0.15]`).
+- `"streams": {"pool": 0.55, "riffle": 0.45, "bar": 0.10, "lump": 0.07, "damp": 0.5, "clutter": 1.0, "shape": true,
+  "spacing": [6, 2.5]}`: pool depth (m, scaled by the channel's size), how much of the depth a riffle takes back, a
+  bar's top over the water, the bed's unevenness, the damp band's height on the bank, clutter density, the bed's
+  shape on / off, pool spacing in channel widths at energy 0 and 1. `"streams": false` = the river as it was before
+  (grass to the water, nothing in it).
+- Reeds want a slow reach: if the report calls a reach you meant as a meadow stream "cascade", set its energy.
+
 ## Styles: the ground in the plants' art styles, zone by zone
 
 One terrain can hold regions drawn in different styles (the vegetation styles' worlds: blobby, anime, ... and
@@ -698,7 +758,10 @@ TEXCOORD_2 and `_DETAIL` belong to the tiling
     written files (watertight joins, identical borders, normals, LOD gaps covered, heightmap edges, and black shards:
     faces whose corner normals point away from them, over 0.01% / 0.05% / 0.5% of LOD 0 / 1 / 2; baked maps decoded
     from both sides of every shared border; in cliffs mode the ground tiles' borders, heightmap never standing in a
-    void, never showing through a cliff face, no cliff-mesh piece floating clear of the ground) and fails loudly. The
+    void, never showing through a cliff face, no cliff-mesh piece floating clear of the ground; no step in the baked
+    surface on soft ground, which the normal map would draw as a thin dark line on the grass; every lake flooded on
+    the tile heightmaps to its level covers no more than 1.5x its area) and fails loudly. The manifest's `lakes`
+    gives each lake's level, area and outline rings ([x, y] m) for a water system. The
     manifest's `memory_gb` says what the export used (it runs one heavy job at a time, workers sized by free memory).
 - `<view name>.png`: the views, with trees instanced from forest masks, roads as pale worn tracks and each site marked
   by a thin red pole 12 m tall (to judge what a view sees).

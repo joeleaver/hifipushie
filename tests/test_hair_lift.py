@@ -37,6 +37,33 @@ def test_lift_by_region():
         pass
 
 
+def test_lift_fill_thickens():
+    """fill=True: a lock lifted by d grows 2 d thicker (its lens still reaches down where it lay: strands fill)."""
+    sc = _scalp()
+    spec = _spec()
+    out, _ = hair.lift(spec, sc, {"sides": 0.01}, fill=True)
+    s0 = np.asarray(spec["hair"]["locks"]["side"]["pts"])
+    s1 = np.asarray(out["hair"]["locks"]["side"]["pts"])
+    d = float(np.mean(s1[:, 2] - s0[:, 2]))
+    assert abs(out["hair"]["locks"]["side"]["thickness"] - (0.006 + 2 * d)) < 1e-4
+
+
+def test_trim_cuts_at_the_hairline():
+    """trim: a back lock running down past the nape line is cut `below` m outside it; a lock inside is untouched."""
+    sc = _scalp()
+    spec = _spec()
+    line = hair.hairline(sc, hair.groom_params(spec))
+    e0 = float(line[180])
+    spec["hair"]["locks"]["back"] = {"pts": [[180.0, e0 + 30, 0.003], [180.0, e0 + 10, 0.003], [180.0, e0 - 10, 0.003],
+                                             [180.0, e0 - 25, 0.003]], "width": 0.03, "thickness": 0.004,
+                                     "radius": [1.0, 1.0, 0.8, 0.6]}
+    out, rep = hair.trim(spec, sc, 0.005)
+    P = np.asarray(out["hair"]["locks"]["back"]["pts"])
+    d = hair.inside(sc, line, P[:, 0], P[:, 1])
+    assert rep["cut"] == 1 and abs(d[-1] + 0.005) < 0.002 and len(out["hair"]["locks"]["back"]["radius"]) == len(P)
+    assert out["hair"]["locks"]["top"] == spec["hair"]["locks"]["top"]
+
+
 def test_lock_meshes_are_tubes_round_the_spine():
     sc = _scalp()
     locks = hair.resolve(_spec(), sc)
@@ -50,6 +77,6 @@ def test_lock_meshes_are_tubes_round_the_spine():
 
 
 if __name__ == "__main__":
-    for fn in (test_lift_by_region, test_lock_meshes_are_tubes_round_the_spine):
+    for fn in (test_lift_by_region, test_lift_fill_thickens, test_trim_cuts_at_the_hairline, test_lock_meshes_are_tubes_round_the_spine):
         fn()
         print("ok", fn.__name__)

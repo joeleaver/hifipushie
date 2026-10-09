@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 104  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 105  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -1143,12 +1143,14 @@ def pose_expression(pose: dict, V: np.ndarray, scale: float) -> np.ndarray:
              + [i for i, n in enumerate(names) if n.startswith("left_eye")][:40]
              + [i for i, n in enumerate(names) if n.startswith("right_eye")][:40])
     rows = g["lm68"]
-    Wlm = np.zeros((68, len(V)))
-    for i, r in enumerate(rows):
-        for v, w in zip(r[0::2], r[1::2]):
-            Wlm[i, int(v)] += float(w)
-    B = g["expression_basis"][comps]  # (c, n, 3)
-    A = np.einsum("ln,cnd->ldc", Wlm, B).reshape(68 * 3, len(comps))
+    if "pose_A" not in _CACHE:  # (constant: the landmarks' rows of the expression basis; 0.5e9 multiplies a call before)
+        Wlm = np.zeros((68, len(V)))
+        for i, r in enumerate(rows):
+            for v, w in zip(r[0::2], r[1::2]):
+                Wlm[i, int(v)] += float(w)
+        B = g["expression_basis"][comps]  # (c, n, 3)
+        _CACHE["pose_A"] = (Wlm, B, np.einsum("ln,cnd->ldc", Wlm, B).reshape(68 * 3, len(comps)))
+    Wlm, B, A = _CACHE["pose_A"]
     t = np.zeros((68, 3))
     w = np.full((68, 3), POSE_HOLD)
     X0 = Wlm @ V
@@ -1201,6 +1203,325 @@ JAW_RADIUS = 0.009     # m: a bony jaw corner's reach (crisp: a soft one is a jo
 JAW_TUCK_RADIUS = 0.014  # m: the tucked under-jaw's reach
 HOOD_FORWARD = 0.4  # a hooded lid's fold comes down and this share of that forward, over the lid
 HOOD_REACH = 0.5    # its fold's height: this share of the lid-to-brow distance (and its centre 0.45 of the way up)
+
+
+def _nose_tip(W, lm, spec, s):
+    """base.head.shape.nose_tip = deg | {"up": deg, "reach": share}: the nose's BASE line tilted: the tip and columella
+    turned about the line through the two alar bases (lm 31 / 35, where the wings meet the cheek), so with `up` > 0 the
+    tip rises against the alar base (a base line that climbs toward the tip instead of a tip hanging below the
+    wings like a beak), < 0 lowers it. The turn grows from nothing at the alar bases' plane to full half way to the
+    tip, and fades over `reach` x the nose's length away from the tip (the upper bridge stays), nothing on the lip.
+    (A turn about the mid dorsum, tried first, only swung the whole base forward: the tip lies BELOW that pivot.)
+    Landmarks ride."""
+    sp = spec if isinstance(spec, dict) else {"up": spec}
+    a = np.radians(float(sp.get("up", 0.0)))
+    if abs(a) < 1e-9:
+        return W, lm
+    piv = 0.5 * (lm[31] + lm[35])
+    tip = lm[30]
+    r = float(sp.get("reach", 0.5)) * float(np.linalg.norm(lm[30] - lm[27]))
+    zsub = float(lm[33][2])
+    span = max(float(piv[1] - tip[1]), 1e-6)
+
+    def turn(X, ang):
+        q = X - piv
+        y, z = q[:, 1], q[:, 2]
+        return np.c_[q[:, 0], y * np.cos(ang) - z * np.sin(ang), y * np.sin(ang) + z * np.cos(ang)] + piv
+    up = abs(a) if (turn(lm[[30]], abs(a)) - lm[[30]])[0, 2] > 0 else -abs(a)  # the turn that lifts the tip
+    ang = up if a > 0 else -up
+
+    def w(X):
+        g_ = np.exp(-(np.linalg.norm(X - tip, axis=1) / r) ** 2)
+        lip = _sstep((X[:, 2] - (zsub - 0.003 * s)) / (0.005 * s))   # nothing on the lip under the nose
+        front = _sstep((piv[1] - X[:, 1]) / (0.5 * span))             # 0 at the alar bases' plane, 1 half way to the tip
+        return (g_ * lip * front)[:, None]
+    wW, wl = w(W), w(lm)
+    W = W + wW * (turn(W, ang) - W)
+    lm = lm + wl * (turn(lm, ang) - lm)
+    return W, lm
+
+
+def _mesh_edges(faces, n):
+    E = np.array(sorted({(min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)])) for f in faces
+                         for i in range(len(f))}))
+    return E, np.bincount(E.ravel(), minlength=n)
+
+
+def _round_tip(W, lm, amount, s, faces):
+    """shape.nose_tip.round (0..1+): the nose's tip blunted: shrinking smoothing weighted round the tip (lm 30) and up
+    the supratip (toward lm 29), so a point with a notch above it becomes a rounded end running straight into the
+    dorsum; the nostril rims (near lm 31-35 off the mid line) keep their weight low. Landmarks 29-30 ride."""
+    from scipy.spatial import cKDTree
+    k = s / 1.12
+    c1, c2 = lm[30], 0.5 * (lm[30] + lm[29])
+    d = np.minimum(np.linalg.norm(W - c1, axis=1), np.linalg.norm(W - c2, axis=1) * 1.15)
+    wv = np.exp(-(d / (0.011 * k)) ** 2)
+    E, deg = _mesh_edges(faces, len(W))
+    W1 = _local_smooth(W, E, deg, wv, int(round(14 * float(amount))))
+    tr = cKDTree(W)
+    lm = lm.copy()
+    for i in (29, 30):
+        lm[i] = lm[i] + (W1 - W)[tr.query(lm[i])[1]]
+    return W1, lm
+
+
+def _chin(W, lm, spec, mx, s):
+    """base.head.shape.chin = {"width", "square", "project", "height", "cleft", "cleft_length"} (m; square 0..1): the
+    chin's own form, as smooth displacement fields from its landmarks (lm 8 the bottom, lm 7 / 9 the mental corners,
+    lm 57 the lower lip): `width` = the two mental corners that much further apart (the flat of a broad chin);
+    `square` = the bottom line levelled (the middle of a V raised, the corners lowered, toward one level);
+    `project` = the chin's front forward; `height` = the chin's bottom lower; `cleft` = a mid-line groove this deep on
+    the chin's front, `cleft_length` long (default 14 mm), from just over the bottom edge upward. Landmarks ride.
+    Symmetric by construction."""
+    sp = dict(spec)
+    k = s / 1.12
+    c = lm[8].copy()
+    c[0] = mx
+    cor = 0.5 * (np.abs(lm[7][0] - mx) + np.abs(lm[9][0] - mx))
+    zc = 0.5 * (lm[7][2] + lm[9][2])
+    yc = 0.5 * (lm[7][1] + lm[9][1])
+
+    def field(X):
+        D = np.zeros_like(X)
+        ax = np.abs(X[:, 0] - mx)
+        sg = np.sign(X[:, 0] - mx)
+        zone = np.exp(-(np.linalg.norm((X - c) * [0.0, 1.0, 1.0], axis=1) / (0.03 * k)) ** 2) * _sstep((0.05 * k - ax) / (0.02 * k))
+        wd = float(sp.get("width", 0.0)) * k
+        if wd:  # the corners apart: x grows with |x| up to the corner, then holds
+            D[:, 0] += sg * 0.5 * wd * np.clip(ax / max(cor, 1e-6), 0, 1) * np.exp(-(np.maximum(ax - cor, 0) / (0.02 * k)) ** 2) * zone
+        sq = float(sp.get("square", 0.0))
+        if sq:  # level bottom: middle up, corners down, by half the V's depth each
+            dv = max(float(zc - c[2]), 0.0)
+            mid = np.exp(-(ax / (0.6 * cor)) ** 2)
+            crn = np.exp(-((ax - cor) / (0.6 * cor)) ** 2)
+            low = np.exp(-((X[:, 2] - c[2]) / (0.016 * k)) ** 2) * np.exp(-((X[:, 1] - c[1]) / (0.03 * k)) ** 2)
+            D[:, 2] += sq * 0.5 * dv * (mid - crn) * low
+        pj = float(sp.get("project", 0.0)) * k
+        if pj:
+            D[:, 1] -= pj * np.exp(-(np.linalg.norm(X - (c + [0, 0, 0.012 * k]), axis=1) / (0.02 * k)) ** 2)
+        ht = float(sp.get("height", 0.0)) * k
+        if ht:
+            D[:, 2] -= ht * np.exp(-(np.linalg.norm(X - c, axis=1) / (0.024 * k)) ** 2)
+        un = float(sp.get("under", 0.0)) * k
+        if un:  # `under`: the submental skin lifted, from behind the chin's bottom edge back to the throat, so the
+            # line from chin to throat runs back level before it turns down into the neck
+            back = (X[:, 1] - c[1]) / (0.045 * k)
+            wu = _sstep(back / 0.25) * np.exp(-(np.maximum(back - 0.55, 0) / 0.45) ** 2)
+            wu = wu * np.exp(-(ax / (0.032 * k)) ** 2) * np.exp(-(np.maximum(X[:, 2] - c[2] - 0.004 * k, 0) / (0.008 * k)) ** 2)
+            wu = wu * np.exp(-(np.maximum(c[2] - 0.045 * k - X[:, 2], 0) / (0.015 * k)) ** 2)
+            D[:, 2] += un * wu
+        cl = float(sp.get("cleft", 0.0)) * k
+        if cl:
+            ln = float(sp.get("cleft_length", 0.014)) * k
+            zm = c[2] + 0.004 * k + 0.5 * ln
+            front = _sstep((yc + 0.012 * k - X[:, 1]) / (0.01 * k))  # the chin's front only
+            cw = float(sp.get("cleft_width", 0.0028)) * k
+            along = np.exp(-((X[:, 2] - zm) / (0.6 * ln)) ** 2) * front
+            D[:, 1] += cl * np.exp(-(ax / cw) ** 2) * along
+            lb = float(sp.get("cleft_lobes", 0.0)) * k
+            if lb:  # the two pads of a cleft chin: a groove alone is a scratch on a round chin; a cleft reads because
+                # the chin's front is TWO rounded lobes with the groove between them
+                D[:, 1] -= lb * np.exp(-((ax - 2.6 * cw) / (2.0 * cw)) ** 2) * along
+        return D
+    return W + field(W), lm + field(lm)
+
+
+JAWLINE_RADIUS = 0.034   # m: how far from the old jaw line the skin still follows its move
+JAWLINE_SIGMA = 0.014    # m: along the line, each point follows the stretch of jaw line nearest it
+JAWLINE_TUCK = 0.016     # m: depth of the band under the new border / behind the new ramus that is drawn in
+JAWLINE_SMOOTH = 2       # rounds of smoothing of the move over the mesh
+
+
+def _jawline(W, lm, ear, spec, mx, s, faces=None):
+    """base.head.shape.jawline = {"below_lobe", "forward", "out", "tuck", "radius", "top"} (m): the mandible built as
+    an L in profile, by construction: the jaw LINE itself is moved, with the skin on both sides of it.
+    GNM's jaw contour (lm 2..7 a side) runs from in front of the ear lobe straight to the chin: one diagonal, its
+    'angle' at the lobe's own height. Per side that line is carried onto a new one of the same parametrisation (by
+    arc length): from under the ear lobe down a near-vertical ramus to the angle (`below_lobe` m under the lobe's
+    lowest point, `forward` m in front of it, `out` m wider), then straight along the lower border to the chin's
+    corner (lm 7 / 9, which stays). Every skin vertex follows the stretch of the old line nearest it (Gaussian
+    `JAWLINE_SIGMA` along the line), fading with its distance from the line (`radius`), so the crest of the jaw, the
+    cheek above it and the step into the neck under it all go with it; nothing moves on the ear or the throat's
+    middle. `tuck` then draws the skin just outside the new line in toward the neck's axis (a clearer step). Landmarks
+    ride. Mirrored: each side its own line."""
+    from scipy.spatial import cKDTree
+    sp = dict(spec)
+    k = s / 1.12
+    below = float(sp.get("below_lobe", 0.045)) * k
+    fwd = float(sp.get("forward", 0.004)) * k
+    out = float(sp.get("out", 0.0)) * k
+    tuck = float(sp.get("tuck", 0.0)) * k
+    R = float(sp.get("radius", JAWLINE_RADIUS)) * k
+    sig = float(sp.get("sharp", JAWLINE_SIGMA)) * k  # smaller = a sharper turn at the angle
+    W = W.copy()
+    lm = lm.copy()
+    W0 = W.copy()
+    dear = cKDTree(W[ear]).query(W)[0] if ear.any() else np.full(len(W), 1.0)
+    off_ear = _sstep((dear - 0.001 * k) / (0.007 * k))
+    lat = _sstep((np.abs(W[:, 0] - mx) - 0.012 * k) / (0.02 * k))
+    inside_ref = np.array([lm[33][1], lm[33][2]])
+    for sx in (-1.0, 1.0):
+        side = np.sign(W[:, 0] - mx) == sx
+        ear_s = ear & side
+        if not ear_s.any():
+            continue
+        lobe = W[ear_s][np.argmin(W[ear_s][:, 2])]
+        ids = [2, 3, 4, 5, 6, 7] if np.sign(lm[3][0] - mx) == sx else [14, 13, 12, 11, 10, 9]
+        O = np.array([lm[i] for i in ids])
+        seg = np.linalg.norm(np.diff(O, axis=0), axis=1)
+        u = np.r_[0, np.cumsum(seg)] / seg.sum()
+        uu = np.linspace(0, 1, 60)
+        Od = np.c_[[np.interp(uu, u, O[:, c]) for c in range(3)]].T
+        # the new line: top (the old line's top, eased toward under the lobe by `top`), the angle, the chin's corner
+        top = O[0] + float(sp.get("top", 0.5)) * np.array([0.0, lobe[1] - O[0][1], 0.0])
+        g = np.array([lobe[0] + sx * out, lobe[1] - fwd, lobe[2] - below])
+        end = O[-1]
+        l1, l2 = np.linalg.norm(g - top), np.linalg.norm(end - g)
+        uc = l1 / (l1 + l2)
+        Nd = np.where((uu <= uc)[:, None], top + (uu / uc)[:, None] * (g - top),
+                      g + ((uu - uc) / (1 - uc))[:, None] * (end - g))
+        D = (Nd - Od) * _sstep(uu / 0.18)[:, None]  # nothing moves at the line's top (tiny faces by the lobe folded)
+        d2 = ((W[:, None, :] - Od[None]) ** 2).sum(2)
+        dmin = np.sqrt(d2.min(1))
+        wg = np.exp(-(d2 - d2.min(1, keepdims=True)) / sig ** 2)
+        disp = (wg[:, :, None] * D[None]).sum(1) / wg.sum(1, keepdims=True)
+        fall = np.exp(-(dmin / R) ** 2) * side * off_ear * lat
+        W = W + fall[:, None] * disp
+        if tuck:
+            poly = np.array([top[1:], g[1:], end[1:]])
+            P = W[:, 1:]
+            best_d = np.full(len(W), np.inf)
+            best_s = np.zeros(len(W))
+            best_t = np.zeros(len(W))
+            for j in range(2):
+                a, b = poly[j], poly[j + 1]
+                ab = b - a
+                t = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1)
+                q = a + t[:, None] * ab
+                d = np.linalg.norm(P - q, axis=1)
+                nrm = np.array([ab[1], -ab[0]])
+                if (inside_ref - a) @ nrm > 0:
+                    nrm = -nrm                                  # pointing out of the jaw
+                sgn = np.sign((P - q) @ nrm)
+                upd = d < best_d
+                best_d[upd], best_s[upd], best_t[upd] = d[upd], sgn[upd], ((j + t) / 2)[upd]
+            dout = np.where(best_s > 0, best_d, 0.0)
+            band = np.clip(dout / (0.003 * k), 0, 1) * np.exp(-(dout / (JAWLINE_TUCK * k)) ** 2)
+            along = _sstep(best_t / 0.1) * (1 - _sstep((best_t - 0.8) / 0.2))
+            near_side = _sstep((np.abs(W[:, 0] - mx) - 0.02 * k) / (0.02 * k))
+            W[:, 0] = W[:, 0] - sx * band * along * near_side * side * off_ear * tuck
+        nk = float(sp.get("neck", 0.0)) * k
+        if nk:  # the neck's sides under the corner drawn in: the step seen from the front (not a groove at the edge)
+            zc = g[2] - 0.032 * k
+            wn = np.exp(-((W[:, 2] - zc) / (0.02 * k)) ** 2) * np.exp(-((W[:, 1] - g[1]) / (0.035 * k)) ** 2)
+            wn = wn * _sstep((np.abs(W[:, 0] - mx) - 0.02 * k) / (0.02 * k)) * side * off_ear
+            W[:, 0] = W[:, 0] - sx * wn * nk
+    if faces is not None and int(sp.get("smooth", JAWLINE_SMOOTH)):
+        E = np.array(sorted({(min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)])) for f in faces
+                             for i in range(len(f))}))
+        deg = np.bincount(E.ravel(), minlength=len(W))
+        Dm = W - W0
+        for _ in range(int(sp.get("smooth", JAWLINE_SMOOTH))):
+            Dm = Dm + 0.5 * retopo._lap(Dm, E, deg)
+        W = W0 + Dm
+    tr = cKDTree(W0)
+    for i in range(0, 17):
+        lm[i] = lm[i] + (W - W0)[tr.query(lm[i])[1]]
+    return W, lm
+
+LEAN_RADIUS = 0.03    # m: how far from the jaw's border the thinning reaches
+LEAN_KEEP = 0.004     # m: the border itself (this near the line) keeps its place: the bone doesn't thin
+
+
+def _lean(W, lm, ear, spec, mx, s, faces):
+    """base.head.shape.lean = m | {"under_jaw", "jowl", "submental", "radius", "smooth"} (m): soft tissue THINNED over
+    the bone, which is not the weight slider run backwards (fat goes everywhere and takes the skull's width with it)
+    and not a hollow (a dent under the cheekbone). The mandible's border (the jaw contour, lm 2..14) and the chin keep
+    their place; the skin moves IN along its own normal in three bands measured from that border: `under_jaw` = the
+    band below and behind it (the submandibular fullness that hides a border into the neck: thinned, the border stands
+    as an edge with the neck stepping in under it), `submental` = the same under the chin (default = under_jaw),
+    `jowl` = the lower cheek just above the border, outside the mouth's corners (the pouch that hangs over the border
+    with age and weight). Each band rises from nothing at the border (LEAN_KEEP) to full ~12 mm away and fades over
+    `radius`; the move is smoothed over the mesh. Nothing moves on the ears, lips, or above the mouth line.
+    Landmarks ride. Mirrored by construction (each vertex against the whole contour)."""
+    from scipy.spatial import cKDTree
+    sp = spec if isinstance(spec, dict) else {"under_jaw": spec}
+    k = s / 1.12
+    und = float(sp.get("under_jaw", 0.0)) * k
+    sub = float(sp.get("submental", sp.get("under_jaw", 0.0))) * k
+    jow = float(sp.get("jowl", 0.0)) * k
+    R = float(sp.get("radius", LEAN_RADIUS)) * k
+    O = np.array([lm[i] for i in range(2, 15)])
+    seg = np.linalg.norm(np.diff(O, axis=0), axis=1)
+    u = np.r_[0, np.cumsum(seg)] / seg.sum()
+    uu = np.linspace(0, 1, 160)
+    Od = np.c_[[np.interp(uu, u, O[:, c]) for c in range(3)]].T
+    d, j = cKDTree(Od).query(W)
+    q = Od[j]
+    T = np.array([(f[0], f[i], f[i + 1]) for f in faces for i in range(1, len(f) - 1)])
+    N = retopo._vnormals(W, T)
+    h = q[:, 2] - W[:, 2]                                   # > 0: below the border
+    rise = _sstep((d - LEAN_KEEP * k) / (0.008 * k)) * np.exp(-(np.maximum(d - 0.012 * k, 0) / R) ** 2)
+    below = _sstep(h / (0.004 * k))
+    above = _sstep(-h / (0.004 * k))
+    ax = np.abs(W[:, 0] - mx)
+    mid = np.exp(-(ax / (0.022 * k)) ** 2)                  # under the chin
+    mouth_w = 0.5 * abs(lm[54][0] - lm[48][0])
+    dear = cKDTree(W[ear]).query(W)[0] if ear.any() else np.full(len(W), 1.0)
+    off_ear = _sstep((dear - 0.002 * k) / (0.008 * k))
+    w_under = rise * below * (und * (1 - mid) + sub * mid)
+    zmouth = 0.5 * (lm[48][2] + lm[54][2])
+    w_jowl = (jow * rise * above * _sstep((ax - mouth_w - 0.004 * k) / (0.008 * k))
+              * _sstep((zmouth + 0.004 * k - W[:, 2]) / (0.01 * k)))
+    amt = (w_under + w_jowl) * off_ear
+    Dm = -amt[:, None] * N
+    E = np.array(sorted({(min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)])) for f in faces
+                         for i in range(len(f))}))
+    deg = np.bincount(E.ravel(), minlength=len(W))
+    for _ in range(int(sp.get("smooth", 4))):
+        Dm = Dm + 0.5 * retopo._lap(Dm, E, deg)
+    lm = lm + Dm[cKDTree(W).query(lm)[1]]
+    return W + Dm, lm
+
+
+EAR_BLEND = 0.004  # m: the band at an ear's root over which its turn fades in (the skin round it is untouched)
+EAR_ROOT = 0.003   # m: ear vertices this near the rest of the skin are its attachment
+
+
+def _ears(W, ear, spec, mx, s):
+    """base.head.shape.ears = {"out": deg, "size": factor, "blend": m}: each auricle turned RIGIDLY about its
+    attachment line, so the helix rim swings out from the head and the root stays put. The line runs from the lobe's
+    attachment (the lowest attached vertex) up to the top of the ear's FRONT attachment (where the helix leaves the
+    temple): it passes by the lobe, so the lobe hardly moves and the top swings out most, as on a head whose ears
+    stand out. The turn fades in over EAR_BLEND from the root only (nothing but the ear's own vertices move: no web
+    of cheek or mastoid skin); `size` (default 1) scales the auricle about the lobe's attachment the same rigid way.
+    Mirrored by construction (each side its own line)."""
+    from scipy.spatial import cKDTree
+    out = np.radians(float(spec.get("out", 0.0)))
+    size = float(spec.get("size", 1.0))
+    k = s / 1.12
+    W = W.copy()
+    rest = cKDTree(W[~ear])
+    for sg in (-1.0, 1.0):
+        idx = np.flatnonzero(ear & (np.sign(W[:, 0] - mx) == sg))
+        if len(idx) < 10:
+            continue
+        P = W[idx]
+        d_root = rest.query(P)[0]
+        root = P[d_root < max(EAR_ROOT * k, np.percentile(d_root, 10))]
+        low = root[np.argmin(root[:, 2])]
+        front = root[root[:, 1] <= np.median(root[:, 1])]      # (the head faces -y)
+        top = front[np.argmax(front[:, 2])]
+        ax = (top - low) / np.linalg.norm(top - low)
+
+        def rot(v, a, ax=ax):
+            return v * np.cos(a) + np.cross(ax, v) * np.sin(a) + ax * (v @ ax)[..., None] * (1 - np.cos(a))
+        d0 = float(np.percentile(d_root, 12))                  # the attached ring itself stays (its edges to the head keep their length)
+        w = _sstep((d_root - d0) / (float(spec.get("blend", EAR_BLEND)) * k))[:, None]
+        a = out if ((w * (rot(P - low, out) - (P - low)))[:, 0] * sg).sum() > 0 else -out  # the rim goes outward
+        Q = low + rot(P - low, a) * size
+        W[idx] = P + w * (Q - P)
+    return W
 
 
 def _hood(W, lm, hood):
@@ -1381,12 +1702,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("field"):  # (headfit.py) MakeHuman's head of an age / sex / weight, as a displacement of the vertices
         from . import headfit
         V = V + headfit.field_vertices(head["field"]) * float(abs(J[2][0] - J[3][0]))
-    if head.get("warp"):  # (headfit.py) what the identity space couldn't make of the body's head, as a smooth warp
-        wp = head["warp"]
-        P_, C_ = np.asarray(wp["at"], float), np.asarray(wp["coef"], float)
-        for a in range(0, len(V), 4096):
-            d2 = ((V[a:a + 4096, None, :] - P_[None, :, :]) ** 2).sum(-1)
-            V[a:a + 4096] += np.exp(-d2 / (2 * wp["sigma"] ** 2)) @ C_
+    if head.get("warp"):  # (headfit.py) what the identity space couldn't make of the body's head, as a smooth warp;
+        # a list = several warps, each with its own reach, applied in order (humanfit.fit_outline adds a shorter one)
+        for wp in (head["warp"] if isinstance(head["warp"], list) else [head["warp"]]):
+            P_, C_ = np.asarray(wp["at"], float), np.asarray(wp["coef"], float)
+            for a in range(0, len(V), 4096):
+                d2 = ((V[a:a + 4096, None, :] - P_[None, :, :]) ** 2).sum(-1)
+                V[a:a + 4096] += np.exp(-d2 / (2 * wp["sigma"] ** 2)) @ C_
     V = V + regional_identity(head.get("regions"))
     if head.get("pose"):  # landmark moves: a smile, lids, brows (least change of the regional expressions)
         V = V + pose_expression(head["pose"], V, float(head.get("scale", 1.4)))
@@ -1558,8 +1880,25 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if late:  # bumps after the under-eye/nostril smoothing (which erased pushes in its region: a
         # lifted upper cheek under the lower lid, filling the socket hollow that shaded as a dark ring)
         W, lm = _pushes(W, lm, late)
+    if shape.get("jawline"):
+        W, lm = _jawline(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["jawline"], float(eye_mid[0]), s, faces)
+    if shape.get("lean"):
+        W, lm = _lean(W, lm, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["lean"], float(eye_mid[0]), s, faces)
     if shape.get("hood"):
         W, lm = _hood(W, lm, shape["hood"])
+    from . import headage
+    if headage.wanted(shape):  # age as soft-tissue ops: nasolabial, prejowl, lid_fold, cheek_flat, lips_thin
+        W, lm = headage.apply(W, lm, shape, faces, {k_: np.asarray(v_)[skin] for k_, v_ in g["groups"].items()
+                                                     if len(np.asarray(v_)) == len(skin)},
+                              float(eye_mid[0]), s, np.asarray(g["groups"]["skin_exterior"])[skin] > 0.5)
+    if shape.get("nose_tip"):
+        W, lm = _nose_tip(W, lm, shape["nose_tip"], s)
+        if isinstance(shape["nose_tip"], dict) and shape["nose_tip"].get("round"):
+            W, lm = _round_tip(W, lm, shape["nose_tip"]["round"], s, faces)
+    if shape.get("chin"):
+        W, lm = _chin(W, lm, shape["chin"], float(eye_mid[0]), s)
+    if shape.get("ears"):
+        W = _ears(W, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["ears"], float(eye_mid[0]), s)
     skin_index, zipped = None, 0
     if head.get("mouth_gap") is not None and float(head["mouth_gap"]) < 0.0015 and head.get("zip_lips", True):
         W, faces, skin_index, zipped = _zip_lips(W, faces, 0.5 * (lm[62] + lm[66]))

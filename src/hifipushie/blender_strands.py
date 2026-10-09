@@ -414,7 +414,7 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("k", "INT", "CURVE", "value"), ("fd", "FLOAT", "CURVE", "value"),
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
-                              ("tile", "INT", "CURVE", "value")):
+                              ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -501,13 +501,22 @@ def material(look: dict):
     L.new(ramp.outputs["Color"], hsv.inputs["Color"])
     col = hsv.outputs["Color"]
     ga = float(look.get("grey_amount", 0.0))
-    if ga > 0:  # grey hairs: a share of the strands
+    gl = float(look.get("grey_locks", 1.0))  # x each lock's own grey (its "grey": temples, sideburns)
+    if ga > 0 or gl > 0:  # grey hairs: a share of the strands, the look's + the lock's own (hp_gr)
         mix = N.new("ShaderNodeMix")
         mix.data_type = "RGBA"
         lt = N.new("ShaderNodeMath")
         lt.operation = "LESS_THAN"
         L.new(info.outputs["Random"], lt.inputs[0])
-        lt.inputs[1].default_value = ga
+        gra = N.new("ShaderNodeAttribute")
+        gra.attribute_name = "hp_gr"
+        sh = N.new("ShaderNodeMath")
+        sh.operation = "MULTIPLY_ADD"
+        sh.use_clamp = True
+        L.new(gra.outputs["Fac"], sh.inputs[0])
+        sh.inputs[1].default_value = gl
+        sh.inputs[2].default_value = ga
+        L.new(sh.outputs[0], lt.inputs[1])
         L.new(lt.outputs[0], mix.inputs["Factor"])
         L.new(col, mix.inputs["A"])
         mix.inputs["B"].default_value = (*grey, 1)
@@ -519,19 +528,33 @@ def material(look: dict):
     hb.parametrization = "COLOR"
     # the hair BSDF's colour is not what a lit mass of strands comes out as (multiple scattering lightens and
     # warms it: dark brown rendered ginger-blond): the look colour goes through the inverse of a measured fit,
-    # rendered = A x colour^p per linear channel (hair.CYCLES_FIT, spikes/hair_strands/hs4/cal.py)
+    # rendered = A x colour^p per linear channel (hair_strands.CYCLES_FIT, spikes/hair_strands/hs4/cal2.py)
     A_, p_ = [float(v) for v in look.get("cycles_fit") or (1.0, 1.0)]
-    gm = N.new("ShaderNodeGamma")
-    gm.inputs["Gamma"].default_value = 1.0 / max(p_, 1e-3)
-    L.new(col, gm.inputs["Color"])
-    sc_ = N.new("ShaderNodeMix")
-    sc_.data_type = "RGBA"
-    sc_.blend_type = "MULTIPLY"
-    sc_.inputs["Factor"].default_value = 1.0
-    k_ = max(A_, 1e-6) ** (-1.0 / max(p_, 1e-3))
-    sc_.inputs["B"].default_value = (k_, k_, k_, 1)
-    L.new(gm.outputs["Color"], sc_.inputs["A"])
-    L.new(sc_.outputs["Result"], hb.inputs["Color"])
+    # on the colour's LUMINANCE, the hue kept: colour x (Y / A)^(1/p) / Y. Per channel (the first version), the
+    # 1/p power (x3.3) tripled every channel ratio: a faintly warm grey (#5a4f47) rendered light brown.
+    bw = N.new("ShaderNodeRGBToBW")
+    L.new(col, bw.inputs["Color"])
+    ymax = N.new("ShaderNodeMath")
+    ymax.operation = "MAXIMUM"
+    ymax.inputs[1].default_value = 1e-4
+    L.new(bw.outputs["Val"], ymax.inputs[0])
+    ya = N.new("ShaderNodeMath")
+    ya.operation = "DIVIDE"
+    ya.inputs[1].default_value = max(A_, 1e-6)
+    L.new(ymax.outputs[0], ya.inputs[0])
+    yp = N.new("ShaderNodeMath")
+    yp.operation = "POWER"
+    yp.inputs[1].default_value = 1.0 / max(p_, 1e-3)
+    L.new(ya.outputs[0], yp.inputs[0])
+    kk = N.new("ShaderNodeMath")
+    kk.operation = "DIVIDE"
+    L.new(yp.outputs[0], kk.inputs[0])
+    L.new(ymax.outputs[0], kk.inputs[1])
+    sc_ = N.new("ShaderNodeVectorMath")
+    sc_.operation = "SCALE"
+    L.new(col, sc_.inputs[0])
+    L.new(kk.outputs[0], sc_.inputs["Scale"])
+    L.new(sc_.outputs["Vector"], hb.inputs["Color"])
     hb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * 0.75
     hb.inputs["Radial Roughness"].default_value = 0.4
     hb.inputs["Random Roughness"].default_value = 0.2

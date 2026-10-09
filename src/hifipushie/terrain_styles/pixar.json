@@ -5,6 +5,9 @@
  "macro_normal": 0.8,
  "detail": 0.5,
  "layers": {
+  "gravel": {"scale_m": 3.0, "roughness": 0.65, "warm": [1.07, 1.03, 0.92], "cool": [0.93, 0.97, 1.06], "ops": [{"op": "stones", "size": 0.26, "gap": 0.05, "fill": 0.5, "vary": 0.75, "dome": 0.35, "gap_tone": 0.6, "albedo": 0.38, "height": 0.035}, {"op": "blotch", "size": 1.2, "albedo": 0.05, "height": 0.0}]},
+  "silt": {"scale_m": 3.0, "roughness": 0.6, "warm": [1.05, 1.02, 0.94], "ops": [{"op": "grain", "size": 0.02, "albedo": 0.05, "height": 0.001}, {"op": "ripples", "spacing": 0.09, "angle": 70, "warp": 0.5, "warp_len": 1.2, "patches": 1.2, "albedo": 0.03, "height": 0.002}, {"op": "dots", "per_m2": 6, "size": [0.02, 0.05], "tones": [-0.5, 0.5], "albedo": 0.2, "height": 0.006}]},
+  "bank": {"scale_m": 4.0, "roughness": 0.85, "ops": [{"op": "blotch", "size": 1.2, "albedo": 0.1, "height": 0.02}, {"op": "grain", "size": 0.06, "albedo": 0.07, "height": 0.003}, {"op": "dots", "per_m2": 3, "size": [0.03, 0.07], "tones": [-0.4, 0.6], "albedo": 0.2, "height": 0.01}]},
   "*": {"scale_m": 4.0, "normal": 0.5, "warm": [1.06, 1.03, 0.94], "cool": [0.94, 0.97, 1.05],
         "ops": [{"op": "blotch", "size": 1.5, "albedo": 0.08, "height": 0.02}, {"op": "grain", "size": 0.08, "albedo": 0.06, "height": 0.003}]},
   "grass": {"scale_m": 3.0, "roughness": 0.9, "warm": [1.08, 1.06, 0.88], "cool": [0.9, 0.96, 1.08],

@@ -910,7 +910,9 @@ def m_tell(c: Ctx, g: str, which: str):
         cu = _verts(U, roles=("collar_stand", "collar_fall"))
         if not (len(co) and len(cu)):
             raise NotMeasured("no collars")
-        d, _ = cKDTree(U["V"][cu]).query(O["V"][co])
+        yc = float(c.body.J["neck"][1]) if "neck" in c.body.J else 0.0
+        hb = co[O["V"][co, 1] > yc]  # (behind the neck's axis: a notched collar's ends lie on the chest; cloth_layers.tells)
+        d, _ = cKDTree(U["V"][cu]).query(O["V"][hb if len(hb) else co])
         return {"mm": float(np.median(d)) * 1000}
     if which == "lapel_gap_mm":
         full = c.full.get(g)
@@ -1211,6 +1213,16 @@ def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
     W, H = int(w * scale), int(h * scale)
     rank = _layer_rank(c)
     layers = [(c.body.V, c.body.T, (198, 170, 150), 0)]
+    # the model's own worn parts the garments rest on (garment key "collide": shoes under a hem): a barefoot figure
+    # beside a shod reference reads wrong at the hem
+    worn = sorted({p for gg in (c.spec.get("cloth") or {}).values() for p in (gg.get("collide") or [])})
+    if worn:
+        try:
+            from . import cloth
+            wp = cloth.worn_parts(c.model, c.spec, worn)
+            layers.append((wp["V"], wp["F"], _faces_colour(((c.spec.get("parts") or {}).get(worn[0]) or {}).get("color")), 0))
+        except Exception:
+            pass
     for g, R in c.results.items():
         layers.append((R["V"], R["F"], _faces_colour(c.g(g).get("color")), rank.get(g, 1)))
     Ps, Fs, Ss, Cs = [], [], [], []
