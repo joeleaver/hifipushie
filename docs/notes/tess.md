@@ -44,3 +44,13 @@ addendum: conditioned on v1's face, a front smile, the hair as worn).
 - STILL OFF (ts_l): face 5 mm narrow at the nose base / mouth / cheekbones (checklist, fit_outline not run); jaw angle
   3.5 mm high; lower lip 1.2 mm tall and the lips PART (a slit at rest: no pose or slider closes it); irises ringed
   by sclera and glassy; nose tip broad / round.
+- Eye band (f3_dbg_eyeband.png): the painted upper LASH LINE ("near the eyeball" also covers the pretarsal lid). Fixed
+  in skin.zone (tube through the margin landmarks base adds: lm_lid_upper_in/out, lm_lid_lower_in/out) + test.
+- fit_outline moved nothing: onemesh.head_desc replaced base.head.warp with the features' warp (any human() with
+  features). Fixed (ca5bd25, test_onemesh::test_stored_warp_survives_features). fit_likeness widths was hit too.
+- Widths: wid.py (front detector oval below the eyes as the outline). 3 rounds: jaw_width 93.6 -> 100.5, jaw / cheek
+  0.832 vs 0.793 (past tol, squarer); 1 round (ts_r): jaw/cheek 0.823 (tol edge), bizygomatic 113.9 vs 116.6,
+  nose-base width 111.1 vs 113.4, bigonial 93.7 vs 92.4. Kept 1 round. jaw_square -0.8 held made the jaw WIDER.
+- ts_t: shape.nose_tip round -0.6, nose_width -0.4 (held). ts_u/ts_v: lip_seal 1 (facesliders' robust seal, main
+  7bdd956): lower lip 8.9 vs 8.3; lip_upper_height at its max (+1, 1.3 clamps) only 5.1 -> 5.5 vs 6.4 (a range
+  limit); pose lid_upper 0.25 mm, brow_inner -0.9 mm. CANDIDATE ts_v, sheet out/f6_tess_face.png.
