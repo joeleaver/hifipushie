@@ -49,6 +49,76 @@ def between_crossings(VA: np.ndarray, FA: np.ndarray, VB: np.ndarray, FB: np.nda
     return n
 
 
+def view_dirs(n_ring: int = 12, elevations=(-50.0, -25.0, 0.0, 25.0, 50.0)) -> np.ndarray:
+    """Unit view directions (from the eye toward the model) round the figure: rings at the given elevations (deg;
+    negative = from below, looking up) + straight down; what a game camera can see of a character."""
+    out = []
+    for el in elevations:
+        e = np.radians(el)
+        for k in range(n_ring):
+            a = 2 * np.pi * k / n_ring
+            out.append([np.cos(e) * np.sin(a), np.cos(e) * np.cos(a), -np.sin(e)])
+    out.append([0.0, 0.0, -1.0])
+    return np.array(out)
+
+
+def occluded(P: np.ndarray, Vo: np.ndarray, Fo: np.ndarray, dirs: np.ndarray, px: float = 0.002,
+             tol: float = 0.0015, gaps: bool = False, front_only: bool = False) -> np.ndarray:
+    """Per point of P, per view direction: True where the mesh (Vo, Fo) lies in FRONT of the point along that
+    direction (orthographic: a z-buffer of the mesh at `px` m per pixel; the point is behind it by more than `tol`).
+    -> bool [len(dirs), len(P)]. Points outside the mesh's footprint in a view are not occluded there.
+    gaps: instead the depth of the mesh behind minus the point's ([len(dirs), len(P)], inf off the footprint;
+    > 0 = the mesh lies BEHIND the point by that much). front_only: only faces turned toward the eye (Fo wound outward)
+    are drawn: the outer side of a garment, not its inside seen through an opening."""
+    P, Vo, Fo = np.asarray(P, float), np.asarray(Vo, float), np.asarray(Fo)
+    out = np.zeros((len(dirs), len(P)), float if gaps else bool)
+    for k, d in enumerate(np.asarray(dirs, float)):
+        d = d / np.linalg.norm(d)
+        a = np.cross(d, [0.0, 0.0, 1.0]) if abs(d[2]) < 0.95 else np.cross(d, [1.0, 0.0, 0.0])
+        a /= np.linalg.norm(a)
+        b = np.cross(d, a)
+        uv_o = np.c_[Vo @ a, Vo @ b] / px
+        dep_o = Vo @ d  # (larger = further from the eye)
+        lo = np.floor(uv_o.min(0)).astype(int) - 1
+        W, H = (np.ceil(uv_o.max(0)).astype(int) - lo + 2)
+        Z = np.full((W, H), np.inf)
+        T = uv_o[Fo] - lo  # [nf, 3, 2]
+        Dz = dep_o[Fo]
+        if front_only:
+            fn_ = np.cross(Vo[Fo[:, 1]] - Vo[Fo[:, 0]], Vo[Fo[:, 2]] - Vo[Fo[:, 0]])
+            facing = fn_ @ d < 0
+        else:
+            facing = np.ones(len(Fo), bool)
+        bx0 = np.floor(T[..., 0].min(1)).astype(int)
+        bx1 = np.ceil(T[..., 0].max(1)).astype(int)
+        by0 = np.floor(T[..., 1].min(1)).astype(int)
+        by1 = np.ceil(T[..., 1].max(1)).astype(int)
+        for f in np.where(facing)[0]:
+            xs, ys = np.arange(bx0[f], bx1[f] + 1), np.arange(by0[f], by1[f] + 1)
+            if not len(xs) or not len(ys):
+                continue
+            gx, gy = np.meshgrid(xs + 0.5, ys + 0.5, indexing="ij")
+            (x0, y0), (x1, y1), (x2, y2) = T[f]
+            den = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+            if abs(den) < 1e-12:
+                continue
+            l0 = ((y1 - y2) * (gx - x2) + (x2 - x1) * (gy - y2)) / den
+            l1 = ((y2 - y0) * (gx - x2) + (x0 - x2) * (gy - y2)) / den
+            l2 = 1 - l0 - l1
+            inside = (l0 >= -0.02) & (l1 >= -0.02) & (l2 >= -0.02)
+            if not inside.any():
+                continue
+            z = l0 * Dz[f, 0] + l1 * Dz[f, 1] + l2 * Dz[f, 2]
+            sub = Z[bx0[f]:bx1[f] + 1, by0[f]:by1[f] + 1]
+            np.minimum(sub, np.where(inside, z, np.inf), out=sub)
+        q = (np.c_[P @ a, P @ b] / px - lo).astype(int)
+        ok = (q[:, 0] >= 0) & (q[:, 0] < W) & (q[:, 1] >= 0) & (q[:, 1] < H)
+        zq = np.full(len(P), np.inf)
+        zq[ok] = Z[q[ok, 0], q[ok, 1]]
+        out[k] = (zq - (P @ d)) if gaps else (zq < (P @ d) - tol)
+    return out
+
+
 def _pieces_of(res: dict, roles: tuple, wrap: str | None = None) -> np.ndarray:
     """Vertices of the result's pieces whose name starts with one of `roles` (or that are wrapped on `wrap`)."""
     M, pcs = res["mesh"], res["pieces"]["pieces"]
