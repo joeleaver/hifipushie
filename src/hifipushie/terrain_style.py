@@ -39,8 +39,9 @@ CONTRACT = 5
 CONTRACT_LOG = {
     5: "stream beds: three new layers on terrains with running rivers, in every style: `gravel` (cobbles and gravel under "
        "the water and on bars), `silt` (fine sediment in pools and slack margins), `bank` (the bank's damp foot), all "
-       "top-projected; they come LAST in the tiles' layer list, so a terrain with rivers has a third weights group "
-       "(_WEIGHTS2 / weights map 2) and the older layers keep their channels; `wet_rock` is present on any terrain "
+       "top-projected; they come LAST in the tiles' layer list, so the older layers keep their channels (read each "
+       "layer's weights attribute and channel from the manifest: past 8 layers there is a third group, _WEIGHTS2 / "
+       "weights map 2; on the island gravel is _WEIGHTS1.a, silt and bank _WEIGHTS2.r / .g); `wet_rock` is present on any terrain "
        "with rivers (bedrock in the bed), sea or not. New texture op `stones`. Nothing changes on a terrain without "
        "rivers",
     4: "every materials/<style>/<layer>_albedo.png (and small.albedo, the plain one) is RGBA: RGB the sRGB albedo as "
