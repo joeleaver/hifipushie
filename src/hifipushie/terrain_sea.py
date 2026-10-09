@@ -415,7 +415,10 @@ def apply(T):
     # beaches: sand from just under the level to a couple of metres up over `width`, the land behind easing down
     bw = float(S.get("beach_width", 30 * max(k, 0.5)))
     back = float(S.get("backshore", 4 * bw))
-    beach = level - 0.6 + np.maximum(sd, -3 * bw) * (2.6 / bw)
+    # (offshore the sand shelves on down at the beach's own grade until it meets the sea's floor: held at 3 widths out
+    # (-8.4 m), every beach had a dead-flat shelf out to the frame's edge with a one-step drop along its sides, where
+    # the nearest coast point stopped being beach: a pale rectangle in any depth-coloured water, pushieworld note 107)
+    beach = level - 0.6 + sd * (2.6 / bw)
     beach_land = np.where(sd < bw, beach, H * smoothstep(bw, bw + back, sd) + (beach) * (1 - smoothstep(bw, bw + back, sd)))
     # rocky: the land as it is, kept dry at the shore, dropping into the water
     # (kept dry a few cells in from the shore only: uncapped, 0.2 * sd raised ground 400 m inland to 80 m)
@@ -434,8 +437,12 @@ def apply(T):
     # offshore of a cliff its face stands in the water, from the top down to the sea floor (clamping the first cells
     # offshore under the water had made every cliff a plumb wall at the coastline)
     below = np.minimum(sea_floor, np.where(sd > -3 * T.cell, level - 0.3, np.inf))
-    offshore = wc * np.maximum(cliff_face, sea_floor) + wb * np.minimum(np.maximum(beach, sea_floor), level - 0.6) \
-        + wr * rock_off + np.clip(1 - wc - wb - wr, 0, 1) * below
+    beach_off = 0.5 * (beach + sea_floor + np.sqrt((beach - sea_floor) ** 2 + 1.0))  # (a soft max: no crease)
+    # (and the beach's share fades out to sea: offshore of a hollow in the coast the nearest coast point jumps, and
+    # with it the share, a straight step across the shelf)
+    wbo = wb * smoothstep(8 * bw, 3 * bw, -sd)
+    offshore = wc * np.maximum(cliff_face, sea_floor) + wbo * np.minimum(beach_off, level - 0.6) \
+        + wr * rock_off + np.clip(1 - wc - wbo - wr, 0, 1) * below
     # beaches at the foot of cliffs: a strip of sand below the face, the cliff standing behind it
     if foot.any():
         run = face_run
@@ -777,6 +784,76 @@ def report(T):
         m = cv["mask"] & wet
         out.append(f"cove {name}: {_area(m.sum() * T.cell ** 2)} of water, {cv['depth']:.0f} m deep into the "
                    f"land, mouth at [{cv['mouth'][0]:.0f}, {cv['mouth'][1]:.0f}]" + _cove_shape(T, cv, wet))
+    sb = seabed(T)
+    if sb["line"]:
+        out.append(sb["line"])
+    for w in sb["warnings"]:
+        if w not in T.warnings:
+            T.warnings.append(w)
+    return out
+
+
+SHELF = {"flat": 0.004, "area": 4000.0, "step": 1.0, "run": 60.0, "straight": 1.5}
+# seabed(): a plateau = sea floor flatter than `flat` (m / m) over `area` m2, above the sea's own depth; a step = cells
+# offshore whose floor falls more than `step` x the cell to a neighbour; ruled = a run of them over `run` m long lying
+# within `straight` cells of one line
+
+
+def seabed(T) -> dict:
+    """The sea floor as built: flat plateaus above the sea's own depth and long straight steps offshore (a shore
+    form's profile held at a floor, or its share cut off along a line, show in any depth-coloured water as a pale
+    rectangle: pushieworld note 107). {"line", "warnings", "plateaus": [...], "steps": [...]}."""
+    S = T.sea
+    level, c = S["level"], T.cell
+    depth = float((T.spec.get("sea") or {}).get("depth", 0) or 0)
+    sd = S["sd"]
+    off = (sd < -4 * c) & (T.H < level - 1.5)
+    out = {"line": "", "warnings": [], "plateaus": [], "steps": []}
+    if not off.any():
+        return out
+    gy, gx = np.gradient(T.H, c)
+    g = np.hypot(gx, gy)
+    deep = level - depth + 1.0 if depth else -np.inf
+    flat = off & (g < SHELF["flat"]) & (T.H > deep)
+    flat = ndimage.binary_opening(flat, iterations=2)
+    lab, n = ndimage.label(flat)
+    if n:
+        sizes = ndimage.sum(flat, lab, np.arange(1, n + 1)) * c * c
+        for i in np.argsort(-sizes)[:3]:
+            if sizes[i] < SHELF["area"]:
+                break
+            m = lab == i + 1
+            out["plateaus"].append({"area_m2": float(sizes[i]), "z": float(np.median(T.H[m])),
+                                    "at": [float(T.X[m].mean()), float(T.Y[m].mean())]})
+    # steps: away from the coast's own forms (cliff feet, stacks stand within a few cells of the coast line)
+    far = sd < -max(12 * c, 30.0)
+    step = far & (g > SHELF["step"]) & (T.H < level - 3.0)
+    lab, n = ndimage.label(step, structure=np.ones((3, 3)))
+    for i in range(1, n + 1):
+        m = lab == i
+        if m.sum() * c < SHELF["run"]:
+            continue
+        P = np.c_[T.X[m], T.Y[m]]
+        q = P - P.mean(0)
+        _, sv, vt = np.linalg.svd(q, full_matrices=False)
+        along, across = q @ vt[0], q @ vt[1]
+        length = float(np.ptp(along))
+        if length >= SHELF["run"] and float(np.sqrt((across ** 2).mean())) <= SHELF["straight"] * c:
+            H0 = T.H[m]
+            out["steps"].append({"length_m": length, "at": [float(P[:, 0].mean()), float(P[:, 1].mean())],
+                                 "bearing": float(np.degrees(np.arctan2(vt[0][0], vt[0][1])) % 180),
+                                 "z": [float(H0.min()), float(H0.max())]})
+    out["steps"].sort(key=lambda s_: -s_["length_m"])
+    out["line"] = (f"sea floor (measured): {len(out['plateaus'])} flat shelves over {SHELF['area'] / 1e4:.1f} ha above the "
+                   f"sea's depth, {len(out['steps'])} straight steps over {SHELF['run']:.0f} m offshore")
+    for p_ in out["plateaus"]:
+        out["warnings"].append(f"sea floor: a dead-flat shelf of {p_['area_m2'] / 1e4:.1f} ha at {p_['z']:.1f} m around "
+                               f"[{p_['at'][0]:.0f}, {p_['at'][1]:.0f}] (the sea is {depth:.0f} m deep): depth-coloured water "
+                               f"shows it as a pale patch")
+    for s_ in out["steps"][:3]:
+        out["warnings"].append(f"sea floor: a ruler-straight step {s_['length_m']:.0f} m long ({s_['z'][1]:.0f} to "
+                               f"{s_['z'][0]:.0f} m) around [{s_['at'][0]:.0f}, {s_['at'][1]:.0f}], bearing "
+                               f"{s_['bearing']:.0f} deg")
     return out
 
 

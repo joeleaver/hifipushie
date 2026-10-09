@@ -330,6 +330,33 @@ def test_dam_stays_in_the_heightmap():
     return area, lk["area"]
 
 
+def test_beach_shelves_on_to_the_sea_floor():
+    """Offshore of a beach the sand shelves on down to the sea's floor. Its profile was held 3 beach widths out
+    (-8.4 m): a dead-flat shelf to the frame's edge with straight one-step sides, a pale rectangle in depth-coloured
+    water (pushieworld note 107). The report's sea-floor measure names such shelves and steps."""
+    from hifipushie import terrain_sea
+    spec = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [384, 384]], "cell": 1.92,
+            "tilt": {"down": "south", "grade": 0.12},
+            "sea": {"level": 0, "depth": 30, "shore": "rocky", "beaches": {"strand": {"at": [192, 120], "length": 160}}},
+            "cover": [{"type": "meadow", "in": "everywhere"}]}
+    d = Path(tempfile.mkdtemp())
+    (d / "spec.json").write_text(json.dumps(spec))
+    T = terrain.load(d / "spec.json")
+    sea = T.H < -1.5
+    assert sea.sum() * T.cell ** 2 > 2e4, "the test terrain has no sea"
+    held = float((np.abs(T.H[sea] + 8.4) < 0.05).mean())
+    sb = terrain_sea.seabed(T)
+    assert held < 0.02 and not sb["plateaus"] and not sb["steps"], (held, sb["warnings"])
+    # the measure sees a shelf when there is one
+    keep = T.H.copy()
+    T.H = np.where(sea & (T.H < -3), np.maximum(T.H, -4.0), T.H)
+    try:
+        assert terrain_sea.seabed(T)["plateaus"], "a flat shelf went unseen"
+    finally:
+        T.H = keep
+    return held
+
+
 def test_projected_normals_never_zero():
     """A field flat at the normal's stencil (a capped constant) still gives unit normals (zero ones are invalid glTF,
     and read as "normals differ by 90 deg" across a tile border)."""
@@ -386,6 +413,7 @@ if __name__ == "__main__":
     test_floating_pieces_dropped()
     test_region_edge_is_smooth()
     test_projected_normals_never_zero()
+    print("beach shelves on to the sea floor (cells held at -8.4 m: %.3f)" % test_beach_shelves_on_to_the_sea_floor())
     print("dam stays in the heightmap (flooded %.0f m2, lake %.0f m2)" % test_dam_stays_in_the_heightmap())
     T = _coast()
     print(f"terrain {time.time() - t0:.1f} s")
