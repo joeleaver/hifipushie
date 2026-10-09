@@ -231,6 +231,23 @@ def test_crease_sits_on_the_heads_own_fold():
     assert D is not None and np.isfinite(D).all() and np.abs(D[T0["rim"]]).max() < 5e-5
 
 
+def test_nose_sliders_hold_the_alar_base_and_the_tip():
+    """The nose set moves its own part: the alar base (lm 31-35), the tip (lm 30) and the inner canthi stay (< 0.1
+    mm), the side walls move (> 0.5 unit), symmetric (the left wall out as the right)."""
+    if not _gnm_ok():
+        return
+    T = faceslide.template()
+    lmr = base._gnm_data()["lm68"]
+
+    def at(D, i):
+        return sum(float(w) * D[int(v)] for v, w in zip(lmr[i][0::2], lmr[i][1::2]))
+    for name in faceslide.NOSE_SLIDERS:
+        D = faceslide.delta({name: 1.0})
+        for i in (30, 31, 33, 35, 39, 42):
+            assert np.linalg.norm(at(D, i)) < 1e-4, (name, i, np.linalg.norm(at(D, i)))
+        assert np.linalg.norm(D, axis=1).max() > 0.5 * faceslide.UNITS[name][0] * 0.001, name
+
+
 def test_fit_window_follows_sex():
     lo, hi = faceslide.fit_window("eye_crease_height", 0.0)
     assert hi == 1.5 and lo > -0.5  # a woman's crease may reach its limit

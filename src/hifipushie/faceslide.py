@@ -60,6 +60,16 @@ UNITS.update({
     "lip_lower_height": (3.0, "more lower vermilion shows: its border down, the seam held"),
 })
 MOUTH_SLIDERS = tuple(k for k in UNITS if k not in EYE_SLIDERS)
+# the nose (Joe: "we don't have good control over the width of the middle of the nose"; nose_width is the alar base,
+# lm 31-35). Per side, mm at +1 (estimates from adult spreads: the nasal root ~17-20 mm wide, SD ~2; verify): the
+# side walls out / in, the dorsal line, the alar base and the tip's position held
+UNITS.update({
+    "nose_radix_width": (1.5, "the root between the eyes wider (each side wall out), the inner canthi held"),
+    "nose_dorsum_width": (2.0, "the middle vault wider: the bony / cartilage dorsum's side walls out"),
+    "nose_tip_width": (1.5, "the tip's domes (the lobule) wider, separate from the alae"),
+    "nose_dorsum_hump": (2.0, "a dorsal hump (the bony-cartilage junction forward); - = a scooped dorsum"),
+})
+NOSE_SLIDERS = ("nose_radix_width", "nose_dorsum_width", "nose_tip_width", "nose_dorsum_hump")
 # the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
 # morph target by spikes/facesliders/bake_age.py (face_sliders_baked.npz). name: the op's base.head.shape at +1
 BAKED = {
@@ -524,6 +534,44 @@ def _seal_step(V, amount, R):
     return D
 
 
+def _nose_fields() -> dict:
+    """The nose's sliders (whole nose, GNM frame, metres at +1). s along the dorsal line (lm 27 nasion = 0 .. lm 30 the
+    tip = 1), x across from the midline: the widths move the side walls sideways in proportion to x (the dorsal line,
+    x = 0, and the tip's position stay), held round the alar base (lm 31 / 35, the nostrils) and off the eyes' rims."""
+    from scipy.spatial import cKDTree
+    T = template()
+    X, n, lm = T["X"], T["n"], T["lm"]
+    mm = 0.001
+    a, b = lm[27], lm[30]
+    d = b - a
+    L2 = float(d @ d)
+    s = (X - a) @ d / L2
+    x = X[:, 0] - 0.5 * (lm[31][0] + lm[35][0])
+    ax = np.abs(x)
+    hw_alar = 0.5 * abs(float(lm[35][0] - lm[31][0]))
+    # the nose's own half-width along it: ~0.45 of the alar base at the root, 0.5 mid, 0.7 at the tip
+    hw = hw_alar * np.interp(s, [0.0, 0.5, 0.85, 1.1], [0.45, 0.5, 0.65, 0.7])
+    front = T["ext"] & (X[:, 2] > lm[27][2] - 0.02) & (s > -0.25) & (s < 1.2) & (ax < hw + 0.012)
+    front &= X[:, 1] > lm[33][1] - 0.002  # (above the nostrils' floor)
+    lat = _ss(ax / np.maximum(hw, 1e-4)) * (1 - _ss((ax - hw) / (6 * mm)))
+    side = np.sign(x)[:, None] * np.array([1.0, 0.0, 0.0])
+    alar = np.min([np.linalg.norm(X - lm[i], axis=1) for i in (31, 35, 32, 34)], axis=0)
+    hold_alar = _ss((alar - 3.0 * mm) / (5.0 * mm))
+    hold_eye = _ss((cKDTree(X[T["rim"]]).query(X)[0] - 4.0 * mm) / (5.0 * mm))
+    F = {}
+    F["nose_radix_width"] = (front * lat * _g(s, 0.1, 0.13) * hold_eye * hold_alar)[:, None] * side
+    F["nose_dorsum_width"] = (front * lat * _g(s, 0.5, 0.15) * hold_alar * hold_eye)[:, None] * side
+    # (held off the nostrils' insides: moving the rim's outside alone folded it against them)
+    inner = T["skin"] & ~T["ext"] & (np.abs(x) < hw_alar + 0.005) & (X[:, 1] < lm[30][1]) & (X[:, 1] > lm[33][1] - 0.006)
+    hold_nos = _ss((cKDTree(X[inner]).query(X)[0] - 1.5 * mm) / (3.5 * mm)) if inner.any() else 1.0
+    tip = front * _g(s, 0.92, 0.1) * _ss(ax / (0.4 * hw_alar)) * (1 - _ss((ax - 0.75 * hw_alar) / (4 * mm)))
+    F["nose_tip_width"] = (tip * hold_alar * hold_nos)[:, None] * side
+    hump = front * _g(s, 0.45, 0.13) * _g(ax, 0, 0.6 * hw_alar)
+    F["nose_dorsum_hump"] = hump[:, None] * np.array([0.0, 0.0, 1.0])[None]
+    mi = T["mirror"]  # (made exactly mirror symmetric: GNM's template is symmetric only to ~0.1 mm)
+    return {k: 0.5 * (v + v[mi] * [-1.0, 1.0, 1.0]) * (UNITS[k][0] * mm) for k, v in F.items()}
+
+
 def fields() -> dict:
     """{name: ((n, 3) right side's, (n, 3) left side's)} metres at +1, GNM frame (n = GNM's + the loops' vertices).
     The eyes' are each eye's own (mirrored); the mouth's split at the centre line (smoothly)."""
@@ -535,7 +583,7 @@ def fields() -> dict:
             dR = dL[mi] * [-1.0, 1.0, 1.0]
             out[k] = (dR, dL)
         wl = _ss((T["X"][:, 0] + 0.002) / 0.004)[:, None]
-        for k, d in _mouth_fields().items():
+        for k, d in {**_mouth_fields(), **_nose_fields()}.items():
             out[k] = (d * (1 - wl), d * wl)
         from pathlib import Path
 
@@ -663,6 +711,38 @@ def read_eyes(st: dict, cam: dict | None = None, px: int = 700) -> dict:
     out["crease"] = float(hs[j] + 0.1 * off)
     under = prof[(hs >= 1.0) & (hs <= max(hs[j] - 1.0, 1.0))]
     out["crease_dark"] = float(np.median(under) / max(prof[j], 1e-6))
+    return out
+
+
+def nose_widths(img, P, mmpx: float) -> dict:
+    """The nose's dorsal width read by SHADING, like with like on any picture lit by one light (the photo, or a render
+    under the photo's fitted light): across the face (the detector's own axes) at the radix (MediaPipe 168) and the
+    mid-dorsum (between 6 and 4), the luminance profile +-14 mm, smoothed over 1 mm; the dorsum is the bright band
+    round the middle: its width at half the drop from its peak to the side walls' darkest (mm). The detector has
+    no point on the dorsal lines: this is what an eye reads as the nose's width partway down."""
+    from scipy.ndimage import gaussian_filter1d, map_coordinates
+
+    from .likeness_eyes import frame
+    P = np.asarray(P, float)
+    a = np.asarray(img.convert("RGB"), float) / 255.0
+    Y = 0.2126 * a[..., 0] + 0.7152 * a[..., 1] + 0.0722 * a[..., 2]
+    ex, _ = frame(P)
+    out = {}
+    for name, c in (("radix_w", P[168]), ("dorsum_w", 0.5 * (P[6] + P[4]))):
+        t = np.arange(-14.0, 14.01, 0.1)
+        pts = c[None] + (t / mmpx)[:, None] * ex[None]
+        prof = gaussian_filter1d(map_coordinates(Y, [pts[:, 1], pts[:, 0]], order=1), 1.0 / 0.1 / 2.355)
+        mid = np.abs(t) <= 3.0
+        j = int(np.flatnonzero(mid)[np.argmax(prof[mid])])
+        peak = prof[j]
+        edges = []
+        for sgn in (-1, 1):
+            k = np.arange(j, len(t)) if sgn > 0 else np.arange(j, -1, -1)
+            low = float(prof[k].min())
+            half = peak - 0.5 * (peak - low)
+            hit = k[np.argmax(prof[k] <= half)] if (prof[k] <= half).any() else k[-1]
+            edges.append(t[hit])
+        out[name] = float(edges[1] - edges[0])
     return out
 
 

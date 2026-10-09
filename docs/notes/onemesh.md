@@ -501,3 +501,11 @@ model".
     rows out from the contact drawn toward the seam by 0.5 / 0.25 / 0.1 of the lips' vertical gap (base.SEAL_V, field
     only): the V between the closed lips no longer narrows to the mesher's ~1 mm. ts_h7 clay: two tiny specks left (was
     a row). onemesh.VERSION 13. Sheet human_renders/fs_07_ts_h7_seam.png.
+- NOSE SET (Joe: "no good control over the width of the middle of the nose"): faceslide nose_radix_width (1.5 mm a
+  side at +1), nose_dorsum_width (2.0), nose_tip_width (1.5, the domes), nose_dorsum_hump (2.0): side walls moved
+  sideways in proportion to x from the midline along the dorsal line (lm 27 -> 30), the dorsal line, the tip, the
+  alar base (lm 31-35, nostrils' insides) and the inner canthi held (test). Measures by SHADING, like with like under
+  the photo's light (faceslide.nose_widths: the dorsum's bright band at half its drop, at the radix and mid-dorsum;
+  the detector has no dorsal-line point); checklist items radix_width / dorsum_width (kind shape) wired as levers.
+  Garrett: dorsum 14.4 -> 10.8 mm (photo 10.6) at nose_dorsum_width -0.44, radix 14.0 = photo, alae held (46.2).
+  Sheets human_renders/fs_09_nose_front.png / _threequarter.png (units then 1.0-1.5: since raised).
