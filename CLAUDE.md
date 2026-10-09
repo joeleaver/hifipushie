@@ -1316,6 +1316,28 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
     coverage in mips (engines make the mips), per-tier cap_step for short tiers, card colour by view, the
     "detached wisp ... 3300000 mm" line in check_tiers (inside() far from the line), strands' top the last 6 mm,
     the re-seat.
+  - hair5 round 2 (2026-10-09; the coordinator on h5_h6: "a flat combed cap", hairline "RECEDED with wisps: my call
+    to trust the trace was wrong for this head"; sheet `hair_renders/h5_r2_sheet.png`, export hair5/exp_r2 (hero +
+    main), Godot out/gd_r2.png; q8.sh <tag> = export + check_tiers + Godot, q9.sh = the sheet with fresh Cycles):
+    - Cards' volume: cap at LIFT 0.7 of the hair's 85th-percentile height (max 15 mm), every card moved to the TOP of
+      its clump (`SHORT_TOP` 1.3 x the clump's spread along its normal; cards now carry `sn`), fly cards (hero 2 /
+      main 1 a clump), cards CUT at the hairline (2 mm inside: their thick strands past it were the wires on the
+      forehead and round the ear), no baby cards in short tiers. check_tiers bare front / three-quarter 29-32% ->
+      16-19% (target 12 not met), iou 0.68-0.70 -> 0.79-0.81, side / back 6-9%.
+    - Colour by view: RELIEF 0.7 / SLOPE 1.0 + a centimetre-scale hollow term in the depth + root ramp 0.7 over 45%
+      of a card; with it roughness had to go to >= 0.85 (at 0.72 the side shone like gel in Godot). Against the
+      Cycles strands (sheet3): front value 0.98 x, three-quarter 1.22 x, saturation 1.3 x: three-quarter NOT fixed
+      (check_tiers against EEVEE strands reads 1.07-1.09 there).
+    - `groom.loose.lay` (hair_loose.py; test_lay_presses_a_crop_onto_the_head): each step loses that share of its
+      outward direction. Garrett: lay top 0.4 / front 0.15 at stiff 0.5 / 0.4: outline top +6.4 -> 0.0 mm, hair over
+      the bare head 12.8 mm = the photo's, IoU 0.92, no hooks; sides -6.7 mm (region "top" reaches the upper sides;
+      out sides 0.14 gave 1 mm back). Hairline middle half-way: front_points [0, 1.760] .. [54, 1.748].
+    - READ of h5_r2: strands = a tidy dark crop combed across, forehead still a little tall, greying barely shows
+      in Cycles. Cards in Godot = a full head of dark greying combed hair, matte, soft hairline; the lifted front /
+      tousle is gone in BOTH (the lay flattened the strands too). Blender's glTF look draws the cards paler and
+      browner than Godot does.
+    - Not done: bare < 12%, three-quarter colour, the sides' width, npc / far re-exported, the re-seat (head is now
+      garrett4's g4_a / g4_garrett; told it: copy groom + strands + look, regrow, re-trace front_points).
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,
