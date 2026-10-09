@@ -37,7 +37,7 @@ FINISHES = ("box", "french", "facing", "plain")
 # each edge); "french" = a French front (the facing folded inside: a rounded fold at the edge, no band, no rows);
 # "facing" = a faced edge topstitched once `topstitch` in; "plain" = nothing drawn. Default: box on the over side,
 # french under.
-BUTTON = {"holes": 4, "color": None, "roughness": 0.42, "thickness": 0.0021}
+BUTTON = {"holes": 4, "color": None, "tone": None, "roughness": 0.42, "thickness": 0.0021}
 # a sew-through button: 4 (or 2) holes, flat with a low rim and a dished middle, `thickness` m; colour None = the
 # garment's detail.button (else a pearl white); roughness 0.42 = matte pearl / corozo (a polished dome read as a rivet)
 GAP_MAX = 0.006  # m: a closed fastening's two sides further apart than this isn't closed
@@ -607,12 +607,13 @@ def buttons_mesh(V: np.ndarray, M: dict, body, segs: int = 28) -> dict | None:
     vn = _out_normals(V, M["F"], body)
     Vs, Fs, at, mark = [], [], [], []
     n0 = 0
-    color = rough = None
+    color = rough = tone = None
     for c in cs:
         bt = dict(BUTTON, **(c.get("button") or {}))
         r = 0.5 * c["size"]
         th = float(bt["thickness"]) * (c["size"] / 0.011) ** 0.5
         color = color or bt.get("color")
+        tone = bt.get("tone") if tone is None else tone
         rough = bt.get("roughness") if rough is None else rough
         for (va, vb), cl in zip(c["v"], c["closed"]):
             v = va if cl else vb
@@ -632,7 +633,7 @@ def buttons_mesh(V: np.ndarray, M: dict, body, segs: int = 28) -> dict | None:
             mark += [int(vb)] * len(Vb)
             n0 += len(Vb)
     return {"V": np.concatenate(Vs), "F": np.concatenate(Fs), "at": np.asarray(at, np.int64), "mark": np.asarray(mark, np.int64),
-            "color": color, "roughness": float(rough if rough is not None else BUTTON["roughness"])}
+            "color": color, "tone": tone, "roughness": float(rough if rough is not None else BUTTON["roughness"])}
 
 
 EDGE_ROW = 0.0015  # m: the box band's step is cut this far outside its inner fold row (split_band_edges)

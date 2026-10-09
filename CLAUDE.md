@@ -3270,6 +3270,44 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       (SEAT_PULL stays 12 mm). OPEN: button 1 (a made top: carry the fronts' corners with the stand, or seat the
       fastening before the fine settle), a slit of skin beside the band under button 1, the V is shallow (the
       concept's opens ~10 cm), collar judged only on the shirt alone (the jacket over it is suit6's re-run).
+  - Round 3 (2026-10-08/09, same agent; sims pk_31..pk_46; scratch adds plsec.sh <tag> <gap> <spread> (start: centre-
+    front gap + stand sections), sec.py <npz> [key] (centre back / neck's side: skin | stand | fall in mm), thr.py
+    <tag> [V|Vsim|X0] (throat close-up, pieces coloured), jb2.py <job dir> (exact start distance cloth -> collider),
+    shw7.py (run through suit7's run.sh: its cached shirt + a saved jacket surface drawn by my rule)).
+    - Button 1 (19 mm open) was GEOMETRY, not the solver: the made stand's centre-front points (button to
+      buttonhole) started 167 mm apart (gap 0.10 + spread 25: the swing adds ~4 mm a degree), and a front's neck
+      corner lies 31 mm from its roll line, so the corners can part by ~5.3 cm x (1 - cos roll) at most. Fix =
+      consistent numbers + `kinds.shirt.worn_top` (the fronts' tops start on the body, neck seam pinned to the
+      stand: start gap 95 -> 2 mm; this is fix (a): the fronts' corners start AT the stand; no made flap needed).
+      pk_36 (gap 0.05, spread 12/14/75): button 1 3.0 mm, 0 crossings, V open to button 1, no skin slit. Gap 0.02:
+      the ends met and tangled with the collar's (pk_35). A worn start on the bare body needs `_clear_exact`.
+    - Hug (suit7 / suit8: the jacket collar rode up over the shirt collar's wing): `gap` is laid round the neck, 1.6
+      mm of radius a cm. Defaults now gap 0.03 (0.008 built on su_garrett / su_om_garrett, button 1 2.0 mm, stand 9-11 mm off the skin, but ga_suit's fine settle died: collar end 2.98x at the start, lapped ends; 0.03 builds there, pk_49) + COLLAR_SPREAD (18, 14, 65): start stand ~10 mm off the skin (the
+      buttoned stand's own number by nearest body vertex), centre-front points 80 mm, fall 6 mm wider than the
+      stand at the neck's side. `_spread_open_collar` sides by pattern half (lapping ends crossed). SIMS OF THESE
+      DEFAULTS: pk_44_om (su_om_garrett), pk_45_shirt (su_garrett), pk_46_gashirt (ga_suit): read their logs.
+    - `cloth_layers.tucked` + `cloth.worn_together` (in `garments()`, `look`, `cloth_reference.render_front`):
+      the under garment's finished surface, covered cloth laid 4 mm under the outer's inner face. Covered = outer
+      cloth along the body's normal from the vertex (TUCK_SIDE 1 cm), or the vertex outside the outer face within
+      3 cm. Dead ends: "projects inside a triangle" (fails outside convex sleeves), "not near an open edge" (pulled
+      the chest in the V under the lapels). Proof pk_43 / pk_47 (`_front_tex`, `_whole_tex`) vs om_13_jacket_front_tex.
+      Left: shards at the jacket's armpits (its own open pit seams show the shirt), layer crossings 3823 -> ~400.
+      `cloth.button_color`, kind closure `size` / `button` (jacket 20 mm, tone 0.55). Not done: band edge lines in
+      the reference figure; the tucked surface in `cloth_layers.tells` (still the pressed one).
+    - HANDOVER (placket, 2026-10-09, context full; branch worktree-agent-ab49e1b1d94e336bb, NOT mergeable as asked).
+      The shirt's fine-settle START is fragile round the open neck and no collar gap builds on all three models:
+      gap 0.008: su_garrett fits (pk_45: button 1 2.0 mm, 0 crossings), su_om_garrett builds (pk_44_om: 2.0 mm, stand
+      9-11 mm off the skin, fall to |x| 83 / 88), ga_suit FAILS (pk_46: fine start collar 2.98x at pattern x -0.2,
+      ccd failed). gap 0.03 (committed default): su_om_garrett builds (pk_51_om: button 1 2.7 mm, stand 10.6 / 12.6-13
+      mm off the skin, fall to |x| 86 / 93, 17-18 mm over the shoulder, collar 5% crumpled = verdict CORRUPT, the
+      wearer's-left collar point curls), ga_suit builds as a garment override (pk_49: 2.2 mm, 0 crossings; the KB run
+      pk_53 died on the GPU box's disk, not on the shirt), su_garrett REFUSED by fine_start_check (pk_52: front.L
+      11.5x at pattern [0.014, -0.12]: the over front's band just under the roll's end). The coarse sims are fine
+      in every case: the fault is in `_press_plan` / `_constructed` (the made collar "made_reshaped" 9.8 mm: the
+      fine placement's spread differs from the coarse one's and the collar takes the coarse shape by transfer; then
+      `_clear_of_held` / `_untangle` round the roll's end). Next: make the spread identical at both mesh sizes
+      (compute hinge, centre, radius once from the pattern + neck, not from each mesh's stand vertices), then look at
+      the 11.5x triangle with pp_dbg.py (trousers2's scratch). Tools: jb3.py <job dir> (start edges vs flat by piece).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
