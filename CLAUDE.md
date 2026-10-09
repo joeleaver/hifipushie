@@ -5220,6 +5220,35 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
     interior tree (`environment.setting` forest, spacing 3.5: bare stem, live crown the top 31%) has ~170 boughs.
   - Variants = separate plants (seed / age / a small `forces` lean on order 0), stand forms = `environment.setting`
     forest / edge + spacing. An export takes 27-75 min on the loaded machine (the impostor's 64 views x 4 passes).
+  - Limb layer (`leaves.card.limbs`: true = every first-order limb, a number = masses of that size in m, a pine's
+    plates; `veg_bough.limbs_on / limb_plan / extra`): under the fine bough cards every whole limb on its own crossed
+    pair in the same atlas (tiles `size_limbs` 512), tinted dark toward the trunk (`veg_export.CORE_DARK`), its top card a
+    ladder of `LIMB_STRIPS` rungs at the heights the limb's foliage has (flat, a sweeping limb was a shelf). It is what
+    closes a spruce seen from 30 m; from below at 5 m the limb cards are blurred green blobs (few texels): open.
+  - Round 2 (2026-10-09, "realtrees2"; sheets `veg_renders/rt2_spruce.png`, `rt2_pine.png`, `rt2_bark.png`,
+    `rt2_stand_godot.png`, `rt2_interior.png`; scratch adds q6.sh <tag> (quick LOD exports without impostor of the four
+    main plants + gview frames + a stand: ~25 min), q7.sh (the six folders), tg.py, deadcnt.py, tile.py, ab.sh).
+    - Bark by the photos (workspace/veg_refs/bark/, barksheet.py): spruce "scales" as steps of a noise with drawn rims
+      were worms / camouflage (isolines close into loops, as terrain found); now SHINGLES: Voronoi cells of every size
+      (`_cells(loose=)`: that share of the seeds anywhere; `local=` = each pixel's offset from its seed), each flake
+      rising toward its lower edge, no grout, a thin shadow only under a proud edge, ragged edges by a fine warp.
+      Pine "plates": the jittered grid of tall cells with smooth warps was a woven basket; loose seeds + ragged warp +
+      less columnar blocks read as furrowed plated bark. Pine bark colours browner (it rendered purple).
+      `test_bark_maps_tile` now averages the seam over six seeds (one tile can have a plate's edge on the seam by chance).
+    - Spray: `twig.curl` (side shoots sweep forward: straight ones at one angle were a fern frond / fishbone) and
+      `twig.tips` (lighter toward every shoot's end); spruce card: curl 0.6, tips 0.45, sub_shoots 1, 7 side shoots.
+    - Spruce limbs turn up (tropism[1] 0.45, sag 0.6): the open tree's skirt stands 0.6 m clear; the interior / open
+      crown-base gap shrank to 0.195 of the height (test margin 0.2 -> 0.15).
+    - The gv/new_* "before" frames of 02:20-02:40 predate commit 1a4d43f: the interior spruce's dense dead haze in
+      them was already gone in what q5 delivered (dead bough cards "keep their size"): compare against a fresh export
+      of HEAD, not old frames.
+    - BLUNT: spruce = a plausible dark conifer, too broad and lumpy against spruce_a's narrow tiered spire, foliage
+      still reads cedar / cypress at 5 m; pine = a young clumpy pine with blue-dark blobs, nothing like an old
+      Caledonian pine; bark is the clear win (both read as their bark in a stand). Interior spruce: bare poles with
+      straight stub spikes and a few black tangles: the dead haze is too thin and its cards shade black from behind
+      in Godot's standard material.
+    - NOT DONE: stand debris (dead haze density / tone, floor brash), the 5 m view from under limb cards, spruce
+      silhouette (narrower, tiers), oak and variants (no real_oak folder exists), impostor re-judged by eye.
 
 ## One human mesh (2026-10-06, "onemesh" agent, branch worktree-agent-aac6bb85823bc8809; renders `workspace/human_renders/om_*`)
 
