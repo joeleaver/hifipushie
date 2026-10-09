@@ -473,3 +473,11 @@ model".
     MEMBRANE (harmonic fill, outermost ring held) instead of bands faded by height. ts_n seal 1: contact 0.00 mm, integrity
     ok, no lip warning. Test: four wide-spread identities (seeds 1, 2, 5, 8, spread 1.2, both sexes) unbroken and closed.
     One near-degenerate GNM commissure quad (< 0.15 mm2) turns with ANY change (mouth_corner too): left out of the count.
+  - SEAM HOLES (Tess ts_w / ts_x: a row of pits and fragments along a sealed mouth's seam, in clay too). The field, not
+    the quads: touching lips closed a pocket of "outside" between the inner rolls behind the seam (seam.py: 12 of 15
+    places outside again 1-6 mm behind the contact). base._sealed_field (one mesh, lip_seal >= 0.5, no mouth_gap):
+    for the FIELD only the rolls from the open loop to the contact ring are left out and the two contact rows overlap
+    by 2 x 0.4 mm (template / export / face-shape quads keep the rolls). ts_w, ts_x: 0 of 15. Test: three wide-spread
+    identities, the field inside from the lips' front to 6 mm behind the contact every 0.25 mm. onemesh.VERSION 11.
+  - EEVEE strands desaturated (blender_strands.EEVEE_SAT 0.35, look.eevee_sat): looks are asked warm for Cycles' hair
+    BSDF; EEVEE drew them as given (dressed hair orange-blond, grey locks tan).
