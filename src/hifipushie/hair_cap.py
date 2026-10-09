@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-VERSION = 5
+VERSION = 6
 WIDTH = 0.00055  # m: a strand's drawn width on the chart (a real hair is 0.08 mm: one screen pixel at bust distance
 # is ~0.6 mm, and the chart is read 1-2 mips down there; thinner lines average to a haze and sparkle when minified)
 LIFT = 0.5  # the cap stands at this share of the hair's height over the scalp
@@ -113,12 +113,20 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     ok = (hh < 0.04) & (hh > -0.006) & (el < 89.3) & (el > e0) & (d_in > -0.004)
     last = np.zeros(len(pts), bool)
     last[np.cumsum(cnt) - 1] = True
+    # the hairline is a thinning of HAIRS, not an edge: strands rooted near the line are drawn fewer (a share by how
+    # far inside their root is) and finer, so skin shows between them over ~1.5 x soft (drawn in full, 80k scalp
+    # hairs half a millimetre wide closed the cap right up to the line: a swim cap's edge)
+    soft_ = max(float(S.get("soft", 0.008)), 1e-4)
+    first_ = np.r_[0, np.cumsum(cnt)[:-1]]
+    root_in = d_in[first_]
+    keep = ((np.asarray(D["rand"], float) * 13.7 + 0.11) % 1.0) < (0.12 + 0.88 * _ss(root_in / (1.8 * soft_)))
+    ok &= keep[sid]
     i0 = np.nonzero(ok & ~last & np.r_[ok[1:], False])[0]
     i1 = i0 + 1
     # metres per (supersampled) texel: along u it shrinks with the elevation's cosine, along v it is the same everywhere
     m_u = 2 * np.pi * R[i0] * np.maximum(np.cos(np.radians(el[i0])), 0.03) / W2
     m_v = float(np.radians(90.0 - e0) * np.median(R)) / H2
-    thin = 0.45 + 0.55 * _ss(d_in[i0] / max(float(S.get("soft", 0.008)), 1e-4))  # single fine hairs at the line
+    thin = 0.5 + 0.5 * _ss(d_in[i0] / (1.5 * soft_))  # single fine hairs at the line
     ru = np.clip(0.5 * wd * thin / m_u, 0.6, 30.0)
     rv = np.clip(0.5 * wd * thin / m_v, 0.6, 30.0)
     zbuf = np.full((H2, W2), -1.0, np.float32)
@@ -162,7 +170,7 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     # depth: how far the top strand stands over the hair around it (the shade between hairs and clumps)
     rel = hs - blur(hgt, 0.0022)
     occ = hs - blur(hgt, 0.006)
-    dep = np.clip(0.66 + rel / 0.0028 + 0.5 * np.minimum(occ, 0.0) / 0.004, 0.08, 1.0)
+    dep = np.clip(0.66 + rel / 0.002 + 0.5 * np.minimum(occ, 0.0) / 0.004, 0.08, 1.0)
     su = np.gradient(hs, axis=1) / mur
     sv = -np.gradient(hs, axis=0) / mvr  # (up the image = up the head)
     su, sv = np.clip(RELIEF * su, -SLOPE, SLOPE), np.clip(RELIEF * sv, -SLOPE, SLOPE)
@@ -181,7 +189,7 @@ def chart(sc, g: dict, line, S: dict, D: dict, locks: list, e0: float, size: int
     din = inside(sc, line, AA, EE)
     soft = max(float(S.get("soft", 0.008)), 0.001)
     dens = blur(alpha, 0.003)
-    base = _ss((din - 0.6 * soft) / (1.2 * soft)) * _ss((dens - 0.3) / 0.35)  # (the line itself is single strands)
+    base = _ss((din - 1.0 * soft) / (1.5 * soft)) * _ss((dens - 0.3) / 0.35)  # (the line itself is single strands)
     pw = float(g["parting"].get("width", 0.012))
     if str(g["parting"].get("side", "left")) != "none":
         base = base * (1 - 0.8 * np.clip(_part(sc, g, AA, EE, 0.25 * pw), 0, 1))
