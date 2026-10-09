@@ -127,7 +127,7 @@ def tells_text(t: dict) -> str:
 
 
 TUCK_GAP = 0.004  # m under the outer garment's inner face a covered vertex of the under garment is laid
-TUCK_EDGE = 0.003  # m: a nearest point this close to an open edge of the outer garment = not covered
+TUCK_SIDE = 0.010  # m: outer cloth whose nearest point lies further than this to the SIDE of a vertex doesn't cover it
 TUCK_REACH = 0.08  # m: outer cloth further than this from a vertex doesn't cover it
 TUCK_FEATHER = 3  # rings of uncovered cloth that follow the covered cloth beside them (halving a ring)
 
@@ -139,9 +139,10 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
     stand closer than `gap` under its inner face or outside it (a shirt simulated alone blouses through a jacket's
     sleeves), are laid `gap` under that face, straight along the outer cloth's normal at the nearest point: under
     the outer garment the under one takes ITS shape, so nothing crumples. Covered = the nearest point of the outer
-    garment's surface is not on one of its OPEN edges (neckline, front edges, hems, sleeve ends: past an opening the
-    nearest point lies on its edge and that cloth shows; a sewn seam's edge is not open. "Projects inside a triangle"
-    is not the test: outside a convex surface, a sleeve, the nearest point is always on an edge).
+    garment lies along the way out of the body from the vertex (or back in, where it pokes through), within
+    TUCK_SIDE to the side: beside an opening the nearest outer cloth is off to the side and that cloth shows.
+    (Tried: "projects inside a triangle": outside a convex sleeve the nearest point is always on an edge, shards
+    stayed at sleeves and armholes; "not on an open edge": the chest in the V was pulled under the lapels, crumpled.)
     Drawn pressed everywhere instead (the collider the outer garment was simulated over: cloth.pressed), the shirt
     front in a jacket's V was a crumpled surface with no band and no buttons (the user: "where the placket?").
     `rigid` (per vertex group id, -1 none: made pieces, closure bands): a group moves by ONE vector (the mean of its
@@ -155,19 +156,10 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
     Fu = np.asarray(Mu["F"])
     E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
     tree = cKDTree(body.V) if len(getattr(body, "V", [])) else None
-    # the outer garment's open edges: edges of one triangle whose ends no other vertex shares a place with (a closed
-    # seam's two sides do)
-    Eo = np.sort(np.r_[Fo[:, [0, 1]], Fo[:, [1, 2]], Fo[:, [2, 0]]], 1)
-    Eu_, cnt = np.unique(Eo, axis=0, return_counts=True)
-    bd = Eu_[cnt == 1]
-    to = cKDTree(Vo)
-    alone = np.array([len(x) <= 1 for x in to.query_ball_point(Vo[np.unique(bd)], 0.0008)])
-    lone = np.zeros(len(Vo), bool)
-    lone[np.unique(bd)[alone]] = True
-    fe = bd[lone[bd].any(1)]
-    ws = np.linspace(0, 1, 7)
-    free_pts = (Vo[fe[:, 0]][:, None] * (1 - ws)[None, :, None] + Vo[fe[:, 1]][:, None] * ws[None, :, None]).reshape(-1, 3)
-    tfree = cKDTree(free_pts) if len(free_pts) else None
+    bn = None
+    if tree is not None:
+        vn_, _t = body.normals()
+        bn = vn_[tree.query(Vu)[1]]  # out of the body at each vertex
     for _ in range(3):
         Q, N, ins = _closest_on(V, Vo, Fo, k=16)
         if tree is not None:  # out = away from the body (a turned lapel's own normal faces in)
@@ -176,9 +168,17 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
         d = V - Q
         s = (d * N).sum(1)  # > 0: outside the outer garment
         near = np.linalg.norm(d, axis=1) < TUCK_REACH
-        cov = near & ((tfree.query(Q)[0] > TUCK_EDGE) if tfree is not None else True)
+        # over it: the nearest outer cloth lies along the way out of the body from the vertex (or back in, where the
+        # vertex pokes through), not off to its side (beside an opening the nearest outer cloth is the lapel's edge)
+        if bn is not None:
+            side = np.linalg.norm(d - (d * bn).sum(1)[:, None] * bn, axis=1)
+            # (or it stands OUTSIDE the outer cloth's face, within 3 cm: in an armpit the body's normals point every
+            # way and bunched shirt came through the jacket's armhole as shards)
+            cov = near & ((side < TUCK_SIDE) | (ins & (s > 0) & (np.linalg.norm(d, axis=1) < 0.03)))
+        else:
+            cov = near & ins
         need = np.where(cov, np.maximum(s + gap, 0.0), 0.0)
-        covered |= cov & (s > -3 * gap)
+        covered |= cov
         if need.max() < 2e-4:
             break
         D = -N * need[:, None]

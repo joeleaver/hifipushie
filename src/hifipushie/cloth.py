@@ -3924,7 +3924,7 @@ def _place_folds(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: bool) ->
     return X
 
 
-COLLAR_SPREAD = (12.0, 14.0, 75.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
+COLLAR_SPREAD = (18.0, 14.0, 65.0)  # deg: an open collar's front swung out from the neck, tipped down onto the
 # collarbones, from this far round from the nape (0) toward the front (180)
 
 

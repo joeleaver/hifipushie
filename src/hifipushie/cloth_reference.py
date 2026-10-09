@@ -1213,8 +1213,23 @@ def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
     W, H = int(w * scale), int(h * scale)
     rank = _layer_rank(c)
     layers = [(c.body.V, c.body.T, (198, 170, 150), 0)]
+    # full results: an under garment as it is worn under the outer one (its finished surface, covered cloth tucked
+    # under: cloth.worn_together) and every garment's buttons (the figure drew a shirt front with no buttons)
+    shown, buttons = {}, {}
+    if c.full:
+        from . import cloth
+        try:
+            for g, gd, r in cloth.worn_together([(g, c.g(g), c.full[g]) for g in c.full]):
+                shown[g] = np.asarray(r["V"], float)
+                if r.get("buttons"):
+                    buttons[g] = (r["buttons"]["V"], r["buttons"]["F"], cloth.button_color(gd, r["buttons"]))
+        except Exception:  # (a light / partial result: drawn as it is)
+            shown, buttons = {}, {}
     for g, R in c.results.items():
-        layers.append((R["V"], R["F"], _faces_colour(c.g(g).get("color")), rank.get(g, 1)))
+        V_ = shown[g] if g in shown and len(shown[g]) == len(R["V"]) else R["V"]
+        layers.append((V_, R["F"], _faces_colour(c.g(g).get("color")), rank.get(g, 1)))
+        if g in buttons:
+            layers.append((buttons[g][0], buttons[g][1], _faces_colour(buttons[g][2]), rank.get(g, 1) + 0.3))
     Ps, Fs, Ss, Cs = [], [], [], []
     n0 = 0
     Ld = np.array([0.35, -0.8, 0.5]) / np.linalg.norm([0.35, -0.8, 0.5])
