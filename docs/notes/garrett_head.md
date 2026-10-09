@@ -244,3 +244,11 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
   (shadow 0: everything 3-5 L brighter, lips no redder), and the landmark ring of the lip_upper zone is valid (lipslm.py:
   inner 1 mm, peaks 7 mm above the corners). Next: why the lips_upper `_pre` layer doesn't show (its mask on this
   mesh, or a later layer: g4's over_lip_seam / lip_border).
+- (likeloop, the "gash" on the upper lids, Joe) lidsec.py: the one mesh's lid has ~2 mm between vertex rows (32 points
+  in a 3.6 mm wide section from the eye to the brow); e18's crease (2.5 mm back over a 1.2 mm half width, +y) moved
+  ONE vertex row: a V notch the subdivision turned into a slot, up near the brow (crease_at 0.45 of lid -> brow).
+  No quad turned over (it was a trench, not a fold-over). Rewritten as a soft S at `show` (4 mm) along the margin's
+  arch (platform top back, skin above forward, half width 1.8 mm, depth capped 0.4 x width, exterior skin only,
+  inside the eye's width): test_hood_crease_is_a_soft_fold_edge. e19 rendered (ll_e19; zoom_e19.jpg in scratch),
+  NOT judged. Then Joe stopped this line: "we shouldn't just randomly sculpt": eye-area control belongs in the one
+  mesh's sliders / topology. No further edits to Garrett until the plan is agreed (report to the coordinator).
