@@ -4341,12 +4341,17 @@ regresses, bisect by building one spec at each commit and diffing heights.
     tests/test_tiles.py::test_dam_stays_in_the_heightmap. Every dammed lake's ground changes.
     The pond block (tiles 8-10 x 8-10) alone fails LOD 2 shards 1.12% (5 faces, none at the pond; 3 cliff tiles, a
     tiny visible area): not compared with main.
-    QUEUED (pushieworld note 107): a dead-flat seabed shelf at -8.4 m south of the island's downs_beach with a
-    ruler-straight east side (terrain_sea's beach offshore profile); wanted: slope on to the sea's depth, fade along
-    the shore, a report check for flat plateaus / straight steps offshore, before / after depth map.
-    Left: a few faint short green ticks at the crossing at 5-10 m (west view), on the cliff mesh; the crossing's
-    interleaving itself is not fixed (a clean crossing would need the heightmap to sit on one side of the front).
-    lod2 map seam normal p95 2.3 -> 12.9 deg on the rim block (limit 50): the sunk strip's maps are the ground's now.
+    Note 107 (a dead-flat seabed shelf at -8.4 m off the island's downs_beach, ruler-straight sides; scratch
+    depth.py <terrain> <png> x0 x1 y0 y1 = a depth map + the measure, run_orig.sh for the before; picture
+    terrain3d_renders/t3_seabed_before_after.png): `terrain_sea`'s beach profile was level - 0.6 + max(sd, -3 widths)
+    x 2.6 / width, i.e. held at -8.4 m from 3 beach widths out, and the beach's share is carried offshore from each
+    cell's NEAREST coast point, so the shelf ran to the frame's edge and ended in one step along the lines where the
+    nearest coast point stops being beach. Now the profile runs on at its own grade until it meets the sea's floor (a
+    soft max) and the share fades between 3 and 8 widths out. `terrain_sea.seabed(T)` (in the report: "sea floor
+    (measured)"; SHELF): flat shelves over 0.4 ha above the sea's depth, straight steps over 60 m offshore, each a
+    WARNING. Island before: 8.8 ha at -8.4 m around [377, 123] + 0.6 ha, steps 469 m and 133 m, 39% of the box's sea
+    cells at -8.4; after: 0 / 0 / 0.2%. Every beach's seabed changes. tests/test_tiles.py
+    ::test_beach_shelves_on_to_the_sea_floor.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +
