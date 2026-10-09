@@ -1544,6 +1544,9 @@ LEVERS["cupid_bow"] = ("sliders.lip_bow", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["lip_projection"] = ("sliders.lip_upper_roll", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["prof_upper_lip"] = ("sliders.lip_upper_roll", 0.25, (-1.0, 1.0), 0.0)
 LEVERS["prof_lower_lip"] = ("sliders.lip_lower_roll", 0.25, (-1.0, 1.0), 0.0)
+# the nose's dorsal widths (shading items: the side wall off the dorsal line against the dorsum)
+LEVERS["radix_width"] = ("sliders.nose_radix_width", 0.25, (-1.0, 1.0), 0.0)
+LEVERS["dorsum_width"] = ("sliders.nose_dorsum_width", 0.25, (-1.0, 1.0), 0.0)
 LEVER_VIEWS = {"shape": ("front",)}   # shading is scored on the front photo only (a painting's light isn't one light)
 
 
