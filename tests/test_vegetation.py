@@ -983,7 +983,7 @@ def test_bough_card_form_by_budget():
     T = v.grow({"species": "norway_spruce", "age": 30})
     m = len(veg_bough.plan(T, veg_bough.most(T))["roots"])
     n, form = veg_bough.fit(T, m * veg_bough.tris(1))
-    assert form == 1 and n == int(veg_bough.FULL * m), (n, form, m)
+    assert form == 1 and n == max(int(veg_bough.FULL * m), min(m, veg_bough.FULL_LEAST)), (n, form, m)
     n1, form1 = veg_bough.fit(T, m * veg_bough.tris(1) // 4)
     assert form1 == 1 and n1 < n and veg_bough.base_of(T, n1) == veg_bough.base_of(T, n), (n1, form1)
     n2, form2 = veg_bough.fit(T, int(0.05 * m) * veg_bough.tris(0))
