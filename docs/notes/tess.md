@@ -30,3 +30,17 @@ addendum: conditioned on v1's face, a front smile, the hair as worn).
   fitted cameras, default procedural skin).
 - After merging facesliders (main 86b110a): base.head.sliders canthal_tilt 0.9, eye_crease_depth 0.8, eye_platform 0.4, eye_crease_height 0.3, brow_lateral -0.3 (p/p8.json) -> ts_f; like-with-like opening / brows unchanged (within 0.4 mm). At sheet resolution the change is subtle. CANDIDATE ts_f. Sheet out/s1_tess_body_head.png.
 - Missing / male-leaning (reported): humans.face's default open-lid expression + pose (staring); fit_human body freedom lacks hips / waist / shoulders; the A-pose arm angle can't match the picture (45 deg vs ~25); the default procedural skin (tone 2) renders orange-tan and the painted brows thin and arched (stage 2).
+
+### Stage 2, face first, on S0urc3's approved head set (front, true left profile, 3/4 = director's pick)
+- fit3.py: MAP on front + 3/4 (detector) + profile (8 clicked points: nose tip / base / bridge, lips, chin, outer
+  canthus, mouth corner): 1.01 / 1.38 / 3.24 mm. addpts.py gives image-only views a few lm points (likeness() boxes
+  the face from v["points"] and crashed without them). facesheet.py = reference | ours | 50/50 per view + close-up.
+- Rounds (like with like tlid.py + likeness checklist): eyes 0.95, held macros brow_height 1.8 / eye_width -0.5 /
+  eye_height -0.6 / lip_fullness -0.4 (ts_j); canthal_tilt 0.9 was WRONG (checklist: 7.2 deg vs the photo's 2.2):
+  -0.9 -> in tolerance (ts_l); fit_human chin_height +2.5, philtrum +1.5, lip_height -1.5, nose_length +1.5.
+- Skin: tone fitzpatrick 1, blood 0.3, undertone -0.45 (G/R and B/R stay ~0.80 / 0.68 vs the photo's 0.86 / 0.72
+  whatever the undertone); brows thickness 0.9, density 0.8, soft 0.6, #5a4434, arch 0.2; iris #737862, size 0.0128.
+- Bust: base.body.bust 0.7 -> 0.58: 34 -> 21 mm ahead of the breast bone (0.5 = 16, 0.3 = 11).
+- STILL OFF (ts_l): face 5 mm narrow at the nose base / mouth / cheekbones (checklist, fit_outline not run); jaw angle
+  3.5 mm high; lower lip 1.2 mm tall and the lips PART (a slit at rest: no pose or slider closes it); irises ringed
+  by sclera and glassy; nose tip broad / round.
