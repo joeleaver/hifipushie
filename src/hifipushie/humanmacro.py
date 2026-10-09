@@ -280,6 +280,18 @@ def apply(c, macros: dict, held: bool = False) -> np.ndarray:
     return c
 
 
+def apply_coupled(c, macros: dict, hold=(), within: bool = True) -> np.ndarray:
+    """The macros in the face sliders' framework (faceatlas.direction): each macro moved by the given sigmas as ONE
+    conditioning (the macros asked hold each other), the attributes named in `hold` kept, everything else as the
+    population couples it, within the head's sex by default. The free mode (`apply(held=False)`) is this for one
+    macro on the pooled prior; `held=True` is this with every other macro held."""
+    from . import faceatlas
+    c = np.zeros(K) if c is None else np.asarray(c, float)[:K].copy()
+    t = faceatlas.table()
+    change = {k: float(z) * float(t["sd"][t["index"][k]]) for k, z in macros.items()}
+    return c + faceatlas.direction(change, hold, within=within)
+
+
 def solve(c, want: dict, hold: bool = True, tol: float = 0.05, rounds: int = 6) -> tuple:
     """(c', report): the least change of the components (in sigma) that brings each asked macro TO its value (in
     sigmas), every macro not asked for held softly where it is (hold). The measures are re-read each round (they are
