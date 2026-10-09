@@ -191,6 +191,23 @@ def test_lip_seal_holds_across_identities():
         assert gp.max() < 0.0005, (seed, gp.max())
 
 
+def test_sealed_mouth_has_no_pocket_or_slit_in_the_field():
+    """The built field (base.surface: what every mesher meshes) of a sealed mouth: inside all the way from the lips'
+    front to 6 mm behind the contact, at 15 places across the width, every 0.25 mm (finer than the dressed ~1 mm
+    meshing). Before base._sealed_field the touching lips closed a pocket of 'outside' behind the seam (Tess: a row of
+    pits and fragments along the seam, in clay too)."""
+    if not _gnm_ok():
+        return
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spikes", "facesliders"))
+    import seam
+    for seed, sex in ((1, 0.0), (5, 0.0), (8, 1.0)):
+        sp = humans.spec(age=35, sex=sex, seed=seed, skin=False, source="human")
+        sp["base"]["head"]["spread"] = 1.2
+        sp["base"]["head"].pop("mouth_gap", None)
+        sp["base"]["head"]["lip_seal"] = 1.0
+        assert seam.check(sp, log=lambda *a: None) == 0, seed
+
+
 def test_fit_window_follows_sex():
     lo, hi = faceslide.fit_window("eye_crease_height", 0.0)
     assert hi == 1.5 and lo > -0.5  # a woman's crease may reach its limit
