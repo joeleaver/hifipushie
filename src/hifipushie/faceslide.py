@@ -117,8 +117,8 @@ ONE_SIDED = {"epicanthal", "age_nasolabial", "age_prejowl", "age_cheek_flat", "a
 # ~2 mm deep (the posterior edge on the ball: the waterline; the anterior edge: the lash line, where lashes.py roots).
 # One-sided: thinner than the template would pull the lid's front into the ball.
 UNITS.update({
-    "lid_margin_upper": (0.6, "the upper lid's margin thicker: its lash edge forward of the waterline (a squared rim)"),
-    "lid_margin_lower": (0.5, "the lower lid's margin thicker: a visible rim and waterline over the ball"),
+    "lid_margin_upper": (0.9, "the upper lid's margin thicker: its lash edge forward of the waterline (a squared rim)"),
+    "lid_margin_lower": (0.8, "the lower lid's margin thicker: a visible rim and waterline over the ball"),
 })
 MARGIN_SLIDERS = ("lid_margin_upper", "lid_margin_lower")
 ONE_SIDED |= set(MARGIN_SLIDERS)
@@ -144,7 +144,7 @@ def _margin_fields() -> dict:
     u_r = (near_rim - c_in) @ ex / w  # the nearest rim vertex's place along the corners' line
     y_line = c_in[1] + np.clip(u_r, 0, 1) * (c_out[1] - c_in[1])
     upper = near_rim[:, 1] > y_line
-    prof = _ss(d / (1.4 * mm)) * _ss((5.0 * mm - d) / (3.0 * mm))
+    prof = _ss(d / (0.7 * mm)) * _ss((5.0 * mm - d) / (3.0 * mm))
     # faded toward both canthi (there the upper / lower split by nearest rim vertex is ambiguous: a step folded quads)
     ends = _ss((u_r - 0.04) / 0.25) * _ss((0.96 - u_r) / 0.25)
     for c in (c_in, c_out):

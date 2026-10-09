@@ -9,7 +9,7 @@ def test_margin_fields():
     T = fs.template()
     F = fs.fields()
     X, rim = T["X"], T["rim"]
-    for k, unit in (("lid_margin_upper", 0.6e-3), ("lid_margin_lower", 0.5e-3)):
+    for k, unit in (("lid_margin_upper", 0.9e-3), ("lid_margin_lower", 0.8e-3)):
         dR, dL = F[k]
         mag = np.linalg.norm(dL, axis=1)
         assert abs(mag.max() - unit) < 0.05e-3, (k, mag.max())
@@ -36,7 +36,7 @@ def test_margin_values():
     assert fs.values({"lid_margin_upper": -1})["lid_margin_upper"] == (0.0, 0.0)  # one-sided
     assert fs.delta({}) is None and fs.delta({"lid_margin_lower": 0}) is None
     D = fs.delta({"lid_margin_upper": 1.0, "lid_margin_lower": [0.0, 1.0]})
-    assert D is not None and D[:, 2].max() > 0.55e-3
+    assert D is not None and D[:, 2].max() > 0.85e-3
 
 
 if __name__ == "__main__":
