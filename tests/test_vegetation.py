@@ -1023,7 +1023,7 @@ def test_bough_card_form_by_budget():
     fine_ = twL["card"][~core]
     assert core.sum() == twL["limbs"] > 5 and (twL["card"][core] >= atL["limb_first"]).all() and ((fine_ < atL["limb_first"]) | (fine_ == atL["apex_card"])).all()
     # the leader's tip draws its own picture (not a long limb's shrunk: a lollipop on the spire), the top limbs one of theirs
-    lead_ = L["order"][twL["node"]] == 0
+    lead_ = (L["order"][twL["node"]] == 0) & ~core
     assert atL["apex_card"] is not None and lead_.any() and (twL["card"][lead_] == atL["apex_card"]).all()
     assert min(atL["limb_extent"]) < 0.5 * float(np.median(atL["limb_extent"])), atL["limb_extent"]
     M = veg_export.foliage_mesh(L, atL, tw=twL)
