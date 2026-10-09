@@ -2927,6 +2927,30 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
       (SEAT_PULL stays 12 mm). OPEN: button 1 (a made top: carry the fronts' corners with the stand, or seat the
       fastening before the fine settle), a slit of skin beside the band under button 1, the V is shallow (the
       concept's opens ~10 cm), collar judged only on the shirt alone (the jacket over it is suit6's re-run).
+  - Round 3 (2026-10-08/09, same agent; sims pk_31..pk_46; scratch adds plsec.sh <tag> <gap> <spread> (start: centre-
+    front gap + stand sections), sec.py <npz> [key] (centre back / neck's side: skin | stand | fall in mm), thr.py
+    <tag> [V|Vsim|X0] (throat close-up, pieces coloured), jb2.py <job dir> (exact start distance cloth -> collider),
+    shw7.py (run through suit7's run.sh: its cached shirt + a saved jacket surface drawn by my rule)).
+    - Button 1 (19 mm open) was GEOMETRY, not the solver: the made stand's centre-front points (button to
+      buttonhole) started 167 mm apart (gap 0.10 + spread 25: the swing adds ~4 mm a degree), and a front's neck
+      corner lies 31 mm from its roll line, so the corners can part by ~5.3 cm x (1 - cos roll) at most. Fix =
+      consistent numbers + `kinds.shirt.worn_top` (the fronts' tops start on the body, neck seam pinned to the
+      stand: start gap 95 -> 2 mm; this is fix (a): the fronts' corners start AT the stand; no made flap needed).
+      pk_36 (gap 0.05, spread 12/14/75): button 1 3.0 mm, 0 crossings, V open to button 1, no skin slit. Gap 0.02:
+      the ends met and tangled with the collar's (pk_35). A worn start on the bare body needs `_clear_exact`.
+    - Hug (suit7 / suit8: the jacket collar rode up over the shirt collar's wing): `gap` is laid round the neck, 1.6
+      mm of radius a cm. Defaults now gap 0.008 + COLLAR_SPREAD (18, 14, 65): start stand ~10 mm off the skin (the
+      buttoned stand's own number by nearest body vertex), centre-front points 80 mm, fall 6 mm wider than the
+      stand at the neck's side. `_spread_open_collar` sides by pattern half (lapping ends crossed). SIMS OF THESE
+      DEFAULTS: pk_44_om (su_om_garrett), pk_45_shirt (su_garrett), pk_46_gashirt (ga_suit): read their logs.
+    - `cloth_layers.tucked` + `cloth.worn_together` (in `garments()`, `look`, `cloth_reference.render_front`):
+      the under garment's finished surface, covered cloth laid 4 mm under the outer's inner face. Covered = outer
+      cloth along the body's normal from the vertex (TUCK_SIDE 1 cm), or the vertex outside the outer face within
+      3 cm. Dead ends: "projects inside a triangle" (fails outside convex sleeves), "not near an open edge" (pulled
+      the chest in the V under the lapels). Proof pk_43 / pk_47 (`_front_tex`, `_whole_tex`) vs om_13_jacket_front_tex.
+      Left: shards at the jacket's armpits (its own open pit seams show the shirt), layer crossings 3823 -> ~400.
+      `cloth.button_color`, kind closure `size` / `button` (jacket 20 mm, tone 0.55). Not done: band edge lines in
+      the reference figure; the tucked surface in `cloth_layers.tells` (still the pressed one).
 - Garments from reference art (2026-10-08, "clothlist" agent, branch `worktree-agent-a32bca676fcdb7416`; the user: "a
   similar list for clothing features [as the face's likeness list]"; guide(topic="cloth_reference") =
   `cloth_reference_guide.md`: how tech designers (POM tables, HPS-based), tailors (proportion tells), costume
