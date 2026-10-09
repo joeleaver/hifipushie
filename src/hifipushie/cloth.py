@@ -3958,11 +3958,34 @@ def _spread_open_collar(B: dict, M: dict, body: "Body", X: np.ndarray, smooth: b
     phi = np.arctan2(Q @ side, Q @ back)
     R = float(np.median(np.linalg.norm(S - cen - np.outer((S - cen) @ d, d), axis=1)))
     f0 = math.radians(from_deg)
-    t = np.clip((np.abs(phi) - f0) / (np.pi - f0), 0, 1)
+    # which side of the neck a vertex belongs to: by its piece's own pattern half, not by where it lies (ends that
+    # lap past the centre front, a stand laid nearly closed, lay on the OTHER side and swung with it: the ends crossed
+    # further instead of parting, button to buttonhole 10 mm after an 18 deg spread)
+    sgn = np.sign(phi)
+    sgn[sgn == 0] = 1.0
+    aphi = np.abs(phi)
+    for nm in neck:
+        mp = pid[ids] == names.index(nm)
+        if not mp.any():
+            continue
+        ux = M["uv"][ids[mp], 0]
+        ux = ux - 0.5 * (ux.min() + ux.max())
+        ref = aphi[mp] < 2.0
+        cor = np.sign(float((ux[ref] * phi[mp][ref]).sum())) or 1.0
+        s_ = np.sign(ux) * cor
+        s_[s_ == 0] = 1.0
+        over_ = (s_ != sgn[mp]) & (aphi[mp] > 0.5 * np.pi)  # past the centre front
+        ap = aphi[mp]
+        ap[over_] = 2 * np.pi - ap[over_]
+        aphi[mp] = ap
+        sg_ = sgn[mp]
+        sg_[over_] = s_[over_]
+        sgn[mp] = sg_
+    t = np.clip((aphi - f0) / (np.pi - f0), 0, 1)
     t = t * t * (3 - 2 * t)
     out = np.zeros_like(Q)
     for sg in (-1.0, 1.0):
-        m = (np.sign(phi) == sg) | ((phi == 0) & (sg > 0))
+        m = sgn == sg
         if not m.any():
             continue
         H = R * (math.cos(f0) * back + sg * math.sin(f0) * side)  # the hinge up the neck's side
@@ -7924,7 +7947,7 @@ def write_maps(path_stem: Path, M: dict, uv: np.ndarray, side: float, g: dict, t
     C = rgb[None, None] * dm["cavity"][..., None]
     t = dm["thread"][..., None] * 0.8
     C = C * (1 - t) + thread[None, None] * t
-    button = np.array([int(((g.get("detail") or {}).get("button") or "#ebe6dc").lstrip("#")[i:i + 2], 16)
+    button = np.array([int(button_color(g, next((c for c in M.get("closures") or [] if c.get("kind") == "buttons"), None)).lstrip("#")[i:i + 2], 16)
                        for i in (0, 2, 4)], float)
     b = dm["button"][..., None]
     C = C * (1 - b) + button[None, None] * dm["cavity"][..., None] * b
@@ -7947,6 +7970,64 @@ def write_maps(path_stem: Path, M: dict, uv: np.ndarray, side: float, g: dict, t
 # ---------------------------------------------------------------- the model: scene, sync, pull, export
 
 
+def button_color(g: dict, bt: dict | None = None) -> str:
+    """A garment's button colour (sRGB hex), one path for looks, the scene, the maps and the export: the closure's
+    own `button.color`, else the garment's detail.button, else the closure's `button.tone` x the cloth's colour (a
+    kind's default: a jacket's buttons are its cloth darkened, garment_kb kinds.<k>.closure.button), else shirt
+    pearl. `bt`: a buttons mesh (closures.buttons_mesh) or a resolved closure."""
+    bt = bt or {}
+    b = bt.get("button") if isinstance(bt.get("button"), dict) else bt
+    if b.get("color"):
+        return b["color"]
+    if (g.get("detail") or {}).get("button"):
+        return g["detail"]["button"]
+    if b.get("tone") is not None:
+        h = g.get("color", "#8fb3d9").lstrip("#")
+        return "#" + "".join(f"{int(np.clip(int(h[i:i + 2], 16) * float(b['tone']), 0, 255)):02x}" for i in (0, 2, 4))
+    return "#ebe6dc"
+
+
+def worn_together(results: list) -> list:
+    """[(name, garment, result)] with every garment that another in the list is worn `over` shown as it is worn
+    UNDER it: its own finished surface (relief, bands, made pieces) with only the covered cloth laid under the outer
+    garment (cloth_layers.tucked), its buttons made again on that surface, those under the outer garment left out.
+    One rule for looks, the scene and the export (drawn as the pressed collider instead, a shirt's front in a jacket's
+    V had no placket, no buttons and ragged edges)."""
+    from . import cloth_layers
+    from . import closures as closuremod
+    out = list(results)
+    by_ = {gn: k for k, (gn, _, _) in enumerate(out)}
+    for gn, g, res in results:
+        ov = expanded(g).get("over") if isinstance(g, dict) else None
+        if ov not in by_:
+            continue
+        k = by_[ov]
+        ogn, og, ores = out[k]
+        M = ores["mesh"]
+        # what keeps its shape: each made piece, each closure band (a group moves by one vector)
+        rigid = np.full(len(ores["V"]), -1, np.int64)
+        for j, nm in enumerate(made_pieces(M, interfacing(ores["pieces"], M))):
+            if nm in M["names"]:
+                rigid[np.asarray(M["piece"]) == M["names"].index(nm)] = j
+        V, cov = cloth_layers.tucked(ores, res, rigid=rigid)
+        new = dict(ores, V=V, covered=cov)
+        if ores.get("buttons"):
+            bt = closuremod.buttons_mesh(V, M, ores["body"])
+            if bt is not None and len(bt.get("at", [])):
+                # a button the outer garment covers is not drawn (2 mm of button under 4 mm of air pokes through)
+                kv = ~cov[np.asarray(bt["at"], np.int64)]  # (per button vertex: the cloth vertex it sits on)
+                if not kv.any():
+                    bt = None
+                elif not kv.all():
+                    kf = kv[bt["F"]].all(1)
+                    remap = np.cumsum(kv) - 1
+                    bt = dict(bt, V=bt["V"][kv], F=remap[bt["F"][kf]], at=np.asarray(bt["at"])[kv],
+                              mark=np.asarray(bt["mark"])[kv])
+            new["buttons"] = bt
+        out[k] = (ogn, og, new)
+    return out
+
+
 def garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
     """Every garment of a model (spec["cloth"]: {name: garment}) settled on the model's body: (name, garment,
     result) for those whose sim is cached (dress runs them); simulate=True runs the missing ones here (export)."""
@@ -7959,7 +8040,7 @@ def garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
             continue
         log(f"cloth {gname}: {res['fit']['verdict']}")
         out.append((gname, g, res))
-    return out
+    return worn_together(out)
 
 
 def scene_job(name: str, spec: dict, log: list | None = None) -> list:
@@ -7986,7 +8067,7 @@ def scene_job(name: str, spec: dict, log: list | None = None) -> list:
         if res.get("buttons") is not None:  # the closures' buttons: their own small object beside the garment
             bp_ = store._dir(name) / f"cloth_{gname}_buttons.npz"
             np.savez(bp_, verts=res["buttons"]["V"].astype(np.float32), faces=res["buttons"]["F"].astype(np.int32))
-            e["buttons"] = {"npz": str(bp_), "color": res["buttons"].get("color") or (g.get("detail") or {}).get("button") or "#ebe6dc",
+            e["buttons"] = {"npz": str(bp_), "color": button_color(g, res["buttons"]),
                             "roughness": float(res["buttons"].get("roughness", 0.42))}
         entries.append(e)
     return entries
@@ -8193,17 +8274,9 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         src = res["body"]
     if not results:
         return None, "\n".join(texts)
-    # a garment worn under another shown together is drawn as it lies UNDER it (pressed: what that garment was
-    # simulated over); its own free-standing sim blouses through the outer one (Garrett's shirt sleeves showed through
-    # the jacket in white patches)
-    by_ = {gn: k for k, (gn, _, _) in enumerate(results)}
-    for gn, g, res in list(results):
-        ov = g.get("over")
-        if ov in by_ and res.get("under_V") is not None:
-            k = by_[ov]
-            ogn, og, ores = results[k]
-            if len(ores["V"]) == len(res["under_V"]):
-                results[k] = (ogn, og, dict(ores, V=np.asarray(res["under_V"], float)))
+    # a garment worn under another shown together is drawn as it is worn under it: its finished surface, the covered
+    # cloth laid under the outer garment (worn_together; its free-standing sim blouses through the outer one)
+    results = worn_together(results)
     # (the body from a garment that also rests on the model's worn parts, if any: shoes under trousers show then)
     bod = next((r_["body"] for _, _, r_ in results if getattr(r_["body"], "worn", None)), results[0][2]["body"])
     hung = [g for _, g, _ in results if isinstance(_state(g), dict) and "hang" in _state(g)]
@@ -8235,7 +8308,7 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         objs.append(o)
         if res.get("buttons"):
             objs.append({"name": f"buttons_{gn}", "V": res["buttons"]["V"], "F": res["buttons"]["F"],
-                         "color": res["buttons"].get("color") or (g.get("detail") or {}).get("button") or "#ebe6dc",
+                         "color": button_color(g, res["buttons"]),
                          "roughness": float(res["buttons"].get("roughness", 0.42))})
         from . import cloth_trims  # belts, loops: built on the finished surface (cloth_trims.py)
         for tm_ in cloth_trims.meshes(res, expanded(g)):

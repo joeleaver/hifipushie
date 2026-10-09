@@ -11,6 +11,8 @@ body's poses). Here: what is read off the two results afterwards.
   hugging the under one, crossings between the layers).
 - `hidden(under, outer)`: the under garment's faces nobody can see (covered by the outer one, further than `margin`
   from its openings): the export drops them (a shirt under a jacket becomes collar + front V + cuffs).
+- `tucked(under, outer)`: the under garment's finished surface with only its covered cloth laid under the outer
+  one's inner face: what every look, the scene and the export draw (cloth.worn_together).
 - `between_crossings(A, B)`: edges of one mesh through triangles of the other.
 """
 from __future__ import annotations
@@ -122,6 +124,80 @@ def tells_text(t: dict) -> str:
         else:
             L.append(f"  {'ok ' if v['ok'] else '!! '}{k}: {v['value']} (target {v['target'][0]}-{v['target'][1]})")
     return "\n".join(L)
+
+
+TUCK_GAP = 0.004  # m under the outer garment's inner face a covered vertex of the under garment is laid
+TUCK_EDGE = 0.003  # m: a nearest point this close to an open edge of the outer garment = not covered
+TUCK_REACH = 0.08  # m: outer cloth further than this from a vertex doesn't cover it
+TUCK_FEATHER = 3  # rings of uncovered cloth that follow the covered cloth beside them (halving a ring)
+
+
+def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | None = None) -> tuple:
+    """The under garment's FINISHED surface as it is worn with the outer one over it: (V, covered per vertex).
+    What shows of it (collar, the front in the jacket's V, cuffs) stays exactly as finished (relief, bands, made
+    pieces: the surface the buttons and maps were made for); only vertices the outer garment lies over, and that
+    stand closer than `gap` under its inner face or outside it (a shirt simulated alone blouses through a jacket's
+    sleeves), are laid `gap` under that face, straight along the outer cloth's normal at the nearest point: under
+    the outer garment the under one takes ITS shape, so nothing crumples. Covered = the nearest point of the outer
+    garment's surface is not on one of its OPEN edges (neckline, front edges, hems, sleeve ends: past an opening the
+    nearest point lies on its edge and that cloth shows; a sewn seam's edge is not open. "Projects inside a triangle"
+    is not the test: outside a convex surface, a sleeve, the nearest point is always on an edge).
+    Drawn pressed everywhere instead (the collider the outer garment was simulated over: cloth.pressed), the shirt
+    front in a jacket's V was a crumpled surface with no band and no buttons (the user: "where the placket?").
+    `rigid` (per vertex group id, -1 none: made pieces, closure bands): a group moves by ONE vector (the mean of its
+    members' moves), so a collar or a placket keeps its shape."""
+    from .closures import _closest_on
+    Vu, Mu = np.asarray(under["V"], float), under["mesh"]
+    Vo, Fo = np.asarray(outer["V"], float), np.asarray(outer["mesh"]["F"])
+    body = outer["body"]
+    V = Vu.copy()
+    covered = np.zeros(len(V), bool)
+    Fu = np.asarray(Mu["F"])
+    E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
+    tree = cKDTree(body.V) if len(getattr(body, "V", [])) else None
+    # the outer garment's open edges: edges of one triangle whose ends no other vertex shares a place with (a closed
+    # seam's two sides do)
+    Eo = np.sort(np.r_[Fo[:, [0, 1]], Fo[:, [1, 2]], Fo[:, [2, 0]]], 1)
+    Eu_, cnt = np.unique(Eo, axis=0, return_counts=True)
+    bd = Eu_[cnt == 1]
+    to = cKDTree(Vo)
+    alone = np.array([len(x) <= 1 for x in to.query_ball_point(Vo[np.unique(bd)], 0.0008)])
+    lone = np.zeros(len(Vo), bool)
+    lone[np.unique(bd)[alone]] = True
+    fe = bd[lone[bd].any(1)]
+    ws = np.linspace(0, 1, 7)
+    free_pts = (Vo[fe[:, 0]][:, None] * (1 - ws)[None, :, None] + Vo[fe[:, 1]][:, None] * ws[None, :, None]).reshape(-1, 3)
+    tfree = cKDTree(free_pts) if len(free_pts) else None
+    for _ in range(3):
+        Q, N, ins = _closest_on(V, Vo, Fo, k=16)
+        if tree is not None:  # out = away from the body (a turned lapel's own normal faces in)
+            out = Q - body.V[tree.query(Q)[1]]
+            N = np.where(((N * out).sum(1) < 0)[:, None], -N, N)
+        d = V - Q
+        s = (d * N).sum(1)  # > 0: outside the outer garment
+        near = np.linalg.norm(d, axis=1) < TUCK_REACH
+        cov = near & ((tfree.query(Q)[0] > TUCK_EDGE) if tfree is not None else True)
+        need = np.where(cov, np.maximum(s + gap, 0.0), 0.0)
+        covered |= cov & (s > -3 * gap)
+        if need.max() < 2e-4:
+            break
+        D = -N * need[:, None]
+        # the cloth beside covered cloth follows a little (no step at the outer garment's edge)
+        fixed = need > 0
+        for _r in range(TUCK_FEATHER):
+            acc, wt = np.zeros_like(D), np.zeros(len(V))
+            np.add.at(acc, E[:, 0], D[E[:, 1]])
+            np.add.at(wt, E[:, 0], 1.0)
+            np.add.at(acc, E[:, 1], D[E[:, 0]])
+            np.add.at(wt, E[:, 1], 1.0)
+            D = np.where(fixed[:, None], D, 0.5 * acc / np.maximum(wt, 1)[:, None])
+        if rigid is not None:
+            for gid in np.unique(rigid[rigid >= 0]):
+                m = rigid == gid
+                if fixed[m].any():
+                    D[m] = D[m][fixed[m]].mean(0) if fixed[m].mean() > 0.5 else 0.0
+        V = V + D
+    return V, covered
 
 
 def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06) -> np.ndarray:
