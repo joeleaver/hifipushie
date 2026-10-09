@@ -5654,6 +5654,19 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
     V, T = body.V, body.T
     if getattr(body, "worn", None):  # (garment key "collide": the model's own parts, as an under garment is)
         wv = dict(body.worn)
+        # (their sliver faces and the vertices those leave without a face go first: rows are joined to the poses
+        # below, and ZOZO's builder stops on a collider vertex with no face area: 12 at a shoe's toe, om_06 .. om_10)
+        Vw_, Fw_ = np.asarray(wv["V"], float), np.asarray(wv["F"], np.int64)
+        e1_, e2_ = Vw_[Fw_[:, 1]] - Vw_[Fw_[:, 0]], Vw_[Fw_[:, 2]] - Vw_[Fw_[:, 0]]
+        a2_ = np.linalg.norm(np.cross(e1_, e2_), axis=1)
+        lm_ = np.max([np.linalg.norm(e1_, axis=1), np.linalg.norm(e2_, axis=1), np.linalg.norm(e2_ - e1_, axis=1)], axis=0)
+        Fw_ = Fw_[(a2_ > 1e-9) & (a2_ > UNDER_SLIVER * lm_ ** 2)]
+        us_ = np.unique(Fw_)
+        if len(us_) < len(Vw_):
+            rm_ = np.full(len(Vw_), -1, np.int64)
+            rm_[us_] = np.arange(len(us_))
+            Vw_, Fw_ = Vw_[us_], rm_[Fw_]
+        wv["V"], wv["F"] = Vw_, Fw_
         body = Body({"V": V, "F": body._faces, "J": body.J})
         body._m = {"mm": {}, "at": {}}
         out_ = _collider(body, {"V": wv["V"], "F": wv["F"]}, False)
@@ -5837,6 +5850,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     push = dict(Bp.get("push") or {})
     poses_c = [body.straight_arms(frac=f)[0].V for f in (0.75, 0.5, 0.25)] + [body.V] if settle else []
     carry = _carry(Bp, Ms, Xs, body_p, poses_c, flaps=made_flaps(g, Ms)) if settle else None
+    if carry is not None and under is not None and under.get("res") is not None and Bp.get("open_lay"):
+        # a made collar sewn on open and turned down by its carried poses, over another garment's collar: its pins
+        # pass through the collider (the runner's hugIdx pins). Prescribed onto an open shirt collar's wings, which
+        # can't yield, the solver stalled in the first frames ("a prescribed pin driven into geometry that cannot
+        # yield": om_05 .. om_11). The draped cloth still meets the collider and the collar.
+        Bp["thru"] = sorted(carry.get("pieces") or [])
     Xstart = Xs
     if carry is not None and Bp.get("open_lay"):
         Xstart, carry = _open_start(Bp, Ms, Xs, body_p, poses_c, carry)
@@ -5974,8 +5993,9 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         arrays = dict(X=Xstart, uv=Ms["uv"], F=Ms["F"], sew=Ms["sew"], stitch=Ms["stitch"], stiff=stiff_s,
                       piece=Ms["piece"], pins=np.zeros(0, np.int64), **harr, **lower,
                       **fold_s, **({"carryIdx": carry["idx"], "carryPoses": carry["poses"]} if carry else {}),
-                      **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in Bp["hug"]]))[0]}
-                         if Bp.get("hug") else {}),
+                      **({"hugIdx": np.where(np.isin(Ms["piece"], [Ms["names"].index(n_) for n_ in
+                                                                    list(Bp.get("hug") or []) + list(Bp.get("thru") or [])]))[0]}
+                         if Bp.get("hug") or Bp.get("thru") else {}),
                       **coll, **({"rest": rest_s} if smooth else {}))
         if carry and len(carry.get("flap_idx", ())) and smooth and "bend_rest" in fold_s:
             # made flaps of draped pieces (made_folds): held like the made pieces, but their rest is the flat pattern
