@@ -272,7 +272,9 @@ def harmonise(r: dict, ours_rgb: np.ndarray, ours_ok: np.ndarray) -> dict:
     A = rgba[..., 3] / 255.0
     inside = ndimage.binary_fill_holes(A > 0.05)
     dist = ndimage.distance_transform_edt(inside) / ppm
-    w = _sstep(dist / BLEND)
+    # fully ours wherever the alpha is still fading in (a picture's own low frequencies at alpha 0.5 are a seam), then
+    # back to the picture's over the rest of BLEND
+    w = _sstep((dist - EDGE_FADE) / max(BLEND - EDGE_FADE, 1e-6))
     sg = BLEND_SIGMA * ppm
     P, O = _to_lin(rgba[..., :3]), _to_lin(ours_rgb)
     # one colour for both first: the picture's confident skin takes OUR painted skin's median there (zones and all,
