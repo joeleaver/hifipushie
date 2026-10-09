@@ -72,6 +72,10 @@ COVER = 0.55      # covers is its alpha; a pixel covered over COVER/2 is drawn (
 # (alpha just under the cut round every shape) kept blades but filled the gaps between close ones (a fan of thin blades
 # read as one broad leaf at 2 m); no static picture holds from mip 0 to 3. So: each tier's pictures are baked at the
 # size they are seen at (px), and the engine either imports them without mipmaps or scales alpha by the mip level
+# plants the grade is not made for (judged in Godot against the full plant, 2026-10-08): the export refuses them
+UNSUITED = {"fern": "a rosette of a few broad arching fronds does not survive a star of cards (each card shows its fronds edge-on: "
+                    "the realistic fern lies flat from 8 m, the cartoon one turns into a thicket of strokes) and the full plant "
+                    "is already light (172 triangles realistic, ~900 styled): scatter the full plant, its last LOD far off"}
 # (MIP_ALPHA_RECIPE: 0.76-0.98 of the full plant's area from 2 to 12 m). HALO stays as a per-tier option, off.
 HALO = (0.0, 0.0, 0.0)  # per tier, 0..0.49: alpha kept just under the cut round every shape, fading over HALO_PX
 HALO_PX = 8.0
@@ -539,7 +543,10 @@ def build(T: dict, seasons=SEASONS, baked: dict | None = None) -> dict:
     """Bake the clump and make every tier's cards: {"R", "H", "frames", "box", "maps" {season: (A, N)}, "tiers": [cards],
     "baked"}. `baked` = an earlier build's (the Blender renders: the maps and cards are made again from them)."""
     if not T.get("clump"):
-        raise ValueError("groundcover grade is for small plants (a clump: grass, daisy, clover, fern...); trees have impostors")
+        raise ValueError("groundcover grade is for small plants (a clump: grass, daisy, clover...); trees have impostors")
+    why = UNSUITED.get(str(T["spec"].get("species")))
+    if why:
+        raise ValueError(f"no groundcover grade for {T['spec'].get('species')}: {why}")
     ck = _cache_path(T["spec"], seasons) if baked is None else None
     if ck is not None and ck.exists():
         import pickle

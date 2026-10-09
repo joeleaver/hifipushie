@@ -95,6 +95,16 @@ func load_plant(dir: String, season: String, sward := false) -> Dictionary:
 					m.set_shader_parameter("fade_end", js.sward.fade.end)
 					var gg: Array = js.sward.ground_srgb
 					m.set_shader_parameter("fade_ground", Color(gg[0], gg[1], gg[2]))
+					m.set_shader_parameter("fade_blend", js.sward.fade.get("blend_from", js.sward.fade.start))
+					if js.sward.has("lod") and OS.get_environment("FIELD_NOLOD") == "":
+						var ld: Array = js.sward.lod.dist
+						var ls: Array = js.sward.lod.share
+						m.set_shader_parameter("lod_dist", Vector4(ld[0], ld[1], ld[2], ld[3]))
+						m.set_shader_parameter("lod_share", Vector4(ls[0], ls[1], ls[2], ls[3]))
+						m.set_shader_parameter("lod_band", js.sward.lod.band)
+						m.set_shader_parameter("lod_blades", true)
+					else:
+						m.set_shader_parameter("lod_blades", false)
 				mesh.surface_set_material(s, m)
 			parts.append(mesh)
 		lods.append({"parts": parts, "tris": tris})
@@ -140,7 +150,8 @@ func _initialize() -> void:
 				if dist > minf(far, RADIUS):
 					continue
 				var lod := 0
-				while lod < rings.size() and dist >= float(rings[lod]):
+				var near := maxf(dist - 0.7071 * S, 0.0)  # (LOD by the tile's nearest point: the per-blade recipe needs it)
+				while lod < rings.size() and near >= float(rings[lod]):
 					lod += 1
 				var key := "0/%d" % lod
 				if not groups.has(key):
@@ -271,4 +282,4 @@ func _initialize() -> void:
 	f.store_string(JSON.stringify(res, " "))
 	f.close()
 	print("done")
-	quit(0)
+	OS.kill(OS.get_process_id())  # (quit() hangs for minutes under a hidden compositor: the files are written, go)

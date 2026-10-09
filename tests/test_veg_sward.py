@@ -105,3 +105,37 @@ def test_export_files_and_numbers(tmp_path):
 def test_same_spec_same_tile():
     a, b = _tile()["built"]["lods"][0], _tile()["built"]["lods"][0]
     assert np.array_equal(a["V"], b["V"]) and np.array_equal(a["col"], b["col"])
+
+
+def _drawn(M, d, lod):
+    """The LOD recipe in numpy at one distance: per vertex (visible share of its blade, its drawn offset across)."""
+    dist, share, band = np.array(lod["dist"]), np.array(lod["share"]), lod["band"]
+    S = float(np.exp(np.interp(d, dist, np.log(share))))
+    lo = S - max(1e-4, band * S * min(max((1 - S) * 8, 0), 1))
+    t = np.clip((M["lodv"][:, 0] - lo) / (S - lo), 0, 1)
+    vis = 1 - t * t * (3 - 2 * t)
+    return vis, M["across"] * (vis / (S * M["lodv"][:, 1] * (1 - 0.5 * (S - lo) / S)))[:, None], S
+
+
+def test_lod_thins_per_blade_and_meets_the_next_mesh(tmp_path):
+    T = vegetation.grow({"species": "sward"})
+    b = T["built"]
+    r = veg_sward.export(T, str(tmp_path), "sw", seasons=("summer", "autumn"))
+    lod = r["sward"]["lod"]
+    assert lod["share"] == [l_[0] for l_ in b["p"]["lods"]] and lod["dist"][1:] == [float(x) for x in b["p"]["rings"]]
+    for k in range(1, len(b["lods"])):
+        A, B = b["lods"][k - 1], b["lods"][k]
+        va, xa, S = _drawn(A, lod["dist"][k], lod)
+        vb, xb, _ = _drawn(B, lod["dist"][k], lod)
+        assert abs(S - lod["share"][k]) < 1e-9
+        # at the ring the finer mesh draws none of the blades the coarser one lacks, and the same width on the ground
+        assert not (va[A["lodv"][:, 0] >= S] > 1e-6).any()
+        ground = lambda M, x, v: float((np.linalg.norm(x, axis=1) * v)[M["uv"][:, 1] == 0].sum())
+        assert ground(A, xa, va) == pytest.approx(ground(B, xb, vb), rel=0.02)
+    v0, x0, S0 = _drawn(b["lods"][0], 0.5, lod)  # near the eye nothing is thinned or widened
+    assert S0 == 1.0 and (v0 == 1).all() and np.allclose(x0, b["lods"][0]["across"], rtol=1e-3)
+    raw = open(r["path"], "rb").read()
+    G = json.loads(raw[20:20 + struct.unpack("<I", raw[12:16])[0]])
+    at = G["meshes"][0]["primitives"][0]["attributes"]
+    assert "TEXCOORD_4" in at and "TEXCOORD_5" in at
+    assert r["sward"]["fade"]["blend_from"] < r["sward"]["fade"]["start"]

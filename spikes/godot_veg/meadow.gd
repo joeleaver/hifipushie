@@ -160,7 +160,7 @@ func solo(prefix: String, season: String, args: Array) -> void:
 				await RenderingServer.frame_post_draw
 				root.get_texture().get_image().save_png("%s_%s_d%d_a%d.png" % [prefix, e[0], int(round(d * 10)), int(az)])
 	print("done")
-	quit(0)
+	OS.kill(OS.get_process_id())  # (quit() hangs for minutes under a hidden compositor: the files are written, go)
 
 
 func load_shaders() -> void:
@@ -278,4 +278,4 @@ func _initialize() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png("%s_%s.png" % [prefix, v[0]])
 	print("done")
-	quit(0)
+	OS.kill(OS.get_process_id())  # (quit() hangs for minutes under a hidden compositor: the files are written, go)

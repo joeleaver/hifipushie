@@ -154,3 +154,10 @@ def test_heads_gather_and_get_their_own_cards():
     many = [([0.1 * k, 0.0, 0.4], 0.02, 0.01) for k in range(20)]
     fr = g.plane_frames(0.3, 0.5, many)
     assert not any(f.get("head") for f in fr) and all(f["heads_on_wedges"] for f in fr if not f["top"])
+
+
+def test_fern_is_refused():
+    from hifipushie import vegetation
+    T = vegetation.grow({"species": "fern"})
+    with pytest.raises(ValueError, match="no groundcover grade for fern"):
+        g.build(T, ["summer"])

@@ -35,12 +35,13 @@ from pathlib import Path
 
 import numpy as np
 
-VERSION = 1
+VERSION = 2
+LOD_BAND = 0.25   # the share of the blades still drawn that are part-way into the ground (the per-blade dither's width)
 # what a blade of each cover kind is (m, per m2, deg); colours sRGB: `ground` = the terrain's grass texture under it
 VARIANTS = {
     "mown": {"height": [0.035, 0.06], "density": 1100, "width": 0.011, "lean": [0, 22], "bend": 25, "drift": 0.25, "clump": 0.15,
              "dry": 0.02, "ground": [0.20, 0.40, 0.13], "tip": [0.34, 0.56, 0.2], "fade": [18, 30],
-             "lods": [[1.0, 1.0, 2], [0.4, 2.5, 1], [0.2, 5.0, 1], [0.08, 12.0, 1]], "rings": [5, 10, 18]},  # (short blades: two segments, tight rings)
+             "lods": [[1.0, 1.0, 2], [0.4, 2.5, 1], [0.2, 5.0, 1], [0.05, 20.0, 1]], "rings": [5, 10, 18]},  # (short blades: two segments, tight rings)
     "meadow": {"height": [0.14, 0.3], "density": 520, "width": 0.012, "lean": [4, 30], "bend": 55, "drift": 0.6, "clump": 0.35,
                "dry": 0.06, "ground": [0.27, 0.42, 0.15], "tip": [0.47, 0.6, 0.24], "fade": [40, 60]},
     "rough": {"height": [0.22, 0.55], "density": 380, "width": 0.014, "lean": [6, 38], "bend": 75, "drift": 0.7, "clump": 0.6,
@@ -48,7 +49,7 @@ VARIANTS = {
 }
 SWARD = {"variant": "meadow", "size": 2.0, "two_faces": True, "taper": 1.6, "tone": [0.82, 1.15], "tone_size": 0.5, "drift_size": 1.0, "clump_size": 0.4,
          "straw": [0.66, 0.6, 0.36], "up": 0.45, "round": 0.35, "root_dark": 0.8, "gradient": 1.2,
-         "lods": [[1.0, 1.0, 3], [0.4, 2.5, 2], [0.2, 5.0, 1], [0.08, 12.0, 1]], "rings": [8, 20, 35], "roughness": 0.85}
+         "lods": [[1.0, 1.0, 3], [0.4, 2.5, 2], [0.2, 5.0, 1], [0.05, 20.0, 1]], "rings": [5, 12, 24], "roughness": 0.85}
 # a style's way with blades (sheet block `sward`): multipliers on the realistic numbers + how a blade is drawn
 STYLE = {"width": 1.0, "density": 1.0, "height": 1.0, "bend": 1.0, "tones": 0, "tip": "point", "tuft": 1, "tuft_fan": 20,
          "round": None, "dry": 1.0, "tip_light": 1.0, "taper": None, "drift": 1.0}
@@ -155,7 +156,8 @@ def blades(spec: dict) -> dict:
 
 def mesh(B: dict, share: float = 1.0, widen: float = 1.0, segs: int = 3) -> dict:
     """The tile's blades as one mesh: V (z up, the tile's corner at the origin), F, N, uv (across, along), col (linear
-    rgb), grad (along 0..1, blade id), wind (trunk, branch, phase, flutter)."""
+    rgb), grad (along 0..1, blade id), wind (trunk, branch, phase, flutter), across (the vertex's offset from its blade's
+    centre line, plan x y, m), lodv (the blade's rank 0..1, this mesh's width multiple): what the LOD recipe reads."""
     from .veg_style import lin
     p = B["p"]
     sw = p["style"]
@@ -182,7 +184,7 @@ def mesh(B: dict, share: float = 1.0, widen: float = 1.0, segs: int = 3) -> dict
     else:
         wt = 1 - t ** p["taper"]
     wt = np.maximum(wt, 0.0)
-    Vs, Ns, Us, Cs, Gs, Ws, Fn = [], [], [], [], [], [], []
+    Vs, Ns, Us, Cs, Gs, Ws, Fn, As, Ls = [], [], [], [], [], [], [], [], []
     root3 = np.c_[B["root"][sel], np.zeros(n)]
     cg, ct, cs = np.array(lin(p["ground"])) * p["root_dark"], np.array(lin(p["tip"])) * sw["tip_light"], np.array(lin(p["straw"]))
     tones = int(sw["tones"])
@@ -199,16 +201,18 @@ def mesh(B: dict, share: float = 1.0, widen: float = 1.0, segs: int = 3) -> dict
         gq = (np.floor(g * tones).clip(0, tones - 1) + 0.5) / tones if tones else g
         col = (cg[None] * (1 - gq) + np.where(dry[:, None], cs[None], ct[None]) * gq) * tone[:, None]
         if k == segs and not rnd:
-            pts = [(c3, 0.0, 0.5)]
+            pts = [(c3, 0.0, 0.5, np.zeros((n, 2)))]
         else:
             hw = 0.5 * w[:, None] * wt[k]
-            pts = [(c3 - np.c_[side * hw, np.zeros(n)], -1.0, 0.0), (c3 + np.c_[side * hw, np.zeros(n)], 1.0, 1.0)]
-        for P, sgn, uu in pts:
+            pts = [(c3 - np.c_[side * hw, np.zeros(n)], -1.0, 0.0, -side * hw), (c3 + np.c_[side * hw, np.zeros(n)], 1.0, 1.0, side * hw)]
+        for P, sgn, uu, acr in pts:
             N = p["up"] * np.array([0, 0, 1.0])[None] + (1 - p["up"]) * face + sgn * p["round"] * np.c_[side, np.zeros(n)]
             N /= np.linalg.norm(N, axis=1, keepdims=True)
             Vs.append(P)
             Ns.append(N)
             Fn.append(face)
+            As.append(acr)
+            Ls.append(np.c_[B["rank"][sel], np.full(n, widen)])
             Us.append(np.c_[np.full(n, uu), np.full(n, t[k])])
             Cs.append(col)
             Gs.append(np.c_[np.full(n, t[k]), B["id"][sel]])
@@ -225,7 +229,7 @@ def mesh(B: dict, share: float = 1.0, widen: float = 1.0, segs: int = 3) -> dict
             c, e = (2 * k + 2) * n + i, (2 * k + 3) * n + i
             F += [np.c_[a, e, b], np.c_[a, c, e]]
     V, F, N = np.vstack(Vs), (np.vstack(F) if n else np.zeros((0, 3), np.int64)), np.vstack(Ns)
-    arr = [np.vstack(x_) for x_ in (Us, Cs, Gs, Ws)]
+    arr = [np.vstack(x_) for x_ in (Us, Cs, Gs, Ws, As, Ls)]
     if p["two_faces"]:  # the underside as triangles of its own with the SAME normals (single-sided material): a double-sided
         # material's back faces get their normal flipped by the engine (Godot does), and an up-leaning normal flipped is
         # black grass wherever a blade shows its underside
@@ -236,7 +240,8 @@ def mesh(B: dict, share: float = 1.0, widen: float = 1.0, segs: int = 3) -> dict
         Nb /= np.linalg.norm(Nb, axis=1, keepdims=True)
         V, N = np.vstack([V, V]), np.vstack([N, Nb])
         arr = [np.vstack([x_, x_]) for x_ in arr]
-    return {"V": V, "F": F, "N": N, "uv": arr[0], "col": arr[1], "grad": arr[2], "wind": arr[3], "blades": n, "verts_per_blade": per}
+    return {"V": V, "F": F, "N": N, "uv": arr[0], "col": arr[1], "grad": arr[2], "wind": arr[3], "across": arr[4], "lodv": arr[5],
+            "blades": n, "verts_per_blade": per}
 
 
 def build(spec: dict) -> dict:
@@ -262,13 +267,43 @@ def grow(spec: dict) -> dict:
 
 FADE_RECIPE = ("past fade.start m from the camera shrink the blades into the ground and stop drawing the tile at fade.end: in the "
                "vertex shader, f = 1 - smoothstep(start, end, distance(camera, tile vertex)); VERTEX.y *= f (the tile's ground "
-               "is y = 0 in its own space; do it before the wind); in the fragment shader albedo = mix(terrain grass colour, "
-               "albedo, f), so the blades also take the ground's colour as they go. Under the tiles draw the terrain's grass "
+               "is y = 0 in its own space; do it before the wind). The LOOK goes to the ground's over a longer run, so no "
+               "brightness step shows where the grass ends: g = 1 - smoothstep(fade.blend_from, end, distance); in the fragment "
+               "shader albedo = mix(terrain grass colour, albedo, g), NORMAL = normalize(mix(the ground's normal, NORMAL, g)) and "
+               "ROUGHNESS = mix(the ground's, roughness, g) (a blade lit by its own normal is lighter than flat ground of the "
+               "same colour, and a style with specular shows the roughness as a sheen: both made an arc where the field "
+               "ended). Under the tiles draw the terrain's grass "
                "texture; `ground_linear` is the colour the blades were made for (the terrain style's grass colour for this cover "
                "kind; a field of them averages to it): an engine may multiply COLOR_0 by (its terrain's grass colour there / "
                "ground_linear) so the sward follows the terrain's patches.")
 PLACE_RECIPE = ("a TILE, not a clump: lay tiles edge to edge on a size_m grid (each turned by a random multiple of 90 deg about "
-                "its middle: every variation is periodic over the tile), LOD by the tile's distance; no random scale, no gaps.")
+                "its middle: every variation is periodic over the tile); no random scale, no gaps. Mesh LOD k for a tile whose "
+                "NEAREST point is at least lod.dist[k] m away (distance to its middle - 0.71 x tile_m), LOD 0 inside.")
+LOD_RECIPE = ("the meshes only bound the vertex count; what is DRAWN thins per blade with distance, so no ring or tile edge shows. "
+              "Per vertex: TEXCOORD_4 = across (its offset from the blade's centre line, model x, z, m), TEXCOORD_5 = (rank 0..1, "
+              "width multiple of this mesh) (Godot: CUSTOM1.xy, CUSTOM1.zw). Vertex shader, d = distance(camera, vertex): "
+              "S(d) = lod.share interpolated in log over lod.dist (share[0] up to dist[0], share[k] at dist[k], flat past the "
+              "last); lo = S - max(1e-4, band * S * clamp((1 - S) * 8, 0, 1)); vis = 1 - smoothstep(lo, S, rank); "
+              "VERTEX.xz += across * (vis / (S * width_multiple * (1 - 0.5 * (S - lo) / S)) - 1); VERTEX.y *= vis. A blade of "
+              "rank r shrinks into the ground as S(d) passes r and the blades left widen (drawn share x width stays 1): LOD k's "
+              "mesh at dist[k] draws exactly what LOD k - 1's draws there.")
+RENDERER = ["1. Load <name>_LOD0..3.glb once; one MultiMesh (instanced draw) per LOD, no shadows cast (receive them).",
+            "2. Grid: cells of tile_m on the terrain, anchored in the world (cell = floor(xz / tile_m)); a cell is grass where the "
+            "terrain's cover says so (this sward's variant: mown / meadow / rough). Instance transform = the cell's middle on the "
+            "ground, yaw = hash(cell) % 4 x 90 deg, scale 1. On a slope either tilt the tile to the ground's normal or sample the "
+            "terrain height per vertex in the shader (VERTEX.y += height(world xz)): tiles are flat.",
+            "3. Each time the camera has moved about a tile: for every grass cell within fade.end of the camera, near = max("
+            "distance(camera, cell middle) - 0.71 x tile_m, 0); LOD k = the number of lod.dist[1..3] that near has reached "
+            "(LOD 0 inside lod.dist[1]); skip cells outside the view frustum.",
+            "4. Vertex shader, in this order: the per-blade LOD (lod.recipe), the fade (fade_recipe), the wind (wind).",
+            "5. Fragment: albedo = baseColorFactor (the season's, from `seasons`) x COLOR_0 x color_gain, then the fade's mix to "
+            "the terrain grass colour; opaque, cull back (undersides are their own triangles); no texture.",
+            "6. Under and beyond the tiles the terrain draws its own grass texture; ground_linear is the colour these blades "
+            "were made to stand on."]
+WIND_NOTE = ("opaque geometry: no alpha, no texture, no mipmaps to set up (MSAA does the edges). Wind as every plant's recipe: "
+             "TEXCOORD_1 = (trunk, branch) = height up the blade ^ 1.5, TEXCOORD_2 = (phase, flutter); the phase is a slow "
+             "noise over the tile, so add a WORLD term to it (e.g. dot(world xz, wind direction) * 0.15 - time * speed) for "
+             "gusts that run across tiles; apply after the LOD and fade lines.")
 
 
 def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
@@ -317,6 +352,8 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
               "TEXCOORD_1": acc(M["wind"][:, :2].astype(np.float32), "VEC2", 5126, 34962),
               "TEXCOORD_2": acc(M["wind"][:, 2:].astype(np.float32), "VEC2", 5126, 34962),
               "TEXCOORD_3": acc(M["grad"].astype(np.float32), "VEC2", 5126, 34962),
+              "TEXCOORD_4": acc(np.c_[M["across"][:, 0], -M["across"][:, 1]].astype(np.float32), "VEC2", 5126, 34962),  # (glTF x, z)
+              "TEXCOORD_5": acc(M["lodv"].astype(np.float32), "VEC2", 5126, 34962),
               "_WIND": acc(M["wind"].astype(np.float32), "VEC4", 5126, 34962),
               "COLOR_0": acc(np.c_[np.clip(M["col"] / gain, 0, 1), np.ones(len(M["col"]))].astype(np.float32), "VEC4", 5126, 34962)}
         pr = {"attributes": at, "indices": acc(M["F"].astype(np.uint32).ravel(), "SCALAR", 5125, 34963), "material": var_mat[seasons[0]],
@@ -334,11 +371,15 @@ def write_glb(path: str, name: str, b: dict, seasons, which=None) -> dict:
         nodes[lod_nodes[0]]["extensions"] = {"MSFT_lod": {"ids": lod_nodes[1:]}}
     while len(buf) % 4:
         buf.append(0)
-    sward = {"tile_m": S, "variant": p["variant"], "fade": {"start": p["fade"][0], "end": p["fade"][1]},
+    sward = {"tile_m": S, "variant": p["variant"], "fade": {"start": p["fade"][0], "end": p["fade"][1], "blend_from": float(p["rings"][-2])},
              "ground_srgb": p["ground"], "ground_linear": [round(c, 4) for c in veg_style.lin(p["ground"])],
              "root_linear": [round(c * p["root_dark"], 4) for c in veg_style.lin(p["ground"])],
              "tip_linear": [round(c, 4) for c in veg_style.lin(p["tip"])], "color_gain": round(gain, 4),
-             "blades_per_m2": round(b["info"][0]["blades"] / S ** 2, 1), "lod_rings_m": list(p["rings"]), "fade_recipe": FADE_RECIPE, "place": PLACE_RECIPE}
+             "blades_per_m2": round(b["info"][0]["blades"] / S ** 2, 1), "lod_rings_m": list(p["rings"]),
+             "lod": {"dist": [round(0.5 * p["rings"][0], 2), *[float(r) for r in p["rings"]]], "share": [float(l_[0]) for l_ in p["lods"]],
+                     "band": LOD_BAND, "recipe": LOD_RECIPE},
+             "fade_recipe": FADE_RECIPE, "place": PLACE_RECIPE, "wind": WIND_NOTE, "renderer": RENDERER,
+             "ground_roughness": 1.0}
     gltf = {"asset": {"version": "2.0", "generator": "hifipushie vegetation (sward)"}, "scene": 0, "scenes": [{"nodes": [lod_nodes[0]]}],
             "nodes": nodes, "meshes": meshes, "materials": materials, "accessors": accessors, "bufferViews": views,
             "buffers": [{"byteLength": len(buf)}], "extensionsUsed": sorted(used),

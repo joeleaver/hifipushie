@@ -600,17 +600,26 @@ ground; blades hide 38 / 78 / 94 / 100% at 2 / 6 / 12 / 30 m. So: blades.
   inside rings[k]), fade [start, end] m. Unknown keys are refused.
 - Tileable by construction: roots jittered on a torus, every variation periodic noise over the tile; blades lean out
   over the edge into the neighbour. Place with random quarter turns, no random scale, no thinning.
-- LODs are subsets of the same blades, wider so the ground covered stays about the same (share x width ~ 1): near 3
-  segments a blade, far one triangle. Undersides are triangles of their own (normals never point down: an engine's
-  back-face flip made black blades). 5,000 / 1,200 / 200 / 80 triangles per m2 for a realistic meadow; with the default
-  rings (8 / 20 / 35 m, fade to 60) about 3.4 M triangles round the player; mown 1.35 M (rings 5 / 10 / 18, fade 30).
-  The rings are the lever: halve them on a weak GPU.
-- The far end: past `fade.start` the engine shrinks the blades into the ground and mixes their colour to the terrain's
-  grass colour (recipe in the seasons json `sward`); root colour = the terrain style's grass colour of that cover kind
-  (mown / rough), through the plant style's `colour`, so nothing steps where the grass ends.
+- LODs are subsets of the same blades, wider so the ground covered stays about the same (share x width = 1): near 3
+  segments a blade, from the second ring one triangle. Undersides are triangles of their own (normals never point down:
+  an engine's back-face flip made black blades). The four meshes only bound the vertex count: what is DRAWN thins PER
+  BLADE in the vertex shader (each blade has a rank; as the share for its distance passes the rank it sinks into the
+  ground and the blades left widen), so LOD k's mesh at its ring draws exactly what LOD k - 1's draws there. Switching
+  whole tiles showed as darker tile-aligned squares from above. Recipe + numbers in the seasons json `sward.lod`,
+  channels TEXCOORD_4 / TEXCOORD_5, reference lines spikes/godot_veg/sward_blades.gdshaderinc; pick a tile's mesh by
+  its NEAREST point. Realistic meadow: 5,000 / 1,200 / 210 / 54 triangles per m2, rings 5 / 12 / 24 m, fade to 60:
+  2.0 M triangles round the player (was 3.4 M with rings 8 / 20 / 35 at the same ground hidden: 38 / 76 / 94 / 100% at
+  2 / 6 / 12 / 30 m); pixar 2.2 M, anime 1.5 M, cartoon 0.8 M, blobby 0.7 M. The rings are the lever.
+- The far end: past `fade.start` the engine shrinks the blades into the ground; from `fade.blend_from` (the second
+  ring) to `fade.end` their albedo, NORMAL and roughness go to the ground's (a blade lit by its own normal is lighter
+  than flat ground of the same colour, and a specular style shows roughness as a sheen: either left an arc where the
+  field ended). Root colour = the terrain style's grass colour of that cover kind, through the plant style's `colour`.
+- Opaque geometry: no alpha, no texture, no mipmaps to set up. Wind = every plant's channels; `sward.wind` says how to
+  run gusts across tiles. `sward.renderer` in the json = the six steps of a tile renderer (grid, quarter turns, LOD by
+  nearest point, shader order, colour, what the terrain draws under it).
 - Styles (sheet block `sward`: width, density, height, bend, tones, tip point | round, tuft + tuft_fan, round, dry,
   tip_light, taper, drift): blobby = few fat round-tipped blades in two tones; cartoon = broad pointed blades in fans
-  of three; anime = long sweeping blades in three painted steps, light tips; pixar = half again as many thin blades.
+  of three; anime = long sweeping blades in three painted steps, light tips; pixar = a tenth more, slightly finer blades (half again as many cost 5 M triangles).
 - Judge it as a FIELD in an engine, never as one tile: spikes/godot_veg/field.gd (tiles over 60 m with their rings and
   fade, eye level and 25 m up, the ground in the terrain's grass colour) + field_measure.py (ground hidden by
   distance, triangles, GPU ms). `look_plant` refuses a sward for that reason.
@@ -618,6 +627,7 @@ ground; blades hide 38 / 78 / 94 / 100% at 2 / 6 / 12 / 30 m. So: blades.
   blades following a slope's normal (tiles are flat: fine to ~20 deg), seasons beyond a colour per season.
 
 ### Groundcover grade: the same clump for scatter (`export_plant(name, grade="groundcover")`)
+(`<name>_seasons.json` says `"grade": "groundcover"`, the triangles per LOD and the mip-scaled alpha recipe: Godot drops material extras. NOT for every plant: the export refuses ferns (a rosette of a few broad arching fronds lies flat or turns into a thicket of strokes on a star of cards, and the full fern is 172-900 triangles), and a realistic daisy keeps 0.17 of its area (thin stalks; its full plant is 406 triangles): where the full plant is under ~1,000 triangles, scatter the full plant.)
 A meadow scatters thousands of clumps round the player; the full small plant (270-4,750 triangles at LOD 0, pixar
 grass's lush thin blades the most) is a hero asset. What game artists do for scatter: build the clump once at full
 detail and BAKE it onto a few cards (SpeedTree / Megascans grass billboards); the far tier a few crossed cards. Here the
