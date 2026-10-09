@@ -446,3 +446,14 @@ model".
   hips, wider than that, read 29.7 cm whatever her weight; now wider slabs with the arms cut at the first 10 cm gap
   outward of the hip joint (36.8 cm; hips modifier at 1 = +6 cm). Every model's hip readings change (not its shape).
   Test tests/test_body_shape.py.
+- LIP SEAL + VERMILION HEIGHT (facesliders, 2026-10-09; the user asked whether we need more lip sliders). base.head
+  `lip_seal` 0..1 (faceslide.seal_delta): the rest mouth closed, the contact ring's halves (GNM ring base.LIP_RING out
+  from the skin's open mouth loop) meeting halfway per x in y and z, the rings inside it moving whole, the lips past it
+  fading over 5 mm; each vertex's lip by TOPOLOGY from the contact ring (by height, the rolls' quads straddled the
+  middle and 29 turned over); 3 passes (the halves aren't single-valued in x). Applied after the body's hook, on the
+  head WITHOUT its expression (a jaw / mouth expression and the face shapes still open it); an explicit mouth_gap
+  wins. Seal 1: contact < 0.22 mm apart along the width, never crossed, 0 lip quads turned; lower_face_region_001
+  on top opens it 3.3 mm. humans.spec(source="human") writes lip_seal 1 unless a mouth_gap is given (new specs).
+  Sliders lip_upper_height / lip_lower_height (1.0 / 1.2 mm): the vermilion border slides away from the held seam.
+  humanfit's lip_height (lm 51 -> 57) includes the gap: seal first, then lip_height (identity), then these for the
+  split. Sheet human_renders/fs_05_lip_seal_vermilion.png.

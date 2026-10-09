@@ -1807,6 +1807,16 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         from . import onemesh
         V, J = onemesh.hook(V, J, head, R, np.asarray(eye_mid, float), s, mid)
         r_eye = [r * float(head["bound"].get("head_size", 1.0)) for r in r_eye]  # (a style's bigger head: its eyeballs too)
+    if head.get("lip_seal") and head.get("mouth_gap") is None:  # (faceslide.seal_delta) the rest mouth closed: the
+        # lips in contact along their width, by this share (0..1). On the head as it is now (after the body's hook,
+        # which carries GNM's template lips at their own gap) but WITHOUT its expression, so a jaw or mouth expression
+        # (and the face shapes, GNM's deltas by index) still open it. An explicit mouth_gap wins (it parts them)
+        from . import faceslide
+        E = np.tensordot(ce, g["expression_basis"], 1)
+        if head.get("bound"):
+            from . import onemesh as _om
+            E = E * _om.neck_fade()[:, None]
+        V = V + faceslide.seal_delta(V - E, float(np.clip(head["lip_seal"], 0.0, 1.0)))
 
     def place(X):
         return eye_mid + s * (X - mid) @ R.T

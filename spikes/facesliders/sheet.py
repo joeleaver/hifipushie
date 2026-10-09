@@ -18,6 +18,10 @@ b0 = sp["base"]
 
 def st_of(sl):
     b = copy.deepcopy(b0)
+    b["head"].pop("lip_seal", None)
+    if "lip_seal" in (sl or {}):  # (not a slider: -1 / 0 / +1 on the sheet = seal 0 / 0.5 / 1)
+        b["head"]["lip_seal"] = (sl.pop("lip_seal") + 1) / 2
+        b["head"].pop("mouth_gap", None)
     if sl:
         b.setdefault("head", {})["sliders"] = sl
     return humanfit.state(b)

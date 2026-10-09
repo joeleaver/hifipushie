@@ -52,6 +52,8 @@ UNITS.update({
     "lip_bow": (0.7, "a deeper Cupid's bow: the border's peaks up, its dip down"),
     "lip_tubercle": (0.8, "the upper lip's tubercle down and forward over the seam"),
     "mouth_corner": (0.9, "the commissures tucked in and back (deeper corners); - = fuller corners"),
+    "lip_upper_height": (1.0, "more upper vermilion shows: its border up, the seam held (red lip height, not projection)"),
+    "lip_lower_height": (1.2, "more lower vermilion shows: its border down, the seam held"),
 })
 MOUTH_SLIDERS = tuple(k for k in UNITS if k not in EYE_SLIDERS)
 # the older shape ops as sliders (step 4): each op at its unit amount on a sex-neutral template adult, baked into a
@@ -312,12 +314,111 @@ def _mouth_fields() -> dict:
     tub = upper * _g(x, 0.0, 0.55 * xp) * _g(su, 0.25, 0.3)
     F["lip_tubercle"] = tub[:, None] * (0.85 * fwd - 0.4 * up * seam_hold_u[:, None])
     # corner tuck: the commissures in and back (a deeper corner; - = fuller corners)
+    # vermilion height: the border slides away from the seam (the seam held, the skin past the border following over
+    # ~3 mm): how much red lip shows, apart from how far it stands forward (the rolls)
+    F["lip_upper_height"] = (upper * taper * past_u * np.clip(su, 0, 1))[:, None] * up[None]
+    F["lip_lower_height"] = (lower * taper * past_l * np.clip(sl, 0, 1))[:, None] * -up[None]
     F["mouth_corner"] = np.zeros_like(X)
     for c in (lm[48], lm[54]):
         r = np.linalg.norm(X - c, axis=1)
         side = np.sign(c[0])
         F["mouth_corner"] += (T["skin"] * _g(r, 0, 3.5 * mm))[:, None] * (-0.85 * fwd + 0.35 * np.array([-side, 0, 0]))[None]  # (one direction: the corner's normals turn fast)
     return {k: v * (UNITS[k][0] * mm) for k, v in F.items()}
+
+
+def _lip_rings() -> dict:
+    """GNM's lips by topology (its raw ids): rings out from the skin's open mouth loop (the inner rolls' end) over the
+    skin's quads; ring base.LIP_RING is the contact ring (landmarks 61-63 / 65-67 sit on it)."""
+    if "lip_rings" in _CACHE:
+        return _CACHE["lip_rings"]
+    from collections import defaultdict
+
+    from . import base as basemod
+    g = basemod._gnm_data()
+    skin = np.asarray(g["skin"], bool)
+    Q = np.asarray(g["quads"])
+    Q = Q[skin[Q].all(1)]
+    e = np.sort(np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]], 1)
+    ue, ce = np.unique(e, axis=0, return_counts=True)
+    adj = defaultdict(set)
+    for a, b in e:
+        adj[a].add(b)
+        adj[b].add(a)
+    bd = np.unique(ue[ce == 1])
+    X = np.asarray(g["template_vertex_positions"], float)
+    lm = np.array([sum(float(w) * X[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]])
+    mouth = 0.5 * (lm[62] + lm[66])
+    loop = set(int(v) for v in bd[np.linalg.norm(X[bd] - mouth, axis=1) < 0.04])
+    rings, seen, ring = [sorted(loop)], set(loop), loop
+    for _ in range(basemod.LIP_RING + 16):  # (out past where the fade has died: ~1 mm a ring)
+        nxt = set()
+        for v in ring:
+            nxt |= adj[v]
+        nxt -= seen
+        seen |= nxt
+        ring = nxt
+        rings.append(sorted(ring))
+    _CACHE["lip_rings"] = {"rings": [np.array(r, int) for r in rings], "contact": basemod.LIP_RING,
+                           "adj": {int(v): [int(u) for u in adj[v]] for r in rings for v in r}}
+    return _CACHE["lip_rings"]
+
+
+def seal_delta(V: np.ndarray, amount: float = 1.0) -> np.ndarray:
+    """(n, 3) GNM-frame move that closes the lips of head V (GNM's raw vertices, its frame) to `amount` of contact
+    along the full width: the contact ring's upper and lower halves meet halfway (per x, the gap's y and z),
+    everything from the open loop out to the contact ring moves whole (the rolls behind the contact go with it: no
+    lip through the other), the lips beyond it fade out over ~5 mm (they shift, not squash). A rest mouth, not a
+    pressed one: nothing goes past contact."""
+    R = _lip_rings()
+    D = np.zeros_like(V)
+    for _ in range(SEAL_PASSES):  # (re-measured each pass: the contact ring's halves aren't single-valued in x)
+        D = D + _seal_step(V + D, 1.0, R)
+    return float(amount) * D
+
+
+SEAL_PASSES = 3
+
+
+def _seal_step(V, amount, R):
+    rings, kc = R["rings"], R["contact"]
+    C = rings[kc]
+    x = V[C, 0]
+    lo_x, hi_x = x.min(), x.max()
+    # upper / lower half: above / below the line through the ring's two corners (its extremes in x)
+    a, b = V[C[np.argmin(x)]], V[C[np.argmax(x)]]
+    side = (V[C, 1] - (a[1] + (x - a[0]) / max(b[0] - a[0], 1e-9) * (b[1] - a[1]))) > 0
+    U, Lw = C[side], C[~side]
+    if len(U) < 3 or len(Lw) < 3:
+        return np.zeros_like(V)
+    ou, ol = np.argsort(V[U, 0]), np.argsort(V[Lw, 0])
+    U, Lw = U[ou], Lw[ol]
+    gap_at = lambda xx: np.c_[[np.interp(xx, V[Lw, 0], V[Lw, k]) - np.interp(xx, V[U, 0], V[U, k]) for k in (1, 2)]].T  # noqa: E731
+    D = np.zeros_like(V)
+    # which lip every ring vertex belongs to, by topology from the contact ring (by height, the inner rolls' quads
+    # straddle the middle and half of each went the other way: 29 turned over)
+    up_of = {int(v): bool(s) for v, s in zip(C, side)}
+    order = list(range(kc - 1, -1, -1)) + list(range(kc + 1, len(rings)))
+    for k in order:
+        for v in rings[k]:
+            nb = [up_of[u] for u in R["adj"].get(int(v), []) if u in up_of]
+            up_of[int(v)] = bool(np.mean(nb) > 0.5) if nb else bool(V[v, 1] > np.interp(V[v, 0], V[U, 0], V[U, 1]))
+    inner = np.unique(np.concatenate(rings[:kc + 1]))
+    outer = np.unique(np.concatenate(rings[kc + 1:]))
+    for ids, full in ((inner, True), (outer, False)):
+        xx = np.clip(V[ids, 0], lo_x, hi_x)
+        gp = gap_at(xx)  # (k, 2): lower - upper, (y, z)
+        up = np.array([up_of[int(v)] for v in ids])
+        if not full:  # past the contact: fading with the distance from it
+            ref = np.where(up, np.interp(xx, V[U, 0], V[U, 1]), np.interp(xx, V[Lw, 0], V[Lw, 1]))
+            w = np.exp(-((V[ids, 1] - ref) / 0.005) ** 2)
+        else:
+            w = np.ones(len(ids))
+        sgn = np.where(up, 0.5, -0.5)
+        open_ = np.minimum(gp[:, 0], 0.0)  # (lower - upper y: negative when apart; crossed or touching: nothing)
+        D[ids, 1] += amount * w * sgn * open_
+        D[ids, 2] += amount * w * sgn * gp[:, 1]
+    # held off where the lips already touch or cross (no compression)
+    return D
 
 
 def fields() -> dict:
