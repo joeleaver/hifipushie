@@ -457,3 +457,12 @@ model".
   Sliders lip_upper_height / lip_lower_height (1.0 / 1.2 mm): the vermilion border slides away from the held seam.
   humanfit's lip_height (lm 51 -> 57) includes the gap: seal first, then lip_height (identity), then these for the
   split. Sheet human_renders/fs_05_lip_seal_vermilion.png.
+- LIP COLOUR BUG (likeloop's "lip colour stuck", facesliders 2026-10-09): skin:lips_upper was masked by the lip_upper
+  outline (upper border -> the inner-lip landmarks 61-63 on the contact ring). Seen from the front the contact ring
+  lies ABOVE the upper lip's own lower front (the lip rolls forward and down past it), so the outline covered ~37% of
+  the upper vermilion and the face's pale layers (micro_pores, stubble: "face minus lips") showed on the rest:
+  skin.lips never reached the upper lip. Now skin:lips_upper paints the whole "lips" outline and lips_lower paints its
+  part over it; and on a GNM head the outlines run through the vermilion's own edges (joints verm_u/l/iu/il00-16 from
+  GNM's upper_lip / lower_lip groups and the contact ring, base._vermilion_joints; the 68 landmarks' seven chords cut
+  the bow and corners): front-facing vermilion covered 37% -> 90%+. skin.VERSION 3. Test tests/test_lip_colour.py.
+  Not yet checked in a dressed (Cycles) render.
