@@ -466,3 +466,10 @@ model".
   GNM's upper_lip / lower_lip groups and the contact ring, base._vermilion_joints; the 68 landmarks' seven chords cut
   the bow and corners): front-facing vermilion covered 37% -> 90%+. skin.VERSION 3. Test tests/test_lip_colour.py.
   Not yet checked in a dressed (Cycles) render.
+  - SEAL ROBUSTNESS (Tess, ts_n: seal 1 broke integrity, edges x4.1 / 18 faces folded). Cause: the lips' halves were
+    split by height (above the corners' line); her downturned, wide-open mouth put lower-lip contact vertices in the
+    upper half, and their edges to the rolls stretched x6. Now GNM's own upper_lip / lower_lip groups (each ring splits
+    29 / 29); the contact ring and the rolls inside it move with their lip, everything out to the 18th ring is a
+    MEMBRANE (harmonic fill, outermost ring held) instead of bands faded by height. ts_n seal 1: contact 0.00 mm, integrity
+    ok, no lip warning. Test: four wide-spread identities (seeds 1, 2, 5, 8, spread 1.2, both sexes) unbroken and closed.
+    One near-degenerate GNM commissure quad (< 0.15 mm2) turns with ANY change (mouth_corner too): left out of the count.

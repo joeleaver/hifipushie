@@ -636,7 +636,7 @@ def _vermilion_edges() -> dict:
     C = R["rings"][R["contact"]]
     x = X[C, 0]
     a, b = X[C[np.argmin(x)]], X[C[np.argmax(x)]]
-    side = (X[C, 1] - (a[1] + (x - a[0]) / (b[0] - a[0]) * (b[1] - a[1]))) > 0
+    side = R["upper"][C]  # (GNM's own upper_lip / lower_lip groups)
     out["iu"], out["il"] = C[side][np.argsort(X[C[side], 0])], C[~side][np.argsort(X[C[~side], 0])]
     # VERM_N samples of each by index along x (the edges are single-valued enough in x for an outline)
     _CACHE["verm_edges"] = {k: v[np.round(np.linspace(0, len(v) - 1, VERM_N)).astype(int)] for k, v in out.items()}
