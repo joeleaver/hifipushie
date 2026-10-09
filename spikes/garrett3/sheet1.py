@@ -18,7 +18,10 @@ PX = int(os.environ.get("PX", 900))
 POSED = os.environ.get("POSED", "1") == "1"   # the matched views wear the photo's pose (squint, frown, set mouth)
 
 
-def cameras(name, refit=True):
+def cameras(name, refit=os.environ.get("REFIT", "0") == "1"):
+    """The model's reference views and cameras: as stored with the head's MAP fit (refit.py), not refitted (a
+    camera-only refit of the turned painting on a head with smaller eyes came back ~15 deg more frontal at the same
+    2 mm residual: the turned view's camera is loose without the identity's evidence beside it)."""
     sp = store.load(name)
     vs = garrett.refs()
     f = store.HOME / name / "human_refs.json"
@@ -54,7 +57,7 @@ def main(name, out, hair_on=True, tag=None):
         fr = stage.fitted_frame(cam, crop, lit)
         lt = stage.FRONT_LIGHT if lit == "front" else {**stage.desk_light(fr), "backdrop": [0.12, 0.15, 0.22]}
         im = stage.shoot(name, [fr], lt, size=PX, hair_on=hair_on, posed=POSED)[lit]
-        im.save(f"{D3}/out/{name}_{lit}.png")
+        im.save(f"{D3}/out/{name}_m_{lit}.png")
         ref = Image.open(view["image"]).convert("RGB").crop(tuple(int(round(v)) for v in crop)).resize((PX, PX), Image.LANCZOS)
         bl = Image.blend(ref, im, 0.5)
         tiles = [label(ref, "reference"), label(im.copy(), f"{tag}: skin pipeline + groom, fitted camera"), label(bl, "50% blend")]
