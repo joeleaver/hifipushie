@@ -67,7 +67,9 @@ PAINTED = {"look", "style_check"}  # render the Blender scene in EEVEE by defaul
 
 # Left out of the department: they list or reach the host (every model on this machine; the person's Blender).
 EXCLUDE = {"list_models": "lists every model on this machine, not the session's subject",
-           "pull": "takes edits back from a person's Blender on this machine (a standalone feature)"}
+           "pull": "takes edits back from a person's Blender on this machine (a standalone feature)",
+           "enable_toolset": "the runner turns every toolset on; `name` here is a toolset, not the subject",
+           "call_tool": "the runner offers every tool directly"}
 # Tools that take no subject are only offered when known to be harmless (an unknown one might list the host).
 SUBJECTLESS_OK = {"guide", "kit_reference", "heavy_queue"}  # heavy_queue: no paths, pids or dirs (resources.queue_view)
 
@@ -194,7 +196,8 @@ def capabilities(preload: list[str] = ()) -> tuple[list[dict], dict]:
     import importlib
     for mod in preload:
         importlib.import_module(mod)
-    from .server import mcp
+    from .server import enable_all, mcp
+    enable_all()  # every toolset: a department session gets every capability
     caps, left = [], {}
     for t in asyncio.run(mcp.list_tools()):
         cap, why = capability(t)
@@ -209,7 +212,7 @@ def capabilities(preload: list[str] = ()) -> tuple[list[dict], dict]:
 def instructions() -> str:
     from .server import INSTRUCTIONS
     return (INSTRUCTIONS + "\nAs the department's sculpt artist: a session works on ONE subject (a model or a terrain), so "
-            "tools take no `name`. Files never come as host paths: set_reference takes `image`, a library version id; "
+            "tools take no `name`. Every toolset is on here (no enable_toolset). Files never come as host paths: set_reference takes `image`, a library version id; "
             "exports come back as task files (glb, fbx, obj, maps, json, and the spec). `snapshot` returns the spec "
             "and a quick look, to publish a working state.")
 

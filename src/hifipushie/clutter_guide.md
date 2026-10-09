@@ -134,3 +134,49 @@ boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull
   atlas opaque: near-invisible in the engine, and test_atlas_and_cards failed). Look at every asset you deliver.
 - A styled tree shrub at 400 triangles is one ball on a stalk; its LODs don't go down (style floors). A clutter bush
   is its own thing: an opaque leafy dome (blocks see-through, holds at any distance) + a few spray cards.
+
+## Tool reference
+
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `clutter` toolset: enable_toolset("clutter") turns it on.
+
+### `make_clutter`
+
+`make_clutter(kind='', style='realistic', out_dir=None, seed=1, variants=None, form=None, paint=None, color=None, moss=None, lods=None, look=False)`
+
+Make a terrain CLUTTER asset (guide(topic="clutter")): the small things scattered by the thousand. kind (a preset;
+"" lists them with what they are): boulder (loose angular block), river_rock (water-worn), cobbles (a patch of
+stones as one asset), slab (flat bank stone), driftwood (log / fork / pole / jam as variants), bush (a low scrub
+bush: leafy dome + leaf sprays on cards, seasons, wind), litter (a leaf / twig debris card, seasons). style:
+realistic | blobby (pebbles, smooth lumps) | anime (crisp planes, painted bands) | cartoon (chunky facets, a dark
+edge line) | pixar (soft sculpt, mossy top), or {"sheet": name, ...overrides}; rock colours start from the
+terrain's rock colour turned by the style (color = your own sRGB).
+A rock is a signed distance in the cliffs' language (oblique joint faces round three unequal axes, off-parallel
+bedding faces, broken corners, thin partings, weathered rounder on top, wider at its base, water-worn toward an
+ellipsoid): form = overrides of those numbers, e.g. {"round": 0.5, "bevel": 0.1, "faces": [5, 7], "split": 1.0,
+"taper": 0.3, "sink": 0.3}; paint = {"top": lichen 0..1, "moss": 0..1, "bands": painted strata, "ink": edge line,
+"cracks", "gradient", ...}; unknown keys are refused with the list. variants (default 4) differ in PROPORTION, not
+only seed. Written into out_dir (default workspace/clutter/<style>_<kind>/): per variant and LOD a GLB
+(<stem>_v<k>_LOD<j>.glb; rocks 300 / 100 / 44 triangles, the last a hull that keeps the outline; bushes ~250 / 120 /
+55; litter 8 / 2), a convex collision hull for boulders, ONE atlas (albedo, tangent normal, occlusion + roughness)
+shared by every variant and LOD, and <stem>_seasons.json in the plant contract's shape (grade "clutter", kind,
+slots, variants, size / height / sink, LOD distances, wet / tint / instancing recipes). Assets are 1 m across at
+scale 1, pivot on the ground line with `sink_m` below it. 10-60 s, no Blender. look=True also returns a sheet at
+2.5 / 10 / 40 m (Blender, ~1 min).
+
+### `look_clutter`
+
+`look_clutter(folders, season='summer', clay=False, scale=1.0, save=None)`
+
+A sheet of exported clutter folders (make_clutter's out_dir; a row each): every variant side by side on rough
+grass at 2.5 / 10 / 40 m with the LOD drawn at that distance (the far views enlarged: real pixels). Judge: does it
+read as what it is and in its style, do the LODs keep the outline, do the variants look like clones? season = a
+bush's or a debris card's other pictures; clay = no textures (the mesh alone). Blender, ~30 s a row.
+
+### `clutter_kit`
+
+`clutter_kit(out_dir, kinds=None, styles=None)`
+
+Export a whole clutter kit: every kind (default all presets) in every style (default all five) into
+out_dir/<style>_<kind>/ ("realistic" -> "real"), then out_dir/clutter.json: terrain clutter kind (clutter.csv's
+`kind`) -> the folder that draws it per style, the instance convention (scale = largest plan dimension in m, yaw,
+squash relative) and what is missing. ~20-60 s a folder.

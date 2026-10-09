@@ -53,7 +53,8 @@ def _error_text(e: BaseException) -> str:
 def serve(reply_fd: int) -> None:
     for mod in filter(None, os.environ.get("HIFIPUSHIE_ARTIST_PRELOAD", "").split(",")):
         importlib.import_module(mod)  # (tests register extra tools this way)
-    from .server import mcp
+    from .server import enable_all, mcp
+    enable_all()  # every toolset (the server alone starts with the core)
     replies = os.fdopen(reply_fd, "w", buffering=1)
 
     def send(obj):

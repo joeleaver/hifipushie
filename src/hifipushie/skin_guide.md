@@ -209,3 +209,61 @@ leave one flat roughness. A highlight that is one clean blob is the plastic tell
 [23] WHO Child Growth Standards (0-5 y) and growth reference (5-19 y): who.int/tools/child-growth-standards
 [24] Snyder et al. 1977, "Anthropometry of Infants, Children and Youths to Age 18" (UMTRI-77-17; tables at math.nist.gov/~SRessler/anthrokids)
 [25] Loomis, "Figure Drawing for All It's Worth" (1943): proportion charts by age (heads tall, the midpoint)
+
+## Tool reference
+
+The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `human` toolset: enable_toolset("human") turns it on.
+
+### `skin`
+
+`skin(name, skin=None, replace=False, note='')`
+
+Describe a human's skin (spec["skin"]) and save it: the description expands into ordinary paint layers
+("skin:<layer>", under the model's own paint) and the skin part's shading. guide(topic="skin") is the artist's
+workflow in stages; skin_reference lists every key, default and zone. For a model built on a `base` (MakeHuman /
+template body, GNM head): zones are placed from its joints and lm_* face landmarks.
+skin: a patch merged into the stored description (objects key by key, null deletes; replace=True starts over):
+  {"tone": {"fitzpatrick": 1..6 | "melanin": 0..1, "blood": 0..1, "undertone": -1 cool .. 1 warm},
+   "age": years, "variation": 1, "detail": 1, "oil": 0..1, "thin": 0..1, "sun": 0..1,
+   "features": {"freckles": 0.6, "moles": {"at": [...]}, "age_spots", "blemishes", "veins", "flush", "sunburn",
+                "tan": {"amount", "mask": [...]}},
+   "wrinkles": {"amount": 1, "forehead": ..., "crows_feet": ...},          (default: from age)
+   "hair": {"brows": {"color", "density", "thickness"}, "lashes", "stubble": 0.7, "body": 0.5},
+   "scars": [{"kind": "cut" | "surgical" | "keloid" | "burn" | "pockmarks", "path": [points] | "zone": name, "age": 0..1}],
+   "tattoos": [{"image": {"file" | "text": {...}, "at", "size", "dir", "wrap"}, "age": years}],
+   "makeup": {"foundation": {"amount", "finish"}, "blush", "contour", "highlight", "eyeshadow": {"color", "finish"},
+              "eyeliner": {"wing"}, "mascara", "brows", "lipstick": {"color", "finish": "matte" | "satin" | "gloss"}, "nails"},
+   "zones": {built-in zone layer: strength}, "lips": {...}, "shading": {...}, "part": "body",
+   "only": ["eyes"]}   only these groups are laid and nothing else: "eyes" (the painted eyeballs), "eye_rims",
+                       "zones", "lips", "roughness", "micro", "features", "shading" (the part's base colour and
+                       scattering). ["eyes"] puts the skin tool's irises on a character whose skin is painted by
+                       hand, and leaves that skin and its shading alone.
+Any layer of the model's own paint can use the same anatomy: {"zone": "cheekbone.L"} in edit_model paint ops.
+Then look_skin (fast cropped close-ups + measurements), or sync + look for the whole model.
+Returns the tone's colours and the layers the description made.
+
+### `look_skin`
+
+`look_skin(name, views=None, size=768, light=None, flat=False, layer=None, engine='eevee', save=None)`
+
+Close looks at the skin, fast: bare-skin crops of the model (head and shoulders; forearm and hand: without
+clothes or hair, ~1 mm mesh, kept between calls) rendered under fixed lights, with measurements of the face next
+to what photographs of real skin measure (contrast per feature size in lightness and colour, colour zones,
+highlight size and breakup, micro contrast) and hints. The first look of a region meshes it (~2 min); after a
+skin or paint edit ~20-40 s.
+views: any of bust, face, three_quarter, side, cheek (macro), eye, mouth, forehead, ear (back-lit: light through
+the ear), hand, palm, forearm (default face, three_quarter, cheek, eye, mouth, ear).
+light: "studio" (a key from the model's right + a weak fill), "soft" (broad frontal: colour without highlights),
+"back" (back-lit); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
+("freckles" = "skin:freckles"; or any paint layer's name).
+engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
+shadow edges and back-lit ears).
+Judge in this order: flat colour at bust distance (tone, zones), then the lit bust, then the close-ups.
+
+### `skin_reference`
+
+`skin_reference()`
+
+Everything the `skin` description takes: the anatomical zones (also usable by any paint layer as
+{"zone": name}), the tone model, features, wrinkles, hair, scars, tattoos and make-up with their keys and
+defaults.

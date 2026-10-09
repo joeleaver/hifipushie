@@ -348,6 +348,8 @@ def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -
     machine's heavy slot. Returns (out.npz contents, log lines)."""
     timeout = float(timeout or os.environ.get("HIFIPUSHIE_ZOZO_TIMEOUT", 4 * 3600))
     remote = os.environ.get("HIFIPUSHIE_ZOZO_REMOTE")
+    if not remote and os.environ.get("HIFIPUSHIE_GPU") == "bundle":  # oxidegen's GPU fleet (bundle jobs), the default remote
+        remote = str(Path(__file__).resolve().parents[2] / "spikes" / "gpu_cloth" / "bundle.sh")
     if remote:
         return run_external(job_dir, "remote", progress, timeout, cmd=remote)
     from . import resources

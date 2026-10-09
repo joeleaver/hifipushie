@@ -240,6 +240,27 @@ def test_face_shapes_by_index_on_own_quads():
     assert np.linalg.norm(D["jawOpen"], axis=1).max() > 0.015
 
 
+def test_stored_warp_survives_features():
+    """A human() keeps base.head.features (the seed's look); head_desc used to REPLACE base.head.warp with the
+    features' warp, so every fit_outline on such a head was dropped (Tess: widths moved 0.0 mm in 3 rounds)."""
+    from hifipushie import base as basemod
+    from hifipushie import humans
+    from hifipushie.spec import expand_mirror
+    sp = humans.spec(age=22, sex=0.0, seed=35, skin=False, source="human")
+    assert sp["base"]["head"].get("features"), "the case needs a head with features"
+    h0 = basemod.head_of(expand_mirror(sp), sp["base"])
+    w = {"at": [[0.071, 0.24, 0.033], [-0.071, 0.24, 0.033]], "coef": [[0.004, 0.0, 0.0], [-0.004, 0.0, 0.0]],
+         "sigma": 0.022}  # GNM frame: the cheeks at the mouth (as fit_outline writes)
+    sp["base"]["head"]["warp"] = w
+    hd = onemesh.head_desc(sp["base"])
+    assert isinstance(hd["warp"], list) and hd["warp"][-1] == w and len(hd["warp"]) == 2, hd.get("warp")
+    h1 = basemod.head_of(expand_mirror(sp), sp["base"])
+    d = max(float(np.abs(np.asarray(h1[k], float) - np.asarray(h0[k], float)).max())
+            for k in h0 if isinstance(h0[k], (list, np.ndarray)) and np.asarray(h0[k]).dtype.kind == "f"
+            and np.shape(h0[k]) == np.shape(h1.get(k)))
+    assert d > 1e-3, f"the stored warp moved nothing ({d})"
+
+
 if __name__ == "__main__":
     test_asset_topology()
     print("ok test_asset_topology")
@@ -247,6 +268,7 @@ if __name__ == "__main__":
         for fn in (test_the_stitch_follows_every_body, test_template_is_one_closed_mesh_and_deterministic,
                    test_identity_fades_out_at_the_stitch, test_old_paths_never_touch_it,
                    test_whole_person_builds_and_measures_as_the_old_path, test_weights_by_index,
-                   test_head_size_scales_about_the_centre_line, test_face_shapes_by_index_on_own_quads):
+                   test_head_size_scales_about_the_centre_line, test_face_shapes_by_index_on_own_quads,
+                   test_stored_warp_survives_features):
             fn()
             print("ok", fn.__name__)
