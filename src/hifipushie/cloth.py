@@ -2565,6 +2565,7 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
     th = np.minimum(th, thr)
     out0, turned0 = out.copy(), turned.copy()
     end_w = np.zeros(len(P2))  # how far each point belongs to an END (past where the roll line meets the neck edge)
+    end_u = np.full(len(P2), -np.inf)  # m along the neck edge past that meeting point (< 0: before it, on the band)
 
     def lay_turned(th, open_=0.0):
         out, turned = out0.copy(), turned0.copy()
@@ -2593,6 +2594,8 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
             for i, pnt in enumerate(P2):
                 u_ = float((pnt - e_["X2"]) @ tx)
                 wv = float(np.clip(1.0 + u_ / NOTCH_BLEND, 0.0, 1.0))
+                if (pnt - Q.mean(0)) @ tx >= 0:
+                    end_u[i] = max(end_u[i], u_)
                 if wv <= 0 or (pnt - Q.mean(0)) @ tx < 0:
                     continue
                 wv = wv * wv * (3 - 2 * wv)
@@ -2641,6 +2644,7 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
     if info is not None:
         info["flat"] = flat_
         info["end_w"] = end_w.copy()
+        info["end_u"] = end_u.copy()
         info["open"] = opens
         info["closed"] = out.copy()
         kb = np.where(run == 0)[0]
@@ -3572,7 +3576,8 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
             if w.get("lay") == "notched" and "open" in LAY_INFO.get(nm, {}):
                 # (build: the fall stands open at the sim's start and is turned down through the carried poses)
                 B.setdefault("open_lay", {})[nm] = {"closed": LAY_INFO[nm]["closed"], "open": LAY_INFO[nm]["open"],
-                                                    "laid": X[sel].copy(), "end_w": LAY_INFO[nm].get("end_w")}
+                                                    "laid": X[sel].copy(), "end_w": LAY_INFO[nm].get("end_w"),
+                                                    "end_u": LAY_INFO[nm].get("end_u")}
             if w.get("worn") and w.get("true", False):
                 # a piece laid by frames along a curved edge, turned about a line and carried across a seam is the
                 # right SHAPE but not the pattern's lengths (a notched collar's front ends: 36 triangles up to 3.6x
@@ -5639,6 +5644,13 @@ def over_measures(body: "Body", U: np.ndarray, res: dict | None = None, waist: f
                     t = 1000.0 * (float(np.median(pb.pad[near])) + float(waist))
                     info[k_] = [round(mm[k_], 1), round(mm[k_] + 2 * np.pi * t, 1)]
                     mm[k_] = mm[k_] + 2 * np.pi * t
+        if "hips" in info and "seat" not in info and "seat" in mm:
+            # the tail ends between the hips' line and the seat's: the cloth over its end still stands off the seat
+            # (half the hips' share). With the hips taped over the tail and the seat bare, a dropped waist came out
+            # wider than the seat's quarter allows and the band 8 mm short of the girth it sits on (stage 2)
+            d_ = 0.5 * (info["hips"][1] - info["hips"][0])
+            info["seat"] = [round(mm["seat"], 1), round(mm["seat"] + d_, 1)]
+            mm["seat"] = mm["seat"] + d_
     return mm, info
 
 
@@ -5748,6 +5760,7 @@ def _fall_down(res: dict, M: dict, V: np.ndarray, body: "Body", vn: np.ndarray, 
     return out
 
 
+END_BACK = 0.07  # m of neck edge before the roll line's meeting point from which a notched collar is draped (collar_ends {"back"})
 COLLAR_ENDS = "draped"  # a notched collar's ends past where its roll line meets the neck edge: "draped" | "made"
 END_FREE = 0.5  # the share of the end's plane (the lay's ease-in weight) from which a collar vertex is draped
 
@@ -5759,16 +5772,24 @@ def _draped_ends(g: dict, Bp: dict, M: dict) -> np.ndarray:
     and goes where the lapel goes. Held where the lay put them (a rigid plane fitted to the START's chest), the ends
     stood up as wings beside the neck when the forepart under them settled lower (om_13, om_15: the collar's 117
     vertices moved 0-0.5 mm from start to end)."""
-    if g.get("collar_ends", COLLAR_ENDS) != "draped":
+    ce = g.get("collar_ends", COLLAR_ENDS)
+    if ce == "made":
         return np.zeros(0, np.int64)
+    back = float(ce["back"]) if isinstance(ce, dict) and "back" in ce else END_BACK
     out = []
     for nm, ol in (Bp.get("open_lay") or {}).items():
-        ew = ol.get("end_w")
+        ew, eu = ol.get("end_w"), ol.get("end_u")
         if ew is None or nm not in M["names"]:
             continue
         sel = np.where(M["piece"] == M["names"].index(nm))[0]
         if len(ew) == len(sel):
-            out.append(sel[np.asarray(ew) >= END_FREE])
+            free = np.asarray(ew) >= END_FREE
+            if eu is not None and len(eu) == len(sel):
+                # ... and from END_BACK before that point (the neck's side, where the collar turns the corner onto
+                # the shoulder): held to there, the band's sides stayed 1 cm over the shoulder while the fronts
+                # they are sewn to settled and opened 14 mm, and the ends folded 60-95 deg at the hinge (om_20)
+                free |= np.asarray(eu) >= -back
+            out.append(sel[free])
     return np.concatenate(out) if out else np.zeros(0, np.int64)
 
 
