@@ -91,6 +91,148 @@ def test_join_of_nothing_is_an_empty_mesh():
     assert len(hc.join(None, e, e)["tris"]) == 0
 
 
+def test_short_hair_is_drawn_on_the_cap():
+    """A short cut's own strands (hair off its locks, lying on the head) are drawn in the scalp chart when the cut
+    is short: the cap carries the look; otherwise only the scalp layer is."""
+    from hifipushie import hair
+    A = np.arange(0.0, 360.0, hair.Scalp.STEP)
+    E = np.arange(hair.Scalp.EL[0], hair.Scalp.EL[1] + 1e-6, hair.Scalp.STEP)
+    sc = hair.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
+    g = hair.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
+    line = np.full(360, -20.0)
+    P = sc.point(np.linspace(80.0, 100.0, 12), np.full(12, 30.0), np.full(12, 0.006))  # a strand 6 mm over the scalp
+    D = {"pts": P.astype(np.float32), "counts": np.array([12], np.int32), "lock": np.array([0], np.int32),
+         "sub": np.zeros(1, np.float32), "rand": np.array([0.9], np.float32), "radius": np.zeros(1, np.float32),
+         "obj": np.array([0], np.int32), "names": np.array(["hair_guides_free"])}
+    S = {**hc.strands_of({}), "soft": 0.008}
+    c0 = hs.cap_chart(sc, g, line, S, D, float(hair.Scalp.EL[0]), 256)
+    c1 = hs.cap_chart(sc, g, line, S, D, float(hair.Scalp.EL[0]), 256, short=True)
+    assert np.abs(c1["id"] - c0["id"]).max() > 0.2  # the strand's own id is in the short chart only
+    assert (np.abs(c1["id"] - 0.9) < 0.05).sum() >= 8 and (np.abs(c0["id"] - 0.9) < 0.05).sum() == 0
+
+
+def _ball_scalp():
+    from hifipushie import hair
+    A = np.arange(0.0, 360.0, hair.Scalp.STEP)
+    E = np.arange(hair.Scalp.EL[0], hair.Scalp.EL[1] + 1e-6, hair.Scalp.STEP)
+    sc = hair.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
+    g = hair.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
+    return sc, g, np.full(360, -20.0), float(hair.Scalp.EL[0])
+
+
+def _crop(sc, n=4000, length=0.02, seed=0, lean=(1.0, 0.0), h=(0.001, 0.008)):
+    """Short strands all over the ball above el 0: each runs `length` along `lean` (east, up) rising from h[0] to
+    a height up to h[1]. The D dict a strands dump gives."""
+    rng = np.random.default_rng(seed)
+    az0, el0 = rng.uniform(0, 360, n), np.degrees(np.arcsin(rng.uniform(0.0, 0.95, n)))
+    k = 8
+    t = np.linspace(0, 1, k)[None]
+    R = 0.09
+    az = az0[:, None] + np.degrees(lean[0] * length * t / (R * np.cos(np.radians(el0))[:, None]))
+    el = el0[:, None] + np.degrees(lean[1] * length * t / R)
+    top = rng.uniform(h[0], h[1], n)[:, None]
+    hh = h[0] + (top - h[0]) * t
+    P = sc.point(az.ravel(), el.ravel(), hh.ravel())
+    return {"pts": P.astype(np.float32), "counts": np.full(n, k, np.int32), "lock": rng.integers(0, 2, n).astype(np.int32),
+            "sub": np.zeros(n, np.float32), "rand": rng.uniform(0, 1, n).astype(np.float32),
+            "radius": np.zeros(n, np.float32), "obj": np.zeros(n, np.int32), "names": np.array(["hair_guides_free"])}
+
+
+def test_baked_cap_is_hair_mass():
+    """The short cut's cap chart (hair_cap): opaque wherever the groom is dense (no skin between the strands of a
+    full head), bare where there is no hair; the top strand of a texel wins; a strand keeps its width in METRES up
+    the head; the hair's own height comes back as the cap's lift."""
+    from hifipushie import hair_cap
+    sc, g, line, e0 = _ball_scalp()
+    S = {**hc.strands_of({}), "soft": 0.008}
+    D = _crop(sc, n=30000)
+    c = hair_cap.chart(sc, g, line, S, D, [{"name": "a", "grey": 0.0}, {"name": "b", "grey": 0.0}], e0, 512)
+    H = 512
+    row = lambda el: int((1 - (el - e0) / (90.0 - e0)) * H)  # noqa: E731
+    assert c["alpha"][row(60):row(10)].min() > 0.98, c["alpha"][row(60):row(10)].min()  # a full head: no hole in it
+    assert c["alpha"][row(-30):].max() < 0.02  # under the hair's lower edge (el 0 - soft) nothing
+    assert c["cover"][row(60):row(10)].mean() > 0.9  # ...and it is strands, not only the base
+    assert 0.2 < c["depth"][row(60):row(10)].mean() < 0.9 and c["depth"][row(60):row(10)].std() > 0.03  # shade between hairs
+    lift = hair_cap.lift_at(c["lift"], np.array([10.0, 200.0]), np.array([40.0, 40.0]))
+    assert (lift > 0.002).all() and (lift < 0.009).all(), lift  # the hair stands 1-8 mm: its upper middle
+    ch = hair_cap.cap_height(c["lift"], np.array([0.05, 0.0]), np.array([10.0, 10.0]), np.array([40.0, 40.0]))
+    assert ch[0] > 0.001 and ch[1] == 0.0  # the cap stands in the hair, and comes down to the skin at the hairline
+    # one strand low and one high, crossing: the high one's id is what shows where they cross
+    lo = sc.point(np.linspace(80.0, 100.0, 12), np.full(12, 30.0), np.full(12, 0.002))
+    hi = sc.point(np.full(12, 90.0), np.linspace(25.0, 35.0, 12), np.full(12, 0.008))
+    D2 = {"pts": np.r_[lo, hi].astype(np.float32), "counts": np.array([12, 12], np.int32), "lock": np.zeros(2, np.int32),
+          "sub": np.zeros(2, np.float32), "rand": np.array([0.1, 0.9], np.float32), "radius": np.zeros(2, np.float32),
+          "obj": np.zeros(2, np.int32), "names": np.array(["hair_guides_free"])}
+    c2 = hair_cap.chart(sc, g, line, S, D2, [{"name": "a"}], e0, 1024, width=0.002)
+    y, x = int((1 - (30.0 - e0) / (90.0 - e0)) * 1024), int(90.0 / 360.0 * 1024)
+    assert abs(c2["id"][y, x] - 0.9) < 0.05, c2["id"][y, x]
+    # the same strand low on the head and high on it covers the same AREA of scalp (its texels differ 2x)
+    areas = []
+    for el in (10.0, 60.0):
+        w_ = np.degrees(0.02 / (0.09 * np.cos(np.radians(el))))
+        P = sc.point(np.linspace(90.0, 90.0 + w_, 12), np.full(12, el), np.full(12, 0.004))
+        D3 = {**D2, "pts": P.astype(np.float32), "counts": np.array([12], np.int32), "lock": np.zeros(1, np.int32),
+              "sub": np.zeros(1, np.float32), "rand": np.array([0.5], np.float32), "radius": np.zeros(1, np.float32),
+              "obj": np.zeros(1, np.int32)}
+        c3 = hair_cap.chart(sc, g, line, S, D3, [{"name": "a"}], e0, 1024, width=0.002)
+        mu = 2 * np.pi * 0.09 * np.cos(np.radians(el)) / 1024
+        mv = np.radians(90.0 - e0) * 0.09 / 1024
+        areas.append(float(c3["cover"].sum() * mu * mv))
+    assert abs(areas[0] / areas[1] - 1) < 0.2 and abs(areas[0] / (0.02 * 0.002) - 1) < 0.35, areas
+
+
+def test_baked_cap_flow_and_grey():
+    """The flow map is the strands' direction (east / up in the chart's tangent space), and a lock's grey share is
+    its own strands' (per region), scaled by look.card_grey."""
+    from hifipushie import hair_cap
+    sc, g, line, e0 = _ball_scalp()
+    S = {**hc.strands_of({}), "soft": 0.008}
+    locks = [{"name": "a", "grey": 0.0}, {"name": "b", "grey": 1.0}]
+    for lean, want in (((1.0, 0.0), 0), ((0.0, 1.0), 1)):
+        D = _crop(sc, n=20000, lean=lean)
+        c = hair_cap.chart(sc, g, line, S, D, locks, e0, 512, {"card_grey": 1.0})
+        fl = c["flow"][120:300]
+        assert np.abs(fl[..., want]).mean() > 0.9 and fl[..., 2].mean() > 0.8, (lean, np.abs(fl[..., :2]).mean((0, 1)))
+        n = c["normal"][120:300]
+        assert n[..., 2].min() > 0.5 and abs(np.linalg.norm(n, axis=-1) - 1).max() < 1e-3  # a relief, never a cliff
+    D["lock"][:] = (np.arange(len(D["lock"])) % 2)  # half the strands in the all-grey lock
+    full = hair_cap.chart(sc, g, line, S, D, locks, e0, 512, {"card_grey": 1.0})["grey"][120:300].mean()
+    half = hair_cap.chart(sc, g, line, S, D, locks, e0, 512, {"card_grey": 0.5})["grey"][120:300].mean()
+    assert 0.35 < full < 0.65 and 0.15 < half < 0.35, (full, half)
+
+
+def test_strands_key_is_the_content():
+    """The same strands job written twice (its npz files carry the time they were zipped) has ONE key: the groom is
+    evaluated once for a look and every tier of an export, not once each."""
+    import tempfile, time
+    from pathlib import Path
+    keys = []
+    for i in range(2):
+        d = Path(tempfile.mkdtemp())
+        for nm in ("g", "s", "c"):
+            np.savez(d / f"{nm}.npz", pts=np.arange(30, dtype=np.float32).reshape(10, 3), n=np.arange(4))
+        sd = {"scalp": str(d / "s.npz"), "collide": str(d / "c.npz"), "look": {"lit": "#%06x" % i}, "physical": {"count": 5},
+              "groups": [{"name": "hair_guides", "guides": str(d / "g.npz"), "stack": [["x", {"a": 1.0}]]}], "e0": -70.0}
+        keys.append(hs.key(sd))
+        time.sleep(2.1)
+    assert keys[0] == keys[1], keys
+
+
+def test_short_tiles_are_few_thick_strands():
+    """A short cut's card tiles: a few strands several texels thick (they survive as strands 3-4 mips down), not a
+    hundred 1-texel hairs that average to a film."""
+    S = {**hc.strands_of({}), "atlas": 512}
+    lk = {"lit": "#54463c", "gap": "#3a312b", "grey": "#cfc7bd"}
+    a0 = hc.atlas(S, lk, key="t0")
+    a1 = hc.atlas({**S, "short": True}, lk, key="t1")
+    t0 = next(t_ for t_ in a0["tiles"] if t_["kind"] == "medium")
+    x0, x1 = int(t0["u0"] * 512), int(t0["u1"] * 512)
+    cov = lambda at: float((at["color"][100:300, x0:x1, 3] > 0.5).mean())  # noqa: E731
+    c0, c1 = cov(a0), cov(a1)
+    assert 0.05 < c1 < 0.5 and c1 < 0.75 * c0, (c0, c1)  # open: the cap shows between a card's strands
+    assert a1["flow"].shape[2] == 3 and abs(float(a1["flow"][5, 5, 1]) - 1.0) < 1e-6  # a card's hair runs down its picture
+
+
 def test_gather_reaches_the_tie():
     assert hs.is_gather({"name": "tg0_12"}) and hs.is_gather({"name": "t1g2_3"})
     assert not hs.is_gather({"name": "tt4"}) and not hs.is_gather({"name": "sweep1"})

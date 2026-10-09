@@ -2033,7 +2033,7 @@ def nudge_human(name: str, landmark: str, move: list[float] | None = None, to: l
 @mcp.tool(structured_output=False)
 def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: list[str] | None = None,
                     force: bool = False, save: bool = True, note: str = "", figure: bool = True,
-                    read: dict | str | None = None, method: str = "map"):
+                    read: dict | str | None = None, method: str = "map", measure: bool = False):
     """Match a one-mesh human's FACE to reference images by named points: views = [{"image": path (optional, kept for
     the record), "size": [w, h] (pixels), "yaw": 0 front / 45 three-quarter from its left / 90 its left side (a hint),
     "points": {landmark: [u, v]}}] with u right, v down. One camera per view is fitted (pose + focal) and, with fit,
@@ -2050,6 +2050,10 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     population sigmas: {"jaw_square": 1.5, "chin_projection": 1, "cheek_fullness": 1, "nose_upturn": 1} (names:
     humanmacro.MACROS; say what a person sees at a glance: it is worth more than a second picture). A profile needs
     clicked points (the detector doesn't find profiles). The reply adds the head's strongest macros.
+    measure=True (method map): macros MEASURED on the front picture join the read as evidence (humanmeasure: face
+    length, jaw / chin / face widths, brow height, nose length ... regressed from the detector's points; each with
+    its own sigma; what you say in `read` wins). RENDERS ONLY: the regression is calibrated on rendered heads and not
+    validated on photographs; on the study's truth renders it replaced a said read in-model (face 2.17 -> 1.94 mm).
     method "points" = the old least-squares on the given points alone (it makes heads WORSE than the untouched one
     on detector points: kept for comparison)."""
     from . import humanfit
@@ -2059,7 +2063,7 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
     if method == "map":
         from . import humanfit_map
         rd = json.loads(read) if isinstance(read, str) else read
-        nb, rep = humanfit_map.fit(b, vs, read=rd, force=force, free=tuple(free or ("identity",)) if fit else ())
+        nb, rep = humanfit_map.fit(b, vs, read=rd, force=force, free=tuple(free or ("identity",)) if fit else (), measure=measure)
     else:
         nb, rep = humanfit.fit_views(b, vs, free=tuple(free or ("identity",)) if fit else (), force=force)
     (store.HOME / name / "human_refs.json").write_text(json.dumps({"views": vs, "cameras": rep["cameras"]}, indent=1))
@@ -2069,6 +2073,10 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
                           for i, v in enumerate(rep["views"]))
         if rep.get("read"):
             extra += "\nread: " + ", ".join(f"{k} asked {v['asked']:+.1f} got {v['got']:+.2f}" for k, v in rep["read"].items())
+        if rep.get("measured"):
+            m_ = rep["measured"]
+            extra += (f"\nMEASURED on view {m_['view']} ({m_['used']}; RENDERS ONLY: not validated on photographs): "
+                      + ", ".join(f"{k} {v[0]:+.1f}+-{v[1]:.1f}" for k, v in sorted(m_["macros"].items(), key=lambda t: -abs(t[1][0]))[:12]))
         out[-1] = (out[-1] + "\n" + extra + "\nmacros (population sigmas):\n" + rep.get("macros", "")
                    + "\n(method map: the detector's point table is validated on RENDERS of heads of known shape only, not yet on "
                    "photographs. The result is the most probable head for this evidence: soft; structure comes after.)")
@@ -2128,6 +2136,47 @@ def fit_likeness(name: str, stage: str, force: bool = False, save: bool = True):
     if Path(pn).exists():
         out.insert(0, _png(PILImage.open(pn)))
     return out
+
+
+@mcp.tool(structured_output=False)
+def project_reference(name: str, view: int = 0, save: str = ""):
+    """The fastest honest judge of a fitted head's GEOMETRY: reference picture number `view` (of the model's fitted
+    references: human_reference first) projected onto the model through its fitted camera as an unlit texture, then
+    shown from the reference cameras, both profiles, the other three-quarter and a low angle. A clay bust beside a
+    photo of a skinned, haired person compares two different things; this compares like with like. Where the
+    likeness holds when the head is turned, the geometry carries it; where the picture smears, doubles or slides
+    (ears landing on cheeks = the face too narrow; the nose's side, the jaw's edge, the chin in profile), the
+    geometry is wrong THERE. Skin the reference's camera does not see is dim clay. The picture's own light is on the
+    surface: judge outlines and proportions in turned views, not shading."""
+    from . import likeness_read as lr
+    pn = save or str(store.HOME / "human_renders" / f"lk_{name}_projected.png")
+    r = lr.project_reference(name, pn, view=view)
+    return [_png(PILImage.open(pn)), f"reference {view} projected on {name}; share of each view's head that carries the picture: {r['seen']}\n{pn}"]
+
+
+@mcp.tool(structured_output=False)
+def texture_from_reference(name: str, views: list[int] | None = None, opacity: float = 0.9, delight: bool = True,
+                           match: str = "tone", remove: bool = False) -> str:
+    """The fitted reference pictures as the head's ALBEDO (the projection test, kept as paint): each picture is
+    projected onto the model through its fitted camera (human_reference first), its light taken out roughly (one
+    fitted light on the model's own normals), and laid over the skin as an ordinary paint layer "ref_texture_<view>"
+    (an image decal along that camera's axis, colour = the image, alpha = how far to trust it).
+    What is the picture and what is ours: the PICTURE gives colour where its camera saw skin square-on (zones, brows,
+    stubble shadow, lips, lines: at the picture's own resolution, said in the reply); OURS stays on ears, under the
+    chin and nose, hair, eyeballs, skin turned away, neck and body, and for ALL relief, roughness and scattering (the
+    skin description's pores and highlights still shape the surface). Cast shadows and a painter's strokes stay in:
+    use a photograph with even light; a painting's brushwork lands on the skin.
+    views: which of the model's fitted pictures (default all with an image; each later one lies OVER the earlier:
+    list the most trusted last). opacity: the layer's strength. delight=False keeps the picture's light.
+    match: "tone" (default: the picture's median skin colour is brought to the skin description's tone, so the
+    picture gives its variation and the join with the procedural skin doesn't show), "level" (lightness only), ""
+    (as de-lit). remove=True takes the layers out.
+    The decal is made on the head's shape as it is NOW: after any change of the head's shape call this again (a
+    stale layer is reported by name). Then sync + look, or look_skin."""
+    from . import likeness_texture as lt
+    r = lt.apply(name, views=views, opacity=opacity, delight=delight, match=match or None, remove=remove)
+    st = lt.stale(store.load(name))
+    return r["text"] + (f"\nSTALE (made on another head shape, make again): {st}" if st else "")
 
 
 @mcp.tool(structured_output=False)

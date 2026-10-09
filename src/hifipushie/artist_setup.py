@@ -185,7 +185,8 @@ def download(url: str, dest: Path, sha256: str, label: str) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
     have = part.stat().st_size if part.exists() else 0
-    req = urllib.request.Request(url)
+    # download.blender.org answers 403 to urllib's default agent
+    req = urllib.request.Request(url, headers={"User-Agent": "hifipushie-setup/1 (+python-urllib)"})
     if have:
         req.add_header("Range", f"bytes={have}-")
     with urllib.request.urlopen(req, timeout=60) as r:
