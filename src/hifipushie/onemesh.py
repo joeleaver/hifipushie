@@ -28,7 +28,7 @@ from pathlib import Path
 import numpy as np
 
 _CACHE: dict = {}
-VERSION = 10  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+VERSION = 13  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
@@ -318,6 +318,20 @@ def template(base: dict) -> dict:
         if (q >= 0).all():
             faces.append([int(v) for v in q])
     assert min(min(f) for f in faces) >= 0
+    seal_field = None
+    if float(hd.get("lip_seal") or 0) >= 0.5 and hd.get("mouth_gap") is None and ht.get("skin_index") is None:
+        # (faceslide / base._sealed_field) the closed mouth's field: the rolls inside the contact ring left out, the
+        # contact rows overlapped
+        from . import faceslide
+        R = faceslide._lip_rings()
+        row_of = np.full(len(a["g2f"]), -1)
+        row_of[gid[hrow]] = len(mh_rows) + len(br) + np.arange(len(hrow))
+        kc = R["contact"]
+        inside = np.concatenate(R["rings"][:kc + 1])
+        C = R["rings"][kc]
+        rows = lambda ids: row_of[np.asarray(ids, int)][row_of[np.asarray(ids, int)] >= 0]  # noqa: E731
+        seal_field = {"drop": rows(inside), "up": rows(C[R["upper"][C]]), "lo": rows(C[~R["upper"][C]]),
+                      "outer": [(rows(r[R["upper"][r]]), rows(r[~R["upper"][r]])) for r in R["rings"][kc + 1:kc + 4]]}
     V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
     if len(loop_rows) and ht.get("loop_offsets") is not None:  # (faceslide.py) the sliders on the loops' vertices
         V[loop_rows] += ht["loop_offsets"]
@@ -341,7 +355,7 @@ def template(base: dict) -> dict:
         _CACHE[("style_carry", key[1])] = (carry_fn, dz)
     out = {"name": "human", "P": V, "L": np.array([v for f in faces for v in f]), "S": np.array([len(f) for f in faces]),
            "J": Jb, "bones": bones, "rig": mb["rig"], "chin_z": chin_z, "face": face, "styled": bool(bs),
-           "fid": fid, "head_rows": hrow, "loop_rows": loop_rows, "n_body": len(mh_rows) + len(br), "n_mh": len(mh_rows),
+           "fid": fid, "head_rows": hrow, "loop_rows": loop_rows, "seal_field": seal_field, "n_body": len(mh_rows) + len(br), "n_mh": len(mh_rows),
            # the chin: the head's own landmark (clothes stay under it), and the body's vertex the old path measures at
            "chin_lm": chin_lm, "chin_mh": chin_mh_}
     _CACHE[key] = out

@@ -473,3 +473,39 @@ model".
     MEMBRANE (harmonic fill, outermost ring held) instead of bands faded by height. ts_n seal 1: contact 0.00 mm, integrity
     ok, no lip warning. Test: four wide-spread identities (seeds 1, 2, 5, 8, spread 1.2, both sexes) unbroken and closed.
     One near-degenerate GNM commissure quad (< 0.15 mm2) turns with ANY change (mouth_corner too): left out of the count.
+  - SEAM HOLES (Tess ts_w / ts_x: a row of pits and fragments along a sealed mouth's seam, in clay too). The field, not
+    the quads: touching lips closed a pocket of "outside" between the inner rolls behind the seam (seam.py: 12 of 15
+    places outside again 1-6 mm behind the contact). base._sealed_field (one mesh, lip_seal >= 0.5, no mouth_gap):
+    for the FIELD only the rolls from the open loop to the contact ring are left out and the two contact rows overlap
+    by 2 x 0.4 mm (template / export / face-shape quads keep the rolls). ts_w, ts_x: 0 of 15. Test: three wide-spread
+    identities, the field inside from the lips' front to 6 mm behind the contact every 0.25 mm. onemesh.VERSION 11.
+  - EEVEE strands desaturated (blender_strands.EEVEE_SAT 0.35, look.eevee_sat): looks are asked warm for Cycles' hair
+    BSDF; EEVEE drew them as given (dressed hair orange-blond, grey locks tan).
+- EYE DIAGNOSIS (facesliders; strip human_renders/ll_eye_dbg.png, eyedbg.py / dshot.sh): Garrett through the photo's
+  camera, one change per column, opening (mean of both eyes) | lower lid on the iris: photo 7.39 | -2.2; (a) raw GNM
+  (no loops / sliders / pose) 8.3 | -1.5; (b) + loops 8.7 (the loops change only the clay raster's shading: the field
+  moves <= 0.03 mm); (c) + eye sliders 8.8; (d) + lid pose (lid_upper 1.5 mm) 7.6 | -1.5; (e) dressed 6.2 | -2.8.
+  Dressed split by skin.only: eyes only 7.5 (= clay), + zones / lips / roughness / micro / eye_rims 6.8, + features
+  (lashes, brows, wrinkles, stubble) 6.2. So the SQUINT is paint: ~0.7 mm from the zones / micro / rims and ~0.5 from
+  the features (lash lines), the lower lid read ~1.3 mm higher on the iris; the geometry (field) is as the clay.
+  Corners: inner angle photo 47 | clay 52-56 | dressed 48; outer photo 63 | clay 60-69 | dressed 55 (paint again:
+  eyes-only 65). The lid pose was fitted on clay, so dressed it double-counts. Routed: lid paint is eyedetail / skin.
+- CREASE AS A FOLD (Tess: "divots ... aren't in the right place"): eye_crease_depth is now laid on the HEAD's own lid
+  (faceslide.HEAD_FIELDS, head_fields(V), base.gnm_head passes V): the line at its own fold turn (_fold_turn: per u
+  band where the skin stops facing up and faces down, 2-9 mm over the margin; none = the template's ~6 mm) as a groove
+  under an overhang (the skin 1 mm above comes down and forward over it), held off the margin less than the other lid
+  fields. Tess ts_v: 3.1-4.6 mm (was 6.2, her fold's underside), Garrett 3.5-4.2. 0 quads turned at 1.5 on both.
+  Sheet human_renders/fs_06_crease_fold.png.
+  - SEAM SPECKS (Tess ts_h7 with lip sliders, clay too): the 0.4 mm contact overlap made the two lip sheets CROSS (small
+    holes in the field); wider kernels at the seam made them bigger (tried, SEAL_H 1.0). Now no overlap, and the three
+    rows out from the contact drawn toward the seam by 0.5 / 0.25 / 0.1 of the lips' vertical gap (base.SEAL_V, field
+    only): the V between the closed lips no longer narrows to the mesher's ~1 mm. ts_h7 clay: two tiny specks left (was
+    a row). onemesh.VERSION 13. Sheet human_renders/fs_07_ts_h7_seam.png.
+- NOSE SET (Joe: "no good control over the width of the middle of the nose"): faceslide nose_radix_width (1.5 mm a
+  side at +1), nose_dorsum_width (2.0), nose_tip_width (1.5, the domes), nose_dorsum_hump (2.0): side walls moved
+  sideways in proportion to x from the midline along the dorsal line (lm 27 -> 30), the dorsal line, the tip, the
+  alar base (lm 31-35, nostrils' insides) and the inner canthi held (test). Measures by SHADING, like with like under
+  the photo's light (faceslide.nose_widths: the dorsum's bright band at half its drop, at the radix and mid-dorsum;
+  the detector has no dorsal-line point); checklist items radix_width / dorsum_width (kind shape) wired as levers.
+  Garrett: dorsum 14.4 -> 10.8 mm (photo 10.6) at nose_dorsum_width -0.44, radix 14.0 = photo, alae held (46.2).
+  Sheets human_renders/fs_09_nose_front.png / _threequarter.png (units then 1.0-1.5: since raised).

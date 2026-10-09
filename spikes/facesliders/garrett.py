@@ -78,6 +78,20 @@ elif stage == "jaw":  # the lower face against the photo's jaw contour (the dete
         print(f"{k:14s} photo {ph0[k]:.2f}  before {md0[k]:.2f}  after {r['after'].get(k, float('nan')):.2f}")
     print("contour |miss| mean before", round(float(np.mean([abs(md0[k] - ph0[k]) for k in keys])), 2),
           "after", round(float(np.mean([abs(r["after"][k] - ph0[k]) for k in keys])), 2))
+elif stage == "nose":  # the dorsal widths by shading under the photo's light (faceslide.nose_widths), the alae held
+    spec = load(DST / "spec.json")
+    ph0, md0, _ = gm.measure("fs_garrett", spec["base"])
+    tg = {"dorsum_w": (ph0["dorsum_w"], 1.0), "radix_w": (ph0["radix_w"], 1.0), "alar_width": (ph0["alar_width"], 1.0)}
+
+    def read(b):
+        return gm.measure("fs_garrett", b)[1]
+    r = faceslide.fit(spec["base"], tg, ["nose_dorsum_width", "nose_radix_width"], read=read, on_base=True, log=print,
+                      iters=3, step=0.4)
+    spec["base"]["head"].setdefault("sliders", {}).update(r["sliders"])
+    save(spec)
+    print("SLIDERS", r["sliders"])
+    for k in tg:
+        print(f"{k:14s} photo {ph0[k]:.2f}  before {md0[k]:.2f}  after {r['after'][k]:.2f}")
 elif stage == "brow":  # the brows' height: an identity move (humanfit.solve, least change, everything else held)
     from hifipushie import humanfit
     spec = load(DST / "spec.json")
@@ -119,9 +133,15 @@ elif stage in ("eyes", "lips"):
         tg = {"canthal_tilt": (ph0["canthal_tilt"], 0.75), "brow_gap": (ph0["brow_gap"], 0.6),
               "brow_tilt": (ph0["brow_tilt"], 1.5)}
     else:
+        # the rest mouth closed (lip_seal), then the vermilion's heights (how much red shows) and the bow; the rolls
+        # (projection) are kept: the front detector hardly sees them
+        h = spec["base"]["head"]
+        h.pop("mouth_gap", None)
+        h["lip_seal"] = 1.0
+        save(spec)
         ph0, _, _ = gm.measure("fs_garrett", spec["base"])
-        names = ["lip_upper_roll", "lip_lower_roll", "lip_bow"]
-        tg = {"upper_lip": (ph0["upper_lip"], 0.5), "lower_lip": (min(ph0["lower_lip"], 9.5), 1.0),
+        names = ["lip_upper_height", "lip_lower_height", "lip_bow"]
+        tg = {"upper_lip": (ph0["upper_lip"], 0.5), "lower_lip": (ph0["lower_lip"], 0.8),
               "cupid_bow": (ph0["cupid_bow"], 1.2)}
     ph0, md0, _ = gm.measure("fs_garrett", spec["base"])
 

@@ -625,6 +625,14 @@ write for the default; the numbers below steer it.
   `clutter.kinds.<kind>.footprint` (`{"shape": "ellipsoid", "plan": [1, 0.85], "height": 0.44}`: shares of scale,
   the height x squash, over z - sink) is what a water simulation stamps per row at its own resolution: the tile
   heightmaps hold none of these pieces (1 m cells; the pieces are their own meshes and colliders).
+- wood the water goes round (csv_version 3): `snag` (a fallen stem 2-6.5 m, 0.14-0.4 m thick: its top on the bed
+  in the water, leaning up onto the bank where it comes to rest, pointing downstream; outer bends, and a few per
+  10 m on steep wooded reaches near trees) and `limb` (a branch 1-6 m, 0.05-0.2 m: across the current on a
+  boulder's upstream side, on a bar's head with its end in the shallows, or wedged bank to bank over a narrow
+  channel). Seven columns at the END of the row, empty for every other kind: `x0,y0,z0,x1,y1,z1,diameter` (the
+  capsule's axis ends, end 0 the lower; each end a radius over the bed or bank it rests on, nothing of it inside the
+  ground, the rock or a boulder row's footprint); the footprint is `{"shape": "capsule"}` along that axis. A v2
+  reader that reads by header keeps working.
 - the export's notes say each river's reaches by character and its clutter ("stream clutter vale_river: 99
   river_rock, 205 cobbles, ... (23 of 76 rocks in the water stand proud of it)"), and WARN when a river has none.
 
@@ -786,7 +794,13 @@ The shell run writes its outputs beside the spec:
   0.5]` (how far each LOD may stray from the true surface), `"budget": [12000, 3000, 800]` (triangles per tile per LOD: a tile LOD over twice its budget FAILS the export's
   checks, named with its count and why; `"collision_budget"` caps the collision mesh, default twice its LOD's),
   `"skirt": 0.3` (minimum skirt depth), `"collision": 1` (the LOD the collision mesh comes from), `"heightmap": 65`
-  (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none).
+  (samples per tile, 2^k + 1; 0 = none), `"splat": 128` (splat texels per tile; 0 = none), `"corridors": true` (or
+  `{"spacing": 0.25, "buffer": 15, "size": 128}`; off by default): fine heightmaps along the water for a nested water
+  solve, `corridors/corridor_<n>.npy` (float32, row 0 north, column 0 west) on rects of at most `size` m round every
+  river's water path, lake shore and fall pool (+ `buffer` m), each listed in the manifest's `corridors.rects` (file,
+  extent [[x0, y0], [x1, y1]] of the outer samples, cols, rows, spacing, follows): the top surface as the tiles build
+  it (the ground with its stream beds and banks, the cliff meshes' rock at fall lips and faces where it stands
+  higher), sampled from the export's field, no clutter.
   - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitives
     by `extras.role` and material: "surface" first (what is seen; material `terrain_baked`), then in cliffs mode
     "buried" (the shell's back under the heightmap: skip it, or draw it; material `terrain_reference`), then "skirt"

@@ -25,7 +25,8 @@ HAIR (skin.hair; colours sRGB):
              brow lower, onto the orbital rim), "arch": 1 (its slope: 0 = level), "soft": 0..1 (a soft mass rather
              than hairs one by one)}: hairs as strokes, growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
-  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color"),
+  stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
+             "shadow_breakup": its noise, 0 = an even field: a dense stubble shadow reads as one grey-brown field),
              "grey": 0..1 (+ "grey_color": a share of white hairs: salt and pepper)}: the beard area: a shadow under the
              skin plus hair dots.
   scalp      {"amount", "color", "hairline": 0..1 (0.5: how far it comes down the forehead)}: a shaved or cropped
@@ -488,7 +489,7 @@ def _hair(p, J, layer, T, ctx) -> None:
                 layer("lash_roots", color=_shade(col, 0.45), mix="multiply", opacity=round(min(0.75 * o["amount"], 0.9), 3),
                       roughness=0.45, mask=_zones(["lash_upper"], 1.15) + [{"zone": {"name": "lash_lower", "grow": 1.1},
                                                                          "blend": "max", "weight": 0.45}])
-        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "grey", "grey_color"))
+        o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color"))
         if o:
             a = float(o["amount"])
             col = _hex(o["color"]) if "color" in o else dflt
@@ -500,7 +501,8 @@ def _hair(p, J, layer, T, ctx) -> None:
             sz_, shd, gr = float(o.get("size", 1.0)), float(o.get("shadow", 1.0)), float(o.get("grey", 0.0))
             cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
             layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.42 * min(a, 1.2) * shd, 0.95), 3),
-                  mask=area + [{"noise": {"scale": 0.012, "range": [0.15, 0.6], "seed": seed + 100}, "weight": 0.45 if "shadow" not in o else 0.2}])
+                  mask=area + [{"noise": {"scale": 0.012, "range": [0.15, 0.6], "seed": seed + 100},
+                                "weight": float(o.get("shadow_breakup", 0.45 if "shadow" not in o else 0.2))}])  # (breakup: 0 = an even field)
             layer("stubble", o.get("mask"), color=col, opacity=0.9 * min(0.5 + 0.5 * a, 1), roughness=min(base_r + 0.12, 0.9),
                   height=round(0.00007 * (1 + float(o.get("length", 0.0)) / 0.001), 7),
                   mask=[{"tile": {"swatch": "stubble", **({"size": round(0.012 * sz_, 5)} if sz_ != 1.0 else {}),

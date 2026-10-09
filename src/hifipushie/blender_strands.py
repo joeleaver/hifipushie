@@ -453,6 +453,9 @@ def _lin(c):
     return [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
 
 
+EEVEE_SAT = 0.35  # EEVEE strands: the look colour's saturation kept (material(): what Cycles' hair BSDF leaves of it)
+
+
 def material(look: dict):
     """One material, two outputs: Cycles gets the Principled Hair BSDF (the truthful look), EEVEE a Principled
     built for strands (the hair BSDF draws near black there): colour root -> tip, a value per strand, an anisotropic
@@ -568,7 +571,14 @@ def material(look: dict):
     bright.data_type = "RGBA"
     bright.blend_type = "MULTIPLY"
     bright.inputs["Factor"].default_value = 1.0
-    L.new(col, bright.inputs["A"])
+    # the look's colours are asked for CYCLES, whose hair BSDF gives back far less chroma than it is given (asked
+    # R/B 2.3, rendered 1.16-1.30: hair notes) so they are set far warmer than they should come out; drawn as they are,
+    # EEVEE showed every dressed render's hair orange-blond and the grey locks tan (Garrett). EEVEE takes them toward
+    # their own luminance by look.eevee_sat (0.35: that measured R/B), so its strands read as Cycles renders them
+    sat_e = N.new("ShaderNodeHueSaturation")
+    sat_e.inputs["Saturation"].default_value = float(look.get("eevee_sat", EEVEE_SAT))
+    L.new(col, sat_e.inputs["Color"])
+    L.new(sat_e.outputs["Color"], bright.inputs["A"])
     g = float(look.get("eevee_gain", 1.6))  # the hair BSDF's multiple scattering brightens a mass of strands; a
     bright.inputs["B"].default_value = (g, g, g, 1)  # plain diffuse strand doesn't: lifted to match Cycles
     L.new(bright.outputs["Result"], pb.inputs["Base Color"])
