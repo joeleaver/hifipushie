@@ -1830,7 +1830,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
         # added like an identity component (everything after rides on them)
         from . import faceslide, gnmloops
-        slide = faceslide.delta(head["sliders"])
+        slide = faceslide.delta(head["sliders"], V)  # (V: the crease on this head's own fold)
         if slide is not None:
             V = V + slide[:gnmloops.N_RAW]
             par = gnmloops.plan()["parents"]

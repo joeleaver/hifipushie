@@ -208,6 +208,29 @@ def test_sealed_mouth_has_no_pocket_or_slit_in_the_field():
         assert seam.check(sp, log=lambda *a: None) == 0, seed
 
 
+def test_crease_sits_on_the_heads_own_fold():
+    """faceslide._fold_turn: on a lid whose skin turns from facing up (the platform) to facing down (a fold's underside)
+    the crease goes where it turns (here 4 mm over the margin, against the template's ~6 mm); on a lid that never turns
+    (a smooth one) the template's height stays. And the fold-profile crease on a head is finite and off the rims."""
+    if not _gnm_ok():
+        return
+    mm = 0.001
+    rng = np.random.default_rng(0)
+    u = rng.uniform(0.05, 1.0, 4000)
+    h = rng.uniform(1.0 * mm, 11 * mm, 4000)
+    X = np.zeros((4000, 3))
+    H0 = np.full(4000, 6.2 * mm)
+    sel = np.ones(4000, bool)
+    ny = np.clip((4.0 * mm - h) / (2 * mm), -0.6, 0.6)  # up below 4 mm, down above
+    Hc = faceslide._fold_turn(X, u, h, sel, H0, ny)
+    assert np.abs(np.asarray(Hc) - 4.0 * mm).max() < 0.4 * mm, (np.min(Hc), np.max(Hc))
+    assert np.array_equal(faceslide._fold_turn(X, u, h, sel, H0, np.full(4000, 0.3)), H0)
+    X0 = np.asarray(base._gnm_data()["template_vertex_positions"], float)
+    D = faceslide.delta({"eye_crease_depth": 1.0}, X0)
+    T0 = faceslide.template()
+    assert D is not None and np.isfinite(D).all() and np.abs(D[T0["rim"]]).max() < 5e-5
+
+
 def test_fit_window_follows_sex():
     lo, hi = faceslide.fit_window("eye_crease_height", 0.0)
     assert hi == 1.5 and lo > -0.5  # a woman's crease may reach its limit

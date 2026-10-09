@@ -163,10 +163,60 @@ def template() -> dict:
     return _CACHE["tpl"]
 
 
-def _left_fields() -> dict:
-    """Every slider's field for the subject's LEFT eye (+x), GNM frame, metres at +1."""
+def head_template(V: np.ndarray) -> dict:
+    """template()'s dict for a head of GNM's raw vertices V (its frame): positions with the loops, normals, landmarks;
+    masks, rims and the mirror map are the template's."""
+    from . import base as basemod
+    from . import gnmloops
+    T = dict(template())
+    X = gnmloops.ext(np.asarray(V, float))
+    Q = gnmloops.plan()["quads"]
+    n = np.zeros_like(X)
+    for a, b, c in ((0, 1, 3), (1, 2, 0), (2, 3, 1), (3, 0, 2)):
+        np.add.at(n, Q[:, a], np.cross(X[Q[:, b]] - X[Q[:, a]], X[Q[:, c]] - X[Q[:, a]]))
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-15)
+    g = basemod._gnm_data()
+    T.update(X=X, n=n, lm=np.array([sum(float(w) * X[int(v)] for v, w in zip(r[0::2], r[1::2])) for r in g["lm68"]]),
+             own=True)
+    return T
+
+
+def _fold_turn(X, u, h, sel, H0, NY=None):
+    """The crease's height over the margin per vertex (by its u): where the lid's own profile turns into its fold (the
+    most concave point of depth against height, 2.5-8.5 mm, per u band: on a hooded lid the platform meets the fold's
+    underside there), else the template's H0 (a smooth, convex lid has no turn of its own)."""
+    mm = 0.001
+    bands = np.linspace(0.05, 1.0, 8)
+    hc_b, uc_b = [], []
+    for u0, u1 in zip(bands[:-1], bands[1:]):
+        s = sel & (u >= u0) & (u < u1) & (h > 1.0 * mm) & (h < 11 * mm)
+        if s.sum() < 4:
+            continue
+        hs = np.arange(1.5, 10.6, 0.5) * mm
+        o = np.argsort(h[s])  # (the lid's rows are 0.7-2.5 mm apart: the profile interpolated between them)
+        ny = np.interp(hs, h[s][o], NY[s][o])
+        ny = np.convolve(np.r_[ny[0], ny, ny[-1]], [0.25, 0.5, 0.25], "valid")
+        # the turn: going up the lid, where the skin stops facing up (the platform) and faces down (the fold's
+        # underside). (By the profile's concavity the margin roll's foot at ~3 mm won on every smooth lid)
+        cross = np.flatnonzero((ny[:-1] > 0) & (ny[1:] <= 0) & (hs[:-1] >= 2.0 * mm) & (hs[1:] <= 9.0 * mm))
+        if len(cross):
+            i = int(cross[0])
+            hc_b.append(hs[i] + (hs[i + 1] - hs[i]) * ny[i] / max(ny[i] - ny[i + 1], 1e-9))
+            uc_b.append(0.5 * (u0 + u1))
+    if len(hc_b) < 2:
+        return H0
+    hc = np.interp(np.clip(u, 0, 1), uc_b, np.convolve(np.r_[hc_b[0], hc_b, hc_b[-1]], [1 / 3] * 3, "valid"))
+    return np.clip(hc, 2.5 * mm, 8.5 * mm)
+
+
+
+
+
+def _left_fields(T: dict | None = None) -> dict:
+    """Every slider's field for the subject's LEFT eye (+x), GNM frame, metres at +1 (T: template() or a head's
+    head_template(V): the crease then sits on that head's own fold turn)."""
     from scipy.spatial import cKDTree
-    T = template()
+    T = T or template()
     X, n, lm = T["X"], T["n"], T["lm"]
     mm = 0.001
     c_in, c_out = lm[42], lm[45]
@@ -207,10 +257,19 @@ def _left_fields() -> dict:
     # margin, back to nothing 4 mm over the crease: whatever crease rides on these vertices goes with them
     bump = np.where(h < H0, _ss(h / np.maximum(H0, 1e-6)), _ss((H0 + 4 * mm - h) / (4 * mm)))
     F["eye_crease_height"] = (m * Ec * bump)[:, None] * tang_up
-    # crease depth: a groove at the crease along the margin's arch, the skin over it standing a little forward (a
-    # fold edge, not a trench)
-    prof = -_g(h, H0, 0.75 * mm) + 0.35 * _g(h, H0 + 1.7 * mm, 0.9 * mm)
-    F["eye_crease_depth"] = (m * Ec * prof)[:, None] * n
+    # crease depth: a FOLD, not a dimple: a shallow groove at the crease line and the skin just over it coming down and
+    # forward over it, so the line is in its shadow (a Gaussian dent alone, at the template's height, sat on a hooded
+    # lid's fold underside where it read as a row of divots: Tess). On a head (T["own"]) the line follows its own
+    # fold turn
+    Hc = _fold_turn(X, u, h, upper & (dm > 1.5 * mm), H0, n[:, 1]) if T.get("own") else H0
+    _CACHE["last_crease"] = (Hc, H0, u, upper)  # (diagnostics: creasechk.py)
+    groove = -0.45 * _g(h, Hc, 0.55 * mm)
+    over = 0.8 * _g(h, Hc + 1.0 * mm, 0.85 * mm) * _ss((h - Hc) / (0.5 * mm))
+    od = 0.55 * n - 0.6 * up[None]
+    od /= np.maximum(np.linalg.norm(od, axis=1, keepdims=True), 1e-9)
+    # (held off the margin less than the other lid fields: a low crease (Tess: 3 mm over the margin) was half faded)
+    mc = upper * _ss((h - 1.0 * mm) / (2.0 * mm)) * _ss((dm - 1.2 * mm) / (2.0 * mm))
+    F["eye_crease_depth"] = (mc * Ec)[:, None] * (groove[:, None] * n + over[:, None] * od)
     # platform show: the fold's edge (just over the crease) up and back
     Ef = _ss((u + 0.02) / 0.15) * _ss((1.08 - u) / 0.2)
     pf = _g(h, H0 + 1.4 * mm, 1.3 * mm)
@@ -510,12 +569,36 @@ def values(sliders: dict | None) -> dict:
     return out
 
 
-def delta(sliders: dict | None) -> np.ndarray | None:
-    """The sliders' sum, (n, 3) GNM frame, or None when none is set."""
+HEAD_FIELDS = ("eye_crease_depth",)  # sliders laid on the head's own shape (base.gnm_head passes V)
+
+
+def head_fields(V: np.ndarray, names=HEAD_FIELDS) -> dict:
+    """The HEAD_FIELDS on head V (GNM's raw vertices, its frame): ((n, 3) right, (n, 3) left), as fields()."""
+    from . import gnmloops
+    V = np.asarray(V, float)
+    key = ("head_fields", hash(V.tobytes()), tuple(names))
+    if key in _CACHE:
+        return _CACHE[key]
+    mi_raw = gnmloops._raw()["mirror"]
+    mi = template()["mirror"]
+    dL = _left_fields(head_template(V))
+    dLm = _left_fields(head_template(V[mi_raw] * [-1.0, 1.0, 1.0]))  # the right eye as a left one
+    out = {k: (dLm[k][mi] * [-1.0, 1.0, 1.0], dL[k]) for k in names}
+    if len([k for k in _CACHE if isinstance(k, tuple) and k[0] == "head_fields"]) > 8:
+        _CACHE.pop(next(k for k in _CACHE if isinstance(k, tuple) and k[0] == "head_fields"))
+    _CACHE[key] = out
+    return out
+
+
+def delta(sliders: dict | None, V: np.ndarray | None = None) -> np.ndarray | None:
+    """The sliders' sum, (n, 3) GNM frame, or None when none is set. V (the head's GNM vertices): HEAD_FIELDS are
+    laid on its own shape (the crease on its own fold turn), not the template's."""
     vals = {k: v for k, v in values(sliders).items() if v != (0.0, 0.0)}
     if not vals:
         return None
-    F = fields()
+    F = dict(fields())
+    if V is not None and any(k in vals for k in HEAD_FIELDS):
+        F.update(head_fields(V, tuple(k for k in HEAD_FIELDS if k in vals)))
     D = np.zeros_like(template()["X"])
     for k, (r, l_) in vals.items():
         D += r * F[k][0] + l_ * F[k][1]
