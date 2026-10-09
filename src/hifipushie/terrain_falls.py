@@ -3,9 +3,9 @@
 A fall is a step in the river's own profile, made by a band of hard rock across the valley (the cap rock that stood
 while the softer rock below was cut back): a lip at the upstream level, a near-vertical face, an amphitheatre cut back
 round a plunge pool at the foot, and the river running on from the pool's level. What the ground needs:
-- `profile`: the drops are taken out of the river's own fall: the source and the mouth keep their heights and the
-  reaches between grow gentler, then each fall is a step of `drop` m between two samples. (A mouth at the foot of a sea
-  cliff with a fall at `at` 1: the river runs to the cliff's top at the drop's height and falls into the sea.)
+- `profile`: each drop comes out of the reach below its lip (lower and gentler to the next fall or the mouth, which
+  keep their heights); the river above keeps its given heights. With too little fall left below (a fall at the mouth,
+  `at` 1, off a sea cliff) the reach above is raised instead: the river runs to the cliff's top and falls into the sea.
 - `stamp` (in terrain_forms.water, on the finished ground, every build): the lip raised to the upstream level, the
   ground below lowered to the pool's level inside the amphitheatre (its sides rise 1:1 from the pool's edge to the
   ground), the plunge pool carved, the face and lip marked hard rock. The heightfield holds the face as steep as its
@@ -55,7 +55,12 @@ def parse(name, r, length):
 
 
 def profile(name, h, s, falls):
-    """The river's heights with its falls: (h, falls with "i", the first sample below each lip)."""
+    """The river's heights with its falls: (h, falls with "i", the first sample below each lip, and "mode").
+    Each fall's drop comes out of its own reach below (the river from the lip to the next fall or the mouth runs
+    lower and gentler, ending where it did: the river above the fall keeps the heights it was given, which on ground
+    the design already made are that ground's: raising them stood the lip in the air, its banks lower than its water,
+    and the bank rule flattened the fall away). Where too little fall is left below (a fall at the mouth, off a sea
+    cliff) the reach above is raised instead, evenly from the fall before it (or the source) to the lip."""
     if not falls:
         return h, []
     F = float(h[0] - h[-1])
@@ -63,13 +68,25 @@ def profile(name, h, s, falls):
     if tot > 0.9 * F:
         raise ValueError(f"river {name!r}: its falls drop {tot:g} m of the {F:.0f} m it falls from source to mouth: "
                          f"keep them under 90% of it (raise the source or lower the mouth)")
-    h2 = h[-1] + (h - h[-1]) * (F - tot) / max(F, 1e-9)
+    h2 = np.asarray(h, float).copy()
+    n = len(h2)
+    u = np.asarray(s, float) / max(float(s[-1]), 1e-9)
+    idx = [int(np.clip(np.searchsorted(u, f["at"]), 1, n - 1)) for f in falls]
     out = []
-    n = len(h)
-    for f in falls:
-        i = int(np.clip(np.searchsorted(s / max(s[-1], 1e-9), f["at"]), 1, n - 1))
-        h2[:i] += f["drop"]
-        out.append({**f, "i": i})
+    for k, (f, i) in enumerate(zip(falls, idx)):
+        D = f["drop"]
+        b = idx[k + 1] - 1 if k + 1 < len(idx) else n - 1  # the reach below: samples i..b (b keeps its height)
+        top, bot = float(h2[i]), float(h2[b])
+        if b > i and top - bot > D / 0.9:  # lowered and compressed below the lip
+            h2[i:b] = bot + (h2[i:b] - bot) * (1 - D / (top - bot))
+            mode = "below"
+        else:  # raised above it, evenly from the reach's start
+            a = idx[k - 1] if k > 0 else 0
+            w = (u[a:i] - u[a]) / max(u[i - 1] - u[a], 1e-9)
+            h2[a:i] = h2[a:i] + D * w
+            mode = "above"
+        out.append({**f, "i": i, "mode": mode})
+    h2 = np.minimum.accumulate(np.where(np.isfinite(h2), h2, 0.0))  # (never uphill)
     return h2, out
 
 
@@ -79,6 +96,19 @@ def no_steps(h, falls):
     for f in falls:
         h[f["i"]:] += f["drop"]
     return h
+
+
+def step_levels(hl, s, falls, slope=0.01):
+    """The water's level with every fall's step: below each lip at least `drop` under the level above it, the river
+    cut down below the fall (a gorge) until it meets its own level again, never under the mouth's level. Where the
+    banks above a lip are lower than the bed (heights drawn over lower ground) the bank rule had flattened the step;
+    this keeps the fall at the level the ground holds."""
+    hl = np.asarray(hl, float).copy()
+    for f in falls:
+        i = f["i"]
+        line = float(hl[i - 1]) - f["drop"] - slope * (s[i:] - s[i])
+        hl[i:] = np.minimum(hl[i:], np.maximum(line, float(hl[-1])))
+    return np.minimum.accumulate(hl)
 
 
 def segments(n, falls):
@@ -196,7 +226,11 @@ def report(T):
     lines = []
     for f in measure(T):
         note = ""
-        if f["face_deg"] < FACE_MIN_DEG:
+        if f["drop"] < 0.8 * f["asked"]:
+            note = (f" (the ground holds only {f['drop']:.1f} m here: the land at the lip stands no higher over the water "
+                    f"below, or the water below can't go lower (the sea, the mouth's level); put the fall where the "
+                    f"ground drops that far, or lower the river's heights below it)")
+        elif f["face_deg"] < FACE_MIN_DEG:
             note = (f" (gentler than {FACE_MIN_DEG:.0f} deg: the {T.cell:g} m cells are too coarse for a {f['drop']:g} m "
                     f"drop; a smaller \"cell\" or \"detail\" makes it stand)")
         lines.append(f"fall on {f['river']} at {f['at']:g}: {f['drop']:.1f} m (asked {f['asked']:g}) into the "

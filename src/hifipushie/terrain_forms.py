@@ -325,6 +325,8 @@ def water(T):
             hl = np.where(near, np.maximum(hl, lk["level"]), hl)
             if not lk.get("sea"):
                 spill |= near
+        if falls:  # each fall's step in the water as the ground holds it (the bank rule may have flattened it)
+            hl = _falls.step_levels(hl, L.s * L.props["length"], falls)
         level = hl[i] + 0.2
         # banks graded down to the water (1:3) where the floor stands above it, never a one-cell trench wall; sites and
         # routes keep their ground
