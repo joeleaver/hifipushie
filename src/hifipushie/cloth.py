@@ -4227,7 +4227,7 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
     return stiff
 
 
-NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note", "design", "_design", "trims")  # never change the sim
+NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note", "design", "_design", "trims", "construct")  # never change the sim
 # (a design sheet changes the sim only through the keys it compiles into)
 
 
@@ -6634,6 +6634,24 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             res["V"] = np.where(bad_[:, None], res["V_closed"], res["V"])
             res["band_kept_back"] = int(bad_.sum())
         res["buttons"] = closuremod.buttons_mesh(res["V"], M, None if hang else body_real)
+    if not hang and len(body_real.V):
+        # made parts CONSTRUCTED on the finished drape (cloth_made; garment key `construct`, post-sim: not in the
+        # sim's key): lapels pressed onto their foreparts; with construct.collar a notched collar built from its draft
+        from . import cloth_made
+        und_ = None
+        if under is not None and under.get("res") is not None:
+            Mu_ = under["res"]["mesh"]
+            und_ = {"V": under["V"], "F": Mu_["F"],
+                    "made": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] in ("collar", "stand")])}
+        try:
+            res["V"], res["made"] = cloth_made.construct(res["V"], M, body_real.V, body_real.T, g, und_)
+        except Exception as ex_:  # (a construction that can't be made leaves the simulated result, and says so)
+            res["made"] = None
+            log(f"  construct: not made ({type(ex_).__name__}: {ex_})")
+        if res.get("made"):
+            log("  constructed: " + "; ".join(f"{l_['piece']} lapel pressed ({l_['vertices']} vertices, {l_['moved_mm']} mm)"
+                                              for l_ in res["made"]["lapels"])
+                + ("; collar built " + str(res["made"]["info"].get("collar", {}).get("stretch")) if res["made"]["parts"] else ""))
     res["seam_gaps"] = seam_gaps(res["V_sim"], res["V"], M)
     res["shape"] = {"sim": shape_numbers(res["V_sim"], M), "final": shape_numbers(res["V"], M)}
     res["fit"] = fit(res)
@@ -7547,7 +7565,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "fine_relax", "under_fall", "collar_ends", "pad_over"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "fine_relax", "under_fall", "collar_ends", "pad_over"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -8698,6 +8716,15 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
              "thickness": max(0.0006, fabric(g).get("thickness", 0.0008))}
         Fw, Fc = welded_faces(res["mesh"], res["V"], body=res["body"], corners=True)
         o["F"] = Fw  # (one surface: the seams' vertices shared, the pieces wound alike)
+        if (res.get("made") or {}).get("parts"):  # constructed parts replace their simulated pieces
+            from . import cloth_made
+            hide_, parts_ = cloth_made.drawn(res)
+            if len(Fc) == len(Fw):
+                keep_ = ~hide_[np.asarray(Fc).reshape(len(Fw), -1)].all(1)
+                Fw, Fc = Fw[keep_], np.asarray(Fc)[keep_]
+                o["F"] = Fw
+            for nm_, V_, F_ in parts_:
+                objs.append({"name": f"made_{gn}_{nm_}", "V": V_, "F": F_, "color": o["color"], "roughness": o["roughness"]})
         if textured and g.get("detail", {}) is not False:
             uv, side = atlas_uv(res["mesh"])
             maps = write_maps(tmp / f"look_{gn}", res["mesh"], uv, side, g, extra=fine_folds(res, g, uv, side))

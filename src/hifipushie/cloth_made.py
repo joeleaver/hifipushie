@@ -831,3 +831,160 @@ def collar_pattern(uv: np.ndarray, F_piece: np.ndarray, chain_made: np.ndarray, 
     c0 = corner(P, a)
     c1 = len(P) - 1 - corner(P[::-1], a[-1] - a[::-1])
     return {"edge": uv[ch], "outer": P[c0:c1 + 1], "roll": None if roll_row is None else uv[np.asarray(roll_row, np.int64)]}
+
+
+# ---- wiring: what cloth.build calls after its clean-up (garment key `construct`)
+
+CONSTRUCT = {"lapels": True, "collar": False, "lapel_lay": 0.003, "wedge": 0.35}
+
+
+def away(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bFo: np.ndarray) -> np.ndarray:
+    """Faces wound so their normals point away from the body (bFo wound outward)."""
+    if not len(F):
+        return F
+    cen = V[F].mean(1)
+    Q, N, _ = closest(cen, bV, bFo)
+    out = cen - Q
+    out = np.where((np.linalg.norm(out, axis=1) > 0.002)[:, None], out, N)
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    return np.where(((fn * out).sum(1) < 0)[:, None], F[:, ::-1], F)
+
+
+def _weld(V: np.ndarray, F: np.ndarray, tol: float = 0.0006) -> np.ndarray:
+    pr = cKDTree(V).query_pairs(tol, output_type="ndarray")
+    root = np.arange(len(V))
+
+    def find(i):
+        while root[i] != i:
+            i = root[i]
+        return i
+    for a_, b_ in pr:
+        ra, rb = find(a_), find(b_)
+        if ra != rb:
+            root[max(ra, rb)] = min(ra, rb)
+    rm = np.array([find(i) for i in range(len(V))])
+    Fg = rm[F]
+    return Fg[(Fg[:, 0] != Fg[:, 1]) & (Fg[:, 1] != Fg[:, 2]) & (Fg[:, 0] != Fg[:, 2])]
+
+
+def options(g: dict) -> dict | None:
+    """The garment's `construct` key resolved (None: nothing is constructed): true / {} = the defaults (lapels
+    pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options"}."""
+    c = g.get("construct", True)
+    if c is False or c is None:
+        return None
+    return dict(CONSTRUCT, **(c if isinstance(c, dict) else {}))
+
+
+def lapel_flaps(M: dict) -> list:
+    """Folds named lapel*: [{"piece", "sel" (its vertices), "flap", "line" (point, direction in the pattern)}]."""
+    names, piece, uv = list(M["names"]), np.asarray(M["piece"]), np.asarray(M["uv"])
+    out = []
+    for fd in M.get("folds") or []:
+        if not str(fd.get("name", "")).startswith("lapel") or fd.get("piece") not in names or not fd.get("rows"):
+            continue
+        sel = np.where(piece == names.index(fd["piece"]))[0]
+        row = np.asarray(fd["rows"][0], np.int64)
+        p0 = uv[row].mean(0)
+        _, _, vt = np.linalg.svd(uv[row] - p0)
+        d2 = vt[0]
+        sd = (uv[sel] - p0) @ np.array([-d2[1], d2[0]])
+        side = 1.0 if (sd > 1e-6).sum() < (sd < -1e-6).sum() else -1.0  # (the flap is the smaller side)
+        out.append({"piece": fd["piece"], "sel": sel, "flap": sel[side * sd > 1e-6], "line": (p0, d2)})
+    return out
+
+
+def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, under: dict | None = None) -> tuple:
+    """A finished (cleaned) garment's made parts constructed on its drape: (V, made | None).
+    lapels: every flap past a fold named lapel* is PRESSED onto its forepart (`press_flap`: vertices move, ids and
+    topology stay, so looks, the scene, the export, the tells and the under garment's tuck all read it).
+    collar (off by default): a collar sewn to those fronts is built from its drafted outline (`notched_collar`
+    with pattern and ends) as its own mesh: made["parts"] = [{"name", "V", "F", "uv", "thickness", "replaces"}];
+    the simulated piece stays in V (hidden by what draws made["parts"]). under: {"V", "F", "made" (per vertex: its
+    collar / stand)} the garment worn under it, as it lies."""
+    opt = options(g)
+    flaps = lapel_flaps(M) if opt else []
+    if not opt or not flaps or not (opt["lapels"] or opt["collar"]):
+        return V, None
+    V = np.array(V, float)
+    F = np.asarray(M["F"])
+    uv = np.asarray(M["uv"])
+    bFo = outward(np.asarray(bV, float), np.asarray(bT))
+    made = {"lapels": [], "parts": [], "info": {}}
+    for L in flaps:
+        Fp = away(V, F[np.isin(F, L["sel"]).all(1)], bV, bFo)
+        isf = np.zeros(len(V), bool)
+        isf[L["flap"]] = True
+        Fb = Fp[~isf[Fp].any(1)]
+        if not len(L["flap"]) or not len(Fb):
+            continue
+        bn = np.zeros_like(V)
+        fn = np.cross(V[Fb[:, 1]] - V[Fb[:, 0]], V[Fb[:, 2]] - V[Fb[:, 0]])
+        for a_ in range(3):
+            np.add.at(bn, Fb[:, a_], fn)
+        L.update(Fp=Fp, Fb=Fb, out=_unit(bn))
+        before = V[L["flap"]].copy()
+        V = press_flap(V, Fp, uv, L["flap"], L["line"], lay=opt["lapel_lay"], wedge=opt["wedge"], out=L["out"])
+        made["lapels"].append({"piece": L["piece"], "vertices": int(len(L["flap"])),
+                               "moved_mm": round(float(np.median(np.linalg.norm(V[L["flap"]] - before, axis=1))) * 1000, 1)})
+    names, piece = list(M["names"]), np.asarray(M["piece"])
+    if opt["collar"] and "collar" in names and M.get("sew") is not None and any("Fb" in L for L in flaps):
+        mj = piece == names.index("collar")
+        ch = seam_chain(V, M, ("collar",))
+        Fnc = F[~mj[F].any(1)]
+        own = away(V, _weld(V, Fnc), bV, bFo)
+        flap_all = np.zeros(len(V), bool)
+        for L in flaps:
+            flap_all[L["flap"]] = True
+        Fc = F[mj[F].all(1)]
+        roll = [fd for fd in M.get("folds") or [] if fd.get("piece") == "collar" and fd.get("rows")]
+        pat = collar_pattern(uv, Fc, ch["made_idx"], np.asarray(roll[0]["rows"][0], np.int64) if roll else None)
+        part = piece[ch["idx"]]
+        ends = []
+        for L in flaps:
+            ii = np.where(part == names.index(L["piece"]))[0]
+            if len(ii) < 2 or "Fb" not in L:
+                continue
+            sd_ = 1.0 if ii.mean() > 0.5 * len(part) else -1.0
+            ii = ii if sd_ > 0 else ii[::-1]
+            ends.append({"side": sd_, "edge_a": ch["uv"][ii], "edge_b": uv[ch["idx"][ii]], "uv_a": uv[mj], "uv_b": uv[L["sel"]],
+                         "line": L["line"], "V": V, "F": L["Fb"], "uv": uv, "out": L["out"], "lay": opt["lapel_lay"]})
+        P = V[ch["idx"]]
+        c = P.mean(0)
+        _, _, vt = np.linalg.svd(P - c)
+        ax = vt[2] * np.sign(vt[2][2])
+        inner, top_z = [], None
+        kw = dict(opt.get("collar_options") or {})
+        show = kw.pop("show", NOTCHED["show"])
+        if under is not None:
+            uV, uF = np.asarray(under["V"], float), np.asarray(under["F"])
+            inner = [{"V": uV, "F": away(uV, uF, bV, bFo)}]
+            um = under.get("made")
+            if um is not None and np.any(um):
+                cb = uV[np.asarray(um, bool)]
+                cb = cb[(np.abs(cb[:, 0] - c[0]) < 0.025) & (cb[:, 1] > c[1])]
+                if len(cb):
+                    top_z = float(cb[:, 2].max()) - show
+        nc = notched_collar(P, into_cloth(V, F, ch["idx"]), flap_all[ch["idx"]], {"V": np.asarray(bV, float), "F": bFo}, inner,
+                            [{"V": V, "F": own}], (c, ax), top_z=top_z, pattern=pat, ends=ends, **kw)
+        pt = nc["parts"][0]
+        made["parts"].append({"name": "collar", "V": pt["V"], "F": pt["F"], "uv": pt["uv"], "grid": pt["grid"],
+                              "thickness": float(nc["info"]["params"]["thickness"]), "replaces": ["collar"]})
+        made["info"]["collar"] = {k: v for k, v in nc["info"].items() if k != "params"}
+    return V, made
+
+
+def drawn(res: dict, V: np.ndarray | None = None) -> tuple:
+    """What draws a result with constructed parts: (faces of the garment's own mesh to draw: `replaces` pieces left
+    out, [(name, V, F) closed slabs of the constructed parts])."""
+    M = res["mesh"]
+    F = np.asarray(M["F"])
+    made = res.get("made") or {}
+    parts = []
+    hide = np.zeros(len(M["piece"]), bool)
+    for pt in made.get("parts") or []:
+        for nm in pt.get("replaces") or []:
+            if nm in M["names"]:
+                hide |= np.asarray(M["piece"]) == list(M["names"]).index(nm)
+        parts.append((pt["name"],) + solid(pt["V"], pt["F"], pt["thickness"]))
+    return hide, parts

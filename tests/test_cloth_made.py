@@ -215,6 +215,40 @@ def test_notched_collar_follows_its_draft():
     assert np.linalg.norm(G[:, 0] - np.array([cm._stations(P, 0.010)[0]])[0], axis=1).max() < 1e-9  # on the seam
 
 
+def _box(lo, hi):
+    lo, hi = np.asarray(lo, float), np.asarray(hi, float)
+    V = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+    F = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
+                  [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]])
+    return V, F
+
+
+def test_construct_presses_lapels_and_is_not_in_the_sims_key():
+    from hifipushie import cloth
+    assert "construct" in cloth.NOT_SIM and "construct" in cloth.GARMENT_KEYS  # post-sim: the sim's key never moves
+    uv, F = _strip_piece(0, 0.2, -0.3, 0, 21, 31)
+    V = np.c_[uv, np.zeros(len(uv))]
+    flap = np.where(uv[:, 0] < 0.08 - 1e-9)[0]
+    V[flap, 2] = 0.02 + 0.3 * (0.08 - uv[flap, 0])  # the lapel as a sim leaves it: standing off its forepart
+    row = np.where(np.abs(uv[:, 0] - 0.08) < 1e-9)[0]
+    M = {"names": ["front"], "piece": np.zeros(len(V), int), "uv": uv, "F": F, "sew": None,
+         "folds": [{"name": "lapel roll", "piece": "front", "rows": [row.tolist()]}]}
+    bV, bT = _box([-0.1, -0.4, -0.06], [0.3, 0.1, -0.004])
+    Vn, made = cm.construct(V, M, bV, bT, {})
+    assert made and made["lapels"][0]["vertices"] == len(flap) and not made["parts"]
+    assert np.allclose(Vn[flap, 0], 0.16 - uv[flap, 0], atol=1e-9) and Vn[flap, 2].max() <= 0.003 + 1e-9
+    assert (Vn[flap, 2] > 0).all()  # on the side away from the body
+    keep = np.setdiff1d(np.arange(len(V)), flap)
+    assert np.allclose(Vn[keep], V[keep])
+    for off in (False, {"lapels": False}):
+        V2, m2 = cm.construct(V, M, bV, bT, {"construct": off})
+        assert m2 is None and np.allclose(V2, V)
+    V3, m3 = cm.construct(V, dict(M, folds=[]), bV, bT, {})  # nothing to construct: the result is the sim's
+    assert m3 is None and V3 is V
+    hide, parts = cm.drawn({"mesh": M, "made": made})
+    assert not hide.any() and parts == []
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
