@@ -1415,7 +1415,7 @@ class Field:
         self.floor_guard = np.ones(len(p))
         self.build_w = np.zeros(len(p)) if any(getattr(v, "build", None) is not None for v in self.vols) else None
         depth = -np.asarray(F, float).copy()  # (how far under the open ground: joints are a surface thing)
-        dvoid = np.full(len(p), np.inf) if getattr(self, "thin_parts", None) else None
+        dvoid = np.full(len(p), np.inf) if self.rock is not None else None
         F = self.volumes(p, F, near, dvoid)
         guard, self.floor_guard = self.floor_guard, None
         if self.fall is not None:  # fallen blocks at the faces' feet, unioned with a small fillet
@@ -1436,7 +1436,7 @@ class Field:
             # steep ground (45-62 deg) and anything a volume shaped: faceted, jointed, bedded rock (not cave floors)
             rw = self.relief_at(p[:, 0], p[:, 1])
             nv = None
-            if dvoid is not None:
+            if dvoid is not None and getattr(self, "thin_parts", None):
                 # near a void (a cave or notch; arches go through thin rock by design) the rule stays the old one: the
                 # rock between a face and the void behind it is thin whatever the grid says (full relief over a sea
                 # cave's mouth cut a piece of its roof free 4 m over the heightmap; capping it by the slab's thickness
@@ -1446,6 +1446,18 @@ class Field:
                 if len(j):
                     rw = rw.copy()
                     rw[j] += nv[j] * (self.steep_at(p[j, 0], p[j, 1]) - rw[j])
+            if dvoid is not None:  # (after thin rock's rule: it moves the weight back toward the face's)
+                # a cave deep under a steep face takes the face's relief only near the open ground: deeper than the
+                # relief's reach under it, its walls take their own passage-scaled share (`near`) and no more. The
+                # face's weight is a column grid: taken at full size round a void 12 m under a 56 deg valley side,
+                # its 1.8 m facets built a sheet of rock across crown_tube (pushieworld note 117: width 0, a 1.3 m
+                # step), which the walk without rock relief (set_terrain's) never saw
+                reach = self.rock["reach"]
+                cv_ = smoothstep(NEAR, 0.0, dvoid) * (1.0 - smoothstep(2.0 * reach, reach, depth))
+                j = np.flatnonzero(cv_ > 0)
+                if len(j):
+                    rw = rw.copy()
+                    rw[j] *= 1.0 - cv_[j]
             w = np.maximum(rw * guard, near)
             k = np.flatnonzero((w > RELIEF_CUT) & (np.abs(F) < self.rock["reach"]))
             if len(k):

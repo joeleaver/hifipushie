@@ -119,9 +119,41 @@ def test_collision_floor():
     assert np.allclose(cz[:2], [0.0, 0.6]) and np.isnan(cz[2]), cz  # (the roof at 3 m is over the knee: not a floor)
 
 
+STEEP = {"world": {"kind": "coast", "base": 10}, "extent": [[0, 0], [160, 160]], "cell": 2,
+         "tilt": {"down": "south", "grade": 1.3}, "cover": [{"type": "meadow", "in": "everywhere"}]}
+
+
+def test_deep_cave_under_a_steep_face():
+    """A passage 20 m+ under a steep hillside keeps its clearance in the export's field (pushieworld note 117: the
+    face's rock relief, a column grid, was taken at full size round crown_tube 12 m under a 56 deg valley side, built
+    a sheet of rock across it (width 0, a 1.3 m step) and failed the tile walk where set_terrain's walk passed).
+    Deeper than the relief's reach under the ground a cave's walls take only their own passage-scaled relief: the
+    rock field's walk is within 0.5 m of the plain one's (before: headroom 0.8 m and width 1.6 m less)."""
+    T = _terrain(STEEP)
+    xy = np.c_[np.linspace(30, 130, 67), np.full(67, 80.0)]
+    g = T.sample(xy)
+    w, h = 5.0, 4.0
+    fl = np.full(len(xy), g.min() - 22.0 - h)
+    tube = tm.Tube("t", np.c_[xy, fl], 0.5 * w, h, fl, seed=3, rough=0.4, rough_scale=3.0, blend=0.8)
+    cv = terrain_caves.Cave("t", "lava", {"a": {}, "b": {}},
+                            [{"from": "a", "to": "b", "_xy": xy, "_floor": fl, "_w": w, "_h": h}], [tube], [])
+    rock = tm.rock_config(T, dict(tm.DEFAULTS))
+    full = tm.Field(T, [tube], rock)
+    assert full.relief_at(xy[:20, 0], xy[:20, 1]).mean() > 0.5  # (the face over it takes the rock's relief)
+    got = {}
+    for nm, F in (("plain", tm.Field(T, [tube], None)), ("rock", full)):
+        paths = []
+        line = terrain_caves.check([cv], F, paths=paths)[0]
+        assert "PASSES" in line, (nm, line)
+        got[nm] = (np.nanmin(np.array(paths[0]["headroom_m"], float)), np.nanmin(np.array(paths[0]["width_m"], float)))
+    (h0, w0), (h1, w1) = got["plain"], got["rock"]
+    assert h0 - h1 < 0.5 and w0 - w1 < 0.5, got
+
+
 if __name__ == "__main__":
     test_collision_floor()
     test_step_advice_names_the_lever()
+    test_deep_cave_under_a_steep_face()
     T0 = _terrain(KARST)
     test_mouth_meets_the_ground(T0)
     test_door_floor_from_the_spec(T0)
