@@ -47,6 +47,7 @@ func _initialize() -> void:
 				continue
 			print(a[2].get_file(), " ", m.name, " surface ", s, " transparency ", mat.transparency, " scissor ", mat.alpha_scissor_threshold,
 				" cull ", mat.cull_mode, " vertex colour as albedo ", mat.vertex_color_use_as_albedo, " verts ", mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX].size())
+			mat.vertex_color_use_as_albedo = true  # (COLOR_0 = the cards' root-to-tip ramp: the importer leaves it off)
 			if mode == "a2c":
 				mat.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
 				mat.alpha_antialiasing_edge = 0.3
@@ -57,18 +58,18 @@ func _initialize() -> void:
 	env.background_color = Color(0.56, 0.6, 0.65)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.77, 0.81, 0.86)
-	env.ambient_light_energy = 0.5
+	env.ambient_light_energy = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	root.add_child(we)
 	var key := DirectionalLight3D.new()
-	key.light_energy = 1.6
+	key.light_energy = 1.0
 	key.shadow_enabled = true
 	key.directional_shadow_max_distance = 4.0
 	root.add_child(key)
 	var rim := DirectionalLight3D.new()
-	rim.light_energy = 1.2
+	rim.light_energy = 0.5
 	root.add_child(rim)
 	var cam := Camera3D.new()
 	cam.fov = 30.0

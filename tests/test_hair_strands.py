@@ -91,6 +91,26 @@ def test_join_of_nothing_is_an_empty_mesh():
     assert len(hc.join(None, e, e)["tris"]) == 0
 
 
+def test_short_hair_is_drawn_on_the_cap():
+    """A short cut's own strands (hair off its locks, lying on the head) are drawn in the scalp chart when the cut
+    is short: the cap carries the look; otherwise only the scalp layer is."""
+    from hifipushie import hair
+    A = np.arange(0.0, 360.0, hair.Scalp.STEP)
+    E = np.arange(hair.Scalp.EL[0], hair.Scalp.EL[1] + 1e-6, hair.Scalp.STEP)
+    sc = hair.Scalp([0.0, 0.0, 1.7], np.full((len(A), len(E)), 0.09), {})
+    g = hair.groom_params({"hair": {"groom": {"parting": {"side": "none"}}}})
+    line = np.full(360, -20.0)
+    P = sc.point(np.linspace(80.0, 100.0, 12), np.full(12, 30.0), np.full(12, 0.006))  # a strand 6 mm over the scalp
+    D = {"pts": P.astype(np.float32), "counts": np.array([12], np.int32), "lock": np.array([0], np.int32),
+         "sub": np.zeros(1, np.float32), "rand": np.array([0.9], np.float32), "radius": np.zeros(1, np.float32),
+         "obj": np.array([0], np.int32), "names": np.array(["hair_guides_free"])}
+    S = {**hc.strands_of({}), "soft": 0.008}
+    c0 = hs.cap_chart(sc, g, line, S, D, float(hair.Scalp.EL[0]), 256)
+    c1 = hs.cap_chart(sc, g, line, S, D, float(hair.Scalp.EL[0]), 256, short=True)
+    assert np.abs(c1["id"] - c0["id"]).max() > 0.2  # the strand's own id is in the short chart only
+    assert (np.abs(c1["id"] - 0.9) < 0.05).sum() >= 8 and (np.abs(c0["id"] - 0.9) < 0.05).sum() == 0
+
+
 def test_gather_reaches_the_tie():
     assert hs.is_gather({"name": "tg0_12"}) and hs.is_gather({"name": "t1g2_3"})
     assert not hs.is_gather({"name": "tt4"}) and not hs.is_gather({"name": "sweep1"})
