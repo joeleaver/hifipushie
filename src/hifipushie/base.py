@@ -212,6 +212,8 @@ def mouth_interior(head: dict, hd: dict) -> dict:
 
 
 SEAL_OVERLAP = 0.0004  # m: each lip's contact row pushed past the seam for the FIELD (sealed lips: see _sealed_field)
+SEAL_H = 2.0  # the field's kernel widened this much at a sealed seam, fading out over SEAL_H_REACH (m)
+SEAL_H_REACH = 0.0025
 
 
 def _sealed_field(W, faces, sf: dict):
@@ -346,6 +348,11 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     for _ in range(int(base.get("subdivide", 1))):
         V, F = _catmull_clark(V, F)
     N, h = _normals_and_h(V, F)
+    if one and tpl.get("seal_field"):  # the seam's narrow V between closed lips, wider kernels there: at the field's
+        # own width the mesher (~1 mm) cut it into a row of pits (Tess ts_h7: dark specks along the seam)
+        cs = np.asarray(W, float)[np.r_[np.asarray(tpl["seal_field"]["up"], int), np.asarray(tpl["seal_field"]["lo"], int)]]
+        dz = cKDTree(cs).query(V)[0]
+        h = h * (1 + (SEAL_H - 1) * np.clip(1 - dz / SEAL_H_REACH, 0, 1))
     if own_neck:  # MakeHuman's neck is rings of long thin quads: with the mean edge as the kernel's width the field
         # was faceted between the rings (fine level lines down the neck). The longest edge at each vertex instead.
         # (Tried on the one mesh, 2026-10-08: no visible change, and a wider kernel over its neck bridge, or one
