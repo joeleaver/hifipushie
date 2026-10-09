@@ -2027,3 +2027,11 @@ NO SIM WAS RUN.
     /mnt/data/hifipushie/gpubox/oxidegen_token). First test batch 4/4, $0.10, peak VRAM 1.3 GB, the pose shirt did not
     fail (78 s). known_good_sim: same in.npz and runner, seam gaps 2.9 / 8.5 mm vs 2.8 / 8.0 originally, vertices p50
     1.4 / p95 4.9 mm from the original result; its fine settle p95 0.1 mm: solver nondeterminism, not code.
+  - Round 5 (gate + trace). c10ship.py PIXEL GATE: body drawn magenta, new skin pixels worn vs s2_12 alone from 8
+    cameras (5 wide, 3 collar close-up); the cut at the neck opened 210 px (between shirt and jacket collars) -> never
+    cut within 5 cm of the shirt collar: 0 px, PASS (c10_w7, j6). Jacket selection: only under_cap 0.035 (j6) / 0.02
+    (j5) lie outside s2_12 at the lapels; j6 chest 466 mm vs concept 397, front hang 80 mm (j4 at 0.004: 436 / 50).
+    trace.py: the concept traced through its fitted camera vs ours (overlay cloth_renders/c10_trace.png, ours shifted
+    to the concept chin). Our Garrett is 40 mm shorter chin -> shoulder line than the concept figure (68 vs 28 mm), so
+    chin- and shoulder-anchored heights disagree; robust: notch ~25 mm too wide each side, lapel 75 vs ~64 mm, break
+    on the chin anchor matches (398 vs 392-401 mm below), collar_show at CB 6 mm (rule 10-20), chest wide.
