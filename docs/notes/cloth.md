@@ -2007,3 +2007,8 @@ NO SIM WAS RUN.
     untangle pushing shirt vertices in along the body normal (crossings 152 -> 88 vertices, but the shirt then stuck
     OUT sideways under the arms: the armpit body normal points sideways). Next: decide coverage there from the
     jacket (shirt inside the jacket's armhole loop = covered) or give the shirt sleeve-head more room in the sim.
+    (a) tried (coordinator's pick): a crossing pass after the tuck laying what still crosses `gap` behind the
+    jacket along ITS inward normal (welded, piece-wound), 8 rounds: crossings 229 -> 223, underarm points 99/81 ->
+    108/100, white shirt still out at both armpits (c10_w4 views front / three / pitL / pitR). The shirt there is
+    wedged between the side panel and the under-sleeve with no room: pushed behind one panel it crosses the other.
+    Reverted. A geometry pass can't clear it: the shirt needs underarm / sleeve-head room in the SIM (GPU queue).
