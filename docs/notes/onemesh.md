@@ -521,3 +521,9 @@ model".
   jaw, body not on the camera). In 3D: head height 26.4 cm (6.8 heads; style head_size 1.138), neck_circ 31.9 cm.
   The oversize head (chin lower) and a thin neck are the likely read; proposals sent (head_size toward 1, a neck-girth
   MakeHuman measure in BODY_SHAPE).
+- eye_setback (2 mm at +1): the eyeball (and the eye joints: faceslide.joint_delta, base.gnm_head) and the orbit's
+  contents (lids, their insides, canthi) back as one, fading out across the orbital rim, the brow ridge held (Tess had
+  needed eye_depth + brow_ridge: a heavy brow, an identity component past 2.6 sigma). Test: the balls move whole, the
+  rims keep their distance to the ball. malar_rise (2 mm): the cheek's front plane under the lower lid forward and up,
+  the lid margin held. neck_circ: base.body key (MakeHuman measure-neck-circ), solvable when neck_circ is asked (test).
+  Sheets human_renders/fs_11_setback_malar_front.png / _threequarter.png.
