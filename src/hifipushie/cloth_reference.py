@@ -1204,6 +1204,33 @@ def _zbuffer(P: np.ndarray, F: np.ndarray, shade: np.ndarray, cols: np.ndarray, 
 _ZB = None
 
 
+BAND_LINE = 0.8  # the figure's shade on the faces along a closure band's inner edge
+
+
+def band_edge_faces(res: dict) -> np.ndarray | None:
+    """Per face of a full result: True on the faces that straddle the inner edge of a lapped closure's OVER band (a
+    shirt's box placket, a cuff's lap): drawn darker, the band reads as a strip with an edge in the figure. None when
+    the result has no banded closure."""
+    from . import closures as closuremod
+    M = res.get("mesh") or {}
+    pcs = ((res.get("pieces") or {}).get("pieces")) or {}
+    F = np.asarray(M.get("F"))
+    out = None
+    for cl in M.get("closures") or []:
+        if not cl.get("band") or cl.get("over") == cl.get("under") or (cl.get("finish") or {}).get("over") not in (None, "box"):
+            continue
+        try:
+            m = closuremod.band_mask(M, pcs, cl, "over")
+        except Exception:
+            continue
+        if not m.any():
+            continue
+        fm = m[F]
+        edge = fm.any(1) & ~fm.all(1)
+        out = edge if out is None else (out | edge)
+    return out
+
+
 def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
     """The body and the garments drawn through a reference's camera (front, orthographic, depth-buffered, soft
     shading), at the reference image's size x scale: our garment where the reference's is. Each garment is drawn
@@ -1225,7 +1252,7 @@ def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
             pass
     # full results: an under garment as it is worn under the outer one (its finished surface, covered cloth tucked
     # under: cloth.worn_together) and every garment's buttons (the figure drew a shirt front with no buttons)
-    shown, buttons = {}, {}
+    shown, buttons, lines = {}, {}, {}
     if c.full:
         from . import cloth
         try:
@@ -1233,11 +1260,15 @@ def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
                 shown[g] = np.asarray(r["V"], float)
                 if r.get("buttons"):
                     buttons[g] = (r["buttons"]["V"], r["buttons"]["F"], cloth.button_color(gd, r["buttons"]))
+                lines[g] = band_edge_faces(r)
         except Exception:  # (a light / partial result: drawn as it is)
-            shown, buttons = {}, {}
+            shown, buttons, lines = {}, {}, {}
     for g, R in c.results.items():
         V_ = shown[g] if g in shown and len(shown[g]) == len(R["V"]) else R["V"]
-        layers.append((V_, R["F"], _faces_colour(c.g(g).get("color")), rank.get(g, 1)))
+        col_ = np.repeat(np.array(_faces_colour(c.g(g).get("color")), float)[None], len(R["F"]), 0)
+        if lines.get(g) is not None and len(lines[g]) == len(col_):
+            col_[lines[g]] *= BAND_LINE  # a band's edges read as lines (a placket is a strip, not a seamless front)
+        layers.append((V_, R["F"], col_, rank.get(g, 1)))
         if g in buttons:
             layers.append((buttons[g][0], buttons[g][1], _faces_colour(buttons[g][2]), rank.get(g, 1) + 0.3))
     Ps, Fs, Ss, Cs = [], [], [], []
@@ -1254,7 +1285,8 @@ def render_front(c: Ctx, cam: dict, scale: float = 1.0, offset: float = 0.012):
         Ps.append(np.c_[uv, V[:, 1] - offset * k])
         Fs.append(F + n0)
         Ss.append(0.42 + 0.58 * np.abs(vn @ Ld))
-        Cs.append(np.repeat(np.array(col, float)[None], len(F), 0))
+        col = np.asarray(col, float)
+        Cs.append(col if col.ndim == 2 else np.repeat(col[None], len(F), 0))
         n0 += len(V)
     img = _zbuffer(np.concatenate(Ps), np.concatenate(Fs), np.concatenate(Ss), np.concatenate(Cs), W, H)
     return Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))

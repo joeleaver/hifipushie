@@ -3667,7 +3667,18 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     if fl_.any():
         # fold lines: the flaps are turned about their rows after the rest of the piece is pushed clear of the body
         # (pushed after, a stand moved out through the fall lying on it)
-        Xp = _place_folds(B, M, body, np.where(fl_[:, None], X, Xp), smooth, made=(ma_v, ma_["X"]) if ma_ else None)
+        # (each flap goes with its own row's push first: taken as laid while its row moved 5 mm off a chin, the 1.6 mm
+        # edges across a made fold's U read 3x stretched at every turn and the stretch cap stopped the fall at 15 deg,
+        # standing: a buttoned collar on su_om_garrett; at the coarse size, one crease, it turned 143)
+        Xu = X.copy()
+        for fd in M.get("folds") or []:
+            if fd.get("in_wrap"):
+                continue
+            g_ = foldmod._geom(M, fd)
+            fv, rv = g_["rows"][0]["v"], np.asarray(g_["rows"][0]["row"])
+            if len(fv) and len(rv):
+                Xu[fv] = X[fv] + (Xp - X)[rv[cKDTree(uv[rv]).query(uv[fv])[1]]]
+        Xp = _place_folds(B, M, body, np.where(fl_[:, None], Xu, Xp), smooth, made=(ma_v, ma_["X"]) if ma_ else None)
     elif ma_:
         Xp = np.where(ma_v[:, None], ma_["X"], Xp)
     Xp = _lay_on(B, M, Xp, faces_)
@@ -5904,6 +5915,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         M_f = mesh(Bp, h, FOLD_WIDTH_MADE)
         Bf = dict(Bp)
         X0_f = place(Bf, M_f, body_p, smooth=smooth)
+        Bp["fold_info_fine"] = Bf.get("fold_info")  # (the construction's own folds: what the report should read)
         mk_ = [nm for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in M_f["names"]]
         if mk_:
             Bp["_made_as"] = {"pieces": mk_, "X": transfer(M_f, X0_f, Ms),
