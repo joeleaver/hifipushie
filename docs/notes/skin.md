@@ -354,9 +354,22 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     lifted / draped; bronzer, highlight, lip liner / overline, balm. Freckles: `features.freckles` {amount, size, clump,
     dark, zones} on the face map; body zones from the swatch with vary on.
   - Tess (approved by Joe, "her skin looks good"): tone fitzpatrick 1, blood 0.25, undertone +0.15; flush 0.3 on cheeks;
-    freckles 0.25 small; zones nose_red 0.75, midface_red 0.8, under_eye 2.0, eyelids 1.4; lips blood 1.0 melanin 2.8.
-    Garrett: stubble {style short, length 0.002, grey 0.35, cheeks 0.75, color #3a342f}.
-  - Open: blush still reads as a patch more than a sweep; evening red lip saturated / hard-edged; pores read as pits
-    with pale rims on Tess; the lineup head om_new_man_30 shows its inner shell through the face (z-fighting patches).
+    freckles (after the freckle engine changed) {"amount": 0.08, "dark": 0.1}, no moles (map moles are real ones);
+    zones nose_red 0.75, midface_red 0.8, under_eye 2.0, eyelids 1.4; lips blood 1.0 melanin 2.8.
+    Garrett: stubble {style short, length 0.002, grey 0.35, cheeks 0.75, shadow 1.0, color #3a342f}.
+  - Blind reads (fresh general-purpose agents, sheets sk2_05..09 vs refs; the coordinator relays the top 5): round 1
+    and 2 drove: stubble = cool blue-grey sub-skin shadow + short upright hairs with skin between (a warm shadow read
+    as brown felt, a greyed one as olive "dirty wash", a bluer one as lilac); grey hairs mid-grey (near-white ones
+    LIGHTENED Garrett's beard: "ash"); freckles = ~120/cm2 specks ~0.4 mm, few bigger, round, red-brown (1.3 mm lobed
+    ones read as splats); crisp lip borders (per-vertex lips need the mouth refine in look_skin, soft <= 0.5 mm);
+    perioral redness (else a green band under the lower lip), lower-lip sheen. When a fix seems not to land, first
+    check the render is current (stage key + code hash) - here it was, the faults were real.
+  - Eyeliner wing, four tries: tube through points seated on the temple (blobs / pieces); a picture laid from the
+    front (lands on the lid fold above a deep-set eye: a shard), once mirrored (floated off the other, asymmetric lid);
+    a geodesic surface sticker from the lash line (its frame turned on the margin's upward normal, the wing never
+    left the corner); WORKS: a chain of small spots from the outer third of the lash line along the lower lash line's
+    angle, each spot deep (4 mm) along the forward axis so it reaches the turning skin, per side.
+  - Open: base-skin pores / T-zone shine at front distance (blind read 3's #2); blush reads as a soft patch; evening
+    red lip flat; the lineup head om_new_man_30 shows its inner shell through the face (z-fighting patches).
     Tests: tests/test_skin_marks.py (zones from landmarks, deterministic maps, styles, fade band never darker than
     full, freckles don't repeat), test_skin.test_makeup_looks.
