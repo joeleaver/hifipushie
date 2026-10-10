@@ -1628,3 +1628,23 @@ top: a 4 mm vertical disagreement that biases profile registration).
   statistics of landmark ratios / shading (the soft-tissue cues: folds, lid, jowl) rather than identity; (b) MakeHuman's
   age targets (CC0, artist-made: what we have through the body). No permissive 3D scan set with older ages is known
   here (BFM / LYHM / FaceScape / FLAME are out). Decision for the coordinator / Joe before building (a).
+
+### HANDOVER (blockin2, 2026-10-10)
+Branch worktree-agent-aef00385e135b10dd (from main 6fb2795): 5a538a8 eye_radius key, 1b3f79e new humans get it,
+74830fe shape:<op>, cd4f4bb pc:<region><i>, 9c39a58 flags, e611e9e SH light, 05901d5 eye step, c1ef720 hood, notes.
+Tests: test_blockin (11), test_humans, test_onemesh, test_likeness* pass. Accepted models' builds unchanged (eye_radius
+is written only into new specs; SH changes only the block-in sheets and the likeness shading rows' residual).
+Scratch /mnt/data/hifipushie/blockin2: run.sh / tests.sh / srv.py <tool> '<json>' | @file.json; eyerep.py, irismm.py
+(eyes in mm), farside.py / yawscan.py / pitch.py (camera checks), nosevar.py / prof.py / noseres.py / alar*.py (nose
+reads, built profile), shl.py / shlight.py (SH light reads), nosepca.py / walljoint.py (GNM nose PCs, joint solve),
+eyeev.py / eyestep.py / eyestep2.py (KEY=VAL overrides) / eyediag.py (the eye step), frllfit.py / frllage.py (London
+Set), tdiff.py / ft.py (table diffs), crop.py.
+State: Garrett b2_G15 (12 mm eye, fold 0.6, nose tip down / projection, DESIGNED local dorsum -0.8 awaiting Joe,
+alae in, eye step with a low crease); b2_G09 is the fold-1.0 alternative from G08. Tess b2_T06 (12 mm eye x 1.05,
+eye step: fold at 5.3 mm, 1.1 mm deep).
+Open, in order: (1) Joe on the designed dorsum local (b2_G11's); (2) the eye_width / eye_opening readers on clay
+(Garrett: row 28.8 mm vs his own corner landmarks 26.1) and lt19's weak-perspective scale in the eye-placement readers;
+(3) the profile lip_upper click vs lm51; (4) the eye step: a true overhang (GNM made none for Garrett: test a bigger
+prior / expression range), Tess's iris reads 5.1 mm in camera mm (iris-radius targets may be ~15 % inflated for her);
+(5) age: the decision on a licensed older-age source (section 4); the designed shape: ops meanwhile (Garrett: fold,
+hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not leaner).
