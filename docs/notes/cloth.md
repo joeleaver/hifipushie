@@ -2068,3 +2068,14 @@ NO SIM WAS RUN.
     (0 crossings, 0 skin px, collar/V 0.00) but the wearer's right lapel crumples into a tab at the lower break
     (roll 43 mm off its chord), break now at the concept's height (383-403 vs 398 mm below the chin); j12 (tight)
     84 visible crossings, collar_show 17.5 mm. Neither is better than w9 to the eye.
+  - Round 9: the LAPEL CONSTRUCTED after the drape (cloth_made.made_lapel, construct key lapel="made", now the default;
+    "pressed" = the old press_flap). Roll line = the straight chord between the drape's roll-row ends, LIFTED along the
+    lapel's normal (a linear lift) until it clears the under garment by 2 x lay (the raw chord ran up to 46 mm deep,
+    through the shirt); the base within 2.5 cm of the row gets its bow taken out; the lapel = a ruled sheet over the
+    line along ONE cross direction, lifted by ONE plane over (along, across) to clear the under garment (point-by-point
+    settling made the outer edge follow every chest bump: 34-50 mm), rising from the fold over a 4 mm soft roll; the
+    forepart under it pressed back behind it. Same cached j10 sim (no GPU): roll lines 4.4-4.7 mm off their chord,
+    outer edges 0.1-0.2 mm (concept 2.8-8.0; j9 16-41), lapel 65-69 mm, integrity 0 crossings, visible shirt x
+    jacket 6, collar / V 0.00 mm, 0 skin px from 12 cameras. lapelgate.py now reads the outer edge on the pattern's
+    break -> lapel point segment (the old bins mixed in the roll line and the notch). Sheet cloth_renders/
+    c10_w10_sheet.png (concept | w9 | now).
