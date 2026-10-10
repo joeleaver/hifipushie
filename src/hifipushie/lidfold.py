@@ -168,9 +168,14 @@ def read_lid(img, P, mmpx: float | None = None, fractions=(0.25, 0.5, 0.75), las
 
 # the fold's parameters, mm (base.head.fold = true | {...}); the defaults by sex (body.sex 1 male .. 0 female)
 KEYS = ("crease_height", "crease_depth", "crease_width", "fold_overhang", "fold_width", "platform", "inner", "outer",
-        "start", "end")
-DEFAULTS = {"crease_depth": 1.0, "crease_width": 0.8, "fold_overhang": 0.4, "fold_width": 1.6, "platform": 0.15,
-            "inner": 0.8, "outer": 0.85, "start": 0.06, "end": 0.96}
+        "start", "end", "fade_inner", "fade_outer", "outer_reach")
+# (fade_inner / fade_outer: the share of the line over which the crease comes in from each canthus: shallower,
+# narrower and lighter toward them. Tess's photo by thirds: the inner and outer thirds as dark as the middle (0.97 /
+# 1.2 of it), so the fades live in the last ~20% at each end. The fold's roll is broad (2.6 mm): a narrow one read as
+# a raised rim in 3/4)
+DEFAULTS = {"crease_depth": 1.0, "crease_width": 0.8, "fold_overhang": 0.4, "fold_width": 2.6, "platform": 0.15,
+            "inner": 0.95, "outer": 0.95, "start": 0.02, "end": 1.0, "fade_inner": 0.16, "fade_outer": 0.25,
+            "outer_reach": 2.0}
 
 
 def config(spec: dict) -> dict | None:
@@ -272,7 +277,8 @@ def line_distance(X: np.ndarray, pr: dict, side: str | None = None) -> np.ndarra
     G = (w * pr["G"][j]).sum(1) / ws
     tap = (w * pr["taper"][j]).sum(1) / ws * np.clip(ws / (0.3 * pr["wfull"]), 0, 1)
     dist = np.hypot(tt, np.maximum(hh - 2 * G, 0))
-    return dist / np.maximum(tap, 0.05) + (d[:, 0] > 0.01) * 1.0
+    # (past the line's ends tap goes to 0: far. A floor on it painted a straight spur along the line's continuation)
+    return np.where(tap > 1e-3, dist / np.maximum(tap, 1e-3), 1.0) + (d[:, 0] > 0.01) * 1.0
 
 
 def curves(head: dict, cfg: dict, n: int = 72, field=None) -> list:
@@ -291,13 +297,29 @@ def curves(head: dict, cfg: dict, n: int = 72, field=None) -> list:
         rim2 = L["o2"] + np.c_[(L["dirs"][idx] @ L["side"]) * L["rho"][idx], (L["dirs"][idx] @ L["up"]) * L["rho"][idx]]
         seg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(rim2, axis=0), axis=1))]
         s_all = seg / seg[-1]
-        s = np.linspace(cfg["start"], cfg["end"], n)
+        # the line runs PARALLEL to the margin: an offset of the opening's upper rim along its own normal (in the front
+        # plane), not the rim lifted straight up (that made a high round arch peaking over the pupil, stopping short of
+        # both ends: Joe on ed_22), and on past the opening's outer corner along its last tangent by `outer_reach` mm
+        # toward the lateral canthus. s > 1 is that extension.
+        arclen = float(seg[-1])
+        s = np.linspace(cfg["start"], cfg["end"] + cfg["outer_reach"] * MM / arclen, n)
         R2 = np.c_[np.interp(s, s_all, rim2[:, 0]), np.interp(s, s_all, rim2[:, 1])]
+        t_end = rim2[-1] - rim2[-4]
+        t_end /= np.linalg.norm(t_end)
+        past = s > 1.0
+        R2[past] = rim2[-1] + ((s[past] - 1.0) * arclen)[:, None] * t_end
+        T2 = np.gradient(R2, axis=0)
+        T2 /= np.linalg.norm(T2, axis=1, keepdims=True)
+        N2 = np.c_[-T2[:, 1], T2[:, 0]]
+        N2 *= np.sign(((R2 - L["o2"]) * N2).sum(1))[:, None]  # away from the opening
+        N2 = gaussian_filter1d(N2, 3.0, axis=0, mode="nearest")
+        N2 /= np.linalg.norm(N2, axis=1, keepdims=True)
         # the crease height along the lid: a parabola through inner (s 0.2), middle (0.5), outer (0.8)
         A = np.c_[np.ones(3), [0.2, 0.5, 0.8], np.square([0.2, 0.5, 0.8])]
         coef = np.linalg.solve(A, np.array([cfg["inner"], 1.0, cfg["outer"]]))
-        hk = np.clip(coef[0] + coef[1] * s + coef[2] * s * s, 0.3, 1.5) * cfg["crease_height"] * MM
-        C2 = R2 + np.c_[np.zeros(n), hk]
+        sc = np.clip(s, 0.0, 1.0)
+        hk = np.clip(coef[0] + coef[1] * sc + coef[2] * sc * sc, 0.3, 1.5) * cfg["crease_height"] * MM
+        C2 = R2 + N2 * hk[:, None]
         seat = (lambda X: _seat(field, L, X)) if field is not None else (lambda X: lashes._on_skin(L, X))
 
         def smooth(Q):  # the seated depth along the line, median-filtered first: on a hooded lid the ray meets the
@@ -307,7 +329,7 @@ def curves(head: dict, cfg: dict, n: int = 72, field=None) -> list:
             ds = gaussian_filter1d(median_filter(dep, size=9, mode="nearest"), 3.0, mode="nearest")
             return gaussian_filter1d(Q + (ds - dep)[:, None] * L["fwd"], 1.5, axis=0, mode="nearest")
         P = smooth(seat(C2))
-        Pu = smooth(seat(C2 + np.c_[np.zeros(n), np.full(n, 0.3 * MM)]))
+        Pu = smooth(seat(C2 + 0.3 * MM * N2))
         if field is not None:  # the field's own normals (central differences)
             e = 0.1 * MM
             N = np.stack([field(P + e * ax) - field(P - e * ax) for ax in np.eye(3)], 1)
@@ -350,10 +372,12 @@ def prims(s: dict, base_prim=None) -> list:
         n = len(P)
         sp = float(np.median(np.linalg.norm(np.diff(P, axis=0), axis=1)))
         sa = 1.5 * sp  # (wide enough that uneven spacing never leaves a gap between samples)
-        e = np.clip(np.minimum(c["s"] - cfg["start"], cfg["end"] - c["s"]) / 0.12, 0, 1)
-        taper = e * e * (3 - 2 * e)
+        ei = np.clip((c["s"] - cfg["start"]) / max(cfg["fade_inner"], 1e-3), 0, 1)
+        eo = np.clip((c["s"][-1] - c["s"]) / max(cfg["fade_outer"], 1e-3), 0, 1)  # (to the extension's end)
+        e = np.minimum(ei, eo)
+        taper = e * e * e * (e * (6 * e - 15) + 10)  # (smootherstep: no visible start to the fade)
         G = np.full(n, cfg["crease_depth"] * MM)
-        sg = np.full(n, cfg["crease_width"] * MM / 2.355)
+        sg = cfg["crease_width"] * MM / 2.355 * (0.5 + 0.5 * taper)  # (narrower toward the canthi)
         O = np.full(n, cfg["fold_overhang"] * MM)
         so = np.full(n, cfg["fold_width"] * MM)
         Pl = np.full(n, cfg["platform"] * MM)
