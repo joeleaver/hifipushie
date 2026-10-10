@@ -35,26 +35,29 @@ def orient(L, mask):
 
 
 frames = [stage.fitted_frame(refs["cameras"][v], BOX, f"v{v}") for v in views]
-def bald(frames):
-    """The same stage with its hair objects hidden (the stage's blend carries the synced groom)."""
+def idmask(frames):
+    """Our hair as an ID pass (blender_scene's id_parts: every object of the named parts flat white, everything else
+    flat black, transparent background): hair = opaque AND black. No luminance enters (the stage's hair objects carry
+    no part of their own)."""
     import tempfile
     from pathlib import Path
     from hifipushie import scene
-    sn = stage.ensure(name, with_hair=False)  # (a stage synced without the groom)
+    sn = stage.ensure(name)
+    st = json.loads((store._dir(sn) / "spec.json").read_text())
+    white = {p: [1.0, 1.0, 1.0] for p in list(st.get("parts") or {}) + ["body"] if p != "hair"}
     out = {}
     with tempfile.TemporaryDirectory() as tmp:
         fr = [{**f, "out": str(Path(tmp) / f"{f['name']}.png")} for f in frames]
-        job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": PX, "samples": 24, "hide": ["hair"], "flat": False,
-               "transparent": True, "mode": "render", "lighting": {**LIGHT, "target": fr[0]["center"]}}
+        job = {"mode": "render", "blend": str(scene.blend_path(sn)), "views": fr, "size": PX, "samples": 4, "hide": [],
+               "flat": True, "transparent": True, "id_parts": white}
         scene._blender(job, 2400)
         for f in fr:
-            im = Image.open(f["out"]).convert("RGBA")
-            bg = Image.new("RGBA", im.size, tuple(int(255 * 0.86) for _ in range(3)) + (255,))
-            out[f["name"]] = Image.alpha_composite(bg, im).convert("RGB").copy()
+            a = np.asarray(Image.open(f["out"]).convert("RGBA"), float)
+            out[f["name"]] = (a[..., 3] > 127) & (a[..., :3].max(-1) < 60)
     return out
 
 
-off = bald(frames)
+ids = idmask(frames)
 on = stage.shoot(name, frames, LIGHT, size=PX, hair_on=True)
 for v in views:
     tr = json.load(open(f"{T}/{TR[v]}.json"))
@@ -66,17 +69,15 @@ for v in views:
     hm.paste(Image.open(f"{T}/{TR[v]}_mask.png").convert("L"), (int(-BOX[0]), 0))
     mh = np.asarray(hm.resize((PX, PX))) > 127
     a = np.asarray(on[f"v{v}"]).astype(float) / 255
-    b = np.asarray(off[f"v{v}"]).astype(float) / 255
-    print("  on/off diff max", float(np.abs(a - b).sum(-1).max()), "on mean", float(a.mean()), "off mean", float(b.mean()))
-    on[f"v{v}"].save(f"{T}/out/hs_on_{v}.png"); off[f"v{v}"].save(f"{T}/out/hs_off_{v}.png")
-    # our hair by colour (the stage's blend keeps its groom whatever the job hides): dark, or the grey wisps' low
-    # saturation off the light background; the face's own dark bits (brows, eyes, nostrils) are small blobs: dropped
-    La_ = a @ [0.299, 0.587, 0.114]
-    mo = (La_ < 0.36) | ((a.max(-1) - a.min(-1) < 0.06) & (La_ < 0.62))
-    mo = ndi.binary_closing(ndi.binary_opening(mo, iterations=1), iterations=2)
-    lab, n = ndi.label(mo)
-    sz = ndi.sum(mo, lab, range(1, n + 1))
-    mo = np.isin(lab, 1 + np.flatnonzero(sz > 0.03 * sz.max())) if n else mo
+    raw_o = ids[f"v{v}"]  # our hair pixels, the ID pass (no luminance), unfilled
+    mo = ndi.binary_closing(ndi.binary_opening(raw_o, iterations=1), iterations=3)
+    # her hair PIXELS (the trace's classifier without its hole filling: the gaps between strands stay gaps)
+    c = P
+    Lc = c @ [0.299, 0.587, 0.114]
+    bgc = np.median(c[:20, -20:].reshape(-1, 3), 0)
+    raw_h = ((Lc < 0.42) & (c[..., 0] >= c[..., 2] - 0.02)) | ((Lc < 0.5) & (c.max(-1) - c.min(-1) > 0.12)
+                                                            & (np.abs(c - bgc).sum(-1) > 0.25) & (c[..., 0] - c[..., 2] > 0.09))
+    raw_h &= mh
     cam = refs["cameras"][v]
     mm = cam["t"][2] / cam["f"] * 1000 * H / PX
     iou = (mh & mo).sum() / max((mh | mo).sum(), 1)
@@ -93,6 +94,16 @@ for v in views:
         band = mh & (ndi.distance_transform_edt(~fh) * mm < 15.0)
         bare = band & ~mo
         print(f"   hairline band (her hair within 15 mm of the face): {band.sum()} px, bare in ours {100 * bare.sum() / max(band.sum(), 1):.1f}%")
+    # COLOUR like with like: luminance bands (shadow 0-20 %, mid 40-60, highlight 85-98) inside each hair mask, eroded
+    def bands(img, m):
+        m = ndi.binary_erosion(m, iterations=2)
+        L = img @ [0.299, 0.587, 0.114]
+        out = []
+        for lo, hi in ((0, 20), (40, 60), (85, 98)):
+            a0, a1 = np.percentile(L[m], [lo, hi])
+            out.append("#%02x%02x%02x" % tuple(int(255 * x) for x in img[m & (L >= a0) & (L <= a1)].mean(0)))
+        return out
+    print(f"   colour shadow / mid / highlight: hers {bands(P, raw_h)}  ours {bands(a, raw_o)}")
     # regions: by rows of the picture in thirds of the hair's own height, and left / right of the hair's centre
     ys, xs = np.nonzero(mh)
     y0, y1, xc = ys.min(), ys.max(), np.median(xs)
@@ -114,14 +125,9 @@ for v in views:
             # coverage: how opaque the hair is there (0 = the background shows, 1 = solid hair), over the union of
             # both masks in the region: a dense sheet and airy wisps have the same outline, not the same coverage
             u = (mh | mo) & m
-            if u.sum():
-                def cov(L):
-                    bgL = float(np.median(L[~(mh | mo)][:: 7])) if (~(mh | mo)).any() else 0.85
-                    hairL = float(np.percentile(L[u], 5))
-                    return float(np.clip((bgL - L[u]) / max(bgL - hairL, 1e-3), 0, 1).mean())
-                cvh, cvo = cov(Lp), cov(La)
-            else:
-                cvh = cvo = float("nan")
+            # coverage = the share of the region's pixels (both masks' union) that ARE hair: a sheet ~1, wisps low
+            cvh = float(raw_h[u].mean()) if u.sum() else float("nan")
+            cvo = float(raw_o[u].mean()) if u.sum() else float("nan")
             print(f"   {rn:12s} {side}: coverage hers {cvh:.2f} ours {cvo:.2f} ({cvo - cvh:+.2f})  extra {100 * (mo & ~mh & m).sum() / max(her, 1):5.1f}%  missing "
                   f"{100 * (mh & ~mo & m).sum() / max(her, 1):5.1f}%  flow diff {np.median(d) if len(d) else float('nan'):5.1f} deg (n {len(d)})")
     vis = np.zeros((PX, PX, 3))
