@@ -108,6 +108,13 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
                                               round(float(e[:, 2].min()) - 0.016, 4)],
                                        "hi": [round(float(e[:, 0].max()) + 0.024, 4), round(float(e[:, 1].max()) + 0.004, 4),
                                               round(float(e[:, 2].max()) + 0.026, 4)], "voxel": EYE_VOXEL}]
+        if all(k in J for k in ("lm_mouth_corner.L", "lm_mouth_corner.R", "lm_lip_upper", "lm_lip_lower")):
+            # the mouth too: the lips' colour is laid per vertex, and at 1 mm their border came out as a fringe ("fur")
+            m = np.array([J["lm_mouth_corner.L"], J["lm_mouth_corner.R"], J["lm_lip_upper"], J["lm_lip_lower"]])
+            s["parts"][part]["refine"].append({"lo": [round(float(m[:, 0].min()) - 0.006, 4), round(float(m[:, 1].min()) - 0.006, 4),
+                                                      round(float(m[:, 2].min()) - 0.008, 4)],
+                                               "hi": [round(float(m[:, 0].max()) + 0.006, 4), round(float(m[:, 1].max()) + 0.012, 4),
+                                                      round(float(m[:, 2].max()) + 0.008, 4)], "voxel": EYE_VOXEL})
     s.pop("symmetry", None) if False else None
     return s
 

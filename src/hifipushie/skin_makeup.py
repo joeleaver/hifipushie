@@ -53,9 +53,9 @@ LOOKS = {
                  "lipstick": {"amount": 0.75, "color": "#b0505a", "finish": "satin"}},
     "evening": {"foundation": {"amount": 0.75, "finish": "matte"}, "concealer": 0.55, "bronzer": 0.35,
                 "contour": 0.6, "blush": {"amount": 0.5, "place": "lifted"}, "highlight": 0.6,
-                "eyeshadow": {"amount": 0.9, "color": "#8a6a5e", "crease": "#4e352e", "outer": "#2a1c19", "finish": "shimmer",
+                "eyeshadow": {"amount": 1.2, "color": "#7a5a4e", "crease": "#45302a", "outer": "#241815", "finish": "shimmer",
                               "reach": 1.15},
-                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.005, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
+                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.004, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
                 "lipstick": {"amount": 1.0, "color": "#8e1f30", "finish": "matte", "liner": 0.6}},
 }
 EXTRA = {"blush": ("place",), "contour": ("nose",), "eyeshadow": ("reach", "crease", "outer"),
@@ -191,7 +191,8 @@ def build(spec, p, J, layer, T, ctx) -> None:
             a = float(np.clip(o["amount"], 0, 1))
             col = _hex(o["color"]) if "color" in o else T(blood=0.9)
             layer("makeup_foundation", o.get("mask"), pre=True, color=col, opacity=0.8 * a, roughness=FINISH[o.get("finish", "natural")],
-                  mask=where(o, ["face", "neck"]) + [{"zone": "lips", "blend": "subtract"}, {"mask": _zones(["eyelid", "eye_corner"], 0.7), "blend": "subtract", "weight": 0.5}])
+                  mask=where(o, ["face", "neck"]) + [{"zone": "lips", "blend": "subtract"}, {"mask": _zones(["eyelid", "eye_corner"], 0.7), "blend": "subtract", "weight": 0.5},
+                                                          {"mask": _zones(["brow"], 1.1), "blend": "subtract", "weight": 0.8}])   # (over the brows it left a pale halo)
         o = item("concealer")
         if o:
             col = _hex(o["color"]) if "color" in o else [round(min(c * f, 1), 4) for c, f in zip(T(melanin=0.8, blood=0.75), (1.03, 1.0, 0.95))]
@@ -254,7 +255,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
         if o:
             m = both(lambda: [pt("lm_eye_outer.L", (0.02, 0.0, -0.32)), pt("lm_eye_outer.L", (0.22, 0.1, -0.2))], [0.09, 0.06], soft=1.0)
             m += [{"mask": _zones(["nose_bridge"], 0.5), "blend": "max", "weight": 0.7}, {"mask": _zones(["philtrum"], 0.6), "blend": "max", "weight": 0.6}]
-            m += [{**e, "blend": "max", "weight": 0.6} for e in both(lambda: [pt("lm_brow_mid.L", (0.08, 0.0, -0.12)), pt("lm_brow_outer.L", (-0.02, 0.0, -0.1))], [0.05, 0.04], soft=1.0)]
+            m += [{**e, "blend": "max", "weight": 0.3} for e in both(lambda: [pt("lm_brow_mid.L", (0.08, 0.0, -0.12)), pt("lm_brow_outer.L", (-0.02, 0.0, -0.1))], [0.05, 0.04], soft=1.0)]
             layer("makeup_highlight", o.get("mask"), pre=True, color=T(melanin=0.5, blood=0.7), opacity=0.35 * o["amount"],
                   roughness=0.24, specular=0.65, mask=m + [{"blur": round(0.025 * io, 5)}])
         o = item("eyeshadow")
@@ -323,7 +324,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
                 along = float(np.linalg.norm(far - eo))
                 k_front = run / along if along > 1e-6 else 1.0
                 length = wing * float(np.clip(k_front, 0.35, 1.0)) + float(np.linalg.norm((eo - s0)[[0, 2]]))
-                path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 2.2 * w)
+                path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 3.0 * w)
                 c = s0 + np.array([(0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
                 img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
                        "depth": 0.006, "facing": 0.3, "mirror": True, "mirror_image": True, "channel": "alpha"}

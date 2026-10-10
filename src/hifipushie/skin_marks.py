@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 11
+VERSION = 12
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -400,7 +400,7 @@ def beard_density(J: dict, o: dict, curv=None):
         w *= 1 - 0.2 * _ramp(np.interp(q[:, 0], jx, jz) - q[:, 2], 0.15 * io, 0.6 * io)                  # the neck
         if patchy > 0:
             nz = noise(P, {"scale": 0.014, "octaves": 2, "seed": 300 + seed})
-            w *= (1 - patchy) + patchy * _ramp(nz, 0.32 + 0.12 * patchy, 0.6)
+            w *= (1 - patchy) + patchy * _ramp(nz, 0.44, 0.52)   # (hair there or missing, not a stain: sharp gaps keeping sparse single hairs)
         return np.clip(d * w * float(o["density"]), 0, 1)
     return dens
 
@@ -470,13 +470,15 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             b = b - curl[i] * a * a / max(l, 1e-6) * 0.5
             aa = 0.5 * pxm[i]
             hw = 0.5 * wid[i]
-            across = _ramp(np.abs(b), hw + aa, max(hw - aa, 0.0))
+            hwa = hw * (1 - 0.35 * np.clip(a / l, 0, 1))   # tapering a little
+            across = _ramp(np.abs(b), hwa + aa, np.maximum(hwa - aa, 0.0))
             ends = _ramp(a, -aa - 0.25 * wid[i], aa - 0.25 * wid[i] + 1e-9) * _ramp(a, l + aa, l - aa)
             cov = across * ends
             if proj[i] < wid[i]:            # a cut stub: a round dot
                 r = np.hypot(s, t)
                 cov = _ramp(r, hw + aa, max(hw - aa, 0.0))
-            return cov * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
+            root = _ramp(np.hypot(s, t), 0.75 * wid[i] + aa, max(0.75 * wid[i] - aa, 0.0))   # the follicle: a dark dot where it leaves the skin
+            return np.maximum(cov, root) * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
         draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine))
         draw(G, x0, A, reach, shape, tone * 0.95 * (0.35 + 0.65 * fine))
         # the shadow: the EXPECTED density of dark roots (hair in the skin), from a dense sample of the density field
@@ -546,7 +548,8 @@ def freckle_density(J: dict, o: dict):
         d[inl] = 0
         # not on the lids' margins and eyes (the eye area keeps a few)
         eye = np.maximum(g(q, L("lm_lid_upper.L") + np.array([0, 0.03 * io, -0.02 * io]), np.array([0.28, 0.4, 0.13]) * io), 0)
-        return d * (1 - 0.85 * eye)
+        top = _ramp(q[:, 2], L("lm_brow_mid.L")[2] + 0.85 * io, L("lm_brow_mid.L")[2] + 0.45 * io)   # none up into the hairline
+        return d * (1 - 0.85 * eye) * top
     return dens
 
 
@@ -580,14 +583,15 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         t1, t2 = frames(Nrm, np.tile([1.0, 0, 0], (n, 1)))
         x0, A = jacobians(sp, P, t1, t2)
         pxm = _px_m(A)
-        rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.35, n) * (0.75 + 0.4 * d)      # denser: bigger, darker
+        big = rng.random(n) < 0.18          # a few larger ones (merged, 1.5-3 mm) among the specks
+        rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.35, n) * np.where(big, rng.uniform(2.5, 5.0, n), 1.0) * (0.75 + 0.4 * d)
         rad = np.clip(rad, 0.00012, 0.002)
         soft = rng.uniform(0.3, 0.9, n)
         lobes = rng.normal(0, 1, (n, 4)) * np.array([0.0, 0.16, 0.1, 0.07])
         ph = rng.uniform(0, 2 * np.pi, (n, 4))
         aspect = rng.uniform(0.75, 1.0, n)
         rot = rng.uniform(0, np.pi, n)
-        inten = np.clip(rng.uniform(0.1, 1.0, n) ** 1.6 * (0.7 + 0.5 * d), 0, 1)   # a wide range, most faint
+        inten = np.clip(rng.uniform(0.15, 1.0, n) * (0.7 + 0.5 * d), 0, 1)   # a wide range: light tan to deep brown
         dark = rng.random(n) < float(o["dark"])
 
         def shape(i, s, t):

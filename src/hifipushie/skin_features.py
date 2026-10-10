@@ -206,7 +206,14 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
         sz = float(o.get("size", 0.0025))
         sd = seed + int(o.get("seed", 0))
         stacks = []
-        if not o.get("at") or (isinstance(f.get("moles"), dict) and "amount" in f["moles"]):
+        scattered = not o.get("at") or (isinstance(f.get("moles"), dict) and "amount" in f["moles"])
+        if scattered and ctx["face"] and "lm_jaw_1.L" in J and not o.get("where"):
+            # a few on the face from the mark map (the swatch's "strongest marks" were nearly invisible): ~12 at amount 1
+            from . import skin_marks
+            q = {**freckle_options({"amount": 1e-4}), "moles": int(round(12 * float(o["amount"]))), "seed": int(o.get("seed", 0))}
+            path, place, _ = skin_marks.freckle_map(ctx["spec"], p["part"], J, q)
+            stacks.append([{"image": {"file": path, **place, "channel": "b"}}])
+        elif scattered:
             hi = float(np.clip(0.955 - 0.05 * o["amount"], 0.8, 0.96))  # only the swatch's few strongest marks
             stacks.append([{"tile": {"swatch": "freckles", "size": round(0.06 * sz / 0.0016, 4), "range": [round(hi, 3), round(hi + 0.04, 3)],
                                      "vary": False, "rotate": True}}] + (_where(o, [], ctx)))
@@ -624,7 +631,9 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     # (a freshly shaved jaw: the cool cast; a few days' growth: the cut hairs at the surface warm it to a grey-brown, the
     # colour measured on Garrett's photo under the matched light: Lab ~45/4/13 at ~0.8 coverage)
     grow = float(np.clip(q["length"] / 0.001, 0, 1))
-    cool = np.array(T(grey=0.8, melanin=1.1)) * (0.66 + 0.2 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
+    # a fresh shave: dark hair under a scattering layer reads blue-grey, never olive (a greyed skin colour read as a
+    # "dirty grey-green wash" to the blind reader): the skin darkened and pushed toward a cool blue-violet grey
+    cool = np.array(T(grey=0.5, melanin=1.1)) * (0.58 + 0.22 * t["melanin"]) + np.array([0.09, 0.11, 0.16]) * (1 - t["melanin"])
     warm = np.array(T(grey=0.25, melanin=2.3, blood=1.05)) * (0.62 + 0.25 * t["melanin"])   # (warm grey: less read as green)
     cast = (1 - 0.35 * grow) * cool + 0.35 * grow * warm + 0.06 * grow * (np.array(col) - 0.3)   # the sub-skin shadow stays cool: the hairs carry the warmth
     cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]
@@ -635,7 +644,9 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     r = min(ctx["base_r"] + 0.1, 0.9)
     layer("stubble", o.get("mask"), color=col, opacity=0.97, roughness=r, specular=0.35, height=hgt, mask=[im("r"), lips])
     if q["grey"] > 0:
-        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#d2cec8")), opacity=0.95, roughness=r, specular=0.4,
+        # (grey hairs translucent and mid-light, so a salt-and-pepper beard still darkens the skin: near-white ones read
+        # as ash on Garrett)
+        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#aaa39a")), opacity=0.85, roughness=r, specular=0.4,
               height=hgt, mask=[im("g"), lips])
 
 
