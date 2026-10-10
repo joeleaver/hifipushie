@@ -108,6 +108,29 @@ for v in views:
             return (Lx > 0.45) & (r - b > 0.12) & (r >= g_) & (g_ >= b)
         print(f"   scalp showing in her hair band (30 mm): ours {100 * (skin(a) & band30).sum() / max(band30.sum(), 1):.1f}%"
               f"  hers {100 * (skin(P) & band30).sum() / max(band30.sum(), 1):.1f}%")
+    # FOREHEAD ARCH (faces3): the hair's lower edge over the forehead, per column, against her face hull's top (her
+    # traced hair edge), front view: mm ours - hers (+ = our hair edge lower) across the forehead in 5 bins from her
+    # right temple to her left, and the arch's height (the centre's edge over the temples' mean), ours and hers
+    if tr.get("face_hull") and v == 0:
+        top = np.where(fh.any(0), fh.argmax(0), PX)
+        hi = int(top.min())
+        cols = np.flatnonzero(top < hi + 35.0 / mm)
+        start = (top[cols] + 30.0 / mm).astype(int)
+        ours_e = np.full(len(cols), np.nan)
+        for i, (cx, s) in enumerate(zip(cols, start)):
+            colm = mo[: max(s, 1), cx]
+            hit = np.flatnonzero(colm)
+            if len(hit):
+                ours_e[i] = hit.max()
+        dif = (ours_e - top[cols]) * mm
+        bins = np.array_split(np.arange(len(cols)), 5)
+        prof = [float(np.nanmean(dif[b])) for b in bins]
+        def arch(e):
+            c = np.nanmean(e[bins[2]])
+            return float((np.nanmean(np.r_[e[bins[0]], e[bins[4]]]) - c) * mm)
+        print(f"   forehead arch: ours - hers (mm, + = ours lower), R temple .. L temple: "
+              + " ".join(f"{p:+.1f}" for p in prof)
+              + f"  | arch height (temples' edge below the centre's) hers {arch(top[cols].astype(float)):.1f} ours {arch(ours_e):.1f} mm")
     # COLOUR like with like: luminance bands (shadow 0-20 %, mid 40-60, highlight 85-98) inside each hair mask, eroded
     def bands(img, m):
         m = ndi.binary_erosion(m, iterations=2)

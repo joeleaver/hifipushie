@@ -429,3 +429,29 @@ Next, in order:
 2. Then a central-pad lever (a pad that projects at the middle and tucks toward the corners) and lipsolve.py
    (LEVERS=..., FEATS=shadow,shadow_side) against her under-lip shadow (0.65 middle / 0.925 sides; ours 0.73 / 0.85).
 3. Tess's hair: the temple arch (hair lower at the forehead corners) and volume; groom.grey sides for Garrett.
+
+## faces3 (2026-10-10, continues faces2; scratch /mnt/data/hifipushie/faces3: faces2's scripts retargeted (run.sh,
+## tests.sh, q.sh, shots.sh, hs.sh, rehair.py, regroom.py, crop.py ...), bmid.py; sheets out/f3_*.jpg)
+
+### The mouth extensions' folds were never at the vermilion border
+- borderdiag.py (spikes/facesliders): every carried MakeHuman mouth target first folded in the lips' INNER ROLL (lip
+  rings 0-2, inside the contact ring, out of sight behind closed lips) near the corners (|x| 15-20 mm), on 57-72 deg
+  template creases of ordinary 1.4-2 mm quads; |d| there only 0.05-0.3 mm. The field's along-the-lip gradient
+  sheared the roll's rows (a crease keeps its angle only under rigid motion). The "67 deg upper border crease" in the
+  facesliders notes was a misreading: the border is fine.
+- FIX (general, faceext.py): (1) hold_rolls: the rings inside the contact ring take their own lip's move one ring
+  further out (carried down the roll's columns, as faceslide's seal does); (2) hold_creases: around every template
+  crease (45-150 deg, where the field moves) the field is replaced by the small rigid motion (t + w x p) fitted over
+  the vertex's 3 mm neighbourhood, easing out to the neighbourhood's edge (no extrapolation past it). Alternated 3x
+  with the cheap-direction projection (orthogonality kept, test). Tried and dropped: a nearest-contact-vertex copy
+  (worse: jumped columns), a linear crease-angle penalty (I + s L'L + lam J'J; mouth_angles 2.4 mm but volume worse),
+  a Gauss-Newton on both signs (diverged / spread into the corners' slivers).
+- Fold-free at +-1 now (was): mh_lowerlip_width 2.07 mm (0.40), mh_mouth_angles 1.32 (0.38; its limit is a real skin
+  fold 5 mm outside the corner, from the corner hold's own ramp), mh_lowerlip_ext 1.09 (0.89), mh_lowerlip_volume 1.08
+  (0.62). The hold changes the VISIBLE lip by 3-22% of the field (most of the change is inside the mouth).
+  No accepted model used the mh_ sliders (their units changed 1.7-5x). Tests: test_faceext
+  (reach >= 1 mm, rigid motions untouched).
+- NEW extension mh_lowerlip_middle (MakeHuman mouth-lowerlip-middle-up/down; extprofile.py: + = the lower border dips
+  0.8 mm at the centre and rises 0.4 mm at half width, the skin under it following): the data-backed central pad
+  lever. Fold-free to +-1.6. (extprofile also shows volume is already a central pad in depth: +0.7 mm forward at the
+  middle, -0.2 / -0.6 at the corners' red / skin; -width = middle forward, sides back.)

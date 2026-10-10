@@ -37,7 +37,7 @@ SIZE = 768
 VIEW = int(os.environ.get("VIEW", "0"))
 LEVERS = os.environ.get("LEVERS", "c:lower_lip_proj,s:lip_lower_roll").split(",")
 ROUNDS = int(os.environ.get("ROUNDS", "1"))
-SCR = "f2_lipv"
+SCR = os.environ.get("SCR", "f3_lipv")
 
 
 def feats(r):
@@ -75,6 +75,12 @@ def render(spec, src):
     fr = [stage.fitted_frame(r["cameras"][VIEW], sheet1.crop_of(r["views"][VIEW]), "v")]
     im = stage.shoot(SCR, fr, light(), size=SIZE, hair_on=False)["v"]
     return np.asarray(im.convert("RGB"))
+
+
+def bounds():
+    """(lo, hi) per lever: a model extension (faceext, mh_*) within +-1 (its fold-free range); the rest unbounded."""
+    lo = np.array([-1.0 if lv.split(":")[1].startswith("mh_") else -np.inf for lv in LEVERS])
+    return lo, -lo
 
 
 def prior_costs():
@@ -117,7 +123,24 @@ def main(src, dst):
             print(f"  d/d {lv}: " + " ".join(f"{k} {g:+.3f}" for k, g in zip(FEATS, J[:, j])))
         A = (J * w[:, None]).T @ (J * w[:, None]) + np.diag(pc)
         b = (J * w[:, None]).T @ (w * (fp - f0)) - pc * x
-        x = x + np.linalg.solve(A, b)
+        # box: a model extension stays inside its fold-free range (faceext: +-1); a lever past it is held at the bound
+        # and the others re-solved (faces3: mh_lowerlip_width went to -1.58, 20 folded pairs)
+        lo, hi = bounds()
+        fixed = np.zeros(len(x), bool)
+        target = x.copy()
+        for _ in range(len(x) + 1):
+            dx = np.zeros(len(x))
+            dx[fixed] = target[fixed] - x[fixed]
+            fr = ~fixed
+            if fr.any():
+                dx[fr] = np.linalg.solve(A[np.ix_(fr, fr)], b[fr] - A[np.ix_(fr, fixed)] @ dx[fixed])
+            xn = x + dx
+            viol = fr & ((xn < lo) | (xn > hi))
+            if not viol.any():
+                break
+            fixed |= viol
+            target[viol] = np.clip(xn[viol], lo[viol], hi[viol])
+        x = xn
         f0 = feats(LS.read(render(apply(spec, x), src)))
         hist.append((f"round {it}", x.copy(), f0))
     print(f"{'':10s}" + " ".join(f"{k:>10s}" for k in FEATS) + "   cost")

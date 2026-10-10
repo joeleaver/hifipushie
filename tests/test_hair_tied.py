@@ -136,3 +136,21 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print("ok", name)
+
+
+def test_curtain_sag_lowers_the_run_over_the_temples():
+    """curtain.sag: the first row's run on to the ear's top hangs below its great circle (the forehead a rounder arch);
+    0 = the old groom exactly; roots and the other rows don't move."""
+    base = {"span": 60, "along": 30, "drape": 8.0}
+    a, b = _tie(curtain=base), _tie(curtain={**base, "sag": 10.0})
+    assert a == _tie(curtain={**base, "sag": 0.0})
+    front = [k for k in a if k.startswith("tg0_") and abs(_az(a[k])[0]) < 30]
+    assert front
+    for k in front:
+        ea, eb = _el(a[k]), _el(b[k])
+        cw = 1 - abs(_az(a[k])[0]) / 60
+        assert abs(ea[0] - eb[0]) < 1e-6 and abs(ea[-1] - eb[-1]) < 1e-6, k
+        assert (ea - eb).max() > 7.0 * cw, (k, ea, eb)
+    for k in a:
+        if not k.startswith("tg0_"):
+            assert a[k] == b[k], k
