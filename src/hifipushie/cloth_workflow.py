@@ -326,8 +326,12 @@ def openings(c: Ctx) -> list:
     det = (c.res or {}).get("details") or {}
     open_words = {d: str(v.get("choice")) for d, v in det.items() if d in ("front_closure", "skirt_closure", "fly")}
     out = []
+    # (a piece sewn to ITSELF is a ring, closed on its own: a rib cuff, a ring band; never an opening between .L/.R)
+    ring = {side_of(e) for s in Bp["seams"] for e in flat(s[0])
+            if {side_of(x) for x in flat(s[0])} == {side_of(e)} == {side_of(x) for x in flat(s[1])}}
     bases = sorted({n[:-2] for n in pcs if n.endswith(".L") and n[:-2] + ".R" in pcs
-                    and pcs[n]["wrap"].get("to", "torso") in ("torso", "leg.L")})
+                    and pcs[n]["wrap"].get("to", "torso") in ("torso", "leg.L")
+                    and n not in ring and n[:-2] + ".R" not in ring})
     self_closed = {a.split(":")[0] for a, b in Bp["stitches"] if a.split(":")[0] == b.split(":")[0]}
     for b in bases:
         L, R = b + ".L", b + ".R"

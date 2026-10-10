@@ -315,6 +315,19 @@ def test_crease_fly_and_front_waistband():
     assert wb["marks"]["button1"][0] > wb["marks"]["buttonhole1"][0]  # the button on the extension at the high end
     chain = abs(wb["marks"]["button1"][0] - wb["marks"]["buttonhole1"][0])
     assert abs(chain - garment_blocks._chain_length(D["pieces"], gen["along"])) < 1e-6
+    # a RIB band (cloth10, for knits): cut shorter than its edge and folded in half, closed in a ring: its seam's
+    # stretch and its fold are declared for the checks (not a plain +-1.5% seam, a real fold line)
+    import json
+    rib = {"band": "rib", "along": gen["along"], "ratio": 0.85, "height": 0.05, "ring": True, "fold": True}
+    ex = {}
+    pr, sr, _, _ = garment_blocks.generate(D["pieces"], rib, ex)
+    note = ex["seam_notes"][json.dumps(sr[0])]
+    assert note["ease"][0] < -0.15 < note["ease"][1] and "stretched" in note["why"]
+    assert ex["folds"] == [{"piece": "rib", "line": "fold", "angle": 360.0, "kind": "press", "name": "rib fold"}]
+    assert "fold" in pr["rib"]["lines"] and ["rib:sw>nw", "rib:se>ne"] in sr
+    ex1 = {}
+    garment_blocks.generate(D["pieces"], gen, ex1)
+    assert not ex1.get("seam_notes") and not ex1.get("folds")  # (a waistband at ratio 1: nothing declared)
     # worn open: the zip's seam isn't sewn
     from hifipushie import closures
     D2 = pd.start("trouser", LEG, {})

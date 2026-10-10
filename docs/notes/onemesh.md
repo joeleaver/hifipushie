@@ -527,3 +527,15 @@ model".
   rims keep their distance to the ball. malar_rise (2 mm): the cheek's front plane under the lower lid forward and up,
   the lid margin held. neck_circ: base.body key (MakeHuman measure-neck-circ), solvable when neck_circ is asked (test).
   Sheets human_renders/fs_11_setback_malar_front.png / _threequarter.png.
+
+## Sealed mouth with an interior: holes and "fangs" (facesliders, 2026-10-09)
+
+Garrett's heads (fs_gj6 / gj8 and their lineage, from g4_garrett) carry base.head.interior (teeth, tongue, slit) AND
+lip_seal 1. The interior's slit and bag are subtracts (kits._interior): they cut the fused lips open again (the bag's
+box reaches to ~2 mm of the lips' front), a row of holes with the teeth showing as pale "fangs" along the seam, every
+render. Not the coupled lip changes: gj0s (before any) had it, Tess (no interior) never did. Fix (base.sealed_interior): a
+sealed head keeps the slit and bag (the face shapes read them) but held SEALED_BACK = 6 mm behind the lips' front
+(the slit's front end, the bag's box). Test tests/test_mouth_seal.py: the slit's front end behind the lips when sealed, and a front z-buffer
+over the meshed lips at the scene voxel (1.3 mm) finds no hole (sealmesh.holes: before 51 cells, after 0). Also the
+facesliders Garrett specs carried skin.part "tongue" (an eyes-only paint setting from likeloop): skin_look's stage
+then left the body at the coarse scene voxel; set to "body".
