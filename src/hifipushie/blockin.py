@@ -61,8 +61,7 @@ HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base"}
 POSE_KEYS = ("lid_upper", "lid_lower")
 STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual")
 SQUINT_MM = 9.0
-AMBIENT_FLOOR = 0.18    # the clay's darkest skin under a degenerate (painted) light, x the skin's median luminance
-DARK_SHARE = 0.25       # degenerate = more than this share of the face's skin predicted under the floor
+FILL = 0.45             # display fill: the clay's shadow side lifted to this share of the lit skin's median
 HAIR_RGB = np.array([62.0, 46.0, 36.0])
 BROWS_R = ([70, 63, 105, 66, 107], [46, 53, 52, 65, 55])
 BROWS_L = ([300, 293, 334, 296, 336], [276, 283, 282, 295, 285])
@@ -585,22 +584,26 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
     aw = float(np.clip(B / c0n, 0.0, 1.0)) if c0n > 1e-6 else 0.0
     # an ambient floor: a painted picture's light is not one light, and the fit put its shadow side at black (Garrett's
     # 3/4 portrait: half the clay face lost); real skin in shadow keeps ~a third of its lit level
-    med = float(np.median(Y[mask]))
     w2 = np.asarray(w, float) * max(float(C), 0.0)
-    wn = float(np.linalg.norm(w2))
-    lo = AMBIENT_FLOOR * med
-    dark = float(np.mean((c0n + p2["nrm"][m2] @ w2) < lo)) if m2.any() else 0.0
-    if wn > 1e-9 and c0n - wn < lo and dark > DARK_SHARE:
-        # a quarter of the face's skin under the floor: the fit is degenerate (a painted light); the skin facing away
-        # (c0 - |w|) kept at the floor, the lit side (c0 + |w|) as fitted. A photo's light (a few side planes dark) is
-        # left as fitted: compressing it flattened Garrett's front clay
-        top = c0n + wn
-        if top > lo:
-            c0n, w2 = 0.5 * (top + lo), w2 * (0.5 * (top - lo)) / wn
     lt2 = (c0n, w2, lt[2], aw)
     lt = lt2 if np.all(np.isfinite(lt2[1])) and np.isfinite(c0n) else lt
     im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
     return im, lt, ps
+
+
+def fill(im, ps, share: float = None):
+    """DISPLAY only (the fitted light stays as fitted for anything measured): the shadow side lifted to a fill of
+    FILL x the lit skin's median, a soft knee (v' = sqrt(v^2 + f^2)): a painted picture's light put half of Garrett's
+    3/4 clay at black, which no one can judge."""
+    from PIL import Image
+    a = np.asarray(im.convert("RGB"), float)
+    on = ps["part"] >= 0
+    if not on.any():
+        return im.convert("RGB")
+    f = (FILL if share is None else share) * float(np.percentile(a[ps["part"] == 0].mean(-1), 75)) if (ps["part"] == 0).any() else 0.0
+    b = a.copy()
+    b[on] = np.sqrt(a[on] ** 2 + f ** 2)
+    return Image.fromarray(np.clip(b, 0, 255).astype(np.uint8))
 
 
 def detect_view(img, view: dict):
@@ -696,7 +699,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
         pbox = (box[0] + sh[0], box[1] + sh[1], box[2] + sh[0], box[3] + sh[1])
         ph = img.crop(tuple(int(round(b)) for b in pbox)).resize((px, px), Image.LANCZOS)
         cl, _, ps = lit_render(mesh, cam, img, box=box, px=px)
-        cl = cl.convert("RGB")
+        cl = fill(cl, ps)
         to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
         if front and Pd is not None:
@@ -710,8 +713,8 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
             if Pd is not None:
                 Pp = np.asarray(Pd, float)[likeness.OVAL, :2]
                 d.line(to_ph(np.r_[Pp, Pp[:1]]), fill=(230, 30, 30), width=3)
-            full, _, _ = lit_render(mesh, cam, img)
-            Pm_ = detect_view(full.convert("RGB"), v)
+            full, _, pf = lit_render(mesh, cam, img)
+            Pm_ = detect_view(fill(full, pf), v)
             if Pm_ is not None:
                 Pm = np.asarray(Pm_, float)[likeness.OVAL, :2]
                 d.line(to(np.r_[Pm, Pm[:1]]), fill=(30, 200, 30), width=3)
@@ -733,7 +736,8 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
                 f"the eyes, shift {sh[0]:+.0f}, {sh[1]:+.0f} px", fill=(0, 0, 0))
         if mesh_b is not None:
             mesh_b["_photo_P"] = Pd
-            cb = lit_render(mesh_b, cam, img, box=box, px=px)[0].convert("RGB")
+            cb_, _, psb = lit_render(mesh_b, cam, img, box=box, px=px)
+            cb = fill(cb_, psb)
             cb = draw_photo_brows(cb, Pd, to_ph) if front and Pd is not None else draw_brows(cb, mesh_b, cam, box, k)
             dif = np.abs(np.asarray(cl.convert("L"), float) - np.asarray(cb.convert("L"), float))
             dif = Image.fromarray(np.clip(255 - 4 * dif, 0, 255).astype(np.uint8)).convert("RGB")
