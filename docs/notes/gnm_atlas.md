@@ -1616,3 +1616,35 @@ lt19_b24: 14/21 counted items; misses: temple width (hair-covered), cheekbone +3
   side, tied to weight.
 - radix_width / dorsum_width / nasolabial_fold / under_eye items read 0.00 on the clay (the clay reader returns nothing).
 - Eye identity steps are weak at kept size (spacing fights the size row; tilt barely moves).
+
+### lt19, rounds b25-b38 and the first dressed looks
+| round | move | read | kept |
+|---|---|---|---|
+| b25 | philtrum! -0.4 | philtrum in | yes |
+| b26 | cheek_fullness! +0.8 (to 1.67 sd) | barely visible; nose length / middle third out | no |
+| b27 | jaw_width! +0.4 | jaw in, taper closer | yes |
+| b28 | nose_length! -0.3 | middle third in | yes |
+| b29 | nose_width! +0.4 | alar, mouth/alar in | yes |
+| b30 | under_chin -0.7 (FULL: + = clean, - = double chin; b02 / b07 had the sign backwards) | jaw, neck, cheek fullness come with it; jaw taper in | yes |
+| b31 | under_chin -0.6 more (free) | widens the face (nose-base level out) | no |
+| b32 | under_chin! -0.6 | the under-chin line lower in profile | yes |
+| b33 | neck_double 0.8 (new body key: MakeHuman CC0 neck-double target) | the neck front under the chin fuller and lower | yes |
+| b34 | eye_size 1.06 | opening +1 mm over hers, mouth width out | no |
+| b35 | lip_fullness! +0.5 | upper lip 6.0 vs 4.8; face length out: the "thin lips" in the dressed look are colour, not shape | no |
+| b36 | local:nose_tip_width 0.3 | invisible | no |
+| b37 | jaw_square! -0.6 | jaw_square had accumulated to +1.04 from couplings; corners a little softer | yes |
+| b38 | sex -0.4 | face height, middle third closer; softer in the dressed look | yes |
+- Pitch check (coordinator: a selfie from above, the profile chin raised): pitchscan.py refits each camera at fixed
+  pitch offsets on the evidence minus the nose: the front's non-nose rms is flat 1.64-1.66 mm over 0..+5 deg (minimum
+  +2.5, the nose agrees), the profile's minimum at 0 (10 clicks): the fitted cameras already carry the pitch (front
+  ~5 deg down). The head's pose differs between the pictures (chin up in the profile): each camera absorbs it for the
+  rigid head, the NECK does not follow (the submental / neck contour in profile is pose dependent).
+- Her crease (lidfold.read_lid on the front picture, readlid.py): visible fold line 5.5 mm over the lashes in the
+  middle and outer thirds (both eyes), ~5.2 inner, darkness 0.2-0.43 (a clear line). NOT applied: Joe: the crease must
+  come from GNM (identity + eye-region expression driven by margins and crease evidence, the audit's g11), not from
+  base.head.fold; blockin2 is porting g11. Known miss until then.
+- Dressed checks (dress_shot.py: photo | EEVEE dressed through the fitted cameras, hair on; garrett3 stage / garrett4
+  shot spikes): lt19_d1 (b33 base), lt19_d2 (b38 base); skin: melanin 0.13, blood 0.55, undertone +0.1, flush 0.55,
+  no freckles, variation / detail 0.35-0.4 (freckles + full detail read grainy and tanned), brows #070504 thickness
+  1.5, soft 0.15 (2.2 / soft read as brown fur), lids lashes dark; hair: loose 0.42 m centre part, look gap #0b0807
+  lit #1d1613 (the default lit read red-brown).
