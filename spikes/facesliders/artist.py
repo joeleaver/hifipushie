@@ -90,6 +90,20 @@ def step(src, dst, moves):
     print(f"{dst}: |c| {np.linalg.norm(c):.2f}; macros now " + json.dumps({k: round(rd[k], 2) for k, _ in log if k in rd}))
 
 
+def detect_view(img, v):
+    """MediaPipe on a reference picture; when the face is small in a big picture (a full-figure concept), on a crop
+    around the clicked points (likeness.detect_region)."""
+    P = likeness.detect([img])[0]
+    if P is not None:
+        return P
+    pts = np.array([p for p in (v.get("points") or {}).values()], float)
+    if len(pts) < 3:
+        return None
+    lo, hi = pts.min(0), pts.max(0)
+    c, s = 0.5 * (lo + hi), 1.8 * float(np.max(hi - lo))
+    return likeness.detect_region(img, (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2))
+
+
 def _oval_poly(img):
     P = likeness.detect([img])[0]
     return None if P is None else np.asarray(P, float)[likeness.OVAL, :2]
@@ -123,7 +137,7 @@ def look(m, out, ref="f6_M_mace"):
         # camera belongs to another face; registering on the whole outline would hide the very differences we look for)
         Lm = humanfit.project(cam, st["L"])
         if abs(float(v.get("yaw", 0))) < 70:
-            Pd = likeness.detect([img])[0]
+            Pd = detect_view(img, v)
             if Pd is None:   # (painted concept art the detector misses: the clicked 68 where given)
                 pts = v.get("points") or {}
                 Pd = None
@@ -150,10 +164,11 @@ def look(m, out, ref="f6_M_mace"):
         to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
         if abs(float(v.get("yaw", 0))) < 70:
-            Pp = _oval_poly(img)
+            Pp = None if Pd is None else np.asarray(Pd, float)[likeness.OVAL, :2]
             # the clay's oval: the detector on the clay render at the picture's pixels (the same reader as the photo's)
             full, _, _ = lit_render(mesh, cam, img)
-            Pm = _oval_poly(full.convert("RGB"))
+            Pm_ = detect_view(full.convert("RGB"), v)
+            Pm = None if Pm_ is None else np.asarray(Pm_, float)[likeness.OVAL, :2]
             if Pp is not None:
                 d.line(to_ph(np.r_[Pp, Pp[:1]]), fill=(230, 30, 30), width=3)
             if Pm is not None:

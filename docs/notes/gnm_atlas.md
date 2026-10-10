@@ -1290,5 +1290,46 @@ Gap filling
    (newdirs.py), report R2 / sd / couplings; add it as a coupled direction (within sex on GNM's sex axis). Low R2 or a
    tiny sd = a real capability gap (a local residual is justified); a coupling against what you see (orbital rim ->
    heavy brow) = the look lives elsewhere (lids, skin) or needs a held step.
-What it needs to become MCP tools (next thread): see the HANDOVER below. Free macros drag neighbours (philtrum <-> chin; length -> philtrum): the table
-  after each step catches it; held steps cost more |c| per unit.
+Free macros drag neighbours (philtrum <-> chin; length -> philtrum; lips -> chin; bridge / eye depth -> interocular):
+the table after each step catches it; held steps cost more |c| per unit.
+
+### Garrett's block-in (started; concept art: front A-pose + a painted 3/4 portrait, no profile)
+- f6_G00: his body (age 52, weight 0.4, head scale 1.12) + GNM's sampler MALE mean + gnm_base 0.5. MediaPipe misses
+  his face in the full-figure picture: artist.detect_view retries on a crop around the clicked 68
+  (likeness.detect_region).
+- G01 face_length +1.0, chin_height +0.5; G02 chin_height +0.6, chin_width -0.5 (the free chin_height widened the
+  chin: read +1.07); G03 gnm_base 0.0 (the MakeHuman 52-year-old male head's structure reads older and leaner than
+  the half GNM base: for an older man the MakeHuman base helps; weight 0.4 -> 0.2 barely moves the face);
+  G05 = G03 + cheek_fullness -0.7, nose_width -0.7, bridge_height +0.5, eye_depth +0.6, brow_ridge +0.4 (f6_23):
+  reads as an older, lean man with a heavier brow and deep-set eyes, closer to the concept in front.
+- Targets: the concept's mm come through the fitted camera; G05's widths / lengths are all ~8-10 % under (pupil
+  distance 59.9 vs 65.8; G03 62.3): bridge / eye-depth's free couplings narrowed the eyes; head size or held steps
+  next. The painted 3/4's camera looks poor (the clay turns differently): judge on the front until it is refitted.
+
+### HANDOVER (faces6, 2026-10-10)
+Branch worktree-agent-a19e0d592ba96cc7d (faces5 merged; commits dbb01e1 .. latest). Scratch /mnt/data/hifipushie/faces6:
+run.sh / q.sh / tests.sh (this worktree), cmpround.sh <before> <after> <tag>, gvar.sh <src> <ref> <png> "dst:args"...,
+vstrip.py, mk*.py (calibration / base / start heads), cvae_stats.npz, ethstats.npz, femsamp.npz, newdirs.npz.
+State: Tess = f6_A23 (block-in result; base f6_b6), Garrett = f6_G05 (in progress). Sheets human_renders/f6_01..23.
+Code: likeness.render ao / shadow / light[3] / mesh["C"]; onemesh base.head.gnm_base (spike key, default 0: decide
+whether it becomes a default); humanmacro + gonial_height / orbital_rim / lower_orbit; spikes/facesliders artist.py,
+eyeread.py, mtable.py, wholeclay.py (hair cap, brows, eye presentation), newdirs.py, basestack.py, fitM.py (stage M,
+landmarks + optional photometric), photom.py (held), decomp.py, gates.py, agesex.py (pack "faceage"), fit5 fixes
+(head.expression shipping, contact expression-only, TERMS).
+Open, in order: (1) Garrett: head size / eye spacing (held steps), the 3/4 camera, then the orbit / lid read;
+(2) eyes properly: eyeball seating on GNM's eye + crease (audit g11) for both; (3) Tess inside the outline: her mouth
+(wider, fuller), almond eyes (lids / crease), radix (local residual: GNM's sd ~0.6 mm); (4) the flagged base.py
+mouth_gap solver (one-mesh heads stay 3.5 mm open).
+PRODUCTISING THE METHOD (Joe: "our default for all modeling humans"), what it needs:
+- MCP tools: `block_in_look(model, ref, views?)` -> the six-column sheet (as artist.look) + the target table text;
+  `block_in_step(model, moves, out?)` -> free / held / gap directions, base keys, lids; writes the step log and returns
+  the macro read + the target table delta; `block_in_start(model, refs, sex, body)` -> the base of the right kind
+  (class mean + gnm_base) with the refs' cameras; `lid_read(model)` (eyeread) and a `lids` move.
+- Library code to move out of spikes: wholeclay.haircap / draw_photo_brows / eye_presentation, artist.detect_view /
+  registration at the eyes, mtable's groups (with brow_eye dropped and jaw_angle_height flagged as a detector-guess
+  item), newdirs' directions (precomputed table in src like face_atlas.npz) and cvae_stats / ethstats (from the GNM
+  sampler; the audit's numpy decoder).
+- A guide section (guide.md): the method (gnm_atlas.md "THE ARTIST BLOCK-IN METHOD"), the free vs held rule, the
+  couplings to expect, "lids by measure", and when to fill a vocabulary gap.
+- Tests: look registration (eyes land on eyes), a step's read moves by its amount (free) and holds the rest (held),
+  the target table on a known model.
