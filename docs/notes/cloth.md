@@ -2111,3 +2111,8 @@ NO SIM WAS RUN.
     at CB; (5) c10ship's cut rules (vis + xcut) into the pipeline (merge-and-cut export, step 4 of the brief).
     Tools: judge.sh <tag> (gates + lapel straightness + trace + preview), stage.sh <queue> (one broker batch per
     stage, deterministic now), q.sh with BROKER=1 to rebuild from pulled results (construct-only changes need no GPU).
+- BROKER STALLS (coordinator, 2026-10-10; CORRECTS cloth11's "cancel a job whose progress line hasn't moved in ~5 min"):
+  the broker gets a stall guard: a job with no runner output AND no GPU use for 10 min is killed and marked failed, and
+  failed runs are free; a manual cancel is billed for the time held. So don't cancel by hand because the progress line
+  is quiet (the runner only prints at setup and at the end). Submit with timeout_minutes ~30 (bundle_client /
+  submit_bundle_jobs option) and leave stall_minutes at its default 10.

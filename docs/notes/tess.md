@@ -156,3 +156,56 @@ fine settle could start yet (nothing sent):
   stretched by the coarse sim beyond their declared rib stretch?) or a looser FINE_START limit for declared bands.
 - jeans3: 4 triangles over 1.6x (worst 1.8x) on back.R near the yoke / patch pocket: nearly clean. Next: find those 4
   (likely the pocket's tacks pulling the back), then the fine settle of both in one batch, then judge by eye.
+
+### tess2 (2026-10-10, branch `worktree-agent-abc45e5f0969ff6fa`; scratch /mnt/data/hifipushie/tess2/)
+Scripts: tess2/run.sh / stage.sh / batch.sh / blist.sh / bpull.sh = tess's with W = this worktree (stage.sh hands back
+results from tess/res_* AND tess2/res_*, queue in tess2/queue.txt). spikes/tess/fsdump.py (dress up to the fine start
+check: per-piece stretch + pickle), fstrace.py (stretch of named pieces after every step of the fine start),
+garmf.py <model> <garment> <json {design, spec}> (STAGES=pattern,construction,place). tess2/girth.py, cuffpos.py,
+coarse_stretch.py, samejob.py (job dirs: band vs body girth, per-piece stretch + seam gaps, inputs identical?).
+- WHY the jumper's bands failed the fine start (tess_b2): the COARSE sim held every piece under ZOZO's 5% strain limit,
+  while the rib bands are cut 0.85-0.88 of the edge they're sewn to (declared 14-18%) and must also close round a wrist /
+  neck at the contact offset (2 pi x ~2 mm = +12 mm on a 126 mm cuff). So the bands stayed at cut length and their
+  seams stayed OPEN: cuff.L closing seam 42-47 mm, cuff.R 13-22, neckband 62 mm off the back (max 92), its closing seam
+  31 mm (the coarse result itself is fine: every piece <= 1.05x). The fine start then carries / welds that: 5x at the
+  cuff. Band ratios are sane (neck: band 286 mm on a 331 mm neckline, body 329; cuff 126 on 148, wrist 122-133 mm; the
+  hand at +4 cm is 207-212 mm). FIX (general, tested): `cloth.declared_pieces` -> job "declared" {piece: e} on the
+  coarse and the fine jobs; the runner (`cloth_zozo.vertex_limits` / `declared_limit`: lim + 1.5 e) raises those
+  pieces' strain limit (cuffs 31%, neckband 29%, hem 25%); the fine settle's global limit leaves the declared stretch
+  out. Needs the coarse jumper RE-SIMMED (batch tess2_c1).
+- jeans3's 4 triangles (back.R 1.8-2.0x beside back_pocket.R, whose start was p99 1.38x): the coarse sim was clean
+  (<= 1.05x); fstrace showed the fine start's clear AFTER the untangle (no relax after it) took back.R 1.26 -> 2.0x.
+  Fix: that clear is followed by relax_stretch + clear (kept only if it makes no new crossing). jeans3 fine start now
+  CLEAN (worst draped 1.26x; waistband 1.33 is made). The coarse result was reused: the runner edit changed the job key
+  but the inputs are bit-identical (samejob.py), copied to tess2/res_reuse/<new job>/out.npz.
+- tess2_c1 ($0.1095, 299 s; the strain limit no longer binding): bands now stretch (neckband 1.28, cuffs 1.18-1.19)
+  but STILL open: neckband 60 / 92 mm off the back, cuff.L closing 41-48 mm. So the limit was half of it. The other half
+  was the START (neckb.py): the old neckband (torso wrap + align) started as a flat strip in front of the neck, its CB
+  ends 29 cm from the back with the neck in between; the sewing can't wind a band round a neck. And the cuff (50 mm)
+  reached 1-2 cm onto the hand (girth 207-212 mm vs 133 at the wrist).
+- Jumper draft fixes (garment, /mnt/data/hifipushie/tess2/jv_12.json, now on ts_c1): neckband wrap {"to": "seam"}
+  (laid up from the neckline it is sewn to: the existing general mode), worn_top true (fronts / back laid on the form:
+  shoulder and side seams start closed and the neckline sits round the neck; as a loose tube the seam-laid neckband
+  started 2x), sleeve length_bonus -0.03 (cuff off the hand; -0.055 pushed the cuff's fold rows 35%). Dead ends: a
+  neckband split front / back with wrap seam: the back half's fold row went 4 cm back over 11 mm (4.6x) whatever the
+  lean / out / fold side; my own "lay on edge" mode (removed: wrap seam already does it).
+- General fixes on the way (tested): the place check placed without the build's garment keys (worn_top etc.:
+  `cloth.place_keys`); aligned bands left out of `_worn_levels` (the hem band's top row ran 14 cm round past the row
+  under it at the 1 cm mesh: "start is broken"); the 20 GB free-disk guard only for local sims (broker jobs write MBs;
+  the shared disk sits at 19-20 GB free).
+- tess2_c2 FAILED at frame 0 ($0): "give the initial geometry a small clearance": the seam-laid neckband's folded CB end
+  started 0.5-0.84 mm off the neck. New general check (place stage FAIL, exact point-triangle distance, made / hugged
+  pieces exempt): `cloth_workflow.start_in_standoff` (3 mm = ZOZO offset 2 + gap 1). Fix: neckband wrap
+  {"to": "seam", "out": 0.003} (5.3 mm clear, stretch 1.18). tess2/startgap.py <job dir> [mm] = the same on a queued
+  job's in.npz (body + cloth pairs): run it on every queued job before a batch.
+- tess2_c3 ($0.055): jumper coarse with every band CLOSED (neckband 5/7 mm, cuffs 1-5, hem 1-2) at <= 1.2x. But the
+  FINE START still failed (cuff.R 5.0, cuff.L 3.8, neckband 3.0, hem 3.0x) at the bands' FOLD rows: the coarse folded
+  bands carried onto the fine mesh cross themselves (fine triangles cut the coarse hinge), _untangle smooths the 2.5 mm
+  fold rows to the 8 mm edges beside them (3-5x) and its reshape is refused (new crossings). Declared stretch is now
+  honoured by the relaxers (`M["declared_v"]`), which didn't fix this. NOT SOLVED: the jumper runs with
+  "fine_settle": false (coarse carried to 1 cm; it is under the coat). Next for whoever picks it up: a transfer that
+  keeps fold layers apart (carry fold rows rigidly with their row), or untangle exempting same-piece fold-row crossings.
+- worn_top on the jumper: the armhole sits at the true armpit, so the sleeves (shoulderToWrist) end ~6 cm higher than
+  the loose-tube run's after the arms bend (cuffs mid-forearm); sleeve length_bonus +0.06 (jz_1.json). Sleeve underarm
+  seams were left 46 mm open near the armpit (hidden under the coat).
+- Dead end: wrap "neck" for a rib neckband places it broken (vertices 0.3 m out) with or without fold or worn_top.

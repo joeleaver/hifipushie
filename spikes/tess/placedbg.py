@@ -45,3 +45,4 @@ if os.environ.get("BODYGAP"):  # per piece: the closest cloth vertex to the body
         sel = np.where(M["piece"] == k)[0]
         i = sel[np.argmin(dd[sel])]
         print(f"   body gap {nm}: min {dd[i] * 1000:.2f} mm at uv {np.round(M['uv'][i], 3).tolist()}")
+print("sleeve_hits per round:", Bp.get("sleeve_hits"))
