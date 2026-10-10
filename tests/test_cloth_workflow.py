@@ -277,3 +277,16 @@ def test_the_place_check_places_as_the_build_does():
     assert Bp["worn_top"] is True and Bp["open_gap"] == 0.1
     assert cloth.place_keys({}, {"design": {"kind": "hoodie"}})["worn_top"] is False
     assert "place_keys" in inspect.getsource(cloth_workflow.Ctx)
+
+
+def test_a_start_inside_the_contact_standoff_is_named():
+    """A piece starting closer to the body than ZOZO's contact standoff (offset 2 mm + gap 1 mm) is named with where:
+    Tess's neckband's folded end started 0.84 mm off the neck and the sim stopped at its first step."""
+    import types
+    import numpy as np
+    from hifipushie import cloth_workflow
+    body = types.SimpleNamespace(V=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0.0]]), T=np.array([[0, 1, 2]]))
+    M = {"names": ["front", "band"], "piece": np.array([0, 0, 1, 1]), "uv": np.zeros((4, 2))}
+    X = np.array([[0.3, 0.3, 0.02], [0.2, 0.2, 0.02], [0.3, 0.3, 0.001], [0.2, 0.2, 0.01]])
+    near = cloth_workflow.start_in_standoff(X, M, body)
+    assert set(near) == {"band"} and abs(near["band"][0] - 1.0) < 0.05

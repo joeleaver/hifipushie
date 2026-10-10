@@ -35,3 +35,13 @@ if os.environ.get("PROBE"):  # PROBE=piece:x  -> the column of that piece at pat
     vs = np.where((M["piece"] == k) & (np.abs(M["uv"][:, 0] - float(px)) < 0.006))[0]
     for v in vs[np.argsort(M["uv"][vs, 1])]:
         print(f"   uv {np.round(M['uv'][v], 4).tolist()} X {np.round(X[v], 4).tolist()}  unpushed {np.round(Bp['start_unpushed'][v], 4).tolist()}")
+if os.environ.get("BODYGAP"):  # per piece: the closest cloth vertex to the body (sampled collider) and its uv
+    from scipy.spatial import cKDTree
+    Bv, Bt = body_p.V, body_p.T
+    Sb = np.r_[Bv, Bv[Bt].mean(1), 0.5 * (Bv[Bt[:, 0]] + Bv[Bt[:, 1]]), 0.5 * (Bv[Bt[:, 1]] + Bv[Bt[:, 2]]),
+               0.5 * (Bv[Bt[:, 2]] + Bv[Bt[:, 0]])]
+    dd, _ = cKDTree(Sb).query(X)
+    for k, nm in enumerate(M["names"]):
+        sel = np.where(M["piece"] == k)[0]
+        i = sel[np.argmin(dd[sel])]
+        print(f"   body gap {nm}: min {dd[i] * 1000:.2f} mm at uv {np.round(M['uv'][i], 3).tolist()}")
