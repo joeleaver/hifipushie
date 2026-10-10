@@ -208,3 +208,21 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             f()
             print("ok", k)
+
+
+def test_waist_band_follows_the_body():
+    """A garment cut straight from the chest: its waist band's top comes from THIS body's chest-to-waist drop (a
+    woman's waist 0.74 x her chest: a jumper at +16% chest is +57% at the waist, honestly); a man's barely changes,
+    a fitted garment (shaped in at the waist) keeps the kind's band (Tess's jumper, 2026-10-09)."""
+    from hifipushie.cloth_workflow import waist_band_for_body
+    wb, cb = [0.10, 0.35], [0.10, 0.25]
+
+    def sz(chest, waist, g_chest, g_waist):
+        return {"chest": {"body_mm": chest, "garment_mm": g_chest}, "waist": {"body_mm": waist, "garment_mm": g_waist}}
+
+    woman = waist_band_for_body(wb, cb, sz(847, 626, 982, 902))
+    assert woman[0] == 0.10 and abs(woman[1] - (1.25 * 847 / 626 - 1)) < 1e-3 and woman[1] > 0.6
+    man = waist_band_for_body(wb, cb, sz(1000, 900, 1160, 1120))
+    assert man is None or man[1] < 0.40  # (1.25 x 1000 / 900 - 1 = 0.389: barely above the written 0.35)
+    assert waist_band_for_body(wb, cb, sz(847, 626, 982, 760)) is None  # fitted at the waist: as written
+    assert waist_band_for_body(wb, None, sz(847, 626, 982, 902)) is None
