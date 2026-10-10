@@ -2193,3 +2193,23 @@ NO SIM WAS RUN.
     s2_12's: the band's ends stand out as small slabs beside the collar points (a button showing at one), the points
     spread wider and shorter (out/shirt_alone_cmp.png: s2_12 | new). Not yet known whether that is the body or code
     since s2_12 (meshing changed: 13123 vs 13284 vertices).
+  - Round 3. OLD-BODY CONTROL: s2_12's spec re-simmed on su_om_garrett with current code ($0.035) matches s2_12 (same
+    13284 vertices; collar p50 0.7 / p95 5.9 mm, stand 0.0, fronts 1-2 mm; same look, out/os_cmp.png). The 13123 vs
+    13284 was never meshing: s2_12's npz is AFTER the post-sim band-edge split (front.L 2461 vs 2300 place-only). So
+    the new-body difference was the BODY: Garrett's narrower neck (stand 435 vs 459 mm) put the band's CF ends 10 mm
+    higher and 10 mm nearer CF (x +-40 z 1500 vs +-50 z 1490), out from under the collar points: two tabs beside the V,
+    a button on one. Construction tried and rejected: turning the band ends in about the neck seam (bigger tabs),
+    the open-neck press (front corners folded out into a flap).
+    DRAFT RULE `cloth.band_ends` (applied in cloth.pieces for designs with a collar_rule; pattern key band_ends: false
+    turns it off): each band end runs past CF no further than its button needs (button side half a button + 2 mm,
+    buttonhole side half of button + 3 mm + 2 mm) or the collar point's reach past its sewn end, whichever is more,
+    and the end is a quarter ellipse from the top's CF to the bottom edge. Only shortens. Garrett: 9.2 / 14.8 ->
+    7.5 / 9.0 mm (the points reach 6 mm). Recorded in the draft as draft.band_ends. NOTE: it changes every Simon
+    shirt's draft (su_om_garrett's too): their cached sims re-key. test_cloth::test_band_ends_run_past_cf_only_as_far...
+    RE-SIM c11_gb (su_gc, shirt + jacket j12-style over it; $0.043 + $0.012 + $0.043 = $0.098): band ends under the
+    collar points (out/gb_neck.png); jacket GATE PASS: 0 skin px from 12 cameras incl. the low ones, 0 visible shirt x
+    jacket crossings, 0 x the made collar, visible collar / V 0.00 mm vs the shirt as simulated, lapels straight (roll
+    4.7-5.2, edge 0.1 mm) and symmetric (63 / 64 mm, the 97 mm wing gone). Trace: notch 67 / 69 mm below the chin vs
+    concept 63 / 56; break 415-423 vs 398; collar_show at CB 25.5 mm (rule 10-20: over). Sheet
+    cloth_renders/c11_gb_sheet.png (concept | c11_k4 | c11_gb). Still: the collar ends stand up a little at the
+    shoulders; the chest reads fuller than the concept's.

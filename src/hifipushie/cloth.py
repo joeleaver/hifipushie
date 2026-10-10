@@ -135,6 +135,64 @@ def collar_options(tbl: dict, opts: dict, m: dict) -> dict:
             "collarBend": round(0.5 * (lo + hi), 4)}
 
 
+BAND_BUTTON = 0.011  # m: a shirt button's diameter (closures' default size)
+BAND_MARGIN = 0.002  # m of band past a button's rim / a buttonhole's end
+
+
+def band_ends(out: dict, stand: str = "stand", collar: str = "collar", button: float = BAND_BUTTON,
+              margin: float = BAND_MARGIN) -> dict:
+    """A shirt's collar band ends shaped so the collar points cover them at an open neck: each end runs past centre
+    front no further than its button needs (button side: half a button + `margin`; buttonhole side: half a hole,
+    button + 3 mm, + `margin`) or the collar point's own reach past its sewn end, whichever is more, and the end is
+    a quarter ellipse from the top's centre front down to the bottom edge (its top corner rounded away). Only ever
+    shortens. A shirtmaker's rule: the band's extension is the placket's, but at an open neck everything of it past
+    the collar shows as a tab beside the V (cloth11, Garrett's narrower neck: 10 / 16 mm of band past CF showed,
+    a button on one). -> {end: {"was_mm", "now_mm"}}."""
+    pc, co = out.get(stand), out.get(collar)
+    info = {}
+    if pc is None or co is None:
+        return info
+    nm = pc["names"]
+    reach = 0.0
+    cn = co["names"]
+    for sd in ("left", "right"):
+        if f"{sd}TopEdge" in cn and f"{sd}BottomEdge" in cn:  # (the collar point past its sewn end, along the collar)
+            reach = max(reach, abs(co["P"][cn[f"{sd}TopEdge"]][0]) - abs(co["P"][cn[f"{sd}BottomEdge"]][0]))
+    for sd in ("left", "right"):
+        need_ = {"left": 0.5 * button + margin, "right": 0.5 * (button + 0.003) + margin}[sd]
+        keys = (f"{sd}TopCf", f"{sd}BottomCf", f"{sd}BottomEdge")
+        if not all(k in nm for k in keys):
+            continue
+        tcf, bcf, be = (np.asarray(pc["P"][nm[k]], float) for k in keys)
+        along = be - bcf
+        e0 = float(np.linalg.norm(along))
+        if e0 < 1e-6:
+            continue
+        along /= e0
+        e = max(need_, reach)
+        if e >= e0 - 1e-4:
+            info[sd] = {"was_mm": round(e0 * 1000, 1), "now_mm": round(e0 * 1000, 1)}
+            continue
+        up = tcf - bcf
+        a0 = float(up @ along)
+        c = bcf + along * a0
+        up = tcf - c
+        h = float(np.linalg.norm(up))
+        up /= h
+        ib = pattern.arc_indices(pc, f"{sd}BottomCf>{sd}BottomEdge")
+        for k, i in enumerate(ib):
+            pc["P"][i] = bcf + along * (e + a0) * k / max(len(ib) - 1, 1)
+        ir = pattern.arc_indices(pc, f"{sd}BottomEdge>{sd}TopCf")
+        for k, i in enumerate(ir):
+            t = 0.5 * np.pi * k / max(len(ir) - 1, 1)
+            pc["P"][i] = c + along * e * np.cos(t) + up * h * np.sin(t)
+        for mk in list((pc.get("marks") or {})):
+            if mk.startswith(f"{sd}BottomEdge"):
+                pc["marks"][mk] = np.array(pc["P"][nm[f"{sd}BottomEdge"]], float)
+        info[sd] = {"was_mm": round(e0 * 1000, 1), "now_mm": round(e * 1000, 1)}
+    return info
+
+
 def pieces(g: dict, meas_mm: dict) -> dict:
     """{"pieces": {name: piece (+ "wrap")}, "seams", "stitches", "interfaced", "draft"}."""
     out, seams, stitches, interfaced, draft_info = {}, [], [], [], None
@@ -193,6 +251,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         for nm in g.get("drop", []):
             out.pop(nm, None)
         out = pattern.apply(out, [op for op in tbl.get("alter", []) if op["piece"] in out])
+        if tbl.get("collar_rule") and pat.get("band_ends", True):  # (a shirt's band ends under its collar points)
+            be_ = band_ends(out)
+        else:
+            be_ = {}
         # standard fit alterations, from the body's numbers (pattern "alterations": "auto" (default) | [names] |
         # "none"): each is a general pattern op whose amount a rule reads off the tape
         want = pat.get("alterations", "auto")
@@ -206,6 +268,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             out = pattern.apply(out, [dict(op, amount=amount)])
             applied[nm] = round(amount * 1000, 1)
         draft_info["alterations"] = applied
+        if be_:
+            draft_info["band_ends"] = be_
         seams += tbl.get("seams", [])
         # a table seam's declared ease ("seam_notes": [{"seam": n (its index in the table), "ease": [lo, hi], "why"}]:
         # what a draft's own notes are for drafted garments)
@@ -4631,13 +4695,14 @@ def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
 
 
 def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int = 2, rounds: int = 200,
-                aim: float = 0.25) -> tuple:
+                aim: float = 0.25, allow: np.ndarray | None = None) -> tuple:
     """The fine settle's start with its over-stretched draped triangles relaxed: (start, info). Only vertices of
     triangles past 1 + limit and `rings` rings round them move (never made or carried ones): each round every edge
     among them longer than (1 + aim) x its pattern length gives back the excess, shared by its movable ends.
     The start is carried coarse -> fine and cleared off the body vertex by vertex; slivers at a fold (a shirt's open
     neck by the front edges: 3.4 mm edges at 7 mm, 2.3x, cloth11 on Garrett's new body) came out past what the solver
-    can start from, and the whole fine settle was refused for a dozen triangles."""
+    can start from, and the whole fine settle was refused for a dozen triangles. allow: per triangle, stretch it is
+    declared to start with on top (declared_stretch: a rib band cut short), as fine_start_check takes it."""
     from .cloth_zozo import _start_stretch
     F, uv = np.asarray(M["F"]), np.asarray(M["uv"], float)
     X = np.array(plan["start"], float)
@@ -4646,7 +4711,8 @@ def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int =
     fixed[np.asarray(plan["rest_idx"], np.int64)] = True
     R = np.c_[uv, np.zeros(len(uv))]
     s = _start_stretch(R, X, F)
-    bad = (s > 1.0 + limit) & ~fixed[F].all(1)
+    al = np.zeros(len(F)) if allow is None else np.asarray(allow, float)
+    bad = (s > 1.0 + limit + al) & ~fixed[F].all(1)
     if not bad.any():
         return X, {"relaxed": 0}
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
@@ -4659,7 +4725,10 @@ def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int =
         mov = g
     mov &= ~fixed
     Ek = E[mov[E[:, 0]] | mov[E[:, 1]]]
-    rest = np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1)
+    av = np.zeros(len(uv))
+    for k_ in range(3):
+        np.maximum.at(av, F[:, k_], al)
+    rest = np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1) * (1 + np.maximum(av[Ek[:, 0]], av[Ek[:, 1]]))
     wa, wb = mov[Ek[:, 0]].astype(float), mov[Ek[:, 1]].astype(float)
     sh = wa / np.maximum(wa + wb, 1e-9)
     for _ in range(rounds):
@@ -6454,9 +6523,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             plan["start"] = st_
             if not press_ and len(plan["idx"]):
                 plan["poses"] = st_[plan["idx"]][None]
-        if fine_start_check(M, plan):  # (a start the solver can't take: its slivers relaxed first; a start it can take
-            # is left exactly as it was, so the cached fine settles keep their keys)
-            plan["start"], rinfo_ = relax_start(M, plan)
+        allow_ = declared_stretch(Bp, M)
+        if fine_start_check(M, plan, allow=allow_):  # (a start the solver can't take: its slivers relaxed first; a start
+            # it can take is left exactly as it was, so the cached fine settles keep their keys)
+            plan["start"], rinfo_ = relax_start(M, plan, allow=allow_)
             log(f"cloth {name}: fine start relaxed {rinfo_}, separation from the collider "
                 f"{_start_separation(plan['start'], M['F'], coll['bodyV'], coll['bodyT']) * 1000:.2f} mm")
         stiff_f = interfacing(Bp, M)
