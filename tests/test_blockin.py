@@ -193,3 +193,14 @@ def test_new_human_eye_radius():
     assert humans.eye_radius(40) == 0.012 and 0.0083 < humans.eye_radius(0) < 0.0085
     assert humans.spec(age=30, sex=1, source="human")["base"]["head"]["eye_radius"] == 0.012
     assert "eye_radius" not in humans.spec(age=30, sex=1)["base"]["head"]   # the grafted head: unchanged
+
+
+def test_region_pcs():
+    """pc:<GNM region><i>: GNM's own principal directions of a region (nose PC0 = a higher, projecting bridge)."""
+    V = bi.region_pcs("nose_region")
+    assert V.shape == (8, 170) and np.allclose(V @ V.T, np.eye(8), atol=1e-6)
+    r0, r1 = bi._macro_read(np.zeros(170)), bi._macro_read(bi.direction("pc:nose_region0"))
+    assert r1["bridge_height"] - r0["bridge_height"] > 0.5 and r1["nose_projection"] - r0["nose_projection"] > 0.5
+    assert abs(r1["head_size"] - r0["head_size"]) < 0.02   # size kept
+    with pytest.raises(ValueError, match="no GNM region"):
+        bi.direction("pc:elbow0")

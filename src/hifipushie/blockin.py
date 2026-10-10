@@ -119,7 +119,8 @@ def vocabulary() -> str:
             + "\nsex, eth0, eth1, eth2; base keys (set): weight, dimorphism, gnm_base, head_scale; lids (set, m): "
             "lid_upper, lid_lower, eye_radius; DESIGNED age ops (set, not data): "
             + ", ".join("shape:" + k for k in SHAPE_MOVES) + "; local residuals (set): local:<faceslide slider>, e.g. "
-            + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items()))
+            + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items())
+            + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7")
 
 
 def _size_row() -> np.ndarray:
@@ -139,6 +140,28 @@ def keep_size(d: np.ndarray) -> np.ndarray:
     d = np.asarray(d, float).copy()
     d[:hm.K] -= a * (a @ d[:hm.K]) / (a @ a)
     return d
+
+
+_PCS: dict = {}
+
+
+def region_pcs(region: str, n: int = 8) -> np.ndarray:
+    """GNM's OWN principal directions for one region (a GNM vertex group: nose_region, ...): the right singular vectors
+    of the identity basis restricted to the region's vertices, i.e. the coefficient directions (unit |c| = 1 population
+    sd, the coefficients being unit variance) that move that region most; the rest of the head moves as GNM couples it.
+    Sign: + moves the region forward (out of the face) on average. (n, 170)."""
+    if region not in _PCS:
+        from . import base as basemod
+        g = basemod._gnm_data()
+        if region not in g["groups"]:
+            raise ValueError(f"pc: no GNM region {region!r} (one of {', '.join(sorted(g['groups']))})")
+        msk = np.asarray(g["groups"][region]) > 0.5
+        B = np.asarray(g["vertex_identity_basis"], float)[:170, msk, :]    # (170, V_region, 3)
+        _, S, Vt = np.linalg.svd(B.reshape(170, -1).T, full_matrices=False)
+        fwd = B[:, :, 2].mean(1)                                           # GNM faces +Z
+        Vt = Vt[:n] * np.sign(Vt[:n] @ fwd + 1e-30)[:, None]
+        _PCS[region] = Vt
+    return _PCS[region]
 
 
 def direction(name: str) -> np.ndarray:
@@ -171,6 +194,9 @@ def direction(name: str) -> np.ndarray:
         k = int(name[-1])
         if k < D["eth_dirs"].shape[1]:
             return keep_size(np.asarray(D["eth_dirs"][:, k], float) * float(D["eth_sd"][k]))
+    if name.startswith("pc:"):
+        reg, k = name[3:].rstrip("0123456789"), name[3:][len(name[3:].rstrip("0123456789")):]
+        return keep_size(region_pcs(reg)[int(k or 0)])
     raise ValueError(f"block-in: no direction {name!r}. Vocabulary:\n{vocabulary()}")
 
 

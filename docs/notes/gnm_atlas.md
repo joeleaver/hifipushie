@@ -1548,3 +1548,30 @@ top: a 4 mm vertical disagreement that biases profile registration).
   humans.eye_radius(age) (EYE_AXIAL: axial length by age, ~17 mm newborn -> 24 mm adult, halved: 0.012 from 18), and
   block_in_start sets it too (setdefault). Accepted models keep theirs (no key: the old ball); re-match when worked on.
   Guides: blockin_guide (BASE keys), human_guide (top). Tests: test_new_human_eye_radius, start asserts it.
+
+### 2. Age moves (designed) and Garrett's nose (coordinator: nose before age)
+- `shape:<op>` block-in moves (faceslide age sliders / headage ops), flagged DESIGNED in reply and log. Garrett
+  b2_G04 = G03 + shape:age_nasolabial 0.6: fold rows' shading gap 22 -> 19 % front, 28 -> 20 % 3/4 (kept); 1.0 (G05)
+  pushed mouth_width over its edge (not kept; G09 = 1.0 + mouth_width! -0.2 on the nose branch, kept-able).
+- The painted 3/4 (concept_v6) is foreshortened beyond any rigid turn: its far-side outline (skin against the dark
+  pillar, farside.py) sits 10-13 px (~14 mm) INSIDE our far cheek at the fitted camera, 6-8 px at +12 deg yaw, while
+  the brow / eye points' rms rises 5.8 -> 9.5 px by +20 deg (yawscan.py); +10 mm nose projection moves that outline
+  0.9 px. Don't model the nose to that view's outline.
+- Pitch (pitch.py: the head pitched about the camera centre, -10..+10 deg): front: brows / eyes / mouth points best at
+  0..+5, nose at 0; 3/4: everything best at 0 except the tip's height over subnasale (wants the tip ~3 mm lower: shape).
+  No camera pitch error; the "seen from below" read was the light + a too-high tip.
+- The front base band is the light: under a 2nd-order SH light fitted on the skin (ambient + key + fill / bounce,
+  shlight.py / shl.py) the band under the nose / tip = 0.66 (picture 0.6-0.7); the block-in's c0 + w.n light gives
+  0.19-0.34. Dressed (look_skin, b2_G08_skin.png) no band either.
+- The bridge's side walls ARE a shape difference: walls (6 mm off the dorsum / on it) picture 0.51, clay 0.80 under the
+  SH light. GNM's own nose-region principal directions (blockin.region_pcs, new move `pc:<region><i>`; nosepca.py):
+  the best (PC0: higher, narrower, more projecting bridge + hump + deeper eyes) moves 0.80 -> 0.75 at 1.5 sd; the
+  others <= 0.03. A capability gap: a DESIGNED local (local:nose_dorsum_width -0.8 = 6.7 x ICT's sd: dorsum 13.9 ->
+  10.9 mm, walls 0.70) is justified for this concept.
+- Alar width: MediaPipe 129 / 358 sit on the cheek past the alae on picture AND clay (alar_width row unmoved by a held
+  nose_width -1.0 that moved the alae 3.4 mm): the row is blind to it (flag candidate). Same-scale crops: his alae
+  ~0.98 of the visible intercanthal span, ours ~1.11; the clicked lm31-35 26 mm vs our 35.
+- Kept: b2_G08 (nose_upturn! -0.7, nose_projection! +0.4: tip 26.4 mm ahead of the alar base, columella 34.8 deg,
+  NLA 123), b2_G11 (tip_width back -0.6, local dorsum -0.8), b2_G12 (nose_width! -1.0), b2_G13 (mouth_width! -0.2).
+  G13: table 28/31 (eye_width: the clay reader; philtrum 3/4: painted view; mouth_over_alar: the detector's alae).
+  Sheets b2_G13_nose_vs_G14.png, b2_G13_nose_profile.png, b2_G11_nose_shlight.png, b2_G08_pitch_front/_34.png, b2_G13.png.
