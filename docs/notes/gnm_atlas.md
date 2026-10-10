@@ -1001,3 +1001,51 @@ brow", "squint", "mouth-corner set") as directions in h. M7: style gains / offse
   handles and its own variance; the groove part stays a fine-geometry op because GNM's ~1 mm rows can't hold it). The
   identity's fold-like directions (head_032, head_020, ICT modes 6 / 12) should be read by the eye evidence in the one
   solve before lidfold's residual is spent.
+
+### After the GNM audit (docs/notes/gnm_audit.md; faces5 agrees with all 8 findings)
+Retracted by the audit, with my agreement: the lid verdict above (wrong target: lidfold's FIELD at 0.05 mm, read as
+"sd" against 0), M3's "walls are locality" (the cost was exactness on off-distribution fields; real noses / lips are
+~0.6 mm in GNM), design 8's habitual-expression block (GNM's identity IS each person's relaxed neutral; M3 had already
+found h unidentifiable from ICT's neutrals). GNM's N(0, I) stays (the tau-1 prior is dropped). The spike key
+base.head.habitual was removed again.
+- M2 regional bases from M3's residual (regbasis2.py; sheets f5_10..15): ICT's residual after the identity is 5% of its
+  face variance; per region 0.1-0.27 mm rms per sd, symmetric 0.6-0.99 (likely real, not scan noise); all gates pass
+  after faceext's conditioning (fill_inside / hold_rolls / hold_creases; without it every nose mode folded inside the
+  nostrils); ID effect 0.03-0.08 at +-2 sd; barely visible even in feature crops. DEFERRED: no local layer until an
+  evidence-driven full fit demonstrably can't reach something.
+- lipfit.py (geometric shadow proxy along posterior directions, Blender renders): the built head's lip-over-sulcus step
+  moved 3 mm per step and lipshade's shadow moved 0.005: that proxy is not what the shadow reads. A render-in-the-loop
+  term needs cast shadows in the fast renderer (approved: a shadow-map pass in likeness.render). Also found: lip_seal is
+  computed WITHOUT head["expression"], so a per-picture lower-face expression opens the mouth in our build (f5_tl1);
+  to fix (approved): the seal includes the picture's expression.
+- creasefit.py (clay, groove proxy): failed (no cast shadows, ~1 mm rows: -0.003 valley per unit). Superseded by the
+  audit's g11 (lid margins vs iris + crease height on GNM's own eyeball).
+- THE VERMILION BORDER READER (lipborder.py): MediaPipe's outer lip contour refined along its normals to the strongest
+  outward fall of CIELAB a* (+0.15 |dL|), +-2.5 mm, running median + smooth, corners left to the detector. On Tess's
+  photo it follows her border incl. the bow's peaks (out/lb_tess_photo.png; offsets from MediaPipe -0.8..+1.0 mm). The
+  model's border = GNM's upper_lip / lower_lip groups' outer edge loops (lipborder_model.py): on f3_t1 the lower border
+  sits 1.5-3 mm INSIDE hers, the upper 1.5-2 mm outside at the sides and ~1 mm low at the bow's peaks.
+- fit5.py, the one MAP (identity 170 + per-picture expression: 20 eye pairs + 20 lower face, N(0, I) identity, a
+  NEUTRAL picture's expression at sd EXPR_SD; points with INFLATE 1 and no CUT; the border term at BORDER_SIG mm):
+  | model | border vs hers, model neutral (rms mm upper / lower) | points rms (sigma) front / 3q / profile | |c| | eff. dof |
+  |---|---|---|---|---|
+  | f3_t1 (start) | 0.87 / 2.22 | 0.56 / 0.62 / 1.18 (at INFLATE 1) | 5.7 | (19 at INFLATE 2) |
+  | f5_tl3 (EXPR_SD 0.3, sig 0.4) | 1.18 / 0.76 | 0.40 / 0.37 / 1.41 | 6.2 | 37.9 |
+  | f5_tl4 (EXPR_SD 0.1, sig 0.25) | 0.70 / 0.49 | 0.42 / 0.38 / 1.60 | 7.1 | 40.6 |
+  With EXPR_SD 1 the front picture's expression took the border (|e| 2.2) and the shipped identity kept none of it.
+  Sheet f5_23_lips_border_fit2.png (photo | f3_t1 | tl3 | tl4, dressed, traced borders red): tl4 shows a hint of the
+  bow's two peaks and a fuller lower lip lowest at the centre; still softer than hers (her bow sharper, upper lip fuller
+  at the centre). The profile's points got worse (1.18 -> 1.60: three clicked points, no profile contour in fit5 yet).
+  Under-lip shadow sides 0.82 (hers 0.92, f3_t1 0.87): not addressed (needs the shadow-map term; paint confounds).
+- CHECKLIST COVERAGE (itemcover.py, f3_t1, every direction at +-2 sd read with likeness.compare's model readings through
+  her fixed cameras; noise floor = a 0.5 deg camera turn, median 0.04 tol; out/coverage_summary.txt): GAP = no item
+  past its tolerance. GNM identity 157/170 gaps (by perceptual effect >= 0.05: 3/11; 0.03-0.05: 15/19; below: all);
+  eye expression 17/20; lower-face expression 15/30; ICT modes 69/100 (5 of the 21 with effect >= 0.05). Highest-effect
+  gaps: ict_12 (0.072, nearest lower_lip 0.91 tol), head_005 (brow_eye@3q 0.78), ict_22 / 17 (chin_height), head_008
+  (width_temple 0.93), head_007 / ict_41 (lower_lip_area), eye expression 002 / 003 (intercanthal / eye_aspect).
+  Above 3x the noise floor instead of the tolerance: 95/170, 14/20, 26/30, 62/100 seen: the TOLERANCES hide more than
+  the missing items do; and one noisy item (lower_lip_area) is the best reader of 114 of 320 directions. Next: tolerances
+  from each reader's measured noise; then new items for the remaining gaps (lid margins vs iris, crease, alar rims,
+  nostrils, lip pad, ears), seeded from Farkas (1994), the FISWG feature list, oculoplastic MRD1 / MRD2 / TPS / BFS /
+  MCD, rhinoplasty analysis (Goode ratio, nasofrontal / nasolabial angles, columellar show, alar base) and lip
+  analysis (vermilion ratio, E-line, mentolabial angle, philtral columns).
