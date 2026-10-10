@@ -175,9 +175,10 @@ class Reader:
             mid = res[len(res) // 2]
             out.update(show=mid["show"], height=mid["height"], depth=float(np.mean([q["depth"] for q in res])),
                        local=float(np.mean([q["local"] for q in res])),
-                       hsoft=float(np.nanmean([q["hsoft"] for q in res])), lsoft=float(np.mean([q["lsoft"] for q in res])))
+                       hsoft=float(np.nanmean([q["hsoft"] for q in res])), lsoft=float(np.mean([q["lsoft"] for q in res])),
+                       drop=float(np.mean([q["drop"] for q in res])), vis=float(np.nanmean([q["vis"] for q in res])))
         else:
-            out.update(show=np.nan, height=np.nan, depth=0.0, local=0.0, hsoft=np.nan, lsoft=0.0)
+            out.update(show=np.nan, height=np.nan, depth=0.0, local=0.0, hsoft=np.nan, lsoft=0.0, drop=0.0, vis=np.nan)
         return out
 
 
@@ -198,10 +199,15 @@ def _profile(P, w_mm=2.5, lo=2.0, hi=12.0):
             nrm = np.array([ab[1], -ab[0]]) / Ln
             dep[i] = -((p - a) @ nrm)
     h = (Q[:, 1] - Q[0, 1]) * 1000
+    # the hood: the fold hanging back DOWN over the platform (the profile drops below the height it had reached); the
+    # visible platform ends at the overhang's lowest point (soft arg-max over the drop, tau 0.15 mm)
+    drop = np.maximum.accumulate(h) - h
+    wd = np.exp((drop - drop.max()) / 0.15)
+    hood = (float(drop.max()), float((wd * h).sum() / wd.sum()))   # (its height blends in with the drop: see vis)
     ok = (h > lo) & (h < hi) & np.isfinite(dep)
     if not ok.any():
         return {"local": 0.0, "height": np.nan, "show": float(h.max()) if len(h) else np.nan, "depth": 0.0,
-                "hsoft": np.nan, "lsoft": 0.0}
+                "hsoft": np.nan, "lsoft": 0.0, "drop": hood[0], "vis": hood[1] if np.isfinite(hood[1]) else float(h.max())}
     # smooth reads for the solver (the arg-max and the visibility jump between valleys): the valley's height and depth as
     # a soft max over the local depth (tau 0.15 mm)
     dd, hh = dep[ok] * 1000, h[ok]
@@ -216,7 +222,10 @@ def _profile(P, w_mm=2.5, lo=2.0, hi=12.0):
     vis = [q for q in below[::5] if not np.any((np.abs(above[:, 1] - q[1]) < 0.0004) & (above[:, 0] > q[0] + 1e-4))]
     show = (max(q[1] for q in vis) - Q[0, 1]) * 1000 if vis else 0.0
     return {"local": float(dep[i] * 1000), "height": float(h[i]), "show": float(show), "depth": float(dep[i] * 1000),
-            "hsoft": hsoft, "lsoft": lsoft}
+            "hsoft": hsoft, "lsoft": lsoft, "drop": hood[0],
+            # the visible platform: the crease's height without a hood, the overhang's lowest point with one (blended
+            # over a 0.1 -> 0.6 mm drop: no jump for the solver)
+            "vis": float(hsoft + np.clip((hood[0] - 0.1) / 0.5, 0, 1) * (hood[1] - hsoft))}
 
 
 # ---- the picture's evidence ----------------------------------------------------------------------------------------
@@ -282,7 +291,7 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print) -> dict:
         if np.isfinite(ev.get("tps", np.nan)):
             want = ev["tps"] * q["r_iris_mm"] / (5.85)   # the picture's mm at an 11.7 mm iris -> ours
             if ev.get("hooded"):
-                r.append((q["show"] - want) / SIG_HOODED if np.isfinite(q["show"]) else 20.0)
+                r.append((q["vis"] - want) / SIG_HOODED if np.isfinite(q["vis"]) else 20.0)
             else:
                 r.append((q["hsoft"] - want) / SIG_TPS if np.isfinite(q["hsoft"]) else 20.0)
                 r.append(min(q["lsoft"] - D_LINE, 0.0) / SIG_LINE)
@@ -318,7 +327,7 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print) -> dict:
                 break
         q = resid(x)[1]
         log(f"  it {it}: cost {f:.2f} |dc| {np.linalg.norm(x[:170]):.2f} |e| {np.linalg.norm(e0 + x[170:]):.2f} | up "
-            f"{q['up']:.2f} lo {q['lo']:.2f} show {q['show']:.2f} crease {q['lsoft']:.2f} mm at {q['hsoft']:.2f}")
+            f"{q['up']:.2f} lo {q['lo']:.2f} platform {q['vis']:.2f} (hood {q['drop']:.2f}) crease {q['lsoft']:.2f} mm at {q['hsoft']:.2f}")
         if lam > 1e4:
             break
     q = resid(x)[1]

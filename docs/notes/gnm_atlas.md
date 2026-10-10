@@ -1646,3 +1646,49 @@ top: a 4 mm vertical disagreement that biases profile registration).
   only reached through the visibility read, which is jumpy: a smooth hood measure is the next piece. Sheet
   b2_G14_eyes.png.
 - Diagnostic: eyediag.py (linear reach of identity / expression / both for the three reads; holds' cost).
+- Hood (smooth): the lid profile's drop below its running maximum (the fold hanging back down); the visible platform =
+  the crease's soft height blended toward the overhang's lowest point over a 0.1 -> 0.6 mm drop. Garrett b2_G15 (from
+  G13, hooded target 0.5 mm): GNM made NO overhang (drop 0.00); it lowered the crease instead: platform 2.56 mm, crease
+  0.54 mm at 2.56, lids 0.44 / 0.74 (his 0.46 / 0.72), |dc| 1.9, |e| 1.9; mouth_width edge flip (+1.58 of 1.5).
+  Dressed (b2_G15_skin.png): a heavy low upper lid, skin close to the lashes: reads hooded enough in front and 3/4. A
+  true overhang is a GNM capability question (not tested beyond this prior).
+
+### 4. Age from the London Set (task 3) and M4's first numbers (frllfit.py, frllage.py; out/frll/*.npz, frll_age.npz)
+- Metadata: london_faces_info.csv has age / gender / ethnicity for 100 of 102 people (2 blank); ages 18-54, median
+  26, only 5 over 40 (47, 48, 54 ...): an age direction from it would cover young adults only.
+- Fits: humanfit_map.fit (MAP, detector points, neutral front + both 3/4, identity only: humanfit_map has no
+  per-picture expression), a one-mesh human of each person's age / sex: 5-11 s each, rms 1.35 mm mean, no view dropped.
+- Age direction (within sex x ethnicity, group means removed; c's regression on age): leave-one-out R2 of age from it
+  -0.03; identity variance age explains 1.6 % vs a permutation null's 95 % of 1.9 %: NO age signal. Couplings of +10
+  years all < 0.15 sd (lips thinner -0.14, brow lower -0.11 ...: the right signs for ageing, but noise-sized).
+- M4 (why it can't): the fitted identities are shrunk hard toward the mean: |c| median 3.5 (a random GNM face ~13),
+  per-comp sd of the fitted people 0.15 median (the prior says 1.0; comps 0-9 0.26-0.70), nothing past 2.5. Front +
+  3/4 detector points determine a few dozen directions; the rest is the prior. Real people's identities are not
+  recovered at the precision an age direction needs (and the M4 design's empirical-Bayes variances would come out ~7x
+  too narrow from these fits: the evidence, not the faces, sets them).
+- So the designed age ops stay (shape:<op>, flagged DESIGNED). Next-best licensed source for a data-backed age direction:
+  older people with known ages AND enough shape evidence per person: (a) Wikimedia Commons portraits with Wikidata
+  birth dates (CC0 metadata; images CC BY / BY-SA / PD, used on /mnt/data only, statistics shipped) for 2D age
+  statistics of landmark ratios / shading (the soft-tissue cues: folds, lid, jowl) rather than identity; (b) MakeHuman's
+  age targets (CC0, artist-made: what we have through the body). No permissive 3D scan set with older ages is known
+  here (BFM / LYHM / FaceScape / FLAME are out). Decision for the coordinator / Joe before building (a).
+
+### HANDOVER (blockin2, 2026-10-10)
+Branch worktree-agent-aef00385e135b10dd (from main 6fb2795): 5a538a8 eye_radius key, 1b3f79e new humans get it,
+74830fe shape:<op>, cd4f4bb pc:<region><i>, 9c39a58 flags, e611e9e SH light, 05901d5 eye step, c1ef720 hood, notes.
+Tests: test_blockin (11), test_humans, test_onemesh, test_likeness* pass. Accepted models' builds unchanged (eye_radius
+is written only into new specs; SH changes only the block-in sheets and the likeness shading rows' residual).
+Scratch /mnt/data/hifipushie/blockin2: run.sh / tests.sh / srv.py <tool> '<json>' | @file.json; eyerep.py, irismm.py
+(eyes in mm), farside.py / yawscan.py / pitch.py (camera checks), nosevar.py / prof.py / noseres.py / alar*.py (nose
+reads, built profile), shl.py / shlight.py (SH light reads), nosepca.py / walljoint.py (GNM nose PCs, joint solve),
+eyeev.py / eyestep.py / eyestep2.py (KEY=VAL overrides) / eyediag.py (the eye step), frllfit.py / frllage.py (London
+Set), tdiff.py / ft.py (table diffs), crop.py.
+State: Garrett b2_G15 (12 mm eye, fold 0.6, nose tip down / projection, DESIGNED local dorsum -0.8 awaiting Joe,
+alae in, eye step with a low crease); b2_G09 is the fold-1.0 alternative from G08. Tess b2_T06 (12 mm eye x 1.05,
+eye step: fold at 5.3 mm, 1.1 mm deep).
+Open, in order: (1) Joe on the designed dorsum local (b2_G11's); (2) the eye_width / eye_opening readers on clay
+(Garrett: row 28.8 mm vs his own corner landmarks 26.1) and lt19's weak-perspective scale in the eye-placement readers;
+(3) the profile lip_upper click vs lm51; (4) the eye step: a true overhang (GNM made none for Garrett: test a bigger
+prior / expression range), Tess's iris reads 5.1 mm in camera mm (iris-radius targets may be ~15 % inflated for her);
+(5) age: the decision on a licensed older-age source (section 4); the designed shape: ops meanwhile (Garrett: fold,
+hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not leaner).
