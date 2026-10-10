@@ -210,7 +210,7 @@ def test_features_and_shader_budget(tmp=None):
                          "skin:flush", "skin:tan"):
                 assert want in pre, want
             # what a renderer's shader must hold stays small, and none of it is procedural noise: swatches, images, spots
-            assert sum(1 for v in fine.values() if v.get("part", "body") == "body") <= 37, len(fine)   # (37: skin3 moved the stubble shadow per pixel)
+            assert sum(1 for v in fine.values() if v.get("part", "body") == "body") <= 41, len(fine)   # (37: skin3 moved the stubble shadow per pixel; 41: skin4's face base map, 4 layers)
             for k, v in fine.items():
                 found = set()
                 _gens({kk: vv for kk, vv in v.items() if kk == "mask"}, found)
