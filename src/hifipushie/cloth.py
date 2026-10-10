@@ -4735,8 +4735,16 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         far0 = ~held & (cKDTree(V[held]).query(V)[0] > FINE_REACH + 0.01)
     near0 = ~held & ~far0
     if len(body.V):  # (a fine vertex on a coarse facet's chord can lie inside the solver's standoff from the body)
+        # a piece laid OUTSIDE another (a patch pocket: wrap lies_on, face out) is cleared that much further than the
+        # piece under it: cleared to the same gap, Tess's jeans' back pockets went through the backs (188 crossings in
+        # the fine start, 187 in the settled result)
+        g_near = np.full(len(V), 0.0042)
+        for nm_, pc_ in Bp["pieces"].items():
+            if nm_ in M["names"] and pc_["wrap"].get("lies_on") and pc_["wrap"].get("face") == "out":
+                g_near[M["piece"] == M["names"].index(nm_)] += LIES
+
         def clear(V):
-            V = _clear_of_body(V, M["F"], near0, body, 0.0042, 0.0034, CLEAR_GROW)
+            V = _clear_of_body(V, M["F"], near0, body, g_near, 0.0034, CLEAR_GROW)
             return _clear_of_body(V, M["F"], far0, body, FAR_CLEAR, FAR_CLEAR, CLEAR_GROW) if far0.any() else V
         V = clear(V)
         V = _relax_stretch(V, M, ~held, 0.03, iters=15)
