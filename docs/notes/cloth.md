@@ -2060,3 +2060,11 @@ NO SIM WAS RUN.
     strip's mean direction) before press_flap. lapelgate.py (front view, max deviation from the chord): concept roll
     edges 2.8 / 8.0 mm; j9 roll 18-34, outer edge 29-44; j10 (boarded) roll 8.5-8.8, outer edge 21. Outer edge still
     curved: not found yet.
+  - Round 8. Board fixes tried: chord unclipped past the roll's ends (no change), eased INSIDE the span (pouch smaller,
+    roll 8-12 mm, outer edge 21). Board OFF on the same sim (c10_j10n): no pouches, no vertical bulges, lapels curved:
+    the board itself made both (moves up to 65-87 mm: a 3D chord between the roll's ends cuts through the chest and
+    the settle pushes it back out). board is now default OFF, experimental. j11 / j12 (chest canvas from the break to
+    the lapel point, roll_strength 0.8, break_y 0.46 -> 0.49; under_cap 0.02 / 0.004): j11 passes the shirt gates
+    (0 crossings, 0 skin px, collar/V 0.00) but the wearer's right lapel crumples into a tab at the lower break
+    (roll 43 mm off its chord), break now at the concept's height (383-403 vs 398 mm below the chin); j12 (tight)
+    84 visible crossings, collar_show 17.5 mm. Neither is better than w9 to the eye.

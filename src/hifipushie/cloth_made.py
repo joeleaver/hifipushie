@@ -404,7 +404,7 @@ def press_flap(V: np.ndarray, F: np.ndarray, uv: np.ndarray, flap: np.ndarray, l
     return Vn
 
 
-BOARD = {"ease": 0.04, "ends": 0.03}
+BOARD = {"ease": 0.04, "ends": 0.06}
 
 
 def board_lapel(V: np.ndarray, uv: np.ndarray, sel: np.ndarray, flap: np.ndarray, line: tuple, roll: np.ndarray,
@@ -443,14 +443,18 @@ def board_lapel(V: np.ndarray, uv: np.ndarray, sel: np.ndarray, flap: np.ndarray
     cross = (rel / np.maximum(db[near], 1e-6)[:, None]).mean(0)
     cu = _unit(ch)
     cross = _unit(cross - (cross @ cu) * cu)
-    t = np.clip((a_s - a0) / max(a1 - a0, 1e-9), 0, 1)
+    # (unclipped: past the roll's ends the strip runs ON along the chord. Clipped, every row below the break was pulled
+    # onto the break's own row and the easing folded the forepart there into a pouch, cloth10 w10)
+    t = (a_s - a0) / max(a1 - a0, 1e-9)
     T = R0 + t[:, None] * ch + np.clip(db, 0, None)[:, None] * cross
     # weights: 1 on the roll row and the base within the lapel's width and the roll's span, easing out past them
     def ss(x):
         x = np.clip(x, 0, 1)
         return x * x * (3 - 2 * x)
     w_across = 1 - ss((db - width) / p["ease"])
-    w_along = (1 - ss((a0 - a_s) / p["ends"])) * (1 - ss((a_s - a1) / p["ends"]))
+    # (inside the span: the strip meets the drape AT the break and the gorge. Eased outside them, the strip run on
+    # past the break stood off the front where it turns in to the waist: a pouch at each break, cloth10 w10)
+    w_along = ss((a_s - a0) / p["ends"]) * ss((a1 - a_s) / p["ends"])
     w = np.where(base | np.isin(sel, roll), w_across * w_along, 0.0)
     w[np.isin(sel, roll)] = w_along[np.isin(sel, roll)]
     moved = sel[w > 1e-3]
@@ -996,7 +1000,8 @@ def options(g: dict) -> dict | None:
     pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options", "hug" (with
     collar and an under garment: the neckline drawn in to the under collar, hug_neckline; false or {gap, reach, max_pull,
     gorge}), "over_under" (pressed lapels lifted out over the under garment; default on), "board" (the forepart under a
-    lapel laid as a ruled strip first: straight roll line and outer edge, board_lapel; default on), "press" (fold-name prefixes whose
+    lapel laid as a ruled strip first, board_lapel; default OFF, experimental: on Garrett it straightened the roll line
+    (18-34 -> 8-9 mm) but folded pouches at the breaks and bulges under the lapels), "press" (fold-name prefixes whose
     flaps are pressed, default ["lapel"]; EXPERIMENTAL for others: ["open neck"] on a shirt chose the wrong side of
     front.R's weak roll and cut the V, cloth10 c10_dbg_steps (c))}."""
     c = g.get("construct", True)
@@ -1041,7 +1046,7 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
     bFo = outward(np.asarray(bV, float), np.asarray(bT))
     made = {"lapels": [], "parts": [], "info": {}}
     for L in flaps:
-        if opt.get("board", True) and len(L.get("row", [])) >= 3:
+        if opt.get("board", False) and len(L.get("row", [])) >= 3:
             und_l = []
             if under is not None:
                 und_l = [{"V": np.asarray(under["V"], float), "F": away(np.asarray(under["V"], float), np.asarray(under["F"]), np.asarray(bV, float), bFo)}]
