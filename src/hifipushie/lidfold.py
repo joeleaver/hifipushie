@@ -68,6 +68,34 @@ def _interp_curve(P, idx, t, ex, ey, o):
     return float(np.interp(t, u[k], v[k]))
 
 
+def _hsv(rgb):
+    import colorsys
+    return np.array(colorsys.rgb_to_hsv(*np.clip(rgb, 0, 1)))
+
+
+def _line_colour(A, base, ey, strip, ex, lid, up, k, i) -> dict:
+    """The fold line's colour against the skin round it (a shadow keeps the skin's hue and saturation and drops
+    its value; paint shifts hue / saturation): value ratio, saturation and hue differences of the line (its own
+    0.15 mm) to the skin 1.5-2.5 mm either side; and the shading either side: the band 0.3-1.3 mm above (the fold's
+    underside) and below (the platform) over the skin 2.5-4 mm above / below."""
+    def rgb(lo_mm, hi_mm):
+        u = up[(up >= up[i] + lo_mm) & (up <= up[i] + hi_mm)]
+        if not len(u):
+            return np.full(3, np.nan)
+        hh = lid - u / k
+        vals = [np.stack([_bilinear(A[..., c], *(base + w * ex + hh[:, None] * ey).T) for c in range(3)], 1)
+                for w in strip]
+        return np.mean(np.concatenate(vals), 0)
+    line = _hsv(rgb(-0.15, 0.15))
+    skin = _hsv(0.5 * (rgb(1.5, 2.5) + rgb(-2.5, -1.5)))
+    above, below = _hsv(rgb(0.3, 1.3)), _hsv(rgb(-1.3, -0.3))
+    far_up, far_dn = _hsv(rgb(2.5, 4.0)), _hsv(rgb(-4.0, -2.5))
+    dh = (line[0] - skin[0] + 0.5) % 1.0 - 0.5
+    return {"line_v": round(float(line[2] / max(skin[2], 1e-6)), 3), "line_ds": round(float(line[1] - skin[1]), 3),
+            "line_dh": round(float(dh * 360), 1), "above_v": round(float(above[2] / max(far_up[2], 1e-6)), 3),
+            "below_v": round(float(below[2] / max(far_dn[2], 1e-6)), 3)}
+
+
 def read_lid(img, P, mmpx: float | None = None, fractions=(0.25, 0.5, 0.75), lash_mm: float = 1.2,
              reach_mm: float = 14.0) -> list:
     """Per eye (subject's right, left), per column (fraction inner -> outer corner): {"tps", "bfs", "dark", "width"}
@@ -77,6 +105,7 @@ def read_lid(img, P, mmpx: float | None = None, fractions=(0.25, 0.5, 0.75), las
     from .likeness_eyes import frame
     P = np.asarray(P, float)[:, :2]
     L = _lum(img)
+    A = np.asarray(img.convert("RGB"), float) / 255.0
     ex, ey = frame(P)  # ex across, ey DOWN the face
     ex, ey = np.asarray(ex, float), np.asarray(ey, float)
     out = []
@@ -127,8 +156,10 @@ def read_lid(img, P, mmpx: float | None = None, fractions=(0.25, 0.5, 0.75), las
                 j0 -= 1
             while j1 < len(prof) - 1 and prof[j1] < half:
                 j1 += 1
-            cols.append({"tps": round(up[i], 2), "bfs": round(brow_mm - up[i], 2), "dark": round(float(best[0]), 3),
-                         "width": round((j1 - j0) * 0.05, 2), "brow": round(brow_mm, 2)})
+            col = {"tps": round(up[i], 2), "bfs": round(brow_mm - up[i], 2), "dark": round(float(best[0]), 3),
+                   "width": round((j1 - j0) * 0.05, 2), "brow": round(brow_mm, 2)}
+            col.update(_line_colour(A, o + t * ex, ey, strip, ex, lid, up, k, i))
+            cols.append(col)
         out.append(cols)
     return out
 
@@ -138,7 +169,7 @@ def read_lid(img, P, mmpx: float | None = None, fractions=(0.25, 0.5, 0.75), las
 # the fold's parameters, mm (base.head.fold = true | {...}); the defaults by sex (body.sex 1 male .. 0 female)
 KEYS = ("crease_height", "crease_depth", "crease_width", "fold_overhang", "fold_width", "platform", "inner", "outer",
         "start", "end")
-DEFAULTS = {"crease_depth": 1.0, "crease_width": 0.8, "fold_overhang": 0.6, "fold_width": 1.6, "platform": 0.15,
+DEFAULTS = {"crease_depth": 1.0, "crease_width": 0.8, "fold_overhang": 0.4, "fold_width": 1.6, "platform": 0.15,
             "inner": 0.8, "outer": 0.85, "start": 0.06, "end": 0.96}
 
 
@@ -194,7 +225,7 @@ def profile(t: np.ndarray, pr: dict, j: np.ndarray) -> np.ndarray:
     Pl, ph = pr["Pl"][j], pr["ph"][j]
     groove = -G * np.exp(-0.5 * (t / sg) ** 2)
     # (the roll rises from the crease line itself: a symmetric bump there half filled the crease)
-    ur = np.clip(t / (0.6 * so), 0, 1)
+    ur = np.clip(t / so, 0, 1)  # (a soft shoulder: a steep one caught the key light as a bright ridge)
     roll = O * ur * ur * (3 - 2 * ur) * np.exp(-0.5 * ((t - 0.9 * so) / so) ** 2)
     x = np.clip(-t / np.maximum(ph, 1e-6), 0, 1)
     plat = -Pl * np.where(t < 0, np.sin(np.pi * x) ** 2, 0.0)
@@ -217,9 +248,10 @@ def _seat(field, L, X2, reach: float = 0.03, step: float = 0.00025):
     return O - t[:, None] * L["fwd"]
 
 
-def line_distance(X: np.ndarray, pr: dict) -> np.ndarray:
+def line_distance(X: np.ndarray, pr: dict, side: str | None = None) -> np.ndarray:
     """(n,) distance (m) of points from a fold's crease line, across it and along the skin (paint's `near` on a fold:
-    the crease's own tone follows its geometry), weighted by the crease's depth there (a faded end reads as far)."""
+    the crease's own tone follows its geometry), weighted by the crease's depth there (a faded end reads as far).
+    side "up" / "down": only that side of the line counts (the other is far): paint's near {"side": ...}."""
     X = np.asarray(X, float).reshape(-1, 3)
     k = int(min(len(pr["pts"]), max(pr["k"], 12)))
     d, j = pr["tree"].query(X, k=k)
@@ -230,7 +262,12 @@ def line_distance(X: np.ndarray, pr: dict) -> np.ndarray:
     # (the samples' Gaussian along the line, as mod_fold weighs them: nearest-sample weights striped the tone)
     w = np.exp(-0.5 * (a / pr["sa"]) ** 2) + 1e-12
     ws = w.sum(1)
-    tt = np.abs((w * t).sum(1) / ws)
+    ts = (w * t).sum(1) / ws
+    tt = np.abs(ts)
+    if side == "up":  # only up the lid from the line (the fold's underside); below it: far
+        tt = np.where(ts >= 0, ts, 1.0)
+    elif side == "down":
+        tt = np.where(ts <= 0, -ts, 1.0)
     hh = np.abs((w * h).sum(1) / ws)
     G = (w * pr["G"][j]).sum(1) / ws
     tap = (w * pr["taper"][j]).sum(1) / ws * np.clip(ws / (0.3 * pr["wfull"]), 0, 1)

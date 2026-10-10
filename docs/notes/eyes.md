@@ -216,3 +216,22 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   little too orange-pink and thin in close-up (the photo's is greyer brown with a softer shadow above). There is no
   true undercut: a normal-displaced field can't hang skin over itself.
 - tests/test_lidfold.py.
+
+### The crease as a shadow, not paint (after the merge; ed_20 read as an orange-pink drawn arc with a bright ridge)
+- Colour gate: `read_lid` now also returns the line's colour against the skin 1.5-2.5 mm either side:
+  - `line_v`: value ratio;
+  - `line_ds` / `line_dh`: saturation and hue differences;
+  - `above_v` / `below_v`: the bands 0.3-1.3 mm above / below over the skin 2.5-4 mm away.
+- Tess's photo: line_v .73, line_ds +.16, line_dh -1.3 deg, above_v .92-1.0. A real crease shadow on skin is MORE
+  saturated than the skin round it (the request's "saturation at or below the skin's" doesn't hold in the photo).
+  - The old orange tone: .74 / +.18 / -4.5: right value, ~3 deg redder.
+  - Now: .66 / +.12 / -4.7, above_v .87-.93.
+  - The red shift is the groove's own subsurface glow, not the paint: a cooler multiply barely moved it.
+- Changes:
+  - `lid_crease` is a neutral (slightly cool) multiply in a thin line.
+  - New `lid_fold_shadow`: a soft multiply up the fold's underside only (paint near's new `side`: "up" / "down", on a
+    fold prim: one side of its crease line; paint.PARAMS and paintnodes carry it).
+  - The roll's shoulder is soft (it rises over its whole width); default fold_overhang is 0.4. A steep roll caught
+    the key as a bright ridge.
+- Sheet: out/ed_22_fold_shadow_tess.jpg (photo | orange | now). Tess's settings: crease 5.0, depth 0.6, width 1.0,
+  overhang 0.4, inner 0.9.
