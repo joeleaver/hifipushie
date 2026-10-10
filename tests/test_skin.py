@@ -326,6 +326,36 @@ def test_lash_line_is_a_line():
         assert (m > 0.5).astype(int).tolist() == want, (with_margin, m)
 
 
+def test_makeup_looks():
+    """skin.makeup.look presets expand into items (overrides merge key by key); the liner follows the lash line's own
+    zone (lines through the eye-corner landmarks left dots past the lids' corners) and a wing is a drawn flick laid at
+    the outer lash line; each product keeps its finish."""
+    import json
+    import tempfile
+    from hifipushie import skin_makeup, store
+    r = skin_makeup.resolve({"look": "evening", "lipstick": {"color": "#552233"}, "blush": 0.2})
+    assert r["lipstick"]["color"] == "#552233" and r["lipstick"]["finish"] == "matte" and r["blush"] == 0.2
+    try:
+        skin_makeup.resolve({"look": "party"})
+        raise AssertionError("an unknown look must fail")
+    except SpecError:
+        pass
+    with tempfile.TemporaryDirectory() as d:
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            nat = paint.layers(head_spec(makeup={"look": "natural"}))
+            eve = paint.layers(head_spec(makeup={"look": "evening"}))
+        finally:
+            store.HOME = home
+    assert "skin:makeup_eyeliner" not in nat and "skin:makeup_lipstick" in nat
+    assert nat["skin:makeup_lipstick"]["opacity"] < 0.5 and nat["skin:makeup_lipstick"]["roughness"] < 0.2   # a sheer balm
+    for k in ("makeup_eyeshadow", "makeup_eyeshadow_crease", "makeup_eyeshadow_outer", "makeup_eyeliner", "makeup_contour",
+              "makeup_lip_liner", "makeup_highlight"):
+        assert "skin:" + k in eve, k
+    liner = json.dumps(eve["skin:makeup_eyeliner"]["mask"])
+    assert '"near": ["eye.L"' in liner and '"image"' in liner   # (the lash zone, expanded: near the eyeballs)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
