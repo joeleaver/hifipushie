@@ -250,3 +250,7 @@ def test_default_grey_follows_age():
     assert hair.groom_params({"hair": {"groom": {}}})["grey"] == hair.GROOM["grey"]
     mine = {"temples": 0.2}
     assert hair.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {"grey": mine}}})["grey"]["temples"] == 0.2
+    # locks groomed earlier carry their grey: the look's grey_locks default follows age too
+    assert hair.look_of({"base": {"body": {"age": 19}}, "hair": {}})["grey_locks"] == 0.0
+    assert hair.look_of({"base": {"body": {"age": 19}}, "hair": {"look": {"grey_locks": 0.7}}})["grey_locks"] == 0.7
+    assert hair.look_of({"hair": {}})["grey_locks"] == 1.0

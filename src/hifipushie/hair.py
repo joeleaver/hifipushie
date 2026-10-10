@@ -331,6 +331,16 @@ def grey_age(spec: dict) -> float:
     return float(np.clip((float(age) - GREY_AGES[0]) / (GREY_AGES[1] - GREY_AGES[0]), 0.0, 1.0))
 
 
+def look_of(spec: dict, h: dict | None = None) -> dict:
+    """The hair look with its defaults; look.grey_locks (x each lock's own grey) defaults to grey_age: locks groomed
+    earlier carry their grey in the spec, so a young model's look draws none of it unless asked."""
+    h = hair_of(spec) if h is None else h
+    lk = {**LOOK, **(h.get("look") or {})}
+    if "grey_locks" not in (h.get("look") or {}):
+        lk["grey_locks"] = grey_age(spec)
+    return lk
+
+
 POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the head, not a pocket in it (an ear canal)
 HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
 
@@ -1937,7 +1947,7 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
         extra["across"] = (0.45 + 0.55 * np.clip(pw * 1.5, 0, 1)).astype(np.float32)
     np.savez(tmp / "cap.npz", verts=V, faces=F, **extra)
     out = {"locks": locks, "cap": str(tmp / "cap.npz"),
-           "cap_kind": "mass" if stage == "mass" else "under", "look": {**LOOK, **(h.get("look") or {})},
+           "cap_kind": "mass" if stage == "mass" else "under", "look": look_of(spec, h),
            "centre": sc.C.tolist()}
     if h.get("style") == "cards" and stage != "mass":
         from . import hair_loose
@@ -2109,7 +2119,7 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     if short:
         S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
              "short": True}
-    lk = {**LOOK, **(h.get("look") or {})}
+    lk = look_of(spec, h)
     # grey hairs in the cards' pictures: the share the strand look draws (the look's own + the locks' mean grey)
     gl = [float((k_.get("inputs") or {}).get("Grey", k_.get("grey", 0.0)) or 0.0) for k_ in locks]
     lk["grey_share"] = round(float(np.clip(float(lk.get("grey_amount", 0.0))
@@ -3058,7 +3068,7 @@ def export_hair(name: str, out_dir, tiers=("main", "npc", "far"), groom: bool = 
     out_dir.mkdir(parents=True, exist_ok=True)
     spec = store.load(name) if spec is None else spec
     h = hair_of(spec)
-    lk = {**LOOK, **(h.get("look") or {})}
+    lk = look_of(spec, h)
     rep = {"tiers": {}, "recipe": CARD_RECIPE}
     log: list = []
     for tier in tiers:
