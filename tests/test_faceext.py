@@ -33,7 +33,8 @@ def test_probable_identity_part_removed():
         y = d[rows].ravel()
         # (the nose's: 0.2. The windowed projection (faces4: faceext.WINDOW, smooth edges instead of a step where a
         # hard region mask ended) and the lid-rim hold leave up to 0.17 of the field along the cheap directions (the
-        # curve, nostrils_width). The joint prior of the coherent model (gnm_atlas.md, faces4 design) carries that correlation instead)
+        # curve, nostrils_width). INTERIM (coordinator, 2026-10-10): M2 / M3 of the coherent model (gnm_atlas.md, faces4
+        # design) must bring this back to 0.1 or carry the correlation in the joint prior)
         tol = 0.1 if faceext.EXT[k][0] == "mouth" else 0.2
         assert np.linalg.norm(V @ y) < tol * np.linalg.norm(y), (k, np.linalg.norm(V @ y) / np.linalg.norm(y))
 

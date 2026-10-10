@@ -2041,5 +2041,926 @@
     "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
    }
   ]
+ },
+ "ictfacekit": {
+  "needed_by": "faces4 coherent face model (M1: ICT's identity modes registered to GNM -> the joint prior's local couplings at nose / lips / lids); spikes/facesliders",
+  "source": "https://github.com/ICT-VGL/ICT-FaceKit at commit da5f95a607f5e6b37755b38d3385d7f2853732e5: FaceXModel (ICT FaceKit Light: generic neutral mesh, 100 identity modes, expression blendshapes), Scripts, LICENSE",
+  "licence": "MIT (\"ICT-FaceKit is released under the MIT license\", Copyright (c) 2020 USC Institute for Creative Technologies). The MIT text names 'software and associated documentation files'; the Light model's data sits in the MIT repo and is treated as covered: Joe's decision 2026-10-10. The FULL ICT model is under a different USC licence: not this pack.",
+  "optional": true,
+  "files": [
+   {
+    "path": "CREDITS.md",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/CREDITS.md",
+    "sha256": "6bd11505a39bea2636d4582dd7bbd4d616f6c6d6be5e75a1268bfe2240fc1c90"
+   },
+   {
+    "path": "FaceXModel/ICTFaceModelMaterial.mtl",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/ICTFaceModelMaterial.mtl",
+    "sha256": "9c2c6daf384a2d1f5536d330339a897a312f57d89587b9be31bec7fe7b37c297"
+   },
+   {
+    "path": "FaceXModel/PupilDilate_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/PupilDilate_L.obj",
+    "sha256": "ab28968a231bb184b73e4103b6026f22bf2a2201d242b601326d121ee25d285c"
+   },
+   {
+    "path": "FaceXModel/PupilDilate_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/PupilDilate_R.obj",
+    "sha256": "72a3ad704e509c22a004d279e0a1460e8abafcff0afe1eee5ef794302e42087c"
+   },
+   {
+    "path": "FaceXModel/browDown_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/browDown_L.obj",
+    "sha256": "d1dcd14fc085a9e258dec62a4bfe4a31d592cce5d8918a3892c20f480653f4c1"
+   },
+   {
+    "path": "FaceXModel/browDown_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/browDown_R.obj",
+    "sha256": "66a2c72ab64999af168795f27182d011f52b90958c402d719d3ec8ff7d1c8939"
+   },
+   {
+    "path": "FaceXModel/browInnerUp_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/browInnerUp_L.obj",
+    "sha256": "81fb1625794ea36fb13303234ce06cef798acfdbc489077e22ae195a705bc92e"
+   },
+   {
+    "path": "FaceXModel/browInnerUp_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/browInnerUp_R.obj",
+    "sha256": "5e66b46cdad89fd1237273db2b885511688cf37636cedfdde432a4844c9109e7"
+   },
+   {
+    "path": "FaceXModel/browOuterUp_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/browOuterUp_L.obj",
+    "sha256": "022d5342687e51351f4cad6dd1abd42c3bb1b752d0b235bdc7fc588ab0d79c90"
+   },
+   {
+    "path": "FaceXModel/browOuterUp_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/browOuterUp_R.obj",
+    "sha256": "1e4722060538b274ed49ed872525d770b5bfd9262b7bce1b6310f49356f5b531"
+   },
+   {
+    "path": "FaceXModel/cheekPuff_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/cheekPuff_L.obj",
+    "sha256": "f53fd2bdeb8e26d0db8a684ab9c095c6bb113b74575dec329facae2799ff18c6"
+   },
+   {
+    "path": "FaceXModel/cheekPuff_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/cheekPuff_R.obj",
+    "sha256": "cd5b5d0f3a653a1fa31abeb65daf8fd6ffdf83a4d1bf22333a469b13b96fa801"
+   },
+   {
+    "path": "FaceXModel/cheekRaiser_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/cheekRaiser_L.obj",
+    "sha256": "56596066c17425a0446f9ba5566cb574de306792dac8fb8bbe3d6420197e76c5"
+   },
+   {
+    "path": "FaceXModel/cheekRaiser_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/cheekRaiser_R.obj",
+    "sha256": "475ba0a741e74e8343b3b912b90ee6d0fc657196a5b7aeb1c0b6620ddf3781be"
+   },
+   {
+    "path": "FaceXModel/cheekSquint_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/cheekSquint_L.obj",
+    "sha256": "572fe87f2e0cdd0a7ff868b9173d0ff08ee2bc73bf94c17b603f6e5d5b8fbe26"
+   },
+   {
+    "path": "FaceXModel/cheekSquint_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/cheekSquint_R.obj",
+    "sha256": "a9afa0aac432159e89eb54dbbb3139864b8cc1c4208c3c0e9c420d0d8050b99a"
+   },
+   {
+    "path": "FaceXModel/eyeBlink_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeBlink_L.obj",
+    "sha256": "f5ed1c3072a400083b7d4f7f5cb3d73882b7ebb95c3232f957394db8cf7fe19e"
+   },
+   {
+    "path": "FaceXModel/eyeBlink_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeBlink_R.obj",
+    "sha256": "d281ad0af03e89a70abf1214d52c295b3a279c9b35f6795938c4487f467ca003"
+   },
+   {
+    "path": "FaceXModel/eyeLookDown_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookDown_L.obj",
+    "sha256": "e7da4fa6509af5da25fab1a34255889a68f06b90fd37f65c6c05e5bdbbe2f755"
+   },
+   {
+    "path": "FaceXModel/eyeLookDown_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookDown_R.obj",
+    "sha256": "ac466de6decf619701f3ee7f80fa7371020d325084b41ad7f4b2840e232abf83"
+   },
+   {
+    "path": "FaceXModel/eyeLookIn_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookIn_L.obj",
+    "sha256": "1e037332bc059a95d05fcb24728ae297a2d4d268ff0cf623d3647d2a4f86bd31"
+   },
+   {
+    "path": "FaceXModel/eyeLookIn_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookIn_R.obj",
+    "sha256": "3d64db0e51ad28e76eff56217da401c5ee563b5e76a207cb192046465bbab14a"
+   },
+   {
+    "path": "FaceXModel/eyeLookOut_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookOut_L.obj",
+    "sha256": "235739695136c40b7a2c3239a100ff75b7bfc271ae195aeb55330848c999c9c8"
+   },
+   {
+    "path": "FaceXModel/eyeLookOut_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookOut_R.obj",
+    "sha256": "ac10dfa83ccaca7fd76fe96d74f8cbc80582e2ef914d1092827b54f88125650e"
+   },
+   {
+    "path": "FaceXModel/eyeLookUp_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookUp_L.obj",
+    "sha256": "72ed342df43489a76e9d468df3ca7f48328f41c924af0c03d88fde9905d82848"
+   },
+   {
+    "path": "FaceXModel/eyeLookUp_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeLookUp_R.obj",
+    "sha256": "d8ade1cab9f7f0c4ef6ec007f33e9c9df90a58c666b9aac5a784192cd389e899"
+   },
+   {
+    "path": "FaceXModel/eyeSquint_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeSquint_L.obj",
+    "sha256": "ecb8244f083cf55fa9f0277427b8213315176a624d9ac3a09b533c7fbc68917e"
+   },
+   {
+    "path": "FaceXModel/eyeSquint_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeSquint_R.obj",
+    "sha256": "0dffbbc651b9cdbc346ead32ba102051200c72ed8a93e7b33f07149e18390b8a"
+   },
+   {
+    "path": "FaceXModel/eyeWide_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeWide_L.obj",
+    "sha256": "015a995b0f09783683f5575af7e4c939cd758d194d7ca2e8ffacb9ddbabf0078"
+   },
+   {
+    "path": "FaceXModel/eyeWide_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/eyeWide_R.obj",
+    "sha256": "4b8207f6013a751ae35affba62cc70bd6b53e046bbe48e8fd5a150450a7789ed"
+   },
+   {
+    "path": "FaceXModel/generic_neutral_mesh.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/generic_neutral_mesh.obj",
+    "sha256": "eedbc2576d8e5ea57f55255b8f98263213a1efb5431d8bfceed1d7aef10271f9"
+   },
+   {
+    "path": "FaceXModel/identity000.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity000.obj",
+    "sha256": "918160cf82d541336b4c367cf93199c9827832bde02511b8fbdf9019d6f1a773"
+   },
+   {
+    "path": "FaceXModel/identity001.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity001.obj",
+    "sha256": "325115059deb6691cb2d55da07ae38bb08ce36e4ea146982f294a17513155b3b"
+   },
+   {
+    "path": "FaceXModel/identity002.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity002.obj",
+    "sha256": "e140e8305cd5232def3b94331d08450a13f312e525130fca8eeaa653231decc3"
+   },
+   {
+    "path": "FaceXModel/identity003.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity003.obj",
+    "sha256": "be3481a6bed8953a6d9dd7f811a04bc6d2ab94d1bd76ecfaa6d4cae87a450f9d"
+   },
+   {
+    "path": "FaceXModel/identity004.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity004.obj",
+    "sha256": "a2f411cc763e881cff250eb23c04fe8375b63a05a7dfa0492422e3b943e8a01d"
+   },
+   {
+    "path": "FaceXModel/identity005.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity005.obj",
+    "sha256": "274178eb33e33c555e6024535a51a62ee50050abd4f7014bbc7a4dc90a638c65"
+   },
+   {
+    "path": "FaceXModel/identity006.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity006.obj",
+    "sha256": "c9ae0426ab88b49065c852148f7bcff8cb09253fbee068b78955bd76c19a3e0f"
+   },
+   {
+    "path": "FaceXModel/identity007.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity007.obj",
+    "sha256": "ba38037151277b94e2b6b9b9800275d92d2c0aa8d61057b0718c9d7b90fffc44"
+   },
+   {
+    "path": "FaceXModel/identity008.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity008.obj",
+    "sha256": "b03543b783a15c1d28c5a384cd93657eda915227756780f682bc7370cd94ce1d"
+   },
+   {
+    "path": "FaceXModel/identity009.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity009.obj",
+    "sha256": "0cbb5ca5db9c61fa91df8d1c04b9b383b40d797032ca3f5a28a234d495e31b54"
+   },
+   {
+    "path": "FaceXModel/identity010.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity010.obj",
+    "sha256": "7bd1c31b76428cfb4bf29a2ac38bc2711d8c254aec25bba7ebd7a9b7dc81ebc7"
+   },
+   {
+    "path": "FaceXModel/identity011.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity011.obj",
+    "sha256": "68684bafa7e460ce7dd69c618a260143e6ecfa1254d0d49ec40202092a4b05f3"
+   },
+   {
+    "path": "FaceXModel/identity012.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity012.obj",
+    "sha256": "b899f17f8727b903b36f9a879ec95427c4df93d415956a211745bf44ed2be2dd"
+   },
+   {
+    "path": "FaceXModel/identity013.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity013.obj",
+    "sha256": "57a17eb9945a21c0a869dca4401964742c8d47e512d680fef94447aff826abc3"
+   },
+   {
+    "path": "FaceXModel/identity014.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity014.obj",
+    "sha256": "8a1a490f6e695c9116b820a95137823282415fb20bb0362725bedf0a1c2d8bd3"
+   },
+   {
+    "path": "FaceXModel/identity015.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity015.obj",
+    "sha256": "9f3da084848efabf5b898f72d3006db7442497a560185483358a8d4aefb8ac2d"
+   },
+   {
+    "path": "FaceXModel/identity016.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity016.obj",
+    "sha256": "184d17ffd35e7796777bf6008e0f904810e3781b46b37f37f9a550f1969c2525"
+   },
+   {
+    "path": "FaceXModel/identity017.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity017.obj",
+    "sha256": "5b55b7a104f561d5df44a9d0249f21bcf80890dd59666d777c2db9eccd128759"
+   },
+   {
+    "path": "FaceXModel/identity018.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity018.obj",
+    "sha256": "8ae8dd9cb5c7173f49643974420261f10f0437a7636531a50c2ae9a2badaf9a3"
+   },
+   {
+    "path": "FaceXModel/identity019.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity019.obj",
+    "sha256": "a22d531cddb3a0aaed12e6feddf45993f73545253d35642300dc4eca6438117a"
+   },
+   {
+    "path": "FaceXModel/identity020.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity020.obj",
+    "sha256": "3cabf614779ef2e625dfd4323a8db70a174e80e20aa083cd4cd3310503a66f1d"
+   },
+   {
+    "path": "FaceXModel/identity021.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity021.obj",
+    "sha256": "9ab18156977d76b6651868c68ddf5e3da529678606c9cc451cefe1bbc29cd4e5"
+   },
+   {
+    "path": "FaceXModel/identity022.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity022.obj",
+    "sha256": "6d6d1fb2c7af1d8bf14b65c2f60aa3312b3c6ad5c5315218559f3f9dd16f4f73"
+   },
+   {
+    "path": "FaceXModel/identity023.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity023.obj",
+    "sha256": "8b0e809b2b07c36eefaf5a4e6be9efed0ac0e3a8d1cc84130f112e12b188b457"
+   },
+   {
+    "path": "FaceXModel/identity024.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity024.obj",
+    "sha256": "23f6b0c1ffa4395aae606a199aa29be6b10800e46fd05c804b5a79fd87f718ff"
+   },
+   {
+    "path": "FaceXModel/identity025.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity025.obj",
+    "sha256": "93089be89ad88e7fe701dad51b07ecfa7eddfa81afaf13e27976bf97cc43a000"
+   },
+   {
+    "path": "FaceXModel/identity026.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity026.obj",
+    "sha256": "66c02f3e68e7e298b5e0938003df67a804bf0b153342acaa9ec19e63a7043896"
+   },
+   {
+    "path": "FaceXModel/identity027.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity027.obj",
+    "sha256": "d652ae8402706cd0eafa78b3745dea8435c496ca8585fe7300718e992b8fe690"
+   },
+   {
+    "path": "FaceXModel/identity028.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity028.obj",
+    "sha256": "9857adc057878d3d6f54a058e373a4ce471f77ccd49497008e2700c9d89e3d98"
+   },
+   {
+    "path": "FaceXModel/identity029.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity029.obj",
+    "sha256": "cf5c15dcf37e3d8973be8c86696894d1a8f902ba80cca28d3fda5cff87a70f09"
+   },
+   {
+    "path": "FaceXModel/identity030.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity030.obj",
+    "sha256": "ed70813c94cbbbf57b417016c760f2da44406da63d2b4bbbf8eb55711478c75c"
+   },
+   {
+    "path": "FaceXModel/identity031.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity031.obj",
+    "sha256": "c45f199b1e6dca582513863acb625ed1e2b61b5646098cc29d042db071e57ef2"
+   },
+   {
+    "path": "FaceXModel/identity032.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity032.obj",
+    "sha256": "b15d9d537ac8bf0408f321dc16fdd825fb1f52eb771e0d5201f75c02c94301c6"
+   },
+   {
+    "path": "FaceXModel/identity033.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity033.obj",
+    "sha256": "3dec9b7de7830d43eb7e7239469c07b0d02a7a61614565ae880182411a3931fb"
+   },
+   {
+    "path": "FaceXModel/identity034.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity034.obj",
+    "sha256": "bdef7f09c2bd200e026eeaceec519683033d6967ec831e0f32a1d1fcadd47ae1"
+   },
+   {
+    "path": "FaceXModel/identity035.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity035.obj",
+    "sha256": "f3ada8ae8bc42a604835d3752d6ac7d30d71652ea459560f9b8e528ae1e611df"
+   },
+   {
+    "path": "FaceXModel/identity036.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity036.obj",
+    "sha256": "e18ae8cfc06d376584f9b12fc2dd6535f3784c37128b66ae49ec0bdc53babfa6"
+   },
+   {
+    "path": "FaceXModel/identity037.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity037.obj",
+    "sha256": "e2a78ab5ea24dc03a2369e86086afca681373e7a33e84490a63749f54aae8f5f"
+   },
+   {
+    "path": "FaceXModel/identity038.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity038.obj",
+    "sha256": "37080e0e0aef74921514d4fe6e4d9054fd49b317ab328bfed9ecf4452c8d39ab"
+   },
+   {
+    "path": "FaceXModel/identity039.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity039.obj",
+    "sha256": "bc1e7dc17ea65e0acd7cec7a54c4fb16fbd1a15982c5eda853d4a409850da3b5"
+   },
+   {
+    "path": "FaceXModel/identity040.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity040.obj",
+    "sha256": "904a520b80658b1a58605109d2a1a0ec765e326afa63a6b57ccdb7b37178fdeb"
+   },
+   {
+    "path": "FaceXModel/identity041.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity041.obj",
+    "sha256": "b38ac35811e8ce84b517bbcc6769754004adae0207f25067c111f290a5f3283e"
+   },
+   {
+    "path": "FaceXModel/identity042.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity042.obj",
+    "sha256": "19f9dcb5fdc1a29da1f61a86c00b2e5d29b6649d13bfe88ec9d737424b464cda"
+   },
+   {
+    "path": "FaceXModel/identity043.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity043.obj",
+    "sha256": "65fbc36dfb2a3ebe9a77d2f895d0342e8537a9d8c61d202c3feef27d442c995c"
+   },
+   {
+    "path": "FaceXModel/identity044.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity044.obj",
+    "sha256": "d1f69e1a428a9d68a536e53b65fc62db14f70feaadf2dd1374949a2e728aa543"
+   },
+   {
+    "path": "FaceXModel/identity045.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity045.obj",
+    "sha256": "322357988af125bcf58141e4a90a3c1a475c0271013a2326e6ad610188415d2d"
+   },
+   {
+    "path": "FaceXModel/identity046.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity046.obj",
+    "sha256": "694d4f4d4f4700f7e2c97cdc26f343259298328434943664f33616c699d93bc7"
+   },
+   {
+    "path": "FaceXModel/identity047.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity047.obj",
+    "sha256": "1c7e6758628334115ceca708def3151e4e7d0a7641d67579d939c0d71b99aa92"
+   },
+   {
+    "path": "FaceXModel/identity048.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity048.obj",
+    "sha256": "a75dcc8e295d06ef9df565dc1acb4bf6e0829963d552c9138587b141c8514958"
+   },
+   {
+    "path": "FaceXModel/identity049.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity049.obj",
+    "sha256": "bd7238c27895a311f2b743535b3026d911a65039a858de89cc76f1922cabf21a"
+   },
+   {
+    "path": "FaceXModel/identity050.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity050.obj",
+    "sha256": "8549f4a4a884cce460605acc2e1b0b3273759f38ae79eeb5712e4c14fe9e959f"
+   },
+   {
+    "path": "FaceXModel/identity051.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity051.obj",
+    "sha256": "82dc080a3e3db45e916425305e9b4394046c4c4473f0bab7871720a69084a08e"
+   },
+   {
+    "path": "FaceXModel/identity052.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity052.obj",
+    "sha256": "fbab456a6d5e24f9c51a5fb184775af67a39b5795588aef32dc486b1199d1a78"
+   },
+   {
+    "path": "FaceXModel/identity053.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity053.obj",
+    "sha256": "3b43055487765ffbf6382bbcbe4715ce67e318fab131365fb300b9253426f174"
+   },
+   {
+    "path": "FaceXModel/identity054.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity054.obj",
+    "sha256": "f3ca0b1e431571cf42f66ccfd214f9a7da7d202ca3543c762ce71be3f1a09ac1"
+   },
+   {
+    "path": "FaceXModel/identity055.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity055.obj",
+    "sha256": "2541899c09da268e71a6f016b549e61ca24d2f4155d118b523b0556ec9102b86"
+   },
+   {
+    "path": "FaceXModel/identity056.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity056.obj",
+    "sha256": "f2efa2690a737fe4ea1e722dc0c2dfe0befbbf847a0feba37bc8c364ae1cf11c"
+   },
+   {
+    "path": "FaceXModel/identity057.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity057.obj",
+    "sha256": "054ce6afa96c165b738c83e3a06beb21b8dd6cb2df6a3c110627878b09ff006c"
+   },
+   {
+    "path": "FaceXModel/identity058.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity058.obj",
+    "sha256": "d6c74d031636be8474e1ec2476095df688618e805cc4a561f08dd771761f0620"
+   },
+   {
+    "path": "FaceXModel/identity059.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity059.obj",
+    "sha256": "9c1686ae731f54d4935a231e411fc1e42d118024bf9a66806586df4ffa8cf17e"
+   },
+   {
+    "path": "FaceXModel/identity060.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity060.obj",
+    "sha256": "636639e54c07651bd47d9f5835204c7416f04c06272620cfda388225ce4acf95"
+   },
+   {
+    "path": "FaceXModel/identity061.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity061.obj",
+    "sha256": "be397c552e36997db58de5201f7eafee4e2727b010e34e200e721ff99d42f91f"
+   },
+   {
+    "path": "FaceXModel/identity062.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity062.obj",
+    "sha256": "19fcb3c4fcf199fdea44a88c1785c5c319242e0a5b0440e7bf9633473dec888f"
+   },
+   {
+    "path": "FaceXModel/identity063.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity063.obj",
+    "sha256": "cea787322714ae932330808d377bf65d5f4da7346a4727767e5f6c0461a84a87"
+   },
+   {
+    "path": "FaceXModel/identity064.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity064.obj",
+    "sha256": "af88254d5c5787c63b9a69310c7cad1ed9bf9205411652e4aea785b7ea82b7ae"
+   },
+   {
+    "path": "FaceXModel/identity065.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity065.obj",
+    "sha256": "8f3ba630ce276a87c65c6302cecd9352a57e80a24240be2786464384e39babbe"
+   },
+   {
+    "path": "FaceXModel/identity066.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity066.obj",
+    "sha256": "010a5fc1bd8e5b3cc9631a6233fb7019edfb5390f8216bddda04b62cf7977046"
+   },
+   {
+    "path": "FaceXModel/identity067.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity067.obj",
+    "sha256": "e9e831aacd500e9d0761b51e4d32ed5b82c75219006e62d8b7f7f566ebe66927"
+   },
+   {
+    "path": "FaceXModel/identity068.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity068.obj",
+    "sha256": "d5a2214066683dc2140e277b8d6089814f1a80b6dbf8a7c6f9792c34d709fed7"
+   },
+   {
+    "path": "FaceXModel/identity069.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity069.obj",
+    "sha256": "419c78440217fc4b2c0f130718536f2c1ef4ffc4710e4fa7367a680bbf78ed19"
+   },
+   {
+    "path": "FaceXModel/identity070.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity070.obj",
+    "sha256": "d04d9686c1c69754d9c0e7bc09acf720b93e9496daf5502aacdae12442d88329"
+   },
+   {
+    "path": "FaceXModel/identity071.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity071.obj",
+    "sha256": "42a5429e4e780550067662273284aa42fb17fd8be47b1abf8b6039e50202e5e7"
+   },
+   {
+    "path": "FaceXModel/identity072.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity072.obj",
+    "sha256": "3f60cf1c31d8fa72f5fe6e1e4bf52862a18b851ab1538a4c925b6d38cf91a2ed"
+   },
+   {
+    "path": "FaceXModel/identity073.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity073.obj",
+    "sha256": "916087dc9a8e28f19170f826b8071f5b2baa3ec8ba468a42f0880e6ed4427ba5"
+   },
+   {
+    "path": "FaceXModel/identity074.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity074.obj",
+    "sha256": "c8120bc13eb35de329c2d0c206b5f86c4df4a07e1d36987a05e56cd8a5301316"
+   },
+   {
+    "path": "FaceXModel/identity075.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity075.obj",
+    "sha256": "fe7678ed6e903b01b52d977eed4dcfcfa2e9ac5b4ae7949cc3a40249cebe3e0e"
+   },
+   {
+    "path": "FaceXModel/identity076.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity076.obj",
+    "sha256": "f059cbad69acbd5d21f149c362df502165ac2edc234633c9f951d7ee16c18e44"
+   },
+   {
+    "path": "FaceXModel/identity077.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity077.obj",
+    "sha256": "7d82c57e39e1f2e999e78f19a07ff7a407bdc1b22505b9519c26b54ec0d71bfb"
+   },
+   {
+    "path": "FaceXModel/identity078.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity078.obj",
+    "sha256": "6e18e072ff5718950c215e13434599e21d89cc4ad419aeba9a8988682d051d08"
+   },
+   {
+    "path": "FaceXModel/identity079.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity079.obj",
+    "sha256": "c78769be8238c1e6efa21c84a6149953b10ccc00be67028edf9c345ffde4c53d"
+   },
+   {
+    "path": "FaceXModel/identity080.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity080.obj",
+    "sha256": "c24276693121f87bc47ffd081e4ea624136b7a9ee6186f8a1d4dd79c2c7fb25d"
+   },
+   {
+    "path": "FaceXModel/identity081.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity081.obj",
+    "sha256": "ac84f6861264e7c8bbcd86a1bbc86e5d3ce1d9cdd98adff8ffef6a13e33986fb"
+   },
+   {
+    "path": "FaceXModel/identity082.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity082.obj",
+    "sha256": "33d75dd5d86812bfa22f2360383f25a6ecac69be32ef07a6dedbf28c0433c98e"
+   },
+   {
+    "path": "FaceXModel/identity083.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity083.obj",
+    "sha256": "6bbee0dfed711aa2336ae7614d821752d02e338da45d6f726f2cef1810699e87"
+   },
+   {
+    "path": "FaceXModel/identity084.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity084.obj",
+    "sha256": "7db8e5df79cf7442c232a9184f04feebfb3618e48fcd2c348907a04e7b4485ad"
+   },
+   {
+    "path": "FaceXModel/identity085.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity085.obj",
+    "sha256": "154f0743e1522e1c7f2b9b19cfb31dbc6fc0eadc46188c7097c2045864c81433"
+   },
+   {
+    "path": "FaceXModel/identity086.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity086.obj",
+    "sha256": "c1b7da51297b6cf036cc30585bcc12db6ad00783823657cc7bc7472d98adbf68"
+   },
+   {
+    "path": "FaceXModel/identity087.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity087.obj",
+    "sha256": "d5f123616f1628cfb1cf52faae2a8982d1533c8bf99282e219b682f27260382f"
+   },
+   {
+    "path": "FaceXModel/identity088.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity088.obj",
+    "sha256": "82bb4bdc9c4870ee984327a57cc8b62dce704093dbab3e4270afb8112aaef116"
+   },
+   {
+    "path": "FaceXModel/identity089.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity089.obj",
+    "sha256": "2d462a9844362cbf66b63794555b7aa63353daeec57960f2503540d7b3983e62"
+   },
+   {
+    "path": "FaceXModel/identity090.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity090.obj",
+    "sha256": "05baa39fa4ed9378680b2ad9636facf0f18045bfc1fb2c437e85b9035fd2d3ef"
+   },
+   {
+    "path": "FaceXModel/identity091.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity091.obj",
+    "sha256": "562e6c2e0f5fef6e8bba81c1049adef1d03cf01c55123029e3edcba861d91121"
+   },
+   {
+    "path": "FaceXModel/identity092.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity092.obj",
+    "sha256": "a7ee20c22ba7be28de2eef5878a43decc65b9c215d4087188b690a87201e9103"
+   },
+   {
+    "path": "FaceXModel/identity093.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity093.obj",
+    "sha256": "f7372bd3d4d7b1a107cb2fcc253b10deab0659d39ee1a883ac6352da5ee740ab"
+   },
+   {
+    "path": "FaceXModel/identity094.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity094.obj",
+    "sha256": "ea34d4dcf1934141d6a24fe5fc97c97621e6c2fd36c608b7031d074ab866568b"
+   },
+   {
+    "path": "FaceXModel/identity095.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity095.obj",
+    "sha256": "1ebee650c4db2b4b84fb0f677a1e3f72a565081524813f1c664d8c76367fa4c8"
+   },
+   {
+    "path": "FaceXModel/identity096.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity096.obj",
+    "sha256": "1192407c0209709e6c8edd8dfd6e6d663d471f95a379f83ffc4bae47983d4bfa"
+   },
+   {
+    "path": "FaceXModel/identity097.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity097.obj",
+    "sha256": "a3ba3be2427e8882eacaf658eb6e5781bcfa551bd743ffc753481d3b8bd58845"
+   },
+   {
+    "path": "FaceXModel/identity098.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity098.obj",
+    "sha256": "b8a13585231b382c6d8bb5dd96cd4de5fa5542a8981d4cd63fe39f1c251a5b90"
+   },
+   {
+    "path": "FaceXModel/identity099.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/identity099.obj",
+    "sha256": "6294bbed0197a06d091d1ad9f586c5f8d90fce4f580350a509749ae688472912"
+   },
+   {
+    "path": "FaceXModel/jawForward.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/jawForward.obj",
+    "sha256": "a0126b2926b69540f478e4c48f05e370868050e6c33718e53c2f17e190a3b239"
+   },
+   {
+    "path": "FaceXModel/jawLeft.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/jawLeft.obj",
+    "sha256": "5af90cd941660fb0116948866414e4321035de754b7ebec787f8144445d2d9e9"
+   },
+   {
+    "path": "FaceXModel/jawOpen.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/jawOpen.obj",
+    "sha256": "8d84355e10f48b05550980cee385bcd426f4797090da76a20de0535bb2f99f4a"
+   },
+   {
+    "path": "FaceXModel/jawRight.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/jawRight.obj",
+    "sha256": "d719335ad69a8f18797501d4728910c7a467aecbbae260923192b1bf242eec97"
+   },
+   {
+    "path": "FaceXModel/mouthClose.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthClose.obj",
+    "sha256": "4a44b94c269407cf1171483d87d99d2cbdea9c66242aabf2ad0f57cb785aa193"
+   },
+   {
+    "path": "FaceXModel/mouthDimple_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthDimple_L.obj",
+    "sha256": "189f6e01adbf1e13147fe4d505d1f3006e5ce4590ae150064b810274093d29b0"
+   },
+   {
+    "path": "FaceXModel/mouthDimple_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthDimple_R.obj",
+    "sha256": "4cf674b98d6d34a16fab462fbd9ecb2cb5e39ccaf3f50459b9ac7d59fbd6a215"
+   },
+   {
+    "path": "FaceXModel/mouthFrown_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthFrown_L.obj",
+    "sha256": "1bfd720ad024e5805ac8472df170c2c96c09e817e02b66f916057d6e2d31ee9b"
+   },
+   {
+    "path": "FaceXModel/mouthFrown_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthFrown_R.obj",
+    "sha256": "ae3da92fa1dc70010c6bec810338d740287c71b8730694c97876cab5af241f74"
+   },
+   {
+    "path": "FaceXModel/mouthFunnel.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthFunnel.obj",
+    "sha256": "d4f1dba04c1af5fc37452c88cc54a72f1133296c26d9abe0f8adb74dc5c2577f"
+   },
+   {
+    "path": "FaceXModel/mouthLeft.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthLeft.obj",
+    "sha256": "01fb69aa8ac07c5762719c9bb2eec5372652c9f1e73509a63d01e7e60e28b885"
+   },
+   {
+    "path": "FaceXModel/mouthLowerDown_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthLowerDown_L.obj",
+    "sha256": "8847660d51e2a72f2bce6ce9add7d58abab1cef967420db83056891291c0b2de"
+   },
+   {
+    "path": "FaceXModel/mouthLowerDown_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthLowerDown_R.obj",
+    "sha256": "b5143ed50d41c91d80ddc8b565f6274eaf514509ec6f895797db34ca92a85b68"
+   },
+   {
+    "path": "FaceXModel/mouthPress_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthPress_L.obj",
+    "sha256": "de2bdaf2fa7199294ff7a281cd8f6647bf5ca9a6f84588bd7f7779fff4c61396"
+   },
+   {
+    "path": "FaceXModel/mouthPress_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthPress_R.obj",
+    "sha256": "ca8d9973b3231e51b8b76d3e7af7f7f3432959b7c37148fc25e7c643252847b6"
+   },
+   {
+    "path": "FaceXModel/mouthPucker.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthPucker.obj",
+    "sha256": "9929c31025667683809f70df7dce612f72e3acfc7f9e8acb939f6636509dbc5c"
+   },
+   {
+    "path": "FaceXModel/mouthRight.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthRight.obj",
+    "sha256": "e3faaf5ed51715e77122d76e8187d5ba83ea9f54e15e29c52e64f26c52e66bda"
+   },
+   {
+    "path": "FaceXModel/mouthRollLower.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthRollLower.obj",
+    "sha256": "1f577e1129eef4f9e9dc26aa739c6d0f15b27253dee89af3428db6816666e910"
+   },
+   {
+    "path": "FaceXModel/mouthRollUpper.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthRollUpper.obj",
+    "sha256": "a69ec7407adfd6a5f4c818179bb4604d9e506c07671976f75ac33ef8f54a1bb0"
+   },
+   {
+    "path": "FaceXModel/mouthShrugLower.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthShrugLower.obj",
+    "sha256": "1eedd7831b0408bdcbc9aefe23b11803c54f81da5fc9be1fe81fc7a5117c0b88"
+   },
+   {
+    "path": "FaceXModel/mouthShrugUpper.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthShrugUpper.obj",
+    "sha256": "2bd3e3f1568366f2fd84717f0f63aee9f56eed4c303fc4f234aadd81d430032c"
+   },
+   {
+    "path": "FaceXModel/mouthSmile_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthSmile_L.obj",
+    "sha256": "91794e73cef330f1c7d1f4541723544708536b39d5dd6ed35fd8f83f676b7af4"
+   },
+   {
+    "path": "FaceXModel/mouthSmile_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthSmile_R.obj",
+    "sha256": "3fb3de3da9f8358edbb933a65ce6e44c25a2501f30dcb240daea725b68adac84"
+   },
+   {
+    "path": "FaceXModel/mouthStretch_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthStretch_L.obj",
+    "sha256": "9187105730bad43023c63e2a91c979091b9289dd8fc1b587885412b8f7a3d2b7"
+   },
+   {
+    "path": "FaceXModel/mouthStretch_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthStretch_R.obj",
+    "sha256": "d985452085a19d6b3da397ca2cd2f938d8e08761d2e684e87640f3639bdf5f6d"
+   },
+   {
+    "path": "FaceXModel/mouthUpperUp_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthUpperUp_L.obj",
+    "sha256": "d49483aca6cbbb7a559edf4865aec62970560ddf3a0d34e5b208488bff59f722"
+   },
+   {
+    "path": "FaceXModel/mouthUpperUp_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/mouthUpperUp_R.obj",
+    "sha256": "299e3da0f36ca80c0c74e51900b67bfe6bb5b0101aaf46ce30075064c26a7f02"
+   },
+   {
+    "path": "FaceXModel/noseSneer_L.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/noseSneer_L.obj",
+    "sha256": "47c5d66ddc1ba146480f0e43b1084f439e0e7d2af31bcec3e6a3bffc420ffa4d"
+   },
+   {
+    "path": "FaceXModel/noseSneer_R.obj",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/noseSneer_R.obj",
+    "sha256": "c384c41331124b9cd4b99c1bbe8aef56318cae2b8db6ff0f573a7347ebbe8caa"
+   },
+   {
+    "path": "FaceXModel/vertex_indices.json",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/FaceXModel/vertex_indices.json",
+    "sha256": "4f9b35306299980dd46bee4a6b79bb95dfae1953693b74b35a64f7febfd081a5"
+   },
+   {
+    "path": "LICENSE",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/LICENSE",
+    "sha256": "b20a78d8fc51657e14f3e00c8abb538d786ad00aa63210328c22565e583167e1"
+   },
+   {
+    "path": "README.md",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/README.md",
+    "sha256": "614116987854431bbdadbf7772f7352edeeca55580f62021dccb78aaf76febf6"
+   },
+   {
+    "path": "Scripts/face_model_io.py",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/Scripts/face_model_io.py",
+    "sha256": "a6748f9598dcd4e02dad4d11308a3401928564f61fc9c5572790464440267024"
+   },
+   {
+    "path": "Scripts/face_model_test.py",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/Scripts/face_model_test.py",
+    "sha256": "5f0d4fb02be494d7df1b5965578d04ac73a5f7a755970efa90b32e7b67676ad6"
+   },
+   {
+    "path": "Scripts/ict_face_model.py",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/Scripts/ict_face_model.py",
+    "sha256": "a90f104e82bef42b69068f3eb621a1c63f0362d5cb3f8790f7c483969c946328"
+   },
+   {
+    "path": "Scripts/read_identity.py",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/Scripts/read_identity.py",
+    "sha256": "524d336fea4e986f5275212f5aa9701871f18a2e926a53c73b0d09e0639bfa18"
+   },
+   {
+    "path": "Scripts/sample_random.py",
+    "url": "https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/da5f95a607f5e6b37755b38d3385d7f2853732e5/Scripts/sample_random.py",
+    "sha256": "969015a2e0cd96e4a4cca44169218a35c7f7d639d11e9a130f3bbebe61cc4596"
+   }
+  ]
+ },
+ "frll": {
+  "needed_by": "faces4 coherent face model (M4: fitting / validation faces, 5 views): statistics only",
+  "source": "Face Research Lab London Set (DeBruine L, Jones B (2017), figshare, dataset 5047666, doi 10.6084/m9.figshare.5047666): 102 adults, neutral / smiling, front, 3/4 and profile both sides, 189-point templates",
+  "licence": "CC BY 4.0 (attribution: DeBruine & Jones 2017). Consent: 'used in lab-based and web-based studies'. The photos stay on /mnt/data (never in the repo, assets or exports); only statistics learned from them are shipped: Joe's decision 2026-10-10.",
+  "optional": true,
+  "files": [
+   {
+    "path": "facelab_london.pdf",
+    "url": "https://ndownloader.figshare.com/files/8541955",
+    "sha256": "310e8d298622a647c536795ab98cec822c4ed78671cbe377eeb5f47ae54b8185"
+   },
+   {
+    "path": "london_faces_info.csv",
+    "url": "https://ndownloader.figshare.com/files/27397184",
+    "sha256": "a804aeb33661872269e0dd23a2aae1b60a97dd213f93ca6a59a2d9730192fd65"
+   },
+   {
+    "path": "london_faces_ratings.csv",
+    "url": "https://ndownloader.figshare.com/files/8542045",
+    "sha256": "eadc7a6710b752fb9ca537f84feb420636a1603d1a02dee3d178898f80d35195"
+   },
+   {
+    "path": "neutral_front.zip",
+    "url": "https://ndownloader.figshare.com/files/8541961",
+    "sha256": "9fe8aa6f722008edfdec2dd956572316a107590573b1239c080ae0a89d2fa001"
+   },
+   {
+    "path": "smiling_front.zip",
+    "url": "https://ndownloader.figshare.com/files/8541964",
+    "sha256": "69d3d80023345e358b9a5eac47ad9481dbb98985c84b5c56214b149f05690fca"
+   },
+   {
+    "path": "neutral_left_3quarter.zip",
+    "url": "https://ndownloader.figshare.com/files/8545675",
+    "sha256": "bd9868d810672cf099217fa9da6df58c3b94ef7584aa5443cd3c18ed7ec49503"
+   },
+   {
+    "path": "neutral_left_profile.zip",
+    "url": "https://ndownloader.figshare.com/files/8545678",
+    "sha256": "227b62a37ea4be7f2f42181f7ed5b8390ea2a605d02c84ec9540dc4f950b7b8a"
+   },
+   {
+    "path": "neutral_right_3quarter.zip",
+    "url": "https://ndownloader.figshare.com/files/8545681",
+    "sha256": "d2f41656824e3cc4c31c1a528059864c4dc5521383877286529c7640d8797a97"
+   },
+   {
+    "path": "neutral_right_profile.zip",
+    "url": "https://ndownloader.figshare.com/files/8545684",
+    "sha256": "9ab9a2a0a476b21e2ade35a47c50f48813d19a1133bfbf04fb9b680d4608d7af"
+   },
+   {
+    "path": "smiling_left_3quarter.zip",
+    "url": "https://ndownloader.figshare.com/files/8545741",
+    "sha256": "97293d93f0933ef5d81423beb013fbe216786cfa95e1f25ece6f6642ce20fdec"
+   },
+   {
+    "path": "smiling_left_profile.zip",
+    "url": "https://ndownloader.figshare.com/files/8545744",
+    "sha256": "592f0e1c6983b5d5d704b824876875f49285596c6727f94c0a5782c6955e1fec"
+   },
+   {
+    "path": "smiling_right_3quarter.zip",
+    "url": "https://ndownloader.figshare.com/files/8545747",
+    "sha256": "a284368d2d60235a1213185ebb8097d51d4a11434f57ebe65e8f2bdf14f47c0d"
+   },
+   {
+    "path": "smiling_right_profile.zip",
+    "url": "https://ndownloader.figshare.com/files/8545750",
+    "sha256": "f37d8ee1bfa7c9d401ed37b2b6f256408d3f0c433e9070d01b4711a129b4c27c"
+   }
+  ]
  }
 }
