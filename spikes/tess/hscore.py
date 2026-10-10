@@ -111,7 +111,18 @@ for v in views:
             both = mh & mo & m & (ca > 0.3) & (cp > 0.3)
             d = np.abs(aa[both] - ap[both])
             d = np.degrees(np.minimum(d, np.pi - d))
-            print(f"   {rn:12s} {side}: extra {100 * (mo & ~mh & m).sum() / max(her, 1):5.1f}%  missing "
+            # coverage: how opaque the hair is there (0 = the background shows, 1 = solid hair), over the union of
+            # both masks in the region: a dense sheet and airy wisps have the same outline, not the same coverage
+            u = (mh | mo) & m
+            if u.sum():
+                def cov(L):
+                    bgL = float(np.median(L[~(mh | mo)][:: 7])) if (~(mh | mo)).any() else 0.85
+                    hairL = float(np.percentile(L[u], 5))
+                    return float(np.clip((bgL - L[u]) / max(bgL - hairL, 1e-3), 0, 1).mean())
+                cvh, cvo = cov(Lp), cov(La)
+            else:
+                cvh = cvo = float("nan")
+            print(f"   {rn:12s} {side}: coverage hers {cvh:.2f} ours {cvo:.2f} ({cvo - cvh:+.2f})  extra {100 * (mo & ~mh & m).sum() / max(her, 1):5.1f}%  missing "
                   f"{100 * (mh & ~mo & m).sum() / max(her, 1):5.1f}%  flow diff {np.median(d) if len(d) else float('nan'):5.1f} deg (n {len(d)})")
     vis = np.zeros((PX, PX, 3))
     vis[..., 0] = mh
