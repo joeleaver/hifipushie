@@ -815,6 +815,12 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
             mask = ls.skin_mask(side, (Hh, Ww), lambda Q: (np.asarray(Q, float) - [box[0], box[1]]) * k, k / mmpx) & mask
         except Exception:  # noqa: BLE001  (a crop the skin mask can't place: the whole skin)
             pass
+    elif box[2] - box[0] < 0.6 * W and box[3] - box[1] < 0.6 * H:
+        # a feature's crop of a clicked profile: the light is fitted on the whole face (inside a crop of one eye the
+        # fit saw lashes, brow hair and wall, and lit the clay to white), then the crop is rendered with it
+        _, lt, _ = lit_render(mesh, cam, img, soft=soft)
+        im, _, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
+        return im, lt, ps
     else:
         # no detector on the picture (a clicked profile): the light is fitted inside the face's landmark hull only;
         # the whole head took in the hair over the skull and the fit lit the face to white
@@ -881,20 +887,35 @@ def detect_view(img, view: dict):
 
 def profile_contour(view: dict, step: int = 3) -> np.ndarray:
     """A true profile's front contour where the skin meets a plain background (the photo's own pixels), from just above
-    the nasion to under the chin, for a left-facing picture; hair / lashes crossing are skipped, the throat cut off."""
+    the nasion to under the chin; hair / lashes crossing are skipped, the throat cut off. A right-facing picture (yaw > 0)
+    is read mirrored and its contour mirrored back."""
     from PIL import Image
     a = np.asarray(Image.open(view["image"]).convert("RGB"), float)
-    pts = view.get("points") or {}
+    pts = dict(view.get("points") or {})
+    right = float(view.get("yaw", 0)) > 0
+    if right:   # (the scan below runs from the image's left: mirror the picture and the clicked points)
+        a = a[:, ::-1]
+        pts = {k: [a.shape[1] - 1 - float(p[0]), float(p[1])] for k, p in pts.items()}
+    eo = pts.get("eye_outer.L", pts.get("eye_outer.R"))
     yb, yc = float(pts["nose_bridge"][1]), float(pts["chin"][1])
     y0, y1 = int(yb - 0.12 * (yc - yb)), int(yc + 0.22 * (yc - yb))
-    # the background per row (its left end): a profile in front of a wall above and a sofa below has two
-    bg = np.median(a[:, :15], 1)[:, None, :]
+    # the background per row (a profile in front of a wall above and a sofa below has two): a band just in front of the most forward clicked point (a wall's light falls off across
+    # the picture: its far edge is another colour), else the row's far end
+    xs = [float(p[0]) for p in pts.values()]
+    b1 = int(min(xs) - 0.02 * a.shape[1]) if xs else 15
+    b0 = max(0, b1 - int(0.04 * a.shape[1]))
+    bg = np.median(a[:, b0:max(b1, b0 + 15)], 1)[:, None, :]
     lum = a.mean(-1)
-    fg = (np.abs(a - bg).sum(-1) > 40) & (lum > 0.55 * np.median(lum[int(yb):int(yc), :]))
+    # differs from the row's background in colour OR in hue alone: a warm wall can be as bright and as red as skin
+    # (a tan wall behind a fair face: |rgb| differs by ~35, the chromaticity (rgb / sum) by ~0.07, the wall's own ~0.005)
+    from scipy.ndimage import uniform_filter
+    ch = uniform_filter(a / np.maximum(a.sum(-1, keepdims=True), 1.0), (5, 5, 1))   # (sensor noise in the hue)
+    chb = bg / np.maximum(bg.sum(-1, keepdims=True), 1.0)
+    fg = ((np.abs(a - bg).sum(-1) > 40) | (np.abs(ch - chb).sum(-1) > 0.05)) & (lum > 0.55 * np.median(lum[int(yb):int(yc), :]))
     # and skin-like: a textured background (a leather sofa's highlights) differs from its row's left end too; skin is
     # told by its warmth ((r - b) / sum) against a patch of cheek in front of the ear (between nose base and eye)
-    if "nose_base" in pts and "eye_outer.L" in pts:
-        cx, cy = (np.asarray(pts["nose_base"], float) + 2.0 * np.asarray(pts["eye_outer.L"], float)) / 3.0
+    if "nose_base" in pts and eo is not None:
+        cx, cy = (np.asarray(pts["nose_base"], float) + 2.0 * np.asarray(eo, float)) / 3.0
         r_ = max(4, int(0.04 * (yc - yb)))
         patch = a[int(cy) - r_:int(cy) + r_, int(cx) - r_:int(cx) + r_].reshape(-1, 3)
         if len(patch):
@@ -910,7 +931,13 @@ def profile_contour(view: dict, step: int = 3) -> np.ndarray:
         if out and y > yc and x - out[-1][0] > 12.0 * step / 6:
             break
         out.append([x, float(y)])
-    return np.array(out)
+    out = np.array(out)
+    if len(out) >= 5:   # (single rows where lashes / a shadowed fold break the run: a 5-row median)
+        from scipy.ndimage import median_filter
+        out[:, 0] = median_filter(out[:, 0], 5, mode="nearest")
+    if right and len(out):
+        out[:, 0] = a.shape[1] - 1 - out[:, 0]
+    return out
 
 
 def _eye_anchor(view, Pd, Lm):
@@ -926,7 +953,9 @@ def _eye_anchor(view, Pd, Lm):
             a_ph = np.mean(got, 0)
         return np.asarray(a_ph, float), Lm[[36, 39, 42, 45, 27]].mean(0)
     pts = view["points"]
-    return np.mean([pts["nose_bridge"], pts["eye_outer.L"]], 0), Lm[[27, 45]].mean(0)
+    if "eye_outer.L" in pts:   # (the side the picture shows: her left = lm45, her right = lm36)
+        return np.mean([pts["nose_bridge"], pts["eye_outer.L"]], 0), Lm[[27, 45]].mean(0)
+    return np.mean([pts["nose_bridge"], pts["eye_outer.R"]], 0), Lm[[27, 36]].mean(0)
 
 
 def look(name: str, out: str, views: list | None = None, T: int = 330, before: str | None = None) -> dict:
@@ -1055,7 +1084,8 @@ def _feature_box(feature, L2, P_ear=None):
     Q = P_ear if feature == "ears" and P_ear is not None and len(P_ear) else L2[FEATURES[feature]["lm"]]
     lo, hi = Q.min(0), Q.max(0)
     c = 0.5 * (lo + hi)
-    io = float(np.linalg.norm(L2[45] - L2[36]))
+    # (a profile foreshortens the eye corners' span to a few mm: the nasion-chin length doesn't, ~0.75 x the span)
+    io = max(float(np.linalg.norm(L2[45] - L2[36])), 0.75 * float(np.linalg.norm(L2[27] - L2[8])))
     side = max(FEATURES[feature].get("pad", 1.5) * float(np.max(hi - lo)), 0.55 * io)
     return (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
 
@@ -1129,8 +1159,10 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         cl = brows_on(fill(cl_, ps), ps, mesh, rj, cam, box, k)
         to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
+        # (from the side the face looks to: a right-facing profile's front is on the picture's right)
+        rk_dir = RAKE * [-1.0, 1.0, 1.0] if float(v.get("yaw", 0)) >= 70 else RAKE
         rake = lambda m: fill(*likeness.render(m, cam, box, px=px, brows=False, passes=True, ao=True, shadow=4.0,  # noqa: E731
-                                                light=(0.3, RAKE, 1.0, 0.0))[::2], share=0.3)
+                                                light=(0.3, rk_dir, 1.0, 0.0))[::2], share=0.3)
         rk = rake(mesh)
         ov = Image.blend(ph, cl, 0.5)
         ol = ph.copy().convert("L").convert("RGB")

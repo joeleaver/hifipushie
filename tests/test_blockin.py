@@ -188,3 +188,26 @@ def test_new_human_eye_radius():
     assert humans.eye_radius(40) == 0.012 and 0.0083 < humans.eye_radius(0) < 0.0085
     assert humans.spec(age=30, sex=1, source="human")["base"]["head"]["eye_radius"] == 0.012
     assert "eye_radius" not in humans.spec(age=30, sex=1)["base"]["head"]   # the grafted head: unchanged
+
+
+def test_profile_contour_either_side(tmp_path):
+    """A profile facing image-right (yaw +90) reads as the mirror of the same face facing left (yaw -90), also on a
+    warm wall nearly as bright and red as the skin (the hue test)."""
+    from PIL import Image
+    H, W = 400, 300
+    yy, xx = np.mgrid[:H, :W]
+    a = np.empty((H, W, 3))
+    a[:] = (180, 141, 104)                                  # a tan wall
+    front = 145 - 25 * np.exp(-((yy - 170) / 25.0) ** 2)     # a 'nose' standing out of a straight face line
+    a[xx >= front] = (184, 128, 125)                         # the face, looking at image-left
+    Image.fromarray(a.astype(np.uint8)).save(tmp_path / "left.png")
+    Image.fromarray(a[:, ::-1].astype(np.uint8)).save(tmp_path / "right.png")
+    ptsL = {"nose_bridge": [145, 100], "nose_tip": [120, 170], "chin": [145, 300], "nose_base": [145, 200],
+            "eye_outer.L": [190, 120]}
+    cL = bi.profile_contour({"image": str(tmp_path / "left.png"), "yaw": -90, "points": ptsL})
+    ptsR = {k.replace(".L", ".R"): [W - 1 - p[0], p[1]] for k, p in ptsL.items()}
+    cR = bi.profile_contour({"image": str(tmp_path / "right.png"), "yaw": 90, "points": ptsR})
+    assert len(cL) > 50 and len(cL) == len(cR)
+    np.testing.assert_allclose(cR[:, 0], W - 1 - cL[:, 0], atol=1.0)
+    want = np.ceil(145 - 25 * np.exp(-((cL[:, 1] - 170) / 25.0) ** 2))
+    assert np.abs(cL[:, 0] - want).max() <= 3   # on the skin's edge, not on the wall
