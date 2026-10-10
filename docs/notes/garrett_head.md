@@ -252,3 +252,19 @@ g4_a + rounds 1-3, 5), `ll_d0` (start dressed = g4_a), `ll_d2` (end dressed). Sh
   inside the eye's width): test_hood_crease_is_a_soft_fold_edge. e19 rendered (ll_e19; zoom_e19.jpg in scratch),
   NOT judged. Then Joe stopped this line: "we shouldn't just randomly sculpt": eye-area control belongs in the one
   mesh's sliders / topology. No further edits to Garrett until the plan is agreed (report to the coordinator).
+
+## Current dressing: gc_dress (facesliders, 2026-10-09; spikes/facesliders/mkgc.py)
+
+Garrett's ONE current dressing (the coordinator: the pieces were spread over g4_garrett, gc_c1, d9, likeloop):
+- head: fs_gj8's base (the joint solve: identity, residuals, the squint pose);
+- hair: tess's gc_c1 (h7's groom with groom.fit, the concept's colour) and its hair_*.npz;
+- skin: g4_garrett's skin.py layers + skin2's stubble {amount 1.0, short, length 2 mm, grey 0.35, cheeks 0.75,
+  #3a342f} + lips melanin 4.5 / blood 1.2; the lash paint at its defaults; lashes geometry (base.lashes) default on;
+- eyes: lidfold {crease_height 3.0, crease_depth 0.6, crease_width 1.1, fold_overhang 0.8, fold_width 3.0
+  (eyedetail's "roll 3.0")}; eye_crease_* / eye_platform / eye_hood / eye_hood_lateral / age_lid_fold sliders dropped
+  (lidfold owns the crease and the fold);
+- paint: only g4_garrett's layers skin.py has no equivalent of: g4_nostril.L (the nostrils' dark interiors),
+  g4_body_tone (the body's tone off the face), g4_neck_cool (the neck's cooler tone under the beard line). Dropped:
+  the old likeloop ~30-layer stack (it overflowed the Cycles shader stack), over_lip_seam and 180_mouth_inside
+  (obsolete: the mouth is sealed).
+Rebuild it with `mkgc.py gc_dress <head model>` when the head changes.

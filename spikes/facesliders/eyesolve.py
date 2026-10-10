@@ -28,13 +28,15 @@ UP = 2
 VARS = ["lid_upper", "lid_lower", "crease_height", "fold_overhang", "eye_opening"]
 STEP = np.array([0.0004, 0.0004, 0.4, 0.2, 0.3])
 PRIOR = np.array([0.002, 0.002, 2.0, 1.0, 1.0])   # the pull toward the start: one unit costs as much as one tolerance
-TOL = np.array([0.35, 0.35, 0.5])                   # opening, lash, crease (mm)
-DROP = ("eye_crease_height", "eye_crease_depth", "eye_platform")
+TOL = np.array([0.35, 0.35, 0.3, 0.5])              # opening, lash, lower lid, crease (mm)
+DROP = ("eye_crease_height", "eye_crease_depth", "eye_platform", "eye_hood", "eye_hood_lateral", "age_lid_fold")   # (lidfold owns the crease and the fold)
 # eyedetail: the crease rides the opening's rim, so solve the lid (and the opening) FIRST against opening and lash,
 # then the crease against TPS; fold_overhang barely moves TPS (shading above the line): held
 STAGE = os.environ.get("STAGE", "A")
 ACTIVE = [0, 1, 4] if STAGE == "A" else [2]
-MEAS = np.array([True, True, False]) if STAGE == "A" else np.array([False, False, True])
+# stage A on the two lids' own positions (the opening is their sum: matching it alone dropped the LOWER lid,
+# white under the iris where hers sits at its bottom)
+MEAS = np.array([False, True, True, False]) if STAGE == "A" else np.array([False, False, False, True])
 
 sp0 = json.loads((store.HOME / src / "spec.json").read_text())
 sp0 = sp0.get("spec", sp0)
@@ -66,9 +68,10 @@ def measures(img):
     ex, ey = side.frame()
     op = np.mean([abs((P[a] - P[b]) @ ey) for a, b in ((159, 145), (386, 374))]) * MMPX
     lash = np.mean([((P[c_] - P[a]) @ ey) for a, c_ in ((159, 468), (386, 473))]) * MMPX   # + = lid above the iris centre
+    lower = np.mean([((P[a] - P[c_]) @ ey) for a, c_ in ((145, 468), (374, 473))]) * MMPX   # + = lower lid below it
     lid = lidfold.read_lid(img, P, MMPX)
     tps = [col["tps"] for eye in lid for col in eye[1:2] if np.isfinite(col["tps"])]
-    return np.array([op, lash, float(np.mean(tps)) if tps else np.nan])
+    return np.array([op, lash, lower, float(np.mean(tps)) if tps else np.nan])
 
 
 def spec_of(x):
@@ -101,16 +104,17 @@ def pid(name, x):
     import numpy as _np
     # the frame's pixels: the same crop as the photo's (box), SIZE px
     k = SIZE / (box[2] - box[0])
-    ops, tops = [], []
+    ops, tops, bots = [], [], []
     for e in (68, 69):
         u, v_ = (humanfit.project(cam, st["L"][e][None])[0] - [box[0], box[1]]) * k
         col = m[:, int(round(u)) - 2:int(round(u)) + 3].any(1)
         rows = _np.flatnonzero(col)
         if not len(rows):
-            return _np.array([_np.nan, _np.nan])
+            return _np.array([_np.nan, _np.nan, _np.nan])
         ops.append((rows.max() - rows.min() + 1) * MMPX)
         tops.append((v_ - rows.min()) * MMPX)
-    return _np.array([float(_np.mean(ops)), float(_np.mean(tops))])
+        bots.append((rows.max() - v_) * MMPX)
+    return _np.array([float(_np.mean(ops)), float(_np.mean(tops)), float(_np.mean(bots))])
 
 
 def render(x, keep=None):
@@ -130,7 +134,7 @@ def render(x, keep=None):
 
 photo = Image.open(v["image"]).convert("RGB").crop(tuple(int(round(q)) for q in box)).resize((SIZE, SIZE), Image.LANCZOS)
 mp = measures(photo)
-print("photo: opening %.2f, lash over iris %.2f, crease TPS %.2f mm" % tuple(mp))
+print("photo: opening %.2f, lash over iris %.2f, lower lid under it %.2f, crease TPS %.2f mm" % tuple(mp))
 h0 = sp0["base"]["head"]
 x0 = np.array([float((h0.get("pose") or {}).get("lid_upper", 0.0)), float((h0.get("pose") or {}).get("lid_lower", 0.0)),
                float(fold0.get("crease_height", 4.0)), float(fold0.get("fold_overhang", 0.4)), 0.0])
@@ -138,14 +142,14 @@ if os.environ.get("X0"):
     x0 = np.array(json.loads(os.environ["X0"]), float)
 x = x0.copy()
 hist = []
-BIAS = np.zeros(3)
+BIAS = np.zeros(4)
 
 
 def model_measures(im):
     m = measures(im)
     if PID and m is not None and N[1] is not None:
         m = m.copy()
-        m[:2] = N[1]
+        m[:3] = N[1]
     return m
 
 
@@ -154,16 +158,16 @@ for it in range(ITERS + 1):
     m = model_measures(im)
     if it == 0 and PID:   # the detector's bias on our render, onto the photo's targets
         md = measures(im)
-        BIAS[:2] = md[:2] - m[:2]
+        BIAS[:3] = md[:3] - m[:3]
         mp = mp - BIAS
         print(f"detector - part ID on our start render: opening {BIAS[0]:+.2f}, lash {BIAS[1]:+.2f} mm; photo targets "
-              f"now {mp[0]:.2f}, {mp[1]:.2f}")
+              f"now {mp[0]:.2f}, {mp[1]:.2f}; lower lid bias {BIAS[2]:+.2f}, target {mp[2]:.2f}")
     hist.append((x.copy(), m, im))
-    print(f"iter {it}: x {dict(zip(VARS, np.round(x, 4)))} -> opening {m[0]:.2f}, lash {m[1]:.2f}, crease {m[2]:.2f} "
-          f"(photo {mp[0]:.2f}, {mp[1]:.2f}, {mp[2]:.2f})", flush=True)
+    print(f"iter {it}: x {dict(zip(VARS, np.round(x, 4)))} -> opening {m[0]:.2f}, lash {m[1]:.2f}, lower {m[2]:.2f}, "
+          f"crease {m[3]:.2f} (photo {mp[0]:.2f}, {mp[1]:.2f}, {mp[2]:.2f}, {mp[3]:.2f})", flush=True)
     if it == ITERS:
         break
-    J = np.zeros((3, len(x)))
+    J = np.zeros((4, len(x)))
     for k in ACTIVE:
         xk = x.copy()
         xk[k] += STEP[k]
