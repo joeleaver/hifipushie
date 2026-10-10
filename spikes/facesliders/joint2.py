@@ -460,7 +460,7 @@ def readouts(c, mu):
 if __name__ == "__main__":
     name, out = sys.argv[1], sys.argv[2]
     sex = float(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ("nores",) else 1.0
-    names = [] if "nores" in sys.argv else list(RES) + list(AGE) + list(EXTRA_RES)
+    names = [] if "nores" in sys.argv else [n for n in list(RES) + list(AGE) + list(EXTRA_RES) if n not in os.environ.get("DROP_RES", "").split(",")]
     NEED = _need()
     sp = store.load(name)
     base = sp["base"]

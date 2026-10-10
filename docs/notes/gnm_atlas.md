@@ -197,3 +197,21 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
   the painting (the free fit, 0.37 sigmas, prefers it). Kept.
 - Garrett fs_gj8 dressed (human_renders/fs_22_garrett_gj6_gj8.jpg): lips fuller than gj6, chin a little wider without
   the chin line, otherwise the same face.
+
+## Model extensions from MakeHuman's CC0 targets (faceext.py, face_ext.npz; 2026-10-09)
+
+- Carry: each MH target's displacement read at every GNM vertex's binding point on MH's reference body (onemesh
+  g_tri / g_bary), world metres, into GNM's frame (a similarity fitted on g_neutral); +1 = half (incr - decr).
+- What "project out GNM" has to mean: GNM's 120 components reproduce these local targets almost EXACTLY inside their
+  region (0.87-0.94) but only at 46-124 sigmas (extcost.py): expressible, not probable. A full orthogonal projection
+  (local_orthogonal) leaves 0.3-0.5 mm of 3-5 mm targets: it throws the feature away. So the extension removes only
+  the target's components along the identity's CHEAP directions over its region (singular directions moving it
+  >= 0.4 mm rms per sigma: 5-8 of them), which make 0.76-0.82 of it; the extension is exactly orthogonal to those
+  (test), local, symmetric, and the solve chooses between the identity (coupled) and the residual (local) without
+  double counting. The mouth's corners are held (GNM's corner is not MH's: corner quads turned over) and each field
+  is scaled to 0.8 x its largest fold-free fraction (lowerlip_width 0.43, mouth_angles 0.23, lowerlip_ext 1.0).
+- Tess (fs_tj14: the extensions replace the hand-made mouth_corner / lip_lower_width): mh_lowerlip_width -0.23,
+  mh_mouth_angles -0.32, mh_lowerlip_ext -0.25; points 0.57 / 0.68 / 2.26 (tj12 0.58 / 0.70 / 2.21), the hand-made
+  mouth_corner +1.06 gone with no loss. The mouth barely changes: her detector lip points don't ask for the lower
+  lip's lateral taper; her lower lip reads fuller (volume / eversion) more than narrower. A reader of the lower
+  vermilion's visible width (photo vs clay) is what would drive it.
