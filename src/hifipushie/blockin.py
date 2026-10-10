@@ -610,7 +610,17 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         d = ImageDraw.Draw(m)
         for poly in polys:
             d.polygon([tuple(q) for q in (poly - o) * ss], fill=255)
-        hb = brow_hair_band(img, polys, o, cam, mesh)
+        hb = brow_hair_band(img, polys, o, cam, mesh)   # (None for light, fine brows: the detector band, below)
+        # the brows' own colour: the picture's pixels under the hair mask (or the band), their darkest quarter (a fair
+        # person's light-brown brows painted in the fixed dark brown read as heavy bars)
+        Wb, Hb = int(np.ceil(allp.max(0)[0] + 6 - o[0])), int(np.ceil(allp.max(0)[1] + 6 - o[1]))
+        crop = np.asarray(img.crop((int(o[0]), int(o[1]), int(o[0]) + Wb, int(o[1]) + Hb)), float)
+        msk = (np.asarray(hb) > 0) if hb is not None else (np.asarray(m.resize((Wb, Hb), Image.BILINEAR)) > 127)
+        rgb = BROW_RGB
+        if msk.shape == crop.shape[:2] and msk.sum() > 20:
+            px_ = crop[msk]
+            lum_ = px_.mean(1)
+            rgb = np.median(px_[lum_ <= np.percentile(lum_, 25)], 0)
         if hb is not None:
             m = hb.resize(size, Image.BILINEAR)
         L2 = humanfit.project(cam, mesh["state"]["L"])
@@ -620,7 +630,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         _, k, ps = likeness.render(mesh, cam, box, px=1200, brows=False, passes=True)
         mmpx = likeness._mm_per_px(cam, mesh["state"]["L"][27:48])
         soft = m.filter(ImageFilter.GaussianBlur(max(0.5 / mmpx, 0.4) * ss))   # (a ~0.5 mm soft edge)
-        out = {"cam": cam, "mask": np.asarray(soft, float) / 255.0, "mo": o, "ss": ss, "zb": ps["zb"], "part": ps["part"],
+        out = {"cam": cam, "rgb": rgb, "mask": np.asarray(soft, float) / 255.0, "mo": o, "ss": ss, "zb": ps["zb"], "part": ps["part"],
                "box": box, "k": k}
     mesh["_brows"] = out
     return out
@@ -702,7 +712,7 @@ def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
     vis = np.zeros(len(rr), bool)
     vis[inz] = (B["part"][zi[inz, 1], zi[inz, 0]] == 0) & (depth[inz] < B["zb"][zi[inz, 1], zi[inz, 0]] + 0.0025)
     al = al * vis * strength
-    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + BROW_RGB * al[:, None]
+    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + np.asarray(B.get("rgb", BROW_RGB), float) * al[:, None]
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
