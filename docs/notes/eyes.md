@@ -68,7 +68,7 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
 - `gloss` (1): the tear film as a clear coat (coat 1, roughness 0.03) over a matte iris and sclera (roughness 0.4);
   scene via skin_features.eye_base merged into the eyes part's base; GLB KHR_materials_clearcoat. The catchlight
   reads sharp on the cornea's bulge.
-- `occlusion` (1): eye_shade (under the upper lid) + eye_occlusion (a ~1 mm band all round where the lids lie on
+- `occlusion` (1): one eye_shade layer per eye (under the upper lid, max with a ~1 mm band all round where the lids lie on
   the ball, the corners darkest): MetaHuman's eye-occlusion shell as paint.
 - `limbal`, `limbal_width`, `iris_contrast`; iris crypts (darker blotches between fibres, skin_swatch VERSION 15).
 - Iris size, by the detector at the model's own scale (aperture.py): Tess's visible iris radius 5.0-5.1 mm against

@@ -335,13 +335,15 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         # the lids' shadow on the ball (an eye-occlusion shell's job in a game head): deepest under the upper lid,
         # and a narrow soft band all round where the lids lie on the ball (the corners darkest)
         if occ > 0:
-            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.55, 0.5, 0.5], "mix": "multiply",
-                                          "opacity": round(min(0.55 * occ, 1.0), 3),
-                                          "mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5), "to": round(0.55 * r, 5)}},
-                                                   {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}]}
-            out[f"skin:eye_occlusion{nm}"] = {"part": part, "color": [0.42, 0.36, 0.35], "mix": "multiply",
-                                              "opacity": round(min(0.6 * occ, 1.0), 3),
-                                              "mask": [{"near": ["base"], "within": round(0.02 * r, 5), "soft": round(0.09 * r, 5)}]}
+            # (one layer: each layer costs shader; the band all round is the max over the upper lid's shadow)
+            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.48, 0.42, 0.42], "mix": "multiply",
+                                          "opacity": round(min(0.6 * occ, 1.0), 3),
+                                          "mask": [{"mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5),
+                                                                       "to": round(0.55 * r, 5)}},
+                                                             {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}],
+                                                    "weight": 0.85},
+                                                   {"near": ["base"], "within": round(0.02 * r, 5), "soft": round(0.09 * r, 5),
+                                                    "blend": "max"}]}
         # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
         if float(e.get("tear", 1.0)) > 0:
             out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.96, 0.95, 0.94], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
