@@ -41,7 +41,11 @@ eye catches what the points miss; the target table catches what your eye misses.
    - GAPS `"nd:radix_width": 1`: vocabulary the macros lacked, filled with data-backed coupled directions (below).
    - `sex`, `eth0..2`: the sampler's sex axis (+1 = female mean -> male mean) and ethnicity contrasts.
    - BASE keys, SET: `head_scale` (base.style.human.head_size: the head's UNIFORM size about the neck, x the body's
-     own head; 1 = the body's), `gnm_base`, `dimorphism`, `weight`.
+     own head; 1 = the body's), `gnm_base`, `dimorphism`, `weight`, `eye_size` (base.head.eyes: the eye AND its
+     orbit scaled about the eye centre).
+   - LOCAL residuals, SET: `local:<faceslide slider>` (base.head.sliders), for what no identity direction draws;
+     the reply warns past 2.5 x the slider's population sd beyond GNM (ICT: nose_radix_width 0.09, nose_tip_width
+     0.18, nose_dorsum_width 0.12).
    - LIDS, SET: `lid_upper`, `lid_lower` (metres, -0.001 = 1 mm up): by measure, see 7.
 5. **Keep it only if the whole face reads closer AND no target went out.** The reply has the read (the moved macro,
    before -> after, and the largest coupled moves), the target table's delta (items that went out, came in or moved
@@ -105,7 +109,9 @@ justified. A coupling against what you see (a defined orbital rim pulling in a h
 elsewhere (lids, skin) or needs a held variant (`nd:orbital_rim|hold_brow_ridge_eye_depth`).
 
 Filled so far: gonial_height, orbital_rim, lower_orbit (also humanmacro macros), radix_width (R2 0.90, sd ~0.6 mm:
-GNM barely varies it), and held variants `orbital_rim|hold_brow_ridge_eye_depth`, `gonial_height|hold_face_length_chin_height`.
+GNM barely varies it; ICT adds ~0.13 mm beyond GNM: a near-invisible gap, `local:nose_radix_width`), tip_width (R2
+0.94, sd 1.3 mm: comes with wide alae, full forward lips and a low bridge; `nd:tip_width|held` keeps those), and held
+variants `orbital_rim|hold_brow_ridge_eye_depth`, `gonial_height|hold_face_length_chin_height`.
 
 ## What goes wrong
 
