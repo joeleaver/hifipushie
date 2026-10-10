@@ -404,6 +404,120 @@ def press_flap(V: np.ndarray, F: np.ndarray, uv: np.ndarray, flap: np.ndarray, l
     return Vn
 
 
+MADE_LAPEL = {"lay": 0.003, "roll_r": 0.004, "line_reach": 0.025}
+
+
+def away_simple(V: np.ndarray, F: np.ndarray, out: np.ndarray) -> np.ndarray:
+    """Faces wound so their normals agree with per-vertex outward normals `out`."""
+    if not len(F):
+        return F
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    return np.where(((fn * out[F].mean(1)).sum(1) < 0)[:, None], F[:, ::-1], F)
+
+
+def made_lapel(V: np.ndarray, F: np.ndarray, uv: np.ndarray, sel: np.ndarray, flap: np.ndarray, line: tuple,
+               roll: np.ndarray, out: np.ndarray, under: list | None = None, **kw) -> tuple:
+    """The lapel CONSTRUCTED on the finished drape (a made piece, like the collar; construct key lapel="made"): a
+    tailored lapel is canvassed and pressed, its roll line and outer edge straight from the gorge to the break (the
+    concept; simulated, both bowed 18-46 mm on Garrett). The roll line = the straight 3D chord between the roll row's
+    ends on the drape; the base cloth within `line_reach` of the row has the row's bow taken out (only that near).
+    The flap is a ruled sheet over the chord: each flap vertex at its pattern distance along the line and across it,
+    along ONE cross direction (the base's mean direction away from the line, square to it: the lapel lies back on
+    its own side); then laid `lay` over the base (+ the under garment), rising from the fold over a soft roll of
+    radius `roll_r`. sel: the piece's vertices; flap: those past the line; roll: the fold row; out: per-vertex
+    outward normals. -> (V, info)."""
+    p = dict(MADE_LAPEL, **{k: v for k, v in kw.items() if v is not None})
+    V = np.array(V, float)
+    p0, d2 = np.asarray(line[0], float), _unit(np.asarray(line[1], float))
+    n2 = np.array([-d2[1], d2[0]])
+    roll = np.asarray(roll, np.int64)
+    a_r = (uv[roll] - p0) @ d2
+    o = np.argsort(a_r)
+    roll, a_r = roll[o], a_r[o]
+    a0, a1 = float(a_r[0]), float(a_r[-1])
+    R0, R1 = V[roll[0]].copy(), V[roll[-1]].copy()
+    ch = R1 - R0
+
+    def chord(a):
+        return R0 + ((np.asarray(a, float) - a0) / max(a1 - a0, 1e-9))[..., None] * ch
+
+    isf = np.zeros(len(V), bool)
+    isf[flap] = True
+    base_v = sel[~isf[sel]]
+    a_b = (uv[base_v] - p0) @ d2
+    s_b = np.abs((uv[base_v] - p0) @ n2)
+    Fp = F[np.isin(F, sel).all(1)]
+    Fb = Fp[~isf[Fp].any(1)]
+    a_f = (uv[flap] - p0) @ d2
+    s_f = np.abs((uv[flap] - p0) @ n2)
+    cu = _unit(ch)
+    nb = base_v[(s_b > 0.03) & (s_b < 0.07) & (a_b > a0) & (a_b < a1)]
+    if len(nb) < 3:
+        return V, {"made": 0}
+    rel = V[nb] - chord(np.clip((uv[nb] - p0) @ d2, a0, a1))
+    cross = _unit((rel / np.maximum(np.linalg.norm(rel, axis=1), 1e-9)[:, None]).mean(0))
+    cross = _unit(cross - (cross @ cu) * cu)
+    N = _unit(np.cross(cu, cross))
+    if (N * out[sel].mean(0)).sum() < 0:
+        N = -N
+    under = list(under or [])
+
+    def clearance(X, gap):
+        """How far each point must rise along N to stand `gap` over every layer under it (0: clear already)."""
+        need = np.zeros(len(X))
+        for L_ in under:
+            Q_, Nq, _ = closest(X, np.asarray(L_["V"], float), np.asarray(L_["F"]))
+            dv_ = X - Q_
+            sd_ = (dv_ * Nq).sum(1)
+            tg_ = np.linalg.norm(dv_ - sd_[:, None] * Nq, axis=1)
+            hit_ = (sd_ < gap) & (sd_ > -0.08) & (tg_ < 0.01)
+            cosn = np.maximum((Nq * N).sum(1), 0.3)
+            need = np.where(hit_, np.maximum(need, (gap - sd_) / cosn), need)
+        return np.maximum(need, 0.0)
+
+    def plane_lift(A_, need):
+        coef, *_ = np.linalg.lstsq(A_, need, rcond=None)
+        coef[0] += max(0.0, float((need - A_ @ coef).max()))
+        return coef
+
+    # 1. the roll line: the chord, lifted (a linear lift along N) until it clears what is worn under the jacket by the
+    # cloth's own thickness + `lay` (the chord between the roll's ends ran up to 46 mm deep, through the shirt)
+    a_s = np.linspace(a0, a1, 25)
+    Al = np.c_[np.ones(len(a_s)), a_s - a0]
+    cl = plane_lift(Al, clearance(chord(a_s), 2 * p["lay"]))
+
+    def line(a):
+        a = np.asarray(a, float)
+        return chord(a) + (cl[0] + cl[1] * (a - a0))[..., None] * N
+
+    # the base near the row onto the lifted line (its bow taken out; only within line_reach of it)
+    w = np.clip(1 - s_b / p["line_reach"], 0, 1)
+    w = w * w * (3 - 2 * w) * ((a_b >= a0) & (a_b <= a1))
+    near_row = cKDTree(uv[roll]).query(uv[base_v])[1]
+    bow = V[roll[near_row]] - line(a_r[near_row])
+    V0 = V[base_v].copy()
+    V[base_v] = V[base_v] - w[:, None] * bow
+    moved = float(np.linalg.norm(V[base_v] - V0, axis=1).max()) * 1000 if len(base_v) else 0.0
+    # 2. the lapel: a ruled sheet over the line along one cross direction, lifted by one plane over (along, across)
+    # until it clears what is under the jacket by 2 x lay (the forepart lies between); a ruled sheet lifted by a plane
+    # stays ruled: straight edges. Rising from the fold over the soft roll.
+    X = line(a_f) + s_f[:, None] * cross
+    A_ = np.c_[np.ones(len(X)), a_f - a0, s_f]
+    coef = plane_lift(A_, clearance(X, 2 * p["lay"]))
+    k = np.clip(s_f / max(np.pi * p["roll_r"], 1e-6), 0, 1)
+    h = (A_ @ coef) + p["lay"] * np.sin(0.5 * np.pi * k)
+    V[flap] = X + h[:, None] * N
+    # 3. the forepart under the lapel kept `lay` behind it (pressed back; it is hidden there)
+    Ff = Fp[isf[Fp].all(1)]
+    Qf, Nf, _ = closest(V[base_v], V, Ff)
+    sd_f = ((V[base_v] - Qf) @ N)
+    tg_f = np.linalg.norm((V[base_v] - Qf) - sd_f[:, None] * N, axis=1)
+    over_ = (tg_f < 0.006) & (sd_f > -p["lay"]) & (sd_f < 0.05) & (w < 0.99)
+    V[base_v[over_]] -= (sd_f[over_] + p["lay"])[:, None] * N
+    return V, {"made": int(len(flap)), "roll_chord_mm": round(float(np.linalg.norm(ch)) * 1000, 1),
+               "roll_bow_removed_mm": round(moved, 1)}
+
+
 BOARD = {"ease": 0.04, "ends": 0.06}
 
 
@@ -963,7 +1077,7 @@ def collar_pattern(uv: np.ndarray, F_piece: np.ndarray, chain_made: np.ndarray, 
 
 # ---- wiring: what cloth.build calls after its clean-up (garment key `construct`)
 
-CONSTRUCT = {"lapels": True, "collar": False, "lapel_lay": 0.003, "wedge": 0.35, "press": ["lapel"]}
+CONSTRUCT = {"lapels": True, "collar": False, "lapel_lay": 0.003, "wedge": 0.35, "press": ["lapel"], "lapel": "made"}
 
 
 def away(V: np.ndarray, F: np.ndarray, bV: np.ndarray, bFo: np.ndarray) -> np.ndarray:
@@ -1001,7 +1115,9 @@ def options(g: dict) -> dict | None:
     collar and an under garment: the neckline drawn in to the under collar, hug_neckline; false or {gap, reach, max_pull,
     gorge}), "over_under" (pressed lapels lifted out over the under garment; default on), "board" (the forepart under a
     lapel laid as a ruled strip first, board_lapel; default OFF, experimental: on Garrett it straightened the roll line
-    (18-34 -> 8-9 mm) but folded pouches at the breaks and bulges under the lapels), "press" (fold-name prefixes whose
+    (18-34 -> 8-9 mm) but folded pouches at the breaks and bulges under the lapels), "lapel": "made" (the lapel
+    constructed, made_lapel: straight roll line and outer edge, laid on the drape; the default) | "pressed" (press_flap:
+    the simulated flap mirrored onto its forepart), "press" (fold-name prefixes whose
     flaps are pressed, default ["lapel"]; EXPERIMENTAL for others: ["open neck"] on a shirt chose the wrong side of
     front.R's weak roll and cut the V, cloth10 c10_dbg_steps (c))}."""
     c = g.get("construct", True)
@@ -1065,7 +1181,15 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
             np.add.at(bn, Fb[:, a_], fn)
         L.update(Fp=Fp, Fb=Fb, out=_unit(bn))
         before = V[L["flap"]].copy()
-        V = press_flap(V, Fp, uv, L["flap"], L["line"], lay=opt["lapel_lay"], wedge=opt["wedge"], out=L["out"])
+        if opt.get("lapel") == "made" and len(L.get("row", [])) >= 3:
+            und_m = []
+            if under is not None:
+                und_m = [{"V": np.asarray(under["V"], float), "F": away(np.asarray(under["V"], float), np.asarray(under["F"]), np.asarray(bV, float), bFo)}]
+            V, minfo = made_lapel(V, F, uv, L["sel"], L["flap"], L["line"], L["row"], L["out"], und_m,
+                                  lay=opt["lapel_lay"])
+            made["info"].setdefault("made_lapel", {})[L["piece"]] = minfo
+        else:
+            V = press_flap(V, Fp, uv, L["flap"], L["line"], lay=opt["lapel_lay"], wedge=opt["wedge"], out=L["out"])
         # the pressed flap kept over its OWN forepart: pressed in the plane of a board, a forepart that curves out
         # (the chest) came through it (cloth10 j1/j6: 13-29 integrity crossings on front.R, pale patches on the lapel);
         # the flap is lifted `lapel_lay` over it, eased over its neighbours like the lift over the under garment

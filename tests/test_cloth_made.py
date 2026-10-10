@@ -234,7 +234,7 @@ def test_construct_presses_lapels_and_is_not_in_the_sims_key():
     M = {"names": ["front"], "piece": np.zeros(len(V), int), "uv": uv, "F": F, "sew": None,
          "folds": [{"name": "lapel roll", "piece": "front", "rows": [row.tolist()]}]}
     bV, bT = _box([-0.1, -0.4, -0.06], [0.3, 0.1, -0.004])
-    Vn, made = cm.construct(V, M, bV, bT, {})
+    Vn, made = cm.construct(V, M, bV, bT, {"construct": {"lapel": "pressed"}})  # (press_flap; "made": below)
     assert made and made["lapels"][0]["vertices"] == len(flap) and not made["parts"]
     assert np.allclose(Vn[flap, 0], 0.16 - uv[flap, 0], atol=1e-9) and Vn[flap, 2].max() <= 0.003 + 1e-9
     assert (Vn[flap, 2] > 0).all()  # on the side away from the body
@@ -247,6 +247,13 @@ def test_construct_presses_lapels_and_is_not_in_the_sims_key():
     assert m3 is None and V3 is V
     hide, parts = cm.drawn({"mesh": M, "made": made})
     assert not hide.any() and parts == []
+    # the CONSTRUCTED lapel (the default): on a flat front it is the same mirror image, its edges straight
+    Vm, mm_ = cm.construct(V, M, bV, bT, {})
+    assert mm_["info"]["made_lapel"]["front"]["made"] == len(flap)
+    assert np.allclose(Vm[flap, 0], 0.16 - uv[flap, 0], atol=1e-6) and np.allclose(Vm[flap, 1], uv[flap, 1], atol=1e-6)
+    assert (Vm[flap, 2] > 0).all() and Vm[flap, 2].max() <= 0.0061
+    far = np.setdiff1d(np.where(uv[:, 0] > 0.18)[0], flap)
+    assert np.allclose(Vm[far], V[far])  # the forepart beyond the lapel's reach untouched
 
 
 def test_pressed_flaps_by_fold_prefix():
