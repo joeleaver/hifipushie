@@ -8603,6 +8603,14 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         if hide.any():
             log(f"cloth {gname}: {int(hide.sum())} of {len(F)} triangles hidden under another garment, left out")
             F = F[~hide]
+        # the CONSTRUCTED parts (cloth_made: a notched collar built on the drape) ship instead of the simulated pieces
+        # they replace (the simulated jacket collar shipped, an 85 mm spike at the side neck, cloth11); pressed lapels
+        # are already in V
+        mparts = [pt for pt in ((res.get("made") or {}).get("parts") or []) if len(pt.get("F", []))]
+        if mparts:
+            from . import cloth_made
+            rep_, _ = cloth_made.drawn(res)
+            F = F[~rep_[F].any(1)]
         # every piece wound to face out (a garment's pieces come out of the pattern either way: one global flip left
         # half a jacket facing in), normals shared across closed seams (each side its own normal shaded every seam
         # as a line, and pushed the inner shell apart there)
@@ -8617,6 +8625,38 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         Vall = np.r_[V, Vin]
         Fall = np.r_[F, F[:, [0, 2, 1]] + len(V)]
         UVall = np.r_[uv, uv]
+        NV = [vn, -vn]
+        for pt in mparts:  # each a closed slab of its thickness, its pattern uv placed where its piece lies in the atlas
+            from . import cloth_made
+            Pv, Pf = np.asarray(pt["V"], np.float64), np.asarray(pt["F"], np.int64)
+            fn_ = np.cross(Pv[Pf[:, 1]] - Pv[Pf[:, 0]], Pv[Pf[:, 2]] - Pv[Pf[:, 0]])
+            if body is not None and len(getattr(body, "V", [])):  # (its face out of the body, as the garment's)
+                from scipy.spatial import cKDTree as _KD
+                cen_ = Pv[Pf].mean(1)
+                out_ = cen_ - np.asarray(body.V)[_KD(np.asarray(body.V)).query(cen_)[1]]
+                if (fn_ * out_).sum() < 0:
+                    Pf = Pf[:, [0, 2, 1]]
+            sV, sF = cloth_made.solid(Pv, Pf, float(pt.get("thickness", th)))
+            pn_ = np.zeros_like(Pv)
+            fn_ = np.cross(Pv[Pf[:, 1]] - Pv[Pf[:, 0]], Pv[Pf[:, 2]] - Pv[Pf[:, 0]])
+            for k_ in range(3):
+                np.add.at(pn_, Pf[:, k_], fn_)
+            pn_ /= np.linalg.norm(pn_, axis=1, keepdims=True) + 1e-12
+            puv = np.asarray(pt.get("uv"), np.float64) if pt.get("uv") is not None else None
+            src_ = [nm_ for nm_ in (pt.get("replaces") or []) if nm_ in M["names"]]
+            if puv is not None and len(puv) == len(Pv) and src_:
+                k_ = list(M["names"]).index(src_[0])
+                i0_ = int(np.where(np.asarray(M["piece"]) == k_)[0][0])
+                puv = (puv + (uv[i0_] * side - np.asarray(M["uv"])[i0_])) / side  # (atlas_uv: a shift and one scale)
+            else:  # (no pattern uv: one texel of the garment's colour)
+                puv = np.tile(uv[0], (len(Pv), 1))
+            Fall = np.r_[Fall, sF + len(Vall)]
+            Vall = np.r_[Vall, sV]
+            UVall = np.r_[UVall, puv, puv]
+            NV += [pn_, -pn_]
+            log(f"cloth {gname}: made {pt['name']} shipped ({len(sF)} triangles) instead of "
+                f"{', '.join(pt.get('replaces') or []) or 'nothing'}")
+        n_own = len(Vall)
         bt = res.get("buttons")
         if bt is not None:  # the closures' buttons: small geometry, coloured by the texel of the button drawn at
             # their mark (every vertex of a button takes its mark's uv)
@@ -8627,9 +8667,9 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
         # the shared normals (outer shell; the inner shell the opposite), tangents made orthogonal to them again
-        nv = np.r_[vn, -vn, np.zeros((len(Vall) - 2 * len(V), 3))]
+        nv = np.concatenate(NV + [np.zeros((len(Vall) - n_own, 3))])
         cw = Fall.ravel()
-        own = cw < 2 * len(V)  # (buttons keep their own)
+        own = cw < n_own  # (buttons keep their own)
         n[own] = nv[cw[own]]
         tt = tt - np.sum(tt * n, 1, keepdims=True) * n
         tt /= np.linalg.norm(tt, axis=1, keepdims=True) + 1e-12
