@@ -198,7 +198,7 @@ def visible(V, cam, hide=None):
     P = humanfit.project(cam, V)
     F = g["T"]
     fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-    keep = (fn * Xc[F].mean(1)).sum(1) < 0
+    keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > 0.02).all(1)   # (and in front of a close camera)
     img = np.zeros((h, w, 3))
     zb = np.full((h, w), np.inf)
     _C["run"](P[:, 0].copy(), P[:, 1].copy(), Xc[:, 2].copy(), np.ascontiguousarray(F[keep]), np.zeros((len(V), 3)), w, h, img, zb)

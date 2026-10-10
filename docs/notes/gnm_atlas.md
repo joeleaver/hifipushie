@@ -1548,3 +1548,16 @@ top: a 4 mm vertical disagreement that biases profile registration).
   humans.eye_radius(age) (EYE_AXIAL: axial length by age, ~17 mm newborn -> 24 mm adult, halved: 0.012 from 18), and
   block_in_start sets it too (setdefault). Accepted models keep theirs (no key: the old ball); re-match when worked on.
   Guides: blockin_guide (BASE keys), human_guide (top). Tests: test_new_human_eye_radius, start asserts it.
+
+## lt19 (2026-10-10; a private likeness: per-person notes, body settings and rounds are in the git-ignored
+## workspace/private_notes/lt19.md, never in the repo). General tool findings from it, now in code:
+- Phone references: the 70 mm portrait lens prior folded close-camera perspective into the face shape; a view's
+  "lens_mm" (35 mm-equivalent, diagonal) or the image's EXIF now sets the focal prior (humanfit_map.lens_prior).
+- A profile facing image-left needs yaw -90 (not auto-resolved at 90 deg); likeness.render / humannormals cull at a
+  near plane (close cameras); profile_contour per-row background + skin-warmth test; light fit limited to the
+  landmark hull without a detector; photo_sides falls back to the detector box.
+- A head_scale step moves each camera's centre with the face's landmark centre (a camera refit otherwise undoes it).
+- under_chin sign: + = clean, - = full / double chin; GNM carries submental fullness itself. Body keys neck_double /
+  neck_depth (MakeHuman CC0 neck targets; 0.5 = none) for the neck front across the stitch.
+- Per-picture expression (GNM lower-face comps) explains part of a smiling reference's fuller lips / cheek apple:
+  fit it per view so the neutral identity isn't compared against a smile.
