@@ -25,6 +25,8 @@ from hifipushie import headfit
 
 headfit.N = 170
 import joint as J0  # noqa: E402
+import joint2 as J2  # noqa: E402
+import outl  # noqa: E402
 import lipborder as LB  # noqa: E402
 import lipborder_model as LBM  # noqa: E402
 from hifipushie import base as basemod, humanfit, humanfit_map as hm, likeness, onemesh, store  # noqa: E402
@@ -43,6 +45,9 @@ USE_BORDER = os.environ.get("BORDER", "1") == "1"
 # tighter one (design section 4: the detector's blendshapes set each picture's scale). With 1.0 the front picture's
 # expression took the border evidence (|e| 2.2) and the identity, which ships, kept none of it.
 EXPR_SD = float(os.environ.get("EXPR_SD", "0.3"))
+PROF_SIG = float(os.environ.get("PROF_SIG", "0.7"))   # mm: a true profile's skin edge against a plain background
+USE_PROFILE = os.environ.get("PROFILE", "1") == "1"
+PROF_REJECT = float(os.environ.get("PROF_REJECT", "3.0"))
 LIP_SLIDERS = ("lip_tubercle", "mouth_corner", "lip_lower_width", "mh_lowerlip_width", "mh_lowerlip_middle",
                "mh_lowerlip_volume", "mh_lowerlip_ext", "mh_mouth_angles", "lip_upper_height", "lip_lower_height",
                "lip_upper_roll", "lip_lower_roll", "lip_bow")
@@ -144,6 +149,23 @@ def system(st, views, cams, x, x_lin, border, nview):
         cam = cams[vi]
         mm0 = cam["t"][2] / cam["f"] * 1000
         cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
+        prof = USE_PROFILE and abs(float(v.get("yaw", 0.0))) > 70
+        if prof:   # the camera fitted to the clicks AND the contour (the clicks alone left it ~3 mm off the skin edge)
+            if "_prof" not in v:
+                v["_prof"] = outl.profile_auto(v, step=3)
+            for _ in range(3):
+                env = J2.envelope(st, cam, v["_prof"])
+                if env is None:
+                    break
+                gidv = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])][env["vs"]]
+                fade = np.asarray(onemesh.asset()["g_fade"], float)[gidv]
+                Rr, ss = _carry(st)
+                XEp = ss * EB[:, gidv] @ Rr.T * fade[None, :, None]
+                Xp = env["X"] + np.tensordot(dc, env["B"], 1) + np.tensordot(ev, XEp, 1)
+                rp0 = ((humanfit.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mm0
+                ok = np.abs(rp0) < PROF_REJECT
+                cam = cams[vi] = hm._fit_cam(cam, np.r_[X, Xp[ok]], np.r_[e["uv"], env["p"][ok]],
+                                             np.r_[mm0 / e["sig"], np.full(ok.sum(), mm0 / PROF_SIG)])
         J, z = proj_jac(cam, X)
         wt = (z / cam["f"] * 1000) / e["sig"]
         r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
@@ -156,6 +178,31 @@ def system(st, views, cams, x, x_lin, border, nview):
         H += A.T @ A
         b += A.T @ y
         rep["rms"].append(float(np.sqrt(np.mean(a ** 2))))
+        if prof:
+            env = J2.envelope(st, cam, v["_prof"])
+            if env is not None:
+                tplP = np.asarray(st["tpl"]["P"], float)
+                gidv = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])][env["vs"]]
+                fade = np.asarray(onemesh.asset()["g_fade"], float)[gidv]
+                Rr, ss = _carry(st)
+                XEp = ss * EB[:, gidv] @ Rr.T * fade[None, :, None]
+                Xp = env["X"] + np.tensordot(dc, env["B"], 1) + np.tensordot(ev, XEp, 1)
+                Jp, zp = proj_jac(cam, Xp)
+                mmpx = zp / cam["f"] * 1000
+                rp = ((humanfit.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mmpx / PROF_SIG
+                ap = np.abs(rp)
+                # matches more than PROF_REJECT mm off are dropped (lashes crossing the contour at the eye, envelope
+                # picks on the brow / under the chin: 9.6 mm rms at the start with them in)
+                hwp = np.where(ap > 2.5, np.sqrt(2.5 / np.maximum(ap, 1e-9)), 1.0) * (ap * PROF_SIG < PROF_REJECT)
+                Ap = np.zeros((len(Xp), n))
+                Ap[:, :NC] = np.einsum("ni,nij,knj->nk", env["n"], Jp, env["B"]) * (mmpx * hwp / PROF_SIG)[:, None]
+                Ap[:, NC + NE * vi: NC + NE * (vi + 1)] = np.einsum("ni,nij,knj->nk", env["n"], Jp, XEp) * (mmpx * hwp / PROF_SIG)[:, None]
+                yp = Ap @ x - rp * hwp
+                H += Ap.T @ Ap
+                b += Ap.T @ yp
+                kept = ap * PROF_SIG < PROF_REJECT
+                rep["profile_mm"] = float(np.sqrt(np.mean((rp[kept] * PROF_SIG) ** 2))) if kept.any() else None
+                rep["profile_kept"] = f"{int(kept.sum())}/{len(kept)}"
         if vi == 0 and border is not None:
             bm = border_model(st)
             for k, poly in (("up", border["upper"][border["keep"]]), ("lo", border["lower"][border["keep"]])):
@@ -205,12 +252,12 @@ def main(src, dst):
             H, b, rep = system(st, rviews, cams, x, x_lin, border, nv)
             if rnd == 0 and it == 0:
                 rep0 = rep
-                print("start:", json.dumps({"rms": np.round(rep["rms"], 2).tolist(),
+                print("start:", json.dumps({"rms": np.round(rep["rms"], 2).tolist(), "profile_mm": rep.get("profile_mm"), "kept": rep.get("profile_kept"),
                                             "border_rms": {k: float(np.sqrt(np.mean(np.square(v)))) for k, v in rep["border"].items()}}), flush=True)
             x = np.linalg.solve(H + Pinv, b)
         post = np.linalg.inv(H + Pinv)
         dof = float(NC - np.trace(post[:NC, :NC]))
-        log.append({"round": rnd, "rms": rep["rms"], "c_norm": float(np.linalg.norm(x[:NC])), "dof": dof,
+        log.append({"round": rnd, "rms": rep["rms"], "profile_mm": rep.get("profile_mm"), "kept": rep.get("profile_kept"), "c_norm": float(np.linalg.norm(x[:NC])), "dof": dof,
                     "border_rms": {k: float(np.sqrt(np.mean(np.square(v)))) for k, v in rep["border"].items()},
                     "expr_norm": [float(np.linalg.norm(x[NC + NE * i: NC + NE * (i + 1)])) for i in range(nv)]})
         print(f"round {rnd}: {json.dumps(log[-1])}", flush=True)
