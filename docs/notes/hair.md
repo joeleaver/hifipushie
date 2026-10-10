@@ -749,3 +749,13 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
       side-swept front edge: not done.
     - Consumer: spikes/godot_hair/README.md (textures, parameters, the back-face note; not in any game yet) and
       hair_guide.md "Drawing the cards in an engine" + "A front swoop and a combed-down back".
+
+## EEVEE strand look on sparse long hair (2026-10-09, "tess" agent)
+- blender_strands' EEVEE material (EEVEE_SAT 0.35, eevee_gain 1.6, specular 0.5 x 0.6, sheen tint) was calibrated on
+  Garrett's dense short grey cut. On sparse FREE hair (curtains, wisps, a tail's lower half: few thin strands against
+  a light background) the specular and sheen dominate and the gain lifts it: Tess's dark brown free hair read silvery
+  grey while her head hair was right. Look keys that fixed it (no code change): eevee_sat 0.6, eevee_gain 1.15,
+  specular 0.25, roughness 0.55, sheen_amount 0.2, sheen #5c4231 (not a grey), tip_amount 0.12.
+- tie.curtain.along (deg): the front locks run sideways just inside the hairline before falling (hair_tied.py); without
+  it a centre part's two curtains diverge in a V that bares the forehead's top corners (root map: spikes/tess/roots.py;
+  Tess's front hairline band bare 34% -> 8%).

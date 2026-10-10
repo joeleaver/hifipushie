@@ -84,6 +84,15 @@ for v in views:
     dh, do = ndi.distance_transform_edt(~eh), ndi.distance_transform_edt(~eo)
     ch = 0.5 * (do[eh].mean() + dh[eo].mean()) * mm
     print(f"view {v} ({TR[v]}): IoU {iou:.3f}  outline chamfer {ch:.1f} mm  hers {mh.sum()} px, ours {mo.sum()} px")
+    # HAIRLINE: her hair within 15 mm of her face (the trace's face hull, grown) that is bare in ours
+    if tr.get("face_hull"):
+        from PIL import ImageDraw as _D
+        hull = Image.new("L", (H, H), 0)
+        _D.Draw(hull).polygon([(float(x) - BOX[0], float(y)) for x, y in tr["face_hull"]], fill=255)
+        fh = np.asarray(hull.resize((PX, PX))) > 127
+        band = mh & (ndi.distance_transform_edt(~fh) * mm < 15.0)
+        bare = band & ~mo
+        print(f"   hairline band (her hair within 15 mm of the face): {band.sum()} px, bare in ours {100 * bare.sum() / max(band.sum(), 1):.1f}%")
     # regions: by rows of the picture in thirds of the hair's own height, and left / right of the hair's centre
     ys, xs = np.nonzero(mh)
     y0, y1, xc = ys.min(), ys.max(), np.median(xs)
@@ -102,7 +111,18 @@ for v in views:
             both = mh & mo & m & (ca > 0.3) & (cp > 0.3)
             d = np.abs(aa[both] - ap[both])
             d = np.degrees(np.minimum(d, np.pi - d))
-            print(f"   {rn:12s} {side}: extra {100 * (mo & ~mh & m).sum() / max(her, 1):5.1f}%  missing "
+            # coverage: how opaque the hair is there (0 = the background shows, 1 = solid hair), over the union of
+            # both masks in the region: a dense sheet and airy wisps have the same outline, not the same coverage
+            u = (mh | mo) & m
+            if u.sum():
+                def cov(L):
+                    bgL = float(np.median(L[~(mh | mo)][:: 7])) if (~(mh | mo)).any() else 0.85
+                    hairL = float(np.percentile(L[u], 5))
+                    return float(np.clip((bgL - L[u]) / max(bgL - hairL, 1e-3), 0, 1).mean())
+                cvh, cvo = cov(Lp), cov(La)
+            else:
+                cvh = cvo = float("nan")
+            print(f"   {rn:12s} {side}: coverage hers {cvh:.2f} ours {cvo:.2f} ({cvo - cvh:+.2f})  extra {100 * (mo & ~mh & m).sum() / max(her, 1):5.1f}%  missing "
                   f"{100 * (mh & ~mo & m).sum() / max(her, 1):5.1f}%  flow diff {np.median(d) if len(d) else float('nan'):5.1f} deg (n {len(d)})")
     vis = np.zeros((PX, PX, 3))
     vis[..., 0] = mh

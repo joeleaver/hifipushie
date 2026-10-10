@@ -347,6 +347,10 @@ def test_brow_tilt_and_fall():
             assert abs(e["at"][2] - a["at"][2] + 0.0015) < 1e-6 and e["rotate"] > a["rotate"]
             f = img(apart=0.002)
             assert abs(f["at"][0] - a["at"][0] - 0.002) < 1e-6
+            # the shadow follows a moved brow (its own picture), and stays the landmark zone for one that isn't
+            def shadow(**b):
+                return paint.layers(head_spec(hair={"brows": {"density": 0.8, **b}}))["skin:brow_shadow"]
+            assert "image" in str(shadow(drop=0.003)) and "image" not in str(shadow())
         finally:
             store.HOME = home
 

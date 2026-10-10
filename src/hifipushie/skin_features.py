@@ -453,8 +453,12 @@ def _hair(p, J, layer, T, ctx) -> None:
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,
                    "mirror": True, "mirror_image": True, "channel": "alpha"}  # (unmirrored, the other brow's hairs ran
             # toward the nose: "the left eyebrow is backwards")
+            # the shadow under the hairs sits where the hairs are: a brow moved off its landmarks (drop, lift, tilt,
+            # apart) left the landmark zone's shadow behind as a grey band over the new brow (Tess, 2026-10-09)
+            moved = any(o.get(k) for k in ("drop", "lift", "tilt", "apart"))
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col,
-                  opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9), mask=_zones(["brow"], 0.9 * thick))
+                  opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9),
+                  mask=[{"image": img}] if moved else _zones(["brow"], 0.9 * thick))
             layer("brow_hairs", color=col, opacity=round(0.95 * (1 - 0.45 * soft), 3), roughness=0.42, specular=0.45, height=0.00012, image=img)
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:

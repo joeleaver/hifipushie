@@ -19,7 +19,9 @@ them: bunches):
                             over the ears' tops and only then turns back to the tie: first-row gather locks rooted within
                             `span` deg of the front pass through a waypoint over the ear's top (azimuth `to` on their own
                             side, elevation `over`, deg from the head centre; locks rooted further back pass higher);
-                            `lift` = m of extra rise at the part (soft, no bare furrow). "left" / "right": {key: value}
+                            `lift` = m of extra rise at the part (soft, no bare furrow); `along` = deg the lock first
+                            runs sideways at its root's height (hair lying across from the part over the forehead's top
+                            before it falls: without it the two curtains diverge in a V that bares the scalp). "left" / "right": {key: value}
                             for that side only (the person's left = +x): an asymmetric style. Default none: every
                             lock runs the great circle to the tie.
    "frame": {"count": 3, "az": [40, 95], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
@@ -41,7 +43,7 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5}}
-CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "left": None, "right": None}
+CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "left": None, "right": None}
 FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
          "wavelength": 0.075}
 DOWN = np.array([0.0, 0.0, -1.0])
@@ -177,10 +179,20 @@ def grow(sc, g: dict, line, rng) -> dict:
                         raw = ((float(ra) + 180.0) % 360.0) - 180.0
                         way = dirs(sd * max(abs(raw) + 10.0, float(cu["to"])),
                                    float(cu["over"]) + (float(re) - float(cu["over"])) * (1.0 - cw) * 0.5)
-                        t = np.linspace(0, 1, 9)
-                        k1 = 0.4
-                        D = np.concatenate([_slerp(root, way, t[t <= k1] / k1),
-                                            _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
+                        al = float(cu.get("along", 0.0)) * cw
+                        if al > 0:  # sideways at the root's height first, then down to the ear's top, then back
+                            # (just inside the hairline there: it runs over the forehead's corner, not above it)
+                            mid = dirs(float(ra) + sd * al, min(float(re), float(_line_at(line, float(ra) + sd * al)) + 3.0))
+                            t = np.linspace(0, 1, 11)
+                            k0, k1 = 0.25, 0.5
+                            D = np.concatenate([_slerp(root, mid, t[t <= k0] / k0),
+                                                _slerp(mid, way, (t[(t > k0) & (t <= k1)] - k0) / (k1 - k0)),
+                                                _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
+                        else:
+                            t = np.linspace(0, 1, 9)
+                            k1 = 0.4
+                            D = np.concatenate([_slerp(root, way, t[t <= k1] / k1),
+                                                _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
                     else:
                         t = np.linspace(0, 1, 7)
                         D = _slerp(root, tie_dir, t)
