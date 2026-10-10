@@ -151,7 +151,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     if ctx["lash_geometry"]:
         lm_ = _lashes.for_spec(spec)
         ctx["lash_curves"] = None if lm_ is None else {k: [np.round(c, 5).tolist() for c in v] for k, v in lm_["curves"].items()}
-    f0 = p["makeup"].get("foundation")
+    from .skin_makeup import resolve as _mk_resolve
+    f0 = _mk_resolve(p["makeup"]).get("foundation")
     cover = float(np.clip(f0 if isinstance(f0, (int, float)) else (f0 or {}).get("amount", 1.0 if f0 else 0.0), 0, 1)) if f0 else 0.0
     ctx["show"] = 1.0 - 0.75 * cover  # how much of the skin's own marks shows through foundation
 
