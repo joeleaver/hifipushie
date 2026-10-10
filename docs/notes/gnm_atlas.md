@@ -1548,3 +1548,133 @@ top: a 4 mm vertical disagreement that biases profile registration).
   humans.eye_radius(age) (EYE_AXIAL: axial length by age, ~17 mm newborn -> 24 mm adult, halved: 0.012 from 18), and
   block_in_start sets it too (setdefault). Accepted models keep theirs (no key: the old ball); re-match when worked on.
   Guides: blockin_guide (BASE keys), human_guide (top). Tests: test_new_human_eye_radius, start asserts it.
+
+## lt19 (2026-10-10, "lt19" agent, branch worktree-agent-ae4d039edfc8ca1cb; a 19-year-old woman from two phone photos;
+## refs PRIVATE in workspace/refs_lt19 (never in the repo, notes or external services); scratch /mnt/data/hifipushie/lt19:
+## run.sh / tests.sh / srv.py <tool> '<json>' | @file.json, ov.py (68 landmarks through a camera), scalechk.py, pupil.py,
+## camtest.py; sheets human_renders/lt19_*)
+
+### Set-up on phone photos (each fixed in code)
+- Body lt19_body: human(age 19, female, weight 0.75, source human); human_reference: front by detector (282 points,
+  1.1 mm), profile by 11 clicked points. Refs at half size (1536 x 2040) beside the originals.
+- Profile yaw: a face looking at image-LEFT is yaw -90 here. +90 fitted a wrong minimum (10 mm rms; the far eye
+  projected in front of the nose); humanfit_map._resolve tries both signs only for 20-70 deg views (open).
+- THE LENS: both pictures are a phone's 24 mm (35 mm-equivalent, EXIF) at ~26 cm; the portrait prior (70 mm, sd 0.4)
+  fitted ~69 mm and the close camera's perspective (centre features big, the face's edges small) went into the
+  shape: series lt19_00..07 is void. humanfit_map.lens_prior: a view's "lens_mm" (35 mm-equivalent, diagonal; the
+  picture uncropped) or the image's EXIF FocalLengthIn35mmFilm, sd 5 % / 8 %; else the portrait prior.
+- A close camera beside the head had the body BEHIND it: likeness.render drew those faces as screen-filling triangles
+  (the profile clay was one flat colour). likeness.NEAR (0.02 m) culls them; humannormals too.
+- profile_contour: background per row (wall above, a dark leather sofa below) + a skin-warmth test against a cheek
+  patch (the sofa's highlights broke the scan).
+- lit_render on a view with no detector (clicked profile): the light was fitted over the whole head incl. the hair
+  over the skull and lit the face white; now fitted inside the projected landmark hull.
+- likeness.photo_sides: a view with no clicks (detector only) crashed the table; its box now comes from the detector.
+
+### Size vs distance (a phone close-up)
+- With the true lens the table said "SIZE -6 %". head_scale 1.06 + a camera refit gave the same pixels back (the
+  camera moved back x1.06); without a refit the face rose 34 px (the head scales about the neck). block_in_step now
+  moves each camera's centre with the face's landmark centre on a head_scale step (the scale stays visible).
+- The two readers disagree: the camera fit's own evidence (calibrated detector points) gives photo/model scale 1.007,
+  the likeness readers 5-7 % (her iris centres 340 px apart vs the model's projected eyeball centres 309, outer corners
+  478 vs 445, eyes-to-chin 564 vs 542). The profile camera refit also moves back x1.046 (its 11 clicks prefer the
+  unscaled head). Kept: head_scale 1.05 (the eye placement then passes 3/3); the profile camera refitted. Open: which
+  reader is biased under strong perspective.
+
+### Rounds (log workspace/lt19_b00/blockin_log.json)
+| round | move | read | kept |
+|---|---|---|---|
+| b00 | start: female class mean, gnm_base 0.5, 24 mm cameras | face broader and longer than the clay | start |
+| b01/02 | head_scale 1.06 (+ refit) | refit gives the same pixels back | no |
+| b03 | face_width +0.6 | cheekbones in (temples: hair covers them) | yes |
+| b04 | jaw_width +0.6 | jaw, nose-base level, mouth closer | yes |
+| b05 | chin_height +0.6 | front outline on hers all round | yes |
+| b06 | chin_projection +0.5 | profile chin a little forward | yes |
+| b07 | under_chin! +0.8 | no visible change (body / stitch region) | no |
+| b08 | eye_spacing! +0.6 | intercanthal +0.9 mm | yes |
+| b09 | lid_read match (lid_upper -2.7 mm) | upper lid 0.32 -> 0.75 iris radii (hers 0.75) | yes |
+| b10 | eye_tilt! -0.6 | canthal tilt -0.7 deg only, brow tilt out | no |
+| b11 | eye_spacing! +0.6 more | +0.4 mm for |c| +0.67: size-kept steps hold the interocular distance | no |
+| b12 | head_scale 1.05, cameras follow | eyes 3/3; earlier width steps overshoot | yes |
+| b13 | face_width -0.6 | unwinds b03 | yes |
+| b14 | nose_length! -0.6 | nose, middle third in | yes |
+| b15 | philtrum! -0.7 | chin in, philtrum +3.8 -> +2.1 | yes |
+| b16/17 | lip_projection -0.5 (free / held) | free: thinner lips, nose forward; held: barely visible | no |
+| b18 | camera refit (profile) | nose and lips on her contour; chin / under-chin behind | yes |
+| b19/20 | eye_radius 0.012 + lid match | eyes read open | yes |
+| b21 | nd:tip_width +1 | front closer, but the free couplings dropped the bridge: profile nose behind hers | no |
+| b22 | nd:tip_width|held +1 | tip a little broader, profile kept | yes |
+| b23 | mouth_width! -0.5 | mouth width, chin height in | yes |
+| b24 | lip_fullness! +0.5 | lips a touch fuller, middle third in | yes |
+lt19_b24: 14/21 counted items; misses: temple width (hair-covered), cheekbone +3.1 / jaw -3.2 (edges), jaw taper, alar
+-1.6, philtrum +1.7, mouth line.
+
+### Gaps met
+- Soft-tissue fullness: base weight moves nothing on the head or neck; free cheek_fullness widens the outline; held
+  cheek_fullness 0.6 is invisible; free under_chin brings a leaner face; held under_chin moves nothing visible: the
+  submental contour is the body mesh / stitch. Options (to decide): shape.lean negative (a local field, exists), an
+  ICT regional basis under the chin (data-backed, like faces5 regbasis), MakeHuman CC0 neck / chin targets on the body
+  side, tied to weight.
+- radix_width / dorsum_width / nasolabial_fold / under_eye items read 0.00 on the clay (the clay reader returns nothing).
+- Eye identity steps are weak at kept size (spacing fights the size row; tilt barely moves).
+
+### lt19, rounds b25-b38 and the first dressed looks
+| round | move | read | kept |
+|---|---|---|---|
+| b25 | philtrum! -0.4 | philtrum in | yes |
+| b26 | cheek_fullness! +0.8 (to 1.67 sd) | barely visible; nose length / middle third out | no |
+| b27 | jaw_width! +0.4 | jaw in, taper closer | yes |
+| b28 | nose_length! -0.3 | middle third in | yes |
+| b29 | nose_width! +0.4 | alar, mouth/alar in | yes |
+| b30 | under_chin -0.7 (FULL: + = clean, - = double chin; b02 / b07 had the sign backwards) | jaw, neck, cheek fullness come with it; jaw taper in | yes |
+| b31 | under_chin -0.6 more (free) | widens the face (nose-base level out) | no |
+| b32 | under_chin! -0.6 | the under-chin line lower in profile | yes |
+| b33 | neck_double 0.8 (new body key: MakeHuman CC0 neck-double target) | the neck front under the chin fuller and lower | yes |
+| b34 | eye_size 1.06 | opening +1 mm over hers, mouth width out | no |
+| b35 | lip_fullness! +0.5 | upper lip 6.0 vs 4.8; face length out: the "thin lips" in the dressed look are colour, not shape | no |
+| b36 | local:nose_tip_width 0.3 | invisible | no |
+| b37 | jaw_square! -0.6 | jaw_square had accumulated to +1.04 from couplings; corners a little softer | yes |
+| b38 | sex -0.4 | face height, middle third closer; softer in the dressed look | yes |
+- Pitch check (coordinator: a selfie from above, the profile chin raised): pitchscan.py refits each camera at fixed
+  pitch offsets on the evidence minus the nose: the front's non-nose rms is flat 1.64-1.66 mm over 0..+5 deg (minimum
+  +2.5, the nose agrees), the profile's minimum at 0 (10 clicks): the fitted cameras already carry the pitch (front
+  ~5 deg down). The head's pose differs between the pictures (chin up in the profile): each camera absorbs it for the
+  rigid head, the NECK does not follow (the submental / neck contour in profile is pose dependent).
+- Her crease (lidfold.read_lid on the front picture, readlid.py): visible fold line 5.5 mm over the lashes in the
+  middle and outer thirds (both eyes), ~5.2 inner, darkness 0.2-0.43 (a clear line). NOT applied: Joe: the crease must
+  come from GNM (identity + eye-region expression driven by margins and crease evidence, the audit's g11), not from
+  base.head.fold; blockin2 is porting g11. Known miss until then.
+- Dressed checks (dress_shot.py: photo | EEVEE dressed through the fitted cameras, hair on; garrett3 stage / garrett4
+  shot spikes): lt19_d1 (b33 base), lt19_d2 (b38 base); skin: melanin 0.13, blood 0.55, undertone +0.1, flush 0.55,
+  no freckles, variation / detail 0.35-0.4 (freckles + full detail read grainy and tanned), brows #070504 thickness
+  1.5, soft 0.15 (2.2 / soft read as brown fur), lids lashes dark; hair: loose 0.42 m centre part, look gap #0b0807
+  lit #1d1613 (the default lit read red-brown).
+- Per-picture expression (coordinator: GNM identity = the relaxed neutral; the front picture's slight smile is its own
+  expression): exprfit.py <model> <view> <out> [ncomp] [sd]: GNM lower_face_region comps 0-19 (prior sd 0.8), identity
+  and camera held, Gauss-Newton with finite-difference columns through humanfit.state on the calibrated detector
+  evidence (3.2 s an evaluation). Front: chi2 164 -> 135 (282 points), |e| 1.92. lt19_b38_fx0 = b38 + that expression
+  (a render model, not a round). Dressed with it (lt19_d2f): lips a little fuller, corners lifted, a hint of the cheek
+  apple; closer to the picture than the neutral. The block-in's table and sheets compare the NEUTRAL clay with the
+  smiling picture: the smile leaks into mouth / cheek identity steps (proposal for the blockin tools: per-view
+  expression in human_refs, fitted once at start / on request, applied in look / table / focus).
+- Strand hair (lt19_d2, style strands, loose 0.45 m, centre part, wave 7 mm / 0.12 m, clump 0.5): the loose groom gave
+  its locks per-lock "grey" up to 0.48 and look.grey_locks defaults to 1: white streaks on a 19-year-old (fixed per
+  model with look grey_locks 0; the default should follow age). dress_shot's EEVEE stage path and look_hair agree.
+- Sheet human_renders/lt19_final_dressed_sheet.png: front photo | b38 + the front's expression | b38 neutral; profile
+  photo | neutral.
+
+### HANDOVER (lt19, 2026-10-10)
+State: block-in result lt19_b38 (log workspace/lt19_b00/blockin_log.json, rounds b00-b38); dressed lt19_d2 (neutral,
+strand hair, skin), lt19_d2f (b38 + the front picture's expression, same dressing). Body lt19_body (refs: front_h /
+profile_left_h, lens_mm 24, profile yaw -90). Scratch /mnt/data/hifipushie/lt19 (run.sh, tests.sh, srv.py @json,
+dress_shot.py, rebase.py <dressed> <block-in> <dst>, exprfit.py, pitchscan.py, readlid.py, wide.py, skin*.json, hair2.json).
+Open, in order: (1) the crease: blockin2's GNM crease step (g11 port) on lt19_b38, evidence: fold line 5.5 mm, darkness
+0.2-0.43, margins 0.75 / 0.85 iris radii; (2) per-view expression in the block-in tools (above); (3) cheek roundness
+(the apple: mostly the smile? judge on d2f after (2)); (4) brows in the dressed look still read heavy / furry at the
+tails (skin.hair.brows thickness 1.5); (5) the shipped pose (neutral or her slight smile): ask Joe; (6) the profile's
+seated brow shows only a short patch (blockin presentation).
+Code on this branch (all tested): humanfit_map.lens_prior (lens_mm / EXIF); likeness.NEAR (+ humannormals); blockin:
+profile contour per-row background + skin warmth, light fit inside the landmark hull for clicked views, cameras follow
+the face on head_scale, presentation (iris colour from the picture, lip tint, brows as the picture's hair per side),
+0.00 clay readers flagged; likeness.photo_sides detector box; makehuman neck targets (neck_double / neck_depth) + the
+makehuman pack entries; tests/test_blockin.py::test_neck_double_and_lens_prior.
