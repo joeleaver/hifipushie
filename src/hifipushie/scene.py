@@ -314,7 +314,8 @@ def objects(name: str, resolution: int = 256, log: list | None = None) -> tuple[
     vx = float(np.round(ctx["voxel"], 3))  # a round voxel: resolution edits that don't change it keep the cache
     cache = store._dir(name) / "scene_cache"
     cache.mkdir(exist_ok=True)
-    defs = spec.get("parts") or {}
+    from .base import part_defs
+    defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
     pf_of = {pn: pf for pf, d in ctx["prefabs"].items() for pn in d["parts"]}
     objs, meshed = [], 0
     for key, ps in ctx["streams"].items():
@@ -955,7 +956,8 @@ def sync(name: str, resolution: int = 256) -> dict:
     objs, insts, prog = objects(name, resolution, log)
     t2 = time.time()
     spec = store.load(name)
-    defs = spec.get("parts") or {}
+    from .base import part_defs
+    defs = part_defs(spec)
     bases = {}
     from . import skin
     sk = skin.part_base(spec)  # the skin part starts from its tone and shading; the part's own keys win

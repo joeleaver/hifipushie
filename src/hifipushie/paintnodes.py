@@ -437,5 +437,9 @@ def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
     d = np.full(len(pos), np.inf)
     for w in want:
         p = prims[w]
+        if p.kind == "fold":  # a lid fold (lidfold.py): the distance across from its crease line
+            from .lidfold import line_distance
+            d = np.minimum(d, line_distance(pos, p.params))
+            continue
         d = np.minimum(d, sdf.SDF[p.kind](pos, p.params))
     return d
