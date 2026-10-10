@@ -76,6 +76,18 @@ NOSE_SLIDERS = ("nose_radix_width", "nose_dorsum_width", "nose_tip_width", "nose
 UNITS.update({"eye_opening": (1.0, "the lids' aperture (coupled only)"), "gonion_height": (1.0, "the jaw angle's height (coupled only)"),
               "ramus_angle": (1.0, "the ramus' slope from vertical (coupled only)")})
 COUPLED_ONLY = ("eye_opening", "gonion_height", "ramus_angle")
+# model extensions from MakeHuman's CC0 targets (faceext.py: carried onto GNM, the identity's part projected out):
+# residual sliders, +1 = half MakeHuman's incr - decr difference (the field is stored in metres)
+from .faceext import EXT as _EXT  # noqa: E402
+def _ext_units():
+    from .faceext import table as _t
+    tab = _t()
+    return {k: (float(np.linalg.norm(np.asarray(tab[k], float), axis=1).max() * 1000) if k in tab else 1.0, v[3])
+            for k, v in _EXT.items()}
+
+
+UNITS.update(_ext_units())   # (mm at +1: the field's own largest move)
+EXT_SLIDERS = tuple(_EXT)
 # Tess's measured misses (2026-10-09): her nostrils show from the front under a small defined lobule; her lower
 # vermilion is a short cushion ending well inside the corners (its visible width 0.40 of the mouth's, ours 0.82)
 UNITS.update({
@@ -714,6 +726,12 @@ def fields() -> dict:
                     d = gnmloops.ext(z[k].astype(float))
                     d = hold * 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])  # (baked on a body's head: made exactly mirror symmetric)
                     out[k] = (d * (1 - wl), d * wl)
+        from . import faceext
+        tab = faceext.table()
+        for k in EXT_SLIDERS:   # (the extensions: built by faceext.build into face_ext.npz)
+            if k in tab:
+                d = np.asarray(tab[k], float)
+                out[k] = (d * (1 - wl), d * wl)
         _CACHE["fields"] = out
     return _CACHE["fields"]
 
