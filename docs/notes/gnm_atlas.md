@@ -1248,6 +1248,47 @@ HELD (coordinator / Joe: shading isn't the lever; SH lighting noted, not built).
 - A15: targets all pass except jaw_angle_height (3/4: the gonial angle sits low) and brow_eye (dropped: it reads
   GNM's brow landmarks, not her hair brows). Read (f6_21): outlines on hers in three views, adult, not male / old;
   inside the outline still generic (her orbit rim, wider fuller mouth and almond eyes are not there).
-- Vocabulary gaps: gonial angle height; orbital rim / brow-to-lid plane (not eye depth); lid aperture (pose / eyeball
-  seating, not identity); radix width. Free macros drag neighbours (philtrum <-> chin; length -> philtrum): the table
+- Vocabulary gaps filled as data-backed coupled directions (newdirs.py -> $F/newdirs.npz; artist step "nd:<name>";
+  readers: humanmacro gonial_height / orbital_rim / lower_orbit (now macros), radix_width in newdirs (not a macro:
+  held-out R2 0.90 < humanmacro's 0.95 bar); 2000 GNM heads, conditional mean within sex on GNM's OWN sex axis):
+  | attribute | R2 | sd | strongest couplings (+1 sd coupled moves, in sd) | on Tess |
+  |---|---|---|---|---|
+  | gonial_height | 0.997 | 0.053 io (~3.3 mm) | face_length +0.68, chin_height +0.50, jaw_angle -0.47 | +1 sd moved the likeness item jaw_angle_height only 0.3 mm: that item reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion; reverted |
+  | orbital_rim | 1.000 | 2.3 mm | brow_ridge +0.89, eye_depth +0.84, bridge_height +0.73 | in GNM a defined rim COMES WITH a heavy brow and deep eyes (the male pattern); held (brow, eye depth): 2.33 |c| per sd, lower_orbit -0.97, chin -0.83; renders hollow / older: reverted |
+  | lower_orbit | 1.000 | 1.2 mm | weak (<= 0.29) | +0.8: barely visible, cost philtrum / lower third: reverted |
+  | radix_width | 0.90 | 0.0093 io (~0.6 mm) | bridge_hump -0.36 | -1 sd invisible: GNM barely varies it, a REAL capability gap (a local residual is justified) |
+  Lid aperture: not identity (pose lid_upper / eyeball seating, eyeread). Her "defined orbit with a soft brow" is then
+  lid / crease / skin, not bone (the crease work).
+- Joe on A15's profile: "the angle of the mouth area on profile needs some work": A15 -> A21 lip_projection +0.7 ->
+  A22 lip_projection +0.6 + philtrum! -0.2 (the chin got 2.3 mm shorter: free coupling) -> A23 chin_height! +0.5.
+  A23: lips and the mentolabial curve on her profile contour (f6_22); targets: head 6/7 (temple width: her hair
+  framing), jaw 6/7 (jaw_angle_height: detector-guess item), eyes 4/5 (brow_eye, dropped), nose 5/5, mouth 8/8.
+
+### THE ARTIST BLOCK-IN METHOD (Joe: "this method should be our default for all modeling humans going forward")
+Setup
+1. Base of the right kind: the person's body (MakeHuman params) + gnm_base 0.5 + GNM's sampler class mean for the
+   sex (cvae_stats m_f / m_m), NOT a previous fit. Local layers off (sliders, warp, fold, pose, shape).
+2. The references' fitted cameras (any set: front / 3/4 / profile, or concept art with clicked 68).
+3. `artist.py look <model> <png> <ref model>`: per view photo | clay under her fitted light (two-pass fit_light + AO
+   share), hair cap, HER detector brows (filled band), a presentable eye (light iris, limbal ring, lash line) | 50 %
+   overlay | outline difference (detector oval / profile contour red, the clay's green) | 9 mm squint of both;
+   registered at the EYES + nasion (2D shift: a tracing over the photo, never on the outline it should judge).
+Round rules
+4. Look; name the single BIGGEST difference in masses and planes (profile convexity, muzzle, jaw line, chin, nose
+   mass / angle, face length vs width, cheek planes, bridge, eyes). Check sex / age anatomy.
+5. One small step (0.3-0.7 sd) along whole-face directions: `artist.py step <src> <dst> name=v ...`:
+   humanmacro FREE (the population's conditional mean: masses, proportions; try first), HELD `name!` (one feature,
+   the rest kept: for a coupled neighbour that went out; costs more |c| per unit), `nd:<gap>` (filled vocabulary),
+   sex_gnm_dir / eth_dir0-2, base keys (weight, dimorphism, gnm_base), lids (lid_upper / lid_lower: pose, metres).
+6. Re-look AND run the target table (mtable.py: head shape, jaw / chin, eye placement, nose, mouth; tolerances per
+   item): keep only if the whole face reads closer AND no target went out; else revert or fix the coupled
+   neighbour with a held step (free moves drag neighbours: length -> philtrum, lips -> chin).
+7. Lids by measure (eyeread.py: lid margins vs iris in iris radii), not by identity.
+8. Log each round (artist_log.json per model) + before / after strips (cmpround.sh); a sheet every 3-4 rounds.
+Gap filling
+9. If no direction expresses a difference: write a reader on GNM heads, measure it over 2000 sampled heads
+   (newdirs.py), report R2 / sd / couplings; add it as a coupled direction (within sex on GNM's sex axis). Low R2 or a
+   tiny sd = a real capability gap (a local residual is justified); a coupling against what you see (orbital rim ->
+   heavy brow) = the look lives elsewhere (lids, skin) or needs a held step.
+What it needs to become MCP tools (next thread): see the HANDOVER below. Free macros drag neighbours (philtrum <-> chin; length -> philtrum): the table
   after each step catches it; held steps cost more |c| per unit.

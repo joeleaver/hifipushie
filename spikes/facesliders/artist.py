@@ -39,6 +39,9 @@ def _dir(name):
         d = np.zeros(170)
         d[:hmac.K] = hmac.direction(name)
         return d
+    if name.startswith("nd:"):   # faces6 newdirs.npz: the vocabulary gaps' coupled directions (per +1 sd)
+        z = np.load(f"{F}/newdirs.npz")
+        return z["dirs"][:, [str(x) for x in z["names"]].index(name[3:])]
     if name == "sex_gnm_dir":
         cv = np.load(f"{F}/cvae_stats.npz")
         d = cv["m_m"] - cv["m_f"]
@@ -103,11 +106,12 @@ def look(m, out, ref="f6_M_mace"):
         WC.eye_presentation(mesh)
     ref_st = humanfit.state(store.load(ref)["base"])
     cols = ["photo", f"{m} (her light)", "50% overlay", "outline: photo red / clay green", "squint photo", "squint clay"]
+    VIEWS = list(range(len(refs["views"])))
     sheet = Image.new("RGB", (T * len(cols), (T + 18) * 3 + 18), "white")
     dr = ImageDraw.Draw(sheet)
     for j, lab in enumerate(cols):
         dr.text((j * T + 4, 2), lab, fill=(0, 0, 0))
-    for i, vi in enumerate((0, 1, 2)):
+    for i, vi in enumerate(VIEWS):
         v, cam = refs["views"][vi], refs["cameras"][vi]
         img = Image.open(v["image"]).convert("RGB")
         P = humanfit.project(cam, ref_st["L"])
@@ -120,7 +124,12 @@ def look(m, out, ref="f6_M_mace"):
         Lm = humanfit.project(cam, st["L"])
         if abs(float(v.get("yaw", 0))) < 70:
             Pd = likeness.detect([img])[0]
-            a_ph = np.asarray(Pd, float)[[33, 133, 263, 362, 168], :2].mean(0)
+            if Pd is None:   # (painted concept art the detector misses: the clicked 68 where given)
+                pts = v.get("points") or {}
+                Pd = None
+                a_ph = np.mean([pts[k] for k in ("lm36", "lm39", "lm42", "lm45", "lm27") if k in pts], 0)
+            else:
+                a_ph = np.asarray(Pd, float)[[33, 133, 263, 362, 168], :2].mean(0)
             a_md = Lm[[36, 39, 42, 45, 27]].mean(0)
         else:
             pts = v["points"]
@@ -131,7 +140,7 @@ def look(m, out, ref="f6_M_mace"):
         ph = img.crop(tuple(int(round(b)) for b in pbox)).resize((px, px), Image.LANCZOS)
         cl, _, ps = lit_render(mesh, cam, img, box=box, px=px)
         k = px / side
-        if abs(float(v.get("yaw", 0))) < 70 and os.environ.get("HER_BROWS", "1") == "1":
+        if abs(float(v.get("yaw", 0))) < 70 and os.environ.get("HER_BROWS", "1") == "1" and Pd is not None:
             cl = WC.draw_photo_brows(cl.convert("RGB"), Pd, lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q])
         else:
             cl = WC.draw_brows(cl.convert("RGB"), mesh, cam, box, k)

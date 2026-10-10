@@ -81,7 +81,17 @@ def _sets(sp) -> dict:
     rest = ext & ~used & ~gr["ears"]
     mid = ext & (np.abs(V0[:, 0]) < 0.0015) & (fwd > -L[[0, 16], 1].mean())
     fz = L[27, 2] + 0.045
-    s = {"pog": np.flatnonzero(chin & (np.abs(V0[:, 0]) < 0.008))[np.argsort(-fwd[chin & (np.abs(V0[:, 0]) < 0.008)])[:8]],
+    # orbit rings (faces6): around each eye centre in the face plane (x, z), radius bands, upper / lower halves
+    rings = {}
+    for side, ec in (("L", L[68]), ("R", L[69])):
+        dx, dz = V0[:, 0] - ec[0], V0[:, 2] - ec[2]
+        rr = np.hypot(dx, dz)
+        front = ext & (fwd > fwd[ext].max() - 0.06) & ~gr["ears"]
+        for nm, lo, hi in (("rim", 0.016, 0.020), ("lid", 0.006, 0.0095)):
+            for half, sel in (("up", dz > 0.004), ("lo", dz < -0.004)):
+                rings[f"{nm}_{half}_{side}"] = np.flatnonzero(front & (rr > lo) & (rr < hi) & sel & (np.abs(dx) < 0.012))
+    rad = ext & (np.abs(V0[:, 2] - L[28, 2]) < 0.002) & (np.abs(V0[:, 0]) < 0.016) & (fwd > fwd[ext].max() - 0.05)
+    s = {**rings, "radix_band": np.flatnonzero(rad), "pog": np.flatnonzero(chin & (np.abs(V0[:, 0]) < 0.008))[np.argsort(-fwd[chin & (np.abs(V0[:, 0]) < 0.008)])[:8]],
          "cleft_mid": np.flatnonzero(band & (np.abs(V0[:, 0]) < 0.002)),
          "cleft_side": np.flatnonzero(band & (np.abs(V0[:, 0]) > 0.004) & (np.abs(V0[:, 0]) < 0.010)),
          "cheek_L": np.flatnonzero(gr["left_cheek_region"] & ext), "cheek_R": np.flatnonzero(gr["right_cheek_region"] & ext),
@@ -148,7 +158,13 @@ MACROS = {
     "ear_size": ("io", "big (+) / small (-) ears"),
     "ear_out": ("io", "ears standing out (+) / flat to the head (-)"),
     "head_size": ("mm", "interocular distance: the head's absolute size"),
+    # (faces6: the artist block-in's vocabulary gaps)
+    "gonial_height": ("io", "high (+) / low (-) jaw angles: the gonial corners' height over the chin's bottom"),
+    "orbital_rim": ("mm", "a defined socket (+): the brow-orbital rim standing ahead of the upper lid's plane / flat (-)"),
+    "lower_orbit": ("mm", "a defined lower orbital rim (+) ahead of the lower lid / a flat or hollow under-eye (-)"),
 }
+# (radix width, the bridge's width between the eyes: read in spikes/facesliders/newdirs.py, not a macro: held-out R2
+# 0.90 (below this table's near-linear bar) and a population sd of only ~0.6 mm: GNM barely varies it)
 
 
 def measures(V: np.ndarray) -> dict:
@@ -209,6 +225,13 @@ def measures(V: np.ndarray) -> dict:
     out["ear_size"] = 0.5 * (np.ptp(V[s["ear_L"], 2]) + np.ptp(V[s["ear_R"], 2])) / io
     out["ear_out"] = 0.5 * ((V[s["ear_L"], 0].max() - L[16, 0]) + (L[0, 0] - V[s["ear_R"], 0].min())) / io
     out["head_size"] = io * 1000
+    out["gonial_height"] = (L[[3, 4, 5, 11, 12, 13], 2].mean() - L[8, 2]) / io
+    orb, lorb = 0.0, 0.0
+    for sd_ in ("L", "R"):
+        orb += (f(V[s[f"rim_up_{sd_}"]]).mean() - f(V[s[f"lid_up_{sd_}"]]).mean()) * 500
+        lorb += (f(V[s[f"rim_lo_{sd_}"]]).mean() - f(V[s[f"lid_lo_{sd_}"]]).mean()) * 500
+    out["orbital_rim"] = orb
+    out["lower_orbit"] = lorb
     return {k: float(v) for k, v in out.items()}
 
 
