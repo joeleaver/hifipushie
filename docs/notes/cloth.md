@@ -2170,3 +2170,26 @@ NO SIM WAS RUN.
     visible shirt x jacket 10 (front.L by the gorge), collar_show 18.9 mm. Renders out/c11_k4_neck.png, _fig.png;
     before / after: out/j12_k4_neck.png, j12_k4_fig.png, ba_tabs.png, bsm_cmp.png. At whole-figure scale the change is
     small (the knotted tabs show only in the three-quarter views): no sheet sent.
+  - Round 2 (coordinator, after the merge of 2699cd3). EXPORT: export_part now ships each constructed part (made
+    collar) as a closed slab of its thickness, its pattern uv placed where its source piece lies in the atlas, and drops
+    the simulated pieces it replaces (`replaces`); test_seams::test_export_ships_made_parts_not_the_pieces_they_replace
+    writes a GLB and reads it back (made part present, no triangle of its source).
+  - RE-DRESS on the current Garrett (gc_dress: style head_size 1.0, was 1.138): model workspace/su_gc = gc_dress's spec
+    (frozen copy, 2026-10-10 00:24) + su_om_garrett's shirt (as s2_12: no patches) and jacket; the jacket with j12's ops
+    (q_g.txt, no under_pin: over the NEW shirt sim). The shirt's fine settle was refused (13 slivers at the open neck by
+    the front edges up to 2.3x after the coarse -> fine carry and body clearing; the coarse sim itself was clean, max
+    1.22x): `cloth.relax_start` (edge-length relaxation of the over-stretched triangles + 2 rings, never made or carried
+    vertices; only when fine_start_check fails, so passing starts and their cache keys are untouched): 2.3 -> 1.6x,
+    41 vertices moved <= 1.5 mm. test_cloth::test_relax_start_gives_back_a_slivers_stretch.
+    run.py now also pickles the under garment (<tag>_under.pkl, its body + joints); c10ship pair=<tag>, trace.py third
+    arg, judge.sh / views.sh PAIR=<tag> judge a pair on its own body (pairload.py).
+    Spend: shirt coarse $0.046 + fine $0.018 + jacket $0.042 = $0.107 (three stages: each needs the previous result).
+    RESULT c11_gj: chin 1541 (was 1529), shoulder line 1512: the notch by the chin 68 / 60 mm below it vs concept 63 / 56
+    (was 51 / 44: -12 -> +5 / +4, it came to the concept on its own); by the shoulder line still -39 / -31 (concept
+    +5 / +11). Jacket collar top at the side neck 6-9 mm below the chin (concept 20-21); shirt collar 11-13 mm above
+    the jacket's there; collar_show at CB 24.7 mm (rule 10-20). BUT: the wearer's left lapel flares out as a wing
+    (lapel 97 mm from the roll, right 65), shirt flecks at its edge, 99 visible crossings, GATE FAIL 546 skin px (low
+    front cameras: at the wearer's left front edge by the shirt's hem). The new shirt's collar does NOT read like
+    s2_12's: the band's ends stand out as small slabs beside the collar points (a button showing at one), the points
+    spread wider and shorter (out/shirt_alone_cmp.png: s2_12 | new). Not yet known whether that is the body or code
+    since s2_12 (meshing changed: 13123 vs 13284 vertices).

@@ -4605,6 +4605,56 @@ FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth
 FINE_START_MAX = 0.6  # the fine settle's start may stretch its draped cloth this far at most (the solver's top limit)
 
 
+def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int = 2, rounds: int = 200,
+                aim: float = 0.25) -> tuple:
+    """The fine settle's start with its over-stretched draped triangles relaxed: (start, info). Only vertices of
+    triangles past 1 + limit and `rings` rings round them move (never made or carried ones): each round every edge
+    among them longer than (1 + aim) x its pattern length gives back the excess, shared by its movable ends.
+    The start is carried coarse -> fine and cleared off the body vertex by vertex; slivers at a fold (a shirt's open
+    neck by the front edges: 3.4 mm edges at 7 mm, 2.3x, cloth11 on Garrett's new body) came out past what the solver
+    can start from, and the whole fine settle was refused for a dozen triangles."""
+    from .cloth_zozo import _start_stretch
+    F, uv = np.asarray(M["F"]), np.asarray(M["uv"], float)
+    X = np.array(plan["start"], float)
+    fixed = np.zeros(len(uv), bool)
+    fixed[np.asarray(plan["idx"], np.int64)] = True
+    fixed[np.asarray(plan["rest_idx"], np.int64)] = True
+    R = np.c_[uv, np.zeros(len(uv))]
+    s = _start_stretch(R, X, F)
+    bad = (s > 1.0 + limit) & ~fixed[F].all(1)
+    if not bad.any():
+        return X, {"relaxed": 0}
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    mov = np.zeros(len(uv), bool)
+    mov[F[bad].ravel()] = True
+    for _ in range(rings):
+        g = mov.copy()
+        g[E[mov[E[:, 0]], 1]] = True
+        g[E[mov[E[:, 1]], 0]] = True
+        mov = g
+    mov &= ~fixed
+    Ek = E[mov[E[:, 0]] | mov[E[:, 1]]]
+    rest = np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1)
+    wa, wb = mov[Ek[:, 0]].astype(float), mov[Ek[:, 1]].astype(float)
+    sh = wa / np.maximum(wa + wb, 1e-9)
+    for _ in range(rounds):
+        d = X[Ek[:, 1]] - X[Ek[:, 0]]
+        L = np.linalg.norm(d, axis=1)
+        ex = np.maximum(L - (1 + aim) * rest, 0.0)
+        if ex.max() < 1e-6:
+            break
+        c = d / np.maximum(L, 1e-12)[:, None] * ex[:, None]
+        acc, n = np.zeros_like(X), np.zeros(len(X))
+        np.add.at(acc, Ek[:, 0], c * sh[:, None])
+        np.add.at(acc, Ek[:, 1], -c * (1 - sh)[:, None])
+        np.add.at(n, Ek[:, 0], wa)
+        np.add.at(n, Ek[:, 1], wb)
+        X = X + np.where(mov[:, None], acc / np.maximum(n, 1)[:, None], 0.0)
+    s2 = _start_stretch(R, X, F)
+    return X, {"relaxed": int(mov.sum()), "worst_before": round(float(s[bad].max()), 2),
+               "worst_after": round(float(s2[~fixed[F].all(1)].max()), 2)}
+
+
 def fine_start_check(M: dict, plan: dict, limit: float = FINE_START_MAX) -> str:
     """'' when the fine settle's start can be solved, else where it can't: draped triangles (no made vertex) that the
     solver moves (not every vertex carried) stretched past 1 + limit from the flat pattern. (tr_13's trousers started
@@ -6377,6 +6427,11 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             plan["start"] = st_
             if not press_ and len(plan["idx"]):
                 plan["poses"] = st_[plan["idx"]][None]
+        if fine_start_check(M, plan):  # (a start the solver can't take: its slivers relaxed first; a start it can take
+            # is left exactly as it was, so the cached fine settles keep their keys)
+            plan["start"], rinfo_ = relax_start(M, plan)
+            log(f"cloth {name}: fine start relaxed {rinfo_}, separation from the collider "
+                f"{_start_separation(plan['start'], M['F'], coll['bodyV'], coll['bodyT']) * 1000:.2f} mm")
         stiff_f = interfacing(Bp, M)
         fold_f = {}
         if M.get("folds"):
