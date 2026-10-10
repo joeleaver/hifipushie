@@ -4631,13 +4631,14 @@ def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
 
 
 def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int = 2, rounds: int = 200,
-                aim: float = 0.25) -> tuple:
+                aim: float = 0.25, allow: np.ndarray | None = None) -> tuple:
     """The fine settle's start with its over-stretched draped triangles relaxed: (start, info). Only vertices of
     triangles past 1 + limit and `rings` rings round them move (never made or carried ones): each round every edge
     among them longer than (1 + aim) x its pattern length gives back the excess, shared by its movable ends.
     The start is carried coarse -> fine and cleared off the body vertex by vertex; slivers at a fold (a shirt's open
     neck by the front edges: 3.4 mm edges at 7 mm, 2.3x, cloth11 on Garrett's new body) came out past what the solver
-    can start from, and the whole fine settle was refused for a dozen triangles."""
+    can start from, and the whole fine settle was refused for a dozen triangles. allow: per triangle, stretch it is
+    declared to start with on top (declared_stretch: a rib band cut short), as fine_start_check takes it."""
     from .cloth_zozo import _start_stretch
     F, uv = np.asarray(M["F"]), np.asarray(M["uv"], float)
     X = np.array(plan["start"], float)
@@ -4646,7 +4647,8 @@ def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int =
     fixed[np.asarray(plan["rest_idx"], np.int64)] = True
     R = np.c_[uv, np.zeros(len(uv))]
     s = _start_stretch(R, X, F)
-    bad = (s > 1.0 + limit) & ~fixed[F].all(1)
+    al = np.zeros(len(F)) if allow is None else np.asarray(allow, float)
+    bad = (s > 1.0 + limit + al) & ~fixed[F].all(1)
     if not bad.any():
         return X, {"relaxed": 0}
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
@@ -4659,7 +4661,10 @@ def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int =
         mov = g
     mov &= ~fixed
     Ek = E[mov[E[:, 0]] | mov[E[:, 1]]]
-    rest = np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1)
+    av = np.zeros(len(uv))
+    for k_ in range(3):
+        np.maximum.at(av, F[:, k_], al)
+    rest = np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1) * (1 + np.maximum(av[Ek[:, 0]], av[Ek[:, 1]]))
     wa, wb = mov[Ek[:, 0]].astype(float), mov[Ek[:, 1]].astype(float)
     sh = wa / np.maximum(wa + wb, 1e-9)
     for _ in range(rounds):
@@ -6454,9 +6459,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             plan["start"] = st_
             if not press_ and len(plan["idx"]):
                 plan["poses"] = st_[plan["idx"]][None]
-        if fine_start_check(M, plan):  # (a start the solver can't take: its slivers relaxed first; a start it can take
-            # is left exactly as it was, so the cached fine settles keep their keys)
-            plan["start"], rinfo_ = relax_start(M, plan)
+        allow_ = declared_stretch(Bp, M)
+        if fine_start_check(M, plan, allow=allow_):  # (a start the solver can't take: its slivers relaxed first; a start
+            # it can take is left exactly as it was, so the cached fine settles keep their keys)
+            plan["start"], rinfo_ = relax_start(M, plan, allow=allow_)
             log(f"cloth {name}: fine start relaxed {rinfo_}, separation from the collider "
                 f"{_start_separation(plan['start'], M['F'], coll['bodyV'], coll['bodyT']) * 1000:.2f} mm")
         stiff_f = interfacing(Bp, M)
