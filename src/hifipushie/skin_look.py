@@ -132,12 +132,14 @@ def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str
                                  ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py", "paintnodes.py",
                                   "blender_scene.py", "base.py", "headfit.py", "skin_look.py"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
+        mark.touch()  # last use, for store.prune_stages
         return sn
     t = time.time()
     d.mkdir(parents=True, exist_ok=True)
     (d / "spec.json").write_text(json.dumps(stylesheet.strip(st) if hasattr(stylesheet, "strip") else st))
     r = scene.sync(sn, resolution=256)
     mark.write_text(key + code)
+    store.prune_stages("_skin_", "skin_look.key", keep=sn)
     log.append(f"{region}: synced in {time.time() - t:.0f} s ({', '.join(f'{k} {v}' for k, v in r['seconds'].items())})")
     return sn
 

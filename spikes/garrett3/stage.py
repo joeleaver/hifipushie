@@ -81,10 +81,12 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
     mark = d / "g3_stage.key"
     (d / "spec.json").write_text(json.dumps(stylesheet.strip(st) if hasattr(stylesheet, "strip") else st))
     if mark.exists() and mark.read_text() == key and scene.blend_path(sn).exists():
+        mark.touch()  # last use, for store.prune_stages
         return sn
     t = time.time()
     r = scene.sync(sn, resolution=256)
     mark.write_text(key)
+    store.prune_stages("_g3_", "g3_stage.key", keep=sn)
     log(f"stage {sn}: synced in {time.time() - t:.0f} s ({', '.join(f'{k} {v}' for k, v in r['seconds'].items())})")
     return sn
 

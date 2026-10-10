@@ -19,6 +19,36 @@ HOME = Path(os.environ.get("HIFIPUSHIE_HOME") or Path.cwd() / "workspace")
 BUILD_VERSION = 16  # bump when meshing changes, so cached builds are redone
 
 
+def prune_stages(prefix: str, mark: str, keep: str = "", budget_gb: float | None = None, idle_s: float = 3600) -> list:
+    """Derived stage models (`<prefix><model>...`, each a full synced scene of ~0.2-0.6 GB, one per source model and
+    variant) are disposable caches: delete the least recently used (by their `mark` file's mtime, touched on every
+    use) until the prefix's total is under budget_gb ($HIFIPUSHIE_STAGE_GB, default 10). Never `keep`, never one used
+    within idle_s (another process may be rendering it). Returns the names deleted. (2026-10-10: _g3_ / _skin_
+    stages had grown to 91 GB, one per scratch model, never removed.)"""
+    import shutil
+    budget = float(os.environ.get("HIFIPUSHIE_STAGE_GB", 10) if budget_gb is None else budget_gb) * 1e9
+    now = time.time()
+    rows = []
+    for d in HOME.glob(prefix + "*"):
+        if not d.is_dir():
+            continue
+        m = d / mark
+        used = m.stat().st_mtime if m.exists() else d.stat().st_mtime
+        size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+        rows.append((used, size, d))
+    total = sum(r[1] for r in rows)
+    gone = []
+    for used, size, d in sorted(rows):
+        if total <= budget:
+            break
+        if d.name == keep or now - used < idle_s:
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        total -= size
+        gone.append(d.name)
+    return gone
+
+
 def _dir(name: str) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", name):
         raise ValueError("model names may only contain letters, digits, _ and -")
