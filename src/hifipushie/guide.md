@@ -255,7 +255,7 @@ humanoid but has no base.
 **A real or drawn PERSON from pictures: the artist block-in is the default** (guide(topic="block_in")): one-mesh
 human + human_reference for the cameras, then `block_in_start` (a base head of the right kind), and rounds of
 `block_in_look` -> name the biggest difference in masses and planes -> ONE small `block_in_step` -> keep it only if
-the whole face reads closer and no target went out; lids by measure (`lid_read`). Feature detail (likeness,
+the whole face reads closer and no target went out; lids and fold by the eye step (`lid_read(match=True)`: identity + GNM eye expression, never lidfold). Feature detail (likeness,
 fit_likeness), skin, hair and clothes come after the block-in.
 
 ## 4c. Hair: curve locks, big to small, the way an artist grooms

@@ -204,3 +204,16 @@ def test_region_pcs():
     assert abs(r1["head_size"] - r0["head_size"]) < 0.02   # size kept
     with pytest.raises(ValueError, match="no GNM region"):
         bi.direction("pc:elbow0")
+
+
+@need_ref
+def test_eye_readers():
+    """blockin_eyes.Reader on the shipped head: lid margins near the render-based lid_read, a crease profile read; the
+    solve's expression keys are GNM's eye-region pairs."""
+    from hifipushie import blockin_eyes as be, onemesh
+    b = store.load(REF)["base"]
+    ht = onemesh.head_template(b)
+    q = be.Reader(ht).read(ht)
+    assert -1 < q["up"] < 2 and 0 < q["lo"] < 2 and np.isfinite(q["hsoft"]) and q["r_iris_mm"] > 5   # (fs_ge3: its lid pose puts the upper lid past the pole)
+    Ln, Rn, names = be._names()
+    assert Ln[0] in names and Rn[0] in names and len(Ln) == be.NE

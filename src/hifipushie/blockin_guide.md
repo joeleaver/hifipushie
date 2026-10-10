@@ -70,10 +70,19 @@ eye catches what the points miss; the target table catches what your eye misses.
    appears when the long lengths are all off the same way: that is a uniform scale (the camera's distance or the head's
    size), not shape: refit the camera (`block_in_step(..., cameras=[i])`) or set `head_scale`, never chase it with
    head_size / eye_spacing identity steps.
-7. **Lids by measure, not by identity**: `lid_read(name)` gives the lid margins against the iris (MRD1 / MRD2 style,
-   in iris radii) on the front picture and on the model's render. `lid_read(name, match=True)` sets lid_upper /
-   lid_lower to the photo's margins as a step. Eye size and "almond" shape are mostly lid position and seating; an
-   identity step for eye height made eyes read NARROWER.
+7. **The EYE STEP: lids and fold the way GNM is built** (Joe: "we shouldn't really ever use our 'fix' [lidfold]"):
+   GNM's identity is the relaxed neutral and its eye-region EXPRESSION is the lids' state; its lids have folds as
+   identity + expression configurations. `lid_read(name)` reads the picture (lid margins against the iris in iris
+   radii, MRD1 / MRD2 style; the fold line's height over the lashes and darkness, lidfold.read_lid) beside the model.
+   `lid_read(name, match=True)` is the step: one solve over the identity + GNM's symmetric eye-region expression
+   (blockin_eyes.py) for the margins, the fold line's height (the crease's) and that a line is there (>= 1.2 mm deep
+   when the picture's line is dark), or a covered platform when the picture shows no line (hooded); the rest of the
+   face held (68 landmarks off the eyes within ~0.3 mm). It ships as head.identity + head.expression, the lid pose
+   cleared; never lidfold (head.fold: old models only). Judge it with focus=eyes under raking light AND dressed
+   (look_skin views eye / face): a crease under ~1 mm deep doesn't read dressed. Tess (b2_T06): lids 0.65 / 0.88
+   vs her 0.67 / 0.88, crease 1.1 mm deep at 5.3 mm (her line 5.15 mm), |dc| 3.0, |e| 1.8, table unchanged.
+   `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
+   an identity step for eye height made eyes read NARROWER.
 8. **Judge in whole-face hair-cap clay under both lights** (the photo's light in the sheet; `look` / `look_skin` for
    the clay key and the dressed head) **before any fine detail.** A block-in is done when the outline sits on the
    pictures in every view, the table passes (or every miss is explained: a painted view, a detector guess), and the
@@ -184,9 +193,10 @@ block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, s
   rows: a half-sd step is hard to see beside the photo alone) + table.
 
 ### `lid_read`
-lid_read(name, match=False, out=None, seen="", save=None): the lid margins against the iris on the front picture (MediaPipe
-iris and lids) and on the model's front render (the visible eyeball through the iris centre), in iris radii: upper
-(MRD1-like), lower (MRD2-like), and the opening's aspect. match=True: lid_upper / lid_lower solved so the model's
-margins (both eyes' mean) equal the photo's, written as a block-in step (out, seen as block_in_step) and returned
-with its sheet (save) and table. The lid pose moves GNM's eye-region expression, which also nudges the nasion
-landmark ~1 mm: nasion-based lengths (face height, middle third, nose length) shift a little with it.
+lid_read(name, match=False, out=None, seen="", save=None): the picture's lid margins against the iris (MediaPipe iris and
+lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and the model's (its front render, the
+visible eyeball through the iris centre). match=True: the EYE STEP (loop, 7): identity + GNM eye-region expression
+solved for the margins and the fold line, a new block-in step (out, seen as block_in_step); returns the focus=eyes
+sheet (before | after) and the solve's report (picture vs model before / after: lids, visible platform, crease depth
+and height, |dc|, |e|). ~4 min. match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
+
