@@ -599,6 +599,62 @@ def test_relax_start_gives_back_a_slivers_stretch():
     assert np.array_equal(cloth.relax_start(M, ok)[0], ok["start"])  # a start the solver takes is left as it is
 
 
+def test_band_ends_run_past_cf_only_as_far_as_the_button_or_the_collar_point():
+    # a band 20 mm tall, CF at x = +-0.2, extensions 10 mm (button, left) and 16 mm (buttonhole, right) as Simon drafts
+    # them; a collar whose points reach 6 mm past its sewn ends: the ends come in to the buttons' need, rounded
+    def band(e_l, e_r):
+        pts, names = [], {}
+
+        def add(nm, p):
+            if nm:
+                names[nm] = len(pts)
+            pts.append(p)
+        add("bottomMid", (0.0, 0.0))
+        for k in range(1, 5):
+            add(None, (0.04 * k, 0.0))
+        add("rightBottomCf", (0.2, 0.0))
+        add(None, (0.2 + e_r / 2, 0.0))
+        add("rightBottomEdge", (0.2 + e_r, 0.0))
+        for k in range(1, 4):
+            t = 0.5 * np.pi * k / 4
+            add(None, (0.2 + e_r * np.cos(t), 0.02 * np.sin(t)))
+        add("rightTopCf", (0.2, 0.02))
+        for k in range(1, 10):
+            add("topMid" if k == 5 else None, (0.2 - 0.04 * k, 0.02))
+        add("leftTopCf", (-0.2, 0.02))
+        for k in range(1, 4):
+            t = 0.5 * np.pi * (1 - k / 4)
+            add(None, (-0.2 - e_l * np.cos(t), 0.02 * np.sin(t)))
+        add("leftBottomEdge", (-0.2 - e_l, 0.0))
+        add(None, (-0.2 - e_l / 2, 0.0))
+        add("leftBottomCf", (-0.2, 0.0))
+        for k in range(1, 5):
+            add(None, (-0.2 + 0.04 * k, 0.0))
+        return {"name": "stand", "P": np.array(pts), "names": names, "marks": {}}
+    collar = {"name": "collar", "P": np.array([[0.2, 0.0], [0.206, 0.05], [-0.206, 0.05], [-0.2, 0.0]]),
+              "names": {"rightBottomEdge": 0, "rightTopEdge": 1, "leftTopEdge": 2, "leftBottomEdge": 3}}
+    out = {"stand": band(0.010, 0.016), "collar": collar}
+    info = cloth.band_ends(out)
+    P, nm = out["stand"]["P"], out["stand"]["names"]
+    ext_l = -0.2 - P[nm["leftBottomEdge"]][0]
+    ext_r = P[nm["rightBottomEdge"]][0] - 0.2
+    assert abs(ext_l - (0.0055 + 0.002)) < 1e-6 and abs(ext_r - (0.007 + 0.002)) < 1e-6, info
+    assert P[:, 0].max() <= 0.2 + ext_r + 1e-9 and P[:, 0].min() >= -0.2 - ext_l - 1e-9  # nothing past the new ends
+    assert np.allclose(P[nm["rightTopCf"]], (0.2, 0.02)) and np.allclose(P[nm["topMid"]], (0.0, 0.02))  # the rest stays
+    # a collar whose points reach further than the buttons need: the ends run to the points; a short band stays as is
+    wide = collar["P"].copy()
+    wide[[1, 2], 0] = [0.212, -0.212]  # (points reaching 12 mm past their sewn ends)
+    out2 = {"stand": band(0.010, 0.016), "collar": dict(collar, P=wide)}
+    cloth.band_ends(out2)
+    P2, nm2 = out2["stand"]["P"], out2["stand"]["names"]
+    assert abs((P2[nm2["rightBottomEdge"]][0] - 0.2) - 0.012) < 1e-6  # to the point's reach
+    assert abs((-0.2 - P2[nm2["leftBottomEdge"]][0]) - 0.010) < 1e-6  # (shorter already: kept)
+    out3 = {"stand": band(0.006, 0.006), "collar": collar}
+    P3 = out3["stand"]["P"].copy()
+    cloth.band_ends(out3)
+    assert np.array_equal(out3["stand"]["P"], P3)  # (only ever shortens)
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
