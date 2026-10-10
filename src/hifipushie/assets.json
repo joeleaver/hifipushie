@@ -23,7 +23,7 @@
  },
  "makehuman": {
   "needed_by": "base.body {\"source\": \"makehuman\"} (makehuman.py)",
-  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target, targets/measure/measure-{hips-circ,waist-circ,shoulder-dist,bust-circ,neck-circ}-{decr,incr}.target",
+  "source": "https://github.com/makehumancommunity/makehuman at commit a8bc2d54ff0ac92e78ff71431b1023eda42bf482 (2024-06-26): makehuman/data/3dobjs/base.obj, rigs/default.mhskel, rigs/default_weights.mhw, targets/macrodetails/*-male-*.target and *-female-*.target, targets/breast/*.target, targets/measure/measure-{hips-circ,waist-circ,shoulder-dist,bust-circ,neck-circ}-{decr,incr}.target, targets/neck/neck-{double,scale-depth}-{decr,incr}.target",
   "licence": "CC0 for the MakeHuman core assets (base mesh, targets, skeleton; makehumancommunity.org license page). The program code is AGPL and is NOT used: hifipushie reads these files with its own loader.",
   "files": [
    {
@@ -1710,6 +1710,26 @@
     "path": "targets/measure/measure-neck-circ-incr.target",
     "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/measure/measure-neck-circ-incr.target",
     "sha256": "caa38a399ef4dcdd713e5cb3e496afa8c6c938dea41fd848703d4549a48a74c0"
+   },
+   {
+    "path": "targets/neck/neck-double-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/neck/neck-double-decr.target",
+    "sha256": "21757d56fd147be67c962fdad9c3fee07e06bf069f17f1bb8f29fdae53b17b5a"
+   },
+   {
+    "path": "targets/neck/neck-double-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/neck/neck-double-incr.target",
+    "sha256": "095d6a532e3cb4da3cef1f41b940b5fec830a90e61b0ddf8b56d84f9021a2217"
+   },
+   {
+    "path": "targets/neck/neck-scale-depth-decr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/neck/neck-scale-depth-decr.target",
+    "sha256": "0859baedc84b94cb4cc93eda0df44fa9c1156c75f013a34fd017695acd72ba2b"
+   },
+   {
+    "path": "targets/neck/neck-scale-depth-incr.target",
+    "url": "https://raw.githubusercontent.com/makehumancommunity/makehuman/a8bc2d54ff0ac92e78ff71431b1023eda42bf482/makehuman/data/targets/neck/neck-scale-depth-incr.target",
+    "sha256": "05d69f134d945677193d37c49796516c183e4b2dd3da20e528ff09a6b0a6e93d"
    }
   ]
  },

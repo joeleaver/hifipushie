@@ -211,3 +211,22 @@ def test_profile_contour_either_side(tmp_path):
     np.testing.assert_allclose(cR[:, 0], W - 1 - cL[:, 0], atol=1.0)
     want = np.ceil(145 - 25 * np.exp(-((cL[:, 1] - 170) / 25.0) ** 2))
     assert np.abs(cL[:, 0] - want).max() <= 3   # on the skin's edge, not on the wall
+
+
+def test_neck_double_and_lens_prior():
+    """lt19: MakeHuman's neck-double target as a body key (0.5 = none) moves only the neck front; a view's lens_mm sets
+    the camera fit's focal prior (35 mm-equivalent, on the frame's diagonal)."""
+    from hifipushie import humanfit_map, makehuman as mh
+    if not (mh.root() / "targets" / "neck" / "neck-double-incr.target").exists():
+        pytest.skip("makehuman neck targets not fetched (hifipushie-assets fetch makehuman)")
+    idx, d = mh._target("neck-double-incr.target", "neck")
+    V = np.zeros((int(idx.max()) + 1, 3))
+    mh._measures(V, {"neck_double": 1.0})
+    assert np.allclose(V[idx], d) and np.abs(V).sum() == pytest.approx(np.abs(d).sum())
+    V2 = np.zeros_like(V)
+    mh._measures(V2, {"neck_double": 0.5})
+    assert not V2.any()
+    f, sd = humanfit_map.lens_prior({"size": [1536, 2048], "lens_mm": 24})
+    assert f == pytest.approx(24 / 43.27 * 2560.0, rel=1e-3) and sd < 0.1
+    f0, sd0 = humanfit_map.lens_prior({"size": [1536, 2048]})
+    assert f0 == pytest.approx(humanfit_map.LENS[0] / 36.0 * 1536) and sd0 == humanfit_map.LENS[1]
