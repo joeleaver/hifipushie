@@ -78,6 +78,11 @@ seed's `spread` at 0.45 or less for women and children: a strong random individu
   surface in RGB, so tinting a base colour by hand gives tones no skin has [6]. `tone` takes `melanin` 0..1 (or
   `fitzpatrick` 1-6), `blood` 0..1, `undertone` (-1 cool/pink .. +1 warm/golden) and computes the albedo; every later
   layer is "this skin with more or less melanin or blood", so cheeks, lips, palms and scars come out right on any tone.
+- Very fair skin: Fitzpatrick 1 / melanin under ~0.05 lands in the ITA "very light" bin (individual typology angle
+  atan((L*-50)/b*) > 55 deg: L* ~72, b* ~13); F2 is "light" (47), F3 intermediate (37). Before 2026-10-10 melanin 0
+  stopped at ITA 52 and very fair people rendered tan. A rosy fair face is more `blood` (0.5-0.6) with the same low
+  melanin, not a negative undertone (that mostly darkens). Judge colour against a photo's FOREHEAD (cheeks flush),
+  and check the photo's cast on the sclera (neutral ~R/B 1.0-1.1) before trusting its numbers.
 - Albedo stays inside what engines expect of non-metals (sRGB ~50-240) [7]: don't push it darker to "add contrast".
 - `age` drives a lot by default (wrinkles, uneven pigment, age spots, veins, drier thinner skin); set it first.
 

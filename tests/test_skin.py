@@ -38,6 +38,17 @@ def test_tone():
         assert all(x < y for x, y in zip(a, a[1:])), a
         palm = colorsys.rgb_to_hsv(*skin.tone_rgb(t, melanin=0.25))[2]
         assert palm >= colorsys.rgb_to_hsv(*skin.tone_rgb(t))[2]
+    def ita(rgb):  # Chardon's individual typology angle: very light > 55, light 41-55, intermediate 28-41 ...
+        c = np.where(np.array(rgb) <= 0.04045, np.array(rgb) / 12.92, ((np.array(rgb) + 0.055) / 1.055) ** 2.4)
+        y = c @ [0.2126, 0.7152, 0.0722]
+        z = c @ [0.0193, 0.1192, 0.9505] / 1.08883
+        f = lambda v: np.cbrt(v) if v > 0.008856 else 7.787 * v + 16 / 116  # noqa: E731
+        return np.degrees(np.arctan2(116 * f(y) - 16 - 50, 200 * (f(y) - f(z))))
+    assert ita(skin.tone_rgb({"fitzpatrick": 1})) > 55, "Fitzpatrick 1 reaches 'very light' (it stopped at ITA 52: tan)"
+    assert 41 < ita(skin.tone_rgb({"fitzpatrick": 2})) < 55 and 28 < ita(skin.tone_rgb({"fitzpatrick": 3})) < 41
+    assert skin.tone_rgb({"melanin": 0.3}) == [0.7576, 0.5871, 0.4815], "F2 and darker unchanged by the fair end"
+    v = lambda t, **k: colorsys.rgb_to_hsv(*skin.tone_rgb(t, **k))[2]  # noqa: E731
+    assert v({"fitzpatrick": 1}) - v({"fitzpatrick": 1}, melanin=2.5) > 0.03, "freckles still show on very fair skin"
     warm, cool = skin.tone_rgb({"melanin": 0.3, "undertone": 1}), skin.tone_rgb({"melanin": 0.3, "undertone": -1})
     assert colorsys.rgb_to_hsv(*warm)[0] > colorsys.rgb_to_hsv(*cool)[0], "warm undertone is yellower"
     try:

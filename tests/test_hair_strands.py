@@ -420,3 +420,21 @@ def test_lock_density_scales_its_strand_share():
     G = hs.lock_guides([a, b], np.zeros(3), S)["head"]
     w, d = np.asarray(G["weight"], float), np.asarray(G["density"], float)
     assert abs(w[1] / w[0] - 1.0) < 1e-6 and d.tolist() == [1.0, 0.5], (w, d)
+
+
+def test_seen_colour_reads_as_asked_in_eevee():
+    """look.seen (the colour the hair should read, e.g. off a photo): lit is asked more saturated for the renderer's
+    loss, and eevee_sat is set so EEVEE's Hue/Saturation (HSV saturation x eevee_sat, linear) gives seen back; the
+    scalp tint and cards don't get the boosted lit (an orange scalp showed). A photo's light brown typed into lit
+    rendered grey-blond (jw, 2026-10-10); explicit colour keys still win."""
+    import colorsys
+
+    from hifipushie import hair
+    for seen in ("#9c7c62", "#9a948d", "#2a1e16", "#d8c08a"):
+        lk = hair.full_look({"seen": seen})
+        h, s, v = colorsys.rgb_to_hsv(*hair._lin(lk["lit"]))
+        h0, s0, v0 = colorsys.rgb_to_hsv(*hair._lin(seen))
+        assert abs(s * lk["eevee_sat"] - s0) < 0.02 and abs(v - v0) < 0.01, (seen, lk["lit"], lk["eevee_sat"])
+        assert s >= s0 and lk["card_sat"] == lk["eevee_sat"] and lk["scalp"] != lk["lit"]
+    assert hair.full_look({"seen": "#9c7c62", "lit": "#123456"})["lit"] == "#123456"
+    assert "scalp" not in hair.full_look({"lit": "#56352d"})  # without seen: the look as before

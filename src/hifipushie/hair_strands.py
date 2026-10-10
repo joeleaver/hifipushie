@@ -404,12 +404,12 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
 def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = None, col=None) -> dict:
     """What blender_strands.show needs (files in tmp)."""
     import re
-    from .hair import LOOK, hair_of, hairline
+    from .hair import full_look, hair_of, hairline
     h = hair_of(spec)
     S = hc.strands_of(spec)
     if count:
         S = {**S, "count": int(count)}
-    look = {**LOOK, **(h.get("look") or {})}
+    look = full_look(h.get("look"))
     if not look.get("cycles_fit"):
         look["cycles_fit"] = list(CYCLES_FIT)
     seed = int(g.get("seed", 0))

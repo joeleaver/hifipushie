@@ -599,6 +599,13 @@ everywhere inside the hairline (the soft hairline, the cover under the locks). S
    "salon"; "flat" = one sun). `engine="cycles"` path-traces them with the hair BSDF: the truthful look (1-4 min; it
    waits for the machine's heavy slot). EEVEE draws every strand at least a pixel wide, Cycles at its true width:
    a groom that looks full in EEVEE and thin in Cycles needs more `count`, not more thickness.
+   **Colour from a photo: `look.seen`**, not `lit`. The colour keys are asked for the renderer, which gives back
+   about a third of their saturation (Cycles' hair BSDF; EEVEE's strands copy that), so a photo's light brown typed
+   into `lit` renders grey-blond. `seen` = the colour the hair should READ (the median of the photo's LIT hair, not
+   its shadow side: the render makes its own shadows) derives lit / gap / sheen / tip / eevee_sat / the scalp tint
+   (EEVEE then draws seen exactly; Cycles as much as the gamut allows). Colour keys given beside it still win.
+   Measured once (jw, flat frontal light): the rendered lit hair came out ~1.25x as saturated as seen: ask a little
+   less. Hair against a warm wall in the photo looks ashier than the same numbers on our grey backdrop.
 4. **Export for a game**: `export_hair(name, out_dir, tiers=["hero", "main", "npc", "far"], save="sheet.png")`.
    Cards are CUT FROM THE STRANDS: the strands of a lock are clustered (hero: the groom's sub clumps; main: pairs;
    npc: whole locks; far: only hair off the head) and each card's centre line is the mean of its clump's strands,
