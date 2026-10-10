@@ -28,14 +28,14 @@ import json
 
 import numpy as np
 
-VERSION = 19
+VERSION = 21
 SUB_DASH, SUB_GAP = 2.0, 0.4   # the under-skin shafts in the shadow channel: their gain, the shadow left between them
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
 # scale, patchiness, how far the cheeks fill (0 thin .. 1 as the chin); hair grows ~0.4 mm a day
 STUBBLE_STYLES = {
-    "clean": {"length": 0.00005, "shadow": 0.4, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
+    "clean": {"length": 0.00005, "shadow": 0.22, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
     "five_oclock": {"length": 0.0004, "shadow": 0.6, "trim": 0.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.55},
     "short": {"length": 0.0014, "shadow": 0.75, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.6},
     "designer": {"length": 0.004, "shadow": 0.6, "trim": 1.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.7},
@@ -331,7 +331,9 @@ def beard_density(J: dict, o: dict, curv=None):
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     trim = float(o["trim"])
-    soft = io * (0.015 + 0.3 * (1 - trim))        # the boundaries' half-width: ~2.2 cm across untrimmed, ~2 mm trimmed
+    # the boundaries' half-width: ~2.2 cm across untrimmed, ~4 mm trimmed (a trimmer's line still thins over a few mm:
+    # at ~1 mm the designer / heavy cheek line and neckline read as a decal's edge in the 5th blind read)
+    soft = io * (0.06 + 0.26 * (1 - trim))
     cl, nl = float(o["cheek_line"]), float(o["neckline"])
     nose_b, nos, mc = L("lm_nose_base"), L("lm_nostril.L"), L("lm_mouth_corner.L")
     j1 = L("lm_jaw_1.L")
@@ -363,7 +365,10 @@ def beard_density(J: dict, o: dict, curv=None):
     def region(q, P, grow):
         """1 inside the beard's area, its boundaries feathered by `soft` and moved out by `grow` (m)."""
         t = theta(q)
-        lat = _ramp(q[:, 0], M[0] - 0.12 * io, M[0] + 0.02 * io)
+        # (from the moustache's top to the cheek's: over ~2 cm untrimmed; 9 mm made a box with hard sides under the nose
+        # on Garrett, skin3)
+        kl = 0.18 * io * (1 - trim)
+        lat = _ramp(q[:, 0], M[0] - 0.12 * io - kl, M[0] + 0.02 * io + kl)
         top_c = _ramp(q[:, 2] - grow, z_top(t) + soft, z_top(t) - soft)
         top_m = _ramp(q[:, 2] - grow, nos[2] + 0.02 * io + soft, nos[2] + 0.02 * io - soft)
         d = lat * top_c + (1 - lat) * top_m
@@ -497,7 +502,9 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
                 cov = _ramp(r, hw + aa, max(hw - aa, 0.0))
             root = _ramp(np.hypot(s, t), 0.75 * wid[i] + aa, max(0.75 * wid[i] - aa, 0.0))   # the follicle: a dark dot where it leaves the skin
             return np.maximum(cov, root) * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
-        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine))
+        # (cut flush, a fresh shave's stubs are barely there: their darkness grows with the length up to 0.3 mm)
+        flush = np.clip(Lh / 0.0003, 0.15, 1.0)
+        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine) * flush)
         draw(G, x0, A, reach, shape, tone * 0.95 * (0.35 + 0.65 * fine))
         # the shaft under the skin: a dark hair runs ~1 mm on at a slant below the surface before its follicle, seen
         # through the epidermis as a soft grey dash behind the exit point (what makes a 1-day shadow read as a field of

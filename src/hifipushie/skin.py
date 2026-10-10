@@ -688,8 +688,9 @@ def _build(spec: dict, J: dict) -> dict:
     mottle("mottle_red", 0.014, [0.42, 0.85], 11, 0.34 + 0.1 * thin, blood=2.0)
     mottle("mottle_pale", 0.02, [0.42, 0.88], 12, 0.3, blood=0.45, melanin=0.92)
     mottle("mottle_pigment", 0.032, [0.45, 0.8], 13, 0.2 + 0.25 * p["sun"] * (0.4 + old), melanin=1.3)
-    mottle("mottle_fine", 0.0032, [0.45, 0.75], 14, 0.2, blood=1.7, melanin=1.15)
-    mottle("mottle_fine_pale", 0.0045, [0.5, 0.8], 15, 0.16, blood=0.6, melanin=0.9)
+    # (fine mottling up from 0.2 / 0.16: the 0.35-1.4 mm L bands measured 0.15-0.18 on Tess against 0.39-0.47 on her photo, skin3)
+    mottle("mottle_fine", 0.0032, [0.45, 0.75], 14, 0.32, blood=1.7, melanin=1.15)
+    mottle("mottle_fine_pale", 0.0045, [0.5, 0.8], 15, 0.26, blood=0.6, melanin=0.9)
 
     # 3. lips: thin epidermis over a lot of blood; less melanin than the face on light skin, still much on dark
     if face:
@@ -753,7 +754,7 @@ def _build(spec: dict, J: dict) -> dict:
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:
-            micro.append(("pores", "pores", 0.00024 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
+            micro.append(("pores", "pores", 0.0003 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
             micro.append(("lines", "lines", 0.00013 * d * body_k, [{"mask": _z("face"), "invert": True}]))
         else:
@@ -762,8 +763,8 @@ def _build(spec: dict, J: dict) -> dict:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
         for name, sw, depth, mask in micro:
             stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
-            out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min((0.45 if name in ("pores", "lip_lines") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+            out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.7, 0.55, 0.5] if name == "pores" else [0.8, 0.66, 0.62], "mix": "multiply",
+                                         "opacity": round(min((0.65 if name == "pores" else 0.45 if name == "lip_lines" else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
     _aperture_keep_out(spec, part, out)
     if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base

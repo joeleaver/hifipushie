@@ -53,7 +53,7 @@ LOOKS = {
                  "lipstick": {"amount": 0.75, "color": "#b0505a", "finish": "satin"}},
     "evening": {"foundation": {"amount": 0.75, "finish": "matte"}, "concealer": 0.55, "bronzer": 0.35,
                 "contour": 0.6, "blush": {"amount": 0.5, "place": "lifted"}, "highlight": 0.6,
-                "eyeshadow": {"amount": 1.2, "color": "#7a5a4e", "crease": "#45302a", "outer": "#241815", "finish": "shimmer",
+                "eyeshadow": {"amount": 1.2, "color": "#8c5e46", "crease": "#6a4030", "outer": "#3e2418", "finish": "shimmer",
                               "reach": 1.15},
                 "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.004, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
                 "lipstick": {"amount": 1.0, "color": "#8e1f30", "finish": "matte", "liner": 0.6}},

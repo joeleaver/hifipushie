@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 15  # 14-15: iris crypts (eyedetail)
+VERSION = 16  # 14-15: iris crypts (eyedetail); 16: bigger visible pores (skin3)
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -284,7 +284,7 @@ def depth(kind: str) -> np.ndarray:
     mm = PERIOD[kind] * 1000
     if kind == "pores":
         clump = _smooth_noise(rng, 6)
-        big = _pits(P, rng, int(0.9 * mm * mm), (0.09, 0.2), mm, 1.25, clump)  # ~90/cm2 visible pores
+        big = _pits(P, rng, int(1.1 * mm * mm), (0.12, 0.28), mm, 1.25, clump)  # ~110/cm2 visible pores (0.09-0.2 vanished at front distance, skin3)
         small = _pits(P, rng, int(4.5 * mm * mm), (0.035, 0.07), mm)  # the fine ones between
         net = _edges(P, _seeds(rng, int((mm / 0.75) ** 2)), 0.1 / mm, 1.3)  # faint primary lines joining pores
         fine = _edges(P, _seeds(rng, int((mm / 0.3) ** 2)), 0.05 / mm, 1.15)

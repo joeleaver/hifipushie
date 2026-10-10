@@ -470,3 +470,39 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     sharp vector edge: soften its outline, soft 0.3 -> ~0.6, is a fair next step).
   Not this thread's but repeated in every read: no pores / micro-texture or tonal variation in the base skin (redness
   at nostrils and folds, darker under-eyes) on Tess and Garrett.
+- skin3 round 2 (2026-10-10; coordinator: Joe never locked Garrett's values, "way better, but the edges are too hard
+  and don't follow the face": match his photo; then white hairs, designer/heavy edges, clean, evening bruise, pores).
+  Sheets `skin_renders/sk3_11..15` (stubble, freckles, looks, Tess, Garrett). New scratch: ph.py (the photo cropped
+  to shot.py's frame: out/photo_front_big.png, pixel-aligned with <tag>_front_big.png; shot.py now also writes it),
+  cov_m.py (beard coverage photo vs render: MODE=chroma maps beard as lost chroma (the photo is an upscaled ~300 px
+  concept: its fine texture is noise, so texture coverage (MODE=texture) fails on it), regions cheek-at-nose-wing /
+  beside mouth / moustache / neck + edge steepness), hue_e.py (lid colour vs the product, FROM=3.5 past the lashes),
+  g16-19.json + g0.json (Garrett patches; g0 = no stubble: the shading baseline), round7-9.sh, sheets2.sh.
+  GARRETT: his beard-minus-cheek dL -21 was mostly SHADING: the same render with no stubble (g0) gives -11.0 (the
+  photo's own -7.6 includes its flatter light). Stubble's own increment: approved g15 -10.2 L; g16 -5.4; g17 -2.1;
+  g18 -0.6 (too faint by eye); chosen g19 (grey .55, cheeks .9, cheek_line .12, neckline .3, shadow .3, colour
+  #3a342f): -3.1 L / -1.1 a / -1.5 b, the box under the nose gone (code: the moustache-to-cheek transition 9 mm ->
+  ~2 cm untrimmed, kl in beard_density.region), up the cheeks and down the neck, soft. NOT written into anyone's
+  spec: recommended values = /mnt/data/hifipushie/skin3/g19.json. His photo's grey cast (da -5.5) is still stronger
+  than ours (-1.1 over g0): our cast doesn't carry chroma (see round 1's chroma note); his render's cheek is L 72 vs
+  the photo's 58 (base skin / light, not this thread).
+  1) Salt & pepper: white hairs #d9d4cb at .95 (was #aaa39a .85, ~+14 L): texture over bare 0.84 -> 1.6 (ref_28 +2.4),
+     dL increment -6.8.
+  2) Designer / heavy edges: the boundaries' half-width io*(0.06 + 0.26*(1-trim)) (was 0.015 + 0.3): a trimmed line
+     fades over ~4 mm instead of ~1 mm (exact, from the formula; the face-view texture measure can't see the cheek
+     line). By eye the decal edge is softer; the hairs still read light tan in the key light (hair colour/specular
+     untouched: next).
+  3) Clean: style shadow .4 -> .22, stubs' darkness scaled by length / 0.3 mm (floor .15): increment -6.2 -> -3.3 L,
+     texture +1.0 -> +0.4 (no resolvable dots).
+  4) Evening: product #8c5e46 / crease #6a4030 / outer #3e2418 (was #7a5a4e / #45302a / #241815: near-neutral darks
+     greyed the lid below the bare skin's chroma = "bruise"). Lid (3.5-9 mm above the lashes, lit): Lab 46.7/11.1/15.9,
+     chroma 19.4 vs bare 18.3 (was 14.4: greyer than skin), hue 55 deg vs the product's 53 (was 56 vs 47 with a greyer
+     product); darkening fades 20 -> 3 L over 8-12 mm (one band = the liner at 2 mm). Lid band 6.2 (bare 9.5). Wing
+     angle 0.3 deg off the lash line.
+  5) PORES / colour variation: NOT achieved by measure. Tess, L detail at 0.35 / 0.7 / 1.4 mm: photo .39/.43/.47, ours
+     .18/.16/.16 before, .18/.16/.16 after pores 0.45 -> 0.65 opacity, darker cavity tint, 0.3 mm deep, bigger pits
+     (0.12-0.28 mm, skin_swatch VERSION 16) and fine mottling .2/.16 -> .32/.26. The close-up shows more pores; the
+     face view (0.25 mm/px) doesn't move: the pores are sub-pixel and the mottle layers are per VERTEX (_pre noise), so
+     nothing per pixel lives at 1-3 mm. Next: a per-pixel unique mottle / pore map like the freckle map (skin_marks
+     sphere map: blotches 1-3 mm, pore clusters on nose and medial cheeks, redness at nostrils / folds) — the tests
+     forbid procedural noise per pixel, a baked map is allowed. Garrett's photo can't gate pores (upscaled concept).

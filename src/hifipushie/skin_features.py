@@ -669,9 +669,10 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     r = min(ctx["base_r"] + 0.1, 0.9)
     layer("stubble", o.get("mask"), color=col, opacity=0.97, roughness=r, specular=0.35, height=hgt, mask=[im("r"), lips])
     if q["grey"] > 0:
-        # (grey hairs translucent and mid-light, so a salt-and-pepper beard still darkens the skin: near-white ones read
-        # as ash on Garrett)
-        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#aaa39a")), opacity=0.85, roughness=r, specular=0.4,
+        # (white hairs near-white and opaque: #aaa39a at 0.85 was ~+14 L over the skin, "salt & pepper has no white in
+        # it" (5th blind read; ref_28's white hairs are the brightest thing on the jaw). The shadow under the dark ones
+        # now carries the darkening (shafts under the skin), so near-white no longer reads as ash, skin3)
+        layer("stubble_grey", o.get("mask"), color=_hex(o.get("grey_color", "#d9d4cb")), opacity=0.95, roughness=r, specular=0.4,
               height=hgt, mask=[im("g"), lips])
 
 
