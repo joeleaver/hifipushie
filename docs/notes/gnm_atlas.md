@@ -235,3 +235,18 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
   i.e. a rounder, fuller central pad. That is the lip's form in depth and its shading (the "poutier"), which the
   outline can't see and the lip-shading reader (next, after the eyes) should. Neither number is wrong; neither is
   the lower lip's width alone. The 0.40 vs 0.82 should be read as "cushion shape", the 0.70 vs 0.71 as "red extent".
+
+## The eye stage (eyesolve.py, 2026-10-09/10)
+
+After the identity: pose lid_upper / lid_lower, eye_opening (coupled lid_aperture), lidfold crease_height
+(fold_overhang held: TPS can't see it). Staged (eyedetail): the lids first against the UPPER lid over the iris centre
+and the LOWER lid under it (each lid's own position: matching the opening alone dropped the lower lid, white under
+the iris), then the crease against read_lid's TPS. The model's lids by part ID (aperture.mask, deterministic), the
+photo's by the detector with its bias on our start render calibrated out (detector minus part ID: it varies with the
+lid state and the dressing, 0 to +1.4 mm: a limit of the method). Dressings: Tess on ts_f1's (mkt2.py), Garrett on
+gc_dress (mkgc.py).
+- Tess fs_te7: lid_upper +1.0, lid_lower -1.5 mm, eye_opening +0.11 sd, crease_height 4.23; lash 2.85 vs 2.80,
+  lower 5.10 vs 5.14 (bias-corrected), TPS 4.53 vs 4.50.
+- Garrett fs_ge3: lid_upper +2.5 (the concept's squint), lid_lower -0.3 mm, eye_opening +0.11; lash 1.44 vs 1.40,
+  lower 3.84 vs 3.93; the crease NOT solved: read_lid on his render locks onto another line 6-10 mm up (the brow's
+  shadow / hood), TPS 6.3-9.8 for crease_height -1.7..8.5: eyedetail's 3.0 kept; foldtrace's 20 columns needed.
