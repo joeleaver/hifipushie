@@ -37,6 +37,14 @@ tess_tq = {
                 [385, 946], [414, 943]],
 }
 
+TP = "/home/joe/dev/s0urc3/docs/img/tess_ref_full/tess_head_profile_left.png"
+tess_profile = {
+    # the forehead's skin against the background where it shows between the hair strands (5 px grid), down to the
+    # brow hairs; above y 466 a strand crosses (uncertain), y 518-545 the brow's hairs stand out past the skin
+    "forehead": [[203, 466], [201, 474], [199.5, 482], [198.4, 490], [197.4, 498], [196.6, 506], [196, 514]],
+    "x_forehead_hair": [[215, 446], [210, 456]],
+}
+
 if __name__ == "__main__":
     import json
     import shutil
@@ -51,6 +59,7 @@ if __name__ == "__main__":
     ls.set_points("fs_traces_g", GF, lines=garrett_front, by=BY)
     ls.set_points("fs_traces_t", TF, lines=tess_front, by=BY)
     ls.set_points("fs_traces_t", TQ, lines=tess_tq, by=BY)
+    ls.set_points("fs_traces_t", TP, lines=tess_profile, by=BY)
     for m in ("fs_traces_g", "fs_traces_t"):
         print(m, {k: list(v["lines"]) for k, v in ls.load_points(m).items()})
     for nm, img, L in (("gf", GF, garrett_front), ("tf", TF, tess_front), ("tq", TQ, tess_tq)):

@@ -55,13 +55,19 @@ IMPORTANCE = {"eye_opening": 1.5, "canthal_tilt": 1.5, "brow_eye": 1.0, "upper_l
 FREE_AGE = os.environ.get("FREE_AGE", "0") == "1"
 ACAP = float(os.environ.get("ACAP", "2.5"))   # within-sex sds: the most any identity attribute may read
 ACAP_W = 5.0
+# sex DIRECTIONS without magnitudes (no cited sex-split numbers yet): a weak one-sided wall so the solve doesn't move
+# these the wrong way for the head's sex: attribute -> the within-sex sd it may not pass in the male direction
+# (women: a less crisp jaw angle (larger gonial angle), a lighter brow ridge, a more upright forehead)
+SEXDIR = {"jaw_angle": 0.5, "brow_ridge": 0.5, "forehead_slope": 0.5}
+SEXDIR_W = 1.0
 LIP_W = float(os.environ.get("LIP_W", "1.0"))
 IMPORTANCE.update({"upper_lip": LIP_W, "lower_lip": LIP_W})
 EXTRA_RES = tuple(x for x in os.environ.get("EXTRA_RES", "").split(",") if x)
 FREE_W = 0.1
 OUT_SIG = 2.0       # mm per outline point (the front's snapped contour, the traced lines)
 DESK_W = float(os.environ.get("DESK_W", "1.0"))   # weight (residual units) of every non-front view: Garrett's desk
-TRACE_LINES = tuple(os.environ.get("TRACE_LINES", "cheek.R,cheek.L,jaw.R,jaw.L,chin,profile").split(","))
+TRACE_LINES = tuple(os.environ.get("TRACE_LINES", "cheek.R,cheek.L,jaw.R,jaw.L,chin,profile,forehead").split(","))
+SEX = 1.0
 TRACES = os.environ.get("TRACES")                 # painting is a stylised secondary (0.5); the model whose traces
 
 
@@ -334,6 +340,14 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
             H[K:, K:] += np.diag(sw)
             # the wall on the READOUTS: no attribute the identity expresses past ACAP sds within the head's sex
             za = Bz @ (c - mu)
+            if SEX < 0:   # (a woman: these attributes not past +limit, the male direction)
+                for nm_, lim in SEXDIR.items():
+                    if nm_ in info["attr_names"]:
+                        i = info["attr_names"].index(nm_)
+                        if za[i] > lim:
+                            ar = SEXDIR_W * Bz[i]
+                            H[:K, :K] += np.outer(ar, ar)
+                            b[:K] += ar * (SEXDIR_W * (lim + Bz[i] @ mu))
             for i in np.flatnonzero(np.abs(za) > ACAP):
                 ar = ACAP_W * Bz[i]
                 H[:K, :K] += np.outer(ar, ar)
@@ -455,6 +469,7 @@ if __name__ == "__main__":
     for v, cam in zip(views, refs.get("cameras") or []):
         v["_cam"] = cam
     d_sex = np.asarray(faceatlas.table()["delta_sex"], float)
+    SEX = sex
     mu = sex * d_sex / 2
     Sinv = np.linalg.inv(faceatlas.within_sex())
     # the output model (refs copied so likeness.compare finds the pictures and the traces)
