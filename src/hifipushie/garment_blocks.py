@@ -18,6 +18,8 @@ Generated pieces (garment key "generate", applied after the draft, so they follo
 """
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
 from . import pattern
@@ -184,8 +186,11 @@ def _chain_length(pcs: dict, chain) -> float:
     return tot
 
 
-def generate(pcs: dict, entry: dict) -> tuple[dict, list, list, list]:
-    """One generated piece -> (pieces to add, seams, stitches, interfaced)."""
+def generate(pcs: dict, entry: dict, extra: dict | None = None) -> tuple[dict, list, list, list]:
+    """One generated piece -> (pieces to add, seams, stitches, interfaced). `extra` (a dict, filled in): "seam_notes"
+    {seam json: {"ease", "why"}} (a band cut `ratio` shorter than its edge is STRETCHED on: that seam's ease is
+    declared, not a plain seam's +-1.5%) and "folds" [fold entries] (`fold`: true = a band folded in half lengthwise,
+    its raw edges sewn together: a rib neckband, cuff or hem band; a press fold along its "fold" line, turned under)."""
     if "band" not in entry:
         raise ValueError(f'generate: each entry is {{"band": name, "along": [...], ...}}, got {sorted(entry)}')
     nm = entry["band"]
@@ -221,4 +226,13 @@ def generate(pcs: dict, entry: dict) -> tuple[dict, list, list, list]:
         seams.append([f"{nm}:sw>nw", f"{nm}:se>ne"])
     stitches = [[f"{nm}:button1", f"{nm}:buttonhole1"]] if lap > 0 else []
     inter = [nm] if entry.get("interfaced") else []
+    if extra is not None:
+        if abs(ratio - 1.0) > 1e-9:
+            e_ = ratio - 1.0  # (the band's length over the edge's: a 0.85 rib band is 15% shorter, stretched on)
+            extra.setdefault("seam_notes", {})[json.dumps(seams[0])] = {
+                "ease": [round(e_ - 0.02, 4), round(e_ + 0.02, 4)],
+                "why": f"{nm}: cut {ratio:.2f} x the edge it is sewn to and stretched on (ratio)"}
+        if entry.get("fold"):
+            extra.setdefault("folds", []).append({"piece": nm, "line": "fold", "angle": 360.0, "kind": "press",
+                                                  "name": f"{nm} fold"})
     return {nm: pc}, seams, stitches, inter
