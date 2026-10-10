@@ -52,7 +52,11 @@ GROUPS = {
 }
 # items whose reading is not the anatomy their name says: shown, not counted (brow_eye was dropped: it reads GNM's brow
 # landmarks, not the person's hair brows)
-FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion"}
+FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion",
+           # (blockin2, Garrett: a held nose_width -1.0 moved the alae 3.4 mm and this row < 0.45 mm; MediaPipe's alar
+           # points sit on the cheek past the alae on picture and clay alike)
+           "alar_width": "reads MediaPipe's alar points, which sit on the cheek past the alae (blind to the alae)",
+           "mouth_over_alar": "its alar width is MediaPipe's (on the cheek past the alae)"}
 
 BODY_KEYS = ("weight",)
 HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes", "eye_radius": "eye_radius"}

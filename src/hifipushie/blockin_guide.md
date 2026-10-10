@@ -66,7 +66,7 @@ eye catches what the points miss; the target table catches what your eye misses.
    step (length -> philtrum, lips -> chin, bridge / eye depth -> narrower eyes, chin height -> chin width).
 6. **The table after every step** (five groups: head shape, jaw and chin, eye placement, nose, mouth: likeness items
    read the same way on the picture and on the model through its fitted camera, with tolerances). `flag` items are
-   shown, not counted (jaw_angle_height reads the detector's guess at the jaw contour, not the gonion). A SIZE line
+   shown, not counted (jaw_angle_height reads the detector's guess at the jaw contour, not the gonion; alar_width and mouth_over_alar read MediaPipe's alar points, which sit on the cheek past the alae: judge the alae by eye in focus=nose). A SIZE line
    appears when the long lengths are all off the same way: that is a uniform scale (the camera's distance or the head's
    size), not shape: refit the camera (`block_in_step(..., cameras=[i])`) or set `head_scale`, never chase it with
    head_size / eye_spacing identity steps.
