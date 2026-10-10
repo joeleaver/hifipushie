@@ -93,3 +93,66 @@ addendum: conditioned on v1's face, a front smile, the hair as worn).
 - Stage 4 start: shoes (shoes.py from su_om_garrett, x0.894), jeans = suit_trousers classic denim length shoe crease/belt none (all pre-sim checks pass). Broker: coarse sim batch a69b7a48 done ($0.058; first submit's 502 was on the poll, the job ran), pulled into res_a69b7a48 and handed back by have.sh (HIFIPUSHIE_ZOZO_REMOTE); the fine_settle upload PUT 502s repeatedly (reported). Jumper: knit block + op sleeve + generated rib bands fails the band seam / fold / cuff checks: asked cloth10.
 - Jumper (ts_c1): knit block + op sleeve, generated rib bands (cuffs wrap arm.L/R follow the sleeve's wrist), fitted side shaping, eases chest 0.16 / waist 0.25 / hips 0.2: waist +44% fails the hoodie regular band (her 62.6 cm waist; side shaping capped 25 mm per quarter). Band ease / fold / ring fixes come from cloth10's branch (mine dropped). ts_f1 has no mouth interior: facesliders' sealed-interior fix (1f54697) changes nothing on it.
 - Waist band from the body (cloth_workflow.waist_band_for_body, test): straight garments (waist girth >= 0.9 x chest girth) get the band top (1 + chest band top) x chest / waist - 1 on this body: Tess 0.69, a man (1000 / 900) 0.39. Jumper passes design / pattern / construction / place: neckband align [s, back, cbNeck], cuffs arm.L/R follow the sleeve wrist, hem band align [n, front, cfHem] (torso + level put it at the hips and doubled the hip girth: +124%). Hem band seam starts 'turned' 25 cm apart (WARN). Waiting on the broker.
+
+### HANDOVER (tess agent, 2026-10-09, context full)
+Branch `worktree-agent-a20b3004240dc1659` (everything committed; main merged often; coordinator merges). Stages 1-3
+done (face held, hair + cards + Godot done), stage 4 (cloth) in progress, stage 5 (rig / ARKit / export) not started.
+
+**Models (workspace/):**
+- FACE: `ts_e3` is the face (head held until facesliders' joint solve re-runs through MY refit profile camera; adopt
+  only if it beats e3 in all three views: run prof.py + facesheet ONLY=0,1,2). `ts_j2a` = tj2's head on the dressed
+  model: lost the profile (fs_tj2 was fitted through a ~58 deg "profile" camera).
+- `ts_f1` = the current dressed head + hair candidate: ts_t28 (face ts_e3 + hair t28) + eyedetail's lid fold
+  base.head.fold {crease_height 4.7, crease_width 1.0, crease_depth 0.6, fold_overhang 0.4, inner 0.95, outer 1.0}
+  (old eye_crease_* / eye_platform sliders DROPPED), + shoes (grey trainers), + skin2's skin (below).
+- `ts_c1` = ts_f1 + cloth: garments "jeans" (suit_trousers version, simulated, superseded), "jeans3" ({kind: jeans},
+  coarse in batch tess_b2), "jumper" (coarse in tess_b2).
+- Hair: groom in ts_t28 / ts_f1 (tie at az 151 el -6 triangulated, curtain {span 75, along 28, hug 0.9, per-side
+  to/over}, frame [2, 1], gather.strands {wave 0.01, density 0.6, ...}, tail.strands waves 0.012, hairline
+  front_points traced, look colour matched to her photo bands). Cards: /mnt/data/hifipushie/tess/exp_t28/ (hero 40k /
+  main 16k tris: ship main), Godot sheet out/gd_t28_sheet.png.
+- Skin (on ts_f1 / ts_c1): tone {fitzpatrick 1, blood 0.25, undertone 0.15}, features {flush {0.3, cheek /
+  cheekbone}, freckles {amount 0.08, dark 0.1}} (NO moles), zones {nose_red 0.75, midface_red 0.8, under_eye 2.0,
+  eyelids 1.4}, lips {blood 1.0, melanin 2.8, roughness 0.5}, iris #4b4033 (her photo; brief said light hazel-green:
+  director may override), brows {color #55453a, density 0.6, thickness ~1.0, tilt 2, fall 0.35, drop 0.004,
+  lift [0, 0.0018], apart 0.0015, soft 0.25}.
+- Garrett hair: `gc_c1` = fs_gj8 + h7_garrett's groom carried with groom.fit (+ look toward the concept's colour).
+
+**Cloth state:** jeans (suit_trousers) simulated: clean but read as tailored trousers -> new kind `jeans`
+(garment_kb: yoke, scoop + back patch pockets, mid rise, straight, break). Jumper: knit block + op sleeve + generated
+rib bands (chains start/end at CB; cuffs wrap arm.L/R follow the sleeve wrist), passes every pre-sim check; the first
+coarse jumper (tess_b1) failed the fine-settle start (twisted hem band) -> re-placed, re-simmed in tess_b2.
+NEXT: judge tess_b2 (look_cloth through dressg.py with stage.sh handing back results), then the fine settles as one
+batch, then the LAB COAT (kind coat, open, mid-thigh, notched lapels, 2 hip pockets + chest pocket; constructed collar
+/ lapels after the drape per cloth10; over the jumper with tucked(keep_shown) / cut what's hidden), then the badge +
+lanyard, then stage 5 (rig v1 contract: 65 Mixamo + 14 twist bones, 53 ARKit shapes, node names tess_*; see the task's
+CONTRACT). Clothed bust check vs v4/v5 (director: smaller) once the jumper is on (bust 0.58 = 21 mm).
+
+**Broker workflow (GPU fleet, HIFIPUSHIE_GPU bundle):** write jobs without running them, then ONE batch:
+`HIFIPUSHIE_ZOZO_REMOTE=/mnt/data/hifipushie/tess/stage.sh HIFIPUSHIE_ZOZO=/mnt/data/hifipushie/assets/zozo/release
+/mnt/data/hifipushie/tess/run.sh dressg.py <model> <garment> final 900` queues the next job in queue.txt (fails on
+purpose); `batch.sh <name>` submits queue.txt as one batch and pulls into res_<name>/; re-running dressg.py with
+stage.sh hands the results back and queues the next stage. blist.sh = list batches (check before resubmitting after a
+502), bpull.sh <batch> <dir> = pull. Spend: b0 $0.058, b1 $0.2025, b2 (see below).
+
+**Scripts (spikes/tess/, run as `/mnt/data/hifipushie/tess/run.sh <script> args`: capped, nice, 1 BLAS thread):**
+face: fit3.py (MAP on the approved head set), tlid.py (like with like eyes / mouth + patches p/*.json, "save"),
+facesheet.py (ONLY= views, HAIR=1; hers | ours | 50/50), prof.py (profile gate), refitprof.py, youth.py / browgap.py /
+lipcol.py / neckw.py (like-with-like tables), jawpts.py + lkr.py (checklist), adopt.py (a head onto a dressed model),
+sk.py, setb.py, fh.py, dbg_eye.py (MOUTH=1 for the mouth). Hair: h1.py (regrow with deep-merged patches; HAIR_FROM=),
+trace.py (photo trace), lift.py / tri.py (lift / triangulate through fitted cameras), hairline.py (traced front
+points), hscore.py (ID-pass mask, coverage, colour bands, flow vs the traces), roots.py, haircol.py, carry.py +
+gscore.py (Garrett), exph.py + gdcams.py + bodyglb.py + gd.sh (cards + Godot). Cloth: shoes.py, jeans.py, garm.py
+(design + checks), dressg.py.
+
+**General code from this thread (all tested):** lash line on the lid margin; head_desc keeps stored warps; brows
+tilt / fall / lift / apart and the shadow following a moved brow; hair: tie curtain (to / over / along / hug, per side),
+frame, gather.strands / tail.strands, strands.density, WISP_FAN, parting "center", groom.fit; cloth: waist ease band
+from the body, declared start stretch, jeans kind, ops by kind+name, leg-ease / hem measure fixes, _clear_of_body guard.
+**tess_b2 result ($0.9886; stage 4 total $1.25):** both coarse sims succeeded (jumper 1201 s, jeans3 after it). Neither
+fine settle could start yet (nothing sent):
+- jumper: 77 triangles over 1.6x, worst 5.0x, in the bands (cuff.L 5.0, neckband 4.3, hem_band 2.8, cuff.R 2.1, back
+  1.9). Was 571 triangles / 19x in tess_b1: the CB-start chains fixed the twist. Next: the bands' start (cuffs / neckband
+  stretched by the coarse sim beyond their declared rib stretch?) or a looser FINE_START limit for declared bands.
+- jeans3: 4 triangles over 1.6x (worst 1.8x) on back.R near the yoke / patch pocket: nearly clean. Next: find those 4
+  (likely the pocket's tacks pulling the back), then the fine settle of both in one batch, then judge by eye.
