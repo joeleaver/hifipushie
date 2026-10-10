@@ -42,14 +42,14 @@ RES = ("brow_lateral", "eye_hood", "eye_hood_lateral", "eye_platform", "eye_sulc
 # the ageing ops that are local morphs too (no attribute of GNM's: not coupled), solved as residuals where the
 # evidence sees them (the outline: cheek hollow, lean, cheek flat, prejowl); one-sided (their negative is no youth)
 AGE = ("cheek_hollow", "face_lean", "age_cheek_flat", "age_prejowl")
-ITEMS = ("eye_opening", "canthal_tilt", "brow_eye", "upper_lip", "lower_lip")
+ITEMS = ("eye_opening", "canthal_tilt", "brow_eye", "upper_lip", "lower_lip", "lower_lip_width", "lower_lip_area")
 # READ ONLY (reported, not solved): the proportion items read the detector's face OVAL / chin on the photo and on the
 # clay render; on Garrett's front they came out 11-15% larger on the photo at the same camera (width_temple 154 vs
 # 133 mm, face height 142 vs 127) while the snapped contour fits at 1.6 mm and the desk view agrees on face height:
 # the detector puts the oval differently on clay and on a photo (hair, ears, collar), so they would steer by the bias.
 # The face's outline and proportions come from the outline term instead.
 READ_ONLY = ("face_height", "face_index", "lower_third", "width_temple", "width_cheekbone", "width_jaw", "width_chin", "jaw_taper")
-IMPORTANCE = {"eye_opening": 1.5, "canthal_tilt": 1.5, "brow_eye": 1.0, "upper_lip": 1.0, "lower_lip": 1.0,
+IMPORTANCE = {"eye_opening": 1.5, "canthal_tilt": 1.5, "brow_eye": 1.0, "upper_lip": 1.0, "lower_lip": 1.0, "lower_lip_width": 2.0, "lower_lip_area": 2.0,
               "face_height": 1.5, "face_index": 1.5, "lower_third": 1.0, "width_temple": 1.0, "width_cheekbone": 1.5,
               "width_jaw": 1.5, "width_chin": 1.0, "jaw_taper": 1.0}
 FREE_AGE = os.environ.get("FREE_AGE", "0") == "1"
@@ -173,6 +173,34 @@ def envelope(st, cam, o, facing=None):
     return {"X": P[vs], "B": Bv, "p": o[keep], "n": nrm[keep], "vs": vs, "keep": keep, "mmpx": mmpx}
 
 
+ML_W = float(os.environ.get("ML_W", "0"))   # weight of the profile's mentolabial depth (the pout)
+ML_TOL = 0.8
+ML_ROWS = (0.6, 0.8, 0.82, 0.98)   # the contour's rows (brow 0 .. under the chin 1): lower lip, chin
+
+
+def mentolabial(P) -> float:
+    """Depth (px) of a left-facing profile contour's deepest point between the lower lip and the chin: the lower
+    lip = the most forward (smallest u) point in the contour's 55-75% rows, the chin = the most forward in its
+    80-97%; the depth from the line through both (+ = behind it)."""
+    P = np.asarray(P, float)
+    if len(P) < 12:
+        return float("nan")
+    o = np.argsort(P[:, 1])
+    P = P[o]
+    n = len(P)
+    a0, a1, c0, c1 = int(ML_ROWS[0] * n), int(ML_ROWS[1] * n), int(ML_ROWS[2] * n), int(ML_ROWS[3] * n)
+    il = a0 + int(np.argmin(P[a0:a1, 0]))
+    ic = c0 + int(np.argmin(P[c0:c1, 0]))
+    if ic <= il + 1:
+        return float("nan")
+    A, C = P[il], P[ic]
+    t = (C - A) / max(np.linalg.norm(C - A), 1e-9)
+    nrm = np.array([t[1], -t[0]])
+    if nrm[0] < 0:
+        nrm = -nrm   # (behind = +u, away from where the face looks)
+    return float(((P[il:ic + 1] - A) @ nrm).max())
+
+
 def outline_rows(st, cam, o, names, line=""):
     """The model's outline matched to a traced line (envelope) + the residual sliders' basis at those vertices; a
     "chin" line also carries the chin-width item (its two sides' points nearest CHIN_H above its lowest point)."""
@@ -188,6 +216,7 @@ def outline_rows(st, cam, o, names, line=""):
         sl = envelope(st, cam, o, SHADE_LINES.get(line))
     if sl is None:
         return None
+    sl["line"] = line
     vs = sl["vs"]
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])][vs]
     fade = np.asarray(onemesh.asset()["g_fade"], float)[gid]
@@ -414,6 +443,29 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                 y = A @ np.r_[c, s] - r * hw
                 H += A.T @ A
                 b += A.T @ y
+                if ML_W > 0 and sl.get("line") == "profile" and abs(float(views[vi].get("yaw", 0.0))) > 70:
+                    # the mentolabial sulcus' depth (the pout: the lower lip out over the fold above the chin):
+                    # the deepest point of the contour between the lower lip and the chin, from the line touching
+                    # both; photo (the traced points) vs model (its matched silhouette points)
+                    uvm = humanfit.project(cam, X)
+                    mmx = float(np.median(z)) / cam["f"] * 1000
+                    ph = mentolabial(sl["p"]) * mmx
+                    mm_ = mentolabial(uvm) * mmx
+                    if np.isfinite(ph) and np.isfinite(mm_):
+                        g = np.zeros_like(uvm)
+                        for i in range(len(uvm)):
+                            for dd_ in range(2):
+                                u2 = uvm.copy()
+                                u2[i, dd_] += 0.5
+                                g[i, dd_] = (mentolabial(u2) * mmx - mm_) / 0.5
+                        gx = np.einsum("nd,ndj->nj", g, Jp)
+                        arow = ML_W / ML_TOL * np.r_[np.einsum("nj,knj->k", gx, sl["B"]),
+                                                     np.einsum("nj,knj->k", gx, sl["SB"]) if S else np.zeros(0)]
+                        yv = arow @ np.r_[c, s] + ML_W / ML_TOL * (ph - mm_)
+                        H += np.outer(arow, arow)
+                        b += arow * yv
+                        if inner == INNER - 1:
+                            info.setdefault("ml", []).append((it, ph, mm_))
                 if "chin" in sl:   # the chin's width at CHIN_H above menton: model (the two matched vertices) vs trace
                     lo, hi, wph = sl["chin"]
                     uvx = humanfit.project(cam, X[[lo, hi]])
@@ -435,6 +487,8 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
             c, s = x[:K], np.clip(x[K:], -1.5, 1.5)
             s[one] = np.clip(s[one], 0.0, 1.5)
         cur = J0.with_x(base, c, s, names)
+        if info.get("ml"):
+            log(f"round {it} mentolabial depth: photo {info['ml'][-1][1]:.2f} | model {info['ml'][-1][2]:.2f} mm")
         if info.get("chin_w"):
             log(f"round {it} chin width at {CHIN_H:.0f} mm: trace {info['chin_w'][-1][1]:.1f} | model {info['chin_w'][-1][2]:.1f} mm")
         log(f"round {it} outline rms mm: " + ", ".join(f"v{vi} {m:.2f}" for i_, vi, m in info["outline_mm"] if i_ == it))
