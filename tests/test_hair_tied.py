@@ -98,6 +98,29 @@ def test_curtain_hug_lies_down():
     assert hb[1] < 0.5 * ha[1] and abs(hb[-1] - ha[-1]) < 1e-6, (ha, hb)
 
 
+def test_curtain_drape_arcs_forward_over_the_line():
+    """curtain.drape: the first row near the part roots `drape` deg behind the hairline yet still runs along it (an
+    arc forward over the band: no bare V under the part); dip lowers that run; both 0 = the old groom exactly; the
+    other rows don't move."""
+    sc, _ = _ball_head()
+    base = {"span": 60, "along": 30}
+    a, b = _tie(curtain=base), _tie(curtain={**base, "drape": 8.0})
+    c = _tie(curtain={**base, "drape": 8.0, "dip": 4.0})
+    assert a == _tie(curtain={**base, "drape": 0.0, "dip": 0.0})
+    front = [k for k in a if k.startswith("tg0_") and abs(_az(a[k])[0]) < 12]
+    assert front
+    for k in front:
+        ea, eb, ec = _el(a[k]), _el(b[k]), _el(c[k])
+        cw = 1 - abs(_az(a[k])[0]) / 60
+        assert abs((eb[0] - ea[0]) - 8.0 * cw) < 0.6, (k, ea[0], eb[0])   # rooted further back
+        assert eb[1:4].min() < eb[0] - 4.0 * cw, (k, eb)                  # ...and arcing forward (down) to the line
+        assert abs(eb[2:4].min() - ea[2:4].min()) < 2.0, (k, ea, eb)       # the run along the line is where it was
+        assert ec[2:4].min() < eb[2:4].min() - 2.0 * cw, (k, eb, ec)       # dip: that run lower, over the forehead
+    for k in a:
+        if not k.startswith("tg0_"):
+            assert a[k] == b[k], k
+
+
 def test_gather_strand_dials():
     """gather.strands: strand dials for the gathered hair alone (a loose texture on top), carried on every gather lock."""
     locks = _tie(gather={"strands": {"wave": 0.02}})

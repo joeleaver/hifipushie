@@ -393,3 +393,39 @@ gc_dress (mkgc.py).
    mkgc (GREY already updated). The workspace models gc_dress / fs_ge3 are NOT rebuilt (f2_g5 = fs_ge3 + the new look).
 3. The lip: border-aware carrying (handover item 3), then a central-pad lever; lipsolve.py is ready for it
    (LEVERS=..., FEATS=shadow,shadow_side).
+
+### faces2, round 2 (coordinator: g12's look into gc_dress; Tess's front groom before the lips)
+- Garrett: gc_dress rebuilt with mkgc (fs_gj8 head, GREY = g12's look); fs_ge3 (the eye stage) got the same hair look
+  through store.save (setlook.py). groom.grey (sides up) still open.
+- Tess's front: NEW general option tie.curtain.drape (deg the first row roots BEHIND the hairline, x its closeness
+  to the part; it still runs along the line, so it arcs forward over the band) and curtain.dip (deg that run passes
+  below the line). Both 0 = the old groom exactly (test_curtain_drape_arcs_forward_over_the_line). The trace check
+  (flowcmp.py: our first-row spines through the fitted camera on her photo, her traced curtain strokes, the hairline):
+  rooted on the line, our spines ran ON the hairline; her strands leave the part bottom and run sideways ~20 px above
+  it. drape 16 puts our spines on her strokes.
+- Scored with tess's hscore (3 views) + a NEW line in it: "scalp showing in her hair band (30 mm)" = skin-coloured
+  pixels of the beauty render inside her hair mask near the face. The ID-pass band metric can't see the V (one strand
+  per few px counts as hair). Results (front / 3q / profile):
+    f2_tf12c (carried, no drape): scalp 5.2 / 4.3 / 0.5 %, IoU 0.605 / 0.600 / 0.646, band bare 14.7 / 25.6 / 13.7
+    f2_th1 drape 10, lift 0.003:  scalp 2.9 / 3.5 / 0.0,   IoU 0.598 / 0.591 / 0.642, band 14.9 / 23.1 / 13.5
+    f2_th2 drape 16, lift 0.004:  scalp 2.2 / 3.0 / 0.0,   IoU 0.600 / 0.592 / 0.645, band 15.1 / 22.9 / 12.3
+    f2_th3 drape 14, lift .004, dip 3: 2.3 / 3.1 / 0.0,    IoU 0.595 / 0.590 / 0.642, band 14.8 / 22.8 / 12.4
+  (hers: scalp 3.1 / 3.2 / 2.0: her light hair partly reads as skin to the classifier). CANDIDATE f2_th2 =
+  fs_tf12b's dressing + ts_t28's groom carried + curtain {drape 16, lift 0.004}, regrown on the solved head.
+  Sheet out/f2_tess_drape.jpg (hers | te7h | carried | drape): the bare V is gone in front and 3/4, the front reads
+  as hair falling from a soft part over the forehead's corners; the profile's hairline fuller. IoU front / 3q -0.005 /
+  -0.008 (ours a little wider at the sides): marginal, read as not worse. Still off: the forehead between the curtains
+  is a tall peak (hers a rounder arch, the hair lower at the temples: dip didn't change it), and the hair is sleek and
+  flat where hers is airy with volume.
+
+### HANDOVER (faces2, 2026-10-10, context large)
+Branch worktree-agent-adab8ccb4b61accec. Scratch /mnt/data/hifipushie/faces2 (scripts above + hs.sh <models> = hscore
+on 3 views under the queue lock, flowcmp.py in spikes/facesliders). Models: gc_dress / fs_ge3 (Garrett, new look),
+f2_th2 (Tess hair candidate), f2_tf12c (carried, no drape), f2_* else scratch (deletable).
+Next, in order:
+1. Lip border carrying (handover item 3): faceext's mouth fields shear across GNM's 67 deg upper vermilion crease,
+   so they're capped at ~0.4-0.6 mm fold-free (mh_lowerlip_volume 0.62 mm, scale 0.57). Move the border's rows
+   together (a field smooth ALONG the border, none across it), rebuild the mouth extensions, re-check fold-free scale.
+2. Then a central-pad lever (a pad that projects at the middle and tucks toward the corners) and lipsolve.py
+   (LEVERS=..., FEATS=shadow,shadow_side) against her under-lip shadow (0.65 middle / 0.925 sides; ours 0.73 / 0.85).
+3. Tess's hair: the temple arch (hair lower at the forehead corners) and volume; groom.grey sides for Garrett.
