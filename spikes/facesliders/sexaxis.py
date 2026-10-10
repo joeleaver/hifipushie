@@ -34,6 +34,19 @@ keys = list(meas)
 X = np.c_[np.ones(len(C)), C]
 Bm = np.array([np.linalg.lstsq(X, meas[k], rcond=None)[0][1:] for k in keys])  # (6, 120) mm per sigma
 diff = np.array([men[k].mean() - women[k].mean() for k in keys])
+# + the lower face from a second cited survey (--lit): NIOSH head-and-face survey of 3997 US workers (Zhuang,
+# Landsittel, Benson, Roberge, Shaffer 2010, Ann Occup Hyg 54(4):391-402, doi:10.1093/annhyg/meq007; US government
+# work; PDF /mnt/data/hifipushie/facesliders/niosh/zhuang2010.pdf, sha256 f369d0a4...), Table 4: female vs male
+# average change ADJUSTED for race, age, weight and height (so smaller than the raw differences: conservative):
+# bigonial breadth -7.6, nose breadth -3.0, nose length -1.9, lip length (cheilion to cheilion) -2.1 mm
+LIT = {"bigonial": ("jaw_width", 7.6), "nose_breadth": ("nose_width", 3.0), "nose_length": ("nose_length", 1.9),
+       "lip_length": ("mouth_width", 2.1)}
+if "--lit" in sys.argv:
+    for k, (a_, d_) in LIT.items():
+        keys.append(k)
+        Bm = np.r_[Bm, np.linalg.lstsq(X, col(a_) * io, rcond=None)[0][1:][None]]
+        diff = np.r_[diff, d_]
+        men[k] = women[k] = np.zeros(2)
 delta = Bm.T @ np.linalg.solve(Bm @ Bm.T, diff)
 print(f"delta (male - female) = {np.linalg.norm(delta):.2f} sigmas in GNM's components; top {np.argsort(-np.abs(delta))[:6].tolist()}")
 print("  reproduces (mm):", dict(zip(keys, np.round(Bm @ delta, 1))), "asked", dict(zip(keys, np.round(diff, 1))))
@@ -46,6 +59,8 @@ print("\ncorrelation: GNM pooled -> GNM within-sex | ANSUR within-sex (men, wome
 for i, a in enumerate(keys):
     for j in range(i + 1, len(keys)):
         b = keys[j]
+        if len(men[a]) < 3 or len(men[b]) < 3:
+            continue
         rm = np.corrcoef(men[a], men[b])[0, 1]
         rw = np.corrcoef(women[a], women[b])[0, 1]
         print(f"  {a:15s} ~ {b:15s} {Rp[i, j]:+.2f} -> {Rw[i, j]:+.2f} | {rm:+.2f} {rw:+.2f}")

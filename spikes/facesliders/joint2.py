@@ -53,6 +53,8 @@ IMPORTANCE = {"eye_opening": 1.5, "canthal_tilt": 1.5, "brow_eye": 1.0, "upper_l
               "face_height": 1.5, "face_index": 1.5, "lower_third": 1.0, "width_temple": 1.0, "width_cheekbone": 1.5,
               "width_jaw": 1.5, "width_chin": 1.0, "jaw_taper": 1.0}
 FREE_AGE = os.environ.get("FREE_AGE", "0") == "1"
+ACAP = float(os.environ.get("ACAP", "2.5"))   # within-sex sds: the most any identity attribute may read
+ACAP_W = 5.0
 LIP_W = float(os.environ.get("LIP_W", "1.0"))
 IMPORTANCE.update({"upper_lip": LIP_W, "lower_lip": LIP_W})
 EXTRA_RES = tuple(x for x in os.environ.get("EXTRA_RES", "").split(",") if x)
@@ -281,6 +283,12 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
     info = {"skipped": [], "rows0": None, "outline_mm": []}
     OL = outlines(views)
     one = np.array([n in AGE for n in names], bool)
+    t_ = faceatlas.table()
+    ok_ = (t_["r2"] > 0.9) & (t_["sd"] > 0)
+    Bw = t_["B"][ok_]
+    Bz = Bw / np.sqrt(np.einsum("ij,jk,ik->i", Bw, faceatlas.within_sex(), Bw))[:, None]   # per within-sex sd
+    info["attr_names"] = [str(n) for n in t_["names"][ok_]]
+    info["Bz"] = Bz
     # FREE_AGE (a man of ~50: leanness and hollow cheeks are soft tissue and age, which GNM has no variable for):
     # those residuals nearly free, so the identity doesn't strain for them
     sw = np.array([FREE_W if (FREE_AGE and n in ("face_lean", "cheek_hollow")) else SLIDER_W for n in names])
@@ -324,6 +332,12 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
             H[:K, :K] += np.diag(wall)
             b[:K] += wall * np.clip(c, -CAP, CAP)
             H[K:, K:] += np.diag(sw)
+            # the wall on the READOUTS: no attribute the identity expresses past ACAP sds within the head's sex
+            za = Bz @ (c - mu)
+            for i in np.flatnonzero(np.abs(za) > ACAP):
+                ar = ACAP_W * Bz[i]
+                H[:K, :K] += np.outer(ar, ar)
+                b[:K] += ar * (ACAP_W * (np.sign(za[i]) * ACAP + Bz[i] @ mu))
             for vi, (v, e, SB) in enumerate(zip(views, evs, SBs)):
                 X = e["X"] + np.tensordot(c - c_lin, e["XB"], 1) + np.tensordot(s - s_lin, SB, 1)
                 if cams[vi] is None:
@@ -476,6 +490,9 @@ if __name__ == "__main__":
     print(f"prior (within-sex Mahalanobis) {rep['prior']['before']:.1f} -> {rep['prior']['after']:.1f}; "
           f"max |c| {np.abs(c0).max():.2f} -> {np.abs(c1).max():.2f}")
     coupled, z = readouts(c1, mu)
+    zw = info["Bz"] @ (c1 - mu)
+    rep["attr_within_sex_max"] = {info["attr_names"][i]: round(float(zw[i]), 2) for i in np.argsort(-np.abs(zw))[:6]}
+    print("attributes, within-sex sds (largest):", rep["attr_within_sex_max"])
     rep["coupled"] = coupled
     rep["attributes_z"] = {k: round(v, 2) for k, v in z.items()}
     print("coupled sliders read out of the identity (sd from the within-sex mean):", coupled)

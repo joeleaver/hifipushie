@@ -156,3 +156,25 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
 - To add to the model (not one-off morphs): canthal tilt, Tess's lower-lip width, the crease: learned / data-backed
   directions with couplings. Data: MakeHuman CC0 lid / lip targets (shape vocabulary); 3D face scan sets (licences
   checked before any download).
+
+## Tess: reads-female, the cap on readouts, the sex axis's lower face (2026-10-09)
+
+- tj7's profile contour fitted HAIR at the forehead (strands crossing in front of the skin) and lashes: forehead_slope
+  -3.1, nose_upturn -2.5 sd. outl.profile_auto now takes the first run of 6 skin-bright pixels per row, from the brow
+  (above the nasion) down, and stops at the throat.
+- joint2 caps the READOUTS: every identity attribute (R2 > 0.9) within ACAP = 2.5 sds of its WITHIN-SEX spread
+  (sqrt(B S_w B^T)), a wall like the components'.
+- Sex axis + the lower face: NIOSH head-and-face survey (Zhuang et al. 2010, Ann Occup Hyg 54:391, US government work,
+  /mnt/data/hifipushie/facesliders/niosh/zhuang2010.pdf sha256 f369d0a4...), Table 4 female vs male adjusted for
+  height / weight: bigonial -7.6, nose breadth -3.0, nose length -1.9, lip length -2.1 mm (sexaxis.py --lit). |delta|
+  1.62 -> 2.10 sigmas: past what two equal halves of GNM's pooled prior can hold (|d| < 2), so within_sex keeps
+  SEX_SHARE = 0.85 of the variance along delta as the sex split. Soft tissue (forehead inclination, brow prominence,
+  lip heights, gonial angle) NOT added: no open, citable sex-split table found in four searches (Farkas 1994's
+  appendices have them; book only). MakeHuman's sex on Tess's body is 0.0 (full female), head dimorphism 1.3.
+- GNM's own female mean (c = -delta/2) on Tess's body reads androgynous-to-male in the clay (bald, drawn brows,
+  flat light): the axis from size measures does not feminise the soft tissue. tj10 / tj11 (one-off head shape ops
+  stripped: jawline sharp 0.01, nose_tip up 3) keep jaw_square ~+1.5, nose projection +1.6, chin height +1.6: the
+  evidence's, not the prior's. Points 0.55 / 0.66 / 2.22 sigmas, profile chamfer 1.46 mm (e3 0.84 / 0.87 / 3.05,
+  2.15) but by eye still not a young woman.
+- Garrett's desk camera: yaw -38.7 deg against the detector's 31 (likeness yaw doubt 13.9 deg), looking up 14 deg:
+  suspect like Tess's old profile camera; a painting, refit with the traced profile is to do.
