@@ -204,7 +204,8 @@ TUCK_FALL = 0.6  # the share of its neighbours' mean move an uncovered vertex be
 TUCK_EVEN = 0.7  # a covered vertex moves no less than this share of its neighbours' mean move
 
 
-def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | None = None) -> tuple:
+def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | None = None,
+           keep_shown: bool = True) -> tuple:
     """The under garment's FINISHED surface as it is worn with the outer one over it: (V, covered per vertex).
     What shows of it (collar, the front in the jacket's V, cuffs) stays exactly as finished (relief, bands, made
     pieces: the surface the buttons and maps were made for); only vertices the outer garment lies over, and that
@@ -297,6 +298,17 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
                 if fixed[m].any():
                     D[m] = D[m][fixed[m]].mean(0) if fixed[m].mean() > 0.5 else 0.0
         V = V + D
+    if keep_shown:
+        # what SHOWS stays bit-identical to the finished under garment: only covered vertices take the move (the
+        # feather onto uncovered cloth beside the outer garment's edge nudged the visible shirt up to 9 mm; a garment
+        # shipped merged-and-cut never shows the step it smoothed, cloth10). keep_shown=False: the feathered move
+        keep_m = covered.copy()
+        if rigid is not None:  # (a rigid group that moved moves whole: its shape is kept)
+            for gid in np.unique(rigid[rigid >= 0]):
+                m_ = rigid == gid
+                if np.abs(V[m_] - Vu[m_]).max() > 0:
+                    keep_m[m_] = True
+        V = np.where(keep_m[:, None], V, Vu)
     return V, covered
 
 
