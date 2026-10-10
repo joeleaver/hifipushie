@@ -226,3 +226,17 @@ def test_waist_band_follows_the_body():
     assert man is None or man[1] < 0.40  # (1.25 x 1000 / 900 - 1 = 0.389: barely above the written 0.35)
     assert waist_band_for_body(wb, cb, sz(847, 626, 982, 760)) is None  # fitted at the waist: as written
     assert waist_band_for_body(wb, None, sz(847, 626, 982, 902)) is None
+
+
+def test_a_rib_band_may_start_stretched():
+    """A band declared stretched on (its seam note's ease e < 0) is allowed 1 / (1 + e) - 1 of start stretch on its
+    own triangles; other pieces get none (Tess's jumper: a rib hem band at 0.88 failed the 5% start check)."""
+    import json as _j
+    import numpy as np
+    from hifipushie import cloth
+    M = {"names": ["front", "hem_band"], "piece": np.array([0, 0, 0, 1, 1, 1]), "F": np.array([[0, 1, 2], [3, 4, 5]])}
+    seam = ["hem_band:sw>s>se", ["front:hem.m>cfHem>hem"]]
+    Bp = {"seam_notes": {_j.dumps(seam): {"ease": [-0.14, -0.10], "why": "rib"}}}
+    a = cloth.declared_stretch(Bp, M)
+    assert a[0] == 0.0 and abs(a[1] - (1 / 0.88 - 1)) < 1e-9
+    assert cloth.declared_stretch({"seam_notes": {}}, M).tolist() == [0.0, 0.0]

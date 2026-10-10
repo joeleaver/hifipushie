@@ -697,7 +697,8 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
         tri, _ = cloth.edge_strain(X, M["uv"], M["F"])  # the rest is the flat pattern (made pieces left out below)
         lim = float((c.gx.get("zozo") or {}).get("strain_limit", 0.05))
         madep = np.isin(M["piece"][M["F"][:, 0]], [M["names"].index(n) for n in cloth.made_pieces(M, stiff)])
-        over = (tri > lim) & ~madep
+        allow = cloth.declared_stretch(Bp, M)  # (a rib band stretched on starts stretched by design)
+        over = (tri > lim + allow) & ~madep
         if 0.002 < over.mean() <= 0.03 and float(tri[over].max()) < 0.6:
             # a few triangles by construction (the rows of a roll line turned round a curving chest, a band pushed a
             # millimetre off the neck): the solver gives them their own limit (cloth_zozo "start_over")
