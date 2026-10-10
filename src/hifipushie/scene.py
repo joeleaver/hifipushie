@@ -187,13 +187,73 @@ def part_voxel(ps: list, voxel: float) -> tuple[float, str]:
     return float(np.round(max(need, floor), 4)), why
 
 
+def _split_plane(V, N, F, axis: int, value: float):
+    """Triangles cut by the plane x[axis] = value: (verts, normals, faces below, faces above) over one vertex array (V,
+    N extended by the cut points, normals interpolated). Triangles wholly on one side are kept whole."""
+    s = V[:, axis] - value
+    sf = s[F]
+    below = (sf <= 0).all(1)
+    above = (sf >= 0).all(1) & ~below
+    cut = ~(below | above)
+    Vn, Nn, memo = [V], [N], {}
+    nv = [len(V)]
+
+    def mid(i, j):
+        k = (min(i, j), max(i, j))
+        if k not in memo:
+            t = s[i] / (s[i] - s[j])
+            Vn.append((V[i] + t * (V[j] - V[i]))[None])
+            n = N[i] + t * (N[j] - N[i])
+            Nn.append((n / max(np.linalg.norm(n), 1e-12))[None])
+            memo[k] = nv[0]
+            nv[0] += 1
+        return memo[k]
+
+    tb, ta = [], []
+    for tri in F[cut]:
+        for side, acc in ((-1.0, tb), (1.0, ta)):
+            pts = []
+            for k in range(3):
+                i, j = int(tri[k]), int(tri[(k + 1) % 3])
+                si, sj = s[i] * side, s[j] * side
+                if si >= 0:
+                    pts.append(i)
+                if (si > 0 > sj) or (si < 0 < sj):
+                    pts.append(mid(i, j))
+            for k in range(1, len(pts) - 1):
+                acc.append([pts[0], pts[k], pts[k + 1]])
+    fb = np.r_[F[below], np.array(tb, np.int64).reshape(-1, 3)]
+    fa = np.r_[F[above], np.array(ta, np.int64).reshape(-1, 3)]
+    return np.concatenate(Vn), np.concatenate(Nn), fb, fa
+
+
+def _box_split(V, N, F, lo, hi):
+    """A mesh cut exactly at a box's faces: (verts, normals, faces inside, faces outside)."""
+    V, N = np.asarray(V, np.float64), np.asarray(N, np.float64)
+    inside, outside = np.asarray(F, np.int64), []
+    for ax in range(3):
+        for val, keep_below in ((lo[ax], False), (hi[ax], True)):
+            V, N, fb, fa = _split_plane(V, N, inside, ax, float(val))
+            inside, out = (fb, fa) if keep_below else (fa, fb)
+            outside.append(out)
+    return V, N, inside, np.concatenate(outside)
+
+
+def _compact(V, N, F):
+    used = np.unique(F)
+    rm = np.full(len(V), -1)
+    rm[used] = np.arange(len(used))
+    return V[used], N[used], rm[F]
+
+
 def refine_box(ps: list, verts, faces, normals, voxel: float, r: dict):
     """A finer mesh inside one box of a part (parts.<p>.refine: [{"lo", "hi", "voxel"}]): the box meshed on its own
-    grid at r["voxel"] and projected onto the same exact field, spliced into the coarse mesh. The coarse faces wholly
-    inside the box go; the fine faces reach one coarse voxel past it, so the two overlap in a thin band instead of
-    leaving a crack (both lie on the field's zero set with the field's normals and paint, so the band doesn't show).
-    The grid is uniform per part: this is how a face stage gets 0.5 mm lids (a 1 mm voxel can't hold the lid margin,
-    which came out ragged) without four times the mesh everywhere. Returns (verts, faces, normals, fine faces kept)."""
+    grid at r["voxel"] and projected onto the same exact field; both meshes are cut exactly at the box's faces (the
+    coarse one keeps what lies outside, the fine one what lies inside) and joined. Both cut lines lie on the same
+    surface, so they meet within the chords' sagitta (~0.01 mm at 1 mm): no visible crack, and no overlap (an
+    overlapping band cast a thin shadow line round the box on Garrett). The grid is uniform per part: this is how a
+    face stage gets 0.5 mm lids (a 1 mm voxel can't hold the lid margin, which came out ragged) without four times
+    the mesh everywhere. Returns (verts, faces, normals, fine faces kept)."""
     lo, hi, fv = np.asarray(r["lo"], float), np.asarray(r["hi"], float), float(r["voxel"])
     a = np.floor((lo - 3 * voxel) / fv) * fv
     shape = np.ceil((hi + 3 * voxel - a) / fv).astype(int) + 1
@@ -202,21 +262,14 @@ def refine_box(ps: list, verts, faces, normals, voxel: float, r: dict):
     if m is False:
         return verts, faces, normals, 0
     fvv, ffc, fn, _ = m
-    inside = lambda V, e: np.all((V >= lo - e) & (V <= hi + e), axis=1)  # noqa: E731
-    keep_f = inside(fvv, voxel)[ffc].all(1)
-    drop_c = inside(verts, 0.0)[faces].all(1)
-    fc = faces[~drop_c]
-    used_c = np.unique(fc)
-    rc = np.full(len(verts), -1)
-    rc[used_c] = np.arange(len(used_c))
-    ffc = ffc[keep_f]
-    used_f = np.unique(ffc)
-    rf = np.full(len(fvv), -1)
-    rf[used_f] = np.arange(len(used_f)) + len(used_c)
-    V = np.r_[np.asarray(verts)[used_c], np.asarray(fvv)[used_f]]
-    N = np.r_[np.asarray(normals)[used_c], np.asarray(fn)[used_f]]
-    F = np.r_[rc[fc], rf[ffc]].astype(np.int32)
-    return V, F, N, int(len(ffc))
+    Vf, Nf, fin, _ = _box_split(fvv, fn, ffc, lo, hi)
+    Vc, Nc, _, cout = _box_split(verts, normals, faces, lo, hi)
+    Vf, Nf, fin = _compact(Vf, Nf, fin)
+    Vc, Nc, cout = _compact(Vc, Nc, cout)
+    V = np.r_[Vc, Vf].astype(np.float32)
+    N = np.r_[Nc, Nf].astype(np.float32)
+    F = np.r_[cout, fin + len(Vc)].astype(np.int32)
+    return V, F, N, int(len(fin))
 
 
 def _frame(ps: list, voxel: float, pad: float = 0.03):
@@ -906,8 +959,12 @@ def sync(name: str, resolution: int = 256) -> dict:
     bases = {}
     from . import skin
     sk = skin.part_base(spec)  # the skin part starts from its tone and shading; the part's own keys win
+    from .skin_features import eye_base
+    ek = eye_base(spec)  # the eyes' tear film (a clear coat), likewise
     for o in objs:
         d = defs.get(o["part"]) or {}
+        if ek and o["part"] == ek[0]:
+            d = {**ek[1], **d}
         from .paint import style_rgb
         if sk and o["part"] == sk[0]:
             d = {**{k: v for k, v in sk[1].items() if not k.startswith("_")}, **d}
@@ -930,6 +987,10 @@ def sync(name: str, resolution: int = 256) -> dict:
     if spec.get("cloth") is not None:  # simulated garments (cloth.py): sewn and settled on the body, as meshes
         from . import cloth
         job["cloth"] = cloth.scene_job(name, spec, log)
+    from . import lashes  # eyelash ribbons on a human head's lid margins (lashes.py); None removes them
+    job["lashes"] = lashes.scene_job(name, spec, store._dir(name) / "scene_cache")
+    if job["lashes"]:
+        log.append(f"lashes: {job['lashes']['tris']} triangles")
     live = live_session(name)
     out = _blender_live(job) if live else _blender(job)
     if live:

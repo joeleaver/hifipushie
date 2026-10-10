@@ -813,8 +813,10 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
     face = face_of(spec)
     if "eyeBlinkLeft" in names and not face.eyes:
         log.append("face shapes: no lids on the face kit's eyes: eyeBlink shapes are flat")
-    got = {}
+    got, kinds = {}, {}
     for pn, p in parts.items():
+        if p.get("lash_root") is not None:  # the lashes (lashes.py) follow the lids' shapes, below
+            continue
         base = pn.split("/")[-1].split("~")[0]
         kind = "teeth" if base in face.parts_teeth else "tongue" if base in face.parts_tongue else "skin"
         if any(e.get("part") == base for e in face.eyes.values()):
@@ -852,6 +854,7 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
         p["verts"] = Xn.astype(p["verts"].dtype)
         p["shapes"] = {nm: (d, n0, vertex_normals(Xn + d, T)) for nm, d in D.items()}
         got[pn] = list(D)
+        kinds[pn] = kind
         moved = sum(int((np.linalg.norm(d, axis=1) > 1e-6).any()) for d in D.values())
         log.append(f"face shapes: {pn} ({kind}) {len(D)} targets ({moved} move it), max "
                    f"{max(np.linalg.norm(d, axis=1).max() for d in D.values()) * 1000:.1f} mm")
@@ -868,6 +871,22 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
                     log.append(f"WARNING face shapes: {pn} {nm} moves unevenly ({un[nm][0]:.2f}, {un[nm][1]} "
                                f"vertices over {UNEVEN_COUNT}): neighbouring vertices go different ways, which "
                                "shears painted detail into a sawtooth. Look at it posed (rig(glb=, shapes=))")
+    skin = [(np.asarray(parts[q]["verts"], np.float64), {nm: np.asarray(x[0]) for nm, x in parts[q]["shapes"].items()})
+            for q in got if kinds.get(q) == "skin"]
+    for pn, p in parts.items():  # the lashes: each lash turned rigidly with its root's lid (lashes.shapes_from_lids)
+        if p.get("lash_root") is None or not skin:
+            continue
+        from . import lashes as lashmod
+        D = lashmod.shapes_from_lids(p, skin, names)
+        if not any(np.abs(d).max() > 1e-7 for d in D.values()):
+            continue
+        T = p["corner_vert"].reshape(-1, 3)
+        X0 = np.asarray(p["verts"], np.float64)
+        n0 = vertex_normals(X0, T)
+        p["shapes"] = {nm: (d, n0, vertex_normals(X0 + d, T)) for nm, d in D.items()}
+        got[pn] = list(D)
+        log.append(f"face shapes: {pn} (lashes, riding the lids) {len(D)} targets, max "
+                   f"{max(np.linalg.norm(d, axis=1).max() for d in D.values()) * 1000:.1f} mm")
     return got
 
 
