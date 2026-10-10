@@ -1485,3 +1485,35 @@ in onemesh's eye placement, with the socket seated round it (GNM's own eye mask)
 in mm (MRD1 in mm against the photo's iris-scaled mm) instead of iris radii. (a) is the real fix (audit g11).
 
 ### Age soft tissue for Garrett (item 3): report pending (what our age ops / MakeHuman age give vs data-backed).
+
+### Age soft tissue (item 3): what we have, before building
+- GNM's identity has no age; the semantic sampler conditions on gender x ethnicity only.
+- MakeHuman age (the body's head, gnm_base 0 for older people) gives the skull and head proportions of a 52-year-old,
+  authored by MakeHuman's artists, not measured. On Garrett it reads older and leaner than the GNM base did (faces6 G03).
+- headage.py (base.head.shape: nasolabial, prejowl, lid_fold, eye_bag, lip_bow, lip_roll, cheek_flat, lips_thin) and
+  faceslide's age_* / cheek_hollow / face_lean / face_planes sliders: hand-authored soft-tissue ops (millimetres,
+  placed from the landmarks, mirrored), not data-backed. The accepted fs_ge3 used face_planes 0.5, face_lean 1.5,
+  cheek_hollow 0.08, age_nasolabial 0.5, age_cheek_flat 0.28.
+- Data-backed candidates (licences to check before any use): BFM 2009 / 2017 attribute regressions (age among them;
+  non-commercial), the Liverpool-York Head Model (age-structured; non-commercial), FLAME (trained on CAESAR adults;
+  no age label in the release), FaceScape (has age labels; licence restrictive), ICT-FaceKit (identity modes, no age).
+  None was checked here.
+- Proposal: (1) block_in_step `shape:<headage key>` moves (SET, mm), judged with the cheeks / mouth focus under
+  raking light against the photo, so Garrett's nasolabial fold, cheek hollow and lean lips are placed BY EYE against
+  his picture now; (2) then decide on a data-backed age direction (e.g. an age regression over a licensed scan set,
+  added as nd:age with its couplings, like newdirs) to replace the hand ops' sizes.
+
+### HANDOVER (blockin, 2026-10-10)
+Branch worktree-agent-ad0c708a3f812806d: e85453e is the merge-prep commit given to the coordinator. After it:
+8dbeabe (feature-pass rounds, nd:tip_width, local:, eye_size) and b268f3b (guide). Scratch /mnt/data/hifipushie/blockin:
+run.sh (SRC=<src dir> to run other code), tests.sh, srv.py <tool> '<json>' (any MCP tool via server.*), buildcmp.py
+(accepted builds main vs branch), remeasure.py, gaps.py / pack2.py (gap directions -> blockin_data.npz), radix.py,
+browlook.py / browcmp.py, yawtest.py.
+State: Garrett bi_G14 (whole-face block-in at G11 + tip width; G17 eye_size open), Tess bi_T03 (f6_A23 + fuller,
+less proud lips). Sheets human_renders/bi_*.
+Open, in order: (1) eyeball radius absolute (~12 mm) instead of x head size, socket seated round it, lids re-read
+(Garrett's eyes 43 % too open in mm with matched iris-radius margins); (2) age: `shape:` block-in moves, then the
+data-backed decision above; (3) the eye_width / eye_opening readers on clay (suspect: they follow the lash line);
+(4) the painted 3/4 is turned ~8 deg more than its camera: a silhouette-aware camera refit for painted views;
+(5) the lip_upper click on profiles vs lm51 (the clicked point is the lip's most forward point, lm51 the vermilion
+top: a 4 mm vertical disagreement that biases profile registration).
