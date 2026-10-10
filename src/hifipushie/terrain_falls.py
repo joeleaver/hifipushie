@@ -13,7 +13,9 @@ round a plunge pool at the foot, and the river running on from the pool's level.
 - `T.falls` (meta "falls"): per fall the lip line (two xyz points across the water at the lip's water level), drop,
   width of the sheet, the pool (centre xyz at the pool's water level, radius, depth) and `into` ("river" | "sea" |
   "lake"): what the game needs to draw the falling sheet and the spray.
-The water's level (river_water_lines) steps at the lip; easing and the bank rule act on each reach on its own."""
+The water's level (river_water_lines) steps at the lip; easing and the bank rule act on each reach on its own.
+- `Faces` (on the 3D field, terrain_mesh.Field): the face a vertical step on the lip line, the rock relief off along the
+  water, and the sheet's clearance air whatever else the field builds (pushieworld note 120)."""
 
 from __future__ import annotations
 
@@ -200,6 +202,122 @@ def stamp(T, L, falls, hl, half_w, d, i, floor_half):
                               "radius": round(Rp, 2), "depth": round(depth, 2) if into != "sea" else None},
                      "into": into})
     return recs
+
+
+HOLD_CELLS = 3.0  # cells: the column's level read this far up / downstream of the lip (past the B-spline's reach)
+HOLD_MIN = 4.0  # m: and at least this far (past the turf's step back from a cliff's lip, terrain_ground.LIP)
+RISER = 0.12  # m: the face's half-width in the column (a step, not the grid's 2-cell ramp)
+EDGE_CELLS = 1.0  # cells: the crisp face reaches this far past the water's edge, fading out over 1.5 x that
+CLEAR_MARGIN = 1.0  # m: the sheet's clearance reaches this far past the water's edge each side
+CLEAR_UP = 3.0  # m over the lip's water the clearance reaches
+CLEAR_BLEND = 0.3  # m: the clearance's cut rounded by this
+
+
+class Faces:
+    """Each fall's face and the falling sheet's clearance in the 3D field (pushieworld note 120). `stamp` cuts the step
+    into the terrain grid, but a grid holds a face only as a ramp between cells (and the field's cubic B-spline column
+    spreads it over ~2 cells each way): on the island's 2 m cells Kaze's 16 m sea-cliff fall came out a 75-80 deg
+    ramp starting 3.5 m upstream of the lip line, the rock relief rounding its top, water left the bed there and ran
+    down the rock. Here, per point:
+    - `column`: the column at the lip is a step on the lip line (RISER wide): upstream of it the column holds the
+      level it has HOLD_CELLS up (the lip's), downstream it is no higher than the level HOLD_CELLS down (the pool),
+      across the water and EDGE_CELLS past it, fading out beside it. So the face is vertical where the record says the
+      lip is, and the water lines, the manifest's lip and the meshes agree.
+    - `calm`: 0..1, where the rock relief stays off (the lip's bed, the face and the pool under the sheet).
+    - `carve`: the sheet's clearance, the space downstream of the lip plane over the pool's water across the sheet
+      (+ CLEAR_MARGIN) out to its throw, is air whatever else the field builds there (relief, fallen blocks, rock
+      built out on a sea cliff): the sheet falls free and nothing stands under it above the water."""
+
+    def __init__(self, T):
+        self.items = []
+        c = float(T.cell)
+        for f in getattr(T, "falls", None) or []:
+            a, b = np.array(f["lip"][0], float), np.array(f["lip"][1], float)
+            t_ = np.array(f["flow"], float)
+            t_ = t_ / max(np.linalg.norm(t_), 1e-9)
+            nrm = np.array([-t_[1], t_[0]])
+            up = float(a[2])
+            pool = f.get("pool") or {}
+            dn = float(pool["xyz"][2]) if pool.get("xyz") else up - float(f["drop"])
+            drop = max(up - dn, 0.5)
+            wl = float(f["width"])
+            Rp = float(pool.get("radius") or max(0.5 * wl, 2.5 * c))
+            hold = max(HOLD_CELLS * c, HOLD_MIN)
+            half = 0.5 * wl + EDGE_CELLS * c
+            fade = 1.5 * EDGE_CELLS * c
+            throw = float(np.clip(1.0 + 0.25 * drop, 2.0, max(0.85 * Rp, 2.0)))  # (the sheet's arc out from the lip)
+            ch = 0.5 * wl + CLEAR_MARGIN
+            reach = max(hold, throw) + 1.0
+            self.items.append({"c": 0.5 * (a[:2] + b[:2]), "t": t_, "n": nrm, "up": up, "dn": dn, "hold": hold,
+                               "half": half, "fade": fade, "throw": throw, "ch": ch,
+                               "r": math.hypot(reach, half + fade) + 1.0})
+        self.any = bool(self.items)
+
+    def _local(self, F, x, y):
+        k = np.flatnonzero((np.abs(x - F["c"][0]) < F["r"]) & (np.abs(y - F["c"][1]) < F["r"]))
+        if not len(k):
+            return k, None, None
+        rx, ry = x[k] - F["c"][0], y[k] - F["c"][1]
+        return k, rx * F["t"][0] + ry * F["t"][1], rx * F["n"][0] + ry * F["n"][1]
+
+    def column(self, x, y, h, col):
+        """h at columns with each fall's face as a step on its lip line; col(x, y): the column without the faces."""
+        if not self.any:
+            return h
+        x, y = np.asarray(x, float), np.asarray(y, float)
+        out = None
+        for F in self.items:
+            k, u, v = self._local(F, x, y)
+            if not len(k):
+                continue
+            m = (u > -F["hold"]) & (u < F["hold"]) & (np.abs(v) < F["half"] + F["fade"])
+            if not m.any():
+                continue
+            k, u, v = k[m], u[m], v[m]
+            hu = col(F["c"][0] - F["hold"] * F["t"][0] + v * F["n"][0], F["c"][1] - F["hold"] * F["t"][1] + v * F["n"][1])
+            hd = col(F["c"][0] + F["hold"] * F["t"][0] + v * F["n"][0], F["c"][1] + F["hold"] * F["t"][1] + v * F["n"][1])
+            if out is None:
+                out = np.array(h, float, copy=True)
+            h0 = out[k]
+            w = smoothstep(-RISER, RISER, u)
+            he = np.maximum(h0, hu) * (1 - w) + np.minimum(h0, hd) * w
+            wa = smoothstep(F["half"] + F["fade"], F["half"], np.abs(v))
+            out[k] = h0 + wa * (he - h0)
+        return h if out is None else out
+
+    def calm(self, p):
+        """0..1 at points: how far the rock relief is kept off (the water's band from the lip's hold out to the throw:
+        it rounded Kaze's lip 1-2 m down). The face is left plain: relief that only carved it (an undercut, at most
+        0.6 m) broke the cap over it into shards and seamed the tiles' maps (tried on the island, 3,21-3,22)."""
+        out = np.zeros(len(p))
+        for F in self.items:
+            k, u, v = self._local(F, p[:, 0], p[:, 1])
+            if not len(k):
+                continue
+            w = smoothstep(F["half"] + F["fade"], F["half"], np.abs(v)) \
+                * smoothstep(-F["hold"] - 2.0, -F["hold"], u) * smoothstep(F["throw"] + 2.0, F["throw"], u)
+            out[k] = np.maximum(out[k], w)
+        return out
+
+    def carve(self, p, Fv, blend=CLEAR_BLEND):
+        """The field Fv with every sheet's clearance cut out (air): a box from the lip plane out to the throw, across
+        the water + CLEAR_MARGIN, from the pool's water up to CLEAR_UP over the lip."""
+        for F in self.items:
+            k, u, v = self._local(F, p[:, 0], p[:, 1])
+            if not len(k):
+                continue
+            z = p[k, 2]
+            lo = np.array([0.0, -F["ch"], F["dn"]])
+            hi = np.array([F["throw"], F["ch"], F["up"] + CLEAR_UP])
+            q = np.stack([u, v, z], 1)
+            d = np.maximum(lo - q, q - hi)  # (box signed distance)
+            sd = np.linalg.norm(np.maximum(d, 0), axis=1) + np.minimum(d.max(1), 0)
+            near = np.flatnonzero(sd < blend + 2.0)
+            if len(near):
+                kk = k[near]
+                from .terrain_mesh import smax
+                Fv[kk] = smax(Fv[kk], -sd[near], blend)
+        return Fv
 
 
 def measure(T):

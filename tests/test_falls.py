@@ -78,6 +78,48 @@ def test_sea(T):
     print("ok sea cliff fall:", f["drop"], "m into the sea")
 
 
+def _cliff_field(T, tile=32):
+    from hifipushie import terrain_cliffs as tc, terrain_mesh as tm
+    cfg = {**tm.DEFAULTS, "tile": tile}
+    base, vols, *_ = tm.build_field(T, cfg)
+    G = tm.Grid(T, cfg)
+    R = tc.Region(T, base, G, cfg)
+    return tc.CliffField(base, R), R, G, vols, cfg
+
+
+def _frame(f):
+    c = np.mean(np.array(f["lip"])[:, :2], 0)
+    t_ = np.array(f["flow"], float)
+    return c, t_, np.array([-t_[1], t_[0]])
+
+
+def test_sea_face(T, field=None):
+    """A sea-cliff fall in the 3D cliff field (pushieworld note 120): the lip stands to the lip line, the face drops
+    vertically there, and no rock stands in the sheet's path above the sea: the grid's own face was a 75-80 deg ramp
+    3.5 m long starting upstream of the lip, and the sheet drawn from the lip fell onto it."""
+    from hifipushie import terrain_corridors as co, terrain_falls as tf
+    cf, R, *_ = field or _cliff_field(T)
+    f = T.falls[0]
+    c, t_, n = _frame(f)
+    up, dn, wl = f["lip"][0][2], f["pool"]["xyz"][2], f["width"]
+    throw = tf.Faces(T).items[0]["throw"]
+    u = np.arange(-4.0, throw + 0.01, 0.25)
+    for v in np.linspace(-0.4, 0.4, 5) * wl:
+        xy = c + u[:, None] * t_ + v * n
+        top = co.top(cf, R, xy[:, 0], xy[:, 1])
+        lip = (u >= -3.0) & (u <= -0.5)
+        assert top[lip].min() > up - 1.5, (v, u[lip], top[lip])  # (the lip's bed, under its water)
+        out = (u >= 0.5) & (u <= throw)
+        assert top[out].max() < dn + 0.3, (v, u[out], top[out])  # (nothing over the sea under the sheet)
+    # no rock anywhere in the sheet's path: from the lip plane out to its throw, across the water, sea to lip
+    uu, vv, zz = np.meshgrid(np.arange(0.3, throw, 0.25), np.linspace(-0.5, 0.5, 9) * wl,
+                             np.arange(dn + 0.3, up + 1.0, 0.25), indexing="ij")
+    xy = c + uu.ravel()[:, None] * t_ + vv.ravel()[:, None] * n
+    P = np.c_[xy, zz.ravel()]
+    assert (cf.value(P) > 0).all(), P[cf.value(P) <= 0][:5]
+    print(f"ok sea fall in the cliff field: lip to the lip line, sheet clear {throw:.1f} m out, {len(P)} points air")
+
+
 def test_clutter(T):
     from hifipushie import terrain_mesh as tm, terrain_stream as ts
     base = tm.build_field(T)[0]
@@ -125,5 +167,7 @@ if __name__ == "__main__":
     test_inland(T)
     test_meta(T)
     test_clutter(T)
-    test_sea(_load(SPECS["sea"]))
+    Ts = _load(SPECS["sea"])
+    test_sea(Ts)
+    test_sea_face(Ts)
     print(f"all ok {time.time() - t:.0f} s")

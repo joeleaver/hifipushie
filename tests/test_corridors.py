@@ -75,7 +75,91 @@ def test_corridors(T):
     return len(m["rects"]), sum(e["rows"] * e["cols"] for e in m["rects"]), took
 
 
+def _top_hit(P, F, xy):
+    """The highest crossing of a vertical ray with the triangles (P, F) at each plan point (-inf: none)."""
+    A, B, C = P[F[:, 0]], P[F[:, 1]], P[F[:, 2]]
+    lo = np.minimum(np.minimum(A, B), C)[:, :2]
+    hi = np.maximum(np.maximum(A, B), C)[:, :2]
+    z = np.full(len(xy), -np.inf)
+    for q, (x, y) in enumerate(xy):
+        k = np.flatnonzero((lo[:, 0] <= x) & (hi[:, 0] >= x) & (lo[:, 1] <= y) & (hi[:, 1] >= y))
+        if not len(k):
+            continue
+        a, b, c = A[k], B[k], C[k]
+        v0, v1, w = b[:, :2] - a[:, :2], c[:, :2] - a[:, :2], np.array([x, y]) - a[:, :2]
+        den = v0[:, 0] * v1[:, 1] - v0[:, 1] * v1[:, 0]
+        ok = np.abs(den) > 1e-12
+        s_ = np.where(ok, (w[:, 0] * v1[:, 1] - w[:, 1] * v1[:, 0]) / np.where(ok, den, 1), -1)
+        t_ = np.where(ok, (v0[:, 0] * w[:, 1] - v0[:, 1] * w[:, 0]) / np.where(ok, den, 1), -1)
+        inside = ok & (s_ >= -1e-9) & (t_ >= -1e-9) & (s_ + t_ <= 1 + 1e-9)
+        if inside.any():
+            z[q] = (a[:, 2] + s_ * (b[:, 2] - a[:, 2]) + t_ * (c[:, 2] - a[:, 2]))[inside].max()
+    return z
+
+
+def test_sea_fall_matches_mesh():
+    """A river falling off a sea cliff (pushieworld note 120): the corridor along the fall is the cliff tile's LOD 0
+    surface within cm (its dense mesh: marching cubes on the export's lattice, projected), the lip stands to the lip
+    line and nothing stands over the sea in the sheet's path."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    import test_falls as tfa
+    T = tfa._load(tfa.SPECS["sea"])
+    cf, R, G, vols, cfg = tfa._cliff_field(T)
+    f = T.falls[0]
+    c, t_, n = tfa._frame(f)
+    i, j = int((c[0] - G.origin[0]) // G.tile), int((c[1] - G.origin[1]) // G.tile)
+    r = tm._tile_mc(cf, G, i, j, 0, vols)
+    v = G.v(0)
+    idx, F = r[0], r[1]
+    P = np.c_[G.origin[0] + idx[:, 0] * v, G.origin[1] + idx[:, 1] * v, (idx[:, 2] + tm.ZOFF) * v]
+    P, _ = tm.project(cf, P, v)
+    lo, hi = G.origin + np.array([i, j]) * G.tile + 0.5, G.origin + np.array([i + 1, j + 1]) * G.tile - 0.5
+    u = np.r_[np.arange(-6.0, -0.49, 0.25), np.arange(0.5, 8.01, 0.25)]  # (off the face itself: a vertical face has
+    xy = np.concatenate([c + u[:, None] * t_ + s * n for s in np.linspace(-0.4, 0.4, 5) * f["width"]])  # any dz)
+    uu = np.tile(u, 5)
+    keep = np.all((xy >= lo) & (xy <= hi), axis=1)
+    xy, uu = xy[keep], uu[keep]
+    mesh = np.maximum(_top_hit(P, F, xy), R.height(xy[:, 0], xy[:, 1]))  # (the cliff tile, or the ground tile under it)
+    cor = co.top(cf, R, xy[:, 0], xy[:, 1])
+    dz = np.abs(cor - mesh)
+    assert np.isfinite(mesh).all() and len(xy) > 100, len(xy)
+    dry = mesh > f["pool"]["xyz"][2]
+    assert np.median(dz) < 0.03 and np.percentile(dz[dry], 95) < 0.05 and dz[dry].max() < 0.15, \
+        (np.median(dz), np.percentile(dz[dry], 95), dz[dry].max())
+    # (under the sea the fallen blocks at the cliff's foot are sharper than the 0.5 m voxel: decimetres)
+    assert np.percentile(dz[~dry], 95) < 0.4, np.percentile(dz[~dry], 95)
+    up, dn = f["lip"][0][2], f["pool"]["xyz"][2]
+    assert mesh[(uu >= -3) & (uu <= -0.5)].min() > up - 1.5  # (the lip stands to the lip line)
+    assert mesh[(uu >= 0.5) & (uu <= 4.0)].max() < dn + 0.3  # (no rock over the sea under the sheet)
+    print(f"ok sea fall: corridor vs the cliff tile's mesh, over the sea |dz| p50 {np.median(dz[dry]):.3f} p95 "
+          f"{np.percentile(dz[dry], 95):.3f} max {dz[dry].max():.3f} m ({dry.sum()} points), under it p50 "
+          f"{np.median(dz[~dry]):.3f} p95 {np.percentile(dz[~dry], 95):.3f} m ({(~dry).sum()})")
+
+
+class _Slab:
+    """A field with rock 25 m over its ground in a disc (a stack, rock built out over a sunk ground)."""
+    rock = None
+
+    def column(self, x, y):
+        return np.zeros(len(x)), np.ones(len(x))
+
+    def value(self, p):
+        r = np.hypot(p[:, 0], p[:, 1])
+        return np.where(r < 5.0, p[:, 2] - 25.0, p[:, 2])
+
+
+def test_scan_starts_in_air():
+    """Where the rock stands more than SCAN_UP over the column's ground, the scan starts higher (it found rock at its
+    first point and fell back to the heightmap, metres under the mesh)."""
+    z = co.top(_Slab(), None, np.array([0.0, 2.0, 20.0]), np.array([0.0, 0.0, 0.0]))
+    assert abs(z[0] - 25.0) < 0.01 and abs(z[1] - 25.0) < 0.01 and abs(z[2]) < 0.01, z
+    print("ok scan over rock 25 m up:", z.round(3))
+
+
 if __name__ == "__main__":
+    test_scan_starts_in_air()
     T = _load(SPEC)
     n, pts, took = test_corridors(T)
     print(f"ok: {n} rects, {pts / 1e6:.2f} M samples, {took:.1f} s")
+    test_sea_fall_matches_mesh()

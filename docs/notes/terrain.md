@@ -1070,6 +1070,47 @@ regresses, bisect by building one spec at each commit and diffing heights.
     branch stubs, a root plate or snapped butt at -x, tapering to +x; limb = straight or forked at +x with a few
     twigs; 5 styles. tests/test_snags.py (rows, capsule columns, ends resting, axis clear, no boulder crossed, snags
     sloping out of the water, manifest; a hump between the ends drops the candidate).
+  - Note 120 (2026-10-10, "kazefall" agent; their report: Kaze's sea-cliff fall (kaze_burn at 1) puts gdamp's sheet
+    inside a "rock apron 10-20 m proud" of the heightmap and the corridor; scratch DURABLE /mnt/data/hifipushie/kazefall/:
+    run.sh / t.sh / tests.sh (this worktree, capped), line.py <tiles dir> [x0 y] (LOD 0/1/2, collision, ground, the
+    tile heightmap and every corridor along a line from x0 west), grid.py <tiles dir> x0 x1 y0 y1 step out.npz (LOD 0
+    top vs corridor on a grid), probe.py <terrain> (T.H, the field's column, the pushed heightmap and the corridor's
+    top along the fall), exp.py (tiles export into out/<tag>), rend.py <tiles dir> <tag> (front / above views),
+    orig/ = HEAD worktree + t_orig.sh (the new tests fail there)).
+    What the numbers said (their export, the same files as world/island; vertical rays): at y 1404.2, 1-5 m west of
+    x 239.5, LOD 0 12.05 / 7.23 / -0.46 / -3.72 / -4.36, the corridor 12.04 / 7.25 / -0.54 / -3.73 / -4.41: the
+    corridor already WAS the mesh (0.5 m grid round the fall, 3021 points: |dz| p50 0.015, p95 0.07 m). Their LOD 0
+    numbers (14.9 / 14.5 / 10.6 / 8.5 / 3.4) are our mesh ~4 m further south (y ~1400.2): their GLB sampling, not our
+    mesh. The heightmap's -4.9..-7.9 is the ground pushed 3.8 m under the cliff mesh, by design. Neither suspected
+    cause held: the 3D field is built on the same column (no rock proud of it; the relief carved the lip DOWN 1-2 m),
+    and the scan's start at ground + 10 m was in the air there. The real fault: on the island's 2 m cells the
+    `stamp`ed face is a ramp between cells, spread by the field's cubic B-spline column over ~2 cells each way: a
+    75-80 deg slope from x ~239.5 (the bed's edge, where they put the lip) down to ~236, i.e. the whole 16 m drop
+    0-3.5 m UPSTREAM of the manifest's lip line (centre [235.96, 1404.76]), the river's water drawn over the ramp in
+    the air, and a sheet thrown from the bed's edge lands on rock.
+    Fix (general, every fall): `terrain_falls.Faces` on the Field (built from T.falls). `column`: within the water +
+    1 cell (fading over 1.5 cells beside it) the column is a step ON the lip line (RISER 0.12 m): upstream it holds the
+    level the column has HOLD (max(3 cells, 4 m)) up, downstream it is no higher than the level HOLD down; also in
+    Region._col_riser (the maps' column). `calm`: the rock relief off over the lip's bed, the face and the pool under
+    the sheet. `carve`: the sheet's clearance (from the lip plane out to its throw clip(1 + 0.25 drop, 2, 0.85 pool
+    radius) m, the water's width + 1 m each side, from the pool's water to 3 m over the lip) is air in the field
+    whatever else builds there (fallen blocks, stacks, relief), rounded 0.3 m. The corridor scan (`terrain_corridors.top`)
+    now starts in the air: where ground + SCAN_UP is rock it rises by SCAN_UP up to SCAN_RISE (20) times (a stack, rock
+    built over a sunk ground; it used to drop to the heightmap there). Talus: none in the sheet's path before or after
+    (the ground below the lip is the pool / sea floor at -4..-5 m, terrain_sea's TALUS sits at the foot).
+    Island tiles 3,21-3,22 re-exported (t117_island = their spec without corridors, + corridors; out/kaze_after, 0 check
+    failures, 220 s): along y 1404.2 at 1-5 m out LOD 0 15.94 / 15.95 / 15.95 / -4.52 / -4.49 (the lip's bed under its
+    16.62 m water to x ~236, then vertical to the pool); corridor 15.93 / 15.94 / 15.95 / -4.52 / -4.50; heightmap
+    (pushed) -7.57 / -7.57 / -8.35 / -8.35 / -8.30. Corridor vs LOD 0 on the grid, off the face (|u| > 1 m): p50 0.012,
+    p95 0.049, max 0.20 m (on the face itself vertical dz is any number). Pictures terrain3d_renders/kf_01_kaze_fall_
+    before_after.png (above + front, baked; the green is the river's water). Honest: the face now reads as a plain cut
+    wall (no rock character in the fall's band). Tried and dropped: relief that only carves the face (an undercut, at
+    most 0.6 m, starting 1 or 2.5 m under the lip): shards at the cap and a weights1 map seam between 3,21|3,22. A face
+    with its own character (joints, a real undercut under a thicker cap) is the follow-up. Pushieworld must re-export the
+    island (tiles + corridors + the heightmap export); the manifest's falls records are unchanged (the lip line was
+    right, the ground now meets it). tests/test_falls::test_sea_face (lip to the lip line, 32 k points of the sheet's
+    path air), tests/test_corridors::test_sea_fall_matches_mesh (corridor vs the cliff tile's dense mesh over the sea
+    p95 0.043 m) and ::test_scan_starts_in_air; on HEAD the first and last fail.
   - Terrain styles (2026-10-07, "terrainstyle" agent, branch `worktree-agent-aaa51cb5f5cb72005` (delivery 1 merged as main 1e54176); consumer brief:
     /home/joe/dev/pushieworld/docs/hifipushie-notes.md 18, 58-59; renders `workspace/terrain3d_renders/ts_*`; scratch
     DURABLE in /mnt/data/hifipushie/terrainstyle/: run.sh <script>, sheet.py <png> [styles] [layers] (swatch sheet +

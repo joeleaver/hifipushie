@@ -206,9 +206,10 @@ class Region:
 
     def _col_riser(self, x, y, riser, wmin=0.0):
         b = self.base
-        h, s = b._column(x, y)
-        return b.edits.column(x, y, h, s, b._column, riser, wmin) if getattr(b, "edits", None) is not None \
-            else (h, s)
+        h, s = b._edited_column(x, y, riser, wmin)
+        if getattr(b, "faces", None) is not None:  # (the waterfalls' faces, as Field.column)
+            h = b.faces.column(x, y, h, lambda a, c: b._edited_column(a, c, riser, wmin)[0])
+        return h, s
 
     def back_at(self, x, y):
         """The shell's back at columns: its height and slope factor (see `back`)."""

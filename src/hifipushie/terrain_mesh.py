@@ -1264,14 +1264,27 @@ class Field:
             for s in self.styles:
                 ls = ls - s["w"] * (1.0 - float(s["rock"].get("lip", 1.0)))
             self.edits.lip_scale = np.ascontiguousarray(np.clip(ls, 0.0, None))
+        # waterfalls: the face a step on the lip line and the falling sheet's clearance kept air (terrain_falls.Faces;
+        # the grid's face was a 75-80 deg ramp 3.5 m long and the sheet fell onto it: pushieworld note 120)
+        from . import terrain_falls
+        self.faces = terrain_falls.Faces(T) if getattr(T, "falls", None) else None
+        if self.faces is not None and not self.faces.any:
+            self.faces = None
 
     def column(self, x, y):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns (with the ground edits:
-        turf lips, bunkers)."""
+        turf lips, bunkers; and the waterfalls' faces)."""
+        h, s = self._edited_column(x, y)
+        if getattr(self, "faces", None) is not None:
+            h = self.faces.column(x, y, h, lambda a, b: self._edited_column(a, b)[0])
+        return h, s
+
+    def _edited_column(self, x, y, riser=None, wmin=None):
         h, s = self._column(x, y)
         if getattr(self, "edits", None) is not None:
             return self.edits.column(np.asarray(x, float), np.asarray(y, float), h, s, self._column,
-                                     getattr(self, "edit_riser", None), getattr(self, "edit_wmin", 0.0))
+                                     getattr(self, "edit_riser", None) if riser is None else riser,
+                                     getattr(self, "edit_wmin", 0.0) if wmin is None else wmin)
         return h, s
 
     def _column(self, x, y):
@@ -1459,6 +1472,10 @@ class Field:
                 if len(j):
                     rw = rw.copy()
                     rw[j] *= 1.0 - cv_[j]
+            if getattr(self, "faces", None) is not None:  # (none on a fall's lip, face and pool under its sheet)
+                cm = self.faces.calm(p)
+                if cm.any():
+                    rw = rw * (1.0 - cm)
             w = np.maximum(rw * guard, near)
             k = np.flatnonzero((w > RELIEF_CUT) & (np.abs(F) < self.rock["reach"]))
             if len(k):
@@ -1504,6 +1521,8 @@ class Field:
                 if self.micro is not None:  # (bake-only fine rock: below the meshing voxel, for the maps)
                     with _span("field.micro", leaf=True):
                         F[k] = F[k] + w[k] * (1.0 if mic is None else mic) * self.micro(p[k], fd, u, g, I)
+        if getattr(self, "faces", None) is not None:  # (each fall's sheet falls through air: terrain_falls.Faces)
+            F = self.faces.carve(p, F)
         # (per call: left on the Field, the incremental fingerprint walked it as a global input that changed every export)
         self.build_w = None
         return F

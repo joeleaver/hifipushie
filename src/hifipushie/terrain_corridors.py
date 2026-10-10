@@ -18,6 +18,7 @@ SPACING = 0.25
 BUFFER = 15.0  # m each side of the water's edge
 SIZE = 128.0  # m: a rect's longest side at most
 SCAN_UP = 10.0  # m over the ground a cliff mesh's top is looked for (a lip's rock, relief built out)
+SCAN_RISE = 20  # times SCAN_UP more where that is still rock (a stack, rock built out over a sunk ground)
 SCAN_DOWN = 6.0  # m under it (a sunk front: the ground is on top there anyway)
 SCAN_STEP_MAX = 0.5  # m: the longest step down (a thin lip of rock is never stepped over)
 SCAN_MIN = 0.02
@@ -151,11 +152,21 @@ def top(field, region, x, y, g=None):
     # that. (Every 0.25 m from 10 m over to 6 m under took 65 calls a point: 5 of the island's 5.5 minutes)
     for a in range(0, len(k), CHUNK):
         kk = k[a:a + CHUNK]
-        z = h0[kk] + SCAN_UP
+        # the scan starts in the air: SCAN_UP over the ground, or higher where that is still rock (a sea cliff's rock
+        # built out over a sunk ground, a stack: the first point read rock and the column fell back to the heightmap,
+        # under the mesh by metres)
+        z0 = h0[kk] + SCAN_UP
+        up = np.flatnonzero(field.value(np.c_[x[kk], y[kk], z0]) <= 0)
+        for _ in range(SCAN_RISE):
+            if not len(up):
+                break
+            z0[up] += SCAN_UP
+            up = up[field.value(np.c_[x[kk[up]], y[kk[up]], z0[up]]) <= 0]
+        z = z0.copy()
         za = z.copy()
-        live = np.arange(len(kk))
+        live = np.setdiff1d(np.arange(len(kk)), up)  # (still rock SCAN_RISE x SCAN_UP up: left to the heightmap)
         hitz = np.full(len(kk), np.nan)
-        for _ in range(int((SCAN_UP + SCAN_DOWN) / SCAN_MIN) + 1):
+        for _ in range(int((z0.max() - (h0[kk] - SCAN_DOWN).min()) / SCAN_MIN) + 1 if len(kk) else 0):
             if not len(live):
                 break
             v = field.value(np.c_[x[kk[live]], y[kk[live]], z[live]])
@@ -166,7 +177,7 @@ def top(field, region, x, y, g=None):
             z[live[go]] -= np.clip(0.5 * v[go], SCAN_MIN, SCAN_STEP_MAX)
             live = live[go]
             live = live[z[live] >= h0[kk[live]] - SCAN_DOWN]
-        hit = np.flatnonzero(np.isfinite(hitz) & (hitz < h0[kk] + SCAN_UP))  # (rock at the first point: none found)
+        hit = np.flatnonzero(np.isfinite(hitz) & (hitz < z0))  # (rock at the first point: none found)
         if not len(hit):
             continue
         q = kk[hit]
