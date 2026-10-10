@@ -55,10 +55,14 @@ GROUPS = {
 FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion"}
 
 BODY_KEYS = ("weight",)
-HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base"}
+HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes"}
 # head_scale: the one mesh's head is the BODY's head (base.head.scale is overwritten by the body's size); a uniform size
 # change is base.style.human.head_size (humanstyle: the head scaled about the top of the neck, eyeballs with it)
 POSE_KEYS = ("lid_upper", "lid_lower")
+# LOCAL residuals (what GNM's identity can't draw: a confirmed capability gap), as faceslide's local sliders, SET, with
+# the population sd ICT's scans give them beyond GNM's identity (faces5 regbasis2_nose's 8 leading modes projected on
+# each field, blockin/radix.py): the radix width varies 0.09 units (~0.13 mm) past GNM: a real but near-invisible gap
+LOCAL_SD = {"nose_radix_width": 0.09, "nose_tip_width": 0.18, "nose_dorsum_width": 0.12}
 STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual")
 SQUINT_MM = 9.0
 FILL = 0.45             # display fill: the clay's shadow side lifted to this share of the lit skin's median
@@ -108,7 +112,8 @@ def vocabulary() -> str:
     from . import humanmacro as hm
     return ("macros (free, size kept; append ! for held, ~ for the raw coupling incl. size): " + ", ".join(hm.NAMES) + "\ngaps: " + ", ".join("nd:" + n for n in gap_names())
             + "\nsex, eth0, eth1, eth2; base keys (set): weight, dimorphism, gnm_base, head_scale; lids (set, m): "
-            "lid_upper, lid_lower")
+            "lid_upper, lid_lower; local residuals (set): local:<faceslide slider>, e.g. "
+            + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items()))
 
 
 def _size_row() -> np.ndarray:
@@ -329,6 +334,14 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"].setdefault("style", {}).setdefault("human", {})["head_size"] = v
         elif k in POSE_KEYS:
             sp["base"]["head"].setdefault("pose", {})[k] = v
+        elif k.startswith("local:"):
+            from . import faceslide
+            nm = k[6:]
+            if nm not in faceslide.UNITS:
+                raise ValueError(f"local: no slider {nm!r} (faceslide: {', '.join(sorted(faceslide.UNITS))})")
+            sp["base"]["head"].setdefault("sliders", {})[nm] = v
+            if nm in LOCAL_SD and abs(v) > 2.5 * LOCAL_SD[nm]:
+                big.append(f"{k} (population sd {LOCAL_SD[nm]})")
         else:
             c = c + v * direction(k)
             if abs(v) > 1.0:
@@ -389,7 +402,8 @@ def step_text(rep: dict) -> str:
     if e.get("camera_moves"):
         s.append("cameras refitted (landmarks only: a camera fit does not see the outline): " + "; ".join(e["camera_moves"]))
     if rep["big"]:
-        s.append(f"WARNING: {', '.join(rep['big'])} moved more than 1 sd in one step: the method takes small steps (0.3-0.7)")
+        s.append(f"WARNING: {', '.join(rep['big'])}: more than 1 sd (a local: 2.5 of its population sd) in one step: the "
+                 "method takes small steps (0.3-0.7)")
     if e.get("feature_passes"):
         s.append(f"ZOOM IN, {e['feature']}'s own checklist rows: {e['feature_passes'][0]} -> {e['feature_passes'][1]} pass")
     s.append("ZOOM OUT, targets before -> after: " + ", ".join(f"{g} {rep['before'].get(g, '-')} -> {p}" for g, p in e["passes"].items()))
@@ -847,9 +861,10 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
                 d.line(to_ph(profile_contour(v)), fill=(230, 30, 30), width=3)
             except Exception:  # noqa: BLE001  (a profile without a plain background: the clay's edge alone)
                 pass
-            e = Image.fromarray((ps["part"] >= 0).astype(np.uint8) * 255).filter(ImageFilter.FIND_EDGES)
+            e = np.asarray(Image.fromarray((ps["part"] >= 0).astype(np.uint8) * 255).filter(ImageFilter.FIND_EDGES)) > 0
+            e[:2], e[-2:], e[:, :2], e[:, -2:] = False, False, False, False   # (the crop's own border is no edge)
             olA = np.asarray(ol).copy()
-            olA[np.asarray(e) > 0] = (30, 200, 30)
+            olA[e] = (30, 200, 30)
             ol = Image.fromarray(olA)
         sg = float(SQUINT_MM / likeness._mm_per_px(cam, mesh["L"][27:48]) * k)
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
@@ -886,7 +901,7 @@ FEATURES = {
              "lines": [[33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7, 33],
                        [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249, 263],
                        [70, 63, 105, 66, 107], [300, 293, 334, 296, 336], [46, 53, 52, 65, 55], [276, 283, 282, 295, 285]],
-             "stages": ("eyes", "brows"), "items": ("under_eye", "brow_ridge", "prof_brow_ridge"), "squint_mm": 3.0},
+             "stages": ("eyes", "brows"), "items": ("under_eye", "brow_ridge", "prof_brow_ridge"), "squint_mm": 3.0, "pad": 1.12},
     "nose": {"lm": list(range(27, 36)) + [39, 42], "pairs": [(27, 168), (30, 4), (31, 98), (33, 2), (35, 327)],
              "lines": [[168, 6, 197, 195, 5, 4], [64, 98, 97, 2, 326, 327, 294], [48, 115, 220, 45, 4, 275, 440, 344, 278]],
              "stages": ("nose",), "squint_mm": 3.0},
@@ -914,7 +929,7 @@ def _feature_box(feature, L2, P_ear=None):
     lo, hi = Q.min(0), Q.max(0)
     c = 0.5 * (lo + hi)
     io = float(np.linalg.norm(L2[45] - L2[36]))
-    side = max(1.5 * float(np.max(hi - lo)), 0.55 * io)
+    side = max(FEATURES[feature].get("pad", 1.5) * float(np.max(hi - lo)), 0.55 * io)
     return (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
 
 
@@ -963,9 +978,20 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         Pd = detect_view(img, v) if front else None
         mesh["_photo_P"] = Pd
         pr = [(a, b) for a, b in F["pairs"]] if Pd is not None else []
+        clicked = []   # (a turned / profile view: the view's own clicked points that belong to the feature)
+        for nm, uv in (v.get("points") or {}).items():
+            try:
+                ix = humanfit.point_index(nm)
+            except Exception:  # noqa: BLE001
+                continue
+            if ix in F["lm"] or (feature == "nose" and ix in (27, 30, 33)) or (feature == "mouth" and 48 <= ix < 68):
+                clicked.append((ix, np.asarray(uv, float)))
         if pr:
             sh = np.mean([np.asarray(Pd[b][:2], float) - L2[a] for a, b in pr], 0)
             how = "the feature's own landmarks"
+        elif clicked:
+            sh = np.mean([uv - L2[ix] for ix, uv in clicked], 0)
+            how = f"the feature's clicked points ({len(clicked)})"
         else:
             a_ph, a_md = _eye_anchor(v, Pd, L2)
             sh = np.zeros(2) if a_ph is None else a_ph - a_md
@@ -977,7 +1003,7 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
         rake = lambda m: fill(*likeness.render(m, cam, box, px=px, brows=False, passes=True, ao=True, shadow=4.0,  # noqa: E731
-                                                light=(0.15, RAKE, 1.0, 0.0))[::2], share=0.3)
+                                                light=(0.3, RAKE, 1.0, 0.0))[::2], share=0.3)
         rk = rake(mesh)
         ov = Image.blend(ph, cl, 0.5)
         ol = ph.copy().convert("L").convert("RGB")
@@ -991,9 +1017,15 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
                 if Pm is not None:   # (the clay's contour in its own crop: the photo's crop carries the registration)
                     d.line(to(np.asarray(Pm, float)[ln, :2]), fill=(30, 200, 30), width=2)
         else:
-            e = Image.fromarray((ps["part"] >= 0).astype(np.uint8) * 255).filter(ImageFilter.FIND_EDGES)
+            if not front:
+                try:
+                    d.line(to_ph(profile_contour(v)), fill=(230, 30, 30), width=2)
+                except Exception:  # noqa: BLE001
+                    pass
+            e = np.asarray(Image.fromarray((ps["part"] >= 0).astype(np.uint8) * 255).filter(ImageFilter.FIND_EDGES)) > 0
+            e[:2], e[-2:], e[:, :2], e[:, -2:] = False, False, False, False   # (the crop's own border is no edge)
             olA = np.asarray(ol).copy()
-            olA[np.asarray(e) > 0] = (30, 200, 30)
+            olA[e] = (30, 200, 30)
             ol = Image.fromarray(olA)
         sg = float(F["squint_mm"] / likeness._mm_per_px(cam, mesh["L"][27:48]) * k)
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731

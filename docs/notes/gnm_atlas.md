@@ -1445,3 +1445,75 @@ that feature's checklist rows (likeness stages; lids for eyes). block_in_step(fe
 crops + rows, then the whole-face sheet; block_in_look(read=, keep=) logs the zoom-out verdict. blockin_guide.md: "The
 feature pass: ZOOM IN, step, ZOOM OUT". table() / feature_table() come from one cached row list (blockin_rows.json).
 radix_width / dorsum_width rows are shading-contrast items (model 0 by definition).
+
+### Vocabulary: the nose tip and the radix (coordinator's item 1)
+- tip_width (blockin/gaps.py, 2000 GNM heads, the lobule's soft half-width at the tip's height / io): R2 0.94, sd
+  1.31 mm: GNM DOES vary it (not a capability gap). Coupled +1 sd: alae +0.58, lips forward +0.58 / fuller +0.5,
+  projection -0.51, bridge -0.51 (the broad-tip / low-bridge population pattern). Held variant (alae, projection,
+  size, lips, bridge, length held): clean (largest other move 0.2), |dc| 1.76 / sd. In blockin_data as
+  nd:tip_width and nd:tip_width|held.
+- radix: GNM's spread 0.6 mm (newdirs) + ICT's residual beyond GNM projected on faceslide's nose_radix_width field
+  (faces5 regbasis2_nose, 8 modes; blockin/radix.py): 0.09 units = ~0.13 mm. A real gap but near invisible. The
+  local residual already exists as faceslide's nose_radix_width slider; the block-in now takes local residuals as
+  `local:<slider>` moves (SET, base.head.sliders) with their ICT population sd (radix 0.09, tip 0.18, dorsum 0.12;
+  warned past 2.5 sd).
+
+### Feature pass, first rounds (focus mode; zoom-in read = the step's seen, zoom-out read logged with keep)
+Garrett (from bi_G11):
+| model | feature | move | zoom in | zoom out | kept |
+|---|---|---|---|---|---|
+| G13 | nose | nose_upturn! -0.5 | nostril band a bit narrower, 3/4 tip lower | philtrum / middle third (3/4) out | no |
+| G14 | nose | nd:tip_width|held +0.6 | lobule a touch wider / rounder | unchanged, nothing out | yes |
+| G15 | nose | local:nostril_show -0.5 | no visible change: the dark band under his clay nose is the nostril floor in shadow under the photo's top light, not nostril show | - | no |
+| G16 | eyes | eye_tilt! -0.7 | canthal tilt only -0.9 deg | 3/4 philtrum / middle third out | no |
+| G17 | eyes | eye_size 0.88 (base.head.eyes) | opening -0.6 mm only | unchanged | open |
+Tess (adopted from f6_A23):
+| T01 | mouth | lip_fullness! +0.5 | upper cushion fuller | unchanged | yes |
+| T02 | mouth | lip_projection! +0.6 | WRONG WAY: I misread the earlier sheet; the zoomed profile (registered at the clicked lip points) shows her lips 1-3 mm BEHIND the clay | temple out | no |
+| T03 | mouth | lip_projection! -0.5 | profile lips ~1 mm back toward hers | unchanged | yes |
+Sheets: bi_G14_nose.png (before G11 | after), bi_G14_eyes.png, bi_G17_eyes.png, bi_T03_mouth_vs_A23.png, bi_T03_vs_A23.png
+(whole face), bi_G14.png. Read: the zoom-in caught what the whole-face sheet hid (the profile lips' direction, the
+eye size) and the zoom-out caught held steps leaking into 3/4 items; half-sd steps are still small in the crops.
+
+### Eyeball seating (coordinator's item 2): finding, not built
+Garrett's eyeball radius is 14.6 mm (an adult eye ~12 mm; Tess 12.7): the eye radius follows the body's head size,
+so his drawn iris is 7.3 mm (real ~5.9). Matching the lids in IRIS RADII then leaves the opening 2.8 mm (43 %) too
+tall in mm, the eye 11 % too wide: big, forward-looking eyes with lots of white. eye_size (base.head.eyes, scales the
+eye AND its orbit about the eye centre) 0.88 moved the opening only 0.6 mm: the readers of the opening / width follow
+the lids and lash line, not the ball. Options to decide: (a) eyeball radius absolute (~12 mm adult, not x head size)
+in onemesh's eye placement, with the socket seated round it (GNM's own eye mask), then lids re-measured; (b) lid read
+in mm (MRD1 in mm against the photo's iris-scaled mm) instead of iris radii. (a) is the real fix (audit g11).
+
+### Age soft tissue for Garrett (item 3): report pending (what our age ops / MakeHuman age give vs data-backed).
+
+### Age soft tissue (item 3): what we have, before building
+- GNM's identity has no age; the semantic sampler conditions on gender x ethnicity only.
+- MakeHuman age (the body's head, gnm_base 0 for older people) gives the skull and head proportions of a 52-year-old,
+  authored by MakeHuman's artists, not measured. On Garrett it reads older and leaner than the GNM base did (faces6 G03).
+- headage.py (base.head.shape: nasolabial, prejowl, lid_fold, eye_bag, lip_bow, lip_roll, cheek_flat, lips_thin) and
+  faceslide's age_* / cheek_hollow / face_lean / face_planes sliders: hand-authored soft-tissue ops (millimetres,
+  placed from the landmarks, mirrored), not data-backed. The accepted fs_ge3 used face_planes 0.5, face_lean 1.5,
+  cheek_hollow 0.08, age_nasolabial 0.5, age_cheek_flat 0.28.
+- Data-backed candidates (licences to check before any use): BFM 2009 / 2017 attribute regressions (age among them;
+  non-commercial), the Liverpool-York Head Model (age-structured; non-commercial), FLAME (trained on CAESAR adults;
+  no age label in the release), FaceScape (has age labels; licence restrictive), ICT-FaceKit (identity modes, no age).
+  None was checked here.
+- Proposal: (1) block_in_step `shape:<headage key>` moves (SET, mm), judged with the cheeks / mouth focus under
+  raking light against the photo, so Garrett's nasolabial fold, cheek hollow and lean lips are placed BY EYE against
+  his picture now; (2) then decide on a data-backed age direction (e.g. an age regression over a licensed scan set,
+  added as nd:age with its couplings, like newdirs) to replace the hand ops' sizes.
+
+### HANDOVER (blockin, 2026-10-10)
+Branch worktree-agent-ad0c708a3f812806d: e85453e is the merge-prep commit given to the coordinator. After it:
+8dbeabe (feature-pass rounds, nd:tip_width, local:, eye_size) and b268f3b (guide). Scratch /mnt/data/hifipushie/blockin:
+run.sh (SRC=<src dir> to run other code), tests.sh, srv.py <tool> '<json>' (any MCP tool via server.*), buildcmp.py
+(accepted builds main vs branch), remeasure.py, gaps.py / pack2.py (gap directions -> blockin_data.npz), radix.py,
+browlook.py / browcmp.py, yawtest.py.
+State: Garrett bi_G14 (whole-face block-in at G11 + tip width; G17 eye_size open), Tess bi_T03 (f6_A23 + fuller,
+less proud lips). Sheets human_renders/bi_*.
+Open, in order: (1) eyeball radius absolute (~12 mm) instead of x head size, socket seated round it, lids re-read
+(Garrett's eyes 43 % too open in mm with matched iris-radius margins); (2) age: `shape:` block-in moves, then the
+data-backed decision above; (3) the eye_width / eye_opening readers on clay (suspect: they follow the lash line);
+(4) the painted 3/4 is turned ~8 deg more than its camera: a silhouette-aware camera refit for painted views;
+(5) the lip_upper click on profiles vs lm51 (the clicked point is the lip's most forward point, lm51 the vermilion
+top: a 4 mm vertical disagreement that biases profile registration).
