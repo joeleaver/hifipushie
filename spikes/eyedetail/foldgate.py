@@ -44,6 +44,10 @@ def row(lab, r):
     for sd, cols in zip(("R", "L"), r):
         print(f"{lab:>12} {sd}: " + "  ".join(f"tps {c_['tps']:5.2f} bfs {c_['bfs']:5.2f} dark {c_['dark']:.2f} w {c_['width']}"
                                               for c_ in cols))
+        cs = [c_ for c_ in cols if "line_v" in c_]
+        if cs:
+            print(f"{'':>14}colour (mean of thirds): " + "  ".join(
+                f"{k} {np.nanmean([c_[k] for c_ in cs]):+.3f}" for k in ("line_v", "line_ds", "line_dh", "above_v", "below_v")))
 
 
 out = {}

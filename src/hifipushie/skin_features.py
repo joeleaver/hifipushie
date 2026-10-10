@@ -369,9 +369,15 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         # no light and its blood shows: a photographed crease is a soft brown-red line. (The field's cavity can't do
         # it: curvature is measured with a 0.75-voxel stencil, which steps over a 0.8 mm groove.)
         w = float(fc["crease_width"]) * 0.001
-        layer("lid_crease", pre=True, color=T(blood=1.5, melanin=2.4, epidermis=0.8),
-              opacity=round(float(np.clip(0.55 + 0.3 * fc["crease_depth"], 0, 0.95)), 3),
-              mask=[{"near": ["lid_fold.L", "lid_fold.R"], "within": round(0.3 * w, 6), "soft": round(1.6 * w, 6)}])
+        # A SHADOW, not a hue: neutral multiplies (the skin's own colour darker, its saturation kept), darkest in a thin
+        # line, then a soft gradient up the fold's underside and none below (a red-brown tone read as a painted scar)
+        fold = ["lid_fold.L", "lid_fold.R"]
+        layer("lid_crease", pre=True, color=[0.76, 0.82, 0.86], mix="multiply",  # (a hair cool: the groove's own
+              # subsurface glow reddens it ~3 deg against the photo's crease)
+              opacity=round(float(np.clip(0.35 + 0.3 * fc["crease_depth"], 0, 0.9)), 3),
+              mask=[{"near": fold, "within": round(0.2 * w, 6), "soft": round(0.8 * w, 6)}])
+        layer("lid_fold_shadow", pre=True, color=[0.9, 0.91, 0.92], mix="multiply", opacity=0.85,
+              mask=[{"near": fold, "side": "up", "within": 0.0, "soft": round(1.8 * float(fc["fold_width"]) * 0.001, 6)}])
 
 
 def _wrinkles(p, J, layer, T, ctx) -> None:
