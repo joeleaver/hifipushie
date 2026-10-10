@@ -83,6 +83,14 @@ eye catches what the points miss; the target table catches what your eye misses.
    vs her 0.67 / 0.88, crease 1.1 mm deep at 5.3 mm (her line 5.15 mm), |dc| 3.0, |e| 1.8, table unchanged.
    `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
    an identity step for eye height made eyes read NARROWER.
+7b. **The picture's own expression** (`block_in_expression(name)`): GNM's identity is the RELAXED neutral; a picture
+   that smiles (fuller lips, lifted corners, a cheek apple) or squints is compared against that neutral, and the smile
+   leaks into mouth / cheek identity steps. The tool fits each detector picture's expression on the current head
+   (identity and camera held; GNM lower-face expression comps, small prior; eyes=True adds eye-region comps, which can fight the lid pose) and stores it per view in the
+   references; every later look / focus / table / lid read / camera refit draws the clay WITH that picture's
+   (lower-face) expression on top of the head's own (the eye step's eye-region expression); the model itself stays neutral. Fit it once the big forms are in (on the class mean it would soak up
+   identity: block_in_start(expression=True) only for pictures you know are neutral-ish), and refit after big
+   identity moves (the reply's chi2 says how much the expression explains). clear=True drops them.
 8. **Judge in whole-face hair-cap clay under both lights** (the photo's light in the sheet; `look` / `look_skin` for
    the clay key and the dressed head) **before any fine detail.** A block-in is done when the outline sits on the
    pictures in every view, the table passes (or every miss is explained: a painted view, a detector guess), and the
@@ -191,6 +199,14 @@ block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, s
 - look=False returns the text only. Reply: |c| before -> after, the moved macro's read, the largest coupled moves,
   the target pass counts before -> after, the items that changed, and the new sheet (with before | after | change
   rows: a half-sd step is hard to see beside the photo alone) + table.
+
+### `block_in_expression`
+block_in_expression(name, out=None, views=None, clear=False, seen="", why="", look=True, save=None): a round that
+changes no shape: a new model (out) whose references carry each picture's fitted expression (views: default every
+view with a detector, |yaw| < 70; a profile's few clicks can't separate expression from shape). Reply: per view chi2
+before -> after on the detector points, |e| and the largest comps, then the table delta and a sheet before (neutral)
+| after (with the expression). Stored in human_refs.json "expressions" (one {GNM expression comp: value} per view,
+{} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `lid_read`
 lid_read(name, match=False, out=None, seen="", save=None): the picture's lid margins against the iris (MediaPipe iris and

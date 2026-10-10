@@ -121,7 +121,8 @@ like a sticker; with years the lines spread, black drifts blue-green and thins, 
 
 ### 5. Hair on the skin
 `"hair"`: `brows` are hairs, not a painted arc: a drawn picture of ~900 tapered hairs that grow up at the inner end,
-along the brow in the middle and out-and-down at the tail (`density`, `thickness`, `color`, `grey`), laid from the brow
+along the brow in the middle and out-and-down at the tail (`density`, `thickness`, `color`, `grey`; `taper` thins the
+tail more, `tail` shortens it: a thick dense brow with a clean thin tail is thickness 1.3-1.5 + taper 0.92), laid from the brow
 landmarks; `lashes` darken the lid margins (the skin touching the eyeball); `stubble` is a unique map of cut hairs
 on the head's own surface (no tiling) plus the shadow of the hair in the skin, by `style`: `clean` (a faint cool
 shave shadow), `five_oclock`, `short` (1-3 days), `designer` (trimmed ~4 mm: crisp cheek line and neckline),

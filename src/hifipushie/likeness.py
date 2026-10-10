@@ -861,12 +861,15 @@ def _refit(mesh, ph, cam):
 def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool = True) -> list:
     """The model through each reference's camera (refitted for REFIT views): the clay render, the detector on it, its
     own landmarks projected, its passes (depth, normals), the light fitted to the photo on its normals and the
-    residual shading, and a render lit like the photo for the panels."""
+    residual shading, and a render lit like the photo for the panels. mesh may be a list (one per
+    photo)."""
     from . import humanfit
     from . import likeness_shape as ls
-    mesh = mesh or model_mesh(base)
+    meshes = mesh if isinstance(mesh, list) else None   # (one per photo: each picture's own expression, blockin)
+    mesh = None if meshes else (mesh or model_mesh(base))
     out = []
     for i, ph in enumerate(photos):
+        mesh = meshes[i] if meshes else mesh
         cam, box = (cameras[i] if cameras else ph["cam"]), ph["box"]
         cres = None
         if refit and ph["kind"] in REFIT and not cameras:

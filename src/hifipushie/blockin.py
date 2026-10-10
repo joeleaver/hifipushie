@@ -268,11 +268,12 @@ def _next_name(name: str) -> str:
 
 
 def start(name: str, refs, sex=None, age: float | None = None, body: dict | None = None, gnm_base: float | None = None,
-          ethnicity: str | None = None, cameras: str = "keep", replace: bool = False) -> dict:
+          ethnicity: str | None = None, cameras: str = "keep", replace: bool = False, expression: bool = False) -> dict:
     """The block-in's first model: the person's body (from the refs model, `body` merged over it), the head's local
     layers off, identity = GNM's sampler class mean for the sex (and ethnicity, if named), gnm_base by age; the
     references' fitted cameras (refs = a model with fitted references, or a views list: cameras fitted on this head).
-    cameras="refit" refits a refs model's cameras on this head (camera only)."""
+    cameras="refit" refits a refs model's cameras on this head (camera only). expression=True fits each detector view's
+    expression on the start head (see expression_step: on a class mean it may soak up identity; usually later)."""
     from . import humans, store
     if (store.HOME / name / "spec.json").exists() and not replace:
         raise ValueError(f"{name} exists: choose a new name (block-in models are new models) or replace=True")
@@ -320,6 +321,9 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     if cams is None or cameras == "refit":
         rj["cameras"] = fit_cameras(sp["base"], views)
     rj["blockin"] = {"root": name, "boxes": _boxes(sp["base"], rj)}
+    if expression:
+        rj["expressions"] = [fit_expression(sp["base"], v, c)["expression"] if abs(float(v.get("yaw", 0))) < 70 else {}
+                             for v, c in zip(rj["views"], rj["cameras"])]
     _save(name, sp, f"block_in_start: {'male' if male else 'female'} class mean{' (' + ethnicity + ')' if ethnicity else ''}, "
           f"age {a:g}, gnm_base {hd['gnm_base']:.2f}", rj)
     entry = {"round": 0, "to": name, "start": {"refs": refs if isinstance(refs, str) else f"{len(views)} views",
@@ -330,9 +334,12 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     return entry
 
 
-def fit_cameras(base: dict, views: list) -> list:
-    """Each picture's camera fitted on this head, the head held (humanfit_map's camera-only fit)."""
+def fit_cameras(base: dict, views: list, rj: dict | None = None) -> list:
+    """Each picture's camera fitted on this head, the head held (humanfit_map's camera-only fit); with rj, each view's
+    camera on the head as that picture shows it (its fitted expression)."""
     from . import humanfit_map
+    if rj and any(rj.get("expressions") or []):
+        return [humanfit_map.fit(view_base(base, rj, i), [v], free=())[1]["cameras"][0] for i, v in enumerate(views)]
     _, rep = humanfit_map.fit(base, views, free=())
     return rep["cameras"]
 
@@ -348,6 +355,145 @@ def _boxes(base: dict, rj: dict) -> list:
         side = 1.45 * float(np.max(P.max(0) - P.min(0)))
         out.append([cc[0] - side / 2, cc[1] - side * 0.56, cc[0] + side / 2, cc[1] + side * 0.44])
     return out
+
+
+# ---------------------------------------------------------------- per-picture expression
+# GNM's identity is the relaxed neutral; a picture shows the person WITH an expression (lt19's front: a slight smile:
+# fuller lips, lifted corners, a cheek apple). Comparing the neutral clay with it leaks the smile into mouth / cheek
+# identity steps. Each view may carry its own fitted expression (human_refs "expressions": one {GNM expression comp:
+# value} per view, {} = neutral), applied in look / focus / the table / lid reads / camera refits, never to the model.
+# Lower face only by default: with 6 eye-region comps per side lt19's fit dropped the upper lid from 0.75 to 0.36 iris
+# radii (the detector's calibrated lid points disagree with the iris-radius lid read that lid_read matches: the comps
+# fought the lid pose); EYE_COMPS is the opt-in (a picture that clearly squints)
+EXPR_COMPS = {"lower_face_region": 20}
+EYE_COMPS = {"left_eye_region": 6, "right_eye_region": 6}
+EXPR_SD = {"lower_face_region": 0.8, "left_eye_region": 0.5, "right_eye_region": 0.5}
+
+
+def view_expression(rj: dict, vi: int) -> dict:
+    ex = rj.get("expressions") or []
+    return dict(ex[vi] or {}) if vi < len(ex) else {}
+
+
+def view_base(base: dict, rj: dict, vi: int) -> dict:
+    """The base as that picture shows it: base.head.expression + the view's fitted expression (added)."""
+    ex = view_expression(rj, vi)
+    if not ex:
+        return base
+    b = copy.deepcopy(base)
+    e = dict(b["head"].get("expression") or {})
+    for k, v in ex.items():
+        e[k] = float(e.get(k, 0.0)) + float(v)
+    b["head"]["expression"] = e
+    return b
+
+
+def _per_view(base: dict, rj: dict, VI, make) -> dict:
+    """{vi: make(view base)}, one build per distinct expression (views without one share the neutral)."""
+    out, by = {}, {}
+    for vi in VI:
+        key = json.dumps(view_expression(rj, vi), sort_keys=True)
+        if key not in by:
+            by[key] = make(view_base(base, rj, vi))
+        out[vi] = by[key]
+    return out
+
+
+def _expr_names(comps: dict | None = None) -> list:
+    from . import base as basemod
+    names = [str(n) for n in basemod._gnm_data()["expression_names"]]
+    out = []
+    for reg, n in (comps or EXPR_COMPS).items():
+        out += [nm for nm in names if nm.rsplit("_", 1)[0] == reg][:int(n)]
+    return out
+
+
+def fit_expression(base: dict, view: dict, cam: dict, comps: dict | None = None, sd: dict | None = None,
+                   iters: int = 3) -> dict:
+    """One picture's expression on this head (identity and camera held): GNM expression comps (EXPR_COMPS, prior
+    N(0, EXPR_SD per region)) by Gauss-Newton on the calibrated detector evidence (humanfit_map._evidence), the
+    Jacobian by finite differences at the start (chord iterations: the response is near linear). ~(n + 4) head builds.
+    Returns {"expression", "chi2": [before, after], "points", "norm"}."""
+    from . import humanfit, humanfit_map as hm
+    names = _expr_names(comps)
+    sd = {**EXPR_SD, **(sd or {})}
+    prec = np.array([1.0 / float(sd[n.rsplit("_", 1)[0]]) ** 2 for n in names])
+    rj1 = {"expressions": [None]}
+
+    def resid(e):
+        rj1["expressions"][0] = {n: float(x) for n, x in zip(names, e) if x}
+        st = humanfit.state(view_base(base, rj1, 0))
+        ev = hm._evidence(st, hm._resolve(st, [view]))[0]
+        mm = cam["t"][2] / cam["f"] * 1000
+        return ((humanfit.project(cam, ev["X"]) - ev["uv"]) * (mm / ev["sig"])[:, None]).ravel()
+
+    e = np.zeros(len(names))
+    r = r_start = resid(e)
+    h = 0.25
+    J = np.stack([(resid(np.eye(len(names))[k] * h) - r) / h for k in range(len(names))], 1)
+    A = J.T @ J + np.diag(prec)
+    for _ in range(iters):
+        de = np.linalg.solve(A, -(J.T @ r) - prec * e)
+        e = e + de
+        r = resid(e)
+        if np.linalg.norm(de) < 0.02:
+            break
+    ex = {n: round(float(x), 4) for n, x in zip(names, e) if abs(x) >= 1e-3}
+    return {"expression": ex, "chi2": [round(float(r_start @ r_start), 1), round(float(r @ r), 1)],
+            "points": len(r) // 2, "norm": round(float(np.linalg.norm(e)), 3)}
+
+
+def expression_step(src: str, out: str | None = None, views: list | None = None, clear: bool = False,
+                    comps: dict | None = None, eyes: bool = False, seen: str = "", why: str = "") -> dict:
+    """A block-in round that changes no shape: <out> = <src> with the views' expressions fitted on its head (default:
+    every view with a detector, |yaw| < 70; a profile's few clicks can't separate expression from shape) or cleared.
+    Fit it once the big forms are in (on the class mean it would soak up identity), refit after large identity moves.
+    The report is step()'s (table before -> after)."""
+    from . import store
+    sp = copy.deepcopy(store.load(src))
+    rj = copy.deepcopy(_refs(src))
+    if "blockin" not in rj:
+        raise ValueError(f"{src}: not a block-in model (block_in_start first)")
+    n = len(rj["views"])
+    VI = ([i for i in range(n) if abs(float(rj["views"][i].get("yaw", 0))) < 70] if views is None
+          else [int(v) for v in views])
+    ex = list(rj.get("expressions") or []) + [{}] * (n - len(rj.get("expressions") or []))
+    fits = {}
+    for vi in VI:
+        if clear:
+            ex[vi] = {}
+            continue
+        f = fit_expression(sp["base"], rj["views"][vi], rj["cameras"][vi], comps=comps or ({**EXPR_COMPS, **EYE_COMPS} if eyes else None))
+        ex[vi], fits[vi] = f["expression"], f
+    rj["expressions"] = ex
+    out = out or _next_name(src)
+    if (store.HOME / out / "spec.json").exists():
+        raise ValueError(f"{out} exists: block-in steps write new models")
+    t0 = table(src)
+    _save(out, sp, f"block_in expression from {src}: views {VI}" + (" cleared" if clear else " fitted"), rj)
+    t1 = table(out)
+    lg = log(src)
+    if lg and lg[-1].get("to") != src:
+        lg[-1]["reverted"] = f"the next step went from {src}, not {lg[-1].get('to')}"
+    c = identity(sp)
+    entry = {"round": 1 + max([e.get("round", 0) for e in lg] or [0]), "from": src, "to": out, "moves": {},
+             "expression": {str(vi): ("cleared" if clear else {"chi2": fits[vi]["chi2"], "norm": fits[vi]["norm"]})
+                            for vi in VI},
+             "seen": seen, "why": why or "per-picture expression (the identity unchanged)", "c_norm": round(float(np.linalg.norm(c)), 3),
+             "read": {}, "coupled": [], "camera_moves": [], "passes": passes(t1), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+    lg.append(entry)
+    _log_path(rj, out).write_text(json.dumps(lg, indent=1))
+    return {"entry": entry, "c0": entry["c_norm"], "big": [], "delta": table_delta(t0, t1), "table": t1,
+            "before": passes(t0), "fits": fits}
+
+
+def expression_text(rep: dict) -> str:
+    s = []
+    for vi, f in (rep.get("fits") or {}).items():
+        top = sorted(f["expression"].items(), key=lambda t: -abs(t[1]))[:6]
+        s.append(f"view {vi}: expression fitted, chi2 {f['chi2'][0]} -> {f['chi2'][1]} over {f['points']} points, |e| "
+                 f"{f['norm']} ({', '.join(f'{k} {v:+.2f}' for k, v in top)})")
+    return "\n".join(s + [step_text(rep)])
 
 
 def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
@@ -424,7 +570,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         cam_moves.append(f"cameras follow the face centre ({1000 * float(np.linalg.norm(d)):.1f} mm)")
     if cameras:
         from . import humanfit
-        new = fit_cameras(sp["base"], rj["views"])
+        new = fit_cameras(sp["base"], rj["views"], rj)
         for i in cameras:
             a, b = rj["cameras"][int(i)], new[int(i)]
             Rd = humanfit._cam_rot(a).T @ humanfit._cam_rot(b)
@@ -491,7 +637,8 @@ def _spec_hash(name: str) -> str:
     from . import store
     sp = store.load(name)
     rj = _refs(name)
-    return hashlib.sha1(json.dumps([sp["base"], rj["cameras"]], sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha1(json.dumps([sp["base"], rj["cameras"]] + ([rj["expressions"]] if any(rj.get("expressions") or []) else []),
+                               sort_keys=True).encode()).hexdigest()[:16]
 
 
 def rows(name: str) -> list:
@@ -505,7 +652,12 @@ def rows(name: str) -> list:
         if d.get("hash") == h:
             return d["rows"]
     out = []
-    for r in lk.compare(name, store.load(name)["base"])["rows"]:
+    base, rj = store.load(name)["base"], _refs(name)
+    meshes = None
+    if any(rj.get("expressions") or []):   # each picture against the head with ITS expression
+        mv = _per_view(base, rj, range(len(rj["views"])), lk.model_mesh)
+        meshes = [mv[i] for i in range(len(rj["views"]))]
+    for r in lk.compare(name, base, mesh=meshes)["rows"]:
         a, b = r.get("photo"), r.get("model")
         if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) or not np.isfinite(a) or not np.isfinite(b):
             continue
@@ -662,9 +814,10 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         # nearest samples of a picture-resolution mask came out as stair steps), sampled bilinearly
         polys = [np.r_[P[up], P[lo][::-1]] for up, lo in (BROWS_R, BROWS_L)]
         allp = np.concatenate(polys)
-        o = allp.min(0) - 6
+        pad = max(6.0, 0.05 * float(allp[:, 0].max() - allp[:, 0].min()))   # (room for the tails past the band)
+        o = allp.min(0) - pad
         ss = 8.0
-        size = tuple(int(x) for x in np.ceil((allp.max(0) + 6 - o) * ss))
+        size = tuple(int(x) for x in np.ceil((allp.max(0) + pad - o) * ss))
         m = Image.new("L", size, 0)
         d = ImageDraw.Draw(m)
         for poly in polys:
@@ -672,7 +825,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         hb = brow_hair_band(img, polys, o, cam, mesh)   # (None for light, fine brows: the detector band, below)
         # the brows' own colour: the picture's pixels under the hair mask (or the band), their darkest quarter (a fair
         # person's light-brown brows painted in the fixed dark brown read as heavy bars)
-        Wb, Hb = int(np.ceil(allp.max(0)[0] + 6 - o[0])), int(np.ceil(allp.max(0)[1] + 6 - o[1]))
+        Wb, Hb = int(np.ceil(allp.max(0)[0] + pad - o[0])), int(np.ceil(allp.max(0)[1] + pad - o[1]))
         crop = np.asarray(img.crop((int(o[0]), int(o[1]), int(o[0]) + Wb, int(o[1]) + Hb)), float)
         msk = (np.asarray(hb) > 0) if hb is not None else (np.asarray(m.resize((Wb, Hb), Image.BILINEAR)) > 127)
         rgb = BROW_RGB
@@ -695,16 +848,18 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
     return out
 
 
-def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66):
+def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66, density: bool = True,
+                   tail_mm: float = 4.0):
     """The brows as the HAIR the picture shows, not the detector's band: MediaPipe's brow contour is a smooth arch of
     a fixed thickness (lt19's straight, dense brows came out thinner and more arched). Inside the detector band grown by
     grow_mm, the pixels darker than `dark` x the surrounding skin; the largest pieces per side kept. A mask over the
-    band's own box (origin o, picture pixels) or None when it finds too little."""
+    band's own box (origin o, picture pixels) or None when it finds too little. density: the mask is the hair's
+    density (its darkness against the skin, 0..1)."""
     from PIL import Image, ImageDraw, ImageFilter
     from scipy import ndimage
     from . import likeness
     allp = np.concatenate(polys)
-    hi = allp.max(0) + 6
+    hi = allp.max(0) + (allp.min(0) - o)   # (the same margin as the caller gave below the band)
     W, H = int(np.ceil(hi[0] - o[0])), int(np.ceil(hi[1] - o[1]))
     if W < 4 or H < 4:
         return None
@@ -717,6 +872,7 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     crop = np.asarray(img.convert("L").crop((int(o[0]), int(o[1]), int(o[0]) + W, int(o[1]) + H)), float)
     xs = np.arange(W)[None, :]
     keep = np.zeros((H, W), bool)
+    skin_lvl = np.full((H, W), float(np.median(crop)))
     inner_all = 0
     for poly in polys:   # per side: its own skin level (one side of a face is often lit brighter)
         q = poly - o
@@ -725,12 +881,17 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
         inner = np.asarray(pm) > 0
         grown = np.asarray(pm.filter(ImageFilter.MaxFilter(2 * g + 1))) > 0
         # not past the band's own ends (side hair at the temples is dark too)
-        grown &= (xs >= q[:, 0].min() - 0.5 / mmpx) & (xs <= q[:, 0].max() + 0.5 / mmpx)
+        # not past the inner end; past the OUTER end by tail_mm (MediaPipe's brow stops short of the tail: lt19's
+        # profile showed a short patch)
+        outer_left = q[:, 0].mean() < (allp[:, 0].mean() - o[0])
+        lo_, hi_ = (tail_mm, 0.5) if outer_left else (0.5, tail_mm)
+        grown &= (xs >= q[:, 0].min() - lo_ / mmpx) & (xs <= q[:, 0].max() + hi_ / mmpx)
         ring = grown & ~inner
         if ring.sum() < 20 or inner.sum() < 20:
             return None
         inner_all += int(inner.sum())
         skin = float(np.percentile(crop[ring], 75))
+        skin_lvl[grown] = skin
         hair = ndimage.binary_opening(grown & (crop < dark * skin), iterations=1)
         lab, n = ndimage.label(hair)
         if n == 0:
@@ -743,7 +904,16 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     if keep.sum() < 0.5 * inner_all:   # too little hair found (light brows, a painting): the detector band
         return None
     keep = ndimage.binary_closing(keep, iterations=2)
-    return Image.fromarray((keep * 255).astype(np.uint8))
+    if not density:
+        return Image.fromarray((keep * 255).astype(np.uint8))
+    # DENSITY, not a flat shape (lt19b: a binary mask painted at one strength drew the tails as heavy as the dense inner
+    # ends): how far each kept pixel is below the skin level, so sparse tails come out light and thin, the dense heads
+    # dark
+    dens = np.where(keep, np.clip((skin_lvl - crop) / np.maximum(skin_lvl * (1 - 0.35), 1.0), 0, 1), 0.0)
+    dens = ndimage.gaussian_filter(dens, 0.6)
+    dn = np.clip(dens / max(np.percentile(dens[keep], 98), 1e-3), 0, 1) ** 1.4   # (p90 saturated: one flat band)
+    im = Image.fromarray((dn * 255).astype(np.uint8))
+    return im
 
 
 def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
@@ -1052,12 +1222,11 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
     from . import humanfit, likeness, store
     rj = _refs(name)
     base = store.load(name)["base"]
-    mesh = presented_mesh(base, rj=rj)
-    st = mesh["state"]
-    boxes = (rj.get("blockin") or {}).get("boxes") or _boxes(base, rj)
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
+    meshes = _per_view(base, rj, VI, lambda b: presented_mesh(b, rj=rj))   # (each picture's expression, if fitted)
+    boxes = (rj.get("blockin") or {}).get("boxes") or _boxes(base, rj)
     cols = ["photo", f"{name} (photo's light)", "50% overlay", "outline: photo red / clay green", "squint photo", "squint clay"]
-    mesh_b = presented_mesh(store.load(before)["base"], rj=rj) if before else None
+    meshes_b = _per_view(store.load(before)["base"], rj, VI, lambda b: presented_mesh(b, rj=rj)) if before else None
     per = 2 if before else 1
     sheet = Image.new("RGB", (T * len(cols), (T + 18) * len(VI) * per + 18), "white")
     dr = ImageDraw.Draw(sheet)
@@ -1066,6 +1235,8 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
     info = []
     for i, vi in enumerate(VI):
         v, cam = rj["views"][vi], rj["cameras"][vi]
+        mesh, mesh_b = meshes[vi], (meshes_b[vi] if meshes_b else None)
+        st = mesh["state"]
         img = Image.open(v["image"]).convert("RGB")
         box = tuple(boxes[vi])
         side = box[2] - box[0]
@@ -1110,8 +1281,10 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
         y = 18 + i * per * (T + 18)
         for j, im in enumerate((ph, cl, ov, ol, sq(ph), sq(cl))):
             sheet.paste(im.resize((T, T), Image.LANCZOS), (j * T, y))
+        xn = len(view_expression(rj, vi))
         dr.text((4, y + T + 2), f"view {vi} (yaw {float(v.get('yaw', 0)):g}): {Path(v['image']).name}; registered at "
-                f"the eyes, shift {sh[0]:+.0f}, {sh[1]:+.0f} px", fill=(0, 0, 0))
+                f"the eyes, shift {sh[0]:+.0f}, {sh[1]:+.0f} px" + (f"; clay with the picture's expression ({xn} comps)"
+                                                                    if xn else ""), fill=(0, 0, 0))
         if mesh_b is not None:
             mesh_b["_photo_P"] = Pd
             cb_, _, psb = lit_render(mesh_b, cam, img, box=box, px=px)
@@ -1185,14 +1358,13 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         raise ValueError(f"focus: one of {', '.join(FEATURES)}")
     F = FEATURES[feature]
     rj = _refs(name)
-    mesh = presented_mesh(store.load(name)["base"], rj=rj)
-    mesh_b = presented_mesh(store.load(before)["base"], rj=rj) if before else None
-    st = mesh["state"]
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
     if feature == "ears":
         VI = [vi for vi in VI if abs(float(rj["views"][vi].get("yaw", 0))) >= 20]
     if not VI:
         raise ValueError(f"focus {feature}: no view shows it (the ear needs a turned view)")
+    meshes = _per_view(store.load(name)["base"], rj, VI, lambda b: presented_mesh(b, rj=rj))
+    meshes_b = _per_view(store.load(before)["base"], rj, VI, lambda b: presented_mesh(b, rj=rj)) if before else None
     per = 2 if before else 1
     cols = ["photo", "clay (photo's light)", "50% overlay", "outline: photo red / clay green", "raking light",
             "squint photo", "squint clay"]
@@ -1203,6 +1375,8 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
     info = []
     for i, vi in enumerate(VI):
         v, cam = rj["views"][vi], rj["cameras"][vi]
+        mesh, mesh_b = meshes[vi], (meshes_b[vi] if meshes_b else None)
+        st = mesh["state"]
         img = Image.open(v["image"]).convert("RGB")
         L2 = humanfit.project(cam, st["L"])
         Pe = humanfit.project(cam, mesh["V"][mesh["ears"]]) if feature == "ears" and mesh.get("ears") is not None else None
@@ -1384,7 +1558,8 @@ def lid_read(name: str) -> dict:
     v = rj["views"][vi]
     base = store.load(name)["base"]
     return {"view": vi, "photo": lid_photo(Image.open(v["image"]).convert("RGB"), v),
-            "model": lid_model(base, rj["cameras"][vi]), "pose": dict(base["head"].get("pose") or {})}
+            "model": lid_model(view_base(base, rj, vi), rj["cameras"][vi]), "pose": dict(base["head"].get("pose") or {}),
+            "expression": bool(view_expression(rj, vi))}
 
 
 def lid_text(r: dict) -> str:
@@ -1395,7 +1570,8 @@ def lid_text(r: dict) -> str:
         m = (r["model"] or {}).get(side)
         f = lambda d: "-" if d is None else f"upper {d['upper']:.2f} lower {d['lower']:.2f} aspect {d['aspect']:.2f}"  # noqa: E731
         s.append(f"  {side}: photo {f(p)} | model {f(m)}")
-    s.append(f"  pose now: {r['pose'] or '{}'} (lid_upper / lid_lower, m: -0.001 = that lid 1 mm up)")
+    s.append(f"  pose now: {r['pose'] or '{}'} (lid_upper / lid_lower, m: -0.001 = that lid 1 mm up)"
+             + ("; model read WITH the picture's fitted expression" if r.get("expression") else ""))
     if r["photo"] is None:
         s.append("  (the detector found no face on the front picture: no photo read)")
     return "\n".join(s)
@@ -1416,7 +1592,7 @@ def lid_match(name: str, out: str | None = None, seen: str = "") -> dict:
 
     def read(p):
         base["head"]["pose"] = {**pose, **p}
-        m = lid_model(base, cam)
+        m = lid_model(view_base(base, rj, r["view"]), cam)   # (the picture's expression on top, if fitted)
         return {k: float(np.mean([m[s][k] for s in m])) for k in ("upper", "lower")}
     p = {"lid_upper": float(pose.get("lid_upper", 0.0)), "lid_lower": float(pose.get("lid_lower", 0.0))}
     sgn = {"lid_upper": ("upper", -1.0), "lid_lower": ("lower", 1.0)}   # lid_upper - = up: the upper margin grows
