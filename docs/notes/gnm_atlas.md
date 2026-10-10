@@ -1320,6 +1320,12 @@ Open, in order: (1) Garrett: head size / eye spacing (held steps), the 3/4 camer
 (2) eyes properly: eyeball seating on GNM's eye + crease (audit g11) for both; (3) Tess inside the outline: her mouth
 (wider, fuller), almond eyes (lids / crease), radix (local residual: GNM's sd ~0.6 mm); (4) the flagged base.py
 mouth_gap solver (one-mesh heads stay 3.5 mm open).
+Last Garrett step: G06 = G05 + head_size! +0.8, eye_spacing! +0.5 (|c| 6.59): sizes up ~4 % but still 3-8 % under the
+concept's mm everywhere (a uniform scale: check the camera distance / head scale 1.12 before more identity steps).
+DECISIONS (coordinator, 2026-10-10): gnm_base becomes an AGE-DEPENDENT default chosen at block_in_start (young ->
+~0.5, older -> 0) and stays a block-in control the artist can move; radix width gets a small LOCAL residual (a
+confirmed capability gap, GNM's spread ~0.6 mm), sized from ICT's residual there (faces5 regbasis2). The next agent
+productises the method and finishes Garrett's block-in WITH the new MCP tools as its test case.
 PRODUCTISING THE METHOD (Joe: "our default for all modeling humans"), what it needs:
 - MCP tools: `block_in_look(model, ref, views?)` -> the six-column sheet (as artist.look) + the target table text;
   `block_in_step(model, moves, out?)` -> free / held / gap directions, base keys, lids; writes the step log and returns
