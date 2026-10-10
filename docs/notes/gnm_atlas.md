@@ -904,3 +904,100 @@ the prior); mouth extensions still on the hard mask (WINDOW_MOUTH 0: windowed, t
 hold; put the hold after the projection); the 14 mh_nose_* fields are interim handles (duplicates: nostrils_width ~
 width3 0.76, point_width ~ volume 0.64, septum ~ nostrils_angle 0.69); salience caveats (drawn brows inflate the brows,
 clay under-weights the lips, lids below the embedding's resolution).
+
+## faces5 (2026-10-10, continues faces4; branch worktree-agent-a34e0880e18034a56, faces4's branch merged in; scratch
+## /mnt/data/hifipushie/faces5: faces4's scripts retargeted (run.sh also puts spikes/facesliders on the path), sheets f5_*)
+
+### Design 8: habitual expression is identity (Joe, 2026-10-10, via the coordinator: "Expression is important. People
+### can disguise themselves just by changing how they carry their face. It's not really two separate things.")
+Section 4 had expression per picture only. Changed: expression comes in two parts, both in GNM's expression basis
+(eye regions 2 x ~20 comps, lower face ~30: the basis base.py / faceshapes already pose with):
+- (a) HABITUAL expression h: how the person carries the face at rest (resting brow height, lid aperture / squint, the
+  mouth corners' set, jaw carriage, how much the cheeks hold up). Shared by ALL of a person's pictures, owned by the
+  identity: z = [c (170), h, r (local residual), s (soft tissue / age)], covered by the JOINT prior with couplings to
+  shape where the data has them. Data: ICT's "neutral" scans are each person's resting face, so the part of every ICT
+  identity mode that GNM's expression basis takes (M3's per-mode fit: similarity + identity + expression) is not
+  contamination to throw away: it is ICT's population's habitual expression, and its cross-covariance with c (same
+  fit) is the shape <-> carriage coupling. M4 (London Set: neutral + smiling of the same people) checks it on photos.
+- (b) TRANSIENT expression e_p per picture on top of h (a smile, a squint against light, talking): zero mean, tight
+  for pictures the detector reads as neutral, wider where it reads an expression (the squint / frown rule becomes this
+  scale).
+- The solve decides habitual vs transient from the evidence ACROSS views: what every picture shows goes to h (shared),
+  what one picture shows alone goes to its e_p. Garrett's concept squint (detector 0.70) may be habitual: now a fit
+  outcome, not a pre-set "leave it to pose". The eye stage's lid pose becomes h + e_p (identity aperture = h's lid
+  comps, not a separate coupled slider).
+- Export: the neutral a character ships with is mean + c + r + s + h (their resting face); faceshapes' ARKit targets
+  are deltas from that resting face (a habitual squint stays in the base; the blink target still closes the lid).
+- Judging expression effects: face-ID embeddings are trained to be INVARIANT to expression, so they under-rate how much
+  carriage changes a read. perc.py's embedding is NOT the judge for h or e_p (M0b's "expression leakage" numbers are a
+  lower bound): use checklist items and landmarks (brow-eye gap, eye opening, canthal tilt, mouth-corner height, lip
+  heights) and the eye / mouth close-up measure (handover item 3).
+- Style (section 5): a style may set a habitual carriage too (a toon's raised brows) as a gain / offset on h.
+Where it lands: M3 (now) builds the joint prior over [c, h]: GNM's block re-estimated + ICT's habitual-expression block
+and its cross-covariance with c (EXPR_SD / comp counts are flagged choices; the expression basis's overlap with fine
+identity reported). M4 fits h per London Set person from neutral + smiling views (h shared, e_p per view). M5's single
+solve: h shared, e_p per picture, the split reported per picture (Garrett's squint). M6: habitual controls ("resting
+brow", "squint", "mouth-corner set") as directions in h. M7: style gains / offsets on h.
+
+### M3: the joint prior from ICT (spikes/facesliders/m3prior.py analyse | cv | em | build_em, m3look.py, m3cost.py;
+### out/m3_em_tau*.npz; sheets human_renders/f5_00, f5_01, f5_01b)
+- First try (REJECTED, f5_00_prior_union_REJECTED.png): per ICT mode a MAP fit over the FACE only (similarity free +
+  identity + expression, noise 0.3 mm as faces4), then "GNM union ICT" (each eigen-direction keeps the larger
+  variance). Samples flapped the ears, swelled jowls and cheeks: the fit used fine GNM comps whose big moves on the ears /
+  cranium nothing constrained. Held-out check (cv: fit on the face, predict ICT's own cranium + ears): at 0.1 / 0.3 mm
+  noise the identity's skull prediction is WORSE than the similarity alone (1.57 / 1.08 unexplained vs 0.66); it
+  improves with regularisation (0.60 at 1 mm, 0.47 at 2 mm, 0.38 at 6 mm), while the face is explained almost as well
+  (2.1% unexplained at 0.3 mm, 2.8% at 2 mm, 4.5% at 6 mm). So faces4's M1 "ICT varies 2-3x more along GNM's fine
+  comps" was largely the under-regularised carry fit buying the last ~1% of face variance with skull-moving comps.
+- The estimator kept (em): empirical Bayes, EM at the population level over the face + cranium + ears (not the neck:
+  ICT's neck varies 2.3x GNM's there, the scans' head pose), similarity projected out, isotropic noise PER REGION with
+  its own ML variance (face 0.47 mm, skull 0.90 mm: the skull weighs itself), and an inverse-Wishart pull to GNM's
+  N(0, I) with weight tau (a CHOICE: ICT's subject count isn't published; GNM's training set is larger).
+  c block (diag by comp band): tau 0.01 (ICT-led): 0-9 1.35, 10-49 2.9, 50-119 5.2, 120-169 8.0 (trace 890); tau 1:
+  1.17 / 1.96 / 3.1 / 4.5 (531); tau 3: 1.09 / 1.47 / 2.0 / 2.7 (348). ICT also puts LESS than GNM's variance on some
+  broad directions (face_planes / face_lean / nose fields cost more under tau 0.01: below).
+- Samples (f5_01 ICT-led, f5_01b tau 1; same draws, front + 3/4 clay): plausible, varied people, no flapping ears, no
+  visible lumpiness at face scale; ICT-led faces run broader / fuller. Face-ID spread between samples: GNM 0.47, tau 1
+  0.48, tau 0.01 0.49 (10-90%: 0.37-0.65): the new priors make about as different people as GNM's (the embedding is
+  blind to much fine shape; read with that caveat).
+- THE M3 RESULT (m3cost.py, out/m3cost.txt): the local controls cost as IDENTITY the same under every prior. Each
+  slider / baked op / extension at +1 made by a MAP identity move over its own region (0.05 mm noise): 0.8-1.0 of it
+  made at 3-46 sd under GNM's N(0, I), and within +-10% of that under tau 1 / 3 (tau 0.01: nose and broad-cheek
+  fields cost MORE, 40-113 sd). Tess's mh_lowerlip_width -1: 25 sd under any prior; brow_lateral -0.74: 15; Garrett's
+  face_lean 1.5: 30-53; chin_cleft 1.5: 18. The walls are not the fine comps' variances: they are LOCALITY (faces4
+  section 0: a global PCA can draw a local feature only with side effects elsewhere, and the prior prices the whole
+  move). Re-estimating GNM's block does NOT take Tess / Garrett off the walls: the local residual layer r (M2) with its
+  own variance is what does. Their identities: Tess |c| 5.7 under GNM, 7.1 under tau 1, 37 under tau 0.01; Garrett 4.5
+  / 5.9 / 32 (both fitted under GNM's prior, so ICT-led directions of small variance price them high: one more sign
+  the ICT-led block is too narrow for our people).
+- Habitual expression h (design 8) is NOT identifiable from ICT's identity modes: with h free in the EM, h's variance
+  runs to sd ~2.4 GNM expression units at tau 0.01 (the expression basis absorbs fine identity detail: the bases
+  overlap). The h block stays DESIGNED (zero mean, sd EXPR_SD 0.3, no cross terms) until per-person resting-face
+  evidence: M4 measures resting items (brow-eye gap, aperture, mouth-corner height) on the London Set's neutral photos
+  across people: that is h's population variance in item units.
+- Decision for now: the c block = EM tau 1 (GNM : ICT 1 : 1), flagged; ICT-led rejected (too narrow for Tess /
+  Garrett, costs broad features more). M4 (real faces' Mahalanobis per block) settles tau. Not wired into joint2 /
+  faceatlas yet (M5); the interim test loosening (nose orthogonality 0.2) stays until M2: the prior doesn't touch it.
+
+### Joe's question: "GNM was able to do the eye crease the whole time?" (lidgnm.py density | scan | fit | samples;
+### sheets f5_02 .. f5_04; close-ups 0.079 mm/px, raw GNM head, clay, calibrated detector points, lidfold.read_lid)
+- Mesh: GNM's upper lid has 12-14 vertex rows between lash line and brow (13-14 mm), ~1 mm apart along the skin (max
+  2.7-3.7 mm). A fold of 2-3 mm can be drawn; lidfold's crease groove (FWHM 0.8-1.1 mm) is at the mesh's Nyquist limit:
+  as a vertex field it renders as a jagged line (f5_04 middle column).
+- Scan (all 170 comps and ICT's 100 carried modes at -3 / 0 / +3 sd, out/lid/scan.json): the mean head reads a weak line
+  at 2.8 mm (dark 0.04: the top of GNM's thick lid margin roll); Tess's and Garrett's identities NO crease (the reader
+  falls through to the brow sulcus at 8-10 mm, dark 0.04). The darkest reads anywhere: ICT mode 6 +3 0.19, mode 12 0.16,
+  GNM head_032 -3 0.15, head_020 +3 0.13, all at 2.2-2.8 mm (a low fold edge / hooding, not a 4-7 mm crease). 2 of 340 GNM
+  and 6 of 200 ICT reads pass dark 0.12, none 0.2. Tess's photo: tps 4.35-5.0 mm, dark 0.31.
+- Random faces from the priors (f5_03 ICT-led, f5_03b tau 1): ICT-led samples show real lid folds (sample 0 dark 0.44 at
+  2.6 mm, others 0.13-0.16 at 1.8-5.4 mm); tau 1 samples rarely (dark <= 0.09). So in combination with the rest of a
+  face, the identity space CAN make folds, more under ICT's variances: Joe's eye was right that GNM has folds in it.
+- But as Tess's / Garrett's crease ON THEIR FACES (lidfold's profile as a vertex field, fitted by the 170 comps over
+  both orbits + brows): the span makes 0.61 / 0.71 of it (the broad roll), costing 8.4 / 14.8 sd under GNM's prior,
+  8.4 / 14.1 under tau 1, 9.3 / 16.6 under ICT-led; rendered, Tess's MAP shows no crease (dark 0.03), Garrett's a faint
+  line (0.12 at 4.2 mm) (f5_04). The same locality wall as every other local control.
+- Verdict: GNM's space has folds as whole-face configurations, not a crease you can put on a given face at identity
+  cost. lidfold stays, as a member of the local residual layer (M2: an upper-lid basis with ICT / MakeHuman / lidfold
+  handles and its own variance; the groove part stays a fine-geometry op because GNM's ~1 mm rows can't hold it). The
+  identity's fold-like directions (head_032, head_020, ICT modes 6 / 12) should be read by the eye evidence in the one
+  solve before lidfold's residual is spent.
