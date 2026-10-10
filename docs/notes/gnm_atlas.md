@@ -1127,3 +1127,62 @@ Report every fit with |c|, effective dof, posterior cost, feature crops (featshe
   the prerequisite; then the readers enter fit5 by finite differences on moved meshes (itemcover.moved_mesh).
   Also from f5_28 (coordinator): tl10's nose tip reads longer and droopier than hers in profile (hers slightly
   upturned): add tip rotation / nasolabial angle from the profile contour as a reader item.
+
+## faces6 (2026-10-10, continues faces5; branch worktree-agent-a19e0d592ba96cc7d, faces5 merged in; scratch
+## /mnt/data/hifipushie/faces6: faces5's scripts retargeted + mkcal.py, mkx.py, cross*.py, gaptest*.py; sheets f6_*)
+
+### The fast renderer's shading (likeness.render ao / shadow; tests/test_likeness_shading.py)
+- ao=True: per-vertex AO (96 orthographic depth maps, cosine-weighted, cached on the mesh dict, 1.5 s); shadow=True /
+  <deg>: per-pixel cast shadow of the key (or the photo light's w) from a depth map, a disc light of <deg> = soft
+  (16 samples, ~1.3 s a crop). Ambient and direct rasterised apart, only the direct shadowed. Occluders = the mesh
+  within 0.2 m of the eyes (the one mesh is the whole body: 27 Mpx maps before). light[3] = the AO's share of the
+  ambient, fitted to the photo per crop (noserender.lit_render: Y ~ A + B ao + C max(w.n,0) lit + E min(w.n,0); Tess
+  front 0.83). mesh["C"] = optional per-vertex skin colour (wholeclay's hair cap).
+- Fidelity (fidelity.py, fid2.py; f6_03, f6_05): the raw one-mesh quads the fast renderer draws vs the shipped implicit
+  surface: median 0.23 mm, p90 0.35, max 0.64 (tl10 close-up at 0.69 mm voxels). Band-pass (DoG 0.6-3 mm) luminance
+  correlation fast~Blender dressed 0.53 mean (0.47-0.66), photo~Blender 0.13 = photo~fast 0.13 (pores dominate the
+  photo). The fast clay shows the SAME forms as the shipped surface, more contrasty than the dressed look: readers
+  must compare normalised / calibrated cues.
+
+### tl10's lip overshoot was the SHIPPING, not the fit (f6_04)
+base's mouth_gap solver (base.py ~1966) closes only the inner-lip midline pair 62/66 in 3 linearised steps: on tl10
+(one mesh) the raw mouth stays parted 3.5 mm (7.0 without), the implicit surface fuses the gap into one thick lip
+(the "too full, bow lost" read; the fast render's zigzag "teeth" is the mouth sock through the gap, not crossing).
+fit5's own closing (the front picture's lower-face expression, |e| 0.89) shipped as base.head.expression: inner gaps
+0.45 / 0.76 / 0.31 mm, bow back, not puffy (f6_tl10x). fit5 now ships that. FLAGGED (not fixed: other models'
+builds): the mouth_gap 0 solver on one-mesh heads. Also: fit5.contact_rows maps wrongly on a SOURCE spec with
+mouth_gap set (-20 mm).
+
+### The old-man face (f6_06, f6_07; decomp.py)
+In whole-face clay tl9 / tl10 (|c| 15) are a gaunt older man (nasolabial folds, jowls, hollow cheeks); fs_tj12 /
+f3_t1 / tl4 (|c| 5.7-7.1) are smooth but male-leaning (long face, brow, square chin, strong nose). decomp.py splits a
+fit's identity change exactly per evidence term at its solution ((H+P)^-1 (b_t - H_t x0)): tl10 from f3_t1 = profile
+contour 0.43 (|part| 10.8), front lip contact 0.24 (7.2; it alone pushes GNM-sex +1.1 male-ward), upper border 0.10,
+3/4 contact 0.06, every face-oval group 0.00. dc by band: 0-9 2.8, 10-39 7.1, 40-119 9.8, 120-169 5.1. BUG: with
+CONTACT_BY=expression the contact rows kept IDENTITY columns (the identity was bent to close the lips): to be
+expression-only. The jaw points outside her jaw in f6_06 are GNM's 68 on the 3D surface (convention), not evidence.
+
+### Gates (gates.py, dressed.py, agesex.py; asset pack "faceage" = InsightFace genderage, a measuring tool)
+- sex_gnm: the identity on GNM's semantic sampler's class means (-1 female mean, +1 male): f3_t1 -0.35, tl4 -0.30,
+  tl9 0.00, tl10 +0.58.
+- ArcFace whole-face clay to the accepted f3_t1: fs_tj12 0.95, tl4 0.81, tl10 0.63, tl9 0.60.
+- genderage: out of domain on clay (every fit 22-27, the old man included); dressed whole face noisy (photo 27 / 34,
+  f3_t1 37 / 28, tl10x 48 / 32). Not a gate yet.
+
+### Macro level (coordinator / Joe: "learn how to better approach the macros before we do fine detail work")
+- Calibration (f6_08 bald, no brows; f6_09 hair cap, 2 mm brows): GNM's sampler female / overall / male class means on
+  Tess's body (mkcal.py: f6_cal_f / _0 / _m; f6_cal_t1id = f3_t1's identity without its local layers). The class
+  means read as young, smooth, androgynous; female vs male differ little in bald clay; Tess's fits read more male and
+  older than the female mean (longer face, nose bridge, nasolabial shading). The gap is real AND bald clay is a weak
+  sex judge (the hair cap helps).
+- GNM's semantic sampler (paper section 4.3, gnm/shape/semantic_sampler.py): identity CVAE conditioned on gender (2)
+  x ethnicity (4) one-hot ONLY: no age, no BMI. GNM's identity is Procrustes-aligned, so size (most of the sexes'
+  difference) is NOT in it: the class means differ by |d| 2.16.
+- Our macro layers in the one-mesh pipeline: MakeHuman's body params (age / sex / weight / muscle: the head the body
+  carries, onemesh.hook lays GNM's DIFFERENCE from its template on it) + onemesh's dimorphism field (MakeHuman's sex
+  difference x 1.3 on the head) + GNM identity + humanmacro's 37 macros (directions in GNM comps 0-119, calibrated by
+  sampling). MakeHuman holds the only AGE axis we have.
+- humanmacro vs the sampler's sex difference (macrostudy.py, out/macrostudy.json, f6_10 = the mean face +-2 sd per
+  macro): the 37 directions span 0.30 of it; largest male - female in macro sd: brow_height -0.59, head_size +0.46,
+  bridge_height +0.41, bridge_hump +0.41, brow_ridge +0.35, nose_width +0.34, eye_tilt -0.33, forehead_slope +0.32;
+  jaw / face width barely (+0.21 / -0.18). Every macro's cosine with the sex direction is <= 0.29.

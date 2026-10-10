@@ -426,7 +426,7 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, 
         if light is not None and col is None:  # the photo's light (linear luminance -> sRGB grey, skin-tinted)
             lum = np.clip((light[0] + vn @ np.asarray(light[1])) / max(light[2] if len(light) > 2 else 0.2, 1e-6), 0.0, 3.0)
             sh = 0.8 * lum ** (1 / 2.2)   # the face's median at 0.8 of the skin colour
-        base_c = np.broadcast_to(SKIN, Xc.shape) if col is None else col
+        base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(SKIN, Xc.shape)) if col is None else col
         C = np.clip(base_c * sh[:, None], 0, 255)
         _RUN[0]((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]),
                 np.ascontiguousarray(C), W, H, img, zb)
@@ -491,7 +491,7 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
             np.add.at(vn, F[:, c], fn)
         vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-15)
         args = ((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]))
-        base_c = np.broadcast_to(SKIN, Xc.shape) if col is None else col
+        base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(SKIN, Xc.shape)) if col is None else col
         avv = np.ones(len(V)) if av is None else av
         if light is not None and col is None:
             sc = max(light[2] if len(light) > 2 else 0.2, 1e-6)
