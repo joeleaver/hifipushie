@@ -371,5 +371,26 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     angle, each spot deep (4 mm) along the forward axis so it reaches the turning skin, per side.
   - Open: base-skin pores / T-zone shine at front distance (blind read 3's #2); blush reads as a soft patch; evening
     red lip flat; the lineup head om_new_man_30 shows its inner shell through the face (z-fighting patches).
+  - HANDOVER (skin2 -> next agent, 2026-10-09 late; branch worktree-agent-a19d53ef6fe103feb at 81e32ab+, main has it up
+    to be0bc76 + later merges: check `git log main..`). The final blind read (4th) still flagged, and the coordinator saw
+    on sk2_05: the evening wing reads as a thorn flicking up off the outer corner; the evening crease shows a pale
+    floating arc above the lid (likely makeup_highlight's brow-bone spots or the eyeshadow crease layer's light colour
+    against the darker lid: check with look_skin layer=...); lip borders still soft / a halo; no visible sub-skin stubble
+    shadow at distance (5 o'clock ~ clean, salt & pepper ~ clean); patchy reads as stains; freckles uniform.
+    The coordinator's rule for the next round: GATE BY MEASURE against the refs, not by eye:
+    (1) stubble: mean L/a/b of the beard zone minus a clean cheek, ours vs ref_30 (1 day; ref_25 is grey), ref_29
+        (designer), ref_28 (salt & pepper); boxes on the refs by hand or with spikes/garrett4/skinm.py's detector
+        (`fskinm.py` in scratch measures any photo vs any render with skinm's zone boxes, scaled by interocular); tune
+        STUBBLE_STYLES shadow / the cast in skin_features._stubble_map until the deltas match;
+    (2) lip border: 10-90% edge width in mm at the cupid's bow and mid lower lip, ours vs ref_36 / ref_38 / Tess's
+        photo, and no pale ring (L just outside the border <= the skin's): suspects lip_border (pale rim, grow 1.6),
+        the per-vertex lips (look_skin refines the mouth to 0.5 mm; dressed stages don't), lipstick outline soft;
+    (3) wing: root distance from the lash line 0, angle = lower lash line extended; measure on the eye view (the
+        lm_lid_lower_out -> lm_eye_outer direction projected; the spot chain is in skin_makeup "if wing > 0");
+    (4) remove the floating pale arc. Then one more fresh blind read (prompt: copy from this session's: sheets sk2_05..09,
+        refs ref_25..41, scores 1-5 per column, 3 defects each, top-5 fixes, < 900 words).
+    Re-render with /mnt/data/hifipushie/skin2/round5.sh-style scripts (stub_lineup.sh, frk_lineup.sh, mk_looks.sh
+    sk2_t13e <tag>, gshot.sh + g3q.sh for Garrett with HEAD=sk2_g6, grid.py / tsheet.py / sheet_g.py / compose*.py for
+    the sheets); one look_skin stage takes 1-3 min (it re-meshes on every code change).
     Tests: tests/test_skin_marks.py (zones from landmarks, deterministic maps, styles, fade band never darker than
     full, freckles don't repeat), test_skin.test_makeup_looks.
