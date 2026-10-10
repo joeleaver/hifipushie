@@ -165,6 +165,9 @@ def inject(spec: dict) -> dict:
                 c = np.array(joints[f"eye{sd}"]["pos"] if f"eye{sd}" in joints else np.array(joints["eye.L"]["pos"]) * [-1, 1, 1], float)
                 gz = np.array(joints[f"eye_front{sd}"]["pos"], float) - c
                 gz /= np.linalg.norm(gz)
+                if co.get("clear"):  # (eyedetail) a clear cornea over a recessed iris: see clear_cornea
+                    blobs.update(clear_cornea(b, c, gz, R, rc, bulge, sd))
+                    continue
                 # one group with its eyeball (joined softly, then unioned as one): as two elements with different
                 # blends the scene's chunked evaluation blew the mirrored eye up into a ball twice its size
                 grp = {"group": f"eyeball{sd}", "join": round(0.12 * R, 5), "blend": 0.0}
@@ -174,6 +177,54 @@ def inject(spec: dict) -> dict:
         out["blobs"] = blobs
     out["joints"] = joints
     return out
+
+
+CORNEA_BIG = 0.2  # m: the near-flat spheres that cut the iris plane (sag 0.09 mm over the iris; at the other eye, 6 cm
+# across, their surface is ~9 mm off its plane: each touches only its own eye)
+
+
+def clear_cornea(b: dict, c, gz, R: float, rc: float, bulge: float, sd: str = ".L") -> dict:
+    """base.cornea = {"clear": true, "depth": m (0.0028)}: the eye as a game head builds it (MetaHuman's refractive
+    cornea, done with geometry). The eyeball's front is cut flat at the iris plane, `depth` behind the cornea's apex
+    (the anterior chamber: 2.5-3.2 mm in adults), so the iris is a recessed disc (the plane meets the 12 mm ball ~6 mm
+    off its axis: the iris' own size); the cornea is its own part ("<eyes>_cornea": implied_parts) filling the
+    chamber, a clear lens (transmission, IOR 1.376) whose front is the bulge. Through it the iris sits behind the
+    surface, shifts with the view and takes the catchlight on top: a painted disc on an opaque bulge did neither."""
+    co = b["cornea"] if isinstance(b.get("cornea"), dict) else {}
+    depth = float(co.get("depth", 0.0028)) * R / 0.0118
+    eyes = b["eyes"]
+    apex = R + bulge
+    d_i = apex - depth  # the iris plane's distance from the ball's centre
+    big = CORNEA_BIG
+    at = lambda k: [round(float(x), 5) for x in c + k * gz]  # noqa: E731
+    return {
+        f"iris_cut{sd}": {"at": at(d_i + big), "size": [big] * 3, "op": "subtract", "blend": 0.0, "part": eyes},
+        f"cornea{sd}": {"at": at(R - rc + bulge), "size": [round(rc, 5)] * 3, "blend": 0.0, "part": f"{eyes}_cornea"},
+        # the lens' back: everything behind the plane taken off (a subtract per eye: two "intersect" caps, one per
+        # eye, left nothing, each keeping only what's inside it), a hair in front of the iris (coincident faces: the
+        # refraction met the iris' own face)
+        f"cornea_back{sd}": {"at": at(d_i + 0.00008 - big), "size": [big] * 3, "op": "subtract", "blend": 0.0,
+                             "part": f"{eyes}_cornea"},
+    }
+
+
+def implied_parts(spec: dict) -> dict:
+    """Parts the base makes that the spec needn't list, with their channels (a listed part's keys win, merged by
+    scene / asset): the clear cornea's lens."""
+    b = spec.get("base") or {}
+    co = b.get("cornea")
+    if not (isinstance(co, dict) and co.get("clear") and b.get("eyes")):
+        return {}
+    return {f"{b['eyes']}_cornea": {"color": "#ffffff", "transmission": 1.0, "ior": 1.376, "roughness": 0.02,
+                                    "specular": 0.6, "voxel": 0.0003, "rig_bone": None}}
+
+
+def part_defs(spec: dict) -> dict:
+    """spec["parts"] with the base's implied parts filled in (their keys under the listed ones)."""
+    defs = dict(spec.get("parts") or {})
+    for k, v in implied_parts(spec).items():
+        defs[k] = {**{kk: vv for kk, vv in v.items() if vv is not None}, **(defs.get(k) or {})}
+    return defs
 
 
 def mouth_lips(head: dict) -> dict:

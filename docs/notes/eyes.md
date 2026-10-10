@@ -137,3 +137,21 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   - Not affected: lashes.py (its corners come from the opening itself) and the painted root line.
   - Still uses them: the caruncle spot and the old lash zone tube (used when there is no lash geometry). Check both
     against the opening's own corners.
+
+## Clear cornea (base.cornea = {"clear": true, "depth": 0.0028}; opt-in)
+- Two pieces:
+  - The eyeball's front is cut flat at the iris plane, 2.8 mm behind the cornea's apex (the anterior chamber). The
+    plane meets the ball ~6 mm off the axis, so the cut itself is the iris disc.
+  - The lens is its own part, "<eyes>_cornea", implied by the base (`base.implied_parts` / `part_defs`, used by
+    scene.objects, scene.sync and asset): transmission 1, IOR 1.376, roughness 0.02, voxel 0.3 mm.
+- How it's built: a subtract per eye on near-flat 20 cm spheres (`base.clear_cornea`). Two "intersect" caps, one per
+  eye, left NOTHING: each intersect keeps only what lies inside it.
+- Section: out/v_seccc.png. Render: out/v_cc2.jpg.
+  - The iris sits behind clear glass and foreshortens as a disc at 3/4.
+  - From the front the difference to the painted bulge is subtle under this light: the catchlight falls under the lid.
+- Export (_ed_txc): the eyes_cornea material carries KHR_materials_transmission + ior.
+  - Its triangles are the min_part floor.
+  - Face shapes treat it as eyes (it turns with eyeLook).
+  - On mainstream GPUs it is one small transmissive mesh per eye. The engine needs screen-space refraction, or it
+    falls back to see-through glass.
+  - Not on by default: humans.spec still writes "cornea": true (the painted bulge).
