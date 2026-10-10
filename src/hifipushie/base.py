@@ -129,7 +129,12 @@ def inject(spec: dict) -> dict:
         # numbers were set at, and the fill came out through the lips' corners and showed pale inside the nostrils)
         ks = float(head["carry"]["s"]) / 1.1 if head.get("room") else 1.0
         if (b.get("head") or {}).get("interior"):  # a mouth that can open (face shapes): slit, bag, teeth, tongue
-            out["blobs"] = {**(out.get("blobs") or spec.get("blobs") or {}), **mouth_interior(head, b["head"])}
+            mi = mouth_interior(head, b["head"])
+            if float((b.get("head") or {}).get("lip_seal") or 0.0) >= 0.5:
+                # a SEALED mouth (lip_seal, field only): the slit and the bag kept (face shapes read them) but held
+                # behind the fused lips (sealed_interior)
+                mi = sealed_interior(mi, head)
+            out["blobs"] = {**(out.get("blobs") or spec.get("blobs") or {}), **mi}
         elif float(np.linalg.norm(iu - il)) > 0.0015:  # parted lips (a fill behind closed ones made them pout)
             blobs = dict(out.get("blobs") or spec.get("blobs") or {})
             blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (iu + il) + [0, 0.012, 0]],
@@ -242,6 +247,25 @@ def mouth_lips(head: dict) -> dict:
     return {"M": M, "out": out, "up": up, "side": side, "knots": knots, "pts": np.array(pts),
             "width": float((lm[54] - lm[48]) @ side), "ru": 0.5 * float(np.linalg.norm(lm[51] - lm[62])),
             "rl": 0.5 * float(np.linalg.norm(lm[57] - lm[66])), "gap": float(np.linalg.norm(lm[62] - lm[66]))}
+
+
+SEALED_BACK = 0.006  # m: a sealed mouth's slit starts this far behind the lips' front; its bag moves back by it too
+
+
+def sealed_interior(mi: dict, head: dict) -> dict:
+    """The interior's slit and bag (subtracts) for a SEALED mouth: their cuts reached through the fused lips (the slit
+    from in front of them, the bag's box to ~2 mm of their front): a row of holes and pale "fangs" (the teeth through
+    them) along the seam in every render of a sealed head with an interior (Garrett gj6 / gj8, 2026-10-09). Kept, for
+    the face shapes that read them, but held SEALED_BACK behind the lips' front (the slit's front end, the bag)."""
+    out_dir = np.asarray(mouth_lips(head)["out"], float)
+    mi = dict(mi)
+    for k, v in list(mi.items()):
+        if k.endswith("_mouth_slit"):
+            v = {**v, "values": {**v["values"], "n1": [-SEALED_BACK] * len(np.atleast_1d(v["values"]["n1"]))}}
+            mi[k] = v
+        elif k.endswith("_mouth_bag"):
+            mi[k] = {**v, "at": [round(float(x), 5) for x in np.asarray(v["at"], float) - SEALED_BACK * out_dir]}
+    return mi
 
 
 def mouth_interior(head: dict, hd: dict) -> dict:
