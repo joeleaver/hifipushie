@@ -362,6 +362,16 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     if float(e.get("waterline", 1.0)) > 0:   # 0..1 (1): the pink wet rim; on a lid whose rim faces the camera it reads as lid
         layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=round(0.5 * float(e.get("waterline", 1.0)), 3),
               roughness=0.15, mask=_zones(["lash_lower"], 0.7))
+    from . import lidfold
+    fc = lidfold.config(spec)
+    if fc:  # the lid's fold (lidfold.py): its crease's own tone, along the fold's own invagination (paint's `near` on
+        # a fold prim: the distance across its crease line, scaled by its depth). Skin deep in a tight fold catches
+        # no light and its blood shows: a photographed crease is a soft brown-red line. (The field's cavity can't do
+        # it: curvature is measured with a 0.75-voxel stencil, which steps over a 0.8 mm groove.)
+        w = float(fc["crease_width"]) * 0.001
+        layer("lid_crease", pre=True, color=T(blood=1.5, melanin=2.4, epidermis=0.8),
+              opacity=round(float(np.clip(0.55 + 0.3 * fc["crease_depth"], 0, 0.95)), 3),
+              mask=[{"near": ["lid_fold.L", "lid_fold.R"], "within": round(0.3 * w, 6), "soft": round(1.6 * w, 6)}])
 
 
 def _wrinkles(p, J, layer, T, ctx) -> None:

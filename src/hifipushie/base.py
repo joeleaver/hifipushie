@@ -1896,6 +1896,12 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         dc, local_sliders = faceatlas.slider_identity(local_sliders, head.get("slider_hold") or ())
         ci = ci.copy()
         ci[faceatlas._gnm()["comps"]] += dc
+    from . import lidfold  # (eyedetail) the fold's overhang: the share GNM can express through the identity
+    dfold = lidfold.identity_change(head)
+    if dfold is not None:
+        from . import faceatlas
+        ci = ci.copy()
+        ci[faceatlas._gnm()["comps"]] += dfold
     ce = _gnm_coeffs(g["expression_names"], head.get("expression"))
     V = g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1) + \
         np.tensordot(ce, g["expression_basis"], 1)

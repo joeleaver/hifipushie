@@ -155,3 +155,64 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   - On mainstream GPUs it is one small transmissive mesh per eye. The engine needs screen-space refraction, or it
     falls back to see-through glass.
   - Not on by default: humans.spec still writes "cornea": true (the painted bulge).
+
+## The upper-lid FOLD (lidfold.py, base.head.fold; Joe: "that eye detail work we did still doesn't get us the creases we need")
+- Why a new piece: GNM's lids have no fold of their own (faceatlas: crease height R2 0.13, overhang 0.70), and the
+  crease slider was a soft dent landing on down-facing skin in shadow.
+- Measures (`lidfold.read_lid(img, P478)`): the luminance profile up the lid along the face's own axis, at the inner /
+  middle / outer third, scale from the iris (11.7 mm) or given. The fold line is the strongest valley 1.2-14 mm over
+  the lash line. Returned:
+  - tps: tarsal platform show, lash line -> the visible line;
+  - bfs: brow fat span, line -> the brow's lower edge;
+  - dark: valley depth, 0..1;
+  - width: FWHM.
+  Annotated reads in out/fold_<label>.png (spikes/eyedetail/foldread.py).
+- Photos, mid columns, subject's R / L:
+
+  | photo | tps (mm) | bfs (mm) | dark | width (mm) |
+  |---|---|---|---|---|
+  | Tess front, iris scale | 4.95 / 5.15 | ~11 | 0.29-0.32 | 0.9-1.0 |
+  | Tess front, at the model's own scale (foldgate) | 4.35 / 5.00 | — | 0.31-0.33 | 0.8-0.85 |
+  | Garrett concept (too coarse, ~1.3 mm/px) | ~4.1 | ~8.5 | <= 0.12 | — |
+
+  skin_refs: young women 3.7-5.6 (r07 SE Asian 5.6 / 6.5), grey-stubble man 2.2-2.6 (dark 0.9: deep hooded crease),
+  elderly woman 2.6-3.7. Several refs gave noisy reads: makeup, low contrast, oblique views.
+- Norms: Price et al. 2009, Plast Reconstr Surg 124:615, via the review table in PMC5665901.
+  - Caucasian crease height (clinical margin-crease distance, in downgaze): men 6.2, women 7.5 mm.
+  - Pretarsal skin show: men 2.0, women 3.3.
+  - African American: crease 7.2 / 7.7, platform 3.1 / 3.6.
+  - A celebrity-photo sample (38): platform show women 3.9, men 2.5.
+  - With age, platform show falls and the crease rises.
+  - Defaults: visible line women 4.0, men 3.0 mm.
+- Geometry: `sdf.mod_fold`, a modify prim right after the base (spec._compile inserts it after _parts, seated on the
+  final base). It moves the skin along its normal by `lidfold.profile` across the crease line:
+  - the platform a little in (`platform`);
+  - the crease a narrow Gaussian invagination (`crease_depth` 1.0, `crease_width` FWHM 0.8 mm);
+  - the fold's roll rising from the line (`fold_overhang` 0.6, `fold_width` 1.6).
+  - The line itself: the opening's upper rim lifted by `crease_height` in the front plane (inner / outer scale it at
+    the thirds), seated by rays on the base field's surface. Normals from the field.
+  - Smoothing: the line's depth along it is median-filtered (on a hooded lid the ray hits the fold edge, then the
+    lid: corrugations), and samples are weighted along by a normalised Gaussian 1.5x their spacing. Fading by the
+    weight sum as well corrugated it where samples bunched; the ends now fade by taper only.
+  - Meshed at the stage's 0.5 mm (refine_box), baked into the export's maps.
+- The shading. Not the field's cavity: curvature is measured with a 0.75-voxel stencil, which steps over a 0.8 mm
+  groove. Instead the skin layer "lid_crease" (pre, per vertex) uses paint's `near` on the fold prims, i.e. the
+  distance across the fold's own crease line (`lidfold.line_distance`, also in paintnodes), brown-red.
+- Coupling: in "coupled" slider mode, fold.fold_overhang (a CHANGE in the atlas' attribute, mm) puts R2 (~0.70)
+  through the identity (`identity_change` -> faceatlas.direction, in base.gnm_head, so brow ridge and eye depth come
+  along), and the residual (1 - R2) is the roll.
+- Gate (spikes/eyedetail/foldgate.py: read_lid on eyeshot's photo | ours pair at the model's scale):
+
+  | Tess, mid columns R / L | tps (mm) | dark | width (mm) |
+  |---|---|---|---|
+  | photo | 4.35 / 5.00 | .33 / .31 | .8 / .85 |
+  | after (crease 5.0, depth 0.8, width 1.0, overhang 0.8) | 4.35 / 5.40 | .35 / .35 | .9 / 1.0 |
+  | before | no line (dark .04) | | |
+
+  - Inner R 3.15 against the photo's 4.0.
+  - Sheets: out/ed_20_fold_tess.jpg, out/ed_21_fold_garrett.jpg. Garrett: crease 3.0, overhang 1.1, roll 2.0.
+  - His concept's crease is below its resolution, and his own painted fold lines confound the reader on our renders.
+- Blunt: the crease now reads at face scale and in close-up, at the photo's height and darkness. It is still a
+  little too orange-pink and thin in close-up (the photo's is greyer brown with a softer shadow above). There is no
+  true undercut: a normal-displaced field can't hang skin over itself.
+- tests/test_lidfold.py.

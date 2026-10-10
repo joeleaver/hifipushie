@@ -384,7 +384,43 @@ SDF = {"cone": sd_cone, "ellipsoid": sd_ellipsoid, "lids": sd_lids, "box": sd_bo
 def _sd_base(p, pr):
     from .base import sd_base
     return sd_base(p, pr)
-MODS = {"displace": mod_displace, "flatten": mod_flatten}  # op "modify": reshape what's been combined so far
+def mod_fold(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.ndarray:
+    """The upper lid's fold (lidfold.py): along a line on the skin (pts, normals nrm, `up` the across direction up the
+    lid, `along` the line's tangent), the surface moved along its normal by a profile of the signed distance across
+    (lidfold.profile: platform in, a narrow deep crease, the fold's roll out). Smooth along the line: a normalised
+    Gaussian over the nearest samples (sigma `sa`), so neither samples nor chords show; it fades over the line's ends
+    (`taper` per sample) and past `reach` along the normal."""
+    from .lidfold import profile
+    P, N, U, T = pr["pts"], pr["nrm"], pr["up"], pr["along"]
+    flat = p.reshape(-1, 3)
+    c0 = cur.reshape(-1)
+    out = c0.copy()
+    K, R, sa, H = pr["k"], pr["radius"], pr["sa"], pr["reach"]
+    for s in range(0, len(flat), chunk):
+        q = flat[s:s + chunk].astype(np.float64)
+        dist, idx = pr["tree"].query(q, k=K, distance_upper_bound=R)
+        idx = idx.reshape(len(q), K)
+        ok = idx < len(P)
+        if not ok.any():
+            continue
+        j = np.where(ok, idx, 0)
+        r = q[:, None, :] - P[j]
+        h = (r * N[j]).sum(-1)
+        t = (r * U[j]).sum(-1)
+        a = (r * T[j]).sum(-1)
+        w = np.where(ok, np.exp(-0.5 * (a / sa) ** 2), 0.0)
+        ws = w.sum(1)
+        d = (w * profile(t, pr, j)).sum(1) / np.maximum(ws, 1e-12)
+        tap = (w * pr["taper"][j]).sum(1) / np.maximum(ws, 1e-12)
+        fade = np.clip(ws / (0.3 * pr["wfull"]), 0, 1) * tap  # (the ends fade by taper; ws itself follows the
+        # samples' local spacing, and as the fade it corrugated a fold where they bunched)
+        hn = (w * np.abs(h)).sum(1) / np.maximum(ws, 1e-12)
+        fade = fade * (1 - _smoothstep(np.clip((hn - H) / H, 0, 1)))
+        out[s:s + chunk] = c0[s:s + chunk] - d * fade
+    return out.reshape(cur.shape)
+
+
+MODS = {"displace": mod_displace, "flatten": mod_flatten, "fold": mod_fold}  # op "modify": reshape what's been combined so far
 
 
 @dataclass

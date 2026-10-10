@@ -31,7 +31,7 @@ import json
 
 import numpy as np
 
-VERSION = 1
+VERSION = 2  # 2: seated on the filled front map (holes in the sampled skin threw points off)
 DEFAULTS = {
     "upper": {"count": 230, "length": 9.0, "curl": 62.0, "lift": -12.0, "flare": 24.0, "thickness": 0.15,
               "clump": 0.6, "clump_size": [3, 6], "vary": 0.35, "rows": 0.25, "offset": 0.15, "start": 0.08, "end": 1.0},
@@ -158,6 +158,9 @@ def lid_lines(head: dict, cell: float = 0.0002, n: int = 360) -> list:
         U = np.cos(th)[:, None] * side + np.sin(th)[:, None] * up
         out.append({"centre": c, "fwd": fwd, "up": up, "side": side, "inner": inner, "theta": th, "rho": rho,
                     "dirs": U, "front": front, "cell": cell, "nn": nn, "o2": o2,
+                    # (for seating points on the skin: cells the samples missed take their neighbours' depth; the
+                    # opening above is traced on the unfilled map, which the filling would shrink)
+                    "front_filled": np.where(front < -1, ndimage.maximum_filter(front, size=11), front),
                     "corners": (int(np.argmax((U * rho[:, None]) @ inner)), int(np.argmin((U * rho[:, None]) @ inner)))})
     return out
 
@@ -178,7 +181,7 @@ def _on_skin(L, P2):
     nn, cell = L["nn"], L["cell"]
     iu = np.clip(np.floor(P2[:, 0] / cell).astype(int) + nn, 0, 2 * nn - 1)
     iv = np.clip(np.floor(P2[:, 1] / cell).astype(int) + nn, 0, 2 * nn - 1)
-    dep = L["front"][iu, iv]
+    dep = L.get("front_filled", L["front"])[iu, iv]
     return L["centre"] + P2[:, :1] * L["side"] + P2[:, 1:] * L["up"] + dep[:, None] * L["fwd"]
 
 
