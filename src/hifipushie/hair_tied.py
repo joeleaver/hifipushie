@@ -4,7 +4,9 @@ them: bunches):
 
   {"at": [az, el],          where on the head the tie sits (180, 25 = the back, above the occiput)
    "out": 0.025,            m the tie stands off the scalp
-   "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "from": [az0, az1]?},
+   "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "from": [az0, az1]?,
+              "strands": {dial: value}?},  (strand dials for the gathered hair alone, e.g. a loose texture on top:
+                            {"wave": 0.02, "wavelength": 0.06, "random": 0.8})
                             the scalp hair: rows of locks from the hairline (row 0, on top) inward, each running
                             over the head to the tie; lift = m of looseness between root and tie; false = none
    "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "dir": [x, y, z]?, "uneven": 0.4,
@@ -71,7 +73,7 @@ def params(tie) -> list:
             if t.get(k) is False or t.get(k) == 0:
                 p[k] = None
                 continue
-            bad = set(t.get(k) or {}) - set(TIE[k]) - {"dir", "from"}
+            bad = set(t.get(k) or {}) - set(TIE[k]) - {"dir", "from", "strands"}
             if bad:
                 raise ValueError(f"hair tie {k}: unknown keys {sorted(bad)} (have {', '.join(sorted(TIE[k]))})")
             p[k] = {**TIE[k], **(t.get(k) or {})}
@@ -207,7 +209,8 @@ def grow(sc, g: dict, line, rng) -> dict:
                         "tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)]
                                                for j in range(len(t))],
                         "width": round(float(ga["width"]) * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
-                        "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003}
+                        "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003,
+                        **({"strands": dict(ga["strands"])} if ga.get("strands") else {})}
         tl = tp["tail"]
         P0 = sc.point(az0, el0, float(tp["out"]))
         if tl:

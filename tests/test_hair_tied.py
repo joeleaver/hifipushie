@@ -90,6 +90,14 @@ def test_one_sided_style():
     assert lo[-1.0] < lo[1.0] - 8, lo
 
 
+def test_gather_strand_dials():
+    """gather.strands: strand dials for the gathered hair alone (a loose texture on top), carried on every gather lock."""
+    locks = _tie(gather={"strands": {"wave": 0.02}})
+    g = [lk for k, lk in locks.items() if k.startswith("tg")]
+    assert g and all(lk.get("strands") == {"wave": 0.02} for lk in g)
+    assert all("strands" not in lk for k, lk in _tie().items() if k.startswith("tg"))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
