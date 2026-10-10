@@ -137,7 +137,7 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "lid_read", "skin", "look_skin", "skin_reference"]},
+                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "skin", "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
@@ -1774,14 +1774,16 @@ def _blockin_sheet(name: str, save: str | None, views: list | None = None, table
 @mcp.tool(structured_output=False)
 def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = None, age: float | None = None,
                    body: dict | None = None, gnm_base: float | None = None, ethnicity: str | None = None,
-                   cameras: str = "keep", replace: bool = False, save: str | None = None):
+                   cameras: str = "keep", replace: bool = False, save: str | None = None, expression: bool = False):
     """THE DEFAULT START for a person's head from pictures: a base of the right kind (their body, GNM's class mean for
     the sex, an age-dependent GNM base) with the references' cameras, and its first block-in look + target table.
     refs = a one-mesh human with fitted references, or a views list; sex, age, body, gnm_base, ethnicity, cameras
-    ("keep" | "refit"), replace, save. Details: guide(topic="block_in_start")."""
+    ("keep" | "refit"), replace, save, expression (fit each picture's expression now; usually later with
+    block_in_expression). Details: guide(topic="block_in_start")."""
     from . import blockin as bi
     e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
-                 age=age, body=body, gnm_base=gnm_base, ethnicity=ethnicity, cameras=cameras, replace=replace)
+                 age=age, body=body, gnm_base=gnm_base, ethnicity=ethnicity, cameras=cameras, replace=replace,
+                 expression=expression)
     s = e["start"]
     out = _blockin_sheet(name, save)
     out[1] = (f"started {name}: {s['sex']} class mean{' (' + s['ethnicity'] + ')' if s['ethnicity'] else ''}, age {s['age']:g}, "
@@ -1841,6 +1843,25 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
     sh = _blockin_sheet(to, save, before=name)
     return [*res, sh[0], text + "\nZOOM OUT (the whole face):\n" + sh[1]
             + f"\nlog your zoom-out verdict: block_in_look(\"{to}\", read=..., keep=...)"]
+
+
+@mcp.tool(structured_output=False)
+def block_in_expression(name: str, out: str | None = None, views: list[int] | None = None, clear: bool = False,
+                        eyes: bool = False, seen: str = "", why: str = "", look: bool = True, save: str | None = None):
+    """Each picture's OWN expression (a smile, a squint), fitted on this head with the identity and camera held (GNM
+    lower-face expression comps, small prior), stored per view in the references and applied in every
+    block-in look / focus / table / lid read, never to the model: the neutral identity is then judged against the
+    picture as it smiles. A new model (out), shape unchanged; views (default: detector views), clear=True removes them;
+    eyes=True adds eye-region comps (a squinting picture; they can fight the lid pose).
+    Fit once the big forms are in; refit after large identity moves. Details: guide(topic="block_in_expression")."""
+    from . import blockin as bi
+    rep = bi.expression_step(name, out=out, views=views, clear=clear, eyes=eyes, seen=seen, why=why)
+    text = bi.expression_text(rep)
+    if not look:
+        return text
+    to = rep["entry"]["to"]
+    sh = _blockin_sheet(to, save, before=name)
+    return [sh[0], text + "\nZOOM OUT (before = neutral clay, after = with the picture's expression):\n" + sh[1]]
 
 
 @mcp.tool(structured_output=False)
