@@ -90,3 +90,32 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   what moves is the 478-point detector's lid points, which react to lid tints and wrinkles. Proposed: measure the
   aperture as visible eyes-part pixels.
 - `skin._aperture_keep_out`: every skin layer but waterline / caruncle / lashes fades out within 1 mm of the eyeballs.
+- Keep-out cost: a near mask on EVERY layer ran Cycles out of shader stack in the export bake (part:body). Now: the
+  pre-composited layers get it (per vertex, free), and of the rest only eye-named layers, with "vertex": true. The
+  lash root tubes are per vertex too. Tess's full export (procedural skin + lashes) bakes. Dressed Garrett
+  (g4_garrett's ~30 hand layers + skin) overflows the stack even WITHOUT these (main's behaviour, measured on
+  _ed_gx0): not mine, reported.
+- The part-ID aperture (aperture.py, blender_scene job "id_parts"): visible eyes-part pixels, lashes hidden.
+  Identical for eyes-only / +zones / dressed Garrett (5.12 / 4.85 mm, picture left / right), as it must be. Use it
+  for the model's own opening (facesliders' lid-pose refit); the detector stays for likeness against photos.
+
+## 3b. Export check (Tess copy _ed_tx with a mouth interior, 20k triangles, rigged, 5 face shapes)
+- lashes part: 3552 triangles (180 + 42 per eye), two-sided material, Head 1.00 in the rig, 5 targets (blink max
+  12.9 mm). The GLB posed with rig(glb=, shapes=): the lashes close with the lid (out/v_blink_eye.jpg).
+- Lash defaults by body: men 12% shorter and 30% less curl; from 30 years fewer / shorter (by 70: -25% / -15%).
+  Garrett (male, 52) reads as a fine dark line, not a comb.
+
+## 5. Lower lid
+- eye_bag 1 + eye_lidcheek 1 read: a bag with the lid-cheek crease's shadow under it, much like Tess's photo
+  (out/v_lw.jpg). lid_margin_lower 1 gives a visible rim. Not set on Tess: her spec is tess's.
+
+## Sheets
+- out/ed_10_tess_eyes.jpg: photo | before | now | + lid margins, front face, eye, 3/4.
+- out/ed_11_garrett_eyes.jpg.
+
+## Still missing (blunt)
+- No upper-lid crease / platform shadow on Tess: facesliders' crease rework plus tess's platform.
+- The iris is still a painted disc: no refraction / depth, and the fibres read pale. A real cornea would be a
+  transmissive shell over a recessed iris (MetaHuman's refraction): next if wanted.
+- The lower waterline reads grey-blue (the ball's tear line + occlusion), not the photo's pink wet rim.
+- Fine skin lines at the lids: not addressed.
