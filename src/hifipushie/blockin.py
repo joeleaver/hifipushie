@@ -355,6 +355,16 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     if adopted:
         rj["blockin"] = {"root": out, "boxes": _boxes(store.load(src)["base"], rj)}
     cam_moves = []
+    if "head_scale" in (moves or {}):
+        # the head scales about the NECK: the face rises / drops, which a refit would answer by moving the camera back
+        # (distance trades with size: lt19's 1.06 came back as the same pixels). Each camera follows the face's
+        # landmark centre instead (centre shifted with it: the same point at the same pixel, the size change visible)
+        from . import humanfit
+        d = humanfit.state(sp["base"])["L"][:68].mean(0) - humanfit.state(store.load(src)["base"])["L"][:68].mean(0)
+        for i, cam in enumerate(rj["cameras"]):
+            if not cameras or i not in [int(j) for j in cameras]:
+                cam["centre"] = (np.asarray(cam["centre"], float) + d).tolist()
+        cam_moves.append(f"cameras follow the face centre ({1000 * float(np.linalg.norm(d)):.1f} mm)")
     if cameras:
         from . import humanfit
         new = fit_cameras(sp["base"], rj["views"])
