@@ -354,9 +354,43 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     lifted / draped; bronzer, highlight, lip liner / overline, balm. Freckles: `features.freckles` {amount, size, clump,
     dark, zones} on the face map; body zones from the swatch with vary on.
   - Tess (approved by Joe, "her skin looks good"): tone fitzpatrick 1, blood 0.25, undertone +0.15; flush 0.3 on cheeks;
-    freckles 0.25 small; zones nose_red 0.75, midface_red 0.8, under_eye 2.0, eyelids 1.4; lips blood 1.0 melanin 2.8.
-    Garrett: stubble {style short, length 0.002, grey 0.35, cheeks 0.75, color #3a342f}.
-  - Open: blush still reads as a patch more than a sweep; evening red lip saturated / hard-edged; pores read as pits
-    with pale rims on Tess; the lineup head om_new_man_30 shows its inner shell through the face (z-fighting patches).
+    freckles (after the freckle engine changed) {"amount": 0.08, "dark": 0.1}, no moles (map moles are real ones);
+    zones nose_red 0.75, midface_red 0.8, under_eye 2.0, eyelids 1.4; lips blood 1.0 melanin 2.8.
+    Garrett: stubble {style short, length 0.002, grey 0.35, cheeks 0.75, shadow 1.0, color #3a342f}.
+  - Blind reads (fresh general-purpose agents, sheets sk2_05..09 vs refs; the coordinator relays the top 5): round 1
+    and 2 drove: stubble = cool blue-grey sub-skin shadow + short upright hairs with skin between (a warm shadow read
+    as brown felt, a greyed one as olive "dirty wash", a bluer one as lilac); grey hairs mid-grey (near-white ones
+    LIGHTENED Garrett's beard: "ash"); freckles = ~120/cm2 specks ~0.4 mm, few bigger, round, red-brown (1.3 mm lobed
+    ones read as splats); crisp lip borders (per-vertex lips need the mouth refine in look_skin, soft <= 0.5 mm);
+    perioral redness (else a green band under the lower lip), lower-lip sheen. When a fix seems not to land, first
+    check the render is current (stage key + code hash) - here it was, the faults were real.
+  - Eyeliner wing, four tries: tube through points seated on the temple (blobs / pieces); a picture laid from the
+    front (lands on the lid fold above a deep-set eye: a shard), once mirrored (floated off the other, asymmetric lid);
+    a geodesic surface sticker from the lash line (its frame turned on the margin's upward normal, the wing never
+    left the corner); WORKS: a chain of small spots from the outer third of the lash line along the lower lash line's
+    angle, each spot deep (4 mm) along the forward axis so it reaches the turning skin, per side.
+  - Open: base-skin pores / T-zone shine at front distance (blind read 3's #2); blush reads as a soft patch; evening
+    red lip flat; the lineup head om_new_man_30 shows its inner shell through the face (z-fighting patches).
+  - HANDOVER (skin2 -> next agent, 2026-10-09 late; branch worktree-agent-a19d53ef6fe103feb at 81e32ab+, main has it up
+    to be0bc76 + later merges: check `git log main..`). The final blind read (4th) still flagged, and the coordinator saw
+    on sk2_05: the evening wing reads as a thorn flicking up off the outer corner; the evening crease shows a pale
+    floating arc above the lid (likely makeup_highlight's brow-bone spots or the eyeshadow crease layer's light colour
+    against the darker lid: check with look_skin layer=...); lip borders still soft / a halo; no visible sub-skin stubble
+    shadow at distance (5 o'clock ~ clean, salt & pepper ~ clean); patchy reads as stains; freckles uniform.
+    The coordinator's rule for the next round: GATE BY MEASURE against the refs, not by eye:
+    (1) stubble: mean L/a/b of the beard zone minus a clean cheek, ours vs ref_30 (1 day; ref_25 is grey), ref_29
+        (designer), ref_28 (salt & pepper); boxes on the refs by hand or with spikes/garrett4/skinm.py's detector
+        (`fskinm.py` in scratch measures any photo vs any render with skinm's zone boxes, scaled by interocular); tune
+        STUBBLE_STYLES shadow / the cast in skin_features._stubble_map until the deltas match;
+    (2) lip border: 10-90% edge width in mm at the cupid's bow and mid lower lip, ours vs ref_36 / ref_38 / Tess's
+        photo, and no pale ring (L just outside the border <= the skin's): suspects lip_border (pale rim, grow 1.6),
+        the per-vertex lips (look_skin refines the mouth to 0.5 mm; dressed stages don't), lipstick outline soft;
+    (3) wing: root distance from the lash line 0, angle = lower lash line extended; measure on the eye view (the
+        lm_lid_lower_out -> lm_eye_outer direction projected; the spot chain is in skin_makeup "if wing > 0");
+    (4) remove the floating pale arc. Then one more fresh blind read (prompt: copy from this session's: sheets sk2_05..09,
+        refs ref_25..41, scores 1-5 per column, 3 defects each, top-5 fixes, < 900 words).
+    Re-render with /mnt/data/hifipushie/skin2/round5.sh-style scripts (stub_lineup.sh, frk_lineup.sh, mk_looks.sh
+    sk2_t13e <tag>, gshot.sh + g3q.sh for Garrett with HEAD=sk2_g6, grid.py / tsheet.py / sheet_g.py / compose*.py for
+    the sheets); one look_skin stage takes 1-3 min (it re-meshes on every code change).
     Tests: tests/test_skin_marks.py (zones from landmarks, deterministic maps, styles, fade band never darker than
     full, freckles don't repeat), test_skin.test_makeup_looks.

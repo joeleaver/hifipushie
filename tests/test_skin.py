@@ -357,8 +357,8 @@ def test_brow_tilt_and_fall():
 
 def test_makeup_looks():
     """skin.makeup.look presets expand into items (overrides merge key by key); the liner follows the lash line's own
-    zone (lines through the eye-corner landmarks left dots past the lids' corners) and a wing is a drawn flick laid at
-    the outer lash line; each product keeps its finish."""
+    zone (lines through the eye-corner landmarks left dots past the lids' corners) and a wing is a tapering chain from
+    the outer lash line, one per side; each product keeps its finish."""
     import json
     import tempfile
     from hifipushie import skin_makeup, store
@@ -382,7 +382,7 @@ def test_makeup_looks():
               "makeup_lip_liner", "makeup_highlight"):
         assert "skin:" + k in eve, k
     liner = json.dumps(eve["skin:makeup_eyeliner"]["mask"])
-    assert '"near": ["eye.L"' in liner and '"image"' in liner   # (the lash zone, expanded: near the eyeballs)
+    assert '"near": ["eye.L"' in liner and liner.count('"spot"') >= 2   # the lash zone (near the eyeballs) + a wing per side
 
 
 if __name__ == "__main__":
