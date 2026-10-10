@@ -5061,6 +5061,8 @@ def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body",
     (centres and edge midpoints: a triangle's chord reaches in between its vertices; a contact solver refuses a start
     inside its standoff)."""
     V = V.copy()
+    if not np.asarray(free, bool).any():  # nothing to clear (a garment with no made / held pieces: a jumper)
+        return V
     gaps = np.where(free, gap, 0.0)
     X0 = V.copy()
     Ff = F[free[F].any(1)]
