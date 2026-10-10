@@ -59,6 +59,33 @@ def test_hidden_faces_keep_a_margin_at_the_openings():
     assert not h[(z > 0.04)].any()  # the margin inside the opening stays
 
 
+def test_cut_by_visibility_and_crossings():
+    # merge-and-cut: an under shell inside an outer one open above z = 0.05. Cut: what the outer shell hides from every
+    # direction, and a patch pushed out through it far from the opening; kept: the cloth seen through the opening, a
+    # patch crossing beside the opening (it shows there), and the `keep` vertices (a collar) wherever they are
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    under = _shell(*_sphere(seed=2), 0.103)  # (its own triangulation: crossings never land on the outer's edges)
+    Vu = under["V"].copy()
+    far = (Vu[:, 2] < -0.07) & (Vu[:, 0] > 0.03)  # pokes out through the outer shell, 12+ cm from its opening
+    near = (Vu[:, 2] > 0.035) & (Vu[:, 2] < 0.045) & (Vu[:, 0] > 0.05)  # crosses it just inside the opening
+    Vu[far | near] *= 1.1
+    under["V"] = Vu
+    outer = dict(_shell(V, F, 0.108, zmax=0.05), body=body)
+    keep = (Vu[:, 2] < -0.07) & (Vu[:, 0] < -0.05)  # (a "collar" deep under the outer shell: never cut)
+    h, info = cloth_layers.cut(under, outer, keep=keep, n_ring=6, px=0.004)
+    Fu = under["mesh"]["F"]
+    z = Vu[Fu].mean(1)[:, 2]
+    assert not h[z > 0.06].any(), info  # seen through the opening
+    from scipy.spatial import cKDTree
+    away_ = cKDTree(Vu[far | keep]).query(Vu[Fu].mean(1))[0] > 0.05  # (what pokes out shows, and a few rings round it)
+    assert h[(z < -0.06) & away_].mean() > 0.95, info  # hidden from every direction (looking straight down the
+    # 5 mm gap between body and outer shell sees the under one to the equator: grown 3 rings that is z -0.05)
+    assert h[far[Fu].all(1)].all() and info["crossing_cut_vertices"] > 0, info  # crossing far from the opening: cut
+    assert not h[near[Fu].all(1)].any(), info  # crossing where it shows: kept
+    assert not h[keep[Fu].all(1)].any(), info  # never cut
+
+
 def test_support_kinds_are_checked():
     V, F = _sphere()
     body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
