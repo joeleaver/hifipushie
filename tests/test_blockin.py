@@ -207,3 +207,27 @@ def test_neck_double_and_lens_prior():
     assert f == pytest.approx(24 / 43.27 * 2560.0, rel=1e-3) and sd < 0.1
     f0, sd0 = humanfit_map.lens_prior({"size": [1536, 2048]})
     assert f0 == pytest.approx(humanfit_map.LENS[0] / 36.0 * 1536) and sd0 == humanfit_map.LENS[1]
+
+
+@need_ref
+def test_per_view_expression():
+    """lt19b: a picture's own expression, fitted with identity and camera held, stored per view in the refs, applied
+    in the clay of that view only (look / table / lids), never to the model; clear removes it."""
+    a, b, c = "bi_test_x0", "bi_test_x1", "bi_test_x2"
+    _rm(a, b, c)
+    try:
+        bi.start(a, REF, sex="male")
+        rep = bi.expression_step(a, out=b)
+        f = rep["fits"][0]
+        assert f["chi2"][1] < f["chi2"][0] and f["expression"]
+        assert all(k.startswith("lower_face_region") for k in f["expression"])   # eyes are opt-in
+        assert store.load(b)["base"] == store.load(a)["base"]                    # the model stays neutral
+        rj = bi._refs(b)
+        assert len(rj["expressions"]) == len(rj["views"]) and rj["expressions"][0] == f["expression"]
+        assert bi.view_base(store.load(b)["base"], rj, 0)["head"]["expression"] == f["expression"]
+        assert bi._spec_hash(a) != bi._spec_hash(b)                              # the table is re-read
+        assert "expression" in bi.log(b)[-1] and bi.lid_read(b)["expression"]
+        bi.expression_step(b, out=c, clear=True)
+        assert not any(bi._refs(c)["expressions"])
+    finally:
+        _rm(a, b, c)
