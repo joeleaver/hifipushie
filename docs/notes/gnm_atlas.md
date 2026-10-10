@@ -133,3 +133,26 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
   leanness (age / soft tissue). Lean and long now, closest of the joint runs to the concept (fs_19 sheet).
 - Tess fs_tj4 (traced) vs fs_tj2 (no outline): views 0.33/0.37/1.60 vs 0.30/0.33/1.71, prior 37.5 vs 17, jaw_square
   +1.7, jaw / chin width +1.25: heavier, more masculine by eye (fs_20). tj2 stays her candidate.
+
+## Round 4: lips, chin, Tess's true profile camera (2026-10-09)
+
+- Garrett fs_gj8 (lips weight 3, lip_*_height residuals offered, chin line out): front lips 6.96 / 10.36 vs 6.85 /
+  10.86 mm, mostly through the IDENTITY (lip_lower_height +0.61, bow +0.77, lower roll +0.89 sd read out; the
+  residuals +0.22 / +0.29); prior 19.5, max |c| 1.53, views and outline no worse.
+- The front chin line is a SHADING edge, not an occluding contour: the concept's camera sits ~43 cm below the chin
+  (the underside visible under the line). humanfit._silhouette has no vertices there and its nearest match slid the
+  jaw's sides in under it (gj6's narrow chin). An envelope matcher picks the submental skin / neck (15 px low); GNM's
+  region borders are not the jaw border. Chin width needs a render-based reader of the same shadow edge (photo vs
+  clay under the fitted light), not geometry: left out.
+- Cameras: ONE shared copy per subject (human_refs "cameras"), a refit replaces it and the old is kept by name
+  (Tess: fs_tj0 cameras = ts_t18's refit true profile camera, cameras_old_58deg kept). joint2 FIX_CAMS freezes a view.
+- Tess through the true profile camera: the profile's own contour against the plain background (outl.profile_auto)
+  as an outline term is what moves her brow forward: fs_tj7 prof.py chamfer 1.06 mm (e3 2.15, tj6 2.42: brow 1.4 vs
+  2.8 / 4.4), points 0.61 / 0.69 / 2.28 sigmas (e3 0.84 / 0.87 / 3.05); prior 51.6.
+- The calibrated detector table drops every face-oval point (sd past the cut): a front's jaw is constrained only by
+  the prior and the couplings. Tess's jaw_square +1.6..+2.7 comes without any outline term.
+- ANSUR II has no bigonial breadth; bitragion-chin and bitragion-submandibular ARCS exist (a surface-arc reader on
+  GNM would let the sex axis know women's lower faces).
+- To add to the model (not one-off morphs): canthal tilt, Tess's lower-lip width, the crease: learned / data-backed
+  directions with couplings. Data: MakeHuman CC0 lid / lip targets (shape vocabulary); 3D face scan sets (licences
+  checked before any download).

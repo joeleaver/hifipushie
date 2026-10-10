@@ -84,3 +84,21 @@ if __name__ == "__main__":
         S.paste(t, (600 * i, 0))
     S.save(out, quality=85)
     print("wrote", out)
+
+
+def profile_auto(view, step=6):
+    """A true profile's front contour where the face is against a plain background (the photo's own pixels: first
+    non-background pixel per row from the side the face looks to), rows from above the brow to under the chin (the
+    clicked nose_bridge / chin set the span). Left-facing pictures (the face toward small u)."""
+    a = np.asarray(Image.open(view["image"]).convert("RGB"), float)
+    pts = view.get("points") or {}
+    yb, yc = float(pts["nose_bridge"][1]), float(pts["chin"][1])
+    y0, y1 = int(yb - 0.45 * (yc - yb)), int(yc + 0.22 * (yc - yb))
+    bg = np.median(a[:, :15].reshape(-1, 3), 0)
+    fg = np.abs(a - bg).sum(-1) > 40
+    out = []
+    for y in range(max(y0, 0), min(y1, a.shape[0]), step):
+        r = fg[y]
+        if r.any():
+            out.append([float(np.argmax(r)), float(y)])
+    return np.array(out)
