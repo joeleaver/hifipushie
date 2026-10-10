@@ -34,3 +34,9 @@ for p in L:
     d.ellipse([p[0] - 2, p[1] - 2, p[0] + 2, p[1] + 2], fill=(230, 200, 0))
 print("points", v.get("points"), "cam yaw", cam.get("yaw"), "n contour", len(o), "n env", len(px))
 img.save(sys.argv[2] if len(sys.argv) > 2 else "/tmp/prof.png")
+mm = env["mmpx"]
+r = ((px - env["p"]) * env["n"]).sum(1) * mm
+for y0 in range(560, 960, 20):
+    sel = (env["p"][:, 1] >= y0) & (env["p"][:, 1] < y0 + 20)
+    if sel.any():
+        print(f"rows {y0}-{y0 + 20}: n {sel.sum():2d} miss mm (+ model outside) {np.round(r[sel], 1).tolist()}")

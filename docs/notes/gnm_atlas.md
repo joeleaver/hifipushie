@@ -1049,3 +1049,52 @@ base.head.habitual was removed again.
   nostrils, lip pad, ears), seeded from Farkas (1994), the FISWG feature list, oculoplastic MRD1 / MRD2 / TPS / BFS /
   MCD, rhinoplasty analysis (Goode ratio, nasofrontal / nasolabial angles, columellar show, alar base) and lip
   analysis (vermilion ratio, E-line, mentolabial angle, philtral columns).
+
+### fit5's profile term, the view-consistency test, the lip seal (2026-10-10)
+- The envelope match (joint2.envelope: farthest-out vertex in a band) fails in CONCAVITIES: at the stomion and the
+  mentolabial sulcus it picked lip vertices 7-25 mm off, and those rows were rejected, so the lips' depth went unseen.
+  Replaced by fit5.silhouette_env (SIL=render): the model's profile silhouette read the same way as the photo's (first
+  skin pixel per row on our clay render, likeness.render passes), each pixel unprojected to its vertex.
+- The profile camera fitted to 8 clicks + the contour let its focal drift 2600 -> 1022 px at 0.34 m (the lens / distance
+  trade-off is unconstrained in a profile) and the near camera put body faces behind it (the clay render went solid,
+  every row read the back of the head): profile cameras are now POSE-ONLY (fit5.fit_cam_pose), focal held; contour
+  matches enter coarse to fine (15 / 6 / PROF_REJECT mm).
+- View consistency (depthcmp.py; lips ahead of the subnasale-pogonion line, mm, upper / lower): her profile photo +3.0 /
+  +1.9 (profzoom.png: the contour traces her lips exactly); front + 3/4 only fit +4.7 / +4.4; all views with the seal in
+  the fit (tl8) -1.9 / -1.8; all views fitted WITHOUT the seal (tl9) +2.2 / +1.1. The references are consistent; the
+  fit was wrong.
+- Cause (jacchk.py: predicted vs actual silhouette change for the identity step the lip rows ask for): with lip_seal the
+  built lips do NOT follow the identity (predicted -2..+2 mm by row, actual a uniform -3.2 mm); without the seal the
+  linear model holds (actual within ~0.5 mm of predicted at most rows; the dorsum's rows hold either way). faceslide's
+  seal (closes the lips to contact, computed on the head) is non-linear and undoes identity moves of the lips. fit5
+  NOSEAL=1 fits without it (the shipped model keeps it). TODO: a seal-aware Jacobian or fitting the inner-lip contact
+  as evidence, then re-check the sealed result's profile.
+- tl9 (NOSEAL, all views): |c| 15.4, dof 47.6, points 0.51 / 0.50, border 0.24 / 0.26 mm, profile 1.40 mm (131/131),
+  profile clicks 1.71 sigma. Remaining profile misses: the nose's underside / columella rows 4-6 mm INSIDE hers, the
+  stomion +5.6, the sulcus +2. tip projection jumped to 22.8 mm (f3_t1 18.5): check against her photo before trusting.
+  Rounds don't reduce the profile rms monotonically (1.29 -> 1.40): correspondences flip between rounds; a damped
+  (Levenberg-Marquardt) outer loop is the next fix.
+
+### HANDOVER (faces5, 2026-10-10)
+Branch worktree-agent-a34e0880e18034a56 (faces4's branch merged in, main merged in after the audit). Scratch
+/mnt/data/hifipushie/faces5: run.sh (this worktree, capped, spikes/facesliders on the path), q.sh <log> <script> (the
+render lock), tests.sh; consist.sh (view-consistency runs), covsum.py (coverage summary), photoprof.py / profzoom.py.
+Spikes (spikes/facesliders): m3prior.py (ICT EM prior: analyse | cv | em | build_em), m3look.py, m3cost.py, lidgnm.py
+(GNM lid close-ups: density | scan | fit | samples | sheet | crease), creasefit.py (failed clay attempt), regbasis2.py
+(M2, deferred), lipfit.py (geometric shadow proxy: failed), lipdiag*.py, itemcover.py + percict.py (checklist coverage),
+lipborder.py (THE vermilion border reader) + lipborder_model.py (GNM's border loops), fit5.py (THE one MAP: identity 170
++ per-picture expression, uninflated points, border, profile silhouette; env INFLATE CUT EXPR_SD BORDER_SIG PROF_SIG
+PROF_REJECT SIL NOSEAL VIEWS ROUNDS INNER), lipsheet.py, featsheet.py (feature-crop renders through each model's own
+cameras), framechk.py, profdiag.py, sildiag.py, jacchk.py, depthcmp.py.
+Models (scratch, f5_*): f5_tl4 (border, no profile: the best front lips), f5_tl7 / tl8 (profile, with the seal: lips
+wrong), f5_tl9 (profile, NOSEAL: lips right in depth), f5_c_* (consistency subsets). Sheets human_renders/f5_00..26.
+Next, in the coordinator's order:
+1. Nose readers on photo and render alike (alar rim edge, nostril show from the dark nostril area; the subnasale /
+   nose-base row: the model's sits ~5 mm below hers in front, framechk), validated on her photo, into fit5 (render-based
+   readers by finite differences on moved meshes, like itemcover's moved_mesh: ms per evaluation).
+2. Seal-aware lips (see above), then fit5's outer loop damped; check tl9's 22.8 mm tip projection against her photo.
+3. The approved tools: shadow-map pass in likeness.render (lipshade term in the loop; paint must not read as shape),
+   lip_seal including the picture's expression, tolerances from each reader's measured noise (coverage: tolerances hide
+   most of GNM's directions).
+4. Crease: port the audit's g11 (lid margins vs iris + crease height, GNM's own eyeball) into fit5; then Garrett.
+Report every fit with |c|, effective dof, posterior cost, feature crops (featsheet) and a blunt read.

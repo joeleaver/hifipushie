@@ -65,6 +65,8 @@ def spec_with(spec, c):
     sp = copy.deepcopy(spec)
     b = humanfit._with_identity(sp["base"], c)
     b["head"]["sliders"] = {k: v for k, v in (b["head"].get("sliders") or {}).items() if k not in LIP_SLIDERS}
+    if os.environ.get("NOSEAL"):
+        b["head"].pop("lip_seal", None)
     sp["base"] = b
     return sp
 
@@ -108,6 +110,74 @@ def border_model(st):
     return out
 
 
+def silhouette_env(st, cam, o):
+    """The model's profile silhouette read the SAME way as the photo's (outl.profile_auto: per row the first skin pixel
+    from the side the face looks to), on our own render (likeness.render passes) through the view's camera; each
+    silhouette pixel unprojected through its depth to the nearest head vertex. Returns envelope()'s dict. (The envelope
+    match, farthest-out vertex in a band, fails in concavities: at the stomion and the mentolabial sulcus it picked
+    the lips' vertices, 7-25 mm off, and those rows were rejected: the lips' depth went unseen.)"""
+    from scipy.spatial import cKDTree
+    from hifipushie import likeness, likeness_shape as lsh
+    tpl = st["tpl"]
+    P = np.asarray(tpl["P"], float)
+    mesh = likeness.model_mesh_from_state(st)
+    x0, x1 = o[:, 0].min() - 120, o[:, 0].max() + 60
+    y0, y1 = o[:, 1].min() - 10, o[:, 1].max() + 10
+    side = max(x1 - x0, y1 - y0)
+    im, k, ps = likeness.render(mesh, cam, (x0, y0, x0 + side, y0 + side), px=int(side), brows=False, passes=True)
+    part, zb = ps["part"], ps["zb"]
+    if os.environ.get("SILDBG"):
+        im.save(os.environ["SILDBG"])
+    face_left = np.median(o[:, 0]) < cam["size"][0] / 2
+    gid_all = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+    tree = cKDTree(P)
+    vs, keep, pts = [], [], []
+    for i, (x, y) in enumerate(o):
+        row = int(round((y - y0) * k))
+        if not (0 <= row < part.shape[0]):
+            continue
+        sk = np.flatnonzero(part[row] == 0)
+        if len(sk) == 0:
+            continue
+        j = sk[0] if face_left else sk[-1]
+        xm = x0 + (j + 0.5) / k
+        Xw = lsh.unproject(cam, np.array([[xm, y]]), np.array([zb[row, j]]))
+        vs.append(int(tree.query(Xw)[1][0]))
+        keep.append(i)
+    if not vs:
+        return None
+    vs, keep = np.array(vs), np.array(keep)
+    hg = headfit._gnm()
+    c = st["head"]["carry"]
+    gid = gid_all[vs]
+    fade = np.asarray(onemesh.asset()["g_fade"], float)[np.maximum(gid, 0)] * (gid >= 0)
+    Bv = np.asarray(g["vertex_identity_basis"], float)[hg["comps"]][:, np.maximum(gid, 0)]
+    Bv = float(c["s"]) * (Bv - hg["JB"].mean(1, keepdims=True)) @ np.asarray(c["R"], float).T * fade[None, :, None]
+    n_ = np.tile([[-1.0, 0.0]] if face_left else [[1.0, 0.0]], (len(vs), 1))
+    return {"X": P[vs], "B": Bv, "p": o[keep], "n": n_, "vs": vs, "keep": keep}
+
+
+SIL = os.environ.get("SIL", "render")   # render (silhouette_env) | envelope (joint2.envelope)
+
+
+def _env(st, cam, o):
+    return silhouette_env(st, cam, o) if SIL == "render" else J2.envelope(st, cam, o)
+
+
+def fit_cam_pose(cam, X, uv, wt):
+    """hm._fit_cam with the focal length held (pose only): the profile's camera, fitted to 8 clicks + the contour, let
+    its focal drift to 1022 px at 0.34 m (from 2600 at 0.8: the lens / distance trade-off is unconstrained in a
+    profile), and the near camera put the body's faces behind it (the clay render went solid)."""
+    from scipy.optimize import least_squares
+
+    def res(p):
+        c = {**cam, "r": p[:3], "t": p[3:6]}
+        return ((humanfit.project(c, X) - uv) * wt[:, None]).ravel()
+    sol = least_squares(res, np.r_[cam["r"], cam["t"]], x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3], loss="soft_l1",
+                        f_scale=3.0)
+    return {**cam, "r": [float(v) for v in sol.x[:3]], "t": [float(v) for v in sol.x[3:6]]}
+
+
 def proj_jac(cam, X):
     Rc = humanfit._cam_rot(cam)
     Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
@@ -148,23 +218,23 @@ def system(st, views, cams, x, x_lin, border, nview):
         X = e["X"] + np.tensordot(dc, e["XB"], 1) + np.tensordot(ev, XE, 1)
         cam = cams[vi]
         mm0 = cam["t"][2] / cam["f"] * 1000
-        cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
         prof = USE_PROFILE and abs(float(v.get("yaw", 0.0))) > 70
+        cam = cams[vi] = (fit_cam_pose if prof else hm._fit_cam)(cam, X, e["uv"], mm0 / e["sig"])
         if prof:   # the camera fitted to the clicks AND the contour (the clicks alone left it ~3 mm off the skin edge)
             if "_prof" not in v:
                 v["_prof"] = outl.profile_auto(v, step=3)
-            for _ in range(3):
-                env = J2.envelope(st, cam, v["_prof"])
+            for rej in (15.0, 6.0, PROF_REJECT):   # (coarse to fine: a clicks-only camera starts several mm off)
+                env = _env(st, cam, v["_prof"])
                 if env is None:
                     break
                 gidv = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])][env["vs"]]
-                fade = np.asarray(onemesh.asset()["g_fade"], float)[gidv]
+                fade = np.asarray(onemesh.asset()["g_fade"], float)[np.maximum(gidv, 0)] * (gidv >= 0)
                 Rr, ss = _carry(st)
-                XEp = ss * EB[:, gidv] @ Rr.T * fade[None, :, None]
+                XEp = ss * EB[:, np.maximum(gidv, 0)] @ Rr.T * fade[None, :, None]
                 Xp = env["X"] + np.tensordot(dc, env["B"], 1) + np.tensordot(ev, XEp, 1)
                 rp0 = ((humanfit.project(cam, Xp) - env["p"]) * env["n"]).sum(1) * mm0
-                ok = np.abs(rp0) < PROF_REJECT
-                cam = cams[vi] = hm._fit_cam(cam, np.r_[X, Xp[ok]], np.r_[e["uv"], env["p"][ok]],
+                ok = np.abs(rp0) < rej
+                cam = cams[vi] = fit_cam_pose(cam, np.r_[X, Xp[ok]], np.r_[e["uv"], env["p"][ok]],
                                              np.r_[mm0 / e["sig"], np.full(ok.sum(), mm0 / PROF_SIG)])
         J, z = proj_jac(cam, X)
         wt = (z / cam["f"] * 1000) / e["sig"]
@@ -179,13 +249,13 @@ def system(st, views, cams, x, x_lin, border, nview):
         b += A.T @ y
         rep["rms"].append(float(np.sqrt(np.mean(a ** 2))))
         if prof:
-            env = J2.envelope(st, cam, v["_prof"])
+            env = _env(st, cam, v["_prof"])
             if env is not None:
                 tplP = np.asarray(st["tpl"]["P"], float)
                 gidv = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])][env["vs"]]
-                fade = np.asarray(onemesh.asset()["g_fade"], float)[gidv]
+                fade = np.asarray(onemesh.asset()["g_fade"], float)[np.maximum(gidv, 0)] * (gidv >= 0)
                 Rr, ss = _carry(st)
-                XEp = ss * EB[:, gidv] @ Rr.T * fade[None, :, None]
+                XEp = ss * EB[:, np.maximum(gidv, 0)] @ Rr.T * fade[None, :, None]
                 Xp = env["X"] + np.tensordot(dc, env["B"], 1) + np.tensordot(ev, XEp, 1)
                 Jp, zp = proj_jac(cam, Xp)
                 mmpx = zp / cam["f"] * 1000
@@ -203,7 +273,7 @@ def system(st, views, cams, x, x_lin, border, nview):
                 kept = ap * PROF_SIG < PROF_REJECT
                 rep["profile_mm"] = float(np.sqrt(np.mean((rp[kept] * PROF_SIG) ** 2))) if kept.any() else None
                 rep["profile_kept"] = f"{int(kept.sum())}/{len(kept)}"
-        if vi == 0 and border is not None:
+        if abs(float(v.get("yaw", 0.0))) < 20 and border is not None:
             bm = border_model(st)
             for k, poly in (("up", border["upper"][border["keep"]]), ("lo", border["lower"][border["keep"]])):
                 Xb, XBb, XEb = bm[k]
@@ -232,10 +302,14 @@ def main(src, dst):
     refs = json.loads((WS / src / "human_refs.json").read_text())
     views = [dict(v) for v in refs["views"]]
     cams = [dict(cm) for cm in refs["cameras"]]
+    if os.environ.get("VIEWS"):   # a subset of the references (the consistency test: front + 3/4 vs profile)
+        sel = [int(i) for i in os.environ["VIEWS"].split(",")]
+        views, cams = [views[i] for i in sel], [cams[i] for i in sel]
     nv = len(views)
     border = None
     if USE_BORDER:
-        img = Image.open(views[0]["image"]).convert("RGB")
+        fr = [v for v in views if abs(float(v.get("yaw", 0.0))) < 20]
+        img = Image.open((fr[0] if fr else refs["views"][0])["image"]).convert("RGB")
         border = LB.read(img, likeness.detect([img])[0])
     c0 = humanfit.identity(spec["base"])
     x = np.r_[c0, np.zeros(NE * nv)]
@@ -273,6 +347,8 @@ def main(src, dst):
     (d / "spec.json").write_text(json.dumps(spec_with(spec, x[:NC]), indent=1))
     r2 = dict(refs)
     r2["cameras"] = cams
+    if os.environ.get("VIEWS"):
+        r2["views"] = [refs["views"][i] for i in sel]
     (d / "human_refs.json").write_text(json.dumps(r2, indent=1, default=float))
     (d / "fit5.json").write_text(json.dumps(out, indent=1, default=float))
     print(json.dumps({k: out[k] for k in ("c_norm_start", "c_norm", "max_c", "dc_norm")}), "final rms", np.round(rep["rms"], 2).tolist(),
