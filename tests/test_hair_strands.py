@@ -409,3 +409,14 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             f()
             print("ok", k)
+
+
+def test_lock_density_scales_its_strand_share():
+    """strands.density on a lock: x its strands, absolute (an airy region), 1 = unchanged; kept apart from the share."""
+    S = {**hc.STRANDS, "wave": 0.0}
+    P = [[0.0, -0.09, 0.05], [0.0, -0.06, 0.08], [0.0, -0.02, 0.1], [0.0, 0.03, 0.1]]
+    a = _lock("a", P, free=0.0)
+    b = dict(_lock("b", P, free=0.0), strands={"density": 0.5})
+    G = hs.lock_guides([a, b], np.zeros(3), S)["head"]
+    w, d = np.asarray(G["weight"], float), np.asarray(G["density"], float)
+    assert abs(w[1] / w[0] - 1.0) < 1e-6 and d.tolist() == [1.0, 0.5], (w, d)
