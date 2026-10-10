@@ -706,6 +706,8 @@ def fields() -> dict:
         for k, dL in _margin_fields().items():  # (eyedetail) the lid margins' thickness
             out[k] = (dL[mi] * [-1.0, 1.0, 1.0], dL)
         wl = _ss((T["X"][:, 0] + 0.002) / 0.004)[:, None]
+        wl[mi == np.arange(len(mi))] = 0.5   # (faces4) a vertex that is its own mirror splits evenly: the nose's
+        # fields are largest ON the centre line, where x ~ 0.1 mm put 3% of them on one side
         for k, d in {**_mouth_fields(), **_nose_fields()}.items():
             out[k] = (d * (1 - wl), d * wl)
         from pathlib import Path
