@@ -1561,6 +1561,23 @@ top: a 4 mm vertical disagreement that biases profile registration).
   neck_depth (MakeHuman CC0 neck targets; 0.5 = none) for the neck front across the stitch.
 - Per-picture expression (GNM lower-face comps) explains part of a smiling reference's fuller lips / cheek apple:
   fit it per view so the neutral identity isn't compared against a smile.
+- lt19b (branch worktree-agent-a7249a6883601c2d3), now in code:
+  - block_in_expression / blockin.expression_step: each detector view's expression (GNM lower_face_region comps 0-19,
+    prior sd 0.8; identity and camera held), Jacobian by finite differences once + chord iterations (~16 s), stored in
+    human_refs "expressions" and applied (blockin.view_base) in look / focus / the table (likeness.model_sides takes
+    per-photo meshes) / lid reads / camera refits; the model stays neutral. Eye-region comps are opt-in (eyes=True):
+    with them the upper lid fell 0.75 -> 0.36 iris radii (the detector's calibrated lid points disagree with the
+    iris-radius lid read, so the comps fought the lid pose). With a smile applied, rows it had hidden show (philtrum
+    +1.5 mm, nose length +1 mm on lt19): steps taken against the neutral clay had compensated for the smile.
+  - Widening steps driven by the blind alar row are worth undoing: judge alae on same-scale crops against the
+    inner-canthal span. A free bridge_height step cost |c| ~0, the held one +1.7 for the same profile.
+  - Presentation brows: the hair band as density (darkness against the skin), not a flat mask; the band's canvas and
+    outer end extend past MediaPipe's brow end (it stops short of the tail). skin hair.brows: taper (0.82 default:
+    how much the band thins toward the tail) and tail (how far the hairs reach).
+  - hair: the default groom grey and look.grey_locks follow age (none to 30, full from 50; hair.grey_age / look_of):
+    locks groomed earlier carry their grey in the spec, so the look default matters too.
+  - Five cheek-area clay readers (corner_temple, corner_cheekbone, under_eye, cheek_hollow, nasolabial_fold) return
+    exactly 0.00 on the clay: flagged, not counted, but those rows carry no information yet.
 
 ## jw (2026-10-10; a private likeness: per-person notes, body settings, rounds and reads are in the git-ignored
 ## workspace/private_notes/jw.md, never in the repo). General tool findings from it:
