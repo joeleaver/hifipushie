@@ -271,7 +271,7 @@ def _acc(name, A, y):
 
 
 # the GROSS landmarks (macro stage): eye corners, brow line, nasion, nose tip / subnasale, mouth corners and midline
-GROSS = {33, 133, 263, 362, 70, 105, 107, 300, 334, 336, 168, 6, 1, 2, 61, 291, 0, 17}
+GROSS = {33, 133, 263, 362, 468, 473, 70, 105, 107, 300, 334, 336, 168, 6, 1, 2, 61, 291, 0, 17}   # (+ irises)
 
 
 def _pt_group(row):
@@ -365,6 +365,9 @@ def system(st, views, cams, x, x_lin, border, nview):
             Ac = np.zeros((len(rc), n))
             Ac[:, :NC] = ((XBu - XBl) * wv[None] * 1000 / CONTACT_SIG).transpose(1, 2, 0).reshape(-1, NC)
             if CONTACT_BY == "expression":
+                # EXPRESSION ONLY (faces6 decomp: with the identity columns kept, the identity was bent to close the
+                # lips: tl10's front contact term alone pushed it +1.1 male-ward on GNM's sex axis, |part| 7.2)
+                Ac[:, :NC] = 0.0
                 Ac[:, NC + NE * vi: NC + NE * (vi + 1)] = ((XEu - XEl) * wv[None] * 1000 / CONTACT_SIG).transpose(1, 2, 0).reshape(-1, NE)
             else:   # the neutral's own contact: the picture's expression is not in it
                 D = (Xu - Xl) + np.tensordot(dc, XBu - XBl, 1)

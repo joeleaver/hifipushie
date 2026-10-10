@@ -29,7 +29,8 @@ def draw_brows(im, mesh, cam, box, k):
     return im
 
 
-HAIRCAP = os.environ.get("HAIRCAP", "0") == "1"   # a neutral dark cap over the scalp (bald clay reads male)
+HAIRCAP = os.environ.get("HAIRCAP", "0") == "1"
+LIGHTS = os.environ.get("LIGHTS", "key").split(",")   # key (the clay's top-front key) | photo (HER fitted light + AO share)   # a neutral dark cap over the scalp (bald clay reads male)
 HAIR_RGB = np.array([62.0, 46.0, 36.0])
 
 
@@ -71,12 +72,13 @@ if __name__ == "__main__":
         w = lambda a, b: float(np.linalg.norm(L[a] - L[b])) * 1000  # noqa: E731
         print(f"{m}: |c| {np.linalg.norm(ident(sp)):.2f} ({len(ident(sp))} comps); widths 1-15 {w(1, 15):.1f}, jaw 4-12 "
               f"{w(4, 12):.1f}, chin 6-10 {w(6, 10):.1f}, height 27-8 {w(27, 8):.1f}", flush=True)
-    sheet = Image.new("RGB", (T * (1 + len(models)), (T + 18) * len(views) + 18), "white")
+    rowsdef = [(vi, lt) for vi in views for lt in LIGHTS]
+    sheet = Image.new("RGB", (T * (1 + len(models)), (T + 18) * len(rowsdef) + 18), "white")
     dr = ImageDraw.Draw(sheet)
     for j, lab in enumerate(["photo"] + models):
         dr.text((j * T + 4, 2), lab, fill=(0, 0, 0))
     ref_st = humanfit.state(store.load(cm)["base"])
-    for i, vi in enumerate(views):
+    for i, (vi, lt) in enumerate(rowsdef):
         cam = refs["cameras"][vi]
         P = humanfit.project(cam, ref_st["L"])
         c = 0.5 * (P.min(0) + P.max(0))
@@ -84,11 +86,16 @@ if __name__ == "__main__":
         box = (c[0] - side / 2, c[1] - side / 2 - 0.05 * side, c[0] + side / 2, c[1] + side / 2 - 0.05 * side)
         img = Image.open(refs["views"][vi]["image"]).convert("RGB")
         y = 18 + i * (T + 18)
-        dr.text((4, y), f"view {vi} (cameras of {cm})", fill=(0, 0, 0))
+        dr.text((4, y), f"view {vi} (cameras of {cm}), light: {'her fitted light + AO share' if lt == 'photo' else 'clay key'}", fill=(0, 0, 0))
         sheet.paste(img.crop(tuple(int(round(b)) for b in box)).resize((T, T), Image.LANCZOS), (0, y + 16))
         for j, m in enumerate(models):
             kw = dict(ao=True, shadow=8.0) if SHADE else {}
-            im, k = likeness.render(meshes[m], cam, box, px=2 * T, brows=False, **kw)[:2]
+            if lt == "photo":
+                from noserender import lit_render
+                im, _, _ = lit_render(meshes[m], cam, img, box=box, px=2 * T)
+                k = 2 * T / max(box[2] - box[0], box[3] - box[1])
+            else:
+                im, k = likeness.render(meshes[m], cam, box, px=2 * T, brows=False, **kw)[:2]
             im = draw_brows(im, meshes[m], cam, box, k)
             sheet.paste(im.resize((T, T), Image.LANCZOS), ((j + 1) * T, y + 16))
     sheet.save(out)

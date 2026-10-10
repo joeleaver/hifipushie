@@ -50,7 +50,8 @@ def lit_render(mesh, cam, img, box=None, px=None):
     A, B, C = sol[:3]
     c0n = float(A + B)
     aw = float(np.clip(B / c0n, 0.0, 1.0)) if c0n > 1e-6 else 0.0
-    lt = (c0n, np.asarray(w, float) * max(float(C), 0.0), lt[2], aw)
+    lt2 = (c0n, np.asarray(w, float) * max(float(C), 0.0), lt[2], aw)
+    lt = lt2 if np.all(np.isfinite(lt2[1])) and np.isfinite(c0n) else lt   # (a degenerate crop: keep the first pass)
     im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=SOFT, light=lt)
     return im, lt, ps
 

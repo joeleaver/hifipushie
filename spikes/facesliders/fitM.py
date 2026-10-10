@@ -36,6 +36,9 @@ TERMS_M = os.environ.get("TERMS_M", "oval,gross,clicks,profile_contour").split("
 Z_RIDGE = float(os.environ.get("Z_RIDGE", "1.0"))   # + z ~ N(0, 1/ridge) on the macro weights: the 37 directions are
 # correlated, without it the solve cancels big opposite macros (face_length +10 sd with |c| 4.8): uninterpretable
 EXTRA = os.environ.get("EXTRA_DIRS")
+STEP_MAX = float(os.environ.get("STEP_MAX", "1.0"))   # |dc| per round after the first (0: off)
+PHOTO_SIG = float(os.environ.get("PHOTO_SIG", "0"))   # > 0: the macro-scale photometric term (photom.py), log units
+PHOTO_VIEWS = [int(v) for v in os.environ.get("PHOTO_VIEWS", "0,1").split(",")]
 ETH = os.environ.get("ETH", "1") == "1"
 ETHSTATS = os.environ.get("ETHSTATS", "/mnt/data/hifipushie/faces6/ethstats.npz")
 RIDGE_OVERRIDE = {}   # npz of extra named directions (170, k) + names: the vocabulary's additions
@@ -118,7 +121,32 @@ def fit(spec, refs, body=None, log=print):
             g_ = B.T @ a_sex
             Hz += w * w * np.outer(g_, g_)
             bz += w * w * g_ * (SEX_T + s0)
-        z = np.linalg.solve(Hz, bz)
+        if PHOTO_SIG > 0 and rnd > 0:   # (round 0: the landmark solve from the mean; shading from round 1, damped)
+            import photom
+            from hifipushie import likeness
+            mesh = likeness.model_mesh_from_state(st)
+            if "_pv" not in locals():
+                _pv = []
+                for vi in PHOTO_VIEWS:
+                    img = __import__("PIL.Image", fromlist=["Image"]).open(views[vi]["image"]).convert("RGB")
+                    _pv.append(photom.View(views[vi], cams[vi], mesh, likeness.detect([img])[0]))
+            for pv, vi in zip(_pv, PHOTO_VIEWS):
+                pv.cam = cams[vi]
+                pv.fit_light(mesh)
+            VB = photom.vertex_basis(st)
+            r0, J, keep = photom.jacobian(_pv, mesh, VB, [B[:, j] for j in range(B.shape[1])])
+            w2 = 1.0 / PHOTO_SIG ** 2
+            Hz += w2 * J.T @ J
+            bz += w2 * J.T @ (J @ z - r0)
+            chi["photometric"] = (round(float(w2 * r0 @ r0), 1), int(len(r0)))
+            chi["photometric_rms"] = (round(float(np.sqrt(np.mean(r0 ** 2))), 4), 0)
+            log(json.dumps({"photo_light": [[round(pv.light[0], 3), np.round(pv.light[1], 3).tolist(), round(pv.light[3], 2)] for pv in _pv]}))
+        z_new = np.linalg.solve(Hz, bz)
+        step = float(np.linalg.norm(B @ (z_new - z)))
+        if STEP_MAX > 0 and step > STEP_MAX and rnd > 0:   # a trust region on the identity (the photometric term
+            # ran away undamped: |c| 3.7 -> 11 -> 19 -> 21); round 0 from the mean is the landmark solve's own
+            z_new = z + (z_new - z) * STEP_MAX / step
+        z = z_new
         cz = B @ z
         dof = float(B.shape[1] - np.trace(np.linalg.solve(Hz, B.T @ B)))
         log(json.dumps({"round": rnd, "c_norm": round(float(np.linalg.norm(cz)), 2), "sex_gnm": round(gates.sex_read(cz), 2),

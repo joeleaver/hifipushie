@@ -1186,3 +1186,39 @@ expression-only. The jaw points outside her jaw in f6_06 are GNM's 68 on the 3D 
   macro): the 37 directions span 0.30 of it; largest male - female in macro sd: brow_height -0.59, head_size +0.46,
   bridge_height +0.41, bridge_hump +0.41, brow_ridge +0.35, nose_width +0.34, eye_tilt -0.33, forehead_slope +0.32;
   jaw / face width barely (+0.21 / -0.18). Every macro's cosine with the sex direction is <= 0.29.
+
+### Stage M, the macro fit (fitM.py; mtable.py = the acceptance table; mreport.sh = sheet + table per round)
+Joe: "the closer we can get the initial fit, the better. Head and jaw shape, eye placement, nose size and shape,
+mouth size and placement." The head starts from its body's head with identity 0 (local layers stripped); c = B z.
+- BASIS=macros: humanmacro's 37 (free directions, comps 0-119) + GNM's sampler sex direction + 3 ethnicity
+  contrasts (ethstats.npz: the sampler sampled per gender x 4 groups, 4000 each; the groups' gender-pooled mean
+  offsets span 3 dof; prior = the sampler's population sd along each, 1.92 / 1.51 / 1.45), z ridge 1 (without it
+  the correlated macros cancel: face_length +10 sd at |c| 4.8). BASIS=comps: 0-39, the check.
+- Evidence: MediaPipe face oval + GROSS landmarks (fit5.GROSS: eye corners, irises, brow line, nasion, nose tip /
+  subnasale, mouth corners / midline), profile clicks, the profile contour at 2 mm; sex_gnm -1 +- 0.5 (soft).
+  Body params: BODY / GRID (+ GRID_PRIOR) over MakeHuman's params.
+- Tess (f3_t1's photos), data chi2 / 347 rows: macros 160.6 (|c| 3.31, dof 16.6), + ethnicity 156.5, comps 0-39
+  159.4 (|c| 4.65): the macro vocabulary fits the outline as well as the anonymous comps (nothing to add). Weight
+  grid 0.05-0.45 flat within the profile's correspondence noise (+-5): stays at the prior 0.15. Ethnicity
+  coordinates -0.48 / -0.12 / +0.27 population sd (the evidence barely uses them; no label asserted). The profile
+  contour carries ~2/3 of the chi2 (~1.75 mm rms; f6_13: follows forehead, nose, tip, chin within 1-2 mm; misses at
+  the stomion and under the chin).
+- Acceptance table (likeness items per group; f3_t1 | M macros+eth): head 6/7 | 6/7 (width_temple +4.3 mm MISS),
+  jaw / chin 5/7 | 7/7, eyes 5/5 | 2/5 (pupil_distance +2.0 mm, eye_width +2.3, brow_eye -2.6 in front: MISS), nose
+  4/5 | 5/5, mouth 5/8 | 8/8. Irises added to GROSS after this.
+- Read (f6_11): every M fit still male-leaning and older in hair-cap clay (long high-bridged nose, deep-set eyes
+  under a shadowed brow, hollow under the cheekbones). Silhouettes and landmark positions don't see the depth of
+  the face's FRONT surfaces: the macro-scale photometric term (photom.py) is for that.
+
+### The macro-scale photometric term (photom.py; fitM PHOTO_SIG)
+Per view (front, 3/4): face box at 0.8 mm/px; the photo's GREEN channel (linear: discounts redness); mask = the
+detector's skin mask AND the model's skin AND not hair (< 0.55 x skin median); model shade = c0 (1 - aw + aw AO) +
+max(w.n, 0) lit + min(w.n, 0) with her light fitted on the model, times a smooth albedo (quadratic, log domain, NO
+constant, ridge ALB_RIDGE); residual = log photo - log shade - albedo, mean removed, Gaussian LP_MM 3 mm, sampled
+every 3 mm (~1770 samples over two views). Jacobian over the basis by finite differences on the mesh (vertices move
+linearly with the identity: photom.vertex_basis), light / albedo held; ~2.5 s a column (AO recomputed).
+Sensitivities on f6_M_mace (rms of d residual per +1 sd): cheek_fullness 0.17 / 0.08 (front / 3/4), eye_depth 0.11 /
+0.07, brow_ridge 0.08 / 0.06, face_width 0.05 / 0.02. First run DIVERGED (|c| 3.7 -> 11 -> 19 -> 21, photometric rms
+0.18 -> 1.14): the albedo's constant and the light's level drifted together (c0 -> 0, |w| -> 4). Fixed: no albedo
+constant + ridge, c0 >= 0.25 x the skin median, cast shadows off in the term (hard shadows toggle per FD step),
+photometric from round 1 (round 0 = the landmark solve from the mean), a trust region |dc| <= STEP_MAX (1.0) a round.

@@ -515,7 +515,7 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
         _RUN[0](*args, np.ascontiguousarray(np.repeat(avv[:, None], 3, 1)), W, H, aimg, zo)
     lit = np.ones((H, W))
     on = np.isfinite(zn)
-    if shadow and on.any():
+    if shadow and on.any() and np.all(np.isfinite(key_w)) and np.linalg.norm(key_c) > 1e-9:   # (no direct light: no shadow)
         from .likeness_shape import unproject
         Vo, Fo = _occluders(mesh)
         ii, jj = np.nonzero(on)
