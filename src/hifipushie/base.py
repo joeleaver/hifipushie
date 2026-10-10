@@ -2176,6 +2176,12 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     # under the lid rims (centred there, the sphere stood 1-2 mm proud of the rims: bulging eyes in profile). Each
     # centre moves back along the face until the sphere clears every lid landmark by EYE_SEAT
     r_ball = s * k_eye * float(np.mean(r_eye)) * EYE_R
+    if head.get("eye_radius"):  # (blockin2) an ABSOLUTE eyeball radius (m, world; an adult's ~0.012), not GNM's eye x
+        # the head's scale: GNM's own eyeball is a 14.6 mm sphere (its limbus 6 mm), and x the body's head scale it
+        # made Garrett's 14.6 mm with a 7.3 mm drawn iris. Seated by the same search: it comes forward until it rests
+        # under the lid rims, its front near GNM's. Only eye size (head.eyes, a style's big eyes) multiplies it: not
+        # the head's size (block-in head_scale is a realistic head's size; adult eyeballs barely vary, ~24 mm long)
+        r_ball = float(head["eye_radius"]) * k_eye
     back = -(R @ np.array([0, 0, 1.0]))
     eyes = []
     for j in (2, 3):

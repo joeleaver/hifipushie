@@ -55,7 +55,7 @@ GROUPS = {
 FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion"}
 
 BODY_KEYS = ("weight",)
-HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes"}
+HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes", "eye_radius": "eye_radius"}
 # head_scale: the one mesh's head is the BODY's head (base.head.scale is overwritten by the body's size); a uniform size
 # change is base.style.human.head_size (humanstyle: the head scaled about the top of the neck, eyeballs with it)
 POSE_KEYS = ("lid_upper", "lid_lower")

@@ -1517,3 +1517,33 @@ data-backed decision above; (3) the eye_width / eye_opening readers on clay (sus
 (4) the painted 3/4 is turned ~8 deg more than its camera: a silhouette-aware camera refit for painted views;
 (5) the lip_upper click on profiles vs lm51 (the clicked point is the lip's most forward point, lm51 the vermilion
 top: a 4 mm vertical disagreement that biases profile registration).
+
+## blockin2 (2026-10-10, "blockin2" agent, branch worktree-agent-aef00385e135b10dd from main 6fb2795; scratch
+## /mnt/data/hifipushie/blockin2: run.sh / tests.sh / srv.py (as blockin's), eyerep.py, irismm.py, crop.py; sheets human_renders/b2_*)
+
+### 1. Eyeball: absolute radius (key head.eye_radius; default OFF, no accepted build changes)
+- Why the ball was big: GNM's template eyeball is itself a 14.6 mm sphere (sphere fit to its 771 eye vertices: r 14.51-14.56
+  mm, centred on its eye joint; its limbus 6.0 mm) and we used 0.96 x that x the body head's scale (Garrett 1.013 -> 14.6
+  mm with head_size 1.03 in the eye scaling; Tess 0.909 x eyes 1.05 -> 12.7). The drawn iris is 0.51 r: 7.3 mm on Garrett.
+- His concept measured through the fitted front camera: iris radius 5.8 mm (a realistic painting), eye width 25.7 / 24.8,
+  opening 6.9 mm. Model bi_G14: width 26.1 (right), opening 8.5 mm (lids matched in iris radii on a 7.3 mm iris).
+  So the opening's WIDTH is right and only the ball / iris was big: the socket is NOT scaled (scaling the eye region
+  by 12/14.6 about the centre would make the eye 21 mm wide).
+- base.head.eye_radius (m, world): r_ball = eye_radius x head.eyes (eye_size / a style's big eyes); NOT x head size
+  (adult eyeballs barely vary). The same seat search (the ball comes forward until the rim landmarks clear it by
+  EYE_SEAT): a 12 mm ball's front pole ends 0.4-0.7 mm further forward of the rims than the 14.6 mm one (1.1 -> 1.5 mm
+  after the lid match on Garrett). Block-in key `eye_radius` (SET). Test: test_blockin.py::test_fixed_eyeball_radius.
+- Garrett b2_G02 (bi_G14 + eye_radius 0.012; b2_G01 was the same with x head_scale, superseded): iris 6.03 mm, lids now
+  read 0.53 / 0.88 iris radii (his 0.46 / 0.72) -> lid_read match -> b2_G03 (lid_upper -1.52 mm, lid_lower +2.16 mm):
+  margins 0.47 / 0.72, opening 7.2 mm (his 6.9 camera / 7.0 iris-scaled), width 25.8 (his 25.7 / 24.8). Table unchanged
+  except mouth_over_alar at its 0.06 edge (lid pose nudges the nasion). Read (b2_G03_eyes_vs_G14.png, b2_G03_vs_G14.png):
+  smaller iris, less white, heavier lids: closer to his hooded, tired eyes; the whole face otherwise unchanged.
+- Tess b2_T01 / b2_T02 (bi_T03 + eye_radius 0.012 x her eye_size 1.05 = 12.6 mm, lids re-matched): 12.69 -> 12.6 mm,
+  barely moves (sheet b2_T02_eyes_vs_T03.png). Her photo's iris through the fitted camera reads 5.1 mm (MediaPipe on a
+  real photo; either her camera's scale or the detector's iris): not chased. Her eyes' aspect stays 2.4 vs her 2.8-3.1
+  (wider, almond): lids / crease, a later feature round.
+- likeness eye_width item on Garrett: 28.8 model vs 25.5 photo, while the model's own corner landmarks are 26.1 apart:
+  the clay reader (handover item 3) inflates by ~2.7 mm; still open (item 4 below).
+- To decide (coordinator): make eye_radius 0.012 the default for one-mesh humans (changes every accepted human's eyes:
+  ball 14.6 -> 12 on Garrett-sized heads, 12.7 -> 12 on Tess-sized; their lids then need lid_read match), or keep it a
+  block-in key set by block_in_start for new block-ins.

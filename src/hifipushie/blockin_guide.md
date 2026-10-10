@@ -42,7 +42,10 @@ eye catches what the points miss; the target table catches what your eye misses.
    - `sex`, `eth0..2`: the sampler's sex axis (+1 = female mean -> male mean) and ethnicity contrasts.
    - BASE keys, SET: `head_scale` (base.style.human.head_size: the head's UNIFORM size about the neck, x the body's
      own head; 1 = the body's), `gnm_base`, `dimorphism`, `weight`, `eye_size` (base.head.eyes: the eye AND its
-     orbit scaled about the eye centre).
+     orbit scaled about the eye centre), `eye_radius` (base.head.eye_radius, m: an ABSOLUTE eyeball, 0.012 for an
+     adult, drawn iris ~6 mm; without it the ball is GNM's 14.6 mm eye x the head's scale, a 7.3 mm iris on a big
+     head; it seats itself under the lid rims; eye_size still multiplies it, head_scale doesn't). Set it, then
+     `lid_read(match=True)`: the lids' iris-radius read changes with the iris.
    - LOCAL residuals, SET: `local:<faceslide slider>` (base.head.sliders), for what no identity direction draws;
      the reply warns past 2.5 x the slider's population sd beyond GNM (ICT: nose_radix_width 0.09, nose_tip_width
      0.18, nose_dorsum_width 0.12).
