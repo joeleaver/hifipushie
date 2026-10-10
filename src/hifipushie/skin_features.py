@@ -646,7 +646,7 @@ def freckle_options(o: dict) -> dict:
     if not isinstance(zo, dict) or set(zo) - set(z):
         raise SpecError(f"skin features.freckles: zones is {{zone: weight}} over {', '.join(z)}")
     z.update({k: float(v) for k, v in zo.items()})
-    return {"amount": float(np.clip(o["amount"], 0, 3)), "size": float(o.get("size", 0.0016)), "clump": float(np.clip(o.get("clump", 0.6), 0, 1)),
+    return {"amount": float(np.clip(o["amount"], 0, 3)), "size": float(o.get("size", 0.0013)), "clump": float(np.clip(o.get("clump", 0.6), 0, 1)),
             "dark": float(np.clip(o.get("dark", 0.2), 0, 1)), "moles": 0, "zones": z, "seed": int(o.get("seed", 0))}
 
 

@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 9
+VERSION = 10
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -570,7 +570,7 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     R = np.zeros((H, W), np.float32)
     G = np.zeros((H, W), np.float32)
     B = np.zeros((H, W), np.float32)
-    per_m2 = 2.2e4 * float(o["amount"])          # up to ~2.2 / cm2 at the densest (dense freckling: several)
+    per_m2 = 1.2e5 * float(o["amount"])          # ~12 / cm2 where densest at amount 1 (densely freckled noses: 10-30)
     dens = freckle_density(J, o)
     P, Nrm, d = scatter(V, N, F, dens, per_m2, rng)
     keep = outward(sp, P, Nrm, V)
@@ -580,8 +580,8 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         t1, t2 = frames(Nrm, np.tile([1.0, 0, 0], (n, 1)))
         x0, A = jacobians(sp, P, t1, t2)
         pxm = _px_m(A)
-        rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.42, n) * (0.75 + 0.4 * d)      # denser: bigger, darker
-        rad = np.clip(rad, 0.00025, 0.004)
+        rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.35, n) * (0.75 + 0.4 * d)      # denser: bigger, darker
+        rad = np.clip(rad, 0.00025, 0.0025)
         soft = rng.uniform(0.2, 0.65, n)
         lobes = rng.normal(0, 1, (n, 4)) * np.array([0.0, 0.16, 0.1, 0.07])
         ph = rng.uniform(0, 2 * np.pi, (n, 4))
