@@ -129,7 +129,15 @@ def inject(spec: dict) -> dict:
         # numbers were set at, and the fill came out through the lips' corners and showed pale inside the nostrils)
         ks = float(head["carry"]["s"]) / 1.1 if head.get("room") else 1.0
         if (b.get("head") or {}).get("interior"):  # a mouth that can open (face shapes): slit, bag, teeth, tongue
-            out["blobs"] = {**(out.get("blobs") or spec.get("blobs") or {}), **mouth_interior(head, b["head"])}
+            mi = mouth_interior(head, b["head"])
+            if float((b.get("head") or {}).get("lip_seal") or 0.0) >= 0.5:
+                # a SEALED mouth (lip_seal, field only) keeps its teeth and tongue (parts of their own) but neither the
+                # slit nor the bag: their subtracts cut the fused lips open again (the bag's box reaches to 2 mm of
+                # the lips' front), a row of holes and pale "fangs" (the teeth through them) along the seam in every
+                # render of a sealed head with an interior (Garrett gj6 / gj8, 2026-10-09). A mouth that must open
+                # (face shapes' export) is an unsealed one.
+                mi = {k: v for k, v in mi.items() if not k.endswith(("_mouth_slit", "_mouth_bag"))}
+            out["blobs"] = {**(out.get("blobs") or spec.get("blobs") or {}), **mi}
         elif float(np.linalg.norm(iu - il)) > 0.0015:  # parted lips (a fill behind closed ones made them pout)
             blobs = dict(out.get("blobs") or spec.get("blobs") or {})
             blobs.setdefault("mouth_fill", {"at": [round(float(x), 4) for x in 0.5 * (iu + il) + [0, 0.012, 0]],
