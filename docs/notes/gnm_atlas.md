@@ -702,3 +702,81 @@ lower lip / corners ~5, chin / mentolabial ~3, cheek soft tissue ~4) + per-pictu
   (alar width, tip projection, nasal length, nostril show, columella, dorsum line).
 - M7: style: G_S / mu_S on top of the space, the four human_* sheets re-expressed, one fitted to references. Judge:
   Tess and Garrett realistic / feature-animation / anime, same identity.
+
+### 7. Perception: what a viewer sees, not mm (added 2026-10-10; Joe: "The human brain is really good at perceiving
+### tiny changes when they're related to identity.")
+Sections 0-6 above measure in mm / px / data variance. Those are the wrong units for "does it look like her": I
+dismissed GNM's components 120-169 as "0.07-0.09 mm/sd", ordered bases by variance and weighted the solve in mm. Changes:
+- A PERCEPTUAL EFFECT per direction (new tool, M0b): render -1 / +1 sd of a direction in OUR renderer (same style both
+  sides: clay vs clay or dressed vs dressed, so the clay-vs-painting gap that sank face-ID as a fit term does not
+  apply) through 3-5 views on 2-3 heads (Tess, Garrett, GNM's mean), and take the face-ID embedding distance between
+  the two (faceid.py: SFace, Apache, the default; ArcFace w600k_r50 is InsightFace's non-commercial weights: measuring
+  only, never shipped, as garrett_head.md set it), next to the mm. Calibrate first: our render vs itself re-rendered
+  (noise floor), and the distance between two different GNM heads (a "different person" scale). Rank by it: all 170
+  identity comps, every expression comp's leakage into the neutral face, every coupled slider / residual / extension
+  direction. Open questions this answers: are 120-169 really negligible perceptually; do small-mm directions at the
+  eye corners, lid margins, nostrils and lip borders move identity more than large-mm directions on the cheeks;
+  which of the 14 nose fields a viewer can tell apart.
+- Salience inside the solve: the evidence terms stay in their units, but each geometry residual gets a weight by
+  facial region (eyes / lid margins / brows, mouth borders, nose tip / alae, the face outline, cheeks / forehead
+  lowest), CALIBRATED from the embedding sensitivities above (the weight of region R ~ the embedding change per mm
+  of moves confined to R), not set by hand. The embedding itself stays OUT of the objective (it failed across media);
+  it is a ranking / gating tool between our own renders.
+- Literature (looked up, cited qualitatively; no numbers taken from it): Haig (1984, Perception 13:505-512) found
+  displacements of facial features in unfamiliar faces detectable at about the visual-acuity limit (as summarised by
+  Schwaninger, Ryf & Hofer 2003, Vision Research); Hosie, Ellis & Haig (1988) similar for familiar faces; a 2015 Cortex
+  study measured JNDs for feature-position changes and found the eye region's spatial resolution unaffected by
+  inversion (the eye region is read part by part as well as configurally). Diagnostic-feature studies (Schyns,
+  Bonnar & Gosselin 2002, Psych. Science: eyes and mouth carry identity in the Bubbles task; Sadr, Jarudi & Sinha
+  2003, Perception: removing eyebrows hurts recognition as much as removing eyes) point the same way. The thresholds
+  we use will be OUR measured embedding sensitivities, with these as the reason to expect the eyes / brows / mouth to
+  dominate.
+- Basis ordering and truncation by perceptual weight: a regional basis is ordered by variance x perceptual effect
+  (the expected identity change a mode makes across the population), not by variance alone; components and modes are
+  kept or dropped on that. A mode with little variance but a big identity effect (a lid-margin or nostril-rim mode)
+  is kept.
+- Style's "simplify" must not damp what carries identity: simplification removes perceptually WEAK detail (high
+  variance-normalised frequency, low identity effect: skin relief, small asymmetries), while the identity-carrying
+  directions are kept or exaggerated (a caricature keeps identity by exaggerating it: today's `exaggerate`). An anime
+  nose shrinks the nose's SIZE but keeps its proportions' sign where they carry identity (tip up / down, width) at a
+  reduced gain.
+- Gates add an identity check between our own renders: before vs after any solve or basis change (the same person:
+  embedding distance under a threshold set from the calibration, per view), and realistic vs styled version of one
+  person (styled should stay closer to its own realistic version than to any other subject's: a rank test across
+  Tess, Garrett and GNM samples).
+
+How it changes the plan:
+- M0b (new, before M1): the perceptual-effect tool + calibration, and the ranking of GNM's 170 comps, the expression
+  comps' neutral leakage, the coupled sliders and the 14 nose / 5 mouth extensions. Decides whether 120-169 enter the
+  space with full weight, and gives the first salience weights.
+- M2: regional bases ordered and truncated by variance x perceptual effect; per-mode report gains an "ID effect" column.
+- M3: random faces from the prior judged by eye AND by the embedding spread (do prior samples differ like different
+  people do?).
+- M5: the solve's geometry weights come from the salience calibration; its gates include the identity check.
+- M7: style transforms checked with the realistic-vs-styled rank test; simplify by perceptual weight.
+
+### M0 result (2026-10-10, commit e13fe4b): the dorsum step
+- Hypothesis CONFIRMED: faceext.minus_probable cut the cheap-identity correction at a hard region mask (3% of the
+  field's max). Now `faceext.WINDOW` (12 mm): the correction is applied under a smoothstep window that eases from the
+  region to 0 over 12 mm (`_window`). Mouth fields keep the hard mask (WINDOW_MOUTH 0: windowed, the projection
+  reached into the corner hold and folded volume / middle at 0.4-0.7; redo with the hold after the projection in M2).
+- Also: nose fields hold the lids' rims (smoothstep 2-8 mm from the rim; the hump's field reached the inner canthi:
+  rims moved 0.07 mm); hold_creases moves skin only (it moved eyeball vertices next to lid creases); faceslide splits a
+  self-mirrored vertex 0.5 / 0.5 (centre-line vertices at x ~ 0.1 mm put 3% of the nose's largest moves on one side).
+- Curvature change on visible skin at +1 (ncurv.py; max / p99, 1/m; hard mask -> window 12 mm, out/ncurv_all.txt,
+  out/ncurv_final.txt): curve 105 / 21 -> 39 / 16; greek 106 / 21 -> 24 / 7; compression 40 / 11 -> 15 / 7; width2
+  98 / 24 -> 16 / 9; width1 56 / 15 -> 16 / 7; volume 87 / 24 -> 28 / 10; point_width 44 / 8 -> 11 / 3; width3
+  220 / 70 -> 86 / 19; nostrils_width 144 / 50 -> 93 / 15; point 76 / 14 -> 48 / 12; hump 107 / 31 -> 106 / 24;
+  septum 133 / 60 -> 159 / 20; base 94 / 26 -> 99 / 25; nostrils_angle 93 / 20 (at scale 0.42) -> 228 / 26 (now
+  fold-free at 1.0, 2.9 mm). The remaining maxima (hump, septum, base, nostrils_angle, width3, nostrils_width) are all
+  at the alar-facial groove (x +-13, 10 mm under the tip, 17 behind): MakeHuman's own data bends it (wall.py: the raw
+  carried hump has 64 /m on the side wall before any of our processing). p99 for every extension now < 30 /m (new
+  test). Hand-made sliders for scale: 40-66 /m max.
+- Strips: human_renders/f4_03_nose_m0_1..3.png (all 14, -1 / 0 / +1, front / 3/4 / profile, clay) beside the hard-mask
+  f4_01_nose_strip_1..3. By eye: the curve +1 dorsum crease and the greek -1 nasion notch are gone; curve +1 keeps a
+  faint soft line on the side wall in 3/4 (39 /m), hump +1 a faint one. Several fields are small at sheet scale
+  (base 0.9 mm, point_width 0.9 mm).
+- Tests: test_faceext (+ test_extensions_bend_the_visible_skin_smoothly), test_faceslide, test_faceatlas: 20 pass.
+  Loosened, with the reason in the test: locality 10% -> 12% of the template (windowed fields reach 12 mm further;
+  hump 10.2%); cheap-direction orthogonality for the nose 0.1 -> 0.2 (windowed + rim hold leave <= 0.17 along them:
+  curve, nostrils_width; the coherent model's joint prior replaces this test's role).
