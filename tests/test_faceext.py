@@ -68,3 +68,23 @@ def test_extensions_are_local_and_symmetric():
         d = np.asarray(faceext.table()[k], float)
         assert np.abs(d - d[mi] * [-1.0, 1.0, 1.0]).max() < 1e-6, k
         assert (np.linalg.norm(d, axis=1) > 2e-4).sum() < 0.1 * len(d), k
+
+
+def test_mouth_extensions_reach_a_millimetre():
+    """faces3: with the lips' inner rolls held and the creases moved rigidly (faceext.hold_creases) the carried mouth
+    targets stay fold-free to >= 1 mm (before: 0.38-0.62 mm, folded in the inner roll near the corners)."""
+    if not _ok():
+        return
+    for k, v in faceext.EXT.items():
+        if v[0] == "mouth" and k in faceext.table():
+            assert np.linalg.norm(faceext.table()[k], axis=1).max() > 1.0e-3, k
+
+
+def test_crease_hold_keeps_rigid_motions():
+    """A rigid motion (a shift and a small turn) keeps every crease already: hold_creases leaves it as it is."""
+    if not _ok():
+        return
+    X = faceslide.template()["X"]
+    w = np.array([0.01, -0.02, 0.015])
+    d = np.array([3e-4, -1e-4, 2e-4]) + np.cross(w, X - X.mean(0))
+    assert np.abs(faceext.hold_creases(d) - d).max() < 1e-9
