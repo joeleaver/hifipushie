@@ -5,6 +5,9 @@ and GNM's head topology, stitched once, offline, at the neck (hand-finished temp
 character is built). The body's own head carries the face, so a baby has a baby's head and no neck, an old woman an
 old woman's, and the neck is always continuous. Everything else works as on any model (look, skin, hair, garments,
 rig, export_asset).
+The eyeball is a real one (base.head.eye_radius: 12 mm for an adult, smaller in children, written by `human` and
+`block_in_start`), not GNM's 14.6 mm eye scaled with the head; models made before 2026-10-10 lack the key (their
+ball and drawn iris are ~20 % big on a large head): set it, then re-match the lids (`lid_read(match=True)`).
 
 What a character artist does with a base mesh applies here: **the big proportions first (age, sex, build), then
 the face's identity, then local corrections, then style, each judged on the whole figure.**

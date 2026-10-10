@@ -278,6 +278,7 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         c = np.asarray(D["m_m"] if male else D["m_f"], float)
     set_identity(sp, c)
     hd["gnm_base"] = float(default_gnm_base(a) if gnm_base is None else gnm_base)
+    hd.setdefault("eye_radius", humans.eye_radius(a))   # an adult eyeball (12 mm), not GNM's eye x the head's scale
     rj = {"views": views, "cameras": cams}
     if cams is None or cameras == "refit":
         rj["cameras"] = fit_cameras(sp["base"], views)

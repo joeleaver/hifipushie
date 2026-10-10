@@ -17,6 +17,15 @@ import numpy as np
 
 STAGES = ((1.5, "baby"), (4, "toddler"), (9, "child"), (13, "pre-teen"), (20, "teen"), (60, "adult"), (200, "elder"))
 OUTFITS = ("tee_shorts", "onesie", "underwear", "none")
+# the eyeball's axial length (mm) by age (approximate growth curve from ocular biometry, e.g. Gordon & Donzis 1985:
+# newborn ~17 mm, ~20 at 1, ~23.5 by the teens, adult ~24): new one-mesh humans get half of it as head.eye_radius
+EYE_AXIAL = ((0.0, 16.8), (1.0, 20.2), (3.0, 21.5), (6.0, 22.4), (13.0, 23.3), (18.0, 24.0))
+
+
+def eye_radius(age: float) -> float:
+    """The eyeball's radius (m) at this age (EYE_AXIAL / 2): 0.012 for an adult."""
+    a, L = zip(*EYE_AXIAL)
+    return round(float(np.interp(float(age), a, L)) / 2000.0, 5)
 # the tee's cloth (adult metres). The tube starts 3 cm under the shoulder joints and stands 6 mm off its hull: from
 # 7.5 cm under them at 12 mm the cloth lay close over the shoulder blades and then stepped 1-2 cm BACK where the tube
 # took over, a hump between the blades in every side view (the body's own back is flat there: measured)
@@ -168,6 +177,9 @@ def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: f
         if "mouth_gap" not in (head or {}):  # the rest mouth closed, lips in contact along their width
             # (faceslide.seal_delta; GNM's own neutral parts them: a slit with the lower lip hanging)
             hd.setdefault("lip_seal", 1.0)
+        # an adult's eyeball, not GNM's 14.6 mm eye x the head's scale (blockin2; coordinator 2026-10-10: every NEW
+        # human; written into the spec, so accepted models keep theirs)
+        hd.setdefault("eye_radius", eye_radius(age))
     elif source != "makehuman":
         raise ValueError('human: source is "makehuman" (a GNM head grafted onto the body) or "human" (one mesh)')
     base = {"body": body, "eyes": "eyes", "cornea": True, "head": hd}

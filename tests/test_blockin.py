@@ -79,6 +79,7 @@ def test_start_step_table_log_and_registration():
         assert not any(k in h for k in ("sliders", "warp", "fold", "pose", "shape"))
         assert np.allclose(bi.identity(sp), bi.data()["m_m"], atol=1e-4)
         assert h["gnm_base"] == bi.default_gnm_base(sp["base"]["body"]["age"])
+        assert h["eye_radius"] == 0.012   # every new human: an adult eyeball
         assert e["start"]["cameras"] == "kept"
         with pytest.raises(ValueError, match="exists"):
             bi.start(a, REF, sex="male")
@@ -180,3 +181,10 @@ def test_fixed_eyeball_radius():
             rim = L[42:48] if e[0] > 0 else L[36:42]
             d = np.linalg.norm(rim - np.asarray(e), axis=1).min() - float(h["eye_r"])
             assert 0.0007 < d < 0.0010, d
+
+
+def test_new_human_eye_radius():
+    from hifipushie import humans
+    assert humans.eye_radius(40) == 0.012 and 0.0083 < humans.eye_radius(0) < 0.0085
+    assert humans.spec(age=30, sex=1, source="human")["base"]["head"]["eye_radius"] == 0.012
+    assert "eye_radius" not in humans.spec(age=30, sex=1)["base"]["head"]   # the grafted head: unchanged

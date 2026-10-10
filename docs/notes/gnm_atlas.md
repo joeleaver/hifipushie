@@ -1544,6 +1544,7 @@ top: a 4 mm vertical disagreement that biases profile registration).
   (wider, almond): lids / crease, a later feature round.
 - likeness eye_width item on Garrett: 28.8 model vs 25.5 photo, while the model's own corner landmarks are 26.1 apart:
   the clay reader (handover item 3) inflates by ~2.7 mm; still open (item 4 below).
-- To decide (coordinator): make eye_radius 0.012 the default for one-mesh humans (changes every accepted human's eyes:
-  ball 14.6 -> 12 on Garrett-sized heads, 12.7 -> 12 on Tess-sized; their lids then need lid_read match), or keep it a
-  block-in key set by block_in_start for new block-ins.
+- DECIDED (coordinator): every NEW human gets it: humans.spec(source="human") writes head.eye_radius =
+  humans.eye_radius(age) (EYE_AXIAL: axial length by age, ~17 mm newborn -> 24 mm adult, halved: 0.012 from 18), and
+  block_in_start sets it too (setdefault). Accepted models keep theirs (no key: the old ball); re-match when worked on.
+  Guides: blockin_guide (BASE keys), human_guide (top). Tests: test_new_human_eye_radius, start asserts it.
