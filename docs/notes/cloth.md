@@ -2222,6 +2222,12 @@ NO SIM WAS RUN.
     jobs by hand (a cancel is billed for the time held; the runner prints only at setup and end): the broker's stall
     guard kills a job with no output AND no GPU use for 10 min, free. Submit with timeout_minutes ~30, stall_minutes
     default. bl.sh status <batch> to look.]
+    [UPDATED 2026-10-10, broker prod v132: a job is free only if it fails BEFORE reaching a box (no machine, box never
+    up, bad input); once on a box its time is billed however it ends (success, failure, stall, cancel, box death), so
+    failed sims now cost their run time: check inputs / starts before sending. get_bundle_batch entries carry
+    box_activity (active / quiet, idle_secs, last GPU / CPU / disk / net use); a box idle 15 min fails its jobs as
+    "stalled" and is replaced (per-job stall_minutes, default 10, applies first). A working long sim is no longer cut
+    by the 1-hour box cap (ZOZO reads ~26% GPU, 1 core: shows as active).]
     gc1 (out/c11_gc1.pkl, its shirt c11_gc1_under.pkl = c11_gb's): collar_show at CB 25.5 -> 12.4 mm (rule 10-20: OK);
     gates PASS (0 skin px, collar / V 0.00), lapels straight (roll 4.7-5.3, edge 0.1-0.3) 64 / 67 mm, notch 67 / 66 mm
     below the chin (concept 63 / 56); visible shirt x jacket 32 (was 0). Chest only 441 -> 436 mm: four points of
@@ -2235,4 +2241,4 @@ NO SIM WAS RUN.
     (5) shoulders 528 vs 482 mm (+10%): the block's shoulder width / sleeve-head support, which is also most of the
     chest width; (6) front_hang 112 mm (the fronts swing open: hem spring / front balance), hem_sweep -21%;
     the 32 visible crossings gc1 brought back. Spend this agent: $0.28 + $0.24 + gc batch $0.70 = ~$1.22.
-- 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed, which is free). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.
+- 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed; since prod v132 its box time is billed). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.
