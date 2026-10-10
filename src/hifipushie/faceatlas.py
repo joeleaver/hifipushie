@@ -173,14 +173,21 @@ def table() -> dict:
     return _C["table"]
 
 
+SEX_SHARE = 0.85
+
+
 def within_sex() -> np.ndarray:
     """(120, 120) GNM's identity covariance WITHIN one sex. GNM's prior pools both (its size couplings match ANSUR II
     pooled, not within-sex: docs/notes/gnm_atlas.md): two equal halves at +-delta/2, delta = the identity move that
     makes ANSUR II's male - female differences (bizygomatic, face height, head breadth / length, interpupillary, ear
-    length), so within a sex the covariance is I - delta delta^T / 4."""
+    length) and NIOSH's lower face (bigonial, nose breadth / length, lip length: Zhuang et al. 2010, adjusted for
+    height and weight), so within a sex the covariance is I - delta delta^T / 4."""
     t = table()
     d = np.asarray(t.get("delta_sex", np.zeros(K)), float)
-    return np.eye(K) - np.outer(d, d) / 4
+    # (two equal halves explain |d|^2 / 4 of the pooled variance along d; past SEX_SHARE of it (|d| > ~1.84: the
+    # lower face from NIOSH asks more than GNM's pooled spread along d holds) the within-sex variance along d is kept
+    # at 1 - SEX_SHARE instead of going to zero / negative)
+    return np.eye(K) - np.outer(d, d) / 4 * min(1.0, SEX_SHARE * 4 / max(float(d @ d), 1e-12))
 
 
 def direction(change: dict, hold=(), eps: float = 1e-6, within: bool = True) -> np.ndarray:
