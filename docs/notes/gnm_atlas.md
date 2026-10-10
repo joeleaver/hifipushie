@@ -1575,3 +1575,30 @@ top: a 4 mm vertical disagreement that biases profile registration).
   NLA 123), b2_G11 (tip_width back -0.6, local dorsum -0.8), b2_G12 (nose_width! -1.0), b2_G13 (mouth_width! -0.2).
   G13: table 28/31 (eye_width: the clay reader; philtrum 3/4: painted view; mouth_over_alar: the detector's alae).
   Sheets b2_G13_nose_vs_G14.png, b2_G13_nose_profile.png, b2_G11_nose_shlight.png, b2_G08_pitch_front/_34.png, b2_G13.png.
+
+### 3. SH light, flags, the joint nose-PC solve, THE EYE STEP (2026-10-10)
+- SH light (decided): blockin.LIGHT = "sh" (sheets: 9 SH coefficients x AO fitted on the skin, likeness.render light[4])
+  and likeness.SHADE_LIGHT = "sh" (the shading rows' residual: ls.fit_light_sh / residual_sh). The c0 + w.n light
+  put down-facing planes near black (Garrett's base band 0.19 vs picture 0.6-0.7; SH 0.66). likeness tests pass.
+- Flags (decided): alar_width, mouth_over_alar (MediaPipe's alar points sit on the cheek).
+- Joint solve over GNM's 8 nose PCs for the bridge walls (walljoint.py, b2_G08): 0.80 -> 0.75 at 0.96 sd, 0.70 at
+  2.05 sd (|c| 6.10 -> 6.71: projection +1.6, bridge +1.3, eye depth +1.1, lips -1.0), 0.60 at 4.9 sd, 0.55 at 6.6.
+  The picture's 0.51 is out of reach at any sane cost. The designed local (b2_G11) awaits Joe.
+- THE EYE STEP (Joe: "we shouldn't really ever use our 'fix' [lidfold]"): src/hifipushie/blockin_eyes.py, the audit's
+  g11 crease fit as a block-in step on the SHIPPED head (onemesh.head_template, 0.12 s an evaluation; identity 170 +
+  20 symmetric eye-region expression pairs, LM with finite differences, ~4 min). Evidence: lid margins vs our drawn iris
+  (sigma 0.05 iris radii); the picture's fold line (lidfold.read_lid tps, columns with darkness >= 0.15) vs the
+  crease's SOFT height (a soft-max over the profile's local depth: the arg-max / visibility reads jumped and stalled the
+  first solve at platform 3.5 of 5.6 mm), and the crease >= 1.2 mm deep (0.7 solved to 0.74 and did not read dressed:
+  b2_T04_skin vs b2_T05_skin); hooded (no line in most columns): the visible platform ~0.5 mm; the 68 landmarks off the
+  eyes held at 0.3 mm (brows 1 mm). Ships head.identity + head.expression, lid pose cleared. lid_read(match=True) runs
+  it; match="pose" = the old offsets.
+- Tess b2_T06 (from b2_T02, tool path): lids 0.45 / 0.93 -> 0.64 / 0.90 (her 0.67 / 0.88; the render-based lid_read
+  0.65 / 0.88), crease 0.34 -> 1.12 mm deep at 3.9 -> 5.3 mm (her line 5.15 mm at an 11.7 mm iris), |dc| 3.0, |e| 1.8,
+  table unchanged. Dressed (b2_T05_skin.png, same solve): a fold line reads above the lid, soft. Sheets
+  blockin_b2_T06_eyes.png, b2_T04_eyes.png.
+- Garrett b2_G14 (from b2_G13, hooded: his picture shows no line in 5 of 6 columns): lids 0.46 / 0.73 (his 0.46 / 0.72),
+  platform 2.95 -> 1.33 mm (target 0.5), no crease. The hood itself (the fold's skin hanging over the platform) is
+  only reached through the visibility read, which is jumpy: a smooth hood measure is the next piece. Sheet
+  b2_G14_eyes.png.
+- Diagnostic: eyediag.py (linear reach of identity / expression / both for the three reads; holds' cost).
