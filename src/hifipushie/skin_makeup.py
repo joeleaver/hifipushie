@@ -53,9 +53,9 @@ LOOKS = {
                  "lipstick": {"amount": 0.75, "color": "#b0505a", "finish": "satin"}},
     "evening": {"foundation": {"amount": 0.75, "finish": "matte"}, "concealer": 0.55, "bronzer": 0.35,
                 "contour": 0.6, "blush": {"amount": 0.5, "place": "lifted"}, "highlight": 0.6,
-                "eyeshadow": {"amount": 0.9, "color": "#8a6a5e", "crease": "#4e352e", "outer": "#2a1c19", "finish": "shimmer",
+                "eyeshadow": {"amount": 1.2, "color": "#7a5a4e", "crease": "#45302a", "outer": "#241815", "finish": "shimmer",
                               "reach": 1.15},
-                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.007, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
+                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.004, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
                 "lipstick": {"amount": 1.0, "color": "#8e1f30", "finish": "matte", "liner": 0.6}},
 }
 EXTRA = {"blush": ("place",), "contour": ("nose",), "eyeshadow": ("reach", "crease", "outer"),
@@ -191,7 +191,8 @@ def build(spec, p, J, layer, T, ctx) -> None:
             a = float(np.clip(o["amount"], 0, 1))
             col = _hex(o["color"]) if "color" in o else T(blood=0.9)
             layer("makeup_foundation", o.get("mask"), pre=True, color=col, opacity=0.8 * a, roughness=FINISH[o.get("finish", "natural")],
-                  mask=where(o, ["face", "neck"]) + [{"zone": "lips", "blend": "subtract"}, {"mask": _zones(["eyelid", "eye_corner"], 0.7), "blend": "subtract", "weight": 0.5}])
+                  mask=where(o, ["face", "neck"]) + [{"zone": "lips", "blend": "subtract"}, {"mask": _zones(["eyelid", "eye_corner"], 0.7), "blend": "subtract", "weight": 0.5},
+                                                          {"mask": _zones(["brow"], 1.1), "blend": "subtract", "weight": 0.8}])   # (over the brows it left a pale halo)
         o = item("concealer")
         if o:
             col = _hex(o["color"]) if "color" in o else [round(min(c * f, 1), 4) for c, f in zip(T(melanin=0.8, blood=0.75), (1.03, 1.0, 0.95))]
@@ -208,7 +209,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             layer("makeup_bronzer", o.get("mask"), pre=True, color=col, opacity=0.35 * o["amount"], mask=m + [{"blur": round(0.06 * io, 5)}])
         o = item("contour")
         if o:
-            col = _hex(o["color"]) if "color" in o else T(melanin=1.9, blood=0.85, grey=0.25)
+            col = _hex(o["color"]) if "color" in o else T(melanin=2.4, blood=0.8, grey=0.35)
 
             def hollow():
                 # under the cheekbone: from in front of the ear's tragus toward the mouth's corner, stopping under the
@@ -224,7 +225,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             if nose_k > 0:
                 m += [{**e, "blend": "max", "weight": round(nose_k, 3)} for e in
                       both(lambda: [pt("lm_brow_inner.L", (-0.04, 0.0, -0.1)), pt("lm_nose_bridge", (0.12, 0.0, -0.35)), pt("lm_nose_tip", (0.11, 0.0, 0.12))], [0.05, 0.05, 0.04], soft=1.0)]
-            layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.4 * o["amount"],
+            layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.6 * o["amount"],
                   mask=([{"mask": _zones(o["where"])}] if o.get("where") else m) + [{"blur": round(0.05 * io, 5)}])
         o = item("blush")
         if o:
@@ -242,19 +243,19 @@ def build(spec, p, J, layer, T, ctx) -> None:
                 apple = np.array([pupil[0], ll[1], ll[2] - 0.5 * io]) + io * X([0.12, 0, 0])   # under the outer iris
                 temple = np.array([bo[0], bo[1], eo[2] + 0.12 * io]) + io * X([0.05, 0, 0])
                 if place == "apples":
-                    return [pt(apple), pt(0.6 * apple + 0.4 * temple), pt(0.25 * apple + 0.75 * temple)]
+                    return [pt(apple), pt(0.55 * apple + 0.45 * temple), pt(0.15 * apple + 0.85 * temple)]   # a sweep, not a patch
                 if place == "lifted":
                     a2 = apple + io * X([0.12, 0.0, 0.15])
                     return [pt(a2), pt(0.5 * a2 + 0.5 * temple), pt(temple)]
                 return [pt(apple), pt(0.5 * apple + 0.5 * temple), pt(temple), pt(temple + io * np.array([0.0, 0.1, 0.35]))]
-            rr = {"apples": [0.3, 0.22, 0.12], "lifted": [0.22, 0.2, 0.12], "draped": [0.26, 0.24, 0.2, 0.12]}[place]
+            rr = {"apples": [0.2, 0.18, 0.11], "lifted": [0.22, 0.2, 0.12], "draped": [0.26, 0.24, 0.2, 0.12]}[place]
             layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=round(0.5 * o["amount"], 4),
                   mask=[{"mask": both(cheek, rr, soft=1.0)}, {"blur": round(0.07 * io, 5)}])
         o = item("highlight")
         if o:
             m = both(lambda: [pt("lm_eye_outer.L", (0.02, 0.0, -0.32)), pt("lm_eye_outer.L", (0.22, 0.1, -0.2))], [0.09, 0.06], soft=1.0)
             m += [{"mask": _zones(["nose_bridge"], 0.5), "blend": "max", "weight": 0.7}, {"mask": _zones(["philtrum"], 0.6), "blend": "max", "weight": 0.6}]
-            m += [{**e, "blend": "max", "weight": 0.6} for e in both(lambda: [pt("lm_brow_mid.L", (0.08, 0.0, -0.12)), pt("lm_brow_outer.L", (-0.02, 0.0, -0.1))], [0.05, 0.04], soft=1.0)]
+            m += [{**e, "blend": "max", "weight": 0.3} for e in both(lambda: [pt("lm_brow_mid.L", (0.08, 0.0, -0.12)), pt("lm_brow_outer.L", (-0.02, 0.0, -0.1))], [0.05, 0.04], soft=1.0)]
             layer("makeup_highlight", o.get("mask"), pre=True, color=T(melanin=0.5, blood=0.7), opacity=0.35 * o["amount"],
                   roughness=0.24, specular=0.65, mask=m + [{"blur": round(0.025 * io, 5)}])
         o = item("eyeshadow")
@@ -269,8 +270,8 @@ def build(spec, p, J, layer, T, ctx) -> None:
             def lid():   # from the lash line to the crease, most colour near the lashes
                 eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
                 ch *= reach
-                return [pt(up(ei, 0.3 * ch), near=True), pt(up(lui, 0.4 * ch), near=True), pt(up(lu, 0.42 * ch), near=True),
-                        pt(up(luo, 0.42 * ch), near=True), pt(up(eo, 0.35 * ch), near=True)]
+                return [pt(up(ei, 0.15 * ch), near=True), pt(up(lui, 0.2 * ch), near=True), pt(up(lu, 0.22 * ch), near=True),
+                        pt(up(luo, 0.22 * ch), near=True), pt(up(eo, 0.18 * ch), near=True)]
 
             def fold():  # a deeper shade along the crease, blended out toward the brow's tail
                 eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
@@ -285,7 +286,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
                         pt(up(luo, 0.9 * ch), near=True)]
             chm = eye()[-1] * reach / io
             layer("makeup_eyeshadow", o.get("mask"), pre=True, color=col, opacity=0.8 * o["amount"], roughness=FINISH[fin], **extra,
-                  mask=[{"mask": both(lid, [chm * k for k in (0.3, 0.48, 0.52, 0.52, 0.42)], soft=0.75)}, {"blur": round(0.01 * io, 5)}])
+                  mask=[{"mask": both(lid, [chm * k for k in (0.3, 0.5, 0.56, 0.56, 0.45)], soft=1.0)}, {"blur": round(0.01 * io, 5)}])
             layer("makeup_eyeshadow_crease", o.get("mask"), pre=True, color=crease, opacity=0.6 * o["amount"], roughness=FINISH["matte"],
                   mask=[{"mask": both(fold, [chm * k for k in (0.22, 0.32, 0.36, 0.3)], soft=1.0)}, {"blur": round(0.025 * io, 5)}])
             layer("makeup_eyeshadow_outer", o.get("mask"), pre=True, color=outer, opacity=0.65 * o["amount"], roughness=FINISH["matte"],
@@ -305,22 +306,32 @@ def build(spec, p, J, layer, T, ctx) -> None:
                  {"mask": [{"zone": {"name": "lash_upper", "grow": round(1.0 + 1.1 * k, 3)}}, {"mask": outer_half}], "blend": "max"}]
             if wing > 0:
                 # the wing: the lower lash line's own angle carried on, turned a little toward the brow's tail, drawn
-                # as a picture (a tapered flick) laid from the front at the outer lash line (a tube through points
-                # seated on the receding temple left it as a blob or in pieces)
+                # as a picture (a tapered flick) laid from the front, rooted ON the outer third of the upper lash line
+                # (a tube through points seated on the receding temple left it as a blob or in pieces). Each side from
+                # its own landmarks, the picture flipped for the right (one mirrored placement floated off the right
+                # lid as a shard: faces aren't symmetric).
+                for S, sx in ((".L", 1.0), (".R", -1.0)):
+                    cur.update(S=S, sx=sx)
+                    eo, llo, bo, luo = eye()[0], eye()[6], eye()[7], eye()[4]
+                    d = eo - llo
+                    d = d / max(np.linalg.norm(d), 1e-9)
+                    tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
+                    dw = d + 0.2 * tb
+                    ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
+                    s0 = luo + 0.3 * (eo - luo) + np.array([0.0, -0.0003, 0.0])   # the lash line itself, not re-seated
+                    # laid from the front onto skin that turns back toward the temple: shortened so the wing measures
+                    # `wing` along the skin past the corner
+                    far = seat(eo + wing * np.array([dw[0], 0.0, dw[2]]), True)
+                    run = float(np.linalg.norm((far - eo)[[0, 2]]))
+                    along = float(np.linalg.norm(far - eo))
+                    k_front = run / along if along > 1e-6 else 1.0
+                    length = wing * float(np.clip(k_front, 0.35, 1.0)) + float(np.linalg.norm((eo - s0)[[0, 2]]))
+                    path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 3.0 * w)
+                    c = s0 + np.array([sx * (0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
+                    img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
+                           "depth": 0.006, "facing": 0.3, "channel": "alpha", **({"flip": True} if sx < 0 else {})}
+                    m += [{"image": img, "blend": "max"}]
                 cur.update(S=".L", sx=1.0)
-                eo, llo, bo, luo = eye()[0], eye()[6], eye()[7], eye()[4]
-                d = eo - llo
-                d = d / max(np.linalg.norm(d), 1e-9)
-                tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
-                dw = d + 0.35 * tb
-                ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
-                s0 = seat(0.5 * (luo + eo), True)                 # from the outer lash line, inside the corner landmark
-                length = wing + float(np.linalg.norm((eo - s0)[[0, 2]]))
-                path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 2.2 * w)
-                c = s0 + np.array([(0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
-                img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
-                       "depth": 0.012, "facing": 0.0, "mirror": True, "mirror_image": True, "channel": "alpha"}
-                m += [{"image": img, "blend": "max"}]
             low = float(o.get("lower", 0.0))
             if low > 0:
                 m += [{**e, "blend": "max", "weight": round(low, 3)} for e in
@@ -344,7 +355,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else [round(0.6 * c + 0.4 * d, 4) for c, d in zip(own, _hex("#c45a6a"))]
             sheer = fin == "balm"
             extra = {"specular": 0.75} if fin in ("gloss", "balm") else {}
-            grow = 0.9 + float(o.get("overline", 0.0)) / 0.0012
+            grow = 0.45 + float(o.get("overline", 0.0)) / 0.0012
             layer("makeup_lipstick", o.get("mask"), pre=True, color=col, opacity=min((0.45 if sheer else 0.95) * o["amount"], 1.0),
                   roughness=FINISH[fin], **extra, mask=[{"zone": {"name": "lips", "grow": round(grow, 3)}}])
             liner = float(o.get("liner", 0.0))
