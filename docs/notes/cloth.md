@@ -2099,3 +2099,15 @@ NO SIM WAS RUN.
   - The covered-only rule is in production: cloth_layers.tucked(keep_shown=True, default): uncovered vertices are
     bit-identical to the finished under garment (rigid groups that moved move whole); keep_shown=False = the old
     5-ring feather. Test test_cloth_layers::test_tuck_leaves_what_shows_bit_identical.
+  - HANDOVER (cloth10, 2026-10-09 evening). State: tight-fit jacket j12 (out/c10_j12.pkl: under_cap 0.004, neckline
+    back 0.045 / widen 0.018, collar 11 / 28, lapel 0.064, break_y 0.49, chest canvas, roll_strength 0.8) over pinned
+    s2_12, lapels CONSTRUCTED (made_lapel), collar fall boarded, shirt layered by c10ship (visibility cut + crossing
+    cut + covered-only tuck): visible collar / V 0.00 mm, 0 skin px from 12 cameras. Sheets c10_w10_sheet, c10_w12.
+    OPEN, in order: (1) side-neck TABS: grey lumps on top of the shoulders behind the shirt collar points, where the
+    constructed collar meets the lapel (stations where the stand runs out / the ends blend, wE); present with and
+    without fall_board, so the ends' blend, not the board; (2) the notch ~12 mm low and out on the shoulder slope:
+    a draft fix (gorge_drop / lapel point x; gorge_angle moved it UP); (3) shoulders: lumps, the wearer's right
+    sleeve-head dent, a spike at the wearer's left shoulder seam; (4) shirt collar x jacket collar 10-16 crossings
+    at CB; (5) c10ship's cut rules (vis + xcut) into the pipeline (merge-and-cut export, step 4 of the brief).
+    Tools: judge.sh <tag> (gates + lapel straightness + trace + preview), stage.sh <queue> (one broker batch per
+    stage, deterministic now), q.sh with BROKER=1 to rebuild from pulled results (construct-only changes need no GPU).
