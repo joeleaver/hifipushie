@@ -62,6 +62,11 @@ POSE_KEYS = ("lid_upper", "lid_lower")
 # LOCAL residuals (what GNM's identity can't draw: a confirmed capability gap), as faceslide's local sliders, SET, with
 # the population sd ICT's scans give them beyond GNM's identity (faces5 regbasis2_nose's 8 leading modes projected on
 # each field, blockin/radix.py): the radix width varies 0.09 units (~0.13 mm) past GNM: a real but near-invisible gap
+# designed (hand-authored, not data-backed) soft-tissue / age ops a block-in step may SET: faceslide's age sliders (units:
+# +1 = the op's unit amount, faceslide.UNITS: age_nasolabial 2 mm crease, cheek_hollow 4 mm ...) and headage's ops
+# without a slider (base.head.shape: m, or a share for lips_thin)
+SHAPE_MOVES = ("age_nasolabial", "age_prejowl", "age_cheek_flat", "age_lid_fold", "face_planes", "face_lean",
+               "cheek_hollow", "eye_bag", "lip_bow", "lip_roll", "lips_thin")
 LOCAL_SD = {"nose_radix_width": 0.09, "nose_tip_width": 0.18, "nose_dorsum_width": 0.12}
 STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual")
 SQUINT_MM = 9.0
@@ -112,7 +117,8 @@ def vocabulary() -> str:
     from . import humanmacro as hm
     return ("macros (free, size kept; append ! for held, ~ for the raw coupling incl. size): " + ", ".join(hm.NAMES) + "\ngaps: " + ", ".join("nd:" + n for n in gap_names())
             + "\nsex, eth0, eth1, eth2; base keys (set): weight, dimorphism, gnm_base, head_scale; lids (set, m): "
-            "lid_upper, lid_lower; local residuals (set): local:<faceslide slider>, e.g. "
+            "lid_upper, lid_lower, eye_radius; DESIGNED age ops (set, not data): "
+            + ", ".join("shape:" + k for k in SHAPE_MOVES) + "; local residuals (set): local:<faceslide slider>, e.g. "
             + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items()))
 
 
@@ -324,7 +330,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     rj = _refs(src)
     c0 = identity(sp)
     c = c0.copy()
-    big = []
+    big, designed = [], []
     for k, v in (moves or {}).items():
         v = float(v)
         if k in BODY_KEYS:
@@ -335,6 +341,18 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"].setdefault("style", {}).setdefault("human", {})["head_size"] = v
         elif k in POSE_KEYS:
             sp["base"]["head"].setdefault("pose", {})[k] = v
+        elif k.startswith("shape:"):   # DESIGNED soft-tissue ops (age): not data; flagged in the log and reply
+            from . import faceslide, headage
+            nm = k[6:]
+            if nm not in SHAPE_MOVES:
+                raise ValueError(f"shape: one of {', '.join(SHAPE_MOVES)} (designed ops: faceslide's age sliders in "
+                                 "their units, headage's ops in m / share)")
+            if nm in faceslide.AGE_SLIDERS:
+                sp["base"]["head"].setdefault("sliders", {})[nm] = v
+            else:
+                assert nm in headage.KEYS
+                sp["base"]["head"].setdefault("shape", {})[nm] = v
+            designed.append(k)
         elif k.startswith("local:"):
             from . import faceslide
             nm = k[6:]
@@ -379,7 +397,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     if feature and feature not in FEATURES:
         raise ValueError(f"feature: one of {', '.join(FEATURES)}")
     entry = {"round": rnd, "from": src, "to": out, "moves": moves, "cameras": cameras, "camera_moves": cam_moves,
-             "feature": feature, "seen": seen, "why": why,
+             "feature": feature, "seen": seen, "why": why, **({"designed": designed} if designed else {}),
              "c_norm": round(float(np.linalg.norm(c)), 3), "read": read,
              "coupled": [[k, round(float(x), 2)] for k, x in moved],
              "passes": passes(t1), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -405,6 +423,9 @@ def step_text(rep: dict) -> str:
     if rep["big"]:
         s.append(f"WARNING: {', '.join(rep['big'])}: more than 1 sd (a local: 2.5 of its population sd) in one step: the "
                  "method takes small steps (0.3-0.7)")
+    if e.get("designed"):
+        s.append(f"DESIGNED (not data): {', '.join(e['designed'])}: hand-authored soft-tissue ops (sizes chosen by eye, "
+                 "not learnt from people); judge them zoomed in under the raking light against the pictures")
     if e.get("feature_passes"):
         s.append(f"ZOOM IN, {e['feature']}'s own checklist rows: {e['feature_passes'][0]} -> {e['feature_passes'][1]} pass")
     s.append("ZOOM OUT, targets before -> after: " + ", ".join(f"{g} {rep['before'].get(g, '-')} -> {p}" for g, p in e["passes"].items()))

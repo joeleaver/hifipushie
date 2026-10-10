@@ -48,6 +48,13 @@ eye catches what the points miss; the target table catches what your eye misses.
      made before 2026-10-10 lack it: their ball is GNM's 14.6 mm eye x the head's scale (a 7.3 mm iris on a big
      head); when you work on one, step `eye_radius: 0.012`, then `lid_read(match=True)` (the lids' iris-radius
      read changes with the iris).
+   - DESIGNED age / soft-tissue ops, SET: `shape:<op>`: faceslide's age sliders in their units (`age_nasolabial`
+     +1 = a 2 mm fold, `age_prejowl`, `age_cheek_flat`, `age_lid_fold`, `face_planes`, `face_lean`, `cheek_hollow`
+     +1 = 4 mm) and headage's ops without a slider (`eye_bag`, `lip_bow`, `lip_roll` in m, `lips_thin` a share).
+     Hand-authored, NOT learnt from people: the reply and the log flag them DESIGNED. Place them by eye, zoomed in
+     (focus=cheeks / mouth) under the raking light against the pictures; the cheeks rows (nasolabial_fold,
+     cheek_hollow: shading contrast, photo minus clay) should close. Garrett: age_nasolabial 0.5 closed the fold's
+     gap 22 -> 19 % (front) and 28 -> 20 % (3/4).
    - LOCAL residuals, SET: `local:<faceslide slider>` (base.head.sliders), for what no identity direction draws;
      the reply warns past 2.5 x the slider's population sd beyond GNM (ICT: nose_radix_width 0.09, nose_tip_width
      0.18, nose_dorsum_width 0.12).

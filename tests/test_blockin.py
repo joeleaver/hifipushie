@@ -100,7 +100,12 @@ def test_start_step_table_log_and_registration():
         pd1 = next(r for r in bi.table(b)["eye placement"] if r["id"] == "pupil_distance")
         assert pd1["model"] > pd["model"] * 1.1, (pd, pd1)   # head_scale really scales the one mesh's head
         assert "chin short" in json.dumps(bi.log(b))
-        bi.step(a, {"jaw_width": 0.3}, out=c)
+        r2 = bi.step(a, {"jaw_width": 0.3, "shape:age_nasolabial": 0.5, "shape:lips_thin": 0.2}, out=c)
+        hc = store.load(c)["base"]["head"]
+        assert hc["sliders"]["age_nasolabial"] == 0.5 and hc["shape"]["lips_thin"] == 0.2
+        assert "DESIGNED" in bi.step_text(r2) and r2["entry"]["designed"] == ["shape:age_nasolabial", "shape:lips_thin"]
+        with pytest.raises(ValueError, match="shape: one of"):
+            bi.step(a, {"shape:nose_width": 1}, out="bi_test_never")
         lg = bi.log(c)
         assert [x["to"] for x in lg] == [a, b, c] and "reverted" in lg[1]
         assert "items that changed" in bi.step_text(rep) or rep["delta"] == []
