@@ -209,3 +209,27 @@ coarse_stretch.py, samejob.py (job dirs: band vs body girth, per-piece stretch +
   the loose-tube run's after the arms bend (cuffs mid-forearm); sleeve length_bonus +0.06 (jz_1.json). Sleeve underarm
   seams were left 46 mm open near the armpit (hidden under the coat).
 - Dead end: wrap "neck" for a rib neckband places it broken (vertices 0.3 m out) with or without fold or worn_top.
+- Sleeve length, measured (tess2/sleevepos.py on tess2_b4): sleeve 522 mm (shoulderToWrist 493 x 1.06), cap top ->
+  wrist edge 480 mm straight in the result, fingertips 650 mm: the sleeve END is at the wrist (hand ~180 mm). What reads
+  as "3/4 sleeves" is the 50 mm rib cuff turned back up over the sleeve end (its free edge 1 mm from the seam), not a
+  short sleeve. Draft target: sleeve + cuff ending at the wrist (sleeve = shoulderToWrist - cuff + ease); -0.055 pushed
+  the cuff's fold rows 35% at the start, -0.03 left the cuff on the hand's base. Cap drop 201 mm vs armpit ~110 mm
+  below the shoulder point (a tall cap for a knit).
+- OPEN ITEM (coordinator, 2026-10-10): fold rows of FOLDED BANDS block the fine settle (jumper runs fine_settle false
+  under the coat as an interim). See the tess2_c3 entry above for the mechanism.
+- tess2_b5 ($0.0215): jeans3 fine settle with the pocket clear fix -> "fits", 0 crossings (was CORRUPT, 146 pocket x
+  back crossings), 9 of 561 sewn pairs open (max 66 mm at back.L / front.L: the crotch fork, as before). jeans3 DONE
+  pending the eye check. NOTE stage.sh: a fine settle's job folder is named by the COARSE key, so a new start got the
+  old pulled result; tess2/stage.sh now hands back only when the staged in.npz arrays match (samein.py).
+- Lab coat (ts_c1 "coat", tess2/coat3.json: kind coat, cotton_twill, length 0.9 below HPS, open front, notched lapel
+  break 0.40, 4 buttons, patch hip pockets at y -0.52 + chest pockets, over jumper, layer_gap 0.014). Pattern /
+  construction / place pass. Coarse sims: b5 frame-0 "give the initial geometry a small clearance" ($0): the coat's
+  sides started 0.35 mm off the JUMPER's bunched armpits (the place check reads the body only; the padded body misses
+  the under garment's bunches). New build guard (general): the coarse start is checked against the sim's own collider
+  (body + under) before sending, cleared exactly if inside (kept only if clearer), else refused (no GPU spend).
+  layer_gap 0.008 -> 1.5 mm (refused), 0.014 -> passed; b6 then failed at start with "Continuous Collision Detection
+  failed" ($0): no coat edge crosses the collider (spikes/tess/jobcross.py), so likely the jumper collider itself
+  (its armpits: sleeve underarm seams 46 mm open, bands crumpled) or the coat's own sewn start crossings. NEXT: fix the
+  jumper's armpit / sleeve seams (worn_top sleeve start) so it is a clean collider, then the coat; then constructed
+  lapels (construct lapel "made" default) and badge + lanyard.
+- Spend tess2: c1 $0.1095, c2 $0, c3 $0.055, b4 $0.1192, b5 $0.0215, b6 $0 = $0.305.

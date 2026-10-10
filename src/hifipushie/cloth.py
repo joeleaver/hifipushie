@@ -6476,6 +6476,35 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             zc_.setdefault("body_offset", 0.001)
             zc_.setdefault("contact_gap", 0.0005)
         progress(f"sim at {hs * 100:.1f} cm: {len(Xs)} verts")
+        if smooth and backend == "zozo" and "bodyT" in arrays:
+            # nothing draped may start inside the solver's contact standoff from its collider (the body AND the garment
+            # under this one): ZOZO stops at its first step ("give the initial geometry a small clearance"). Tess's lab
+            # coat started 0.35 mm off the jumper's sides: checked here, before anything is sent
+            from . import cloth_workflow as cwf_
+            import types as types_
+            zc0_ = cfg.get("zozo") or {}
+            so_ = float(zc0_.get("body_offset", 0.002)) + float(zc0_.get("contact_gap", 0.001))
+            held0_ = set(cfg.get("made") or []) | set(Bp.get("hug") or [])
+            bc_ = types_.SimpleNamespace(V=arrays.get("bodyV0", arrays["bodyV"]), T=arrays["bodyT"])
+            near0_ = {p: v for p, v in cwf_.start_in_standoff(np.asarray(arrays["X"]), Ms, bc_, 0.9 * so_).items()
+                      if p not in held0_}
+            if near0_:
+                # moved off the collider exactly (the padded body the pieces are laid on misses an under garment's
+                # bunches: the jumper's armpits under the coat's sides), the draped pieces only
+                fr0_ = ~np.isin(Ms["piece"], [Ms["names"].index(p) for p in held0_ if p in Ms["names"]])
+                X0_, nmv_ = _clear_exact(np.asarray(arrays["X"], float), Ms["F"], fr0_, bc_.V, bc_.T, gap=so_ + 0.0005,
+                                         rounds=8, signed=len(body_real.T))
+                near1_ = {p: v for p, v in cwf_.start_in_standoff(X0_, Ms, bc_, 0.9 * so_).items() if p not in held0_}
+                # (kept only if it is clearer: cloth that starts THROUGH the under garment's cloth is pushed away on
+                # the side it is on, deeper in: the coat's side through the jumper's bunched armpit went 1.5 -> 0.13 mm)
+                if min((v[0] for v in near1_.values()), default=9e9) > min(v[0] for v in near0_.values()):
+                    log(f"cloth {name}: start cleared to the solver's standoff: {nmv_} vertices moved ({near0_})")
+                    arrays["X"], near0_ = X0_, near1_
+            if near0_:
+                raise RuntimeError(f"cloth {name}: the start lies inside the solver's contact standoff ({so_ * 1000:.1f} mm) "
+                                   "from the body / the garment under it: " + ", ".join(f"{p} {v[0]:.2f} mm at {v[1]}"
+                                                                                      for p, v in near0_.items())
+                                   + "; nothing was sent to the GPU (more layer_gap over the garment under it, or wrap out)")
         d, lines = _blender_job(job_dir, cfg, arrays, name, log, progress, backend=backend, names=Ms["names"])
         Vs = d["V"]
         Vc = None
