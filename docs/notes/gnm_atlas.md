@@ -178,3 +178,22 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
   2.15) but by eye still not a young woman.
 - Garrett's desk camera: yaw -38.7 deg against the detector's 31 (likeness yaw doubt 13.9 deg), looking up 14 deg:
   suspect like Tess's old profile camera; a painting, refit with the traced profile is to do.
+
+## Round 6 (2026-10-09)
+
+- Tess's front lower face: her traced jaw (against the background, below the lobes) vs tj12's silhouette: the model's
+  jaw sits INSIDE the trace on her left by a few px, on the line on her right. The evidence says her jaw is this
+  wide; the broader read against e3 is e3 being narrower than her photo. Not a width to fix; the soft read is
+  elsewhere (brows: paint, tess is on it; the corner of the mouth).
+- MakeHuman CC0 mouth (44) and eye (68) targets fetched to /mnt/data/hifipushie/facesliders/mh_targets/ (SOURCE.txt;
+  commit a8bc2d54). Plan for the mouth-corner extension (and lower-lip width, lids): carry each MH target onto GNM's
+  head (MH base head aligned to GNM's mean by its face landmarks, displacement per GNM vertex from the closest MH
+  surface point, scaled to GNM's interocular), keep only the targets GNM can't already make (project out the
+  identity's span: the residual part is the extension), and add it as a residual slider WITH couplings once there
+  is data that shows them (scans); MH targets are single local shapes with no couplings. Candidates for
+  mouth_corner: mouth-angles-up/down, lowerlip-ext-up/down, lowerlip-width, dimples, laugh-lines.
+- Garrett's desk camera is NOT off like Tess's old profile: a yaw scan (yawscan.py, r regularised) is flat between
+  35 and 50 deg (0.71-0.72 sigmas): a painting can't pin its yaw. The stored camera's 13 deg pitch is his head bowed in
+  the painting (the free fit, 0.37 sigmas, prefers it). Kept.
+- Garrett fs_gj8 dressed (human_renders/fs_22_garrett_gj6_gj8.jpg): lips fuller than gj6, chin a little wider without
+  the chin line, otherwise the same face.

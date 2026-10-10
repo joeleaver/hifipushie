@@ -25,7 +25,7 @@ def tile(im, text):
 out, refm = sys.argv[1], sys.argv[2]
 refs = json.loads((store.HOME / refm / "human_refs.json").read_text())
 rows = []
-for vi, vn in ((0, "front"), (1, "desk")):
+for vi, vn in [x for x in ((0, "front"), (1, "desk"), (2, "prof")) if x[0] < len(refs["views"])]:
     v = refs["views"][vi]
     crop = [int(round(x)) for x in sheet1.crop_of(v)]
     ph = Image.open(v["image"]).convert("RGB").crop(tuple(crop))
@@ -36,6 +36,8 @@ for vi, vn in ((0, "front"), (1, "desk")):
         p = f"{F}/out/{tag}_{vn}_big.png"
         if os.path.exists(p):
             row.append(tile(Image.open(p), f"{lb} dressed"))
+        if os.environ.get("NOCLAY"):
+            continue
         cam = json.loads((store.HOME / m / "human_refs.json").read_text())["cameras"][vi]
         mesh = likeness.model_mesh(store.load(m)["base"])
         im = likeness.render(mesh, cam, crop, px=T)[0]
