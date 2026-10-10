@@ -533,9 +533,9 @@ model".
 Garrett's heads (fs_gj6 / gj8 and their lineage, from g4_garrett) carry base.head.interior (teeth, tongue, slit) AND
 lip_seal 1. The interior's slit and bag are subtracts (kits._interior): they cut the fused lips open again (the bag's
 box reaches to ~2 mm of the lips' front), a row of holes with the teeth showing as pale "fangs" along the seam, every
-render. Not the coupled lip changes: gj0s (before any) had it, Tess (no interior) never did. Fix (base.inject): a
-sealed head's interior keeps teeth and tongue but not the slit or the bag (a mouth that must open, the face shapes'
-export, is an unsealed one). Test tests/test_mouth_seal.py: no slit / bag blobs when sealed, and a front z-buffer
+render. Not the coupled lip changes: gj0s (before any) had it, Tess (no interior) never did. Fix (base.sealed_interior): a
+sealed head keeps the slit and bag (the face shapes read them) but held SEALED_BACK = 6 mm behind the lips' front
+(the slit's front end, the bag's box). Test tests/test_mouth_seal.py: the slit's front end behind the lips when sealed, and a front z-buffer
 over the meshed lips at the scene voxel (1.3 mm) finds no hole (sealmesh.holes: before 51 cells, after 0). Also the
 facesliders Garrett specs carried skin.part "tongue" (an eyes-only paint setting from likeloop): skin_look's stage
 then left the body at the coarse scene voxel; set to "body".

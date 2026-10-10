@@ -1,5 +1,5 @@
 """A sealed mouth (base.head.lip_seal) with a mouth interior (base.head.interior: teeth, tongue) shows nothing of the
-inside from the front: the slit and the bag (subtracts) are left out when sealed, and the meshed lips have no hole
+inside from the front: the slit and the bag (subtracts) are held behind the fused lips when sealed, and the meshed lips have no hole
 at the scene's voxel (a front z-buffer over the lips: no cell whose front-most surface sinks 3 mm past its row's)."""
 import json
 import os
@@ -34,12 +34,14 @@ def _model():
     return sp
 
 
-def test_sealed_interior_has_no_slit_or_bag():
+def test_sealed_interior_held_behind_the_lips():
+    """The slit's front end sits behind the lips' front (it started in front of them)."""
     if not _ok():
         return
     _model()
     blobs = specmod.expand_mirror(store.load(NAME)).get("blobs") or {}
-    assert not [k for k in blobs if k.endswith(("_mouth_slit", "_mouth_bag"))], list(blobs)
+    slit = [v for k, v in blobs.items() if k.endswith("_mouth_slit")]
+    assert slit and max(np.atleast_1d(slit[0]["values"]["n1"])) <= -base.SEALED_BACK + 1e-9, slit
     assert [k for k in blobs if "teeth" in k], list(blobs)
 
 
