@@ -256,6 +256,24 @@ def curve_rows(px, poly):
     return np.array(Q), np.array(Nn)
 
 
+TERMS = None   # set to {} to collect each evidence term's normal equations {name: [H_t, b_t]} (decomp.py)
+FACE_OVAL = {10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149,
+             150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109}
+
+
+def _acc(name, A, y):
+    if TERMS is not None:
+        t = TERMS.setdefault(name, [0.0, 0.0])
+        t[0] = t[0] + A.T @ A
+        t[1] = t[1] + A.T @ y
+
+
+def _pt_group(row):
+    if row[0] != "v":
+        return "clicks"
+    return "oval" if len(row) > 3 and row[3] in FACE_OVAL else "features"
+
+
 def system(st, views, cams, x, x_lin, border, nview):
     """Normal equations at x (linearised at x_lin's built state). x = [c (170), e_view0 (NE), e_view1, ...]."""
     n = NC + NE * nview
@@ -298,6 +316,10 @@ def system(st, views, cams, x, x_lin, border, nview):
         y = A @ x + (r * hw[:, None]).ravel()
         H += A.T @ A
         b += A.T @ y
+        if TERMS is not None:
+            grp = np.repeat([_pt_group(r_) for r_ in e["rows"]], 2)
+            for gname in set(grp):
+                _acc(f"v{vi}:{gname}", A[grp == gname], y[grp == gname])
         rep["rms"].append(float(np.sqrt(np.mean(a ** 2))))
         if prof:
             env = _env(st, cam, v["_prof"])
@@ -321,6 +343,7 @@ def system(st, views, cams, x, x_lin, border, nview):
                 yp = Ap @ x - rp * hwp
                 H += Ap.T @ Ap
                 b += Ap.T @ yp
+                _acc(f"v{vi}:profile_contour", Ap, yp)
                 kept = ap * PROF_SIG < PROF_REJECT
                 rep["profile_mm"] = float(np.sqrt(np.mean((rp[kept] * PROF_SIG) ** 2))) if kept.any() else None
                 rep["profile_kept"] = f"{int(kept.sum())}/{len(kept)}"
@@ -343,6 +366,7 @@ def system(st, views, cams, x, x_lin, border, nview):
             yc = Ac @ x - rc
             H += Ac.T @ Ac
             b += Ac.T @ yc
+            _acc(f"v{vi}:contact", Ac, yc)
             rep.setdefault("contact_mm", []).append(float(np.sqrt(np.mean(np.sum((D * wv) ** 2, 1)))) * 1000)
         if abs(float(v.get("yaw", 0.0))) < 20 and border is not None:
             bm = border_model(st)
@@ -363,6 +387,7 @@ def system(st, views, cams, x, x_lin, border, nview):
                 yb = Ab @ x - rr
                 H += Ab.T @ Ab
                 b += Ab.T @ yb
+                _acc(f"v{vi}:border_{k}", Ab, yb)
                 rep["border"][k] = (rr * BORDER_SIG).round(2).tolist()
     return H, b, rep
 

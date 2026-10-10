@@ -1,6 +1,7 @@
 """sildiag.py <model>: fit5.silhouette_env on the model's profile view: misses per row band (mm, + = model outside)
 and an overlay (photo contour red, model silhouette vertices green) in $F/out/sildiag_<model>.png."""
 import json
+import os
 import sys
 
 import numpy as np
@@ -30,4 +31,4 @@ d = ImageDraw.Draw(img)
 d.line([tuple(p) for p in o], fill=(255, 0, 0), width=1)
 for p in px:
     d.ellipse([p[0] - 1.5, p[1] - 1.5, p[0] + 1.5, p[1] + 1.5], fill=(0, 200, 0))
-img.crop((50, 450, 450, 1000)).save(f"/mnt/data/hifipushie/faces5/out/sildiag_{m}.png")
+img.crop((50, 450, 450, 1000)).save(os.environ.get("F", "/mnt/data/hifipushie/faces6") + f"/out/sildiag_{m}.png")

@@ -2042,6 +2042,19 @@
    }
   ]
  },
+ "faceage": {
+  "needed_by": "spikes/facesliders/agesex.py (faces6 gate: a perceptual sex / age read of photos and clay renders; a measuring tool, never shipped)",
+  "source": "InsightFace buffalo_l genderage (96 px attribute net) via huggingface public-data/insightface",
+  "licence": "InsightFace buffalo_l: non-commercial research use only: a measuring tool here, never in an exported asset.",
+  "optional": true,
+  "files": [
+   {
+    "path": "genderage.onnx",
+    "url": "https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/genderage.onnx",
+    "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+   }
+  ]
+ },
  "ictfacekit": {
   "needed_by": "faces4 coherent face model (M1: ICT's identity modes registered to GNM -> the joint prior's local couplings at nose / lips / lids); spikes/facesliders",
   "source": "https://github.com/ICT-VGL/ICT-FaceKit at commit da5f95a607f5e6b37755b38d3385d7f2853732e5: FaceXModel (ICT FaceKit Light: generic neutral mesh, 100 identity modes, expression blendshapes), Scripts, LICENSE",
