@@ -6102,13 +6102,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # smooth: dressed on straight arms (the body bends back in the sim's "pose" stage), nothing folded but what the
     # solver keeps as rest (interfaced pieces)
     body_p, pose = body.straight_arms() if smooth else (body, None)
-    Bp["worn_top"] = worn_top(g)
-    # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
-    # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
-    # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap"):
-        if g.get(k_) is not None:
-            Bp[k_] = g[k_]
+    place_keys(Bp, g)
     # garment key "fine_relax" (default: on for a garment over another): the fine settle also moves carried cloth
     # past its reach where that starts stretched (_press_plan)
     Bp["fine_relax"] = bool(g.get("fine_relax", under is not None))
@@ -6936,6 +6930,19 @@ def _kb() -> dict:
 def seam_finishes() -> dict:
     """The seam finishes (garment_kb.json seam_finishes): name -> numbers."""
     return {k: v for k, v in _kb()["seam_finishes"].items() if not k.startswith("_")}
+
+
+def place_keys(Bp: dict, g: dict) -> dict:
+    """The garment keys place() reads from the pieces, set on Bp (build and the place check both: the check placed
+    without worn_top, so a garment the build lays on the form was checked as a loose tube)."""
+    Bp["worn_top"] = worn_top(g)
+    # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
+    # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
+    # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
+    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap"):
+        if g.get(k_) is not None:
+            Bp[k_] = g[k_]
+    return Bp
 
 
 def worn_top(g: dict) -> bool:

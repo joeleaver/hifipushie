@@ -10,6 +10,6 @@ if src != dst:
     (store.HOME / dst / "human_refs.json").write_text((store.HOME / src / "human_refs.json").read_text())
 r = server.design_garment(dst, g, design=design, spec=spec, note=f"tess: {g} design sheet")
 print(r if isinstance(r, str) else "\n".join(x for x in r if isinstance(x, str)))
-r = server.check_garment(dst, g, stages=["pattern", "construction", "place"],
+r = server.check_garment(dst, g, stages=os.environ.get("STAGES", "pattern,construction,place").split(","),
                          save=os.path.join(os.environ["T"], "out", f"{dst}_{g}.png"))
 print(r if isinstance(r, str) else "\n".join(x for x in r if isinstance(x, str))[:6000])

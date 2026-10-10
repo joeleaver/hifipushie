@@ -97,7 +97,7 @@ class Ctx:
     @property
     def Bp(self) -> dict:
         if self._Bp is None:
-            self._Bp = cloth.pieces(self.gx, self.meas)
+            self._Bp = cloth.place_keys(cloth.pieces(self.gx, self.meas), self.gx)  # (as the build places it)
         return self._Bp
 
     def fabric_class(self) -> str:

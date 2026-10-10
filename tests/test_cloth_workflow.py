@@ -266,3 +266,14 @@ def test_a_rib_band_is_simulated_with_room_to_stretch_on():
     assert np.allclose(lv[2:4], cloth_zozo.declared_limit(dec["cuff.L"], lim))
     # (nothing declared, nothing lifted: the garment's limit everywhere, as before)
     assert (cloth_zozo.vertex_limits(pid, pieces, lim, lifted, None, np.zeros(5, bool), lim, None) == lim).all()
+
+
+def test_the_place_check_places_as_the_build_does():
+    """The place check's pieces carry the garment keys place() reads (worn_top, open_gap, ...) as the build's do:
+    without them a jumper the build lays on the form (worn_top) was checked as a loose tube (Tess, tess2)."""
+    import inspect
+    from hifipushie import cloth, cloth_workflow
+    Bp = cloth.place_keys({}, {"worn_top": True, "open_gap": 0.1, "design": {"kind": "hoodie"}})
+    assert Bp["worn_top"] is True and Bp["open_gap"] == 0.1
+    assert cloth.place_keys({}, {"design": {"kind": "hoodie"}})["worn_top"] is False
+    assert "place_keys" in inspect.getsource(cloth_workflow.Ctx)
