@@ -28,7 +28,10 @@ them: bunches):
                             the lock still runs along the line, so it arcs forward over the band between (hair falling
                             from a soft part over the forehead's corners; rooted on the line, the first row's strands
                             fanned apart and bared a V under the part: Tess, 2026-10-10); `dip` = deg BELOW the hairline
-                            that run passes (the drape lying over the forehead's top). "left" / "right": {key: value}
+                            that run passes (the drape lying over the forehead's top); `sag` = deg the run on to the
+                            ear's top hangs below its great circle at its middle (x closeness to the part): the hair
+                            lower over the temples, the forehead a rounder arch instead of a peak under the part
+                            (faces3, Tess 2026-10-10). "left" / "right": {key: value}
                             for that side only (the person's left = +x): an asymmetric style. Default none: every
                             lock runs the great circle to the tie.
    "frame": {"count": 3, "az": [40, 95], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
@@ -51,7 +54,7 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5}}
 CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "drape": 0.0, "dip": 0.0,
-           "left": None, "right": None}
+           "sag": 0.0, "left": None, "right": None}
 FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
          "wavelength": 0.075}
 DOWN = np.array([0.0, 0.0, -1.0])
@@ -204,15 +207,20 @@ def grow(sc, g: dict, line, rng) -> dict:
                             D = np.concatenate([_slerp(root, mid, t[t <= k0] / k0),
                                                 _slerp(mid, way, (t[(t > k0) & (t <= k1)] - k0) / (k1 - k0)),
                                                 _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
+                            s_run = np.where((t > k0) & (t <= k1), (t - k0) / (k1 - k0), 0.0)
                         else:
                             t = np.linspace(0, 1, 9)
                             k1 = 0.4
                             D = np.concatenate([_slerp(root, way, t[t <= k1] / k1),
                                                 _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
+                            s_run = np.where(t <= k1, t / k1, 0.0)
+                        sag = float(cu.get("sag", 0.0)) * cw * np.sin(np.pi * s_run)
                     else:
                         t = np.linspace(0, 1, 7)
                         D = _slerp(root, tie_dir, t)
                     aa, ee = az_el(D)
+                    if cw > 0 and r == 0:
+                        ee = ee - sag
                     lift = float(ga["lift"]) * (1 + un * rng.uniform(-0.5, 0.8))
                     hb = 0.002 + 0.003 * (rows - 1 - r)
                     h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t)) + t ** 3 * float(tp["out"]) * 0.8
