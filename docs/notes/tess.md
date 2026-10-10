@@ -209,3 +209,11 @@ coarse_stretch.py, samejob.py (job dirs: band vs body girth, per-piece stretch +
   the loose-tube run's after the arms bend (cuffs mid-forearm); sleeve length_bonus +0.06 (jz_1.json). Sleeve underarm
   seams were left 46 mm open near the armpit (hidden under the coat).
 - Dead end: wrap "neck" for a rib neckband places it broken (vertices 0.3 m out) with or without fold or worn_top.
+- Sleeve length, measured (tess2/sleevepos.py on tess2_b4): sleeve 522 mm (shoulderToWrist 493 x 1.06), cap top ->
+  wrist edge 480 mm straight in the result, fingertips 650 mm: the sleeve END is at the wrist (hand ~180 mm). What reads
+  as "3/4 sleeves" is the 50 mm rib cuff turned back up over the sleeve end (its free edge 1 mm from the seam), not a
+  short sleeve. Draft target: sleeve + cuff ending at the wrist (sleeve = shoulderToWrist - cuff + ease); -0.055 pushed
+  the cuff's fold rows 35% at the start, -0.03 left the cuff on the hand's base. Cap drop 201 mm vs armpit ~110 mm
+  below the shoulder point (a tall cap for a knit).
+- OPEN ITEM (coordinator, 2026-10-10): fold rows of FOLDED BANDS block the fine settle (jumper runs fine_settle false
+  under the coat as an interim). See the tess2_c3 entry above for the mechanism.
