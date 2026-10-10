@@ -109,6 +109,7 @@
                "details": {"waistband": "straight", "fly": "zip_fly", "pockets": "slant", "hem": "blind", "pleats": "none"},
                "required": ["waistband", "fly", "hem"],
                "sewing_order": ["leg_front", "fly", "leg_back", "pocket", "waistband"]},
+  "jeans": {"region": "lower", "seam_finish": "felled", "fabric": "denim", "lap": "left_over_right", "_doc": "Five-pocket jeans, drafted by this kind itself (the trouser block, as suit_trousers, then what makes jeans: a back YOKE instead of back darts (the dart's intake taken into the yoke seam), front scoop pockets, back patch pockets, a mid rise below the natural waist, no crease, felled seams). A design sheet {kind: jeans} with nothing else makes straight-leg jeans cut to stack on the shoe.", "fit": {"slim": {"waist": [0.0, 0.03], "seat": [0.02, 0.06]}, "straight": {"waist": [0.0, 0.04], "seat": [0.04, 0.09]}, "relaxed": {"waist": [0.0, 0.05], "seat": [0.08, 0.15]}}, "draft": {"block": "trouser", "block_options": {"length": "break", "waist_ease": 0.02, "back_dart": 0.0, "waist_drop": 0.04}, "fit_options": {"slim": {"leg": "slim", "seat_ease": 0.04}, "straight": {"leg": "straight", "seat_ease": 0.06}, "relaxed": {"leg": "wide", "seat_ease": 0.1}}}, "details": {"waistband": "extended", "fly": "zip_fly", "crease": "none", "darts": "yoke", "belt_loops": "loops", "belt": "none", "pockets": "jeans", "hem": "straight_double", "pleats": "none"}, "required": ["waistband", "fly", "hem", "darts", "pockets"], "sewing_order": ["leg_front", "fly", "leg_back", "pocket", "waistband"], "lessons": ["Jeans differ from tailored trousers in construction, not just the rise: the back's suppression is in the YOKE seam (back_dart 0, the yoke's take_in), the front has scoop pockets, the back patch pockets (op pocket, laid on the back leg: not girth), seams felled.", "Cut to stack on the shoe (length break); a straight leg's hem ~ the knee's width. Measure a reference's rise and the leg's width at knee and hem before choosing the fit (Tess: straight, ~355 mm round at the hem)."]},
   "suit_trousers": {"region": "lower", "seam_finish": "pressed_open", "fabric": "wool_suiting", "lap": "left_over_right",
                "_doc": "Men's tailored trousers, drafted by this kind itself (draft: the trouser block + the leg's cut per fit; each detail adds its own operation). A design sheet {kind: suit_trousers} with nothing else makes flat-front trousers with a zip fly, an extended waistband buttoned at the centre front, shaped back darts, pressed creases, belt loops and a belt, cut for a shoe.",
                "fit": {"tailored": {"waist": [0.0, 0.03], "seat": [0.03, 0.07]},
@@ -344,6 +345,7 @@
    "in_seam": {"label": "pocket bag in the side seam (invisible from outside)", "evidence": []},
    "kangaroo": {"label": "kangaroo pocket on a hoodie's front", "made_of": [{"role": "pocket"}], "evidence": [{"piece": "pocket"}]},
    "slant": {"label": "slant front pocket (trousers)", "evidence": []},
+   "jeans": {"label": "five-pocket jeans: front scoop pockets (a curved opening from the waist to the side seam) and back patch pockets (130 x 145 mm, pointed bottom) on the back legs below the yoke", "draft": {"ops": [{"op": "style_line", "piece": "front", "name": "scoop", "from": {"edge": "cWaist>sideWaist", "t": 0.5}, "to": {"edge": "sideWaist>sideSeat", "dist": 0.075}, "names": ["front", "pocket_side"]}, {"op": "pocket", "piece": "back", "type": "patch", "at": [0.13, -0.085], "width": 0.13, "height": 0.145, "name": "back_pocket"}]}, "evidence": []},
    "none": {"label": "no pockets", "evidence": []}
   },
   "hem": {
@@ -357,11 +359,12 @@
    "raw": {"label": "raw or serged edge", "detail": {"hem": 0.0}, "evidence": []}
   },
   "yoke": {
-   "single": {"label": "one-layer yoke", "evidence": [{"piece": "yoke"}]},
-   "double": {"label": "two-layer yoke (outer + inner, 'burrito' method)", "evidence": [{"piece": "yoke"}]},
+   "single": {"label": "one-layer yoke", "evidence": []},
+   "double": {"label": "two-layer yoke (outer + inner, 'burrito' method)", "evidence": []},
    "none": {"label": "no yoke", "evidence": []}
   },
   "darts": {
+   "yoke": {"label": "a back yoke instead of back darts (jeans, western shirts): a seam across the back from the side seam 40-50 mm below the waist to the centre back 70-90 mm below it, the darts' intake taken into it", "draft": {"ops": [{"op": "style_line", "piece": "back", "name": "yoke", "from": {"edge": "sideWaist>sideSeat", "dist": 0.045}, "to": {"edge": "cWaist>cSeat", "dist": 0.08}, "names": ["back", "yoke"], "take_in": 0.018}]}, "evidence": []},
    "waist": {"label": "waist darts (skirts, trousers' back): 80-140 mm long, 15-30 mm intake", "dims": {"dart_length": [80, 140], "dart_intake": [10, 35]}, "evidence": [{"darts": "any"}]},
    "bust": {"label": "bust darts", "dims": {"dart_intake": [15, 40]}, "evidence": [{"darts": "any"}]},
    "back_shoulder": {"label": "back shoulder dart or ease (2-4%)", "evidence": []},

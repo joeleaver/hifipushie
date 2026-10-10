@@ -206,10 +206,11 @@ def compile_sheet(sheet: dict) -> dict:
         if band and "chest_ease" not in bo and block in ("bodice", "knit"):
             bo["chest_ease"] = round(0.5 * (band[0] + band[1]), 3)  # ease by garment category: the fit's middle
         ops = list(sheet.get("ops") or [])
-        have = {o_.get("op") for o_ in ops}
+        # (an op is known by its kind AND its name: two details may each cut a style line, a yoke and a pocket scoop)
+        have = {(o_.get("op"), o_.get("name")) for o_ in ops}
         for info in r["details"].values():
             for op in (info["kb"].get("draft") or {}).get("ops", []):
-                if op["op"] not in have:
+                if (op["op"], op.get("name")) not in have and (op["op"], None) not in have:
                     ops.append(_merge(op, info["params"].get("op") or {}))
         out["pattern"] = {"from": "draft", "block": block, "block_options": bo, "ops": ops}
     elif r["from"]:

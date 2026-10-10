@@ -236,9 +236,14 @@ def hem_width(pcs: dict, legs: list) -> float:
     front's) read at one level 1 cm over the lowest point missed the front and cut the back's V: "165 mm round" for a
     377 mm hem."""
     w = 0.0
+    # (only pieces that reach the hem: a pocket's side piece or a yoke cut from a leg ends far above it, and its own
+    # bottom read as more hem: a jeans' hem "570 mm round" for a 343)
+    floor_ = min(float(np.asarray(pcs[n]["P"], float)[:, 1].min()) for n in legs) if legs else 0.0
     for n in legs:
         P = np.asarray(pcs[n]["P"], float)
         lo = float(P[:, 1].min())
+        if lo > floor_ + 0.1:
+            continue
         top = float(P[P[:, 1] < lo + 0.03, 1].max())
         w += cloth._piece_width_at(P, top + 0.002)
     return float(w)
@@ -250,7 +255,8 @@ def leg_ease(c: Ctx, bands: dict) -> list:
     there (must not be negative in a woven). Torso girths (cloth.sizing) don't see leg pieces."""
     Bp = c.Bp
     pcs = Bp["pieces"]
-    legs = [n for n in pcs if pcs[n]["wrap"].get("to") == "leg.L"]
+    # (a patch pocket lies on a leg piece: not girth; a jeans' back pockets read the seat +38%)
+    legs = [n for n in pcs if pcs[n]["wrap"].get("to") == "leg.L" and not pcs[n]["wrap"].get("lies_on")]
     if not legs or not c.meas or "waist_z" not in c.body.at:
         return []
     from . import tailor
@@ -697,7 +703,8 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
         tri, _ = cloth.edge_strain(X, M["uv"], M["F"])  # the rest is the flat pattern (made pieces left out below)
         lim = float((c.gx.get("zozo") or {}).get("strain_limit", 0.05))
         madep = np.isin(M["piece"][M["F"][:, 0]], [M["names"].index(n) for n in cloth.made_pieces(M, stiff)])
-        over = (tri > lim) & ~madep
+        allow = cloth.declared_stretch(Bp, M)  # (a rib band stretched on starts stretched by design)
+        over = (tri > lim + allow) & ~madep
         if 0.002 < over.mean() <= 0.03 and float(tri[over].max()) < 0.6:
             # a few triangles by construction (the rows of a roll line turned round a curving chest, a band pushed a
             # millimetre off the neck): the solver gives them their own limit (cloth_zozo "start_over")

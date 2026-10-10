@@ -4602,7 +4602,32 @@ FINE_ROOM = 0.0055  # the room a pressed flap leaves over the body for the cloth
 FINE_START_MAX = 0.6  # the fine settle's start may stretch its draped cloth this far at most (the solver's top limit)
 
 
-def fine_start_check(M: dict, plan: dict, limit: float = FINE_START_MAX) -> str:
+def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
+    """Per triangle of M: the stretch its piece is DECLARED to start with (0 for most). A band cut shorter than the
+    edge it is sewn to and stretched on (a rib: its seam note's ease e < 0, "stretched on") starts at 1 / (1 + e) of
+    its flat length by design: a rib hem band at 0.88 is 14% stretched before the sim moves anything. Start-stretch
+    checks subtract it, or every rib band fails them (Tess's jumper, 2026-10-09)."""
+    allow = {}
+    for k, note in (Bp.get("seam_notes") or {}).items():
+        lo, hi = (float(x) for x in note.get("ease", [0.0, 0.0]))
+        e = 0.5 * (lo + hi)
+        if e >= -0.01:
+            continue
+        try:
+            a, b = json.loads(k)
+        except (ValueError, TypeError):
+            continue
+        # the band is the seam's FIRST side (generated bands and drafted collars are written so), one piece's edge
+        if isinstance(a, str) and a.split(":")[0] in M["names"]:
+            nm = a.split(":")[0]
+            allow[nm] = max(allow.get(nm, 0.0), 1.0 / (1.0 + e) - 1.0)
+    out = np.zeros(len(M["F"]))
+    for nm, v in allow.items():
+        out[M["piece"][M["F"][:, 0]] == M["names"].index(nm)] = v
+    return out
+
+
+def fine_start_check(M: dict, plan: dict, limit: float = FINE_START_MAX, allow: np.ndarray | None = None) -> str:
     """'' when the fine settle's start can be solved, else where it can't: draped triangles (no made vertex) that the
     solver moves (not every vertex carried) stretched past 1 + limit from the flat pattern. (tr_13's trousers started
     10.9x at the back forks and ran to a CORRUPT result; tr_14's shirt 11.4x on a sliver at the neck point: ccd failed.)"""
@@ -4616,7 +4641,7 @@ def fine_start_check(M: dict, plan: dict, limit: float = FINE_START_MAX) -> str:
     if not t.any():
         return ""
     s = _start_stretch(np.c_[M["uv"], np.zeros(len(M["uv"]))], plan["start"], F[t])
-    over = s > 1.0 + limit
+    over = s > 1.0 + limit + (allow[t] if allow is not None else 0.0)
     if not over.any():
         return ""
     Ft = F[t][over]
@@ -5061,6 +5086,8 @@ def _clear_of_body(V: np.ndarray, F: np.ndarray, free: np.ndarray, body: "Body",
     (centres and edge midpoints: a triangle's chord reaches in between its vertices; a contact solver refuses a start
     inside its standoff)."""
     V = V.copy()
+    if not np.asarray(free, bool).any():  # nothing to clear (a garment with no made / held pieces: a jumper)
+        return V
     gaps = np.where(free, gap, 0.0)
     X0 = V.copy()
     Ff = F[free[F].any(1)]
@@ -6403,7 +6430,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # a strain-limited solver can't start past its limit: the carried drape, kept clear of the body vertex by
             # vertex, starts stretched a few % in places (1 mm on a 1 cm triangle is 10%); the limit over this short
             # settle is what the start needs, and the membrane takes the stretch back out
-            bad_ = fine_start_check(M, plan)
+            bad_ = fine_start_check(M, plan, allow=declared_stretch(Bp, M))
             if bad_:
                 raise RuntimeError(f"cloth {name}: the fine settle's start is stretched past what the solver can start "
                                    f"from ({bad_}); nothing was sent to the GPU")
