@@ -462,6 +462,9 @@ def _row(r: dict) -> dict:
     row.update({"diff": round(d, 3), "ok": bool(r["tol"] and abs(d) <= r["tol"])})
     if r["id"] in FLAGGED:
         row["flag"] = FLAGGED[r["id"]]
+    elif r["unit"] == "%" and r["model"] == 0.0 and r["photo"] != 0.0:
+        # (lt19: radix / dorsum width, nasolabial fold, under-eye read exactly 0.00 on every clay: no reading there)
+        row["flag"] = "the clay reader returned nothing (0.00 exactly): shown, not counted"
     return row
 
 
@@ -493,9 +496,9 @@ def table_text(t: dict) -> str:
             pct = f" ({100 * r['diff'] / r['photo']:+.0f}%)" if r["unit"] == "mm" and r["photo"] else ""
             s.append(f"  {r['id']:20s} {str(r['view']):13s} photo {r['photo']:8.2f}  model {r['model']:8.2f}  "
                      f"diff {r['diff']:+7.2f}{pct} tol {r['tol']:.2f} {r['unit'] or ''} {mark}")
-    fl = sorted({r["id"] for rows in t.values() for r in rows if "flag" in r})
+    fl = {r["id"]: r["flag"] for rows in t.values() for r in rows if "flag" in r}
     if fl:
-        s.append("flag = shown, not counted: " + "; ".join(f"{i}: {FLAGGED[i]}" for i in fl))
+        s.append("flag = shown, not counted: " + "; ".join(f"{i}: {fl[i]}" for i in sorted(fl)))
     mm = [r["diff"] / r["photo"] for rows in t.values() for r in rows if r["unit"] == "mm" and r["photo"] > 20 and "flag" not in r]
     if len(mm) >= 5 and (np.median(mm) < -0.03 or np.median(mm) > 0.03) and np.mean(np.sign(mm) == np.sign(np.median(mm))) > 0.75:
         s.append(f"SIZE: the lengths over 20 mm are {100 * np.median(mm):+.0f}% (median) and mostly the same sign: a UNIFORM "
