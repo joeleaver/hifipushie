@@ -45,7 +45,7 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5}}
-CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "left": None, "right": None}
+CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "left": None, "right": None}
 FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
          "wavelength": 0.075}
 DOWN = np.array([0.0, 0.0, -1.0])
@@ -79,6 +79,11 @@ def params(tie) -> list:
             p[k] = {**TIE[k], **(t.get(k) or {})}
         out.append(p)
     return out
+
+
+def _ss_t(x):
+    x = np.clip(x, 0.0, 1.0)
+    return x * x * (3 - 2 * x)
 
 
 def _slerp(a, b, t):
@@ -203,6 +208,11 @@ def grow(sc, g: dict, line, rng) -> dict:
                     hb = 0.002 + 0.003 * (rows - 1 - r)
                     h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t)) + t ** 3 * float(tp["out"]) * 0.8
                     if cw > 0:  # a soft part: the hair rises at it and falls away (no bare furrow)
+                        # ...and the curtain lies DOWN where it leaves the hairline: the row's own height (8 mm on the
+                        # first of three rows) stood its front edge off the forehead as a frayed rim (Tess, 2026-10-09)
+                        hug = float(cu.get("hug", 0.0))
+                        if hug > 0 and r == 0:
+                            h = h * (1.0 - hug * cw * (1.0 - _ss_t(t / 0.6)))
                         h = h + float(cu["lift"]) * cw * np.sin(np.pi * np.minimum(t / 0.5, 1.0)) * (1 - t)
                     aa = aa + un * 2.0 * np.sin(np.pi * t) * rng.uniform(-1, 1)
                     locks[f"{pre}g{r}_{i}"] = {

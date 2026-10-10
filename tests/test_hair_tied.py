@@ -90,6 +90,14 @@ def test_one_sided_style():
     assert lo[-1.0] < lo[1.0] - 8, lo
 
 
+def test_curtain_hug_lies_down():
+    """curtain.hug: the first row's front lies on the scalp where it leaves the hairline (no frayed rim)."""
+    a, b = _tie(curtain={"span": 60}), _tie(curtain={"span": 60, "hug": 1.0})
+    k = next(k for k in a if k.startswith("tg0_") and abs(_az(a[k])[0]) < 20)
+    ha, hb = np.array([p[2] for p in a[k]["pts"]]), np.array([p[2] for p in b[k]["pts"]])
+    assert hb[1] < 0.5 * ha[1] and abs(hb[-1] - ha[-1]) < 1e-6, (ha, hb)
+
+
 def test_gather_strand_dials():
     """gather.strands: strand dials for the gathered hair alone (a loose texture on top), carried on every gather lock."""
     locks = _tie(gather={"strands": {"wave": 0.02}})
