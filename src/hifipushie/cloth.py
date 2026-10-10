@@ -4258,8 +4258,11 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
     import shutil
     job_dir.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(job_dir).free / 2**30
-    if free < SIM_MIN_FREE_GB:  # a full disk has stopped the machine before (solver sessions write every frame)
-        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {SIM_MIN_FREE_GB}): not started")
+    # (a solver run elsewhere, the GPU fleet or a remote box, writes only its job folder and result here: a few MB)
+    remote_ = os.environ.get("HIFIPUSHIE_GPU") == "bundle" or bool(os.environ.get("HIFIPUSHIE_ZOZO_REMOTE"))
+    need_ = 1.0 if (remote_ and backend == "zozo") else SIM_MIN_FREE_GB
+    if free < need_:  # a full disk has stopped the machine before (solver sessions write every frame)
+        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {need_}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
         if backend == "zozo":
@@ -8614,7 +8617,16 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             from . import cloth_layers
             for on, og, ores in built:
                 if expanded(og).get("over") == gname:
-                    hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+                    if og.get("hidden_rule", "visible") == "margin":  # (the old rule: by distance from the openings)
+                        hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+                        continue
+                    # merge-and-cut (cloth_layers.cut): what the outer garment hides from every view, and under cloth
+                    # crossing it away from what shows; the under garment's made pieces (collar, stand) never cut
+                    keep_ = np.isin(np.asarray(M["piece"]), [k_ for k_, nm_ in enumerate(M["names"])
+                                                             if nm_ in made_pieces(M, interfacing(res["pieces"], M))])
+                    h_, ci_ = cloth_layers.cut(res, ores, keep=keep_)
+                    log(f"cloth {gname}: cut under {on}: {ci_}")
+                    hide |= h_
         if hide.any():
             log(f"cloth {gname}: {int(hide.sum())} of {len(F)} triangles hidden under another garment, left out")
             F = F[~hide]
