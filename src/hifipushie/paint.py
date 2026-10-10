@@ -373,7 +373,9 @@ def check_refs(spec: dict, prims: list) -> None:
                 expanded = expand_mirror(spec)
             got, missing = resolve_near(spec, near, by_name, expanded)
             from . import sdf
-            shapeless = [g for g in got if by_name[g].kind not in sdf.SDF or by_name[g].kind == "shell"]
+            # (a lid fold, lidfold.py, is a modifier but has a line to be near: its crease, lidfold.line_distance)
+            shapeless = [g for g in got if (by_name[g].kind not in sdf.SDF and by_name[g].kind != "fold")
+                         or by_name[g].kind == "shell"]
             if shapeless:
                 raise SpecError(f"paint {name!r}: near {shapeless} reshape the surface (strokes) and have no surface "
                                 f"of their own to be near: name the element under them, or paint a path along the "

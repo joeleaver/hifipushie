@@ -95,6 +95,19 @@ def test_read_lid_synthetic():
             assert c["dark"] > 0.2 and abs(c["bfs"] - 22 * mmpx) < 0.7, c
 
 
+def test_paint_may_be_near_a_fold():
+    """paint.check_refs accepts `near` on a fold prim (its crease line), as store.save runs it (tess, main 37b0014)."""
+    from hifipushie import paint
+    from hifipushie.spec import Prim
+    pr = _params()
+    fold = Prim("lid_fold.L", "fold", "modify", 0.0, 0, pr["pts"].min(0) - 0.01, pr["pts"].max(0) + 0.01, pr)
+    ball = Prim("eye.L", "ellipsoid", "add", 0.0, 0, np.full(3, -0.01), np.full(3, 0.01),
+                {"c": np.zeros(3), "size": np.full(3, 0.01), "rot": np.eye(3)})
+    spec = {"joints": {}, "blobs": {"eye.L": {"at": [0, 0, 0], "size": [0.01] * 3}}, "parts": {"body": {}},
+            "paint": {"crease": {"part": "body", "color": [0.5, 0.5, 0.5], "near": ["lid_fold.L"], "within": 0.0003}}}
+    paint.check_refs(spec, [ball, fold])
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
