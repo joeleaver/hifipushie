@@ -306,29 +306,32 @@ def build(spec, p, J, layer, T, ctx) -> None:
                  {"mask": [{"zone": {"name": "lash_upper", "grow": round(1.0 + 1.1 * k, 3)}}, {"mask": outer_half}], "blend": "max"}]
             if wing > 0:
                 # the wing: the lower lash line's own angle carried on, turned a little toward the brow's tail, drawn
-                # as a picture (a tapered flick) laid from the front at the outer lash line (a tube through points
-                # seated on the receding temple left it as a blob or in pieces)
+                # as a picture (a tapered flick) laid from the front, rooted ON the outer third of the upper lash line
+                # (a tube through points seated on the receding temple left it as a blob or in pieces). Each side from
+                # its own landmarks, the picture flipped for the right (one mirrored placement floated off the right
+                # lid as a shard: faces aren't symmetric).
+                for S, sx in ((".L", 1.0), (".R", -1.0)):
+                    cur.update(S=S, sx=sx)
+                    eo, llo, bo, luo = eye()[0], eye()[6], eye()[7], eye()[4]
+                    d = eo - llo
+                    d = d / max(np.linalg.norm(d), 1e-9)
+                    tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
+                    dw = d + 0.2 * tb
+                    ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
+                    s0 = luo + 0.3 * (eo - luo) + np.array([0.0, -0.0003, 0.0])   # the lash line itself, not re-seated
+                    # laid from the front onto skin that turns back toward the temple: shortened so the wing measures
+                    # `wing` along the skin past the corner
+                    far = seat(eo + wing * np.array([dw[0], 0.0, dw[2]]), True)
+                    run = float(np.linalg.norm((far - eo)[[0, 2]]))
+                    along = float(np.linalg.norm(far - eo))
+                    k_front = run / along if along > 1e-6 else 1.0
+                    length = wing * float(np.clip(k_front, 0.35, 1.0)) + float(np.linalg.norm((eo - s0)[[0, 2]]))
+                    path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 3.0 * w)
+                    c = s0 + np.array([sx * (0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
+                    img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
+                           "depth": 0.006, "facing": 0.3, "channel": "alpha", **({"flip": True} if sx < 0 else {})}
+                    m += [{"image": img, "blend": "max"}]
                 cur.update(S=".L", sx=1.0)
-                eo, llo, bo, luo = eye()[0], eye()[6], eye()[7], eye()[4]
-                d = eo - llo
-                d = d / max(np.linalg.norm(d), 1e-9)
-                tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
-                dw = d + 0.2 * tb
-                ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
-                s0 = seat(luo + 0.3 * (eo - luo), True)          # out of the lash line itself: the flick overlaps the liner's outer third
-                # the picture is laid from the front onto skin that turns back toward the temple: shorten it so that
-                # the wing measures `wing` along the skin past the corner (laid at its front length it stretched into a
-                # spike far off the eye)
-                far = seat(eo + wing * np.array([dw[0], 0.0, dw[2]]), True)
-                run = float(np.linalg.norm((far - eo)[[0, 2]]))
-                along = float(np.linalg.norm(far - eo))
-                k_front = run / along if along > 1e-6 else 1.0
-                length = wing * float(np.clip(k_front, 0.35, 1.0)) + float(np.linalg.norm((eo - s0)[[0, 2]]))
-                path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 3.0 * w)
-                c = s0 + np.array([(0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
-                img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
-                       "depth": 0.006, "facing": 0.3, "mirror": True, "mirror_image": True, "channel": "alpha"}
-                m += [{"image": img, "blend": "max"}]
             low = float(o.get("lower", 0.0))
             if low > 0:
                 m += [{**e, "blend": "max", "weight": round(low, 3)} for e in
@@ -352,7 +355,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else [round(0.6 * c + 0.4 * d, 4) for c, d in zip(own, _hex("#c45a6a"))]
             sheer = fin == "balm"
             extra = {"specular": 0.75} if fin in ("gloss", "balm") else {}
-            grow = 0.7 + float(o.get("overline", 0.0)) / 0.0012
+            grow = 0.45 + float(o.get("overline", 0.0)) / 0.0012
             layer("makeup_lipstick", o.get("mask"), pre=True, color=col, opacity=min((0.45 if sheer else 0.95) * o["amount"], 1.0),
                   roughness=FINISH[fin], **extra, mask=[{"zone": {"name": "lips", "grow": round(grow, 3)}}])
             liner = float(o.get("liner", 0.0))

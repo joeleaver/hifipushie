@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 12
+VERSION = 13
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -41,7 +41,7 @@ STUBBLE_STYLES = {
     "heavy": {"length": 0.008, "shadow": 0.55, "trim": 0.25, "density": 1.0, "patchy": 0.2, "cheeks": 0.8},
     "patchy": {"length": 0.002, "shadow": 0.5, "trim": 0.0, "density": 0.8, "patchy": 0.75, "cheeks": 0.3},
 }
-HAIRS_PER_M2 = 6.0e5   # ~60 / cm2 where the beard is full (moustache, chin)
+HAIRS_PER_M2 = 8.0e5   # ~80 / cm2 where the beard is full (moustache, chin: 70-85 measured)
 
 _MESH: dict = {}
 
@@ -446,7 +446,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     G = np.zeros((H, W), np.float32)
     if n:
         g = beard_direction(J, P, Nrm)
-        ang = rng.normal(0, np.radians(18), n)              # each hair its own way, a little
+        ang = rng.normal(0, np.radians(11), n)              # each hair its own way, a little (the grain reads)
         t1, t2 = frames(Nrm, g)
         x0, A = jacobians(sp, P, t1, t2)
         # where the beard thins out (its fading edges, stragglers) the hairs are finer, shorter and lighter: terminal
@@ -583,11 +583,11 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         t1, t2 = frames(Nrm, np.tile([1.0, 0, 0], (n, 1)))
         x0, A = jacobians(sp, P, t1, t2)
         pxm = _px_m(A)
-        big = rng.random(n) < 0.18          # a few larger ones (merged, 1.5-3 mm) among the specks
-        rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.35, n) * np.where(big, rng.uniform(2.5, 5.0, n), 1.0) * (0.75 + 0.4 * d)
+        big = rng.random(n) < 0.05          # a few larger ones among the specks (more read as splats)
+        rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.35, n) * np.where(big, rng.uniform(1.5, 2.5, n), 1.0) * (0.75 + 0.4 * d)
         rad = np.clip(rad, 0.00012, 0.002)
         soft = rng.uniform(0.3, 0.9, n)
-        lobes = rng.normal(0, 1, (n, 4)) * np.array([0.0, 0.16, 0.1, 0.07])
+        lobes = rng.normal(0, 1, (n, 4)) * np.array([0.0, 0.08, 0.05, 0.03])   # nearly round
         ph = rng.uniform(0, 2 * np.pi, (n, 4))
         aspect = rng.uniform(0.75, 1.0, n)
         rot = rng.uniform(0, np.pi, n)

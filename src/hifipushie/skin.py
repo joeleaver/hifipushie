@@ -708,6 +708,11 @@ def _build(spec: dict, J: dict) -> dict:
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
                                   "mask": [{"zone": {"name": "lips", "grow": 1.6}},
                                                               {"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
+        # the lower lip's moist centre: smoother, so it catches a highlight (bare lips read matte and painted without it)
+        if "lm_lip_lower" in J and "lm_lip_inner_lower" in J:
+            out["skin:lip_sheen"] = {"part": part, "_pre": True, "roughness": round(max(lp["roughness"] - 0.22, 0.12), 3), "opacity": 0.7,
+                                     "mask": [{"spot": {"at": [{"at": "lm_lip_lower", "offset": [0.0, -0.0005, 0.0025]}],
+                                                        "radius": [[0.011, 0.006, 0.0025]], "soft": 0.9}}, {"zone": {"name": "lip_lower", "grow": 0.6}}]}
         # (the seam ends at the vermilion's own corners on a GNM head: lm_mouth_corner sits ~6 mm further out on the cheek
         # there, and the line ran on past the mouth as a dark slit; Garrett 2026-10-09)
         cr, cl = ("verm_u00", f"verm_u{_VN - 1:02d}") if f"verm_u{_VN - 1:02d}" in J else ("lm_mouth_corner.R", "lm_mouth_corner.L")
