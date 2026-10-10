@@ -624,7 +624,7 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     # (a freshly shaved jaw: the cool cast; a few days' growth: the cut hairs at the surface warm it to a grey-brown, the
     # colour measured on Garrett's photo under the matched light: Lab ~45/4/13 at ~0.8 coverage)
     grow = float(np.clip(q["length"] / 0.001, 0, 1))
-    cool = np.array(T(grey=0.8, melanin=1.1)) * (0.5 + 0.3 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
+    cool = np.array(T(grey=0.8, melanin=1.1)) * (0.66 + 0.2 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
     warm = np.array(T(grey=0.25, melanin=2.3, blood=1.05)) * (0.62 + 0.25 * t["melanin"])   # (warm grey: less read as green)
     cast = (1 - grow) * cool + grow * warm + (0.04 + 0.12 * grow) * (np.array(col) - 0.3)
     cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]

@@ -34,12 +34,12 @@ MAX_PX = 8192
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
 # scale, patchiness, how far the cheeks fill (0 thin .. 1 as the chin); hair grows ~0.4 mm a day
 STUBBLE_STYLES = {
-    "clean": {"length": 0.00005, "shadow": 0.9, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
-    "five_oclock": {"length": 0.0004, "shadow": 1.0, "trim": 0.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.55},
+    "clean": {"length": 0.00005, "shadow": 0.4, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
+    "five_oclock": {"length": 0.0004, "shadow": 0.6, "trim": 0.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.55},
     "short": {"length": 0.0014, "shadow": 1.0, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.6},
     "designer": {"length": 0.004, "shadow": 1.0, "trim": 1.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.7},
     "heavy": {"length": 0.008, "shadow": 1.0, "trim": 0.25, "density": 1.0, "patchy": 0.2, "cheeks": 0.8},
-    "patchy": {"length": 0.002, "shadow": 0.8, "trim": 0.0, "density": 0.8, "patchy": 0.75, "cheeks": 0.3},
+    "patchy": {"length": 0.002, "shadow": 0.5, "trim": 0.0, "density": 0.8, "patchy": 0.75, "cheeks": 0.3},
 }
 HAIRS_PER_M2 = 6.0e5   # ~60 / cm2 where the beard is full (moustache, chin)
 
