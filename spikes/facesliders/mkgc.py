@@ -16,6 +16,8 @@ dst, head = sys.argv[1], sys.argv[2]
 H = store.HOME
 ld = lambda m: (lambda s: s.get("spec", s))(json.loads((H / m / "spec.json").read_text()))  # noqa: E731
 sp, g4, gc = ld(head), ld("g4_garrett"), ld("gc_c1")
+GREY = {"grey_amount": 0.45, "lit": "#6a6661", "sheen": "#8e8a85", "gap": "#2c2a28", "grey": "#a8a49f",
+        "eevee_sat": 0.3}
 KEEP = ("g4_nostril.L", "g4_body_tone", "g4_neck_cool")   # nostril interiors, the body's tone off the face, the neck's
 sp["paint"] = {k: v for k, v in (g4.get("paint") or {}).items() if k in KEEP}
 skin = json.loads(json.dumps(g4["skin"]))
@@ -26,6 +28,12 @@ skin["hair"].pop("lashes", None)
 sp["skin"] = skin
 sp["parts"] = g4["parts"]
 sp["hair"] = gc["hair"]
+# the concept's hair is short salt-and-pepper GREY: gc_c1's colour match chased the concept's colour bands and
+# rendered dark brown (eevee_sat 0.6 over brown lit / sheen). Greyed: a grey strand share, near-neutral lit / sheen /
+# gap, eevee's saturation at the measured 0.35 or under; the strands' wave off (a neat short cut)
+look = sp["hair"].setdefault("look", {})
+look.update({k: v for k, v in GREY.items()})
+sp["hair"].setdefault("strands", {}).update({"wave": 0.0, "frizz": 0.015})
 h = sp["base"]["head"]
 h["fold"] = {"crease_height": 3.0, "crease_depth": 0.6, "crease_width": 1.1, "fold_overhang": 0.8, "fold_width": 3.0}
 h["sliders"] = {k: v for k, v in (h.get("sliders") or {}).items()
