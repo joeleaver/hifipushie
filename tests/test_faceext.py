@@ -31,12 +31,7 @@ def test_probable_identity_part_removed():
         m = np.linalg.norm(d, axis=1)
         V, S, rows = faceext.cheap_basis(m > faceext.REGION * m.max())
         y = d[rows].ravel()
-        # (the nose's: 0.2. The windowed projection (faces4: faceext.WINDOW, smooth edges instead of a step where a
-        # hard region mask ended) and the lid-rim hold leave up to 0.17 of the field along the cheap directions (the
-        # curve, nostrils_width). INTERIM (coordinator, 2026-10-10): M2 / M3 of the coherent model (gnm_atlas.md, faces4
-        # design) must bring this back to 0.1 or carry the correlation in the joint prior)
-        tol = 0.1 if faceext.EXT[k][0] == "mouth" else 0.2
-        assert np.linalg.norm(V @ y) < tol * np.linalg.norm(y), (k, np.linalg.norm(V @ y) / np.linalg.norm(y))
+        assert np.linalg.norm(V @ y) < 0.1 * np.linalg.norm(y), (k, np.linalg.norm(V @ y) / np.linalg.norm(y))
 
 
 def test_extensions_fold_nothing():
@@ -72,9 +67,7 @@ def test_extensions_are_local_and_symmetric():
             continue
         d = np.asarray(faceext.table()[k], float)
         assert np.abs(d - d[mi] * [-1.0, 1.0, 1.0]).max() < 1e-6, k
-        # (12% of the template: the windowed projection (faces4) eases each field out over 12 mm; MakeHuman's hump
-        # moves the whole upper nose and radix: 10.1%)
-        assert (np.linalg.norm(d, axis=1) > 2e-4).sum() < 0.12 * len(d), k
+        assert (np.linalg.norm(d, axis=1) > 2e-4).sum() < 0.1 * len(d), k
 
 
 def test_mouth_extensions_reach_a_millimetre():

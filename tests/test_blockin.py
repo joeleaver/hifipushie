@@ -110,6 +110,38 @@ def test_start_step_table_log_and_registration():
 
 
 @need_ref
+def test_brows_seated_and_focus():
+    """The brows are painted ON the surface (only on the clay's skin pixels, in a turned view too); the focus sheet
+    registers at the feature's own landmarks; a zoom-out read is logged on the step that made the model."""
+    from hifipushie import humanfit, likeness
+    a, b = "bi_test_f0", "bi_test_f1"
+    _rm(a, b)
+    try:
+        bi.start(a, REF, sex="male")
+        rj = bi._refs(a)
+        mesh = bi.presented_mesh(store.load(a)["base"])
+        assert bi.brow_source(mesh, rj) is not None
+        for vi in range(len(rj["views"])):
+            cam = rj["cameras"][vi]
+            L2 = humanfit.project(cam, mesh["state"]["L"])
+            c, s = 0.5 * (L2.min(0) + L2.max(0)), 1.4 * float(np.max(L2.max(0) - L2.min(0)))
+            box = (c[0] - s / 2, c[1] - s / 2, c[0] + s / 2, c[1] + s / 2)
+            im, k, ps = likeness.render(mesh, cam, box, px=500, brows=False, passes=True)
+            out = np.asarray(bi.seat_brows(im, ps, cam, box, k, bi.brow_source(mesh, rj)), float)
+            changed = np.abs(out - np.asarray(im.convert("RGB"), float)).sum(-1) > 1
+            assert changed.sum() > 50, vi
+            assert (ps["part"][changed] == 0).all(), vi   # never past the silhouette, never on the eyes
+        r = bi.focus(a, "nose", str(store.HOME / a / "f.png"), views=[0])
+        assert r["views"][0]["registered"] == "the feature's own landmarks"
+        assert any(x["id"] == "alar_width" for x in bi.feature_table(a, "nose")["nose"])
+        bi.step(a, {"nose_width!": -0.3}, out=b, seen="tip wide", feature="nose")
+        e = bi.note(b, "whole face unchanged, nose narrower", keep=True)
+        assert e["kept"] and e["feature"] == "nose" and len(e["feature_passes"]) == 2
+    finally:
+        _rm(a, b)
+
+
+@need_ref
 def test_tools_through_server():
     from hifipushie import server
     a = "bi_test_s0"
@@ -121,6 +153,7 @@ def test_tools_through_server():
         assert "bi_test_s1" in txt and "targets before -> after" in txt
         assert "lid margins" in server.lid_read(a)
         assert server.guide("block_in_step").startswith("### `block_in_step`")
-        assert "artist block-in" in server.guide("block_in")
+        assert "artist block-in" in server.guide("block_in") and "ZOOM IN" in server.guide("block_in")
+        assert len(server.block_in_look(a, focus="eyes", views=[0], save=str(store.HOME / a / "e.png"))) == 2
     finally:
         _rm(a, "bi_test_s1")

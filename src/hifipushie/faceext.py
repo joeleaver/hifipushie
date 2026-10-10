@@ -41,51 +41,9 @@ EXT = {
                            "the sides (+0.4 mm at half width), the skin under it following: a central pad; - = a flat, "
                            "even lower lip (MakeHuman 'lowerlip-middle'; faces3 2026-10-10, the central pad lever)"),
 }
-# the nose (faces4, 2026-10-10; MakeHuman nose/*.target, same commit). What each does at +1 (noseprofile.py, mm on
-# GNM's template): see the strings. Left out: trans-* / scale-* (the identity's cheap directions make 0.93-0.96 of
-# them: position and size are the identity's), flaring (it narrows the alae with their base: a weaker nostrils_width).
-EXT.update({
-    "mh_nose_hump": ("nose", "nose-hump-incr", "nose-hump-decr",
-                     "a dorsal hump: the bony-cartilage junction forward (2.2 mm), the radix and tip a little back / "
-                     "down; - = a scooped dorsum (MakeHuman)"),
-    "mh_nose_curve": ("nose", "nose-curve-convex", "nose-curve-concave",
-                      "the dorsum line convex: the tip down and back (2 mm), the upper dorsum up; - = concave, a "
-                      "ski-slope with the tip forward (MakeHuman)"),
-    "mh_nose_greek": ("nose", "nose-greek-incr", "nose-greek-decr",
-                      "the radix forward and up (1 mm): the dorsum running straight on from the brow (a Greek "
-                      "profile); - = a deeper nasion (MakeHuman)"),
-    "mh_nose_compression": ("nose", "nose-compression-compress", "nose-compression-uncompress",
-                            "the middle vault compressed (down / in, 1.9 mm), the tip a little forward; - = a long, "
-                            "straight middle vault (MakeHuman)"),
-    "mh_nose_point": ("nose", "nose-point-up", "nose-point-down",
-                      "the tip rotated up (2 mm at the lobule) with the columella's base down: an upturned tip "
-                      "showing more columella; - = a drooping tip (MakeHuman; fold-free scale 0.53)"),
-    "mh_nose_septum": ("nose", "nose-septumangle-incr", "nose-septumangle-decr",
-                       "the columella's angle: the tip down and forward, the alar rims up (1 mm), the subnasale back; "
-                       "- = the tip up and back, the alae down (MakeHuman)"),
-    "mh_nose_base": ("nose", "nose-base-up", "nose-base-down",
-                     "the nose's base (alar bases, subnasale, tip) raised ~0.5 mm, the nose shorter; - = a longer "
-                     "nose, base down (MakeHuman; fold-free scale 0.43)"),
-    "mh_nostrils_width": ("nose", "nose-nostrils-width-incr", "nose-nostrils-width-decr",
-                          "the alae wider (1.4 mm a side at their widest, alar base with them), the tip unchanged; - = "
-                          "narrow alae (MakeHuman)"),
-    "mh_nostrils_angle": ("nose", "nose-nostrils-angle-up", "nose-nostrils-angle-down",
-                          "the alar rims up (0.7 mm) with the tip held: the nostrils show from the front; - = hanging "
-                          "alae (MakeHuman; fold-free scale 0.42)"),
-    "mh_nose_point_width": ("nose", "nose-point-width-incr", "nose-point-width-decr",
-                            "the tip's lobule wider (0.8 mm a side), alae unchanged; - = a narrow, defined tip "
-                            "(MakeHuman)"),
-    "mh_nose_volume": ("nose", "nose-volume-incr", "nose-volume-decr",
-                       "the lobule fuller and rounder (0.8 mm a side, the tip up 0.5): a bulbous tip; - = a small, "
-                       "pinched tip (MakeHuman)"),
-    "mh_nose_width1": ("nose", "nose-width1-incr", "nose-width1-decr",
-                       "the radix (upper bony vault) wider; - = a narrow bridge between the eyes (MakeHuman)"),
-    "mh_nose_width2": ("nose", "nose-width2-incr", "nose-width2-decr",
-                       "the middle vault (dorsum's side walls) wider; - = a narrow dorsum (MakeHuman)"),
-    "mh_nose_width3": ("nose", "nose-width3-incr", "nose-width3-decr",
-                       "the lower nose wider: alae (0.9 mm a side) and lobule (1 mm) together; - = a narrow lower "
-                       "third of the nose (MakeHuman)"),
-})
+# (faces4's 14 MakeHuman nose extensions mh_nose_* / mh_nostrils_* were RETIRED at the main merge, 2026-10-10:
+# nothing accepted used them and the block-in's gap directions replaced them; the general fixes they brought
+# stay: the windowed projection (WINDOW), fill_inside, the skin-only crease hold, the nose rim hold)
 REGION = 0.03     # of the target's largest move: its region (the extension lives there)
 _C: dict = {}
 

@@ -308,7 +308,7 @@ def _boxes(base: dict, rj: dict) -> list:
 
 
 def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
-         cameras: list | None = None) -> dict:
+         cameras: list | None = None, feature: str | None = None) -> dict:
     """<out> = <src> moved: directions add (amount x direction), base keys and lids are SET. Logged with what was seen
     and why. cameras = view indices to refit on the result head (camera only). Returns the report (see step_text)."""
     from . import store
@@ -362,13 +362,19 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     rnd = 1 + max([e.get("round", 0) for e in lg] or [0])
     if lg and lg[-1].get("to") != src:
         lg[-1]["reverted"] = f"the next step went from {src}, not {lg[-1].get('to')}"
+    if feature and feature not in FEATURES:
+        raise ValueError(f"feature: one of {', '.join(FEATURES)}")
     entry = {"round": rnd, "from": src, "to": out, "moves": moves, "cameras": cameras, "camera_moves": cam_moves,
-             "seen": seen, "why": why,
+             "feature": feature, "seen": seen, "why": why,
              "c_norm": round(float(np.linalg.norm(c)), 3), "read": read,
              "coupled": [[k, round(float(x), 2)] for k, x in moved],
              "passes": passes(t1), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     lg.append(entry)
     _log_path(rj, out).write_text(json.dumps(lg, indent=1))
+    if feature:
+        ft0, ft1 = feature_table(src, feature), feature_table(out, feature)
+        entry["feature_passes"] = [passes(ft0)[feature], passes(ft1)[feature]]
+        _log_path(rj, out).write_text(json.dumps(lg, indent=1))
     return {"entry": entry, "c0": float(np.linalg.norm(c0)), "big": big, "delta": table_delta(t0, t1),
             "table": t1, "before": passes(t0)}
 
@@ -384,7 +390,9 @@ def step_text(rep: dict) -> str:
         s.append("cameras refitted (landmarks only: a camera fit does not see the outline): " + "; ".join(e["camera_moves"]))
     if rep["big"]:
         s.append(f"WARNING: {', '.join(rep['big'])} moved more than 1 sd in one step: the method takes small steps (0.3-0.7)")
-    s.append("targets before -> after: " + ", ".join(f"{g} {rep['before'].get(g, '-')} -> {p}" for g, p in e["passes"].items()))
+    if e.get("feature_passes"):
+        s.append(f"ZOOM IN, {e['feature']}'s own checklist rows: {e['feature_passes'][0]} -> {e['feature_passes'][1]} pass")
+    s.append("ZOOM OUT, targets before -> after: " + ", ".join(f"{g} {rep['before'].get(g, '-')} -> {p}" for g, p in e["passes"].items()))
     if rep["delta"]:
         s.append("items that changed (model - photo, tol):")
         s += ["  " + x for x in rep["delta"]]
@@ -402,34 +410,50 @@ def _spec_hash(name: str) -> str:
     return hashlib.sha1(json.dumps([sp["base"], rj["cameras"]], sort_keys=True).encode()).hexdigest()[:16]
 
 
-def table(name: str) -> dict:
-    """{group: [{id, view, unit, photo, model, diff, tol, ok, flag?}]} through the model's fitted cameras (likeness
-    checklist items); cached in the model's directory by its base + cameras."""
+def rows(name: str) -> list:
+    """Every likeness checklist row (photo vs model through the model's fitted cameras): [{id, stage, view, unit,
+    photo, model, tol}] with numbers on both sides; cached in the model's directory by its base + cameras."""
     from . import likeness as lk, store
     h = _spec_hash(name)
-    p = store.HOME / name / "blockin_table.json"
+    p = store.HOME / name / "blockin_rows.json"
     if p.exists():
         d = json.loads(p.read_text())
         if d.get("hash") == h:
-            return d["table"]
-    rows = lk.compare(name, store.load(name)["base"])["rows"]
+            return d["rows"]
+    out = []
+    for r in lk.compare(name, store.load(name)["base"])["rows"]:
+        a, b = r.get("photo"), r.get("model")
+        if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) or not np.isfinite(a) or not np.isfinite(b):
+            continue
+        out.append({"id": r["id"], "stage": r.get("stage"), "view": r.get("view", r.get("vi")), "vi": str(r.get("vi")),
+                    "unit": r.get("unit"), "photo": round(float(a), 3), "model": round(float(b), 3),
+                    "tol": round(float(r.get("tol") or 0), 3)})
+    p.write_text(json.dumps({"hash": h, "rows": out}, indent=1))
+    return out
+
+
+def _row(r: dict) -> dict:
+    d = r["model"] - r["photo"]
+    row = {k: r[k] for k in ("id", "view", "unit", "photo", "model", "tol")}
+    row.update({"diff": round(d, 3), "ok": bool(r["tol"] and abs(d) <= r["tol"])})
+    if r["id"] in FLAGGED:
+        row["flag"] = FLAGGED[r["id"]]
+    return row
+
+
+def table(name: str) -> dict:
+    """{group: [{id, view, unit, photo, model, diff, tol, ok, flag?}]}: the five target groups (likeness items)."""
+    R = rows(name)
     out = {}
     for g, ids in GROUPS.items():
-        out[g] = []
-        for i in ids:
-            for r in sorted((r for r in rows if r["id"] == i), key=lambda r: str(r.get("vi"))):
-                a, b = r.get("photo"), r.get("model")
-                if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) or not np.isfinite(a) or not np.isfinite(b):
-                    continue
-                tol = float(r.get("tol") or 0)
-                d = float(b) - float(a)
-                row = {"id": i, "view": r.get("view", r.get("vi")), "unit": r.get("unit"), "photo": round(float(a), 3),
-                       "model": round(float(b), 3), "diff": round(d, 3), "tol": round(tol, 3), "ok": bool(tol and abs(d) <= tol)}
-                if i in FLAGGED:
-                    row["flag"] = FLAGGED[i]
-                out[g].append(row)
-    p.write_text(json.dumps({"hash": h, "table": out}, indent=1))
+        out[g] = [_row(r) for i in ids for r in sorted((r for r in R if r["id"] == i), key=lambda r: r["vi"])]
     return out
+
+
+def feature_table(name: str, feature: str) -> dict:
+    """The feature's own checklist rows (every likeness item of its stages), as one table group."""
+    st, extra = FEATURES[feature]["stages"], FEATURES[feature].get("items", ())
+    return {feature: [_row(r) for r in rows(name) if r["stage"] in st or r["id"] in extra]}
 
 
 def passes(t: dict) -> dict:
@@ -525,6 +549,85 @@ def draw_photo_brows(im, P, to):
     for up, lo in (BROWS_R, BROWS_L):
         d.polygon([tuple(p) for p in to(np.r_[P[up], P[lo][::-1]])], fill=(70, 52, 40))
     return im
+
+
+BROW_RGB = np.array([70.0, 52.0, 40.0])
+
+
+def brow_source(mesh: dict, rj: dict) -> dict | None:
+    """The person's brows SEATED ON THE SURFACE (Joe: 2D-pasted brows stuck out past the 3/4 silhouette and hooked over
+    the bridge in profile): the front picture's detector brow band as a mask in that picture, plus the model's depth
+    seen through the front camera. seat_brows then paints, in ANY view, the skin points that project into the band from
+    the front AND are visible from the front: they follow the surface, foreshorten and are occluded like paint. Cached
+    on the mesh dict. None when the front picture's detector misses (draw_brows' landmark line is the fallback)."""
+    from PIL import Image, ImageDraw, ImageFilter
+    from . import humanfit, likeness
+    if "_brows" in mesh:
+        return mesh["_brows"]
+    vf = _front(rj)
+    v, cam = rj["views"][vf], rj["cameras"][vf]
+    img = Image.open(v["image"]).convert("RGB")
+    P = detect_view(img, v)
+    out = None
+    if P is not None:
+        P = np.asarray(P, float)[:, :2]
+        # the band rasterised SUPERSAMPLED over its own box (a full-figure picture's brows are a few pixels tall:
+        # nearest samples of a picture-resolution mask came out as stair steps), sampled bilinearly
+        polys = [np.r_[P[up], P[lo][::-1]] for up, lo in (BROWS_R, BROWS_L)]
+        allp = np.concatenate(polys)
+        o = allp.min(0) - 6
+        ss = 8.0
+        size = tuple(int(x) for x in np.ceil((allp.max(0) + 6 - o) * ss))
+        m = Image.new("L", size, 0)
+        d = ImageDraw.Draw(m)
+        for poly in polys:
+            d.polygon([tuple(q) for q in (poly - o) * ss], fill=255)
+        L2 = humanfit.project(cam, mesh["state"]["L"])
+        c = 0.5 * (L2.min(0) + L2.max(0))
+        side = 1.5 * float(np.max(L2.max(0) - L2.min(0)))
+        box = (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
+        _, k, ps = likeness.render(mesh, cam, box, px=1200, brows=False, passes=True)
+        mmpx = likeness._mm_per_px(cam, mesh["state"]["L"][27:48])
+        soft = m.filter(ImageFilter.GaussianBlur(max(0.5 / mmpx, 0.4) * ss))   # (a ~0.5 mm soft edge)
+        out = {"cam": cam, "mask": np.asarray(soft, float) / 255.0, "mo": o, "ss": ss, "zb": ps["zb"], "part": ps["part"],
+               "box": box, "k": k}
+    mesh["_brows"] = out
+    return out
+
+
+def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
+    """Paint the seated brows on a render (its passes ps, through cam / box / k): each skin pixel back-projected to
+    the surface, seen from the front camera; inside the front band and visible there (depth within 2.5 mm) = brow."""
+    from PIL import Image
+    from . import humanfit, likeness_shape as ls
+    a = np.asarray(im.convert("RGB"), float).copy()
+    rr, cc = np.nonzero(ps["part"] == 0)
+    if not len(rr):
+        return im
+    uv = np.c_[cc / k + box[0], rr / k + box[1]]
+    X = ls.unproject(cam, uv, ps["zb"][rr, cc])
+    from scipy.ndimage import map_coordinates
+    q = humanfit.project(B["cam"], X)
+    qm = (q - B["mo"]) * B["ss"]
+    al = map_coordinates(B["mask"], [qm[:, 1], qm[:, 0]], order=1, mode="constant", cval=0.0)
+    W, H = B["cam"]["size"]
+    ok = (q[:, 0] >= 0) & (q[:, 0] < W) & (q[:, 1] >= 0) & (q[:, 1] < H)
+    zi = np.round((q - [B["box"][0], B["box"][1]]) * B["k"]).astype(int)
+    zh, zw = B["zb"].shape
+    inz = ok & (zi[:, 0] >= 0) & (zi[:, 0] < zw) & (zi[:, 1] >= 0) & (zi[:, 1] < zh)
+    Rf = humanfit._cam_rot(B["cam"])
+    depth = ((X - np.asarray(B["cam"]["centre"], float)) @ Rf.T + np.asarray(B["cam"]["t"], float))[:, 2]
+    vis = np.zeros(len(rr), bool)
+    vis[inz] = (B["part"][zi[inz, 1], zi[inz, 0]] == 0) & (depth[inz] < B["zb"][zi[inz, 1], zi[inz, 0]] + 0.0025)
+    al = al * vis * strength
+    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + BROW_RGB * al[:, None]
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+
+
+def brows_on(im, ps, mesh, rj, cam, box, k):
+    """The brows on a clay crop: seated from the front picture where it sees them, GNM's landmark line otherwise."""
+    B = brow_source(mesh, rj)
+    return seat_brows(im, ps, cam, box, k, B) if B is not None else draw_brows(im.convert("RGB"), mesh, cam, box, k)
 
 
 def draw_brows(im, mesh, cam, box, k, mm: float = 2.0):
@@ -699,13 +802,9 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
         pbox = (box[0] + sh[0], box[1] + sh[1], box[2] + sh[0], box[3] + sh[1])
         ph = img.crop(tuple(int(round(b)) for b in pbox)).resize((px, px), Image.LANCZOS)
         cl, _, ps = lit_render(mesh, cam, img, box=box, px=px)
-        cl = fill(cl, ps)
+        cl = brows_on(fill(cl, ps), ps, mesh, rj, cam, box, k)
         to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
         to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
-        if front and Pd is not None:
-            cl = draw_photo_brows(cl, Pd, to_ph)
-        else:
-            cl = draw_brows(cl, mesh, cam, box, k)
         ov = Image.blend(ph, cl, 0.5)
         ol = ph.copy().convert("L").convert("RGB")
         d = ImageDraw.Draw(ol)
@@ -727,7 +826,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
             olA = np.asarray(ol).copy()
             olA[np.asarray(e) > 0] = (30, 200, 30)
             ol = Image.fromarray(olA)
-        sg = SQUINT_MM / likeness._mm_per_px(cam, mesh["L"][27:48]) * k
+        sg = float(SQUINT_MM / likeness._mm_per_px(cam, mesh["L"][27:48]) * k)
         sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
         y = 18 + i * per * (T + 18)
         for j, im in enumerate((ph, cl, ov, ol, sq(ph), sq(cl))):
@@ -737,8 +836,7 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
         if mesh_b is not None:
             mesh_b["_photo_P"] = Pd
             cb_, _, psb = lit_render(mesh_b, cam, img, box=box, px=px)
-            cb = fill(cb_, psb)
-            cb = draw_photo_brows(cb, Pd, to_ph) if front and Pd is not None else draw_brows(cb, mesh_b, cam, box, k)
+            cb = brows_on(fill(cb_, psb), psb, mesh_b, rj, cam, box, k)
             dif = np.abs(np.asarray(cl.convert("L"), float) - np.asarray(cb.convert("L"), float))
             dif = Image.fromarray(np.clip(255 - 4 * dif, 0, 255).astype(np.uint8)).convert("RGB")
             y2 = y + T + 18
@@ -750,6 +848,166 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     sheet.save(out)
     return {"out": str(out), "views": info}
+
+
+# ---------------------------------------------------------------- focus: one feature, zoomed in
+
+# Joe (2026-10-10): "having the reviewer focus more on each feature, then zoom back out after making each change".
+# Per feature: the model's 68 landmarks that frame and register it, MediaPipe's matching points on the picture (the
+# same anatomical points: feature-local registration, a 2D shift), MediaPipe contours drawn for the local outline
+# difference, and the checklist stages whose rows are its table.
+FEATURES = {
+    "eyes": {"lm": list(range(17, 27)) + list(range(36, 48)), "pairs": [(36, 33), (39, 133), (42, 362), (45, 263)],
+             "lines": [[33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7, 33],
+                       [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249, 263],
+                       [70, 63, 105, 66, 107], [300, 293, 334, 296, 336], [46, 53, 52, 65, 55], [276, 283, 282, 295, 285]],
+             "stages": ("eyes", "brows"), "items": ("under_eye", "brow_ridge", "prof_brow_ridge"), "squint_mm": 3.0},
+    "nose": {"lm": list(range(27, 36)) + [39, 42], "pairs": [(27, 168), (30, 4), (31, 98), (33, 2), (35, 327)],
+             "lines": [[168, 6, 197, 195, 5, 4], [64, 98, 97, 2, 326, 327, 294], [48, 115, 220, 45, 4, 275, 440, 344, 278]],
+             "stages": ("nose",), "squint_mm": 3.0},
+    "mouth": {"lm": list(range(48, 68)) + [33], "pairs": [(48, 61), (54, 291), (51, 0), (57, 17), (62, 13), (66, 14)],
+              "lines": [[61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61],
+                        [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78]],
+              "stages": ("mouth",), "items": ("nasolabial_fold",), "squint_mm": 3.0},
+    "chin_jaw": {"lm": list(range(3, 14)) + [57], "pairs": [(8, 152), (57, 17), (6, 176), (10, 400)],
+                 "lines": [[132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361]],
+                 "stages": ("chin_jaw",), "items": ("width_jaw", "width_chin", "jaw_taper", "jaw_gonial", "jaw_ramus",
+                                                    "jaw_border", "corner_jaw", "jaw_neck_step"), "squint_mm": 5.0},
+    "cheeks": {"lm": [1, 2, 3, 13, 14, 15, 31, 35, 36, 45, 48, 54], "pairs": [(36, 33), (45, 263), (31, 98), (35, 327)],
+               "lines": [[127, 234, 93, 132, 58], [356, 454, 323, 361, 288]],
+               "stages": (), "items": ("width_cheekbone", "corner_cheekbone", "cheek_hollow", "nasolabial_fold",
+                                       "under_eye", "width_temple", "corner_temple"), "squint_mm": 6.0},
+    "ears": {"lm": [0, 1, 2, 15, 16], "pairs": [], "lines": [], "stages": ("ears",), "squint_mm": 4.0},
+}
+RAKE = np.array([-0.85, -0.35, -0.25])   # camera frame: a grazing key from the picture's upper left (forms, not tone)
+RAKE = RAKE / np.linalg.norm(RAKE)
+
+
+def _feature_box(feature, L2, P_ear=None):
+    """A square crop (picture pixels) around the feature's projected landmarks (the ear: its projected vertices)."""
+    Q = P_ear if feature == "ears" and P_ear is not None and len(P_ear) else L2[FEATURES[feature]["lm"]]
+    lo, hi = Q.min(0), Q.max(0)
+    c = 0.5 * (lo + hi)
+    io = float(np.linalg.norm(L2[45] - L2[36]))
+    side = max(1.5 * float(np.max(hi - lo)), 0.55 * io)
+    return (c[0] - side / 2, c[1] - side / 2, c[0] + side / 2, c[1] + side / 2)
+
+
+def focus(name: str, feature: str, out: str, views: list | None = None, T: int = 300, before: str | None = None) -> dict:
+    """ZOOM IN: one feature per view, at native resolution: photo crop | clay crop (the photo's light, filled) | 50 %
+    overlay | the local outline difference (the detector's feature contours: photo red, clay green) | clay under a
+    raking light | squinted photo | squinted clay. Registered at the feature's OWN landmarks (a 2D shift), so an
+    offset elsewhere doesn't hide its shape. before = another model: a second row photo | before | after | change |
+    raking before | raking after. Views where the feature isn't seen (the ear in front) are left out."""
+    from PIL import Image, ImageDraw, ImageFilter
+    from . import humanfit, likeness, store
+    if feature not in FEATURES:
+        raise ValueError(f"focus: one of {', '.join(FEATURES)}")
+    F = FEATURES[feature]
+    rj = _refs(name)
+    mesh = presented_mesh(store.load(name)["base"])
+    mesh_b = presented_mesh(store.load(before)["base"]) if before else None
+    st = mesh["state"]
+    VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
+    if feature == "ears":
+        VI = [vi for vi in VI if abs(float(rj["views"][vi].get("yaw", 0))) >= 20]
+    if not VI:
+        raise ValueError(f"focus {feature}: no view shows it (the ear needs a turned view)")
+    per = 2 if before else 1
+    cols = ["photo", "clay (photo's light)", "50% overlay", "outline: photo red / clay green", "raking light",
+            "squint photo", "squint clay"]
+    sheet = Image.new("RGB", (T * len(cols), (T + 18) * len(VI) * per + 18), "white")
+    dr = ImageDraw.Draw(sheet)
+    for j, lab in enumerate(cols):
+        dr.text((j * T + 4, 2), lab, fill=(0, 0, 0))
+    info = []
+    for i, vi in enumerate(VI):
+        v, cam = rj["views"][vi], rj["cameras"][vi]
+        img = Image.open(v["image"]).convert("RGB")
+        L2 = humanfit.project(cam, st["L"])
+        Pe = humanfit.project(cam, mesh["V"][mesh["ears"]]) if feature == "ears" and mesh.get("ears") is not None else None
+        if Pe is not None:   # (the ear nearer the camera: its vertices on the picture's near side)
+            ex = mesh["V"][mesh["ears"]][:, 0]
+            near = ex > 0 if float(v.get("yaw", 0)) < 0 else ex < 0
+            Pe = Pe[near]
+        box = _feature_box(feature, L2, Pe)
+        side = box[2] - box[0]
+        px = 2 * T
+        k = px / side
+        front = abs(float(v.get("yaw", 0))) < 70
+        Pd = detect_view(img, v) if front else None
+        mesh["_photo_P"] = Pd
+        pr = [(a, b) for a, b in F["pairs"]] if Pd is not None else []
+        if pr:
+            sh = np.mean([np.asarray(Pd[b][:2], float) - L2[a] for a, b in pr], 0)
+            how = "the feature's own landmarks"
+        else:
+            a_ph, a_md = _eye_anchor(v, Pd, L2)
+            sh = np.zeros(2) if a_ph is None else a_ph - a_md
+            how = "the eyes (no feature points on this view)"
+        pbox = (box[0] + sh[0], box[1] + sh[1], box[2] + sh[0], box[3] + sh[1])
+        ph = img.crop(tuple(int(round(b)) for b in pbox)).resize((px, px), Image.LANCZOS)
+        cl_, _, ps = lit_render(mesh, cam, img, box=box, px=px)
+        cl = brows_on(fill(cl_, ps), ps, mesh, rj, cam, box, k)
+        to = lambda Q: [((q[0] - box[0]) * k, (q[1] - box[1]) * k) for q in Q]  # noqa: E731
+        to_ph = lambda Q: [((q[0] - pbox[0]) * k, (q[1] - pbox[1]) * k) for q in Q]  # noqa: E731
+        rake = lambda m: fill(*likeness.render(m, cam, box, px=px, brows=False, passes=True, ao=True, shadow=4.0,  # noqa: E731
+                                                light=(0.15, RAKE, 1.0, 0.0))[::2], share=0.3)
+        rk = rake(mesh)
+        ov = Image.blend(ph, cl, 0.5)
+        ol = ph.copy().convert("L").convert("RGB")
+        d = ImageDraw.Draw(ol)
+        if front and F["lines"]:
+            full, _, pf = lit_render(mesh, cam, img)
+            Pm = detect_view(fill(full, pf), v)
+            for ln in F["lines"]:
+                if Pd is not None:
+                    d.line(to_ph(np.asarray(Pd, float)[ln, :2]), fill=(230, 30, 30), width=2)
+                if Pm is not None:   # (the clay's contour in its own crop: the photo's crop carries the registration)
+                    d.line(to(np.asarray(Pm, float)[ln, :2]), fill=(30, 200, 30), width=2)
+        else:
+            e = Image.fromarray((ps["part"] >= 0).astype(np.uint8) * 255).filter(ImageFilter.FIND_EDGES)
+            olA = np.asarray(ol).copy()
+            olA[np.asarray(e) > 0] = (30, 200, 30)
+            ol = Image.fromarray(olA)
+        sg = float(F["squint_mm"] / likeness._mm_per_px(cam, mesh["L"][27:48]) * k)
+        sq = lambda im: im.convert("L").filter(ImageFilter.GaussianBlur(sg)).convert("RGB")  # noqa: E731
+        y = 18 + i * per * (T + 18)
+        for j, im in enumerate((ph, cl, ov, ol, rk, sq(ph), sq(cl))):
+            sheet.paste(im.resize((T, T), Image.LANCZOS), (j * T, y))
+        mm = likeness._mm_per_px(cam, mesh["L"][27:48])
+        dr.text((4, y + T + 2), f"{feature}, view {vi} (yaw {float(v.get('yaw', 0)):g}): registered at {how}, shift "
+                f"{sh[0]:+.0f}, {sh[1]:+.0f} px; crop {side * mm:.0f} mm", fill=(0, 0, 0))
+        if mesh_b is not None:
+            mesh_b["_photo_P"] = Pd
+            cb_, _, psb = lit_render(mesh_b, cam, img, box=box, px=px)
+            cb = brows_on(fill(cb_, psb), psb, mesh_b, rj, cam, box, k)
+            dif = np.abs(np.asarray(cl.convert("L"), float) - np.asarray(cb.convert("L"), float))
+            dif = Image.fromarray(np.clip(255 - 4 * dif, 0, 255).astype(np.uint8)).convert("RGB")
+            y2 = y + T + 18
+            for j, im in enumerate((ph, cb, cl, dif, rake(mesh_b), rk)):
+                sheet.paste(im.resize((T, T), Image.LANCZOS), (j * T, y2))
+            dr.text((4, y2 + T + 2), f"photo | BEFORE {before} | AFTER {name} | change x4 | raking before | raking after",
+                    fill=(0, 0, 0))
+        info.append({"view": vi, "shift_px": [round(float(sh[0]), 1), round(float(sh[1]), 1)], "registered": how})
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(out)
+    return {"out": str(out), "views": info}
+
+
+def note(name: str, read: str, keep: bool | None = None) -> dict:
+    """ZOOM OUT read of a step's result, logged on the step that made `name` (its whole-face verdict): keep / not."""
+    rj = _refs(name)
+    p = _log_path(rj, name)
+    lg = json.loads(p.read_text()) if p.exists() else []
+    e = next((x for x in reversed(lg) if x.get("to") == name), None)
+    if e is None:
+        raise ValueError(f"{name}: no block-in step made it")
+    e["zoom_out"] = read
+    if keep is not None:
+        e["kept"] = bool(keep)
+    p.write_text(json.dumps(lg, indent=1))
+    return e
 
 
 # ---------------------------------------------------------------- lids by measure

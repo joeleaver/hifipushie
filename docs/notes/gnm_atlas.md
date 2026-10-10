@@ -1408,3 +1408,40 @@ cheekbone plane turning into a hollow, no nasolabial fold, a round broad nose TI
 narrower and defined: no macro reads tip width: a vocabulary gap), straight flat lips, eyes seated forward (big white
 in 3/4). The remaining differences are age soft tissue (base.head.shape age_* layers, skin), the nose tip (a gap to
 fill: reader + 2000 heads like newdirs) and eyeball seating (handover item 2), not more whole-face identity.
+
+### Merge prep (coordinator, 2026-10-10)
+- faces4's 14 MakeHuman nose extensions (mh_nose_* / mh_nostrils_*) RETIRED: nothing in src / tests / spikes / any
+  workspace spec used them. face_ext.npz is main's again (the mouth fields were bit-identical to main's); the general
+  fixes stay (windowed projection, fill_inside, skin-only crease hold, the nose rim hold, faceslide's centre-line
+  split). test_faceext's tolerances back to main's (0.1 / 0.1); its new smooth-bend test kept.
+- human_measured.npz refreshed for humanmacro's 40 names (blockin/remeasure.py: refstudy2's 1200 training heads are
+  deterministic, seed 7000 + s; the old 37 re-read bit-identical; new cv rms gonial_height 0.64, orbital_rim 0.70,
+  lower_orbit 0.78 (at / over CUT 0.7: not measured)). test_humanmeasure passes.
+- Accepted builds unchanged: humanfit.state (the one mesh + eyes) of f3_t1, fs_tj12, fs_gj8, fs_ge3 and every ts_* /
+  gc_* model (84) under main's code vs this branch: all bit-identical (blockin/buildcmp.py).
+- Full face + blockin + toolsets suites: 134 passed, 2 skipped.
+
+### Brows seated on the surface (Joe: the far 3/4 brow stuck out past the silhouette; in profile it hooked over the bridge)
+blockin.brow_source / seat_brows: the front picture's detector brow band (supersampled x8, ~0.5 mm soft edge) + the
+model's depth through the front camera; every clay pixel in any view is back-projected to the surface and painted
+where it lands inside the band AND is visible from the front (2.5 mm). Profile: the far brow is gone behind the
+bridge, the near one follows the ridge; 3/4: the far brow foreshortens and stops at the silhouette. GNM's landmark
+line only where the front detector misses. Sheet: human_renders/bi_brows_seated.png (photo | before | after; Tess
+front / 3/4 / profile, Garrett front / 3/4). Display fill: the clay's shadow side is lifted for DISPLAY only (a soft
+knee to 0.45 x the lit skin's p75); the fitted light stays as fitted for anything measured.
+
+### The painted 3/4's outline (coordinator: red well outside green there)
+With the fill, the clay's detector oval reads properly (it had been reading the half-black clay). What remains: on
+the FAR side (past the nose) the clay's cheek shows beyond the painting's; on the NEAR side the painting's oval runs
+~20 px outside the clay's. Re-rendered at yaw +8 / -8 deg (blockin/yawtest.py): +8 puts the far side on the painting
+and leaves the near side ~20 px out: the painting is turned ~8 deg more than its landmark-fitted camera (the refit
+moved < 1 deg: its points are the detector's on a painting), and its near-side oval follows the sideburn / hair line
+in front of the ear (a detector guess, not a silhouette): don't model to it.
+
+### Feature pass (Joe: "focus more on each feature, then zoom back out after making each change")
+block_in_look(focus=eyes | nose | mouth | chin_jaw | cheeks | ears): per view the feature's crop, registered at its own
+landmarks (MediaPipe <-> 68 pairs per feature), photo | clay | overlay | local contours | raking light | squints, +
+that feature's checklist rows (likeness stages; lids for eyes). block_in_step(feature=) returns its before | after
+crops + rows, then the whole-face sheet; block_in_look(read=, keep=) logs the zoom-out verdict. blockin_guide.md: "The
+feature pass: ZOOM IN, step, ZOOM OUT". table() / feature_table() come from one cached row list (blockin_rows.json).
+radix_width / dorsum_width rows are shading-contrast items (model 0 by definition).

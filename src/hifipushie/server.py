@@ -1792,28 +1792,55 @@ def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = 
 
 @mcp.tool(structured_output=False)
 def block_in_look(name: str, views: list[int] | None = None, table: bool = True, save: str | None = None,
-                  before: str | None = None):
-    """The block-in sheet of a model: per picture photo | clay under the photo's light | overlay | outline difference |
-    squinted photo | squinted clay, registered at the eyes; plus the five-group target table. views, table, save,
-    before (another model: before | after rows). Details: guide(topic="block_in_look")."""
-    return _blockin_sheet(name, save, views=views, table=table, before=before)
+                  before: str | None = None, focus: str | None = None, read: str = "", keep: bool | None = None):
+    """The block-in sheet: per picture photo | clay under its light | overlay | outline difference | squints, at the
+    eyes, + the target table. focus = a feature (eyes, nose, mouth, chin_jaw, cheeks, ears): ZOOM IN crops + raking
+    light + its own rows. read / keep log your ZOOM OUT verdict on the step that made name. views, table, save,
+    before. Details: guide(topic="block_in_look")."""
+    from . import blockin as bi
+    note = ""
+    if read or keep is not None:
+        bi.note(name, read, keep)
+        note = f"logged on the step that made {name}: zoom-out read" + ("" if keep is None else f", kept={keep}") + "\n"
+    if focus:
+        out = save or str(store.HOME / "human_renders" / f"blockin_{name}_{focus}.png")
+        r = bi.focus(name, focus, out, views=views, before=before)
+        text = note + f"focus sheet {focus}: {r['out']} (" + "; ".join(f"view {v['view']}: {v['registered']}, shift {v['shift_px']} px" for v in r["views"]) + ")"
+        if table:
+            text += "\n" + bi.table_text(bi.feature_table(name, focus))
+            if focus == "eyes":
+                text += "\n" + bi.lid_text(bi.lid_read(name))
+        return [_png(PILImage.open(r["out"])), text]
+    out = _blockin_sheet(name, save, views=views, table=table, before=before)
+    out[1] = note + out[1]
+    return out
 
 
 @mcp.tool(structured_output=False)
 def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
-                  cameras: list[int] | None = None, look: bool = True, save: str | None = None):
-    """One block-in round: a NEW model (out, default the next number) = name moved along whole-face directions
-    ({"chin_height": 0.5, "eye_spacing!": 0.3, "nd:radix_width": 1, "head_scale": 1.05, "lid_upper": -0.001}); seen /
-    why are logged; cameras = views to refit. Replies the read, the target delta and the new sheet (look). save.
-    Details: guide(topic="block_in_step")."""
+                  cameras: list[int] | None = None, look: bool = True, save: str | None = None,
+                  feature: str | None = None):
+    """One block-in round: a NEW model (out, default the next number) = name moved ({"chin_height": 0.5,
+    "eye_spacing!": 0.3, "nd:radix_width": 1, "head_scale": 1.05, "lid_upper": -0.001}); seen / why logged; feature =
+    the feature zoomed in on (its before | after crops come back too); cameras; look; save. Details:
+    guide(topic="block_in_step")."""
     from . import blockin as bi
     mv = _spec_arg(moves) if isinstance(moves, str) else dict(moves or {})
-    rep = bi.step(name, mv, out=out, seen=seen, why=why, cameras=cameras)
+    rep = bi.step(name, mv, out=out, seen=seen, why=why, cameras=cameras, feature=feature)
     text = bi.step_text(rep)
     if not look:
         return text
-    sh = _blockin_sheet(rep["entry"]["to"], save, before=name)
-    return [sh[0], text + "\n" + sh[1]]
+    to = rep["entry"]["to"]
+    res = []
+    if feature:
+        fo = str(Path(save).with_name(Path(save).stem + f"_{feature}.png")) if save else \
+            str(store.HOME / "human_renders" / f"blockin_{to}_{feature}.png")
+        r = bi.focus(to, feature, fo, before=name)
+        res.append(_png(PILImage.open(r["out"])))
+        text += f"\nZOOM IN sheet ({feature}, before | after): {r['out']}\n" + bi.table_text(bi.feature_table(to, feature))
+    sh = _blockin_sheet(to, save, before=name)
+    return [*res, sh[0], text + "\nZOOM OUT (the whole face):\n" + sh[1]
+            + f"\nlog your zoom-out verdict: block_in_look(\"{to}\", read=..., keep=...)"]
 
 
 @mcp.tool(structured_output=False)

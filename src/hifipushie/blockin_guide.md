@@ -21,8 +21,11 @@ eye catches what the points miss; the target table catches what your eye misses.
    aged head reads older and leaner, which an older person needs). Never start from a previous fit: it carries that
    fit's mistakes. The reply is the first sheet and table.
 2. **Look** (`block_in_look`, also returned by every step): per picture photo | clay under THE PHOTO'S OWN fitted light
-   (hair cap: bald clay reads male; the person's own brows from the detector; a presentable light iris: dark iris
-   caps dominate a clay read) | 50 % overlay | outline difference (photo red, clay green) | squinted photo |
+   (hair cap: bald clay reads male; the person's own brows, SEATED on the surface: the front picture's detector brow
+   band painted where it lands on the skin, so in 3/4 and profile they foreshorten and the far brow hides behind the
+   bridge (2D-pasted brows stuck out past the silhouette and hooked over the nose); a presentable light iris: dark
+   iris caps dominate a clay read; the shadow side lifted to a display fill: a painted light left half a 3/4 black)
+   | 50 % overlay | outline difference (photo red, clay green) | squinted photo |
    squinted clay. Registered at the eyes and nasion only (a 2D shift): like a tracing over a photo, never registered
    on the outline it is meant to judge.
 3. **Squint and name the single BIGGEST difference** in sculptor's terms: masses and planes, not features. Profile
@@ -61,6 +64,25 @@ eye catches what the points miss; the target table catches what your eye misses.
    squinted clay reads as the same person: age, sex, mass. Then likeness / fit_likeness for features, then skin.
 
 A sheet every 3-4 rounds for the person you report to; read it yourself first, bluntly.
+
+## The feature pass: ZOOM IN, step, ZOOM OUT (Joe: "focus more on each feature, then zoom back out after each change")
+
+After the whole-face block-in (outline, size, masses and planes right), go feature by feature, big to small: jaw and
+chin, cheeks, nose, eyes (with brows and lids), mouth, ears; then the whole face again; repeat the pass while it
+pays. Each round:
+1. ZOOM IN: `block_in_look(name, focus=<feature>)`: per view the feature's crop at full resolution, photo beside
+   clay through the same camera, REGISTERED AT THAT FEATURE'S OWN LANDMARKS (a 2D shift: an offset elsewhere doesn't
+   hide its shape), overlay, the feature's own detector contours (photo red, clay green), the clay under a RAKING
+   light (forms, not tone), the feature's squint, and its own checklist rows (every likeness item of that feature;
+   the lids' margins for eyes). Name its single biggest difference in that feature's own vocabulary (a nose: dorsum
+   line, tip width / projection / rotation, alar flare, columella, nostril show; eyes: lid margins, canthal tilt,
+   fold, how deep the ball sits; mouth: vermilion heights, bow, corners, width, projection).
+2. ONE step aimed at it: a held macro (`name!`), a gap direction, a lid move: `block_in_step(..., feature=<feature>)`
+   returns the feature's before | after crops and its rows, then the whole-face sheet.
+3. ZOOM OUT: look at the whole-face sheet + full table. Keep the step only if the FEATURE got closer AND the whole
+   face reads closer or equal (no target out). Log the zoom-out read: `block_in_look(new, read="...", keep=True|False)`.
+   Not kept: step again from the earlier model.
+A feature that no direction can reach is a vocabulary gap (below), not a reason for a big step.
 
 ## Coupling you will meet (free directions)
 
@@ -115,14 +137,23 @@ replace=False, save=None): the block-in's first model.
 Returns the first sheet and target table.
 
 ### `block_in_look`
-block_in_look(name, views=None, table=True, save=None, before=None): the sheet (see the loop, 2) of any block-in
+block_in_look(name, views=None, table=True, save=None, before=None, focus=None, read="", keep=None): the sheet (see
+the loop, 2) of any block-in
 model, rows per view (views = indices), crops fixed at the start head's frame so rounds compare; table=False skips
 the target table. before = another model (any earlier round): under each view a row photo | before | after | the
 change (|after - before| x4, dark = moved) | squint before | squint after. block_in_step's sheet always has it.
 The text gives each view's eye-registration shift (pixels: a large one means the camera misplaces the head).
+- focus: one of eyes, nose, mouth, chin_jaw, cheeks, ears: the ZOOM-IN sheet (see the feature pass): rows per view
+  (the ear only in turned views) photo | clay | overlay | local contours | raking light | squint photo | squint clay;
+  with before = another model a second row photo | before | after | change | raking before | raking after. The text
+  is that feature's checklist rows (+ the lid read for eyes). Default save workspace/human_renders/blockin_<name>_<feature>.png.
+- read / keep: log your ZOOM-OUT verdict on the step that made `name` (the log keeps both reads: the step's `seen`
+  is the zoom-in read).
 
 ### `block_in_step`
-block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, save=None): one round.
+block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, save=None, feature=None): one round.
+- feature: the feature this step is for (a feature pass round): the reply also carries its focus sheet (before |
+  after) and its own rows, and the log records the feature's pass count before -> after.
 - moves: {direction: amount}: macros free / held (`name!`), `nd:<gap>`, `sex`, `eth0..2` add (amount in sd);
   `head_scale`, `gnm_base`, `dimorphism`, `weight`, `lid_upper`, `lid_lower` are SET. An unknown name lists the
   vocabulary.
