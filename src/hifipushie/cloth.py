@@ -3743,8 +3743,12 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         hit |= {o for o in names for h in list(hit) if pcs[o]["wrap"].get("to") == pcs[h]["wrap"].get("to")
                 and "follow" not in pcs[o]["wrap"]}
         if hit and max([down.get(nm, 0.0) for nm in hit]) < 0.10:
-            for nm in hit:
-                down[nm] = max(down.get(o, 0.0) for o in hit if pcs[o]["wrap"].get("to") == pcs[nm]["wrap"].get("to")) + 0.01
+            # (from the OLD values: updated in place while iterating a set of names, a piece read its arm-mate's new
+            # value or not depending on the set's order, which is per-process (string hashing): the same garment
+            # started 1 or 2 cm down the arm run to run, so its sim key changed every run; cloth10)
+            old = dict(down)
+            for nm in sorted(hit):
+                down[nm] = max(old.get(o, 0.0) for o in hit if pcs[o]["wrap"].get("to") == pcs[nm]["wrap"].get("to")) + 0.01
             return place(B, M, body, gap, _blouse=None, smooth=True, _out=_out, _down=down)
         # draped cloth pushed clear of the body starts stretched where the body stands proud of the piece's wrap (an
         # under sleeve at the armpit 37-125%, a back's neck over a shirt collar): a strain-limited solver can't start
@@ -6642,7 +6646,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         if under is not None and under.get("res") is not None:
             Mu_ = under["res"]["mesh"]
             und_ = {"V": under["V"], "F": Mu_["F"],
-                    "made": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] in ("collar", "stand")])}
+                    "made": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] in ("collar", "stand")]),
+                    "fall": np.isin(Mu_["piece"], [k_ for k_, nm_ in enumerate(Mu_["names"]) if nm_.split(".")[0] == "collar"])}
         try:
             res["V"], res["made"] = cloth_made.construct(res["V"], M, body_real.V, body_real.T, g, und_)
         except Exception as ex_:  # (a construction that can't be made leaves the simulated result, and says so)

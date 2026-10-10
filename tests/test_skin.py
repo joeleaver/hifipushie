@@ -250,11 +250,11 @@ def test_features_and_shader_budget(tmp=None):
 def test_beard_area_and_stubble_options():
     """The beard is an area (jowls and under the jaw, not only beads along the jaw's edge), and stubble takes size /
     shadow / grey; brows take drop / arch / soft. Defaults make no new layer."""
-    spec = head_spec(hair={"stubble": 0.8})
+    spec = head_spec(hair={"stubble": {"amount": 0.8, "engine": "tile"}})
     names = list(paint.layers(spec))
     assert "skin:stubble" in names and "skin:stubble_grey" not in names
     assert "jowl.L" in skin.UNIONS["beard.L"] and "beard_neck" in skin.UNIONS["beard.L"]
-    spec = head_spec(hair={"stubble": {"amount": 1.0, "size": 2.0, "shadow": 1.5, "shadow_color": "#83705f", "grey": 0.5},
+    spec = head_spec(hair={"stubble": {"amount": 1.0, "size": 2.0, "shadow": 1.5, "shadow_color": "#83705f", "grey": 0.5, "engine": "tile"},
                            "brows": {"drop": 0.003, "arch": 0.5, "soft": 0.4}})
     ly = paint.layers(spec)
     assert "skin:stubble_grey" in ly
@@ -324,6 +324,65 @@ def test_lash_line_is_a_line():
         ly = skin.expand_zones(spec, {"color": [0, 0, 0], "zone": "lash_upper.L"})
         m = paint.layer_mask(spec, "t", ly, paint._View(P, np.arange(2)))
         assert (m > 0.5).astype(int).tolist() == want, (with_margin, m)
+
+
+def test_brow_tilt_and_fall():
+    """A brow's own shape beside its landmarks (Tess, 2026-10-09: hers rises outward with a short tail, ours sat as a
+    level bar hooked down at the end; `arch` only scales the landmarks' slope, which was ~0): `tilt` turns the whole
+    brow (tail up), `fall` scales the tail's drop (a new picture), and the defaults leave the brow as it was."""
+    import tempfile
+    from hifipushie import store
+    with tempfile.TemporaryDirectory() as d:
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            def img(**b):
+                ly = paint.layers(head_spec(hair={"brows": {"density": 0.8, **b}}))["skin:brow_hairs"]
+                return next(e["image"] for e in [ly] + list(ly.get("mask") or []) if isinstance(e, dict) and "image" in e)
+            a, b, c = img(), img(tilt=6), img(fall=0.3)
+            assert abs(b["rotate"] - a["rotate"] - 6) < 1e-6
+            assert b["file"] == a["file"] and c["file"] != a["file"]
+            assert img(fall=1.0)["file"] == a["file"]
+            # each end on its own: the inner head down 3 mm, the tail level: the centre down 1.5 mm, turned tail-up
+            e = img(lift=[-0.003, 0.0])
+            assert abs(e["at"][2] - a["at"][2] + 0.0015) < 1e-6 and e["rotate"] > a["rotate"]
+            f = img(apart=0.002)
+            assert abs(f["at"][0] - a["at"][0] - 0.002) < 1e-6
+            # the shadow follows a moved brow (its own picture), and stays the landmark zone for one that isn't
+            def shadow(**b):
+                return paint.layers(head_spec(hair={"brows": {"density": 0.8, **b}}))["skin:brow_shadow"]
+            assert "image" in str(shadow(drop=0.003)) and "image" not in str(shadow())
+        finally:
+            store.HOME = home
+
+
+def test_makeup_looks():
+    """skin.makeup.look presets expand into items (overrides merge key by key); the liner follows the lash line's own
+    zone (lines through the eye-corner landmarks left dots past the lids' corners) and a wing is a drawn flick laid at
+    the outer lash line; each product keeps its finish."""
+    import json
+    import tempfile
+    from hifipushie import skin_makeup, store
+    r = skin_makeup.resolve({"look": "evening", "lipstick": {"color": "#552233"}, "blush": 0.2})
+    assert r["lipstick"]["color"] == "#552233" and r["lipstick"]["finish"] == "matte" and r["blush"] == 0.2
+    try:
+        skin_makeup.resolve({"look": "party"})
+        raise AssertionError("an unknown look must fail")
+    except SpecError:
+        pass
+    with tempfile.TemporaryDirectory() as d:
+        home, store.HOME = store.HOME, __import__("pathlib").Path(d)
+        try:
+            nat = paint.layers(head_spec(makeup={"look": "natural"}))
+            eve = paint.layers(head_spec(makeup={"look": "evening"}))
+        finally:
+            store.HOME = home
+    assert "skin:makeup_eyeliner" not in nat and "skin:makeup_lipstick" in nat
+    assert nat["skin:makeup_lipstick"]["opacity"] < 0.5 and nat["skin:makeup_lipstick"]["roughness"] < 0.2   # a sheer balm
+    for k in ("makeup_eyeshadow", "makeup_eyeshadow_crease", "makeup_eyeshadow_outer", "makeup_eyeliner", "makeup_contour",
+              "makeup_lip_liner", "makeup_highlight"):
+        assert "skin:" + k in eve, k
+    liner = json.dumps(eve["skin:makeup_eyeliner"]["mask"])
+    assert '"near": ["eye.L"' in liner and '"image"' in liner   # (the lash zone, expanded: near the eyeballs)
 
 
 if __name__ == "__main__":

@@ -88,6 +88,13 @@ def test_no_fold_or_slot_at_the_extremes():
             ang = lambda a: np.degrees(np.arccos(np.clip(a, -1, 1)))  # noqa: E731
             fold = (a1 < np.cos(np.radians(60))) & (ang(a1) - ang(a0) > 10)  # (the vermilion border is 67 deg already)
             assert not fold.any(), (name, v, int(fold.sum()))
+            if name == "eye_setback":  # the balls go back whole, the rims with them (their distance to the ball held)
+                ball = D[eyes]
+                assert np.abs(ball - ball.mean(0)).max() < 1e-9 or np.ptp(np.linalg.norm(ball, axis=1)) < 1e-9, name
+                Jd = J + faceslide.joint_delta({name: v})[2:4]
+                dist = lambda Y, JJ: np.min([np.linalg.norm(Y[rim] - j, axis=1) for j in JJ], axis=0)  # noqa: E731
+                assert np.abs(dist(X1, Jd) - dist(X, J)).max() < 2.5e-4, (name, np.abs(dist(X1, Jd) - dist(X, J)).max())
+                continue
             assert np.abs(D[eyes]).max() == 0, name
             if name in faceslide.MOUTH_SLIDERS:  # no lip through the other: the contact ring's upper side never down,
                 # its lower side never up
@@ -97,7 +104,7 @@ def test_no_fold_or_slot_at_the_extremes():
             if name == "canthal_tilt":
                 dist = lambda Y: np.min([np.linalg.norm(Y[rim] - j, axis=1) for j in J], axis=0)  # noqa: E731
                 assert np.abs(dist(X1) - dist(X)).max() < 5e-5, name
-            elif name != "epicanthal":
+            elif name not in ("epicanthal",):
                 assert np.linalg.norm(D[rim], axis=1).max() < 5e-5, (name, np.linalg.norm(D[rim], axis=1).max())
 
 

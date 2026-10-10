@@ -855,7 +855,12 @@ groom: a patch merged into the stored groom first (objects merge key by key, nul
   parting.front, grey, noise, seed.
   tie ({"at": [az, el] deg (az 180 = the back, el up), "out": m off the scalp, "gather": {rows, locks, lift,
   width, uneven}, "tail": {length, fullness, locks, stiff, uneven, taper, coil, plait}, "escape": n wisps the tie
-  missed, "band": m}: hair gathered over the head into a tie and a tail leaving it; set parting.side "none"),
+  missed, "band": m, "curtain": {span deg, to deg, over deg, lift m}: the front from a soft part sweeps down and
+  out over the temples and the ears' tops before it turns back (a loose low ponytail; without it every lock runs
+  straight back), "frame": {count a side, az [a0, a1], length [l0, l1], width [w0, w1], wave, wavelength}:
+  styled face-framing pieces in front of the ears, soft and wavy, mixed lengths}: hair gathered over the head into a
+  tie and a tail leaving it; parting.side "none", or "centre" with a short soft part (length 0.04, width 0.006,
+  depth 0.4: no bare furrow running back)),
   loose ({"length": m | {front, top, sides, back, nape}, "level": m from the head centre (a one-length cut ends
   there: about -0.10 the jaw, -0.17 the shoulders), "spacing": m between lock roots, "body": m the mass builds
   up, "lift": m of root volume, "stiff": 0 hangs .. 1 keeps its root direction, "out": 0 combed along the scalp

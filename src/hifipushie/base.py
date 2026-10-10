@@ -1837,6 +1837,14 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     ident = dict(fit_identity(head["fit"])) if head.get("fit") else {}
     ident.update(head.get("identity") or {})  # given components win over fitted ones
     ci = _gnm_coeffs(g["identity_names"], ident, head.get("seed"), head.get("spread", 1.0))
+    local_sliders = head.get("sliders")
+    if local_sliders and head.get("slider_mode") == "coupled":  # (faceatlas.py) the sliders as WHOLE-MODEL moves: each
+        # the conditional mean of the identity given its attribute's change (within the head's sex), named holds kept;
+        # only what GNM can't express stays a local morph
+        from . import faceatlas
+        dc, local_sliders = faceatlas.slider_identity(local_sliders, head.get("slider_hold") or ())
+        ci = ci.copy()
+        ci[faceatlas._gnm()["comps"]] += dc
     ce = _gnm_coeffs(g["expression_names"], head.get("expression"))
     V = g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1) + \
         np.tensordot(ce, g["expression_basis"], 1)
@@ -1853,9 +1861,12 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     if head.get("sliders"):  # (faceslide.py) the face sliders: morph targets on GNM's template + the lids' loops,
         # added like an identity component (everything after rides on them)
         from . import faceslide, gnmloops
-        slide = faceslide.delta(head["sliders"], V)  # (V: the crease on this head's own fold)
+        slide = faceslide.delta(local_sliders, V)  # (V: the crease on this head's own fold)
         if slide is not None:
             V = V + slide[:gnmloops.N_RAW]
+            jd = faceslide.joint_delta(local_sliders)  # (eye_setback: the eye joints go back with the balls)
+            if jd is not None:
+                J = J + jd
             par = gnmloops.plan()["parents"]
             slide = slide[gnmloops.N_RAW:] - slide[par].mean(1)  # what the loops' vertices add over their parents'
     if head.get("field"):  # (headfit.py) MakeHuman's head of an age / sex / weight, as a displacement of the vertices

@@ -14,6 +14,20 @@ them: bunches):
                             fullness = the tail's radius at its fullest; coil = turns of the core wound round the tie
                             (a bun); plait = three strands crossing; false = none (a knot)
    "escape": 6,             strands that never reached the tie: they fall from the temples and nape
+   "curtain": {"span": 70, "to": 80, "over": 10, "lift": 0.006}?
+                            the front hair from a soft part sweeps DOWN AND OUT over the temples like curtains, rounds
+                            over the ears' tops and only then turns back to the tie: first-row gather locks rooted within
+                            `span` deg of the front pass through a waypoint over the ear's top (azimuth `to` on their own
+                            side, elevation `over`, deg from the head centre; locks rooted further back pass higher);
+                            `lift` = m of extra rise at the part (soft, no bare furrow); `along` = deg the lock first
+                            runs sideways at its root's height (hair lying across from the part over the forehead's top
+                            before it falls: without it the two curtains diverge in a V that bares the scalp). "left" / "right": {key: value}
+                            for that side only (the person's left = +x): an asymmetric style. Default none: every
+                            lock runs the great circle to the tie.
+   "frame": {"count": 3, "az": [40, 95], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
+             "wavelength": 0.075}?
+                            face-framing pieces a side: soft separate wavy locks that fall from the temples and in front
+                            of the ears, of mixed lengths (styled, not strays); count may be [right, left]; default none
    "band": 0.006}           the tie itself: a ring this thick round the tail's start (0 = none)
 
 Locks on the head are ordinary [az, el, h] locks; the tail and the escaped strands leave the head, so they are
@@ -25,10 +39,13 @@ from __future__ import annotations
 
 import numpy as np
 
-TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006,
+TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain": None, "frame": None,
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5}}
+CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "left": None, "right": None}
+FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
+         "wavelength": 0.075}
 DOWN = np.array([0.0, 0.0, -1.0])
 
 
@@ -44,6 +61,12 @@ def params(tie) -> list:
         if bad:
             raise ValueError(f"hair tie: unknown keys {sorted(bad)} (have {', '.join(sorted(TIE))})")
         p = {**TIE, **t}
+        for k, keys in (("curtain", CURTAIN), ("frame", FRAME)):
+            if p[k]:
+                bad = set(p[k]) - set(keys)
+                if bad:
+                    raise ValueError(f"hair tie {k}: unknown keys {sorted(bad)} (have {', '.join(sorted(keys))})")
+                p[k] = {**keys, **p[k]}
         for k in ("gather", "tail"):
             if t.get(k) is False or t.get(k) == 0:
                 p[k] = None
@@ -144,12 +167,41 @@ def grow(sc, g: dict, line, rng) -> dict:
                             break
                         el += 4.0
                     root = _slerp(dirs(az, el), tie_dir, [f])[0]
-                    t = np.linspace(0, 1, 7)
-                    D = _slerp(root, tie_dir, t)
+                    cu = tp.get("curtain")
+                    azw = ((az + 180.0) % 360.0) - 180.0  # -180..180, 0 = the front (the part)
+                    if cu:  # the side's own values over the shared ones (+x = the person's left)
+                        cu = {**cu, **(cu.get("left" if azw >= 0 else "right") or {})}
+                    cw = float(np.clip(1.0 - abs(azw) / float(cu["span"]), 0.0, 1.0)) if cu else 0.0
+                    if cw > 0 and r == 0:
+                        # down and out to its own side over the temple, round the ear's top, then back to the tie
+                        sd = 1.0 if azw >= 0 else -1.0
+                        ra, re = az_el(root)
+                        raw = ((float(ra) + 180.0) % 360.0) - 180.0
+                        way = dirs(sd * max(abs(raw) + 10.0, float(cu["to"])),
+                                   float(cu["over"]) + (float(re) - float(cu["over"])) * (1.0 - cw) * 0.5)
+                        al = float(cu.get("along", 0.0)) * cw
+                        if al > 0:  # sideways at the root's height first, then down to the ear's top, then back
+                            # (just inside the hairline there: it runs over the forehead's corner, not above it)
+                            mid = dirs(float(ra) + sd * al, min(float(re), float(_line_at(line, float(ra) + sd * al)) + 3.0))
+                            t = np.linspace(0, 1, 11)
+                            k0, k1 = 0.25, 0.5
+                            D = np.concatenate([_slerp(root, mid, t[t <= k0] / k0),
+                                                _slerp(mid, way, (t[(t > k0) & (t <= k1)] - k0) / (k1 - k0)),
+                                                _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
+                        else:
+                            t = np.linspace(0, 1, 9)
+                            k1 = 0.4
+                            D = np.concatenate([_slerp(root, way, t[t <= k1] / k1),
+                                                _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
+                    else:
+                        t = np.linspace(0, 1, 7)
+                        D = _slerp(root, tie_dir, t)
                     aa, ee = az_el(D)
                     lift = float(ga["lift"]) * (1 + un * rng.uniform(-0.5, 0.8))
                     hb = 0.002 + 0.003 * (rows - 1 - r)
                     h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t)) + t ** 3 * float(tp["out"]) * 0.8
+                    if cw > 0:  # a soft part: the hair rises at it and falls away (no bare furrow)
+                        h = h + float(cu["lift"]) * cw * np.sin(np.pi * np.minimum(t / 0.5, 1.0)) * (1 - t)
                     aa = aa + un * 2.0 * np.sin(np.pi * t) * rng.uniform(-1, 1)
                     locks[f"{pre}g{r}_{i}"] = {
                         "tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)]
@@ -213,6 +265,35 @@ def grow(sc, g: dict, line, rng) -> dict:
                                   "width": round(float(rng.uniform(0.006, 0.014)), 4), "thickness": 0.002,
                                   "taper": 0.8, "belly": 0.3, "root": 0.5, "cup": 0.0,
                                   "strands": {"layers": 2, "flyaway": 0.6, "curl": 0.0}}
+        fm = tp.get("frame")
+        cnt = (fm["count"] if isinstance(fm["count"], (list, tuple)) else [fm["count"]] * 2) if fm else [0, 0]
+        cnt = [int(c) for c in cnt]  # [right, left]
+        jobs = [(sd, j) for j in range(max(cnt)) for sd in (1, -1) if j < cnt[1 if sd > 0 else 0]]
+        for k, (side, j) in enumerate(jobs):  # face-framing pieces: styled, soft, wavy, mixed lengths
+            nside = cnt[1 if side > 0 else 0]
+            a0f, a1f = fm["az"]
+            az = (side * (a0f + (a1f - a0f) * (j + rng.uniform(0.2, 0.8)) / nside)) % 360
+            el = float(_line_at(line, az)) + 3.0
+            for _ in range(8):
+                if float(inside(sc, line, az, el)) >= 0.006:
+                    break
+                el += 3.0
+            p = sc.point(az, el, 0.003)
+            # out of the hairline a little, forward of the ear, then down beside the face
+            d = _unit(dirs(az, el) * 0.3 + np.array([0.0, -0.2, -0.5]))
+            l0, l1 = fm["length"]
+            ln = l0 + (l1 - l0) * ((j + rng.uniform(0, 1)) / nside)
+            P = [p]
+            for _ in range(8):
+                d = _unit(d + 0.5 * DOWN)
+                P.append(_clear(sc, (P[-1] + d * ln / 8)[None], 0.005)[0])
+            w0, w1 = fm["width"]
+            locks[f"{pre}f{k}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, P), "free": 1.0,
+                                  "width": round(float(rng.uniform(w0, w1)), 4), "thickness": 0.003,
+                                  "taper": 0.5, "belly": 0.35, "root": 0.6, "cup": 0.0,
+                                  "strands": {"flyaway": 0.25, "curl": 0.0, "wave": float(fm["wave"]),
+                                              "wavelength": float(fm["wavelength"]), "clump": 0.3, "tip_spread": 0.7,
+                                              "flat": 3.0}}  # (a round wisp: flat, its few strands were a comb)
         if tl and float(tp.get("band") or 0) > 0:  # the tie: a short stiff ring of locks round the tail's start
             K = core_line(sc, tp, tl)
             T, E1, E2 = _transport(K)

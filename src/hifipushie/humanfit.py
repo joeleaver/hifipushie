@@ -70,7 +70,8 @@ BODY_FREE = ("weight", "muscle", "height")
 # MakeHuman's measure modifiers (makehuman.MEASURES; 0..1, 0.5 = none) and the cup size, free only when a measure
 # they shape is asked (each is one more body build per round): a slim woman's hips aren't the weight slider
 BODY_SHAPE = {"hips": ("hip_breadth", "hip_circ"), "waist": ("waist_circ", "waist_breadth"),
-              "shoulders": ("shoulder_breadth", "biacromial"), "chest": ("chest_circ",), "bust": ("bust_circ",)}
+              "shoulders": ("shoulder_breadth", "biacromial"), "chest": ("chest_circ",), "bust": ("bust_circ",),
+              "neck_circ": ("neck_circ",)}
 AX = {"x": 0, "y": 1, "z": 2}
 LANDMARKS = {"chin": 8, "nose_tip": 30, "nose_base": 33, "nose_bridge": 27, "lip_upper": 51, "lip_lower": 57,
              "mouth_corner.L": 54, "mouth_corner.R": 48, "jaw.L": 12, "jaw.R": 4, "jaw_back.L": 15, "jaw_back.R": 1,

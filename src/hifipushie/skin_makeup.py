@@ -1,19 +1,35 @@
-"""Make-up as layers over the skin's own (skin.makeup), in the order it is put on. Each product changes colour AND
-finish (roughness, specular, metallic), like the real thing; the skin's relief (pores, lines) stays on top of it.
+"""Make-up as layers over the skin's own (skin.makeup), in the order an artist puts it on, each placed by the rules
+make-up artists use on the face's own landmarks (seated on the surface), each with a finish (roughness, specular,
+metallic) and a strength. The skin's relief (pores, lines) stays on top of all of it, so it reads as product on skin,
+not paint (references: workspace/skin_refs ref_13, ref_34..39; guide(topic="skin") "Make-up").
 
-Every item is a number (its amount / coverage, 0..1) or an object {"amount", "color": sRGB (default: from the skin's
-own tone), "finish", "where": [zones], "mask": [paint mask entries], ...}:
+skin.makeup = {"look": "natural" | "everyday" | "evening" (a preset: the items below, any of them overridden),
+               item: amount | {"amount", "color", "finish", ...}, ...}
+
   foundation  {"amount": coverage, "finish": "matte" | "natural" | "dewy", "color"}: evens the face's colour zones,
-              mottling and spots toward one tone; matte is rougher (powder), dewy smoother.
-  concealer   amount: lighter under the eyes.
-  contour     {"amount", "color"}: a darker tone under the cheekbones, along the jaw and the sides of the nose.
-  blush       {"amount", "color"}: on the cheekbones / apples of the cheeks, soft-edged.
-  highlight   {"amount"}: paler and smoother on cheekbone tops, nose bridge, cupid's bow.
-  eyeshadow   {"amount", "color", "finish": "matte" | "shimmer" | "metallic", "reach": 1.0}: lid to crease.
-  eyeliner    {"amount", "color", "width": m (0.0012), "wing": m (0)}: along the upper lash line, with a wing.
-  mascara     amount: darker, thicker lash lines.
-  brows       {"amount", "color"}: the brows filled in.
-  lipstick    {"amount", "color", "finish": "matte" | "satin" | "gloss"}.
+              mottling and spots toward one tone (the fine marks show through 1 - 0.75 x coverage).
+  concealer   amount (+ "color"): lighter, a touch peach, under the eyes and at the inner corners, the nose's wings.
+  bronzer     {"amount", "color"}: warmth where the sun falls: the forehead's edges, cheekbones, the nose's bridge.
+  contour     {"amount", "color", "nose": 0..1}: a cool shadow tone in the cheek's hollow under the cheekbone, from
+              the ear toward the mouth's corner, stopping under the outer eye; the temples and under the jaw; the
+              nose's sides with "nose".
+  blush       {"amount", "color", "place": "apples" | "lifted" | "draped"}: on the apples of the cheeks swept up and
+              out toward the temples (apples), higher along the cheekbone (lifted), or round from the cheek to the
+              temple (draped); soft-edged, the skin's own blood colour on any tone unless "color".
+  highlight   {"amount"}: paler and glossier on the cheekbone's top, the nose's bridge, the cupid's bow, the brow bone
+              and the inner eye corner.
+  eyeshadow   {"amount", "color" (the lid), "crease" (colour), "outer" (colour: the outer V), "finish": "matte" |
+              "satin" | "shimmer" | "metallic", "reach": 1 (how far up toward the brow)}: the lid from the lash line
+              to the crease, a deeper shade blended along the crease and out toward the brow's tail, the darkest in
+              the outer V where crease meets lash line, the brow bone left light.
+  eyeliner    {"amount", "color", "width": m (0.0012, at the outer end), "wing": m (0), "lower": 0..1}: along the
+              upper lash line, thin at the inner corner and thicker outward; the wing continues the lower lash line's
+              angle up toward the brow's tail; "lower" lines the outer two thirds of the lower lash line, softly.
+  mascara     amount: darker, denser lash lines.
+  brows       {"amount", "color"}: the brows filled in under the hairs.
+  lipstick    {"amount", "color", "finish": "matte" | "satin" | "gloss" | "balm", "liner": 0..1, "liner_color",
+              "overline": m (0)}: the vermilion to its border (a liner traces the border, slightly darker; "overline"
+              takes it just outside); "balm" is a sheer tint with a wet shine.
   nails       {"color", "finish": "gloss" | "matte"}: polish.
 """
 from __future__ import annotations
@@ -22,25 +38,98 @@ import numpy as np
 
 from .spec import SpecError
 
-ITEMS = ("foundation", "concealer", "contour", "blush", "highlight", "eyeshadow", "eyeliner", "mascara", "brows",
+ITEMS = ("foundation", "concealer", "bronzer", "contour", "blush", "highlight", "eyeshadow", "eyeliner", "mascara", "brows",
          "lipstick", "nails")
-FINISH = {"matte": 0.62, "natural": 0.48, "satin": 0.4, "dewy": 0.33, "shimmer": 0.32, "metallic": 0.28, "gloss": 0.12}
+FINISH = {"matte": 0.62, "natural": 0.48, "satin": 0.4, "dewy": 0.33, "shimmer": 0.32, "metallic": 0.28, "gloss": 0.1,
+          "balm": 0.16}
+LOOKS = {
+    # the "no-make-up make-up": a sheer even base where needed, a little concealer, brushed brows, mascara, a tinted balm
+    "natural": {"foundation": {"amount": 0.3, "finish": "natural"}, "concealer": 0.35, "blush": {"amount": 0.25},
+                "brows": 0.2, "mascara": 0.6, "lipstick": {"amount": 0.35, "finish": "balm"}},
+    "everyday": {"foundation": {"amount": 0.55, "finish": "natural"}, "concealer": 0.45, "bronzer": 0.3,
+                 "contour": 0.35, "blush": {"amount": 0.55}, "highlight": 0.3,
+                 "eyeshadow": {"amount": 0.55, "color": "#a07a66", "crease": "#7a5848"},
+                 "eyeliner": {"amount": 0.8, "width": 0.0009}, "mascara": 0.9, "brows": 0.4,
+                 "lipstick": {"amount": 0.75, "color": "#b0505a", "finish": "satin"}},
+    "evening": {"foundation": {"amount": 0.75, "finish": "matte"}, "concealer": 0.55, "bronzer": 0.35,
+                "contour": 0.6, "blush": {"amount": 0.5, "place": "lifted"}, "highlight": 0.6,
+                "eyeshadow": {"amount": 0.9, "color": "#8a6a5e", "crease": "#4e352e", "outer": "#2a1c19", "finish": "shimmer",
+                              "reach": 1.15},
+                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.007, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
+                "lipstick": {"amount": 1.0, "color": "#8e1f30", "finish": "matte", "liner": 0.6}},
+}
+EXTRA = {"blush": ("place",), "contour": ("nose",), "eyeshadow": ("reach", "crease", "outer"),
+         "eyeliner": ("width", "wing", "lower"), "lipstick": ("liner", "liner_color", "overline")}
+
+
+def resolve(mk: dict) -> dict:
+    """The look's preset with the given items laid over it (an item's object merged key by key)."""
+    mk = dict(mk or {})
+    look = mk.pop("look", None)
+    if look is None:
+        return mk
+    if look not in LOOKS:
+        raise SpecError(f"skin makeup: look is one of {', '.join(LOOKS)}")
+    out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in LOOKS[look].items()}
+    for k, v in mk.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = {**out[k], **v}
+        elif isinstance(v, dict) and isinstance(out.get(k), (int, float)):
+            out[k] = {"amount": out[k], **v}
+        else:
+            out[k] = v
+    return out
+
+
+class _Seat:
+    """Points seated on the head's surface: a ray along +y (from in front) through (x, z) to the first skin it meets;
+    the face's landmarks + offsets in interocular units become points ON the skin, wherever its forms put it."""
+
+    def __init__(self, spec, part, J):
+        self.ok = False
+        try:
+            from scipy.spatial import cKDTree
+            from . import skin_marks
+            V, N, _ = skin_marks.head_mesh(spec, part, J)
+            V, N = np.asarray(V, float), np.asarray(N, float)
+            keep = N[:, 1] < 0.35       # what faces the front or the sides
+            self.V = V[keep]
+            self.tree = cKDTree(self.V[:, [0, 2]])
+            self.ok = True
+        except Exception:  # noqa: BLE001  (no mesh: a hand-made skeleton without a head surface; landmarks as they are)
+            pass
+
+    def __call__(self, p, near: bool = False):
+        """near: the skin nearest the guess along the ray (round the eye, where lid, brow and lashes overlap along
+        the ray); else the frontmost skin along it (the near cheek, not the far side of the head)."""
+        p = np.asarray(p, float)
+        if not self.ok:
+            return p
+        idx = self.tree.query_ball_point([p[0], p[2]], 0.0015)
+        if not idx:
+            idx = [self.tree.query([p[0], p[2]])[1]]
+        cand = self.V[idx]
+        if near:
+            return cand[np.argmin(np.abs(cand[:, 1] - p[1]))]
+        close = cand[np.abs(cand[:, 1] - p[1]) < 0.02]
+        c = (close if len(close) else cand)
+        return c[np.argmin(c[:, 1])]
 
 
 def build(spec, p, J, layer, T, ctx) -> None:
     from .skin_features import _hex, _opt, _zones, hair_default
     from .skin import interocular
-    mk = p["makeup"]
+    mk = resolve(p["makeup"])
     bad = set(mk) - set(ITEMS)
     if bad:
-        raise SpecError(f"skin makeup: unknown {sorted(bad)} (have {', '.join(ITEMS)})")
+        raise SpecError(f"skin makeup: unknown {sorted(bad)} (have look, {', '.join(ITEMS)})")
     if not mk:
         return
     t = p["tone"]
     dark = t["melanin"]
 
-    def item(name, extra=()):
-        o = _opt(mk.get(name), f"makeup.{name}", ("color", "finish", *extra))
+    def item(name):
+        o = _opt(mk.get(name), f"makeup.{name}", ("color", "finish", *EXTRA.get(name, ())))
         if o and "finish" in o and o["finish"] not in FINISH:
             raise SpecError(f"skin makeup.{name}: finish is one of {', '.join(FINISH)}")
         return o
@@ -50,6 +139,53 @@ def build(spec, p, J, layer, T, ctx) -> None:
 
     if ctx["face"]:
         io = interocular(J)
+        seat = _Seat(spec, p["part"], J)
+        cur = {"S": ".L", "sx": 1.0}   # the side being built: landmarks of that side, offsets' x mirrored
+
+        def L(n):
+            return np.asarray(J[n[:-2] + cur["S"] if n.endswith(".L") else n], float)
+
+        def X(v):
+            """A vector given for the left side (x out), turned to the side being built."""
+            v = np.asarray(v, float)
+            return np.array([v[0] * cur["sx"], v[1], v[2]])
+
+        def pt(base, off=(0, 0, 0), near=False):
+            """A point from a landmark (".L" name: the side being built) + offset (interocular units, x outward),
+            seated on the skin."""
+            q = (L(base) if isinstance(base, str) else np.asarray(base, float)) + io * X(off)
+            return seat(q, near)
+
+        def both(fn, radii, soft=0.8, line=True):
+            """A tapered line (or spots) on each side: fn() gives the side's points (built from its own landmarks:
+            faces aren't symmetric, and a mirrored left-side line floated off the right eye as dots)."""
+            r = [round(float(x) * io, 6) for x in radii]
+            out = []
+            for S, sx in ((".L", 1.0), (".R", -1.0)):
+                cur.update(S=S, sx=sx)
+                P = [[round(float(c), 6) for c in q] for q in fn()]
+                e = {"spot": {"at": P, "radius": r if line else [[x] * 3 for x in r], "soft": soft, **({"line": True} if line else {})}}
+                out.append({**e, **({"blend": "max"} if out else {})})
+            cur.update(S=".L", sx=1.0)
+            return out
+
+        def has(n):
+            return n in J
+
+        def eye():
+            """The side's eye: corners, upper / lower margin points, brow, crease height."""
+            eo, ei = L("lm_eye_outer.L"), L("lm_eye_inner.L")
+            lu = L("lm_lid_upper.L")
+            lui = L("lm_lid_upper_in.L") if has("lm_lid_upper_in.L") else 0.5 * (ei + lu)
+            luo = L("lm_lid_upper_out.L") if has("lm_lid_upper_out.L") else 0.5 * (eo + lu)
+            ll = L("lm_lid_lower.L")
+            llo = L("lm_lid_lower_out.L") if has("lm_lid_lower_out.L") else 0.5 * (eo + ll)
+            bo, bm = L("lm_brow_outer.L"), L("lm_brow_mid.L")
+            ch = 0.3 * max(bm[2] - lu[2], 0.2 * io)   # the lid fold above the lash line (~6-9 mm on an open eye)
+            return eo, ei, lu, lui, luo, ll, llo, bo, bm, ch
+
+        up = lambda q, h: q + np.array([0.0, 0.0, h])  # noqa: E731
+
         o = item("foundation")
         if o:
             a = float(np.clip(o["amount"], 0, 1))
@@ -58,75 +194,207 @@ def build(spec, p, J, layer, T, ctx) -> None:
                   mask=where(o, ["face", "neck"]) + [{"zone": "lips", "blend": "subtract"}, {"mask": _zones(["eyelid", "eye_corner"], 0.7), "blend": "subtract", "weight": 0.5}])
         o = item("concealer")
         if o:
-            layer("makeup_concealer", o.get("mask"), pre=True, color=_hex(o["color"]) if "color" in o else T(melanin=0.8, blood=0.75),
-                  opacity=0.6 * o["amount"], mask=where(o, ["under_eye", "eye_corner"]))
+            col = _hex(o["color"]) if "color" in o else [round(min(c * f, 1), 4) for c, f in zip(T(melanin=0.8, blood=0.75), (1.03, 1.0, 0.95))]
+            m = both(lambda: [pt("lm_eye_inner.L", (0.0, -0.02, -0.08)), pt("lm_lid_lower.L", (0.0, -0.02, -0.14)), pt("lm_eye_outer.L", (0.05, 0.0, -0.12))],
+                     [0.1, 0.14, 0.07], soft=0.95)
+            layer("makeup_concealer", o.get("mask"), pre=True, color=col, opacity=0.55 * o["amount"],
+                  mask=[{"mask": m}, {"zone": {"name": "nose_wing", "grow": 0.8}, "blend": "max", "weight": 0.5}, {"blur": round(0.05 * io, 5)}])
+        o = item("bronzer")
+        if o:
+            col = _hex(o["color"]) if "color" in o else T(melanin=2.2, blood=1.2, yellow=0.2)
+            m = both(lambda: [pt("lm_brow_outer.L", (0.15, 0.1, 0.55)), pt("lm_brow_outer.L", (0.25, 0.25, 0.1))], [0.3, 0.22], soft=1.0)
+            m += [{**e, "blend": "max"} for e in both(lambda: [pt("lm_eye_outer.L", (0.15, 0.1, -0.4)), pt("lm_brow_outer.L", (0.15, 0.2, -0.2))], [0.2, 0.15], soft=1.0)]
+            m += [{"mask": _zones(["nose_bridge"], 0.8), "blend": "max", "weight": 0.5}]
+            layer("makeup_bronzer", o.get("mask"), pre=True, color=col, opacity=0.35 * o["amount"], mask=m + [{"blur": round(0.06 * io, 5)}])
         o = item("contour")
         if o:
-            col = _hex(o["color"]) if "color" in o else T(melanin=1.9, blood=0.9, grey=0.15)
-            pts = []
-            for s, sx in ((".L", 1), (".R", -1)):
-                pts.append([{"at": f"lm_jaw_1{s}", "offset": [round(-0.12 * sx * io, 5), round(-0.25 * io, 5), round(0.3 * io, 5)]},
-                            {"at": f"lm_mouth_corner{s}", "offset": [round(0.45 * sx * io, 5), round(0.15 * io, 5), round(0.25 * io, 5)]}])
-            m = [{"spot": {"at": q, "radius": [round(0.2 * io, 5), round(0.11 * io, 5)], "soft": 0.95, "line": True}, **({"blend": "max"} if i else {})}
-                 for i, q in enumerate(pts)]
-            m += [{"mask": _zones(["jaw"], 0.8), "blend": "max", "weight": 0.5}, {"mask": _zones(["nose_wing"], 0.9), "blend": "max", "weight": 0.35},
-                  {"mask": _zones(["temple"]), "blend": "max", "weight": 0.4}]
-            layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.42 * o["amount"], mask=[{"mask": _zones(o["where"])}] if o.get("where") else m)
+            col = _hex(o["color"]) if "color" in o else T(melanin=1.9, blood=0.85, grey=0.25)
+
+            def hollow():
+                # under the cheekbone: from in front of the ear's tragus toward the mouth's corner, stopping under the
+                # outer eye (never into the nasolabial fold)
+                eo, nos = L("lm_eye_outer.L"), L("lm_nostril.L")
+                E = pt("lm_jaw_0.L", (-0.12, -0.1, -0.12))
+                Q = pt(np.array([eo[0], eo[1], nos[2]]) + io * X([0.03, 0.0, -0.05]))
+                return [E, pt(0.5 * (E + Q) + io * np.array([0.0, 0.0, -0.04])), Q]
+            m = both(hollow, [0.2, 0.16, 0.08], soft=1.0)
+            m += [{**e, "blend": "max", "weight": 0.7} for e in both(lambda: [pt("lm_brow_outer.L", (0.25, 0.25, 0.45)), pt("lm_brow_outer.L", (0.3, 0.35, 0.05))], [0.18, 0.12], soft=1.0)]
+            m += [{"mask": _zones(["jaw"], 0.8), "blend": "max", "weight": 0.45}]
+            nose_k = float(o.get("nose", 0.0))
+            if nose_k > 0:
+                m += [{**e, "blend": "max", "weight": round(nose_k, 3)} for e in
+                      both(lambda: [pt("lm_brow_inner.L", (-0.04, 0.0, -0.1)), pt("lm_nose_bridge", (0.12, 0.0, -0.35)), pt("lm_nose_tip", (0.11, 0.0, 0.12))], [0.05, 0.05, 0.04], soft=1.0)]
+            layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.4 * o["amount"],
+                  mask=([{"mask": _zones(o["where"])}] if o.get("where") else m) + [{"blur": round(0.05 * io, 5)}])
         o = item("blush")
         if o:
-            # blush shifts the skin's own pigment toward blood (a given colour is mixed half-way with that): on dark skin a
-            # pink paint reads as a patch, more blood in the same melanin reads as a flush
+            # the skin's own pigment shifted toward blood (a given colour mixed half-way with that): on dark skin a pink
+            # paint reads as a patch, more blood in the same melanin as a flush
             own = T(blood=4.5 + 2.0 * dark, oxygenation=0.9, melanin=1.0)
             col = [round(0.5 * a + 0.5 * b, 4) for a, b in zip(_hex(o["color"]), own)] if "color" in o else own
-            layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=0.36 * o["amount"],
-                  mask=[{"mask": _zones(o.get("where") or ["cheekbone", "cheek"], 1.3)}, {"levels": [0.15, 1.0, 0.45]}, {"blur": 0.006}])
+            place = o.get("place", "apples")
+            if place not in ("apples", "lifted", "draped"):
+                raise SpecError("skin makeup.blush: place is apples, lifted or draped")
+
+            def cheek():
+                ll, bo, eo = L("lm_lid_lower.L"), L("lm_brow_outer.L"), L("lm_eye_outer.L")
+                pupil = L("eye.L") if has("eye.L") else 0.5 * (eo + L("lm_eye_inner.L"))
+                apple = np.array([pupil[0], ll[1], ll[2] - 0.5 * io]) + io * X([0.12, 0, 0])   # under the outer iris
+                temple = np.array([bo[0], bo[1], eo[2] + 0.12 * io]) + io * X([0.05, 0, 0])
+                if place == "apples":
+                    return [pt(apple), pt(0.6 * apple + 0.4 * temple), pt(0.25 * apple + 0.75 * temple)]
+                if place == "lifted":
+                    a2 = apple + io * X([0.12, 0.0, 0.15])
+                    return [pt(a2), pt(0.5 * a2 + 0.5 * temple), pt(temple)]
+                return [pt(apple), pt(0.5 * apple + 0.5 * temple), pt(temple), pt(temple + io * np.array([0.0, 0.1, 0.35]))]
+            rr = {"apples": [0.3, 0.22, 0.12], "lifted": [0.22, 0.2, 0.12], "draped": [0.26, 0.24, 0.2, 0.12]}[place]
+            layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=round(0.5 * o["amount"], 4),
+                  mask=[{"mask": both(cheek, rr, soft=1.0)}, {"blur": round(0.07 * io, 5)}])
         o = item("highlight")
         if o:
+            m = both(lambda: [pt("lm_eye_outer.L", (0.02, 0.0, -0.32)), pt("lm_eye_outer.L", (0.22, 0.1, -0.2))], [0.09, 0.06], soft=1.0)
+            m += [{"mask": _zones(["nose_bridge"], 0.5), "blend": "max", "weight": 0.7}, {"mask": _zones(["philtrum"], 0.6), "blend": "max", "weight": 0.6}]
+            m += [{**e, "blend": "max", "weight": 0.6} for e in both(lambda: [pt("lm_brow_mid.L", (0.08, 0.0, -0.12)), pt("lm_brow_outer.L", (-0.02, 0.0, -0.1))], [0.05, 0.04], soft=1.0)]
             layer("makeup_highlight", o.get("mask"), pre=True, color=T(melanin=0.5, blood=0.7), opacity=0.35 * o["amount"],
-                  roughness=0.26, specular=0.6, mask=[{"mask": _zones(o.get("where") or ["cheekbone", "nose_bridge", "philtrum"], 0.6)}])
-        o = item("eyeshadow", ("reach",))
+                  roughness=0.24, specular=0.65, mask=m + [{"blur": round(0.025 * io, 5)}])
+        o = item("eyeshadow")
         if o:
-            col = _hex(o.get("color", "#6b4a3a"))
+            col = _hex(o.get("color", "#8b6b5c"))
+            crease = _hex(o["crease"]) if "crease" in o else [round(c * 0.72, 4) for c in col]
+            outer = _hex(o["outer"]) if "outer" in o else [round(c * 0.55, 4) for c in crease]
             fin = o.get("finish", "matte")
             reach = float(o.get("reach", 1.0))
-            extra = {"metallic": 0.7} if fin == "metallic" else ({"specular": 0.7} if fin == "shimmer" else {})
+            extra = {"metallic": 0.6} if fin == "metallic" else ({"specular": 0.55} if fin == "shimmer" else {})
+
+            def lid():   # from the lash line to the crease, most colour near the lashes
+                eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
+                ch *= reach
+                return [pt(up(ei, 0.3 * ch), near=True), pt(up(lui, 0.4 * ch), near=True), pt(up(lu, 0.42 * ch), near=True),
+                        pt(up(luo, 0.42 * ch), near=True), pt(up(eo, 0.35 * ch), near=True)]
+
+            def fold():  # a deeper shade along the crease, blended out toward the brow's tail
+                eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
+                ch *= reach
+                return [pt(up(lui, 0.95 * ch), near=True), pt(up(lu, ch), near=True), pt(up(luo, 0.95 * ch), near=True),
+                        pt(up(eo, 0.8 * ch) + io * X([0.1, 0.0, 0.0]), near=True)]
+
+            def vee():   # the outer V: crease and lash line meeting at the outer corner, darkest
+                eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
+                ch *= reach
+                return [pt(eo + io * X([0.01, 0.0, 0.01]), near=True), pt(up(eo, 0.6 * ch) + io * X([0.03, 0.0, 0.0]), near=True),
+                        pt(up(luo, 0.9 * ch), near=True)]
+            chm = eye()[-1] * reach / io
             layer("makeup_eyeshadow", o.get("mask"), pre=True, color=col, opacity=0.8 * o["amount"], roughness=FINISH[fin], **extra,
-                  mask=[{"mask": _zones(o.get("where") or ["eyelid"], 0.95 * reach)}])
-            layer("makeup_eyeshadow_blend", o.get("mask"), pre=True, color=col, opacity=0.22 * o["amount"],
-                  mask=[{"mask": _zones(o.get("where") or ["eyelid"], 1.25 * reach)}])
-        o = item("eyeliner", ("width", "wing"))
+                  mask=[{"mask": both(lid, [chm * k for k in (0.3, 0.48, 0.52, 0.52, 0.42)], soft=0.75)}, {"blur": round(0.01 * io, 5)}])
+            layer("makeup_eyeshadow_crease", o.get("mask"), pre=True, color=crease, opacity=0.6 * o["amount"], roughness=FINISH["matte"],
+                  mask=[{"mask": both(fold, [chm * k for k in (0.22, 0.32, 0.36, 0.3)], soft=1.0)}, {"blur": round(0.025 * io, 5)}])
+            layer("makeup_eyeshadow_outer", o.get("mask"), pre=True, color=outer, opacity=0.65 * o["amount"], roughness=FINISH["matte"],
+                  mask=[{"mask": both(vee, [chm * k for k in (0.18, 0.26, 0.18)], soft=1.0)}, {"blur": round(0.015 * io, 5)}])
+        o = item("eyeliner")
         if o:
             col = _hex(o.get("color", "#120e0d"))
             w = float(o.get("width", 0.0012))
             wing = float(o.get("wing", 0.0))
+
+            # along the lashes' roots: the lid margin's own zone (the lash line, as the mascara takes it), grown with
+            # the width, and grown more over the outer half (thin inside, thicker out). (Lines through the eye corner
+            # landmarks left dots: lm_eye_inner / outer sit a few mm past the lids' visible corners on these heads.)
             k = w / 0.0012
-            lines = [{"zone": {"name": "lash_upper", "grow": round(0.8 * k, 3)}}]  # along the upper lid's margin
+            outer_half = both(lambda: [pt(eye()[4], near=True), pt(eye()[0], near=True)], [0.16, 0.12], soft=1.0)
+            m = [{"zone": {"name": "lash_upper", "grow": round(1.0 + 0.45 * k, 3)}},
+                 {"mask": [{"zone": {"name": "lash_upper", "grow": round(1.0 + 1.1 * k, 3)}}, {"mask": outer_half}], "blend": "max"}]
             if wing > 0:
-                for sd, sx in ((".L", 1), (".R", -1)):
-                    P = [{"at": f"lm_eye_outer{sd}", "offset": [0, round(-0.025 * io, 5), round(0.012 * io, 5)]},
-                         {"at": f"lm_eye_outer{sd}", "offset": [round(sx * 0.75 * wing, 5), round(-0.02 * io + 0.45 * wing, 5), round(0.012 * io + 0.55 * wing, 5)]}]
-                    lines.append({"spot": {"at": P, "radius": [round(1.1 * w, 6), round(0.35 * w, 6)], "soft": 0.5, "line": True}, "blend": "max"})
-            layer("makeup_eyeliner", o.get("mask"), color=col, opacity=0.95 * min(o["amount"], 1), roughness=0.4, mask=lines)
+                # the wing: the lower lash line's own angle carried on, turned a little toward the brow's tail, drawn
+                # as a picture (a tapered flick) laid from the front at the outer lash line (a tube through points
+                # seated on the receding temple left it as a blob or in pieces)
+                cur.update(S=".L", sx=1.0)
+                eo, llo, bo, luo = eye()[0], eye()[6], eye()[7], eye()[4]
+                d = eo - llo
+                d = d / max(np.linalg.norm(d), 1e-9)
+                tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
+                dw = d + 0.35 * tb
+                ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
+                s0 = seat(0.5 * (luo + eo), True)                 # from the outer lash line, inside the corner landmark
+                length = wing + float(np.linalg.norm((eo - s0)[[0, 2]]))
+                path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 2.2 * w)
+                c = s0 + np.array([(0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
+                img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
+                       "depth": 0.012, "facing": 0.0, "mirror": True, "mirror_image": True, "channel": "alpha"}
+                m += [{"image": img, "blend": "max"}]
+            low = float(o.get("lower", 0.0))
+            if low > 0:
+                m += [{**e, "blend": "max", "weight": round(low, 3)} for e in
+                      both(lambda: [q + np.array([0.0, -0.0002, -0.0002]) for q in (eye()[5], eye()[6], eye()[0])],
+                           [x * w / io for x in (0.2, 0.32, 0.45)], soft=0.8)]
+            layer("makeup_eyeliner", o.get("mask"), color=col, opacity=round(0.95 * min(o["amount"], 1), 4), roughness=0.4, mask=m)
         o = item("mascara")
         if o:
             layer("makeup_mascara", o.get("mask"), color=_hex(o.get("color", "#0d0b0a")), opacity=0.9 * min(o["amount"], 1),
-                  mask=[{"zone": {"name": "lash_upper", "grow": 1.5}}, {"zone": {"name": "lash_lower", "grow": 1.2}, "blend": "max", "weight": 0.6}])
+                  mask=[{"zone": {"name": "lash_upper", "grow": 1.2 + 0.3 * min(o["amount"], 1.5)}},
+                        {"zone": {"name": "lash_lower", "grow": 1.1}, "blend": "max", "weight": 0.5}])
         o = item("brows")
         if o:
             col = _hex(o["color"]) if "color" in o else hair_default(t, min(p["age"], 40))
-            layer("makeup_brows", o.get("mask"), pre=True, color=col, opacity=0.6 * o["amount"], roughness=0.55, mask=_zones(["brow"], 0.95))
+            layer("makeup_brows", o.get("mask"), pre=True, color=col, opacity=0.55 * o["amount"], roughness=0.55,
+                  mask=[{"mask": _zones(["brow"], 0.85)}, {"blur": round(0.01 * io, 5)}])
         o = item("lipstick")
         if o:
             fin = o.get("finish", "satin")
-            extra = {"specular": 0.75} if fin == "gloss" else {}
-            layer("makeup_lipstick", o.get("mask"), pre=True, color=_hex(o.get("color", "#9c2b35")), opacity=min(0.95 * o["amount"], 1.0),
-                  roughness=FINISH[fin], **extra, mask=[{"zone": {"name": "lips", "grow": 0.9}}])
+            own = T(melanin=1.5, blood=7.5)
+            col = _hex(o["color"]) if "color" in o else [round(0.6 * c + 0.4 * d, 4) for c, d in zip(own, _hex("#c45a6a"))]
+            sheer = fin == "balm"
+            extra = {"specular": 0.75} if fin in ("gloss", "balm") else {}
+            grow = 0.9 + float(o.get("overline", 0.0)) / 0.0012
+            layer("makeup_lipstick", o.get("mask"), pre=True, color=col, opacity=min((0.45 if sheer else 0.95) * o["amount"], 1.0),
+                  roughness=FINISH[fin], **extra, mask=[{"zone": {"name": "lips", "grow": round(grow, 3)}}])
+            liner = float(o.get("liner", 0.0))
+            if liner > 0:
+                lc = _hex(o["liner_color"]) if "liner_color" in o else [round(c * 0.7, 4) for c in col]
+                layer("makeup_lip_liner", o.get("mask"), color=lc, opacity=round(0.75 * min(liner, 1), 4), roughness=FINISH[fin],
+                      mask=[{"zone": {"name": "lips", "grow": round(grow + 0.8, 3)}}, {"zone": {"name": "lips", "grow": round(max(grow - 1.2, 0.1), 3)}, "blend": "subtract"}])
     if ctx["hands"]:
         o = item("nails")
         if o:
             fin = o.get("finish", "gloss")
             layer("makeup_nails", o.get("mask"), pre=True, color=_hex(o.get("color", "#a8232d")), opacity=min(o["amount"], 1.0),
                   roughness=FINISH.get(fin, 0.12), specular=0.7, mask=_zones(["nails"]))
+
+
+def wing_image(angle_deg: float, length: float, width: float):
+    """A left eye's liner wing as a picture (white, coverage in alpha) in the image store: a tapered flick from its
+    root (thick, at the outer lash line) to a sharp tip, `angle_deg` above the horizontal, `length` / `width` m.
+    Returns (path, [width, height] m of the picture, (fx, fy): the root's place in it as fractions, y down)."""
+    import hashlib
+    from PIL import Image, ImageDraw
+    from . import images
+    key = f"wing_{angle_deg:.2f}_{length:.5f}_{width:.5f}_v1"
+    out = images.store_dir() / f"mk_{hashlib.sha1(key.encode()).hexdigest()[:12]}.png"
+    a = np.radians(angle_deg)
+    Wm = length * abs(np.cos(a)) + 3 * width
+    Hm = length * abs(np.sin(a)) + 3 * width
+    fx, fy = 1.5 * width / Wm, 1 - 1.5 * width / Hm
+    if not out.exists():
+        S, px = 4, 1600
+        W = int(px * Wm / max(Wm, Hm))
+        H = int(px * Hm / max(Wm, Hm))
+        k = W / Wm
+        im = Image.new("L", (W * S, H * S), 0)
+        dr = ImageDraw.Draw(im)
+        x0, y0 = fx * W, fy * H
+        tx, ty = x0 + np.cos(a) * length * k, y0 - np.sin(a) * length * k
+        nx, ny = np.sin(a), np.cos(a)            # the flick's normal (image y down)
+        h = 0.5 * width * k
+        # the lower edge runs straight on (the lash line's angle), the upper edge tapers into it: a liner flick
+        poly = [(x0 - nx * h * 1.2, y0 - ny * h * 1.2), (tx, ty), (x0 + nx * h * 0.4, y0 + ny * h * 0.4), (x0 - 0.6 * h, y0)]
+        dr.polygon([(p[0] * S, p[1] * S) for p in poly], fill=255)
+        dr.ellipse([(x0 - h) * S, (y0 - h) * S, (x0 + h) * S, (y0 + h) * S], fill=255)
+        g = np.asarray(im.resize((W, H), Image.LANCZOS), np.float32) / 255.0
+        rgba = np.dstack([np.ones((H, W, 3), np.float32), g])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp.png")
+        Image.fromarray(np.round(rgba * 255).astype(np.uint8), "RGBA").save(tmp)
+        tmp.replace(out)
+    return out, (float(Wm), float(Hm)), (float(fx), float(fy))
 
 
 def reference() -> str:

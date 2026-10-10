@@ -55,6 +55,7 @@ SAFE = {
     "roots": 0.12,  # share of a lock's length over which its strands' starts are staggered
     "curl_m": 0.006,  # radius of the ringlet a strand winds round its clump at curl = 1
 }
+WISP_FAN = 2.0  # a thin free lock (a wisp, < 16 mm) opens to (1 + this) x its width toward the tip, round in section
 
 
 def _ss(x):
@@ -140,7 +141,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                 lw = lw + np.clip(floor - lw, 0.0, None) * _ss((u - belly) / 0.3)
             fr = float(lk.get("free", 0.0))
             R = float(Sl["random"])
-            A = 0.6 * float(Sl["wave"]) * (0.3 + 0.7 * fr) * (1 + R * rng.uniform(-0.4, 0.4))
+            # (hair lying on the head barely swings: at 0.3 of the free swing, locks in step drew ridges round the
+            # scalp, finger waves that read wet and slicked (Tess, 2026-10-09))
+            A = 0.6 * float(Sl["wave"]) * (0.12 + 0.88 * fr) * (1 + R * rng.uniform(-0.4, 0.4))
             # a wisp swings less and slower than a lock (at a lock's wave a few hairs side by side are ramen)
             ws = float(np.clip(W / 0.03, 0.2, 1.0))
             wl = 1.0 + 1.2 * float(np.clip(1.0 - W / 0.02, 0.0, 1.0))
@@ -157,14 +160,20 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             thin = W < 0.016
             if key == "free" and not thin:  # a tail's locks share one volume: their strands run into each other's
                 hw = hw * 1.5
+            fan = float(Sl.get("wisp_fan", WISP_FAN))
+            if key == "free" and thin and fan > 0 and not gather:
+                # a wisp is a few strands that drift apart below the root, not a ribbon: its section opens toward the
+                # tip and goes round (kept at the lock's width, a 4 mm wisp drew as a comb strip of parallel strands:
+                # Tess, 2026-10-09)
+                hw = hw * (1.0 + fan * _ss((u - 0.15) / 0.85))
             ht = np.maximum(th / 2 * float(Sl["flat"]) * np.maximum(lw, 0.3) ** 0.5, 0.0008)
             if key == "free":  # hair off the head isn't pressed flat: a rounder section (a ribbon twists like bacon)
-                ht = np.maximum(ht, 0.4 * hw)
+                ht = np.maximum(ht, (0.9 if (thin and fan > 0) else 0.4) * hw)
             P_.append(P)
             S_.append(B * hw[:, None])
             O_.append(N * ht[:, None])
             W_.append(W * max(th * float(Sl["flat"]), 0.004 if key == "head" else 0.0015)
-                      * (1.0 if key == "head" else 0.9 if thin else 2.5))
+                      * (1.0 if key == "head" else (0.9 if fan <= 0 else 0.3) if thin else 2.5))  # (a wisp: few strands)
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             # (nor further than a quarter of its length: short hair had 4 cm spikes)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))

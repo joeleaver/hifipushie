@@ -29,8 +29,8 @@ spec["skin"] = {
   "tattoos": [{"image": {...paint image...}, "age": years, "opacity"}]
   "eyes": {"iris": "#5a3a1e", "iris_size": m (0.0118), "pupil": 0..1 (0.36 of the iris), "veins": 0..1 (0.4),
            "sclera": colour} | false   the eyeballs (the base's eyes part): see EYES
-  "makeup": {"foundation", "concealer", "blush", "contour", "highlight", "eyeshadow", "eyeliner", "mascara",
-             "brows", "lipstick", "nails"}                                                         (see MAKEUP)
+  "makeup": {"look": "natural" | "everyday" | "evening", "foundation", "concealer", "bronzer", "contour", "blush", "highlight",
+             "eyeshadow", "eyeliner", "mascara", "brows", "lipstick", "nails"}                       (see MAKEUP)
   "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1}
   "only": [groups]                lay only these groups of the description and nothing else, for a character whose skin
                                   is already painted by hand: "eyes" (the eyeball pictures, on the eyes part),
@@ -660,7 +660,8 @@ def _build(spec: dict, J: dict) -> dict:
             mask=_z("cheek", "cheekbone", "nose_bridge") + [{"zone": "chin", "blend": "max", "weight": 0.4}])
         add("nose_red", var, color=T(blood=3.0), opacity=0.5, mask=_z("nose_tip", "nose_wing"))
         add("ears_red", var, color=T(blood=3.2, melanin=1.05), opacity=0.6, mask=_z("ear"))
-        add("lower_cool", var, color=T(blood=0.75, oxygenation=0.4, melanin=1.12, grey=0.12), opacity=0.34,
+        # (the lower face's cool cast is the beard's under the skin: faint on a woman; on Tess it read as a green band under her lip)
+        add("lower_cool", var * (1 - 0.75 * p["fem"]), color=T(blood=0.75, oxygenation=0.4, melanin=1.12, grey=0.12), opacity=0.34,
             mask=_z("jaw", "upper_lip", "soul_patch", "under_chin") + [{"zone": "cheek_side", "blend": "max", "weight": 0.5}])
         add("under_eye", var * (0.7 + 0.6 * thin), color=T(blood=1.7, oxygenation=0.3, melanin=1.25, epidermis=0.7),
             opacity=0.42, mask=_z("under_eye", "eye_corner"))
@@ -703,9 +704,12 @@ def _build(spec: dict, J: dict) -> dict:
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
                                   "mask": [{"zone": {"name": "lips", "grow": 3.5}},
                                                               {"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
+        # (the seam ends at the vermilion's own corners on a GNM head: lm_mouth_corner sits ~6 mm further out on the cheek
+        # there, and the line ran on past the mouth as a dark slit; Garrett 2026-10-09)
+        cr, cl = ("verm_u00", f"verm_u{_VN - 1:02d}") if f"verm_u{_VN - 1:02d}" in J else ("lm_mouth_corner.R", "lm_mouth_corner.L")
         out["skin:lip_seam"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.6, blood=3.2, oxygenation=0.5), "opacity": 0.7,
-                                "mask": [{"spot": {"at": ["lm_mouth_corner.R", "lm_lip_inner_upper.R", "lm_lip_seam",
-                                                          "lm_lip_inner_upper.L", "lm_mouth_corner.L"],
+                                "mask": [{"spot": {"at": [cr, "lm_lip_inner_upper.R", "lm_lip_seam",
+                                                          "lm_lip_inner_upper.L", cl],
                                                    "radius": [0.0008, 0.0016, 0.0018, 0.0016, 0.0008], "soft": 0.8, "line": True}}]}
     if hands:
         add("nails", 1.0, color=T(melanin=0.12, blood=2.4, epidermis=0.4), opacity=0.75, roughness=0.22, specular=0.5,

@@ -2027,3 +2027,36 @@ NO SIM WAS RUN.
     /mnt/data/hifipushie/gpubox/oxidegen_token). First test batch 4/4, $0.10, peak VRAM 1.3 GB, the pose shirt did not
     fail (78 s). known_good_sim: same in.npz and runner, seam gaps 2.9 / 8.5 mm vs 2.8 / 8.0 originally, vertices p50
     1.4 / p95 4.9 mm from the original result; its fine settle p95 0.1 mm: solver nondeterminism, not code.
+  - Round 5 (gate + trace). c10ship.py PIXEL GATE: body drawn magenta, new skin pixels worn vs s2_12 alone from 8
+    cameras (5 wide, 3 collar close-up); the cut at the neck opened 210 px (between shirt and jacket collars) -> never
+    cut within 5 cm of the shirt collar: 0 px, PASS (c10_w7, j6). Jacket selection: only under_cap 0.035 (j6) / 0.02
+    (j5) lie outside s2_12 at the lapels; j6 chest 466 mm vs concept 397, front hang 80 mm (j4 at 0.004: 436 / 50).
+    trace.py: the concept traced through its fitted camera vs ours (overlay cloth_renders/c10_trace.png, ours shifted
+    to the concept chin). Our Garrett is 40 mm shorter chin -> shoulder line than the concept figure (68 vs 28 mm), so
+    chin- and shoulder-anchored heights disagree; robust: notch ~25 mm too wide each side, lapel 75 vs ~64 mm, break
+    on the chin anchor matches (398 vs 392-401 mm below), collar_show at CB 6 mm (rule 10-20), chest wide.
+  - Round 6 (draft vs the trace, one batch + 1). j8 (collar stand 11 / fall 28, lapel 64 mm, gorge_angle 55, under_cap
+    0.02): the steeper gorge moved the notch IN but UP (3 mm below the chin vs concept 56-63): gorge_angle is the wrong
+    lever for "lower". The constructed collar's top is set by the NECKLINE (its stand already at the 8 mm floor):
+    construct show changes nothing. j9 = neckline back 0.035 -> 0.045, widen 0.012 -> 0.018, collar 11 / 28, lapel
+    0.064, gorge_drop kept (0.12), under_cap 0.02: notch 52-55 mm below the chin (concept 56-63) and ~15 mm out,
+    collar_show 9.5 mm at CB, shirt collar 6-7 mm above the jacket's at the side neck, lapel 60-62 mm, chest +252
+    (j6 +294, j7 at under_cap 0.004 +213). Gates on j9: visible collar / V 0.00 mm, 0 visible crossings, 0 skin px.
+    j7 (the j4 fit) fails the crossing gate (71): pressing the HIDDEN shirt under the lapels is still owed.
+    Broker: the jacket START is not deterministic run to run (X 1 cm, even the mesh: 3479 vs 3492 vertices), so
+    stage.sh's write-then-consume rounds re-key every time for some builds; q.sh straight through (place once,
+    wait for the fleet) is the safe path until that is found. Sheet cloth_renders/c10_w9_sheet.png.
+  - Round 7. DETERMINISM: the jacket start moved 1 cm run to run (top.L 10 mm down the arm in 1 of 3 runs; seed-free,
+    so every rebuild re-keyed the sim). Cause: place()'s sleeve-down retry updated `down` IN PLACE while iterating a
+    SET of piece names, so an arm-mate read the new value or not by the set's per-process order (string hashing).
+    Fixed (from the old values, sorted); det3.sh: 3 fresh runs identical. Found with det.py (step fingerprints) +
+    per-piece X0 hashes. GATE was weak: magenta tested at full brightness only; shaded skin passed. Now any magenta
+    hue + a LOW camera set (hem / front edges): j9 had 1597-3186 skin px at the front edges below the break (the cut).
+    CUT BY VISIBILITY (cloth_layers.occluded + view_dirs: numpy z-buffer of the jacket from 61 directions, a shirt
+    vertex hidden when the jacket is in front from all, eroded 3 rings, collar never cut): 0 skin px on j9 / j10.
+    Depth-fleck count (shirt in front of the jacket's outer side by 2-30 mm) reported, not gated: oblique views see
+    the V's shirt in front of the far lapel legitimately. LAPELS: cloth_made.board_lapel (construct key board,
+    default on): the forepart under each lapel laid as a ruled strip (roll row on its straight chord, across = the
+    strip's mean direction) before press_flap. lapelgate.py (front view, max deviation from the chord): concept roll
+    edges 2.8 / 8.0 mm; j9 roll 18-34, outer edge 29-44; j10 (boarded) roll 8.5-8.8, outer edge 21. Outer edge still
+    curved: not found yet.

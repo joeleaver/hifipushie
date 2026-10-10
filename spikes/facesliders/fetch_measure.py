@@ -11,7 +11,7 @@ B = f"https://raw.githubusercontent.com/makehumancommunity/makehuman/{C}/makehum
 out = Path(sys.argv[1])
 (out / "targets" / "measure").mkdir(parents=True, exist_ok=True)
 rows = []
-for m in ("hips-circ", "waist-circ", "shoulder-dist", "bust-circ"):
+for m in ("hips-circ", "waist-circ", "shoulder-dist", "bust-circ", "neck-circ"):
     for d in ("decr", "incr"):
         rel = f"measure/measure-{m}-{d}.target"
         try:
