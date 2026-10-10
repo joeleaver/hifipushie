@@ -266,6 +266,93 @@ def fit(prior=None):
     return rows, res
 
 
+def valleys(im, P, h_mm, fractions=(0.25, 0.5, 0.75)):
+    """(6,) per eye x column: the luminance valley's depth AT h_mm over the lash line (read_lid's profile, but read
+    at a fixed height: smooth in the geometry, so it can be differentiated), (ref - L(h)) / ref, ref = the lesser of
+    the brightest within 1.5 mm below and above."""
+    from hifipushie.likeness_eyes import frame
+    Lm = lidfold._lum(im)
+    ex, ey = frame(P)
+    ex, ey = np.asarray(ex, float), np.asarray(ey, float)
+    k = MMPX
+    out = []
+    for s in (0, 1):
+        pi, po = P[lidfold.INNER[s]], P[lidfold.OUTER[s]]
+        span = float((po - pi) @ ex)
+        for f in fractions:
+            t = f * span
+            lid = lidfold._interp_curve(P, lidfold.UPPER[s], t, ex, ey, pi)
+            up = np.arange(max(h_mm - 2.0, 0.5), h_mm + 2.0, 0.05)
+            hh = lid - up / k
+            strip = np.linspace(-0.5, 0.5, 9) / k
+            prof = np.mean([lidfold._bilinear(Lm, *(pi + (t + w) * ex + hh[:, None] * ey).T) for w in strip], 0)
+            prof = np.convolve(prof, np.ones(3) / 3, mode="same")
+            i = int(np.argmin(np.abs(up - h_mm)))
+            lo = prof[max(i - 30, 1):i].max() if i > 1 else prof[i]
+            hi = prof[i + 1:i + 31].max()
+            ref = min(lo, hi)
+            out.append((ref - prof[i]) / max(ref, 1e-6))
+    return np.array(out)
+
+
+def crease_fit(who="tess", h_mm=4.7, dark=0.31, iters=6, prior=None):
+    """GNM identity (170) + eye-region expression (both eyes' comps 0..NEXE-1, paired) fitted to the CREASE EVIDENCE
+    (Tess's photo: the line 4.35-5.0 mm over the lash line, dark 0.31-0.33; target h_mm, dark at all 6 columns) on
+    the raw GNM head, Levenberg-Marquardt by finite differences, prior N(0, Sigma) on c (GNM's I or `prior`) and
+    N(0, EXPR_SD^2) on the expression. Not lidfold's field: the line's position and darkness only."""
+    nexe = int(os.environ.get("NEXE", "20"))
+    esd = float(os.environ.get("EXPR_SD", "0.3"))
+    EN = perc.EX_NAMES
+    epairs = [(EN.index(f"left_eye_region_{k:03d}"), EN.index(f"right_eye_region_{k:03d}")) for k in range(nexe)]
+    nc = len(HC)
+    Sig = np.eye(nc) if prior is None else prior
+    Li = np.linalg.cholesky(np.linalg.inv(Sig))     # prior residual = Li^T c
+    c0 = c_of(who)[HC]
+    x = np.r_[c0, np.zeros(nexe)]
+
+    def model(x):
+        c = np.zeros(len(NAMES))
+        c[HC] = x[:nc]
+        e = np.zeros(len(EN))
+        for k, (a, b) in enumerate(epairs):
+            e[a] = e[b] = x[nc + k]
+        return perc.verts(c, e)
+
+    def feats(x):
+        im, P = shot(model(x))
+        return valleys(im, P, h_mm)
+
+    def resid(x, f):
+        return np.r_[(f - dark) / 0.05, Li.T @ x[:nc], x[nc:] / esd]
+
+    f = feats(x)
+    lam = 1.0
+    hist = [(0, f.round(3).tolist(), float(np.sqrt(x[:nc] @ np.linalg.solve(Sig, x[:nc]))))]
+    print("start", f.round(3), "maha", round(hist[0][2], 2), flush=True)
+    step = 0.3
+    for it in range(iters):
+        J = np.zeros((6, len(x)))
+        for j in range(len(x)):
+            dx = np.zeros(len(x))
+            dx[j] = step
+            J[:, j] = (feats(x + dx) - f) / step
+        Jr = np.r_[J / 0.05, np.c_[Li.T, np.zeros((nc, nexe))], np.c_[np.zeros((nexe, nc)), np.eye(nexe) / esd]]
+        r = resid(x, f)
+        for _ in range(6):
+            dxs = -np.linalg.solve(Jr.T @ Jr + lam * np.eye(len(x)), Jr.T @ r)
+            fn = feats(x + dxs)
+            if np.sum(resid(x + dxs, fn) ** 2) < np.sum(r ** 2):
+                x, f, lam = x + dxs, fn, lam * 0.5
+                break
+            lam *= 4
+        m = float(np.sqrt(x[:nc] @ np.linalg.solve(Sig, x[:nc])))
+        dm = float(np.sqrt((x[:nc] - c0) @ np.linalg.solve(Sig, x[:nc] - c0)))
+        hist.append((it + 1, f.round(3).tolist(), m))
+        print(f"it {it + 1}: valleys {f.round(3)} | identity maha {m:.2f} (move {dm:.2f}) | expr {x[nc:].round(2)} | "
+              f"max |c| {np.abs(x[:nc]).max():.2f}", flush=True)
+    return x, model(x), model(np.r_[c0, np.zeros(nexe)]), hist
+
+
 def quick():
     rows = [(nm, perc.verts(c_of(nm))) for nm in ("mean", "tess", "garrett")]
     sheet_rows(rows, OUT / "quick.png", ncol=1, scale=0.8)
@@ -304,6 +391,13 @@ if __name__ == "__main__":
             else:
                 rows.append((f"{nm} (identity only, raw GNM)", perc.verts(c_of(nm))))
         sheet_rows(rows, sys.argv[2], ncol=2, scale=0.6)
+    elif what == "crease":   # crease [who] [prior npz]: fit to the crease evidence, sheet before / after
+        who = sys.argv[2] if len(sys.argv) > 2 else "tess"
+        pr = np.load(sys.argv[3])["cov"][:len(HC), :len(HC)] if len(sys.argv) > 3 else None
+        x, V1, V0, hist = crease_fit(who, prior=pr)
+        np.save(OUT / f"crease_{who}.npy", x)
+        sheet_rows([(f"{who}: identity as fitted (start)", V0), (f"{who}: GNM identity + eye expression fitted to the crease evidence", V1)],
+                   OUT / f"crease_{who}.png", ncol=1, scale=0.8)
     elif what == "fit":
         pp = os.environ.get("PRIOR")
         rows, res = fit(None if not pp else np.load(pp)["cov"][:len(HC), :len(HC)])

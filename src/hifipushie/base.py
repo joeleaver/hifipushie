@@ -1927,8 +1927,12 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         ci = ci.copy()
         ci[faceatlas._gnm()["comps"]] += dfold
     ce = _gnm_coeffs(g["expression_names"], head.get("expression"))
+    # (faces5, gnm_atlas.md design 8) HABITUAL expression: how the person carries the face at rest, in GNM's expression
+    # basis but part of the resting face (the identity side): unlike head["expression"] it is not taken out before the
+    # lip seal (a habitual mouth set stays closed) and face shapes are deltas on top of it
+    chab = _gnm_coeffs(g["expression_names"], head.get("habitual"))
     V = g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1) + \
-        np.tensordot(ce, g["expression_basis"], 1)
+        np.tensordot(ce + chab, g["expression_basis"], 1)
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
     slide = None
