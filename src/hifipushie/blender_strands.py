@@ -605,8 +605,9 @@ def show(sd: dict):
     clear()
     mat = material(sd.get("look") or {})
     lk = sd.get("look") or {}
-    scalp = None if not sd.get("scalp") else scalp_object(sd["scalp"], [0.5 * a + 0.5 * b for a, b in zip(_lin(lk.get("gap", "#221310")),
-                                                                         _lin(lk.get("lit", "#56352d")))],
+    tint = list(_lin(lk["scalp"])) if lk.get("scalp") else [0.5 * a + 0.5 * b for a, b in zip(
+        _lin(lk.get("gap", "#221310")), _lin(lk.get("lit", "#56352d")))]  # (scalp: from look.seen, hair.seen_look)
+    scalp = None if not sd.get("scalp") else scalp_object(sd["scalp"], tint,
                          float(lk.get("scalp_tint", 0.85)))
     if sd.get("collide"):
         z = np.load(sd["collide"])

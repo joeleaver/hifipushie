@@ -762,3 +762,15 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
 
 ### Garrett's hair carried onto the new head (2026-10-09, tess agent)
 - New general groom key `fit` (hair.fit_to_head / head_ref; test_hair_loose::test_groom_fits_a_smaller_head): the head a groom was made on; lengths / volumes / offsets in metres scale by the new head's scalp radius over that one, traced front_points move with the head centre. Applied in hair.grow and hair.hairline. h7_garrett's groom (hair7-12, head_size 1.138) onto fs_gj8 (1.0): gc_raw (metres as written) vs gc_fit. Hand-traced hair outlines (trace_garrett.json, gscore.py): front IoU old 0.687 / raw 0.476 / fit 0.687 (chamfer 9.6 / 11.8 / 8.8 mm). Desk painting: 0.38 / 0.31 / 0.33, unreliable (the painting's fitted camera frames the head differently from the photo crop). Colour: ours lighter than the concept (front mid #9a8c82 vs #6a5e54).
+
+## Hair colour from a photo: look.seen (2026-10-10, "jw2" agent)
+- A light-brown photo colour typed into `lit` rendered grey-blond: EEVEE's strand material multiplies the colour's
+  HSV saturation by eevee_sat 0.35 (linear) to copy Cycles' chroma loss, so it can never show more than 0.35 saturation:
+  a light brown (linear HSV saturation ~0.6) is out of reach for ANY lit. New key `look.seen` (hair.seen_look /
+  full_look, used everywhere the look was merged): lit = seen's hue and value at saturation / eevee_sat (capped at 1),
+  eevee_sat = seen's / lit's (EEVEE draws seen exactly), gap / sheen / tip as multiples of lit, and the scalp tint
+  ("scalp") and card_sat from seen (the boosted lit showed as an orange scalp between partings). Explicit colour keys
+  win. test_hair_strands::test_seen_colour_reads_as_asked_in_eevee.
+- Measured on jw (flat frontal light, EEVEE): the rendered lit hair matched the photo's lit-hair numbers but came out
+  ~1.25x as saturated as seen, and the same numbers read ginger on our grey backdrop beside a photo with a warm wall:
+  sample seen from the photo's LIT side (the render makes its own shadows) and ask a little less saturated.

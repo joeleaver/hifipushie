@@ -1607,7 +1607,31 @@ top: a 4 mm vertical disagreement that biases profile registration).
   standard-size object on the wall (an outlet plate, 114 mm), its height from the wall base, then the person's heel
   point and head top (+-6 cm with a 5 % uncertainty in the object's size).
 - Dressed check (garrett3 stage / shot.light): light-brown hair looks (lit lighter than ~#7a5a3c) render grey-blond and
-  very fair skin (melanin 0.02-0.08) reads tan / ruddy: the shot light / skin calibration for very fair skin is open.
+  very fair skin (melanin 0.02-0.08) reads tan / ruddy: FIXED by jw2 (below: skin.tone_rgb's fair end, hair look.seen).
+
+## jw2 (2026-10-10, continues jw; branch worktree-agent-aec6be48f7479a3e4; per-person notes in the private file).
+General findings:
+- The EYE STEP on a model that had lid POSE offsets: the solve starts from the pose-free lids (its "before" reads the
+  head without head.pose), so a well-matched pose model shows a big "before" miss; the shipped result clears the pose.
+  Dressed (garrett3 stage) the crease and the lowered upper lid DO read (a soft fold above the lid, lid over the iris
+  top); what still reads "open / staring" dressed is presentation: bright sclera to the corners, a saturated iris,
+  a thin lash line.
+- The model's own 68 landmarks (humanfit.state L) use a different nose base than the clay / photo detectors (L33
+  projects ~6-8 mm below a photo's subnasale through the fitted camera while the clay reader's middle third is SHORT):
+  never compare L-lengths with table rows for the nose; corners and pupils (36/39/42/45, 68/69) do sit on the
+  photo's and are a sound check of the eye-placement rows (the clay reader's +2-3 mm eye_width / pupil rows are drift).
+- DRESSED READS NARROWER / HARDER THAN THE CLAY: not geometry (the bald dressed head's silhouette through the same
+  camera sits on the photo's face outline: dcmp-style check, hair off vs on). Causes: (1) the stage's FRONT_LIGHT key
+  is 42 deg up: the face's sides, jaw and neck fall into warm subsurface shadow (the lit area narrows, planes read
+  hard) where a phone photo is lit flat from the front; a soft frontal key (~22 deg up, fill from the camera) read
+  rounder and fairer at once; (2) hair hanging flush down both sides of the face; (3) heavy dark straight brows.
+  For likeness sheets light the dressed head like the photo (the clay already uses the photo's fitted SH light);
+  porting that SH fit to the dressed stage is the general fix (not done).
+- Loose hair can't say "the part side combed back behind the ear, the swept side falling forward": loose.flow is per
+  REGION (front, top, sides ...), the same world direction on both sides, and per-region flow on front / top forced
+  everything across and bared the part's other side; stiff >= 0.4 on long front hair hooks the ends; hair resting on
+  bare shoulders hooks up. A per-side (part side / swept side) flow, or the traced route (hair_reference apply=True)
+  for loose grooms, is the gap.
 
 
 ### 2. Age moves (designed) and Garrett's nose (coordinator: nose before age)

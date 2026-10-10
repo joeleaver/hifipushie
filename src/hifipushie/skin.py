@@ -83,6 +83,20 @@ _XYZ2RGB = np.array([[3.2404542, -1.5371385, -0.4985314], [-0.9692660, 1.8760108
 MELANIN = (0.013, 0.55)  # melanosome volume fraction of the epidermis at melanin 0 and 1 (Jacques: 1.3% .. 43%+)
 BLOOD = (0.01, 0.12)  # blood volume fraction of the dermis at blood 0 and 1
 FITZPATRICK = {1: 0.02, 2: 0.14, 3: 0.3, 4: 0.48, 5: 0.7, 6: 0.9}  # melanin (0..1) per Fitzpatrick type
+# The very fair end (jw, 2026-10-10): with MELANIN[0] and a fixed carotene baseline, melanin 0 stopped at ITA 52 deg
+# (L* 71, b* 16: Chardon / Del Bino's "light"), so "very light" skin (ITA > 55: L* ~70, b* ~12) was out of reach and
+# rendered tan. Below FAIR_TO (F2), the melanosome fraction falls geometrically to MELANIN_FAIR and the carotene
+# baseline to FAIR_CAROTENE of itself; F2 and darker are unchanged. Melanin 0: ITA ~59, F1: ~58, F2: 47.
+MELANIN_FAIR, FAIR_TO, FAIR_CAROTENE = 0.005, 0.14, 0.4
+
+
+def melanosomes(m: float) -> float:
+    """The epidermis's melanosome volume fraction for the melanin slider m (0..1)."""
+    hi = MELANIN[0] * (MELANIN[1] / MELANIN[0]) ** m
+    if m >= FAIR_TO:
+        return hi
+    top = MELANIN[0] * (MELANIN[1] / MELANIN[0]) ** FAIR_TO
+    return MELANIN_FAIR * (top / MELANIN_FAIR) ** (m / FAIR_TO)
 PATH, BACK = 2.4, 0.045  # epidermal path (x 60 um), and the share of absorbed light the epidermis scatters back
 
 
@@ -131,9 +145,13 @@ def tone_rgb(tone: dict | None, melanin: float = 1.0, blood: float = 1.0, oxygen
     """The albedo (sRGB 0..1) of skin of this tone with `melanin` x its melanin, `blood` x its blood, thinner or
     thicker epidermis, more carotene (`yellow`), `grey`: mixed toward its own grey (dead, dry or covered skin)."""
     p = tone_params(tone)
-    mel = MELANIN[0] * (MELANIN[1] / MELANIN[0]) ** p["melanin"] * melanin
+    lo = melanosomes(p["melanin"])
+    # pigment ADDED by a mark (freckles, moles, age spots: melanin > 1) counts on the unlowered curve, so freckles on
+    # very fair skin stay as dark as before against a paler ground (they vanished when the multiplier ran on the floor)
+    mel = lo * melanin if melanin <= 1 else lo + (melanin - 1) * MELANIN[0] * (MELANIN[1] / MELANIN[0]) ** p["melanin"]
     bl = (BLOOD[0] * (BLOOD[1] / BLOOD[0]) ** p["blood"]) * blood * (1 + 0.35 * max(-p["undertone"], 0))
-    car = 0.1 + 0.45 * max(p["undertone"], 0) * (1 - 0.6 * p["melanin"]) - 0.1 * max(-p["undertone"], 0) + yellow
+    fair = FAIR_CAROTENE + (1 - FAIR_CAROTENE) * min(p["melanin"] / FAIR_TO, 1.0)
+    car = 0.1 * fair + 0.45 * max(p["undertone"], 0) * (1 - 0.6 * p["melanin"]) - 0.1 * max(-p["undertone"], 0) + yellow
     rgb = _srgb(reflectance(min(mel, 0.95), min(bl, 0.5), p["oxygenation"] if oxygenation is None else oxygenation,
                             max(car, 0.0), epidermis))
     if grey:
