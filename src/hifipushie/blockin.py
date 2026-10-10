@@ -74,6 +74,7 @@ SHAPE_MOVES = ("age_nasolabial", "age_prejowl", "age_cheek_flat", "age_lid_fold"
 LOCAL_SD = {"nose_radix_width": 0.09, "nose_tip_width": 0.18, "nose_dorsum_width": 0.12}
 STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual")
 SQUINT_MM = 9.0
+LIGHT = "sh"            # the sheets' light: "sh" (2nd-order spherical harmonics fitted on the skin) | "linear" (c0 + w.n, AO, shadow)
 FILL = 0.45             # display fill: the clay's shadow side lifted to this share of the lit skin's median
 HAIR_RGB = np.array([62.0, 46.0, 36.0])
 BROWS_R = ([70, 63, 105, 66, 107], [46, 53, 52, 65, 55])
@@ -350,11 +351,11 @@ def _boxes(base: dict, rj: dict) -> list:
 
 
 def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
-         cameras: list | None = None, feature: str | None = None) -> dict:
+         cameras: list | None = None, feature: str | None = None, _identity=None, _head_set: dict | None = None) -> dict:
     """<out> = <src> moved: directions add (amount x direction), base keys and lids are SET. Logged with what was seen
     and why. cameras = view indices to refit on the result head (camera only). Returns the report (see step_text)."""
     from . import store
-    if not moves and not cameras:
+    if not moves and not cameras and _identity is None and not _head_set:
         raise ValueError("block_in_step: no moves. Vocabulary:\n" + vocabulary())
     sp = copy.deepcopy(store.load(src))
     rj = _refs(src)
@@ -395,6 +396,13 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             c = c + v * direction(k)
             if abs(v) > 1.0:
                 big.append(k)
+    if _identity is not None:   # (solved steps: blockin_eyes.eye_step) the identity given, head keys set / cleared
+        c = np.asarray(_identity, float)
+    for k, v in (_head_set or {}).items():
+        if v is None:
+            sp["base"]["head"].pop(k, None)
+        else:
+            sp["base"]["head"][k] = v
     set_identity(sp, c)
     out = out or _next_name(src)
     if (store.HOME / out / "spec.json").exists():
@@ -744,6 +752,23 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
         mask = ps["part"] == 0
     c0, w, _ = ls.fit_light(Y, ps["nrm"], mask)
     lt = (c0, w, float(np.median(Y[mask])), 1.0)
+    if LIGHT == "sh":   # ambient + key + fill / bounce: the c0 + w.n light put the nose's base at black (Garrett:
+        # the band under the nose 0.19-0.34 of the tip's light, his picture 0.6-0.7; SH 0.66)
+        _, _, p1 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True)
+        m1 = mask & (p1["part"] == 0) & (np.linalg.norm(p1["nrm"], axis=-1) > 0.5)
+        X = likeness.sh9(p1["nrm"][m1]) * p1["ao"][m1][:, None]
+        use = np.ones(len(X), bool)
+        a = np.zeros(9)
+        for _ in range(4):
+            if use.sum() < 50:
+                break
+            a = np.linalg.lstsq(X[use], Y[m1][use], rcond=None)[0]
+            r = Y[m1] - X @ a
+            use = np.abs(r) < 2.5 * r[use].std()
+        if np.all(np.isfinite(a)) and use.sum() >= 50:
+            lt = (c0, w, float(np.median(Y[mask])), 1.0, a)
+            im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, light=lt)
+            return im, lt, ps
     _, _, p2 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
     dn = p2["nrm"] @ np.asarray(w, float)
     m2 = mask & (p2["part"] == 0)

@@ -278,6 +278,36 @@ def fit_light(Y, N, mask, iters: int = 4):
     return float(sol[0]), sol[1:], rms
 
 
+def fit_light_sh(Y, N, mask, iters: int = 4):
+    """Luminance ~ sh9(n) . a (2nd-order spherical harmonics: ambient + key + fill / bounce, e.g. light from below
+    off the lip under the nose), robust as fit_light: (a, rms)."""
+    from .likeness import sh9
+    k = mask & (np.linalg.norm(N, axis=-1) > 0.5) & np.isfinite(Y)
+    y, A = Y[k], sh9(N[k])
+    use = np.ones(len(y), bool)
+    sol = np.zeros(9)
+    for _ in range(iters):
+        if use.sum() < 50:
+            break
+        sol = np.linalg.lstsq(A[use], y[use], rcond=None)[0]
+        r = y - A @ sol
+        use = np.abs(r) < 2.5 * r[use].std()
+    rms = float(np.sqrt(((y - A @ sol)[use] ** 2).mean())) if use.any() else float("nan")
+    return sol, rms
+
+
+def residual_sh(Y, N, a, mask, sigma_px):
+    """residual() under an SH light (fit_light_sh's a)."""
+    from scipy.ndimage import gaussian_filter
+    from .likeness import sh9
+    pred = sh9(N) @ np.asarray(a, float)
+    med = float(np.median(Y[mask])) if mask.any() else 1.0
+    R = np.where(mask, (Y - pred) / max(med, 1e-6), 0.0)
+    num = gaussian_filter(R, sigma_px)
+    den = gaussian_filter(mask.astype(float), sigma_px)
+    return np.where(mask & (den > 0.2), num / np.maximum(den, 1e-6), np.nan)
+
+
 def residual(Y, N, c0, w, mask, sigma_px):
     """(photo - model lit like it) / the face's median luminance, smoothed over the mask (normalised convolution),
     NaN off it. A difference, not a ratio: where the fitted light predicts ~0 a ratio blows up."""
