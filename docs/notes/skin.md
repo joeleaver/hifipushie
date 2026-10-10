@@ -394,3 +394,79 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     the sheets); one look_skin stage takes 1-3 min (it re-meshes on every code change).
     Tests: tests/test_skin_marks.py (zones from landmarks, deterministic maps, styles, fade band never darker than
     full, freckles don't repeat), test_skin.test_makeup_looks.
+- skin3 (2026-10-09/10, "skin3" agent, branch worktree-agent-adc9408fe374b85f8; sheets
+  `workspace/skin_renders/sk3_01..05`; scratch /mnt/data/hifipushie/skin3/: skin2's scripts retargeted (run.sh, cp.py
+  now KEEPS brow tilt/fall/lift/apart, lk.py, gshot.sh/g3q.sh, grid/tsheet/sheet_g) + the measures below, st1/lu.sh
+  (stubble copies of om_new_man_30), mkq/rmk.sh (Tess copies sk3_t13e = ts_h13 + t5.json in each look + measures),
+  round6.sh, sheets.sh). Every fix GATED BY MEASURE; renders like with like (each picture resampled by its own
+  detector interocular = 62 mm).
+  Measures (scratch): stub_m.py (beard = chin + jaw + upper-lip boxes minus the cheek boxes, Lab, at 0.3 mm/px, + the
+  1 mm-scale L texture "fine"; hand boxes for ref_28-31), lip_m.py (lip border 10-90 % width + pale ring at face
+  scale), lipz_m.py (same on look_skin's mouth close-up, 0.078 mm/px), wing_m.py (canthus projected with the eye
+  view's camera: gap from lash line to wing, wing lower edge angle vs the lower lash line), arc_e.py (lid band:
+  brightest 1.5-7 mm above the lash line minus the crease minimum up to 10 mm), frk_m.py (freckle specks per cm2 in
+  boxes bridge / upper / mid / outer cheek / forehead / chin, + spread of the specks' dL, a, b, size, flatness).
+  Baselines: clean-faced refs (ref_02/19/34/35/42) give beard-zone minus cheek ~ dL -13 +-8 (shading), da -3, db +1:
+  the refs' stubble increment = their delta minus that. Our renders: increment = delta minus sl_none (-1.9/-5.4/-4.5).
+  (1) STUBBLE. Finding: the stubble shadow was a PER-VERTEX (pre) layer: a smooth wash; the stubs (0.1 mm) alone gave
+      a 1 mm-scale texture of +0.4 (5 o'clock) .. +2.8 (heavy) over bare skin vs +2.4 .. +3.1 on ref_28/29/30. Now:
+      skin_marks.stubble_map draws each dark hair's SHAFT UNDER THE SKIN (a soft dash ~1.3 mm long behind the exit
+      point, fading with depth, ~0.2 mm wide) into the shadow channel, which carries it as grain
+      (B = smooth * (SUB_GAP 0.4 + 0.6 * clip(2 * dashes))), the shadow layer is per pixel (no longer _pre; shader
+      budget test 36 -> 37) with SHADOW_GAIN 1.6 (was 0.85), its cast darker (CAST_DEPTH 0.6) and greyer (CAST_SAT 0.15);
+      grey hairs cut the smooth shadow by (1-grey)**0.6 (was linear). VERSION 19 (+ SUB_* in the map's key).
+      Increments now (L / a / b, fine): clean -6.2/-1.1/-2.0 +1.0; 5 o'clock -9.5/-1.8/-3.0 +1.8 (ref_30 1-day -5.3/-3.2/
+      -5.8 +3.1: darker than ref_30, between it and ref_31's dark shadow); short -10.3, +2.1; designer -13.2/-2.1/-3.5
+      +2.8 (ref_29 -13.1/-8/-14, +4); heavy -14.9 +3.2; salt & pepper (grey .45) -7.7/-1.7/-2.8 +1.1 (ref_28 -9.2, +2.4).
+      L and texture now in the refs' range at distance; CHROMA is still short: a/b fall 1.5-3.5 where the refs fall 3-14
+      (a greyer cast barely moved it: CAST_SAT 0.45 -> 0.15 gave ~0.3; suspect the subsurface (1 mm x 2 mm radius)
+      re-reddening the zone; not pursued).
+      Patchy: beard_density's random 14 mm noise blobs on the cheeks read as stains; patchy > 0.25 now grows where a beard
+      comes in first (moustache along the upper lip, soul patch, the chin's underside / the jaw's front edge), cheeks and
+      connectors bare, a 5 mm noise thinning inside the patches (fewer hairs, not blotches); the old noise stays at
+      <= 0.3 for every style. Reads as a young man's moustache + chin growth, no stains (ref_33).
+      Garrett (gpatch.json = the approved stubble; skin2's dressed-shot pipeline, HEAD=sk2_g6): g15 vs skin2's g14,
+      beard - cheek dL -21.2 vs -19.6, fine 2.49 vs 1.70 (grainier, darker by 1.6). NOTE: on the cmp's photo crop the
+      same measure gives dL -7.7: our Garrett's beard zone is far darker relative to his cheek than his photo's, before
+      and after this round (approved values kept; flag for Joe).
+  (2) LIP BORDER: no change needed by measure. 10-90 % width at face scale: ours 1.1-1.5 mm (everyday/evening), refs
+      ref_36 1.7-2.5, ref_38 1.6-2.1, ref_13 0.9-1.5, ref_09 0.9-1.8, Tess's photo 1.4-2.3; close-up 1.3-1.9 mm. Pale
+      ring: the lit render shows +3..+6 L under the LOWER lip (natural/everyday), but on the albedo (look_skin flat)
+      it is -2.6..+0.3: shading (no shadow under the lower lip on these heads), not paint.
+  (3) WING: skin2's chain started on the upper lid 3 mm above the corner (gap 2.0 mm from the lash line, edge +30 deg
+      off the lash line: the thorn). Now skin_makeup.wing_root finds the canthus on the head mesh (the most lateral
+      front skin within 1.5 mm of the eyeball; lm_eye_outer sat 2.7 mm outside it on one head, 1.5 mm inside on Tess),
+      the wing = a FILLED triangle: lower edge from the canthus along the lower lash line's outer third extended
+      (C - lm_lid_lower_out), upper edge back to the upper lash line's outer third, a fan of 9 tapering spot chains
+      (5 left skin slivers; spots <= 40 % of their radius apart: no beads at the tip). Measured: gap 0 (0.47 with the
+      strict L < 20 liner threshold: lashes cross the path), edge angle 7 deg off the lash line (skin2: 15-30).
+  (4) PALE ARC: found by look_skin flat (albedo; layer= can't show pre layers): the lid colour covered only the lowest
+      ~1.3 mm of the lid and the crease colour was a thin line 6 mm up, the bare lid between = the pale arc; plus the
+      shimmer finish (specular .55, roughness .32) made the lid's convex top a silvery band. Now the lid colour covers
+      lash line -> crease (points 0.3-0.5 ch, radii 0.42-0.72 chm), the crease colour is wider and blurred (0.04 io),
+      shimmer = specular .38, roughness .42. arc_e lid band: 26.1 (skin2's evening) -> 8.6, below the same head with no
+      eyeshadow (10.2, the lid's own shading). Also: foundation's brow subtraction and makeup_brows used the landmark brow
+      zone, a bare trapezoid above Tess's lowered brows; they follow the moved brow's picture now (ctx["brow_area"]).
+  (5) FRECKLES: spread already in the refs' range (specks' sd L 1.7-2.8 vs 1.2-3.1, sd a .5-.7 vs .5-1.9, sd b 1.0-1.4 vs
+      .6-1.6, size and flatness alike); the PROFILE was off: a sun cut at N.sun 0.05 left 0.01 of the peak on the outer
+      cheek (refs 0.1-0.9) and the cheek gaussian was narrow. Now lit = ramp(N.sun, -0.3, 0.55), cheek gaussian wider:
+      dense = bridge 1.0, upper cheek .83, mid .52, outer .08, forehead .46, chin .08 (refs: peak bridge/upper cheek in
+      5/5, outer .11-.92). Outer cheek still at the refs' low end.
+  Tess: sk3_04 approved (skin2's td3) vs now: unchanged but for the freckles' layout. Tests: test_skin_marks
+  test_patchy_is_missing_hair_and_freckles_fade_out; the fade-band test compares the shadow blurred 1.5 mm (it has grain).
+  5th blind read (skin2's prompt, sheets sk3_01..05, scratch /tmp/claude-1000/blindread5): stubble clean 2, 5 o'clock
+  3, short 3, designer 2, heavy 2, patchy 3, salt & pepper 1; freckles 3/3/3/3, moles 2; makeup natural 3, everyday 2,
+  evening 1; Garrett before 2 / now 2; Tess approved 3 / now 3 (identical). Its points, against the measures:
+  - AGREES with measure / new: salt & pepper shows no white (grey_color #aaa39a at .85 over L~53 skin is only ~+14 L:
+    ref_28's white hairs are the brightest thing on the jaw) -> next: brighter, more opaque white hairs; designer /
+    heavy read as a light-tan decal with a hard cheek line and a ruled neckline (trim 1 / 0.25 edges) -> soften and
+    darken; "clean" already reads as 1-day (dL -6.2, dots) -> the clean style's shave shadow should lose the resolvable
+    dots (draw no stubs / dashes for length < 0.1 mm); evening eyeshadow reads as a grey-brown "bruise" cloud in 3/4,
+    no outer V; Garrett "now" = sparse dark hairs over peach skin, no grey cast (consistent with the dL -21 vs the
+    photo's -7.7 above: his stubble is too dark and too brown; the approved values are Joe's, ask before changing).
+  - CONTRADICTS the measures (left as measured): freckle layout "even, not sun-driven" (frk_m: bridge 1.0 / upper
+    cheek .83 / mid .52 / outer .08 = the refs' shape); lip "halo past the edge" (albedo ring <= +0.3, widths at or
+    below every ref's); the wing "detached, no taper from the lash line" (gap 0, edge 7 deg off the lash line; it IS a
+    sharp vector edge: soften its outline, soft 0.3 -> ~0.6, is a fair next step).
+  Not this thread's but repeated in every read: no pores / micro-texture or tonal variation in the base skin (redness
+  at nostrils and folds, darker under-eyes) on Tess and Garrett.

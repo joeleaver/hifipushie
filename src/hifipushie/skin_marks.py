@@ -28,7 +28,8 @@ import json
 
 import numpy as np
 
-VERSION = 13
+VERSION = 19
+SUB_DASH, SUB_GAP = 2.0, 0.4   # the under-skin shafts in the shadow channel: their gain, the shadow left between them
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -400,7 +401,24 @@ def beard_density(J: dict, o: dict, curv=None):
         w *= 1 - 0.2 * _ramp(np.interp(q[:, 0], jx, jz) - q[:, 2], 0.15 * io, 0.6 * io)                  # the neck
         if patchy > 0:
             nz = noise(P, {"scale": 0.014, "octaves": 2, "seed": 300 + seed})
-            w *= (1 - patchy) + patchy * _ramp(nz, 0.44, 0.52)   # (hair there or missing, not a stain: sharp gaps keeping sparse single hairs)
+            pn = min(patchy, 0.3)   # a few random gaps in any beard
+            w *= (1 - pn) + pn * _ramp(nz, 0.44, 0.52)   # (hair there or missing, not a stain: sharp gaps keeping sparse single hairs)
+            pa = float(np.clip((patchy - 0.25) / 0.5, 0, 1))
+            if pa > 0:
+                # a patchy beard grows where a beard comes in first: the moustache along the upper lip, a soul patch,
+                # the chin's underside and the jaw's front edge; the cheeks and the connectors beside the mouth stay
+                # bare (ref_33). Random noise blobs there read as stains (four blind reads).
+                lu, ll = L("lm_lip_upper"), L("lm_lip_lower")
+                z_lip = np.interp(q[:, 0], [0.0, mc[0]], [lu[2], mc[2]])
+                mous = (_ramp(q[:, 0], mc[0] + 0.06 * io, mc[0] - 0.04 * io) * _ramp(q[:, 2], z_lip - 0.01 * io, z_lip + 0.04 * io)
+                        * _ramp(q[:, 2], nose_b[2] - 0.02 * io, nose_b[2] - 0.1 * io))
+                soul = _ramp(q[:, 0], 0.14 * io, 0.06 * io) * _ramp(q[:, 2], ll[2] - 0.02 * io, ll[2] - 0.07 * io) * _ramp(q[:, 2], ll[2] - 0.32 * io, ll[2] - 0.22 * io)
+                e = np.interp(q[:, 0], jx, jz) - q[:, 2]     # below the jaw's edge (> 0)
+                band = _ramp(e, -0.22 * io, -0.06 * io) * _ramp(e, 0.4 * io, 0.22 * io) * _ramp(q[:, 0], mc[0] + 0.75 * io, mc[0] + 0.25 * io)
+                anat = np.maximum.reduce([mous, 0.85 * soul, 0.9 * band])
+                fine_nz = noise(P, {"scale": 0.005, "octaves": 2, "seed": 310 + seed})
+                keep = anat * (0.5 + 0.5 * _ramp(fine_nz, 0.3, 0.7))   # thinning inside the patches: fewer hairs, not blotches
+                w *= (1 - pa) + pa * keep
         return np.clip(d * w * float(o["density"]), 0, 1)
     return dens
 
@@ -429,7 +447,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     from scipy.ndimage import gaussian_filter
     sp = sphere(J, (-80.0, 52.0), 230.0, 0.00006 if o["length"] < 0.003 else 0.00008)
     V, N, F = head_mesh(spec, part, J)
-    key = hashlib.sha1(json.dumps([o, np.asarray(V[:50]).round(5).tolist(), len(V), sp["img"], VERSION],
+    key = hashlib.sha1(json.dumps([o, np.asarray(V[:50]).round(5).tolist(), len(V), sp["img"], VERSION, SUB_DASH, SUB_GAP],
                                   sort_keys=True, default=str).encode()).hexdigest()[:16]
     path = store.HOME / "_images" / f"mk_stubble_{key}.png"
     stats_f = path.with_suffix(".json")
@@ -481,6 +499,21 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             return np.maximum(cov, root) * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
         draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine))
         draw(G, x0, A, reach, shape, tone * 0.95 * (0.35 + 0.65 * fine))
+        # the shaft under the skin: a dark hair runs ~1 mm on at a slant below the surface before its follicle, seen
+        # through the epidermis as a soft grey dash behind the exit point (what makes a 1-day shadow read as a field of
+        # dashes at a distance, not a smooth wash: skin3 measured the beard's 1 mm-scale L contrast at 1/4-1/8 of
+        # ref_30 / ref_29's with the stubs alone). A white hair is invisible under the skin.
+        ls = 0.0013 * rng.uniform(0.7, 1.3, n)
+        ws = 0.5 * np.maximum(1.8 * wid, 0.0002)
+
+        def sub_shape(i, s, t):
+            a = ca[i] * s + sa[i] * t
+            b = -sa[i] * s + ca[i] * t
+            aa = 0.5 * pxm[i]
+            fade = np.clip(1 + a / ls[i], 0, 1) ** 0.7      # 1 at the exit, 0 where it's too deep to see
+            return _ramp(np.abs(b), ws[i] + aa, max(ws[i] * 0.3, 0.0)) * _ramp(a, aa, -aa) * fade
+        Sd = np.zeros((H, W), np.float32)
+        draw(Sd, x0, A, ls + ws + 2 * pxm, sub_shape, (1 - tone) * (0.4 + 0.6 * fine))
         # the shadow: the EXPECTED density of dark roots (hair in the skin), from a dense sample of the density field
         # (not the drawn roots' count: blurred enough to hide its Poisson noise, ~3 mm, it fell off 3 mm short of every
         # edge and left a pale band over the lip), each sample weighted by 1 / its pixel's area on the skin
@@ -493,7 +526,8 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         area = np.abs(Ac[:, 0, 0] * Ac[:, 1, 1] - Ac[:, 0, 1] * Ac[:, 1, 0])
         Bd = np.zeros((H, W), np.float32)
         Ba = np.zeros((H, W), np.float32)
-        np.add.at(Bd, (xi[:, 1], xi[:, 0]), (dc * (1 - float(o["grey"])) * area).astype(np.float32))
+        # (the dark hairs' share ** 0.6: a salt-and-pepper beard still reads as a shadow, ref_28's beard - cheek dL ~ -9)
+        np.add.at(Bd, (xi[:, 1], xi[:, 0]), (dc * (1 - float(o["grey"])) ** 0.6 * area).astype(np.float32))
         np.add.at(Ba, (xi[:, 1], xi[:, 0]), area.astype(np.float32))
         pm = float(np.median(pxm))
         Bd, Ba = gaussian_filter(Bd, 0.0012 / pm), gaussian_filter(Ba, 0.0012 / pm)
@@ -502,6 +536,9 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         avg = Bd / np.maximum(Ba, 1e-6)
         support = np.clip(Ba / (0.5 * K * HAIRS_PER_M2), 0, 1)
         Bs = np.clip(avg * support / 0.7, 0, 1) ** 1.2   # full at ~70% of a full dark beard; thin edges fade faster
+        # the shadow carries the shafts' grain: gaps between them lighter, the shafts darker (the layer's opacity is
+        # raised to match: skin_features._stubble_map), so the mean stays the measured beard-minus-cheek darkening
+        Bs = Bs * (SUB_GAP + (1 - SUB_GAP) * np.clip(SUB_DASH * Sd, 0, 1))
     else:
         Bs = np.zeros((H, W), np.float32)
         pm = 0.0
@@ -535,11 +572,13 @@ def freckle_density(J: dict, o: dict):
         face = g(q, np.array([0.0, nb[1] + 0.4 * io, 0.5 * (nb[2] + br[2])]), np.array([1.25, 1.2, 1.25]) * io)
         w = zones["face"] * face
         w = np.maximum(w, zones["nose"] * g(q, np.array([0.0, nb[1] - 0.15 * io, 0.5 * (nb[2] + br[2]) + 0.05 * io]), np.array([0.28, 0.4, 0.5]) * io))
-        w = np.maximum(w, zones["cheeks"] * g(q, lid + io * np.array([0.1, 0.05, -0.42]), np.array([0.45, 0.5, 0.33]) * io))
+        w = np.maximum(w, zones["cheeks"] * g(q, lid + io * np.array([0.12, 0.05, -0.36]), np.array([0.6, 0.5, 0.36]) * io))
         w = np.maximum(w, zones["forehead"] * g(q, np.array([0.0, nb[1] + 0.2 * io, nb[2] + 0.75 * io]), np.array([0.9, 0.6, 0.45]) * io))
         w = np.maximum(w, zones["upper_lip"] * g(q, np.array([0.0, br[1] + 0.05 * io, br[2] - 0.2 * io]), np.array([0.4, 0.4, 0.15]) * io))
         w = np.maximum(w, zones["chin"] * g(q, L("lm_chin") + np.array([0.0, 0.0, 0.25 * io]), np.array([0.35, 0.35, 0.3]) * io))
-        lit = _ramp(Nrm @ sun, 0.05, 0.6)
+        # (what faces the sun: the side of the cheek and the temple keep some, fading; a cut at N.sun = 0.05 left none
+        # past the cheek's front, skin3 measured 0.01-0.04 of the peak there against 0.1-0.9 on ref_02 / 09 / 40-42)
+        lit = _ramp(Nrm @ sun, -0.3, 0.55)
         nz = noise(P, {"scale": 0.018, "octaves": 2, "seed": 500 + seed})
         cl = (1 - clump) + clump * _ramp(nz, 0.3, 0.75) ** 1.5
         lips = _lips_path(J)

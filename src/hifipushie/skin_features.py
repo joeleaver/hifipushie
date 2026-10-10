@@ -525,6 +525,7 @@ def _hair(p, J, layer, T, ctx) -> None:
             # the shadow under the hairs sits where the hairs are: a brow moved off its landmarks (drop, lift, tilt,
             # apart) left the landmark zone's shadow behind as a grey band over the new brow (Tess, 2026-10-09)
             moved = any(o.get(k) for k in ("drop", "lift", "tilt", "apart"))
+            ctx["brow_area"] = [{"image": img}] if moved else None   # (makeup under the brows follows the hairs too)
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col,
                   opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9),
                   mask=[{"image": img}] if moved else _zones(["brow"], 0.9 * thick))
@@ -616,6 +617,11 @@ def _hair(p, J, layer, T, ctx) -> None:
                   mask=[{"tile": {"swatch": "hairs", "rotate": bool(rot), "range": [round(lo, 3), round(lo + 0.35, 3)], "vary": False}}, {"vertex": True, "mask": _zones(zs)}])
 
 
+SHADOW_GAIN = 1.6   # (0.85 before the shadow map carried the under-skin shafts' grain: its mean fell ~1/2)
+CAST_DEPTH = 0.6   # the shafts seen through the skin are darker than the old even wash (gate: ref_30 / 29 / 28 beard - cheek)
+CAST_SAT = 0.15   # its chroma kept (the rest goes to a neutral grey of the same luminance)
+
+
 def stubble_options(o: dict, age: float = 35) -> dict:
     """hair.stubble's options resolved against its style (skin_marks.STUBBLE_STYLES)."""
     from . import skin_marks
@@ -652,9 +658,12 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     cool = np.array(T(grey=0.6, melanin=1.1)) * (0.58 + 0.22 * t["melanin"]) + np.array([0.08, 0.105, 0.125]) * (1 - t["melanin"])   # (neutral blue-grey: more blue read lilac)
     warm = np.array(T(grey=0.25, melanin=2.3, blood=1.05)) * (0.62 + 0.25 * t["melanin"])   # (warm grey: less read as green)
     cast = (1 - 0.35 * grow) * cool + 0.35 * grow * warm + 0.06 * grow * (np.array(col) - 0.3)   # the sub-skin shadow stays cool: the hairs carry the warmth
-    cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]
+    lum = float(cast @ np.array([0.2126, 0.7152, 0.0722]))
+    cast = lum + CAST_SAT * (cast - lum)   # (beard minus cheek: a and b fall 3-14 on the refs, ~1 on ours before)
+    cast = [round(float(c), 4) for c in np.clip(CAST_DEPTH * cast, 0, 1)]
     cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
-    layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.85 * min(a, 1.3) * q["shadow"], 0.95), 3),
+    # (per pixel, not pre-composited per vertex: the shadow map carries the under-skin shafts, ~0.2 mm across)
+    layer("stubble_shadow", o.get("mask"), color=cast, opacity=round(min(SHADOW_GAIN * min(a, 1.3) * q["shadow"], 0.95), 3),
           mask=[im("b"), lips])
     hgt = round(float(np.clip(0.00003 + 0.012 * q["length"], 0.00003, 0.00012)), 7)   # a hair stands ~0.1 mm proud
     r = min(ctx["base_r"] + 0.1, 0.9)
