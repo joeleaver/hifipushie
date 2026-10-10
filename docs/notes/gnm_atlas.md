@@ -1648,3 +1648,32 @@ lt19_b24: 14/21 counted items; misses: temple width (hair-covered), cheekbone +3
   no freckles, variation / detail 0.35-0.4 (freckles + full detail read grainy and tanned), brows #070504 thickness
   1.5, soft 0.15 (2.2 / soft read as brown fur), lids lashes dark; hair: loose 0.42 m centre part, look gap #0b0807
   lit #1d1613 (the default lit read red-brown).
+- Per-picture expression (coordinator: GNM identity = the relaxed neutral; the front picture's slight smile is its own
+  expression): exprfit.py <model> <view> <out> [ncomp] [sd]: GNM lower_face_region comps 0-19 (prior sd 0.8), identity
+  and camera held, Gauss-Newton with finite-difference columns through humanfit.state on the calibrated detector
+  evidence (3.2 s an evaluation). Front: chi2 164 -> 135 (282 points), |e| 1.92. lt19_b38_fx0 = b38 + that expression
+  (a render model, not a round). Dressed with it (lt19_d2f): lips a little fuller, corners lifted, a hint of the cheek
+  apple; closer to the picture than the neutral. The block-in's table and sheets compare the NEUTRAL clay with the
+  smiling picture: the smile leaks into mouth / cheek identity steps (proposal for the blockin tools: per-view
+  expression in human_refs, fitted once at start / on request, applied in look / table / focus).
+- Strand hair (lt19_d2, style strands, loose 0.45 m, centre part, wave 7 mm / 0.12 m, clump 0.5): the loose groom gave
+  its locks per-lock "grey" up to 0.48 and look.grey_locks defaults to 1: white streaks on a 19-year-old (fixed per
+  model with look grey_locks 0; the default should follow age). dress_shot's EEVEE stage path and look_hair agree.
+- Sheet human_renders/lt19_final_dressed_sheet.png: front photo | b38 + the front's expression | b38 neutral; profile
+  photo | neutral.
+
+### HANDOVER (lt19, 2026-10-10)
+State: block-in result lt19_b38 (log workspace/lt19_b00/blockin_log.json, rounds b00-b38); dressed lt19_d2 (neutral,
+strand hair, skin), lt19_d2f (b38 + the front picture's expression, same dressing). Body lt19_body (refs: front_h /
+profile_left_h, lens_mm 24, profile yaw -90). Scratch /mnt/data/hifipushie/lt19 (run.sh, tests.sh, srv.py @json,
+dress_shot.py, rebase.py <dressed> <block-in> <dst>, exprfit.py, pitchscan.py, readlid.py, wide.py, skin*.json, hair2.json).
+Open, in order: (1) the crease: blockin2's GNM crease step (g11 port) on lt19_b38, evidence: fold line 5.5 mm, darkness
+0.2-0.43, margins 0.75 / 0.85 iris radii; (2) per-view expression in the block-in tools (above); (3) cheek roundness
+(the apple: mostly the smile? judge on d2f after (2)); (4) brows in the dressed look still read heavy / furry at the
+tails (skin.hair.brows thickness 1.5); (5) the shipped pose (neutral or her slight smile): ask Joe; (6) the profile's
+seated brow shows only a short patch (blockin presentation).
+Code on this branch (all tested): humanfit_map.lens_prior (lens_mm / EXIF); likeness.NEAR (+ humannormals); blockin:
+profile contour per-row background + skin warmth, light fit inside the landmark hull for clicked views, cameras follow
+the face on head_scale, presentation (iris colour from the picture, lip tint, brows as the picture's hair per side),
+0.00 clay readers flagged; likeness.photo_sides detector box; makehuman neck targets (neck_double / neck_depth) + the
+makehuman pack entries; tests/test_blockin.py::test_neck_double_and_lens_prior.
