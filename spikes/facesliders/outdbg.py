@@ -1,6 +1,7 @@
 """outdbg.py <model> <traces model> <out.jpg> [view]: each traced outline line (red) and the model's matched silhouette
 vertices through the model's fitted camera (blue, a yellow line to their outline point); green dots = the mesh."""
 import json
+import os
 import sys
 
 import numpy as np
@@ -29,7 +30,7 @@ for i, (v, cam) in enumerate(zip(refs["views"], refs["cameras"])):
     for ln, o in zip([k for k in ("cheek.R", "cheek.L", "jaw.R", "jaw.L", "chin", "profile")
                       if outl.traced(trm, v["image"], (k,))], lines):
         d.line([tuple(p) for p in o], fill=(255, 40, 40), width=2)
-        sl = __import__("joint2").envelope(st, cam, np.asarray(o, float), __import__("joint2").SHADE_LINES.get(ln))
+        sl = humanfit._silhouette(st, cam, np.asarray(o, float)) if os.environ.get("SIL") else __import__("joint2").envelope(st, cam, np.asarray(o, float), __import__("joint2").SHADE_LINES.get(ln))
         if sl is None:
             continue
         uv = humanfit.project(cam, sl["X"])
