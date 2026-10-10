@@ -316,3 +316,81 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
     skin (Bump x3); per-vertex pre layers need a body voxel <= ~1.5 mm to hold 3 mm mottling (look_skin's stages do).
     `tests/test_skin.py`.
 
+
+- Skin 2 (2026-10-09, "skin2" agent, branch `worktree-agent-a19d53ef6fe103feb`; sheets `workspace/skin_renders/sk2_*`;
+  scratch DURABLE in /mnt/data/hifipushie/skin2/: run.sh, gshot.sh <tag> <patch> (dressed Garrett through the photo's
+  camera + likeloop's light; HEAD=<head model>), g3q.sh (3/4 beside the desk painting), lk.py (look_skin views), cp.py
+  (copy a model + patch; drops other branches' brow keys), t_dens.py (density / curvature on the head mesh),
+  t_bd.py (map vs density per vertex), stub_lineup.sh, frk_lineup.sh, mk_looks.sh, grid.py / sheet_g.py / tsheet.py;
+  20 more CC refs ref_25..44 in workspace/skin_refs: grey / designer / patchy / 1-day stubble, makeup looks, freckles).
+  - `skin_marks.py`: UNIQUE mark maps instead of tiled swatches (the user: stubble "not dots alone", freckles with "no
+    visible repeat"). The skin part's field meshed in a box round the head (`head_mesh`, cached `_images/mk_mesh_*`),
+    marks scattered by area x a density field from landmarks (+ the field's mean curvature at 1 cm, `head_curvature`),
+    drawn into one image per feature through each mark's local Jacobian, laid as a sphere-wrap image decal (centre deep
+    in the head behind the mouth, `sphere`). Channels: stubble r dark hairs / g white hairs / b shadow; freckles r all
+    (darkness = value) / g dark ones / b moles. Opaque PNG (the image store bleeds colour under alpha 0).
+  - Stubble (`hair.stubble`: style clean / five_oclock / short / designer / heavy / patchy + length, density, grey,
+    patchy, trim, cheeks, cheek_line, neckline; engine "tile" = the old path): hairs as cut strokes along the growth
+    direction (down; out from the philtrum; toward the throat under the chin), finer / shorter / lighter where sparse;
+    untrimmed edges taper over ~2 cm with 6% stragglers past them (Joe: "edges too hard, don't follow the face
+    shapes"); the top boundary sags under the cheekbone, the neckline hangs from the jaw's landmark chain, convex
+    cheek front and nasolabial bulge thinner. Shadow = the EXPECTED dark-root density from a 12x dense sample,
+    normalised by the samples' own coverage (blurred drawn roots fell off short of every edge: a pale band over the
+    lip; a plain sum doubled where the mesh has two skins). Cast warm grey-brown for grown hair (Garrett's photo: Lab
+    ~45/4/13 at 0.8 coverage), cool for a fresh shave.
+  - DEAD ENDS / bugs found: the map centre in the mouth mapped tongue/teeth over the whole face through huge Jacobians
+    (white discs of shadow); nose / mouth insides along the same rays as the cheeks printed through (fixed by
+    `outward`: facing out + outermost skin along the ray by a coarse z-buffer); look_skin's stage didn't re-sync on
+    skin_marks.py changes (added to its code hash).
+  - Landmark-drawn lines that ignore the surface: lm_mouth_corner sits ~6 mm outside the vermilion's corner on GNM
+    heads (skin:lip_seam now ends at verm_u00/u16; g4_garrett's own over_lip_seam paint drew the "slit"); the
+    nasolabial / marionette fold lines are now gated by paint "cavity" and a near-grey tint (a red-brown landmark line
+    beside facesliders' geometric fold read as streaks); lm_eye_inner / outer sit a few mm past the lids' corners (told
+    eyedetail; the caruncle spot still uses it).
+  - Make-up (`skin_makeup.py` rewritten): look natural / everyday / evening, placement per side from that side's own
+    landmarks seated on the head mesh (`_Seat`: frontmost skin along +y, or nearest round the eye); liner = the lash
+    line's zone thickening outward; wing = a drawn flick (`wing_image`) laid from the front at the outer lash line,
+    shortened for the receding temple; shadow lid / crease / outer V; contour in the cheek hollow; blush apples /
+    lifted / draped; bronzer, highlight, lip liner / overline, balm. Freckles: `features.freckles` {amount, size, clump,
+    dark, zones} on the face map; body zones from the swatch with vary on.
+  - Tess (approved by Joe, "her skin looks good"): tone fitzpatrick 1, blood 0.25, undertone +0.15; flush 0.3 on cheeks;
+    freckles (after the freckle engine changed) {"amount": 0.08, "dark": 0.1}, no moles (map moles are real ones);
+    zones nose_red 0.75, midface_red 0.8, under_eye 2.0, eyelids 1.4; lips blood 1.0 melanin 2.8.
+    Garrett: stubble {style short, length 0.002, grey 0.35, cheeks 0.75, shadow 1.0, color #3a342f}.
+  - Blind reads (fresh general-purpose agents, sheets sk2_05..09 vs refs; the coordinator relays the top 5): round 1
+    and 2 drove: stubble = cool blue-grey sub-skin shadow + short upright hairs with skin between (a warm shadow read
+    as brown felt, a greyed one as olive "dirty wash", a bluer one as lilac); grey hairs mid-grey (near-white ones
+    LIGHTENED Garrett's beard: "ash"); freckles = ~120/cm2 specks ~0.4 mm, few bigger, round, red-brown (1.3 mm lobed
+    ones read as splats); crisp lip borders (per-vertex lips need the mouth refine in look_skin, soft <= 0.5 mm);
+    perioral redness (else a green band under the lower lip), lower-lip sheen. When a fix seems not to land, first
+    check the render is current (stage key + code hash) - here it was, the faults were real.
+  - Eyeliner wing, four tries: tube through points seated on the temple (blobs / pieces); a picture laid from the
+    front (lands on the lid fold above a deep-set eye: a shard), once mirrored (floated off the other, asymmetric lid);
+    a geodesic surface sticker from the lash line (its frame turned on the margin's upward normal, the wing never
+    left the corner); WORKS: a chain of small spots from the outer third of the lash line along the lower lash line's
+    angle, each spot deep (4 mm) along the forward axis so it reaches the turning skin, per side.
+  - Open: base-skin pores / T-zone shine at front distance (blind read 3's #2); blush reads as a soft patch; evening
+    red lip flat; the lineup head om_new_man_30 shows its inner shell through the face (z-fighting patches).
+  - HANDOVER (skin2 -> next agent, 2026-10-09 late; branch worktree-agent-a19d53ef6fe103feb at 81e32ab+, main has it up
+    to be0bc76 + later merges: check `git log main..`). The final blind read (4th) still flagged, and the coordinator saw
+    on sk2_05: the evening wing reads as a thorn flicking up off the outer corner; the evening crease shows a pale
+    floating arc above the lid (likely makeup_highlight's brow-bone spots or the eyeshadow crease layer's light colour
+    against the darker lid: check with look_skin layer=...); lip borders still soft / a halo; no visible sub-skin stubble
+    shadow at distance (5 o'clock ~ clean, salt & pepper ~ clean); patchy reads as stains; freckles uniform.
+    The coordinator's rule for the next round: GATE BY MEASURE against the refs, not by eye:
+    (1) stubble: mean L/a/b of the beard zone minus a clean cheek, ours vs ref_30 (1 day; ref_25 is grey), ref_29
+        (designer), ref_28 (salt & pepper); boxes on the refs by hand or with spikes/garrett4/skinm.py's detector
+        (`fskinm.py` in scratch measures any photo vs any render with skinm's zone boxes, scaled by interocular); tune
+        STUBBLE_STYLES shadow / the cast in skin_features._stubble_map until the deltas match;
+    (2) lip border: 10-90% edge width in mm at the cupid's bow and mid lower lip, ours vs ref_36 / ref_38 / Tess's
+        photo, and no pale ring (L just outside the border <= the skin's): suspects lip_border (pale rim, grow 1.6),
+        the per-vertex lips (look_skin refines the mouth to 0.5 mm; dressed stages don't), lipstick outline soft;
+    (3) wing: root distance from the lash line 0, angle = lower lash line extended; measure on the eye view (the
+        lm_lid_lower_out -> lm_eye_outer direction projected; the spot chain is in skin_makeup "if wing > 0");
+    (4) remove the floating pale arc. Then one more fresh blind read (prompt: copy from this session's: sheets sk2_05..09,
+        refs ref_25..41, scores 1-5 per column, 3 defects each, top-5 fixes, < 900 words).
+    Re-render with /mnt/data/hifipushie/skin2/round5.sh-style scripts (stub_lineup.sh, frk_lineup.sh, mk_looks.sh
+    sk2_t13e <tag>, gshot.sh + g3q.sh for Garrett with HEAD=sk2_g6, grid.py / tsheet.py / sheet_g.py / compose*.py for
+    the sheets); one look_skin stage takes 1-3 min (it re-meshes on every code change).
+    Tests: tests/test_skin_marks.py (zones from landmarks, deterministic maps, styles, fade band never darker than
+    full, freckles don't repeat), test_skin.test_makeup_looks.

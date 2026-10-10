@@ -188,8 +188,41 @@ def test_start_gap_check_names_a_misordered_band():
     assert rows(np.r_[line + [0, -0.15, 0.2], line + [0, 0.11, 0]])["far"]
 
 
+def test_a_ring_band_is_no_opening():
+    """cloth_workflow.openings: a .L/.R pair of pieces each sewn to ITSELF (rib cuffs: ring seams) is not an opening
+    between them; a centre pair sewn to nothing still is."""
+    from types import SimpleNamespace
+    from hifipushie import cloth_workflow as wf
+    sq = np.array([[-0.01, 0.0], [0.1, 0.0], [0.1, 0.05], [-0.01, 0.05]])
+    pcs = {n: {"P": sq, "wrap": {"to": "torso"}, "role": "cuff" if n.startswith("cuff") else "front"}
+           for n in ("cuff.L", "cuff.R", "front.L", "front.R")}
+    Bp = {"pieces": pcs, "stitches": [], "closures": [],
+          "seams": [["cuff.L:sw>nw", "cuff.L:se>ne"], ["cuff.R:sw>nw", "cuff.R:se>ne"]]}
+    out = wf.openings(SimpleNamespace(Bp=Bp, sheet={}, res={}))
+    txt = " | ".join(t for t, _ in out)
+    assert "cuff.L" not in txt and "front.L and front.R" in txt, txt
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
             f()
             print("ok", k)
+
+
+def test_waist_band_follows_the_body():
+    """A garment cut straight from the chest: its waist band's top comes from THIS body's chest-to-waist drop (a
+    woman's waist 0.74 x her chest: a jumper at +16% chest is +57% at the waist, honestly); a man's barely changes,
+    a fitted garment (shaped in at the waist) keeps the kind's band (Tess's jumper, 2026-10-09)."""
+    from hifipushie.cloth_workflow import waist_band_for_body
+    wb, cb = [0.10, 0.35], [0.10, 0.25]
+
+    def sz(chest, waist, g_chest, g_waist):
+        return {"chest": {"body_mm": chest, "garment_mm": g_chest}, "waist": {"body_mm": waist, "garment_mm": g_waist}}
+
+    woman = waist_band_for_body(wb, cb, sz(847, 626, 982, 902))
+    assert woman[0] == 0.10 and abs(woman[1] - (1.25 * 847 / 626 - 1)) < 1e-3 and woman[1] > 0.6
+    man = waist_band_for_body(wb, cb, sz(1000, 900, 1160, 1120))
+    assert man is None or man[1] < 0.40  # (1.25 x 1000 / 900 - 1 = 0.389: barely above the written 0.35)
+    assert waist_band_for_body(wb, cb, sz(847, 626, 982, 760)) is None  # fitted at the waist: as written
+    assert waist_band_for_body(wb, None, sz(847, 626, 982, 902)) is None

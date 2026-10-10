@@ -97,7 +97,9 @@ with sun and age (`"sun"`). These are the `mottle_*` layers (strength: `variatio
 colour band in the table above; without it skin reads as a spray-painted mannequin.
 
 ### 4. Large features: what makes this person
-`"features"`: `freckles` (tan spots under 3 mm, clustered on nose and cheeks, shoulders, forearms [11]), `moles`
+`"features"`: `freckles` (tan macules ~1-3 mm with irregular soft edges, a unique map on the face: where the sun
+falls, densest on the nose and the cheeks under the eyes, then forehead; `amount` 1 = ~12/cm2 there, `size`, `clump`
+0..1, `dark` share, `zones` weights; shoulders and forearms from a swatch [11]), `moles`
 (scattered or placed: `{"at": [{"at": "lm_mouth_corner.L", "offset": [0.01, 0, 0.012]}]}`), `age_spots` (larger,
 sharper-edged; default from age x sun), `blemishes` (red papules with a raised shiny centre), `veins` (blue-green,
 backs of hands, wrists, temples; raised on old hands), `flush`, `sunburn`, `tan` (give it a `"mask"` to leave tan
@@ -120,8 +122,14 @@ like a sticker; with years the lines spread, black drifts blue-green and thins, 
 ### 5. Hair on the skin
 `"hair"`: `brows` are hairs, not a painted arc: a drawn picture of ~900 tapered hairs that grow up at the inner end,
 along the brow in the middle and out-and-down at the tail (`density`, `thickness`, `color`, `grey`), laid from the brow
-landmarks; `lashes` darken the lid margins (the skin touching the eyeball); `stubble` is
-a cool shadow under the skin (dark hair seen through it) plus dots, full on chin and lip and thinning up the cheek;
+landmarks; `lashes` darken the lid margins (the skin touching the eyeball); `stubble` is a unique map of cut hairs
+on the head's own surface (no tiling) plus the shadow of the hair in the skin, by `style`: `clean` (a faint cool
+shave shadow), `five_oclock`, `short` (1-3 days), `designer` (trimmed ~4 mm: crisp cheek line and neckline),
+`heavy`, `patchy`; `grey` = share of white hairs (salt and pepper); `cheeks` (how far the cheeks fill), `cheek_line`
+/ `neckline` (move the lines, interoculars), `trim` (0 grown out: the density tapers over ~2 cm with stragglers;
+1 a razor line), `patchy`, `length`, `color`. Hair grows down, out from the philtrum, toward the throat under the
+chin; the moustache, chin and jaw are full, the cheek's rounded front and the mouth's corners thinner. Real beards
+have no edge unless trimmed: match the fade on your reference before the colour.
 `body` is fine hairs on forearms and chest; `scalp` is a shaved or cropped head (`amount`, `color`, `hairline` 0..1:
 how far it comes down the forehead): the shadow of the hair under the skin plus cut hairs, so a head without a groom
 isn't a mannequin. Long lashes, beards and head hair are geometry (`groom_hair`).
@@ -154,7 +162,13 @@ face but systematically: nose and forehead smoother (sebum), chin, beard and upp
 leave one flat roughness. A highlight that is one clean blob is the plastic tell: `look_skin` reports its breakup.
 
 ### 8. Cosmetics, in the order they go on
-`"makeup"`: `foundation` evens zones, mottling and spots toward one tone and sets the finish (`matte` rougher,
+`"makeup": {"look": "natural" | "everyday" | "evening", ...items override the look}`: the looks are a make-up artist's
+sets ("natural" = the no-make-up make-up: a sheer base, a little concealer, brushed brows, mascara, a tinted balm).
+Placement follows the artists' rules on each side's own landmarks: blush on the apples swept toward the temple
+(`place`: apples / lifted / draped), contour in the hollow under the cheekbone stopping under the outer eye, liner
+along the lash line thickening outward with a `wing` that continues the lower lash line toward the brow's tail,
+shadow on the lid with a deeper `crease` and an `outer` V, lipstick to the vermilion border (`liner`, `overline`).
+`foundation` evens zones, mottling and spots toward one tone and sets the finish (`matte` rougher,
 `dewy` smoother) [20]; `concealer`; `contour` (darker under the cheekbones, jaw, nose sides); `blush`; `highlight`
 (paler AND smoother on the cheekbone tops, nose bridge, cupid's bow); `eyeshadow` (`matte`, `shimmer`, `metallic`);
 `eyeliner` (`wing`); `mascara`; `brows`; `lipstick` (`matte` / `satin` / `gloss`: the finish is most of the look);
