@@ -53,10 +53,21 @@ IMPORTANCE = {"eye_opening": 1.5, "canthal_tilt": 1.5, "brow_eye": 1.0, "upper_l
               "face_height": 1.5, "face_index": 1.5, "lower_third": 1.0, "width_temple": 1.0, "width_cheekbone": 1.5,
               "width_jaw": 1.5, "width_chin": 1.0, "jaw_taper": 1.0}
 FREE_AGE = os.environ.get("FREE_AGE", "0") == "1"
+ACAP = float(os.environ.get("ACAP", "2.5"))   # within-sex sds: the most any identity attribute may read
+ACAP_W = 5.0
+# sex DIRECTIONS without magnitudes (no cited sex-split numbers yet): a weak one-sided wall so the solve doesn't move
+# these the wrong way for the head's sex: attribute -> the within-sex sd it may not pass in the male direction
+# (women: a less crisp jaw angle (larger gonial angle), a lighter brow ridge, a more upright forehead)
+SEXDIR = {"jaw_angle": 0.5, "brow_ridge": 0.5, "forehead_slope": 0.5}
+SEXDIR_W = 1.0
+LIP_W = float(os.environ.get("LIP_W", "1.0"))
+IMPORTANCE.update({"upper_lip": LIP_W, "lower_lip": LIP_W})
+EXTRA_RES = tuple(x for x in os.environ.get("EXTRA_RES", "").split(",") if x)
 FREE_W = 0.1
 OUT_SIG = 2.0       # mm per outline point (the front's snapped contour, the traced lines)
 DESK_W = float(os.environ.get("DESK_W", "1.0"))   # weight (residual units) of every non-front view: Garrett's desk
-TRACE_LINES = tuple(os.environ.get("TRACE_LINES", "cheek.R,cheek.L,jaw.R,jaw.L,chin,profile").split(","))
+TRACE_LINES = tuple(os.environ.get("TRACE_LINES", "cheek.R,cheek.L,jaw.R,jaw.L,chin,profile,forehead").split(","))
+SEX = 1.0
 TRACES = os.environ.get("TRACES")                 # painting is a stylised secondary (0.5); the model whose traces
 
 
@@ -71,22 +82,121 @@ def outlines(views):
     for v in views:
         if abs(float(v.get("yaw", 0.0))) < 20 and not TRACES:   # (the edge snap: superseded by traces)
             fo = outl.front_outline(v)
-            out.append([fo] if fo is not None else [])
+            out.append([("snap", fo)] if fo is not None else [])
         else:   # (each traced line on its own: joined, the gap between them became an outline)
-            out.append(outl.traced(TRACES, v["image"], TRACE_LINES) if TRACES else [])
+            tl = [k for k in TRACE_LINES if TRACES and outl.traced(TRACES, v["image"], (k,))]
+            out.append([(k, outl.traced(TRACES, v["image"], (k,))[0]) for k in tl])
+            if PROFILE_AUTO and abs(float(v.get("yaw", 0.0))) > 70:   # a true profile against a plain background
+                out[-1].append(("profile", outl.profile_auto(v)))
     return out
 
 
-def outline_rows(st, cam, o, names):
-    """humanfit._silhouette matched to the outline + the residual sliders' basis at those vertices."""
-    from scipy.spatial import cKDTree
-    sl = humanfit._silhouette(st, cam, o)
+PROFILE_AUTO = os.environ.get("PROFILE_AUTO", "0") == "1"
+DROP_OVAL = os.environ.get("DROP_OVAL", "0") == "1"   # diagnostic: the detector's face-oval points left out
+MATCH = os.environ.get("MATCH", "silhouette")   # silhouette (humanfit._silhouette, nearest) | envelope
+FIX_CAMS = {int(x) for x in os.environ.get("FIX_CAMS", "").split(",") if x}   # views whose camera is not refitted
+BAND = 1.2         # mm: the tangential band an outline point's envelope vertex is taken from
+CHIN_H = 10.0       # mm above menton the chin's width is read at (the front trace's chin line)
+CHIN_TOL = 2.5      # mm
+CHIN_W = float(os.environ.get("CHIN_W", "0"))   # weight of the chin-width item (0: off)
+
+
+SHADE_LINES = {"chin": 0.5}   # traced lines that are SHADING edges, not occluding contours: the front's chin line
+# is the underside's shadow edge (the submental surface is visible below it, the camera is low): matched to the
+# outermost vertex still lit by a front-above key (the terminator), not the head's envelope
+
+
+def envelope(st, cam, o, facing=None):
+    """The model's outline matched to a traced line by ENVELOPE: for each outline point, among the head's vertices
+    whose projection lies within BAND of the point's normal line, the one farthest out along the outward normal
+    (the occluding contour as the picture sees it, whatever the mesh's facing: humanfit._silhouette's
+    front/back edges left the chin's underside without vertices, and nearest matching slid the sides' vertices
+    in under the chin: the narrow chin). {X, B (K, n, 3), p, n (outward), vs}."""
+    from hifipushie import base as basemod
+    tpl, c = st["tpl"], st["head"]["carry"]
+    P = np.asarray(tpl["P"], float)
+    gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+    fade = np.asarray(onemesh.asset()["g_fade"], float)
+    head = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
+    ears = np.asarray(basemod._gnm_data()["groups"]["ears"], float) > 0.5
+    head &= ~ears[np.maximum(gid, 0)]
+    if facing is not None:
+        from hifipushie import retopo
+        F = humanfit._faces(tpl)
+        T = np.array([(f[0], f[j], f[j + 1]) for f in F for j in range(1, len(f) - 1)])
+        nv = retopo._vnormals(P, T)
+        hc = P[head].mean(0)
+        if np.mean(((P[head] - hc) * nv[head]).sum(1)) < 0:   # (outward)
+            nv = -nv
+        Rc0 = humanfit._cam_rot(cam)
+        eye = np.asarray(cam["centre"], float) - Rc0.T @ np.asarray(cam["t"], float)
+        # lit by a light from the front and above at 45 deg (the portrait's key: the underside's shadow edge is its
+        # terminator): a vertex counts while n . L > facing - 0.5 (0: the terminator itself)
+        hz = eye - P.mean(0)
+        hz[2] = 0.0
+        L = hz / max(np.linalg.norm(hz), 1e-9) + np.array([0.0, 0.0, 1.0])
+        L /= np.linalg.norm(L)
+        head &= nv @ L > facing - 0.5
+        # and only the face's own regions (GNM's chin / cheek / parotid): below them the submental skin and the neck
+        # face the low camera and the key too (the envelope picked them, 15 px under the traced edge)
+        gg = basemod._gnm_data()["groups"]
+        face = sum(np.asarray(gg[k], float) for k in ("chin_region", "left_cheek_region", "right_cheek_region",
+                                                       "left_parotid_region", "right_parotid_region")) > 0.5
+        head &= face[np.maximum(gid, 0)]
+    hv = np.flatnonzero(head)
+    uv = humanfit.project(cam, P[hv])
+    Rc = humanfit._cam_rot(cam)
+    zc = ((P[hv] - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"]))[:, 2]
+    mmpx = float(np.median(zc)) / cam["f"] * 1000
+    ctr = humanfit.project(cam, st["L"][:68]).mean(0)
+    tan = np.gradient(o, axis=0)
+    tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-9)
+    nrm = np.c_[-tan[:, 1], tan[:, 0]]
+    nrm *= np.sign(((o - ctr) * nrm).sum(1))[:, None] + (((o - ctr) * nrm).sum(1) == 0)[:, None]
+    vs, keep = [], []
+    for k, (p, t, n) in enumerate(zip(o, tan, nrm)):
+        d = uv - p
+        band = np.abs(d @ t) < BAND / mmpx
+        band &= np.abs(d @ n) < 25.0 / mmpx
+        if not band.any():
+            continue
+        j = np.flatnonzero(band)[int(np.argmax(d[band] @ n))]
+        vs.append(hv[j])
+        keep.append(k)
+    if not vs:
+        return None
+    vs, keep = np.array(vs), np.array(keep)
+    g = headfit._gnm()
+    Bv = np.asarray(basemod._gnm_data()["vertex_identity_basis"], float)[g["comps"]][:, gid[vs]]
+    Bv = float(c["s"]) * (Bv - g["JB"].mean(1, keepdims=True)) @ np.asarray(c["R"], float).T
+    Bv = Bv * fade[gid[vs]][None, :, None]
+    return {"X": P[vs], "B": Bv, "p": o[keep], "n": nrm[keep], "vs": vs, "keep": keep, "mmpx": mmpx}
+
+
+def outline_rows(st, cam, o, names, line=""):
+    """The model's outline matched to a traced line (envelope) + the residual sliders' basis at those vertices; a
+    "chin" line also carries the chin-width item (its two sides' points nearest CHIN_H above its lowest point)."""
+    if MATCH == "silhouette":
+        from scipy.spatial import cKDTree
+        sl = humanfit._silhouette(st, cam, o)
+        if sl is None:
+            return None
+        sl["vs"] = cKDTree(np.asarray(st["tpl"]["P"], float)).query(sl["X"])[1]
+        Rc = humanfit._cam_rot(cam)
+        sl["mmpx"] = float(np.median(((sl["X"] - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"]))[:, 2])) / cam["f"] * 1000
+    else:
+        sl = envelope(st, cam, o, SHADE_LINES.get(line))
     if sl is None:
         return None
-    P = np.asarray(st["tpl"]["P"], float)
-    vs = cKDTree(P).query(sl["X"])[1]
+    vs = sl["vs"]
     gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])][vs]
     fade = np.asarray(onemesh.asset()["g_fade"], float)[gid]
+    if line == "chin" and CHIN_W > 0:
+        pk = sl["p"]
+        y = pk[:, 1].max() - CHIN_H / sl["mmpx"]
+        lo = np.argmin(pk[:, 1] * 0 + np.where(pk[:, 0] < pk[np.argmax(pk[:, 1]), 0], np.abs(pk[:, 1] - y), 1e9))
+        hi = np.argmin(np.where(pk[:, 0] > pk[np.argmax(pk[:, 1]), 0], np.abs(pk[:, 1] - y), 1e9))
+        sl["chin"] = (int(lo), int(hi), float((pk[hi, 0] - pk[lo, 0]) * sl["mmpx"]))
     rows = [("v", np.array([g, g, g]), np.array([f, 0.0, 0.0])) for g, f in zip(gid, fade)]
     sl["SB"] = J0.slider_basis(st, rows, names) if names else np.zeros((0, len(vs), 3))
     return sl
@@ -179,12 +289,27 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
     info = {"skipped": [], "rows0": None, "outline_mm": []}
     OL = outlines(views)
     one = np.array([n in AGE for n in names], bool)
+    t_ = faceatlas.table()
+    ok_ = (t_["r2"] > 0.9) & (t_["sd"] > 0)
+    Bw = t_["B"][ok_]
+    Bz = Bw / np.sqrt(np.einsum("ij,jk,ik->i", Bw, faceatlas.within_sex(), Bw))[:, None]   # per within-sex sd
+    info["attr_names"] = [str(n) for n in t_["names"][ok_]]
+    info["Bz"] = Bz
     # FREE_AGE (a man of ~50: leanness and hollow cheeks are soft tissue and age, which GNM has no variable for):
     # those residuals nearly free, so the identity doesn't strain for them
     sw = np.array([FREE_W if (FREE_AGE and n in ("face_lean", "cheek_hollow")) else SLIDER_W for n in names])
     for it in range(ROUNDS):
         st = humanfit.state(cur)
         evs = J0.evidence(st, views)
+        if DROP_OVAL:
+            for e in evs:
+                n = len(e.get("mp_idx", []))
+                keep = np.ones(len(e["X"]), bool)
+                keep[:n] = ~np.isin(e["mp_idx"], likeness.OVAL)
+                for k in ("X", "uv", "sig"):
+                    e[k] = e[k][keep]
+                e["XB"] = e["XB"][:, keep]
+                e["rows"] = [r for r, kk in zip(e["rows"], keep) if kk]
         SBs = [J0.slider_basis(st, e["rows"], names) if S else np.zeros((0, len(e["X"]), 3)) for e in evs]
         tg = {}
         if items:
@@ -198,7 +323,8 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
         for vi in {k[1] for k in tg}:
             X, XB, rows_ = proxy_rows(st, hm.view_class(float(views[vi].get("yaw", 0.0))))
             prox[vi] = (X, XB, J0.slider_basis(st, rows_, names) if S else np.zeros((0, len(X), 3)))
-        sls = [(vi, sl) for vi, ol in enumerate(OL) for sl in (outline_rows(st, cams[vi], o, names) for o in ol) if sl is not None]
+        sls = [(vi, sl) for vi, ol in enumerate(OL) for sl in (outline_rows(st, cams[vi], o, names, ln) for ln, o in ol)
+               if sl is not None]
         m0 = {}
         c_lin, s_lin = c.copy(), s.copy()
         for inner in range(INNER):
@@ -212,13 +338,28 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
             H[:K, :K] += np.diag(wall)
             b[:K] += wall * np.clip(c, -CAP, CAP)
             H[K:, K:] += np.diag(sw)
+            # the wall on the READOUTS: no attribute the identity expresses past ACAP sds within the head's sex
+            za = Bz @ (c - mu)
+            if SEX < 0:   # (a woman: these attributes not past +limit, the male direction)
+                for nm_, lim in SEXDIR.items():
+                    if nm_ in info["attr_names"]:
+                        i = info["attr_names"].index(nm_)
+                        if za[i] > lim:
+                            ar = SEXDIR_W * Bz[i]
+                            H[:K, :K] += np.outer(ar, ar)
+                            b[:K] += ar * (SEXDIR_W * (lim + Bz[i] @ mu))
+            for i in np.flatnonzero(np.abs(za) > ACAP):
+                ar = ACAP_W * Bz[i]
+                H[:K, :K] += np.outer(ar, ar)
+                b[:K] += ar * (ACAP_W * (np.sign(za[i]) * ACAP + Bz[i] @ mu))
             for vi, (v, e, SB) in enumerate(zip(views, evs, SBs)):
                 X = e["X"] + np.tensordot(c - c_lin, e["XB"], 1) + np.tensordot(s - s_lin, SB, 1)
                 if cams[vi] is None:
                     raise SystemExit("joint2 needs the start model's cameras (human_refs.json 'cameras')")
                 cam = cams[vi]
                 mm0 = cam["t"][2] / cam["f"] * 1000
-                cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
+                if vi not in FIX_CAMS:
+                    cam = cams[vi] = hm._fit_cam(cam, X, e["uv"], mm0 / e["sig"])
                 J, z = proj_jac(cam, X)
                 wt = (z / cam["f"] * 1000) / e["sig"] * view_w(v)
                 r = (e["uv"] - humanfit.project(cam, X)) * wt[:, None]
@@ -273,12 +414,29 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
                 y = A @ np.r_[c, s] - r * hw
                 H += A.T @ A
                 b += A.T @ y
+                if "chin" in sl:   # the chin's width at CHIN_H above menton: model (the two matched vertices) vs trace
+                    lo, hi, wph = sl["chin"]
+                    uvx = humanfit.project(cam, X[[lo, hi]])
+                    mmx = float(np.mean(z[[lo, hi]])) / cam["f"] * 1000
+                    wmod = (uvx[1, 0] - uvx[0, 0]) * mmx
+                    gx = np.zeros((2, 3))
+                    gx[0] = -Jp[lo, 0] * mmx
+                    gx[1] = Jp[hi, 0] * mmx
+                    arow = CHIN_W / CHIN_TOL * np.r_[np.einsum("nj,knj->k", gx, sl["B"][:, [lo, hi]]),
+                                                      np.einsum("nj,knj->k", gx, sl["SB"][:, [lo, hi]]) if S else np.zeros(0)]
+                    yv = arow @ np.r_[c, s] + CHIN_W / CHIN_TOL * (wph - wmod)
+                    H += np.outer(arow, arow)
+                    b += arow * yv
+                    if inner == INNER - 1:
+                        info.setdefault("chin_w", []).append((it, wph, wmod))
                 if inner == INNER - 1:
                     info["outline_mm"].append((it, vi, float(np.sqrt(np.mean((r / wt * z / cam["f"] * 1000) ** 2)))))
             x = np.linalg.solve(H, b)
             c, s = x[:K], np.clip(x[K:], -1.5, 1.5)
             s[one] = np.clip(s[one], 0.0, 1.5)
         cur = J0.with_x(base, c, s, names)
+        if info.get("chin_w"):
+            log(f"round {it} chin width at {CHIN_H:.0f} mm: trace {info['chin_w'][-1][1]:.1f} | model {info['chin_w'][-1][2]:.1f} mm")
         log(f"round {it} outline rms mm: " + ", ".join(f"v{vi} {m:.2f}" for i_, vi, m in info["outline_mm"] if i_ == it))
         d = c - mu
         log(f"round {it}: max |c| {np.abs(c).max():.2f}, prior (within sex) {float(d @ Sinv @ d):.1f}, "
@@ -302,7 +460,7 @@ def readouts(c, mu):
 if __name__ == "__main__":
     name, out = sys.argv[1], sys.argv[2]
     sex = float(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] not in ("nores",) else 1.0
-    names = [] if "nores" in sys.argv else list(RES) + list(AGE)
+    names = [] if "nores" in sys.argv else list(RES) + list(AGE) + list(EXTRA_RES)
     NEED = _need()
     sp = store.load(name)
     base = sp["base"]
@@ -311,6 +469,7 @@ if __name__ == "__main__":
     for v, cam in zip(views, refs.get("cameras") or []):
         v["_cam"] = cam
     d_sex = np.asarray(faceatlas.table()["delta_sex"], float)
+    SEX = sex
     mu = sex * d_sex / 2
     Sinv = np.linalg.inv(faceatlas.within_sex())
     # the output model (refs copied so likeness.compare finds the pictures and the traces)
@@ -346,6 +505,9 @@ if __name__ == "__main__":
     print(f"prior (within-sex Mahalanobis) {rep['prior']['before']:.1f} -> {rep['prior']['after']:.1f}; "
           f"max |c| {np.abs(c0).max():.2f} -> {np.abs(c1).max():.2f}")
     coupled, z = readouts(c1, mu)
+    zw = info["Bz"] @ (c1 - mu)
+    rep["attr_within_sex_max"] = {info["attr_names"][i]: round(float(zw[i]), 2) for i in np.argsort(-np.abs(zw))[:6]}
+    print("attributes, within-sex sds (largest):", rep["attr_within_sex_max"])
     rep["coupled"] = coupled
     rep["attributes_z"] = {k: round(v, 2) for k, v in z.items()}
     print("coupled sliders read out of the identity (sd from the within-sex mean):", coupled)

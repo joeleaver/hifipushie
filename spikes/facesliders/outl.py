@@ -84,3 +84,29 @@ if __name__ == "__main__":
         S.paste(t, (600 * i, 0))
     S.save(out, quality=85)
     print("wrote", out)
+
+
+def profile_auto(view, step=6):
+    """A true profile's front contour where the SKIN meets a plain background (the photo's own pixels), rows from the
+    brow (just above the nasion) to the chin's underside, for a left-facing picture (the face toward small u). Per row
+    the first pixel that starts a run of 6 skin-bright pixels: hair strands and lashes (dark, thin) crossing in front
+    of the forehead / at the eye are skipped; the contour stops where it jumps back (the throat: the neck is not
+    the head's). The forehead above the brow is left out (crossed and framed by hair in Tess's photo)."""
+    a = np.asarray(Image.open(view["image"]).convert("RGB"), float)
+    pts = view.get("points") or {}
+    yb, yc = float(pts["nose_bridge"][1]), float(pts["chin"][1])
+    y0, y1 = int(yb - 0.12 * (yc - yb)), int(yc + 0.22 * (yc - yb))
+    bg = np.median(a[:, :15].reshape(-1, 3), 0)
+    lum = a.mean(-1)
+    fg = (np.abs(a - bg).sum(-1) > 40) & (lum > 0.55 * np.median(lum[int(yb):int(yc), :]))
+    out = []
+    for y in range(max(y0, 0), min(y1, a.shape[0]), step):
+        r = fg[y]
+        run = np.convolve(r.astype(float), np.ones(6), "valid") >= 6
+        if not run.any():
+            continue
+        x = float(np.argmax(run))
+        if out and y > yc and x - out[-1][0] > 12.0 * step / 6:   # (the throat, below the chin)
+            break
+        out.append([x, float(y)])
+    return np.array(out)

@@ -16,7 +16,7 @@ BIG = 1024
 def main(name, tag):
     r = json.loads((store.HOME / name / "human_refs.json").read_text())
     vs, cams = r["views"], r["cameras"]
-    frames = [stage.fitted_frame(cams[i], sheet1.crop_of(vs[i]), nm) for i, nm in ((0, "front"), (1, "desk"))]
+    frames = [stage.fitted_frame(cams[i], sheet1.crop_of(vs[i]), nm) for i, nm in ((0, "front"), (1, "desk"), (2, "prof")) if i < len(vs)]
     ims = stage.shoot(name, frames, light(), size=BIG, hair_on=os.environ.get("HAIR", "1") == "1",
                       engine=os.environ.get("ENGINE", "eevee"))
     for nm, im in ims.items():
