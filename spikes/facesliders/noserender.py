@@ -35,8 +35,22 @@ def lit_render(mesh, cam, img, box=None, px=None):
             mask = ls.skin_mask(side, (Hh, Ww), to_px, k / mmpx) & mask
         except Exception as e:  # noqa: BLE001
             print("skin mask failed, whole skin used:", e)
+    if mask.sum() < 200:   # (a crop the skin mask misses, e.g. a profile: the whole skin)
+        mask = ps["part"] == 0
     c0, w, rms = ls.fit_light(Y, ps["nrm"], mask)
-    lt = (c0, w, float(np.median(Y[mask])))
+    lt = (c0, w, float(np.median(Y[mask])), 1.0)
+    # second pass: with AO and the shadow known, Y ~ A + B ao + C max(w.n, 0) lit + E min(w.n, 0): the ambient's AO
+    # share aw = B / (A + B) and the direct's scale C, fitted to the photo (AO at full weight darkened her subnasal
+    # area far more than her soft light does)
+    _, _, p2 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=SOFT, light=lt)
+    dn = p2["nrm"] @ np.asarray(w, float)
+    m2 = mask & (p2["part"] == 0)
+    X = np.c_[np.ones(m2.sum()), p2["ao"][m2], (np.maximum(dn, 0) * p2["lit"])[m2], np.minimum(dn, 0)[m2]]
+    sol = np.linalg.lstsq(X, Y[m2], rcond=None)[0]
+    A, B, C = sol[:3]
+    c0n = float(A + B)
+    aw = float(np.clip(B / c0n, 0.0, 1.0)) if c0n > 1e-6 else 0.0
+    lt = (c0n, np.asarray(w, float) * max(float(C), 0.0), lt[2], aw)
     im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=SOFT, light=lt)
     return im, lt, ps
 
@@ -69,7 +83,7 @@ if __name__ == "__main__":
     m = sys.argv[1]
     o = sys.argv[2] if len(sys.argv) > 2 else f"/mnt/data/hifipushie/faces6/out/nose_{m}"
     R = nose_reads(m)
-    print("mm/px", round(R["mmpx"], 4), "light", round(R["light"][0], 3), np.round(R["light"][1], 3).tolist())
+    print("mm/px", round(R["mmpx"], 4), "light c0", round(R["light"][0], 3), "w", np.round(R["light"][1], 3).tolist(), "ao share", round(R["light"][3], 3))
     for k in ("photo", "model"):
         print(k, json.dumps(summary(R[k][1])))
         if R[k][1] is not None:

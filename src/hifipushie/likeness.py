@@ -495,12 +495,15 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
         avv = np.ones(len(V)) if av is None else av
         if light is not None and col is None:
             sc = max(light[2] if len(light) > 2 else 0.2, 1e-6)
-            amb = np.full(len(V), float(light[0])) / sc
+            # light[3] (optional, 0..1): how much of the ambient term AO darkens (fitted to the photo: soft studio
+            # light fills cavities more than an open sky does)
+            aw = float(light[3]) if len(light) > 3 else 1.0
+            amb = float(light[0]) / sc * (1.0 - aw + aw * avv)
             dirc = (vn @ np.asarray(light[1], float)) / sc
             # (the photo's linear model: the negative part of w . n stays ambient-like, unshadowed)
             amb = amb + np.minimum(dirc, 0)
             dirc = np.maximum(dirc, 0)
-            Ca = 0.8 * np.clip(amb * avv, 0, 3)[:, None] * base_c
+            Ca = 0.8 * np.clip(amb, 0, 3)[:, None] * base_c
             Cd = 0.8 * np.clip(dirc, 0, 3)[:, None] * base_c
         else:
             Ca = base_c * ((0.24 + 0.06 * np.clip(-vn[:, 2], 0, 1)) * avv)[:, None]

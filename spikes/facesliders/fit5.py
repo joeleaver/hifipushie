@@ -418,10 +418,17 @@ def main(src, dst):
     noseal = os.environ.pop("NOSEAL", None)
     shipped = spec_with(spec, x[:NC])
     if noseal and USE_CONTACT and CONTACT_BY == "expression":
-        # the shipped neutral closes its mouth the way the fit did (GNM's lower-face expression: base's mouth_gap 0
-        # solver, the least change of the lower-face comps), not with faceslide's geometric seal (it pinched the lips)
+        # the shipped neutral closes its mouth with the fit's OWN closing: the front (else first closed-mouth)
+        # picture's lower-face expression as base.head.expression. (faces5 shipped mouth_gap 0 instead: base's solver
+        # closes only the midline pair 62 / 66 and left tl10's raw mouth parted 3.5 mm, which the implicit surface
+        # fused into one thick lip: the "too full, bow lost" overshoot, f6_04)
         shipped["base"]["head"].pop("lip_seal", None)
-        shipped["base"]["head"]["mouth_gap"] = 0.0
+        shipped["base"]["head"].pop("mouth_gap", None)
+        vi0 = next((i for i, v in enumerate(views) if abs(float(v.get("yaw", 0.0))) < 20),
+                   next(i for i, v in enumerate(views) if abs(float(v.get("yaw", 0.0))) < 70))
+        ev0 = x[NC + NE * vi0: NC + NE * (vi0 + 1)]
+        shipped["base"]["head"]["expression"] = {**(shipped["base"]["head"].get("expression") or {}),
+                                                 **{t[0]: float(e) for t, e in zip(EXPR, ev0) if t[0].startswith("lower_face")}}
     (d / "spec.json").write_text(json.dumps(shipped, indent=1))
     r2 = dict(refs)
     r2["cameras"] = cams
