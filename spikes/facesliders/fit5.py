@@ -178,6 +178,57 @@ def fit_cam_pose(cam, X, uv, wt):
     return {**cam, "r": [float(v) for v in sol.x[:3]], "t": [float(v) for v in sol.x[3:6]]}
 
 
+CONTACT_PAIRS = ((13, 14), (82, 87), (312, 317), (81, 178), (311, 402))   # MediaPipe inner lips, upper / lower
+CONTACT_SIG = float(os.environ.get("CONTACT_SIG", "0.3"))   # mm
+USE_CONTACT = os.environ.get("CONTACT", "1") == "1"
+# CONTACT_BY "identity" (default): the NEUTRAL's lips touch (GNM's identity is each person's relaxed neutral, closed for a
+# closed-mouth person), so the shipped head keeps lip_seal (nothing left for it to pull: no pinching) and stays valid
+# for face shapes (GnmFace needs a mouth that can open: mouth_gap 0 is refused). "expression": each picture's lower-face
+# expression closes them (tl10: lips full and closed in the renders, but the identity stays parted 5.6 mm, and the
+# shipped neutral then needs mouth_gap 0, which face_shapes rejects)
+CONTACT_BY = os.environ.get("CONTACT_BY", "identity")
+
+
+def _contact_pairs():
+    """GNM's own lip contact ring (faceslide._lip_rings, the ring the seal closes), split by the upper_lip / lower_lip
+    groups; each upper vertex paired with the lower vertex nearest in x on the template (the corners' 10% left out)."""
+    from hifipushie import faceslide
+    R = faceslide._lip_rings()
+    C = R["rings"][R["contact"]]
+    T = np.asarray(g["template_vertex_positions"], float)
+    U, Lw = C[R["upper"][C]], C[~R["upper"][C]]
+    x0, x1 = T[C, 0].min(), T[C, 0].max()
+    U = U[(T[U, 0] > x0 + 0.1 * (x1 - x0)) & (T[U, 0] < x1 - 0.1 * (x1 - x0))]
+    L = Lw[np.argmin(np.abs(T[Lw, 0][None, :] - T[U, 0][:, None]), 1)]
+    return U, L
+
+
+CU, CL = None, None
+
+
+def contact_rows(st):
+    """(upper, lower) contact-ring points on the built head: X (n, 3), XB (170, n, 3), XE (NE, n, 3). A closed-mouth
+    picture asks each pair to touch (its lower-face expression closes the lips, GNM's way; faceslide's seal is off in
+    the fit). (MediaPipe's inner-lip points, the first try, already 'touched' at 0.4 mm on a visibly parted mouth: the
+    detector table puts both on the visible lip line.)"""
+    global CU, CL
+    if CU is None:
+        CU, CL = _contact_pairs()
+    tpl = st["tpl"]
+    P = np.asarray(tpl["P"], float)
+    gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+    of = np.full(len(g["template_vertex_positions"]), -1)
+    of[gid[gid >= 0]] = np.flatnonzero(gid >= 0)
+    R, s = _carry(st)
+    hg = headfit._gnm()
+    jm = hg["JB"].mean(1)
+    IB = np.asarray(g["vertex_identity_basis"], float)[hg["comps"]]
+    out = []
+    for vid in (CU, CL):
+        out.append((P[of[vid]], s * (IB[:, vid] - jm[:, None, :]) @ R.T, s * EB[:, vid] @ R.T))
+    return out
+
+
 def proj_jac(cam, X):
     Rc = humanfit._cam_rot(cam)
     Xc = (X - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
@@ -273,6 +324,26 @@ def system(st, views, cams, x, x_lin, border, nview):
                 kept = ap * PROF_SIG < PROF_REJECT
                 rep["profile_mm"] = float(np.sqrt(np.mean((rp[kept] * PROF_SIG) ** 2))) if kept.any() else None
                 rep["profile_kept"] = f"{int(kept.sum())}/{len(kept)}"
+        if USE_CONTACT and abs(float(v.get("yaw", 0.0))) < 70:   # a closed mouth in this picture
+            (Xu, XBu, XEu), (Xl, XBl, XEl) = contact_rows(st)
+            D = (Xu - Xl) + np.tensordot(dc, XBu - XBl, 1) + np.tensordot(ev, XEu - XEl, 1)   # (n, 3) m
+            wv = np.ones_like(D)
+            wv[:, 0] = 0.0                       # (x: the pairs are matched in x)
+            wv[:, 2] = np.where(D[:, 2] > 0, 1.0, 0.0)   # world z up: upper above lower = open; touching / pressed: free
+            rc = (D * wv * 1000 / CONTACT_SIG).ravel()
+            Ac = np.zeros((len(rc), n))
+            Ac[:, :NC] = ((XBu - XBl) * wv[None] * 1000 / CONTACT_SIG).transpose(1, 2, 0).reshape(-1, NC)
+            if CONTACT_BY == "expression":
+                Ac[:, NC + NE * vi: NC + NE * (vi + 1)] = ((XEu - XEl) * wv[None] * 1000 / CONTACT_SIG).transpose(1, 2, 0).reshape(-1, NE)
+            else:   # the neutral's own contact: the picture's expression is not in it
+                D = (Xu - Xl) + np.tensordot(dc, XBu - XBl, 1)
+                wv[:, 2] = np.where(D[:, 2] > 0, 1.0, 0.0)
+                rc = (D * wv * 1000 / CONTACT_SIG).ravel()
+                Ac[:, :NC] = ((XBu - XBl) * wv[None] * 1000 / CONTACT_SIG).transpose(1, 2, 0).reshape(-1, NC)
+            yc = Ac @ x - rc
+            H += Ac.T @ Ac
+            b += Ac.T @ yc
+            rep.setdefault("contact_mm", []).append(float(np.sqrt(np.mean(np.sum((D * wv) ** 2, 1)))) * 1000)
         if abs(float(v.get("yaw", 0.0))) < 20 and border is not None:
             bm = border_model(st)
             for k, poly in (("up", border["upper"][border["keep"]]), ("lo", border["lower"][border["keep"]])):
@@ -344,7 +415,14 @@ def main(src, dst):
                     for i in range(nv)}, "log": log}
     d = WS / dst
     d.mkdir(exist_ok=True)
-    (d / "spec.json").write_text(json.dumps(spec_with(spec, x[:NC]), indent=1))
+    noseal = os.environ.pop("NOSEAL", None)
+    shipped = spec_with(spec, x[:NC])
+    if noseal and USE_CONTACT and CONTACT_BY == "expression":
+        # the shipped neutral closes its mouth the way the fit did (GNM's lower-face expression: base's mouth_gap 0
+        # solver, the least change of the lower-face comps), not with faceslide's geometric seal (it pinched the lips)
+        shipped["base"]["head"].pop("lip_seal", None)
+        shipped["base"]["head"]["mouth_gap"] = 0.0
+    (d / "spec.json").write_text(json.dumps(shipped, indent=1))
     r2 = dict(refs)
     r2["cameras"] = cams
     if os.environ.get("VIEWS"):
