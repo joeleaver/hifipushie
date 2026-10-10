@@ -235,3 +235,31 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
     the key as a bright ridge.
 - Sheet: out/ed_22_fold_shadow_tess.jpg (photo | orange | now). Tess's settings: crease 5.0, depth 0.6, width 1.0,
   overhang 0.4, inner 0.9.
+
+### Shape and distance (Joe on ed_22: "the wrong distance and the wrong shape, but it's getting there")
+- Shape: the line is now an OFFSET of the margin. It is the opening's upper rim moved along its own front-plane
+  normal by the crease height, and carried on past the opening's outer corner along its last tangent by
+  `outer_reach` (2 mm) toward the lateral canthus. Before, the rim was lifted straight up: a high round arch peaking
+  over the pupil and stopping short of both ends.
+- Ends: depth and width (0.5-1x), and so the tone, fade over `fade_inner` 0.16 / `fade_outer` 0.25 of the line
+  (smootherstep).
+  - Tess's photo by thirds is as dark at the inner and outer thirds as in the middle, so the fades live at the very
+    ends.
+  - The blue-grey spur at the inner end was the tone mask's floor on the line's end taper. A point past the end on
+    the line's continuation read as near: a straight streak.
+- Distance (spikes/eyedetail/foldtrace.py: read_lid at 25 columns, both lines and the photo's lash line traced over
+  photo and ours, same camera):
+
+  | Tess, TPS inner / middle / outer | R | L |
+  |---|---|---|
+  | photo | 3.7 / 4.3 / 4.4 | 5.4 / 4.9 / 5.2 |
+  | new (crease 4.7, inner 0.95, outer 1.0) | 4.4 / 4.3 / 5.2 | 5.5 / 5.2 / 5.3 |
+
+  The line now runs to the outer corner (photo: from 0.08 to 1.0 of the corner-to-corner span; ours 0.04-0.16 to 1.0).
+- Why the eye says "higher" while the reader says "equal": the reader measures from each face's own lash line. Ours
+  sits LOWER on the face than hers: her traced lash line crosses our iris top, because our opening is smaller and
+  lower. So the crease lands where hers does on the face (the green and red traces coincide), but OUR platform reads
+  taller. The remaining gap is the eye opening / lid pose (facesliders, tess), not the fold.
+- Sheets:
+  - out/ed_23_fold_shape_tess.jpg + ed_23b_traces.jpg (traces);
+  - out/ed_24_fold_garrett.jpg (by eye: crease 3.0, depth 0.6, width 1.1, overhang 0.8, roll 3.0).
