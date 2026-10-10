@@ -35,6 +35,8 @@ import numpy as np
 CHECKLIST = Path(__file__).with_name("likeness.json")
 VENV = os.environ.get("HIFIPUSHIE_MEDIAPIPE", "/mnt/data/hifipushie/facerefs_venv")
 DETECT_PX = 768       # the face crop is scaled to this before detection (MediaPipe works on ~200-800 px faces)
+NEAR = 0.02  # m: faces nearer the camera than this (or behind it) are not drawn: a close phone camera beside the head
+# put the body behind it, and those projected through the eye as screen-filling triangles
 RENDER_PX = 900       # the model's render of the face box, across its longer side
 TARGETS = "likeness_targets.json"
 
@@ -405,7 +407,7 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, 
             Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
             P = humanfit.project(cam, V)
             fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-            keep = (fn * Xc[F].mean(1)).sum(1) < 0
+            keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > NEAR).all(1)
             vn = np.zeros_like(Xc)
             for c in range(3):
                 np.add.at(vn, F[:, c], fn)
@@ -417,7 +419,7 @@ def render(mesh: dict, cam: dict, box, px: int = RENDER_PX, brows: bool = True, 
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
         P = humanfit.project(cam, V)
         fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-        keep = (fn * Xc[F].mean(1)).sum(1) < 0   # facing the camera
+        keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > NEAR).all(1)   # facing the camera
         vn = np.zeros_like(Xc)
         for c in range(3):
             np.add.at(vn, F[:, c], fn)
@@ -485,7 +487,7 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
         Xc = (V - np.asarray(cam["centre"])) @ Rc.T + np.asarray(cam["t"])
         P = humanfit.project(cam, V)
         fn = np.cross(Xc[F[:, 1]] - Xc[F[:, 0]], Xc[F[:, 2]] - Xc[F[:, 0]])
-        keep = (fn * Xc[F].mean(1)).sum(1) < 0
+        keep = ((fn * Xc[F].mean(1)).sum(1) < 0) & (Xc[F][:, :, 2] > NEAR).all(1)
         vn = np.zeros_like(Xc)
         for c in range(3):
             np.add.at(vn, F[:, c], fn)
@@ -796,7 +798,13 @@ def photo_sides(refs: dict) -> list:
     out = []
     for v, cam in zip(refs["views"], refs["cameras"]):
         img = Image.open(v["image"]).convert("RGB")
-        box = _box(v["points"], img.size)
+        pts = v["points"]
+        if not pts:   # a detector-only view (human_reference read it, no clicks): its box from the whole picture
+            Pw = detect([img])[0]
+            if Pw is None:
+                raise ValueError(f"{v.get('image')}: no clicked points and the detector finds no face in the picture")
+            pts = {i: p for i, p in enumerate(np.asarray(Pw, float)[:468])}
+        box = _box(pts, img.size)
         info = detect_region(img, box, info=True)
         P = None if info is None else info["P"]
         out.append({"view": v, "cam": cam, "kind": view_kind(cam.get("yaw", v.get("yaw", 0))), "img": img, "box": box,
