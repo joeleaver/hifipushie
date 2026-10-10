@@ -1547,3 +1547,72 @@ top: a 4 mm vertical disagreement that biases profile registration).
 - To decide (coordinator): make eye_radius 0.012 the default for one-mesh humans (changes every accepted human's eyes:
   ball 14.6 -> 12 on Garrett-sized heads, 12.7 -> 12 on Tess-sized; their lids then need lid_read match), or keep it a
   block-in key set by block_in_start for new block-ins.
+
+## lt19 (2026-10-10, "lt19" agent, branch worktree-agent-ae4d039edfc8ca1cb; a 19-year-old woman from two phone photos;
+## refs PRIVATE in workspace/refs_lt19 (never in the repo, notes or external services); scratch /mnt/data/hifipushie/lt19:
+## run.sh / tests.sh / srv.py <tool> '<json>' | @file.json, ov.py (68 landmarks through a camera), scalechk.py, pupil.py,
+## camtest.py; sheets human_renders/lt19_*)
+
+### Set-up on phone photos (each fixed in code)
+- Body lt19_body: human(age 19, female, weight 0.75, source human); human_reference: front by detector (282 points,
+  1.1 mm), profile by 11 clicked points. Refs at half size (1536 x 2040) beside the originals.
+- Profile yaw: a face looking at image-LEFT is yaw -90 here. +90 fitted a wrong minimum (10 mm rms; the far eye
+  projected in front of the nose); humanfit_map._resolve tries both signs only for 20-70 deg views (open).
+- THE LENS: both pictures are a phone's 24 mm (35 mm-equivalent, EXIF) at ~26 cm; the portrait prior (70 mm, sd 0.4)
+  fitted ~69 mm and the close camera's perspective (centre features big, the face's edges small) went into the
+  shape: series lt19_00..07 is void. humanfit_map.lens_prior: a view's "lens_mm" (35 mm-equivalent, diagonal; the
+  picture uncropped) or the image's EXIF FocalLengthIn35mmFilm, sd 5 % / 8 %; else the portrait prior.
+- A close camera beside the head had the body BEHIND it: likeness.render drew those faces as screen-filling triangles
+  (the profile clay was one flat colour). likeness.NEAR (0.02 m) culls them; humannormals too.
+- profile_contour: background per row (wall above, a dark leather sofa below) + a skin-warmth test against a cheek
+  patch (the sofa's highlights broke the scan).
+- lit_render on a view with no detector (clicked profile): the light was fitted over the whole head incl. the hair
+  over the skull and lit the face white; now fitted inside the projected landmark hull.
+- likeness.photo_sides: a view with no clicks (detector only) crashed the table; its box now comes from the detector.
+
+### Size vs distance (a phone close-up)
+- With the true lens the table said "SIZE -6 %". head_scale 1.06 + a camera refit gave the same pixels back (the
+  camera moved back x1.06); without a refit the face rose 34 px (the head scales about the neck). block_in_step now
+  moves each camera's centre with the face's landmark centre on a head_scale step (the scale stays visible).
+- The two readers disagree: the camera fit's own evidence (calibrated detector points) gives photo/model scale 1.007,
+  the likeness readers 5-7 % (her iris centres 340 px apart vs the model's projected eyeball centres 309, outer corners
+  478 vs 445, eyes-to-chin 564 vs 542). The profile camera refit also moves back x1.046 (its 11 clicks prefer the
+  unscaled head). Kept: head_scale 1.05 (the eye placement then passes 3/3); the profile camera refitted. Open: which
+  reader is biased under strong perspective.
+
+### Rounds (log workspace/lt19_b00/blockin_log.json)
+| round | move | read | kept |
+|---|---|---|---|
+| b00 | start: female class mean, gnm_base 0.5, 24 mm cameras | face broader and longer than the clay | start |
+| b01/02 | head_scale 1.06 (+ refit) | refit gives the same pixels back | no |
+| b03 | face_width +0.6 | cheekbones in (temples: hair covers them) | yes |
+| b04 | jaw_width +0.6 | jaw, nose-base level, mouth closer | yes |
+| b05 | chin_height +0.6 | front outline on hers all round | yes |
+| b06 | chin_projection +0.5 | profile chin a little forward | yes |
+| b07 | under_chin! +0.8 | no visible change (body / stitch region) | no |
+| b08 | eye_spacing! +0.6 | intercanthal +0.9 mm | yes |
+| b09 | lid_read match (lid_upper -2.7 mm) | upper lid 0.32 -> 0.75 iris radii (hers 0.75) | yes |
+| b10 | eye_tilt! -0.6 | canthal tilt -0.7 deg only, brow tilt out | no |
+| b11 | eye_spacing! +0.6 more | +0.4 mm for |c| +0.67: size-kept steps hold the interocular distance | no |
+| b12 | head_scale 1.05, cameras follow | eyes 3/3; earlier width steps overshoot | yes |
+| b13 | face_width -0.6 | unwinds b03 | yes |
+| b14 | nose_length! -0.6 | nose, middle third in | yes |
+| b15 | philtrum! -0.7 | chin in, philtrum +3.8 -> +2.1 | yes |
+| b16/17 | lip_projection -0.5 (free / held) | free: thinner lips, nose forward; held: barely visible | no |
+| b18 | camera refit (profile) | nose and lips on her contour; chin / under-chin behind | yes |
+| b19/20 | eye_radius 0.012 + lid match | eyes read open | yes |
+| b21 | nd:tip_width +1 | front closer, but the free couplings dropped the bridge: profile nose behind hers | no |
+| b22 | nd:tip_width|held +1 | tip a little broader, profile kept | yes |
+| b23 | mouth_width! -0.5 | mouth width, chin height in | yes |
+| b24 | lip_fullness! +0.5 | lips a touch fuller, middle third in | yes |
+lt19_b24: 14/21 counted items; misses: temple width (hair-covered), cheekbone +3.1 / jaw -3.2 (edges), jaw taper, alar
+-1.6, philtrum +1.7, mouth line.
+
+### Gaps met
+- Soft-tissue fullness: base weight moves nothing on the head or neck; free cheek_fullness widens the outline; held
+  cheek_fullness 0.6 is invisible; free under_chin brings a leaner face; held under_chin moves nothing visible: the
+  submental contour is the body mesh / stitch. Options (to decide): shape.lean negative (a local field, exists), an
+  ICT regional basis under the chin (data-backed, like faces5 regbasis), MakeHuman CC0 neck / chin targets on the body
+  side, tied to weight.
+- radix_width / dorsum_width / nasolabial_fold / under_eye items read 0.00 on the clay (the clay reader returns nothing).
+- Eye identity steps are weak at kept size (spacing fights the size row; tilt barely moves).
