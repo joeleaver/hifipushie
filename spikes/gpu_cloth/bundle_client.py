@@ -30,6 +30,29 @@ URL = os.environ.get("OXIDEGEN_URL", "https://oxidegen.jkbase.app").rstrip("/")
 TERMINAL = {"succeeded", "failed", "canceled"}
 
 
+# The platform's front door answers 502/503/504 now and then (a restart, a hiccup): such a request is tried again.
+RETRY_CODES = {502, 503, 504}
+RETRY_WAITS = (2, 5, 15, 30, 60)
+
+
+def send(req, timeout, retry=True):
+    """urlopen with retries on a gateway error or a dropped connection → the parsed JSON. `retry=False` for a
+    request that must not be repeated (submitting a batch: a 502 may hide one that went through)."""
+    for i, wait in enumerate((0,) + (RETRY_WAITS if retry else ())):
+        time.sleep(wait)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if not retry or e.code not in RETRY_CODES or i == len(RETRY_WAITS):
+                raise
+            print(f"  {req.get_method()} got {e.code}; trying again in {RETRY_WAITS[i]} s", file=sys.stderr, flush=True)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            if not retry or i == len(RETRY_WAITS):
+                raise
+            print(f"  {req.get_method()} failed ({e}); trying again in {RETRY_WAITS[i]} s", file=sys.stderr, flush=True)
+
+
 def api(method, path, body=None):
     token = os.environ.get("OXIDEGEN_TOKEN")
     if not token:
@@ -38,16 +61,18 @@ def api(method, path, body=None):
     req = urllib.request.Request(URL + path, data=data, method=method,
                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            return json.load(r)
+        # a GET, or asking for upload links (harmless twice), is retried; submitting / cancelling is not
+        return send(req, 120, retry=method == "GET" or path.endswith("/uploads"))
     except urllib.error.HTTPError as e:
+        if method == "POST" and path == "/v1/bundle-jobs" and e.code in RETRY_CODES:
+            sys.exit(f"submit got {e.code}: it may or may not have gone through; check `bundle_client.py list` before submitting again")
         sys.exit(f"{method} {path}: {e.code} {e.read().decode(errors='replace')[:600]}")
 
 
 def put(url, data):
+    """PUT a file to a signed upload link (a re-PUT replaces it, so retrying is safe)."""
     req = urllib.request.Request(url, data=data, method="PUT", headers={"Content-Type": "application/octet-stream"})
-    with urllib.request.urlopen(req, timeout=600) as r:
-        return json.load(r)
+    return send(req, 600)
 
 
 def tar_folder(path):
