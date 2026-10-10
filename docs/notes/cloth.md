@@ -2079,3 +2079,20 @@ NO SIM WAS RUN.
     jacket 6, collar / V 0.00 mm, 0 skin px from 12 cameras. lapelgate.py now reads the outer edge on the pattern's
     break -> lapel point segment (the old bins mixed in the roll line and the notch). Sheet cloth_renders/
     c10_w10_sheet.png (concept | w9 | now).
+  - Round 10 (hidden-shirt press, tight fit). j12 (under_cap 0.004) rebuilt with the constructed lapels (no GPU):
+    the tuck IS the hidden-shirt press (without it 1132 visible crossings: s2_12 through the forepart under the
+    lapels); what stays crossing at the armpits is cut (c10ship xcut: crossings with |x| > 0.15, 3 cm inside every
+    jacket opening, 6 cm off the V, 2 rings; again after the tuck). Result: 0 skin px (12 cameras), collar 0.00 mm,
+    V p95 0.21 / max 8.9 mm (the tuck's feather), visible shirt x jacket 10 (neck), x the made collar 10-16 (CB),
+    lapels straight (roll 4.2-4.4, edge 0.2-6.2 mm). The notch did NOT come in with the tight fit (still ~12 mm low,
+    out on the shoulder slope): the draft, not the fit. COLLAR RING: at CB the constructed fall runs 16 -> 4 mm above
+    the seam then OUTWARD level (rows 11-15 at z +4 mm, 12-14 mm off the shirt collar): a flange, not a fall lying
+    down; construct collar_options fall_hug 0.02 changed nothing (no layer within reach). Not fixed. Sheet
+    cloth_renders/c10_w11_sheet.png (w10 | tight j12).
+  - Round 11. V feather to 0: c10ship lays only COVERED vertices under the jacket (the tuck's feather onto uncovered
+    ones dropped): visible collar AND V 0.00 / 0.00 / 0.00 mm vs s2_12, gate PASS (j12). (Production cloth_layers.tucked
+    still feathers 5 rings: the pipeline needs the same rule when merge-and-cut lands.) COLLAR FALL as a board
+    (notched_collar key fall_board, default on): each back column from the roll's top straight down to where its
+    length reaches along the cloth below the seam; the CB fall now runs 13 -> 1 mm above the seam (was flat at 4,
+    a flange). From behind (c10_w_j12b_backc.png) it lies down; from the front, small grey tabs remain where the
+    collar meets the lapel at the side neck; collar x shirt collar 10-16 crossings at CB unchanged.

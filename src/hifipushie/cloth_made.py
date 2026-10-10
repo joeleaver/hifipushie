@@ -904,6 +904,38 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
             Y[1:-1] = 0.5 * G[1:-1] + 0.25 * (G[:-2] + G[2:])
             Y[:, 1:-1] = 0.5 * Y[:, 1:-1] + 0.25 * (Y[:, :-2] + Y[:, 2:])
             G[en[1:-1], 1:] = Y[en[1:-1], 1:]
+    if p.get("fall_board", True):
+        # the FALL laid as a board down onto the garment's back below the seam: from the roll's top straight to the
+        # point its length reaches down the cloth under it (the seam point carried down the cloth's own downward
+        # tangent, `lay` off it). Marched, the fall found nothing near to lie on and ran out level from the neck: a
+        # flange that read as a thick ring round the back of the neck (cloth10 j12: rows 4 mm above the seam,
+        # 12-14 mm out). Blended out where the ends take over (wE).
+        zd = np.array([0.0, 0.0, -1.0])
+        for i in range(n):
+            bw = (1.0 - wE[i]) * (1.0 if h[i] > 0.004 else 0.0)
+            if bw <= 0:
+                continue
+            col = G[i]
+            r0 = int(np.argmax(col[:, 2]))
+            if r0 >= m - 2:
+                continue
+            seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(col[r0:], axis=0), axis=1))]
+            Lr = float(seglen[-1])
+            nu = n_un[i]
+            dn = _unit(zd - (zd @ nu) * nu)
+            top = col[r0]
+            base = C[i] + lay * nu
+            lo, hi_ = 0.0, Lr + 0.05
+            for _ in range(40):  # (how far down the cloth the fall's end reaches: |end - top| = its length)
+                mid = 0.5 * (lo + hi_)
+                if np.linalg.norm(base + mid * dn - top) < Lr:
+                    lo = mid
+                else:
+                    hi_ = mid
+            end = base + lo * dn
+            fr = seglen / max(Lr, 1e-9)
+            line_ = top[None] + fr[:, None] * (end - top)[None]
+            G[i, r0:] = (1 - bw) * col[r0:] + bw * line_
     tail = G[:, 1:].reshape(-1, 3)
     tail, _, _ = Under(u_own.layers).settle(tail, gp.ravel(), hug=0.0)
     G[:, 1:] = tail.reshape(n, -1, 3)
