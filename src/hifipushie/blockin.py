@@ -814,9 +814,10 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         # nearest samples of a picture-resolution mask came out as stair steps), sampled bilinearly
         polys = [np.r_[P[up], P[lo][::-1]] for up, lo in (BROWS_R, BROWS_L)]
         allp = np.concatenate(polys)
-        o = allp.min(0) - 6
+        pad = max(6.0, 0.05 * float(allp[:, 0].max() - allp[:, 0].min()))   # (room for the tails past the band)
+        o = allp.min(0) - pad
         ss = 8.0
-        size = tuple(int(x) for x in np.ceil((allp.max(0) + 6 - o) * ss))
+        size = tuple(int(x) for x in np.ceil((allp.max(0) + pad - o) * ss))
         m = Image.new("L", size, 0)
         d = ImageDraw.Draw(m)
         for poly in polys:
@@ -824,7 +825,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         hb = brow_hair_band(img, polys, o, cam, mesh)   # (None for light, fine brows: the detector band, below)
         # the brows' own colour: the picture's pixels under the hair mask (or the band), their darkest quarter (a fair
         # person's light-brown brows painted in the fixed dark brown read as heavy bars)
-        Wb, Hb = int(np.ceil(allp.max(0)[0] + 6 - o[0])), int(np.ceil(allp.max(0)[1] + 6 - o[1]))
+        Wb, Hb = int(np.ceil(allp.max(0)[0] + pad - o[0])), int(np.ceil(allp.max(0)[1] + pad - o[1]))
         crop = np.asarray(img.crop((int(o[0]), int(o[1]), int(o[0]) + Wb, int(o[1]) + Hb)), float)
         msk = (np.asarray(hb) > 0) if hb is not None else (np.asarray(m.resize((Wb, Hb), Image.BILINEAR)) > 127)
         rgb = BROW_RGB
@@ -847,7 +848,8 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
     return out
 
 
-def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66, density: bool = True):
+def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66, density: bool = True,
+                   tail_mm: float = 4.0):
     """The brows as the HAIR the picture shows, not the detector's band: MediaPipe's brow contour is a smooth arch of
     a fixed thickness (lt19's straight, dense brows came out thinner and more arched). Inside the detector band grown by
     grow_mm, the pixels darker than `dark` x the surrounding skin; the largest pieces per side kept. A mask over the
@@ -857,7 +859,7 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     from scipy import ndimage
     from . import likeness
     allp = np.concatenate(polys)
-    hi = allp.max(0) + 6
+    hi = allp.max(0) + (allp.min(0) - o)   # (the same margin as the caller gave below the band)
     W, H = int(np.ceil(hi[0] - o[0])), int(np.ceil(hi[1] - o[1]))
     if W < 4 or H < 4:
         return None
@@ -879,7 +881,11 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
         inner = np.asarray(pm) > 0
         grown = np.asarray(pm.filter(ImageFilter.MaxFilter(2 * g + 1))) > 0
         # not past the band's own ends (side hair at the temples is dark too)
-        grown &= (xs >= q[:, 0].min() - 0.5 / mmpx) & (xs <= q[:, 0].max() + 0.5 / mmpx)
+        # not past the inner end; past the OUTER end by tail_mm (MediaPipe's brow stops short of the tail: lt19's
+        # profile showed a short patch)
+        outer_left = q[:, 0].mean() < (allp[:, 0].mean() - o[0])
+        lo_, hi_ = (tail_mm, 0.5) if outer_left else (0.5, tail_mm)
+        grown &= (xs >= q[:, 0].min() - lo_ / mmpx) & (xs <= q[:, 0].max() + hi_ / mmpx)
         ring = grown & ~inner
         if ring.sum() < 20 or inner.sum() < 20:
             return None
