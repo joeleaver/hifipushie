@@ -118,7 +118,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         if key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
-        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_ = ([] for _ in range(13))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_ = ([] for _ in range(14))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
@@ -174,6 +174,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             O_.append(N * ht[:, None])
             W_.append(W * max(th * float(Sl["flat"]), 0.004 if key == "head" else 0.0015)
                       * (1.0 if key == "head" else (0.9 if fan <= 0 else 0.3) if thin else 2.5))  # (a wisp: few strands)
+            # strands.density on a lock (a region): x its strands, ABSOLUTE (not a share: scaling every lock of the head
+            # alike would change nothing): an airy top where the strands don't fill the lock's lens
+            D_.append(float(np.clip((lk.get("strands") or {}).get("density", 1.0), 0.05, 4.0)))
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             # (nor further than a quarter of its length: short hair had 4 cm spikes)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
@@ -187,7 +190,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             N_.append(lk["name"])
         out[key] = {"counts": np.full(len(sel), n, np.int32), "pts": np.concatenate(P_).astype(np.float32),
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
-                    "weight": np.asarray(W_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
+                    "weight": np.asarray(W_, float), "density": np.asarray(D_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
                     "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
                     "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_)}
     return out
@@ -438,7 +441,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         if key not in G:
             continue
         gg = G[key]
-        share = gg.pop("weight") / wsum * n_locks  # strands per lock
+        share = gg.pop("weight") * gg.pop("density", 1.0) / wsum * n_locks  # strands per lock
         base = np.maximum(np.round(share / 8.0), 1).astype(np.int32)  # hp_n: an eighth, the lens group's Amount = 8
         gg["n"] = base
         gg["uv"] = scalp_uv(sc, gg["pts"].reshape(len(base), -1, 3)[:, 0], e0).astype(np.float32)

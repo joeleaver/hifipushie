@@ -18,12 +18,20 @@ if not sp.get("hair"):
     sp["hair"] = {k: copy.deepcopy(v) for k, v in hs["hair"].items() if k != "locks"}
     sp.setdefault("parts", {})["hair"] = copy.deepcopy((hs.get("parts") or {}).get("hair") or {})
 h = sp["hair"]
-for key, p in (("groom", gp), ("look", lp), ("strands", spp)):
-    for k, v in p.items():
-        if isinstance(v, dict) and isinstance(h.setdefault(key, {}).get(k), dict):
-            h[key][k].update(v)
+
+
+def merge(a, b):  # DEEP (the old one-level update replaced nested dicts: tie.gather / tail / curtain lost their keys)
+    for k, v in b.items():
+        if isinstance(v, dict) and isinstance(a.get(k), dict):
+            merge(a[k], v)
+        elif v is None:
+            a.pop(k, None)
         else:
-            h[key][k] = v
+            a[k] = v
+
+
+for key, p in (("groom", gp), ("look", lp), ("strands", spp)):
+    merge(h.setdefault(key, {}), p)
 store.save(dst, sp, f"tess: {src} + strand groom (hs_tess's, regrown)")
 rf = store.HOME / src / "human_refs.json"
 if rf.exists():
