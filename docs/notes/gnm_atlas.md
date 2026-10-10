@@ -250,3 +250,76 @@ gc_dress (mkgc.py).
 - Garrett fs_ge3: lid_upper +2.5 (the concept's squint), lid_lower -0.3 mm, eye_opening +0.11; lash 1.44 vs 1.40,
   lower 3.84 vs 3.93; the crease NOT solved: read_lid on his render locks onto another line 6-10 mm up (the brow's
   shadow / hood), TPS 6.3-9.8 for crease_height -1.7..8.5: eyedetail's 3.0 kept; foldtrace's 20 columns needed.
+
+## HANDOVER (facesliders, 2026-10-10): read this first
+
+### What exists
+- GNM atlas + sex axis: src/hifipushie/faceatlas.py, face_atlas.npz (3000 heads; per attribute mean, linear model B,
+  sd, R2, correlations; delta_sex from ANSUR II + NIOSH lower face, within_sex() with SEX_SHARE 0.85). Coupled sliders
+  (base.head.slider_mode "coupled": faceatlas.COUPLED), humanmacro.apply_coupled. Tests tests/test_faceatlas.py.
+- Model extensions: src/hifipushie/faceext.py, face_ext.npz (MakeHuman CC0 mouth targets carried onto GNM, the
+  identity's cheap directions projected out, commissures held, fold-free scale; residual sliders mh_lowerlip_width,
+  mh_mouth_angles, mh_lowerlip_ext). Targets at /mnt/data/hifipushie/facesliders/mh_targets (SOURCE.txt; eyes too).
+  Tests tests/test_faceext.py. Build: spikes/facesliders/build_ext.py.
+- Checklist items added: likeness lower_lip_width ("cushion") and lower_lip_area ("lip_area").
+- Sealed mouth with an interior: base.sealed_interior (slit / bag held 6 mm behind the lips); tests/test_mouth_seal.py.
+
+### The solve pipeline (spikes/facesliders; run every job through /mnt/data/hifipushie/facesliders/run.sh <script>
+### (nice, capped, OPENBLAS 1, PYTHONPATH incl. garrett3/4 + likeloop spikes); tests via tests.sh <test files>)
+1. Identity: joint2.py <start> <out> <sex +1/-1>. Variables: 120 identity components (macros + coupled sliders read
+   out), residual morphs RES (no fold/hood: lidfold owns them), AGE ops one-sided (FREE_AGE=1 near free), EXTRA_RES.
+   Prior: within-sex Mahalanobis + component wall CAP 2.5 + READOUT wall ACAP 2.5 within-sex sds + sex DIRECTIONS
+   (SEXDIR: jaw_angle / brow_ridge / forehead_slope, weak one-sided, women). Evidence: calibrated detector points per
+   view (DESK_W weights non-front views), checklist ITEMS (photo - clay render through the detector, linearised on
+   predicted MP points; IMPORTANCE; LIP_W), traced outlines (TRACES=<model with likeness_points lines>,
+   TRACE_LINES; MATCH=silhouette (default) | envelope; SHADE_LINES: shading edges like the chin are NOT contours),
+   the true profile's own contour (PROFILE_AUTO=1, outl.profile_auto: skin vs plain background, brow to under the
+   chin), mentolabial depth (ML_W). FIX_CAMS=<views> freezes cameras (shared refs: one cameras copy per subject,
+   refits replace, old kept by name). Writes <out>/spec.json, human_refs.json, joint_report.json; prints per-view
+   rms, items before / after, prior, readouts, residuals, BIG flags, identity vs residual share.
+   Example (Tess tj12): FIX_CAMS=2 PROFILE_AUTO=1 TRACES=fs_traces_t TRACE_LINES=profile,forehead
+     run.sh joint2.py fs_tj0b fs_tj12 -1
+   Example (Garrett gj8): LIP_W=3 EXTRA_RES=lip_upper_height,lip_lower_height TRACE_LINES=cheek.R,cheek.L,jaw.R,jaw.L,profile
+     FREE_AGE=1 DESK_W=0.5 TRACES=fs_traces_g run.sh joint2.py fs_gj0s fs_gj8 1
+2. Dress: Garrett mkgc.py gc_dress <head model> (garrett_head.md); Tess mkt2.py <dst> <head> ts_f1 ts_t28 (ts_f1's
+   dressing, ts_t28's groom, the head's identity / sliders / pose / fold).
+3. Eyes: eyesolve.py <dressed model> <out> '<fold json>' <iters>, STAGE=A (pose lid_upper / lid_lower +
+   eye_opening against the upper lid over the iris centre and the lower lid under it; model by part ID, photo by
+   the detector, bias calibrated on the start render) then STAGE=B with X0='[...]' (crease_height vs read_lid TPS;
+   fold_overhang held). LIGHT=/mnt/data/hifipushie/likeloop/light_m.json. Writes out/eyes_<out>.png (photo |
+   current | new) and <out>/eye_report.json.
+4. Gates / sheets: tgate.py <shared refs model> <models...> (points rms through shared cameras + clay sheet), tess's
+   prof.py (T=<scratch> run.sh <tess worktree>/spikes/tess/prof.py fs_g_<model>: profile chamfer by segment),
+   shot2.py (dressed front / 3-4 / profile through the fitted cameras; D3, LIGHT), jsheet.py (NOCLAY=1 for dressed
+   only), items.py (likeness items photo vs model; PF=traces model), camchk.py / yawscan.py (camera checks),
+   sealmesh.py --holes (mouth holes), outdbg.py (outline matches drawn), gridimg.py (grids for tracing by eye),
+   traces.py (all hand traces: fs_traces_g, fs_traces_t), storeprof.py, mouthchk.py, mouthid.py.
+
+### Current models
+- Garrett: identity fs_gj8 (accepted proportions gj6 + lips weight 3); dressed gc_dress (mkgc.py); eyes fs_ge3
+  (lid_upper 2.5 mm squint, lid_lower -0.3, eye_opening +0.11; crease_height eyedetail's 3.0: unsolved). gc_dress /
+  fs_ge3 hair greyed (grey_amount 0.45, near-neutral lit / sheen, eevee_sat 0.3, wave off): now reads light silver
+  next to the concept's darker salt-and-pepper: try grey_amount ~0.3 and a darker lit (#5a5652) and judge at sheet
+  size. The waves were not groom.fit (it scales groom metres only, not hair.strands); they came from strands
+  wave / frizz / clump.
+- Tess: identity fs_tj12 (accepted working face); eyes fs_te7 (lid_upper +1.0, lid_lower -1.5, eye_opening +0.11,
+  crease 4.23); dressed with ts_f1 + ts_t28's groom as fs_tf12b (built, not yet rendered with the fold fix). The front
+  hairline still shows a bare V with scalp streaks with ts_t28's groom on OUR head (te7h render): not the groom
+  version; probably the groom's hairline on a different head (fit / hairline front_points vs this head): to check
+  with tess.
+
+### Open items (priority order as the coordinator left them)
+1. Garrett's hair grey tuning (above); Tess's hairline V on our head.
+2. Lip shading reader (Tess "narrower and poutier" = volume / eversion shading, not outline: photo vs clay under the
+   fitted light, lever lip_lower_roll), judged with main's current skin (skin2 recoloured lip borders).
+3. Border-aware MH carrying (move the vermilion border's rows together, never shear across it: the mouth extensions
+   are capped at ~0.4 mm by folds there), then the MH LID targets (epicanthus, corners, margin only; no fold / hood:
+   lidfold owns them, eyedetail).
+4. Canthal tilt: a missing control (GNM's tilt moves the wrong corner points); a coupled + residual tilt slider.
+5. Garrett's crease: read_lid locks onto the brow / hood shadow on his render; use eyedetail's foldtrace (20 columns).
+6. Soft-tissue sex magnitudes (forehead inclination, brow, lip heights, gonial angle): no data by decision (no book,
+   no scan licences); directions only as weak walls. Revisit if the female read stalls.
+7. Chin width needs a render-based reader (the front chin line is a shading edge); the outline on Tess's jaw widened
+   it in some runs (cause not pinned).
+8. The eye stage's detector bias varies with lid state and dressing (0 to +1.4 mm): a part-ID-like reader on the
+   photo (iris / sclera segmentation) would remove it.
