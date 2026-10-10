@@ -119,3 +119,13 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   transmissive shell over a recessed iris (MetaHuman's refraction): next if wanted.
 - The lower waterline reads grey-blue (the ball's tear line + occlusion), not the photo's pink wet rim.
 - Fine skin lines at the lids: not addressed.
+
+## Dressed Garrett overflows the Cycles shader stack (not from this branch; for facesliders / skin2)
+- Repro: likeloop's `spikes/likeloop/mkd.py <dst> fs_garrett` (g4_garrett's spec: ~30 hand paint layers + the
+  procedural skin, fs_garrett's base), then `asset.export(<dst>, out, triangles=20000, texture=512, rig=True,
+  face_shapes=[...])` after giving the head a mouth (`base.head.mouth_gap` 0.003; face shapes need one) and dropping
+  hair. The bake fails with: RuntimeError: Cycles ran out of shader stack on material(s) ['part:body'].
+- Same with base.lashes false and HIFIPUSHIE_NO_KEEP_OUT=1 (main's layers exactly): model _ed_gx0, log
+  /mnt/data/hifipushie/eyedetail/out/expo0.log; script spikes/eyedetail/expo.py.
+- Tess's spec (procedural skin only) bakes fine with everything on (_ed_tx). The likely fix: g4's hand layers'
+  broad masks per vertex ("vertex": true) or fewer layers with "height".
