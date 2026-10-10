@@ -127,7 +127,29 @@ def local_orthogonal(d: np.ndarray, region: np.ndarray) -> np.ndarray:
     return out
 
 
-CORNER_HOLD = (0.003, 0.005)   # m: the mouth's corners held within the first, released over the second
+CORNER_HOLD = (0.003, 0.015)   # m: the mouth's corners held within the first; the hold's correction is harmonic out
+# to the second (faces3: a smoothstep release over 5 mm put a 2 mm step beside the corners: a groove under them in the
+# 3/4 view at -1 of lowerlip_width, and the folds past it)
+
+
+def corner_hold(d: np.ndarray, dc: np.ndarray) -> np.ndarray:
+    """d with the mouth's corners held: a correction e = -d within CORNER_HOLD[0] of a corner landmark, 0 from
+    CORNER_HOLD[1] out, harmonic (the mesh Laplacian over GNM's quads) between: the hold spreads as smoothly as the
+    mesh allows instead of a ramp."""
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
+    smooth(np.zeros((len(d), 1)), 0)
+    W = _C["adj"]                       # row-normalised adjacency (GNM's raw quads)
+    fixed_in = dc <= CORNER_HOLD[0]
+    free = (dc > CORNER_HOLD[0]) & (dc < CORNER_HOLD[1])
+    e = np.zeros_like(d)
+    e[fixed_in] = -d[fixed_in]
+    if free.any():
+        L = (sp.eye(len(d)) - W).tocsr()
+        Lff = L[free][:, free].tocsc()
+        rhs = -(L[free][:, fixed_in] @ e[fixed_in])
+        e[free] = np.column_stack([spsolve(Lff, rhs[:, k]) for k in range(d.shape[1])])
+    return d + e
 CHEAP = float(os.environ.get("HIFIPUSHIE_EXT_CHEAP", "4e-4"))   # m rms over the region a 1-sigma identity move
 # makes along a direction: CHEAP and up = a probable move (a few sigmas make a mm)
 
@@ -256,7 +278,7 @@ def field(k: str) -> tuple:
             # shortest edges, turned the corner quads over at -1); before the projection, which it must not undo
             Xr = T["X"][:len(d)]
             dc = np.min([np.linalg.norm(Xr - T["lm"][i], axis=1) for i in (48, 54, 60, 64)], axis=0)
-            d = d * faceslide._ss((dc - CORNER_HOLD[0]) / CORNER_HOLD[1])[:, None]
+            d = corner_hold(d, dc)
             d = hold_rolls(d)
         m = np.linalg.norm(d, axis=1)
         reg = m > REGION * m.max()

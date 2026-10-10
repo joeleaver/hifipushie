@@ -108,29 +108,43 @@ for v in views:
             return (Lx > 0.45) & (r - b > 0.12) & (r >= g_) & (g_ >= b)
         print(f"   scalp showing in her hair band (30 mm): ours {100 * (skin(a) & band30).sum() / max(band30.sum(), 1):.1f}%"
               f"  hers {100 * (skin(P) & band30).sum() / max(band30.sum(), 1):.1f}%")
-    # FOREHEAD ARCH (faces3): the hair's lower edge over the forehead, per column, against her face hull's top (her
-    # traced hair edge), front view: mm ours - hers (+ = our hair edge lower) across the forehead in 5 bins from her
-    # right temple to her left, and the arch's height (the centre's edge over the temples' mean), ours and hers
+    # FOREHEAD ARCH (faces3): the forehead's skin edge, per column, photo vs our beauty render (the same skin classifier
+    # on both: the ID pass counts a sparse fan of strands at the part as hair, so its edge can't see a peak): from 20 mm
+    # under her face hull's top, up to the first row where 3 pixels running are not skin. mm ours - hers (+ = our hair
+    # edge lower) across the forehead in 5 bins from her right temple to her left, and the arch height (the temples'
+    # edge below the centre's: a peak under the part = a big centre minus near-centre step, see the bins)
     if tr.get("face_hull") and v == 0:
+        def skin_(img):
+            r, g_, b = img[..., 0], img[..., 1], img[..., 2]
+            Lx = img @ [0.299, 0.587, 0.114]
+            return (Lx > 0.45) & (r - b > 0.12) & (r >= g_) & (g_ >= b)
         top = np.where(fh.any(0), fh.argmax(0), PX)
-        hi = int(top.min())
-        cols = np.flatnonzero(top < hi + 35.0 / mm)
-        start = (top[cols] + 30.0 / mm).astype(int)
-        ours_e = np.full(len(cols), np.nan)
-        for i, (cx, s) in enumerate(zip(cols, start)):
-            colm = mo[: max(s, 1), cx]
-            hit = np.flatnonzero(colm)
-            if len(hit):
-                ours_e[i] = hit.max()
-        dif = (ours_e - top[cols]) * mm
+        hi_ = int(top.min())
+        cols = np.flatnonzero(top < hi_ + 35.0 / mm)
+        start = np.minimum((top[cols] + 20.0 / mm).astype(int), PX - 1)
+
+        def edge(img):
+            sk = skin_(img)
+            e = np.full(len(cols), np.nan)
+            for i, (cx, s) in enumerate(zip(cols, start)):
+                col = sk[:s + 1, cx][::-1]
+                run = np.convolve(~col, np.ones(3), "valid") >= 3
+                k = np.flatnonzero(run)
+                if len(k):
+                    e[i] = s - k[0]
+            return e
+        eh_, eo_ = edge(P), edge(a)
+        dif = (eo_ - eh_) * mm
         bins = np.array_split(np.arange(len(cols)), 5)
         prof = [float(np.nanmean(dif[b])) for b in bins]
+
         def arch(e):
-            c = np.nanmean(e[bins[2]])
-            return float((np.nanmean(np.r_[e[bins[0]], e[bins[4]]]) - c) * mm)
+            return float((np.nanmean(np.r_[e[bins[0]], e[bins[4]]]) - np.nanmin(e[bins[2]])) * mm)
         print(f"   forehead arch: ours - hers (mm, + = ours lower), R temple .. L temple: "
-              + " ".join(f"{p:+.1f}" for p in prof)
-              + f"  | arch height (temples' edge below the centre's) hers {arch(top[cols].astype(float)):.1f} ours {arch(ours_e):.1f} mm")
+              + " ".join(f"{p_:+.1f}" for p_ in prof) + f"  | centre peak (highest skin) hers "
+              f"{float((start[bins[2]] - np.nanmin(eh_[bins[2]])).mean() * mm):.1f} ours "
+              f"{float((start[bins[2]] - np.nanmin(eo_[bins[2]])).mean() * mm):.1f} mm up | arch height hers "
+              f"{arch(eh_):.1f} ours {arch(eo_):.1f} mm")
     # COLOUR like with like: luminance bands (shadow 0-20 %, mid 40-60, highlight 85-98) inside each hair mask, eroded
     def bands(img, m):
         m = ndi.binary_erosion(m, iterations=2)
