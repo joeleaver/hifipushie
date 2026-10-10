@@ -390,6 +390,8 @@ def points_of(m: dict) -> list:
             out += list(np.ravel([i for p in v for x in p for i in np.ravel(x)]))
         elif k in ("num", "den"):
             out += points_of(v)
+        elif k in ("outer", "inner"):
+            out += list(np.ravel(v))
         elif k == "kind" and v == "width":
             out += OVAL
     return sorted({int(i) for i in out})
@@ -489,6 +491,35 @@ def value(side: Side, m: dict, mmpx: float):
         a, v, b = side.pt(m["a"]), side.pt(m["vertex"]), side.pt(m["b"])
         u, w = a - v, b - v
         return float(np.degrees(np.arccos(np.clip(u @ w / max(np.linalg.norm(u) * np.linalg.norm(w), 1e-12), -1, 1))))
+    if k in ("cushion", "lip_area"):
+        # the lower vermilion between its outer (skin) border and its inner (contact) line, corner to corner:
+        # "cushion" = its visible width (where it is thicker than `frac` of its middle) over the mouth's width (a
+        # short central cushion vs a lip out to the corners); "lip_area" = its area over the mouth's width squared
+        # (fullness: a pouting lower lip shows more red)
+        ex, ey = side.frame()
+        O = np.array([side.pt(i) for i in m["outer"]])
+        I_ = np.array([side.pt(i) for i in m["inner"]])
+        wm = float((O[-1] - O[0]) @ ex)
+        if abs(wm) < 1e-9:
+            return float("nan")
+        if k == "lip_area":
+            P = np.r_[O, I_[::-1]]
+            area = 0.5 * abs(float(np.dot(P[:, 0], np.roll(P[:, 1], -1)) - np.dot(P[:, 1], np.roll(P[:, 0], -1))))
+            return area / wm ** 2
+        t = np.abs((O - I_) @ ey)
+        u = ((0.5 * (O + I_)) - O[0]) @ ex / wm
+        mid = len(t) // 2
+        lim = float(m.get("frac", 0.5)) * t[mid]
+        ends = []
+        for rng in (range(mid, 0, -1), range(mid, len(t) - 1)):
+            e = None
+            for i in rng:
+                j = i - 1 if rng.step < 0 else i + 1
+                if t[j] < lim <= t[i]:
+                    e = u[i] + (u[j] - u[i]) * (t[i] - lim) / max(t[i] - t[j], 1e-12)
+                    break
+            ends.append(u[0] if (e is None and rng.step < 0) else (u[-1] if e is None else e))
+        return float(abs(ends[1] - ends[0]))
     if k == "bow":
         ex, ey = side.frame()
         Q = np.array([side.pt(i) for i in m["line"]])
