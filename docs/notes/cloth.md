@@ -2111,3 +2111,62 @@ NO SIM WAS RUN.
     at CB; (5) c10ship's cut rules (vis + xcut) into the pipeline (merge-and-cut export, step 4 of the brief).
     Tools: judge.sh <tag> (gates + lapel straightness + trace + preview), stage.sh <queue> (one broker batch per
     stage, deterministic now), q.sh with BROKER=1 to rebuild from pulled results (construct-only changes need no GPU).
+- cloth11 (2026-10-09/10, "cloth11" agent; continues cloth10 on Garrett's jacket over pinned s2_12). Scratch DURABLE in
+  /mnt/data/hifipushie/cloth11/: cloth10's tools retargeted (env.sh, run.sh, q.sh, stage.sh, judge.sh, c10ship.py ...)
+  + run.py `dumpcon=<pkl>` (saves construct()'s inputs during a build), con.py <tag> [key.path=json] [under=carried|s2]
+  (construct() alone on a dump, ~3 s, writes a run.py-like pkl), sweep.py (construct variants in-process + collar fold
+  counts), kinks.py / cprobe.py (the made collar's grid: folded quads by station / row positions), xprobe.py (made
+  collar x shirt crossings by station/row), xj.py (which jacket pieces cross the visible shirt), spikes.py,
+  views.sh <tag> (neck + upper-figure renders, no gates), cmpfig.py; c10ship.py gained neck=1|2, hl=1 (made collar
+  orange), sh=1|2, fig=1, cover=pipe (the PIPELINE's rule: tucked + cloth_layers.cut, as the export does).
+  - (1) Side-neck TABS: the made collar's end lay (on the lapel's pattern, columns running back over the shoulder) and
+    the fall (columns running out and down) are ~90 deg apart; blended point by point per station (wE) their outer rows
+    crossed: 39 quads folded > 120 deg at stations 11-19 / 44-50 (the corner of the neck seam where the roll line meets
+    it). blend_smooth / blend_reach more: no change. Fix: `cloth_made.patch_transition` (collar_options blend_patch,
+    default 3): the meeting zone laid as a patch between its boundary columns (whole curves blended by arc, carried to
+    each station's seam point). Folds 39 -> 9, none at the side neck; the knotted flags in the three-quarter views gone.
+  - Back fall edge: the fall board's columns took their way down from the normal of whatever lay under each station;
+    the outer edge zigzagged 10-25 mm in x across the back (st 22-30), folded quads at CB, a kink visible from behind.
+    Board directions and ends now smoothed along the seam (collar_options board_smooth, default 6): folds 12 -> 2,
+    a clean edge (out/bsm_cmp.png).
+  - (4) Shirt collar x jacket collar 10-16 at CB: NOT in the construction's own view (vs the under garment it was
+    given: 0). The jacket was constructed over s2_12 CARRIED onto this code's mesh (pinmap: same positions, another
+    triangulation) while c10ship draws s2_12's own mesh; at the collar's sharp roll the two surfaces differ by mm and the
+    stand, 3 mm off, went through the drawn one. Stand clearance `off` 0.003 -> 0.005 (mid-surface to mid-surface is
+    already 2.7 mm for a 2.4 mm shirt collar + 3 mm jacket collar): 0 crossings. (Constructing over s2_12's own mesh
+    also gave 0 at the collar but moved hug/over_under: 44 crossings at the back neck; rejected.)
+  - (5) Merge-and-cut in the pipeline: `cloth_layers.cut(under, outer, keep)`: visibility (hidden from all 61 view
+    directions by the outer garment's welded surface, its made parts as slabs, the pieces they replace left out, AND
+    the body; grown 3 rings; keep never cut) + crossings (cut 2 rings round where the under cloth crosses the outer one,
+    3 cm inside every opening and 6 cm from the openings the under garment shows through: no hard-coded |x| / z as in
+    c10ship). `export_part` uses it by default (outer garment key hidden_rule "margin" = the old `hidden`).
+    `tucked` now lays the under garment under the outer's MADE parts, not the hidden simulated pieces they replace
+    (shirt by the neck crossed the made collar: 6 -> 0). On the real pair (c10ship cover=pipe, bsm_1): 0 skin px from
+    12 cameras, collar and uncovered shirt bit-identical, visible shirt x jacket 10, x made collar 0. Tests:
+    test_cloth_layers::test_cut_by_visibility_and_crossings, ::test_tuck_lays_under_the_made_parts_not_the_pieces...,
+    test_cloth_made::test_patch_transition_never_folds_where_two_lays_meet.
+    NOT DONE: the export ships the SIMULATED collar (export_part never draws res["made"]["parts"]): on j12 that piece
+    has an 85 mm spike at the wearer's left side neck (spikes.py). The made parts need exporting as geometry.
+  - Disk guard: cloth sims refused at < 20 GB free even when the solver runs on the GPU fleet (the disks were at
+    16 / 22 GB free); remote (bundle / HIFIPUSHIE_ZOZO_REMOTE) zozo jobs now need 1 GB.
+  - (2) Notch, three draft sims over j12 (one broker batch + 1 rerun): n1 gorge_drop 0.105 + lapel roll_stand 0.03,
+    n2 gorge_angle 40 + roll_stand 0.03, n3 roll_stand 0.035. Lapels straighter in all (roll 2.8-3.4, edge < 1.1 mm),
+    but: n1 notch 16 mm higher by the chin (35/37 below it vs concept 63/56), shirt shards at the wearer's right V
+    edge (gate passes); n2 the wearer's left lapel flares out as a wing, 142 skin px; n3 notch at the chin anchor
+    (-10/-3) but the lapel tops stand off the shirt (dark gap), 271 skin px. None better than j12 by eye: j12 kept.
+    MEASUREMENT CAVEAT: trace.py's "notch" for ours is the made collar's END TIP (G[0,-1]), 30 mm outside the gorge
+    end; the gorge end itself (wpts.py: draft points found on the mesh) lies at x +-135 z 1470 = the concept's notch
+    by the chin anchor. By the shoulder line ours is 30-40 mm low, by the chin 12 mm high (Garrett's neck is short:
+    chin -> shoulder 28 vs 68 mm). In the front view the notch is at ~0.51 of the half shoulder width (concept 0.64:
+    not too far out) but above the shirt collar points (concept: level with them). The "12-15 mm out and low" brief
+    does not survive this; the lever that reads as the "wing" is the collar END lying back over the shoulder.
+  - (3) Shoulders: sleeve cap_ease 0.045 -> 0.03 (s1) / 0.02 (s2): no visible gain at the sleeve heads, the lapels
+    flared and waved (run-to-run sim spread), gates FAIL (602 / 26 skin px, 76 / 191 visible crossings). Rejected.
+    spikes.py on j12: the sharpest interior shoulder points are the shoulder seam / sleeve-cap corners (back.L
+    +0.217, 9 mm; back.R -0.221, 11 mm umbrella offset), the lumps are the sim's sleeve heads; not fixed.
+  - Spend: notch batch $0.055 + $0.033, sleeve batch $0.103 (one instance failed and was retried) + $0.094 = $0.28.
+  - Current best: out/c11_k4.pkl = the j12 sim with this code's construction (con.py c11_k4 under=carried): 0 skin px
+    (12 cameras), visible collar / V 0.00 mm vs s2_12, lapels roll 4.2-4.4 / edge 0.2-6.2 mm, collar x shirt collar 0,
+    visible shirt x jacket 10 (front.L by the gorge), collar_show 18.9 mm. Renders out/c11_k4_neck.png, _fig.png;
+    before / after: out/j12_k4_neck.png, j12_k4_fig.png, ba_tabs.png, bsm_cmp.png. At whole-figure scale the change is
+    small (the knotted tabs show only in the three-quarter views): no sheet sent.
