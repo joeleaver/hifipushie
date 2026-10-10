@@ -63,7 +63,7 @@ def test_lid_lines_find_the_hole():
 def test_lashes_build():
     head = _eye_head()
     head["eyes"] = [np.array([0.0, 0.0, 0.0])]
-    cfg = lashes.wanted({"base": {"lashes": {"upper": {"count": 40}, "lower": {"count": 20}}}})
+    cfg = lashes.wanted({"base": {"lashes": {"upper": {"count": 40, "curl": 68}, "lower": {"count": 20}}}})
     m = lashes.build(head, cfg)
     seg = cfg["segments"]
     assert len(m["tris"]) == (40 + 20) * 2 * seg

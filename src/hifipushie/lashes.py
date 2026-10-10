@@ -58,14 +58,27 @@ def wanted(spec: dict) -> dict | None:
     if bad:
         from .spec import SpecError
         raise SpecError(f"base.lashes: unknown keys {sorted(bad)} (have {', '.join(DEFAULTS)})")
-    out = {k: (dict(DEFAULTS[k], **(v.get(k) or {})) if isinstance(DEFAULTS[k], dict) else v.get(k, DEFAULTS[k]))
-           for k in DEFAULTS}
+    out = {k: (dict(_by_body(DEFAULTS[k], b.get("body") or {}, k), **(v.get(k) or {})) if isinstance(DEFAULTS[k], dict)
+               else v.get(k, DEFAULTS[k])) for k in DEFAULTS}
     for lid in ("upper", "lower"):
         bad = set(v.get(lid) or {}) - set(DEFAULTS[lid])
         if bad:
             from .spec import SpecError
             raise SpecError(f"base.lashes.{lid}: unknown keys {sorted(bad)} (have {', '.join(DEFAULTS[lid])})")
     return out
+
+
+def _by_body(d: dict, body: dict, lid: str) -> dict:
+    """A lid's defaults for the body's sex and age (given keys win over these): men's lashes ~12% shorter and less
+    curled (the defaults are a young woman's), and from ~30 years they thin and shorten (by 70: a quarter fewer,
+    15% shorter, less curl). body.sex 1 = male (the default, as the body), 0 = female."""
+    sex = float(np.clip(body.get("sex", 1.0), 0, 1))  # (the body's own default: male)
+    old = float(np.clip((float(body.get("age", 25)) - 30) / 40, 0, 1))
+    d = dict(d)
+    d["length"] = round(d["length"] * (1 - 0.12 * sex) * (1 - 0.15 * old), 3)
+    d["count"] = int(round(d["count"] * (1 - 0.1 * sex) * (1 - 0.25 * old)))
+    d["curl"] = round(d["curl"] * (1 - (0.3 if lid == "upper" else 0.1) * sex) * (1 - 0.2 * old), 2)
+    return d
 
 
 def _unit(v):

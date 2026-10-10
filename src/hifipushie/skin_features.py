@@ -496,7 +496,8 @@ def _hair(p, J, layer, T, ctx) -> None:
                     for c in cu[lid]:
                         n = len(c)
                         taper = 0.35 + 0.65 * np.sin(np.linspace(0.15, np.pi - 0.35, n)) ** 0.5
-                        tubes.append({"mask": [_sp(c, rad * taper, soft=0.6, line=True)], **({"blend": "max"} if tubes else {}),
+                        tubes.append({"mask": [_sp(c, rad * taper, soft=0.6, line=True)], "vertex": True,  # (per vertex: shader stack)
+                                      **({"blend": "max"} if tubes else {}),
                                       **({"weight": wgt} if wgt < 1 else {})})
                 layer("lashes", color=col, opacity=op, roughness=0.42, mask=tubes)
             else:
