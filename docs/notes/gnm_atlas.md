@@ -455,3 +455,15 @@ Next, in order:
   0.8 mm at the centre and rises 0.4 mm at half width, the skin under it following): the data-backed central pad
   lever. Fold-free to +-1.6. (extprofile also shows volume is already a central pad in depth: +0.7 mm forward at the
   middle, -0.2 / -0.6 at the corners' red / skin; -width = middle forward, sides back.)
+- The corner hold was the next limit: a smoothstep release (0 within 3 mm of the corner landmarks, full by 8 mm) put a
+  2 mm step beside the corners. lowerlip_width at -1 (f3_tl2 / tl3 renders) showed crescent GROOVES beside / under each
+  corner in front and 3/4 views, and past -1 folded there (rings 4-9 under the commissure). Now corner_hold: a
+  correction e = -d within 3 mm, 0 from 25 mm, BIHARMONIC between (harmonic first: still a log-like dimple at the held
+  disc's edge, the grooves stayed; release 15 mm: smaller crescents still visible in f3_tl4; corner.py compares holds). curv.py (faces3 scratch): curvature change |n . L d| / edge^2 on the visible skin at
+  +1, per slider: lowerlip_width 93 -> 53-69 /m, ext 37 -> 45, middle 12; volume ~155 and mouth_angles ~160 /m at
+  the corners are mostly the MakeHuman data's own (119 / 161 with no crease hold). Hand-made lip sliders: 40-66 /m.
+  With 25 mm (corner.py, curvature within 6 mm of the corners): width 67 -> 40 /m, angles 163 -> 82; volume stays ~150
+  (MakeHuman's volume target reshapes the corner itself: it is left out of Tess's lip solve). Fold-free at +-1 now,
+  all scale 1.0: width 1.45 mm, angles 1.27, ext 0.95, volume 1.03, middle 1.00.
+- lipsolve.py bounds the extensions to +-1 (active set). Unbounded (f3_tl1, old fields) it took width to -1.58: past
+  MakeHuman's own extreme, 20 folded pairs.
