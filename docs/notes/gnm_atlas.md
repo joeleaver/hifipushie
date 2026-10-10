@@ -515,3 +515,821 @@ Next, in order:
 3. MakeHuman volume / mouth_angles reshape the corner itself (curvature ~150 /m there): fine as data, but check them
    in renders before a solve uses them. Then the faces2 list: Garrett's groom.grey (sides up), the MH lid targets
    (border-aware carrying now exists: hold_creases is general, try it on the lids), canthal tilt, chin reader.
+
+## faces4 (2026-10-10, PAUSED by the coordinator after step 1; scratch /mnt/data/hifipushie/faces4: faces3's scripts
+## retargeted + fetch_nose.py, survey.py, nosediag.py, noseprofile.py, build4.py, strip.py / strips.sh)
+
+Joe paused new extensions ("we need to work toward a more coherent model"). What exists from step 1 (nose):
+- MakeHuman CC0 nose targets (42, same commit a8bc2d54) at /mnt/data/hifipushie/facesliders/mh_targets/nose
+  (SOURCE.txt appended). faceext.carry now also takes MakeHuman's per-side eye targets (l- + r- summed).
+- survey.py (all 21 pairs): the identity's cheap directions make 0.52-0.96 of each target. trans-* / scale-* are
+  0.93-0.96 identity (position and size are GNM's): left out.
+- FIX (general, faceext.fill_inside): every nose target folded at 0.43-0.79 of its range JUST INSIDE THE NOSTRIL: the
+  field was read and projected over skin_exterior only, so the rim moved and the nostril wall behind it stayed (|d| 0
+  on one side of the folded pair). The non-exterior skin (not the mouth: hold_rolls owns it) now takes the harmonic
+  extension of the field. Fold-free scale after: hump 0.76 -> 1.0, width3 0.79 -> 1.0, point 0.43 -> 0.67, base
+  0.43 -> 0.54, nostrils-angle 0.51 -> 0.52 (its fold is a real kink in MakeHuman's data at the alar-facial groove,
+  5.9 -> 67 deg between neighbours with |d| 0.92 vs 0.30).
+- 14 nose extensions built into face_ext.npz (faceext.EXT, mh_nose_* / mh_nostrils_*; noseprofile.py numbers in the
+  EXT strings): hump, curve, greek, compression, point, septum, base, nostrils_width, nostrils_angle, point_width,
+  volume, width1-3. Near-duplicates by field cosine: nostrils_width ~ width3 +0.69, point_width ~ volume +0.57,
+  septum ~ nostrils_angle +0.56. Max reach 0.9 (base, scaled 0.43) to 2.8 mm (curve).
+- Strips (clay, numba renderer, -1 / 0 / +1, front / 3/4 / profile): human_renders/f4_01_nose_strip_1..3.png.
+  Blunt read of strip 1: the dorsum ones are NOT clean: hump +1 and curve +-1 put a visible step / crease across the
+  upper dorsum in 3/4, greek -1 a notch at the nasion in profile (fold-free by the quad test, but a curvature
+  artefact: curv.py was not run on them yet). nostrils_width reads cleanly (wider alae, f4 test strip).
+- Not done: curvature check, readers (alar width, tip projection, nasal length, nostril show, columella, dorsum line),
+  tests for the nose ones, eyes, upper lip, any solve.
+
+## faces4: the coherent model (DESIGN, 2026-10-10; Joe: "it needs to get merged into a coherent model, along with
+## the new controls we need ... This is how we will also achieve our stylized/pixar/anime looks.")
+
+Goal: ONE face model = one parameter space, one prior with couplings learned from data, one solve (stages become
+views / weights of it), every control a dimension of it or a direction in it, and style a principled move in the same
+space. Scripts behind the numbers: /mnt/data/hifipushie/faces4 (inv.py, gnmkeys*.py, tailcomps*.py).
+
+### 0. Two facts found while designing (they shape everything below)
+- GNM has MORE than we use: 170 head identity components (we take 120; 120-169 move 0.07-0.09 mm/sd per region, no
+  more local than 80-120), 3 eye and 80 teeth components, and an EXPRESSION basis of 383 (100 per eye region, 150
+  lower face, 32 tongue, 1 pupil) that base.py / faceshapes already use for pose and face shapes. Lids and smile are
+  expression, and GNM has a basis for them.
+- The extensions are not outside GNM's span: they are outside its LOCALITY. Fitted over their own region only,
+  GNM's 120 components make 0.94-1.00 of every mouth / nose extension (170: 0.96-1.00) at 21-100 sd. Fitted over the
+  whole head (the extension and zero elsewhere) they make 0.10-0.52 (tailcomps_whole.py). GNM's PCA is global: it can
+  draw a local feature only with large side effects elsewhere. So the coherent model needs: GNM's global space + a
+  LOCAL residual layer with its own statistics + couplings between them, not more GNM components.
+
+### 1. Inventory, per control: what it moves, what reads it, overlaps, and its fate
+Fates: (a) a direction in the identity (conditional mean under the joint prior), (b) a new model dimension with
+learned statistics (the local residual layer), (c) pose / expression (GNM expression basis, per picture), (d) style,
+(e) dropped (folded into another). "Reader" = the evidence that sees it today.
+
+| control | moves | reader today | overlaps | fate |
+|---|---|---|---|---|
+| GNM identity head_000-119 | whole head | detector points, outlines, profile contour, items | - | the space (keep) |
+| GNM head_120-169 (unused) | fine global | none | - | add to the space (cheap, same prior) |
+| humanmacro macros (37) | proportions | items, outline | coupled mode = directions | (a) |
+| coupled brow_ridge, eye_setback, malar_rise, lip_upper/lower_height, lip_bow, lip_upper/lower_roll (lip proj), nostril_show, gonion_height, ramus_angle | landmark attributes, R2 ~1 | items (detector), profile | each also had a local morph (old mode) | (a) |
+| coupled canthal_tilt | GNM eye_tilt (the wrong corner points) | detector tilt (does not move with it) | epicanthal, corner morphs | (a) + (b): an eye-corner residual dim (the fissure turned on the ball) |
+| coupled eye_opening (lid_aperture) | lids | part-ID aperture, detector lids | pose lid_upper / lid_lower | split: identity aperture (a) + per-picture lid pose (c) |
+| coupled eye_hood (fold_overhang, R2 0.70) + its (1-R2) morph | fold over the lid | read_lid TPS (unreliable on Garrett) | lidfold, age_lid_fold, eye_hood_lateral | (a) + (b) upper-lid dims |
+| eye_crease_height / _depth, eye_platform, lidfold crease (R2 0.13) | the crease | read_lid TPS, foldtrace | each other | (b) upper-lid dims (2-3, one basis) |
+| eye_hood_lateral, brow_lateral, eye_sulcus, epicanthal | orbit / lid soft tissue | judge only | MH epicanthus, eyefold | (b) orbit dims |
+| eye_bag, eye_tear_trough, eye_lidcheek, age_lid_fold | lower lid / lid-cheek | shading rows (confounded) | MH bag / bag-height | (b) lower-lid dims, age-coupled |
+| lid_margin_upper / _lower (one-sided) | lid margin thickness | none (close-ups) | - | a fix to the MEAN (GNM lids taper to 1 mm: anatomy, not identity) + a small (b) variance |
+| lip_tubercle, mouth_corner, lip_lower_width (hand) | lips | lipshade, detector lips | mh_lowerlip_*, mh_mouth_angles (same features, MH data) | (e): replaced by the lip residual dims |
+| mh_lowerlip_width / ext / volume / middle, mh_mouth_angles | lower lip, corners | lipshade shadow, cushion / lower_lip_width | each other; volume ~ middle (central pad) | (b) lower-lip / corner dims (rebuilt, section 3) |
+| upper lip (MH upperlip-*, cupidsbow, philtrum: downloaded, not built) | upper lip | detector, bow item | coupled lip_upper_height, lip_bow | (b) upper-lip dims |
+| nose_radix / dorsum / tip_width, nose_dorsum_hump, tip_definition (hand) | nose | none (faceslide.nose_widths unstable) | mh_nose_width1 / width2 / point_width / hump | (e): replaced by the nose dims |
+| mh_nose_* (14, faces4 commit 6f480e2) | nose | none yet | nostrils_width ~ width3 +0.69, point_width ~ volume +0.57, septum ~ nostrils_angle +0.56; hump / curve / greek / compression all move the dorsum line | (b) nose dims (rebuilt; ~8, not 14) |
+| face_planes, face_lean, cheek_hollow (baked, one-sided) | cheek / temple soft tissue | shape rows (shading), outline (lean) | age ops, humanstyle cheeks | (b) soft-tissue dims, age / sex coupled |
+| age_nasolabial, age_prejowl, age_cheek_flat, age_lid_fold (baked) | ageing | shape rows, judge | above | (b) with AGE as a covariate (the conditional mean moves with age) |
+| chin_cleft (baked), shape.chin.cleft | a groove | none | - | (b) a chin dim (small) |
+| shape.jawline.*, shape.nose_tip, shape.chin.project / width, base.head.warp | jaw, nose tip, chin | likeness levers, traces | identity jaw / chin / nose directions | (e) for likeness; kept as diagnosis tools only |
+| eye stage: pose lid_upper / lid_lower (eyesolve) | lid position in a picture | part-ID aperture, detector | eye_opening | (c) GNM eye-region expression comps, per picture |
+| pose.smile, squint / frown read on refs | expression | detector blendshapes, flagged items | - | (c) per picture (lower-face / eye expression comps) |
+| lipsolve levers (lower_lip_proj coupled + mh_ ext) | lower lip | lipshade shadow | - | an evidence term of the one solve, not a stage |
+| humanstyle head ops (head_size, cranium, eye_spacing / height, face_flat, nose, nose_width, jaw, chin, cheeks, mouth, mouth_height, exaggerate), style.eyes, style.simplify | stylisation | none | identity directions for most | (d) (section 5) |
+
+Net: ~61 face sliders + 120 comps + 37 macros + warp / shape ops + 3 staged solvers -> 170 identity comps + ~35-45
+local residual dims (nose ~8, upper lid ~4, lower lid / lid-cheek ~4, orbit / brow ~3, eye corner ~2, upper lip ~4,
+lower lip / corners ~5, chin / mentolabial ~3, cheek soft tissue ~4) + per-picture expression + style.
+
+### 2. Where the statistics come from (licences checked 2026-10-10)
+- GNM (google/GNM, Apache 2.0, in use): the global identity prior N(0, I) over 170 comps (+ our ANSUR / NIOSH sex
+  axis). Keeps that job.
+- ICT-FaceKit (github.com/ICT-VGL/ICT-FaceKit; "ICT-FaceKit is released under the MIT license", Copyright 2020 USC
+  ICT): the Light model, 100 identity PCA modes + 53 expression blendshapes, face area 9,409 vertices, each eye socket
+  384, mouth socket 2,046, from USC's Light Stage scans (the CVPR 2020 paper cites a 4,000-scan dataset; the number of
+  subjects in the Light model's PCA is not stated). CAVEAT: the MIT text grants "this software and associated
+  documentation files"; it does not name the model data, and the README says the FULL model will come under "a
+  different USC specific license". The Light model's files sit in the MIT repo; reading them as covered is
+  reasonable, but it is Joe's call (or a one-line email to ICT). It is the only permissive 3D face model found with
+  population-learned LOCAL detail at nose / lips (lids: moderate, 384 vertices a socket).
+  Use: register ICT's template to GNM's once (landmarks + non-rigid), then every ICT identity mode maps LINEARLY to
+  our coordinates (GNM comps + local residual dims): the joint prior is the push-forward A Sigma_ICT A^T, exact, no
+  sampling. Its cross-covariances are the couplings we don't have (alar width ~ tip width ~ dorsum; lip volume ~
+  philtrum; fold ~ brow).
+- Out (non-commercial or no-derivatives): FLAME / D3DFACS, BFM, FaceScape, LYHM / Headspace, Florence, FaceWarehouse,
+  Multiface / Ava-256, NeRSemble, FaceBase (controlled access), the Second Chance heads (CC BY-ND). Anything built on
+  them inherits it. HSRD-100 (CC BY 4.0) is 10 people's bodies: no use.
+- Photos for fitting / validation: the Face Research Lab London Set (DeBruine & Jones, figshare 5047666, CC BY 4.0):
+  102 adults, 1350 px, neutral and smiling, front + left / right 3/4 + left / right profile, 189-point templates, age /
+  sex / ethnicity. Consent wording: "used in lab-based and web-based studies": we would keep the photos on /mnt/data
+  (never in the repo or assets) and ship only statistics learned from them, with attribution: Joe to confirm that
+  reading. Realistic accuracy (face ~600 px wide: ~0.25 mm/px): profile contour (dorsum, tip projection, columella,
+  lips, chin) ~0.5-1 mm; alar width, mouth width, lip heights ~0.5-1 mm; nostril show, tip width ~1 mm; lid crease /
+  fold NOT reliably (detector bias 0-1.4 mm, our finding). Photos can learn / validate the nose and lip dims'
+  variances and couplings; the lids' come from ICT or are designed.
+- Dimensions with no data (lid margin, crease depth, chin cleft, the age ops' magnitudes): a DESIGNED prior,
+  documented as such: zero mean, variance set so +-2 sd spans the range the anatomy literature / MakeHuman's own
+  target range gives, couplings only where stated with a reason (crease height ~ fold_overhang, age ~ ageing dims),
+  flagged "designed" in the table so a fit leaning on one is visible.
+
+### 3. Fixing the local shapes so they are good dimensions
+- The dorsum steps (hump / curve +-1, greek -1, f4_01 strips): likely cause in the code: faceext.minus_probable zeroes
+  the field OUTSIDE its region (3% of its max) and subtracts the cheap-identity part only INSIDE it, so the correction
+  ends at the region's edge: a step where the region stops. (Hypothesis; the fix is the test.) Fix: a smooth window
+  (the region's weight tapered over ~5 mm) or the projection done in a smooth basis, never a hard mask.
+- A clean basis, per region (nose, upper lid, lower lid, eye corner, upper lip, lower lip / corners, chin, cheek):
+  1. candidates: ICT's residuals (ICT modes minus their best GNM fit, mapped to GNM), MakeHuman targets, our hand
+     morphs; 2. made smooth: expressed in the region's low-frequency manifold harmonics (Laplacian eigenvectors of
+     GNM's skin under a smooth window), with fill_inside / hold_rolls / hold_creases as now; 3. orthogonal to the
+     identity's cheap directions (windowed projection); 4. PCA within the region weighted by the data's variance
+     (ICT) -> ordered, uncorrelated modes; MakeHuman names become DIRECTIONS in that basis (semantic handles), not
+     dims; 5. gates per mode at +-2.5 sd: no fold (test_faceslide criteria), curvature change on visible skin under
+     the hand sliders' 40-70 /m (curv.py), a render strip read by eye.
+- Duplicates go away by construction (one PCA per region instead of 14 overlapping MH fields).
+
+### 4. The single solve
+- Unknowns: z = [identity c (170), local residual r (~40), soft tissue / age s] shared by every picture; per picture
+  e (GNM expression comps, reduced: eye regions + lower face, ~20 each) + camera + light.
+- Prior: one Gaussian over [c, r, s] with the learned cross-covariance (GNM block, ICT push-forward for r and the
+  cross terms, designed entries flagged), within sex, age as a covariate. Expression prior: zero mean, tight for
+  pictures read as neutral (detector blendshapes set each picture's scale: the squint / frown rule becomes this),
+  wider where an expression is read. Lid pose = e, the lid's anatomy = c + r: no separate eye-stage solve.
+- Evidence (one objective, weights per term, as joint2 has them): detector points per view, traced and automatic
+  outlines, the true profile's contour, checklist items (incl. new nose readers), part-ID lid aperture, read_lid /
+  foldtrace crease, lipshade under-lip shadow, shape shading rows. Geometry is LINEAR in z (mesh = mean + B z):
+  point / outline / contour Jacobians are analytic and cheap; render-based terms (lid part-ID, lip shadow, shading)
+  get finite differences only along a few directions (the posterior's top ~5 for that term), refreshed every few
+  iterations.
+- Stages become a SCHEDULE of weights over the same objective (coarse terms first, fine terms phased in, nothing
+  pinned): an earlier stage's result can still move; the gates catch regressions.
+- Gates (every accepted iteration): no view's point rms worse than at the start by more than its noise, no checklist
+  item that was within tolerance pushed past it, no component / readout past 2.5 sd (Mahalanobis per block),
+  fold-free, curvature on visible skin under the cap. Report per variable block its share of the improvement.
+- Speed: the prior is most of the Hessian; with Woodbury on the low-rank evidence one Gauss-Newton step over ~260
+  unknowns is milliseconds; renders (~2.5 min each today) are the cost: batch the finite-difference renders in one
+  Blender call per iteration.
+
+### 5. Style in the same model
+- A style is a TRANSFORM of the coordinates plus ops outside the human space:
+  z_style = mu_S + G_S (z - mu) (+ humanstyle's geometric ops no human has: head_size, eye size, face_flat).
+  G_S = per-direction gains: exaggeration (> 1, caricature along chosen directions; today's `exaggerate` is G = k I),
+  simplification (< 1 on the fine identity comps and the local residual dims: a band-limited face), and named
+  semantic directions (nose size, jaw taper, eye spacing) as gains or offsets. mu_S = the style's own mean (a
+  feature-animation face's fuller cheeks, an anime face's small low mouth).
+- Anime nose = the nose's residual dims and nose identity directions at gain ~0.1 toward a tiny style-mean nose, plus
+  the existing `nose` op; anime / Pixar eyes = style.eyes (size) + the eye part (outside the human space by design);
+  mouth = a gain on the mouth-width direction. Simplification is principled: drop the dims whose variance is below
+  the style's band.
+- Authoring: a style sheet (styles/human_*.json) states gains / offsets in the model's NAMED directions (an artist /
+  LLM edits words they understand: "nose 0.15, jaw taper +1.5 sd, fine detail 0.3"), the ops, and the material look.
+  From references: fit (z per character; the style's G_S / mu_S shared) to a few model sheets of one style, with the
+  human prior on z and a weak prior on the style parameters around the designed values.
+- Fitting under a style: a real person -> fit z on photos in human space, then apply the style (they stay recognisable:
+  gains act on their offset from the mean). A stylised design with no photo -> fit in style space (z = mu + G_S^-1
+  (z_style - mu_S) where gains are > ~0.2; dims damped toward 0 are unobservable and the prior fills them).
+
+### 6. Build plan (each milestone judgeable on Tess and Garrett)
+- M0 (smallest): the dorsum step: windowed projection in faceext; curv.py over every built extension; strips again.
+  Judge: clean nose strips; reach / fold-free / curvature / cheap share per extension.
+- M1: Joe's licence calls (ICT Light model data; FRLL consent reading). Register ICT's template to GNM (landmarks +
+  non-rigid), map its 100 identity modes into GNM comps + residual. Judge: ICT modes rendered on GNM's mesh beside
+  ICT's own; the share of each mode GNM's global space makes vs the residual.
+- M2: the regional residual bases (section 3) from ICT + MakeHuman handles; gates per mode. Judge: +-2 sd strips of
+  every mode on Tess / Garrett, a table.
+- M3: the joint prior (GNM block + ICT push-forward + designed entries), within sex, age covariate. Judge: random
+  faces from the prior rendered (varied real people, noses and lips included?), a couplings table.
+- M4: FRLL validation: fit 20-30 London faces (5 views) in the new space; the Mahalanobis of real faces per block
+  (dims real faces push past 2.5 sd = the prior is too tight there); refine variances (empirical Bayes). Judge: fit
+  sheets + numbers.
+- M5: the single solve (joint3, section 4) on Tess and Garrett from their current identities; ranked checklist tables
+  per region (item, reference, before, after), before | after | reference focus crops; honest misses.
+- M6: controls as directions: every slider name (old and new: canthal tilt, central lip pad, nose items) = a
+  conditional-mean direction under the new prior; old specs still reproduce (slider_mode). Readers for the nose items
+  (alar width, tip projection, nasal length, nostril show, columella, dorsum line).
+- M7: style: G_S / mu_S on top of the space, the four human_* sheets re-expressed, one fitted to references. Judge:
+  Tess and Garrett realistic / feature-animation / anime, same identity.
+
+### 7. Perception: what a viewer sees, not mm (added 2026-10-10; Joe: "The human brain is really good at perceiving
+### tiny changes when they're related to identity.")
+Sections 0-6 above measure in mm / px / data variance. Those are the wrong units for "does it look like her": I
+dismissed GNM's components 120-169 as "0.07-0.09 mm/sd", ordered bases by variance and weighted the solve in mm. Changes:
+- A PERCEPTUAL EFFECT per direction (new tool, M0b): render -1 / +1 sd of a direction in OUR renderer (same style both
+  sides: clay vs clay or dressed vs dressed, so the clay-vs-painting gap that sank face-ID as a fit term does not
+  apply) through 3-5 views on 2-3 heads (Tess, Garrett, GNM's mean), and take the face-ID embedding distance between
+  the two (faceid.py: SFace, Apache, the default; ArcFace w600k_r50 is InsightFace's non-commercial weights: measuring
+  only, never shipped, as garrett_head.md set it), next to the mm. Calibrate first: our render vs itself re-rendered
+  (noise floor), and the distance between two different GNM heads (a "different person" scale). Rank by it: all 170
+  identity comps, every expression comp's leakage into the neutral face, every coupled slider / residual / extension
+  direction. Open questions this answers: are 120-169 really negligible perceptually; do small-mm directions at the
+  eye corners, lid margins, nostrils and lip borders move identity more than large-mm directions on the cheeks;
+  which of the 14 nose fields a viewer can tell apart.
+- Salience inside the solve: the evidence terms stay in their units, but each geometry residual gets a weight by
+  facial region (eyes / lid margins / brows, mouth borders, nose tip / alae, the face outline, cheeks / forehead
+  lowest), CALIBRATED from the embedding sensitivities above (the weight of region R ~ the embedding change per mm
+  of moves confined to R), not set by hand. The embedding itself stays OUT of the objective (it failed across media);
+  it is a ranking / gating tool between our own renders.
+- Literature (looked up, cited qualitatively; no numbers taken from it): Haig (1984, Perception 13:505-512) found
+  displacements of facial features in unfamiliar faces detectable at about the visual-acuity limit (as summarised by
+  Schwaninger, Ryf & Hofer 2003, Vision Research); Hosie, Ellis & Haig (1988) similar for familiar faces; a 2015 Cortex
+  study measured JNDs for feature-position changes and found the eye region's spatial resolution unaffected by
+  inversion (the eye region is read part by part as well as configurally). Diagnostic-feature studies (Schyns,
+  Bonnar & Gosselin 2002, Psych. Science: eyes and mouth carry identity in the Bubbles task; Sadr, Jarudi & Sinha
+  2003, Perception: removing eyebrows hurts recognition as much as removing eyes) point the same way. The thresholds
+  we use will be OUR measured embedding sensitivities, with these as the reason to expect the eyes / brows / mouth to
+  dominate.
+- Basis ordering and truncation by perceptual weight: a regional basis is ordered by variance x perceptual effect
+  (the expected identity change a mode makes across the population), not by variance alone; components and modes are
+  kept or dropped on that. A mode with little variance but a big identity effect (a lid-margin or nostril-rim mode)
+  is kept.
+- Style's "simplify" must not damp what carries identity: simplification removes perceptually WEAK detail (high
+  variance-normalised frequency, low identity effect: skin relief, small asymmetries), while the identity-carrying
+  directions are kept or exaggerated (a caricature keeps identity by exaggerating it: today's `exaggerate`). An anime
+  nose shrinks the nose's SIZE but keeps its proportions' sign where they carry identity (tip up / down, width) at a
+  reduced gain.
+- Gates add an identity check between our own renders: before vs after any solve or basis change (the same person:
+  embedding distance under a threshold set from the calibration, per view), and realistic vs styled version of one
+  person (styled should stay closer to its own realistic version than to any other subject's: a rank test across
+  Tess, Garrett and GNM samples).
+
+How it changes the plan:
+- M0b (new, before M1): the perceptual-effect tool + calibration, and the ranking of GNM's 170 comps, the expression
+  comps' neutral leakage, the coupled sliders and the 14 nose / 5 mouth extensions. Decides whether 120-169 enter the
+  space with full weight, and gives the first salience weights.
+- M2: regional bases ordered and truncated by variance x perceptual effect; per-mode report gains an "ID effect" column.
+- M3: random faces from the prior judged by eye AND by the embedding spread (do prior samples differ like different
+  people do?).
+- M5: the solve's geometry weights come from the salience calibration; its gates include the identity check.
+- M7: style transforms checked with the realistic-vs-styled rank test; simplify by perceptual weight.
+
+### M0 result (2026-10-10, commit e13fe4b): the dorsum step
+- Hypothesis CONFIRMED: faceext.minus_probable cut the cheap-identity correction at a hard region mask (3% of the
+  field's max). Now `faceext.WINDOW` (12 mm): the correction is applied under a smoothstep window that eases from the
+  region to 0 over 12 mm (`_window`). Mouth fields keep the hard mask (WINDOW_MOUTH 0: windowed, the projection
+  reached into the corner hold and folded volume / middle at 0.4-0.7; redo with the hold after the projection in M2).
+- Also: nose fields hold the lids' rims (smoothstep 2-8 mm from the rim; the hump's field reached the inner canthi:
+  rims moved 0.07 mm); hold_creases moves skin only (it moved eyeball vertices next to lid creases); faceslide splits a
+  self-mirrored vertex 0.5 / 0.5 (centre-line vertices at x ~ 0.1 mm put 3% of the nose's largest moves on one side).
+- Curvature change on visible skin at +1 (ncurv.py; max / p99, 1/m; hard mask -> window 12 mm, out/ncurv_all.txt,
+  out/ncurv_final.txt): curve 105 / 21 -> 39 / 16; greek 106 / 21 -> 24 / 7; compression 40 / 11 -> 15 / 7; width2
+  98 / 24 -> 16 / 9; width1 56 / 15 -> 16 / 7; volume 87 / 24 -> 28 / 10; point_width 44 / 8 -> 11 / 3; width3
+  220 / 70 -> 86 / 19; nostrils_width 144 / 50 -> 93 / 15; point 76 / 14 -> 48 / 12; hump 107 / 31 -> 106 / 24;
+  septum 133 / 60 -> 159 / 20; base 94 / 26 -> 99 / 25; nostrils_angle 93 / 20 (at scale 0.42) -> 228 / 26 (now
+  fold-free at 1.0, 2.9 mm). The remaining maxima (hump, septum, base, nostrils_angle, width3, nostrils_width) are all
+  at the alar-facial groove (x +-13, 10 mm under the tip, 17 behind): MakeHuman's own data bends it (wall.py: the raw
+  carried hump has 64 /m on the side wall before any of our processing). p99 for every extension now < 30 /m (new
+  test). Hand-made sliders for scale: 40-66 /m max.
+- Strips: human_renders/f4_03_nose_m0_1..3.png (all 14, -1 / 0 / +1, front / 3/4 / profile, clay) beside the hard-mask
+  f4_01_nose_strip_1..3. By eye: the curve +1 dorsum crease and the greek -1 nasion notch are gone; curve +1 keeps a
+  faint soft line on the side wall in 3/4 (39 /m), hump +1 a faint one. Several fields are small at sheet scale
+  (base 0.9 mm, point_width 0.9 mm).
+- Tests: test_faceext (+ test_extensions_bend_the_visible_skin_smoothly), test_faceslide, test_faceatlas: 20 pass.
+  Loosened, with the reason in the test: locality 10% -> 12% of the template (windowed fields reach 12 mm further;
+  hump 10.2%); cheap-direction orthogonality for the nose 0.1 -> 0.2 (windowed + rim hold leave <= 0.17 along them:
+  curve, nostrils_width; the coherent model's joint prior replaces this test's role).
+
+### Licence decisions (2026-10-10, Joe via the coordinator: "both licenses are ok with me")
+- ICT FaceKit Light: the model data in the MIT repo treated as MIT-covered. Asset pack `ictfacekit` (optional; commit
+  pinned in assets.json; 168 files, 405 MB at /mnt/data/hifipushie/assets/ictfacekit, symlinked from _templates).
+- Face Research Lab London Set (DeBruine & Jones 2017, figshare 5047666, CC BY 4.0): photos stay on /mnt/data (pack
+  `frll`, optional, 13 files, 282 MB), never in the repo, assets or exports; only statistics learned from them ship,
+  credited "DeBruine & Jones (2017), CC BY 4.0".
+- /mnt/data was at 19 GB free after these downloads (the 20 GB floor for jobs): mine are 0.7 GB.
+
+### M0b: the perceptual effect (spikes/facesliders/perc.py; out/perc/perc_*.txt / .json)
+GNM's head alone (no one-mesh build: ms per head), clay with eyes and drawn brows (likeness.render), views 0 / -30 /
++30 deg, heads GNM mean, Tess (f3_t1's identity only), Garrett (fs_gj8's); distance = 1 - cosine of the face-ID
+embedding between the -1 and +1 renders (SFace; ArcFace agrees: r 0.98 over the 170 comps).
+- Calibration: the camera turned 0.5 / 1 / 2 deg: 0.014 / 0.020 / 0.027 (renders are deterministic: this is the
+  embedding's sensitivity to a change that is NOT identity, our practical floor). Different people: Tess vs Garrett
+  0.23, GNM mean vs either 0.14-0.18, random GNM heads 0.24-0.65 (median ~0.44).
+- GNM's 170 components at +-1 sd (median, max): comps 0-9 0.076 (0.129); 10-39 0.033 (0.069); 40-79 0.022; 80-119 0.018;
+  120-144 0.014; 145-169 0.014. Per mm of rms move the fine comps carry FAR more: 0.025 / mm (0-9), 0.058 (10-39), 0.099
+  (40-79), 0.16 (80-119), 0.17-0.23 (120-169). At +-1 GNM-sd the unused comps sit at the half-degree-turn level; but ICT
+  says the population varies 2-3x more along them than GNM's prior (below), where they would reach ~0.03-0.04: they
+  belong in the space.
+- Top by effect: head_004 (0.129, 3 mm rms), head_000 (size, 0.126 at 10 mm), head_002, 001, 006, 005, head_011 (nose,
+  0.069 at 1.3 mm), head_018 (chin, 0.056 at 0.7 mm), head_022, head_020 (nose, 0.041 at 0.7 mm), head_047 (chin,
+  0.036 at 0.29 mm), head_048 (brow, 0.035 at 0.28 mm): small-mm directions at the nose, chin and brow rank with
+  10x larger ones.
+- Region salience (spikes/facesliders/salience.py, out/perc/salience.json): random smooth normal moves confined to one
+  region (Gaussian bumps r 4 mm, mirrored, 0.5 mm rms, 6 per region x 3 heads x 3 views), 1 - cos per mm rms, relative to
+  the cheeks: brows 3.34, forehead 2.46, nose 2.01, orbits 1.79, lower lip 1.06, upper lip 1.03, cheeks 1.00,
+  infraorbital 0.91, zygomatic 0.86, temples 0.46, jaw / parotid 0.27, chin 0.26 (spread +-25-45% between draws).
+  CAVEATS: the brows' weight is inflated (the clay draws brow strokes through the brow landmarks, which ride the
+  surface); clay has no lip colour, so the lips' borders (which paint shows) are under-weighted; the embedding sees a
+  112 px aligned face, so detail below ~0.5 mm (lid margins, crease height) is invisible to it at this framing (a
+  close-up measure is needed for the lids: an eye-crop / periocular embedding, to find); chin and jaw are low partly
+  because a front-ish view sees them as outline only. These are first weights, to recheck dressed.
+- Sliders and extensions at -1 / +1 (out/perc/perc_sliders.txt, perc_ext.txt; 1 - cos, sface):
+  - the coupled sliders are whole-face moves (1 attribute sd + its couplings): 0.03-0.20 (eye_hood 0.195, eye_setback
+    0.18, brow_ridge 0.16, lip_upper_roll 0.15, canthal_tilt 0.14, lip_upper_height 0.13 ...);
+  - the NOSE is perceptually loaded: MakeHuman's nose fields at their unit (MakeHuman's own extreme) 0.04-0.26 (curve
+    0.257 at 0.46 mm rms, width2 0.21, nostrils_angle 0.20, width3 0.18, septum 0.17) = 1-2x GNM's strongest component at
+    +-1 sd; the hand nose widths too (dorsum 0.159, radix 0.155 at 0.2-0.3 mm rms). Small-mm nose shape is identity.
+  - the mouth extensions read small in clay (0.015-0.029; no lip colour); lid detail (crease height 0.007, lid margins
+    0.009-0.019, epicanthal 0.014) at the embedding's resolution limit (see caveat): NOT evidence that they don't matter.
+  - age / soft tissue: face_planes 0.18 (a broad move), age_cheek_flat 0.041, nasolabial 0.038, cheek_hollow 0.015,
+    face_lean 0.006.
+- Expression leakage into a neutral read (out/perc/perc_expression.txt): the first eye-region comps (both sides) 0.14 /
+  0.09 (brows / lids), lower-face 0.08-0.11 (lips): an unmodelled expression on a reference moves identity as much as
+  GNM's first components, so per-picture expression in the one solve (design section 4) is not optional.
+- What it changes: (1) GNM 120-169 enter the space (per mm the most identity-laden; at ICT's variances ~0.03-0.04);
+  (2) the solve's geometry weights start from the region table above (corrected for the caveats: brows from a render
+  without drawn strokes, lips from a dressed render); (3) the nose basis needs the most care (most identity per mm of
+  any region after the brows); (4) a close-up identity measure for the eyes is a missing tool.
+
+### M1: ICT registered to GNM (spikes/facesliders/ictreg.py, ictlook.py, faces4 ictrigid.py)
+- Similarity on the inner 68 landmarks (ICT's README indices; scale 0.00947: ICT is in cm), landmark rms 3.7 mm; GNM's
+  170 comps fitted to ICT's neutral (point-to-plane ICP): 0.41 mm rms; a Laplacian-smooth residual: mean 0.47 mm, p95
+  1.26 mm to ICT's surface. Binding within 3 mm of ICT's face / head surface, harmonic extension elsewhere on the skin.
+  ICT's 100 identity modes (N(0, 1) weights in ICT's sampler, mode = identity_k - neutral) carried onto GNM's vertices:
+  out/ict_modes.npz.
+- Sheet human_renders/f4_10_ict_modes_on_gnm.png (modes 0, 1, 2, 5, 10, 20, 50 at -3 / +3 sd, ICT's own mesh beside
+  the carried mode on GNM's mean head, front and 3/4): the pairs show the same change (mode 0 = size / sex, 2 = age /
+  fullness ...): the carry works.
+- What ICT says about GNM's prior (face regions, a 7-dof similarity removed: ICT's mode 0 is 96% scale (-4.4%)):
+  - total face variance per vertex: ICT 7.35 mm^2, GNM 10.2 mm^2: similar overall;
+  - but distributed differently: ICT's variance along GNM's whitened comps (GNM = 1): comps 0-4 0.1-0.7, 5-9 0.9-3.5,
+    10-49 mean 4.4, 50-119 6.9, 120-169 8.5. A random ICT face costs a Mahalanobis^2 of ~1100 under GNM's prior (a GNM
+    face: 170), and GNM's span makes 0.95 of it.
+  - So GNM's prior is TOO TIGHT on the fine / local comps relative to ICT's population (by 2-3x in sd), and loose on
+    its first few. That is the "expressible but improbable" of every extension, and why our fits hit the 2.5 sd walls
+    on fine detail. CAVEAT: part of ICT's fine variance may be scan / registration noise (ICT's or my carry's); M4 (real
+    faces, FRLL) decides how much.
+- Per mode over the face, GNM's MAP (noise 0.3 mm) makes 0.98 of modes 0-9, 0.93 of 10-49, 0.82 of 50-99; the rest
+  (residual rms 0.03-0.2 mm) sits in the nose, lips and orbits first: the local layer's job, as designed.
+- Consequence for the design (section 4 / M3): the joint prior is not "GNM's N(0, I) + a local layer": GNM's own block
+  needs re-estimating (its variances per comp at least, from ICT and then FRLL), and the fine comps (incl. 120-169)
+  enter with ICT's variances. The perceptual numbers say the same thing from the other side: those comps carry the
+  most identity per mm.
+
+### M2 groundwork: the nose's regional basis from ICT's residual (spikes/facesliders/regbasis.py)
+- ICT's 100 carried modes minus GNM's MAP of each (noise 0.3 mm, over the face), under the nose's 8 mm window, PCA:
+  modes 0-7 take 0.17, 0.10, 0.07, 0.07, 0.05, 0.04, 0.04, 0.03 of the residual variance (flat: no few dominant modes);
+  at 1 sd they are SMALL: 0.11-0.26 mm rms over the nose (max 0.26-0.76 mm); curvature at 2 sd p99 35-165 /m, max
+  69-542 /m (mode 0 rough); face-ID at +-2 sd 0.019-0.111 (mode 0 0.111, 1 0.073, 3 0.051, 2 0.047).
+- They are NOT the MakeHuman handles: the first 8 modes span 0.02-0.23 of each mh_nose field (width2 0.23, point 0.20,
+  greek / point_width 0.16, hump 0.05, nostrils_width 0.05).
+- Sheet human_renders/f4_11_regbasis_nose.png (modes at -2 / +2 sd, mean head and Tess, front and 3/4): at full-face
+  framing the modes are barely visible: BLUNT: as built this is not yet a usable nose basis. Two readings, not yet
+  separated: (a) ICT's residual is partly scan / registration noise (the rough mode 0, the flat spectrum: the scan-noise
+  question stays OPEN until M4), (b) GNM's MAP at noise 0.3 mm took most of the nose's real variation into the identity
+  (comps 120-169 included), leaving the residual small. With GNM's prior re-estimated (M3) the split changes: build the
+  regional bases AFTER M3, from the joint covariance, not before it.
+
+### HANDOVER (faces4, 2026-10-10)
+Branch worktree-agent-ae8416dd464de8345 (commits 6f480e2 .. this one; NOT merged: the coordinator keeps the interim
+mh_nose_* sliders off main until M2 replaces them). Scratch /mnt/data/hifipushie/faces4 (run.sh = this worktree, capped,
+1 BLAS thread; tests.sh; strips.sh <model> <feature> <tag> <sliders...> (clay -1/0/+1 strips via strip.py);
+survey.py / nosediag.py / noseprofile.py / ncurv.py / wall.py / build4.py (extension carry, folds, profile, curvature,
+build); ictrigid.py; fetch_m1.py / addassets.py (asset packs)). Spikes in the repo: spikes/facesliders/perc.py
+(perceptual effect: `run.sh perc.py calib|identity|expression|sliders|ext`), salience.py (region weights), ictreg.py
+(ICT -> GNM; `report` re-prints), ictlook.py (carried vs ICT's own), regbasis.py <region> [k].
+Data: out/ict_modes.npz (100 carried modes), out/perc/*.json|txt, out/regbasis_nose.npz. Asset packs ictfacekit / frll
+(optional) on /mnt/data/hifipushie/assets, symlinked from workspace/_templates. /mnt/data is UNDER the 20 GB floor:
+add nothing large.
+State of the design (section "faces4: the coherent model", 0-7, + M0 / M0b / M1 results above): accepted by the
+coordinator through M1.
+Next, in order:
+1. M3 first (reordered from the plan, see above): the joint prior. GNM's block re-estimated: per-component variances
+   (and the cross-covariance) from ICT's carried modes (ictrigid.py computes ICT's covariance in GNM's whitened
+   coordinates: C = G^-1 B Y^T), the similarity removed, 170 comps. Keep ICT's fine variance flagged "may be scan noise"
+   until M4. Judge: random faces from the new prior vs GNM's (renders, perc spread), and what the extensions / our fits
+   cost under it (are the 2.5 sd walls still hit?).
+2. Then M2 for real: regional bases from the joint covariance's residual (regbasis.py's machinery), ordered by variance x
+   ID effect, gates (fold, curvature < 70 /m at 2 sd, strips at FEATURE crops, not full face).
+3. Missing tool (coordinator: on the M2 list): a CLOSE-UP identity measure for the eye region and the mouth region
+   (lids, lip borders: the 112 px face embedding can't see them). Candidates to check (licence first): a periocular
+   recognition model, or the face embedding run on an up-scaled eye / mouth crop (validate: does it separate different
+   GNM heads' eyes and stay stable under a 0.5 deg turn?).
+4. M4: the London Set (frll pack, photos on /mnt/data only): fit 20-30 faces (5 views) in the new space; decides how
+   much of ICT's fine variance is real; empirical-Bayes variances.
+5. Then M5 (one solve on Tess / Garrett), M6 (controls as directions), M7 (style), as in the design.
+Known interim items: test_faceext's nose orthogonality tolerance 0.2 (INTERIM: M2 / M3 must restore 0.1 or carry it in
+the prior); mouth extensions still on the hard mask (WINDOW_MOUTH 0: windowed, the projection reaches into the corner
+hold; put the hold after the projection); the 14 mh_nose_* fields are interim handles (duplicates: nostrils_width ~
+width3 0.76, point_width ~ volume 0.64, septum ~ nostrils_angle 0.69); salience caveats (drawn brows inflate the brows,
+clay under-weights the lips, lids below the embedding's resolution).
+
+## faces5 (2026-10-10, continues faces4; branch worktree-agent-a34e0880e18034a56, faces4's branch merged in; scratch
+## /mnt/data/hifipushie/faces5: faces4's scripts retargeted (run.sh also puts spikes/facesliders on the path), sheets f5_*)
+
+### Design 8: habitual expression is identity (Joe, 2026-10-10, via the coordinator: "Expression is important. People
+### can disguise themselves just by changing how they carry their face. It's not really two separate things.")
+Section 4 had expression per picture only. Changed: expression comes in two parts, both in GNM's expression basis
+(eye regions 2 x ~20 comps, lower face ~30: the basis base.py / faceshapes already pose with):
+- (a) HABITUAL expression h: how the person carries the face at rest (resting brow height, lid aperture / squint, the
+  mouth corners' set, jaw carriage, how much the cheeks hold up). Shared by ALL of a person's pictures, owned by the
+  identity: z = [c (170), h, r (local residual), s (soft tissue / age)], covered by the JOINT prior with couplings to
+  shape where the data has them. Data: ICT's "neutral" scans are each person's resting face, so the part of every ICT
+  identity mode that GNM's expression basis takes (M3's per-mode fit: similarity + identity + expression) is not
+  contamination to throw away: it is ICT's population's habitual expression, and its cross-covariance with c (same
+  fit) is the shape <-> carriage coupling. M4 (London Set: neutral + smiling of the same people) checks it on photos.
+- (b) TRANSIENT expression e_p per picture on top of h (a smile, a squint against light, talking): zero mean, tight
+  for pictures the detector reads as neutral, wider where it reads an expression (the squint / frown rule becomes this
+  scale).
+- The solve decides habitual vs transient from the evidence ACROSS views: what every picture shows goes to h (shared),
+  what one picture shows alone goes to its e_p. Garrett's concept squint (detector 0.70) may be habitual: now a fit
+  outcome, not a pre-set "leave it to pose". The eye stage's lid pose becomes h + e_p (identity aperture = h's lid
+  comps, not a separate coupled slider).
+- Export: the neutral a character ships with is mean + c + r + s + h (their resting face); faceshapes' ARKit targets
+  are deltas from that resting face (a habitual squint stays in the base; the blink target still closes the lid).
+- Judging expression effects: face-ID embeddings are trained to be INVARIANT to expression, so they under-rate how much
+  carriage changes a read. perc.py's embedding is NOT the judge for h or e_p (M0b's "expression leakage" numbers are a
+  lower bound): use checklist items and landmarks (brow-eye gap, eye opening, canthal tilt, mouth-corner height, lip
+  heights) and the eye / mouth close-up measure (handover item 3).
+- Style (section 5): a style may set a habitual carriage too (a toon's raised brows) as a gain / offset on h.
+Where it lands: M3 (now) builds the joint prior over [c, h]: GNM's block re-estimated + ICT's habitual-expression block
+and its cross-covariance with c (EXPR_SD / comp counts are flagged choices; the expression basis's overlap with fine
+identity reported). M4 fits h per London Set person from neutral + smiling views (h shared, e_p per view). M5's single
+solve: h shared, e_p per picture, the split reported per picture (Garrett's squint). M6: habitual controls ("resting
+brow", "squint", "mouth-corner set") as directions in h. M7: style gains / offsets on h.
+
+### M3: the joint prior from ICT (spikes/facesliders/m3prior.py analyse | cv | em | build_em, m3look.py, m3cost.py;
+### out/m3_em_tau*.npz; sheets human_renders/f5_00, f5_01, f5_01b)
+- First try (REJECTED, f5_00_prior_union_REJECTED.png): per ICT mode a MAP fit over the FACE only (similarity free +
+  identity + expression, noise 0.3 mm as faces4), then "GNM union ICT" (each eigen-direction keeps the larger
+  variance). Samples flapped the ears, swelled jowls and cheeks: the fit used fine GNM comps whose big moves on the ears /
+  cranium nothing constrained. Held-out check (cv: fit on the face, predict ICT's own cranium + ears): at 0.1 / 0.3 mm
+  noise the identity's skull prediction is WORSE than the similarity alone (1.57 / 1.08 unexplained vs 0.66); it
+  improves with regularisation (0.60 at 1 mm, 0.47 at 2 mm, 0.38 at 6 mm), while the face is explained almost as well
+  (2.1% unexplained at 0.3 mm, 2.8% at 2 mm, 4.5% at 6 mm). So faces4's M1 "ICT varies 2-3x more along GNM's fine
+  comps" was largely the under-regularised carry fit buying the last ~1% of face variance with skull-moving comps.
+- The estimator kept (em): empirical Bayes, EM at the population level over the face + cranium + ears (not the neck:
+  ICT's neck varies 2.3x GNM's there, the scans' head pose), similarity projected out, isotropic noise PER REGION with
+  its own ML variance (face 0.47 mm, skull 0.90 mm: the skull weighs itself), and an inverse-Wishart pull to GNM's
+  N(0, I) with weight tau (a CHOICE: ICT's subject count isn't published; GNM's training set is larger).
+  c block (diag by comp band): tau 0.01 (ICT-led): 0-9 1.35, 10-49 2.9, 50-119 5.2, 120-169 8.0 (trace 890); tau 1:
+  1.17 / 1.96 / 3.1 / 4.5 (531); tau 3: 1.09 / 1.47 / 2.0 / 2.7 (348). ICT also puts LESS than GNM's variance on some
+  broad directions (face_planes / face_lean / nose fields cost more under tau 0.01: below).
+- Samples (f5_01 ICT-led, f5_01b tau 1; same draws, front + 3/4 clay): plausible, varied people, no flapping ears, no
+  visible lumpiness at face scale; ICT-led faces run broader / fuller. Face-ID spread between samples: GNM 0.47, tau 1
+  0.48, tau 0.01 0.49 (10-90%: 0.37-0.65): the new priors make about as different people as GNM's (the embedding is
+  blind to much fine shape; read with that caveat).
+- THE M3 RESULT (m3cost.py, out/m3cost.txt): the local controls cost as IDENTITY the same under every prior. Each
+  slider / baked op / extension at +1 made by a MAP identity move over its own region (0.05 mm noise): 0.8-1.0 of it
+  made at 3-46 sd under GNM's N(0, I), and within +-10% of that under tau 1 / 3 (tau 0.01: nose and broad-cheek
+  fields cost MORE, 40-113 sd). Tess's mh_lowerlip_width -1: 25 sd under any prior; brow_lateral -0.74: 15; Garrett's
+  face_lean 1.5: 30-53; chin_cleft 1.5: 18. The walls are not the fine comps' variances: they are LOCALITY (faces4
+  section 0: a global PCA can draw a local feature only with side effects elsewhere, and the prior prices the whole
+  move). Re-estimating GNM's block does NOT take Tess / Garrett off the walls: the local residual layer r (M2) with its
+  own variance is what does. Their identities: Tess |c| 5.7 under GNM, 7.1 under tau 1, 37 under tau 0.01; Garrett 4.5
+  / 5.9 / 32 (both fitted under GNM's prior, so ICT-led directions of small variance price them high: one more sign
+  the ICT-led block is too narrow for our people).
+- Habitual expression h (design 8) is NOT identifiable from ICT's identity modes: with h free in the EM, h's variance
+  runs to sd ~2.4 GNM expression units at tau 0.01 (the expression basis absorbs fine identity detail: the bases
+  overlap). The h block stays DESIGNED (zero mean, sd EXPR_SD 0.3, no cross terms) until per-person resting-face
+  evidence: M4 measures resting items (brow-eye gap, aperture, mouth-corner height) on the London Set's neutral photos
+  across people: that is h's population variance in item units.
+- Decision for now: the c block = EM tau 1 (GNM : ICT 1 : 1), flagged; ICT-led rejected (too narrow for Tess /
+  Garrett, costs broad features more). M4 (real faces' Mahalanobis per block) settles tau. Not wired into joint2 /
+  faceatlas yet (M5); the interim test loosening (nose orthogonality 0.2) stays until M2: the prior doesn't touch it.
+
+### Joe's question: "GNM was able to do the eye crease the whole time?" (lidgnm.py density | scan | fit | samples;
+### sheets f5_02 .. f5_04; close-ups 0.079 mm/px, raw GNM head, clay, calibrated detector points, lidfold.read_lid)
+- Mesh: GNM's upper lid has 12-14 vertex rows between lash line and brow (13-14 mm), ~1 mm apart along the skin (max
+  2.7-3.7 mm). A fold of 2-3 mm can be drawn; lidfold's crease groove (FWHM 0.8-1.1 mm) is at the mesh's Nyquist limit:
+  as a vertex field it renders as a jagged line (f5_04 middle column).
+- Scan (all 170 comps and ICT's 100 carried modes at -3 / 0 / +3 sd, out/lid/scan.json): the mean head reads a weak line
+  at 2.8 mm (dark 0.04: the top of GNM's thick lid margin roll); Tess's and Garrett's identities NO crease (the reader
+  falls through to the brow sulcus at 8-10 mm, dark 0.04). The darkest reads anywhere: ICT mode 6 +3 0.19, mode 12 0.16,
+  GNM head_032 -3 0.15, head_020 +3 0.13, all at 2.2-2.8 mm (a low fold edge / hooding, not a 4-7 mm crease). 2 of 340 GNM
+  and 6 of 200 ICT reads pass dark 0.12, none 0.2. Tess's photo: tps 4.35-5.0 mm, dark 0.31.
+- Random faces from the priors (f5_03 ICT-led, f5_03b tau 1): ICT-led samples show real lid folds (sample 0 dark 0.44 at
+  2.6 mm, others 0.13-0.16 at 1.8-5.4 mm); tau 1 samples rarely (dark <= 0.09). So in combination with the rest of a
+  face, the identity space CAN make folds, more under ICT's variances: Joe's eye was right that GNM has folds in it.
+- But as Tess's / Garrett's crease ON THEIR FACES (lidfold's profile as a vertex field, fitted by the 170 comps over
+  both orbits + brows): the span makes 0.61 / 0.71 of it (the broad roll), costing 8.4 / 14.8 sd under GNM's prior,
+  8.4 / 14.1 under tau 1, 9.3 / 16.6 under ICT-led; rendered, Tess's MAP shows no crease (dark 0.03), Garrett's a faint
+  line (0.12 at 4.2 mm) (f5_04). The same locality wall as every other local control.
+- Verdict: GNM's space has folds as whole-face configurations, not a crease you can put on a given face at identity
+  cost. lidfold stays, as a member of the local residual layer (M2: an upper-lid basis with ICT / MakeHuman / lidfold
+  handles and its own variance; the groove part stays a fine-geometry op because GNM's ~1 mm rows can't hold it). The
+  identity's fold-like directions (head_032, head_020, ICT modes 6 / 12) should be read by the eye evidence in the one
+  solve before lidfold's residual is spent.
+
+### After the GNM audit (docs/notes/gnm_audit.md; faces5 agrees with all 8 findings)
+Retracted by the audit, with my agreement: the lid verdict above (wrong target: lidfold's FIELD at 0.05 mm, read as
+"sd" against 0), M3's "walls are locality" (the cost was exactness on off-distribution fields; real noses / lips are
+~0.6 mm in GNM), design 8's habitual-expression block (GNM's identity IS each person's relaxed neutral; M3 had already
+found h unidentifiable from ICT's neutrals). GNM's N(0, I) stays (the tau-1 prior is dropped). The spike key
+base.head.habitual was removed again.
+- M2 regional bases from M3's residual (regbasis2.py; sheets f5_10..15): ICT's residual after the identity is 5% of its
+  face variance; per region 0.1-0.27 mm rms per sd, symmetric 0.6-0.99 (likely real, not scan noise); all gates pass
+  after faceext's conditioning (fill_inside / hold_rolls / hold_creases; without it every nose mode folded inside the
+  nostrils); ID effect 0.03-0.08 at +-2 sd; barely visible even in feature crops. DEFERRED: no local layer until an
+  evidence-driven full fit demonstrably can't reach something.
+- lipfit.py (geometric shadow proxy along posterior directions, Blender renders): the built head's lip-over-sulcus step
+  moved 3 mm per step and lipshade's shadow moved 0.005: that proxy is not what the shadow reads. A render-in-the-loop
+  term needs cast shadows in the fast renderer (approved: a shadow-map pass in likeness.render). Also found: lip_seal is
+  computed WITHOUT head["expression"], so a per-picture lower-face expression opens the mouth in our build (f5_tl1);
+  to fix (approved): the seal includes the picture's expression.
+- creasefit.py (clay, groove proxy): failed (no cast shadows, ~1 mm rows: -0.003 valley per unit). Superseded by the
+  audit's g11 (lid margins vs iris + crease height on GNM's own eyeball).
+- THE VERMILION BORDER READER (lipborder.py): MediaPipe's outer lip contour refined along its normals to the strongest
+  outward fall of CIELAB a* (+0.15 |dL|), +-2.5 mm, running median + smooth, corners left to the detector. On Tess's
+  photo it follows her border incl. the bow's peaks (out/lb_tess_photo.png; offsets from MediaPipe -0.8..+1.0 mm). The
+  model's border = GNM's upper_lip / lower_lip groups' outer edge loops (lipborder_model.py): on f3_t1 the lower border
+  sits 1.5-3 mm INSIDE hers, the upper 1.5-2 mm outside at the sides and ~1 mm low at the bow's peaks.
+- fit5.py, the one MAP (identity 170 + per-picture expression: 20 eye pairs + 20 lower face, N(0, I) identity, a
+  NEUTRAL picture's expression at sd EXPR_SD; points with INFLATE 1 and no CUT; the border term at BORDER_SIG mm):
+  | model | border vs hers, model neutral (rms mm upper / lower) | points rms (sigma) front / 3q / profile | |c| | eff. dof |
+  |---|---|---|---|---|
+  | f3_t1 (start) | 0.87 / 2.22 | 0.56 / 0.62 / 1.18 (at INFLATE 1) | 5.7 | (19 at INFLATE 2) |
+  | f5_tl3 (EXPR_SD 0.3, sig 0.4) | 1.18 / 0.76 | 0.40 / 0.37 / 1.41 | 6.2 | 37.9 |
+  | f5_tl4 (EXPR_SD 0.1, sig 0.25) | 0.70 / 0.49 | 0.42 / 0.38 / 1.60 | 7.1 | 40.6 |
+  With EXPR_SD 1 the front picture's expression took the border (|e| 2.2) and the shipped identity kept none of it.
+  Sheet f5_23_lips_border_fit2.png (photo | f3_t1 | tl3 | tl4, dressed, traced borders red): tl4 shows a hint of the
+  bow's two peaks and a fuller lower lip lowest at the centre; still softer than hers (her bow sharper, upper lip fuller
+  at the centre). The profile's points got worse (1.18 -> 1.60: three clicked points, no profile contour in fit5 yet).
+  Under-lip shadow sides 0.82 (hers 0.92, f3_t1 0.87): not addressed (needs the shadow-map term; paint confounds).
+- CHECKLIST COVERAGE (itemcover.py, f3_t1, every direction at +-2 sd read with likeness.compare's model readings through
+  her fixed cameras; noise floor = a 0.5 deg camera turn, median 0.04 tol; out/coverage_summary.txt): GAP = no item
+  past its tolerance. GNM identity 157/170 gaps (by perceptual effect >= 0.05: 3/11; 0.03-0.05: 15/19; below: all);
+  eye expression 17/20; lower-face expression 15/30; ICT modes 69/100 (5 of the 21 with effect >= 0.05). Highest-effect
+  gaps: ict_12 (0.072, nearest lower_lip 0.91 tol), head_005 (brow_eye@3q 0.78), ict_22 / 17 (chin_height), head_008
+  (width_temple 0.93), head_007 / ict_41 (lower_lip_area), eye expression 002 / 003 (intercanthal / eye_aspect).
+  Above 3x the noise floor instead of the tolerance: 95/170, 14/20, 26/30, 62/100 seen: the TOLERANCES hide more than
+  the missing items do; and one noisy item (lower_lip_area) is the best reader of 114 of 320 directions. Next: tolerances
+  from each reader's measured noise; then new items for the remaining gaps (lid margins vs iris, crease, alar rims,
+  nostrils, lip pad, ears), seeded from Farkas (1994), the FISWG feature list, oculoplastic MRD1 / MRD2 / TPS / BFS /
+  MCD, rhinoplasty analysis (Goode ratio, nasofrontal / nasolabial angles, columellar show, alar base) and lip
+  analysis (vermilion ratio, E-line, mentolabial angle, philtral columns).
+
+### fit5's profile term, the view-consistency test, the lip seal (2026-10-10)
+- The envelope match (joint2.envelope: farthest-out vertex in a band) fails in CONCAVITIES: at the stomion and the
+  mentolabial sulcus it picked lip vertices 7-25 mm off, and those rows were rejected, so the lips' depth went unseen.
+  Replaced by fit5.silhouette_env (SIL=render): the model's profile silhouette read the same way as the photo's (first
+  skin pixel per row on our clay render, likeness.render passes), each pixel unprojected to its vertex.
+- The profile camera fitted to 8 clicks + the contour let its focal drift 2600 -> 1022 px at 0.34 m (the lens / distance
+  trade-off is unconstrained in a profile) and the near camera put body faces behind it (the clay render went solid,
+  every row read the back of the head): profile cameras are now POSE-ONLY (fit5.fit_cam_pose), focal held; contour
+  matches enter coarse to fine (15 / 6 / PROF_REJECT mm).
+- View consistency (depthcmp.py; lips ahead of the subnasale-pogonion line, mm, upper / lower): her profile photo +3.0 /
+  +1.9 (profzoom.png: the contour traces her lips exactly); front + 3/4 only fit +4.7 / +4.4; all views with the seal in
+  the fit (tl8) -1.9 / -1.8; all views fitted WITHOUT the seal (tl9) +2.2 / +1.1. The references are consistent; the
+  fit was wrong.
+- Cause (jacchk.py: predicted vs actual silhouette change for the identity step the lip rows ask for): with lip_seal the
+  built lips do NOT follow the identity (predicted -2..+2 mm by row, actual a uniform -3.2 mm); without the seal the
+  linear model holds (actual within ~0.5 mm of predicted at most rows; the dorsum's rows hold either way). faceslide's
+  seal (closes the lips to contact, computed on the head) is non-linear and undoes identity moves of the lips. fit5
+  NOSEAL=1 fits without it (the shipped model keeps it). TODO: a seal-aware Jacobian or fitting the inner-lip contact
+  as evidence, then re-check the sealed result's profile.
+- tl9 (NOSEAL, all views): |c| 15.4, dof 47.6, points 0.51 / 0.50, border 0.24 / 0.26 mm, profile 1.40 mm (131/131),
+  profile clicks 1.71 sigma. Remaining profile misses: the nose's underside / columella rows 4-6 mm INSIDE hers, the
+  stomion +5.6, the sulcus +2. tip projection jumped to 22.8 mm (f3_t1 18.5): check against her photo before trusting.
+  Rounds don't reduce the profile rms monotonically (1.29 -> 1.40): correspondences flip between rounds; a damped
+  (Levenberg-Marquardt) outer loop is the next fix.
+
+### HANDOVER (faces5, 2026-10-10)
+Branch worktree-agent-a34e0880e18034a56 (faces4's branch merged in, main merged in after the audit). Scratch
+/mnt/data/hifipushie/faces5: run.sh (this worktree, capped, spikes/facesliders on the path), q.sh <log> <script> (the
+render lock), tests.sh; consist.sh (view-consistency runs), covsum.py (coverage summary), photoprof.py / profzoom.py.
+Spikes (spikes/facesliders): m3prior.py (ICT EM prior: analyse | cv | em | build_em), m3look.py, m3cost.py, lidgnm.py
+(GNM lid close-ups: density | scan | fit | samples | sheet | crease), creasefit.py (failed clay attempt), regbasis2.py
+(M2, deferred), lipfit.py (geometric shadow proxy: failed), lipdiag*.py, itemcover.py + percict.py (checklist coverage),
+lipborder.py (THE vermilion border reader) + lipborder_model.py (GNM's border loops), fit5.py (THE one MAP: identity 170
++ per-picture expression, uninflated points, border, profile silhouette; env INFLATE CUT EXPR_SD BORDER_SIG PROF_SIG
+PROF_REJECT SIL NOSEAL VIEWS ROUNDS INNER), lipsheet.py, featsheet.py (feature-crop renders through each model's own
+cameras), framechk.py, profdiag.py, sildiag.py, jacchk.py, depthcmp.py.
+Models (scratch, f5_*): f5_tl4 (border, no profile: the best front lips), f5_tl7 / tl8 (profile, with the seal: lips
+wrong), f5_tl9 (profile, NOSEAL: lips right in depth), f5_c_* (consistency subsets). Sheets human_renders/f5_00..26.
+Next, in the coordinator's order:
+1. Nose readers on photo and render alike (alar rim edge, nostril show from the dark nostril area; the subnasale /
+   nose-base row: the model's sits ~5 mm below hers in front, framechk), validated on her photo, into fit5 (render-based
+   readers by finite differences on moved meshes, like itemcover's moved_mesh: ms per evaluation).
+2. Seal-aware lips (see above), then fit5's outer loop damped; check tl9's 22.8 mm tip projection against her photo.
+3. The approved tools: shadow-map pass in likeness.render (lipshade term in the loop; paint must not read as shape),
+   lip_seal including the picture's expression, tolerances from each reader's measured noise (coverage: tolerances hide
+   most of GNM's directions).
+4. Crease: port the audit's g11 (lid margins vs iris + crease height, GNM's own eyeball) into fit5; then Garrett.
+Report every fit with |c|, effective dof, posterior cost, feature crops (featsheet) and a blunt read.
+
+### Lip contact, the closed neutral, the first nose readers (2026-10-10, after the HANDOVER above; it still applies)
+- Contact evidence (fit5 CONTACT, CONTACT_BY): MediaPipe's inner-lip pairs are useless as contact evidence (the
+  detector table puts both on the visible lip line: "0.4 mm" on a visibly parted mouth). Now GNM's own contact ring
+  (faceslide._lip_rings, upper / lower halves paired in x, corners' 10% out), one-sided (only an open gap), 0.3 mm.
+  The identity alone leaves Tess's neutral parted 5.6 mm.
+  - CONTACT_BY=expression (default for NOSEAL fits): each closed-mouth picture's lower-face expression closes the lips
+    (GNM's population closes lips by expression); shipped with mouth_gap 0 (base's least-change lower-face solver)
+    instead of faceslide's seal. f5_tl10: closed, the lips' depth in profile close to hers (f5_28). |c| 15.3, dof 49.3,
+    gap 5.6 -> 0.25 mm, front expression |e| 0.89. OVERSHOOT (coordinator): front / 3/4 lips too full, the bow's peaks
+    gone (border 0.34 / 0.35 vs tl4's 0.24), lower lip a little proud in profile: the closing expression adds a pout /
+    roll-out the border doesn't hold. To do: constrain the closing to the contact direction (or hold the vermilion
+    area / heights as evidence), tighter border sigma, check what the |e| 0.89 does to the vermilion.
+  - CONTACT_BY=identity (the neutral itself closed, seal kept): |c| 25.6, max 5.3, profile clicks 5 sigma: rejected.
+  - Face shapes: GnmFace refuses mouth_gap < 1.5 mm; one-mesh heads with mouth_gap unset are allowed and its neutral
+    closes the lips through the basis (face._gnm["close"]) before every ARKit delta: the same mechanism. So stills use
+    mouth_gap 0; a face-shapes export of the same identity leaves mouth_gap unset. (Tess's models have no
+    base.head.interior: no face-shapes export today.)
+- Nose readers (nosereader.py, front picture, iris scale), validated on her photo (out/nose_photo.png): the NOSTRIL
+  blobs (pixels < 0.62 x the nose skin's median, the largest per side) are found cleanly: area R / L 21.7 / 30.7 mm^2,
+  centroid 5.3 / 6.5 mm over the subnasale row (MediaPipe 2), outer edge 11.5 / 10.9 mm from the midline. The ALAR edge
+  (strongest |luminance step| within +-4 mm of MediaPipe 64 / 294, rows tip -> alar base): good on the shaded side,
+  noisy on the lit side (her right; scattered over 2 mm); alar width 33.9 mm (R 17.6, L 16.2): to firm up (use the
+  lobule's lower rows / the alar crease, or the 3/4 view's silhouette of the ala).
+  The MODEL side needs the same readers on our render: clay has no dark nostrils (no AO; GNM's nostrils are exterior
+  skin pockets, not a separate group): a cavity / AO shading pass in likeness.render (with the shadow-map pass) is
+  the prerequisite; then the readers enter fit5 by finite differences on moved meshes (itemcover.moved_mesh).
+  Also from f5_28 (coordinator): tl10's nose tip reads longer and droopier than hers in profile (hers slightly
+  upturned): add tip rotation / nasolabial angle from the profile contour as a reader item.
+
+## faces6 (2026-10-10, continues faces5; branch worktree-agent-a19e0d592ba96cc7d, faces5 merged in; scratch
+## /mnt/data/hifipushie/faces6: faces5's scripts retargeted + mkcal.py, mkx.py, cross*.py, gaptest*.py; sheets f6_*)
+
+### The fast renderer's shading (likeness.render ao / shadow; tests/test_likeness_shading.py)
+- ao=True: per-vertex AO (96 orthographic depth maps, cosine-weighted, cached on the mesh dict, 1.5 s); shadow=True /
+  <deg>: per-pixel cast shadow of the key (or the photo light's w) from a depth map, a disc light of <deg> = soft
+  (16 samples, ~1.3 s a crop). Ambient and direct rasterised apart, only the direct shadowed. Occluders = the mesh
+  within 0.2 m of the eyes (the one mesh is the whole body: 27 Mpx maps before). light[3] = the AO's share of the
+  ambient, fitted to the photo per crop (noserender.lit_render: Y ~ A + B ao + C max(w.n,0) lit + E min(w.n,0); Tess
+  front 0.83). mesh["C"] = optional per-vertex skin colour (wholeclay's hair cap).
+- Fidelity (fidelity.py, fid2.py; f6_03, f6_05): the raw one-mesh quads the fast renderer draws vs the shipped implicit
+  surface: median 0.23 mm, p90 0.35, max 0.64 (tl10 close-up at 0.69 mm voxels). Band-pass (DoG 0.6-3 mm) luminance
+  correlation fast~Blender dressed 0.53 mean (0.47-0.66), photo~Blender 0.13 = photo~fast 0.13 (pores dominate the
+  photo). The fast clay shows the SAME forms as the shipped surface, more contrasty than the dressed look: readers
+  must compare normalised / calibrated cues.
+
+### tl10's lip overshoot was the SHIPPING, not the fit (f6_04)
+base's mouth_gap solver (base.py ~1966) closes only the inner-lip midline pair 62/66 in 3 linearised steps: on tl10
+(one mesh) the raw mouth stays parted 3.5 mm (7.0 without), the implicit surface fuses the gap into one thick lip
+(the "too full, bow lost" read; the fast render's zigzag "teeth" is the mouth sock through the gap, not crossing).
+fit5's own closing (the front picture's lower-face expression, |e| 0.89) shipped as base.head.expression: inner gaps
+0.45 / 0.76 / 0.31 mm, bow back, not puffy (f6_tl10x). fit5 now ships that. FLAGGED (not fixed: other models'
+builds): the mouth_gap 0 solver on one-mesh heads. Also: fit5.contact_rows maps wrongly on a SOURCE spec with
+mouth_gap set (-20 mm).
+
+### The old-man face (f6_06, f6_07; decomp.py)
+In whole-face clay tl9 / tl10 (|c| 15) are a gaunt older man (nasolabial folds, jowls, hollow cheeks); fs_tj12 /
+f3_t1 / tl4 (|c| 5.7-7.1) are smooth but male-leaning (long face, brow, square chin, strong nose). decomp.py splits a
+fit's identity change exactly per evidence term at its solution ((H+P)^-1 (b_t - H_t x0)): tl10 from f3_t1 = profile
+contour 0.43 (|part| 10.8), front lip contact 0.24 (7.2; it alone pushes GNM-sex +1.1 male-ward), upper border 0.10,
+3/4 contact 0.06, every face-oval group 0.00. dc by band: 0-9 2.8, 10-39 7.1, 40-119 9.8, 120-169 5.1. BUG: with
+CONTACT_BY=expression the contact rows kept IDENTITY columns (the identity was bent to close the lips): to be
+expression-only. The jaw points outside her jaw in f6_06 are GNM's 68 on the 3D surface (convention), not evidence.
+
+### Gates (gates.py, dressed.py, agesex.py; asset pack "faceage" = InsightFace genderage, a measuring tool)
+- sex_gnm: the identity on GNM's semantic sampler's class means (-1 female mean, +1 male): f3_t1 -0.35, tl4 -0.30,
+  tl9 0.00, tl10 +0.58.
+- ArcFace whole-face clay to the accepted f3_t1: fs_tj12 0.95, tl4 0.81, tl10 0.63, tl9 0.60.
+- genderage: out of domain on clay (every fit 22-27, the old man included); dressed whole face noisy (photo 27 / 34,
+  f3_t1 37 / 28, tl10x 48 / 32). Not a gate yet.
+
+### Macro level (coordinator / Joe: "learn how to better approach the macros before we do fine detail work")
+- Calibration (f6_08 bald, no brows; f6_09 hair cap, 2 mm brows): GNM's sampler female / overall / male class means on
+  Tess's body (mkcal.py: f6_cal_f / _0 / _m; f6_cal_t1id = f3_t1's identity without its local layers). The class
+  means read as young, smooth, androgynous; female vs male differ little in bald clay; Tess's fits read more male and
+  older than the female mean (longer face, nose bridge, nasolabial shading). The gap is real AND bald clay is a weak
+  sex judge (the hair cap helps).
+- GNM's semantic sampler (paper section 4.3, gnm/shape/semantic_sampler.py): identity CVAE conditioned on gender (2)
+  x ethnicity (4) one-hot ONLY: no age, no BMI. GNM's identity is Procrustes-aligned, so size (most of the sexes'
+  difference) is NOT in it: the class means differ by |d| 2.16.
+- Our macro layers in the one-mesh pipeline: MakeHuman's body params (age / sex / weight / muscle: the head the body
+  carries, onemesh.hook lays GNM's DIFFERENCE from its template on it) + onemesh's dimorphism field (MakeHuman's sex
+  difference x 1.3 on the head) + GNM identity + humanmacro's 37 macros (directions in GNM comps 0-119, calibrated by
+  sampling). MakeHuman holds the only AGE axis we have.
+- humanmacro vs the sampler's sex difference (macrostudy.py, out/macrostudy.json, f6_10 = the mean face +-2 sd per
+  macro): the 37 directions span 0.30 of it; largest male - female in macro sd: brow_height -0.59, head_size +0.46,
+  bridge_height +0.41, bridge_hump +0.41, brow_ridge +0.35, nose_width +0.34, eye_tilt -0.33, forehead_slope +0.32;
+  jaw / face width barely (+0.21 / -0.18). Every macro's cosine with the sex direction is <= 0.29.
+
+### Stage M, the macro fit (fitM.py; mtable.py = the acceptance table; mreport.sh = sheet + table per round)
+Joe: "the closer we can get the initial fit, the better. Head and jaw shape, eye placement, nose size and shape,
+mouth size and placement." The head starts from its body's head with identity 0 (local layers stripped); c = B z.
+- BASIS=macros: humanmacro's 37 (free directions, comps 0-119) + GNM's sampler sex direction + 3 ethnicity
+  contrasts (ethstats.npz: the sampler sampled per gender x 4 groups, 4000 each; the groups' gender-pooled mean
+  offsets span 3 dof; prior = the sampler's population sd along each, 1.92 / 1.51 / 1.45), z ridge 1 (without it
+  the correlated macros cancel: face_length +10 sd at |c| 4.8). BASIS=comps: 0-39, the check.
+- Evidence: MediaPipe face oval + GROSS landmarks (fit5.GROSS: eye corners, irises, brow line, nasion, nose tip /
+  subnasale, mouth corners / midline), profile clicks, the profile contour at 2 mm; sex_gnm -1 +- 0.5 (soft).
+  Body params: BODY / GRID (+ GRID_PRIOR) over MakeHuman's params.
+- Tess (f3_t1's photos), data chi2 / 347 rows: macros 160.6 (|c| 3.31, dof 16.6), + ethnicity 156.5, comps 0-39
+  159.4 (|c| 4.65): the macro vocabulary fits the outline as well as the anonymous comps (nothing to add). Weight
+  grid 0.05-0.45 flat within the profile's correspondence noise (+-5): stays at the prior 0.15. Ethnicity
+  coordinates -0.48 / -0.12 / +0.27 population sd (the evidence barely uses them; no label asserted). The profile
+  contour carries ~2/3 of the chi2 (~1.75 mm rms; f6_13: follows forehead, nose, tip, chin within 1-2 mm; misses at
+  the stomion and under the chin).
+- Acceptance table (likeness items per group; f3_t1 | M macros+eth): head 6/7 | 6/7 (width_temple +4.3 mm MISS),
+  jaw / chin 5/7 | 7/7, eyes 5/5 | 2/5 (pupil_distance +2.0 mm, eye_width +2.3, brow_eye -2.6 in front: MISS), nose
+  4/5 | 5/5, mouth 5/8 | 8/8. Irises added to GROSS after this.
+- Read (f6_11): every M fit still male-leaning and older in hair-cap clay (long high-bridged nose, deep-set eyes
+  under a shadowed brow, hollow under the cheekbones). Silhouettes and landmark positions don't see the depth of
+  the face's FRONT surfaces: the macro-scale photometric term (photom.py) is for that.
+
+### The macro-scale photometric term (photom.py; fitM PHOTO_SIG)
+Per view (front, 3/4): face box at 0.8 mm/px; the photo's GREEN channel (linear: discounts redness); mask = the
+detector's skin mask AND the model's skin AND not hair (< 0.55 x skin median); model shade = c0 (1 - aw + aw AO) +
+max(w.n, 0) lit + min(w.n, 0) with her light fitted on the model, times a smooth albedo (quadratic, log domain, NO
+constant, ridge ALB_RIDGE); residual = log photo - log shade - albedo, mean removed, Gaussian LP_MM 3 mm, sampled
+every 3 mm (~1770 samples over two views). Jacobian over the basis by finite differences on the mesh (vertices move
+linearly with the identity: photom.vertex_basis), light / albedo held; ~2.5 s a column (AO recomputed).
+Sensitivities on f6_M_mace (rms of d residual per +1 sd): cheek_fullness 0.17 / 0.08 (front / 3/4), eye_depth 0.11 /
+0.07, brow_ridge 0.08 / 0.06, face_width 0.05 / 0.02. First run DIVERGED (|c| 3.7 -> 11 -> 19 -> 21, photometric rms
+0.18 -> 1.14): the albedo's constant and the light's level drifted together (c0 -> 0, |w| -> 4). Fixed: no albedo
+constant + ridge, c0 >= 0.25 x the skin median, cast shadows off in the term (hard shadows toggle per FD step),
+photometric from round 1 (round 0 = the landmark solve from the mean), a trust region |dc| <= STEP_MAX (1.0) a round.
+Round 1 (sigma 0.25, full oval): converged but traded the outline away (jaw_width +9 mm, jaw / chin 7/7 -> 2/7, a
+heavy-set man, f6_14); phdiag: the oval's outer band dominated; inner 80 % halves the residual and the ask is mixed
+(eye depth / bridge down, jaw still wider). Round 2 (inner, sigma 0.4): quiet, costs the profile, small effect.
+HELD (coordinator / Joe: shading isn't the lever; SH lighting noted, not built).
+
+### Base offset and the ARTIST BLOCK-IN LOOP (Joe: "an artist would be able to know how to get closer")
+- Base-stack diagnostic (basestack.py, f6_15): GNM's female class mean + 3 female CVAE samples, (a) GNM's own mesh
+  similarity-aligned vs (b) our one mesh: 2.63-2.73 mm landmark rms for EVERY identity (a fixed offset: the body's
+  MakeHuman head + dimorphism); (b) narrower lower face, flatter cheeks, longer, mouth forward over a weaker chin.
+  Split (f6_16 / f6_17): MakeHuman weight barely moves the face; dimorphism 1.3 shortens / narrows; NEW spike key
+  base.head.gnm_base (onemesh.hook: the head's base shape from GNM's template scaled to the body head, faded to the
+  stitch): 1.0 = fuller, older adult; 0.5 = a soft young face. Block-in base = female mean, gnm_base 0.5 (f6_b6).
+- Tools (artist.py look / step; eyeread.py; cmpround.sh): eye-registered photo / clay (her fitted light, hair cap,
+  HER detector brows, hazel iris + lash line), 50 % overlay, outline difference, 9 mm squint; steps along humanmacro
+  free (coupled) directions or HELD ('name!': pseudo-inverse column), sex / ethnicity dirs, base keys, pose lids;
+  the five-target table (mtable.py) after every step.
+- Rounds A00 -> A15 (Tess), kept: nose_projection +0.6; lip_projection +0.5 + chin_projection +0.5; nose_width -0.5 +
+  nose_upturn +0.4; lid_upper -0.0014 (eyeread: upper lid 0.45 -> 0.67 iris radii, hers 0.67); jaw_square -0.5 +
+  jaw_width -0.3; chin_height +0.6; philtrum! -0.5; eye_width! -0.5; cheekbone_width! +0.4 + cheek_fullness! -0.4;
+  bridge_height +0.6 (free: held cost |c| +1.1 for the same look); philtrum! -0.4; chin_height! -0.5 + eye_spacing!
+  +0.3. Reverted: eye_height +0.5 (eyes read NARROWER: the opening is lid pose / eyeball seating, not identity),
+  face_length +0.6 (went into the philtrum, chin shorter), philtrum -0.5 free (took the chin), eye_depth! +0.4
+  (sockets read deep-set / male; the orbital RIM she has is not eye depth).
+- A15: targets all pass except jaw_angle_height (3/4: the gonial angle sits low) and brow_eye (dropped: it reads
+  GNM's brow landmarks, not her hair brows). Read (f6_21): outlines on hers in three views, adult, not male / old;
+  inside the outline still generic (her orbit rim, wider fuller mouth and almond eyes are not there).
+- Vocabulary gaps filled as data-backed coupled directions (newdirs.py -> $F/newdirs.npz; artist step "nd:<name>";
+  readers: humanmacro gonial_height / orbital_rim / lower_orbit (now macros), radix_width in newdirs (not a macro:
+  held-out R2 0.90 < humanmacro's 0.95 bar); 2000 GNM heads, conditional mean within sex on GNM's OWN sex axis):
+  | attribute | R2 | sd | strongest couplings (+1 sd coupled moves, in sd) | on Tess |
+  |---|---|---|---|---|
+  | gonial_height | 0.997 | 0.053 io (~3.3 mm) | face_length +0.68, chin_height +0.50, jaw_angle -0.47 | +1 sd moved the likeness item jaw_angle_height only 0.3 mm: that item reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion; reverted |
+  | orbital_rim | 1.000 | 2.3 mm | brow_ridge +0.89, eye_depth +0.84, bridge_height +0.73 | in GNM a defined rim COMES WITH a heavy brow and deep eyes (the male pattern); held (brow, eye depth): 2.33 |c| per sd, lower_orbit -0.97, chin -0.83; renders hollow / older: reverted |
+  | lower_orbit | 1.000 | 1.2 mm | weak (<= 0.29) | +0.8: barely visible, cost philtrum / lower third: reverted |
+  | radix_width | 0.90 | 0.0093 io (~0.6 mm) | bridge_hump -0.36 | -1 sd invisible: GNM barely varies it, a REAL capability gap (a local residual is justified) |
+  Lid aperture: not identity (pose lid_upper / eyeball seating, eyeread). Her "defined orbit with a soft brow" is then
+  lid / crease / skin, not bone (the crease work).
+- Joe on A15's profile: "the angle of the mouth area on profile needs some work": A15 -> A21 lip_projection +0.7 ->
+  A22 lip_projection +0.6 + philtrum! -0.2 (the chin got 2.3 mm shorter: free coupling) -> A23 chin_height! +0.5.
+  A23: lips and the mentolabial curve on her profile contour (f6_22); targets: head 6/7 (temple width: her hair
+  framing), jaw 6/7 (jaw_angle_height: detector-guess item), eyes 4/5 (brow_eye, dropped), nose 5/5, mouth 8/8.
+
+### THE ARTIST BLOCK-IN METHOD (Joe: "this method should be our default for all modeling humans going forward")
+Setup
+1. Base of the right kind: the person's body (MakeHuman params) + gnm_base 0.5 + GNM's sampler class mean for the
+   sex (cvae_stats m_f / m_m), NOT a previous fit. Local layers off (sliders, warp, fold, pose, shape).
+2. The references' fitted cameras (any set: front / 3/4 / profile, or concept art with clicked 68).
+3. `artist.py look <model> <png> <ref model>`: per view photo | clay under her fitted light (two-pass fit_light + AO
+   share), hair cap, HER detector brows (filled band), a presentable eye (light iris, limbal ring, lash line) | 50 %
+   overlay | outline difference (detector oval / profile contour red, the clay's green) | 9 mm squint of both;
+   registered at the EYES + nasion (2D shift: a tracing over the photo, never on the outline it should judge).
+Round rules
+4. Look; name the single BIGGEST difference in masses and planes (profile convexity, muzzle, jaw line, chin, nose
+   mass / angle, face length vs width, cheek planes, bridge, eyes). Check sex / age anatomy.
+5. One small step (0.3-0.7 sd) along whole-face directions: `artist.py step <src> <dst> name=v ...`:
+   humanmacro FREE (the population's conditional mean: masses, proportions; try first), HELD `name!` (one feature,
+   the rest kept: for a coupled neighbour that went out; costs more |c| per unit), `nd:<gap>` (filled vocabulary),
+   sex_gnm_dir / eth_dir0-2, base keys (weight, dimorphism, gnm_base), lids (lid_upper / lid_lower: pose, metres).
+6. Re-look AND run the target table (mtable.py: head shape, jaw / chin, eye placement, nose, mouth; tolerances per
+   item): keep only if the whole face reads closer AND no target went out; else revert or fix the coupled
+   neighbour with a held step (free moves drag neighbours: length -> philtrum, lips -> chin).
+7. Lids by measure (eyeread.py: lid margins vs iris in iris radii), not by identity.
+8. Log each round (artist_log.json per model) + before / after strips (cmpround.sh); a sheet every 3-4 rounds.
+Gap filling
+9. If no direction expresses a difference: write a reader on GNM heads, measure it over 2000 sampled heads
+   (newdirs.py), report R2 / sd / couplings; add it as a coupled direction (within sex on GNM's sex axis). Low R2 or a
+   tiny sd = a real capability gap (a local residual is justified); a coupling against what you see (orbital rim ->
+   heavy brow) = the look lives elsewhere (lids, skin) or needs a held step.
+Free macros drag neighbours (philtrum <-> chin; length -> philtrum; lips -> chin; bridge / eye depth -> interocular):
+the table after each step catches it; held steps cost more |c| per unit.
+
+### Garrett's block-in (started; concept art: front A-pose + a painted 3/4 portrait, no profile)
+- f6_G00: his body (age 52, weight 0.4, head scale 1.12) + GNM's sampler MALE mean + gnm_base 0.5. MediaPipe misses
+  his face in the full-figure picture: artist.detect_view retries on a crop around the clicked 68
+  (likeness.detect_region).
+- G01 face_length +1.0, chin_height +0.5; G02 chin_height +0.6, chin_width -0.5 (the free chin_height widened the
+  chin: read +1.07); G03 gnm_base 0.0 (the MakeHuman 52-year-old male head's structure reads older and leaner than
+  the half GNM base: for an older man the MakeHuman base helps; weight 0.4 -> 0.2 barely moves the face);
+  G05 = G03 + cheek_fullness -0.7, nose_width -0.7, bridge_height +0.5, eye_depth +0.6, brow_ridge +0.4 (f6_23):
+  reads as an older, lean man with a heavier brow and deep-set eyes, closer to the concept in front.
+- Targets: the concept's mm come through the fitted camera; G05's widths / lengths are all ~8-10 % under (pupil
+  distance 59.9 vs 65.8; G03 62.3): bridge / eye-depth's free couplings narrowed the eyes; head size or held steps
+  next. The painted 3/4's camera looks poor (the clay turns differently): judge on the front until it is refitted.
+
+### HANDOVER (faces6, 2026-10-10)
+Branch worktree-agent-a19e0d592ba96cc7d (faces5 merged; commits dbb01e1 .. latest). Scratch /mnt/data/hifipushie/faces6:
+run.sh / q.sh / tests.sh (this worktree), cmpround.sh <before> <after> <tag>, gvar.sh <src> <ref> <png> "dst:args"...,
+vstrip.py, mk*.py (calibration / base / start heads), cvae_stats.npz, ethstats.npz, femsamp.npz, newdirs.npz.
+State: Tess = f6_A23 (block-in result; base f6_b6), Garrett = f6_G05 (in progress). Sheets human_renders/f6_01..23.
+Code: likeness.render ao / shadow / light[3] / mesh["C"]; onemesh base.head.gnm_base (spike key, default 0: decide
+whether it becomes a default); humanmacro + gonial_height / orbital_rim / lower_orbit; spikes/facesliders artist.py,
+eyeread.py, mtable.py, wholeclay.py (hair cap, brows, eye presentation), newdirs.py, basestack.py, fitM.py (stage M,
+landmarks + optional photometric), photom.py (held), decomp.py, gates.py, agesex.py (pack "faceage"), fit5 fixes
+(head.expression shipping, contact expression-only, TERMS).
+Open, in order: (1) Garrett: head size / eye spacing (held steps), the 3/4 camera, then the orbit / lid read;
+(2) eyes properly: eyeball seating on GNM's eye + crease (audit g11) for both; (3) Tess inside the outline: her mouth
+(wider, fuller), almond eyes (lids / crease), radix (local residual: GNM's sd ~0.6 mm); (4) the flagged base.py
+mouth_gap solver (one-mesh heads stay 3.5 mm open).
+PRODUCTISING THE METHOD (Joe: "our default for all modeling humans"), what it needs:
+- MCP tools: `block_in_look(model, ref, views?)` -> the six-column sheet (as artist.look) + the target table text;
+  `block_in_step(model, moves, out?)` -> free / held / gap directions, base keys, lids; writes the step log and returns
+  the macro read + the target table delta; `block_in_start(model, refs, sex, body)` -> the base of the right kind
+  (class mean + gnm_base) with the refs' cameras; `lid_read(model)` (eyeread) and a `lids` move.
+- Library code to move out of spikes: wholeclay.haircap / draw_photo_brows / eye_presentation, artist.detect_view /
+  registration at the eyes, mtable's groups (with brow_eye dropped and jaw_angle_height flagged as a detector-guess
+  item), newdirs' directions (precomputed table in src like face_atlas.npz) and cvae_stats / ethstats (from the GNM
+  sampler; the audit's numpy decoder).
+- A guide section (guide.md): the method (gnm_atlas.md "THE ARTIST BLOCK-IN METHOD"), the free vs held rule, the
+  couplings to expect, "lids by measure", and when to fill a vocabulary gap.
+- Tests: look registration (eyes land on eyes), a step's read moves by its amount (free) and holds the rest (held),
+  the target table on a known model.

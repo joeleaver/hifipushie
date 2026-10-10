@@ -73,7 +73,7 @@ def evidence(st, views):
         k = int(v["_class"]) if "_class" in v else hm.view_class(float(v.get("yaw", 0.0)))
         if det is not None and np.isfinite(tab["sd"][k]).any():
             ok = (tab["sd"][k] < hm.CUT) & (of[tab["vid"][k]] >= 0).all(1)
-            rows += [("v", tab["vid"][k][i], tab["w"][k][i]) for i in np.flatnonzero(ok)]
+            rows += [("v", tab["vid"][k][i], tab["w"][k][i], int(i)) for i in np.flatnonzero(ok)]   # (+ the detector index)
         named = {kk: p for kk, p in (v.get("points") or {}).items()}
         lm68 = {kk: p for kk, p in named.items() if str(kk).startswith("lm") and str(kk)[2:].isdigit()}
         clicks = {kk: p for kk, p in named.items() if kk not in lm68}

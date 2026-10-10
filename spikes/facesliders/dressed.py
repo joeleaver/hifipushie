@@ -1,30 +1,72 @@
-"""dressed.py <out.jpg> <label=front_big.png> ...: photo | each dressed render (shot.py's _front_big, the photo's crop),
-whole face, then the eyes and the mouth at 2x (the same crops of all)."""
+"""dressed.py <accepted model> <model>...: faces6, WHOLE-FACE dressed renders (featsheet's EEVEE look, no hair, the
+photo's fitted light) through the accepted model's front and 3/4 cameras, then agesex (genderage) on each and ArcFace
+to the photo / the accepted model's render. Clay is out of the age net's domain (every fit read 22-27 on clay,
+tl10's old-man clay included); the dressed look is closer to the photos it was trained on. Saves
+$F/out/dressed_<model>_v<k>.png, prints one json row per model."""
+import json
+import os
 import sys
+from pathlib import Path
 
-from PIL import Image, ImageDraw
+import numpy as np
+from PIL import Image
 
-import sheet1
-from hifipushie import likeness
+import agesex
+import featsheet
+import stage
+from hifipushie import faceid, humanfit, store
+from shot import light
 
-refs = likeness._refs("ll_garrett")
-ph = likeness.photo_sides(refs)[0]
-crop = sheet1.crop_of(refs["views"][0])
-W = 520
-cols = [("photo", ph["img"].crop(tuple(int(round(c)) for c in crop)))]
-for a in sys.argv[2:]:
-    lb, p = a.split("=", 1)
-    cols.append((lb, Image.open(p).convert("RGB")))
-ims = [(lb, im.resize((W, int(W * im.size[1] / im.size[0])))) for lb, im in cols]
-H = ims[0][1].size[1]
-CR = ((0.22, 0.36, 0.78, 0.5), (0.3, 0.6, 0.7, 0.76))
-hs = [int(W * (y1 - y0) * H / ((x1 - x0) * W)) for x0, y0, x1, y1 in CR]
-S = Image.new("RGB", (W * len(ims), H + sum(hs)), (255, 255, 255))
-d = ImageDraw.Draw(S)
-for i, (lb, im) in enumerate(ims):
-    S.paste(im, (i * W, 0))
-    for j, (x0, y0, x1, y1) in enumerate(CR):
-        S.paste(im.crop((int(x0 * W), int(y0 * H), int(x1 * W), int(y1 * H))).resize((W, hs[j])), (i * W, H + sum(hs[:j])))
-    d.text((i * W + 6, 6), lb, fill=(255, 0, 0))
-S.save(sys.argv[1], quality=90)
-print(sys.argv[1], S.size)
+F = Path(os.environ.get("F", "/mnt/data/hifipushie/faces6"))
+VIEWS = [int(v) for v in os.environ.get("GVIEWS", "0,1").split(",")]
+
+
+def boxes(acc, refs):
+    st = humanfit.state(store.load(acc)["base"])
+    out = []
+    for vi in VIEWS:
+        P = humanfit.project(refs["cameras"][vi], st["L"])
+        c = 0.5 * (P.min(0) + P.max(0))
+        side = 1.6 * float(np.max(P.max(0) - P.min(0)))
+        out.append((vi, [c[0] - side / 2, c[1] - side * 0.55, c[0] + side / 2, c[1] + side * 0.45]))
+    return out
+
+
+def shoot(m, acc_refs, bx):
+    sp = store.load(m)
+    d = store.HOME / featsheet.SCR
+    d.mkdir(exist_ok=True)
+    (d / "spec.json").write_text(json.dumps(sp, indent=1))
+    (d / "human_refs.json").write_text(json.dumps(acc_refs))
+    frames = [stage.fitted_frame(acc_refs["cameras"][vi], box, f"v{vi}") for vi, box in bx]
+    ims = stage.shoot(featsheet.SCR, frames, light(), size=featsheet.SIZE, hair_on=False)
+    return {vi: ims[f"v{vi}"].convert("RGB") for vi, _ in bx}
+
+
+if __name__ == "__main__":
+    acc, models = sys.argv[1], sys.argv[2:]
+    refs = json.loads((store.HOME / acc / "human_refs.json").read_text())
+    bx = boxes(acc, refs)
+    photos = {vi: Image.open(refs["views"][vi]["image"]).convert("RGB").crop(tuple(int(round(b)) for b in box))
+              for vi, box in bx}
+    for vi, im in photos.items():
+        im.save(F / "out" / f"dressed_photo_v{vi}.png")
+    pr = agesex.read([F / "out" / f"dressed_photo_v{vi}.png" for vi in photos])
+    print("photo", json.dumps({vi: None if r is None else {"p_female": round(r["p_female"], 3), "age": round(r["age"], 1)}
+                               for vi, r in zip(photos, pr)}))
+    R = {}
+    for m in [acc] + [m for m in models if m != acc]:
+        R[m] = shoot(m, refs, bx)
+        paths = []
+        for vi, im in R[m].items():
+            p = F / "out" / f"dressed_{m}_v{vi}.png"
+            im.save(p)
+            paths.append(p)
+        reads = agesex.read(paths)
+        row = {"model": m}
+        for (vi, im), r in zip(R[m].items(), reads):
+            row[f"v{vi}_p_female"] = None if r is None else round(r["p_female"], 3)
+            row[f"v{vi}_age"] = None if r is None else round(r["age"], 1)
+            row[f"v{vi}_id_photo"] = faceid.similarity(im, photos[vi])["arcface"]
+            row[f"v{vi}_id_acc"] = faceid.similarity(im, R[acc][vi])["arcface"]
+        print(json.dumps(row), flush=True)
