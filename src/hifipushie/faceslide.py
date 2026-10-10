@@ -79,7 +79,14 @@ COUPLED_ONLY = ("eye_opening", "gonion_height", "ramus_angle")
 # model extensions from MakeHuman's CC0 targets (faceext.py: carried onto GNM, the identity's part projected out):
 # residual sliders, +1 = half MakeHuman's incr - decr difference (the field is stored in metres)
 from .faceext import EXT as _EXT  # noqa: E402
-UNITS.update({k: (1.0, v[3]) for k, v in _EXT.items()})
+def _ext_units():
+    from .faceext import table as _t
+    tab = _t()
+    return {k: (float(np.linalg.norm(np.asarray(tab[k], float), axis=1).max() * 1000) if k in tab else 1.0, v[3])
+            for k, v in _EXT.items()}
+
+
+UNITS.update(_ext_units())   # (mm at +1: the field's own largest move)
 EXT_SLIDERS = tuple(_EXT)
 # Tess's measured misses (2026-10-09): her nostrils show from the front under a small defined lobule; her lower
 # vermilion is a short cushion ending well inside the corners (its visible width 0.40 of the mouth's, ours 0.82)

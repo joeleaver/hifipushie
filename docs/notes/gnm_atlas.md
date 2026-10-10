@@ -215,3 +215,10 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
   mouth_corner +1.06 gone with no loss. The mouth barely changes: her detector lip points don't ask for the lower
   lip's lateral taper; her lower lip reads fuller (volume / eversion) more than narrower. A reader of the lower
   vermilion's visible width (photo vs clay) is what would drive it.
+- Fold-free range (test_faceslide's criteria: no quad turned, no neighbour pair folding 10 deg past 60): GNM's upper
+  vermilion border is already a 67 deg crease, and the carried MH moves shear across it: even Laplacian-smoothed
+  (12 passes), the fold-free scale is 0.18 (lowerlip_width, 0.40 mm), 0.13 (mouth_angles, 0.38 mm), 0.80
+  (lowerlip_ext, 0.89 mm). The commissures held within 3 mm. Tess fs_tj15 with the final fields: -0.20 / -0.12 /
+  +0.10, points 0.32 / 0.38 / 2.28 (as tj12). As built the mouth extensions are too small to matter: the limit is the
+  lip border's topology, not the data. Next for them: move the border's rows together (a field smooth ALONG the
+  border, sheared nowhere across it), or carry onto GNM's lip groups by a lip-local parametrisation.

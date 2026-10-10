@@ -120,7 +120,7 @@ def local_orthogonal(d: np.ndarray, region: np.ndarray) -> np.ndarray:
     return out
 
 
-CORNER_HOLD = (0.0015, 0.004)   # m: the mouth's corners held within the first, released over the second
+CORNER_HOLD = (0.003, 0.005)   # m: the mouth's corners held within the first, released over the second
 CHEAP = float(os.environ.get("HIFIPUSHIE_EXT_CHEAP", "4e-4"))   # m rms over the region a 1-sigma identity move
 # makes along a direction: CHEAP and up = a probable move (a few sigmas make a mm)
 
@@ -154,17 +154,29 @@ def minus_probable(d: np.ndarray, region: np.ndarray) -> tuple:
 
 
 def _turned(D) -> int:
+    """Skin quads of the template turned over by D, + neighbouring pairs folded (normals > 60 deg apart and 10 deg
+    more than in the template): test_faceslide's criteria."""
     from . import faceslide, gnmloops
-    T = faceslide.template()
-    Q = gnmloops.plan()["quads"]
-    Q = Q[T["skin"][Q].all(1)]
-    X0 = T["X"]
+    if "fold" not in _C:
+        T = faceslide.template()
+        Q = gnmloops.plan()["quads"]
+        Q = Q[T["skin"][Q].all(1)]
+        ef = {}
+        for qi, q in enumerate(Q):
+            for k in range(4):
+                ef.setdefault(tuple(sorted((int(q[k]), int(q[(k + 1) % 4])))), []).append(qi)
+        _C["fold"] = (T["X"], Q, np.array([v for v in ef.values() if len(v) == 2]))
+    X0, Q, pairs = _C["fold"]
 
     def nrm(X):
         n = np.cross(X[Q[:, 2]] - X[Q[:, 0]], X[Q[:, 3]] - X[Q[:, 1]])
         return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-18)
-    area = 0.5 * np.linalg.norm(np.cross(X0[Q[:, 2]] - X0[Q[:, 0]], X0[Q[:, 3]] - X0[Q[:, 1]]), axis=1)
-    return int(((np.einsum("ij,ij->i", nrm(X0), nrm(X0 + D)) < 0) & (area > 1.5e-7)).sum())
+    n0, n1 = nrm(X0), nrm(X0 + D)
+    ang = lambda a: np.degrees(np.arccos(np.clip(a, -1, 1)))  # noqa: E731
+    a0 = np.einsum("ij,ij->i", n0[pairs[:, 0]], n0[pairs[:, 1]])
+    a1 = np.einsum("ij,ij->i", n1[pairs[:, 0]], n1[pairs[:, 1]])
+    fold = (a1 < np.cos(np.radians(60))) & (ang(a1) - ang(a0) > 10)
+    return int((np.einsum("ij,ij->i", n0, n1) < 0).sum() + fold.sum())
 
 
 def fold_free(d, margin: float = 0.8) -> float:
@@ -179,6 +191,27 @@ def fold_free(d, margin: float = 0.8) -> float:
     return margin * lo
 
 
+SMOOTH = 12          # Laplacian passes over GNM's skin (raw quads): MakeHuman's coarser mesh, read through its
+# triangles, kinks the field from row to row: across the vermilion border (already 67 deg) 0.25 mm folded neighbours
+
+
+def smooth(d: np.ndarray, n: int = SMOOTH) -> np.ndarray:
+    from . import base as basemod
+    import scipy.sparse as sp
+    if "adj" not in _C:
+        q = np.asarray(basemod._gnm_data()["quads"])
+        e = np.r_[q[:, [0, 1]], q[:, [1, 2]], q[:, [2, 3]], q[:, [3, 0]]]
+        m = len(basemod._gnm_data()["template_vertex_positions"])
+        A = sp.coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), (m, m)).tocsr()
+        A = ((A + A.T) > 0).astype(float)
+        deg = np.asarray(A.sum(1)).ravel()
+        _C["adj"] = sp.diags(1 / np.maximum(deg, 1)) @ A
+    W = _C["adj"]
+    for _ in range(n):
+        d = 0.5 * d + 0.5 * (W @ d)
+    return d
+
+
 def build(names=None) -> dict:
     from . import base as basemod, faceslide, gnmloops
     g = basemod._gnm_data()
@@ -189,7 +222,7 @@ def build(names=None) -> dict:
     for k in names or EXT:
         grp, plus, minus, _ = EXT[k]
         d = 0.5 * (carry(grp, plus) - (carry(grp, minus) if minus else 0.0))
-        d = d * ext[:, None]
+        d = smooth(d * ext[:, None])
         if grp == "mouth":   # the commissures held (GNM's corner is not MakeHuman's: its moves there, on the face's
             # shortest edges, turned the corner quads over at -1); before the projection, which it must not undo
             Xr = T["X"][:len(d)]
