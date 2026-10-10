@@ -86,6 +86,28 @@ def test_cut_by_visibility_and_crossings():
     assert not h[keep[Fu].all(1)].any(), info  # never cut
 
 
+def test_tuck_lays_under_the_made_parts_not_the_pieces_they_replace():
+    # the outer garment's band z 0..0.05 is "collar", simulated at r 0.108 but drawn as a made part at r 0.115; under
+    # cloth at r 0.110 there lies 5 mm under what is drawn: it stays (laid under the hidden simulated piece it moved in)
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    Vi, Fi = _sphere(seed=2)
+    under = _shell(Vi, Fi, 0.110)
+    outer = dict(_shell(V, F, 0.108, zmax=0.05), body=body)
+    Vo = outer["V"]
+    outer["mesh"]["piece"] = np.where(Vo[:, 2] >= 0.0, 1, 0)
+    outer["mesh"]["names"] = ["front", "collar"]
+    band = F[((Vo[F][:, :, 2] >= -0.004) & (Vo[F][:, :, 2] < 0.05)).all(1)]
+    made = {"parts": [{"name": "collar", "V": Vo / 0.108 * 0.115, "F": band, "thickness": 0.002, "replaces": ["collar"]}]}
+    zu = under["V"][:, 2]
+    mid = (zu > 0.012) & (zu < 0.035)  # (under the band, clear of its edges)
+    Vn, _ = cloth_layers.tucked(under, outer)
+    Vm, _ = cloth_layers.tucked(under, dict(outer, made=made))
+    mv_n = np.linalg.norm(Vn - under["V"], axis=1)[mid]
+    mv_m = np.linalg.norm(Vm - under["V"], axis=1)[mid]
+    assert np.median(mv_n) > 0.004 and np.median(mv_m) < 0.001, (np.median(mv_n), np.median(mv_m))
+
+
 def test_support_kinds_are_checked():
     V, F = _sphere()
     body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})

@@ -238,6 +238,15 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
             oriented = True
         except Exception:  # (a mesh the welder can't take: as before)
             Fo = np.asarray(Mo["F"])
+    if outer.get("made") and (outer["made"].get("parts") or []):
+        # what is DRAWN of the outer garment: its constructed parts (a made collar) instead of the pieces they replace
+        # (tucked against the hidden simulated collar, shirt cloth by the neck crossed the made one, cloth11)
+        from . import cloth_made
+        rep, _sl = cloth_made.drawn(outer)
+        Fo = Fo[~rep[Fo].any(1)]
+        for pt in outer["made"]["parts"]:
+            Fo = np.r_[Fo, np.asarray(pt["F"]) + len(Vo)]
+            Vo = np.r_[Vo, np.asarray(pt["V"], float)]
     V = Vu.copy()
     covered = np.zeros(len(V), bool)
     Fu = np.asarray(Mu["F"])
