@@ -188,6 +188,21 @@ def test_start_gap_check_names_a_misordered_band():
     assert rows(np.r_[line + [0, -0.15, 0.2], line + [0, 0.11, 0]])["far"]
 
 
+def test_a_ring_band_is_no_opening():
+    """cloth_workflow.openings: a .L/.R pair of pieces each sewn to ITSELF (rib cuffs: ring seams) is not an opening
+    between them; a centre pair sewn to nothing still is."""
+    from types import SimpleNamespace
+    from hifipushie import cloth_workflow as wf
+    sq = np.array([[-0.01, 0.0], [0.1, 0.0], [0.1, 0.05], [-0.01, 0.05]])
+    pcs = {n: {"P": sq, "wrap": {"to": "torso"}, "role": "cuff" if n.startswith("cuff") else "front"}
+           for n in ("cuff.L", "cuff.R", "front.L", "front.R")}
+    Bp = {"pieces": pcs, "stitches": [], "closures": [],
+          "seams": [["cuff.L:sw>nw", "cuff.L:se>ne"], ["cuff.R:sw>nw", "cuff.R:se>ne"]]}
+    out = wf.openings(SimpleNamespace(Bp=Bp, sheet={}, res={}))
+    txt = " | ".join(t for t, _ in out)
+    assert "cuff.L" not in txt and "front.L and front.R" in txt, txt
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

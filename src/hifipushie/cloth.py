@@ -230,7 +230,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
     for e in gen + list(g.get("generate") or []):
         if any(x.split(":")[0] not in out for x in ([e.get("along")] if isinstance(e.get("along"), str) else e.get("along") or [])):
             continue  # what it is sewn to was dropped
-        p_, s_, st_, i_ = garment_blocks.generate(out, e)
+        ex_ = {}
+        p_, s_, st_, i_ = garment_blocks.generate(out, e, ex_)
+        seam_notes.update(ex_.get("seam_notes") or {})
+        folds_tbl += ex_.get("folds") or []
         out.update(p_)
         seams += s_
         stitches += st_
