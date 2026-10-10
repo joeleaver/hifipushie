@@ -130,6 +130,21 @@ def test_button_colour_by_kind():
     assert cloth.button_color({"color": "#ffffff"}, {"color": None, "tone": None}) == "#ebe6dc"  # a shirt's pearl
 
 
+def test_tuck_leaves_what_shows_bit_identical():
+    """cloth_layers.tucked (keep_shown, the default): every vertex not covered by the outer garment is EXACTLY the
+    finished under garment's (no feather onto visible cloth); covered ones are laid under; keep_shown=False feathers."""
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    under = _shell(V, F, 0.103)
+    outer = dict(_shell(V, F, 0.102, zmax=0.05), body=body)  # (the outer cloth INSIDE the under one: everything moves)
+    Vt, cov = cloth_layers.tucked(under, outer)
+    assert cov.any() and (~cov).any()
+    assert np.array_equal(Vt[~cov], under["V"][~cov])  # bit-identical where it shows
+    assert (np.linalg.norm(Vt[cov] - under["V"][cov], axis=1) > 1e-4).all()
+    Vf, cov_f = cloth_layers.tucked(under, outer, keep_shown=False)
+    assert np.abs(Vf[~cov_f] - under["V"][~cov_f]).max() > 1e-4  # (the old feather moves uncovered cloth)
+
+
 def test_occluded_by_a_shell_from_every_side():
     """cloth_layers.occluded / view_dirs: a point inside a closed shell is hidden from every direction; one outside
     it is not; gaps + front_only see only the shell's outer side."""

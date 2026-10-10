@@ -2096,3 +2096,6 @@ NO SIM WAS RUN.
     length reaches along the cloth below the seam; the CB fall now runs 13 -> 1 mm above the seam (was flat at 4,
     a flange). From behind (c10_w_j12b_backc.png) it lies down; from the front, small grey tabs remain where the
     collar meets the lapel at the side neck; collar x shirt collar 10-16 crossings at CB unchanged.
+  - The covered-only rule is in production: cloth_layers.tucked(keep_shown=True, default): uncovered vertices are
+    bit-identical to the finished under garment (rigid groups that moved move whole); keep_shown=False = the old
+    5-ring feather. Test test_cloth_layers::test_tuck_leaves_what_shows_bit_identical.
