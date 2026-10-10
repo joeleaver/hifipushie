@@ -2233,3 +2233,4 @@ NO SIM WAS RUN.
     (5) shoulders 528 vs 482 mm (+10%): the block's shoulder width / sleeve-head support, which is also most of the
     chest width; (6) front_hang 112 mm (the fronts swing open: hem spring / front balance), hem_sweep -21%;
     the 32 visible crossings gc1 brought back. Spend this agent: $0.28 + $0.24 + gc batch $0.70 = ~$1.22.
+- 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed, which is free). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.
