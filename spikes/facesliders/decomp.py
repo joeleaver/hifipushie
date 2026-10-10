@@ -49,7 +49,7 @@ if __name__ == "__main__":
     d = gates.CV["m_m"] - gates.CV["m_f"]
     sexu = lambda v: float(v[:170] @ d / (d @ d) * 2)  # noqa: E731
     print(f"sex_gnm: {gates.sex_read(c0):.2f} -> {gates.sex_read(c1):.2f} (dc's push {sexu(dc):+.2f})")
-    parts = {t: Hi @ (bt - Ht @ x0) for t, (Ht, bt) in fit5.TERMS.items()}
+    parts = {t: Hi @ (v[1] - v[0] @ x0) for t, v in fit5.TERMS.items()}
     parts["PRIOR"] = -Hi @ (P @ x0)
     tot = sum(parts.values())
     print(f"sum of parts vs x_new - x0 (identity): {np.linalg.norm(tot[:NC] - (xn - x0)[:NC]):.3f}")

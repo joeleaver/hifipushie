@@ -263,15 +263,23 @@ FACE_OVAL = {10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365
 
 def _acc(name, A, y):
     if TERMS is not None:
-        t = TERMS.setdefault(name, [0.0, 0.0])
+        t = TERMS.setdefault(name, [0.0, 0.0, 0.0, 0])
         t[0] = t[0] + A.T @ A
         t[1] = t[1] + A.T @ y
+        t[2] = t[2] + float(y @ y)    # (chi2_t(x) = x H_t x - 2 b_t . x + y . y)
+        t[3] = t[3] + len(y)
+
+
+# the GROSS landmarks (macro stage): eye corners, brow line, nasion, nose tip / subnasale, mouth corners and midline
+GROSS = {33, 133, 263, 362, 70, 105, 107, 300, 334, 336, 168, 6, 1, 2, 61, 291, 0, 17}
 
 
 def _pt_group(row):
     if row[0] != "v":
         return "clicks"
-    return "oval" if len(row) > 3 and row[3] in FACE_OVAL else "features"
+    if len(row) > 3 and row[3] in FACE_OVAL:
+        return "oval"
+    return "gross" if len(row) > 3 and row[3] in GROSS else "features"
 
 
 def system(st, views, cams, x, x_lin, border, nview):
