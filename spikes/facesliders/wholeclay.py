@@ -52,6 +52,22 @@ def haircap(mesh, st):
     return (1 - w)[:, None] * likeness.SKIN + w[:, None] * HAIR_RGB
 
 
+BROWS_R = ([70, 63, 105, 66, 107], [46, 53, 52, 65, 55])
+BROWS_L = ([300, 293, 334, 296, 336], [276, 283, 282, 295, 285])
+
+
+def draw_photo_brows(im, P, to):
+    """HER brows on the clay (coordinator: the drawn 2-4 mm line on GNM's brow landmarks sat low and heavy and biased
+    every read): the photo detector's brow band (upper and lower contour) as a filled shape, through `to` (picture
+    pixels -> this image's, the eye registration included)."""
+    d = ImageDraw.Draw(im)
+    P = np.asarray(P, float)[:, :2]
+    for up, lo in (BROWS_R, BROWS_L):
+        poly = to(np.r_[P[up], P[lo][::-1]])
+        d.polygon([tuple(p) for p in poly], fill=(70, 52, 40))
+    return im
+
+
 def ident(sp):
     idn = sp["base"]["head"].get("identity") or {}
     return np.array([v for k, v in idn.items() if k.startswith("head")]) if isinstance(idn, dict) else np.asarray(idn)

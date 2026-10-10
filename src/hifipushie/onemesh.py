@@ -194,6 +194,15 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     shift = mid - 0.5 * (Jt[2] + Jt[3])
     fade = neck_fade()[:, None]
     Vn = mid + (bd["B"] - eye_mid) @ R / s + fade * ((V - Vt) - shift)
+    gb = float(head.get("gnm_base", 0.0))
+    if gb:  # (faces6 spike) the head's BASE shape from GNM's template instead of the MakeHuman head the body carries,
+        # scaled to that head's size, faded to the stitch: the MakeHuman head + dimorphism field added a fixed ~2.7 mm
+        # landmark offset to every identity (narrower lower face, flatter cheeks, longer; f6_15)
+        base_mh = mid + (bd["B"] - eye_mid) @ R / s
+        G = Vt - 0.5 * (Jt[2] + Jt[3])
+        w = (fade[:, 0] > 0.5)
+        k = float(((base_mh[w] - mid) * G[w]).sum() / max((G[w] ** 2).sum(), 1e-12))
+        Vn = Vn + gb * fade * ((mid + k * G) - base_mh)
     if head.get("dim"):  # the sexes' difference a little past MakeHuman's own, on the head only (headfit's fields)
         from . import headfit
         d0 = {**head["dim"], "toward": 0.0, "amount": 1.0}
