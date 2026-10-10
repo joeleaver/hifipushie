@@ -1561,3 +1561,88 @@ top: a 4 mm vertical disagreement that biases profile registration).
   neck_depth (MakeHuman CC0 neck targets; 0.5 = none) for the neck front across the stitch.
 - Per-picture expression (GNM lower-face comps) explains part of a smiling reference's fuller lips / cheek apple:
   fit it per view so the neutral identity isn't compared against a smile.
+
+## jw (2026-10-10; a private likeness: per-person notes, body settings, rounds and reads are in the git-ignored
+## workspace/private_notes/jw.md, never in the repo). General tool findings from it:
+- A profile facing image-RIGHT (yaw +90) crashed the block-in (registration hard-wired to eye_outer.L) and its photo
+  contour was scanned from the wrong side: _eye_anchor uses eye_outer.R / lm36, profile_contour reads the picture
+  mirrored (test_profile_contour_either_side). +90 vs -90 matters as lt19 found (the wrong sign: 2.3x the rms, dropped).
+- profile_contour on a warm (tan) wall behind fair skin: |rgb - bg| is under 40 while the chromaticity differs by
+  ~0.07: a hue test (5x5-smoothed, > 0.05) is OR-ed in; the per-row background is a band just in front of the most
+  forward clicked point (a wall's light falls off across the picture), and a 5-row median removes lash / fold spikes.
+- Profile focus crops: the light was fitted inside the crop (a 34 mm eye crop: lashes, brow hair, wall) and lit the
+  clay white; a clicked view's crop now uses the whole face's fitted light. The raking light comes from the side the
+  face looks to, and the crop is at least 0.75 x nasion-chin (a profile foreshortens the corner-to-corner span).
+- Brows in the block-in presentation take the picture's own colour (darkest quarter of the band's pixels): light,
+  fine brows (brow_hair_band finds too little dark hair and falls back to the detector band) read as heavy dark bars
+  in the fixed dark brown.
+- The table's clay readers drift ~1-1.5 mm with lower-face / neck SHADING alone: over four rounds that changed only
+  the submental region and a body key (neck_double), the model's own landmark lengths stayed identical to 0.1 mm
+  while middle_third moved 1.8 -> 3.2 mm and mouth_width 0.3-0.6 mm. Items within ~1.5 mm of their tolerance can flip
+  on a step that didn't touch them: check the model's landmarks (or the zoom) before reverting for them.
+- Held bridge_height costs much |c| when free steps had pushed it up (+0.92 -> +0.42 sd cost |c| +1.1) and moved the
+  profile nose as a whole: a radix that reads proud may be the free nose_projection's coupling; try the free step's
+  held variant first.
+- MakeHuman weight barely moves a one-mesh body's waist (62 -> 66 cm for weight 0.6 -> 1.0): the measure modifiers
+  (waist / hips / chest / shoulders) carry a full build. human_reference reports the lens width-based ("~33 mm") for
+  a 24 mm diagonal-equivalent EXIF lens (the focal itself is right).
+- A stature from a room photo: pitch from the wall seams' vertical vanishing point, the camera's distance from a
+  standard-size object on the wall (an outlet plate, 114 mm), its height from the wall base, then the person's heel
+  point and head top (+-6 cm with a 5 % uncertainty in the object's size).
+- Dressed check (garrett3 stage / shot.light): light-brown hair looks (lit lighter than ~#7a5a3c) render grey-blond and
+  very fair skin (melanin 0.02-0.08) reads tan / ruddy: the shot light / skin calibration for very fair skin is open.
+
+
+### 2. Age moves (designed) and Garrett's nose (coordinator: nose before age)
+- `shape:<op>` block-in moves (faceslide age sliders / headage ops), flagged DESIGNED in reply and log. Garrett
+  b2_G04 = G03 + shape:age_nasolabial 0.6: fold rows' shading gap 22 -> 19 % front, 28 -> 20 % 3/4 (kept); 1.0 (G05)
+  pushed mouth_width over its edge (not kept; G09 = 1.0 + mouth_width! -0.2 on the nose branch, kept-able).
+- The painted 3/4 (concept_v6) is foreshortened beyond any rigid turn: its far-side outline (skin against the dark
+  pillar, farside.py) sits 10-13 px (~14 mm) INSIDE our far cheek at the fitted camera, 6-8 px at +12 deg yaw, while
+  the brow / eye points' rms rises 5.8 -> 9.5 px by +20 deg (yawscan.py); +10 mm nose projection moves that outline
+  0.9 px. Don't model the nose to that view's outline.
+- Pitch (pitch.py: the head pitched about the camera centre, -10..+10 deg): front: brows / eyes / mouth points best at
+  0..+5, nose at 0; 3/4: everything best at 0 except the tip's height over subnasale (wants the tip ~3 mm lower: shape).
+  No camera pitch error; the "seen from below" read was the light + a too-high tip.
+- The front base band is the light: under a 2nd-order SH light fitted on the skin (ambient + key + fill / bounce,
+  shlight.py / shl.py) the band under the nose / tip = 0.66 (picture 0.6-0.7); the block-in's c0 + w.n light gives
+  0.19-0.34. Dressed (look_skin, b2_G08_skin.png) no band either.
+- The bridge's side walls ARE a shape difference: walls (6 mm off the dorsum / on it) picture 0.51, clay 0.80 under the
+  SH light. GNM's own nose-region principal directions (blockin.region_pcs, new move `pc:<region><i>`; nosepca.py):
+  the best (PC0: higher, narrower, more projecting bridge + hump + deeper eyes) moves 0.80 -> 0.75 at 1.5 sd; the
+  others <= 0.03. A capability gap: a DESIGNED local (local:nose_dorsum_width -0.8 = 6.7 x ICT's sd: dorsum 13.9 ->
+  10.9 mm, walls 0.70) is justified for this concept.
+- Alar width: MediaPipe 129 / 358 sit on the cheek past the alae on picture AND clay (alar_width row unmoved by a held
+  nose_width -1.0 that moved the alae 3.4 mm): the row is blind to it (flag candidate). Same-scale crops: his alae
+  ~0.98 of the visible intercanthal span, ours ~1.11; the clicked lm31-35 26 mm vs our 35.
+- Kept: b2_G08 (nose_upturn! -0.7, nose_projection! +0.4: tip 26.4 mm ahead of the alar base, columella 34.8 deg,
+  NLA 123), b2_G11 (tip_width back -0.6, local dorsum -0.8), b2_G12 (nose_width! -1.0), b2_G13 (mouth_width! -0.2).
+  G13: table 28/31 (eye_width: the clay reader; philtrum 3/4: painted view; mouth_over_alar: the detector's alae).
+  Sheets b2_G13_nose_vs_G14.png, b2_G13_nose_profile.png, b2_G11_nose_shlight.png, b2_G08_pitch_front/_34.png, b2_G13.png.
+
+### 3. SH light, flags, the joint nose-PC solve, THE EYE STEP (2026-10-10)
+- SH light (decided): blockin.LIGHT = "sh" (sheets: 9 SH coefficients x AO fitted on the skin, likeness.render light[4])
+  and likeness.SHADE_LIGHT = "sh" (the shading rows' residual: ls.fit_light_sh / residual_sh). The c0 + w.n light
+  put down-facing planes near black (Garrett's base band 0.19 vs picture 0.6-0.7; SH 0.66). likeness tests pass.
+- Flags (decided): alar_width, mouth_over_alar (MediaPipe's alar points sit on the cheek).
+- Joint solve over GNM's 8 nose PCs for the bridge walls (walljoint.py, b2_G08): 0.80 -> 0.75 at 0.96 sd, 0.70 at
+  2.05 sd (|c| 6.10 -> 6.71: projection +1.6, bridge +1.3, eye depth +1.1, lips -1.0), 0.60 at 4.9 sd, 0.55 at 6.6.
+  The picture's 0.51 is out of reach at any sane cost. The designed local (b2_G11) awaits Joe.
+- THE EYE STEP (Joe: "we shouldn't really ever use our 'fix' [lidfold]"): src/hifipushie/blockin_eyes.py, the audit's
+  g11 crease fit as a block-in step on the SHIPPED head (onemesh.head_template, 0.12 s an evaluation; identity 170 +
+  20 symmetric eye-region expression pairs, LM with finite differences, ~4 min). Evidence: lid margins vs our drawn iris
+  (sigma 0.05 iris radii); the picture's fold line (lidfold.read_lid tps, columns with darkness >= 0.15) vs the
+  crease's SOFT height (a soft-max over the profile's local depth: the arg-max / visibility reads jumped and stalled the
+  first solve at platform 3.5 of 5.6 mm), and the crease >= 1.2 mm deep (0.7 solved to 0.74 and did not read dressed:
+  b2_T04_skin vs b2_T05_skin); hooded (no line in most columns): the visible platform ~0.5 mm; the 68 landmarks off the
+  eyes held at 0.3 mm (brows 1 mm). Ships head.identity + head.expression, lid pose cleared. lid_read(match=True) runs
+  it; match="pose" = the old offsets.
+- Tess b2_T06 (from b2_T02, tool path): lids 0.45 / 0.93 -> 0.64 / 0.90 (her 0.67 / 0.88; the render-based lid_read
+  0.65 / 0.88), crease 0.34 -> 1.12 mm deep at 3.9 -> 5.3 mm (her line 5.15 mm at an 11.7 mm iris), |dc| 3.0, |e| 1.8,
+  table unchanged. Dressed (b2_T05_skin.png, same solve): a fold line reads above the lid, soft. Sheets
+  blockin_b2_T06_eyes.png, b2_T04_eyes.png.
+- Garrett b2_G14 (from b2_G13, hooded: his picture shows no line in 5 of 6 columns): lids 0.46 / 0.73 (his 0.46 / 0.72),
+  platform 2.95 -> 1.33 mm (target 0.5), no crease. The hood itself (the fold's skin hanging over the platform) is
+  only reached through the visibility read, which is jumpy: a smooth hood measure is the next piece. Sheet
+  b2_G14_eyes.png.
+- Diagnostic: eyediag.py (linear reach of identity / expression / both for the three reads; holds' cost).

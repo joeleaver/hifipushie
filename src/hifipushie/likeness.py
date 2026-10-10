@@ -466,6 +466,13 @@ def _light_disc(d, deg: float) -> list:
     return out
 
 
+def sh9(n):
+    """The 9 real spherical-harmonics basis functions (up to constants) of unit normals (..., 3)."""
+    n = np.asarray(n, float)
+    x, y, z = n[..., 0], n[..., 1], n[..., 2]
+    return np.stack([np.ones_like(x), x, y, z, x * y, y * z, x * z, x * x - y * y, 3 * z * z - 1], -1)
+
+
 def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
     """render() with ambient occlusion and / or cast shadows: the ambient and the direct terms are rasterised
     separately (per-vertex, interpolated) and the direct one is multiplied per pixel by the key's visibility."""
@@ -495,7 +502,15 @@ def _render_shaded(mesh, cam, box, px, brows, passes, light, ao, shadow):
         args = ((P[:, 0] - x0) * k, (P[:, 1] - y0) * k, Xc[:, 2].copy(), np.ascontiguousarray(F[keep]))
         base_c = (np.asarray(mesh["C"], float) if mesh.get("C") is not None else np.broadcast_to(SKIN, Xc.shape)) if col is None else col
         avv = np.ones(len(V)) if av is None else av
-        if light is not None and col is None:
+        if light is not None and col is None and len(light) > 4 and light[4] is not None:
+            # (blockin2) a 2nd-order spherical-harmonics light fitted on the photo's skin (ambient + key + fill / bounce
+            # from below, x AO): light[4] = 9 coefficients over camera-frame normals (sh9); no separate direct term
+            sc = max(light[2] if len(light) > 2 else 0.2, 1e-6)
+            aw = float(light[3]) if len(light) > 3 else 1.0
+            tot = (sh9(vn) @ np.asarray(light[4], float)) * (1.0 - aw + aw * avv) / sc
+            Ca = 0.8 * np.clip(tot, 0, 3)[:, None] * base_c
+            Cd = np.zeros_like(Ca)
+        elif light is not None and col is None:
             sc = max(light[2] if len(light) > 2 else 0.2, 1e-6)
             # light[3] (optional, 0..1): how much of the ambient term AO darkens (fitted to the photo: soft studio
             # light fills cavities more than an open sky does)
@@ -872,6 +887,9 @@ def model_sides(base: dict, photos: list, mesh=None, cameras=None, refit: bool =
     return out
 
 
+SHADE_LIGHT = "sh"   # the shading rows' light: "sh" (fit_light_sh) | "linear" (fit_light: c0 + w.n), as before 2026-10-10
+
+
 def _shade(ph, md) -> dict | None:
     """The photo's light fitted on the model's normals over the face's skin, and the residual (photo / model lit so - 1)."""
     from PIL import Image
@@ -888,7 +906,12 @@ def _shade(ph, md) -> dict | None:
     if mask.sum() < 500:
         return None
     c0, w, rms = ls.fit_light(Y, ps["nrm"], mask)
-    R = ls.residual(Y, ps["nrm"], c0, w, mask, 1.5 * ppm)
+    if SHADE_LIGHT == "sh":   # (blockin2) the shading rows' residual under ambient + key + fill / bounce: the linear
+        # light predicted the nose's underside (and every down-facing plane) near black, so those rows read the light
+        a_sh, _ = ls.fit_light_sh(Y, ps["nrm"], mask)
+        R = ls.residual_sh(Y, ps["nrm"], a_sh, mask, 1.5 * ppm)
+    else:
+        R = ls.residual(Y, ps["nrm"], c0, w, mask, 1.5 * ppm)
     ex, ey = ph["side"].frame()
     hard = float(np.linalg.norm(w) / max(c0 + np.linalg.norm(w), 1e-6))
     return {"c0": c0, "w": w, "rms": rms, "R": R, "med": float(np.median(Y[mask])), "mask": mask, "to_px": to_px, "ppm": ppm, "ex": ex, "ey": ey,

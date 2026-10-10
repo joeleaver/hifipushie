@@ -48,6 +48,13 @@ eye catches what the points miss; the target table catches what your eye misses.
      made before 2026-10-10 lack it: their ball is GNM's 14.6 mm eye x the head's scale (a 7.3 mm iris on a big
      head); when you work on one, step `eye_radius: 0.012`, then `lid_read(match=True)` (the lids' iris-radius
      read changes with the iris).
+   - DESIGNED age / soft-tissue ops, SET: `shape:<op>`: faceslide's age sliders in their units (`age_nasolabial`
+     +1 = a 2 mm fold, `age_prejowl`, `age_cheek_flat`, `age_lid_fold`, `face_planes`, `face_lean`, `cheek_hollow`
+     +1 = 4 mm) and headage's ops without a slider (`eye_bag`, `lip_bow`, `lip_roll` in m, `lips_thin` a share).
+     Hand-authored, NOT learnt from people: the reply and the log flag them DESIGNED. Place them by eye, zoomed in
+     (focus=cheeks / mouth) under the raking light against the pictures; the cheeks rows (nasolabial_fold,
+     cheek_hollow: shading contrast, photo minus clay) should close. Garrett: age_nasolabial 0.5 closed the fold's
+     gap 22 -> 19 % (front) and 28 -> 20 % (3/4).
    - LOCAL residuals, SET: `local:<faceslide slider>` (base.head.sliders), for what no identity direction draws;
      the reply warns past 2.5 x the slider's population sd beyond GNM (ICT: nose_radix_width 0.09, nose_tip_width
      0.18, nose_dorsum_width 0.12).
@@ -59,20 +66,29 @@ eye catches what the points miss; the target table catches what your eye misses.
    step (length -> philtrum, lips -> chin, bridge / eye depth -> narrower eyes, chin height -> chin width).
 6. **The table after every step** (five groups: head shape, jaw and chin, eye placement, nose, mouth: likeness items
    read the same way on the picture and on the model through its fitted camera, with tolerances). `flag` items are
-   shown, not counted (jaw_angle_height reads the detector's guess at the jaw contour, not the gonion). A SIZE line
+   shown, not counted (jaw_angle_height reads the detector's guess at the jaw contour, not the gonion; alar_width and mouth_over_alar read MediaPipe's alar points, which sit on the cheek past the alae: judge the alae by eye in focus=nose). A SIZE line
    appears when the long lengths are all off the same way: that is a uniform scale (the camera's distance or the head's
    size), not shape: refit the camera (`block_in_step(..., cameras=[i])`) or set `head_scale`, never chase it with
    head_size / eye_spacing identity steps.
-7. **Lids by measure, not by identity**: `lid_read(name)` gives the lid margins against the iris (MRD1 / MRD2 style,
-   in iris radii) on the front picture and on the model's render. `lid_read(name, match=True)` sets lid_upper /
-   lid_lower to the photo's margins as a step. Eye size and "almond" shape are mostly lid position and seating; an
-   identity step for eye height made eyes read NARROWER.
+7. **The EYE STEP: lids and fold the way GNM is built** (Joe: "we shouldn't really ever use our 'fix' [lidfold]"):
+   GNM's identity is the relaxed neutral and its eye-region EXPRESSION is the lids' state; its lids have folds as
+   identity + expression configurations. `lid_read(name)` reads the picture (lid margins against the iris in iris
+   radii, MRD1 / MRD2 style; the fold line's height over the lashes and darkness, lidfold.read_lid) beside the model.
+   `lid_read(name, match=True)` is the step: one solve over the identity + GNM's symmetric eye-region expression
+   (blockin_eyes.py) for the margins, the fold line's height (the crease's) and that a line is there (>= 1.2 mm deep
+   when the picture's line is dark), or a covered platform when the picture shows no line (hooded); the rest of the
+   face held (68 landmarks off the eyes within ~0.3 mm). It ships as head.identity + head.expression, the lid pose
+   cleared; never lidfold (head.fold: old models only). Judge it with focus=eyes under raking light AND dressed
+   (look_skin views eye / face): a crease under ~1 mm deep doesn't read dressed. Tess (b2_T06): lids 0.65 / 0.88
+   vs her 0.67 / 0.88, crease 1.1 mm deep at 5.3 mm (her line 5.15 mm), |dc| 3.0, |e| 1.8, table unchanged.
+   `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
+   an identity step for eye height made eyes read NARROWER.
 7b. **The picture's own expression** (`block_in_expression(name)`): GNM's identity is the RELAXED neutral; a picture
    that smiles (fuller lips, lifted corners, a cheek apple) or squints is compared against that neutral, and the smile
    leaks into mouth / cheek identity steps. The tool fits each detector picture's expression on the current head
    (identity and camera held; GNM lower-face expression comps, small prior; eyes=True adds eye-region comps, which can fight the lid pose) and stores it per view in the
    references; every later look / focus / table / lid read / camera refit draws the clay WITH that picture's
-   expression; the model itself stays neutral. Fit it once the big forms are in (on the class mean it would soak up
+   (lower-face) expression on top of the head's own (the eye step's eye-region expression); the model itself stays neutral. Fit it once the big forms are in (on the class mean it would soak up
    identity: block_in_start(expression=True) only for pictures you know are neutral-ish), and refit after big
    identity moves (the reply's chi2 says how much the expression explains). clear=True drops them.
 8. **Judge in whole-face hair-cap clay under both lights** (the photo's light in the sheet; `look` / `look_skin` for
@@ -193,9 +209,10 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `lid_read`
-lid_read(name, match=False, out=None, seen="", save=None): the lid margins against the iris on the front picture (MediaPipe
-iris and lids) and on the model's front render (the visible eyeball through the iris centre), in iris radii: upper
-(MRD1-like), lower (MRD2-like), and the opening's aspect. match=True: lid_upper / lid_lower solved so the model's
-margins (both eyes' mean) equal the photo's, written as a block-in step (out, seen as block_in_step) and returned
-with its sheet (save) and table. The lid pose moves GNM's eye-region expression, which also nudges the nasion
-landmark ~1 mm: nasion-based lengths (face height, middle third, nose length) shift a little with it.
+lid_read(name, match=False, out=None, seen="", save=None): the picture's lid margins against the iris (MediaPipe iris and
+lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and the model's (its front render, the
+visible eyeball through the iris centre). match=True: the EYE STEP (loop, 7): identity + GNM eye-region expression
+solved for the margins and the fold line, a new block-in step (out, seen as block_in_step); returns the focus=eyes
+sheet (before | after) and the solve's report (picture vs model before / after: lids, visible platform, crease depth
+and height, |dc|, |e|). ~4 min. match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
+
