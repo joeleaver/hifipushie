@@ -272,6 +272,25 @@ def table(samples: int = SAMPLES, seed: int = 0) -> dict:
     return tab
 
 
+def released(name: str) -> list[str]:
+    """The macros a HELD move of `name` must let go: those in an exact linear relation with it over the identity (the
+    table's near-null left singular vectors: a length that is the sum of others)."""
+    t = table()
+    An = t["A"] / t["sd"][:, None]
+    U, S, _ = np.linalg.svd(An, full_matrices=True)
+    i = NAMES.index(name)
+    out = set()
+    for k in range(len(NAMES)):
+        s = S[k] if k < len(S) else 0.0
+        if s > 1e-6 * S[0]:
+            continue
+        u = U[:, k]
+        if abs(u[i]) > 0.05:   # a part lets go of the whole (chin_height -> face_length); the whole of its parts
+            top = int(np.argmax(np.abs(u)))
+            out |= ({NAMES[j] for j in np.flatnonzero(np.abs(u) > 0.05) if j != i} if top == i else {NAMES[top]})
+    return sorted(out)
+
+
 def direction(name: str, held: bool = False) -> np.ndarray:
     """The change of the components per +1 population sd of the macro. held=False: with what goes with it in the
     population (the conditional mean); held=True: every other macro held."""
@@ -279,8 +298,15 @@ def direction(name: str, held: bool = False) -> np.ndarray:
     i = NAMES.index(name)
     A = t["A"]
     if held:
-        P = np.linalg.pinv(A / t["sd"][:, None], rcond=1e-3)   # (K, M): columns move one macro by one sd, the others not
-        return P[:, i]
+        # every other macro held EXCEPT those tied to this one by definition: face_length is nasion -> chin = nose_length
+        # + philtrum + lips + chin_height (an exact null combination of the table's rows, blockin 2026-10-10); holding
+        # them all asks the impossible, and the pseudo-inverse then split the change (chin_height! +1 gave chin +0.81,
+        # face_length +0.30)
+        An = A / t["sd"][:, None]
+        rel = released(name)
+        rows = [i] + [j for j in range(len(NAMES)) if j != i and NAMES[j] not in rel]
+        P = np.linalg.pinv(An[rows], rcond=1e-3)
+        return P[:, 0]
     a = A[i]
     return a * t["sd"][i] / (a @ a)
 

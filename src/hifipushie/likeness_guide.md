@@ -17,6 +17,10 @@ feature, and write down what each one is. This guide is that list for our models
 
 The checklist itself is data: `src/hifipushie/likeness.json` (items, stages; add items there).
 
+ORDER: the artist block-in (guide(topic="block_in"): base of the right kind, whole-face steps judged by eye and by a
+target table drawn from this checklist) comes FIRST and gets the masses, planes and proportions right; the staged
+fitting below is for features after it.
+
 ## Where the list comes from
 
 **Forensic facial comparison (FISWG / ASTM E3149).** The Facial Identification Scientific Working Group's "Facial

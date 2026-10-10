@@ -38,7 +38,8 @@ paint; check and look after each stage. Every change is checkpointed (history / 
 
 Toolsets: the core is always on; enable_toolset(name) adds one of plan, scene, export, human, likeness, hair,
 cloth, terrain, plants, clutter (enable_toolset("") lists them and what is on). Domains have a guide topic (hair,
-cloth, cloth_reference, skin, human, likeness, terrain, vegetation, clutter): read it before working there.
+cloth, cloth_reference, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
+A person's head from pictures: the artist block-in (guide topic block_in) is the default.
 Clothes are sewn, not sculpted: fix faults in the pattern, never in the solver. Terrain tools may return questions
 for the designer: ask them, don't answer them yourself.
 """
@@ -133,9 +134,10 @@ TOOLSETS: dict[str, dict] = {
               "tools": ["sync", "pull", "heavy_status", "heavy_queue"]},
     "export": {"about": "OBJ export, game-ready assets (GLB/FBX, PBR maps), the export rig",
                "tools": ["export", "export_asset", "rig"]},
-    "human": {"about": "realistic humans: the base body, measurements, fits, skin",
-              "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "skin",
-                        "look_skin", "skin_reference"]},
+    "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
+                       "measurements, fits, skin",
+              "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
+                        "block_in_look", "block_in_step", "lid_read", "skin", "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
@@ -325,7 +327,7 @@ def _spec_arg(spec) -> dict:
 @mcp.tool(structured_output=False)
 def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
-    "cloth_reference", "skin", "human", "likeness", "terrain", "vegetation", "clutter", "tools" (core tools'
+    "cloth_reference", "skin", "human", "block_in", "likeness", "terrain", "vegetation", "clutter", "tools" (core tools'
     reference); or any tool's name for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
     if t in GUIDE_TOPICS:
@@ -340,6 +342,7 @@ def guide(topic: str = "") -> str:
 GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.md", "cloth": "cloth_guide.md",
                 "cloth_reference": "cloth_reference_guide.md", "cloth reference": "cloth_reference_guide.md",
                 "skin": "skin_guide.md", "human": "human_guide.md", "humans": "human_guide.md",
+                "block_in": "blockin_guide.md", "blockin": "blockin_guide.md", "block-in": "blockin_guide.md",
                 "likeness": "likeness_guide.md", "terrain": "terrain_guide.md", "vegetation": "vegetation_guide.md",
                 "clutter": "clutter_guide.md"}
 
@@ -1754,6 +1757,77 @@ def human_reference(name: str, views: list[dict] | str, fit: bool = True, free: 
                    + "\n(method map: the detector's point table is validated on RENDERS of heads of known shape only, not yet on "
                    "photographs. The result is the most probable head for this evidence: soft; structure comes after.)")
     return out
+
+
+def _blockin_sheet(name: str, save: str | None, views: list | None = None, table: bool = True,
+                   before: str | None = None) -> list:
+    """The block-in look as tool output: [the sheet, the target table]."""
+    from . import blockin as bi
+    out = save or str(store.HOME / "human_renders" / f"blockin_{name}.png")
+    r = bi.look(name, out, views=views, before=before)
+    text = f"sheet: {r['out']} (" + ", ".join(f"view {v['view']} eye shift {v['shift_px']} px" for v in r["views"]) + ")"
+    if table:
+        text += "\n" + bi.table_text(bi.table(name))
+    return [_png(PILImage.open(r["out"])), text]
+
+
+@mcp.tool(structured_output=False)
+def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = None, age: float | None = None,
+                   body: dict | None = None, gnm_base: float | None = None, ethnicity: str | None = None,
+                   cameras: str = "keep", replace: bool = False, save: str | None = None):
+    """THE DEFAULT START for a person's head from pictures: a base of the right kind (their body, GNM's class mean for
+    the sex, an age-dependent GNM base) with the references' cameras, and its first block-in look + target table.
+    refs = a one-mesh human with fitted references, or a views list; sex, age, body, gnm_base, ethnicity, cameras
+    ("keep" | "refit"), replace, save. Details: guide(topic="block_in_start")."""
+    from . import blockin as bi
+    e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
+                 age=age, body=body, gnm_base=gnm_base, ethnicity=ethnicity, cameras=cameras, replace=replace)
+    s = e["start"]
+    out = _blockin_sheet(name, save)
+    out[1] = (f"started {name}: {s['sex']} class mean{' (' + s['ethnicity'] + ')' if s['ethnicity'] else ''}, age {s['age']:g}, "
+              f"gnm_base {s['gnm_base']:.2f}, cameras {s['cameras']}, |c| {e['c_norm']:.2f}\n" + out[1]
+              + "\nNEXT: squint at the sheet, name the single biggest difference in masses and planes, block_in_step ONE small move.")
+    return out
+
+
+@mcp.tool(structured_output=False)
+def block_in_look(name: str, views: list[int] | None = None, table: bool = True, save: str | None = None,
+                  before: str | None = None):
+    """The block-in sheet of a model: per picture photo | clay under the photo's light | overlay | outline difference |
+    squinted photo | squinted clay, registered at the eyes; plus the five-group target table. views, table, save,
+    before (another model: before | after rows). Details: guide(topic="block_in_look")."""
+    return _blockin_sheet(name, save, views=views, table=table, before=before)
+
+
+@mcp.tool(structured_output=False)
+def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
+                  cameras: list[int] | None = None, look: bool = True, save: str | None = None):
+    """One block-in round: a NEW model (out, default the next number) = name moved along whole-face directions
+    ({"chin_height": 0.5, "eye_spacing!": 0.3, "nd:radix_width": 1, "head_scale": 1.05, "lid_upper": -0.001}); seen /
+    why are logged; cameras = views to refit. Replies the read, the target delta and the new sheet (look). save.
+    Details: guide(topic="block_in_step")."""
+    from . import blockin as bi
+    mv = _spec_arg(moves) if isinstance(moves, str) else dict(moves or {})
+    rep = bi.step(name, mv, out=out, seen=seen, why=why, cameras=cameras)
+    text = bi.step_text(rep)
+    if not look:
+        return text
+    sh = _blockin_sheet(rep["entry"]["to"], save, before=name)
+    return [sh[0], text + "\n" + sh[1]]
+
+
+@mcp.tool(structured_output=False)
+def lid_read(name: str, match: bool = False, out: str | None = None, seen: str = "", save: str | None = None):
+    """Lid margins against the iris (MRD-style, in iris radii) on the front picture and the model's render: lids by
+    measure, not identity. match=True sets lid_upper / lid_lower to the photo's margins as a block-in step (out, save,
+    seen). Details: guide(topic="lid_read")."""
+    from . import blockin as bi
+    if not match:
+        return bi.lid_text(bi.lid_read(name))
+    rep = bi.lid_match(name, out=out, seen=seen)
+    to = rep["entry"]["to"]
+    sh = _blockin_sheet(to, save, before=name)
+    return [sh[0], bi.step_text(rep) + "\n" + bi.lid_text(bi.lid_read(to)) + "\n" + sh[1]]
 
 
 @mcp.tool(structured_output=False)

@@ -1339,3 +1339,72 @@ PRODUCTISING THE METHOD (Joe: "our default for all modeling humans"), what it ne
   couplings to expect, "lids by measure", and when to fill a vocabulary gap.
 - Tests: look registration (eyes land on eyes), a step's read moves by its amount (free) and holds the rest (held),
   the target table on a known model.
+
+## blockin (2026-10-10, "blockin" agent, branch worktree-agent-ad0c708a3f812806d, faces6 merged; scratch
+## /mnt/data/hifipushie/blockin: run.sh / tests.sh / srv.py <tool> '<json>' (any server.* tool from this worktree);
+## sheets human_renders/bi_*)
+
+### The method as tools (Joe: "this method should be our default for all modeling humans going forward")
+- `src/hifipushie/blockin.py`: start / look / step / table / lid_read / lid_match; data `blockin_data.npz` (15 KB:
+  GNM sampler class means m_f / m_m / mean, gender x ethnicity means, ethnicity contrasts + sd, newdirs' gap
+  directions; packed from faces6 cvae_stats / ethstats / newdirs by blockin/pack.py). Clay presentation moved in
+  (haircap, draw_photo_brows, eye_presentation, lit_render, detect_view, profile_contour, eye registration).
+- MCP tools (human toolset): block_in_start, block_in_look, block_in_step, lid_read; guide topic "block_in"
+  (blockin_guide.md: the loop, couplings, gap filling, tool reference); pointers in guide.md 4d, human_guide,
+  likeness_guide, tools_guide, the skill, INSTRUCTIONS. tests/test_blockin.py (7 tests).
+- Each step is a NEW model (default name = number + 1); one log per block-in (blockin_log.json in the start model's
+  folder: round, from, to, moves, seen, why, read, coupled, passes, camera moves; stepping again from an earlier model
+  marks the abandoned step "reverted"). A model made outside the tools (faces6's f6_G05) is adopted: the step roots a
+  new log, faces6's artist_log.json imported. store.save(checked=False) for these steps (a full validate is ~1 min).
+- The table: mtable's five groups, brow_eye dropped, jaw_angle_height shown as `flag` (not counted); cached per
+  model by base + cameras; a SIZE line when the long lengths are all off one way; deltas mark a status flip that is
+  under 0.15 tol "at the edge" (mouth_line's 0.01 tol flipped on noise).
+- gnm_base default by age: 0.5 to 25, 0 from 50, linear between (coordinator's decision).
+
+### Found while building / dogfooding (each fixed)
+1. HELD steps did not hold: face_length = nose_length + philtrum + lips + chin_height exactly (a zero singular value
+   of humanmacro's table), so `chin_height!` +1 gave chin +0.81 and face_length +0.30 (the pseudo-inverse split the
+   impossible ask). humanmacro.released(name): a part lets go of the whole (chin_height! releases face_length), the
+   whole of its parts. Now chin_height! +1 = +1.00 (face_length +0.61, nothing else > 0.1). faces6's held chin /
+   philtrum rounds were 20 % short of what they asked.
+2. FREE steps shrank the head: the population couples size (head_size = the interocular distance in mm) with
+   everything; free cheek_fullness -0.5 shrank Garrett's raw GNM head ~1 % (table widths -1.4..-3 mm), which is why
+   faces6's free rounds ended "8-10 % small everywhere". Block-in free directions (macros, nd:, eth) now keep size
+   (blockin.keep_size / a pinv over [macro, head_size]); `<macro>~` = the raw coupling. Size is set separately:
+3. head_scale: the one mesh's head is the BODY's (base.head.scale is overwritten by the body's size: 1.12 on fs_ge3
+   did nothing); block-in `head_scale` = base.style.human.head_size (humanstyle: about the neck, eyeballs too).
+4. The painted 3/4's "poor camera" (faces6) was mostly the CLAY's detector reading a half-black clay: the light fit
+   on the painting put the shadow side at black (c0 - |w| far below 0 over half the face). lit_render: when > 25 % of
+   the face's skin is predicted under 0.18 x the skin median, the dark side is lifted to that floor (lit side kept).
+   A photo's light (a few side planes dark) is left alone (lifting it flattened the front clay). The camera refit
+   (landmarks, camera only) moved the 3/4 camera < 1 deg; the step now reports each refit's turn / distance / focal.
+5. Step sheets show before | after | |change| x4 | squints per view: a half-sd step was invisible beside the photo.
+6. lid_read(match=True) returns its sheet; the lid pose (GNM eye-region expression) nudges the nasion ~1 mm
+   (nasion-based lengths shift ~1 mm with it).
+7. The likeness eye_width item does not follow the eye_width macro (held -0.5 sd moved it < 0.6 mm of a +2.95 mm
+   miss): a reader difference (MediaPipe corners on the photo vs the clay), suspect; not chased.
+8. tests/test_humanmeasure.py::test_model_and_sigmas fails since faces6 added macros (its stored model's names are
+   the old 37): pre-existing, not fixed here.
+
+### Garrett through the tools (bi_G00 .. bi_G12; refs fs_ge3: the concept's front A-pose + painted 3/4)
+| round | move | read / table | kept |
+|---|---|---|---|
+| G00 | block_in_start(fs_ge3, male): male class mean, gnm_base 0 (age 52) | round soft young face; 21/31 (lengths short, widths ~ok) | start |
+| G01 | face_length +0.7 | outline on his in front; face height / lower third in | yes |
+| G02 | cameras [1] (3/4 refit) | camera turned < 1 deg: no change | (same head) |
+| G03 | cheek_fullness -0.5 (old free) | whole face 1-2 % smaller: finding 2 | no |
+| G04 | cheek_fullness -0.5 (size kept) | no visible gain; cheekbone width out | no |
+| G05 | G04 + cheekbone_width! +0.35 | the item didn't come back (macro vs detector oval) | no |
+| G06 | G02 + brow_ridge +0.5 | eyes a little deeper; nose / intercanthal just out | yes |
+| G07 | head_scale 1.03 | 27/31; jaw +3.0, philtrum +1.1 just out | yes |
+| G08 | jaw_width! -0.35, philtrum! -0.3 | 29/31 | yes |
+| G09 | lid_read match: lid_upper -1.9 mm, lid_lower +0.7 mm | lids 0.46 / 0.72 iris radii = his | yes |
+| G10 | bridge_height +0.5 | higher, narrower bridge; chin +1.65 out | yes |
+| G11 | chin_height! -0.2 | 29/31: chin +1.53 (edge, the 3/4 says -0.6), eye_width +2.95 (finding 7) | yes = result |
+| G12 | eye_width! -0.5 | table unmoved, |c| +0.22 | no |
+Blunt read of bi_G11 (sheet bi_G11.png, bi_G11_vs_G00.png): the outline sits on his in front and (with the light fix)
+in the painted 3/4; size, lids, bridge right. Inside the outline it is still a generic, smoother, younger man: no
+cheekbone plane turning into a hollow, no nasolabial fold, a round broad nose TIP with heavy nostril shadow (his is
+narrower and defined: no macro reads tip width: a vocabulary gap), straight flat lips, eyes seated forward (big white
+in 3/4). The remaining differences are age soft tissue (base.head.shape age_* layers, skin), the nose tip (a gap to
+fill: reader + 2000 heads like newdirs) and eyeball seating (handover item 2), not more whole-face identity.

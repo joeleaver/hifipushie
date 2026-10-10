@@ -15,7 +15,10 @@ Call the hifipushie `guide` tool first and follow it: it is the full playbook. T
   descriptions are short: `guide(topic="<tool>")` has any tool's full parameters, `guide(topic="tools")` the table.
 
 0. **Realistic humans start from `spec["base"]`** (MakeHuman body + GNM head, shaped by parameters: guide 4d),
-   never from blobs and kits. The blob/kit route below is for creatures, cartoons and props.
+   never from blobs and kits. The blob/kit route below is for creatures, cartoons and props. **A person from
+   pictures: the artist block-in is the default** (`guide(topic="block_in")`, human toolset): human_reference for the
+   cameras, `block_in_start`, then rounds of look -> name the biggest mass / plane difference -> ONE small
+   `block_in_step` -> keep only if the whole face reads closer and no target went out; lids by `lid_read`.
 
 1. **Stages, with `check` after each:** plan (`set_plan`: front/side outlines, landmarks, sections) →
    blockout (`put_model`, kits, `fit` against the plan) → secondary forms (strokes) → detail

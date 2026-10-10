@@ -77,6 +77,10 @@ nose_width/mouth_width ~0.63, jaw_width/face_width ~0.67.
 
 ## Matching a reference image
 
+**For a person's head from pictures, the artist block-in is the default** (guide(topic="block_in")): human_reference
+fits the cameras, then block_in_start / block_in_look / block_in_step / lid_read. The fit tools below (fit_human,
+nudge_human, a human_reference identity fit) are for measured targets and single corrections after it.
+
 - Give named points, not adjectives. Landmarks: chin, nose_tip, nose_base, nose_bridge, lip_upper, lip_lower,
   mouth_corner.L/R, jaw.L/R, jaw_back.L/R, brow.L/R, brow_inner.L/R, eye_outer.L/R, eye_inner.L/R, lid_upper.L/R,
   lid_lower.L/R, ala.L/R, chin.L/R, eye.L/R (eyeball centres), or lm0..lm67 (the standard 68-point face

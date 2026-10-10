@@ -82,6 +82,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   True | [names]) gives the parts that move with the face ARKit-named morph targets (glTF targets, sparse POSITION +
   NORMAL deltas, mesh.extras.targetNames; FBX shape keys). A shape is a displacement of space from the face kit's
   -> full notes: docs/notes/faceshapes.md
+- `blockin.py` + tools block_in_start / block_in_look / block_in_step / lid_read (guide topic "block_in"): THE DEFAULT for a
+  person's head from pictures (the artist block-in loop). -> full notes: docs/notes/gnm_atlas.md "## blockin"
 - `rig.py`: the export rig, a separate step over the modelling skeleton (the user, 2026-09-25: humanoids must be
   Mixamo-compatible and Unity/Unreal-retargetable, clean bone chains for non-humanoids too; spec bones stay for
   modelling). `humanoid` fits Mixamo's skeleton (mixamorig:Hips, Spine/1/2, Neck, Head, clavicles, arms, hand-kit

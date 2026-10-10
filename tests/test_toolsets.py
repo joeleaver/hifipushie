@@ -18,6 +18,8 @@ design_garment look_pattern check_garment set_terrain check_terrain look_terrain
 grow_plant edit_plant look_plant look_plants grow_stand look_stand export_stand plant_form get_plant plant_reference
 export_plant wind_plant sync_plant plant_history heavy_status heavy_queue make_clutter look_clutter
 clutter_kit""".split()
+# added since: the artist block-in (2026-10-10)
+ADDED = {"block_in_start", "block_in_look", "block_in_step", "lid_read"}
 
 
 def _tokens(tools) -> int:
@@ -29,7 +31,7 @@ def test_every_tool_in_one_toolset():
     assert len(sets) == len(set(sets)), "a tool in two toolsets"
     assert set(sets) == set(server._TOOLS) - {"call_tool"}, set(sets) ^ (set(server._TOOLS) - {"call_tool"})
     assert set(BEFORE) <= set(sets), set(BEFORE) - set(sets)
-    assert len(BEFORE) == 75 and set(sets) - set(BEFORE) == {"enable_toolset"}
+    assert len(BEFORE) == 75 and set(sets) - set(BEFORE) == {"enable_toolset"} | ADDED
     for s in server.TOOLSETS.values():
         for a in s.get("also", []):
             assert a in server.TOOLSETS
@@ -57,7 +59,7 @@ def test_all_over_stdio():
                 return tools, init.instructions
     tools, instr = asyncio.run(go())
     names = {t.name for t in tools}
-    assert names == set(BEFORE) | {"enable_toolset"}, names ^ (set(BEFORE) | {"enable_toolset"})
+    assert names == set(BEFORE) | {"enable_toolset"} | ADDED, names ^ (set(BEFORE) | {"enable_toolset"} | ADDED)
     print(f"all: {len(tools)} tools ~{_tokens(tools)} tokens + instructions ~{len(instr) // 4} "
           f"(before toolsets: 75 tools ~36064 + 2800)")
 
