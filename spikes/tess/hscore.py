@@ -84,6 +84,15 @@ for v in views:
     dh, do = ndi.distance_transform_edt(~eh), ndi.distance_transform_edt(~eo)
     ch = 0.5 * (do[eh].mean() + dh[eo].mean()) * mm
     print(f"view {v} ({TR[v]}): IoU {iou:.3f}  outline chamfer {ch:.1f} mm  hers {mh.sum()} px, ours {mo.sum()} px")
+    # HAIRLINE: her hair within 15 mm of her face (the trace's face hull, grown) that is bare in ours
+    if tr.get("face_hull"):
+        from PIL import ImageDraw as _D
+        hull = Image.new("L", (H, H), 0)
+        _D.Draw(hull).polygon([(float(x) - BOX[0], float(y)) for x, y in tr["face_hull"]], fill=255)
+        fh = np.asarray(hull.resize((PX, PX))) > 127
+        band = mh & (ndi.distance_transform_edt(~fh) * mm < 15.0)
+        bare = band & ~mo
+        print(f"   hairline band (her hair within 15 mm of the face): {band.sum()} px, bare in ours {100 * bare.sum() / max(band.sum(), 1):.1f}%")
     # regions: by rows of the picture in thirds of the hair's own height, and left / right of the hair's centre
     ys, xs = np.nonzero(mh)
     y0, y1, xc = ys.min(), ys.max(), np.median(xs)

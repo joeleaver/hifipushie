@@ -181,7 +181,8 @@ def grow(sc, g: dict, line, rng) -> dict:
                                    float(cu["over"]) + (float(re) - float(cu["over"])) * (1.0 - cw) * 0.5)
                         al = float(cu.get("along", 0.0)) * cw
                         if al > 0:  # sideways at the root's height first, then down to the ear's top, then back
-                            mid = dirs(float(ra) + sd * al, float(re))
+                            # (just inside the hairline there: it runs over the forehead's corner, not above it)
+                            mid = dirs(float(ra) + sd * al, min(float(re), float(_line_at(line, float(ra) + sd * al)) + 3.0))
                             t = np.linspace(0, 1, 11)
                             k0, k1 = 0.25, 0.5
                             D = np.concatenate([_slerp(root, mid, t[t <= k0] / k0),
