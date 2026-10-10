@@ -310,7 +310,25 @@ def groom_params(spec: dict) -> dict:
             hair_loose.params(g["loose"])
         except ValueError as e:
             raise HairError(str(e)) from None
-    return _merge(GROOM, g)
+    out = _merge(GROOM, g)
+    if "grey" not in g:   # greying temples / sideburns by AGE (lt19b: the default 0.35 / 0.5 put grey locks on a 19-year-old)
+        a = grey_age(spec)
+        out["grey"] = {k: round(v * a, 4) for k, v in GROOM["grey"].items()}
+    return out
+
+
+GREY_AGES = (30.0, 50.0)   # the default groom grey: none before the first age, all of it from the second
+
+
+def grey_age(spec: dict) -> float:
+    """0..1: the share of the default temple / sideburn grey a groom gets, by the model's age (base.body.age, else
+    skin.age); a model without an age keeps the full default."""
+    age = ((spec.get("base") or {}).get("body") or {}).get("age")
+    if age is None:
+        age = (spec.get("skin") or {}).get("age")
+    if age is None:
+        return 1.0
+    return float(np.clip((float(age) - GREY_AGES[0]) / (GREY_AGES[1] - GREY_AGES[0]), 0.0, 1.0))
 
 
 POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the head, not a pocket in it (an ear canal)

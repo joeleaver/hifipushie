@@ -673,7 +673,8 @@ the guides. Worked on Garrett (624 thin hand locks, a short combed cut going gre
 2. **Grey.** A lock's own `grey` (0..1) is the SHARE of grey strands it grows, x `look.grey_locks` (default 1), plus
    `look.grey_amount` everywhere; `look.grey` is their colour. Locks made for the solid look often carry 0.35+
    everywhere: at grey_locks 1 the head is striped white. 0.6 was salt and pepper. The card tiers draw the same
-   share (the locks' mean) in their pictures.
+   share (the locks' mean) in their pictures. The groom's DEFAULT temple / sideburn grey (`groom.grey` unset)
+   follows the model's age: none to 30, all of it from 50 (`hair.grey_age`; a 19-year-old got grey streaks).
 3. **Volume by measure.** Solid locks are modelled as thin shells on the volume; strands fill only each lock's own
    lens. Measure the outline against the reference (per level, mm per side), then `groom_hair(fuller={"sides":
    0.012})`: the locks rise and grow thicker by twice their lift, so the strands fill from the scalp up. (Lifted

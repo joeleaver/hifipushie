@@ -236,3 +236,17 @@ def test_carried_groom_keeps_its_hairline_on_the_head():
         assert as_written[a] - own[a] > 2.0, (a, as_written[a], own[a])  # (the bug: the line climbs ~2.6 deg)
     fitted = {"hair": {"groom": {**groom, "fit": {"r": 0.1, "c": [0, 0, 1.7]}}}}
     assert hair.carry("src", fitted, sc=sc)["groom"]["fit"] == {"r": 0.1, "c": [0, 0, 1.7]}
+
+
+def test_default_grey_follows_age():
+    """lt19b: the default temple / sideburn grey put grey locks on a 19-year-old; it now follows the model's age
+    (none to 30, all of it from 50); a groom's own grey and models without an age are unchanged."""
+    g19 = hair.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {}}})
+    assert all(v == 0 for v in g19["grey"].values())
+    g60 = hair.groom_params({"base": {"body": {"age": 60}}, "hair": {"groom": {}}})
+    assert g60["grey"] == hair.GROOM["grey"]
+    g40 = hair.groom_params({"skin": {"age": 40}, "hair": {"groom": {}}})
+    assert g40["grey"]["temples"] == pytest.approx(0.5 * hair.GROOM["grey"]["temples"])
+    assert hair.groom_params({"hair": {"groom": {}}})["grey"] == hair.GROOM["grey"]
+    mine = {"temples": 0.2}
+    assert hair.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {"grey": mine}}})["grey"]["temples"] == 0.2

@@ -763,7 +763,9 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         for poly in polys:
             d.polygon([tuple(q) for q in (poly - o) * ss], fill=255)
         hb = brow_hair_band(img, polys, o, cam, mesh)
+        rgb = None
         if hb is not None:
+            rgb = hb.info.get("rgb")
             m = hb.resize(size, Image.BILINEAR)
         L2 = humanfit.project(cam, mesh["state"]["L"])
         c = 0.5 * (L2.min(0) + L2.max(0))
@@ -773,16 +775,17 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         mmpx = likeness._mm_per_px(cam, mesh["state"]["L"][27:48])
         soft = m.filter(ImageFilter.GaussianBlur(max(0.5 / mmpx, 0.4) * ss))   # (a ~0.5 mm soft edge)
         out = {"cam": cam, "mask": np.asarray(soft, float) / 255.0, "mo": o, "ss": ss, "zb": ps["zb"], "part": ps["part"],
-               "box": box, "k": k}
+               "box": box, "k": k, "rgb": rgb}
     mesh["_brows"] = out
     return out
 
 
-def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66):
+def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66, density: bool = True):
     """The brows as the HAIR the picture shows, not the detector's band: MediaPipe's brow contour is a smooth arch of
     a fixed thickness (lt19's straight, dense brows came out thinner and more arched). Inside the detector band grown by
     grow_mm, the pixels darker than `dark` x the surrounding skin; the largest pieces per side kept. A mask over the
-    band's own box (origin o, picture pixels) or None when it finds too little."""
+    band's own box (origin o, picture pixels) or None when it finds too little. density: the mask is the hair's
+    density (its darkness against the skin, 0..1) and .info["rgb"] its colour."""
     from PIL import Image, ImageDraw, ImageFilter
     from scipy import ndimage
     from . import likeness
@@ -800,6 +803,7 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     crop = np.asarray(img.convert("L").crop((int(o[0]), int(o[1]), int(o[0]) + W, int(o[1]) + H)), float)
     xs = np.arange(W)[None, :]
     keep = np.zeros((H, W), bool)
+    skin_lvl = np.full((H, W), float(np.median(crop)))
     inner_all = 0
     for poly in polys:   # per side: its own skin level (one side of a face is often lit brighter)
         q = poly - o
@@ -814,6 +818,7 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
             return None
         inner_all += int(inner.sum())
         skin = float(np.percentile(crop[ring], 75))
+        skin_lvl[grown] = skin
         hair = ndimage.binary_opening(grown & (crop < dark * skin), iterations=1)
         lab, n = ndimage.label(hair)
         if n == 0:
@@ -826,7 +831,19 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     if keep.sum() < 0.5 * inner_all:   # too little hair found (light brows, a painting): the detector band
         return None
     keep = ndimage.binary_closing(keep, iterations=2)
-    return Image.fromarray((keep * 255).astype(np.uint8))
+    if not density:
+        return Image.fromarray((keep * 255).astype(np.uint8))
+    # DENSITY, not a flat shape (lt19b: a binary mask painted at one strength drew the tails as heavy as the dense inner
+    # ends): how far each kept pixel is below the skin level, so sparse tails come out light and thin, the dense heads
+    # dark; the brows' own colour = the median of the densest pixels
+    dens = np.where(keep, np.clip((skin_lvl - crop) / np.maximum(skin_lvl * (1 - 0.35), 1.0), 0, 1), 0.0)
+    dens = ndimage.gaussian_filter(dens, 0.6)
+    rgb = np.asarray(img.convert("RGB").crop((int(o[0]), int(o[1]), int(o[0]) + W, int(o[1]) + H)), float)
+    core = keep & (dens >= np.percentile(dens[keep], 60))
+    dn = np.clip(dens / max(np.percentile(dens[keep], 98), 1e-3), 0, 1) ** 1.4   # (p90 saturated: one flat band)
+    im = Image.fromarray((dn * 255).astype(np.uint8))
+    im.info["rgb"] = np.median(rgb[core], 0) if core.sum() > 10 else None
+    return im
 
 
 def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
@@ -854,7 +871,8 @@ def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
     vis = np.zeros(len(rr), bool)
     vis[inz] = (B["part"][zi[inz, 1], zi[inz, 0]] == 0) & (depth[inz] < B["zb"][zi[inz, 1], zi[inz, 0]] + 0.0025)
     al = al * vis * strength
-    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + BROW_RGB * al[:, None]
+    col = BROW_RGB if B.get("rgb") is None else np.asarray(B["rgb"], float)   # (the picture's own brow colour)
+    a[rr, cc] = a[rr, cc] * (1 - al[:, None]) + col * al[:, None]
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 

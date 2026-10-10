@@ -129,14 +129,16 @@ def _glyphics(rng, mm: float, fams) -> np.ndarray:
 
 
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
-               seed: int = 0, tail: float = 1.0, fall: float = 1.0):
+               seed: int = 0, tail: float = 1.0, fall: float = 1.0, taper: float = 0.82):
     """A left eyebrow as hairs (RGBA PNG in the image store; white hairs, coverage in alpha: the layer gives the
     colour), inner end at the left: hairs grow up and out at the inner end, lie along the brow in its body and
     turn out and down in the tail; the band is thick inside and tapers. Returns (path, [width, height] in mm)."""
     from PIL import Image, ImageDraw
     from . import images
     key = f"{density:.3f}_{thickness:.3f}_{length_mm:.2f}_{width_mm:.1f}_{seed}_{tail:.2f}_{VERSION}" + \
-        (f"_f{fall:.2f}" if fall != 1.0 else "")  # (fall: how far the tail drops past the arch, x the default)
+        (f"_f{fall:.2f}" if fall != 1.0 else "") + (f"_t{taper:.2f}" if taper != 0.82 else "")
+    # (fall: how far the tail drops past the arch, x the default; taper: how much the band thins from the body to the
+    # tail, 0.82 = to 18 %: a dense brow drawn thick (thickness > 1) kept its heavy tail, lt19b)
     import hashlib
     out = images.store_dir() / f"brow_{hashlib.sha1(key.encode()).hexdigest()[:12]}.png"
     h_mm = 0.42 * width_mm
@@ -153,7 +155,7 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
         def spine(t):
             return 0.56 - 0.2 * np.sin(np.clip(t / 0.62, 0, 1) * np.pi / 2) + 0.3 * fall * np.clip((t - 0.62) / 0.38, 0, 1) ** 1.6
         def half(t):  # half thickness (share of H)
-            return thickness * (0.03 + 0.14 * np.clip((t + 0.02) / 0.12, 0, 1) * (1 - 0.82 * np.clip((t - 0.25) / 0.75, 0, 1) ** 0.9))
+            return thickness * (0.03 + 0.14 * np.clip((t + 0.02) / 0.12, 0, 1) * (1 - taper * np.clip((t - 0.25) / 0.75, 0, 1) ** 0.9))
         for _ in range(n):
             t = float(np.clip(rng.beta(1.25, 1.5) * (0.97 * tail) + 0.03, 0.02, 0.99))
             off = float(np.clip(rng.normal(0, 0.45), -1, 1))

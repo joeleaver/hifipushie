@@ -24,7 +24,9 @@ HAIR (skin.hair; colours sRGB):
   brows      {"color", "density": 0..1 (0.8), "thickness": 1, "length": m (0.006), "grey": 0..1, "drop": m (0: the
              brow lower, onto the orbital rim), "arch": 1 (x the landmarks' slope: 0 = level), "tilt": deg (the whole
              brow turned, tail up +), "fall": 1 (x how far the tail drops past the arch: 0.3 = a straight, rising
-             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one)}: hairs as strokes, growing up at the inner end and out along the brow.
+             brow), "lift": [inner, tail] m (each end up + / down -), "apart": m (both brows off the mid-line), "soft": 0..1 (a soft mass rather than hairs one by one), "taper":
+             0..1 (0.82: how much the band thins toward the tail; 0.95 = a clean thin tail on a thick brow), "tail":
+             0..1 (1: how far along the hairs reach)}: hairs as strokes, growing up at the inner end and out along the brow.
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
   stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
              "shadow_breakup": its noise, 0 = an even field: a dense stubble shadow reads as one grey-brown field),
@@ -491,7 +493,7 @@ def _hair(p, J, layer, T, ctx) -> None:
     if ctx["face"]:
         io = interocular(J)
         o = _opt(h.get("brows", 1.0), "hair.brows", ("color", "density", "thickness", "length", "grey", "drop", "soft", "arch",
-                                                     "tilt", "fall", "lift", "apart"))
+                                                     "tilt", "fall", "lift", "apart", "taper", "tail"))
         if o:
             col = _hex(o["color"]) if "color" in o else dflt
             g = float(o.get("grey", 0.0))
@@ -504,7 +506,8 @@ def _hair(p, J, layer, T, ctx) -> None:
             span = float(np.linalg.norm(b_ - a_))
             width = 1.22 * span
             path, (wmm, hmm) = skin_swatch.brow_image(dens, thick, float(o.get("length", 0.006)) * 1000, width * 1000, seed,
-                                                       fall=float(o.get("fall", 1.0)))
+                                                       fall=float(o.get("fall", 1.0)), taper=float(o.get("taper", 0.82)),
+                                                       tail=float(o.get("tail", 1.0)))
             c = 0.5 * (a_ + b_)
             c[2] = (a_[2] + 2 * m_[2] + b_[2]) / 4 - 0.02 * io
             c[1] = m_[1]
