@@ -2089,3 +2089,10 @@ NO SIM WAS RUN.
     the seam then OUTWARD level (rows 11-15 at z +4 mm, 12-14 mm off the shirt collar): a flange, not a fall lying
     down; construct collar_options fall_hug 0.02 changed nothing (no layer within reach). Not fixed. Sheet
     cloth_renders/c10_w11_sheet.png (w10 | tight j12).
+  - Round 11. V feather to 0: c10ship lays only COVERED vertices under the jacket (the tuck's feather onto uncovered
+    ones dropped): visible collar AND V 0.00 / 0.00 / 0.00 mm vs s2_12, gate PASS (j12). (Production cloth_layers.tucked
+    still feathers 5 rings: the pipeline needs the same rule when merge-and-cut lands.) COLLAR FALL as a board
+    (notched_collar key fall_board, default on): each back column from the roll's top straight down to where its
+    length reaches along the cloth below the seam; the CB fall now runs 13 -> 1 mm above the seam (was flat at 4,
+    a flange). From behind (c10_w_j12b_backc.png) it lies down; from the front, small grey tabs remain where the
+    collar meets the lapel at the side neck; collar x shirt collar 10-16 crossings at CB unchanged.
