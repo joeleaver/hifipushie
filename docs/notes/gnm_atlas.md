@@ -89,3 +89,27 @@ stays a local morph. Without slider_mode the old local sliders (old specs reprod
 macros in the same framework. Tests tests/test_faceatlas.py: a 1-sd change moves its attribute 1 sd and every
 |r| > 0.6 attribute ~r sd; eye_setback with brow_ridge held keeps the brow (free, it comes along); no fold at +-1.5
 for any coupled slider; a coupled slider recovered from a render.
+
+## Step 3: the joint solve over the whole-model controls (spikes/facesliders/joint2.py)
+
+Variables: GNM's 120 head components (every free macro and coupled slider is a direction there; their values are READ
+OUT of the result) + residual local morphs (RES) + the ageing ops that the evidence can see (AGE: cheek_hollow,
+face_lean, cheek_flat, prejowl; one-sided), L2 per unit. Prior: within-sex Mahalanobis (mean sex * delta / 2).
+Evidence: calibrated detector points per view; checklist items (eye opening, canthal tilt, brow-eye, lip heights) as
+photo - clay render both through the detector, linearised through the same item on the predicted MediaPipe points;
+the face OUTLINE (outl.py: the front's MediaPipe oval snapped to the photo's strongest edge, a turned view's traced
+lines, each line on its own) as a chamfer to humanfit._silhouette; non-front views weighted DESK_W. Items flagged
+with an expression on the picture are left to pose (Garrett's concept: squint 0.70, frown 0.64). No face-ID term
+(ArcFace / SFace can't see geometry across clay vs painting: -0.16..+0.11).
+Findings (Garrett fs_gj2 / gj5, Tess fs_tj2 / tj3; sheets human_renders/fs_16, fs_17, fs_18):
+- Without the outline the identity explains ~99% of the points' improvement but the face comes out round and soft:
+  the detector points don't constrain the contour. With it: front contour 7.4 -> 1.3 mm, the face tapers, but the
+  prior goes to 44 (max |c| 2.5, at the wall: ramus +2.3 sd, cranium height -2.0) and face_lean wants +1.2: the
+  identity can't make his lean, long, hollow-cheeked face; the chin comes out narrow (50 vs 56 mm).
+- The squint biases the detector's canthal tilt: the same head with a squint pose matching the photo's opening reads
+  1.4 deg lower (squintchk.py). The rest (~2 deg) doesn't move with the identity's eye_tilt (-2 sd).
+- The proportion items (face oval widths, face height) read photo vs clay disagree with the outline fit on Garrett
+  (photo 11-15% wider at the same camera while the contour fits at 1.3 mm), agree on Tess within 3%: read only.
+- The desk painting's traced jaw.R line matched no silhouette (15 mm, dragged under_chin / ramus): left out; the
+  front snap is unreliable where skin meets skin (jaw over neck) or hair crosses the cheek: Tess's jaw went square
+  (+3.1 sd). A better front contour reader is needed (traced, or a segmentation) before the outline term can be trusted.
