@@ -157,3 +157,26 @@ def test_tools_through_server():
         assert len(server.block_in_look(a, focus="eyes", views=[0], save=str(store.HOME / a / "e.png"))) == 2
     finally:
         _rm(a, "bi_test_s1")
+
+
+@need_ref
+def test_fixed_eyeball_radius():
+    """head.eye_radius (blockin2): an absolute eyeball, not GNM's 14.6 mm eye x the head's scale; head_scale doesn't
+    change it, eye size does; the ball still rests under the lid rims; without the key nothing changes."""
+    import copy
+    from hifipushie import humanfit
+    b0 = store.load(REF)["base"]
+    r0 = float(humanfit.state(b0)["head"]["eye_r"])
+    assert r0 > 0.0135   # Garrett's body-scaled GNM eye (14.6 mm)
+    for hs, ke, want in ((1.0, 1.0, 0.012), (1.1, 1.0, 0.012), (1.0, 1.05, 0.0126)):
+        b = copy.deepcopy(b0)
+        b["head"]["eye_radius"] = 0.012
+        b["head"]["eyes"] = ke
+        b.setdefault("style", {}).setdefault("human", {})["head_size"] = hs
+        h = humanfit.state(b)["head"]
+        assert abs(float(h["eye_r"]) - want) < 1e-6, (hs, ke, h["eye_r"])
+        L = np.asarray(h["lm68"], float)
+        for e in h["eyes"]:   # seated: every rim landmark just outside the ball, the nearest at the seat clearance
+            rim = L[42:48] if e[0] > 0 else L[36:42]
+            d = np.linalg.norm(rim - np.asarray(e), axis=1).min() - float(h["eye_r"])
+            assert 0.0007 < d < 0.0010, d
