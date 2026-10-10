@@ -1602,3 +1602,9 @@ top: a 4 mm vertical disagreement that biases profile registration).
   only reached through the visibility read, which is jumpy: a smooth hood measure is the next piece. Sheet
   b2_G14_eyes.png.
 - Diagnostic: eyediag.py (linear reach of identity / expression / both for the three reads; holds' cost).
+- Hood (smooth): the lid profile's drop below its running maximum (the fold hanging back down); the visible platform =
+  the crease's soft height blended toward the overhang's lowest point over a 0.1 -> 0.6 mm drop. Garrett b2_G15 (from
+  G13, hooded target 0.5 mm): GNM made NO overhang (drop 0.00); it lowered the crease instead: platform 2.56 mm, crease
+  0.54 mm at 2.56, lids 0.44 / 0.74 (his 0.46 / 0.72), |dc| 1.9, |e| 1.9; mouth_width edge flip (+1.58 of 1.5).
+  Dressed (b2_G15_skin.png): a heavy low upper lid, skin close to the lashes: reads hooded enough in front and 3/4. A
+  true overhang is a GNM capability question (not tested beyond this prior).
