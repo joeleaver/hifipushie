@@ -1454,7 +1454,11 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
     slides = B.get("_worn_slides") or {}
     mean_sl = float(np.mean(list(slides.values()))) if slides else 0.0
     use = [nm for nm in torso if not pcs[nm]["wrap"].get("lies_on") and not _closed_girth(M, nm)
-           and not pcs[nm]["wrap"].get("pleats") and pcs[nm]["wrap"].get("to", "torso") == "torso"]
+           and not pcs[nm]["wrap"].get("pleats") and pcs[nm]["wrap"].get("to", "torso") == "torso"
+           and not pcs[nm]["wrap"].get("align")]
+    # (a band aligned to a point of the garment (wrap "align": a rib hem band round the hips) is laid round the body
+    # on its own: taken into the levels, Tess's jumper's hem band was laid level by level from its CB ends and its
+    # top row ran 14 cm round past the row under it at the 1 cm mesh: a 0.2 m triangle, "the start is broken")
     if not use:
         return X
     sl = {nm: slides.get(nm, mean_sl) for nm in use}
@@ -4674,6 +4678,17 @@ def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
     edge it is sewn to and stretched on (a rib: its seam note's ease e < 0, "stretched on") starts at 1 / (1 + e) of
     its flat length by design: a rib hem band at 0.88 is 14% stretched before the sim moves anything. Start-stretch
     checks subtract it, or every rib band fails them (Tess's jumper, 2026-10-09)."""
+    allow = declared_pieces(Bp, M["names"])
+    out = np.zeros(len(M["F"]))
+    for nm, v in allow.items():
+        out[M["piece"][M["F"][:, 0]] == M["names"].index(nm)] = v
+    return out
+
+
+def declared_pieces(Bp: dict, names: list) -> dict:
+    """{piece: the stretch it is DECLARED to be sewn on with} (declared_stretch) for the pieces in `names`. The sims get
+    it too (job "declared"): under a strain limit below it Tess's cuffs and neckband stayed at their cut length, their
+    seams open 20-60 mm (tess_b2)."""
     allow = {}
     for k, note in (Bp.get("seam_notes") or {}).items():
         lo, hi = (float(x) for x in note.get("ease", [0.0, 0.0]))
@@ -4685,13 +4700,10 @@ def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
         except (ValueError, TypeError):
             continue
         # the band is the seam's FIRST side (generated bands and drafted collars are written so), one piece's edge
-        if isinstance(a, str) and a.split(":")[0] in M["names"]:
+        if isinstance(a, str) and a.split(":")[0] in names:
             nm = a.split(":")[0]
             allow[nm] = max(allow.get(nm, 0.0), 1.0 / (1.0 + e) - 1.0)
-    out = np.zeros(len(M["F"]))
-    for nm, v in allow.items():
-        out[M["piece"][M["F"][:, 0]] == M["names"].index(nm)] = v
-    return out
+    return allow
 
 
 def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int = 2, rounds: int = 200,
@@ -4788,6 +4800,10 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
     "info"}."""
     from . import folds as foldmod
     Vd = transfer(Ms, Vc, M)
+    # bands declared stretched on: the relaxations below (_relax_stretch / _relax_strain) leave them so
+    M["declared_v"] = np.zeros(len(M["uv"]))
+    for nm_, e_ in declared_pieces(Bp, M["names"]).items():
+        M["declared_v"][M["piece"] == M["names"].index(nm_)] = e_
     V = Vd.copy()
     Xc_on_f = transfer(Ms, Xs, M)
     held = np.zeros(len(V), bool)
@@ -4837,8 +4853,16 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         far0 = ~held & (cKDTree(V[held]).query(V)[0] > FINE_REACH + 0.01)
     near0 = ~held & ~far0
     if len(body.V):  # (a fine vertex on a coarse facet's chord can lie inside the solver's standoff from the body)
+        # a piece laid OUTSIDE another (a patch pocket: wrap lies_on, face out) is cleared that much further than the
+        # piece under it: cleared to the same gap, Tess's jeans' back pockets went through the backs (188 crossings in
+        # the fine start, 187 in the settled result)
+        g_near = np.full(len(V), 0.0042)
+        for nm_, pc_ in Bp["pieces"].items():
+            if nm_ in M["names"] and pc_["wrap"].get("lies_on") and pc_["wrap"].get("face") == "out":
+                g_near[M["piece"] == M["names"].index(nm_)] += LIES
+
         def clear(V):
-            V = _clear_of_body(V, M["F"], near0, body, 0.0042, 0.0034, CLEAR_GROW)
+            V = _clear_of_body(V, M["F"], near0, body, g_near, 0.0034, CLEAR_GROW)
             return _clear_of_body(V, M["F"], far0, body, FAR_CLEAR, FAR_CLEAR, CLEAR_GROW) if far0.any() else V
         V = clear(V)
         V = _relax_stretch(V, M, ~held, 0.03, iters=15)
@@ -4847,6 +4871,12 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         V, untangled = _untangle(V, M, ~held, reshape=True)
         if len(untangled) > 1:
             V = clear(V)
+            # (the clear stretches what the untangle smoothed into the body as it did before it: relaxed and cleared
+            # again, as above, while that makes no new crossing. Tess's jeans3: back.R beside its patch pocket 1.26x
+            # after the untangle, 2.0x after this clear)
+            Vr = clear(_relax_stretch(V, M, ~held, 0.03, iters=15))
+            if _crossing_verts(Vr, M).sum() <= _crossing_verts(V, M).sum():
+                V = Vr
         Bp["untangled"] = untangled + [int(_crossing_verts(V, M).sum())]
         # (the made pieces too, by the little their rigid fit onto the coarse ones left them inside the standoff: a
         # held vertex within it is fatal as well)
@@ -5135,7 +5165,8 @@ def _relax_stretch(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.02
     F, uv = M["F"], M["uv"]
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
     E = E[free[E].any(1)]
-    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1) * (1 + limit)
+    dv = M.get("declared_v")  # (a band declared stretched on: its edges may be that much longer: declared_stretch)
+    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1) * (1 + limit + (dv[E].max(1) if dv is not None else 0.0))
     V = V.copy()
     wa, wb = free[E[:, 0]].astype(float), free[E[:, 1]].astype(float)
     ws = np.maximum(wa + wb, 1e-9)
@@ -5179,14 +5210,18 @@ def _relax_strain(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.03,
     U3 = np.stack([uv[F[:, 0]], uv[F[:, 1]], uv[F[:, 2]]], 1)
     U3 = U3 - U3.mean(1, keepdims=True)  # (f, 3, 2) the pattern triangle about its centroid
     wv = free.astype(float)
+    # (a band declared stretched on starts that much stretched by design (declared_stretch): drawn back to 1 + limit,
+    # Tess's rib neckband went 1.26 -> 2.99x while the untangle reshaped round it)
+    dv = M.get("declared_v")
+    lim_t = limit + (dv[F].max(1) if dv is not None else np.zeros(len(F)))
     for _ in range(iters):
         Ds = np.stack([V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]], -1)
         G = Ds @ inv  # (f, 3, 2)
         Uq, S, Vt = np.linalg.svd(G, full_matrices=False)
-        hot = S[:, 0] > 1 + limit
+        hot = S[:, 0] > 1 + lim_t
         if not hot.any():
             break
-        S2 = np.minimum(S[hot], 1 + limit)
+        S2 = np.minimum(S[hot], 1 + lim_t[hot][:, None])
         G2 = Uq[hot] @ (S2[:, :, None] * Vt[hot])
         X3 = V[F[hot]]
         tgt = X3.mean(1, keepdims=True) + np.einsum("fij,fkj->fki", G2, U3[hot])
@@ -6210,13 +6245,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     # smooth: dressed on straight arms (the body bends back in the sim's "pose" stage), nothing folded but what the
     # solver keeps as rest (interfaced pieces)
     body_p, pose = body.straight_arms() if smooth else (body, None)
-    Bp["worn_top"] = worn_top(g)
-    # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
-    # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
-    # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap"):
-        if g.get(k_) is not None:
-            Bp[k_] = g[k_]
+    place_keys(Bp, g)
     # garment key "fine_relax" (default: on for a garment over another): the fine settle also moves carried cloth
     # past its reach where that starts stretched (_press_plan)
     Bp["fine_relax"] = bool(g.get("fine_relax", under is not None))
@@ -6405,6 +6434,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                "placement": placement_of(g), **({"zozo": dict(g["zozo"])} if g.get("zozo") else {}),
                "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in Ms["names"]},
                "made": made_pieces(Ms, stiff_s),
+               **({"declared": declared_pieces(Bp, Ms["names"])} if declared_pieces(Bp, Ms["names"]) else {}),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
                                     "hang_frames", "hang_sew_force", "hang_air", "lower_frames") if k in g}}
         if settle:  # nothing assembled in stages: the made pieces are held, the loose cloth sews onto them
@@ -6547,6 +6577,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             fcfg = {"mode": "fine_settle", "fabric": fab, "state": "worn", "name": name, "placement": "smooth",
                     "self_collision": True, "press_frames": fr[0], "frames": fr[1], "carry": True,
                     "made": made_pieces(M, stiff_f), "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in M["names"]},
+                    **({"declared": declared_pieces(Bp, M["names"])} if declared_pieces(Bp, M["names"]) else {}),
                     **({"zozo": dict(g["zozo"])} if g.get("zozo") else {})}
             farr = dict(X=plan["start"], uv=M["uv"], F=M["F"], sew=M["sew"],
                         stitch=np.r_[M["stitch"].reshape(-1, 2), plan["tacks"]], stiff=stiff_f,
@@ -6565,7 +6596,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             from . import cloth_detail
             _, hi_, _, _ = cloth_detail.strain_field(M, plan["start"])
             loose_t = ~np.isin(M["F"], plan["idx"]).any(1)
-            need_ = float(hi_[loose_t].max()) - 1.0 if loose_t.any() else 0.0
+            # (less what a piece is declared to start with: its own limit is raised to that in the runner)
+            need_ = float((hi_ - declared_stretch(Bp, M))[loose_t].max()) - 1.0 if loose_t.any() else 0.0
             zz = dict(g.get("zozo") or {})
             zz.setdefault("strain_limit", float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)))
             # a contact solver can't start inside its standoff either, and the made pieces are held where the coarse
@@ -7047,6 +7079,19 @@ def _kb() -> dict:
 def seam_finishes() -> dict:
     """The seam finishes (garment_kb.json seam_finishes): name -> numbers."""
     return {k: v for k, v in _kb()["seam_finishes"].items() if not k.startswith("_")}
+
+
+def place_keys(Bp: dict, g: dict) -> dict:
+    """The garment keys place() reads from the pieces, set on Bp (build and the place check both: the check placed
+    without worn_top, so a garment the build lays on the form was checked as a loose tube)."""
+    Bp["worn_top"] = worn_top(g)
+    # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
+    # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
+    # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
+    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap"):
+        if g.get(k_) is not None:
+            Bp[k_] = g[k_]
+    return Bp
 
 
 def worn_top(g: dict) -> bool:

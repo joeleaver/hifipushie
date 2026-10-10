@@ -2218,8 +2218,10 @@ NO SIM WAS RUN.
     (+10%), front_hang 85 mm (rule -40..10), hem_sweep -21%, collar_hug 16.6 mm, sleeve -14%. One batch:
     gc1 = neckline.back 0.045 -> 0.035 + block chest_ease 0.10 -> 0.06; gc2 = the same with chest_ease 0.03.
     gc2's sim STALLED on the fleet (progress frozen at "sewing" for 40+ min, a normal job takes 60-90 s): cancelled,
-    but the batch cost $0.70 (the stalled instance billed); ALWAYS watch a batch's progress line and cancel a job
-    whose line has not moved in ~5 min (bl.sh status <batch>, bl.sh cancel <batch>).
+    but the batch cost $0.70 (the stalled instance billed). [CORRECTED 2026-10-10, coordinator: do NOT cancel quiet
+    jobs by hand (a cancel is billed for the time held; the runner prints only at setup and end): the broker's stall
+    guard kills a job with no output AND no GPU use for 10 min, free. Submit with timeout_minutes ~30, stall_minutes
+    default. bl.sh status <batch> to look.]
     gc1 (out/c11_gc1.pkl, its shirt c11_gc1_under.pkl = c11_gb's): collar_show at CB 25.5 -> 12.4 mm (rule 10-20: OK);
     gates PASS (0 skin px, collar / V 0.00), lapels straight (roll 4.7-5.3, edge 0.1-0.3) 64 / 67 mm, notch 67 / 66 mm
     below the chin (concept 63 / 56); visible shirt x jacket 32 (was 0). Chest only 441 -> 436 mm: four points of

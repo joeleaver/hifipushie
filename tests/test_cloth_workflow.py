@@ -240,3 +240,68 @@ def test_a_rib_band_may_start_stretched():
     a = cloth.declared_stretch(Bp, M)
     assert a[0] == 0.0 and abs(a[1] - (1 / 0.88 - 1)) < 1e-9
     assert cloth.declared_stretch({"seam_notes": {}}, M).tolist() == [0.0, 0.0]
+
+
+def test_a_rib_band_is_simulated_with_room_to_stretch_on():
+    """The sims get a band's declared stretch (job "declared"), and the runner raises that piece's strain limit above it:
+    under the garment's 5% Tess's cuffs (cut 0.85 of the sleeve's wrist) stayed at their cut length, their closing seams
+    20-47 mm open and the neckband 62 mm off the back (tess_b2); carried onto the fine mesh, 5x at the cuff."""
+    import json as _j
+    import numpy as np
+    from hifipushie import cloth, cloth_zozo
+    seam = ["cuff.L:a>b", ["sleeve.L:wrist"]]
+    Bp = {"seam_notes": {_j.dumps(seam): {"ease": [-0.15, -0.15], "why": "rib"}}}
+    dec = cloth.declared_pieces(Bp, ["sleeve.L", "cuff.L"])
+    assert set(dec) == {"cuff.L"} and abs(dec["cuff.L"] - (1 / 0.85 - 1)) < 1e-9
+    assert cloth.declared_pieces(Bp, ["front"]) == {}
+    lim = 0.05
+    assert cloth_zozo.declared_limit(dec["cuff.L"], lim) > lim + dec["cuff.L"] + 0.05  # the ring at the offset too
+    assert cloth_zozo.declared_limit(0.0, lim) == lim and cloth_zozo.declared_limit(5.0, lim) == 1.0
+    pid = np.array([0, 0, 1, 1, 2])
+    pieces = ["sleeve.L", "cuff.L", "collar"]
+    lifted = np.array([False, False, False, False, True])
+    zone = np.array([True, False, False, False, False])
+    lv = cloth_zozo.vertex_limits(pid, pieces, lim, lifted, 0.4, zone, 0.15, dec)
+    assert lv[1] == lim and lv[0] == 0.15 and lv[4] == 0.4
+    assert np.allclose(lv[2:4], cloth_zozo.declared_limit(dec["cuff.L"], lim))
+    # (nothing declared, nothing lifted: the garment's limit everywhere, as before)
+    assert (cloth_zozo.vertex_limits(pid, pieces, lim, lifted, None, np.zeros(5, bool), lim, None) == lim).all()
+
+
+def test_relaxing_a_start_leaves_a_declared_band_stretched():
+    """The fine start's relaxations (_relax_stretch, _relax_strain) draw a band declared stretched on (M "declared_v")
+    back only to its declared stretch + their limit, not to its cut length (Tess's neckband 1.26 -> 2.99x)."""
+    import numpy as np
+    from hifipushie import cloth
+    uv = np.array([[0, 0], [0.1, 0], [0, 0.1], [0.1, 0.1]], float)
+    M = {"uv": uv, "F": np.array([[0, 1, 2], [1, 3, 2]])}
+    V = np.c_[uv * [1.15, 1.0], np.zeros(4)]  # 15% stretched along x
+    free = np.array([False, True, False, True])
+    for fn in (cloth._relax_stretch, cloth._relax_strain):
+        assert np.abs(fn(V, M, free, 0.02) - V).max() > 1e-3  # a plain piece is drawn in
+        Md = dict(M, declared_v=np.full(4, 1 / 0.85 - 1))
+        assert np.abs(fn(V, Md, free, 0.02) - V).max() < 1e-9  # a declared band is left as it is
+
+
+def test_the_place_check_places_as_the_build_does():
+    """The place check's pieces carry the garment keys place() reads (worn_top, open_gap, ...) as the build's do:
+    without them a jumper the build lays on the form (worn_top) was checked as a loose tube (Tess, tess2)."""
+    import inspect
+    from hifipushie import cloth, cloth_workflow
+    Bp = cloth.place_keys({}, {"worn_top": True, "open_gap": 0.1, "design": {"kind": "hoodie"}})
+    assert Bp["worn_top"] is True and Bp["open_gap"] == 0.1
+    assert cloth.place_keys({}, {"design": {"kind": "hoodie"}})["worn_top"] is False
+    assert "place_keys" in inspect.getsource(cloth_workflow.Ctx)
+
+
+def test_a_start_inside_the_contact_standoff_is_named():
+    """A piece starting closer to the body than ZOZO's contact standoff (offset 2 mm + gap 1 mm) is named with where:
+    Tess's neckband's folded end started 0.84 mm off the neck and the sim stopped at its first step."""
+    import types
+    import numpy as np
+    from hifipushie import cloth_workflow
+    body = types.SimpleNamespace(V=np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0.0]]), T=np.array([[0, 1, 2]]))
+    M = {"names": ["front", "band"], "piece": np.array([0, 0, 1, 1]), "uv": np.zeros((4, 2))}
+    X = np.array([[0.3, 0.3, 0.02], [0.2, 0.2, 0.02], [0.3, 0.3, 0.001], [0.2, 0.2, 0.01]])
+    near = cloth_workflow.start_in_standoff(X, M, body)
+    assert set(near) == {"band"} and abs(near["band"][0] - 1.0) < 0.05
