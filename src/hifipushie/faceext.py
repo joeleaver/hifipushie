@@ -33,6 +33,9 @@ EXT = {
                         "the mouth's corners up; - = down-turned corners (MakeHuman)"),
     "mh_lowerlip_ext": ("mouth", "mouth-lowerlip-ext-up", "mouth-lowerlip-ext-down",
                         "the lower lip's outer ends up toward the corners; - = down (MakeHuman)"),
+    "mh_lowerlip_volume": ("mouth", "mouth-lowerlip-volume-incr", "mouth-lowerlip-volume-decr",
+                           "the lower lip fuller (its pad forward and down: the pout's shadow under it); - = thinner "
+                           "(MakeHuman; faces2 2026-10-10, for the lip stage's shading)"),
 }
 REGION = 0.03      # of the target's largest move: its region (the extension lives there)
 _C: dict = {}
