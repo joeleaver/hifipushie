@@ -606,6 +606,9 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
         d = ImageDraw.Draw(m)
         for poly in polys:
             d.polygon([tuple(q) for q in (poly - o) * ss], fill=255)
+        hb = brow_hair_band(img, polys, o, cam, mesh)
+        if hb is not None:
+            m = hb.resize(size, Image.BILINEAR)
         L2 = humanfit.project(cam, mesh["state"]["L"])
         c = 0.5 * (L2.min(0) + L2.max(0))
         side = 1.5 * float(np.max(L2.max(0) - L2.min(0)))
@@ -617,6 +620,60 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
                "box": box, "k": k}
     mesh["_brows"] = out
     return out
+
+
+def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66):
+    """The brows as the HAIR the picture shows, not the detector's band: MediaPipe's brow contour is a smooth arch of
+    a fixed thickness (lt19's straight, dense brows came out thinner and more arched). Inside the detector band grown by
+    grow_mm, the pixels darker than `dark` x the surrounding skin; the largest pieces per side kept. A mask over the
+    band's own box (origin o, picture pixels) or None when it finds too little."""
+    from PIL import Image, ImageDraw, ImageFilter
+    from scipy import ndimage
+    from . import likeness
+    allp = np.concatenate(polys)
+    hi = allp.max(0) + 6
+    W, H = int(np.ceil(hi[0] - o[0])), int(np.ceil(hi[1] - o[1]))
+    if W < 4 or H < 4:
+        return None
+    mmpx = likeness._mm_per_px(cam, mesh["state"]["L"][27:48])
+    band = Image.new("L", (W, H), 0)
+    d = ImageDraw.Draw(band)
+    for poly in polys:
+        d.polygon([tuple(q) for q in (poly - o)], fill=255)
+    g = max(1, int(round(grow_mm / mmpx)))
+    grown = np.asarray(band.filter(ImageFilter.MaxFilter(2 * g + 1)), float) > 0
+    # not past the band's own ends (side hair at the temples is dark too)
+    xs = np.arange(W)[None, :]
+    span = np.zeros((H, W), bool)
+    for poly in polys:
+        q = poly - o
+        span |= (xs >= q[:, 0].min() - 0.5 / mmpx) & (xs <= q[:, 0].max() + 0.5 / mmpx)
+    grown &= span
+    inner = np.asarray(band, float) > 0
+    crop = np.asarray(img.convert("L").crop((int(o[0]), int(o[1]), int(o[0]) + W, int(o[1]) + H)), float)
+    ring = grown & ~inner
+    if ring.sum() < 20 or inner.sum() < 20:
+        return None
+    skin = float(np.percentile(crop[ring], 75))
+    hair = grown & (crop < dark * skin)
+    hair = ndimage.binary_opening(hair, iterations=1)
+    lab, n = ndimage.label(hair)
+    if n == 0:
+        return None
+    keep = np.zeros_like(hair)
+    for poly in polys:   # per side: the component(s) overlapping the detector band most
+        pm = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(pm).polygon([tuple(q) for q in (poly - o)], fill=255)
+        pm = np.asarray(pm) > 0
+        ov = ndimage.sum(pm, lab, index=np.arange(1, n + 1))
+        if ov.max() <= 0:
+            continue
+        for i in np.flatnonzero(ov >= 0.25 * ov.max()):
+            keep |= lab == i + 1
+    if keep.sum() < 0.5 * inner.sum():   # too little hair found (light brows, a painting): the detector band
+        return None
+    keep = ndimage.binary_closing(keep, iterations=2)
+    return Image.fromarray((keep * 255).astype(np.uint8))
 
 
 def seat_brows(im, ps, cam, box, k, B: dict, strength: float = 0.9):
@@ -667,13 +724,69 @@ def draw_brows(im, mesh, cam, box, k, mm: float = 2.0):
     return im
 
 
-def presented_mesh(base: dict, eyes: bool = True) -> dict:
+LIP_TINT = np.array([0.98, 0.74, 0.74])   # the clay's vermilion, x skin: presentation only (no reader sees it)
+
+
+def lip_tint(mesh: dict, st: dict, share: float = 0.8) -> None:
+    """The vermilion tinted on the clay (GNM's upper_lip / lower_lip groups): untinted clay lips barely read as lips."""
+    from . import base as basemod, onemesh
+    g = basemod._gnm_data()
+    gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(st["tpl"]["fid"])]
+    ok = gid >= 0
+    w = np.zeros(len(gid))
+    for grp in ("upper_lip", "lower_lip"):
+        w[ok] = np.maximum(w[ok], np.asarray(g["groups"][grp], float)[gid[ok]])
+    C = np.asarray(mesh["C"], float)
+    a = (share * np.clip(w, 0, 1))[:, None]
+    mesh["C"] = C * (1 - a) + C * LIP_TINT * a
+
+
+_IRIS: dict = {}
+
+
+def photo_iris(rj: dict | None):
+    """The person's iris colour from the front picture (MediaPipe's iris ring: the median of the annulus between the
+    pupil and the limbus, the brightest tenth (catchlights) left out); None without a front detection."""
+    if not rj:
+        return None
+    from PIL import Image
+    vf = _front(rj)
+    v = rj["views"][vf]
+    key = v["image"]
+    if key not in _IRIS:
+        img = Image.open(v["image"]).convert("RGB")
+        P = detect_view(img, v)
+        col = None
+        if P is not None and len(P) >= 478:
+            P = np.asarray(P, float)[:, :2]
+            a = np.asarray(img, float)
+            px = []
+            for c_, ring in ((468, range(469, 473)), (473, range(474, 478))):
+                c = P[c_]
+                r = float(np.mean([np.linalg.norm(P[i] - c) for i in ring]))
+                yy, xx = np.mgrid[int(c[1] - r):int(c[1] + r) + 1, int(c[0] - r):int(c[0] + r) + 1]
+                d = np.hypot(xx - c[0], yy - c[1])
+                m = (d > 0.45 * r) & (d < 0.85 * r)
+                px.append(a[yy[m], xx[m]])
+            q = np.concatenate(px)
+            lum = q.mean(1)
+            q = q[lum <= np.percentile(lum, 90)]
+            col = tuple(float(x) for x in np.median(q, 0))
+        _IRIS[key] = col
+    return _IRIS[key]
+
+
+def presented_mesh(base: dict, eyes: bool = True, rj: dict | None = None) -> dict:
+    """The clay as presented for whole-face reads: hair cap, tinted lips, a presentable eye (the person's iris colour
+    from the front picture when rj is given)."""
     from . import humanfit, likeness
     st = humanfit.state(base)
     mesh = likeness.model_mesh_from_state(st)
     mesh["C"] = haircap(mesh, st)
+    lip_tint(mesh, st)
     if eyes:
-        eye_presentation(mesh)
+        ir = photo_iris(rj)
+        eye_presentation(mesh, iris=ir) if ir else eye_presentation(mesh)
     return mesh
 
 
@@ -823,12 +936,12 @@ def look(name: str, out: str, views: list | None = None, T: int = 330, before: s
     from . import humanfit, likeness, store
     rj = _refs(name)
     base = store.load(name)["base"]
-    mesh = presented_mesh(base)
+    mesh = presented_mesh(base, rj=rj)
     st = mesh["state"]
     boxes = (rj.get("blockin") or {}).get("boxes") or _boxes(base, rj)
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
     cols = ["photo", f"{name} (photo's light)", "50% overlay", "outline: photo red / clay green", "squint photo", "squint clay"]
-    mesh_b = presented_mesh(store.load(before)["base"]) if before else None
+    mesh_b = presented_mesh(store.load(before)["base"], rj=rj) if before else None
     per = 2 if before else 1
     sheet = Image.new("RGB", (T * len(cols), (T + 18) * len(VI) * per + 18), "white")
     dr = ImageDraw.Draw(sheet)
@@ -955,8 +1068,8 @@ def focus(name: str, feature: str, out: str, views: list | None = None, T: int =
         raise ValueError(f"focus: one of {', '.join(FEATURES)}")
     F = FEATURES[feature]
     rj = _refs(name)
-    mesh = presented_mesh(store.load(name)["base"])
-    mesh_b = presented_mesh(store.load(before)["base"]) if before else None
+    mesh = presented_mesh(store.load(name)["base"], rj=rj)
+    mesh_b = presented_mesh(store.load(before)["base"], rj=rj) if before else None
     st = mesh["state"]
     VI = list(range(len(rj["views"]))) if views is None else [int(v) for v in views]
     if feature == "ears":
