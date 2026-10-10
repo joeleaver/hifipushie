@@ -80,9 +80,10 @@ def test_stubble_map_deterministic_and_styles():
     _, grey, sg, _ = mapped(style="short", grey=0.5)
     assert grey[..., 1].mean() > 0.3 * grey[..., 0].mean() and grey[..., 2].mean() < a1[..., 2].mean()
     assert 0.4 < sg["white"] < 0.6
-    # the skin layers: shadow per vertex, hairs per pixel, all reading this map
+    # the skin layers: shadow and hairs per pixel, all reading this map
     L = paint.layers(head_spec(hair={"stubble": {"style": "short", "grey": 0.3}}))
-    assert L["skin:stubble_shadow"].get("_pre") and "skin:stubble_grey" in L
+    # (the shadow per pixel: its map carries the under-skin shafts, ~0.2 mm dashes a per-vertex layer would lose)
+    assert not L["skin:stubble_shadow"].get("_pre") and "skin:stubble_grey" in L
     assert L["skin:stubble"]["mask"][0]["image"]["wrap"] == "sphere"
 
 
@@ -102,7 +103,11 @@ def test_fade_band_never_darker_than_full():
     d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
     fr = images.frame(spec, {"file": path, **place, "channel": "b"}, parts=["body"])
     u, v, w = images.project(fr, V, N)
-    px = images.sample(images.pixels(pathlib.Path(path)), u, v)
+    # (the shadow channel carries the under-skin shafts' grain: compared as the eye takes it from a step back, ~1.5 mm)
+    from scipy.ndimage import gaussian_filter
+    pix = np.array(images.pixels(pathlib.Path(path)), dtype=np.float32)
+    pix[..., 2] = gaussian_filter(pix[..., 2], 0.0015 / 0.00006)
+    px = images.sample(pix, u, v)
     inside = (w > 0.9) & (u > 0.02) & (u < 0.98) & (v > 0.05) & (v < 0.98)
     full, band = (d > 0.85) & inside, (d > 0.03) & (d < 0.4) & inside
     assert full.sum() > 50 and band.sum() > 50
@@ -139,8 +144,61 @@ def test_freckles_no_repeat_and_sun():
     assert nose > 0.3 and under < 0.05, (nose, under)
 
 
+@_tmp
+def test_patchy_is_missing_hair_and_freckles_fade_out():
+    """A patchy beard keeps the moustache and the chin's underside and leaves the cheeks bare (noise blobs on the
+    cheek read as stains in four blind reads); freckles peak on the nose bridge and upper cheek and fade outward
+    without stopping dead at the cheek's side (skin3 measured 0.01 of the peak there, refs 0.1-0.9)."""
+    spec = head_spec(hair={"stubble": {"style": "patchy"}})
+    J = skin._joints(spec)
+    io = skin.interocular(J)
+    V, N, _ = mk.head_mesh(spec, "body", J)
+    V, N = V.astype(float), N.astype(float)
+    o = stubble_options({"amount": 1.0, "style": "patchy"})
+    d = mk.beard_density(J, o, mk.curvature_at(spec, "body", J))(V, N)
+    def front(field, p, r=0.003, ny=-0.3):   # the most a field reaches on skin facing forward within r of p, seen from the front
+        p = np.asarray(p, float)
+        m = (np.linalg.norm(V[:, [0, 2]] - p[[0, 2]], axis=1) < r) & (N[:, 1] < ny)
+        return float(field[m].max()) if m.any() else 0.0
+    mous = front(d, np.asarray(J["lm_lip_upper"]) + [0.006, 0, 0.004])
+    cheek = front(d, np.asarray(J["lm_mouth_corner.L"]) + io * np.array([0.3, 0.0, 0.2]))
+    assert mous > 0.3 and cheek < 0.25 * mous, (mous, cheek)
+    fd = mk.freckle_density(J, {**freckle_options({"amount": 1.0}), "clump": 0.0})(V, N)
+    up = front(fd, np.asarray(J["lm_lid_lower.L"]) + io * np.array([0.0, 0.0, -0.35]))
+    out = front(fd, np.asarray(J["lm_lid_lower.L"]) + io * np.array([0.3, 0.0, -0.35]), ny=0.0)   # (this test head is narrow)
+    assert up > 0.3 and 0.05 * up < out < up, (up, out)
+
+
+@_tmp
+def test_base_map_pores_by_zone_and_per_pixel():
+    """The face's base skin is a unique per-pixel map (skin4: the per-vertex mottles left nothing below ~3 mm): pores
+    larger and denser on the nose than the forehead, none on the lips; the colour channels vary around an even 0.5 at
+    1-3 mm and fade to even at the map's edges (no seam); its relief is a non-detail height layer, so the export bakes
+    it into the unique normal map, and its colour layers are per pixel (not _pre)."""
+    spec = head_spec(age=30)
+    J = skin._joints(spec)
+    io = skin.interocular(J)
+    W = mk.base_zones(J)
+    pts = np.array([J["lm_nose_tip"] + io * np.array([0.05, 0.02, 0.05]), [0.0, J["lm_nose_bridge"][1] + 0.2 * io, J["lm_nose_bridge"][2] + 0.75 * io],
+                    J["lm_lip_lower"]])
+    den, rad = mk._pore_field(W(pts))
+    assert den[0] > 1.3 * den[1] and rad[0] > 1.2 * rad[1] and den[2] == 0, (den, rad)
+    path, place, st = mk.base_map(spec, "body", J, {"pore_size": 1.0, "seed": 0})
+    a = images.pixels(pathlib.Path(path))[..., :3].astype(float)
+    H, Wd = a.shape[:2]
+    mid = a[H // 2 - 200:H // 2 + 200, Wd // 2 - 600:Wd // 2 - 200]   # (a cheek's worth of the face's front)
+    assert st["pores"] > 1000
+    for c in (1, 2):
+        assert 0.45 < mid[..., c].mean() < 0.55 and mid[..., c].std() > 0.04, (c, mid[..., c].mean(), mid[..., c].std())
+    assert abs(a[:3, :, 1:].mean() - 0.5) < 0.01, "even at the map's edge"
+    L = paint.layers(spec)
+    for k in ("skin:mottle_map_red", "skin:mottle_map_light", "skin:mottle_map_pigment", "skin:micro_map"):
+        assert k in L and not L[k].get("_pre") and not L[k].get("_detail"), k
+    assert L["skin:micro_map"]["height"] < 0
+
+
 if __name__ == "__main__":
     for t in (test_beard_zones_from_landmarks, test_stubble_map_deterministic_and_styles, test_fade_band_never_darker_than_full,
-              test_freckles_no_repeat_and_sun):
+              test_freckles_no_repeat_and_sun, test_patchy_is_missing_hair_and_freckles_fade_out, test_base_map_pores_by_zone_and_per_pixel):
         t()
         print("ok", t.__name__)

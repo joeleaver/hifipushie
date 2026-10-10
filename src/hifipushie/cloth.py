@@ -42,7 +42,6 @@ SIM_NOISE = 0.06  # the strain a well-fitting garment shows in the sim (see buil
 HANGER_SKIN = 0.25  # the hanger's collision skin in triangle sizes (5 mm at 2 cm; 1 cm held a coat 4 cm up, bouncing)
 HOOK_GUARD = 0.4  # the hook's rod as the sim sees it: this many coarse triangle sizes thick (8 mm at 2 cm)
 SIM_MIN_FREE_GB = 20.0  # a cloth sim isn't started with less free disk (run_zozo.py also stops a run under 10 GB)
-SIM_MIN_FREE_GB_REMOTE = 2.0  # ... or a sim run remotely (only its job folder and result are written here)
 PREV_APART = 6  # frames between the sim's last positions and Vprev (the "still moving" measure)
 VERSION = 2  # bump with any change to the mesh, placement or sim job: results are cached by it
 
@@ -136,6 +135,64 @@ def collar_options(tbl: dict, opts: dict, m: dict) -> dict:
             "collarBend": round(0.5 * (lo + hi), 4)}
 
 
+BAND_BUTTON = 0.011  # m: a shirt button's diameter (closures' default size)
+BAND_MARGIN = 0.002  # m of band past a button's rim / a buttonhole's end
+
+
+def band_ends(out: dict, stand: str = "stand", collar: str = "collar", button: float = BAND_BUTTON,
+              margin: float = BAND_MARGIN) -> dict:
+    """A shirt's collar band ends shaped so the collar points cover them at an open neck: each end runs past centre
+    front no further than its button needs (button side: half a button + `margin`; buttonhole side: half a hole,
+    button + 3 mm, + `margin`) or the collar point's own reach past its sewn end, whichever is more, and the end is
+    a quarter ellipse from the top's centre front down to the bottom edge (its top corner rounded away). Only ever
+    shortens. A shirtmaker's rule: the band's extension is the placket's, but at an open neck everything of it past
+    the collar shows as a tab beside the V (cloth11, Garrett's narrower neck: 10 / 16 mm of band past CF showed,
+    a button on one). -> {end: {"was_mm", "now_mm"}}."""
+    pc, co = out.get(stand), out.get(collar)
+    info = {}
+    if pc is None or co is None:
+        return info
+    nm = pc["names"]
+    reach = 0.0
+    cn = co["names"]
+    for sd in ("left", "right"):
+        if f"{sd}TopEdge" in cn and f"{sd}BottomEdge" in cn:  # (the collar point past its sewn end, along the collar)
+            reach = max(reach, abs(co["P"][cn[f"{sd}TopEdge"]][0]) - abs(co["P"][cn[f"{sd}BottomEdge"]][0]))
+    for sd in ("left", "right"):
+        need_ = {"left": 0.5 * button + margin, "right": 0.5 * (button + 0.003) + margin}[sd]
+        keys = (f"{sd}TopCf", f"{sd}BottomCf", f"{sd}BottomEdge")
+        if not all(k in nm for k in keys):
+            continue
+        tcf, bcf, be = (np.asarray(pc["P"][nm[k]], float) for k in keys)
+        along = be - bcf
+        e0 = float(np.linalg.norm(along))
+        if e0 < 1e-6:
+            continue
+        along /= e0
+        e = max(need_, reach)
+        if e >= e0 - 1e-4:
+            info[sd] = {"was_mm": round(e0 * 1000, 1), "now_mm": round(e0 * 1000, 1)}
+            continue
+        up = tcf - bcf
+        a0 = float(up @ along)
+        c = bcf + along * a0
+        up = tcf - c
+        h = float(np.linalg.norm(up))
+        up /= h
+        ib = pattern.arc_indices(pc, f"{sd}BottomCf>{sd}BottomEdge")
+        for k, i in enumerate(ib):
+            pc["P"][i] = bcf + along * (e + a0) * k / max(len(ib) - 1, 1)
+        ir = pattern.arc_indices(pc, f"{sd}BottomEdge>{sd}TopCf")
+        for k, i in enumerate(ir):
+            t = 0.5 * np.pi * k / max(len(ir) - 1, 1)
+            pc["P"][i] = c + along * e * np.cos(t) + up * h * np.sin(t)
+        for mk in list((pc.get("marks") or {})):
+            if mk.startswith(f"{sd}BottomEdge"):
+                pc["marks"][mk] = np.array(pc["P"][nm[f"{sd}BottomEdge"]], float)
+        info[sd] = {"was_mm": round(e0 * 1000, 1), "now_mm": round(e * 1000, 1)}
+    return info
+
+
 def pieces(g: dict, meas_mm: dict) -> dict:
     """{"pieces": {name: piece (+ "wrap")}, "seams", "stitches", "interfaced", "draft"}."""
     out, seams, stitches, interfaced, draft_info = {}, [], [], [], None
@@ -194,6 +251,10 @@ def pieces(g: dict, meas_mm: dict) -> dict:
         for nm in g.get("drop", []):
             out.pop(nm, None)
         out = pattern.apply(out, [op for op in tbl.get("alter", []) if op["piece"] in out])
+        if tbl.get("collar_rule") and pat.get("band_ends", True):  # (a shirt's band ends under its collar points)
+            be_ = band_ends(out)
+        else:
+            be_ = {}
         # standard fit alterations, from the body's numbers (pattern "alterations": "auto" (default) | [names] |
         # "none"): each is a general pattern op whose amount a rule reads off the tape
         want = pat.get("alterations", "auto")
@@ -207,6 +268,8 @@ def pieces(g: dict, meas_mm: dict) -> dict:
             out = pattern.apply(out, [dict(op, amount=amount)])
             applied[nm] = round(amount * 1000, 1)
         draft_info["alterations"] = applied
+        if be_:
+            draft_info["band_ends"] = be_
         seams += tbl.get("seams", [])
         # a table seam's declared ease ("seam_notes": [{"seam": n (its index in the table), "ease": [lo, hi], "why"}]:
         # what a draft's own notes are for drafted garments)
@@ -4263,11 +4326,11 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
     import shutil
     job_dir.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(job_dir).free / 2**30
-    # (a job run elsewhere (a GPU box, the broker's fleet) writes only its few-MB folder and result here)
-    remote = backend != "blender" and bool(os.environ.get("HIFIPUSHIE_ZOZO_REMOTE") or os.environ.get("HIFIPUSHIE_GPU") == "bundle")
-    need = SIM_MIN_FREE_GB_REMOTE if remote else SIM_MIN_FREE_GB
-    if free < need:  # a full disk has stopped the machine before (solver sessions write every frame)
-        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {need}): not started")
+    # (a solver run elsewhere, the GPU fleet or a remote box, writes only its job folder and result here: a few MB)
+    remote_ = os.environ.get("HIFIPUSHIE_GPU") == "bundle" or bool(os.environ.get("HIFIPUSHIE_ZOZO_REMOTE"))
+    need_ = 1.0 if (remote_ and backend == "zozo") else SIM_MIN_FREE_GB
+    if free < need_:  # a full disk has stopped the machine before (solver sessions write every frame)
+        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {need_}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
         if backend == "zozo":
@@ -4641,6 +4704,61 @@ def declared_pieces(Bp: dict, names: list) -> dict:
             nm = a.split(":")[0]
             allow[nm] = max(allow.get(nm, 0.0), 1.0 / (1.0 + e) - 1.0)
     return allow
+
+
+def relax_start(M: dict, plan: dict, limit: float = FINE_START_MAX, rings: int = 2, rounds: int = 200,
+                aim: float = 0.25, allow: np.ndarray | None = None) -> tuple:
+    """The fine settle's start with its over-stretched draped triangles relaxed: (start, info). Only vertices of
+    triangles past 1 + limit and `rings` rings round them move (never made or carried ones): each round every edge
+    among them longer than (1 + aim) x its pattern length gives back the excess, shared by its movable ends.
+    The start is carried coarse -> fine and cleared off the body vertex by vertex; slivers at a fold (a shirt's open
+    neck by the front edges: 3.4 mm edges at 7 mm, 2.3x, cloth11 on Garrett's new body) came out past what the solver
+    can start from, and the whole fine settle was refused for a dozen triangles. allow: per triangle, stretch it is
+    declared to start with on top (declared_stretch: a rib band cut short), as fine_start_check takes it."""
+    from .cloth_zozo import _start_stretch
+    F, uv = np.asarray(M["F"]), np.asarray(M["uv"], float)
+    X = np.array(plan["start"], float)
+    fixed = np.zeros(len(uv), bool)
+    fixed[np.asarray(plan["idx"], np.int64)] = True
+    fixed[np.asarray(plan["rest_idx"], np.int64)] = True
+    R = np.c_[uv, np.zeros(len(uv))]
+    s = _start_stretch(R, X, F)
+    al = np.zeros(len(F)) if allow is None else np.asarray(allow, float)
+    bad = (s > 1.0 + limit + al) & ~fixed[F].all(1)
+    if not bad.any():
+        return X, {"relaxed": 0}
+    E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+    mov = np.zeros(len(uv), bool)
+    mov[F[bad].ravel()] = True
+    for _ in range(rings):
+        g = mov.copy()
+        g[E[mov[E[:, 0]], 1]] = True
+        g[E[mov[E[:, 1]], 0]] = True
+        mov = g
+    mov &= ~fixed
+    Ek = E[mov[E[:, 0]] | mov[E[:, 1]]]
+    av = np.zeros(len(uv))
+    for k_ in range(3):
+        np.maximum.at(av, F[:, k_], al)
+    rest = np.linalg.norm(uv[Ek[:, 0]] - uv[Ek[:, 1]], axis=1) * (1 + np.maximum(av[Ek[:, 0]], av[Ek[:, 1]]))
+    wa, wb = mov[Ek[:, 0]].astype(float), mov[Ek[:, 1]].astype(float)
+    sh = wa / np.maximum(wa + wb, 1e-9)
+    for _ in range(rounds):
+        d = X[Ek[:, 1]] - X[Ek[:, 0]]
+        L = np.linalg.norm(d, axis=1)
+        ex = np.maximum(L - (1 + aim) * rest, 0.0)
+        if ex.max() < 1e-6:
+            break
+        c = d / np.maximum(L, 1e-12)[:, None] * ex[:, None]
+        acc, n = np.zeros_like(X), np.zeros(len(X))
+        np.add.at(acc, Ek[:, 0], c * sh[:, None])
+        np.add.at(acc, Ek[:, 1], -c * (1 - sh)[:, None])
+        np.add.at(n, Ek[:, 0], wa)
+        np.add.at(n, Ek[:, 1], wb)
+        X = X + np.where(mov[:, None], acc / np.maximum(n, 1)[:, None], 0.0)
+    s2 = _start_stretch(R, X, F)
+    return X, {"relaxed": int(mov.sum()), "worst_before": round(float(s[bad].max()), 2),
+               "worst_after": round(float(s2[~fixed[F].all(1)].max()), 2)}
 
 
 def fine_start_check(M: dict, plan: dict, limit: float = FINE_START_MAX, allow: np.ndarray | None = None) -> str:
@@ -6435,6 +6553,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             plan["start"] = st_
             if not press_ and len(plan["idx"]):
                 plan["poses"] = st_[plan["idx"]][None]
+        allow_ = declared_stretch(Bp, M)
+        if fine_start_check(M, plan, allow=allow_):  # (a start the solver can't take: its slivers relaxed first; a start
+            # it can take is left exactly as it was, so the cached fine settles keep their keys)
+            plan["start"], rinfo_ = relax_start(M, plan, allow=allow_)
+            log(f"cloth {name}: fine start relaxed {rinfo_}, separation from the collider "
+                f"{_start_separation(plan['start'], M['F'], coll['bodyV'], coll['bodyT']) * 1000:.2f} mm")
         stiff_f = interfacing(Bp, M)
         fold_f = {}
         if M.get("folds"):
@@ -8663,10 +8787,27 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
             from . import cloth_layers
             for on, og, ores in built:
                 if expanded(og).get("over") == gname:
-                    hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+                    if og.get("hidden_rule", "visible") == "margin":  # (the old rule: by distance from the openings)
+                        hide |= cloth_layers.hidden(res, ores, float(og.get("hidden_margin", 0.03)))
+                        continue
+                    # merge-and-cut (cloth_layers.cut): what the outer garment hides from every view, and under cloth
+                    # crossing it away from what shows; the under garment's made pieces (collar, stand) never cut
+                    keep_ = np.isin(np.asarray(M["piece"]), [k_ for k_, nm_ in enumerate(M["names"])
+                                                             if nm_ in made_pieces(M, interfacing(res["pieces"], M))])
+                    h_, ci_ = cloth_layers.cut(res, ores, keep=keep_)
+                    log(f"cloth {gname}: cut under {on}: {ci_}")
+                    hide |= h_
         if hide.any():
             log(f"cloth {gname}: {int(hide.sum())} of {len(F)} triangles hidden under another garment, left out")
             F = F[~hide]
+        # the CONSTRUCTED parts (cloth_made: a notched collar built on the drape) ship instead of the simulated pieces
+        # they replace (the simulated jacket collar shipped, an 85 mm spike at the side neck, cloth11); pressed lapels
+        # are already in V
+        mparts = [pt for pt in ((res.get("made") or {}).get("parts") or []) if len(pt.get("F", []))]
+        if mparts:
+            from . import cloth_made
+            rep_, _ = cloth_made.drawn(res)
+            F = F[~rep_[F].any(1)]
         # every piece wound to face out (a garment's pieces come out of the pattern either way: one global flip left
         # half a jacket facing in), normals shared across closed seams (each side its own normal shaded every seam
         # as a line, and pushed the inner shell apart there)
@@ -8681,6 +8822,38 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         Vall = np.r_[V, Vin]
         Fall = np.r_[F, F[:, [0, 2, 1]] + len(V)]
         UVall = np.r_[uv, uv]
+        NV = [vn, -vn]
+        for pt in mparts:  # each a closed slab of its thickness, its pattern uv placed where its piece lies in the atlas
+            from . import cloth_made
+            Pv, Pf = np.asarray(pt["V"], np.float64), np.asarray(pt["F"], np.int64)
+            fn_ = np.cross(Pv[Pf[:, 1]] - Pv[Pf[:, 0]], Pv[Pf[:, 2]] - Pv[Pf[:, 0]])
+            if body is not None and len(getattr(body, "V", [])):  # (its face out of the body, as the garment's)
+                from scipy.spatial import cKDTree as _KD
+                cen_ = Pv[Pf].mean(1)
+                out_ = cen_ - np.asarray(body.V)[_KD(np.asarray(body.V)).query(cen_)[1]]
+                if (fn_ * out_).sum() < 0:
+                    Pf = Pf[:, [0, 2, 1]]
+            sV, sF = cloth_made.solid(Pv, Pf, float(pt.get("thickness", th)))
+            pn_ = np.zeros_like(Pv)
+            fn_ = np.cross(Pv[Pf[:, 1]] - Pv[Pf[:, 0]], Pv[Pf[:, 2]] - Pv[Pf[:, 0]])
+            for k_ in range(3):
+                np.add.at(pn_, Pf[:, k_], fn_)
+            pn_ /= np.linalg.norm(pn_, axis=1, keepdims=True) + 1e-12
+            puv = np.asarray(pt.get("uv"), np.float64) if pt.get("uv") is not None else None
+            src_ = [nm_ for nm_ in (pt.get("replaces") or []) if nm_ in M["names"]]
+            if puv is not None and len(puv) == len(Pv) and src_:
+                k_ = list(M["names"]).index(src_[0])
+                i0_ = int(np.where(np.asarray(M["piece"]) == k_)[0][0])
+                puv = (puv + (uv[i0_] * side - np.asarray(M["uv"])[i0_])) / side  # (atlas_uv: a shift and one scale)
+            else:  # (no pattern uv: one texel of the garment's colour)
+                puv = np.tile(uv[0], (len(Pv), 1))
+            Fall = np.r_[Fall, sF + len(Vall)]
+            Vall = np.r_[Vall, sV]
+            UVall = np.r_[UVall, puv, puv]
+            NV += [pn_, -pn_]
+            log(f"cloth {gname}: made {pt['name']} shipped ({len(sF)} triangles) instead of "
+                f"{', '.join(pt.get('replaces') or []) or 'nothing'}")
+        n_own = len(Vall)
         bt = res.get("buttons")
         if bt is not None:  # the closures' buttons: small geometry, coloured by the texel of the button drawn at
             # their mark (every vertex of a button takes its mark's uv)
@@ -8691,9 +8864,9 @@ def export_part(name: str, spec: dict, out_dir, texture: int = 1024, log=print) 
         UVc = UVall[Fall.ravel()]  # per corner
         n, tt, sg = hairmod._tangents(Vall, Fall, UVc)
         # the shared normals (outer shell; the inner shell the opposite), tangents made orthogonal to them again
-        nv = np.r_[vn, -vn, np.zeros((len(Vall) - 2 * len(V), 3))]
+        nv = np.concatenate(NV + [np.zeros((len(Vall) - n_own, 3))])
         cw = Fall.ravel()
-        own = cw < 2 * len(V)  # (buttons keep their own)
+        own = cw < n_own  # (buttons keep their own)
         n[own] = nv[cw[own]]
         tt = tt - np.sum(tt * n, 1, keepdims=True) * n
         tt /= np.linalg.norm(tt, axis=1, keepdims=True) + 1e-12

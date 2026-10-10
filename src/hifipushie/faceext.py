@@ -33,6 +33,13 @@ EXT = {
                         "the mouth's corners up; - = down-turned corners (MakeHuman)"),
     "mh_lowerlip_ext": ("mouth", "mouth-lowerlip-ext-up", "mouth-lowerlip-ext-down",
                         "the lower lip's outer ends up toward the corners; - = down (MakeHuman)"),
+    "mh_lowerlip_volume": ("mouth", "mouth-lowerlip-volume-incr", "mouth-lowerlip-volume-decr",
+                           "the lower lip fuller (its pad forward and down: the pout's shadow under it); - = thinner "
+                           "(MakeHuman; faces2 2026-10-10, for the lip stage's shading)"),
+    "mh_lowerlip_middle": ("mouth", "mouth-lowerlip-middle-up", "mouth-lowerlip-middle-down",
+                           "the lower lip's middle fuller: its border dips at the centre (-0.8 mm) and rises toward "
+                           "the sides (+0.4 mm at half width), the skin under it following: a central pad; - = a flat, "
+                           "even lower lip (MakeHuman 'lowerlip-middle'; faces3 2026-10-10, the central pad lever)"),
 }
 REGION = 0.03      # of the target's largest move: its region (the extension lives there)
 _C: dict = {}
@@ -120,7 +127,31 @@ def local_orthogonal(d: np.ndarray, region: np.ndarray) -> np.ndarray:
     return out
 
 
-CORNER_HOLD = (0.003, 0.005)   # m: the mouth's corners held within the first, released over the second
+CORNER_HOLD = (0.003, 0.025)   # m: the mouth's corners held within the first; the hold's correction is biharmonic out
+# to the second (faces3: a smoothstep release over 5 mm put a 2 mm step beside the corners: a groove under them in the
+# 3/4 view at -1 of lowerlip_width, and the folds past it)
+
+
+def corner_hold(d: np.ndarray, dc: np.ndarray) -> np.ndarray:
+    """d with the mouth's corners held: a correction e = -d within CORNER_HOLD[0] of a corner landmark, 0 from
+    CORNER_HOLD[1] out, biharmonic (the squared mesh Laplacian over GNM's quads) between: the hold spreads as smoothly
+    as the mesh allows instead of a ramp."""
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
+    smooth(np.zeros((len(d), 1)), 0)
+    W = _C["adj"]                       # row-normalised adjacency (GNM's raw quads)
+    fixed_in = dc <= CORNER_HOLD[0]
+    free = (dc > CORNER_HOLD[0]) & (dc < CORNER_HOLD[1])
+    e = np.zeros_like(d)
+    e[fixed_in] = -d[fixed_in]
+    if free.any():
+        L = (sp.eye(len(d)) - W).tocsr()
+        L = (L.T @ L).tocsr()   # biharmonic: a harmonic hold dimpled round the held disc (log-like, steep at its
+        # edge: a crescent groove beside each corner in the renders); the thin-plate one is smooth through it
+        Lff = L[free][:, free].tocsc()
+        rhs = -(L[free][:, fixed_in] @ e[fixed_in])
+        e[free] = np.column_stack([spsolve(Lff, rhs[:, k]) for k in range(d.shape[1])])
+    return d + e
 CHEAP = float(os.environ.get("HIFIPUSHIE_EXT_CHEAP", "4e-4"))   # m rms over the region a 1-sigma identity move
 # makes along a direction: CHEAP and up = a probable move (a few sigmas make a mm)
 
@@ -213,25 +244,11 @@ def smooth(d: np.ndarray, n: int = SMOOTH) -> np.ndarray:
 
 
 def build(names=None) -> dict:
-    from . import base as basemod, faceslide, gnmloops
-    g = basemod._gnm_data()
-    T = faceslide.template()
-    mi = T["mirror"]
-    ext = np.asarray(g["groups"]["skin_exterior"], float) > 0.5
+    from . import base as basemod
+    ext = np.asarray(basemod._gnm_data()["groups"]["skin_exterior"], float) > 0.5
     out = dict(np.load(TABLE)) if TABLE.exists() else {}
     for k in names or EXT:
-        grp, plus, minus, _ = EXT[k]
-        d = 0.5 * (carry(grp, plus) - (carry(grp, minus) if minus else 0.0))
-        d = smooth(d * ext[:, None])
-        if grp == "mouth":   # the commissures held (GNM's corner is not MakeHuman's: its moves there, on the face's
-            # shortest edges, turned the corner quads over at -1); before the projection, which it must not undo
-            Xr = T["X"][:len(d)]
-            dc = np.min([np.linalg.norm(Xr - T["lm"][i], axis=1) for i in (48, 54, 60, 64)], axis=0)
-            d = d * faceslide._ss((dc - CORNER_HOLD[0]) / CORNER_HOLD[1])[:, None]
-        m = np.linalg.norm(d, axis=1)
-        d, share, cn = minus_probable(d, m > REGION * m.max())
-        d = gnmloops.ext(d)
-        d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
+        d, share, cn = field(k)
         sc = fold_free(d)
         d = d * sc
         out[f"{k}__scale"] = np.array(sc)
@@ -245,6 +262,138 @@ def build(names=None) -> dict:
     np.savez(TABLE, **out)
     _C.pop("table", None)
     return out
+
+
+def field(k: str) -> tuple:
+    """(extension k's field at +1 before its fold-free scale (template vertices incl. the loops), the share the
+    identity's cheap directions made, their number)."""
+    from . import base as basemod, faceslide, gnmloops
+    g = basemod._gnm_data()
+    T = faceslide.template()
+    mi = T["mirror"]
+    ext = np.asarray(g["groups"]["skin_exterior"], float) > 0.5
+    if True:  # (one extension)
+        grp, plus, minus, _ = EXT[k]
+        d = 0.5 * (carry(grp, plus) - (carry(grp, minus) if minus else 0.0))
+        d = smooth(d * ext[:, None])
+        if grp == "mouth":   # the commissures held (GNM's corner is not MakeHuman's: its moves there, on the face's
+            # shortest edges, turned the corner quads over at -1); before the projection, which it must not undo
+            Xr = T["X"][:len(d)]
+            dc = np.min([np.linalg.norm(Xr - T["lm"][i], axis=1) for i in (48, 54, 60, 64)], axis=0)
+            d = corner_hold(d, dc)
+            d = hold_rolls(d)
+        m = np.linalg.norm(d, axis=1)
+        reg = m > REGION * m.max()
+        d, share, cn = minus_probable(d, reg)
+        n = len(d)
+        for it in range(3 if HOLD_CREASES else 1):
+            if it:   # the holds put back a little of what the cheap directions make: alternate (3 rounds: < 3%)
+                d = minus_probable(d[:n], reg)[0]
+            if grp == "mouth" and HOLD_ROLLS:
+                d = hold_rolls(d)
+            d = gnmloops.ext(d[:n])
+            d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
+            if HOLD_CREASES:
+                d = hold_creases(d)
+                d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
+    return d, share, cn
+
+
+HOLD_ROLLS = not os.environ.get("HIFIPUSHIE_EXT_SHEAR_ROLLS")
+HOLD_CREASES = float(os.environ.get("HIFIPUSHIE_EXT_CREASE", "45"))   # deg: template creases sharper than this
+# move rigidly (0 = off)
+CREASE_R = 0.003   # m: each crease vertex's neighbourhood (the rigid motion's fit and its reach)
+
+
+def _pair_angle(X, Q, pairs):
+    def nrm(Y):
+        n = np.cross(Y[:, 2] - Y[:, 0], Y[:, 3] - Y[:, 1])
+        return n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-18)
+    return np.arccos(np.clip(np.einsum("ij,ij->i", nrm(X[Q[pairs[:, 0]]]), nrm(X[Q[pairs[:, 1]]])), -1, 1))
+
+
+def hold_creases(d: np.ndarray, sharp: float | None = None) -> np.ndarray:
+    """The field made locally RIGID across the template's creases (pairs of skin quads whose normals are `sharp` to
+    150 deg apart, where the field moves): around each crease vertex the small rigid motion (t + w x (x - c),
+    linearised) is fitted to the field over its neighbours within CREASE_R and replaces it there, fully at the vertex,
+    easing out to the neighbourhood's edge (overlapping neighbourhoods averaged; no extrapolation past them). Only
+    rigid motions keep a crease's angle: a shear or an along-the-crease stretch turns its two sides against each other.
+    Why (faces3, borderdiag.py): the carried MakeHuman mouth targets folded at 0.5-0.8 mm, not at the vermilion border
+    but in the lips' inner roll (57-72 deg creases of 1-2 mm quads, inside the contact ring) near the corners, where
+    the field's along-the-lip gradient sheared the roll's rows. The rows now move together, carried and turned,
+    never sheared; away from creases the field is untouched."""
+    sharp = HOLD_CREASES if sharp is None else sharp
+    if not sharp:
+        return d
+    _turned(np.zeros_like(d))
+    X0, Q, pairs = _C["fold"]
+    if len(d) != len(X0):
+        return d
+    key = ("crease", round(sharp, 3))
+    if key not in _C:
+        a = np.degrees(_pair_angle(X0, Q, pairs))
+        cv = np.unique(Q[pairs[(a > sharp) & (a < 150)]].ravel())
+        from scipy.spatial import cKDTree
+        _C[key] = (cv, cKDTree(X0).query_ball_point(X0[cv], CREASE_R))
+    cv, near = _C[key]
+    m = np.linalg.norm(d, axis=1)
+    moving = np.flatnonzero(m[cv] > 1e-3 * max(m.max(), 1e-15))
+    acc = np.zeros_like(d)
+    wsum = np.zeros(len(d))
+    for i in moving:
+        nb = np.asarray(near[i], int)
+        if len(nb) < 4:
+            continue
+        r = np.linalg.norm(X0[nb] - X0[cv[i]], axis=1)
+        c = X0[nb].mean(0)
+        P = X0[nb] - c
+        A = np.zeros((3 * len(nb), 6))   # d_k = t + w x p_k = t - [p_k]x w
+        A[:, :3] = np.tile(np.eye(3), (len(nb), 1))
+        A[0::3, 4], A[0::3, 5] = P[:, 2], -P[:, 1]
+        A[1::3, 3], A[1::3, 5] = -P[:, 2], P[:, 0]
+        A[2::3, 3], A[2::3, 4] = P[:, 1], -P[:, 0]
+        sol = np.linalg.lstsq(A, d[nb].ravel(), rcond=None)[0]
+        rig = sol[:3] + np.cross(sol[3:], P)
+        x = np.clip(1.0 - r / CREASE_R, 0.0, 1.0)
+        w = x * x * (3 - 2 * x)
+        np.add.at(acc, nb, w[:, None] * (rig - d[nb]))
+        np.add.at(wsum, nb, w)
+    return d + acc / np.maximum(wsum, 1.0)[:, None]
+def hold_rolls(d: np.ndarray) -> np.ndarray:
+    """The lips' inner rolls (the rings inside the contact ring, out of sight behind the closed lips) moved whole with
+    their own lip's contact ring: each takes the move of the nearest contact-ring vertex of the same lip (GNM's
+    upper_lip / lower_lip groups). Where the folds were (faces3, borderdiag.py): not the vermilion border but the
+    rolls' rows (template creases 57-72 deg on quads a few tenths of a mm across): MakeHuman's field read there
+    sheared them 0.03-0.25 mm and folded every mouth extension at 0.5-0.8 mm. Moving the rows together keeps them
+    unsheared (faceslide's seal moves the rolls whole by the same rule)."""
+    if not HOLD_ROLLS:
+        return d
+    from . import faceslide
+    if "rolls" not in _C:   # per ring inward: each vertex's sources = its neighbours one ring further out (its
+        # own lip's where it has any): the move carried down the roll's columns, not across them
+        R = faceslide._lip_rings()
+        up = np.asarray(R["upper"], bool)
+        steps = []
+        for k in range(R["contact"] - 1, -1, -1):
+            outer = set(int(u) for u in R["rings"][k + 1])
+            rows, cols = [], []
+            for v in R["rings"][k]:
+                nb = [u for u in R["adj"].get(int(v), []) if u in outer]
+                nb = [u for u in nb if up[u] == up[v]] or nb
+                if nb:
+                    rows += [int(v)] * len(nb)
+                    cols += nb
+            steps.append((np.array(rows), np.array(cols)))
+        _C["rolls"] = steps
+    d = d.copy()
+    for rows, cols in _C["rolls"]:
+        acc = np.zeros((len(d), 3))
+        cnt = np.zeros(len(d))
+        np.add.at(acc, rows, d[cols])
+        np.add.at(cnt, rows, 1.0)
+        on = cnt > 0
+        d[on] = acc[on] / cnt[on, None]
+    return d
 
 
 def table() -> dict:

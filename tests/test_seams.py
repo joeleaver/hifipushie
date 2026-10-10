@@ -133,6 +133,70 @@ def test_export_shares_normals_across_seams(tmp_path=None):
             assert np.allclose(na[0], nb[0], atol=1e-5)
 
 
+def _glb_triangles(path):
+    """(positions in Blender axes, triangle indices) of every primitive of a GLB, concatenated (indices offset)."""
+    import json
+    import struct
+    from pathlib import Path
+    raw = Path(path).read_bytes()
+    jl = struct.unpack_from("<I", raw, 12)[0]
+    doc = json.loads(raw[20:20 + jl])
+    binary = raw[28 + jl:]
+    dt = {5126: np.float32, 5125: np.uint32, 5123: np.uint16}
+    wd = {"SCALAR": 1, "VEC3": 3}
+
+    def acc(i):
+        a = doc["accessors"][i]
+        v = doc["bufferViews"][a["bufferView"]]
+        x = np.frombuffer(binary, dt[a["componentType"]], a["count"] * wd[a["type"]], v.get("byteOffset", 0) + a.get("byteOffset", 0))
+        return x.reshape(a["count"], wd[a["type"]]) if wd[a["type"]] > 1 else x
+    P, T = [], []
+    for m in doc["meshes"]:
+        for pr in m["primitives"]:
+            p = acc(pr["attributes"]["POSITION"]).astype(np.float64)
+            p = np.c_[p[:, 0], -p[:, 2], p[:, 1]]  # (glTF Y up -> Blender Z up)
+            T.append(acc(pr["indices"]).astype(np.int64).reshape(-1, 3) + sum(len(q) for q in P))
+            P.append(p)
+    return np.concatenate(P), np.concatenate(T)
+
+
+def test_export_ships_made_parts_not_the_pieces_they_replace(tmp_path=None):
+    # piece b is "replaced" by a made part lying 3 cm above it (a constructed collar over its simulated source): the
+    # GLB carries the made part as a slab and no triangle of b
+    import tempfile
+    from pathlib import Path
+    from hifipushie import asset
+    g, M, V, ia, ib = _two()
+    body = _Body(np.c_[np.random.default_rng(0).uniform(-0.2, 0.6, (400, 2)), np.full(400, -0.05)])
+    Fb = M["F"][ib[M["F"]].all(1)]
+    idx = np.where(ib)[0]
+    remap = np.full(len(V), -1)
+    remap[idx] = np.arange(len(idx))
+    made = {"lapels": [], "info": {}, "parts": [{"name": "collar", "V": V[idx] + [0, 0, 0.03], "F": remap[Fb],
+                                                 "uv": M["uv"][idx], "thickness": 0.003, "replaces": ["b"]}]}
+    res = {"mesh": M, "V": V, "body": body, "made": made}
+    old = cloth.garments
+    cloth.garments = lambda *a, **k: [("jacket", dict(g, detail={"texture": 256}), res)]
+    try:
+        out = Path(tmp_path or tempfile.mkdtemp())
+        parts = cloth.export_part("x", {}, out, texture=256, log=lambda *a: None)
+    finally:
+        cloth.garments = old
+    pn, part, files = parts[0]
+    part["atlas"] = 0
+    glb = out / "x.glb"
+    asset.write_glb(glb, "x", {pn: part}, [(pn, files)])
+    P, T = _glb_triangles(glb)
+    used = P[np.unique(T)]
+    made_v = np.abs(used[:, 2] - 0.03) < 1e-4
+    assert made_v.sum() >= len(idx) - 1, made_v.sum()  # the made part's outer sheet is drawn
+    up = used[:, 1] > 0.005  # (piece b lies at y > 0, z = 0 as simulated)
+    assert not (up & (np.abs(used[:, 2]) < 0.002)).any()  # no triangle of the simulated piece
+    assert (np.abs(used[~up, 2]) < 0.002).any()  # piece a still ships
+    uvs = part["uv"][np.isin(part["corner_vert"], np.where(np.abs(part["verts"][:, 2] - 0.03) < 1e-4)[0])]
+    assert (uvs >= 0).all() and (uvs <= 1).all()  # its pattern uv placed in the garment's atlas
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

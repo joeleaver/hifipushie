@@ -15,6 +15,7 @@ import stage
 from hifipushie import store
 
 T = os.environ["T"]
+TOUT = os.environ.get("TOUT", f"{T}/out")  # (where the sheets go: the traces stay in $T)
 name = sys.argv[1]
 views = [int(x) for x in (sys.argv[2] if len(sys.argv) > 2 else "0,1,2").split(",")]
 TR = {0: "trace_front", 1: "trace_tq", 2: "trace_profile"}
@@ -93,7 +94,57 @@ for v in views:
         fh = np.asarray(hull.resize((PX, PX))) > 127
         band = mh & (ndi.distance_transform_edt(~fh) * mm < 15.0)
         bare = band & ~mo
-        print(f"   hairline band (her hair within 15 mm of the face): {band.sum()} px, bare in ours {100 * bare.sum() / max(band.sum(), 1):.1f}%")
+        print(f"   hairline band (her hair within 15 mm of the face): {band.sum()} px, bare in ours {100 * bare.sum() / max(band.sum(), 1):.1f}%"
+              f"  (unfilled: {100 * (band & ~raw_o).sum() / max(band.sum(), 1):.1f}%: scalp between strands counts)")
+    # SCALP SHOWING (faces2): the ID pass counts a sparse fan of strands as hair (closed or not: one strand per few px
+    # is "hair"), so a bare V under the part scored as covered. On the beauty render: skin-coloured pixels (warm,
+    # light) inside HER hair mask, in the band within 30 mm of her face, ours vs hers (her photo the same way)
+    if tr.get("face_hull"):
+        band30 = ndi.binary_erosion(mh, iterations=2) & (ndi.distance_transform_edt(~fh) * mm < 30.0)
+
+        def skin(img):
+            r, g_, b = img[..., 0], img[..., 1], img[..., 2]
+            Lx = img @ [0.299, 0.587, 0.114]
+            return (Lx > 0.45) & (r - b > 0.12) & (r >= g_) & (g_ >= b)
+        print(f"   scalp showing in her hair band (30 mm): ours {100 * (skin(a) & band30).sum() / max(band30.sum(), 1):.1f}%"
+              f"  hers {100 * (skin(P) & band30).sum() / max(band30.sum(), 1):.1f}%")
+    # FOREHEAD ARCH (faces3): the forehead's skin edge, per column, photo vs our beauty render (the same skin classifier
+    # on both: the ID pass counts a sparse fan of strands at the part as hair, so its edge can't see a peak): from 20 mm
+    # under her face hull's top, up to the first row where 3 pixels running are not skin. mm ours - hers (+ = our hair
+    # edge lower) across the forehead in 5 bins from her right temple to her left, and the arch height (the temples'
+    # edge below the centre's: a peak under the part = a big centre minus near-centre step, see the bins)
+    if tr.get("face_hull") and v == 0:
+        def skin_(img):
+            r, g_, b = img[..., 0], img[..., 1], img[..., 2]
+            Lx = img @ [0.299, 0.587, 0.114]
+            return (Lx > 0.45) & (r - b > 0.12) & (r >= g_) & (g_ >= b)
+        top = np.where(fh.any(0), fh.argmax(0), PX)
+        hi_ = int(top.min())
+        cols = np.flatnonzero(top < hi_ + 35.0 / mm)
+        start = np.minimum((top[cols] + 20.0 / mm).astype(int), PX - 1)
+
+        def edge(img):
+            sk = skin_(img)
+            e = np.full(len(cols), np.nan)
+            for i, (cx, s) in enumerate(zip(cols, start)):
+                col = sk[:s + 1, cx][::-1]
+                run = np.convolve(~col, np.ones(3), "valid") >= 3
+                k = np.flatnonzero(run)
+                if len(k):
+                    e[i] = s - k[0]
+            return e
+        eh_, eo_ = edge(P), edge(a)
+        dif = (eo_ - eh_) * mm
+        bins = np.array_split(np.arange(len(cols)), 5)
+        prof = [float(np.nanmean(dif[b])) for b in bins]
+
+        def arch(e):
+            return float((np.nanmean(np.r_[e[bins[0]], e[bins[4]]]) - np.nanmin(e[bins[2]])) * mm)
+        print(f"   forehead arch: ours - hers (mm, + = ours lower), R temple .. L temple: "
+              + " ".join(f"{p_:+.1f}" for p_ in prof) + f"  | centre peak (highest skin) hers "
+              f"{float((start[bins[2]] - np.nanmin(eh_[bins[2]])).mean() * mm):.1f} ours "
+              f"{float((start[bins[2]] - np.nanmin(eo_[bins[2]])).mean() * mm):.1f} mm up | arch height hers "
+              f"{arch(eh_):.1f} ours {arch(eo_):.1f} mm")
     # COLOUR like with like: luminance bands (shadow 0-20 %, mid 40-60, highlight 85-98) inside each hair mask, eroded
     def bands(img, m):
         m = ndi.binary_erosion(m, iterations=2)
@@ -137,4 +188,4 @@ for v in views:
     out.paste(Image.fromarray((P * 255).astype(np.uint8)), (0, 0))
     out.paste(on[f"v{v}"].resize((PX, PX)), (PX, 0))
     out.paste(Image.fromarray((vis * 255).astype(np.uint8)), (2 * PX, 0))
-    out.save(f"{T}/out/hscore_{name}_{v}.png")
+    out.save(f"{TOUT}/hscore_{name}_{v}.png")

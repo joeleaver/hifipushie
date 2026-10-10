@@ -11,6 +11,8 @@ body's poses). Here: what is read off the two results afterwards.
   hugging the under one, crossings between the layers).
 - `hidden(under, outer)`: the under garment's faces nobody can see (covered by the outer one, further than `margin`
   from its openings): the export drops them (a shirt under a jacket becomes collar + front V + cuffs).
+- `cut(under, outer)`: the merge-and-cut rule the export uses: the under garment's faces cut where the outer one
+  hides them from every view direction, and where they cross it away from what shows.
 - `tucked(under, outer)`: the under garment's finished surface with only its covered cloth laid under the outer
   one's inner face: what every look, the scene and the export draw (cloth.worn_together).
 - `between_crossings(A, B)`: edges of one mesh through triangles of the other.
@@ -236,6 +238,15 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
             oriented = True
         except Exception:  # (a mesh the welder can't take: as before)
             Fo = np.asarray(Mo["F"])
+    if outer.get("made") and (outer["made"].get("parts") or []):
+        # what is DRAWN of the outer garment: its constructed parts (a made collar) instead of the pieces they replace
+        # (tucked against the hidden simulated collar, shirt cloth by the neck crossed the made one, cloth11)
+        from . import cloth_made
+        rep, _sl = cloth_made.drawn(outer)
+        Fo = Fo[~rep[Fo].any(1)]
+        for pt in outer["made"]["parts"]:
+            Fo = np.r_[Fo, np.asarray(pt["F"]) + len(Vo)]
+            Vo = np.r_[Vo, np.asarray(pt["V"], float)]
     V = Vu.copy()
     covered = np.zeros(len(V), bool)
     Fu = np.asarray(Mu["F"])
@@ -310,6 +321,101 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
                     keep_m[m_] = True
         V = np.where(keep_m[:, None], V, Vu)
     return V, covered
+
+
+def _grow(mask: np.ndarray, E: np.ndarray, rings: int) -> np.ndarray:
+    for _ in range(rings):
+        g = mask.copy()
+        g[E[mask[E[:, 0]], 1]] = True
+        g[E[mask[E[:, 1]], 0]] = True
+        mask = g
+    return mask
+
+
+def _crossing_under(Vu: np.ndarray, Fu: np.ndarray, Vo: np.ndarray, Fo: np.ndarray, r: float = 0.03) -> np.ndarray:
+    """Per under vertex: an edge of the under mesh at it passes through a triangle of the outer one."""
+    from .cloth import _seg_tri
+    out = np.zeros(len(Vu), bool)
+    if not len(Fo) or not len(Fu):
+        return out
+    E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
+    cand = cKDTree(Vo[Fo].mean(1)).query_ball_point(0.5 * (Vu[E[:, 0]] + Vu[E[:, 1]]), r=r, return_sorted=False)
+    ei = np.repeat(np.arange(len(E)), [len(c) for c in cand])
+    if not len(ei):
+        return out
+    ti = np.fromiter((t for c in cand for t in c), dtype=np.int64, count=len(ei))
+    T = Fo[ti]
+    h = _seg_tri(Vu[E[ei, 0]], Vu[E[ei, 1]], Vo[T[:, 0]], Vo[T[:, 1]], Vo[T[:, 2]])
+    out[np.unique(E[ei[h]])] = True
+    return out
+
+
+def cut(under: dict, outer: dict, keep: np.ndarray | None = None, rings: int = 3, n_ring: int = 12,
+        px: float = 0.002, open_margin: float = 0.03, show_keep: float = 0.06, x_rings: int = 2) -> tuple:
+    """The MERGE-AND-CUT rule (cloth10's ship layering): per triangle of the under garment (as worn: tucked), True
+    where it is cut from what is drawn / exported. Two rules:
+    - VISIBILITY: a vertex is hidden when the outer garment (welded, its constructed parts as slabs, the pieces they
+      replace left out) or the body lies in front of it from EVERY view direction round the figure (`view_dirs(n_ring)`: rings at
+      -50..50 deg + straight down, orthographic z-buffers at `px` m); the visible set is grown `rings` rings so a cut
+      edge never sits at what shows; a triangle is cut when all its corners are hidden. (The margin rule `hidden` cut
+      by distance from the openings: in the low and hem views skin showed through the cut at the front edges below the
+      break, 1597-3186 px on cloth10 j9; by visibility 0.)
+    - CROSSINGS: under cloth that passes through the outer garment (a shirt simulated alone wedged between a jacket's
+      side panel and under sleeve: no tuck clears it, cloth10 underarm) is cut, `x_rings` rings round, where it is
+      never what shows: more than `open_margin` inside every opening of the outer garment and more than `show_keep`
+      from the openings the under garment shows through (the V, the neck: openings with visible under cloth by them).
+    keep: per under vertex, never cut (its collar and stand: what shows above the outer collar).
+    -> (cut per triangle, info)."""
+    from . import cloth as _cloth
+    from . import cloth_made
+    Vu, Fu = np.asarray(under["V"], float), np.asarray(under["mesh"]["F"])
+    Vo, Mo = np.asarray(outer["V"], float), outer["mesh"]
+    body = outer.get("body")
+    try:
+        Fo = np.asarray(_cloth.welded_faces(Mo, Vo, body=body))
+    except Exception:  # (a mesh the welder can't take: its own faces)
+        Fo = np.asarray(Mo["F"])
+    rep = np.zeros(len(Vo), bool)
+    slabs = []
+    if outer.get("made"):
+        rep, slabs = cloth_made.drawn(outer)  # (per vertex: the pieces a constructed part replaces)
+    Fo = Fo[~rep[Fo].any(1)]
+    oV, oF = [Vo], [Fo]
+    off = len(Vo)
+    for _nm, sV, sF in slabs:
+        oV.append(np.asarray(sV, float))
+        oF.append(np.asarray(sF) + off)
+        off += len(sV)
+    if body is not None and len(getattr(body, "V", [])) and len(getattr(body, "T", [])):
+        # (the body is opaque too: through the neck opening, looking down, the back of a shirt is behind the neck)
+        oV.append(np.asarray(body.V, float))
+        oF.append(np.asarray(body.T) + off)
+    occ_V, occ_F = np.concatenate(oV), np.concatenate(oF)
+    keep = np.zeros(len(Vu), bool) if keep is None else np.asarray(keep, bool)
+    E = np.unique(np.sort(np.r_[Fu[:, [0, 1]], Fu[:, [1, 2]], Fu[:, [2, 0]]], 1), axis=0)
+    hidden_v = occluded(Vu, occ_V, occ_F, view_dirs(n_ring), px=px).all(0)
+    vis = _grow(~hidden_v, E, rings) | keep
+    hid = (~vis)[Fu].all(1)
+    # openings of the outer garment: its welded surface's free edges
+    Eo = np.sort(np.r_[Fo[:, [0, 1]], Fo[:, [1, 2]], Fo[:, [2, 0]]], 1)
+    ue, cn = np.unique(Eo, axis=0, return_counts=True)
+    opn = np.unique(ue[cn == 1])
+    xv = _crossing_under(Vu, Fu, Vo, Fo)
+    nx = 0
+    if len(opn) and xv.any():
+        d_any = cKDTree(Vo[opn]).query(Vu)[0]
+        shown = np.zeros(len(Vu), bool)
+        shown[np.unique(Fu[~hid])] = True
+        shown &= ~keep
+        # the openings the under garment shows through: opening vertices with shown under cloth within 2 cm
+        so = opn[cKDTree(Vu[shown]).query(Vo[opn])[0] < 0.02] if shown.any() else opn[:0]
+        d_show = cKDTree(Vo[so]).query(Vu)[0] if len(so) else np.full(len(Vu), np.inf)
+        xv &= (d_any > open_margin) & (d_show > show_keep) & ~keep
+        xv = _grow(xv, E, x_rings) & ~keep
+        nx = int(xv.sum())
+        hid |= xv[Fu].any(1)
+    return hid, {"hidden_vertices": int(hidden_v.sum()), "directions": int(len(view_dirs(n_ring))),
+                 "crossing_cut_vertices": nx, "cut_faces": int(hid.sum()), "faces": int(len(Fu))}
 
 
 def hidden(under: dict, outer: dict, margin: float = 0.03, reach: float = 0.06) -> np.ndarray:

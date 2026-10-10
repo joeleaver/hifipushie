@@ -2111,8 +2111,128 @@ NO SIM WAS RUN.
     at CB; (5) c10ship's cut rules (vis + xcut) into the pipeline (merge-and-cut export, step 4 of the brief).
     Tools: judge.sh <tag> (gates + lapel straightness + trace + preview), stage.sh <queue> (one broker batch per
     stage, deterministic now), q.sh with BROKER=1 to rebuild from pulled results (construct-only changes need no GPU).
-- BROKER STALLS (coordinator, 2026-10-10; CORRECTS cloth11's "cancel a job whose progress line hasn't moved in ~5 min"):
-  the broker gets a stall guard: a job with no runner output AND no GPU use for 10 min is killed and marked failed, and
-  failed runs are free; a manual cancel is billed for the time held. So don't cancel by hand because the progress line
-  is quiet (the runner only prints at setup and at the end). Submit with timeout_minutes ~30 (bundle_client /
-  submit_bundle_jobs option) and leave stall_minutes at its default 10.
+- cloth11 (2026-10-09/10, "cloth11" agent; continues cloth10 on Garrett's jacket over pinned s2_12). Scratch DURABLE in
+  /mnt/data/hifipushie/cloth11/: cloth10's tools retargeted (env.sh, run.sh, q.sh, stage.sh, judge.sh, c10ship.py ...)
+  + run.py `dumpcon=<pkl>` (saves construct()'s inputs during a build), con.py <tag> [key.path=json] [under=carried|s2]
+  (construct() alone on a dump, ~3 s, writes a run.py-like pkl), sweep.py (construct variants in-process + collar fold
+  counts), kinks.py / cprobe.py (the made collar's grid: folded quads by station / row positions), xprobe.py (made
+  collar x shirt crossings by station/row), xj.py (which jacket pieces cross the visible shirt), spikes.py,
+  views.sh <tag> (neck + upper-figure renders, no gates), cmpfig.py; c10ship.py gained neck=1|2, hl=1 (made collar
+  orange), sh=1|2, fig=1, cover=pipe (the PIPELINE's rule: tucked + cloth_layers.cut, as the export does).
+  - (1) Side-neck TABS: the made collar's end lay (on the lapel's pattern, columns running back over the shoulder) and
+    the fall (columns running out and down) are ~90 deg apart; blended point by point per station (wE) their outer rows
+    crossed: 39 quads folded > 120 deg at stations 11-19 / 44-50 (the corner of the neck seam where the roll line meets
+    it). blend_smooth / blend_reach more: no change. Fix: `cloth_made.patch_transition` (collar_options blend_patch,
+    default 3): the meeting zone laid as a patch between its boundary columns (whole curves blended by arc, carried to
+    each station's seam point). Folds 39 -> 9, none at the side neck; the knotted flags in the three-quarter views gone.
+  - Back fall edge: the fall board's columns took their way down from the normal of whatever lay under each station;
+    the outer edge zigzagged 10-25 mm in x across the back (st 22-30), folded quads at CB, a kink visible from behind.
+    Board directions and ends now smoothed along the seam (collar_options board_smooth, default 6): folds 12 -> 2,
+    a clean edge (out/bsm_cmp.png).
+  - (4) Shirt collar x jacket collar 10-16 at CB: NOT in the construction's own view (vs the under garment it was
+    given: 0). The jacket was constructed over s2_12 CARRIED onto this code's mesh (pinmap: same positions, another
+    triangulation) while c10ship draws s2_12's own mesh; at the collar's sharp roll the two surfaces differ by mm and the
+    stand, 3 mm off, went through the drawn one. Stand clearance `off` 0.003 -> 0.005 (mid-surface to mid-surface is
+    already 2.7 mm for a 2.4 mm shirt collar + 3 mm jacket collar): 0 crossings. (Constructing over s2_12's own mesh
+    also gave 0 at the collar but moved hug/over_under: 44 crossings at the back neck; rejected.)
+  - (5) Merge-and-cut in the pipeline: `cloth_layers.cut(under, outer, keep)`: visibility (hidden from all 61 view
+    directions by the outer garment's welded surface, its made parts as slabs, the pieces they replace left out, AND
+    the body; grown 3 rings; keep never cut) + crossings (cut 2 rings round where the under cloth crosses the outer one,
+    3 cm inside every opening and 6 cm from the openings the under garment shows through: no hard-coded |x| / z as in
+    c10ship). `export_part` uses it by default (outer garment key hidden_rule "margin" = the old `hidden`).
+    `tucked` now lays the under garment under the outer's MADE parts, not the hidden simulated pieces they replace
+    (shirt by the neck crossed the made collar: 6 -> 0). On the real pair (c10ship cover=pipe, bsm_1): 0 skin px from
+    12 cameras, collar and uncovered shirt bit-identical, visible shirt x jacket 10, x made collar 0. Tests:
+    test_cloth_layers::test_cut_by_visibility_and_crossings, ::test_tuck_lays_under_the_made_parts_not_the_pieces...,
+    test_cloth_made::test_patch_transition_never_folds_where_two_lays_meet.
+    NOT DONE: the export ships the SIMULATED collar (export_part never draws res["made"]["parts"]): on j12 that piece
+    has an 85 mm spike at the wearer's left side neck (spikes.py). The made parts need exporting as geometry.
+  - Disk guard: cloth sims refused at < 20 GB free even when the solver runs on the GPU fleet (the disks were at
+    16 / 22 GB free); remote (bundle / HIFIPUSHIE_ZOZO_REMOTE) zozo jobs now need 1 GB.
+  - (2) Notch, three draft sims over j12 (one broker batch + 1 rerun): n1 gorge_drop 0.105 + lapel roll_stand 0.03,
+    n2 gorge_angle 40 + roll_stand 0.03, n3 roll_stand 0.035. Lapels straighter in all (roll 2.8-3.4, edge < 1.1 mm),
+    but: n1 notch 16 mm higher by the chin (35/37 below it vs concept 63/56), shirt shards at the wearer's right V
+    edge (gate passes); n2 the wearer's left lapel flares out as a wing, 142 skin px; n3 notch at the chin anchor
+    (-10/-3) but the lapel tops stand off the shirt (dark gap), 271 skin px. None better than j12 by eye: j12 kept.
+    MEASUREMENT CAVEAT: trace.py's "notch" for ours is the made collar's END TIP (G[0,-1]), 30 mm outside the gorge
+    end; the gorge end itself (wpts.py: draft points found on the mesh) lies at x +-135 z 1470 = the concept's notch
+    by the chin anchor. By the shoulder line ours is 30-40 mm low, by the chin 12 mm high (Garrett's neck is short:
+    chin -> shoulder 28 vs 68 mm). In the front view the notch is at ~0.51 of the half shoulder width (concept 0.64:
+    not too far out) but above the shirt collar points (concept: level with them). The "12-15 mm out and low" brief
+    does not survive this; the lever that reads as the "wing" is the collar END lying back over the shoulder.
+  - (3) Shoulders: sleeve cap_ease 0.045 -> 0.03 (s1) / 0.02 (s2): no visible gain at the sleeve heads, the lapels
+    flared and waved (run-to-run sim spread), gates FAIL (602 / 26 skin px, 76 / 191 visible crossings). Rejected.
+    spikes.py on j12: the sharpest interior shoulder points are the shoulder seam / sleeve-cap corners (back.L
+    +0.217, 9 mm; back.R -0.221, 11 mm umbrella offset), the lumps are the sim's sleeve heads; not fixed.
+  - Spend: notch batch $0.055 + $0.033, sleeve batch $0.103 (one instance failed and was retried) + $0.094 = $0.28.
+  - Current best: out/c11_k4.pkl = the j12 sim with this code's construction (con.py c11_k4 under=carried): 0 skin px
+    (12 cameras), visible collar / V 0.00 mm vs s2_12, lapels roll 4.2-4.4 / edge 0.2-6.2 mm, collar x shirt collar 0,
+    visible shirt x jacket 10 (front.L by the gorge), collar_show 18.9 mm. Renders out/c11_k4_neck.png, _fig.png;
+    before / after: out/j12_k4_neck.png, j12_k4_fig.png, ba_tabs.png, bsm_cmp.png. At whole-figure scale the change is
+    small (the knotted tabs show only in the three-quarter views): no sheet sent.
+  - Round 2 (coordinator, after the merge of 2699cd3). EXPORT: export_part now ships each constructed part (made
+    collar) as a closed slab of its thickness, its pattern uv placed where its source piece lies in the atlas, and drops
+    the simulated pieces it replaces (`replaces`); test_seams::test_export_ships_made_parts_not_the_pieces_they_replace
+    writes a GLB and reads it back (made part present, no triangle of its source).
+  - RE-DRESS on the current Garrett (gc_dress: style head_size 1.0, was 1.138): model workspace/su_gc = gc_dress's spec
+    (frozen copy, 2026-10-10 00:24) + su_om_garrett's shirt (as s2_12: no patches) and jacket; the jacket with j12's ops
+    (q_g.txt, no under_pin: over the NEW shirt sim). The shirt's fine settle was refused (13 slivers at the open neck by
+    the front edges up to 2.3x after the coarse -> fine carry and body clearing; the coarse sim itself was clean, max
+    1.22x): `cloth.relax_start` (edge-length relaxation of the over-stretched triangles + 2 rings, never made or carried
+    vertices; only when fine_start_check fails, so passing starts and their cache keys are untouched): 2.3 -> 1.6x,
+    41 vertices moved <= 1.5 mm. test_cloth::test_relax_start_gives_back_a_slivers_stretch.
+    run.py now also pickles the under garment (<tag>_under.pkl, its body + joints); c10ship pair=<tag>, trace.py third
+    arg, judge.sh / views.sh PAIR=<tag> judge a pair on its own body (pairload.py).
+    Spend: shirt coarse $0.046 + fine $0.018 + jacket $0.042 = $0.107 (three stages: each needs the previous result).
+    RESULT c11_gj: chin 1541 (was 1529), shoulder line 1512: the notch by the chin 68 / 60 mm below it vs concept 63 / 56
+    (was 51 / 44: -12 -> +5 / +4, it came to the concept on its own); by the shoulder line still -39 / -31 (concept
+    +5 / +11). Jacket collar top at the side neck 6-9 mm below the chin (concept 20-21); shirt collar 11-13 mm above
+    the jacket's there; collar_show at CB 24.7 mm (rule 10-20). BUT: the wearer's left lapel flares out as a wing
+    (lapel 97 mm from the roll, right 65), shirt flecks at its edge, 99 visible crossings, GATE FAIL 546 skin px (low
+    front cameras: at the wearer's left front edge by the shirt's hem). The new shirt's collar does NOT read like
+    s2_12's: the band's ends stand out as small slabs beside the collar points (a button showing at one), the points
+    spread wider and shorter (out/shirt_alone_cmp.png: s2_12 | new). Not yet known whether that is the body or code
+    since s2_12 (meshing changed: 13123 vs 13284 vertices).
+  - Round 3. OLD-BODY CONTROL: s2_12's spec re-simmed on su_om_garrett with current code ($0.035) matches s2_12 (same
+    13284 vertices; collar p50 0.7 / p95 5.9 mm, stand 0.0, fronts 1-2 mm; same look, out/os_cmp.png). The 13123 vs
+    13284 was never meshing: s2_12's npz is AFTER the post-sim band-edge split (front.L 2461 vs 2300 place-only). So
+    the new-body difference was the BODY: Garrett's narrower neck (stand 435 vs 459 mm) put the band's CF ends 10 mm
+    higher and 10 mm nearer CF (x +-40 z 1500 vs +-50 z 1490), out from under the collar points: two tabs beside the V,
+    a button on one. Construction tried and rejected: turning the band ends in about the neck seam (bigger tabs),
+    the open-neck press (front corners folded out into a flap).
+    DRAFT RULE `cloth.band_ends` (applied in cloth.pieces for designs with a collar_rule; pattern key band_ends: false
+    turns it off): each band end runs past CF no further than its button needs (button side half a button + 2 mm,
+    buttonhole side half of button + 3 mm + 2 mm) or the collar point's reach past its sewn end, whichever is more,
+    and the end is a quarter ellipse from the top's CF to the bottom edge. Only shortens. Garrett: 9.2 / 14.8 ->
+    7.5 / 9.0 mm (the points reach 6 mm). Recorded in the draft as draft.band_ends. NOTE: it changes every Simon
+    shirt's draft (su_om_garrett's too): their cached sims re-key. test_cloth::test_band_ends_run_past_cf_only_as_far...
+    RE-SIM c11_gb (su_gc, shirt + jacket j12-style over it; $0.043 + $0.012 + $0.043 = $0.098): band ends under the
+    collar points (out/gb_neck.png); jacket GATE PASS: 0 skin px from 12 cameras incl. the low ones, 0 visible shirt x
+    jacket crossings, 0 x the made collar, visible collar / V 0.00 mm vs the shirt as simulated, lapels straight (roll
+    4.7-5.2, edge 0.1 mm) and symmetric (63 / 64 mm, the 97 mm wing gone). Trace: notch 67 / 69 mm below the chin vs
+    concept 63 / 56; break 415-423 vs 398; collar_show at CB 25.5 mm (rule 10-20: over). Sheet
+    cloth_renders/c11_gb_sheet.png (concept | c11_k4 | c11_gb). Still: the collar ends stand up a little at the
+    shoulders; the chest reads fuller than the concept's.
+  - Round 4 (chest, collar show; over c11_gb's shirt). Checklist on c11_gb (check.py now takes models without
+    trousers; topk.py makes its light npz from a run.py pkl): chest 441 vs 397 mm (+11%), shoulders 528 vs 482
+    (+10%), front_hang 85 mm (rule -40..10), hem_sweep -21%, collar_hug 16.6 mm, sleeve -14%. One batch:
+    gc1 = neckline.back 0.045 -> 0.035 + block chest_ease 0.10 -> 0.06; gc2 = the same with chest_ease 0.03.
+    gc2's sim STALLED on the fleet (progress frozen at "sewing" for 40+ min, a normal job takes 60-90 s): cancelled,
+    but the batch cost $0.70 (the stalled instance billed). [CORRECTED 2026-10-10, coordinator: do NOT cancel quiet
+    jobs by hand (a cancel is billed for the time held; the runner prints only at setup and end): the broker's stall
+    guard kills a job with no output AND no GPU use for 10 min, free. Submit with timeout_minutes ~30, stall_minutes
+    default. bl.sh status <batch> to look.]
+    gc1 (out/c11_gc1.pkl, its shirt c11_gc1_under.pkl = c11_gb's): collar_show at CB 25.5 -> 12.4 mm (rule 10-20: OK);
+    gates PASS (0 skin px, collar / V 0.00), lapels straight (roll 4.7-5.3, edge 0.1-0.3) 64 / 67 mm, notch 67 / 66 mm
+    below the chin (concept 63 / 56); visible shirt x jacket 32 (was 0). Chest only 441 -> 436 mm: four points of
+    ease is 5 mm of front-view width; the width there is the shoulders / sleeve heads (528 vs 482) and the fronts
+    hanging open (front_hang 85 -> 112 mm), not the body ease.
+  - HANDOVER (cloth11, 2026-10-10). Best: out/c11_gc1.pkl over c11_gc1_under.pkl (model su_gc: gc_dress frozen
+    2026-10-10 00:24 + the suit; jacket = j12's ops with neckline.back 0.035, chest_ease 0.06; q_gc.txt line 1).
+    Judge any build with PAIR=<tag> judge.sh <tag> and PAIR=<tag> views.sh <short>; check.py <tag> <jacket lt npz> -
+    <shirt lt npz> su_gc (topk.py makes them). OPEN, in order: (3) the jacket collar ends lifting at the shoulders;
+    (4) the top button 16-22 mm low (break 414-420 vs 398 below the chin: lapel break_y 0.49 -> ~0.47);
+    (5) shoulders 528 vs 482 mm (+10%): the block's shoulder width / sleeve-head support, which is also most of the
+    chest width; (6) front_hang 112 mm (the fronts swing open: hem spring / front balance), hem_sweep -21%;
+    the 32 visible crossings gc1 brought back. Spend this agent: $0.28 + $0.24 + gc batch $0.70 = ~$1.22.
+- 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed, which is free). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.

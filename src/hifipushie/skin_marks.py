@@ -28,13 +28,14 @@ import json
 
 import numpy as np
 
-VERSION = 13
+VERSION = 22
+SUB_DASH, SUB_GAP = 2.0, 0.4   # the under-skin shafts in the shadow channel: their gain, the shadow left between them
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
 # scale, patchiness, how far the cheeks fill (0 thin .. 1 as the chin); hair grows ~0.4 mm a day
 STUBBLE_STYLES = {
-    "clean": {"length": 0.00005, "shadow": 0.4, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
+    "clean": {"length": 0.00005, "shadow": 0.22, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
     "five_oclock": {"length": 0.0004, "shadow": 0.6, "trim": 0.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.55},
     "short": {"length": 0.0014, "shadow": 0.75, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.6},
     "designer": {"length": 0.004, "shadow": 0.6, "trim": 1.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.7},
@@ -330,7 +331,9 @@ def beard_density(J: dict, o: dict, curv=None):
     io = interocular(J)
     L = lambda n: np.asarray(J[n], float)  # noqa: E731
     trim = float(o["trim"])
-    soft = io * (0.015 + 0.3 * (1 - trim))        # the boundaries' half-width: ~2.2 cm across untrimmed, ~2 mm trimmed
+    # the boundaries' half-width: ~2.2 cm across untrimmed, ~4 mm trimmed (a trimmer's line still thins over a few mm:
+    # at ~1 mm the designer / heavy cheek line and neckline read as a decal's edge in the 5th blind read)
+    soft = io * (0.06 + 0.26 * (1 - trim))
     cl, nl = float(o["cheek_line"]), float(o["neckline"])
     nose_b, nos, mc = L("lm_nose_base"), L("lm_nostril.L"), L("lm_mouth_corner.L")
     j1 = L("lm_jaw_1.L")
@@ -362,7 +365,10 @@ def beard_density(J: dict, o: dict, curv=None):
     def region(q, P, grow):
         """1 inside the beard's area, its boundaries feathered by `soft` and moved out by `grow` (m)."""
         t = theta(q)
-        lat = _ramp(q[:, 0], M[0] - 0.12 * io, M[0] + 0.02 * io)
+        # (from the moustache's top to the cheek's: over ~2 cm untrimmed; 9 mm made a box with hard sides under the nose
+        # on Garrett, skin3)
+        kl = 0.18 * io * (1 - trim)
+        lat = _ramp(q[:, 0], M[0] - 0.12 * io - kl, M[0] + 0.02 * io + kl)
         top_c = _ramp(q[:, 2] - grow, z_top(t) + soft, z_top(t) - soft)
         top_m = _ramp(q[:, 2] - grow, nos[2] + 0.02 * io + soft, nos[2] + 0.02 * io - soft)
         d = lat * top_c + (1 - lat) * top_m
@@ -400,7 +406,24 @@ def beard_density(J: dict, o: dict, curv=None):
         w *= 1 - 0.2 * _ramp(np.interp(q[:, 0], jx, jz) - q[:, 2], 0.15 * io, 0.6 * io)                  # the neck
         if patchy > 0:
             nz = noise(P, {"scale": 0.014, "octaves": 2, "seed": 300 + seed})
-            w *= (1 - patchy) + patchy * _ramp(nz, 0.44, 0.52)   # (hair there or missing, not a stain: sharp gaps keeping sparse single hairs)
+            pn = min(patchy, 0.3)   # a few random gaps in any beard
+            w *= (1 - pn) + pn * _ramp(nz, 0.44, 0.52)   # (hair there or missing, not a stain: sharp gaps keeping sparse single hairs)
+            pa = float(np.clip((patchy - 0.25) / 0.5, 0, 1))
+            if pa > 0:
+                # a patchy beard grows where a beard comes in first: the moustache along the upper lip, a soul patch,
+                # the chin's underside and the jaw's front edge; the cheeks and the connectors beside the mouth stay
+                # bare (ref_33). Random noise blobs there read as stains (four blind reads).
+                lu, ll = L("lm_lip_upper"), L("lm_lip_lower")
+                z_lip = np.interp(q[:, 0], [0.0, mc[0]], [lu[2], mc[2]])
+                mous = (_ramp(q[:, 0], mc[0] + 0.06 * io, mc[0] - 0.04 * io) * _ramp(q[:, 2], z_lip - 0.01 * io, z_lip + 0.04 * io)
+                        * _ramp(q[:, 2], nose_b[2] - 0.02 * io, nose_b[2] - 0.1 * io))
+                soul = _ramp(q[:, 0], 0.14 * io, 0.06 * io) * _ramp(q[:, 2], ll[2] - 0.02 * io, ll[2] - 0.07 * io) * _ramp(q[:, 2], ll[2] - 0.32 * io, ll[2] - 0.22 * io)
+                e = np.interp(q[:, 0], jx, jz) - q[:, 2]     # below the jaw's edge (> 0)
+                band = _ramp(e, -0.22 * io, -0.06 * io) * _ramp(e, 0.4 * io, 0.22 * io) * _ramp(q[:, 0], mc[0] + 0.75 * io, mc[0] + 0.25 * io)
+                anat = np.maximum.reduce([mous, 0.85 * soul, 0.9 * band])
+                fine_nz = noise(P, {"scale": 0.005, "octaves": 2, "seed": 310 + seed})
+                keep = anat * (0.5 + 0.5 * _ramp(fine_nz, 0.3, 0.7))   # thinning inside the patches: fewer hairs, not blotches
+                w *= (1 - pa) + pa * keep
         return np.clip(d * w * float(o["density"]), 0, 1)
     return dens
 
@@ -429,7 +452,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     from scipy.ndimage import gaussian_filter
     sp = sphere(J, (-80.0, 52.0), 230.0, 0.00006 if o["length"] < 0.003 else 0.00008)
     V, N, F = head_mesh(spec, part, J)
-    key = hashlib.sha1(json.dumps([o, np.asarray(V[:50]).round(5).tolist(), len(V), sp["img"], VERSION],
+    key = hashlib.sha1(json.dumps([o, np.asarray(V[:50]).round(5).tolist(), len(V), sp["img"], VERSION, SUB_DASH, SUB_GAP],
                                   sort_keys=True, default=str).encode()).hexdigest()[:16]
     path = store.HOME / "_images" / f"mk_stubble_{key}.png"
     stats_f = path.with_suffix(".json")
@@ -459,7 +482,13 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         curl = rng.normal(0, 1, n) * np.clip(Lh / 0.006, 0, 1.2) * 0.25          # bend (rad over the hair's length)
         ca, sa = np.cos(ang), np.sin(ang)
         pxm = _px_m(A)
-        white = rng.random(n) < float(o["grey"])
+        # (grey comes in first on the chin and round the mouth, last on the upper cheeks: a uniform share read as
+        # "chalk scratches" evenly over the jaw, skin3's 6th blind read)
+        from .skin import interocular
+        io = interocular(J)
+        chin = np.exp(-(((P - (np.asarray(J["lm_chin"], float) + [0.0, 0.0, 0.3 * io])) / (np.array([0.55, 0.6, 0.45]) * io)) ** 2).sum(1))
+        gz = 0.6 + 0.8 * chin
+        white = rng.random(n) < np.clip(float(o["grey"]) * gz / gz.mean(), 0, 1)   # (the share overall stays `grey`)
         tone = np.where(white, rng.uniform(0.75, 1.0, n), rng.uniform(0.0, 0.15, n))  # 0 dark .. 1 white
         reach = proj + wid + 2 * pxm
 
@@ -479,8 +508,25 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
                 cov = _ramp(r, hw + aa, max(hw - aa, 0.0))
             root = _ramp(np.hypot(s, t), 0.75 * wid[i] + aa, max(0.75 * wid[i] - aa, 0.0))   # the follicle: a dark dot where it leaves the skin
             return np.maximum(cov, root) * min(1.0, (wid[i] / max(pxm[i], 1e-9)) ** 0.5 + 0.35)  # sub-pixel hairs read fainter
-        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine))
+        # (cut flush, a fresh shave's stubs are barely there: their darkness grows with the length up to 0.3 mm)
+        flush = np.clip(Lh / 0.0003, 0.15, 1.0)
+        draw(R, x0, A, reach, shape, (1 - tone) * 0.95 * (0.35 + 0.65 * fine) * flush)
         draw(G, x0, A, reach, shape, tone * 0.95 * (0.35 + 0.65 * fine))
+        # the shaft under the skin: a dark hair runs ~1 mm on at a slant below the surface before its follicle, seen
+        # through the epidermis as a soft grey dash behind the exit point (what makes a 1-day shadow read as a field of
+        # dashes at a distance, not a smooth wash: skin3 measured the beard's 1 mm-scale L contrast at 1/4-1/8 of
+        # ref_30 / ref_29's with the stubs alone). A white hair is invisible under the skin.
+        ls = 0.0013 * rng.uniform(0.7, 1.3, n)
+        ws = 0.5 * np.maximum(1.8 * wid, 0.0002)
+
+        def sub_shape(i, s, t):
+            a = ca[i] * s + sa[i] * t
+            b = -sa[i] * s + ca[i] * t
+            aa = 0.5 * pxm[i]
+            fade = np.clip(1 + a / ls[i], 0, 1) ** 0.7      # 1 at the exit, 0 where it's too deep to see
+            return _ramp(np.abs(b), ws[i] + aa, max(ws[i] * 0.3, 0.0)) * _ramp(a, aa, -aa) * fade
+        Sd = np.zeros((H, W), np.float32)
+        draw(Sd, x0, A, ls + ws + 2 * pxm, sub_shape, (1 - tone) * (0.4 + 0.6 * fine))
         # the shadow: the EXPECTED density of dark roots (hair in the skin), from a dense sample of the density field
         # (not the drawn roots' count: blurred enough to hide its Poisson noise, ~3 mm, it fell off 3 mm short of every
         # edge and left a pale band over the lip), each sample weighted by 1 / its pixel's area on the skin
@@ -493,7 +539,8 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         area = np.abs(Ac[:, 0, 0] * Ac[:, 1, 1] - Ac[:, 0, 1] * Ac[:, 1, 0])
         Bd = np.zeros((H, W), np.float32)
         Ba = np.zeros((H, W), np.float32)
-        np.add.at(Bd, (xi[:, 1], xi[:, 0]), (dc * (1 - float(o["grey"])) * area).astype(np.float32))
+        # (the dark hairs' share ** 0.6: a salt-and-pepper beard still reads as a shadow, ref_28's beard - cheek dL ~ -9)
+        np.add.at(Bd, (xi[:, 1], xi[:, 0]), (dc * (1 - float(o["grey"])) ** 0.6 * area).astype(np.float32))
         np.add.at(Ba, (xi[:, 1], xi[:, 0]), area.astype(np.float32))
         pm = float(np.median(pxm))
         Bd, Ba = gaussian_filter(Bd, 0.0012 / pm), gaussian_filter(Ba, 0.0012 / pm)
@@ -502,6 +549,9 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         avg = Bd / np.maximum(Ba, 1e-6)
         support = np.clip(Ba / (0.5 * K * HAIRS_PER_M2), 0, 1)
         Bs = np.clip(avg * support / 0.7, 0, 1) ** 1.2   # full at ~70% of a full dark beard; thin edges fade faster
+        # the shadow carries the shafts' grain: gaps between them lighter, the shafts darker (the layer's opacity is
+        # raised to match: skin_features._stubble_map), so the mean stays the measured beard-minus-cheek darkening
+        Bs = Bs * (SUB_GAP + (1 - SUB_GAP) * np.clip(SUB_DASH * Sd, 0, 1))
     else:
         Bs = np.zeros((H, W), np.float32)
         pm = 0.0
@@ -535,11 +585,13 @@ def freckle_density(J: dict, o: dict):
         face = g(q, np.array([0.0, nb[1] + 0.4 * io, 0.5 * (nb[2] + br[2])]), np.array([1.25, 1.2, 1.25]) * io)
         w = zones["face"] * face
         w = np.maximum(w, zones["nose"] * g(q, np.array([0.0, nb[1] - 0.15 * io, 0.5 * (nb[2] + br[2]) + 0.05 * io]), np.array([0.28, 0.4, 0.5]) * io))
-        w = np.maximum(w, zones["cheeks"] * g(q, lid + io * np.array([0.1, 0.05, -0.42]), np.array([0.45, 0.5, 0.33]) * io))
+        w = np.maximum(w, zones["cheeks"] * g(q, lid + io * np.array([0.12, 0.05, -0.36]), np.array([0.6, 0.5, 0.36]) * io))
         w = np.maximum(w, zones["forehead"] * g(q, np.array([0.0, nb[1] + 0.2 * io, nb[2] + 0.75 * io]), np.array([0.9, 0.6, 0.45]) * io))
         w = np.maximum(w, zones["upper_lip"] * g(q, np.array([0.0, br[1] + 0.05 * io, br[2] - 0.2 * io]), np.array([0.4, 0.4, 0.15]) * io))
         w = np.maximum(w, zones["chin"] * g(q, L("lm_chin") + np.array([0.0, 0.0, 0.25 * io]), np.array([0.35, 0.35, 0.3]) * io))
-        lit = _ramp(Nrm @ sun, 0.05, 0.6)
+        # (what faces the sun: the side of the cheek and the temple keep some, fading; a cut at N.sun = 0.05 left none
+        # past the cheek's front, skin3 measured 0.01-0.04 of the peak there against 0.1-0.9 on ref_02 / 09 / 40-42)
+        lit = _ramp(Nrm @ sun, -0.3, 0.55)
         nz = noise(P, {"scale": 0.018, "octaves": 2, "seed": 500 + seed})
         cl = (1 - clump) + clump * _ramp(nz, 0.3, 0.75) ** 1.5
         lips = _lips_path(J)
@@ -625,5 +677,179 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
             draw(B, x0, A, radm + 2 * pxm, mshape, np.ones(len(Pm)))
     _save(path, np.dstack([R, G, B]))
     stats = {"freckles": int(n), "moles": nm, "size": [W, H]}
+    stats_f.write_text(json.dumps(stats))
+    return str(path), sp["img"], stats
+
+
+# ---- the base skin: pores, micro relief, fine colour -----------------------------------------------------------------
+
+# pores by zone: (pores per cm2 that read, median radius m). Nose and the medial cheeks coarse, forehead and chin
+# middling, the rest of the face fine (sebaceous follicles: largest and densest on the nose and beside it)
+PORE_ZONES = {"nose": (240.0, 0.00016), "cheek": (170.0, 0.00013), "forehead": (120.0, 0.00009), "chin": (150.0, 0.00011),
+              "face": (60.0, 0.00007)}
+BASE_VERSION = 13
+BASE_PX = 0.00008   # m a pixel at the face: pores 0.13-0.35 mm across are 2-4 pixels
+
+
+def base_zones(J: dict):
+    """weights(P) -> {zone: 0..1} for the pore zones and the colour gains, from the face's landmarks."""
+    from .skin import interocular
+    io = interocular(J)
+    L = lambda n: np.asarray(J[n], float)  # noqa: E731
+    nb, tip, nos, lid = L("lm_nose_bridge"), L("lm_nose_tip"), L("lm_nostril.L"), L("lm_lid_lower.L")
+    lips = _lips_path(J)
+    mc = L("lm_mouth_corner.L")[1] + 0.25 * io
+
+    def g(q, c, r):
+        return np.exp(-(((q - c) / (np.asarray(r) * io)) ** 2).sum(1))
+
+    def w(P):
+        q = P.copy()
+        q[:, 0] = np.abs(q[:, 0])
+        nose = np.maximum(g(q, tip + [0.0, 0.05 * io, 0.0], [0.22, 0.3, 0.3]), g(q, nos + [0.06 * io, 0.0, 0.04 * io], [0.16, 0.2, 0.14]))
+        nose = np.maximum(nose, 0.7 * g(q, 0.5 * (nb + tip), [0.12, 0.3, 0.3]))
+        return {"nose": nose,
+                "cheek": g(q, lid + io * np.array([-0.02, 0.05, -0.45]), [0.32, 0.4, 0.32]),
+                "forehead": g(q, np.array([0.0, nb[1] + 0.2 * io, nb[2] + 0.75 * io]), [0.9, 0.6, 0.45]),
+                "chin": g(q, L("lm_chin") + np.array([0.0, 0.0, 0.25 * io]), [0.4, 0.35, 0.3]),
+                "alae": g(q, nos + [0.12 * io, 0.0, 0.0], [0.16, 0.25, 0.16]),
+                "lips": lips.contains_points(P[:, [0, 2]], radius=0.0005) & (P[:, 1] < mc),
+                "front": g(q, np.array([0.0, nb[1] + 0.3 * io, 0.5 * (nb[2] + tip[2])]), [1.0, 1.2, 1.3]),
+                "lids": g(q, L("lm_lid_upper.L") + np.array([0, 0.03 * io, -0.06 * io]), [0.3, 0.4, 0.2]),
+                "mouth": np.maximum(g(q, np.array([0.0, mc - 0.25 * io, L("lm_lip_upper")[2] + 0.12 * io]), [0.45, 0.4, 0.2]),
+                                    g(q, np.array([0.0, mc - 0.25 * io, L("lm_lip_lower")[2] - 0.15 * io]), [0.4, 0.4, 0.22]))}
+    return w
+
+
+def _pore_field(W: dict):
+    """Per point: pores per m2 and the median pore radius (m), blended over the zones."""
+    k = np.zeros_like(W["nose"])
+    den = np.zeros_like(k)
+    rad = np.zeros_like(k)
+    for z in ("nose", "cheek", "forehead", "chin"):
+        k = k + W[z]
+        den = den + W[z] * PORE_ZONES[z][0]
+        rad = rad + W[z] * PORE_ZONES[z][1]
+    s = np.maximum(k, 1.0)
+    f = np.clip(k, 0, 1)
+    den = den / s + (1 - f) * PORE_ZONES["face"][0]
+    rad = rad / s + (1 - f) * PORE_ZONES["face"][1]
+    # (few that read off the face's front: a 6th-read "even dark speckle from the scalp to the chin" was dirt)
+    off = np.clip(1 - W["lids"] * 0.8, 0, 1) * (~W["lips"]) * (0.15 + 0.85 * np.clip(W["front"] + k, 0, 1))
+    return den * 1e4 * off, rad
+
+
+def _pixel_points(sp: dict, V, N, step: int = 4):
+    """The head's surface point under each map pixel: the outermost skin along the wrap's ray (R interpolated over
+    the mesh's outward vertices on a grid `step` px apart). Returns rows(y0, y1) -> (P (n, 3), on the head (n,), facing
+    (n,): the surface normal . the wrap's ray, ~0 where the ray grazes it (the nose's sides: one pixel spans a long
+    strip of skin there, and anything evaluated per pixel streaks)."""
+    from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+    from scipy.ndimage import zoom
+    fr = sp["fr"]
+    o = np.asarray(fr["o"], float)
+    V = np.asarray(V, float)
+    keep = outward(sp, V, np.asarray(N, float), V)
+    xv = pix(sp, V[keep])
+    Rv = np.linalg.norm(V[keep] - o, axis=1)
+    fv = (np.asarray(N, float)[keep] * (V[keep] - o)).sum(1) / np.maximum(Rv, 1e-9)
+    W, H = sp["W"], sp["H"]
+    gx, gy = np.meshgrid(np.arange(0, W + step, step, dtype=float), np.arange(0, H + step, step, dtype=float))
+    R, fc = LinearNDInterpolator(xv, np.stack([Rv, fv], 1))(gx, gy).transpose(2, 0, 1)
+    ok = np.isfinite(R)
+    R[~ok] = NearestNDInterpolator(xv, Rv)(gx[~ok], gy[~ok])
+    fc[~ok] = 0.0
+    Rf = zoom(R, step, order=1)[:H, :W]
+    ff = zoom(fc, step, order=1)[:H, :W]
+    okf = zoom(ok.astype(np.float32), step, order=1)[:H, :W] > 0.5
+    k, e1, e2 = (np.asarray(fr[x], float) for x in ("k", "dir", "right"))
+    th = ((np.arange(W) + 0.5) / W - 0.5) * fr["su"] + fr["dc"] + fr["seam"]
+
+    def rows(y0, y1):
+        v = 1 - (np.arange(y0, y1) + 0.5) / H
+        ph = (v - 0.5) * fr["sv"] + fr["phic"]
+        cp, sph = np.cos(ph)[:, None, None], np.sin(ph)[:, None, None]
+        d = cp * (np.cos(th)[None, :, None] * e1 + np.sin(th)[None, :, None] * e2) + sph * k
+        return (o + Rf[y0:y1, :, None] * d).reshape(-1, 3), okf[y0:y1].ravel(), ff[y0:y1].ravel()
+    return rows
+
+
+def base_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dict]:
+    """The base skin's unique map (file, placement, stats): what a character texture artist paints (or projects from a
+    scan) into every face before any feature. r = relief, depth 0..1 (pores as pits sized by zone, the skin-line
+    net's furrows, a 0.5-2 mm undulation; the layer makes it height, so the export bakes it into the normal map, and
+    a little cavity tint); g = blood, 0.5 even (up: capillary redness in 1-3 mm blotches and threads beside the nose's
+    wings; down: paler); b = melanin, 0.5 even (up: uneven pigment in 1-4 mm patches). o: pore_size (x the zones'
+    radii), seed."""
+    from . import store
+    from .noise import fbm
+    from .paint import cells
+    from scipy.spatial import cKDTree
+    sp = sphere(J, (-62.0, 72.0), 220.0, BASE_PX)
+    V, N, F = head_mesh(spec, part, J)
+    seed = int(o.get("seed", 0))
+    size = float(o.get("pore_size", 1.0))
+    key = hashlib.sha1(json.dumps([o, np.asarray(V[:50]).round(5).tolist(), len(V), sp["img"], VERSION, BASE_VERSION, PORE_ZONES],
+                                  sort_keys=True, default=str).encode()).hexdigest()[:16]
+    path = store.HOME / "_images" / f"mk_base_{key}.png"
+    stats_f = path.with_suffix(".json")
+    if path.exists() and stats_f.exists():
+        return str(path), sp["img"], json.loads(stats_f.read_text())
+    zones = base_zones(J)
+    rng = np.random.default_rng(2100 + seed)
+    # pores: scattered on the mesh by the zones' density, each a soft pit of its own size and depth
+    top = max(z[0] for z in PORE_ZONES.values()) * 1e4
+    P, Nrm, _ = scatter(V, N, F, lambda P_, N_: _pore_field(zones(P_))[0] / top, top, rng)
+    P = P[outward(sp, P, Nrm, V)] if len(P) else P
+    n = len(P)
+    rad = _pore_field(zones(P))[1] * size * rng.lognormal(0, 0.3, n) if n else np.zeros(0)
+    dep = rng.uniform(0.45, 1.0, n)
+    tree = cKDTree(P) if n else None
+    rmax = float(rad.max()) if n else 0.0
+    W, H = sp["W"], sp["H"]
+    out = np.zeros((H, W, 3), np.float32)
+    rows = _pixel_points(sp, V, N)
+    chunk = max(1, 400000 // W)
+    for y0 in range(0, H, chunk):
+        y1 = min(H, y0 + chunk)
+        Q, ok, fac = rows(y0, y1)
+        # (fades to even skin where the wrap grazes the surface, and toward the map's edges: no seam where it ends)
+        ev = _ramp(np.minimum(np.arange(y0, y1) + 0.5, H - np.arange(y0, y1) - 0.5) / H, 0.0, 0.08)
+        eu = _ramp(np.minimum(np.arange(W) + 0.5, W - np.arange(W) - 0.5) / W, 0.0, 0.05)
+        edge = (ev[:, None] * eu[None, :]).ravel()
+        keep = _ramp(fac, 0.05, 0.5) * edge   # relief: streaks where the ray grazes
+        # colour only half fades there (its 1-2.5 mm blotches barely streak): faded to even, the nose's side read as a
+        # pale band beside its wing (skin4's blind read)
+        keep_c = (0.5 + 0.5 * _ramp(fac, 0.05, 0.5)) * edge
+        wz = zones(Q)
+        lip = wz["lips"]
+        # relief: an undulation (0.5-2 mm), the polygonal net of skin lines (cells ~0.8 mm, furrows ~0.1 mm wide)
+        peel = fbm(Q, 0.0012, 3, seed + 31) - 0.5 + 0.3 * (fbm(Q, 0.0006, 2, seed + 34) - 0.5)
+        lines = _ramp(cells(Q, 0.0008, "edges", 0.9, seed + 32), 0.2, 0.0) * (0.6 + 0.8 * (fbm(Q, 0.006, 2, seed + 33) - 0.5))
+        pit = np.zeros(len(Q))
+        if n:
+            d, i = tree.query(Q, k=3, distance_upper_bound=2.2 * rmax, workers=4)
+            for j in range(3):
+                ii = np.minimum(i[:, j], n - 1)
+                t = np.where(np.isfinite(d[:, j]), d[:, j] / rad[ii], 9.0)
+                pit = np.maximum(pit, dep[ii] * np.clip(1 - t * t, 0, 1) ** 2)
+        rel = 0.3 * edge + keep * (0.3 * peel + 0.1 * lines * (~lip) + 0.4 * pit)
+        # blood: blotches (2.5 mm and, stronger, 1.3 / 0.8 mm: big blotches read as a rash) stronger mid-face, threads beside the nose's wings
+        # (round the mouth even: the blotches there read as a beard's shadow on a woman)
+        calm = 1 - 0.6 * wz["mouth"]
+        gr = (0.65 + 0.35 * np.clip(wz["cheek"] + wz["nose"] + 0.6 * wz["chin"], 0, 1) - 0.25 * wz["forehead"]) * calm
+        blood = (0.2 * (fbm(Q, 0.0025, 3, seed + 41) - 0.5) + 0.42 * (fbm(Q, 0.0013, 2, seed + 45) - 0.5)
+                 + 0.28 * (fbm(Q, 0.0008, 2, seed + 42) - 0.5))
+        rid = 1 - np.abs(2 * fbm(Q, 0.004, 2, seed + 43) - 1)
+        thread = _ramp(rid, 0.9, 0.985) * np.clip(1.5 * np.maximum(wz["alae"], 0.5 * wz["cheek"]), 0, 1)
+        g = 0.5 + keep_c * (2.8 * gr * blood + 0.45 * thread)
+        # melanin: uneven patches (3.5, 1.4 mm; a 0.7 mm grain read as dirt), more where the sun falls (forehead, cheeks, nose)
+        gp = (0.6 + 0.4 * np.clip(wz["cheek"] + wz["nose"] + wz["forehead"], 0, 1)) * calm
+        b = 0.5 + keep_c * 2.2 * gp * (0.3 * (fbm(Q, 0.0035, 3, seed + 51) - 0.5) + 0.55 * (fbm(Q, 0.0014, 2, seed + 52) - 0.5))
+        for c, val in enumerate((rel, g, b)):
+            val = np.where((ok & ~lip) if c else ok, val, 0.3 if c == 0 else 0.5)
+            out[y0:y1, :, c] = np.clip(val, 0, 1).reshape(y1 - y0, W)
+    _save(path, out)
+    stats = {"pores": int(n), "size": [W, H], "px_m": BASE_PX}
     stats_f.write_text(json.dumps(stats))
     return str(path), sp["img"], stats

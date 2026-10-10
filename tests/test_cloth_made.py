@@ -215,6 +215,33 @@ def test_notched_collar_follows_its_draft():
     assert np.linalg.norm(G[:, 0] - np.array([cm._stations(P, 0.010)[0]])[0], axis=1).max() < 1e-9  # on the seam
 
 
+def test_patch_transition_never_folds_where_two_lays_meet():
+    # a seam along x; stations 0-5 one lay (columns running +y, the collar's end on the lapel), 10-15 the other
+    # (columns running down, the fall); 6-9 the meeting, where each station's own columns of the two lays (built at
+    # a corner of the seam: they lean along it, every way) blended point by point cross; the patch between the
+    # boundary columns keeps every quad the same way round
+    n, m = 16, 8
+    s = np.arange(n) * 0.01
+    r = np.arange(m) * 0.006
+    end = np.stack([np.zeros(m), 0.02 + 2 * r, np.zeros(m)], 1)  # (also offset along +y: the end lies further back)
+    fall = np.stack([np.zeros(m), np.zeros(m), -r], 1)  # (90 deg from the end's columns)
+    w = np.clip((np.arange(n) - 5) / 5.0, 0, 1)
+    G = np.stack([np.array([s[i], 0, 0]) + (1 - w[i]) * end + w[i] * fall for i in range(n)])
+    lean = np.where((w > 0) & (w < 1), np.where(np.arange(n) % 2, 1.5, -1.5), 0.0)
+    G[:, :, 0] += lean[:, None] * (r ** 2 / r[-1])[None]  # (the outer rows most)
+    G[:, 0] = np.c_[s, np.zeros(n), np.zeros(n)]
+    rowf = np.clip(np.arange(m) / 3.0, 0, 1)
+
+    def flips(X):
+        N = np.cross(X[1:, 1:] - X[:-1, :-1], X[:-1, 1:] - X[1:, :-1])
+        return int(((N[1:] * N[:-1]).sum(-1) < 0).sum())
+    zone = (w > 0) & (w < 1)
+    assert flips(G) > 0  # the point-by-point blend folds
+    P = cm.patch_transition(G, s, zone, rowf, 1)
+    assert flips(P) == 0, flips(P)
+    assert np.allclose(P[:, 0], G[:, 0]) and np.allclose(P[~zone], G[~zone])  # the seam row and the pure lays stay
+
+
 def _box(lo, hi):
     lo, hi = np.asarray(lo, float), np.asarray(hi, float)
     V = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])

@@ -29,6 +29,8 @@ def main(name, tag, tex=None):
                      engine=os.environ.get("ENGINE", "eevee"))["front"]
     im.resize((768, 768), Image.LANCZOS).save(f"{D3}/out/{tag}_front.png")
     im.save(f"{D3}/out/{tag}_front_big.png")
+    _ph = Image.open(vs[0]["image"]).convert("RGB").crop(tuple(int(round(v)) for v in crop)).resize((BIG, BIG), Image.LANCZOS)
+    _ph.save(f"{D3}/out/photo_front_big.png")   # (the photo in the same frame: like-with-like measures)
     ph = Image.open(vs[0]["image"]).convert("RGB").crop(tuple(int(round(v)) for v in crop)).resize((BIG, BIG), Image.LANCZOS)
     U = np.array(list(vs[0]["points"].values()), float)
     c = (U.mean(0) - np.array(crop[:2])) / (crop[2] - crop[0]) * BIG      # the face's middle in the tile
