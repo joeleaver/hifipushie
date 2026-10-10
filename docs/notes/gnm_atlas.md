@@ -1222,3 +1222,32 @@ Sensitivities on f6_M_mace (rms of d residual per +1 sd): cheek_fullness 0.17 / 
 0.18 -> 1.14): the albedo's constant and the light's level drifted together (c0 -> 0, |w| -> 4). Fixed: no albedo
 constant + ridge, c0 >= 0.25 x the skin median, cast shadows off in the term (hard shadows toggle per FD step),
 photometric from round 1 (round 0 = the landmark solve from the mean), a trust region |dc| <= STEP_MAX (1.0) a round.
+Round 1 (sigma 0.25, full oval): converged but traded the outline away (jaw_width +9 mm, jaw / chin 7/7 -> 2/7, a
+heavy-set man, f6_14); phdiag: the oval's outer band dominated; inner 80 % halves the residual and the ask is mixed
+(eye depth / bridge down, jaw still wider). Round 2 (inner, sigma 0.4): quiet, costs the profile, small effect.
+HELD (coordinator / Joe: shading isn't the lever; SH lighting noted, not built).
+
+### Base offset and the ARTIST BLOCK-IN LOOP (Joe: "an artist would be able to know how to get closer")
+- Base-stack diagnostic (basestack.py, f6_15): GNM's female class mean + 3 female CVAE samples, (a) GNM's own mesh
+  similarity-aligned vs (b) our one mesh: 2.63-2.73 mm landmark rms for EVERY identity (a fixed offset: the body's
+  MakeHuman head + dimorphism); (b) narrower lower face, flatter cheeks, longer, mouth forward over a weaker chin.
+  Split (f6_16 / f6_17): MakeHuman weight barely moves the face; dimorphism 1.3 shortens / narrows; NEW spike key
+  base.head.gnm_base (onemesh.hook: the head's base shape from GNM's template scaled to the body head, faded to the
+  stitch): 1.0 = fuller, older adult; 0.5 = a soft young face. Block-in base = female mean, gnm_base 0.5 (f6_b6).
+- Tools (artist.py look / step; eyeread.py; cmpround.sh): eye-registered photo / clay (her fitted light, hair cap,
+  HER detector brows, hazel iris + lash line), 50 % overlay, outline difference, 9 mm squint; steps along humanmacro
+  free (coupled) directions or HELD ('name!': pseudo-inverse column), sex / ethnicity dirs, base keys, pose lids;
+  the five-target table (mtable.py) after every step.
+- Rounds A00 -> A15 (Tess), kept: nose_projection +0.6; lip_projection +0.5 + chin_projection +0.5; nose_width -0.5 +
+  nose_upturn +0.4; lid_upper -0.0014 (eyeread: upper lid 0.45 -> 0.67 iris radii, hers 0.67); jaw_square -0.5 +
+  jaw_width -0.3; chin_height +0.6; philtrum! -0.5; eye_width! -0.5; cheekbone_width! +0.4 + cheek_fullness! -0.4;
+  bridge_height +0.6 (free: held cost |c| +1.1 for the same look); philtrum! -0.4; chin_height! -0.5 + eye_spacing!
+  +0.3. Reverted: eye_height +0.5 (eyes read NARROWER: the opening is lid pose / eyeball seating, not identity),
+  face_length +0.6 (went into the philtrum, chin shorter), philtrum -0.5 free (took the chin), eye_depth! +0.4
+  (sockets read deep-set / male; the orbital RIM she has is not eye depth).
+- A15: targets all pass except jaw_angle_height (3/4: the gonial angle sits low) and brow_eye (dropped: it reads
+  GNM's brow landmarks, not her hair brows). Read (f6_21): outlines on hers in three views, adult, not male / old;
+  inside the outline still generic (her orbit rim, wider fuller mouth and almond eyes are not there).
+- Vocabulary gaps: gonial angle height; orbital rim / brow-to-lid plane (not eye depth); lid aperture (pose / eyeball
+  seating, not identity); radix width. Free macros drag neighbours (philtrum <-> chin; length -> philtrum): the table
+  after each step catches it; held steps cost more |c| per unit.
