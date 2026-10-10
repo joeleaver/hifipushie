@@ -96,6 +96,8 @@ def test_gather_strand_dials():
     g = [lk for k, lk in locks.items() if k.startswith("tg")]
     assert g and all(lk.get("strands") == {"wave": 0.02} for lk in g)
     assert all("strands" not in lk for k, lk in _tie().items() if k.startswith("tg"))
+    tl = _tie(tail={"strands": {"wave": 0.03}})
+    assert all(lk.get("strands") == {"wave": 0.03} for k, lk in tl.items() if k.startswith("tt"))
 
 
 if __name__ == "__main__":

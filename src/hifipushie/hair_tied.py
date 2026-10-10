@@ -10,7 +10,7 @@ them: bunches):
                             the scalp hair: rows of locks from the hairline (row 0, on top) inward, each running
                             over the head to the tie; lift = m of looseness between root and tie; false = none
    "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "dir": [x, y, z]?, "uneven": 0.4,
-            "coil": 0, "coil_radius": 0.03, "plait": false, "taper": 0.5},
+            "coil": 0, "coil_radius": 0.03, "plait": false, "taper": 0.5, "strands": {dial: value}?},
                             what leaves the tie: locks round a core line that starts along `dir` (default: out of the
                             head and down) and bends to gravity (stiff 0 = hangs at once, 1 = stands out straight);
                             fullness = the tail's radius at its fullest; coil = turns of the core wound round the tie
@@ -245,7 +245,7 @@ def grow(sc, g: dict, line, rng) -> dict:
                 locks[f"{pre}t{k}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, _clear(sc, P, 0.004)),
                                       "core": core, "free": 1.0, "width": round(float(max(w, 0.012)), 4),
                                       "thickness": 0.005, "taper": 0.25 if coil else 0.6, "belly": 0.4, "root": 0.5,
-                                      "cup": 0.0}
+                                      "cup": 0.0, **({"strands": dict(tl["strands"])} if tl.get("strands") else {})}
         for k in range(int(tp.get("escape") or 0)):  # strands the tie missed: out of the hairline, then down
             side = 1 if k % 2 == 0 else -1
             az = (side * rng.choice([52, 68, 84, 150], p=[0.3, 0.3, 0.2, 0.2]) + rng.uniform(-6, 6)) % 360
