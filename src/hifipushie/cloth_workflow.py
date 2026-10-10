@@ -30,6 +30,26 @@ from . import cloth, cloth_check, garment_design
 STAGES = ("design", "pattern", "construction", "place", "sim")
 
 
+
+def waist_band_for_body(waist_band, chest_band, sz: dict) -> list | None:
+    """A kind's waist band is written for a body whose waist is a little under its chest (a man's: ~0.9). A garment
+    cut STRAIGHT from the chest (its own waist girth at least 0.9 x its chest girth: a jumper, a boxy tee, a
+    shirt without darts) has, on any body, waist ease = (1 + its chest ease) x chest / waist - 1: on a woman whose
+    waist is 0.74 x her chest, a jumper with +16% at the chest measures +57% at the waist, honestly. So for such a
+    garment the band's top is raised to what the chest band's top gives on THIS body (never lowered; its bottom is
+    kept). None = the kind's band as written (a fitted garment, or the measures aren't there)."""
+    if not waist_band or not chest_band:
+        return None
+    ch, wa = sz.get("chest") or {}, sz.get("waist") or {}
+    if not (ch.get("garment_mm", 0) > 0 and wa.get("garment_mm", 0) > 0 and ch.get("body_mm", 0) > 0 and wa.get("body_mm", 0) > 0):
+        return None
+    if wa["garment_mm"] < 0.9 * ch["garment_mm"]:
+        return None  # shaped in at the waist: the kind's band applies
+    top = (1.0 + float(chest_band[1])) * ch["body_mm"] / wa["body_mm"] - 1.0
+    if top <= float(waist_band[1]):
+        return None
+    return [float(waist_band[0]), round(top, 4)]
+
 def _out(stage: str) -> dict:
     return {"stage": stage, "fail": [], "warn": [], "info": [], "images": []}
 
@@ -171,6 +191,10 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
     if c.meas and any(Bp["pieces"][n]["wrap"].get("to", "torso") == "torso" for n in Bp["pieces"]):
         sz = cloth.sizing({"pieces": Bp, "body": c.body})["rows"]
         R = garment_design.roles(Bp)
+        bands = dict(bands)
+        wb = waist_band_for_body(bands.get("waist"), bands.get("chest"), sz)
+        if wb is not None:
+            bands["waist"] = wb
         for reg, v in sz.items():
             if v["garment_mm"] <= 0:
                 continue  # the garment doesn't reach that girth
@@ -181,6 +205,8 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
                 how = "waistband closed"
             band = bands.get(reg)
             line = f"ease at {reg}: {ease * 100:+.1f}% ({how}; body {v['body_mm']:.0f} mm)"
+            if reg == "waist" and wb is not None:
+                line += " [band from this body: hangs straight from the chest]"
             if band:
                 line += f", {c.res['fit'] if c.res else 'kind'} band {band[0] * 100:+.0f}..{band[1] * 100:+.0f}%"
                 if not band[0] - 0.005 <= ease <= band[1] + 0.005:
