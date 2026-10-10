@@ -660,7 +660,7 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
     if not ref:
         return g
     k = float(np.median(sc.R)) / float(ref["r"])
-    if abs(k - 1.0) < 1e-6 and np.allclose(sc.C, ref["c"]):
+    if abs(k - 1.0) < 2e-4 and np.allclose(sc.C, ref["c"], rtol=0, atol=2e-5):  # (head_ref rounds to 0.01 mm)
         return g
     import copy as _copy
     g = _copy.deepcopy(g)
@@ -689,6 +689,21 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
         g["hairline"]["front_points"] = [[a, c1 + (z - c0) * k] for a, z in fp]
     g.pop("fit", None)
     return g
+
+
+def carry(src: str, src_spec: dict | None = None, sc: Scalp | None = None) -> dict:
+    """A copy of model `src`'s hair to wear on another head: groom.fit stamped with `src`'s head when the groom has
+    none. Grooms are written on one head: traced hairline heights (front_points [az, z]) are world metres and the
+    grown locks are [az, el, h] about that head's scalp centre. Worn as written on another head, the locks moved
+    with the new centre and the hairline stayed put: ts_t28's groom on Tess's solved head (centre 4.4 mm lower)
+    stood the hairline 4 mm up the brow over roots 4 mm lower, a bare V with scalp streaks (2026-10-10)."""
+    import copy as _copy
+    sp = store.load(src) if src_spec is None else src_spec
+    h = _copy.deepcopy(sp.get("hair") or {})
+    g = h.get("groom")
+    if g is not None and not g.get("fit"):
+        g["fit"] = head_ref(sc if sc is not None else scalp(src, sp))
+    return h
 
 
 def grow(sc: Scalp, g: dict, col=None) -> dict:
@@ -1284,6 +1299,8 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
                                if lk.get("hand") or (not (n[:1] in "bcfesghk" and n[1:].rstrip("abcdefgh").isdigit())
                                                      and lk.get("tier") not in ("drawn", "tie", "loose"))}
     h["locks"] = {**new, **keep}
+    if h.get("groom") is not None and not h["groom"].get("fit"):
+        h["groom"]["fit"] = head_ref(sc)  # the head these locks were grown on: the groom carries to other heads (carry)
     v = store.save(name, spec, note or f"hair: grew {len(new)} locks from the groom")
     tiers: dict = {}
     for n, lk in new.items():

@@ -6,7 +6,7 @@ import json
 import shutil
 import sys
 
-from hifipushie import store
+from hifipushie import hair, store
 
 dst, head, src = sys.argv[1:4]
 hair_src = sys.argv[4] if len(sys.argv) > 4 else src   # the groom's own latest model (Tess: ts_t28, its tie.curtain
@@ -15,9 +15,7 @@ sp = json.loads((store.HOME / src / "spec.json").read_text())
 sp = sp.get("spec", sp)
 hb = json.loads((store.HOME / head / "spec.json").read_text())
 hb = hb.get("spec", hb)["base"]["head"]
-if hair_src != src:
-    hs = json.loads((store.HOME / hair_src / "spec.json").read_text())
-    sp["hair"] = hs.get("spec", hs)["hair"]
+sp["hair"] = hair.carry(hair_src)  # groom.fit = the groom's own head: its hairline / locks follow onto this head
 h = sp["base"]["head"]
 for k in ("seed", "spread", "features"):
     h.pop(k, None)

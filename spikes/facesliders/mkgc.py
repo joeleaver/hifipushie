@@ -10,14 +10,19 @@ import json
 import shutil
 import sys
 
-from hifipushie import store
+from hifipushie import hair, store
 
 dst, head = sys.argv[1], sys.argv[2]
 H = store.HOME
 ld = lambda m: (lambda s: s.get("spec", s))(json.loads((H / m / "spec.json").read_text()))  # noqa: E731
 sp, g4, gc = ld(head), ld("g4_garrett"), ld("gc_c1")
-GREY = {"grey_amount": 0.45, "lit": "#6a6661", "sheen": "#8e8a85", "gap": "#2c2a28", "grey": "#a8a49f",
-        "eevee_sat": 0.3}
+# (faces2, 2026-10-10: the grey share is grey_amount + grey_locks x each lock's grey, and gc_c1's groom already
+# greys its locks 0.35 top .. 0.8 temples (mean 0.49): grey_amount 0.45 on top of that made ~75% grey strands, silver.
+# Measured on the concept's crop: top median luminance 0.30 (#594d44), sides 0.36. Was top 0.59 / sides 0.45 (silver).
+# grey_amount 0 + this darker warm base: top 0.35, sides 0.28 (dark sides: a dark-haired man greying on top);
+# grey_amount 0.12: top 0.41, sides 0.32, reads salt-and-pepper at sheet size (faces2/out a_g3 / a_g5))
+GREY = {"grey_amount": 0.12, "grey_locks": 0.9, "lit": "#4a4039", "sheen": "#5e544b", "gap": "#201b18", "grey": "#9a958f",
+        "eevee_sat": 0.45}
 KEEP = ("g4_nostril.L", "g4_body_tone", "g4_neck_cool")   # nostril interiors, the body's tone off the face, the neck's
 sp["paint"] = {k: v for k, v in (g4.get("paint") or {}).items() if k in KEEP}
 skin = json.loads(json.dumps(g4["skin"]))
@@ -27,7 +32,7 @@ skin.setdefault("hair", {})["stubble"] = {"amount": 1.0, "style": "short", "leng
 skin["hair"].pop("lashes", None)
 sp["skin"] = skin
 sp["parts"] = g4["parts"]
-sp["hair"] = gc["hair"]
+sp["hair"] = hair.carry("gc_c1")  # (gc_c1 has its groom.fit)
 # the concept's hair is short salt-and-pepper GREY: gc_c1's colour match chased the concept's colour bands and
 # rendered dark brown (eevee_sat 0.6 over brown lit / sheen). Greyed: a grey strand share, near-neutral lit / sheen /
 # gap, eevee's saturation at the measured 0.35 or under; the strands' wave off (a neat short cut)

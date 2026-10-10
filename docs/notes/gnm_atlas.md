@@ -323,3 +323,73 @@ gc_dress (mkgc.py).
    it in some runs (cause not pinned).
 8. The eye stage's detector bias varies with lid state and dressing (0 to +1.4 mm): a part-ID-like reader on the
    photo (iris / sclera segmentation) would remove it.
+
+## faces2 (2026-10-10, continues facesliders; scratch /mnt/data/hifipushie/faces2: run.sh / tests.sh (this worktree),
+## shots.sh <model> <tag>... (shot2 renders, one queue: flock), q.sh <log> <script> (any heavy script under that lock),
+## rehair.py <dst> <dressed> <groom model|-> [patch json], regroom.py, hl.py (hairline vs lock roots), hstat.py (hair
+## luminance of a box), phcrop.py, crop.py; sheets out/f2_*.jpg)
+
+### Tess's front hairline V: two causes, one fixed in code
+- ts_t28's groom had no groom.fit. Its traced front_points are WORLD z; its grown locks are [az, el, h] about the scalp
+  centre. On the solved head the centre sits 4.4 mm lower (C z 1.5824 -> 1.5780, y 3.3 mm back): the locks moved down
+  with it, the hairline didn't (el 27.4 -> 30.6 deg at the front), so the line stood 4 mm up the brow and the first
+  row's roots were 2.8 mm inside it instead of 6.8 mm (hl.py). FIX (general): hair.carry(src) = the model's hair with
+  groom.fit stamped from its own head when missing (mkt2.py / mkgc.py use it), and hair.groom() now stamps fit on the
+  head it grows on, so every groom carries from now on. fit_to_head's "same head" test tolerates head_ref's rounding.
+  Test: test_hair_loose.test_carried_groom_keeps_its_hairline_on_the_head. f2_tf12c = fs_tf12b with the carried
+  groom: the hairline back at ts_t28's (front el 27.1, roots 7.3 mm in).
+- The rest is the GROOM ITSELF: ts_t28 on its own head through shot2 / light_m shows the same bare V (a_t28 render;
+  tess's own render hid it in a lighter light). Behind the centre part the first row fans apart and the under layer
+  ramps over strands.soft (0.022 m). Tried, one at a time: soft 0.012 (f2_tf12d): no visible change; parting depth 0 +
+  length 0.015 (f2_tf12e): none; tie.curtain along 28 -> 45, hug 0.9 -> 0.6, regrown (f2_tf12f): the hair edge flatter
+  (closer to her arch), the V narrower, the bare triangle under the part stays. The photo's front is hair DRAPED over
+  the upper forehead from the part (volume), not a thin flat first row: a groom design job (tess's handover,
+  docs/notes/tess.md), not the carry. Sheet out/f2_tess_hairline.jpg (hers | te7h | carried | curtain), honest read:
+  none of the three reads as her hair yet.
+
+### Garrett's grey: the grey share was ~75%, not 45%
+- The strand grey share = look.grey_amount + look.grey_locks x each lock's grey, and gc_c1's groom already greys its
+  locks (groom.grey: top 0.35, front 0.45, sides 0.68, temples 0.8; locks' mean 0.49). grey_amount 0.45 on top of that
+  = ~0.75 grey strands: silver. Base colour hardly mattered (lit #5a5652 vs #4a4039: top median 0.55 vs 0.52).
+- Measured (hstat.py, luminance of the hair box) on the concept's crop: top median 0.30 (#594d44, warm), sides 0.36.
+  Old ge3g: top 0.59, sides 0.45. grey_amount 0 + lit #4a4039 / sheen #5e544b / gap #201b18 / grey #9a958f, eevee_sat
+  0.45 (f2_g3): top 0.35, sides 0.28 (sides too dark: reads dark hair greying on top). grey_amount 0.12 (f2_g5): top 0.41,
+  sides 0.32, reads salt-and-pepper at sheet size: mkgc.GREY now. Sides still darker than the concept's (their locks'
+  grey is right; they sit in shade) and the top a little bright: the next lever is groom.grey (top lower, sides higher),
+  which needs a regrow of gc_c1's locks. Sheet out/f2_garrett_hair.jpg (concept | current | g0 | g12).
+
+### The lip shading reader (spikes/facesliders/lipshade.py, lipclay.py, lipsolve.py)
+- lipshade.read: the lower vermilion as a lip-local grid on the detector's 11-point borders (u corner to corner, v 0
+  at the stomion border, 1 at the lower border, past it onto the skin), luminance over the lip's own median (in the lip)
+  or the chin's skin (under it). Features: hl_v / hl (the middle's brightest row), roll (top band over bottom band:
+  an everted pad is lit on top), roll_u (across), pad_w, shadow (the darkest row under the lip over the chin) and
+  shadow_u (toward the corners). Writes out/lipshade_<tag>.png with the grid drawn.
+- Tess, photo vs dressed (light_m): photo shadow 0.65 middle, 0.925 at both sides; ours 0.73, 0.88 / 0.82. Her lower lip
+  casts a DEEPER shadow in the middle and LESS toward the corners: a narrower, more central pout. That is the "narrower
+  and poutier", now a number. Her roll falls to 0.66 / 0.58 at the sides (ours ~1.0 / 0.92), but that part is her lip's
+  own colour (natural lips darken toward the stomion and corners, our paint doesn't): roll is albedo-confounded.
+- Clay is the wrong comparison: Lambert clay lit by the photo's fitted light (lipclay.py) reads the middle shadow
+  0.78 vs the photo's 0.41: the shadow under a pout is mostly CAST, which clay doesn't draw. The lip stage compares the
+  dressed render (eevee, shadows) instead.
+- lipsolve.py (a stage like eyesolve: Gauss-Newton on finite-difference renders, front only, no hair; coupled levers
+  at their within-sex Mahalanobis cost, residuals L2):
+  1) levers lower_lip_proj (coupled) + lip_lower_roll (residual), roll features in: it chased the lip colour, lip_lower_roll
+     -1.9 (LESS eversion, a BIG residual), cost 46.9 -> 41.8. Rejected, and the roll features are dropped by default.
+  2) shadow features only, levers lower_lip_proj + mh_lowerlip_width + mh_lowerlip_volume (NEW extension: MakeHuman's
+     mouth-lowerlip-volume, built: the identity's cheap directions make 0.88 of it, fold-free scale 0.57, max 0.62 mm):
+     every lever darkens the middle AND the sides together (lower_lip_proj -0.050 / -0.041 per sd, volume -0.034 / -0.041,
+     width ~0); nothing makes the middle darker with the sides lighter. Cost 9.4 -> 8.75, x [+0.17, -0.38, -0.60].
+     NOT landed (f2_tl1 / f2_tl2 are scratch).
+- Conclusion: the model can't reach her lower lip's shape in depth: a pad that projects at the middle and tucks toward
+  the corners. Where that should come from: a data-backed central-pad direction (no MakeHuman target is that: volume is
+  the whole lip, width is the outline) or border-aware carrying (open item 3) so lowerlip_width / volume aren't capped
+  at ~0.5 mm by the border's folds. Also unpinned: some of the side gap may be the light (ours 0.88 vs 0.82 left /
+  right, hers symmetric).
+
+### Open items now (replaces the handover's list 1-2; 3-8 unchanged)
+1. Tess's hair: a groom design pass at the front (hair draped over the upper forehead from the part, volume), judged
+   on the 3 views. f2_tf12f's curtain (along 45, hug 0.6) is a start, not a decision.
+2. Garrett's grey: groom.grey top lower / sides higher (regrow of gc_c1's groom), then rebuild gc_dress / fs_ge3 with
+   mkgc (GREY already updated). The workspace models gc_dress / fs_ge3 are NOT rebuilt (f2_g5 = fs_ge3 + the new look).
+3. The lip: border-aware carrying (handover item 3), then a central-pad lever; lipsolve.py is ready for it
+   (LEVERS=..., FEATS=shadow,shadow_side).

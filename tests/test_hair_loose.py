@@ -215,3 +215,24 @@ def test_groom_fits_a_smaller_head():
     z0 = sc.C[2]
     assert abs(f["hairline"]["front_points"][0][1] - (z0 - 0.01 + (1.69 - z0) * 0.88)) < 1e-9
     assert "fit" not in f and hair.fit_to_head({**g, "fit": None}, small)["loose"]["length"] == 0.05
+
+
+def test_carried_groom_keeps_its_hairline_on_the_head():
+    """hair.carry stamps groom.fit with the source head: worn on a head whose centre sits 4.4 mm lower (Tess's
+    solved head under ts_t28's groom), the traced hairline keeps its elevation, so it stays with the stored locks
+    ([az, el, h] about the centre) instead of standing up the brow over them (the bare V, 2026-10-10). A groom
+    already fitted keeps its own fit; the source spec isn't changed."""
+    sc, _ = _ball_head()
+    low = hair.Scalp(sc.C + [0, 0, -0.0044], sc.R.copy(), {})
+    groom = {"hairline": {"front_points": [[0, 1.66], [20, 1.659], [35, 1.655]]}}
+    src = {"hair": {"groom": groom, "locks": {}}}
+    h = hair.carry("src", src, sc=sc)
+    assert h["groom"]["fit"] == hair.head_ref(sc) and "fit" not in src["hair"]["groom"]
+    as_written = hair.hairline(low, hair._merge(hair.GROOM, groom))
+    carried = hair.hairline(low, hair._merge(hair.GROOM, h["groom"]))
+    own = hair.hairline(sc, hair._merge(hair.GROOM, groom))
+    for a in (0, 20, 35):
+        assert abs(carried[a] - own[a]) < 0.3, (a, carried[a], own[a])
+        assert as_written[a] - own[a] > 2.0, (a, as_written[a], own[a])  # (the bug: the line climbs ~2.6 deg)
+    fitted = {"hair": {"groom": {**groom, "fit": {"r": 0.1, "c": [0, 0, 1.7]}}}}
+    assert hair.carry("src", fitted, sc=sc)["groom"]["fit"] == {"r": 0.1, "c": [0, 0, 1.7]}
