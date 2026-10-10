@@ -81,6 +81,7 @@ SIDE_NARROW = 0.35  # and how much narrower it gets there
 FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks under it
 REGIONS = ("front", "top", "sides", "back", "nape")
 GROOM = {
+    "fit": None,  # head_ref() of the head this groom was made on: lengths / volumes in metres scale with the head
     "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
     "parting": {"side": "left", "offset": 0.03, "length": 0.1},
     "volume": {"front": 0.045, "top": 0.036, "crown": 0.02, "sides": 0.012, "back": 0.013, "nape": 0.005},
@@ -319,6 +320,7 @@ HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced f
 def hairline(sc: Scalp, g: dict) -> np.ndarray:
     """The hairline's elevation (degrees) at each whole degree of azimuth (360,), symmetric left/right: from the
     landmarks (front height in brow-to-nose units, temples receding, sideburns, clear of the ears, the nape)."""
+    g = fit_to_head(g, sc)
     hl = g["hairline"]
     if hl.get("points"):
         ctrl = [(float(a), float(z)) for a, z in hl["points"]]
@@ -632,9 +634,67 @@ def _poisson(sc: Scalp, rng, spacing_at, ok, n_try=6000):
     return az[chosen], el[chosen]
 
 
+# the groom's keys in metres (scaled with the head by `fit`); lists of [az, z] keep az and scale z about the centre
+_METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "temple_dip"), ("hairline", "ear"),
+               ("hairline", "sideburns"), ("hairline", "nape"), ("parting", "offset"), ("parting", "width"),
+               ("parting", "length"), ("parting", "front"), ("loose", "length"), ("loose", "spacing"), ("loose", "lift"),
+               ("loose", "body"), ("loose", "thickness"), ("loose", "level"), ("loose", "swoop", "depth"),
+               ("loose", "swoop", "length"), ("loose", "fringe", "length"), ("loose", "fringe", "depth"),
+               ("loose", "fringe", "level"), ("tie", "out"), ("tie", "gather", "lift"), ("tie", "gather", "width"),
+               ("tie", "tail", "length"), ("tie", "tail", "fullness"), ("tie", "curtain", "lift"),
+               ("tie", "frame", "length"), ("tie", "frame", "width")}
+_UNITLESS = {"across", "ramp"}  # (volume.across / ramp are shares, not metres)
+
+
+def head_ref(sc: Scalp) -> dict:
+    """The head a groom is made on, for `groom.fit`: its scalp's median radius and centre (m)."""
+    return {"r": round(float(np.median(sc.R)), 5), "c": [round(float(x), 5) for x in sc.C]}
+
+
+def fit_to_head(g: dict, sc: Scalp) -> dict:
+    """groom.fit = head_ref() of the head the groom was made on: every length / volume / offset in metres scales by
+    this head's size over that one, and traced hairline heights (front_points [az, z]) move with the head's centre and
+    scale about it. Without `fit` the groom is used as written (metres). A groom carried from a 14% bigger head kept
+    its absolute lengths and volumes and read as a mop on the smaller one (Garrett, 2026-10-09)."""
+    ref = g.get("fit")
+    if not ref:
+        return g
+    k = float(np.median(sc.R)) / float(ref["r"])
+    if abs(k - 1.0) < 1e-6 and np.allclose(sc.C, ref["c"]):
+        return g
+    import copy as _copy
+    g = _copy.deepcopy(g)
+
+    def scale(d, path):
+        node = d
+        for key in path[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+            if node is None:
+                return
+        if not isinstance(node, dict) or path[-1] not in node or node[path[-1]] is None:
+            return
+        v = node[path[-1]]
+        if isinstance(v, dict):
+            node[path[-1]] = {a: (b * k if isinstance(b, (int, float)) and a not in _UNITLESS else b) for a, b in v.items()}
+        elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            node[path[-1]] = v * k
+        elif isinstance(v, list) and all(isinstance(x, (int, float)) for x in v):
+            node[path[-1]] = [x * k for x in v]
+
+    for path in _METRE_KEYS:
+        scale(g, path)
+    fp = (g.get("hairline") or {}).get("front_points")
+    if fp:
+        c0, c1 = float(ref["c"][2]), float(sc.C[2])
+        g["hairline"]["front_points"] = [[a, c1 + (z - c0) * k] for a, z in fp]
+    g.pop("fit", None)
+    return g
+
+
 def grow(sc: Scalp, g: dict, col=None) -> dict:
     """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose.collider) for
     hair that falls off the head."""
+    g = fit_to_head(g, sc)
     rng = np.random.default_rng(int(g.get("seed", 0)))
     noise = float(g.get("noise", 0.3))
     line = hairline(sc, g)

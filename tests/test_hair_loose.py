@@ -195,3 +195,23 @@ def test_swoop_lifts_the_front_lock_and_turns_it_over():
         raise AssertionError("unknown swoop key accepted")
     except ValueError:
         pass
+
+
+def test_groom_fits_a_smaller_head():
+    """groom.fit (the head a groom was made on): on a head 0.88 x the size, metre keys scale by 0.88 (loose lengths,
+    volume, hairline offsets, the swoop's depth), traced hairline heights move with the head's centre and scale about
+    it, unitless keys stay; the grown hair is shorter by the same share. Without fit nothing changes."""
+    sc, col = _ball_head()
+    ref = hair.head_ref(sc)
+    small = hair.Scalp(sc.C + [0, 0, -0.01], None, {})
+    small.R = sc.R * 0.88
+    g = hair._merge(hair.GROOM, {"loose": {"length": 0.05, "spacing": 0.009, "swoop": {"depth": 0.04}},
+                                 "volume": {"front": 0.01, "across": 0.1},
+                                 "hairline": {"temples": 0.01, "front_points": [[0, 1.69], [20, 1.68]]}, "fit": ref})
+    f = hair.fit_to_head(g, small)
+    assert abs(f["loose"]["length"] - 0.044) < 1e-9 and abs(f["loose"]["spacing"] - 0.00792) < 1e-9
+    assert abs(f["loose"]["swoop"]["depth"] - 0.0352) < 1e-9 and abs(f["volume"]["front"] - 0.0088) < 1e-9
+    assert f["volume"]["across"] == 0.1 and abs(f["hairline"]["temples"] - 0.0088) < 1e-9
+    z0 = sc.C[2]
+    assert abs(f["hairline"]["front_points"][0][1] - (z0 - 0.01 + (1.69 - z0) * 0.88)) < 1e-9
+    assert "fit" not in f and hair.fit_to_head({**g, "fit": None}, small)["loose"]["length"] == 0.05
