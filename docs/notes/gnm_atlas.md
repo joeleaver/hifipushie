@@ -780,3 +780,79 @@ How it changes the plan:
   Loosened, with the reason in the test: locality 10% -> 12% of the template (windowed fields reach 12 mm further;
   hump 10.2%); cheap-direction orthogonality for the nose 0.1 -> 0.2 (windowed + rim hold leave <= 0.17 along them:
   curve, nostrils_width; the coherent model's joint prior replaces this test's role).
+
+### Licence decisions (2026-10-10, Joe via the coordinator: "both licenses are ok with me")
+- ICT FaceKit Light: the model data in the MIT repo treated as MIT-covered. Asset pack `ictfacekit` (optional; commit
+  pinned in assets.json; 168 files, 405 MB at /mnt/data/hifipushie/assets/ictfacekit, symlinked from _templates).
+- Face Research Lab London Set (DeBruine & Jones 2017, figshare 5047666, CC BY 4.0): photos stay on /mnt/data (pack
+  `frll`, optional, 13 files, 282 MB), never in the repo, assets or exports; only statistics learned from them ship,
+  credited "DeBruine & Jones (2017), CC BY 4.0".
+- /mnt/data was at 19 GB free after these downloads (the 20 GB floor for jobs): mine are 0.7 GB.
+
+### M0b: the perceptual effect (spikes/facesliders/perc.py; out/perc/perc_*.txt / .json)
+GNM's head alone (no one-mesh build: ms per head), clay with eyes and drawn brows (likeness.render), views 0 / -30 /
++30 deg, heads GNM mean, Tess (f3_t1's identity only), Garrett (fs_gj8's); distance = 1 - cosine of the face-ID
+embedding between the -1 and +1 renders (SFace; ArcFace agrees: r 0.98 over the 170 comps).
+- Calibration: the camera turned 0.5 / 1 / 2 deg: 0.014 / 0.020 / 0.027 (renders are deterministic: this is the
+  embedding's sensitivity to a change that is NOT identity, our practical floor). Different people: Tess vs Garrett
+  0.23, GNM mean vs either 0.14-0.18, random GNM heads 0.24-0.65 (median ~0.44).
+- GNM's 170 components at +-1 sd (median, max): comps 0-9 0.076 (0.129); 10-39 0.033 (0.069); 40-79 0.022; 80-119 0.018;
+  120-144 0.014; 145-169 0.014. Per mm of rms move the fine comps carry FAR more: 0.025 / mm (0-9), 0.058 (10-39), 0.099
+  (40-79), 0.16 (80-119), 0.17-0.23 (120-169). At +-1 GNM-sd the unused comps sit at the half-degree-turn level; but ICT
+  says the population varies 2-3x more along them than GNM's prior (below), where they would reach ~0.03-0.04: they
+  belong in the space.
+- Top by effect: head_004 (0.129, 3 mm rms), head_000 (size, 0.126 at 10 mm), head_002, 001, 006, 005, head_011 (nose,
+  0.069 at 1.3 mm), head_018 (chin, 0.056 at 0.7 mm), head_022, head_020 (nose, 0.041 at 0.7 mm), head_047 (chin,
+  0.036 at 0.29 mm), head_048 (brow, 0.035 at 0.28 mm): small-mm directions at the nose, chin and brow rank with
+  10x larger ones.
+- Region salience (spikes/facesliders/salience.py, out/perc/salience.json): random smooth normal moves confined to one
+  region (Gaussian bumps r 4 mm, mirrored, 0.5 mm rms, 6 per region x 3 heads x 3 views), 1 - cos per mm rms, relative to
+  the cheeks: brows 3.34, forehead 2.46, nose 2.01, orbits 1.79, lower lip 1.06, upper lip 1.03, cheeks 1.00,
+  infraorbital 0.91, zygomatic 0.86, temples 0.46, jaw / parotid 0.27, chin 0.26 (spread +-25-45% between draws).
+  CAVEATS: the brows' weight is inflated (the clay draws brow strokes through the brow landmarks, which ride the
+  surface); clay has no lip colour, so the lips' borders (which paint shows) are under-weighted; the embedding sees a
+  112 px aligned face, so detail below ~0.5 mm (lid margins, crease height) is invisible to it at this framing (a
+  close-up measure is needed for the lids: an eye-crop / periocular embedding, to find); chin and jaw are low partly
+  because a front-ish view sees them as outline only. These are first weights, to recheck dressed.
+- Sliders and extensions at -1 / +1 (out/perc/perc_sliders.txt, perc_ext.txt; 1 - cos, sface):
+  - the coupled sliders are whole-face moves (1 attribute sd + its couplings): 0.03-0.20 (eye_hood 0.195, eye_setback
+    0.18, brow_ridge 0.16, lip_upper_roll 0.15, canthal_tilt 0.14, lip_upper_height 0.13 ...);
+  - the NOSE is perceptually loaded: MakeHuman's nose fields at their unit (MakeHuman's own extreme) 0.04-0.26 (curve
+    0.257 at 0.46 mm rms, width2 0.21, nostrils_angle 0.20, width3 0.18, septum 0.17) = 1-2x GNM's strongest component at
+    +-1 sd; the hand nose widths too (dorsum 0.159, radix 0.155 at 0.2-0.3 mm rms). Small-mm nose shape is identity.
+  - the mouth extensions read small in clay (0.015-0.029; no lip colour); lid detail (crease height 0.007, lid margins
+    0.009-0.019, epicanthal 0.014) at the embedding's resolution limit (see caveat): NOT evidence that they don't matter.
+  - age / soft tissue: face_planes 0.18 (a broad move), age_cheek_flat 0.041, nasolabial 0.038, cheek_hollow 0.015,
+    face_lean 0.006.
+- Expression leakage into a neutral read (out/perc/perc_expression.txt): the first eye-region comps (both sides) 0.14 /
+  0.09 (brows / lids), lower-face 0.08-0.11 (lips): an unmodelled expression on a reference moves identity as much as
+  GNM's first components, so per-picture expression in the one solve (design section 4) is not optional.
+- What it changes: (1) GNM 120-169 enter the space (per mm the most identity-laden; at ICT's variances ~0.03-0.04);
+  (2) the solve's geometry weights start from the region table above (corrected for the caveats: brows from a render
+  without drawn strokes, lips from a dressed render); (3) the nose basis needs the most care (most identity per mm of
+  any region after the brows); (4) a close-up identity measure for the eyes is a missing tool.
+
+### M1: ICT registered to GNM (spikes/facesliders/ictreg.py, ictlook.py, faces4 ictrigid.py)
+- Similarity on the inner 68 landmarks (ICT's README indices; scale 0.00947: ICT is in cm), landmark rms 3.7 mm; GNM's
+  170 comps fitted to ICT's neutral (point-to-plane ICP): 0.41 mm rms; a Laplacian-smooth residual: mean 0.47 mm, p95
+  1.26 mm to ICT's surface. Binding within 3 mm of ICT's face / head surface, harmonic extension elsewhere on the skin.
+  ICT's 100 identity modes (N(0, 1) weights in ICT's sampler, mode = identity_k - neutral) carried onto GNM's vertices:
+  out/ict_modes.npz.
+- Sheet human_renders/f4_10_ict_modes_on_gnm.png (modes 0, 1, 2, 5, 10, 20, 50 at -3 / +3 sd, ICT's own mesh beside
+  the carried mode on GNM's mean head, front and 3/4): the pairs show the same change (mode 0 = size / sex, 2 = age /
+  fullness ...): the carry works.
+- What ICT says about GNM's prior (face regions, a 7-dof similarity removed: ICT's mode 0 is 96% scale (-4.4%)):
+  - total face variance per vertex: ICT 7.35 mm^2, GNM 10.2 mm^2: similar overall;
+  - but distributed differently: ICT's variance along GNM's whitened comps (GNM = 1): comps 0-4 0.1-0.7, 5-9 0.9-3.5,
+    10-49 mean 4.4, 50-119 6.9, 120-169 8.5. A random ICT face costs a Mahalanobis^2 of ~1100 under GNM's prior (a GNM
+    face: 170), and GNM's span makes 0.95 of it.
+  - So GNM's prior is TOO TIGHT on the fine / local comps relative to ICT's population (by 2-3x in sd), and loose on
+    its first few. That is the "expressible but improbable" of every extension, and why our fits hit the 2.5 sd walls
+    on fine detail. CAVEAT: part of ICT's fine variance may be scan / registration noise (ICT's or my carry's); M4 (real
+    faces, FRLL) decides how much.
+- Per mode over the face, GNM's MAP (noise 0.3 mm) makes 0.98 of modes 0-9, 0.93 of 10-49, 0.82 of 50-99; the rest
+  (residual rms 0.03-0.2 mm) sits in the nose, lips and orbits first: the local layer's job, as designed.
+- Consequence for the design (section 4 / M3): the joint prior is not "GNM's N(0, I) + a local layer": GNM's own block
+  needs re-estimating (its variances per comp at least, from ICT and then FRLL), and the fine comps (incl. 120-169)
+  enter with ICT's variances. The perceptual numbers say the same thing from the other side: those comps carry the
+  most identity per mm.
