@@ -120,6 +120,28 @@ def _shrunk(V: np.ndarray, T: np.ndarray, iters: int) -> np.ndarray:
     return S
 
 
+def declared_limit(e: float, lim: float) -> float:
+    """The strain limit of a piece declared e stretched on (cloth.declared_stretch): room for the declared stretch half
+    again (a band round a wrist or neck sits on a ring 2 pi x the contact offset longer than the edge it closes) over
+    the garment's own limit, never under it."""
+    return max(lim, min(1.0, lim + 1.5 * e))
+
+
+def vertex_limits(pid: np.ndarray, pieces: list, lim: float, lifted: np.ndarray, tgt: float | None,
+                  zone: np.ndarray, zv: float, declared: dict | None) -> np.ndarray:
+    """The strain limit per vertex: the largest any rule asks (the garment's `lim`; `tgt` on lifted vertices, made
+    pieces starting past it; `zv` on zone vertices; declared_limit on pieces declared stretched on)."""
+    lv = np.full(len(pid), float(lim))
+    if tgt is not None:
+        lv[lifted] = np.maximum(lv[lifted], tgt)
+    lv[zone] = np.maximum(lv[zone], zv)
+    for nm, e in (declared or {}).items():
+        if nm in pieces:
+            sel = pid == pieces.index(nm)
+            lv[sel] = np.maximum(lv[sel], declared_limit(float(e), lim))
+    return lv
+
+
 def _start_stretch(R: np.ndarray, X: np.ndarray, F: np.ndarray) -> np.ndarray:
     """The largest principal stretch of each triangle from rest R (3D, any orientation) to X."""
     e1, e2 = R[F[:, 1]] - R[F[:, 0]], R[F[:, 2]] - R[F[:, 0]]
@@ -461,18 +483,25 @@ def main():
                 zone[sel_ & (uv[:, 1] > uv[sel_, 1].max() - float(dy))] = 1.0
             zone[made] = 0.0
         tgt = min(1.0, 1.3 * need + 0.02) if need > 0.8 * lim else None
-        if tgt is not None or zone.any():
-            zv = float(zl["value"]) if zl else lim
-            T = max(tgt or 0.0, zv)
-            w = (lifted.astype(float) * ((tgt - lim) / (T - lim) if tgt else 0.0)
-                 + zone * (zv - lim) / max(T - lim, 1e-9))
+        # pieces DECLARED stretched on (job "declared" {piece: e}: a rib band cut 0.85 of the edge it is sewn to is
+        # 18% stretched once sewn, more round a wrist or neck at the contact offset): a strain limit below that keeps
+        # the band at its cut length, and its seams can't close (Tess's jumper: cuffs open 20-47 mm, the neckband 62 mm
+        # off the back; carried onto the fine mesh and welded, 5x at the cuff)
+        zv = float(zl["value"]) if zl else lim
+        lv = vertex_limits(pid, job["pieces"], lim, lifted, tgt, zone > 0, zv, job.get("declared"))
+        if (lv > lim).any():
+            T = float(lv.max())
             g.param.set("strain-limit", lim)
-            g.set_param_spatial("strain-limit", np.clip(w, 0, 1), T)
+            g.set_param_spatial("strain-limit", np.clip((lv - lim) / max(T - lim, 1e-9), 0, 1), T)
             if tgt:
                 log(f"zozo: made pieces start up to {need * 100:.0f}% stretched past their rest: their strain limit "
                     f"{tgt * 100:.0f}%")
             if zone.any():
                 log(f"zozo: strain limit {zv * 100:.0f}% on {int(zone.sum())} zone vertices")
+            for nm, e in (job.get("declared") or {}).items():
+                if nm in job["pieces"]:
+                    log(f"zozo: {nm} declared {float(e) * 100:.0f}% stretched on: strain limit "
+                        f"{declared_limit(float(e), lim) * 100:.0f}%")
     else:
         g.param.set("bend-rest-from-geometry", float(job.get("bend_rest_geom", 1.0)))
     # the start's own few crossings (a coat's under sleeve against the back's armhole edge, a collar pushed off the jaw

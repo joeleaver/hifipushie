@@ -4607,6 +4607,17 @@ def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
     edge it is sewn to and stretched on (a rib: its seam note's ease e < 0, "stretched on") starts at 1 / (1 + e) of
     its flat length by design: a rib hem band at 0.88 is 14% stretched before the sim moves anything. Start-stretch
     checks subtract it, or every rib band fails them (Tess's jumper, 2026-10-09)."""
+    allow = declared_pieces(Bp, M["names"])
+    out = np.zeros(len(M["F"]))
+    for nm, v in allow.items():
+        out[M["piece"][M["F"][:, 0]] == M["names"].index(nm)] = v
+    return out
+
+
+def declared_pieces(Bp: dict, names: list) -> dict:
+    """{piece: the stretch it is DECLARED to be sewn on with} (declared_stretch) for the pieces in `names`. The sims get
+    it too (job "declared"): under a strain limit below it Tess's cuffs and neckband stayed at their cut length, their
+    seams open 20-60 mm (tess_b2)."""
     allow = {}
     for k, note in (Bp.get("seam_notes") or {}).items():
         lo, hi = (float(x) for x in note.get("ease", [0.0, 0.0]))
@@ -4618,13 +4629,10 @@ def declared_stretch(Bp: dict, M: dict) -> np.ndarray:
         except (ValueError, TypeError):
             continue
         # the band is the seam's FIRST side (generated bands and drafted collars are written so), one piece's edge
-        if isinstance(a, str) and a.split(":")[0] in M["names"]:
+        if isinstance(a, str) and a.split(":")[0] in names:
             nm = a.split(":")[0]
             allow[nm] = max(allow.get(nm, 0.0), 1.0 / (1.0 + e) - 1.0)
-    out = np.zeros(len(M["F"]))
-    for nm, v in allow.items():
-        out[M["piece"][M["F"][:, 0]] == M["names"].index(nm)] = v
-    return out
+    return allow
 
 
 def fine_start_check(M: dict, plan: dict, limit: float = FINE_START_MAX, allow: np.ndarray | None = None) -> str:
@@ -4725,6 +4733,12 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
         V, untangled = _untangle(V, M, ~held, reshape=True)
         if len(untangled) > 1:
             V = clear(V)
+            # (the clear stretches what the untangle smoothed into the body as it did before it: relaxed and cleared
+            # again, as above, while that makes no new crossing. Tess's jeans3: back.R beside its patch pocket 1.26x
+            # after the untangle, 2.0x after this clear)
+            Vr = clear(_relax_stretch(V, M, ~held, 0.03, iters=15))
+            if _crossing_verts(Vr, M).sum() <= _crossing_verts(V, M).sum():
+                V = Vr
         Bp["untangled"] = untangled + [int(_crossing_verts(V, M).sum())]
         # (the made pieces too, by the little their rigid fit onto the coarse ones left them inside the standoff: a
         # held vertex within it is fatal as well)
@@ -6283,6 +6297,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                "placement": placement_of(g), **({"zozo": dict(g["zozo"])} if g.get("zozo") else {}),
                "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in Ms["names"]},
                "made": made_pieces(Ms, stiff_s),
+               **({"declared": declared_pieces(Bp, Ms["names"])} if declared_pieces(Bp, Ms["names"]) else {}),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
                                     "hang_frames", "hang_sew_force", "hang_air", "lower_frames") if k in g}}
         if settle:  # nothing assembled in stages: the made pieces are held, the loose cloth sews onto them
@@ -6419,6 +6434,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             fcfg = {"mode": "fine_settle", "fabric": fab, "state": "worn", "name": name, "placement": "smooth",
                     "self_collision": True, "press_frames": fr[0], "frames": fr[1], "carry": True,
                     "made": made_pieces(M, stiff_f), "wraps": {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in M["names"]},
+                    **({"declared": declared_pieces(Bp, M["names"])} if declared_pieces(Bp, M["names"]) else {}),
                     **({"zozo": dict(g["zozo"])} if g.get("zozo") else {})}
             farr = dict(X=plan["start"], uv=M["uv"], F=M["F"], sew=M["sew"],
                         stitch=np.r_[M["stitch"].reshape(-1, 2), plan["tacks"]], stiff=stiff_f,
@@ -6437,7 +6453,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             from . import cloth_detail
             _, hi_, _, _ = cloth_detail.strain_field(M, plan["start"])
             loose_t = ~np.isin(M["F"], plan["idx"]).any(1)
-            need_ = float(hi_[loose_t].max()) - 1.0 if loose_t.any() else 0.0
+            # (less what a piece is declared to start with: its own limit is raised to that in the runner)
+            need_ = float((hi_ - declared_stretch(Bp, M))[loose_t].max()) - 1.0 if loose_t.any() else 0.0
             zz = dict(g.get("zozo") or {})
             zz.setdefault("strain_limit", float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)))
             # a contact solver can't start inside its standoff either, and the made pieces are held where the coarse

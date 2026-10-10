@@ -240,3 +240,29 @@ def test_a_rib_band_may_start_stretched():
     a = cloth.declared_stretch(Bp, M)
     assert a[0] == 0.0 and abs(a[1] - (1 / 0.88 - 1)) < 1e-9
     assert cloth.declared_stretch({"seam_notes": {}}, M).tolist() == [0.0, 0.0]
+
+
+def test_a_rib_band_is_simulated_with_room_to_stretch_on():
+    """The sims get a band's declared stretch (job "declared"), and the runner raises that piece's strain limit above it:
+    under the garment's 5% Tess's cuffs (cut 0.85 of the sleeve's wrist) stayed at their cut length, their closing seams
+    20-47 mm open and the neckband 62 mm off the back (tess_b2); carried onto the fine mesh, 5x at the cuff."""
+    import json as _j
+    import numpy as np
+    from hifipushie import cloth, cloth_zozo
+    seam = ["cuff.L:a>b", ["sleeve.L:wrist"]]
+    Bp = {"seam_notes": {_j.dumps(seam): {"ease": [-0.15, -0.15], "why": "rib"}}}
+    dec = cloth.declared_pieces(Bp, ["sleeve.L", "cuff.L"])
+    assert set(dec) == {"cuff.L"} and abs(dec["cuff.L"] - (1 / 0.85 - 1)) < 1e-9
+    assert cloth.declared_pieces(Bp, ["front"]) == {}
+    lim = 0.05
+    assert cloth_zozo.declared_limit(dec["cuff.L"], lim) > lim + dec["cuff.L"] + 0.05  # the ring at the offset too
+    assert cloth_zozo.declared_limit(0.0, lim) == lim and cloth_zozo.declared_limit(5.0, lim) == 1.0
+    pid = np.array([0, 0, 1, 1, 2])
+    pieces = ["sleeve.L", "cuff.L", "collar"]
+    lifted = np.array([False, False, False, False, True])
+    zone = np.array([True, False, False, False, False])
+    lv = cloth_zozo.vertex_limits(pid, pieces, lim, lifted, 0.4, zone, 0.15, dec)
+    assert lv[1] == lim and lv[0] == 0.15 and lv[4] == 0.4
+    assert np.allclose(lv[2:4], cloth_zozo.declared_limit(dec["cuff.L"], lim))
+    # (nothing declared, nothing lifted: the garment's limit everywhere, as before)
+    assert (cloth_zozo.vertex_limits(pid, pieces, lim, lifted, None, np.zeros(5, bool), lim, None) == lim).all()
