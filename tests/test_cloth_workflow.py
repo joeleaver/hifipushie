@@ -268,6 +268,21 @@ def test_a_rib_band_is_simulated_with_room_to_stretch_on():
     assert (cloth_zozo.vertex_limits(pid, pieces, lim, lifted, None, np.zeros(5, bool), lim, None) == lim).all()
 
 
+def test_relaxing_a_start_leaves_a_declared_band_stretched():
+    """The fine start's relaxations (_relax_stretch, _relax_strain) draw a band declared stretched on (M "declared_v")
+    back only to its declared stretch + their limit, not to its cut length (Tess's neckband 1.26 -> 2.99x)."""
+    import numpy as np
+    from hifipushie import cloth
+    uv = np.array([[0, 0], [0.1, 0], [0, 0.1], [0.1, 0.1]], float)
+    M = {"uv": uv, "F": np.array([[0, 1, 2], [1, 3, 2]])}
+    V = np.c_[uv * [1.15, 1.0], np.zeros(4)]  # 15% stretched along x
+    free = np.array([False, True, False, True])
+    for fn in (cloth._relax_stretch, cloth._relax_strain):
+        assert np.abs(fn(V, M, free, 0.02) - V).max() > 1e-3  # a plain piece is drawn in
+        Md = dict(M, declared_v=np.full(4, 1 / 0.85 - 1))
+        assert np.abs(fn(V, Md, free, 0.02) - V).max() < 1e-9  # a declared band is left as it is
+
+
 def test_the_place_check_places_as_the_build_does():
     """The place check's pieces carry the garment keys place() reads (worn_top, open_gap, ...) as the build's do:
     without them a jumper the build lays on the form (worn_top) was checked as a loose tube (Tess, tess2)."""

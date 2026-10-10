@@ -4682,6 +4682,10 @@ def _press_plan(Bp: dict, Ms: dict, Xs: np.ndarray, Vc: np.ndarray, M: dict, Xf:
     "info"}."""
     from . import folds as foldmod
     Vd = transfer(Ms, Vc, M)
+    # bands declared stretched on: the relaxations below (_relax_stretch / _relax_strain) leave them so
+    M["declared_v"] = np.zeros(len(M["uv"]))
+    for nm_, e_ in declared_pieces(Bp, M["names"]).items():
+        M["declared_v"][M["piece"] == M["names"].index(nm_)] = e_
     V = Vd.copy()
     Xc_on_f = transfer(Ms, Xs, M)
     held = np.zeros(len(V), bool)
@@ -5035,7 +5039,8 @@ def _relax_stretch(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.02
     F, uv = M["F"], M["uv"]
     E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
     E = E[free[E].any(1)]
-    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1) * (1 + limit)
+    dv = M.get("declared_v")  # (a band declared stretched on: its edges may be that much longer: declared_stretch)
+    L0 = np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1) * (1 + limit + (dv[E].max(1) if dv is not None else 0.0))
     V = V.copy()
     wa, wb = free[E[:, 0]].astype(float), free[E[:, 1]].astype(float)
     ws = np.maximum(wa + wb, 1e-9)
@@ -5079,14 +5084,18 @@ def _relax_strain(V: np.ndarray, M: dict, free: np.ndarray, limit: float = 0.03,
     U3 = np.stack([uv[F[:, 0]], uv[F[:, 1]], uv[F[:, 2]]], 1)
     U3 = U3 - U3.mean(1, keepdims=True)  # (f, 3, 2) the pattern triangle about its centroid
     wv = free.astype(float)
+    # (a band declared stretched on starts that much stretched by design (declared_stretch): drawn back to 1 + limit,
+    # Tess's rib neckband went 1.26 -> 2.99x while the untangle reshaped round it)
+    dv = M.get("declared_v")
+    lim_t = limit + (dv[F].max(1) if dv is not None else np.zeros(len(F)))
     for _ in range(iters):
         Ds = np.stack([V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]]], -1)
         G = Ds @ inv  # (f, 3, 2)
         Uq, S, Vt = np.linalg.svd(G, full_matrices=False)
-        hot = S[:, 0] > 1 + limit
+        hot = S[:, 0] > 1 + lim_t
         if not hot.any():
             break
-        S2 = np.minimum(S[hot], 1 + limit)
+        S2 = np.minimum(S[hot], 1 + lim_t[hot][:, None])
         G2 = Uq[hot] @ (S2[:, :, None] * Vt[hot])
         X3 = V[F[hot]]
         tgt = X3.mean(1, keepdims=True) + np.einsum("fij,fkj->fki", G2, U3[hot])
