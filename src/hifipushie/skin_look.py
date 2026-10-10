@@ -122,7 +122,7 @@ def ensure(name: str, region: str, log: list, voxel: float | None = None) -> str
     d = store._dir(sn)
     mark = d / "skin_look.key"
     code = hashlib.sha1(b"".join((Path(__file__).parent / f).read_bytes() for f in
-                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_swatch.py", "paint.py", "paintnodes.py",
+                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py", "paintnodes.py",
                                   "blender_scene.py", "base.py", "headfit.py", "skin_look.py"))).hexdigest()[:12]
     if mark.exists() and mark.read_text() == key + code and scene.blend_path(sn).exists():
         return sn

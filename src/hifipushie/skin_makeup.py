@@ -55,7 +55,7 @@ LOOKS = {
                 "contour": 0.6, "blush": {"amount": 0.5, "place": "lifted"}, "highlight": 0.6,
                 "eyeshadow": {"amount": 0.9, "color": "#8a6a5e", "crease": "#4e352e", "outer": "#2a1c19", "finish": "shimmer",
                               "reach": 1.15},
-                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.007, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
+                "eyeliner": {"amount": 1.0, "width": 0.0015, "wing": 0.005, "lower": 0.4}, "mascara": 1.2, "brows": 0.6,
                 "lipstick": {"amount": 1.0, "color": "#8e1f30", "finish": "matte", "liner": 0.6}},
 }
 EXTRA = {"blush": ("place",), "contour": ("nose",), "eyeshadow": ("reach", "crease", "outer"),
@@ -208,7 +208,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             layer("makeup_bronzer", o.get("mask"), pre=True, color=col, opacity=0.35 * o["amount"], mask=m + [{"blur": round(0.06 * io, 5)}])
         o = item("contour")
         if o:
-            col = _hex(o["color"]) if "color" in o else T(melanin=1.9, blood=0.85, grey=0.25)
+            col = _hex(o["color"]) if "color" in o else T(melanin=2.4, blood=0.8, grey=0.35)
 
             def hollow():
                 # under the cheekbone: from in front of the ear's tragus toward the mouth's corner, stopping under the
@@ -224,7 +224,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             if nose_k > 0:
                 m += [{**e, "blend": "max", "weight": round(nose_k, 3)} for e in
                       both(lambda: [pt("lm_brow_inner.L", (-0.04, 0.0, -0.1)), pt("lm_nose_bridge", (0.12, 0.0, -0.35)), pt("lm_nose_tip", (0.11, 0.0, 0.12))], [0.05, 0.05, 0.04], soft=1.0)]
-            layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.4 * o["amount"],
+            layer("makeup_contour", o.get("mask"), pre=True, color=col, opacity=0.6 * o["amount"],
                   mask=([{"mask": _zones(o["where"])}] if o.get("where") else m) + [{"blur": round(0.05 * io, 5)}])
         o = item("blush")
         if o:
@@ -242,12 +242,12 @@ def build(spec, p, J, layer, T, ctx) -> None:
                 apple = np.array([pupil[0], ll[1], ll[2] - 0.5 * io]) + io * X([0.12, 0, 0])   # under the outer iris
                 temple = np.array([bo[0], bo[1], eo[2] + 0.12 * io]) + io * X([0.05, 0, 0])
                 if place == "apples":
-                    return [pt(apple), pt(0.6 * apple + 0.4 * temple), pt(0.25 * apple + 0.75 * temple)]
+                    return [pt(apple), pt(0.55 * apple + 0.45 * temple), pt(0.15 * apple + 0.85 * temple)]   # a sweep, not a patch
                 if place == "lifted":
                     a2 = apple + io * X([0.12, 0.0, 0.15])
                     return [pt(a2), pt(0.5 * a2 + 0.5 * temple), pt(temple)]
                 return [pt(apple), pt(0.5 * apple + 0.5 * temple), pt(temple), pt(temple + io * np.array([0.0, 0.1, 0.35]))]
-            rr = {"apples": [0.3, 0.22, 0.12], "lifted": [0.22, 0.2, 0.12], "draped": [0.26, 0.24, 0.2, 0.12]}[place]
+            rr = {"apples": [0.2, 0.18, 0.11], "lifted": [0.22, 0.2, 0.12], "draped": [0.26, 0.24, 0.2, 0.12]}[place]
             layer("makeup_blush", o.get("mask"), pre=True, color=col, opacity=round(0.5 * o["amount"], 4),
                   mask=[{"mask": both(cheek, rr, soft=1.0)}, {"blur": round(0.07 * io, 5)}])
         o = item("highlight")
@@ -312,14 +312,21 @@ def build(spec, p, J, layer, T, ctx) -> None:
                 d = eo - llo
                 d = d / max(np.linalg.norm(d), 1e-9)
                 tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
-                dw = d + 0.35 * tb
+                dw = d + 0.2 * tb
                 ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
                 s0 = seat(0.5 * (luo + eo), True)                 # from the outer lash line, inside the corner landmark
-                length = wing + float(np.linalg.norm((eo - s0)[[0, 2]]))
+                # the picture is laid from the front onto skin that turns back toward the temple: shorten it so that
+                # the wing measures `wing` along the skin past the corner (laid at its front length it stretched into a
+                # spike far off the eye)
+                far = seat(eo + wing * np.array([dw[0], 0.0, dw[2]]), True)
+                run = float(np.linalg.norm((far - eo)[[0, 2]]))
+                along = float(np.linalg.norm(far - eo))
+                k_front = run / along if along > 1e-6 else 1.0
+                length = wing * float(np.clip(k_front, 0.35, 1.0)) + float(np.linalg.norm((eo - s0)[[0, 2]]))
                 path, (Wm, Hm), (fx, fy) = wing_image(ang, length, 2.2 * w)
                 c = s0 + np.array([(0.5 - fx) * Wm, 0.0, (fy - 0.5) * Hm])
                 img = {"file": str(path), "at": [round(float(x), 6) for x in c], "dir": [0, -1, 0], "size": [round(Wm, 6), round(Hm, 6)],
-                       "depth": 0.012, "facing": 0.0, "mirror": True, "mirror_image": True, "channel": "alpha"}
+                       "depth": 0.006, "facing": 0.3, "mirror": True, "mirror_image": True, "channel": "alpha"}
                 m += [{"image": img, "blend": "max"}]
             low = float(o.get("lower", 0.0))
             if low > 0:

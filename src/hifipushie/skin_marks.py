@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 5
+VERSION = 9
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -172,12 +172,13 @@ def sphere(J: dict, lat: tuple, lon: float, px_m: float) -> dict:
     ~px_m at the surface. Returns {"img": the image dict's placement keys, "fr": images.wrap_coords' frame, W, H}."""
     from .skin import interocular
     io = interocular(J)
-    o = np.array([0.0, 0.5 * (J["lm_jaw_1.L"][1] + J["lm_mouth_corner.L"][1]) + 0.1 * io,
+    # (deep in the head, behind the mouth: a centre in the mouth itself mapped the tongue and teeth over the face)
+    o = np.array([0.0, J["lm_jaw_1.L"][1] + 0.2 * io,
                   0.5 * (J["lm_mouth_corner.L"][2] + J["lm_nose_base"][2])])
     lat_c = np.radians(0.5 * (lat[0] + lat[1]))
     d = np.array([0.0, -np.cos(lat_c), np.sin(lat_c)])
     su, sv = np.radians(lon), np.radians(lat[1] - lat[0])
-    r = 1.15 * io  # a typical radius from the centre to the face
+    r = 1.5 * io  # a typical radius from the centre to the face
     W = int(min(MAX_PX, np.ceil(su * r / px_m)))
     H = int(min(MAX_PX, np.ceil(sv * r / px_m)))
     k = np.array([0.0, 0.0, 1.0])
@@ -194,6 +195,36 @@ def pix(sp: dict, P: np.ndarray) -> np.ndarray:
     from .images import wrap_coords
     u, v, _, _ = wrap_coords(sp["fr"], P)
     return np.stack([u * sp["W"] - 0.5, (1 - v) * sp["H"] - 0.5], 1)
+
+
+def outward(sp: dict, P: np.ndarray, Nrm: np.ndarray, V=None, cell: int = 16, tol: float = 0.004) -> np.ndarray:
+    """Points the wrap shows: skin facing out from the wrap's centre, inside the map, and (given the mesh's vertices V)
+    the outermost skin along the ray from the centre: the nose's and mouth's insides lie along the same rays as the
+    cheeks and lips, and their marks printed through as islands of shadow on the face."""
+    o = np.asarray(sp["fr"]["o"], float)
+    q = P - o
+    R = np.linalg.norm(q, axis=1)
+    f = (Nrm * q).sum(1) / np.maximum(R, 1e-9)
+    x = pix(sp, P) if len(P) else np.zeros((0, 2))
+    inside = np.isfinite(x).all(1) & (x[:, 0] >= 0) & (x[:, 1] >= 0) & (x[:, 0] <= sp["W"] - 1) & (x[:, 1] <= sp["H"] - 1)
+    # (and not near the centre itself, which lies in the mouth: the tongue and teeth there map onto the whole picture
+    # through a huge Jacobian, white discs of shadow all over the face)
+    ok = (f > 0.05) & inside & (R > 0.3 * sp["fr"]["r0"])
+    if V is not None and ok.any():
+        V = np.asarray(V, float)
+        xv = pix(sp, V)
+        Rv = np.linalg.norm(V - o, axis=1)
+        gw, gh = sp["W"] // cell + 1, sp["H"] // cell + 1
+        iv = np.isfinite(xv).all(1) & (xv[:, 0] >= 0) & (xv[:, 1] >= 0) & (xv[:, 0] < sp["W"]) & (xv[:, 1] < sp["H"])
+        top = np.zeros((gh, gw))
+        cx, cy = (xv[iv] / cell).astype(int).T
+        np.maximum.at(top, (cy, cx), Rv[iv])
+        from scipy.ndimage import maximum_filter
+        top = maximum_filter(top, 3)   # (a mesh vertex every ~1.5 mm: a cell may hold none)
+        px_, py_ = (x[ok] / cell).astype(int).T
+        t_ = top[py_, px_]
+        ok[np.flatnonzero(ok)] = (t_ > 0) & (R[ok] > t_ - tol)
+    return ok
 
 
 def frames(Nrm: np.ndarray, along: np.ndarray):
@@ -407,6 +438,8 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     rng = np.random.default_rng(900 + int(o.get("seed", 0)))
     dens = beard_density(J, o, curvature_at(spec, part, J))
     P, Nrm, d = scatter(V, N, F, dens, HAIRS_PER_M2, rng)
+    keep = outward(sp, P, Nrm, V)   # (no hairs on skin facing in: the mouth's inside, a lip's inner roll)
+    P, Nrm, d = P[keep], Nrm[keep], d[keep]
     n = len(P)
     W, H = sp["W"], sp["H"]
     R = np.zeros((H, W), np.float32)
@@ -451,16 +484,22 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         # edge and left a pale band over the lip), each sample weighted by 1 / its pixel's area on the skin
         K = 12
         Pc, Nc, dc = scatter(V, N, F, dens, K * HAIRS_PER_M2, np.random.default_rng(950 + int(o.get("seed", 0))), keep_all=True)
+        keep = outward(sp, Pc, Nc, V)
+        Pc, Nc, dc = Pc[keep], Nc[keep], dc[keep]
         _, Ac = jacobians(sp, Pc, *frames(Nc, np.tile([1.0, 0, 0], (len(Pc), 1))))
-        xc = pix(sp, Pc)
-        ok = np.isfinite(xc).all(1)
-        xi = np.clip(np.round(xc[ok]).astype(int), [0, 0], [W - 1, H - 1])
-        area = np.abs(Ac[ok, 0, 0] * Ac[ok, 1, 1] - Ac[ok, 0, 1] * Ac[ok, 1, 0])
-        Bc = np.zeros((H, W), np.float32)
-        np.add.at(Bc, (xi[:, 1], xi[:, 0]), (dc[ok] * (1 - float(o["grey"])) * area).astype(np.float32))
+        xi = np.round(pix(sp, Pc)).astype(int)
+        area = np.abs(Ac[:, 0, 0] * Ac[:, 1, 1] - Ac[:, 0, 1] * Ac[:, 1, 0])
+        Bd = np.zeros((H, W), np.float32)
+        Ba = np.zeros((H, W), np.float32)
+        np.add.at(Bd, (xi[:, 1], xi[:, 0]), (dc * (1 - float(o["grey"])) * area).astype(np.float32))
+        np.add.at(Ba, (xi[:, 1], xi[:, 0]), area.astype(np.float32))
         pm = float(np.median(pxm))
-        Bc = gaussian_filter(Bc, 0.0012 / pm)
-        Bs = np.clip(Bc / (K * HAIRS_PER_M2) / 0.7, 0, 1) ** 1.2   # full at ~70% of a full dark beard; thin edges fade faster
+        Bd, Ba = gaussian_filter(Bd, 0.0012 / pm), gaussian_filter(Ba, 0.0012 / pm)
+        # the average density over the samples (two skins over one pixel, a lip's inner roll over its outer, count
+        # once: a head whose mesh doubled there summed to a full shadow over its whole face), where there is skin
+        avg = Bd / np.maximum(Ba, 1e-6)
+        support = np.clip(Ba / (0.5 * K * HAIRS_PER_M2), 0, 1)
+        Bs = np.clip(avg * support / 0.7, 0, 1) ** 1.2   # full at ~70% of a full dark beard; thin edges fade faster
     else:
         Bs = np.zeros((H, W), np.float32)
         pm = 0.0
@@ -534,6 +573,8 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     per_m2 = 2.2e4 * float(o["amount"])          # up to ~2.2 / cm2 at the densest (dense freckling: several)
     dens = freckle_density(J, o)
     P, Nrm, d = scatter(V, N, F, dens, per_m2, rng)
+    keep = outward(sp, P, Nrm, V)
+    P, Nrm, d = P[keep], Nrm[keep], d[keep]
     n = len(P)
     if n:
         t1, t2 = frames(Nrm, np.tile([1.0, 0, 0], (n, 1)))
