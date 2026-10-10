@@ -48,8 +48,8 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   margin, bound to the lid.
 - Here each lash is one tapered ribbon (4 segments, width along the lid, opaque: no alpha to sort, sharp close up,
   sub-pixel coverage at a distance).
-- Upper: 180 per eye, 9 mm, curl 68 deg, lift -6, flare 22 at the outer corner, clumps of 2-4.
-- Lower: 42, 4.2 mm, finer and paler.
+- Upper: 230 per eye, 9 mm, curl 62 deg, lift -12, flare 24, clumps of 3-6 drawn together (0.6), lengths 0.65-1.08, rows 0.25 mm deep. Matched to Tess's photo at the same scale (out/v_lashcmp4.png): a dense dark root band, ~2-2.5 mm of lash above the margin from the front (the first set showed 3.5-4 mm of even spikes). Painted root tube 0.8 mm.
+- Lower: 75 per eye, 3 mm, 0.04 mm thick, lift 55 deg (down and out), clumps of 2-4, lengths 0.55-1.08.
 - About 2.7k triangles for both eyes.
 - Roots: the lid lines are found geometrically (the opening seen along the head's forward axis, traced from its own
   centroid, not the ball's centre: Garrett's lids cover the ball's centre).
@@ -129,3 +129,11 @@ pointed at the upper lid and crease, and at the lower lid. Branch `worktree-agen
   /mnt/data/hifipushie/eyedetail/out/expo0.log; script spikes/eyedetail/expo.py.
 - Tess's spec (procedural skin only) bakes fine with everything on (_ed_tx). The likely fix: g4's hand layers'
   broad masks per vertex ("vertex": true) or fewer layers with "height".
+- Waterline (after the first merge): the lower band read grey-blue. It was the BALL's bottom strip, darkened grey by
+  the lid shadow and whitened by the tear line. Now the lid shadow on the ball is warm (multiply 0.6 / 0.43 / 0.41:
+  the conjunctiva by the lids is pink) and the tear line is pinkish-white. With lid_margin_lower, the lid's own pink
+  waterline shows too (out/v_lower5.png).
+- skin2: lm_eye_inner / lm_eye_outer sit a few mm PAST the lids' visible corners on GNM heads.
+  - Not affected: lashes.py (its corners come from the opening itself) and the painted root line.
+  - Still uses them: the caruncle spot and the old lash zone tube (used when there is no lash geometry). Check both
+    against the opening's own corners.

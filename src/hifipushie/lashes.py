@@ -33,10 +33,10 @@ import numpy as np
 
 VERSION = 1
 DEFAULTS = {
-    "upper": {"count": 180, "length": 9.0, "curl": 68.0, "lift": -6.0, "flare": 22.0, "thickness": 0.14,
-              "clump": 0.35, "offset": 0.15, "start": 0.1, "end": 1.0},
-    "lower": {"count": 42, "length": 4.2, "curl": 14.0, "lift": 40.0, "flare": 14.0, "thickness": 0.05,
-              "clump": 0.55, "offset": 0.5, "start": 0.22, "end": 0.97},
+    "upper": {"count": 230, "length": 9.0, "curl": 62.0, "lift": -12.0, "flare": 24.0, "thickness": 0.15,
+              "clump": 0.6, "clump_size": [3, 6], "vary": 0.35, "rows": 0.25, "offset": 0.15, "start": 0.08, "end": 1.0},
+    "lower": {"count": 75, "length": 3.0, "curl": 10.0, "lift": 55.0, "flare": 16.0, "thickness": 0.04,
+              "clump": 0.5, "clump_size": [2, 4], "vary": 0.45, "rows": 0.15, "offset": 0.5, "start": 0.2, "end": 0.97},
     "color": "#120e0c", "lower_color": "#3a302a", "roughness": 0.5, "seed": 0, "segments": 4,
 }
 _CACHE: dict = {}
@@ -77,7 +77,7 @@ def _by_body(d: dict, body: dict, lid: str) -> dict:
     d = dict(d)
     d["length"] = round(d["length"] * (1 - 0.12 * sex) * (1 - 0.15 * old), 3)
     d["count"] = int(round(d["count"] * (1 - 0.1 * sex) * (1 - 0.25 * old)))
-    d["curl"] = round(d["curl"] * (1 - (0.3 if lid == "upper" else 0.1) * sex) * (1 - 0.2 * old), 2)
+    d["curl"] = round(d["curl"] * (1 - (0.2 if lid == "upper" else 0.1) * sex) * (1 - 0.2 * old), 2)
     return d
 
 
@@ -214,7 +214,7 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
             # roots: the rim moved out onto the lid by `offset` (2D), a little scatter across the margin (rows)
             P2 = np.c_[np.interp(s, s_all, rim2[:, 0]), np.interp(s, s_all, rim2[:, 1])]
             out2 = (P2 - L["o2"]) / np.maximum(np.linalg.norm(P2 - L["o2"], axis=1, keepdims=True), 1e-9)
-            rows = rng.normal(0.0, 0.12e-3, cnt)
+            rows = rng.normal(0.0, float(p["rows"]) * 1e-3, cnt)  # irregular rows across the margin
             P2 = P2 + out2 * (p["offset"] * 1e-3 + np.abs(rows))[:, None]
             roots = _on_skin(L, P2) - (np.abs(rows) * 0.6)[:, None] * L["fwd"]  # back rows sit a little deeper
             # along the margin: the tangent; "out" = away from the opening in the front plane
@@ -223,7 +223,7 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
             outv = _unit(out2[:, :1] * L["side"] + out2[:, 1:] * L["up"])
             # length profile: short at the inner canthus, longest over the middle-outer third, a little shorter outside
             prof = (0.5 + 0.5 * np.clip((s - p["start"]) / 0.45, 0, 1) ** 0.8) * (1 - 0.25 * np.clip((s - 0.75) / 0.25, 0, 1) ** 2)
-            length = p["length"] * 1e-3 * prof * rng.uniform(0.82, 1.08, cnt)
+            length = p["length"] * 1e-3 * prof * rng.uniform(1.0 - float(p["vary"]), 1.08, cnt)
             lift = np.radians(p["lift"] + rng.normal(0, 5, cnt))
             curl = np.radians(p["curl"] * rng.uniform(0.75, 1.2, cnt))
             # the outer lashes sweep outward (toward the outer corner), the inner ones a little toward the nose
@@ -240,7 +240,7 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
             # clumps: groups of 2-4 neighbours whose tips draw together
             k = 0
             while k < cnt:
-                g = int(rng.integers(2, 5))
+                g = int(rng.integers(int(p["clump_size"][0]), int(p["clump_size"][1]) + 1))
                 j = slice(k, min(k + g, cnt))
                 tip = Pp[j, -1].mean(0)
                 Pp[j] += float(p["clump"]) * (t[None, :, None] ** 2) * (tip - Pp[j, -1])[:, None, :]
