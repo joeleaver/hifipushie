@@ -146,6 +146,11 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     ctx["smooth"] = []
     from . import paint as _paint
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
+    from . import lashes as _lashes
+    ctx["lash_geometry"] = ctx["eyes"] and bool(_lashes.wanted(spec))  # lash ribbons (lashes.py) over the painted lines
+    if ctx["lash_geometry"]:
+        lm_ = _lashes.for_spec(spec)
+        ctx["lash_curves"] = None if lm_ is None else {k: [np.round(c, 5).tolist() for c in v] for k, v in lm_["curves"].items()}
     f0 = p["makeup"].get("foundation")
     cover = float(np.clip(f0 if isinstance(f0, (int, float)) else (f0 or {}).get("amount", 1.0 if f0 else 0.0), 0, 1)) if f0 else 0.0
     ctx["show"] = 1.0 - 0.75 * cover  # how much of the skin's own marks shows through foundation
@@ -265,20 +270,45 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     return ctx["smooth"]
 
 
+EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
+            "iris_contrast", "gloss", "occlusion")
+
+
+def eye_base(spec: dict) -> tuple[str, dict] | None:
+    """(the eyes part, its base channels) when skin.eyes paints them: the tear film as a clear coat over the matte
+    iris and sclera (coat 1, roughness 0.03 x (2 - gloss); IOR 1.5 ~ the cornea's 1.376 and the film's 1.337 under
+    Blender's coat): the sharp catchlight a photographed eye has. Values the part's own definition gives win."""
+    e = (spec.get("skin") or {}).get("eyes")
+    b = spec.get("base") or {}
+    if e is False or not spec.get("skin") or not b.get("eyes"):
+        return None
+    e = e if isinstance(e, dict) else {}
+    g = float(e.get("gloss", 1.0))
+    if g <= 0:
+        return None
+    return b["eyes"], {"coat": round(min(g, 1.0), 3), "coat_roughness": round(0.03 * (2 - min(g, 1.0)), 4)}
+
+
 def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     """EYES (skin.eyes; on by default where the base has eyeballs; false turns it off and leaves the model's own eye
     paint): the eyeball is a painted picture laid on its front (skin_swatch.eye_image: an iris of radial fibres, a
-    collarette, a limbal ring, a soft pupil; a sclera pinker toward its edge with fine vessels), wet (roughness 0.04),
-    darkened under the upper lid; on the skin, the pink wet caruncle at the inner corner and the waterline of the
-    lower lid. {"iris": colour, "iris_size": m, "pupil": 0..1, "veins": 0..1, "sclera": colour}. No lash geometry:
-    lashes are the lid margins darkened (skin.hair.lashes)."""
+    collarette, a limbal ring, a soft pupil; a sclera pinker toward its edge with fine vessels), under a wet film;
+    shadowed where the lids lie on it; on the skin, the pink wet caruncle at the inner corner and the waterline of the
+    lower lid. Lashes are geometry (base.lashes, lashes.py) over the lid margins darkened (skin.hair.lashes).
+    {"iris": colour, "iris_size": m (the visible iris' diameter: adults 11-12.5 mm, 11.7 on average), "pupil": 0..1
+    of the iris' radius (0.36; bright daylight 0.2-0.3), "veins": 0..1, "sclera": colour, "limbal": 0..1 (0.72: the
+    dark ring at the iris' edge, darker and wider in the young), "limbal_width": share of the radius (0.2),
+    "iris_contrast": the fibres' contrast (1), "gloss": 0..1 (1: the tear film, a clear coat over a matte iris and
+    sclera: the sharp catchlight on the cornea), "occlusion": 0..1 (1: the lids' shadow on the ball, all round the
+    lid contact and deepest under the upper lid; MetaHuman's eye-occlusion shell as paint), "tear": 0..1 (the
+    meniscus: the bright wet line where the lower lid meets the ball), "waterline": 0..1}."""
     e = spec.get("skin", {}).get("eyes")
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
     e = e if isinstance(e, dict) else {}
-    bad = set(e) - {"iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline"}
+    bad = set(e) - set(EYE_KEYS)
     if bad:
-        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have iris, iris_size, pupil, veins, sclera, tear, waterline)")
+        raise SpecError(f"skin eyes: unknown keys {sorted(bad)} (have {', '.join(EYE_KEYS)})")
     from . import paint as _paint
     from . import skin_swatch
     from .skin import interocular
@@ -289,20 +319,35 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     scl = _hex(e["sclera"]) if "sclera" in e else [round(x, 4) for x in (0.92 - 0.05 * old, 0.89 - 0.06 * old, 0.85 - 0.09 * old)]
     veins = float(e.get("veins", 0.4 + 0.4 * old))
     span = 2.1
-    path = skin_swatch.eye_image(iris, float(e.get("pupil", 0.36)), veins, tuple(scl), p["seed"], span)
+    path = skin_swatch.eye_image(iris, float(e.get("pupil", 0.36)), veins, tuple(scl), p["seed"], span,
+                                 limbal=float(e.get("limbal", 0.72)), contrast=float(e.get("iris_contrast", 1.0)),
+                                 limbal_width=float(e.get("limbal_width", 0.2)))
+    gloss = float(e.get("gloss", 1.0))
+    occ = float(e.get("occlusion", 1.0))
     for sd in (".L", ".R"):
         c, f = J[f"eye{sd}"], J[f"eye_front{sd}"]
         r = float(np.linalg.norm(f - c))
         d = (f - c) / max(r, 1e-9)
         size = float(e.get("iris_size", 0.0118 * r / 0.0123)) * span
         nm = sd.replace(".", "_")
-        out[f"skin:eye{nm}"] = {"part": part, "color": "image", "roughness": 0.04, "specular": 0.6,
+        out[f"skin:eye{nm}"] = {"part": part, "color": "image",
+                                # under the film (the part's coat, eye_base) the iris and sclera are matte; without a
+                                # film the old glassy surface
+                                "roughness": round(0.04 + 0.36 * min(gloss, 1.0), 3), "specular": 0.6 - 0.2 * min(gloss, 1.0),
                                 "image": {"file": str(path), "at": [round(float(x), 5) for x in f], "dir": [round(float(x), 4) for x in d],
                                           "size": [round(size, 5), round(size, 5)], "depth": round(1.2 * r, 5), "facing": 0.05}}
-        # the upper lid's shadow on the ball
-        out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.55, 0.5, 0.5], "mix": "multiply", "opacity": 0.55,
-                                      "mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5), "to": round(0.55 * r, 5)}},
-                                               {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}]}
+        # the lids' shadow on the ball (an eye-occlusion shell's job in a game head): deepest under the upper lid,
+        # and a narrow soft band all round where the lids lie on the ball (the corners darkest)
+        if occ > 0:
+            # (one layer: each layer costs shader; the band all round is the max over the upper lid's shadow)
+            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.48, 0.42, 0.42], "mix": "multiply",
+                                          "opacity": round(min(0.6 * occ, 1.0), 3),
+                                          "mask": [{"mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5),
+                                                                       "to": round(0.55 * r, 5)}},
+                                                             {"spot": {"at": f"eye{sd}", "radius": round(1.6 * r, 5), "soft": 0.2}}],
+                                                    "weight": 0.85},
+                                                   {"near": ["base"], "within": round(0.02 * r, 5), "soft": round(0.09 * r, 5),
+                                                    "blend": "max"}]}
         # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
         if float(e.get("tear", 1.0)) > 0:
             out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.96, 0.95, 0.94], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
@@ -453,14 +498,34 @@ def _hair(p, J, layer, T, ctx) -> None:
                    "size": [round(width, 5), round(width * hmm / wmm, 5)], "rotate": round(slope, 2), "depth": 0.03,
                    "mirror": True, "mirror_image": True, "channel": "alpha"}  # (unmirrored, the other brow's hairs ran
             # toward the nose: "the left eyebrow is backwards")
+            # the shadow under the hairs sits where the hairs are: a brow moved off its landmarks (drop, lift, tilt,
+            # apart) left the landmark zone's shadow behind as a grey band over the new brow (Tess, 2026-10-09)
+            moved = any(o.get(k) for k in ("drop", "lift", "tilt", "apart"))
             layer("brow_shadow", pre=True, color=_shade(col, 1.6) if sum(col) < 0.6 else col,
-                  opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9), mask=_zones(["brow"], 0.9 * thick))
+                  opacity=min(0.3 * min(dens, 1) + 0.06 + 0.45 * soft, 0.9),
+                  mask=[{"image": img}] if moved else _zones(["brow"], 0.9 * thick))
             layer("brow_hairs", color=col, opacity=round(0.95 * (1 - 0.45 * soft), 3), roughness=0.42, specular=0.45, height=0.00012, image=img)
         o = _opt(h.get("lashes", 0.7 if ctx["eyes"] else None), "hair.lashes", ("color",))
         if o:
             col = _hex(o["color"]) if "color" in o else _shade(dflt, 0.45)
-            layer("lashes", color=col, opacity=0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1), roughness=0.4,
-                  mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
+            op = 0.9 * min(o["amount"] * (1 + 0.45 * ctx.get("fem", 0.0)) + 0.2, 1)
+            cu = ctx.get("lash_curves")
+            if cu:  # with lash geometry (lashes.py): only the roots' tone, a tight line along the lash line itself (the
+                # margin zone's broad band painted the waterline and the lid's edge dark: the detector read the opening
+                # 1.4 mm smaller than the clay's on Garrett)
+                from .skin import _sp
+                tubes = []
+                for lid, rad, wgt in (("upper", 0.00055, 1.0), ("lower", 0.0004, 0.55)):
+                    for c in cu[lid]:
+                        n = len(c)
+                        taper = 0.35 + 0.65 * np.sin(np.linspace(0.15, np.pi - 0.35, n)) ** 0.5
+                        tubes.append({"mask": [_sp(c, rad * taper, soft=0.6, line=True)], "vertex": True,  # (per vertex: shader stack)
+                                      **({"blend": "max"} if tubes else {}),
+                                      **({"weight": wgt} if wgt < 1 else {})})
+                layer("lashes", color=col, opacity=op, roughness=0.42, mask=tubes)
+            else:
+                layer("lashes", color=col, opacity=op, roughness=0.4,
+                      mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color",
                                                      "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine"))
         if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:

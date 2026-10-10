@@ -1334,7 +1334,7 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
             if lk.get("alpha", 1.0) < 1.0:
                 m["alphaMode"] = "BLEND"
                 m["pbrMetallicRoughness"]["baseColorFactor"] = [1.0, 1.0, 1.0, float(lk["alpha"])]
-            if lk.get("transmission") or lk.get("alpha", 1.0) < 1.0:
+            if lk.get("transmission") or lk.get("alpha", 1.0) < 1.0 or lk.get("double_sided"):
                 m["doubleSided"] = True
             if lk.get("alpha_cutoff") is not None:  # alpha-tested, both sides drawn (hair cards)
                 m["alphaMode"], m["alphaCutoff"], m["doubleSided"] = "MASK", float(lk["alpha_cutoff"]), True
@@ -1607,7 +1607,12 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                        {"min": _min_triangles(defs, origin[pn])}),
                     **({"fixed": topo[pn][0], "fixed_sum": topo[pn][1]} if pn in topo else {})} for pn in areas}
         t1 = time.time()
-        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, triangles, sizes, ctx["voxel"], tri_focus)
+        from . import lashes as _lashes  # the lash ribbons come out of the same budget (their own count, fixed)
+        lash_tris = _lashes.triangles(spec)
+        if lash_tris:
+            log.append(f"lashes: {lash_tris} triangles of the {triangles} budget")
+        parts, binfo = lowpoly(high, out_dir / "lowpoly.npz", cfg, max(triangles - lash_tris, triangles // 2), sizes,
+                               ctx["voxel"], tri_focus)
         for pn in planar & set(parts):
             parts[pn].update(planar_uvs(parts[pn]))
             log.append(f"{pn}: own material, planar 0..1 UVs (uv: planar)")
@@ -1781,6 +1786,20 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             names.append(pn_c)
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_c]["triangles"]
+    from . import lashes as lashmod
+    lash = lashmod.export_part(spec, out_dir, log=log.append)
+    if lash:  # eyelash ribbons (lashes.py): their own mesh and tiny maps, two-sided; face shapes turn them with the lids
+        pn_l, lpart, lfiles = lash
+        lpart["atlas"] = len(atlas_files)
+        parts[pn_l] = lpart
+        origin[pn_l] = pn_l
+        atlas_files.append((pn_l, lfiles))
+        maps_info[pn_l] = {k: str(v) for k, v in lfiles.items()}
+        heights[pn_l], cover[pn_l] = 0.0, 1.0
+        report[pn_l] = {"triangles": len(lpart["corner_vert"]) // 3, "atlas": pn_l, "lashes": True}
+        names.append(pn_l)
+        sizes[len(names) - 1] = 16
+        ntri += report[pn_l]["triangles"]
     glb = out_dir / f"{aname}.glb"
     looks = {pn: {k: float(d[k]) for k in ("transmission", "alpha", "ior") if k in d}
              for pn in parts for d in [defs.get(origin[pn]) or {}] if any(k in d for k in ("transmission", "alpha"))}
@@ -1796,6 +1815,15 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                                                      "clearcoatRoughnessFactor": float(skin_recipe["specular"]["coat_roughness"])},
                          "KHR_materials_sheen": {"sheenColorFactor": [float(skin_recipe["sheen"])] * 3, "sheenRoughnessFactor": 0.5}},
                     extras={"hifipushie_skin": skin_recipe})
+    if lash:
+        looks.setdefault(lash[0], {})["double_sided"] = True
+    from .skin_features import eye_base
+    ek = eye_base(spec)
+    if ek:  # the eyes' tear film: a clear coat over the matte iris and sclera (the catchlight)
+        for pn in parts:
+            if origin.get(pn) == ek[0]:
+                looks.setdefault(pn, {}).setdefault("ext", {})["KHR_materials_clearcoat"] = {
+                    "clearcoatFactor": float(ek[1]["coat"]), "clearcoatRoughnessFactor": float(ek[1]["coat_roughness"])}
     rigged = None
     if rig:  # an armature from the skeleton, the parts (not prefabs) skinned to it
         from . import rig as rigmod
@@ -1870,6 +1898,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                     log.append(f"rig: {pn}: {int(m.sum())} vertices the face shapes move "
                                f"{rigmod.MOVED[1] * 1e3:g} mm or more are Head {b1.min():.2f}+ "
                                f"({int((b0 < 0.99).sum())} weren't: least {b0.min():.2f})")
+    for p in parts.values():  # (the lashes' roots: only face shapes needed them)
+        p.pop("lash_root", None)
+        p.pop("lash_centre", None)
     write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()

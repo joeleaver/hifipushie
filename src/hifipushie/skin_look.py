@@ -35,7 +35,8 @@ PHOTO = {"octaves_mm": [0.35, 0.7, 1.4, 2.8, 5.6, 11.2], "L": [1.2, 1.26, 0.83, 
          "highlight_share": [0.05, 0.13], "highlight_breakup": [1.6, 2.4], "cheek_a": 1.2, "nose_a": 0.9}
 VIEWS = {"bust": "head", "face": "head", "three_quarter": "head", "side": "head", "cheek": "head", "eye": "head",
          "mouth": "head", "forehead": "head", "brows": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
-EYE_VOXEL = 0.0005  # m: the head stage's orbits (lids, folds, brows) are meshed this fine
+EYE_VOXEL = float(__import__("os").environ.get("HIFIPUSHIE_EYE_VOXEL", "0.0005"))  # m: the head stage's orbits (lids, folds,
+# brows) are meshed this fine (an env value >= the stage voxel turns the refinement off)
 DEFAULT = ("face","three_quarter", "cheek", "eye", "mouth", "ear")
 
 

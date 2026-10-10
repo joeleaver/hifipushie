@@ -53,7 +53,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 3
+VERSION = 4  # 4: lash_roots, eye film / occlusion (eyedetail)
 
 # ---- tone: melanin + haemoglobin -> albedo ----------------------------------------------------------------------
 # A two-layer model in the spirit of Donner & Jensen 2006 / Jimenez et al. 2010, with Jacques' skin optics numbers
@@ -576,7 +576,8 @@ def layers(spec: dict) -> dict:
     """The skin's paint layers, in order: {"skin:<name>": layer}."""
     if not spec.get("skin"):
         return {}
-    key = hashlib.sha1(json.dumps([spec["skin"], VERSION], sort_keys=True, default=str).encode()).hexdigest()
+    key = hashlib.sha1(json.dumps([spec["skin"], (spec.get("base") or {}).get("lashes"), VERSION], sort_keys=True,
+                                  default=str).encode()).hexdigest()
     J = _joints(spec)
     jk = hashlib.sha1(json.dumps(sorted((k, np.round(v, 5).tolist()) for k, v in J.items())).encode()).hexdigest()
     if _LAYERS.get("key") != (key, jk):
@@ -586,6 +587,43 @@ def layers(spec: dict) -> dict:
 
 
 _LAYERS: dict = {}
+
+
+APERTURE_KEEP = (0.001, 0.0007)  # m: (within, soft) of the eyeballs where the skin's eye-region layers fade out
+APERTURE_OWN = ("skin:waterline", "skin:caruncle", "skin:lashes")  # the margin's own colours
+
+
+def _aperture_keep_out(spec: dict, part: str, out: dict) -> None:
+    """The eye region's layers (zones round the eyes, wrinkles, make-up, anything addressed by an eye / lid / lash
+    zone or landmark) fade out on the skin within ~1 mm of the eyeballs: the lid's margin and the skin rolling into
+    the socket. There the waterline and caruncle are the colour (and the lash line, along the lashes' roots). Without
+    this, the lid tints and lash bands darkened the margin and the 478-point detector read the dressed opening
+    1.4 mm smaller than the clay's (Garrett, facesliders' eye diagnosis 2026-10-09)."""
+    blobs = (spec.get("blobs") or {})
+    eyes = [e for e in ("eye.L", "eye.R") if e in blobs or e.replace(".R", ".L") in blobs]
+    if not eyes:
+        from . import paint as _paint
+        eb = _paint._expanded(spec).get("blobs") or {}
+        eyes = [e for e in ("eye.L", "eye.R") if e in eb]
+    if len(eyes) < 2:
+        return
+    # (every layer but the margin's own: zones are resolved to spots by here, so names can't pick the eye's ones, and
+    # within 1 mm of the ball there is nothing else; the part's base tone stays under)
+    # Cost: the pre-composited layers are evaluated per vertex (free in the shader); of the rest only the eye
+    # region's, and per vertex ("vertex": true): a near mask on every layer ran Cycles out of shader stack (bake)
+    import os
+    if os.environ.get("HIFIPUSHIE_NO_KEEP_OUT"):  # (diagnostics: the layers as they were)
+        return
+    w, s = APERTURE_KEEP
+    eye_words =("eye", "lid", "lash", "crows", "socket", "tear")
+    for name, ly in out.items():
+        if name in APERTURE_OWN or ly.get("part", part) != part:
+            continue
+        if ly.get("_pre"):
+            ly["mask"] = list(ly.get("mask") or []) + [{"near": eyes, "within": w, "soft": s, "invert": True}]
+        elif any(k in name for k in eye_words):
+            ly["mask"] = list(ly.get("mask") or []) + [{"near": eyes, "within": w, "soft": s, "invert": True,
+                                                        "vertex": True}]
 
 
 def _build(spec: dict, J: dict) -> dict:
@@ -717,6 +755,7 @@ def _build(spec: dict, J: dict) -> dict:
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.8, 0.66, 0.62], "mix": "multiply",
                                          "opacity": round(min((0.45 if name in ("pores", "lip_lines") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
+    _aperture_keep_out(spec, part, out)
     if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base
         out = {k: v for k, v in out.items() if group_of(k) in p["only"]}
         if "shading" not in p["only"]:

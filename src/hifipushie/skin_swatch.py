@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import numpy as np
 
-VERSION = 13
+VERSION = 15  # 14-15: iris crypts (eyedetail)
 SIZE = 1024
 PERIOD = {"pores": 0.016, "lines": 0.016, "coarse": 0.024, "lips": 0.012, "stubble": 0.012, "freckles": 0.06,
           "wrinkles": 0.05, "hairs": 0.02}  # m of skin across the swatch
@@ -183,16 +183,20 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
     return out, [width_mm, h_mm]
 
 
-def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89, 0.85), seed: int = 0, span: float = 2.1):
+def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89, 0.85), seed: int = 0, span: float = 2.1,
+              limbal: float = 0.72, contrast: float = 1.0, limbal_width: float = 0.2):
     """The front of an eyeball as a picture (RGB PNG in the image store), `span` iris diameters across: an iris of
     radial fibres with a paler collarette round the pupil, a dark limbal ring fading into the white, a soft-edged
     pupil (`pupil` = its share of the iris' radius); the sclera warmer and pinker toward its edge, with fine
-    vessels wandering in from the corners (`veins`). iris: sRGB colour. Returns the path."""
+    vessels wandering in from the corners (`veins`). iris: sRGB colour. `limbal`: how dark the limbal ring is at the
+    iris' edge (0 none .. 1 black; real rings read 0.5-0.85, darker and wider in the young), `limbal_width` its width
+    as a share of the iris' radius; `contrast`: the fibres' and collarette's contrast (1 as before; 0 a flat disc).
+    Returns the path."""
     import hashlib
     from PIL import Image, ImageDraw, ImageFilter
     from . import images
     iris = tuple(round(float(c), 4) for c in iris)
-    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION)).encode()).hexdigest()[:12]
+    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION) + ((limbal, contrast, limbal_width) if (limbal, contrast, limbal_width) != (0.72, 1.0, 0.2) else ())).encode()).hexdigest()[:12]
     out = images.store_dir() / f"eye_{key}.png"
     if out.exists():
         return out
@@ -242,12 +246,22 @@ def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89,
     ai = ((th + np.pi) / (2 * np.pi) * n).astype(int) % n
     twist = ((th + np.pi + 0.25 * r) / (2 * np.pi) * n).astype(int) % n
     f = fib[0][ai] + fib[1][twist] + fib[2][ai] * np.clip(r * 1.3, 0, 1) + fib[3][ai]
-    f = np.clip(0.5 + 0.28 * f, 0, 1)
+    f = np.clip(0.5 + 0.28 * contrast * f, 0, 1)
     col = c[None, None] * (0.55 + 0.9 * f[..., None])
+    # crypts: darker pits and furrows between the fibres, blotchy rather than radial (a photographed iris is a
+    # mottled, darker disc with a lighter collarette, not a starburst)
+    from scipy import ndimage
+    G = ndimage.gaussian_filter(rng.standard_normal((14, 170)), (0.6, 0.9), mode="wrap")
+    G = G / max(float(G.std()), 1e-9)
+    rr_ = np.clip((r - pupil) / max(1 - pupil, 1e-3), 0, 1) * 13.0
+    aa_ = (th + np.pi) / (2 * np.pi) * 170
+    cn = ndimage.map_coordinates(G, [rr_.ravel(), aa_.ravel()], order=1, mode="grid-wrap").reshape(r.shape)
+    col = col * (1 - 0.32 * min(contrast, 1.5) * np.clip((cn - 0.3) / 1.2, 0, 1))[..., None]
     coll = np.exp(-0.5 * ((r - (pupil + 0.16)) / 0.09) ** 2)[..., None]  # the collarette: a paler, yellower ring
-    col = col + coll * 0.45 * (np.clip(c * 1.5 + np.array([0.16, 0.1, 0.0]), 0, 1) - col)
-    limb = np.clip((r - 0.78) / 0.2, 0, 1)[..., None] ** 1.5  # the limbal ring
-    col = col * (1 - 0.72 * limb)
+    col = col + coll * 0.45 * min(contrast, 1.5) * (np.clip(c * 1.5 + np.array([0.16, 0.1, 0.0]), 0, 1) - col)
+    w_ = max(float(limbal_width), 0.02)
+    limb = np.clip((r - (0.98 - w_)) / w_, 0, 1)[..., None] ** 1.5  # the limbal ring
+    col = col * (1 - float(limbal) * limb)
     edge = np.clip((1.04 - r) / 0.07, 0, 1)[..., None]  # iris into sclera, soft
     img = img * (1 - edge) + col * edge
     pup = np.clip((pupil - r) / 0.035 + 0.5, 0, 1)[..., None]

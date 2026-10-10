@@ -130,6 +130,24 @@ def test_button_colour_by_kind():
     assert cloth.button_color({"color": "#ffffff"}, {"color": None, "tone": None}) == "#ebe6dc"  # a shirt's pearl
 
 
+def test_occluded_by_a_shell_from_every_side():
+    """cloth_layers.occluded / view_dirs: a point inside a closed shell is hidden from every direction; one outside
+    it is not; gaps + front_only see only the shell's outer side."""
+    V, F = _sphere()
+    sh = _shell(V, F, 0.108)
+    Fo = np.asarray(sh["mesh"]["F"])
+    a = (sh["V"][Fo[:, 1]] - sh["V"][Fo[:, 0]])
+    if (np.cross(a, sh["V"][Fo[:, 2]] - sh["V"][Fo[:, 0]]) * sh["V"][Fo].mean(1)).sum() < 0:
+        Fo = Fo[:, ::-1]
+    P = np.array([[0.0, 0.0, 0.05], [0.0, -0.13, 0.0], [0.0, -0.110, 0.0]])
+    dirs = cloth_layers.view_dirs(8)
+    oc = cloth_layers.occluded(P, sh["V"], Fo, dirs, px=0.002)
+    assert oc[:, 0].all()  # inside: hidden from all
+    assert not oc[:, 1].all() and not oc[:, 2].all()  # outside: seen from somewhere
+    gp = cloth_layers.occluded(P, sh["V"], Fo, np.array([[0.0, 1.0, 0.0]]), px=0.002, gaps=True, front_only=True)
+    assert 0.0005 < gp[0, 2] < 0.004  # 2 mm in front of the shell's near (outer) side, looking +y
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

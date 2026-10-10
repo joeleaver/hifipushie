@@ -141,8 +141,47 @@ DEPRECATED = {"shape.nasolabial": "age_nasolabial", "shape.prejowl": "age_prejow
 # one-sided: the template (GNM's mean) has no epicanthal fold to take away, so [0, 1]
 ONE_SIDED = {"epicanthal", "age_nasolabial", "age_prejowl", "age_cheek_flat", "age_lid_fold", "face_lean", "cheek_hollow",
              "chin_cleft", "face_planes"}  # (the ageing ops and the planes (rounder than 2.0 folded the cheeks): their negative would be a ridge, not youth)
+# lid margins (eyedetail, 2026-10-09): GNM's lids taper to a ~1 mm rounded tip on the ball; a real margin is a flat face
+# ~2 mm deep (the posterior edge on the ball: the waterline; the anterior edge: the lash line, where lashes.py roots).
+# One-sided: thinner than the template would pull the lid's front into the ball.
+UNITS.update({
+    "lid_margin_upper": (0.9, "the upper lid's margin thicker: its lash edge forward of the waterline (a squared rim)"),
+    "lid_margin_lower": (0.8, "the lower lid's margin thicker: a visible rim and waterline over the ball"),
+})
+MARGIN_SLIDERS = ("lid_margin_upper", "lid_margin_lower")
+ONE_SIDED |= set(MARGIN_SLIDERS)
 NAMES = tuple(UNITS)
 _CACHE: dict = {}
+
+
+def _margin_fields() -> dict:
+    """lid_margin_upper / _lower for the subject's LEFT eye (GNM frame, metres at +1): the exterior skin from the rim
+    (the exterior's open edge round the eye, held: the lid stays seated on the ball) out ~1 mm moved forward along
+    the eye's axis, full from 1.0 to 1.8 mm out along the skin, back to nothing by 5 mm; faded at the canthi. Upper /
+    lower by which rim vertex is nearest (above or below the corners' line)."""
+    from scipy.spatial import cKDTree
+    T = template()
+    X, lm = T["X"], T["lm"]
+    mm = 0.001
+    c_in, c_out = lm[42], lm[45]
+    w = float(np.linalg.norm(c_out - c_in))
+    ex = (c_out - c_in) / w
+    rim = T["rim"][X[T["rim"], 0] > 0]
+    d, k = cKDTree(X[rim]).query(X)
+    near_rim = X[rim][k]
+    u_r = (near_rim - c_in) @ ex / w  # the nearest rim vertex's place along the corners' line
+    y_line = c_in[1] + np.clip(u_r, 0, 1) * (c_out[1] - c_in[1])
+    upper = near_rim[:, 1] > y_line
+    prof = _ss(d / (0.7 * mm)) * _ss((5.0 * mm - d) / (3.0 * mm))
+    # faded toward both canthi (there the upper / lower split by nearest rim vertex is ambiguous: a step folded quads)
+    ends = _ss((u_r - 0.04) / 0.25) * _ss((0.96 - u_r) / 0.25)
+    for c in (c_in, c_out):
+        ends = ends * _ss((np.linalg.norm(X - c, axis=1) - 2 * mm) / (5 * mm))
+    m = T["ext"] & (X[:, 0] > 0.004) & (d < 5.0 * mm) & (X[:, 2] > c_in[2] - 0.02)
+    fwd = np.array([0.0, 0.0, 1.0])
+    base = (m * prof * ends)[:, None] * fwd[None]
+    F = {"lid_margin_upper": base * upper[:, None], "lid_margin_lower": base * (~upper)[:, None]}
+    return {k: v * (UNITS[k][0] * mm) for k, v in F.items()}
 
 
 def _ss(x):
@@ -652,6 +691,8 @@ def fields() -> dict:
         for k, dL in _left_fields().items():
             dR = dL[mi] * [-1.0, 1.0, 1.0]
             out[k] = (dR, dL)
+        for k, dL in _margin_fields().items():  # (eyedetail) the lid margins' thickness
+            out[k] = (dL[mi] * [-1.0, 1.0, 1.0], dL)
         wl = _ss((T["X"][:, 0] + 0.002) / 0.004)[:, None]
         for k, d in {**_mouth_fields(), **_nose_fields()}.items():
             out[k] = (d * (1 - wl), d * wl)

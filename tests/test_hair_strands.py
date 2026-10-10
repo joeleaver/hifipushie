@@ -386,6 +386,24 @@ def test_atlas_edges_are_padded_not_black():
     assert np.median(lum[rim]) > 0.85 * np.median(lum[core]), (np.median(lum[rim]), np.median(lum[core]))
 
 
+def test_wisp_opens_and_is_sparse():
+    """A thin free lock (a face-framing wisp) is a few strands drifting apart, not a comb strip: its section opens
+    toward the tip and goes round, and it gets fewer strands for its section than a ribbon would (Tess, 2026-10-09)."""
+    S = {**hc.STRANDS, "wave": 0.0}
+    wisp = _lock("tf0", [[0.06, -0.08, 0.0], [0.06, -0.08, -0.04], [0.06, -0.08, -0.08], [0.06, -0.08, -0.12]], width=0.005)
+    G = hs.lock_guides([wisp], np.zeros(3), S)["free"]
+    side = np.linalg.norm(np.asarray(G["side"], float).reshape(-1, 3), axis=1)
+    out = np.linalg.norm(np.asarray(G["out"], float).reshape(-1, 3), axis=1)
+    assert side[-1] > 2.0 * side[0], (side[0], side[-1])  # opens toward the tip
+    assert out[-1] > 0.8 * side[-1]  # round, not a ribbon
+    hs.WISP_FAN, old = 0.0, hs.WISP_FAN
+    try:
+        G0 = hs.lock_guides([wisp], np.zeros(3), S)["free"]
+    finally:
+        hs.WISP_FAN = old
+    assert float(np.sum(G["weight"])) < 0.5 * float(np.sum(G0["weight"]))  # sparser than the old comb
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
