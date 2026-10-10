@@ -398,6 +398,24 @@ def test_trousers_cut_to_a_break():
     assert "creaseHem" not in fr["names"] and abs(y(bk, "creaseHem") - (L + pb.BREAK_BACK)) < 1e-6
 
 
+def test_jeans_are_construction():
+    """{kind: jeans}: the trouser block without back darts, a back YOKE taking their intake, front scoop pockets and
+    back patch pockets (two style lines by name, both kept), no crease; drafted, the yoke and pocket pieces exist and
+    the patch pockets lie on the back legs (not girth)."""
+    from hifipushie import garment_design as gd
+    out = gd.compile_sheet({"kind": "jeans", "fit": "straight"})
+    pat = out["pattern"]
+    ops = [(o["op"], o.get("name")) for o in pat["ops"]]
+    assert ("style_line", "yoke") in ops and ("style_line", "scoop") in ops and ("pocket", "back_pocket") in ops
+    assert ("crease", None) not in ops and pat["block_options"]["back_dart"] == 0.0
+    assert pat["block_options"]["leg"] == "straight"
+    from hifipushie import cloth
+    Bp = cloth.pieces({"pattern": pat}, MM)
+    names = set(Bp["pieces"])
+    assert {"yoke.L", "yoke.R", "pocket_side.L", "back_pocket.L"} <= names, names
+    assert Bp["pieces"]["back_pocket.L"]["wrap"].get("lies_on")
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
