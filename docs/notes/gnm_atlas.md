@@ -113,3 +113,11 @@ Findings (Garrett fs_gj2 / gj5, Tess fs_tj2 / tj3; sheets human_renders/fs_16, f
 - The desk painting's traced jaw.R line matched no silhouette (15 mm, dragged under_chin / ramus): left out; the
   front snap is unreliable where skin meets skin (jaw over neck) or hair crosses the cheek: Tess's jaw went square
   (+3.1 sd). A better front contour reader is needed (traced, or a segmentation) before the outline term can be trusted.
+
+## Missing control: canthal tilt (2026-10-09)
+
+GNM's eye_tilt attribute (landmark corners, R2 ~1) and the detector's canthal tilt on a render barely move together:
+the identity at -2 sd of eye_tilt reads ~1 deg on the clay where the concept reads -0.45 (after the squint bias, 1.4
+deg, went to the lid pose). GNM's tilt moves the wrong corner points (the fissure's ends as the detector sees them stay).
+Decision (coordinator): a missing control, noted; a coupled-plus-residual tilt slider (the identity direction + the
+local canthal_tilt morph that turns the fissure on the ball) comes later, not now.

@@ -20,6 +20,7 @@ Prints per view rms (sigmas), per item photo / model before -> after, the prior 
 and flags any residual past BIG (a place the identity can't reach). Writes <out model> (spec + refs + report json)."""
 import copy
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -51,10 +52,11 @@ READ_ONLY = ("face_height", "face_index", "lower_third", "width_temple", "width_
 IMPORTANCE = {"eye_opening": 1.5, "canthal_tilt": 1.5, "brow_eye": 1.0, "upper_lip": 1.0, "lower_lip": 1.0,
               "face_height": 1.5, "face_index": 1.5, "lower_third": 1.0, "width_temple": 1.0, "width_cheekbone": 1.5,
               "width_jaw": 1.5, "width_chin": 1.0, "jaw_taper": 1.0}
+FREE_AGE = os.environ.get("FREE_AGE", "0") == "1"
+FREE_W = 0.1
 OUT_SIG = 2.0       # mm per outline point (the front's snapped contour, the traced lines)
-import os  # noqa: E402
 DESK_W = float(os.environ.get("DESK_W", "1.0"))   # weight (residual units) of every non-front view: Garrett's desk
-TRACE_LINES = tuple(os.environ.get("TRACE_LINES", "jaw.R,jaw.L,profile").split(","))
+TRACE_LINES = tuple(os.environ.get("TRACE_LINES", "cheek.R,cheek.L,jaw.R,jaw.L,chin,profile").split(","))
 TRACES = os.environ.get("TRACES")                 # painting is a stylised secondary (0.5); the model whose traces
 
 
@@ -67,7 +69,7 @@ def outlines(views):
     import outl
     out = []
     for v in views:
-        if abs(float(v.get("yaw", 0.0))) < 20:
+        if abs(float(v.get("yaw", 0.0))) < 20 and not TRACES:   # (the edge snap: superseded by traces)
             fo = outl.front_outline(v)
             out.append([fo] if fo is not None else [])
         else:   # (each traced line on its own: joined, the gap between them became an outline)
@@ -177,6 +179,9 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
     info = {"skipped": [], "rows0": None, "outline_mm": []}
     OL = outlines(views)
     one = np.array([n in AGE for n in names], bool)
+    # FREE_AGE (a man of ~50: leanness and hollow cheeks are soft tissue and age, which GNM has no variable for):
+    # those residuals nearly free, so the identity doesn't strain for them
+    sw = np.array([FREE_W if (FREE_AGE and n in ("face_lean", "cheek_hollow")) else SLIDER_W for n in names])
     for it in range(ROUNDS):
         st = humanfit.state(cur)
         evs = J0.evidence(st, views)
@@ -206,7 +211,7 @@ def solve(base, views, names, refname, mu, Sinv, log=print, items=True):
             wall = np.where(over > 0, 25.0, 0.0)
             H[:K, :K] += np.diag(wall)
             b[:K] += wall * np.clip(c, -CAP, CAP)
-            H[K:, K:] += np.eye(S) * SLIDER_W
+            H[K:, K:] += np.diag(sw)
             for vi, (v, e, SB) in enumerate(zip(views, evs, SBs)):
                 X = e["X"] + np.tensordot(c - c_lin, e["XB"], 1) + np.tensordot(s - s_lin, SB, 1)
                 if cams[vi] is None:
