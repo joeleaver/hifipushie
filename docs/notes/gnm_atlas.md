@@ -1098,3 +1098,32 @@ Next, in the coordinator's order:
    most of GNM's directions).
 4. Crease: port the audit's g11 (lid margins vs iris + crease height, GNM's own eyeball) into fit5; then Garrett.
 Report every fit with |c|, effective dof, posterior cost, feature crops (featsheet) and a blunt read.
+
+### Lip contact, the closed neutral, the first nose readers (2026-10-10, after the HANDOVER above; it still applies)
+- Contact evidence (fit5 CONTACT, CONTACT_BY): MediaPipe's inner-lip pairs are useless as contact evidence (the
+  detector table puts both on the visible lip line: "0.4 mm" on a visibly parted mouth). Now GNM's own contact ring
+  (faceslide._lip_rings, upper / lower halves paired in x, corners' 10% out), one-sided (only an open gap), 0.3 mm.
+  The identity alone leaves Tess's neutral parted 5.6 mm.
+  - CONTACT_BY=expression (default for NOSEAL fits): each closed-mouth picture's lower-face expression closes the lips
+    (GNM's population closes lips by expression); shipped with mouth_gap 0 (base's least-change lower-face solver)
+    instead of faceslide's seal. f5_tl10: closed, the lips' depth in profile close to hers (f5_28). |c| 15.3, dof 49.3,
+    gap 5.6 -> 0.25 mm, front expression |e| 0.89. OVERSHOOT (coordinator): front / 3/4 lips too full, the bow's peaks
+    gone (border 0.34 / 0.35 vs tl4's 0.24), lower lip a little proud in profile: the closing expression adds a pout /
+    roll-out the border doesn't hold. To do: constrain the closing to the contact direction (or hold the vermilion
+    area / heights as evidence), tighter border sigma, check what the |e| 0.89 does to the vermilion.
+  - CONTACT_BY=identity (the neutral itself closed, seal kept): |c| 25.6, max 5.3, profile clicks 5 sigma: rejected.
+  - Face shapes: GnmFace refuses mouth_gap < 1.5 mm; one-mesh heads with mouth_gap unset are allowed and its neutral
+    closes the lips through the basis (face._gnm["close"]) before every ARKit delta: the same mechanism. So stills use
+    mouth_gap 0; a face-shapes export of the same identity leaves mouth_gap unset. (Tess's models have no
+    base.head.interior: no face-shapes export today.)
+- Nose readers (nosereader.py, front picture, iris scale), validated on her photo (out/nose_photo.png): the NOSTRIL
+  blobs (pixels < 0.62 x the nose skin's median, the largest per side) are found cleanly: area R / L 21.7 / 30.7 mm^2,
+  centroid 5.3 / 6.5 mm over the subnasale row (MediaPipe 2), outer edge 11.5 / 10.9 mm from the midline. The ALAR edge
+  (strongest |luminance step| within +-4 mm of MediaPipe 64 / 294, rows tip -> alar base): good on the shaded side,
+  noisy on the lit side (her right; scattered over 2 mm); alar width 33.9 mm (R 17.6, L 16.2): to firm up (use the
+  lobule's lower rows / the alar crease, or the 3/4 view's silhouette of the ala).
+  The MODEL side needs the same readers on our render: clay has no dark nostrils (no AO; GNM's nostrils are exterior
+  skin pockets, not a separate group): a cavity / AO shading pass in likeness.render (with the shadow-map pass) is
+  the prerequisite; then the readers enter fit5 by finite differences on moved meshes (itemcover.moved_mesh).
+  Also from f5_28 (coordinator): tl10's nose tip reads longer and droopier than hers in profile (hers slightly
+  upturned): add tip rotation / nasolabial angle from the profile contour as a reader item.
