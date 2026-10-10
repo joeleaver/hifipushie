@@ -68,6 +68,31 @@ def draw_photo_brows(im, P, to):
     return im
 
 
+def eye_presentation(mesh, iris=(128, 112, 82)):
+    """A cheaper-than-real eye for whole-face reads (coordinator: the dark iris caps dominated every clay read): a
+    lighter iris (hazel-ish, set by `iris`) with a darker limbal ring and pupil, and a LASH LINE: the skin vertices
+    hugging the upper half of each eyeball (within 1.5 mm of its surface, above its centre) darkened."""
+    out = []
+    fwd = np.asarray(mesh["state"]["head"].get("forward", [0, -1, 0]), float)
+    for V, F_, col in mesh["eyes"]:
+        c = V.mean(0)
+        d = (V - c) / np.linalg.norm(V - c, axis=1, keepdims=True)
+        cs = d @ (fwd / np.linalg.norm(fwd))
+        col = np.where(cs[:, None] > 0.97, [20, 16, 14], np.where(cs[:, None] > 0.885, list(iris),
+                       np.where(cs[:, None] > 0.86, [60, 50, 40], [238, 234, 228]))).astype(float)
+        out.append((V, F_, col))
+    mesh["eyes"] = out
+    C = np.asarray(mesh.get("C") if mesh.get("C") is not None else np.tile(likeness.SKIN, (len(mesh["V"]), 1)), float).copy()
+    for V, _, _ in out:
+        c = V.mean(0)
+        r = float(np.median(np.linalg.norm(V - c, axis=1)))
+        dist = np.linalg.norm(mesh["V"] - c, axis=1) - r
+        near = (dist < 0.0015) & (mesh["V"][:, 2] > c[2] - 0.0005) & ((mesh["V"] - c) @ fwd > 0.3 * r)
+        C[near] = C[near] * 0.35
+    mesh["C"] = C
+    return mesh
+
+
 def ident(sp):
     idn = sp["base"]["head"].get("identity") or {}
     return np.array([v for k, v in idn.items() if k.startswith("head")]) if isinstance(idn, dict) else np.asarray(idn)

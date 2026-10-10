@@ -30,6 +30,11 @@ F = os.environ.get("F", "/mnt/data/hifipushie/faces6")
 
 
 def _dir(name):
+    if name.endswith("!") and name[:-1] in hmac.NAMES:   # HELD: this macro alone, every other macro kept (the
+        # pseudo-inverse column): philtrum -0.5 in free mode also shortened the chin 1.6 mm (the population couples them)
+        d = np.zeros(170)
+        d[:hmac.K] = hmac.direction(name[:-1], held=True)
+        return d
     if name in hmac.NAMES:
         d = np.zeros(170)
         d[:hmac.K] = hmac.direction(name)
@@ -94,6 +99,8 @@ def look(m, out, ref="f6_M_mace"):
     st = humanfit.state(store.load(m)["base"])
     mesh = likeness.model_mesh_from_state(st)
     mesh["C"] = WC.haircap(mesh, st)
+    if os.environ.get("EYE_PRES", "1") == "1":
+        WC.eye_presentation(mesh)
     ref_st = humanfit.state(store.load(ref)["base"])
     cols = ["photo", f"{m} (her light)", "50% overlay", "outline: photo red / clay green", "squint photo", "squint clay"]
     sheet = Image.new("RGB", (T * len(cols), (T + 18) * 3 + 18), "white")
