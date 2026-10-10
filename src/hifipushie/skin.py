@@ -53,7 +53,10 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 4  # 4: lash_roots, eye film / occlusion (eyedetail)
+VERSION = 5  # 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4)
+# the face's base map layers (skin_marks.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
+# x sqrt(variation) / sqrt(detail): tuned on Tess (variation .6, detail .45); linear, Garrett's 1.3 / 1.8 read as sandpaper
+BASE_MAP = {"red": 0.4, "light": 0.36, "pigment": 0.3, "depth": 0.00011}
 
 # ---- tone: melanin + haemoglobin -> albedo ----------------------------------------------------------------------
 # A two-layer model in the spirit of Donner & Jensen 2006 / Jimenez et al. 2010, with Jacques' skin optics numbers
@@ -691,6 +694,25 @@ def _build(spec: dict, J: dict) -> dict:
     # (fine mottling up from 0.2 / 0.16: the 0.35-1.4 mm L bands measured 0.15-0.18 on Tess against 0.39-0.47 on her photo, skin3)
     mottle("mottle_fine", 0.0032, [0.45, 0.75], 14, 0.32, blood=1.7, melanin=1.15)
     mottle("mottle_fine_pale", 0.0045, [0.5, 0.8], 15, 0.26, blood=0.6, melanin=0.9)
+    # 2b. the face's base skin per PIXEL, a unique map on the head's own surface (skin_marks.base_map): blood and pigment
+    # uneven at 1-4 mm, capillary threads beside the nose, and (micro_map, last) pores by zone + skin lines + a fine
+    # undulation as relief. The mottles above are per vertex: nothing of theirs lives below ~3 mm (skin3 measured
+    # Tess's 0.35-1.4 mm lightness bands at .16-.18 against .39-.47 on her photo)
+    base_map = None
+    if face and (var > 0 or det > 0):
+        from . import skin_marks
+        bpath, bplace, _ = skin_marks.base_map(spec, part, J, {"pore_size": round(1 - 0.15 * p["fem"] + 0.15 * p["masc"] + 0.25 * old, 3),
+                                                              "seed": seed})
+        base_map = lambda ch, lv=None: {"image": {"file": bpath, **bplace, "channel": ch}, **({"levels": lv} if lv else {})}  # noqa: E731
+        if var > 0:
+            out["skin:mottle_map_red"] = {"part": part, "color": T(blood=2.4), "opacity": round(min(BASE_MAP["red"] * var ** 0.5, 1), 3),
+                                          "mask": [base_map("g", [0.5, 1.0])]}
+            out["skin:mottle_map_pigment"] = {"part": part, "color": T(melanin=1.6 + 1.2 * (1 - dark)), "opacity": round(min((BASE_MAP["pigment"] + 0.2 * p["sun"]) * var ** 0.5, 1), 3),
+                                              "mask": [base_map("b", [0.5, 1.0])]}
+            # and lighter where either dips (less blood, less melanin): uneven both ways, the complexion's mean kept (one
+            # way only tanned Tess); one layer for both dips, the shader's budget
+            out["skin:mottle_map_light"] = {"part": part, "color": T(blood=0.55, melanin=0.55), "opacity": round(min(BASE_MAP["light"] * var ** 0.5, 1), 3),
+                                            "mask": [base_map("g", [0.5, 0.0]), {**base_map("b", [0.5, 0.0]), "blend": "max"}]}
 
     # 3. lips: thin epidermis over a lot of blood; less melanin than the face on light skin, still much on dark
     if face:
@@ -764,8 +786,12 @@ def _build(spec: dict, J: dict) -> dict:
         for name, sw, depth, mask in micro:
             stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.7, 0.55, 0.5] if name == "pores" else [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min((0.65 if name == "pores" else 0.45 if name == "lip_lines" else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "opacity": round(min(((0.3 if base_map is not None else 0.65) if name == "pores" else 0.45 if name == "lip_lines" else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
+        if base_map is not None:  # the face's own relief: baked into the export's unique normal map (not a tiling detail)
+            out["skin:micro_map"] = {"part": part, "height": -round(BASE_MAP["depth"] * d ** 0.5, 7), "mask": [base_map("r")] + copy.deepcopy(no_pores)}
+            # (no cavity tint of its own: a pores-only colour layer changed nothing visible at face distance, and the
+            # tiling pores' tint, 0.65 -> 0.3 here, were the dark specks a blind read called dirt)
     _aperture_keep_out(spec, part, out)
     if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base
         out = {k: v for k, v in out.items() if group_of(k) in p["only"]}

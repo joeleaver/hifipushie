@@ -169,8 +169,36 @@ def test_patchy_is_missing_hair_and_freckles_fade_out():
     assert up > 0.3 and 0.05 * up < out < up, (up, out)
 
 
+@_tmp
+def test_base_map_pores_by_zone_and_per_pixel():
+    """The face's base skin is a unique per-pixel map (skin4: the per-vertex mottles left nothing below ~3 mm): pores
+    larger and denser on the nose than the forehead, none on the lips; the colour channels vary around an even 0.5 at
+    1-3 mm and fade to even at the map's edges (no seam); its relief is a non-detail height layer, so the export bakes
+    it into the unique normal map, and its colour layers are per pixel (not _pre)."""
+    spec = head_spec(age=30)
+    J = skin._joints(spec)
+    io = skin.interocular(J)
+    W = mk.base_zones(J)
+    pts = np.array([J["lm_nose_tip"] + io * np.array([0.05, 0.02, 0.05]), [0.0, J["lm_nose_bridge"][1] + 0.2 * io, J["lm_nose_bridge"][2] + 0.75 * io],
+                    J["lm_lip_lower"]])
+    den, rad = mk._pore_field(W(pts))
+    assert den[0] > 1.3 * den[1] and rad[0] > 1.2 * rad[1] and den[2] == 0, (den, rad)
+    path, place, st = mk.base_map(spec, "body", J, {"pore_size": 1.0, "seed": 0})
+    a = images.pixels(pathlib.Path(path))[..., :3].astype(float)
+    H, Wd = a.shape[:2]
+    mid = a[H // 2 - 200:H // 2 + 200, Wd // 2 - 600:Wd // 2 - 200]   # (a cheek's worth of the face's front)
+    assert st["pores"] > 1000
+    for c in (1, 2):
+        assert 0.45 < mid[..., c].mean() < 0.55 and mid[..., c].std() > 0.04, (c, mid[..., c].mean(), mid[..., c].std())
+    assert abs(a[:3, :, 1:].mean() - 0.5) < 0.01, "even at the map's edge"
+    L = paint.layers(spec)
+    for k in ("skin:mottle_map_red", "skin:mottle_map_light", "skin:mottle_map_pigment", "skin:micro_map"):
+        assert k in L and not L[k].get("_pre") and not L[k].get("_detail"), k
+    assert L["skin:micro_map"]["height"] < 0
+
+
 if __name__ == "__main__":
     for t in (test_beard_zones_from_landmarks, test_stubble_map_deterministic_and_styles, test_fade_band_never_darker_than_full,
-              test_freckles_no_repeat_and_sun, test_patchy_is_missing_hair_and_freckles_fade_out):
+              test_freckles_no_repeat_and_sun, test_patchy_is_missing_hair_and_freckles_fade_out, test_base_map_pores_by_zone_and_per_pixel):
         t()
         print("ok", t.__name__)

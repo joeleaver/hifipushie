@@ -529,3 +529,57 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   fskinm's bands vs Tess's photo (.39/.43/.47 at 0.35/0.7/1.4 mm; ours .18/.16/.16); (2) Garrett per the note above;
   (3) grey hairs translucent; (4) trimmed lines crisp, beard field grainy not a pad; (5) evening/everyday shadow along
   the crease (the everyday lid still has a sooty band mid-lid). Tess's natural look must stay as sk3_14 "now" or better.
+- skin4 (2026-10-10, "skin4" agent, branch worktree-agent-a2deeee2ab87a2d79; sheets `skin_renders/sk4_01..04` (01/02 =
+  round 1, 03/04 = round 2; blind letters, keys in /mnt/data/hifipushie/skin4/out/sheets_key*.json: Tess A = new,
+  B = before; Garrett r1 X g25 / Y g15 / Z g19, r2 X g26 / Y g15 / Z g25). Scratch /mnt/data/hifipushie/skin4/: run.sh
+  (this worktree), run_main.sh (main's src: before renders), base0.sh <tag> (Tess = ts_h13 + t5.json as sk4_t0: look_skin
+  face/cheek/mouth + fskinm vs her photo), lk2.py (face at 2x, Lanczos to 768: a camera's sharpness), refbands.py (skinm's
+  L/a bands on any photos), zvar.py (zone colour variance: std of Lab per skinm box after a 1.5 mm high-pass), genmap.py,
+  exp.py + nm.py (export_asset of the head stage, baked normal / colour on vs off), gshot.sh / g3q.sh (HEAD=sk2_g6),
+  g20..26.json, sheets.py / sheets2.py.
+  (1) BASE SKIN MAP. skin_marks.base_map: a unique map on the head's own surface (the freckle map's sphere wrap, 0.08 mm
+      a pixel, ~4000 x 2400, ~1 min, cached by key + BASE_VERSION). Built per PIXEL from 3D noise at each pixel's surface
+      point (R interpolated over the head mesh's outward vertices, `_pixel_points`), so scales are true mm anywhere:
+      r = relief (pores as pits from a KD-tree of pores scattered by zone: PORE_ZONES nose 240/cm2 r .16 mm, medial
+      cheek 170 / .13, forehead 120 / .09, chin 150 / .11, rest 60 / .07, few off the face's front, none on lips, few on
+      lids; a 0.8 mm cell net of skin lines; a 0.6-1.2 mm undulation), g = blood (0.5 even; 2.5 / 1.3 / 0.8 mm fbm,
+      stronger mid-face, threads beside the alae, calm round the mouth: blotches there read as a beard shadow on a
+      woman), b = melanin (3.5 / 1.4 mm). Fades to even toward the map's edges (no seam) and, for relief, where the
+      wrap's ray grazes the surface (nose sides: one pixel spans a strip there, streaks); colour only half-fades there.
+      Layers (skin._build, faces only, per pixel): mottle_map_red (g up), mottle_map_pigment (b up), mottle_map_light
+      (g or b down, one layer: the complexion's mean kept; pigment one way only tanned Tess), micro_map (height, NOT
+      _detail: baked into the export's unique normal map). Strength x sqrt(variation) / sqrt(detail): tuned on Tess
+      (.6 / .45); linear, Garrett's 1.3 / 1.8 read as sandpaper. Tiling micro_pores' cavity tint 0.65 -> 0.3 on faces
+      with the map (its dark dots were the "dirt"). Shader budget test 37 -> 41 (4 layers). skin.VERSION 5.
+      Measures (Tess, face view 0.254 mm/px, before -> after): L bands 0.35 / 0.7 / 1.4 mm .18/.155/.16 -> .23/.27/.30
+      (photo .39/.43/.47); a .15/.09/.10 -> .18/.17/.19 (photo .18/.10/.15); zone colours within 1 L of before; zone
+      variance (< 3 mm, mean over 6 boxes) L .78 -> 1.07 (photo 1.07), a .37 -> .62 (photo .45), b .42 -> .52 (.48).
+      FINDINGS: (a) the 0.35 mm band is capped by the renderer: EEVEE's 1.5 px filter + mipmaps; the same scene at 2x
+      then Lanczos gives .33/.34/.34. (b) Real CC photos (ref_19/34/35/42/07) read L .3-1.0 and a .16-.6 at these bands:
+      Tess's photo is a smooth one; matching it is a floor, not a ceiling. (c) Relief barely moves L under the soft
+      light (relief 0 vs .15 mm: +.02) but dominates under a key light (Garrett's shot): tune relief on a key-lit view.
+      (d) The first "lost sheen" scare was the albedo mottle hiding the highlight's gradient, not the specular; and
+      look_skin's stage cache is keyed on spec + code, not env vars: env toggles need a code change to resync.
+      (e) The map's cache key does not see code edits: bump BASE_VERSION on every change (I lost 8 iterations to it).
+      EXPORT: head stage at 2048 (0.31 mm/texel) bakes it: base colour changes on 77 % of texels; normal map tilt from
+      the relief rms 0.7 deg, p99 3.3 deg (earlier depth; now lower on Tess). Pores (sub-texel) don't survive at 2048;
+      the tiling detail maps still ship them. 4096 OOM-killed at the 12 G cap: CAP=20G.
+  (2) GARRETT stubble, A/B by eye vs his concept (front through the photo camera) and the blind reads: g20 (skin3's
+      g16-like: shadow .45, cheek_line 0, grey .5) and g24 (.7) too faint; g25 (.9, length 2.5 mm, grey .55) rank 3 of 3;
+      g26 (shadow 1.0, grey .55, length 2.5 mm, cheeks .9, cheek_line 0, neckline .3, #3a342f) ranked 1st in the round 2
+      read (2.5 vs g15's 2.0: "Y's density, X's softness"). Recommended = /mnt/data/hifipushie/skin4/g26.json, not
+      written into any spec.
+  (3) GREY HAIRS: share weighted to the chin (0.6 + 0.8 x a chin gaussian, normalised so the overall share = grey),
+      colour #c8c0b2 at .8 (was #d9d4cb .95). skin_marks.VERSION 22. Read: no longer chalky but now hardly visible: "small
+      bright slightly shiny specks over a grey-blue shadow of the dark roots" is what's missing (the cast has no chroma:
+      skin3's round 1 note).
+  Blind reads (fresh agents, sheet + refs ref_19/34/25/28): round 1 (sk4_01/02): Tess new 2.5 vs before 3 ("uniform
+  dark speckle from scalp to chin = dirt", "pale band beside the nose's wing", blotchy cheek); Garrett g25 2, g15 2.5,
+  g19 1.5. Fixed: pores off the face's front, finest mottle (0.5-0.7 mm) dropped, colour -15 %, half-fade at grazing.
+  Round 2 (sk4_03/04): Tess new 2.5 vs before 2 (before = "plastic, waxy, pockmark decal"; new = closer to her photo,
+  but "grey-brown haze, sallow"); the nose-side seam is in BOTH (not the map's: lighting / zones); Garrett g26 1st.
+  HANDOVER (skin4 -> next): (1) pores still read as dark dots: drop the tiling micro_pores' colour on faces (shading
+  only, 0.3 -> 0) and test; then a key-lit Tess view for relief; (2) colour zoning per the reads (pink nose tip /
+  nostrils / chin, cooler under-eye, less peach; Garrett olive-ruddy, darker lower face) - the zone layers exist,
+  their strength reads low; (3) lips read as lipstick decals on both heads (flat fill, hard border) in every read;
+  (4) grey stubble: bright specular tips + a chroma'd grey-blue root shadow; (5) the nose-side seam on Tess.
