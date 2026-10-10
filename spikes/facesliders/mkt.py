@@ -12,6 +12,20 @@ sp = json.loads((store.HOME / src / "spec.json").read_text())
 sp = sp.get("spec", sp)
 hb = json.loads((store.HOME / head / "spec.json").read_text())
 sp["base"] = hb.get("spec", hb)["base"]
+
+
+def strip(o):   # (the tess branch's curtain "along" key: not on main yet; its default is what main does)
+    if isinstance(o, dict):
+        if isinstance(o.get("curtain"), dict):
+            o["curtain"].pop("along", None)
+        for v in o.values():
+            strip(v)
+    elif isinstance(o, list):
+        for v in o:
+            strip(v)
+
+
+strip(sp.get("hair"))
 d = store.HOME / dst
 d.mkdir(exist_ok=True)
 (d / "spec.json").write_text(json.dumps(sp, indent=1))

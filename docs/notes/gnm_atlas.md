@@ -121,3 +121,15 @@ the identity at -2 sd of eye_tilt reads ~1 deg on the clay where the concept rea
 deg, went to the lid pose). GNM's tilt moves the wrong corner points (the fissure's ends as the detector sees them stay).
 Decision (coordinator): a missing control, noted; a coupled-plus-residual tilt slider (the identity direction + the
 local canthal_tilt morph that turns the fissure on the ball) comes later, not now.
+
+## Traced contours (2026-10-09, traces.py; fs_traces_g / fs_traces_t)
+
+The edge snap is dropped. Contours traced by eye on 4-10 px grids (gridimg.py), only where there is an edge: Garrett's
+front cheeks against the ears and the jaw's underside + chin (a strong shadow edge); below the lobes the outer edge
+is the NECK, not the jaw (the snap had used it: the narrow-chin / square-jaw errors). Uncertain segments stored
+with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft chin line, the desk jaw).
+- Garrett fs_gj6 (face_lean / cheek_hollow nearly free, FREE_AGE): prior 74 -> 19 (edge snap 44), max |c| 2.02,
+  ramus +0.74, cranium width -1.28, chin width -0.93 sd; face_lean at its 1.5 limit + cheek_hollow 1.21 carry the
+  leanness (age / soft tissue). Lean and long now, closest of the joint runs to the concept (fs_19 sheet).
+- Tess fs_tj4 (traced) vs fs_tj2 (no outline): views 0.33/0.37/1.60 vs 0.30/0.33/1.71, prior 37.5 vs 17, jaw_square
+  +1.7, jaw / chin width +1.25: heavier, more masculine by eye (fs_20). tj2 stays her candidate.
