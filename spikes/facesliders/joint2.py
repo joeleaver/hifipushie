@@ -37,7 +37,7 @@ SLIDER_W = 1.0
 ROUNDS = 3
 INNER = 5
 BIG = 0.5           # a residual slider past this (its own units ~ 1 population spread) is flagged
-RES = ("brow_lateral", "eye_hood", "eye_hood_lateral", "eye_platform", "eye_sulcus", "eye_bag", "eye_tear_trough",
+RES = ("brow_lateral", "eye_sulcus", "eye_bag", "eye_tear_trough",   # (eye_hood / _lateral / eye_platform: lidfold owns the fold)
        "lip_tubercle", "mouth_corner", "lip_lower_width", "tip_definition", "nose_dorsum_hump")
 # the ageing ops that are local morphs too (no attribute of GNM's: not coupled), solved as residuals where the
 # evidence sees them (the outline: cheek hollow, lean, cheek flat, prejowl); one-sided (their negative is no youth)

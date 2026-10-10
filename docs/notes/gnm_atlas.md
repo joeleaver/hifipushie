@@ -222,3 +222,16 @@ with an "x_" prefix and never used (temples under hair, the ramus, Tess's soft c
   +0.10, points 0.32 / 0.38 / 2.28 (as tj12). As built the mouth extensions are too small to matter: the limit is the
   lip border's topology, not the data. Next for them: move the border's rows together (a field smooth ALONG the
   border, sheared nowhere across it), or carry onto GNM's lip groups by a lip-local parametrisation.
+
+## The lower lip's width: two definitions, reconciled (2026-10-09)
+
+- tess's youth.py: the width of the red along a horizontal cut 40% of the way down the lower vermilion (from the
+  stomion), over the mouth's width: Tess's photo 0.40, ours 0.82. It reads the lower lip's SHAPE in depth too:
+  a lip whose border curves up early (a cushion) is narrow at that cut even if its red reaches the corners.
+- likeness lower_lip_width (facesliders): the lateral extent where the lower lip is thicker than half its middle
+  thickness, over the mouth's width, read on the detector's lip contour (photo and clay alike): photo 0.70, tj12 0.71.
+- They measure different things and both can be right: the detector's outline (11 points per border) says her red
+  runs as far as ours at half thickness; youth.py's cut says the lower border rises faster than ours below the middle,
+  i.e. a rounder, fuller central pad. That is the lip's form in depth and its shading (the "poutier"), which the
+  outline can't see and the lip-shading reader (next, after the eyes) should. Neither number is wrong; neither is
+  the lower lip's width alone. The 0.40 vs 0.82 should be read as "cushion shape", the 0.70 vs 0.71 as "red extent".
