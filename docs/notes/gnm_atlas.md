@@ -856,3 +856,51 @@ embedding between the -1 and +1 renders (SFace; ArcFace agrees: r 0.98 over the 
   needs re-estimating (its variances per comp at least, from ICT and then FRLL), and the fine comps (incl. 120-169)
   enter with ICT's variances. The perceptual numbers say the same thing from the other side: those comps carry the
   most identity per mm.
+
+### M2 groundwork: the nose's regional basis from ICT's residual (spikes/facesliders/regbasis.py)
+- ICT's 100 carried modes minus GNM's MAP of each (noise 0.3 mm, over the face), under the nose's 8 mm window, PCA:
+  modes 0-7 take 0.17, 0.10, 0.07, 0.07, 0.05, 0.04, 0.04, 0.03 of the residual variance (flat: no few dominant modes);
+  at 1 sd they are SMALL: 0.11-0.26 mm rms over the nose (max 0.26-0.76 mm); curvature at 2 sd p99 35-165 /m, max
+  69-542 /m (mode 0 rough); face-ID at +-2 sd 0.019-0.111 (mode 0 0.111, 1 0.073, 3 0.051, 2 0.047).
+- They are NOT the MakeHuman handles: the first 8 modes span 0.02-0.23 of each mh_nose field (width2 0.23, point 0.20,
+  greek / point_width 0.16, hump 0.05, nostrils_width 0.05).
+- Sheet human_renders/f4_11_regbasis_nose.png (modes at -2 / +2 sd, mean head and Tess, front and 3/4): at full-face
+  framing the modes are barely visible: BLUNT: as built this is not yet a usable nose basis. Two readings, not yet
+  separated: (a) ICT's residual is partly scan / registration noise (the rough mode 0, the flat spectrum: the scan-noise
+  question stays OPEN until M4), (b) GNM's MAP at noise 0.3 mm took most of the nose's real variation into the identity
+  (comps 120-169 included), leaving the residual small. With GNM's prior re-estimated (M3) the split changes: build the
+  regional bases AFTER M3, from the joint covariance, not before it.
+
+### HANDOVER (faces4, 2026-10-10)
+Branch worktree-agent-ae8416dd464de8345 (commits 6f480e2 .. this one; NOT merged: the coordinator keeps the interim
+mh_nose_* sliders off main until M2 replaces them). Scratch /mnt/data/hifipushie/faces4 (run.sh = this worktree, capped,
+1 BLAS thread; tests.sh; strips.sh <model> <feature> <tag> <sliders...> (clay -1/0/+1 strips via strip.py);
+survey.py / nosediag.py / noseprofile.py / ncurv.py / wall.py / build4.py (extension carry, folds, profile, curvature,
+build); ictrigid.py; fetch_m1.py / addassets.py (asset packs)). Spikes in the repo: spikes/facesliders/perc.py
+(perceptual effect: `run.sh perc.py calib|identity|expression|sliders|ext`), salience.py (region weights), ictreg.py
+(ICT -> GNM; `report` re-prints), ictlook.py (carried vs ICT's own), regbasis.py <region> [k].
+Data: out/ict_modes.npz (100 carried modes), out/perc/*.json|txt, out/regbasis_nose.npz. Asset packs ictfacekit / frll
+(optional) on /mnt/data/hifipushie/assets, symlinked from workspace/_templates. /mnt/data is UNDER the 20 GB floor:
+add nothing large.
+State of the design (section "faces4: the coherent model", 0-7, + M0 / M0b / M1 results above): accepted by the
+coordinator through M1.
+Next, in order:
+1. M3 first (reordered from the plan, see above): the joint prior. GNM's block re-estimated: per-component variances
+   (and the cross-covariance) from ICT's carried modes (ictrigid.py computes ICT's covariance in GNM's whitened
+   coordinates: C = G^-1 B Y^T), the similarity removed, 170 comps. Keep ICT's fine variance flagged "may be scan noise"
+   until M4. Judge: random faces from the new prior vs GNM's (renders, perc spread), and what the extensions / our fits
+   cost under it (are the 2.5 sd walls still hit?).
+2. Then M2 for real: regional bases from the joint covariance's residual (regbasis.py's machinery), ordered by variance x
+   ID effect, gates (fold, curvature < 70 /m at 2 sd, strips at FEATURE crops, not full face).
+3. Missing tool (coordinator: on the M2 list): a CLOSE-UP identity measure for the eye region and the mouth region
+   (lids, lip borders: the 112 px face embedding can't see them). Candidates to check (licence first): a periocular
+   recognition model, or the face embedding run on an up-scaled eye / mouth crop (validate: does it separate different
+   GNM heads' eyes and stay stable under a 0.5 deg turn?).
+4. M4: the London Set (frll pack, photos on /mnt/data only): fit 20-30 faces (5 views) in the new space; decides how
+   much of ICT's fine variance is real; empirical-Bayes variances.
+5. Then M5 (one solve on Tess / Garrett), M6 (controls as directions), M7 (style), as in the design.
+Known interim items: test_faceext's nose orthogonality tolerance 0.2 (INTERIM: M2 / M3 must restore 0.1 or carry it in
+the prior); mouth extensions still on the hard mask (WINDOW_MOUTH 0: windowed, the projection reaches into the corner
+hold; put the hold after the projection); the 14 mh_nose_* fields are interim handles (duplicates: nostrils_width ~
+width3 0.76, point_width ~ volume 0.64, septum ~ nostrils_angle 0.69); salience caveats (drawn brows inflate the brows,
+clay under-weights the lips, lids below the embedding's resolution).
