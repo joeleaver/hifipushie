@@ -100,7 +100,12 @@ def test_start_step_table_log_and_registration():
         pd1 = next(r for r in bi.table(b)["eye placement"] if r["id"] == "pupil_distance")
         assert pd1["model"] > pd["model"] * 1.1, (pd, pd1)   # head_scale really scales the one mesh's head
         assert "chin short" in json.dumps(bi.log(b))
-        bi.step(a, {"jaw_width": 0.3}, out=c)
+        r2 = bi.step(a, {"jaw_width": 0.3, "shape:age_nasolabial": 0.5, "shape:lips_thin": 0.2}, out=c)
+        hc = store.load(c)["base"]["head"]
+        assert hc["sliders"]["age_nasolabial"] == 0.5 and hc["shape"]["lips_thin"] == 0.2
+        assert "DESIGNED" in bi.step_text(r2) and r2["entry"]["designed"] == ["shape:age_nasolabial", "shape:lips_thin"]
+        with pytest.raises(ValueError, match="shape: one of"):
+            bi.step(a, {"shape:nose_width": 1}, out="bi_test_never")
         lg = bi.log(c)
         assert [x["to"] for x in lg] == [a, b, c] and "reverted" in lg[1]
         assert "items that changed" in bi.step_text(rep) or rep["delta"] == []
@@ -230,3 +235,27 @@ def test_neck_double_and_lens_prior():
     assert f == pytest.approx(24 / 43.27 * 2560.0, rel=1e-3) and sd < 0.1
     f0, sd0 = humanfit_map.lens_prior({"size": [1536, 2048]})
     assert f0 == pytest.approx(humanfit_map.LENS[0] / 36.0 * 1536) and sd0 == humanfit_map.LENS[1]
+
+
+def test_region_pcs():
+    """pc:<GNM region><i>: GNM's own principal directions of a region (nose PC0 = a higher, projecting bridge)."""
+    V = bi.region_pcs("nose_region")
+    assert V.shape == (8, 170) and np.allclose(V @ V.T, np.eye(8), atol=1e-6)
+    r0, r1 = bi._macro_read(np.zeros(170)), bi._macro_read(bi.direction("pc:nose_region0"))
+    assert r1["bridge_height"] - r0["bridge_height"] > 0.5 and r1["nose_projection"] - r0["nose_projection"] > 0.5
+    assert abs(r1["head_size"] - r0["head_size"]) < 0.02   # size kept
+    with pytest.raises(ValueError, match="no GNM region"):
+        bi.direction("pc:elbow0")
+
+
+@need_ref
+def test_eye_readers():
+    """blockin_eyes.Reader on the shipped head: lid margins near the render-based lid_read, a crease profile read; the
+    solve's expression keys are GNM's eye-region pairs."""
+    from hifipushie import blockin_eyes as be, onemesh
+    b = store.load(REF)["base"]
+    ht = onemesh.head_template(b)
+    q = be.Reader(ht).read(ht)
+    assert -1 < q["up"] < 2 and 0 < q["lo"] < 2 and np.isfinite(q["hsoft"]) and q["r_iris_mm"] > 5   # (fs_ge3: its lid pose puts the upper lid past the pole)
+    Ln, Rn, names = be._names()
+    assert Ln[0] in names and Rn[0] in names and len(Ln) == be.NE

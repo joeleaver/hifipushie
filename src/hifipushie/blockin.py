@@ -52,7 +52,11 @@ GROUPS = {
 }
 # items whose reading is not the anatomy their name says: shown, not counted (brow_eye was dropped: it reads GNM's brow
 # landmarks, not the person's hair brows)
-FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion"}
+FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion",
+           # (blockin2, Garrett: a held nose_width -1.0 moved the alae 3.4 mm and this row < 0.45 mm; MediaPipe's alar
+           # points sit on the cheek past the alae on picture and clay alike)
+           "alar_width": "reads MediaPipe's alar points, which sit on the cheek past the alae (blind to the alae)",
+           "mouth_over_alar": "its alar width is MediaPipe's (on the cheek past the alae)"}
 
 BODY_KEYS = ("weight", "neck_double", "neck_depth")
 HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes", "eye_radius": "eye_radius"}
@@ -62,9 +66,15 @@ POSE_KEYS = ("lid_upper", "lid_lower")
 # LOCAL residuals (what GNM's identity can't draw: a confirmed capability gap), as faceslide's local sliders, SET, with
 # the population sd ICT's scans give them beyond GNM's identity (faces5 regbasis2_nose's 8 leading modes projected on
 # each field, blockin/radix.py): the radix width varies 0.09 units (~0.13 mm) past GNM: a real but near-invisible gap
+# designed (hand-authored, not data-backed) soft-tissue / age ops a block-in step may SET: faceslide's age sliders (units:
+# +1 = the op's unit amount, faceslide.UNITS: age_nasolabial 2 mm crease, cheek_hollow 4 mm ...) and headage's ops
+# without a slider (base.head.shape: m, or a share for lips_thin)
+SHAPE_MOVES = ("age_nasolabial", "age_prejowl", "age_cheek_flat", "age_lid_fold", "face_planes", "face_lean",
+               "cheek_hollow", "eye_bag", "lip_bow", "lip_roll", "lips_thin")
 LOCAL_SD = {"nose_radix_width": 0.09, "nose_tip_width": 0.18, "nose_dorsum_width": 0.12}
 STRIP = ("sliders", "warp", "fold", "pose", "shape", "seed", "spread", "features", "expression", "habitual")
 SQUINT_MM = 9.0
+LIGHT = "sh"            # the sheets' light: "sh" (2nd-order spherical harmonics fitted on the skin) | "linear" (c0 + w.n, AO, shadow)
 FILL = 0.45             # display fill: the clay's shadow side lifted to this share of the lit skin's median
 HAIR_RGB = np.array([62.0, 46.0, 36.0])
 BROWS_R = ([70, 63, 105, 66, 107], [46, 53, 52, 65, 55])
@@ -112,8 +122,10 @@ def vocabulary() -> str:
     from . import humanmacro as hm
     return ("macros (free, size kept; append ! for held, ~ for the raw coupling incl. size): " + ", ".join(hm.NAMES) + "\ngaps: " + ", ".join("nd:" + n for n in gap_names())
             + "\nsex, eth0, eth1, eth2; base keys (set): weight, dimorphism, gnm_base, head_scale; lids (set, m): "
-            "lid_upper, lid_lower; local residuals (set): local:<faceslide slider>, e.g. "
-            + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items()))
+            "lid_upper, lid_lower, eye_radius; DESIGNED age ops (set, not data): "
+            + ", ".join("shape:" + k for k in SHAPE_MOVES) + "; local residuals (set): local:<faceslide slider>, e.g. "
+            + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items())
+            + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7")
 
 
 def _size_row() -> np.ndarray:
@@ -133,6 +145,28 @@ def keep_size(d: np.ndarray) -> np.ndarray:
     d = np.asarray(d, float).copy()
     d[:hm.K] -= a * (a @ d[:hm.K]) / (a @ a)
     return d
+
+
+_PCS: dict = {}
+
+
+def region_pcs(region: str, n: int = 8) -> np.ndarray:
+    """GNM's OWN principal directions for one region (a GNM vertex group: nose_region, ...): the right singular vectors
+    of the identity basis restricted to the region's vertices, i.e. the coefficient directions (unit |c| = 1 population
+    sd, the coefficients being unit variance) that move that region most; the rest of the head moves as GNM couples it.
+    Sign: + moves the region forward (out of the face) on average. (n, 170)."""
+    if region not in _PCS:
+        from . import base as basemod
+        g = basemod._gnm_data()
+        if region not in g["groups"]:
+            raise ValueError(f"pc: no GNM region {region!r} (one of {', '.join(sorted(g['groups']))})")
+        msk = np.asarray(g["groups"][region]) > 0.5
+        B = np.asarray(g["vertex_identity_basis"], float)[:170, msk, :]    # (170, V_region, 3)
+        _, S, Vt = np.linalg.svd(B.reshape(170, -1).T, full_matrices=False)
+        fwd = B[:, :, 2].mean(1)                                           # GNM faces +Z
+        Vt = Vt[:n] * np.sign(Vt[:n] @ fwd + 1e-30)[:, None]
+        _PCS[region] = Vt
+    return _PCS[region]
 
 
 def direction(name: str) -> np.ndarray:
@@ -165,6 +199,9 @@ def direction(name: str) -> np.ndarray:
         k = int(name[-1])
         if k < D["eth_dirs"].shape[1]:
             return keep_size(np.asarray(D["eth_dirs"][:, k], float) * float(D["eth_sd"][k]))
+    if name.startswith("pc:"):
+        reg, k = name[3:].rstrip("0123456789"), name[3:][len(name[3:].rstrip("0123456789")):]
+        return keep_size(region_pcs(reg)[int(k or 0)])
     raise ValueError(f"block-in: no direction {name!r}. Vocabulary:\n{vocabulary()}")
 
 
@@ -314,17 +351,17 @@ def _boxes(base: dict, rj: dict) -> list:
 
 
 def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str = "",
-         cameras: list | None = None, feature: str | None = None) -> dict:
+         cameras: list | None = None, feature: str | None = None, _identity=None, _head_set: dict | None = None) -> dict:
     """<out> = <src> moved: directions add (amount x direction), base keys and lids are SET. Logged with what was seen
     and why. cameras = view indices to refit on the result head (camera only). Returns the report (see step_text)."""
     from . import store
-    if not moves and not cameras:
+    if not moves and not cameras and _identity is None and not _head_set:
         raise ValueError("block_in_step: no moves. Vocabulary:\n" + vocabulary())
     sp = copy.deepcopy(store.load(src))
     rj = _refs(src)
     c0 = identity(sp)
     c = c0.copy()
-    big = []
+    big, designed = [], []
     for k, v in (moves or {}).items():
         v = float(v)
         if k in BODY_KEYS:
@@ -335,6 +372,18 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"].setdefault("style", {}).setdefault("human", {})["head_size"] = v
         elif k in POSE_KEYS:
             sp["base"]["head"].setdefault("pose", {})[k] = v
+        elif k.startswith("shape:"):   # DESIGNED soft-tissue ops (age): not data; flagged in the log and reply
+            from . import faceslide, headage
+            nm = k[6:]
+            if nm not in SHAPE_MOVES:
+                raise ValueError(f"shape: one of {', '.join(SHAPE_MOVES)} (designed ops: faceslide's age sliders in "
+                                 "their units, headage's ops in m / share)")
+            if nm in faceslide.AGE_SLIDERS:
+                sp["base"]["head"].setdefault("sliders", {})[nm] = v
+            else:
+                assert nm in headage.KEYS
+                sp["base"]["head"].setdefault("shape", {})[nm] = v
+            designed.append(k)
         elif k.startswith("local:"):
             from . import faceslide
             nm = k[6:]
@@ -347,6 +396,13 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             c = c + v * direction(k)
             if abs(v) > 1.0:
                 big.append(k)
+    if _identity is not None:   # (solved steps: blockin_eyes.eye_step) the identity given, head keys set / cleared
+        c = np.asarray(_identity, float)
+    for k, v in (_head_set or {}).items():
+        if v is None:
+            sp["base"]["head"].pop(k, None)
+        else:
+            sp["base"]["head"][k] = v
     set_identity(sp, c)
     out = out or _next_name(src)
     if (store.HOME / out / "spec.json").exists():
@@ -389,7 +445,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     if feature and feature not in FEATURES:
         raise ValueError(f"feature: one of {', '.join(FEATURES)}")
     entry = {"round": rnd, "from": src, "to": out, "moves": moves, "cameras": cameras, "camera_moves": cam_moves,
-             "feature": feature, "seen": seen, "why": why,
+             "feature": feature, "seen": seen, "why": why, **({"designed": designed} if designed else {}),
              "c_norm": round(float(np.linalg.norm(c)), 3), "read": read,
              "coupled": [[k, round(float(x), 2)] for k, x in moved],
              "passes": passes(t1), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -415,6 +471,9 @@ def step_text(rep: dict) -> str:
     if rep["big"]:
         s.append(f"WARNING: {', '.join(rep['big'])}: more than 1 sd (a local: 2.5 of its population sd) in one step: the "
                  "method takes small steps (0.3-0.7)")
+    if e.get("designed"):
+        s.append(f"DESIGNED (not data): {', '.join(e['designed'])}: hand-authored soft-tissue ops (sizes chosen by eye, "
+                 "not learnt from people); judge them zoomed in under the raking light against the pictures")
     if e.get("feature_passes"):
         s.append(f"ZOOM IN, {e['feature']}'s own checklist rows: {e['feature_passes'][0]} -> {e['feature_passes'][1]} pass")
     s.append("ZOOM OUT, targets before -> after: " + ", ".join(f"{g} {rep['before'].get(g, '-')} -> {p}" for g, p in e["passes"].items()))
@@ -846,6 +905,23 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
         mask = ps["part"] == 0
     c0, w, _ = ls.fit_light(Y, ps["nrm"], mask)
     lt = (c0, w, float(np.median(Y[mask])), 1.0)
+    if LIGHT == "sh":   # ambient + key + fill / bounce: the c0 + w.n light put the nose's base at black (Garrett:
+        # the band under the nose 0.19-0.34 of the tip's light, his picture 0.6-0.7; SH 0.66)
+        _, _, p1 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True)
+        m1 = mask & (p1["part"] == 0) & (np.linalg.norm(p1["nrm"], axis=-1) > 0.5)
+        X = likeness.sh9(p1["nrm"][m1]) * p1["ao"][m1][:, None]
+        use = np.ones(len(X), bool)
+        a = np.zeros(9)
+        for _ in range(4):
+            if use.sum() < 50:
+                break
+            a = np.linalg.lstsq(X[use], Y[m1][use], rcond=None)[0]
+            r = Y[m1] - X @ a
+            use = np.abs(r) < 2.5 * r[use].std()
+        if np.all(np.isfinite(a)) and use.sum() >= 50:
+            lt = (c0, w, float(np.median(Y[mask])), 1.0, a)
+            im, k, ps = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, light=lt)
+            return im, lt, ps
     _, _, p2 = likeness.render(mesh, cam, box, px=px, brows=False, passes=True, ao=True, shadow=soft, light=lt)
     dn = p2["nrm"] @ np.asarray(w, float)
     m2 = mask & (p2["part"] == 0)
