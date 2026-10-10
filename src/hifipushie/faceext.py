@@ -217,7 +217,7 @@ def cheap_basis(region: np.ndarray) -> tuple:
     return Vt[keep], S[keep], sk[on]
 
 
-def minus_probable(d: np.ndarray, region: np.ndarray) -> tuple:
+def minus_probable(d: np.ndarray, region: np.ndarray, window: float | None = None) -> tuple:
     """(the target with its components along the identity's CHEAP directions over its region removed, the share
     removed, the number of such directions). GNM's 120 components can reproduce these local targets almost exactly
     (0.87-0.94) but only at 46-124 sigmas (spikes/facesliders/extcost.py): expressible, not probable. Projecting all
@@ -225,12 +225,42 @@ def minus_probable(d: np.ndarray, region: np.ndarray) -> tuple:
     (directions moving the region >= CHEAP a sigma) leaves the extension what the population would not do: the
     solve then chooses between the identity (with its couplings) and the residual (local), and the two never
     double count (the extension is exactly orthogonal to the cheap directions)."""
+    win = WINDOW if window is None else window
+    if win > 0:   # (faces4) the projection under a smooth window: the hard mask put a step where it ended
+        w = _window(region, win)
+        V, S, rows = cheap_basis(w > 0)
+        y = d[rows].ravel()
+        made = (V.T @ (V @ y)).reshape(-1, 3) * w[rows, None]
+        out = d.copy()
+        out[rows] -= made
+        return out, float(np.linalg.norm(made) / max(np.linalg.norm(y), 1e-15)), int(len(S))
     V, S, rows = cheap_basis(region)
     y = d[rows].ravel()
     made = V.T @ (V @ y)
     out = np.zeros_like(d)
     out[rows] = (y - made).reshape(-1, 3)
     return out, float(np.linalg.norm(made) / max(np.linalg.norm(y), 1e-15)), int(len(S))
+
+
+WINDOW = float(os.environ.get("HIFIPUSHIE_EXT_WINDOW", "0.012"))   # m: the region's soft edge (0 = the old hard
+# mask). faces4 (ncurv.py, curvature change on visible skin at +1, max / p99 1/m): hard mask -> 12 mm: curve 105 / 21 ->
+# 40 / 13, greek 106 / 21 -> 24 / 7, width3 220 / 70 -> 78 / 20, nostrils_width 144 / 50 -> 85 / 14; the strips' dorsum
+# step (curve +1) and nasion notch (greek -1) gone. The mouth's keep the hard mask (WINDOW_MOUTH): windowed, the
+# projection reaches into the corner hold and folds volume / middle at 0.4-0.7 (to redo with the hold after it).
+WINDOW_MOUTH = 0.0
+
+
+def _window(region: np.ndarray, width: float) -> np.ndarray:
+    """(n,) 1 on the region's exterior skin, easing (smoothstep) to 0 at `width` from it, 0 elsewhere."""
+    from scipy.spatial import cKDTree
+    from . import base as basemod
+    g = basemod._gnm_data()
+    X = np.asarray(g["template_vertex_positions"], float)
+    ext = np.asarray(g["groups"]["skin_exterior"], float) > 0.5
+    reg = region[:len(X)] & ext
+    dist = cKDTree(X[reg]).query(X)[0]
+    x = np.clip(1.0 - dist / width, 0.0, 1.0)
+    return np.where(ext, x * x * (3 - 2 * x), 0.0)
 
 
 def _turned(D) -> int:
@@ -333,11 +363,20 @@ def field(k: str) -> tuple:
             d = hold_rolls(d)
         m = np.linalg.norm(d, axis=1)
         reg = m > REGION * m.max()
-        d, share, cn = minus_probable(d, reg)
+        win = WINDOW_MOUTH if grp == "mouth" else WINDOW
+        d, share, cn = minus_probable(d, reg, win)
         n = len(d)
-        for it in range(3 if HOLD_CREASES else 1):
-            if it:   # the holds put back a little of what the cheap directions make: alternate (3 rounds: < 3%)
-                d = minus_probable(d[:n], reg)[0]
+        rimhold = None
+        if grp == "nose":   # (faces4) the lids' rims stay put (the hump's field reaches the inner canthi)
+            from scipy.spatial import cKDTree
+            dr = cKDTree(T["X"][T["rim"]]).query(T["X"])[0]
+            x = np.clip((dr - 0.002) / 0.006, 0.0, 1.0)
+            rimhold = (x * x * (3 - 2 * x))[:, None]
+        rounds = (6 if win > 0 else 3) if HOLD_CREASES else 1
+        for it in range(rounds):
+            if it:   # the holds put back a little of what the cheap directions make: alternate (3 rounds: < 3%;
+                # windowed: 6)
+                d = minus_probable(d[:n], reg, win)[0]
             if grp == "mouth" and HOLD_ROLLS:
                 d = hold_rolls(d)
             elif grp != "mouth":   # (the nostrils' insides, the lids' backs: carried with their rims)
@@ -346,6 +385,9 @@ def field(k: str) -> tuple:
             d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
             if HOLD_CREASES:
                 d = hold_creases(d)
+                d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
+            if rimhold is not None:
+                d = d * rimhold
                 d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
     return d, share, cn
 
@@ -385,7 +427,9 @@ def hold_creases(d: np.ndarray, sharp: float | None = None) -> np.ndarray:
         a = np.degrees(_pair_angle(X0, Q, pairs))
         cv = np.unique(Q[pairs[(a > sharp) & (a < 150)]].ravel())
         from scipy.spatial import cKDTree
-        _C[key] = (cv, cKDTree(X0).query_ball_point(X0[cv], CREASE_R))
+        from . import faceslide
+        sk = np.flatnonzero(faceslide.template()["skin"])   # (skin only: the balls behind the lids never move)
+        _C[key] = (cv, [sk[np.asarray(b, int)] for b in cKDTree(X0[sk]).query_ball_point(X0[cv], CREASE_R)])
     cv, near = _C[key]
     m = np.linalg.norm(d, axis=1)
     moving = np.flatnonzero(m[cv] > 1e-3 * max(m.max(), 1e-15))

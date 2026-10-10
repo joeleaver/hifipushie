@@ -31,7 +31,11 @@ def test_probable_identity_part_removed():
         m = np.linalg.norm(d, axis=1)
         V, S, rows = faceext.cheap_basis(m > faceext.REGION * m.max())
         y = d[rows].ravel()
-        assert np.linalg.norm(V @ y) < 0.1 * np.linalg.norm(y), (k, np.linalg.norm(V @ y) / np.linalg.norm(y))
+        # (the nose's: 0.2. The windowed projection (faces4: faceext.WINDOW, smooth edges instead of a step where a
+        # hard region mask ended) and the lid-rim hold leave up to 0.17 of the field along the cheap directions (the
+        # curve, nostrils_width). The joint prior of the coherent model (gnm_atlas.md, faces4 design) carries that correlation instead)
+        tol = 0.1 if faceext.EXT[k][0] == "mouth" else 0.2
+        assert np.linalg.norm(V @ y) < tol * np.linalg.norm(y), (k, np.linalg.norm(V @ y) / np.linalg.norm(y))
 
 
 def test_extensions_fold_nothing():
@@ -67,7 +71,9 @@ def test_extensions_are_local_and_symmetric():
             continue
         d = np.asarray(faceext.table()[k], float)
         assert np.abs(d - d[mi] * [-1.0, 1.0, 1.0]).max() < 1e-6, k
-        assert (np.linalg.norm(d, axis=1) > 2e-4).sum() < 0.1 * len(d), k
+        # (12% of the template: the windowed projection (faces4) eases each field out over 12 mm; MakeHuman's hump
+        # moves the whole upper nose and radix: 10.1%)
+        assert (np.linalg.norm(d, axis=1) > 2e-4).sum() < 0.12 * len(d), k
 
 
 def test_mouth_extensions_reach_a_millimetre():
@@ -88,3 +94,36 @@ def test_crease_hold_keeps_rigid_motions():
     w = np.array([0.01, -0.02, 0.015])
     d = np.array([3e-4, -1e-4, 2e-4]) + np.cross(w, X - X.mean(0))
     assert np.abs(faceext.hold_creases(d) - d).max() < 1e-9
+
+
+def test_extensions_bend_the_visible_skin_smoothly():
+    """faces4: the curvature change each extension makes on the visible exterior skin at +1 (|n . L d| / edge^2, the
+    mesh Laplacian over GNM's quads) stays smooth: its 99th percentile under 30 /m. The nose fields projected under a
+    HARD region mask put a step where the mask ended (the dorsum line at curve +1, a notch at the nasion at greek -1:
+    p99 21-70 /m, max up to 220); the windowed projection (faceext.WINDOW) took them to 3-26."""
+    if not _ok():
+        return
+    import scipy.sparse as sp
+    T = faceslide.template()
+    X, n = T["X"], T["n"]
+    Q = gnmloops.plan()["quads"]
+    e = np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]]
+    A = sp.coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), (len(X), len(X))).tocsr()
+    A = ((A + A.T) > 0).astype(float)
+    deg = np.maximum(np.asarray(A.sum(1)).ravel(), 1)
+    L = sp.diags(1 / deg) @ A - sp.eye(len(X))
+    r, c = A.nonzero()
+    l2 = np.zeros(len(X))
+    np.add.at(l2, r, ((X[r] - X[c]) ** 2).sum(1))
+    l2 /= deg
+    R = faceslide._lip_rings()
+    inner = np.zeros(len(X), bool)
+    for rr in R["rings"][:R["contact"] + 1]:
+        inner[rr] = True
+    vis = (n[:, 2] > 0.2) & ~inner & T["ext"]
+    for k in faceext.EXT:
+        if k not in faceext.table():
+            continue
+        d = np.asarray(faceext.table()[k], float)
+        kap = np.abs(np.einsum("ij,ij->i", L @ d, n))[vis] / np.maximum(l2[vis], 1e-12)
+        assert np.percentile(kap, 99) < 30.0, (k, np.percentile(kap, 99))
