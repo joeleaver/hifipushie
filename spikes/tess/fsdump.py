@@ -29,5 +29,5 @@ def spy(M, plan, limit=cloth.FINE_START_MAX, allow=None):
 
 
 cloth.fine_start_check = spy
-r = server.dress(name, garment=g, quality="final", wait=60, note=f"tess2: {g} fsdump")
+r = server.dress(name, garment=g, quality="final", wait=1200, note=f"tess2: {g} fsdump")
 print(r if isinstance(r, str) else "\n".join(x for x in r if isinstance(x, str))[:3000])

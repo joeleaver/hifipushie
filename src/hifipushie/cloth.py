@@ -42,6 +42,7 @@ SIM_NOISE = 0.06  # the strain a well-fitting garment shows in the sim (see buil
 HANGER_SKIN = 0.25  # the hanger's collision skin in triangle sizes (5 mm at 2 cm; 1 cm held a coat 4 cm up, bouncing)
 HOOK_GUARD = 0.4  # the hook's rod as the sim sees it: this many coarse triangle sizes thick (8 mm at 2 cm)
 SIM_MIN_FREE_GB = 20.0  # a cloth sim isn't started with less free disk (run_zozo.py also stops a run under 10 GB)
+SIM_MIN_FREE_GB_REMOTE = 2.0  # ... or a sim run remotely (only its job folder and result are written here)
 PREV_APART = 6  # frames between the sim's last positions and Vprev (the "still moving" measure)
 VERSION = 2  # bump with any change to the mesh, placement or sim job: results are cached by it
 
@@ -1390,7 +1391,11 @@ def _worn_levels(X: np.ndarray, B: dict, M: dict, body: "Body", torso: list, pcs
     slides = B.get("_worn_slides") or {}
     mean_sl = float(np.mean(list(slides.values()))) if slides else 0.0
     use = [nm for nm in torso if not pcs[nm]["wrap"].get("lies_on") and not _closed_girth(M, nm)
-           and not pcs[nm]["wrap"].get("pleats") and pcs[nm]["wrap"].get("to", "torso") == "torso"]
+           and not pcs[nm]["wrap"].get("pleats") and pcs[nm]["wrap"].get("to", "torso") == "torso"
+           and not pcs[nm]["wrap"].get("align")]
+    # (a band aligned to a point of the garment (wrap "align": a rib hem band round the hips) is laid round the body
+    # on its own: taken into the levels, Tess's jumper's hem band was laid level by level from its CB ends and its
+    # top row ran 14 cm round past the row under it at the 1 cm mesh: a 0.2 m triangle, "the start is broken")
     if not use:
         return X
     sl = {nm: slides.get(nm, mean_sl) for nm in use}
@@ -4258,8 +4263,11 @@ def _blender_job(job_dir: Path, cfg: dict, arrays: dict, name: str, log, progres
     import shutil
     job_dir.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(job_dir).free / 2**30
-    if free < SIM_MIN_FREE_GB:  # a full disk has stopped the machine before (solver sessions write every frame)
-        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {SIM_MIN_FREE_GB}): not started")
+    # (a job run elsewhere (a GPU box, the broker's fleet) writes only its few-MB folder and result here)
+    remote = backend != "blender" and bool(os.environ.get("HIFIPUSHIE_ZOZO_REMOTE") or os.environ.get("HIFIPUSHIE_GPU") == "bundle")
+    need = SIM_MIN_FREE_GB_REMOTE if remote else SIM_MIN_FREE_GB
+    if free < need:  # a full disk has stopped the machine before (solver sessions write every frame)
+        raise RuntimeError(f"cloth sim {name}: only {free:.1f} GB free on the disk (need {need}): not started")
     if backend != "blender":
         jd = cloth_job.write(job_dir / cfg.get("mode", "sim"), cfg, arrays, names)
         if backend == "zozo":

@@ -1,6 +1,6 @@
 """placedbg.py <model> <garment> [piece ...]: the place check's start (as the build places it), and per named piece
 its worst start stretch, where (pattern uv), its seam gaps to each partner, and its push off the body."""
-import sys
+import os, sys
 import numpy as np
 from hifipushie import cloth, cloth_workflow
 from hifipushie.cloth_zozo import _start_stretch
@@ -8,7 +8,7 @@ from hifipushie.cloth_zozo import _start_stretch
 name, g, pieces = sys.argv[1], sys.argv[2], sys.argv[3:]
 c = cloth_workflow.Ctx(name, g) if hasattr(cloth_workflow, "Ctx") else None
 Bp = c.Bp
-M = cloth.mesh(Bp, float(c.gx.get("coarse", 0.02)))
+M = cloth.mesh(Bp, float(os.environ.get("RES") or c.gx.get("coarse", 0.02)))
 smooth = cloth.placement_of(c.gx) == "smooth"
 body_p = c.body.straight_arms()[0] if smooth else c.body
 X = cloth.place(Bp, M, body_p, smooth=smooth)
