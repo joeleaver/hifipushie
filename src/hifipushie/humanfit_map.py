@@ -80,14 +80,36 @@ def detector_points(view: dict):
     return d
 
 
+def lens_prior(v: dict) -> tuple:
+    """(focal in px, relative sigma) for a view: its "lens_mm" (35 mm-film equivalent, the EXIF FocalLengthIn35mmFilm:
+    measured on the frame's DIAGONAL, so the picture must not be cropped; resizing is fine), else the image file's own
+    EXIF, else the portrait prior LENS. A phone's 24 mm at 27 cm is not a 70 mm portrait: with the portrait prior a
+    close phone photo's perspective (centre features big, the face's edges small) was fitted as shape."""
+    w, h = v["size"]
+    diag = float(np.hypot(w, h))
+    mm = v.get("lens_mm")
+    sd = 0.05
+    if mm is None and v.get("image"):
+        try:
+            from PIL import Image
+            ex = Image.open(v["image"]).getexif().get_ifd(0x8769)
+            mm = ex.get(41989)   # FocalLengthIn35mmFilm
+            sd = 0.08
+        except Exception:  # noqa: BLE001  (no file / no EXIF: the portrait prior)
+            mm = None
+    if mm:
+        return float(mm) / 43.27 * diag, sd
+    return LENS[0] / 36.0 * w, LENS[1]
+
+
 def _fit_cam(cam, X, uv, wt):
     from scipy.optimize import least_squares
     from . import humanfit
-    f0 = LENS[0] / 36.0 * cam["size"][0]
+    f0, fsd = cam.get("f_prior") or (LENS[0] / 36.0 * cam["size"][0], LENS[1])
 
     def res(p):
         c = {**cam, "r": p[:3], "t": p[3:6], "f": float(p[6])}
-        return np.r_[((humanfit.project(c, X) - uv) * wt[:, None]).ravel(), np.log(max(p[6], 1.0) / f0) / LENS[1]]
+        return np.r_[((humanfit.project(c, X) - uv) * wt[:, None]).ravel(), np.log(max(p[6], 1.0) / f0) / fsd]
     sol = least_squares(res, np.r_[cam["r"], cam["t"], cam["f"]], x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500.0], loss="soft_l1", f_scale=3.0)
     return {**cam, "r": [float(v) for v in sol.x[:3]], "t": [float(v) for v in sol.x[3:6]], "f": float(sol.x[6])}
 
@@ -201,11 +223,11 @@ def _resolve(st, views: list) -> list:
             cand = {**v, "yaw": sgn * abs(yaw), "_class": cls, "mp478": det}
             e = _evidence(st, [cand])[0]
             w_, h_ = cand["size"]
-            f0 = LENS[0] / 36.0 * w_
+            f0, fsd = lens_prior(cand)
             z0 = f0 * np.ptp(e["X"], axis=0).max() / max(np.ptp(e["uv"], axis=0).max(), 1.0)
             uc = e["uv"].mean(0)
             cam = {"r": [0.0, 0.0, 0.0], "t": [(uc[0] - w_ / 2) / f0 * z0, (uc[1] - h_ / 2) / f0 * z0, z0], "f": f0, "size": [w_, h_],
-                   "centre": st["L"][:68].mean(0).tolist(), "yaw": cand["yaw"]}
+                   "centre": st["L"][:68].mean(0).tolist(), "yaw": cand["yaw"], "f_prior": [f0, fsd]}
             cam = _fit_cam(cam, e["X"], e["uv"], (z0 / f0 * 1000) / e["sig"])
             r = float(np.sqrt((((humanfit.project(cam, e["X"]) - e["uv"]) * (cam["t"][2] / cam["f"] * 1000 / e["sig"])[:, None]) ** 2).mean()))
             if best is None or r < best[0]:
@@ -240,11 +262,11 @@ def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip) -> tupl
                 X = e["X"] + np.tensordot(c - c_lin, e["XB"], 1)
                 if cams[vi] is None:
                     w_, h_ = v["size"]
-                    f0 = LENS[0] / 36.0 * w_
+                    f0, fsd = lens_prior(v)
                     z0 = f0 * np.ptp(X, axis=0).max() / max(np.ptp(e["uv"], axis=0).max(), 1.0)
                     uc = e["uv"].mean(0)
                     cams[vi] = {"r": [0.0, 0.0, 0.0], "t": [(uc[0] - w_ / 2) / f0 * z0, (uc[1] - h_ / 2) / f0 * z0, z0], "f": f0,
-                                "size": [w_, h_], "centre": ctr.tolist(), "yaw": float(v.get("yaw", 0.0))}
+                                "size": [w_, h_], "centre": ctr.tolist(), "yaw": float(v.get("yaw", 0.0)), "f_prior": [f0, fsd]}
                 cam = cams[vi]
                 mm0 = cam["t"][2] / cam["f"] * 1000
                 cam = cams[vi] = _fit_cam(cam, X, e["uv"], mm0 / e["sig"])

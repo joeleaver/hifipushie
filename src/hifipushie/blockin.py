@@ -674,6 +674,20 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
             mask = ls.skin_mask(side, (Hh, Ww), lambda Q: (np.asarray(Q, float) - [box[0], box[1]]) * k, k / mmpx) & mask
         except Exception:  # noqa: BLE001  (a crop the skin mask can't place: the whole skin)
             pass
+    else:
+        # no detector on the picture (a clicked profile): the light is fitted inside the face's landmark hull only;
+        # the whole head took in the hair over the skull and the fit lit the face to white
+        from scipy.spatial import ConvexHull
+        from PIL import ImageDraw
+        from . import humanfit
+        Q = (humanfit.project(cam, np.asarray(mesh["L"], float)[:68]) - [box[0], box[1]]) * k
+        try:
+            hv = Q[ConvexHull(Q).vertices]
+            hm = Image.new("L", (Ww, Hh), 0)
+            ImageDraw.Draw(hm).polygon([tuple(p) for p in hv], fill=1)
+            mask = mask & (np.asarray(hm) > 0)
+        except Exception:  # noqa: BLE001  (degenerate hull: the whole skin)
+            pass
     if mask.sum() < 200:
         mask = ps["part"] == 0
     c0, w, _ = ls.fit_light(Y, ps["nrm"], mask)
@@ -732,9 +746,20 @@ def profile_contour(view: dict, step: int = 3) -> np.ndarray:
     pts = view.get("points") or {}
     yb, yc = float(pts["nose_bridge"][1]), float(pts["chin"][1])
     y0, y1 = int(yb - 0.12 * (yc - yb)), int(yc + 0.22 * (yc - yb))
-    bg = np.median(a[:, :15].reshape(-1, 3), 0)
+    # the background per row (its left end): a profile in front of a wall above and a sofa below has two
+    bg = np.median(a[:, :15], 1)[:, None, :]
     lum = a.mean(-1)
     fg = (np.abs(a - bg).sum(-1) > 40) & (lum > 0.55 * np.median(lum[int(yb):int(yc), :]))
+    # and skin-like: a textured background (a leather sofa's highlights) differs from its row's left end too; skin is
+    # told by its warmth ((r - b) / sum) against a patch of cheek in front of the ear (between nose base and eye)
+    if "nose_base" in pts and "eye_outer.L" in pts:
+        cx, cy = (np.asarray(pts["nose_base"], float) + 2.0 * np.asarray(pts["eye_outer.L"], float)) / 3.0
+        r_ = max(4, int(0.04 * (yc - yb)))
+        patch = a[int(cy) - r_:int(cy) + r_, int(cx) - r_:int(cx) + r_].reshape(-1, 3)
+        if len(patch):
+            warm = (a[..., 0] - a[..., 2]) / np.maximum(a.sum(-1), 1.0)
+            pw = (patch[:, 0] - patch[:, 2]) / np.maximum(patch.sum(-1), 1.0)
+            fg &= (warm > 0.4 * float(np.median(pw))) & (lum > 0.4 * float(np.median(patch.mean(-1))))
     out = []
     for y in range(max(y0, 0), min(y1, a.shape[0]), step):
         run = np.convolve(fg[y].astype(float), np.ones(6), "valid") >= 6
