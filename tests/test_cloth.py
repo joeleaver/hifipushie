@@ -574,6 +574,31 @@ def test_hem_stops_on_the_shoe_with_a_break():
         assert (np.diff(zc) > 0).all()
 
 
+def test_relax_start_gives_back_a_slivers_stretch():
+    # a 1 cm grid lying flat as cut; one vertex pulled 15 mm off it (a fold's sliver cleared off the body): its
+    # triangles start ~2x, past what the solver takes; relaxed, the start passes and cloth away from it stays put
+    n = 10
+    u, v = np.meshgrid(np.arange(n) * 0.01, np.arange(n) * 0.01, indexing="ij")
+    uv = np.c_[u.ravel(), v.ravel()]
+    F = []
+    for i in range(n - 1):
+        for j in range(n - 1):
+            a, b, c, d = i * n + j, (i + 1) * n + j, (i + 1) * n + j + 1, i * n + j + 1
+            F += [[a, b, c], [a, c, d]]
+    M = {"uv": uv, "F": np.array(F), "piece": np.zeros(len(uv), np.int64), "names": ["front"]}
+    X = np.c_[uv, np.zeros(len(uv))]
+    k = 5 * n + 5
+    X[k, 2] = 0.015
+    plan = {"start": X, "idx": np.zeros(0, np.int64), "rest_idx": np.zeros(0, np.int64)}
+    assert cloth.fine_start_check(M, plan)
+    X2, info = cloth.relax_start(M, plan)
+    assert not cloth.fine_start_check(M, dict(plan, start=X2)), info
+    far = np.linalg.norm(uv - uv[k], axis=1) > 0.035
+    assert np.abs(X2[far] - X[far]).max() == 0  # (only the sliver's neighbourhood moves)
+    ok = dict(plan, start=np.c_[uv, np.zeros(len(uv))])
+    assert np.array_equal(cloth.relax_start(M, ok)[0], ok["start"])  # a start the solver takes is left as it is
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
