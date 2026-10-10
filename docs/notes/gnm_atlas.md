@@ -515,3 +515,28 @@ Next, in order:
 3. MakeHuman volume / mouth_angles reshape the corner itself (curvature ~150 /m there): fine as data, but check them
    in renders before a solve uses them. Then the faces2 list: Garrett's groom.grey (sides up), the MH lid targets
    (border-aware carrying now exists: hold_creases is general, try it on the lids), canthal tilt, chin reader.
+
+## faces4 (2026-10-10, PAUSED by the coordinator after step 1; scratch /mnt/data/hifipushie/faces4: faces3's scripts
+## retargeted + fetch_nose.py, survey.py, nosediag.py, noseprofile.py, build4.py, strip.py / strips.sh)
+
+Joe paused new extensions ("we need to work toward a more coherent model"). What exists from step 1 (nose):
+- MakeHuman CC0 nose targets (42, same commit a8bc2d54) at /mnt/data/hifipushie/facesliders/mh_targets/nose
+  (SOURCE.txt appended). faceext.carry now also takes MakeHuman's per-side eye targets (l- + r- summed).
+- survey.py (all 21 pairs): the identity's cheap directions make 0.52-0.96 of each target. trans-* / scale-* are
+  0.93-0.96 identity (position and size are GNM's): left out.
+- FIX (general, faceext.fill_inside): every nose target folded at 0.43-0.79 of its range JUST INSIDE THE NOSTRIL: the
+  field was read and projected over skin_exterior only, so the rim moved and the nostril wall behind it stayed (|d| 0
+  on one side of the folded pair). The non-exterior skin (not the mouth: hold_rolls owns it) now takes the harmonic
+  extension of the field. Fold-free scale after: hump 0.76 -> 1.0, width3 0.79 -> 1.0, point 0.43 -> 0.67, base
+  0.43 -> 0.54, nostrils-angle 0.51 -> 0.52 (its fold is a real kink in MakeHuman's data at the alar-facial groove,
+  5.9 -> 67 deg between neighbours with |d| 0.92 vs 0.30).
+- 14 nose extensions built into face_ext.npz (faceext.EXT, mh_nose_* / mh_nostrils_*; noseprofile.py numbers in the
+  EXT strings): hump, curve, greek, compression, point, septum, base, nostrils_width, nostrils_angle, point_width,
+  volume, width1-3. Near-duplicates by field cosine: nostrils_width ~ width3 +0.69, point_width ~ volume +0.57,
+  septum ~ nostrils_angle +0.56. Max reach 0.9 (base, scaled 0.43) to 2.8 mm (curve).
+- Strips (clay, numba renderer, -1 / 0 / +1, front / 3/4 / profile): human_renders/f4_01_nose_strip_1..3.png.
+  Blunt read of strip 1: the dorsum ones are NOT clean: hump +1 and curve +-1 put a visible step / crease across the
+  upper dorsum in 3/4, greek -1 a notch at the nasion in profile (fold-free by the quad test, but a curvature
+  artefact: curv.py was not run on them yet). nostrils_width reads cleanly (wider alae, f4 test strip).
+- Not done: curvature check, readers (alar width, tip projection, nasal length, nostril show, columella, dorsum line),
+  tests for the nose ones, eyes, upper lip, any solve.

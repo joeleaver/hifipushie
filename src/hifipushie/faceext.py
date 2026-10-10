@@ -41,7 +41,52 @@ EXT = {
                            "the sides (+0.4 mm at half width), the skin under it following: a central pad; - = a flat, "
                            "even lower lip (MakeHuman 'lowerlip-middle'; faces3 2026-10-10, the central pad lever)"),
 }
-REGION = 0.03      # of the target's largest move: its region (the extension lives there)
+# the nose (faces4, 2026-10-10; MakeHuman nose/*.target, same commit). What each does at +1 (noseprofile.py, mm on
+# GNM's template): see the strings. Left out: trans-* / scale-* (the identity's cheap directions make 0.93-0.96 of
+# them: position and size are the identity's), flaring (it narrows the alae with their base: a weaker nostrils_width).
+EXT.update({
+    "mh_nose_hump": ("nose", "nose-hump-incr", "nose-hump-decr",
+                     "a dorsal hump: the bony-cartilage junction forward (2.2 mm), the radix and tip a little back / "
+                     "down; - = a scooped dorsum (MakeHuman)"),
+    "mh_nose_curve": ("nose", "nose-curve-convex", "nose-curve-concave",
+                      "the dorsum line convex: the tip down and back (2 mm), the upper dorsum up; - = concave, a "
+                      "ski-slope with the tip forward (MakeHuman)"),
+    "mh_nose_greek": ("nose", "nose-greek-incr", "nose-greek-decr",
+                      "the radix forward and up (1 mm): the dorsum running straight on from the brow (a Greek "
+                      "profile); - = a deeper nasion (MakeHuman)"),
+    "mh_nose_compression": ("nose", "nose-compression-compress", "nose-compression-uncompress",
+                            "the middle vault compressed (down / in, 1.9 mm), the tip a little forward; - = a long, "
+                            "straight middle vault (MakeHuman)"),
+    "mh_nose_point": ("nose", "nose-point-up", "nose-point-down",
+                      "the tip rotated up (2 mm at the lobule) with the columella's base down: an upturned tip "
+                      "showing more columella; - = a drooping tip (MakeHuman; fold-free scale 0.53)"),
+    "mh_nose_septum": ("nose", "nose-septumangle-incr", "nose-septumangle-decr",
+                       "the columella's angle: the tip down and forward, the alar rims up (1 mm), the subnasale back; "
+                       "- = the tip up and back, the alae down (MakeHuman)"),
+    "mh_nose_base": ("nose", "nose-base-up", "nose-base-down",
+                     "the nose's base (alar bases, subnasale, tip) raised ~0.5 mm, the nose shorter; - = a longer "
+                     "nose, base down (MakeHuman; fold-free scale 0.43)"),
+    "mh_nostrils_width": ("nose", "nose-nostrils-width-incr", "nose-nostrils-width-decr",
+                          "the alae wider (1.4 mm a side at their widest, alar base with them), the tip unchanged; - = "
+                          "narrow alae (MakeHuman)"),
+    "mh_nostrils_angle": ("nose", "nose-nostrils-angle-up", "nose-nostrils-angle-down",
+                          "the alar rims up (0.7 mm) with the tip held: the nostrils show from the front; - = hanging "
+                          "alae (MakeHuman; fold-free scale 0.42)"),
+    "mh_nose_point_width": ("nose", "nose-point-width-incr", "nose-point-width-decr",
+                            "the tip's lobule wider (0.8 mm a side), alae unchanged; - = a narrow, defined tip "
+                            "(MakeHuman)"),
+    "mh_nose_volume": ("nose", "nose-volume-incr", "nose-volume-decr",
+                       "the lobule fuller and rounder (0.8 mm a side, the tip up 0.5): a bulbous tip; - = a small, "
+                       "pinched tip (MakeHuman)"),
+    "mh_nose_width1": ("nose", "nose-width1-incr", "nose-width1-decr",
+                       "the radix (upper bony vault) wider; - = a narrow bridge between the eyes (MakeHuman)"),
+    "mh_nose_width2": ("nose", "nose-width2-incr", "nose-width2-decr",
+                       "the middle vault (dorsum's side walls) wider; - = a narrow dorsum (MakeHuman)"),
+    "mh_nose_width3": ("nose", "nose-width3-incr", "nose-width3-decr",
+                       "the lower nose wider: alae (0.9 mm a side) and lobule (1 mm) together; - = a narrow lower "
+                       "third of the nose (MakeHuman)"),
+})
+REGION = 0.03     # of the target's largest move: its region (the extension lives there)
 _C: dict = {}
 
 
@@ -74,7 +119,11 @@ def _frame():
 
 
 def carry(group: str, name: str) -> np.ndarray:
-    """(17821, 3) a MakeHuman target's displacement at GNM's raw vertices, GNM's frame (0 where unbound)."""
+    """(17821, 3) a MakeHuman target's displacement at GNM's raw vertices, GNM's frame (0 where unbound). MakeHuman's
+    eye targets come one per side ("l-eye-..." / "r-eye-..."): a name without the side prefix carries both (summed:
+    each moves its own eye)."""
+    if group == "eyes" and not name.startswith(("l-", "r-")):
+        return carry(group, "l-" + name) + carry(group, "r-" + name)
     from . import onemesh
     a = onemesh.asset()
     idx, d = _target(group, name)
@@ -291,6 +340,8 @@ def field(k: str) -> tuple:
                 d = minus_probable(d[:n], reg)[0]
             if grp == "mouth" and HOLD_ROLLS:
                 d = hold_rolls(d)
+            elif grp != "mouth":   # (the nostrils' insides, the lids' backs: carried with their rims)
+                d = fill_inside(d)
             d = gnmloops.ext(d[:n])
             d = 0.5 * (d + d[mi] * [-1.0, 1.0, 1.0])
             if HOLD_CREASES:
@@ -359,6 +410,32 @@ def hold_creases(d: np.ndarray, sharp: float | None = None) -> np.ndarray:
         np.add.at(acc, nb, w[:, None] * (rig - d[nb]))
         np.add.at(wsum, nb, w)
     return d + acc / np.maximum(wsum, 1.0)[:, None]
+def fill_inside(d: np.ndarray) -> np.ndarray:
+    """d carried into the skin that isn't exterior (the nostrils' insides, the lids' backs; not the mouth: hold_rolls
+    owns the lips' rolls): those vertices take the harmonic extension of the field around them (the mesh Laplacian
+    solved with every other vertex fixed), so a rim moves with what lies inside it. Why (faces4, nosediag.py): the
+    carried MakeHuman nose targets folded at 0.4-0.8 of their range, every time just inside the nostril, where the
+    field (read and projected over the exterior skin only) stopped dead at the rim: the rim moved, the wall behind it
+    stayed."""
+    import scipy.sparse as sp
+    from scipy.sparse.linalg import spsolve
+    from . import base as basemod
+    if "inside" not in _C:
+        g = basemod._gnm_data()
+        grp = lambda k: np.asarray(g["groups"][k], float) > 0.5  # noqa: E731
+        _C["inside"] = grp("skin") & ~grp("skin_exterior") & ~grp("upper_lip") & ~grp("lower_lip") & ~grp("mouth_sock")
+    ins = _C["inside"]
+    n = len(ins)
+    smooth(np.zeros((n, 1)), 0)
+    L = (sp.eye(n) - _C["adj"]).tocsr()
+    fixed = ~ins
+    out = d.copy()
+    rhs = -(L[ins][:, fixed] @ d[:n][fixed])
+    Lii = (L[ins][:, ins] + 1e-9 * sp.eye(int(ins.sum()))).tocsc()
+    out[:n][ins] = np.column_stack([spsolve(Lii, rhs[:, k]) for k in range(d.shape[1])])
+    return out
+
+
 def hold_rolls(d: np.ndarray) -> np.ndarray:
     """The lips' inner rolls (the rings inside the contact ring, out of sight behind the closed lips) moved whole with
     their own lip's contact ring: each takes the move of the nearest contact-ring vertex of the same lip (GNM's
