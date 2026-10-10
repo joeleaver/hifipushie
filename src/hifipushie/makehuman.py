@@ -91,7 +91,7 @@ def _target(name: str, group: str = "macrodetails") -> tuple[np.ndarray, np.ndar
         if not p.exists():
             from . import assets
             if group != "macrodetails":
-                raise FileNotFoundError(assets.missing("makehuman", f"targets/{group}/{name}", "a bust / nipple target: needed "
+                raise FileNotFoundError(assets.missing("makehuman", f"targets/{group}/{name}", "a bust / nipple / measure / neck target: needed "
                                         "because base.body has bust, firmness or nipples"))
             why = ("a female target: needed because base.body.sex is under 1, or base.head.follow_body is set (its "
                    "reference head is sex 0.5); a body with sex 1 (the default) and no follow_body loads without it"
@@ -190,14 +190,21 @@ MEASURES = {"hips": "measure-hips-circ", "waist": "measure-waist-circ", "shoulde
             "chest": "measure-bust-circ", "neck_circ": "measure-neck-circ"}
 
 
+# MakeHuman's neck modifiers (targets/neck, CC0), same 0..1 convention: "neck_double" = the soft fullness under the
+# chin and at the front of the neck (a double chin at 1), "neck_depth" = the neck's front-to-back depth. The one mesh's
+# GNM head reaches only to its stitch under the chin; the neck front below it is this body (lt19, 2026-10-10).
+NECK = {"neck_double": "neck-double", "neck_depth": "neck-scale-depth"}
+
+
 def _measures(V, params: dict) -> None:
-    for key, stem in MEASURES.items():
-        v = params.get(key)
-        if v is None or abs(float(v) - 0.5) < 1e-6:
-            continue
-        s = 2.0 * (float(v) - 0.5)
-        idx, d = _target(f"{stem}-{'incr' if s > 0 else 'decr'}.target", "measure")
-        V[idx] += abs(s) * d
+    for group, table in (("measure", MEASURES), ("neck", NECK)):
+        for key, stem in table.items():
+            v = params.get(key)
+            if v is None or abs(float(v) - 0.5) < 1e-6:
+                continue
+            s = 2.0 * (float(v) - 0.5)
+            idx, d = _target(f"{stem}-{'incr' if s > 0 else 'decr'}.target", group)
+            V[idx] += abs(s) * d
 
 
 def _bust(V, params: dict, wa: dict, wm: dict, ww: dict, female: float) -> None:
@@ -326,7 +333,7 @@ def body(params: dict) -> dict:
     """A shaped MakeHuman body as a template dict (as retopo.load_template): {"name", "P" (metres, Z up, facing -Y,
     feet at z = 0), "L", "S", "J", "face": {"landmarks": {"eye.L"}}, "chin_z"}."""
     grow = grows(params)
-    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples", "bust", "firmness", *MEASURES)} | ({"growth": True} if grow else {}), sort_keys=True)
+    key = json.dumps({k: params.get(k) for k in ("age", "weight", "muscle", "height", "race", "sex", "nipples", "bust", "firmness", *MEASURES, *NECK)} | ({"growth": True} if grow else {}), sort_keys=True)
     if ("body", key) in _CACHE:
         return _CACHE[("body", key)]
     V0, faces, joints = _raw()

@@ -54,7 +54,7 @@ GROUPS = {
 # landmarks, not the person's hair brows)
 FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess at the jaw contour), not the gonion"}
 
-BODY_KEYS = ("weight",)
+BODY_KEYS = ("weight", "neck_double", "neck_depth")
 HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes", "eye_radius": "eye_radius"}
 # head_scale: the one mesh's head is the BODY's head (base.head.scale is overwritten by the body's size); a uniform size
 # change is base.style.human.head_size (humanstyle: the head scaled about the top of the neck, eyeballs with it)
@@ -644,36 +644,33 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     for poly in polys:
         d.polygon([tuple(q) for q in (poly - o)], fill=255)
     g = max(1, int(round(grow_mm / mmpx)))
-    grown = np.asarray(band.filter(ImageFilter.MaxFilter(2 * g + 1)), float) > 0
-    # not past the band's own ends (side hair at the temples is dark too)
-    xs = np.arange(W)[None, :]
-    span = np.zeros((H, W), bool)
-    for poly in polys:
-        q = poly - o
-        span |= (xs >= q[:, 0].min() - 0.5 / mmpx) & (xs <= q[:, 0].max() + 0.5 / mmpx)
-    grown &= span
-    inner = np.asarray(band, float) > 0
     crop = np.asarray(img.convert("L").crop((int(o[0]), int(o[1]), int(o[0]) + W, int(o[1]) + H)), float)
-    ring = grown & ~inner
-    if ring.sum() < 20 or inner.sum() < 20:
-        return None
-    skin = float(np.percentile(crop[ring], 75))
-    hair = grown & (crop < dark * skin)
-    hair = ndimage.binary_opening(hair, iterations=1)
-    lab, n = ndimage.label(hair)
-    if n == 0:
-        return None
-    keep = np.zeros_like(hair)
-    for poly in polys:   # per side: the component(s) overlapping the detector band most
+    xs = np.arange(W)[None, :]
+    keep = np.zeros((H, W), bool)
+    inner_all = 0
+    for poly in polys:   # per side: its own skin level (one side of a face is often lit brighter)
+        q = poly - o
         pm = Image.new("L", (W, H), 0)
-        ImageDraw.Draw(pm).polygon([tuple(q) for q in (poly - o)], fill=255)
-        pm = np.asarray(pm) > 0
-        ov = ndimage.sum(pm, lab, index=np.arange(1, n + 1))
+        ImageDraw.Draw(pm).polygon([tuple(p_) for p_ in q], fill=255)
+        inner = np.asarray(pm) > 0
+        grown = np.asarray(pm.filter(ImageFilter.MaxFilter(2 * g + 1))) > 0
+        # not past the band's own ends (side hair at the temples is dark too)
+        grown &= (xs >= q[:, 0].min() - 0.5 / mmpx) & (xs <= q[:, 0].max() + 0.5 / mmpx)
+        ring = grown & ~inner
+        if ring.sum() < 20 or inner.sum() < 20:
+            return None
+        inner_all += int(inner.sum())
+        skin = float(np.percentile(crop[ring], 75))
+        hair = ndimage.binary_opening(grown & (crop < dark * skin), iterations=1)
+        lab, n = ndimage.label(hair)
+        if n == 0:
+            continue
+        ov = ndimage.sum(inner, lab, index=np.arange(1, n + 1))
         if ov.max() <= 0:
             continue
-        for i in np.flatnonzero(ov >= 0.25 * ov.max()):
+        for i in np.flatnonzero(ov >= 0.25 * ov.max()):   # the piece(s) overlapping the detector band most
             keep |= lab == i + 1
-    if keep.sum() < 0.5 * inner.sum():   # too little hair found (light brows, a painting): the detector band
+    if keep.sum() < 0.5 * inner_all:   # too little hair found (light brows, a painting): the detector band
         return None
     keep = ndimage.binary_closing(keep, iterations=2)
     return Image.fromarray((keep * 255).astype(np.uint8))
