@@ -1561,3 +1561,33 @@ top: a 4 mm vertical disagreement that biases profile registration).
   neck_depth (MakeHuman CC0 neck targets; 0.5 = none) for the neck front across the stitch.
 - Per-picture expression (GNM lower-face comps) explains part of a smiling reference's fuller lips / cheek apple:
   fit it per view so the neutral identity isn't compared against a smile.
+
+## jw (2026-10-10; a private likeness: per-person notes, body settings, rounds and reads are in the git-ignored
+## workspace/private_notes/jw.md, never in the repo). General tool findings from it:
+- A profile facing image-RIGHT (yaw +90) crashed the block-in (registration hard-wired to eye_outer.L) and its photo
+  contour was scanned from the wrong side: _eye_anchor uses eye_outer.R / lm36, profile_contour reads the picture
+  mirrored (test_profile_contour_either_side). +90 vs -90 matters as lt19 found (the wrong sign: 2.3x the rms, dropped).
+- profile_contour on a warm (tan) wall behind fair skin: |rgb - bg| is under 40 while the chromaticity differs by
+  ~0.07: a hue test (5x5-smoothed, > 0.05) is OR-ed in; the per-row background is a band just in front of the most
+  forward clicked point (a wall's light falls off across the picture), and a 5-row median removes lash / fold spikes.
+- Profile focus crops: the light was fitted inside the crop (a 34 mm eye crop: lashes, brow hair, wall) and lit the
+  clay white; a clicked view's crop now uses the whole face's fitted light. The raking light comes from the side the
+  face looks to, and the crop is at least 0.75 x nasion-chin (a profile foreshortens the corner-to-corner span).
+- Brows in the block-in presentation take the picture's own colour (darkest quarter of the band's pixels): light,
+  fine brows (brow_hair_band finds too little dark hair and falls back to the detector band) read as heavy dark bars
+  in the fixed dark brown.
+- The table's clay readers drift ~1-1.5 mm with lower-face / neck SHADING alone: over four rounds that changed only
+  the submental region and a body key (neck_double), the model's own landmark lengths stayed identical to 0.1 mm
+  while middle_third moved 1.8 -> 3.2 mm and mouth_width 0.3-0.6 mm. Items within ~1.5 mm of their tolerance can flip
+  on a step that didn't touch them: check the model's landmarks (or the zoom) before reverting for them.
+- Held bridge_height costs much |c| when free steps had pushed it up (+0.92 -> +0.42 sd cost |c| +1.1) and moved the
+  profile nose as a whole: a radix that reads proud may be the free nose_projection's coupling; try the free step's
+  held variant first.
+- MakeHuman weight barely moves a one-mesh body's waist (62 -> 66 cm for weight 0.6 -> 1.0): the measure modifiers
+  (waist / hips / chest / shoulders) carry a full build. human_reference reports the lens width-based ("~33 mm") for
+  a 24 mm diagonal-equivalent EXIF lens (the focal itself is right).
+- A stature from a room photo: pitch from the wall seams' vertical vanishing point, the camera's distance from a
+  standard-size object on the wall (an outlet plate, 114 mm), its height from the wall base, then the person's heel
+  point and head top (+-6 cm with a 5 % uncertainty in the object's size).
+- Dressed check (garrett3 stage / shot.light): light-brown hair looks (lit lighter than ~#7a5a3c) render grey-blond and
+  very fair skin (melanin 0.02-0.08) reads tan / ruddy: the shot light / skin calibration for very fair skin is open.
