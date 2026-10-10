@@ -4,11 +4,13 @@ them: bunches):
 
   {"at": [az, el],          where on the head the tie sits (180, 25 = the back, above the occiput)
    "out": 0.025,            m the tie stands off the scalp
-   "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "from": [az0, az1]?},
+   "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "from": [az0, az1]?,
+              "strands": {dial: value}?},  (strand dials for the gathered hair alone, e.g. a loose texture on top:
+                            {"wave": 0.02, "wavelength": 0.06, "random": 0.8})
                             the scalp hair: rows of locks from the hairline (row 0, on top) inward, each running
                             over the head to the tie; lift = m of looseness between root and tie; false = none
    "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "dir": [x, y, z]?, "uneven": 0.4,
-            "coil": 0, "coil_radius": 0.03, "plait": false, "taper": 0.5},
+            "coil": 0, "coil_radius": 0.03, "plait": false, "taper": 0.5, "strands": {dial: value}?},
                             what leaves the tie: locks round a core line that starts along `dir` (default: out of the
                             head and down) and bends to gravity (stiff 0 = hangs at once, 1 = stands out straight);
                             fullness = the tail's radius at its fullest; coil = turns of the core wound round the tie
@@ -43,7 +45,7 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5}}
-CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "left": None, "right": None}
+CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "left": None, "right": None}
 FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
          "wavelength": 0.075}
 DOWN = np.array([0.0, 0.0, -1.0])
@@ -71,12 +73,17 @@ def params(tie) -> list:
             if t.get(k) is False or t.get(k) == 0:
                 p[k] = None
                 continue
-            bad = set(t.get(k) or {}) - set(TIE[k]) - {"dir", "from"}
+            bad = set(t.get(k) or {}) - set(TIE[k]) - {"dir", "from", "strands"}
             if bad:
                 raise ValueError(f"hair tie {k}: unknown keys {sorted(bad)} (have {', '.join(sorted(TIE[k]))})")
             p[k] = {**TIE[k], **(t.get(k) or {})}
         out.append(p)
     return out
+
+
+def _ss_t(x):
+    x = np.clip(x, 0.0, 1.0)
+    return x * x * (3 - 2 * x)
 
 
 def _slerp(a, b, t):
@@ -201,13 +208,19 @@ def grow(sc, g: dict, line, rng) -> dict:
                     hb = 0.002 + 0.003 * (rows - 1 - r)
                     h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t)) + t ** 3 * float(tp["out"]) * 0.8
                     if cw > 0:  # a soft part: the hair rises at it and falls away (no bare furrow)
+                        # ...and the curtain lies DOWN where it leaves the hairline: the row's own height (8 mm on the
+                        # first of three rows) stood its front edge off the forehead as a frayed rim (Tess, 2026-10-09)
+                        hug = float(cu.get("hug", 0.0))
+                        if hug > 0 and r == 0:
+                            h = h * (1.0 - hug * cw * (1.0 - _ss_t(t / 0.6)))
                         h = h + float(cu["lift"]) * cw * np.sin(np.pi * np.minimum(t / 0.5, 1.0)) * (1 - t)
                     aa = aa + un * 2.0 * np.sin(np.pi * t) * rng.uniform(-1, 1)
                     locks[f"{pre}g{r}_{i}"] = {
                         "tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)]
                                                for j in range(len(t))],
                         "width": round(float(ga["width"]) * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
-                        "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003}
+                        "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003,
+                        **({"strands": dict(ga["strands"])} if ga.get("strands") else {})}
         tl = tp["tail"]
         P0 = sc.point(az0, el0, float(tp["out"]))
         if tl:
@@ -242,7 +255,7 @@ def grow(sc, g: dict, line, rng) -> dict:
                 locks[f"{pre}t{k}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, _clear(sc, P, 0.004)),
                                       "core": core, "free": 1.0, "width": round(float(max(w, 0.012)), 4),
                                       "thickness": 0.005, "taper": 0.25 if coil else 0.6, "belly": 0.4, "root": 0.5,
-                                      "cup": 0.0}
+                                      "cup": 0.0, **({"strands": dict(tl["strands"])} if tl.get("strands") else {})}
         for k in range(int(tp.get("escape") or 0)):  # strands the tie missed: out of the hairline, then down
             side = 1 if k % 2 == 0 else -1
             az = (side * rng.choice([52, 68, 84, 150], p=[0.3, 0.3, 0.2, 0.2]) + rng.uniform(-6, 6)) % 360

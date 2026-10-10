@@ -2060,3 +2060,42 @@ NO SIM WAS RUN.
     strip's mean direction) before press_flap. lapelgate.py (front view, max deviation from the chord): concept roll
     edges 2.8 / 8.0 mm; j9 roll 18-34, outer edge 29-44; j10 (boarded) roll 8.5-8.8, outer edge 21. Outer edge still
     curved: not found yet.
+  - Round 8. Board fixes tried: chord unclipped past the roll's ends (no change), eased INSIDE the span (pouch smaller,
+    roll 8-12 mm, outer edge 21). Board OFF on the same sim (c10_j10n): no pouches, no vertical bulges, lapels curved:
+    the board itself made both (moves up to 65-87 mm: a 3D chord between the roll's ends cuts through the chest and
+    the settle pushes it back out). board is now default OFF, experimental. j11 / j12 (chest canvas from the break to
+    the lapel point, roll_strength 0.8, break_y 0.46 -> 0.49; under_cap 0.02 / 0.004): j11 passes the shirt gates
+    (0 crossings, 0 skin px, collar/V 0.00) but the wearer's right lapel crumples into a tab at the lower break
+    (roll 43 mm off its chord), break now at the concept's height (383-403 vs 398 mm below the chin); j12 (tight)
+    84 visible crossings, collar_show 17.5 mm. Neither is better than w9 to the eye.
+  - Round 9: the LAPEL CONSTRUCTED after the drape (cloth_made.made_lapel, construct key lapel="made", now the default;
+    "pressed" = the old press_flap). Roll line = the straight chord between the drape's roll-row ends, LIFTED along the
+    lapel's normal (a linear lift) until it clears the under garment by 2 x lay (the raw chord ran up to 46 mm deep,
+    through the shirt); the base within 2.5 cm of the row gets its bow taken out; the lapel = a ruled sheet over the
+    line along ONE cross direction, lifted by ONE plane over (along, across) to clear the under garment (point-by-point
+    settling made the outer edge follow every chest bump: 34-50 mm), rising from the fold over a 4 mm soft roll; the
+    forepart under it pressed back behind it. Same cached j10 sim (no GPU): roll lines 4.4-4.7 mm off their chord,
+    outer edges 0.1-0.2 mm (concept 2.8-8.0; j9 16-41), lapel 65-69 mm, integrity 0 crossings, visible shirt x
+    jacket 6, collar / V 0.00 mm, 0 skin px from 12 cameras. lapelgate.py now reads the outer edge on the pattern's
+    break -> lapel point segment (the old bins mixed in the roll line and the notch). Sheet cloth_renders/
+    c10_w10_sheet.png (concept | w9 | now).
+  - Round 10 (hidden-shirt press, tight fit). j12 (under_cap 0.004) rebuilt with the constructed lapels (no GPU):
+    the tuck IS the hidden-shirt press (without it 1132 visible crossings: s2_12 through the forepart under the
+    lapels); what stays crossing at the armpits is cut (c10ship xcut: crossings with |x| > 0.15, 3 cm inside every
+    jacket opening, 6 cm off the V, 2 rings; again after the tuck). Result: 0 skin px (12 cameras), collar 0.00 mm,
+    V p95 0.21 / max 8.9 mm (the tuck's feather), visible shirt x jacket 10 (neck), x the made collar 10-16 (CB),
+    lapels straight (roll 4.2-4.4, edge 0.2-6.2 mm). The notch did NOT come in with the tight fit (still ~12 mm low,
+    out on the shoulder slope): the draft, not the fit. COLLAR RING: at CB the constructed fall runs 16 -> 4 mm above
+    the seam then OUTWARD level (rows 11-15 at z +4 mm, 12-14 mm off the shirt collar): a flange, not a fall lying
+    down; construct collar_options fall_hug 0.02 changed nothing (no layer within reach). Not fixed. Sheet
+    cloth_renders/c10_w11_sheet.png (w10 | tight j12).
+  - Round 11. V feather to 0: c10ship lays only COVERED vertices under the jacket (the tuck's feather onto uncovered
+    ones dropped): visible collar AND V 0.00 / 0.00 / 0.00 mm vs s2_12, gate PASS (j12). (Production cloth_layers.tucked
+    still feathers 5 rings: the pipeline needs the same rule when merge-and-cut lands.) COLLAR FALL as a board
+    (notched_collar key fall_board, default on): each back column from the roll's top straight down to where its
+    length reaches along the cloth below the seam; the CB fall now runs 13 -> 1 mm above the seam (was flat at 4,
+    a flange). From behind (c10_w_j12b_backc.png) it lies down; from the front, small grey tabs remain where the
+    collar meets the lapel at the side neck; collar x shirt collar 10-16 crossings at CB unchanged.
+  - The covered-only rule is in production: cloth_layers.tucked(keep_shown=True, default): uncovered vertices are
+    bit-identical to the finished under garment (rigid groups that moved move whole); keep_shown=False = the old
+    5-ring feather. Test test_cloth_layers::test_tuck_leaves_what_shows_bit_identical.

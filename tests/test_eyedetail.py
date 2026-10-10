@@ -63,7 +63,7 @@ def test_lid_lines_find_the_hole():
 def test_lashes_build():
     head = _eye_head()
     head["eyes"] = [np.array([0.0, 0.0, 0.0])]
-    cfg = lashes.wanted({"base": {"lashes": {"upper": {"count": 40, "curl": 68}, "lower": {"count": 20}}}})
+    cfg = lashes.wanted({"base": {"lashes": {"upper": {"count": 40, "curl": 68, "lift": -6}, "lower": {"count": 20}}}})
     m = lashes.build(head, cfg)
     seg = cfg["segments"]
     assert len(m["tris"]) == (40 + 20) * 2 * seg
@@ -117,6 +117,27 @@ def test_aperture_from_mask():
         assert abs(e["width"] - 12.0) < 0.3, e
         # a lens of half-width 60, sagitta 20: each arc leaves the corner at atan(2 h / half) ~ 33.7 deg -> ~67 deg
         assert 50 < e["inner_angle"] < 80 and 50 < e["outer_angle"] < 80, e
+
+
+def test_clear_cornea():
+    """base.cornea.clear: the iris plane `depth` behind the apex, the lens part between, and its implied part."""
+    from hifipushie import base
+    R, rc, bulge = 0.0118, 0.62 * 0.0118, 0.09 * 0.0118
+    c, gz = np.array([0.03, 0.0, 1.6]), np.array([0.0, -1.0, 0.0])
+    b = {"eyes": "eyes", "cornea": {"clear": True, "depth": 0.0028}}
+    B = base.clear_cornea(b, c, gz, R, rc, bulge)
+    plane = (R + bulge) - 0.0028
+    cut, back = B["iris_cut.L"], B["cornea_back.L"]
+    assert cut["op"] == "subtract" and cut["part"] == "eyes"
+    assert back["op"] == "subtract" and back["part"] == "eyes_cornea" and B["cornea.L"]["part"] == "eyes_cornea"
+    # the cut sphere's back face and the lens' back sphere's front face both lie (within 0.1 mm) on the iris plane
+    assert abs(float((np.array(cut["at"]) - c) @ gz) - cut["size"][0] - plane) < 1e-5
+    assert abs(float((np.array(back["at"]) - c) @ gz) + back["size"][0] - plane - 0.00008) < 1e-5
+    # the plane meets the ball about an iris' radius off the axis (5.5-6.5 mm)
+    assert 0.0055 < np.sqrt(R * R - plane * plane) < 0.0068
+    d = base.part_defs({"base": b, "parts": {"eyes_cornea": {"roughness": 0.05}}})
+    assert d["eyes_cornea"]["transmission"] == 1.0 and d["eyes_cornea"]["roughness"] == 0.05
+    assert base.implied_parts({"base": {"eyes": "eyes", "cornea": True}}) == {}
 
 
 def test_lashes_default_and_off():

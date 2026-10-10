@@ -151,7 +151,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     if ctx["lash_geometry"]:
         lm_ = _lashes.for_spec(spec)
         ctx["lash_curves"] = None if lm_ is None else {k: [np.round(c, 5).tolist() for c in v] for k, v in lm_["curves"].items()}
-    f0 = p["makeup"].get("foundation")
+    from .skin_makeup import resolve as _mk_resolve
+    f0 = _mk_resolve(p["makeup"]).get("foundation")
     cover = float(np.clip(f0 if isinstance(f0, (int, float)) else (f0 or {}).get("amount", 1.0 if f0 else 0.0), 0, 1)) if f0 else 0.0
     ctx["show"] = 1.0 - 0.75 * cover  # how much of the skin's own marks shows through foundation
 
@@ -340,7 +341,7 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         # and a narrow soft band all round where the lids lie on the ball (the corners darkest)
         if occ > 0:
             # (one layer: each layer costs shader; the band all round is the max over the upper lid's shadow)
-            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.48, 0.42, 0.42], "mix": "multiply",
+            out[f"skin:eye_shade{nm}"] = {"part": part, "color": [0.6, 0.43, 0.41], "mix": "multiply",
                                           "opacity": round(min(0.6 * occ, 1.0), 3),
                                           "mask": [{"mask": [{"axis": {"dir": [0, 0, 1], "at": f"eye{sd}", "from": round(0.1 * r, 5),
                                                                        "to": round(0.55 * r, 5)}},
@@ -350,7 +351,7 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                                                     "blend": "max"}]}
         # the tear line: the strip of tear film standing where the lower lid meets the ball, a thin bright wet line
         if float(e.get("tear", 1.0)) > 0:
-            out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.96, 0.95, 0.94], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
+            out[f"skin:eye_tear{nm}"] = {"part": part, "color": [0.97, 0.86, 0.84], "opacity": round(0.4 * float(e.get("tear", 1.0)), 3),
                                          "roughness": 0.02, "specular": 1.0,
                                          "mask": [{"near": ["base"], "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
                                                   {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
@@ -361,6 +362,22 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     if float(e.get("waterline", 1.0)) > 0:   # 0..1 (1): the pink wet rim; on a lid whose rim faces the camera it reads as lid
         layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=round(0.5 * float(e.get("waterline", 1.0)), 3),
               roughness=0.15, mask=_zones(["lash_lower"], 0.7))
+    from . import lidfold
+    fc = lidfold.config(spec)
+    if fc:  # the lid's fold (lidfold.py): its crease's own tone, along the fold's own invagination (paint's `near` on
+        # a fold prim: the distance across its crease line, scaled by its depth). Skin deep in a tight fold catches
+        # no light and its blood shows: a photographed crease is a soft brown-red line. (The field's cavity can't do
+        # it: curvature is measured with a 0.75-voxel stencil, which steps over a 0.8 mm groove.)
+        w = float(fc["crease_width"]) * 0.001
+        # A SHADOW, not a hue: neutral multiplies (the skin's own colour darker, its saturation kept), darkest in a thin
+        # line, then a soft gradient up the fold's underside and none below (a red-brown tone read as a painted scar)
+        fold = ["lid_fold.L", "lid_fold.R"]
+        layer("lid_crease", pre=True, color=[0.76, 0.82, 0.86], mix="multiply",  # (a hair cool: the groove's own
+              # subsurface glow reddens it ~3 deg against the photo's crease)
+              opacity=round(float(np.clip(0.35 + 0.3 * fc["crease_depth"], 0, 0.9)), 3),
+              mask=[{"near": fold, "within": round(0.2 * w, 6), "soft": round(0.8 * w, 6)}])
+        layer("lid_fold_shadow", pre=True, color=[0.9, 0.91, 0.92], mix="multiply", opacity=0.85,
+              mask=[{"near": fold, "side": "up", "within": 0.0, "soft": round(1.8 * float(fc["fold_width"]) * 0.001, 6)}])
 
 
 def _wrinkles(p, J, layer, T, ctx) -> None:
@@ -515,7 +532,7 @@ def _hair(p, J, layer, T, ctx) -> None:
                 # 1.4 mm smaller than the clay's on Garrett)
                 from .skin import _sp
                 tubes = []
-                for lid, rad, wgt in (("upper", 0.00055, 1.0), ("lower", 0.0004, 0.55)):
+                for lid, rad, wgt in (("upper", 0.0008, 1.0), ("lower", 0.0004, 0.55)):
                     for c in cu[lid]:
                         n = len(c)
                         taper = 0.35 + 0.65 * np.sin(np.linspace(0.15, np.pi - 0.35, n)) ** 0.5

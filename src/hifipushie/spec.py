@@ -332,7 +332,17 @@ def _compile(spec: dict) -> list[Prim]:
     if s.get("base"):  # the base mesh first: everything else unions onto it
         prims.insert(0, _base(s, k_default))
     prims = _deform(s, prims)
-    return _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
+    out = _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
+    if s.get("base"):  # the upper lids' fold (base.head.fold, lidfold.py): modifiers right after the base, seated on
+        # the base as it is finally built (seated on the base as first made, the lines stood 4 mm off the meshed lid)
+        from . import lidfold
+        bi = next((i for i, p in enumerate(out) if p.kind == "base"), None)
+        if bi is not None:
+            fp = lidfold.prims(s, out[bi])
+            for p in fp:
+                p.reach, p.inert = 0.0, 0.0
+            out[bi + 1:bi + 1] = fp
+    return out
 
 
 def _base(s: dict, k_default: float) -> Prim:

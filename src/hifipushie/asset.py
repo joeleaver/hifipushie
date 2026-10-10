@@ -1524,7 +1524,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     t = time.time()
     spec = store.load(name)
     aname = asset_name or name
-    defs = spec.get("parts") or {}
+    from .base import part_defs
+    defs = part_defs(spec)  # (the base's implied parts too: a clear cornea's lens)
     fine, tri_focus = {}, []
     if face_shapes:  # say now, not after the bake, that the face can't take them; mesh the slit open; keep
         # triangles at the lids and lips

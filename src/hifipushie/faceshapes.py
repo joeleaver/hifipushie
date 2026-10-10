@@ -819,8 +819,10 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             continue
         base = pn.split("/")[-1].split("~")[0]
         kind = "teeth" if base in face.parts_teeth else "tongue" if base in face.parts_tongue else "skin"
-        if any(e.get("part") == base for e in face.eyes.values()):
-            kind = "eyes"  # the eyeballs' own part: only the eyeLook shapes turn them
+        if any(e.get("part") in (base, base[:-len("_cornea")] if base.endswith("_cornea") else None)
+               for e in face.eyes.values()):
+            kind = "eyes"  # the eyeballs' own part (and a clear cornea's lens, base.clear_cornea): only the eyeLook
+            # shapes turn them
         Xm = np.asarray(p["verts"], np.float64)
         if kind == "skin":
             if not face.owns(base):  # clothes and everything else: no face shapes

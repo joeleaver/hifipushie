@@ -170,7 +170,8 @@ class _Compiler:
             within, soft = float(e.get("within", 0.0)), max(float(e.get("soft", 0.01)), 1e-6)
             if path:
                 out["expose"] = {"within": path + ["within"]}
-            return {**out, "gen": "near", "attr": self.attr("dist", layer, e["near"], key=(e["near"],), parts=self.parts),
+            nr = {"near": e["near"], "side": e["side"]} if e.get("side") else e["near"]  # (side: a lid fold's up / down)
+            return {**out, "gen": "near", "attr": self.attr("dist", layer, nr, key=(json.dumps(nr, sort_keys=True),), parts=self.parts),
                     "within": within, "soft": soft}
         if gen == "spot":  # soft balls / a tapered line round resolved points: per pixel from wpos
             s = paint.resolve_spot(self.spec, e["spot"], f"paint {layer!r}")
@@ -431,11 +432,18 @@ def _distance(spec: dict, lname: str, near, pos: np.ndarray) -> np.ndarray:
     from . import sdf
     from .spec import compile_prims
     prims = {p.name: p for p in compile_prims(spec)}
+    side = None
+    if isinstance(near, dict):  # {"near": names, "side": "up" | "down"} (a lid fold's one side)
+        near, side = near["near"], near.get("side")
     want, missing = resolve_near(spec, near, prims)
     if missing:
         raise SpecError(f"paint {lname!r}: no bone or blob {missing}")
     d = np.full(len(pos), np.inf)
     for w in want:
         p = prims[w]
+        if p.kind == "fold":  # a lid fold (lidfold.py): the distance across from its crease line
+            from .lidfold import line_distance
+            d = np.minimum(d, line_distance(pos, p.params, side))
+            continue
         d = np.minimum(d, sdf.SDF[p.kind](pos, p.params))
     return d

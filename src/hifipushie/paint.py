@@ -194,7 +194,7 @@ def colour(c, what: str = "color") -> np.ndarray:
 GENERATORS = ("path", "near", "facing", "axis", "cavity", "noise", "cells", "tiles", "weave", "ao", "thickness", "sky",
               "random", "rings", "painted", "outline", "image", "spot", "tile", "zone", "mask")
 MIXES = ("mix", "multiply", "screen", "overlay", "soft_light")
-PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft"), "facing": ("range",),
+PARAMS = {"path": ("width", "profile", "repeat", "scatter"), "near": ("within", "soft", "side"), "facing": ("range",),
           "cavity": ("radius",)}
 BLENDS = ("multiply", "add", "subtract", "min", "max", "screen", "overlay", "replace")
 ENTRY_OPS = ("blend", "weight", "breakup", "levels", "invert", "blur", "vertex")
@@ -1196,6 +1196,10 @@ def _near_mask(spec: dict, name: str, ly: dict, v: np.ndarray) -> np.ndarray:
     d = np.full(len(v), np.inf)
     for w in want:
         p = prims[w]
+        if p.kind == "fold":  # a lid fold (lidfold.py): the distance across from its crease line
+            from .lidfold import line_distance
+            d = np.minimum(d, line_distance(v, p.params, ly.get("side")))
+            continue
         if p.kind not in sdf.SDF or p.kind == "shell":
             raise SpecError(f"paint {name!r}: {w!r} is a {p.kind}, not a shape")
         d = np.minimum(d, sdf.SDF[p.kind](v, p.params))
