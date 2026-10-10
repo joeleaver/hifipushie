@@ -6494,9 +6494,12 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 fr0_ = ~np.isin(Ms["piece"], [Ms["names"].index(p) for p in held0_ if p in Ms["names"]])
                 X0_, nmv_ = _clear_exact(np.asarray(arrays["X"], float), Ms["F"], fr0_, bc_.V, bc_.T, gap=so_ + 0.0005,
                                          rounds=8, signed=len(body_real.T))
-                log(f"cloth {name}: start cleared to the solver's standoff: {nmv_} vertices moved ({near0_})")
-                arrays["X"] = X0_
-                near0_ = {p: v for p, v in cwf_.start_in_standoff(X0_, Ms, bc_, 0.9 * so_).items() if p not in held0_}
+                near1_ = {p: v for p, v in cwf_.start_in_standoff(X0_, Ms, bc_, 0.9 * so_).items() if p not in held0_}
+                # (kept only if it is clearer: cloth that starts THROUGH the under garment's cloth is pushed away on
+                # the side it is on, deeper in: the coat's side through the jumper's bunched armpit went 1.5 -> 0.13 mm)
+                if min((v[0] for v in near1_.values()), default=9e9) > min(v[0] for v in near0_.values()):
+                    log(f"cloth {name}: start cleared to the solver's standoff: {nmv_} vertices moved ({near0_})")
+                    arrays["X"], near0_ = X0_, near1_
             if near0_:
                 raise RuntimeError(f"cloth {name}: the start lies inside the solver's contact standoff ({so_ * 1000:.1f} mm) "
                                    "from the body / the garment under it: " + ", ".join(f"{p} {v[0]:.2f} mm at {v[1]}"
