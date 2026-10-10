@@ -618,7 +618,7 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     path, place, _ = skin_marks.stubble_map(spec, p["part"], J, q)
     col = _hex(o["color"]) if "color" in o else hair_default(t, p["age"])
     im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
-    lips = {"zone": "lips", "blend": "subtract"}
+    lips = {"zone": {"name": "lips", "grow": 0.6}, "blend": "subtract"}   # (a crisp border: no bald halo round the lips)
     # hair seen through the skin: on light skin a cool blue-grey cast (the dark shaft under a scattering layer), on dark
     # skin just darker; the hair's own colour mixed in as it grows out
     # (a freshly shaved jaw: the cool cast; a few days' growth: the cut hairs at the surface warm it to a grey-brown, the
@@ -626,7 +626,7 @@ def _stubble_map(spec, p, J, o, layer, T, ctx) -> None:
     grow = float(np.clip(q["length"] / 0.001, 0, 1))
     cool = np.array(T(grey=0.8, melanin=1.1)) * (0.66 + 0.2 * t["melanin"]) + np.array([-0.02, 0.0, 0.025]) * (1 - t["melanin"])
     warm = np.array(T(grey=0.25, melanin=2.3, blood=1.05)) * (0.62 + 0.25 * t["melanin"])   # (warm grey: less read as green)
-    cast = (1 - grow) * cool + grow * warm + (0.04 + 0.12 * grow) * (np.array(col) - 0.3)
+    cast = (1 - 0.35 * grow) * cool + 0.35 * grow * warm + 0.06 * grow * (np.array(col) - 0.3)   # the sub-skin shadow stays cool: the hairs carry the warmth
     cast = [round(float(c), 4) for c in np.clip(cast, 0, 1)]
     cast = _hex(o["shadow_color"]) if "shadow_color" in o else cast
     layer("stubble_shadow", o.get("mask"), pre=True, color=cast, opacity=round(min(0.85 * min(a, 1.3) * q["shadow"], 0.95), 3),
@@ -646,7 +646,7 @@ def freckle_options(o: dict) -> dict:
     if not isinstance(zo, dict) or set(zo) - set(z):
         raise SpecError(f"skin features.freckles: zones is {{zone: weight}} over {', '.join(z)}")
     z.update({k: float(v) for k, v in zo.items()})
-    return {"amount": float(np.clip(o["amount"], 0, 3)), "size": float(o.get("size", 0.0013)), "clump": float(np.clip(o.get("clump", 0.6), 0, 1)),
+    return {"amount": float(np.clip(o["amount"], 0, 3)), "size": float(o.get("size", 0.0004)), "clump": float(np.clip(o.get("clump", 0.6), 0, 1)),
             "dark": float(np.clip(o.get("dark", 0.2), 0, 1)), "moles": 0, "zones": z, "seed": int(o.get("seed", 0))}
 
 

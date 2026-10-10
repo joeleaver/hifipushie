@@ -659,12 +659,16 @@ def _build(spec: dict, J: dict) -> dict:
         add("midface_red", var, color=T(blood=2.7 + 0.6 * child), opacity=0.62 + 0.12 * child,
             mask=_z("cheek", "cheekbone", "nose_bridge") + [{"zone": "chin", "blend": "max", "weight": 0.4}])
         add("nose_red", var, color=T(blood=3.0), opacity=0.5, mask=_z("nose_tip", "nose_wing"))
+        # redness round the mouth (thin skin over the orbicularis, shaving on men): without it the chin-lip band read greener
+        # than the cheeks and chin round it (a green band under Tess's lower lip)
+        add("perioral_red", var, color=T(blood=2.2, melanin=1.02), opacity=0.36,
+            mask=_z("upper_lip", "soul_patch", "mouth_corner") + [{"zone": "chin", "blend": "max", "weight": 0.6}])
         add("ears_red", var, color=T(blood=3.2, melanin=1.05), opacity=0.6, mask=_z("ear"))
         # (the lower face's cool cast is the beard's under the skin: faint on a woman; on Tess it read as a green band under her lip)
         add("lower_cool", var * (1 - 0.75 * p["fem"]), color=T(blood=0.75, oxygenation=0.4, melanin=1.12, grey=0.12), opacity=0.34,
             mask=_z("jaw", "upper_lip", "soul_patch", "under_chin") + [{"zone": "cheek_side", "blend": "max", "weight": 0.5}])
-        add("under_eye", var * (0.7 + 0.6 * thin), color=T(blood=1.7, oxygenation=0.3, melanin=1.25, epidermis=0.7),
-            opacity=0.42, mask=_z("under_eye", "eye_corner"))
+        add("under_eye", var * (0.7 + 0.6 * thin), color=T(blood=1.8, oxygenation=0.25, melanin=1.5, epidermis=0.7),   # (the tear trough: brown-violet)
+            opacity=0.5, mask=_z("under_eye", "eye_corner"))
         add("eyelids", var, color=T(blood=1.9, oxygenation=0.55, melanin=1.1, epidermis=0.75), opacity=0.36, mask=_z("eyelid"))
         add("neck", var, color=T(blood=0.85, melanin=0.94), opacity=0.4, mask=_z("neck"))
     if hands:
@@ -693,16 +697,16 @@ def _build(spec: dict, J: dict) -> dict:
         lm = (0.55 + 0.4 * dark) * lp["melanin"]
         le = 0.5 + 0.4 * dark  # dark lips keep most of their pigment: the upper one browner, the lower pinker
         out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=le,
-                                                           oxygenation=0.62), "opacity": 0.85, "roughness": lp["roughness"] + 0.04,
-                                  "mask": _z("lips", grow=2.2)}  # (all the vermilion: the lower layer paints over its own
+                                                           oxygenation=0.62), "opacity": round(0.85 - 0.2 * p["masc"], 3), "roughness": lp["roughness"] + 0.04,
+                                  "mask": _z("lips", grow=0.8)}  # (all the vermilion: the lower layer paints over its own
         # part next. Drawn as lip_upper (border -> the contact ring) it missed ~2/3 of the upper vermilion: seen from the
         # front the contact ring lies ABOVE the lip's own lower front, so the face's pale layers showed there and
         # skin.lips never reached the upper lip; the likeloop agent's "lip colour stuck")
         out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=7.0 * lp["blood"], epidermis=le - 0.08, oxygenation=0.68),
-                                  "opacity": 0.85, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=2.2)}
+                                  "opacity": round(0.85 - 0.2 * p["masc"], 3), "roughness": lp["roughness"], "mask": _z("lip_lower", grow=0.8)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
-                                  "mask": [{"zone": {"name": "lips", "grow": 3.5}},
+                                  "mask": [{"zone": {"name": "lips", "grow": 1.6}},
                                                               {"zone": {"name": "lips", "grow": 0.4}, "blend": "subtract"}]}
         # (the seam ends at the vermilion's own corners on a GNM head: lm_mouth_corner sits ~6 mm further out on the cheek
         # there, and the line ran on past the mouth as a dark slit; Garrett 2026-10-09)
@@ -744,7 +748,7 @@ def _build(spec: dict, J: dict) -> dict:
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:
-            micro.append(("pores", "pores", 0.00034 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
+            micro.append(("pores", "pores", 0.00024 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
             micro.append(("lines", "lines", 0.00013 * d * body_k, [{"mask": _z("face"), "invert": True}]))
         else:

@@ -269,8 +269,8 @@ def build(spec, p, J, layer, T, ctx) -> None:
             def lid():   # from the lash line to the crease, most colour near the lashes
                 eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
                 ch *= reach
-                return [pt(up(ei, 0.3 * ch), near=True), pt(up(lui, 0.4 * ch), near=True), pt(up(lu, 0.42 * ch), near=True),
-                        pt(up(luo, 0.42 * ch), near=True), pt(up(eo, 0.35 * ch), near=True)]
+                return [pt(up(ei, 0.15 * ch), near=True), pt(up(lui, 0.2 * ch), near=True), pt(up(lu, 0.22 * ch), near=True),
+                        pt(up(luo, 0.22 * ch), near=True), pt(up(eo, 0.18 * ch), near=True)]
 
             def fold():  # a deeper shade along the crease, blended out toward the brow's tail
                 eo, ei, lu, lui, luo, _, _, _, _, ch = eye()
@@ -285,7 +285,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
                         pt(up(luo, 0.9 * ch), near=True)]
             chm = eye()[-1] * reach / io
             layer("makeup_eyeshadow", o.get("mask"), pre=True, color=col, opacity=0.8 * o["amount"], roughness=FINISH[fin], **extra,
-                  mask=[{"mask": both(lid, [chm * k for k in (0.3, 0.48, 0.52, 0.52, 0.42)], soft=0.75)}, {"blur": round(0.01 * io, 5)}])
+                  mask=[{"mask": both(lid, [chm * k for k in (0.3, 0.5, 0.56, 0.56, 0.45)], soft=1.0)}, {"blur": round(0.01 * io, 5)}])
             layer("makeup_eyeshadow_crease", o.get("mask"), pre=True, color=crease, opacity=0.6 * o["amount"], roughness=FINISH["matte"],
                   mask=[{"mask": both(fold, [chm * k for k in (0.22, 0.32, 0.36, 0.3)], soft=1.0)}, {"blur": round(0.025 * io, 5)}])
             layer("makeup_eyeshadow_outer", o.get("mask"), pre=True, color=outer, opacity=0.65 * o["amount"], roughness=FINISH["matte"],
@@ -314,7 +314,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
                 tb = (bo - eo) / max(np.linalg.norm(bo - eo), 1e-9)
                 dw = d + 0.2 * tb
                 ang = float(np.degrees(np.arctan2(dw[2], abs(dw[0]))))
-                s0 = seat(0.5 * (luo + eo), True)                 # from the outer lash line, inside the corner landmark
+                s0 = seat(luo + 0.3 * (eo - luo), True)          # out of the lash line itself: the flick overlaps the liner's outer third
                 # the picture is laid from the front onto skin that turns back toward the temple: shorten it so that
                 # the wing measures `wing` along the skin past the corner (laid at its front length it stretched into a
                 # spike far off the eye)
@@ -351,7 +351,7 @@ def build(spec, p, J, layer, T, ctx) -> None:
             col = _hex(o["color"]) if "color" in o else [round(0.6 * c + 0.4 * d, 4) for c, d in zip(own, _hex("#c45a6a"))]
             sheer = fin == "balm"
             extra = {"specular": 0.75} if fin in ("gloss", "balm") else {}
-            grow = 0.9 + float(o.get("overline", 0.0)) / 0.0012
+            grow = 0.7 + float(o.get("overline", 0.0)) / 0.0012
             layer("makeup_lipstick", o.get("mask"), pre=True, color=col, opacity=min((0.45 if sheer else 0.95) * o["amount"], 1.0),
                   roughness=FINISH[fin], **extra, mask=[{"zone": {"name": "lips", "grow": round(grow, 3)}}])
             liner = float(o.get("liner", 0.0))

@@ -28,7 +28,7 @@ import json
 
 import numpy as np
 
-VERSION = 10
+VERSION = 11
 MAX_PX = 8192
 
 # stubble styles: length (m) of the exposed hair, the shadow's weight, edge (0 natural .. 1 crisply trimmed), density
@@ -36,9 +36,9 @@ MAX_PX = 8192
 STUBBLE_STYLES = {
     "clean": {"length": 0.00005, "shadow": 0.4, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.55},
     "five_oclock": {"length": 0.0004, "shadow": 0.6, "trim": 0.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.55},
-    "short": {"length": 0.0014, "shadow": 1.0, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.6},
-    "designer": {"length": 0.004, "shadow": 1.0, "trim": 1.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.7},
-    "heavy": {"length": 0.008, "shadow": 1.0, "trim": 0.25, "density": 1.0, "patchy": 0.2, "cheeks": 0.8},
+    "short": {"length": 0.0014, "shadow": 0.75, "trim": 0.0, "density": 1.0, "patchy": 0.1, "cheeks": 0.6},
+    "designer": {"length": 0.004, "shadow": 0.6, "trim": 1.0, "density": 1.0, "patchy": 0.15, "cheeks": 0.7},
+    "heavy": {"length": 0.008, "shadow": 0.55, "trim": 0.25, "density": 1.0, "patchy": 0.2, "cheeks": 0.8},
     "patchy": {"length": 0.002, "shadow": 0.5, "trim": 0.0, "density": 0.8, "patchy": 0.75, "cheeks": 0.3},
 }
 HAIRS_PER_M2 = 6.0e5   # ~60 / cm2 where the beard is full (moustache, chin)
@@ -453,7 +453,7 @@ def stubble_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         # beard hair gives way to vellus
         fine = np.clip(d / 0.6, 0, 1) ** 0.5
         Lh = float(o["length"]) * rng.lognormal(0, 0.22, n) * (0.55 + 0.45 * fine)  # grown since the shave, unevenly
-        elev = np.radians(np.clip(42 - 3.2 * Lh * 1000, 14, 42))                 # longer hairs lie flatter
+        elev = np.radians(np.clip(62 - 5.5 * Lh * 1000, 18, 62))                 # short stubble stands up (dots, short dashes); longer lies flatter
         proj = Lh * np.cos(elev)
         wid = 0.000105 * float(o["size"]) * rng.uniform(0.8, 1.2, n) * (0.5 + 0.5 * fine)
         curl = rng.normal(0, 1, n) * np.clip(Lh / 0.006, 0, 1.2) * 0.25          # bend (rad over the hair's length)
@@ -557,7 +557,7 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     """The freckle map's file, placement and stats. o: amount (density), size (median diameter m), clump, dark (share
     of darker ones), moles (count on the face), zones, seed."""
     from . import store
-    sp = sphere(J, (-62.0, 72.0), 220.0, 0.00012)
+    sp = sphere(J, (-62.0, 72.0), 220.0, 0.00007)
     V, N, F = head_mesh(spec, part, J)
     key = hashlib.sha1(json.dumps([o, np.asarray(V[:50]).round(5).tolist(), len(V), sp["img"], VERSION],
                                   sort_keys=True, default=str).encode()).hexdigest()[:16]
@@ -570,7 +570,7 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
     R = np.zeros((H, W), np.float32)
     G = np.zeros((H, W), np.float32)
     B = np.zeros((H, W), np.float32)
-    per_m2 = 1.2e5 * float(o["amount"])          # ~12 / cm2 where densest at amount 1 (densely freckled noses: 10-30)
+    per_m2 = 1.2e6 * float(o["amount"])          # ~120 / cm2 where densest at amount 1: dense freckling is a field of specks (blind read: "10x the count, 3-5x smaller")
     dens = freckle_density(J, o)
     P, Nrm, d = scatter(V, N, F, dens, per_m2, rng)
     keep = outward(sp, P, Nrm, V)
@@ -581,13 +581,13 @@ def freckle_map(spec: dict, part: str, J: dict, o: dict) -> tuple[str, dict, dic
         x0, A = jacobians(sp, P, t1, t2)
         pxm = _px_m(A)
         rad = 0.5 * float(o["size"]) * rng.lognormal(0, 0.35, n) * (0.75 + 0.4 * d)      # denser: bigger, darker
-        rad = np.clip(rad, 0.00025, 0.0025)
-        soft = rng.uniform(0.2, 0.65, n)
+        rad = np.clip(rad, 0.00012, 0.002)
+        soft = rng.uniform(0.3, 0.9, n)
         lobes = rng.normal(0, 1, (n, 4)) * np.array([0.0, 0.16, 0.1, 0.07])
         ph = rng.uniform(0, 2 * np.pi, (n, 4))
         aspect = rng.uniform(0.75, 1.0, n)
         rot = rng.uniform(0, np.pi, n)
-        inten = np.clip(rng.uniform(0.25, 0.7, n) * (0.75 + 0.45 * d), 0, 1)   # most are faint
+        inten = np.clip(rng.uniform(0.1, 1.0, n) ** 1.6 * (0.7 + 0.5 * d), 0, 1)   # a wide range, most faint
         dark = rng.random(n) < float(o["dark"])
 
         def shape(i, s, t):
