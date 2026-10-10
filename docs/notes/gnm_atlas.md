@@ -467,3 +467,51 @@ Next, in order:
   all scale 1.0: width 1.45 mm, angles 1.27, ext 0.95, volume 1.03, middle 1.00.
 - lipsolve.py bounds the extensions to +-1 (active set). Unbounded (f3_tl1, old fields) it took width to -1.58: past
   MakeHuman's own extreme, 20 folded pairs.
+
+### Tess's lower lip: lipsolve against her under-lip shadow (front, dressed, light_m; hers 0.654 mid / 0.924 sides)
+- Derivatives per unit (renders, noisy): lower_lip_proj (coupled sd) -0.047 / -0.035; mh_lowerlip_width +0.005 / -0.03
+  to -0.05 (so -width LIGHTENS the sides: the lever faces2 lacked, it was capped at 0.4 mm); volume -0.03 / -0.03;
+  middle (the central pad) only -0.01 to -0.02 / -0.01: MakeHuman's lowerlip-middle moves the border, it hardly
+  deepens the cast shadow.
+- Runs (start f2_th2, 0.723 / 0.842, cost 10.45): f3_tl1 (old fields, unbounded) 0.688 / 0.886, cost 2.32 but width
+  -1.58 (folds: rejected). Bounded: tl2 0.717 / 0.879 (4.72), tl3 / tl4 similar but crescent GROOVES beside the corners
+  in the renders (the corner hold, above). f3_tl5 (corner hold 25 mm; levers proj, width, middle; volume left out for
+  its corner curvature): 0.710 / 0.874, cost 4.82, x = proj +0.08 sd, width -1.0 (at its bound), middle +0.06; prior
+  1.01. Renders clean (out/mouth5_front.png / mouth5_desk.png: current | tl5 | tl4's crescents). The sides are 2/3 of
+  the way to hers; the MIDDLE's deeper shadow is still not reached (0.71 vs 0.65): no fold-free data-backed lever
+  darkens the middle without the sides. Candidates for it: a mentolabial / chin-pad direction from data (the cast
+  shadow lands on the chin skin: its slope under the lip decides the shadow's depth), or the light (faces2: ours
+  0.88 vs 0.82 left / right, hers symmetric).
+
+### Tess's forehead arch (hscore's new "forehead arch" line: the forehead's skin edge per column, the same skin
+### classifier on her photo and our beauty render, 5 bins temple to temple; the ID pass can't see a peak)
+- f2_th2: ours - hers +12.4 +9.2 +2.5 +12.9 +5.8 mm (+ = our hair edge LOWER): the "tall peak" is our curtains
+  covering the forehead's upper corners down the diagonals, not her arch being lower at the temples (it is the
+  opposite: her skin reaches 9-13 mm higher at the corners, a broader, rounder top).
+- tie.curtain.sag (NEW, general: the run on to the ear's top hangs below / above its great circle): +8 / +16 / -10 /
+  -20 changed nothing measurable (only 2 of the lock's 11 samples are on that run). Kept (default 0, tested), not used.
+- curtain.dip < 0 (the run along the line passes ABOVE the traced hairline): dip -6: +8.2 +5.3 +0.6 +8.9 +1.6;
+  dip -12 (f3_ha8): +3.3 +1.5 -1.2 +5.3 -2.4, arch height 37.2 (hers 38.8), centre peak 23.3 mm up (hers 25.3). IoU
+  front / 3q / profile 0.600 / 0.596 / 0.651 (th2 0.600 / 0.592 / 0.645), scalp showing 2.4 / 3.1 / 0.0 (th2 2.2 /
+  3.0 / 0.0; hers 3.1 / 3.2 / 2.0), band bare 15.5 / 22.8 / 12.5 (th2 15.1 / 22.9 / 12.3): not worse anywhere that
+  counts. Reads as a broader, rounder forehead top; the part still a small peak (hers too, softer). The traced
+  front_points may sit low at the corners (her visible edge is above them): a re-trace would be the data fix.
+- Sheet out/f3_tess_lip_hair.jpg (hers | current f2_th2 | lips f3_tl5 | hair f3_ha8; front / 3q / profile, dressed).
+- Combined CANDIDATE f3_t1 = f3_tl5's lips + f3_ha8's hair (curtain dip -12): hscore front / 3q / profile IoU 0.601 /
+  0.596 / 0.651, scalp 2.6 / 3.3 / 0.0, band bare 15.5 / 22.7 / 12.3, forehead +3.3 +1.4 -1.5 +5.2 -2.3. Sheet
+  out/f3_tess_t1.jpg (hers | f2_th2 | f3_t1). Honest read: the front's forehead top is broader and rounder, closer to
+  hers, though the hair's edge over the upper corners reads a little blunt; 3/4 and profile ~unchanged; the lip change
+  is subtle at sheet size (sides of the under-lip shadow lighter, see mouth5_*.png). Nothing reads worse.
+
+### HANDOVER (faces3, 2026-10-10)
+Branch worktree-agent-ad926584389c85c9a. Scratch /mnt/data/hifipushie/faces3 (faces2's scripts retargeted; + curv.py
+(curvature change per lip slider), corner.py (corner-hold variants), wfold.py, bmid.py; spikes/facesliders/
+borderdiag.py, borderquad.py, extprofile.py). Models: f3_t1 (Tess candidate), f3_tl5 (lips only), f3_ha8 (hair only).
+Next, in order:
+1. Tess's under-lip MIDDLE (0.71 vs her 0.65): a data-backed lever that deepens the cast shadow at the centre only
+   (mentolabial / chin-pad direction), or pin the light's left / right asymmetry first.
+2. The front hair edge over the forehead's upper corners reads blunt; front_points may be traced low at the corners
+   (her visible edge sits above them): re-trace through the fitted camera, then drop dip back toward 0.
+3. MakeHuman volume / mouth_angles reshape the corner itself (curvature ~150 /m there): fine as data, but check them
+   in renders before a solve uses them. Then the faces2 list: Garrett's groom.grey (sides up), the MH lid targets
+   (border-aware carrying now exists: hold_creases is general, try it on the lids), canthal tilt, chin reader.
