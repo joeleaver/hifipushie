@@ -203,14 +203,14 @@ def test_features_and_shader_budget(tmp=None):
             paint.validate(spec)
             pre = {k for k, v in L.items() if v.get("_pre")}
             fine = {k: v for k, v in L.items() if not v.get("_pre")}
-            for want in ("skin:freckles", "skin:brow_hairs", "skin:stubble", "skin:wrinkle_forehead", "skin:scar0_cut",
+            for want in ("skin:freckles", "skin:stubble_shadow", "skin:brow_hairs", "skin:stubble", "skin:wrinkle_forehead", "skin:scar0_cut",
                          "skin:scar1_surgical_stitches", "skin:makeup_eyeliner", "skin:micro_pores"):
                 assert want in fine, want
-            for want in ("skin:midface_red", "skin:lips_lower", "skin:stubble_shadow", "skin:makeup_foundation", "skin:makeup_lipstick",
+            for want in ("skin:midface_red", "skin:lips_lower", "skin:makeup_foundation", "skin:makeup_lipstick",
                          "skin:flush", "skin:tan"):
                 assert want in pre, want
             # what a renderer's shader must hold stays small, and none of it is procedural noise: swatches, images, spots
-            assert sum(1 for v in fine.values() if v.get("part", "body") == "body") <= 36, len(fine)
+            assert sum(1 for v in fine.values() if v.get("part", "body") == "body") <= 37, len(fine)   # (37: skin3 moved the stubble shadow per pixel)
             for k, v in fine.items():
                 found = set()
                 _gens({kk: vv for kk, vv in v.items() if kk == "mask"}, found)
