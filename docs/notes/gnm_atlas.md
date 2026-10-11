@@ -4314,3 +4314,11 @@ _lip_obs / solve_step; the guide's 3b text (lids / lips now inside).
   NOTHING in the solve sees cheek volume (inside the profile's silhouette; the 3/4 reads the far cheek's edge only;
   the front outline has 33 reads under her hair). NEXT observation: SHADING (the cheek's planes under each picture's
   fitted light, front and 3/4).
+- FACE-ID WITH PROJECTED SKIN DOES NOT JUDGE SHAPE (jsheet2: sface / arcface, front | 3/4 | profile): tk_T06 0.43 /
+  0.39 | 0.31 / 0.31 | 0.26 / 0.29; tn_T10n 0.49 / 0.45 | 0.35 / 0.38 | 0.33 / 0.40; er_s4 0.55 / 0.49 | 0.36 / 0.39 |
+  0.22 / 0.07; the CLASS MEAN tn_T00 0.47 / 0.47 | 0.33 / 0.41 | 0.37 / 0.20. Her pictures on ANY of these heads
+  score the same: the embedding reads the projected texture. So face-ID is no judge here in either dressing (own
+  dressing ~0, projected ~0.3-0.5 whatever the shape). The judging sheet is for EYES (Joe's, and the blend column).
+STATE / NEXT (tooling): cheeks: a SHADING read (front + 3/4, the picture's fitted light; luminance against its own
+local mean so the albedo cancels) as a ruler row first (measure -> the move that closes it: cheek_fullness / the
+cheek zones' sculpt), then as observations in the solve if it validates on known heads.
