@@ -3115,3 +3115,82 @@ readers drift with shading, so the reader uses OUTLINES and colour edges, and th
 - CAUTION (first 9 pairs of validate.py): this is clay with the camera KNOWN. With each picture's camera off by a
   random 3 mm / 2 % / 1.5 deg (and the solve given that freedom) the errors grow to 1-4 mm: the camera fit, not the
   reader, sets the error on a photo. Table follows.
+
+### Step 2: validation on clay, camera known / hair / camera off (spikes/faceruler/validate.py 60 v1; out/validate_v1.log)
+60 pairs (20 regional transplants, 20 random B = A + 0.7 N, 20 "far": A = GNM's template, B ~ N(0, 1) = a block-in's
+start), B's clay pictures front / 3/4 / profile, 3 rounds. reader - mesh truth, mm: bias / sd; S/N = population sd / rms.
+| measure | pop sd | exact camera | hair (no outline in the cap) | camera off 3 mm / 2 % / 1.5 deg, NO camera refinement | the same, outlines only |
+|---|---|---|---|---|---|
+| pupils_apart | 3.1 | +0.01 / 0.05 (68x) | 0.05 (62x) | -0.49 / 0.86 (3x) | 2.21 (1x) |
+| eyes_forward | 4.0 | -0.04 / 0.18 (22x) | 0.19 | 1.26 (3x) | 2.47 |
+| eyes_height | 3.5 | +0.17 / 0.28 (11x) | 0.30 | 1.27 (3x) | 1.81 |
+| brows_over_eyes | 2.7 | -0.16 / 0.19 (11x) | 0.23 | 0.79 (3x) | 2.20 |
+| forehead_forward | 3.0 | +0.17 / 0.37 (7x) | 0.60 | 1.26 (2x) | 1.28 |
+| tip_forward | 2.5 | +0.05 / 0.18 (14x) | 0.18 | -0.99 / 1.04 (2x) | 1.41 |
+| subnasale_forward | 3.8 | -0.01 / 0.15 (26x) | 0.15 | 1.53 (3x) | 2.61 |
+| upper_lip_forward | 2.5 | 0.00 / 0.17 (15x) | 0.16 | -1.01 / 1.11 (2x) | 1.71 |
+| lower_lip_forward | 1.6 | +0.02 / 0.10 (16x) | 0.12 | 0.83 (2x) | 1.37 |
+| chin_forward | 3.5 | -0.08 / 0.29 (12x) | 0.49 | 1.01 (3x) | 1.34 |
+| philtrum_length | 2.1 | -0.12 / 0.23 (8x) | 0.23 | 1.26 (1x) | 2.50 |
+| chin_length | 4.1 | -0.03 / 1.27 (3x; 0.39 on far pairs) | 0.57 | 1.82 (2x) | 3.00 |
+| nose_length | 3.3 | -0.53 / 0.50 (5x) | 0.55 | 1.21 (2x) | 1.60 |
+| cheekbone_width | 8.0 | +0.28 / 1.00 (8x) | 1.18 | 3.24 (2x) | 4.43 |
+| jaw_width | 10.7 | +0.40 / 1.77 (6x) | 1.68 | 3.66 (3x) | 3.88 |
+| chin_width | 5.7 | -0.06 / 0.91 (6x) | 1.11 | 1.99 (3x) | 2.04 |
+| mouth_width | 4.0 | +0.11 / 0.25 (15x) | 0.29 | 0.84 (5x) | 2.35 |
+| nose_width | 4.2 | -0.40 / 0.85 (4x) | 0.87 | 2.12 (2x) | 1.93 |
+| skull_width | 8.2 | +0.11 / 0.54 (15x) | 1.76 (5x) | +2.67 / 5.57 (1x) | 5.93 |
+| skull_top | 4.2 | +0.66 / 0.44 (5x) | +1.19 / 1.15 (3x) | +2.78 / 2.25 (1x) | 2.44 |
+| skull_back | 10.3 | +0.06 / 0.17 (59x) | 0.87 (12x) | 3.33 (3x) | 3.49 |
+| neck_width | 12.6 | +0.54 / 1.64 (7x) | 1.72 | 3.33 (3x) | 3.50 |
+| under_chin | 4.6 | -0.21 / 0.50 (9x) | 0.57 | 1.78 (3x) | 1.92 |
+Read:
+- CAMERA KNOWN (a render of a known head through a known camera: the driving test's situation): every one of the 23
+  reads at 3-70 x under its population sd, from GNM's template as well as from a near head. The profile chain (tip,
+  nose base, lips, chin: the measures the mesh ruler's 1 mm noise spoiled) reads at 0.1-0.3 mm: the outline as a curve
+  does it. Weakest: nose_width 0.85 (nothing in an outline shows the alae: it is the population's guess from the nose's
+  other reads; 4x), nose_length (bias -0.5), skull_top (bias +0.7), the widths 1-1.8 mm on 8-11 mm sds.
+- HAIR (no outline in the cap): only the skull's three measures lose (width 1.8, top 1.2 with a +1.2 bias, back 0.9).
+- CAMERA OFF (each view's shift / scale / roll wrong and left free in the solve): 0.8-5.6 mm, S/N 1-5x. The first
+  solve's own error estimate was 3.3x too small there (1.2x with the camera known): the nuisance columns are right
+  (spikes t6: a pure camera change is fitted to 0.2-0.4 mm), the miss is that every round re-read the picture through
+  the WRONG camera, 3 mm from where the linearisation holds. -> the cameras are now refined between rounds
+  (face_ruler.read: cam_done); re-validation v2 below.
+- The solve's posterior sd is short of the observed error: median x1.2 (camera known), x1.5 (hair); per measure up to
+  x4 (jaw_width, skull_width: the extent readers). The table's +- is now hypot(1.5 x posterior, the measure's validated
+  floor ERR); rows whose +- is over half the population sd are marked NOT READ.
+- Fixed on the way: the brow reader took the TOPMOST dark run above the eye, which is the hair cap when the vault is
+  low (s7_00: brows read +10.6 mm for a true -5.4; skull pair failed). Now the lowest run within 22 mm.
+
+### Step 3: the pass rule (spikes/faceruler/score2.py) and the blind arms (arms.py, tab.py; sets s6 = seed 606, s7 = 707)
+PASS, old: region closed >= 0.4 AND ID closed >= 0.25 AND face error <= 1.1 x start.
+PASS, new: region closed >= 0.4 (same) AND [ID closed >= 0.25, OR for a pair whose change includes the SKULL: the
+head's outline (front + profile silhouettes, mean distance to the target's) closed >= 0.4 with the ID distance no
+more than 10 % worse] AND face error <= max(1.1 x start, start + 0.5 mm). Why: the ID nets crop the face and are
+blind to the vault (gnmdrive2: oracle region 0.7-0.8, ID -0.04 / -0.12 on skull pairs); and under 2 mm rms a 10 %
+band is 0.1-0.2 mm (s5_03 failed on 0.12 mm). Effect on the old sets (rescore.py): r5 (drivers + the noisy mesh
+ruler) 7 -> 9 / 14, e5 (eyes only) 3 -> 4, the phrase oracle on s5 8 -> 9. On s6 + s7 the blind arms change by 0-2 of
+28 (the rule is not what makes them pass).
+Blind arms, 28 fresh pairs (s6 + s7; new rule; old rule in brackets where it differs):
+| arm | pass | easy 16 | medium 6 | hard 6 |
+|---|---|---|---|---|
+| (c) MESH ruler, all 23 gaps | 24 | 13 | 5 | 6 |
+| (c) mesh ruler, 8 largest | 22 | 14 | 5 | 3 |
+| mesh ruler, 4 largest | 15 | | | |
+| (a) PICTURE ruler (camera known), all 23 | 23 | 12 | 5 | 6 |
+| (a) picture ruler, 8 largest | 20 (19) | 12 | 5 | 3 |
+| (a) picture ruler, 8 largest, look again, 8 more | 23 | 12 | 5 | 6 |
+| picture ruler, 4 largest | 14 | 9 | 4 | 1 |
+| picture ruler + hair, 8 largest | 20 (19) | 12 | 5 | 3 |
+| picture ruler, camera off 3 mm / 2 % / 1.5 deg (no refinement), 8 largest / all | 15 / 14 (12) | 11 | 4 / 3 | 0 |
+| the ruler's fitted identity applied directly (no 23 moves) | 21 (20) | 14 | 5 | 2 |
+By region (pairs count under each of their regions; mesh all / picture all / picture top-8): skull 4/3/1 of 4, jaw
+4/4/3 of 4, jaw_full 2/2/2 of 2, chin 2/2/3 of 4, mouth 6/6/4 of 8, nose 5/5/4 of 6, eyes 6/6/5 of 6, brows 6/6/4 of 6,
+cheeks 4/4/3 of 4. Ruler rms error over the 23 measures: camera known 0.80 mm, + hair 0.96, camera off 2.27.
+Read: with the camera known the picture ruler IS the mesh ruler (23 vs 24, 20 vs 22 of 28; the one skull miss was the
+brow-reader bug above, fixed after this run). What fails for both: chin pairs on the ID clause (s6_07 region 0.63 / ID
+0.18; s7_07 0.40 / 0.17: the 23 measures close the chin's place and size, not its shape), one mouth pair (s6_02 0.44 /
+0.23: lip shape is not in the 23), s7_09 nose+mouth (region 0.39). Eight moves are too few for the hard (three-region)
+pairs: 3 of 6; sixteen (look again) or all 23: 6 of 6. The fitted identity applied directly has the best region
+closure (0.6-0.9) but fails ID on the small pairs (s6_11 0.79 / -0.30, s7_11 0.82 / -0.22): it moves what the pictures
+do not pin down. NOT the next lever as it stands.
