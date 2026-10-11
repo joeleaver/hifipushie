@@ -1871,7 +1871,7 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
                  ruler: str = "") -> str:
     """GNM's controls. phrase = a difference you SEE ("the muzzle stands forward in profile", "pupils further apart")
     -> the driving manual's entries (control, sign, size, drags; guide topic gnm_driving): start there. query="mm" =
-    the 23 millimetre measures (mm:<measure> moves). ruler="modelA,modelB" = those measures, B - A, largest first, each
+    the 27 millimetre measures (incl. the orbit: eye depth and its rims) (mm:<measure> moves). ruler="modelA,modelB" = those measures, B - A, largest first, each
     with the mm: move that closes it. query = a feature ("alar crease", "jowl") -> controls ranked by mm per prior
     cost x locality; control = one described; zones=True; families, sort, per_family, sign. Act: block_in_step
     {"mm:<measure>": mm}, {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details: guide(topic="gnm_controls")."""
@@ -1887,7 +1887,7 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
     if query.strip().lower() in ("mm", "measures", "ruler"):
         from . import gnm_mm
         s = gnm_mm.sd()
-        return ("The millimetre measures (block_in_step {\"mm:<measure>\": mm}: that measure alone, the other 22 held "
+        return ("The millimetre measures (block_in_step {\"mm:<measure>\": mm}: that measure alone, the others held "
                 "in mm). Read the gap on the sheet (px x mm per px), type it. Population sd in mm:\n"
                 + "\n".join(f"mm:{n} (sd {s[n]:.1f} mm, read in {gnm_mm.SEE[n][0]}): + = {gnm_mm.SEE[n][1]}"
                             for n in gnm_mm.NAMES)
@@ -1971,10 +1971,12 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 
 @mcp.tool(structured_output=False)
 def face_ruler(name: str, save: str | None = None):
-    """THE FACE RULER: the block-in model against its reference pictures in MILLIMETRES: gnm_mm's 23 measures, picture -
-    model, largest first, each with the reader's error and the `mm:` move that closes it (block_in_step). Read from the
-    pictures' skin OUTLINES and iris centres through the fitted cameras, not by eye (sizes read by eye are 30-50 % off)
-    and not from detector landmarks. NOT READ = a measure these pictures do not show. Start a block-in from this table.
+    """THE FACE RULER: the block-in model against its reference pictures in MILLIMETRES: first the ORBIT (eye depth:
+    corneal apex behind the nasion, brow over the cornea, cornea ahead of the side rim / cheek: set it before any lid
+    work), then gnm_mm's 27 measures, picture - model, largest first, each with the reader's error and the `mm:` move
+    that closes it (block_in_step). Read from the pictures' skin OUTLINES, iris centres and the limbus in the side
+    views through the fitted cameras (their yaw left free), not by eye (sizes read by eye are 30-50 % off) and not
+    from detector landmarks. NOT READ = a measure these pictures do not show. Start a block-in from this table.
     Returns the pictures with the model's outline and the reads drawn (save: the path) and the table. Details:
     guide(topic="face_ruler")."""
     from . import face_ruler as fr

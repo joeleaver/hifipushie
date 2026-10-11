@@ -56,11 +56,11 @@ if mode == "limbus":
                     IRIS[b] = float(np.mean([e["iris"] for e in er.read(fimg, Pd, likeness._mm_per_px(fcam, humanfit.state(specs[b]["base"])["L"][27:48]), scale=1.0, origin=BOX[:2])]))
                     print(b, "iris read on the front picture", round(IRIS[b], 2), "mm; model's", round(2000 * fr.limbus_model(heads[b])[0]["r"], 2))
                 la, lb = fr.limbus_model(heads[a], IRIS[b]), fr.limbus_model(heads[b], IRIS[b])
-                part = fr.likeness.render(heads[a]["mesh"], cam, (BOX[0], BOX[1], BOX[2], BOX[3]), px=int(BOX[2] - BOX[0]), brows=False, passes=True)[2]["part"] if False else None
+                part = likeness.render(heads[a]["mesh"], cam, tuple(BOX), px=int(BOX[2] - BOX[0]), brows=False, passes=True)[2]["part"]
                 eye_c = np.asarray(cam["centre"], float) - humanfit._cam_rot(cam).T @ np.asarray(cam["t"], float)
                 dist = [np.linalg.norm(q["X"] - eye_c) for q in la]
                 for j in (0, 1):
-                    rd = fr.limbus_read(lum, cam, la[j], BOX[:2], 1.0, far=dist[j] > min(dist) + 1e-6, valid=valid)
+                    rd = fr.limbus_read(lum, cam, la[j], BOX[:2], 1.0, far=dist[j] > min(dist) + 1e-6, valid=valid, part=part)
                     if rd is None:
                         continue
                     tru = (fr._cam_points(cam, lb[j]["X"][None])[1][0] - fr._cam_points(cam, la[j]["X"][None])[1][0])
@@ -84,18 +84,26 @@ if mode == "limbus":
                           f"(|max| {np.abs(e[:, 0]).max():.2f}); up bias {e[:, 1].mean():+.2f} sd {e[:, 1].std():.2f}; along the picture's FORWARD {fe.mean():+.2f} sd {fe.std():.2f}")
     sys.exit()
 
-VAR = ("known", "free", "off")
+VAR = tuple(os.environ.get("VAR", "known,free,off").split(","))
 SUB = {"all": ("front", "3q", "profile"), "f+p": ("front", "profile"), "f+3q": ("front", "3q")}
+SKIP = set(os.environ.get("SKIP", "").split(","))
+TAG = os.environ.get("TAG", "")
+PAIRS = [int(x) for x in os.environ["PAIRS"].split(",")] if os.environ.get("PAIRS") else None
 OFF_SD = {"front": (1.5, 1.5, 2.5, 0.8, 2.0, 2.0), "3q": (1.5, 1.5, 2.5, 0.8, 4.0, 2.0), "profile": (1.5, 1.5, 2.5, 0.8, 6.0, 2.0)}
 rows = []
 for i, a in enumerate(names):
     b = names[(i + 1) % len(names)]
+    offs_i = {k: rng.normal(size=6) * OFF_SD[k] for k in kinds}       # (drawn for every pair: the same in every process)
+    if PAIRS is not None and i not in PAIRS:
+        continue
     truth = {r["measure"]: r["gap"] for r in gnm_mm.gaps(Vg[a], Vg[b])}
     row = {"a": a, "b": b, "truth": truth}
-    offs = {k: rng.normal(size=6) * OFF_SD[k] for k in kinds}
+    offs = offs_i
     row["offs"] = {k: v.tolist() for k, v in offs.items()}
     for var in VAR:
         for sub, use in SUB.items():
+            if f"{var}/{sub}" in SKIP:
+                continue
             views = []
             for k, cam in zip(kinds, rj["cameras"]):
                 if k not in use:
@@ -124,4 +132,4 @@ for i, a in enumerate(names):
             row[key + "_n"] = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "limbus")}
             print(a, "<-", b, key, row[key + "_n"], " ".join(f"{m} {row[key][m][0]:+.1f}+-{row[key][m][1]:.1f} ({truth[m]:+.1f})" for m in gnm_mm.ORBIT), flush=True)
     rows.append(row)
-    json.dump(rows, open(f"{G}/oval_ruler.json", "w"))
+    json.dump(rows, open(f"{G}/oval_ruler{TAG}.json", "w"))

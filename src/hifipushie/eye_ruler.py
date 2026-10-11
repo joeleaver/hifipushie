@@ -679,7 +679,7 @@ def compare(name: str, model_name: str | None = None) -> dict:
     if "caruncle showing" in off or not ((spec.get("skin") or {}).get("eyes") or {}).get("caruncle"):
         moves.append("skin.eyes.caruncle 1 (the inner corner's pocket painted wet red: unpainted, the eye reads ~2 mm short at the nose side)")
     # (the picture's fold LINE is not drawn: Joe, 2026-10-11: the skin-over-skin overhang is left alone, no painted fold
-    # line / crease make-up; the eye step puts the lid's TURN on the line's path, that is all. skin.eyes.crease stays
+    # line / crease make-up; the eye step puts the lid's TURN on the line's path, that is all. The crease option stays
     # in the skin code as an unused option; crease_path() still gives the path.)
     if any(k.startswith("brow") for k in off):
         moves.append("brow_read(name, match=True)")

@@ -45,6 +45,23 @@ eye catches what the points miss; the target table catches what your eye misses.
    without looking passed 11, with the camera fitted from the model's landmarks as on a photo 11 of 13. Where a driver
    disagreed with a row, the row was right every time it was checked (under_chin, nose_length, the vault, a brow move
    rejected for a frown the target had). Your eye judges whether the face reads closer; the ruler says how much.
+   **3a. THE ORBIT, near the START (eye depth is a big mass: decide it before any lid work).** The same table opens
+   with the ORBIT rows, as a side view shows them, model -> picture +- the reader's error: the corneal apex behind the
+   nasion, the brow ridge ahead of the cornea, the cornea ahead of the orbit's side rim (what an exophthalmometer
+   reads) and of the cheek under the eye, the brow's height over the pupil, the hollow under the brow. Their moves:
+   `mm:eyes_forward` (the EYE UNIT: ball, lids, socket lining forward inside rims, bridge and muzzle that stay; |dc|
+   1.65 per mm, ~0.75 mm on the shipped head per mm asked; the reference cameras follow the face, the step says so),
+   `mm:brow_ridge_forward`, `mm:side_rim_forward`, `mm:under_eye_forward`, `mm:brow_hollow`, `mm:brows_over_eyes`.
+   How they are read: the profile's outline (nasion, brow), the LIMBUS of the near eye in the 3/4 and the profile
+   (edge read, 0.05-0.1 mm on renders), the front irises; each camera's YAW is a freedom of the solve (in a profile 1
+   degree of yaw moves the eye 0.5 mm along the picture and leaves the profile line alone).
+   BE HONEST ABOUT WHAT IT CAN SAY (8 known heads, dressed pictures): with the cameras KNOWN eye depth reads to 0.6-0.8
+   mm from front + profile; from front + 3/4 alone it does NOT read (5.6 mm: a 3/4 does not show the nasion's depth);
+   through FITTED cameras (a photo) 2.7-3.6 mm, because the outline pins a profile camera's yaw only to ~3 degrees.
+   So on photos an orbit row usually says NOT READ unless the gap is over ~5 mm; the eye step then reports ORBIT:
+   UNREAD. Do not move eye depth on a row inside its error; what makes it readable is a profile whose camera is
+   known (a measured turntable angle, or a generated reference with a stated yaw), not more staring. From the FRONT
+   alone depth has no proxy: the front-only read is the population's guess (+- 5.4 mm on a 4.0 mm sd).
    **If the difference is something you can MEASURE** (a width, a height, how far a point stands forward in profile:
    the 23 measures of `gnm_controls(query="mm")`), measure it in mm on the sheet and use the `mm:` move: closing the
    8 largest of those gaps (in population sd) passed 30 / 42 pairs, more than the best 10 phrase moves (27 / 42).
@@ -88,8 +105,10 @@ eye catches what the points miss; the target table catches what your eye misses.
      sculpt of 1 mm usually costs |dc| 2.5-4: big next to a macro step, but it moves a real face's |c| (~13), not away.
    - MILLIMETRES: `"mm:<measure>": mm` moves one measure you can see (pupils_apart, eyes_forward, eyes_height,
      brows_over_eyes, forehead_forward, tip_forward, subnasale_forward, upper / lower_lip_forward, chin_forward,
-     philtrum_length, chin_length, nose_length, the widths, skull_top / back, under_chin) by that many mm with every
-     other measure held in mm (gnm_mm; |dc| 0.3-1.2 per mm). Use it FIRST for anything you can measure (manual
+     philtrum_length, chin_length, nose_length, the widths, skull_top / back, under_chin, and the orbit's
+     brow_ridge_forward, side_rim_forward, under_eye_forward, brow_hollow: 27) by that many mm with every
+     other measure held in mm, the lids kept on the ball and the profile line kept (gnm_mm; |dc| 0.3-1.7 per mm).
+     Every forward measure is taken against the NASION (subnasale_forward was against the eyes until 2026-10-11). Use it FIRST for anything you can measure (manual
      section 0a): take the largest gaps in population sd first; several mm: moves in one step add up exactly. The
      forward measures are a chain (subnasale -> upper lip -> lower lip -> chin): a link carries what is below it. The
      eyes set further apart is `mm:pupils_apart` (eye_spacing moves only the inner corners; head_size! scales the head).
@@ -371,8 +390,10 @@ MOVES name the tools: `lid_read(match=True)` (the eye step solves these margins 
 (a dressed render through the same camera reads the same way), eye_ruler.model(spec, cam), eye_ruler.compare(name).
 
 ### `face_ruler`
-face_ruler(name, save=None): the block-in model against ALL its reference pictures, in millimetres: gnm_mm's 23
-measures (pupils apart, eyes forward / height, brows over the eyes, forehead forward, nose tip / base forward, nose
+face_ruler(name, save=None): the block-in model against ALL its reference pictures, in millimetres. First the ORBIT
+rows (loop 3a: eye depth as a side view shows it, each with its error; the cameras' solved yaw / pitch and which
+limbus was read are in the notes under the table), then gnm_mm's 27
+measures (the orbit's four rims and hollow, and pupils apart, eyes forward / height, brows over the eyes, forehead forward, nose tip / base forward, nose
 length / width, upper / lower lip and chin forward, philtrum and chin length, cheekbone / jaw / chin / mouth / skull /
 neck width, the vault's top and back, the line under the chin). Each row: picture - model (GNM's mm and population
 sd), +- the reader's error, the move `"mm:<measure>": gap` for `block_in_step`, the view it shows in. Largest (in sd)

@@ -48,8 +48,9 @@ ERR = {"pupils_apart": 0.05, "eyes_forward": 0.19, "eyes_height": 0.3, "brows_ov
        "chin_forward": 0.49, "philtrum_length": 0.23, "chin_length": 0.57, "nose_length": 0.55, "cheekbone_width": 1.2,
        "jaw_width": 1.7, "chin_width": 1.1, "mouth_width": 0.29, "nose_width": 0.87, "skull_width": 1.76,
        "skull_top": 1.15, "skull_back": 0.87, "neck_width": 1.7, "under_chin": 0.57,
-       # the orbit's rims (orbit, 2026-10-11; spikes/orbit/oval.py, clay, camera known)
-       "brow_ridge_forward": 0.5, "side_rim_forward": 1.0, "under_eye_forward": 0.8, "brow_hollow": 0.4}
+       # the orbit's rims (orbit, 2026-10-11): NOT validated on clay of raw GNM heads; half the block-in path's error
+       # with the cameras known (spikes/orbit/osum.py known/all: 1.05 / 1.04 / 1.72 / 0.88)
+       "brow_ridge_forward": 0.5, "side_rim_forward": 0.5, "under_eye_forward": 0.9, "brow_hollow": 0.45}
 ERR_POST = 1.5
 SUPER = 1                # mask supersampling
 _C: dict = {}
@@ -828,7 +829,7 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
     to = eye_c - X
     to /= np.linalg.norm(to)
     op = float(to @ fwd)                              # how open the disc is to the camera (1 = face on)
-    if op < -0.05 or (far and op < 0.6):
+    if op < -0.05 or (far and op < FAR_OPEN):
         return None
     near_side = 1.0 if (to @ lat) >= 0 else -1.0      # which side arc is nearer the camera (+ = temple)
     th = np.radians(np.arange(-40, 41, 10.0))
@@ -843,8 +844,8 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
             ok = (qa[:, 0] >= 0) & (qa[:, 1] >= 0) & (qa[:, 0] < part.shape[1]) & (qa[:, 1] < part.shape[0])
             seen = np.mean([part[y, x] >= 1 for x, y in qa[ok]]) if ok.any() else 0.0
             if seen < 0.5:
-                if sg == near_side:
-                    return None
+                if sg == near_side or far:     # the FAR eye is read only whole (both arcs on the eyeball): with one arc
+                    return None                # behind the bridge it latched onto lashes / the outline (3 of 8, 2.6-5.8 mm)
                 continue
         for a in th:
             arc.append(sg)
@@ -901,6 +902,8 @@ def limbus_read(lum, cam, lb: dict, origin=(0.0, 0.0), scale: float = 1.0, reach
     return {"d": d, "p": pc, "q": pc + d, "score": sc, "sharp": sharp, "open": op, "mmpx": mmpx, "fwd": f2}
 
 
+FAR_OPEN = 0.8           # the far eye is read only in views turned under ~37 deg: at 45 it is half behind the bridge and, on a head
+                         # that is not the model's, read 2-4.6 mm off (5 dressed pairs) even with both arcs on the model's eyeball
 LIMBUS_MIN = 0.03        # a limbus read under this edge contrast (luminance 0..1), or no better than another place, is dropped
 # mm: in a side view (the disc under half open) the reader puts the edge this far FORWARD of the model's own limbus
 # (spikes/orbit/oval.py limbus: 16 dressed profile pictures of 8 known heads, +0.40, sd 0.18; a 3/4's near eye: +0.09,
@@ -1075,8 +1078,11 @@ MODEL_ERR = {"pupils_apart": 0.83, "eyes_forward": 2.79, "eyes_height": 1.13, "b
              "nose_length": 0.86, "cheekbone_width": 3.06, "jaw_width": 5.0, "chin_width": 2.87, "mouth_width": 3.34,
              "nose_width": 5.2, "skull_width": 2.99, "skull_top": 2.29, "skull_back": 2.45, "neck_width": 13.5,
              "under_chin": 0.91,
-             # (orbit: spikes/orbit/oval.py, dressed, hair masked, camera free incl. yaw)
-             "brow_ridge_forward": 1.2, "side_rim_forward": 2.5, "under_eye_forward": 2.0, "brow_hollow": 0.8}
+             # (orbit: spikes/orbit/oval.py + osum.py: 8 far pairs, dressed, hair masked, each camera put OFF by a random
+             # yaw (profile 6, 3/4 4 deg sd) / shift / scale and left free: a fitted camera. eyes_forward itself: 2.7-3.6
+             # there (0.6-0.8 with the cameras KNOWN, 2.2 with true cameras left free): the profile camera's yaw, which
+             # the outline pins only to ~2.5-3.3 deg, is what limits eye depth on a photo, not the limbus read (0.1 mm).)
+             "brow_ridge_forward": 1.5, "side_rim_forward": 3.5, "under_eye_forward": 2.8, "brow_hollow": 1.1}
 PHOTO_CAM_SD = (1.5, 1.5, 2.5, 0.8)   # a block-in's cameras were fitted to THIS model and are anchored by its landmarks
 # with the cameras' YAW and PITCH left free too (degrees; the last two): a profile's yaw is the least known thing in a
 # block-in (few landmarks, all near the midline: Tess's was refitted by 30 degrees once), a 3/4's is held by both eyes
