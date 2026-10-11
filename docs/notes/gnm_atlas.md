@@ -2090,11 +2090,12 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 
 ## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
-STATE / NEXT (gnmcrease 2, 2026-10-10): CORRECTION in "### Round 2" (#376 / #540 = the right fold; gd_T30 = right
-darkness, wrong fold SHAPE; makeup supplies missing darkness, no geometry fixes). DONE: eye step matches the crease SHAPE
-(blockin_eyes CREASE / crease_shape / Reader.sections to 12 mm, blockin_crease.npz; CREASE_SLIT_DARK + note retired).
-Sections to 8 mm matched the lid but not the read; to 12 mm (ssT376s12) the fold's arc reads like #376. NEXT: the new
-eye step at 12 mm on Tess (out/ev12_T12_{fold,s376}.npz, evrun.py) -> dress -> final sheet gk_06 + makeup variant.
+STATE / NEXT (gnmcrease 2, 2026-10-10, handed over): CORRECTION in "### Round 2" (#376 / #540 = the right fold; gd_T30 =
+right darkness, wrong fold SHAPE; makeup supplies missing darkness, no geometry fixes). SHIPPED on the branch: the eye step
+matches the crease SHAPE (blockin_eyes CREASE = "s376" / crease_shape / Reader.sections 0.5-12 mm, blockin_crease.npz;
+CREASE_SLIT_DARK + the out-of-reach note retired). Final sheet human_renders/gk_06_crease_shape_final.png. OPEN: Joe's read
+of gk_06; the shape term opens the upper lid (Tess 0.64 -> 0.73-0.77 iris r vs the picture's 0.67): weigh the lid term
+up or SIG_SHAPE to 0.5 if that costs likeness; Garrett (hooded picture) is unaffected by design.
 
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
@@ -2212,3 +2213,19 @@ depth, same ceiling.
   ssT376s12 (|dc| 6.2 from gd_T30, |de| 3.2, socket orbital_rim +0.49 -> -0.12) shows #376's lit fold edge and arc line
   dressed (out/v10.png). The read lives in the fold-to-brow skin, not only the lid: the eye step's sections and templates
   now run to 12 mm (SECTION_S; blockin_crease.npz rebuilt by template.py with SMAX=12).
+- THE NEW EYE STEP AT 12 mm on Tess (scratch, evrun.py; no model written): template "s376": section rms 1.59 -> 0.15 mm,
+  |dc| 5.2, |e| 3.2, socket within 0.3 sd, crease 2.7 mm over the margin, platform 2.15, upper lid 0.73 (picture 0.67);
+  template "fold": 4.00 -> 0.14, |dc| 5.5, upper lid 0.77. Out: out/ev12_T12_{s376,fold}.npz, scratch models
+  gk_ev12s376 / gk_ev12fold / gk_mk12*.
+- MAKEUP (the darkness split): skin.makeup = {"eyeshadow": {"amount": 0.4, "color": "#b08878", "crease": "#7a5446",
+  "finish": "matte"}} (gk_mk12*). skin_makeup puts the crease band at 0.3 x (brow mid - upper lid) over the lash line,
+  which is where the matched fold sits (crease / brow distance 0.28-0.31): no change to skin_makeup needed.
+- SHEET gk_06_crease_shape_final.png (same eye frame for all; sections under): BLUNT READ: the sections of all three
+  Tess results lie on #376 / #540 (gd_T30's hollow is gone). Dressed, 's376' and the 12 mm shape solve show #376's lit
+  fold edge with a soft arc above the lid: closer to #376 than anything before, but the line is still fainter than
+  #376's own; 'fold' reads as a fuller, puffier lid (so the default template is "s376"). The makeup at 0.4 adds a light
+  crease shade without reading as product. Costs: the upper lid opens ~0.07-0.1 iris r past the picture and the eye looks
+  a little rounder: a likeness cost to weigh. Not judged against the photo for likeness beyond that (Joe's call).
+- Scripts (spikes/gnmcrease; scratch /mnt/data/hifipushie/gnmcrease): col.py (column readers, dump), sep.py, calib.py,
+  secplot.py, shapesolve.py (SMAX / CURV / SIG), template.py (SMAX=12), evrun.py (the shipped solve, scratch), dress.py
+  (ss:<npz>@model, MAKEUP=json), sheet5.py / sheet6.py.
