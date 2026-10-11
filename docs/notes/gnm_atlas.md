@@ -44,6 +44,12 @@
   term (lid_read(match=True) / blockin_eyes.eye_step fold="crisp" -> blockin_lid.fold_step -> gnm_fold.fold; fold="donor"
   keeps lidsolve) and "hooding" is a block-in move (block_in_step {"hooding": x}). Joe, same day: "After that rerun all 4
   models, giving me sheets as you go": THE HOLD IS LIFTED; the driving gate rerun (NEXT 2) was not done first.
+- JOINT SOLVE + JUDGING SHEET (2026-10-11, "## reruns"): block_in_solve (outlines + irises + limbus + lids + lips in
+  one solve, prior on the whole identity) replaces closing measures by hand; the JUDGING SHEET (photo | 50 % blend |
+  the reference pictures projected as the model's skin | own dressing; spikes/reruns/jsheet.py) is how heads are
+  judged: Joe liked the projected texture ("that was cool"), and: it "supports that we can probably put that eyelid
+  in as texture later": the lid's fold line as TEXTURE is back on the table for later (this softens the 2026-10-11
+  "no painted fold line" decision; not now). The crisp fold is NOT forced from a class-mean head (|dc| 20).
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
@@ -4299,3 +4305,12 @@ STATE / NEXT (tooling): block_in_solve = outlines + irises + limbus + lids + lip
 (3) the nose (what the profile outline reads along the dorsum and tip; alae / nostril reads from the front; the
 profile camera); the brow band; (4) neutral judging sheet + face-ID; (5) the table's rows; tests for _lid_obs /
 _lip_obs / solve_step; the guide's 3b text (lids / lips now inside).
+- JUDGING SHEET (jsheet.py; stage.shoot(tex=[other views.., front])): tk_T06 with her pictures projected reads as her
+  from the front; the same head in er_s4's dressing reads as a stranger: the dressing was masking every earlier read
+  (my "long hooked nose" on tk_01 / tk_02 was WRONG: the profile line lies on hers in the blend). Face-ID, projected
+  skin vs photo: front sface 0.43 / arcface 0.39, 3/4 0.31 / 0.31, profile 0.26 / 0.29 (own dressing: ~0). The
+  projection carries her identity itself: being checked against tn_T10n / er_s4 / the class mean (tk_04).
+- Joe on tk_03's profile: "the puffiness of her cheeks is really weird". True: lower cheek / beside the mouth too full.
+  NOTHING in the solve sees cheek volume (inside the profile's silhouette; the 3/4 reads the far cheek's edge only;
+  the front outline has 33 reads under her hair). NEXT observation: SHADING (the cheek's planes under each picture's
+  fitted light, front and 3/4).
