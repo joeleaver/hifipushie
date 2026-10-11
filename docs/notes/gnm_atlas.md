@@ -3072,3 +3072,46 @@ outer 9.7 vs 9.4, upper margin at the pupil 2.1 vs 3.4, lower -5.3 (bias taken o
   crease make-up). Her dark lash line + wing is still unmatched.
 - OPEN (Joe to decide): fix the keep-out and retry a soft crease shadow before accepting the painted fold line;
   identity-only (ne=0) as the eye step's default.
+
+
+## faceruler (2026-10-11, "faceruler" agent, branch worktree-agent-a61aa2d0ada1d80ab from main 50cde54; the PICTURE ruler for
+## gnm_mm's 23 measures and the driving test rerun with it. Scratch /mnt/data/hifipushie/faceruler: run.sh <script> (capped,
+## this worktree's src; scripts/ = gnmdrive's drv / gnmc / score / drive / pairs copied + mine), cases/, hidden/, out/;
+## repo scripts spikes/faceruler; sheets human_renders/fr_*)
+STATE / NEXT (faceruler, step 1): src/hifipushie/face_ruler.py reads the 23 measures off clay pictures (front, 3/4,
+profile) of a GNM head against a model head: first numbers below (exact camera: 0.05-1.0 mm per measure). Running:
+spikes/faceruler/validate.py 60 v1 (exact / hair / fitted-camera / outline-only variants). NEXT: the validation table,
+the pass-rule fixes (score2.py), a fresh set s6 (seed 606) with arms (a) blind, (b) Claude drivers, (c) mesh ruler;
+then dressed renders / Tess's photos, the block-in tool, guide, tests.
+
+### Step 1: the reader (src/hifipushie/face_ruler.py; spikes/faceruler/t1.py, validate.py)
+Design (decided after reading gnmdrive2's verdict and the eyeruler / gnmbrow notes: detector points are biased, clay
+readers drift with shading, so the reader uses OUTLINES and colour edges, and the model's own picture as the reference):
+- Observations, each in mm at the model through the view's camera: (1) the head's OUTLINE in every view: at 1.5 mm
+  steps along the MODEL's silhouette (rasterised through the same camera, a sub-pixel curve), how far the PICTURE's
+  outline lies outside (+) / inside (-) along the normal (~430 front, ~360 3/4, ~200-500 profile samples); (2) pupil
+  centres (front, 3/4); (3) the vermilion's colour edge: corners, top of the upper red, bottom of the lower red (front,
+  3/4, and their heights on the profile); (4) the brow's top over each eye (front). (2)-(4) are read by the SAME reader
+  on the picture and on the model's own clay picture (the reader's bias cancels).
+- Every observation moves in a known way with GNM's 170 identity comps: an outline sample moves with the silhouette
+  vertex that makes it, along the outline's normal (the envelope theorem, as fit.py); a colour feature with its
+  vertices. Checked: observed offset - J (cB - cA): outline sd 0.05-0.1 mm (small gaps), pupils 0.04 (x) / 0.14 (y),
+  lips 0.14-0.27, brows 0.15.
+- The gaps: the most likely identity change dc given the offsets under GNM's prior (dc ~ N(0, 1) per comp; ridge
+  solve, Huber weights), 3 Gauss-Newton rounds (the outline's maker / normal re-taken on the moved head), the 23
+  measures read off the fitted head (gnm_mm.readers) minus the model's; each with its posterior sd. A measure the
+  pictures do not show comes back near 0 with an sd near its population sd, never as a confident number.
+- TRIED, worse: fitting the 23 `mm:` moves alone to the offsets (the "curve in the measures' vocabulary", solve(span=
+  True)): errors 1-4.9 mm per measure on transplant pairs (a regional transplant is not in the 23's span: the rest
+  aliases into them), against 0.05-1.0 for the full-prior solve. One round instead of three: 0.2-1.8 mm.
+- First reader that failed: the iris as a circle through the limbus' side edges on the clay (the lids and the socket's
+  shade cut it: 0.4-1.1 mm off). The pupil's centroid (near-black, whole) reads 0.04 mm.
+- First numbers (27 transplant pairs, exact camera, 3 rounds; reader - mesh truth, sd in mm; population sd in brackets):
+  pupils_apart 0.04 (3.1), eyes_forward 0.16 (4.0), eyes_height 0.19, brows_over_eyes 0.13, forehead_forward 0.27,
+  tip_forward 0.12 (2.5), subnasale_forward 0.11, upper_lip_forward 0.10, lower_lip_forward 0.07 (1.6), chin_forward
+  0.28, philtrum 0.19, chin_length 0.54, nose_length 0.63 (bias -0.5), cheekbone_width 1.0 (8.0), jaw_width 0.98 (10.7),
+  chin_width 0.97 (5.7), mouth_width 0.19, nose_width 0.64 (4.2), skull_width 0.48, skull_top 0.56 (bias +0.7),
+  skull_back 0.17, neck_width 0.5, under_chin 0.39.
+- CAUTION (first 9 pairs of validate.py): this is clay with the camera KNOWN. With each picture's camera off by a
+  random 3 mm / 2 % / 1.5 deg (and the solve given that freedom) the errors grow to 1-4 mm: the camera fit, not the
+  reader, sets the error on a photo. Table follows.
