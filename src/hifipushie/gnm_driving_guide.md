@@ -60,6 +60,37 @@ Tested (gnmdrive2, 42 synthetic pairs): closing the 8 LARGEST of these 23 gaps p
 4. **Then the phrase tables** (sections 1-7) for what the measures do not describe: lip fullness, cheek fullness and
    planes, eye openings, the brow's shape, the nose's width at the bridge, ears, jowls.
 
+Set s5 (14 fresh pairs, the same manual): drivers reading the gaps BY EYE passed 3 / 14, drivers given a ruler (the
+gaps as numbers, +-1 mm) 7 / 14 (10 / 14 for the ruler's 8 largest gaps applied blindly; the phrase oracle 8 / 14).
+The eye is the weak link, not the control. What the drivers found:
+- **Readable by eye** (within ~2 mm): the front totals (skull, cheekbone, jaw, chin, mouth, nose width, skull top),
+  `under_chin`, `chin_length`, `chin_forward`, the lip links IN THE MOUTH CROP, `pupils_apart` in the eyes crop,
+  `brows_over_eyes`. A very large gap is under-read by about a third (a 15 mm chin took +10 then +5).
+- **Not readable by eye**: `subnasale_forward`, `eyes_forward`, `forehead_forward` (the sheets are framed on the
+  face, so "the muzzle is back" and "the upper face is forward" look the same, and the nasion they are measured from
+  moves too); a small `tip_forward` vs the whole muzzle; any gap under 1.5 mm. For those use a ruler, or the phrase
+  moves `pc:upper_lip_region0` (muzzle) and `pc:nose_region0` (whole nose), which a driver CAN judge on the outline.
+- **Missed by eye at head scale, found at once by the ruler**: chin length (7-9 mm, twice), nose width (12 mm), mouth
+  width (7 mm), eye spacing + prominence (9 and 10 mm, seen only as "big sockets"), the sign of `under_chin` (three
+  drivers read the tracing backwards). Measure the front totals in the feature crops, never at head scale.
+- **What mm: moves drag** (they hold the 23 measures, not everything): the ears (`ear_out` 0.5-1.2 sd with any large
+  width / muzzle move: put back with `ear_out!`, clean; `mm:skull_width` carries the ears with it, so look before
+  adding it), lip fullness (about +1 sd with big nose / mouth moves), `mm:tip_forward` turns the tip (nose_upturn
+  ~0.4 sd per mm: pair with `nose_upturn!`), `mm:eyes_height` at 4+ mm tilts the eyes and angles the brows,
+  `mm:brows_over_eyes` at 8+ mm leaves a V-frown, `mm:eyes_forward` moves the nasion and brow as much as the eye,
+  `mm:forehead_forward` leaves the brow ridge behind (add `brow_ridge!`).
+- **Lip fullness after mm: moves: free `lip_fullness` in 0.5-0.8 steps with the muzzle put back** (read the drag on
+  the profile). `lip_fullness!` looked clean to the drivers and RAISED the face error all four times it was kept in
+  s5 (0.4-1.4 mm rms: it moves the chin's bottom and the face length): do not use it.
+- **By region** (pass rates, ruler drivers on s5 vs phrase-manual drivers on s2-s4): eyes 3/3 vs 3/9, cheeks 2/2 vs
+  2/6, brows 2/3 vs 4/9, jaw 2/3 vs 4/9, chin 1/2 vs 1/6; but nose 0/3 vs 6/9 and mouth 0/4 vs 5/12. So: mm: moves
+  for placement, widths, lengths and the jaw / chin / skull masses; `pc:nose_region0` / `pc:nose_region2` for the
+  nose and `pc:upper_lip_region0` for the muzzle (their differences are 1-3 mm profile shapes, under a ruler's error),
+  then mm: moves to finish them.
+- **A ruler cannot confirm its own move** (after you type a gap it reads 0 whatever the truth): keep / reject on the
+  renders. Its large gaps (> 1 sd) were right every time; its small profile gaps (tip, philtrum, lip links under
+  ~2.5 mm, with a +-1 mm reading error) were wrong by the renders on 5 of the 14 pairs.
+
 | You see | Use | Size per +1 | Watch |
 |---|---|---|---|
 | mm measure: irises doubled side by side (overlay), eyes set wider | `mm:pupils_apart` | 1 mm; population sd 3.1 mm | read in front; a 2-3 mm offset looks like "longer eyes" at head scale: check the eyes crop |
@@ -121,7 +152,7 @@ Tested (gnmdrive2, 42 synthetic pairs): closing the 8 LARGEST of these 23 gaps p
 |---|---|---|---|
 | The MUZZLE stands forward in profile: nose base, both lips and chin forward TOGETHER (a protrusive profile angle) | `pc:upper_lip_region0` (+) | lips +2.0, subnasale +1.3, chin +1.1 mm; mouth +1.9 mm wider; |dc| 0.8 | right in both signs, every time it was used; +2..+3 for a 4-7 mm gap. Lengthens the face (chin -2.2 mm, face_length +0.6, gonial +0.7 sd per unit) and widens mouth / nose: put back `face_length` or `pc:chin_region0` (-), `mouth_width!` (-) |
 | The LIPS pout ahead of the nose-chin line, the nose and chin staying | `lip_projection!` (+) | lower lip +2.15, upper +1.0, chin -0.9 mm; |dc| 2.8 | free lip_projection pulls the nose tip back 2.2 and the chin back 2.0 mm |
-| Fuller lips (taller red in front) | `lip_fullness` free (pulls the nose tip back 1.9 mm: often welcome) or `lip_fullness!` | | free also drags lip_projection +0.68 (lips and chin ~1.5 mm forward): put the muzzle back with `pc:upper_lip_region0` (-). | `lip_fullness!` adds little in profile and drags face_length +0.7 and the chin bottom 1.9 mm: check the jaw after it |
+| Fuller lips (taller red in front) | `lip_fullness` free (pulls the nose tip back 1.9 mm: often welcome); not `lip_fullness!` (s5: raised the face error every time) | | free also drags lip_projection +0.68 (lips and chin ~1.5 mm forward): put the muzzle back with `pc:upper_lip_region0` (-). | `lip_fullness!` adds little in profile and drags face_length +0.7 and the chin bottom 1.9 mm: check the jaw after it |
 | Thinner lips | `lip_fullness` free (-) | | free pushes the WHOLE nose forward ~1.7 mm per sd, bridge to tip, and carries lips and chin back (lip_projection -0.7 per sd): put the nose back with `pc:nose_region0` (-0.4 per -1.0 of lip_fullness; `nose_projection!` is a trap), and halve the step once the profile is on |
 | Longer upper lip: the mouth sits lower under the same nose | `mm:philtrum_length` (mm) or `philtrum!` (+) | 2.0 mm per sd, very clean | a "doubled lip seam" in the onion skin can be the lip's shape, not its height: philtrum! +1.5 didn't fix one | a 5 mm longer lip is ~2.5 sd: 1.2-1.5 looked like "barely moved". Free philtrum pushes the nose forward |
 | Wider mouth | `mm:mouth_width` (mm, total) or `mouth_width!` (+) | 3.1 mm corner to corner (total) per sd | free widens the jaw 3.4 |
@@ -136,6 +167,7 @@ Tested (gnmdrive2, 42 synthetic pairs): closing the 8 LARGEST of these 23 gaps p
 | Wider / narrower at the wings | `nose_width!` | alae 3.3 mm, clean | free nose_width widens mouth, jaw and face (+4.3 jaw) |
 | Wings flare wider (the alae themselves) | `sculpt:alae` (- = narrower, mm) | 1.6 mm width per mm | |
 | Tip projects more (less), the bridge right | `mm:tip_forward` (mm: the tip against the nose base, the bridge held) or `nose_projection` free (+) | tip +3.6, nasion +2.1 mm | free nose_projection (-) drops the bridge with the tip: mm:tip_forward is the clean one. | drags upturn -0.78 sd and the eyes back; `nose_projection!` costs |dc| 5.1 and lifts the tip 2.2 mm |
+| The dorsum proud / scooped between nasion and tip (a convex or a dished bridge), the tip right | `bridge_hump` free with `mm:tip_forward` to put the tip back (hump +0.9 with tip -2 mm), or `bridge_hump!` | | two s5 drivers, both kept; free bridge_hump alone drags the tip 2 mm forward |
 | High bridge at the radix only | `sculpt:radix` (+, mm) | nasion +1.1 mm per mm | `bridge_height!` is a TRAP (|dc| 7.5: moves lips and chin 3 mm) |
 | Narrow, steep-sided bridge (walls) | `sculpt:bridge_walls|hold=dorsum` (-, mm) | Garrett: -1 mm took the walls 0.75 -> 0.59 | no macro reads dorsum width; `nd:tip_width|held` "did nothing visible" for a pinched tip (driver) |
 | Tip turned up (more nostril) / drooping | `nose_upturn` | free: the tip 2.5 mm back as it turns | `nose_upturn!` (|dc| 3.9) lifts the tip 2.3 mm and pushes lips / chin forward 1-1.6. Garrett's accepted fix: nose_upturn! +1.4 with nose_projection! -0.4 |

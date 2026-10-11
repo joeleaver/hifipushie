@@ -11,3 +11,10 @@ src/hifipushie/gnm_manual.py). This file only records how it was made and tested
   the muzzle move lengthening the chin, philtrum! needing ~2.5 sd, forehead_slope! judged against the nasion,
   relief:cheeks / sculpt:jawline / sculpt:parotid for the cheek and lower-face widths found by finder.py), then tested
   on set s3 (see docs/notes/gnm_atlas.md "## gnmdrive").
+- v3 (gnmdrive): + the m3 drivers' corrections and the mm: moves (gnm_mm). Set s4 (fresh): 6 / 14 (the "no manual" arm
+  was contaminated by the block-in guide's headline entries: 4 / 14).
+- v4 (gnmdrive2, 2026-10-11): MEASURE FIRST. Section 0a: the 23 millimetre measures as table rows (one seeable
+  quantity = one control = the dose), then the phrase tables for what they do not describe. Why: the phrase
+  vocabulary's own ceiling is 27 / 42 pairs and drivers sat at 19 / 42; exact readings of the 8 largest mm gaps pass
+  41 / 56. Set s5 (fresh): v4 read by eye 3 / 14, v4 with a ruler (the gaps as numbers, +-1 mm) 7 / 14, the ruler
+  applied blindly 10 / 14. The eye is the weak link: next is a ruler for pictures (see the notes' VERDICT / NEXT).

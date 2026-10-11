@@ -56,6 +56,10 @@ MID = ("cheek_forward", "jaw_angle_height", "upper_red", "lower_red", "tip_heigh
        "forehead_slope")
 
 
+HOLD = ()
+MID = ("upper_red", "lower_red", "ear_out")
+
+
 def jac(fn, names):
     r0 = fn(sp["T"])
     J = np.zeros((len(names), 170))
@@ -66,6 +70,10 @@ def jac(fn, names):
 
 
 def setup(kind):
+    if kind == "hold":
+        fn = lambda V: {**gnm_mm.readers(V), **{k: v for k, v in extra(V).items() if k in HOLD}}
+        names = list(gnm_mm.HELD) + list(HOLD)
+        return fn, names, jac(fn, names)
     if kind == "mid":
         fn = lambda V: {**gnm_mm.readers(V), **{k: v for k, v in extra(V).items() if k in MID}}
         names = list(gnm_mm.HELD) + list(MID)
@@ -103,10 +111,12 @@ if __name__ == "__main__":
             for kind, (fn, names, J) in K.items():
                 rA, rB = fn(VA), fn(VB)
                 gap = np.array([rB[n] - rA[n] for n in names])
+                gap[[j for j, n in enumerate(names) if kind == "hold" and n in HOLD]] = 0.0
                 cs.append(cA + solve(J, gap))
                 lab.append(kind + ":all")
                 sdk = np.linalg.norm(J, axis=1)
-                free = [j for j, n in enumerate(names) if not n.startswith("_")]
+                free = [j for j, n in enumerate(names) if not n.startswith("_") and not (kind == "hold" and n in HOLD)]
+                gap[[j for j, n in enumerate(names) if kind == "hold" and n in HOLD]] = 0.0
                 top = sorted(free, key=lambda j: -abs(gap[j]) / sdk[j])[:8]
                 b = np.zeros(len(names))
                 b[top] = gap[top]
