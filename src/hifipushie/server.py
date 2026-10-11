@@ -1871,7 +1871,7 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
                  ruler: str = "") -> str:
     """GNM's controls. phrase = a difference you SEE ("the muzzle stands forward in profile", "pupils further apart")
     -> the driving manual's entries (control, sign, size, drags; guide topic gnm_driving): start there. query="mm" =
-    the 23 millimetre measures (mm:<measure> moves). ruler="modelA,modelB" = those measures, B - A, largest first, each
+    the 27 mm measures (mm:<measure> moves). ruler="modelA,modelB" = those measures, B - A, largest first, each
     with the mm: move that closes it. query = a feature ("alar crease", "jowl") -> controls ranked by mm per prior
     cost x locality; control = one described; zones=True; families, sort, per_family, sign. Act: block_in_step
     {"mm:<measure>": mm}, {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details: guide(topic="gnm_controls")."""
@@ -1887,7 +1887,7 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
     if query.strip().lower() in ("mm", "measures", "ruler"):
         from . import gnm_mm
         s = gnm_mm.sd()
-        return ("The millimetre measures (block_in_step {\"mm:<measure>\": mm}: that measure alone, the other 22 held "
+        return ("The millimetre measures (block_in_step {\"mm:<measure>\": mm}: that measure alone, the others held "
                 "in mm). Read the gap on the sheet (px x mm per px), type it. Population sd in mm:\n"
                 + "\n".join(f"mm:{n} (sd {s[n]:.1f} mm, read in {gnm_mm.SEE[n][0]}): + = {gnm_mm.SEE[n][1]}"
                             for n in gnm_mm.NAMES)
@@ -1905,12 +1905,13 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
 
 
 @mcp.tool(structured_output=False)
-def lid_read(name: str, match: bool | str = False, out: str | None = None, seen: str = "", save: str | None = None):
-    """Lid margins against the iris (MRD-style, in iris radii) and the fold line (height over the lashes, darkness)
-    on the front picture vs the model. match=True: THE EYE STEP (a block-in step): one solve over the identity + GNM's
-    eye-region expression for the picture's lid margins and fold line, the rest of the face held; no lidfold, no lid
-    pose. match="pose": the older lid_upper / lid_lower offsets. out, save (focus=eyes sheet), seen. Details:
-    guide(topic="lid_read")."""
+def lid_read(name: str, match: bool | str = False, out: str | None = None, seen: str = "", save: str | None = None,
+             expression: bool = False, donor: str | None = None):
+    """Lid margins against the iris (MRD-style, iris radii) and the fold line on the front picture vs the model.
+    match=True: THE EYE STEP (a block-in step; set the ORBIT first: face_ruler), identity only: the opening (the eye
+    ruler's margins and corners in mm), then the lid as ONE structure on GNM's lid rings (donor="s376"), with the
+    eyeball guard; nothing painted. expression=True: GNM's eye-region expression too (a real pose). match="pose": the
+    older lid_upper / lid_lower offsets. out, save (focus=eyes sheet), seen. Details: guide(topic="lid_read")."""
     from . import blockin as bi
     if not match:
         return bi.lid_text(bi.lid_read(name))
@@ -1921,7 +1922,7 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
         return [sh[0], bi.step_text(rep) + "\n" + bi.lid_text(bi.lid_read(to)) + "\n" + sh[1]]
     from . import blockin_eyes as be
     lines = []
-    rep = be.eye_step(name, out=out, seen=seen, log=lines.append)
+    rep = be.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor)
     to = rep["entry"]["to"]
     path = save or str(store.HOME / "human_renders" / f"blockin_{to}_eyes.png")
     bi.focus(to, "eyes", path, before=name)
@@ -1968,12 +1969,12 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 
 @mcp.tool(structured_output=False)
 def face_ruler(name: str, save: str | None = None):
-    """THE FACE RULER: the block-in model against its reference pictures in MILLIMETRES: gnm_mm's 23 measures, picture -
-    model, largest first, each with the reader's error and the `mm:` move that closes it (block_in_step). Read from the
-    pictures' skin OUTLINES and iris centres through the fitted cameras, not by eye (sizes read by eye are 30-50 % off)
-    and not from detector landmarks. NOT READ = a measure these pictures do not show. Start a block-in from this table.
-    Returns the pictures with the model's outline and the reads drawn (save: the path) and the table. Details:
-    guide(topic="face_ruler")."""
+    """THE FACE RULER: the block-in model against its reference pictures in MILLIMETRES: first the ORBIT (eye depth:
+    set it before any lid work), then gnm_mm's 27 measures, picture - model, largest first, each with the reader's
+    error and the `mm:` move that closes it (block_in_step). Read from skin OUTLINES, iris centres and the side views'
+    limbus through the fitted cameras (yaw left free), not by eye and not from detector landmarks. NOT READ = these
+    pictures do not show it. Start a block-in from this table. Returns the pictures with the reads drawn (save: the
+    path) and the table. Details: guide(topic="face_ruler")."""
     from . import face_ruler as fr
     c = fr.compare(name)
     path = save or str(store.HOME / "human_renders" / f"face_ruler_{name}.png")

@@ -147,7 +147,9 @@ def vocabulary() -> str:
             "(against its surround: - deepens a groove), options |hold=<zone>+..|free=<macro>+..|loc=<w>; zones: "
             "gnm_controls(zones=True); any atlas identity control raw: gnm:<control> (head_042, z:05, label:sex ...)"
             "; a MEASURE moved in mm, every other measure held in mm: mm:<measure> (pupils_apart, eyes_forward, "
-            "chin_forward, forehead_forward, tip_forward, philtrum_length ...: gnm_mm.NAMES); what to use for a "
+            "chin_forward, forehead_forward, tip_forward, philtrum_length ...: gnm_mm.NAMES; the ORBIT: eyes_forward "
+            "= the eye unit in its orbit, brow_ridge_forward, side_rim_forward, under_eye_forward, brow_hollow, "
+            "brows_over_eyes: set before the eye step); what to use for a "
             "difference you see: guide topic gnm_driving / gnm_controls(phrase=...)")
 
 
@@ -618,6 +620,13 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             if not cameras or i not in [int(j) for j in cameras]:
                 cam["centre"] = (np.asarray(cam["centre"], float) + d).tolist()
         cam_moves.append(f"cameras follow the face centre ({1000 * float(np.linalg.norm(d)):.1f} mm)")
+    if "mm:eyes_forward" in (moves or {}) and "head_scale" not in (moves or {}):
+        d = eye_follow(store.load(src)["base"], sp["base"])
+        for i, cam in enumerate(rj["cameras"]):
+            if not cameras or i not in [int(j) for j in cameras]:
+                cam["centre"] = (np.asarray(cam["centre"], float) + d).tolist()
+        cam_moves.append(f"cameras follow the face ({1000 * float(np.linalg.norm(d)):.1f} mm: the one mesh hangs the head on its "
+                         "eyes, so an eye moved forward ships as the face moved back; the pictures' profile line stays on the face)")
     if cameras:
         from . import humanfit
         new = fit_cameras(sp["base"], rj["views"], rj)
@@ -658,6 +667,16 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         manual = gnm_manual.suggest(seen, top=2)
     return {"entry": entry, "c0": float(np.linalg.norm(c0)), "big": big, "delta": table_delta(t0, t1),
             "table": t1, "before": passes(t0), "manual": manual}
+
+
+def eye_follow(base0: dict, base1: dict) -> np.ndarray:
+    """The move (world, m) of the face's landmarks OFF the eyes and brows between two bases: what a camera's centre
+    must follow after an eye-depth move. The one mesh seats the head by its eyes, so mm:eyes_forward +d ships as the
+    eyes where they were and the rest of the face d further back; a camera left alone would see the whole profile
+    line slide off the picture's and the eye stay put (el_o3's symptom)."""
+    from . import humanfit
+    off = [i for i in range(68) if not (17 <= i < 27 or 36 <= i < 48)]
+    return (np.asarray(humanfit.state(base1)["L"], float)[off] - np.asarray(humanfit.state(base0)["L"], float)[off]).mean(0)
 
 
 def step_text(rep: dict) -> str:

@@ -22,6 +22,12 @@
   it becomes a block-in measure read from the pictures (profile + 3/4) and is set at the restart. (3) The whole-lid solve
   (spikes/eyelid lidsolve: identity only, GNM's lid rings as one structure) becomes the eye step's shape term.
   Start class / blend is chosen by measurement, not by label. Sheets: reference | best result | the rest.
+- COORDINATOR HANDOVER (2026-10-11, new session): two agents were running and commit as they go; their reports may
+  not reach the next session, so read their sections' STATE / NEXT and HANDOVER blocks on their branches:
+  "orbit" = worktree-agent-ad9bfaf2464cb4d4d (eye depth as a measure + lidsolve into the eye step; "## orbit"),
+  "overhang" = worktree-agent-a104afd924997c102 (forming a lid fold / overhang with GNM parameters; "## overhang").
+  Merge after: looking at the sheets (ob_* / oh_*), a privacy grep, the tests. The HOLD on the four models stays until
+  eye depth is dialled in; then a fresh Tess block-in with only the new tools is the first real-photo test.
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
@@ -3633,6 +3639,251 @@ the 3-section template if Joe accepts el_a6's kind); seat the eyeball against th
   surf.json, prof.json, popstat.npz, lidsolve_*.npz, orbit_*.png, sheet notes). Scratch models el_a1..a6, el_o3 / o3a /
   o3b, el_f3 / f4, el_w1 / w2 (workspace; delete freely). Light note: a clay light 64 deg up puts the whole lid in the
   brow's shadow; 39 deg works.
+
+## orbit (2026-10-11, "orbit" agent, branch worktree-agent-ad9bfaf2464cb4d4d from main ffc0879; Joe: "eye depth is super
+## important": eye depth as a measured, driveable block-in quantity (Task A) and lidsolve as the eye step's shape term
+## (Task B). Scratch /mnt/data/hifipushie/orbit (run.sh <script in spikes/orbit> / q.sh / tests.sh, out/); sheets human_renders/ob_*)
+STATE / NEXT (orbit, 2026-10-11, handed over; see "### HANDOVER (orbit)" at the end of this section): DONE: the
+orbit measures + clean mm: moves (gnm_mm, 27 measures), the picture reader (face_ruler: limbus in turned views, camera
+yaw / pitch as freedoms, orbit rows with errors), validated on dressed pictures of 8 known heads; Tess read (read
+only) and set on scratch (ob_T1 / ob_T1e / ob_T3); lidsolve moved into the eye step (blockin_lid.py; identity only by
+default; orbit check; eyeball guard); guide, tools, tests. No real model touched. BLUNT RESULT: eye depth is now a
+measure with a clean move, but on PHOTOS through fitted cameras it reads only to 2.7-3.6 mm (0.6-0.8 with the camera
+known): the profile camera's yaw is the limit, not the eye read. Tess's gap is +1 .. +4 mm (model too deep-set),
+best joint estimate +1.7 with her profile camera 4.6 deg off: inside the validated error. Dressed, front view: no
+visible difference (ob_02).
+OPEN FOR JOE: (1) accept +-3 mm on eye depth from these pictures, or get a profile with a KNOWN camera angle (a
+generated reference with a stated yaw / a turntable): that is what makes the row readable; (2) whether Tess takes
+ob_T1's +1.7 mm at the restart (it puts her limbus within 0.2 mm in the 3/4 and 0.8 mm in the profile, but is not
+significant by the reader's own validation); (3) the 21 older mm: moves changed with the new holds (cos 0.57-0.99):
+the driving gate was not rerun.
+
+### A.a: the orbit measures and their moves (src/hifipushie/gnm_mm.py, lidrings.py; spikes/orbit/cost.py -> out/cost.txt)
+- THE MEASURES (mm, GNM frame; every point's depth is taken against the NASION, as the profile chain is, so one
+  measure = one thing that moves; vertex sets on GNM's lid rings, lidrings.sets(), both sides' mean):
+  | measure (mm: move) | what it is | template | pop sd |
+  |---|---|---|---|
+  | eyes_forward | the eye (GNM's eyeball) forward of the nasion; corneal apex = + 10.4 mm (GNM's eye is rigid) | -18.8 | 4.0 |
+  | brow_ridge_forward | supraorbital rim: skin over the pupil at the brow (rings 12-13's top) forward of the nasion | -3.6 | 2.2 |
+  | side_rim_forward | lateral orbital rim: skin beside the outer corner (rings 13-14's outer end) | -23.9 | 4.0 |
+  | under_eye_forward | infraorbital rim: skin under the pupil (rings 9-10's bottom) | -10.1 | 4.0 |
+  | brows_over_eyes (was there) | the brow landmarks' height over the eye | 19.0 | 2.7 |
+  | brow_hollow | how far the skin under the brow (ring 8's top) lies behind the line lid platform -> brow ridge | 0.2 | 1.0 |
+  As an artist / clinician SEES them in a side view (gnm_mm.orbit(V); each a difference of the measures, ORBIT_SEEN):
+  apex_behind_nasion (template 8.4 mm), brow_over_apex (the brow ridge ahead of the cornea: 4.8), apex_ahead_of_side_rim
+  (what a Hertel exophthalmometer reads, here on skin: 15.5), apex_ahead_of_cheek (the "vector": 1.7), brows_over_eyes,
+  brow_hollow.
+- WHY mm:eyes_forward WAS WRONG: the muzzle's chain hung from the EYE (subnasale_forward = nose base - eyes). So "eye
+  +1, all else held" = eye, nose base, lips, chin and both lower rims forward together against nasion + forehead; in
+  the face's frame: eye +0.66, nasion / forehead -0.34 per mm, the profile line 0.55 mm rms off per mm. FIX: subnasale_
+  forward is now nose base - NASION (the 21 other moves' constraint set is the same span: unchanged by this alone), the
+  rims are measures of their own, and hidden holds keep the lids ON the ball (_lid_up_z / _lid_lo_z / _platform_z /
+  _canthi_z against the eye), the opening and corners round the pupil (_lid_up_y / _lid_lo_y / _canthus_in_x / _out_x)
+  and the profile line between its measured points (_glabella_z, _dorsum_z).
+- COST AND SIDE EFFECTS per mm of "the eye less deep-set" (template; z moves against the skull, mm per mm):
+  | formulation | |dc| / mm | eye | lids | nasion, forehead | nose base .. chin | brow ridge / side rim / under-eye | skin beyond the orbit rms (max) | profile line rms | drags |
+  |---|---|---|---|---|---|---|---|---|---|
+  | old mm:eyes_forward | 0.67 | +0.66 | +0.67 | -0.34 | +0.66 | +0.04 / +0.57 / +0.61 | 0.58 (0.81) | 0.55 | the whole mid-face |
+  | chain at the nasion, no orbit holds | 0.64 | +1.02 | +1.0 | +0.02 | +0.02 | +0.27 / +0.41 / +0.55 | 0.21 (0.52) | 0.06 | rims follow 25-55 %; platform 0.08 mm into the ball |
+  | NEW mm:eyes_forward (the eye unit) | 1.65 | +0.98 | +0.98 | -0.02 | -0.02 | -0.02 (all three) | 0.33 (0.97) | 0.05 | nothing (26 measures 0.00) |
+  | unit with the rims + hollow free | 0.95 | +1.06 | +1.06 | +0.06 | +0.06 | +0.27 / +0.66 / +0.90 | 0.28 (0.81) | 0.07 | rims follow 21-84 % |
+  | el_f4's kind (every eye / margin vertex +1, profile 0.25 mm, skin 1 mm) | 3.33 | +1.01 | margin +1.0, platform +0.5 | -0.06 | 0 / -0.11 lip | -0.09 / -0.01 / -0.21 | 0.11 (0.34) | 0.05 | platform 0.5 mm INTO the ball per mm; brow_hollow +0.6; widths -0.2 |
+  So the cheapest clean formulation is the measure move itself: 1.65 per mm (4.9 for 3 mm; el_f4 was 12.7 measured, 10
+  here) with no measure dragged, the lids riding on the ball and the profile line within 0.05 mm rms. It is NOT cheap
+  against GNM's prior because an eye forward inside rims that stay is unusual in people: when the rims follow (as they
+  do in the population: 0.64-0.95 per mm) it is 2-2.5 x cheaper. The ruler reads the rims too, so the move that is
+  applied is the sum over the read gaps: whatever of the rims the pictures show moves with the eye.
+- The other orbit moves (per mm): brows_over_eyes 0.95, brow_ridge_forward 1.45 (profile line 0.18 rms: the glabella
+  is held, the ridge over the pupil moves), side_rim_forward 1.28 (cheekbones follow +0.55), under_eye_forward 1.40
+  (cheekbones +0.49; the skin beyond the orbit 0.44 rms), brow_hollow 1.68.
+- THE 21 OLDER MOVES CHANGED with the new holds (|dc| per mm old -> new, cosine): pupils_apart 0.61 -> 0.83 (0.74: the
+  lids and corners now go with the eyes), tip_forward 0.80 -> 1.22 (0.65), subnasale_forward 0.78 -> 1.37 (0.57: no
+  longer drags the rims), eyes_height 0.84, brows_over_eyes 0.74, forehead_forward 0.75, nose_length 0.86, the rest
+  0.87-0.99. The driving gate (faceruler: 11 / 14) was run on the older ones; not rerun yet.
+
+### A.b: the picture reader (src/hifipushie/face_ruler.py; spikes/orbit/oval.py limbus, ldbg.py)
+- LIMBUS in a turned view (limbus_read / _limbus_obs; type "limbus"): the model's own limbus circle (3D: the ball's
+  centre + the iris' plane, drawn at the PICTURE's iris diameter read on the front view) projected through the view's
+  camera; the shift that puts its two side arcs (+-40 deg about the eye line) on the picture's sclera -> iris edge,
+  read on WHITENESS (min of R, G, B: the sclera is the only white thing round an eye). In a side view (the disc under
+  half open) only the arc nearer the camera is read and the edge is taken along the eye's axis. Guards: the "sclera"
+  side must be on the figure (a white backdrop past the far lashes is not sclera), an arc the MODEL hides (part pass)
+  is not read, the far eye only in views turned under ~37 deg (FAR_OPEN 0.8).
+  Reader alone, dressed pictures of 8 known heads through gd_T12's cameras (read shift - true shift, mm in the picture):
+  3/4 near eye bias +0.03 sd 0.05 (max 0.13); profile near eye +0.43 forward sd 0.10 (taken off: LIMBUS_SIDE_BIAS
+  0.4); far eye at 45 deg: fine on the model's own picture (0.17, sd 0.08), WRONG on another head's (-2.1, sd 2.0, max
+  4.6: half behind the bridge): dropped. First versions that failed: luminance instead of whiteness (latched on the
+  lash line / the backdrop: 3 of 8 far eyes 2.6-5.8 mm off), min-of-the-two-arcs scoring (biased the near eye 0.3 mm).
+  On a PHOTO the cornea's dome lies over the side-view edge: unvalidated there (sigma 0.5 mm, not 0.2).
+- CAMERA YAW AND PITCH are freedoms of the solve (cam_moved, _cam_columns with 6 numbers per view; PHOTO_CAM_SD6:
+  yaw sd front 2 / 3/4 4 / profile 6 deg): each observation carries its 3D point, its column is the picture shift per
+  degree. In a profile 1 deg of yaw moves the eye (30 mm off the midline) 0.5 mm along the picture and leaves the
+  midline profile alone: yaw and eye depth trade 1 : 1 there unless something else off the midline pins the yaw. The
+  solve reports each camera's turn and its posterior sd, and the orbit rows' errors include it.
+- ORBIT ROWS (orbit_rows / orbit_text; compare()["orbit"], printed first by the face_ruler tool): the six rows as seen,
+  model -> picture, gap +- err (from the solve's covariance + the validated floors), NOT READ over half a population sd.
+  compare(views=[...]) reads a subset of the pictures.
+- FROM THE FRONT ALONE there is no proxy: the front-only read of eyes_forward is the population's guess, +-5.4 mm on a
+  4.0 mm sd (Tess: -1.5 +- 5.4). Nothing in a front outline or iris moves with eye depth.
+
+### A.c: validation on known heads (spikes/orbit/oval.py ruler + osum.py; out/osum.txt, oval_ruler_a / _b.json)
+8 block-in models of sampled GNM heads (gk_s376 / 540 / 115 / 290 / 319 / 381 / 487 / 562), model A against DRESSED
+pictures of B (faceruler's dshots: EEVEE stage, bald, gd_T12's three fitted cameras), read as a photo is (skin
+outline on a plain background, hair region masked, front irises by eye_ruler, limbus in the side views). The pairs
+are FAR apart (truth gap rms: eyes_forward 8.1 mm = 2 sd). reader - truth with the uniform-size part taken out (as
+dval), rms mm (population sd / rms):
+| measure (pop sd) | cameras KNOWN, all 3 | known, front + profile | known, front + 3/4 | true cameras left FREE, all 3 | cameras put OFF + free, all 3 | off, front + profile | off, front + 3/4 |
+|---|---|---|---|---|---|---|---|
+| eyes_forward (4.0) | 0.78 (5.1x) | 0.62 (6.5x) | 5.59 (0.7x) | 2.20 (1.8x) | 3.57 (1.1x) | 2.67 (1.5x) | 5.34 (0.7x) |
+| brows_over_eyes (2.7) | 1.05 | 1.78 | 1.56 | 2.27 | 2.94 | 2.04 | 2.10 |
+| brow_ridge_forward (2.2) | 1.05 (2.1x) | 1.14 | 4.44 | 0.91 | 1.37 | 1.71 | 3.09 |
+| side_rim_forward (4.0) | 1.04 (3.8x) | 2.21 | 5.40 | 2.41 | 3.20 | 4.45 | 4.51 |
+| under_eye_forward (4.0) | 1.72 (2.3x) | 2.12 | 4.83 | 2.68 | 2.34 | 3.47 | 4.06 |
+| brow_hollow (1.0) | 0.88 (1.2x) | 1.07 | 0.73 | 0.69 | 1.14 | 1.04 | 0.69 |
+"OFF" = each camera turned by a random yaw (profile sd 6, 3/4 4, front 2 deg), pitch 2 deg, shifted 1.5 mm, scaled
+2.5 %, then left free: a FITTED camera. The yaw left after the solve: profile 2.5-3.3 deg sd (put off by 3.3), 3/4
+1.0-1.3 (put off by 4.8), front 0.2-0.3.
+Read (blunt):
+- With the camera KNOWN eye depth reads to 0.6-0.8 mm from front + profile (5-6x under its sd). The limbus did not
+  buy this: faceruler's dval already had 0.54 on dressed pictures with true cameras; the limbus read replaces a
+  population inference with a direct edge and gives the yaw column something to hold on to.
+- Front + 3/4 ALONE does not read eye depth even with the camera known (5.6 mm, worse than guessing): a 45 deg view
+  shows the eye but not the nasion's depth (the bridge lies against the far cheek, not the backdrop). The 3/4 is a
+  reader of the eye against the side rim (apex_ahead_of_side_rim 1.5-1.6 mm, 1.5x), nothing more.
+- Through a FITTED camera eye depth reads to 2.7-3.6 mm (1.1-1.5x): NOT a measure. The profile camera's yaw is the
+  whole of it: the outline pins it only to ~3 deg = 1.6 mm of eye, and the solve trades the rest against the prior.
+  Even TRUE cameras left free cost 2.2 mm. The solve's own +- is too small there (0.9-1.3): MODEL_ERR's floors are
+  what the table shows (eyes_forward 2.79 as before, brow_ridge_forward 1.5, side_rim_forward 3.5, under_eye_forward
+  2.8, brow_hollow 1.1), so on a photo these rows usually print NOT READ unless the gap is over ~5 mm.
+- brow_hollow never reads better than its own 1.0 mm sd: not readable from outlines at all. Kept as a move, not a row
+  to act on.
+- NOT DONE: hair-ON dressed renders (the mask only emulates hair); clay of raw GNM heads for the four new measures
+  (ERR's entries for them are half the block-in path's known-camera error, marked so in the code); photos with truth.
+
+### A.d: Tess, READ ONLY (er_s4 against her three pictures; spikes/orbit/pread.py, yawq.py, lread.py; out/pread_er_s4.log)
+- The limbus reads through her fitted cameras (lread.py; her near-eye limbus FORWARD of the model's, mm in the picture):
+  3/4 +1.02, profile +4.56 (the eyelid agent's "2 mm and 5 mm" by overlay: confirmed as reads).
+- The ruler (eyes_forward gap = picture - model, GNM mm; +- from the validated floors):
+  | pictures | eyes_forward | the solve's camera turn |
+  |---|---|---|
+  | front alone | -1.5 +- 5.4 (nothing) | |
+  | front + profile | +0.9 +- 3.0 | profile yaw -4.8 +- 1.1 deg |
+  | front + profile, yaw HELD (the camera trusted) | +3.7 (limbus still 0.7 mm short) | |
+  | front + profile, the limbus left out | +0.9 (the prior's guess) | profile yaw -1.2 +- 1.6: all the outline itself says |
+  | front + 3/4 | -0.4 +- 3.6 | 3/4 yaw -1.8 +- 0.9 |
+  | all three | +1.7 +- 3.0 | profile yaw -4.6 +- 0.9, 3/4 -0.8 +- 0.8 |
+  Every orbit row prints NOT READ. brows_over_eyes +2.3..+2.8 +- 1.6-2.4, brow_ridge_forward -1.0..+3.0: no row
+  beyond twice its error.
+- DO THE VIEWS AGREE? On the sign, yes (both side pictures show her limbus ahead of the model's). On the size, only
+  if her profile camera is ~4.6 deg off in yaw: then +1.7 mm fits both (below). With the profile camera trusted the
+  profile says +3.7 and the 3/4 says about +1.4: they disagree by 2.3 mm. The pictures cannot tell these apart: the
+  outline alone puts the profile yaw at -1.2 +- 1.6 deg. Honest statement: her eye is 1-4 mm less deep-set than the
+  model's, and that is inside what this reader gets wrong on known heads (2.7-3.6 mm).
+
+### A.e: Tess on scratch (spikes/orbit/mk.py, estep.py, sheet.py; models ob_T1, ob_T1e, ob_T3; out/mk_*.txt, estep_ob_T1e.txt)
+- ob_T1 = er_s4 + mm:eyes_forward +1.7 (the joint read), profile camera turned -4.6 deg; ob_T3 = er_s4 + 3.7 (profile
+  camera trusted); ob_T1e = ob_T1 + the new eye step.
+- COST / WHAT MOVED (ob_T1; ob_T3 in brackets): |dc| 2.80 (6.09), |c| 9.00 -> 9.13 (10.30); measures: eyes_forward
+  +1.70, skull_width +0.13 (+0.29: an extent reader's linearisation), the other 25 and every hidden hold 0.00.
+  On the SHIPPED head (one mesh): our eyeball +1.26 mm (+2.75) forward against the face = 0.74 of the dose (the head
+  is half MakeHuman's at gnm_base 0.5 and the ball is seated on the lid landmarks); skin against the face: lid rings
+  1.19 mm rms (with the eye), the orbit's outer rings 0.60, the face beyond 0.55 rms / max 1.40 (1.19 / 3.04), forehead
+  0.82, ears 0.95, nose 0.35, lips 0.3-0.4, chin 0.57. Eye ruler rows on the mesh: margins within 0.13 mm, corners
+  0.03-0.11. Block-in table: philtrum front +0.57 -> +1.06 (tol 1.00: just out; back in after the eye step).
+  The lid's structure changes with the orbit (why the orbit goes first): wall 29 -> 19 deg, drape 1.95 -> 1.37,
+  crease height 4.7 -> 4.1 (ob_T3: wall 6 deg, drape 0.7), and the lid's clearance over our ball 0.53 -> 0.33 mm
+  (ob_T3: 0.06 mm: the ball nearly through; the eye step's guard is needed after any forward move).
+- FOUND: the one mesh hangs the head on its EYES. mm:eyes_forward ships as the eyeballs where they were and the rest
+  of the face 1.3 mm further back, so a camera left alone sees the whole profile line slide off the picture and the
+  eye stay (el_o3's symptom was this as well as the old move). FIX: block_in_step with mm:eyes_forward shifts every
+  reference camera's centre by the move of the face's landmarks off the eyes (blockin.eye_follow; reported in the
+  step's reply), as head_scale does.
+- THE LIMBUS AFTER (her limbus forward of the model's, mm in the picture; 3/4 / profile): er_s4 +1.02 / +4.56;
+  ob_T1 and ob_T1e +0.2 / +0.8 (profile through the turned camera); ob_T3 -0.84 / +1.85 (camera untouched: overshoots
+  the 3/4 and still short in the profile). Corneal apex behind the nasion on the shipped head: 10.9 -> 9.6 (ob_T3 7.8).
+- THE EYE STEP on ob_T1 -> ob_T1e (estep.py; ~25 min on a loaded machine): ORBIT: UNREAD (said first); opening |dc|
+  0.91 (margins already on the ruler); lid solve |dc| 5.77, platform lifted 0.4 mm by the guard (stand-off 0.08 ->
+  0.21 -> 0.34 mm in three tries), turn 16 -> 24 deg at her line, wall 23 -> 38, drape 1.5 -> 2.5, margins re-read
+  within 0.21 mm of the picture's rows, measures within 0.31 mm; table 6/7 5/5 3/3 4/4 7/7. Eye ruler, mesh vs picture
+  (er_s4 | el_a6 | ob_T1e | hers): fissure 22.27 | 22.26 | 22.47 | 23.0; inner canthus -12.46 | -12.45 | -12.59 |
+  -13.25; outer 9.80 | 9.80 | 9.88 | 9.7; iris hidden 3.11 | 3.08 | 3.11 | 3.4; tilt 2.2 | 1.8 | 1.5 | 2.0: no row
+  beyond the reader's error in any of them.
+- SHEETS (human_renders): ob_01_orbit_side_views.png (reference | best ob_T1e | before er_s4 | other ob_T3; rows
+  profile, 3/4; the model's eyeball, corneal apex, lid section and profile line drawn on her pictures);
+  ob_02_dressed_front.png (reference | best | before | el_a6 | ob_T1; dressed stage through the fitted front camera).
+- BLUNT READ. ob_01: before, the model's corneal apex sits behind her iris in both side pictures (reads +1.0 and
+  +4.6 mm); in "best" it sits on her iris in both (+0.2, +0.8), but half of that profile agreement was bought by
+  turning the camera 4.6 deg, which nothing independent confirms; ob_T3 shows the alternative (camera kept: 3/4
+  overshoots by 0.8, profile 1.9 short). The profile LINE (forehead, nasion, bridge) stays on hers in all three: the
+  new move does what it says. ob_02: I cannot tell best from before from el_a6 at this size, and the ruler agrees
+  (every margin / corner row within its error in all of them): a 1.3 mm eye-depth change is not visible from the
+  front, and the lid solve's change is the same "pale lit fold edge, no dark line" the eyelid agent reported. Her fold
+  line is not there (by decision). The renders are bald, brows / iris / skin unchanged from er_s4.
+
+### Task B: lidsolve as the eye step's shape term (src/hifipushie/blockin_lid.py, blockin_eyes.py, lidrings.py)
+- blockin_lid.py = spikes/eyelid/lidsolve.py as a library: design() (the donor's lid re-proportioned on GNM's rings),
+  solve() (one linear solve, 3 rounds for the normals; ring 0 held 0.05 mm, the other skin + eyeballs 1 mm, and NEW:
+  gnm_mm's 27 measures + hidden holds at 0.3 mm), structure() / mean_structure(), ball_clearance(), lid_step() (the
+  solve + the eyeball guard). Donors' identities in blockin_lid.npz (GNM samples #376, #540; any model name works).
+  Check against the spike (er_s4, hold 1): |dc| 4.40 vs el_a6's 5.0 (the measure holds are new), miss 0.23, platform
+  1.6 -> 1.4, turn 17 -> 25 deg, wall 29 -> 40, drape 1.9 -> 2.6: el_a6's numbers.
+- eye_step: (0) orbit_status (face_ruler's orbit rows, cached per model: ORBIT: UNREAD / OFF / read, said first in the
+  report; a warning, not a block); (1) the opening (solve; identity only: ne = 0 is the default, an eye-region
+  expression the base carries is cleared and said so; expression=True solves the pairs: a real pose); (2) lid_step on
+  the ruler's fold line (hooded picture: skipped, the visible platform stays the opening's target); (3) margins re-read.
+  The lid_read tool has expression= and donor=.
+- THE SECTION TEMPLATES (blockin_crease.npz: s376 / s540 / fold; crease_target, Reader.sections, SIG_SHAPE): nothing
+  needs them any more. Kept only as the explicit option crease="s376" | "fold" | "s540" (to reproduce gk_* / er_*
+  models) and for test_crease_shape_templates. Can be deleted with that test.
+- THE EYEBALL GUARD (principled: measure the thing itself): ball_clearance = the lid skin's least stand-off from OUR
+  ball over rings 1..7 of both lids, on the shipped head. lid_step lifts the designed platform 0.2 mm at a time until
+  it is >= 0.25 mm (GUARD) and reports it; a WARNING if 1.2 mm of lift does not clear it. On er_s4 it finds the 0.4 mm
+  the eyelid agent chose by eye. It reads el_f3 (the brown patch) as -0.08 mm: the measure sees the fault.
+- THE SEAT FOR ALL HUMANS (spikes/orbit/seat.py -> out/seat.txt; NOT changed): least stand-off of the lid over the
+  ball with today's seat (six landmarks, 0.8 mm): gk_s540 / 115 / 290 / 319 / 381 / 487 / 562 1.00-1.22 mm, gd_T12
+  1.07, g2_T12B 1.07, b2_T06 1.12, f3_t1 1.10, b3_G17 1.35, rb_G14 0.99; platform-on-the-ball lids: gk_s376 0.19, er_s4
+  0.53, el_a6 0.37, el_f4 0.42, el_f3 -0.08. 120 random GNM identities on one body: p5 / p50 / p95 0.99 / 1.16 / 1.36
+  mm, none under 0.25. A seat against the lid's skin (rings 1..7 clear by 0.25 mm, landmarks still 0.8) would move:
+  0 of 120 random heads, none of the listed real models, gk_s376 by 0.04-0.07 mm, el_f3 by 0.34-0.40 mm.
+  RECOMMENDATION: do not change the global seat. Only DESIGNED lids come near the ball and the eye step's guard
+  handles those; a ring-based seat would move nobody's eyes. (lt19 / jw were not measured: private.)
+- DECISION 1 in the code: the eye step's report and the guide recommend no painted fold line, crease make-up or liner
+  (eye_ruler.compare's skin.eyes.crease move removed; the report says the line's darkness is not a target).
+  skin.eyes.crease / crease_path stay in the code, unused.
+
+### Tests and what is not tested
+- New tests/test_orbit.py (10): rings and sets; every orbit move moves its measure alone (all holds); mm:eyes_forward
+  is the eye unit (lids on the ball, rims / profile line still); orbit rows = combinations; the limbus read; the ruler
+  reads a 3 mm eye-depth gap on clay (camera known) and not from a front view; camera yaw as a freedom (a 4 deg turn
+  comes back, the error grows); the whole-lid solve on GNM's template; the ball guard's reader; the report recommends
+  no paint and is identity only.
+- Changed tolerances, said plainly: test_gnm_manual's extent readers 3.5 -> 5.0 mm (skull_width drifts 4.3 mm on a
+  2 sd random pair under 8 moves with the new holds), test_face_ruler allows 2.5 mm on the four new rim measures (no
+  direct read on clay), test_orbit's lid test: mm < 0.6, |dc| < 12.
+- Passing at the last commit (run through /mnt/data/hifipushie/bin/capped): test_orbit 10, test_face_ruler,
+  test_gnm_manual, test_toolsets 8 (the four that failed after the first run were re-run and pass); test_blockin +
+  test_blockin_brows + test_eye_ruler + test_gnm_controls 34 passed. Other test files were not run.
+- NOT tested / not done: the eye step end to end in a unit test (it ran once, ob_T1 -> ob_T1e, by script); the
+  lid_read TOOL through server.* with the new parameters; the hooded branch and expression=True (code paths written,
+  never run); block_in_step's camera follow (ran only through mk.py's copy of the same code); the driving gate with
+  the changed mm: moves; hair-on renders; the docs/notes/gnm_driving_manual.md text still describes eyes_forward /
+  subnasale_forward the old way.
+
+### HANDOVER (orbit, 2026-10-11)
+- Branch worktree-agent-ad9bfaf2464cb4d4d (from main ffc0879). READY TO MERGE as code with the caveats above: it adds
+  measures and changes the default of the eye step (identity only + whole-lid solve) and of 21 mm: moves (more holds;
+  subnasale_forward is now against the nasion). If the coordinator wants the driving gate's numbers to stand, rerun a
+  blind arm (spikes/faceruler/arms.py) before relying on them.
+- Code: src/hifipushie/lidrings.py (new), blockin_lid.py + blockin_lid.npz (new), gnm_mm.py, face_ruler.py,
+  blockin_eyes.py, blockin.py (eye_follow, vocabulary), eye_ruler.py (one move removed), server.py (lid_read,
+  face_ruler, gnm_controls docstrings), blockin_guide.md (loop 3a, 7, lid_read, face_ruler). Scripts spikes/orbit:
+  cost.py, oval.py / osum.py, ldbg.py, lread.py, pread.py, yawq.py, mk.py, estep.py, lt.py, seat.py, sheet.py,
+  mkdonor.py, x1.py. Scratch /mnt/data/hifipushie/orbit (run.sh, q.sh, tests.sh, patch_*.py = the edits as applied,
+  out/). Scratch models ob_T1, ob_T1e, ob_T3 (workspace; delete freely). No real model, no private model touched.
+- Sheets: human_renders/ob_01_orbit_side_views.png, ob_02_dressed_front.png.
+- For the restart: read the orbit with face_ruler first; expect NOT READ on photos; if Joe wants eye depth set
+  anyway, the cheapest defensible value for Tess is +1.7 mm (ob_T1) and the eye step must follow it (the guard).
+
 
 ## overhang (2026-10-11, "overhang" agent, branch worktree-agent-a104afd924997c102; Joe: "learn how to form eyelids/overhangs
 ## with gnm parameters, since it's supported but doesn't seem to happen often". Scratch /mnt/data/hifipushie/overhang
