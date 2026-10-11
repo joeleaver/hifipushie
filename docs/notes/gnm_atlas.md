@@ -3342,3 +3342,38 @@ brows); fr_01_ruler_reads.png (what the ruler reads on a target's three pictures
   miss (Tess, yaw 90) is reported above, not fixed.
 - Open: hair-ON dressed validation; block_in_look / block_in_step do not print the ruler's table yet (the tool is
   separate, ~20-30 s a call); the drivers' trial sheet labels (BEFORE = current head) confuse.
+
+### Step 6b: the block-in path on DRESSED pictures of known heads through real fitted cameras (dshots.py, dval.py)
+8 sampled GNM heads (gk_s376 / 540 / 115 / 290 / 319 / 381 / 487 / 562: block-in models on one body, gnm_base 0.5),
+dressed EEVEE stage (hair off, the photo's light) through gd_T12's three fitted cameras (30 s per head); model A,
+pictures of B (8 pairs, FAR apart: truth gaps 6-11 mm rms per measure), read as a photo is (photo_masks: skin outline
+on a plain background; irises by eye_ruler.read on the front picture), camera free, 4 rounds. The one mesh takes the
+head's size from the body, so both sides' gaps have the uniform-size part taken out. reader - truth, sd in mm (S/N):
+| measure (pop sd) | clay | dressed | dressed, hair masked |
+|---|---|---|---|
+| pupils_apart (3.1) | 1.28 (no iris read on clay) | 0.35 (6.6x) | 0.83 (3.1x) |
+| eyes_forward (4.0) | 0.84 | 0.54 (6.6x) | 2.79 (1.4x) |
+| eyes_height (3.5) | 1.16 | 1.19 (2.8x) | 1.13 |
+| brows_over_eyes (2.7) | 0.96 | 0.72 | 1.13 (2.3x) |
+| forehead_forward (3.0) | 0.34 | 0.46 (4.9x) | 1.18 (2.4x) |
+| tip_forward (2.5) | 0.36 | 0.39 (6.4x) | 0.59 (4.1x) |
+| subnasale_forward (3.8) | 1.02 | 0.68 (5.4x) | 1.99 (1.9x) |
+| upper_lip_forward (2.5) | 0.66 | 0.42, bias +0.6 (3.2x) | 0.42 (3.8x) |
+| lower_lip_forward (1.6) | 1.05 | 1.48, bias -1.3 (0.8x) | 1.27 (1.0x) NOT READ |
+| chin_forward (3.5) | 0.51 | 0.41 (7.1x) | 0.64 (5.3x) |
+| philtrum_length (2.1) | 0.70 | 1.25 (1.5x) | 0.77 (2.2x) |
+| chin_length (4.1) | 0.50 | 1.24 (3.1x) | 1.73 (2.3x) |
+| nose_length (3.3) | 0.87 | 0.70 (4.3x) | 0.86 (3.3x) |
+| cheekbone / jaw / chin width (8.0 / 10.7 / 5.7) | 2.1 / 4.1 / 1.5 | 2.2 / 3.3 / 2.1 (3x) | 3.1 / 5.0 / 2.9 (2x) |
+| mouth_width (4.0) | 2.25 | 1.98 (2.0x) | 3.34 (1.2x) NOT READ |
+| nose_width (4.2) | 4.91 | 3.55 (1.2x) | 5.20 (0.8x) NOT READ |
+| skull width / top / back (8.2 / 4.2 / 10.3) | 2.2 / 1.6 / 1.9 | 1.7 / 1.0 / 1.6 (4-6x) | 3.0 / 2.3 / 2.5 (2-4x) |
+| neck_width (12.6) | 16.8 | 14.5 (0.9x) | 13.5 NOT READ (the body's neck, not GNM's) |
+| under_chin (4.6) | 0.45 | 0.47 (9.4x) | 0.91 (5.1x) |
+Read: dressed pictures read like clay (the skin outline does not care about shading); the block-in path is 2-5x
+rougher than raw GNM heads (the adapter explains 79 % of the one mesh's move; no lip / brow colour reads; one iris
+read; pairs twice as far apart). Keeps a usable signal on a block-in model with hair: tip / upper lip / chin forward,
+under_chin, pupils, nose and chin length, forehead, brows, eyes height, the skull's back, jaw / cheekbone at 2x. Lost
+there: neck_width, nose_width, lower_lip_forward, mouth_width, and eyes_forward / subnasale_forward are weak (1.4-1.9x).
+compare() now floors its +- at these (MODEL_ERR) and marks the four NOT READ. Not done: hair ON renders (the mask only
+emulates hair), photos with a known truth.

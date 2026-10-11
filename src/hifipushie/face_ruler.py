@@ -779,6 +779,16 @@ def _iris_obs(head, view, eyes_pic):
 # arms2.py): a camera fitted by laying the MODEL's landmarks on the picture's is off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg
 # rms when the model is a regional transplant away from the person (the scale up to 9 %: a broader jaw reads as "closer").
 CAM_SD = (2.0, 2.0, 5.0, 1.2)
+# The reader's error on a BLOCK-IN model (the one mesh) through real fitted cameras, hair masked, camera free: sd of
+# reader - truth on dressed EEVEE pictures of 8 sampled GNM heads on the same body (spikes/faceruler/dval.py; size-free
+# gaps). compare() never shows less. neck_width (the body's neck), nose_width, lower_lip_forward and mouth_width are
+# NOT readable there (error >= half their population sd).
+MODEL_ERR = {"pupils_apart": 0.83, "eyes_forward": 2.79, "eyes_height": 1.13, "brows_over_eyes": 1.13,
+             "forehead_forward": 1.18, "tip_forward": 0.59, "subnasale_forward": 1.99, "upper_lip_forward": 0.42,
+             "lower_lip_forward": 1.27, "chin_forward": 0.64, "philtrum_length": 0.77, "chin_length": 1.73,
+             "nose_length": 0.86, "cheekbone_width": 3.06, "jaw_width": 5.0, "chin_width": 2.87, "mouth_width": 3.34,
+             "nose_width": 5.2, "skull_width": 2.99, "skull_top": 2.29, "skull_back": 2.45, "neck_width": 13.5,
+             "under_chin": 0.91}
 PHOTO_CAM_SD = (1.5, 1.5, 2.5, 0.8)   # a block-in's cameras were fitted to THIS model and are anchored by its landmarks
 LM_SIG = 1.5                          # mm: a clicked / detected landmark as an anchor (biased, never the measure)
 
@@ -843,8 +853,12 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD, hair: bool = True) 
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     head, views, notes = reference_views(name, hair)
     res = read(head, views, rounds=rounds, cam_sd=cam_sd)
+    from . import gnm_mm
+    sd = gnm_mm.sd()
     for r in res["gaps"]:
         r["picture"] = r["current"] + r["gap"]
+        r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
+        r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
     n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark")}
     per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
     head_txt = (f"face ruler: {name} against its {len(views)} pictures ({', '.join(f'{k}: {m} reads' for k, m in per.items())}); "

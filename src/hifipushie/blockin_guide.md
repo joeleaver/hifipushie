@@ -381,6 +381,11 @@ nose width 0.9 (never seen directly: inferred), widths 1-1.8, skull 0.2-0.5 (1-1
 the model (a photo's case): profile chain 0.1-0.6, eyes forward / height 0.5-0.9, pupils 1.2, lengths 0.5-1.0, widths
 2-3.6 and skull 1-3 (a fitted camera's scale is free: absolute size is the least known thing in a photo). The one
 mesh takes the head's size from the body, so a uniform size gap is not in the table: `head_scale` is its own key.
+On a BLOCK-IN model (the one mesh; dressed pictures of 8 known heads through real fitted cameras, hair masked, size
+taken out): tip / upper lip / chin forward 0.4-0.6, pupils 0.8, under_chin 0.9, lengths 0.8-1.7, brows / eyes height /
+forehead 1.1-1.2, eyes_forward 2.8 and subnasale_forward 2.0 (weak: 1.4-1.9x), widths and skull 2.3-5; NOT readable
+there: neck_width, nose_width, lower_lip_forward, mouth_width (the table marks them). The table's +- is never under
+these. Gaps are in GNM's mm = the `mm:` dose (the one mesh makes ~0.88 of GNM's move).
 Limits: plain backgrounds only (no outline otherwise: the table says how many reads each picture gave); lips,
 nostrils, brows' shape are not read on photos (eye_ruler / lip_read / brow_read do those); a non-neutral expression
 moves the lips and chin rows. The returned image is the pictures with the model's outline (green, through the
