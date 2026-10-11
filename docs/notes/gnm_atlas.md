@@ -3723,3 +3723,34 @@ NEXT: the frontier (overhang / turn vs |dc| vs what else moves), renders, a reus
   disgust, snarl) lower the crease (3.2 -> 2.6-2.9 mm) without tucking it. Confirms eyelid's finding with every class.
 - Identity + expression optimised together (foldopt.py expr=100, face held 1 mm): a 1 mm overhang at 4.7 mm needs
   |e| 21-26 per eye (the largest prototype is 4.8) with |dc| 7.6: not an expression anyone makes.
+
+### Step 6: forming it on purpose (foldfit.py -> src/hifipushie/gnm_fold.py; scratch models oh_*; RENDERS PENDING)
+- Two recipes, both closed-form least squares on the lid rings (seconds), identity only:
+  (A) CRISP FOLD at a chosen height: gnm_fold.fold(c, crease=4.7): a designed re-entrant lid (platform on the ball to the
+  crease at ring 5, a slit, a roll hanging 1 mm) fitted softly with every other skin vertex held at 1 mm, margins 0.05.
+  (B) OVERHANG: fold(c, crease, overhang=0.5): the same plus a hard row "ring 7's skin 0.5 mm below ring 5's, 0.6 mm in
+  front of it".
+- Raw-mesh numbers (gnm_fold.read; brow = brow ring 12 over the margin; "moved" = gnm_mm):
+  | head | recipe | overhang mm | turn deg | crease mm | |dc| | brow down mm | other skin rms / max | brows_over_eyes |
+  |---|---|---|---|---|---|---|---|---|
+  | Tess er_s4 | as is | 0 | 19 | 5.0 | | | | |
+  | Tess el_a6 (eyelid's lidsolve) | | 0 | 34 | 5.8 | 4.4 | 0.2 | 0.13 / 0.7 | -0.2 |
+  | Tess oh_TD | A (stand-off 1.3) | 0 | 46 | 4.0 | 9.6 | 2.0 | 0.36 / 2.3 | -1.8 |
+  | Tess oh_TE | A + brows held 0.3 mm | 0 | 45 | 3.8 | 12.6 | 0.9 | 0.36 / 1.7 | -0.65 |
+  | Tess oh_TG | B 0.5 | 0.72 (max 1.07) | 52 | 4.3 | 18.0 | 4.7 | 0.70 / 5.1 | -4.1 |
+  | Tess oh_TC | B 1.0, hold 3 mm | 1.39 | 24 | 4.9 | 22.4 | 5.3 | 1.06 / 6.0 | -5.0 |
+  | Tess oh_TF | B 0.5 + brows held 0.3 | 0.60 | 24 | 4.1 | 31.4 | 2.5 | 0.86 / 4.0 | -1.8 (cheekbone_width +3.5, tip_forward +2.1) |
+  | GNM mean | as is | 0 | 17 | 2.0 | | | | |
+  | mean oh_MA | A | 0 | 65 | 4.2 | 14.8 | 1.9 | 0.51 / 3.1 | -1.9 |
+  | mean oh_MB | B 0.5 | 0.80 | 33 | 4.2 | 20.0 | 4.2 | 0.70 / 4.7 | -3.8 |
+  | mean oh_MC | B 1.0, hold 3 | 1.46 | - | 4.8 | 24.0 | 5.1 | 1.11 / 6.5 | -5.0 |
+  | #376 | as is | 0 | 43 | 3.2 | | | | |
+  | #376 oh_SA | A at 3.2 mm | 0 | 83 | 2.6 | 8.4 | 1.4 | 0.30 / 1.9 | -1.3 |
+  | #376 oh_SB | B 0.5 | 0.57 | 27 | 3.0 | 13.2 | 3.6 | 0.51 / 3.9 | -3.1 |
+  | #376 oh_SC | B 1.0, hold 3 | 1.18 | - | 3.4 | 17.8 | 4.3 | 0.83 / 4.9 | -3.8 |
+- Read: (A) doubles the turn at her height for |dc| ~10 (the population's largest turn at >= 4 mm is ~36 deg): a real gain
+  over lidsolve's 34, paid with ~2 mm of brow (or |dc| 12.6 with the brows held). (B) the overhang arrives ONLY with the
+  brow: 0.7 mm of overhang = brows 4 mm lower; holding the brows at 0.3 mm still loses 1.8 mm of brow, costs |dc| 31 and
+  drags cheekbone width +3.5 mm. A wider free zone (drape free to ring 11) changes nothing (|dc| 22.6, brow 3.9 mm).
+- A platform at 0.8 mm off GNM's ball lets OUR eyeball through the lid (oh_TA / oh_TB: brown patch; eyelid saw the same):
+  stand-off 1.3 mm is the module's default.
