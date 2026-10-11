@@ -124,7 +124,8 @@ def clay(head: dict, cam: dict, passes: bool = False, light=None):
     """The head's clay picture through cam (the camera's whole frame): hair cap, GNM's eyes, drawn brows, lip tint."""
     from . import likeness
     w, h = cam["size"]
-    out = likeness.render(_mesh(head), cam, (0, 0, w, h), px=max(w, h), brows=True, light=light, passes=passes)
+    mesh = head["mesh"] if "mesh" in head else _mesh(head)
+    out = likeness.render(mesh, cam, (0, 0, w, h), px=max(w, h), brows="mesh" not in head, light=light, passes=passes)
     return (out[0], out[2]) if passes else out[0]
 
 
@@ -203,15 +204,16 @@ def _silhouette_vertices(head, cam):
     return np.where(sil)[0], Xc, P
 
 
-def _outline_obs(head, view, mask_model, mask_pic, trust=None):
+def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
     """Offsets (mm, + = the picture's outline lies outside the model's) at steps along the model's outline, each with
     the vertex that makes it. trust: bool picture mask of where the picture's outline is the head's own skin / skull
     (None = everywhere)."""
     from scipy.spatial import cKDTree
     cam = view["cam"]
     s = float(view.get("scale", 1.0))
-    cm, cp = _curve(mask_model), _curve(mask_pic)
-    if cm is None or cp is None:
+    cm = _curve(mask_model)
+    cp = _curve(mask_pic) if mask_pic is not None else np.asarray(curve, float)
+    if cm is None or cp is None or len(cp) < 4:
         return []
     sv, Xc, P = _silhouette_vertices(head, cam)
     o = np.asarray(view.get("origin", (0.0, 0.0)), float)
@@ -421,6 +423,8 @@ def _profile_lip(m, PL, which):
 def hair_vertices(head: dict) -> np.ndarray:
     """Vertices a head of hair hides (the clay's hair cap: outside GNM's face mask, above the ears' bottom, not the
     ears): on a dressed render or a photo the outline there is hair, not the skull."""
+    if "hair" in head:
+        return head["hair"]
     L, gr = head["L"], head["gr"]
     zcut = 0.5 * (L[1, 2] + L[15, 2])
     return (~gr["hockey_mask"]) & (~gr["ears"]) & (head["V"][:, 2] > zcut - 0.005)
@@ -434,10 +438,13 @@ def observe(head: dict, views: list, outline: bool = True, colour: bool = True) 
         cam = view["cam"]
         im_m, ps = clay(head, cam, passes=True) if "scale" not in view else _clay_crop(head, view)
         if outline:
-            mp = view.get("mask")
-            if mp is None:
+            mp, cv = view.get("mask"), view.get("outline")
+            if mp is None and cv is None and view.get("style", "clay") != "photo":
                 mp = foreground(view["img"])
-            oo = _outline_obs(head, view, ps["part"] >= 0, np.asarray(mp, bool), view.get("trust"))
+            if cv is not None:      # image px of the picture's own outline (a photo's skin edge), as (x, y) points
+                cv = (np.asarray(cv, float) - np.asarray(view.get("origin", (0.0, 0.0)), float)) * float(view.get("scale", 1.0))
+            oo = [] if (mp is None and cv is None) else _outline_obs(
+                head, view, ps["part"] >= 0, None if mp is None else np.asarray(mp, bool), view.get("trust"), cv)
             if view.get("hair"):
                 hv = hair_vertices(head)
                 oo = [ob for ob in oo if not hv[ob["v"]]]
@@ -453,7 +460,8 @@ def _clay_crop(head, view):
     cam, s, o = view["cam"], float(view["scale"]), view.get("origin", (0.0, 0.0))
     w, h = view["img"].size
     box = (o[0], o[1], o[0] + w / s, o[1] + h / s)
-    out = likeness.render(_mesh(head), cam, box, px=max(w, h), brows=True, passes=True)
+    mesh = head["mesh"] if "mesh" in head else _mesh(head)
+    out = likeness.render(mesh, cam, box, px=max(w, h), brows="mesh" not in head, passes=True)
     return out[0], out[2]
 
 
@@ -521,6 +529,8 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
     else:
         dc = th[:n1]
         g, cov = Jm @ dc, Jm @ Ai[:n1, :n1] @ Jm.T
+        if done is not None:          # the gap of the WHOLE change (earlier rounds + this one)
+            g = Jm @ (np.asarray(done, float) + dc)
     err = np.sqrt(np.maximum(np.diag(cov), 0))
     sd = gnm_mm.sd()
     rows = []
@@ -539,23 +549,31 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
     re-taken on the moved head: one round is off by the step's curvature when the gap is large). Gaps are the measures
     of the fitted head minus the model's."""
     from . import gnm_mm
-    if head.get("kind") != "gnm" or kw.get("span"):
+    if kw.get("span"):
         rounds = 1
+    make = head.get("rebuild") or (lambda c: gnm_head(c))
     done = np.zeros(head["B"].shape[0])
     cur = head
     for k in range(rounds):
         obs = observe(cur, views)
+        if not obs:
+            raise ValueError("face_ruler: nothing could be read (no outline, no feature) in these pictures")
         out = solve(obs, cur, views=views, done=done if k else None, **kw)
         done = done + out["dc"]
         if k + 1 < rounds:
-            cur = gnm_head(head["c"] + done)
-    if rounds > 1:
+            cur = make(head["c"] + done)
+            for v in views:          # per-view extra observations follow the moved head
+                if v.get("extra"):
+                    v["extra_obs"] = v["extra"](cur)
+    if rounds > 1 and head.get("kind") == "gnm":
         fin = gnm_head(head["c"] + done)
         sd = gnm_mm.sd()
         for r in out["gaps"]:
             r["gap"] = fin["measures"][r["measure"]] - head["measures"][r["measure"]]
             r["current"], r["sd"] = head["measures"][r["measure"]], r["gap"] / sd[r["measure"]]
         out["gaps"].sort(key=lambda r: -abs(r["sd"]))
+    for r in out["gaps"]:
+        r["current"] = head["measures"][r["measure"]]
     out["dc"], out["obs"] = done, obs
     return out
 
@@ -568,6 +586,154 @@ def text(rows: list, top: int = 0, floor: float = 0.0) -> str:
             continue
         mv = '"mm:%s": %+.1f' % (r["measure"], r["gap"])
         flag = "" if abs(r["gap"]) > 2 * r["err"] else "  (inside the reader's error)"
+        if r.get("read", 1.0) < 0.5:
+            flag = "  NOT READ (these pictures do not show it: the number is the population's guess)"
         out.append(f"{r['measure']:18s} {r['gap']:+6.1f} mm ({r['sd']:+.1f} sd) +-{r['err']:.1f}  {mv:28s} "
                    f"[{r['view']}] {r['see']}{flag}")
     return "\n".join(out)
+
+
+# ---- a block-in model against its reference pictures ------------------------------------------------------------------
+
+def _proj_jac_pt(cam, X, Bx):
+    """as _proj_jac for a world point X with basis Bx (K, 3)."""
+    from . import humanfit
+    Rc = humanfit._cam_rot(cam)
+    Xc = (np.asarray(X, float) - np.asarray(cam["centre"], float)) @ Rc.T + np.asarray(cam["t"], float)
+    Bc = np.asarray(Bx, float) @ Rc.T
+    f = cam["f"]
+    du = f * (Bc[:, 0] * Xc[2] - Xc[0] * Bc[:, 2]) / Xc[2] ** 2
+    dv = f * (Bc[:, 1] * Xc[2] - Xc[1] * Bc[:, 2]) / Xc[2] ** 2
+    return np.stack([du, dv]), float(Xc[2] / f * 1000.0)
+
+
+def model_head(spec: dict, c=None) -> dict:
+    """A block-in model (the one human mesh, GNM's head on it) as the ruler's model: the whole mesh for the picture's
+    mask, the head's vertices with their move per GNM identity comp (as humanfit._silhouette: the head's carry and the
+    stitch's fade), the measures of its GNM identity (gnm_mm, GNM's own mm). c: another identity (170) on the same model."""
+    import copy
+    from . import base as basemod, blockin as bi, gnm_mm, headfit, humanfit, likeness, onemesh
+    if c is not None:
+        spec = copy.deepcopy(spec)
+        bi.set_identity(spec, c)
+    st = humanfit.state(spec["base"])
+    mesh = likeness.model_mesh_from_state(st)
+    tpl, carry = st["tpl"], st["head"]["carry"]
+    P = np.asarray(tpl["P"], float)
+    gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+    fade = np.asarray(onemesh.asset()["g_fade"], float)
+    hv = (gid >= 0) & (fade[np.maximum(gid, 0)] > 0.3)
+    if "mh" not in _C:
+        g = basemod._gnm_data()
+        names = [str(n) for n in g["identity_names"]]
+        comps = [i for i, n in enumerate(names) if n.startswith("head")][:170]
+        gg = _gnm()
+        T, gr, sp = gg["sp"]["T"], gg["gr"], gg["sp"]
+        Lt = sp["WL"] @ T
+        ycut = 0.5 * (Lt[1, 1] + Lt[15, 1])
+        _C["mh"] = {"IB": np.asarray(g["vertex_identity_basis"])[comps].astype(np.float32),
+                    "JB": np.array([g["joint_identity_basis"][i][2:4] for i in comps], float),
+                    "hair": (~gr["hockey_mask"]) & (~gr["ears"]) & (T[:, 1] > ycut - 0.005)}
+    mh = _C["mh"]
+    R, sc = np.asarray(carry["R"], float), float(carry["s"])
+    idx = np.where(hv)[0]
+    jm = mh["JB"].mean(1, keepdims=True)
+    B = np.zeros((170, len(P), 3), np.float32)
+    B[:, idx] = (sc * (mh["IB"][:, gid[idx]].astype(np.float64) - jm) @ R.T * fade[gid[idx]][None, :, None]).astype(np.float32)
+    F = np.asarray(mesh["F"])
+    cid = bi.identity(spec)
+    Vg = _gnm()["sp"]["T"] + np.tensordot(cid, _gnm()["sp"]["IB"], 1)
+    r = gnm_mm.readers(Vg)
+    hair = np.zeros(len(P), bool)
+    hair[idx] = mh["hair"][gid[idx]]
+    # the two eye centres (st L 68, 69) and their bases: paired with GNM's eye joints by side
+    g0 = headfit._gnm()
+    eyeB = sc * (mh["JB"] - jm) @ R.T                       # (170, 2, 3)
+    off = sc * (np.asarray(g0["J0"], float)[:2] - np.asarray(g0["J0"], float)[:2].mean(0)) @ R.T
+    E = np.asarray(st["L"], float)[68:70]
+    order = [int(np.argmin(np.linalg.norm(off - (e - E.mean(0)), axis=1))) for e in E]
+    return {"c": cid, "V": P, "F": F[hv[F].all(1)], "B": B, "bnd": np.zeros(len(P), bool), "mesh": mesh, "L": st["L"],
+            "Jm": gnm_mm.jacobian()[:len(gnm_mm.NAMES)], "measures": {n: float(r[n]) for n in gnm_mm.NAMES},
+            "kind": "model", "hair": hair, "spec": spec, "eye_X": E, "eye_B": [eyeB[:, j] for j in order],
+            "rebuild": lambda c2: model_head(spec, c2)}
+
+
+def _iris_obs(head, view, eyes_pic):
+    """Iris centres: the picture's (eye_ruler.read: a circle through the limbus) against the model's (eye_ruler.model),
+    moving with the model's eye centres."""
+    from . import eye_ruler as er
+    tru = er.model(head["spec"], view["cam"])
+    out = []
+    xs = [float(e[0]) for e in head["eye_X"]]
+    for s_ in (0, 1):           # eye_ruler: the subject's right eye first (world x smaller: the creature's left is +X)
+        j = int(np.argmin(xs)) if s_ == 0 else int(np.argmax(xs))
+        Jp, mm1 = _proj_jac_pt(view["cam"], head["eye_X"][j], head["eye_B"][j])
+        d = np.asarray(eyes_pic[s_]["c"], float) - np.asarray(tru[s_]["c"], float)
+        for ax in (0, 1):
+            out.append({"type": "iris", "view": view["kind"], "name": f"iris_{'rl'[s_]}.{'xy'[ax]}", "o": float(d[ax]) * mm1,
+                        "J": Jp[ax] * mm1, "sig": 0.2, "p": list(map(float, tru[s_]["c"])), "q": list(map(float, eyes_pic[s_]["c"]))})
+    return out
+
+
+CAM_SD = (3.0, 3.0, 2.0, 1.5)     # a FITTED camera: mm of shift (x, y), % of scale, degrees of roll left free per view
+
+
+def kind_of(yaw: float) -> str:
+    a = abs(float(yaw or 0.0))
+    return "front" if a < 20 else ("3q" if a < 70 else "profile")
+
+
+def reference_views(name: str, hair: bool = True) -> tuple:
+    """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
+    outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
+    "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
+    from PIL import Image
+    from . import blockin as bi, eye_ruler as er, humanfit, likeness, store
+    rj = bi._refs(name)
+    spec = store.load(name)
+    head = model_head(spec)
+    views, notes = [], []
+    for v, cam in zip(rj["views"], rj["cameras"]):
+        k = kind_of(v.get("yaw", 0))
+        img = Image.open(v["image"]).convert("RGB")
+        view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1]}
+        if v.get("outline"):
+            view["outline"] = np.asarray(v["outline"], float)
+        elif k == "profile":
+            try:
+                view["outline"] = bi.profile_contour(v)
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"{view['name']}: no profile outline ({e})")
+        else:
+            notes.append(f"{view['name']} ({k}): no outline given (add \"outline\" points along the skin's edge to the "
+                         "view to have it read)")
+        if k == "front":
+            try:
+                P = bi.detect_view(img, v)
+                mm = likeness._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
+                eyes = er.read(img, P, mm)
+                view["extra"] = lambda h, view=view, eyes=eyes: _iris_obs(h, view, eyes)
+                view["extra_obs"] = view["extra"](head)
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"{view['name']}: the irises were not read ({e})")
+        views.append(view)
+    return head, views, notes
+
+
+def compare(name: str, rounds: int = 2, cam_sd=CAM_SD, hair: bool = True) -> dict:
+    """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
+    model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
+    head, views, notes = reference_views(name, hair)
+    res = read(head, views, rounds=rounds, cam_sd=cam_sd)
+    for r in res["gaps"]:
+        r["err"] = float(r["err"] * ERR_SCALE)
+        r["picture"] = r["current"] + r["gap"]
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris")}
+    per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
+    head_txt = (f"face ruler: {name} against its {len(views)} pictures ({', '.join(f'{k}: {m} reads' for k, m in per.items())}); "
+                "gap = picture - model in GNM's mm; cameras were fitted, so a shift / scale / roll of each picture is left free")
+    return {"rows": res["gaps"], "text": head_txt + "\n" + text(res["gaps"]) + ("\n" + "\n".join(notes) if notes else ""),
+            "notes": notes, "n": n, "dc": res["dc"], "views": views, "head": head, "obs": res["obs"]}
+
+
+ERR_SCALE = 2.0      # the posterior sd underrates the error (validation: observed sd / posterior sd, median)
