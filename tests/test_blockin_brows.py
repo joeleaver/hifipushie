@@ -123,8 +123,26 @@ def test_fit_brings_the_brows_to_the_picture():
         assert lo <= r["brows"][k] <= hi, k
 
 
+def test_small_iris_is_not_read():
+    """A full-figure picture (Garrett's concept: a 5 px iris) has no readable limbus: the detector's radius is kept."""
+    P = _points()
+    for s in (0, 1):
+        c = P[lidfold.IRIS_C[s]]
+        for i, d in zip(lidfold.IRIS_RIM[s], ((1, 0), (0, -1), (-1, 0), (0, 1))):
+            P[i] = c + 5.0 * np.array(d)
+    im = Image.new("RGB", (600, 500), (205, 170, 150))
+    d = ImageDraw.Draw(im)
+    for s in (0, 1):
+        c = P[lidfold.IRIS_C[s]]
+        d.ellipse([c[0] - 4, c[1] - 4, c[0] + 4, c[1] + 4], fill=(40, 30, 25))
+    assert be.iris_scale(im, P) == 1.0
+
+
 @need_ref
-def test_iris_check_reports_mm_at_the_model():
-    r = be.iris_check(REF)
-    assert 7.0 < r["photo_mm"] < 16.0 and 9.0 < r["model_mm"] < 16.0, r
-    assert r["iris_hex"].startswith("#") and "IRIS" in r["text"]
+def test_iris_check_reports_or_declines():
+    r = be.iris_check(REF)       # fs_ge3's front picture is the full-figure concept: declined, with the reason
+    assert "IRIS" in r["text"] and 9.0 < r["model_mm"] < 16.0
+    if r["photo_mm"] is None:
+        assert r["eye_radius"] is None and "not readable" in r["text"]
+    else:
+        assert 7.0 < r["photo_mm"] < 16.0 and r["iris_hex"].startswith("#")

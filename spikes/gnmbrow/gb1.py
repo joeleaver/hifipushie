@@ -10,7 +10,7 @@ rd = json.load(open(G + "rd.json"))
 MM = 0.2377 / 3
 CROP = (850, 540, 1510, 1040)
 W, H = CROP[2] - CROP[0], CROP[3] - CROP[1]
-HEAD = 78
+HEAD = 92
 tiles = [("photo", "Tess photo (through its fitted camera)"),
          ("gk07", "gk_07 result (s376 at photo height), as it was dressed"),
          ("fx", "FIXED: iris 10.7 mm + eye step, brows from the picture"),
@@ -24,12 +24,13 @@ for i, (tag, lab) in enumerate(tiles):
     S.paste(im, (x, y + HEAD))
     r = rd[tag]
     d.text((x + 8, y + 4), lab, fill=(0, 0, 0), font_size=21)
-    d.text((x + 8, y + 30), f"brow lower edge over the lid margin: {r['gap'][0]:.1f} / {r['gap'][1]:.1f} / {r['gap'][2]:.1f} mm "
-                            f"(inner / pupil / outer)", fill=(0, 0, 0), font_size=17)
-    d.text((x + 8, y + 52), f"= {r['gap_iris'][0]:.2f} / {r['gap_iris'][1]:.2f} / {r['gap_iris'][2]:.2f} iris diameters; iris "
-                            f"{r['iris_mm']:.1f} mm {r['iris_hex']}; opening {r['open']:.1f} mm"
-                            + ("" if tag == "photo" else f"; brow edge vs photo {r['band_low_rms']:.1f} mm rms"),
-           fill=(0, 0, 0), font_size=17)
+    d.text((x + 8, y + 29), f"brow lower edge over the lid margin {r['gap'][0]:.1f} / {r['gap'][1]:.1f} / {r['gap'][2]:.1f} mm "
+                            f"(inner / pupil / outer)", fill=(0, 0, 0), font_size=16)
+    d.text((x + 8, y + 49), f"= {r['gap_iris'][0]:.2f} / {r['gap_iris'][1]:.2f} / {r['gap_iris'][2]:.2f} iris diameters"
+                            + ("" if tag == "photo" else f"; brow edge vs the photo's {r['band_low_rms']:.1f} mm rms"),
+           fill=(0, 0, 0), font_size=16)
+    d.text((x + 8, y + 69), f"iris {r['iris_mm']:.1f} mm, ring colour {r['iris_hex']}; opening {r['open']:.1f} mm",
+           fill=(0, 0, 0), font_size=16)
     # a 10 mm bar
     x0, y0 = x + 16, y + HEAD + H - 22
     d.line([(x0, y0), (x0 + 10 / MM, y0)], fill=(255, 255, 255), width=5)

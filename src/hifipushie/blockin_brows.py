@@ -313,6 +313,8 @@ def check(name: str) -> dict:
                   f"{float(np.nanmean(e['low'])):+.1f} mm, + = ours lower, toward the eye), middle line {e['mid_rms']:.1f} mm"
                   + ("; place it from the picture: brow_read(name, match=True)" if bad else ""))
                  if e["n"] >= 6 else "brow hair vs the picture: the picture's brows are too faint to read")
+    if q["mm"] > 0.6:   # (a full-figure picture: the band is a few pixels thick)
+        e["text"] += f" (coarse picture: {q['mm']:.1f} mm per pixel here, every read +- a pixel)"
     return e
 
 

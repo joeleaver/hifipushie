@@ -305,6 +305,8 @@ def _profile(P, w_mm=2.5, lo=2.0, hi=12.0):
 
 # ---- the picture's evidence ----------------------------------------------------------------------------------------
 
+MIN_IRIS_PX = 12.0        # detector iris radius (px) under which the limbus is not read (Garrett's full-figure concept: a 5 px
+                          # iris, 1.1 mm / px: the edge finder returned 9.8 mm where the painting's iris is ~11.6)
 LIMBUS_OK = (0.7, 1.15)   # detector iris radius / limbus radius accepted (else the detector's own radius is kept)
 
 
@@ -366,6 +368,8 @@ def iris_scale(img, P) -> float:
     except Exception:  # noqa: BLE001  (a tiny or cut-off eye: keep the detector's radius)
         return 1.0
     k = float(np.mean([e["detector_px"] / max(e["r_px"], 1e-6) for e in lb]))
+    if min(e["detector_px"] for e in lb) < MIN_IRIS_PX:
+        return 1.0
     return k if LIMBUS_OK[0] <= k <= LIMBUS_OK[1] else 1.0
 
 
@@ -388,6 +392,15 @@ def iris_check(name: str) -> dict:
     st = humanfit.state(base)
     mm = likeness._mm_per_px(cam, st["L"][27:48])
     photo = 2 * float(np.mean([e["r_px"] for e in lb])) * mm
+    det_px = float(np.mean([e["detector_px"] for e in lb]))
+    kd = det_px / max(float(np.mean([e["r_px"] for e in lb])), 1e-6)
+    if det_px < MIN_IRIS_PX or not LIMBUS_OK[0] <= kd <= LIMBUS_OK[1]:
+        det = 2 * det_px * mm
+        return {"photo_mm": None, "detector_mm": det, "model_mm": 2 * 0.51 * 0.985 * float(st["head"].get("eye_r", 0.012)) * 1000,
+                "ratio": None, "eye_radius": None, "iris_rgb": None, "iris_hex": None,
+                "text": (f"IRIS: not readable on the front picture (iris radius {det_px:.1f} px, {mm:.2f} mm / px: the "
+                         f"limbus needs {MIN_IRIS_PX:.0f} px; the detector's ring gives {det:.1f} mm +- {2 * mm:.1f}). "
+                         f"Use a closer picture of the eyes to set eye_radius / the iris colour")}
     r_ball = float(st["head"].get("eye_r", 0.012))
     model = 2 * 0.51 * 0.985 * r_ball * 1000
     k_eye = float(base["head"].get("eyes") or 1.0)
