@@ -597,3 +597,20 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   sides / jaw in warm subsurface shadow (a frontal soft key fixed most of it), and the photo had a slight COOL cast
   (sclera R/B 0.93): corrected for it, a fair forehead's R/B matched the render's (1.52) within noise. The rendered
   hue followed the albedo's (render cheek hue 46 vs albedo 47 deg): the shader adds no orange.
+
+## Lips (gnmdetail2, 2026-10-10; scratch /mnt/data/hifipushie/gnmdetail2: albedo.py (the stage's albedo splatted through
+## the front camera, lip reads on it), liplayers.py (layers painting at the lip probes), liptone.py, reflips.py, sweep.sh)
+- The LOWER LIP was painted too red and too dark: lips_lower (blood 7, melanin 0.9 x, thinner epidermis) read +7 a* and
+  -6 L against the upper lip in the albedo (Tess: albedo lower da 14.1 / dL -19.6, upper 9.6 / -14.8). Photos
+  (skin_refs, 13 faces + Tess; rd.lips da / dL of each lip against the skin beside it): the lower lip's a* contrast is
+  the upper's +1 (median; spread -9..+16) and it reads lighter by ~16 L, of which the light from above gives ~13 on
+  our heads (grey clay under the same light). Now skin.LOWER_LIP = melanin 0.72 x the lips', blood 3.8, the lips'
+  epidermis, oxygenation 0.66 (skin VERSION 6): Tess albedo lower da 10.2 / dL -13.9; dressed lo_mid da 16.6 -> 11.7
+  (photo 9.1), dL -9.4 -> -3.8 (photo +0.4). Across tones (liptone.py, Fitzpatrick 1-6) the lower lip is 5-8 L lighter
+  than the upper and da -2..+4: on dark skin lighter and pinker than the upper (ref_03 / ref_04 have that). Before /
+  after on F4 hu_m30 and F6 hu_w28d (look_skin mouth + face, out/ls_hu_*.jpg): subtle, less hot-pink on F4.
+- The PALE HALO under the lower lip (+3..+5 L just outside the border, dressed) is SHADING, not paint: the albedo has
+  none (lip_border's rim measures <= +0.3 L 0.5-3 mm out); the clay under the same light shows the skin under the
+  lower border lit +5..+8 over the skin 2 mm further down (the lower lip's underside / the labiomental turn faces up
+  on these heads). Left as found; skin2 found the same (look_skin flat: -2.6..+0.3).
+- Tools: albedo reads need the skin's own base colour (skin.part_base), not the part default grey.

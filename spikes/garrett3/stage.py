@@ -25,7 +25,10 @@ FRONT_LIGHT = {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [
                            "specular": 0.0}],
                "world": {"color": [0.8, 0.8, 0.8], "strength": 0.45}, "view": "Khronos PBR Neutral", "exposure": -0.55}
 
-STAGE_EEVEE = json.loads(os.environ["STAGE_EEVEE"]) if os.environ.get("STAGE_EEVEE") else {}
+# EEVEE's fast GI at FULL resolution (default half): a 1.6 mm lid crease read dark 0.14 at half (Cycles 0.21, the photo
+# 0.32), 0.25 at full; ~same time on a head (gnmdetail2). A 1 mm crease reads in neither (0.02-0.07)
+STAGE_EEVEE = (json.loads(os.environ["STAGE_EEVEE"]) if os.environ.get("STAGE_EEVEE") else
+               {"fast_gi_resolution": "1", "fast_gi_quality": 1.0, "fast_gi_step_count": 16, "fast_gi_ray_count": 4})
 
 
 def photo_light(name, vi=None):

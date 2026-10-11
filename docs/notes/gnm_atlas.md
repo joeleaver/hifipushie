@@ -1999,3 +1999,70 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
   bridge.py is a template); (3) a non-negative prototype basis for block_in_expression (named, plausible picture
   expressions; eye parts off by default); (4) Tess's feature pass with sculpt (lips, almond eyes, radix) instead of
   locals; (5) the atlas's teeth / joints have no face-ID numbers (by design).
+
+## gnmdetail2 (2026-10-10, continues gnmdetail; branch worktree-agent-a7c4aaa431f9c8bf5. Scratch /mnt/data/hifipushie/gnmdetail2:
+## gnmdetail's scripts retargeted + sect.py / sectlist.py (sagittal sections: one mesh vs the dressed stage mesh), ringgap.py /
+## cgap.py (GNM lip rings' gaps), fieldexp.py (the base field through the lips, seam variants), seamprof.py (L*/a* down
+## through the seam: photo / dressed / clay), maskproj.py / albedo.py / liplayers.py (paint on the stage mesh), eevar.py /
+## eev.sh (EEVEE settings vs Cycles on the lid crease), reliefrun.py (sculpt moves vs the crease), plcmp.sh (photo light))
+
+### The lips: GNM's closing, made to render (shipped)
+- THE PALE BAND + DARK CORNER HOLES (gd_T12L4) were the FIELD, not paint or contact: GNM's closed contact is a 42-deg V
+  between two coarse rings (~3.5 mm apart: ring 2 = contact, ring 3 = 3.5 mm up / down) and the inner rolls CROSS behind
+  it (ringgap: the upper roll 6.5 mm below the lower). The base field read that as a 2.5 mm forward-facing WALL at the
+  contact (sectlist: normals -6..0 deg from +0.75 to -1.25 mm): the dark line sat 1.8 mm above the contact (the upper
+  lip's down-facing turn) and the wall under it was the pale band; the crossed rolls opened the corners.
+- FIX (field only; the export's quads keep GNM's rolls): a mouth CLOSED BY GNM (the contact ring's halves within 0.8 mm
+  corner to corner, onemesh.CLOSED_GAP) gets the seal's field treatment, lighter: the rolls inside the contact ring left
+  out, the FIRST row out drawn halfway to the seam (onemesh.CLOSED_SEAL_V = (0.5,); the seal's three rows (0.5, 0.25,
+  0.1) are what halved the border's turn: rows 2-3 out sit on the vermilion). fieldexp at x = 0: seam V -60 / +27 deg each
+  side; profile from +6 mm up identical to the unsealed field (border kept). Dressed: one seam line corner to corner, no
+  band, no holes (out/c_t12L4b2.jpg). onemesh.VERSION 14.
+- Tried and dropped: keeping the rolls apart inside the lips solve (a no-crossing term): |dc| 9.7 / |e| 10.7 and the
+  mouth OPENED (a dark slit with teeth).
+- head.lip_close (base.lip_close_delta, where the seal goes: after the body's hook, on the head WITHOUT its expression):
+  the least change of GNM's first 40 lower-face expression comps (unit prior) closing the contact ring corner to corner
+  (one-sided, 0.2 mm overlap allowed; the lower half not ahead; the 68 off the mouth held 0.3 mm, corners 0.6), re-solved
+  on every head (ms) so identity steps keep the mouth shut. block_in_start sets it (lip_seal / mouth_gap dropped);
+  humans.spec keeps the seal for non-block-in humans. b2_T06 + lip_close: gaps 6.7 -> 0.2 mm, |e| ~2.4. The lips step
+  clears it (its own expression closes). base.VERSION 106. tests/test_lip_close.py.
+- MCP lip_read(name, match): reads (border miss / offset, seam miss, bow picture vs model, contact gaps, inner rolls,
+  which closing) and match=True = THE LIPS STEP (+ focus=mouth sheet). gd_T12 -> g2_T12L: borders 1.96 / 3.80 -> 0.19 /
+  0.22 mm, |dc| 2.15, |e| 3.0; table: philtrum went out (+0.86 -> +1.33, tol 1.0), mouth_width -1.39 (the step fits the
+  traced a* border, the table the detector's points).
+- THE CUPID'S BOW is within GNM's reach: a bow term (the picture's traced border, peaks over the centre trough, mm;
+  blockin_lips.SIG_BOW) on Tess (1.44): none 0.70 mm; 0.15 -> 1.07 (|dc| 2.50, +0.35); 0.05 -> 1.27 (|dc| 3.21). Dressed
+  reads the same (1.11 / 1.25 mm): the bow shows (out/c_bow.jpg). Default SIG_BOW 0.1.
+- Seam darkness: photo L* 15 at the seam (a ~1.5 mm dark slit, corners dark past the lips); ours ~29-30 (a thin line).
+  Not chased further: the photo's corners / slit include the mouth's shadow inside.
+
+### Lip paint (shipped; docs/notes/skin.md "## Lips")
+- Lower lip too red / dark -> skin.LOWER_LIP (melanin 0.72 x, blood 3.8, oxygenation 0.66): dressed lower da 16.6 -> 11.7
+  (photo 9.1), dL -9.4 -> -3.8 (photo +0.4). The halo under the lower lip is shading (albedo has none): left.
+
+### The crease (findings; nothing shipped in the solve)
+- GEOMETRY. GNM makes no overhang on Tess's lid: an eye solve with an overhang target (the Reader's "drop" >= 0.3 mm)
+  stayed at hood 0.00 (no gradient from no overhang; nothing in identity + 20 eye-expression pairs started one).
+  gnm_controls relief:lid_fold (the 8-13.5 mm band vs its surround, macros held) does NOT deepen the crease: -1 mm
+  (|dc| 3.17) moved the crease UP 4.7 -> 6.3 mm, local depth 1.30 -> 1.36; + relief:upper_lid +0.5 made it shallower
+  (and let orbital_rim go). Depth is reached by the eye step's d_line (1.64 mm at |dc| 7.6, gnmdetail). So a 1 mm SLIT
+  (skin folding over) is a documented gap of GNM's lid rows (~1 mm apart, the fold a ~2.5 mm valley): Joe's call whether
+  a hand layer (lidfold-like) is allowed for it.
+- RENDER. EEVEE's fast GI at half resolution (our default) under-reads narrow valleys: 1.64 mm crease (gd_T30) dark
+  0.14 (1x) / 0.25 (2x); FULL-res fast GI (fast_gi_resolution 1, quality 1, 16 steps, 4 rays) 0.25 / 0.29; Cycles 64
+  spp 0.21 / 0.29; photo 0.32. Bias 0 / thinner near / more shadow rays: no further gain. Same time on a head (both
+  renders + sync 70 s). A 1 mm crease (gd_T12L4) reads in neither (0.02-0.07). Now the dressed stage's default
+  (stage.STAGE_EEVEE); render jobs take "eevee": {name: value} overrides (blender_scene). Worth making the
+  blender_scene default for heads (owner's call: not tried on big scenes).
+- THE LINE READS HIGH: the dressed fold line reads 6.0-6.5 mm over the lashes on gd_T30 (EEVEE and Cycles alike) where
+  the geometric crease is ~5.3: the dark band of a 2.5 mm valley lit from above is its DOWN-FACING upper wall, ~1 mm
+  above the bottom; the photo's slit is dark at the fold itself. Shape, not the reader (same reader on both). If the
+  eye step should place the RENDERED line on the photo's, aim the valley ~1 mm lower than the picture's line.
+- What a crease needs to read dressed: >= ~1.6 mm local depth (|dc| ~7.6 on Tess, socket held) + full-res GI; a real
+  slit (the photo's 0.32 dark, 1 mm wide) needs an overhang GNM doesn't make.
+
+### The dressed stage's light (shipped)
+- blockin.photo_lighting(name, template): the template's key re-aimed along the front picture's fitted c0 + w.n light
+  (lit_render's first pass; its SH coefficients gave no stable direction: Tess's key from below) and key : frontal
+  fill from |w| : c0, the face's front as bright as the template lights it. Tess: key 35 deg up, from her right, key
+  1.74 / fill 1.89 (flatter than FRONT_LIGHT's 3.3 / 0.7); Garrett b2_G15: 30 deg, 2.8 / 0.8. stage.photo_light(name).

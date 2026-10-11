@@ -98,6 +98,18 @@ eye catches what the points miss; the target table catches what your eye misses.
    ~1.6 mm (|dc| ~7.6) or under Cycles.
    `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
    an identity step for eye height made eyes read NARROWER.
+7c. **The LIPS STEP: the lip line the way GNM is built** (Joe: "still don't have her lip line"). A block-in's rest mouth
+   is closed by GNM's OWN lower-face expression (`head.lip_close`, set by block_in_start: the least change that puts
+   the contact ring's halves together corner to corner, re-solved on every head), never the seal: `lip_seal`'s
+   membrane dragged the whole vermilion and halved the border's turn (24 -> 11 deg on Tess), the lips read as a flat
+   painted pad. A closed mouth's field leaves GNM's crossed inner rolls out (the seam is one line, no pale band or
+   dark corner holes). `lip_read(name)` reads the picture (the vermilion borders traced on the a* edge, the seam, the
+   Cupid's bow) beside the model through the front camera. `lip_read(name, match=True)` is the step: identity + GNM
+   lower-face expression for the borders (0.35 mm), the seam (0.4), the bow (0.1 mm) and the neutral closed, the 68
+   landmarks off the mouth held; it ships head.expression, lip_close / lip_seal / mouth_gap cleared. Judge with
+   focus=mouth AND dressed (the lips' paint follows GNM's own vermilion edges). Tess (gd_T12): borders 1.96 / 3.80 ->
+   0.20 / 0.22 mm, bow 0.51 -> ~1.2 mm (her 1.44), |dc| ~2.8, |e| ~3.3. It may push philtrum / chin_height in the table
+   (the step fits the traced a* border, the table the detector's points): judge both.
 7b. **The picture's own expression** (`block_in_expression(name)`): GNM's identity is the RELAXED neutral; a picture
    that smiles (fuller lips, lifted corners, a cheek apple) or squints is compared against that neutral, and the smile
    leaks into mouth / cheek identity steps. The tool fits each detector picture's expression on the current head
@@ -219,7 +231,8 @@ replace=False, save=None): the block-in's first model.
   on the new head (camera only).
 - name must be new (replace=True overwrites); the log (blockin_log.json) lives in this model's folder and every
   later step appends to it. save: the sheet's path (default workspace/human_renders/blockin_<name>.png).
-Returns the first sheet and target table.
+Returns the first sheet and target table. The rest mouth is closed by GNM's expression (head.lip_close; lip_seal and
+mouth_gap dropped), see 7c.
 
 ### `block_in_look`
 block_in_look(name, views=None, table=True, save=None, before=None, focus=None, read="", keep=None): the sheet (see
@@ -267,4 +280,14 @@ visible eyeball through the iris centre). match=True: the EYE STEP (loop, 7): id
 solved for the margins and the fold line, a new block-in step (out, seen as block_in_step); returns the focus=eyes
 sheet (before | after) and the solve's report (picture vs model before / after: lids, visible platform, crease depth
 and height, |dc|, |e|). ~4 min. match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
+
+### `lip_read`
+lip_read(name, match=False, out=None, seen="", save=None): the front picture's lips (the vermilion borders traced on
+the a* edge from MediaPipe's outer lip contour, the seam between MediaPipe's inner contours, the Cupid's bow: peaks over
+the centre trough, mm) against the model through the front camera (with the picture's fitted expression): border miss
+upper / lower (rms mm, and the mean offset, + = the model's outside), seam miss, bow picture / model, the neutral's
+contact gaps (max / median / min mm), the inner rolls' smallest gap (- = crossing: normal for GNM's closing, the
+field leaves them out) and how the mouth is closed (lip_close / seal / mouth_gap / expression). match=True: the LIPS
+STEP (loop, 7c), a new block-in step (out, seen as block_in_step); returns the focus=mouth sheet (before | after) and
+the solve's report. ~3 min.
 
