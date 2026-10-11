@@ -52,7 +52,7 @@ def lines(tag, kind):
     n = nums.get(tag)
     if kind == "s":
         if n:
-            out.append(f"raw GNM mesh: overhang {n['hang']:.2f} mm (max {n['hang_max']:.2f}), turn {n['turn']:.0f} deg, crease {n['h']:.1f} mm up")
+            out.append(f"raw GNM mesh: overhang {n['hang']:.2f} mm (max {n['hang_max']:.2f}), " + (f"turn {n['turn']:.0f} deg" if n['hang'] < 0.3 else "folded back") + f", crease {n['h']:.1f} mm up")
             if "dc" in n:
                 out.append(f"cost vs {n['src']}: |dc| {n['dc']:.1f} (|c| {n['c']:.1f}), brow {n['brow_drop']:+.1f} mm down, other skin {n['held_rms']:.2f} rms / {n['held_max']:.1f} max")
             else:
