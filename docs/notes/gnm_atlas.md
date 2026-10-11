@@ -16,6 +16,14 @@
 - RESTART GATE: the four restart after the driving test passes (agent gnmdrive: synthetic GNM pairs A -> B, the driver
   names differences in artist words and picks controls from a phrase -> control manual, no search; scored vs the oracle).
 - Agents document as they go: notes + commit after every meaningful step, a STATE / NEXT line per section.
+- EYELID / ORBIT (Joe, 2026-10-11): the crease is not a feature apart from the eyelid, and the lid is not apart from the
+  orbit. Decisions: (1) the skin-over-skin OVERHANG (her thin dark fold line; GNM max 0.56 mm over 2000 heads, "## eyelid")
+  is LEFT for now: no fine layer, no painted line, no crease make-up / liner work. (2) EYE DEPTH is "super important":
+  it becomes a block-in measure read from the pictures (profile + 3/4) and is set at the restart. (3) The whole-lid solve
+  (spikes/eyelid lidsolve: identity only, GNM's lid rings as one structure) becomes the eye step's shape term.
+  Start class / blend is chosen by measurement, not by label. Sheets: reference | best result | the rest.
+- DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
+  alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
   is the default; private family likenesses (lt19, jw) are never in the repo.
 
