@@ -221,7 +221,7 @@ def design(V: np.ndarray, crease: float = 4.7, overhang: float = 1.0, thick: flo
 
 def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1.0, brow: float | None = None,
          standoff: float = 1.3, expression: int = 0, lam: float = 1.0, ka: int = 5, sig: float | None = None,
-         design_overhang: float = 1.0, margins: float = 0.05, free: bool = False) -> dict:
+         design_overhang: float = 1.0, margins: float = 0.05, free: bool = False, clear_rounds: int = 4) -> dict:
     """Form the upper-lid fold on identity c0 (170) with GNM's parameters alone.
     crease     mm over the lid margin (raw GNM mm; a model's world mm / ~0.99)
     overhang   None: fit the designed fold softly (a crisp fold; the overhang itself does not survive the hold);
@@ -244,10 +244,8 @@ def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1
     B = S["B"]
     nx = len(B)
     sig = (0.3 if overhang is not None else 0.1) if sig is None else sig
-    At = (B[:, ids] / sig).reshape(nx, -1).T
-    D0 = (P - V0[ids]).ravel() / sig
-    Q, rhs = At.T @ At, At.T @ D0
     hm = np.zeros(len(V0), bool)
+    Qh = 1e-6 * np.eye(nx)
     if not free:
         ext = g["groups"]["skin_exterior"] | g["groups"]["eyes"]
         hm = (g["groups"]["skin"] | g["groups"]["eyes"]).copy()
@@ -258,18 +256,44 @@ def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1
             bm = g["groups"]["left_brow_region"] | g["groups"]["right_brow_region"] | g["groups"]["middle_brow_region"]
             w = np.where(bm, np.maximum(w, 1.0 / brow), w)
         Ah = (B[:, hm] * w[hm][None, :, None]).reshape(nx, -1)
-        Q = Q + Ah @ Ah.T + lam * np.eye(nx)
-    else:
-        Q = Q + 1e-6 * np.eye(nx)
+        Qh = Ah @ Ah.T + lam * np.eye(nx)
     R = _rows(S, ka, ka + 2)
     x0 = np.zeros(nx)
     x0[:NC] = c0
-    if overhang is None:
-        dx = np.linalg.solve(Q, rhs)
-    else:
-        A = np.array([R["hang"], R["gap"]])
-        b = np.array([overhang - (R["hang0"] + R["hang"] @ x0), 0.6 - (R["gap0"] + R["gap"] @ x0)])
-        dx = np.linalg.solve(np.block([[Q, A.T], [A, np.zeros((2, 2))]]), np.r_[rhs, b])[:nx]
+    # the platform must stay clear of the eyeball: a vertex the solve leaves closer than `standoff` - 0.2 mm to GNM's
+    # ball gets its target pushed out by the shortfall and 3x the weight, a few rounds (our own ball is smaller but
+    # seated by 6 landmarks: a platform under ~1.1 mm let it show through the lid as a brown patch)
+    left = g["T"][ids, 0] > 0
+    rk = np.where(left, t["ring"][ids], t["ring"][t["mir"]][ids])
+    plat = rk <= ka + 1
+    wv = np.ones(len(ids))
+    for _ in range(clear_rounds + 1):
+        At = (B[:, ids] * (wv / sig)[None, :, None]).reshape(nx, -1).T
+        D0 = ((P - V0[ids]) * (wv / sig)[:, None]).ravel()
+        Q, rhs = At.T @ At + Qh, At.T @ D0
+        if overhang is None:
+            dx = np.linalg.solve(Q, rhs)
+        else:
+            A = np.array([R["hang"], R["gap"]])
+            b = np.array([overhang - (R["hang0"] + R["hang"] @ x0), 0.6 - (R["gap0"] + R["gap"] @ x0)])
+            dx = np.linalg.solve(np.block([[Q, A.T], [A, np.zeros((2, 2))]]), np.r_[rhs, b])[:nx]
+        V1 = V0 + np.tensordot(dx, B, 1)
+        so = np.empty(len(ids))
+        push = []
+        for m_, grp in ((left, "left_eye"), (~left, "right_eye")):
+            ctr, r_ = _ball(V1, grp)
+            so[m_] = np.linalg.norm(V1[ids][m_] - ctr, axis=1) - r_
+            bad = m_ & plat & (np.where(m_, so, np.inf) < standoff - 0.2)
+            push.append((bad, ctr))
+        if free or not any(bad.any() for bad, _ in push):
+            break
+        for bad, ctr in push:
+            if bad.any():
+                nrm = V1[ids][bad] - ctr
+                nrm /= np.linalg.norm(nrm, axis=1, keepdims=True)
+                P[bad] += nrm * (standoff - so[bad])[:, None]
+                wv[bad] *= 3.0
+    res = (P - V1[ids])
     c1 = c0 + dx[:NC]
     e1 = None
     if expression:
@@ -277,7 +301,6 @@ def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1
         e1[S["EL"]] = dx[NC:]
         e1[S["ER"]] = dx[NC:]
     V1 = vertices(c1, e1)
-    res = (D0 - At @ dx).reshape(-1, 3) * sig
     mv = np.linalg.norm(V1 - V0, axis=1)
     worst = {}
     if hm.any():
@@ -295,7 +318,7 @@ def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1
     return {"c": c1, "e": e1, "dc": float(np.linalg.norm(dx[:NC])), "e_norm": float(np.linalg.norm(dx[NC:])),
             "residual": float(np.sqrt((res ** 2).sum(1).mean())), "held_rms": float(np.sqrt((mv[hm] ** 2).mean())) if hm.any() else 0.0,
             "held_max": float(mv[hm].max()) if hm.any() else 0.0, "worst": worst, "before": q0, "after": q1,
-            "brow_drop": float(q0["brow_h"] - q1["brow_h"]), "measures": meas}
+            "brow_drop": float(q0["brow_h"] - q1["brow_h"]), "measures": meas, "min_standoff": float(so[plat].min())}
 
 
 def fold_text(r: dict) -> str:
@@ -303,6 +326,7 @@ def fold_text(r: dict) -> str:
         "before: " + read_text(r["before"]),
         "after:  " + read_text(r["after"]),
         f"cost: |dc| {r['dc']:.1f}" + (f", |e| {r['e_norm']:.1f} per eye" if r["e"] is not None else "") + f"; the design missed by {r['residual']:.2f} mm rms; "
-        f"held skin moved {r['held_rms']:.2f} mm rms, max {r['held_max']:.1f}; brow ring {r['brow_drop']:+.1f} mm DOWN over the margin",
+        f"held skin moved {r['held_rms']:.2f} mm rms, max {r['held_max']:.1f}; brow ring {r['brow_drop']:+.1f} mm DOWN over the margin; "
+        f"platform's least stand-off from GNM's ball {r['min_standoff']:.2f} mm",
         "moved most: " + ", ".join(f"{k} {v:.1f} mm" for k, v in r["worst"].items()),
         "measures (mm): " + ", ".join(f"{k} {v:+.1f}" for k, v in r["measures"])])

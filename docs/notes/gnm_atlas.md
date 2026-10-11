@@ -3637,8 +3637,19 @@ the 3-section template if Joe accepts el_a6's kind); seat the eyeball against th
 ## overhang (2026-10-11, "overhang" agent, branch worktree-agent-a104afd924997c102; Joe: "learn how to form eyelids/overhangs
 ## with gnm parameters, since it's supported but doesn't seem to happen often". Scratch /mnt/data/hifipushie/overhang
 ## (run.sh / runm.sh (+ matplotlib) / q.sh; scripts in spikes/overhang); sheets human_renders/oh_*)
-STATE / NEXT (overhang, in progress): steps 1-2 done (below). The basis DOES span a folded lid; the question is cost.
-NEXT: the frontier (overhang / turn vs |dc| vs what else moves), renders, a reusable move.
+STATE / NEXT (overhang, 2026-10-11): ANSWERED, module + tests in, final renders of the module's recipes running.
+ANSWER IN ONE PARAGRAPH: nothing of GNM is unused at the lid (the other 83 identity coefficients are eyeball 3 + teeth 80,
+zero on skin; no lid joint, correctives all zero, no detail maps). The 170-comp basis DOES span a re-entrant lid (a
+designed fold projects to 0.13 mm rms), so "GNM can't span it" is wrong. But the overhang is not a lid feature in GNM:
+its cheapest direction IS the brow coming down over a deeper-set eye (corr -0.95 with brow height: hooding), and once
+the rest of a head is held to 1 mm the lid's rows keep 0.03-0.08 mm of freedom (an overhang = 54 sd). What CAN be
+formed on purpose, by closed-form least squares (src/hifipushie/gnm_fold.py): (A) a crisp fold at a chosen height
+(Tess: turn 19 -> 58 deg raw at 4.7 mm, |dc| 11, brows 2 mm lower; lidsolve had 34 deg); (B) a true overhang
+(0.6-0.8 mm raw, 2-3 mm of skin behind skin on the rendered mesh) at |dc| 13-19 with the brow 4-5 mm lower: a hooded
+eye, not her thin line. Rarity is explained twice over: 2.7 sd under N(0, I), and GNM's own sampler (trained on real
+coefficients) makes 0 % overhangs: the scans' registrations never had them.
+NEXT: finish sheets oh_01 (Tess) / oh_02 (mean, #376) with the module's final models (oh_T1..T3, M3, M4, S3, S4), the
+luminance reads, HANDOVER. Evidence sheet oh_03 is done.
 
 ### Step 1: are we using all of GNM? (freedom.py, scripts/npzinspect.py on gnm_head.npz v3.0; the report, gnm_audit.md 1.1)
 - The "other 83" identity coefficients are eyes 3 (limbus / cornea of the eyeball model) + teeth 80. Their basis is
@@ -3754,3 +3765,39 @@ NEXT: the frontier (overhang / turn vs |dc| vs what else moves), renders, a reus
   drags cheekbone width +3.5 mm. A wider free zone (drape free to ring 11) changes nothing (|dc| 22.6, brow 3.9 mm).
 - A platform at 0.8 mm off GNM's ball lets OUR eyeball through the lid (oh_TA / oh_TB: brown patch; eyelid saw the same):
   stand-off 1.3 mm is the module's default.
+- Rendered (first models, before the clearance rounds; prof.py's line read; "stage" = stagehang.py on the rendered mesh:
+  mm of heights where skin sits behind skin with a gap over 0.8 mm):
+  | | dressed line contrast @ mm (hers 0.19 @ 4.7) | clay edge @ mm | stage: skin behind skin |
+  |---|---|---|---|
+  | er_s4 before | 0.03 @ 6.4 | 0.12 @ 6.7 | 0.0 |
+  | el_a6 | 0.045 @ 6.5 | 0.19 @ 6.6 | 0.0 |
+  | #376 | 0.11 @ 6.8 | 0.26 @ 3.7 | 0.0 |
+  | oh_TD (A) | 0.09 @ 4.3 (part of it a small eyeball patch) | 0.28 @ 4.2 | 0.0 |
+  | oh_TE (A, brows held) | 0.11 @ 3.9 (patch) | 0.30 @ 4.2 | 0.0 |
+  | oh_TG (B 0.5) | 0.05 @ 3.6 | 0.27 @ 3.3 | 2.4 mm tall, gap 3.2, 5.2 mm over the margin |
+  | oh_TC (B 1.0) | 0.06 @ 4.4 | 0.30 @ 3.2 | 2.8 mm, gap 3.3 |
+  | mean oh_M0 / MA / MB / MC | 0.01 / 0.24 (patch) / 0.10 / 0.10 | 0.06 / 0.27 / 0.19 / 0.15 | 0.0 / 0.0 / 3.8 / 4.6 mm |
+  | #376 SA / SB / SC | 0.12 / 0.14 / 0.14 | 0.27 / 0.25 / 0.21 | 0.0 / 1.8 / 1.9 mm |
+  The overhang SURVIVES the pipeline (one mesh -> IMLS -> stage): recipe B puts 2-4 mm of skin behind skin on the
+  rendered mesh. It is a deep pocket under a lowered brow (gap 3+ mm), not a 0.5 mm slit.
+- BLUNT READ of the first renders: in CLAY under the hard light every recipe turns the soft hollow into a fold with a
+  cast edge (edge contrast 0.12 -> 0.27-0.30 on Tess, 0.06 -> 0.27 on the mean: real, visible). DRESSED under her
+  picture's soft frontal light none of them draws her dark line: 0.05-0.11 against her 0.19, and the highest readings
+  include a brown eyeball patch (the reader cannot tell: look at the tile). Recipe B on Tess reads as a HOODED eye: the
+  visible platform shrinks to ~2-3 mm and the brow hair sits 4 mm lower: further from her, not nearer.
+- gnm_fold.fold now runs CLEARANCE ROUNDS: platform vertices the solve leaves closer than standoff - 0.2 mm to GNM's
+  ball get their target pushed out and 3x the weight (up to 4 rounds); the report carries min_standoff. With them the
+  crease also lands on the asked height (Tess 4.7, turn 58 deg; before the rounds 4.0 mm, 46 deg).
+
+### Hook-up (not done: blockin_eyes.py belongs to the "orbit" agent right now)
+- src/hifipushie/gnm_fold.py is self-contained (its own ring topology; no spikes import). Tests: tests/test_gnm_fold.py
+  (5, pass; ~5 s; need the GNM pack + gnm_controls.npz like test_gnm_controls).
+- As the eye step's shape term: after the eye ruler's margins are solved (identity c), call
+  `r = gnm_fold.fold(c, crease=<ruler fold height in world mm / lid scale ~0.99>, brow=0.3)`, show gnm_fold.fold_text(r)
+  (it names the brow drop and the measures that moved), and keep r["c"] only if the eye ruler's rows and brow_read
+  still pass. It replaces lidsolve's donor target (#376's lid) with a designed one, so no donor head is needed.
+  `overhang=` should stay OFF by default: it is hooding (see the table). A block-in move could expose
+  gnm_fold.hood_direction(5)["dc"] as "hooding" (per unit: +0.6 mm overhang, brow -2.4 mm): that IS a real GNM
+  control for a hooded / deep-set eye, which is the population it describes.
+- MCP: no tool added (Joe's hold on model rounds; the eye step is being rewritten by orbit). When the eye step calls
+  it, block_in_step's report should print fold_text.

@@ -1,9 +1,8 @@
 """stagehang.py <tag>=<model> ...: does an overhang SURVIVE to the dressed stage's mesh (what is rendered)? On the stage
 skin near the left eye (surf.eye_frame: eye frame, mm), per column u (2 mm wide strips at -4, -2, 0, 2, 4): bin the
-vertices by height (0.15 mm) between the lid margin and 9 mm up; a height bin with skin at two depths more than 0.35 mm
+vertices by height (0.15 mm) between the lid margin and 9 mm up; a height bin with skin at two depths more than 0.8 mm
 apart is skin hidden behind skin in a front view. Printed: the overhang's depth (mm of such heights, the largest
-connected run), the slit's gap there (mm between the layers), its height over the margin; and the share of lid
-vertices whose normal faces DOWN by more than 30 deg (a fold's underside). Writes out/stagehang.json."""
+connected run), the slit's gap there (mm between the layers), its height over the margin. Writes out/stagehang.json."""
 import json
 import os
 import sys
@@ -31,7 +30,7 @@ for a in sys.argv[1:]:
         cur_gap = []
         for vb in np.arange(v0 + 2.0, v0 + 9.0, 0.15):
             w = np.sort(p[(p[:, 1] >= vb) & (p[:, 1] < vb + 0.15), 2])
-            two = len(w) >= 4 and (np.diff(w).max() > 0.35)
+            two = len(w) >= 4 and (np.diff(w).max() > 0.8)
             if two:
                 run += 0.15
                 cur_gap.append(float(np.diff(w).max()))
@@ -43,6 +42,5 @@ for a in sys.argv[1:]:
         out.append({"u": u, "hang": best, "gap": gap, "h": h_at, "down": float((n[:, 1] < -0.5).mean())})
     res[tag] = {"model": model, "cols": out}
     print(f"{tag:6s} {model:10s} stage overhang by column (mm): " + " ".join(f"{c['hang']:.2f}" for c in out)
-          + f" | mean {np.mean([c['hang'] for c in out]):.2f}, slit gap {np.mean([c['gap'] for c in out]):.2f}, at {np.mean([c['h'] for c in out]):.1f} mm over the margin; "
-          f"down-facing lid skin {np.mean([c['down'] for c in out]) * 100:.1f} %")
+          + f" | mean {np.mean([c['hang'] for c in out]):.2f}, slit gap {np.mean([c['gap'] for c in out]):.2f}, at {np.mean([c['h'] for c in out]):.1f} mm over the margin")
 json.dump(res, open(G + "/stagehang.json", "w"))
