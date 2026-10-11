@@ -26,7 +26,15 @@ def _space():
         for i, r in enumerate(g["lm68"]):
             for v, x in zip(r[0::2], r[1::2]):
                 WL[i, int(v)] += float(x)
-        _C["sp"] = {"T": T, "IB": IB, "gr": gr, "WL": WL, "sets": hm.space()["sets"]}
+        from . import lidrings
+        mir = lidrings.mirror()
+        orb = {k: np.r_[ids, mir[ids]] for k, ids in lidrings.sets().items()}
+        y = {k: float(T[ids, 1].mean()) for k, ids in orb.items()}
+        _C["sp"] = {"T": T, "IB": IB, "gr": gr, "WL": WL, "sets": hm.space()["sets"], "orb": orb,
+                    # the hollow's chord (platform -> brow ridge) at the sulcus' height, fixed on the template
+                    "w_hollow": (y["brow_ridge"] - y["sulcus"]) / (y["brow_ridge"] - y["platform"]),
+                    # GNM's eye is rigid: its corneal apex stands this far (mm) forward of the eye group's mean
+                    "apex": float((T[gr["left_eye"], 2].max() - T[gr["left_eye"], 2].mean()) * 1000)}
     return _C["sp"]
 
 
@@ -40,6 +48,9 @@ def readers(V: np.ndarray) -> dict:
     pog = V[S["pog"]].mean(0)
     cr = V[S["cranium"]]
     fh = V[S["forehead"]].mean(0)
+    O = {k: V[ids].mean(0) for k, ids in sp["orb"].items()}     # both sides' mean (x cancels)
+    ez, ey, nz = 0.5 * (eL[2] + eR[2]), 0.5 * (eL[1] + eR[1]), L[27, 2]
+    wh = sp["w_hollow"]
     return {
         "pupils_apart": abs(eL[0] - eR[0]),
         "eyes_forward": 0.5 * (eL[2] + eR[2]) - L[27, 2],
@@ -47,7 +58,10 @@ def readers(V: np.ndarray) -> dict:
         "brows_over_eyes": L[[19, 24], 1].mean() - 0.5 * (eL[1] + eR[1]),
         "forehead_forward": fh[2] - L[27, 2],
         "tip_forward": L[30, 2] - L[33, 2],
-        "subnasale_forward": L[33, 2] - 0.5 * (eL[2] + eR[2]),
+        # (orbit, 2026-10-11: against the NASION, was against the eyes: the muzzle's chain hung from the eye, so
+        # mm:eyes_forward carried nose base, lips and chin forward with the eye and, in the face's own frame, pushed
+        # the nasion and forehead back instead: on a fitted head the profile line left the picture's bridge)
+        "subnasale_forward": L[33, 2] - nz,
         "upper_lip_forward": L[51, 2] - L[33, 2],
         "lower_lip_forward": L[57, 2] - L[51, 2],
         "chin_forward": pog[2] - L[57, 2],
@@ -64,17 +78,35 @@ def readers(V: np.ndarray) -> dict:
         "skull_back": L[27, 2] - cr[:, 2].min(),
         "neck_width": np.ptp(V[S["neck"], 0]),
         "under_chin": L[8, 1] - V[S["under_chin"], 1].mean(),
+        # the ORBIT (orbit, 2026-10-11): the rims round the eye, each against the nasion like the eye itself, so that
+        # mm:eyes_forward is the EYE UNIT alone (ball, lids, lining) inside rims that stay
+        "brow_ridge_forward": O["brow_ridge"][2] - nz,
+        "side_rim_forward": O["side_rim"][2] - nz,
+        "under_eye_forward": O["under_eye"][2] - nz,
+        "brow_hollow": wh * O["platform"][2] + (1 - wh) * O["brow_ridge"][2] - O["sulcus"][2],
         # held, never moved: where the face sits in the head's frame (else a move may slide the face: the measures
         # above are all relative, and a slid face reads as a shifted profile against the picture)
         "_face_x": L[:, 0].mean(), "_face_y": L[:, 1].mean(), "_face_z": L[:, 2].mean(),
+        # held, never moved: the lids stay ON the ball (a least-norm "eye forward" may otherwise push the ball through
+        # them: our eyeball is seated on the lid landmarks), the opening and corners keep their place round the pupil,
+        # and the profile line between the measured points (glabella, dorsum) stays on the picture's
+        "_lid_up_z": O["margin_up"][2] - ez, "_lid_lo_z": O["margin_lo"][2] - ez, "_platform_z": O["platform"][2] - ez,
+        "_canthi_z": L[[36, 39, 42, 45], 2].mean() - ez,
+        "_lid_up_y": O["margin_up"][1] - ey, "_lid_lo_y": O["margin_lo"][1] - ey,
+        "_canthus_in_x": 0.5 * ((L[42, 0] - eL[0]) - (L[39, 0] - eR[0])),
+        "_canthus_out_x": 0.5 * ((L[45, 0] - eL[0]) - (L[36, 0] - eR[0])),
+        "_glabella_z": V[gr["middle_brow_region"], 2].mean() - nz, "_dorsum_z": L[28:30, 2].mean() - nz,
     }
 
 
 NAMES = ("pupils_apart", "eyes_forward", "eyes_height", "brows_over_eyes", "forehead_forward", "tip_forward",
          "subnasale_forward", "upper_lip_forward", "lower_lip_forward", "chin_forward", "philtrum_length",
          "chin_length", "nose_length", "cheekbone_width", "jaw_width", "chin_width", "mouth_width", "nose_width",
-         "skull_width", "skull_top", "skull_back", "neck_width", "under_chin")
-HELD = NAMES + ("_face_x", "_face_y", "_face_z")
+         "skull_width", "skull_top", "skull_back", "neck_width", "under_chin",
+         "brow_ridge_forward", "side_rim_forward", "under_eye_forward", "brow_hollow")
+ORBIT = ("eyes_forward", "brows_over_eyes", "brow_ridge_forward", "side_rim_forward", "under_eye_forward", "brow_hollow")
+HELD = NAMES + ("_face_x", "_face_y", "_face_z", "_lid_up_z", "_lid_lo_z", "_platform_z", "_canthi_z", "_lid_up_y",
+                "_lid_lo_y", "_canthus_in_x", "_canthus_out_x", "_glabella_z", "_dorsum_z")
 
 
 def jacobian() -> np.ndarray:
@@ -108,13 +140,14 @@ def direction(name: str) -> np.ndarray:
 # macros / pc: moves from the phrase manual and 27 / 42 for the oracle's 10 best moves from that vocabulary.
 SEE = {
     "pupils_apart": ("front", "the eyes are set further apart (irises doubled side by side in an overlay)"),
-    "eyes_forward": ("profile", "the eyeballs stand further forward of the nasion (prominent, less deep-set)"),
+    "eyes_forward": ("profile", "the EYE UNIT (ball, lids, socket lining) stands further forward in its orbit: less "
+                                "deep-set against the bridge, brow, cheek and side rim, which all stay"),
     "eyes_height": ("front", "the eyes sit higher above the nose base (a longer mid-face between eyes and nostrils)"),
     "brows_over_eyes": ("front", "the brows sit higher over the eyes (more lid space)"),
     "forehead_forward": ("profile", "the forehead stands further forward of the nasion (upright, full; - = sloping)"),
     "tip_forward": ("profile", "the nose tip projects further from the nose base (subnasale)"),
     "subnasale_forward": ("profile", "the nose base (and with it lips and chin: the whole muzzle) stands further "
-                                     "forward of the eyes"),
+                                     "forward of the nasion"),
     "upper_lip_forward": ("profile", "the upper lip (and the lower lip and chin under it) stands further forward of "
                                      "the nose base"),
     "lower_lip_forward": ("profile", "the lower lip (and the chin under it) stands further forward of the upper lip"),
@@ -133,7 +166,35 @@ SEE = {
     "neck_width": ("front", "the neck is thicker"),
     "under_chin": ("profile", "the line under the chin hangs lower below the chin's bottom (full, double chin; - = a "
                               "clean jaw-to-neck angle)"),
+    "brow_ridge_forward": ("profile", "the brow ridge over the pupil (supraorbital rim) stands further forward: more "
+                                      "overhang over the eye"),
+    "side_rim_forward": ("profile", "the orbit's side rim (beside the outer corner) sits further forward: less of the "
+                                    "eyeball shows from the side"),
+    "under_eye_forward": ("profile", "the cheek's top under the eye (infraorbital rim) stands further forward (the "
+                                     "cheek ahead of the cornea)"),
+    "brow_hollow": ("3q", "the skin between brow and lid is more sunken behind the line from the lid to the brow ridge "
+                          "(a hollow under the brow; - = full, flat)"),
 }
+
+
+def orbit(V: np.ndarray) -> dict:
+    """The orbit as an artist reads it off a side view (mm, GNM-frame vertices V in m), each a difference of the
+    measures: how far the corneal apex sits BEHIND the nasion, how far the brow ridge overhangs the apex, how far the
+    apex stands ahead of the orbit's side rim (what an exophthalmometer reads, here on skin) and of the cheek under the
+    eye, the brow's height over the pupil, the hollow under the brow."""
+    r, ap = readers(V), _space()["apex"]
+    a = r["eyes_forward"] + ap                      # the apex forward of the nasion (negative: behind it)
+    return {"apex_behind_nasion": -a, "brow_over_apex": r["brow_ridge_forward"] - a,
+            "apex_ahead_of_side_rim": a - r["side_rim_forward"], "apex_ahead_of_cheek": a - r["under_eye_forward"],
+            "brows_over_eyes": r["brows_over_eyes"], "brow_hollow": r["brow_hollow"]}
+
+
+# orbit()'s rows as combinations of the measures (a ruler's table: each row's gap and error from the measures')
+ORBIT_SEEN = {"apex_behind_nasion": {"eyes_forward": -1.0},
+              "brow_over_apex": {"brow_ridge_forward": 1.0, "eyes_forward": -1.0},
+              "apex_ahead_of_side_rim": {"eyes_forward": 1.0, "side_rim_forward": -1.0},
+              "apex_ahead_of_cheek": {"eyes_forward": 1.0, "under_eye_forward": -1.0},
+              "brows_over_eyes": {"brows_over_eyes": 1.0}, "brow_hollow": {"brow_hollow": 1.0}}
 # the forward measures are a CHAIN (each is taken against the one above it), so a link carries everything below it
 CHAIN = ("subnasale_forward", "upper_lip_forward", "lower_lip_forward", "chin_forward")
 

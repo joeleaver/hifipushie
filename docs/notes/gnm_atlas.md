@@ -3633,3 +3633,53 @@ the 3-section template if Joe accepts el_a6's kind); seat the eyeball against th
   surf.json, prof.json, popstat.npz, lidsolve_*.npz, orbit_*.png, sheet notes). Scratch models el_a1..a6, el_o3 / o3a /
   o3b, el_f3 / f4, el_w1 / w2 (workspace; delete freely). Light note: a clay light 64 deg up puts the whole lid in the
   brow's shadow; 39 deg works.
+
+## orbit (2026-10-11, "orbit" agent, branch worktree-agent-ad9bfaf2464cb4d4d from main ffc0879; Joe: "eye depth is super
+## important": eye depth as a measured, driveable block-in quantity (Task A) and lidsolve as the eye step's shape term
+## (Task B). Scratch /mnt/data/hifipushie/orbit (run.sh <script in spikes/orbit> / q.sh / tests.sh, out/); sheets human_renders/ob_*)
+STATE / NEXT (orbit): A.a DONE (orbit measures + clean moves in gnm_mm, costs below). NEXT: A.b the picture reader
+(limbus in 3/4 + profile, camera yaw as a nuisance with its prior, orbit rows in face_ruler), A.c validation, A.d / A.e
+Tess, then Task B (lidsolve into blockin_eyes), guide + tools + tests.
+
+### A.a: the orbit measures and their moves (src/hifipushie/gnm_mm.py, lidrings.py; spikes/orbit/cost.py -> out/cost.txt)
+- THE MEASURES (mm, GNM frame; every point's depth is taken against the NASION, as the profile chain is, so one
+  measure = one thing that moves; vertex sets on GNM's lid rings, lidrings.sets(), both sides' mean):
+  | measure (mm: move) | what it is | template | pop sd |
+  |---|---|---|---|
+  | eyes_forward | the eye (GNM's eyeball) forward of the nasion; corneal apex = + 10.4 mm (GNM's eye is rigid) | -18.8 | 4.0 |
+  | brow_ridge_forward | supraorbital rim: skin over the pupil at the brow (rings 12-13's top) forward of the nasion | -3.6 | 2.2 |
+  | side_rim_forward | lateral orbital rim: skin beside the outer corner (rings 13-14's outer end) | -23.9 | 4.0 |
+  | under_eye_forward | infraorbital rim: skin under the pupil (rings 9-10's bottom) | -10.1 | 4.0 |
+  | brows_over_eyes (was there) | the brow landmarks' height over the eye | 19.0 | 2.7 |
+  | brow_hollow | how far the skin under the brow (ring 8's top) lies behind the line lid platform -> brow ridge | 0.2 | 1.0 |
+  As an artist / clinician SEES them in a side view (gnm_mm.orbit(V); each a difference of the measures, ORBIT_SEEN):
+  apex_behind_nasion (template 8.4 mm), brow_over_apex (the brow ridge ahead of the cornea: 4.8), apex_ahead_of_side_rim
+  (what a Hertel exophthalmometer reads, here on skin: 15.5), apex_ahead_of_cheek (the "vector": 1.7), brows_over_eyes,
+  brow_hollow.
+- WHY mm:eyes_forward WAS WRONG: the muzzle's chain hung from the EYE (subnasale_forward = nose base - eyes). So "eye
+  +1, all else held" = eye, nose base, lips, chin and both lower rims forward together against nasion + forehead; in
+  the face's frame: eye +0.66, nasion / forehead -0.34 per mm, the profile line 0.55 mm rms off per mm. FIX: subnasale_
+  forward is now nose base - NASION (the 21 other moves' constraint set is the same span: unchanged by this alone), the
+  rims are measures of their own, and hidden holds keep the lids ON the ball (_lid_up_z / _lid_lo_z / _platform_z /
+  _canthi_z against the eye), the opening and corners round the pupil (_lid_up_y / _lid_lo_y / _canthus_in_x / _out_x)
+  and the profile line between its measured points (_glabella_z, _dorsum_z).
+- COST AND SIDE EFFECTS per mm of "the eye less deep-set" (template; z moves against the skull, mm per mm):
+  | formulation | |dc| / mm | eye | lids | nasion, forehead | nose base .. chin | brow ridge / side rim / under-eye | skin beyond the orbit rms (max) | profile line rms | drags |
+  |---|---|---|---|---|---|---|---|---|---|
+  | old mm:eyes_forward | 0.67 | +0.66 | +0.67 | -0.34 | +0.66 | +0.04 / +0.57 / +0.61 | 0.58 (0.81) | 0.55 | the whole mid-face |
+  | chain at the nasion, no orbit holds | 0.64 | +1.02 | +1.0 | +0.02 | +0.02 | +0.27 / +0.41 / +0.55 | 0.21 (0.52) | 0.06 | rims follow 25-55 %; platform 0.08 mm into the ball |
+  | NEW mm:eyes_forward (the eye unit) | 1.65 | +0.98 | +0.98 | -0.02 | -0.02 | -0.02 (all three) | 0.33 (0.97) | 0.05 | nothing (26 measures 0.00) |
+  | unit with the rims + hollow free | 0.95 | +1.06 | +1.06 | +0.06 | +0.06 | +0.27 / +0.66 / +0.90 | 0.28 (0.81) | 0.07 | rims follow 21-84 % |
+  | el_f4's kind (every eye / margin vertex +1, profile 0.25 mm, skin 1 mm) | 3.33 | +1.01 | margin +1.0, platform +0.5 | -0.06 | 0 / -0.11 lip | -0.09 / -0.01 / -0.21 | 0.11 (0.34) | 0.05 | platform 0.5 mm INTO the ball per mm; brow_hollow +0.6; widths -0.2 |
+  So the cheapest clean formulation is the measure move itself: 1.65 per mm (4.9 for 3 mm; el_f4 was 12.7 measured, 10
+  here) with no measure dragged, the lids riding on the ball and the profile line within 0.05 mm rms. It is NOT cheap
+  against GNM's prior because an eye forward inside rims that stay is unusual in people: when the rims follow (as they
+  do in the population: 0.64-0.95 per mm) it is 2-2.5 x cheaper. The ruler reads the rims too, so the move that is
+  applied is the sum over the read gaps: whatever of the rims the pictures show moves with the eye.
+- The other orbit moves (per mm): brows_over_eyes 0.95, brow_ridge_forward 1.45 (profile line 0.18 rms: the glabella
+  is held, the ridge over the pupil moves), side_rim_forward 1.28 (cheekbones follow +0.55), under_eye_forward 1.40
+  (cheekbones +0.49; the skin beyond the orbit 0.44 rms), brow_hollow 1.68.
+- THE 21 OLDER MOVES CHANGED with the new holds (|dc| per mm old -> new, cosine): pupils_apart 0.61 -> 0.83 (0.74: the
+  lids and corners now go with the eyes), tip_forward 0.80 -> 1.22 (0.65), subnasale_forward 0.78 -> 1.37 (0.57: no
+  longer drags the rims), eyes_height 0.84, brows_over_eyes 0.74, forehead_forward 0.75, nose_length 0.86, the rest
+  0.87-0.99. The driving gate (faceruler: 11 / 14) was run on the older ones; not rerun yet.
