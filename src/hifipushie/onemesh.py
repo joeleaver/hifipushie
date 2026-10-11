@@ -195,14 +195,28 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     fade = neck_fade()[:, None]
     Vn = mid + (bd["B"] - eye_mid) @ R / s + fade * ((V - Vt) - shift)
     gb = float(head.get("gnm_base", 0.0))
-    if gb:  # (faces6 spike) the head's BASE shape from GNM's template instead of the MakeHuman head the body carries,
+    gr = head.get("gnm_base_rest")
+    if gb or gr:  # (faces6 spike) the head's BASE shape from GNM's template instead of the MakeHuman head the body carries,
         # scaled to that head's size, faded to the stitch: the MakeHuman head + dimorphism field added a fixed ~2.7 mm
         # landmark offset to every identity (narrower lower face, flatter cheeks, longer; f6_15)
         base_mh = mid + (bd["B"] - eye_mid) @ R / s
         G = Vt - 0.5 * (Jt[2] + Jt[3])
         w = (fade[:, 0] > 0.5)
         k = float(((base_mh[w] - mid) * G[w]).sum() / max((G[w] ** 2).sum(), 1e-12))
-        Vn = Vn + gb * fade * ((mid + k * G) - base_mh)
+        if gr is None:
+            wv = np.full(len(Vn), gb)
+        else:   # (gnmcontrols) a REGIONAL base: gnm_base in the face (GNM's hockey mask, where its identity lives),
+            # gnm_base_rest outside it (skull, ears, neck: MakeHuman's head where the body needs it), blended over
+            # gnm_base_blend metres of the template
+            wv = float(gr) + (gb - float(gr)) * face_weight(float(head.get("gnm_base_blend", 0.03)))
+        Vn = Vn + (wv[:, None] * fade) * ((mid + k * G) - base_mh)
+        ga = float(head.get("gnm_base_age", 0.0))
+        age = float(head["bound"]["body"].get("age", 25.0))
+        if ga and age > 25.0:   # (gnmcontrols) where GNM's template replaced MakeHuman's head, put back MakeHuman's
+            # AGEING (its head at this age minus at 25, both at their eyes): GNM's face structure, MakeHuman's age
+            b25 = bound({**head["bound"]["body"], "age": 25.0}, float(head["bound"].get("toward", 1.0)))
+            mh25 = mid + (b25["B"] - _eye_mid(b25["mh"])) @ R / s
+            Vn = Vn + ga * (wv[:, None] * fade) * (base_mh - mh25)
     if head.get("dim"):  # the sexes' difference a little past MakeHuman's own, on the head only (headfit's fields)
         from . import headfit
         d0 = {**head["dim"], "toward": 0.0, "amount": 1.0}
@@ -214,6 +228,21 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
         from . import humanstyle
         Vn, Jn = humanstyle.head_ops(Vn, Jn, head["human_style"], g, neck_fade(), g["lm68"])
     return Vn, Jn
+
+
+def face_weight(blend: float = 0.03) -> np.ndarray:
+    """Per GNM vertex: 1 in GNM's face (its hockey_mask group), falling smoothly to 0 at `blend` metres outside it."""
+    key = ("face_w", round(blend, 5))
+    if key not in _CACHE:
+        from scipy.spatial import cKDTree
+        from . import base as basemod
+        g = basemod._gnm_data()
+        Vt = g["template_vertex_positions"].astype(float)
+        m = np.asarray(g["groups"]["hockey_mask"], float) > 0.5
+        d = cKDTree(Vt[m]).query(Vt)[0]
+        t = np.clip(1 - d / max(blend, 1e-6), 0, 1)
+        _CACHE[key] = np.where(m, 1.0, t * t * (3 - 2 * t))
+    return _CACHE[key]
 
 
 def _eye_mid(mb: dict) -> np.ndarray:

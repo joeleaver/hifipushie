@@ -59,7 +59,8 @@ FLAGGED = {"jaw_angle_height": "reads MediaPipe 172 / 397 (the detector's guess 
            "mouth_over_alar": "its alar width is MediaPipe's (on the cheek past the alae)"}
 
 BODY_KEYS = ("weight", "neck_double", "neck_depth")
-HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes", "eye_radius": "eye_radius"}
+HEAD_KEYS = {"dimorphism": "dimorphism", "gnm_base": "gnm_base", "eye_size": "eyes", "eye_radius": "eye_radius",
+             "gnm_base_rest": "gnm_base_rest"}
 # head_scale: the one mesh's head is the BODY's head (base.head.scale is overwritten by the body's size); a uniform size
 # change is base.style.human.head_size (humanstyle: the head scaled about the top of the neck, eyeballs with it)
 POSE_KEYS = ("lid_upper", "lid_lower")
@@ -125,7 +126,10 @@ def vocabulary() -> str:
             "lid_upper, lid_lower, eye_radius; DESIGNED age ops (set, not data): "
             + ", ".join("shape:" + k for k in SHAPE_MOVES) + "; local residuals (set): local:<faceslide slider>, e.g. "
             + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items())
-            + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7")
+            + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7"
+            + "; SCULPT a zone the GNM way (mm, its mean normal; macros held, locality): sculpt:<zone>, relief:<zone> "
+            "(against its surround: - deepens a groove), options |hold=<zone>+..|free=<macro>+..|loc=<w>; zones: "
+            "gnm_controls(zones=True); any atlas identity control raw: gnm:<control> (head_042, z:05, label:sex ...)")
 
 
 def _size_row() -> np.ndarray:
@@ -202,6 +206,16 @@ def direction(name: str) -> np.ndarray:
     if name.startswith("pc:"):
         reg, k = name[3:].rstrip("0123456789"), name[3:][len(name[3:].rstrip("0123456789")):]
         return keep_size(region_pcs(reg)[int(k or 0)])
+    if name.startswith(("sculpt:", "relief:")):   # (gnmcontrols) a zone moved the GNM way: per +1 mm, macros held
+        from . import gnm_controls as gcm
+        return gcm.sculpt(**gcm.parse_sculpt(name))["dc"]
+    if name.startswith("gnm:"):   # (gnmcontrols) any identity-space control of the atlas, raw (its own unit)
+        from . import gnm_controls as gcm
+        d = gcm.identity_direction(name[4:])
+        if d is None:
+            raise ValueError(f"{name}: an expression / pose control, not an identity move (block_in_expression fits a "
+                             "picture's expression)")
+        return d
     raise ValueError(f"block-in: no direction {name!r}. Vocabulary:\n{vocabulary()}")
 
 
@@ -508,6 +522,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     c0 = identity(sp)
     c = c0.copy()
     big, designed = [], []
+    sculpts = {}
     for k, v in (moves or {}).items():
         v = float(v)
         if k in BODY_KEYS:
@@ -538,6 +553,14 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"]["head"].setdefault("sliders", {})[nm] = v
             if nm in LOCAL_SD and abs(v) > 2.5 * LOCAL_SD[nm]:
                 big.append(f"{k} (population sd {LOCAL_SD[nm]})")
+        elif k.startswith(("sculpt:", "relief:")):
+            from . import gnm_controls as gcm
+            sc = gcm.sculpt(**gcm.parse_sculpt(k))
+            c = c + v * sc["dc"]
+            sculpts[k] = {"mm": v, "cost": round(abs(v) * sc["cost"], 2), "released": sc["released"],
+                          "outside_mm": round(abs(v) * sc["outside_mm"], 3)}
+            if abs(v) * sc["cost"] > 2.0:
+                big.append(f"{k} (|dc| {abs(v) * sc['cost']:.1f})")
         else:
             c = c + v * direction(k)
             if abs(v) > 1.0:
@@ -592,6 +615,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         raise ValueError(f"feature: one of {', '.join(FEATURES)}")
     entry = {"round": rnd, "from": src, "to": out, "moves": moves, "cameras": cameras, "camera_moves": cam_moves,
              "feature": feature, "seen": seen, "why": why, **({"designed": designed} if designed else {}),
+             **({"sculpt": sculpts} if sculpts else {}),
              "c_norm": round(float(np.linalg.norm(c)), 3), "read": read,
              "coupled": [[k, round(float(x), 2)] for k, x in moved],
              "passes": passes(t1), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -612,6 +636,10 @@ def step_text(rep: dict) -> str:
         s.append("moved (macro sd, before -> after): " + ", ".join(f"{k} {a:+.2f} -> {b:+.2f}" for k, (a, b) in e["read"].items()))
     if e["coupled"]:
         s.append("coupled (largest other macro changes, sd): " + ", ".join(f"{k} {v:+.2f}" for k, v in e["coupled"]))
+    for k, v in (e.get("sculpt") or {}).items():
+        s.append(f"{k} {v['mm']:+g} mm: |dc| {v['cost']:.2f} (macros held"
+                 + (f"; let go as the target itself: {', '.join(v['released'])}" if v["released"] else "")
+                 + f"; the face's skin beyond 6 mm of the zone moves {v['outside_mm']:.2f} mm rms)")
     if e.get("camera_moves"):
         s.append("cameras refitted (landmarks only: a camera fit does not see the outline): " + "; ".join(e["camera_moves"]))
     if rep["big"]:
