@@ -602,7 +602,7 @@ def _cam_columns(obs, views, cam_sd):
 
 
 def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=None, views=None, huber: float = 2.5,
-          weights: dict | None = None, done=None, cam_done=None) -> dict:
+          weights: dict | None = None, done=None, cam_done=None, prior_off=None) -> dict:
     """The gaps of the 23 measures from the observations. Default: the most likely identity change dc (prior N(0,
     tau^2) per comp) and the measures read off it, with posterior sd. span=True: least squares over the 23 `mm:` moves
     alone. cam_sd = (shift mm, shift mm, scale %, roll deg): the camera was fitted, so much of each is unknown."""
@@ -629,6 +629,8 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
         m0[-nc:] = cam_m0
     if done is not None and not span:      # a later round: the prior is on the WHOLE change (done + this step)
         m0[:K] = -np.asarray(done, float)
+    if prior_off is not None and not span:  # the model already stands this far from the prior's centre (its start
+        m0[:K] -= np.asarray(prior_off, float)   # class's mean): the prior is on the WHOLE identity, across calls
     w = 1.0 / sig ** 2
     for _ in range(3):
         A = (Jx * w[:, None]).T @ Jx + np.diag(1.0 / pri ** 2)
@@ -1043,7 +1045,7 @@ def model_head(spec: dict, c=None, kappa=None) -> dict:
     return {"face": face, "LB": LB, "c": cid, "V": P, "F": F[hv[F].all(1)], "B": B, "bnd": np.zeros(len(P), bool), "mesh": mesh, "L": st["L"],
             "Jm": gnm_mm.jacobian()[:len(gnm_mm.NAMES)], "measures": {n: float(r[n]) for n in gnm_mm.NAMES},
             "kind": "model", "hair": hair, "spec": spec, "eye_X": E, "eye_B": [eyeB[:, j] for j in order],
-            "kappa": kappa, "kappa_res": kres, "rebuild": lambda c2: model_head(spec, c2, kappa)}
+            "kappa": kappa, "kappa_res": kres, "rebuild": lambda c2: model_head(spec, c2, kappa), "gid": gid}
 
 
 def _iris_obs(head, view, eyes_pic):
@@ -1061,6 +1063,67 @@ def _iris_obs(head, view, eyes_pic):
             out.append({"type": "iris", "view": view["kind"], "name": f"iris_{'rl'[s_]}.{'xy'[ax]}", "o": float(d[ax]) * mm1,
                         "J": Jp[ax] * mm1, "sig": 0.2, "p": list(map(float, tru[s_]["c"])), "q": list(map(float, eyes_pic[s_]["c"])),
                         "X": list(map(float, head["eye_X"][j]))})
+    return out
+
+
+SIG_LID = (0.2, 0.4, 0.4)   # mm: a lid margin at a column within 7 mm of the iris centre / beyond it / a canthus
+
+
+def _lid_obs(head, view, rv):
+    """THE LIDS IN THE SAME SOLVE (reruns, 2026-10-11): the eye ruler's read of the front picture (rv = eye_ruler.mean:
+    upper / lower margin at its columns, the canthi; mm at the model in the eye's own frame, from the iris centre)
+    against the model's margin ring read the same way (blockin_eyes.Reader.margins, the subject's left eye). Each
+    moves with GNM's ring-0 vertices relative to the eye's centre. In the EYE's frame, so no camera column: its view
+    is "eye frame". The eye step solved these alone and later steps undid them (lips 0.2 -> 1.8 mm, brows 1.8 mm)."""
+    from . import blockin_eyes as be, lidrings, onemesh
+    ht = onemesh.head_template(head["spec"]["base"])
+    mg = be.Reader(ht).margins(ht)
+    gg = _gnm()["sp"]
+    T = gg["T"]
+    r0 = np.asarray(lidrings.topo()["loops"][0], int)
+    if "lid_mv" not in _C:
+        _C["lid_mv"] = {}
+    key = len(head["gid"])
+    if key not in _C["lid_mv"]:
+        gid = np.asarray(head["gid"], int)
+        first = {}
+        for i, g_ in enumerate(gid):
+            if g_ >= 0 and g_ not in first:
+                first[int(g_)] = i
+        _C["lid_mv"][key] = np.array([first.get(int(g_), -1) for g_ in r0])
+    mv = _C["lid_mv"][key]
+    ok = mv >= 0
+    r0, mv = r0[ok], mv[ok]
+    j = int(np.argmax([float(e[0]) for e in head["eye_X"]]))        # the subject's left eye (world +X)
+    E, EB = np.asarray(head["eye_X"][j], float), np.asarray(head["eye_B"][j], float)       # (3,), (170, 3)
+    ejy = 0.5 * (T[r0, 1].max() + T[r0, 1].min())
+    up = T[r0, 1] > ejy
+    x = (np.asarray(head["V"], float)[mv, 0] - E[0]) * 1000.0
+    Bx = (np.asarray(head["B"][:, mv, 0], float) - EB[:, 0:1]) * 1000.0     # (170, n) mm per unit, across
+    Bz = (np.asarray(head["B"][:, mv, 2], float) - EB[:, 2:3]) * 1000.0     # up
+    out = []
+
+    def col_J(sel, u):
+        xs = x[sel]
+        o = np.argsort(np.abs(xs - u))[:2]
+        w = 1.0 / np.maximum(np.abs(xs[o] - u), 0.05)
+        w /= w.sum()
+        return Bz[:, np.flatnonzero(sel)[o]] @ w
+    for nm, sel, pic, mod in (("up", up, np.asarray(rv["up"], float), mg["up"]),
+                              ("lo", ~up, np.asarray(rv["lo"], float) - be.LO_BIAS, mg["lo"])):
+        for k, u in enumerate(be.RULER_COLS):
+            if not (np.isfinite(pic[k]) and np.isfinite(mod[k])):
+                continue
+            out.append({"type": "lid", "view": "eye frame", "name": f"lid_{nm}_{u:+.0f}.y", "o": float(pic[k] - mod[k]),
+                        "J": col_J(sel, float(u)), "sig": SIG_LID[0] if abs(u) < 7 else SIG_LID[1]})
+    io, ii = int(np.argmax(x)), int(np.argmin(x))
+    if np.isfinite(rv["outer"][0]):
+        out.append({"type": "lid", "view": "eye frame", "name": "canthus_out.x", "o": float(rv["outer"][0] + be.OUT_RING - mg["ring_out"][0]),
+                    "J": Bx[:, io], "sig": SIG_LID[2]})
+    if np.isfinite(rv["inner"][0]):
+        JL = (np.asarray(head["LB"][:, 42, 0], float) - EB[:, 0]) * 1000.0
+        out.append({"type": "lid", "view": "eye frame", "name": "canthus_in.x", "o": float(rv["inner"][0] - mg["inner"][0]),
+                    "J": JL, "sig": SIG_LID[2]})
     return out
 
 
@@ -1113,7 +1176,7 @@ def kind_of(yaw: float) -> str:
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
 
 
-def reference_views(name: str, hair: bool = True) -> tuple:
+def reference_views(name: str, hair: bool = True, lids: bool = False) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -1142,6 +1205,11 @@ def reference_views(name: str, hair: bool = True) -> tuple:
                 eyes = er.read(img, P, mm)
                 extras.append(lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes))
                 iris_mm = float(np.mean([e["iris"] for e in eyes]))
+                rv = er.mean(eyes)
+                if lids and rv["iris"] / mm >= 30.0 and all(np.isfinite(rv[q]).sum() >= 5 for q in ("up", "lo")):
+                    extras.append(lambda h, vw, rv=rv: _lid_obs(h, vw, rv))
+                elif lids:
+                    notes.append(f"{view['name']}: the lids were not read (iris {rv['iris'] / mm:.0f} px; needs 30)")
             except Exception as e:  # noqa: BLE001
                 notes.append(f"{view['name']}: the irises were not read ({e})")
         view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
@@ -1152,21 +1220,22 @@ def reference_views(name: str, hair: bool = True) -> tuple:
     return head, views, notes
 
 
-def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None) -> dict:
+def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
+            prior_off=None, lids: bool = False) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
-    head, views, notes = reference_views(name, hair)
+    head, views, notes = reference_views(name, hair, lids=lids)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
-    res = read(head, views, rounds=rounds, cam_sd=cam_sd)
+    res = read(head, views, rounds=rounds, cam_sd=cam_sd, **({} if prior_off is None else {"prior_off": prior_off}))
     from . import gnm_mm
     sd = gnm_mm.sd()
     for r in res["gaps"]:
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid")}
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))

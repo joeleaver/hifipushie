@@ -678,7 +678,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             "table": t1, "before": passes(t0), "manual": manual}
 
 
-def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int = 3, seen: str = "") -> dict:
+def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int = 3, seen: str = "",
+               cameras: str = "free", lids: bool = True) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -687,9 +688,20 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     table 22 / 26, about where ten hand rounds got. It does NOT see the inside of the face (lids, lips' borders, the
     nose's planes): the eye and lips steps follow. -> step()'s report + "solve": {"n", "dc", "c", "max_sd", "cameras"}."""
     from . import face_ruler as fr, store
-    c = fr.compare(src, rounds=rounds)
-    dc = float(share) * np.asarray(c["dc"], float)
     c0 = identity(store.load(src))
+    # the prior is on the WHOLE identity: centred on the block-in's start head (its class mean), not on this call's
+    # change (a second call used to move |dc| 4 more and walk a component to 3.1 sd)
+    root = (_refs(src).get("blockin") or {}).get("root")
+    off = None
+    if root and (store.HOME / root / "spec.json").exists():
+        off = c0 - identity(store.load(root))
+    if cameras not in ("free", "trust"):
+        raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch free) or '
+                         '"trust" (measured or already solved cameras: a third of that freedom)')
+    k = 1.0 if cameras == "free" else 1.0 / 3.0
+    cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD6.items()}
+    c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids)
+    dc = float(share) * np.asarray(c["dc"], float)
     rep = step(src, {}, out=out, seen=seen or "the face ruler's joint solve (outlines, irises, limbus; every view)",
                why=f"its solved identity change applied ({share:g} of it): |dc| {np.linalg.norm(dc):.2f}", _identity=c0 + dc)
     to = rep["entry"]["to"]

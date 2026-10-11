@@ -4268,3 +4268,20 @@ the brow band, the alae (so lids, lips and the nose's width stop being separate 
 faceruler handover's NEXT 1); (3) the profile camera's yaw: 4.5 deg free turn bends the nose: tighten its prior or
 take the yaw from the ear / eye geometry; (4) a neutral judging sheet (photo albedo projected, hair on) and face-ID
 retried on it; (5) the table's inconsistent front rows (philtrum + chin_height + lower_third: ~4 mm).
+- DONE (1): the solve's prior on the WHOLE identity across calls (face_ruler.solve prior_off = c - the block-in root's
+  c; blockin.solve_step passes it) + block_in_solve(cameras="trust": a third of the camera freedom). Tess, class mean
+  -> tk_T01 (free cameras; = tj_T01) -> tk_T02 -> T03 -> T04 (trust): |c| 10.71, 10.37, 10.35, 10.33; largest comp
+  2.5 / 2.3 / 2.3 / 2.6 sd; step sizes |dc| 9.3, 4.2, 3.7, 1.6 (cos of steps 3 and 4: -0.28: settling, a little
+  see-saw); cameras under 0.4 mm / 0.4 deg after the first step. (Before: the 2nd call |c| 12.6, comp 3.1 sd.)
+- DONE (2a): LIDS IN THE SOLVE: face_ruler._lid_obs: eye_ruler's upper / lower margins at its 7 columns + both canthi
+  (mm in the eye's frame) against blockin_eyes.Reader.margins on the shipped head, each with GNM's ring-0 vertices'
+  move relative to the eye centre as its Jacobian; view "eye frame" (no camera column). 16 reads on Tess. tk_T03 / T04
+  (with lids): eye placement 3/3 (eye_width in), table 23 / 26 (philtrum +2.8 / +2.6, chin_height 3/4 +1.7).
+  Sheet tk_01 (photos | tk_T04 | tj_T01 | tn_T10n), sent. BLUNT: the opening is right with no separate eye step and
+  the solve settles; but the face reads lean and male, the profile nose still long and hooked, the lips THIN and the
+  upper lip long (nothing in the solve sees the mouth; the dressing's lip colour follows GNM's lips). Not her.
+STATE / NEXT (tooling): (2b) lip borders in the solve (blockin_lips' picture read: the vermilion's upper / lower
+border and corners, front; its closing expression is a separate matter), then the brow band and the alae; (3) the
+nose: profile dorsum / tip came out hooked on the FIRST free-camera step (profile yaw -4.5 deg): start with
+cameras="trust" when the refs' cameras are measured, and check the outline reads along the dorsum; (4) neutral
+judging sheet + face-ID; (5) the table's inconsistent rows. Tests for solve_step / _lid_obs still to write.
