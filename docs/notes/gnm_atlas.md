@@ -3063,3 +3063,12 @@ outer 9.7 vs 9.4, upper margin at the pupil 2.1 vs 3.4, lower -5.3 (bias taken o
   mk.py, final.py, tab.py, lay.py, sheet1.py, sheet23.py).
 - Lost GPU contexts ("amdgpu: The CS has cancelled because the context is lost") killed two shots while a cloth job
   ran on the GPU: dress2.sh / dress3.sh retry each shot.
+
+### eyeruler addendum (coordinator, 2026-10-11; reported after the merge)
+- Liner on the final dressing (scratch er_R1; crop /mnt/data/hifipushie/eyeruler/out/c_R1.png = photo | no liner | liner):
+  NOT usable. skin.makeup.eyeliner at 0.7 mm with a 2.5 mm wing renders a pale, jagged wedge floating over the outer
+  corner; the lash line gets no darker. The ruler reads it like er_R4 (fissure 21.4, inner -12.3, upper margin 2.2).
+  Not investigated; suspect skin._aperture_keep_out (fades every lid layer within 1-1.7 mm of the ball: it also hid the
+  crease make-up). Her dark lash line + wing is still unmatched.
+- OPEN (Joe to decide): fix the keep-out and retry a soft crease shadow before accepting the painted fold line;
+  identity-only (ne=0) as the eye step's default.
