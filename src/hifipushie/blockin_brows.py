@@ -217,7 +217,9 @@ def errors(pb: list, mb: list, mm: float) -> dict:
         mid.append(np.where(ok, (m["mid"] - pm) * mm, np.nan))
         th.append(np.where(ok, ((m["low"] - m["top"]) - (p["low"] - p["top"])) * mm, np.nan))
     lo, mid, th = (np.array(a) for a in (lo, mid, th))
-    with np.errstate(all="ignore"):
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)   # (a column neither side reads: NaN, not a warning)
         return {"low": np.nanmean(lo, 0), "mid": np.nanmean(mid, 0), "thick": np.nanmean(th, 0),
                 "low_rms": float(np.sqrt(np.nanmean(lo ** 2))), "mid_rms": float(np.sqrt(np.nanmean(mid ** 2))),
                 "thick_mean": float(np.nanmean(th)), "n": int(np.isfinite(mid).sum())}
@@ -309,7 +311,7 @@ def check(name: str) -> dict:
     bad = e["n"] >= 6 and e["low_rms"] > 1.5
     e["text"] = ((("WARNING: " if bad else "") + f"brow hair vs the picture: lower edge {e['low_rms']:.1f} mm rms off (mean "
                   f"{float(np.nanmean(e['low'])):+.1f} mm, + = ours lower, toward the eye), middle line {e['mid_rms']:.1f} mm"
-                  + ("; place it from the picture: blockin_brows.apply / the brows_from_picture tool" if bad else ""))
+                  + ("; place it from the picture: brow_read(name, match=True)" if bad else ""))
                  if e["n"] >= 6 else "brow hair vs the picture: the picture's brows are too faint to read")
     return e
 

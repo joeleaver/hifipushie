@@ -137,7 +137,7 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "lip_read", "gnm_controls", "skin",
+                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "lip_read", "brow_read", "gnm_controls", "skin",
                         "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
@@ -1910,6 +1910,24 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     txt = (bi.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + bi.lid_text(bi.lid_read(to))
            + f"\nfocus=eyes sheet (before | after, raking light): {path}")
     return [_png(PILImage.open(path)), txt]
+
+
+@mcp.tool(structured_output=False)
+def brow_read(name: str, match: bool = False, out: str | None = None):
+    """The dressed brow HAIR (skin.hair.brows) against the front picture's, through its fitted camera: lower edge /
+    middle line miss in mm at the model, and the picture's iris (limbus, mm at the model; its colour) against the
+    drawn one. match=True: skin.hair.brows' placement (drop, tilt, apart, fall, thickness, taper) fitted to the
+    picture's hair band and written to `out` (default: the model itself). Paint only. Details: guide(topic="brow_read")."""
+    from . import blockin_brows as bb, blockin_eyes as be
+    try:
+        iris = be.iris_check(name)["text"]
+    except Exception as e:  # noqa: BLE001  (no readable iris: the brows still read)
+        iris = f"IRIS: not read ({e})"
+    if not match:
+        return bb.check(name)["text"] + "\n" + iris
+    r = bb.apply(name, out=out)
+    return (r["text"] + f"\nwritten to {r['model']} (skin.hair.brows; look_skin view \"brows\" / \"eye\" to judge it "
+            "dressed)\n" + iris)
 
 
 @mcp.tool(structured_output=False)

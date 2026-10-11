@@ -47,7 +47,9 @@ eye catches what the points miss; the target table catches what your eye misses.
      block_in_start and every NEW one-mesh human (human tool) set it (by age: 0.012 from the late teens). Models
      made before 2026-10-10 lack it: their ball is GNM's 14.6 mm eye x the head's scale (a 7.3 mm iris on a big
      head); when you work on one, step `eye_radius: 0.012`, then `lid_read(match=True)` (the lids' iris-radius
-     read changes with the iris).
+     read changes with the iris). 0.012 is right for an adult-SIZE head: on a small head (Tess: pupil distance 53
+     mm) it draws the iris 18 % too big; `brow_read(name)`'s IRIS line gives the picture's limbus in mm at the model
+     and the eye_radius that matches it.
    - DESIGNED age / soft-tissue ops, SET: `shape:<op>`: faceslide's age sliders in their units (`age_nasolabial`
      +1 = a 2 mm fold, `age_prejowl`, `age_cheek_flat`, `age_lid_fold`, `face_planes`, `face_lean`, `cheek_hollow`
      +1 = 4 mm) and headage's ops without a slider (`eye_bag`, `lip_bow`, `lip_roll` in m, `lips_thin` a share).
@@ -98,6 +100,13 @@ eye catches what the points miss; the target table catches what your eye misses.
    ~1.6 mm (|dc| ~7.6) or under Cycles.
    `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
    an identity step for eye height made eyes read NARROWER.
+7b2. **Brows and iris before a dressed eye is judged** (Joe on a dressed sheet: "the eyebrows sit on top the crease ...
+   so I can't really judge"): `brow_read(name)` gives the brow hair's miss against the picture and the iris line
+   (picture limbus vs drawn iris, mm at the model). If the iris is off by more than 5 %, step `eye_radius` to the
+   stated value and run the eye step again (an absolute 12 mm ball is too big on a small head: Tess's pupil distance
+   is 53 mm); then `brow_read(name, match=True)` places the hair from the picture. Compare dressed renders with the
+   picture ONLY through the picture's fitted camera and the same pixel crop (never an "11.7 mm iris" scale: the
+   detector's iris points under-read our renders by 19 % and a photo by 6 %).
 7c. **The LIPS STEP: the lip line the way GNM is built** (Joe: "still don't have her lip line"). A block-in's rest mouth
    is closed by GNM's OWN lower-face expression (`head.lip_close`, set by block_in_start: the least change that puts
    the contact ring's halves together corner to corner, re-solved on every head), never the seal: `lip_seal`'s
@@ -280,6 +289,18 @@ visible eyeball through the iris centre). match=True: the EYE STEP (loop, 7): id
 solved for the margins and the fold line, a new block-in step (out, seen as block_in_step); returns the focus=eyes
 sheet (before | after) and the solve's report (picture vs model before / after: lids, visible platform, crease depth
 and height, |dc|, |e|). ~4 min. match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
+
+### `brow_read`
+brow_read(name, match=False, out=None): the DRESSED brows (the skin's hair picture, skin.hair.brows) against the front
+picture's brow hair, through its fitted camera, in mm at the model: the hair band's lower edge and middle line at 9
+columns across each brow (half contrast against the skin; + = ours lower, toward the eye), a WARNING past 1.5 mm; and
+the IRIS line: the picture's limbus diameter in mm at the model against the drawn iris, the `eye_radius` that makes
+them equal, the picture's iris colour. match=True fits skin.hair.brows' placement (drop, tilt, apart, fall, thickness,
+taper; "lift" folded in) to the picture's band and writes it (out: another model; default in place). Paint only.
+Why: GNM's brow landmarks are the ridge's, not the hair's; brows set by eye on one head travel with the dressing onto
+the next and end up on the lid's fold (Tess: 4-7 mm low). Run it after the eye step, before judging a dressed eye.
+An iris 1.18 x too big (the lids are matched in iris radii) opens the eye 1.18 x too tall and crowds the brow: step
+`eye_radius` to the value the line gives, run the eye step again, set skin.eyes.iris_size to the picture's.
 
 ### `lip_read`
 lip_read(name, match=False, out=None, seen="", save=None): the front picture's lips (the vermilion borders traced on
