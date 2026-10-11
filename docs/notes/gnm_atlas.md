@@ -2860,8 +2860,10 @@ What the drivers reported (now in the manual, section 0a):
 ## eyeruler (2026-10-11, "eyeruler" agent, branch worktree-agent-aca121f3738eb053b; Joe on gb_01: "I notice some measurement
 ## errors" (our eye is narrower corner to corner than hers) and "the upper eyelid just isn't realistic". Scratch
 ## /mnt/data/hifipushie/eyeruler (run.sh / q.sh; scripts in spikes/eyeruler); sheets human_renders/er_*)
-STATE / NEXT (eyeruler, step 0): set up; first mesh numbers below. NEXT: the image ruler (eye_ruler.py), validated on
-dressed fitted-camera renders of the gk_s* sampled heads against the mesh's own truth.
+STATE / NEXT (eyeruler, step 2 in progress): the ruler exists (src/hifipushie/eye_ruler.py: read() on a picture, model()
+on the mesh) and is validated on 14 dressed fitted-camera renders; first photo-vs-model table below. NEXT: confirm where
+the 2.7 mm inner-corner miss lives (GNM's lm68 corner vs the visible opening: dressing or shape), re-target the eye step
+on the ruler's numbers (true iris centre, corners), then the lid's realism (task 3), tool + guide + tests (task 4).
 
 ### Step 0: the mesh's own numbers (spikes/eyeruler/probe.py; lid margin ring = skin rows next to the socket lining)
 | model | ring width (mm) | lm 42-45 | opening (z extent) | ball r |
@@ -2874,3 +2876,64 @@ dressed fitted-camera renders of the gk_s* sampled heads against the mesh's own 
 | gk_s376 / gk_s540 | 23.1 / 21.4 | 25.0 / 23.4 | 10.2 / 9.5 | 12.6 |
 By eye on the gb_01 shots (to be replaced by the ruler): her fissure ~26 mm at the model, ours ~21 with only ~19 mm of
 sclera showing. So the block-in's head (gd_T12, 22.1) never had her length; the eye steps took 0.2-0.8 mm more.
+
+### Step 1: the eye ruler (src/hifipushie/eye_ruler.py; spikes/eyeruler/rule.py, validate.py, det.py, table.py)
+- Frame per eye: origin = the iris centre, u = mm toward the outer corner along the line through both iris centres, v = mm
+  up; everything in mm AT THE MODEL (the fitted camera's mm / px). Columns COLS = u -9 .. 9 mm every 3.
+- read(img, P, mmpx, scale, origin): the PICTURE reader. (1) The iris is a least-squares CIRCLE through the limbus edge
+  in the two side sectors (+-55 deg, lid-covered rays dropped): centre AND radius (blockin_eyes.limbus only re-seats the
+  centre sideways). (2) skin-likeness K (the skin's chroma (R-B)/(R+G+B) and >= 0.7 of the local luminance): the eyeball,
+  lash line, liner, waterline, caruncle are all not skin; K's edges, tracked by dynamic programming inside the
+  detector's +-2.5 mm band, are the OUTER sides of the lid rims. (3) the margins proper (where the eyeball ends) are the
+  edges of the chroma inside those, read outside the iris' disc; across the disc the rim's thickness is carried over.
+  (4) the visible eyeball ends where the lids close; the inner canthus = the medial tip of the not-skin wedge past it
+  (caruncle). (5) fold line = a ridge of narrow darkness 1.5-10 mm over the margin; brow = the dark band's lower edge.
+  MediaPipe is only a search band. First tries that failed: ridge tracking on the chroma alone (the limbus ring and
+  iris texture are ridges too), taking the iris out by its radial picture (the lid over the disc went with it).
+- model(spec, cam): the same measures on the MESH: the visible eyeball from likeness.render's part pass (0.05 mm), the
+  margin ring (skin rows next to the socket lining) projected, the crease / platform from blockin_eyes' sagittal
+  profile at each column, the brow from blockin_brows.model_band; + "gap" (socket lining showing between ring and ball).
+- VALIDATION (val.sh: 14 dressed shots through Tess's fitted camera: 10 sampled GNM heads gk_s*, gd_T12, gd_T30,
+  gk_ev5s376, gb_fx; both eyes = 28; reader - mesh, mm):
+  | measure | bias | sd | verdict |
+  |---|---|---|---|
+  | iris centre x / y | 0.06 / -0.06 | 0.12 / 0.06 | good |
+  | iris diameter | -0.10 | 0.06 | good |
+  | upper margin, 7 columns | -0.2 .. +0.2 | 0.13-0.27 | good (0.2-0.3 mm) |
+  | lower margin, 7 columns | +0.2 .. +0.4 | 0.13-0.33 | reads 0.35 mm HIGH (consistent: the waterline) |
+  | mrd1 / mrd2 (margins at the pupil) | -0.07 / -0.39 | 0.18 / 0.20 | good / biased as the lower margin |
+  | opening per column | -0.2 .. -0.5 | 0.2-0.5 | ok |
+  | outer canthus u (= where the eyeball ends) | -0.37 | 0.26 | ok (lashes hide the last 0.4 mm) |
+  | inner canthus u / v | +0.41 / +0.74 | 0.47 / 0.56 | ok, +-0.5 |
+  | fissure length | -0.80 | 0.53 | ok after the bias; a difference under ~1.5 mm is not one |
+  | canthal tilt (deg) | -1.1 | 1.5 | COARSE: only differences over ~3 deg |
+  | upper lid's peak position | +0.40 | 0.40 | ok +-0.6 |
+  | caruncle (sclera end - canthus) | 0.0 | 0.40 | ok on renders; on the photo the pink inner sclera reads as caruncle (+-1) |
+  | brow lower edge over the margin | -0.3 .. -1.0 | 0.4-0.7 | ok +-0.7 (vs the decal's predicted edge) |
+  | fold line (crease) on a RENDER | +-2 | 0.7-3.8 | DROPPED on renders: the soft fold is not a line (as gnmcrease found); the model's crease comes from the mesh. On the photo (crisp line, darkness 0.22 vs 0.01-0.04 on renders) it is used, unvalidated |
+- MediaPipe against the same truth (det.py, renders): iris centre 1.14 mm LOW (sd 0.17; photo: 0.6-1.1 low against the
+  circle), iris diameter -2.8 mm (22 %; photo -9 %), upper lid at the pupil +1.05, lower +1.5, inner corner 1.6 mm
+  medial of the opening's end, width +1.0. GNM's lm68 eye corners: inner 1.87 mm MEDIAL of the visible inner canthus
+  (sd 0.28), outer 0.46 lateral: the landmark width is 2.3 mm more than the visible fissure (sd 0.17).
+
+### Step 2 (first numbers): photo vs models (table.py; mean of both eyes; mm in each eye's frame)
+| | fissure | inner canthus (u, v) | outer (u, v) | upper margin at u -6 / -3 / 0 / 3 / 6 | lower at 0 | opening at 0 | iris | pupils apart | intercanthal |
+|---|---|---|---|---|---|---|---|---|---|
+| PHOTO (read) | 23.0 | -13.2, -2.7 | 9.8, -1.9 | 1.3 / 2.1 / 2.1 / 1.8 / 0.9 | -4.9 | 7.0 | 11.0 | 53.4 | 26.9 |
+| gd_T12 (block-in, ball 12.6) | 21.1 | -10.5, -2.5 | 10.6, -1.2 | 1.9 / 3.5 / 4.2 / 4.1 / 3.2 | -5.5 | 9.7 | 12.8 | 52.7 | 31.8 |
+| gb_T12r (ball 10.64) | 20.3 | -10.5, -2.6 | 9.8, -0.8 | same | -5.6 | 9.7 | | 52.8 | 31.8 |
+| gb_T12e = gb_fx (eye step) | 20.0 | -10.5, -3.4 | 9.4, -1.4 | 1.5 / 2.9 / 3.4 / 3.0 / 2.0 | -4.4 | 7.8 | 10.7 | 53.9 | 32.9 |
+| gk_ev5s376 (gk_07) | 21.1 | -10.8, -3.3 | 10.2, -1.6 | 2.0 / 3.5 / 4.0 / 3.7 / 2.7 | -5.5 | 9.5 | 12.8 | 53.7 | 32.0 |
+| gk_s376 / gk_s540 (GNM samples) | 22.1 / 20.5 | -11.5 / -10.5 | 10.6 / 10.0 | | -6.1 / -6.0 | 10.0 / 9.3 | 12.8 | 54.1 / 49.3 | 31.1 / 28.3 |
+First read (to be confirmed by the fixes):
+- The fissure never matched: the block-in's head was 21.1 against her 23.0 read (23.8 with the reader's bias), ALL of
+  it at the INNER corner (-10.5 vs -13.2: her inner canthi are 26.9 mm apart, ours 31.8-32.9; out/c_inner.png shows it
+  in one crop). The outer canthus matches (9.8 vs 9.4-10.6). The smaller eyeball took 0.8 mm off the outer end (the
+  ball no longer fills the corner: lining gap 1.2-1.4 mm at u +9), the eye step 0.3 more.
+- Why the block-in thought it matched: its landmark fit compares MediaPipe's corners (photo: 23.0 wide, right on her
+  canthi) with GNM's lm68 corners (24.0 on gd_T12), which sit 2.3 mm wider than our visible opening. So the model read
+  "1 mm too wide" while it showed 2-3 mm too narrow.
+- The lids were matched against the wrong iris centre: the detector's centre is ~0.9 mm low on her photo, the model's
+  read uses the true pole. True reads: her upper margin is 2.1 mm over the iris centre (0.38 iris r), ours 3.4 (0.64);
+  her lower -4.9, ours -4.4. This is gnmbrow's open "~1 mm: the detector reads our upper lid higher than hers".
+  Her visible platform (fold line over the margin) is 4.7 mm, ours 3.7-3.9: with the margin 1.3 mm lower it would match.
