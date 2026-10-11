@@ -2090,6 +2090,12 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 
 ## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
+STATE / NEXT (gnmcrease 2, 2026-10-10): CORRECTION in "### Round 2" below: Joe read #376 / #540 as the right crease
+(dressed) and gd_T30 as the right darkness with the WRONG FOLD SHAPE; makeup supplies the rest of the darkness, no geometry
+fixes. Shape solves on Tess (scratch) converged (out/ss_T30_376.npz, ss_T30_540.npz); NEXT: dress them (dress.py, KEEP_EXPR,
+gk_ss* scratch models) + the one sheet (photo | #376 | #540 | gd_T30 | new, same frame, section plots), Garrett solves,
+light crease makeup, then fold the shape objective into blockin_eyes (retire CREASE_SLIT_DARK + the NOTE).
+
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
 Is the crisp fold in GNM's identity space and our solves miss it (held socket / brow, wrong objective), or not there?
@@ -2151,3 +2157,28 @@ depth, same ceiling.
   jac_gd_T12.npz, crdir.npz (pop / contrast / Tess-gradient directions), readd.json (dressed reads), d_*_{dressed,clay,face}.png.
 - If a fine crease layer is approved: aim the RENDERED line, not the valley (gnmdetail2: a valley's dark band reads ~1 mm
   above its bottom), and judge it dressed at the photo's mm/px; the raster clay over-reads down-facing bands.
+
+### Round 2: the correction (Joe, on gk_01) and the crease as a SHAPE
+- Joe: #376 and #540 read right dressed; gd_T30 has the right darkness but the wrong fold shape. So the round-1 target (the
+  photo's line darkness 0.32) and the round-1 verdict ("GNM has no crisp crease, out of reach") were WRONG: the bar is how
+  the fold reads dressed. Any darkness still missing comes from makeup (skin.makeup eyeshadow crease), not geometry.
+- Readers across the lid (col.py: the eye step's sagittal profile at 7 columns, inner -> outer corner; secplot.py,
+  out/sec_a.png). #376 / #540 vs gd_T30 / gd_T12 (geo, mm over the lid margin):
+  crease height mid 2.9 / 2.35 vs 4.85 / 4.97; platform shown 2.4 / 1.7 vs 4.5 / 4.3; crease / (margin -> brow) 0.30 / 0.31
+  vs 0.54 / 0.49; valley narrow (0.75 mm chord) mean 0.32 / 0.37 vs 0.60 / 0.23; the fold edge's convexity above 0.9 / 0.7
+  vs 0.8 / 0. The SECTIONS: gd_T30's platform recedes ~4 mm BACK into the socket up to 5-6 mm, then the skin turns forward
+  to the brow: a sunken / hollow upper lid, the crease the floor of that hollow. #376 / #540: the platform recedes <= 1-2 mm,
+  the crease is low (2.4-3 mm), the skin above comes FORWARD as a full fold (#540 strongly). The fold line across the lid:
+  parallel to the lashes, highest at the inner corner (4 mm), lowest just past the pupil (2.4-2.9).
+- Population (1200 samples, sep.py): #376 / #540 are the 1-12 % lowest creases, 15-40 % platform, top 2-5 % fold-edge
+  convexity and narrowness; 30 / 1200 are low (< 3.2) + narrow (> 0.3) + parallel. gd_T30: 65 % height, 85 % platform.
+  Depth isn't it (gd_T30 is deeper than both); the fold's height, the platform's width and a full lid above it are.
+- The dressed lidfold reader is NOT a usable height ruler on our renders: its line height vs the geometric crease over 19
+  samples r -0.19 (it locks onto the brow sulcus or the brow hairs' edge at 7-8 mm). Judge shape geometrically, look by eye.
+- SHAPE SOLVE (shapesolve.py <model> <donor> <out>): the eye step's variables (identity 170 + 20 eye pairs) and holds (68 lm
+  0.3 mm, brows 1 mm, socket 0.15 sd, lid margins vs the iris at their start 0.05 r); evidence = the donor's sections at the
+  inner third / pupil / outer third relative to the lid margin, arclength 0.5-8 mm, sigma 0.3 mm. ~75 s / iteration, 6 its.
+  From gd_T30: -> #376 shape rms 1.71 -> 0.12 mm, |dc| 5.3, |de| 3.5 (crease 4.85 -> 2.67 mm, platform 4.5 -> 2.2,
+  ratio 0.29); -> #540 3.15 -> 0.20 mm, |dc| 5.8, |de| 5.6 (crease 2.1, platform 1.5; brow_height +1.2 sd, eye_tilt -0.8).
+  Socket within 0.3 sd. So the shape IS reachable on Tess's held face at |dc| ~5.5 (round 1's transplant cost 16+ because it
+  copied whole-region vertices incl. brow / orbit relief; the sections ask only for the lid's shape).
