@@ -29,6 +29,8 @@ SIG_LINE = 0.1
 DARK_LINE = 0.15        # the picture's fold line darkness above which "a line is there"
 HOODED_SHOW = 0.5       # mm: the visible platform when the picture shows no fold line (hooded: the fold covers it)
 SIG_HOODED = 0.5
+SOCKET = ("orbital_rim", "lower_orbit", "eye_depth")   # the socket's readings held (humanmacro, population sd, on the
+SIG_SOCKET = 0.15       # mesh WITH the expression): unheld, lt19's fold came with orbital_rim +1.1 / lower_orbit -0.9 sd
 HOLD = [i for i in range(68) if not (36 <= i < 48 or 17 <= i < 27)]
 BROWS = list(range(17, 27))
 
@@ -247,6 +249,26 @@ def photo_evidence(img, view: dict) -> dict:
             "hooded": hooded, "columns": cols}
 
 
+def socket(c, expression: dict) -> dict:
+    """The socket readings (SOCKET, humanmacro z-scores) of identity c with the head's expression applied: GNM's mesh
+    (humanmacro.head) + the expression basis, so a lid tucked back by the eye-region expression counts."""
+    from . import base as basemod, humanmacro as hm
+    g = basemod._gnm_data()
+    names = {str(n): i for i, n in enumerate(g["expression_names"])}
+    V = hm.head(np.asarray(c, float))
+    for k, v in (expression or {}).items():
+        if v and k in names:
+            if k not in _EB:
+                B = np.asarray(g["expression_basis"][names[k]], float)
+                _EB[k] = np.stack([B[..., 0], -B[..., 2], B[..., 1]], -1)   # (humanmacro's world frame)
+            V = V + float(v) * _EB[k]
+    z = hm.read(V=V)
+    return {k: float(z[k]) for k in SOCKET}
+
+
+_EB: dict = {}
+
+
 # ---- the solve -----------------------------------------------------------------------------------------------------
 
 def _head(base, c, e, Ln, Rn):
@@ -261,9 +283,13 @@ def _head(base, c, e, Ln, Rn):
     return ht, b
 
 
-def solve(base: dict, ev: dict, iters: int = 6, log=print) -> dict:
+def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None = None,
+          hold_socket: float | None = SIG_SOCKET) -> dict:
     """identity + eye expression for evidence ev (photo_evidence). base: the block-in's base (its lid pose cleared
-    here). Returns {"c", "expression", "read0", "read", "cost", "dc", "e"}."""
+    here). d_line: the crease's least local depth (mm) when the picture shows a line (default D_LINE); hold_socket: the
+    socket readings' sigma (sd; None = not held). Returns {"c", "expression", "read0", "read", "cost", "dc", "e",
+    "socket0", "socket"}."""
+    d_line = D_LINE if d_line is None else float(d_line)
     from . import blockin as bi
     Ln, Rn, _ = _names()
     b0 = copy.deepcopy(base)
@@ -280,6 +306,11 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print) -> dict:
         e0[k] = 0.5 * (float(ex0.get(Ln[k], 0.0)) + float(ex0.get(Rn[k], 0.0)))
     ht0, _ = _head(b0, c0, e0, Ln, Rn)
     rd = Reader(ht0)
+    ex_other = {k: v for k, v in ex0.items() if k not in set(Ln) | set(Rn)}
+
+    def sock(c, e):
+        return socket(c, {**ex_other, **{Ln[k]: e[k] for k in range(NE)}, **{Rn[k]: e[k] for k in range(NE)}})
+    s0 = sock(c0, e0)
     L0 = np.asarray(ht0["lm68"], float)
     tps_k = None
 
@@ -294,8 +325,11 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print) -> dict:
                 r.append((q["vis"] - want) / SIG_HOODED if np.isfinite(q["vis"]) else 20.0)
             else:
                 r.append((q["hsoft"] - want) / SIG_TPS if np.isfinite(q["hsoft"]) else 20.0)
-                r.append(min(q["lsoft"] - D_LINE, 0.0) / SIG_LINE)
+                r.append(min(q["lsoft"] - d_line, 0.0) / SIG_LINE)
         L = np.asarray(ht["lm68"], float)
+        if hold_socket:
+            s = sock(c0 + x[:170], e0 + x[170:])
+            r += [(s[k] - s0[k]) / hold_socket for k in SOCKET]
         r += list(((L[HOLD] - L0[HOLD]) * 1000 / SIG_HOLD).ravel())
         r += list(((L[BROWS] - L0[BROWS]) * 1000 / SIG_BROW).ravel())
         return np.array(r), q
@@ -332,7 +366,9 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print) -> dict:
             break
     q = resid(x)[1]
     e = e0 + x[170:]
-    return {"c": c0 + x[:170], "expression": {**{Ln[k]: round(float(e[k]), 5) for k in range(NE) if abs(e[k]) > 1e-5},
+    s1 = sock(c0 + x[:170], e)
+    log("  socket " + ", ".join(f"{k} {s0[k]:+.2f} -> {s1[k]:+.2f}" for k in SOCKET))
+    return {"socket0": s0, "socket": s1, "c": c0 + x[:170], "expression": {**{Ln[k]: round(float(e[k]), 5) for k in range(NE) if abs(e[k]) > 1e-5},
                                               **{Rn[k]: round(float(e[k]), 5) for k in range(NE) if abs(e[k]) > 1e-5}},
             "read0": q0, "read": q, "cost": f, "dc": float(np.linalg.norm(x[:170])), "e": float(np.linalg.norm(e)),
             "pose": pose}

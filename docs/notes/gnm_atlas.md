@@ -1733,3 +1733,60 @@ Open, in order: (1) Joe on the designed dorsum local (b2_G11's); (2) the eye_wid
 prior / expression range), Tess's iris reads 5.1 mm in camera mm (iris-radius targets may be ~15 % inflated for her);
 (5) age: the decision on a licensed older-age source (section 4); the designed shape: ops meanwhile (Garrett: fold,
 hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not leaner).
+
+## gnmdetail (2026-10-10, "gnmdetail" agent; Joe: "still don't have her eyelid folds or lip line, I know GNM CAN make
+## those shapes". Scratch /mnt/data/hifipushie/gnmdetail: run.sh / tests.sh, dshot.py <model> <tag> (dressed EEVEE front
+## through the fitted camera + raking clay, lid / lip reads on photo and render alike), claylips.py (clay under the
+## dressed light, L* across the lip borders), cyc.py (Cycles), crops.py / many.sh, crease.py <src> <dst> <d_line>,
+## lipsrun.py <src> <dst>, lipmiss.py, pipe.py / stagecmp2.py (what the pipeline keeps), lipreach2.py (GNM's reach))
+
+### Readers, same on photo and dressed render (rd.py)
+- Fold: lidfold.read_lid (tps / dark / width) on the photo crop and on the render downsampled to the photo's pixels.
+  Tess photo: line 5.25 mm, dark 0.32, FWHM ~1 mm. Dressed b2_T06 (eye step, crease 1.1 mm): 7.2-7.7 mm, dark 0.08-0.16.
+- Lips: L* / a* profiles across the traced vermilion border (lipborder.read, now src/hifipushie/lipborder.py), upper middle /
+  sides, lower; the bow (traced upper border's peaks over its centre trough). Tess photo: a bright roll +3.5 L* ~1 mm above
+  the upper border's middle, the upper vermilion dark (-23 vs the skin), the lower lip LIGHTER than the skin (+3: faces
+  up); bow 1.44 mm. Dressed b2_T06: no roll (-1), upper -17, lower -8.5 (paint), a PALE RING +5 L* just outside the lower
+  border (the photo has none: skin:lip_border's pale rim), bow 0.6-0.7 mm.
+- Clay under the same light (claylips): the geometry's share. b2_T06: upper vermilion -1.6 (no turn down), lower +7.8.
+
+### Q1, the crease: depth, socket, renderer
+- The pipeline keeps it: stagecmp2 (one mesh vs the dressed stage mesh, same frame 0.24 mm): crease 2.2 -> 2.1 mm deep.
+- The socket coupling is fixed in the solve: blockin_eyes.socket() (humanmacro orbital_rim / lower_orbit / eye_depth on the
+  mesh WITH the expression) held at 0.15 sd (default). Tess: unheld (b2_T06) +1.10 / -1.12 sd, held (gd_T12) +0.27 / -0.05,
+  crease 0.96 mm (unheld 1.12). Same on the private likeness (unheld +1.4 / -1.6, held +0.3 / -0.1).
+- Depth sweep (held, from b2_T02; d_line = the floor on the crease's local depth): 1.2 -> 0.96 mm at |dc| 3.3; 2.0 -> 1.37
+  at 5.2; 3.0 -> 1.64 at 7.6 (orbital_rim creeps to +0.5). GNM's fold is a ~2.5 mm-wide valley (its lid rows ~1 mm);
+  the photo's line is a ~1 mm slit where skin folds over (blockin2: GNM made no overhang).
+- Dressed: EEVEE reads dark 0.15-0.24 even at 1.64 mm (photo 0.32), a soft step; Cycles at 1.64 mm draws a visible line
+  (dark ~0.28), at 0.96 mm faint. So: depth needed to read ~1.5 mm+ (costly), and EEVEE's screen-space light under-reads
+  narrow valleys. The visible line also reads ~1-1.5 mm higher than the photo's (6.2-7 vs 5.25 mm). Sheets out/c_crease_eye.jpg,
+  out/c_cyc.jpg. (Cycles renders a grey disc at the pupil: cornea, not chased.)
+
+### Q2 / Q3, the lip line: the SEAL flattens the border (render side), GNM closing restores it
+- GNM's border geometry (lipreach2, Tess): bow 0.63 mm (random N(0,I) faces 0.70 +- 0.23), border turn (chords 4 mm up / 3 mm
+  down) 25 deg (population 26.8 +- 3.9), the vermilion's slope varies a lot (sd 9.9 deg, cheap: |dc| 0.17 per deg). A
+  raised RIDGE at the border (1 mm chords) is not in GNM (0.17 +- 0.03 mm; +1 mm costs |dc| 28). Her profile photo's
+  upper lip contour lies on the model's mid-sagittal section (prof_b2_T06.png): the midline shape is right.
+- Where it's lost (pipe.py): one mesh turn 24 deg -> sealed field (base._sealed_field) ~11-14 -> Catmull-Clark + IMLS 11.5.
+  The lip seal (faceslide.seal_delta on the head + the field-only seal) is a harmonic membrane over the lips' rings from
+  the contact ring out to the border: on a parted neutral (Tess's identity is open 5-7 mm) it drags the whole vermilion
+  and fades across the border: the turn halves, the upper vermilion comes FORWARD (-6 deg) instead of turning down, the
+  lips read as a flat painted pad. Catmull-Clark and the field keep an unsealed border (24-28 deg).
+- Closed by GNM instead (mouth_gap 0, the least-change lower-face solver): border kept, upper vermilion turns down (clay
+  -5.1), lower lip lit (+20): the lips read 3D; but fuller / pouty (faces5's overshoot) and the contact reader says it is
+  still open 2.3 mm in the middle (mouth_gap measures only lm62-66).
+- THE LIPS STEP (src/hifipushie/blockin_lips.py, experimental, no MCP tool yet): MAP over identity 170 + lower-face 40,
+  evidence the traced borders through the front camera (0.35 mm), the picture's seam (MediaPipe inner contours, 0.4 mm),
+  GNM's contact ring closed (one-sided, 0.15 mm, overlap 0.2 allowed), the lower half not ahead of the upper (0.3 mm), 68
+  off the mouth held; seal and mouth_gap cleared. Head -> camera frame by a similarity on the face (0.28 mm rms). ~3 min.
+  Tess (gd_T12 -> gd_T12L4): border miss 0.45 / 1.72 (sealed) -> 0.19 / 0.22 mm, seam 0.80 -> 0.13, bow 0.59 -> 0.70
+  (photo 1.44), |dc| 2.15, |e| 3.0. Dressed: shape right (shorter lower vermilion, upper turns down), BUT the meeting
+  reads as a pale 2-3 mm band under a dark line and the corners (outside the contact span) show dark holes: the
+  contact zone faces forward. NOT shippable yet. Next: the contact as a surface (rolls behind, the seam a line from the
+  front: e.g. the contact ring's normals / the visible extent of the rolls from the camera), the corners in the span,
+  then the bow (GNM's population tops ~1.4 mm: within reach only near its edge).
+- Paint (Q3): skin:lip_border's pale rim reads as a halo round the LOWER lip (+5 L*; the photo has none there; the
+  upper lip's roll is shading, which the seal removed). The lower lip paint is too dark / red (a* 24 vs 19.5) and kills
+  the geometric light. Left as found (skin code, all humans): to decide with the skin thread.
+- spikes/garrett3/stage.py keeps a closed mouth_gap (it popped it: a GNM-closed mouth reopened in dressed shots).

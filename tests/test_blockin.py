@@ -283,3 +283,39 @@ def test_eye_readers():
     assert -1 < q["up"] < 2 and 0 < q["lo"] < 2 and np.isfinite(q["hsoft"]) and q["r_iris_mm"] > 5   # (fs_ge3: its lid pose puts the upper lid past the pole)
     Ln, Rn, names = be._names()
     assert Ln[0] in names and Rn[0] in names and len(Ln) == be.NE
+
+
+def test_socket_reads_the_expression():
+    """blockin_eyes.socket (the eye step's socket hold) reads humanmacro's socket rows on the mesh WITH the expression:
+    identity-only at no expression, and an eye-region expression moves them (the coupling the hold is there for)."""
+    from hifipushie import blockin_eyes as be
+    c = np.zeros(170)
+    s0 = be.socket(c, {})
+    z = hm.read(c)
+    assert all(abs(s0[k] - z[k]) < 1e-6 for k in be.SOCKET)
+    Ln, Rn, _ = be._names()
+    s1 = be.socket(c, {Ln[0]: 1.5, Rn[0]: 1.5})
+    assert max(abs(s1[k] - s0[k]) for k in be.SOCKET) > 0.05
+
+
+@need_ref
+def test_lip_readers():
+    """blockin_lips on the shipped head: GNM's border loops and contact ring found, the contact gap and lead read (a
+    sealed head reads closed), the head -> camera-frame map within a mm."""
+    from hifipushie import blockin_lips as bl, onemesh
+    b = store.load(REF)["base"]
+    up, lo = bl.border_loops()
+    assert len(up) > 15 and len(lo) > 15
+    cu, cl = bl.contact_rows()
+    assert len(cu) > 10 and len(cl) > 10
+    b2 = json.loads(json.dumps(b))
+    b2["head"].pop("lip_seal", None)
+    b2["head"]["mouth_gap"] = 0.004
+    ht = onemesh.head_template(b2)
+    g = bl.contact_gaps(ht)
+    assert g.shape == (bl.CONTACT_X,) and np.median(g) > 1.0      # parted 4 mm: read open
+    assert np.isfinite(bl.contact_lead(ht)).all()
+    _, rms = bl.head_to_world(b2, ht)
+    assert rms < 1.0
+    q = bl.lip_reads(ht)
+    assert 0 <= q["bow"] < 3
