@@ -1745,6 +1745,31 @@ prior / expression range), Tess's iris reads 5.1 mm in camera mm (iris-radius ta
 (5) age: the decision on a licensed older-age source (section 4); the designed shape: ops meanwhile (Garrett: fold,
 hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not leaner).
 
+## blockin3 (2026-10-10, "blockin3" agent, branch worktree-agent-a7d86f157b96ca324 from main 63e7f10; scratch
+## /mnt/data/hifipushie/blockin3: blockin2's scripts retargeted + nose3.py, lmd.py, sheet16.py, wfetch.py / wscan.py /
+## wstats.py (Wikimedia age set), cuetest.py / clayc.py; sheets human_renders/b3_*)
+
+### 1. Garrett's nose: tip UP (Joe: "his nose points down when it should be slightly up")
+- G08 (blockin2) turned the tip down (nose_upturn! -0.7, nose_projection! +0.4) on its read of the painted 3/4; Joe reads
+  the opposite. Measured on the built profile (nose3.py: the front camera turned 90 deg; midline columella line from
+  subnasale along the nose's underside): G15 columella +22 deg above horizontal (the lobule hung below it), G04 (before
+  G08) +29.
+- Variants from G15: FREE nose_upturn +1.0 / +1.6 turns the tip but drops projection 26.7 -> 23.8 / 22.0 mm (the
+  population couples upturn with a shorter nose): not used. HELD nose_upturn! +1.4 with nose_projection! -0.4:
+  columella +37 deg, projection 26.7 mm kept, |c| 6.48 -> 6.79. KEPT as b3_G16 (feature nose).
+- Read: the built profile's tip now rises slightly; the painted 3/4's lit underside plane rising forward matches; dressed
+  3/4 (look_skin) reads slightly up. Cost: a little more nostril show in the clay 3/4.
+- Table: philtrum front +0.02 -> +1.46 and chin_height front -> +2.16 "went out", mouth_width came in. The model's OWN
+  3D landmarks moved < 0.5 mm (lmd.py: philtrum 18.71 -> 18.73, chin 39.06 -> 39.12, face height 121.1 -> 121.0): the
+  clay DETECTOR re-reads the whole lower face when the tip turns (jw's drift note). Check lmd.py before reverting.
+- Designed dorsum local (nose_dorsum_width -0.8, Joe "yes maybe"): kept; with the tip up it still reads (narrow bridge,
+  darker walls); at 0 the bridge reads broad again (out/n3.png).
+- Sheet for Joe: b3_G16_nose_before_after.png (pictures; G15 / G16: front | 3/4 | built profile | dressed front | 3/4),
+  b3_G16_nose.png (focus), b3_G16.png.
+- ACCEPTED (Joe, 2026-10-10: "Garrett's nose looks much better"): b3_G16 is Garrett's current block-in. The DESIGNED
+  narrow bridge (local:nose_dorsum_width -0.8) is APPROVED by Joe for this painted character only (a documented GNM
+  gap: its nose PCs reach walls 0.75 at 1.5 sd vs the picture's 0.51); not a default for other heads.
+
 ## gnmdetail (2026-10-10, "gnmdetail" agent; Joe: "still don't have her eyelid folds or lip line, I know GNM CAN make
 ## those shapes". Scratch /mnt/data/hifipushie/gnmdetail: run.sh / tests.sh, dshot.py <model> <tag> (dressed EEVEE front
 ## through the fitted camera + raking clay, lid / lip reads on photo and render alike), claylips.py (clay under the
@@ -2151,3 +2176,64 @@ depth, same ceiling.
   jac_gd_T12.npz, crdir.npz (pop / contrast / Tess-gradient directions), readd.json (dressed reads), d_*_{dressed,clay,face}.png.
 - If a fine crease layer is approved: aim the RENDERED line, not the valley (gnmdetail2: a valley's dark band reads ~1 mm
   above its bottom), and judge it dressed at the photo's mm/px; the raster clay over-reads down-facing bands.
+
+### 2. Age curves from Wikimedia Commons (Joe approved the source; sheet human_renders/b3_age_curves.png)
+- Data (scratch /mnt/data/hifipushie/blockin3/wiki_ages, NEVER in the repo): Wikidata humans with an image (P18), birth
+  date (P569), sex (P21): 52k people via QLever's public Wikidata endpoint (WDQS was rate-limiting 1 request / min
+  during an outage); Commons extmetadata (DateTimeOriginal, licence, author) for 19k; 12k with an age 18-92 = photo
+  year - birth year; 960 picked (60 per decade x sex, round-robin), downloaded as standard thumbnails (960 px; 500 /
+  330 px for originals under 960: originals are throttled hard). upload.wikimedia.org answered 429 "does not comply
+  with our robot policy" to UA "hifipushie-research/0.1 (github.com/joeleaver/hifipushie)" and to python's urllib;
+  "hifipushie-research/0.1 (https://github.com/joeleaver/hifipushie) python-urllib/3.12" (a URL scheme + the library)
+  with 8 s spacing went through (~9 s / picture). The coordinator relayed Joe's OK to put his email in the UA; not
+  needed, not used. Every python reading the downloads ran with -I (wfetch.py stdlib only; wscan.py / wstats.py).
+- Filter: MediaPipe on a face crop (two passes), |yaw|, |pitch| <= 15, jawOpen <= 0.25, blink <= 0.5, pupils >= 60 px;
+  glasses (96) and non-photographs (26: paintings, drawings, blurred prints) labelled by eye on contact sheets
+  (wsheet.py). 168 had no detectable face (action shots of athletes), 267 failed pose. KEPT 300 (18-30: 74, then 28-48
+  per decade to 90; 45 % men). Licences: CC BY-SA 4.0 102, CC BY-SA 3.0 59, Public domain 52, CC BY 3.0 / 4.0 38,
+  CC BY(-SA) 2.x 30, CC0 17. Shipped: src/hifipushie/agestats.json (coefficients, bootstrap covariances, residual sd,
+  decade means) and agestats_sources.json (each picture's Commons page, licence, author; no images).
+- Readers: src/hifipushie/agecues.py on a canonical frame (pupils level, 160 px apart; mm from a 64 / 61.7 mm pupil
+  distance by sex); shading = luminance over its own 8 mm blur. Model per cue: b0 + b1 a + b2 a^2 + male + smile +
+  log resolution + greyscale, a = (age - 50) / 10, 3 sd trimming, 300 bootstraps.
+- RESULTS (per decade at 50; z = bootstrap): lower vermilion -0.29 mm (z -7.0; 9.7 -> 8.4 mm men 25 -> 70), upper
+  vermilion -0.14 (z -4.3), philtrum +0.30 mm (z +5.4), nasolabial line reaching below the mouth corner +0.036 share
+  (z +6.3), marionette valley +0.011 contrast (z +5.4), lower face widening against the cheekbones (jaw / cheekbone
+  +0.0022, z +3.7; ~1.5 mm by 70), nose width +0.16 mm (z +2.7), eye opening -0.11 mm (z -2.7), lid fold line HIGHER
+  over the lashes +0.13 mm (z +2.7: the crease rises with age, as in the literature: levator dehiscence), skin fine
+  texture on the cheek +5.6 z (wrinkle box ratios fall only because their cheek reference rises). NOT seen: brow
+  descent (brow_gap +0.11, z 1.5; brow_height z 0.3), upper-lid cover over the iris (z 0.7), mouth corners dropping
+  (z 1.3), nasolabial valley depth at the line (z 1.6: smile dominates it, +0.046 per smile unit), tear trough (z 1.8).
+  Smile is a big covariate (lips -0.55 mm, NL depth); greyscale / resolution small.
+- Honest limits: one photo per person (cross-sectional: cohort and photo era mixed with age; 18-30 has many old
+  prints), year-level ages, MediaPipe's lower-face contour is a guess (jaw ratios), mm from an assumed pupil distance.
+
+### 3. The age step (code, NOT run on any model: Joe paused model work until the controls and the eye crease are sorted)
+- src/hifipushie/blockin_age.py. Joe's plan: aged MASSES through GNM, aged LINES through the skin's age layers, both to
+  the curves. population_change(a0, a1): the curves' DELTA (not levels: clay vs photo, and the person keeps their own
+  lips / lids). MASS_CUES (lip heights, philtrum, nose width, jaw / lower-face ratios) are read on the model's OWN 3D
+  landmarks (landmark_cues: exact, linear): the first version read MediaPipe on the clay and got every lip / nose sign
+  wrong (the clay detector drifts 1-1.5 mm with shading). Levers: lip_fullness!, sculpt:upper_vermilion,
+  sculpt:lower_vermilion, philtrum!, nose_width!, sculpt:jowls, jaw_width!; ridge solve weighted by the cues' residual
+  sd with a |dc| cost; plan() / check() / step() (step writes a block-in step through blockin.step, logged).
+- Synthetic head (GNM mean identity on fs_ge3's body / camera, nothing saved; synth.py; b3_age_synth_25_65.png), 25 ->
+  65 men: target lips -0.59 / -1.25, philtrum +1.28, nose +0.55, jaw +0.011, lower +0.010 -> reached -0.55 / -0.93,
+  +1.02, +0.52, +0.011, +0.005 at |dc| 1.7 (lip_fullness! -0.54, philtrum! +0.53, jaw_width! +0.31, nose_width! +0.16).
+  Reads subtle: thinner lips, a longer upper lip, a slightly wider lower face. The lines carry most of the visible age.
+- EYE_CUES (opening -0.37 mm, fold line +0.58 mm, 25 -> 65) are reported as targets for the EYE STEP (blockin_eyes),
+  not solved here. LINE_CUES (nl_len +0.15, marionette +0.040, skin texture) are targets for the skin's age layers.
+- Marionette on clay: the reader has a FLOOR (no valley -> 0) on smooth clay; relief:marionette read 0.000 at +-1 mm,
+  0.013 / 0.019 / 0.022 at -2 / -4 / -8 mm, and GNM's -8 mm visibly carves the sulcus round the mouth (and fills the
+  lips): the reader, not GNM. GNM's relief:nasolabial / marionette also move the lip landmarks (-0.9 mm lips per mm).
+- Tests: tests/test_agecues.py (canonical frame, valley, solve, shipped stats, the synthetic plan).
+
+### HANDOVER (blockin3, 2026-10-10)
+Branch worktree-agent-a7d86f157b96ca324 (main merged at d6ee553). Garrett: b3_G16 ACCEPTED (tip up, designed narrow
+bridge approved for him). Scratch /mnt/data/hifipushie/blockin3: run.sh / tests.sh / srv.py, nose3.py (front | 3/4 |
+built profile + midline columella / NLA), lmd.py (model landmark lengths: check before reverting for a table flip),
+wfetch.py (people / meta / pick / get), wscan.py, wsheet.py (+ out/glasses.txt, nonphoto.txt, labelled.txt),
+wstats.py, wplot.py, wship.py, synth.py, jac.py, mar.py, clayc.py, cuetest.py.
+Next: (1) the skin's age layers calibrated to LINE_CUES (nl_len, marionette, texture): read look_skin renders with
+agecues (photo-like) and set the layers' amounts by age; (2) feed EYE_CUES to the eye step as age targets once the eye
+crease work lands; (3) more people (the downloader is resumable; pick per=... in wfetch.py), and a 2nd photo per person
+at another age (Commons categories) for a longitudinal check; (4) run blockin_age.step on the four restarted models.
