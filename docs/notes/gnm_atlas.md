@@ -22,6 +22,12 @@
   it becomes a block-in measure read from the pictures (profile + 3/4) and is set at the restart. (3) The whole-lid solve
   (spikes/eyelid lidsolve: identity only, GNM's lid rings as one structure) becomes the eye step's shape term.
   Start class / blend is chosen by measurement, not by label. Sheets: reference | best result | the rest.
+- COORDINATOR HANDOVER (2026-10-11, new session): two agents were running and commit as they go; their reports may
+  not reach the next session, so read their sections' STATE / NEXT and HANDOVER blocks on their branches:
+  "orbit" = worktree-agent-ad9bfaf2464cb4d4d (eye depth as a measure + lidsolve into the eye step; "## orbit"),
+  "overhang" = worktree-agent-a104afd924997c102 (forming a lid fold / overhang with GNM parameters; "## overhang").
+  Merge after: looking at the sheets (ob_* / oh_*), a privacy grep, the tests. The HOLD on the four models stays until
+  eye depth is dialled in; then a fresh Tess block-in with only the new tools is the first real-photo test.
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
