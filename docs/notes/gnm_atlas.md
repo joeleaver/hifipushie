@@ -3633,3 +3633,47 @@ the 3-section template if Joe accepts el_a6's kind); seat the eyeball against th
   surf.json, prof.json, popstat.npz, lidsolve_*.npz, orbit_*.png, sheet notes). Scratch models el_a1..a6, el_o3 / o3a /
   o3b, el_f3 / f4, el_w1 / w2 (workspace; delete freely). Light note: a clay light 64 deg up puts the whole lid in the
   brow's shadow; 39 deg works.
+
+## overhang (2026-10-11, "overhang" agent, branch worktree-agent-a104afd924997c102; Joe: "learn how to form eyelids/overhangs
+## with gnm parameters, since it's supported but doesn't seem to happen often". Scratch /mnt/data/hifipushie/overhang
+## (run.sh / runm.sh (+ matplotlib) / q.sh; scripts in spikes/overhang); sheets human_renders/oh_*)
+STATE / NEXT (overhang, in progress): steps 1-2 done (below). The basis DOES span a folded lid; the question is cost.
+NEXT: the frontier (overhang / turn vs |dc| vs what else moves), renders, a reusable move.
+
+### Step 1: are we using all of GNM? (freedom.py, scripts/npzinspect.py on gnm_head.npz v3.0; the report, gnm_audit.md 1.1)
+- The "other 83" identity coefficients are eyes 3 (limbus / cornea of the eyeball model) + teeth 80. Their basis is
+  EXACTLY ZERO on every skin vertex (max |basis| at the lid rings 0.0; eyes comps move only eyeball vertices, 0.40 mm).
+  No lid shape lives there. We drop nothing of the head: all 170 head comps are driven (lidsolve / blockin use 170).
+- Expression 383 = left eye 100 + right eye 100 + lower face 150 + tongue 32 + pupil 1. Only the left-eye 100 touch
+  the left lid (max 2.65 mm per unit); lower face / tongue / pupil / right eye: 0.000 mm there.
+- Joints: 4 (neck, head, left_eye, right_eye). The eye joints skin ONLY the eyeballs (771 weighted vertices, 0 skin):
+  rotating an eye does not move the lid. The lid rings are 100 % head joint. No eyelid joint.
+- pose_correctives_regressor (36 x 53463) is all zero in v3.0. No displacement / normal / detail maps, no higher-res
+  mesh, no per-vertex offsets in the release (the registration that built GNM used per-vertex offsets with L2 + graph-
+  Laplacian regularisation on them (report 3.2), and then PCA kept 170 comps: any fold finer than that was not kept).
+- So for the lid there are exactly two parameter families: identity 170 and the eye's expression 100. Nothing is unused.
+
+### Step 2: the rows' freedom (freedom.py; radial chains up the lid's middle, raw mm, v = front-view height)
+| ring pair | template dv | identity sd(dv), mean over the lid's middle | z = dv / sd | expression sd(dv) |
+|---|---|---|---|---|
+| 3-4 | 0.54 | 0.26 | 2.0 | 0.49 |
+| 4-5 | 0.60 | 0.27 | 2.2 | 0.56 |
+| 5-6 | 0.67 | 0.28 | 2.4 | 0.58 |
+| 6-7 | 0.97 | 0.34 | 2.8 | 0.50 |
+| 7-8 | 1.32 | 0.40 | 3.3 | 0.40 |
+- An overhang in a front view = a ring's skin BELOW the ring under it. Two rings up (5 -> 7): template 1.64 mm, sd 0.62
+  under N(0, I): 2.7 sd to reach zero, P = 0.35 % : exactly eyelid's "0.35 % of 2000 heads have any overhang". So the
+  rarity is the PRIOR's tail, not a missing direction: the least |dc| that reverses rings 5 -> 7 by 1 mm (nothing else
+  asked) is 4.3 from the mean (a typical head is |c| 13).
+- Relative row motion at the crease rings lives in the LOW components: comps 0-10 sd 0.16-0.31, 10-40 0.19, 40-80
+  0.08-0.13, 80-120 0.05-0.07, 120-170 0.04-0.06 mm. There is no fine "fold" block: the lid's rows move mostly with
+  the whole orbit (hooding: the brow and drape coming down), little independently.
+- SPAN TEST (foldfit.py: a designed re-entrant fold, platform on the ball to 4.7 mm, slit, a roll hanging 1.0 mm over
+  the platform, 17 columns x 9 rings x 2 eyes = 900 numbers, fitted with 170 comps, nothing else asked): residual
+  0.13 mm rms (max 0.25) from a 3.3 mm start, the fitted mesh has the overhang (1.26 mm). So the basis SPANS it. But
+  |dc| = 460: the span is there only through enormous cancelling coefficients. The limit is the PRIOR (and the rest
+  of the head), not the span.
+- With the rest of the head held (every other skin vertex 1 mm, margins 0.05): the same target fits to 0.78-0.88 mm at
+  |dc| 15-18 whatever the prior weight (lam 1 .. 0.03: the HOLD is what resists, not the prior): the overhang is lost,
+  what is left is a clean sharp fold: turn 65 deg at 4.2 mm over the margin, platform 0.9 mm off the ball (same
+  reader: #376 43 deg at 3.2 mm, #540 48 at 2.6, el_a6 34 at 5.8, er_s4 19, GNM mean 17).
