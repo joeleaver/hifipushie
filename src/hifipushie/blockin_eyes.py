@@ -305,14 +305,130 @@ def _profile(P, w_mm=2.5, lo=2.0, hi=12.0):
 
 # ---- the picture's evidence ----------------------------------------------------------------------------------------
 
+MIN_IRIS_PX = 12.0        # detector iris radius (px) under which the limbus is not read (Garrett's full-figure concept: a 5 px
+                          # iris, 1.1 mm / px: the edge finder returned 9.8 mm where the painting's iris is ~11.6)
+LIMBUS_OK = (0.7, 1.15)   # detector iris radius / limbus radius accepted (else the detector's own radius is kept)
+
+
+def limbus(img, P) -> list:
+    """The iris by its LIMBUS edge, per eye (subject's right, left): {"r_px", "detector_px", "rgb", "centre"}.
+    MediaPipe's iris points are a model's guess of the ring: they under-read the visible limbus by 6 % on Tess's photo
+    and by 19 % on our own renders (gnmbrow), so "iris radii" from them are not one unit across pictures. From the
+    detector's iris centre, luminance along rays in the two lateral sectors (+-35 deg about the eye line: the lids
+    cover the rest); the radius of the steepest dark -> light step within 0.5-1.9 detector radii, median over the rays,
+    the centre re-seated once between the two sides. rgb: the iris ring's mean colour (0.5-0.85 r, the brightest 20 %
+    (catch lights) and darkest 10 % dropped), sRGB 0..1."""
+    from . import lidfold
+    from .likeness_eyes import frame
+    P = np.asarray(P, float)[:, :2]
+    L = lidfold._lum(img)
+    A = np.asarray(img.convert("RGB"), float) / 255.0
+    ex, ey = (np.asarray(v, float) for v in frame(P))
+    H, W = L.shape[:2]
+    out = []
+    for s in (0, 1):
+        c = P[lidfold.IRIS_C[s]].copy()
+        r0 = float(np.mean([np.linalg.norm(P[i] - c) for i in lidfold.IRIS_RIM[s]]))
+        rr = np.arange(0.5 * r0, 1.9 * r0, 0.1)
+        sm = max(1, int(round(0.04 * r0 / 0.1)))
+        angs = np.radians(np.arange(-35, 36, 5))
+        sides = [r0, r0]
+        for _ in range(2):
+            sides = []
+            for sg in (-1, 1):
+                rs = []
+                for a in angs:
+                    d = sg * (np.cos(a) * ex + np.sin(a) * ey)
+                    prof = lidfold._bilinear(L, *(c + rr[:, None] * d).T)
+                    prof = np.convolve(prof, np.ones(2 * sm + 1) / (2 * sm + 1), mode="same")
+                    g = np.gradient(prof)
+                    g[:sm + 1] = g[-sm - 1:] = 0
+                    rs.append(rr[int(np.argmax(g))])
+                sides.append(float(np.median(rs)))
+            c = c + 0.5 * (sides[1] - sides[0]) * ex
+        r = 0.5 * (sides[0] + sides[1])
+        cols = []
+        for sg in (-1, 1):
+            for a in angs:
+                d = sg * (np.cos(a) * ex + np.sin(a) * ey)
+                for q in np.linspace(0.5, 0.85, 8) * r:
+                    p = c + q * d
+                    cols.append(A[int(np.clip(round(p[1]), 0, H - 1)), int(np.clip(round(p[0]), 0, W - 1))])
+        cols = np.array(cols)
+        lum = cols.mean(1)
+        keep = (lum <= np.percentile(lum, 80)) & (lum >= np.percentile(lum, 10))
+        out.append({"r_px": float(r), "detector_px": r0, "rgb": cols[keep].mean(0).tolist(), "centre": c.tolist()})
+    return out
+
+
+def iris_scale(img, P) -> float:
+    """detector iris radius / limbus radius (both eyes' mean; 1.0 when the limbus read is out of LIMBUS_OK)."""
+    try:
+        lb = limbus(img, P)
+    except Exception:  # noqa: BLE001  (a tiny or cut-off eye: keep the detector's radius)
+        return 1.0
+    k = float(np.mean([e["detector_px"] / max(e["r_px"], 1e-6) for e in lb]))
+    if min(e["detector_px"] for e in lb) < MIN_IRIS_PX:
+        return 1.0
+    return k if LIMBUS_OK[0] <= k <= LIMBUS_OK[1] else 1.0
+
+
+def iris_check(name: str) -> dict:
+    """The picture's iris against the model's drawn one, both in mm AT THE MODEL (the front picture's limbus through
+    its fitted camera): {"photo_mm", "model_mm", "ratio", "eye_radius" (the block-in key's value that makes them
+    equal), "iris_rgb" / "iris_hex" (the picture's iris ring colour), "text"}. The lids are matched in iris radii, so a
+    drawn iris k x too big opens the eye k x too tall and crowds the brow (Tess: 12.66 mm drawn, 10.7 mm hers)."""
+    from PIL import Image
+    from . import blockin as bi, humanfit, likeness, store
+    rj = bi._refs(name)
+    vi = bi._front(rj)
+    v, cam = rj["views"][vi], rj["cameras"][vi]
+    img = Image.open(v["image"]).convert("RGB")
+    P = bi.detect_view(img, v)
+    if P is None:
+        raise ValueError("iris_check: the detector found no face on the front picture")
+    lb = limbus(img, P)
+    base = store.load(name)["base"]
+    st = humanfit.state(base)
+    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    photo = 2 * float(np.mean([e["r_px"] for e in lb])) * mm
+    det_px = float(np.mean([e["detector_px"] for e in lb]))
+    kd = det_px / max(float(np.mean([e["r_px"] for e in lb])), 1e-6)
+    if det_px < MIN_IRIS_PX or not LIMBUS_OK[0] <= kd <= LIMBUS_OK[1]:
+        det = 2 * det_px * mm
+        return {"photo_mm": None, "detector_mm": det, "model_mm": 2 * 0.51 * 0.985 * float(st["head"].get("eye_r", 0.012)) * 1000,
+                "ratio": None, "eye_radius": None, "iris_rgb": None, "iris_hex": None,
+                "text": (f"IRIS: not readable on the front picture (iris radius {det_px:.1f} px, {mm:.2f} mm / px: the "
+                         f"limbus needs {MIN_IRIS_PX:.0f} px; the detector's ring gives {det:.1f} mm +- {2 * mm:.1f}). "
+                         f"Use a closer picture of the eyes to set eye_radius / the iris colour")}
+    r_ball = float(st["head"].get("eye_r", 0.012))
+    model = 2 * 0.51 * 0.985 * r_ball * 1000
+    k_eye = float(base["head"].get("eyes") or 1.0)
+    want = r_ball * photo / model / k_eye
+    rgb = np.mean([e["rgb"] for e in lb], 0)
+    hx = "#%02x%02x%02x" % tuple(int(round(255 * float(x))) for x in rgb)
+    txt = (f"IRIS: the picture's limbus is {photo:.1f} mm at the model (fitted camera), the model draws {model:.1f} mm "
+           f"({model / photo:.2f} x)")
+    if abs(model / photo - 1) > 0.05:
+        txt += (f": the lids are matched in iris radii, so the eye opens {model / photo:.2f} x too "
+                f"{'tall' if model > photo else 'short'}. Set the block-in key eye_radius {want:.5f} (then run the eye "
+                f"step again) and skin.eyes.iris_size {photo / 1000:.4f}")
+    txt += f". The picture's iris ring colour: {hx} (skin.eyes.iris; check it rendered: the eye picture adds its own contrast)"
+    return {"photo_mm": photo, "model_mm": model, "ratio": model / photo, "eye_radius": want, "iris_rgb": rgb.tolist(),
+            "iris_hex": hx, "text": txt}
+
+
 def photo_evidence(img, view: dict) -> dict:
     """{"up", "lo"} (iris radii, both eyes' mean), {"tps" (mm at the 11.7 mm iris), "dark"} (median over the middle
-    columns of both eyes), from MediaPipe + lidfold.read_lid on the front picture."""
+    columns of both eyes), from MediaPipe + lidfold.read_lid on the front picture. The iris' radius is the LIMBUS's
+    (limbus(); "iris_k" = detector radius / limbus radius, 1.0 when it could not be read): up / lo / tps are scaled by
+    it, so they are in the picture's true iris radii like the model's own reads."""
     from . import blockin as bi, lidfold
     lp = bi.lid_photo(img, view)
     if not lp:
         raise ValueError("eye step: the detector found no face (irises) on the front picture")
     P = np.asarray(bi.detect_view(img, view), float)
+    kk = iris_scale(img, P)
     cols = lidfold.read_lid(img, P)
     tps = [c["tps"] for e in cols for c in e if np.isfinite(c.get("tps", np.nan)) and c.get("dark", 0) >= DARK_LINE]
     dk = [c["dark"] for e in cols for c in e]
@@ -322,9 +438,9 @@ def photo_evidence(img, view: dict) -> dict:
     for k in range(3):
         v = [e[k]["tps"] for e in cols if np.isfinite(e[k].get("tps", np.nan)) and e[k].get("dark", 0) >= DARK_LINE]
         tcols.append(float(np.median(v)) if v else np.nan)
-    return {"up": float(np.mean([lp[s]["upper"] for s in lp])), "lo": float(np.mean([lp[s]["lower"] for s in lp])),
-            "tps": float(np.median(tps)) if not hooded else HOODED_SHOW, "dark": float(np.median(dk)) if dk else 0.0,
-            "hooded": hooded, "tps_cols": tcols, "columns": cols}
+    return {"up": kk * float(np.mean([lp[s]["upper"] for s in lp])), "lo": kk * float(np.mean([lp[s]["lower"] for s in lp])),
+            "tps": kk * float(np.median(tps)) if not hooded else HOODED_SHOW, "dark": float(np.median(dk)) if dk else 0.0,
+            "hooded": hooded, "tps_cols": [kk * t for t in tcols], "columns": cols, "iris_k": kk}
 
 
 def crease_target(name: str, heights) -> np.ndarray:
@@ -519,6 +635,10 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
                   _identity=s["c"], _head_set={"expression": s["expression"], "pose": s["pose"] or None})
     rep["eyes"] = {"evidence": {k: v for k, v in ev.items() if k != "columns"},
                    **{k: s[k] for k in ("read0", "read", "dc", "e", "crease", "shape0", "shape", "heights")}}
+    try:   # the drawn iris against the picture's (a wrong iris size makes a right-in-radii opening wrong in mm)
+        rep["eyes"]["iris"] = iris_check(name)["text"]
+    except Exception:  # noqa: BLE001  (no readable iris: no line)
+        pass
     return rep
 
 
@@ -536,4 +656,5 @@ def text(e: dict) -> str:
             + (f"\n  crease SHAPE: the {e['crease']!r} template's fold carried to the picture's line ("
                + "/".join(f"{h:.1f}" for h in (e.get("heights") or [])) + " mm over the margin, inner/pupil/outer): section rms "
                f"{e['shape0']:.2f} -> {e['shape']:.2f} mm. The picture's line darkness is not a target: add any missing "
-               f"darkness with skin.makeup eyeshadow's \"crease\"" if e.get("crease") else ""))
+               f"darkness with skin.makeup eyeshadow's \"crease\"" if e.get("crease") else "")
+            + (f"\n  {e['iris']}" if e.get("iris") else ""))

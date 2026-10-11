@@ -2348,3 +2348,122 @@ Next: (1) the skin's age layers calibrated to LINE_CUES (nl_len, marionette, tex
 agecues (photo-like) and set the layers' amounts by age; (2) feed EYE_CUES to the eye step as age targets once the eye
 crease work lands; (3) more people (the downloader is resumable; pick per=... in wfetch.py), and a 2nd photo per person
 at another age (Commons categories) for a longitudinal check; (4) run blockin_age.step on the four restarted models.
+
+## gnmbrow (2026-10-11, "gnmbrow" agent, branch worktree-agent-ac4044d1155197b95; Joe on gk_07: "the eyebrows in the render
+## now sit on top the crease, instead of their correct position". Scratch /mnt/data/hifipushie/gnmbrow (run.sh / q.sh;
+## scripts in spikes/gnmbrow); sheets human_renders/gb_*)
+STATE / NEXT (gnmbrow, 2026-10-11, handed over; branch ready to merge): causes measured, fixed in code, sheet
+human_renders/gb_01_brow_iris_fixed_matched_framing.png. The brow HAIR was drawn 3.3 mm low (hand offsets in
+skin.hair.brows carried over from an older Tess head) and the iris 18 % big; the model's brow landmarks were fine and the
+round-3 eye step does not drag them. New: blockin_brows.py + tool brow_read (brows placed from the picture), limbus /
+iris_check in blockin_eyes (photo_evidence now in true iris radii), shot.py (dressed renders through the fitted camera).
+Scratch result gb_fx (gd_T12 + eye_radius 0.01013 -> eye step -> brows fitted -> iris size / colour): brow lower edge
+over the lid 11.3 / 10.2 / 12.3 mm (photo 12.1 / 11.2 / 13.3; gk_07 7.5 / 6.7 / 7.6).
+NEXT: (1) ~1 mm left: the detector reads our upper lid 0.9 mm higher than hers on the dressed shot although the eye step
+says the lids match: read the model's lid through the detector too, or calibrate; (2) her eye is a longer almond than
+ours (visible width ~26 vs ~20 mm, the outer third of our upper lid 0.85 mm high): an eye-shape round at the restart;
+(3) brow colour / density / tail are still the old dressing's (ours lighter, hairier, a hooked tail); (4) Garrett's
+front picture is a full-figure concept (5 px iris): iris_check declines, his brow read is +- 1.1 mm: he needs a closer
+picture of the eyes; (5) the crease still has no crisp line dressed (Joe's read of gb_01 needed).
+
+### Step 1: the causes, measured (bm.py, geo.py, iris.py; all in mm AT THE MODEL through the front picture's fitted camera,
+### 0.2377 mm / picture px; columns = inner third / pupil / outer third of the eye, both eyes' mean)
+- Reader (bm.py): luminance up the face from the upper lid margin (MediaPipe points for the columns), 2 mm strip, the
+  brow = the darkest broad band, its lower edge at half contrast. Same code on the photo and on renders; overlays
+  out/bm_*.png checked by eye (out/dbg1.png).
+- PHOTO: brow hair lower edge 12.0 / 11.3 / 13.4 mm over the lid margin, core 15.8 / 14.8 / 15.1, top 18.5 / 18.0 / 19.0
+  (a band ~6 mm thick that RISES toward the tail).
+- MODEL brow landmarks (GNM / iBUG 17-26 line): gd_T12 16.6 / 14.7 / 13.6; gd_T30 15.0 / 13.3 / 12.4 (the OLD eye step
+  pulled the brow-over-lid distance down 1.4 mm); gk_06 (ev12s376) 15.5 / 13.6 / 12.6 (-1.1); gk_07 (ev5s376) 16.4 /
+  14.6 / 13.6 (-0.1: the round-3 eye step does NOT drag the brow). So the landmarks sit on the photo's brow CORE at the
+  inner third and pupil and 1.5 mm low at the outer third: the model's brow is not low (cause 3: 0 to 1.5 mm, tail only).
+- BROW HAIR (the skin's decal, skin_features: centre from the three brow landmarks - 0.02 io, then the spec's drop /
+  lift / tilt / apart; geo.py lays it on the head's vertices): gk_07's lower edge 8.0 / 6.3 / 6.2 mm = 4.0 / 4.9 / 7.2 mm
+  LOWER than the photo's. Of that, the spec's hand offsets (gd_T12's skin.hair.brows: drop 4 mm, tilt 2, lift [0, 1.8 mm],
+  apart 1.5 mm: f3_t1's dressing, tuned on an older Tess head and carried over) are 3.9 / 3.3 / 2.6 mm; the landmark
+  placement itself (offsets cleared) is still 0.1 / 1.7 / 4.6 mm low (a spine that falls toward the tail where hers rises).
+  THIS IS THE MAIN CAUSE (cause 2).
+- FRAMING (cause 1): gk_07 put the photo at 0.277 mm/px (an 11.7 mm iris assumed from MediaPipe's iris points) next to
+  renders in true mm. Through the fitted camera the photo is 0.2377 mm/px, so the photo tile was 17 % MAGNIFIED against
+  the renders: her 11.3 mm brow gap showed as 13.1 "mm" (+1.9 mm of apparent gap at the pupil). The renders' eye still
+  looks bigger because of the next point.
+- EYE SCALE (cause 4): iris by its limbus edge (iris.py; recovers our renders' drawn 12.66 mm as 12.4-12.6): photo 45.0 px
+  = 10.7 mm at the model, the model draws 12.66 mm (eye_radius 0.012 x eyes 1.05; her head is small: pupil distance 53-54
+  mm in both). Pupil distance / iris: photo 4.99, renders 4.24-4.35. The lids are matched in IRIS RADII, so the opening
+  comes out ~18 % too tall: MediaPipe opening at the pupil 7.4 mm photo vs 8.7 mm gk_07 (+1.3 mm), the model's upper lid
+  margin 1.1 mm (pupil) / 1.7 mm (outer) higher in the picture than hers. (blockin2 saw "her photo's iris reads 5.1 mm"
+  and did not chase it.) Also: MediaPipe's iris points under-read the limbus by 6 % on the photo and 19 % on our renders
+  (70 px vs 86.6): never compare photo and render in detector-iris units.
+- Camera pitch: the fitted front camera is within 1 deg of level: not a cause.
+
+### Step 2: the fixes (code) and the scratch models
+- IRIS (src/hifipushie/blockin_eyes.py): limbus(img, P) reads the iris by its edge (lateral sectors, steepest dark ->
+  light step); photo_evidence scales up / lo / tps by detector radius / limbus radius ("iris_k": Tess 0.94: lids 0.67 /
+  0.88 -> 0.63 / 0.83 true iris radii); iris_check(name) = the picture's limbus in mm at the model vs the drawn iris, the
+  eye_radius that makes them equal, the picture's iris colour; the eye step's report carries that line.
+  Tess: 10.7 mm hers vs 12.7 drawn (1.18 x) -> block-in key eye_radius 0.01013 (x eyes 1.05 = 10.64 mm ball).
+  NOTE for the restart: "eye_radius 0.012 for every adult" (blockin2) assumes an adult-size head; Tess's body's head is
+  0.909 scale (pupil distance 53 mm), so the absolute ball is 18 % big for it. Use iris_check after block_in_start.
+- Scratch models: gb_T12r = gd_T12 + eye_radius 0.01013 (block-in step; table unchanged 7/7 5/5 3/3 4/4 7/7);
+  gb_T12e = the eye step on it (s376 make at the picture's line 4.4 / 4.3 / 4.6 mm over the margin at the smaller iris):
+  section rms 1.11 -> 0.18 mm, lids 0.64 / 0.84 (picture 0.63 / 0.83), |dc| 4.72, |e| 3.46, socket within 0.13 sd.
+- BROWS (src/hifipushie/blockin_brows.py, new): band() = the picture's hair band per brow at 9 columns (lower edge /
+  core / top at half contrast; reads a render through the same camera at the photo's own columns); model_band() = the
+  skin's decal (decal() = skin_features' placement, tested equal to images.frame) carried onto the head's vertices and
+  through the fitted camera; fit() = least squares over drop, tilt, apart, fall, thickness, taper ("lift" folded in);
+  apply() writes skin.hair.brows; check() = a WARNING line past 1.5 mm. Calibrated on a dressed fitted-camera render
+  (bcal.py): the rendered band's half-contrast edge is 0.75 x the decal's nominal half thickness (EDGE), and reads
+  0.6-0.9 mm above the spine in the inner half (hairs grow up: GROW).
+  Tess (gb_T12e -> gb_T12b): before: lower edge 3.7 mm rms low, middle line 4.3; fitted: drop -1.9 mm (UP), tilt 4.25,
+  apart 7.2 mm (her brow heads are 24 mm apart, ours were 12), fall 0.89, thickness 1.11, taper 0.25 -> predicted lower
+  edge 0.4 mm rms, middle 0.5 mm.
+- Tests: tests/test_blockin_brows.py (limbus on a drawn eye, band on a drawn brow + the crop / scale path, decal ==
+  the skin's placement, model_band on a wall, fit and iris_check on fs_ge3).
+
+### Step 3: tool, dressed check through the fitted camera (shot.py, rd.py), corrections to step 1's split
+- Tool `brow_read(name, match=False, out=None)` (server.py, toolset human; blockin_guide "### `brow_read`" and loop item
+  7b2): the brow hair's miss + the IRIS line; match=True writes the fitted skin.hair.brows. test_toolsets updated.
+- shot.py renders the dressed stage through the FRONT PICTURE'S FITTED CAMERA, one fixed pixel crop (both eyes + brows,
+  560 photo px, x3): photo and render are the same mm/px (0.0792 mm per shot px) with every landmark at the same pixel.
+  This is the only honest framing; gk_05..07's "84 mm at an 11.7 mm iris" photo crop is retired. rd.py reads on those
+  shots: gap (brow lower edge over the detector's lid margin on THAT image, eye columns), the band vs the photo's at the
+  photo's own columns, limbus iris + colour, opening.
+- READS (mm at the model; inner / pupil / outer):
+  photo  gap 12.1 / 11.2 / 13.3   iris 10.7 #453c30   opening 7.35
+  gk_07  gap  7.5 /  6.7 /  7.6   iris 12.5 #3b2a15   opening 8.85   brow edge vs photo 3.4 mm rms low
+  FIXED  gap 11.1 / 10.1 / 12.1   iris 10.5 #473a30   opening 7.8    brow edge vs photo 0.7 mm rms (mean 0.4 HIGH)
+  (FIXED = gb_fx: gb_T12b + skin.eyes iris_size 0.0107, iris "#5e5753". The eye picture and shader shift the colour:
+  spec #4b4033 rendered #3b2a15 brown, #5a6050 -> #43432d green, #565b73 -> #3e3d52 blue; #5e5753 renders her #453c30.)
+- THE SPLIT, corrected with the rendered band (step 1's geometric "edge" had no EDGE / GROW calibration and read 1.5 mm
+  low), pupil column, 4.6 mm short in gk_07: brow hair hand offsets 3.3 mm; bare landmark placement ~0.2 mm (tail ~3 mm:
+  the default spine falls where hers rises; inner end ~1.4 mm HIGH); upper lid margin ~1.2 mm higher than hers by the
+  detector, of which ~0.35 mm was the oversized iris; model brow landmarks 0 (tail 1.5 mm low); gk_07's eye step 0.1 mm.
+  On gk_07's own sheet the photo's 17 % magnification added +1.9 mm of apparent gap.
+- LEFT OPEN (~1 mm of gap): MediaPipe reads our upper lid margin 0.8-1.0 mm higher than hers on the fitted-camera shot
+  (both eyes) while the eye step's geometric read says the lids match in limbus radii (0.64 / 0.84 vs 0.63 / 0.83) and
+  the iris centres agree to 0.1 mm. So the eye step's lid target (the detector's point on the PHOTO, under her lashes
+  and liner) and its model read (the mesh's margin ring) are not the same thing on a render. Next: read the model's lid
+  through the detector on a dressed / clay render in the loop, or calibrate the offset.
+
+### Step 4: sheet gb_01 and the blunt read
+- Scratch models (workspace, delete freely): gb_T12r (eye_radius), gb_T12e (eye step), gb_T12b (brows fitted), gb_fx
+  (+ skin.eyes iris_size 0.0107, iris "#5d5a52": renders #463d2f, hers #453c30; hue 35, saturation 0.3. The OLD brown
+  was the right hue at twice the saturation; a first mean-matched try #5e5753 rendered hue 26 and read grey), gb_mk4 /
+  gb_mk8 (+ eyeshadow amount 0.4 / 0.8, color #b08878, crease #7a5446, matte), gb_fxA / gb_fxB (colour tries).
+  Scratch /mnt/data/hifipushie/gnmbrow: run.sh, q.sh, tests.sh, final.sh; out/s_*.png (shots), rd.json (reads).
+- The eye step still holds the brow with the smaller iris: brow landmarks over the lid 16.6 / 14.7 / 13.6 -> 16.4 / 14.8
+  / 13.8 mm. No change to SIG_BROW or the shape term needed.
+- gb_01 (2 rows: photo | gk_07 | FIXED / FIXED + makeup 0.4 | + 0.8 | numbers; every tile the same crop of a fitted-
+  camera shot, 0.079 mm/px, a 10 mm bar): reads printed on the tiles, from rd.py:
+  photo 12.1 / 11.2 / 13.3 mm (1.13 / 1.05 / 1.24 iris diameters), iris 10.7 mm, opening 7.3
+  gk_07  7.5 /  6.7 /  7.6 mm (0.60 / 0.53 / 0.60), iris 12.5 mm, opening 8.8
+  FIXED 11.3 / 10.2 / 12.3 mm (1.08 / 0.98 / 1.17), iris 10.5 mm, opening 7.8; makeup 0.4: 11.4 / 10.2 / 12.4; 0.8:
+  11.7 / 10.5 / 12.7 (the shade moves the detector's lid point a little).
+- BLUNT READ: the brow is now where hers is and the lid-to-brow space reads like the photo's, so the crease can be
+  judged. What it shows: a soft fold shadow at about her line's height with a lit, slightly puffy fold above it; NOT
+  her thin crisp line. Crease makeup 0.4 and 0.8 are hard to tell apart by eye and neither draws a line (the lid
+  colour evens the lid out; the bare FIXED tile shows the fold's shadow at least as well). Still wrong and not this
+  task's: her eye is a longer almond with a lash-line wing (ours shorter and rounder), her brow is darker, denser and
+  has a long falling tail (ours lighter, hair by hair, a short hooked tail).
+- Garrett (b3_G17, read only): brow_read warns 2.9 mm rms (ours HIGHER by 2.2 mm) on a 1.1 mm/px picture; iris not
+  readable (5 px). Nothing changed on him.
