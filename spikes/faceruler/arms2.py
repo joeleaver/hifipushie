@@ -64,16 +64,15 @@ if __name__ == "__main__":
             mesh = {r["measure"]: r["gap"] for r in gnm_mm.gaps(drv.verts(cA), drv.verts(cB))}
             fv, dev = fitted_views(cA, cB, np.random.default_rng(2000 + i))
             rf = fr.read(fr.gnm_head(cA), fv, cam_sd=fr.CAM_SD, rounds=4)
-            pv = [dict(v, hair=True) for v in arms.pictures(cB, np.random.default_rng(1000 + i))]
-            rc = fr.read(fr.gnm_head(cA), pv, cam_sd=fr.CAM_SD, rounds=4)
-            ev = [dict(v, hair=True) for v in arms.pictures(cB)]
-            re_ = fr.read(fr.gnm_head(cA), ev, rounds=3)
             g_f = {r["measure"]: r["gap"] for r in rf["gaps"]}
-            g_c = {r["measure"]: r["gap"] for r in rc["gaps"]}
+            g_c = g_f
             cs, ns = sig(cA, rf)
-            ce, ne = sig(cA, re_)
-            A = {"fitcam:all": arms.apply(cA, g_f), "fitcam:top8": arms.apply(cA, g_f, 8), "fitcam:sig": cs,
-                 "cam:all": arms.apply(cA, g_c), "cam:top8": arms.apply(cA, g_c, 8), "hair:sig": ce}
+            ne = 0
+            c8 = arms.apply(cA, g_f, 8)
+            fv2, _ = fitted_views(c8, cB, np.random.default_rng(3000 + i))      # look again: the camera re-fitted too
+            r2 = fr.read(fr.gnm_head(c8), fv2, cam_sd=fr.CAM_SD, rounds=4)
+            A = {"fitcam:all": arms.apply(cA, g_f), "fitcam:top8": c8, "fitcam:sig": cs,
+                 "fitcam:top8x2": arms.apply(c8, {r["measure"]: r["gap"] for r in r2["gaps"]}, 8)}
             g = score2.grade(cA, cB, list(A.values()), regs)
             out[case] = {"difficulty": h["difficulty"], "regions": regs, "mesh": mesh, "fitcam": g_f, "cam": g_c,
                          "fitcam_err": {r["measure"]: r["err"] for r in rf["gaps"]}, "dev": dev, "cam_found": rf["cam_done"],

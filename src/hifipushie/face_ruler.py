@@ -742,7 +742,10 @@ def _iris_obs(head, view, eyes_pic):
     return out
 
 
-CAM_SD = (3.0, 3.0, 2.0, 1.5)     # a FITTED camera: mm of shift (x, y), % of scale, degrees of roll left free per view
+# A FITTED camera: mm of shift (x, y), % of scale, degrees of roll left free per view. Measured (spikes/faceruler/
+# arms2.py): a camera fitted by laying the MODEL's landmarks on the picture's is off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg
+# rms when the model is a regional transplant away from the person (the scale up to 9 %: a broader jaw reads as "closer").
+CAM_SD = (2.0, 2.0, 5.0, 1.2)
 
 
 def kind_of(yaw: float) -> str:

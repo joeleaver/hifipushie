@@ -18,20 +18,20 @@ BOX = json.load(open(f"{G}/d_box.json"))["box"]
 names = sys.argv[1:]
 rj = bi._refs(REFS)
 kinds = [fr.kind_of(v.get("yaw", 0)) for v in rj["views"]]
-VAR = ("clay", "dressed", "dressed+hair", "dressed+hair+cam")
+VAR = ("clay+cam", "dressed+cam", "dressed+hair+cam")
 specs = {n: store.load(n) for n in names}
 heads = {n: fr.model_head(specs[n]) for n in names}
 sp = gnm_mm._space()
 Vg = {n: sp["T"] + np.tensordot(bi.identity(specs[n]), sp["IB"], 1) for n in names}
 rows = []
 for i, a in enumerate(names):
-    for b in (names[(i + 1) % len(names)], names[(i + 3) % len(names)]):
+    for b in (names[(i + 1) % len(names)],):
         truth = {r["measure"]: r["gap"] for r in gnm_mm.gaps(Vg[a], Vg[b])}
         row = {"a": a, "b": b, "truth": truth}
         for var in VAR:
             views = []
             for k, cam in zip(kinds, rj["cameras"]):
-                if var == "clay":
+                if var == "clay+cam":
                     v = {"img": fr.clay(heads[b], cam), "cam": cam, "kind": k, "style": "dressed"}
                 else:
                     img = Image.open(f"{G}/d_{b}_{k}.png").convert("RGB")
@@ -55,11 +55,26 @@ for i, a in enumerate(names):
               f"| truth rms {np.sqrt(np.mean([truth[m] ** 2 for m in gnm_mm.NAMES])):.2f}", flush=True)
         json.dump(rows, open(f"{G}/dval.json", "w"))
 sd = gnm_mm.sd()
-print(f"\n{len(rows)} pairs: reader - truth (mm): bias / sd, pop sd / rms error")
+# The one mesh sets the head's SIZE from the body, so a model's pictures do not show its identity's size: compare the
+# gaps with the uniform-size part taken out of both (g - alpha m, m = the measures' own values, alpha by least squares)
+m0 = np.array([heads[names[0]]["measures"][m] for m in gnm_mm.NAMES])
+w = 1.0 / np.array([sd[m] for m in gnm_mm.NAMES]) ** 2
+
+
+def shape(g):
+    g = np.asarray(g, float)
+    return g - (g * m0 * w).sum() / (m0 * m0 * w).sum() * m0
+
+
+for r in rows:
+    r["truth_s"] = dict(zip(gnm_mm.NAMES, shape([r["truth"][m] for m in gnm_mm.NAMES])))
+    for v in VAR:
+        r[v + "_s"] = dict(zip(gnm_mm.NAMES, shape([r[v][m][0] for m in gnm_mm.NAMES])))
+print(f"\n{len(rows)} pairs: size-free gaps, reader - truth (mm): bias / sd, pop sd / rms error")
 print(f"{'measure':18s} pop sd | " + " | ".join(f"{v:^18s}" for v in VAR))
 for m in gnm_mm.NAMES:
-    line = f"{m:18s} {sd[m]:5.1f}  | "
+    line = f"{m:18s} {sd[m]:5.1f} truth rms {np.sqrt(np.mean([r['truth_s'][m] ** 2 for r in rows])):4.1f} | "
     for v in VAR:
-        e = np.array([r[v][m][0] - r["truth"][m] for r in rows])
+        e = np.array([r[v + "_s"][m] - r["truth_s"][m] for r in rows])
         line += f"{e.mean():+5.2f} {e.std():5.2f} {sd[m] / np.sqrt((e ** 2).mean()):4.1f}x | "
     print(line)
