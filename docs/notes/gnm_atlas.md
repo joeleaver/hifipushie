@@ -36,8 +36,8 @@
   (+-3 mm; the profile camera's yaw): Joe to decide between a true 90 deg profile / a short sweep video and accepting
   +1.7 mm (all views) as a flagged guess. (4) Then the HOLD lifts: a fresh Tess block-in from her photos with only the
   new tools (face_ruler first, orbit, eye_ruler, recipe A, brow_read), result beside the photo; then Garrett (needs a
-  closer picture of his eyes: 5 px iris), lt19, jw (start blend by measurement). Open, undecided: "hooding" as a named
-  block-in control (coordinator: yes); skin._aperture_keep_out fading paint on the lid; her lid platform darker than
+  closer picture of his eyes: 5 px iris), lt19, jw (start blend by measurement). DECIDED (Joe: yes): add "hooding" as a named
+  block-in control (gnm_fold.hood_direction; do it with step 1). Open: skin._aperture_keep_out fading paint on the lid; her lid platform darker than
   the skin above (skin thread).
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
