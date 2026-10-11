@@ -2353,7 +2353,11 @@ at another age (Commons categories) for a longitudinal check; (4) run blockin_ag
 ## /mnt/data/hifipushie/gnmdrive: run.sh <script> (capped, this worktree's src), scripts/, cases/, hidden/ (B's
 ## coefficients: never shown to a driver), out/; sheets human_renders/gd2_*; manual docs/notes/gnm_driving_manual.md)
 
-STATE / NEXT: manual v2 shipped (src/hifipushie/gnm_driving_guide.md = guide topic gnm_driving; gnm_manual.suggest;
+STATE / NEXT (gnmdrive2, 2026-10-11): s4 / m4 scored (m4 6/14; ceiling 66 %), failure decomposition done (see
+"### gnmdrive2" at the end of this section). In progress: a render-only NUMERIC OUTLINE aid in drive.py (`gaps`) and
+mm: measures for the phrases with no clean move, then set s5 (seed 505): manual v4 without / with the aid.
+(gnmdrive's last line follows.)
+STATE / NEXT (gnmdrive, old): manual v2 shipped (src/hifipushie/gnm_driving_guide.md = guide topic gnm_driving; gnm_manual.suggest;
 gnm_controls(phrase=); block_in_step's reply lists the manual's entries for `seen`; tests/test_gnm_manual.py).
 s2+s3 pooled: no manual 6/28, manual 13/28. Manual v3 (+ mm: moves, gnm_mm.py) shipped; set s4 (seed 404) running both
 arms (3 drivers each). Next: score s4 / m4, final sheets, report to main.
@@ -2556,3 +2560,55 @@ ONE readout 1 mm is clean and cheap: mm:pupils_apart |dc| 0.61 per mm (face skin
 forehead_forward 0.53, tip_forward 0.80, philtrum_length 0.81, upper_lip_forward 1.13, nose_length 1.24, widths
 0.3-0.66. Sheet human_renders/gd2_04_mm_moves.png (-4 | 0 | +4 mm front / profile on a random head): natural, local.
 For a driver: read the gap in px on the sheet (titles say 1 px = x mm), type the mm. Into manual v3 + set s4.
+
+### gnmdrive2 (2026-10-11, continues gnmdrive after its usage-limit stop; branch worktree-agent-a9d18292a857bc575; the
+### same scratch, run.sh retargeted to this worktree; new scripts cmp.py, decomp.py, ceil.py)
+Picked up: gnmdrive's block-in guide edit HAD landed (step 3 / 4 point at the manual). s4 / m4 (seed 404) were driven
+but unscored; three cases were cut off (s4_04 after 3 moves, s4_09 and m4_09 at their first trial): finished by two
+fresh drivers.
+
+#### Set s4 (seed 404, fresh pairs): "no manual" (s4_*) vs manual v3 + mm: (m4_*)
+(table below is filled in once s4_04 / s4_09 are back; m4 is complete)
+m4: 6/14 (easy 5/8, medium 1/3, hard 0/3). Passes: mouth 02, nose 03, EYES 04 (0.73 / ID 0.51 in two
+`mm:pupils_apart` +5 moves: the eye-placement class that failed 0/6 before now has its control), brows 05, cheeks 06
+(cheek_fullness -1.2, relief:cheeks -2.5, under_chin!, sculpt:malar: 7 moves, none rejected), nose+mouth 09.
+CAVEAT (blunt): the s4 "no manual" arm was CONTAMINATED: its brief pointed at blockin_guide.md, whose step 3 by then
+quoted the manual's headline entries, and the brief's vocabulary listed mm: moves. s4 drivers used pc:upper_lip_region0,
+pc:nose_region0 and mm:pupils_apart from their first move. So s4 measures "the headlines" vs "the full manual", not
+none vs v3; the clean no-manual baseline stays s1-s3 (8/42 = 19 %).
+
+#### The ceiling (ceil.py): the ORACLE fails the pass rule on a third of the pairs
+The oracle's own result (<= 10 least-cost moves from the whole vocabulary, amounts refit) scored with the driver's
+PASS rule: s2 7/14, s3 11/14, s4 11/13: 27/41 = 66 %. Unpassable pairs: skull (ID embedding does not see the vault:
+ID closed -0.04 / -0.12 with the region 0.7-0.8 closed), cases where the transplant barely changed the region (s4_01
+jaw_full: start 2.0 mm, oracle 0.07), sub-2 mm hard cases, and some jaw / cheeks pairs (oracle 0.28-0.37). So "about
+half" was misleading: the manual arms' 19/42 = 45 % is against a ceiling of ~66 %; on oracle-passable pairs the
+drivers are at roughly two thirds. Report pass rates against the ceiling from now on.
+
+#### Why they fail (decomp.py: counterfactual replays of each driver's own trials; out/decomp_*.json)
+judge = the same trials with a perfect keep / reject call on the face error; dose = the kept directions with amounts
+refit by least squares; dose_all = every direction tried (kept + rejected), refit.
+| set | driven | judge | dose | dose_all | kept moves that RAISED the face error | rejected moves that were good |
+|---|---|---|---|---|---|---|
+| m2 (v1) | 7/14 | 5 | 3 | 4 | 25/64 | 10/28 |
+| m3 (v2) | 6/14 | 3 | 6 | 7 | 26/70 | 12/33 |
+| m4 (v3) | 6/14 | 6 | 5 | 6 | 20/66 | 13/23 |
+| s2 (none) | 3/14 | 2 | 4 | 7 | 27/68 | 28/43 |
+| s3 (none) | 3/14 | 3 | 5 | 8 | 15/56 | 24/44 |
+Read:
+- With the manual, DOSING is not the gap: the least-squares-optimal amounts for the directions the drivers kept pass
+  no more cases than the drivers did (m2-m4: 19 driven vs 14 refit). Their amounts are as good as amounts get.
+- JUDGING by the whole-face rms is not the gap either, but the two measures DISAGREE: a third of kept moves raise the
+  face rms while closing the named region and the ID distance (m2_01 fluffy jaw: driven region 0.58 / ID 0.41, the
+  "perfect judge" on face rms 0.01 / -0.03). Free macros drag the neck / cranium, which the rms counts and the eye
+  and the ID net do not. Perceived identity is the judge (Joe's rule); the rms is the wrong keep / reject criterion.
+- Without the manual the gap is MAPPING: the right directions are among those tried (dose_all 15/28) but the drivers
+  kept 6/28: they find the control only by trying, and reject half of the good moves (52/87).
+- With the manual the remaining gap is the VOCABULARY for some phrases: not even dose_all passes (m4: 6/14). Where a
+  clean one-phrase move exists the case passes outright (mm:pupils_apart: eyes 0.73 vs the oracle's 0.76; pc:nose_region0;
+  pc:upper_lip_region0; cheek_fullness + relief:cheeks). Where the manual says "no clean control" it fails: the vault
+  with the face held (m4_07, m4_08 "a pear: narrower skull over heavier jowls": head_size / cranium! rejected, the
+  driver fell back on gnm:head_000), jowls vs jaw angle, brow arch, a scooped dorsum, the upper red's height.
+- m4_09's driver (manual): free lip_fullness (-) pushes the whole nose ~1.7 mm per sd forward (manual said ~1) and
+  carries lips + chin back; mm:lower_lip_forward drags chin_projection -0.26 sd per mm; which onion-skin copy is the
+  target's is hard to tell (sign errors on brows); "corners 3.1 mm" needs "total".
