@@ -28,7 +28,10 @@ from pathlib import Path
 import numpy as np
 
 _CACHE: dict = {}
-VERSION = 13  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+CLOSED_GAP = 0.0008     # m: a GNM-closed mouth (the contact ring's halves within this, corner to corner) gets the seam field
+CLOSED_SEAL_V = (0.5,)  # its rows drawn toward the seam (base.SEAL_V's): the first only. The seal's three rows halved the
+# vermilion border's turn; the first alone keeps the border and makes the seam a V (-60 / +27 deg each side, Tess)
+VERSION = 14  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
@@ -328,7 +331,23 @@ def template(base: dict) -> dict:
             faces.append([int(v) for v in q])
     assert min(min(f) for f in faces) >= 0
     seal_field = None
-    if float(hd.get("lip_seal") or 0) >= 0.5 and hd.get("mouth_gap") is None and ht.get("skin_index") is None:
+    sealed = float(hd.get("lip_seal") or 0) >= 0.5 and hd.get("mouth_gap") is None
+    if not sealed and ht.get("skin_index") is None and float(hd.get("lip_seal") or 0) < 0.5:
+        # a mouth CLOSED BY GNM (its expression: blockin_lips / mouth_gap 0): the same field-only seam as a seal's,
+        # lighter (gnm_atlas.md "## gnmdetail2"). As GNM shapes it, the closed contact is a 42-deg V between two coarse
+        # rings (~3.5 mm apart) with the inner rolls crossing behind it (the upper 6.5 mm below the lower): the
+        # field read a 2.5 mm forward-facing WALL there, a dark line 1.8 mm above the contact and a pale band under it
+        # (Tess gd_T12L4), never the photo's slit
+        from . import blockin_lips
+        try:
+            closed = float(np.max(blockin_lips.contact_gaps(ht, None, 1.0))) < CLOSED_GAP * 1000
+        except (ValueError, IndexError, KeyError):
+            closed = False
+        sealed = closed
+        seal_v = CLOSED_SEAL_V if closed else None
+    else:
+        seal_v = None
+    if sealed and ht.get("skin_index") is None:
         # (faceslide / base._sealed_field) the closed mouth's field: the rolls inside the contact ring left out, the
         # contact rows overlapped
         from . import faceslide
@@ -341,6 +360,8 @@ def template(base: dict) -> dict:
         rows = lambda ids: row_of[np.asarray(ids, int)][row_of[np.asarray(ids, int)] >= 0]  # noqa: E731
         seal_field = {"drop": rows(inside), "up": rows(C[R["upper"][C]]), "lo": rows(C[~R["upper"][C]]),
                       "outer": [(rows(r[R["upper"][r]]), rows(r[~R["upper"][r]])) for r in R["rings"][kc + 1:kc + 4]]}
+        if seal_v is not None:
+            seal_field["v"] = list(seal_v)
     V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
     if len(loop_rows) and ht.get("loop_offsets") is not None:  # (faceslide.py) the sliders on the loops' vertices
         V[loop_rows] += ht["loop_offsets"]

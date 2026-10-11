@@ -72,14 +72,16 @@ def border_loops():
 CONTACT_X = 15          # samples across the contact ring's inner CONTACT_SPAN of its width
 CONTACT_SPAN = 0.85
 OVERLAP = 0.2           # mm the two halves may cross before it costs (the field merges them)
+ROLL_SPAN = 0.85        # (the "roll" read: the inner rolls' smallest gap, mm, - = crossing)
 
 
-def contact_rows():
-    """Head rows of GNM's lip CONTACT ring (faceslide._lip_rings: landmarks 61-63 / 65-67 sit on it), its upper and
-    lower halves (GNM's upper_lip / lower_lip groups)."""
+def ring_rows(k: int | None = None):
+    """Head rows of GNM's lip ring k (rings out from the skin's open mouth loop, faceslide._lip_rings; default the
+    CONTACT ring, base.LIP_RING: landmarks 61-63 / 65-67 sit on it), its upper and lower halves (GNM's upper_lip /
+    lower_lip groups)."""
     from . import base as basemod, faceslide
     R = faceslide._lip_rings()
-    C = R["rings"][R["contact"]]
+    C = R["rings"][R["contact"] if k is None else k]
     up = R["upper"][C]
     g = basemod._gnm_data()
     sk = np.flatnonzero(np.asarray(g["skin"]))
@@ -88,33 +90,44 @@ def contact_rows():
     return row[C[up]], row[C[~up]]
 
 
-def contact_gaps(ht) -> np.ndarray:
-    """The neutral's lip gap (mm, + = open: the upper half above the lower) at CONTACT_X points across the contact
-    ring's middle CONTACT_SPAN (world z, the head's up)."""
-    U, L = (_rows(ht, r) for r in contact_rows())
+def contact_rows():
+    return ring_rows(None)
+
+
+def _ring_pair(ht, k=None, span=None):
+    """(x samples, upper verts at them, lower verts at them) across ring k's middle `span` of its width."""
+    U, L = (_rows(ht, r) for r in ring_rows(k))
     V = np.asarray(ht["verts"], float)
     U, L = U[U >= 0], L[L >= 0]
     xu, xl = V[U, 0], V[L, 0]
     ou, ol = np.argsort(xu), np.argsort(xl)
     lo, hi = max(xu.min(), xl.min()), min(xu.max(), xl.max())
-    mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo) * CONTACT_SPAN
+    mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo) * (CONTACT_SPAN if span is None else span)
     xx = np.linspace(mid - half, mid + half, CONTACT_X)
-    return (np.interp(xx, xu[ou], V[U[ou], 2]) - np.interp(xx, xl[ol], V[L[ol], 2])) * 1000
+    pu = np.stack([np.interp(xx, xu[ou], V[U[ou], j]) for j in range(3)], 1)
+    pl = np.stack([np.interp(xx, xl[ol], V[L[ol], j]) for j in range(3)], 1)
+    return xx, pu, pl
+
+
+def contact_gaps(ht, k=None, span=None) -> np.ndarray:
+    """The neutral's lip gap (mm, + = open: the upper half above the lower) at CONTACT_X points across ring k's (default
+    the contact ring's) middle span (CONTACT_SPAN) of its width (world z, the head's up)."""
+    _, pu, pl = _ring_pair(ht, k, span)
+    return (pu[:, 2] - pl[:, 2]) * 1000
+
+
+def roll_rings() -> list:
+    """The rings behind the contact (the inner rolls, from the open mouth loop in)."""
+    from . import base as basemod
+    return list(range(basemod.LIP_RING))
 
 
 def contact_lead(ht) -> np.ndarray:
     """How far the LOWER half of the contact ring stands in front of the upper (mm, + = the lower lip ahead: rolled up
     over the upper lip's own roll; a closed rest mouth has the upper at or ahead)."""
-    U, L = (_rows(ht, r) for r in contact_rows())
-    V = np.asarray(ht["verts"], float)
-    U, L = U[U >= 0], L[L >= 0]
-    xu, xl = V[U, 0], V[L, 0]
-    ou, ol = np.argsort(xu), np.argsort(xl)
-    lo, hi = max(xu.min(), xl.min()), min(xu.max(), xl.max())
-    mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo) * CONTACT_SPAN
-    xx = np.linspace(mid - half, mid + half, CONTACT_X)
+    _, pu, pl = _ring_pair(ht)
     fwd = np.asarray(ht["forward"], float)
-    return (np.interp(xx, xl[ol], V[L[ol]] @ fwd) - np.interp(xx, xu[ou], V[U[ou]] @ fwd)) * 1000
+    return (pl @ fwd - pu @ fwd) * 1000
 
 
 def _rows(ht, rows):
@@ -241,6 +254,10 @@ def lip_reads(ht, ev=None, to_world=None, cam=None) -> dict:
         d, q, ins = _poly_dist(px, ev["seam"])
         out["miss_seam"] = float(np.sqrt(np.mean(d[ins] ** 2))) * ev["mmpx"] if ins.any() else float("nan")
     try:
+        out["roll"] = float(min(contact_gaps(ht, k, ROLL_SPAN).min() for k in roll_rings()))
+    except (ValueError, IndexError):
+        out["roll"] = float("nan")
+    try:
         out["lead"] = float(contact_lead(ht).max())
     except (ValueError, IndexError):
         out["lead"] = float("nan")
@@ -303,6 +320,9 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
         gp = contact_gaps(hn)
         r += list(np.maximum(gp, 0.0) / SIG_GAP) + list(np.minimum(gp + OVERLAP, 0.0) / SIG_GAP)
         r += list(np.maximum(contact_lead(hn), 0.0) / SIG_LEAD)
+        # (the rolls behind the contact cross: GNM's closing hangs the upper roll ~6.5 mm below the lower one. Kept
+        # apart by a term here (SIG_ROLL) it cost |dc| 9.7 / |e| 10.7 and OPENED the mouth (a dark slit, teeth): the
+        # field leaves the rolls out instead, onemesh.CLOSED_SEAL_V. "roll" is only read)
         r += list(((L[HOLD] - L0[HOLD]) * 1000 / SIG_HOLD).ravel())
         r += list(((L[CORNERS] - L0[CORNERS]) * 1000 / SIG_CORNER).ravel())
         return np.array(r), hn, hv
@@ -334,7 +354,7 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
         _, hn, hv = resid(x)
         q = {**lip_reads(hv, ev, to_world, cam), "gap": lip_reads(hn)["gap"]}
         log(f"  it {it}: cost {f:.1f} |dc| {np.linalg.norm(x[:170]):.2f} |e| {np.linalg.norm(e0 + x[170:]):.2f} | border miss "
-            f"{q['miss_upper']:.2f} / {q['miss_lower']:.2f} mm, gaps {np.round(q['gap'], 2).tolist()}, bow {q['bow']:.2f}")
+            f"{q['miss_upper']:.2f} / {q['miss_lower']:.2f} mm, gaps {np.round(q['gap'], 2).tolist()}, rolls {q['roll']:.2f}, bow {q['bow']:.2f}")
         if lam > 1e4:
             break
     e = e0 + x[170:]

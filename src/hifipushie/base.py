@@ -308,7 +308,7 @@ def _sealed_field(W, faces, sf: dict):
     # the V between the closed lips' fronts made shallower: the next rows out drawn toward the seam (by the vertical
     # gap between the two lips' rows at that x). Left as GNM shapes them, the V narrowed to the mesher's ~1 mm before
     # it closed and came out as a row of specks along the seam (Tess ts_h7)
-    for (ru, rl), wgt in zip(sf.get("outer") or [], SEAL_V):
+    for (ru, rl), wgt in zip(sf.get("outer") or [], sf.get("v") or SEAL_V):
         ru, rl = np.asarray(ru, int), np.asarray(rl, int)
         if len(ru) < 3 or len(rl) < 3:
             continue
