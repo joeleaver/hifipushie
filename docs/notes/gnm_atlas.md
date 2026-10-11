@@ -2242,7 +2242,35 @@ at another age (Commons categories) for a longitudinal check; (4) run blockin_ag
 ## /mnt/data/hifipushie/gnmdrive: run.sh <script> (capped, this worktree's src), scripts/, cases/, hidden/ (B's
 ## coefficients: never shown to a driver), out/; sheets human_renders/gd2_*; manual docs/notes/gnm_driving_manual.md)
 
-STATE / NEXT: (1) setting up: pair generator (A, B = A + a regional transplant from a donor), oracle, driver tool.
+STATE / NEXT: test built (set s1, 14 cases); baseline drivers (no manual) running on s1. Next: score, oracle compare,
+write the manual from the misses, then a fresh set s2 driven WITH the manual.
 
 Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
 A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
+
+### The test (scripts in /mnt/data/hifipushie/gnmdrive/scripts; copied to spikes/gnmdrive at the end)
+- Heads: GNM's raw head, identity = 170 head comps, expression 0 (drv.verts), clay via gnmcontrols' gnmc.render
+  (likeness.render: hair cap, GNM eyes with iris, drawn brows from GNM landmarks, lip tint): ~20 ms a view.
+- Pairs (pairs.py <set> <seed>): A from N(0, I) (even cases) or gnm_sampler's identity decoder (random z, random sex /
+  ethnicity label; odd cases). B = A + a REGIONAL TRANSPLANT (drv.transplant): the least change in the 170 comps that
+  moves a region's vertices to a donor's (x amount), the face / neck / cranium beyond 8 mm of the region held, ridge
+  0.05. The donor is the best of 160 candidates by the region's character macros (largest |change| in sd), signed for
+  jaw_full (cheek_fullness + neck_width - under_chin: FULLER / HEAVIER, Joe's "fluffy") ; mouth's macros include
+  lip_projection (the profile angle). Regions (drv.REGIONS): skull, jaw, jaw_full, chin, mouth, nose, eyes, brows,
+  cheeks. Grades: easy = one region, top donor, amount 1 (8 cases); medium = one or two regions x 0.7 (3); hard = three
+  regions x 0.5, upper-quartile donors (3).
+- s1 (seed 101): start face errors 0.8 (hard s1_11) .. 7.3 mm rms (cheeks); |B - A| 3.4 .. 12.8 sd.
+- Driver tool (drive.py; sees renders only): show / try / keep / reject / done / log, atlas (gnm_controls.query),
+  describe, vocab, macros. Sheets: rows current | trial | target, raking light, a TRACING (target silhouette red over
+  the current, green) and an ONION SKIN (50 % blend with the target), framed on the target's landmarks: head, eyes,
+  brows, nose, mouth, chin_jaw, cheeks; front / 3/4 / profile. B's coefficients live in hidden/ (never opened by a driver).
+- Oracle (score.py oracle): greedy pursuit over the block-in vocabulary (40 free + 40 held macros, nd: gaps, symmetric
+  pc: regions (left_ / right_ PCs move one side: left out), sculpt: / relief: per face zone): each step the move that
+  closes the most face error (rms mm over face + 1/3 of neck / cranium) PER UNIT PRIOR COST, amounts refit (ridge
+  0.02); a "named" variant without pc:. First read on s1: even the oracle closes only 35-70 % of the face error in
+  <= 10 moves (named: similar); it leans on head_size / head_depth / neck_width / cranium_height (whole-head masses the
+  region transplant drags) and on pc:<region>0-1. A regional difference is many-dimensional: no single control is
+  "the nose"; the hard s1_11 (0.7 mm) is below what any move closes (oracle: nothing).
+- Score (score.py score): face err before / after, per-region err, face-ID distance (SFace + ArcFace 1 - cos, front
+  and 30 deg), moves kept / rejected, each kept move's closure. PASS (provisional): face err closed >= 50 %, every
+  changed region >= 40 %, ID distance <= 0.6 x the start's.
