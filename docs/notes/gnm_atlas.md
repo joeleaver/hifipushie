@@ -4220,3 +4220,9 @@ the new eye work (decided eye depth, crisp fold, ruler rows). Garrett / lt19 / j
   Sheet tn_05, sent: tip a little lighter, jaw a little softer, lower face still broader / shorter than hers.
   Table: chin_height -2.2 / -1.5 out, philtrum front +2.2, lower_third -2.8, mouth_line; ruler: upper_lip_forward -2.1.
 STATE / NEXT: continue from tn_T07n in small steps (free macros for shape, mm: to put table rows back), |c| watched.
+- tn_T08n = T07n + mm:chin_length +2.0, mm:philtrum_length -2.0, mm:upper_lip_forward -2.0, FREE cheek_fullness -0.5,
+  face_width -0.4 (|c| 11.5). Table: jaw and chin 5/5, chin_height and philtrum in, width_temple in; OUT:
+  width_cheekbone -3.5 (the width step overshot), width_nose_base -5.8, mouth_width -1.7, mouth_line, lower_third
+  -2.7. Sheet tn_06, sent. BLUNT: the best fresh head so far (narrower oval, profile lip line closer), about level
+  with er_s4, still not a likeness.
+STATE / NEXT: tn_T08n is the unforced from-scratch Tess. NEXT: mm:cheekbone_width ~+2.5 back, then Joe's read.
