@@ -614,3 +614,5 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   lower border lit +5..+8 over the skin 2 mm further down (the lower lip's underside / the labiomental turn faces up
   on these heads). Left as found; skin2 found the same (look_skin flat: -2.6..+0.3).
 - Tools: albedo reads need the skin's own base colour (skin.part_base), not the part default grey.
+- Garrett (b2_G15, dressed, sheet human_renders/g2_09): lower lip da 11.5 -> 9.1, dL +0.8 -> +5.6 (lighter, less
+  orange; his photo's lower lip is pale pink, lighter than the upper): reads closer; maybe a touch pale on him.

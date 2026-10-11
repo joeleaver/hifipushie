@@ -2066,3 +2066,13 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
   (lit_render's first pass; its SH coefficients gave no stable direction: Tess's key from below) and key : frontal
   fill from |w| : c0, the face's front as bright as the template lights it. Tess: key 35 deg up, from her right, key
   1.74 / fill 1.89 (flatter than FRONT_LIGHT's 3.3 / 0.7); Garrett b2_G15: 30 deg, 2.8 / 0.8. stage.photo_light(name).
+
+### State / next (gnmdetail2 handover)
+- Shipped on the branch: the closed-mouth seam field, head.lip_close (block-in default), lip_read (+ the lips step with
+  the bow), the lower-lip paint, blockin.photo_lighting + stage.photo_light, render jobs' "eevee" overrides, the stage's
+  full-res fast GI. Sheets human_renders/g2_01..09.
+- Next: (1) run lip_read(match=True) on the current Tess / Garrett block-ins and judge the table's philtrum / chin rows
+  it moves; (2) the seam's darkness (photo L* 15 vs ours ~30: the paint's lip_seam line vs the geometry's slit, the
+  commissures' shadow past the lips); (3) the crease: Joe's decision on a slit (GNM gap) vs paying |dc| ~7.6 for 1.6 mm;
+  aim the eye step's valley ~1 mm below the picture's line if the rendered line is the target; (4) make full-res fast
+  GI the blender_scene default for heads / look_skin; use stage.photo_light for every dressed-vs-photo sheet.
