@@ -81,6 +81,11 @@ eye catches what the points miss; the target table catches what your eye misses.
    cleared; never lidfold (head.fold: old models only). Judge it with focus=eyes under raking light AND dressed
    (look_skin views eye / face): a crease under ~1 mm deep doesn't read dressed. Tess (b2_T06): lids 0.65 / 0.88
    vs her 0.67 / 0.88, crease 1.1 mm deep at 5.3 mm (her line 5.15 mm), |dc| 3.0, |e| 1.8, table unchanged.
+   The socket is HELD in the solve (humanmacro orbital_rim / lower_orbit / eye_depth on the mesh with the expression,
+   sigma 0.15 sd): unheld, the fold came with orbital_rim +1.1..1.4 / lower_orbit -1.1..-1.6 sd (dark, tired sockets);
+   held, +0.3 / -0.05 for the same crease depth (~0.9-1.0 mm). Honest limit (gnm_atlas "## gnmdetail"): GNM's fold is
+   a ~2.5 mm-wide valley, not the photo's 1 mm slit; at ~1 mm deep it reads only as a soft step in EEVEE, a line from
+   ~1.6 mm (|dc| ~7.6) or under Cycles.
    `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
    an identity step for eye height made eyes read NARROWER.
 7b. **The picture's own expression** (`block_in_expression(name)`): GNM's identity is the RELAXED neutral; a picture

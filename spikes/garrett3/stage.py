@@ -51,7 +51,8 @@ def ensure(name, with_hair=True, log=print, posed=False, tex=None):
     st = skin_look.stage_spec(spec, "head")
     hd = st["base"]["head"]
     hd.pop("interior", None)     # a look of the closed mouth: no slit / bag (its ends showed as holes at the corners:
-    hd.pop("mouth_gap", None)    # the stage has no teeth or tongue parts), GNM's own lips
+    if float(hd.get("mouth_gap") or 1.0) > 0.0005:  # the stage has no teeth or tongue parts), GNM's own lips (a
+        hd.pop("mouth_gap", None)                    # closed mouth_gap stays: GNM's expression is what closes them)
     st["paint"] = {k: v for k, v in (st.get("paint") or {}).items() if "face_mouth_bag" not in json.dumps(v)}
     if posed:
         pf = store.HOME / name / "pose.json"      # the pose its fit was made with (refit.py), else the hand-set one
