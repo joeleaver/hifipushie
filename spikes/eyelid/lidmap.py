@@ -74,6 +74,8 @@ def column(V, ctr, u=0.0, upper=True):
     """The lid's rows at the column u (mm from the eye centre): per ring k, the point where the ring's upper (lower)
     half crosses x = u: rows [(k, v, w)] from the deepest lining ring to the brow."""
     t = topo()
+    g = gc.gnm()
+    TUP = g["T"][:, 1] > g["J"][2][1] + 0.0003
     out = []
     for k in sorted(t["loops"]):
         ids = t["loops"][k]
@@ -88,7 +90,7 @@ def column(V, ctr, u=0.0, upper=True):
             p = a + f * (b - a)
             if np.linalg.norm(b - a) > 8:
                 continue
-            if (p[1] > 0) != upper and k >= 0:
+            if k >= 0 and (TUP[ids[i]] and TUP[ids[(i + 1) % nn]]) != upper:   # the half by the TEMPLATE (a low margin stays upper)
                 continue
             if k < 0:      # lining: pick the half by its own margin side later (keep both, choose by v sign of ring 0)
                 if (p[1] > -1.0) != upper:

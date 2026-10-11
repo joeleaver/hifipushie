@@ -7,7 +7,10 @@ crease so the crease lands at the person's fold height (hc, mm at the model per 
 line) and shifted above it (the fold and drape unchanged, lifted). Ring 0 (the margin: the eye ruler's numbers) and
 everything else on the head are HELD at the source.
   min |W_t (V(c) - target)|^2 + |W_h (V(c) - V(c0))|^2 + lam |c - c0|^2      (V linear in c: exact, no iterations)
-keys: sharp=<mm> (the skin above the crease this much further forward than the donor's, the crease 0.3 x deeper);
+keys: clear=<raw mm> (the platform this much further off the ball than the donor's);
+fwd=<raw mm> (the eye unit: balls, margins, the designed lid, this far forward in the head; forehead / nose
+profile held at 0.25 mm: a less deep-set eye WITHOUT moving the profile the side pictures fixed);
+sharp=<mm> (the skin above the crease this much further forward than the donor's, the crease 0.3 x deeper);
 margins=<identity source> (ring 0 of both lids put where that head has them in its eye frame; default held at the source);
 hc=4.7 (mm at the model, one number) | hc=ruler; rt=8 (last target ring); sig=0.1 (mm, target); hold=0.3 (mm);
 lam=1 (|dc| prior); hold=<mm>[,<mm>..] (each solved, the last written); tw=0.25 (weight along the surface); scale=<world mm per
@@ -75,7 +78,7 @@ def crease_of(F, U):
     return np.array(hc)
 
 
-def design(Vd, cd, Vs, cs, r, hc_person, rt, sharp=0.0):
+def design(Vd, cd, Vs, cs, r, hc_person, rt, sharp=0.0, clear=0.0):
     """Targets for the LEFT eye: {vertex id: target xyz (raw GNM mm)} for rings 1..rt, from the donor's lid Vd (eye
     centre cd) onto the source's eye (Vs, cs). hc_person(f) = the person's fold height over the margin (raw mm) at the
     fraction f across the margin (0 inner .. 1 outer)."""
@@ -101,6 +104,9 @@ def design(Vd, cd, Vs, cs, r, hc_person, rt, sharp=0.0):
         H = hc_person(f)
         h2 = np.where(h <= hd, h * H / np.maximum(hd, 0.3), H + (h - hd))
         s2 = s + (ss0 - sd0) * np.exp(-np.maximum(h2, 0) / 1.5)
+        if clear:   # the platform this much further off the ball (OUR ball is seated by 6 landmarks, not by the lid:
+            # a platform at the donor's stand-off let it come through the skin: el_f3's brown patch over the lid)
+            s2 = s2 + clear * np.clip(h2 / 1.0, 0, 1) * np.clip((H + 1.5 - h2) / 1.5, 0, 1)
         if sharp:   # a sharper tuck than the donor's: the skin above the crease further forward (fading over 2.5 mm),
             # the crease itself a little deeper
             s2 = s2 + np.where(h > hd + 0.15, sharp * np.exp(-np.maximum(h - hd, 0) / 2.5), 0.0) - 0.3 * sharp * np.exp(-((h - hd) / 0.35) ** 2)
@@ -152,7 +158,9 @@ def main():
         hc_person = lambda f: np.full(np.shape(f), float(hc) / sc)   # noqa: E731
     print(f"world / raw scale at the lid {sc:.4f}; GNM ball r {r:.2f}")
     tgt = {}
-    tl, info = design(Vd, cd, Vs, cs, r, hc_person, rt, float(kw.get('sharp', 0)))
+    fwd = np.array([0.0, 0.0, float(kw.get("fwd", 0.0))])     # the eye unit (balls, margins, lid) this far FORWARD in the head
+    cs = cs + fwd
+    tl, info = design(Vd, cd, Vs + fwd, cs, r, hc_person, rt, float(kw.get('sharp', 0)), float(kw.get('clear', 0)))
     tgt.update(tl)
     # the right eye: the same design on the reflected heads, reflected back
     cs_r, cd_r = lm.eye_frame_raw(c0)[0], None
@@ -164,9 +172,9 @@ def main():
         A = np.c_[2 * P, np.ones(len(P))]
         sol = np.linalg.lstsq(A, (P ** 2).sum(1), rcond=None)[0]
         return sol[:3]
-    cs_r = ball(Vs, gR) * [-1, 1, 1]
+    cs_r = (ball(Vs, gR) + fwd) * [-1, 1, 1]
     cd_r = ball(Vd, gR) * [-1, 1, 1]
-    tr, _ = design(Vd_m, cd_r, Vs_m, cs_r, r, hc_person, rt, float(kw.get('sharp', 0)))
+    tr, _ = design(Vd_m, cd_r, Vs_m + fwd, cs_r, r, hc_person, rt, float(kw.get('sharp', 0)), float(kw.get('clear', 0)))
     for vid, (p, w) in tr.items():
         tgt[int(MIR[vid])] = (p * [-1, 1, 1], w)
     if kw.get("margins"):   # the lid margins (ring 0, both lids, both eyes) put where ANOTHER model has them in its eye frame
@@ -178,7 +186,14 @@ def main():
             m = g["groups"][grp] & g["groups"]["scleras"]
             cm_, cs_ = ball(Vm, m), ball(Vs, m)
             for vid in ids0:
-                tgt[int(vid)] = (Vm[vid] - cm_ + cs_, 2.0)
+                tgt[int(vid)] = (Vm[vid] - cm_ + cs_ + fwd, float(kw.get('mw', 4.0)))
+    if fwd[2]:      # the eyeballs themselves and (unless margins= gave them) the margins ride forward
+        for vid in np.flatnonzero(g["groups"]["eyes"]):
+            tgt[int(vid)] = (Vs[vid] + fwd, 3.0)
+        r0 = t["loops"][0]
+        for vid in np.r_[r0, MIR[r0]]:
+            if int(vid) not in tgt or tgt[int(vid)][1] < 1.5:
+                tgt[int(vid)] = (Vs[vid] + fwd, float(kw.get("mw", 4.0)))
     print("rings: donor median height over its margin -> target", " ".join(f"{k}:{a:.2f}->{b:.2f}" for k, a, b in info))
     ids = np.array(sorted(tgt))
     P = np.array([tgt[i][0] for i in ids])
@@ -197,6 +212,9 @@ def main():
     dc = np.zeros(NC)
     for hold in [float(x) for x in str(kw.get("hold", "0.3")).split(",")]:
         hw = np.where(m0, 1.0 / float(kw.get("mh", 0.05)), 1.0 / hold)
+        if fwd[2]:  # the profile the side pictures fixed (forehead, brow middle, nose) stays: only the eye unit moves
+            prof = (g["groups"]["nose_region"] | g["groups"]["forehead_region"] | g["groups"]["middle_brow_region"])[hid]
+            hw = np.where(prof, 1.0 / 0.25, hw)
         Ah = (IB[:, hid] * hw[None, :, None]).reshape(NC, -1).T.astype(np.float64)
         AhA = Ah.T @ Ah
         dc = np.zeros(NC)
