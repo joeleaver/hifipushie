@@ -3884,3 +3884,238 @@ Read (blunt):
 - For the restart: read the orbit with face_ruler first; expect NOT READ on photos; if Joe wants eye depth set
   anyway, the cheapest defensible value for Tess is +1.7 mm (ob_T1) and the eye step must follow it (the guard).
 
+
+## overhang (2026-10-11, "overhang" agent, branch worktree-agent-a104afd924997c102; Joe: "learn how to form eyelids/overhangs
+## with gnm parameters, since it's supported but doesn't seem to happen often". Scratch /mnt/data/hifipushie/overhang
+## (run.sh / runm.sh (+ matplotlib) / q.sh; scripts in spikes/overhang); sheets human_renders/oh_*)
+STATE / NEXT (overhang, 2026-10-11): ANSWERED, module + tests in, final renders of the module's recipes running.
+ANSWER IN ONE PARAGRAPH: nothing of GNM is unused at the lid (the other 83 identity coefficients are eyeball 3 + teeth 80,
+zero on skin; no lid joint, correctives all zero, no detail maps). The 170-comp basis DOES span a re-entrant lid (a
+designed fold projects to 0.13 mm rms), so "GNM can't span it" is wrong. But the overhang is not a lid feature in GNM:
+its cheapest direction IS the brow coming down over a deeper-set eye (corr -0.95 with brow height: hooding), and once
+the rest of a head is held to 1 mm the lid's rows keep 0.03-0.08 mm of freedom (an overhang = 54 sd). What CAN be
+formed on purpose, by closed-form least squares (src/hifipushie/gnm_fold.py): (A) a crisp fold at a chosen height
+(Tess: turn 19 -> 58 deg raw at 4.7 mm, |dc| 11, brows 2 mm lower; lidsolve had 34 deg); (B) a true overhang
+(0.6-0.8 mm raw, 2-3 mm of skin behind skin on the rendered mesh) at |dc| 13-19 with the brow 4-5 mm lower: a hooded
+eye, not her thin line. Rarity is explained twice over: 2.7 sd under N(0, I), and GNM's own sampler (trained on real
+coefficients) makes 0 % overhangs: the scans' registrations never had them.
+DONE: sheets human_renders/oh_01 (Tess), oh_02 (mean, #376), oh_03 (frontier / freedom / raw sections); module
+src/hifipushie/gnm_fold.py + tests/test_gnm_fold.py (5 pass); no real model touched (scratch oh_* only). See FINAL
+RESULTS and HANDOVER at the end of this section. NEXT (not mine): Joe's decisions below; the eye step's hook-up (orbit).
+
+### Step 1: are we using all of GNM? (freedom.py, scripts/npzinspect.py on gnm_head.npz v3.0; the report, gnm_audit.md 1.1)
+- The "other 83" identity coefficients are eyes 3 (limbus / cornea of the eyeball model) + teeth 80. Their basis is
+  EXACTLY ZERO on every skin vertex (max |basis| at the lid rings 0.0; eyes comps move only eyeball vertices, 0.40 mm).
+  No lid shape lives there. We drop nothing of the head: all 170 head comps are driven (lidsolve / blockin use 170).
+- Expression 383 = left eye 100 + right eye 100 + lower face 150 + tongue 32 + pupil 1. Only the left-eye 100 touch
+  the left lid (max 2.65 mm per unit); lower face / tongue / pupil / right eye: 0.000 mm there.
+- Joints: 4 (neck, head, left_eye, right_eye). The eye joints skin ONLY the eyeballs (771 weighted vertices, 0 skin):
+  rotating an eye does not move the lid. The lid rings are 100 % head joint. No eyelid joint.
+- pose_correctives_regressor (36 x 53463) is all zero in v3.0. No displacement / normal / detail maps, no higher-res
+  mesh, no per-vertex offsets in the release (the registration that built GNM used per-vertex offsets with L2 + graph-
+  Laplacian regularisation on them (report 3.2), and then PCA kept 170 comps: any fold finer than that was not kept).
+- So for the lid there are exactly two parameter families: identity 170 and the eye's expression 100. Nothing is unused.
+
+### Step 2: the rows' freedom (freedom.py; radial chains up the lid's middle, raw mm, v = front-view height)
+| ring pair | template dv | identity sd(dv), mean over the lid's middle | z = dv / sd | expression sd(dv) |
+|---|---|---|---|---|
+| 3-4 | 0.54 | 0.26 | 2.0 | 0.49 |
+| 4-5 | 0.60 | 0.27 | 2.2 | 0.56 |
+| 5-6 | 0.67 | 0.28 | 2.4 | 0.58 |
+| 6-7 | 0.97 | 0.34 | 2.8 | 0.50 |
+| 7-8 | 1.32 | 0.40 | 3.3 | 0.40 |
+- An overhang in a front view = a ring's skin BELOW the ring under it. Two rings up (5 -> 7): template 1.64 mm, sd 0.62
+  under N(0, I): 2.7 sd to reach zero, P = 0.35 % : exactly eyelid's "0.35 % of 2000 heads have any overhang". So the
+  rarity is the PRIOR's tail, not a missing direction: the least |dc| that reverses rings 5 -> 7 by 1 mm (nothing else
+  asked) is 4.3 from the mean (a typical head is |c| 13).
+- Relative row motion at the crease rings lives in the LOW components: comps 0-10 sd 0.16-0.31, 10-40 0.19, 40-80
+  0.08-0.13, 80-120 0.05-0.07, 120-170 0.04-0.06 mm. There is no fine "fold" block: the lid's rows move mostly with
+  the whole orbit (hooding: the brow and drape coming down), little independently.
+- SPAN TEST (foldfit.py: a designed re-entrant fold, platform on the ball to 4.7 mm, slit, a roll hanging 1.0 mm over
+  the platform, 17 columns x 9 rings x 2 eyes = 900 numbers, fitted with 170 comps, nothing else asked): residual
+  0.13 mm rms (max 0.25) from a 3.3 mm start, the fitted mesh has the overhang (1.26 mm). So the basis SPANS it. But
+  |dc| = 460: the span is there only through enormous cancelling coefficients. The limit is the PRIOR (and the rest
+  of the head), not the span.
+- With the rest of the head held (every other skin vertex 1 mm, margins 0.05): the same target fits to 0.78-0.88 mm at
+  |dc| 15-18 whatever the prior weight (lam 1 .. 0.03: the HOLD is what resists, not the prior): the overhang is lost,
+  what is left is a clean sharp fold: turn 65 deg at 4.2 mm over the margin, platform 0.9 mm off the ball (same
+  reader: #376 43 deg at 3.2 mm, #540 48 at 2.6, el_a6 34 at 5.8, er_s4 19, GNM mean 17).
+
+### Step 3: the overhang is ONE direction, and it is the brow coming down (folddir.py, freedom2.py)
+- hang(c) = v[ring ka] - v[ring ka+2] (mean over the lid's middle, both eyes) is linear in c, so "what folded heads have in
+  common" is exactly one gradient g per ring pair (margins held). For rings 5 -> 7: |g| 0.61 mm per unit |c| (2.7 sd
+  from the template's 1.64 mm spacing to zero); 87 % of g^2 sits in comps 0-40 (top: 4, 5, 28, 8, 2, 20, 25, 18). The
+  pairs' directions are nearly one (cos 0.93-0.97 between neighbours).
+- Its correlations under N(0, I): with the BROW's height over the margin -0.95; with the crease's height -0.56; with the
+  drape standing forward of the crease +0.64. One unit along g: overhang +0.61 mm, brow -2.4 mm, crease -0.58 mm,
+  gnm_mm: brows_over_eyes -2.4, eyes_forward -1.8 (deeper set), skull_back +1.8, subnasale_forward +1.3.
+  So in GNM an "overhang" is HOODING: the whole brow / drape sheet descends over a deeper-set eye. That is why sharp
+  folds are only low ones (the same direction lowers the crease) and why no fine "fold" component exists.
+- #376 sits at z +1.0 along it, #540 +1.3 (5 -> 7) / +2.1 (6 -> 8); Tess (er_s4) -0.1, el_a6 +0.1.
+- THE LID'S OWN FREEDOM, given the rest of the head (posterior sd under the unit prior; mean over the lid's middle;
+  margins at 0.05 mm, every other exterior skin vertex outside upper-lid rings 1..9 known to sig mm):
+  | rest of the head known to | sd of a row's height, rings 5-8 | sd of the 5 -> 7 reversal | sd from an overhang (0 mm / 1 mm) |
+  |---|---|---|---|
+  | nothing (margins only) | 0.45-0.82 mm | 0.31 mm | 5.3 / 8.5 |
+  | 3 mm | 0.15-0.20 | 0.073 | 22 / 36 |
+  | 1 mm | 0.08 | 0.030 | 54 / 88 |
+  | 0.3 mm | 0.03 | 0.010 | 160 / 258 |
+  With the eye's 100 expression comps added at unit prior: 0.59 mm unheld (2.8 / 4.5 sd), 0.09 at 1 mm (18 / 30 sd).
+  THIS is the answer to "the mesh supports it": the TOPOLOGY supports it (rows 0.5 mm apart), the BASIS spans it (step
+  2), but once the brow, orbit and margins are where a person's are, the lid's rows have ~0.08 mm of freedom left.
+  A fold on a given face is not a dial in GNM; it comes with the orbit.
+
+### Step 4: populations (popclass.py; my reader = any ring pair within 5 rings, looser than eyelid's popstat)
+| population | n | overhang > 0.1 mm (mean over the middle) | max | turn p50 / p90 / max | crease >= 4 mm: turn p90 / max |
+|---|---|---|---|---|---|
+| N(0, I) | 900 | 3.6 % | 1.53 mm | 16 / 34 / 102 | 20 / 36 |
+| N(0, 1.3^2 I) | 300 | 10.7 % | 2.90 | 17 / 38 / 98 | 24 / 65 |
+| GNM's sampler, 8 classes (z ~ N(0, I)) | 300 each | 0.0-0.3 % | 0.26 | 14-23 / 19-34 / 35-77 | 16-20 / 19-34 |
+| sampler, all-class blend | 300 | 0.0 % | 0.00 | 18 / 28 / 42 | 17 / 25 |
+| sampler male white, z x 1.5 | 300 | 0.7 % | 0.42 | 19 / 33 / 72 | 20 / 30 |
+- The sampler is trained on 12K REAL coefficient vectors: its heads have FEWER overhangs than N(0, I) (0 % against
+  3.6 %). So the real registrations behind GNM essentially never contained a re-entrant lid: N(0, I)'s overhangs are
+  what independent sampling of comps makes, not people. (Consistent with how GNM was registered: inverse rendering
+  with Laplacian-regularised per-vertex offsets cannot see skin hidden under skin.) No class or blend gives folds more
+  often; most turn: male white / middle_eastern (p50 23), least: asian (14-15). GNM has no age label (sex x 4 groups).
+
+### Step 5: pose (popclass.py bottom; freedom.py)
+- No lid joint, no correctives (step 1). GNM's neutral is an open eye (eyelid notes: margin 2.6 mm over the centre).
+- All 20 data-backed expression prototypes at x1 and x2 on the mean and on #376: overhang 0.00 mm in every one; the
+  turn only falls (#376: 43 deg neutral -> 23 wink, 17 compress_face, 26 squint x2). Brow-lowering classes (squint,
+  disgust, snarl) lower the crease (3.2 -> 2.6-2.9 mm) without tucking it. Confirms eyelid's finding with every class.
+- Identity + expression optimised together (foldopt.py expr=100, face held 1 mm): a 1 mm overhang at 4.7 mm needs
+  |e| 21-26 per eye (the largest prototype is 4.8) with |dc| 7.6: not an expression anyone makes.
+
+### Step 6: forming it on purpose (foldfit.py -> src/hifipushie/gnm_fold.py; scratch models oh_*; first models, superseded by FINAL RESULTS)
+- Two recipes, both closed-form least squares on the lid rings (seconds), identity only:
+  (A) CRISP FOLD at a chosen height: gnm_fold.fold(c, crease=4.7): a designed re-entrant lid (platform on the ball to the
+  crease at ring 5, a slit, a roll hanging 1 mm) fitted softly with every other skin vertex held at 1 mm, margins 0.05.
+  (B) OVERHANG: fold(c, crease, overhang=0.5): the same plus a hard row "ring 7's skin 0.5 mm below ring 5's, 0.6 mm in
+  front of it".
+- Raw-mesh numbers (gnm_fold.read; brow = brow ring 12 over the margin; "moved" = gnm_mm):
+  | head | recipe | overhang mm | turn deg | crease mm | |dc| | brow down mm | other skin rms / max | brows_over_eyes |
+  |---|---|---|---|---|---|---|---|---|
+  | Tess er_s4 | as is | 0 | 19 | 5.0 | | | | |
+  | Tess el_a6 (eyelid's lidsolve) | | 0 | 34 | 5.8 | 4.4 | 0.2 | 0.13 / 0.7 | -0.2 |
+  | Tess oh_TD | A (stand-off 1.3) | 0 | 46 | 4.0 | 9.6 | 2.0 | 0.36 / 2.3 | -1.8 |
+  | Tess oh_TE | A + brows held 0.3 mm | 0 | 45 | 3.8 | 12.6 | 0.9 | 0.36 / 1.7 | -0.65 |
+  | Tess oh_TG | B 0.5 | 0.72 (max 1.07) | 52 | 4.3 | 18.0 | 4.7 | 0.70 / 5.1 | -4.1 |
+  | Tess oh_TC | B 1.0, hold 3 mm | 1.39 | 24 | 4.9 | 22.4 | 5.3 | 1.06 / 6.0 | -5.0 |
+  | Tess oh_TF | B 0.5 + brows held 0.3 | 0.60 | 24 | 4.1 | 31.4 | 2.5 | 0.86 / 4.0 | -1.8 (cheekbone_width +3.5, tip_forward +2.1) |
+  | GNM mean | as is | 0 | 17 | 2.0 | | | | |
+  | mean oh_MA | A | 0 | 65 | 4.2 | 14.8 | 1.9 | 0.51 / 3.1 | -1.9 |
+  | mean oh_MB | B 0.5 | 0.80 | 33 | 4.2 | 20.0 | 4.2 | 0.70 / 4.7 | -3.8 |
+  | mean oh_MC | B 1.0, hold 3 | 1.46 | - | 4.8 | 24.0 | 5.1 | 1.11 / 6.5 | -5.0 |
+  | #376 | as is | 0 | 43 | 3.2 | | | | |
+  | #376 oh_SA | A at 3.2 mm | 0 | 83 | 2.6 | 8.4 | 1.4 | 0.30 / 1.9 | -1.3 |
+  | #376 oh_SB | B 0.5 | 0.57 | 27 | 3.0 | 13.2 | 3.6 | 0.51 / 3.9 | -3.1 |
+  | #376 oh_SC | B 1.0, hold 3 | 1.18 | - | 3.4 | 17.8 | 4.3 | 0.83 / 4.9 | -3.8 |
+- Read: (A) doubles the turn at her height for |dc| ~10 (the population's largest turn at >= 4 mm is ~36 deg): a real gain
+  over lidsolve's 34, paid with ~2 mm of brow (or |dc| 12.6 with the brows held). (B) the overhang arrives ONLY with the
+  brow: 0.7 mm of overhang = brows 4 mm lower; holding the brows at 0.3 mm still loses 1.8 mm of brow, costs |dc| 31 and
+  drags cheekbone width +3.5 mm. A wider free zone (drape free to ring 11) changes nothing (|dc| 22.6, brow 3.9 mm).
+- A platform at 0.8 mm off GNM's ball lets OUR eyeball through the lid (oh_TA / oh_TB: brown patch; eyelid saw the same):
+  stand-off 1.3 mm is the module's default.
+- Rendered (first models, before the clearance rounds; prof.py's line read; "stage" = stagehang.py on the rendered mesh:
+  mm of heights where skin sits behind skin with a gap over 0.8 mm):
+  | | dressed line contrast @ mm (hers 0.19 @ 4.7) | clay edge @ mm | stage: skin behind skin |
+  |---|---|---|---|
+  | er_s4 before | 0.03 @ 6.4 | 0.12 @ 6.7 | 0.0 |
+  | el_a6 | 0.045 @ 6.5 | 0.19 @ 6.6 | 0.0 |
+  | #376 | 0.11 @ 6.8 | 0.26 @ 3.7 | 0.0 |
+  | oh_TD (A) | 0.09 @ 4.3 (part of it a small eyeball patch) | 0.28 @ 4.2 | 0.0 |
+  | oh_TE (A, brows held) | 0.11 @ 3.9 (patch) | 0.30 @ 4.2 | 0.0 |
+  | oh_TG (B 0.5) | 0.05 @ 3.6 | 0.27 @ 3.3 | 2.4 mm tall, gap 3.2, 5.2 mm over the margin |
+  | oh_TC (B 1.0) | 0.06 @ 4.4 | 0.30 @ 3.2 | 2.8 mm, gap 3.3 |
+  | mean oh_M0 / MA / MB / MC | 0.01 / 0.24 (patch) / 0.10 / 0.10 | 0.06 / 0.27 / 0.19 / 0.15 | 0.0 / 0.0 / 3.8 / 4.6 mm |
+  | #376 SA / SB / SC | 0.12 / 0.14 / 0.14 | 0.27 / 0.25 / 0.21 | 0.0 / 1.8 / 1.9 mm |
+  The overhang SURVIVES the pipeline (one mesh -> IMLS -> stage): recipe B puts 2-4 mm of skin behind skin on the
+  rendered mesh. It is a deep pocket under a lowered brow (gap 3+ mm), not a 0.5 mm slit.
+- BLUNT READ of the first renders: in CLAY under the hard light every recipe turns the soft hollow into a fold with a
+  cast edge (edge contrast 0.12 -> 0.27-0.30 on Tess, 0.06 -> 0.27 on the mean: real, visible). DRESSED under her
+  picture's soft frontal light none of them draws her dark line: 0.05-0.11 against her 0.19, and the highest readings
+  include a brown eyeball patch (the reader cannot tell: look at the tile). Recipe B on Tess reads as a HOODED eye: the
+  visible platform shrinks to ~2-3 mm and the brow hair sits 4 mm lower: further from her, not nearer.
+- gnm_fold.fold now runs CLEARANCE ROUNDS: platform vertices the solve leaves closer than standoff - 0.2 mm to GNM's
+  ball get their target pushed out and 3x the weight (up to 4 rounds); the report carries min_standoff. With them the
+  crease also lands on the asked height (Tess 4.7, turn 58 deg; before the rounds 4.0 mm, 46 deg).
+
+### Hook-up (not done: blockin_eyes.py belongs to the "orbit" agent right now)
+- src/hifipushie/gnm_fold.py is self-contained (its own ring topology; no spikes import). Tests: tests/test_gnm_fold.py
+  (5, pass; ~5 s; need the GNM pack + gnm_controls.npz like test_gnm_controls).
+- As the eye step's shape term: after the eye ruler's margins are solved (identity c), call
+  `r = gnm_fold.fold(c, crease=<ruler fold height in world mm / lid scale ~0.99>, brow=0.3)`, show gnm_fold.fold_text(r)
+  (it names the brow drop and the measures that moved), and keep r["c"] only if the eye ruler's rows and brow_read
+  still pass. It replaces lidsolve's donor target (#376's lid) with a designed one, so no donor head is needed.
+  `overhang=` should stay OFF by default: it is hooding (see the table). A block-in move could expose
+  gnm_fold.hood_direction(5)["dc"] as "hooding" (per unit: +0.6 mm overhang, brow -2.4 mm): that IS a real GNM
+  control for a hooded / deep-set eye, which is the population it describes.
+- MCP: no tool added (Joe's hold on model rounds; the eye step is being rewritten by orbit). When the eye step calls
+  it, block_in_step's report should print fold_text.
+
+### FINAL RESULTS (the module's recipes with clearance rounds; apply.py; sheets oh_01 / oh_02; all identity only)
+| model | recipe (gnm_fold.fold) | raw: overhang mm / turn deg / crease mm | |dc| (|c|) | brow ring down mm; brows_over_eyes | other skin rms / max mm | rendered mesh: skin behind skin | dressed line @ mm (hers 0.19 @ 4.7) | clay edge @ mm |
+|---|---|---|---|---|---|---|---|---|
+| er_s4 (before) | | 0 / 19 / 5.0 | (9.0) | | | 0 | 0.03 @ 6.4 | 0.12 @ 6.7 |
+| el_a6 (eyelid's lidsolve) | | 0 / 34 / 5.8 | 4.4 (10.8) | 0.2; -0.2 | 0.13 / 0.7 | 0 | 0.045 @ 6.5 | 0.19 @ 6.6 |
+| oh_T1 BEST | crease=4.7 | 0 / 58 / 4.7 | 11.2 (15.1) | 2.3; -2.0 | 0.48 / 2.7 | 0 | 0.057 @ 4.8 | 0.25 @ 4.7 |
+| oh_T2 | crease=4.7, brow=0.3 | 0 / 49 / 4.7 | 12.1 (15.7) | 1.1; -0.8 (tip_forward +1.2) | 0.47 / 1.8 | 0 | 0.060 @ 5.0 | 0.28 @ 4.8 |
+| oh_T3 | crease=4.7, overhang=0.5 | 0.76 (max 1.11) / folded / 4.5 | 17.5 (20.6) | 4.8; -4.3 | 0.75 / 5.1 | 1.8 mm tall, gap 2.7 | 0.062 @ 4.7 | 0.30 @ 3.4 |
+| GNM mean (oh_M0) | | 0 / 17 / 2.0 | (0) | | | 0 | 0.01 | 0.06 |
+| oh_M3 | crease=4.7 | 0 / 75 / 4.7 | 14.0 | 2.3; -2.1 | 0.56 / 3.2 | 0 | 0.10 | 0.28 @ 3.6 |
+| oh_M4 | crease=4.7, overhang=0.5 | 0.80 (1.17) / folded / 4.5 | 19.0 | 4.5; -4.0 | 0.74 / 5.2 | 2.8 mm, gap 4.7 | 0.10 | 0.23 @ 2.9 |
+| #376 (gk_s376) | | 0 / 43 / 3.2 | (15.0) | | | 0 | 0.11 | 0.26 @ 3.7 |
+| oh_S3 | crease=3.2 | 0 / 57 / 3.0 | 14.2 (18.0) | 1.6; -1.3 | 0.50 / 2.3 | 0 | 0.13 | 0.30 @ 3.4 |
+| oh_S4 | crease=3.2, overhang=0.5 | 0.58 (0.87) / folded / 3.2 | 13.5 (19.1) | 3.8; -3.2 | 0.57 / 4.1 | 2.0 mm, gap 3.6 | 0.14 | 0.28 @ 2.9 |
+(Dressed line heights on the mean / #376 rows read 6.5-7.3 mm: the brow's shadow, not the fold; not listed.)
+- BLUNT READ, oh_01 (Tess: photo | oh_T1 best | er_s4 before | el_a6 | oh_T2 | oh_T3; dressed row + clay row): the
+  fold is now CRISP and at HER height on the mesh (turn 19 -> 58 deg at 4.7 mm; el_a6 had 34 at 5.8) and in clay it
+  casts an edge at 4.7 mm (0.12 -> 0.25). Dressed, the read doubles (0.03 -> 0.06) and moves to her height (6.4 ->
+  4.8 mm), but it is a THIRD of her 0.19: a pale fold edge, still no thin dark line; side by side with er_s4 the
+  dressed tiles differ modestly (a tighter lid, a visible upper edge). No eyeball patch (min stand-off 1.13 mm).
+  oh_T3 has a true overhang and reads as a HOODED eye with the brow hair 4 mm lower: further from her. The eye ruler
+  and brow_read were NOT re-run on oh_T1..T3 (margins are held at 0.05 mm by the solve; brows_over_eyes moved -2.0 on
+  T1, -0.8 on T2: T1 would fail a brow row, T2 probably not).
+- BLUNT READ, oh_02 (mean as is | M3 | M4 | #376 as is | S3 | S4): on GNM's mean the change is large and obvious in
+  clay (no fold -> a fold with a hard shadow; 0.06 -> 0.28) and visible dressed (a lid with a platform and an edge):
+  forming an eyelid on purpose works. The overhang tiles (M4, S4) show a dark pocket under a lowered brow in clay.
+- BLUNT READ, oh_03: the frontier is steep and starts beyond a typical head: 0.5-0.8 mm of overhang costs |dc| 13-19
+  with the brows free and 23-31 with the brows held at 0.3 mm; the brow drops 2.5-6.8 mm along it; the lid's own
+  freedom collapses from 0.31 mm (sd of the ring 5 -> 7 reversal, margins only) to 0.03 mm once the head is known to 1 mm.
+
+### What exactly is missing in GNM for her line (the precise gap)
+- A re-entrant slit ~0.5 mm wide at 4.7 mm over the margin WITH the brow, orbit and margins where they are. The mesh
+  could hold it (rows 0.5-0.7 mm at rings 4-7; 3 rows folded back) and the 170-comp span contains it, but no
+  affordable combination: 54 sd with the head held to 1 mm, |dc| 31 even letting the brow sink 2.5 mm.
+- Why: GNM's registrations were inverse-rendered with Laplacian-regularised offsets (skin under skin is never seen)
+  and its real-data sampler shows 0 % overhangs; PCA then kept 170 global comps, in which lid-row motion is carried
+  by the orbit's big modes (87 % of the overhang direction is in comps 0-40). Not in the expression basis either.
+
+### Open decisions for Joe
+1. Adopt recipe A (gnm_fold.fold, crisp fold at the ruler's height) as the eye step's shape term in place of
+   lidsolve's #376 donor? It gives 58 / 49 deg against 34, with brows_over_eyes -2.0 mm (free) or -0.8 (brow=0.3,
+   |dc| +1). I recommend brow=0.3. It is still |dc| 11-12 for a change that is modest dressed.
+2. The thin dark line: confirmed as a real GNM gap in the practical sense (not span, but affordability). Leaving it
+   (the accepted state), or a cosmetic crease shadow in the skin, stays your call; nothing was added.
+3. "Hooding" as a named block-in control (gnm_fold.hood_direction: +0.6 mm overhang, brow -2.4 mm, eyes 1.8 mm deeper
+   per unit): useful for genuinely hooded / deep-set people (Garrett?), wrong for Tess.
+
+### HANDOVER (overhang)
+- Branch worktree-agent-a104afd924997c102: READY TO MERGE. It adds src/hifipushie/gnm_fold.py (new module, imported by
+  nothing else), tests/test_gnm_fold.py (5 tests, pass, ~5 s), spikes/overhang/*, these notes. It edits no existing
+  source file (blockin_eyes.py untouched), no MCP tool, no CLAUDE.md, no model. Only tests/test_gnm_fold.py was run
+  (the change is additive); ruff is not installed in the worktree's env, so the module is not linted.
+- Not done: the eye step hook-up (see "Hook-up"; orbit's file), an MCP tool, the eye ruler / brow_read re-read on
+  oh_T1..T3, Google's HF model card (401 without a login; the repo README / demo / report say nothing about lid folds).
+- Scripts (spikes/overhang): ohlib.py / foldopt.py / foldfit.py (the study's first solvers; gnm_fold supersedes them),
+  freedom.py, freedom2.py, folddir.py, popclass.py (steps 1-5), apply.py (gnm_fold.fold -> a scratch model), mk.py,
+  nums.py, stagehang.py (overhang on the rendered mesh), sect.py, frontier.py (oh_03), ohsheet.py (oh_01 / oh_02),
+  readheads.py. Scratch /mnt/data/hifipushie/overhang: run.sh / runm.sh / el.sh (eyelid's scripts with this G) /
+  shots.sh (renders, one at a time) / s*.sh (the runs, in order); out/ (shots s_ dressed, k_ clay, r_ side rake;
+  nums.json, prof.json, stagehang.json, notes1/2.txt, f*.npz coefficient sets).
+- Scratch models (workspace, delete freely): oh_T1 T2 T3 M0 M3 M4 S3 S4 (final), oh_TA..TG MA MB MC SA SB SC M1 M2 S1 S2
+  (earlier; TA / TB / MA show the eyeball through the lid), and their _g3_oh_* stage caches.
+- Reader caveats: gnm_fold.read's "turn" is meaningless once the section folds back (it printed 144 deg on oh_T3);
+  prof.py's dressed line read counts an eyeball patch as a line and finds the brow's shadow on non-Tess heads;
+  stagehang.py needs a 0.8 mm gap (0.35 mm read every steep shelf as layered).
