@@ -22,12 +22,23 @@
   it becomes a block-in measure read from the pictures (profile + 3/4) and is set at the restart. (3) The whole-lid solve
   (spikes/eyelid lidsolve: identity only, GNM's lid rings as one structure) becomes the eye step's shape term.
   Start class / blend is chosen by measurement, not by label. Sheets: reference | best result | the rest.
-- COORDINATOR HANDOVER (2026-10-11, new session): two agents were running and commit as they go; their reports may
-  not reach the next session, so read their sections' STATE / NEXT and HANDOVER blocks on their branches:
-  "orbit" = worktree-agent-ad9bfaf2464cb4d4d (eye depth as a measure + lidsolve into the eye step; "## orbit"),
-  "overhang" = worktree-agent-a104afd924997c102 (forming a lid fold / overhang with GNM parameters; "## overhang").
-  Merge after: looking at the sheets (ob_* / oh_*), a privacy grep, the tests. The HOLD on the four models stays until
-  eye depth is dialled in; then a fresh Tess block-in with only the new tools is the first real-photo test.
+- LID FORM, SETTLED (Joe, 2026-10-11, on oh_01 / oh_02): "recipe A is as good as it has to get". Recipe A =
+  gnm_fold's crisp fold at the picture's fold height, identity only, brows held (oh_T1 / oh_T2 kind; "## overhang").
+  That is the target for the upper lid's form; stop chasing the thin dark line / overhang (in GNM an overhang IS hooding:
+  brow down 4-5 mm). Recipe B (overhang) / gnm_fold.hood_direction are only for genuinely hooded or deep-set eyes.
+- COORDINATOR HANDOVER (2026-10-11, end of session; nothing running, main pushed): merged today: gnmcrease, gnmbrow
+  (brow_read), gnmdrive (manual v4, mm: moves), eyeruler (eye_ruler), faceruler (face_ruler), eyelid, orbit (27 measures,
+  mm:eyes_forward = the eye unit, blockin_lid in the eye step, identity only), overhang (gnm_fold). NEXT, in order:
+  (1) hook recipe A into the eye step (gnm_fold.fold as the shape term or an option beside blockin_lid; "Hook-up" in
+  "## overhang"; brows held 0.3 mm; tests; eye_ruler / brow_read re-read after it). (2) Rerun the driving gate: orbit's
+  new holds changed the 21 older mm: moves (cos 0.57-0.99), the 11/14 was earned with the old ones; fix
+  gnm_driving_manual.md's eyes_forward / subnasale_forward text. (3) Eye depth is NOT readable from Tess's pictures
+  (+-3 mm; the profile camera's yaw): Joe to decide between a true 90 deg profile / a short sweep video and accepting
+  +1.7 mm (all views) as a flagged guess. (4) Then the HOLD lifts: a fresh Tess block-in from her photos with only the
+  new tools (face_ruler first, orbit, eye_ruler, recipe A, brow_read), result beside the photo; then Garrett (needs a
+  closer picture of his eyes: 5 px iris), lt19, jw (start blend by measurement). Open, undecided: "hooding" as a named
+  block-in control (coordinator: yes); skin._aperture_keep_out fading paint on the lid; her lid platform darker than
+  the skin above (skin thread).
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
