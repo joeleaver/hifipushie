@@ -3677,3 +3677,49 @@ NEXT: the frontier (overhang / turn vs |dc| vs what else moves), renders, a reus
   |dc| 15-18 whatever the prior weight (lam 1 .. 0.03: the HOLD is what resists, not the prior): the overhang is lost,
   what is left is a clean sharp fold: turn 65 deg at 4.2 mm over the margin, platform 0.9 mm off the ball (same
   reader: #376 43 deg at 3.2 mm, #540 48 at 2.6, el_a6 34 at 5.8, er_s4 19, GNM mean 17).
+
+### Step 3: the overhang is ONE direction, and it is the brow coming down (folddir.py, freedom2.py)
+- hang(c) = v[ring ka] - v[ring ka+2] (mean over the lid's middle, both eyes) is linear in c, so "what folded heads have in
+  common" is exactly one gradient g per ring pair (margins held). For rings 5 -> 7: |g| 0.61 mm per unit |c| (2.7 sd
+  from the template's 1.64 mm spacing to zero); 87 % of g^2 sits in comps 0-40 (top: 4, 5, 28, 8, 2, 20, 25, 18). The
+  pairs' directions are nearly one (cos 0.93-0.97 between neighbours).
+- Its correlations under N(0, I): with the BROW's height over the margin -0.95; with the crease's height -0.56; with the
+  drape standing forward of the crease +0.64. One unit along g: overhang +0.61 mm, brow -2.4 mm, crease -0.58 mm,
+  gnm_mm: brows_over_eyes -2.4, eyes_forward -1.8 (deeper set), skull_back +1.8, subnasale_forward +1.3.
+  So in GNM an "overhang" is HOODING: the whole brow / drape sheet descends over a deeper-set eye. That is why sharp
+  folds are only low ones (the same direction lowers the crease) and why no fine "fold" component exists.
+- #376 sits at z +1.0 along it, #540 +1.3 (5 -> 7) / +2.1 (6 -> 8); Tess (er_s4) -0.1, el_a6 +0.1.
+- THE LID'S OWN FREEDOM, given the rest of the head (posterior sd under the unit prior; mean over the lid's middle;
+  margins at 0.05 mm, every other exterior skin vertex outside upper-lid rings 1..9 known to sig mm):
+  | rest of the head known to | sd of a row's height, rings 5-8 | sd of the 5 -> 7 reversal | sd from an overhang (0 mm / 1 mm) |
+  |---|---|---|---|
+  | nothing (margins only) | 0.45-0.82 mm | 0.31 mm | 5.3 / 8.5 |
+  | 3 mm | 0.15-0.20 | 0.073 | 22 / 36 |
+  | 1 mm | 0.08 | 0.030 | 54 / 88 |
+  | 0.3 mm | 0.03 | 0.010 | 160 / 258 |
+  With the eye's 100 expression comps added at unit prior: 0.59 mm unheld (2.8 / 4.5 sd), 0.09 at 1 mm (18 / 30 sd).
+  THIS is the answer to "the mesh supports it": the TOPOLOGY supports it (rows 0.5 mm apart), the BASIS spans it (step
+  2), but once the brow, orbit and margins are where a person's are, the lid's rows have ~0.08 mm of freedom left.
+  A fold on a given face is not a dial in GNM; it comes with the orbit.
+
+### Step 4: populations (popclass.py; my reader = any ring pair within 5 rings, looser than eyelid's popstat)
+| population | n | overhang > 0.1 mm (mean over the middle) | max | turn p50 / p90 / max | crease >= 4 mm: turn p90 / max |
+|---|---|---|---|---|---|
+| N(0, I) | 900 | 3.6 % | 1.53 mm | 16 / 34 / 102 | 20 / 36 |
+| N(0, 1.3^2 I) | 300 | 10.7 % | 2.90 | 17 / 38 / 98 | 24 / 65 |
+| GNM's sampler, 8 classes (z ~ N(0, I)) | 300 each | 0.0-0.3 % | 0.26 | 14-23 / 19-34 / 35-77 | 16-20 / 19-34 |
+| sampler, all-class blend | 300 | 0.0 % | 0.00 | 18 / 28 / 42 | 17 / 25 |
+| sampler male white, z x 1.5 | 300 | 0.7 % | 0.42 | 19 / 33 / 72 | 20 / 30 |
+- The sampler is trained on 12K REAL coefficient vectors: its heads have FEWER overhangs than N(0, I) (0 % against
+  3.6 %). So the real registrations behind GNM essentially never contained a re-entrant lid: N(0, I)'s overhangs are
+  what independent sampling of comps makes, not people. (Consistent with how GNM was registered: inverse rendering
+  with Laplacian-regularised per-vertex offsets cannot see skin hidden under skin.) No class or blend gives folds more
+  often; most turn: male white / middle_eastern (p50 23), least: asian (14-15). GNM has no age label (sex x 4 groups).
+
+### Step 5: pose (popclass.py bottom; freedom.py)
+- No lid joint, no correctives (step 1). GNM's neutral is an open eye (eyelid notes: margin 2.6 mm over the centre).
+- All 20 data-backed expression prototypes at x1 and x2 on the mean and on #376: overhang 0.00 mm in every one; the
+  turn only falls (#376: 43 deg neutral -> 23 wink, 17 compress_face, 26 squint x2). Brow-lowering classes (squint,
+  disgust, snarl) lower the crease (3.2 -> 2.6-2.9 mm) without tucking it. Confirms eyelid's finding with every class.
+- Identity + expression optimised together (foldopt.py expr=100, face held 1 mm): a 1 mm overhang at 4.7 mm needs
+  |e| 21-26 per eye (the largest prototype is 4.8) with |dc| 7.6: not an expression anyone makes.

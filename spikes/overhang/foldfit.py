@@ -76,7 +76,7 @@ def design(V, ka=5, H=4.7, d=1.0, th=0.9, sp=0.8, kt=10, umax=12.0, taper=3.0):
     return out
 
 
-def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, free_all=False):
+def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, free_all=False, hang=None, inner=3.0):
     """Returns (c1, e1 | None, info). hold: mm for every other exterior skin vertex + the eyeballs (inf: free);
     free_all: no holds at all (the pure projection)."""
     c0 = np.asarray(c0, float)[:170]
@@ -92,14 +92,25 @@ def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, fr
     rhs = At.T @ D0
     hm = np.zeros(len(oh.T), bool)
     if not free_all:
-        hm = (g["groups"]["skin_exterior"] | g["groups"]["eyes"]).copy()
+        ext = g["groups"]["skin_exterior"] | g["groups"]["eyes"]
+        hm = (g["groups"]["skin"] | g["groups"]["eyes"]).copy()      # the skin's inside (socket lining, mouth bag) held too, looser
         hm[ids] = False
         rr = np.minimum(np.abs(oh.t["ring"]), np.abs(oh.t["ring"][MIR]))
-        w = np.where(rr == 0, 1.0 / mh, 1.0 / hold)[hm]
+        w = np.where(rr == 0, 1.0 / mh, np.where(ext, 1.0 / hold, 1.0 / (inner * hold)))[hm]
         Ah = (B[use][:, hm] * w[None, :, None]).reshape(len(use), -1)
         Q = Q + Ah @ Ah.T
     Pr = np.diag(np.r_[np.full(n, lam), np.full(ne, lam_e)])
-    dx = np.linalg.solve(Q + Pr, rhs)
+    if hang is None:
+        dx = np.linalg.solve(Q + Pr, rhs)
+    else:                       # hard rows: the overhang (ring kb's skin d below ring ka's) and the gap in front
+        ka, kb, d, gap = hang
+        R = fo.rows(S, ka, kb)
+        x0 = np.zeros(len(B))
+        x0[:170] = c0
+        A = np.array([R["hang"][use], R["gap"][use]])
+        b = np.array([d - (R["hang0"] + R["hang"] @ x0), gap - (R["gap0"] + R["gap"] @ x0)])
+        K = np.block([[Q + Pr, A.T], [A, np.zeros((2, 2))]])
+        dx = np.linalg.solve(K, np.r_[rhs, b])[:len(use)]
     res = (D0 - At @ dx).reshape(-1, 3) * sig
     c1 = c0.copy()
     c1[:n] += dx[:n]
@@ -109,13 +120,22 @@ def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, fr
         e1[fo.EL[:ne]] = dx[n:]
         e1[fo.ER[:ne]] = dx[n:]
     mv = np.tensordot(dx, B[use][:, hm], 1) if hm.any() else np.zeros((1, 3))
+    worst = {}
+    if hm.any():
+        hid = np.flatnonzero(hm)
+        mvn = np.linalg.norm(mv, axis=1)
+        for nm, m in g["groups"].items():
+            if nm.endswith("_region") or nm in ("ears", "eye_sockets", "eyes", "mouth_sock"):
+                if m[hid].any():
+                    worst[nm] = float(mvn[m[hid]].max())
+        worst = dict(sorted(worst.items(), key=lambda kv: -kv[1])[:5])
     rk = oh.t["ring"][ids]
     rk = np.where(rk == 99, oh.t["ring"][MIR[ids]], rk)
     return c1, e1, {"dc": float(np.linalg.norm(dx[:n])), "c": float(np.linalg.norm(c1)), "e": float(np.linalg.norm(dx[n:])),
                     "res": float(np.sqrt((res ** 2).sum(1).mean())), "res_max": float(np.linalg.norm(res, axis=1).max()),
                     "res_ring": {int(k): float(np.sqrt((res[rk == k] ** 2).sum(1).mean())) for k in np.unique(rk)},
                     "start": float(np.sqrt(((P - V0[ids]) ** 2).sum(1).mean())),
-                    "held_rms": float(np.sqrt((mv ** 2).sum(1).mean())), "held_max": float(np.linalg.norm(mv, axis=1).max())}
+                    "held_rms": float(np.sqrt((mv ** 2).sum(1).mean())), "held_max": float(np.linalg.norm(mv, axis=1).max()), "worst": worst}
 
 
 if __name__ == "__main__":
@@ -139,9 +159,10 @@ if __name__ == "__main__":
           f"|dc| {I['dc']:.1f} |e| {I['e']:.1f} | {oh.fmt(oh.read(oh.verts(c1, e1), ch7))}")
     for hold in [float(x) for x in kw.get("hold", "1000,3,1,0.3").split(",")]:
         for lam in [float(x) for x in kw.get("lam", "1").split(",")]:
-            c1, e1, I = fit(c0, tgt, ne=ne, n=n, hold=hold, lam=lam, lam_e=float(kw.get("lam_e", lam)))
+            hg = (ka, ka + 2, float(kw["hang"]), float(kw.get("gap", 0.6))) if "hang" in kw else None
+            c1, e1, I = fit(c0, tgt, ne=ne, n=n, hold=hold, lam=lam, lam_e=float(kw.get("lam_e", lam)), hang=hg, sig=float(kw.get("sig", 0.1)))
             q = oh.read(oh.verts(c1, e1), ch7)
             print(f"  hold {hold:g} lam {lam:g}: residual {I['res']:.3f} (max {I['res_max']:.2f}) |dc| {I['dc']:5.2f} |c| {I['c']:5.2f} |e| {I['e']:.2f} "
                   f"held rms {I['held_rms']:.2f} max {I['held_max']:.2f} | {oh.fmt(q)}")
-            print("      residual by ring:", " ".join(f"{k}:{v:.2f}" for k, v in I["res_ring"].items()))
+            print("      residual by ring:", " ".join(f"{k}:{v:.2f}" for k, v in I["res_ring"].items()), "| worst held:", " ".join(f"{k} {v:.1f}" for k, v in I["worst"].items()))
             np.savez(os.environ["G"] + f"/out/{tag}_h{hold:g}_l{lam:g}.npz", c=c1, e=e1 if e1 is not None else np.zeros(383))
