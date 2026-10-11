@@ -3377,3 +3377,251 @@ under_chin, pupils, nose and chin length, forehead, brows, eyes height, the skul
 there: neck_width, nose_width, lower_lip_forward, mouth_width, and eyes_forward / subnasale_forward are weak (1.4-1.9x).
 compare() now floors its +- at these (MODEL_ERR) and marks the four NOT READ. Not done: hair ON renders (the mask only
 emulates hair), photos with a known truth.
+
+## eyelid (2026-10-11, "eyelid" agent, branch worktree-agent-a14c4deacc86fbc31; Joe on er_01 / er_02: "We are treating the
+## crease as if it's different from the eyelid but it's not", get the lid's form right as ONE structure. Scratch
+## /mnt/data/hifipushie/eyelid (run.sh / q.sh; scripts in spikes/eyelid); sheets human_renders/el_*)
+STATE / NEXT (eyelid, 2026-10-11, handed over; branch worktree-agent-a14c4deacc86fbc31; no src change, scripts in
+spikes/eyelid; no real model touched): the lid is written down and measured as ONE structure (margin / platform on the
+ball / turn / drape) on GNM's own rings. FOUND: GNM's topology is built for it and fine enough (0.5 mm rows at its crease
+rings); its expression basis does NOT form a fold (identity-only is right); our pipeline does NOT soften the lid (0.04 mm
+at the vertices). A whole-lid linear solve (lidsolve.py) gives Tess #376's construction at her proportions (scratch
+el_a6: turn at the fold 29 -> 35 deg on the stage, the fold casts an edge in clay; margins on the eye ruler; |dc| 4.4).
+NOT REACHED: her thin dark line. It is a re-entrant tuck (skin over skin); GNM has no overhang in any head and its
+largest turn on a tall platform is ~25 deg (raw), where el_a6 already sits. Dressed, before and after are hard to tell
+apart. Sheets human_renders/el_01 (photo | best | before | #376, dressed + clay), el_02 (raw meshes + sections: the
+proof), el_03 (sex x ethnicity class means), el_04 (the orbit: eye depth).
+OPEN, Joe's decisions: (1) the tuck's overhang is a documented GNM gap: a fine layer / paint is his call, nothing was
+added; (2) her eye sits 2-5 mm too deep in the model (never measured at block-in): el_f4 moves the eye unit forward,
+|dc| 12.7: a block-in level change; a better profile camera would settle the amount; (3) the lid skin's tone (her
+platform darker than the skin above, ours the reverse) is dressing, for the skin thread.
+NEXT (restart): measure eyes_forward and brows_over_eyes from the side pictures in the block-in table (orbit.py is the
+overlay; needs a row + a yaw check); pick the start class / blend from the person by MEASUREMENT (step 2c); run the
+whole-lid solve after the eye ruler's margins (lidsolve.py is a spike: make it the eye step's shape term in place of
+the 3-section template if Joe accepts el_a6's kind); seat the eyeball against the lid's rings, not 6 landmarks (step 3).
+
+### Step 1: the upper lid as a structure (anatomy in artist's terms; sources at the end of the section)
+- The upper lid is ONE sheet of skin from the lash line to the brow, lying over the eyeball and then over the orbit's
+  rim. It has two parts with different make, and the "crease" is only the line where they meet:
+  1. THE MARGIN: a flat rim ~2 mm thick. Front edge: the lashes (2-3 rows). Behind it the grey line, then the wet
+     line (meibomian openings) that touches the ball. So the lid has an EDGE with thickness: from the front you see a
+     lit or lash-covered rim, and under it the lid casts a thin shadow on the ball.
+  2. THE TARSAL PLATFORM (pretarsal lid): skin bound tightly to the tarsal plate, a stiff curved plate ~10-12 mm tall
+     (centre), ~1 mm thick, that lies ON the eyeball and has its curvature. Thin skin, no fat: smooth, it shows the
+     ball's roundness (and the corneal bulge moving under it). This is the part that travels when the eye opens.
+  3. THE TUCK: at the top of the tarsus the levator's aponeurosis sends fibres forward into the skin. When the levator
+     pulls (eye open) it draws that line of skin up and BACK into the orbit. The skin there turns in and under.
+  4. THE DRAPE (preseptal / orbital part): above the tuck the skin is loose, lies on the orbital septum and fat, and
+     hangs FORWARD and DOWN over the tuck from the brow. It is fuller and softer than the platform; how much there is
+     (fat, age, brow height) decides how much platform it leaves in view.
+- OPEN EYE: the platform has slid up under the drape. What shows is the lower few mm of it (the "platform show",
+  typically 2-5 mm; the crease on a CLOSED lid is 7-10 mm above the lashes in the lids discussed here, lower where
+  the septum joins the levator lower: the fold is then low, hidden or absent, and the drape reaches the lashes). The
+  crease is the SHADOW LINE OF AN OVERHANG: a convex roll of drape above, a thin dark re-entrant line, a smooth
+  platform below. It is not a groove cut into a surface; nothing "dents".
+- CLOSED EYE: the tuck is released, the skin lies flat; the crease remains only as a faint line.
+- ACROSS THE LID: the fold runs roughly parallel to the lash line over the middle, converges on the margin toward
+  the INNER corner (it ends in or just above the canthus; an epicanthal fold instead covers the corner), and at the
+  OUTER end it runs past the canthus, often with the drape heavier there (lateral hooding). Platform show is
+  commonly greatest over the pupil or a little lateral.
+- What a model must therefore have: a margin with an edge; a platform that follows the BALL (constant small stand-off);
+  a sharp turn at the top of the platform; skin above that leaves the ball and comes forward to the brow. One surface;
+  judged by the turn (tuck) and by what the drape does, not by a valley's depth.
+- Sources: theplasticsfella.com/upper-eyelid-anatomy (tarsus ~10-12 mm, aponeurosis -> skin = crease, septum joining
+  2-5 mm above the tarsus or lower), ncbi.nlm.nih.gov/books/NBK482304 (StatPearls, eyelid anatomy), eyeplastics.com
+  /anatomy/eyelid (grey line, lamellae).
+
+### Step 2: how GNM holds the lid (spikes/eyelid: lidmap.py, rows.py, lidstruct.py / lstruct.py, expr.py, pipe.py)
+- TOPOLOGY. GNM's skin round the eye is closed quad RINGS round the opening (lidmap.topo): ring 0 = the lid margin
+  (skin next to the socket lining, 41 vertices), rings 1..14 out to the brow (45-61 vertices each), rings -1..-5 the
+  lining going in. Row spacing up the pupil column on the mean: 0.77 0.76 0.69 0.53 0.54 0.58 0.68 0.98 1.37 1.85
+  2.25 mm: the mesh is FINEST at rings 3-6 (0.5 mm), where its crease is. The crease is a fixed place in the topology
+  (ring 5-6 on every head looked at): GNM's lid IS built as margin (rings 0-2) / platform (2-5) / crease (5-6) / fold
+  and drape (7-10) / brow (11+). ~0.6 mm rows are enough to carry a tuck; resolution is not the limit.
+- STAND-OFF from GNM's own eyeball (a 14.5 mm sphere, same radius on every identity) by ring, pupil column, RAW mesh:
+  | ring | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|
+  | GNM mean | 1.44 | 2.20 | 2.86 | 3.22 | 3.41 | 3.52 | 3.88 | 4.42 | 5.17 | 6.35 | 8.09 |
+  | #376 | 1.06 | 1.32 | 1.27 | 0.97 | 0.70 | 0.68 | 0.89 | 1.83 | 2.93 | 4.10 | 5.20 |
+  | #540 | 0.97 | 1.75 | 2.45 | 2.63 | 2.60 | 2.52 | 2.95 | 3.55 | 4.72 | 6.33 | 8.16 |
+  | gd_T12 identity | 1.75 | 2.45 | 2.98 | 3.14 | 3.00 | 2.79 | 2.71 | 2.79 | 3.20 | 4.39 | 6.36 |
+  | er_s4 | 1.45 | 1.83 | 1.95 | 1.77 | 1.51 | 1.36 | 1.47 | 1.92 | 2.79 | 4.20 | 6.02 |
+  #376 has the whole structure: a margin roll (1.3), a platform that goes back DOWN onto the ball (0.7, i.e. ~0.7 mm
+  of lid on the ball) over rings 3-6, then one row where the skin leaves the ball (0.89 -> 1.83 -> 2.93: the tuck)
+  and the drape. GNM's MEAN has none of it: the lid is a wedge that leaves the ball at the margin and climbs steadily
+  (1.4 -> 3.5 mm off the ball by ring 5): no platform, no tuck. #540 is a wedge like the mean with a turn at ring 5-6
+  and a strong drape. er_s4 (eyeruler's Tess) is #376's kind, softer: platform 1.4-1.9 mm off the ball, the turn
+  spread over 3 rows.
+- STRUCTURE NUMBERS on the raw mesh (lidstruct.structure, mean of columns u -4 / 0 / +4; tuck = the turn of the
+  surface at the crease ring in degrees, wall = the fold's slope against the ball's surface over 2 rings, drape = how
+  far the skin stands forward 3 mm above the crease, platform = mean stand-off of rings 2..crease):
+  | | crease over margin | platform | tuck | wall | drape | row at crease |
+  |---|---|---|---|---|---|---|
+  | GNM mean | 2.1 | 3.2 | 14 | 29 | 1.7 | 0.66 |
+  | #376 | 3.2 | 0.9 | 34 | 41 | 2.6 | 0.50 |
+  | #540 | 2.5 | 2.5 | 39 | 40 | 2.8 | 0.59 |
+  | gd_T12 identity (no expression) | 6.6 | 2.9 | 17 | 38 | 2.3 | 1.29 |
+  | er_s4 | 4.7 | 1.6 | 17 | 29 | 2.0 | 0.90 |
+  So against #376, eyeruler's Tess lid has HALF THE TUCK (17 vs 34 deg) and a softer wall (29 vs 41): the same finding
+  as "half as crisp", but now as the structure's own number. On the dressed stage mesh (surf.py, finer sampling: turn
+  within +-0.6 mm of the crease): #376 83 deg, #540 68, er_s4 29, gd_T12 38; wall 62 / 71 / 54 / 54 deg.
+- THE EXPRESSION BASIS DOES NOT MAKE A FOLD (expr.py: the sampler's wink_left / surprise prototypes and raw comps dialled
+  on the mean and on #376). Closing (wink t = 0.5 on #376: margin 3.31 -> 0.69 mm): EVERY ring from the margin to the
+  brow moves down together, less with height (ring 0 -2.6, ring 6 -2.1, ring 8 -1.7, ring 10 -1.4 mm): a linear
+  shear of the whole lid-to-brow sheet. The platform's skin length (arc ring 0 -> 6) goes 3.84 (t -0.5, wider open) /
+  4.06 (neutral) / 4.39 (half closed): it barely changes, and the fold (rings 6-8 standing forward of the platform)
+  stays 2.1-2.2 mm at every opening. So in GNM the platform does NOT slide under the drape when the eye opens and the
+  fold does NOT unroll when it closes: the fold is carried along as a fixed relief. A real lid's tuck is a rotation
+  about the globe with skin taken up; a linear expression basis cannot do that and GNM's does not approximate it.
+  Consequences: (1) the open-eye fold is entirely an IDENTITY feature in GNM (its identities are open-eye scans with
+  whatever fold the person had); (2) adding "lid open" expression to a neutral gives no fold, it only lifts the sheet
+  (the old eye steps' |e| 3-5 was standing in for identity, as eyeruler found); (3) a blink on our models will carry
+  the fold down onto the closed lid (a face-shapes issue, for later). IDENTITY-ONLY for the lid's form is right.
+  GNM's neutral is an open eye: mean upper margin 2.6 mm over the ball's centre (opening 8.2 mm), #376 3.3 (9.9).
+- THE PIPELINE DOES NOT SOFTEN THE LID (pipe.py, vertex for vertex, rings 0..10):
+  raw GNM -> base.gnm_head after the body's hook (MakeHuman head x gnm_base 0.5, dimorphism field, eyes x 1.05): after
+  the best similarity (scale 0.988) the lid's vertices differ by 1.03 mm rms (0.64 along the normal). It is the SAME
+  offset field for every identity on this body (#376: 0.636, er_s4: 0.647), and it does not flatten: #376's platform
+  sits closer to the ball after it (0.3-0.4 vs 0.7) and the fold stands further (ring 9: 4.8 vs 4.1 mm).
+  one mesh -> dressed stage mesh (Catmull-Clark + IMLS field, marching cubes at 0.5 mm round the eyes, Taubin,
+  projection; 0.33 mm vertex spacing): GNM's lid vertices lie 0.038 mm rms from the stage surface (per ring -0.08 ..
+  +0.04; the margin ring 0.1-0.2 mm inside). Nothing is smoothed away at the vertices.
+  Eyeball: ours is 12.6 mm (13.9 in GNM units) seated 0.6-0.7 mm lateral and 0.3 mm up of GNM's own 14.5 mm ball; the
+  lid's stand-off from OUR ball at the pupil column is 1.1-1.2 mm at the margin and 0.3-0.7 on the platform: the lid
+  sits on the ball. Not a cause.
+
+### Step 2b: the lid and the ORBIT (coordinator: Joe on gd2_07_s5_04_eyes.png, "has a pretty nice eyelid"; orbitlid.py, orbit.py)
+- s5_04 as a surface (raw mesh, eye frame, rings 0..11 of the upper lid): START A -> TARGET B differ by 5.14 mm rms.
+  A is a deep-set eye under an overhanging brow (eyes_forward -28.1 mm = the eye centres 28 mm behind the nasion; the
+  brow's ring 11 stands 14.3 mm off the ball); B is a prominent eye (-18.0; brow ring 8.5 mm off the ball, pupils 68
+  vs 57 mm apart). B's lid has NO tuck (turn 12 deg, wall 11 deg, drape 0.6 mm, platform 3.9 mm off the ball: the mean's
+  wedge type): what reads "nice" on that clay sheet (the eye is ~30 px there) is the ORBIT: a lid plane open from brow
+  to lashes instead of A's shelf. It is not a fold.
+- How much the orbit measures explain (A + the mm move at B's value, every other measure held; lid vs B rms):
+  A 5.14 | + eyes_forward +10.1: 3.20 (rings 6-11: 5.87 -> 2.74) | + brows_over_eyes +2.2: 5.09 | + pupils_apart +11.1:
+  3.90 (rings 0-5: 3.75 -> 1.13) | eyes_forward + brows: 2.96 | all three: 1.11 | all 23 measures: 0.96 | the
+  driver's r5_04: 1.43. So three orbit measures carry 78 % of the lid's change (95 % of its variance); eyes_forward
+  does the drape / brow side, pupils_apart the margin side. The lid follows the orbit: confirmed for the ORBIT-SCALE
+  form (how far the drape and brow stand over the eye).
+- What the orbit measures do NOT move is the tuck. On Tess (er_s4, raw): eyes_forward +2 / +4 / +6 mm: tuck 17.9 / 17.5
+  / 18.1 deg (as is 17.4), platform stand-off 1.59 -> 1.41 / 1.22 / 1.01, brow ring's stand-off 8.4 -> 7.3 / 6.3 / 5.3,
+  drape 1.95 -> 1.5; brows_over_eyes -3: tuck 21.7, crease 4.7 -> 3.7 mm; +3: 16.9, 5.8 mm. Two separate things: the
+  orbit sets how the sheet hangs between brow and ball, identity detail sets the turn at the top of the platform.
+- TESS'S ORBIT WAS NEVER MATCHED IN DEPTH. Her block-in table (gd_T12/blockin_rows.json) has no sagittal eye measure at
+  all (rows on the eyes: eye_opening, eye_width, eye_aspect, canthal_tilt, brow_eye, brow_arch, brow_tilt; the profile
+  rows are nose / lips / chin); gnm_mm's eyes_forward came later (gnmdrive) and was never run on her. brow_eye was
+  recorded out of tolerance at the time (front 13.95 photo vs 10.68, 3/4 13.4 vs 11.9; gnmbrow later found the brow
+  LANDMARKS fine and the hair decal low).
+  Her side pictures through their fitted cameras (orbit.py: the model's corneal apex, lid section and profile drawn on
+  the picture, out/orbit_er_s4_{1,2}.png): PROFILE: the model's corneal apex and upper lid margin lie ~5 mm (65-75
+  picture px x4 at 0.304 mm/px) BEHIND hers, with the forehead / nasal bridge profile on hers. 3/4: the model's iris
+  plane lies ~1.3 mm (in the picture) deeper than hers = ~2 mm of depth. The profile camera's yaw is not known to
+  better than a few degrees (5 mm = 10 deg of yaw at the eye's 30 mm from the midline), so: her eye is LESS deep-set
+  than the model's by 2-5 mm (model: apex 10.9 mm behind the nasion). eyes_forward's population sd is 4.0 mm.
+- The same thing shows in the front picture's light (prof.py, below): her skin from the fold up to the brow is as
+  bright as her brightest skin (0.98); ours is a dark band (0.80): a hollow under the brow that she does not have.
+
+### Step 2c: sex x ethnicity classes as lid / orbit types (coordinator: Joe, "I'm sure race makes a big difference too";
+### lstruct.py CLS=1; the sampler's class means at z = 0, raw mesh, left eye; mm; neutral description of GNM's classes)
+| class mean | crease over margin | platform stand-off | tuck deg | wall deg | drape | inner third: turn height | eyes_forward | brows_over_eyes | pupils apart |
+|---|---|---|---|---|---|---|---|---|---|
+| GNM template (c = 0) | 2.1 | 3.2 | 14 | 29 | 1.7 | 2.9 | -18.8 | 19.0 | 61.7 |
+| female middle_eastern | 2.4 | 3.1 | 23 | 29 | 1.8 | 3.0 | -19.1 | 18.5 | 61.0 |
+| female asian | 3.0 | 3.5 | 8 | 21 | 1.1 | 8.1 | -14.2 | 19.8 | 61.2 |
+| female white | 2.2 | 3.1 | 24 | 30 | 1.8 | 3.0 | -20.0 | 17.8 | 60.2 |
+| female black | 3.0 | 3.1 | 18 | 24 | 1.4 | 3.3 | -17.6 | 20.6 | 63.8 |
+| male middle_eastern | 1.7 | 3.4 | 18 | 40 | 2.5 | 2.6 | -21.8 | 15.9 | 63.1 |
+| male asian | 3.9 | 4.6 | 7 | 26 | 1.3 | 6.6 | -16.7 | 17.9 | 64.3 |
+| male white | 1.2 | 3.7 | 4 | 42 | 2.6 | 2.3 | -23.1 | 15.0 | 62.5 |
+| male black | 2.5 | 3.3 | 22 | 33 | 2.0 | 3.0 | -19.6 | 18.1 | 64.8 |
+- Read (class MEANS are averages: every one is the smooth wedge type, platform 3.1-4.6 mm off the ball; no class
+  mean has #376's platform-on-the-ball; individuals carry the tuck): the classes differ mainly in the ORBIT. asian
+  (both sexes): the shallowest orbit (eyes 14-17 mm behind the nasion: a low bridge), the least turn anywhere on the
+  lid (7-8 deg), no turn at the inner third until 6.6-8 mm up (a smooth sheet into the inner corner: the single-lid /
+  epicanthal type), small drape. white and middle_eastern: deeper orbits (-19 to -23), lower brows in men (15-16 mm
+  over the eyes): female means have a low fold with a 23-24 deg turn, the male white mean a deep-set eye under a low
+  brow with the fold at 1.2 mm (hooded: wall 42 deg right over the lashes). black: the highest brows over the eyes
+  (18-21 mm), widest-set, turn 18-22 deg. Sex inside a class: men 2-3.5 mm deeper-set, brows 2-3 mm lower, more drape.
+  None of the classes reaches an overhang (hang 0.00 everywhere in GNM: its fold is at most a ~60 deg wall).
+- Where the comparison heads sit (least-squares weights of c - all-class mean on sex + 4 ethnicity directions; the
+  cosines to every direction are small, |cos| <= 0.3: N(0, I) samples are mostly individual, not class):
+  #376 sex 0.66, white 0.44 / black 0.30 / asian 0.20 / me -0.03; #540 sex 0.16, me 0.82 / asian 0.79 / white 0.26;
+  s5_04 B sex 0.30, asian 0.39, white -0.22, black -0.21 (B's smooth lid + shallow orbit is the asian mean's type);
+  GNM's template itself: asian 0.54, me 0.26, black 0.23, white 0.19 (cos to asian +0.29).
+- TESS'S LINEAGE: gd_T12 <- b2_T02 <- bi_T01 <- f6_A23, i.e. the block-in started from faces6's fitted head, NOT
+  from a sampler class (block_in_start's sex / ethnicity class start came later). Her identity reads asian 0.50,
+  me 0.19-0.27, white 0.16 (gd_T12) / 0.42 (er_s4), black 0.24-0.36; cos to the white direction -0.03 / +0.05, to
+  asian +0.28 / +0.18: on these directions she sits where GNM's template sits, not at "white".
+
+- GUIDANCE FOR THE RESTART (classes): choose the start class or blend from the person FIRST, because the orbit type
+  (eye depth, brow height over the eye, how the sheet runs into the inner corner) comes with it and is expensive to
+  change later (eye depth: |dc| 12.7 for 3 mm on Tess with the profile held). But choose it by MEASUREMENT (pupils apart,
+  eyes_forward from a side picture, brows_over_eyes, the inner corner's type), not by label: Tess is a white woman and
+  the white direction moves her orbit the WRONG way (mmmove.py eth=white:0.8, others 0: |dc| 3.0, eyes_forward -17.4 ->
+  -20.7 mm, brows 19.0 -> 17.4, where her side pictures say her eye is LESS deep-set than the model; it does add the
+  class's turn at the fold: 17 -> 23 deg). The sampler has four classes (middle_eastern, asian, white, black) and no
+  Latina / South Asian / mixed class: such a person needs a blend found from her own measures (the weights are
+  continuous), and any individual may sit far from her label's mean (#376, #540, s5_04's heads all have |cos| < 0.2 to
+  every class direction).
+
+### Step 3: Tess's lid as one structure (lidsolve.py; scratch models el_*; surf.py / prof.py / poke.py; sheets el_01..04)
+- THE SOLVE (lidsolve.py <src> <donor> <dst>): target = the donor's lid vertices (#376, rings 1..8, upper half, both
+  eyes by mirror) re-proportioned on GNM's rings: each keeps its stand-off from the ball and its place across the lid;
+  its height over the margin is stretched below the donor's crease so the crease lands on the eye ruler's fold line
+  (4.5-5.5 mm per column) and shifted above it. Ring 0 (both lids) held at 0.05 mm, every other skin vertex and the
+  eyeballs at `hold` mm, a miss ALONG the surface weighted 0.25 (a vertex sliding in the skin is not a shape error).
+  V is linear in c: one normal-equations solve, three rounds for the normals; seconds. No expression.
+- WHAT IT REACHES (raw mesh, lidstruct; er_s4 = before): hold 0.3: |dc| 2.4, normal miss 0.29 mm; hold 1: |dc| 5.0,
+  0.23; hold 3: |dc| 8.2, 0.19. The miss sits at ring 7, the first row of the fold (0.33-0.45 mm at every hold): the turn
+  itself is what GNM resists. Structure: platform stand-off 1.59 -> 1.06 (#376 0.92), roll 0.41 -> 0.59 (0.56), wall
+  29 -> 42 deg (41), drape 1.95 -> 2.76 (2.62), TUCK 17 -> 24-25 deg (#376 34) and no further: 22-25 deg at every hold,
+  with tw 0.6, and with a sharpened target (sharp=0.8: 22). On the stage mesh: turn 29 -> 35-38 deg (#376 83).
+- GNM'S CEILING (popstat.py, 2000 identities ~ N(0, I), raw): tuck p50 12 / p90 25 / p99 40 deg; by the fold's height:
+  2-3 mm: p90 28, max 48; 4-5 mm: p90 21, max 31; 5-7 mm (her height in raw mm): p90 17, MAX 24.8; a platform lying on
+  the ball (stand-off < 1.2 mm): 0.1 % (#376 and all our Tess lids are outside the prior there); any overhang > 0.1 mm:
+  0.35 %, max 0.56 mm. corr(tuck, platform stand-off) -0.55. el_a6: tuck 25.3 at 5.9 mm = the population's maximum for
+  that height. So what GNM lacks for her lid, exactly: (a) a RE-ENTRANT tuck (the fold's skin coming back down over the
+  platform: none in the model at any height), (b) a turn sharper than ~25 deg (raw; ~35-38 on the stage) on a platform
+  taller than ~5 mm. Not resolution: the rows at the fold are 0.5-0.9 mm; a 1 mm re-entrant slit would need ~3 rows
+  folded back, which the mesh has, but no identity component moves them that way.
+- THE EYEBALL CAN COME THROUGH A LID THAT LIES ON IT (el_f3: a brown patch over the lid = the ball showing through).
+  base.gnm_head seats the ball against the 6 lid LANDMARKS (EYE_SEAT 0.8 mm), not against the lid's surface, and our
+  ball (12.6) is not GNM's (14.5): a platform at #376's stand-off touches it. lidsolve clear=<mm> lifts the designed
+  platform (el_a6: 0.4, el_f4: 0.7: no patch). For all humans: seat the ball against lid rings 0-6 (or check them);
+  not changed here (it moves every model's eyes: base.VERSION, after the hold).
+- RESULTS (dressed stage through the front picture's fitted camera; clay under one hard light 39 deg above the front;
+  prof.py = luminance up 5 columns from the lash line, both eyes; "line" = the narrow dip's contrast, "above" = the
+  skin 1-3.5 mm above the fold over the lit skin level):
+  | | stage: fold over margin / turn / wall | dressed: line / above / profile rms vs photo | clay: edge / above |
+  |---|---|---|---|
+  | her picture | 4.7 mm line | 0.19 / 0.98 / 0 | |
+  | #376 | 2.5 / 83 / 62 | 0.11 / 0.61 / 0.33 | 0.26 / 0.52 |
+  | #540 | 2.3 / 68 / 71 | 0.13 / 0.74 / 0.36 | 0.14 / 0.46 |
+  | er_s4 (er_R0, before) | 3.7 / 29 / 54 | 0.03 / 0.81 / 0.171 | 0.12 / 0.44 |
+  | el_a2 (hold 1) | 4.4 / 38 / 61 | 0.04 / 0.79 / 0.180 | 0.18 / 0.31 |
+  | el_a6 (hold 1, clear 0.4) BEST | 4.4 / 35 / 60 | 0.045 / 0.79 / 0.179 | 0.19 / 0.32 |
+  | el_f4 (a6's kind + eye unit 3 mm forward) | 4.2 / 31 / 52 | 0.04 / 0.84 / 0.168 | 0.13 / 0.53 |
+  el_a6 on the eye ruler: every margin / corner row within the reader's error (upper margin at the pupil 2.38 vs 2.10,
+  iris hidden 3.1 vs 3.4, inner canthus -12.4 vs -13.25: as er_s4); the 23 mm measures within 0.23 mm (rms 0.13).
+  (el_f3's dressed "line 0.11" was the eyeball's patch, not a fold: the reader cannot tell; look at the tile.)
+- BLUNT READ (el_01): the FORM is now #376's kind at her proportions (el_02's sections: platform on the ball to ~5 mm,
+  one turn, the drape) and in clay under a hard light the fold casts an edge where er_s4 had a soft hollow. DRESSED,
+  under her picture's soft frontal light, before and best are hard to tell apart: a pale lit fold edge, no dark line;
+  the luminance profile is no nearer her picture (0.171 -> 0.179). Her line stays out of reach of GNM's geometry (above).
+  Two things in her picture that are not the fold: her platform is DARKER than the skin above it (0.82 vs 0.98) while
+  ours is the brightest skin on the lid (0.97) over a darker band (0.79); and she has no hollow under the brow.
+- THE ORBIT VARIANT (el_f4; lidsolve fwd=3: balls, margins and the designed lid 3 raw mm forward, forehead / nose /
+  mid-brow held at 0.25 mm): apex 10.9 -> 8.0 mm behind the nasion; |dc| 12.7, held skin moved 0.82 mm rms (max 3.4),
+  measures dragged: lower_lip_forward +1.1, skull_width +0.75, cheekbone_width -0.6, mouth_width -0.55 mm. The hollow
+  fills (clay "above" 0.32 -> 0.53, dressed 0.79 -> 0.84; hers 0.98), the turn softens (35 -> 31). gnm_mm's
+  mm:eyes_forward is NOT this move: it holds the measure's other end by moving the NASION back (el_o3: the profile
+  line left her picture's bridge by ~3 mm, the eye stayed where it was in the picture): for a person whose profile is
+  already fitted, eye depth must be moved with the profile vertices held.
+- Scripts (spikes/eyelid): lidmap.py (rings, columns, stage mesh + alignment), lidstruct.py / lstruct.py (structure
+  on the raw mesh, class table), rows.py, expr.py, pipe.py, surf.py (stage mesh height map + column numbers), poke.py,
+  prof.py (luminance columns), orbit.py (model on a side picture), orbitlid.py, mmmove.py, mmdiff.py, popstat.py,
+  lidsolve.py, shotc.py (dressed + clay shots), rawview.py (el_02 / el_03), sheet.py (el_01 / el_04), tile.py.
+  Scratch /mnt/data/hifipushie/eyelid: run.sh, runm.sh (+ matplotlib), q.sh; out/ (shots s_ / k_ / r_, surf_*.npz,
+  surf.json, prof.json, popstat.npz, lidsolve_*.npz, orbit_*.png, sheet notes). Scratch models el_a1..a6, el_o3 / o3a /
+  o3b, el_f3 / f4, el_w1 / w2 (workspace; delete freely). Light note: a clay light 64 deg up puts the whole lid in the
+  brow's shadow; 39 deg works.
