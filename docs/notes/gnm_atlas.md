@@ -2387,3 +2387,27 @@ eye_radius by the picture's limbus + rerun the eye step on a scratch copy, iris 
   and did not chase it.) Also: MediaPipe's iris points under-read the limbus by 6 % on the photo and 19 % on our renders
   (70 px vs 86.6): never compare photo and render in detector-iris units.
 - Camera pitch: the fitted front camera is within 1 deg of level: not a cause.
+
+### Step 2: the fixes (code) and the scratch models
+- IRIS (src/hifipushie/blockin_eyes.py): limbus(img, P) reads the iris by its edge (lateral sectors, steepest dark ->
+  light step); photo_evidence scales up / lo / tps by detector radius / limbus radius ("iris_k": Tess 0.94: lids 0.67 /
+  0.88 -> 0.63 / 0.83 true iris radii); iris_check(name) = the picture's limbus in mm at the model vs the drawn iris, the
+  eye_radius that makes them equal, the picture's iris colour; the eye step's report carries that line.
+  Tess: 10.7 mm hers vs 12.7 drawn (1.18 x) -> block-in key eye_radius 0.01013 (x eyes 1.05 = 10.64 mm ball).
+  NOTE for the restart: "eye_radius 0.012 for every adult" (blockin2) assumes an adult-size head; Tess's body's head is
+  0.909 scale (pupil distance 53 mm), so the absolute ball is 18 % big for it. Use iris_check after block_in_start.
+- Scratch models: gb_T12r = gd_T12 + eye_radius 0.01013 (block-in step; table unchanged 7/7 5/5 3/3 4/4 7/7);
+  gb_T12e = the eye step on it (s376 make at the picture's line 4.4 / 4.3 / 4.6 mm over the margin at the smaller iris):
+  section rms 1.11 -> 0.18 mm, lids 0.64 / 0.84 (picture 0.63 / 0.83), |dc| 4.72, |e| 3.46, socket within 0.13 sd.
+- BROWS (src/hifipushie/blockin_brows.py, new): band() = the picture's hair band per brow at 9 columns (lower edge /
+  core / top at half contrast; reads a render through the same camera at the photo's own columns); model_band() = the
+  skin's decal (decal() = skin_features' placement, tested equal to images.frame) carried onto the head's vertices and
+  through the fitted camera; fit() = least squares over drop, tilt, apart, fall, thickness, taper ("lift" folded in);
+  apply() writes skin.hair.brows; check() = a WARNING line past 1.5 mm. Calibrated on a dressed fitted-camera render
+  (bcal.py): the rendered band's half-contrast edge is 0.75 x the decal's nominal half thickness (EDGE), and reads
+  0.6-0.9 mm above the spine in the inner half (hairs grow up: GROW).
+  Tess (gb_T12e -> gb_T12b): before: lower edge 3.7 mm rms low, middle line 4.3; fitted: drop -1.9 mm (UP), tilt 4.25,
+  apart 7.2 mm (her brow heads are 24 mm apart, ours were 12), fall 0.89, thickness 1.11, taper 0.25 -> predicted lower
+  edge 0.4 mm rms, middle 0.5 mm.
+- Tests: tests/test_blockin_brows.py (limbus on a drawn eye, band on a drawn brow + the crop / scale path, decal ==
+  the skin's placement, model_band on a wall, fit and iris_check on fs_ge3).
