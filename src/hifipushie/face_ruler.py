@@ -291,6 +291,11 @@ def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
             continue
         if not (edge < qp[0] < W - edge and edge < qp[1] < H - edge):
             continue
+        if mask_pic is not None:      # the same SIDE of the figure: inside the picture's mask just inside the outline,
+            qa = np.clip(np.round(qp - 3.0 * N[k]).astype(int), 0, [W - 1, H - 1])     # outside it just outside
+            qb = np.clip(np.round(qp + 3.0 * N[k]).astype(int), 0, [W - 1, H - 1])
+            if not mask_pic[qa[1], qa[0]] or mask_pic[qb[1], qb[0]]:
+                continue             # (a jaw's underside matched to the far side of the neck, a nose to a cheek)
         if trust is not None:
             ok = True
             for back in (3.0, 6.0):       # skin just inside the picture's outline, twice
@@ -496,6 +501,8 @@ def observe(head: dict, views: list, outline: bool = True, colour: bool = True) 
             if view.get("hair"):
                 hv = hair_vertices(head)
                 oo = [ob for ob in oo if not hv[ob["v"]]]
+            if view.get("face_only") and "face" in head:      # a photo: the neck and shoulders are a pose, not the head
+                oo = [ob for ob in oo if head["face"][ob["v"]]]
             obs += oo
         if colour and view.get("style", "clay") == "clay" and view.get("colour", True):
             obs += _colour_obs(head, view, im_m, view["img"])
@@ -621,6 +628,8 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         done = done + out["dc"]
         if free:                     # the fitted cameras are refined too: the next round reads through the moved ones
             th = np.asarray(out["cam"], float).reshape(len(views), 4)
+            lim = 2.5 * np.asarray(kw["cam_sd"], float)       # a camera never leaves 2.5 sd of where it was fitted
+            th = np.clip(cam_done + th, -lim, lim) - cam_done
             cam_done += th
             for v, (dx, dy, sc, roll) in zip(views, th):
                 c = dict(v["cam"])
@@ -674,7 +683,7 @@ def _proj_jac_pt(cam, X, Bx):
     return np.stack([du, dv]), float(Xc[2] / f * 1000.0)
 
 
-def model_head(spec: dict, c=None) -> dict:
+def model_head(spec: dict, c=None, kappa=None) -> dict:
     """A block-in model (the one human mesh, GNM's head on it) as the ruler's model: the whole mesh for the picture's
     mask, the head's vertices with their move per GNM identity comp (as humanfit._silhouette: the head's carry and the
     stitch's fade), the measures of its GNM identity (gnm_mm, GNM's own mm). c: another identity (170) on the same model."""
@@ -698,7 +707,12 @@ def model_head(spec: dict, c=None) -> dict:
         T, gr, sp = gg["sp"]["T"], gg["gr"], gg["sp"]
         Lt = sp["WL"] @ T
         ycut = 0.5 * (Lt[1, 1] + Lt[15, 1])
-        _C["mh"] = {"IB": np.asarray(g["vertex_identity_basis"])[comps].astype(np.float32),
+        from . import humanmacro as hm
+        face = gr["hockey_mask"].copy()
+        face[np.asarray(hm.space()["sets"]["under_chin"], int)] = True
+        IBh = np.asarray(g["vertex_identity_basis"])[comps].astype(np.float32)
+        _C["mh"] = {"face": face, "LB": np.einsum("lv,kvc->klc", sp["WL"], IBh.astype(np.float64)),
+                    "IB": IBh,
                     "JB": np.array([g["joint_identity_basis"][i][2:4] for i in comps], float),
                     "hair": (~gr["hockey_mask"]) & (~gr["ears"]) & (T[:, 1] > ycut - 0.005)}
     mh = _C["mh"]
@@ -706,7 +720,23 @@ def model_head(spec: dict, c=None) -> dict:
     idx = np.where(hv)[0]
     jm = mh["JB"].mean(1, keepdims=True)
     B = np.zeros((170, len(P), 3), np.float32)
-    B[:, idx] = (sc * (mh["IB"][:, gid[idx]].astype(np.float64) - jm) @ R.T * fade[gid[idx]][None, :, None]).astype(np.float32)
+    Bh = sc * (mh["IB"][:, gid[idx]].astype(np.float64) - jm) @ R.T * fade[gid[idx]][None, :, None]
+    # How much of GNM's own move the model's head really makes (the one mesh blends, stitches and re-seats the head):
+    # measured once per model on one fixed identity step, as the slope of the head's real vertex moves on the basis'
+    # (0.85-0.89 on the gk_s models; TRIED and wrong: taking each comp's uniform scaling out, "the head's size comes
+    # from the body": the outline's residual tripled).
+    if kappa is None:
+        dlt = 1.2 * np.sin(1.7 * np.arange(170) + 0.3) / np.sqrt(85.0) * np.sqrt(170.0) / 6.0
+        sp2 = copy.deepcopy(spec)
+        bi.set_identity(sp2, bi.identity(spec) + dlt)
+        P2 = np.asarray(humanfit.state(sp2["base"])["tpl"]["P"], float)
+        a_, b_ = (P2[idx] - P[idx]).ravel(), np.tensordot(dlt, Bh, 1).ravel()
+        kappa = float(a_ @ b_ / max(b_ @ b_, 1e-18))
+        kres = float(np.linalg.norm(a_ - kappa * b_) / max(np.linalg.norm(a_), 1e-12))
+    else:
+        kres = None
+    Bh = kappa * Bh
+    B[:, idx] = Bh.astype(np.float32)
     F = np.asarray(mesh["F"])
     cid = bi.identity(spec)
     Vg = _gnm()["sp"]["T"] + np.tensordot(cid, _gnm()["sp"]["IB"], 1)
@@ -715,14 +745,17 @@ def model_head(spec: dict, c=None) -> dict:
     hair[idx] = mh["hair"][gid[idx]]
     # the two eye centres (st L 68, 69) and their bases: paired with GNM's eye joints by side
     g0 = headfit._gnm()
-    eyeB = sc * (mh["JB"] - jm) @ R.T                       # (170, 2, 3)
+    eyeB = kappa * sc * (mh["JB"] - jm) @ R.T               # (170, 2, 3)
     off = sc * (np.asarray(g0["J0"], float)[:2] - np.asarray(g0["J0"], float)[:2].mean(0)) @ R.T
     E = np.asarray(st["L"], float)[68:70]
     order = [int(np.argmin(np.linalg.norm(off - (e - E.mean(0)), axis=1))) for e in E]
-    return {"c": cid, "V": P, "F": F[hv[F].all(1)], "B": B, "bnd": np.zeros(len(P), bool), "mesh": mesh, "L": st["L"],
+    face = np.zeros(len(P), bool)
+    face[idx] = mh["face"][gid[idx]]
+    LB = kappa * sc * (mh["LB"] - jm) @ R.T                  # (170, 68, 3): the 68 landmarks' moves
+    return {"face": face, "LB": LB, "c": cid, "V": P, "F": F[hv[F].all(1)], "B": B, "bnd": np.zeros(len(P), bool), "mesh": mesh, "L": st["L"],
             "Jm": gnm_mm.jacobian()[:len(gnm_mm.NAMES)], "measures": {n: float(r[n]) for n in gnm_mm.NAMES},
             "kind": "model", "hair": hair, "spec": spec, "eye_X": E, "eye_B": [eyeB[:, j] for j in order],
-            "rebuild": lambda c2: model_head(spec, c2)}
+            "kappa": kappa, "kappa_res": kres, "rebuild": lambda c2: model_head(spec, c2, kappa)}
 
 
 def _iris_obs(head, view, eyes_pic):
@@ -746,6 +779,24 @@ def _iris_obs(head, view, eyes_pic):
 # arms2.py): a camera fitted by laying the MODEL's landmarks on the picture's is off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg
 # rms when the model is a regional transplant away from the person (the scale up to 9 %: a broader jaw reads as "closer").
 CAM_SD = (2.0, 2.0, 5.0, 1.2)
+PHOTO_CAM_SD = (1.5, 1.5, 2.5, 0.8)   # a block-in's cameras were fitted to THIS model and are anchored by its landmarks
+LM_SIG = 1.5                          # mm: a clicked / detected landmark as an anchor (biased, never the measure)
+
+
+def _landmark_obs(head, view, points):
+    """The reference's own landmark points ("lmNN": picture px, the ones its camera was fitted with) as weak anchors:
+    without them a partial outline (one cheek, the profile's front) lets the camera slide and scale freely."""
+    out = []
+    for key, p in (points or {}).items():
+        if not (key.startswith("lm") and key[2:].isdigit()) or int(key[2:]) >= 68:
+            continue
+        i = int(key[2:])
+        Jp, mm1 = _proj_jac_pt(view["cam"], np.asarray(head["L"], float)[i], head["LB"][:, i])
+        _, q = _cam_points(view["cam"], np.asarray(head["L"], float)[i][None])
+        for ax in (0, 1):
+            out.append({"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(p[ax] - q[0, ax]) * mm1,
+                        "J": Jp[ax] * mm1, "sig": LM_SIG, "p": list(map(float, q[0])), "q": list(map(float, p))})
+    return out
 
 
 def kind_of(yaw: float) -> str:
@@ -766,7 +817,10 @@ def reference_views(name: str, hair: bool = True) -> tuple:
     for v, cam in zip(rj["views"], rj["cameras"]):
         k = kind_of(v.get("yaw", 0))
         img = Image.open(v["image"]).convert("RGB")
-        view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1]}
+        view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1],
+                "face_only": True}
+        pts = dict(v.get("points") or {})
+        extras = [lambda h, vw, pts=pts: _landmark_obs(h, vw, pts)]
         if v.get("outline"):
             view["outline"] = np.asarray(v["outline"], float)
         else:
@@ -776,21 +830,22 @@ def reference_views(name: str, hair: bool = True) -> tuple:
                 P = bi.detect_view(img, v)
                 mm = likeness._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
                 eyes = er.read(img, P, mm)
-                view["extra"] = lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes)
+                extras.append(lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes))
             except Exception as e:  # noqa: BLE001
                 notes.append(f"{view['name']}: the irises were not read ({e})")
+        view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
         views.append(view)
     return head, views, notes
 
 
-def compare(name: str, rounds: int = 2, cam_sd=CAM_SD, hair: bool = True) -> dict:
+def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD, hair: bool = True) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     head, views, notes = reference_views(name, hair)
     res = read(head, views, rounds=rounds, cam_sd=cam_sd)
     for r in res["gaps"]:
         r["picture"] = r["current"] + r["gap"]
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark")}
     per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
     head_txt = (f"face ruler: {name} against its {len(views)} pictures ({', '.join(f'{k}: {m} reads' for k, m in per.items())}); "
                 "gap = picture - model in GNM's mm; cameras were fitted, so a shift / scale / roll of each picture is left free")
