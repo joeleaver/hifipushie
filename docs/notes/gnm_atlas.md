@@ -2237,3 +2237,12 @@ Next: (1) the skin's age layers calibrated to LINE_CUES (nl_len, marionette, tex
 agecues (photo-like) and set the layers' amounts by age; (2) feed EYE_CUES to the eye step as age targets once the eye
 crease work lands; (3) more people (the downloader is resumable; pick per=... in wfetch.py), and a 2nd photo per person
 at another age (Commons categories) for a longitudinal check; (4) run blockin_age.step on the four restarted models.
+
+## gnmdrive (2026-10-10, "gnmdrive" agent, branch worktree-agent-ab7a5deaee4f6c3b5 from main 33bfc6f; scratch
+## /mnt/data/hifipushie/gnmdrive: run.sh <script> (capped, this worktree's src), scripts/, cases/, hidden/ (B's
+## coefficients: never shown to a driver), out/; sheets human_renders/gd2_*; manual docs/notes/gnm_driving_manual.md)
+
+STATE / NEXT: (1) setting up: pair generator (A, B = A + a regional transplant from a donor), oracle, driver tool.
+
+Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
+A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
