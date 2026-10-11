@@ -670,19 +670,17 @@ def compare(name: str, model_name: str | None = None) -> dict:
     off = {r["measure"] for r in rows if r["off"]}
     moves = []
     if any(k.startswith(("upper margin", "lower margin", "inner canthus", "outer canthus", "opening", "iris hidden", "fissure")) for k in off):
-        moves.append("lid_read(name, match=True): the eye step solves the identity (+ eye-region expression) for these margins and "
-                     "corners in mm")
+        moves.append("lid_read(name, match=True): the eye step solves the identity for these margins and corners in mm, then "
+                     "the lid as one structure (set the ORBIT first: face_ruler's orbit rows)")
     if "iris diameter" in off:
         moves.append(f"skin.eyes.iris_size {ph['iris'] / 1000:.4f} (the drawn iris; keep eye_radius: the lids are shaped on GNM's ball)")
     if "pupils apart" in off:
         moves.append(f'block_in_step {{"mm:pupils_apart": {pd[0] - pd[1]:+.1f}}}')
     if "caruncle showing" in off or not ((spec.get("skin") or {}).get("eyes") or {}).get("caruncle"):
         moves.append("skin.eyes.caruncle 1 (the inner corner's pocket painted wet red: unpainted, the eye reads ~2 mm short at the nose side)")
-    cp = crease_path(ph)
-    if cp and not ((spec.get("skin") or {}).get("eyes") or {}).get("crease"):
-        moves.append("the picture shows a fold LINE (darkness " + f"{ph['crease_dark']:.2f}" + "): once the eye step has put the fold there, "
-                     "skin.eyes.crease {\"amount\": 0.6, \"path\": " + str([[round(a, 1), round(b, 1)] for a, b in cp]) + "} draws it "
-                     "(a thin shadow in the skin: a render of GNM's soft valley shows no line)")
+    # (the picture's fold LINE is not drawn: Joe, 2026-10-11: the skin-over-skin overhang is left alone, no painted fold
+    # line / crease make-up; the eye step puts the lid's TURN on the line's path, that is all. The crease option stays
+    # in the skin code as an unused option; crease_path() still gives the path.)
     if any(k.startswith("brow") for k in off):
         moves.append("brow_read(name, match=True)")
     out = {"rows": rows, "photo": ph, "model": mo, "pd": pd, "moves": moves, "iris_px": px, "mm": mm, "eyes": eyes, "mesh": tru,
