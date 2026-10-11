@@ -399,8 +399,8 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
             q_ = i_ + np.array([sx * 0.0016, 0.0, 0.0002]) - c_       # (the spot sits ON the ball: its nose-side end lies
             q_ = c_ + r_ * q_ / max(float(np.linalg.norm(q_)), 1e-9)   # 2-3 mm behind the lids' corner)
             out[f"skin:eye_caruncle{sd.replace('.', '_')}"] = {
-                "part": part, "color": [0.69, 0.4, 0.36], "opacity": round(min(0.9 * a, 1.0), 3), "roughness": 0.2,
-                "mask": [_sp([q_], [0.0034], soft=0.5)]}
+                "part": part, "color": [0.63, 0.43, 0.39], "opacity": round(min(0.75 * a, 1.0), 3), "roughness": 0.2,
+                "mask": [_sp([q_], [0.003], soft=0.8)]}
     cr = e.get("crease")
     if isinstance(cr, dict) and float(cr.get("amount", 0.6)) > 0 and cr.get("path"):
         # the fold LINE as the skin's own shadow (eyeruler; Joe: darkness the fold's shape does not give comes from the

@@ -333,3 +333,20 @@ def test_crease_shape_templates():
     assert fold[1, 0, 1] < 1.0 and fold[1, -1, 1] > 4.0   # up the lid from the margin
     with pytest.raises(ValueError):
         be.crease_shape("nope")
+
+
+def test_eye_ruler_margins_on_the_mesh():
+    """eyeruler: Reader.margins (the eye step's model side of the ruler): the ring's top / bottom at the ruler's columns
+    in mm from the iris centre, GNM's inner-corner landmark medial of the ring's own end (the canthal pocket), and
+    gnm_mm's held measures as a Jacobian the solve can use."""
+    from hifipushie import blockin_eyes as be, gnm_mm, onemesh
+    b = store.load(REF)["base"]
+    ht = onemesh.head_template(b)
+    m = be.Reader(ht).margins(ht)
+    mid = np.abs(be.RULER_COLS) <= 6
+    assert np.isfinite(m["up"][mid]).all() and np.isfinite(m["lo"][mid]).all()
+    assert (m["up"][mid] > m["lo"][mid]).all() and 3 < (m["up"][3] - m["lo"][3]) < 14
+    assert m["ring_out"][0] > 7 and m["ring_in"][0] < -7
+    assert 0.5 < m["ring_in"][0] - m["inner"][0] < 4.0, (m["ring_in"], m["inner"])   # the pocket: 1.9 mm on GNM's mean
+    assert gnm_mm.jacobian().shape == (len(gnm_mm.HELD), 170)
+    assert be.SIG_MM > 0 and be.LO_BIAS > 0

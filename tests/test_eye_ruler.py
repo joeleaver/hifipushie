@@ -108,6 +108,24 @@ def test_frames_point_outward():
     assert fr[0]["ex"][0] < 0 < fr[1]["ex"][0] and fr[0]["ey"][1] > 0.99
 
 
+
+def test_crease_path_and_picture(tmp_path, monkeypatch):
+    """The fold line as paint: the picture's path from a read, and its alpha picture (a line where the path is)."""
+    from PIL import Image as _I
+    from hifipushie import images, skin_swatch
+    m = {"crease_dark": 0.2, "up": [0, 1.3, 2.0, 2.1, 1.8, 0.9, -0.9], "crease": [5.2, 4.5, 4.5, 4.7, 4.8, 5.0, 5.5]}
+    p = er.crease_path(m)
+    assert len(p) == 7 and abs(p[3][1] - 6.8) < 1e-6 and p[0][0] == -9.0
+    assert er.crease_path({**m, "crease_dark": 0.02}) is None
+    monkeypatch.setattr(images, "store_dir", lambda: tmp_path)
+    f = skin_swatch.crease_image(p, 0.5)
+    a = np.asarray(_I.open(f))[..., 3]
+    ys, xs = np.nonzero(a > 60)
+    # canvas 40 x 30 mm at 32 px / mm, centre (0, 3): the pupil column's line at v ~6.8 -> row 480 - 3.8 * 32
+    col = a[:, 640]
+    assert abs(int(np.argmax(col)) - (480 - 3.8 * 32)) < 8 and xs.min() > 320 and xs.max() < 960
+
+
 if __name__ == "__main__":
     test_read_drawn_eye()
     test_limbus_circle_under_a_lid()
