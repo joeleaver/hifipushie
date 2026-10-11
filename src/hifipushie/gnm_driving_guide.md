@@ -4,8 +4,10 @@ A face that differs from the picture differs in a few big masses and many small 
 see, said the way an artist says it, into the GNM control that fixes it: sign, rough size per step, what to hold, and
 what the move drags along. It was built and tested on a driving test ("gnmdrive", 2026-10-10: synthetic GNM pairs,
 drivers who saw only clay renders, an oracle that knew the least-cost answer). On 14 pairs driven by two fresh groups,
-drivers WITHOUT the manual passed 3 / 14, WITH it (v1) 7 / 14; on 14 more pairs 3 / 14 vs (v2) 6 / 14: 6 / 28 vs 13 /
-28 pooled. Method, numbers and dead ends: docs/notes/gnm_atlas.md "## gnmdrive".
+drivers WITHOUT the manual passed 3 / 14, WITH it (v1) 7 / 14; on 14 more pairs 3 / 14 vs (v2) 6 / 14; on 14 fresh
+pairs v3 6 / 14: 8 / 42 without, 19 / 42 with. The phrase tables have a ceiling (their best 10 moves pass 27 / 42);
+the millimetre measures of section 0a reach further (v4): start there. Method, numbers and dead ends:
+docs/notes/gnm_atlas.md "## gnmdrive".
 
 Moves are block-in moves (`block_in_step`): `<macro>` FREE (the population's conditional mean; head size kept;
 neighbours come along), `<macro>!` HELD (that measure alone, every other macro held), `pc:<GNM region><k>` (GNM's own
@@ -43,6 +45,47 @@ entries below; `block_in_step(seen="...")` puts them in its reply.
 - **Uniform 1 mm offsets whose direction flips between crops are framing, not shape** (each crop is framed on its own
   feature): leave them.
 
+## 0a. Drive in millimetres first (v4: the 23 measures)
+
+Tested (gnmdrive2, 42 synthetic pairs): closing the 8 LARGEST of these 23 gaps passes 30 / 42 pairs, the 4 largest
+25 / 42, all 23 40 / 42; drivers choosing macros / pc: moves from the phrase tables below passed 19 / 42, and the best
+10 moves of that vocabulary (the oracle) 27 / 42. Read with a 1 mm error the 8 largest still pass 26 / 42. So:
+1. **Measure, don't guess.** For each measure below, read the gap between the two heads in the view named (px on the
+   sheet x the mm per px in its title; front widths are TOTALS, left edge to right edge), in mm, target minus yours.
+   With two GNM heads, `gnm_mm.gaps(Va, Vb)` is the ruler (the driving test's `ruler` command).
+2. **Take the largest gaps first, in population sd** (gap / the sd in the table), not in mm: 3 mm of lower lip (sd
+   1.6) outranks 8 mm of neck (sd 12.6).
+3. **Type the gap**: `{"mm:<measure>": gap}`. Each move holds the other 22 in mm, so several mm: moves in one step add
+   up exactly; no put-backs are needed between them.
+4. **Then the phrase tables** (sections 1-7) for what the measures do not describe: lip fullness, cheek fullness and
+   planes, eye openings, the brow's shape, the nose's width at the bridge, ears, jowls.
+
+| You see | Use | Size per +1 | Watch |
+|---|---|---|---|
+| mm measure: irises doubled side by side (overlay), eyes set wider | `mm:pupils_apart` | 1 mm; population sd 3.1 mm | read in front; a 2-3 mm offset looks like "longer eyes" at head scale: check the eyes crop |
+| mm measure: eyeballs stand forward of the nasion in profile | `mm:eyes_forward` | 1 mm; sd 4.0 | |
+| mm measure: eyes sit higher above the nose base, longer mid-face | `mm:eyes_height` | 1 mm; sd 3.5 | irises doubled one above the other |
+| mm measure: brow to eye distance, lid space | `mm:brows_over_eyes` | 1 mm; sd 2.7 | which overlay copy is the target's is hard to tell: compare the two clay rows before you choose the sign |
+| mm measure: forehead ahead of the nasion in profile | `mm:forehead_forward` | 1 mm; sd 3.0 | |
+| mm measure: nose tip out from the nose base | `mm:tip_forward` | 1 mm; sd 2.5 | the bridge is held: a whole nose further out is `pc:nose_region0` |
+| mm measure: nose base forward of the eyes, carries lips and chin (the whole muzzle step) | `mm:subnasale_forward` | 1 mm; sd 3.8 | top of the forward CHAIN: subnasale -> upper lip -> lower lip -> chin, each measured against the one above, so a link carries everything below it |
+| mm measure: upper lip forward of the nose base, carries lower lip and chin | `mm:upper_lip_forward` | 1 mm; sd 2.5 | chain |
+| mm measure: lower lip forward of the upper lip, carries the chin | `mm:lower_lip_forward` | 1 mm; sd 1.6 | chain: the lower lip ALONE +2 = `mm:lower_lip_forward` +2 with `mm:chin_forward` -2 |
+| mm measure: pogonion forward of the lower lip | `mm:chin_forward` | 1 mm; sd 3.5 | bottom of the chain: moves the chin alone |
+| mm measure: mouth lower under the nose, longer upper lip skin | `mm:philtrum_length` | 1 mm; sd 2.1 | |
+| mm measure: chin bottom lower under the lower lip, taller chin | `mm:chin_length` | 1 mm; sd 4.1 | |
+| mm measure: nose base lower under the nasion, longer nose | `mm:nose_length` | 1 mm; sd 3.3 | |
+| mm measure: width across the cheekbones (total) | `mm:cheekbone_width` | 1 mm; sd 8.0 | |
+| mm measure: width of the jaw line at mouth level (total) | `mm:jaw_width` | 1 mm; sd 10.7 | the largest lower-face gap on every heavy / lean jaw pair: 20-35 mm between a lean and a heavy face |
+| mm measure: breadth of the chin (total) | `mm:chin_width` | 1 mm; sd 5.7 | |
+| mm measure: mouth corner to corner (total) | `mm:mouth_width` | 1 mm; sd 4.0 | |
+| mm measure: nose wing to wing (total) | `mm:nose_width` | 1 mm; sd 4.2 | |
+| mm measure: skull width above the ears (total) | `mm:skull_width` | 1 mm; sd 8.2 | the face is held: this is the "vault wider, face the same" move |
+| mm measure: crown height over the nasion | `mm:skull_top` | 1 mm; sd 4.2 | |
+| mm measure: occiput behind the nasion, longer head in profile | `mm:skull_back` | 1 mm; sd 10.3 | |
+| mm measure: neck thickness in front view (total) | `mm:neck_width` | 1 mm; sd 12.6 | cheap and big: last |
+| mm measure: the line under the chin below the chin's bottom (submental fullness) | `mm:under_chin` | 1 mm; sd 4.6 | + = fuller, hangs lower |
+
 ## 1. Size and the skull
 
 | You see | Use | Size per +1 | Watch |
@@ -79,9 +122,9 @@ entries below; `block_in_step(seen="...")` puts them in its reply.
 | The MUZZLE stands forward in profile: nose base, both lips and chin forward TOGETHER (a protrusive profile angle) | `pc:upper_lip_region0` (+) | lips +2.0, subnasale +1.3, chin +1.1 mm; mouth +1.9 mm wider; |dc| 0.8 | right in both signs, every time it was used; +2..+3 for a 4-7 mm gap. Lengthens the face (chin -2.2 mm, face_length +0.6, gonial +0.7 sd per unit) and widens mouth / nose: put back `face_length` or `pc:chin_region0` (-), `mouth_width!` (-) |
 | The LIPS pout ahead of the nose-chin line, the nose and chin staying | `lip_projection!` (+) | lower lip +2.15, upper +1.0, chin -0.9 mm; |dc| 2.8 | free lip_projection pulls the nose tip back 2.2 and the chin back 2.0 mm |
 | Fuller lips (taller red in front) | `lip_fullness` free (pulls the nose tip back 1.9 mm: often welcome) or `lip_fullness!` | | free also drags lip_projection +0.68 (lips and chin ~1.5 mm forward): put the muzzle back with `pc:upper_lip_region0` (-). | `lip_fullness!` adds little in profile and drags face_length +0.7 and the chin bottom 1.9 mm: check the jaw after it |
-| Thinner lips | `lip_fullness` free (-) | | free pushes the nose forward ~1 mm: put back `nose_projection!` - |
+| Thinner lips | `lip_fullness` free (-) | | free pushes the WHOLE nose forward ~1.7 mm per sd, bridge to tip, and carries lips and chin back (lip_projection -0.7 per sd): put the nose back with `pc:nose_region0` (-0.4 per -1.0 of lip_fullness; `nose_projection!` is a trap), and halve the step once the profile is on |
 | Longer upper lip: the mouth sits lower under the same nose | `mm:philtrum_length` (mm) or `philtrum!` (+) | 2.0 mm per sd, very clean | a "doubled lip seam" in the onion skin can be the lip's shape, not its height: philtrum! +1.5 didn't fix one | a 5 mm longer lip is ~2.5 sd: 1.2-1.5 looked like "barely moved". Free philtrum pushes the nose forward |
-| Wider mouth | `mouth_width!` (+) | corners 3.1 mm | free widens the jaw 3.4 |
+| Wider mouth | `mm:mouth_width` (mm, total) or `mouth_width!` (+) | 3.1 mm corner to corner (total) per sd | free widens the jaw 3.4 |
 | Lower lip forward of the upper | `relief:mentolabial_sulcus` (+: lower lip +1.2, upper -0.9 per mm) or `lip_projection!` | | `sculpt:lower_vermilion` shifts the whole profile 1.2 mm per mm: avoid |
 
 ## 4. The nose

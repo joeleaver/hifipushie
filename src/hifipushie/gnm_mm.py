@@ -101,3 +101,67 @@ def direction(name: str) -> np.ndarray:
     b = np.zeros(len(HELD))
     b[i] = 1.0
     return J.T @ np.linalg.solve(J @ J.T + 1e-6 * np.eye(len(J)), b)
+
+
+# What each measure LOOKS like (an artist's phrase for + ; the view to read it in). The driving test (gnmdrive2): closing
+# the 8 largest of these gaps passes 30 / 42 synthetic pairs (all 23: 40 / 42), against 19 / 42 for drivers picking
+# macros / pc: moves from the phrase manual and 27 / 42 for the oracle's 10 best moves from that vocabulary.
+SEE = {
+    "pupils_apart": ("front", "the eyes are set further apart (irises doubled side by side in an overlay)"),
+    "eyes_forward": ("profile", "the eyeballs stand further forward of the nasion (prominent, less deep-set)"),
+    "eyes_height": ("front", "the eyes sit higher above the nose base (a longer mid-face between eyes and nostrils)"),
+    "brows_over_eyes": ("front", "the brows sit higher over the eyes (more lid space)"),
+    "forehead_forward": ("profile", "the forehead stands further forward of the nasion (upright, full; - = sloping)"),
+    "tip_forward": ("profile", "the nose tip projects further from the nose base (subnasale)"),
+    "subnasale_forward": ("profile", "the nose base (and with it lips and chin: the whole muzzle) stands further "
+                                     "forward of the eyes"),
+    "upper_lip_forward": ("profile", "the upper lip (and the lower lip and chin under it) stands further forward of "
+                                     "the nose base"),
+    "lower_lip_forward": ("profile", "the lower lip (and the chin under it) stands further forward of the upper lip"),
+    "chin_forward": ("profile", "the chin's front (pogonion) stands further forward of the lower lip"),
+    "philtrum_length": ("front", "the upper lip is longer: the mouth sits lower under the nose"),
+    "chin_length": ("front", "the chin is taller: its bottom sits lower under the lower lip"),
+    "nose_length": ("front", "the nose is longer: its base sits lower under the nasion"),
+    "cheekbone_width": ("front", "the face is wider at the cheekbones"),
+    "jaw_width": ("front", "the jaw is wider at mouth level (jaw line, landmarks 4-12)"),
+    "chin_width": ("front", "the chin is broader"),
+    "mouth_width": ("front", "the mouth is wider corner to corner (total)"),
+    "nose_width": ("front", "the nose is wider at the wings (total)"),
+    "skull_width": ("front", "the skull is wider above the ears"),
+    "skull_top": ("front", "the vault is taller: the crown sits higher over the nasion"),
+    "skull_back": ("profile", "the back of the skull sits further back (a longer head)"),
+    "neck_width": ("front", "the neck is thicker"),
+    "under_chin": ("profile", "the line under the chin hangs lower below the chin's bottom (full, double chin; - = a "
+                              "clean jaw-to-neck angle)"),
+}
+# the forward measures are a CHAIN (each is taken against the one above it), so a link carries everything below it
+CHAIN = ("subnasale_forward", "upper_lip_forward", "lower_lip_forward", "chin_forward")
+
+
+def sd() -> dict:
+    """Each measure's population sd in mm (GNM's identity prior: comps ~ N(0, 1))."""
+    J = jacobian()
+    return {n: float(np.linalg.norm(J[i])) for i, n in enumerate(NAMES)}
+
+
+def gaps(Va: np.ndarray, Vb: np.ndarray, bias: np.ndarray | None = None) -> list[dict]:
+    """The RULER: every measure on head a (current) and head b (target), GNM-frame vertices (m): b - a in mm and in
+    population sd, largest (in sd) first. `bias` (len NAMES, mm) is added to b's readings (a photo reader's error)."""
+    ra, rb, s = readers(Va), readers(Vb), sd()
+    out = []
+    for i, n in enumerate(NAMES):
+        g = float(rb[n] - ra[n]) + (0.0 if bias is None else float(bias[i]))
+        out.append({"measure": n, "current": float(ra[n]), "gap": g, "sd": g / s[n], "view": SEE[n][0], "see": SEE[n][1]})
+    out.sort(key=lambda r: -abs(r["sd"]))
+    return out
+
+
+def gaps_text(rows: list[dict], top: int = 0, floor: float = 0.0) -> str:
+    """The ruler as text: one line per measure, the move that closes it."""
+    out = ["measure            target - current     move that closes it          what + looks like"]
+    for r in rows[: top or None]:
+        if abs(r["gap"]) < floor:
+            continue
+        mv = '"mm:%s": %+.1f' % (r["measure"], r["gap"])
+        out.append(f"{r['measure']:18s} {r['gap']:+6.1f} mm ({r['sd']:+.1f} sd)   {mv:28s} [{r['view']}] {r['see']}")
+    return "\n".join(out)

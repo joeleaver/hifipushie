@@ -26,7 +26,8 @@ control for what you saw. This is not a search: think, then act.
     /mnt/data/hifipushie/gnmdrive/run.sh drive.py describe <control>
     /mnt/data/hifipushie/gnmdrive/run.sh drive.py vocab
     /mnt/data/hifipushie/gnmdrive/run.sh drive.py macros
-    /mnt/data/hifipushie/gnmdrive/run.sh drive.py manual          (the driving manual, if this run has one)
+    /mnt/data/hifipushie/gnmdrive/run.sh drive.py manual          (the driving manual: read it first)
+    /mnt/data/hifipushie/gnmdrive/run.sh drive.py ruler <case> [trial]   (ONLY if your arm is told it has the ruler)
 Commands print the PNG path(s): look at them with the Read tool. features: head (default) | eyes | brows | nose |
 mouth | chin_jaw | cheeks. Sheets show: CURRENT / TRIAL / TARGET in front, 3/4, profile; raking light; a TRACING
 (red = target's silhouette, green = this head's) and an ONION SKIN (50 % blend with the target: doubled edges show
@@ -41,19 +42,21 @@ lower / wider shows as a shift. `try` also prints which macros your move changed
 - `sculpt:<zone>`: mm, the zone moved along its normal (+ out) by the least-cost identity change with every macro
   held; `relief:<zone>`: against its 5 mm surround (- deepens a groove). Zones: the atlas's zone names.
 - `gnm:<control>`: any identity control of the atlas raw (head_000 .. head_169, ...).
+- `mm:<measure>`: a measure you can see moved by that many mm, every other measure held (see `vocab`).
 - head size: `head_size` (+ = a bigger head overall, in its population sd).
 Typical step 0.3-1.0 sd; a big, obvious difference can take 1.5-2. Several moves may go in one trial if they answer
-ONE named difference (e.g. a held move plus putting back what it dragged).
+ONE named difference (a held move plus putting back what it dragged; or up to 4 `mm:` moves for one mass, e.g. "the
+lower face is shorter and set back": chin_length, lower_lip_forward, chin_forward: mm: moves add up exactly).
 
 ## Method
 1. `show <case>` (head), squint: name the biggest MASS difference first (head shape, face length / width, jaw, chin,
    profile convexity, how far the mouth stands forward, nose mass and angle, how deep the eyes sit, cheek fullness).
 2. Zoom in on that feature (`show <case> <feature>`), name it precisely, choose the control (atlas / macros / vocab /
-   the guide /home/joe/dev/hifipushie/.claude/worktrees/agent-ab7a5deaee4f6c3b5/src/hifipushie/blockin_guide.md /
-   the manual if there is one), `try`, judge zoomed in AND whole face, keep or reject.
+   the driving manual: `drive.py manual`, read it FIRST and look every difference up in it before choosing),
+   `try`, judge zoomed in AND whole face, keep or reject.
 3. Repeat, big to small. Then `done`.
 
-## Report (your final message)
+## Report (your final message; do not message "main": your report comes to the test owner, gnmdrive2)
 Per case: each named difference (your exact phrase), the move(s) tried, kept / rejected, and what you saw after. Then
 a list of phrases where you were unsure which control to use, and phrases that LOOK alike but you suspect need
 different controls. Be honest about what you could not fix.

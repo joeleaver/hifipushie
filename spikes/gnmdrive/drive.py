@@ -182,6 +182,19 @@ if __name__ == "__main__":
     elif cmd == "macros":
         for k, (u, t) in hm.MACROS.items():
             print(f"{k} ({u}): {t}")
+    elif cmd == "ruler":
+        # the RULER (gnmdrive2): the 23 mm measures, target - current (or - the pending trial with `ruler <case> trial`).
+        # The target's readings carry a fixed error per case and measure, N(0, 1 mm): what a photo reader gives
+        # (clay / photo readers drift 1-1.5 mm), so a driver cannot close below ~1 mm with the ruler alone.
+        import zlib
+        from hifipushie import gnm_mm
+        d, st, cB = _load(a[1])
+        cur = st["trial"]["c"] if (len(a) > 2 and a[2] == "trial" and st.get("trial")) else st["c"]
+        pair = a[1].split("_")[1]
+        bias = np.random.default_rng(zlib.crc32(("ruler" + pair).encode())).normal(0, 1.0, len(gnm_mm.NAMES))
+        print(f"ruler {a[1]} ({'TRIAL' if cur is not st['c'] else 'CURRENT'} vs TARGET; the target's readings are good "
+              "to about +-1 mm: do not chase gaps under 1.5 mm with it)")
+        print(gnm_mm.gaps_text(gnm_mm.gaps(drv.verts(cur), drv.verts(cB), bias)))
     elif cmd == "manual":
         print((drv.G / "manual.md").read_text() if (drv.G / "manual.md").exists() else "no manual yet")
     else:

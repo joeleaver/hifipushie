@@ -1877,6 +1877,15 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
     if phrase:
         from . import gnm_manual
         return gnm_manual.text(gnm_manual.suggest(phrase, top=3))
+    if query.strip().lower() in ("mm", "measures", "ruler"):
+        from . import gnm_mm
+        s = gnm_mm.sd()
+        return ("The millimetre measures (block_in_step {\"mm:<measure>\": mm}: that measure alone, the other 22 held "
+                "in mm). Read the gap on the sheet (px x mm per px), type it. Population sd in mm:\n"
+                + "\n".join(f"mm:{n} (sd {s[n]:.1f} mm, read in {gnm_mm.SEE[n][0]}): + = {gnm_mm.SEE[n][1]}"
+                            for n in gnm_mm.NAMES)
+                + "\nThe forward measures " + " -> ".join(gnm_mm.CHAIN) + " are a chain: a link carries everything "
+                  "below it (the lower lip alone +2: lower_lip_forward +2 with chin_forward -2).")
     if zones:
         z = gcm.zones()
         return "\n".join(f"{k}: {d} ({len(z[k])} vertices)" for k, (d, _) in gcm.ZONES.items())
