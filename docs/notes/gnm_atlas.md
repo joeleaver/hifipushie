@@ -4226,3 +4226,16 @@ STATE / NEXT: continue from tn_T07n in small steps (free macros for shape, mm: t
   -2.7. Sheet tn_06, sent. BLUNT: the best fresh head so far (narrower oval, profile lip line closer), about level
   with er_s4, still not a likeness.
 STATE / NEXT: tn_T08n is the unforced from-scratch Tess. NEXT: mm:cheekbone_width ~+2.5 back, then Joe's read.
+- tn_T09n = T08n + mm:cheekbone_width +3.0, mm:mouth_width +1.7 (|c| 11.9; head shape 7/7). tn_T10n = + FREE
+  cheek_fullness +0.4, mm:philtrum_length -1.0 (|c| 12.15): TABLE 24 / 26 (width_nose_base -3.7 vs 3.0, lower_third
+  -2.3 vs 2.0). Sheet tn_07, sent. BLUNT: the table is nearly closed and it is STILL NOT HER: a plausible young woman
+  with her proportions.
+- The later steps UNDID the solved steps: lip_read on tn_T10n: upper border 1.83 mm outside (0.22 after the lips step),
+  lower 0.68; eye_ruler: brow hair's lower edge 1.8 mm high at u -6 / 0, upper lid's peak 1.3 mm lateral.
+- ROWS THAT CANNOT ALL CLOSE: front philtrum + chin_height + lower_third imply her lips are ~4 mm taller than ours
+  (photo 54.1 - 11.7 - 28.5 = 13.9; model 51.5 - 13.1 - 28.7 = 9.7) while the lips step had her borders to 0.2 mm on
+  the same picture: the table's rows disagree among themselves by ~4 mm (to check: detector points on the photo vs
+  mesh landmarks on the model).
+STATE / NEXT (2026-10-11): rounds stopped at tn_T10n for the regroup with Joe on missing tooling (list given to him:
+shape rows for contours, a joint solve instead of sequential rounds, an identity score per round, neutral dressing /
+projected texture for judging, the table's inconsistent rows, a cheaper fold or a start head that has one).
