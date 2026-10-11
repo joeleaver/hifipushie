@@ -128,16 +128,18 @@ def _glyphics(rng, mm: float, fams) -> np.ndarray:
     return out
 
 
-def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0, 3.0), colour=(0.5, 0.36, 0.32)):
+def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0, 3.0), colour=(0.5, 0.36, 0.32),
+                 shade: float = 0.4):
     """A left eye's fold line as an alpha picture (RGBA PNG in the image store): a smooth line through path_mm ([[u, v]]
     mm in the eye's frame: u toward the outer corner, v up, from the iris centre), `width_mm` wide at half depth,
-    fading out over its last 2 mm at each end. The canvas is span mm, centred at `centre` in that frame. Returns the
-    path of the file."""
+    fading out over its last 2 mm at each end; over it a soft band (`shade` x the line's strength, ~2 mm, fading
+    upward): the fold's underside turning away from the light. A line alone reads as drawn on. The canvas is span mm,
+    centred at `centre` in that frame. Returns the path of the file."""
     import hashlib
     from PIL import Image, ImageDraw, ImageFilter
     from . import images
     P = np.asarray(path_mm, float)
-    key = f"{np.round(P, 2).tolist()}_{width_mm:.2f}_{span}_{centre}_{np.round(colour, 3).tolist()}_{VERSION}"
+    key = f"{np.round(P, 2).tolist()}_{width_mm:.2f}_{span}_{centre}_{np.round(colour, 3).tolist()}_{shade:.2f}_{VERSION}"
     out = images.store_dir() / f"crease_{hashlib.sha1(key.encode()).hexdigest()[:12]}.png"
     if not out.exists():
         ppm = 32
@@ -157,6 +159,15 @@ def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0,
                                      width=max(1, int(round(0.6 * width_mm * ppm))))
             a = np.maximum(a, np.asarray(seg, np.float32))
         al = Image.fromarray(a.astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.25 * width_mm * ppm))
+        if shade > 0:   # the soft band over the line: the same stroke 1 mm up, 1.6 mm wide, blurred
+            b = np.zeros((Hp, Wp), np.float32)
+            for i in range(len(u) - 1):
+                seg = Image.new("L", (Wp, Hp), 0)
+                ImageDraw.Draw(seg).line([(X[i], Y[i] - 1.0 * ppm), (X[i + 1], Y[i + 1] - 1.0 * ppm)],
+                                         fill=int(255 * shade * np.clip(d_end[i] / 3.0, 0, 1)), width=int(round(1.6 * ppm)))
+                b = np.maximum(b, np.asarray(seg, np.float32))
+            bl = np.asarray(Image.fromarray(b.astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.6 * ppm)), np.float32)
+            al = Image.fromarray(np.maximum(np.asarray(al, np.float32), bl).astype(np.uint8))
         im = Image.new("RGBA", (Wp, Hp), tuple(int(round(255 * float(x))) for x in colour) + (0,))
         im.putalpha(al)
         im.save(out)

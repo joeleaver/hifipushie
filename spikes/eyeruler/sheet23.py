@@ -22,7 +22,7 @@ Z = 2
 W, H = (C[2] - C[0]) * Z, (C[3] - C[1]) * Z
 HEAD, TAB = 70, 520
 tiles = [("photo", "Tess photo"), ("s376", "GNM sample #376 (Joe: 'reads right')"), ("s540", "GNM sample #540 ('reads right')"),
-         ("fx", "BEFORE: gb_fx"), (bare, "RESULT, the old dressing + caruncle"), (dressed, "RESULT, dressed: fold line, finer lashes, liner")]
+         ("fx", "BEFORE: gb_fx"), (bare, "RESULT, the old dressing + caruncle"), (dressed, "RESULT, dressed: fold line (paint), finer lashes")]
 S = Image.new("RGB", (3 * W, 2 * (H + HEAD) + TAB), "white")
 d = ImageDraw.Draw(S)
 for i, (tag, lab) in enumerate(tiles):
@@ -35,7 +35,7 @@ for i, (tag, lab) in enumerate(tiles):
     if t:
         mt = er.mean(t)
         pl = np.nanmean([q["platform"] for q in t], 0)
-        d.text((x + 10, y + 38), f"mesh: fold {mt['crease'][3]:.1f} mm over the margin (platform shown {pl[3]:.1f}), upper lid hides {mt['cover_up']:.1f} mm of iris; "
+        d.text((x + 10, y + 38), f"mesh: fold {float(np.nanmedian(mt['crease'][1:6])):.1f} mm over the margin (platform shown {float(np.nanmedian(pl[1:6])):.1f}), upper lid hides {mt['cover_up']:.1f} mm of iris; "
                                  f"fold line darkness read on this image {m['crease_dark']:.2f}", fill=(0, 0, 0), font_size=19)
     else:
         d.text((x + 10, y + 38), f"read: fold line {m['crease'][3]:.1f} mm over the margin, upper lid hides {m['cover_up']:.1f} mm of iris; "

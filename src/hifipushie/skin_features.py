@@ -315,8 +315,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     a soft pink spot; a number: the inner corner's pocket filled wet dark red from GNM's inner-corner landmark to the
     eyeball, the way a photographed canthus reads: the eye then reaches its anatomical inner corner), "crease":
     {"amount": 0..1 (0.6), "path": [[u, v], ...] (mm from the iris centre in the eye's frame, u toward the outer
-    corner, v up: eye_ruler.crease_path reads it off the picture), "width": mm (0.5), "color"}: the fold LINE as a
-    thin shadow in the skin (multiply), where the lid's soft valley gives no line of its own}."""
+    corner, v up: eye_ruler.crease_path reads it off the picture), "width": mm (0.5), "color", "shade": 0..1 (0.4:
+    a soft band over the line, the fold's underside)}: the fold LINE as a thin shadow in the skin (multiply), where
+    the lid's soft valley gives no line of its own}."""
     e = spec.get("skin", {}).get("eyes")
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
@@ -409,7 +410,8 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         f_, c_ = np.asarray(J["eye_front.L"], float), np.asarray(J["eye.L"], float)
         d_ = (f_ - c_) / max(float(np.linalg.norm(f_ - c_)), 1e-9)
         cpath = skin_swatch.crease_image(cr["path"], float(cr.get("width", 0.5)),
-                                         colour=tuple(_hex(cr["color"])) if "color" in cr else (0.5, 0.36, 0.32))
+                                         colour=tuple(_hex(cr["color"])) if "color" in cr else (0.5, 0.36, 0.32),
+                                         shade=float(cr.get("shade", 0.4)))
         img = {"file": str(cpath), "at": [round(float(x), 5) for x in f_ + np.array([0.0, 0.0, 0.003])],
                "dir": [round(float(x), 4) for x in d_], "size": [0.04, 0.03], "depth": 0.02, "facing": -0.3, "mirror": True,
                "mirror_image": True}
