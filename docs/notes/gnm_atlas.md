@@ -2090,11 +2090,11 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 
 ## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
-STATE / NEXT (gnmcrease 3, 2026-10-10): coordinator review of gk_06: the templates copied #376's crease HEIGHT (~2.5 mm)
-but Tess's photo line is ~5 mm with a tall platform; Joe's "#376 / #540 read right" was about how the fold is MADE. Split:
-profile from the template, height + path from the picture (blockin_eyes.crease_target, photo_evidence "tps_cols"), lid
-margins held at SIG_LID_SHAPE 0.02. RUNNING: evrun.py gd_T12 s376 / fold -> out/ev5_T12_*.npz; NEXT: dress, sheet gk_07
-(photo | #376 | new, same frame + fold-line-height plot with the photo's line), notes, commit.
+STATE / NEXT (gnmcrease 3, 2026-10-10, handed over): the eye step makes the crease as the template's PROFILE (default
+"s376") carried to the PICTURE's line height and path (crease_target, tps_cols), lid margins held at SIG_LID_SHAPE 0.02.
+Tess (scratch): crease at the photo's height, section rms 0.18 mm, |dc| 4.5, upper lid 0.66 (photo 0.67). Sheet
+human_renders/gk_07_crease_make_at_photo_height.png. OPEN: Joe's read of gk_07 (the line reads at gd_T30's height, softer,
+without the hollow); makeup setting below; Garrett's hooded path untouched. Branch ready to merge.
 
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
@@ -2240,3 +2240,17 @@ depth, same ceiling.
   both eyes' median of the columns that read dark >= DARK_LINE); solve converts them by r_iris / 5.85 as before.
 - The lid margins are held at SIG_LID_SHAPE 0.02 iris r when the shape term is on (was 0.05: Tess's upper lid went to
   0.73-0.77 vs the picture's 0.67).
+- RESULTS (evrun.py gd_T12 <template>, scratch, out/ev5_T12_*.npz; renders gk_ev5*, gk_mk5s376): the picture's line
+  per column 5.13 / 5.05 / 5.35 mm -> 5.55 / 5.46 / 5.79 at our iris. "s376" make: section rms 0.92 -> 0.18 mm, crease
+  5.4 mm over the margin (on the photo's line across the lid: gk_07's height plot), platform 5.0 mm, |dc| 4.45, |e| 3.4,
+  upper lid 0.66 / lower 0.89 (photo 0.67 / 0.88), socket within 0.1 sd. "fold" make: 2.17 -> 0.12, |dc| 3.9, crease 5.6.
+  So GNM CAN make a #376-type fold at ~5 mm on Tess's held face, cheaper than gk_06's low one (|dc| 5.2) and than gd_T30
+  (7.6), with the lid at the photo's opening.
+- BLUNT READ of gk_07: the sections now sit on the photo's line, with a platform that recedes ~1.5-2 mm (gd_T30: 4.5 mm,
+  the hollow) and the fold coming forward above it. Dressed, "s376 at the photo's height" shows a soft crease arc at about
+  the photo's height, softer than gd_T30's and without its sunken look; it does not have the crispness of the photo's
+  line (that is makeup's share now). The "fold" make at 5 mm barely shows a line (too full above): keep "s376" as the
+  default. Crease makeup 0.4 (eyeshadow color #b08878, crease #7a5446, matte) adds a light shade along it.
+- Sheet gk_07_crease_make_at_photo_height.png: photo | #376 | gd_T30 / gk_06 (s376 at #376's height) | NEW s376 at the
+  photo's height | NEW fold at the photo's height / NEW s376 + makeup; sections + the fold-line height plot with the
+  photo's line (stars).

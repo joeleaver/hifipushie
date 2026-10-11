@@ -34,6 +34,10 @@ for j, (key, lab) in enumerate(items):
     sh = [c["show"] if c else np.nan for c in d["cols"]]
     ax[3].plot(FR, h, "-o", color=colors[j], label=lab)
     ax[4].plot(FR, sh, "-o", color=colors[j], label=lab)
+import os
+if os.environ.get("PHOTO"):
+    pts = [tuple(map(float, q.split(":"))) for q in os.environ["PHOTO"].split(",")]
+    ax[3].plot([p[0] for p in pts], [p[1] for p in pts], "k*--", ms=16, label="Tess photo's line (at our iris scale)")
 for a in ax[:3]:
     a.set_aspect("equal"); a.set_xlabel("forward, mm (toward the camera)"); a.set_ylabel("up over the lid margin, mm")
     a.set_ylim(-1, 13); a.grid(alpha=0.3)
