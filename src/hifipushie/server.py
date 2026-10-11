@@ -137,7 +137,8 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "lip_read", "skin", "look_skin", "skin_reference"]},
+                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "lip_read", "gnm_controls", "skin",
+                        "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
@@ -1862,6 +1863,26 @@ def block_in_expression(name: str, out: str | None = None, views: list[int] | No
     to = rep["entry"]["to"]
     sh = _blockin_sheet(to, save, before=name)
     return [sh[0], text + "\nZOOM OUT (before = neutral clay, after = with the picture's expression):\n" + sh[1]]
+
+
+@mcp.tool(structured_output=False)
+def gnm_controls(query: str = "", control: str = "", families: list[str] | None = None, top: int = 12,
+                 sort: str = "score", per_family: int = 0, sign: int = 0, zones: bool = False) -> str:
+    """GNM's CONTROL ATLAS: which GNM controls move a feature. query = a feature in words ("alar crease", "jowl",
+    "lip border", "bridge walls") -> controls ranked by mm per unit prior cost x locality, with macros dragged,
+    face-ID effect, nearest block-in move, sheet; control = one control's description; zones=True lists zones;
+    families, sort, per_family, sign. Act: block_in_step {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details:
+    guide(topic="gnm_controls")."""
+    from . import gnm_controls as gcm
+    if zones:
+        z = gcm.zones()
+        return "\n".join(f"{k}: {d} ({len(z[k])} vertices)" for k, (d, _) in gcm.ZONES.items())
+    if control:
+        return gcm.text(gcm.describe(control))
+    if not query:
+        return ("gnm_controls: give query= (a feature) or control= (a name) or zones=True. Families: "
+                + ", ".join(f"{f} ({len(gcm.names(f))})" for f in gcm.FAMILIES))
+    return gcm.text(gcm.query(query, families=families, top=top, sort=sort, sign=sign, per_family=per_family))
 
 
 @mcp.tool(structured_output=False)

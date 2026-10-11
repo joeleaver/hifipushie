@@ -1790,3 +1790,212 @@ hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not
   upper lip's roll is shading, which the seal removed). The lower lip paint is too dark / red (a* 24 vs 19.5) and kills
   the geometric light. Left as found (skin code, all humans): to decide with the skin thread.
 - spikes/garrett3/stage.py keeps a closed mouth_gap (it popped it: a GNM-closed mouth reopened in dressed shots).
+
+## gnmcontrols (2026-10-10, "gnmcontrols" agent, branch worktree-agent-aecab3f9c741dd586; scratch /mnt/data/hifipushie/gnmcontrols)
+
+Joe: "until we learn how to use ALL the GNM controls intentfully, more references feel like they'll be of limited
+value". Scratch: run.sh / tests.sh, srv.py, scripts/ (below), dl/ (downloaded repos: untrusted, read only), ws/ (scratch
+HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..06, gnm_atlas/ (index.html, zones.png,
+<family>_<page>.png).
+
+### 1. How others drive GNM from photos (the ComfyUI node and everything else public)
+- "GNM Extract Identity From Photo" = github.com/rethink-studios/ComfyUI-GNM @ 01fefbc (2026-07-16, 4 commits, "fitting
+  not yet finalized"); LICENSE text Apache-2.0 ("Copyright 2026 ComfyUI-GNM contributors"; GitHub's detector says
+  NOASSERTION); vendors google/GNM (Apache-2.0). Recipe (lib/fitting.py fit_params_from_landmarks_3d): MediaPipe 478
+  -> "68" by its own _MP478_TO_68, which is WRONG (36 face-oval + 32 midline points put in iBUG-68 slot order: GNM's eye
+  landmarks get nose-midline points); x / y normalised by image width / height separately; Umeyama similarity onto
+  GNM's template 68; ONE ridge solve (google project_on_linear_vertex_basis) over all 253 identity comps (eyes, teeth
+  too) at lambda 0.01 in metre^2 (~10x the data term: shrinks to the mean); clip +-4; Kabsch head pose. No face-ID
+  embedding, no learned regressor, no photometric term, no expression in the identity fit, no sampler latent.
+- Reimplemented in numpy (scripts/recipes.py, their code read, never run) on Tess's front: |c| 0.90, landmark residual
+  51 mm (the correspondence), a head 2.5 mm rms from the mean, correlation with our identities ~0. A correct 68 map
+  doesn't help (lambda); a unit-sized ridge blows up (|c| 67: the anisotropy).
+- The best public recipe is Google's own: google/xrblocks samples/avatar_lab/gnm FaceFit.fitIdentity (Apache-2.0, ported
+  from edualvarado/gnm-webcam-puppet): MediaPipe -> GNM vertex correspondence with a REFERENCE cloud (where MediaPipe lands
+  on GNM's neutral: the fit is differential, cancelling MediaPipe's ~11 mm depth bias; our mp478_gnm table is the same
+  idea from 36 heads), 166 skull-fixed points, 24 leading comps only, ridge 0.06 x trace / K, depth weight 0.1, 4
+  alternations with a similarity; live expression capped at 4 lower-face comps (x1.35) and 8 per eye. On Tess: |c| 3.0
+  (24 comps) / 6.4 (170), residual 2.1 mm. Also read: enriquevelmai/gnm-maya (68-pt weak-perspective Tikhonov),
+  shameem4/headSize-gnm (XR Blocks' correspondence, size from the iris), soylab-edu/ComfyUI-GNM (GPL-3.0: samplers and
+  sliders, no photo fit). google/GNM: no fitting / dense landmark release since our pin (HEAD a67464a: packaging).
+- Readers (block-in target table, Tess's photo vs clay, cameras refitted per head; scripts/recipes_table.py): GNM's
+  mean 22/26 (mean |diff|/tol 0.48), ComfyUI 23/26 (0.47), XR Blocks 21/26 (0.57), XR Blocks 170 20/26 (0.70), f3_t1
+  21/26 (0.64), b2_T06 26/26 (0.36). Sheet gc_01_tess_recipes.png. Nobody has a better photo -> GNM recipe than ours:
+  all are sparse-landmark ridge MAPs (the audit's finding 1). NOTE: the table passes GNM's plain mean 22/26: it is
+  coarse; mean |diff|/tol separates better.
+
+### 2. The semantic samplers (src/hifipushie/gnm_sampler.py + gnm_sampler.npz: the Keras decoders in numpy, float16,
+### max coefficient error 0.009; exact Jacobians; scripts/sampler_study.py -> out/sampler_study.json)
+- Identity CVAE (64 z + 6 labels -> 253; Dense ReLU 64-128-256-512, linear out; L1 loss, KL weight 0.05 annealed, label
+  mixup Beta(0.2, 0.2): labels are trained as convex blends): its samples sit |c| ~5.5 OFF GNM's template (MC class
+  means; decode(z = 0) is 7.1 away, 3.7 from the MC mean: the decoder is non-linear), per-comp sd 0.57 (0-9) .. 1.24
+  (120-169), total variance 162 (N(0, I): 170) but participation ratio 41: 90 % of it in 65 directions, 99 % in 126.
+- The latent: the Jacobian at z = 0 has ~35 active directions (sv 8.6 .. 0.4 at #32, 0.005 at #48): ~28 of 64 dims are
+  collapsed; response non-linear (|c+ + c- - 2 c0| / |c+ - c-| median 0.44 at +-2).
+- As a FITTING space it fails: a MAP in latent space (|c - dec(z)|^2 / 0.3^2 + |z|^2, best class) leaves residual
+  share 1.1 for GNM's own N(0, I) heads and 1.33 for our fitted people (Tess, Garrett, fs_*: |residual| 6.8 for |c|
+  5-7), 0.05 for its own samples. Our people and GNM's prior are not on its manifold. Garrett's bridge through the
+  latent tangent needed |dc| 13-19. So: a plausible-face GENERATOR and a source of labelled directions, not where a fit
+  or a block-in step should move.
+- Labels as continuous controls (gc_03_sampler_labels.png): sex t 0 -> 1 (z = 0) moves jaw width +0.45 sd, brow ridge
+  +0.7, nose width +0.8, lip fullness -0.7, head size +0.8 (uniform ethnicity); the path bends (off the chord by 2.0 at
+  t = 0.5, chord 7.4); beyond [0, 1] it keeps going (|c| 8.7 at t = 1.5, untrained). Ethnicity corners 4.1-6.5 apart,
+  midpoints 0.7-1.9 off the chord. label:white narrows and steepens the bridge (+3.2 deg slope per unit), asian / black
+  widen it.
+- Principal latent directions (gc_04_sampler_latent_pcs.png; zpc:00..15 in the atlas): whole-face and large (zpc:00
+  face 0.63 mm per unit, the most face-ID per mm of any control: 0.42).
+- Expression CVAE (64 z + 20 classes -> 383): ~5 active latent dims per class (posterior collapse): the class
+  PROTOTYPE (z = 0) is the useful part. Prototypes are whole-face: happy = mouth corners up and out (mouth_width +3.2
+  sd) AND eyes narrowed (eye_height -1.7); squint, compress_face and winks are mostly lids; tongue_center carries |11| of
+  eye-region expression (its scans had eyes shut). Intensity is NOT t x one-hot (t = 0 decodes to a nonzero |1.79|
+  expression; t = 0.5 is smaller than both 0 and 1 for some classes): scale the decoded prototype instead (GNM is
+  linear). gnm_sampler.prototype(cls | {cls: w}).
+- A picture's expression in prototypes vs the block-in's 20 raw lower-face comps (scripts/expr_classes.py, front
+  pictures, identity and camera held): lower-face parts of the 20 prototypes fit as well (Tess chi2 43.8 -> 35.5 vs
+  35.2; Garrett 342 -> 248 vs 261) with named weights (Tess: blow 0.24, surprise -0.2); WHOLE prototypes fit far more
+  (Tess 29.3, Garrett 146) but by opening the eyes (Garrett wink_right -1.24, squint -1.21), the lt19 fight between the
+  detector's lid points and the eye step: keep eye parts off unless the picture squints. Negative weights are
+  anti-expressions: a non-negative prototype basis would be the plausible one (not built).
+
+### 3. The control atlas (src/hifipushie/gnm_controls.py + gnm_controls.npz, MCP tool gnm_controls; scripts/atlas.py
+### build | sheets | index, perc_all.py, atlas_report.py -> out/atlas_report.txt)
+- 861 controls: identity 253 (head 170, eyes 3, teeth 80), region_pc 160 (20 GNM regions x 8 = the block-in's pc:),
+  expr_eyes 100 (symmetric pairs; L / R are mirrored copies), expr_lower 150, expr_tongue 33 (+ pupil), joints 8,
+  sampler_latent 80 (z:00..63 at female / white, zpc:00..15), sampler_label 5, sampler_expr 20, blockin 52 (humanmacro's
+  40 free, nd: gaps, sex, eth0..2). Per control: 50 named zones (gnm_controls.ZONES on GNM's template; zones.png) x
+  (tot, nrm, sgn, trans, deform, relief vs a 5 mm surround) per unit; face rms / max; humanmacro's 40 macros per unit
+  (sd); face-ID 1 - cos between -1 and +1 (faces4 perc.py's renders / heads / views, so on the identity comps' scale;
+  773 measured: not teeth / joints); prior cost (|coefficient| per unit); nearest block-in moves (cosine); sheet.
+- Sheets (human_renders/gnm_atlas/, 91 pages, index.html): per control -2 | 0 | +2 front, 3/4, profile in hair-cap
+  clay (the sampler's own head for latents / labels; mouth open for teeth / tongue; eye close-ups for the eyeball comps)
+  + the move's normal map (red out / blue in).
+- query("alar crease" | "jowl" | "lip border" | "bridge walls" ...): zones from words (synonyms), controls ranked by mm
+  per unit of prior cost x specificity (zone / face rms, capped at 4); sorts efficiency | local | specific | perc |
+  relief; per_family. describe(name). gnm_controls(query=, control=, zones=True) over MCP.
+- What it says (atlas_report.txt):
+  - Identity comps are WHOLE-FACE at every index: median specificity 1.5 (head_000-009 1.27, 10-39 1.80, 40-169
+    ~1.65); only 8-30 % pass 2. No comp is "the alar crease": a local feature is a combination (-> sculpt, below).
+    region_pc and block-in macros are a little more local (1.8 / 2.0); the most local controls are about the jaw / under
+    the chin (under_chin, pc:chin_region3 x4.5).
+  - Face moved per unit: head_000-009 1.08 mm rms, 10-39 0.27, 40-79 0.11, 80-119 0.067, 120-169 0.038.
+  - Face-ID per unit prior cost: our block-in macros of the ORBIT / BRIDGE complex lead (bridge_height 0.189, eye_depth
+    0.191, orbital_rim 0.186, brow_ridge 0.178, nose_projection 0.156) with pc:middle_brow_region1 / pc:nose_region0
+    (0.15): steps there change who it is fastest. Per mm moved the fine comps lead (120-169: 0.37 per mm vs 0.07 for
+    0-9; faces4 M0b's finding, now for every family: eye-region expression 0.38 per mm, the sampler's zpc:00 0.42).
+  - Reverse map (zone -> best mover per family) is in atlas_report.txt; e.g. alar_crease: head_003 / pc:upper_lip_region0
+    / nose_width, all global (specificity ~1); relief (deepening) of the alar crease: pc:nose_region1 -0.36 mm per unit;
+    lid_fold relief: head_000 -0.83, pc:*_brow_region2 +0.69, both_eye_region_001 +0.91; nasolabial: nothing in the
+    identity space deepens it more than 0.15 mm per unit (expression lower_face_region_001 0.23, xclass:disgust 0.37):
+    GNM's identity carries almost no nasolabial fold.
+- First identity comps, named from their sheets / numbers: head_000 size + lower face width (jaw, chin, nose, mouth;
+  face-ID 0.126), 001 neck thickness / squareness, 002 dorsum hump and bridge height vs upturn, 003 face width vs the
+  upper lip's set (cupid's bow in), 004 brow ridge + orbital rim + eye depth (face-ID 0.129, the most of the first ten),
+  005 glabella / radix, 006 face + nose + philtrum length, 007 ears out, 010 jaw width, 011 nose forward with a lower
+  cranium (the strongest dorsum / tip mover per unit), 018 chin forward, 020 nostrils / columella. Expression: lower_face
+  000 jaw closed <-> open (the uncentred mean: -1 opens the teeth ~3.6 mm), 001 mouth narrows and pouts, 003 lower lip
+  roll; both_eye_region 000 eyes wide open + brows up (eye_height +2.0 sd), 001 lids open (upper up, lower down), 002
+  brow down / socket.
+
+### 4. Garrett's narrow bridge the right way (coordinator: "I suspect there was a way to do that narrow bridge the
+### right way"; scripts/bridge.py, gbridge_eval.py, gbridge_solve.py, gbridge_models.py, sculpt_test.py; gc_02)
+- Readers on the shipped head: blockin2's SH walls (6 mm off the dorsum / on it; concept 0.504), dorsum width, and
+  bridge.py's cross-section at 5 heights between lm 28 and 29: width3 (3 mm behind the crest), slope6 (wall angle at
+  6 mm). b3_G16 without its local: walls 0.746, width3 14.1 mm, slope6 39 deg; the DESIGNED local (nose_dorsum_width
+  -0.8): 0.670, 11.8, 50.
+- Least-cost routes to the local's effect on GNM's raw head (KKT: min |x|^2 + locality s.t. readers hit, macros held):
+  nose PC8 free |x| 4.8 (head size -3, nose width -2.2 sd: blockin2's drag); 170 comps free 2.5 (5 mm moved outside
+  the nose); 170 comps + 14 macros held + locality 3: |dc| 3.97, 0.74 mm outside the nose; expression comps reach 25 %;
+  the sampler latent needs |dc| 13-19; labels: only label:white helps.
+- On the shipped head (same cameras): the GNM route walls 0.584 (local 0.670), dorsum 8.8 mm, width3 10.9, slope6 56,
+  table 26/29 err 0.41 (local 25/29, 0.54). SAVED as b3_G17 (main workspace, round 34: b3_G16 - the local + the route;
+  |c| 6.79 -> 7.81; coupled under_chin +0.6, jaw_angle +0.45, cheek_fullness -0.43; mouth 5/7 -> 6/7; sheets
+  blockin_b3_G17.png / _nose.png).
+- Generic form = the block-in's SCULPT move (below): "sculpt:bridge_walls|hold=dorsum" -1.0 mm: walls 0.590 at |dc|
+  3.5; -2.0: 0.504 (the concept) at 7.1.
+- The bridge's breadth came from our BASE: his identity on GNM's own template reads width3 11.0 / slope6 56 already;
+  gnm_base 0 (MakeHuman's head under the GNM delta, the age-50+ default) flattens it to 14.1 / 39. gnm_base 0.5 alone:
+  walls 0.652; 1.0: 0.593 (but the whole face re-bases: table 21/29, 15/29).
+
+### 5. Sculpt: a zone moved the GNM way (block-in move; gnm_controls.sculpt, zone_row, parse_sculpt)
+- `"sculpt:<zone>": mm` = the least-cost identity change (all 170 comps, |dc| in sd) moving the zone's mean normal by
+  mm, with every humanmacro measure HELD exactly (a held macro too like the target itself, |cos| > 0.7, is let go and
+  reported) and a locality penalty (3^2 x mean squared move of the face > 6 mm from the zone). `relief:<zone>`: against
+  its 5 mm surround (- deepens). `|hold=<zone>+..`, `|free=<macro>+..`, `|loc=w`. Linear: exact, instant. The step
+  reply gives |dc|, the macros let go and the skin moved elsewhere; > 2 sd warns. `"gnm:<control>": x` = any identity
+  control of the atlas raw. Typical cost ~2.5-4 sd per mm: big beside a macro step, but toward a real face's |c| ~13.
+- The standard fix for a feature no macro reaches (coordinator), before any local: guide block_in loop 4, the feature
+  pass, "GNM's controls". Test tests/test_gnm_controls.py.
+
+### 6. A regional base (coordinator: "GNM's own template in the face, MakeHuman's head only where needed")
+- Spike keys (default off, builds unchanged): base.head.gnm_base_rest (the base share outside GNM's hockey mask, a
+  30 mm smoothstep blend; gnm_base = the face's share), gnm_base_age (adds MakeHuman's own ageing: its head at the
+  body's age minus at 25, both at their eyes, where GNM's template replaced it); block-in SET key gnm_base_rest;
+  humanfit_map.fit(prior_mean=) (the identity prior's centre, default 0).
+- Re-basing a finished block-in fails: b3_G17 with its identity on the regional base 15/29 (err 1.16); re-projected to
+  keep its 68 landmarks |c| 18.4, 21/29: the identity was tuned against MakeHuman's head.
+- Fair test (scripts/basefit.py: the same evidence, the same MAP from the sampler's class mean, per base):
+  Garrett MakeHuman base: view rms 1.25 / 1.64 mm, |c| 4.62, table 19/29 (0.89), walls 0.81; REGIONAL 1.07 / 1.38,
+  4.27, 20/29 (0.73), walls 0.65; regional + MakeHuman age 18/29 (0.90). Tess base 0.86 / 1.20 / 3.35, 4.43, 23/26
+  (0.55); regional 0.80 / 1.14 / 3.18, 4.17, 23/26 (0.47). GNM's template is the better mean face: 10-15 % lower
+  residuals with less identity, equal or better table.
+- Whole-face read (gc_06_regional_base_clay.png hair-cap clay, gc_05_regional_base_dressed.png look_skin): Garrett on
+  the regional base loses MakeHuman's aged structure (lean, hollow under the cheekbones, deep nasolabial): fuller,
+  younger, better nose; Tess barely changes. Clay sex / age reads (faceage) too noisy to use.
+- NOT flipped. Decision needed: one block-in from scratch on the regional base (Garrett, age from the age ops or a
+  data source) against b3_G17.
+
+### 7. Garrett from scratch on the regional base (coordinator; Joe: "I'm not really even convinced about age": no
+### designed age ops, age cues the GNM way; scripts/rb.py, agecues.py, rbcmp.py, rbfinal.py; models rb_G00 .. rb_G14
+### in the MAIN workspace, log rb_G00/blockin_log.json)
+- Start: block_in_start(b3_G17's references, male, 52: MakeHuman base, class mean) 23/29; the regional base step
+  (gnm_base 1, gnm_base_rest 0) -> 16/29: GNM's male template is much WIDER than his 52-year-old MakeHuman head
+  (cheekbones +7.7, jaw +6.3, nose base +10, mouth +4 mm) and round / young.
+- Rounds (each a block-in step, logged): face_width -0.8; nose_length! +0.9, nose_upturn! -0.5; cheek_fullness -0.7,
+  jaw_width! -0.5 (22/29, err 0.65); brow_ridge +0.5, mouth_width! -0.4; chin_height! -0.5 (23/29, 0.58); [designed
+  nasolabial 0.6, removed again at G11 per Joe]; eye_spacing! -0.4; chin_height! -0.35; THE EYE STEP (lids 0.47 / 0.75
+  vs his 0.46 / 0.72, hooded: platform 1.8 mm, |dc| 1.45, |e| 1.43); relief:nasolabial -0.6 (|dc| 3.1);
+  relief:cheeks -0.8 (|dc| 1.9, cheek_fullness let go); sculpt:bridge_walls|hold=dorsum -0.7 (|dc| 2.5). |c| 5.45 ->
+  9.0 over 14 rounds.
+- rb_G14 vs b3_G17 (34 rounds on the MakeHuman base): walls 0.559 vs 0.584 (concept 0.504), width3 11.1 vs 10.9,
+  table 21/29 (err 0.66) vs 26/29 (0.41): rb's misses are temple width (hair framing), the painted 3/4's lengths and
+  edge flips. Sheets gc_07_rb_G14_vs_b3_G17.png (hair-cap clay, before = G17), gc_08_..._dressed.png (top rb_G14).
+  Blunt read: dressed, rb_G14 reads LEANER and longer in the mid / lower face with a narrower nose (closer to the
+  concept's lean face); G17 reads broader and squarer; neither has the concept's deep-set, hooded tiredness yet. On the
+  table G17 wins. Not a clear win for the regional base after 14 rounds; it is at least as good a start.
+- The table's noise floor: with every macro HELD exactly (a sculpt can't move a landmark proportion), mouth_width moved
+  +1.0 mm and chin_height +0.45 mm: clay-reader drift from shading (jw's finding). Edge flips under ~1 mm are noise.
+- AGE THE GNM WAY (agecues.py; relief = a zone against its 5 mm surround, size projected out):
+  | cue | sculpt cost |dc| per mm (macros held) | GNM's population sd of the cue (mm) |
+  |---|---|---|
+  | nasolabial groove deeper | 5.2 | 0.29 |
+  | jowl (relief, out) | 6.5 | 0.31 |
+  | mentolabial sulcus deeper | 3.4 | 0.42 |
+  | sub-malar cheek hollow | 2.4 | 0.92 |
+  | marionette deeper | 2.4 | 0.85 |
+  | tear trough deeper | 4.2 | 0.91 |
+  | lid fold deeper | 3.2 | 1.09 |
+  | upper / lower vermilion thinner (zone in) | 2.0 / 2.8 | 1.90 / 1.31 |
+  GNM's identity space barely varies the LINES of age (nasolabial, jowl, mentolabial: sd 0.3-0.4 mm: a visible 1-2 mm
+  fold is 3-7 sd); it does vary the MASSES (cheek hollows, lips, lids, tear trough ~1 mm). On Garrett, relief:nasolabial
+  -0.6 mm (|dc| 3.1) reads as a faint line in raking clay, far weaker than the designed op's 1.2 mm fold;
+  relief:cheeks -0.8 mm (|dc| 1.9) is subtle. In the dressed render the skin's age layers carry most of the age.
+- No age-like direction: the ten cues' correlations under GNM's prior are small and inconsistent in sign (first common
+  factor 23 % of 10; nasolabial deepening anti-correlates with jowl and tear trough); with zone moves instead of relief
+  the first factor is just head size / lower-face width (head_000). GNM was built from relaxed neutrals, PCA-truncated:
+  aged LINES are mostly not in its identity; aged MASSES are, independently. A data-backed age step (blockin3's
+  Wikimedia statistics) should drive the masses through sculpt / macros and leave the lines to skin / a residual.
+
+### HANDOVER (gnmcontrols, 2026-10-10)
+- Code (branch worktree-agent-aecab3f9c741dd586): gnm_controls.py / .npz, gnm_sampler.py / .npz, blockin (sculpt:,
+  relief:, gnm:, gnm_base_rest), onemesh (gnm_base_rest, gnm_base_age, face_weight), humanfit_map prior_mean, server
+  gnm_controls (human toolset), blockin_guide (loop 4, feature pass, "GNM's controls", tool reference), tests
+  test_gnm_controls (5) + test_toolsets' list (block_in_expression was missing since lt19b).
+- Main workspace: b3_G17, rb_G00 .. rb_G14 (the regional-base trial; rb_G14 its last step).
+- Rebuild the table after changing zones / the perception runs: scripts/atlas.py build (18 s; perception: perc_all.py
+  <families>, ~25 min for all), sheets: atlas.py sheets [families] (~2 s a page), index: atlas.py index.
+- Open, in order: (1) the regional base: rb_G14 is a 14-round start (table 21/29 vs G17's 26/29, leaner dressed read):
+  continue it (temple / painted-3/4 lengths, eyes' tiredness) or call it; a data-backed age step for the MASSES; (2) sculpt readers beyond
+  zones (a reader-driven sculpt: any likeness / shading reader as the target, finite differences on the shipped head;
+  bridge.py is a template); (3) a non-negative prototype basis for block_in_expression (named, plausible picture
+  expressions; eye parts off by default); (4) Tess's feature pass with sculpt (lips, almond eyes, radix) instead of
+  locals; (5) the atlas's teeth / joints have no face-ID numbers (by design).
