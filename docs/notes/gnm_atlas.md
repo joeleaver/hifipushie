@@ -1709,3 +1709,28 @@ Open, in order: (1) Joe on the designed dorsum local (b2_G11's); (2) the eye_wid
 prior / expression range), Tess's iris reads 5.1 mm in camera mm (iris-radius targets may be ~15 % inflated for her);
 (5) age: the decision on a licensed older-age source (section 4); the designed shape: ops meanwhile (Garrett: fold,
 hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not leaner).
+
+## blockin3 (2026-10-10, "blockin3" agent, branch worktree-agent-a7d86f157b96ca324 from main 63e7f10; scratch
+## /mnt/data/hifipushie/blockin3: blockin2's scripts retargeted + nose3.py, lmd.py, sheet16.py, wfetch.py / wscan.py /
+## wstats.py (Wikimedia age set), cuetest.py / clayc.py; sheets human_renders/b3_*)
+
+### 1. Garrett's nose: tip UP (Joe: "his nose points down when it should be slightly up")
+- G08 (blockin2) turned the tip down (nose_upturn! -0.7, nose_projection! +0.4) on its read of the painted 3/4; Joe reads
+  the opposite. Measured on the built profile (nose3.py: the front camera turned 90 deg; midline columella line from
+  subnasale along the nose's underside): G15 columella +22 deg above horizontal (the lobule hung below it), G04 (before
+  G08) +29.
+- Variants from G15: FREE nose_upturn +1.0 / +1.6 turns the tip but drops projection 26.7 -> 23.8 / 22.0 mm (the
+  population couples upturn with a shorter nose): not used. HELD nose_upturn! +1.4 with nose_projection! -0.4:
+  columella +37 deg, projection 26.7 mm kept, |c| 6.48 -> 6.79. KEPT as b3_G16 (feature nose).
+- Read: the built profile's tip now rises slightly; the painted 3/4's lit underside plane rising forward matches; dressed
+  3/4 (look_skin) reads slightly up. Cost: a little more nostril show in the clay 3/4.
+- Table: philtrum front +0.02 -> +1.46 and chin_height front -> +2.16 "went out", mouth_width came in. The model's OWN
+  3D landmarks moved < 0.5 mm (lmd.py: philtrum 18.71 -> 18.73, chin 39.06 -> 39.12, face height 121.1 -> 121.0): the
+  clay DETECTOR re-reads the whole lower face when the tip turns (jw's drift note). Check lmd.py before reverting.
+- Designed dorsum local (nose_dorsum_width -0.8, Joe "yes maybe"): kept; with the tip up it still reads (narrow bridge,
+  darker walls); at 0 the bridge reads broad again (out/n3.png).
+- Sheet for Joe: b3_G16_nose_before_after.png (pictures; G15 / G16: front | 3/4 | built profile | dressed front | 3/4),
+  b3_G16_nose.png (focus), b3_G16.png.
+- ACCEPTED (Joe, 2026-10-10: "Garrett's nose looks much better"): b3_G16 is Garrett's current block-in. The DESIGNED
+  narrow bridge (local:nose_dorsum_width -0.8) is APPROVED by Joe for this painted character only (a documented GNM
+  gap: its nose PCs reach walls 0.75 at 1.5 sd vs the picture's 0.51); not a default for other heads.
