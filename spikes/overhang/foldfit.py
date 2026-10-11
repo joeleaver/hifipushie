@@ -76,7 +76,7 @@ def design(V, ka=5, H=4.7, d=1.0, th=0.9, sp=0.8, kt=10, umax=12.0, taper=3.0):
     return out
 
 
-def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, free_all=False, hang=None, inner=3.0):
+def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, free_all=False, hang=None, inner=3.0, brow=None):
     """Returns (c1, e1 | None, info). hold: mm for every other exterior skin vertex + the eyeballs (inf: free);
     free_all: no holds at all (the pure projection)."""
     c0 = np.asarray(c0, float)[:170]
@@ -96,7 +96,11 @@ def fit(c0, tgt, ne=0, n=170, hold=1.0, mh=0.05, lam=1.0, lam_e=1.0, sig=0.1, fr
         hm = (g["groups"]["skin"] | g["groups"]["eyes"]).copy()      # the skin's inside (socket lining, mouth bag) held too, looser
         hm[ids] = False
         rr = np.minimum(np.abs(oh.t["ring"]), np.abs(oh.t["ring"][MIR]))
-        w = np.where(rr == 0, 1.0 / mh, np.where(ext, 1.0 / hold, 1.0 / (inner * hold)))[hm]
+        w = np.where(rr == 0, 1.0 / mh, np.where(ext, 1.0 / hold, 1.0 / (inner * hold)))
+        if brow is not None:    # the brows (where the brow hair sits: a likeness measure) held tighter
+            bm = g["groups"]["left_brow_region"] | g["groups"]["right_brow_region"] | g["groups"]["middle_brow_region"]
+            w = np.where(bm, np.maximum(w, 1.0 / brow), w)
+        w = w[hm]
         Ah = (B[use][:, hm] * w[None, :, None]).reshape(len(use), -1)
         Q = Q + Ah @ Ah.T
     Pr = np.diag(np.r_[np.full(n, lam), np.full(ne, lam_e)])
@@ -160,7 +164,8 @@ if __name__ == "__main__":
     for hold in [float(x) for x in kw.get("hold", "1000,3,1,0.3").split(",")]:
         for lam in [float(x) for x in kw.get("lam", "1").split(",")]:
             hg = (ka, ka + 2, float(kw["hang"]), float(kw.get("gap", 0.6))) if "hang" in kw else None
-            c1, e1, I = fit(c0, tgt, ne=ne, n=n, hold=hold, lam=lam, lam_e=float(kw.get("lam_e", lam)), hang=hg, sig=float(kw.get("sig", 0.1)))
+            c1, e1, I = fit(c0, tgt, ne=ne, n=n, hold=hold, lam=lam, lam_e=float(kw.get("lam_e", lam)), hang=hg, sig=float(kw.get("sig", 0.1)),
+                            brow=float(kw["brow"]) if "brow" in kw else None)
             q = oh.read(oh.verts(c1, e1), ch7)
             print(f"  hold {hold:g} lam {lam:g}: residual {I['res']:.3f} (max {I['res_max']:.2f}) |dc| {I['dc']:5.2f} |c| {I['c']:5.2f} |e| {I['e']:.2f} "
                   f"held rms {I['held_rms']:.2f} max {I['held_max']:.2f} | {oh.fmt(q)}")
