@@ -3170,3 +3170,66 @@ height from Tess's profile); the sampler's sex x ethnicity classes as lid / orbi
   Eyeball: ours is 12.6 mm (13.9 in GNM units) seated 0.6-0.7 mm lateral and 0.3 mm up of GNM's own 14.5 mm ball; the
   lid's stand-off from OUR ball at the pupil column is 1.1-1.2 mm at the margin and 0.3-0.7 on the platform: the lid
   sits on the ball. Not a cause.
+
+### Step 2b: the lid and the ORBIT (coordinator: Joe on gd2_07_s5_04_eyes.png, "has a pretty nice eyelid"; orbitlid.py, orbit.py)
+- s5_04 as a surface (raw mesh, eye frame, rings 0..11 of the upper lid): START A -> TARGET B differ by 5.14 mm rms.
+  A is a deep-set eye under an overhanging brow (eyes_forward -28.1 mm = the eye centres 28 mm behind the nasion; the
+  brow's ring 11 stands 14.3 mm off the ball); B is a prominent eye (-18.0; brow ring 8.5 mm off the ball, pupils 68
+  vs 57 mm apart). B's lid has NO tuck (turn 12 deg, wall 11 deg, drape 0.6 mm, platform 3.9 mm off the ball: the mean's
+  wedge type): what reads "nice" on that clay sheet (the eye is ~30 px there) is the ORBIT: a lid plane open from brow
+  to lashes instead of A's shelf. It is not a fold.
+- How much the orbit measures explain (A + the mm move at B's value, every other measure held; lid vs B rms):
+  A 5.14 | + eyes_forward +10.1: 3.20 (rings 6-11: 5.87 -> 2.74) | + brows_over_eyes +2.2: 5.09 | + pupils_apart +11.1:
+  3.90 (rings 0-5: 3.75 -> 1.13) | eyes_forward + brows: 2.96 | all three: 1.11 | all 23 measures: 0.96 | the
+  driver's r5_04: 1.43. So three orbit measures carry 78 % of the lid's change (95 % of its variance); eyes_forward
+  does the drape / brow side, pupils_apart the margin side. The lid follows the orbit: confirmed for the ORBIT-SCALE
+  form (how far the drape and brow stand over the eye).
+- What the orbit measures do NOT move is the tuck. On Tess (er_s4, raw): eyes_forward +2 / +4 / +6 mm: tuck 17.9 / 17.5
+  / 18.1 deg (as is 17.4), platform stand-off 1.59 -> 1.41 / 1.22 / 1.01, brow ring's stand-off 8.4 -> 7.3 / 6.3 / 5.3,
+  drape 1.95 -> 1.5; brows_over_eyes -3: tuck 21.7, crease 4.7 -> 3.7 mm; +3: 16.9, 5.8 mm. Two separate things: the
+  orbit sets how the sheet hangs between brow and ball, identity detail sets the turn at the top of the platform.
+- TESS'S ORBIT WAS NEVER MATCHED IN DEPTH. Her block-in table (gd_T12/blockin_rows.json) has no sagittal eye measure at
+  all (rows on the eyes: eye_opening, eye_width, eye_aspect, canthal_tilt, brow_eye, brow_arch, brow_tilt; the profile
+  rows are nose / lips / chin); gnm_mm's eyes_forward came later (gnmdrive) and was never run on her. brow_eye was
+  recorded out of tolerance at the time (front 13.95 photo vs 10.68, 3/4 13.4 vs 11.9; gnmbrow later found the brow
+  LANDMARKS fine and the hair decal low).
+  Her side pictures through their fitted cameras (orbit.py: the model's corneal apex, lid section and profile drawn on
+  the picture, out/orbit_er_s4_{1,2}.png): PROFILE: the model's corneal apex and upper lid margin lie ~5 mm (65-75
+  picture px x4 at 0.304 mm/px) BEHIND hers, with the forehead / nasal bridge profile on hers. 3/4: the model's iris
+  plane lies ~1.3 mm (in the picture) deeper than hers = ~2 mm of depth. The profile camera's yaw is not known to
+  better than a few degrees (5 mm = 10 deg of yaw at the eye's 30 mm from the midline), so: her eye is LESS deep-set
+  than the model's by 2-5 mm (model: apex 10.9 mm behind the nasion). eyes_forward's population sd is 4.0 mm.
+- The same thing shows in the front picture's light (prof.py, below): her skin from the fold up to the brow is as
+  bright as her brightest skin (0.98); ours is a dark band (0.80): a hollow under the brow that she does not have.
+
+### Step 2c: sex x ethnicity classes as lid / orbit types (coordinator: Joe, "I'm sure race makes a big difference too";
+### lstruct.py CLS=1; the sampler's class means at z = 0, raw mesh, left eye; mm; neutral description of GNM's classes)
+| class mean | crease over margin | platform stand-off | tuck deg | wall deg | drape | inner third: turn height | eyes_forward | brows_over_eyes | pupils apart |
+|---|---|---|---|---|---|---|---|---|---|
+| GNM template (c = 0) | 2.1 | 3.2 | 14 | 29 | 1.7 | 2.9 | -18.8 | 19.0 | 61.7 |
+| female middle_eastern | 2.4 | 3.1 | 23 | 29 | 1.8 | 3.0 | -19.1 | 18.5 | 61.0 |
+| female asian | 3.0 | 3.5 | 8 | 21 | 1.1 | 8.1 | -14.2 | 19.8 | 61.2 |
+| female white | 2.2 | 3.1 | 24 | 30 | 1.8 | 3.0 | -20.0 | 17.8 | 60.2 |
+| female black | 3.0 | 3.1 | 18 | 24 | 1.4 | 3.3 | -17.6 | 20.6 | 63.8 |
+| male middle_eastern | 1.7 | 3.4 | 18 | 40 | 2.5 | 2.6 | -21.8 | 15.9 | 63.1 |
+| male asian | 3.9 | 4.6 | 7 | 26 | 1.3 | 6.6 | -16.7 | 17.9 | 64.3 |
+| male white | 1.2 | 3.7 | 4 | 42 | 2.6 | 2.3 | -23.1 | 15.0 | 62.5 |
+| male black | 2.5 | 3.3 | 22 | 33 | 2.0 | 3.0 | -19.6 | 18.1 | 64.8 |
+- Read (class MEANS are averages: every one is the smooth wedge type, platform 3.1-4.6 mm off the ball; no class
+  mean has #376's platform-on-the-ball; individuals carry the tuck): the classes differ mainly in the ORBIT. asian
+  (both sexes): the shallowest orbit (eyes 14-17 mm behind the nasion: a low bridge), the least turn anywhere on the
+  lid (7-8 deg), no turn at the inner third until 6.6-8 mm up (a smooth sheet into the inner corner: the single-lid /
+  epicanthal type), small drape. white and middle_eastern: deeper orbits (-19 to -23), lower brows in men (15-16 mm
+  over the eyes): female means have a low fold with a 23-24 deg turn, the male white mean a deep-set eye under a low
+  brow with the fold at 1.2 mm (hooded: wall 42 deg right over the lashes). black: the highest brows over the eyes
+  (18-21 mm), widest-set, turn 18-22 deg. Sex inside a class: men 2-3.5 mm deeper-set, brows 2-3 mm lower, more drape.
+  None of the classes reaches an overhang (hang 0.00 everywhere in GNM: its fold is at most a ~60 deg wall).
+- Where the comparison heads sit (least-squares weights of c - all-class mean on sex + 4 ethnicity directions; the
+  cosines to every direction are small, |cos| <= 0.3: N(0, I) samples are mostly individual, not class):
+  #376 sex 0.66, white 0.44 / black 0.30 / asian 0.20 / me -0.03; #540 sex 0.16, me 0.82 / asian 0.79 / white 0.26;
+  s5_04 B sex 0.30, asian 0.39, white -0.22, black -0.21 (B's smooth lid + shallow orbit is the asian mean's type);
+  GNM's template itself: asian 0.54, me 0.26, black 0.23, white 0.19 (cos to asian +0.29).
+- TESS'S LINEAGE: gd_T12 <- b2_T02 <- bi_T01 <- f6_A23, i.e. the block-in started from faces6's fitted head, NOT
+  from a sampler class (block_in_start's sex / ethnicity class start came later). Her identity reads asian 0.50,
+  me 0.19-0.27, white 0.16 (gd_T12) / 0.42 (er_s4), black 0.24-0.36; cos to the white direction -0.03 / +0.05, to
+  asian +0.28 / +0.18: on these directions she sits where GNM's template sits, not at "white".

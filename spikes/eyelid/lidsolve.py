@@ -7,7 +7,9 @@ crease so the crease lands at the person's fold height (hc, mm at the model per 
 line) and shifted above it (the fold and drape unchanged, lifted). Ring 0 (the margin: the eye ruler's numbers) and
 everything else on the head are HELD at the source.
   min |W_t (V(c) - target)|^2 + |W_h (V(c) - V(c0))|^2 + lam |c - c0|^2      (V linear in c: exact, no iterations)
-keys: hc=4.7 (mm at the model, one number) | hc=ruler; rt=8 (last target ring); sig=0.1 (mm, target); hold=0.3 (mm);
+keys: sharp=<mm> (the skin above the crease this much further forward than the donor's, the crease 0.3 x deeper);
+margins=<identity source> (ring 0 of both lids put where that head has them in its eye frame; default held at the source);
+hc=4.7 (mm at the model, one number) | hc=ruler; rt=8 (last target ring); sig=0.1 (mm, target); hold=0.3 (mm);
 lam=1 (|dc| prior); hold=<mm>[,<mm>..] (each solved, the last written); tw=0.25 (weight along the surface); scale=<world mm per
 raw mm> (default measured from the source's head)."""
 import copy
@@ -73,7 +75,7 @@ def crease_of(F, U):
     return np.array(hc)
 
 
-def design(Vd, cd, Vs, cs, r, hc_person, rt):
+def design(Vd, cd, Vs, cs, r, hc_person, rt, sharp=0.0):
     """Targets for the LEFT eye: {vertex id: target xyz (raw GNM mm)} for rings 1..rt, from the donor's lid Vd (eye
     centre cd) onto the source's eye (Vs, cs). hc_person(f) = the person's fold height over the margin (raw mm) at the
     fraction f across the margin (0 inner .. 1 outer)."""
@@ -99,6 +101,9 @@ def design(Vd, cd, Vs, cs, r, hc_person, rt):
         H = hc_person(f)
         h2 = np.where(h <= hd, h * H / np.maximum(hd, 0.3), H + (h - hd))
         s2 = s + (ss0 - sd0) * np.exp(-np.maximum(h2, 0) / 1.5)
+        if sharp:   # a sharper tuck than the donor's: the skin above the crease further forward (fading over 2.5 mm),
+            # the crease itself a little deeper
+            s2 = s2 + np.where(h > hd + 0.15, sharp * np.exp(-np.maximum(h - hd, 0) / 2.5), 0.0) - 0.3 * sharp * np.exp(-((h - hd) / 0.35) ** 2)
         v2 = ms + h2
         w2 = np.sqrt(np.maximum((r + s2) ** 2 - us ** 2 - v2 ** 2, 0.0))
         # the corners fade to the source's own lid (the structure merges into the canthi there)
@@ -147,7 +152,7 @@ def main():
         hc_person = lambda f: np.full(np.shape(f), float(hc) / sc)   # noqa: E731
     print(f"world / raw scale at the lid {sc:.4f}; GNM ball r {r:.2f}")
     tgt = {}
-    tl, info = design(Vd, cd, Vs, cs, r, hc_person, rt)
+    tl, info = design(Vd, cd, Vs, cs, r, hc_person, rt, float(kw.get('sharp', 0)))
     tgt.update(tl)
     # the right eye: the same design on the reflected heads, reflected back
     cs_r, cd_r = lm.eye_frame_raw(c0)[0], None
@@ -161,9 +166,19 @@ def main():
         return sol[:3]
     cs_r = ball(Vs, gR) * [-1, 1, 1]
     cd_r = ball(Vd, gR) * [-1, 1, 1]
-    tr, _ = design(Vd_m, cd_r, Vs_m, cs_r, r, hc_person, rt)
+    tr, _ = design(Vd_m, cd_r, Vs_m, cs_r, r, hc_person, rt, float(kw.get('sharp', 0)))
     for vid, (p, w) in tr.items():
         tgt[int(MIR[vid])] = (p * [-1, 1, 1], w)
+    if kw.get("margins"):   # the lid margins (ring 0, both lids, both eyes) put where ANOTHER model has them in its eye frame
+        import lidstruct
+        cm = lidstruct.ident(kw["margins"])
+        Vm = gc.vertices(cm) * 1000
+        r0 = t["loops"][0]
+        for ids0, grp in ((r0, "left_eye"), (MIR[r0], "right_eye")):
+            m = g["groups"][grp] & g["groups"]["scleras"]
+            cm_, cs_ = ball(Vm, m), ball(Vs, m)
+            for vid in ids0:
+                tgt[int(vid)] = (Vm[vid] - cm_ + cs_, 2.0)
     print("rings: donor median height over its margin -> target", " ".join(f"{k}:{a:.2f}->{b:.2f}" for k, a, b in info))
     ids = np.array(sorted(tgt))
     P = np.array([tgt[i][0] for i in ids])
@@ -174,7 +189,7 @@ def main():
     hm[ids] = False
     hid = np.flatnonzero(hm)
     tw = float(kw.get("tw", 0.25))   # weight of a target miss ALONG the surface (a vertex sliding in the skin is not a shape error)
-    full = wt > 0.99
+    full = (wt > 0.99) & (wt < 1.5)
     m0 = (np.abs(t["ring"][hid]) <= 0) | (np.abs(t["ring"][MIR[hid]]) <= 0)     # the lid margins, both lids, both eyes
     D0 = P - Vs[ids]
     IBt = IB[:, ids].astype(np.float64)
