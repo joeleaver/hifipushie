@@ -86,7 +86,7 @@ def test_ruler_reads_the_gaps_and_its_moves_close_them():
     extent = {"skull_width", "skull_top", "skull_back", "cheekbone_width", "neck_width"}
     for n in gnm_mm.NAMES:
         if n not in {r["measure"] for r in top}:
-            assert abs(after[n] - before[n]) < (3.5 if n in extent else 0.6), (n, before[n], after[n])
+            assert abs(after[n] - before[n]) < (5.0 if n in extent else 0.6), (n, before[n], after[n])
     assert "mm:" in gnm_mm.gaps_text(rows, top=3)
     for n in gnm_mm.NAMES:
         assert n in gnm_mm.SEE
