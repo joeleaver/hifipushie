@@ -5,6 +5,9 @@
   be slightly up"; b3_G16 "looks much better"), narrow bridge via the GNM sculpt route (no designed local). Later
   Garrett work starts from b3_G17 and must not turn the tip down again (b2_G15 and rb_G14 have the old down tip).
 - Tess: b2_T06 lineage + gnmdetail2's lips step (g2_T12* models); her accepted dressed look is still f3_t1's dressing.
+- HOLD (Joe, 2026-10-10): no further work on any model (Tess, Garrett, lt19, jw) until the GNM controls and the eye
+  crease are sorted; then start over on all four with block-in v2 (GNM's own head, moves chosen from the control
+  atlas, sculpt / relief first, the eye and lips steps).
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
   is the default; private family likenesses (lt19, jw) are never in the repo.
 
