@@ -91,6 +91,10 @@ def src(s):
     if s.startswith("model:"):
         sp = store.load(s[6:])
         return bi.identity(sp), eye_e(sp), s[6:]
+    if s.startswith("ss:"):
+        p, _, m = s[3:].partition("@")
+        z = np.load(p)
+        return z["c"], z["e"], s
     if s.startswith("npy:"):
         p, _, m = s[4:].partition("@")
         return np.load(p), (eye_e(store.load(m)) if m else None), s

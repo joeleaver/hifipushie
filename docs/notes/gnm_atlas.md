@@ -2090,12 +2090,13 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 
 ## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
-STATE / NEXT (gnmcrease 2, 2026-10-10): CORRECTION in "### Round 2" below (#376 / #540 = the right fold; gd_T30 = right
+STATE / NEXT (gnmcrease 2, 2026-10-10): CORRECTION in "### Round 2" (#376 / #540 = the right fold; gd_T30 = right
 darkness, wrong fold SHAPE; makeup supplies missing darkness, no geometry fixes). DONE: eye step matches the crease SHAPE
-(blockin_eyes CREASE / crease_shape / Reader.sections, blockin_crease.npz; CREASE_SLIT_DARK + the note retired), shape
-solves (out/ss_*.npz), the new eye step on Tess (out/ev_T12_fold.npz). NEXT: renders queued (dress7/8/9: Garrett ss, Tess
-+ crease makeup, Tess new eye step) -> the one sheet gk_05 (photo | #376 | #540 | gd_T30 | new, same frame + section plots),
-judge; Tess's new eye step lifted the upper lid 0.67 -> 0.79 iris r (check dressed; maybe SIG_SHAPE 0.5).
+(blockin_eyes CREASE / crease_shape / Reader.sections, blockin_crease.npz; CREASE_SLIT_DARK + note retired); sheet gk_05.
+VERDICT on gk_05: the SECTIONS match (0.1-0.2 mm) but dressed the line #376 / #540 show does NOT come back on Tess (a full
+low lid, faint fold, no arc line). NEXT: add the fold edge's curvature to the shape residuals (shapesolve CURV=1) and
+retest ssT376; if still no line, the read lives outside the 3 sections / 8 mm (brow-to-lid spacing: Tess's held brow sits
+lower over the lid than the donors').
 
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
@@ -2196,3 +2197,15 @@ depth, same ceiling.
 - Garrett's picture reads hooded (no fold line: dark 0.01), so the eye step's hooded path applies, not the shape; his
   shape solves (shapesolve.py b3_G17): he already had a #540-like fold (crease 2.9, platform 2.4, ratio 0.34; rms to
   #540 0.58 mm); -> #540 rms 0.08, |dc| 3.0; -> #376 rms 0.18, |dc| 4.8 (eye_height -0.5, eye_tilt -0.5 sd).
+- SHEET gk_05_crease_shape_dressed.png (one eye frame for all: 84 mm at 0.6 m, Tess's photo light, hair off; Garrett from
+  the face frame, upscaled): photo | #376 | #540 / gd_T30 | Tess shape -> #376 | -> #540 / Tess NEW eye step (fold) | +
+  crease makeup (eyeshadow amount 0.3, color #b08878, crease #7a5446, matte) x2 / Garrett as is | -> #376 | -> #540; section
+  plots under them. BLUNT READ: the geometry matches (the plots: Tess's sections lie on #376 / #540, the fold line 2.2-2.8 mm
+  parallel to the lashes, platform 1.5-2.5 mm) but dressed Tess now reads as a FULL LOW LID with almost no crease line: the
+  arc that makes #376 / #540 read (a lit fold edge over a soft line about a third of the way to the brow) is not there.
+  gd_T30 still shows more line than any shape result. The makeup at 0.3 is barely visible. The new eye step also opened
+  Tess's upper lid (0.64 -> 0.79 iris r; picture 0.67). Garrett: hooded / small in frame, the three look alike (he
+  already had a #540-like section). So: right sections are NOT sufficient; not shippable as "the crease" yet.
+  Suspects: (1) the fold edge's crest: ssT376's fold-edge convexity 0.35 /mm vs #376's 0.91 (sections sampled every 0.5
+  mm miss curvature); (2) what lies past 8 mm / between the columns: the donors' brows sit higher over the lid (brow 9.5 /
+  7.7 mm over the margin but their whole orbit is open), Tess's held brow shades the fold.
