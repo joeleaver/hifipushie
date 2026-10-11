@@ -5,9 +5,11 @@ finding 2, the audit's g11_crease_fit). So the eye step is one MAP solve over th
 eye-region expression (left_k + right_k, k < NE), on the head as it ships (onemesh.head_template: the body's head, our
 seated eyeball), driven by what the reference shows:
   - the lid margins against the iris (MediaPipe, iris radii: MRD1 / MRD2 style), sigma 0.05;
-  - the visible fold line's height over the lash line (lidfold.read_lid's tps, mm at the iris' scale) against the
-    model's visible platform (the pretarsal skin seen from the front below the fold), sigma 0.3 mm, and that a line IS
-    there (the crease's local depth at least D_LINE) when the picture's line is dark;
+  - when the picture shows a fold line: the upper lid's SHAPE, its sections at the inner third / pupil / outer third
+    matched to a crease template from GNM's own population (CREASE, sigma SIG_SHAPE; gnmcrease 2: the fold's shape is
+    what reads, not its depth or the picture's darkness, which makeup supplies); crease=None keeps the old target (the
+    line's height over the lashes vs the model's crease, sigma 0.3 mm, local depth at least D_LINE); hooded (no line):
+    the visible platform;
   - the rest of the face held where the block-in put it (68 landmarks off the eyes, sigma 0.3 mm; brows 1 mm);
   - priors: |dc|^2 + |e|^2 (both unit variance).
 No lidfold, no lid pose offsets: the result ships as base.head.identity + base.head.expression (eye-region pairs), the
@@ -29,14 +31,21 @@ SIG_LINE = 0.1
 DARK_LINE = 0.15        # the picture's fold line darkness above which "a line is there"
 HOODED_SHOW = 0.5       # mm: the visible platform when the picture shows no fold line (hooded: the fold covers it)
 SIG_HOODED = 0.5
-# GNM's reach for the crease (gnmcrease, 1600 sampled identities: N(0, I), ICT-led prior, the semantic sampler): the
-# valley's local depth (this module's reader) p99 1.33 mm, max 1.66; no sample folds skin OVER the lid from the front;
-# dressed (EEVEE full-res GI, photo light) no sample's line read darker than 0.16 (a photo's crisp crease: ~0.3). The
-# identity's crease comes as a whole-face configuration (deep-set eye, heavier lower brow, leaner face): carrying a
-# sampled fold onto a held face costs |dc| ~16, about the distance to the donor. So past CREASE_REACH the picture's
-# line is out of GNM's reach: the report says so instead of the solve paying identity for it.
-CREASE_REACH = 1.35     # mm (p99 of the population's valley depth)
-CREASE_SLIT_DARK = 0.2  # the picture's line darkness above which it is a slit, not a valley GNM can draw
+# The crease as a SHAPE (gnmcrease 2; Joe on the sampled heads: #376 / #540 read right dressed, the deepest solve
+# (gd_T30, valley 1.64 mm) had the right darkness but the wrong fold). What separates them is the lid's cross-section,
+# not depth or the picture's darkness: a low crease (2.4-3 mm over the margin), a short platform (1.7-2.4 mm) that
+# barely recedes, and a full fold coming forward above it, the fold line parallel to the lashes; gd_T30 was a sunken lid
+# (the platform 4 mm back into the socket, the crease the floor of the hollow at 5 mm). So when the picture shows a
+# line, the step matches the upper lid's sections (inner third / pupil / outer third, relative to the lid margin,
+# arclength 0.5-8 mm) to a template from GNM's own population (CREASE_SHAPES, blockin_crease.npz: "fold" = the mean of
+# the 30 / 1200 sampled heads with a low, narrow, parallel crease; "s376" / "s540" = Joe's two). Any darkness still
+# missing dressed is cosmetics (skin.makeup eyeshadow "crease"), not geometry.
+CREASE = "s376"         # the default template when the picture shows a line ("fold" read puffier on Tess, gk_06; None: the old height + depth target)
+SIG_SHAPE = 0.3         # mm per section point
+SIG_LID_SHAPE = 0.02    # iris radii: the lid margins held harder with the shape term on (72 section points pulled the
+                        # upper lid open 0.64 -> 0.75 vs the picture's 0.67 at SIG_LID)
+SECTION_FR = (0.25, 0.5, 0.75)        # inner third, pupil, outer third (corner to corner)
+SECTION_S = np.arange(0.5, 12.01, 0.5)  # mm of arclength from the lid margin (12: to 8 the lid matched but the fold's arc did not read)
 SOCKET = ("orbital_rim", "lower_orbit", "eye_depth")   # the socket's readings held (humanmacro, population sd, on the
 SIG_SOCKET = 0.15       # mesh WITH the expression): unheld, lt19's fold came with orbital_rim +1.1 / lower_orbit -0.9 sd
 HOLD = [i for i in range(68) if not (36 <= i < 48 or 17 <= i < 27)]
@@ -191,6 +200,62 @@ class Reader:
             out.update(show=np.nan, height=np.nan, depth=0.0, local=0.0, hsoft=np.nan, lsoft=0.0, drop=0.0, vis=np.nan)
         return out
 
+    def sections(self, ht, fractions=SECTION_FR):
+        """The upper lid's sagittal sections at fractions of the corner-to-corner width (the subject's left eye, lm68
+        42 -> 45), each (forward, up) mm relative to the lid margin at SECTION_S of arclength: (len(fractions), S, 2);
+        a column with no section is NaN."""
+        V = np.asarray(ht["verts"], float)
+        c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)
+        r = float(ht["eye_r"])
+        fwd = np.asarray(ht["forward"], float)
+        up = np.array([0, 0, 1.0]) - fwd * fwd[2]
+        up /= np.linalg.norm(up)
+        L68 = np.asarray(ht["lm68"], float)
+        xi, xo = L68[42, 0], L68[45, 0]
+        out = np.full((len(fractions), len(SECTION_S), 2), np.nan)
+        for k, f in enumerate(fractions):
+            best = None
+            for L in _chain(_slice(V, self.tri, xi + f * (xo - xi))):
+                d = np.linalg.norm(L - c, axis=1)
+                ok = (d > r + 0.0003) & ((L - c) @ up > -0.004) & ((L - c) @ fwd > -0.004) & ((L - c) @ up < 0.03)
+                runs, cur = [], []
+                for i, o in enumerate(ok):
+                    if o:
+                        cur.append(i)
+                    elif cur:
+                        runs.append(cur)
+                        cur = []
+                if cur:
+                    runs.append(cur)
+                for rr in runs:
+                    if best is None or len(rr) > len(best[1]):
+                        best = (L, rr)
+            if best is None:
+                continue
+            L, rr = best
+            P = np.c_[(L[rr] - c) @ fwd, (L[rr] - c) @ up] * 1000
+            if P[0, 1] > P[-1, 1]:
+                P = P[::-1]
+            P = P - P[0]
+            dd = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+            s = np.clip(SECTION_S, 0, dd[-1])
+            out[k] = np.c_[np.interp(s, dd, P[:, 0]), np.interp(s, dd, P[:, 1])]
+        return out
+
+
+_SHAPES: dict = {}
+
+
+def crease_shape(name: str) -> np.ndarray:
+    """A crease template's sections (len(SECTION_FR), len(SECTION_S), 2) mm: "fold" | "s376" | "s540"."""
+    if not _SHAPES:
+        from pathlib import Path
+        z = np.load(Path(__file__).with_name("blockin_crease.npz"))
+        _SHAPES.update({k: z[k] for k in z.files if k not in ("S", "members")})
+    if name not in _SHAPES:
+        raise ValueError(f"eye step: no crease template {name!r} (have {', '.join(k for k in _SHAPES if not k.endswith('_sd'))})")
+    return _SHAPES[name]
+
 
 def _profile(P, w_mm=2.5, lo=2.0, hi=12.0):
     """A lid profile (forward, up; m; margin first): the crease = the deepest narrow valley 2-12 mm over the margin
@@ -252,9 +317,39 @@ def photo_evidence(img, view: dict) -> dict:
     tps = [c["tps"] for e in cols for c in e if np.isfinite(c.get("tps", np.nan)) and c.get("dark", 0) >= DARK_LINE]
     dk = [c["dark"] for e in cols for c in e]
     hooded = len(tps) < 2   # no fold line in most columns: the fold hangs over the platform
+    # the fold line's path across the lid: per column (inner third, pupil, outer third), both eyes' lines that read
+    tcols = []
+    for k in range(3):
+        v = [e[k]["tps"] for e in cols if np.isfinite(e[k].get("tps", np.nan)) and e[k].get("dark", 0) >= DARK_LINE]
+        tcols.append(float(np.median(v)) if v else np.nan)
     return {"up": float(np.mean([lp[s]["upper"] for s in lp])), "lo": float(np.mean([lp[s]["lower"] for s in lp])),
             "tps": float(np.median(tps)) if not hooded else HOODED_SHOW, "dark": float(np.median(dk)) if dk else 0.0,
-            "hooded": hooded, "columns": cols}
+            "hooded": hooded, "tps_cols": tcols, "columns": cols}
+
+
+def crease_target(name: str, heights) -> np.ndarray:
+    """A crease template's PROFILE carried to the picture's fold line: per section, the template's crease (its most
+    recessed point 1.2-6 mm up) is moved to heights[k] (mm over the margin; NaN: the template's own) by stretching the
+    platform under it vertically and lifting the fold above it unchanged, then resampled at SECTION_S. The fold's make
+    (crest over the crease, a short platform that doesn't recede, the line parallel to the lashes) comes from the
+    template, its height and path from the picture (gnmcrease 2: the templates' own height, ~2.5 mm, was #376's, not the
+    person's)."""
+    T = crease_shape(name)
+    out = np.empty_like(T)
+    for k in range(len(T)):
+        P = np.r_[[[0.0, 0.0]], T[k]]
+        low = (P[:, 1] > 1.2) & (P[:, 1] < 6.0)
+        ic = int(np.argmin(np.where(low, P[:, 0], np.inf)))
+        hc = P[ic, 1]
+        H = float(heights[k]) if heights is not None and np.isfinite(heights[k]) else hc
+        Q = P.copy()
+        f = max(H, 0.5) / max(hc, 0.3)
+        Q[:ic + 1, 1] *= f
+        Q[ic + 1:, 1] += (f - 1.0) * hc
+        d = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+        s = np.clip(SECTION_S, 0, d[-1])
+        out[k] = np.c_[np.interp(s, d, Q[:, 0]), np.interp(s, d, Q[:, 1])]
+    return out
 
 
 def socket(c, expression: dict) -> dict:
@@ -292,11 +387,16 @@ def _head(base, c, e, Ln, Rn):
 
 
 def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None = None,
-          hold_socket: float | None = SIG_SOCKET) -> dict:
+          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default") -> dict:
     """identity + eye expression for evidence ev (photo_evidence). base: the block-in's base (its lid pose cleared
-    here). d_line: the crease's least local depth (mm) when the picture shows a line (default D_LINE); hold_socket: the
-    socket readings' sigma (sd; None = not held). Returns {"c", "expression", "read0", "read", "cost", "dc", "e",
-    "socket0", "socket"}."""
+    here). crease: when the picture shows a line, the fold's SHAPE to match (a crease_shape template name; "default" =
+    CREASE; None = the old target: the line's height + d_line, the crease's least local depth in mm, default D_LINE);
+    hold_socket: the socket readings' sigma (sd; None = not held). Returns {"c", "expression", "read0", "read", "cost",
+    "dc", "e", "socket0", "socket", "crease", "shape0" / "shape" (section rms vs the template, mm)}."""
+    crease = CREASE if crease == "default" else crease
+    use_shape = bool(crease) and not ev.get("hooded") and np.isfinite(ev.get("tps", np.nan))
+    shape = None
+    sig_lid = SIG_LID_SHAPE if use_shape else SIG_LID
     d_line = D_LINE if d_line is None else float(d_line)
     from . import blockin as bi
     Ln, Rn, _ = _names()
@@ -314,6 +414,13 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
         e0[k] = 0.5 * (float(ex0.get(Ln[k], 0.0)) + float(ex0.get(Rn[k], 0.0)))
     ht0, _ = _head(b0, c0, e0, Ln, Rn)
     rd = Reader(ht0)
+    heights = None
+    if use_shape:
+        # the picture's fold line (mm at an 11.7 mm iris) -> ours, per column; a column with no line takes the median
+        k_iris = rd.read(ht0)["r_iris_mm"] / 5.85
+        tc = [t if np.isfinite(t) else ev["tps"] for t in (ev.get("tps_cols") or [ev["tps"]] * 3)]
+        heights = [t * k_iris for t in tc]
+        shape = crease_target(crease, heights)
     ex_other = {k: v for k, v in ex0.items() if k not in set(Ln) | set(Rn)}
 
     def sock(c, e):
@@ -325,9 +432,12 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
     def resid(x):
         ht, _ = _head(b0, c0 + x[:170], e0 + x[170:], Ln, Rn)
         q = rd.read(ht)
-        r = [(q["up"] - ev["up"]) / SIG_LID if np.isfinite(q["up"]) else 50.0,
-             (q["lo"] - ev["lo"]) / SIG_LID if np.isfinite(q["lo"]) else 50.0]
-        if np.isfinite(ev.get("tps", np.nan)):
+        r = [(q["up"] - ev["up"]) / sig_lid if np.isfinite(q["up"]) else 50.0,
+             (q["lo"] - ev["lo"]) / sig_lid if np.isfinite(q["lo"]) else 50.0]
+        if shape is not None:
+            d = (rd.sections(ht) - shape) / SIG_SHAPE
+            r += list(np.where(np.isfinite(d), d, 20.0).ravel())
+        elif np.isfinite(ev.get("tps", np.nan)):
             want = ev["tps"] * q["r_iris_mm"] / (5.85)   # the picture's mm at an 11.7 mm iris -> ours
             if ev.get("hooded"):
                 r.append((q["vis"] - want) / SIG_HOODED if np.isfinite(q["vis"]) else 20.0)
@@ -376,10 +486,19 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
     e = e0 + x[170:]
     s1 = sock(c0 + x[:170], e)
     log("  socket " + ", ".join(f"{k} {s0[k]:+.2f} -> {s1[k]:+.2f}" for k in SOCKET))
+
+    def shape_rms(c, e):
+        if shape is None:
+            return float("nan")
+        d = rd.sections(_head(b0, c, e, Ln, Rn)[0]) - shape
+        return float(np.sqrt(np.nanmean(np.sum(d ** 2, -1))))
+    sh0, sh1 = shape_rms(c0, e0), shape_rms(c0 + x[:170], e)
+    if shape is not None:
+        log(f"  crease shape ({crease}): section rms {sh0:.2f} -> {sh1:.2f} mm")
     return {"socket0": s0, "socket": s1, "c": c0 + x[:170], "expression": {**{Ln[k]: round(float(e[k]), 5) for k in range(NE) if abs(e[k]) > 1e-5},
                                               **{Rn[k]: round(float(e[k]), 5) for k in range(NE) if abs(e[k]) > 1e-5}},
             "read0": q0, "read": q, "cost": f, "dc": float(np.linalg.norm(x[:170])), "e": float(np.linalg.norm(e)),
-            "pose": pose}
+            "pose": pose, "crease": crease if shape is not None else None, "shape0": sh0, "shape": sh1, "heights": heights}
 
 
 def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, log=print) -> dict:
@@ -398,7 +517,8 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
                        f"model {s['read']['up']:.2f} / {s['read']['lo']:.2f}, platform {s['read']['show']:.2f} mm, "
                        f"crease {s['read']['local']:.2f} mm deep; |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"),
                   _identity=s["c"], _head_set={"expression": s["expression"], "pose": s["pose"] or None})
-    rep["eyes"] = {"evidence": {k: v for k, v in ev.items() if k != "columns"}, **{k: s[k] for k in ("read0", "read", "dc", "e")}}
+    rep["eyes"] = {"evidence": {k: v for k, v in ev.items() if k != "columns"},
+                   **{k: s[k] for k in ("read0", "read", "dc", "e", "crease", "shape0", "shape", "heights")}}
     return rep
 
 
@@ -413,7 +533,7 @@ def text(e: dict) -> str:
             f"at {a['hsoft']:.2f} mm\n"
             f"  model after:  lids {b['up']:.2f} / {b['lo']:.2f}, platform {b['show']:.2f} mm, crease {b['lsoft']:.2f} mm deep "
             f"at {b['hsoft']:.2f} mm | |dc| {e['dc']:.2f}, eye expression |e| {e['e']:.2f}"
-            + (f"\n  NOTE: the picture's fold line is a crisp slit (dark {ev['dark']:.2f} >= {CREASE_SLIT_DARK}): GNM's identity "
-               f"space has no such fold (valley depth p99 {CREASE_REACH} mm over 1600 sampled heads, no overhang, dressed lines "
-               f"<= 0.16 dark); the solve draws GNM's soft valley, not the slit (docs/notes/gnm_atlas.md ## gnmcrease)"
-               if not ev.get("hooded") and ev.get("dark", 0) >= CREASE_SLIT_DARK else ""))
+            + (f"\n  crease SHAPE: the {e['crease']!r} template's fold carried to the picture's line ("
+               + "/".join(f"{h:.1f}" for h in (e.get("heights") or [])) + " mm over the margin, inner/pupil/outer): section rms "
+               f"{e['shape0']:.2f} -> {e['shape']:.2f} mm. The picture's line darkness is not a target: add any missing "
+               f"darkness with skin.makeup eyeshadow's \"crease\"" if e.get("crease") else ""))

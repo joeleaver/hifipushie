@@ -2123,6 +2123,12 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 
 ## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
+STATE / NEXT (gnmcrease 3, 2026-10-10, handed over): the eye step makes the crease as the template's PROFILE (default
+"s376") carried to the PICTURE's line height and path (crease_target, tps_cols), lid margins held at SIG_LID_SHAPE 0.02.
+Tess (scratch): crease at the photo's height, section rms 0.18 mm, |dc| 4.5, upper lid 0.66 (photo 0.67). Sheet
+human_renders/gk_07_crease_make_at_photo_height.png. OPEN: Joe's read of gk_07 (the line reads at gd_T30's height, softer,
+without the hollow); makeup setting below; Garrett's hooded path untouched. Branch ready to merge.
+
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
 Is the crisp fold in GNM's identity space and our solves miss it (held socket / brow, wrong objective), or not there?
@@ -2184,6 +2190,103 @@ depth, same ceiling.
   jac_gd_T12.npz, crdir.npz (pop / contrast / Tess-gradient directions), readd.json (dressed reads), d_*_{dressed,clay,face}.png.
 - If a fine crease layer is approved: aim the RENDERED line, not the valley (gnmdetail2: a valley's dark band reads ~1 mm
   above its bottom), and judge it dressed at the photo's mm/px; the raster clay over-reads down-facing bands.
+
+### Round 2: the correction (Joe, on gk_01) and the crease as a SHAPE
+- Joe: #376 and #540 read right dressed; gd_T30 has the right darkness but the wrong fold shape. So the round-1 target (the
+  photo's line darkness 0.32) and the round-1 verdict ("GNM has no crisp crease, out of reach") were WRONG: the bar is how
+  the fold reads dressed. Any darkness still missing comes from makeup (skin.makeup eyeshadow crease), not geometry.
+- Readers across the lid (col.py: the eye step's sagittal profile at 7 columns, inner -> outer corner; secplot.py,
+  out/sec_a.png). #376 / #540 vs gd_T30 / gd_T12 (geo, mm over the lid margin):
+  crease height mid 2.9 / 2.35 vs 4.85 / 4.97; platform shown 2.4 / 1.7 vs 4.5 / 4.3; crease / (margin -> brow) 0.30 / 0.31
+  vs 0.54 / 0.49; valley narrow (0.75 mm chord) mean 0.32 / 0.37 vs 0.60 / 0.23; the fold edge's convexity above 0.9 / 0.7
+  vs 0.8 / 0. The SECTIONS: gd_T30's platform recedes ~4 mm BACK into the socket up to 5-6 mm, then the skin turns forward
+  to the brow: a sunken / hollow upper lid, the crease the floor of that hollow. #376 / #540: the platform recedes <= 1-2 mm,
+  the crease is low (2.4-3 mm), the skin above comes FORWARD as a full fold (#540 strongly). The fold line across the lid:
+  parallel to the lashes, highest at the inner corner (4 mm), lowest just past the pupil (2.4-2.9).
+- Population (1200 samples, sep.py): #376 / #540 are the 1-12 % lowest creases, 15-40 % platform, top 2-5 % fold-edge
+  convexity and narrowness; 30 / 1200 are low (< 3.2) + narrow (> 0.3) + parallel. gd_T30: 65 % height, 85 % platform.
+  Depth isn't it (gd_T30 is deeper than both); the fold's height, the platform's width and a full lid above it are.
+- The dressed lidfold reader is NOT a usable height ruler on our renders: its line height vs the geometric crease over 19
+  samples r -0.19 (it locks onto the brow sulcus or the brow hairs' edge at 7-8 mm). Judge shape geometrically, look by eye.
+- SHAPE SOLVE (shapesolve.py <model> <donor> <out>): the eye step's variables (identity 170 + 20 eye pairs) and holds (68 lm
+  0.3 mm, brows 1 mm, socket 0.15 sd, lid margins vs the iris at their start 0.05 r); evidence = the donor's sections at the
+  inner third / pupil / outer third relative to the lid margin, arclength 0.5-8 mm, sigma 0.3 mm. ~75 s / iteration, 6 its.
+  From gd_T30: -> #376 shape rms 1.71 -> 0.12 mm, |dc| 5.3, |de| 3.5 (crease 4.85 -> 2.67 mm, platform 4.5 -> 2.2,
+  ratio 0.29); -> #540 3.15 -> 0.20 mm, |dc| 5.8, |de| 5.6 (crease 2.1, platform 1.5; brow_height +1.2 sd, eye_tilt -0.8).
+  Socket within 0.3 sd. So the shape IS reachable on Tess's held face at |dc| ~5.5 (round 1's transplant cost 16+ because it
+  copied whole-region vertices incl. brow / orbit relief; the sections ask only for the lid's shape).
+- THE EYE STEP NOW MATCHES THE SHAPE (src/hifipushie/blockin_eyes.py): when the picture shows a line (not hooded), the
+  residuals are the lid's sections (Reader.sections: inner third / pupil / outer third, relative to the margin, arclength
+  0.5-8 mm) minus a template (crease_shape(name), data src/hifipushie/blockin_crease.npz from template.py: "fold" = the
+  mean of the 30 low + narrow + parallel sampled creases (looks like #540: the skin above comes forward), "s376",
+  "s540"), sigma SIG_SHAPE 0.3 mm; solve(crease=None) keeps the old height + d_line target. The report states the
+  template and the section rms and points at makeup for darkness. CREASE_REACH / CREASE_SLIT_DARK and the "out of
+  GNM's reach" note are gone (wrong). Test: tests/test_blockin.py::test_crease_shape_templates.
+- New eye step on Tess (scratch, evrun.py gd_T12 fold; no model written): section rms 2.97 -> 0.12 mm, |dc| 4.34, |e| 3.3,
+  crease 5.1 -> 2.5 mm over the margin, platform 4.3 -> 1.8 mm, socket within 0.05 sd; BUT the upper lid opened 0.64 ->
+  0.79 iris r (the picture 0.67, sigma 0.05: the 96 shape residuals outweigh the 2 lid ones).
+- Garrett's picture reads hooded (no fold line: dark 0.01), so the eye step's hooded path applies, not the shape; his
+  shape solves (shapesolve.py b3_G17): he already had a #540-like fold (crease 2.9, platform 2.4, ratio 0.34; rms to
+  #540 0.58 mm); -> #540 rms 0.08, |dc| 3.0; -> #376 rms 0.18, |dc| 4.8 (eye_height -0.5, eye_tilt -0.5 sd).
+- SHEET gk_05_crease_shape_dressed.png (one eye frame for all: 84 mm at 0.6 m, Tess's photo light, hair off; Garrett from
+  the face frame, upscaled): photo | #376 | #540 / gd_T30 | Tess shape -> #376 | -> #540 / Tess NEW eye step (fold) | +
+  crease makeup (eyeshadow amount 0.3, color #b08878, crease #7a5446, matte) x2 / Garrett as is | -> #376 | -> #540; section
+  plots under them. BLUNT READ: the geometry matches (the plots: Tess's sections lie on #376 / #540, the fold line 2.2-2.8 mm
+  parallel to the lashes, platform 1.5-2.5 mm) but dressed Tess now reads as a FULL LOW LID with almost no crease line: the
+  arc that makes #376 / #540 read (a lit fold edge over a soft line about a third of the way to the brow) is not there.
+  gd_T30 still shows more line than any shape result. The makeup at 0.3 is barely visible. The new eye step also opened
+  Tess's upper lid (0.64 -> 0.79 iris r; picture 0.67). Garrett: hooded / small in frame, the three look alike (he
+  already had a #540-like section). So: right sections are NOT sufficient; not shippable as "the crease" yet.
+  Suspects: (1) the fold edge's crest: ssT376's fold-edge convexity 0.35 /mm vs #376's 0.91 (sections sampled every 0.5
+  mm miss curvature); (2) what lies past 8 mm / between the columns: the donors' brows sit higher over the lid (brow 9.5 /
+  7.7 mm over the margin but their whole orbit is open), Tess's held brow shades the fold.
+- FOLLOW-UP (gk_05's misses): curvature residuals on the sections (CURV=0.15 mm, shapesolve) did nothing useful (the eye
+  widened, |dc| 7.9). Sections to 12 mm of arclength (SMAX=12: the skin from the fold up into the brow's underside) DID:
+  ssT376s12 (|dc| 6.2 from gd_T30, |de| 3.2, socket orbital_rim +0.49 -> -0.12) shows #376's lit fold edge and arc line
+  dressed (out/v10.png). The read lives in the fold-to-brow skin, not only the lid: the eye step's sections and templates
+  now run to 12 mm (SECTION_S; blockin_crease.npz rebuilt by template.py with SMAX=12).
+- THE NEW EYE STEP AT 12 mm on Tess (scratch, evrun.py; no model written): template "s376": section rms 1.59 -> 0.15 mm,
+  |dc| 5.2, |e| 3.2, socket within 0.3 sd, crease 2.7 mm over the margin, platform 2.15, upper lid 0.73 (picture 0.67);
+  template "fold": 4.00 -> 0.14, |dc| 5.5, upper lid 0.77. Out: out/ev12_T12_{s376,fold}.npz, scratch models
+  gk_ev12s376 / gk_ev12fold / gk_mk12*.
+- MAKEUP (the darkness split): skin.makeup = {"eyeshadow": {"amount": 0.4, "color": "#b08878", "crease": "#7a5446",
+  "finish": "matte"}} (gk_mk12*). skin_makeup puts the crease band at 0.3 x (brow mid - upper lid) over the lash line,
+  which is where the matched fold sits (crease / brow distance 0.28-0.31): no change to skin_makeup needed.
+- SHEET gk_06_crease_shape_final.png (same eye frame for all; sections under): BLUNT READ: the sections of all three
+  Tess results lie on #376 / #540 (gd_T30's hollow is gone). Dressed, 's376' and the 12 mm shape solve show #376's lit
+  fold edge with a soft arc above the lid: closer to #376 than anything before, but the line is still fainter than
+  #376's own; 'fold' reads as a fuller, puffier lid (so the default template is "s376"). The makeup at 0.4 adds a light
+  crease shade without reading as product. Costs: the upper lid opens ~0.07-0.1 iris r past the picture and the eye looks
+  a little rounder: a likeness cost to weigh. Not judged against the photo for likeness beyond that (Joe's call).
+- Scripts (spikes/gnmcrease; scratch /mnt/data/hifipushie/gnmcrease): col.py (column readers, dump), sep.py, calib.py,
+  secplot.py, shapesolve.py (SMAX / CURV / SIG), template.py (SMAX=12), evrun.py (the shipped solve, scratch), dress.py
+  (ss:<npz>@model, MAKEUP=json), sheet5.py / sheet6.py.
+
+### Round 3: the fold's make from the template, its height from the picture (coordinator review of gk_06)
+- gk_06's results sat at #376's height (crease ~2.5 mm over the margin, platform ~2 mm) where Tess's photo line is ~5 mm
+  (read_lid: 5.15 median; per column inner / pupil / outer 5.13 / 5.05 / 5.35 mm at an 11.7 mm iris) over a tall
+  platform. Joe's verdict was about the fold's construction (a full fold over a short platform that doesn't recede,
+  parallel to the lashes), not about Tess's crease being low.
+- blockin_eyes.crease_target(name, heights): per section, the template's crease (its most recessed point 1.2-6 mm up) is
+  moved to the picture's height by stretching the platform under it vertically (it keeps its recession: no hollow) and
+  lifting the fold above it unchanged; resampled at SECTION_S. photo_evidence now returns "tps_cols" (the line per column,
+  both eyes' median of the columns that read dark >= DARK_LINE); solve converts them by r_iris / 5.85 as before.
+- The lid margins are held at SIG_LID_SHAPE 0.02 iris r when the shape term is on (was 0.05: Tess's upper lid went to
+  0.73-0.77 vs the picture's 0.67).
+- RESULTS (evrun.py gd_T12 <template>, scratch, out/ev5_T12_*.npz; renders gk_ev5*, gk_mk5s376): the picture's line
+  per column 5.13 / 5.05 / 5.35 mm -> 5.55 / 5.46 / 5.79 at our iris. "s376" make: section rms 0.92 -> 0.18 mm, crease
+  5.4 mm over the margin (on the photo's line across the lid: gk_07's height plot), platform 5.0 mm, |dc| 4.45, |e| 3.4,
+  upper lid 0.66 / lower 0.89 (photo 0.67 / 0.88), socket within 0.1 sd. "fold" make: 2.17 -> 0.12, |dc| 3.9, crease 5.6.
+  So GNM CAN make a #376-type fold at ~5 mm on Tess's held face, cheaper than gk_06's low one (|dc| 5.2) and than gd_T30
+  (7.6), with the lid at the photo's opening.
+- BLUNT READ of gk_07: the sections now sit on the photo's line, with a platform that recedes ~1.5-2 mm (gd_T30: 4.5 mm,
+  the hollow) and the fold coming forward above it. Dressed, "s376 at the photo's height" shows a soft crease arc at about
+  the photo's height, softer than gd_T30's and without its sunken look; it does not have the crispness of the photo's
+  line (that is makeup's share now). The "fold" make at 5 mm barely shows a line (too full above): keep "s376" as the
+  default. Crease makeup 0.4 (eyeshadow color #b08878, crease #7a5446, matte) adds a light shade along it.
+- Sheet gk_07_crease_make_at_photo_height.png: photo | #376 | gd_T30 / gk_06 (s376 at #376's height) | NEW s376 at the
+  photo's height | NEW fold at the photo's height / NEW s376 + makeup; sections + the fold-line height plot with the
+  photo's line (stars).
 
 ### 2. Age curves from Wikimedia Commons (Joe approved the source; sheet human_renders/b3_age_curves.png)
 - Data (scratch /mnt/data/hifipushie/blockin3/wiki_ages, NEVER in the repo): Wikidata humans with an image (P18), birth
