@@ -2242,9 +2242,9 @@ at another age (Commons categories) for a longitudinal check; (4) run blockin_ag
 ## /mnt/data/hifipushie/gnmdrive: run.sh <script> (capped, this worktree's src), scripts/, cases/, hidden/ (B's
 ## coefficients: never shown to a driver), out/; sheets human_renders/gd2_*; manual docs/notes/gnm_driving_manual.md)
 
-STATE / NEXT: s2 (seed 202) driven by two fresh groups on the SAME pairs: no manual 3/14, manual v1 7/14 (easy 5/8,
-medium 2/3, hard 0/3). Next: manual v2 from the m2 drivers' notes (ears, eye unit height, combined free moves,
-forehead / philtrum finders), wire it into block_in_step + guide (gnm_manual.py), third set s3 with v2, sheets, tests.
+STATE / NEXT: manual v2 shipped (src/hifipushie/gnm_driving_guide.md = guide topic gnm_driving; gnm_manual.suggest;
+gnm_controls(phrase=); block_in_step's reply lists the manual's entries for `seen`; tests/test_gnm_manual.py).
+Set s3 (seed 303) running: no manual (s3_*) vs v2 (m3_*), 3 drivers each. Next: score s3 / m3, final sheets, report.
 
 Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
 A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
@@ -2392,3 +2392,23 @@ gonial +0.7 per unit); free brow_height at 2 drags lip_projection +0.85, bridge 
 whole profile, not the forehead; forehead_slope also shifts the profile; philtrum! +1.2-1.5 barely lowers the mouth;
 lower_orbit doesn't fix bags or hollows (+2 bulges the cheek, -2 widens the eyes); sculpt:cheeks -2.5 DID read in 3/4
 on a too-full cheek (direction-dependent); pc:left_ / right_cheek_region0 narrow the whole lower face (not a cheek move).
+
+### Manual v2 (src/hifipushie/gnm_driving_guide.md) and the finder (finder.py -> out/finder.txt)
+finder.py ranks moves for the phrases drivers couldn't solve, by mm of a reader per unit prior cost x cleanness (the
+reader vs the rms of 14 other readers): forehead vs the nasion = forehead_slope! (-3.0 mm per +1, clean 10: drivers
+read the free one's 2 mm nose drag as "the profile slid"); philtrum! +2.0 mm per sd (clean 24: drivers stopped at
+1.2-1.5 sd for a 5 mm gap); the eye unit over the nose base = nose_length (+3.5) / nose_length! (eyes +1.9, base -1.5);
+submental = under_chin! (4.5 mm, clean 13.5); occiput = head_depth! (8.5); the cheek's front plane in 3/4 =
+relief:cheeks (+1.3 mm per mm, clean 11); lower-face width at the mouth = sculpt:jawline (+2.9 per mm); brow ARCH:
+nothing clean (brow_height 1.4 mm per sd with everything else; sculpt:brows 0.6 per mm); under-eye hollow:
+lower_orbit! (1.1 mm per sd, clean 6.9) but bags / dark sockets not fixed by drivers either way; dorsum width: no
+reader-clean move in the vocabulary besides gnmcontrols' sculpt:bridge_walls.
+v2 = v1 + the m2 drivers' corrections + the finder; the tables are parsed by gnm_manual.py (one source of truth),
+suggest() ranks rows by IDF-weighted word overlap (a phrase-head bonus, crude stems, ~150 synonyms); 10 driver phrases
+land on the right control (test_gnm_manual.py); every control the manual names is checked to be a real block-in move.
+Sheets: human_renders/gd2_02_s2_manual_vs_none_a.png (mouth s2_02, nose s2_03, nose+mouth s2_09) and
+gd2_03_s2_manual_vs_none_b.png (eyes s2_04, chin s2_07, eyes+brows s2_10): START | no manual | with manual | TARGET,
+profile traces. Blunt read of gd2_02: the profile traces are where the manual shows (muzzle and nose lines sit on the
+target with it, a visible gap without); in the front views both drivers' heads still read as A's person with B's
+feature partly grafted on (expected: ~40-50 % of the region reached); s2_03's pinched projecting nose reads clearly
+closer with the manual (pc:nose_region2 +2.5 in one move vs four held / sculpt moves without).
