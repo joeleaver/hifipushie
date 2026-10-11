@@ -26,6 +26,25 @@ def make_model(tag, src):
     if src.startswith("model:"):
         return src[6:]
     name = f"gk_{tag}"
+    if src.startswith("ss:"):        # ss:<npz>@<model>: a shape solve's identity + eye pairs on the model (other expression kept)
+        p, _, m = src[3:].partition("@")
+        z = np.load(p)
+        sp = copy.deepcopy(store.load(m))
+        bi.set_identity(sp, z["c"])
+        import gk
+        ex = dict(sp["base"]["head"].get("expression") or {})
+        for k in range(len(z["e"])):
+            ex[gk.LN[k]] = ex[gk.RN[k]] = round(float(z["e"][k]), 5)
+        sp["base"]["head"]["expression"] = {k: v for k, v in ex.items() if v}
+        if os.environ.get("MAKEUP"):
+            sk = sp.setdefault("skin", {})
+            sk["makeup"] = {**(sk.get("makeup") or {}), **json.loads(os.environ["MAKEUP"])}
+        sp.pop("hair", None)
+        d = store._dir(name)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "spec.json").write_text(json.dumps(sp))
+        shutil.copy(store._dir(m) / "human_refs.json", d / "human_refs.json")
+        return name
     if src.startswith("npy:"):
         p, _, m = src[4:].partition("@")
         m = m or "gd_T12"

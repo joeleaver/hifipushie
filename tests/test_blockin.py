@@ -319,3 +319,17 @@ def test_lip_readers():
     assert rms < 1.0
     q = bl.lip_reads(ht)
     assert 0 <= q["bow"] < 3
+
+
+def test_crease_shape_templates():
+    """gnmcrease 2: the eye step matches the lid's sections to GNM's own low, full fold; the templates load, and the
+    reader measures the mean head's sections in the same frame (margin at the origin, the crease below ~6 mm)."""
+    from hifipushie import blockin_eyes as be
+    for k in ("fold", "s376", "s540"):
+        T = be.crease_shape(k)
+        assert T.shape == (len(be.SECTION_FR), len(be.SECTION_S), 2)
+        assert np.isfinite(T).all()
+    fold = be.crease_shape("fold")
+    assert fold[1, 0, 1] < 1.0 and fold[1, -1, 1] > 4.0   # up the lid from the margin
+    with pytest.raises(ValueError):
+        be.crease_shape("nope")
