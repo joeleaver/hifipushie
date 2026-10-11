@@ -37,6 +37,14 @@ eye catches what the points miss; the target table catches what your eye misses.
    8 / 42 synthetic pairs without it, 19 / 42 with it). E.g. the muzzle forward in profile = `pc:upper_lip_region0`,
    not lip_projection; pupils further apart = `mm:pupils_apart`, not eye_spacing; the whole nose further out =
    `pc:nose_region0`; a halo all round = `head_size` at 1-1.5 sd.
+   **MEASURE FIRST: `face_ruler(name)`** reads the 23 millimetre measures off the pictures themselves (skin outlines
+   and iris centres through the fitted cameras) against the model: picture - model per measure, largest first, the
+   reader's error, and the `mm:` move that closes each. Start every block-in from that table and run it again after
+   each step (it re-reads the pictures against the moved model). Tested on 14 fresh synthetic pairs: Claude drivers
+   with this ruler passed 11 (by eye 3, with a ruler that needed the target's mesh 7); its 8 largest gaps applied
+   without looking passed 11, with the camera fitted from the model's landmarks as on a photo 11 of 13. Where a driver
+   disagreed with a row, the row was right every time it was checked (under_chin, nose_length, the vault, a brow move
+   rejected for a frown the target had). Your eye judges whether the face reads closer; the ruler says how much.
    **If the difference is something you can MEASURE** (a width, a height, how far a point stands forward in profile:
    the 23 measures of `gnm_controls(query="mm")`), measure it in mm on the sheet and use the `mm:` move: closing the
    8 largest of those gaps (in population sd) passed 30 / 42 pairs, more than the best 10 phrase moves (27 / 42).
@@ -350,6 +358,40 @@ magenta brow edge) and the model's margin ring / margins / inner-corner landmark
 MOVES name the tools: `lid_read(match=True)` (the eye step solves these margins and corners), `skin.eyes.iris_size`,
 `mm:pupils_apart`, `skin.eyes.caruncle`, `brow_read(match=True)`. Python: eye_ruler.read(img, P, mmpx) on any picture
 (a dressed render through the same camera reads the same way), eye_ruler.model(spec, cam), eye_ruler.compare(name).
+
+### `face_ruler`
+face_ruler(name, save=None): the block-in model against ALL its reference pictures, in millimetres: gnm_mm's 23
+measures (pupils apart, eyes forward / height, brows over the eyes, forehead forward, nose tip / base forward, nose
+length / width, upper / lower lip and chin forward, philtrum and chin length, cheekbone / jaw / chin / mouth / skull /
+neck width, the vault's top and back, the line under the chin). Each row: picture - model (GNM's mm and population
+sd), +- the reader's error, the move `"mm:<measure>": gap` for `block_in_step`, the view it shows in. Largest (in sd)
+first. Rows inside the error say so; rows marked NOT READ are measures these pictures do not show (their number is
+the population's guess from what was read: do not act on it).
+How it reads (face_ruler.py): no detector landmarks and no eye. (1) Each picture's SKIN OUTLINE against a plain
+background (the profile's forehead-nose-lips-chin-throat line, the 3/4's far brow / cheek / jaw, the front's jaw and
+neck where hair does not cover them; hair, cloth and loose strands are left out: skin just inside the edge is required)
+compared with the model's own silhouette through the same fitted camera, at 1.5 mm steps along it. (2) The iris
+centres on the front picture (eye_ruler's limbus circle) against the model's. (3) One solve for the GNM identity
+change that explains all of it under GNM's own population prior, each picture's camera left free by 2 mm / 5 % / 1.2 deg
+(a camera fitted from the model's landmarks is that far off, measured) and refined between rounds; the 23 measures are
+read off the solved change. So a row is not a caliper reading but the most likely value given every outline at once.
+Errors (validated on pictures of known GNM heads; reader - mesh truth, rms mm): camera known: profile chain (tip, nose
+base, lips, chin forward) 0.1-0.3, eyes 0.05-0.3, brows 0.2, philtrum / chin / nose length 0.2-0.6, mouth width 0.3,
+nose width 0.9 (never seen directly: inferred), widths 1-1.8, skull 0.2-0.5 (1-1.8 under hair). Camera FITTED from
+the model (a photo's case): profile chain 0.1-0.6, eyes forward / height 0.5-0.9, pupils 1.2, lengths 0.5-1.0, widths
+2-3.6 and skull 1-3 (a fitted camera's scale is free: absolute size is the least known thing in a photo). The one
+mesh takes the head's size from the body, so a uniform size gap is not in the table: `head_scale` is its own key.
+On a BLOCK-IN model (the one mesh; dressed pictures of 8 known heads through real fitted cameras, hair masked, size
+taken out): tip / upper lip / chin forward 0.4-0.6, pupils 0.8, under_chin 0.9, lengths 0.8-1.7, brows / eyes height /
+forehead 1.1-1.2, eyes_forward 2.8 and subnasale_forward 2.0 (weak: 1.4-1.9x), widths and skull 2.3-5; NOT readable
+there: neck_width, nose_width, lower_lip_forward, mouth_width (the table marks them). The table's +- is never under
+these. Gaps are in GNM's mm = the `mm:` dose (the one mesh makes ~0.88 of GNM's move).
+Limits: plain backgrounds only (no outline otherwise: the table says how many reads each picture gave); lips,
+nostrils, brows' shape are not read on photos (eye_ruler / lip_read / brow_read do those); a non-neutral expression
+moves the lips and chin rows. The returned image is the pictures with the model's outline (green, through the
+refined cameras), the reads (yellow) and the iris centres (magenta picture, cyan model): check that yellow sits on
+skin edges only. Python: face_ruler.compare(name); on any pictures face_ruler.read(head, views) with head =
+gnm_head(c) or model_head(spec); clay pictures of GNM heads also read pupils, lip edges and brow tops by colour.
 
 ### `brow_read`
 brow_read(name, match=False, out=None): the DRESSED brows (the skin's hair picture, skin.hair.brows) against the front
