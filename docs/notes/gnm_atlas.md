@@ -32,9 +32,10 @@
   (1) hook recipe A into the eye step (gnm_fold.fold as the shape term or an option beside blockin_lid; "Hook-up" in
   "## overhang"; brows held 0.3 mm; tests; eye_ruler / brow_read re-read after it). (2) Rerun the driving gate: orbit's
   new holds changed the 21 older mm: moves (cos 0.57-0.99), the 11/14 was earned with the old ones; fix
-  gnm_driving_manual.md's eyes_forward / subnasale_forward text. (3) Eye depth is NOT readable from Tess's pictures
-  (+-3 mm; the profile camera's yaw): Joe to decide between a true 90 deg profile / a short sweep video and accepting
-  +1.7 mm (all views) as a flagged guess. (4) Then the HOLD lifts: a fresh Tess block-in from her photos with only the
+  gnm_driving_manual.md's eyes_forward / subnasale_forward text. (3) Eye depth, DECIDED (Joe: "assume all we have for Tess is the references we already have"): no new
+  pictures. Use the all-views read, mm:eyes_forward +1.7 mm (scratch ob_T1 / ob_T1e: limbus within 0.2 mm in the 3/4, 0.8
+  in the profile), marked INFERRED (+-3 mm), and don't spend rounds refining it. General rule: work with the references
+  handed to us, mark what is inferred. (4) Then the HOLD lifts: a fresh Tess block-in from her photos with only the
   new tools (face_ruler first, orbit, eye_ruler, recipe A, brow_read), result beside the photo; then Garrett (needs a
   closer picture of his eyes: 5 px iris), lt19, jw (start blend by measurement). DECIDED (Joe: yes): add "hooding" as a named
   block-in control (gnm_fold.hood_direction; do it with step 1). Open: skin._aperture_keep_out fading paint on the lid; her lid platform darker than
