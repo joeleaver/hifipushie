@@ -29,6 +29,14 @@ SIG_LINE = 0.1
 DARK_LINE = 0.15        # the picture's fold line darkness above which "a line is there"
 HOODED_SHOW = 0.5       # mm: the visible platform when the picture shows no fold line (hooded: the fold covers it)
 SIG_HOODED = 0.5
+# GNM's reach for the crease (gnmcrease, 1600 sampled identities: N(0, I), ICT-led prior, the semantic sampler): the
+# valley's local depth (this module's reader) p99 1.33 mm, max 1.66; no sample folds skin OVER the lid from the front;
+# dressed (EEVEE full-res GI, photo light) no sample's line read darker than 0.16 (a photo's crisp crease: ~0.3). The
+# identity's crease comes as a whole-face configuration (deep-set eye, heavier lower brow, leaner face): carrying a
+# sampled fold onto a held face costs |dc| ~16, about the distance to the donor. So past CREASE_REACH the picture's
+# line is out of GNM's reach: the report says so instead of the solve paying identity for it.
+CREASE_REACH = 1.35     # mm (p99 of the population's valley depth)
+CREASE_SLIT_DARK = 0.2  # the picture's line darkness above which it is a slit, not a valley GNM can draw
 SOCKET = ("orbital_rim", "lower_orbit", "eye_depth")   # the socket's readings held (humanmacro, population sd, on the
 SIG_SOCKET = 0.15       # mesh WITH the expression): unheld, lt19's fold came with orbital_rim +1.1 / lower_orbit -0.9 sd
 HOLD = [i for i in range(68) if not (36 <= i < 48 or 17 <= i < 27)]
@@ -404,4 +412,8 @@ def text(e: dict) -> str:
             f"  model before: lids {a['up']:.2f} / {a['lo']:.2f}, platform {a['show']:.2f} mm, crease {a['lsoft']:.2f} mm deep "
             f"at {a['hsoft']:.2f} mm\n"
             f"  model after:  lids {b['up']:.2f} / {b['lo']:.2f}, platform {b['show']:.2f} mm, crease {b['lsoft']:.2f} mm deep "
-            f"at {b['hsoft']:.2f} mm | |dc| {e['dc']:.2f}, eye expression |e| {e['e']:.2f}")
+            f"at {b['hsoft']:.2f} mm | |dc| {e['dc']:.2f}, eye expression |e| {e['e']:.2f}"
+            + (f"\n  NOTE: the picture's fold line is a crisp slit (dark {ev['dark']:.2f} >= {CREASE_SLIT_DARK}): GNM's identity "
+               f"space has no such fold (valley depth p99 {CREASE_REACH} mm over 1600 sampled heads, no overhang, dressed lines "
+               f"<= 0.16 dark); the solve draws GNM's soft valley, not the slit (docs/notes/gnm_atlas.md ## gnmcrease)"
+               if not ev.get("hooded") and ev.get("dark", 0) >= CREASE_SLIT_DARK else ""))
