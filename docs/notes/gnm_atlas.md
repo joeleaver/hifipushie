@@ -4199,3 +4199,10 @@ face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper,
   dragged the mouth: mouth_width -3.2 (out), philtrum front +2.3, chin_height 3/4 -2.3, width_nose_base -3.5 went out;
   mouth 3/7. A by-eye round costs ~6 min (step 1.5, ruler 1, dressed stage sync 3) and buys little: the lower face's
   SHAPE (taper, chin form) has no measured row to drive it. NEXT: tn_T08 = mouth_width / philtrum put back (mm: moves).
+- tn_T08 = tn_T07 + mm:mouth_width +3.0, mm:philtrum_length -2.0, mm:chin_length +1.5. Table: jaw and chin 5/5, mouth
+  4/7 (philtrum front +1.5, lower_third -2.4, mouth_line still out), width_temple +5.6, width_nose_base -3.1. Sheet
+  tn_03_tess_dressed.png (sent). BLUNT: barely different from T07 on the sheet, still not her; er_s4 keeps the better
+  face shape, tn_T08 the better lid.
+STATE / NEXT (reruns, 2026-10-11): STOPPED at tn_T08 for Joe's choice: (a) keep grinding Tess from the class mean by
+eye, then the other three the same way, or (b) start each of the four from its previous lineage's head and apply only
+the new eye work (decided eye depth, crisp fold, ruler rows). Garrett / lt19 / jw not started.
