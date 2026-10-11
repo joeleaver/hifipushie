@@ -2274,3 +2274,17 @@ A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) an
 - Score (score.py score): face err before / after, per-region err, face-ID distance (SFace + ArcFace 1 - cos, front
   and 30 deg), moves kept / rejected, each kept move's closure. PASS (provisional): face err closed >= 50 %, every
   changed region >= 40 %, ID distance <= 0.6 x the start's.
+
+### Couplings table (couplings.py -> out/couplings.txt): what each macro's step drags, free vs held
+- FREE steps cost |dc| ~1.0-1.3 per sd and drag the population's neighbours (face_length +1: gonial +0.81, chin_height
+  +0.73, nose_length +0.68, philtrum +0.58; nose_projection +1: upturn -0.78, bridge +0.77, eye_depth +0.63; brow_ridge
+  +1: orbital_rim +0.92, eye_depth +0.86, bridge +0.78, brow_height -0.64; lip_projection +1: lip_fullness +0.72,
+  nose_projection -0.59, upturn +0.58).
+- HELD steps cost 1.5-7.5 |dc| per sd, and some are TRAPS: the "every other macro held" constraint pushes the change
+  into zones the measures don't see. bridge_height! |dc| 7.5 (glabella 3.7, nostrils 3.6, MARIONETTE 3.5 mm per sd),
+  eye_depth! 6.2 (radix 4.0, glabella 3.6, forehead 2.6), nose_projection! 5.1, brow_ridge! 4.5; lip_fullness! moves
+  UNDER THE CHIN / chin / jowls 2.2-2.5 mm per sd more than the lips; philtrum! moves jowls / chin / jawline 1.3-1.6;
+  face_length! jowls / under_chin / chin 3.8-4.0. Clean held moves (the zone named = the zone moved): jaw_width!
+  (jaw_angle 4.7, jawline 3.6), chin_projection! (chin / pogonion 2.7), under_chin! (under_chin 3.8), nose_width!
+  (alae 1.9), cheekbone_width! (malar 2.1), gonial_height! (jaw_angle 3.5), orbital_rim! (lid_fold 2.4), cheek_fullness!
+  (cheeks 1.5), lip_projection! (lower border / lower lip / mentolabial 1.6-1.9), mouth_width! (corners 1.6).
