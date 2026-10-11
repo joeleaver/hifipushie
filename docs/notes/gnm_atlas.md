@@ -2348,3 +2348,42 @@ Next: (1) the skin's age layers calibrated to LINE_CUES (nl_len, marionette, tex
 agecues (photo-like) and set the layers' amounts by age; (2) feed EYE_CUES to the eye step as age targets once the eye
 crease work lands; (3) more people (the downloader is resumable; pick per=... in wfetch.py), and a 2nd photo per person
 at another age (Commons categories) for a longitudinal check; (4) run blockin_age.step on the four restarted models.
+
+## gnmbrow (2026-10-11, "gnmbrow" agent, branch worktree-agent-ac4044d1155197b95; Joe on gk_07: "the eyebrows in the render
+## now sit on top the crease, instead of their correct position". Scratch /mnt/data/hifipushie/gnmbrow (run.sh / q.sh;
+## scripts in spikes/gnmbrow); sheets human_renders/gb_*)
+STATE / NEXT (step 1, causes measured; nothing fixed yet): the brow HAIR is drawn 4-7 mm too low (skin.hair.brows
+"drop" 4 mm etc., hand offsets carried over from an older Tess head) and the eyeball / iris is 18 % too big for her head
+(12.66 mm drawn, the photo's limbus 10.7 mm through the fitted camera), so the eye opens ~1.3-2 mm too tall. The model's
+brow LANDMARKS are fine and gk_07's eye step did not drag them. NEXT: fit the brow hair to the picture (code), set
+eye_radius by the picture's limbus + rerun the eye step on a scratch copy, iris colour, sheet gb_01 through the fitted camera.
+
+### Step 1: the causes, measured (bm.py, geo.py, iris.py; all in mm AT THE MODEL through the front picture's fitted camera,
+### 0.2377 mm / picture px; columns = inner third / pupil / outer third of the eye, both eyes' mean)
+- Reader (bm.py): luminance up the face from the upper lid margin (MediaPipe points for the columns), 2 mm strip, the
+  brow = the darkest broad band, its lower edge at half contrast. Same code on the photo and on renders; overlays
+  out/bm_*.png checked by eye (out/dbg1.png).
+- PHOTO: brow hair lower edge 12.0 / 11.3 / 13.4 mm over the lid margin, core 15.8 / 14.8 / 15.1, top 18.5 / 18.0 / 19.0
+  (a band ~6 mm thick that RISES toward the tail).
+- MODEL brow landmarks (GNM / iBUG 17-26 line): gd_T12 16.6 / 14.7 / 13.6; gd_T30 15.0 / 13.3 / 12.4 (the OLD eye step
+  pulled the brow-over-lid distance down 1.4 mm); gk_06 (ev12s376) 15.5 / 13.6 / 12.6 (-1.1); gk_07 (ev5s376) 16.4 /
+  14.6 / 13.6 (-0.1: the round-3 eye step does NOT drag the brow). So the landmarks sit on the photo's brow CORE at the
+  inner third and pupil and 1.5 mm low at the outer third: the model's brow is not low (cause 3: 0 to 1.5 mm, tail only).
+- BROW HAIR (the skin's decal, skin_features: centre from the three brow landmarks - 0.02 io, then the spec's drop /
+  lift / tilt / apart; geo.py lays it on the head's vertices): gk_07's lower edge 8.0 / 6.3 / 6.2 mm = 4.0 / 4.9 / 7.2 mm
+  LOWER than the photo's. Of that, the spec's hand offsets (gd_T12's skin.hair.brows: drop 4 mm, tilt 2, lift [0, 1.8 mm],
+  apart 1.5 mm: f3_t1's dressing, tuned on an older Tess head and carried over) are 3.9 / 3.3 / 2.6 mm; the landmark
+  placement itself (offsets cleared) is still 0.1 / 1.7 / 4.6 mm low (a spine that falls toward the tail where hers rises).
+  THIS IS THE MAIN CAUSE (cause 2).
+- FRAMING (cause 1): gk_07 put the photo at 0.277 mm/px (an 11.7 mm iris assumed from MediaPipe's iris points) next to
+  renders in true mm. Through the fitted camera the photo is 0.2377 mm/px, so the photo tile was 17 % MAGNIFIED against
+  the renders: her 11.3 mm brow gap showed as 13.1 "mm" (+1.9 mm of apparent gap at the pupil). The renders' eye still
+  looks bigger because of the next point.
+- EYE SCALE (cause 4): iris by its limbus edge (iris.py; recovers our renders' drawn 12.66 mm as 12.4-12.6): photo 45.0 px
+  = 10.7 mm at the model, the model draws 12.66 mm (eye_radius 0.012 x eyes 1.05; her head is small: pupil distance 53-54
+  mm in both). Pupil distance / iris: photo 4.99, renders 4.24-4.35. The lids are matched in IRIS RADII, so the opening
+  comes out ~18 % too tall: MediaPipe opening at the pupil 7.4 mm photo vs 8.7 mm gk_07 (+1.3 mm), the model's upper lid
+  margin 1.1 mm (pupil) / 1.7 mm (outer) higher in the picture than hers. (blockin2 saw "her photo's iris reads 5.1 mm"
+  and did not chase it.) Also: MediaPipe's iris points under-read the limbus by 6 % on the photo and 19 % on our renders
+  (70 px vs 86.6): never compare photo and render in detector-iris units.
+- Camera pitch: the fitted front camera is within 1 deg of level: not a cause.
