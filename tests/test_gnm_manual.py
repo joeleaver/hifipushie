@@ -27,7 +27,7 @@ def test_entries_parse_and_name_real_moves():
 @pytest.mark.parametrize("phrase,control", [
     ("the mouth stands forward in profile", "pc:upper_lip_region0"),
     ("muzzle forward", "pc:upper_lip_region0"),
-    ("pupils further apart", "head_size"),
+    ("pupils further apart", "mm:pupils_apart"),
     ("double chin", "under_chin!"),
     ("the whole nose stands further out", "pc:nose_region0"),
     ("eyes bulge, prominent", "eye_depth"),
@@ -39,6 +39,21 @@ def test_entries_parse_and_name_real_moves():
 def test_phrases_find_their_control(phrase, control):
     r = gm.suggest(phrase, top=1)
     assert r["entries"] and control in r["entries"][0]["moves"], (phrase, r["entries"][:1])
+
+
+def test_mm_moves_move_their_measure_alone():
+    """mm:<measure> moves that measure 1 mm and holds the others (in mm) and the face's place."""
+    import numpy as np
+    from hifipushie import blockin as bi, gnm_mm
+    sp = gnm_mm._space()
+    r0 = gnm_mm.readers(sp["T"])
+    for n in ("pupils_apart", "chin_forward", "forehead_forward", "philtrum_length", "tip_forward"):
+        d = bi.direction("mm:" + n)
+        r = gnm_mm.readers(sp["T"] + np.tensordot(d * 2.0, sp["IB"], 1))
+        assert abs((r[n] - r0[n]) - 2.0) < 0.15, n
+        others = [abs(r[k] - r0[k]) for k in gnm_mm.HELD if k != n]
+        assert max(others) < 0.3, (n, max(others))
+        assert np.linalg.norm(d) < 1.5, n
 
 
 def test_step_reply_carries_the_manual():

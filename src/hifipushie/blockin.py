@@ -129,7 +129,10 @@ def vocabulary() -> str:
             + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7"
             + "; SCULPT a zone the GNM way (mm, its mean normal; macros held, locality): sculpt:<zone>, relief:<zone> "
             "(against its surround: - deepens a groove), options |hold=<zone>+..|free=<macro>+..|loc=<w>; zones: "
-            "gnm_controls(zones=True); any atlas identity control raw: gnm:<control> (head_042, z:05, label:sex ...)")
+            "gnm_controls(zones=True); any atlas identity control raw: gnm:<control> (head_042, z:05, label:sex ...)"
+            "; a MEASURE moved in mm, every other measure held in mm: mm:<measure> (pupils_apart, eyes_forward, "
+            "chin_forward, forehead_forward, tip_forward, philtrum_length ...: gnm_mm.NAMES); what to use for a "
+            "difference you see: guide topic gnm_driving / gnm_controls(phrase=...)")
 
 
 def _size_row() -> np.ndarray:

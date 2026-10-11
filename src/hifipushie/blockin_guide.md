@@ -73,6 +73,11 @@ eye catches what the points miss; the target table catches what your eye misses.
      `gnm_controls(zones=True)`. Garrett's narrow bridge: `"sculpt:bridge_walls|hold=dorsum": -1.0` = walls 0.746 ->
      0.590 at |dc| 3.5 (the designed local nose_dorsum_width -0.8 gave 0.670); -2.0 reaches his concept's 0.504. A
      sculpt of 1 mm usually costs |dc| 2.5-4: big next to a macro step, but it moves a real face's |c| (~13), not away.
+   - MILLIMETRES: `"mm:<measure>": mm` moves one measure you can see (pupils_apart, eyes_forward, eyes_height,
+     brows_over_eyes, forehead_forward, tip_forward, subnasale_forward, upper / lower_lip_forward, chin_forward,
+     philtrum_length, chin_length, nose_length, the widths, skull_top / back, under_chin) by that many mm with every
+     other measure held in mm (gnm_mm; |dc| 0.3-1.2 per mm): the finishing move once the masses are right. The eyes
+     set further apart is `mm:pupils_apart` (eye_spacing moves only the inner corners; head_size! scales the head).
    - RAW CONTROLS: `"gnm:<control>": amount`: any identity-space control of the atlas (`head_042`, `z:05` a sampler
      latent, `label:sex`, `pc:nose_region3`): see `gnm_controls`.
 5. **Keep it only if the whole face reads closer AND no target went out.** The reply has the read (the moved macro,
