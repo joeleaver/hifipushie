@@ -209,7 +209,50 @@ def photo_evidence(img, view: dict) -> dict:
     m = len(seam)
     seam = seam[int(round(SEAM_INNER * m)) - 1:m - int(round(SEAM_INNER * m)) + 1]
     return {"upper": r["upper"][keep], "lower": r["lower"][keep], "mmpx": float(r["mmpx"]),
-            "mouth": P[[13, 14], :2].mean(0), "seam": seam}
+            "mouth": P[[13, 14], :2].mean(0), "seam": seam, "bow": _bow_px(r["upper"], P, float(r["mmpx"]))}
+
+
+def _bow_px(U, P, mmpx):
+    """The traced upper border's Cupid's bow (mm): its two peaks over the centre trough, along the face's up axis."""
+    from .likeness_eyes import frame
+    ex, ey = (np.asarray(v, float) for v in frame(P))
+    U = np.asarray(U, float)
+    h = -(U - U.mean(0)) @ ey * mmpx
+    n = len(U)
+    c = h[int(0.46 * n):int(0.54 * n)].min()
+    return float(np.mean([h[int(0.28 * n):int(0.46 * n)].max(), h[int(0.54 * n):int(0.72 * n)].max()]) - c)
+
+
+def lip_read(name: str) -> dict:
+    """The lips on the front picture vs the model (as the picture shows it: its fitted expression on): the vermilion
+    borders' miss (rms, and mean offset + = the model's outside the picture's), the seam's miss, the Cupid's bow (mm,
+    both), the neutral's contact gaps (max / median / min mm) and its inner rolls' smallest gap (- = crossing)."""
+    from PIL import Image
+    from . import blockin as bi, onemesh, store
+    rj = bi._refs(name)
+    vi = bi._front(rj)
+    v = rj["views"][vi]
+    ev = photo_evidence(Image.open(v["image"]).convert("RGB"), v)
+    base = store.load(name)["base"]
+    hn = onemesh.head_template(base)
+    hv = onemesh.head_template(bi.view_base(base, rj, vi))
+    to_world, _ = head_to_world(base, hn)
+    q = lip_reads(hv, ev, to_world, rj["cameras"][vi])
+    qn = lip_reads(hn)
+    hd = base.get("head") or {}
+    closing = ("seal" if float(hd.get("lip_seal") or 0) >= 0.5 and hd.get("mouth_gap") is None else
+               f"mouth_gap {hd['mouth_gap']}" if hd.get("mouth_gap") is not None else
+               "lip_close (GNM expression)" if hd.get("lip_close") else "expression / none")
+    return {"photo_bow": ev["bow"], "bow": q["bow"], "miss_upper": q["miss_upper"], "miss_lower": q["miss_lower"],
+            "off_upper": q["off_upper"], "off_lower": q["off_lower"], "miss_seam": q["miss_seam"], "gap": qn["gap"],
+            "roll": qn.get("roll"), "closing": closing}
+
+
+def read_text(r: dict) -> str:
+    return (f"LIPS (front picture vs model): vermilion border miss upper {r['miss_upper']:.2f} mm (offset {r['off_upper']:+.2f}, "
+            f"+ = model outside), lower {r['miss_lower']:.2f} mm ({r['off_lower']:+.2f}); seam miss {r['miss_seam']:.2f} mm; "
+            f"Cupid's bow picture {r['photo_bow']:.2f} mm, model {r['bow']:.2f} mm; neutral contact gaps max / median / min "
+            f"{np.round(r['gap'], 2).tolist()} mm, inner rolls {r['roll']:+.2f} mm; closing: {r['closing']}")
 
 
 def _head(base, c, ex: dict):
@@ -272,6 +315,7 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
     b0 = copy.deepcopy(base)
     b0["head"].pop("lip_seal", None)
     b0["head"].pop("mouth_gap", None)
+    b0["head"].pop("lip_close", None)
     c0 = bi.identity({"base": b0})
     ex0 = dict(b0["head"].get("expression") or {})
     other = {k: v for k, v in ex0.items() if k not in names}
@@ -378,7 +422,8 @@ def lips_step(name: str, out: str | None = None, seen: str = "", iters: int = 6,
                   why=(f"lips step (identity + GNM lower-face expression closing the neutral; no seal): border miss "
                        f"{a['miss_upper']:.2f} / {a['miss_lower']:.2f} -> {b['miss_upper']:.2f} / {b['miss_lower']:.2f} mm, "
                        f"bow {a['bow']:.2f} -> {b['bow']:.2f} mm; |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"),
-                  _identity=s["c"], _head_set={"expression": s["expression"], "lip_seal": None, "mouth_gap": None})
+                  _identity=s["c"], _head_set={"expression": s["expression"], "lip_seal": None, "mouth_gap": None,
+                                                         "lip_close": None})
     rep["lips"] = {k: s[k] for k in ("read0", "read", "dc", "e")}
     return rep
 

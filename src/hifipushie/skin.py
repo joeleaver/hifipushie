@@ -53,7 +53,8 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 5  # 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4)
+VERSION = 6  # 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2)
+LOWER_LIP = {"melanin": 0.72, "blood": 3.8, "epidermis": 0.0, "oxygenation": 0.66}  # x the lips' melanin / blood (see _build)
 # the face's base map layers (skin_marks.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
 # x sqrt(variation) / sqrt(detail): tuned on Tess (variation .6, detail .45); linear, Garrett's 1.3 / 1.8 read as sandpaper
 BASE_MAP = {"red": 0.4, "light": 0.36, "pigment": 0.3, "depth": 0.00011}
@@ -743,7 +744,12 @@ def _build(spec: dict, J: dict) -> dict:
         # part next. Drawn as lip_upper (border -> the contact ring) it missed ~2/3 of the upper vermilion: seen from the
         # front the contact ring lies ABOVE the lip's own lower front, so the face's pale layers showed there and
         # skin.lips never reached the upper lip; the likeloop agent's "lip colour stuck")
-        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * 0.9, blood=7.0 * lp["blood"], epidermis=le - 0.08, oxygenation=0.68),
+        # the lower lip as pigmented as the upper, a little less: in photos (skin_refs, Tess) the lower lip's a* over
+        # the skin is the upper's +1 (median), and it reads lighter by ~16 L, of which the light from above gives
+        # ~13 on our heads (clay). At blood 7 / melanin 0.9 / thinner epidermis it read +7 a* redder and 6 L darker
+        # than the upper in the albedo: an orange-red flat lower lip that hid its own shading (gnmdetail2)
+        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * LOWER_LIP["melanin"], blood=LOWER_LIP["blood"] * lp["blood"],
+                                                                   epidermis=le + LOWER_LIP["epidermis"], oxygenation=LOWER_LIP["oxygenation"]),
                                   "opacity": round(0.85 - 0.2 * p["masc"], 3), "roughness": lp["roughness"], "mask": _z("lip_lower", grow=0.8)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),

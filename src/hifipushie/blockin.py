@@ -306,6 +306,11 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     male = (s in ("male", "m", "man")) if isinstance(s, str) else float(s) >= 0.5
     for k in STRIP:
         hd.pop(k, None)
+    # the rest mouth closed by GNM's own lower-face expression (base.lip_close_delta), not the seal: the seal's
+    # membrane flattened the vermilion border (its turn 24 -> 11 deg on Tess) and moved the lips whole (gnmdetail2)
+    for k in ("lip_seal", "mouth_gap"):
+        hd.pop(k, None)
+    hd["lip_close"] = True
     D = data()
     if ethnicity:
         en = [str(x) for x in D["eth_names"]]

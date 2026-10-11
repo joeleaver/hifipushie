@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 105  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 106  # bump when the base field changes: builds and live grids are keyed on it
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -2011,6 +2011,15 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             from . import onemesh as _om
             E = E * _om.neck_fade()[:, None]
         V = V + faceslide.seal_delta(V - E, float(np.clip(head["lip_seal"], 0.0, 1.0)))
+    elif head.get("lip_close") and head.get("mouth_gap") is None:  # GNM's own closing (lip_close_delta), where the
+        # seal goes: after the body's hook (it carries the template lips at their own gap) and on the head WITHOUT
+        # its expression, so a picture's smile or an open-mouth expression on top still opens it (a closing solved
+        # INTO the expression, the lips step, clears lip_close: not doubled)
+        E = np.tensordot(ce, g["expression_basis"], 1)
+        if head.get("bound"):
+            from . import onemesh as _om
+            E = E * _om.neck_fade()[:, None]
+        V = V + lip_close_delta(V - E, g, float(head.get("scale", 1.4)))
 
     def place(X):
         return eye_mid + s * (X - mid) @ R.T
@@ -2203,6 +2212,79 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             "plane": (cut, pn, s * GNM_BAND),
             # (faceslide.py) the sliders' own move of the lids' loop vertices over their parents' mean (world)
             "loop_offsets": None if slide is None else s * (slide * [float(head.get("narrow", 1.0)), 1, 1]) @ R.T}
+
+
+LIP_CLOSE = {"n": 40, "span": 0.97, "x": 15, "gap": 0.15, "overlap": 0.2, "lead": 0.3, "hold": 0.3, "corner": 0.6, "iters": 4}
+_LIPC: dict = {}
+
+
+def lip_close_delta(V: np.ndarray, g: dict, scale: float = 1.4) -> np.ndarray:
+    """head["lip_close"]: GNM's OWN closing of the rest mouth (gnmdetail2), in place of the seal's membrane: the least
+    change of the lower-face EXPRESSION (its first 40 comps, unit prior) that puts the contact ring's two halves
+    together from corner to corner (one-sided: they may overlap 0.2 mm), the lower half not ahead of the upper, the
+    68 landmarks off the mouth held (0.3 mm; the corners 0.6). Re-solved on every head, so identity steps keep the
+    mouth closed. The vermilion border keeps GNM's turn (the seal halved it); the field leaves the crossed inner rolls
+    out (onemesh.CLOSED_SEAL_V). V: GNM's raw vertices (its frame: Y up, facing +Z). Returns the (n, 3) move."""
+    from . import faceslide
+    P = LIP_CLOSE
+    if "sub" not in _LIPC:
+        R = faceslide._lip_rings()
+        C = R["rings"][R["contact"]]
+        up = R["upper"][C]
+        lower = [i for i, nm in enumerate(g["expression_names"]) if str(nm).startswith("lower_face")][:P["n"]]
+        lm_ids = [np.asarray(r[0::2], int) for r in g["lm68"]]
+        lm_w = [np.asarray(r[1::2], float) for r in g["lm68"]]
+        sub = np.unique(np.concatenate([C] + lm_ids))
+        pos = {v: i for i, v in enumerate(sub)}
+        W = np.zeros((68, len(sub)))
+        for k in range(68):
+            for v, w in zip(lm_ids[k], lm_w[k]):
+                W[k, pos[int(v)]] += w
+        _LIPC.update(sub=sub, U=np.array([pos[int(v)] for v in C[up]]), L=np.array([pos[int(v)] for v in C[~up]]),
+                     lower=lower, Bfull=np.asarray(g["expression_basis"], float)[lower], W=W,
+                     hold=[i for i in range(68) if not 48 <= i < 68])
+        _LIPC["B"] = _LIPC["Bfull"][:, sub]
+    S = _LIPC
+    mm = 1000.0 * float(scale)
+    Vs0 = V[S["sub"]]
+    L0 = S["W"] @ Vs0
+
+    def resid(c):
+        Vs = Vs0 + np.tensordot(c, S["B"], 1)
+        U, Lo = Vs[S["U"]], Vs[S["L"]]
+        ou, ol = np.argsort(U[:, 0]), np.argsort(Lo[:, 0])
+        lo, hi = max(U[:, 0].min(), Lo[:, 0].min()), min(U[:, 0].max(), Lo[:, 0].max())
+        mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo) * P["span"]
+        xx = np.linspace(mid - half, mid + half, P["x"])
+        iu = lambda j: np.interp(xx, U[ou, 0], U[ou, j])  # noqa: E731
+        il = lambda j: np.interp(xx, Lo[ol, 0], Lo[ol, j])  # noqa: E731
+        gap = (iu(1) - il(1)) * mm
+        lead = (il(2) - iu(2)) * mm
+        L = S["W"] @ Vs
+        return np.r_[np.maximum(gap, 0) / P["gap"], np.minimum(gap + P["overlap"], 0) / P["gap"],
+                     np.maximum(lead, 0) / P["lead"], ((L[S["hold"]] - L0[S["hold"]]) * mm / P["hold"]).ravel(),
+                     ((L[[48, 54]] - L0[[48, 54]]) * mm / P["corner"]).ravel()]
+    n = len(S["lower"])
+    c = np.zeros(n)
+    r = resid(c)
+    f, lam = float(r @ r), 0.01
+    if np.abs(r[:2 * P["x"]]).max() < 1e-6:   # closed already
+        return np.zeros_like(V)
+    for _ in range(P["iters"]):
+        J = np.stack([(resid(c + 0.25 * np.eye(n)[j]) - r) / 0.25 for j in range(n)], 1)
+        while True:
+            step = np.linalg.solve(J.T @ J + (1 + lam) * np.eye(n), -(J.T @ r + c))
+            rn = resid(c + step)
+            fn = float(rn @ rn + (c + step) @ (c + step))
+            if fn < f + c @ c:
+                c, r, f, lam = c + step, rn, float(rn @ rn), lam * 0.5
+                break
+            lam *= 4
+            if lam > 1e4:
+                break
+        if lam > 1e4:
+            break
+    return np.tensordot(c, S["Bfull"], 1)
 
 
 def _zip_lips(W, faces, seam, reach=0.045, ring=LIP_RING):

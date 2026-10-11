@@ -137,7 +137,7 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "skin", "look_skin", "skin_reference"]},
+                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "lip_read", "skin", "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
@@ -1888,6 +1888,26 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     e = rep["eyes"]
     txt = (bi.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + bi.lid_text(bi.lid_read(to))
            + f"\nfocus=eyes sheet (before | after, raking light): {path}")
+    return [_png(PILImage.open(path)), txt]
+
+
+@mcp.tool(structured_output=False)
+def lip_read(name: str, match: bool = False, out: str | None = None, seen: str = "", save: str | None = None):
+    """The lips on the front picture vs the model: vermilion border miss (mm), seam miss, Cupid's bow (picture /
+    model), the neutral's contact gaps and how it is closed. match=True: THE LIPS STEP (a block-in step): one solve
+    over the identity + GNM's lower-face expression for the picture's borders and seam, the neutral closed by GNM's
+    expression (no seal), the rest of the face held. out, save (focus=mouth sheet), seen. Details:
+    guide(topic="lip_read")."""
+    from . import blockin as bi, blockin_lips as bl
+    if not match:
+        return bl.read_text(bl.lip_read(name))
+    lines = []
+    rep = bl.lips_step(name, out=out, seen=seen, log=lines.append)
+    to = rep["entry"]["to"]
+    path = save or str(store.HOME / "human_renders" / f"blockin_{to}_mouth.png")
+    bi.focus(to, "mouth", path, before=name)
+    txt = (bi.step_text(rep) + "\n" + "\n".join(lines) + "\n" + bl.text(rep["lips"]) + "\n" + bl.read_text(bl.lip_read(to))
+           + f"\nfocus=mouth sheet (before | after, raking light): {path}")
     return [_png(PILImage.open(path)), txt]
 
 
