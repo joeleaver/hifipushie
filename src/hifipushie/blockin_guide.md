@@ -106,22 +106,31 @@ eye catches what the points miss; the target table catches what your eye misses.
    appears when the long lengths are all off the same way: that is a uniform scale (the camera's distance or the head's
    size), not shape: refit the camera (`block_in_step(..., cameras=[i])`) or set `head_scale`, never chase it with
    head_size / eye_spacing identity steps.
-7. **The EYE STEP: lids and fold the way GNM is built** (Joe: "we shouldn't really ever use our 'fix' [lidfold]"):
-   GNM's identity is the relaxed neutral and its eye-region EXPRESSION is the lids' state; its lids have folds as
-   identity + expression configurations. `lid_read(name)` reads the picture (lid margins against the iris in iris
-   radii, MRD1 / MRD2 style; the fold line's height over the lashes and darkness, lidfold.read_lid) beside the model.
-   `lid_read(name, match=True)` is the step: one solve over the identity + GNM's symmetric eye-region expression
-   (blockin_eyes.py) for the margins, the fold line's height (the crease's) and that a line is there (>= 1.2 mm deep
-   when the picture's line is dark), or a covered platform when the picture shows no line (hooded); the rest of the
-   face held (68 landmarks off the eyes within ~0.3 mm). It ships as head.identity + head.expression, the lid pose
-   cleared; never lidfold (head.fold: old models only). Judge it with focus=eyes under raking light AND dressed
-   (look_skin views eye / face): a crease under ~1 mm deep doesn't read dressed. Tess (b2_T06): lids 0.65 / 0.88
-   vs her 0.67 / 0.88, crease 1.1 mm deep at 5.3 mm (her line 5.15 mm), |dc| 3.0, |e| 1.8, table unchanged.
-   The socket is HELD in the solve (humanmacro orbital_rim / lower_orbit / eye_depth on the mesh with the expression,
-   sigma 0.15 sd): unheld, the fold came with orbital_rim +1.1..1.4 / lower_orbit -1.1..-1.6 sd (dark, tired sockets);
-   held, +0.3 / -0.05 for the same crease depth (~0.9-1.0 mm). Honest limit (gnm_atlas "## gnmdetail"): GNM's fold is
-   a ~2.5 mm-wide valley, not the photo's 1 mm slit; at ~1 mm deep it reads only as a soft step in EEVEE, a line from
-   ~1.6 mm (|dc| ~7.6) or under Cycles.
+7. **The EYE STEP: the lid as ONE structure, after the orbit** (Joe: "we shouldn't really ever use our 'fix'
+   [lidfold]"; "We are treating the crease as if it's different from the eyelid but it's not"). ORDER: the ORBIT is
+   set first (3a: eye depth and the brow over the eye are big masses; the lid is the sheet that hangs between the brow
+   and the ball), then `lid_read(name, match=True)`. The step reads the orbit rows itself and says ORBIT: UNREAD / OFF
+   / read at the top of its report; do not polish a lid on an orbit that is OFF. What the step does (blockin_eyes.py,
+   blockin_lid.py), IDENTITY ONLY: in GNM the open-eye fold is an identity feature; its eye-region expression only
+   shears the whole lid-to-brow sheet and never forms a fold (`expression=True` adds the expression pairs for a real
+   POSE, a squint, nothing else):
+   1. the OPENING: the identity for the picture's lid margins and corners in mm (the eye ruler's rows, 7a), with every
+      millimetre measure (incl. the orbit's), the socket readings and the landmarks off the eyes held;
+   2. the LID: margin, platform lying on the ball, ONE turn, the drape to the brow, solved on GNM's own lid rings
+      toward a donor lid (default GNM sample #376, `donor=`) re-proportioned to the person, the turn put on the
+      picture's fold line, the margins of 1 held. (It replaces the three-section crease template.) A picture with no
+      fold line (hooded): no lid solve, the visible platform is the opening's target;
+   3. the EYEBALL GUARD: our ball is seated on six lid landmarks, not the lid's surface, so a lid lying on the ball can
+      let it through (a patch of the ball's colour on the lid). The step measures the lid's stand-off from the ball on
+      the shipped head and lifts the designed platform until it clears by 0.25 mm; the report gives the numbers.
+   The report: the opening's rows (picture | model), the lid's structure before / after / donor (platform's stand-off
+   from the ball, the turn in degrees and its height, the wall, the drape), |dc|, the guard. Tess (er_s4 -> the lid
+   solve): platform 1.6 -> 1.4 mm off the ball, turn 17 -> 25 deg at her 4.7 mm line, wall 29 -> 40 deg, |dc| 4.4, the
+   platform lifted 0.4 mm for the ball, margins within 0.05 mm. Honest limits (gnm_atlas "## eyelid"): GNM's largest
+   turn on a platform as tall as hers is ~25 deg and NO GNM head has skin over skin (an overhang), so her thin dark
+   fold line is not reached by geometry, and by decision (Joe, 2026-10-11) it is LEFT ALONE: no painted fold line, no
+   crease make-up, no liner, no extra layer. Judge the lid's FORM under a raking light (focus=eyes) and dressed; do
+   not judge it by the line's darkness.
    `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
    an identity step for eye height made eyes read NARROWER.
 7a. **Measure the eye with the RULER, never by eye** (Joe, on a matched photo / render sheet: "I notice some
@@ -140,7 +149,7 @@ eye catches what the points miss; the target table catches what your eye misses.
    - the CARUNCLE: `skin.eyes.caruncle: 1` paints the inner corner's pocket wet dark red from GNM's inner-corner
      landmark to the eyeball. Unpainted, the pocket is skin-coloured and the eye ends ~2 mm early at the nose side.
    - the LASH LINE: a photographed lash line is a thin dark line; lashes 9 mm long and 0.15 mm thick (the defaults)
-     read as a fringe. `base.lashes.upper` length / thickness / count, `skin.makeup.eyeliner` for the line.
+     read as a fringe. `base.lashes.upper` length / thickness / count.
 7b2. **Brows and iris before a dressed eye is judged** (Joe on a dressed sheet: "the eyebrows sit on top the crease ...
    so I can't really judge"): `brow_read(name)` gives the brow hair's miss against the picture and the iris line
    (picture limbus vs drawn iris, mm at the model). If the iris is off by more than 5 %, set `skin.eyes.iris_size`
@@ -331,14 +340,16 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `lid_read`
-lid_read(name, match=False, out=None, seen="", save=None): the picture's lid margins against the iris (MediaPipe iris and
-lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and the model's (its front render, the
-visible eyeball through the iris centre): a quick look, biased (the detector's iris centre is ~1 mm low); the numbers
-to trust are `eye_ruler(name)`'s. match=True: the EYE STEP (loop, 7): identity + GNM eye-region expression solved for
-the RULER's margins (7 columns, mm) and canthi and the fold line's shape (the detector's two lid points in iris radii
-only when the picture's iris is under 30 px), a new block-in step (out, seen as block_in_step); returns the focus=eyes
-sheet (before | after) and the solve's report (picture vs model before / after: lids, visible platform, crease depth
-and height, |dc|, |e|). ~4 min. match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
+lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None): the picture's lid margins
+against the iris (MediaPipe iris and lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and
+the model's (its front render, the visible eyeball through the iris centre): a quick look, biased (the detector's iris
+centre is ~1 mm low); the numbers to trust are `eye_ruler(name)`'s. match=True: the EYE STEP (loop, 7), IDENTITY ONLY:
+the orbit check (ORBIT: UNREAD / OFF / read: set the orbit first), the opening solved for the RULER's margins (7
+columns, mm) and canthi (the detector's two lid points in iris radii only when the picture's iris is under 30 px), the
+lid as one structure on GNM's lid rings (donor: "s376" default, "s540", or a block-in model's name) with the eyeball
+guard; a new block-in step (out, seen as block_in_step); returns the focus=eyes sheet (before | after) and the report.
+expression=True adds GNM's eye-region expression to the opening's solve: only for a real pose (a squint). ~5 min.
+match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
 
 ### `eye_ruler`
 eye_ruler(name, model=None, save=None): the front picture's eyes against the model's mesh, in mm at the model (the

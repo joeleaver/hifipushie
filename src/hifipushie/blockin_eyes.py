@@ -1,19 +1,26 @@
-"""The block-in's EYE step (blockin2, 2026-10-10; Joe: "we shouldn't really ever use our 'fix' [lidfold]. The fact that
-it isn't there means we're not using GNM right"). GNM is built so the identity is the person's relaxed neutral and the
-eye-region EXPRESSION is the lids' state; its lids have folds as identity + expression configurations (gnm_audit.md
-finding 2, the audit's g11_crease_fit). So the eye step is one MAP solve over the identity (170) + GNM's symmetric
-eye-region expression (left_k + right_k, k < NE), on the head as it ships (onemesh.head_template: the body's head, our
-seated eyeball), driven by what the reference shows:
-  - the lid margins against the iris (MediaPipe, iris radii: MRD1 / MRD2 style), sigma 0.05;
-  - when the picture shows a fold line: the upper lid's SHAPE, its sections at the inner third / pupil / outer third
-    matched to a crease template from GNM's own population (CREASE, sigma SIG_SHAPE; gnmcrease 2: the fold's shape is
-    what reads, not its depth or the picture's darkness, which makeup supplies); crease=None keeps the old target (the
-    line's height over the lashes vs the model's crease, sigma 0.3 mm, local depth at least D_LINE); hooded (no line):
-    the visible platform;
-  - the rest of the face held where the block-in put it (68 landmarks off the eyes, sigma 0.3 mm; brows 1 mm);
-  - priors: |dc|^2 + |e|^2 (both unit variance).
-No lidfold, no lid pose offsets: the result ships as base.head.identity + base.head.expression (eye-region pairs), the
-lid pose (lid_upper / lid_lower) cleared.
+"""The block-in's EYE step (blockin2, 2026-10-10; eyeruler / eyelid / orbit, 2026-10-11). Joe: "we shouldn't really
+ever use our 'fix' [lidfold]"; "We are treating the crease as if it's different from the eyelid but it's not".
+
+ORDER: the ORBIT first (eye depth, brow over the eye: face_ruler's orbit rows, mm:eyes_forward ...: a big-mass
+decision), then this step; the lid hangs between the brow and the ball, so the step says when the orbit rows are unread
+or off (orbit_status). The step is IDENTITY ONLY by default: in GNM the open-eye fold is an identity feature and the
+eye-region expression only shears the lid-to-brow sheet (eyelid: it never forms a fold; the |e| 3-5 of older steps was
+standing in for identity). expression=True adds GNM's symmetric eye-region pairs for a real POSE (a squint).
+  1. THE OPENING (solve): the identity for the picture's lid margins and corners in mm (the eye ruler: edges, the iris
+     as a circle through the limbus; a small picture: the detector's lids in iris radii), with gnm_mm's measures, the
+     socket readings and the landmarks off the eyes held where the block-in put them; a picture without a fold line
+     (hooded): the visible platform.
+  2. THE LID AS ONE STRUCTURE (blockin_lid.lid_step: the shape term): margin, platform on the ball, the turn, the
+     drape, on GNM's own lid rings toward a donor lid at the person's proportions, the turn on the picture's fold line,
+     the margins of 1 held. It replaces the three-section template match (crease="s376" | "fold" | "s540" still runs
+     that older term: nothing needs it; kept to reproduce the gk_* / er_* models).
+  3. THE EYEBALL GUARD: our ball is seated on six lid landmarks, not the lid's surface; a lid lying on the ball can
+     let it through (el_f3's brown patch). The lid's stand-off from our ball is measured on the shipped head and the
+     designed platform lifted until it clears (blockin_lid.GUARD); reported.
+What is NOT here, by decision (Joe, 2026-10-11): the skin-over-skin overhang of her fold (GNM has none) is left alone:
+no fine layer, no painted fold line, no crease make-up, no liner.
+No lidfold, no lid pose offsets: the result ships as base.head.identity (+ base.head.expression only with
+expression=True), the lid pose (lid_upper / lid_lower) cleared.
 """
 from __future__ import annotations
 
@@ -38,9 +45,10 @@ SIG_HOODED = 0.5
 # (the platform 4 mm back into the socket, the crease the floor of the hollow at 5 mm). So when the picture shows a
 # line, the step matches the upper lid's sections (inner third / pupil / outer third, relative to the lid margin,
 # arclength 0.5-8 mm) to a template from GNM's own population (CREASE_SHAPES, blockin_crease.npz: "fold" = the mean of
-# the 30 / 1200 sampled heads with a low, narrow, parallel crease; "s376" / "s540" = Joe's two). Any darkness still
-# missing dressed is cosmetics (skin.makeup eyeshadow "crease"), not geometry.
-CREASE = "s376"         # the default template when the picture shows a line ("fold" read puffier on Tess, gk_06; None: the old height + depth target)
+# the 30 / 1200 sampled heads with a low, narrow, parallel crease; "s376" / "s540" = Joe's two). SUPERSEDED as the
+# default by the whole-lid solve (blockin_lid); the picture's line darkness is not a target and is not painted.
+CREASE = "lid"          # the shape term: "lid" = none here, the whole-lid solve follows (blockin_lid; the default);
+                        # "s376" | "fold" | "s540" = the older three-section template; None = the oldest height + depth target
 SIG_SHAPE = 0.3         # mm per section point
 SIG_LID_SHAPE = 0.02    # iris radii: the lid margins held harder with the shape term on (72 section points pulled the
                         # upper lid open 0.64 -> 0.75 vs the picture's 0.67 at SIG_LID)
@@ -569,18 +577,21 @@ def _head(base, c, e, Ln, Rn):
 
 
 def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None = None,
-          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default", ne: int = NE,
+          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default", ne: int = 0,
           crisp: float | None = None, hold_mm: float | None = "default") -> dict:
-    """identity + eye expression for evidence ev (photo_evidence). base: the block-in's base (its lid pose cleared
-    here). crease: when the picture shows a line, the fold's SHAPE to match (a crease_shape template name; "default" =
-    CREASE; None = the old target: the line's height + d_line, the crease's least local depth in mm, default D_LINE);
-    hold_socket: the socket readings' sigma (sd; None = not held). Returns {"c", "expression", "read0", "read", "cost",
-    "dc", "e", "socket0", "socket", "crease", "shape0" / "shape" (section rms vs the template, mm)}."""
+    """The opening: the identity (ne = 0, the default; ne = NE adds GNM's eye-region expression pairs for a real pose)
+    for evidence ev (photo_evidence + the eye ruler's rows). base: the block-in's base (its lid pose cleared here;
+    with ne = 0 any eye-region expression it carries is cleared too: the lids are identity). crease: "default" = CREASE
+    = "lid": no fold term here (blockin_lid's whole-lid solve follows); a crease_shape template name = the older
+    three-section match; None = the oldest target (the line's height + d_line). hold_socket: the socket readings'
+    sigma (sd; None = not held). Returns {"c", "expression", "read0", "read", "cost", "dc", "e", "socket0", "socket",
+    "crease", "shape0" / "shape" (section rms vs the template, mm)}."""
     crease = CREASE if crease == "default" else crease
     hold_mm = SIG_MM if hold_mm == "default" else hold_mm
     from . import gnm_mm
     Jmm = gnm_mm.jacobian() if hold_mm else None
-    use_shape = bool(crease) and not ev.get("hooded") and np.isfinite(ev.get("tps", np.nan))
+    whole_lid = crease == "lid"
+    use_shape = bool(crease) and not whole_lid and not ev.get("hooded") and np.isfinite(ev.get("tps", np.nan))
     shape = None
     sig_lid = SIG_LID_SHAPE if use_shape else SIG_LID
     d_line = D_LINE if d_line is None else float(d_line)
@@ -598,6 +609,10 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
     ex0 = b0["head"].get("expression") or {}
     for k in range(NE):
         e0[k] = 0.5 * (float(ex0.get(Ln[k], 0.0)) + float(ex0.get(Rn[k], 0.0)))
+    if not ne and np.abs(e0).max() > 1e-6:
+        log(f"eye step: the base carries an eye-region expression (|e| {np.linalg.norm(e0):.2f}): cleared, the lids are "
+            "solved in the identity (expression=True keeps and solves it: a real pose only)")
+        e0[:] = 0.0
     ht0, _ = _head(b0, c0, e0, Ln, Rn)
     rd = Reader(ht0)
     heights = None
@@ -643,6 +658,8 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
             want = ev["tps"] * q["r_iris_mm"] / (5.85)   # the picture's mm at an 11.7 mm iris -> ours
             if ev.get("hooded"):
                 r.append((q["vis"] - want) / SIG_HOODED if np.isfinite(q["vis"]) else 20.0)
+            elif whole_lid:
+                pass                                     # (the fold is the whole-lid solve's, after the opening)
             else:
                 r.append((q["hsoft"] - want) / SIG_TPS if np.isfinite(q["hsoft"]) else 20.0)
                 r.append(min(q["lsoft"] - d_line, 0.0) / SIG_LINE)
@@ -712,10 +729,49 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
             "pose": pose, "crease": crease if shape is not None else None, "shape0": sh0, "shape": sh1, "heights": heights}
 
 
-def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, log=print) -> dict:
-    """The block-in step: solve, then write it as a new model (blockin.step with the identity / expression set)."""
+def orbit_status(name: str, log=print) -> dict:
+    """Is the ORBIT set? face_ruler's orbit rows for this model against its pictures (cached in the model's directory
+    by its base + cameras): {"state": "unread" (no row these pictures pin: no side view, or inside the reader's error
+    everywhere) | "off" (a read row is out by more than twice its error) | "ok", "rows", "text"}."""
+    import json
+    from . import blockin as bi, face_ruler as fr, store
+    h = bi._spec_hash(name)
+    p = store.HOME / name / "blockin_orbit.json"
+    rows = None
+    if p.exists():
+        d = json.loads(p.read_text())
+        if d.get("hash") == h:
+            rows = d["rows"]
+    if rows is None:
+        try:
+            rows = fr.compare(name)["orbit"]
+        except Exception as e:  # noqa: BLE001
+            return {"state": "unread", "rows": [], "text": f"ORBIT: not read ({e}). The eye's depth and the brow over it are "
+                    "set BEFORE the lid (face_ruler; mm:eyes_forward, mm:brows_over_eyes, mm:brow_ridge_forward)."}
+        p.write_text(json.dumps({"hash": h, "rows": rows}, indent=1))
+    read = [r for r in rows if r["read"] >= 0.75]
+    off = [r for r in read if abs(r["gap"]) > 2 * r["err"]]
+    state = "off" if off else ("ok" if read else "unread")
+    say = {"unread": "ORBIT: UNREAD: these pictures do not pin the eye's depth (every orbit row is inside the reader's "
+                     "error or has no side view). The lid hangs between the brow and the ball: a lid solved on a wrong "
+                     "orbit is solved again after it moves.",
+           "off": "ORBIT: OFF: " + "; ".join(f"{r['row']} {r['gap']:+.1f} +-{r['err']:.1f} mm" for r in off)
+                  + ". Set the orbit FIRST (face_ruler's table; block_in_step mm:eyes_forward / mm:brow_ridge_forward / "
+                    "mm:brows_over_eyes ...), then run the eye step: the lid hangs between the brow and the ball.",
+           "ok": "ORBIT: read and within the reader's error (" + "; ".join(f"{r['row']} {r['gap']:+.1f} +-{r['err']:.1f}" for r in read) + ")"}[state]
+    return {"state": state, "rows": rows, "text": say}
+
+
+def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, log=print, expression: bool = False,
+             donor: str | None = None, orbit: bool = True, crease: str | None = "default") -> dict:
+    """The block-in step: the opening (solve), the lid as one structure with the eyeball guard (blockin_lid), written
+    as a new model (blockin.step with the identity set). expression=True: GNM's eye-region pairs solved too (a real
+    pose: a squint); donor: the lid's donor (blockin_lid.donor; default s376); orbit=False skips the orbit check."""
     from PIL import Image
-    from . import blockin as bi, store
+    from . import blockin as bi, blockin_lid as bl, store
+    orb = orbit_status(name, log) if orbit else None
+    if orb:
+        log(orb["text"])
     rj = bi._refs(name)
     vi = bi._front(rj)
     v = rj["views"][vi]
@@ -731,18 +787,53 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
                 "the detector's lids in iris radii instead")
     except Exception as e:  # noqa: BLE001
         log(f"eye step: the ruler could not read the picture ({e}): the detector's lids in iris radii instead")
-    s = solve(base, ev, iters=iters, log=log)
+    s = solve(base, ev, iters=iters, log=log, ne=NE if expression else 0, crease=crease)
+    c1, lid = s["c"], None
+    if (CREASE if crease == "default" else crease) == "lid":
+        # the fold line the lid's turn is put on: the ruler's (mm at the model, per column), else the detector's one height
+        heights = cols = corners = None
+        if ev.get("ruler") and rv is not None and np.isfinite(np.asarray(rv["crease"], float)).sum() >= 3 and rv["crease_dark"] >= 0.5 * DARK_LINE:
+            heights, cols, corners = np.asarray(rv["crease"], float), RULER_COLS, (float(rv["inner"][0]), float(rv["outer"][0]))
+        elif not ev.get("hooded") and np.isfinite(ev.get("tps", np.nan)):
+            h1 = ev["tps"] * s["read"]["r_iris_mm"] / 5.85
+            heights, cols, corners = np.array([h1, h1, h1]), np.array([-6.0, 0.0, 6.0]), (-12.0, 10.0)
+        if ev.get("hooded"):
+            log("eye step: no fold line on the picture (hooded): the whole-lid solve is not run (its donor's platform "
+                "would show); the visible platform was the opening's target")
+        else:
+            b1 = copy.deepcopy(base)
+            bi.set_identity({"base": b1}, s["c"])
+            b1["head"]["expression"] = s["expression"]
+            b1["head"].pop("pose", None) if not s["pose"] else b1["head"].__setitem__("pose", s["pose"])
+            if not s["expression"]:
+                b1["head"].pop("expression", None)
+            lid = bl.lid_step(b1, heights, cols, corners, donor_name=donor or bl.DONOR, log=log)
+            c1 = lid["c"]
+            if ev.get("ruler"):       # the margins after the lid solve, against the picture's rows again
+                b2 = copy.deepcopy(b1)
+                bi.set_identity({"base": b2}, c1)
+                from . import onemesh
+                ht2 = onemesh.head_template(b2)
+                mg2 = Reader(ht2).margins(ht2)
+                lid["margins_after"] = {k: np.asarray(x, float).tolist() for k, x in mg2.items()}
+                d = np.r_[mg2["up"] - np.asarray(ev["ruler"]["up"], float), mg2["lo"] - (np.asarray(ev["ruler"]["lo"], float) - LO_BIAS)]
+                lid["margin_miss"] = float(np.nanmax(np.abs(d[np.abs(np.r_[RULER_COLS, RULER_COLS]) < 7])))
+                s["read"]["margins"] = mg2
     rep = bi.step(name, {}, out=out, seen=seen or "lids and fold vs the picture (eye step)",
-                  why=(f"eye step (identity + GNM eye-region expression; no lidfold, no lid pose): picture up "
-                       f"{ev['up']:.2f} lo {ev['lo']:.2f} iris radii, fold line {ev['tps']:.2f} mm (dark {ev['dark']:.2f}); "
-                       f"model {s['read']['up']:.2f} / {s['read']['lo']:.2f}, platform {s['read']['show']:.2f} mm, "
-                       f"crease {s['read']['local']:.2f} mm deep; |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"),
-                  _identity=s["c"], _head_set={"expression": s["expression"], "pose": s["pose"] or None})
+                  why=(f"eye step ({'identity + GNM eye-region expression' if expression else 'identity only'}; no lidfold, no "
+                       f"lid pose): picture up {ev['up']:.2f} lo {ev['lo']:.2f} iris radii, fold line {ev['tps']:.2f} mm; "
+                       f"opening |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"
+                       + (f"; the lid as one structure (donor {lid['donor_name']}): |dc| {lid['dc']:.2f}, turn "
+                          f"{lid['structure0']['tuck']:.0f} -> {lid['structure']['tuck']:.0f} deg, eyeball guard "
+                          f"{lid['ball']['min']:.2f} mm (platform lifted {lid['clear']:.1f})" if lid else "")
+                       + (f"; orbit {orb['state']}" if orb else "")),
+                  _identity=c1, _head_set={"expression": s["expression"] or None, "pose": s["pose"] or None})
     if s["read"].get("margins") is not None:
         mg = s["read"]["margins"]
         rep["ruler"] = {"target": {**ev["ruler"], "lo": (np.asarray(ev["ruler"]["lo"], float) - LO_BIAS).tolist()},
                         "model": {k: np.asarray(x, float).tolist() for k, x in mg.items()}}
-    rep["eyes"] = {"evidence": {k: v for k, v in ev.items() if k != "columns"},
+    rep["eyes"] = {"evidence": {k: v for k, v in ev.items() if k != "columns"}, "lid": lid, "orbit": orb,
+                   "identity_only": not expression,
                    **{k: s[k] for k in ("read0", "read", "dc", "e", "crease", "shape0", "shape", "heights")}}
     try:   # the drawn iris against the picture's (a wrong iris size makes a right-in-radii opening wrong in mm)
         rep["eyes"]["iris"] = iris_check(name)["text"]
@@ -766,15 +857,22 @@ def text(e: dict) -> str:
     ev, a, b = e["evidence"], e["read0"], e["read"]
     fold = (f"no fold line on the picture (hooded: the platform target {HOODED_SHOW} mm visible)" if ev.get("hooded")
             else f"fold line {ev['tps']:.2f} mm over the lashes (at an 11.7 mm iris), darkness {ev['dark']:.2f}")
-    return (f"EYE STEP (identity + GNM eye-region expression, the rest of the face held; no lidfold, no lid pose): "
+    from . import blockin_lid as bl
+    lid = e.get("lid")
+    kind = "identity only" if e.get("identity_only", False) else "identity + GNM eye-region expression (a pose)"
+    return ((e["orbit"]["text"] + "\n" if e.get("orbit") else "")
+            + f"EYE STEP ({kind}, the rest of the face held; no lidfold, no lid pose): "
             f"picture lids {ev['up']:.2f} / {ev['lo']:.2f} iris radii, {fold}\n"
-            f"  model before: lids {a['up']:.2f} / {a['lo']:.2f}, platform {a['show']:.2f} mm, crease {a['lsoft']:.2f} mm deep "
+            f"  opening before: lids {a['up']:.2f} / {a['lo']:.2f}, platform {a['show']:.2f} mm, crease {a['lsoft']:.2f} mm deep "
             f"at {a['hsoft']:.2f} mm\n"
-            f"  model after:  lids {b['up']:.2f} / {b['lo']:.2f}, platform {b['show']:.2f} mm, crease {b['lsoft']:.2f} mm deep "
-            f"at {b['hsoft']:.2f} mm | |dc| {e['dc']:.2f}, eye expression |e| {e['e']:.2f}"
+            f"  opening after:  lids {b['up']:.2f} / {b['lo']:.2f} | |dc| {e['dc']:.2f}, eye expression |e| {e['e']:.2f}"
             + (ruler_text(e["evidence"]["ruler"], b["margins"]) if e["evidence"].get("ruler") and b.get("margins") is not None else "")
-            + (f"\n  crease SHAPE: the {e['crease']!r} template's fold carried to the picture's line ("
+            + (f"\n    (margins re-read after the lid solve: within {lid['margin_miss']:.2f} mm of the picture's rows at u -6 .. 6)"
+               if lid and lid.get("margin_miss") is not None else "")
+            + ("\n" + bl.text(lid) if lid else "")
+            + (f"\n  crease SHAPE (older three-section term): the {e['crease']!r} template's fold carried to the picture's line ("
                + "/".join(f"{h:.1f}" for h in (e.get("heights") or [])) + " mm over the margin, inner/pupil/outer): section rms "
-               f"{e['shape0']:.2f} -> {e['shape']:.2f} mm. The picture's line darkness is not a target: add any missing "
-               f"darkness with skin.makeup eyeshadow's \"crease\"" if e.get("crease") else "")
+               f"{e['shape0']:.2f} -> {e['shape']:.2f} mm" if e.get("crease") else "")
+            + "\n  The fold's FORM is geometry (above). Her line's darkness is not a target and is not added (decision "
+              "2026-10-11: the skin-over-skin overhang is left alone; no painted fold line, crease make-up or liner)."
             + (f"\n  {e['iris']}" if e.get("iris") else ""))

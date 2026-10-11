@@ -1905,12 +1905,15 @@ def gnm_controls(query: str = "", control: str = "", families: list[str] | None 
 
 
 @mcp.tool(structured_output=False)
-def lid_read(name: str, match: bool | str = False, out: str | None = None, seen: str = "", save: str | None = None):
+def lid_read(name: str, match: bool | str = False, out: str | None = None, seen: str = "", save: str | None = None,
+             expression: bool = False, donor: str | None = None):
     """Lid margins against the iris (MRD-style, in iris radii) and the fold line (height over the lashes, darkness)
-    on the front picture vs the model. match=True: THE EYE STEP (a block-in step): one solve over the identity + GNM's
-    eye-region expression for the picture's lid margins and fold line, the rest of the face held; no lidfold, no lid
-    pose. match="pose": the older lid_upper / lid_lower offsets. out, save (focus=eyes sheet), seen. Details:
-    guide(topic="lid_read")."""
+    on the front picture vs the model. match=True: THE EYE STEP (a block-in step; set the ORBIT first: face_ruler's
+    orbit rows), identity only: the opening (the eye ruler's margins and corners in mm), then the lid as ONE structure
+    on GNM's lid rings (margin, platform on the ball, the turn on the picture's fold line, the drape; donor="s376"),
+    with the eyeball guard; the rest of the face held; no lidfold, no lid pose, nothing painted. expression=True: GNM's
+    eye-region expression too (a real pose, e.g. a squint). match="pose": the older lid_upper / lid_lower offsets. out,
+    save (focus=eyes sheet), seen. Details: guide(topic="lid_read")."""
     from . import blockin as bi
     if not match:
         return bi.lid_text(bi.lid_read(name))
@@ -1921,7 +1924,7 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
         return [sh[0], bi.step_text(rep) + "\n" + bi.lid_text(bi.lid_read(to)) + "\n" + sh[1]]
     from . import blockin_eyes as be
     lines = []
-    rep = be.eye_step(name, out=out, seen=seen, log=lines.append)
+    rep = be.eye_step(name, out=out, seen=seen, log=lines.append, expression=expression, donor=donor)
     to = rep["entry"]["to"]
     path = save or str(store.HOME / "human_renders" / f"blockin_{to}_eyes.png")
     bi.focus(to, "eyes", path, before=name)
