@@ -3194,3 +3194,95 @@ brow-reader bug above, fixed after this run). What fails for both: chin pairs on
 pairs: 3 of 6; sixteen (look again) or all 23: 6 of 6. The fitted identity applied directly has the best region
 closure (0.6-0.9) but fails ID on the small pairs (s6_11 0.79 / -0.30, s7_11 0.82 / -0.22): it moves what the pictures
 do not pin down. NOT the next lever as it stands.
+
+### Step 4: arm (b), Claude drivers with the picture ruler (set s6, 3 drivers; brief spikes/faceruler/driver_brief.md)
+The driver's `ruler <case> [trial]` = face_ruler.read on the target's clay pictures (front, 3/4, profile; cameras
+known) against the current head: the table with +- per row and the mm: move. Renders + that table only; <= 14 trials,
+8 kept moves, up to 6 mm: moves per trial for one named difference. Scored by rescore.py (new rule = old rule here).
+| case | grade | regions | driver: region / ID closed, kept / rejected | blind: picture ruler top 8 | blind: all 23 | mesh ruler all 23 | phrase oracle |
+|---|---|---|---|---|---|---|---|
+| s6_00 | easy | skull | 0.69 / 0.54 PASS, 3 / 1 | PASS | PASS | PASS | PASS |
+| s6_01 | easy | jaw_full | 0.71 / 0.67 PASS, 3 / 0 | PASS | PASS | PASS | PASS |
+| s6_02 | easy | mouth | 0.45 / 0.36 PASS, 6 / 1 | - (0.35 / 0.42) | - (0.45 / 0.24) | - | PASS |
+| s6_03 | easy | nose | 0.74 / 0.67 PASS, 3 / 0 | PASS | PASS | PASS | PASS |
+| s6_04 | easy | eyes | 0.76 / 0.70 PASS, 3 / 0 | PASS | PASS | PASS | PASS |
+| s6_05 | easy | brows | 0.00 / 0.00 -, 0 / 2 | PASS (0.82 / 0.68) | PASS | PASS | PASS |
+| s6_06 | easy | cheeks | 0.69 / 0.65 PASS, 5 / 0 | PASS | PASS | PASS | PASS |
+| s6_07 | easy | chin | 0.63 / 0.44 PASS, 4 / 1 | PASS (0.60 / 0.29) | - (0.63 / 0.15) | - | PASS |
+| s6_08 | medium | jaw | 0.58 / 0.56 PASS, 3 / 1 | PASS | PASS | PASS | PASS |
+| s6_09 | medium | nose+mouth | 0.53 / 0.42 PASS, 4 / 1 | PASS | PASS | PASS | PASS |
+| s6_10 | medium | eyes+brows | 0.60 / 0.45 PASS, 3 / 1 | PASS | PASS | PASS | - (0.09) |
+| s6_11 | hard | chin+mouth+nose | 0.30 / 0.38 -, 2 / 0 | PASS (0.53 / 0.43) | PASS | PASS | - |
+| s6_12 | hard | cheeks+jaw+eyes | 0.27 / 0.36 -, 2 / 0 | - (0.33) | PASS | PASS | - |
+| s6_13 | hard | skull+brows+mouth | 0.51 / 0.40 PASS, 3 / 0 | - (0.30) | PASS | PASS | PASS |
+DRIVERS 11 / 14 (easy 7/8, medium 3/3, hard 1/3), in 2-6 kept moves (44 kept, 9 rejected over the set). The same arm
+by eye on s5 was 3 / 14 and with the mesh ruler + 1 mm noise 7 / 14 (9 under the new rule). Blind on s6: 8 largest
+11 / 14, all 23 12 / 14, mesh ruler all 23 12 / 14, phrase oracle 11 / 14. By region (driver): skull 2/2, jaw 1/2,
+jaw_full 1/1, chin 1/2, mouth 3/4, nose 2/3, eyes 2/3, brows 2/3, cheeks 1/2.
+Read (blunt):
+- The drivers now sit AT the ceiling of the measures (blind all-23: 12), not half way to it. What they add over the
+  blind ruler: the two pairs the 23 cannot pass alone (s6_02 mouth: + lip_fullness / pc:upper_lip_region0 and ear_out!;
+  s6_07 chin: + lip_fullness with pc:nose_region0 put back). What they lose: s6_05, the driver REJECTED the ruler's
+  correct move (mm:brows_over_eyes -8.5: "a worried frown": the target has that glabella; the blind arm passes at 0.82)
+  and had no trials left; s6_11 / s6_12, the drivers stopped after 2 moves with sub-sd gaps still in the table (the
+  blind all-23 arm passes both: on small three-region pairs the remaining rows have to be typed in too).
+- Every ruler row a driver disputed was RIGHT against the mesh: s6_02 / s6_08 under_chin (ruler -7.0 / -6.1, truth
+  -6.6 / -4.6; "the submental lines coincide on the trace"), s6_05 nose_length -4.8 (truth -4.8) and skull_top +3.8
+  (+3.8), s6_02 skull_width. Driver B: "no sign disagreement on any row above 0.5 sd; my crop readings matched within
+  ~1 mm". The eye is the weak link, as gnmdrive2 found; the ruler is not.
+- What the drivers still had no control for (their words): mouth corners turned down, a hooked / drooping tip with the
+  projection right, a sharper cupid's bow / thinner flatter lips, the upper red taller than the lower, puffy lower
+  lids, brow SHAPE (angled vs flat inner half), the V-frown a +8 mm brow move leaves, jowl fullness beside the mouth
+  in 3/4, a cheekbone standing proud in 3/4, the throat line below the jaw angle. And what the ruler does not show:
+  ears (every large mm: move drags ear_out 1-1.4 sd: `ear_out!` put it back every time), lip fullness, eye opening.
+- Driver tool note: the trial sheet's BEFORE row was read as the case's start by one driver (it is the current head).
+Sheet human_renders/fr_02_s6_drive.png (TARGET | driver | blind top 8 | START for s6_03 nose, s6_07 chin, s6_05
+brows); fr_01_ruler_reads.png (what the ruler reads on a target's three pictures).
+
+### Step 5: the camera (spikes/faceruler/camera_columns.py, validate.py v2, arms2.py, sum_arms2.py)
+- A pure camera change (3 mm / 2 % / 1.5 deg) is fitted by the four nuisance columns to 0.2-0.4 mm: the columns are right.
+- The cameras are now REFINED between rounds (read(): cam_done, clamped to 2.5 sd). Random camera errors of 3 mm /
+  2 % / 1.5 deg, 17 pairs (validate v2): mean rms error over the 23 measures 1.11 mm (2.3 before refinement; 0.82
+  with hair and the camera known). Profile chain 0.15-0.8, lengths 0.4-1.2, pupils 0.9, widths 1.5-2.8.
+- The honest photo case, "fitcam": B's pictures through the true cameras, the ruler GIVEN cameras fitted by laying
+  the MODEL's (A's) 68 landmarks on B's picture landmarks (0.5 mm noise; profile: 12 midline / near-side points).
+  Those fitted cameras are off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg rms, the scale up to 9 % (a broader jaw is fitted
+  as "closer"): -> CAM_SD = (2, 2, 5, 1.2). 28 pairs (s6 + s7), hair masked, 4 rounds:
+  | arm | pass | easy 16 | medium 6 | hard 6 |
+  |---|---|---|---|---|
+  | fitted camera, all 23 gaps | 23 | 14 | 5 | 4 |
+  | fitted camera, 8 largest | 20 | 13 | 5 | 2 |
+  | fitted camera, only gaps over 2 x their error (<= 8) | 20 | 13 | 5 | 2 |
+  | fitted camera, 8 largest, camera re-fitted, look again, 8 more | 23 | 14 | 5 | 4 |
+  The same as with the camera known (23 / 20 / 23). Reader error, fitted camera (rms mm, 28 pairs): lower_lip_forward
+  0.06, tip_forward 0.16, upper_lip_forward 0.17, chin_forward 0.27, philtrum 0.38, eyes_forward 0.41, brows 0.41,
+  subnasale_forward 0.42, under_chin 0.51, chin_length 0.54, eyes_height 0.58, forehead_forward 0.60, pupils_apart
+  0.77, mouth_width 0.78, nose_length 0.88, neck_width 1.41, skull_back 1.52, nose_width 1.93, skull_top 2.0,
+  skull_width 2.59, chin_width 2.62, cheekbone_width 2.76, jaw_width 2.83. So with a fitted camera the SHAPE measures
+  keep their signal (3-25x under their sd) and the SIZES lose most of theirs (widths 2-3x: a fitted camera's scale is
+  the least known thing in a picture); they still pass the pairs because a width gap in the test is 5-30 mm.
+  Caveat: clay pictures, complete outlines, and pupil / lip / brow colour reads in every view.
+
+### Step 6: the block-in (face_ruler.model_head / reference_views / compare; tool `face_ruler`; guide)
+- model_head(spec): the one human mesh as the ruler's model: the whole mesh makes the mask, the head's vertices carry
+  GNM's identity basis through the head's carry and the stitch's fade (as humanfit._silhouette). CHECKED on two gk_s
+  models (adapter_check.py): the model's outline moved 0.85-0.89 x what that basis says, residual 0.45 mm per 2 mm; so
+  the response is measured once per model on one fixed identity step (kappa 0.88, 21 % of the vertex move unexplained)
+  and the basis scaled. TRIED, wrong: taking each comp's uniform scaling out ("the head's size comes from the body"):
+  residual x3.
+- A photo (reference_views): the figure against a PLAIN background (border colour), skin = as warm and >= 0.6 x as
+  bright as the face's own skin sampled at the model's nose bridge / cheeks; only outline with skin just inside it is
+  read, on the FACE only (GNM's face mask + the under-chin: the neck and shoulders are a pose), on the same side of
+  the figure as the model's outline. Front: the iris centres (eye_ruler.read vs eye_ruler.model). The reference's own
+  "lmNN" points are weak anchors (1.5 mm). Camera freedom PHOTO_CAM_SD = 1.5 mm / 2.5 % / 0.8 deg, 3 rounds.
+  blockin.profile_contour was NOT usable (on Tess's left-facing profile, yaw 90, it returned the ponytail's edge: a
+  mirroring bug there; reported, not fixed: face_ruler does not call it).
+- SANITY on Tess's photos (gd_T12, an old block-in model; read only; table only; photo_stability.py): first version
+  (no anchors, neck read, 5 % scale freedom) was UNSTABLE: cameras ran to their clamps (3/4 -12 %, profile +12 %), the
+  top rows changed sign with the settings (upper_lip_forward -8.9 vs chin_length +9.1), neck_width +45. With face-only
+  outline + landmark anchors the rows agree across four settings (camera prior, 2-4 rounds): tip_forward +5.0..+6.2,
+  upper_lip_forward -3.0..-3.7, chin_forward +4.1..+5.8, nose_length +2.6..+3.3, lower_lip_forward -0.8..-1.5,
+  philtrum +2.7..+5.0 and forehead_forward +2.6..+5.6 (these two NOT stable to better than 1.5 mm), ~250 reads (front
+  33, 3/4 96, profile 112). No truth exists for these: it says the reader is stable there, not that it is right. On a
+  photo only the profile chain and the iris rows should be acted on; the widths come back inside their error.
+  Overlay human_renders/fr_03_tess_ruler_reads.png.
