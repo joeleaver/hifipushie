@@ -2411,3 +2411,28 @@ eye_radius by the picture's limbus + rerun the eye step on a scratch copy, iris 
   edge 0.4 mm rms, middle 0.5 mm.
 - Tests: tests/test_blockin_brows.py (limbus on a drawn eye, band on a drawn brow + the crop / scale path, decal ==
   the skin's placement, model_band on a wall, fit and iris_check on fs_ge3).
+
+### Step 3: tool, dressed check through the fitted camera (shot.py, rd.py), corrections to step 1's split
+- Tool `brow_read(name, match=False, out=None)` (server.py, toolset human; blockin_guide "### `brow_read`" and loop item
+  7b2): the brow hair's miss + the IRIS line; match=True writes the fitted skin.hair.brows. test_toolsets updated.
+- shot.py renders the dressed stage through the FRONT PICTURE'S FITTED CAMERA, one fixed pixel crop (both eyes + brows,
+  560 photo px, x3): photo and render are the same mm/px (0.0792 mm per shot px) with every landmark at the same pixel.
+  This is the only honest framing; gk_05..07's "84 mm at an 11.7 mm iris" photo crop is retired. rd.py reads on those
+  shots: gap (brow lower edge over the detector's lid margin on THAT image, eye columns), the band vs the photo's at the
+  photo's own columns, limbus iris + colour, opening.
+- READS (mm at the model; inner / pupil / outer):
+  photo  gap 12.1 / 11.2 / 13.3   iris 10.7 #453c30   opening 7.35
+  gk_07  gap  7.5 /  6.7 /  7.6   iris 12.5 #3b2a15   opening 8.85   brow edge vs photo 3.4 mm rms low
+  FIXED  gap 11.1 / 10.1 / 12.1   iris 10.5 #473a30   opening 7.8    brow edge vs photo 0.7 mm rms (mean 0.4 HIGH)
+  (FIXED = gb_fx: gb_T12b + skin.eyes iris_size 0.0107, iris "#5e5753". The eye picture and shader shift the colour:
+  spec #4b4033 rendered #3b2a15 brown, #5a6050 -> #43432d green, #565b73 -> #3e3d52 blue; #5e5753 renders her #453c30.)
+- THE SPLIT, corrected with the rendered band (step 1's geometric "edge" had no EDGE / GROW calibration and read 1.5 mm
+  low), pupil column, 4.6 mm short in gk_07: brow hair hand offsets 3.3 mm; bare landmark placement ~0.2 mm (tail ~3 mm:
+  the default spine falls where hers rises; inner end ~1.4 mm HIGH); upper lid margin ~1.2 mm higher than hers by the
+  detector, of which ~0.35 mm was the oversized iris; model brow landmarks 0 (tail 1.5 mm low); gk_07's eye step 0.1 mm.
+  On gk_07's own sheet the photo's 17 % magnification added +1.9 mm of apparent gap.
+- LEFT OPEN (~1 mm of gap): MediaPipe reads our upper lid margin 0.8-1.0 mm higher than hers on the fitted-camera shot
+  (both eyes) while the eye step's geometric read says the lids match in limbus radii (0.64 / 0.84 vs 0.63 / 0.83) and
+  the iris centres agree to 0.1 mm. So the eye step's lid target (the detector's point on the PHOTO, under her lashes
+  and liner) and its model read (the mesh's margin ring) are not the same thing on a render. Next: read the model's lid
+  through the detector on a dressed / clay render in the loop, or calibrate the offset.
