@@ -2242,8 +2242,9 @@ at another age (Commons categories) for a longitudinal check; (4) run blockin_ag
 ## /mnt/data/hifipushie/gnmdrive: run.sh <script> (capped, this worktree's src), scripts/, cases/, hidden/ (B's
 ## coefficients: never shown to a driver), out/; sheets human_renders/gd2_*; manual docs/notes/gnm_driving_manual.md)
 
-STATE / NEXT: test built (set s1, 14 cases); baseline drivers (no manual) running on s1. Next: score, oracle compare,
-write the manual from the misses, then a fresh set s2 driven WITH the manual.
+STATE / NEXT: baseline (no manual) on s1 done: 2/14 pass. Manual v1 written (docs/notes/gnm_driving_manual.md,
+copy at $G/manual.md for drive.py manual). Next: fresh set s2 (seed 202) driven WITH the manual by fresh drivers;
+score; revise the manual from s2's misses; wire it into block_in_step / the guide.
 
 Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
 A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
@@ -2311,3 +2312,47 @@ A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) an
   the region's mode 0 is picked and carries most of it (s1_03 nose 3.31 -> 0.76 mm with reg:nose0 -1.84; s1_01 jaw_full
   5.76 -> 1.33 with reg:jaw_full0 +1.87). Caveat: the modes come from the same transplant that makes B (one region
   definition): a fair test needs differences made another way.
+
+### Baseline: drivers WITHOUT a manual on s1 (4 subagent drivers, renders only; scores out/score_s1_14.json, states
+### out/s1_base/)
+PASS rule (score.py): the changed regions' rms error closed >= 40 % on average, face-ID distance (SFace + ArcFace,
+front + 30 deg clay) closed >= 25 %, the whole face's error not > 10 % worse than at the start.
+| case | grade | region | moves | region closed | ID start -> end (closed) | face err | pass | oracle: region / ID |
+|---|---|---|---|---|---|---|---|---|
+| s1_00 | easy | skull | 5 | 0.30 | 0.261 -> 0.223 (0.14) | 7.1 -> 5.3 | - | 0.54 / 0.219 |
+| s1_01 | easy | jaw_full | 7 | 0.69 | 0.313 -> 0.271 (0.13) | 5.8 -> 6.3 | - | 0.63 / 0.153 |
+| s1_02 | easy | mouth | 8 | 0.53 | 0.382 -> 0.240 (0.37) | 4.9 -> 3.6 | PASS | 0.69 / 0.157 |
+| s1_03 | easy | nose | 5 | 0.51 | 0.319 -> 0.184 (0.42) | 3.3 -> 3.1 | PASS | 0.75 / 0.115 |
+| s1_04 | easy | eyes | 5 | -0.01 | 0.414 -> 0.422 (-0.02) | 5.0 -> 5.1 | - | 0.50 / 0.262 |
+| s1_05 | easy | brows | 5 | 0.35 | 0.192 -> 0.138 (0.28) | 2.4 -> 1.7 | - | 0.50 / 0.127 |
+| s1_06 | easy | cheeks | 6 | 0.38 | 0.477 -> 0.404 (0.15) | 6.6 -> 7.0 | - | 0.70 / 0.211 |
+| s1_07 | easy | chin | 5 | 0.54 | 0.251 -> 0.226 (0.10) | 3.8 -> 2.4 | - | 0.66 / 0.146 |
+| s1_08 | medium | jaw | 6 | 0.65 | 0.266 -> 0.237 (0.11) | 4.7 -> 5.9 | - | 0.47 / 0.175 |
+| s1_09 | medium | nose+mouth | 6 | 0.48 | 0.300 -> 0.281 (0.07) | 2.8 -> 4.0 | - | 0.62 / 0.168 |
+| s1_10 | medium | eyes+brows | 4 | 0.31 | 0.259 -> 0.177 (0.32) | 3.0 -> 2.1 | - | 0.64 / 0.129 |
+| s1_11 | hard | chin+mouth+nose | 1 | -0.32 | 0.060 -> 0.070 | 0.7 -> 1.3 | - | -0.01 / 0.062 |
+| s1_12 | hard | cheeks+jaw+eyes | 3 | 0.01 | 0.114 -> 0.120 | 2.1 -> 2.4 | - | 0.58 / 0.050 |
+| s1_13 | hard | skull+brows+mouth | 4 | 0.11 | 0.084 -> 0.089 | 2.1 -> 2.1 | - | 0.47 / 0.084 |
+Pass: easy 2/8, medium 0/3, hard 0/3 (2/14). Drivers close the region they name (0.3-0.7 on easy / medium) but drag
+the rest of the face (face error UP on 7 of 14: free macros' couplings), and the face-ID barely moves (median 0.14).
+The hard cases (0.5 x three regions, 0.7-2 mm) are below what drivers read reliably: moves there made it worse.
+Sheet human_renders/gd2_01_before_s1a.png (A | driver | oracle | B, s1_01 fluffy jaw, s1_02 mouth, s1_04 eyes). Blunt
+read: s1_01's driver head reads heavier like B but its face is wider at the skull and the cheeks too round; s1_02's
+lips read close, the profile less protrusive than B; s1_04 missed entirely (B's eyes are set 9 mm wider and 9 mm
+further forward; the driver made the openings bigger).
+The misses (driver vs oracle), each now a manual entry:
+- EYE PLACEMENT: GNM's eyeballs are fixed-size; pupils apart = head_size (3.1 mm / sd); eye_spacing moves only the
+  inner corners (pupils 0.0 mm). s1_04's B: pupils 58.7 -> 67.8 mm, eye_depth -2.97 sd, lower_orbit -3.1 sd; the driver
+  used eye_height / eye_width (the lids) and eye_depth! (a trap).
+- THE MUZZLE / PROFILE ANGLE: pc:upper_lip_region0 (+: lips +2.0, subnasale +1.3, chin +1.1 mm, mouth wider) is the
+  oracle's first move on s1_02 (+3.0) and s1_09 (+2.3); drivers reached for lip_projection (pulls the nose back) and
+  found pc:upper_lip_region0 only on a third try.
+- THE NOSE: pc:nose_region0 (bridge to tip forward) is the oracle's move; drivers used bridge_height / nose_projection
+  pairs and their held forms (traps: bridge_height! |dc| 7.5).
+- HALO = head_size, needing 1-1.5 sd; drivers tried -0.4 / -0.5 and read "no change" (framing does NOT cancel size:
+  the step was just too small: 1 px = 1.1 mm at head scale).
+- UNIFORM PROFILE OFFSET = head_depth (face vs skull), not the lips / chin.
+- STEP SIZE: the brief's "0.3-1.0" made drivers timid; s1's easy differences are 2-4 sd.
+- readouts.py (out/readouts.txt): every control's effect in mm a driver can see (profile points, widths, pupils,
+  skull); the manual's sizes come from it. Sculpt / held moves translate the face: sculpt:dorsum +1 mm moves the lips,
+  tip and chin +0.8 mm too.
