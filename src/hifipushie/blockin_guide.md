@@ -32,7 +32,13 @@ eye catches what the points miss; the target table catches what your eye misses.
    convexity, the muzzle (how far mouth and teeth stand forward), the jaw line and its angle, chin mass, nose mass and
    angle, face length vs width, the cheek planes (front vs side, where they turn), the bridge, how deep the eyes sit.
    Check the sex and age read (bald clay is a weak sex judge; the hair cap helps).
-4. **One small step** (0.3-0.7 sd): `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
+   **Then look the phrase up in the DRIVING MANUAL** (guide topic `gnm_driving`, or `gnm_controls(phrase="...")`):
+   what you see -> the GNM control, its sign, mm per unit, what to hold and what it drags (tested: drivers passed
+   3 / 14 synthetic pairs without it, 7 / 14 with it). E.g. the muzzle forward in profile = `pc:upper_lip_region0`,
+   not lip_projection; pupils further apart = `head_size`, not eye_spacing; the whole nose further out =
+   `pc:nose_region0`; a halo all round = `head_size` at 1-1.5 sd.
+4. **One small step** (0.3-0.7 sd; a big mass difference 1-2 sd, see the manual's step sizes):
+   `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
    a NEW model (default: the next number), so every round stays comparable; `seen` and `why` go in the log.
    - FREE `"chin_height": 0.5`: the population's conditional mean per +1 sd: the face stays whole. Try first for
      masses and proportions.
@@ -205,7 +211,11 @@ What it taught (use it when choosing a step):
 ## Tool reference
 
 ### `gnm_controls`
-gnm_controls(query="", control="", families=None, top=12, sort="score", per_family=0, sign=0, zones=False): the atlas.
+gnm_controls(query="", control="", families=None, top=12, sort="score", per_family=0, sign=0, zones=False, phrase=""): the atlas.
+- phrase: a DIFFERENCE you see, in an artist's words ("the muzzle stands forward in profile", "pupils further apart",
+  "double chin", "eyes and brows sit lower over the nose") -> the driving manual's best entries (guide topic
+  gnm_driving: the control, its sign, mm per unit, what to hold, what it drags, the phrases it is confused with).
+  Start here when you have named a difference; block_in_step's reply also lists them for its `seen` text.
 - query: a feature in words ("alar crease", "jowl", "lip border", "bridge walls", "lid crease", "tear trough") or a
   zone name -> the controls that move it, ranked by sort: score (mm per unit of prior cost x specificity, capped at 4:
   the cheapest, most local movers; default), efficiency, local (mm per unit), specific, perc (face-ID), relief (the

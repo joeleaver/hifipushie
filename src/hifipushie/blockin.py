@@ -630,8 +630,12 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         ft0, ft1 = feature_table(src, feature), feature_table(out, feature)
         entry["feature_passes"] = [passes(ft0)[feature], passes(ft1)[feature]]
         _log_path(rj, out).write_text(json.dumps(lg, indent=1))
+    manual = None
+    if seen:   # (gnmdrive) the driving manual's entries for what was seen: the controls it would have picked
+        from . import gnm_manual
+        manual = gnm_manual.suggest(seen, top=2)
     return {"entry": entry, "c0": float(np.linalg.norm(c0)), "big": big, "delta": table_delta(t0, t1),
-            "table": t1, "before": passes(t0)}
+            "table": t1, "before": passes(t0), "manual": manual}
 
 
 def step_text(rep: dict) -> str:
@@ -659,6 +663,10 @@ def step_text(rep: dict) -> str:
     if rep["delta"]:
         s.append("items that changed (model - photo, tol):")
         s += ["  " + x for x in rep["delta"]]
+    if (rep.get("manual") or {}).get("entries"):
+        from . import gnm_manual
+        s.append("MANUAL for what you saw (guide topic gnm_driving; compare with the move you took):\n"
+                 + gnm_manual.text(rep["manual"]))
     s.append(f"keep it only if the whole face reads closer AND no target went out; else step again from {e['from']} "
              "(this model stays as the record).")
     return "\n".join(s)
