@@ -2242,9 +2242,9 @@ at another age (Commons categories) for a longitudinal check; (4) run blockin_ag
 ## /mnt/data/hifipushie/gnmdrive: run.sh <script> (capped, this worktree's src), scripts/, cases/, hidden/ (B's
 ## coefficients: never shown to a driver), out/; sheets human_renders/gd2_*; manual docs/notes/gnm_driving_manual.md)
 
-STATE / NEXT: baseline (no manual) on s1 done: 2/14 pass. Manual v1 written (docs/notes/gnm_driving_manual.md,
-copy at $G/manual.md for drive.py manual). Next: fresh set s2 (seed 202) driven WITH the manual by fresh drivers;
-score; revise the manual from s2's misses; wire it into block_in_step / the guide.
+STATE / NEXT: s2 (seed 202) driven by two fresh groups on the SAME pairs: no manual 3/14, manual v1 7/14 (easy 5/8,
+medium 2/3, hard 0/3). Next: manual v2 from the m2 drivers' notes (ears, eye unit height, combined free moves,
+forehead / philtrum finders), wire it into block_in_step + guide (gnm_manual.py), third set s3 with v2, sheets, tests.
 
 Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
 A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
@@ -2356,3 +2356,39 @@ The misses (driver vs oracle), each now a manual entry:
 - readouts.py (out/readouts.txt): every control's effect in mm a driver can see (profile points, widths, pupils,
   skull); the manual's sizes come from it. Sculpt / held moves translate the face: sculpt:dorsum +1 mm moves the lips,
   tip and chin +0.8 mm too.
+
+### Set s2 (seed 202): the SAME 14 pairs driven by two fresh groups (4 drivers each): no manual (s2_*) vs manual v1 (m2_*)
+| case | grade | regions | no manual: region / ID closed / pass | manual v1: region / ID closed / pass | oracle region |
+|---|---|---|---|---|---|
+| 00 | easy | skull | 0.23 / -0.30 / - | 0.41 / -0.05 / - | 0.69 |
+| 01 | easy | jaw_full | 0.54 / 0.45 / PASS | 0.58 / 0.41 / PASS | 0.68 |
+| 02 | easy | mouth | 0.37 / 0.25 / - | 0.50 / 0.40 / PASS | 0.44 |
+| 03 | easy | nose | 0.41 / 0.53 / - (face err up) | 0.50 / 0.50 / PASS | 0.19 |
+| 04 | easy | eyes | 0.01 / -0.03 / - | 0.18 / 0.13 / - | 0.49 |
+| 05 | easy | brows | 0.42 / 0.30 / PASS | 0.50 / 0.38 / PASS | 0.53 |
+| 06 | easy | cheeks | 0.27 / 0.12 / - | 0.44 / 0.20 / - | 0.37 |
+| 07 | easy | chin | 0.54 / 0.04 / - | 0.61 / 0.27 / PASS | 0.39 |
+| 08 | medium | jaw | 0.49 / 0.32 / PASS | 0.60 / 0.18 / - | 0.50 |
+| 09 | medium | nose+mouth | 0.30 / 0.23 / - | 0.71 / 0.47 / PASS | 0.73 |
+| 10 | medium | eyes+brows | 0.19 / 0.22 / - | 0.45 / 0.40 / PASS | 0.68 |
+| 11 | hard | chin+mouth+nose | 0.40 / 0.38 / - | 0.19 / -0.24 / - | 0.49 |
+| 12 | hard | cheeks+jaw+eyes | 0.15 / 0.16 / - | 0.32 / 0.15 / - | 0.27 |
+| 13 | hard | skull+brows+mouth | 0.11 / -0.18 / - | 0.11 / 0.01 / - | 0.65 |
+No manual 3/14 (easy 2/8, medium 1/3, hard 0/3; mean region closed 0.32, ID closed 0.18). Manual v1 7/14 (easy 5/8,
+medium 2/3, hard 0/3; region 0.43, ID 0.23); by region with the manual: brows 2/3, nose 2/3, mouth 2/4, jaw_full 1/1,
+chin 1/2, eyes 1/3, cheeks 0/2, jaw 0/2, skull 0/2. The manual's wins: pc:nose_region0 / pc:nose_region2 for the nose
+(m2_03 in 3 moves, s2_03 needed held pairs and still raised the face error), pc:upper_lip_region0 for the muzzle (both
+signs), pc:chin_region0 / 1 for the chin, under_chin's sign, halo = head_size, "offsets that flip are framing" (saved
+two drivers from chasing nothing). Hard cases (0.5 x three regions) still fail both ways: the differences are ~1-2 mm,
+at the edge of what anyone reads at these scales, and a wrong guess costs more than a right one gains.
+Driver reports (in this conversation, summarised here): "CURRENT row looks stale" (three drivers): checked
+(stale.py: renders of the current head differ from A's, mean |diff| 7-13 levels; a re-rendered sheet matched): not a
+bug; half-sd changes are invisible at head scale and the eye anchors on the start. The manual now says so.
+The m2 drivers' corrections (now in manual v2): ears (ear_out! clean, +1 visible) missing; eyes AND brows lower as a
+unit over the same nose = nose_length! (-) (its "trap" read backwards); combined free moves compound (jaw_width +
+cheek_fullness + under_chin at 1.5 each went to ~2.6 sd: start at 2/3); once the masses are close, 0.5-0.8 steps;
+head_size lengthens the chin (put back pc:chin_region0 -); pc:upper_lip_region0 lengthens the face (face_length +0.6,
+gonial +0.7 per unit); free brow_height at 2 drags lip_projection +0.85, bridge -1.1; pc:forehead_region1 moves the
+whole profile, not the forehead; forehead_slope also shifts the profile; philtrum! +1.2-1.5 barely lowers the mouth;
+lower_orbit doesn't fix bags or hollows (+2 bulges the cheek, -2 widens the eyes); sculpt:cheeks -2.5 DID read in 3/4
+on a too-full cheek (direction-dependent); pc:left_ / right_cheek_region0 narrow the whole lower face (not a cheek move).
