@@ -4160,3 +4160,37 @@ STATE / NEXT: hook-up merged on main. NEXT: the four reruns (Tess first, only th
 - Reader caveats: gnm_fold.read's "turn" is meaningless once the section folds back (it printed 144 deg on oh_T3);
   prof.py's dressed line read counts an eyeball patch as a line and finds the brow's shadow on non-Tess heads;
   stagehang.py needs a 0.8 mm gap (0.35 mm read every steep shelf as layered).
+
+## reruns (2026-10-11, coordinator; Joe: "After that rerun all 4 models, giving me sheets as you go". Scratch DURABLE in
+## /mnt/data/hifipushie/reruns: run.sh <script> (capped, main's src), call.py <server tool> '<json>', stp.py (a block-in
+## step + sheet + face_ruler's READ rows), dsheet.py <out> <title>=<model>.. (DRESSED: reference | result | rest, each
+## view through its fitted camera + an eyes row); out/ logs and shots; sheets human_renders/tn_*)
+STATE / NEXT (reruns): Tess at tn_T06 after 6 rounds, sheet tn_01_tess_dressed.png sent to Joe: NOT a likeness, lower
+face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper, nose tip), then Garrett, lt19, jw.
+
+### Tess (tn_T00 .. tn_T06; refs and dressing from er_s4, cameras KEPT)
+- block_in_start(cameras="refit") on the class mean is WRONG for her: face_ruler then turned the profile camera 10.8 deg
+  and read different rows. cameras="keep" (er_s4's cameras, the true profile camera): the solve turns them < 1 deg
+  (profile 3 deg). Use keep when the refs model has good cameras.
+- face_ruler on her photos READS only 4 rows at the start (tip_forward +5.0, under_chin -5.3, chin_forward +3.5,
+  nose_length +3.3), then upper_lip_forward -2.3 and eyes_height +3.8 appear as others close. All orbit rows NOT READ.
+  tn_T01 = those four (4.5 / -4.5 / 3.5 / 3.0): every read row closed, but the table's face_height / lower_third /
+  face_index front WENT OUT (-4.0 / -3.8). tn_T02 = chin_length +3.0, philtrum_length -1.2, eyes_forward +1.7 (Joe's
+  decided value, INFERRED): mouth 7/7, chin_height +2.8 out. tn_T03 (chin_length -1.6) abandoned: lower_third out again.
+  tn_T04 = from T02: chin_length -0.6, upper_lip_forward -2.3.
+- A TUG OF WAR the mm: moves cannot settle: chin_height (lower lip -> menton) reads 2-3 mm TALL while lower_third
+  (subnasale -> menton) reads 2-3 mm SHORT with the philtrum on target: the length is missing in the LIPS (hers are
+  fuller). The lips step (tn_T06) closed chin_height (+2.2 -> -0.6) and the lip borders (3.2 / 0.8 -> 0.2 mm) but
+  mouth_width -2.3, mouth_line, philtrum +1.9 and lower_third -3.3 are out on the front view after it.
+- Eye step with the crisp fold on this head (tn_T05): turn 20 -> 48 deg at 5.3 mm, but |dc| 20.6 (|c| -> 22.7; a
+  typical head is ~13), held skin 0.77 mm rms (max 4.1 at the orbit), philtrum front went out. The class mean's lid
+  is far from hers (fold at 2.7 mm, platform 3.2 mm off the ball), so the fold is dear here; fold="donor" from the
+  same tn_T04 (tn_T05d / T06d): |dc| 10.7, platform lifted 0.4 mm for the ball, measures drift 1.5 mm (it has no
+  effective mm hold: its 0.3 is the same too-weak weight), mouth 6/7 -> 4/7.
+- BLUNT READ of tn_01 (dressed, photos | tn_T06 | tn_T06d | er_s4): none is her. tn_T06's lid reads better than
+  er_s4's (a platform with an edge at her height; the donor variant is softer), eye spacing / size plausible. But the
+  lower face is WORSE than the previous lineage: jaw broad and square, chin short and blunt, the nose tip heavy and
+  drooping in 3/4 and profile, the whole head reads heavier and more male; er_s4 has her narrower oval. So: the
+  ruler-only photo path (4-6 read rows) does not carry a likeness by itself; what it does not read (jaw line, chin
+  shape, cheek planes, the nose's shape) still has to be driven by eye from the sheets. The er_s4 dressing's freckles
+  and lip colour are also far from her (skin thread).
