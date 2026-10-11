@@ -1863,15 +1863,57 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 - NOT flipped. Decision needed: one block-in from scratch on the regional base (Garrett, age from the age ops or a
   data source) against b3_G17.
 
+### 7. Garrett from scratch on the regional base (coordinator; Joe: "I'm not really even convinced about age": no
+### designed age ops, age cues the GNM way; scripts/rb.py, agecues.py, rbcmp.py, rbfinal.py; models rb_G00 .. rb_G14
+### in the MAIN workspace, log rb_G00/blockin_log.json)
+- Start: block_in_start(b3_G17's references, male, 52: MakeHuman base, class mean) 23/29; the regional base step
+  (gnm_base 1, gnm_base_rest 0) -> 16/29: GNM's male template is much WIDER than his 52-year-old MakeHuman head
+  (cheekbones +7.7, jaw +6.3, nose base +10, mouth +4 mm) and round / young.
+- Rounds (each a block-in step, logged): face_width -0.8; nose_length! +0.9, nose_upturn! -0.5; cheek_fullness -0.7,
+  jaw_width! -0.5 (22/29, err 0.65); brow_ridge +0.5, mouth_width! -0.4; chin_height! -0.5 (23/29, 0.58); [designed
+  nasolabial 0.6, removed again at G11 per Joe]; eye_spacing! -0.4; chin_height! -0.35; THE EYE STEP (lids 0.47 / 0.75
+  vs his 0.46 / 0.72, hooded: platform 1.8 mm, |dc| 1.45, |e| 1.43); relief:nasolabial -0.6 (|dc| 3.1);
+  relief:cheeks -0.8 (|dc| 1.9, cheek_fullness let go); sculpt:bridge_walls|hold=dorsum -0.7 (|dc| 2.5). |c| 5.45 ->
+  9.0 over 14 rounds.
+- rb_G14 vs b3_G17 (34 rounds on the MakeHuman base): walls 0.559 vs 0.584 (concept 0.504), width3 11.1 vs 10.9,
+  table 21/29 (err 0.66) vs 26/29 (0.41): rb's misses are temple width (hair framing), the painted 3/4's lengths and
+  edge flips. Sheets gc_07_rb_G14_vs_b3_G17.png (hair-cap clay, before = G17), gc_08_..._dressed.png (top rb_G14).
+  Blunt read: dressed, rb_G14 reads LEANER and longer in the mid / lower face with a narrower nose (closer to the
+  concept's lean face); G17 reads broader and squarer; neither has the concept's deep-set, hooded tiredness yet. On the
+  table G17 wins. Not a clear win for the regional base after 14 rounds; it is at least as good a start.
+- The table's noise floor: with every macro HELD exactly (a sculpt can't move a landmark proportion), mouth_width moved
+  +1.0 mm and chin_height +0.45 mm: clay-reader drift from shading (jw's finding). Edge flips under ~1 mm are noise.
+- AGE THE GNM WAY (agecues.py; relief = a zone against its 5 mm surround, size projected out):
+  | cue | sculpt cost |dc| per mm (macros held) | GNM's population sd of the cue (mm) |
+  |---|---|---|
+  | nasolabial groove deeper | 5.2 | 0.29 |
+  | jowl (relief, out) | 6.5 | 0.31 |
+  | mentolabial sulcus deeper | 3.4 | 0.42 |
+  | sub-malar cheek hollow | 2.4 | 0.92 |
+  | marionette deeper | 2.4 | 0.85 |
+  | tear trough deeper | 4.2 | 0.91 |
+  | lid fold deeper | 3.2 | 1.09 |
+  | upper / lower vermilion thinner (zone in) | 2.0 / 2.8 | 1.90 / 1.31 |
+  GNM's identity space barely varies the LINES of age (nasolabial, jowl, mentolabial: sd 0.3-0.4 mm: a visible 1-2 mm
+  fold is 3-7 sd); it does vary the MASSES (cheek hollows, lips, lids, tear trough ~1 mm). On Garrett, relief:nasolabial
+  -0.6 mm (|dc| 3.1) reads as a faint line in raking clay, far weaker than the designed op's 1.2 mm fold;
+  relief:cheeks -0.8 mm (|dc| 1.9) is subtle. In the dressed render the skin's age layers carry most of the age.
+- No age-like direction: the ten cues' correlations under GNM's prior are small and inconsistent in sign (first common
+  factor 23 % of 10; nasolabial deepening anti-correlates with jowl and tear trough); with zone moves instead of relief
+  the first factor is just head size / lower-face width (head_000). GNM was built from relaxed neutrals, PCA-truncated:
+  aged LINES are mostly not in its identity; aged MASSES are, independently. A data-backed age step (blockin3's
+  Wikimedia statistics) should drive the masses through sculpt / macros and leave the lines to skin / a residual.
+
 ### HANDOVER (gnmcontrols, 2026-10-10)
 - Code (branch worktree-agent-aecab3f9c741dd586): gnm_controls.py / .npz, gnm_sampler.py / .npz, blockin (sculpt:,
   relief:, gnm:, gnm_base_rest), onemesh (gnm_base_rest, gnm_base_age, face_weight), humanfit_map prior_mean, server
   gnm_controls (human toolset), blockin_guide (loop 4, feature pass, "GNM's controls", tool reference), tests
   test_gnm_controls (5) + test_toolsets' list (block_in_expression was missing since lt19b).
-- Main workspace: b3_G17 only.
+- Main workspace: b3_G17, rb_G00 .. rb_G14 (the regional-base trial; rb_G14 its last step).
 - Rebuild the table after changing zones / the perception runs: scripts/atlas.py build (18 s; perception: perc_all.py
   <families>, ~25 min for all), sheets: atlas.py sheets [families] (~2 s a page), index: atlas.py index.
-- Open, in order: (1) a block-in from scratch on the regional base (decides the default); (2) sculpt readers beyond
+- Open, in order: (1) the regional base: rb_G14 is a 14-round start (table 21/29 vs G17's 26/29, leaner dressed read):
+  continue it (temple / painted-3/4 lengths, eyes' tiredness) or call it; a data-backed age step for the MASSES; (2) sculpt readers beyond
   zones (a reader-driven sculpt: any likeness / shading reader as the target, finite differences on the shipped head;
   bridge.py is a template); (3) a non-negative prototype basis for block_in_expression (named, plausible picture
   expressions; eye parts off by default); (4) Tess's feature pass with sculpt (lips, almond eyes, radix) instead of
