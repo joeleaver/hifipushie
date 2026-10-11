@@ -73,6 +73,7 @@ CONTACT_X = 15          # samples across the contact ring's inner CONTACT_SPAN o
 CONTACT_SPAN = 0.85
 OVERLAP = 0.2           # mm the two halves may cross before it costs (the field merges them)
 ROLL_SPAN = 0.85        # (the "roll" read: the inner rolls' smallest gap, mm, - = crossing)
+SIG_BOW = 0.1           # mm: the picture's Cupid's bow (Tess 1.44: none 0.70 mm, 0.15 -> 1.07 at |dc| +0.35, 0.05 -> 1.27 at +1.06)
 
 
 def ring_rows(k: int | None = None):
@@ -369,6 +370,8 @@ def solve(base: dict, ev: dict, cam: dict, view_ex: dict | None = None, iters: i
         # field leaves the rolls out instead, onemesh.CLOSED_SEAL_V. "roll" is only read)
         r += list(((L[HOLD] - L0[HOLD]) * 1000 / SIG_HOLD).ravel())
         r += list(((L[CORNERS] - L0[CORNERS]) * 1000 / SIG_CORNER).ravel())
+        if SIG_BOW and ev.get("bow") is not None:   # the picture's Cupid's bow depth (mm)
+            r.append((lip_reads(hv)["bow"] - ev["bow"]) / SIG_BOW)
         return np.array(r), hn, hv
     n = 170 + len(names)
     x = np.zeros(n)

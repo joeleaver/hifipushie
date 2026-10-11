@@ -1113,6 +1113,48 @@ def lit_render(mesh: dict, cam: dict, img, box=None, px=None, soft: float = 8.0)
     return im, lt, ps
 
 
+def photo_lighting(name: str, template: dict, vi: int | None = None) -> dict:
+    """A DRESSED render's lighting (Blender suns, the stage's `template` dict: {"lights": [key, fill], "world", ...})
+    re-aimed and re-balanced to the picture's own light, as the clay sheets are (lit_render's SH fit on the face's
+    skin): the key along the fitted light's first-order direction, key : fill (a frontal fill from the camera, no
+    shadow) from its ambient vs directional parts (the fitted c0 + w.n: ambient c0, key |w|), the face's
+    front kept as bright as the template lights it. jw2: the stage's fixed key 42 deg up put the sides of a flat-lit
+    phone photo's face in shadow and the dressed head read narrower and harder than the photo and the clay. Returns a
+    new dict (+ "fitted": {dir, elevation_deg, key, ambient})."""
+    from PIL import Image
+    from . import humanfit, store
+    rj = _refs(name)
+    vi = _front(rj) if vi is None else vi
+    v, cam = rj["views"][vi], rj["cameras"][vi]
+    img = Image.open(v["image"]).convert("RGB")
+    mesh = presented_mesh(view_base(store.load(name)["base"], rj, vi), rj=rj)
+    mesh["_photo_P"] = detect_view(img, v)
+    _, lt, _ = lit_render(mesh, cam, img)
+    R = humanfit._cam_rot(cam)
+    # the first pass's c0 + w.n fit (camera-frame normals): w = the directional part, c0 = the ambient (the SH
+    # coefficients, fitted with AO multiplied in, gave no stable direction: Tess's key came out from below)
+    c0, w = float(lt[0]), np.asarray(lt[1], float)
+    I = float(np.linalg.norm(w))
+    A = max(c0, 0.1 * I)
+    d = R.T @ (w / max(I, 1e-9))                               # toward the light, world
+    to_cam = R.T @ np.array([0.0, 0.0, -1.0])                 # the face's front, toward the camera
+    out = copy.deepcopy(template)
+    key, fill_ = out["lights"][0], (out["lights"][1] if len(out["lights"]) > 1 else None)
+    k0 = np.asarray(key["dir"], float) / np.linalg.norm(key["dir"])
+    e_front = float(key["energy"]) * max(float(k0 @ to_cam), 0.0) + (float(fill_["energy"]) if fill_ else 0.0)
+    K = e_front / max(I * max(float(d @ to_cam), 0.0) + A, 1e-9)
+    key["dir"] = [round(float(x), 4) for x in d]
+    key["energy"] = round(K * I, 3)
+    if fill_ is None:
+        fill_ = {"energy": 0.0, "angle": 40, "shadow": False, "specular": 0.0, "color": [1, 1, 1]}
+        out["lights"].append(fill_)
+    fill_["dir"] = [round(float(x), 4) for x in to_cam]
+    fill_["energy"] = round(K * A, 3)
+    out["fitted"] = {"dir": key["dir"], "elevation_deg": round(float(np.degrees(np.arcsin(np.clip(d[2], -1, 1)))), 1),
+                     "key": round(I, 4), "ambient": round(A, 4)}
+    return out
+
+
 def fill(im, ps, share: float = None):
     """DISPLAY only (the fitted light stays as fitted for anything measured): the shadow side lifted to a fill of
     FILL x the lit skin's median, a soft knee (v' = sqrt(v^2 + f^2)): a painted picture's light put half of Garrett's

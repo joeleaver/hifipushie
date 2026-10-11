@@ -1143,6 +1143,9 @@ def render(job):
     ee.fast_gi_method = "GLOBAL_ILLUMINATION"
     ee.taa_render_samples = int(job.get("samples", RENDER_SAMPLES))
     ee.ray_tracing_options.resolution_scale = str(job.get("rt_scale", RT_SCALE))  # 1 full, 2 half, ...
+    for k, v in (job.get("eevee") or {}).items():  # overrides by name (scene.eevee / its ray_tracing_options)
+        tgt = ee.ray_tracing_options if hasattr(ee.ray_tracing_options, k) and not hasattr(ee, k) else ee
+        setattr(tgt, k, type(getattr(tgt, k))(v))
     scene.render.resolution_x = scene.render.resolution_y = job.get("size", 512)
     alpha = bool(job.get("show_layer") or job.get("transparent"))  # alpha: surface vs sky, for coverage; or a look
     scene.render.film_transparent = alpha                            # to be laid on a backdrop of the caller's

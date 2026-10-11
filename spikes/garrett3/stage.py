@@ -24,6 +24,17 @@ FRONT_LIGHT = {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [
                           {"dir": [0.0, -1.0, 0.05], "energy": 0.7, "color": [1.0, 0.98, 0.97], "angle": 40, "shadow": False,
                            "specular": 0.0}],
                "world": {"color": [0.8, 0.8, 0.8], "strength": 0.45}, "view": "Khronos PBR Neutral", "exposure": -0.55}
+
+STAGE_EEVEE = json.loads(os.environ["STAGE_EEVEE"]) if os.environ.get("STAGE_EEVEE") else {}
+
+
+def photo_light(name, vi=None):
+    """FRONT_LIGHT re-aimed and re-balanced to the front picture's own fitted light (blockin.photo_lighting: the clay
+    sheets' light): use it for dressed vs photo comparisons (jw2: the fixed 42-deg key read narrower / harder)."""
+    from hifipushie import blockin
+    return blockin.photo_lighting(name, FRONT_LIGHT, vi)
+
+
 POSE = {"lid_upper": 0.0013, "brow_inner": -0.0015, "brow_outer": -0.0012, "smile": -0.0015}  # the photo's (garrett3.POSE)
 
 
@@ -126,8 +137,9 @@ def view_frames(spec, names=("front", "three_quarter", "profile_right", "profile
 
 
 def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=False, samples=24, layer=None, posed=False,
-          tex=None):
-    """Render frames of the stage (one lighting). Returns {frame name: RGB image}."""
+          tex=None, eevee=None):
+    """Render frames of the stage (one lighting). Returns {frame name: RGB image}. eevee: scene.eevee overrides by name
+    (blender_scene; default STAGE_EEVEE)."""
     sn = ensure(name, posed=posed, tex=tex)
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     out = {}
@@ -138,6 +150,9 @@ def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=F
                "transparent": True}
         if lt:
             job["lighting"] = lt
+        ee = STAGE_EEVEE if eevee is None else eevee
+        if ee:
+            job["eevee"] = ee
         if hair_on and st.get("hair"):
             job.update(mode="hair_look", hair=hair.job(sn, st), clay_views=[], id_views=[], look_engine=engine)
         else:
