@@ -587,12 +587,12 @@ def _cam_columns(obs, views, cam_sd):
                     if i not in rot[j]:
                         continue
                     d = rot[j][i]
-                    col[i] = d @ np.asarray(ob["n"]) if ob["type"] == "outline" else (d[0] if ob["name"].endswith(".x") else d[1])
+                    col[i] = d @ np.asarray(ob["n"]) if "n" in ob else (d[0] if ob["name"].endswith(".x") else d[1])
                     continue
                 p = (np.asarray(ob["p"], float) - c) * mm                # mm from the picture's centre
                 d = {0: np.array([1.0, 0.0]), 1: np.array([0.0, 1.0]), 2: 0.01 * p,
                      3: np.radians(1.0) * np.array([-p[1], p[0]])}[j]
-                if ob["type"] == "outline":
+                if "n" in ob:
                     col[i] = d @ np.asarray(ob["n"])
                 else:
                     col[i] = d[0] if ob["name"].endswith(".x") else d[1]
@@ -1127,6 +1127,53 @@ def _lid_obs(head, view, rv):
     return out
 
 
+SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture's traced border
+
+
+def _gnm_to_model(head) -> dict:
+    """GNM vertex id -> a model vertex of head["V"] (the first that carries it)."""
+    key = ("g2m", len(head["gid"]))
+    if key not in _C:
+        first = {}
+        for i, g_ in enumerate(np.asarray(head["gid"], int)):
+            if g_ >= 0 and g_ not in first:
+                first[int(g_)] = i
+        _C[key] = first
+    return _C[key]
+
+
+def _lip_obs(head, view, ev):
+    """THE LIP BORDERS IN THE SAME SOLVE: the front picture's traced vermilion borders (blockin_lips.photo_evidence:
+    upper / lower polylines, px) against the model's border loops (GNM's lip-group vertices next to skin) through the
+    view's camera: per border vertex its distance to the picture's border (mm, along the line to the nearest point),
+    moving with the vertex. Every other border vertex; past the traced part's ends there is no evidence."""
+    from . import base as basemod, blockin_lips as bl
+    sk = np.flatnonzero(np.asarray(basemod._gnm_data()["skin"]))
+    g2m = _gnm_to_model(head)
+    cam = view["cam"]
+    s_ = float(view.get("scale", 1.0))
+    o_ = np.asarray(view.get("origin", (0.0, 0.0)), float)
+    out = []
+    for nm, rows in zip(("upper", "lower"), bl.border_loops()):
+        mv = np.array([g2m.get(int(sk[r]), -1) for r in np.asarray(rows)[::2]])
+        mv = mv[mv >= 0]
+        if not len(mv):
+            continue
+        X = np.asarray(head["V"], float)[mv]
+        px = _cam_points(cam, X)[1]
+        d, q, ins = bl._poly_dist(px, (np.asarray(ev[nm], float) - o_) / 1.0)
+        for i in np.flatnonzero(ins):
+            Jp, mm1 = _proj_jac_pt(cam, X[i], head["B"][:, mv[i]])
+            if d[i] < 1e-6:
+                n = np.array([0.0, 1.0 if nm == "lower" else -1.0])
+            else:
+                n = (q[i] - px[i]) / d[i]
+            out.append({"type": "lip", "view": view["kind"], "name": f"lip_{nm}_{i}", "o": float(d[i]) * mm1 / s_, "n": n.tolist(),
+                        "J": (n @ Jp) * mm1, "sig": SIG_LIP, "p": list(map(float, px[i])), "q": list(map(float, q[i])),
+                        "X": list(map(float, X[i]))})
+    return out
+
+
 # A FITTED camera: mm of shift (x, y), % of scale, degrees of roll left free per view. Measured (spikes/faceruler/
 # arms2.py): a camera fitted by laying the MODEL's landmarks on the picture's is off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg
 # rms when the model is a regional transplant away from the person (the scale up to 9 %: a broader jaw reads as "closer").
@@ -1176,7 +1223,7 @@ def kind_of(yaw: float) -> str:
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
 
 
-def reference_views(name: str, hair: bool = True, lids: bool = False) -> tuple:
+def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -1212,6 +1259,13 @@ def reference_views(name: str, hair: bool = True, lids: bool = False) -> tuple:
                     notes.append(f"{view['name']}: the lids were not read (iris {rv['iris'] / mm:.0f} px; needs 30)")
             except Exception as e:  # noqa: BLE001
                 notes.append(f"{view['name']}: the irises were not read ({e})")
+            if lips:
+                try:
+                    from . import blockin_lips as bl
+                    lev = bl.photo_evidence(img, v)
+                    extras.append(lambda h, vw, lev=lev: _lip_obs(h, vw, lev))
+                except Exception as e:  # noqa: BLE001
+                    notes.append(f"{view['name']}: the lip borders were not read ({e})")
         view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
         views.append(view)
     if iris_mm and np.isfinite(iris_mm):       # the turned views draw the limbus at the PICTURE's iris size (the limbus'
@@ -1221,11 +1275,11 @@ def reference_views(name: str, hair: bool = True, lids: bool = False) -> tuple:
 
 
 def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
-            prior_off=None, lids: bool = False) -> dict:
+            prior_off=None, lids: bool = False, lips: bool = False) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
-    head, views, notes = reference_views(name, hair, lids=lids)
+    head, views, notes = reference_views(name, hair, lids=lids, lips=lips)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     res = read(head, views, rounds=rounds, cam_sd=cam_sd, **({} if prior_off is None else {"prior_off": prior_off}))
@@ -1235,7 +1289,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip")}
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))

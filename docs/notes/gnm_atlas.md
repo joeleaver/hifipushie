@@ -4285,3 +4285,17 @@ border and corners, front; its closing expression is a separate matter), then th
 nose: profile dorsum / tip came out hooked on the FIRST free-camera step (profile yaw -4.5 deg): start with
 cameras="trust" when the refs' cameras are measured, and check the outline reads along the dorsum; (4) neutral
 judging sheet + face-ID; (5) the table's inconsistent rows. Tests for solve_step / _lid_obs still to write.
+- DONE (2b): LIP BORDERS IN THE SOLVE: face_ruler._lip_obs: blockin_lips.photo_evidence's traced upper / lower
+  borders (front, px) against every other vertex of the model's border loops through the view's camera, the distance
+  along the line to the nearest border point (mm), moving with the vertex; camera columns now use any observation's
+  own normal ("n"). 18 reads on Tess. tk_T05 / tk_T06 (two more trusted steps from tk_T04): |dc| 2.4 on the second,
+  |c| 11.7, largest comp 2.3 sd. lip_read on tk_T06: border miss upper 0.24 / lower 0.46 mm, seam 0.49, bow 1.18 vs
+  1.44: WITHOUT a lips step (which got 0.22 / 0.23 and then drifted to 1.8 under later hand steps).
+  Table: head 7/7, jaw 4/5 (chin_height front +1.6), eyes 3/3, nose 3/4 (nose_length -2.0), mouth 5/7 (mouth_width
+  -2.3, philtrum front +2.8). The philtrum row says +2.8 with the borders matched to 0.24 mm: the ROW is wrong (item 5).
+  Sheet tk_02 (photos | tk_T06 | tk_T04 | tn_T10n), sent. BLUNT: mouth and eyes right from ONE solve; the NOSE is now
+  the worst thing (long, hooked in profile, heavy from the front), the head still lean and male. Not her yet.
+STATE / NEXT (tooling): block_in_solve = outlines + irises + limbus + lids + lips, prior on the whole identity. NEXT:
+(3) the nose (what the profile outline reads along the dorsum and tip; alae / nostril reads from the front; the
+profile camera); the brow band; (4) neutral judging sheet + face-ID; (5) the table's rows; tests for _lid_obs /
+_lip_obs / solve_step; the guide's 3b text (lids / lips now inside).
