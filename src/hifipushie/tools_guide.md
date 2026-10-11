@@ -13,7 +13,7 @@ with `HIFIPUSHIE_TOOLSETS=all`, or a list like `hair,cloth` (default `core`); `H
 | plan | set_plan, set_reference, compare, fit, clearance, style_check | here |
 | scene | sync, pull, heavy_status, heavy_queue | here |
 | export | export, export_asset, rig | here |
-| human | human, measure_human, fit_human, nudge_human, human_reference, block_in_start, block_in_look, block_in_step, lid_read, brow_read, skin, look_skin, skin_reference | guide(topic="human"), guide(topic="block_in"), guide(topic="skin") |
+| human | human, measure_human, fit_human, nudge_human, human_reference, block_in_start, block_in_look, block_in_step, lid_read, eye_ruler, brow_read, skin, look_skin, skin_reference | guide(topic="human"), guide(topic="block_in"), guide(topic="skin") |
 | likeness | likeness, fit_likeness, likeness_points, character_read, project_reference, texture_from_reference, reference_brief, check_references | guide(topic="likeness") |
 | hair (+ scene) | groom_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
 | cloth (+ scene) | design_garment, look_pattern, check_garment, dress, look_cloth, garment_reference, garment_from_reference, check_garment_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |

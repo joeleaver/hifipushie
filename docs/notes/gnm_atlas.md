@@ -2860,10 +2860,11 @@ What the drivers reported (now in the manual, section 0a):
 ## eyeruler (2026-10-11, "eyeruler" agent, branch worktree-agent-aca121f3738eb053b; Joe on gb_01: "I notice some measurement
 ## errors" (our eye is narrower corner to corner than hers) and "the upper eyelid just isn't realistic". Scratch
 ## /mnt/data/hifipushie/eyeruler (run.sh / q.sh; scripts in spikes/eyeruler); sheets human_renders/er_*)
-STATE / NEXT (eyeruler, step 2 in progress): the ruler exists (src/hifipushie/eye_ruler.py: read() on a picture, model()
-on the mesh) and is validated on 14 dressed fitted-camera renders; first photo-vs-model table below. NEXT: confirm where
-the 2.7 mm inner-corner miss lives (GNM's lm68 corner vs the visible opening: dressing or shape), re-target the eye step
-on the ruler's numbers (true iris centre, corners), then the lid's realism (task 3), tool + guide + tests (task 4).
+STATE / NEXT (eyeruler, step 3 in progress): ruler + validation done (step 1); the narrow eye explained (step 2: the
+inner corner, three causes; the lids matched to a detector iris centre 0.9 mm low); the eye step now solves the ruler's
+margins and corners in mm (scratch er_s1: margins within 0.1-0.3 mm of her picture's); tool `eye_ruler`, guide text,
+tests in. NEXT: judge er_s1 dressed (shots s_s1*: caruncle / lashes / liner / crease shade variants), the identity-only
+solve er_s2, the lid's realism against #376 (step 3), sheets er_01.., final notes.
 
 ### Step 0: the mesh's own numbers (spikes/eyeruler/probe.py; lid margin ring = skin rows next to the socket lining)
 | model | ring width (mm) | lm 42-45 | opening (z extent) | ball r |
@@ -2937,3 +2938,43 @@ First read (to be confirmed by the fixes):
   read uses the true pole. True reads: her upper margin is 2.1 mm over the iris centre (0.38 iris r), ours 3.4 (0.64);
   her lower -4.9, ours -4.4. This is gnmbrow's open "~1 mm: the detector reads our upper lid higher than hers".
   Her visible platform (fold line over the margin) is 4.7 mm, ours 3.7-3.9: with the margin 1.3 mm lower it would match.
+
+### Step 2 (confirmed): why the eye was narrow, per suspect (table.py, det.py, rawgnm.py, clay.py; out/table*.txt)
+THE MISS (photo read vs gb_fx's mesh, mm from the iris centre): inner canthus -13.2 vs -10.5 (where our opening ends),
+outer 9.7 vs 9.4, upper margin at the pupil 2.1 vs 3.4, lower -5.3 (bias taken off) vs -4.4, tilt 2 vs 6.6 deg.
+- THE INNER CORNER is three things (out/clay_gb_fx.png shows them):
+  1. GNM's CANTHAL POCKET is painted as skin: 1.5-1.9 mm. In GNM's mesh the margin ring (skin next to the socket
+     lining) ends 1.9 mm lateral of its own lm68 inner corner (raw template: ring -10.4, landmark -12.5 mm from the
+     pupil); between them is a tapering pocket of SKIN-group surface: the caruncle's place. The skin's caruncle layer
+     was a faint pink spot, so the eye read as ending at the eyeball. MediaPipe on our renders puts the inner corner
+     1.6 mm medial of the opening's end (at the pocket's tip), on her photo right on the caruncle's tip. Fix: dressing
+     (skin.eyes.caruncle), not shape.
+  2. the EYEBALL does not fill the corner: 0.4-0.9 mm inner, 0.6-1.2 mm outer. GNM's own ball is a 14.5 mm sphere
+     (iris 10.5) and its ring hugs it within 0.4-1.5 mm corner to corner; ours was 12.6 (blockin2's absolute 0.012 x
+     eyes 1.05), then 10.64 (gnmbrow, to make the drawn iris 10.7). At 10.64 the visible eyeball is 20.0 mm wide in a
+     21.3 mm ring, with 1.2-1.4 mm of lining showing at u +9. Fix: keep the ball (er_*: the eye_radius key removed =
+     12.6), give the iris its size in skin.eyes.iris_size.
+  3. IDENTITY: 0.8-1.2 mm. lm68's inner corner -12.05 vs her -13.25 (her inner canthi are 26.9 mm apart, the
+     landmarks 29.7). The block-in's landmark fit compares the detector's corner width (23.0 on her photo) with lm68's
+     (23.0-24.0): it read "matched". For the eye step's new corner term.
+- Suspects asked about: the smaller eyeball: -0.8 mm of visible fissure (21.1 -> 20.3, outer end), the lids not pulled
+  in (ring unchanged). The eye step's lids-in-iris-radii-at-the-pupil: it matched 0.63 / 0.83 r from a detector centre
+  0.9 mm low: upper margin 1.3 mm too high, lower 0.9 too high; the corners were never evidence (ring 22.1 -> 21.3,
+  -0.3 mm visible). The landmark holds: lm 36-47 are not held, nothing drifted far (lm width 24.0 -> 23.0). The
+  expression (ablation er_a2 = er_a1 with the eye pairs cleared, |e| 4.9 -> 0): lower lid 0.7 mm lower, upper 0.2
+  lower, tilt 4.6 -> 2.9 deg, crease 0.3-0.6 mm lower: it mostly lifted the lower lid and the outer corner.
+- "Short and round": her opening 23.0 x 7.0-7.4 mm (aspect 3.2), ours 20.0 x 7.8 (2.6). Her iris sits HIGH in the
+  opening: the upper lid hides 3.4 mm of it (ours 2.0), the lower lid sits at the limbus.
+
+### Step 2b: the eye step on the ruler (blockin_eyes: ruler_evidence, Reader.margins, solve(ev["ruler"], ne=))
+- Evidence: the picture's margins at u -9 .. 9 (sigma 0.15 mm; +-9 at half weight; lower - 0.35), the inner canthus
+  against lm68's inner corner (0.3 mm; v at a third), the outer one + 1.2 against the ring's lateral end, the crease
+  template carried to the ruler's fold line (mm at the model, no iris-size conversion). The model side is read straight
+  off the mesh each evaluation (the ring's polygon in a level front view from the ball's forward pole).
+- er_s1 (esolve.py gb_fx er_s1: ball 12.6, identity + 20 eye pairs, s376 make, 6 its): upper margin
+  -0.1 / 1.3 / 2.05 / 2.2 / 1.7 / 0.9 / -0.6 vs her -0.1 / 1.3 / 2.0 / 2.1 / 1.8 / 0.9 / -0.95; lower -3.7 / -4.3 /
+  -4.7 / -5.0 / -4.9 / -4.4 / -3.7 vs -3.6 / -4.0 / -4.7 / -5.3 / -4.95 / -4.5 / -3.1; inner canthus -12.8 (her
+  -13.25, was -12.05); section rms 0.22 -> 0.13 mm; |dc| 2.9 from gb_fx, |e| 4.9 -> 3.9; socket within 0.1 sd.
+- Tool `eye_ruler(name, model=None, save=None)` (server.py, toolset human; eye_ruler.compare / text / overlay), the
+  guide's loop item 7a + "### `eye_ruler`", iris_check's advice changed (iris_size, not eye_radius),
+  tests/test_eye_ruler.py (a drawn eye with a detector that is off the way MediaPipe is; the limbus circle under a lid).

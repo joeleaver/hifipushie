@@ -628,7 +628,7 @@ def compare(name: str, model_name: str | None = None) -> dict:
     spec = store.load(model_name or name)
     st = humanfit.state(spec["base"])
     mm = likeness._mm_per_px(cam, st["L"][27:48])
-    eyes = read(img, P, mm)
+    eyes = read(img, P, mm, debug=True)
     px = float(np.mean([e["iris"] for e in eyes])) / mm
     tru = model(spec, cam)
     ph, mo = mean(eyes), mean(tru)
@@ -680,7 +680,8 @@ def compare(name: str, model_name: str | None = None) -> dict:
         moves.append("skin.eyes.caruncle 1 (the inner corner's pocket painted wet red: unpainted, the eye reads ~2 mm short at the nose side)")
     if any(k.startswith("brow") for k in off):
         moves.append("brow_read(name, match=True)")
-    out = {"rows": rows, "photo": ph, "model": mo, "pd": pd, "moves": moves, "iris_px": px, "mm": mm, "eyes": eyes, "mesh": tru}
+    out = {"rows": rows, "photo": ph, "model": mo, "pd": pd, "moves": moves, "iris_px": px, "mm": mm, "eyes": eyes, "mesh": tru,
+           "image": img}
     out["text"] = text(out)
     return out
 
@@ -702,3 +703,64 @@ def text(c: dict) -> str:
         L.append(f"  the picture shows no fold line (darkness {c['photo']['crease_dark']:.2f}): hooded, or too soft to read")
     L.append("  MOVES: " + ("; ".join(c["moves"]) if c["moves"] else "none: within the reader's error"))
     return "\n".join(L)
+
+
+def overlay(img, eyes: list, mesh: list | None = None, mm: float | None = None, top: float = 16.0, bottom: float = -8.0,
+            zoom: int = 1):
+    """A picture's two eye patches (0.05 mm / px, subject's right eye first; both shown with the nose side on the left)
+    with the ruler's read drawn: the lid rims' outer sides (orange), the margins (green), the limbus circle (yellow),
+    canthi (red, with their vertical lines), where the eyeball starts (white tick), the fold line (cyan), the brow
+    edge (magenta). mesh (model()'s list, mm = mm per picture px): the model's margin ring, its visible margins at
+    COLS and its inner-corner landmark (blue), laid over by iris centre. eyes must come from read(debug=True)."""
+    from PIL import Image, ImageDraw
+    A = np.asarray(img.convert("RGB"), float) / 255
+    tiles = []
+    for s in (0, 1):
+        e = eyes[s]
+        fr = {k: np.asarray(v) for k, v in e["frame"].items() if k != "k"}
+        pat = patch(A, fr, e["frame"]["k"])[::-1]
+        Vr = V[::-1]
+        sel = (Vr < top) & (Vr > bottom)
+        v_top = Vr[sel][0]
+        t = Image.fromarray((pat[sel] * 255).astype(np.uint8))
+        d = ImageDraw.Draw(t)
+        X = lambda u: (u - U[0]) / STEP  # noqa: E731
+        Y = lambda v: (v_top - v) / STEP  # noqa: E731
+        g = e.get("_dbg")
+        if g:
+            a, b = g["a"], g["b"]
+            for arr in (g["T"], g["B"]):
+                d.line([(X(u), Y(v)) for u, v in zip(g["uu"], arr)], fill=(255, 200, 0), width=1)
+            for arr in (g["up"], g["lo"]):
+                d.line([(X(u), Y(v)) for u, v in zip(g["uu"][a:b + 1], arr[a:b + 1]) if np.isfinite(v)], fill=(0, 255, 0), width=2)
+            if g["cr"] is not None:
+                d.line([(X(u), Y(v)) for u, v in zip(*g["cr"])], fill=(0, 255, 255), width=1)
+            for (u, v) in g["br"] or []:
+                d.ellipse([X(u) - 4, Y(v) - 4, X(u) + 4, Y(v) + 4], outline=(255, 0, 255))
+        for key in ("inner", "outer"):
+            u, v = e[key]
+            d.line([(X(u), 0), (X(u), t.size[1])], fill=(255, 0, 0), width=1)
+            d.ellipse([X(u) - 5, Y(v) - 5, X(u) + 5, Y(v) + 5], outline=(255, 0, 0), width=2)
+        d.line([(X(e["sclera_in"]), Y(-3)), (X(e["sclera_in"]), Y(3))], fill=(255, 255, 255), width=1)
+        rr = e["iris"] / 2 / STEP
+        d.ellipse([X(0) - rr, Y(0) - rr, X(0) + rr, Y(0) + rr], outline=(255, 255, 0))
+        d.line([(X(0) - 6, Y(0)), (X(0) + 6, Y(0))], fill=(255, 255, 0))
+        if mesh is not None:
+            m = mesh[s]
+            R = np.asarray(m["ring"])
+            o = np.argsort(np.arctan2(R[:, 1] - R[:, 1].mean(), R[:, 0] - R[:, 0].mean()))
+            d.line([(X(u), Y(v)) for u, v in np.r_[R[o], R[o][:1]]], fill=(80, 120, 255), width=2)
+            for x, a_, b_ in zip(COLS, m["up"], m["lo"]):
+                for v in (a_, b_):
+                    if np.isfinite(v):
+                        d.ellipse([X(x) - 3, Y(v) - 3, X(x) + 3, Y(v) + 3], fill=(80, 120, 255))
+            if "inner_lm" in m:
+                u, v = m["inner_lm"]
+                d.rectangle([X(u) - 5, Y(v) - 5, X(u) + 5, Y(v) + 5], outline=(80, 120, 255), width=2)
+        d.line([(12, t.size[1] - 14), (12 + 5 / STEP, t.size[1] - 14)], fill=(255, 255, 255), width=3)
+        d.text((16 + 5 / STEP, t.size[1] - 20), "5 mm", fill=(255, 255, 255))
+        tiles.append(t)
+    out = Image.new("RGB", (tiles[0].size[0] * 2 + 6, tiles[0].size[1]), "white")
+    out.paste(tiles[0], (0, 0))
+    out.paste(tiles[1], (tiles[0].size[0] + 6, 0))
+    return out if zoom == 1 else out.resize((out.size[0] * zoom, out.size[1] * zoom), Image.LANCZOS)

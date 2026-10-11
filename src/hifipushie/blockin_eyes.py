@@ -56,6 +56,7 @@ RULER_COLS = np.array([-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0])   # = eye_ruler.CO
 SIG_MARGIN = 0.15       # mm: a lid margin at a column (the reader's error is 0.2-0.3 mm; +-9 mm columns count half)
 SIG_CORNER = 0.3        # mm: a canthus
 LO_BIAS = 0.35          # mm: the picture reader puts the lower margin this much higher than the mesh's (waterline)
+RULER_MIN_PX = 30.0     # the picture's iris diameter (px) under which the ruler's margins are not used
 OUT_RING = 1.2          # mm: the margin ring's lateral end past the picture's outer canthus (the eyeball's visible end
                         # reads 0.4 mm short under the lashes, and the ring tucks 0.8 mm behind the lids' meeting)
 HOLD = [i for i in range(68) if not (36 <= i < 48 or 17 <= i < 27)]
@@ -444,9 +445,10 @@ def iris_check(name: str) -> dict:
     txt = (f"IRIS: the picture's limbus is {photo:.1f} mm at the model (fitted camera), the model draws {model:.1f} mm "
            f"({model / photo:.2f} x)")
     if abs(model / photo - 1) > 0.05:
-        txt += (f": the lids are matched in iris radii, so the eye opens {model / photo:.2f} x too "
-                f"{'tall' if model > photo else 'short'}. Set the block-in key eye_radius {want:.5f} (then run the eye "
-                f"step again) and skin.eyes.iris_size {photo / 1000:.4f}")
+        txt += (f": set skin.eyes.iris_size {photo / 1000:.4f} (the drawn iris). Keep eye_radius: GNM's lids are shaped on "
+                f"its own ball, a smaller one leaves the corners empty; the eye step matches the lids in mm (eye_ruler), so "
+                f"the ball's size no longer sets the opening. (Without the ruler, on a small picture, the lids are "
+                f"matched in iris radii and eye_radius {want:.5f} makes those radii true.)")
     txt += f". The picture's iris ring colour: {hx} (skin.eyes.iris; check it rendered: the eye picture adds its own contrast)"
     return {"photo_mm": photo, "model_mm": model, "ratio": model / photo, "eye_radius": want, "iris_rgb": rgb.tolist(),
             "iris_hex": hx, "text": txt}
@@ -706,6 +708,16 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
     v = rj["views"][vi]
     ev = photo_evidence(Image.open(v["image"]).convert("RGB"), v)
     base = store.load(name)["base"]
+    rv = None
+    try:   # the ruler's margins and corners in mm (edges, the iris as a circle); a small or cut-off eye: the detector's read
+        rv = ruler_evidence(name)
+        if rv["iris"] / rv["mm"] >= RULER_MIN_PX and all(np.isfinite(rv[k]).sum() >= 5 for k in ("up", "lo")):
+            ev["ruler"] = {k: rv[k] for k in ("up", "lo", "inner", "outer", "crease_cols", "iris")}
+        else:
+            log(f"eye step: the ruler is not used (iris {rv['iris'] / rv['mm']:.0f} px across; it needs {RULER_MIN_PX:.0f}): "
+                "the detector's lids in iris radii instead")
+    except Exception as e:  # noqa: BLE001
+        log(f"eye step: the ruler could not read the picture ({e}): the detector's lids in iris radii instead")
     s = solve(base, ev, iters=iters, log=log)
     rep = bi.step(name, {}, out=out, seen=seen or "lids and fold vs the picture (eye step)",
                   why=(f"eye step (identity + GNM eye-region expression; no lidfold, no lid pose): picture up "
@@ -713,6 +725,10 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
                        f"model {s['read']['up']:.2f} / {s['read']['lo']:.2f}, platform {s['read']['show']:.2f} mm, "
                        f"crease {s['read']['local']:.2f} mm deep; |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"),
                   _identity=s["c"], _head_set={"expression": s["expression"], "pose": s["pose"] or None})
+    if s["read"].get("margins") is not None:
+        mg = s["read"]["margins"]
+        rep["ruler"] = {"target": {**ev["ruler"], "lo": (np.asarray(ev["ruler"]["lo"], float) - LO_BIAS).tolist()},
+                        "model": {k: np.asarray(x, float).tolist() for k, x in mg.items()}}
     rep["eyes"] = {"evidence": {k: v for k, v in ev.items() if k != "columns"},
                    **{k: s[k] for k in ("read0", "read", "dc", "e", "crease", "shape0", "shape", "heights")}}
     try:   # the drawn iris against the picture's (a wrong iris size makes a right-in-radii opening wrong in mm)
@@ -720,6 +736,16 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
     except Exception:  # noqa: BLE001  (no readable iris: no line)
         pass
     return rep
+
+
+def ruler_text(rv: dict, mg: dict) -> str:
+    f = lambda a: " ".join("   - " if not np.isfinite(x) else f"{x:5.1f}" for x in np.asarray(a, float))  # noqa: E731
+    return (f"\n  RULER (mm from the iris centre, u {RULER_COLS[0]:+.0f} .. {RULER_COLS[-1]:+.0f}): the lids were matched to the picture's "
+            f"margins and corners, not to the detector's lids in iris radii"
+            f"\n    upper margin  picture {f(rv['up'])} | model {f(mg['up'])}"
+            f"\n    lower margin  picture {f(np.asarray(rv['lo'], float) - LO_BIAS)} | model {f(mg['lo'])}   (picture - {LO_BIAS}: the waterline)"
+            f"\n    inner canthus picture u {rv['inner'][0]:.1f} | model (lm68) {mg['inner'][0]:.1f};  outer: picture {rv['outer'][0]:.1f} "
+            f"| model's ring end {mg['ring_out'][0]:.1f} (the eyeball shows to ~{OUT_RING} mm short of it)")
 
 
 def text(e: dict) -> str:
@@ -733,6 +759,7 @@ def text(e: dict) -> str:
             f"at {a['hsoft']:.2f} mm\n"
             f"  model after:  lids {b['up']:.2f} / {b['lo']:.2f}, platform {b['show']:.2f} mm, crease {b['lsoft']:.2f} mm deep "
             f"at {b['hsoft']:.2f} mm | |dc| {e['dc']:.2f}, eye expression |e| {e['e']:.2f}"
+            + (ruler_text(e["evidence"]["ruler"], b["margins"]) if e["evidence"].get("ruler") and b.get("margins") is not None else "")
             + (f"\n  crease SHAPE: the {e['crease']!r} template's fold carried to the picture's line ("
                + "/".join(f"{h:.1f}" for h in (e.get("heights") or [])) + " mm over the margin, inner/pupil/outer): section rms "
                f"{e['shape0']:.2f} -> {e['shape']:.2f} mm. The picture's line darkness is not a target: add any missing "

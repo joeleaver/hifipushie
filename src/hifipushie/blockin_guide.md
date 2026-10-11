@@ -116,11 +116,28 @@ eye catches what the points miss; the target table catches what your eye misses.
    ~1.6 mm (|dc| ~7.6) or under Cycles.
    `match="pose"` is the older lid_upper / lid_lower offsets. Eye size and "almond" shape are mostly lids and seating:
    an identity step for eye height made eyes read NARROWER.
+7a. **Measure the eye with the RULER, never by eye** (Joe, on a matched photo / render sheet: "I notice some
+   measurement errors": our eye was 3 mm short at the nose side and 1.3 mm too open at the top, and four agents had
+   called it matched). `eye_ruler(name)` reads the front picture by its EDGES (the iris as a circle through the limbus;
+   the lid margins at 7 columns; the canthi; the fold line; the brow's edge) and the model's mesh through the same
+   camera, in mm from each eye's iris centre, with a tolerance per row (the reader's measured error) and the move that
+   closes each starred row. Why not the detector: MediaPipe's iris centre sits ~1 mm LOW (it follows the visible part
+   of the iris), its iris is 9-22 % small, its lid points are 1-1.5 mm out, and GNM's lm68 eye corners are not the
+   visible opening's ends (the inner one is the canthal pocket's tip, 1.9 mm past where the eyeball shows). The eye
+   step (`lid_read(match=True)`) now solves for the ruler's margins and corners in mm when the picture's iris is at
+   least 30 px across. Three things the ruler found that are NOT the solve's to fix:
+   - the EYEBALL: GNM's lids are shaped on its own ball (14.5 mm on a full-size head). Keep `eye_radius` at its
+     default; a ball shrunk to make the drawn iris right (0.0101 on Tess) leaves the corners empty (1.2-1.4 mm of
+     socket lining at the outer end) and the eye reads short. The drawn iris has its own size: `skin.eyes.iris_size`.
+   - the CARUNCLE: `skin.eyes.caruncle: 1` paints the inner corner's pocket wet dark red from GNM's inner-corner
+     landmark to the eyeball. Unpainted, the pocket is skin-coloured and the eye ends ~2 mm early at the nose side.
+   - the LASH LINE: a photographed lash line is a thin dark line; lashes 9 mm long and 0.15 mm thick (the defaults)
+     read as a fringe. `base.lashes.upper` length / thickness / count, `skin.makeup.eyeliner` for the line.
 7b2. **Brows and iris before a dressed eye is judged** (Joe on a dressed sheet: "the eyebrows sit on top the crease ...
    so I can't really judge"): `brow_read(name)` gives the brow hair's miss against the picture and the iris line
-   (picture limbus vs drawn iris, mm at the model). If the iris is off by more than 5 %, step `eye_radius` to the
-   stated value and run the eye step again (an absolute 12 mm ball is too big on a small head: Tess's pupil distance
-   is 53 mm); then `brow_read(name, match=True)` places the hair from the picture. Compare dressed renders with the
+   (picture limbus vs drawn iris, mm at the model). If the iris is off by more than 5 %, set `skin.eyes.iris_size`
+   to the picture's (the DRAWN iris; do not shrink the ball: 7a); then `brow_read(name, match=True)` places the hair
+   from the picture. Compare dressed renders with the
    picture ONLY through the picture's fitted camera and the same pixel crop (never an "11.7 mm iris" scale: the
    detector's iris points under-read our renders by 19 % and a photo by 6 %).
 7c. **The LIPS STEP: the lip line the way GNM is built** (Joe: "still don't have her lip line"). A block-in's rest mouth
@@ -308,10 +325,31 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 ### `lid_read`
 lid_read(name, match=False, out=None, seen="", save=None): the picture's lid margins against the iris (MediaPipe iris and
 lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and the model's (its front render, the
-visible eyeball through the iris centre). match=True: the EYE STEP (loop, 7): identity + GNM eye-region expression
-solved for the margins and the fold line, a new block-in step (out, seen as block_in_step); returns the focus=eyes
+visible eyeball through the iris centre): a quick look, biased (the detector's iris centre is ~1 mm low); the numbers
+to trust are `eye_ruler(name)`'s. match=True: the EYE STEP (loop, 7): identity + GNM eye-region expression solved for
+the RULER's margins (7 columns, mm) and canthi and the fold line's shape (the detector's two lid points in iris radii
+only when the picture's iris is under 30 px), a new block-in step (out, seen as block_in_step); returns the focus=eyes
 sheet (before | after) and the solve's report (picture vs model before / after: lids, visible platform, crease depth
 and height, |dc|, |e|). ~4 min. match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
+
+### `eye_ruler`
+eye_ruler(name, model=None, save=None): the front picture's eyes against the model's mesh, in mm at the model (the
+fitted camera's mm / px), each eye in its own frame: origin = the iris centre, u toward the outer corner along the line
+through both iris centres, v up; both eyes' mean. Rows: iris diameter (limbus circle), pupils apart, inner canthus (the
+caruncle's tip; model = GNM's lm68 inner corner), outer canthus (where the visible eyeball ends), fissure length,
+canthal tilt, the upper and lower margins at u -6 / -3 / 0 / 3 / 6, the opening at the pupil, mm of iris the upper lid
+hides, where the upper lid peaks, the caruncle showing, the fold line / visible lid platform over the margin, the brow
+hair's lower edge over the margin. diff = model - picture; * = beyond the tolerance (2 x the reader's rms error on 14
+dressed fitted-camera renders of known GNM heads: iris 0.12 mm, margins 0.25, corners 0.45-0.63, fissure 1.0, tilt
+1.8 deg, peak 0.6, brow 0.7). The lower margin's picture read has 0.35 mm taken off (it reads the waterline's top).
+Not trustworthy: the fold line on a RENDER (a soft fold is not a line: +-3 mm; the model's crease is read from the
+mesh instead) and on a photo whose line is fainter than 0.08; anything on a picture whose iris is under 30 px (a
+NOTE says so). model=<other>: that model against `name`'s picture and camera (same refs). The returned image is the
+picture's two eyes (nose side left) with its read drawn (green margins, red canthi, yellow limbus, cyan fold line,
+magenta brow edge) and the model's margin ring / margins / inner-corner landmark in blue, laid over by iris centre.
+MOVES name the tools: `lid_read(match=True)` (the eye step solves these margins and corners), `skin.eyes.iris_size`,
+`mm:pupils_apart`, `skin.eyes.caruncle`, `brow_read(match=True)`. Python: eye_ruler.read(img, P, mmpx) on any picture
+(a dressed render through the same camera reads the same way), eye_ruler.model(spec, cam), eye_ruler.compare(name).
 
 ### `brow_read`
 brow_read(name, match=False, out=None): the DRESSED brows (the skin's hair picture, skin.hair.brows) against the front
