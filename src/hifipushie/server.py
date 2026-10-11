@@ -1867,13 +1867,20 @@ def block_in_expression(name: str, out: str | None = None, views: list[int] | No
 
 @mcp.tool(structured_output=False)
 def gnm_controls(query: str = "", control: str = "", families: list[str] | None = None, top: int = 12,
-                 sort: str = "score", per_family: int = 0, sign: int = 0, zones: bool = False, phrase: str = "") -> str:
+                 sort: str = "score", per_family: int = 0, sign: int = 0, zones: bool = False, phrase: str = "",
+                 ruler: str = "") -> str:
     """GNM's controls. phrase = a difference you SEE ("the muzzle stands forward in profile", "pupils further apart")
-    -> the driving manual's entries (control, sign, size, drags; guide topic gnm_driving): start there. query = a
-    feature ("alar crease", "jowl") -> controls ranked by mm per prior cost x locality; control = one described;
-    zones=True; families, sort, per_family, sign. Act: block_in_step {"gnm:<control>": x} or {"sculpt:<zone>": mm}.
-    Details: guide(topic="gnm_controls")."""
+    -> the driving manual's entries (control, sign, size, drags; guide topic gnm_driving): start there. query="mm" =
+    the 23 millimetre measures (mm:<measure> moves). ruler="modelA,modelB" = those measures, B - A, largest first, each
+    with the mm: move that closes it. query = a feature ("alar crease", "jowl") -> controls ranked by mm per prior
+    cost x locality; control = one described; zones=True; families, sort, per_family, sign. Act: block_in_step
+    {"mm:<measure>": mm}, {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details: guide(topic="gnm_controls")."""
     from . import gnm_controls as gcm
+    if ruler:
+        from . import blockin as bi, gnm_mm
+        a, b = [x.strip() for x in ruler.split(",")][:2]
+        return (f"ruler: {b} - {a} (GNM identity; take the largest gaps in sd first; mm: moves add up exactly)\n"
+                + gnm_mm.gaps_text(bi.ruler(a, b)))
     if phrase:
         from . import gnm_manual
         return gnm_manual.text(gnm_manual.suggest(phrase, top=3))

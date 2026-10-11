@@ -63,3 +63,30 @@ def test_step_reply_carries_the_manual():
                      "camera_moves": []},
            "c0": 1.0, "big": [], "delta": [], "before": {}, "manual": gm.suggest("the muzzle stands forward", top=1)}
     assert "pc:upper_lip_region0" in bi.step_text(rep)
+
+
+def test_ruler_reads_the_gaps_and_its_moves_close_them():
+    """blockin.ruler(a, b): b - a for the 23 measures, largest in sd first; applying the top rows' mm: moves closes
+    exactly those gaps and leaves the others where they were (the driving test's `top 8` driver)."""
+    import numpy as np
+    from hifipushie import blockin as bi, gnm_mm
+    rng = np.random.default_rng(3)
+    a, b = rng.normal(0, 1, 170), rng.normal(0, 1, 170)
+    rows = bi.ruler(a, b)
+    assert [r["measure"] for r in rows] != list(gnm_mm.NAMES) and len(rows) == len(gnm_mm.NAMES)
+    assert all(abs(rows[i]["sd"]) >= abs(rows[i + 1]["sd"]) for i in range(len(rows) - 1))
+    top = rows[:8]
+    c = a + sum(r["gap"] * bi.direction("mm:" + r["measure"]) for r in top)
+    after = {r["measure"]: r["gap"] for r in bi.ruler(c, b)}
+    before = {r["measure"]: r["gap"] for r in rows}
+    for r in top:
+        assert abs(after[r["measure"]]) < 0.5, (r["measure"], after[r["measure"]])
+    # (the extent readers take a max / ptp over many vertices: linearised at GNM's template, so on another head they
+    # are held to a few mm, a fraction of their 4-13 mm sd; the landmark readers are exact)
+    extent = {"skull_width", "skull_top", "skull_back", "cheekbone_width", "neck_width"}
+    for n in gnm_mm.NAMES:
+        if n not in {r["measure"] for r in top}:
+            assert abs(after[n] - before[n]) < (3.5 if n in extent else 0.6), (n, before[n], after[n])
+    assert "mm:" in gnm_mm.gaps_text(rows, top=3)
+    for n in gnm_mm.NAMES:
+        assert n in gnm_mm.SEE

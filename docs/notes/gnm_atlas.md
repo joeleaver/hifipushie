@@ -2568,7 +2568,24 @@ but unscored; three cases were cut off (s4_04 after 3 moves, s4_09 and m4_09 at 
 fresh drivers.
 
 #### Set s4 (seed 404, fresh pairs): "no manual" (s4_*) vs manual v3 + mm: (m4_*)
-(table below is filled in once s4_04 / s4_09 are back; m4 is complete)
+| case | grade | regions | s4: region / ID closed / pass | m4 (v3): region / ID closed / pass | oracle region |
+|---|---|---|---|---|---|
+| 00 | easy | skull | 0.30 / -0.15 / - | 0.49 / 0.04 / - | 0.78 |
+| 01 | easy | jaw_full | 0.06 / -0.05 / - | 0.08 / -0.07 / - | 0.07 |
+| 02 | easy | mouth | 0.61 / 0.48 / PASS | 0.58 / 0.50 / PASS | 0.75 |
+| 03 | easy | nose | 0.56 / 0.51 / PASS | 0.49 / 0.37 / PASS | 0.44 |
+| 04 | easy | eyes | 0.59 / 0.53 / PASS | 0.73 / 0.51 / PASS | 0.76 |
+| 05 | easy | brows | 0.42 / 0.43 / PASS | 0.52 / 0.61 / PASS | 0.54 |
+| 06 | easy | cheeks | 0.32 / 0.43 / - | 0.58 / 0.48 / PASS | 0.69 |
+| 07 | easy | chin | 0.63 / 0.12 / - (face err up) | 0.48 / 0.08 / - | 0.67 |
+| 08 | medium | jaw | 0.72 / 0.34 / - (face err up) | 0.72 / 0.29 / - (face err up) | 0.56 |
+| 09 | medium | nose+mouth | 0.15 / -0.44 / - | 0.57 / 0.55 / PASS | 0.68 |
+| 10 | medium | eyes+brows | 0.32 / 0.44 / - | 0.37 / 0.33 / - | 0.69 |
+| 11 | hard | chin+mouth+nose | 0.32 / 0.25 / - | 0.09 / 0.09 / - | 0.46 |
+| 12 | hard | cheeks+jaw+eyes | 0.28 / 0.10 / - | 0.33 / 0.20 / - | 0.49 |
+| 13 | hard | skull+brows+mouth | 0.33 / 0.23 / - | 0.27 / 0.15 / - | 0.70 |
+s4 4/14, m4 6/14. All sets pooled (pool.py): no manual s1-s4 12/56; manual m2-m4 19/42 (easy 13/24, medium 5/9, hard
+1/9); by region nose 6/9, jaw_full 2/3, brows 4/9, mouth 5/12, eyes 3/9, cheeks 2/6, jaw 2/6, chin 1/6, skull 0/6.
 m4: 6/14 (easy 5/8, medium 1/3, hard 0/3). Passes: mouth 02, nose 03, EYES 04 (0.73 / ID 0.51 in two
 `mm:pupils_apart` +5 moves: the eye-placement class that failed 0/6 before now has its control), brows 05, cheeks 06
 (cheek_fullness -1.2, relief:cheeks -2.5, under_chin!, sculpt:malar: 7 moves, none rejected), nose+mouth 09.
@@ -2609,6 +2626,40 @@ Read:
   pc:upper_lip_region0; cheek_fullness + relief:cheeks). Where the manual says "no clean control" it fails: the vault
   with the face held (m4_07, m4_08 "a pear: narrower skull over heavier jowls": head_size / cranium! rejected, the
   driver fell back on gnm:head_000), jowls vs jaw angle, brow arch, a scooped dorsum, the upper red's height.
+#### The millimetre measures reach further than the phrase vocabulary (mmreach.py; out/mmreach2.log)
+A driver with a PERFECT eye and no search, working only in gnm_mm's 23 measures: read every gap on A vs B, close them
+with mm: moves (each holds the other 22). Scored with the drivers' pass rule on the 42 pairs of s2 + s3 + s4:
+| what is closed | pass | note |
+|---|---|---|
+| all 23 gaps | 40/42 | region closed 0.6-0.9, ID closed 0.45-0.9; the two misses: s2_07 chin (ID 0.19), s4_01 (the null pair) |
+| the 8 largest (in population sd) | 30/42 | misses: the mouth-only pairs (0.41-0.55 region: lip shape is not in the 23) and the sub-2 mm hard ones |
+| the 4 largest | 25/42 | |
+| the 8 largest, each read with a 1 mm (sd) error | 26/42 | a photo reader's drift |
+| (for comparison) the oracle's 10 moves from the macro / pc: / sculpt vocabulary | 27/42 | |
+| (for comparison) drivers with the phrase manual | 19/42 | |
+MORE measures do not help a driver: + 9 (cheek_forward, jaw_angle_height, upper / lower red, tip_height, ear_out,
+dorsum_forward, eye_open, forehead_slope): all 40/42 (region closure up, e.g. cheeks 0.6 -> 0.75, mouth 0.8 -> 0.9)
+but top-8 27/42, top-4 13/42, noisy top-8 18/42; + 27 candidates (jowl / parotid / jaw-angle widths, brow arch / tilt,
+glabella, under-eye ...): top-8 14/42. Redundant measures (jaw_width, jaw_angle_width, parotid_width, jowl_width all
+read the same mass) spend the 8 moves on one difference, and holding near-duplicates makes each move expensive and
+ugly (ID closure NEGATIVE on brow pairs: brow_arch / brow_ridge_forward cost |dc| 2.7-3.9 per mm). The 23 stay.
+CONCLUSION (blunt): the phrase manual was converging on the wrong ceiling. Its controls (macros, pc:, sculpt) are
+entangled directions; a named difference maps to one only approximately, and the best 10 of them pass 2/3 of pairs.
+The measures are things an eye (or a ruler) can read one at a time, each has exactly one control, the dose is the
+reading, and they do not interact: naming, mapping and dosing collapse into MEASURING. What remains for the phrase
+tables is what the 23 do not describe (lip fullness / shape, cheek planes, eye openings, brow shape, ears).
+-> manual v4: section 0a "Drive in millimetres first" (the 23 as table rows, so gnm_controls(phrase=) and
+block_in_step's reply find them); gnm_mm.SEE / sd / gaps / gaps_text (the ruler); blockin.ruler(a, b);
+gnm_controls(query="mm") and gnm_controls(ruler="modelA,modelB"); block-in guide steps 3 / 4; tests.
+NOTE: the extent readers (skull_width / top / back, cheekbone_width, neck_width: a max / ptp over many vertices) are
+linearised at GNM's template; on another head a "held" one can drift 2-3 mm (a fraction of its sd). Landmark readers
+are exact.
+
+#### Set s5 (seed 505, fresh): manual v4, EYES ONLY (e5_*) vs manual v4 + the RULER (r5_*)
+The ruler (`drive.py ruler <case> [trial]`): gnm_mm.gaps between the current head and the target, the target's
+readings carrying a fixed error per pair and measure, N(0, 1 mm) (what a photo reader gives). Both arms may put up to 4
+mm: moves in one trial. Drivers: 3 per arm. (results below when they are back)
+
 - m4_09's driver (manual): free lip_fullness (-) pushes the whole nose ~1.7 mm per sd forward (manual said ~1) and
   carries lips + chin back; mm:lower_lip_forward drags chin_projection -0.26 sd per mm; which onion-skin copy is the
   target's is hard to tell (sign errors on brows); "corners 3.1 mm" needs "total".

@@ -115,6 +115,22 @@ def identity(spec: dict) -> np.ndarray:
     return v
 
 
+def ruler(a, b) -> list[dict]:
+    """The millimetre RULER between two GNM identities (gnm_mm.gaps): a = the head being driven, b = the head it should
+    become; each a model name, a spec or a (170,) identity. b - a for the 23 measures, largest (in population sd)
+    first; each row's gap is the amount of the `mm:<measure>` move that closes it. GNM's own head (the identity comps
+    alone: a model's gnm_base share / age ops are not in it)."""
+    from . import gnm_mm
+
+    def cof(x):
+        if isinstance(x, str):
+            x = store.load(x)
+        return identity(x) if isinstance(x, dict) else np.asarray(x, float)
+    sp = gnm_mm._space()
+    V = [sp["T"] + np.tensordot(cof(x), sp["IB"], 1) for x in (a, b)]
+    return gnm_mm.gaps(V[0], V[1])
+
+
 def set_identity(spec: dict, c) -> None:
     spec["base"]["head"]["identity"] = {f"head_{i:03d}": round(float(x), 5) for i, x in enumerate(c)}
 
