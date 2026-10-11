@@ -2076,3 +2076,67 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
   commissures' shadow past the lips); (3) the crease: Joe's decision on a slit (GNM gap) vs paying |dc| ~7.6 for 1.6 mm;
   aim the eye step's valley ~1 mm below the picture's line if the rendered line is the target; (4) make full-res fast
   GI the blender_scene default for heads / look_skin; use stage.photo_light for every dressed-vs-photo sheet.
+
+## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
+## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
+
+Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
+Is the crisp fold in GNM's identity space and our solves miss it (held socket / brow, wrong objective), or not there?
+
+### Method
+- 1600 identities: 800 N(0, I) over the 170 comps, 400 from faces5's ICT-led prior (m3_em_tau0.01, the f5_03 prior),
+  400 from gnm_sampler's identity decoder (random sex / ethnicity). Per sample (gk.py, ~0.3 s): the eye step's own
+  Reader on onemesh.head_template (gd_T12's body, expression and lid pose cleared): valley depth (2.5 mm chord), narrow
+  depth (0.75 mm chord), height, platform, hood drop, skin hidden from a level / 10-deg-above front view; lidgnm's
+  shadowless clay raster + lidfold.read_lid (faces5's reader); humanmacro z-scores.
+- 19 samples dressed (dress.py: scratch models gk_*, gd_T12's body + the sample identity, EEVEE full-res GI, Tess's
+  photo light, hair off; an 84 mm eye frame at 0.6 m + a face frame for MediaPipe reads at the photo's 0.277 mm/px) and
+  in a hard top-light clay. Tess's photo through the same reader: line 4.97 mm, dark 0.32, width 0.93 mm.
+
+### Findings
+- GNM HAS NO CRISP FOLD. Valley depth over all 1600: p50 0.45, p99 1.33, max 1.66 mm (ICT-led p99 1.38: the same
+  ceiling). Narrow-chord depth max 0.42 mm. Skin hidden from a level front view (overhang): 1 % of samples > 0.2 mm,
+  and those are hooded lids (the fold low, 2-3 mm, over the lashes), never a fold over a visible platform. gd_T30 (eye
+  step d_line 3, 1.64 mm) is already AT the population's maximum: the solve found GNM's ceiling, it didn't miss a fold.
+- THE f5_03 "FOLDS" ARE THE RASTER. lidgnm's clay is a shadowless normal-shaded raster: a down-facing band reads dark.
+  Its darkest reads (0.3-0.51) are almost all LOW (1.5-3.5 mm: the top of GNM's thick lid-margin roll); at 3.5-6.5 mm
+  only 2 / 1600 pass 0.25 (max 0.37). Dressed, those same faces read 0.03-0.11 (gnm#115: raster 0.51 -> dressed 0.11; ict#170,
+  whose raster numbers equal the photo's, 0.32 @ 4.9 mm -> dressed 0.08). The best dressed read anywhere: 0.16
+  (gnm#290, a hooded lid at 2.2 mm). Photo 0.32. Clay under a hard top light shows the deeper ones' valley as a soft
+  shadow (ict#170, ict#140, gd_T30), dressed skin washes it out. Sheets gk_01 (12 samples + Tess, dressed | clay),
+  gk_03 (population histograms; raster vs dressed darkness).
+  Caveat: this frame reads gd_T30 at 0.08 where gnmdetail2's fitted-camera frame read 0.25: absolute dressed numbers
+  depend on the frame / camera height; the ranking within one frame is what was compared.
+- WHAT GOES WITH A DEEPER VALLEY (ridge over the N(0, I) samples, CV R2 0.62 for depth, 0.39 narrow, 0.15 raster dark,
+  0.08 overhang): deep-set eye + heavier, lower brow (orbital_rim +0.3..+0.5 r, eye_depth +0.25, brow_ridge +0.3, brow_height
+  -0.35 r with raster dark / overhang) and a LEANER face (cheek_fullness -0.33, jaw / chin width -0.3). Not sex: the
+  population direction is orthogonal to the sampler's male-female axis (cos -0.04). At Tess, the linearised cheapest
+  +1 mm of valley depth (jac.py): free |dc| 2.1 (but orbital_rim +1.8, eye_depth +1.4, brow_ridge +1.4, brow_height
+  -1.3 sd), socket held 3.9, + landmarks 4.4, + brows (the eye step's holds) 5.0. So the holds cost ~2.4x but the
+  CEILING is the same; and narrow depth (crispness) costs |dc| 10 free / 21 held per mm: GNM's ~1 mm lid rows can't
+  sharpen it. The eye-region expression pairs: only pair 1 moves the crease (+0.35 mm per unit) and it opens the lid
+  (up +0.35 iris r).
+- CARRYING A SAMPLED FOLD ONTO A HELD FACE (transplant.py: the donor's upper-lid strip, affine-aligned, as a linear MAP
+  target over the 170 comps, the rest of the face held vertex by vertex at 0.3 mm): 87-90 % made, but |dc| 16-19 for
+  Tess (donors gnm#376 / #540 / #115; donor - Tess |c| 15-17): the fold costs as much as becoming the donor. Raster
+  reads move to the photo's numbers (0.20 @ 4.8, 0.21 @ 5.3 mm); dressed, nothing reads, and the lids open rounder
+  (gk_02). Garrett + the hooded gnm#290 lid: |dc| 16, the lid opens, no more hooding (gk_04; the frame is off-centre on
+  his 1.12-scaled head).
+
+### Verdict (blunt)
+Joe's memory of the grid was right that it LOOKED like folds, but that grid was a shadowless raster: GNM's identity
+space has no crisp crease anywhere in 1600 heads, and its deepest valley (~1.6 mm, ~2.5 mm wide) is what the eye step
+already reaches on Tess at d_line 3. Nothing to fold into the eye step as "the way to make a crease": the photo's ~1 mm
+dark slit with skin over it is below GNM's lid row spacing (~1 mm) and outside its population. Making it needs a
+finer layer than identity (the subdivided stage mesh: a crease displacement / normal detail; i.e. Joe's call on a
+lidfold-like fine layer, faces5's M2 "residual layer") or a shading answer (paint / AO along the crease line).
+Shipped: blockin_eyes.CREASE_REACH / CREASE_SLIT_DARK and a NOTE in the eye step's report when the picture's line is a
+slit GNM can't draw (so a solve isn't read as failing). Socket hold left at 0.15 sd: freeing it buys ~20 % cheaper
+depth, same ceiling.
+
+### Handover
+- Scratch models gk_* in the workspace (sample identities on gd_T12's body; gk_tT*, gk_gG290 transplants): scratch, not
+  rounds; delete freely. Data: out/s_{gnm_1,ict_2,cls_3}.npz (C, geo / clay / macro reads, mid-column profiles),
+  jac_gd_T12.npz, crdir.npz (pop / contrast / Tess-gradient directions), readd.json (dressed reads), d_*_{dressed,clay,face}.png.
+- If a fine crease layer is approved: aim the RENDERED line, not the valley (gnmdetail2: a valley's dark band reads ~1 mm
+  above its bottom), and judge it dressed at the photo's mm/px; the raster clay over-reads down-facing bands.
