@@ -4239,3 +4239,32 @@ STATE / NEXT: tn_T08n is the unforced from-scratch Tess. NEXT: mm:cheekbone_widt
 STATE / NEXT (2026-10-11): rounds stopped at tn_T10n for the regroup with Joe on missing tooling (list given to him:
 shape rows for contours, a joint solve instead of sequential rounds, an identity score per round, neutral dressing /
 projected texture for judging, the table's inconsistent rows, a cheaper fold or a start head that has one).
+
+### Tooling after the regroup (Joe, 2026-10-11: "build the tooling first"; scripts copied to spikes/reruns)
+- FACE-ID AS A JUDGE: NOT USABLE on these renders (idscore.py: SFace / ArcFace cosine, dressed shot vs the photo of
+  the same view). er_s4, tn_T06, tn_T06n .. tn_T10n all score -0.19 .. +0.30 front, +-0.1 in 3/4 and profile, with no
+  order that matches any read (tn_T06, the forced |c| 22 head, scores best on ArcFace front). Bald + er_s4's freckles
+  is too far from a photo. Retry only on a neutral dressing (the references projected as albedo: stage.ensure(tex=),
+  hair on).
+- THE JOINT STEP EXISTS: face_ruler.compare already solves ONE identity change over every view (outlines, irises,
+  limbus; prior tau 1 per comp; cameras free) and returned it as "dc"; nothing applied it. New: blockin.solve_step /
+  MCP block_in_solve(name, out, share): the dc applied as a step, the solve's cameras written to the result's refs
+  (read through the old cameras the result looks a size wrong: face_height +4.3, pupil_distance +2.0), the table
+  re-read. Guide 3b.
+- Tess, class mean -> tj_T01 in ONE step (~3 min): 248 reads (outline 196, landmark 44, iris 4, limbus 4), |dc| 9.3,
+  |c| 5.35 -> 10.7, largest comp 2.5 sd; cameras: front ~1 mm / -1.7 %, 3/4 -3.6 mm / -3.6 % / yaw -0.8, profile +3.8
+  mm / +6.1 % / yaw -4.5 deg. Table: head 7/7, jaw 5/5, eyes 2/3 (eye_width +1.8), nose 4/4, mouth 4/7 (philtrum
+  +2.9 / +1.6). Sheet tj_01 (photos | tj_T01 | tn_T10n | er_s4), sent. BLUNT: one step = about the level of my ten
+  hand rounds, with other faults: profile chin and forehead closer, the NOSE long and hooked (bridge_hump +1.3,
+  nose_upturn -1.6 sd: the outline sees the dorsum's line only as far as the profile camera's yaw is right, and it
+  turned 4.5 deg), eyes wide open (no eye step yet). Not her.
+- A SECOND call (tj_T02): |dc| 4.0 more, |c| 12.6, largest comp 3.1 sd, table 24 / 26 (eye_width +1.9, philtrum
+  front +1.9). It does not settle because each call's prior is on THAT call's change only: repeated calls walk away
+  from the class mean. FIX NEXT: the prior on the WHOLE identity (centred on the start class's mean: pass the done
+  change, as read()'s own rounds do).
+STATE / NEXT (tooling): block_in_solve is in (tool + guide; tests not yet). NEXT, in order: (1) the prior on the whole
+identity across calls; (2) interior observations in the SAME solve: eye_ruler's margins / canthi, lip_read's borders,
+the brow band, the alae (so lids, lips and the nose's width stop being separate steps that later steps undo; the
+faceruler handover's NEXT 1); (3) the profile camera's yaw: 4.5 deg free turn bends the nose: tighten its prior or
+take the yaw from the ear / eye geometry; (4) a neutral judging sheet (photo albedo projected, hair on) and face-ID
+retried on it; (5) the table's inconsistent front rows (philtrum + chin_height + lower_third: ~4 mm).

@@ -678,6 +678,34 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             "table": t1, "before": passes(t0), "manual": manual}
 
 
+def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int = 3, seen: str = "") -> dict:
+    """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
+    reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
+    change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
+    were read off it. Here `share` of that change becomes the step and the cameras the solve ended on are kept (read
+    through the old cameras the result looks a size wrong). Tess from the class mean: one step = |c| 5.4 -> 10.7,
+    table 22 / 26, about where ten hand rounds got. It does NOT see the inside of the face (lids, lips' borders, the
+    nose's planes): the eye and lips steps follow. -> step()'s report + "solve": {"n", "dc", "c", "max_sd", "cameras"}."""
+    from . import face_ruler as fr, store
+    c = fr.compare(src, rounds=rounds)
+    dc = float(share) * np.asarray(c["dc"], float)
+    c0 = identity(store.load(src))
+    rep = step(src, {}, out=out, seen=seen or "the face ruler's joint solve (outlines, irises, limbus; every view)",
+               why=f"its solved identity change applied ({share:g} of it): |dc| {np.linalg.norm(dc):.2f}", _identity=c0 + dc)
+    to = rep["entry"]["to"]
+    rp = store.HOME / to / "human_refs.json"
+    rj = json.loads(rp.read_text())
+    for i, v in enumerate(c["views"]):
+        rj["cameras"][i] = {**rj["cameras"][i], **{k: (np.asarray(x).tolist() if hasattr(x, "tolist") else x) for k, x in v["cam"].items()}}
+    rp.write_text(json.dumps(rj))
+    t0, t1 = rep["table"], table(to)          # (the table again, through the solve's cameras)
+    rep.update(table=t1, delta=table_delta(table(src), t1))
+    rep["entry"]["passes"] = passes(t1)
+    rep["solve"] = {"n": c["n"], "dc": float(np.linalg.norm(dc)), "c": float(np.linalg.norm(c0 + dc)),
+                    "max_sd": float(np.abs(c0 + dc).max()), "cameras": np.round(np.asarray(c["cam_done"], float), 2).tolist()}
+    return rep
+
+
 def eye_follow(base0: dict, base1: dict) -> np.ndarray:
     """The move (world, m) of the face's landmarks OFF the eyes and brows between two bases: what a camera's centre
     must follow after an eye-depth move. The one mesh seats the head by its eyes, so mm:eyes_forward +d ships as the

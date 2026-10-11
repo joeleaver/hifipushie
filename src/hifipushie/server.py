@@ -1969,6 +1969,21 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 
 
 @mcp.tool(structured_output=False)
+def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None):
+    """ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus; GNM's prior; the
+    cameras free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head
+    (and again after big moves) instead of closing measures one at a time; then the eye and lips steps. share = how
+    much of the solved change to take. It does not see the inside of the face. Details: guide(topic="block_in")."""
+    from . import blockin as bi
+    rep = bi.solve_step(name, out=out, share=share, seen=seen)
+    to, so = rep["entry"]["to"], rep["solve"]
+    sh = _blockin_sheet(to, save, before=name)
+    return [sh[0], f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
+                   f"cameras moved (shift mm, shift mm, scale %, roll, yaw, pitch deg per view): {so['cameras']}\n"
+                   + bi.step_text(rep) + "\n" + sh[1]]
+
+
+@mcp.tool(structured_output=False)
 def face_ruler(name: str, save: str | None = None):
     """THE FACE RULER: the block-in model against its reference pictures in MILLIMETRES: first the ORBIT (eye depth:
     set it before any lid work), then gnm_mm's 27 measures, picture - model, largest first, each with the reader's

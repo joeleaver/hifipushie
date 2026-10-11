@@ -65,6 +65,16 @@ eye catches what the points miss; the target table catches what your eye misses.
    **If the difference is something you can MEASURE** (a width, a height, how far a point stands forward in profile:
    the 23 measures of `gnm_controls(query="mm")`), measure it in mm on the sheet and use the `mm:` move: closing the
    8 largest of those gaps (in population sd) passed 30 / 42 pairs, more than the best 10 phrase moves (27 / 42).
+   **3b. THE JOINT STEP FIRST: `block_in_solve(name)`** (2026-10-11). face_ruler's solve reads every view at once
+   (skin outlines, iris centres, the limbus in the turned views) and finds the most likely identity change under
+   GNM's prior with the cameras free; `block_in_solve` applies that change whole as a step and keeps the cameras it
+   ended on. Run it from block_in_start's head before any hand move. Tess from the class mean: ONE step took |c|
+   5.4 -> 10.7 (largest component 2.5 sd) and the table to 22 / 26, about where ten hand rounds had got (hand
+   rounds closing measures one at a time undo each other: after two later mass steps the lips step's borders had
+   drifted 0.2 -> 1.8 mm and the brows 1.8 mm). What it does NOT see: the inside of the face (lids, lip borders, the
+   nose's planes: her profile nose came out long and hooked), so the eye and lips steps follow, then hand moves for
+   what you still see. Do not force a fold from a class-mean head (lid_read fold="crisp" cost |dc| 20 there: use
+   fold="none" until the masses are right).
 4. **One small step** (0.3-0.7 sd; a big mass difference 1-2 sd, see the manual's step sizes):
    `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
    a NEW model (default: the next number), so every round stays comparable; `seen` and `why` go in the log.
