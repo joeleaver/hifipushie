@@ -2288,3 +2288,26 @@ A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) an
   (jaw_angle 4.7, jawline 3.6), chin_projection! (chin / pogonion 2.7), under_chin! (under_chin 3.8), nose_width!
   (alae 1.9), cheekbone_width! (malar 2.1), gonial_height! (jaw_angle 3.5), orbital_rim! (lid_fold 2.4), cheek_fullness!
   (cheeks 1.5), lip_projection! (lower border / lower lip / mentolabial 1.6-1.9), mouth_width! (corners 1.6).
+
+### How far the vocabulary reaches (study.py, regmodes.py, regtest.py; out/study.txt, regmodes.txt)
+- 40 random transplants per region (random donor, amount 1), the cost-aware oracle with <= 6 moves: closure of the face
+  error skull 0.47, mouth 0.41, eyes 0.39, nose 0.38, brows 0.37, cheeks 0.35, chin 0.34, jaw 0.31, jaw_full 0.31
+  (named moves only, no pc:: 0.27-0.45). A person's regional difference is MANY-dimensional: even a perfect driver with
+  this vocabulary closes ~40 % in six moves. The oracle's most used moves for every region are head_size and neck_width
+  (the transplant changes the interocular distance = head_size, and the held neck leaks), then pc:<region>0-2 (nose,
+  chin, middle_brow, forehead, upper_lip / lower_lip), then the region's own free macros (jaw_width, chin_projection,
+  face_length, cranium_height, head_depth, mouth_width, nose_length, brow_ridge).
+- REGIONAL MODES (new idea, not in src): the principal directions of how a region differs between people with the rest
+  held (the transplant projector's covariance 2 P P^T). Leading mode share: eyes 0.49, brows 0.43, chin 0.38, jaw 0.37,
+  mouth 0.36, cheeks 0.35, jaw_full 0.34, skull 0.33, nose 0.30; 8 modes 0.79-0.96. Named from their macros: nose0 =
+  bridge high + hump + projection (the "strong nose" axis), nose1 = shorter, narrower nose with a longer philtrum,
+  nose2 = narrow projecting nose with the tip down; jaw_full0 = wide jaw + broad chin + full under the chin + full cheeks
+  (Joe's "fluffy" in one move); jaw0 = short chin + narrow jaw + short face; chin0 = tall chin + high gonial angles + long
+  face; brows0 = brows high; brows1 = heavy brow ridge + defined orbit + deep eyes, brows lower; mouth0 = wide mouth with
+  high gonial angles + long philtrum; mouth2 = lips forward + fuller (the profile angle); eyes0 = eye placement (wider
+  interocular, narrower skull and face); cheeks0 = full cheeks + square jaw.
+- With reg: modes added (8 per region) the oracle's six-move closure rises a little: 0.35-0.54 (skull 0.54, eyes 0.49,
+  jaw 0.45, brows 0.45, jaw_full 0.44, mouth 0.44, nose 0.40, cheeks 0.40, chin 0.35); on s1's easy single-region cases
+  the region's mode 0 is picked and carries most of it (s1_03 nose 3.31 -> 0.76 mm with reg:nose0 -1.84; s1_01 jaw_full
+  5.76 -> 1.33 with reg:jaw_full0 +1.87). Caveat: the modes come from the same transplant that makes B (one region
+  definition): a fair test needs differences made another way.
