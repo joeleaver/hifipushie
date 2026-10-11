@@ -281,7 +281,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
-            "iris_contrast", "gloss", "occlusion")
+            "iris_contrast", "gloss", "occlusion", "caruncle", "crease")
 
 
 def eye_base(spec: dict) -> tuple[str, dict] | None:
@@ -311,7 +311,13 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     "iris_contrast": the fibres' contrast (1), "gloss": 0..1 (1: the tear film, a clear coat over a matte iris and
     sclera: the sharp catchlight on the cornea), "occlusion": 0..1 (1: the lids' shadow on the ball, all round the
     lid contact and deepest under the upper lid; MetaHuman's eye-occlusion shell as paint), "tear": 0..1 (the
-    meniscus: the bright wet line where the lower lid meets the ball), "waterline": 0..1}."""
+    meniscus: the bright wet line where the lower lid meets the ball), "waterline": 0..1, "caruncle": 0..1.2 (unset:
+    a soft pink spot; a number: the inner corner's pocket filled wet dark red from GNM's inner-corner landmark to the
+    eyeball, the way a photographed canthus reads: the eye then reaches its anatomical inner corner), "crease":
+    {"amount": 0..1 (0.6), "path": [[u, v], ...] (mm from the iris centre in the eye's frame, u toward the outer
+    corner, v up: eye_ruler.crease_path reads it off the picture), "width": mm (0.5), "color", "shade": 0..1 (0.4:
+    a soft band over the line, the fold's underside)}: the fold LINE as a thin shadow in the skin (multiply), where
+    the lid's soft valley gives no line of its own}."""
     e = spec.get("skin", {}).get("eyes")
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
@@ -365,9 +371,52 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                                          "mask": [{"near": ["base"], "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
                                                   {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
-    pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
-    layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
-          mask=[{"spot": {"at": pts, "radius": round(0.036 * io, 5), "soft": 0.6}}])
+    car = e.get("caruncle")
+    if car is None:   # (the old soft pink spot)
+        pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
+        layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
+              mask=[{"spot": {"at": pts, "radius": round(0.036 * io, 5), "soft": 0.6}}])
+    elif float(car) > 0:
+        # (eyeruler) GNM's lids end in a pocket between the opening's medial end and the lm68 inner corner (1.9 mm): the
+        # caruncle and the corner's wet red. Painted as skin, the eye read ~2 mm short at the inner corner against a
+        # photo (a detector puts the canthus at the pocket's tip, as GNM's landmark does). So the pocket is filled with
+        # a darker wet red, from the landmark out to the eyeball: a capsule along the corner -> eye line.
+        a = float(car)
+        segs = []
+        for sd in (".L", ".R"):
+            i_ = np.asarray(J[f"lm_eye_inner{sd}"], float)
+            sx = 1.0 if sd == ".L" else -1.0   # (the pocket runs sideways from the landmark, a little back into the head)
+            segs.append([[round(float(x), 5) for x in i_ + np.array([sx * t, 0.25 * t, 0.0])] for t in (0.0003, 0.0013, 0.0023)])
+        from .skin import _sp
+        m = [dict(_sp(sg, [0.0007, 0.0011, 0.0010], soft=0.35, line=True), **({"blend": "max"} if k else {})) for k, sg in enumerate(segs)]
+        layer("caruncle", pre=True, color=T(blood=6.0, melanin=0.8), opacity=round(min(0.85 * a, 1.0), 3), roughness=0.15, mask=m)
+        layer("caruncle_wet", pre=True, color=[0.7, 0.55, 0.52], mix="multiply", opacity=round(min(0.75 * a, 1.0), 3), mask=m)
+        # ... and on the eyeball's nose-side end: the caruncle's flesh and the plica stand in FRONT of the sclera there
+        # (a photographed inner corner is 3-4 mm of pink before any white); GNM's pocket alone is a slit
+        for sd, sx in ((".L", 1.0), (".R", -1.0)):
+            i_ = np.asarray(J[f"lm_eye_inner{sd}"], float)
+            c_, f_ = np.asarray(J[f"eye{sd}"], float), np.asarray(J[f"eye_front{sd}"], float)
+            r_ = float(np.linalg.norm(f_ - c_))
+            q_ = i_ + np.array([sx * 0.0016, 0.0, 0.0002]) - c_       # (the spot sits ON the ball: its nose-side end lies
+            q_ = c_ + r_ * q_ / max(float(np.linalg.norm(q_)), 1e-9)   # 2-3 mm behind the lids' corner)
+            out[f"skin:eye_caruncle{sd.replace('.', '_')}"] = {
+                "part": part, "color": [0.63, 0.43, 0.39], "opacity": round(min(0.75 * a, 1.0), 3), "roughness": 0.2,
+                "mask": [_sp([q_], [0.003], soft=0.8)]}
+    cr = e.get("crease")
+    if isinstance(cr, dict) and float(cr.get("amount", 0.6)) > 0 and cr.get("path"):
+        # the fold LINE as the skin's own shadow (eyeruler; Joe: darkness the fold's shape does not give comes from the
+        # skin's cosmetics, never a geometry layer): a thin multiply line along a path given in the eye's frame (mm
+        # from the iris centre: eye_ruler reads it off the picture), laid from the front like the brows' picture
+        f_, c_ = np.asarray(J["eye_front.L"], float), np.asarray(J["eye.L"], float)
+        d_ = (f_ - c_) / max(float(np.linalg.norm(f_ - c_)), 1e-9)
+        cpath = skin_swatch.crease_image(cr["path"], float(cr.get("width", 0.5)),
+                                         colour=tuple(_hex(cr["color"])) if "color" in cr else (0.5, 0.36, 0.32),
+                                         shade=float(cr.get("shade", 0.4)))
+        img = {"file": str(cpath), "at": [round(float(x), 5) for x in f_ + np.array([0.0, 0.0, 0.003])],
+               "dir": [round(float(x), 4) for x in d_], "size": [0.04, 0.03], "depth": 0.02, "facing": -0.3, "mirror": True,
+               "mirror_image": True}
+        # (the picture itself as the colour, multiplied in: a mask is sampled per vertex and loses a 0.5 mm line)
+        layer("lid_crease_line", color="image", image=img, mix="multiply", opacity=round(min(float(cr.get("amount", 0.6)), 1.0), 3))
     if float(e.get("waterline", 1.0)) > 0:   # 0..1 (1): the pink wet rim; on a lid whose rim faces the camera it reads as lid
         layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=round(0.5 * float(e.get("waterline", 1.0)), 3),
               roughness=0.15, mask=_zones(["lash_lower"], 0.7))

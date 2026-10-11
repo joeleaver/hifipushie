@@ -137,7 +137,7 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "lip_read", "brow_read", "gnm_controls", "skin",
+                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "eye_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
                         "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
@@ -1947,6 +1947,23 @@ def brow_read(name: str, match: bool = False, out: str | None = None):
     r = bb.apply(name, out=out)
     return (r["text"] + f"\nwritten to {r['model']} (skin.hair.brows; look_skin view \"brows\" / \"eye\" to judge it "
             "dressed)\n" + iris)
+
+
+@mcp.tool(structured_output=False)
+def eye_ruler(name: str, model: str | None = None, save: str | None = None):
+    """THE EYE RULER: the front picture's eyes read by their edges (iris as a circle through the limbus, lid margins at 7
+    columns, canthi, fold line, brow edge) against the model's mesh through the picture's fitted camera, in mm at the
+    model, with each difference's tolerance (the reader's measured error) and the move that closes it. model: another
+    model read against `name`'s picture. Returns the picture's eyes with the read and the model's lid outline drawn
+    over them (save: the path) and the table. Sizes read by eye are 30-50 % off: read this before and after an eye
+    step. Details: guide(topic="eye_ruler")."""
+    from . import eye_ruler as er
+    c = er.compare(name, model)
+    path = save or str(store.HOME / "human_renders" / f"eye_ruler_{model or name}.png")
+    im = er.overlay(c["image"], c["eyes"], c["mesh"], c["mm"])
+    im.save(path)
+    return [_png(im), c["text"] + f"\noverlay (picture; green = its margins, red = its canthi, blue = the model's ring / margins / "
+                                  f"inner-corner landmark laid over by iris centre): {path}"]
 
 
 @mcp.tool(structured_output=False)

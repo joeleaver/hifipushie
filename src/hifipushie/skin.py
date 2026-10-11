@@ -612,7 +612,7 @@ _LAYERS: dict = {}
 
 
 APERTURE_KEEP = (0.001, 0.0007)  # m: (within, soft) of the eyeballs where the skin's eye-region layers fade out
-APERTURE_OWN = ("skin:waterline", "skin:caruncle", "skin:lashes")  # the margin's own colours
+APERTURE_OWN = ("skin:waterline", "skin:caruncle", "skin:caruncle_wet", "skin:lashes", "skin:lid_crease_line")  # the margin's own colours (+ the fold line: the lid's platform lies within 1-2 mm of the ball, the keep-out erased it)
 
 
 def _aperture_keep_out(spec: dict, part: str, out: dict) -> None:
