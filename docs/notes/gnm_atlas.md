@@ -1,5 +1,13 @@
 # The GNM model atlas (facesliders, 2026-10-09)
 
+## ACCEPTED STATE (read first; Joe's decisions, kept up to date by the coordinator)
+- Garrett: b3_G17 is the accepted head (2026-10-10). Joe: nose tip slightly UP ("his nose points down when it should
+  be slightly up"; b3_G16 "looks much better"), narrow bridge via the GNM sculpt route (no designed local). Later
+  Garrett work starts from b3_G17 and must not turn the tip down again (b2_G15 and rb_G14 have the old down tip).
+- Tess: b2_T06 lineage + gnmdetail2's lips step (g2_T12* models); her accepted dressed look is still f3_t1's dressing.
+- Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
+  is the default; private family likenesses (lt19, jw) are never in the repo.
+
 Joe: "Every hand-made slider we made should control the model as a whole. Nothing should really work in isolation.
 We need to comprehend the model." Step 1 of the redesign: what GNM's identity space can express, and what moves
 together in the faces it makes.
