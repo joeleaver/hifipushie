@@ -2092,11 +2092,9 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
 STATE / NEXT (gnmcrease 2, 2026-10-10): CORRECTION in "### Round 2" (#376 / #540 = the right fold; gd_T30 = right
 darkness, wrong fold SHAPE; makeup supplies missing darkness, no geometry fixes). DONE: eye step matches the crease SHAPE
-(blockin_eyes CREASE / crease_shape / Reader.sections, blockin_crease.npz; CREASE_SLIT_DARK + note retired); sheet gk_05.
-VERDICT on gk_05: the SECTIONS match (0.1-0.2 mm) but dressed the line #376 / #540 show does NOT come back on Tess (a full
-low lid, faint fold, no arc line). NEXT: add the fold edge's curvature to the shape residuals (shapesolve CURV=1) and
-retest ssT376; if still no line, the read lives outside the 3 sections / 8 mm (brow-to-lid spacing: Tess's held brow sits
-lower over the lid than the donors').
+(blockin_eyes CREASE / crease_shape / Reader.sections to 12 mm, blockin_crease.npz; CREASE_SLIT_DARK + note retired).
+Sections to 8 mm matched the lid but not the read; to 12 mm (ssT376s12) the fold's arc reads like #376. NEXT: the new
+eye step at 12 mm on Tess (out/ev12_T12_{fold,s376}.npz, evrun.py) -> dress -> final sheet gk_06 + makeup variant.
 
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
@@ -2209,3 +2207,8 @@ depth, same ceiling.
   Suspects: (1) the fold edge's crest: ssT376's fold-edge convexity 0.35 /mm vs #376's 0.91 (sections sampled every 0.5
   mm miss curvature); (2) what lies past 8 mm / between the columns: the donors' brows sit higher over the lid (brow 9.5 /
   7.7 mm over the margin but their whole orbit is open), Tess's held brow shades the fold.
+- FOLLOW-UP (gk_05's misses): curvature residuals on the sections (CURV=0.15 mm, shapesolve) did nothing useful (the eye
+  widened, |dc| 7.9). Sections to 12 mm of arclength (SMAX=12: the skin from the fold up into the brow's underside) DID:
+  ssT376s12 (|dc| 6.2 from gd_T30, |de| 3.2, socket orbital_rim +0.49 -> -0.12) shows #376's lit fold edge and arc line
+  dressed (out/v10.png). The read lives in the fold-to-brow skin, not only the lid: the eye step's sections and templates
+  now run to 12 mm (SECTION_S; blockin_crease.npz rebuilt by template.py with SMAX=12).

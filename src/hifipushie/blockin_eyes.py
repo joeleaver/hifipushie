@@ -43,7 +43,7 @@ SIG_HOODED = 0.5
 CREASE = "fold"         # the default template when the picture shows a line (None: the old height + depth target)
 SIG_SHAPE = 0.3         # mm per section point
 SECTION_FR = (0.25, 0.5, 0.75)        # inner third, pupil, outer third (corner to corner)
-SECTION_S = np.arange(0.5, 8.01, 0.5)  # mm of arclength from the lid margin
+SECTION_S = np.arange(0.5, 12.01, 0.5)  # mm of arclength from the lid margin (12: to 8 the lid matched but the fold's arc did not read)
 SOCKET = ("orbital_rim", "lower_orbit", "eye_depth")   # the socket's readings held (humanmacro, population sd, on the
 SIG_SOCKET = 0.15       # mesh WITH the expression): unheld, lt19's fold came with orbital_rim +1.1 / lower_orbit -0.9 sd
 HOLD = [i for i in range(68) if not (36 <= i < 48 or 17 <= i < 27)]

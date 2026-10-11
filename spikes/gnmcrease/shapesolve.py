@@ -17,7 +17,8 @@ from hifipushie import blockin as bi, blockin_eyes as be, store
 
 SIG = float(os.environ.get("SIG", "0.3"))
 CI = (1, 3, 5)
-S = np.arange(0.5, 8.01, 0.5)
+S = np.arange(0.5, float(os.environ.get("SMAX", "8")) + 0.01, 0.5)
+CURV = float(os.environ.get("CURV", "0"))   # sigma (mm) on the sections' second differences (the fold's crest); 0 = off
 
 
 def resample(P):
@@ -59,6 +60,8 @@ def main(model, donor, out, iters=5):
         r = []
         for a, b in zip(sec, tgt):
             r += list(((a - b) / SIG).ravel()) if a is not None and b is not None else [20.0] * (2 * len(S))
+            if CURV:
+                r += list(((np.diff(a, 2, axis=0) - np.diff(b, 2, axis=0)) / CURV).ravel()) if a is not None and b is not None else [20.0] * (2 * len(S) - 4)
         r += [(q["up"] - q0["up"]) / 0.05, (q["lo"] - q0["lo"]) / 0.05]
         s = sock(c, e)
         r += [(s[k] - s0[k]) / be.SIG_SOCKET for k in be.SOCKET]
@@ -69,7 +72,7 @@ def main(model, donor, out, iters=5):
     n = 170 + be.NE
     x = np.zeros(n)
     r, cols0 = resid(x)
-    nsec = 3 * 2 * len(S)
+    nsec = 3 * 2 * len(S)    # (the shape rms printed is over the first section's points + curvature terms when CURV)
     f = float(r @ r + x @ x)
     print(f"start: shape rms {np.sqrt(np.mean((r[:nsec] * SIG) ** 2)):.2f} mm, cost {f:.1f}", flush=True)
     lam = 0.01
