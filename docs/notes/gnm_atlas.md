@@ -4194,3 +4194,8 @@ face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper,
   ruler-only photo path (4-6 read rows) does not carry a likeness by itself; what it does not read (jaw line, chin
   shape, cheek planes, the nose's shape) still has to be driven by eye from the sheets. The er_s4 dressing's freckles
   and lip colour are also far from her (skin thread).
+- tn_T07 = tn_T06 + jaw_width -0.8, pc:chin_region0 +0.7, nose_upturn +0.7 (by eye, from the manual's phrases). Sheet
+  tn_02_tess_dressed.png (sent). BLUNT: a small gain (jaw less square, tip less drooping), still not her; the free moves
+  dragged the mouth: mouth_width -3.2 (out), philtrum front +2.3, chin_height 3/4 -2.3, width_nose_base -3.5 went out;
+  mouth 3/7. A by-eye round costs ~6 min (step 1.5, ruler 1, dressed stage sync 3) and buys little: the lower face's
+  SHAPE (taper, chin form) has no measured row to drive it. NEXT: tn_T08 = mouth_width / philtrum put back (mm: moves).
