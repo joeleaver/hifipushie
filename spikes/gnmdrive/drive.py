@@ -76,14 +76,28 @@ def _rows(heads, labels, cB, feature):
     return rows, rl
 
 
+CHUNK = 3   # rows per PNG: tall sheets (6-8 rows, ~1750 px) are mis-seen when viewed (identical rows read as different
+            # heads: three drivers thought the BEFORE row was stale; the pixels were identical), so sheets are split
+
+
+def _save_sheet(rows, rl, cols, title, base):
+    paths = []
+    for k in range(0, len(rows), CHUNK):
+        S = gnmc.grid(rows[k:k + CHUNK], cols_labels=cols, rows_labels=rl[k:k + CHUNK],
+                      title=title + (f" [part {k // CHUNK + 1}]" if len(rows) > CHUNK else ""), lw=120)
+        p = base.with_name(base.stem + f"_p{k // CHUNK + 1}.png")
+        S.save(p)
+        paths.append(str(p))
+    return paths
+
+
 def show(case, feature="head"):
     d, st, cB = _load(case)
     rows, rl = _rows([st["c"], cB], ["CURRENT", "TARGET"], cB, feature)
     cols = drv.FOCUS[feature][2]
-    S = gnmc.grid(rows, cols_labels=cols, rows_labels=rl, title=f"{case}: current vs target ({feature}; 1 px = {_mmpx(feature):.2f} mm)", lw=120)
-    p = d / f"show_{len(st['moves']):02d}_{feature}.png"
-    S.save(p)
-    print(p)
+    ps = _save_sheet(rows, rl, cols, f"{case}: current vs target ({feature}; 1 px = {_mmpx(feature):.2f} mm)",
+                     d / f"show_{len(st['moves']):02d}_{feature}.png")
+    print("\n".join(ps))
 
 
 def trial(case, moves, feature="head", seen="", why=""):
@@ -95,11 +109,9 @@ def trial(case, moves, feature="head", seen="", why=""):
     paths = []
     for f in dict.fromkeys(["head", feature]):
         rows, rl = _rows([st["c"], c1, cB], ["BEFORE", "TRIAL", "TARGET"], cB, f)
-        S = gnmc.grid(rows, cols_labels=drv.FOCUS[f][2], rows_labels=rl,
-                      title=f"{case} trial {n}: {json.dumps(moves)} ({f}; 1 px = {_mmpx(f):.2f} mm)", lw=120)
-        p = d / f"trial_{n:02d}_{len(st.get('rejected', []))}_{f}.png"
-        S.save(p)
-        paths.append(str(p))
+        k = len(st["moves"]) + len(st.get("rejected", []))
+        paths += _save_sheet(rows, rl, drv.FOCUS[f][2], f"{case} trial {k}: {json.dumps(moves)} ({f}; 1 px = {_mmpx(f):.2f} mm)",
+                             d / f"trial{k:02d}_{f}.png")
     dz = hm.read(c1[:hm.K])
     z0 = hm.read(np.asarray(st["c"])[:hm.K])
     ch = sorted(((k, dz[k] - z0[k]) for k in dz if k != "head_size"), key=lambda t: -abs(t[1]))[:6]

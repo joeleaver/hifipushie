@@ -209,6 +209,9 @@ def direction(name: str) -> np.ndarray:
     if name.startswith(("sculpt:", "relief:")):   # (gnmcontrols) a zone moved the GNM way: per +1 mm, macros held
         from . import gnm_controls as gcm
         return gcm.sculpt(**gcm.parse_sculpt(name))["dc"]
+    if name.startswith("mm:"):    # (gnmdrive) a measure you can see moved 1 mm, every other measure held in mm
+        from . import gnm_mm
+        return gnm_mm.direction(name)
     if name.startswith("gnm:"):   # (gnmcontrols) any identity-space control of the atlas, raw (its own unit)
         from . import gnm_controls as gcm
         d = gcm.identity_direction(name[4:])

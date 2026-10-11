@@ -2412,3 +2412,35 @@ profile traces. Blunt read of gd2_02: the profile traces are where the manual sh
 target with it, a visible gap without); in the front views both drivers' heads still read as A's person with B's
 feature partly grafted on (expected: ~40-50 % of the region reached); s2_03's pinched projecting nose reads clearly
 closer with the manual (pc:nose_region2 +2.5 in one move vs four held / sculpt moves without).
+
+### Set s3 (seed 303): no manual (s3_*) vs manual v2 (m3_*), the same 14 pairs, 3 fresh drivers each
+No manual 3/14 (easy 3/8, medium 0/3, hard 0/3; region closed 0.36, ID closed 0.19). Manual v2 6/14 (easy 3/8,
+medium 2/3, hard 1/3; region 0.43, ID 0.26). Wins with the manual: m3_03 nose 0.79 / ID 0.75 (pc:nose_region0 -2.5,
+-1, -0.5), m3_01 fluffy jaw (the lower-face recipe at 1.5 each: ID 0.62), m3_09 muzzle + nose, m3_12 hard (the
+recipe + pc:upper_lip_region0 + nose_length!). Losses: m3_07 chin (ID -0.34: pc:chin_region1 +3 total overshot the
+chin's look while the region error fell), eyes (m3_04 0.11, m3_10: "pupils apart" seen but head_size + put-backs too
+blunt: no clean move existed), skull (0/4 both arms in s2 + s3).
+POOLED, the same pairs driven both ways (s2 + s3): no manual 6/28 (21 %), with the manual 13/28 (46 %). By grade: easy
+5/16 -> 8/16, medium 1/6 -> 4/6, hard 0/6 -> 1/6. By region (a case counts for each region it changes): nose 1/6 -> 4/6,
+mouth 0/8 -> 3/8, brows 1/6 -> 3/6, jaw 1/4 -> 2/4, eyes 0/6 -> 2/6, chin 0/4 -> 1/4, cheeks 1/4 -> 1/4, jaw_full 2/2 ->
+2/2, skull 0/4 -> 0/4. Mean region closure 0.34 -> 0.43, ID closure 0.19 -> 0.25 (oracle ~0.55 / 0.45).
+
+### The "stale BEFORE row" (four drivers, s3A to the coordinator): NOT a code bug
+A zero move ({"ear_out!": 0}) on a copy of s3_00 gave BEFORE and TRIAL rows that are PIXEL-IDENTICAL in the saved PNG
+(max abs diff 0; bug.py / bug2.py / bug5.py), and the in-process renders of the current head and current + 0 are
+identical too. Yet viewing the 7-row PNG, I too read the BEFORE row as a different head (higher, arched brows). A
+viewing artifact of tall stacked sheets (identical rows seen as different heads); it may also have biased some
+keep / reject calls (judged against a mis-seen BEFORE). Fix: drive.py writes sheets as PNGs of at most 3 rows
+(_p1 / _p2 / _p3). The scores stand (state.json always held the kept moves). LESSON for every sheet we make for a model
+to read: <= 3 rows of faces per image; identical heads stacked in a tall sheet are not reliably seen as identical.
+
+### mm: moves (src/hifipushie/gnm_mm.py; block-in move "mm:<measure>": mm)
+The eye-placement miss explained: humanmacro's macros are ratios over the interocular, so "pupils apart, the rest held"
+(head_size!) scales the whole head (neck +10, skull +8 mm per sd). Holding 23 MILLIMETRE readouts instead (pupils
+apart, eyes forward / height, brows over the eyes, forehead forward of the nasion, tip / subnasale / lips / chin
+forward, philtrum, chin length, nose length, widths of cheekbones / jaw / chin / mouth / nose / skull / neck, skull top /
+back, the line under the chin) + where the face sits in the head (3), the least-norm change in the 170 comps that moves
+ONE readout 1 mm is clean and cheap: mm:pupils_apart |dc| 0.61 per mm (face skin 0.35 mm rms), chin_forward 0.45,
+forehead_forward 0.53, tip_forward 0.80, philtrum_length 0.81, upper_lip_forward 1.13, nose_length 1.24, widths
+0.3-0.66. Sheet human_renders/gd2_04_mm_moves.png (-4 | 0 | +4 mm front / profile on a random head): natural, local.
+For a driver: read the gap in px on the sheet (titles say 1 px = x mm), type the mm. Into manual v3 + set s4.
