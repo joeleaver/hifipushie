@@ -769,13 +769,14 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
              donor: str | None = None, orbit: bool = True, crease: str | None = "default", fold: str | None = None) -> dict:
     """The block-in step: the opening (solve), the lid as one structure with the eyeball guard (blockin_lid), written
     as a new model (blockin.step with the identity set). fold: the lid's shape term: "crisp" (the default: recipe A,
-    blockin_lid.fold_step: a designed crisp fold on the picture's fold line, brows held) or "donor" (the older
+    blockin_lid.fold_step: a designed crisp fold on the picture's fold line, brows held), "none" (the opening only:
+    the fold costs |dc| 10-20 and moves the rest of the face ~0.6 mm rms; skip it while the masses are open) or "donor" (the older
     lid_step toward a donor head's lid; implied by donor= and by expression=True). expression=True: GNM's eye-region
     pairs solved too (a real pose: a squint); donor: the lid's donor (blockin_lid.donor; default s376); orbit=False
     skips the orbit check."""
     fold = fold or ("donor" if donor or expression else FOLD)
-    if fold not in ("crisp", "donor"):
-        raise ValueError('eye step: fold = "crisp" (recipe A, the default) or "donor"')
+    if fold not in ("crisp", "donor", "none"):
+        raise ValueError('eye step: fold = "crisp" (recipe A, the default), "donor" or "none" (the opening only)')
     if fold == "crisp" and expression:
         raise ValueError('eye step: fold="crisp" is identity only; with expression=True the lid is solved toward a donor (fold="donor")')
     from PIL import Image
@@ -808,7 +809,9 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
         elif not ev.get("hooded") and np.isfinite(ev.get("tps", np.nan)):
             h1 = ev["tps"] * s["read"]["r_iris_mm"] / 5.85
             heights, cols, corners = np.array([h1, h1, h1]), np.array([-6.0, 0.0, 6.0]), (-12.0, 10.0)
-        if ev.get("hooded"):
+        if fold == "none":
+            log("eye step: fold=\"none\": the opening only (margins and corners); the lid's fold is left as the head has it")
+        elif ev.get("hooded"):
             log("eye step: no fold line on the picture (hooded): the whole-lid solve is not run (its donor's platform "
                 "would show); the visible platform was the opening's target")
         else:

@@ -4206,3 +4206,17 @@ face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper,
 STATE / NEXT (reruns, 2026-10-11): STOPPED at tn_T08 for Joe's choice: (a) keep grinding Tess from the class mean by
 eye, then the other three the same way, or (b) start each of the four from its previous lineage's head and apply only
 the new eye work (decided eye depth, crisp fold, ruler rows). Garrett / lt19 / jw not started.
+
+### Tess from scratch WITHOUT the fold (Joe, 2026-10-11: "try tess without worrying about the eye fold ... all the way from
+### scratch, just doing the best we can with the gnm controls and not forcing anything crazy")
+- |c| along the first chain: tn_T00 5.4 (class mean), T01 9.5, T02 10.0, T04 10.2, then the crisp fold: T05 22.7 and
+  every later round 22+ (er_s4: 9.0). The fold was the only forced step.
+- eye_step(fold="none") added (lid_read(match=True, fold="none")): the opening only. tn_T05n = tn_T04 + that (|dc| 2.8,
+  |c| 10.5), tn_T06n = + the lips step (|c| 10.4; jaw and chin 5/5, mouth 4/7).
+- Sheet tn_04 (photos | tn_T06n | tn_T06 | er_s4), sent. BLUNT: dropping the fold barely changes the face below the
+  eyes: the square jaw, short chin and heavy nose tip are the class mean's + my mass steps', NOT the fold's. The
+  unforced lid reads fine at face distance.
+- tn_T07n = T06n + FREE face_length +0.5, jaw_width -0.6, nose_upturn +0.6 (|c| 10.38: free moves cost nothing).
+  Sheet tn_05, sent: tip a little lighter, jaw a little softer, lower face still broader / shorter than hers.
+  Table: chin_height -2.2 / -1.5 out, philtrum front +2.2, lower_third -2.8, mouth_line; ruler: upper_lip_forward -2.1.
+STATE / NEXT: continue from tn_T07n in small steps (free macros for shape, mm: to put table rows back), |c| watched.
