@@ -8,6 +8,14 @@
 - HOLD (Joe, 2026-10-10): no further work on any model (Tess, Garrett, lt19, jw) until the GNM controls and the eye
   crease are sorted; then start over on all four with block-in v2 (GNM's own head, moves chosen from the control
   atlas, sculpt / relief first, the eye and lips steps).
+- CREASE (Joe, 2026-10-10, after gnmcrease's gk_01): GNM CAN make the right fold: sampled gnm#376 and gnm#540 "read
+  right" dressed. gd_T30 had the darkness but the wrong fold shape (topology). So match the fold's SHAPE with GNM (sections,
+  the line's path / height along the lid); any remaining darkness comes from the skin's cosmetics (a crease shadow), never
+  a geometry layer. Photo line darkness is NOT the crease target (gnmcrease is reworking the eye step; its first NOTE /
+  CREASE_SLIT_DARK claim "GNM can't draw the line" is wrong).
+- RESTART GATE: the four restart after the driving test passes (agent gnmdrive: synthetic GNM pairs A -> B, the driver
+  names differences in artist words and picks controls from a phrase -> control manual, no search; scored vs the oracle).
+- Agents document as they go: notes + commit after every meaningful step, a STATE / NEXT line per section.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
   is the default; private family likenesses (lt19, jw) are never in the repo.
 
