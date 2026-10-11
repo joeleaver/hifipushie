@@ -7,7 +7,8 @@ spec["hair"] = {
   "locks":  {name: lock}: what the scene shows. Written by `groom()`, then edited by numbers or in Blender (pull
             brings moved control points, handles, radius, tilt and the modifier numbers back).
   "look":   the material: {"gap", "lit", "sheen", "grey" (sRGB hex), "roughness", "sheen_amount", "vary",
-            "grooves" (strand ridges across a lock), "groove_depth", "anisotropic"}.
+            "grooves" (strand ridges across a lock), "groove_depth", "anisotropic", "seen" (the colour the hair
+            should READ, e.g. a photo's lit hair: derives the colour keys for the renderer's loss; see SEEN)}.
   "cap":    the dark underlayer on the scalp inside the hairline (m, default 0.002; 0 = none).
   "stage":  "mass" shows the groom's volume as one smooth shell (stage a: silhouette), else the locks.
   "part":   the export part (default "hair").
@@ -112,8 +113,52 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
         "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "eevee_sat": 0.35, "light": None, "card_gain": 1.0, "card_sat": 1.0, "card_grey": 0.5,
-        "cycles_fit": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "cycles_fit": None, "seen": None}  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
+# seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
+# keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
+# strands copy it with a Hue/Saturation node: HSV saturation x eevee_sat, scene-linear), so a photo's light brown
+# typed into lit rendered grey-blond (jw, 2026-10-10), and at 0.35 no lit at all could reach a saturated brown in
+# EEVEE. seen derives lit (seen's hue and value, saturation / eevee_sat, capped at 1), gap, sheen and tip around it,
+# and eevee_sat = seen's saturation / lit's (EEVEE then draws seen exactly; Cycles gets what the gamut allows).
+# Keys given in the look still win.
+SEEN = {"gap": 0.3, "sheen": 1.45, "tip": 1.12}  # x lit (linear)
+
+
+def _lin(c: str) -> np.ndarray:
+    s = np.array([int(c.lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)])
+    return np.where(s <= 0.04045, s / 12.92, ((s + 0.055) / 1.055) ** 2.4)
+
+
+def _hexl(v) -> str:
+    v = np.clip(np.asarray(v, float), 0, 1)
+    s = np.where(v <= 0.0031308, v * 12.92, 1.055 * v ** (1 / 2.4) - 0.055)
+    return "#" + "".join("%02x" % int(round(255 * x)) for x in s)
+
+
+def seen_look(seen: str, sat: float = 0.35) -> dict:
+    """lit / gap / sheen / tip / eevee_sat for hair that should read as `seen` through a renderer keeping `sat` of the
+    (linear HSV) saturation."""
+    import colorsys
+    h, s, v = colorsys.rgb_to_hsv(*_lin(seen))
+    s_lit = min(s / max(sat, 0.05), 1.0)
+    lit = np.array(colorsys.hsv_to_rgb(h, s_lit, v))
+    out = {"lit": _hexl(lit), "eevee_sat": round(float(s / s_lit), 4) if s_lit > 0 else sat}
+    for k, f in SEEN.items():
+        out[k] = _hexl(lit * f)
+    # what reads lit WITHOUT the strands' desaturation (the scalp's tint, the cards' atlas) gets seen's own colour:
+    # the boosted lit showed as an orange scalp between partings
+    out["scalp"] = _hexl(_lin(seen) * (0.5 + 0.5 * SEEN["gap"]))
+    out["card_sat"] = out["eevee_sat"]
+    return out
+
+
+def full_look(look: dict | None) -> dict:
+    """The look with its defaults and, if it has `seen`, the colours derived from it (explicit colour keys win)."""
+    lk = dict(look or {})
+    if lk.get("seen"):
+        lk = {**seen_look(lk["seen"], float(lk.get("eevee_sat", LOOK["eevee_sat"]))), **lk}
+    return {**LOOK, **lk}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands", "swoop"}
 # free: 0..1, the lock hangs clear of the head (its underside is hair too, not the dark gap side); space "xyz": pts
@@ -335,7 +380,7 @@ def look_of(spec: dict, h: dict | None = None) -> dict:
     """The hair look with its defaults; look.grey_locks (x each lock's own grey) defaults to grey_age: locks groomed
     earlier carry their grey in the spec, so a young model's look draws none of it unless asked."""
     h = hair_of(spec) if h is None else h
-    lk = {**LOOK, **(h.get("look") or {})}
+    lk = full_look(h.get("look"))  # defaults + colours derived from `seen`
     if "grey_locks" not in (h.get("look") or {}):
         lk["grey_locks"] = grey_age(spec)
     return lk

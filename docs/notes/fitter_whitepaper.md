@@ -43,3 +43,17 @@ pipeline end to end.
 - Training a standard image network: ~10-50 GPU-hours on one rented GPU (tens to a couple hundred dollars).
 - Adapting an existing VLM (LoRA) if ever needed: ~tens of GPU-hours.
 - First version plausibly a few hundred dollars and a week or two elapsed; the main risk is synthetic-to-real transfer.
+
+## Landscape check (2026-10-10, "gnmcontrols" agent; gnm_atlas.md "## gnmcontrols")
+Nobody publishes a photo -> GNM route beyond sparse-landmark ridge fits: no identity-embedding route, no learned
+regressor; Google hasn't released its own fitting code or the ~600 dense landmarks its fitting uses.
+- rethink-studios/ComfyUI-GNM "GNM Extract Identity From Photo" (Apache-2.0, 01fefbc, "fitting not yet finalized"): a ridge
+  fit on MediaPipe points mapped to iBUG-68 through a wrong table (eyes get nose points, brows get cheek points), the
+  ridge at ~10x the data term: it returns roughly GNM's mean.
+- google/xrblocks samples/avatar_lab/gnm (Apache-2.0, from edualvarado/gnm-webcam-puppet): MediaPipe -> GNM vertex
+  correspondence fitted differentially against a reference cloud (cancels MediaPipe's depth bias), 24 leading comps,
+  ridge, 4 alternations: the best public recipe, a generic face.
+- Also checked: gnm-maya (68-point weak perspective), headSize-gnm, soylab-edu/ComfyUI-GNM (GPL, samplers only).
+On Tess (block-in target table): our block-in 26/26, published recipes and our old MAP fit 20-23/26, GNM's mean 22/26.
+So a dense-landmark network trained on our own synthetic GNM renders (above) would be the first of its kind in the open,
+which strengthens the white-paper case.

@@ -583,3 +583,17 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   nostrils / chin, cooler under-eye, less peach; Garrett olive-ruddy, darker lower face) - the zone layers exist,
   their strength reads low; (3) lips read as lipstick decals on both heads (flat fill, hard border) in every read;
   (4) grey stubble: bright specular tips + a chroma'd grey-blue root shadow; (5) the nose-side seam on Tess.
+
+## Very fair skin (2026-10-10, "jw2" agent)
+- The tone model could not make very fair skin: melanin 0 stopped at ITA 52 deg (L* 71, b* 16.2: Chardon / Del Bino's
+  "light"; "very light" is ITA > 55, about L* 70, b* 12), undertone -1 only traded b* for a darker L*. The floor was
+  the epidermis's melanosome fraction (MELANIN[0] 1.3%) and the fixed carotene baseline. Now (skin.melanosomes,
+  FAIR_TO 0.14 = F2): below F2 the melanosome fraction falls geometrically to MELANIN_FAIR 0.5% and the carotene
+  baseline to 0.4x; F2 and darker unchanged to the last digit. melanin 0: ITA 60, F1 59, F2 47, F3 37, F4 18, F5 -14,
+  F6 -50 (the bins the literature gives per type). Marks that ADD pigment (melanin x > 1: freckles, moles, age spots)
+  count on the unlowered curve: on the first version Tess's freckles nearly vanished (ts_t28 look_skin before / after).
+  test_skin::test_tone checks the bins, F3 unchanged and freckle contrast on F1.
+- A fair face read "tan" dressed for three reasons, only one of them the albedo: the stage's high key light put the
+  sides / jaw in warm subsurface shadow (a frontal soft key fixed most of it), and the photo had a slight COOL cast
+  (sclera R/B 0.93): corrected for it, a fair forehead's R/B matched the render's (1.52) within noise. The rendered
+  hue followed the albedo's (render cheek hue 46 vs albedo 47 deg): the shader adds no orange.

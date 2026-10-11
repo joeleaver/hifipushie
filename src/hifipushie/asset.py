@@ -1767,7 +1767,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             ntri += report[pn_h]["triangles"]
             # a lock's sheen runs along it (the uv's v): anisotropy turned 90 degrees from the tangent (u, round the
             # lens), and a soft warm sheen
-            lk = {**hairmod.LOOK, **(spec["hair"].get("look") or {})}
+            lk = hairmod.full_look(spec["hair"].get("look"))
             sheen = [round(float(c), 3) for c in hairmod.srgb_to_linear(lk["sheen"])]
             extra_ext[len(atlas_files) - 1] = {
                 "KHR_materials_anisotropy": {"anisotropyStrength": float(lk.get("anisotropic", 0.7)),

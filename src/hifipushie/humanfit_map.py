@@ -186,19 +186,20 @@ def measured_read(views: list) -> dict | None:
 
 
 def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8, lam: float = 1.0, force: bool = False,
-        free=("identity",), drop_bad: bool = True, measure: bool = False) -> tuple:
+        free=("identity",), drop_bad: bool = True, measure: bool = False, prior_mean=None) -> tuple:
     """(new base, report); see _fit. A view whose points still miss by more than VIEW_BAD mm rms after the fit is
     dropped from the identity's evidence (its camera is still fitted and returned) and the fit run again.
     measure=True: macros MEASURED on the front picture (humanmeasure: a regression calibrated on renders only, not
     validated on photographs) join the read as evidence with their own sigmas; a said read wins where both speak.
-    rep["measured"] lists them."""
+    rep["measured"] lists them. prior_mean: the identity prior's centre (default 0, GNM's template; e.g. the semantic
+    sampler's class mean for the sex: blockin.data()["m_f"])."""
     meas = measured_read(views) if measure and "identity" in free else None
     if meas:
         read = {**{k: tuple(v) for k, v in meas["macros"].items()}, **(read or {})}
-    nb, rep = _fit(base, views, read, read_sd, lam, force, free, None)
+    nb, rep = _fit(base, views, read, read_sd, lam, force, free, None, prior_mean)
     bad =[i for i, v in enumerate(rep["views"]) if v["rms_mm"] > VIEW_BAD]
     if drop_bad and bad and len(bad) < len(views) and "identity" in free:
-        nb, rep = _fit(base, views, read, read_sd, lam, force, free, set(bad))
+        nb, rep = _fit(base, views, read, read_sd, lam, force, free, set(bad), prior_mean)
         for i in bad:
             rep["views"][i]["dropped"] = True
         rep["dropped"] = bad
@@ -236,7 +237,7 @@ def _resolve(st, views: list) -> list:
     return out
 
 
-def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip) -> tuple:
+def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip, prior_mean=None) -> tuple:
     """(new base, report). views as humanfit.fit_views' ({"image", "size", "yaw", "points": clicks}); read = a
     character read in humanmacro's macros (sigmas). free without "identity": cameras only."""
     from . import humanfit, humanmacro
@@ -257,7 +258,7 @@ def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip) -> tupl
         c_lin = c.copy()
         for _ in range(INNER):
             H = np.eye(K) * lam
-            b = np.zeros(K)
+            b = np.zeros(K) if prior_mean is None else lam * np.asarray(prior_mean, float)[:K]
             for vi, (v, e) in enumerate(zip(views, evs)):
                 X = e["X"] + np.tensordot(c - c_lin, e["XB"], 1)
                 if cams[vi] is None:
