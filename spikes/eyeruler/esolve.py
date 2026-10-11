@@ -34,9 +34,14 @@ if os.environ.get("BALL"):
     hd["eye_radius"] = float(os.environ["BALL"])
 else:
     hd.pop("eye_radius", None)
+if os.environ.get("IDENT"):   # the identity of another model (e.g. gd_T12: the block-in's head before gnmbrow's eye step)
+    bi.set_identity(sp, bi.identity(store.load(os.environ["IDENT"])))
 if os.environ.get("NOEXPR"):
     hd.pop("expression", None)
-s = be.solve(sp["base"], ev, iters=iters, crease=crease, ne=ne, log=lambda m: print(m, flush=True))
+s = be.solve(sp["base"], ev, iters=iters, crease=crease, ne=ne, log=lambda m: print(m, flush=True),
+             crisp=float(os.environ["CRISP"]) if os.environ.get("CRISP") else None,
+             hold_mm=None if os.environ.get("NOMM") else "default")
+print("narrow crease depth", round(s["read0"]["narrow"], 3), "->", round(s["read"]["narrow"], 3))
 bi.set_identity(sp, s["c"])
 hd = sp["base"]["head"]
 hd["expression"] = s["expression"]

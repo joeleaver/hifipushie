@@ -678,6 +678,11 @@ def compare(name: str, model_name: str | None = None) -> dict:
         moves.append(f'block_in_step {{"mm:pupils_apart": {pd[0] - pd[1]:+.1f}}}')
     if "caruncle showing" in off or not ((spec.get("skin") or {}).get("eyes") or {}).get("caruncle"):
         moves.append("skin.eyes.caruncle 1 (the inner corner's pocket painted wet red: unpainted, the eye reads ~2 mm short at the nose side)")
+    cp = crease_path(ph)
+    if cp and not ((spec.get("skin") or {}).get("eyes") or {}).get("crease"):
+        moves.append("the picture shows a fold LINE (darkness " + f"{ph['crease_dark']:.2f}" + "): once the eye step has put the fold there, "
+                     "skin.eyes.crease {\"amount\": 0.6, \"path\": " + str([[round(a, 1), round(b, 1)] for a, b in cp]) + "} draws it "
+                     "(a thin shadow in the skin: a render of GNM's soft valley shows no line)")
     if any(k.startswith("brow") for k in off):
         moves.append("brow_read(name, match=True)")
     out = {"rows": rows, "photo": ph, "model": mo, "pd": pd, "moves": moves, "iris_px": px, "mm": mm, "eyes": eyes, "mesh": tru,
@@ -764,3 +769,15 @@ def overlay(img, eyes: list, mesh: list | None = None, mm: float | None = None, 
     out.paste(tiles[0], (0, 0))
     out.paste(tiles[1], (tiles[0].size[0] + 6, 0))
     return out if zoom == 1 else out.resize((out.size[0] * zoom, out.size[1] * zoom), Image.LANCZOS)
+
+
+def crease_path(m: dict) -> list | None:
+    """The picture's fold line as skin.eyes.crease's "path": [[u, v]] mm from the iris centre, from a mean() of read()
+    (the upper margin + the line's height over it at COLS); None when the line is not read (darkness < CREASE_MIN)."""
+    if m.get("crease_dark", 0.0) < CREASE_MIN:
+        return None
+    up, cr = np.asarray(m["up"], float), np.asarray(m["crease"], float)
+    ok = np.isfinite(up) & np.isfinite(cr)
+    if ok.sum() < 4:
+        return None
+    return [[float(u), round(float(a + b), 2)] for u, a, b in zip(COLS[ok], up[ok], cr[ok])]

@@ -56,6 +56,9 @@ RULER_COLS = np.array([-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0])   # = eye_ruler.CO
 SIG_MARGIN = 0.15       # mm: a lid margin at a column (the reader's error is 0.2-0.3 mm; +-9 mm columns count half)
 SIG_CORNER = 0.3        # mm: a canthus
 LO_BIAS = 0.35          # mm: the picture reader puts the lower margin this much higher than the mesh's (waterline)
+SIG_MM = 0.3            # mm: gnm_mm's 23 measures + the face's place held at the start's (eyeruler: with the lids matched
+                        # in each eye's own frame the solve moved the EYEBALLS apart 1.5 mm to lengthen the inner corner,
+                        # and the 68 landmarks don't see the vault, neck or ears: cranium_height -1.1 sd, neck_width -0.9)
 RULER_MIN_PX = 30.0     # the picture's iris diameter (px) under which the ruler's margins are not used
 OUT_RING = 1.2          # mm: the margin ring's lateral end past the picture's outer canthus (the eyeball's visible end
                         # reads 0.4 mm short under the lashes, and the ring tucks 0.8 mm behind the lids' meeting)
@@ -201,6 +204,8 @@ class Reader:
             if P[0, 1] > P[-1, 1]:
                 P = P[::-1]
             res.append(_profile(P))
+            res[-1]["narrow"] = _profile(P, w_mm=0.75)["lsoft"]
+        out["narrow"] = float(np.mean([q["narrow"] for q in res])) if res else 0.0
         if res:
             mid = res[len(res) // 2]
             out.update(show=mid["show"], height=mid["height"], depth=float(np.mean([q["depth"] for q in res])),
@@ -564,13 +569,17 @@ def _head(base, c, e, Ln, Rn):
 
 
 def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None = None,
-          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default", ne: int = NE) -> dict:
+          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default", ne: int = NE,
+          crisp: float | None = None, hold_mm: float | None = "default") -> dict:
     """identity + eye expression for evidence ev (photo_evidence). base: the block-in's base (its lid pose cleared
     here). crease: when the picture shows a line, the fold's SHAPE to match (a crease_shape template name; "default" =
     CREASE; None = the old target: the line's height + d_line, the crease's least local depth in mm, default D_LINE);
     hold_socket: the socket readings' sigma (sd; None = not held). Returns {"c", "expression", "read0", "read", "cost",
     "dc", "e", "socket0", "socket", "crease", "shape0" / "shape" (section rms vs the template, mm)}."""
     crease = CREASE if crease == "default" else crease
+    hold_mm = SIG_MM if hold_mm == "default" else hold_mm
+    from . import gnm_mm
+    Jmm = gnm_mm.jacobian() if hold_mm else None
     use_shape = bool(crease) and not ev.get("hooded") and np.isfinite(ev.get("tps", np.nan))
     shape = None
     sig_lid = SIG_LID_SHAPE if use_shape else SIG_LID
@@ -637,6 +646,10 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
             else:
                 r.append((q["hsoft"] - want) / SIG_TPS if np.isfinite(q["hsoft"]) else 20.0)
                 r.append(min(q["lsoft"] - d_line, 0.0) / SIG_LINE)
+        if crisp:   # (an experiment: the crease's depth inside a 0.75 mm chord at least `crisp` mm: #376 has 0.4-0.5)
+            r.append(min(q["narrow"] - float(crisp), 0.0) / 0.05)
+        if Jmm is not None:   # the head's millimetre measures held: pupils apart, eyes forward / height, skull, neck ...
+            r += list(Jmm @ x[:170] / hold_mm)
         L = np.asarray(ht["lm68"], float)
         if hold_socket:
             s = sock(c0 + x[:170], e0 + x[170:])

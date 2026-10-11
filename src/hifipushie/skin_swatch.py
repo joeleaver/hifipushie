@@ -128,6 +128,41 @@ def _glyphics(rng, mm: float, fams) -> np.ndarray:
     return out
 
 
+def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0, 3.0)):
+    """A left eye's fold line as an alpha picture (RGBA PNG in the image store): a smooth line through path_mm ([[u, v]]
+    mm in the eye's frame: u toward the outer corner, v up, from the iris centre), `width_mm` wide at half depth,
+    fading out over its last 2 mm at each end. The canvas is span mm, centred at `centre` in that frame. Returns the
+    path of the file."""
+    import hashlib
+    from PIL import Image, ImageDraw, ImageFilter
+    from . import images
+    P = np.asarray(path_mm, float)
+    key = f"{np.round(P, 2).tolist()}_{width_mm:.2f}_{span}_{centre}_{VERSION}"
+    out = images.store_dir() / f"crease_{hashlib.sha1(key.encode()).hexdigest()[:12]}.png"
+    if not out.exists():
+        ppm = 32
+        Wp, Hp = int(span[0] * ppm), int(span[1] * ppm)
+        o = np.argsort(P[:, 0])
+        P = P[o]
+        u = np.linspace(P[0, 0], P[-1, 0], 200)
+        co = np.polyfit(P[:, 0], P[:, 1], min(3, len(P) - 1))
+        v = np.polyval(co, u)
+        X = (u - centre[0] + span[0] / 2) * ppm
+        Y = (span[1] / 2 - (v - centre[1])) * ppm
+        a = np.zeros((Hp, Wp), np.float32)
+        d_end = np.minimum(u - u[0], u[-1] - u)
+        for i in range(len(u) - 1):
+            seg = Image.new("L", (Wp, Hp), 0)
+            ImageDraw.Draw(seg).line([(X[i], Y[i]), (X[i + 1], Y[i + 1])], fill=int(255 * np.clip(d_end[i] / 2.0, 0, 1)),
+                                     width=max(1, int(round(0.6 * width_mm * ppm))))
+            a = np.maximum(a, np.asarray(seg, np.float32))
+        al = Image.fromarray(a.astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.25 * width_mm * ppm))
+        im = Image.new("RGBA", (Wp, Hp), (255, 255, 255, 0))
+        im.putalpha(al)
+        im.save(out)
+    return out
+
+
 def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 6.0, width_mm: float = 62.0,
                seed: int = 0, tail: float = 1.0, fall: float = 1.0, taper: float = 0.82):
     """A left eyebrow as hairs (RGBA PNG in the image store; white hairs, coverage in alpha: the layer gives the
