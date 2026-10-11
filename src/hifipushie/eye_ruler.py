@@ -41,8 +41,14 @@ LOWER = ((33, 7, 163, 144, 145, 153, 154, 155, 133), (263, 249, 390, 373, 374, 3
 BROW_LOW = ((46, 53, 52, 65, 55), (276, 283, 282, 295, 285))
 # The image reader's error on dressed fitted-camera renders of known heads, against model() (mm; rms over heads, both
 # eyes; spikes/eyeruler/validate.py -> docs/notes/gnm_atlas.md "## eyeruler"). A difference under ~2 x this is not one.
-ERR: dict = {}
-FLAGGED: tuple = ()
+# rms incl. bias, 14 heads x 2 eyes (2026-10-11); the lower margin's bias (+0.35: it reads the waterline's top) is
+# taken off in compare() instead.
+ERR = {"iris": 0.12, "centre": 0.13, "up": 0.25, "lo": 0.25, "mrd1": 0.19, "mrd2": 0.2, "open": 0.4, "inner": 0.63,
+       "outer": 0.45, "fissure": 0.96, "tilt": 1.8, "peak_u": 0.56, "caruncle": 1.0, "brow": 0.7, "crease": 1.0}
+LO_BIAS = 0.35
+FLAGGED = ("crease",)   # on a RENDER the fold reads +-3 mm (a soft fold is not a line): the model's crease is the mesh's
+                        # (blockin_eyes' section profile); on a photo with a crisp line it is used, error not measured
+CREASE_MIN = 0.08       # the picture's line darkness under which the fold line is "not read"
 
 
 # ---- patches ---------------------------------------------------------------------------------------------------------
@@ -483,6 +489,9 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
              "tilt": float(np.degrees(np.arctan2(outer[1] - inner[1], outer[0] - inner[0]))),
              "caruncle": float(ucols[0] - inner[0]), "up": [at(top, x) for x in COLS], "lo": [at(bot, x) for x in COLS],
              "iris": 2 * r_iris, "c": fr2[s]["c"].tolist(), "ring": ruv.tolist()}
+        li = (humanfit.project(cam, np.asarray(st["L"][39 if s == 0 else 42], float)[None])[0] - fr2[s]["c"]) * mm
+        m["inner_lm"] = [float(li @ fr2[s]["ex"]), -float(li @ fr2[s]["ey"])]   # GNM's own inner-corner landmark: the
+        # canthal pocket's tip (the caruncle's corner), ~1.9 mm medial of the ring's end
         m["open"] = [a - b for a, b in zip(m["up"], m["lo"])]
         sm = _smooth1(top, 0.6)
         m["peak_u"], m["peak_v"] = float(ucols[int(np.argmax(sm))]), float(sm.max())
@@ -595,7 +604,101 @@ def mean(eyes: list) -> dict:
         warnings.simplefilter("ignore", RuntimeWarning)
         for k in SCALARS + ("crease_dark",):
             out[k] = float(np.nanmean([e.get(k, np.nan) for e in eyes]))
-        for k in VECTORS + ("inner", "outer"):
+        for k in VECTORS + ("inner", "outer", "inner_lm", "platform"):
             if all(k in e for e in eyes):
                 out[k] = np.nanmean([np.asarray(e[k], float) for e in eyes], 0).tolist()
     return out
+
+
+def compare(name: str, model_name: str | None = None) -> dict:
+    """The front picture of `name` read by the ruler against the model's mesh (model_name: another model through the
+    same picture and camera; default name itself): {"rows": [{"measure", "photo", "model", "diff" (model - photo),
+    "tol" (2 x the reader's rms error), "off" (|diff| > tol), "note"}], "photo", "model" (the two means), "pd": (photo,
+    model) pupils apart, "moves": [text], "text"}. mm at the model; u = toward the outer corner, v = up, from each
+    eye's iris centre; both eyes' mean."""
+    from PIL import Image
+    from . import blockin as bi, humanfit, likeness, store
+    rj = bi._refs(name)
+    vi = bi._front(rj)
+    v, cam = rj["views"][vi], rj["cameras"][vi]
+    img = Image.open(v["image"]).convert("RGB")
+    P = bi.detect_view(img, v)
+    if P is None:
+        raise ValueError("eye_ruler: the detector found no face on the front picture")
+    spec = store.load(model_name or name)
+    st = humanfit.state(spec["base"])
+    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    eyes = read(img, P, mm)
+    px = float(np.mean([e["iris"] for e in eyes])) / mm
+    tru = model(spec, cam)
+    ph, mo = mean(eyes), mean(tru)
+    pd = (float(np.linalg.norm(np.subtract(eyes[0]["c"], eyes[1]["c"])) * mm),
+          float(np.linalg.norm(np.subtract(tru[0]["c"], tru[1]["c"])) * mm))
+    rows = []
+
+    def row(measure, a, b, tol, note=""):
+        d = b - a
+        rows.append({"measure": measure, "photo": float(a), "model": float(b), "diff": float(d), "tol": float(tol),
+                     "off": bool(np.isfinite(d) and abs(d) > tol), "note": note})
+    row("iris diameter", ph["iris"], mo["iris"], 2 * ERR["iris"], "skin.eyes.iris_size (the drawn iris; the eyeball stays GNM's)")
+    row("pupils apart", pd[0], pd[1], 0.5, 'block_in_step {"mm:pupils_apart": mm}')
+    row("inner canthus u", ph["inner"][0], mo["inner_lm"][0], 2 * ERR["inner"], "model = GNM's inner-corner landmark (the caruncle's tip)")
+    row("outer canthus u", ph["outer"][0], mo["outer"][0], 2 * ERR["outer"], "where the visible eyeball ends")
+    row("fissure length", ph["fissure"], float(np.hypot(mo["outer"][0] - mo["inner_lm"][0], mo["outer"][1] - mo["inner_lm"][1])), 2 * ERR["fissure"])
+    row("canthal tilt (deg)", ph["tilt"], float(np.degrees(np.arctan2(mo["outer"][1] - mo["inner_lm"][1], mo["outer"][0] - mo["inner_lm"][0]))),
+        2 * ERR["tilt"], "coarse: +-1.8 deg")
+    for j, x in enumerate(COLS):
+        if abs(x) <= 6:
+            row(f"upper margin v at u {x:+.0f}", ph["up"][j], mo["up"][j], 2 * ERR["up"])
+    for j, x in enumerate(COLS):
+        if abs(x) <= 6:
+            row(f"lower margin v at u {x:+.0f}", ph["lo"][j] - LO_BIAS, mo["lo"][j], 2 * ERR["lo"], "picture read - 0.35 (waterline)")
+    row("opening at the pupil", ph["mrd1"] + ph["mrd2"] + LO_BIAS, mo["mrd1"] + mo["mrd2"], 2 * ERR["open"])
+    row("iris hidden by the upper lid", ph["cover_up"], mo["cover_up"], 2 * ERR["mrd1"])
+    row("upper lid's peak u", ph["peak_u"], mo["peak_u"], 2 * ERR["peak_u"])
+    row("caruncle showing", ph["caruncle"], float(mo["sclera_in"] - mo["inner_lm"][0]), 2 * ERR["caruncle"],
+        "model: IF the pocket is painted (skin.eyes.caruncle); unpainted it reads as skin and the eye ends at the eyeball")
+    line = ph["crease_dark"] >= CREASE_MIN
+    for j, x in enumerate(COLS):
+        if abs(x) <= 6 and x % 6 == 0:
+            row(f"fold line over the margin at u {x:+.0f}", ph["crease"][j] if line else float("nan"), mo["crease"][j], 2 * ERR["crease"],
+                "picture's line vs the mesh's crease (+-1 mm; a render's fold is not read)")
+            row(f"lid platform shown at u {x:+.0f}", ph["crease"][j] if line else float("nan"), mo["platform"][j], 2 * ERR["crease"])
+    for j, x in enumerate(COLS):
+        if abs(x) <= 6 and x % 6 == 0:
+            row(f"brow hair's lower edge over the margin at u {x:+.0f}", ph["brow"][j], mo["brow"][j], 2 * ERR["brow"], "brow_read(match=True)")
+    off = {r["measure"] for r in rows if r["off"]}
+    moves = []
+    if any(k.startswith(("upper margin", "lower margin", "inner canthus", "outer canthus", "opening", "iris hidden", "fissure")) for k in off):
+        moves.append("lid_read(name, match=True): the eye step solves the identity (+ eye-region expression) for these margins and "
+                     "corners in mm")
+    if "iris diameter" in off:
+        moves.append(f"skin.eyes.iris_size {ph['iris'] / 1000:.4f} (the drawn iris; keep eye_radius: the lids are shaped on GNM's ball)")
+    if "pupils apart" in off:
+        moves.append(f'block_in_step {{"mm:pupils_apart": {pd[0] - pd[1]:+.1f}}}')
+    if "caruncle showing" in off or not ((spec.get("skin") or {}).get("eyes") or {}).get("caruncle"):
+        moves.append("skin.eyes.caruncle 1 (the inner corner's pocket painted wet red: unpainted, the eye reads ~2 mm short at the nose side)")
+    if any(k.startswith("brow") for k in off):
+        moves.append("brow_read(name, match=True)")
+    out = {"rows": rows, "photo": ph, "model": mo, "pd": pd, "moves": moves, "iris_px": px, "mm": mm, "eyes": eyes, "mesh": tru}
+    out["text"] = text(out)
+    return out
+
+
+def text(c: dict) -> str:
+    """compare()'s table."""
+    L = ["EYE RULER: the front picture (edges, through its fitted camera) vs the model's mesh; mm at the model, each eye's "
+         "frame from its iris centre (u toward the outer corner, v up), both eyes' mean. diff = model - picture; "
+         "* = more than the reader's error (2 x rms on dressed renders of known heads)",
+         f"  {'measure':46s} {'picture':>8s} {'model':>8s} {'diff':>7s} {'tol':>5s}"]
+    for r in c["rows"]:
+        f = lambda x: f"{x:8.2f}" if np.isfinite(x) else "       -"  # noqa: E731
+        L.append(f"{'*' if r['off'] else ' '} {r['measure']:46s} {f(r['photo'])} {f(r['model'])} {f(r['diff'])[1:]} {r['tol']:5.1f}"
+                 + (f"  ({r['note']})" if r["note"] and (r["off"] or "coarse" in r["note"] or "IF" in r["note"]) else ""))
+    if c["iris_px"] < 30:
+        L.append(f"  NOTE: the picture's iris is {c['iris_px']:.0f} px across ({c['mm']:.2f} mm / px): every read is +- a pixel or worse; "
+                 "use a closer picture of the eyes")
+    if c["photo"]["crease_dark"] < CREASE_MIN:
+        L.append(f"  the picture shows no fold line (darkness {c['photo']['crease_dark']:.2f}): hooded, or too soft to read")
+    L.append("  MOVES: " + ("; ".join(c["moves"]) if c["moves"] else "none: within the reader's error"))
+    return "\n".join(L)

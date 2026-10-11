@@ -48,6 +48,16 @@ SECTION_FR = (0.25, 0.5, 0.75)        # inner third, pupil, outer third (corner 
 SECTION_S = np.arange(0.5, 12.01, 0.5)  # mm of arclength from the lid margin (12: to 8 the lid matched but the fold's arc did not read)
 SOCKET = ("orbital_rim", "lower_orbit", "eye_depth")   # the socket's readings held (humanmacro, population sd, on the
 SIG_SOCKET = 0.15       # mesh WITH the expression): unheld, lt19's fold came with orbital_rim +1.1 / lower_orbit -0.9 sd
+# The RULER's evidence (eye_ruler.read on the front picture: mm at the model in each eye's frame, from the iris centre
+# found as a circle through the limbus). eyeruler, 2026-10-11: the detector's iris centre sits ~1 mm LOW on Tess's photo
+# and on our renders, its lid points are 1-1.5 mm off, and GNM's lm68 corners are not the visible opening's ends, so
+# "lids in iris radii at the pupil" matched an eye that was 1.3 mm too open at the top and 3 mm short.
+RULER_COLS = np.array([-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0])   # = eye_ruler.COLS
+SIG_MARGIN = 0.15       # mm: a lid margin at a column (the reader's error is 0.2-0.3 mm; +-9 mm columns count half)
+SIG_CORNER = 0.3        # mm: a canthus
+LO_BIAS = 0.35          # mm: the picture reader puts the lower margin this much higher than the mesh's (waterline)
+OUT_RING = 1.2          # mm: the margin ring's lateral end past the picture's outer canthus (the eyeball's visible end
+                        # reads 0.4 mm short under the lashes, and the ring tucks 0.8 mm behind the lids' meeting)
 HOLD = [i for i in range(68) if not (36 <= i < 48 or 17 <= i < 27)]
 BROWS = list(range(17, 27))
 
@@ -199,6 +209,30 @@ class Reader:
         else:
             out.update(show=np.nan, height=np.nan, depth=0.0, local=0.0, hsoft=np.nan, lsoft=0.0, drop=0.0, vis=np.nan)
         return out
+
+    def margins(self, ht, cols=RULER_COLS):
+        """The eye ruler's measures read straight off the mesh (the subject's left eye; the eye frame: u = mm toward the
+        outer corner, v = mm up, from the iris centre = the ball's forward pole; a level front view): the margin ring's
+        top / bottom at cols ("up", "lo"; NaN outside the ring), its lateral end ("ring_out": (u, v)), the anatomical
+        inner canthus = GNM's lm68 inner corner ("inner": (u, v)), the ring's medial end ("ring_in")."""
+        from .eye_ruler import _poly_cross
+        V = np.asarray(ht["verts"], float)
+        c = np.asarray(max(ht["eyes"], key=lambda q: q[0]), float)
+        fwd = np.asarray(ht["forward"], float)
+        pole = c + float(ht["eye_r"]) * fwd
+        R = (V[self.ring] - pole) * 1000
+        uv = np.c_[R[:, 0], R[:, 2]]
+        ang = np.arctan2(uv[:, 1] - uv[:, 1].mean(), uv[:, 0] - uv[:, 0].mean())
+        poly = uv[np.argsort(ang)]
+        up, lo = [], []
+        for x in cols:
+            ys = _poly_cross(poly, float(x))
+            up.append(max(ys) if len(ys) >= 2 else np.nan)
+            lo.append(min(ys) if len(ys) >= 2 else np.nan)
+        L = (np.asarray(ht["lm68"], float) - pole) * 1000
+        io, ii = int(np.argmax(uv[:, 0])), int(np.argmin(uv[:, 0]))
+        return {"up": np.array(up), "lo": np.array(lo), "ring_out": uv[io], "ring_in": uv[ii],
+                "inner": np.array([L[42, 0], L[42, 2]]), "outer_lm": np.array([L[45, 0], L[45, 2]])}
 
     def sections(self, ht, fractions=SECTION_FR):
         """The upper lid's sagittal sections at fractions of the corner-to-corner width (the subject's left eye, lm68
@@ -443,6 +477,31 @@ def photo_evidence(img, view: dict) -> dict:
             "hooded": hooded, "tps_cols": [kk * t for t in tcols], "columns": cols, "iris_k": kk}
 
 
+def ruler_evidence(name: str) -> dict:
+    """The eye ruler's read of the front picture, both eyes' mean, mm at the model (eye_ruler.read through the fitted
+    camera): {"up", "lo" (margins at RULER_COLS), "inner", "outer" (canthi (u, v)), "iris", "crease" (the fold line
+    over the margin at RULER_COLS), "crease_dark", "crease_cols" (at u -5 / 0 / +5: the eye step's three sections;
+    None when the line is fainter than DARK_LINE), "eyes" (per eye), "mm" (mm per picture px)}."""
+    from PIL import Image
+    from . import blockin as bi, eye_ruler, humanfit, likeness, store
+    rj = bi._refs(name)
+    vi = bi._front(rj)
+    v, cam = rj["views"][vi], rj["cameras"][vi]
+    img = Image.open(v["image"]).convert("RGB")
+    P = bi.detect_view(img, v)
+    if P is None:
+        raise ValueError("eye ruler: the detector found no face on the front picture")
+    st = humanfit.state(store.load(name)["base"])
+    mm = likeness._mm_per_px(cam, st["L"][27:48])
+    eyes = eye_ruler.read(img, P, mm)
+    m = eye_ruler.mean(eyes)
+    cr = np.asarray(m["crease"], float)
+    cc = [float(np.interp(x, RULER_COLS[np.isfinite(cr)], cr[np.isfinite(cr)])) for x in (-5.0, 0.0, 5.0)] if np.isfinite(cr).sum() >= 3 else None
+    m["crease_cols"] = cc if m["crease_dark"] >= 0.5 * DARK_LINE else None
+    m["eyes"], m["mm"] = eyes, mm
+    return m
+
+
 def crease_target(name: str, heights) -> np.ndarray:
     """A crease template's PROFILE carried to the picture's fold line: per section, the template's crease (its most
     recessed point 1.2-6 mm up) is moved to heights[k] (mm over the margin; NaN: the template's own) by stretching the
@@ -503,7 +562,7 @@ def _head(base, c, e, Ln, Rn):
 
 
 def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None = None,
-          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default") -> dict:
+          hold_socket: float | None = SIG_SOCKET, crease: str | None = "default", ne: int = NE) -> dict:
     """identity + eye expression for evidence ev (photo_evidence). base: the block-in's base (its lid pose cleared
     here). crease: when the picture shows a line, the fold's SHAPE to match (a crease_shape template name; "default" =
     CREASE; None = the old target: the line's height + d_line, the crease's least local depth in mm, default D_LINE);
@@ -536,7 +595,13 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
         k_iris = rd.read(ht0)["r_iris_mm"] / 5.85
         tc = [t if np.isfinite(t) else ev["tps"] for t in (ev.get("tps_cols") or [ev["tps"]] * 3)]
         heights = [t * k_iris for t in tc]
+        if ev.get("ruler") and ev["ruler"].get("crease_cols"):   # (the ruler's line is in mm at the model already)
+            heights = [float(t) for t in ev["ruler"]["crease_cols"]]
         shape = crease_target(crease, heights)
+    rv = ev.get("ruler")
+    if rv:
+        rv_up, rv_lo = np.asarray(rv["up"], float), np.asarray(rv["lo"], float) - LO_BIAS
+        rv_w = np.where(np.abs(RULER_COLS) > 7, 0.5, 1.0)
     ex_other = {k: v for k, v in ex0.items() if k not in set(Ln) | set(Rn)}
 
     def sock(c, e):
@@ -548,8 +613,18 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
     def resid(x):
         ht, _ = _head(b0, c0 + x[:170], e0 + x[170:], Ln, Rn)
         q = rd.read(ht)
-        r = [(q["up"] - ev["up"]) / sig_lid if np.isfinite(q["up"]) else 50.0,
-             (q["lo"] - ev["lo"]) / sig_lid if np.isfinite(q["lo"]) else 50.0]
+        if rv:
+            mg = rd.margins(ht)
+            q["margins"] = mg
+            r = []
+            for a, b in ((mg["up"], rv_up), (mg["lo"], rv_lo)):
+                d = (a - b) * rv_w / SIG_MARGIN
+                r += list(np.where(np.isfinite(b), np.where(np.isfinite(d), d, 10.0), 0.0))
+            r += list((mg["inner"] - np.asarray(rv["inner"], float)) * [1.0, 0.3] / SIG_CORNER)
+            r.append((mg["ring_out"][0] - (float(rv["outer"][0]) + OUT_RING)) / SIG_CORNER)
+        else:
+            r = [(q["up"] - ev["up"]) / sig_lid if np.isfinite(q["up"]) else 50.0,
+                 (q["lo"] - ev["lo"]) / sig_lid if np.isfinite(q["lo"]) else 50.0]
         if shape is not None:
             d = (rd.sections(ht) - shape) / SIG_SHAPE
             r += list(np.where(np.isfinite(d), d, 20.0).ravel())
@@ -567,9 +642,13 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
         r += list(((L[HOLD] - L0[HOLD]) * 1000 / SIG_HOLD).ravel())
         r += list(((L[BROWS] - L0[BROWS]) * 1000 / SIG_BROW).ravel())
         return np.array(r), q
-    n = 170 + NE
+    n = 170 + int(ne)                      # (ne = 0: identity only; the expression the base already has stays)
     x = np.zeros(n)
     lam = 0.01
+    _resid = resid
+
+    def resid(x):  # noqa: F811
+        return _resid(np.r_[x, np.zeros(170 + NE - len(x))])
     r, q0 = resid(x)
     log(f"eye step start: picture up {ev['up']:.2f} lo {ev['lo']:.2f} tps {ev.get('tps', np.nan):.2f} mm dark "
         f"{ev.get('dark', 0):.2f} | model up {q0['up']:.2f} lo {q0['lo']:.2f} show {q0['show']:.2f} mm crease local "
@@ -594,11 +673,12 @@ def solve(base: dict, ev: dict, iters: int = 6, log=print, d_line: float | None 
             if lam > 1e4:
                 break
         q = resid(x)[1]
-        log(f"  it {it}: cost {f:.2f} |dc| {np.linalg.norm(x[:170]):.2f} |e| {np.linalg.norm(e0 + x[170:]):.2f} | up "
+        log(f"  it {it}: cost {f:.2f} |dc| {np.linalg.norm(x[:170]):.2f} |e| {np.linalg.norm(e0 + np.r_[x[170:], np.zeros(170 + NE - len(x))]):.2f} | up "
             f"{q['up']:.2f} lo {q['lo']:.2f} platform {q['vis']:.2f} (hood {q['drop']:.2f}) crease {q['lsoft']:.2f} mm at {q['hsoft']:.2f}")
         if lam > 1e4:
             break
     q = resid(x)[1]
+    x = np.r_[x, np.zeros(170 + NE - len(x))]
     e = e0 + x[170:]
     s1 = sock(c0 + x[:170], e)
     log("  socket " + ", ".join(f"{k} {s0[k]:+.2f} -> {s1[k]:+.2f}" for k in SOCKET))

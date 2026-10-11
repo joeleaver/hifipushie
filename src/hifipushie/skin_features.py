@@ -281,7 +281,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
-            "iris_contrast", "gloss", "occlusion")
+            "iris_contrast", "gloss", "occlusion", "caruncle")
 
 
 def eye_base(spec: dict) -> tuple[str, dict] | None:
@@ -311,7 +311,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     "iris_contrast": the fibres' contrast (1), "gloss": 0..1 (1: the tear film, a clear coat over a matte iris and
     sclera: the sharp catchlight on the cornea), "occlusion": 0..1 (1: the lids' shadow on the ball, all round the
     lid contact and deepest under the upper lid; MetaHuman's eye-occlusion shell as paint), "tear": 0..1 (the
-    meniscus: the bright wet line where the lower lid meets the ball), "waterline": 0..1}."""
+    meniscus: the bright wet line where the lower lid meets the ball), "waterline": 0..1, "caruncle": 0..1.2 (unset:
+    a soft pink spot; a number: the inner corner's pocket filled wet dark red from GNM's inner-corner landmark to the
+    eyeball, the way a photographed canthus reads: the eye then reaches its anatomical inner corner)}."""
     e = spec.get("skin", {}).get("eyes")
     if e is False or not ctx["eyes"] or "eye_front.L" not in J:
         return
@@ -365,9 +367,26 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                                          "mask": [{"near": ["base"], "within": round(0.015 * r, 5), "soft": round(0.035 * r, 5)},
                                                   {"axis": {"dir": [0, 0, -1], "at": f"eye{sd}", "from": round(0.05 * r, 5), "to": round(0.2 * r, 5)}}]}
     # on the skin: the caruncle (the pink, wet corner by the nose) and the lower lid's waterline
-    pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
-    layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
-          mask=[{"spot": {"at": pts, "radius": round(0.036 * io, 5), "soft": 0.6}}])
+    car = e.get("caruncle")
+    if car is None:   # (the old soft pink spot)
+        pts = [{"at": f"lm_eye_inner{sd}", "offset": [round(sx * 0.012 * io, 5), round(-0.02 * io, 5), 0.0]} for sd, sx in ((".L", 1), (".R", -1))]
+        layer("caruncle", pre=True, color=T(blood=5.0, melanin=0.7), opacity=0.7, roughness=0.18,
+              mask=[{"spot": {"at": pts, "radius": round(0.036 * io, 5), "soft": 0.6}}])
+    elif float(car) > 0:
+        # (eyeruler) GNM's lids end in a pocket between the opening's medial end and the lm68 inner corner (1.9 mm): the
+        # caruncle and the corner's wet red. Painted as skin, the eye read ~2 mm short at the inner corner against a
+        # photo (a detector puts the canthus at the pocket's tip, as GNM's landmark does). So the pocket is filled with
+        # a darker wet red, from the landmark out to the eyeball: a capsule along the corner -> eye line.
+        a = float(car)
+        segs = []
+        for sd in (".L", ".R"):
+            i_ = np.asarray(J[f"lm_eye_inner{sd}"], float)
+            sx = 1.0 if sd == ".L" else -1.0   # (the pocket runs sideways from the landmark, a little back into the head)
+            segs.append([[round(float(x), 5) for x in i_ + np.array([sx * t, 0.25 * t, 0.0])] for t in (0.0003, 0.0013, 0.0023)])
+        from .skin import _sp
+        m = [dict(_sp(sg, [0.0007, 0.0011, 0.0010], soft=0.35, line=True), **({"blend": "max"} if k else {})) for k, sg in enumerate(segs)]
+        layer("caruncle", pre=True, color=T(blood=6.0, melanin=0.8), opacity=round(min(0.85 * a, 1.0), 3), roughness=0.15, mask=m)
+        layer("caruncle_wet", pre=True, color=[0.7, 0.55, 0.52], mix="multiply", opacity=round(min(0.75 * a, 1.0), 3), mask=m)
     if float(e.get("waterline", 1.0)) > 0:   # 0..1 (1): the pink wet rim; on a lid whose rim faces the camera it reads as lid
         layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=round(0.5 * float(e.get("waterline", 1.0)), 3),
               roughness=0.15, mask=_zones(["lash_lower"], 0.7))
