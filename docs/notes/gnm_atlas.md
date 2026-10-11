@@ -2090,12 +2090,11 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 
 ## gnmcrease (2026-10-10, "gnmcrease" agent; Joe: "we've seen the eyelid crease before together, on a grid of random GNM
 ## faces". Scratch /mnt/data/hifipushie/gnmcrease (run.sh / q.sh; scripts copied to spikes/gnmcrease); sheets human_renders/gk_*)
-STATE / NEXT (gnmcrease 2, 2026-10-10, handed over): CORRECTION in "### Round 2" (#376 / #540 = the right fold; gd_T30 =
-right darkness, wrong fold SHAPE; makeup supplies missing darkness, no geometry fixes). SHIPPED on the branch: the eye step
-matches the crease SHAPE (blockin_eyes CREASE = "s376" / crease_shape / Reader.sections 0.5-12 mm, blockin_crease.npz;
-CREASE_SLIT_DARK + the out-of-reach note retired). Final sheet human_renders/gk_06_crease_shape_final.png. OPEN: Joe's read
-of gk_06; the shape term opens the upper lid (Tess 0.64 -> 0.73-0.77 iris r vs the picture's 0.67): weigh the lid term
-up or SIG_SHAPE to 0.5 if that costs likeness; Garrett (hooded picture) is unaffected by design.
+STATE / NEXT (gnmcrease 3, 2026-10-10): coordinator review of gk_06: the templates copied #376's crease HEIGHT (~2.5 mm)
+but Tess's photo line is ~5 mm with a tall platform; Joe's "#376 / #540 read right" was about how the fold is MADE. Split:
+profile from the template, height + path from the picture (blockin_eyes.crease_target, photo_evidence "tps_cols"), lid
+margins held at SIG_LID_SHAPE 0.02. RUNNING: evrun.py gd_T12 s376 / fold -> out/ev5_T12_*.npz; NEXT: dress, sheet gk_07
+(photo | #376 | new, same frame + fold-line-height plot with the photo's line), notes, commit.
 
 
 Question: faces5's random faces (f5_03) showed lid folds, every targeted solve on Tess made only a soft ~2.5 mm valley.
@@ -2229,3 +2228,15 @@ depth, same ceiling.
 - Scripts (spikes/gnmcrease; scratch /mnt/data/hifipushie/gnmcrease): col.py (column readers, dump), sep.py, calib.py,
   secplot.py, shapesolve.py (SMAX / CURV / SIG), template.py (SMAX=12), evrun.py (the shipped solve, scratch), dress.py
   (ss:<npz>@model, MAKEUP=json), sheet5.py / sheet6.py.
+
+### Round 3: the fold's make from the template, its height from the picture (coordinator review of gk_06)
+- gk_06's results sat at #376's height (crease ~2.5 mm over the margin, platform ~2 mm) where Tess's photo line is ~5 mm
+  (read_lid: 5.15 median; per column inner / pupil / outer 5.13 / 5.05 / 5.35 mm at an 11.7 mm iris) over a tall
+  platform. Joe's verdict was about the fold's construction (a full fold over a short platform that doesn't recede,
+  parallel to the lashes), not about Tess's crease being low.
+- blockin_eyes.crease_target(name, heights): per section, the template's crease (its most recessed point 1.2-6 mm up) is
+  moved to the picture's height by stretching the platform under it vertically (it keeps its recession: no hollow) and
+  lifting the fold above it unchanged; resampled at SECTION_S. photo_evidence now returns "tps_cols" (the line per column,
+  both eyes' median of the columns that read dark >= DARK_LINE); solve converts them by r_iris / 5.85 as before.
+- The lid margins are held at SIG_LID_SHAPE 0.02 iris r when the shape term is on (was 0.05: Tess's upper lid went to
+  0.73-0.77 vs the picture's 0.67).
