@@ -39,6 +39,15 @@ STEP_MM = 1.5            # outline sample spacing
 SIG = {"outline": 0.3, "iris": 0.12, "lips": 0.25, "brows": 0.2}     # mm: each observation's noise (validated)
 REACH_MM = 14.0          # an outline further than this from the model's is not matched
 TAU = 1.0                # prior sd of each identity component of (target - model)
+# The reader's own error per measure with the camera KNOWN (mm; sd of reader - mesh truth, 60 clay pairs incl. 20 from
+# GNM's template: spikes/faceruler/validate.py "hair" variant) and the factor the posterior sd is short by when the
+# camera was fitted (observed / posterior, median over measures). The table's +- is hypot(ERR_POST x posterior, ERR).
+ERR = {"pupils_apart": 0.05, "eyes_forward": 0.19, "eyes_height": 0.3, "brows_over_eyes": 0.23, "forehead_forward": 0.6,
+       "tip_forward": 0.18, "subnasale_forward": 0.15, "upper_lip_forward": 0.16, "lower_lip_forward": 0.12,
+       "chin_forward": 0.49, "philtrum_length": 0.23, "chin_length": 0.57, "nose_length": 0.55, "cheekbone_width": 1.2,
+       "jaw_width": 1.7, "chin_width": 1.1, "mouth_width": 0.29, "nose_width": 0.87, "skull_width": 1.76,
+       "skull_top": 1.15, "skull_back": 0.87, "neck_width": 1.7, "under_chin": 0.57}
+ERR_POST = 1.5
 SUPER = 1                # mask supersampling
 _C: dict = {}
 
@@ -189,6 +198,32 @@ def foreground(img, bg=None, thr: float = 22.0):
     return ndi.binary_fill_holes(m)
 
 
+def photo_masks(img, cam, head, thr: float = 30.0, origin=(0.0, 0.0), scale: float = 1.0):
+    """A photo in front of a PLAIN background: (the figure's mask, where it is SKIN). Skin = as warm ((R - B) / sum) and
+    at least 0.6 x as bright as the face's own skin, sampled at the model's nose bridge and cheeks through the fitted
+    camera. Only an outline with skin just inside it is read: hair, cloth and loose strands are not the head's shape."""
+    from scipy import ndimage as ndi
+    a = np.asarray(img.convert("RGB"), float)
+    fg = foreground(img, thr=thr)
+    _, PL = _cam_points(cam, np.asarray(head["L"], float)[:68])
+    PL = (PL - np.asarray(origin, float)) * scale
+    pts = np.r_[PL[27:31], 0.5 * (PL[1:4] + PL[31][None]), 0.5 * (PL[13:16] + PL[35][None])]
+    H, W = a.shape[:2]
+    r = max(int(0.004 * cam["f"] / cam["t"][2]), 2)
+    smp = []
+    for x, y in pts:
+        if r <= x < W - r and r <= y < H - r:
+            smp.append(a[int(y) - r:int(y) + r, int(x) - r:int(x) + r].reshape(-1, 3))
+    if not smp:
+        return fg, np.zeros_like(fg)
+    smp = np.concatenate(smp)
+    warm = (a[..., 0] - a[..., 2]) / np.maximum(a.sum(-1), 1.0)
+    w0 = float(np.median((smp[:, 0] - smp[:, 2]) / np.maximum(smp.sum(1), 1.0)))
+    l0 = float(np.median(smp.mean(1)))
+    skin = fg & (warm > 0.45 * w0) & (warm < 2.2 * w0) & (a.mean(-1) > 0.6 * l0)
+    return fg, ndi.binary_opening(skin, iterations=2)
+
+
 def _silhouette_vertices(head, cam):
     """Vertices on the model's silhouette through cam (an edge between a face turned to the camera and one turned
     away), boundary vertices left out."""
@@ -257,8 +292,11 @@ def _outline_obs(head, view, mask_model, mask_pic, trust=None, curve=None):
         if not (edge < qp[0] < W - edge and edge < qp[1] < H - edge):
             continue
         if trust is not None:
-            qi = np.clip(np.round(qp - 2.0 * N[k]).astype(int), 0, [W - 1, H - 1])
-            if not trust[qi[1], qi[0]]:
+            ok = True
+            for back in (3.0, 6.0):       # skin just inside the picture's outline, twice
+                qi = np.clip(np.round(qp - back * N[k]).astype(int), 0, [W - 1, H - 1])
+                ok &= bool(trust[qi[1], qi[0]])
+            if not ok:
                 continue
         v = int(sv[iv[k]])
         Jp, mm1 = _proj_jac(cam, head, v)
@@ -389,13 +427,11 @@ def _colour_obs(head, view, im_model, im_pic):
         for lm in (19, 24):
             x = int(round(PL[lm, 0]))
             w = max(int(2.0 * s * cam["f"] / (1000.0 * cam["t"][2])), 3)     # +-2 mm of columns
-            ya = np.where(ba[:, x - w:x + w + 1].any(1))[0]
-            yb = np.where(bb[:, x - w:x + w + 1].any(1))[0]
-            ya = ya[np.abs(ya - PL[lm, 1]) < 60 * s]
-            yb = yb[np.abs(yb - PL[lm, 1]) < 60 * s]
-            if len(ya) and len(yb):
+            mmi = s * cam["f"] / (1000.0 * cam["t"][2])                       # image px per mm
+            ta, tb = _brow_top(ba, x, w, PL[lm, 1], mmi), _brow_top(bb, x, w, PL[lm, 1], mmi)
+            if ta is not None and tb is not None:
                 wi = np.where(head["WL"][lm] > 0)[0]
-                add("brows", f"brow_{lm}", [x, float(ya.min())], [x, float(yb.min())], wi, head["WL"][lm][wi], axes=(1,))
+                add("brows", f"brow_{lm}", [x, ta], [x, tb], wi, head["WL"][lm][wi], axes=(1,))
     if kind == "profile":
         # where the lip colour meets the outline: the reds' top and bottom heights on the profile
         for nm, lm in (("top", 51), ("bottom", 57)):
@@ -404,6 +440,18 @@ def _colour_obs(head, view, im_model, im_pic):
                 wi = np.where(head["WL"][lm] > 0)[0]
                 add("lips", nm, [0.0, ra], [0.0, rb], wi, head["WL"][lm][wi], axes=(1,))
     return out
+
+
+def _brow_top(m, x, w, y0, mmi):
+    """The top of the brow stroke in columns x +- w: the LOWEST dark run within 22 mm above / 8 mm below the model's
+    brow (the hair cap is dark too and comes down to within a centimetre of a high brow: the topmost run was the cap,
+    s7_00: brows read +10.6 mm for -5.4)."""
+    rows = np.where(m[:, max(x - w, 0):x + w + 1].any(1))[0]
+    rows = rows[(rows > y0 - 22 * mmi) & (rows < y0 + 8 * mmi)]
+    if not len(rows):
+        return None
+    runs = np.split(rows, np.where(np.diff(rows) > 2)[0] + 1)
+    return float(runs[-1][0])
 
 
 def _profile_lip(m, PL, which):
@@ -492,7 +540,7 @@ def _cam_columns(obs, views, cam_sd):
 
 
 def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=None, views=None, huber: float = 2.5,
-          weights: dict | None = None, done=None) -> dict:
+          weights: dict | None = None, done=None, cam_done=None) -> dict:
     """The gaps of the 23 measures from the observations. Default: the most likely identity change dc (prior N(0,
     tau^2) per comp) and the measures read off it, with posterior sd. span=True: least squares over the 23 `mm:` moves
     alone. cam_sd = (shift mm, shift mm, scale %, roll deg): the camera was fitted, so much of each is unknown."""
@@ -512,7 +560,11 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
     if cam_sd is not None:
         C, cp = _cam_columns(obs, views, cam_sd)
         Jx, pri, nc = np.c_[Jx, C], np.r_[pri, cp], C.shape[1]
+        if cam_done is not None:       # the cameras were already moved this much: the prior is on the whole of it
+            cam_m0 = -np.asarray(cam_done, float).ravel()
     m0 = np.zeros(len(pri))
+    if nc and cam_done is not None:
+        m0[-nc:] = cam_m0
     if done is not None and not span:      # a later round: the prior is on the WHOLE change (done + this step)
         m0[:K] = -np.asarray(done, float)
     w = 1.0 / sig ** 2
@@ -532,12 +584,13 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
         if done is not None:          # the gap of the WHOLE change (earlier rounds + this one)
             g = Jm @ (np.asarray(done, float) + dc)
     err = np.sqrt(np.maximum(np.diag(cov), 0))
+    err = np.hypot(ERR_POST * err, [ERR[n] for n in names])
     sd = gnm_mm.sd()
     rows = []
     for i, n in enumerate(names):
         prior = np.sqrt(2.0) * tau * sd[n] if not span else np.inf
         rows.append({"measure": n, "current": head["measures"][n], "gap": float(g[i]), "sd": float(g[i] / sd[n]),
-                     "err": float(err[i]), "read": float(1 - (err[i] / (tau * sd[n])) ** 2) if not span else 1.0,
+                     "err": float(err[i]), "read": float(max(0.0, 1 - (err[i] / (tau * sd[n])) ** 2)) if not span else 1.0,
                      "view": gnm_mm.SEE[n][0], "see": gnm_mm.SEE[n][1]})
     rows.sort(key=lambda r: -abs(r["sd"]))
     return {"dc": dc, "gaps": rows, "n": len(obs), "rms": float(np.sqrt(np.mean(r ** 2))),
@@ -554,17 +607,31 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
     make = head.get("rebuild") or (lambda c: gnm_head(c))
     done = np.zeros(head["B"].shape[0])
     cur = head
+    views = [dict(v) for v in views]
+    free = kw.get("cam_sd") is not None
+    cam_done = np.zeros((len(views), 4))
     for k in range(rounds):
+        for v in views:              # per-view extra observations follow the moved head and camera
+            if v.get("extra"):
+                v["extra_obs"] = v["extra"](cur, v)
         obs = observe(cur, views)
         if not obs:
             raise ValueError("face_ruler: nothing could be read (no outline, no feature) in these pictures")
-        out = solve(obs, cur, views=views, done=done if k else None, **kw)
+        out = solve(obs, cur, views=views, done=done if k else None, cam_done=cam_done if (free and k) else None, **kw)
         done = done + out["dc"]
+        if free:                     # the fitted cameras are refined too: the next round reads through the moved ones
+            th = np.asarray(out["cam"], float).reshape(len(views), 4)
+            cam_done += th
+            for v, (dx, dy, sc, roll) in zip(views, th):
+                c = dict(v["cam"])
+                c["t"] = [c["t"][0] + dx * 1e-3, c["t"][1] + dy * 1e-3, c["t"][2]]
+                c["f"] = c["f"] * (1 + 0.01 * sc)
+                r = list(c.get("r", [0.0, 0.0, 0.0]))
+                c["r"] = [r[0], r[1], r[2] + float(np.radians(roll))]
+                v["cam"] = c
         if k + 1 < rounds:
             cur = make(head["c"] + done)
-            for v in views:          # per-view extra observations follow the moved head
-                if v.get("extra"):
-                    v["extra_obs"] = v["extra"](cur)
+    out["cam_done"], out["views"] = cam_done.tolist(), views
     if rounds > 1 and head.get("kind") == "gnm":
         fin = gnm_head(head["c"] + done)
         sd = gnm_mm.sd()
@@ -586,7 +653,7 @@ def text(rows: list, top: int = 0, floor: float = 0.0) -> str:
             continue
         mv = '"mm:%s": %+.1f' % (r["measure"], r["gap"])
         flag = "" if abs(r["gap"]) > 2 * r["err"] else "  (inside the reader's error)"
-        if r.get("read", 1.0) < 0.5:
+        if r.get("read", 1.0) < 0.75:      # the error is over half the population's sd
             flag = "  NOT READ (these pictures do not show it: the number is the population's guess)"
         out.append(f"{r['measure']:18s} {r['gap']:+6.1f} mm ({r['sd']:+.1f} sd) +-{r['err']:.1f}  {mv:28s} "
                    f"[{r['view']}] {r['see']}{flag}")
@@ -699,21 +766,14 @@ def reference_views(name: str, hair: bool = True) -> tuple:
         view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1]}
         if v.get("outline"):
             view["outline"] = np.asarray(v["outline"], float)
-        elif k == "profile":
-            try:
-                view["outline"] = bi.profile_contour(v)
-            except Exception as e:  # noqa: BLE001
-                notes.append(f"{view['name']}: no profile outline ({e})")
         else:
-            notes.append(f"{view['name']} ({k}): no outline given (add \"outline\" points along the skin's edge to the "
-                         "view to have it read)")
+            view["mask"], view["trust"] = photo_masks(img, cam, head)
         if k == "front":
             try:
                 P = bi.detect_view(img, v)
                 mm = likeness._mm_per_px(cam, humanfit.state(spec["base"])["L"][27:48])
                 eyes = er.read(img, P, mm)
-                view["extra"] = lambda h, view=view, eyes=eyes: _iris_obs(h, view, eyes)
-                view["extra_obs"] = view["extra"](head)
+                view["extra"] = lambda h, vw, eyes=eyes: _iris_obs(h, vw, eyes)
             except Exception as e:  # noqa: BLE001
                 notes.append(f"{view['name']}: the irises were not read ({e})")
         views.append(view)
@@ -726,14 +786,43 @@ def compare(name: str, rounds: int = 2, cam_sd=CAM_SD, hair: bool = True) -> dic
     head, views, notes = reference_views(name, hair)
     res = read(head, views, rounds=rounds, cam_sd=cam_sd)
     for r in res["gaps"]:
-        r["err"] = float(r["err"] * ERR_SCALE)
         r["picture"] = r["current"] + r["gap"]
     n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris")}
     per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
     head_txt = (f"face ruler: {name} against its {len(views)} pictures ({', '.join(f'{k}: {m} reads' for k, m in per.items())}); "
                 "gap = picture - model in GNM's mm; cameras were fitted, so a shift / scale / roll of each picture is left free")
+    views = res["views"]
     return {"rows": res["gaps"], "text": head_txt + "\n" + text(res["gaps"]) + ("\n" + "\n".join(notes) if notes else ""),
             "notes": notes, "n": n, "dc": res["dc"], "views": views, "head": head, "obs": res["obs"]}
 
 
-ERR_SCALE = 2.0      # the posterior sd underrates the error (validation: observed sd / posterior sd, median)
+
+
+def overlay(res: dict, height: int = 640):
+    """compare()'s pictures side by side: the model's outline (green), the matched outline reads (yellow: from the
+    model's outline to the picture's), the iris reads (magenta = picture, cyan = model)."""
+    from PIL import Image, ImageDraw
+    tiles = []
+    for v in res["views"]:
+        im = v["img"].copy()
+        d = ImageDraw.Draw(im)
+        _, ps = clay(res["head"], v["cam"], passes=True)
+        cm = _curve(ps["part"] >= 0)
+        if cm is not None:
+            d.line([tuple(p) for p in cm], fill=(0, 220, 0), width=2)
+        for ob in res["obs"]:
+            if ob["view"] != v["kind"]:
+                continue
+            if ob["type"] == "outline":
+                d.line([tuple(ob["p"]), tuple(ob["q"])], fill=(255, 235, 0), width=2)
+            else:
+                for q, col in ((ob["q"], (255, 0, 255)), (ob["p"], (0, 255, 255))):
+                    d.ellipse([q[0] - 6, q[1] - 6, q[0] + 6, q[1] + 6], outline=col, width=2)
+        k = height / im.size[1]
+        tiles.append(im.resize((int(im.size[0] * k), height), Image.LANCZOS))
+    W = Image.new("RGB", (sum(t.size[0] for t in tiles), height), "white")
+    x = 0
+    for t in tiles:
+        W.paste(t, (x, 0))
+        x += t.size[0]
+    return W

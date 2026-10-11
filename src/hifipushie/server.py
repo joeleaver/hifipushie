@@ -137,7 +137,7 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "eye_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
+                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
                         "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
@@ -1964,6 +1964,23 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
     im.save(path)
     return [_png(im), c["text"] + f"\noverlay (picture; green = its margins, red = its canthi, blue = the model's ring / margins / "
                                   f"inner-corner landmark laid over by iris centre): {path}"]
+
+
+@mcp.tool(structured_output=False)
+def face_ruler(name: str, save: str | None = None):
+    """THE FACE RULER: the block-in model against its reference pictures in MILLIMETRES: gnm_mm's 23 measures, picture -
+    model, largest first, each with the reader's error and the `mm:` move that closes it (block_in_step). Read from the
+    pictures' skin OUTLINES and iris centres through the fitted cameras, not by eye (sizes read by eye are 30-50 % off)
+    and not from detector landmarks. NOT READ = a measure these pictures do not show. Start a block-in from this table.
+    Returns the pictures with the model's outline and the reads drawn (save: the path) and the table. Details:
+    guide(topic="face_ruler")."""
+    from . import face_ruler as fr
+    c = fr.compare(name)
+    path = save or str(store.HOME / "human_renders" / f"face_ruler_{name}.png")
+    im = fr.overlay(c)
+    im.save(path)
+    return [_png(im), c["text"] + f"\noverlay (green = the model's outline through each fitted camera, yellow = where "
+                                  f"the picture's skin outline was read against it, magenta / cyan = iris centres picture / model): {path}"]
 
 
 @mcp.tool(structured_output=False)

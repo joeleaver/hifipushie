@@ -45,7 +45,7 @@ for i in range(n):
     for v in VAR:
         views = [{"img": (pics if v in ("exact", "hair") else pics_p)[k], "cam": cams[k], "kind": k, "style": "clay",
                   "hair": v != "exact", "colour": v != "outline"} for k in KINDS]
-        res = fr.read(A, views, cam_sd=None if v in ("exact", "hair") else CAM_SD)
+        res = fr.read(A, views, cam_sd=None if v in ("exact", "hair") else CAM_SD, rounds=3 if v in ("exact", "hair") else 4)
         row[v] = {r["measure"]: [r["gap"], r["err"]] for r in res["gaps"]}
         row[v + "_dc"] = float(np.linalg.norm(res["dc"] - (cB - cA)))
     rows.append(row)
