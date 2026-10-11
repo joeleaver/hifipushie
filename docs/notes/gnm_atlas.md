@@ -2244,7 +2244,8 @@ at another age (Commons categories) for a longitudinal check; (4) run blockin_ag
 
 STATE / NEXT: manual v2 shipped (src/hifipushie/gnm_driving_guide.md = guide topic gnm_driving; gnm_manual.suggest;
 gnm_controls(phrase=); block_in_step's reply lists the manual's entries for `seen`; tests/test_gnm_manual.py).
-Set s3 (seed 303) running: no manual (s3_*) vs v2 (m3_*), 3 drivers each. Next: score s3 / m3, final sheets, report.
+s2+s3 pooled: no manual 6/28, manual 13/28. Manual v3 (+ mm: moves, gnm_mm.py) shipped; set s4 (seed 404) running both
+arms (3 drivers each). Next: score s4 / m4, final sheets, report to main.
 
 Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
 A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
