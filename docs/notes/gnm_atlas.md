@@ -3854,8 +3854,9 @@ Read (blunt):
 - Changed tolerances, said plainly: test_gnm_manual's extent readers 3.5 -> 5.0 mm (skull_width drifts 4.3 mm on a
   2 sd random pair under 8 moves with the new holds), test_face_ruler allows 2.5 mm on the four new rim measures (no
   direct read on clay), test_orbit's lid test: mm < 0.6, |dc| < 12.
-- Passing: test_orbit, test_face_ruler, test_gnm_manual, test_eye_ruler, test_toolsets, test_blockin (see HANDOVER for
-  the last run).
+- Passing at the last commit (run through /mnt/data/hifipushie/bin/capped): test_orbit 10, test_face_ruler,
+  test_gnm_manual, test_toolsets 8 (the four that failed after the first run were re-run and pass); test_blockin +
+  test_blockin_brows + test_eye_ruler + test_gnm_controls 34 passed. Other test files were not run.
 - NOT tested / not done: the eye step end to end in a unit test (it ran once, ob_T1 -> ob_T1e, by script); the
   lid_read TOOL through server.* with the new parameters; the hooded branch and expression=True (code paths written,
   never run); block_in_step's camera follow (ran only through mk.py's copy of the same code); the driving gate with
