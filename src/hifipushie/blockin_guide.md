@@ -32,7 +32,16 @@ eye catches what the points miss; the target table catches what your eye misses.
    convexity, the muzzle (how far mouth and teeth stand forward), the jaw line and its angle, chin mass, nose mass and
    angle, face length vs width, the cheek planes (front vs side, where they turn), the bridge, how deep the eyes sit.
    Check the sex and age read (bald clay is a weak sex judge; the hair cap helps).
-4. **One small step** (0.3-0.7 sd): `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
+   **Then look the phrase up in the DRIVING MANUAL** (guide topic `gnm_driving`, or `gnm_controls(phrase="...")`):
+   what you see -> the GNM control, its sign, mm per unit, what to hold and what it drags (tested: drivers passed
+   8 / 42 synthetic pairs without it, 19 / 42 with it). E.g. the muzzle forward in profile = `pc:upper_lip_region0`,
+   not lip_projection; pupils further apart = `mm:pupils_apart`, not eye_spacing; the whole nose further out =
+   `pc:nose_region0`; a halo all round = `head_size` at 1-1.5 sd.
+   **If the difference is something you can MEASURE** (a width, a height, how far a point stands forward in profile:
+   the 23 measures of `gnm_controls(query="mm")`), measure it in mm on the sheet and use the `mm:` move: closing the
+   8 largest of those gaps (in population sd) passed 30 / 42 pairs, more than the best 10 phrase moves (27 / 42).
+4. **One small step** (0.3-0.7 sd; a big mass difference 1-2 sd, see the manual's step sizes):
+   `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
    a NEW model (default: the next number), so every round stays comparable; `seen` and `why` go in the log.
    - FREE `"chin_height": 0.5`: the population's conditional mean per +1 sd: the face stays whole. Try first for
      masses and proportions.
@@ -69,6 +78,13 @@ eye catches what the points miss; the target table catches what your eye misses.
      `gnm_controls(zones=True)`. Garrett's narrow bridge: `"sculpt:bridge_walls|hold=dorsum": -1.0` = walls 0.746 ->
      0.590 at |dc| 3.5 (the designed local nose_dorsum_width -0.8 gave 0.670); -2.0 reaches his concept's 0.504. A
      sculpt of 1 mm usually costs |dc| 2.5-4: big next to a macro step, but it moves a real face's |c| (~13), not away.
+   - MILLIMETRES: `"mm:<measure>": mm` moves one measure you can see (pupils_apart, eyes_forward, eyes_height,
+     brows_over_eyes, forehead_forward, tip_forward, subnasale_forward, upper / lower_lip_forward, chin_forward,
+     philtrum_length, chin_length, nose_length, the widths, skull_top / back, under_chin) by that many mm with every
+     other measure held in mm (gnm_mm; |dc| 0.3-1.2 per mm). Use it FIRST for anything you can measure (manual
+     section 0a): take the largest gaps in population sd first; several mm: moves in one step add up exactly. The
+     forward measures are a chain (subnasale -> upper lip -> lower lip -> chin): a link carries what is below it. The
+     eyes set further apart is `mm:pupils_apart` (eye_spacing moves only the inner corners; head_size! scales the head).
    - RAW CONTROLS: `"gnm:<control>": amount`: any identity-space control of the atlas (`head_042`, `z:05` a sampler
      latent, `label:sex`, `pc:nose_region3`): see `gnm_controls`.
 5. **Keep it only if the whole face reads closer AND no target went out.** The reply has the read (the moved macro,
@@ -214,7 +230,14 @@ What it taught (use it when choosing a step):
 ## Tool reference
 
 ### `gnm_controls`
-gnm_controls(query="", control="", families=None, top=12, sort="score", per_family=0, sign=0, zones=False): the atlas.
+gnm_controls(query="", control="", families=None, top=12, sort="score", per_family=0, sign=0, zones=False, phrase="", ruler=""): the atlas.
+- query="mm": the 23 millimetre measures (`mm:<measure>` moves): what + looks like, the view to read it in, its
+  population sd. ruler="modelA,modelB": the RULER between two models' GNM identities (B - A in mm and sd, largest
+  first, each row with the `mm:` move that closes it): e.g. an earlier round, or a head you liked, as the target.
+- phrase: a DIFFERENCE you see, in an artist's words ("the muzzle stands forward in profile", "pupils further apart",
+  "double chin", "eyes and brows sit lower over the nose") -> the driving manual's best entries (guide topic
+  gnm_driving: the control, its sign, mm per unit, what to hold, what it drags, the phrases it is confused with).
+  Start here when you have named a difference; block_in_step's reply also lists them for its `seen` text.
 - query: a feature in words ("alar crease", "jowl", "lip border", "bridge walls", "lid crease", "tear trough") or a
   zone name -> the controls that move it, ranked by sort: score (mm per unit of prior cost x specificity, capped at 4:
   the cheapest, most local movers; default), efficiency, local (mm per unit), specific, perc (face-ID), relief (the

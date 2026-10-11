@@ -115,6 +115,22 @@ def identity(spec: dict) -> np.ndarray:
     return v
 
 
+def ruler(a, b) -> list[dict]:
+    """The millimetre RULER between two GNM identities (gnm_mm.gaps): a = the head being driven, b = the head it should
+    become; each a model name, a spec or a (170,) identity. b - a for the 23 measures, largest (in population sd)
+    first; each row's gap is the amount of the `mm:<measure>` move that closes it. GNM's own head (the identity comps
+    alone: a model's gnm_base share / age ops are not in it)."""
+    from . import gnm_mm
+
+    def cof(x):
+        if isinstance(x, str):
+            x = store.load(x)
+        return identity(x) if isinstance(x, dict) else np.asarray(x, float)
+    sp = gnm_mm._space()
+    V = [sp["T"] + np.tensordot(cof(x), sp["IB"], 1) for x in (a, b)]
+    return gnm_mm.gaps(V[0], V[1])
+
+
 def set_identity(spec: dict, c) -> None:
     spec["base"]["head"]["identity"] = {f"head_{i:03d}": round(float(x), 5) for i, x in enumerate(c)}
 
@@ -129,7 +145,10 @@ def vocabulary() -> str:
             + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7"
             + "; SCULPT a zone the GNM way (mm, its mean normal; macros held, locality): sculpt:<zone>, relief:<zone> "
             "(against its surround: - deepens a groove), options |hold=<zone>+..|free=<macro>+..|loc=<w>; zones: "
-            "gnm_controls(zones=True); any atlas identity control raw: gnm:<control> (head_042, z:05, label:sex ...)")
+            "gnm_controls(zones=True); any atlas identity control raw: gnm:<control> (head_042, z:05, label:sex ...)"
+            "; a MEASURE moved in mm, every other measure held in mm: mm:<measure> (pupils_apart, eyes_forward, "
+            "chin_forward, forehead_forward, tip_forward, philtrum_length ...: gnm_mm.NAMES); what to use for a "
+            "difference you see: guide topic gnm_driving / gnm_controls(phrase=...)")
 
 
 def _size_row() -> np.ndarray:
@@ -209,6 +228,9 @@ def direction(name: str) -> np.ndarray:
     if name.startswith(("sculpt:", "relief:")):   # (gnmcontrols) a zone moved the GNM way: per +1 mm, macros held
         from . import gnm_controls as gcm
         return gcm.sculpt(**gcm.parse_sculpt(name))["dc"]
+    if name.startswith("mm:"):    # (gnmdrive) a measure you can see moved 1 mm, every other measure held in mm
+        from . import gnm_mm
+        return gnm_mm.direction(name)
     if name.startswith("gnm:"):   # (gnmcontrols) any identity-space control of the atlas, raw (its own unit)
         from . import gnm_controls as gcm
         d = gcm.identity_direction(name[4:])
@@ -630,8 +652,12 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         ft0, ft1 = feature_table(src, feature), feature_table(out, feature)
         entry["feature_passes"] = [passes(ft0)[feature], passes(ft1)[feature]]
         _log_path(rj, out).write_text(json.dumps(lg, indent=1))
+    manual = None
+    if seen:   # (gnmdrive) the driving manual's entries for what was seen: the controls it would have picked
+        from . import gnm_manual
+        manual = gnm_manual.suggest(seen, top=2)
     return {"entry": entry, "c0": float(np.linalg.norm(c0)), "big": big, "delta": table_delta(t0, t1),
-            "table": t1, "before": passes(t0)}
+            "table": t1, "before": passes(t0), "manual": manual}
 
 
 def step_text(rep: dict) -> str:
@@ -659,6 +685,10 @@ def step_text(rep: dict) -> str:
     if rep["delta"]:
         s.append("items that changed (model - photo, tol):")
         s += ["  " + x for x in rep["delta"]]
+    if (rep.get("manual") or {}).get("entries"):
+        from . import gnm_manual
+        s.append("MANUAL for what you saw (guide topic gnm_driving; compare with the move you took):\n"
+                 + gnm_manual.text(rep["manual"]))
     s.append(f"keep it only if the whole face reads closer AND no target went out; else step again from {e['from']} "
              "(this model stays as the record).")
     return "\n".join(s)
