@@ -328,8 +328,8 @@ def _spec_arg(spec) -> dict:
 @mcp.tool(structured_output=False)
 def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
-    "cloth_reference", "skin", "human", "block_in", "likeness", "terrain", "vegetation", "clutter", "tools" (core tools'
-    reference); or any tool's name for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
+    "cloth_reference", "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
+    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference); or any tool's name for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
     if t in GUIDE_TOPICS:
         return Path(__file__).with_name(GUIDE_TOPICS[t]).read_text()
@@ -345,7 +345,7 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.m
                 "skin": "skin_guide.md", "human": "human_guide.md", "humans": "human_guide.md",
                 "block_in": "blockin_guide.md", "blockin": "blockin_guide.md", "block-in": "blockin_guide.md",
                 "likeness": "likeness_guide.md", "terrain": "terrain_guide.md", "vegetation": "vegetation_guide.md",
-                "clutter": "clutter_guide.md"}
+                "clutter": "clutter_guide.md", "gnm_driving": "gnm_driving_guide.md", "driving": "gnm_driving_guide.md"}
 
 
 def _tool_section(name: str) -> str:
@@ -1867,13 +1867,16 @@ def block_in_expression(name: str, out: str | None = None, views: list[int] | No
 
 @mcp.tool(structured_output=False)
 def gnm_controls(query: str = "", control: str = "", families: list[str] | None = None, top: int = 12,
-                 sort: str = "score", per_family: int = 0, sign: int = 0, zones: bool = False) -> str:
-    """GNM's CONTROL ATLAS: which GNM controls move a feature. query = a feature in words ("alar crease", "jowl",
-    "lip border", "bridge walls") -> controls ranked by mm per unit prior cost x locality, with macros dragged,
-    face-ID effect, nearest block-in move, sheet; control = one control's description; zones=True lists zones;
-    families, sort, per_family, sign. Act: block_in_step {"gnm:<control>": x} or {"sculpt:<zone>": mm}. Details:
-    guide(topic="gnm_controls")."""
+                 sort: str = "score", per_family: int = 0, sign: int = 0, zones: bool = False, phrase: str = "") -> str:
+    """GNM's controls. phrase = a difference you SEE ("the muzzle stands forward in profile", "pupils further apart")
+    -> the driving manual's entries (control, sign, size, drags; guide topic gnm_driving): start there. query = a
+    feature ("alar crease", "jowl") -> controls ranked by mm per prior cost x locality; control = one described;
+    zones=True; families, sort, per_family, sign. Act: block_in_step {"gnm:<control>": x} or {"sculpt:<zone>": mm}.
+    Details: guide(topic="gnm_controls")."""
     from . import gnm_controls as gcm
+    if phrase:
+        from . import gnm_manual
+        return gnm_manual.text(gnm_manual.suggest(phrase, top=3))
     if zones:
         z = gcm.zones()
         return "\n".join(f"{k}: {d} ({len(z[k])} vertices)" for k, (d, _) in gcm.ZONES.items())
