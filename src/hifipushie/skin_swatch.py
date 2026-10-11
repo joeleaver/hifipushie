@@ -128,7 +128,7 @@ def _glyphics(rng, mm: float, fams) -> np.ndarray:
     return out
 
 
-def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0, 3.0)):
+def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0, 3.0), colour=(0.5, 0.36, 0.32)):
     """A left eye's fold line as an alpha picture (RGBA PNG in the image store): a smooth line through path_mm ([[u, v]]
     mm in the eye's frame: u toward the outer corner, v up, from the iris centre), `width_mm` wide at half depth,
     fading out over its last 2 mm at each end. The canvas is span mm, centred at `centre` in that frame. Returns the
@@ -137,7 +137,7 @@ def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0,
     from PIL import Image, ImageDraw, ImageFilter
     from . import images
     P = np.asarray(path_mm, float)
-    key = f"{np.round(P, 2).tolist()}_{width_mm:.2f}_{span}_{centre}_{VERSION}"
+    key = f"{np.round(P, 2).tolist()}_{width_mm:.2f}_{span}_{centre}_{np.round(colour, 3).tolist()}_{VERSION}"
     out = images.store_dir() / f"crease_{hashlib.sha1(key.encode()).hexdigest()[:12]}.png"
     if not out.exists():
         ppm = 32
@@ -157,7 +157,7 @@ def crease_image(path_mm, width_mm: float = 0.5, span=(40.0, 30.0), centre=(0.0,
                                      width=max(1, int(round(0.6 * width_mm * ppm))))
             a = np.maximum(a, np.asarray(seg, np.float32))
         al = Image.fromarray(a.astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.25 * width_mm * ppm))
-        im = Image.new("RGBA", (Wp, Hp), (255, 255, 255, 0))
+        im = Image.new("RGBA", (Wp, Hp), tuple(int(round(255 * float(x))) for x in colour) + (0,))
         im.putalpha(al)
         im.save(out)
     return out

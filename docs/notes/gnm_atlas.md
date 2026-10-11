@@ -2860,11 +2860,11 @@ What the drivers reported (now in the manual, section 0a):
 ## eyeruler (2026-10-11, "eyeruler" agent, branch worktree-agent-aca121f3738eb053b; Joe on gb_01: "I notice some measurement
 ## errors" (our eye is narrower corner to corner than hers) and "the upper eyelid just isn't realistic". Scratch
 ## /mnt/data/hifipushie/eyeruler (run.sh / q.sh; scripts in spikes/eyeruler); sheets human_renders/er_*)
-STATE / NEXT (eyeruler, step 3 in progress): ruler + validation done (step 1); the narrow eye explained (step 2: the
-inner corner, three causes; the lids matched to a detector iris centre 0.9 mm low); the eye step now solves the ruler's
-margins and corners in mm (scratch er_s1: margins within 0.1-0.3 mm of her picture's); tool `eye_ruler`, guide text,
-tests in. NEXT: judge er_s1 dressed (shots s_s1*: caruncle / lashes / liner / crease shade variants), the identity-only
-solve er_s2, the lid's realism against #376 (step 3), sheets er_01.., final notes.
+STATE / NEXT (eyeruler, step 3, renders running): result model er_s4 (scratch: gd_T12's identity, NO eye expression,
+identity-only eye step on the ruler with gnm_mm's measures held, ball 12.6, iris 10.97): every ruler row inside the
+reader's error against her picture (table in step 3). Dressing variants er_F0 / F2 / F3 / F1 rendering (caruncle /
++ crease line / + finer lashes / + liner). NEXT: judge them, sheets er_01 (photo | gb_fx | result + table), er_02 (lid
+vs #376 / #540), er_03 (reader validation), final notes, report.
 
 ### Step 0: the mesh's own numbers (spikes/eyeruler/probe.py; lid margin ring = skin rows next to the socket lining)
 | model | ring width (mm) | lm 42-45 | opening (z extent) | ball r |
@@ -2978,3 +2978,50 @@ outer 9.7 vs 9.4, upper margin at the pupil 2.1 vs 3.4, lower -5.3 (bias taken o
 - Tool `eye_ruler(name, model=None, save=None)` (server.py, toolset human; eye_ruler.compare / text / overlay), the
   guide's loop item 7a + "### `eye_ruler`", iris_check's advice changed (iris_size, not eye_radius),
   tests/test_eye_ruler.py (a drawn eye with a detector that is off the way MediaPipe is; the limbus circle under a lid).
+
+### Step 3: the solves, the lid against #376 / #540, ablations (esolve.py, lidsec.py, final.py, tab.py)
+- SOLVES on the ruler (all reach her margins within 0.1-0.4 mm, inner canthus -12.5..-12.8 vs her -13.25):
+  | model | start | variables | holds | |dc| from start | |e| | note |
+  |---|---|---|---|---|---|---|
+  | er_s1 | gb_fx | identity + 20 eye pairs | lm68, brows, socket | 2.9 | 4.9 -> 3.9 | |
+  | er_s2 | gb_fx, expression cleared | identity only | same | 4.4 | 0 | PUPILS MOVED APART 1.5 mm (54.9 vs her 53.4): the solve lengthened the inner corner by moving the eyeball; cranium_height -1.1 sd, neck_width -0.9 |
+  | er_s4 | gd_T12's identity, expression cleared | identity only | + gnm_mm's 23 measures at 0.3 mm (SIG_MM) | 6.7 | 0 | THE RESULT: pupils 52.9, only eye_height -1.1 / eye_tilt -1.1 sd moved (ear_out -0.6); block-in table 6/7 5/5 3/3 4/4 7/7 (width_temple +2.2 -> +3.5 mm went out; gb_fx had it and intercanthal out) |
+  | er_s5 | same | identity + 20 pairs | same | 5.1 | 3.2 | the same fit: the expression is not needed |
+  So IDENTITY ALONE makes her lids; the eye expression (|e| 3.4-4.9 in the older steps) was standing in for identity
+  the solve was not asked for. solve(ne=0) is the identity-only form; the tool's default is still identity + pairs
+  (a decision for the restart: see OPEN).
+- er_s4 against her picture (eye_ruler.compare, mesh vs picture, mm): inner canthus -12.5 vs -13.25, outer 9.8 vs
+  9.75, fissure 22.3 vs 23.0, tilt 2.2 vs 2.0 deg, upper margin 1.1 / 2.2 / 2.4 / 1.9 / 0.9 vs 1.3 / 2.1 / 2.1 / 1.8 /
+  0.9, lower -4.2 / -4.7 / -4.85 / -4.7 / -4.1 vs -4.0 / -4.7 / -5.3 / -4.95 / -4.5, opening 7.2 vs 7.4, iris hidden
+  3.1 vs 3.4, pupils 52.9 vs 53.4: no row beyond the reader's error.
+- THE LID vs #376 / #540 (lidsec.py: upper-lid sections on the mesh at u -5 / 0 / +5):
+  | | ring-to-ball gap | margin thickness | crease height | recede | platform bulge | crease depth 2.5 / 0.75 mm chord | fold forward |
+  |---|---|---|---|---|---|---|---|
+  | #376 | 0.05 / 1.0 / -0.3 | 0.0-0.2 | 2.8-3.2 | 1.2-1.6 | 0.0-0.1 | 1.6-1.8 / 0.37-0.49 | 3.3-3.9 |
+  | #540 | 0.1 / 0.8 / -0.3 | 1.0 | 2.3-2.8 | -0.1-0.6 | 0.0 | 1.3-1.4 / 0.32-0.43 | 5.4-8.0 |
+  | gd_T12 | 0.4 / 2.0 / 0.8 | 0.7-1.0 | 4.6-5.5 | 1.4-2.7 | 0.3-0.4 | 1.1-1.4 / 0.19-0.25 | 2.7-3.5 |
+  | gd_T30 | 0.7 / 2.0 / 0.7 | 0.2-0.5 | 4.7-5.5 | 3.3-4.6 | 0.6-0.7 | 2.1-2.3 / 0.56-0.68 | 5.8-7.3 |
+  | gb_fx (ball 10.6) | -0.35 / 0.8 / -0.5 | 0.2-0.45 | 3.9-4.5 | 1.2-1.8 | 0.0-0.1 | 1.2-1.4 / 0.17-0.26 | 2.6-4.0 |
+  | er_s1 | 0.1 / 1.0 / -0.3 | 0.1-0.4 | 4.5-4.95 | 1.3-1.8 | 0.05-0.12 | 1.1-1.4 / 0.16-0.27 | 2.8-4.1 |
+  Read: the lid sits on the ball the same way in all of them (no gap or penetration story; the 10.6 ball only emptied
+  the corners). Our Tess lid has #376's recession and fold; its platform is not a bulge (0.1 mm). What differs: the
+  crease is half as CRISP (0.75 mm-chord depth 0.16-0.27 vs 0.37-0.49) and sits at her 4.5-4.9 mm instead of 2.8-3.2:
+  GNM's crisp folds are its low ones (gnmcrease). A term asking the solve for a crisp crease at her height
+  (solve(crisp=)) moved nothing (narrow depth 0.048 -> 0.055 in the solver's soft units, cost flat): not available by
+  a local step. gd_T30 had the crispest crease of all and read wrong: a sunken lid (recede 3.3-4.6).
+- WHAT MADE THE LID READ PUFFY (ablation, dressed: out/c_abl.png, c_s1.png): not the expression (er_a2 = expression
+  cleared: the same soft roll, lower lid 0.7 mm lower) and not the ball. It was the upper margin 1.3 mm too high over
+  the iris with the fold where hers is: a 3.7 mm platform under a wide-open lid, where hers is a 4.7 mm platform under
+  a lid that hides a third of the iris. With the margin at her height (er_s1 / er_s4) the platform is 4.0-4.9 mm.
+  What is still missing dressed is the LINE: a render of GNM's soft valley shows no line (the ruler's line darkness:
+  her photo 0.22, our renders 0.01-0.05), and the lash fringe (9 mm lashes, 0.15 mm thick) where hers is a thin dark
+  lash line. Both are dressing: skin.eyes.crease (new: a thin multiply line along the picture's fold path, laid as a
+  picture from the front), base.lashes / skin.makeup.eyeliner.
+- Dressing code (skin_features._eyes, skin_swatch.crease_image): skin.eyes.caruncle (number: the canthal pocket filled
+  wet dark red from lm_eye_inner sideways, + a pink spot on the eyeball's nose-side end; unset: the old faint spot),
+  skin.eyes.crease {"amount", "path" [[u, v] mm from the iris centre], "width", "color"}; eye_ruler.crease_path(read)
+  gives the path from the picture and compare()'s MOVES print it. First tries that did not show: the crease as a
+  per-vertex image MASK (a 0.5 mm line is lost between vertices: it must be the layer's colour picture), the eyeball
+  spot centred at the lid corner (the ball's end lies 2.3 mm behind it).
+- UNEXPLAINED: one shot (s_a1: gb_fx with eye_radius removed) came out with the whole head ~10 mm to the picture's
+  left of every other shot of the same camera; er_a4 / er_s* with the same key state did not. Not chased.

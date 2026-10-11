@@ -394,9 +394,13 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         # (a photographed inner corner is 3-4 mm of pink before any white); GNM's pocket alone is a slit
         for sd, sx in ((".L", 1.0), (".R", -1.0)):
             i_ = np.asarray(J[f"lm_eye_inner{sd}"], float)
+            c_, f_ = np.asarray(J[f"eye{sd}"], float), np.asarray(J[f"eye_front{sd}"], float)
+            r_ = float(np.linalg.norm(f_ - c_))
+            q_ = i_ + np.array([sx * 0.0016, 0.0, 0.0002]) - c_       # (the spot sits ON the ball: its nose-side end lies
+            q_ = c_ + r_ * q_ / max(float(np.linalg.norm(q_)), 1e-9)   # 2-3 mm behind the lids' corner)
             out[f"skin:eye_caruncle{sd.replace('.', '_')}"] = {
                 "part": part, "color": [0.69, 0.4, 0.36], "opacity": round(min(0.9 * a, 1.0), 3), "roughness": 0.2,
-                "mask": [_sp([i_ + np.array([sx * 0.0021, 0.0012, 0.0002])], [0.0027], soft=0.45)]}
+                "mask": [_sp([q_], [0.0034], soft=0.5)]}
     cr = e.get("crease")
     if isinstance(cr, dict) and float(cr.get("amount", 0.6)) > 0 and cr.get("path"):
         # the fold LINE as the skin's own shadow (eyeruler; Joe: darkness the fold's shape does not give comes from the
@@ -404,12 +408,13 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         # from the iris centre: eye_ruler reads it off the picture), laid from the front like the brows' picture
         f_, c_ = np.asarray(J["eye_front.L"], float), np.asarray(J["eye.L"], float)
         d_ = (f_ - c_) / max(float(np.linalg.norm(f_ - c_)), 1e-9)
-        cpath = skin_swatch.crease_image(cr["path"], float(cr.get("width", 0.5)))
+        cpath = skin_swatch.crease_image(cr["path"], float(cr.get("width", 0.5)),
+                                         colour=tuple(_hex(cr["color"])) if "color" in cr else (0.5, 0.36, 0.32))
         img = {"file": str(cpath), "at": [round(float(x), 5) for x in f_ + np.array([0.0, 0.0, 0.003])],
-               "dir": [round(float(x), 4) for x in d_], "size": [0.04, 0.03], "depth": 0.02, "mirror": True, "mirror_image": True,
-               "channel": "alpha"}
-        layer("lid_crease_line", pre=True, color=_hex(cr["color"]) if "color" in cr else [0.56, 0.43, 0.39], mix="multiply",
-              opacity=round(min(float(cr.get("amount", 0.6)), 1.0), 3), mask=[{"image": img}])
+               "dir": [round(float(x), 4) for x in d_], "size": [0.04, 0.03], "depth": 0.02, "facing": -0.3, "mirror": True,
+               "mirror_image": True}
+        # (the picture itself as the colour, multiplied in: a mask is sampled per vertex and loses a 0.5 mm line)
+        layer("lid_crease_line", color="image", image=img, mix="multiply", opacity=round(min(float(cr.get("amount", 0.6)), 1.0), 3))
     if float(e.get("waterline", 1.0)) > 0:   # 0..1 (1): the pink wet rim; on a lid whose rim faces the camera it reads as lid
         layer("waterline", pre=True, color=T(blood=3.5, melanin=0.6), opacity=round(0.5 * float(e.get("waterline", 1.0)), 3),
               roughness=0.15, mask=_zones(["lash_lower"], 0.7))
