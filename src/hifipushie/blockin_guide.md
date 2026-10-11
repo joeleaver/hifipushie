@@ -59,6 +59,16 @@ eye catches what the points miss; the target table catches what your eye misses.
      the reply warns past 2.5 x the slider's population sd beyond GNM (ICT: nose_radix_width 0.09, nose_tip_width
      0.18, nose_dorsum_width 0.12).
    - LIDS, SET: `lid_upper`, `lid_lower` (metres, -0.001 = 1 mm up): by measure, see 7.
+   - SCULPT, the GNM way (THE standard fix for a feature no macro reaches, before any local): `"sculpt:<zone>": mm`
+     moves a named zone (its mean normal, + out of the face) by the LEAST-COST identity change over all 170 comps with
+     every macro HELD (the face's measured proportions stay) and a locality penalty on the skin > 6 mm away;
+     `relief:<zone>` moves it against its 5 mm surround (- deepens a groove: alar crease, nasolabial, lid fold).
+     Options after `|`: `hold=<zone>+<zone>` (zones kept still), `free=<macro>+..` (macros let go), `loc=<w>`. Zones:
+     `gnm_controls(zones=True)`. Garrett's narrow bridge: `"sculpt:bridge_walls|hold=dorsum": -1.0` = walls 0.746 ->
+     0.590 at |dc| 3.5 (the designed local nose_dorsum_width -0.8 gave 0.670); -2.0 reaches his concept's 0.504. A
+     sculpt of 1 mm usually costs |dc| 2.5-4: big next to a macro step, but it moves a real face's |c| (~13), not away.
+   - RAW CONTROLS: `"gnm:<control>": amount`: any identity-space control of the atlas (`head_042`, `z:05` a sampler
+     latent, `label:sex`, `pc:nose_region3`): see `gnm_controls`.
 5. **Keep it only if the whole face reads closer AND no target went out.** The reply has the read (the moved macro,
    before -> after, and the largest coupled moves), the target table's delta (items that went out, came in or moved
    by half a tolerance) and the new sheet. Otherwise step again from the earlier model: that is the revert (the log
@@ -115,7 +125,8 @@ pays. Each round:
 3. ZOOM OUT: look at the whole-face sheet + full table. Keep the step only if the FEATURE got closer AND the whole
    face reads closer or equal (no target out). Log the zoom-out read: `block_in_look(new, read="...", keep=True|False)`.
    Not kept: step again from the earlier model.
-A feature that no direction can reach is a vocabulary gap (below), not a reason for a big step.
+A feature that no direction can reach is a vocabulary gap (below), not a reason for a big step. First ask the atlas
+which GNM controls move it (`gnm_controls(query="bridge walls")`), then SCULPT it (macros held), and only then a local.
 
 ## Coupling you will meet (free directions)
 
@@ -153,7 +164,41 @@ variants `orbital_rim|hold_brow_ridge_eye_depth`, `gonial_height|hold_face_lengt
 - A painted or stylised picture's light is not one light, and its camera may fit badly (the clay turns differently
   from the painting): judge shape on the photographic views first; refit that view's camera.
 
+## GNM's controls (the atlas: gnm_controls)
+
+Every way to move GNM's head, measured (gnmcontrols, 2026-10-10): 170 identity comps + eyes 3 + teeth 80, the region
+principal directions (pc:), 100 symmetric eye-region and 150 lower-face expression comps + tongue / pupil, the joints,
+the identity sampler's 64 latents (+ 16 principal latent directions) and its labels (sex, 4 ethnicities), the
+expression sampler's 20 class prototypes, and our block-in moves. For each: where it acts (50 named zones: alar_crease,
+vermilion borders, jowls, lid_fold, bridge_walls ...), mm per unit of prior cost, how local it is, the macros it drags,
+its face-ID effect, the nearest block-in move, and its sheet (workspace/human_renders/gnm_atlas/<family>_<page>.png:
+-2 | 0 | +2 front / 3/4 / profile in hair-cap clay + the move's map; index.html lists them all).
+What it taught (use it when choosing a step):
+- GNM's identity comps are WHOLE-FACE: median specificity 1.5 (the moved zone vs the face's rms), at any index; no
+  single comp is "the alar crease". A local feature is a COMBINATION: that is what sculpt solves for.
+- Per unit of prior cost the most identity-laden moves are the ORBIT / BRIDGE complex (bridge_height, eye_depth,
+  orbital_rim, brow_ridge, nose_projection: face-ID 0.15-0.19 per sd): steps there change who it is fastest.
+- Per mm moved, the fine comps (120-169: 0.04 mm per unit) are 5x as identity-laden as the first ten.
+- The identity sampler's latent space is a GENERATOR, not a fitting space: our people and GNM's own N(0, I) heads
+  are not on its 64-d manifold (residual > |c|); its labels are clean whole-face directions (label:sex, label:white
+  narrows and steepens the bridge, label:asian / black widen it).
+- The expression sampler's 20 class prototypes are data-backed whole-face expressions (eyes and mouth together: happy
+  squints the eyes): the vocabulary for a picture's expression.
+
 ## Tool reference
+
+### `gnm_controls`
+gnm_controls(query="", control="", families=None, top=12, sort="score", per_family=0, sign=0, zones=False): the atlas.
+- query: a feature in words ("alar crease", "jowl", "lip border", "bridge walls", "lid crease", "tear trough") or a
+  zone name -> the controls that move it, ranked by sort: score (mm per unit of prior cost x specificity, capped at 4:
+  the cheapest, most local movers; default), efficiency, local (mm per unit), specific, perc (face-ID), relief (the
+  zone against its surround: deepening / softening a line). sign +1 / -1 keeps controls whose + moves it out / in
+  (with relief: rises / sinks). per_family=k: the best k of each family instead of one ranking.
+- control: one control described: its zones, macros, face-ID, nearest block-in move, sheet.
+- zones=True: the zone list.
+Each row: control | family | local mm per unit | mm per unit prior cost (its |coefficient| per unit) | specificity |
+relief | out / in | face rms | face-ID | macros dragged (sd per unit) | nearest block-in moves | sheet. Act on it with
+block_in_step: `"gnm:<control>": amount` (identity controls) or `"sculpt:<zone>": mm` (a combination, macros held).
 
 ### `block_in_start`
 block_in_start(name, refs, sex=None, age=None, body=None, gnm_base=None, ethnicity=None, cameras="keep",
@@ -189,7 +234,9 @@ The text gives each view's eye-registration shift (pixels: a large one means the
 block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, save=None, feature=None): one round.
 - feature: the feature this step is for (a feature pass round): the reply also carries its focus sheet (before |
   after) and its own rows, and the log records the feature's pass count before -> after.
-- moves: {direction: amount}: macros free / held (`name!`), `nd:<gap>`, `sex`, `eth0..2` add (amount in sd);
+- moves: {direction: amount}: macros free / held (`name!`), `nd:<gap>`, `sex`, `eth0..2`, `pc:<region><i>`,
+  `gnm:<control>` add (amount in sd); `sculpt:<zone>` / `relief:<zone>` add the least-cost GNM move per mm (macros
+  held; the reply gives its |dc|, the macros let go and the skin moved elsewhere);
   `head_scale`, `gnm_base`, `dimorphism`, `weight`, `lid_upper`, `lid_lower` are SET. An unknown name lists the
   vocabulary.
 - out: the new model's name (default: name with its number + 1, or name_01); an existing name is refused.

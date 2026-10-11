@@ -19,7 +19,7 @@ grow_plant edit_plant look_plant look_plants grow_stand look_stand export_stand 
 export_plant wind_plant sync_plant plant_history heavy_status heavy_queue make_clutter look_clutter
 clutter_kit""".split()
 # added since: the artist block-in (2026-10-10)
-ADDED = {"block_in_start", "block_in_look", "block_in_step", "lid_read"}
+ADDED = {"block_in_start", "block_in_look", "block_in_step", "lid_read", "block_in_expression", "gnm_controls"}
 
 
 def _tokens(tools) -> int:
