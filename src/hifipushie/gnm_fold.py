@@ -25,6 +25,7 @@ from . import gnm_controls as gc
 
 NC = 170
 NR = 12            # rings read out from the margin
+MM_FREE = ("brow_hollow", "_platform_z")   # gnm_mm's measures a fold IS (the sulcus under the brow, the platform on the ball)
 _C: dict = {}
 
 
@@ -177,10 +178,11 @@ def _ball(V, grp):
     return sol[:3], float(np.sqrt(sol[3] + sol[:3] @ sol[:3]))
 
 
-def design(V: np.ndarray, crease: float = 4.7, overhang: float = 1.0, thick: float = 0.9, standoff: float = 1.3,
+def design(V: np.ndarray, crease=4.7, overhang: float = 1.0, thick: float = 0.9, standoff: float = 1.3,
            ka: int = 5, kt: int = 10, umax: float = 12.0, taper: float = 3.0) -> dict:
     """{vertex id: target xyz (mm)} for both upper lids, rings 1..kt-1, on the head V (mm): per radial chain
-    rings 1..ka   the platform: heights spread (as the template's rows) up to `crease` mm over the margin at ring ka,
+    rings 1..ka   the platform: heights spread (as the template's rows) up to `crease` mm over the margin at ring ka
+                  (a number, or a function of u = mm across from the eye's centre, + = outer: the picture's fold line),
                   `standoff` mm off GNM's eyeball (1.3: clear of OUR smaller, differently seated ball; 0.8 touches it)
     ring ka+1     the top of the slit (0.35 mm up, 0.45 mm further out)
     ring ka+2     the fold's lower edge: `overhang` mm BELOW the crease in a front view, `thick` mm in front of the platform
@@ -197,17 +199,20 @@ def design(V: np.ndarray, crease: float = 4.7, overhang: float = 1.0, thick: flo
         P = V[ids] - ctr
         Tm = T[ch]
         hv = Tm[:, :, 1] - Tm[:, :1, 1]
-        wt = np.clip((umax - np.abs(T[ch[:, 0], 0] - J[0])) / taper, 0.0, 1.0)
+        uu = T[ch[:, 0], 0] - J[0]
+        wt = np.clip((umax - np.abs(uu)) / taper, 0.0, 1.0)
+        cr = np.asarray(crease(uu), float) if callable(crease) else np.full(len(ch), float(crease))
         for j in range(len(ch)):
+            crease_j = float(cr[j])
             x, v0 = P[j, :, 0], P[j, 0, 1]
             s0 = np.linalg.norm(P[j, 0]) - r
             tg = {}
             for k in range(1, ka + 1):
-                h = crease * hv[j, k] / hv[j, ka]
+                h = crease_j * hv[j, k] / hv[j, ka]
                 tg[k] = (h, standoff + (s0 - standoff) * np.exp(-h))
-            tg[ka + 1] = (crease + 0.35, standoff + 0.45)
-            tg[ka + 2] = (crease - overhang, standoff + thick)
-            tg[ka + 3] = (crease - overhang + 0.8, standoff + thick + 0.9)
+            tg[ka + 1] = (crease_j + 0.35, standoff + 0.45)
+            tg[ka + 2] = (crease_j - overhang, standoff + thick)
+            tg[ka + 3] = (crease_j - overhang + 0.8, standoff + thick + 0.9)
             pts = {k: np.array([x[k], v0 + h, np.sqrt(max((r + s) ** 2 - x[k] ** 2 - (v0 + h) ** 2, 0.0))]) for k, (h, s) in tg.items()}
             a, b = pts[ka + 3], P[j, kt]
             cum = np.cumsum(np.linalg.norm(np.diff(Tm[j, ka + 3:kt + 1], axis=0), axis=1))
@@ -219,11 +224,16 @@ def design(V: np.ndarray, crease: float = 4.7, overhang: float = 1.0, thick: flo
     return out
 
 
-def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1.0, brow: float | None = None,
+def fold(c0, crease=4.7, overhang: float | None = None, hold: float = 1.0, brow: float | None = None,
          standoff: float = 1.3, expression: int = 0, lam: float = 1.0, ka: int = 5, sig: float | None = None,
-         design_overhang: float = 1.0, margins: float = 0.05, free: bool = False, clear_rounds: int = 4) -> dict:
+         design_overhang: float = 1.0, margins: float = 0.05, free: bool = False, clear_rounds: int = 4,
+         hold_mm: float | None = None, hold_far: float | None = None, far: tuple = (25.0, 45.0)) -> dict:
     """Form the upper-lid fold on identity c0 (170) with GNM's parameters alone.
-    crease     mm over the lid margin (raw GNM mm; a model's world mm / ~0.99)
+    crease     mm over the lid margin (raw GNM mm; a model's world mm / ~0.99): a number, or a function of u (mm
+               across from the eye's centre, + = outer) for a fold line that is not level
+    hold_far   mm: the skin beyond far[1] mm of both eyes' centres held this tightly instead of `hold` (eased in from
+               far[0]): the fold is paid for round the orbit, not with the jaw and mouth
+    hold_mm    mm: gnm_mm's measures (the orbit and everything else the block-in measured) held this tightly too
     overhang   None: fit the designed fold softly (a crisp fold; the overhang itself does not survive the hold);
                mm: ALSO require that much skin hanging over the platform (hard). This lowers the brow: see the report.
     hold       mm: every other skin vertex and the eyeballs (inside skin 3x looser); margins: the lid margins (mm)
@@ -251,12 +261,24 @@ def fold(c0, crease: float = 4.7, overhang: float | None = None, hold: float = 1
         hm = (g["groups"]["skin"] | g["groups"]["eyes"]).copy()
         hm[ids] = False
         rr = np.minimum(np.abs(t["ring"]), np.abs(t["ring"][t["mir"]]))
-        w = np.where(rr == 0, 1.0 / margins, np.where(ext, 1.0 / hold, 1.0 / (3.0 * hold)))
+        hv = np.full(len(V0), float(hold))
+        if hold_far:
+            T = g["T"] * 1000.0
+            de = np.minimum(np.linalg.norm(T - g["J"][2] * 1000.0, axis=1), np.linalg.norm(T - g["J"][3] * 1000.0, axis=1))
+            f = np.clip((de - far[0]) / (far[1] - far[0]), 0.0, 1.0)
+            hv = hold * (hold_far / hold) ** (f * f * (3 - 2 * f))
+        w = np.where(rr == 0, 1.0 / margins, np.where(ext, 1.0 / hv, 1.0 / (3.0 * hv)))
         if brow is not None:
             bm = g["groups"]["left_brow_region"] | g["groups"]["right_brow_region"] | g["groups"]["middle_brow_region"]
             w = np.where(bm, np.maximum(w, 1.0 / brow), w)
         Ah = (B[:, hm] * w[hm][None, :, None]).reshape(nx, -1)
         Qh = Ah @ Ah.T + lam * np.eye(nx)
+        if hold_mm:
+            from . import gnm_mm
+            keep = [i for i, n in enumerate(gnm_mm.HELD) if n not in MM_FREE]
+            Jm = np.zeros((len(keep), nx))
+            Jm[:, :NC] = gnm_mm.jacobian()[keep] / hold_mm
+            Qh += Jm.T @ Jm
     R = _rows(S, ka, ka + 2)
     x0 = np.zeros(nx)
     x0[:NC] = c0

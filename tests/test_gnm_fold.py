@@ -47,3 +47,26 @@ def test_overhang_costs_the_brow():
     tight = gf.fold(np.zeros(170), crease=4.7, overhang=0.5, brow=0.3)
     assert tight["dc"] > 1.3 * r["dc"]                                # holding the brow makes it far dearer
     assert "overhang" in gf.fold_text(r)
+
+
+def test_fold_line_per_column_and_measures_held():
+    from hifipushie import gnm_mm
+    line = lambda u: 4.7 + 0.08 * np.asarray(u, float)               # noqa: E731  (a fold line rising to the outer corner)
+    free = gf.fold(np.zeros(170), crease=line, brow=0.3)
+    held = gf.fold(np.zeros(170), crease=line, brow=0.3, hold_mm=0.02)
+    J = gnm_mm.jacobian()
+    keep = [i for i, n in enumerate(gnm_mm.HELD) if n not in gf.MM_FREE]
+    assert np.abs(J[keep] @ held["c"]).max() < 0.6 < np.abs(J[keep] @ free["c"]).max()
+    assert held["after"]["turn_mean"] > 35                           # still a crisp fold with the measures held
+    h = held["after"]["h"]
+    assert h[-1] > h[0]                                              # the outer columns' crease sits higher
+    far = gf.fold(np.zeros(170), crease=4.7, hold_far=0.2)           # the far face held: cheaper, a softer turn
+    assert far["dc"] < 0.7 * gf.fold(np.zeros(170), crease=4.7)["dc"]
+
+
+def test_hooding_is_a_block_in_move():
+    from hifipushie import blockin as bi
+    d = bi.direction("hooding")
+    assert d.shape == (170,) and abs(np.linalg.norm(d) - 1) < 1e-6
+    assert "hooding" in bi.vocabulary()
+    assert gf.read(gf.vertices(4.5 * d))["hang_mean"] > 0.3

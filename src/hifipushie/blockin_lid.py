@@ -41,6 +41,13 @@ GUARD = 0.25          # mm: the least stand-off of the lid's skin (rings 1..7) f
 CLEAR_STEP = 0.2      # mm: the designed platform lifted this much per try
 CLEAR_MAX = 1.2
 DONOR = "s376"
+FOLD_HEIGHT = 4.7     # mm: the crisp fold's height over the margin when the picture gives no line
+FOLD_BROW = 0.3       # mm: the brow regions held in the crisp fold (free: the brows come down ~2 mm)
+FOLD_MM = 0.02        # the crisp fold's weight on gnm_mm's measures (mm; a weight against ~1000 designed vertices at
+                      # 0.1 mm, not a tolerance: 0.3 does nothing, 0.02 keeps them within ~0.3 mm for 4 deg of turn)
+FOLD_STANDOFF = 1.3   # mm: the designed platform off GNM's ball (gnm_fold's default); raised FOLD_STEP by the guard
+FOLD_STEP = 0.2
+FOLD_STANDOFF_MAX = 2.1
 _C: dict = {}
 
 
@@ -319,7 +326,90 @@ def lid_step(base: dict, heights=None, cols=None, corners=None, donor_name: str 
     return s
 
 
+def fold_step(base: dict, heights=None, cols=None, corners=None, brow: float | None = FOLD_BROW,
+              hold_mm: float | None = FOLD_MM, guard: float = GUARD, log=print) -> dict:
+    """The eye step's shape term, RECIPE A (overhang, 2026-10-11; Joe: "recipe A is as good as it has to get"):
+    gnm_fold.fold's crisp fold, a designed lid (platform on the ball up to the fold line, the turn, the drape; no donor
+    head) fitted in the identity alone with the brows held `brow` mm, gnm_mm's measures held (`hold_mm`: a weight, not
+    a tolerance; the hollow under the brow is left free: the fold IS that) and every other skin vertex at 1 mm. heights
+    / cols as lid_step (the picture's fold line over the margin, mm at the model; None = 4.7 mm). Then the BALL GUARD:
+    while the upper lid on the shipped head stands under `guard` mm off OUR eyeball the platform's stand-off is raised
+    FOLD_STEP. -> gnm_fold.fold()'s dict + "kind": "crisp", "structure0" / "structure", "ball0" / "ball", "standoff",
+    "tries", "scale", "guarded", "heights", "crease" (raw mm at the pupil), "mm" (largest held measure's drift)."""
+    from . import blockin as bi, gnm_fold as gf, gnm_mm, onemesh
+
+    def head(c):
+        b = copy.deepcopy(base)
+        bi.set_identity({"base": b}, c)
+        ht = onemesh.head_template(b)
+        for kk in [k for k in onemesh._CACHE if isinstance(k, tuple) and k and k[0] == "head_t"]:
+            onemesh._CACHE.pop(kk, None)
+        return ht
+    if expression_vector(base) is not None:
+        raise ValueError("fold_step: identity only (the head carries an expression: use lid_step)")
+    c0 = bi.identity({"base": base})
+    ht0 = head(c0)
+    sc = world_scale(ht0, c0)
+    crease, hs = FOLD_HEIGHT, None
+    if heights is not None and np.isfinite(np.asarray(heights, float)).sum() >= 2:
+        h, u = np.asarray(heights, float), np.asarray(cols, float)
+        ok = np.isfinite(h)
+        hs = [float(x) for x in h]
+        crease = lambda uu: np.interp(np.asarray(uu, float) * sc, u[ok], h[ok]) / sc   # noqa: E731
+    b0 = ball_clearance(ht0)
+    standoff, tries, best = FOLD_STANDOFF, 0, None
+    while True:
+        s = gf.fold(c0, crease=crease, brow=brow, hold_mm=hold_mm, standoff=standoff)
+        s["ball"], s["standoff"] = ball_clearance(head(s["c"])), standoff
+        tries += 1
+        a = s["after"]
+        log(f"  crisp fold (platform {standoff:.1f} mm off GNM's ball): |dc| {s['dc']:.2f}, turn {s['before']['turn_mean']:.0f} -> "
+            f"{a['turn_mean']:.0f} deg at {a['h_mean']:.1f} mm, brow ring {s['brow_drop']:+.1f} mm down; lid over OUR eyeball: "
+            f"least stand-off {s['ball']['upper']:.2f} mm (both lids {s['ball']['min']:.2f})")
+        if best is None or s["ball"]["upper"] > best["ball"]["upper"]:
+            best = s
+        if s["ball"]["upper"] >= guard or standoff >= FOLD_STANDOFF_MAX - 1e-9:
+            break
+        standoff += FOLD_STEP
+    s = best
+    d = gnm_mm.jacobian() @ (s["c"] - c0)
+    held = [(n, float(x)) for n, x in zip(gnm_mm.HELD, d) if n not in gf.MM_FREE]
+    s.update(kind="crisp", structure0=mean_structure(c0), structure=mean_structure(s["c"]), ball0=b0, tries=tries, scale=sc,
+             guard=guard, guarded=bool(s["ball"]["upper"] >= guard), heights=hs, brow=brow,
+             crease=float(crease(0.0)) if callable(crease) else float(crease),
+             mm=max(abs(x) for _, x in held), mm_worst=sorted(held, key=lambda t: -abs(t[1]))[:4],
+             hollow=float(d[gnm_mm.HELD.index("brow_hollow")]))
+    return s
+
+
+def _fold_text(s: dict) -> str:
+    a, b = s["structure0"], s["structure"]
+    q0, q1 = s["before"], s["after"]
+    row = lambda q, r: (f"turn {r['turn_mean']:.0f} deg at {r['h_mean']:.1f} mm over the margin, platform {q['platform_s']:.1f} mm off "   # noqa: E731
+                        f"the ball, drape {q['drape']:.1f} mm, brow ring {r['brow_h']:.1f} mm over the margin")
+    out = (f"  LID as one structure, a CRISP FOLD (recipe A: identity only; a designed lid on GNM's rings, no donor head"
+           + (", the turn on the picture's fold line" if s.get("heights") is not None else f", the fold at {FOLD_HEIGHT} mm (no line read)")
+           + f": {s['crease']:.1f} mm at the pupil; raw GNM mm):\n    before {row(a, q0)}\n    after  {row(b, q1)}\n"
+           f"    |dc| {s['dc']:.1f}; held skin moved {s['held_rms']:.2f} mm rms (max {s['held_max']:.1f}: "
+           + ", ".join(f"{k} {v:.1f}" for k, v in list(s["worst"].items())[:3]) + f"); the brow ring came {s['brow_drop']:+.1f} mm DOWN "
+           f"(brows held {s['brow']} mm); measures held within {s['mm']:.2f} mm ("
+           + ", ".join(f"{k} {v:+.2f}" for k, v in s["mm_worst"][:3]) + f"); the hollow under the brow {s['hollow']:+.1f} mm (the fold itself)\n"
+           "    No skin-over-skin overhang (in GNM that is HOODING: block_in_step {\"hooding\": x}, for hooded / deep-set eyes only).\n"
+           f"    EYEBALL GUARD: upper lid over our eyeball, least stand-off {s['ball0']['upper']:.2f} -> {s['ball']['upper']:.2f} mm "
+           f"(both lids {s['ball']['min']:.2f}; needs {s['guard']:.2f})")
+    if s["standoff"] > FOLD_STANDOFF:
+        out += f"; the platform's stand-off was raised to {s['standoff']:.1f} mm to clear it ({s['tries']} tries)"
+    if not s["guarded"]:
+        out += ("\n    WARNING: the eyeball still comes within the guard: look at the dressed lid for a patch of the "
+                "ball's colour (the ball is seated on six lid landmarks, not the lid's surface)")
+    if abs(s["brow_drop"]) > 1.5 or s["mm"] > 0.5:
+        out += "\n    CHECK: the brow or a measure moved: read brow_read / face_ruler again before keeping it"
+    return out
+
+
 def text(s: dict) -> str:
+    if s.get("kind") == "crisp":
+        return _fold_text(s)
     a, b, d = s["structure0"], s["structure"], s["donor"]
     row = lambda q: (f"platform {q['platform_s']:.1f} mm off the ball, turn {q['tuck']:.0f} deg at {q['crease_h']:.1f} mm, wall "   # noqa: E731
                      f"{q['wall']:.0f} deg, drape {q['drape']:.1f} mm")

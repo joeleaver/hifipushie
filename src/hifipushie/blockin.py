@@ -149,7 +149,9 @@ def vocabulary() -> str:
             "; a MEASURE moved in mm, every other measure held in mm: mm:<measure> (pupils_apart, eyes_forward, "
             "chin_forward, forehead_forward, tip_forward, philtrum_length ...: gnm_mm.NAMES; the ORBIT: eyes_forward "
             "= the eye unit in its orbit, brow_ridge_forward, side_rim_forward, under_eye_forward, brow_hollow, "
-            "brows_over_eyes: set before the eye step); what to use for a "
+            "brows_over_eyes: set before the eye step); HOODING (a hooded / deep-set eye: the brow and the drape under "
+            "it come down over the lid; per unit ~+0.6 mm of fold overhang, brow -2.4 mm, eyes 1.8 mm deeper; not a "
+            "local fold and wrong for an open lid with a platform): hooding; what to use for a "
             "difference you see: guide topic gnm_driving / gnm_controls(phrase=...)")
 
 
@@ -233,6 +235,9 @@ def direction(name: str) -> np.ndarray:
     if name.startswith("mm:"):    # (gnmdrive) a measure you can see moved 1 mm, every other measure held in mm
         from . import gnm_mm
         return gnm_mm.direction(name)
+    if name == "hooding":         # (overhang) GNM's one overhang direction: the brow and drape down over a deeper-set eye
+        from . import gnm_fold
+        return gnm_fold.hood_direction(5)["dc"]
     if name.startswith("gnm:"):   # (gnmcontrols) any identity-space control of the atlas, raw (its own unit)
         from . import gnm_controls as gcm
         d = gcm.identity_direction(name[4:])
@@ -594,6 +599,10 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             c = c + v * direction(k)
             if abs(v) > 1.0:
                 big.append(k)
+    hood = None
+    if "hooding" in (moves or {}):
+        from . import gnm_fold
+        hood = [gnm_fold.read_text(gnm_fold.read(gnm_fold.vertices(x))) for x in (c0, c)]
     if _identity is not None:   # (solved steps: blockin_eyes.eye_step) the identity given, head keys set / cleared
         c = np.asarray(_identity, float)
     for k, v in (_head_set or {}).items():
@@ -651,7 +660,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         raise ValueError(f"feature: one of {', '.join(FEATURES)}")
     entry = {"round": rnd, "from": src, "to": out, "moves": moves, "cameras": cameras, "camera_moves": cam_moves,
              "feature": feature, "seen": seen, "why": why, **({"designed": designed} if designed else {}),
-             **({"sculpt": sculpts} if sculpts else {}),
+             **({"sculpt": sculpts} if sculpts else {}), **({"hooding": hood} if hood else {}),
              "c_norm": round(float(np.linalg.norm(c)), 3), "read": read,
              "coupled": [[k, round(float(x), 2)] for k, x in moved],
              "passes": passes(t1), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -690,6 +699,9 @@ def step_text(rep: dict) -> str:
         s.append(f"{k} {v['mm']:+g} mm: |dc| {v['cost']:.2f} (macros held"
                  + (f"; let go as the target itself: {', '.join(v['released'])}" if v["released"] else "")
                  + f"; the face's skin beyond 6 mm of the zone moves {v['outside_mm']:.2f} mm rms)")
+    if e.get("hooding"):
+        s.append(f"hooding (GNM's raw lid rings, mm): before {e['hooding'][0]}\n                                   after  {e['hooding'][1]}"
+                 "\n  (hooding moves the ORBIT: read face_ruler's orbit rows and brow_read again, then the eye step)")
     if e.get("camera_moves"):
         s.append("cameras refitted (landmarks only: a camera fit does not see the outline): " + "; ".join(e["camera_moves"]))
     if rep["big"]:

@@ -10,9 +10,10 @@ standing in for identity). expression=True adds GNM's symmetric eye-region pairs
      as a circle through the limbus; a small picture: the detector's lids in iris radii), with gnm_mm's measures, the
      socket readings and the landmarks off the eyes held where the block-in put them; a picture without a fold line
      (hooded): the visible platform.
-  2. THE LID AS ONE STRUCTURE (blockin_lid.lid_step: the shape term): margin, platform on the ball, the turn, the
-     drape, on GNM's own lid rings toward a donor lid at the person's proportions, the turn on the picture's fold line,
-     the margins of 1 held. It replaces the three-section template match (crease="s376" | "fold" | "s540" still runs
+  2. THE LID AS ONE STRUCTURE (the shape term): margin, platform on the ball, the turn, the drape, on GNM's own lid
+     rings, the turn on the picture's fold line, the margins of 1 held. Default fold="crisp": RECIPE A
+     (blockin_lid.fold_step / gnm_fold.fold: a designed crisp fold, brows and measures held; turn ~45 deg where the
+     donor solve gave ~30). fold="donor": blockin_lid.lid_step toward a donor head's lid (#376). It replaces the three-section template match (crease="s376" | "fold" | "s540" still runs
      that older term: nothing needs it; kept to reproduce the gk_* / er_* models).
   3. THE EYEBALL GUARD: our ball is seated on six lid landmarks, not the lid's surface; a lid lying on the ball can
      let it through (el_f3's brown patch). The lid's stand-off from our ball is measured on the shipped head and the
@@ -49,6 +50,8 @@ SIG_HOODED = 0.5
 # default by the whole-lid solve (blockin_lid); the picture's line darkness is not a target and is not painted.
 CREASE = "lid"          # the shape term: "lid" = none here, the whole-lid solve follows (blockin_lid; the default);
                         # "s376" | "fold" | "s540" = the older three-section template; None = the oldest height + depth target
+FOLD = "crisp"          # the whole-lid solve's kind: "crisp" = recipe A (blockin_lid.fold_step / gnm_fold.fold: Joe,
+                        # 2026-10-11, "as good as it has to get"), "donor" = lid_step toward a donor head's lid
 SIG_SHAPE = 0.3         # mm per section point
 SIG_LID_SHAPE = 0.02    # iris radii: the lid margins held harder with the shape term on (72 section points pulled the
                         # upper lid open 0.64 -> 0.75 vs the picture's 0.67 at SIG_LID)
@@ -763,10 +766,18 @@ def orbit_status(name: str, log=print) -> dict:
 
 
 def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, log=print, expression: bool = False,
-             donor: str | None = None, orbit: bool = True, crease: str | None = "default") -> dict:
+             donor: str | None = None, orbit: bool = True, crease: str | None = "default", fold: str | None = None) -> dict:
     """The block-in step: the opening (solve), the lid as one structure with the eyeball guard (blockin_lid), written
-    as a new model (blockin.step with the identity set). expression=True: GNM's eye-region pairs solved too (a real
-    pose: a squint); donor: the lid's donor (blockin_lid.donor; default s376); orbit=False skips the orbit check."""
+    as a new model (blockin.step with the identity set). fold: the lid's shape term: "crisp" (the default: recipe A,
+    blockin_lid.fold_step: a designed crisp fold on the picture's fold line, brows held) or "donor" (the older
+    lid_step toward a donor head's lid; implied by donor= and by expression=True). expression=True: GNM's eye-region
+    pairs solved too (a real pose: a squint); donor: the lid's donor (blockin_lid.donor; default s376); orbit=False
+    skips the orbit check."""
+    fold = fold or ("donor" if donor or expression else FOLD)
+    if fold not in ("crisp", "donor"):
+        raise ValueError('eye step: fold = "crisp" (recipe A, the default) or "donor"')
+    if fold == "crisp" and expression:
+        raise ValueError('eye step: fold="crisp" is identity only; with expression=True the lid is solved toward a donor (fold="donor")')
     from PIL import Image
     from . import blockin as bi, blockin_lid as bl, store
     orb = orbit_status(name, log) if orbit else None
@@ -807,7 +818,10 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
             b1["head"].pop("pose", None) if not s["pose"] else b1["head"].__setitem__("pose", s["pose"])
             if not s["expression"]:
                 b1["head"].pop("expression", None)
-            lid = bl.lid_step(b1, heights, cols, corners, donor_name=donor or bl.DONOR, log=log)
+            if fold == "crisp":
+                lid = bl.fold_step(b1, heights, cols, corners, log=log)
+            else:
+                lid = bl.lid_step(b1, heights, cols, corners, donor_name=donor or bl.DONOR, log=log)
             c1 = lid["c"]
             if ev.get("ruler"):       # the margins after the lid solve, against the picture's rows again
                 b2 = copy.deepcopy(b1)
@@ -823,7 +837,11 @@ def eye_step(name: str, out: str | None = None, seen: str = "", iters: int = 6, 
                   why=(f"eye step ({'identity + GNM eye-region expression' if expression else 'identity only'}; no lidfold, no "
                        f"lid pose): picture up {ev['up']:.2f} lo {ev['lo']:.2f} iris radii, fold line {ev['tps']:.2f} mm; "
                        f"opening |dc| {s['dc']:.2f}, |e| {s['e']:.2f}"
-                       + (f"; the lid as one structure (donor {lid['donor_name']}): |dc| {lid['dc']:.2f}, turn "
+                       + (f"; the lid as one structure, a crisp fold (recipe A) at {lid['crease']:.1f} mm: |dc| {lid['dc']:.2f}, "
+                          f"turn {lid['before']['turn_mean']:.0f} -> {lid['after']['turn_mean']:.0f} deg, brow ring "
+                          f"{lid['brow_drop']:+.1f} mm down, eyeball guard {lid['ball']['upper']:.2f} mm (stand-off "
+                          f"{lid['standoff']:.1f})" if lid and lid.get("kind") == "crisp" else
+                          f"; the lid as one structure (donor {lid['donor_name']}): |dc| {lid['dc']:.2f}, turn "
                           f"{lid['structure0']['tuck']:.0f} -> {lid['structure']['tuck']:.0f} deg, eyeball guard "
                           f"{lid['ball']['min']:.2f} mm (platform lifted {lid['clear']:.1f})" if lid else "")
                        + (f"; orbit {orb['state']}" if orb else "")),

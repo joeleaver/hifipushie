@@ -40,6 +40,10 @@
   closer picture of his eyes: 5 px iris), lt19, jw (start blend by measurement). DECIDED (Joe: yes): add "hooding" as a named
   block-in control (gnm_fold.hood_direction; do it with step 1). Open: skin._aperture_keep_out fading paint on the lid; her lid platform darker than
   the skin above (skin thread).
+- HOOK-UP DONE (2026-10-11, coordinator; "## overhang" > "Hook-up, done"): recipe A is the eye step's default shape
+  term (lid_read(match=True) / blockin_eyes.eye_step fold="crisp" -> blockin_lid.fold_step -> gnm_fold.fold; fold="donor"
+  keeps lidsolve) and "hooding" is a block-in move (block_in_step {"hooding": x}). Joe, same day: "After that rerun all 4
+  models, giving me sheets as you go": THE HOLD IS LIFTED; the driving gate rerun (NEXT 2) was not done first.
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
@@ -4065,6 +4069,31 @@ RESULTS and HANDOVER at the end of this section. NEXT (not mine): Joe's decision
   control for a hooded / deep-set eye, which is the population it describes.
 - MCP: no tool added (Joe's hold on model rounds; the eye step is being rewritten by orbit). When the eye step calls
   it, block_in_step's report should print fold_text.
+
+### Hook-up, done (coordinator, 2026-10-11; scratch model hk_T1 = the eye step from ob_T1; sheet human_renders/hk_hk_T1_eyes.png)
+- eye_step(fold="crisp" default | "donor"): after the opening, blockin_lid.fold_step = gnm_fold.fold(c, crease = the
+  ruler's fold line per column (a function of u; raw mm = world / scale), brow=0.3, hold_mm=0.02) + the ball guard
+  against OUR eyeball on the shipped head (stand-off raised 0.2 mm a try from 1.3; not needed on Tess: 0.75 mm).
+  expression=True or donor= -> the donor solve (fold_step is identity only).
+- gnm_fold.fold gained: `crease` as a function of u; `hold_mm` (gnm_mm's measures as rows; MM_FREE = brow_hollow,
+  _platform_z are left out: the fold IS the hollow); `hold_far` (the skin beyond 25-45 mm of the eyes held tighter).
+- NUMBERS (Tess ob_T1, crease 4.7, brow 0.3): no measure hold: turn 46, tip_forward +1.1, under_eye_forward +1.6,
+  brows_over_eyes -0.8. hold_mm 0.3 does NOTHING (40 rows against ~1000 designed vertices at 0.1 mm: it is a weight,
+  not a tolerance). With brow_hollow held too the turn dies (0.02: 36 deg, 0.01: 29): the hollow is the fold. With it
+  free, hold_mm 0.02: turn 42, brows_over_eyes -0.33, every other measure under 0.2 mm, |dc| 15.2. = the default.
+- THE FOLD IS PAID FOR BY THE WHOLE HEAD (new): holding the far face tighter kills it. hold (all skin) 1.0 / 0.5 /
+  0.3 mm: turn 42 / 33 / 29 deg, |dc| 15 / 8 / 5, lower face moved 0.54 / 0.24 / 0.13 mm rms (max 2.3 / 0.9 / 0.4).
+  hold_far 0.3 / 0.2 / 0.1: turn 31 / 27 / 21. Target sigma 0.2 / 0.3: turn 27 / 19. So ~45 deg costs ~0.5 mm rms
+  of the rest of the face and |c| 9 -> 18-20; the default stays Joe's accepted recipe (hold 1.0), hold_far is an option.
+- hk_T1 (the eye step end to end, fold line 5.4 mm at the pupil from the ruler): turn 16 -> 44 deg at 5.3 mm, |dc| 17.1
+  (|c| 9.1 -> 19.9), brow ring +0.7 mm down, measures within 0.35 mm, margins within 0.30 mm of the ruler's rows after
+  the fold. eye_ruler re-read: all margin / fold / brow-edge rows inside tolerance (lower margin at the pupil 0.51 vs
+  0.5; peak u and caruncle were out before too); brow_read 0.5 mm rms. Block-in table: three 3/4 rows that sat at
+  their tolerance WENT OUT (jaw_angle_height -2.5 -> -3.6, chin_height +1.1 -> +1.8, lower_third +2.0 -> +2.3),
+  philtrum came in. The focus=eyes clay sheet shows the change faintly at that scale: judge it dressed.
+- "hooding": blockin.direction("hooding") = gnm_fold.hood_direction(5)["dc"] (unit |c|); the step's report prints
+  gnm_fold.read before / after and says to re-read the orbit. Tests: tests/test_gnm_fold.py (7).
+STATE / NEXT: hook-up merged on main. NEXT: the four reruns (Tess first, only the new tools), sheets to Joe.
 
 ### FINAL RESULTS (the module's recipes with clearance rounds; apply.py; sheets oh_01 / oh_02; all identity only)
 | model | recipe (gnm_fold.fold) | raw: overhang mm / turn deg / crease mm | |dc| (|c|) | brow ring down mm; brows_over_eyes | other skin rms / max mm | rendered mesh: skin behind skin | dressed line @ mm (hers 0.19 @ 4.7) | clay edge @ mm |

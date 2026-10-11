@@ -135,10 +135,18 @@ eye catches what the points miss; the target table catches what your eye misses.
    POSE, a squint, nothing else):
    1. the OPENING: the identity for the picture's lid margins and corners in mm (the eye ruler's rows, 7a), with every
       millimetre measure (incl. the orbit's), the socket readings and the landmarks off the eyes held;
-   2. the LID: margin, platform lying on the ball, ONE turn, the drape to the brow, solved on GNM's own lid rings
-      toward a donor lid (default GNM sample #376, `donor=`) re-proportioned to the person, the turn put on the
-      picture's fold line, the margins of 1 held. (It replaces the three-section crease template.) A picture with no
-      fold line (hooded): no lid solve, the visible platform is the opening's target;
+   2. the LID: margin, platform lying on the ball, ONE turn, the drape to the brow, solved on GNM's own lid rings,
+      the turn put on the picture's fold line (per column), the margins of 1 held. Default `fold="crisp"` (RECIPE A,
+      Joe 2026-10-11: "as good as it has to get"; gnm_fold.fold): a DESIGNED lid (no donor head) fitted with the
+      brows held 0.3 mm and the mm measures held (the hollow under the brow is left free: the fold IS that). Tess
+      scratch: turn 16 -> 44 deg on her line (the donor solve: 24), brow ring 0.7 mm down, measures within 0.35 mm,
+      eye ruler and brow_read rows still pass; the price is |dc| ~15-17 and ~0.6 mm rms over the rest of the face
+      (rows near their tolerance can go out: read the step's table). `fold="donor"` (or `donor=`): the older solve
+      toward a donor head's lid (GNM sample #376): softer (24 deg), |dc| ~6. A picture with no fold line (hooded): no
+      lid solve, the visible platform is the opening's target. A genuinely HOODED / deep-set eye is not a lid
+      feature in GNM: it is the brow and drape coming down over a deeper eye: `block_in_step(name, {"hooding": x})`
+      (per unit ~+0.6 mm of overhang, brow -2.4 mm, eyes 1.8 mm deeper; an ORBIT move: do it before the eye step
+      and read the orbit rows / brow_read again). Wrong for an open lid with a platform (Tess);
    3. the EYEBALL GUARD: our ball is seated on six lid landmarks, not the lid's surface, so a lid lying on the ball can
       let it through (a patch of the ball's colour on the lid). The step measures the lid's stand-off from the ball on
       the shipped head and lifts the designed platform until it clears by 0.25 mm; the report gives the numbers.
@@ -359,14 +367,15 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `lid_read`
-lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None): the picture's lid margins
+lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None, fold=None): the picture's lid margins
 against the iris (MediaPipe iris and lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and
 the model's (its front render, the visible eyeball through the iris centre): a quick look, biased (the detector's iris
 centre is ~1 mm low); the numbers to trust are `eye_ruler(name)`'s. match=True: the EYE STEP (loop, 7), IDENTITY ONLY:
 the orbit check (ORBIT: UNREAD / OFF / read: set the orbit first), the opening solved for the RULER's margins (7
 columns, mm) and canthi (the detector's two lid points in iris radii only when the picture's iris is under 30 px), the
-lid as one structure on GNM's lid rings (donor: "s376" default, "s540", or a block-in model's name) with the eyeball
-guard; a new block-in step (out, seen as block_in_step); returns the focus=eyes sheet (before | after) and the report.
+lid as one structure on GNM's lid rings (fold="crisp", the default: recipe A, a designed crisp fold on the picture's
+fold line, brows and measures held; fold="donor" / donor="s376" | "s540" | a block-in model's name: toward that lid)
+with the eyeball guard; a new block-in step (out, seen as block_in_step); returns the focus=eyes sheet (before | after) and the report.
 expression=True adds GNM's eye-region expression to the opening's solve: only for a real pose (a squint). ~5 min.
 match="pose": the older lid pose offsets (lid_upper / lid_lower, metres).
 
