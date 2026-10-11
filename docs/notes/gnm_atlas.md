@@ -2856,3 +2856,21 @@ What the drivers reported (now in the manual, section 0a):
 - m4_09's driver (manual): free lip_fullness (-) pushes the whole nose ~1.7 mm per sd forward (manual said ~1) and
   carries lips + chin back; mm:lower_lip_forward drags chin_projection -0.26 sd per mm; which onion-skin copy is the
   target's is hard to tell (sign errors on brows); "corners 3.1 mm" needs "total".
+
+## eyeruler (2026-10-11, "eyeruler" agent, branch worktree-agent-aca121f3738eb053b; Joe on gb_01: "I notice some measurement
+## errors" (our eye is narrower corner to corner than hers) and "the upper eyelid just isn't realistic". Scratch
+## /mnt/data/hifipushie/eyeruler (run.sh / q.sh; scripts in spikes/eyeruler); sheets human_renders/er_*)
+STATE / NEXT (eyeruler, step 0): set up; first mesh numbers below. NEXT: the image ruler (eye_ruler.py), validated on
+dressed fitted-camera renders of the gk_s* sampled heads against the mesh's own truth.
+
+### Step 0: the mesh's own numbers (spikes/eyeruler/probe.py; lid margin ring = skin rows next to the socket lining)
+| model | ring width (mm) | lm 42-45 | opening (z extent) | ball r |
+|---|---|---|---|---|
+| gd_T12 | 22.1 | 23.9 | 9.8 | 12.6 |
+| gd_T30 (old eye step) | 22.4 | 24.3 | 10.4 | 12.6 |
+| gk_ev5s376 (gk_07) | 21.9 | 23.6 | 9.9 | 12.6 |
+| gb_T12r (ball 10.64) | 22.1 | 23.9 | 9.8 | 10.64 |
+| gb_fx | 21.3 | 23.0 | 7.9 | 10.64 |
+| gk_s376 / gk_s540 | 23.1 / 21.4 | 25.0 / 23.4 | 10.2 / 9.5 | 12.6 |
+By eye on the gb_01 shots (to be replaced by the ruler): her fissure ~26 mm at the model, ours ~21 with only ~19 mm of
+sclera showing. So the block-in's head (gd_T12, 22.1) never had her length; the eye steps took 0.2-0.8 mm more.
