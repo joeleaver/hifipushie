@@ -320,7 +320,13 @@ turns that round:
   head_size, cranium, eye_spacing ... and `base.head` gnm_base / dimorphism / scale are ignored and named in the report);
 - the BODY is fitted: its height is solved so the figure stands at `base.body.height` under this head, and its neck and
   shoulders are moved to meet GNM's neck at the ring;
-- `base.head.size` (default 1.0) scales the head over GNM's own (a stylised figure; leave it for a likeness);
+- the head is SEATED BY ITS OWN NECK BASE (GNM's own shoulder slope fitted on the body's shoulders) and the body's neck
+  base is laid on GNM's forms next to the ring; the rule is general, nothing is tuned per character;
+- `base.head.size`: by default the head goes a little with the stature, as people's do (stature ^ ~0.27: 1.000 at the
+  sex's mean stature, 1.025 on a 1.95 m man); a number fixes it;
+- `measure_human` prints the attach CHECKS against ANSUR for the sex and stature (head height, top of head and chin
+  over the pit of the throat, neck girth) and FLAGS: a NECK CONFLICT (head's neck against the body's own past 8 %, and
+  which side is unusual), a head + neck short for a very tall body, a child's body (GNM is an adult head);
 - `measure_human` prints the attachment: head height, heads tall (adults measure ~7.5), eyes apart, eyeball radius,
   neck girth head / body at the ring, and NOTES when the two disagree by more than 12 % (then change the body's
   weight / muscle, not the head).

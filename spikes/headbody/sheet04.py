@@ -107,35 +107,40 @@ def fit(path, w, h, box=None):
     return im.crop((x, y, x + w, y + h))
 
 
-BL = [("TESS", "tess", {"HEAD TURNED 45": ("Young_woman_s_neck.jpg", None), "NECK BENT 35 (looking up)": ("Female_neck.jpg", (0.05, 0, 0.8, 1))}),
-      ("GARRETT", "garrett", {"HEAD TURNED 45": ("Adam_s_apple_35.jpg", (0, 0, 0.75, 1)), "NECK BENT 35 (looking up)": ("Gray1195.png", None)})]
-RW = 520
-BW = RW + 3 * T_ + 20
-BH = 70 + 3 * T_ + 30
-sheet = Image.new("RGB", (2 * BW + 30, 90 + len(BL) * BH), (250, 250, 250))
-dr = ImageDraw.Draw(sheet)
-dr.text((20, 14), "POSED NECK after the face-shape / Head-weight fix:  REFERENCE | NOW raking | NOW shaded | BEFORE the fix (raking).  No rig.py change yet.", font=F(30), fill=(0, 0, 0))
-with resources.heavy("headbody pose sheet", gb=8):
-    for bi_, (who, tag, refs) in enumerate(BL):
-        now = tiles(f"{D}/export_{tag}/hb_{tag}.glb", True)
-        bef = tiles(f"{D}/export_{tag}_before/hb_{tag}.glb", False)
-        for pi, (pname, _) in enumerate(POSES):
-            x0, y0 = 15 + pi * BW, 90 + bi_ * BH
-            dr.text((x0, y0 + 8), f"{who}: {pname}", font=F(34), fill=(0, 0, 0))
-            rf, box = refs[pname]
-            sheet.paste(fit(f"{REF}/{rf}", RW, 3 * T_, box), (x0, y0 + 60))
-            dr.text((x0 + 6, y0 + 64), f"REFERENCE ({rf[:26]})", font=F(18), fill=(255, 220, 0))
-            for vi in range(3):
-                sheet.paste(now[(pname, "raking")][vi], (x0 + RW + vi * T_, y0 + 60))
-                sheet.paste(bef[(pname, "raking")][vi], (x0 + RW + vi * T_, y0 + 60 + 2 * T_))
-            sh = now[(pname, "shaded")]
-            sh = sh.resize((3 * T_, int(3 * T_ * sh.height / sh.width)))
-            sheet.paste(sh.crop((0, 0, 3 * T_, T_)), (x0 + RW, y0 + 60 + T_))
-            for ri, lab in enumerate(("NOW raking (front / side / back)", "NOW shaded (front / side)", "BEFORE the fix, raking")):
-                dr.text((x0 + RW + 8, y0 + 64 + ri * T_), lab, font=F(20), fill=(255, 220, 0))
-sheet.save("/home/joe/dev/hifipushie/workspace/human_renders/hb_04_pose_after_weights_fix.png")
-for who, tag, _ in BL:
-    for lab, d_ in (("NOW", ""), ("BEFORE", "_before")):
-        pr, nl = profile(f"{D}/export_{tag}{d_}/hb_{tag}.glb")
-        print(f"{who} {lab}: Head weight down the neck (mm above the Neck joint; Head joint at +{nl:.0f}): " + "; ".join(f"{z:+.0f}: {h:.2f} [{lo:.2f}-{hi:.2f}] N {n_:.2f} S2 {s2:.2f}" for z, c_, h, lo, hi, n_, s2 in pr))
-print("saved")
+def main():
+    BL = [("TESS", "tess", {"HEAD TURNED 45": ("Young_woman_s_neck.jpg", None), "NECK BENT 35 (looking up)": ("Female_neck.jpg", (0.05, 0, 0.8, 1))}),
+          ("GARRETT", "garrett", {"HEAD TURNED 45": ("Adam_s_apple_35.jpg", (0, 0, 0.75, 1)), "NECK BENT 35 (looking up)": ("Gray1195.png", None)})]
+    RW = 520
+    BW = RW + 3 * T_ + 20
+    BH = 70 + 3 * T_ + 30
+    sheet = Image.new("RGB", (2 * BW + 30, 90 + len(BL) * BH), (250, 250, 250))
+    dr = ImageDraw.Draw(sheet)
+    dr.text((20, 14), "POSED NECK after the face-shape / Head-weight fix:  REFERENCE | NOW raking | NOW shaded | BEFORE the fix (raking).  No rig.py change yet.", font=F(30), fill=(0, 0, 0))
+    with resources.heavy("headbody pose sheet", gb=8):
+        for bi_, (who, tag, refs) in enumerate(BL):
+            now = tiles(f"{D}/export_{tag}/hb_{tag}.glb", True)
+            bef = tiles(f"{D}/export_{tag}_before/hb_{tag}.glb", False)
+            for pi, (pname, _) in enumerate(POSES):
+                x0, y0 = 15 + pi * BW, 90 + bi_ * BH
+                dr.text((x0, y0 + 8), f"{who}: {pname}", font=F(34), fill=(0, 0, 0))
+                rf, box = refs[pname]
+                sheet.paste(fit(f"{REF}/{rf}", RW, 3 * T_, box), (x0, y0 + 60))
+                dr.text((x0 + 6, y0 + 64), f"REFERENCE ({rf[:26]})", font=F(18), fill=(255, 220, 0))
+                for vi in range(3):
+                    sheet.paste(now[(pname, "raking")][vi], (x0 + RW + vi * T_, y0 + 60))
+                    sheet.paste(bef[(pname, "raking")][vi], (x0 + RW + vi * T_, y0 + 60 + 2 * T_))
+                sh = now[(pname, "shaded")]
+                sh = sh.resize((3 * T_, int(3 * T_ * sh.height / sh.width)))
+                sheet.paste(sh.crop((0, 0, 3 * T_, T_)), (x0 + RW, y0 + 60 + T_))
+                for ri, lab in enumerate(("NOW raking (front / side / back)", "NOW shaded (front / side)", "BEFORE the fix, raking")):
+                    dr.text((x0 + RW + 8, y0 + 64 + ri * T_), lab, font=F(20), fill=(255, 220, 0))
+    sheet.save("/home/joe/dev/hifipushie/workspace/human_renders/hb_04_pose_after_weights_fix.png")
+    for who, tag, _ in BL:
+        for lab, d_ in (("NOW", ""), ("BEFORE", "_before")):
+            pr, nl = profile(f"{D}/export_{tag}{d_}/hb_{tag}.glb")
+            print(f"{who} {lab}: Head weight down the neck (mm above the Neck joint; Head joint at +{nl:.0f}): " + "; ".join(f"{z:+.0f}: {h:.2f} [{lo:.2f}-{hi:.2f}] N {n_:.2f} S2 {s2:.2f}" for z, c_, h, lo, hi, n_, s2 in pr))
+    print("saved")
+
+
+if __name__ == "__main__":
+    main()

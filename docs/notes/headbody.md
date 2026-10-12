@@ -1,18 +1,21 @@
 # hifipushie notes: headbody (how an untouched GNM head goes on our body: the join and the scale)
 
-STATE (2026-10-12, round 2, AT THE GATE): Joe on hb_01 / hb_02: "Both necks feel way off, way too tall, way too
-lumpy" / "pretty bad work, overall". Scale is accepted (Tess 7.6 heads); the NECK is the blocker. Measured + diagnosed
-("## Round 2" at the end), sheet workspace/human_renders/hb_03_neck_diagnosis.png, references in
-workspace/neck_refs/ (README: sources, licences, gaps). NO placement / bridge / weighting code changed yet: waiting
-for the coordinator's reply to the proposed fix. One fix IS in (a regression on main, found through the chest holes):
-faceshapes gave jawOpen's rigid 26 mm to every skin vertex under the neck and the rig then weighted the whole body 1.0
-to Head. Two meshes with matched open edges stay the design (never welded by default).
-Earlier: Part 1 (measure), Part 2 (others), Part 3 step 1 (`base.head.attach "native"`), step 2 (two-mesh export).
-Branch `headbody` (worktree .claude/worktrees/headbody), not merged, not pushed. Scratch DURABLE in
-/mnt/data/hifipushie/headbody/ (env.sh, run.sh heavy, light.sh, out/, ansur/ = ANSUR II public tables + ansur.py).
-NEXT (after the reply): seat the head by its own neck base (GNM's bib fitted to the body's shoulders), make the
-body's neck base / trapezius FOLLOW GNM's bib (project + relax, no pull-down), rig weights down the neck, hb_03_scale
-/ hb_04_neck with REFERENCE | NOW | previous.
+STATE (2026-10-12, round 3, NECK FIX BUILT after Joe's "Yes, go on the neck fix"): the head is seated by its OWN neck
+base (GNM's bib fitted on the body's shoulders) and the body's neck base / shoulder slope is laid ON the bib next to the
+ring, fading into the body's own shoulders; no pull-down, the ring stays, two meshes with matched open edges. General
+rule, nothing per character ("Bodies should just work"): run untouched on 10 bodies with class-mean heads. Sheets
+workspace/human_renders/hb_05_neck_fixed.png (REFERENCE | NOW | previous native | old; rest x 4 views + two poses),
+hb_06_figures.png, hb_07_body_range.png. attach_report carries the anthropometric checks and flags. Tests:
+tests/test_headbody.py 6 pass (incl. the body range), old path hash unchanged. Details: "## Round 3" at the end.
+VERDICT (mine, blunt): the necks now READ AS NECKS at rest and in both poses (short, a shoulder slope that starts
+under the ear, no column, no shelf, no crumple). Not good yet: no SCM / clavicle / throat-pit definition (smooth
+forms only); women get GNM's thick class-mean neck (363 mm) on MakeHuman's thin-necked bodies: a bull neck, flagged;
+a very tall body gets an average head + neck (flagged); Tess's upper back still ripples (MakeHuman's, old attach too).
+NEXT: the solve needs a neck-girth read / prior (women's class mean is +11 % over ANSUR, and head_000 / head_001 move
+it unread); neck surface forms (SCM, clavicles) as a skin-folds / anatomy matter; a lower ring only if separate
+materials need it; rig.py head-weight smoothing NOT needed after the faceshapes fix (posed tiles clean).
+Branch `headbody` (worktree .claude/worktrees/headbody), main merged in (7c6909d), not pushed. Scratch DURABLE in
+/mnt/data/hifipushie/headbody/ (env.sh, run.sh heavy, light.sh, t1.sh pytest, out/, ansur/, export_*).
 
 Joe, 2026-10-12: "that's some real work for us: how to get the body back on (and if we even want to, don't many games
 leave them as separate meshes?) and how to match the size/scale of the head and body well." ... "let's get that
@@ -379,3 +382,85 @@ later pass should add a proper turnaround.
 - Reference gap (no more Commons requests): missing = a same-subject neutral front / side / back turnaround of a bare
   neck and shoulders (a woman, a man), a bare male front and back, and the same subjects with the head turned ~45
   and looking up.
+
+## Round 3 (2026-10-12): the neck fix as built
+
+### The rule (onemesh.py; general, no constant of any character)
+1. SIZE: `base.head.size` default = (stature / the sex's mean stature) ^ alpha, alpha 0.29 women / 0.24 men (ANSUR
+   II: head measures go as stature ^ 0.07 .. 0.36; tragion - top of head 0.29 / 0.24): 1.000 at 1.627 / 1.755 m,
+   Tess 1.002, Garrett 1.002, a 1.95 m man 1.025, a 1.50 m woman 0.976. A number fixes it.
+2. SEAT (`_seat`): start skull on skull, then translate the head up / down and forward / back until GNM's own BIB
+   (rings 0-9 of its skin: shoulder slope, clavicle line, upper back; `_bib`) lies on the MakeHuman body's surface:
+   point-to-plane least squares, pairs within 4 cm, the centre line kept. The stature solve then sets the body's height
+   so the top of the head is the stated stature (3 rounds).
+3. BODY FOLLOWS THE BIB (`_neck_follow`): the body's vertices within 17 cm (x stature / 1.7) of the ring over the
+   surface are, 80 rounds, evened out along the surface and put back on a target surface = the nearest point of
+   GNM's bib x w + the nearest point of the body's own rest surface x (1 - w); w = 1 from ring 10 up, 0 from ring 1
+   down (smoothstep on the bib's ring coordinate). Nothing is displaced through space. The old `_neck_field` only
+   gives the start. Head vertices: untouched (test: still exact to 1e-9 m).
+4. A lift of the seat for tall bodies was tried and removed: it does nothing (the body's neck base is laid on the
+   bib wherever the bib stands). GNM's neck has its own length x size.
+5. Build keys: `onemesh.build_version` (NATIVE_VERSION 2) for native models only; other one-mesh models keep theirs.
+
+### Numbers (mm; ANSUR = for the model's sex and stature, from the allometric fits)
+| | chin over the pit | top of head over the pit | head height | neck girth head / body's own | heads tall |
+|---|---|---|---|---|---|
+| Tess old attach | 74 | 257 | 182 | 290 / 292 | 9.0 |
+| Tess previous native | 85 | 300 | 216 | 334 / 288 | 7.6 |
+| Tess NOW | 74 | 289 | 216 | 334 / 288 | 7.6 |
+| ANSUR, woman 1.636 m | 81 +- 15 | 300 +- 11 | 218 +- 10 (memory) | 330 +- 18 | |
+| Garrett old attach | 90 | 318 | 229 | 368 / 365 | 7.8 |
+| Garrett previous native | 102 | 323 | 220 | 361 / 359 | 8.0 |
+| Garrett NOW | 91 | 312 | 221 | 362 / 359 | 8.0 |
+| ANSUR, man 1.772 m | 87 +- 16 | 319 +- 12 | 233 +- 11 (memory) | 398 +- 25 | |
+Body moved by the follow: Tess up to 41 mm (her shoulder slope rises to the bib), Garrett 36 mm; no folded quad.
+
+### Per-tile verdict (hb_05; reference first, blunt)
+- TESS rest front: reads as a neck. Short, tapering, the trapezius rising to under the ear as on the reference.
+  Against the reference woman it is THICK at the base and blank: no clavicles, no SCM, no throat pit.
+- TESS rest side: reads as a neck: forward lean right, nape runs into the upper back. A slight hump remains on top of
+  the shoulder behind the neck.
+- TESS rest back: slope and width fine. The vertical ripples between the shoulder blades are still there (they are in
+  the old attach too: MakeHuman's coarse upper back, not the attach).
+- TESS three-quarter: fine. TURNED: clean, no crumple. LOOKING UP: clean but a featureless tube under the jaw (the
+  reference shows the SCMs and the pit).
+- GARRETT rest front / side / back / three-quarter: all read as a man's neck; side is the best tile on the sheet
+  (the previous column-on-a-shelf is gone). TURNED / LOOKING UP: clean.
+- Both: what separates them from the photographs now is surface anatomy, not placement or length.
+- hb_06 (full figures): head-on-shoulders proportion reads right for both; Garrett's head a little small (GNM's male
+  mean, 8.0 heads), as before.
+
+### Tess's thin-necked body (the conflict rule, as built)
+- MakeHuman's FEMALE neck is ~295 mm at ANY weight or muscle (292-299 from weight 0.15 to 0.6, muscle 0.4-0.65):
+  more body weight does NOT settle it, so I did not make a heavier Tess. Her head's neck (334) is ANSUR's mean; the
+  body's own (288) is 2.3 sd under.
+- RULE: the neck from the ring up is the HEAD's; the body's neck base is always laid on it. `attach_report` flags
+  NECK CONFLICT past 8 % with each side's distance from ANSUR for the stature and which side is the unusual one, so
+  the caller changes that side. Never a silent inflate or thinning.
+
+### The body range (hb_07; spikes/headbody/mkrange.py, models hb_r_*; class-mean heads)
+| body | stature | heads tall | chin over pit | neck head / body | flags |
+|---|---|---|---|---|---|
+| woman 30 | 1.59 | 7.5 | 64 | 363 / 290 | NECK CONFLICT (+25 %; head +2.1 sd, body -2.0 sd) |
+| man 30 | 1.73 | 7.9 | 69 | 384 / 358 | none |
+| heavy man (weight 0.9) | 1.72 | 7.9 | 69 | 384 / 356 | none |
+| very slim woman (0.05) | 1.59 | 7.5 | 65 | 363 / 292 | NECK CONFLICT |
+| muscular man (0.95) | 1.73 | 7.9 | 71 | 384 / 357 | none |
+| tall man 1.95 | 1.95 | 8.7 | 75 | 395 / 408 | top of head over the pit 300 (341 +- 13): head + neck short for the stature |
+| short woman 1.50 | 1.50 | 7.2 | 62 | 357 / 273 | NECK CONFLICT (+31 %) |
+| old man 75 | 1.71 | 7.8 | 70 | 383 / 355 | none |
+| teen girl 14 | 1.56 | 7.4 | 64 | 360 / 285 | NECK CONFLICT; adult ranges |
+| child 8 | 1.25 | 6.2 | 57 | 355 / 296 | NECK CONFLICT; adult ranges |
+- Every body builds, stature exact, no folded quad, ring matched, the neck reads as a neck in the tiles.
+- WHERE IT FAILS, and why: (1) WOMEN with a class-mean head: GNM's female class-mean neck (363) on MakeHuman's female
+  neck (290): a bull neck. It is the head model's prior (+11 % over ANSUR), flagged; the fix is a neck prior / read
+  in the solve, not the attach. (2) VERY TALL: an average head + neck on a 1.95 m body (8.7 heads; flagged):
+  GNM has no stature link. (3) CHILD / TEEN: GNM is an adult head model: an adult face at 0.92 size on a child's body;
+  proportion 6.2 heads happens to be near a child's, the face is not a child's. Not covered.
+  (4) Class-mean necks sit ~0.8 sd short in front (chin 64-71 mm over the pit, ANSUR ~77-83 by memory-based head
+  heights): GNM's own necks are short (template 71).
+
+### Tests
+tests/test_headbody.py (6): exact head (now x the head's own size), lip_close inside GNM's basis, stature, ring +
+no folded quad, `test_any_body_takes_the_head` (8 adult bodies: stature, exact head, ring, no folded quad, every
+report check in range; the tall body is allowed exactly its one flag), old path hash unchanged.
