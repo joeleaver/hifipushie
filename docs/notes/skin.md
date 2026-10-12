@@ -1068,7 +1068,7 @@ NEXT, in the order I would:
 ## in /mnt/data/hifipushie/skinfolds2: run.sh <script> (HEAVY: capped, one thread, this worktree's src, main's workspace),
 ## light.sh <script> (LIGHT: bin/slot), run_main.sh (a spike under MAIN's src: the sf_* BEFORE tiles), fv.sh, chain*.sh,
 ## patch*.py (how the code got here), out/; scripts in spikes/skinfolds2; copies sg_garrett / sg_tess; sheets sg_*)
-STATE / NEXT (skinfolds2): see "### Status (skinfolds2)" at the end of this section.
+STATE / NEXT (skinfolds2, 2026-10-12): BUILT + validated (shade is not pigment, whole-face bound, declared white, lid crease as one calibrated line, lips at the picture's lips, fold paths from anatomy, symmetry prior, folds under expression in the morph targets; folds round trip 11 of 12 with both lids, 0 false; lightness in bound on 3 tones x 2 EV). On the subjects: Tess no longer tan and her crease reads; Garrett has both bags; neither is a likeness (flat lips, pale sockets, lid placement, bags too small). The asset keeps a third of the nasolabial fold in triangles, the rest in maps; a crease's texture does not fade on a blink (needs an engine wrinkle blend). Full state and NEXT: "### Status (skinfolds2)" at the end of this section.
 
 ### 1. Tess's tone: what it was, measured (spikes/skinfolds2/cap.py, imgspace.py, shade.py, pr.py)
 - THE SHEETS' -10 L WAS THE SHEET'S LIGHT, NOT THE ALBEDO. Per view, on the plain skin (P picture, R our render under
@@ -1292,3 +1292,135 @@ STATE / NEXT (skinfolds2): see "### Status (skinfolds2)" at the end of this sect
 - TESS could not be exported with face shapes: tess_a1 has no base.head.interior / mouth_gap ("face_shapes on a GNM
   head needs a mouth that can open"). Giving her one changes her head: not done on a copy this round. Her lid fold
   under a blink is therefore NOT rendered; Garrett's (0.6, a prior) stands in.
+
+### Validation (skinfolds2; spikes/skinfolds2/foldval.py, toneval.py, lidcal.py; Tess's head and cameras, the truth under a
+### light the reader does not know; logs out/fv_*.log, out/toneval.log (final code), toneval_esig06.log / _esig02.log)
+- FOLDS, ROUND TRIP (case A3 on folds2.json: the eight read-or-not folds at amount 1 as GEOMETRY with known shifts /
+  extents / one side off -> pictures -> read -> skin.folds -> render -> read again, 2 rounds; TRUTH PICTURES RENDERED
+  FRESH: the first run reused pictures made before the crease's colour was fixed and "missed" both lids:
+  out/fv_A3_stale_truth.log): of the 12 fold-sides the reader reads, 11 HITS, 1 MISS (glabella R: 0.13 in the
+  picture along 20 % of its path: "as ours"), 0 FALSE; the side that was off (marionette R) absent; commissure L / R
+  NOT READ by design (counted apart). Strength on the hits: mean -0.03, rms 0.35 (1.27 0.75 1.00 0.48 0.51 0.99 0.74
+  0.74 1.50 1.50 1.21). BOTH LID FOLDS ARE NOW READ BACK (skinfolds: 0 of 2): the truth's crease reads 0.34 / 0.33
+  (ours at amount 1: LID_REF 0.36), round 1 lays 0.9. NOT RIGHT YET: after round 2 both lids stand at the 1.5 cap
+  and the final read says "ours has more" (0.50 against 0.34): the loop overshoots in round 2 and needs a third
+  round (Tess's own fit: 3 rounds, final "as ours" 0.33 / 0.30 against 0.32); and the lid's PLACEMENT is not
+  recovered: -0.3 for a truth of +1.5 mm, -0.8 for 0 (read_lid's line height is good to ~0.5 mm in the picture,
+  ~1 mm along the leaning lid). Shifts elsewhere as before: nasolabial +2.9 (+2.0), -2.3 (-2.0); BIASED: marionette
+  +2.3 (0), mentolabial +3.0 (0), tear trough R +1.6 (0).
+- NULL (case B: smooth young head against smooth pictures): 0 of 12 present, no displacement laid.
+  ON TESS'S PHOTOGRAPHS (a real smooth 22-year-old): marionette 0.54 laid (R valley 0.049 along 61 %, the left
+  INFERRED from it): a FALSE POSITIVE of the new, wider marionette path (0.16 mm of soft relief: not visible, but
+  wrong); mouth_corner L 0.31 as before. The commissure's detector was worse (1.5 on both sides) and is switched off.
+- LIGHTNESS, the prior alone (truth = Fitzpatrick f with its own hue (blood 0.6, undertone +0.35); start = the same
+  type's default; base tone error to the truth, L a b, before -> after; final code):
+  | truth | EV | plain skin L* | before | after | whole face L* |
+  |---|---|---|---|---|---|
+  | F2 | -0.7 | 65.91 -> 65.14 | +4.5 -4.2 -3.2 | +2.3 -2.4 -2.8 | 66.2 -> 64.6 |
+  | F2 | +0.4 | 65.72 -> 64.91 | +4.5 -4.2 -3.2 | +2.1 -2.5 -2.5 | 66.1 -> 64.5 |
+  | F3.5 | -0.7 | 59.15 -> 58.79 | +3.9 -3.8 -1.6 | +2.3 -1.7 -2.2 | 59.4 -> 58.5 |
+  | F3.5 | +0.4 | 59.15 -> 58.79 | +3.9 -3.8 -1.6 | +2.2 -1.8 -2.0 | |
+  | F5 | -0.7 | 41.39 -> 41.41 | +2.3 -2.1 +0.9 | +2.1 -0.5 -0.2 | 41.7 -> 41.7 |
+  | F5 | +0.4 | 41.39 -> 41.41 | +2.3 -2.1 +0.9 | +2.1 -0.5 -0.2 | |
+  | F3.5, prior F2.5 (wrong) | -0.7 | 64.28 -> 63.51 | +9.2 -4.7 -5.1 | +6.8 -3.1 -4.4 | |
+  Exposure-invariant (the two EVs within 0.3 Lab); plain skin and whole face inside their 3 L* bounds (largest move
+  -1.6 L*); the error to the truth falls in every case; a wrong prior stays wrong by design (9.2 -> 6.8).
+  A FAULT FOUND AND FIXED HERE: with the first shade model the synthetic F2 head came out with "exposure x 0.40"
+  and EVERY other region "26-32 L in shade": exposure down + shade up on all regions is a colour cast along the
+  shade colour by another name. EXPOSURE_SIGMA 0.6 -> 0.2 and SHADE_MAX 0.7 did not stop it (x 0.48, 21 regions at
+  the cap); SHADE IS LOCAL did: the lower quartile of the shaded regions' shade is held to 0 (SHADE_LOCAL 0.03): F2
+  now lists temple -18..-20, nose tip / wing -6..-12, under-eye -5..-12 as shade and nothing wholesale. STILL ODD:
+  the solve's "exposure" on these synthetic heads is x 0.45-0.6 (x 0.8 on F5) at both EVs although the read is
+  levelled on the plain skin; on the subjects it is x 1.02 (Tess) and x 0.95 (Garrett). Not understood; the tone's
+  result does not move with it.
+- THE WHITE ANCHOR: (a) DECLARED (white=[{view, box, albedo 0.8}] on the truth pictures' shirt: the bust recoloured
+  to albedo 0.8 with its own shading): FIRES. F3.5 with a wrong prior F2.5: error to the truth +9.2 -4.7 -5.1 ->
+  +0.5 -1.4 -1.2 L a b (the solve wanted -11.6 L*, held at the 8 L* bound). F5 with prior F4: +17.4 -3.7 -2.1 ->
+  +8.6 -0.8 -0.7: the white asked for -9 of the 17 L* (a dark skin against a shirt: the "lit as the face" inference
+  is good for about half there) and the bound held it at 8. (b) FOUND by the parser: DID NOT FIRE on the synthetic
+  shirt ("no clothing under the face that is bright and unclipped": the parser's cloth class on a bald CG bust, or
+  the recoloured shirt's clipped highlights; not diagnosed). The found path is tested only with a given mask
+  (test_shade_white_and_bounds: accepted when white, refused when grey under a brighter backdrop or coloured). On
+  the subjects it rightly refuses Garrett's shirt. So: declared = validated (2 cases, bias toward too light on dark
+  skin); found = NOT validated on pictures.
+- STABILITY under the final code (one more colour round from the fitted copies onto sg_*_chk): Tess: whole face
+  [73.23, 7.23, 16.53] -> [73.28, 7.18, 16.65]: nothing moves. Garrett: b* +2.1 again (17.7 -> 19.8): a fresh call
+  on an already fitted copy takes the fitted tone as its new PRIOR, and the solve still wants +7 b* of the painted
+  backdrop's white balance: the 5 a*b* bound is per call, not per model. Known hole: repeated calls walk.
+- Tests: tests/test_skin_read.py (+ test_shade_white_and_bounds, test_fold_rules2, test_folds_under_expression),
+  test_skin.py, test_skin_marks.py, test_toolsets.py pass on the final code (out/tests2.log).
+
+### Applied (copies sg_garrett from garrett_a1, sg_tess from tess_a1; a1 / sr_* / sf_* untouched; reports out/go_sg_*.txt;
+### sheets human_renders/sg_01_garrett_bags_folds_mouth.png, sg_02_tess_tone_crease_mouth.png (REFERENCE | AFTER | BEFORE (sf_*,
+### rendered by main's code) | references projected; the lid's crease at 4x; eye / eye / mouth under the photo light and
+### a raking light; neutral light and unseen angles), sg_03_garrett_export_expressions.png; one small image per feature:
+### out/feat_sg_<m>_<front|view1|zoomR|zoomL|eyeR|eyeL|mouth>.png)
+- TESS: tone melanin 0.139, blood 0.026, undertone -0.06; zones forehead_yellow 0.02, perioral_red 0.01, nose_red
+  1.32, midface_red 1.27, flush 0; under_eye 2.0 -> 1.03, eyelids 1.4 (a1's), lower_cool 1 and periorbital 0 (the
+  defaults) (sf_tess: under_eye 2.5, eyelids 2.5, lower_cool 1.92, periorbital 0.97); lips blood 1.31, melanin 14.0, strength 1.08, lower.melanin 0.40; folds lid_fold 0.87 (shifts L
+  1.0..3.9..0.35, R 0.6..2.3..0.4 mm: an arc), marionette 0.54 (see the null), mouth_corner L 0.31.
+  MEASURED, like with like (mid-face Lab at the same pixels, photo light at the measured EV -0.23 / -0.02 / +0.74):
+  reference 67.5 8.9 17.8 | AFTER 69.9 8.0 17.3 | sf_tess 69.0 8.7 18.2 (front); 69.4 9.1 16.6 | 73.5 9.0 17.6 |
+  72.9 9.2 18.8 (3/4); 72.5 7.7 17.7 | 78.2 8.5 18.4 | 77.6 8.8 19.0 (profile). Colour within 1 a*b* of hers in all
+  three views (sf: up to 2.2 b* yellower); 2-6 L LIGHTER than hers in the mid-face (her shade, not painted).
+  JUDGED from the feature tiles, bluntly. TONE: no longer a tan: a pale warm beige like hers, a little greyer /
+  flatter; the eye mask is gone. Under ONE light and exposure sf_tess is not far off either: most of "tan" on sf_02
+  was that sheet's exposure. Still wrong: blotchy cm-scale mottle where hers is even (skin.variation: not touched),
+  the socket and jaw paler than hers (shade we do not cast), the profile view washed out (its light fit).
+  CREASE: one continuous dark line parallel to the lashes, no welt, no ticks: reads. Softer / greyer than hers and
+  a little nearer the lashes; no lash line; lids pale. MOUTH: the upper lip's colour now matches in image space
+  (0.6 Lab) and reads a brown like hers; still a FLAT fill with a hard edge, the lower lip a flat peach without her
+  highlight; the bow is the head's.
+- GARRETT (two paintings; 1.12 / 1.33 mm a pixel): tone melanin 0.011, blood 0.16, undertone +0.55 (the solve wanted
+  +7 b*, held at +5: the same as skinfolds); zones midface_red 1.02, nose_red 1.55, lower_cool 2.0 (its bound, on a
+  man: real effect), forehead_yellow 0; stubble zones chin 0.5, soul 0.7, jaw 0.82, cheeks 0.55, neck 0.07; lips
+  blood 1.99, melanin 21.9, strength 1.55, lower 0.52 / 0.21 (front view only; upper lip in image space rendered
+  (44.3, 17.8, 16.6) for the painting's (39.1, 18.7, 17.4): 15 L too light before, 5 L after two rounds; lower
+  (62.8, 17.3, 17.9) for (63.7, 18.6, 18.4)); folds nasolabial 1.01 (L
+  INFERRED from R), marionette 1.06 / 0.67, tear_trough 0.435 both (L INFERRED from R), lid_fold 0.6 + roll 1.47 +
+  hood 0.24 from norms (INFERRED), chin_notch 0.4 BY EYE.
+  JUDGED from the tiles: BAGS under both eyes now, soft pouches under frontal and raking light: right in kind,
+  still smaller than the painting's. NASOLABIAL: oblique, from the wing outward, as painted; beside the head's own
+  inner line (two lines under raking light). MARIONETTE: a soft fold from the corner down and out, no longer a
+  nick. LID: the prior's soft crease; the painting's heavy hooding is not there (0.24). CHIN: a shallow notch.
+  LIPS: darker, browner upper lip than sf; still lighter and pinker than the painting's thin dark mouth. TONE: as
+  sf (b* held at the bound); the desk painting's view is 6 a* / 11 b* off under its lamp (weight 0.3: expected).
+
+### Status (skinfolds2)
+STATE: BUILT and wired (skin_read.py, skin_folds.py, skin_look.py, asset.py hook, server white=, guide, tests):
+shade is not pigment (measured shade colour, local, never on the plain zones), whole-face + zone-offset bounds, moves
+must earn their place, the white anchor on the whole picture + declared, photo_light at the picture's measured
+exposure (+ look_skin light "photo"), the lid's crease (occlusion in the skin, eyeball as a constraint, a low-order
+line over OUR lashes, calibrated to a photograph, hood), lips read at the picture's own lips, nasolabial / marionette
+paths from anatomy + own-crease snap, commissure, chin_notch, symmetry prior, min extent, folds under expression
+(gains baked into the morph targets), export check with poses. VALIDATED: folds round trip 11 of 12, 0 false, both
+lids read back; null 0 of 12; lightness in bound and exposure-invariant on 3 tones x 2 EV; declared white (2 cases);
+expression deltas (unit test + Garrett's export). NOT validated / FAILED: the found white on pictures; lid placement
+(+-1.5 mm) and its round-2 overshoot; a false marionette on Tess; Tess under a blink (no mouth interior); chin_notch
+(by eye only); hood beyond clay.
+MODELS WITH skin.folds REBUILD (skin_folds.VERSION 10 -> 12: paths, reliefs and the tissue key changed): only the
+sr_* / sf_* / sg_* test copies have folds. No BUILD_VERSION bump: models without folds have the same build key and
+primitives (tested). The colour fit's results change for every model on its next skin_from_reference call.
+NEXT, in the order I would:
+1. THE CHIN PAD + JOWL as proper features (Joe on Garrett): chin_notch is a first midline groove with two lobes, set
+   by eye; wanted: the pad's width set by the marionette grooves, a jowl line out to the jaw, a detector (profile /
+   low-angle views; a raking synthetic calibration), and the bake's pit fixed (wider, shallower).
+2. WRINKLE-MAP BLEND for the engine (oxidegen): export a "no folds" normal map + per-fold masks + the gain table, so
+   the crease's TEXTURE fades on a blink and deepens on a squint; crow's feet and other folds that are 0 in the
+   neutral (EXPRESSION from 0) need an amount-0 fold with its primitive kept.
+3. Tess's blink: give a copy a mouth interior + mouth_gap and export; judge the lid's line on the closed lid.
+4. THE LID: placement to +-0.5 mm (read the line against OUR rendered line's height, as the amount is), stop the
+   round-2 overshoot (a line read at a new place needs one round to settle: damp the gain), a dark LASH LINE and
+   shorter denser lashes, the lid's skin in shade (geometry: eye depth; or a declared "lid shade" layer).
+5. LIPS: gradient / border / highlight read from the picture's own lip profile (they are still set by eye); Garrett's
+   upper lip is still 5 L light at lips.melanin 22: it multiplies a tone melanin of 0.01 (a lip pigment of its own,
+   not a multiple of the tone's, would reach it).
+6. The tone bound PER MODEL (store the first prior in the model: repeated calls walk 5 a*b* each), and the profile
+   view's light fit (key from below on Tess's view 2).
+7. The false marionette on a smooth face (read it only where the nasolabial fold is present, or raise its
+   confidence floor), glabella R's miss, the found white on real photographs with a white shirt (skin_refs).
+8. Skin mottle at the cm scale (Tess reads blotchy), sclera too white, nostrils pale inside: seen on the tiles, not
+   this thread's tasks. The "references projected" tiles carry our brows and upper-lip layer over the projection
+   (the reruns / refread stages' layering): not fixed here.
+9. skintour.py renders under g3stage.photo_light (the -0.55 EV filmic template): its tiles sit ~10 L under the
+   references; it should use skin_read.photo_light.
