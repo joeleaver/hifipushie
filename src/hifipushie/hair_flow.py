@@ -52,7 +52,7 @@ def roots(sc, ga: dict, line, rng, xp=None):
     cum = np.r_[0.0, np.cumsum(seg)]
     # (the hairline row is fine and close: where the hair runs ALONG the line (temples, behind the ears) each lock's
     # start is a cut across it, and wide locks made the edge a saw)
-    n_h = max(8, int(round(cum[-1] / (0.5 * sp))))
+    n_h = max(8, int(round(cum[-1] / (0.32 * sp))))
     s = (np.arange(n_h) + 0.5 + float(ga["uneven"]) * rng.uniform(-0.3, 0.3, n_h)) / n_h * cum[-1]
     az_h = np.interp(s, cum, np.r_[a, 360.0]) % 360
     el_h = _line_at(line, az_h) + 1.5
@@ -153,7 +153,7 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
         # ear), but for `overhang` deg at the front and temples and `ears` deg round the ears
         az, el = az_el(Dn)
         fa = np.abs(_wrap(az))
-        lim = _line_at(line, az) + 1.0 - float(ga["overhang"]) * _ss_t((fa - 12) / 25) * (1 - _ss_t((fa - 62) / 22)) \
+        lim = _line_at(line, az) + 1.0 - float(ga["overhang"]) * _ss_t((fa - 5) / 40) * (1 - _ss_t((fa - 62) / 22)) \
             - float(ga["ears"]) * np.exp(-((fa - 95) / 22) ** 2)
         # ...and never further down in front of / over the ear than its top (the sideburn's line runs far below it)
         lim = np.where((fa > 52) & (fa < 112), np.maximum(lim, e_ear - 3.0 - float(ga["ears"])), lim)
@@ -211,7 +211,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
         name = f"{pre}g{r}_{k[r]}"
         k[r] += 1
         lk = {"tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)] for j in range(n)],
-              "width": round(sp * (0.9 if hl[i] == 1 else 1.9) * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
+              "width": round(sp * (0.6 if hl[i] == 1 else 1.9) * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
               "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003}
         st = dict(ga.get("strands") or {})
         if hl[i] == 1:
@@ -351,36 +351,35 @@ def escaped(sc, tp: dict, es: dict, line, rng, col, pre: str) -> dict:
             ln = l0 + (l1 - l0) * rng.uniform(0, 1) ** 1.3
             # out of the hairline a little (forward of the ear at the face), then down: beside the cheek, on the neck
             tie_d = dirs(*tp["at"])
-            to = _unit(tie_d - (tie_d @ out) * out)
-            d = _unit(out * 0.25 + (DOWN if zone == "nape" else 0.45 * to + 0.35 * DOWN))
-            B = [p]
-            for _ in range(10):
-                d = _unit(d + 0.4 * DOWN)
-                q = _push(sc, col, (B[-1] + d * ln / 10)[None], 0.004)[0]
-                B.append(q)
-            B = np.asarray(B)
-            sl = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(B, axis=0), axis=1))]
-            u = np.linspace(0, 1, 17)
-            B = np.stack([np.interp(u * sl[-1], sl, B[:, c_]) for c_ in range(3)], 1)
+            to = tie_d - (tie_d @ out) * out
+            to[2] = min(to[2], 0.0)  # (toward a HIGH tie they stood up and out of the temples like antennae)
+            to = _unit(to + 1e-9)
+            d0 = _unit(out * 0.25 + (DOWN if zone == "nape" else 0.45 * to + 0.35 * DOWN))
             eo = _unit(np.array([out[0], out[1], 0.0]))
             esd = np.array([-eo[1], eo[0], 0.0])
-            # the piece's own bend (a C out from the face and back, a slow S), shared by its hairs
-            a = np.radians(rng.uniform(-100, 100))
-            e = np.cos(a) * eo + np.sin(a) * esd
-            bow = cv * ln * rng.uniform(0.4, 1.2)
-            B = B + (bow * np.sin(np.pi * u ** 0.8))[:, None] * e + (0.5 * bow * u ** 3)[:, None] * eo
+            u = np.linspace(0, 1, 17)
             nh = int(rng.integers(int(h0), int(h1) + 1))
-            for q_ in range(nh):  # its hairs: one root, each its own length, drift and wave
+            for q_ in range(nh):
+                # its hairs: one root, but each FALLS on its own (its own first direction, stiffness and length), bows
+                # in its own plane and waves on its own: sharing one fall they were a bundle of parallel wires
+                # standing off the temple like whiskers (Tess, 2026-10-11)
+                d = _unit(d0 + 0.45 * rng.normal(0, 1, 3) * np.array([1.0, 1.0, 0.5]))
+                fall = rng.uniform(0.25, 0.75)
+                lq = ln * rng.uniform(0.45, 1.0)
+                B = [p + 0.002 * rng.normal(0, 1, 3)]
+                for _ in range(10):
+                    d = _unit(d + fall * DOWN)
+                    B.append(_push(sc, col, (B[-1] + d * lq / 10)[None], 0.004)[0])
+                B = np.asarray(B)
+                sl = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(B, axis=0), axis=1))]
+                Bq = np.stack([np.interp(u * sl[-1], sl, B[:, c_]) for c_ in range(3)], 1)
                 a2 = rng.uniform(0, 2 * np.pi)
                 e2 = np.cos(a2) * eo + np.sin(a2) * esd + 0.3 * rng.uniform(-1, 1) * Z
-                drift = rng.uniform(0.04, 0.2) * ln
-                kq, phq = rng.uniform(0.6, 1.4), rng.uniform(0, 2 * np.pi)
-                amp = cv * ln * rng.uniform(0.05, 0.3)
-                cut = rng.uniform(0.5, 1.0)
-                uu = u * cut
-                Bq = np.stack([np.interp(uu, u, B[:, c_]) for c_ in range(3)], 1)
-                Pq = Bq + (drift * uu ** 1.3)[:, None] * e2 \
-                    + (amp * uu * np.sin(2 * np.pi * kq * uu + phq))[:, None] * np.cross(e2, Z)
+                bow = cv * lq * rng.uniform(0.2, 1.0)
+                kq, phq = rng.uniform(0.6, 1.6), rng.uniform(0, 2 * np.pi)
+                amp = cv * lq * rng.uniform(0.1, 0.4)
+                Pq = Bq + (bow * np.sin(np.pi * u ** 0.8))[:, None] * e2 \
+                    + (amp * u * np.sin(2 * np.pi * kq * u + phq))[:, None] * np.cross(e2, Z)
                 Pq[1:] = _push(sc, col, Pq[1:], 0.003)
                 locks[f"{pre}e{k}_{q_}"] = {
                     "tier": "tie", "space": "xyz", "pts": _xyz(sc, Pq), "free": 1.0,
@@ -482,7 +481,7 @@ def style(tied: dict) -> dict:
     else:
         tail_ = {"length": float(tl["length"]), "fullness": round(full, 4), "locks": int(round(14 + 16 * tl["fullness"])),
                  "uneven": round(0.3 + 0.7 * me, 3), "taper": 0.3,
-                 "strands": {"wave": round(0.03 * wave, 4), "wavelength": 0.16, "random": 0.7, "clump": 0.55,
+                 "strands": {"wave": round(0.03 * wave, 4), "wavelength": 0.16, "random": 0.7, "clump": 0.35, "flat": 2.5,
                              "clump_size": 0.008, "tips": 1.0, "tip_spread": 0.1}}
         if kind == "bun":
             tail_.update({"coil": 2.2, "coil_radius": round(0.02 + 0.02 * tl["fullness"], 4), "length": max(float(tl["length"]), 0.2)})

@@ -146,7 +146,7 @@ def test_escaped_pieces_are_bundles_of_single_hairs_that_fall():
     for k, lk in es.items():
         assert 1 <= lk["hairs"] <= 2 and lk["space"] == "xyz"
         P = np.asarray(lk["pts"], float)
-        assert P[-1, 2] < P[0, 2] - 0.02, k  # it falls
+        assert P[-1, 2] < P[0, 2] - 0.008, k  # it falls
     assert not any(k.startswith("te") for k in _grow({"neatness": 1.0})[3])
     assert any(k.startswith("te") for k in _grow({"neatness": 0.2})[3])
     try:
