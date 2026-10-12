@@ -5036,3 +5036,237 @@ Tests: tests/test_solvereads.py (11: the rows and the chin chain's identity, sup
 carried factor, the expression columns incl. their null, view_yaw / view_sanity, and on tn_T00: the direct read, the
 expression basis against the model's own expression, solve_step reporting and carrying its state). test_refread (9),
 test_face_ruler, test_blockin, test_likeness, test_toolsets pass.
+
+## chinread (2026-10-12, "chinread" agent, branch `worktree-agent-ae615b730ec496d10` from main 252ca04; Joe: "The garrett with
+## good references failed pretty hard at the chin, makes me wonder if we're measuring enough things there." Held-out line: the
+## good Garrett set, Tess, synthetic benchmarks. Scratch DURABLE in /mnt/data/hifipushie/chinread: out/ (logs, sheets), synth/
+## (the benchmark's pictures); scripts in spikes/chinread (run.sh <script>: capped, this worktree's src, OPENBLAS 1 thread);
+## models gc_* (good Garrett), tc_* (Tess), gq_* (paintings), cz_* (benchmark))
+STATE / NEXT (chinread, DONE): IS THE CHIN A CHIN ON THE GOOD SET NOW? NO. gc best = gc_C06 and I cannot tell it from
+gh_B06 on the sheet (human_renders/gc_01_garrett_good_chin.png): the same broad convex lower face, no chin ball. What the
+thread found instead: (1) on KNOWN heads the old solve made the lower face worse than the class mean, and the cause was not
+a missing read but a BIASED one: the detector's chin points (2.6 mm high, 2.4 mm aside on dressed pictures against our
+clay) fighting the side view's outline; left out when the set has a side view (the ONE default changed), the lower face's
+error falls 3.40 -> 2.15 mm rms over 8 heads (8 of 8 better), chin length -3.9 -> -0.2 mm, the widths' bias +3.7 -> +1.1 /
++0.1 / +0.3. (2) The chin's own width stays UNREAD (19 % of a known 10 mm difference recovered) and FOUR reads for it and
+for the jaw's lower edge now stand as built-and-failed (solvereads' two; the shading ramp; the jaw over cloth). (3) On the
+good Garrett set none of this is the fault: his jaw IS wide at its angles (the outlines read that, and are right); the
+rounded chin between his marionette grooves is RELIEF inside the silhouette, which no read sees and GNM at |c| 12 does
+not make. Tess: no visible change, eyespan a little better, the table 23 / 26 against 25 on the detector's own chin rows
+(Joe's call). Paintings: unchanged to the last digit (no side view: the points stay).
+NEXT: (a) the chin ball and jowls as skin folds / an eye-judged relief step on gc_C06 (skin thread; GNM owns the shape:
+Joe's rule); (b) fix "views keyed by kind" so a set can hold two turned views, then test a 3/4 from behind (the lost
+profile: jaw line and chin's side as one silhouette); (c) the block-in table's chin_height / lower_third rows read the
+detector's chin: flag them when a side view exists; (d) the anchors as a whole: correlated errors at a stated sigma of 1
+mm (leaving them all out was as good on 5 heads): revisit their weight with the paintings in the loop; (e) a shading
+read only against a dressed render AND a renderer that can cross-check it (Cycles cannot render the dressed stage).
+
+### 1. Who pushes the chin wide (spikes/chinread/who.py <model> truth=<model>; whodet.py; out/who_*.npz)
+- The solve is linear-Gaussian per round, so each measure's move splits EXACTLY into what each group of reads (type, view)
+  contributes, and with a known head each read's ERROR (o - J (c_true - c), cameras fitted out) can be pushed through the
+  same algebra: what the reads' errors put into each measure. Benchmark head b (solvereads' sx_b_n: garrett_a1's identity,
+  a narrow chin), first call from the class mean:
+  | | chin_width | jaw_width | gonial_width | cheekbone_width |
+  |---|---|---|---|---|
+  | the true gap (truth - class mean), mm | -1.4 | +2.1 | +0.3 | -4.5 |
+  | the step | +5.2 | +10.7 | +10.4 | +4.4 |
+  | ERROR-FREE reads of the same kind, same weights | -1.5 | +1.5 | -0.4 | -4.8 |
+  | what the reads' ERRORS put in | +4.4 | +4.9 | +6.1 | +4.6 |
+  | of that: detector anchors, front / 3/4 | +2.4 / +1.4 | +4.5 / +0.1 | +4.4 / +0.5 | +2.5 / +0.2 |
+  | outlines front / 3/4 / profile | +0.1 / +0.6 / 0.0 | -0.5 / +0.3 / -0.1 | -0.7 / +0.9 / -0.1 | +0.9 / 0.0 / -0.3 |
+- So the answer to "are we measuring enough there" has a second half: with error-free reads of exactly the kinds we have,
+  the solve lands the chin and jaw width within 0.1-0.7 mm on this head (through the prior's correlations: an in-model
+  benchmark flatters that). The widths are not merely UNREAD, they are PUSHED: +4.4 / +4.9 / +6.1 mm by biased reads, and
+  most of it by the DIFFERENTIAL DETECTOR ANCHORS (216 at sigma 1.0; rms against the truth 1.4-1.6 mm with coherent parts:
+  the chin's three (lm 7 / 8 / 9) -3.4 .. -4.6 mm in y in the front picture and +2.5 .. +3.4 in x in the 3/4, the brows
+  +2.5 .. +4.9 mm in y, through cameras fitted on the wrong head: the detector's face on a DRESSED picture is not its face on
+  our clay render; the clean null, true cameras, is in 4: chin -2.6 mm, brows +0.7). The good Garrett
+  set's chin moved +4.9 mm from the class mean, the benchmark's two heads +5.0 and +5.2 whatever their truth: a constant.
+- A free stretch of the detector's face per view (nuisance columns x / y, face_ruler.LM_STRETCH): no help (b after one
+  call +6.4 / +7.3 / +8.7): the bias is not a stretch.
+- WHAT GNM CAN DO at the chin (variants.py; out/var1.png: reference | gh_B06 | variants, lit like the picture): chin_width
+  -6 mm alone is hardly visible; jaw_width -6, gonial_width -8 and jaw_square -1.5 sd make the jaw taper into a chin that
+  reads as his in the 3/4. The slab is the JAW's width and squareness (gh_B06: chin_width +8.1, jaw_width +12.1 mm over
+  GNM's mean) more than the chin point's own width. GNM can express the target; no layer needed.
+- LOOKED AT the jaw's lower edge as a SHADING edge (jl_look.py; out/jl_gh_B06*.png: luminance profiles across the model's
+  jaw line, picture and the model under the fitted light): under the chin (the middle ~70 mm) picture and model both show
+  a ramp into the under-jaw shade; along the jaw's sides the soft-lit picture shows NO edge. In the 3/4 the FAR chin /
+  jaw corner lies in front of the shirt collar: the model's silhouette stands ~5 mm outside the picture's skin edge there
+  (solvereads' "doubled chin line") and the outline reader never sees it (the collar is part of the figure's mask).
+
+### 2. The yardstick: SHAPE, not millimetres (spikes/chinread/errmap.py, bt.py)
+- Every camera's scale is free in the solve, so the pictures cannot tell a head 4 % larger from a camera 4 % closer. The
+  class-mean start is 2.9-3.6 % LARGER than the benchmark's two truths and every solved head stays 1-5 % large. solvereads'
+  "+6.4 / +7.6 mm too wide" is partly that: at the true head's size (a similarity fit over the hockey mask) today's solve on
+  head b is chin_width +3.9, jaw_width +3.2, gonial_width +4.4 mm, chin_length -2.8, and the lower face's surface (chin +
+  jaw body + jaw angle) is WORSE than the class-mean start: 2.99 mm rms against 1.84 (the chin alone 3.24 against 1.34).
+  bt.py reports: size error %, surface rms after the similarity fit per region, each measure's error at the true size.
+  Everything below is in those terms.
+
+### 3. Reads tried
+- (b / a) THE JAW'S LOWER EDGE AS A SHADING RAMP, differential (face_ruler._ramp_obs; view["chin"]["ramp"]; rval.py): the
+  picture's luminance profile across the model's jaw line (lm 4..12, every 3 mm, +-13 mm) against the SAME profile of the
+  model's own render under the picture's fitted light (blockin.lit_render: c0 + w.n, AO, soft cast shadow); the read = the
+  shift of best normalised correlation (gain and offset free), moving with the surface under the render's steepest fall;
+  kept only where both fall by 10 % and correlate over 0.9 with one clear best shift. FAIL. Null on dressed shots of known
+  heads (truth 0), the benchmark's light: front bias -1.3 mm, rms 3.1 (9.5 reads a picture; per-picture bias sd 2.1); 3/4
+  bias -1.6, rms 2.4 (13.5 reads). Known changes: chin_length +-4 read at slope 0.6-0.9 (corr 0.3-0.4), chin_width +-5 and
+  jaw_width +-6 at slopes -2 .. +7 per run (corr ~0): the profiles cross the jaw line vertically, a width moves them 0.4-0.9
+  mm, the null's scatter is 3. Our clay under a fitted c0 + w.n light is not the picture's shading under the jaw (the
+  dressed skin's stubble ends there, the real light is an area light, the neck bounces). On the good Garrett front it reads
+  the model's chin corners 4-8 mm low (out/ramp_gh_B06.png: plausible, it is what the eye sees) but with a 3 mm null that
+  is not a measurement. OFF, code kept. The whole-region shading read (a) uses the same instrument: not built.
+- (d) THE JAW IN FRONT OF CLOTH (face_ruler._cloth_obs; view["chin"]["cloth"]): the model's occluding contour over jaw and
+  chin (jaw_contour) against the edge where the parser's bare skin ends and CLOTH begins (skin 1-3.5 mm inside, cloth
+  outside, one edge in reach). The parser's skin / cloth maps are good on the good set (out/cloth_gh_B06.png), but the set
+  has almost no such edge: 3 reads in the 3/4 (the collar's tip touches the chin's corner; residual +0.4 mm: the model's
+  contour is RIGHT there), 1 in the front (the collar against the neck: a false one). solvereads' "doubled chin line" in the
+  3/4 is the model's under-chin contour hanging 5-10 mm below the picture's jaw edge on the NECK's skin, not at the collar.
+  NOT VALIDATED (no known head with cloth behind its jaw), OFF, code kept: it is the read for a head-down or from-above
+  reference (the brief).
+- (c) fold / stubble landmarks bracketing the chin ball: not built: the benchmark's heads have no marionette grooves and a
+  painted stubble, so nothing to validate it on.
+- (b') the same ramp read with the model's picture a DRESSED EEVEE render (skin_read's instrument; spikes/chinread/eev.py:
+  the "photo" = the stubbled truth under a top light, the model = the same head WITHOUT stubble under the light fitted to
+  that photo): null on two heads: front 4 reads, -0.35 mm, rms 0.50; 3 reads, -1.24, rms 1.24; no reads in the 3/4. Too
+  few reads to be a measurement, and Cycles cannot render the dressed stage ("ran out of shader stack": no cross-renderer
+  test). Not pursued; `view["ramp_lum"]` takes such a render if someone does.
+- (d, validated as far as it goes) the cloth read on known heads with a collar laid in true depth order (collar.py: a
+  cylinder round the neck, its top 15 mm above the chin's lowest point; rval.py cloth; 5 heads): 3/4: 14 reads a picture,
+  median |o| 0.18-0.39 mm but outliers: bias -0.8, rms 1.7; known changes: chin_length +-4 slope 1.2 (corr 0.72),
+  under_chin +-4 slope 1.18 (corr 0.86), chin_width +-5 slope 1.14 (corr 0.08). FRONT: FAIL (4 reads a picture, bias
+  -4.9 mm: where the chin's underside shows, the skin runs on INTO the collar and the edge is the collar's, not the
+  jaw's; a depth test on the model, CLOTH_DROP, does not tell the two apart). OFF.
+
+### 4. The detector's CHIN POINTS are what broke the lower face (the one default that changed)
+- The anchors' own null (detnull.py: the detector on a known head's dressed picture minus the detector on our clay
+  render of THAT head through the TRUE camera; 8 heads; mm, y + = lower):
+  | | front x | front y | 3/4 x | 3/4 y |
+  |---|---|---|---|---|
+  | chin (lm 7 / 8 / 9) | +2.4 +-0.9 | **-2.6 +-1.1** | +2.1 +-1.0 | **-2.1 +-1.0** |
+  | brows | +0.1 | +0.7 | -0.9 | +0.9 |
+  | eyes | +0.4 | -0.1 | -0.7 | -0.2 |
+  | nose | +0.8 | -0.5 | -1.2 | +0.3 |
+  | mouth | +1.8 | -0.2 | +0.6 | -0.4 |
+  The detector's chin on a dressed, stubbled picture stands 2-3 mm higher than its chin on our clay render of the same
+  head: "like with like" does not hold at the chin. (who.py's "-9.6 mm" at a solved state is that bias against a head
+  whose chin the same points had already pulled 4 mm short.) refread put these three points in "always" because a set
+  without a side view has no other chin read; with a side view they FIGHT its outline (0.3 mm).
+- THE BENCHMARK (spikes/chinread/mkhead.py, b4.sh, bt.py; 8 known heads through the good set's three cameras (front,
+  23, 72 deg), dressed EEVEE shots, start = the male class mean, three calls: a, b = solvereads' two; c / d = b with the
+  chin 5 mm narrower / wider (jaw held); e, f = random GNM heads (0.6 sd a comp); g / h = random heads with chin and jaw
+  6 mm narrower / wider). SHAPE errors (similarity fit), mean over the heads; measures: rms (bias):
+  | | face mm | lower face | chin | chin_width | jaw_width | gonial_width | chin_length | size % |
+  |---|---|---|---|---|---|---|---|---|
+  | the class-mean start | 2.69 | 3.02 | 2.43 | 6.2 | 8.2 | 7.4 | 2.4 | +1.7 |
+  | N: before (chin points in) | 2.35 | **3.40** | 3.31 | 4.8 (+3.7) | 4.4 (+3.4) | 4.2 (+3.7) | 4.4 (**-3.9**) | +3.1 |
+  | C: chin points left out | **1.99** | **2.15** | 1.65 | 3.5 (+1.1) | 2.5 (+0.1) | 2.3 (+0.3) | 1.5 (-0.2) | +4.0 |
+  | A: no anchors at all (5 heads) | 1.66 | 1.98 | 1.32 | 2.3 | 2.8 (-2.5) | 2.7 (-2.5) | 0.4 | +3.6 |
+  Lower face per head, N -> C: a 2.61 -> 1.35, b 2.99 -> 1.44, c 4.05 -> 2.25, d 3.17 -> 2.56, e 4.13 -> 1.40, f 2.39 ->
+  1.53, g 3.34 -> 2.87, h 4.51 -> 3.84: better on 8 of 8. BEFORE, the solve left the lower face worse than the class mean
+  on 4 of 8 heads (b, c, d, e) and on average. Other variants: on head b (N 2.99, C 1.44): a free stretch of the detector's face 1.92, chin points in y only 2.24,
+  no chin points + the stretch 1.51; on c, d, e: the tie + C 2.19 against C 2.07, chin_width rms 4.1 against 3.4: the tie
+  does not help; C + the size hold 2.28 (size back to the start's, +3.6 %; shape slightly worse). No anchors at all, on
+  the same five heads as C: face 1.66 against 1.70, lower face 1.98 against 1.80, jaw angle 2.84 against 2.05.
+- WHAT REMAINS IS UNREAD, NOT PUSHED: c / d (the same head with the chin alone 5 mm narrower / wider): the solved chins
+  end +3.5 / -4.6 mm from their truths: they stand 1.9 mm apart where the truths stand 10 apart (19 %; with the chin
+  points in 46 %, on top of +2.7 mm of bias and a chin 4 mm short: the points do carry a little width). g / h (chin AND jaw +-6): 45 % / 90 % recovered: the jaw's angles
+  are on the front outline.
+- THE DEFAULT: face_ruler.CHIN_LM_AXES = "auto": reference_views leaves the detector's chin points out when a view's
+  fitted camera is turned 60 deg or more (SIDE_MIN), keeps them otherwise; block_in_solve(chin_points="auto" | "on" |
+  "off"); the reply says "CHIN: the detector's chin points are left out ...". The block-in TABLE's chin_height /
+  lower_third rows are those same detector points: with a side view they now stand 2-4 mm out, and should not be chased.
+- Soft frontal light (heads b and e re-shot under a key from the camera, a wide source, a bright room; mkhead.py
+  light=soft): lower face N -> C: 2.75 -> 1.33 and 2.34 -> 1.59 (face 1.70 -> 1.15, 2.06 -> 1.88; chin_length -3.6 -> +0.8,
+  -2.9 -> +0.1): the same under both lights (the change removes a read, it does not depend on the light).
+
+### 5. Why the good Garrett set's chin is still a slab (the reruns below changed almost nothing there)
+- who.py on the real set's first call: jaw_width +12.7 mm = the FRONT OUTLINE +7.4 (126 parser reads), anchors +2.9, lips
+  +2.0; jaw_square +1.35 sd = front outline +0.75, 3/4 outline +0.5; chin_width +6.5 = 3/4 outline +2.3, side outline +2.2,
+  anchors +1.0. misfit.py (a variant laid under the cameras again, the reads' misfit before any step): the jaw
+  made narrower and less square (jaw_square -1.5 sd: jaw_width +6.1, gonial +6.1) leaves the front outline at the jaw's
+  angle 2.0 mm INSIDE the picture's (rms 0.73 -> 2.2 mm; an extreme one 6.1 mm): his jaw IS wide at its angles, the
+  outlines say so and the solve is right about it. chin_width -6 mm with every other measure held: the outlines hardly
+  notice (3/4 0.22 -> 0.38, front 0.49 -> 0.82, side 0.27 -> 0.29 mm rms; chi2 / n 1.5 -> 2.25): unread, as the benchmark says.
+- The tie to the population's expectation does not narrow it: gc_T06 (all four tied) chin_width +6.1, jaw_width +10.4 (GNM
+  mm over GNM's mean; untied gc_C06 +7.4 / +12.2; the class-mean start +4.5 / +6.5): a man with his read measures HAS a
+  chin that wide in GNM's population.
+- So what the eye misses is not a width. The picture's chin is a rounded ball between two marionette grooves with jowls
+  beside it: RELIEF inside the silhouette (soft tissue of a 52 year old), over a jaw that is as wide as the model's. The
+  model fills jowl to jowl with one convex mass. No read sees relief (shading failed here and in "## refread"), and a GNM
+  identity at 12 |c| has little of it. That belongs to the skin thread's folds (skin.folds: marionette / pre-jowl as
+  geometry) and to an eye-judged `relief:` / `sculpt:` step, not to this solve.
+
+### 6. Reruns with the new default (blockin.fork of each class-mean start; cchain.py; sheets human_renders/gc_*)
+| run | calls: \\|dc\\| | \\|c\\|, largest | table | chin_width / jaw_width / gonial / jaw_square (GNM mm over GNM's mean; sd) | direct read of those |
+|---|---|---|---|---|---|
+| GOOD GARRETT gg_G00 -> gc_C01..06 | 10.8, 4.0, 2.2d, 1.2, 0.9, 1.4 | 12.26, 2.69 sd, x1.76 | 11 / 26 (gh_B06 14) | +7.4 / +12.2 / +10.9 / +1.4 (gh_B06 +8.1 / +12.1 / +10.5 / +1.7) | 0.04 / 0.44 / 0.84 / 0.24 |
+| TESS tn_T00 -> tc_C01..05 | 9.8, 1.5d, 1.6, 1.0, 1.1 | 11.24, 2.53 sd, x1.0 | 23 / 26 (tv_B03 25) | +2.1 / -4.6 / -5.8 / +0.8 (tv_B03 +1.2 / -4.4 / -5.0 / +0.6) | 0.25 / 0.37 / 0.38 / 0.41 |
+| PAINTINGS gj_G00 -> gq_B01..05 | 10.2, 2.1d, 1.2, 0.9, 1.1 | 9.65, 2.88 sd, x1.87 | 17 / 29 (= gp_B05) | +2.3 / +8.5 / +7.1 / +0.3 (= gp_B05 to the last digit; garrett_a1 +3.0 / +8.6 / +7.2 / +0.4) | 0.14 / 0.44 / 0.91 / 0.22 |
+- GOOD GARRETT: sheet gc_01_garrett_good_chin.png (REFERENCE | gc_C06 | gh_B06: 50 % blend with the projected skin +
+  own-shape clay under the picture's light; rows front / 3-4 / side; then the chin close-up). BLUNT: THE CHIN IS NOT
+  FIXED. I cannot tell gc_C06 from gh_B06 in any tile. The clay shows it plainly: one broad convex lower face from jaw
+  angle to jaw angle, a shallow trough under the lip right across it, no chin ball; in the 3/4 the jaw's underside hangs a
+  few mm below the picture's jaw line (the blend's doubled line is still there). The side row is right in both. The table
+  went down (11 / 26): the detector's chin rows (chin_height front +2.7, 3/4 +3.8) that the side outline overrules.
+- TESS: sheet gc_02_tess_regression.png. I cannot tell tc_C05 from tv_B03; blends sharp in all three views. eyespan: front
+  0.986 / 1.019 (tv_B03 0.987 / 1.019), 3/4 0.968 / 1.005 (0.969 / 1.016: the 3/4's face length is closer), side nasion-chin
+  1.061 (1.077). The TABLE is lower, 21-23 / 26 over calls 3-5 against 25: the rows that went out are chin_height (front
+  +1.7, 3/4 +2.0 against a tolerance of 1.5) and lower_third 3/4 (+2.1 / 2.0): the detector's chin, 0.2-0.5 mm past
+  tolerance. By the table alone that is a regression; by the benchmark those rows are the biased instrument. Joe's call.
+- PAINTINGS: no side view, so the chin points stay and nothing changes: gq_B05 is gp_B05 (garrett_a1 to 0.7 mm on the chin,
+  0.1-0.2 elsewhere): as good as garrett_a1 in front and 3/4; its chin is what the detector's points and the prior say
+  (chin_width read 0.14, moved -2.2 mm from the start; chin_forward read 0.43: unread side, as before).
+- Nothing forced: no component past 3 sd (largest 2.88).
+
+### 7. What REFERENCE would settle it (head b = a narrow chin, re-shot; today's solve with the new default; bt.py)
+| set | face mm | lower face | chin_width | jaw_width | \\|c - ct\\| |
+|---|---|---|---|---|---|
+| the good set's angles: front, 23, 72 deg | 1.27 | 1.44 | +1.2 | -0.1 | 7.9 |
+| a TRUE 45 deg 3/4 (front, 45, 72) | 1.38 | 1.92 | +0.6 | -2.6 | 5.9 |
+| every view from 15 deg ABOVE (the chin down over the neck) | 2.82 | 2.79 | +3.7 | +3.8 | 10.7 |
+| every view from 15 deg BELOW (the jaw's underside shown) | 2.08 | 2.04 | +6.1 | +1.8 | 10.1 |
+| 45 deg AND from above | 2.08 | 2.59 | +3.0 | +3.3 | 10.4 |
+(with the chin points in: 23 deg 2.99 lower face; 45 deg 2.28: solvereads' "a true 45 halves it" was the chin points'
+damage being outvoted.) So: a true 45 brings the whole head closer (|c - ct| 7.9 -> 5.9) and the chin's width to 0.6
+mm on this head, at no gain in the lower face's surface; TILTED views make it worse with today's readers (the jaw then
+lies on neck or chest skin: an edge no validated reader takes, and the cameras' pitch freedom is 2 deg). One head each:
+indications, not statistics.
+BRIEF ADDITION (for likeness_brief / the reference agent; nobody was contacted):
+1. "three_quarter": the head turned a TRUE 45 deg (far eye whole, the far cheek, jaw and chin's side on the backdrop; 23
+   deg is a front view with a nose). "profile": a TRUE 90 (far brow hidden). State the angles in the file names.
+2. Head LEVEL in every solver view (chin neither lifted nor tucked: the good set's front is chin-up, its side 8-10 deg
+   up). Tilted or from-above / from-below views are for the artist's eye only: mark them "not for the solve".
+3. The jaw and chin must END ON THE BACKDROP OR ON CLOTH, not on skin, in at least one view: an open or low neckline
+   that does not touch the jaw in the 45, the backdrop a plain mid grey lighter than the stubble. A beard or stubble hides
+   the chin's own edge: say so in the brief's notes, the chin will be inferred.
+4. For the chin's and cheeks' RELIEF (what no outline shows): the set's raking picture (one key from the side) at the
+   same pose as the front, AND one with the key from straight above: read by eye today (and by a shading read if one
+   ever validates), so label them "relief".
+5. UNTESTED, likely the real answer for the chin's width: a 3/4 from BEHIND (110-130 deg, the "lost profile": cheek, jaw
+   line and chin's side as one silhouette). The solve cannot take it yet: views are keyed by kind, two side-kind views
+   share their camera columns (solvereads' open point 4).
+
+### What changed by default (exactly)
+1. Differential anchors: the detector's chin points (lm 7 / 8 / 9) are left out when the set has a view whose fitted
+   camera is turned 60 deg or more; kept otherwise (face_ruler.CHIN_LM_AXES "auto", SIDE_MIN; block_in_solve(chin_points=)).
+   The reply carries a CHIN: note when they are out.
+Nothing else. OFF, as options of blockin.solve_step(chin={..}) / face_ruler.compare(chin=): "ramp" (the shading ramp),
+"cloth" (the jaw in front of cloth), "tie" (True | names: unread widths tied to their expectation, solve_report.tie_rows),
+"size" (the head's size held, solve_report.size_row), "lm_stretch", "lm_sig", "chin_lm" ("xy" | "y" | "x" | "fx" | "none").
+Tests: tests/test_chinread.py (7: defaults, the tie's row and its behaviour in a solve, the size row, the chin points with /
+without a side view on tn_T00, the off reads). test_solvereads, test_refread (its chin-anchor test now asks for the points), test_face_ruler,
+test_blockin, test_toolsets pass.
+
+### Found on the way
+- A solved head's absolute SIZE is not read (benchmark: +1 .. +8 % against the truth; the real reruns -1 .. -3.7 %
+  against their starts): compare measures between heads only after a similarity fit, and do not read "mm too wide" off
+  two solves. solve_report.size_row holds it if wanted (off: it cost a little shape on three heads).
+- The detector anchors' errors are CORRELATED (a bias the 170 components absorb), so adapt's scatter test never sees
+  them: rms against the truth 1.4-2.3 mm at a stated sigma of 1.0. Leaving ALL anchors out was as good as leaving the
+  chin's out on 5 heads (face 1.66 against 1.85) but worse at the jaw's angle and cheekbones; not changed.
+- From the TRUE head (the prior still on the class mean) one call moves |dc| 11-14: the prior pulls 110 unread directions
+  back to the class mean. A solved head is the class mean wherever nothing is read; that is by design, and is why the
+  report's "unread" list matters.
+- The machine: three agents ran it to load 35 with the swap full. Light jobs go through /mnt/data/hifipushie/bin/slot
+  (spikes/chinread/runl.sh), renders through bin/capped + resources.heavy (run.sh); q.sh runs a queue file one job at a time.

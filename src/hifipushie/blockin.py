@@ -730,7 +730,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
                parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
-               damp: bool = True) -> dict:
+               damp: bool = True, chin: dict | None = None) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -762,7 +762,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else 0, cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 6)),
-                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm)
+                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin)
     dc = float(share) * np.asarray(c["dc"], float)
     # THE SEE-SAW: a settled solve hops back and forth by |dc| 2-2.6 a call (Tess 2.6, 2.0, 2.6 with the cosine of
     # consecutive steps -0.4 .. -0.5: reads that come and go, the lids' and lips' re-linearisation). A step that turns
@@ -802,6 +802,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "held": list(c.get("held") or []), "expression": xp, "damped": damped, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
                     "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]]}
+    if c.get("tie"):
+        rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size"))}
     if report and c.get("post") is not None:      # WHAT WAS READ, and what moved without a read (solve_report)
         from . import solve_report as sr
         croot = c0 - off if off is not None else None

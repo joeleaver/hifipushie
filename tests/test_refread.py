@@ -134,12 +134,15 @@ def test_lip_obs_reads_a_known_border_change(tess):
 @need_ref
 def test_anchors_are_differential_and_carry_the_chin_and_the_3q_irises(tess):
     A, B, dc = tess
-    head, views, notes = fr.reference_views(REF, parse=False)
+    # (chinread: with a side view in the set the detector's chin points are left out by default; asked for, they are in)
+    head, views, notes = fr.reference_views(REF, parse=False, chin={"chin_lm": "xy"})
     front, tq = views[0], views[1]
     oa = front["extra"](A, front)
     lm = [ob for ob in oa if ob["type"] == "landmark"]
     assert lm and all(ob.get("diff") for ob in lm)                          # the detector on picture AND render
-    assert {"lm7.x", "lm8.y", "lm9.x"} <= {ob["name"] for ob in lm}       # the chin is always in
+    assert {"lm7.x", "lm8.y", "lm9.x"} <= {ob["name"] for ob in lm}       # the chin's three
+    dflt = fr.reference_views(REF, parse=False)[1][0]
+    assert not {"lm7.x", "lm8.y", "lm9.x"} & {ob["name"] for ob in dflt["extra"](A, dflt)}     # Tess's set has a side view
     ob_ = [ob for ob in front["extra"](B, front) if ob["type"] == "landmark"]
     d = np.array([a["o"] - b["o"] for a, b in zip(lm, ob_)])                # the render moved with the head
     pred = np.array([a["J"] for a in lm]) @ dc
