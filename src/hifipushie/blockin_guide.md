@@ -65,16 +65,27 @@ eye catches what the points miss; the target table catches what your eye misses.
    **If the difference is something you can MEASURE** (a width, a height, how far a point stands forward in profile:
    the 23 measures of `gnm_controls(query="mm")`), measure it in mm on the sheet and use the `mm:` move: closing the
    8 largest of those gaps (in population sd) passed 30 / 42 pairs, more than the best 10 phrase moves (27 / 42).
-   **3b. THE JOINT STEP FIRST: `block_in_solve(name)`** (2026-10-11). face_ruler's solve reads every view at once
-   (skin outlines, iris centres, the limbus in the turned views) and finds the most likely identity change under
-   GNM's prior with the cameras free; `block_in_solve` applies that change whole as a step and keeps the cameras it
-   ended on. Run it from block_in_start's head before any hand move. Tess from the class mean: ONE step took |c|
-   5.4 -> 10.7 (largest component 2.5 sd) and the table to 22 / 26, about where ten hand rounds had got (hand
-   rounds closing measures one at a time undo each other: after two later mass steps the lips step's borders had
-   drifted 0.2 -> 1.8 mm and the brows 1.8 mm). What it does NOT see: the inside of the face (lids, lip borders, the
-   nose's planes: her profile nose came out long and hooked), so the eye and lips steps follow, then hand moves for
-   what you still see. Do not force a fold from a class-mean head (lid_read fold="crisp" cost |dc| 20 there: use
-   fold="none" until the masses are right).
+   **3b. THE JOINT STEP FIRST: `block_in_solve(name, cameras="trust" | "free")`** (2026-10-11). ONE solve over every
+   reference view at once: skin outlines, iris centres, the limbus in the turned views, the LID MARGINS and corners
+   (the eye ruler's rows, in the eye's own frame) and the LIP BORDERS (the front picture's traced vermilion), under
+   GNM's prior on the WHOLE identity (centred on the block-in's start head, so repeated calls settle), with each
+   camera partly free. It applies the solved change as a step and keeps the cameras it ended on. Run it from
+   block_in_start's head BEFORE any hand move, 3-4 calls until its |dc| falls under ~2.
+   - CAMERAS: `cameras="trust"` from the FIRST call when the references' cameras are good (measured, or fitted on an
+     earlier accepted head: block_in_start(cameras="keep")); "free" only for cameras fitted on the class mean. On
+     Tess a free first call turned the 3/4 camera 3.4 deg and the profile 5.8 deg and the shape absorbed it (eye span
+     in the 3/4 5 % short with the face length right). Check a solved head: iris span and face length, model /
+     picture, ~1.00 in the front and the 3/4 (spikes/reruns/eyespan.py).
+   - Tess from the class mean: |c| 5.4 -> 11.7, largest component 2.3 sd, eyes 3/3, lip borders 0.24 / 0.46 mm with
+     no separate eye or lips step: about ten hand rounds' worth in minutes, and solved rows no longer undo each other.
+   - It WARNS on a weak or forced solve (under ~120 outline reads, or a component past 3 sd): two paintings on dark
+     backgrounds gave 54 outline reads and a distorted head. It needs plain-background references in 2-3 views.
+   - It does NOT see the surface inside the silhouette (cheek volume), the lid's fold, the nose's planes: hand steps
+     for what you (or the user) see, after the solve. Do not force a fold from a class-mean head (lid_read
+     fold="crisp" cost |dc| 20 there; fold="none" = the opening only).
+   - JUDGE the result on the judging sheet (spikes/reruns/jsheet.py: photo | 50 % blend | the reference pictures
+     projected as the model's skin | own dressing), not on a dressed render in an unrelated dressing: look at the
+     blend before calling a feature wrong. Face-ID scores do not judge shape (they read the projected texture).
 4. **One small step** (0.3-0.7 sd; a big mass difference 1-2 sd, see the manual's step sizes):
    `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
    a NEW model (default: the next number), so every round stays comparable; `seen` and `why` go in the log.

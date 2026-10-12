@@ -5,3 +5,4 @@ workspace/
 .claude/worktrees/
 docker/assets/
 dist/
+scratchpad/

@@ -84,6 +84,10 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   -> full notes: docs/notes/faceshapes.md
 - `blockin.py` + tools block_in_start / block_in_look / block_in_step / lid_read (guide topic "block_in"): THE DEFAULT for a
   person's head from pictures (the artist block-in loop). -> full notes: docs/notes/gnm_atlas.md "## blockin"
+- Joint solve (2026-10-11): `blockin.solve_step` / MCP `block_in_solve` applies `face_ruler.compare`'s ONE solve over
+  all reference views (outlines, irises, limbus, lids, lips; prior on the whole identity; cameras "trust" | "free")
+  as a block-in step; judge heads with spikes/reruns/jsheet.py (references projected as skin + blend).
+  -> full notes: docs/notes/gnm_atlas.md "## reruns" and "## LEARNINGS for the next agent"
 - `gnm_controls.py` + `gnm_sampler.py` (2026-10-10, gnmcontrols): GNM's control atlas (861 controls x 50 zones, macros,
   face-ID; MCP `gnm_controls`), the semantic samplers in numpy, and the block-in's `sculpt:<zone>` move (least-cost identity
   change for a zone, macros held). -> full notes: docs/notes/gnm_atlas.md "## gnmcontrols"

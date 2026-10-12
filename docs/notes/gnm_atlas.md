@@ -4380,6 +4380,75 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
   3 sd. Garrett stays on b3_G17 until he has references the solve can read (plain background, front + 3/4 + profile,
   the face large; the shot brief) or the anchors' weight is made to depend on how much else is read.
 
+### Agents started (coordinator, 2026-10-11 evening)
+- "tesshair" (worktree; scratch /mnt/data/hifipushie/tesshair; notes in docs/notes/hair.md "## tesshair"): f3_t1's hair
+  carried onto tess_a1, scratch models th_T*, sheets th_NN_*; judges against her three references.
+- "refread" (worktree; scratch /mnt/data/hifipushie/refread; notes here under "## refread"): Joe: "I'd like to be able
+  to get closer from a single or two references" / "let's try 1 through 3": (1) differential detector anchors,
+  (2) face parsing for outlines on any background, (3) learned surface normals as the interior observation (validated
+  with shval.py's method or left off); then Garrett rerun from gj_G00 (gr_G*) and a Tess regression (tq_T*).
+  NOT started: (4) a single-image identity estimate as the solve's prior centre (fitter_whitepaper.md).
+- Both run capped, share resources.heavy, do not push or merge. lt19 / jw not started (waiting on Joe after Garrett).
+
+### The turned views' cameras (Joe: "I agree about checking head size, that's a big difference"; 2026-10-11)
+- tesshair found: through the 3/4 camera our eye span is smaller than hers. Measured (spikes/reruns/eyespan.py: the
+  detector's iris points on the picture vs the model's eye centres through each fitted camera; nasion-chin the same):
+  tess_a1 front span 0.989 / length 1.001; 3/4 0.950 / 1.003; profile 0.799 / 1.044. The class-mean start tn_T00 with
+  the ORIGINAL cameras: 0.988, 0.997, 0.971. So the head is NOT too small (front right): the TURNED cameras are
+  over-rotated: a yaw change of +3.5 deg (3/4) / +4.0 deg (profile; its far-eye iris is a detector guess) restores
+  the spans. The joint solve did it: since the start it turned the cameras 2.2 / 3.4 / 5.8 deg and changed the focal
+  x0.970 / x0.962 / x1.064, all on the FIRST call, which I ran with cameras="free" although Tess's start cameras
+  were good (the true profile camera). A free camera trades yaw / scale against shape (nose and chin projection in
+  the turned views), so part of tess_a1's shape there may compensate a wrong camera.
+- RULES from this: (1) when the references' cameras are good (measured, or fitted on an earlier accepted head), run
+  block_in_solve with cameras="trust" FROM THE FIRST CALL; "free" only for cameras fitted on the class mean. (2)
+  Check every solved head with eyespan.py: the iris span and the face length per view, model / picture, must both be
+  ~1.00 in the front AND the 3/4. (3) TOOL FIX owed (after refread merges; it is editing face_ruler.py): both iris
+  centres of the 3/4 view as observations (today: irises only in the front view, one limbus in the turned ones), which
+  pins the 3/4 camera's yaw.
+- RUNNING: tr_T01..T04 = the solve from tn_T00 with cameras="trust" on every call, eyespan, judging sheet tr_01 beside
+  tess_a1. If it matches the spans and reads at least as well it replaces tess_a1 (hair re-seated on it).
+
+- RESULT (tr_T01..T04, every call cameras="trust"): the SAME drift: eyespan front 0.988 / 1.009, 3/4 0.952 / 1.007,
+  profile 0.823 / 1.043; focals 2933 / 2752 as tess_a1's. "trust" does not hold: the CAMERA prior is on each call's
+  move only (as the identity's was), so four trusted calls walk as far as one free one. Rule (1) above is therefore
+  NOT enough today. Table of tr_T04 no better than tk_T06 (jaw 3/5, nose 2/4, mouth 4/7). tess_a1 stays.
+  FIX handed to refread (it owns face_ruler.py): (a) the camera prior on the whole move since the start cameras,
+  carried across calls like prior_off; (b) both irises of the 3/4 as observations; (c) Tess rerun with eyespan per
+  view. Until then: after a solve, compare eyespan.py's ratios with the start head's; a 3/4 span under ~0.98 with
+  the length at 1.00 = the camera was turned.
+
+## LEARNINGS for the next agent (2026-10-11, the reruns day; the coordinator's list, kept short)
+1. A person's head from pictures: block_in_start (cameras="keep" when the refs model has good cameras; "refit" on the
+   class mean turned Tess's profile camera 10.8 deg) -> block_in_solve (cameras="trust" from the first call when the
+   cameras are good; NOTE the camera prior does not yet hold across calls: check eyespan.py) 3-4 calls until |dc| < 2 -> hand steps only for what no observation reads (cheeks) -> judge.
+   Closing measures by hand one at a time took 10 rounds to reach what ONE solved step reaches, and later hand
+   steps undo solved ones (lips 0.2 -> 1.8 mm).
+2. NOTHING FORCED: watch |c| (a typical head ~13; class mean ~5.4; Tess's accepted head 11.7) and the largest
+   component (past ~3 sd = forced). The crisp lid fold (lid_read fold="crisp") from a class-mean head cost |dc| 20
+   and |c| 22: do not run it there; fold="none" (the opening only) or leave the lids to the solve. Joe: the fold line
+   can probably go in as TEXTURE later.
+3. JUDGE WITH THE JUDGING SHEET, not with dressed renders in an old dressing: spikes/reruns/jsheet.py (photo | 50 %
+   blend | the reference pictures projected as the model's skin | own dressing) and nsheet.py (unseen angles). A bald,
+   freckled dressing made a close head read as a male stranger, and MY reads of it were wrong twice (the "hooked
+   nose" lay on her profile line in the blend). Before calling a feature wrong, look at the BLEND.
+4. The texture carries most of a likeness; the OUTLINE (profile most of all) the rest. With the references projected,
+   even GNM's mean, the male mean and random heads pass for her from the front; they fail in profile.
+5. FACE-ID (faceid.py) is NOT a judge of shape here: ~0 in our own dressing, 0.4-0.5 front with the references
+   projected on ANY head. Do not gate or rank heads with it.
+6. The joint solve needs OUTLINES: ~150+ skin-outline reads over 2-3 views in front of a plain background (Tess 195).
+   Garrett's two paintings gave 54 and 204 detector anchors: distorted, 3.9 sd, never settled. block_in_solve warns.
+   "refread" is building differential anchors, face parsing for outlines and learned normals for such references.
+7. What the solve does NOT see: the surface inside the silhouette (cheek volume), the lid's fold, the nose's planes,
+   the brow band, the alae. Lambertian SHADING cannot read it (built, validated on clay pairs, failed: a 2 mm cheek
+   change = 5 % of luminance = the read's own error; left off).
+8. The block-in TABLE has rows that cannot all close (front philtrum + chin_height + lower_third disagree by ~4 mm
+   with lip borders matched to 0.2 mm): do not chase them. face_ruler reads only 4-6 measures on a photo.
+9. My eye is a poor instrument (sizes 30-50 % off; whole-face reads fooled by dressing): measure, blend, and say
+   which. Send every sheet to Joe with a blunt caption; he caught the cheeks from one profile tile.
+10. Process: one heavy job at a time through resources.heavy and bin/capped; agents in worktrees with their own
+   scratch models; notes + commit after every step; reference | result | rest on every sheet; lt19 / jw private.
+
 ## refread (2026-10-11, "refread" agent, branch worktree-agent-afe13b70ba89a707e from main e033a25; Joe: "I'd like to be
 ## able to get closer from a single or two references" and "let's try 1 through 3": three new kinds of observation for the
 ## joint solve. Scratch DURABLE in /mnt/data/hifipushie/refread: run.sh <script> (capped, this worktree's src), out/;
