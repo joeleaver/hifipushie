@@ -5298,3 +5298,20 @@ missed until Joe pointed at it.
   Soft-tissue list for the fold layer (no GNM parameter): chin pad as two lobes + midline notch, marionette + jowl,
   nasolabial, alar crease, lateral hooding, bags / tear trough. Shape list for the solve: eye depth too deep, glabella
   pinched (expression), lower lip too full, jaw underside too low in the 3/4.
+
+## GNM's eyeball is designed, not a bug (2026-10-12, Joe + coordinator)
+Joe: "I think we might have done better to accept their eyeball, since their lid shapes are built around it", then
+quoted the GNM Head paper (arXiv 2607.23687), which the coordinator confirmed: the eye is a TWO-SPHERE model: a
+scleral sphere whose radius is HELD CONSTANT (r_s ~ 14.6 mm) "to capture human anatomical diversity while maintaining
+eyelid compatibility with the GNM template", and a corneal sphere; limbus radius ~ N(6.0, 0.44) mm and cornea radius
+~ N(8.5, 0.73) mm are sampled and sit in the IDENTITY basis (10,000 sampled cross-sections), so each identity has its
+own limbus / cornea. That is exactly the 14.51-14.56 mm sphere the eyeball study measured ("### 1. Eyeball: absolute
+radius") and then overrode with `eye_radius` 0.012 (block_in_start's default since; every accepted head has it).
+Consequences of the override, as far as known: the lids stand 1.1-1.2 mm off our 12 mm ball at the margin (GNM's lid
+rings, blink and eye expressions are shaped round the 14.6 mm sphere); the eye ruler's own advice text already says
+"keep eye_radius: the lids are shaped on GNM's ball". The original complaint (iris 7.3 mm, too much white) is an IRIS /
+limbus size matter (`skin.eyes.iris_size` is absolute and separate), not a ball matter.
+TEST running: eb_tess / eb_garrett = the accepted heads without `eye_radius` (GNM's ball x 0.96 x head scale, the old
+behaviour), eye tiles beside tess_a1 / garrett_a1 and the references. If it reads as well or better: make GNM's ball
+(exactly, at its joint) the default for GNM heads, take limbus and cornea from the identity, keep iris_size as the
+read sets it, and do the lid-fold track (A) on GNM's ball.
