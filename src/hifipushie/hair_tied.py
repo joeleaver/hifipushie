@@ -84,7 +84,7 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                   "inner_roots": None,
                   # mode "flow" (hair_flow.gather; the keys below are its own)
                   "mode": "rows", "spacing": 0.02, "body": 0.008, "puff": 0.008, "root_lift": 0.004, "sag": 0.15,
-                  "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None},
+                  "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None, "feather": 0.0},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0,
                 "hang": False, "spread": 0.35,

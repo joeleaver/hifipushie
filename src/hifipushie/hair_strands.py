@@ -206,7 +206,8 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             # (nor further than a quarter of its length: short hair had 4 cm spikes)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
-            rs_ = 4.0 if lk.get("at_hairline") else 1.0
+            # (roots_x: a lock that says itself how far its starts spread, e.g. one that runs along the hairline)
+            rs_ = max(4.0 if lk.get("at_hairline") else 1.0, float((lk.get("strands") or {}).get("roots_x", 1.0)))
             if "roots" in (lk.get("strands") or {}):  # a lock's own `roots` (the dial is one number an object: per
                 # lock it scales the lock's share of it): 0 = every strand of this lock starts at the lock's root
                 rs_ *= float(np.clip(lk["strands"]["roots"], 0, 1)) / max(float(np.clip(S["roots"], 0, 1)), 1e-6)
