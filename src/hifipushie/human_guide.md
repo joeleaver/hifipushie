@@ -5,9 +5,27 @@ and GNM's head topology, stitched once, offline, at the neck (hand-finished temp
 character is built). The body's own head carries the face, so a baby has a baby's head and no neck, an old woman an
 old woman's, and the neck is always continuous. Everything else works as on any model (look, skin, hair, garments,
 rig, export_asset).
-The eyeball is a real one (base.head.eye_radius: 12 mm for an adult, smaller in children, written by `human` and
-`block_in_start`), not GNM's 14.6 mm eye scaled with the head; models made before 2026-10-10 lack the key (their
-ball and drawn iris are ~20 % big on a large head): set it, then re-match the lids (`lid_read(match=True)`).
+The head is GNM-NATIVE (2026-10-12): every component GNM ships comes from ONE evaluation of its bases for the spec's
+coefficients. `base.head.identity` holds GNM's whole identity (head_000..169, eyes_000..002, teeth_000..079; unset =
+the mean) and `base.head.expression` its expression (left / right_eye_region_*, lower_face_region_*, tongue_*,
+pupils_000).
+- The EYEBALL is GNM's own two-sphere eye at its eye joint: the scleral sphere (14.6 mm x the head's scale: GNM holds
+  it constant because its lids, blink and eye expressions are shaped round it), the corneal bulge (on by default;
+  `base.cornea: false` turns it off, numbers override it), the iris drawn at GNM's limbus for the identity
+  (`eyes_000`; `block_in_step {"iris_mm": mm}` sets it from a read; `skin.eyes.iris_size` overrides the DRAWN iris
+  only) and the pupil as GNM's geometry has it (0.5 of the iris at rest; `base.head.expression.pupils_000`: -1 = 0.33,
+  +1 = 0.67; `skin.eyes.pupil` overrides). `base.head.eye_radius` (m) is an explicit OVERRIDE: our own ball, seated
+  by a search, which GNM's lids stand ~0.5 mm off; every head made 2026-10-10 .. 12 has 0.012 written in its spec
+  and keeps it until it is rebuilt (block_in_start drops it).
+- The MOUTH is GNM's own: the mouth bag (its sock joins the head's surface when the lips part), teeth with gums
+  (part "teeth"; the identity's teeth_* components) and tongue (part "tongue"), moved by the same expression as the
+  skin (the lower row and the tongue by lower_face_region_*, the tongue by tongue_*). No key needed.
+  `base.head.interior` (the face kit's slit / bag / teeth / tongue) still works and is what an older spec with that
+  key gets; `base.head.mouth: "gnm" | "kit" | "none"` asks for one. A style that moves the lips off GNM's surface
+  (pushes, simplify, shape ops) cannot use GNM's teeth: the save and the export say so and fall back to the kit's
+  interior (or none).
+- Poses: `export_asset(face_shapes=...)` shapes are GNM expression coefficients; `faceshapes.GnmFace(spec)
+  .shape_coeffs("jawOpen")` gives them to put in base.head.expression for a posed look.
 
 What a character artist does with a base mesh applies here: **the big proportions first (age, sex, build), then
 the face's identity, then local corrections, then style, each judged on the whole figure.**

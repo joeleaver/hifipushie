@@ -154,7 +154,9 @@ def vocabulary() -> str:
     from . import humanmacro as hm
     return ("macros (free, size kept; append ! for held, ~ for the raw coupling incl. size): " + ", ".join(hm.NAMES) + "\ngaps: " + ", ".join("nd:" + n for n in gap_names())
             + "\nsex, eth0, eth1, eth2; base keys (set): weight, dimorphism, gnm_base, head_scale; lids (set, m): "
-            "lid_upper, lid_lower, eye_radius; DESIGNED age ops (set, not data): "
+            "lid_upper, lid_lower; eye_radius (set, m: OVERRIDES GNM's own eyeball, 0 drops it); GNM's other "
+            "components (set): iris_mm (mm: the identity's limbus, eyes_000), id:eyes_001 (cornea), id:teeth_NNN, "
+            "ex:pupils_000 (pupil), ex:tongue_NNN; DESIGNED age ops (set, not data): "
             + ", ".join("shape:" + k for k in SHAPE_MOVES) + "; local residuals (set): local:<faceslide slider>, e.g. "
             + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items())
             + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7"
@@ -383,6 +385,13 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     # built around it") GNM's OWN eyeball: no eye_radius (2026-10-10 .. 12 every start set 0.012; a refs model's is
     # dropped too). The key stays as an explicit override (block_in_step {"eye_radius": m})
     hd.pop("eye_radius", None)
+    # GNM's own mouth too (the default without base.head.interior: a refs model's kit interior is dropped), and the
+    # iris at GNM's limbus for the identity: a refs model's drawn size (skin.eyes.iris_size) would hide it. The read
+    # sets it: iris_check -> block_in_step {"iris_mm": mm} (the identity's eyes_000)
+    for k in ("interior", "mouth"):
+        hd.pop(k, None)
+    if isinstance((sp.get("skin") or {}).get("eyes"), dict):
+        sp["skin"]["eyes"].pop("iris_size", None)
     rj = {"views": views, "cameras": cams}
     if cams is None or cameras == "refit":
         rj["cameras"] = fit_cameras(sp["base"], views)

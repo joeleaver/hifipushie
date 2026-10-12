@@ -639,7 +639,11 @@ def compare(name: str, model_name: str | None = None) -> dict:
         d = b - a
         rows.append({"measure": measure, "photo": float(a), "model": float(b), "diff": float(d), "tol": float(tol),
                      "off": bool(np.isfinite(d) and abs(d) > tol), "note": note})
-    row("iris diameter", ph["iris"], mo["iris"], 2 * ERR["iris"], "skin.eyes.iris_size (the drawn iris; the eyeball stays GNM's)")
+    from . import base as _basemod
+    native = _basemod.eye_native(spec) is not None and not ((spec.get("skin") or {}).get("eyes") or {}).get("iris_size")
+    row("iris diameter", ph["iris"], mo["iris"], 2 * ERR["iris"],
+        'block_in_step {"iris_mm": mm}: GNM\'s limbus for the identity (eyes_000); the eyeball stays GNM\'s' if native else
+        "skin.eyes.iris_size (the drawn iris; the eyeball stays as it is)")
     row("pupils apart", pd[0], pd[1], 0.5, 'block_in_step {"mm:pupils_apart": mm}')
     row("inner canthus u", ph["inner"][0], mo["inner_lm"][0], 2 * ERR["inner"], "model = GNM's inner-corner landmark (the caruncle's tip)")
     row("outer canthus u", ph["outer"][0], mo["outer"][0], 2 * ERR["outer"], "where the visible eyeball ends")
@@ -672,7 +676,14 @@ def compare(name: str, model_name: str | None = None) -> dict:
         moves.append("lid_read(name, match=True): the eye step solves the identity for these margins and corners in mm, then "
                      "the lid as one structure (set the ORBIT first: face_ruler's orbit rows)")
     if "iris diameter" in off:
-        moves.append(f"skin.eyes.iris_size {ph['iris'] / 1000:.4f} (the drawn iris; keep eye_radius: the lids are shaped on GNM's ball)")
+        if native:
+            moves.append(f'block_in_step {{"iris_mm": {ph["iris"]:.2f}}} (GNM\'s limbus component, identity eyes_000: the iris, the pupil '
+                         "and the cornea's base with it; the eyeball itself is GNM's 14.6 mm sphere x the head's scale, which its lids are shaped on)")
+        elif _basemod.eye_native(spec) is None and ((spec.get("base") or {}).get("head") or {}).get("eye_radius"):
+            moves.append(f"skin.eyes.iris_size {ph['iris'] / 1000:.4f} (the drawn iris). This head still OVERRIDES GNM's eyeball "
+                         "(base.head.eye_radius: a smaller ball its lids stand off); a rebuild drops the key (block_in_start does)")
+        else:
+            moves.append(f"skin.eyes.iris_size {ph['iris'] / 1000:.4f} (the drawn iris, overriding GNM's limbus; unset it and step iris_mm instead)")
     if "pupils apart" in off:
         moves.append(f'block_in_step {{"mm:pupils_apart": {pd[0] - pd[1]:+.1f}}}')
     if "caruncle showing" in off or not ((spec.get("skin") or {}).get("eyes") or {}).get("caruncle"):

@@ -429,6 +429,17 @@ def kit_reference() -> str:
 def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
     """The reply to a save: version, notes, warnings (things that saved but likely aren't what was meant), summary."""
     warn = "".join(f"WARNING: {w}\n" for w in paintmod.side_warnings(spec))
+    b = spec.get("base") or {}
+    hd = b.get("head") if isinstance(b.get("head"), dict) else None
+    if hd and (hd.get("shape") or hd.get("simplify") or b.get("style")):
+        # (GNM's own mouth needs the lips where GNM puts them: a style that pushed them falls back, and says so)
+        try:
+            from . import base as basemod, spec as specmod
+            note = basemod.mouth_note(b, basemod.head_of({"joints": specmod.expand_mirror(spec)["joints"]}, b))
+            if note:
+                warn += f"WARNING: {note}\n"
+        except Exception:  # noqa: BLE001  (a report line must never fail a save)
+            pass
     return f"saved {name} v{v}\n" + extra + warn + summarize(spec)
 
 

@@ -2157,7 +2157,7 @@ def _piece_points(V, faces, rounds: int = MOUTH_SUBDIVIDE) -> dict:
     return {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "seam": None}
 
 
-MOUTH_SHELL = {"teeth": 0.003, "tongue": 0.012}  # m: how deep under GNM's surface a piece's solid reaches
+MOUTH_SHELL = {"teeth": 0.003, "tongue": 0.008}  # m: how deep under GNM's surface a piece's solid reaches
 
 
 def gnm_mouth_field(head: dict) -> list:
@@ -2182,13 +2182,18 @@ def sd_gnm_piece(p: np.ndarray, pr: dict) -> np.ndarray:
     back, the tongue at its root): the plain IMLS made everything behind that edge "inside", a slab of tooth through
     the whole mouth. Crowns are thinner than 2 t, so they come out solid; a gum is a sheet t thick."""
     X = p.reshape(-1, 3)
-    d0 = pr["tree"].query(X)[0]
+    d0, i0 = pr["tree"].query(X)
     t = float(pr["t"])
     out = d0 - t  # far from the piece: a (conservative) distance to the shell
     near = d0 < t + 3 * pr["hmax"]
     if near.any():
         s = _imls(X[near], pr)
-        out[near] = np.maximum(np.maximum(s, -s - t), d0[near] - (t + 2 * pr["hmax"]))
+        # past a free edge the nearest vertex lies SIDEWAYS of the point, not over it: outside (the slab under the
+        # tongue's front edge came out through the chin as a red bar)
+        j = i0[near]
+        s0 = ((X[near] - pr["verts"][j]) * pr["normals"][j]).sum(1)
+        lat = np.sqrt(np.maximum(d0[near] ** 2 - s0 ** 2, 0.0)) - 2.5 * pr["h"][j]
+        out[near] = np.maximum(np.maximum(s, -s - t), lat)
     return out.reshape(p.shape[:-1])
 
 
