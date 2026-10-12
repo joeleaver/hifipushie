@@ -13,7 +13,7 @@ import sys
 
 from PIL import Image
 
-best = dict(a.split("=") for a in sys.argv[1:]).get("best", "th_T53")
+best = dict(a.split("=") for a in sys.argv[1:]).get("best", "th_T55")
 O = "/mnt/data/hifipushie/tesshair5/out/"
 O4 = "/mnt/data/hifipushie/tesshair4/out/"
 R = "/home/joe/dev/s0urc3/docs/img/tess_ref_full/"
@@ -86,7 +86,7 @@ for p, nm in ((f"{O}s_{best}_backl.png", "best_b.png"), (f"{O}s_{best}_backl_cyc
     if os.path.exists(p):
         im = Image.open(p).convert("RGB")
         n = im.size[0]
-        im.crop((int(0.2 * n), int(0.1 * n), int(0.8 * n), int(0.7 * n))).resize((760, 760), Image.LANCZOS).save(T + nm)
+        im.crop((int(0.17 * n), int(0.2 * n), int(0.85 * n), int(0.88 * n))).resize((760, 760), Image.LANCZOS).save(T + nm)
         bl.append(T + nm)
     else:
         bl.append(None)
@@ -103,7 +103,7 @@ vn = ["front", "frontq", "left", "backl", "back", "right"]
 rows = []
 for k, nm in NAMES.items():
     rows.append({"label": f"th_Q{k} ROUND FOUR\n{nm}", "tiles": [ex(f"{O4}iso_th_Q{k}_a_{v}.png") for v in vn]})
-    rows.append({"label": f"th_S{k} NOW\nthe same style call", "tiles": [ex(f"{O}iso_th_S{k}_a_{v}.png") for v in vn]})
+    rows.append({"label": f"th_S{k} NOW\nthe same style call (+ the hairline's ear lowered)", "tiles": [ex(f"{O}iso_th_S{k}_a_{v}.png") for v in vn]})
 build({"title": "The six riffs re-grown with round five's code (same style words; round four above, now below)",
        "tile": 440, "label_w": 420, "cols": ["front", "front 3/4", "left", "back left", "back", "right"], "rows": rows},
       HR + "th_32_tied_riffs.png")

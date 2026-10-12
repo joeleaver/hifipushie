@@ -873,7 +873,7 @@ TIED = {
 }
 TAIL = {"kind": "tail", "length": 0.25, "fullness": 0.5, "wave": 0.3, "to": "back", "tousle": None}
 # tousle 0 = brushed (locks apart, an even end, nothing leaves the outline) .. 1 = tousled (a ragged end, stray hairs
-# all round, strands crossing); default 0.25 + 0.5 x wave
+# all round, strands crossing); default 0.05 + 0.75 x wave
 # fullness 0 = a sleek thin tail .. 1 = bushy (the bundle's radius 1.8 .. 6 cm, more locks, more air and frizz);
 # wave 0 = straight .. 1 = loose waves (every lock its own, 1.6 cm of swing at 1)
 WISP_STYLE = {"amount": 0.5, "where": ["part", "front", "temple", "sideburn"], "length": [0.04, 0.12], "softness": 0.6,
@@ -933,7 +933,9 @@ def style(tied: dict) -> dict:
     tl = p["tail"]
     wave = float(np.clip(tl["wave"], 0, 1))
     fu = float(np.clip(tl["fullness"], 0, 1))
-    to_ = float(np.clip(0.25 + 0.5 * wave if tl.get("tousle") is None else tl["tousle"], 0, 1))
+    # (by the wave: a straight sleek tail is brushed. At 0.25 + 0.5 x wave a sleek high ponytail ended in chopped
+    # chunks at five heights, th_S1)
+    to_ = float(np.clip(0.05 + 0.75 * wave if tl.get("tousle") is None else tl["tousle"], 0, 1))
     full = 0.018 + 0.042 * fu
     gather = {"mode": "flow", "spacing": 0.02, "uneven": round(0.2 + 0.6 * me, 3),
               "puff": round(0.002 + 0.016 * lift, 4), "root_lift": round(0.0015 + 0.008 * lift, 4),

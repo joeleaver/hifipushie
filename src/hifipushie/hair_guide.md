@@ -653,7 +653,7 @@ What the words mean (all optional; `tie_hair(name)` alone is an ordinary low pon
 | `lift` | 0..1 | volume at the roots and over the top (default 1 - tightness) |
 | `part` | centre, left, right, none | none = combed straight back; a part is combed away from on both banks, in front only |
 | `ears` | tucked, covered | the hair passes over the ears' tops, or hangs over them |
-| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, tousle 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens out of the band as a fan, full by ~9 cm. `wave`: 0 = straight, 1 = loose waves that run through the bundle (neighbouring locks nearly in step: sheets, not ropes). `tousle`: 0 = brushed (an even end, nothing leaves the outline), 1 = tousled (locks end anywhere over the last third as pointed wisps that flick out, single hairs and thin wisps leave the outline all round); default 0.25 + 0.5 x wave |
+| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, tousle 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens out of the band as a fan, full by ~9 cm. `wave`: 0 = straight, 1 = loose waves that run through the bundle (neighbouring locks nearly in step: sheets, not ropes). `tousle`: 0 = brushed (an even end, nothing leaves the outline), 1 = tousled (locks end anywhere over the last third as pointed wisps that flick out, single hairs and thin wisps leave the outline all round); default 0.05 + 0.75 x wave |
 | `wisps` | 0..1, or {amount 0..1, where: [part, front, temple, sideburn, nape], length [m, m], softness 0..1, loose: n} | the short soft hair that never reached the tie: small clumps of fine hairs along the hairline that fall along the skin (the front's out toward the temples; the temples' are a short fringe in front of the ear, about half drawn back toward the tie). softness 0 = small defined locks, 1 = wide and frizzy. `loose`: THICK loose locks a side (18-45 hairs, 9-19 cm) out of the forehead's corner and the temple, swept back over the temple toward the ear and drooping; default round(2.5 x amount). Default amount from neatness (none on a neat head); independent of it when given: a sleek head WITH wisps is `neatness` 0.95 + `wisps` 0.7 |
 | `hairline` | 0..1 | how SOFT the hair's edge is. 0 = a clean hard line (gelled; a wig's edge); 1 = the hair thins out over the last centimetre before the line, fine baby hairs (1-4 cm) stand along it from the part to the sideburn, the part wanders a few mm. Default 0.8 - 0.3 x neatness: every real hairline is soft, so this is on for every style (a neat head has baby hairs too) |
 | `escaped` | n a side, or {count, where: [part, temple, ear, nape], length [m, m]} | single stray HAIRS (each a thin line: use `wisps` for anything soft); default none |
@@ -691,7 +691,13 @@ comes out redder than asked; Tess 0.65). EEVEE is untouched by both.
 
 Judge it from every side (`views=["around"]`), not the front: tied hair is wrong from behind first. What to read:
 on top the strands must run front-to-back (lateral bands = a cap); the tail must end hanging, not pointing; the
-hairline at the temples should be soft (a hard saw edge reads as a wig). What is still weak (2026-10-12): the head
+hairline at the temples should be soft (a hard saw edge reads as a wig). BARE SKIN ABOVE OR IN FRONT OF THE EAR (a
+"shaved" temple, worst toward a high tie, where no hair passes back over it) is usually not the style: the hairline
+puts the ear's top at the outer brow's height + 4 mm, and on some heads (Tess's: 1.8 cm lower) the real ear sits well
+under that, so the line runs 2-3 cm above the ear and the sideburn stops short. Lower it on the model:
+`groom_hair(name, groom={"hairline": {"ear": -0.013, "sideburns": 0.035}}, replace=True)` (ear = m the line clears the
+assumed ear top, may be negative; sideburns = m the sideburn reaches below it), after tie_hair; the tied style is
+regrown on the new line. What is still weak (2026-10-12): the head
 hair reads smoother than loose real hair in EEVEE; a tousled tail is stringier than real brushed-out hair (strands
 drawn a pixel wide with dark air between them) and its strays are few; single escaped hairs draw as thin lines (ask
 for wisps); the strip in front of the ear is thinner than real hair there.
