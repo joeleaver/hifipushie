@@ -5319,8 +5319,14 @@ read sets it, and do the lid-fold track (A) on GNM's ball.
 ## gnmnative (2026-10-12, "gnmnative" agent, branch `worktree-agent-a2fcb07f033d0d9ca` from main 99ecf39; scratch DURABLE in
 ## /mnt/data/hifipushie/gnmnative: run.sh <script> (capped, this worktree's src, main's workspace), out/ (logs, tiles);
 ## scripts in spikes/gnmnative; scratch models gn_* (forks), nt_* (Tess), ng_* (Garrett, paintings), nh_* (held-out Garrett))
-STATE: A (GNM's eyeball) built and measured, renders running. B (GNM's mouth), C (rebuilds), D (tour) not started.
-NEXT: see the end of this section.
+STATE (2026-10-12, end): A, B, C, D done; branch NOT merged, NOT pushed. GNM heads are GNM-native by default (its
+eyeball, its mouth, one evaluation of 253 + 383 components); the joint solve holds the head's size; rebuilt heads
+nt_S06 / nt_I06 (Tess: size held / iris-sized), ng_S05 (Garrett, paintings), nh_S07 (held-out) stand beside the
+accepted heads, which are untouched. Sheets human_renders/gn_*.png. VERDICT: eyes the same to slightly better
+(contact, no sunken ball on Garrett; the visible eye 1.9-3.5 mm long at the outer corner), mouth = a real gain for
+Tess (she had none), dressing poor (no teeth at jaw-open, a red slab of tongue). Export with face shapes works.
+NEXT: the list at the end of this section (jaw bone deferred by Joe; size by the iris needs a GNM-native benchmark;
+lateral eye pocket; mouth dressing).
 
 Joe, 2026-10-12: "I think we might have done better to accept their eyeball, since their lid shapes are built around
 it" ... "Yes, we will absolutely have to rebuild."; on the mouth: "Our own mouth isn't great, it was just low on my
@@ -5608,3 +5614,126 @@ closed mouth's fill and seam field instead of GNM's sock (nothing shows); (5) la
   change the long visible eye: the lid opening matches at the pupil to 0.1 mm; what remains is the BALL: GNM's larger
   sphere shows 1.5-2 mm further out at the outer corner than the pictures' visible eye ends (in a face the lateral
   canthus' skin and conjunctiva close that corner; GNM's lids end in a pocket there and the sphere shows in it).
+
+### D. Judged with the feature tour (tiles looked at one at a time; dressed EEVEE tiles spikes/gnmnative/shots.py ->
+### /mnt/data/hifipushie/gnmnative/out/<model>/<feature>_v<i>.png, clay tiles spikes/tour/tour.py -> /mnt/data/hifipushie/tour/<model>/)
+Models judged: Tess nt_I06 (GNM-driven, iris-sized) and nt_S06 (size held) against tess_a1; Garrett paintings ng_S05
+against garrett_a1; held-out nh_S07 against gc_C06. Current heads rendered as forks (gn_t_old, gn_g_old, gn_h_old).
+Sheets for Joe (REFERENCE | new | current; large labels; EEVEE): workspace/human_renders/gn_tess_gnm_driven.png (the
+seven rows he asked for), gn_tess.png, gn_garrett_paintings.png, gn_garrett_heldout.png.
+BLUNT, per feature:
+- EYES, front (all three): I cannot tell the new head's eyes from the current head's at tile size. Same lids, same
+  opening (the solve reads the margins on either ball: opening at the pupil within 0.1-0.4 mm of the picture on all).
+  The new iris is GNM's limbus (Tess 10.5-11.0 mm, held-out 11.5: right without any setting); the pupil is larger where
+  the dressing does not set it (GNM's 0.50 against the 0.30-0.36 the dressings carry: a dim-room pupil, reads darker /
+  doe-eyed; both Tess models here keep the dressing's 0.30).
+- EYES, 3/4 and side: a slightly FULLER eye: the ball fills the opening to the outer corner and the cornea catches the
+  light; on the two Garretts the eye no longer sits behind the upper lid (the old ball's front was 1.5-1.8 mm behind
+  the lid margin, no cornea: the tour's "dark sunken sockets"); now the cornea's apex is level with it. Small, and in
+  the right direction. On Tess (who already had a cornea) the side view is the same picture.
+- EYES, what is wrong in both and has no parameter here: no lid fold line, no lash-line density, the lateral corner:
+  GNM's sphere shows 1.9 mm (Tess) / 3.5 mm (held-out) further out than the picture's visible eye ends (outer canthus
+  u; with our 12 mm ball it was +0.4 / +2.8): the one eye number that got worse. It is the BALL (a larger sphere in
+  GNM's lateral pocket), not the lid opening and not the head's size (unchanged with size held). Fix candidates: paint
+  the lateral pocket as skin / conjunctiva the way skin.eyes.caruncle paints the medial one; not done.
+- LID CONTACT (numbers, section A): contact ring gap 0.4-0.8 mm -> -0.2 .. +0.5 mm. Not visible in any tile at
+  480-640 px: no dark gap showed before either.
+- MOUTH, neutral (all three): the same picture; the interior does not show and the lips are the solve's.
+- MOUTH, open (jawOpen 0.6): it OPENS to a dark red bag with the tongue in it; Tess's current head has no interior at
+  all (her lips part onto a skin-coloured plug with two holes at the corners: broken), so this is a plain gain for her.
+  For the two Garretts the dressed stage (spikes/garrett3/stage.py) drops `interior`, so their "current" tiles ALSO
+  show GNM's mouth now: I have no dressed picture of the kit's mouth to put beside it (the kit's bands only ever
+  showed in exports). What is wrong with GNM's mouth as dressed: (1) NO TEETH SHOW at jawOpen 0.6 from the front:
+  GNM's upper incisors end 1.2-1.5 mm below the lips' line and the upper lip covers them; the lower row is behind the
+  lower lip; (2) the TONGUE reads as a flat saturated red slab filling the opening (one flat part colour, no shading
+  inside the mouth); (3) stubble / skin paint runs onto the inner lips and the bag's first centimetre at the corners
+  (grey hatching): the bag mask starts a ring behind the lip loop and the beard layer is not masked there; (4) the bag
+  is uniformly dark red: no gradient into the throat.
+- MOUTH, smile (mouthSmile L + R 1.0, jawOpen 0.2, mouthUpperUp 0.5): real TEETH: separate crowns with scalloped
+  edges, canines longer than the incisors, read as teeth at once; yellowish flat colour, no gum shows, dark gaps where
+  the incisors' edges stay under the lip. They are not blocky in the dressed stage (0.4 mm voxels); the "blocky"
+  ones are the EXPORT's 648 triangles for both rows + gums (asset min_triangles 600): about 20 triangles a tooth.
+  What makes them read: (a) the upper lip must rise (the shape, not the mesh); (b) in the export, a budget of ~2,500
+  triangles for the teeth part (parts.teeth.min_triangles) or GNM's own 1,640 quads per row used as they are
+  (not built: the parts are meshed from the field); (c) a lighter, less yellow enamel with a little specular. Only
+  the flat colours exist today.
+- THE RED BAR on the chin (the first jaw-open tiles): gone (the tongue shell past its free front edge; tiles
+  nt_I06_open, ng_S05_open, nh_S07_open, nh_G07_smile: clean chins).
+- WHOLE FACE: Tess iris-sized against tess_a1: near-identical at sheet size; nt_I06 has a slightly narrower lower face
+  and smaller eyes for the face (the same eyeball on a 1 % larger head with the balls no longer set 1.1 mm wide of
+  their openings). Both Garretts: same as their current heads.
+- Proportion of the eyes to the face on the iris-sized Tess (eye ruler, nt_I06, model - picture, mm): iris 10.97
+  against 11.21 (-0.24: GNM's mean limbus, nothing set), pupils apart 54.53 / 54.52, FISSURE 23.20 / 23.47 (-0.27: the
+  eye's length is right now; it was +0.85 on the first rebuild and +0.56 size-held), opening at the pupil -0.07, iris
+  hidden by the upper lid -0.24, margins at the pupil +0.13 / +0.20. What is left: BOTH canthi sit ~1.8 mm lateral of
+  the picture's against the iris centre (inner +1.97*, outer +1.70*) and the upper lid's peak +2.85* lateral: the
+  opening as a whole is shifted outward relative to the iris, or the irises inward: on this larger head the absolute
+  ball sits 0.7 mm medial of its opening's middle (eyepos.py), the rest is the lid's shape. Lid stand-off on nt_I06:
+  contact ring -0.20, margin 0.67 mm (upper); nh_S07 0.60 / 1.72; ng_S05 0.49 / 1.47.
+
+### Defaults that changed (all of them)
+1. GNM heads: the eyeball is GNM's own (scleral sphere at its centre x the head's scale; was 0.96 x GNM's eye, moved
+   back by the seat search). base VERSION 107, onemesh VERSION 15. `base.head.eye_radius` in a spec = the old ball.
+2. `base.cornea` unset on a GNM head with GNM's ball: ON, GNM's corneal sphere (was off). `cornea: true`: GNM's
+   numbers (was 0.62 r / 0.09 r). `cornea.clear`: GNM's chamber depth.
+3. skin.eyes: `iris_size` unset = GNM's limbus x 2 (was 0.0118 x r / 0.0123); `pupil` unset = GNM's pupil (0.50;
+   was 0.36).
+4. humans.spec(source="human") and block_in_start no longer write `eye_radius`; block_in_start also drops a refs
+   model's `eye_radius`, `interior`, `mouth` and `skin.eyes.iris_size`.
+5. GNM heads without `base.head.interior`: GNM's mouth (parts "teeth" and "tongue" exist; the bag when the lips part;
+   skin layers "skin:mouth_bag" and "skin:gums"). With `interior`: the kit's, as before.
+6. GNM's loose pieces (in `gnm_world` / carry V) are GNM's own shapes carried by similarity (were warped by the
+   skin's fields; nothing used them).
+7. `blockin.set_identity` keeps eyes_* / teeth_* components.
+8. block_in_solve / face_ruler.compare: the head's SIZE is held at the start's (`SIZE_HOLD` True; was free).
+9. Face shapes on a GNM head without `interior`: allowed (were an error); teeth and tongue targets come from GNM's
+   own offsets; tongueOut uses GNM's tongue components; asset.prune_hidden keeps GNM's teeth / tongue behind closed
+   lips.
+10. Reader texts: iris advice gives `iris_mm` (eyes_000); iris_check's "eye_radius" is None on GNM's ball.
+
+### Downstream: what must be redone on a rebuilt head
+- HAIR: every groom is seated on its own head's scalp (hair_scalp_*.npz in the model's folder; tess_a1's groom sits on
+  tess_a1): a rebuilt head is a different skull (Tess iris-sized: 3.3 mm rms from tess_a1 over the face, more at the
+  skull, which the solve moves with no read: skull_width -7.6 mm): re-seat (tesshair's carry) and re-check the
+  hairline against the forehead.
+- SKIN: the dressing copies over as spec (it is parametric), but (a) `skin.eyes.iris_size` must be dropped or it
+  hides GNM's limbus (block_in_start does), `skin.eyes.pupil` decided (dressing's 0.30 or GNM's), (b) the brow
+  placement fitted by brow_read was fitted on the old head: re-run brow_read(match=True); (c) painted / read layers
+  tied to landmarks follow, likeness textures (projected references) must be re-projected; (d) skin.folds seated on
+  the old lids: re-seat.
+- LASHES: lashes.py uses the ball's radius and centre: rebuilt automatically, but they were tuned on the 12 mm ball
+  (in the side tiles the upper lashes read heavy): check.
+- LIPSYNC CONSUMERS (oxidegen / S0urc3): target NAMES unchanged (the 52 ARKit names + jawOpen_mouthClose), part
+  names unchanged ("teeth", "tongue", the eyes part, body, lashes). CHANGED: (1) the teeth part is GNM's two rows
+  with gums in ONE mesh (the kit's were two bands); its jawOpen target moves ~47 % of its vertices (the lower row)
+  and leaves the rest; (2) the tongue is GNM's tongue: tongueOut travels 35-38 mm (the kit's blob stretched by its
+  own formula); (3) teeth and tongue are no longer rigid under jaw shapes: they carry GNM's linear offsets (lower row
+  up to 1.6 mm off a true rotation at jawOpen 1); (4) `base.head.interior` is no longer required (a spec that keeps
+  it keeps the kit); (5) vertex counts differ (test export: teeth 658 vertices / 648 triangles, tongue 255 / 299);
+  (6) the eyes part is larger (r 13.4-14 mm against 12) with a corneal bulge: eyeLook targets move it up to 7 mm.
+  A consumer that pinned `parts.teeth.min_triangles` or expected two separate tooth meshes should re-check.
+
+### NEXT
+- JAW (Joe: deferred "until we've reached a resting place with the modeling"): GNM has no jaw joint; proposal =
+  ARKit morph targets for the skin + lower teeth / gums / tongue root on a jaw bone with the pivot fitted from GNM's
+  own lower-teeth motion. What is known: the lower teeth move only with `lower_face_region_*` and nearly rigidly per
+  component (rigid residual 0.005-0.16 mm on moves of 0.4-9.9 mm), but jaw opening is NOT a separate component:
+  lower_face_region_000 opens the jaw AND moves the lips, chin and (3 mm) the nose's base, and components 001-004
+  each carry 1-6 mm of lower-teeth motion too; our jawOpen is a landmark solve over all 150 (largest coefficient
+  3.3-4.6). So the split is not clean in the basis: the bone's angle would have to be fitted from the lower teeth's
+  motion per shape (cheap: a Procrustes per target at export) and the skin's targets kept as they are; cost ~a day
+  incl. the rig and the consumer's side (a jaw bone weight on teeth / tongue root, the bone driven by the same
+  weights). The sweep and the pivot fit were NOT done.
+- Size: a benchmark shot with GNM-native heads (GNM's eye, known sizes) to validate the iris as a ruler, then decide
+  whether size="iris" becomes the default; teeth as the better metric anchor (needs a teeth reader); the iris-pinned
+  chain see-saws (|dc| ~2): fix the target after the first call.
+- Eyes: paint / close the LATERAL pocket (outer canthus +1.9 .. +3.5 mm); decide the default pupil (GNM's 0.50 or
+  ~0.33); `eyes_001` (cornea) from a profile close-up; clear cornea as the default?; onemesh.hook's eye JOINTS still
+  lack the gnm_base correction (only the override path uses them now).
+- Mouth dressing: enamel and tongue materials, a darker gradient into the throat, gums' wetness, mask the beard /
+  skin layers off the inner lips; `tongue_mean` as the rest tongue?; a teeth reader (teeth_*).
+- Export: GNM's own quads for teeth / tongue / eyeballs (vertex ids for consumers; ~3x the triangles at the same
+  quality); pupil dilation as a shader parameter or with the clear-cornea iris geometry.
+- The lips crossing counts as "closed" in onemesh.template (a negative gap): make it |gap|.
+- The dressed stage (spikes/garrett3/stage.py) drops `interior`: it cannot show the kit's mouth; with GNM's mouth as
+  the default that line can go.

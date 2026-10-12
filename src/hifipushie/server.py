@@ -2056,12 +2056,10 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                    expression: str = "default", chin_points: str = "auto", size: str = "held"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
     borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
-    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ and
-    what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" |
-    "none"; expression "view" | "shared" | "none"; chin_points "auto" (the detector's chin points are left out when
-    the set has a side view) | "on" | "off"; size "held" (the head's overall size stays the start head's: no picture
-    reads it, the cameras' scale is free) | "iris" (the front picture's iris against GNM's mean limbus pulls it, weakly:
-    +- 7 % person to person, combined with GNM's spread of size) | "iris_pin" (the iris' size, whole) | "free"; anchors, parse, out, share, seen, save. Details:
+    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ.
+    cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); size "held" (the head's overall
+    size stays the start's: no picture reads it) | "iris" | "iris_pin" | "free"; hold "auto" | "none"; expression
+    "view" | "shared" | "none"; chin_points "auto" | "on" | "off"; anchors, parse, out, share, seen, save. Details:
     guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
