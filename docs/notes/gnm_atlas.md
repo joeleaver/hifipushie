@@ -4409,10 +4409,19 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
 - RUNNING: tr_T01..T04 = the solve from tn_T00 with cameras="trust" on every call, eyespan, judging sheet tr_01 beside
   tess_a1. If it matches the spans and reads at least as well it replaces tess_a1 (hair re-seated on it).
 
+- RESULT (tr_T01..T04, every call cameras="trust"): the SAME drift: eyespan front 0.988 / 1.009, 3/4 0.952 / 1.007,
+  profile 0.823 / 1.043; focals 2933 / 2752 as tess_a1's. "trust" does not hold: the CAMERA prior is on each call's
+  move only (as the identity's was), so four trusted calls walk as far as one free one. Rule (1) above is therefore
+  NOT enough today. Table of tr_T04 no better than tk_T06 (jaw 3/5, nose 2/4, mouth 4/7). tess_a1 stays.
+  FIX handed to refread (it owns face_ruler.py): (a) the camera prior on the whole move since the start cameras,
+  carried across calls like prior_off; (b) both irises of the 3/4 as observations; (c) Tess rerun with eyespan per
+  view. Until then: after a solve, compare eyespan.py's ratios with the start head's; a 3/4 span under ~0.98 with
+  the length at 1.00 = the camera was turned.
+
 ## LEARNINGS for the next agent (2026-10-11, the reruns day; the coordinator's list, kept short)
 1. A person's head from pictures: block_in_start (cameras="keep" when the refs model has good cameras; "refit" on the
    class mean turned Tess's profile camera 10.8 deg) -> block_in_solve (cameras="trust" from the first call when the
-   cameras are good) 3-4 calls until |dc| < 2 -> hand steps only for what no observation reads (cheeks) -> judge.
+   cameras are good; NOTE the camera prior does not yet hold across calls: check eyespan.py) 3-4 calls until |dc| < 2 -> hand steps only for what no observation reads (cheeks) -> judge.
    Closing measures by hand one at a time took 10 rounds to reach what ONE solved step reaches, and later hand
    steps undo solved ones (lips 0.2 -> 1.8 mm).
 2. NOTHING FORCED: watch |c| (a typical head ~13; class mean ~5.4; Tess's accepted head 11.7) and the largest
