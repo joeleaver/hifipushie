@@ -64,6 +64,8 @@ def views_of(name, head):
         else:
             ib = [int(round(x)) for x in box]
             img = dressed(name, vi, cam, ib)
+            if img.size[0] != 1040:      # (the judging sheets' cached shots are 1280 px: every picture on ONE grid, or a
+                img = img.resize((1040, 1040), Image.LANCZOS)   # differential reference is read at the wrong pixels)
             out.append({"img": img, "cam": cam, "kind": kind, "style": "photo", "hair": False, "scale": img.size[0] / float(ib[2] - ib[0]),
                         "origin": (ib[0], ib[1])})
     return out

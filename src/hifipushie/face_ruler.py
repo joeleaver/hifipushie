@@ -1666,6 +1666,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
         if shade:
             extras.append(_shade_obs)
+        if normals:      # OFF by default: failed its validation (the notes' "## refread", 3): differential against the
+            extras.append(lambda h, vw: _normal_obs(h, vw, _normals_of_model(h, vw)))     # model's own clay picture
         view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
         views.append(view)
     if iris_mm and np.isfinite(iris_mm):       # the turned views draw the limbus at the PICTURE's iris size (the limbus'
@@ -1693,7 +1695,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "shade")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "shade", "normal")}
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))

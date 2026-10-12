@@ -91,7 +91,10 @@ eye catches what the points miss; the target table catches what your eye misses.
      references' cameras are good (measured, or fitted on an earlier accepted head of the same person and the start
      head is close to it), `"free"` for cameras fitted on the class mean. `"refit"`, first call only: the cameras
      were fitted on ANOTHER head (block_in_start(cameras="keep") from an old model onto a class mean: Garrett's 3/4
-     outline was 9 mm off): they are laid on this head first (head held), and that is the new start. Check a solved
+     outline was 9 mm off): they are laid on this head first (head held), and that is the new start. That is the
+     usual case right after block_in_start, so START WITH "refit", then "free": Tess from her class mean, four calls:
+     refit + free = table 25 / 26, nothing down-weighted; all "trust" = 16 / 26 with the 3/4 and profile cameras
+     stuck at their limits, the face 5 % long and the reads down-weighted x1.7-2.2; all "free" = 17 / 26. Check a solved
      head: iris span and face length, model / picture, ~1.00 in the front and the 3/4 (spikes/reruns/eyespan.py).
    - NOTHING IS FORCED, by construction: if the most likely head has a component past 3 sd, every read is
      down-weighted until none has, and the reply says INCONSISTENT PICTURES x<factor>; a group of reads the best head
