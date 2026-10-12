@@ -5036,3 +5036,43 @@ Tests: tests/test_solvereads.py (11: the rows and the chin chain's identity, sup
 carried factor, the expression columns incl. their null, view_yaw / view_sanity, and on tn_T00: the direct read, the
 expression basis against the model's own expression, solve_step reporting and carrying its state). test_refread (9),
 test_face_ruler, test_blockin, test_likeness, test_toolsets pass.
+
+## chinread (2026-10-12, "chinread" agent, branch `worktree-agent-ae615b730ec496d10` from main 252ca04; Joe: "The garrett with
+## good references failed pretty hard at the chin, makes me wonder if we're measuring enough things there." Held-out line: the
+## good Garrett set, Tess, synthetic benchmarks. Scratch DURABLE in /mnt/data/hifipushie/chinread: out/ (logs, sheets), synth/
+## (the benchmark's pictures); scripts in spikes/chinread (run.sh <script>: capped, this worktree's src, OPENBLAS 1 thread);
+## models gc_* (good Garrett), tc_* (Tess), gq_* (paintings), cz_* (benchmark))
+STATE / NEXT (chinread, IN PROGRESS): step 1 done (who pushes the chin: below). NEXT: the benchmark's anchor variants on more
+heads, then the reads (chin over the collar in a 3/4; the under-chin shading ramp), then the three reruns.
+
+### 1. Who pushes the chin wide (spikes/chinread/who.py <model> truth=<model>; whodet.py; out/who_*.npz)
+- The solve is linear-Gaussian per round, so each measure's move splits EXACTLY into what each group of reads (type, view)
+  contributes, and with a known head each read's ERROR (o - J (c_true - c), cameras fitted out) can be pushed through the
+  same algebra: what the reads' errors put into each measure. Benchmark head b (solvereads' sx_b_n: garrett_a1's identity,
+  a narrow chin), first call from the class mean:
+  | | chin_width | jaw_width | gonial_width | cheekbone_width |
+  |---|---|---|---|---|
+  | the true gap (truth - class mean), mm | -1.4 | +2.1 | +0.3 | -4.5 |
+  | the step | +5.2 | +10.7 | +10.4 | +4.4 |
+  | ERROR-FREE reads of the same kind, same weights | -1.5 | +1.5 | -0.4 | -4.8 |
+  | what the reads' ERRORS put in | +4.4 | +4.9 | +6.1 | +4.6 |
+  | of that: detector anchors, front / 3/4 | +2.4 / +1.4 | +4.5 / +0.1 | +4.4 / +0.5 | +2.5 / +0.2 |
+  | outlines front / 3/4 / profile | +0.1 / +0.6 / 0.0 | -0.5 / +0.3 / -0.1 | -0.7 / +0.9 / -0.1 | +0.9 / 0.0 / -0.3 |
+- So the answer to "are we measuring enough there" has a second half: with error-free reads of exactly the kinds we have,
+  the solve lands the chin and jaw width within 0.1-0.7 mm on this head (through the prior's correlations: an in-model
+  benchmark flatters that). The widths are not merely UNREAD, they are PUSHED: +4.4 / +4.9 / +6.1 mm by biased reads, and
+  most of it by the DIFFERENTIAL DETECTOR ANCHORS (216 at sigma 1.0; rms against the truth 1.4-1.6 mm with coherent parts:
+  the chin's three (lm 7 / 8 / 9) -3.4 .. -4.6 mm in y in the front picture and +2.5 .. +3.4 in x in the 3/4, the brows
+  +2.5 .. +4.9 mm in y: the detector's face on a DRESSED picture is not its face on our clay render). The good Garrett
+  set's chin moved +4.9 mm from the class mean, the benchmark's two heads +5.0 and +5.2 whatever their truth: a constant.
+- A free stretch of the detector's face per view (nuisance columns x / y, face_ruler.LM_STRETCH): no help (b after one
+  call +6.4 / +7.3 / +8.7): the bias is not a stretch.
+- WHAT GNM CAN DO at the chin (variants.py; out/var1.png: reference | gh_B06 | variants, lit like the picture): chin_width
+  -6 mm alone is hardly visible; jaw_width -6, gonial_width -8 and jaw_square -1.5 sd make the jaw taper into a chin that
+  reads as his in the 3/4. The slab is the JAW's width and squareness (gh_B06: chin_width +8.1, jaw_width +12.1 mm over
+  GNM's mean) more than the chin point's own width. GNM can express the target; no layer needed.
+- LOOKED AT the jaw's lower edge as a SHADING edge (jl_look.py; out/jl_gh_B06*.png: luminance profiles across the model's
+  jaw line, picture and the model under the fitted light): under the chin (the middle ~70 mm) picture and model both show
+  a ramp into the under-jaw shade; along the jaw's sides the soft-lit picture shows NO edge. In the 3/4 the FAR chin /
+  jaw corner lies in front of the shirt collar: the model's silhouette stands ~5 mm outside the picture's skin edge there
+  (solvereads' "doubled chin line") and the outline reader never sees it (the collar is part of the figure's mask).

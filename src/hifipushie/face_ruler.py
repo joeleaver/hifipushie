@@ -1795,6 +1795,10 @@ def _landmark_obs(head, view, points):
 ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
 CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
 CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
+CHIN_LM_AXES = "xy"                   # ... in x and y ("y": their height only; "none": left out)
+LM_SIG_SCALE = 1.0                    # differential anchors: their sigma x this (their errors are CORRELATED: a bias, not scatter)
+LM_STRETCH = False                    # differential anchors: a free stretch (x, y apart) of the detector's face per view
+LM_STRETCH_UNIT = 0.05                # its nuisance column's unit: 5 % (prior sd NU_SD = 2 units: wide)
 SIG_IRIS_3Q = 0.5                     # mm: a 3/4 view's iris centre, detector on picture - detector on render (gaze differs)
 LM_SIG_DIFF = 1.0                    # mm: a DIFFERENTIAL anchor (the same detector on picture and render), + its pixel floor
 LM_PX = 0.6                           # picture px: the detector's own scatter on a small face (Garrett's: 1.2 mm / px)
@@ -1832,18 +1836,25 @@ def _anchor_obs(head, view, points, det):
     out = []
     L = np.asarray(head["L"], float)
     keys = [k_ for k_ in (points or {}) if k_.startswith("lm") and k_[2:].isdigit() and int(k_[2:]) < 68]
-    if keys and view["kind"] in ("front", "3q"):      # the CHIN: a picture's stored points often leave the jaw contour out
+    ch = view.get("chin") or {}
+    chin_ax = {"xy": (0, 1), "y": (1,), "none": ()}[ch.get("chin_lm", CHIN_LM_AXES)]
+    if keys and view["kind"] in ("front", "3q") and chin_ax:      # the CHIN: a picture's stored points often leave the jaw contour out
         keys += [f"lm{i}" for i in view.get("jaw_lm", CHIN_LM) if f"lm{i}" not in keys]   # (the detector guesses it); like with like it is the
-    for key in keys:                                  # table's own chin read, and nothing else sees the chin from the front
+    stretch = ch.get("lm_stretch", LM_STRETCH)        # table's own chin read, and nothing else sees the chin from the front
+    P0 = np.asarray(det["P"], float)[[likeness.MP68[int(k_[2:])] for k_ in keys]].mean(0) if keys else np.zeros(2)
+    for key in keys:
         i = int(key[2:])
         m = likeness.MP68[i]
         Jp, mm1 = _proj_jac_pt(view["cam"], L[i], head["LB"][:, i])
         p, q = Pm[m], np.asarray(det["P"], float)[m]
-        sig = float(np.hypot(LM_SIG_DIFF, LM_PX * mm1))
-        for ax in (0, 1):
-            out.append({"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1,
-                        "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
-                        "X": list(map(float, L[i])), "diff": True})
+        sig = float(np.hypot(LM_SIG_DIFF, LM_PX * mm1)) * float(ch.get("lm_sig", LM_SIG_SCALE))
+        for ax in ((0, 1) if i not in CHIN_LM else chin_ax):
+            ob = {"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1,
+                  "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
+                  "X": list(map(float, L[i])), "diff": True}
+            if stretch:       # THE DETECTOR'S OWN STRETCH (chinread): its face on a photo is not its face on our clay render
+                ob["nu"] = {f"lm_{view['kind']}_s{'xy'[ax]}": LM_STRETCH_UNIT * float(q[ax] - P0[ax]) * mm1}
+            out.append(ob)
     if view["kind"] == "3q" and keys and "eye_X" in head and len(Pm) > max(likeness.MP_EYES):
         # BOTH IRIS CENTRES of a turned view (the detector's, picture - render): two irises pin its yaw (one limbus
         # does not: the profile and 3/4 cameras over-rotated 3.5-4 deg over four calls on Tess)
@@ -1904,7 +1915,7 @@ def view_sanity(views: list, cameras: list) -> list:
 def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False,
                     anchors: str = "differential", parse: bool | str = False, normals: bool = False,
                     kinds: list | None = None, readers: list | None = None, jaw_lm=None, expr: bool = False,
-                    jaw: bool = False) -> tuple:
+                    jaw: bool = False, chin: dict | None = None) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -1923,7 +1934,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         k = kinds[vi] if kinds and vi < len(kinds) and kinds[vi] else kind_of(v.get("yaw", 0))
         img = Image.open(v["image"]).convert("RGB")
         view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1],
-                "face_only": True, "reader": "points", "jaw": bool(jaw)}
+                "face_only": True, "reader": "points", "jaw": bool(jaw), "chin": dict(chin or {})}
         if jaw_lm:
             view["jaw_lm"] = tuple(jaw_lm)
         pts = dict(v.get("points") or {})
@@ -1996,12 +2007,12 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
             parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False,
             cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
             expr_sd: float | None = None, kinds: list | None = None, readers: list | None = None, jaw_lm=None,
-            jaw: bool = False) -> dict:
+            jaw: bool = False, chin: dict | None = None) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
     head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade, anchors=anchors, parse=parse,
-                                         normals=normals, kinds=kinds, readers=readers, jaw_lm=jaw_lm, expr=bool(expr), jaw=jaw)
+                                         normals=normals, kinds=kinds, readers=readers, jaw_lm=jaw_lm, expr=bool(expr), jaw=jaw, chin=chin)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     res = read(head, views, rounds=rounds, cam_sd=cam_sd, cam_first=cam_first, adapt=adapt, cam_done0=cam_done0, cmax=cmax,
