@@ -4365,3 +4365,17 @@ cheek zones' sculpt), then as observations in the solve if it validates on known
 STATE / NEXT (tooling): joint solve = outlines + irises + limbus + lids + lips (in, pushed); shading built, failed
 validation, off. Open: cheeks (above), brow band and alae in the solve, tests for the new observations, the guide's
 3b text, the table's bad front rows, then the solve on Garrett / lt19 / jw with judging sheets.
+
+### Garrett with the joint solve (2026-10-11): FAILS on his references
+- gj_G00 = block_in_start from b3_G17's refs (male class mean, age 52, gnm_base 0, cameras kept; two views: the front
+  A-pose painting and the 3/4 portrait at the desk; no profile). block_in_solve x3 (free, trust, trust): reads outline
+  56 / 54 / 54, landmark 204, iris 4, limbus 2, lid 0 (iris too small), lip 22. |dc| 7.4 and 7.2 on the 2nd / 3rd
+  call (does NOT settle), |c| 17.0 / 15.9, largest comp 3.8-3.9 sd; table worse each call (3rd: head 4/7, jaw 4/6,
+  eyes 2/3, mouth 3/7).
+- Sheet gj_01 (gj_G03 over b3_G17, judging layout), sent. BLUNT: gj_G03 is distorted (drooping uneven lids, heavy
+  lower face, wrong nose) and clearly worse than the accepted b3_G17.
+- WHY: the solve lives on OUTLINES (Tess: ~195 reads over three views in front of a plain background). His paintings
+  give 54 (dark / painted backgrounds, a collar, no profile), so 204 detector landmark anchors (LM_SIG 1.5 mm, biased
+  on a painting) carry the identity and force it past 3.5 sd. block_in_solve now WARNS under 120 outline reads or past
+  3 sd. Garrett stays on b3_G17 until he has references the solve can read (plain background, front + 3/4 + profile,
+  the face large; the shot brief) or the anchors' weight is made to depend on how much else is read.

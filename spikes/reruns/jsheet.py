@@ -44,7 +44,7 @@ for title, m in cols:
             print(m, vi, "face-ID failed", repr(e)[:120])
     b = Image.new("RGB", (4 * N, HEAD + N * len(rows)), "white")
     dr = ImageDraw.Draw(b)
-    for k, t in enumerate((f"{title}: photo", "50 % blend (photo + projected)", "her pictures projected as skin", "its own dressing")):
+    for k, t in enumerate((f"{title}: photo", "50 % blend (photo + projected)", "the reference pictures projected as skin", "its own dressing")):
         dr.text((k * N + 6, 8), t, fill=(0, 0, 0))
     for r, row in enumerate(rows):
         for k, t in enumerate(row):

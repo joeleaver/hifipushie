@@ -1981,7 +1981,13 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras)
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
-    return [sh[0], f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
+    warn = ""
+    if so["n"].get("outline", 0) < 120 or so["max_sd"] > 3.0:
+        warn = (f"WARNING: a weak or forced solve (outline reads {so['n'].get('outline', 0)}; it needs ~150+: plain background, "
+                f"skin outlines in 2-3 views; largest component {so['max_sd']:.1f} sd; past 3 the face is being forced). On "
+                "Garrett's two paintings (54 outline reads, 204 detector anchors) the result was distorted: do not keep it; "
+                "get references with a plain background or step by hand.\n")
+    return [sh[0], warn + f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
                    f"cameras moved (shift mm, shift mm, scale %, roll, yaw, pitch deg per view): {so['cameras']}\n"
                    + bi.step_text(rep) + "\n" + sh[1]]
 
