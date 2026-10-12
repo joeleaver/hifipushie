@@ -686,6 +686,7 @@ SHADE_MAX = 0.7          # log: no region is more than this in shade (about -20 
 EXPOSURE_SIGMA = 0.2     # log: the free exposure without a white (the read is already levelled on the plain skin, and the
                          # model's plain L* is held to the prior: what is left to it is small. At 0.6 it traded against shade:
                          # on the synthetic F2 head exposure went to x 0.40 with every other region "26-32 L in shade")
+SHADE_LOCAL = 0.03       # log: the hold on the shaded regions' lower quartile (shade is local)
 SHADE_SAY = 0.1          # log: shade from here on is named in the reply
 FACE_BOUND = 3.0         # L*: the WHOLE face's mean albedo (stubble apart) may leave the prior's by this much
 ZONE_BOUND = (4.0, 5.0)  # L*, a*b*: a zone's offset from the face's mean may leave the prior's by this much (pigment that
@@ -1249,7 +1250,13 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
             pl, fl, _ = tone_stats(x)
             hold = [[len(reg) ** 0.5 * (x[np_] - e_mid) / e_sig, len(reg) ** 0.5 * (float(pl[0]) - L0) / L_sig,
                      len(reg) ** 0.5 * (float(fl[0]) - Lf0) / L_sig]]
-        return np.concatenate([((m - tg) / sig).ravel(), sv / np.maximum(s_sig, 1e-9) * (s_sig > 0),
+        # SHADE IS LOCAL: a face is never all in shade against its own plain skin. A quarter of the regions that may
+        # carry shade must carry none (their lower quartile is held to 0). Without it exposure and shade traded on the
+        # synthetic heads: exposure x 0.4-0.5 and every region "20-30 L in shade", which is a colour cast along the
+        # shade colour by another name (toneval F2: plain zones 20 L off, 21 regions at the cap).
+        fr_ = sv[s_sig > 0.1]
+        local = [len(reg) ** 0.5 * (float(np.percentile(fr_, 25)) if len(fr_) >= 4 else 0.0) / SHADE_LOCAL]
+        return np.concatenate([((m - tg) / sig).ravel(), sv / np.maximum(s_sig, 1e-9) * (s_sig > 0), local,
                                PRIOR * len(reg) ** 0.5 * pw * (x[:np_] - x0[:np_]) / (hi - lo)[:np_]] +
                               ([len(bz) ** 0.5 * (bs - bs.mean()) / BEARD_EVEN] if len(bz) else []) + hold)
 
