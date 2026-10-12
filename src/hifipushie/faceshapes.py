@@ -1178,20 +1178,6 @@ class GnmFace(Face):
             out.update({names[i]: float(v) for i, v in self._tongue_out()[1].items()})
         return {k: round(v * self.amount.get(name, 1.0), 5) for k, v in out.items() if abs(v) > 1e-6}
 
-    def _piece_delta(self, dV: np.ndarray) -> np.ndarray:
-        """GNM offsets of every vertex with the loose pieces' share as the head carries them (base._gnm_pieces: a
-        piece is GNM's own, scaled by k with the skin beside it): k x the piece's own offsets + (1 - k) x its anchor
-        skin's mean offset."""
-        from . import base as basemod
-        G = self._setup()
-        out = np.array(dV, float)
-        V, g = G["c"]["V"], G["g"]
-        T = np.asarray(g["template_vertex_positions"], float)
-        for ids, anc in basemod._gnm_piece_sets(g):
-            k = float(np.sqrt(((V[ids] - V[ids].mean(0)) ** 2).sum() / max(((T[ids] - T[ids].mean(0)) ** 2).sum(), 1e-30)))
-            out[ids] = k * dV[ids] + (1 - k) * dV[anc].mean(0)
-        return out
-
     def _piece_onto(self, X: np.ndarray, dV: np.ndarray, kind: str) -> np.ndarray:
         """World offsets of a GNM mouth part's export vertices X (kind "teeth" | "tongue" | "sock") from GNM's own
         offsets dV: inverse distance over the 4 nearest vertices of the GNM piece the vertex belongs to (the nearest
@@ -1201,7 +1187,7 @@ class GnmFace(Face):
         from . import base as basemod
         G = self._setup()
         mp = basemod.gnm_mouth(self.head)
-        dW = self._by_index(self._piece_delta(dV))
+        dW = self._by_index(dV)  # (a piece takes an expression's offsets as the skin does: base._gnm_pieces)
         names = {"teeth": ("teeth_upper", "teeth_lower"), "tongue": ("tongue",), "sock": ("sock",)}[kind]
         trees = G.setdefault("piece_trees", {})
         for n in names:

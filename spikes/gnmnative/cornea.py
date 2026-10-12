@@ -1,4 +1,5 @@
-"""gnmnative: the exterior shell's profile (axial radius -> height over the scleral sphere) and corneal sphere fits."""
+"""gnmnative: the exterior shell's profile (axial radius -> height over the scleral sphere) for the eye identity
+components, and base.gnm_eyes' read of each (the corneal sphere fit must hold over +-2.5 sd)."""
 import numpy as np
 
 from hifipushie import base
@@ -7,24 +8,18 @@ g = base._gnm_data()
 G = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
 T = g["template_vertex_positions"].astype(float)
 J = g["template_joint_positions"].astype(float)
+inm = [str(n) for n in g["identity_names"]]
 m = G["left_eye"] & G["eye_exteriors"]
-e = (T[m] - J[2]) * 1000
-ax = np.array([0, 0, 1.0])
-a = np.linalg.norm(e[:, :2], axis=1)
-z = e[:, 2]
-d = np.linalg.norm(e, axis=1)
-front = z > 0
-order = np.argsort(a[front])
-rings = np.unique(np.round(a[front][order], 2))
-print("axial radius -> z, |p|   (front half, unique rings)")
-for r in rings[:16]:
-    s = np.abs(a - r) < 0.02
-    s &= front
-    print(f"  a {r:6.2f}  z {z[s].mean():6.3f}  |p| {d[s].mean():6.3f}  n {s.sum()}")
-apex = z.max()
-for amax in (2.5, 3.5, 4.5, 5.5):
-    s = front & (a < amax) & (a > 0.3)
-    h = apex - z[s]
-    rc = (h ** 2 + a[s] ** 2) / (2 * h)
-    print(f"cornea fit a < {amax}: rc median {np.median(rc):.2f} (min {rc.min():.2f} max {rc.max():.2f})")
-print(base.gnm_eyes(T, g)[0])
+for comp in ("eyes_000", "eyes_001"):
+    B = g["vertex_identity_basis"][inm.index(comp)]
+    for s in (-2.5, -1, 0, 1, 2.5):
+        V = T + s * B
+        e = (V[m] - J[2]) * 1000
+        a = np.linalg.norm(e[:, :2], axis=1)
+        d = np.linalg.norm(e, axis=1)
+        front = e[:, 2] > 0
+        bins = np.arange(0, 12.1, 1.0)
+        prof = [f"{(d[front & (a >= b) & (a < b + 1)].mean() if (front & (a >= b) & (a < b + 1)).any() else np.nan) - np.median(d[~front]):5.2f}" for b in bins]
+        q = base.gnm_eyes(V, g)[0]
+        print(f"{comp} {s:+.1f}: bulge over the sphere by axial mm 0..12: {' '.join(prof)} | r {q['r'] * 1000:.2f} limbus {q['limbus'] * 1000:.2f} "
+              f"cornea_r {q['cornea_r'] * 1000:.2f} apex {q['apex'] * 1000:.2f} iris_r {q['iris_r'] * 1000:.2f} pupil {q['pupil']:.2f}")

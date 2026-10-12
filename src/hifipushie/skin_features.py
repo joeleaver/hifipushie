@@ -272,6 +272,7 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
                   mask=m, **({"height": round(0.0005 * old * min(a, 1.5), 6)} if sx and old > 0.2 else {}))
 
     _eyes(spec, p, J, out, layer, T, ctx)
+    _gnm_mouth(spec, out, part)
     _wrinkles(p, J, layer, T, ctx)
     from . import skin_folds
     skin_folds.build(spec, p, J, layer, ctx)
@@ -281,6 +282,47 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     from . import skin_makeup
     skin_makeup.build(spec, p, J, layer, T, ctx)
     return ctx["smooth"]
+
+
+def _gnm_mouth(spec, out, part) -> None:
+    """GNM's OWN MOUTH, dressed (minimal, 2026-10-12; Joe: "we'll figure out the dressing as we go along"): the mouth
+    bag dark wet red on the skin's part, the gums on the teeth's part. Both masks are point clouds made from GNM's own
+    vertices (its `mouth_sock` and `gums` groups, as the head places them), read like a hand-painted mask
+    (paint.painted_values): the gum line is GNM's scalloped one, not a height. Teeth and tongue keep their parts'
+    flat colours (base.MOUTH_PARTS): no enamel translucency, no tongue texture, no wet film yet."""
+    from . import base as _base
+    from . import paint as _paint
+    from . import spec as _specmod
+    b = spec.get("base") or {}
+    if _base.mouth_mode(b) != "gnm":
+        return
+    head = _base.head_of({"joints": _specmod.expand_mirror(spec)["joints"]}, b)
+    if head is None or _base.mouth_mode(b, head) != "gnm":
+        return
+    mp = _base.gnm_mouth(head)
+    g = _base._gnm_data()
+    sk = mp["sock"].get("points") or _base._piece_points(mp["sock"]["verts"], mp["sock"]["faces"], rounds=1)
+    # (the joining quads' lip-loop vertices are skin: the bag's colour starts a ring behind them)
+    own = np.asarray(g["groups"]["mouth_sock"])[mp["sock"]["ids"]] > 0.5
+    from scipy.spatial import cKDTree
+    d_own = cKDTree(mp["sock"]["verts"][own]).query(sk["verts"])[0]
+    d_rim = cKDTree(mp["sock"]["verts"][~own]).query(sk["verts"])[0] if (~own).any() else np.full(len(sk["verts"]), 1.0)
+    pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim).astype(float), 0.003)
+    out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
+                             "mask": [{"painted": pid}]}
+    pos, nrm, val = [], [], []
+    for k in ("teeth_upper", "teeth_lower"):
+        V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
+        gum = mp[k]["gum"].astype(float)[:, None].repeat(3, 1)
+        for _ in range(_base.MOUTH_SUBDIVIDE):
+            V2, F2 = _base._catmull_clark(V, F)
+            gum = _base._catmull_clark(gum, F)[0]  # (the group's weight subdivided like the positions)
+            V, F = V2, F2
+        N, h = _base._normals_and_h(V, F)
+        pos.append(V), nrm.append(N), val.append(np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1))
+    pid = _paint.save_painted(np.concatenate(pos), np.concatenate(nrm), np.concatenate(val), 0.0012)
+    out["skin:gums"] = {"part": "teeth", "color": list(_base.GUM_COLOR), "roughness": 0.25, "specular": 0.6,
+                        "mask": [{"painted": pid}]}
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",

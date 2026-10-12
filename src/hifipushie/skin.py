@@ -614,7 +614,10 @@ def layers(spec: dict) -> dict:
     eg = _basemod.eye_native(spec) if (spec.get("base") or {}).get("eyes") else None  # (GNM's eye: its limbus and pupil
     # are the drawn iris' defaults, and come from the identity / expression, not from the joints)
     key = hashlib.sha1(json.dumps([spec["skin"], (spec.get("base") or {}).get("lashes"), VERSION,
-                                   [round(eg["limbus"], 6), round(eg["pupil"], 4)] if eg else None], sort_keys=True,
+                                   [round(eg["limbus"], 6), round(eg["pupil"], 4)] if eg else None,
+                                   # (GNM's own mouth: its gum and bag masks are made from the head as built)
+                                   (spec.get("base") or {}).get("head") if _basemod.mouth_mode(spec.get("base") or {}) == "gnm"
+                                   else None], sort_keys=True,
                                   default=str).encode()).hexdigest()
     J = _joints(spec)
     jk = hashlib.sha1(json.dumps(sorted((k, np.round(v, 5).tolist()) for k, v in J.items())).encode()).hexdigest()
