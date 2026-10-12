@@ -56,3 +56,18 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   32 CPUs / 30 GB, Linux; NICO-TOP: 16 threads / 23 GB, WSL2) already have a hifipushie checkout, Blender 5.1.2, uv
   and the packs; the practical route is rsync + SSH (`run-remote`), not the broker or the cloud fleet for 1-5 min
   jobs; needs SSH access set up by Joe. oxidegen is proposing a general heavy-job design to Joe; not built.
+
+- Offload through oxidegen, WORKING (2026-10-12, coordinator; oxidegen v137 `where: "local"` compute jobs,
+  /home/joe/dev/oxidegen/docs/compute-jobs.md). `spikes/offload/remote.sh <runner.py> <outputs> <ram_gb> <cpus>
+  gpu|nogpu <job dirs>` = this repo at HEAD as the environment (git archive + uv sync + asset packs, built once per
+  machine per COMMIT), job folders uploaded, outputs pulled to ./results/<batch>/. Machines: NICO-TOP (16 threads,
+  14 GB for jobs, RTX 3070 Ti; Blender 5.1.2 = this laptop's); enterprise not installed yet (Joe's one-liner).
+  Trials: (1) two GNM pytest files as two jobs: 46 s round trip incl. the environment, tests 5 / 10 s there;
+  (2) the skin feature tour of sf_tess (dressed stage build + six EEVEE crops, `--gpu`, 8 GB): 314 s on the machine,
+  9 min 40 s round trip (the rest = the environment rebuilt for a new commit: uv sync + ~300 MB of packs); the tiles
+  match the local ones. Runners: spikes/offload/job_pytest.py, job_skintour.py; pack a model with
+  spikes/tour/pack_model.py (spec + human_refs.json + pictures, paths made relative; ~1-10 MB).
+  Know: commit first (uncommitted changes do not travel); a new commit rebuilds the environment (~4 min: batch jobs
+  per commit); jobs are sandboxed (no paths of this machine); be honest in ram_gb (killed past 1.25x); one GPU job a
+  machine. Joe: private likenesses may go anywhere in his ecosystem, so lt19 / jw jobs may use it.
+  Asked of oxidegen: an environment in layers (packs keyed apart from the code archive) so a new commit costs seconds.
