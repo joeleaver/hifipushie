@@ -4823,3 +4823,216 @@ profile nasion-chin 1.009 (its iris span 0.68 means nothing: the far iris is the
 6. reference_brief's validator should reject a "profile" in which the far brow shows and a "3/4" at 23 deg: this set
    passed for studio quality and has no side view.
 7. The eye step under the nothing-forced rule (now only a warning); lid_read without its detector rows.
+
+## solvereads (2026-10-12, "solvereads" agent, branch `worktree-agent-aa35e23e83100b85d` from main 82097e7; Joe on gg_01: "The
+## garrett with good references failed pretty hard at the chin, makes me wonder if we're measuring enough things there. But
+## it got a lot of stuff right." Scratch DURABLE in /mnt/data/hifipushie/solvereads: run.sh <script> (capped, this worktree's
+## src, OPENBLAS_NUM_THREADS=1), bench.sh / reruns.sh / shots.sh, synth/ (the benchmark's pictures), out/ (logs, shots);
+## scripts in spikes/solvereads; models gh_* (good Garrett), tv_* (Tess), gp_* (Garrett's paintings), sx_* (benchmark))
+STATE / NEXT (solvereads, DONE): the chin's and jaw's WIDTH have no read from a front + 23 deg + 72 deg set (the answer to
+Joe's question: no, we are not measuring enough there) and nothing I built reads them (two reads built, both FAIL
+validation, off). block_in_solve now SAYS so (solve_report: moved with no read / weak read / unread), settles (|dc| 13.3,
+2.8, 1.7, 1.3, 0.9, 0.9 on the good set), keeps one reader per view, warns about views that are not what they were called.
+Hold and the expression term are built, did not validate, OFF. gh best = gh_B06: the CHIN IS NOT FIXED (it is gg_A06 again;
+sheet human_renders/gh_01_garrett_good_new_solve.png); Tess: no regression (tv_B03, 25 / 26); the paintings: garrett_a1 again. NEXT: (1) a read for the jaw's
+lower edge that survives validation, or a reference that puts it on a silhouette (a true 45 deg 3/4 halves the error on the
+benchmark; a head tilted down should do the rest: not tested); (2) expression from the detector's blendshapes as an
+independent read (differential against the START head's render; the clay / photo gap in "squint" has to be calibrated);
+(3) the two-view solve wrecks the chin (chin length -13 .. -18 mm on known heads: not fixed); (4) views of the same kind
+share camera columns (obs are keyed by kind): fix before any set with two 3/4s.
+
+### The benchmark everything here is validated on (spikes/solvereads/mk_synth.py, bench.sh, bsum.py)
+- KNOWN heads as reference sets: sx_<tag>_T = gg_A06's body / dressing / cameras / light with a known identity and a known
+  GNM expression, DRESSED EEVEE shots through gg_A06's three fitted cameras (front, 23 deg, 72 deg: the good Garrett set's own
+  angles; whole 1152 x 1536 frames in synth/), then a block-in START from the male class mean exactly as gg_G00 was made
+  (detector points, the profile's 8 clicks = the truth's landmarks, cameras refit). Heads: a = gg_A06's identity, b =
+  garrett_a1's identity (used as numbers only: no picture of the good set is attached to garrett_a1); _n neutral, _x with
+  compress_face 0.5 + squint 0.6 + mouth_left 0.4 + lips_roll_in 0.3 (gnm_sampler's class prototypes). Score: |c - c_true|,
+  the face's surface rms (GNM vertices, hockey mask, mm), each measure's error. Three calls per run (refit, free, free).
+  It is an IN-MODEL benchmark (the truth is a GNM head): the prior's correlations are right about it by construction, so it
+  flatters whatever leans on them; what it shows wrong is wrong.
+- A tooling lesson found here: with the machine loaded (load 60-80, other agents) ONE call took 20 minutes: np.linalg.inv
+  of a 190 x 190 matrix took 1.35 s (OpenBLAS threads thrashing; __init__'s cap of 4 does not help), and the down-weighting
+  search does ~150 of them. OPENBLAS_NUM_THREADS=1: 0.3 s for the same search (x590). run.sh sets it; a server on a loaded
+  machine has the same problem (threadpoolctl is not installed: not fixed in code).
+
+### 1. The chin audit: what reads it, what does not (spikes/solvereads/audit.py <model>; logs out/audit_*.log)
+- BLUNT READ of gg_A06's chin first (chinlook.py: reference | the model's outline on the photo | clay | blend; out/chin_gg_A06.png):
+  SIDE (72 deg): the model's outline lies on the picture's lips, chin-lip groove, chin front and chin bottom: projection,
+  groove and height are RIGHT there; the line under the chin is a taut plane where he has soft fullness. FRONT and 3/4: WRONG
+  in width and form: the model has a broad, square slab from jaw angle to jaw angle with no chin of its own; the picture
+  has a rounded chin ball about 35 mm wide between the marionette grooves and a jaw that tapers into it; in the 3/4 the
+  model's chin also sits a few mm low (a doubled chin line in the blend). gnm numbers: jaw_square +1.8 sd, chin_width +4.9
+  mm from the class mean, jaw_angle +1.0 sd.
+- THE MODEL'S OWN POSTERIOR IS NO GUIDE. Posterior sd / prior sd says EVERYTHING is read on every set (gg_A06: chin_width
+  5.7 -> 1.4 mm "read 0.94", cheek_fullness 0.91, eye depth 0.94 "from the profile outline"): ~600 reads pin GNM's 170 global
+  components and every measure is a function of those. That is the prior's correlations, not a measurement, and it is
+  exactly what "moved without a read" has to see through.
+- The DIRECT read (solve_report.direct): the same Gaussian algebra with the global model replaced by a locally free surface
+  (a Gaussian process over the head: 3 mm per axis, correlation length 12 mm), each read telling its own surface point's
+  move along its own picture direction, each measure = its own points' moves (its footprint: d measure / d vertex, by
+  finite differences on GNM's template, cached), cameras free as in the solve. read = 1 - posterior / prior variance there.
+  Measures: gnm_mm's 27 + a chin set (pogonion_forward, lower_face_height, chin_point, mentolabial_depth, gonial_width) +
+  12 macro words (jaw_square, jaw_angle, chin_cleft, cheek_fullness, forehead_slope ...). It is a heuristic about geometry:
+  it does not know a read is biased, and it over-credits reads that are merely NEAR (see jaw_width below).
+- Observations per set (count, sigma mm; effective = after adapt / the cmax relaxation):
+  | set (model) | outline front / 3q / profile | anchors front / 3q | iris | limbus | lids | lips |
+  |---|---|---|---|---|---|---|
+  | good Garrett (gg_A06; front, 23, 72 deg) | 135 @0.5 (parser; residual 1.40) / 55 @0.3 / 106 @0.3 | 108 / 108 @1.0 (eff 1.3) | 4 @0.2 + 4 @0.53 | 2 | 14 @0.2 (eff 0.9: scattered) | 18 @0.3 (eff 0.8) |
+  | Tess (tqr_T04; front, 39, 76 deg) | 36 @0.5 / 69 @0.3 / 107 @0.3 | 26 / 26 @1.0 | 4 + 4 | 2 + 2 | 16 | 18 |
+  | Garrett's paintings (gr_G05 = garrett_a1; front, 42 deg) | 135 @0.5 (eff 0.75) / 112 @0.5 / - | 108 / 108 @1.2-1.3 (eff 1.8-1.9) | 4 + 4 @0.94 | 0 | 0 | 17 (eff 1.0) |
+  Chin points in all three: only the detector's lm 7, 8, 9 (differential), front and 3/4.
+- DIRECT read of the chin and lower face (0 = nothing looks at it, 1 = pinned; the model's own posterior read in brackets):
+  | measure (population sd) | good Garrett | Tess | paintings | what reads it |
+  |---|---|---|---|---|
+  | chin projection: chin_forward (3.5 mm) | 0.89 (0.99) | 0.97 | 0.46 | the side view's outline; paintings: the 3/4's detector chin points only |
+  | pogonion_forward (4.3) | 0.82 | 0.94 | 0.39 | same |
+  | chin height: chin_length (4.1) | 0.95 | 0.98 | 0.90 | side outline + the detector's chin points |
+  | chin WIDTH: chin_width (5.7) | **0.07** (0.94) | **0.26** | **0.14** | nothing: lm 6 / 10 lie on the jaw's lower edge, skin on skin |
+  | chin shape: chin_point (0.8) | 0.90 | 0.94 | 0.79 | the three detector chin points |
+  | jaw_square (1 sd) | **0.26** | 0.45 | 0.28 | front outline, weakly |
+  | chin_cleft (1 sd) | 0.40 | 0.71 | **0.09** | side outline (GNM barely makes one) |
+  | mentolabial groove depth (1.0) | 0.77 | 0.93 | **0.11** | the side view's outline |
+  | jaw_angle (1 sd) | 0.54 | 0.33 | 0.48 | front outline |
+  | jaw_width at mouth level (10.7) / gonial_width (11.5) | 0.79 / 0.82 | 0.37 / 0.40 | 0.52 / 0.93 | front outline: OVER-CREDITED (below) |
+  | under_chin (4.6) | 0.54 | 0.77 | 0.49 | the side view's line under the chin (on a chin-up picture: little) |
+  Also unread everywhere: cheekbone_width 0.05-0.20, skull_width / skull_top / neck_width ~0, brow_hollow 0.06-0.25.
+- THE BENCHMARK CONFIRMS IT WITH A KNOWN ANSWER (head b, three calls, today's solve): every silhouette lies on the picture
+  (front 0.35-0.38 mm rms, 3/4 0.2; out/ovl_b_n_N03.png: the TRUE head's outline in red on the solved one's in green: one
+  line) and the solved head's jaw is 7.6 mm and its chin 6.4 mm TOO WIDE, jaw_angle +2 sd: Joe's fault on gg_A06,
+  reproduced, with nothing in the residuals to show it. (Head a, whose truth already has the broad chin: +0.9 / -0.5.)
+  jaw_width's direct read of 0.5-0.8 is wrong there: the front silhouette below the ear is the NECK's as much as the jaw's.
+- NEW READS TRIED (validation as everywhere in this thread: dressed renders of known heads; a null; a known change):
+  (a) THE JAW'S EDGE AGAINST THE NECK as a luminance step along the model's own occluding contour there
+  (face_ruler.jaw_contour / _jaw_obs, view["jaw"]; spikes/solvereads/jval.py): FAIL. Null on dressed shots (truth 0):
+  bias -1.8 .. -3.0 mm, rms 1.9-4.1, 3-14 reads a front view, 0-3 in a 3/4; a known chin_width +5 read at slope 2.2-3.5.
+  On Tess's photo (soft light): 17 reads, bias -2.4, rms 3.9: no step to find. And on Garrett's chin-up front picture the
+  jaw makes NO occluding contour at all (the underside shows). OFF, code kept.
+  (b) THE DETECTOR'S JAW-LINE POINTS (lm 3..13) as differential anchors (view["jaw_lm"]; lmval.py, 8 heads x 2 views): FAIL.
+  Null rms 2.3 mm (front, lm 5 / 6 / 10 / 11), 2.7 (jaw angle), 3.5 in a 3/4; a known chin_width +5: slope +0.33, corr 0.09;
+  jaw_width +6: slope 0.5, corr 0.3. The detector draws its own jaw. NOT added. (The chin's three, already in: null bias
+  +0.5, rms 1.4 mm front / 2.3 in a 3/4; chin_length +4 read at slope 0.74, corr 0.87: they read the chin's HEIGHT and
+  little else: chin_width slope 0.55, corr 0.32.)
+  (c) the profile's soft-tissue line through pogonion / menton / the groove: already read by the outline (direct 0.8-0.95;
+  on the benchmark chin_forward ends +0.2 mm, the groove 0.0 on head a). Nothing to add.
+  (d) the parser's face-skin / body-skin split under the chin: not tried (no geometric definition on the model to compare
+  it with; the detector's result says what to expect).
+- WHAT WOULD READ IT: a TRUE 45 degree 3/4 (mk45.py: head b's 3/4 re-shot at 45 instead of 23): |c - c_true| 11.2 -> 5.9,
+  jaw_width +7.6 -> +4.6, chin_width +6.4 -> +3.7 mm, face rms 2.93 -> 2.80: half the fault, not all of it (and that
+  picture is down-weighted x2.9-3.6: its cause not found). For the brief: a 3/4 at a real 45 deg AND a view with the head
+  tilted down or from slightly above, so the jaw's lower edge makes a silhouette (not tested).
+
+### 2. "Moved without a read" (src/hifipushie/solve_report.py; in every block_in_solve reply)
+- report(): per measure the move since the block-in's START, the direct read and who looks at it. Three lists in the reply:
+  MOVED WITH NO READ (> 0.7 sd or 2 mm on a read under 0.25), MOVED FAR ON A WEAK READ (> 1.2 sd on a read under 0.6),
+  unread. solve_report.table_text(rep, region) prints the full table.
+- Would it have caught garrett_a1? The paintings rerun (gp_B05, same pictures, same start) says: "MOVED FAR ON A WEAK READ:
+  jaw_angle +2.3 sd [read 0.43]; orbital_rim +2.2 sd [0.40, landmark 3q]; cheek_fullness -2.0 sd [0.59]; eyes_forward -7.4 mm
+  (-1.9 sd) [0.45, landmark 3q]; under_eye_forward -5.6 mm [0.34]" and "unread: forehead_forward, skull_top, brow_hollow,
+  mentolabial_depth, chin_cleft, forehead_slope"; chin_forward (read 0.46, not moved) is in neither list. So eye depth, the
+  orbit and the cheeks are on the table as inferred; the good set says 4-5 mm of that eye depth was wrong.
+- HOLD (block_in_solve(hold="auto"); solve_report.hold_rows): every measure whose direct read is under 0.25 becomes a
+  pseudo-observation "its whole move since the start = 0" (sigma 0.05 population sd, exempt from the robust loss and the
+  down-weighting, STICKY for the block-in: a measure hovering at the threshold was held one round and not the next).
+  Benchmark, face rms mm after three calls (start 3.26 a / 3.76 b), no hold -> hold: a_n 2.06 -> 2.30; b_n 2.93 -> 2.48;
+  with the expression term too: a_x 1.76 -> 1.96, b_x 4.52 -> 3.09. Better on b, worse on a, and it does not hold what hurt:
+  chin_width's read hovers at 0.2-0.3 and jaw_width's is over-credited, so b's chin stays +6.0 mm wide.
+  It would NOT have avoided garrett_a1's eye depth: that is a WEAK read (0.45-0.52), not an unread one. DECISION: OFF by
+  default (not supported by every case); the REPORT is the default. Reruns with hold: under "Reruns".
+
+### 3. The expression term (face_ruler.EXPR_SET; block_in_solve(expression="view" | "shared")): built, FAILS, OFF
+- Built: model_head(expr=) appends each prototype's move of the head's vertices and landmarks to the identity's basis
+  (eight classes of gnm_sampler: compress_face, surprise, squint, lips_roll_in, corners_down, happy, mouth_left,
+  mouth_right; how much of GNM's move the one mesh makes is measured once: kx), so every read carries its change per unit
+  of expression; solve() gives each picture (or the set) its own coefficients as nuisance columns, prior N(0, 0.35),
+  never applied to the head. Only INTERIOR reads may be explained by it (anchors, lids, lips).
+- VALIDATION (face rms mm after 1 / 2 / 3 calls; start 3.26 a, 3.76 b):
+  | pictures | no term | per view, outlines included | per view, interior reads | shared |
+  |---|---|---|---|---|
+  | a_x (known expression) | 1.74 / 1.41 / 1.76 | 1.96 / 2.46 / 3.47 | 2.07 / 1.91 / 1.98 | 3.00 / 2.43 / 2.04 |
+  | b_x (known expression) | 4.15 / 4.27 / 4.52 | - | 3.49 / 3.85 / 4.38 | - |
+  | a_n (NEUTRAL: the null) | 2.20 / 2.08 / 2.06 | - | 2.73 / 2.48 / 2.66 | - |
+  With the outlines in, the 72 deg view's "expression" ran to compress +0.88, surprise -0.94 and ate the chin (10 mm back):
+  a silhouette cannot tell an expression from a shape. Interior only: read on a_x front: mouth_left +0.54 (true 0.4),
+  squint +0.29 +-0.29 (true 0.6: its posterior sd is the prior's), compress_face -0.01 (true 0.5), lips_roll_in -0.37
+  (true +0.3). No gain where there is an expression, a loss where there is none (mouth_width +4.4, eye depth -6.4 mm on the
+  null). FAIL: off.
+- WHY, and the one solid finding: when every picture shows the same expression, geometry cannot split it from identity;
+  170 identity components at sd 1 explain a lowered brow more cheaply than one coefficient at sd 0.35. And the bake-in is
+  REAL and measurable (bscheck.py / bsclay.py, the detector's blendshape scores): the good pictures read browDown 0.72 /
+  0.68, eyeSquint 0.64 / 0.63. On CLAY, neutral: the class-mean start reads browDown 0.14 / 0.11; gg_A06 0.40; garrett_a1's
+  identity 0.54 / 0.51; gg_C05 0.61 / 0.57; the class mean WITH a true compress 0.5 + squint 0.6: 0.81 / 0.83. Dressed,
+  neutral: class means and random |c| 10 heads 0.01-0.03, the three Garrett heads 0.58-0.65. So every Garrett head we have
+  carries most of the pictures' frown in its NEUTRAL identity. (Squint is not readable this way yet: clay eyes read
+  eyeSquint 0.45-0.61 on the neutral class mean.)
+- NEXT for whoever takes it: the blendshape scores as an independent expression read: picture minus the START head's own
+  render (so identity cannot soak it up first), calibrated per prototype on our renders, as the centre of the
+  coefficients' prior; validate with truths whose neutral reads neutral (a and b do not: they are Garrett solves).
+
+### 4. Steadier repeats
+- The cmax down-weighting: the SMALLEST factor that keeps every component inside 3 sd, by bisection (was x1.3 steps: 1.30 /
+  1.69 / 2.20), never under the factor the block-in stands at, which comes down at most 15 % a call (human_refs.json
+  blockin.relax). One outline reader per view for the whole block-in (blockin.readers; re-decided per call it flipped with
+  the head). A step that turns back on the last call's (cosine under -0.2) is halved, and from then on every step of that
+  block-in is (blockin.damped; halving only the turning steps left the others at 2.2-2.6).
+  | set | before (per call |dc|; outline reads; factor) | now |
+  |---|---|---|
+  | good Garrett (gg_G00 -> gh_B01..06) | 14.9, 9.9, 5.0, 4.0, 4.8, 2.4, 5.1; 324, 181, 290; x1.69, 1.69, 1.69, 1.30, 1.69, 2.20, 2.20 | 13.3, 2.8, 1.7, 1.3, 0.9, 0.9; 320, 301, 301, 286, 292, 291; x1.30, 1.93, 2.10, 1.95, 1.98, 1.94 |
+  | Tess (tn_T00 -> tv_B01..05) | 9.2, 2.6, 2.0, 2.6 (tqr); x1.0 | 9.2, 2.6, 1.0, 1.3, 1.1; 205-215; x1.0 |
+  | Garrett's paintings (gj_G00 -> gp_B01..05) | 8.8, 3.9, 4.2, 2.6, 2.4 (gr); x1.69 .. 2.20 | 10.2, 2.1, 1.2, 0.9, 1.1; 241-250; x1.48, 2.07, 1.91, 1.81, 1.87 |
+  The see-saw itself is still there (the undamped cosines are -0.4 .. -0.7): the damping hides it, it does not cure it
+  (reads that come and go, the lids' and lips' re-linearisation). Stop at |dc| < 2 or at the first DAMPED step.
+
+### 5. View sanity
+- face_ruler.view_yaw(cam): the head's turn from the fitted camera's own rotation; view_sanity warns (in the reply) when it is
+  over 15 deg from the stated yaw. Good Garrett: "three-quarter" at 23, "profile" at 72: both warned. NEWS: Tess's "true
+  profile camera" stands at 67 deg (tn_T00), 72-76 after a solve (tess_a1 72, tqr_T04 76): her set has no true side view
+  either. Garrett's paintings: 2 and 42 deg, fine.
+- The readers still go by the STATED kind. TRIED by fitted camera and reverted: Tess's profile became a second "3q", two
+  views of one kind share their camera columns (obs are keyed by kind), every sigma went x3.6 and the camera turned 26 deg.
+- check_references: a picture whose face is cut by the frame (the detector's oval within 1.5 % of an edge) is named a CROP
+  and left out of the IDENTITY check (closeup_mouth's false alarm); "NOT ONE PROJECTION" is dropped when no camera is fitted
+  (it compared with a stand-in camera's 0 deg); new: STATED VIEW DISAGREES when a given yaw and the detector's differ by
+  over 15 deg. reference_brief's validator: not touched.
+
+### 6. Reruns (blockin.fork of each class-mean start; chain.py; defaults = no hold, no expression; sheets human_renders/gh_*)
+- GOOD GARRETT (gg_G00 -> gh_B01..06; + hold: gh_H01..06). gh_B06: |c| 12.4, largest 2.95 sd, down-weighted x1.94, table
+  14 / 26, eyespan front 0.996 / 0.989, 3/4 0.988 / 0.989 (gg_A06 0.998 / 0.987, 0.991 / 0.986). Its identity is gg_A06's
+  again (chin_forward +0.3 against +0.9 mm, the groove 6.8 / 6.7 mm, eye depth -22.4 / -22.3, jaw_square +1.6 / +1.8 sd).
+  The reply's last call: "MOVED WITH NO READ: jaw_square +1.6 sd [read 0.15]; skull_top -4.7 mm; skull_width -5.2 mm;
+  chin_width +3.6 mm [0.05]; cheekbone_width -2.3 mm" and "MOVED FAR ON A WEAK READ: forehead_slope +2.8 sd [0.39],
+  forehead_forward -7.6 mm [0.37], brow_hollow -2.4 mm, ear_out +1.5 sd, jaw_angle +1.3 sd". With hold (gh_H06): chin_width
+  and jaw_square stay at the class mean's (jaw_square +0.3 sd), everything the side view reads is unchanged.
+  Sheet gh_01_garrett_good_new_solve.png (REFERENCE | gh_B06 | gh_H06 | gg_A06 | garrett_a1 through the same pictures;
+  blend, projected, own dressing; then the CHIN close-up block, rows front / 3/4 / side).
+  BLUNT: THE CHIN IS NOT FIXED. gh_B06 and gh_H06 are gg_A06 again from the front and the 3/4: the same broad lower face,
+  no chin ball; the hold's narrower jaw is a number, I cannot see it on the sheet. In the side row both gh heads keep the
+  right profile line, but their projected skin shows DOUBLED lips and nose wing (the front picture's texture lands a few
+  mm off the side's): gg_A06's side projection is cleaner. So gh is not better than gg_A06 anywhere and slightly worse
+  registered in the side view; what changed is that the solve now settles and says what it did not measure.
+  gh best = gh_B06 (no better than gg_A06). garrett_a1's column is as in gg_01: fine in front and 3/4, another man from the side.
+- TESS (tn_T00 -> tv_B01..05; stop at tv_B03 = the first DAMPED step, |dc| 0.97): table 25 / 26 (tqr_T04 25 / 26), |c|
+  10.57 (10.8), largest 2.35 sd, nothing down-weighted; eyespan front 0.987 / 1.019, 3/4 0.969 / 1.016 (tqr_T04 0.988 /
+  1.024, 0.969 / 1.013; the profile's iris row means nothing). Further calls flicker 21-25 / 26 on rows at their
+  tolerance. Sheet gh_02_tess_regression.png (REFERENCE | tv_B03 | tqr_T04): I cannot tell the two apart; blends sharp in
+  all three views. NO REGRESSION. With hold (tv_H03): 26 / 26, held: cheekbone_width, chin_width, nose_width, skull_width,
+  skull_top, neck_width, brow_hollow (no shots made: the hold stays off).
+- GARRETT FROM THE PAINTINGS (gj_G00 -> gp_B01..05): |c| 9.65, largest 2.88 sd, x1.87, table 17 / 29 (gr_G05 18 / 29). Same
+  head as garrett_a1 to 0.3 mm on every measure (chin_forward -7.8 / -7.6, eye depth -26.5 / -26.9 mm, cheek_fullness -2.0 /
+  -1.9 sd). Sheet gh_03_garrett_paintings.png (REFERENCE | gp_B05 | garrett_a1): the same face, blends sharp in both views:
+  still as good as garrett_a1 in front and 3/4. The report on it is quoted under 2: eye depth, orbit, cheeks and jaw angle
+  named as moved far on weak reads. With hold (gp_H05): eye depth -25.9 mm: the hold does not touch it (a weak read).
+
+### What changed by default (exactly)
+1. block_in_solve's reply: the MOVED WITH NO READ / MOVED FAR ON A WEAK READ / unread lists (solve_report), the VIEW
+   warnings, DAMPED.
+2. The cmax down-weighting: continuous (bisection), never under 1 + 0.85 x (the last call's factor - 1).
+3. One outline reader per view for a block-in (human_refs.json blockin.readers / kinds, written by the first solve).
+4. A step turning back on the last call's (cos < -0.2) is halved, and every later step of that block-in.
+5. check_references: crops left out of the identity check; no NOT ONE PROJECTION without a fitted camera; STATED VIEW DISAGREES.
+OFF, as options: hold="auto"; expression="view" | "shared"; view["jaw"] (the jaw's edge read); view["jaw_lm"] (detector jaw
+points). Nothing forced: no component past 3 sd in any rerun (largest 2.95).
+Tests: tests/test_solvereads.py (11: the rows and the chin chain's identity, support, the report, the hold, the continuous
+carried factor, the expression columns incl. their null, view_yaw / view_sanity, and on tn_T00: the direct read, the
+expression basis against the model's own expression, solve_step reporting and carrying its state). test_refread (9),
+test_face_ruler, test_blockin, test_likeness, test_toolsets pass.
