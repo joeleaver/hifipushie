@@ -48,6 +48,10 @@ CLICK_SIGMAS = {
                 "eye_outer.L": 1.0, "eye_outer.R": 1.0, "mouth_corner.L": 1.0, "mouth_corner.R": 1.0}}
 LM68_SIGMA = 4.0   # mm: a detector's 68 given without their image (definitions 3-12 mm off)
 LENS = (70.0, 0.4)  # the lens prior: 35 mm-equivalent focal, relative sigma (a portrait; points alone hardly see the lens)
+THIN, THIN_LENS = 20, 0.05   # under THIN points in a view the lens stays at its prior (+-5 %): 8 profile clicks on a
+# class-mean head fitted a 12 mm lens 15 cm from the face (Garrett's good set, 2026-10-11). The TURN is left free: a
+# bound on it (tried) held a "profile" picture that is really a ~60 deg view at 90, unregistered. Clicks must include
+# points OFF the midline (eye_outer, mouth_corner): six midline clicks alone pitched the camera 33 deg.
 ROUNDS = 3         # rebuilds of the head (the one mesh is not exactly linear in the identity)
 INNER = 6
 
@@ -106,6 +110,8 @@ def _fit_cam(cam, X, uv, wt):
     from scipy.optimize import least_squares
     from . import humanfit
     f0, fsd = cam.get("f_prior") or (LENS[0] / 36.0 * cam["size"][0], LENS[1])
+    if len(X) < THIN:   # a handful of clicked points (a profile: all near one plane) cannot tell lens from distance
+        fsd = min(fsd, THIN_LENS)
 
     def res(p):
         c = {**cam, "r": p[:3], "t": p[3:6], "f": float(p[6])}
