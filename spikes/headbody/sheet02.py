@@ -120,8 +120,8 @@ with resources.heavy(f"headbody seam sheet {tag}", gb=8):
             one = {"turns": {k: [*(float(x) for x in v[0]), float(v[1])] for k, v in turns.items()}}
             try:
                 sh = asset.preview(glb, [], size=T_, samples=32, poses=[one],
-                                   cameras=[{"eye": (cp + 1.5 * np.array([np.sin(np.radians(az)), -np.cos(np.radians(az)), 0.05])).tolist(),
-                                             "target": cp.tolist(), "fov": 13.0, "name": v} for v, az, _ in VIEWS])[0]
+                                   cameras=[{"eye": (cp - [0, 0, 0.07] + 1.5 * np.array([np.sin(np.radians(az)), -np.cos(np.radians(az)), 0.05])).tolist(),
+                                             "target": (cp - [0, 0, 0.07]).tolist(), "fov": 15.0, "name": v} for v, az, _ in VIEWS])[0]
                 simgs = sh
             except Exception as e:
                 print("no shaded row:", str(e)[:300])

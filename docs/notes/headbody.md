@@ -6,7 +6,12 @@ pushed. Scratch DURABLE in /mnt/data/hifipushie/headbody/: env.sh, run.sh <scrip
 (a light slot), out/. Scripts in spikes/headbody/. Models hb_*.
 Part 3 step 1 BUILT: `base.head.attach: "native"` (onemesh.native / _native_desc / _neck_field / attach_report,
 tests/test_headbody.py 5 pass); models hb_tess (from nt_N06), hb_garrett (from ng_N05).
-NEXT: two meshes at export (the seam ring split), rig pose check, the sheets hb_01 / hb_02, an export run.
+Step 2 BUILT: two-mesh export (head / body sharing the seam ring exactly), exports of hb_garrett / hb_tess, sheets
+workspace/human_renders/hb_01_scale.png, hb_02_seam.png. Old path bit-identical (tess_a1 / garrett_a1 / nt_N06 /
+ng_N05 template + head hashes equal main's; tests/test_onemesh.py 10 pass).
+NEXT (not done): the rig's rigid-head zigzag at the nape (neck crumples on turn / bend; old path too); a lower seam
+ring (asset rebuild); FBX, hair, cloth runs on a native model; block-in steps that are ignored should refuse;
+decisions for Joe at the end.
 
 Joe, 2026-10-12: "that's some real work for us: how to get the body back on (and if we even want to, don't many games
 leave them as separate meshes?) and how to match the size/scale of the head and body well." ... "let's get that
@@ -206,3 +211,36 @@ quotes them; the heads-tall column for ANSUR rests on them.
   neighbour steps of 0.15 at the back (0.57, 0.77, 0.97, 0.96, 0.67, 0.54, 0.82, 0.96 ...): rig.py's rigid-head rule
   (floor under the jaw climbing to the skull's base at the nape, HEAD_FALL / HEAD_COLUMN falloffs) lays a Head weight
   on the nape rows that alternates vertex to vertex. Rig thread's to fix (rig.py `rigid_head`), on main as well.
+
+### Consumers: what works, what must change (checked 2026-10-12 on hb_garrett / hb_tess unless marked)
+| consumer | state on a native head |
+|---|---|
+| build / look (base.surface: one IMLS field over the fused quads) | works unchanged (one field; the split is an export matter) |
+| export_asset GLB, rig, face shapes | works: two meshes with `parts.body.topology "wrap"`; one mesh + WARNING when decimated. FBX (blender_fbx reads the GLB) NOT run |
+| rig.py (Mixamo) | works: Neck / Head / HeadTop_End from the template's joints (HeadTop_End 1.773 = stature); weights by index, identical on the ring. The rigid-head rule's nape zigzag (above) is the open fault, old path too |
+| faceshapes | works: 53 targets on `head`; GNM's deltas x g_fade (0 at the ring), so the ring never moves and `body` needs none. Simpler than before: shapes are x 1.0 of GNM's (the old path multiplied by the carry ~0.85-1.04 and head_size) |
+| eyes (base.eye_native, drawn_iris, iris_check) | simpler: GNM's eyeball at its real size (r 14.6 mm, limbus 5.99 -> iris 12.0 mm); the iris check is now in real mm |
+| measure_human / humanfit | works; prints the attach report. fit_human's body solves and `nudge` not exercised on a native head |
+| blockin / block_in_solve (NOT touched: the solve agents') | MUST CHANGE: a model's fitted cameras are for the old head's size and place: refit after switching (cameras "refit"). `block_in_step head_scale` (= base.style.human.head_size) and `gnm_base` / `dimorphism` steps do nothing on a native head (reported as ignored, not refused): they should refuse, or head_scale should set base.head.size. `block_in_start` still writes attach-less bases: making native its default is a one-line change there, Joe's call |
+| hair | must be regroomed: the scalp is 4-18 % larger / elsewhere (mk.py drops hair). Seating reads the built head: no code change expected, NOT run |
+| cloth | collars / necklines: the body collider is the built body, so a draft made to measure follows the thicker neck; garments sewn on the old neck must be re-simulated. NOT run |
+| skin paint / textures | one part, one atlas, one material across the ring: continuous by construction (uv not split at the ring unless a chart border falls there). Separate head / body materials (MetaHuman-style) would need the tone matched and the ring as a chart border on both: not built |
+| retopo | `base_quads` (the fused quads) is the path; the template wrap ("template") is not used for one-mesh humans |
+| style sheets (humanstyle) | body sliders work (the head rides rigidly, the neck field reruns); head sliders are ignored: a stylised head on this path = `base.head.size` + GNM identity only |
+| LODs | none yet: when built, the ring must survive (decimate head and body separately with the ring's vertices locked) |
+
+### Decisions for Joe
+1. Make `attach: "native"` the default for new humans / block_in_start? It is what "GNM's own head" means in full
+   (shape AND size); it changes every figure's proportions (Tess 9.0 -> 7.6 heads) and needs cameras refitted.
+2. Tess's neck: GNM's neck for her identity is 374 mm at the ring (ANSUR women at the base: 371), her MakeHuman body
+   (weight 0.15) has 290. The body now gives (shoulders widen at the neck's base). It reads as a strong neck on
+   narrow shoulders. Either accept, or raise the body's weight / muscle a little, or let the SOLVE read the neck
+   (nothing reads it today: it is the class mean's).
+3. Garrett stands 8.0 heads tall with GNM's 220 mm head (was 7.75 with 229 mm): GNM's male class mean head is ~5 %
+   under ANSUR's and the solve holds size at the class mean. If he should have a bigger head it is a statement about
+   the identity's size (the solve's "iris" / a size prior by sex), not about the attach.
+4. Lower the seam ring (rebuild the asset at GNM ring ~9, on the trapezius)? Needed only for separate materials /
+   LODs or if the ring must hide under every collar.
+5. Two meshes by default (as built) or welded by default?
+6. The rig's rigid-head rule at the nape (crumpled neck base on head turn / neck bend, both paths): a card for the
+   rig thread.
