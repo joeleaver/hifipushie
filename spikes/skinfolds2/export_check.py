@@ -109,7 +109,12 @@ if tex is not None:
     f = out / img["uri"] if "uri" in img else None
     if f is not None and f.exists():
         nm = np.asarray(Image.open(f).convert("RGB"), float) / 255.0 * 2 - 1
+if nm is None and (out / f"{model}_normal.png").exists():
+    nm = np.asarray(Image.open(out / f"{model}_normal.png").convert("RGB"), float) / 255.0 * 2 - 1
 uv = body["uv"]
+
+
+FLIP = [None]
 
 
 def tilt(sel):
@@ -119,6 +124,10 @@ def tilt(sel):
     x = np.clip((u[:, 0] % 1) * nm.shape[1], 0, nm.shape[1] - 1).astype(int)
     y = np.clip((u[:, 1] % 1) * nm.shape[0], 0, nm.shape[0] - 1).astype(int)
     n = nm[y, x]
+    n2 = nm[np.clip(((1 - u[:, 1]) % 1) * nm.shape[0], 0, nm.shape[0] - 1).astype(int), x]     # (whichever way v runs: the flatter read is the right one away from folds)
+    if FLIP[0] is None:
+        FLIP[0] = bool(np.abs(n2[:, :2]).mean() < np.abs(n[:, :2]).mean())
+    n = n2 if FLIP[0] else n
     return float(np.degrees(np.sqrt(np.mean(np.arctan2(np.hypot(n[:, 0], n[:, 1]), np.maximum(n[:, 2], 1e-3)) ** 2))))
 
 
@@ -150,7 +159,9 @@ def quality(Vp):
 
 q0 = quality(V)
 print("   neutral (head):", q0)
-POSES = {"blink": {"eyeBlinkLeft": 1.0, "eyeBlinkRight": 1.0}, "jaw": {"jawOpen": 0.7}, "smile": {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0}}
+POSES = {"blink05": {"eyeBlinkLeft": 0.5, "eyeBlinkRight": 0.5}, "blink": {"eyeBlinkLeft": 1.0, "eyeBlinkRight": 1.0},
+         "wide": {"eyeWideLeft": 1.0, "eyeWideRight": 1.0}, "squint": {"eyeSquintLeft": 1.0, "eyeSquintRight": 1.0, "cheekSquintLeft": 1.0, "cheekSquintRight": 1.0},
+         "smile": {"mouthSmileLeft": 1.0, "mouthSmileRight": 1.0}, "jaw": {"jawOpen": 0.7}}
 for pn, pose in POSES.items():
     D = np.zeros_like(V)
     for k, w in pose.items():
@@ -175,7 +186,7 @@ if int(kw.get("shots", 1)):
     face = 0.5 * (eyes + mouth)
     cam = lambda c, w, az, nm_: {"eye": (c + 0.6 * np.array([np.sin(np.radians(az)), -np.cos(np.radians(az)), 0.0])).tolist(), "target": c.tolist(),  # noqa: E731
                                  "fov": float(np.degrees(2 * np.arctan(w / 2 / 0.6))), "name": nm_}
-    cams = [cam(face, 0.25, 0, "face"), cam(eyes, 0.12, 0, "eyes"), cam(mouth + [0, 0, 0.005], 0.11, 0, "mouth"), cam(face, 0.25, 40, "3/4")]
+    cams = [cam(np.asarray(J["eye.L"], float) + [0, 0, 0.003], 0.05, 0, "eyeL"), cam(eyes, 0.12, 0, "eyes"), cam(mouth + [0, 0, 0.005], 0.12, 0, "mouth"), cam(face, 0.25, 40, "3/4")]
     LIGHTS = {"front": {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [1, 1, 1], "angle": 38},
                                    {"dir": [0.0, -1.0, 0.05], "energy": 0.7, "color": [1, 1, 1], "angle": 40}],
                         "world": {"color": [0.8, 0.8, 0.8], "strength": 0.45}, "view": "Standard", "exposure": -0.25},
@@ -184,7 +195,18 @@ if int(kw.get("shots", 1)):
     order = ["neutral"] + list(POSES)
     for ln, lt in LIGHTS.items():
         sheets = asset.preview(glb, [], size=560, samples=24, cameras=cams, poses=[{}] + [POSES[k] for k in POSES], lighting=lt)
-        for nm_, im in zip(order, sheets):
-            im.save(f"{G}/export_{tag}_{nm_}_{ln}.png")
-        print("   preview", ln, [f"{G}/export_{tag}_{n}_{ln}.png" for n in order])
+        # ONE SMALL IMAGE PER FEATURE: the poses side by side (the contact sheet's panels cut out)
+        from PIL import ImageDraw, ImageFont
+        Fn = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        w2, h2 = sheets[0].size[0] // 2, sheets[0].size[1] // 2
+        for ci, c_ in enumerate(cams):
+            cells = [im.crop(((ci % 2) * w2, (ci // 2) * h2 + 30, (ci % 2 + 1) * w2, (ci // 2 + 1) * h2)).resize((380, int(380 * (h2 - 30) / w2))) for im in sheets]
+            row = Image.new("RGB", (380 * len(cells), cells[0].size[1] + 24), "white")
+            dr = ImageDraw.Draw(row)
+            for k_, (nm_, ce) in enumerate(zip(order, cells)):
+                row.paste(ce, (380 * k_, 24))
+                dr.text((380 * k_ + 5, 2), nm_, fill=(0, 0, 0), font=Fn)
+            fn_ = f"{G}/export_{tag}_{c_['name'].replace('/', '')}_{ln}.png"
+            row.save(fn_)
+            print("   feature tiles", fn_)
 print(f"{time.time() - t:.0f} s")

@@ -38,10 +38,14 @@ def jobs(a1, after, path):
     eye_w = float(np.linalg.norm(P[45] - P[36]))
     crops = {"eyeR": sq(*(P[36:42].mean(0) + [0, 0.05 * eye_w]), 0.62 * eye_w), "eyeL": sq(*(P[42:48].mean(0) + [0, 0.05 * eye_w]), 0.62 * eye_w),
              "mouth": sq(*(0.5 * (P[33] + P[8]) - [0, 0.12 * eye_w]), 1.0 * eye_w)}
+    for k, i0 in (("zoomR", 36), ("zoomL", 42)):      # the lid's crease, 4x (Joe: judge it at this zoom)
+        crops[k] = sq(*(P[i0:i0 + 6].mean(0) - [0, 0.035 * eye_w]), 0.4 * eye_w)
     out["crops"] = crops
     for k, cb in crops.items():
         fr = sr.fitted_frame(cam, cb, "v")
         out["tiles"][k] = [fr, pl[front]]
+        if k.startswith("zoom"):
+            continue
         rk = copy.deepcopy(RAKE)
         if k == "eyeR":        # (the raking light from the eye's own side)
             rk["lights"][0]["dir"][0] *= -1

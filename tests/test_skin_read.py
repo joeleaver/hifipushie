@@ -259,6 +259,11 @@ def test_shade_white_and_bounds():
     x = np.array([[0.6, 0.42, 0.33], [0.1, 0.2, 0.05]])
     assert np.abs(sr._unlab(sr.lab(x)) - x).max() < 1e-6
     assert set(sr.FOLD_REF) == set(sf.FOLDS) == set(sr.STEP_REF) == set(sf.RELIEF) == set(sf.OCCLUSION)
+    # a chin's notch: a groove with a lobe on BOTH sides
+    pr = {"G": np.array([0.0009]), "sg": np.array([0.002]), "O": np.array([0.0006]), "Pl": np.array([0.0]), "lee": 1.0, "sym": True, "has_roll": True,
+          "r0": 0.0055, "so": 0.0035, "sh": 0.004, "has_plat": False, "ph": 0.001}
+    v = sf.profile(np.array([-0.0055, 0.0, 0.0055]), pr, np.zeros(3, int))
+    assert v[1] < -0.0008 and abs(v[0] - v[2]) < 1e-9 and v[0] > 0.0005, v
     assert sr.SHADE_SIGMA_PLAIN < 0.1 < sr.SHADE_SIGMA and sr.FACE_BOUND <= sr.TONE_BOUND_WHITE and sr.ZONE_BOUND[0] <= 5
     # a picture: grey backdrop 0.5, a face-coloured block, a shirt under it
     def pic(shirt):

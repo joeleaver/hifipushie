@@ -35,7 +35,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 11
+VERSION = 12
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -95,6 +95,13 @@ FOLDS = {
                           ("lm_eye_outer.L", (0.025, 0.0, 0.04))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
                  "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.0, "flank": 1.0, "res": 0.5, "smooth": 4.0,
                  "about": "the upper eyelid's crease line (the fold GNM's lids only hint at)"},
+    # (Joe on Garrett, 2026-10-12: a NOTCHED chin: a shallow midline dip in the chin's lower front with a soft lobe each
+    # side. GNM's identity does not make it unforced. A centre-line groove whose roll stands on BOTH sides)
+    "chin_notch": {"path": [("lm_chin", (0.0, 0.0, 0.2)), ("lm_chin", (0.0, 0.0, 0.1)), ("lm_chin", (0.0, 0.0, 0.0))],
+                   "plus": (1, 0, 0), "width": 5.0, "depth": 0.7, "tint": 0.1, "shade": 0.25, "roll": (5.0, 5.0, 0.4), "search": 4.0,
+                   "res": 1.0, "read": False,
+                   "read_why": "no detector yet: under a frontal light a chin's midline dip is its own shading, and a beard hides it",
+                   "about": "the chin's midline notch / cleft with a soft lobe each side (roll = the lobes' height)"},
     "glabella": {"path": [("lm_brow_inner.L", (-0.035, -0.01, 0.1)), ("lm_brow_inner.L", (-0.015, -0.01, -0.08))],
                  "plus": (1, 0, 0), "width": 1.4, "depth": 0.6, "tint": 0.5, "shade": 0.15, "roll": None, "search": 3.0,
                  "res": 0.7, "about": "the vertical frown lines between the brows"},
@@ -118,19 +125,22 @@ RELIEF = {
     # over: (peak offset mm, sigma mm, shoulder mm): where the groove cannot go in (the eyeball under a thin lid), the
     # depth it lacks stands OUT as a tight ridge just over the line instead: the fold's own lip (skinfolds2: the hard
     # stop at the ball broke Tess's crease mid-lid, where the lid lies thinnest)
-    "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "over": (1.1, 1.3, 0.9), "reach": 3.0},
+    # (broad and low: a tight lip, 0.85 mm within a millimetre, was a PALE RAISED WELT under a frontal light: a lit
+    # ridge where hers is a shadowed groove with no ridge over it. Now 60 % of the missing depth over 2-5 mm)
+    "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "over": (2.2, 2.8, 1.8, 0.6), "reach": 3.0},
     "glabella": {"depth": 0.35, "reach": 3.0},
+    "chin_notch": {"depth": 0.9, "roll": (5.5, 3.5, 0.6, 4.0), "sym": True, "reach": 5.0},
 }
 END = 0.007               # m: a fold's relief comes in from nothing over this length at each end of its extent
 # With the relief in the surface, what a tight crease still lacks in a rasterised render is its own OCCLUSION (skin
 # lying on skin: no light gets in; EEVEE has none at 0.5 mm): the crease line's share of a dark multiply layer
 # (folds_crease), 0.6 x the groove's width. Without it a lid's crease at amount 1 was a faint line (foldval's truth
 # pictures: read_lid darkness 0.05-0.13, a photograph's fold line reads 0.15-0.4).
-OCCLUSION = {"lid_fold": 0.9, "nasolabial": 0.35, "marionette": 0.08, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
+OCCLUSION = {"chin_notch": 0.0, "lid_fold": 1.1, "nasolabial": 0.35, "marionette": 0.08, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
              "tear_trough": 0.0, "commissure": 0.15}
 # the crease line's occlusion is this wide (x the groove's sigma; a lid's 0.3 mm line at 0.6 was under a pixel of a
 # 0.25 mm picture and read 0.05 dark where a photographed fold line, ~1 mm of skin lying on skin, reads 0.3)
-OCC_WIDTH = {"lid_fold": 1.5}
+OCC_WIDTH = {"lid_fold": 1.15}
 HOOD_DROP = 1.7           # mm: at hood 1 the lid fold's line comes this much down toward the lashes at its outer end
 HOOD_ROLL = 1.6           # ... and its roll stands this much higher there (x 1 + HOOD_ROLL x hood)
 HOOD_KEEP = 0.3           # ... and reaches this much nearer the lid's margin (the keep-out x 1 - HOOD_KEEP x hood)
@@ -537,8 +547,9 @@ def profile(t: np.ndarray, pr: dict, j: np.ndarray) -> np.ndarray:
     # as a channel cut with a gouge)
     out = -G * np.exp(-0.5 * (t / np.where(t < 0, sg * pr["lee"], sg)) ** 2)
     if pr["has_roll"]:
-        ur = np.clip(t / pr["sh"], 0, 1)
-        out = out + pr["O"][j] * ur * ur * (3 - 2 * ur) * np.exp(-0.5 * ((t - pr["r0"]) / pr["so"]) ** 2)
+        tr = np.abs(t) if pr.get("sym") else t       # (sym: a roll on both sides: a chin's two lobes)
+        ur = np.clip(tr / pr["sh"], 0, 1)
+        out = out + pr["O"][j] * ur * ur * (3 - 2 * ur) * np.exp(-0.5 * ((tr - pr["r0"]) / pr["so"]) ** 2)
     if pr["has_plat"]:
         x = np.clip(-t / pr["ph"], 0, 1)
         out = out - pr["Pl"][j] * np.where(t < 0, np.sin(np.pi * x) ** 2, 0.0)
@@ -707,7 +718,7 @@ def prims(s: dict, stream: list) -> list:
             cl = gaussian_filter1d(np.maximum(cl, 0.0), 2.0 / (STEP * 1000), mode="nearest")
             Gc = np.minimum(G, 0.85 * cl)
             if over:
-                Ov = G - Gc
+                Ov = (G - Gc) * (over[3] if len(over) > 3 else 1.0)
             G = Gc
         so = 0.001 * roll[1] if roll else 0.001
         reach = 0.001 * rl["reach"]
@@ -715,7 +726,7 @@ def prims(s: dict, stream: list) -> list:
                        0.001 * (over[0] + 3 * over[1]) if over else 0.0) + 0.001)
         params = {"pts": P, "nrm": Nn, "up": U, "along": T, "taper": np.ones(n), "sa": sa,
                   "wfull": float(np.sqrt(2 * np.pi) * sa / sp) * 0.98, "reach": reach, "G": G, "sg": sg, "O": O, "Pl": Pl,
-                  "lee": 2.2 if roll else 1.0, "has_roll": bool(roll), "r0": 0.001 * roll[0] if roll else 0.0, "so": so, "sh": 0.001 * roll[3] if roll else 0.001,
+                  "lee": 2.2 if (roll and not rl.get("sym")) else 1.0, "sym": bool(rl.get("sym")), "has_roll": bool(roll), "r0": 0.001 * roll[0] if roll else 0.0, "so": so, "sh": 0.001 * roll[3] if roll else 0.001,
                   "has_plat": bool(plat), "ph": 0.001 * plat[1] if plat else 0.001,
                   "has_over": bool(over) and bool((Ov > 0).any()), "Ov": Ov, "or0": 0.001 * over[0] if over else 0.0,
                   "oso": 0.001 * over[1] if over else 0.001, "osh": 0.001 * over[2] if over else 0.001,
@@ -726,6 +737,88 @@ def prims(s: dict, stream: list) -> list:
         gm, om = float(am.max()) * rl["depth"] * q["depth"] * 0.001, float(am.max()) * (roll[2] * q["roll"] * 0.001 if roll else 0.0)
         lip = 1.0 + 0.61 * gm / float(sg.min()) + 0.61 * om / min(so, params["sh"]) + 1.5 * float(Ov.max()) / params["osh"]
         out.append(Prim(f"fold_{name}{sd}", "tissue", "modify", 0.0, layer, lo, hi, params, lip=lip, part=part))
+    return out
+
+
+# FOLDS UNDER EXPRESSION (skinfolds2; Joe: "if it's additive to gnm, it won't play nice"). A fold laid in the neutral
+# rides a face shape rigidly: the lid's crease would sit across a CLOSED lid, where a real one unfolds as the skin
+# stretches over the globe; a nasolabial fold deepens on a smile. So each fold has a GAIN per ARKit shape (x its
+# neutral amount at that shape's full weight; a shape's "Left" / "Right" acts on that side's fold, one without a side
+# on both), and the exported morph target carries the difference: (gain - 1) x the fold's own displacement at each
+# low-poly vertex, along the skin's normal. First step: geometry only. What a GLB can carry per target: POSITION and
+# NORMAL deltas (vertex normals). The fold's NORMAL MAP and its painted line are one texture for all shapes: fading
+# them with a shape needs a wrinkle-map blend on the engine side (a mask per fold region x the shape's weight): not
+# in glTF core; noted for the engine. Gains are first guesses from anatomy, to be tuned on renders.
+EXPRESSION = {
+    "lid_fold": {"eyeBlink": 0.0, "eyeWide": 1.3, "eyeSquint": 0.5, "browDown": 1.2},
+    "tear_trough": {"eyeSquint": 1.4, "cheekSquint": 1.4, "mouthSmile": 1.2, "eyeWide": 0.8},
+    "nasolabial": {"mouthSmile": 1.5, "cheekSquint": 1.2, "noseSneer": 1.3, "jawOpen": 0.8, "mouthPucker": 0.6},
+    "marionette": {"jawOpen": 0.6, "mouthFrown": 1.4, "mouthSmile": 0.5},
+    "commissure": {"mouthSmile": 0.4, "mouthFrown": 1.3, "jawOpen": 0.7},
+    "mouth_corner": {"mouthSmile": 1.4, "jawOpen": 0.6},
+    "mentolabial": {"jawOpen": 0.7, "mouthShrugLower": 1.4, "mouthPucker": 1.2},
+    "glabella": {"browDown": 1.6, "browInnerUp": 0.3},
+    "chin_notch": {"mouthShrugLower": 0.6},
+}
+
+
+def expression(spec: dict, parts: dict, log: list) -> dict:
+    """The folds' share of each face shape, added to the export's morph targets in place (asset.export, after
+    faceshapes.apply; parts: {part: {"verts", "corner_vert", "shapes": {name: (delta, n0, n1)}}}). Per fold prim and
+    vertex the fold's own displacement there is measured on the field (the part's field without that fold minus with
+    it, along the fold-free normal); a shape with gain g adds (g - 1) x it. skin["fold_expressions"] = False turns it
+    off. Returns {fold side: {shape: max mm}}."""
+    from . import images, sdf
+    from .faceshapes import vertex_normals
+    sk = spec.get("skin") or {}
+    if geometry_key(sk) is None or sk.get("fold_expressions", True) is False:
+        return {}
+    part = sk.get("part", "body")
+    out = {}
+    for pn, p in parts.items():
+        if pn.split("/")[-1].split("~")[0] != part or not p.get("shapes"):
+            continue
+        prims_all = images.prims_on(spec, [part])
+        folds = [q for q in prims_all if q.kind == "tissue"]
+        if not folds:
+            continue
+        X = np.asarray(p["verts"], np.float64)
+        T = p["corner_vert"].reshape(-1, 3)
+        add = {}
+        for fp in folds:
+            name, sd = fp.name[len("fold_"):], ""
+            if name.endswith((".L", ".R")):
+                name, sd = name[:-2], name[-2:]
+            gains = EXPRESSION.get(name)
+            if not gains:
+                continue
+            near = np.flatnonzero(((X >= np.asarray(fp.lo) - 0.001) & (X <= np.asarray(fp.hi) + 0.001)).all(1))
+            if not len(near):
+                continue
+            rest = [q for q in prims_all if q is not fp]
+            f_wo, f_w = sdf.field_at(rest, X[near]), sdf.field_at(prims_all, X[near])
+            base = [q for q in prims_all if q.kind != "tissue"]
+            e = 0.0003
+            g = np.stack([sdf.field_at(base, X[near] + e * ax) - sdf.field_at(base, X[near] - e * ax) for ax in np.eye(3)], 1)
+            g /= np.maximum(np.linalg.norm(g, axis=1, keepdims=True), 1e-12)
+            disp = (f_wo - f_w)[:, None] * g                       # the fold's own move of the skin there (m, world)
+            for nm in p["shapes"]:
+                side = ".L" if nm.endswith("Left") else ".R" if nm.endswith("Right") else ""
+                stem = nm[:-4] if side == ".L" else nm[:-5] if side == ".R" else nm
+                if stem not in gains or (sd and side and sd != side) or "_" in nm:
+                    continue
+                d = (gains[stem] - 1.0) * disp
+                a = add.setdefault(nm, np.zeros_like(X))
+                a[near] += d
+                out.setdefault(name + sd, {})[nm] = round(1000 * float(np.linalg.norm(d, axis=1).max()), 3)
+        for nm, a in add.items():
+            d0, n0, _ = p["shapes"][nm]
+            d1 = np.asarray(d0, np.float64) + a
+            p["shapes"][nm] = (d1.astype(np.asarray(d0).dtype), n0, vertex_normals(X + d1, T))
+    if out:
+        log.append("folds under expression (skin_folds.EXPRESSION: each fold's gain per shape baked into that shape's morph target; max mm added): " +
+                   "; ".join(f"{k}: " + ", ".join(f"{s} {v}" for s, v in sorted(d.items(), key=lambda kv: -kv[1])[:4]) for k, d in out.items()) +
+                   ". The fold's normal map and painted line do NOT change with a shape (one texture): fading them needs a wrinkle-map blend in the engine")
     return out
 
 

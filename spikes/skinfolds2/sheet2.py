@@ -65,6 +65,9 @@ for vi in range(J["views"]):
     rows.append([label(ph, "REFERENCE", foot=ft(lr)), label(tile(ta, f"v{vi}"), "AFTER", foot=ft(la) + f"  (light {ev[0]:+.2f} EV)"),
                  label(tile(tb, f"v{vi}"), "BEFORE (sf)", foot=ft(lb)), label(pj, "refs projected") if pj is not None else BLANK])
 front = J["front"]
+if "zoomR" in J["crops"]:
+    rows.append([label(crop(front, J["crops"]["zoomR"]), "REFERENCE: lid crease (right)", SMALL), label(tile(ta, "zoomR"), "AFTER", SMALL),
+                 label(crop(front, J["crops"]["zoomL"]), "REFERENCE: lid crease (left)", SMALL), label(tile(ta, "zoomL"), "AFTER", SMALL)])
 for k, name in (("eyeR", "EYE (their right)"), ("eyeL", "EYE (their left)"), ("mouth", "MOUTH")):
     ph = crop(front, J["crops"][k])
     rows.append([label(ph, f"REFERENCE: {name}", SMALL), label(tile(ta, k), "AFTER, photo light", SMALL), label(tile(tb, k), "BEFORE, photo light", SMALL), BLANK])
