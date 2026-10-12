@@ -718,9 +718,17 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             "table": t1, "before": passes(t0), "manual": manual}
 
 
+# block_in_solve's defaults (solvereads, 2026-10-12; each decided by the validation in the notes' "## solvereads")
+SOLVE_HOLD = None            # "auto": every measure no read looks at is held at the start head's value
+SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler.EXPR_SET)
+SOLVE_JAW_LM = None          # detector landmarks added to the differential anchors (the jaw line: 3..13)
+RELAX_KEEP = 0.85            # the cmax down-weighting comes down at most this share a call (it goes up at once)
+
+
 def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int = 3, seen: str = "",
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
-               parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0) -> dict:
+               parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
+               hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -745,9 +753,14 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     rj0 = _refs(src)
     cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
     cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD6.items()}
+    b0 = rj0.get("blockin") or {}
+    # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
+    # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
+    relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else 0, cmax=cmax,
-                   cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 6)))
+                   cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 6)),
+                   relax0=relax0, hold=hold, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm)
     dc = float(share) * np.asarray(c["dc"], float)
     rep = step(src, {}, out=out, seen=seen or "the face ruler's joint solve (outlines, irises, limbus; every view)",
                why=f"its solved identity change applied ({share:g} of it): |dc| {np.linalg.norm(dc):.2f}", _identity=c0 + dc)
@@ -757,13 +770,27 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     for i, v in enumerate(c["views"]):
         rj["cameras"][i] = {**rj["cameras"][i], **{k: (np.asarray(x).tolist() if hasattr(x, "tolist") else x) for k, x in v["cam"].items()}}
     rj.setdefault("blockin", {})["cam_done"] = np.round(np.asarray(c["cam_done"], float), 4).tolist()   # the cameras' whole
+    rj["blockin"].update(relax=round(float(c["relax"]), 4), kinds=list(c["kinds"]), readers=list(c["readers"]))
+    xp = {pc: {n: [round(v, 3), round(sd_, 3)] for n, (v, sd_) in d.items()} for pc, d in (c.get("expr") or {}).items()}
+    if xp:
+        rj["blockin"]["solve_expression"] = xp
     rp.write_text(json.dumps(rj))                       # move since the start: the next call's prior is on all of it
     t0, t1 = rep["table"], table(to)          # (the table again, through the solve's cameras)
     rep.update(table=t1, delta=table_delta(table(src), t1))
     rep["entry"]["passes"] = passes(t1)
     rep["solve"] = {"n": c["n"], "dc": float(np.linalg.norm(dc)), "c": float(np.linalg.norm(c0 + dc)), "notes": c["notes"],
                     "max_sd": float(np.abs(c0 + dc).max()), "sig_scale": {f"{t} {v}": round(float(x), 2) for (t, v), x in c["sig_scale"].items()}, "cameras": np.round(np.asarray(c["cam_done"], float), 2).tolist(),
-                    "camera_step": np.round(np.asarray(c["cam_step"], float), 2).tolist(), "relax": float(c["relax"])}
+                    "camera_step": np.round(np.asarray(c["cam_step"], float), 2).tolist(), "relax": float(c["relax"]),
+                    "held": list(c.get("held") or []), "expression": xp, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
+                    "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
+                    "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]]}
+    if report and c.get("post") is not None:      # WHAT WAS READ, and what moved without a read (solve_report)
+        from . import solve_report as sr
+        croot = c0 - off if off is not None else None
+        sup = sr.support(c["post"], c["obs"], groups=False)
+        drc = sr.direct(c["post"], c["obs"], c["views"], c["head"])
+        rp_ = sr.report(sup, c0 + dc, croot if croot is not None else c0, drc=drc)
+        rep["solve"]["report"] = {"text": rp_["text"], "rows": rp_["rows"]}
     return rep
 
 

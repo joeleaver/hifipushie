@@ -2006,17 +2006,23 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
-                   cameras: str = "free", anchors: str = "differential", parse: str = "auto"):
+                   cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
+                   expression: str = "default"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
     borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
-    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. cameras "free" | "trust" | "refit" (first
-    call, cameras fitted on another head); anchors "differential" | "absolute" | "none"; parse "auto" | "on" | "off";
-    out, share, seen, save. It does not see inside the silhouette (cheeks). Details: guide(topic="block_in_solve")."""
+    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ and
+    what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" (what no
+    read looks at stays at the start head's value) | "none"; expression "view" | "shared" | "none" (the pictures'
+    expression as a nuisance); anchors, parse, out, share, seen, save. Details: guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
+    if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "none"):
+        raise ValueError('block_in_solve: hold = "auto" | "none"; expression = "view" | "shared" | "none"')
     rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
-                        parse={"auto": "auto", "on": True, "off": False}[parse])
+                        parse={"auto": "auto", "on": True, "off": False}[parse],
+                        hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
+                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression])
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""
@@ -2028,11 +2034,26 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                  f"down-weighted (sigma x{so['relax']:.2f}) until none did. The references disagree with each other or with any "
                  "one head by that much (paintings, expressions, a wrong camera): the result is a compromise, judge it on "
                  "the judging sheet against the head you had.\n")
-    notes = "".join(f"  {x}\n" for x in so.get("notes") or [])
+    for x in so.get("notes") or []:          # a view's stated kind against its fitted camera
+        if x.startswith("VIEW:"):
+            warn += "WARNING: " + x + "\n"
+    notes = "".join(f"  {x}\n" for x in so.get("notes") or [] if not x.startswith("VIEW:"))
+    rp = (so.get("report") or {}).get("text") or ""
+    if so.get("held"):
+        rp += ("\n" if rp else "") + "HELD at the start head's value (no read looks at them): " + ", ".join(so["held"])
+    for pc, d in (so.get("expression") or {}).items():
+        big = [f"{fr_say(k)} {v[0]:+.2f}" for k, v in d.items() if abs(v[0]) >= max(0.15, 2 * v[1])]
+        rp += ("\n" if rp else "") + (f"expression read in the {pc} picture (1 = GNM's full prototype; taken out of the identity): "
+                                      + (", ".join(big) if big else "neutral"))
     return [sh[0], warn + f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
                    f"cameras' whole move since the start (shift mm, shift mm, scale %, roll, yaw, pitch deg per view): {so['cameras']}"
-                   f" (this call: {so['camera_step']})\n" + notes
+                   f" (this call: {so['camera_step']})\n" + notes + (rp + "\n" if rp else "")
                    + bi.step_text(rep) + "\n" + sh[1]]
+
+
+def fr_say(k: str) -> str:
+    from . import face_ruler as fr
+    return fr.EXPR_SAY.get(k, k)
 
 
 @mcp.tool(structured_output=False)

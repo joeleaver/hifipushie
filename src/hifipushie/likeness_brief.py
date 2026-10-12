@@ -223,6 +223,29 @@ def _props(side) -> dict:
     return out
 
 
+VIEW_DOUBT = 15.0     # degrees between a view's stated yaw and the turn the detector (or its fitted camera) reads
+
+
+def _kind_word(yaw) -> str:
+    a = abs(float(yaw))
+    return "a front view" if a < 20 else ("a three-quarter view" if a < 70 else "a profile")
+
+
+def _face_cut(ph) -> str:
+    """Which edges of the frame cut the face (the detector's face oval within 1.5 % of the picture's edge or past it);
+    "" when the whole face is in the picture."""
+    from . import likeness as lk
+    P = ph["side"].P
+    if P is None:
+        return ""
+    O = np.asarray(P, float)[lk.OVAL, :2]
+    w, h = ph["img"].size
+    m = 0.015 * max(w, h)
+    cut = [nm for nm, c in (("left", O[:, 0].min() < m), ("right", O[:, 0].max() > w - m), ("top", O[:, 1].min() < m),
+                            ("bottom", O[:, 1].max() > h - m)) if c]
+    return ", ".join(cut)
+
+
 def check_references(views: list, name: str | None = None) -> dict:
     """What a set of reference pictures supports. views: [{"image", "yaw"?: deg hint, ...}] or image paths; with
     `name`, the model's fitted cameras (human_refs.json) give the lens and scale for pictures they cover."""
@@ -241,9 +264,21 @@ def check_references(views: list, name: str | None = None) -> dict:
         ph = _photo(v["image"], cam, pts, v.get("yaw"))
         notes = lk.picture_notes(ph) if ph["side"].P is not None else {"problems": ["no face found"], "image": Path(v["image"]).name, "view": "unknown"}
         if cam is None:
-            notes["problems"] = [p for p in notes["problems"] if not p.startswith("short lens")]
+            # no fitted camera: nothing to compare the detector's turn with (the stand-in camera's yaw is 0: every turned
+            # view of the good Garrett set read "NOT ONE PROJECTION ... the fitted camera 0", a tool fault)
+            notes["problems"] = [p for p in notes["problems"] if not p.startswith(("short lens", "NOT ONE PROJECTION"))]
+            notes.pop("yaw_doubt", None)
             notes["lens_mm"] = None
             notes["problems"].append("lens unknown until the camera is fitted (human_reference)")
+        hy, said = notes.get("head_yaw"), v.get("yaw")
+        if hy is not None and said is not None and abs(abs(float(hy)) - abs(float(said))) > VIEW_DOUBT:
+            notes["problems"].append(f"STATED VIEW DISAGREES: given as yaw {abs(float(said)):.0f}, the detector reads the head "
+                                     f"turned {abs(float(hy)):.0f} deg ({_kind_word(hy)}, not {_kind_word(said)}): "
+                                     + ("no true side view: depth items are inferred" if abs(float(said)) >= 70 else
+                                        "it shows less of the side than a 3/4 should"))
+        cut = _face_cut(ph)
+        if cut:
+            notes["problems"].append(f"a CROP: the face is cut by the frame ({cut}): not used for the identity check or proportions")
         lt = _light(ph)
         notes["light"] = lt
         if lt.get("contrast") and lt["contrast"] > 4.0:
@@ -251,8 +286,8 @@ def check_references(views: list, name: str | None = None) -> dict:
                                      "side-light pass only")
         if lt.get("left_right") and lt["left_right"] > 1.5:
             notes["problems"].append(f"one cheek {lt['left_right']:.1f}x brighter than the other: a side light")
-        notes["props"] = _props(ph["side"])
-        pics.append((ph, notes))
+        notes["props"] = {} if cut else _props(ph["side"])   # (a close-up of the mouth read lower_over_middle 1.23 against
+        pics.append((ph, notes))                             # the set's 1.41-1.44: a false IDENTITY alarm)
     kinds = [ph["kind"] for ph, _ in pics]
     # identity consistency: the vertical proportions agree between pictures of one person
     inconsist = []
