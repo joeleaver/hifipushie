@@ -4322,3 +4322,15 @@ _lip_obs / solve_step; the guide's 3b text (lids / lips now inside).
 STATE / NEXT (tooling): cheeks: a SHADING read (front + 3/4, the picture's fitted light; luminance against its own
 local mean so the albedo cancels) as a ruler row first (measure -> the move that closes it: cheek_fullness / the
 cheek zones' sculpt), then as observations in the solve if it validates on known heads.
+- Joe: "I think we are close enough that the projection fools the identity" / "but if you tried it on a generic model
+  it might not work". TESTED (mkgen.py: tg_mean = GNM's overall mean, tg_male = the male class mean, tg_r1 / tg_r2 =
+  random heads at |c| 10; her cameras, her pictures projected; sheet tk_06): face-ID FRONT stays 0.47-0.52 / 0.40-0.50
+  on ALL of them (tk_T06: 0.43 / 0.39): from the reference's own angle the projection fools the embedding on any
+  head. 3/4: 0.25-0.40 / 0.36-0.42. PROFILE is the only view with a spread: sface 0.13-0.29, arcface 0.07-0.20 on
+  the generic heads against tk_T06 0.26 / 0.29 and tn_T10n 0.33 / 0.40 (but er_s4 0.22 / 0.07): weak, not a gate.
+  By eye on tk_06: front passes for her on every head; the profile shows the wrong heads (jaw, nose and chin line).
+- UNSEEN ANGLES (nsheet.py, sheet tk_05: tk_T06 | er_s4 | class mean, projected, other 3/4 / right profile / low):
+  both 3/4s read as the same woman on all three (my guess that a wrong surface would bend the projected face did not
+  hold for heads this close); the right PROFILE separates them (tk_T06 has her nose and chin line, the class mean a
+  small nose and weak chin). So: texture carries most of the likeness, the OUTLINE the rest; the joint solve gets the
+  outline. Cheek volume (Joe's catch) needs shading.
