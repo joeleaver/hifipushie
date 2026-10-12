@@ -592,6 +592,9 @@ everywhere inside the hairline (the soft hairline, the cover under the locks). S
    | loose, frizz, flyaway | strands wandering together / singly / letting go | frizz high: a cloud |
    | tips, roots, taper | ragged ends, staggered roots, strands thinning to a point | tips 0: a cut brush |
    | under, under_length (m), soft (m), baby | the scalp layer and the hairline's fade | under 0: skin through the hair |
+   | halo | short broken hairs standing up off the hair and curling (the fuzz round a loose updo against the light); flyaway strands only drift mm off their lock and end where it ends, so flyaway alone shows no halo | 1: a bristly brush; 0.5 a soft fuzz |
+   | free: {dial: value} | the dials of hair that has LEFT the head (a tail) where they differ: a tousled top (loose 0.7) with a tail of defined wavy locks (free loose 0.2-0.35) | loose 0.7 on a tail: crimped wool |
+   | on one lock: strands {clump, tips, roots, density} | that lock's own share of the object's dial | |
 
    A thin lock (< 16 mm) is a wisp: it swings less and slower by itself (at a lock's wave a few hairs side by side
    read as crimped ramen). Hair gathered into a tie narrows into it and every strand reaches it.
@@ -868,7 +871,25 @@ groom: a patch merged into the stored groom first (objects merge key by key, nul
   straight back), "frame": {count a side, az [a0, a1], length [l0, l1], width [w0, w1], wave, wavelength}:
   styled face-framing pieces in front of the ears, soft and wavy, mixed lengths}: hair gathered over the head into a
   tie and a tail leaving it; parting.side "none", or "centre" with a short soft part (length 0.04, width 0.006,
-  depth 0.4: no bare furrow running back)),
+  depth 0.4: no bare furrow running back).
+  A LOW or SIDE tie (a low side ponytail): gather {"toward": "crown", "rows": 4, "locks": 80, "reach": 0.9,
+  "inner_roots": 0}: by default the inner rows root on the way to the tie, which for a low side tie leaves the far
+  side of the top to the hairline row alone (a headband round the hairline, a bare wedge behind the part, stubble
+  on the crown: look from BEHIND and from the far side, the references' cameras never show it);
+  gather.hairline_strands {"density": 2, "clump": 0}: the hairline row is the one that lies over bare skin at the
+  temples (thin there, its sub clumps draw as contour lines on the skin).
+  curtain {"arch": deg, "arch_at": deg}: rounds a pointed forehead (the two curtains run straight diagonals from
+  the part: a triangle): the run over the forehead raised for locks rooted arch_at deg from the part, none at the
+  part (a negative dip does it by closeness to the part: the centre rises and bares a notch); per side
+  ("left"/"right": {"arch": ..}) when one corner needs more. "smooth": rounds of smoothing where the way's arcs meet.
+  frame {"hairs": 3, "curve": 0.14, "count": [10, 6], "width": [0.001, 0.003], "strands": {"clump": 0, "flyaway":
+  0, "flat": 1, "loose": 0.9}}: loose SINGLE hairs beside the face: each piece is 1..hairs strands in their own
+  object (a lock is never under ~8 strands side by side: comb strips; more of those is worse), bowed off its line
+  in its own plane. look.fine_alpha (0.5): EEVEE draws single hairs part transparent (a strand is never under a
+  pixel wide; Cycles draws true widths).
+  tail {"sway": 0.016, "sway_length": 0.22, "flick": 0.022, "strands": {"clump": 0.55, "tips": 0.9, "tip_spread":
+  0.1}}: big soft waves = the tail's AXIS swings (strand / lock waves only crimp a straight tail), flick turns the
+  locks' ends out, a lock's own clump / tips make pointed separate locks instead of a blunt brush),
   loose ({"length": m | {front, top, sides, back, nape}, "level": m from the head centre (a one-length cut ends
   there: about -0.10 the jaw, -0.17 the shoulders), "spacing": m between lock roots, "body": m the mass builds
   up, "lift": m of root volume, "stiff": 0 hangs .. 1 keeps its root direction, "out": 0 combed along the scalp

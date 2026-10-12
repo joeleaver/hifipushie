@@ -9,6 +9,8 @@ them: bunches):
                             to the tie (rings round a tie on the back of the head), "crown" = on the way to the top
                             of the head (a LOW or off-centre tie: rows toward it leave the far side of the top bare);
                             reach = how far along that way the innermost row gets, x (rows - 1) / rows)
+              "hairline_strands": {dial: value}?,  the hairline row's own strand dials over `strands` (it alone lies
+                            over bare skin at the temples: e.g. {"density": 2, "clump": 0})
               "ride": 0.003,        m each row rides over the next one in (the hairline row on top)
               "inner_roots": null,  the strand dial `roots` for the rows inside the hairline (0 = their strands all
                             start at the lock's root: staggered like the hairline row's they are stubble on the crown)
@@ -43,7 +45,8 @@ them: bunches):
                             lower over the temples, the forehead a rounder arch instead of a peak under the part
                             (faces3, Tess 2026-10-10). `arch` = deg the run over the forehead is RAISED for locks
                             rooted `arch_at` deg from the part (none at the part, none past 2 x arch_at): rounds a
-                            pointed forehead's upper corners without lifting its centre; `rows` = how many rows from the hairline in take the way
+                            pointed forehead's upper corners without lifting its centre; `smooth` = rounds of smoothing of the way (its arcs meet
+                            at corners: ridges in front of the ear); `rows` = how many rows from the hairline in take the way
                             over the ear (each a little less; 1 = the hairline row alone). "left" / "right": {key: value}
                             for that side only (the person's left = +x): an asymmetric style. Default none: every
                             lock runs the great circle to the tie.
@@ -73,7 +76,7 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0}}
 CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "drape": 0.0, "dip": 0.0,
-           "sag": 0.0, "rows": 1, "arch": 0.0, "arch_at": 25.0, "left": None, "right": None}
+           "sag": 0.0, "rows": 1, "arch": 0.0, "arch_at": 25.0, "smooth": 0, "left": None, "right": None}
 FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
          "wavelength": 0.075, "hairs": 0, "curve": 0.0, "strands": None}
 # a face-framing piece's strand dials unless frame.strands says otherwise (a round wisp: flat, its few strands were
@@ -104,7 +107,7 @@ def params(tie) -> list:
             if t.get(k) is False or t.get(k) == 0:
                 p[k] = None
                 continue
-            bad = set(t.get(k) or {}) - set(TIE[k]) - {"dir", "from", "strands"}
+            bad = set(t.get(k) or {}) - set(TIE[k]) - {"dir", "from", "strands", "hairline_strands"}
             if bad:
                 raise ValueError(f"hair tie {k}: unknown keys {sorted(bad)} (have {', '.join(sorted(TIE[k]))})")
             p[k] = {**TIE[k], **(t.get(k) or {})}
@@ -253,6 +256,9 @@ def grow(sc, g: dict, line, rng) -> dict:
                                                 _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
                             s_run = np.where(t <= k1, t / k1, 0.0)
                         sag = float(cu.get("sag", 0.0)) * cwr * np.sin(np.pi * s_run)
+                        for _ in range(int(cu.get("smooth", 0))):  # the way is three arcs: round off where they
+                            # meet (each corner drew as a ridge: finger waves in front of the ear)
+                            D[1:-1] = _unit(0.25 * D[:-2] + 0.5 * D[1:-1] + 0.25 * D[2:])
                     else:
                         t = np.linspace(0, 1, 7)
                         D = _slerp(root, tie_dir, t)
@@ -276,6 +282,10 @@ def grow(sc, g: dict, line, rng) -> dict:
                         "width": round(float(ga["width"]) * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
                         "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003,
                         **({"strands": dict(ga["strands"])} if ga.get("strands") else {})}
+                    if ga.get("hairline_strands") and r == 0:  # the hairline row's own dials over `strands`: it is
+                        # the one row that lies over bare skin (forehead corners, temples): thin there, its sub
+                        # clumps drew as contour lines on the skin (density 2, clump 0)
+                        locks[f"{pre}g{r}_{i}"]["strands"] = {**(ga.get("strands") or {}), **ga["hairline_strands"]}
                     if ga.get("inner_roots") is not None and r > 0:  # rows inside the hairline: their strands'
                         # starts are not staggered along the lock like the hairline row's (a soft hairline): inside
                         # the hair they are stubble on the crown
@@ -298,7 +308,7 @@ def grow(sc, g: dict, line, rng) -> dict:
                 lam = max(float(tl.get("sway_length", 0.16)), 0.02)
                 K = K + (sway * env * np.sin(2 * np.pi * s / lam + ph0))[:, None] * E1 \
                     + (0.5 * sway * env * np.sin(2 * np.pi * s / (lam * 1.37) + ph0 + 1.3))[:, None] * E2
-                K = _clear(sc, K, float(tl["fullness"]) * 0.5 + 0.006)
+                K[1:] = _clear(sc, K[1:], float(tl["fullness"]) * 0.5 + 0.006)  # (the tie stays where it is)
                 T, E1, E2 = _transport(K)
                 s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(K, axis=0), axis=1))]
             n = int(tl["locks"])

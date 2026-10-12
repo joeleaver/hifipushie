@@ -154,3 +154,91 @@ def test_curtain_sag_lowers_the_run_over_the_temples():
     for k in a:
         if not k.startswith("tg0_"):
             assert a[k] == b[k], k
+
+
+# --- tesshair2 (2026-10-11): the back shell of a LOW side tail, single-hair wisps, a tail that swings
+
+def _root(lk):
+    return hair.dirs(lk["pts"][0][0], lk["pts"][0][1])
+
+
+def test_gather_toward_crown_covers_the_far_side():
+    """A low tie on one side: rows rooted on the way to the TIE leave the top's far side to the hairline row alone (a
+    headband with a bare wedge behind the part); "crown" roots the inner rows up the head from every side."""
+    kw = dict(at=[151, -6], out=0.036)
+    a = _tie(**kw, gather={"rows": 4, "locks": 80})
+    b = _tie(**kw, gather={"rows": 4, "locks": 80, "toward": "crown", "reach": 0.9})
+    far = hair.dirs(-60.0, 55.0)  # the top of the head on the side away from the tie
+
+    def near(locks):
+        return sum(1 for k, lk in locks.items() if k.startswith("tg") and not k.startswith("tg0_")
+                   and float(_root(lk) @ far) > np.cos(np.radians(30)))
+    assert near(b) >= near(a) + 6, (near(a), near(b))
+    assert {k: v for k, v in a.items() if k.startswith("tg0_")} == {k: v for k, v in b.items() if k.startswith("tg0_")}
+
+
+def test_new_tie_dials_default_to_the_old_groom():
+    base = _tie(curtain={"span": 60, "along": 30}, frame={"count": 2})
+    same = _tie(curtain={"span": 60, "along": 30, "rows": 1, "arch": 0.0, "smooth": 0}, frame={"count": 2, "hairs": 0, "curve": 0.0},
+                gather={"toward": "tie", "reach": 0.75, "ride": 0.003}, tail={"sway": 0.0, "flick": 0.0})
+    assert base == same
+
+
+def test_curtain_arch_raises_the_corners_not_the_centre():
+    cu = {"span": 70, "along": 28, "drape": 12.0}
+    a, b = _tie(curtain=cu), _tie(curtain={**cu, "arch": 10.0, "arch_at": 25.0})
+    seen = 0
+    for k in a:
+        if not k.startswith("tg0_"):
+            continue
+        az0 = abs(_az(a[k])[0])
+        d = float((_el(b[k]) - _el(a[k])).max())
+        if az0 < 3:
+            assert d < 2.5, (k, d)
+        elif 18 < az0 < 32:
+            assert d > 2.0, (k, az0, d)
+            seen += 1
+        elif az0 > 75:
+            assert a[k] == b[k]
+    assert seen
+
+
+def test_frame_single_hairs_curve():
+    """frame.hairs: pieces of 1..n single hairs (lock["hairs"]), each bowed off its line in its own plane; the pieces'
+    strand dials can be set; without them the old locks exactly."""
+    a = _tie(frame={"count": 4})
+    b = _tie(frame={"count": 4, "hairs": 3, "curve": 0.2, "strands": {"clump": 0.0}})
+    fa, fb = [a[k] for k in a if k.startswith("tf")], [b[k] for k in b if k.startswith("tf")]
+    assert len(fa) == len(fb) == 8 and not any("hairs" in lk for lk in fa)
+    assert all(1 <= lk["hairs"] <= 3 and lk["strands"]["clump"] == 0.0 and lk["strands"]["flat"] == 3.0 for lk in fb)
+    assert all(len(lk["pts"]) == 17 for lk in fb)
+
+    def bow(lk):
+        P = np.asarray(lk["pts"], float)
+        ch = P[-1] - P[0]
+        t = ((P - P[0]) @ ch) / (ch @ ch)
+        return float(np.linalg.norm(P - (P[0] + t[:, None] * ch), axis=1).max())
+    assert np.median([bow(lk) for lk in fb]) > 0.006
+    assert "hairs" in hair.LOCK_KEYS
+
+
+def test_tail_sway_and_flick():
+    a = _tie(tail={"length": 0.25})
+    b = _tie(tail={"length": 0.25, "sway": 0.015, "sway_length": 0.2})
+    c = _tie(tail={"length": 0.25, "flick": 0.02})
+    ca, cb = np.asarray(a["tt0"]["core"], float), np.asarray(b["tt0"]["core"], float)
+    assert len(cb) == 28 and np.allclose(ca[0], cb[0], atol=1e-3)
+    ia = np.stack([np.interp(np.linspace(0, 1, 28), np.linspace(0, 1, len(ca)), ca[:, j]) for j in range(3)], 1)
+    assert 0.006 < float(np.linalg.norm(cb - ia, axis=1).max()) < 0.05
+    ta, tc = np.asarray(a["tt15"]["pts"], float), np.asarray(c["tt15"]["pts"], float)
+    assert len(tc) == 17 and len(ta) == 9
+    assert float(np.linalg.norm(tc[-1] - ta[-1])) > 0.003
+
+
+def test_hairline_row_strands_and_inner_roots():
+    locks = _tie(gather={"rows": 3, "strands": {"wave": 0.02}, "hairline_strands": {"density": 2.0}, "inner_roots": 0.0})
+    for k, lk in locks.items():
+        if k.startswith("tg0_"):
+            assert lk["strands"] == {"wave": 0.02, "density": 2.0}
+        elif k.startswith("tg"):
+            assert lk["strands"] == {"wave": 0.02, "roots": 0.0}
