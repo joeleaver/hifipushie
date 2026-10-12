@@ -101,7 +101,10 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                 # tousled (tesshair5): ragged 0..1 = the END (locks end anywhere over the last ragged x 35% of the
                 # length, narrow to a point and turn out), strays = single hairs / thin wisps that leave the tail's
                 # outline, in_step 0..1 = how far neighbouring locks wave together (0 = every lock on its own: ropes)
-                "ragged": 0.0, "strays": 0, "in_step": 0.0}}
+                "ragged": 0.0, "strays": 0, "in_step": 0.0,
+                # soft 0..1 (tesshair6): the tousle as soft irregular locks (some loosened out of the bundle, open ends,
+                # a fuller hang); stray_length [m, m] of the strays
+                "soft": 0.0, "stray_length": None}}
 ESCAPED = {"count": 6, "where": ["temple", "ear"], "length": [0.06, 0.14], "hairs": [3, 7], "curve": 0.2,
            "wave": 0.008, "wavelength": 0.09, "strands": None}
 # wisps (hair_flow.wisps): small soft clumps of fine hairs that fall along the skin. count = clumps a side (or

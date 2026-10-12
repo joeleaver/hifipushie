@@ -378,11 +378,16 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
     if float(tl.get("bulge", 0.0)) > 0:  # (a lock 40% short ends as a blunt chunk in the middle of a full tail)
         ln = 1 - un * rng.uniform(0, 1, n) ** 1.5 * 0.4
     rag = float(np.clip(tl.get("ragged", 0.0), 0, 1))
+    # soft (tesshair6): the tousle as IRREGULARITY OF SOFT LOCKS. Round five's tousle made every lock a pointed wisp
+    # that flicked out (stiff straw kicking backwards, th_T56); a tousled tail is the brushed one's hang (th_T48) with
+    # some locks loosened out of the bundle, lengths that differ, open soft ends and long single hairs round it
+    soft = float(np.clip(tl.get("soft", 0.0), 0, 1))
     if rag > 0:
         # a RAGGED end: the locks end anywhere over the last third (the outer ones no shorter than the inner: the
         # outline itself must be uneven), each narrowing to a point; `uneven` alone moved a few locks a little and
         # the end stayed one straight cut (th_T48 from behind)
-        ln = np.minimum(ln, 1 - rag * 0.35 * rng.uniform(0, 1, n))
+        # (soft: over the last half, and more of them long than short: a soft ragged end, no straight cut)
+        ln = np.minimum(ln, 1 - rag * (0.35 + 0.2 * soft) * rng.uniform(0, 1, n) ** (1 + 0.6 * soft))
     ns = 20
     bulge = float(tl.get("bulge", 0.0))
     lwave = float(tl.get("lock_wave", 0.0))
@@ -427,8 +432,10 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
         prof = prof * (1 + 0.12 * np.exp(-((tS - 1.6 * tb) / (0.9 * tb)) ** 2))
         if rag > 0:  # (... and opens as a FAN out of the band, full by ~9 cm: full at 5 with a swell right after, the
             # bundle stood over the tie as a lump and hid it from behind)
-            tb = float(np.clip(0.09 / max(L, 1e-6), 0.2, 0.5))
+            # (soft: full by 6.5 cm and a little fuller below: at 9 cm with pointed locks the tail read short and thin)
+            tb = float(np.clip((0.09 - 0.025 * soft) / max(L, 1e-6), 0.2, 0.5))
             prof = (0.18 + 0.82 * _ss_t(tS / tb) ** 0.9) * (1 - float(tl["taper"]) * np.clip((tS - tb) / (1 - tb), 0, 1) ** 2)
+            prof = prof * (1 + 0.1 * soft * np.exp(-((tS - 0.6) / 0.25) ** 2))
         want = full / 1.41 * prof
         scs = np.clip(want / np.maximum(rms, 1e-4), 0.3, 4.0)
         scs[last + 1:] = scs[last]
@@ -451,6 +458,7 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
     if step_ > 0:  # (the direction across the bundle the shared wave's phase runs in, and its phase)
         wq = rng.uniform(0, 2 * np.pi, 2)
         wq = (float(np.cos(wq[0])), float(np.sin(wq[0])), float(wq[1]))
+    soft_rng = np.random.default_rng(int(rng.integers(0, 2 ** 31)) if soft > 0 else 0)  # (its own stream: soft 0 = as before)
     up_k = Z[None] - (T @ Z)[:, None] * T  # "up" across the bundle's own line
     up_k = _unit(up_k + 1e-9)
     kept = []
@@ -470,6 +478,14 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
             f = (1 + (scale - 1) * _ss_t(sk[i] / 0.04)) * (1 - float(tl["taper"]) * tt ** 2)
         Pk = Kci + o * f[:, None]
         Pk = Pk + (un * 0.012 + float(tl.get("air", 0.0))) * rng.normal(0, 1, 3)[None] * (tt ** 1.5)[:, None]  # (each lock a little its own way)
+        loosened = soft > 0 and soft_rng.uniform() < 0.3 * soft + 0.1
+        if loosened:
+            # a loosened lock: out of the bundle to one side (its own, across the tail's line) more and more toward
+            # its end, sagging a little: what makes an outline irregular without a single stiff piece
+            oi = _unit(o[-1] - (o[-1] @ T[-1]) * T[-1] + 1e-6 * soft_rng.normal(0, 1, 3))
+            dr = _unit(oi + 0.8 * soft_rng.normal(0, 1, 3))
+            Pk = Pk + ((0.01 + 0.022 * soft) * soft_rng.uniform(0.5, 1.3) * tt ** 1.6)[:, None] * dr[None] \
+                + (0.012 * soft * tt ** 2)[:, None] * DOWN[None]
         if lwave > 0:
             # every lock waves ON ITS OWN: its own amplitude, wavelength, phase and plane (slowly turning: a loose
             # wave is a lazy helix, not a zigzag in one plane). The strand dials' wave keeps neighbours in step (a
@@ -477,7 +493,7 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
             e1i = np.stack([np.interp(sk[i], S, E1[:, j]) for j in range(3)], 1)
             e2i = np.stack([np.interp(sk[i], S, E2[:, j]) for j in range(3)], 1)
             lam_i = max(float(tl.get("lock_wavelength", 0.08)), 0.02) * rng.uniform(0.75, 1.3)
-            a_i = lwave * rng.uniform(0.45, 1.35)
+            a_i = lwave * rng.uniform(0.45, 1.35) * (1.35 if loosened else 1.0)
             psi = rng.uniform(0, 2 * np.pi) + rng.uniform(-1.2, 1.2) * tt
             ph_i = 2 * np.pi * sk[i] / lam_i + rng.uniform(0, 2 * np.pi)
             if wq is not None:
@@ -503,11 +519,12 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
         w = full * 2.2 / np.sqrt(max(n, 1)) * (1 + un * rng.uniform(-0.25, 0.35))
         if bulge > 0:  # wide locks that stay open to their ends (thin ones that taper to a point are strings: th_W1)
             # (and into each other: at 3 x full / sqrt(n) with air between them a full tail was a bunch of ropes)
-            w = max(full * 4.5 / np.sqrt(max(n, 1)), 0.022) * (1 + un * rng.uniform(-0.25, 0.35))
+            # (soft: wider still, 6 x: neighbours' strands interleave and the tail is one mass of hair, not ribbons)
+            w = max(full * (4.5 + 1.5 * soft) / np.sqrt(max(n, 1)), 0.022) * (1 + un * rng.uniform(-0.25, 0.35))
         fine = bulge > 0 or lwave > 0
         locks[f"{pre}t{i}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, Pk if fine else Pk[::2] if ns % 2 == 0 else Pk),
                               "core": core, "free": 1.0, "width": round(float(max(w, 0.012)), 4), "thickness": 0.005,
-                              "taper": (0.35 + 0.2 * rag) if bulge > 0 else 0.9, "belly": 0.4, "root": 0.5, "cup": 0.0,
+                              "taper": (0.35 + 0.2 * rag * (1 - soft)) if bulge > 0 else 0.9, "belly": 0.4, "root": 0.5, "cup": 0.0,
                               # (a lock that keeps one flat side out all the way down is a plank: each turns on its way;
                               # in step they turn less: a ribbon wound 200 deg is a rope)
                               **({"twist": round(float(rng.uniform(60, 220) * (1 - 0.6 * step_) * rng.choice([-1, 1])), 1),
@@ -521,14 +538,17 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
         m_ = len(Pk)
         a_ = int(rng.uniform(0.08, 0.75) * (m_ - 1))
         seg_ = float(np.linalg.norm(Pk[min(a_ + 1, m_ - 1)] - Pk[a_])) or L / m_
-        ln_ = rng.uniform(0.03, 0.09)
+        sl0, sl1 = tl.get("stray_length") or (0.03, 0.09)
+        ln_ = rng.uniform(float(sl0), float(sl1))
+        thin_lock = soft > 0 and rng.uniform() < 0.22  # (not only single hairs: a few thin soft locks leave it too)
         k_ = int(np.clip(round(ln_ / seg_), 4, 40))
         ride = int(rng.integers(1, 4))
         Ki = np.stack([np.interp(sk[i][a_], S, K[:, c_]) for c_ in range(3)])
         outw = _unit(Pk[a_] - Ki + 1e-6 * rng.normal(0, 1, 3))
         d_ = _unit(Pk[min(a_ + 1, m_ - 1)] - Pk[a_] + 1e-9)
         ax = _unit(rng.normal(0, 1, 3))
-        cu_ = rng.uniform(4.0, 16.0)  # rad / m
+        cu_ = rng.uniform(4.0, 16.0) * (1 + 0.8 * soft)  # rad / m (soft: curlier; a long stray with a slow bend is a wire)
+        cu_w, cu_p = rng.uniform(25.0, 60.0), rng.uniform(0, 2 * np.pi)  # (... and its curl comes and goes along it)
         go = rng.uniform(0.25, 0.9)
         B = [Pk[a_] + 0.5 * w * rng.uniform(-0.4, 0.4) * outw]
         for q_ in range(k_):
@@ -537,15 +557,19 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
             else:
                 # (out of the bundle only a little a step, and falling: pushed out hard they were straight wires
                 # standing 8 cm off the tail, th_T52)
-                d_ = _unit(d_ + seg_ * (go * 3.5 * outw + cu_ * np.cross(ax, d_) + 5.0 * DOWN))
+                cq = cu_ * (1.0 + soft * np.sin(cu_w * q_ * seg_ + cu_p)) if soft > 0 else cu_
+                d_ = _unit(d_ + seg_ * (go * (3.5 - 1.5 * soft) * outw + cq * np.cross(ax, d_) + 5.0 * DOWN))
             B.append(B[-1] + seg_ * d_)
         B = np.asarray(B)
         B[1:] = _push(sc, col, B[1:], 0.004)
         locks[f"{pre}y{j}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, B), "free": 1.0,
-                                "width": round(float(rng.uniform(0.001, 0.004)), 4), "thickness": 0.002, "taper": 0.5,
-                                "belly": 0.35, "root": 0.6, "cup": 0.0, "hairs": int(rng.integers(1, 5)),
-                                "strands": {"wisp_fan": 1.5, "wisp_round": 0.8, "tip_loss": 0.5, "wave": 0.004,
-                                            "wavelength": 0.07, "random": 1.0, "flat": 1.0, "curl": 0.0}}
+                                "width": round(float(rng.uniform(0.004, 0.009) if thin_lock else rng.uniform(0.001, 0.004)), 4),
+                                "thickness": 0.002, "taper": 0.5,
+                                "belly": 0.35, "root": 0.6, "cup": 0.0,
+                                "hairs": int(rng.integers(7, 16)) if thin_lock else int(rng.integers(1, 5)),
+                                "strands": {"wisp_fan": 1.5, "wisp_round": 0.8, "tip_loss": 0.5,
+                                            "wave": round(0.004 + 0.005 * soft, 4), "wavelength": 0.07 - 0.025 * soft,
+                                            "random": 1.0, "flat": 1.0, "curl": 0.0}}
     return locks
 
 
@@ -965,21 +989,27 @@ def style(tied: dict) -> dict:
             # section stays open (thin locks that taper = strings, th_W1; all strands to the end = planks)
             tail_.update({"hang": True, "stiff": round(0.2 + 0.1 * float(np.clip((el + 10) / 60, 0, 1)) + 0.04 * T, 3),
                           "spread": round(0.25 + 0.45 * fu, 3), "sway": round(0.012 * wave, 4),
-                          "sway_length": 0.21, "flick": round(0.01 * wave + 0.006 * fu + 0.014 * to_, 4),
+                          "sway_length": 0.21, "flick": round(0.01 * wave + 0.006 * fu, 4),
                           "bulge": 1.0, "lock_wave": round(0.001 + 0.012 * wave, 4),
                           "lock_wavelength": round(0.12 - 0.025 * wave, 4), "air": round(0.002 + 0.004 * fu, 4),
-                          "uneven": round(max(0.3 + 0.7 * me, 0.35 + 0.3 * fu), 3), "taper": round(0.3 - 0.15 * fu, 3),
-                          "ragged": round(0.25 + 0.75 * to_, 3), "strays": int(round((10 + 50 * to_) * (0.5 + fu))),
-                          "in_step": 0.7,
+                          "uneven": round(max(0.3 + 0.7 * me, 0.35 + 0.3 * fu), 3), "taper": round(0.3 - 0.15 * fu + 0.25 * to_, 3),
+                          # (tesshair6: the tousle is SOFT: no flick of its own, open ends, locks loosened out of
+                          # the bundle, strays up to 16 cm; as pointed wisps that flicked out it was stiff straw)
+                          "ragged": round(0.25 + 0.6 * to_, 3), "strays": int(round((14 + 90 * to_) * (0.5 + fu))),
+                          "stray_length": [0.04, round(0.08 + 0.1 * to_, 3)], "soft": round(float(np.clip(0.3 + 0.9 * to_, 0, 1)), 3),
+                          "in_step": round(0.7 - 0.3 * to_, 3),
                           "strands": {"wave": round(0.006 * wave, 4), "wavelength": 0.16, "random": 1.0,
                                       # (tousled ends are POINTED wisps: strands gather toward their tips (free.
                                       # clump_shape) and do not open again; open, each lock ended as a flat 2 cm
                                       # chunk, a chopped broom from behind, th_T52)
-                                      "clump": round(0.3 - 0.15 * fu + 0.3 * to_, 3), "flat": 2.5, "clump_size": 0.006,
-                                      "tips": 0.9, "tip_spread": round(0.6 - 0.5 * to_, 3),
+                                      # (tesshair6: that was the straw. Soft clumps that stay OPEN to their ends,
+                                      # the end ragged by lock lengths and strands ending one by one; and drawn
+                                      # FINE (part transparent) at twice the count: air between hairs, not locks)
+                                      "clump": round((0.3 - 0.15 * fu) * (1 - 0.6 * to_), 3), "flat": 2.5, "clump_size": 0.006,
+                                      "tips": 0.9, "tip_spread": round(0.6 + 0.3 * to_, 3), "fine": round(0.2 + 0.3 * to_, 3),
                                       # (more strands than its share: thin, a full tail is strings with the backdrop
                                       # between them)
-                                      "density": round(1.0 + 0.8 * to_, 2)}})
+                                      "density": round(1.4 + 1.2 * to_, 2)}})
             if tl["to"] == "shoulder":  # brought forward over the shoulder on the tie's side (the left when centred)
                 sd = 1.0 if off >= 0 else -1.0
                 tail_["dir"] = [round(0.75 * sd, 3), -0.35, -0.55]
@@ -1031,7 +1061,7 @@ def style(tied: dict) -> dict:
                                 "flyaway": round(0.15 + 0.7 * me + 0.25 * fu + 0.1 * to_, 3), "stray": round(0.6 + 0.3 * to_, 3),
                                 # (sub clumps each on their own swing were pasta inside the locks: nearly in step)
                                 "wave": round(0.008 * wave, 4), "wavelength": 0.1, "random": 0.35,
-                                "clump_shape": round(0.6 + 0.35 * to_, 3), "tip_spread": round(0.6 - 0.5 * to_, 3)},
+                                "clump_shape": 0.6, "tip_spread": 0.6},
                        # (thickness 1.0 against the head's 0.7: at the head's strand width a clump of 6-28 hairs was a faint
                        # fuzz in EEVEE and nearly gone in Cycles, th_T47)
                        "wisp": {"loose": 0.25, "frizz": 0.2, "wave": 0.004, "wavelength": 0.08, "random": 1.0,

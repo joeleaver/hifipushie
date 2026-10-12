@@ -421,6 +421,7 @@ HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced f
 EAR_OPEN = 19  # cells of azimuth (x Scalp.STEP deg = 38): what stands off the head narrower than this is "a bump"
 EAR_BUMP = 0.004  # m a ray must stand off the head without the bump to count as ear
 EAR_LOW = 0.0015  # m: ... and what the ear is grown into from there
+EAR_OVER = 0.006  # m the line runs over the found ear's top by default (groom.hairline.ear)
 EAR_CLEAR = 0.003  # m: the hairline never runs lower over the found ear than this above its top
 SIDEBURNS = 0.014  # m the sideburn reaches below the found ear's top by default
 
@@ -546,7 +547,7 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
             # `ear` below EAR_CLEAR (old grooms patched the high guess with negative values) is raised to it
             ear_top = er["top"]
             af, ab = er["front"], er["back"]
-            clear = max(float(0.01 if hl.get("ear") is None else hl["ear"]), EAR_CLEAR)
+            clear = max(float(EAR_OVER if hl.get("ear") is None else hl["ear"]), EAR_CLEAR)
             sb = ear_top - max(float(SIDEBURNS if hl.get("sideburns") is None else hl["sideburns"]), 0.004 - clear)
             lob = max(min(ear_bot, ear_top - 0.02), er["lobe"])
             ctrl = [c for c in front if c[0] < af - 16] + [
