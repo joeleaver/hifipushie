@@ -326,7 +326,7 @@ def _gnm_mouth(spec, out, part) -> None:
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
-            "iris_contrast", "gloss", "occlusion", "caruncle", "crease")
+            "iris_contrast", "gloss", "occlusion", "caruncle", "crease", "canthus")
 
 
 def eye_base(spec: dict) -> tuple[str, dict] | None:
@@ -360,7 +360,9 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     lid contact and deepest under the upper lid; MetaHuman's eye-occlusion shell as paint), "tear": 0..1 (the
     meniscus: the bright wet line where the lower lid meets the ball), "waterline": 0..1, "caruncle": 0..1.2 (unset:
     a soft pink spot; a number: the inner corner's pocket filled wet dark red from GNM's inner-corner landmark to the
-    eyeball, the way a photographed canthus reads: the eye then reaches its anatomical inner corner), "crease":
+    eyeball, the way a photographed canthus reads: the eye then reaches its anatomical inner corner), "canthus": 0..1.2
+    (unset / 0: off; the LATERAL corner: a soft warm shadow on the eyeball's outer end and the lid junction's wet
+    red, against the white wedge running to a point that GNM's sharp outer corner shows; ~0.8), "crease":
     {"amount": 0..1 (0.6), "path": [[u, v], ...] (mm from the iris centre in the eye's frame, u toward the outer
     corner, v up: eye_ruler.crease_path reads it off the picture), "width": mm (0.5), "color", "shade": 0..1 (0.4:
     a soft band over the line, the fold's underside)}: the fold LINE as a thin shadow in the skin (multiply), where
@@ -452,6 +454,27 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
             out[f"skin:eye_caruncle{sd.replace('.', '_')}"] = {
                 "part": part, "color": [0.63, 0.43, 0.39], "opacity": round(min(0.75 * a, 1.0), 3), "roughness": 0.2,
                 "mask": [_sp([q_], [0.003], soft=0.8)]}
+    cn = float(e.get("canthus") or 0.0)
+    if cn > 0:
+        # (garrettnative, 2026-10-12) THE LATERAL CANTHUS: GNM's lids meet in a sharp V over a 14.6 mm sphere and the
+        # sclera is plain white to the corner, so every GNM head shows a white wedge running to a point at the outer
+        # corner (gnmnative's ladder: on GNM's raw mesh too; shading, not shape). In a face that corner is in the
+        # lids' shadow and the conjunctiva there is pink, not white. So: on the eyeball's outer end a soft warm
+        # shadow (multiply; strongest at the corner, gone by the limbus), and on the skin the corner's own wet red
+        # at the lid margins' junction (as "caruncle" does at the nose side, much smaller).
+        from .skin import _sp
+        for sd, sx in ((".L", 1.0), (".R", -1.0)):
+            o_ = np.asarray(J[f"lm_eye_outer{sd}"], float)
+            c_, f_ = np.asarray(J[f"eye{sd}"], float), np.asarray(J[f"eye_front{sd}"], float)
+            r_ = float(np.linalg.norm(f_ - c_))
+            q_ = o_ - c_
+            q_ = c_ + r_ * q_ / max(float(np.linalg.norm(q_)), 1e-9)    # the corner's place ON the ball
+            out[f"skin:eye_canthus{sd.replace('.', '_')}"] = {
+                "part": part, "color": [0.58, 0.40, 0.36], "mix": "multiply", "opacity": round(min(0.8 * cn, 1.0), 3),
+                "mask": [_sp([q_], [0.0048], soft=0.85)]}
+        pts = [np.asarray(J[f"lm_eye_outer{sd}"], float) + np.array([-sx * 0.0006, 0.0, 0.0]) for sd, sx in ((".L", 1.0), (".R", -1.0))]
+        layer("canthus", pre=True, color=T(blood=4.5, melanin=1.6), opacity=round(min(0.6 * cn, 1.0), 3), roughness=0.2,
+              mask=[_sp(pts, [0.0016], soft=0.7)])
     cr = e.get("crease")
     if isinstance(cr, dict) and float(cr.get("amount", 0.6)) > 0 and cr.get("path"):
         # the fold LINE as the skin's own shadow (eyeruler; Joe: darkness the fold's shape does not give comes from the

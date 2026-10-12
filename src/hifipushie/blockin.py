@@ -381,6 +381,17 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         c = np.asarray(D["m_m"] if male else D["m_f"], float)
     set_identity(sp, c)
     hd["gnm_base"] = float(default_gnm_base(a) if gnm_base is None else gnm_base)
+    if hd["gnm_base"] >= 1.0:
+        # (garrettnative, 2026-10-12) THE TRUE GNM BASE asked for: nothing of MakeHuman's head may stay in the face.
+        # gnm_base 1 alone left the one-mesh dimorphism field (default 0.8: MakeHuman's sex difference laid on GNM's
+        # vertices), a refs model's eye scaling and its face style sliders (base.style.human eye_spacing, jaw ...:
+        # humanstyle.HEAD) on the head: each pulls GNM's lids off GNM's ball (gnmnative's outer-corner ladder).
+        # head_size stays: the head's size on the body is not the face's shape
+        from . import humanstyle
+        hd["dimorphism"], hd["eyes"] = 0.0, 1.0
+        hs = (sp["base"].get("style") or {}).get("human") or {}
+        for k in [k for k in hs if k in humanstyle.HEAD and k != "head_size"]:
+            hs.pop(k)
     # (gnmnative, 2026-10-12; Joe: "we might have done better to accept their eyeball, since their lid shapes are
     # built around it") GNM's OWN eyeball: no eye_radius (2026-10-10 .. 12 every start set 0.012; a refs model's is
     # dropped too). The key stays as an explicit override (block_in_step {"eye_radius": m})

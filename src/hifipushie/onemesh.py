@@ -394,9 +394,9 @@ def template(base: dict) -> dict:
     V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
     if len(loop_rows) and ht.get("loop_offsets") is not None:  # (faceslide.py) the sliders on the loops' vertices
         V[loop_rows] += ht["loop_offsets"]
-    from . import humanstyle
+    from . import headfit, humanstyle  # (headfit by import: on a true GNM base nothing else had loaded it)
     Jb, bones, chin_z, face, chin_lm, carry_fn = mb["J"], mb["bones"], mb["chin_z"], mb["face"], float(ht["lm68"][8][2]), None
-    chin_mh_ = float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])
+    chin_mh_ = float(P[headfit.table()["lm68"][8], 2])
     bs = humanstyle.active(base, humanstyle.BODY)
     if bs:  # (humanstyle.py) proportions: joints move and girths scale, and the mesh goes with them
         from . import retopo
@@ -410,7 +410,7 @@ def template(base: dict) -> dict:
         chin_z = float(mv([0, 0, chin_z])[0][2] - dz)
         face = {"landmarks": {"eye.L": (mv(face["landmarks"]["eye.L"])[0] - [0, 0, dz]).tolist()}}
         chin_lm = float(mv(ht["lm68"][8])[0][2] - dz)
-        chin_mh_ = float(mv(P[__import__("hifipushie").headfit.table()["lm68"][8]])[0][2] - dz)
+        chin_mh_ = float(mv(P[headfit.table()["lm68"][8]])[0][2] - dz)
         _CACHE[("style_carry", key[1])] = (carry_fn, dz)
     out = {"name": "human", "P": V, "L": np.array([v for f in faces for v in f]), "S": np.array([len(f) for f in faces]),
            "J": Jb, "bones": bones, "rig": mb["rig"], "chin_z": chin_z, "face": face, "styled": bool(bs),

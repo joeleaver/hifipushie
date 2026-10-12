@@ -5818,3 +5818,54 @@ the socket lining behind it, where a lid lies on the ball):
   separately (GNM's own scale, the body's, or the iris'); paint the lateral canthus (shadow / conjunctiva) for the
   wedge that is GNM's own; converge the eyes on the picture's camera when judging against it. Then rebuild all three
   once more on that base. For Joe to decide: rebuild on the true base now, or first settle size and the young face.
+
+## garrettnative (2026-10-12, "garrettnative" agent, branch `garrettnative` (worktree .claude/worktrees/garrettnative) from main
+## 1ed30ce; Joe: "We've been thrashing a lot in this thread. Any way you can do a GNM-native garrett with all these lessons
+## we've learned?" ONE dressed GNM-native Garrett from the two paintings only. Scratch DURABLE in /mnt/data/hifipushie/garrettnative:
+## run.sh <script> (capped, this worktree's src, main's workspace), hv.py <gb> <script> (the same inside resources.heavy),
+## chain.sh / tour.sh / tests.sh, out/ (logs; tiles out/<model>/...); scripts in spikes/garrettnative; models gn_G00.., garrett_n1)
+STATE (step 1 of 5 done): shape solved on the TRUE GNM BASE: gn_G00 (block_in_start gnm_base 1.0) -> gn_G08, the joint
+solve only. NEXT: clay tiles of gn_G08 against garrett_a1 and ng_N05, then skin_from_reference + folds, hair, the sheet.
+
+### Step 1: the shape (the joint solve only; logs out/chain_gn_G.log)
+- LOOKED at ng_N05 first (gnmnative's quick true-base chain; clay tour tiles out/ng_N05/clay beside out/garrett_a1/clay):
+  chin front = a rounded pad set off from the jaw (garrett_a1: one broad flat slab with a hard jaw line): closer to the
+  painting. 3/4: softer jaw, fuller under the chin than painted. Eyes rounder and more open than the painting's hooded
+  ones (garrett_a1's are narrower); the nostrils show from the front as an "M" (the painting's and garrett_a1's do not).
+  DECISION: restart clean, not continue: ng_N05 still carried a NON-GNM face style slider from the refs model
+  (base.style.human.eye_spacing 0.012: humanstyle moves the eyes apart), so it was not the true base.
+- TOOL FAULTS on the way (fixed, tests):
+  1. `blockin.start(gnm_base=1.0)` left the one-mesh dimorphism field (default 0.8 when the key is absent), the refs
+     model's `head.eyes` and its face style sliders on the head. Now a start at gnm_base >= 1 writes dimorphism 0, eyes
+     1.0 and drops base.style.human's face sliders (humanstyle.HEAD; head_size stays: size on the body is not shape).
+     tests/test_blockin.py::test_a_true_gnm_start_keeps_nothing_of_the_body_templates_head. THE DEFAULT IS UNCHANGED
+     (gnm_base by age: 0.0 for Garrett's 52): for Joe to decide.
+  2. `onemesh.py` reached headfit as `__import__("hifipushie").headfit`: an AttributeError in a fresh process on a true
+     GNM base (nothing else had imported headfit: the gnm_base < 1 / dimorphism paths did). Now a plain import.
+- gn_G00 = block_in_start(refs garrett_a1, male class mean, gnm_base 1.0, cameras kept): head {gnm_base 1.0, dimorphism 0,
+  eyes 1.0, scale 1.12 (the body's: untouched), lip_close}, style.human {head_size 1.03}; GNM's ball / mouth (no
+  eye_radius, no interior, no iris_size).
+- THE CHAIN (first call cameras="refit": a1's cameras were fitted on MakeHuman's head; then "free"; anchors differential,
+  outlines by the parser in both views, chin points auto = KEPT (no side view), size HELD):
+  | call | \\|dc\\| | \\|c\\|, largest | table | outline reads | jaw_width / jaw_angle / chin_width (GNM mm / sd from GNM's mean) |
+  |---|---|---|---|---|---|
+  | G01 | 10.52 | 11.72, 2.99 sd | 18 / 29 | 260 | +4.1 / +5.0 / +4.5 |
+  | G02 | 2.23 damped | 10.91, 2.81 | 21 | 262 | +4.9 / +5.0 / +3.4 |
+  | G03 | 1.35 | 10.73, 2.79 | 18 | 267 | +5.1 / +4.7 / +2.9 |
+  | G04 | 1.18 | 10.43, 2.89 | 18 | 262 | +5.8 / +4.5 / +2.7 |
+  | G05 | 3.00 (cos +0.01) | 8.87, 2.11 | 21 | 238 | +2.9 / +3.1 / +3.1 |
+  | G06 | 2.47 | 8.76, 2.33 | 16 | 268 | +4.4 / +3.7 / +2.5 |
+  | G07 | 1.87 | 9.36, 2.57 | 16 | 273 | +5.6 / +4.3 / +2.0 |
+  | G08 | 1.02 | 9.72, 2.78 | 16 | 262 | +5.8 / +4.7 / +1.2 |
+  IT SEE-SAWED ONCE: at G05 the parser's outline lost ~25 reads, the jaw came in 3 mm and |c| dropped; G06-G08 walked
+  back to G04's jaw (+5.8 / +4.7) at |dc| 2.5, 1.9, 1.0. Stopped at gn_G08 (|dc| 1.0; nothing forced: 2.78 sd).
+  It is NOT the same head as ng_N05 from nearly the same start (chin_width +1.2 against -0.4 mm, jaw_square +0.2 against
+  -0.3): what no read holds differs between two runs by that much.
+- gn_G08's LAST REPORT. MOVED WITH NO READ: under_eye_forward -4.8 mm (-1.2 sd), lower_lip_forward -1.6 mm (-1.0 sd),
+  neck_width -12.5 mm (-1.0 sd), skull_top +3.2 mm, chin_width -3.3 mm (read 0.05), cheekbone_width -3.7 mm, skull_back
+  +2.8 mm. MOVED FAR ON A WEAK READ (INFERRED): jaw_angle +4.6 sd (read 0.51, the front outline), cheek_fullness -2.4 sd,
+  orbital_rim +2.2 sd, eyes_forward -6.4 mm (-1.6 sd; read 0.40, the 3/4's landmarks), chin_point -1.2 mm. UNREAD:
+  forehead_forward, skull_width, brow_hollow, pogonion_forward, mentolabial_depth, jaw_square, chin_cleft,
+  forehead_slope. NO LID READ AT ALL ('lid': 0 on every call: the paintings' 5 px iris): the lid opening is the class
+  mean's = INFERRED. So on this head the eye depth, the orbit, the cheeks, the jaw angle, the chin's width and
+  projection, the skull and the forehead's profile are the prior's, not the paintings'.
