@@ -1,0 +1,4 @@
+{"groom": {"volume": {"front": 0.006, "top": 0.016, "crown": 0.017, "sides": 0.013},
+  "tie": {"gather": {"lift": 0.009},
+          "tail": {"dir": [0.8, 0.15, -0.35], "stiff": 0.36, "length": 0.22, "fullness": 0.046,
+                   "strands": {"wave": 0.012, "wavelength": 0.12, "random": 0.3, "tip_spread": 0.9, "flyaway": 0.2, "frizz": 0.15, "loose": 0.5}}}}}

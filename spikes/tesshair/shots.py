@@ -26,7 +26,16 @@ with resources.heavy(f"tesshair shots {m}", gb=6):
     for v in ([] if kw.get("extra_only") else range(3)):
         im = stage.shoot(m, [frames[v]], stage.photo_light(m, v), size=N, hair_on=True, engine=eng)[f"v{v}"]
         im.save(f"{OUT}/s_{m}_v{v}{suf}.png")
-    ims = stage.shoot(m, extra, stage.photo_light(m, 0), size=N, hair_on=True, engine=eng)
-    for n, im in ims.items():
-        im.save(f"{OUT}/s_{m}_{n}{suf}.png")
+    import copy
+    for f in extra:  # the front picture's light turned round the head with the camera (lit from the front, the back
+        # views were black silhouettes)
+        e = np.asarray(f["eye"], float) - c
+        a = np.arctan2(e[0], -e[1])
+        R = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+        lt = copy.deepcopy(stage.FRONT_LIGHT)
+        for l in lt["lights"]:
+            l["dir"] = (R @ np.asarray(l["dir"], float)).tolist()
+            l.pop("window", None)
+        im = stage.shoot(m, [f], lt, size=N, hair_on=True, engine=eng)[f["name"]]
+        im.save(f"{OUT}/s_{m}_{f['name']}{suf}.png")
 print("done", m)

@@ -776,8 +776,9 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   sample seen from the photo's LIT side (the render makes its own shadows) and ask a little less saturated.
 
 ## tesshair (2026-10-11, "tesshair" agent, branch `worktree-agent-a1e75b477d022cecb`): Tess's hair on her accepted head tess_a1
-STATE / NEXT: th_T01 = tess_a1 + f3_t1's groom regrown: it carries cleanly (IoU 0.63 / 0.64 / 0.64). Round 2 (the
-tail) running. NEXT: judge T02, then top volume / slick texture, wisps, the forehead's arch.
+STATE / NEXT: 5 rounds done, BEST = th_T04 (tess_a1 + f3_t1's groom regrown + p02 + p03 + p04), sheet
+workspace/human_renders/th_01_tess_hair_rounds.png. Right style, hairline height and tail place; texture, wisps and
+the unseen angles are wrong. NEXT: the list at the end of this section (back shell faults first).
 
 Scratch DURABLE /mnt/data/hifipushie/tesshair/ (run.sh <script in spikes/tesshair> = this worktree's code on the main
 workspace, capped, 1 BLAS thread; round.sh <NN> <patch.json ..> = a whole round; p<NN>.json = the rounds' patches;
@@ -810,3 +811,54 @@ NB a model's stage keeps the hair it was first synced with (the stage key leaves
   (curtains run straight diagonals; +6 mm low at the upper corners); hers is a round arch; (5) a hooked swirl of curtain
   strands in front of the ear in profile; (6) a dark object at the top of the part (seen from behind), dotted scalp at
   the nape.
+- UNSEEN ANGLES ARE WORSE THAN THE REFERENCE ANGLES (backl / backq / right): from behind the gathered hair is a shell
+  with a frayed rim standing off down her right-back (a hood's edge) and stubble along the crown; from her right the
+  first (curtain) row lies as a thick band over the ear like a headband. The groom was only ever tuned through the
+  three pictures' cameras. Cause NOT isolated (suspects: the scalp under-layer's 6 cm tips, row 0 riding 8 mm over
+  rows 1-2, only row 1-2 roots covering the top behind the part).
+- shots.py's unseen views: the front light turned round the head with the camera (lit from the front they were black).
+- th_T02 (tail dir [0.75, 0.55, 0.15], stiff 0.5, length 0.24, fullness 0.055, 26 locks, uneven 0.8, taper 0.3,
+  tail.strands wave 0.018 / wavelength 0.09 / frizz 0.35 / loose 0.8): OVERSHOT, the tail a flag standing out: IoU 0.48
+  / 0.28 / 0.45, front width her left +36 .. +44 mm (T01 -27 .. -35).
+- th_T03 (between: dir [0.56, 0.5, -0.35], stiff 0.36, length 0.22, fullness 0.05): IoU 0.758 / 0.469 / 0.682; front
+  width her left +2.3 / +0.3 mm at mouth level, -16 at eye level. Tail from behind = crimped ramen (wave 0.018 + frizz
+  0.35 + loose 0.8 is too much).
+- th_T04 (tail dir [0.8, 0.15, -0.35], fullness 0.046, tail.strands wave 0.012 / wavelength 0.12 / random 0.3 / frizz
+  0.15 / loose 0.5; volume front 6 / top 16 / crown 17 / sides 13 mm, gather lift 9 mm): IoU 0.680 / 0.489 / 0.722,
+  outline top -3.4 mm (was -5.4), width above the eyes +1.3 / -0.9 mm, her left at mouth level +10 / +4 mm.
+- THE 3/4 VIEW CANNOT BE CLOSED BY THE HAIR: through its fitted camera our face is smaller than hers (eye span 52.6
+  vs 57.9 mm) while our hair mass is bigger (92k vs 79k px); our hair overlaps her forehead on one side and overshoots
+  behind on the other (out/hscore_th_T04_1.png). The head / camera of that view disagree with the picture; front and
+  profile agree. Judge the tail on front + profile; the 3/4 IoU is not a hair number on this head.
+- th_T05 (T04 + curtain dip -20, escape 6, frame count [4, 3] / width 1.5-3 mm / length 9-17 cm / wave 0.02 /
+  wavelength 0.06, gather.strands flyaway 0.25 / frizz 0.3, strands flyaway 0.25): IoU 0.676 / 0.484 / 0.724. Forehead
+  arch ours - hers +2.1 +1.5 -3.2 +2.5 -6.3 mm (T04 +6.1 +5.1 +1.6 +6.1 -1.6): the corners close and the arch reads
+  rounder, but the centre goes +4.2 mm HIGH (forehead / lower face 0.371 vs hers 0.342; T04 0.339) with a bare notch
+  under the part: dip -16 is the next try. The wisps got WORSE: more of the same straight wet strings, in bunches over
+  the cheek in profile; no visible halo from flyaway 0.25. Not a clear gain: rounds stopped here.
+- BEST = th_T04. Sheet `workspace/human_renders/th_01_tess_hair_rounds.png` (reference | T04 | T05 | T03 | T02 | T01;
+  rows front / 3q / profile through the fitted cameras, back-left beside the unfitted back picture, back-right and
+  right profile unseen). Numbers T04: forehead / lower face 0.339 vs 0.342 (hairline centre +0.9 mm, outer -1.9,
+  temples -0.2), outline top -3.4 mm, width above the eyes +1.3 / -0.9 mm, IoU 0.680 / 0.489 / 0.722 (T01 0.630 /
+  0.641 / 0.639), hairline band bare 22.8 / 20.6 / 8.4%, colour shadow / mid / highlight front #291d14 #43352b #625247
+  vs hers #221b13 #3f3226 #675342.
+- BLUNT READ of T04 against the pictures: hairline HEIGHT right by proportion; its SHAPE wrong (a pointed triangle,
+  upper corners ~6 mm low). Top and sides: silhouette within 2-3 mm, but the surface is slick combed sheets, hers is
+  loose, matte, tousled with a fine halo. Tail: right place and now about the right size and side, a bushy mass; but
+  blunt straw ends, no big S-waves or flicked ends, and from behind a crimped wool. Loose front strands: the worst
+  feature: a few straight comb-strips; hers are many single fine curved hairs. Colour: bands within ~10 levels;
+  sheen: ours has no warm chestnut highlights (flat grey-brown). Unseen angles: hood rim at her right-back, headband
+  band over the right ear, stubble on the crown, dots at the nape, a dark object at the part's top. NOT her hair yet:
+  the right style on the right hairline with the wrong texture.
+- NEXT, in order: (1) isolate the back shell faults with hair.look(only=) / debug (rim, headband row, crown stubble,
+  the dark object) and fix them in hair_tied (likely: a gather row that runs OVER the top behind the part, row 0's
+  8 mm ride height, under_length); (2) wisps as single strands: frame pieces' hard-coded strands (clump 0.3, flat 3)
+  make comb strips: needs per-piece curl / wave phase and 3-8 strands a piece (a code change in hair_tied / lens
+  group, not a dial); (3) curtain dip -16 for the arch; (4) tail: large-scale S-wave of the CORE line + tapered
+  uneven ends (tail.strands waves only crimp); (5) a Cycles look for sheen / colour (EEVEE only so far; never queued:
+  the heavy slot was free all session); (6) re-fit the 3/4 camera or drop that view for hair.
+- TOOLING GAPS (Python-only): hair.carry + regrow onto another head (no MCP tool: groom_hair cannot take a groom from
+  another model); dressed renders through the references' fitted cameras (garrett3/stage.py, a spike); hscore and the
+  like-with-like hairline measure (spikes); look_hair has no "unseen angles" row, which is where this groom is worst.
+
+STATE / NEXT (end of session): best th_T04, sheet th_01_tess_hair_rounds.png, 5 rounds; NEXT = the list above.
