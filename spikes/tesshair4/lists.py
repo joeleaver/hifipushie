@@ -12,7 +12,9 @@ R = {
     "Q6": {"tie": "low", "side": "centre", "tightness": 0.6, "neatness": 0.7, "tail": {"kind": "plait", "length": 0.34, "fullness": 0.6}},
 }
 T = {"T47": {"tie": "low", "side": "left", "tightness": 0.85, "neatness": 0.95, "wisps": {"amount": 0.7},
-             "tail": {"length": 0.24, "wave": 0.6, "fullness": 0.75}}}
+             "tail": {"length": 0.24, "wave": 0.6, "fullness": 0.75}},
+     "T48": {"tie": "low", "side": "left", "tightness": 0.85, "neatness": 0.95, "wisps": {"amount": 1.0, "softness": 0.7},
+             "tail": {"length": 0.23, "wave": 0.6, "fullness": 0.6}}}
 D = {f"D{i}{j}": {"tie": "low", "side": "centre", "tightness": 0.85, "neatness": 0.95, "wisps": 0,
                   "tail": {"length": 0.26, "wave": wv, "fullness": fu}}
      for i, fu in enumerate((0.0, 0.5, 1.0)) for j, wv in enumerate((0.0, 0.5, 1.0))}

@@ -530,7 +530,9 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
             out = dirs(az, el)
             eo = _unit(np.array([out[0], out[1], 0.0]))
             sidev = np.array([float(side), 0.0, 0.0])
-            back = zone in ("temple", "sideburn") and rng.uniform() < tuck
+            # (not toward a high tie: "back" is then up, and held level they were straight dark blades in front of
+            # the ears of a top knot, th_Q5)
+            back = zone in ("temple", "sideburn") and rng.uniform() < tuck and float(tp["at"][1]) < 30.0
             # lengths: short ones at the part and front (they end at the brow / temple, never over the eye), longer
             # beside the face
             zl = {"part": 0.75, "front": 0.75, "temple": 0.9, "sideburn": 1.0, "nape": 0.6}[zone]
@@ -619,6 +621,9 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
             P = np.asarray(P)
             nh = int(rng.integers(int(h0), int(h1) + 1))
             width = (0.0025 + 0.006 * soft) * rng.uniform(0.6, 1.4) * min(1.0, 0.5 + ln / 0.12)
+            if zone == "sideburn":  # (it hangs straight down bare skin: 20 hairs there were a dark blade in front of
+                # the ear, th_Q5: fewer, wider apart)
+                nh, width = max(4, nh // 2), width * 1.4
             locks[f"{pre}w{k}"] = {
                 "tier": "tie", "space": "xyz", "pts": _xyz(sc, np.vstack([P[:-1:2], P[-1:]])), "free": 1.0,
                 "width": round(float(width), 4), "thickness": 0.0015, "taper": 0.55, "belly": 0.4, "root": 0.45,
@@ -788,7 +793,10 @@ def style(tied: dict) -> dict:
                        "free": {"loose": round(0.1 + 0.25 * me + 0.3 * fu, 3), "frizz": round(0.1 + 0.3 * me + 0.3 * fu, 3),
                                 "flyaway": round(0.15 + 0.7 * me + 0.25 * fu, 3), "stray": 0.6,
                                 "wave": round(0.008 * wave, 4), "wavelength": 0.1, "random": 0.8},
-                       "wisp": {"loose": 0.25, "frizz": 0.2, "wave": 0.004, "wavelength": 0.08, "random": 1.0}}}
+                       # (thickness 1.0 against the head's 0.7: at the head's strand width a clump of 6-28 hairs was a faint
+                       # fuzz in EEVEE and nearly gone in Cycles, th_T47)
+                       "wisp": {"loose": 0.25, "frizz": 0.2, "wave": 0.004, "wavelength": 0.08, "random": 1.0,
+                                "thickness": 1.0}}}
     if p["half"]:
         gather["above"] = 0.012
         out["loose"] = {"length": float(p["length"]), "below": 0.03, "lift": 0.004, "face": 1.0}

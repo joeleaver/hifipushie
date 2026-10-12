@@ -65,7 +65,10 @@ SWEPT-BACK HAIR IS NOT MADE HERE ANY MORE (2026-10-11): ask for it as a style, `
 tie_hair), which fills a tie with hair_flow's construction: gather {"mode": "flow", "spacing", "body", "puff",
 "root_lift", "sag", "part_push", "part_length", "overhang", "ears", "above"} (a flow field from roots all over the
 scalp), tail {"hang": true, "spread"} (locks that fall, on the body's collider) and "escaped": {"count", "where",
-"length", "hairs", "curve", "wave", "wavelength", "strands"} (pieces of single hairs). The rows / curtain / frame /
+"length", "hairs", "curve", "wave", "wavelength", "strands"} (pieces of single hairs). Since tesshair4 (2026-10-12)
+also: "wisps": {"count", "where", "length", "hairs", "softness", "tuck", "over", "strands"} (soft clumps of fine hairs
+that fall along the skin: hair_flow.wisps), tail {"bulge", "lock_wave", "lock_wavelength", "air"} (the tail's volume
+and every lock's own wave) and gather {"feather"} (no hairline locks from the sideburn, feathered starts). The rows / curtain / frame /
 core-line tail below stay the default of a raw tie so older models regrow as they were; the curtain lays the front
 ACROSS the head (Joe: "flat across her head instead of swept back").
 

@@ -175,7 +175,7 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
     n = ht.params(g["tie"])[0]["wisps"]["count"]
     assert len(ws) == 2 * n and n >= 10, (len(ws), n)
     for k, lk in ws.items():
-        assert lk["hairs"] >= 5 and lk["space"] == "xyz" and lk["free"] == 1.0, (k, lk["hairs"])
+        assert lk["hairs"] >= 4 and lk["space"] == "xyz" and lk["free"] == 1.0, (k, lk["hairs"])
         assert lk["width"] <= 0.012 and lk["strands"]["tip_loss"] >= 0.5  # a thin clump whose hairs end one by one
         P = _world(sc, lk)
         az, el, h = sc.coords(P)
