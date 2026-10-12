@@ -15,7 +15,7 @@ with `HIFIPUSHIE_TOOLSETS=all`, or a list like `hair,cloth` (default `core`); `H
 | export | export, export_asset, rig | here |
 | human | human, measure_human, fit_human, nudge_human, human_reference, block_in_start, block_in_look, block_in_step, lid_read, eye_ruler, face_ruler, brow_read, skin, look_skin, skin_reference | guide(topic="human"), guide(topic="block_in"), guide(topic="skin") |
 | likeness | likeness, fit_likeness, likeness_points, character_read, project_reference, texture_from_reference, reference_brief, check_references | guide(topic="likeness") |
-| hair (+ scene) | groom_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
+| hair (+ scene) | groom_hair, tie_hair, look_hair, hair_reference, export_hair | guide(topic="hair") |
 | cloth (+ scene) | design_garment, look_pattern, check_garment, dress, look_cloth, garment_reference, garment_from_reference, check_garment_reference, garment_reference_brief | guide(topic="cloth"), guide(topic="cloth_reference") |
 | terrain | set_terrain, check_terrain, look_terrain, export_terrain, terrain_history | guide(topic="terrain") |
 | plants | grow_plant, edit_plant, get_plant, look_plant, look_plants, plant_form, plant_reference, export_plant, wind_plant, sync_plant, plant_history, grow_stand, look_stand, export_stand | guide(topic="vegetation") |

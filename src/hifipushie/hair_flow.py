@@ -255,7 +255,7 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
     ks = np.arange(n)
     th, rho = ks * 2.39996, np.sqrt((ks + 0.5) / n)
     rad = np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2
-    ln = 1 - un * rng.uniform(0, 0.5, n)
+    ln = 1 - un * rng.uniform(0, 0.6, n)
     ns = 20
     ds = L * ln / ns
     d = d0[None] + float(tl["spread"]) * rho[:, None] * rad
@@ -479,7 +479,7 @@ def style(tied: dict) -> dict:
     if kind == "none":
         tie["tail"] = False
     else:
-        tail_ = {"length": float(tl["length"]), "fullness": round(full, 4), "locks": int(round(14 + 16 * tl["fullness"])),
+        tail_ = {"length": float(tl["length"]), "fullness": round(full, 4), "locks": int(round(26 + 30 * tl["fullness"])),
                  "uneven": round(0.3 + 0.7 * me, 3), "taper": 0.3,
                  "strands": {"wave": round(0.03 * wave, 4), "wavelength": 0.16, "random": 0.7, "clump": 0.35, "flat": 2.5,
                              "clump_size": 0.008, "tips": 1.0, "tip_spread": 0.1}}

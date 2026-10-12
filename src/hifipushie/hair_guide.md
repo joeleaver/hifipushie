@@ -625,6 +625,50 @@ everywhere inside the hairline (the soft hairline, the cover under the locks). S
    pattern survives "unlit" it is in the colour (atlas or vertex colour); if it survives "no_normal" but not
    "unlit" it is the cards' geometry and shading.
 
+## Tied-back hair as a STYLE: `tie_hair` (ponytail, bun, plait, half up)
+
+The way to ask for swept-back tied hair. One call, a handful of words; the same call on any head gives the same
+hairstyle, and a riff changes one word:
+
+```
+tie_hair(name, style={"tie": "low", "side": "left", "tightness": 0.3, "neatness": 0.2,
+                      "tail": {"length": 0.24, "wave": 0.8, "fullness": 0.8}})     # a loose low side ponytail
+tie_hair(name, style={"tie": "high", "side": "centre", "tightness": 0.9, "part": "none"})   # riff: high and tight
+tie_hair(name, style={"tail": "bun", "tie": "top"})                                # riff: a top knot
+tie_hair(other, carry_from=name)                                                   # the same hair on another head
+look_hair(name, views=["around"])                                                  # six sides with the bust
+```
+
+What the words mean (all optional; `tie_hair(name)` alone is an ordinary low ponytail with a centre part):
+
+| word | values | what it does |
+|---|---|---|
+| `tie` | nape, low, mid, high, top (or deg) | the tie's height on the back of the head |
+| `side` | centre, left, right (or deg) | off to the person's own left / right (a side ponytail) |
+| `tightness` | 0..1 | 1 = scraped back flat; 0 = loose: the hair sags between root and tie, stands off the head, hangs over the temples |
+| `lift` | 0..1 | volume at the roots and over the top (default 1 - tightness) |
+| `part` | centre, left, right, none | none = combed straight back; a part is combed away from on both banks, in front only |
+| `ears` | tucked, covered | the hair passes over the ears' tops, or hangs over them |
+| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it) |
+| `escaped` | n a side, or {count, where: [part, temple, ear, nape], length [m, m]} | pieces that came loose (default from neatness) |
+| `neatness` | 0..1 | 0 = slept in (strays, halo, uneven lengths), 1 = every hair in place |
+| `half` | true + `length` m | half up: only the top is tied, the rest hangs loose |
+| `detail` | {"tie": {...}, "strands": {...}} | the escape hatch: hair_tied's own keys over what the style makes |
+
+How it is built (hair_flow.py), so you can predict it: roots all over the scalp (not rows from the hairline), each
+traced along the head toward the tie: toward the tie + away from the parting + down the head by looseness, never
+across bare skin. Hair rooted further from the tie lies over hair rooted nearer. The tail is a bundle of locks that
+each leave the tie in a cone and fall. Escaped pieces are a few single hairs from one root, each falling on its own.
+
+Judge it from every side (`views=["around"]`), not the front: tied hair is wrong from behind first. What to read:
+on top the strands must run front-to-back (lateral bands = a cap); the tail must end hanging, not pointing; the
+hairline at the temples should be soft (a hard saw edge reads as a wig). What is still weak (2026-10-11): the head
+hair reads smoother than loose real hair in EEVEE, the front hairline can step where the overhang begins, single
+escaped hairs draw as thin lines.
+
+The older by-hand tie (`groom.tie` with gather rows, `curtain`, `frame`, below under groom_hair) stays for models
+made with it; do not start new tied hair there: its curtain lays the front ACROSS the head.
+
 ## Loose hair: `groom.loose`
 
 Hair that grows all over the scalp, is combed some way at its roots, then falls (or stands). It replaces the
@@ -919,6 +963,24 @@ Edit single locks with edit_model: {"op": "set", "kind": "hair.locks", "name": l
 the material with {"op": "set", "kind": "hair", "name": "look", "value": {"lit": "#5a3a2c"}}.
 Then look_hair. Returns the counts per tier.
 
+### `tie_hair`
+
+`tie_hair(name, style=None, carry_from=None, look=None, note='')`
+
+A tied-back hairstyle from a STYLE (stored as spec.hair.groom.tied; see "Tied-back hair as a STYLE" above for the
+table of words): style is MERGED into the model's tied style (name only what changes: a riff), the hair becomes a
+strand groom (hair.style "strands") and is regrown; any groom.tie / groom.loose the model had is replaced by what
+the style makes. carry_from: first wear that model's whole hair (hairline, look, strand dials, tied style), scaled
+to this head (traced hairline heights move with the head centre). look: a patch of the hair's material.
+style keys: tie (nape | low | mid | high | top | deg), side (centre | left | right | deg, the person's own),
+tightness 0..1, lift 0..1, part (centre | left | right | none), ears (tucked | covered), tail ({kind: tail | bun |
+plait | none, length m, fullness 0..1, wave 0..1, to: back | shoulder} or just the kind), escaped (n a side or
+{count, where, length}), neatness 0..1, half (true) + length m, detail ({"tie": .., "strands": ..}: hair_tied's own
+keys, when a word is missing).
+Returns what was grown (gather / tail / escaped hairs), the style as stored, and what it made in numbers (the
+tie's place, how far the hair stands off the head, the tail). Then look_hair(name, views=["around"]) (needs `sync`
+once). Heavy the first time on a body (its collider, ~1 min), 1-2 s after.
+
 ### `look_hair`
 
 `look_hair(name, views=None, size=480, clay=True, layout=False, reference=None, save=None, only=None, tier=None, debug=None, engine='eevee')`
@@ -928,7 +990,8 @@ rendered in EEVEE. Rows: the material, the same in clay (shape without colour: j
 matched reference camera (hair_reference) the matched render, its clay, the reference, a 50% blend and the traced
 lines over the render (reference yellow, model cyan). A thumbnail shows how it reads small.
 views: any of front, three_quarter, three_quarter_r, side, back, top, close, close_back (default front,
-three_quarter, side, back, top). layout=True adds the groom seen from above as a sketch: hairline, parting, every
+three_quarter, side, back, top); "around" = six sides with the bust (bust_front, bust_three_quarter, bust_side,
+bust_back_quarter, bust_back, bust_side_r): the row for hair that hangs and for the angles nobody tuned. layout=True adds the groom seen from above as a sketch: hairline, parting, every
 lock's spine (drawn clumps black with names, others by tier), roots and tips; views=["layout"] gives only that
 (no render). reference: an image to show beside the views (default: the traced reference). only: lock names or
 patterns (["sweep*", "pside0"]) shown alone on the underlayer, to see which locks make a busy patch (the gates
