@@ -1062,3 +1062,76 @@ NEXT, in the order I would:
    read the lips' a*b* at full weight and their L from the seam / body profile).
 7. Asset: run a full-body export with wrap topology + face shapes on sf_garrett and look at the GLB; fix
    export_check's preview.
+
+## skinfolds2 (2026-10-12, "skinfolds2" agent, branch worktree-agent-a61eeaaaf7e7a7d1d; continues skinfolds on Joe's "keep
+## going": Tess's tone, the lid crease, the mouth, Garrett within the paintings' limits, the export check. Scratch DURABLE
+## in /mnt/data/hifipushie/skinfolds2: run.sh <script> (HEAVY: capped, one thread, this worktree's src, main's workspace),
+## light.sh <script> (LIGHT: bin/slot), run_main.sh (a spike under MAIN's src: the sf_* BEFORE tiles), fv.sh, chain*.sh,
+## patch*.py (how the code got here), out/; scripts in spikes/skinfolds2; copies sg_garrett / sg_tess; sheets sg_*)
+STATE / NEXT (skinfolds2): see "### Status (skinfolds2)" at the end of this section.
+
+### 1. Tess's tone: what it was, measured (spikes/skinfolds2/cap.py, imgspace.py, shade.py, pr.py)
+- THE SHEETS' -10 L WAS THE SHEET'S LIGHT, NOT THE ALBEDO. Per view, on the plain skin (P picture, R our render under
+  the fitted light, A our albedo; linear luminance): Tess view 0 P/A 0.97, R/A 1.18; view 1 1.02 / 1.04; view 2 1.09 /
+  0.67. Under the READER's light (Standard view, 0 EV) our render sits +6 L (view 0), +1 (view 1), -14 (view 2) from
+  the picture. The sf_* sheets used the judging sheets' template (g3stage.FRONT_LIGHT: -0.55 EV, "Khronos PBR Neutral"):
+  x 0.68 on top of that = the "~10 L under", then re-exposed tile by tile. blockin.photo_lighting keeps the face's
+  front "as bright as the template lights it": a template's level is not the photographer's exposure. View 2 (the
+  profile) is a LIGHT FIT fault on top: its key comes out from 15 deg BELOW (elevation -15, key 0.87, fill 1.55), our
+  cheek is 1.6 x darker than hers there. Garrett: view 0 P/R 0.77 (ours 7.7 L lighter), view 1 (the desk painting,
+  lamp + blue room) 0.38.
+  FIX (the cause): `skin_read.photo_light(name, vi)` = the fitted light + "exposure" = the EV the last read MEASURED
+  between our render and the picture on the plain skin (context stores {view: ev} beside the stage:
+  `_sr_<name>/sr_exposure.json`; the read's text says it per view). look_skin(light="photo") uses it; the sg_* sheets
+  render every model under it (one light, one EV per view for AFTER and BEFORE: like with like), no tile is re-exposed.
+  NOT fixed: the profile view's light direction (blockin.lit_render's c0 + w.n on a profile): reported.
+- LIKE WITH LIKE (out/pr_sg_tess.png: picture | a1's render x the plain skin's gain): a1 is PINKER than her (a* 10.9
+  against 8.6 in image space, view 0), hers a warm light beige, with far more shading (jaw, under the cheekbone, the
+  socket) than our head casts under the fitted light. So the read's direction (less red, a little more yellow) was
+  right; what made sf_tess a tan was (a) the sheet's exposure, (b) SHADE PAINTED AS PIGMENT, (c) +1..3 b* of overshoot
+  that the shade pulled in.
+- SHADE AS PIGMENT, measured (image space = albedo space within ~1 Lab, so it is in the pictures, not the reader):
+  against the plain skin her eyelid reads -15 L, temple -19, jaw -7.8, jowl -6.7, neck -10, mouth corner -6, each
+  WARMER (b* +2.5..+5 on the jaw / neck). Regressing log(picture / ours) per channel on its luminance over all trusted
+  skin (shade.py): slopes r 0.81-0.85, g 1.03, b 1.18-1.25 in every view, the same for the darker and the lighter
+  half: the picture's darkening has ONE colour (bounce light off skin and scatter: red falls least). Melanin darkens
+  along almost the same line, so a picture cannot tell shade from a tan: the PRIOR decides. The old fit gave it to
+  pigment: melanin 0.02 -> 0.16, eyelids / under_eye 2.5 (bounds), lower_cool 1.9.
+- BUILT (skin_read.fit):
+  (a) SHADE: `shade_colour(c)` measures the exponents q per read (clipped 0.7..1.35; 1 1 1 when there is too little
+  spread). Each region's target is the read with a shade s >= 0 taken out again along q (target x exp(s q)); s is
+  solved inside every residual (7 Gauss-Newton steps per region, closed form), prior SHADE_SIGMA 1.5 log (free), 0.05
+  on the PLAIN zones (the lit skin the exposure is levelled on) and on beard zones where a beard may be laid (its
+  shadow IS a lightness), 0 on the lips. Reply: "SHADE, NOT PIGMENT: eyelid -12.5 L*, jaw -10.9 ..." with what to do
+  if it is pigment after all.
+  (b) WHOLE FACE: the mean albedo over every skin zone's trusted pixels (stubble layers skipped) is held to the
+  prior's (soft, TONE_SIGMA; hard FACE_BOUND 3 L* / TONE_CHROMA in a*b*, inside the tone's bisection).
+  (c) ZONES: no zone's (Lab - face Lab) may leave the prior's by more than ZONE_BOUND 4 L* / 5 a*b*; the zone / eye
+  layers' move is bisected back toward the first round's start and the reply says which zone asked for what.
+  (d) A MOVE MUST EARN ITS PLACE: after the solve every non-tone parameter is tried back at its start; if that costs
+  the fit < PRUNE (0.25) it stays there. Tess's eyelids 2.5 / lower_cool 1.97 were INERT numbers (0.1 L of albedo:
+  those layers multiply the tone's blood, which the fit had sent to its floor): now untouched.
+  (e) PRIOR_TONE 6 x on melanin / blood / undertone (many triples make one colour). It does not stop Tess's blood
+  going to ~0: tonegrid.py shows the tone model reaches her (73.4, 7.3, 16.0) only at melanin ~0.15, blood <= 0.1 (the
+  slider's floor is 1 % haemoglobin, not none): a real "pale, not ruddy" corner, not a degeneracy.
+  Fit time 75 s -> ~200 s a round (two albedo evaluations per residual + the prune pass).
+- Tess, colour fit alone (fitc.py, cached frames): whole face Lab [73.4, 9.6, 14.8] -> [73.5, 7.3, 16.0]; plain L*
+  73.23 -> 73.3; zones forehead_yellow 1 -> 0.03, perioral_red 1 -> 0.04, flush 0.3 -> 0.01, nose_red 0.75 -> 1.5;
+  under_eye / eyelids / lower_cool / periorbital untouched; AFTER read: plain zones within 1 a*b* of the picture.
+
+### 2. The white anchor (skin_read.white_patch / _white; `skin_from_reference(white=[...])`)
+- WHY IT NEVER FIRED: the search ran inside the HEAD CROP (512 px round the face). A collar is under it. toneval's
+  synthetic "collar" was a band at the bottom of the picture: outside the crop, and not clothing to the parser.
+- NOW: (a) found in the WHOLE picture: the parser's cloth (or figure that is neither skin nor hair) under the chin's
+  row, sRGB 0.35..0.97, 250+ px, the median of its lit 40 %; accepted when neutral (chroma < 9 after the backdrop's
+  white balance), L* > 62, brighter than 1.1 x the lit skin (75th percentile) and no darker than 0.8 x a neutral
+  backdrop; each refusal says why in the read. (b) DECLARED: white=[{"view", "box", "albedo"}] (the caller points at
+  paper / a shirt / a wall). Skin albedo = albedo x (plain skin's 75th percentile) / white (lit against lit).
+  With a white the plain zones carry no shade of their own and TONE_SIGMA_WHITE is 12 (the white leads, the 8 L*
+  bound holds).
+- A BACKDROP IS NOT AN EXPOSURE ANCHOR and is not used as one: skin albedo = backdrop albedo x (skin / backdrop) x
+  (backdrop's light / face's light), two unknowns each good for a factor 2. It gives only "skin <= 0.9 x ratio when
+  lit alike": for Tess <= L* 85. Said in the read.
+- ON THE SUBJECTS: Garrett's shirt (the front painting) is a lilac-grey at L* 62: REFUSED ("the clothing under the
+  face is not bright (L* 62): not a white"), which is right: taken as a 0.8 white it would have put his skin ~15 L
+  too light. Tess: bare shoulders, no clothing. Neither subject has a white; validation is synthetic (below).

@@ -186,7 +186,7 @@ if int(kw.get("shots", 1)):
     face = 0.5 * (eyes + mouth)
     cam = lambda c, w, az, nm_: {"eye": (c + 0.6 * np.array([np.sin(np.radians(az)), -np.cos(np.radians(az)), 0.0])).tolist(), "target": c.tolist(),  # noqa: E731
                                  "fov": float(np.degrees(2 * np.arctan(w / 2 / 0.6))), "name": nm_}
-    cams = [cam(np.asarray(J["eye.L"], float) + [0, 0, 0.003], 0.05, 0, "eyeL"), cam(eyes, 0.12, 0, "eyes"), cam(mouth + [0, 0, 0.005], 0.12, 0, "mouth"), cam(face, 0.25, 40, "3/4")]
+    cams = [cam(np.asarray(J["eye.L"], float) + [0, 0, 0.003], 0.06, 0, "eyeL"), cam(eyes, 0.12, 0, "eyes"), cam(mouth + [0, 0, 0.005], 0.12, 0, "mouth"), cam(face, 0.25, 40, "3/4")]
     LIGHTS = {"front": {"lights": [{"dir": [0.08, -0.74, 0.67], "energy": 3.3, "color": [1, 1, 1], "angle": 38},
                                    {"dir": [0.0, -1.0, 0.05], "energy": 0.7, "color": [1, 1, 1], "angle": 40}],
                         "world": {"color": [0.8, 0.8, 0.8], "strength": 0.45}, "view": "Standard", "exposure": -0.25},
