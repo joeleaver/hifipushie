@@ -137,9 +137,9 @@ def test_folds_are_geometry():
         return -sdf.field_at(body, X) * 1000
     n = move("nasolabial", ".L", [-9, 0, 5, 14])
     assert abs(n[0]) < 0.05 and abs(n[3]) < 0.1, n                       # local
-    assert -0.75 < n[1] < -0.4 and 0.9 < n[2] < 1.5, n                 # the groove, the cheek's pad beside it
+    assert -0.5 < n[1] < -0.25 and 0.9 < n[2] < 1.5, n                 # the groove, the cheek's pad beside it
     assert np.abs(move("nasolabial", ".R", [0, 5])).max() < 0.02        # the side that is off
-    t = move("tear_trough", ".L", [0, 5.5])
+    t = move("tear_trough", ".L", [0, 4.6])
     assert t[0] < -0.3 and t[1] > 0.9, t                               # the trough and the bag over it
     # the keep-out: nothing moves at the lid's margin or on the lips
     keep = sf.keep_lines(J)
