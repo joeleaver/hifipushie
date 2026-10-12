@@ -631,6 +631,11 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
         m0[:K] = -np.asarray(done, float)
     if prior_off is not None and not span:  # the model already stands this far from the prior's centre (its start
         m0[:K] -= np.asarray(prior_off, float)   # class's mean): the prior is on the WHOLE identity, across calls
+    nn = 0                                 # NUISANCE columns an observation brings itself ({"nu": {name: value}}:
+    keys = sorted({k for ob in obs for k in (ob.get("nu") or {})})   # a shading read's albedo / exposure field per view)
+    if keys:
+        Cn = np.array([[(ob.get("nu") or {}).get(k, 0.0) for k in keys] for ob in obs], float)
+        Jx, pri, m0, nn = np.c_[Jx, Cn], np.r_[pri, np.full(len(keys), NU_SD)], np.r_[m0, np.zeros(len(keys))], len(keys)
     w = 1.0 / sig ** 2
     for _ in range(3):
         A = (Jx * w[:, None]).T @ Jx + np.diag(1.0 / pri ** 2)
@@ -638,7 +643,7 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
         th = Ai @ (Jx.T @ (w * o) + m0 / pri ** 2)
         r = (o - Jx @ th) / sig
         w = 1.0 / sig ** 2 * np.minimum(1.0, huber / np.maximum(np.abs(r), 1e-9))
-    n1 = len(th) - nc
+    n1 = len(th) - nc - nn
     if span:
         g, cov = th[:n1], Ai[:n1, :n1]
         dc = D @ g
@@ -659,8 +664,8 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
     rows.sort(key=lambda r: -abs(r["sd"]))
     full = ERR_POST ** 2 * cov + np.diag([ERR[n] ** 2 for n in names])
     return {"dc": dc, "gaps": rows, "n": len(obs), "rms": float(np.sqrt(np.mean(r ** 2))),
-            "cam": th[n1:].tolist() if nc else None, "cov": full, "names": names,
-            "cam_post": np.sqrt(np.maximum(np.diag(Ai)[n1:], 0)).tolist() if nc else None}
+            "cam": th[n1:n1 + nc].tolist() if nc else None, "cov": full, "names": names,
+            "cam_post": np.sqrt(np.maximum(np.diag(Ai)[n1:n1 + nc], 0)).tolist() if nc else None}
 
 
 def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
@@ -1127,6 +1132,133 @@ def _lid_obs(head, view, rv):
     return out
 
 
+NU_SD = 2.0                 # prior sd of an observation's own nuisance columns (log units: wide)
+SIG_SHADE = 0.05            # log luminance: one shading sample (validated on clay pairs: spikes/reruns/shval.py)
+SHADE_N = 350               # shading samples per view
+SHADE_REGIONS = ("forehead_region", "left_temple_region", "right_temple_region", "left_zygomatic_region",
+                 "right_zygomatic_region", "left_parotid_region", "right_parotid_region", "left_infraorbital_region",
+                 "right_infraorbital_region", "left_cheek_region", "right_cheek_region", "chin_region")
+
+
+def _vnormals(V, F):
+    n = np.zeros_like(V)
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    for k in range(3):
+        np.add.at(n, F[:, k], fn)
+    return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+
+
+def _shade_model(head) -> dict:
+    """Per head: the model vertices of the plain-skin regions (SHADE_REGIONS: no brows, lids, nose, lips: albedo
+    edges and cast shadows), their world normals and the normals' change per identity comp (finite differences of
+    the head's own faces): {"idx", "N" (n, 3), "dN" (170, n, 3)}."""
+    if "_shade" in head:
+        return head["_shade"]
+    gr = _gnm()["gr"]
+    sel = np.zeros(len(next(iter(gr.values()))), bool)
+    for k in SHADE_REGIONS:
+        sel |= gr[k]
+    gid = np.asarray(head["gid"], int)
+    V, F = np.asarray(head["V"], float), np.asarray(head["F"], int)
+    used = np.zeros(len(V), bool)
+    used[F.ravel()] = True
+    idx = np.flatnonzero((gid >= 0) & sel[np.maximum(gid, 0)] & used)
+    N0 = _vnormals(V, F)
+    c = V[idx].mean(0)
+    if ((V[idx] - c) * N0[idx]).sum() < 0:      # outward
+        N0 = -N0
+        sgn = -1.0
+    else:
+        sgn = 1.0
+    eps = 0.5
+    dN = np.zeros((head["B"].shape[0], len(idx), 3))
+    for k in range(head["B"].shape[0]):
+        dN[k] = (sgn * _vnormals(V + eps * np.asarray(head["B"][k], float), F)[idx] - N0[idx]) / eps
+    head["_shade"] = {"idx": idx, "N": N0[idx], "dN": dN}
+    return head["_shade"]
+
+
+def _shade_obs(head, view):
+    """SHADING (reruns, 2026-10-11; Joe on tk_03: "the puffiness of her cheeks is really weird"): what no outline sees,
+    the surface INSIDE the silhouette. On the plain-skin regions (cheeks, zygoma, parotid, under the eye, chin,
+    forehead, temples) the picture's luminance is albedo x (c0 + w . n): the light (c0, w) is fitted on the model's
+    own normals at the sampled vertices (robust), and each sample's log luminance minus the log of the model's
+    predicted shading is the observation: it moves with the vertex's NORMAL, d = (w . dn / dc) / (c0 + w . n). The
+    albedo, exposure and their slow drift across the face are the observation's own nuisance columns (a quadratic in
+    the picture's coordinates per view). Samples: visible (the clay pass's depth), turned at least 25 deg off
+    grazing, on the picture's skin (view["trust"]) and not in the darkest shading (cast shadows)."""
+    from scipy import ndimage as ndi
+    from . import humanfit
+    sm = _shade_model(head)
+    cam = view["cam"]
+    kind = view["kind"]
+    sc, org = float(view.get("scale", 1.0)), np.asarray(view.get("origin", (0.0, 0.0)), float)
+    if "_Ylog" not in view:
+        a = (np.asarray(view["img"].convert("RGB"), float) / 255.0) ** 2.2
+        Y = a @ np.array([0.2126, 0.7152, 0.0722])
+        mmpx = float(cam["t"][2]) / cam["f"] * 1000.0 / sc
+        view["_Ylog"] = ndi.gaussian_filter(Y, 1.5 / mmpx)       # 1.5 mm: pores, freckles, noise
+    Y = view["_Ylog"]
+    H, W = Y.shape
+    Rc = humanfit._cam_rot(cam)
+    X = np.asarray(head["V"], float)[sm["idx"]]
+    Xc, px = _cam_points(cam, X)
+    px = (px - org) * sc
+    nc_ = sm["N"] @ Rc.T
+    facing = -nc_[:, 2]                                          # the camera looks along +z
+    _, ps = clay(head, cam, passes=True)
+    zb = ps["zb"]
+    kz = zb.shape[0] / float(cam["size"][1])
+    qx = np.clip((px / sc + org)[:, 0] * kz, 0, zb.shape[1] - 1).astype(int)
+    qy = np.clip((px / sc + org)[:, 1] * kz, 0, zb.shape[0] - 1).astype(int)
+    vis = np.abs(zb[qy, qx] - Xc[:, 2]) < 0.004
+    ix, iy = np.round(px[:, 0]).astype(int), np.round(px[:, 1]).astype(int)
+    ok = vis & (facing > 0.42) & (ix >= 2) & (ix < W - 2) & (iy >= 2) & (iy < H - 2)
+    if "hair" in head:
+        ok &= ~np.asarray(head["hair"], bool)[sm["idx"]]        # the hairline / a clay picture's hair cap
+    if view.get("trust") is None and view.get("style") == "photo":
+        view["trust"] = photo_masks(view["img"], cam, head, origin=org, scale=sc)[1]
+    if view.get("trust") is not None:
+        tr = ndi.binary_erosion(view["trust"], iterations=max(int(2.0 / (float(cam["t"][2]) / cam["f"] * 1000.0 / sc)), 1))
+        ok &= tr[np.clip(iy, 0, H - 1), np.clip(ix, 0, W - 1)]
+    if ok.sum() < 60:
+        return []
+    k = np.flatnonzero(ok)
+    y = Y[iy[k], ix[k]]
+    n = nc_[k]
+    A = np.c_[np.ones(len(k)), n]
+    use = y > 0.02
+    sol = np.zeros(4)
+    for _ in range(5):
+        if use.sum() < 40:
+            return []
+        sol = np.linalg.lstsq(A[use], y[use], rcond=None)[0]
+        r = y - A @ sol
+        use = (np.abs(r) < 2.5 * r[use].std()) & (y > 0.02)
+    S = A @ sol
+    good = (S > 0.35 * np.median(S[use])) & (y > 0.25 * np.median(y[use]))     # not the shadow side's floor
+    k, y, S, n = k[good], y[good], S[good], n[good]
+    if len(k) < 40:
+        return []
+    if len(k) > SHADE_N:
+        pick = np.round(np.linspace(0, len(k) - 1, SHADE_N)).astype(int)
+        k, y, S, n = k[pick], y[pick], S[pick], n[pick]
+    wv = sol[1:]
+    dNc = np.einsum("knc,dc->knd", sm["dN"][:, k], Rc)                # (170, n, 3) camera frame
+    J = (dNc @ wv) / S[None, :]                                       # (170, n)
+    u = (px[k] - px[k].mean(0)) / max(float(np.ptp(px[k][:, 0])), float(np.ptp(px[k][:, 1])), 1.0)
+    o = np.log(y) - np.log(S)
+    out = []
+    for i in range(len(k)):
+        nu = {f"sh_{kind}_1": 1.0, f"sh_{kind}_x": u[i, 0], f"sh_{kind}_y": u[i, 1], f"sh_{kind}_xx": u[i, 0] ** 2,
+              f"sh_{kind}_xy": u[i, 0] * u[i, 1], f"sh_{kind}_yy": u[i, 1] ** 2}
+        out.append({"type": "shade", "view": "shade:" + kind, "name": f"shade_{kind}_{i}", "o": float(o[i]), "J": J[:, i],
+                    "sig": SIG_SHADE, "nu": nu, "px": list(map(float, px[k[i]])),
+                    "vid": int(sm["idx"][k[i]])})
+    view["_shade_light"] = (float(sol[0]), [float(x) for x in sol[1:]], int(len(k)))
+    return out
+
+
 SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture's traced border
 
 
@@ -1223,7 +1355,7 @@ def kind_of(yaw: float) -> str:
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
 
 
-def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False) -> tuple:
+def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -1266,6 +1398,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     extras.append(lambda h, vw, lev=lev: _lip_obs(h, vw, lev))
                 except Exception as e:  # noqa: BLE001
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
+        if shade:
+            extras.append(_shade_obs)
         view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
         views.append(view)
     if iris_mm and np.isfinite(iris_mm):       # the turned views draw the limbus at the PICTURE's iris size (the limbus'
@@ -1275,11 +1409,11 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
 
 
 def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
-            prior_off=None, lids: bool = False, lips: bool = False) -> dict:
+            prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
-    head, views, notes = reference_views(name, hair, lids=lids, lips=lips)
+    head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     res = read(head, views, rounds=rounds, cam_sd=cam_sd, **({} if prior_off is None else {"prior_off": prior_off}))
@@ -1289,7 +1423,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "shade")}
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))

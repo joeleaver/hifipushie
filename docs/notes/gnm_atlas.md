@@ -4334,3 +4334,30 @@ cheek zones' sculpt), then as observations in the solve if it validates on known
   hold for heads this close); the right PROFILE separates them (tk_T06 has her nose and chin line, the class mean a
   small nose and weak chin). So: texture carries most of the likeness, the OUTLINE the rest; the joint solve gets the
   outline. Cheek volume (Joe's catch) needs shading.
+
+### The SHADING read (Joe: "shading read please"): built, does NOT validate, left OFF (2026-10-11)
+- face_ruler._shade_obs (+ _shade_model, _vnormals; compare(shade=True); OFF by default, block_in_solve does not use
+  it): on the plain-skin regions (cheeks, zygoma, parotid, infraorbital, chin, forehead, temples) per sampled visible
+  vertex: o = log(picture luminance, 1.5 mm blur) - log(c0 + w . n) with the light (c0, w) fitted robustly on the
+  model's own normals; J = (w . dn/dc) / (c0 + w . n) (dn/dc by finite differences on the head's faces); the albedo
+  / exposure and their drift = six NUISANCE columns per view (a quadratic in picture coordinates; face_ruler.solve
+  now takes any observation's own "nu" columns, prior NU_SD). 350 samples a view.
+- VALIDATION on clay pairs (spikes/reruns/shval.py, shdiag.py: head A = tk_T06, the "picture" = clay of A + a known
+  change under a known light through A's three cameras; only shading in the solve). First run invalid (my lights
+  saturated likeness.render: its light is (c0, w, scale), lum / scale then sRGB). Second run:
+  NULL (B = A) reads |dc| 4.4-5.2 and 0.7 mm rms of cheek surface: the read has its own error. cheek_fullness +1.5
+  (true 1.86 mm rms along the normal): frontal light read 1.13, corr +0.76; side light corr -0.29. cheek_fullness
+  -1.5: corr -0.55 / +0.74. sculpt:cheeks +2 mm: +0.27 / +0.83. sculpt:malar, random: ~0.
+  WHY (shdiag.py, nuisance taken out): the null residual's sd is 0.026 (front) / 0.027 (3/4) / 0.072 (profile) log
+  units ON CLAY from the same renderer; a 1.9 mm cheek change is a predicted 0.045 / 0.053 / 0.092: the SIGNAL of a
+  2 mm cheek difference is ~5 % of luminance, the same size as the read's own error on clean clay, and real photos
+  add specular, scattering, occlusion and cast shadows at 10-30 %. Observed vs predicted change correlates only
+  0.50-0.64 on the best case. So: lambertian shading with a 4-parameter light cannot read cheek fullness to the ~2 mm
+  that matters, not on clay and less on a photo. NOT put into block_in_solve.
+- What could: the cheek ON A SILHOUETTE (a reference at an angle where the near cheek makes the outline: a head
+  turned ~20-30 deg, or tilted down / up; for generated references that is a shot-brief item), a second 3/4 from the
+  other side, or Joe's eye + a hand cheek_fullness / sculpt:cheeks step after the solve (the solve has no cheek data,
+  so it only pulls such a step back toward the class mean by the prior).
+STATE / NEXT (tooling): joint solve = outlines + irises + limbus + lids + lips (in, pushed); shading built, failed
+validation, off. Open: cheeks (above), brow band and alae in the solve, tests for the new observations, the guide's
+3b text, the table's bad front rows, then the solve on Garrett / lt19 / jw with judging sheets.
