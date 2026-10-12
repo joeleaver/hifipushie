@@ -1292,3 +1292,208 @@ a few thick loose locks); (2) the tail's outline: single hairs and thin locks le
 reaches only 2 x lock width), a ragged end (lengths by lock AND a slow curl at the ends), fit fullness / length to her
 mask (hscore's tail px) instead of by eye; (3) the top knot / high ponytail hairline at the temples (hair running up
 across the line); (4) the part's notch; (5) Cycles look calibration for th_* (dark, brown).
+
+## Joe on tesshair4 (2026-10-12, th_20)
+Agreed read of th_T48: tail poofed and close in shape, wisps work from the side. Still wrong, in order: (1) the FRONT
+HAIRLINE is a hard dark arc with a hard V notch at the part, wisps barely visible from the front; (2) the TEMPLE reads as
+shaved skin in the three-quarter (and the toothed temple hairline of the high ponytail / top knot); (3) the TAIL from
+behind: rope-like S locks, an even end, ~12 % too big in profile, covers the tie; (4) the CYCLES look is dark and
+uncalibrated. Round five, "## tesshair5".
+
+## tesshair5 (2026-10-12, "tesshair5" agent, branch `worktree-agent-a3e04a545de405a3f`): a soft hairline, the temple as hair, a tousled tail, Cycles calibrated
+STATE / NEXT: DONE: the hairline as an EDGE BAND (`gather.edge`, style word `hairline`), a part that wanders (`gather.zig`),
+wisp kinds (baby hairs `wisps.baby`, thick loose locks `wisps.loose`), the temple / sideburn strip rooted again, a
+tousled tail (`tail.tousle` -> ragged / strays / in_step), the tail fitted to her mask by measure (tailfit.py), Cycles
+look keys `look.cycles_width` / `cycles_sat` fitted by measure (cyccal.py) + the finding that every "Cycles" column of the
+tesshair sheets so far was rendered at 2 transmission bounces; and the bare temple's REAL cause: the hairline puts the ear
+1.8 cm above tess_a1's ear (ear.py; fixed on the model with groom.hairline ear / sideburns, NOT yet in hair.hairline).
+BEST for Tess = th_T56 (tie_hair + groom_hair on tess_a1, style / look / hairline patch below). Sheets
+workspace/human_renders/th_30 (reference | T56 EEVEE | T56 Cycles | T48 EEVEE | T48 Cycles), th_31
+(close-ups at the same pixels), th_32 (riffs th_Q* over th_S*), th_33 (the `hairline` word + the tight riffs' temples).
+NEXT: the list at the end of this section.
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair5/ (copies of the .sh in spikes/tesshair5/): run.sh <script> (this
+worktree's code on the main workspace, capped); go.sh <NAME> (th_<NAME> = tess_a1 + server.tie_hair(styles/<NAME>.json,
+carry_from th_T34, look = looks/<NAME>.json) THROUGH THE TOOL (riff5.py) + close-up tiles); cu.sh <model> [iso variant]
+[views] (close-ups at ~0.28 mm a pixel: FOV / DZ / SIZE / TAG env; 27 s for three views); riffs.sh <NAME..>; cy.sh <model>
+<tag> <look name> (cyccal.py); final.sh; tests.sh; patch/ (the edits as scripts: this harness refused heredocs that touch
+the worktree). Scripts `spikes/tesshair5/`: lists.py (the styles), riff5.py, cc.py (crops), hl.py (hairline by azimuth,
+look, lock counts), dbgs.py / dbgj.py (the strip's locks, the strands job's per-lock numbers), ear.py (where the ear is
+against the hairline's idea of it), tailfit.py, cyccal.py, shots5.py, mk_sheets5.py. Models: th_T50 (= T48's style with
+round four's code: the baseline), th_T51 .. T55 (rounds), th_T56 (BEST), th_S1..S6 (riffs; th_S7 = S1 with the ear fix,
+first try), th_H0 / H5 / H10 (hairline dial). th_T56 = tie_hair(style {"tie": "low", "side": 20, "tightness": 0.85,
+"neatness": 0.95, "wisps": {"amount": 1.0, "softness": 0.7}, "tail": {"length": 0.2, "wave": 0.6, "fullness": 0.66,
+"tousle": 0.55}}, carry_from th_T34, look {"cycles_width": 1.8, "cycles_sat": 0.65}) + groom_hair(groom {"hairline":
+{"ear": -0.013, "sideburns": 0.035}}, replace=True).
+
+### What her pictures show (read before building; crops /mnt/data/hifipushie/tesshair5/out/ref/)
+- Front hairline: NO line. On her right the hair thins to single fine hairs over ~1 cm, lying sideways along the
+  hairline; on her left the hair off the part drapes over the forehead's corner and one thick loose lock swoops from the
+  part past the brow's tail to the cheekbone. The part is a pale scalp line 2-3 mm wide that wanders, hair standing up
+  on both banks; no V.
+- Temple (three-quarter, profile): a dense dark mass swept back over the ear's top right down to the ear; its front edge,
+  from just behind the brow's tail down in front of the ear, is a soft fringe of short fine hairs. FEW long hangers.
+- Tail from behind: the band shows; the hair fans out of it in soft sheets (neighbouring strands wave together), full
+  by ~8 cm, ~11 cm wide, a ragged end of pointed wisps that flick out, single hairs all round the outline.
+
+### Why th_T48 could not do it (each isolated by rendering lock classes alone: cu.sh <m> 'only:tg0_*+S.under:0')
+- The hard arc and the V: NOT the hairline row (drawn alone, tg0_*, it is a fair soft arc). The INNER locks (tg1_*:
+  the part rows and the first blue-noise roots) are 3.8 cm planks whose strands all start on one line (roots 0); beside
+  the part they run ALONG the hairline, so their sides and starts are the hard edge, the stair steps and the V.
+- The bare temple: between the hairline and where the inner roots begin (0.6 x spacing = 12 mm) there was no root but
+  the one row on the line, and round four stopped rooting that row on the sideburn. In front of the ear the hair is a
+  strip 1-2.5 cm wide: all of it was in that no-root band.
+- EEVEE never draws a strand under a pixel wide, so a thinned row still reads dense: a ramp needs strands drawn FINE.
+
+### The construction now
+- EDGE BAND (`hair_flow.roots` / `gather`, tie key gather.edge 0..1): fine blue-noise roots (0.36 x spacing apart) from
+  the line to a whole spacing in (over the first inner roots). Their locks: width 0.42-0.62 x spacing, lift x 0.35-0.8,
+  strands `density` x (1 - edge x 0.8 x (1 - ramp)), `fine` = edge x (1 - ramp) (a new per-lock strand attribute hp_fn
+  -> hp_fine: part transparent in EEVEE), `rim` 0.8 + edge (hp_ex: the lens's Edge per lock, strands thin toward the
+  lock's sides), `roots_m` 8-28 mm (strand starts staggered in METRES); ramp = smoothstep(depth / (0.6 x spacing)).
+  At the temple / sideburn (az 40-100) the ramp is full by 0.25 x spacing and density x (1 + 1.5 x ramp): the strip has
+  one layer of hair, its own. The sideburn's lowest fringe (below the ear's top - 11 deg) grows no lock. Inner locks
+  rooted within 3.5 cm of the line (in front of az 60-90): width 1.9 -> 1.4 x spacing, rim up to 2.2, roots 0.6 with
+  roots_x 3. gather.edge 0 = round four exactly (same random stream).
+- PART (`gather.zig` m, `hair_flow._zig`): the part rows and each root's bank follow x = xp + zig x (sin + 0.45 sin at
+  0.41 x the wavelength), wavelength 2-3 cm, phases from the seed. Style: 4.5 mm x hairline.
+- WISP KINDS (`hair_flow.wisps`, tie keys wisps.baby / wisps.loose, counts a side): "baby" (lock names twb*: 1.2-4 cm, 2-5
+  hairs, 1.5-4 mm, rooted from 3 mm outside to 5 mm inside the line anywhere from under the part to the sideburn; half
+  lie back the way the hair was combed and end in it, half droop along the skin; curl x 4 at 0.4 x the wavelength);
+  "loose" (twl*: 18-45 hairs, 6-11 mm, 11-19 cm, from az 20-58, drawn back toward the tie over the gather and drooping:
+  the tucked wisp's way). Soft wisps in front of the ear are now a short fringe (x 0.45 / 0.7 / 1 of their length), tuck
+  0.3 -> 0.45, a tucked one never climbs.
+- TAIL (`hair_flow.tail`, tie keys tail.ragged / strays / in_step): ragged = lock lengths 1 - 0.35 x ragged x U, taper
+  0.35 + 0.2 x ragged, the profile opens as a fan (0.18 at the band, full by 9 cm, no swell), offsets ABOVE the bundle's
+  line come in over the first 12 cm (x 0.6: the band shows); in_step = one wave through the bundle (phase by the lock's
+  place in the section, plane shared, swing nearly round: 0.45 + 0.4 x in_step in quadrature), twist x (1 - 0.6 x
+  in_step); strays = wisp-object locks (names ty*: 1-4 hairs, 3-9 cm) that ride a tail lock for 1-3 points, then leave it
+  outward with a curl, falling. Strands: clump 0.3 - 0.15 fu + 0.3 x tousle with free.clump_shape 0.6 + 0.35 x tousle and
+  tip_spread 0.6 - 0.5 x tousle (POINTED wisp ends), density 1 + 0.8 x tousle, free.random 0.35 (sub clumps nearly in
+  step), flick + 14 mm x tousle. The band's ring x 0.7.
+- STYLE WORDS (hair_flow.TIED): `hairline` 0..1 (default 0.8 - 0.3 x neatness) -> gather.edge, zig, wisps.baby = 70 x
+  hairline; `wisps.loose` n a side (default round(2.5 x amount), 0 toward a tie above el 30); `tail.tousle` 0..1
+  (default 0.25 + 0.5 x wave) -> ragged 0.25 + 0.75 t, strays (10 + 50 t)(0.5 + fu), in_step 0.7.
+- LOOK KEYS (hair.LOOK, blender_strands.material / cycles_width, blender_scene.hair_look): `cycles_width` (x the strands'
+  hp_profile Radius for a Cycles render only), `cycles_sat` (the colour's saturation before the Cycles luminance fit).
+- Tests: test_hair_flow 17 (5 new: the band, baby hairs + loose locks, the tail's tousle, the look keys; the sideburn
+  test now asks for hairline 0), tied 14, loose 11, lift 4, strands 24, toolsets 8 pass.
+
+### Rounds (th_T51 / T52 = go.sh, close-ups cu.sh)
+- T50 (round four's code, T48's style, close up): the V and stair steps, the temple bare from the brow's tail to the ear.
+- T51 a: band + zig + kinds: the V smaller but dark stair PLATES beside the part (the inner planks, isolated above);
+  the temple a gauze; loose locks of 30-70 hairs hanging straight down beside the eye (stiff brushes), a comb of
+  hangers down the cheek in profile. b: inner locks near the line soft (rim, roots, narrower): V and steps GONE, the part
+  a pale wandering line. c: strip denser (ramp full by 5 mm, density x 2.5), hangers short, loose locks swept back.
+- Tail: first try (ragged, in_step, strays, free loose + 0.3 x tousle): every strand wriggled on its own (a crimped
+  wet mop): tousle is NOT strand wander. T52 (side 20): waves in ONE shared plane showed from one side only, a straight
+  broom from the other (quadrature up); strays pushed out 9 x a step were straight wires 8 cm off the tail (3.5 x, fall
+  5); open tips (tip_spread 0.6) ended every lock as a flat 2 cm chunk (clump toward the tips instead).
+- The high ponytail (th_S1): a bare wedge above the ear. Two causes: (1) the feathered starts were a SHARE of the lock's
+  length (up to 38 %): fine where the hair passes back over the strip (a low tie), 8 cm bare where it runs up out of it
+  -> roots_m; (2) with the inner locks narrowed to 1 x spacing, the stretch between the band (12 mm) and the first inner
+  roots (2 cm apart) had gaps where hair runs straight away from the line -> the band a whole spacing deep, inner locks
+  1.4 x.
+
+### The tail by measure (tailfit.py: our ID mask of the CURRENT hair against her trace mask through the fitted cameras,
+### cut at the tie's pixel; profile | three-quarter)
+| model | style side / length / fullness | IoU | px below the tie vs hers | length mm (hers 175 / 162) | width mm (hers 154 / 105) |
+|---|---|---|---|---|---|
+| th_T48 | left (30) / 0.23 / 0.6 | 0.665 / 0.547 | +31 % / +3 % | 217 / 166 | 161 / 115 |
+| th_T51 | 30 / 0.23 / 0.6, tousled | 0.639 / 0.509 | +19 % / +5 % | 206 / 164 | 146 / 103 |
+| th_T52 | 20 / 0.2 / 0.66 | 0.632 / 0.621 | +1 % / -11 % | 178 / 148 | 137 / 100 |
+| th_T53 | 20 / 0.21 / 0.66 | 0.618 / 0.648 | +9 % / -7 % | 198 / 155 | 129 / 101 |
+| th_T54 | 20 / 0.2 / 0.76 | 0.647 / 0.611 | +5 % / -2 % | 182 / 147 | 149 / 113 |
+| th_T55 | T54 + the hairline's ear lowered | 0.599 / 0.631 | +13 % / +3 % | 185 / 154 | 177 / 121 |
+| th_T56 = BEST | 20 / 0.2 / 0.66, ear lowered | 0.613 / 0.637 | +8 % / -7 % | 174 / 143 | 154 / 110 |
+(T54 -> T55 changed only the hairline: the tail's own random draw moved its profile width 149 -> 177 mm. The measure
+is good to about +-10 % a draw: fitting closer than that is fitting the seed.)
+The side was the big one: at 30 deg the tail hung 3-4 cm further out to her left than hers in the three-quarter (the
+profile cannot see it). The profile's whole-mask IoU is LOWER than T48's (0.647 vs 0.665) although the tail fits
+better: our hair's edge at the temple now carries fine hair 1-1.5 cm in front of her trace's (thresholded) mask, and
+the ID pass counts every fine hair as hair; her head hair also stands 1 cm higher over the crown (the style's
+tightness, Joe's pick).
+FOUND: a model's own stage .blend keeps the hair it was BUILT with (stage.ensure's key leaves the hair out), and
+hscore.py's ID pass renders that file in mode "render": after a regrow its masks are stale. tailfit / cyccal / shots5
+render the model's current spec hair on the shared stage (hair_look job + id_views).
+
+### Cycles by measure (cyccal.py: dense hair only = our ID mask AND her mask, eroded; L* / chroma / hue of the shadow,
+### mid, highlight bands and the mean; front | profile, 512 px, 64 samples)
+FOUND FIRST: spikes' stage.shoot(engine="cycles") renders with max 4 bounces, 2 transmission. blender_scene's own
+comment: that "leaves fair hair grey and dark hair flat". hair.look_hair(engine="cycles") sets hair_bounces 10. Every
+"Cycles" column of th_03 .. th_23 was the 2-bounce render: the near-black hair. With 10 bounces the same look reads
+chestnut. So most of "dark" was the spike's render path, not the look.
+| look | mean L* front (hers 21) | mean L* profile (hers 16) | chroma (hers 9 / 8) | hue (hers 69 / 71) |
+|---|---|---|---|---|
+| th_T34's look, 10 bounces | 19 | 22 | 12 / 14 | 66 / 67 |
+| + cycles_width 1.8 | 15 | 21 | 13 / 14 | 65 / 67 |
+| + cycles_sat 0.65 (th_T54's look) | 16 | 22 | 10 / 9 | 63 / 65 |
+| EEVEE (unchanged) | 20 | 17 | 9 / 9 | 61 / 62 |
+At true strand width (37 um radius, 70k strands) the head hair is a see-through veil in Cycles (skin through the
+temple): cycles_width 1.8. Dense dark hair came out too saturated (chroma 13-14 vs 8-9): cycles_sat 0.65. Mean lightness
+over both views 19.0 vs hers 18.5; NOT matched per view (front 5 L* dark, profile 6 light: our front top is in its own
+shadow where hers is lit, the lighting / the hair's lift, not the colour). Hue 4-6 deg redder than hers in both engines.
+Cost: 3-4 min a 512 px Cycles frame on this machine (and it waits for the heavy slot).
+
+### The bare temple's real cause: the hairline's EAR is not the mesh's ear (ear.py)
+After the band the low-tie temple read as hair, but the high ponytail and top knot still had a bare wedge above and in
+front of the ear with a toothed edge over it. The strands job (dbgj.py) showed 25 strip locks a side rooted there with
+16-128 strands each, starting within 1-3 cm: the hair WAS there; the wedge is OUTSIDE the hairline. hair.hairline puts
+the ear's top at lm_brow_outer z + 4 mm (-1.46 cm from the head centre on tess_a1) and runs the line 1 cm over it (-0.5
+cm); the scalp rays put the real ear's bump at z -3.2 .. -3.9 cm (az 100). So the line runs 2.5-3 cm above the ear and
+the sideburn ends above the ear's top. A low tie's hair passes back over that band and hides it; toward a high tie
+nothing does. On the model: groom.hairline {"ear": -0.013, "sideburns": 0.035} (through groom_hair; guide). th_S7 / T55:
+the wedge is gone on the high ponytail, Tess's temple is a dense mass down to the ear like hers. This is also what
+round four's "shaved" three-quarter was (it un-rooted the tuft that had covered some of it).
+NOT DONE: hair.hairline finding the ear on the mesh (it would move every human model's hairline on its next regrow:
+its own change, with a look at garrett / jw / lt19).
+
+### Dead ends
+- Thinning the hairline row alone (density) to soften the edge: the edge was not that row.
+- Tousle as strand wander (free.loose 0.45): a crimped mop.
+- Suppressing every offset above the tail's line by 0.8 to show the band: her tail does rise behind the tie in profile
+  (the masks: a red cap over ours); 0.6 over 12 cm with the fan profile keeps the band visible from behind.
+- Loose locks hanging by the wisps' zone rule (down the cheek): stiff brushes; toward a high tie (no way back over the
+  temple) a strap across the cheek: none by default there.
+
+### Riffs (th_S1..S6 = round four's six style calls + the hairline's ear lowered; sheet th_32, round four above, now below)
+All six still read at a glance; none got worse. Changed: every hairline is soft (thin rim, baby hairs), the parts are
+pale wandering lines without a notch (S2, S3, S4, S6), the high ponytail and top knot (S1, S5) have hair down to the
+ear instead of the bare wedge, tails are a little tousled by their wave (S2: a ragged end, a few strays; S1 / S3 at wave
+0.1 nearly as brushed as before: tousle defaults to 0.05 + 0.75 x wave, after 0.25 + 0.5 x wave chopped the sleek high
+tail into chunks at five heights). Still there: the temple hairline of S1 / S5 is TOOTHED (th_33, close up): hair that
+runs straight up off the line shows every lock's start as a tooth; the band thins it less than at the forehead because
+EEVEE draws even a quarter-density rim as near-solid from the side.
+
+### BLUNT READ of th_T56 beside her pictures (sheets th_30, th_31)
+1. FRONT HAIRLINE: better, not hers. The V notch and the stair steps are gone, the part is a pale line that opens
+   gradually, the edge thins out with fine hairs instead of stopping. But it is still a neat arc: her hair DRAPES over
+   the forehead's corners (the style's tightness 0.85 holds ours back) and she has several times more loose hair in
+   front; from the front our wisps are a few thin strands at the temples, the two thick loose locks lie back over the
+   temple and hardly show from the front.
+2. TEMPLE: yes for Tess. In the three-quarter and the profile it is a dense mass swept back down to the ear with a
+   soft fringe in front of it, like hers (after the hairline's ear was lowered: before, a gauze over skin). Ours is
+   sleeker and its fringe has a few straight wiry hairs. High ponytail / top knot: the bare wedge is gone, the edge is
+   still toothed.
+3. TAIL: partly. From behind the band shows, the hair fans out of it, the end is ragged with pointed wisps, hairs
+   leave the outline; it no longer reads as ropes. But it reads as stiff choppy STRAW where hers is soft brushed-out
+   hair: strands a pixel wide with dark air between, locks straighter than hers, strays few and thin. Size by measure:
+   profile area +8 %, three-quarter -7 % (T48: +31 % / +3 %), length 174 / 175 mm, width 154 / 154 mm in profile; it
+   reaches 2-3 cm further back than hers in profile.
+4. CYCLES: usable now, not matched per view. Chestnut with lit strands instead of near-black (the bounces), solid over
+   the scalp (width), chroma hers (sat); mean lightness right over both views but the front is ~5 L* dark and the
+   profile ~6 light. Grainy at 64 samples; 3-4 min a frame.
+
+NEXT: (1) hair.hairline: find the ear on the mesh (the scalp rays' bump) instead of brow_outer + 4 mm, with a look at
+every human model's hairline before / after (the real fix for bare temples; today a per-model groom patch); (2) the
+tail as HAIR, not straw: more, finer strands in the free object (count by its volume, drawn part transparent like the
+rim), strand-level wave shared across neighbouring locks, more and longer strays (hers has dozens of 10-15 cm single
+hairs round the outline), then re-measure; fit the tail over 3-4 seeds, not one (the measure moves +-10 % a draw);
+(3) the front for a LOOSER reading of her: tightness ~0.6 with the edge band (drape over the forehead's corners),
+loose locks that swoop from the part across the forehead's corner (hers), judged from the front; (4) toothed temple
+of up-styles: locks that run straight off the line need their strands' starts spread ACROSS the band (root each
+strand on the scalp under it, the scalp layer's way) rather than along the lock; (5) tools: tailfit / cyccal / shots5
+as look_hair options (matched-camera ID mask of the CURRENT hair, band colours, Cycles with hair bounces on the dressed
+stage), a look calibration call that sets cycles_width / cycles_sat from a reference; fix hscore.py's stale ID pass;
+(6) Cycles per view: the front top reads dark (hair running away from the camera under a frontal key): check the
+photo light fit and the hair BSDF's roughness against the front picture; hue 4-6 deg red in both engines.

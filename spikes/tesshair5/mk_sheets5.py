@@ -1,4 +1,4 @@
-"""mk_sheets5.py [best=th_T53]: round five's sheets into workspace/human_renders (tesshair3's sheet3.py layouts):
+"""mk_sheets5.py [best=th_T56]: round five's sheets into workspace/human_renders (tesshair3's sheet3.py layouts):
 th_30_tess_soft_hairline.png   REFERENCE | new best EEVEE | new best CYCLES (calibrated look, hair bounces) | th_T48
                                EEVEE | th_T48 Cycles (round four's tile); rows front / three-quarter / profile (fitted
                                cameras), back from her left, back from her right, right profile (unseen)
@@ -13,7 +13,7 @@ import sys
 
 from PIL import Image
 
-best = dict(a.split("=") for a in sys.argv[1:]).get("best", "th_T55")
+best = dict(a.split("=") for a in sys.argv[1:]).get("best", "th_T56")
 O = "/mnt/data/hifipushie/tesshair5/out/"
 O4 = "/mnt/data/hifipushie/tesshair4/out/"
 R = "/home/joe/dev/s0urc3/docs/img/tess_ref_full/"
