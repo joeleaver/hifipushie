@@ -29,8 +29,11 @@ with tarfile.open(os.path.join(job, "data.tar")) as tf:
     tf.extractall(os.path.join(job, "data"))
 os.remove(os.path.join(job, "data.tar"))
 py = os.path.join(env, "_torch", "bin", "python")      # the torch venv in the machine's cache (remote_train.sh's setup)
-code = sh([py, "-c", "import torch; print('step: torch', torch.__version__, 'cuda', torch.cuda.is_available(), "
-                     "torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-')"])
+code = sh([py, "-c", "import torch, sys; ok = torch.cuda.is_available(); print('step: torch', torch.__version__, 'cuda', ok, "
+                     "torch.cuda.get_device_name(0) if ok else '-', flush=True); sys.exit(0 if ok or '" + os.environ.get("DL_ALLOW_CPU", "0") + "' == '1' else 3)"])
+if code:
+    subprocess.run(["sh", "-c", "nvidia-smi; ls -la /dev/dxg /usr/lib/wsl/lib 2>&1 | head -20; " + py + " -c 'import torch; print(torch.version.cuda); torch.cuda.init()'"],
+                   stdout=log, stderr=subprocess.STDOUT, cwd=job)
 runs = [ln.split() for ln in open(os.path.join(job, "params.txt")).read().splitlines() if ln.strip()]
 for k, args in enumerate(runs):
     if code:
