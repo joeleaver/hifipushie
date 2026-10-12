@@ -5325,6 +5325,9 @@ nt_S06 / nt_I06 (Tess: size held / iris-sized), ng_S05 (Garrett, paintings), nh_
 accepted heads, which are untouched. Sheets human_renders/gn_*.png. VERDICT: eyes the same to slightly better
 (contact, no sunken ball on Garrett; the visible eye 1.9-3.5 mm long at the outer corner), mouth = a real gain for
 Tess (she had none), dressing poor (no teeth at jaw-open, a red slab of tongue). Export with face shapes works.
+THE OUTER-CORNER GAP IS OURS ("### Outer corner"): gnm_base < 1 and the dimorphism field (MakeHuman under GNM's
+lids) open 0.7-0.9 mm between GNM's lateral lid and GNM's ball; on the TRUE GNM BASE (nt_N06, ng_N05: gnm_base 1,
+dimorphism 0, eyes 1) it closes and the eyes read better; proposed as the new start default, Joe to decide.
 NEXT: the list at the end of this section (jaw bone deferred by Joe; size by the iris needs a GNM-native benchmark;
 lateral eye pocket; mouth dressing).
 
@@ -5737,3 +5740,81 @@ BLUNT, per feature:
 - The lips crossing counts as "closed" in onemesh.template (a negative gap): make it |gap|.
 - The dressed stage (spikes/garrett3/stage.py) drops `interior`: it cannot show the kit's mouth; with GNM's mouth as
   the default that line can go.
+
+### Outer corner (Joe: "Seems like it shouldn't be that way out of the box for gnm."): it is OURS, and it is the half-blend
+ISOLATION LADDER (spikes/gnmnative/ladder.py, raw_blender.py, /mnt/data/hifipushie/gnmnative/ladder.sh, which.sh;
+sheet workspace/human_renders/gn_outer_corner_ladder.png: REFERENCE | rungs 1-5, rows front / three-quarter / side;
+rung 1 = GNM's own mesh in plain materials, the others dressed, all EEVEE). Stand-off from the scleral sphere over the
+LATERAL third of the eye (template x beyond 5 mm from the centre; mm; ring 0 = the lid margin's outer edge, -1 / -2 =
+the socket lining behind it, where a lid lies on the ball):
+| rung | ball r | margin (0) | lining -1 | lining -2 | outer canthus vertex | lining's lateral end |
+|---|---|---|---|---|---|---|
+| 1 RAW GNM, female class mean (one evaluation, no body, no field) | 14.62 | +0.55 | -0.13 | -0.24 | +0.46 | -0.25 |
+| 2 + our path only (one mesh at gnm_base 1, eyes 1, dimorphism 0; field, meshing) | 12.37 | +0.47 | -0.11 | -0.21 | +0.39 | -0.21 |
+| 3 + the body blend as Tess has it (gnm_base 0.5, dimorphism 1.3, eyes 1.05) | 13.46 | +1.29 | **+0.75** | **+0.66** | +1.67 | +1.08 |
+| 4 Tess nt_I06 (rung 3 + her identity, iris-sized) | 13.38 | +1.56 | **+0.93** | **+0.85** | +2.25 | +1.42 |
+| (tess_a1, our 12.6 mm ball) | 12.60 | +1.20 | +0.60 | +0.48 | +1.55 | +0.86 |
+| 5 TRUE GNM BASE Tess nt_N06 | 12.39 | +0.68 | +0.03 | -0.05 | +0.87 | +0.09 |
+- RAW GNM has NO gap: its lining lies on its ball to the corner (-0.1 .. -0.25 mm) and the ball passes 1.0 mm under
+  the canthus. Our meshing path changes nothing (rung 2 = rung 1 x 0.846). The gap appears at RUNG 3: 0.7-0.9 mm of
+  air between the lining and the ball along the lateral third, 1.1-1.4 mm at the lining's lateral end. One setting at a
+  time on rung 2 (lining -1): gnm_base 0.5 alone +0.27 (opens 0.38 mm), gnm_base 0.0 alone +0.65 (Garrett's setting),
+  dimorphism 1.3 alone +0.37, eyes 1.05 alone -0.12 (harmless: it scales the ball and the orbit alike). So it is
+  MakeHuman's head under GNM's lids (gnm_base < 1) and the dimorphism field (headfit's MakeHuman female - male head
+  difference laid on GNM's vertices: also NOT a GNM field), which pull GNM's lateral lid off GNM's ball. Nothing is
+  dropped at the canthus: GNM's eye_sockets lining (608 vertices) is in the skin's point set and is drawn; with the gap
+  open, what shows in it is that lining, painted as skin, and the sclera beyond it.
+- What is GNM's own and stays on every rung: the VISIBLE WHITE WEDGE to a point at the outer corner in the three-quarter
+  view (rung 1 has it too: GNM's lateral canthus is a sharp V over a 14.6 mm sphere, and the sclera is plain white to
+  the corner). That part is shading, not shape: (b) no lash-line shadow, no conjunctiva / lateral-canthus tint, an
+  evenly lit sclera (our eye paint darkens under the upper lid and at the lid contact, not the lateral corner).
+- (a) Vergence: the front picture's camera stands 0.815 m from her, so each eye turns in 1.9 deg; ours look at a
+  point 4 m away (0.4 deg) and the eye ruler's model looks straight ahead. That is 0.36-0.45 mm of iris toward the
+  nose per eye: a quarter of the ~1.8 mm by which both canthi sat lateral of the picture's against the iris, not all.
+- RUNG 5, THE TRUE GNM BASE (Joe: "If her head is blended halfway, then it's no longer GNM-native, is it?"): right.
+  nt_N00 = the class mean with base.head gnm_base 1.0, eyes 1.0, dimorphism 0 (GNM's template + identity is then
+  what GNM itself outputs, scaled; the ball's least-squares carry is exactly GNM's own joint there: residual 0);
+  same chain, six calls, size held: nt_N06 |c| 11.41, largest 2.78 sd, |dc| 9.7, 3.2, 1.5, 0.8d, 0.9d, 0.7d (it
+  SETTLES: the half-blend chains kept see-sawing at 1-2), table 16 / 26 (nt_S06 21, nt_I06 21: lower; the rows are
+  the detector's, not chased). Garrett's paintings the same way: ng_N05 |c| 10.08, largest 2.83 sd (ng_S05 on
+  MakeHuman's head: 12.10: the true base is CHEAPER for him), table 15 / 29.
+  THE CORNER CLOSES: lining -1 / -2 at +0.03 / -0.05 mm, the lining's lateral end +0.09. Eye ruler on nt_N06 (model -
+  picture): OUTER CANTHUS +0.70 (inside the reader's 0.9; it was +1.70 .. +1.88*), fissure -1.59 (inside 1.9),
+  opening -0.33, iris hidden by the upper lid -0.77*, inner canthus +2.28* (GNM's inner-corner landmark is the
+  caruncle's tip; unchanged), upper lid's peak +2.03*, IRIS 10.16 against the picture's 11.27 (-1.11*). Lips: border
+  miss 0.23 / 0.45 mm, seam 0.28 (the best of the Tess heads).
+  WHAT IS LOST / what it looks like (tiles nt_N06; sheet gn_tess_gnm_driven_true_base.png = REFERENCE | true base |
+  nt_I06 | tess_a1): the eyes are smaller and more almond, the stare of the half-blend heads is gone: the EYES READ
+  BETTER. The face does not come out as young by itself: a squarer lower face, a heavier brow ridge and nose in
+  profile than nt_I06 (gnm_base 0.5 was chosen on 2026-10-10 because GNM's template read "fuller, older" on a young
+  woman; the solve recovers part of it, not all: what it has no read for, brow ridge and skull, stays the class
+  mean's). And the head is SMALL: on her body GNM's template is carried at 0.846 of GNM's own size (ball 12.4 mm,
+  iris 10.2, pupils 54.6 mm apart): the head's absolute size on every build of ours is the MakeHuman body's head
+  (x style.human.head_size 0.95 for her), not GNM's: an average iris says this head is ~+8 % (11.0 mm at the model
+  against 10.2). On Garrett's body the same carry is 1.04 (ball 15.2 mm).
+- WHAT STILL STANDS BETWEEN GNM'S RAW OUTPUT AND OUR HEAD on the true-base build (so "GNM-native" can be said exactly):
+  1. SIZE and PLACE: one uniform scale (the body's head size from MakeHuman's body x style.human.head_size: 0.846 for
+     Tess, 1.04 for Garrett) and a rigid placement on the body's eye line. Everything GNM, the ball included, scales
+     with it (GNM itself would keep 14.6 mm).
+  2. The NECK: from the chin level down the head's own shape is handed over to the body's through the neck's rings
+     (onemesh.neck_fade) and stitched to MakeHuman's body; GNM's neck and bib are not used.
+  3. The REST MOUTH: lip_close, a GNM lower-face expression solved by us to close the lips (GNM's basis, our
+     coefficients), then the sealed-seam field and the fill behind closed lips (field only).
+  4. TOPOLOGY ADDITIONS: the lids' extra edge loops (gnmloops: new vertices at their parents' means).
+  5. REPRESENTATION: the skin as an IMLS field over GNM's vertices (Catmull-Clark x 1), meshed at 1 mm (0.5 mm round
+     the eyes and mouth), projected; the export decimates or uses GNM's own quads (topology "wrap"). Measured: rung 2
+     = rung 1 to 0.02 mm x scale at the lids.
+  6. EYES: an analytic sphere + corneal sphere at GNM's centre, radius, limbus and cornea (not GNM's 771 eye
+     vertices), a painted iris and pupil (GNM: a recessed disc under a clear shell), gaze by our rotation.
+  7. TEETH / TONGUE: GNM's meshes as 3 / 8 mm shell solids in the field.
+  8. OURS, GNM has none: lashes, brows, skin, hair.
+  9. Still reachable and NOT GNM: gnm_base < 1 (MakeHuman's head under the face), dimorphism (MakeHuman's sex field;
+     the one-mesh DEFAULT is 0.8 for every adult whose sex is not 0.5: Garrett's heads have it), head.eyes, style
+     sliders, shape ops, sliders / warp / regions. block_in_start still writes gnm_base by age (0.5 young, 0.0 older).
+- PROPOSED FIX (not done; no hand-tuning of Tess): make the TRUE GNM BASE the block-in start's default (gnm_base 1.0,
+  dimorphism 0, eyes 1.0) and treat gnm_base < 1 / dimorphism as style keys that the build report names as "not
+  GNM-native: GNM's lids no longer lie on GNM's ball (lateral gap x mm)"; get the young face from GNM's own identity
+  (the sampler's age direction, which exists: gnm_sampler) instead of MakeHuman's head; decide the head's SIZE
+  separately (GNM's own scale, the body's, or the iris'); paint the lateral canthus (shadow / conjunctiva) for the
+  wedge that is GNM's own; converge the eyes on the picture's camera when judging against it. Then rebuild all three
+  once more on that base. For Joe to decide: rebuild on the true base now, or first settle size and the young face.
