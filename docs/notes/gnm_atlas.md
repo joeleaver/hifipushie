@@ -1,9 +1,12 @@
 # The GNM model atlas (facesliders, 2026-10-09)
 
 ## ACCEPTED STATE (read first; Joe's decisions, kept up to date by the coordinator)
-- Garrett: b3_G17 is the accepted head (2026-10-10). Joe: nose tip slightly UP ("his nose points down when it should
-  be slightly up"; b3_G16 "looks much better"), narrow bridge via the GNM sculpt route (no designed local). Later
-  Garrett work starts from b3_G17 and must not turn the tip down again (b2_G15 and rb_G14 have the old down tip).
+- Garrett: ACCEPTED HEAD `garrett_a1` = gr_G05 (refread's joint solve from the class mean: cameras refit, differential
+  anchors, parsed outlines; |c| 9.3, largest 2.9 sd). Joe, 2026-10-11, on rr_01: "honestly visually I think it's
+  better than the old one". The coordinator had kept b3_G17 on its own-dressing read; that read was wrong AGAIN
+  (LEARNINGS 1: judge on the blend / projected skin, not on our dressing). b3_G17 (2026-10-10, hand block-in, nose
+  tip slightly UP by Joe's note) is superseded; its 3/4 blend was a double image. Still unread on him: lids, nose and
+  mouth detail (110 px face).
 - Tess: ACCEPTED HEAD (Joe, 2026-10-11, on tk_07: "actually tess looks pretty good. I wouldn't mind sending that down
   the pipeline and get working on her hair again"): `tess_a1` = tk_T07 (class mean -> block_in_solve x6 with lids and
   lips in the solve -> free cheek_fullness -0.8; |c| 11.7; no fold forced; "## reruns"). It replaces the b2_T06 /
