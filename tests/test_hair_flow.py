@@ -49,8 +49,8 @@ def test_defaults_are_an_ordinary_ponytail():
     assert sum(k.startswith("tg1_") for k in locks) > 40 and sum(k.startswith("tg0_") for k in locks) > 20
 
 
-def test_top_of_the_head_runs_front_to_back():
-    sc, g, line, locks = _grow({"tie": "low", "tightness": 0.4})
+def _back_share(tied):
+    sc, g, line, locks = _grow(tied)
     back = []
     for k, lk in locks.items():
         if not k.startswith("tg"):
@@ -62,7 +62,16 @@ def test_top_of_the_head_runs_front_to_back():
                 back.append(((b - a) / np.linalg.norm(b - a))[1])
     back = np.array(back)
     assert len(back) > 30
-    assert np.median(back) > 0.7 and np.mean(back > 0.3) > 0.9, (np.median(back), np.mean(back > 0.3))  # back, not across
+    return back
+
+
+def test_top_of_the_head_runs_front_to_back():
+    # combed straight back and tight: back (+y) everywhere on top
+    back = _back_share({"tie": "low", "tightness": 0.9, "part": "none"})
+    assert np.median(back) > 0.9 and np.mean(back > 0.5) > 0.95, (np.median(back), np.mean(back > 0.5))
+    # loose with a parting: the hair leaves the part on a diagonal (out and back), still never ACROSS
+    back = _back_share({"tie": "low", "tightness": 0.4})
+    assert np.median(back) > 0.6 and np.mean(back > 0.3) > 0.8, (np.median(back), np.mean(back > 0.3))
 
 
 def test_every_way_ends_in_the_tie_and_stays_in_the_hair():

@@ -122,6 +122,12 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
         wb = _ss_t((D[:, 1] + 0.2) / 0.6)[:, None]
         tg = _unit((1 - wb) * mid_d[None] + wb * tie_d[None])
         to = tg - (tg * D).sum(1, keepdims=True) * D
+        if xp is not None:
+            # with a parting the front never climbs over the top on its way back (the shortest way from the forehead
+            # to the back of the head does): it runs back at its own height and the sag takes it down the side.
+            # Climbing, the hair off the part stayed 3-5 cm over the temples and the forehead's corners were bare
+            # (hairline 5-7 mm high by measure, Tess)
+            to[:, 2] = np.where(to[:, 2] > 0, to[:, 2] * wb[:, 0], to[:, 2])
         lost = np.linalg.norm(to, axis=1) < 1e-6  # (the tie's antipode: any way is as short)
         to[lost] = np.cross(D[lost], X) + 1e-3
         to = _unit(to)
@@ -142,7 +148,7 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
             # into a furrow all the way over the crown; never forward: swept-back hair doesn't hang over the face)
             dn = DOWN[None] - (D @ DOWN)[:, None] * D
             dn = dn * np.linalg.norm(dn, axis=1, keepdims=True)
-            dn[:, 1] = np.maximum(dn[:, 1], 0.0)
+            dn[:, 1] = np.maximum(dn[:, 1], -0.6 * np.linalg.norm(dn, axis=1))  # (forward only a little: over the forehead's corners)
             v = v + (sag * frontw * np.sin(np.pi * np.clip(prog, 0, 1) ** 0.35) * np.minimum(ang0 / (np.pi / 2), 1.0) * near)[:, None] * dn
         v = _unit(v)
         low = (v * to).sum(1) < 0.35  # (always on toward the tie)
@@ -153,7 +159,7 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
         # ear), but for `overhang` deg at the front and temples and `ears` deg round the ears
         az, el = az_el(Dn)
         fa = np.abs(_wrap(az))
-        lim = _line_at(line, az) + 1.0 - float(ga["overhang"]) * _ss_t((fa - 5) / 40) * (1 - _ss_t((fa - 62) / 22)) \
+        lim = _line_at(line, az) + 1.0 - float(ga["overhang"]) * _ss_t((fa - 4) / 22) * (1 - _ss_t((fa - 62) / 22)) \
             - float(ga["ears"]) * np.exp(-((fa - 95) / 22) ** 2)
         # ...and never further down in front of / over the ear than its top (the sideburn's line runs far below it)
         lim = np.where((fa > 52) & (fa < 112), np.maximum(lim, e_ear - 3.0 - float(ga["ears"])), lim)
@@ -200,8 +206,10 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
         aa, ee = az_el(D[i])
         far = float(np.clip(w0[i] / np.pi, 0.0, 1.0))
         top = float(np.clip(np.sin(np.radians(ee[n // 2])), 0.0, 1.0))  # (the top stands off more than the sides)
-        onp = 0.45 if hl[i] == 2 else 1.0  # (the parting's own rows lie low: lifted like the rest they were two humps)
-        puff = onp * float(ga["puff"]) * (0.55 + 0.45 * top) * min(w0[i] / np.radians(50), 1.0) * (1 + un * rng.uniform(-0.5, 0.9))
+        # (the parting's own rows lie low: lifted like the rest they were two humps; the hairline row too: lifted, and
+        # with its strands' starts staggered far along it, the hair's edge stood 5-7 mm behind the hairline: Tess)
+        onp = 0.45 if hl[i] == 2 else 0.6 if hl[i] == 1 else 1.0
+        puff = onp * float(ga["puff"]) * (0.4 + 0.6 * top) * min(w0[i] / np.radians(50), 1.0) * (1 + un * rng.uniform(-0.5, 0.9))
         lift = onp * float(ga["root_lift"]) * (1 + un * rng.uniform(-0.3, 0.5))
         ride = 0.002 + float(ga["body"]) * far
         h = (1 - t ** 3) * (ride * np.minimum(t * 6, 1) + lift * _ss_t(t / 0.15) * (1 - 0.5 * t) + puff * np.sin(np.pi * t) ** 0.9) \
@@ -471,7 +479,7 @@ def style(tied: dict) -> dict:
               "puff": round(0.002 + 0.016 * lift, 4), "root_lift": round(0.0015 + 0.008 * lift, 4),
               "body": round(0.005 + 0.005 * lo, 4), "sag": round(2.6 * lo, 3), "overhang": round(22.0 * lo, 2),
               "ears": 14.0 if p["ears"] == "covered" else 0.0, "part_length": round(0.035 + 0.06 * lo, 4),
-              "hairline_strands": {"density": 1.6},
+              "hairline_strands": {"density": 1.6, "roots": 0.3},
               "strands": {"wave": round(0.004 + 0.008 * lo, 4), "wavelength": 0.07, "random": 0.8, "flat": 1.5,
                           "flyaway": 0.0}}
     tie = {"at": [round(az, 1), el], "out": round(0.022 + 0.012 * lo, 4), "escape": 0, "gather": gather}
