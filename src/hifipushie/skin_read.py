@@ -386,6 +386,10 @@ WHITE_PX = 250          # it needs this many pixels in a view's crop
 WHITE_CHROMA = 9.0      # ... within this Lab chroma of grey (after the backdrop's white balance, when there is one)
 TONE_BOUND = 3.0        # L*: how far the plain skin's albedo may move from the PRIOR tone's without an exposure anchor
 TONE_BOUND_WHITE = 8.0  # ... and with a known white in the picture (its albedo and its light are INFERRED: 0.8, lit as the face)
+TONE_CHROMA = 5.0       # Lab a*b*: how far the plain skin's COLOUR may move from the prior's on a backdrop's white balance (a
+                        # backdrop "neutral within 7" may be 7 of real colour: Garrett's painted one read his skin +9 b*, and
+                        # exposed like the picture the head came out 5 b* too yellow: "orange")
+TONE_CHROMA_WHITE = 10.0
 TONE_SIGMA = 1.0        # L*: the solve's hold on the prior's lightness (the bound is checked after it)
 TONE_SIGMA_WHITE = 4.0
 WHITE_SIGMA = 0.15      # log: what a white's exposure is worth
@@ -859,7 +863,8 @@ def _stubble_opts(sk: dict):
     return {"amount": float(v)} if isinstance(v, (int, float)) else dict(v)
 
 
-def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True) -> dict:
+def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True,
+        prior_ab=None) -> dict:
     """spec["skin"] set from a read: {"skin": the new description, "changes": [(parameter, old, new, why)], "text",
     "residual": the regions' read before / after as the forward model has it}. groups: what may change (GROUPS).
     stubble: whether a beard shadow may be ADDED to a face that has none (default: unless skin.sex says female)."""
@@ -935,11 +940,17 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     e_sig = WHITE_SIGMA if white else 0.6
     L_sig, L_bound = (TONE_SIGMA_WHITE, TONE_BOUND_WHITE) if white else (TONE_SIGMA, TONE_BOUND)
 
-    def plain_L(x):
+    def plain_lab(x):
         s_ = copy.deepcopy(sk)
         for p_, v_ in zip(names, x[:len(names)]):
             _set(s_, p_, v_)
-        return float(lab(Wp @ sub(s_))[0])
+        return lab(Wp @ sub(s_))
+
+    def plain_L(x):
+        return float(plain_lab(x)[0])
+
+    ab0 = plain_lab(np.array([_get(sk, p) for p in names], float))[1:] if prior_ab is None else np.asarray(prior_ab, float)
+    C_bound = TONE_CHROMA_WHITE if white else TONE_CHROMA
 
     def resid(x):
         m, _ = model(x[:np_])
@@ -972,19 +983,22 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     if free_e:
         L1 = plain_L(sol.x)
         ti = [i for i, p_ in enumerate(names) if p_.startswith("tone.")]
-        if abs(L1 - L0) > L_bound and ti:
+        inside = lambda xs_: (abs(plain_L(xs_) - L0) <= L_bound and float(np.hypot(*(plain_lab(xs_)[1:] - ab0))) <= C_bound)  # noqa: E731
+        if ti and not inside(sol.x):
             xs = sol.x.copy()
             a_lo, a_hi = 0.0, 1.0
             for _ in range(12):                 # the largest share of the tone's move that stays inside the bound
                 a_ = 0.5 * (a_lo + a_hi)
                 xs[ti] = x0[ti] + a_ * (sol.x[ti] - x0[ti])
-                if abs(plain_L(xs) - L0) > L_bound:
+                if not inside(xs):
                     a_hi = a_
                 else:
                     a_lo = a_
             xs[ti] = x0[ti] + a_lo * (sol.x[ti] - x0[ti])
-            tone_note = (f"the solve wanted the plain skin {L1 - L0:+.1f} L* from the prior; held to {plain_L(xs) - L0:+.1f} "
-                         f"(the bound is {L_bound}: {'a known white' if white else 'no exposure anchor'})")
+            d1, d2 = plain_lab(sol.x) - np.r_[L0, ab0], plain_lab(xs) - np.r_[L0, ab0]
+            tone_note = (f"the solve wanted the plain skin {d1[0]:+.1f} L* / {d1[1]:+.1f} a* / {d1[2]:+.1f} b* from the prior; held to "
+                         f"{d2[0]:+.1f} / {d2[1]:+.1f} / {d2[2]:+.1f} (bounds: {L_bound} L*, {C_bound} in a*b*: "
+                         f"{'a known white' if white else 'a backdrop is a weak white balance, and no exposure anchor'})")
             sol.x[:] = xs
     m1, sk1 = model(sol.x[:np_])
     expo = float(np.exp(sol.x[np_])) if free_e else 1.0
@@ -1090,6 +1104,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
                   for i, k in enumerate(reg)}
     out = {"skin": sk1, "changes": changes, "residual": resid_rows, "exposure": round(expo, 3),
            "tone": {"anchor": c.anchor.get("lightness", "prior") if free_e else "not read", "prior_L": round(L0, 2),
+                    "prior_ab": [round(float(x), 2) for x in ab0],
                     "fitted_L": round(plain_L(sol.x), 2) if free_e else round(L0, 2), "bound": L_bound, "note": tone_note}}
     out["text"] = fit_text(out)
     return out
@@ -1155,11 +1170,11 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
         spec = store.load(dst)
         spec.setdefault("skin", {})["tone"] = {"fitzpatrick": float(tone)} if isinstance(tone, (int, float)) else dict(tone)
         store.save(dst, spec, "skin_from_reference: the stated tone (the lightness prior)")
-    prior_L = None
+    prior_L = prior_ab = None
     for k in range(max(int(rounds), 1)):
         r = read(dst, anchor=anchor, log=log)
-        f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L)
-        prior_L = f["tone"]["prior_L"]
+        f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L, prior_ab=prior_ab)
+        prior_L, prior_ab = f["tone"]["prior_L"], f["tone"]["prior_ab"]
         reads.append(r["text"]); fits.append(f)
         spec = store.load(dst)
         spec["skin"] = f["skin"]
@@ -1203,7 +1218,7 @@ FOLD_STEP = 0.25       # mm between a profile's samples
 # (skinfolds, 2026-10-12: recalibrated on the folds as GEOMETRY, spikes/skinfolds/foldval.py case A: nasolabial 0.18 /
 # 0.08 by side under a side light, marionette 0.07, mouth_corner 0.10 / 0.09, mentolabial 0.28, tear_trough 0.18 / 0.23,
 # glabella 0.15 / 0.11)
-FOLD_REF = {"nasolabial": 0.13, "marionette": 0.07, "mouth_corner": 0.095, "mentolabial": 0.28, "tear_trough": 0.2,
+FOLD_REF = {"nasolabial": 0.11, "marionette": 0.055, "mouth_corner": 0.095, "mentolabial": 0.28, "tear_trough": 0.2,
             "lid_fold": 0.16, "glabella": 0.13}
 # THE STEP (skinfolds): a fold lit from its side is not a valley but a lit / shaded STEP across its line (a painter's
 # nasolabial fold under a lamp). Per station: the mean log luminance just past the line on the plus side minus the

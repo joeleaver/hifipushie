@@ -83,7 +83,11 @@ crops = {"eyeR": sq(*(P[36:42].mean(0) + [0, 0.05 * eye_w]), 0.62 * eye_w), "eye
 rake_jobs = {}
 for k, cb in crops.items():
     jobs[k] = (sr.fitted_frame(cam, cb, "v"), bi.photo_lighting(a1, LIGHT, front))
-    rake_jobs[k + "_rake"] = (sr.fitted_frame(cam, cb, "v"), S.RAKE)
+    # (the raking light from the eye's own side: from the other, the nose and brow put it in shadow)
+    rk = copy.deepcopy(S.RAKE)
+    if k == "eyeR":
+        rk["lights"][0]["dir"][0] *= -1
+    rake_jobs[k + "_rk"] = (sr.fitted_frame(cam, cb, "v"), rk)
 spec = store.load(a1)
 for fr in g3stage.view_frames(spec, ("three_quarter_other", "profile_right", "low_angle")):
     jobs["u_" + fr["name"]] = (fr, skin_look.STUDIO)
@@ -91,6 +95,28 @@ A = shots(sfm, {**jobs, **rake_jobs})
 B = shots(srm, {**jobs, **rake_jobs}, old=True)
 C = shots(a1, {**jobs, **(rake_jobs if kw.get("rake_a1") else {})}, old=True)
 
+def lin(a):
+    a = np.asarray(a, float) / 255.0
+    return np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+
+
+def expose(im, k):
+    a = np.clip(lin(im) * k, 0, 1)
+    a = np.where(a <= 0.0031308, a * 12.92, 1.055 * a ** (1 / 2.4) - 0.055)
+    return Image.fromarray(np.round(255 * a).astype(np.uint8))
+
+
+def gain(ph, after):
+    """The exposure that shows AFTER's face as bright as the reference's (median luminance of the face's middle: the
+    fitted light's level is ours, a photograph's exposure is the photographer's; without this every render sat ~10 L
+    under its reference and the same chroma read as a tan)."""
+    Y = np.array([0.2126, 0.7152, 0.0722])
+    sl = (slice(int(0.28 * T), int(0.66 * T)), slice(int(0.3 * T), int(0.7 * T)))
+    a, b = lin(ph)[sl] @ Y, lin(after)[sl] @ Y
+    return float(np.clip(np.median(a) / max(np.median(b), 1e-4), 0.6, 2.2))
+
+
+K = {}
 rows = []
 for vi, (v, box) in enumerate(zip(rj["views"], boxes)):
     ph = Image.open(v["image"]).convert("RGB").crop(tuple(int(round(x)) for x in box)).resize((T, T), Image.LANCZOS)
@@ -100,21 +126,24 @@ for vi, (v, box) in enumerate(zip(rj["views"], boxes)):
             f = f"{d}/j_{nm}_{vi}.png"
             if pj is None and os.path.exists(f):
                 pj = Image.open(f).convert("RGB").resize((T, T), Image.LANCZOS)
-    rows.append([label(ph, "REFERENCE"), label(A[f"v{vi}"], "AFTER (skinfolds)"), label(B[f"v{vi}"], "BEFORE (skinread)"),
-                 label(C[f"v{vi}"], "BEFORE THAT (a1)"), label(pj, "refs projected") if pj is not None else BLANK])
+    K[vi] = gain(ph, A[f"v{vi}"])
+    rows.append([label(ph, "REFERENCE"), label(expose(A[f"v{vi}"], K[vi]), "AFTER (skinfolds)"), label(expose(B[f"v{vi}"], K[vi]), "BEFORE (skinread)"),
+                 label(expose(C[f"v{vi}"], K[vi]), "BEFORE THAT (a1)"), label(expose(pj, K[vi]), "refs projected") if pj is not None else BLANK])
 img = Image.open(rj["views"][front]["image"]).convert("RGB")
 for k, name in (("eyeR", "EYE (their right)"), ("eyeL", "EYE (their left)"), ("mouth", "MOUTH")):
     ph = img.crop(tuple(int(round(x)) for x in crops[k])).resize((T, T), Image.LANCZOS)
-    rows.append([label(ph, f"REFERENCE: {name}", SMALL), label(A[k], "AFTER, photo light", SMALL), label(B[k], "BEFORE, photo light", SMALL),
-                 label(C[k], "BEFORE THAT, photo light", SMALL), BLANK])
-    rows.append([label(ph, f"REFERENCE: {name}", SMALL), label(A[k + "_rake"], "AFTER, RAKING light", SMALL), label(B[k + "_rake"], "BEFORE, RAKING light", SMALL),
-                 label(C[k + "_rake"], "BEFORE THAT, RAKING", SMALL) if k + "_rake" in C else BLANK, BLANK])
+    kf = K[front]
+    rows.append([label(ph, f"REFERENCE: {name}", SMALL), label(expose(A[k], kf), "AFTER, photo light", SMALL), label(expose(B[k], kf), "BEFORE, photo light", SMALL),
+                 label(expose(C[k], kf), "BEFORE THAT, photo light", SMALL), BLANK])
+    rows.append([label(ph, f"REFERENCE: {name}", SMALL), label(A[k + "_rk"], "AFTER, RAKING light", SMALL), label(B[k + "_rk"], "BEFORE, RAKING light", SMALL),
+                 label(C[k + "_rk"], "BEFORE THAT, RAKING", SMALL) if k + "_rk" in C else BLANK, BLANK])
 rows.append([label(A["u_three_quarter_other"], "UNSEEN, other light: AFTER", SMALL), label(B["u_three_quarter_other"], "BEFORE", SMALL),
              label(C["u_three_quarter_other"], "BEFORE THAT", SMALL), label(A["u_profile_right"], "UNSEEN profile: AFTER", SMALL), label(B["u_profile_right"], "BEFORE", SMALL)])
 rows.append([label(A["u_low_angle"], "UNSEEN, low angle: AFTER", SMALL), label(B["u_low_angle"], "BEFORE", SMALL), label(C["u_low_angle"], "BEFORE THAT", SMALL), BLANK, BLANK])
 HEAD = 70
 W = Image.new("RGB", (5 * T, HEAD + T * len(rows)), "white")
-ImageDraw.Draw(W).text((14, 12), title, fill=(0, 0, 0), font=FONT)
+ImageDraw.Draw(W).text((14, 12), title + "   [photo-light renders exposed to the reference: x " + ", ".join(f"{K[i]:.2f}" for i in sorted(K)) + "]",
+                       fill=(0, 0, 0), font=SMALL)
 for r, row in enumerate(rows):
     for c, t in enumerate(row):
         W.paste(t, (c * T, HEAD + r * T))

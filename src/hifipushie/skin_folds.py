@@ -35,7 +35,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 9
+VERSION = 10
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -50,7 +50,7 @@ N_SHIFT = 9            # shift is given at this many stations by default (any nu
 # pictures answer "cannot tell"), about.
 FOLDS = {
     "nasolabial": {"path": [("lm_nostril.L", (0.08, 0.02, 0.03)), ("lm_mouth_corner.L", (0.14, 0.05, 0.12)),
-                            ("lm_mouth_corner.L", (0.16, 0.07, -0.15))], "plus": (1, 0, 0.3), "width": 3.5, "depth": 0.8,
+                            ("lm_mouth_corner.L", (0.16, 0.07, -0.15))], "plus": (1, 0, 0.3), "width": 4.5, "depth": 0.8,
                    "tint": 0.35, "shade": 0.2, "roll": (4.5, 5.0, 0.35), "search": 6.0, "res": 1.6,
                    "about": "the fold from the nose's wing past the mouth's corner (the cheek's pad over it)"},
     # (from under the corner's own dimple: a young mouth's corner shadow is not a marionette line)
@@ -91,15 +91,17 @@ FOLDS = {
 #   plat    (depth, height): the skin on the minus side a little in over `height` (a lid's pretarsal platform)
 #   reach   how far along the normal the move is felt (it never reaches through a lid or into a nostril)
 RELIEF = {
-    "nasolabial": {"depth": 0.6, "roll": (5.0, 3.4, 1.3, 3.0), "reach": 4.0},
-    "marionette": {"depth": 0.5, "roll": (4.0, 2.6, 0.6, 2.5), "reach": 4.0},
+    # (nasolabial 0.6 deep at 3.5 mm wide and marionette 0.5 read, on Garrett at amounts 0.9-1.5, as incised lines with
+    # a pit where each began beside the mouth: a nasolabial fold is mostly the cheek's pad standing over the lip)
+    "nasolabial": {"depth": 0.4, "roll": (5.0, 3.4, 1.3, 3.0), "reach": 4.0},
+    "marionette": {"depth": 0.35, "roll": (4.0, 2.6, 0.6, 2.5), "reach": 4.0},
     "mouth_corner": {"depth": 0.3, "reach": 3.0},
     "mentolabial": {"depth": 0.8, "reach": 4.0},
     "tear_trough": {"depth": 0.6, "roll": (4.6, 2.4, 1.4, 2.6), "reach": 4.0},
     "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "reach": 3.0},
     "glabella": {"depth": 0.35, "reach": 3.0},
 }
-END = 0.004               # m: a fold's relief comes in from nothing over this length at each end of its extent
+END = 0.007               # m: a fold's relief comes in from nothing over this length at each end of its extent
 # With the relief in the surface, what a tight crease still lacks in a rasterised render is its own OCCLUSION (skin
 # lying on skin: no light gets in; EEVEE has none at 0.5 mm): the crease line's share of a dark multiply layer
 # (folds_crease), 0.6 x the groove's width. Without it a lid's crease at amount 1 was a faint line (foldval's truth

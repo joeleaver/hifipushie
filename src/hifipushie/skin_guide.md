@@ -318,7 +318,7 @@ What it reads and sets (groups; default all):
 - `tone`: melanin / blood / undertone. A picture does not say how LIGHT a skin is (exposure x albedo), so lightness
   has an anchor, in this order: (1) the PRIOR: the model's stated `skin.tone` (set it first, or pass `tone=` a
   Fitzpatrick type 1..6 or skin.tone's own keys); the pictures then correct hue and saturation only and the plain
-  skin's lightness stays within 3 L* of the prior; (2) a KNOWN WHITE in the picture (a shirt collar under the chin,
+  skin's lightness stays within 3 L* of the prior and its colour within 5 (a*b*: a backdrop is a weak white balance); (2) a KNOWN WHITE in the picture (a shirt collar under the chin,
   found by the picture parser: bright, neutral, 250+ px): skin albedo = 0.8 x skin / white, which may move the
   lightness up to 8 L* off the prior (the white's albedo and light are inferred). The reply says which was used and
   the plain skin's L* before -> after. The white balance needs a plain NEUTRAL backdrop or that white; with neither
