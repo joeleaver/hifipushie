@@ -1157,3 +1157,138 @@ of gather locks that cross the flow / lift (looseness as lock-level disorder, no
 reference by measure (tie place from the tail's root, tightness from the outline's width, tail length / fullness from
 hscore's mask): today they were set by eye; (6) wire the dressed fitted-camera renders and hline as tools; (7) fix
 tests/test_toolsets.py on main (block_in_solve in no toolset).
+
+## Joe on tesshair3 (2026-10-11, th_11 riffs)
+"honestly, your low side sleek is almost right for tess, if you added front wispies and poofed up the ponytail a bit."
+-> the target for Tess is riff th_R3 (low, left, tightness 0.85, neatness 0.95) + FRONT WISPS + a POOFED tail. The
+coordinator tried it with round three's dials (th_W1: escaped hairs + wave 0.45 + fullness 0.85): wires standing off the
+forehead, a wider tail of straight strings. Both were construction limits: round four, "## tesshair4".
+
+## tesshair4 (2026-10-11/12, "tesshair4" agent, branch `worktree-agent-a162d3a017522856e`): wisps and a poofed tail
+STATE / NEXT: DONE: `hair_flow.wisps` (soft clumps of fine hairs that fall along the skin; style word `wisps`), the tail's
+VOLUME (`tail.fullness` = the bundle's radius set along it, `tail.wave` = every lock's own wave; hair_tied tail keys bulge /
+lock_wave / lock_wavelength / air), the sideburn / temple fix (`gather.feather`), tests, guide. BEST for Tess = th_T48 (one
+tie_hair call on tess_a1, style below). Sheets workspace/human_renders/th_20 (reference | T48 EEVEE | Cycles | th_R3 | th_W1 |
+th_T34), th_21 (close-ups beside the reference), th_22 (fullness x wave), th_23 (round three's riffs re-grown). Wisps read
+as soft wisps from the side and three-quarter, NOT yet from the front (too faint, the hairline under them is a clean arc);
+the tail is poofed but smoother and evener than hers. NEXT: the list at the end of this section (front wisps as the
+hairline's own loosened hair; tail strays and a ragged end).
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair4/ (run.sh <script> = this worktree's code on the main workspace, capped; q4.sh
+<NN> '<style>' [views] [size] = th_T<NN> regrown (mk3.py, hairline + look of th_T34) + a row of unfitted views; batch.sh
+<list> = every "<name>|<style>" line THROUGH THE TOOL (riff.py = server.tie_hair, carry_from th_T34) + iso.py; final.sh
+<best> = fitted-camera tiles (EEVEE at 1536 = the references' own pixels, Cycles, th_R3 / th_W1 with ROUND THREE'S worktree
+code) + hs.py + the sheets; crop.py = head crops of iso tiles; tests.sh). Scripts `spikes/tesshair4/` (+ lists.py = the
+riff / dial / Tess style lists, mk_sheets4.py, low.py). Models: th_T40..T48 (Tess), th_Q1..Q6 (round three's riff styles
+with this code; th_R1..R6 are untouched), th_D<f><w> (dial sheet).
+
+### What her pictures show (read before building)
+Wisps: many fine soft hairs and small loose locks, rooted all along the front hairline, the part and the temples, lying
+close to the face: the front's run OUT along the hairline toward the temples and droop a few cm below it, the temples'
+hang in front of the ear to the jaw with a slow curve; none stands off the head, none crosses an eye. Tail: a full airy
+brush about 11 cm wide from behind (radius ~5 cm), widest right after the tie, loose S waves ~10 cm long with locks out of
+step, a tousled uneven end with single hairs leaving the outline.
+
+### Why round three's could not do it (construction, not dials)
+- Escaped pieces were 1-2 hairs each on their own way: started 14 deg OFF the surface (`out * 0.25`), bowed in random
+  planes, pushed only out of the body, never onto it: wires in the air. One hair is never soft: EEVEE draws no strand
+  under a pixel wide.
+- The tail: locks left the tie in a cone and fell; one scale factor made the widest station `fullness`, so the bundle
+  was a cone closing to parallel lines. Locks were 15 mm wide with taper 0.9 and floor 0 (the floor only opens for
+  locks over 12 mm by (W - 12) / 20): every lock tapered to a point, and strand tips at ts 1.67 trimmed up to 92%: strings.
+  The wave was the strand dials' (neighbours in step by design: a sheet), 8 mm at 16 cm.
+
+### The construction now
+- WISPS (`hair_flow.wisps`, tie key `wisps`, defaults hair_tied.WISPS; zones WISP_AT part / front / temple / sideburn /
+  nape): a wisp is ONE lock with `hairs` 6-28 (sideburn: 4-14) (the wisp strand object: hp_fine, part transparent in EEVEE), width 2.5-11
+  mm, flat fan (`strands.wisp_fan` 0.6-1.8, `wisp_round` 0.3: a round brush section stood off the skin), its hairs
+  ending one by one (`tip_loss` 0.75 = the share the shortest hair loses; hair_strands turns it into the lens group's
+  trim factor) = the taper. Its line: rooted 4 mm inside the hairline, then traced ON THE SKIN in 28 steps: direction +=
+  fall x pull + curl x (normal x direction); pull = gravity in the surface's tangent plane (plain gravity once 6-12 mm
+  off the skin); while within 8 mm of the skin the direction may not point away from it, and each step is put back at
+  its gap (1.5-3.5 mm, + 5 mm x softness toward the tip) when the skin under it faces up or sideways (under the jaw it
+  hangs). Zones differ in the pull: part / front = out along the hairline toward the temple (`sweep`) fading to gravity
+  over the last 40%, never more than 10-26 deg below the hairline in front of az 48 (no hair over an eye); temple /
+  sideburn = down, with a pull away from the face that grows toward the eye; `tuck` 0.3 of the temple / sideburn ones
+  are drawn back toward the tie over the gathered hair (never up: not for ties above el 30). Strand dials for the wisp
+  object: `strands.wisp` (new; hair_strands.wisp_physical): loose 0.25, frizz 0.2, wave 4 mm at 8 cm, thickness 1.0.
+  `hair.needs_body` is true for wisps (the body's collider gives distance and normal; without one, the scalp's rays).
+  Style words: `wisps`: 0..1 or {amount, where, length [m, m], softness}; 24 x amount clumps a side; default amount
+  1.25 x (0.9 - neatness) (none from neatness 0.9 up). `escaped` (single hairs) now defaults to 0.
+- POOF (`hair_flow.tail` with tail.bulge 1): after the fall the bundle's rms radius is SET per station: fullness / 1.41 x
+  profile (0.25 at the band, full by 5 cm, x 1.12 just after, x (1 - taper x t^2) to the end), factors clipped 0.3..4 and
+  smoothed. Every lock then gets its OWN wave (`lock_wave` x 0.45..1.35, `lock_wavelength` x 0.75..1.3, random phase, a
+  plane that turns up to 1.2 rad along it, 45% of the swing in quadrature: a lazy helix), `air` m of scatter toward the
+  ends, a twist of 60-220 deg (a lock showing one flat side all the way down is a plank), width max(4.5 x full / sqrt(n),
+  22 mm) so sections overlap, taper 0.35, lengths 1 - uneven x u^1.5 x 0.4. Strands: tips 0.9 with tip_spread 0.6 (ends
+  thin out over the last third, the section stays open), clump 0.3 - 0.15 x fullness, clump_size 6 mm, lock strand wave
+  only 0.006 x wave (the lock's own wave is in its points now), free object: frizz / loose / flyaway + 0.25-0.3 x fullness,
+  sub clump wave 0.008 x wave at 10 cm. Style: fullness 0..1 -> radius 18..60 mm, 26..56 locks, cone 0.25..0.7;
+  wave 0..1 -> lock_wave 1..13 mm at 12..9.5 cm. A raw tie without bulge / lock_wave is round three's tail unchanged.
+- TEMPLE (`gather.feather`, 1 in the style): what read as a shaved temple was the hairline row's locks rooted on the
+  SIDEBURN (below the ear's top, az 50-100): they had to climb to the flow over the ear, and their starts were a dark
+  tooth-edged tuft over bare skin (isolated with iso.py: drop:tg0_* removed it, drop:tg1_* and S.under:0 did not).
+  Those roots are not made any more; the sideburn is the scalp layer + wisps. Also: hairline locks that run ALONG the
+  line (not beside the part) start narrow with their strands' starts spread (`roots_x` 4, a lock strand key), and inner
+  locks rooted within ~3 cm of the hairline behind az 28 likewise.
+
+### Rounds (T40..T46 = q4.sh, the style R3 + wisps 0.7 + tail wave 0.6 fullness 0.85; unfitted views)
+- T40 first grow: the tail already full with a bulge, but locks were crimped ropes with broom ends (lock wave 10 mm at 8
+  cm, sub clumps at 7 cm fully out of step, lengths down to 60%); front wisps shot off the forehead's corner as horizontal
+  wires (pulled back 60% a step: now all the way), wet ringlets on the cheeks (curl 6-16 rad / m + a 4.5 cm strand wave).
+- T41: calmer waves, tips 0.9; wisps hugged the skin but fell straight from the part over the eyes as vertical lines.
+- T42: front wisps swept along the hairline (the combed direction); every wisp lifted `over` inside the hairline = a
+  lace fringe 1 cm off the far temple (now only tucked ones ride over the gather); lock twist against planks.
+- T43 / T44: more clumps (16 -> 24 x amount), temple wisps no longer started forward (they ran across the cheek to
+  the nose). T45 (no wisps): the temple isolation above. T46: tail locks wider (3 -> 4.5 x full / sqrt(n)), less air
+  (ropes from behind when locks were narrow with air between: seed-dependent, T44 fine, T46 dreadlocks).
+- T47 = through the tool, fullness 0.75: hscore IoU front / 3q / profile 0.749 / 0.535 / 0.601 (th_T34 0.675 / 0.556 /
+  0.715): front the best of all rounds (the sleek head is her outline), profile worse: the tail 25% too big (ours
+  122.5k px, hers 98.4k). Wisps a faint fuzz in EEVEE, nearly gone in Cycles (the head's strand thickness 0.7).
+- T48 = BEST: {"tie": "low", "side": "left", "tightness": 0.85, "neatness": 0.95, "wisps": {"amount": 1.0, "softness":
+  0.7}, "tail": {"length": 0.23, "wave": 0.6, "fullness": 0.6}} + strands.wisp.thickness 1.0: IoU 0.721 / 0.549 / 0.669,
+  tail 110k px vs hers 98k (still 12% big in profile), hairline band bare 16.3 / 28.8 / 17.2%.
+- Riffs (th_Q1..Q6 = round three's six style calls with this code; sheet th_23, round three above, now below): all six
+  still read at a glance. Changed: tails are fuller and open below the band (Q1's high tail is a heavier slab than R1's),
+  the temple tuft is gone on Q1 / Q3 / Q5, default wisps appear at neatness < 0.9 (Q2, Q4, Q5, Q6: a few soft locks at the
+  temples). Fixed on the way: wisps tucked toward a top knot climbed the temple (now never up, none above el 30); a
+  sideburn wisp of 20 hairs hanging straight was a dark blade in front of the ear on Q5 (sideburn: half the hairs, 1.4 x
+  wider). Still there as in round three: the toothed hairline at the temples of the top knot and the high ponytail
+  (hair running UP from the temple: lock starts across the line; feather only softens it).
+- Dial sheet th_22 (th_D<f><w>, low centre tie, tightness 0.85, no wisps, tail 0.26 m): fullness 0 / 0.5 / 1 = a pencil
+  tail / an ordinary ponytail / a bush as wide as the head from behind; wave 0 / 0.5 / 1 = straight / soft bends / loose S
+  waves. Both read in every cell. Fullness 1 with wave 0 is a curtain of straight strands (nobody's hair); fullness 1
+  from behind hides the neck like loose hair.
+- Cost: tie_hair 44 s on a new model name (collider), 1-2 s after; iso.py six views at 640 px 75-100 s; shots2 at 1536 +
+  Cycles at 1024 ~6 min. Tests: test_hair_flow 13 (3 new: wisps, fullness / wave, the sideburn), tied 14, loose 11, lift
+  4, strands 24, toolsets 8 pass.
+
+### BLUNT READ of th_T48 beside her pictures (sheets th_20, th_21)
+- Wisps soft? From the three-quarter and the profile YES: thin soft locks out of the temple hang in front of the ear
+  and lie on the cheek, a few lie out along the forehead's corners; nothing stands off the head, nothing is a wire
+  (th_W1 beside it is wires). From the FRONT, NO: at that size they are a faint fuzz along a hairline that is still a
+  clean dark arc; hers is a soft mass of loosened hair over the forehead's corners and temples, several times as much
+  hair. Ours are also too alike (long thin strands fanning from the temple, like a broom in profile) where hers are
+  short and long, thick and thin, some curling back. In Cycles they are fainter still (visible, not gone).
+- Tail poofed? YES in shape: it opens out of the tie, is full to its end, waves. NOT in texture: EEVEE draws it as a
+  smooth dense mass with rope-like S locks from behind; hers is tousled, with single hairs and thin locks leaving the
+  outline all round and a ragged end. Ours is still ~12% too big in profile and, from behind, covers the tie and sits on
+  the back of the head as a lump. Cycles is closer (a soft brush with a translucent rim) but uncalibrated and dark.
+- The head: sleek and swept back (Joe's pick), reads; the front hairline is a clean V at the part (the stepped notch is
+  smaller than th_R3's, still not her soft part), the temple is a clean line, the sideburn nearly bare under the wisps.
+  Her head hair has far more lift and looseness than this sleek cap: that is the style word `tightness`, not a fault.
+
+### Dead ends
+- Staggering strand starts (roots, roots_x) on the temple's hairline locks to hide their tooth edge: no visible change;
+  the tuft was the sideburn-rooted locks' whole first 2 cm, not their start line.
+- `feather` beside the part: the banks run along the line there too, and feathered they bared a wider notch.
+- Tail air 2 + 10 mm x fullness with 3 x full / sqrt(n) wide locks: separate ropes with dark gaps (dreadlocks) on some
+  seeds. A full tail needs overlapping lock sections; the air comes from waves out of step, not from gaps.
+- Wisps lifted over the gather everywhere inside the hairline: a fringe standing off the temple.
+
+NEXT: (1) front wisps as the hairline's own hair: a share of the hairline row's STRANDS (not extra clumps) let go and
+droop over the forehead's corners, so the edge itself is soft from the front; more variety (short baby wisps 2-4 cm,
+a few thick loose locks); (2) the tail's outline: single hairs and thin locks leaving it (flyaway on the free object
+reaches only 2 x lock width), a ragged end (lengths by lock AND a slow curl at the ends), fit fullness / length to her
+mask (hscore's tail px) instead of by eye; (3) the top knot / high ponytail hairline at the temples (hair running up
+across the line); (4) the part's notch; (5) Cycles look calibration for th_* (dark, brown).

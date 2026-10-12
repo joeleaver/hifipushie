@@ -52,6 +52,8 @@ STRANDS = {
     "flat": 1.0,  # x a lock's thickness for its strands (1 = the lock's own lens; 2 = a rounder, fuller lock)
     "free": None,  # {dial: value}: the strand dials of hair that has LEFT the head (a tail, loose lengths) where they
     # differ from the hair on it (a tousled top with a tail of defined wavy locks: loose 0.7 on the head, 0.2 free)
+    "wisp": None,  # {dial: value}: the dials of the locks of single hairs (lock["hairs"]: wisps, escaped hairs) over
+    # the free hair's (frizz, loose, wave, wavelength, tips, taper, thickness)
     "halo": 0.0,  # 0..1: short broken hairs that stand up off the hair on the head and curl (the fine fuzz round a
     # loose updo against the light); `flyaway` strands only drift a few mm off their own lock and end where it ends
 }
@@ -82,12 +84,14 @@ def strands_of(spec: dict) -> dict:
     if tied is not None:  # a tied style brings its own strand dials (neatness: strays, halo, frizz); the spec's own win
         from . import hair_flow
         st = hair_flow.style(tied)["strands"]
-        s = {**st, **s, **({"free": {**(st.get("free") or {}), **(s.get("free") or {})}} if (st.get("free") or s.get("free")) else {})}
+        s = {**st, **s, **({"free": {**(st.get("free") or {}), **(s.get("free") or {})}} if (st.get("free") or s.get("free")) else {}),
+             **({"wisp": {**(st.get("wisp") or {}), **(s.get("wisp") or {})}} if (st.get("wisp") or s.get("wisp")) else {})}
     out = {**STRANDS, **s}
-    if out.get("free"):
-        bad = set(out["free"]) - set(STRANDS)
-        if bad:
-            raise ValueError(f"hair strands.free: unknown keys {sorted(bad)}")
+    for k_ in ("free", "wisp"):
+        if out.get(k_):
+            bad = set(out[k_]) - set(STRANDS)
+            if bad:
+                raise ValueError(f"hair strands.{k_}: unknown keys {sorted(bad)}")
     if out["source"] not in ("groom", "drawn"):
         raise ValueError('hair strands: source is "groom" or "drawn"')
     return out

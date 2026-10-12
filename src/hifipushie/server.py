@@ -1273,7 +1273,8 @@ def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None
              note: str = ""):
     """A tied-back hairstyle (ponytail, bun, plait, half up) from a few words: style {tie: nape|low|mid|high|top,
     side: centre|left|right, tightness 0..1, lift, part: centre|left|right|none, ears, tail {kind, length, fullness,
-    wave, to}, escaped, neatness 0..1, half}; a riff names only what changes. carry_from: wear another model's hair
+    wave, to} (fullness = volume, sleek .. bushy), wisps 0..1 (soft loose hair at the hairline), escaped, neatness
+    0..1, half}; a riff names only what changes. carry_from: wear another model's hair
     first. Then look_hair(views="around"). Details: guide(topic="tie_hair")."""
     from . import hair
     r = hair.tie_style(name, _spec_arg(style) if style else None, carry_from=carry_from,
@@ -1288,6 +1289,7 @@ def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None
               f"{ga['overhang']:.0f} deg over the hairline at the temples; parting {r['made']['parting']['side']}"
             + (f"; tail {tl['length'] * 100:.0f} cm, {tl['fullness'] * 1000:.0f} mm full, "
                + ("a bun" if tl.get("coil") else "a plait" if tl.get("plait") else "hanging") if tl else "; no tail")
+            + (f"; wisps {m['wisps']['count']} a side ({', '.join(m['wisps']['where'])})" if m.get("wisps") else "")
             + f"\n{_hair_counts(spec)}\nnext: look_hair(name, views=['around']) (every side, with the bust: tied hair is "
               "tuned through the front and is wrong from behind first); change one word of the style to riff")
 

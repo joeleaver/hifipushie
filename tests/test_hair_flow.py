@@ -156,13 +156,132 @@ def test_escaped_pieces_are_bundles_of_single_hairs_that_fall():
         assert 1 <= lk["hairs"] <= 2 and lk["space"] == "xyz"
         P = np.asarray(lk["pts"], float)
         assert P[-1, 2] < P[0, 2] - 0.008, k  # it falls
+    # (single hairs are only made when asked for: what a messy head gets by default is wisps)
     assert not any(k.startswith("te") for k in _grow({"neatness": 1.0})[3])
-    assert any(k.startswith("te") for k in _grow({"neatness": 0.2})[3])
+    assert not any(k.startswith("te") for k in _grow({"neatness": 0.2})[3])
     try:
         _grow({"escaped": {"count": 1, "where": ["chin"]}})
         raise AssertionError("unknown zone accepted")
     except ValueError as e:
         assert "where" in str(e)
+
+
+def test_wisps_are_soft_clumps_that_hug_the_head():
+    """tesshair4 (Joe: "almost right for tess, if you added front wispies"): a wisp is ONE lock of many fine hairs (not
+    1-2 hair wires), rooted at the hairline, lying within millimetres of the skin while the skin is under it, ending
+    lower than it starts; the front's never run down the face; amount is their number; a neat head has none."""
+    sc, g, line, locks = _grow({"wisps": {"amount": 0.6}})
+    ws = {k: lk for k, lk in locks.items() if k.startswith("tw")}
+    n = ht.params(g["tie"])[0]["wisps"]["count"]
+    assert len(ws) == 2 * n and n >= 10, (len(ws), n)
+    for k, lk in ws.items():
+        assert lk["hairs"] >= 4 and lk["space"] == "xyz" and lk["free"] == 1.0, (k, lk["hairs"])
+        assert lk["width"] <= 0.012 and lk["strands"]["tip_loss"] >= 0.5  # a thin clump whose hairs end one by one
+        P = _world(sc, lk)
+        az, el, h = sc.coords(P)
+        assert h.min() > -1e-6, k  # never inside the head
+        assert h[:len(h) // 2].max() < 0.012, (k, h.max())  # it leaves the hairline ON the skin, not into the air
+        assert P[-1, 2] < P[0, 2] + 0.004, k  # and does not climb
+        a0 = abs(float(hf._wrap(az[0])))
+        if a0 < 44:  # the front's: never far down the forehead (over the eyes)
+            fa = np.abs(hf._wrap(az))
+            lo = hair._line_at(line, az % 360) - 27.0
+            assert np.all((el > lo) | (fa >= 48)), k
+    sides = [np.sign((_world(sc, lk) - sc.C)[0, 0]) for lk in ws.values()]
+    assert sides.count(1.0) == sides.count(-1.0)
+    lens = [np.linalg.norm(np.diff(_world(sc, lk), axis=0), axis=1).sum() for lk in ws.values()]
+    assert max(lens) > 1.6 * min(lens)  # lengths are mixed
+    # amount is the number of clumps; none on a neat head, some on a messy one, by default
+    few = [k for k in _grow({"wisps": 0.2})[3] if k.startswith("tw")]
+    assert 0 < len(few) < len(ws)
+    assert not any(k.startswith("tw") for k in _grow({"neatness": 1.0})[3])
+    assert not any(k.startswith("tw") for k in _grow({"neatness": 0.3, "wisps": 0})[3])
+    assert any(k.startswith("tw") for k in _grow({"neatness": 0.3})[3])
+    assert hair.needs_body(g)  # they lie on the body's own surface
+    # softness: wider, more hairs
+    so = lambda v: hf.style({"wisps": {"amount": 0.5, "softness": v}})["tie"]["wisps"]  # noqa: E731
+    assert so(1.0)["hairs"][1] > so(0.0)["hairs"][1]
+    for bad in ({"wisps": {"amount": 0.5, "where": ["chin"]}}, {"wisps": {"ammount": 1}}):
+        try:
+            _grow(bad)
+            raise AssertionError(f"accepted {bad}")
+        except ValueError:
+            pass
+    # their strand dials: the wisp object's own (strands.wisp), a lock's tip_loss as the lens's trim factor
+    from hifipushie import hair_cards as hc, hair_strands as hs
+    S = hc.strands_of({"hair": {"groom": {"tied": {"wisps": 0.5}}, "strands": {"wisp": {"frizz": 0.9}}}})
+    assert S["wisp"]["frizz"] == 0.9 and "loose" in S["wisp"]
+    assert hs.wisp_physical(S)["frizz"] > hs.wisp_physical({**S, "wisp": {**S["wisp"], "frizz": 0.1}})["frizz"]
+    assert hs.wisp_physical(S)["clump"] == 0.0
+
+
+def test_tail_fullness_is_volume_and_wave_is_every_locks_own():
+    """tesshair4 (Joe: "poofed up the ponytail a bit"): fullness sets the bundle's radius along the whole tail (it
+    opens right after the tie and is still open near the end: no cone closing to strings), wave bends every lock on
+    its own (out of step), and the locks are wide, keep their width and end at different lengths."""
+    def tail(fu, wv):
+        sc, g, line, locks = _grow({"tail": {"length": 0.26, "fullness": fu, "wave": wv}})
+        return sc, g, [lk for k, lk in locks.items() if k.startswith("tt")]
+
+    def radius(sc, T, s):  # rms distance from the bundle's own middle, s m along each lock
+        P = []
+        for lk in T:
+            Q = _world(sc, lk)
+            a = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+            if a[-1] >= s:
+                P.append([np.interp(s, a, Q[:, j]) for j in range(3)])
+        P = np.asarray(P)
+        return float(np.sqrt(((P - P.mean(0)) ** 2).sum(1).mean()))
+
+    sc, g, sleek = tail(0.1, 0.0)
+    _, _, bushy = tail(0.9, 0.0)
+    for s in (0.06, 0.12, 0.18):
+        assert radius(sc, bushy, s) > 1.8 * radius(sc, sleek, s), (s, radius(sc, bushy, s), radius(sc, sleek, s))
+    assert radius(sc, bushy, 0.06) > 0.75 * radius(sc, bushy, 0.14) > 0.02  # the bulge: open 6 cm out of the tie
+    assert radius(sc, bushy, 0.2) > 0.6 * radius(sc, bushy, 0.1)  # and no cone: still open near the end
+    assert len(bushy) > len(sleek)
+    for lk in bushy:
+        assert lk["width"] >= 0.02 and lk["taper"] <= 0.4 and abs(lk["twist"]) >= 60
+    L = [np.linalg.norm(np.diff(_world(sc, lk), axis=0), axis=1).sum() for lk in bushy]
+    assert 0.6 < min(L) / max(L) < 0.92  # an uneven end, no lock half the length
+
+    def wiggle(T):  # how far a lock's middle strays from its own straightened line, median over locks
+        out = []
+        for lk in T:
+            Q = _world(sc, lk)
+            k = np.arange(len(Q))
+            sm = np.stack([np.polyval(np.polyfit(k, Q[:, j], 3), k) for j in range(3)], 1)
+            out.append(np.abs(Q - sm).max())
+        return float(np.median(out))
+
+    _, _, straight = tail(0.5, 0.0)
+    _, _, wavy = tail(0.5, 1.0)
+    assert wiggle(wavy) > 3 * wiggle(straight) and wiggle(wavy) > 0.006, (wiggle(wavy), wiggle(straight))
+    # out of step: neighbouring locks' sideways offsets at one height do not agree
+    tp = ht.params(g["tie"])[0]
+    assert tp["tail"]["bulge"] == 1.0 and tp["tail"]["lock_wave"] > 0
+    assert hf.style({"tail": {"wave": 1.0}})["tie"]["tail"]["lock_wave"] > 4 * hf.style({"tail": {"wave": 0.0}})["tie"]["tail"]["lock_wave"]
+    for T in (bushy, wavy):
+        _, _, h = sc.coords(np.concatenate([_world(sc, lk) for lk in T]))
+        assert h.min() > -1e-6
+    # a raw hanging tail without the new keys is the old one (no bulge, thin tapering locks)
+    assert ht.TIE["tail"]["bulge"] == 0.0 and ht.TIE["tail"]["lock_wave"] == 0.0
+
+
+def test_sideburn_grows_no_lock_to_the_tie():
+    """The hairline row skips the sideburn (below the ear's top, in front of the ear): locks from there climbed to
+    the flow and their starts were a dark toothed tuft over bare skin (the 'shaved' temple of tight styles)."""
+    sc, g, line, locks = _grow({"tightness": 0.9})
+    e_ear = 0.5 * (float(hair._line_at(line, 95.0)) + float(hair._line_at(line, 265.0)))
+    n = 0
+    for k, lk in locks.items():
+        if k.startswith("tg0_"):
+            az, el, _ = lk["pts"][0]
+            fa = abs(float(hf._wrap(az)))
+            assert not (50 < fa < 100 and el < e_ear - 2.0), (k, az, el)
+            n += 1
+    assert n > 20
+    assert ht.params(g["tie"])[0]["gather"]["feather"] == 1.0 and ht.TIE["gather"]["feather"] == 0.0
 
 
 def test_style_words():

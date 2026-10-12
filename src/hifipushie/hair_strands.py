@@ -105,6 +105,13 @@ def physical(S: dict, free: bool = False) -> dict:
     }
 
 
+def wisp_physical(S: dict) -> dict:
+    """The wisp object's numbers: single hairs (no clumps to join, no strays of strays), each keeps most of its length
+    unless its lock says otherwise (`tip_loss`); strands.wisp's dials over the free hair's."""
+    ph = physical({**S, **(S.get("free") or {}), **(S.get("wisp") or {})} if S.get("wisp") else S, free=True)
+    return {**ph, "clump": 0.0, "flyaway": 0.0, "halo": 0.0, "tips": 0.35 * ph["tips"], "roots": 0.0}
+
+
 def is_gather(lk: dict) -> bool:
     """A lock that runs over the head into a tie (hair_tied's gather rows)."""
     import re
@@ -133,10 +140,12 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
         P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_, CX_ = ([] for _ in range(15))
+        wisp_tips = wisp_physical(S)["tips"]
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
-            if "wisp_fan" in (lk.get("strands") or {}):
-                Sl["wisp_fan"] = lk["strands"]["wisp_fan"]
+            for k_ in ("wisp_fan", "wisp_round", "tip_loss"):
+                if k_ in (lk.get("strands") or {}):
+                    Sl[k_] = lk["strands"][k_]
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
             inp = lk["inputs"]
             P, rad, tilt, u, s = hc.spine(lk, n)
@@ -184,7 +193,8 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                 hw = hw * (1.0 + fan * _ss((u - 0.15) / 0.85))
             ht = np.maximum(th / 2 * float(Sl["flat"]) * np.maximum(lw, 0.3) ** 0.5, 0.0008)
             if key == "free":  # hair off the head isn't pressed flat: a rounder section (a ribbon twists like bacon)
-                ht = np.maximum(ht, (0.9 if (thin and fan > 0) else 0.4) * hw)
+                # (wisp_round: a clump that lies on the skin is a flat fan, not a round brush standing off it)
+                ht = np.maximum(ht, float(Sl.get("wisp_round", 0.9 if (thin and fan > 0) else 0.4)) * hw)
             P_.append(P)
             S_.append(B * hw[:, None])
             O_.append(N * ht[:, None])
@@ -196,15 +206,20 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             # (nor further than a quarter of its length: short hair had 4 cm spikes)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
-            rs_ = 4.0 if lk.get("at_hairline") else 1.0
+            # (roots_x: a lock that says itself how far its starts spread, e.g. one that runs along the hairline)
+            rs_ = max(4.0 if lk.get("at_hairline") else 1.0, float((lk.get("strands") or {}).get("roots_x", 1.0)))
             if "roots" in (lk.get("strands") or {}):  # a lock's own `roots` (the dial is one number an object: per
                 # lock it scales the lock's share of it): 0 = every strand of this lock starts at the lock's root
                 rs_ *= float(np.clip(lk["strands"]["roots"], 0, 1)) / max(float(np.clip(S["roots"], 0, 1)), 1e-6)
             R_.append(rs_)
             own = lk.get("strands") or {}
             # a lock's own tips / clump (the dials are one number an object): as a factor on the object's
-            TS_.append(0.0 if gather else float(np.clip(own["tips"], 0, 1)) / max(float(np.clip(S["tips"], 0, 1)), 1e-3)
-                       if "tips" in own else 1.0)
+            if key0 == "wisp" and "tip_loss" in own:  # the share of its length the shortest hair of a clump loses
+                # (a clump tapers because its hairs end one by one)
+                TS_.append(float(np.clip(own["tip_loss"], 0, 0.92)) / max(wisp_tips, 1e-3))
+            else:
+                TS_.append(0.0 if gather else float(np.clip(own["tips"], 0, 1)) / max(float(np.clip(S["tips"], 0, 1)), 1e-3)
+                           if "tips" in own else 1.0)
             CX_.append(float(np.clip(own["clump"], 0, 1)) / max(float(np.clip(S["clump"], 0, 1)), 1e-3) - 1.0
                        if "clump" in own else 0.0)
             GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
@@ -416,8 +431,8 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
     if n_free > 0:
         out["hair_guides_free"] = lens_stack(physical({**S, **(S.get("free") or {})}, free=True), n_free, True)
     if n_wisp > 0:  # single hairs: no clumps to join, no strays of strays; each keeps most of its length
-        ph = physical(S, free=True)
-        st = lens_stack({**ph, "clump": 0.0, "flyaway": 0.0, "halo": 0.0, "tips": 0.35 * ph["tips"], "roots": 0.0}, n_wisp, True)
+        ph = wisp_physical(S)
+        st = lens_stack(ph, n_wisp, True)
         st[-1][1]["Radius"] = ph["radius"] * WISP_RADIUS
         st[0][1]["Fine"] = 1.0
         out[WISPS] = st
