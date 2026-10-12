@@ -4833,7 +4833,8 @@ STATE / NEXT (solvereads, DONE): the chin's and jaw's WIDTH have no read from a 
 Joe's question: no, we are not measuring enough there) and nothing I built reads them (two reads built, both FAIL
 validation, off). block_in_solve now SAYS so (solve_report: moved with no read / weak read / unread), settles (|dc| 13.3,
 2.8, 1.7, 1.3, 0.9, 0.9 on the good set), keeps one reader per view, warns about views that are not what they were called.
-Hold and the expression term are built, did not validate, OFF. gh best = SEE "Reruns". NEXT: (1) a read for the jaw's
+Hold and the expression term are built, did not validate, OFF. gh best = gh_B06: the CHIN IS NOT FIXED (it is gg_A06 again;
+sheet human_renders/gh_01_garrett_good_new_solve.png); Tess: no regression (tv_B03, 25 / 26); the paintings: garrett_a1 again. NEXT: (1) a read for the jaw's
 lower edge that survives validation, or a reference that puts it on a silhouette (a true 45 deg 3/4 halves the error on the
 benchmark; a head tilted down should do the rest: not tested); (2) expression from the detector's blendshapes as an
 independent read (differential against the START head's render; the clay / photo gap in "squint" has to be calibrated);
