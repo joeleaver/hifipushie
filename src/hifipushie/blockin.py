@@ -382,6 +382,23 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     return entry
 
 
+def fork(src: str, name: str, replace: bool = False) -> dict:
+    """A block-in model copied as the ROOT of a new block-in (its own log, the cameras as they stand = the new start):
+    reruns and tests step from the copy, so the source's log and directory are never written."""
+    from . import store
+    if (store.HOME / name / "spec.json").exists() and not replace:
+        raise ValueError(f"{name} exists: choose a new name or replace=True")
+    sp, rj = copy.deepcopy(store.load(src)), copy.deepcopy(_refs(src))
+    rj["blockin"] = {**(rj.get("blockin") or {}), "root": name}
+    rj["blockin"].pop("cam_done", None)
+    _save(name, sp, f"block_in fork of {src}", rj)
+    c = identity(sp)
+    entry = {"round": 0, "to": name, "start": {"fork": src}, "c_norm": round(float(np.linalg.norm(c)), 3),
+             "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+    _log_path(rj, name).write_text(json.dumps([entry], indent=1))
+    return entry
+
+
 def fit_cameras(base: dict, views: list, rj: dict | None = None) -> list:
     """Each picture's camera fitted on this head, the head held (humanfit_map's camera-only fit); with rj, each view's
     camera on the head as that picture shows it (its fitted expression)."""

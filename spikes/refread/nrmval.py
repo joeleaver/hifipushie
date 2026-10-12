@@ -78,8 +78,10 @@ for cn, dct in CASES.items():
     name = m
     if cn != "null" and mode == "dressed":
         name = f"nv_{cn}"
+        if not (store.HOME / "nv_A" / "spec.json").exists():
+            bi.fork(m, "nv_A")                       # (steps log into the fork, never into the model's own block-in)
         if not (store.HOME / name / "spec.json").exists():
-            bi.step(m, {}, out=name, seen="refread validation", why=SAY[cn], _identity=c0 + dct)
+            bi.step("nv_A", {}, out=name, seen="refread validation", why=SAY[cn], _identity=c0 + dct)
     Bh = fr.model_head(spec, c0 + dct, A["kappa"])
     vs = views_of(name, Bh)
     obs = [ob for i, vw in enumerate(vs) for ob in fr._normal_obs(A, vw, None if ref is None else ref[i])]
