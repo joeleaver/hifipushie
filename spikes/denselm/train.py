@@ -48,7 +48,7 @@ def pack(root: Path, out: Path, limit: int | None = None) -> dict:
             lab = np.load(d / "labels.npz")
             meta = np.load(d / "meta.npz")
             size = int(lab["size"])
-            fs = sorted(d.glob("[0-9]*.png"))
+            fs = sorted(f for f in list(d.glob("[0-9]*.png")) + list(d.glob("[0-9]*.jpg")) if not f.stem.endswith("_a"))
             n = min(len(fs), len(lab["xy"]))
             xs.append(lab["xy"][:n])
             vs.append(lab["vis"][:n])
@@ -60,7 +60,12 @@ def pack(root: Path, out: Path, limit: int | None = None) -> dict:
         N = len(files)
         mm = np.lib.format.open_memmap(out / "pack_img.npy", "w+", np.uint8, (N, size, size, 4))
         for i, f in enumerate(files):
-            mm[i] = np.asarray(Image.open(f).convert("RGBA"))
+            if f.suffix == ".jpg":          # the slim form (slim.py): RGB as JPEG + the alpha beside it
+                rgb = Image.open(f).convert("RGB")
+                rgb.putalpha(Image.open(f.with_name(f.stem + "_a.png")).convert("L"))
+                mm[i] = np.asarray(rgb)
+            else:
+                mm[i] = np.asarray(Image.open(f).convert("RGBA"))
         mm.flush()
         del mm
         np.savez(out / "pack_lab.npz", xy=np.concatenate(xs)[:N], vis=np.concatenate(vs)[:N], dressing=np.array(dr)[:N],
