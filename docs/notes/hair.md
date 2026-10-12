@@ -994,3 +994,159 @@ locks' flow with a few crossing strands (a `cross` share in the lens group), lif
 done this round: hair.carry onto another head, renders through the references' fitted cameras, the hline measure
 and an unseen-angle row in look_hair are still Python-only (iso.py's views are the row to add: backq, right, backl,
 topback).
+
+## tesshair3 (2026-10-11, "tesshair3" agent, branch `worktree-agent-a9ff53d876e89ff26`): swept-back tied hair as a STYLE
+STATE / NEXT: DONE this round: `hair_flow.py` (flow-field gather, hanging tail, escaped hairs) + the STYLE `groom.tied` + tool `tie_hair` + look_hair views "around"; BEST = th_T34 (one style call on tess_a1). Sheets workspace/human_renders/th_10_tess_swept_back.png (reference | T34 EEVEE | T34 Cycles | T11 | T14), th_11_tied_riffs.png (her style + 6 riffs), th_12_tied_other_head.png (hu_w28d). It reads swept back and hanging; NOT yet her hair in texture (tail ends, smooth head, hairline step). NEXT: the list at the end of this section (tail ends first).
+
+Joe on th_03 (round two): "11 actually reads better than 14, but the actual hair styling is wrong, it's flat across
+her head instead of swept back and hanging down. This is a super common hairstyle, so we need to be able to get it
+right and repeat/riff on it." So this round replaced the construction and made it a style; no dials on the old one.
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair3/ (run.sh <script> = this worktree's code on the main workspace, capped,
+scripts looked up in spikes/tesshair3, tesshair2, tesshair; q3.sh <NN> '<style json>' [views] = th_T<NN> regrown + one
+row of unfitted views; round3.sh <model> [cycles] = six tiles + hline + hscore; riffs.sh + riffs.txt = the riffs
+through the tool; cmp.py = reference | models through the fitted cameras; out/ = tiles, logs, lock plots). Scripts
+`spikes/tesshair3/`: mk3.py (a head + a tied style, plot=1 draws the locks' lines from five sides WITHOUT Blender: 1 s,
+the fastest check of a flow), riff.py (THE TOOL PATH: server.tie_hair + sync + look_hair as an MCP client calls them),
+dbgpath.py (single roots' ways step by step as az / el / degrees over the hairline), sheet3.py (sheets with LARGE
+labels from a layout json).
+
+### What groomers do (the check before building; three sources)
+- Autodesk's XGen forum on ponytails (forums.autodesk.com "XGen - Styling question", "XGen Interactive Groom - guides
+  and clumps"): TWO descriptions, one for the hair pulled back over the head, one for the long hair leaving the tie;
+  guides are rooted ON THE SCALP and run to the tie, the generated hair follows them, and a clump scale curve draws
+  them into the tie. -> the gather is guides from scalp roots to the tie (we had rows of wide ribbons from the
+  hairline), the tail its own thing.
+- SideFX forum on long hair (sidefx.com/forum/topic/84298) + Vellum hair practice (Gnomon's course, cgchannel
+  2026-01): guides are laid in LAYERS from the sides and bottom up, upper layers over lower; a couple of hundred
+  guides are hung under gravity with a bend stiffness and collisions, the render strands generated from them after.
+  -> hair rooted further from the tie lies over hair rooted nearer (`body`); the tail is locks that FALL and collide,
+  not locks arranged round a drawn axis.
+- Polycount on strays (polycount.com/discussion/236202): their own description, each guide spawning ONE hair.
+  -> escaped pieces are single hairs (the wisp object of round two), a few from one root.
+
+### What was wrong in th_T11 / th_T14, by construction
+- "Flat across her head": the CURTAIN. The hairline row (the one on top of all others: `ride`) was routed root ->
+  sideways along the hairline -> down to a waypoint over the ear's top -> tie. That row IS the visible surface, so the
+  top read as lateral bands from the part down to the temples (a cap), with terraces where the three arcs met.
+  Everything under it ran the great circle root -> tie, which for front roots goes over the crown, not round the side.
+- "Sticks out as a stiff mass": the tail's locks were laid round ONE core line (direction integrated with `stiff`,
+  `dir` [0.7, 0.05, -0.6]) at a fixed radius profile; nothing fell on its own, the section stayed round to the end.
+- Which of T14's changes hurt against T11 (read by eye from the round tiles T11 / T12 / T14 side by side, NOT isolated
+  by re-rendering each alone): all three pushed the same way, toward denser and more solid. (1) `hairline_strands`
+  density 2 / clump 0 + count 85k (T12): the temple band went from terraced lines to a solid dark slab with harder
+  steps, the front edge a heavier roll: the cap read got stronger. Worst of the three. (2) the fuller tail (28 locks,
+  clump 0.55, fullness 0.049-0.054): a blockier mass with no air between locks, 16% too big in profile. (3) arch per
+  side: the forehead rounder by measure, but the roll over it reads as a headband; neutral at best.
+
+### The construction now: `hair_flow.py` (hair_tied dispatches to it; the old rows / curtain / core-line tail stay
+### the default of a raw `groom.tie`, so older models regrow unchanged)
+- `gather` (tie.gather.mode "flow"): a FLOW FIELD. Roots: a fine row on the hairline (0.32 x spacing apart, locks
+  0.6 x spacing wide), blue noise inside (spacing 2 cm, locks 1.9 x spacing wide), and a row on each bank of the
+  parting. Each root is traced over the unit sphere in 5 degree steps: direction = toward the tie along the surface
+  (in front of the ears: toward the tie's height at the BACK'S MIDDLE, so both sides of the face are combed back
+  alike and the far side's front does not cross over the top to an off-centre tie) + `part_push` away from the
+  parting on the root's own bank (within 3.5 cm of the part, only along `part_length`) + `sag` down the head
+  (x steepness, never forward, most just after the root, the front and temples most). Keep-in: a way stays above
+  the hairline, but for `overhang` deg at the forehead's corners and temples, and never lower in front of / over the
+  ear than its top - 3 deg (- `ears`). Height: `root_lift` in the first 15%, `puff` x sin over the way (the top
+  more than the sides), `body` x the way's length (far roots over near ones), into the tie at `out`.
+  Dead ends on the way: a sideways term in the sag on top of the head opened the parting into a bare furrow all the
+  way over the crown; sag weighted by cos^3 of the steepness did nothing at the temples; without the parting rows the
+  nearest roots stood up to a spacing off the line (a zigzag furrow); a hairline row of 1.5 x spacing-wide locks made
+  the temple edge a saw (where the hair runs ALONG the hairline every lock's start is a cut across it).
+- `tail` (tie.tail.hang): every lock leaves the tie inside a cone (`spread`) round the tie's direction (`dir`, else out
+  of the head, tilted by the tie's height; none INTO the head), its direction falls to gravity at (1 - stiff)^2 x 45
+  per metre (x 0.7..1.3 a lock), each step pushed off the BODY'S collider (hair_loose.collider: neck, shoulders,
+  back; each lock its own clearance so the bundle keeps its thickness lying on a shoulder), then the bundle is scaled
+  about its own mean line to `fullness` (rms radius x 1.41). sway / flick as before, on the mean line.
+  Numbers that mattered on Tess: the exit tilt (+0.12 Z stood the tail out like T02's flag; -0.06 x ... hangs),
+  stiff 0.2 + 0.1 x height + 0.04 x tightness (0.5 on a high tie ended 2 cm under the tie: a flag), 26 + 30 x
+  fullness locks (14 + 16 drew plank ends from behind).
+- `escaped` (tie.escaped): pieces by zone (part / temple / ear / nape), each 3-7 hairs from one root; every hair
+  falls on its own (own first direction, fall rate, length, bow plane, wave). Sharing one fall they were a bundle of
+  parallel wires standing off the temple (whiskers); toward a high tie they stood up like antennae (the flow
+  direction is clamped to not rise).
+- `style` (`groom.tied`): the words -> the tie, the parting, strand dials (under the spec's own), loose hair for
+  half up. hair.groom_params expands it, so everything downstream sees an ordinary tie; hair_cards.strands_of merges
+  the style's strand dials under spec.hair.strands. `hair.needs_body`: a hanging tail / escaped pieces build the
+  body's collider for the grow and for the strands' Shrinkwrap (the collider is now also cached per body geometry in
+  workspace/_cache: a copy of a model does not pay the minute again).
+- Tool: `tie_hair(name, style, carry_from, look)` (hair toolset; hair.tie_style): the style is MERGED into the
+  model's (a riff names what changes), carry_from = hair.carry wired (hairline, look, strand dials, style onto
+  another head). `look_hair(views=["around"])` = six sides with the bust (the unseen-angle row; + view bust_side_r).
+  Guide: hair_guide.md "Tied-back hair as a STYLE" + the tool section. NOT wired: renders through the references'
+  fitted cameras on the DRESSED stage and the like-with-like hairline measure stay spikes (garrett3/stage.py,
+  tesshair/hline.py); look_hair already renders through a hair_reference's matched camera.
+- Tests: tests/test_hair_flow.py (10: defaults = an ordinary ponytail, top runs front-to-back, every way ends in the
+  tie and stays in the hair, the parting's banks stay on their side, tightness = lift + sag, the tail hangs and
+  fullness is its radius, escaped pieces, the style's words, half up, the old tie untouched); test_hair_tied (14),
+  test_hair_loose + lift (15), test_hair_strands (23) pass. tests/test_toolsets.py fails on main already
+  (`block_in_solve` is registered but in no toolset): 5 failures, none from tie_hair.
+
+### Rounds (every model = tess_a1 + ONE style call; fitted-camera tiles out/s_<model>_v<n>.png; hscore IoU front / 3q /
+### profile, T11 = 0.690 / 0.504 / 0.693, T14 = 0.695 / 0.514 / 0.674; hline + = our hair's edge HIGHER than hers)
+- th_T20 (the first grow, style low / left / tightness 0.35 / neatness 0.4): already read as swept back with a hanging
+  tail. Wrong: a hard saw edge at the temples, the part an open furrow over the crown, tail straight with blunt ends,
+  escaped pieces straight wires over the eyes, halo a bottle brush.
+- th_T21 .. T24: part rows, sag only on steep scalp, the front combed to the back's middle (the two sides of the face
+  alike), the ear limit, halo x 0.45. T24 through the fitted cameras: form closer than any round-two model.
+- th_T25 .. T30: tail tilt and stiffness, per-hair escaped pieces, finer hairline row, overhang window. T30: IoU 0.729 /
+  0.496 / 0.625; hline centre +5.3, outer +7.4, temples +6.1 mm: the forehead's corners and temples BARE where her hair
+  drapes over them (overlay out/hline_th_T31_v0.png: her skin arch is narrow, ours wide), width above the eyes +11.2 /
+  +7.3 mm (two humps beside the part).
+- th_T32: with a parting the front runs back AT ITS OWN HEIGHT (the way to the back's middle may not climb: the
+  geodesic from the forehead goes over the top, and the hair off the part stayed 3-5 cm over the temples), the sag may
+  run forward a little, the hairline row lies lower (lift x 0.6, strand starts staggered x 0.3: staggered x 4 along
+  locks that run AWAY from the line the edge stood 5-7 mm behind it). hline centre +1.3, outer +3.0, temples +2.4;
+  IoU 0.659 / 0.500 / 0.675 (the tail kicked out sideways: sway 2.7 cm on a random phase, 4.5 cm of clearance).
+- th_T33 (sway x 0.65, clearance 0.5 x fullness): IoU 0.682 / 0.557 / 0.716, hairline band bare 12.4 / 19.3 / 9.5%
+  (T14 17.8 / 11.8 / 8.5), hline centre +2.1, outer +3.6, temples +3.2, top -3.2 mm, width above the eyes +7.8 / +2.2.
+- th_T34 = BEST (T33 with flick 0.04 -> 0.018 x wave: the flicked lock ends were straight spikes standing out of the
+  tail): IoU 0.675 / 0.556 / 0.715; hline v0 centre +2.2, outer +3.3, temples +3.1, top -3.1 mm, width +7.7 / +2.0;
+  forehead arch (hscore, ours - hers, + = ours lower) -1.1 -3.1 +1.7 +5.5 +1.2 mm. Its style:
+  {"tie": "low", "side": "left", "tightness": 0.3, "neatness": 0.2, "tail": {"length": 0.24, "wave": 0.8,
+  "fullness": 0.75}} + Tess's traced hairline and th_T14's look (its cycles_fit [0.9, 0.55]; with th_T11's look the
+  Cycles column was black).
+- The measures against round two: the three-quarter IoU is the best of all three rounds (0.556; it never passed
+  0.514), the profile's the best since T04 (0.722), the front's a little under T11 / T14 (0.675 vs 0.690 / 0.695);
+  the hairline is 2-3 mm HIGH where T14 was within 2 mm (T14's curtain was tuned to that measure over five rounds;
+  this is a style's default).
+
+### Riffs (through the tool: riff.py = server.tie_hair(carry_from=th_T33, style=<only what changes>); sheet th_11)
+- R1 high tight ponytail {"tie": "high", "side": "centre", "tightness": 0.9, "neatness": 0.85, "part": "none", tail
+  0.32 m / wave 0.1 / fullness 0.6}: reads at once; the tail stands up out of the tie, arcs over and falls.
+- R2 low centre ponytail (tightness 0.5): reads at once. R3 low side sleek (tightness 0.85, neatness 0.95): reads; it
+  is R-her-style with two numbers changed.
+- R4 half up ({"half": true, "tie": "mid", "length": 0.24}): reads; the loose lengths are groom.loose's (straight,
+  stringy), the small tail kicks out before it falls.
+- R5 top knot ({"tie": "top", "tail": "bun"}) and R6 low plait ({"tail": {"kind": "plait"}}): read at once (the old
+  coil / plait under the new gather).
+- Her style on another head: th_H1 = hu_w28d + tie_hair(carry_from="th_T33") (sheet th_12, look_hair "around"): the
+  same hairstyle, nothing tuned. tie_hair 80 s the first time on a body (its collider), 1-2 s after; sync 40 s;
+  look_hair around 38 s.
+- What every TIGHT riff shows: the hairline at the temples and sideburns is a hard stepped edge (reads shaved / a
+  wig's edge). Loose styles hide it under the drape.
+
+### BLUNT READ of th_T34 beside her pictures (sheet th_10)
+- Swept back: YES. From the part the hair runs out, down over the forehead's corners and temples and back over the
+  ears' tops into the tie; on the side of the head the strands run back and down like hers; from behind they
+  converge on the tie. No lateral bands, no terraces at the temple.
+- Hanging: YES. The tail leaves the tie, bulges and falls beside the neck; it lies against the neck / shoulder.
+- Wrong, biggest first: (1) the TAIL'S TEXTURE: long straight strands ending in thin strings; hers is a bushy,
+  loosely waved brush with a rounded tousled end, about 1.3x as wide at its widest. From behind a flat ribbon of
+  gather hair lies over the band and the ends are plank-like. (2) The head hair is SMOOTH and even (a combed,
+  slightly wet read in EEVEE); hers is tousled, with loose strands crossing the flow and a soft halo; the escaped
+  hairs are few thin lines. (3) The front hairline: a stepped notch at the part and 2-3 mm high at the corners; a
+  dark lifted lump on her left bank of the part in the three-quarter view. (4) The top is 3 mm flat and 8 mm wide
+  on her right above the eyes. (5) Tight styles: the hard temple edge. (6) Cycles: darker and browner than her
+  hair, back views under-lit (uncalibrated, not this round's job; not worse than T14's).
+
+NEXT: (1) the tail's ends and body: strands' own length spread inside a lock (the lens group's Tips is not doing it
+on wide free locks: plank ends), a slow curl at the ends, fullness by tie tightness; (2) texture on the head: a share
+of gather locks that cross the flow / lift (looseness as lock-level disorder, not strand noise), longer looping halo;
+(3) the hairline for tight styles: baby hairs + a density ramp instead of a row of locks starting on the line;
+(4) the front hairline's step at the part (the overhang window opens at 4 deg); (5) fit the style's few numbers to a
+reference by measure (tie place from the tail's root, tightness from the outline's width, tail length / fullness from
+hscore's mask): today they were set by eye; (6) wire the dressed fitted-camera renders and hline as tools; (7) fix
+tests/test_toolsets.py on main (block_in_solve in no toolset).

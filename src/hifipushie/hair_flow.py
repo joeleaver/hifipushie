@@ -499,7 +499,7 @@ def style(tied: dict) -> dict:
             # a tail hangs: it stands out of a high tight tie a little longer than out of a low loose one
             tail_.update({"hang": True, "stiff": round(0.2 + 0.1 * float(np.clip((el + 10) / 60, 0, 1)) + 0.04 * T, 3),
                           "spread": round(0.3 + 0.3 * tl["fullness"], 3), "sway": round(0.022 * wave, 4),
-                          "sway_length": 0.21, "flick": round(0.04 * wave, 4)})
+                          "sway_length": 0.21, "flick": round(0.018 * wave, 4)})
             if tl["to"] == "shoulder":  # brought forward over the shoulder on the tie's side (the left when centred)
                 sd = 1.0 if off >= 0 else -1.0
                 tail_["dir"] = [round(0.75 * sd, 3), -0.35, -0.55]

@@ -80,9 +80,9 @@ if os.path.exists(lk):
     tiles = []
     for i, v in enumerate(names):
         p = f"{O}_h1_{v}.png"
-        im.crop((i * n, y0, (i + 1) * n, y0 + n)).save(p)
+        im.crop((i * n + int(0.2 * n), y0 + int(0.1 * n), i * n + int(0.8 * n), y0 + int(0.7 * n))).save(p)
         tiles.append(p)
-    build({"title": "Her style on another head (hu_w28d): tie_hair(carry_from=th_T31), look_hair(views=['around'])",
+    build({"title": "Her style on another head (hu_w28d): tie_hair('th_H1', carry_from='th_T33'), look_hair(views=['around'])",
            "tile": 560, "label_w": 300, "cols": ["front", "three-quarter", "left", "back left", "back", "right"],
-           "rows": [{"label": "th_H1\nthe same style, hairline = this head's default", "tiles": tiles}]},
+           "rows": [{"label": "th_H1\nthe same style call; her traced hairline scaled to this head; look_hair's own stage", "tiles": tiles}]},
           HR + "th_12_tied_other_head.png")

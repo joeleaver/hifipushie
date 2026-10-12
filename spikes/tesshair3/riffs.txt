@@ -1,0 +1,6 @@
+R1|{"tie": "high", "side": "centre", "tightness": 0.9, "neatness": 0.85, "part": "none", "tail": {"length": 0.32, "wave": 0.1, "fullness": 0.6}}
+R2|{"tie": "low", "side": "centre", "tightness": 0.5, "neatness": 0.6, "tail": {"length": 0.28, "wave": 0.3, "fullness": 0.5}}
+R3|{"tie": "low", "side": "left", "tightness": 0.85, "neatness": 0.95, "tail": {"length": 0.24, "wave": 0.1, "fullness": 0.5}}
+R4|{"tie": "mid", "side": "centre", "tightness": 0.5, "neatness": 0.6, "half": true, "length": 0.24, "tail": {"length": 0.2, "wave": 0.3, "fullness": 0.3}}
+R5|{"tie": "top", "side": "centre", "tightness": 0.8, "neatness": 0.7, "part": "none", "tail": "bun"}
+R6|{"tie": "low", "side": "centre", "tightness": 0.6, "neatness": 0.7, "tail": {"kind": "plait", "length": 0.34, "fullness": 0.6}}
