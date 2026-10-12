@@ -26,7 +26,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 5
+VERSION = 6
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -42,22 +42,22 @@ N_SHIFT = 9            # shift is given at this many stations by default (any nu
 FOLDS = {
     "nasolabial": {"path": [("lm_nostril.L", (0.08, 0.02, 0.03)), ("lm_mouth_corner.L", (0.14, 0.05, 0.12)),
                             ("lm_mouth_corner.L", (0.16, 0.07, -0.15))], "plus": (1, 0, 0.3), "width": 3.5, "depth": 0.8,
-                   "tint": 0.5, "shade": 0.3, "roll": (4.5, 5.0, 0.35), "search": 6.0, "res": 1.6,
+                   "tint": 0.35, "shade": 0.2, "roll": (4.5, 5.0, 0.35), "search": 6.0, "res": 1.6,
                    "about": "the fold from the nose's wing past the mouth's corner (the cheek's pad over it)"},
     # (from under the corner's own dimple: a young mouth's corner shadow is not a marionette line)
     "marionette": {"path": [("lm_mouth_corner.L", (0.07, 0.02, -0.12)), ("lm_mouth_corner.L", (0.12, 0.05, -0.45))],
-                   "plus": (1, 0, 0), "width": 3.0, "depth": 0.7, "tint": 0.45, "shade": 0.3, "roll": (4.0, 4.5, 0.3),
+                   "plus": (1, 0, 0), "width": 3.0, "depth": 0.7, "tint": 0.3, "shade": 0.2, "roll": (4.0, 4.5, 0.3),
                    "search": 4.5, "res": 1.4, "about": "the line down from the mouth's corner (the jowl's front edge)"},
     "mouth_corner": {"path": [("lm_mouth_corner.L", (0.06, 0.01, 0.0)), ("lm_mouth_corner.L", (0.18, 0.07, -0.03))],
                      "plus": (0, 0, 1), "width": 1.4, "depth": 0.45, "tint": 0.5, "shade": 0.15, "roll": None,
                      "search": 2.5, "res": 0.7, "about": "the crease running out from the mouth's corner"},
     "mentolabial": {"path": [("lm_lip_lower", (-0.3, 0.04, -0.13)), ("lm_lip_lower", (0.0, 0.0, -0.15)),
                              ("lm_lip_lower", (0.3, 0.04, -0.13))], "plus": (0, 0, 1), "width": 4.0, "depth": 0.6,
-                    "tint": 0.3, "shade": 0.35, "roll": None, "search": 4.0, "res": 1.6,
+                    "tint": 0.2, "shade": 0.25, "roll": None, "search": 4.0, "res": 1.6,
                     "about": "the groove between the lower lip and the chin"},
     "tear_trough": {"path": [("lm_eye_inner.L", (0.03, 0.0, -0.09)), ("lm_lid_lower.L", (-0.05, 0.02, -0.21)),
                              ("lm_lid_lower.L", (0.24, 0.06, -0.25))], "plus": (0, 0, 1), "width": 3.5, "depth": 0.7,
-                    "tint": 0.4, "shade": 0.45, "roll": (4.0, 4.0, 0.8), "search": 5.0, "res": 1.6,
+                    "tint": 0.25, "shade": 0.25, "roll": (4.0, 4.0, 0.8), "search": 5.0, "res": 1.6,
                     "about": "the groove under the lower lid; its roll is the eye bag over it"},
     "lid_fold": {"path": [("lm_eye_inner.L", (0.07, 0.0, 0.035)), ("lm_lid_upper.L", (0.0, 0.0, 0.06)),
                           ("lm_eye_outer.L", (-0.02, 0.02, 0.055))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
@@ -296,7 +296,9 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
     base_r = ctx["base_r"]
     # (map values are amount x share / 1.5: the layers' strengths carry the 1.5 back)
     # (no "levels" on the image: a post-processed mask is measured per vertex, and a lid's 1 mm line came out as dots)
-    layer("folds_shade", color=[0.66, 0.53, 0.5], mix="multiply", opacity=1.0, mask=[im("b")])
+    # (a shade, not a stain: near neutral. At [0.66, 0.53, 0.5] with the first tints a tear trough under a flat frontal
+    # light, where painted relief hardly shades, read as a brown smudge under Garrett's eye)
+    layer("folds_shade", color=[0.74, 0.66, 0.64], mix="multiply", opacity=1.0, mask=[im("b")])
     layer("folds_groove", height=-round(DEPTH * 1.5, 7), roughness=min(base_r + 0.08, 0.95), opacity=0.6, mask=[im("r")])
     layer("folds_roll", height=round(BULGE * 1.5, 7), mask=[im("g")])
 

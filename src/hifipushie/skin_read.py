@@ -704,7 +704,15 @@ GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
           "stubble": (), "brows": (), "freckles": (), "eyeballs": (), "folds": ()}
 DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "eyeballs", "folds")
 SIGMA = (6.0, 0.8, 0.8)     # Lab: what a region's read is worth (lightness carries the shading we do not model)
-EXPOSURE = 0.5            # log units: how loosely the picture's unknown exposure is held to our skin's lightness
+EXPOSURE = 0.08           # log units: how closely the picture's unknown exposure is held to our skin's lightness. At 0.5
+                          # (free) the tone ran DARK on every case: the pigment model reaches a picture's chroma only by
+                          # adding melanin (validation: melanin 0.48 for a truth of 0.30; Garrett came out a tanned
+                          # orange-brown). The tone's lightness is not the pictures' to give: it stays ours.
+BEARD_EVEN = 0.6          # the beard's zone scales are held to their mean this loosely (side zones read lightness, the least
+                          # trusted number; free, a jaw at 1 beside cheeks at 0 drew a band with an edge)
+LIP_SIGMA_L = 2.5         # the lips' lightness is theirs (a small region, read whole): trusted more than the skin's
+IRIS_MM = 0.5             # mm a picture pixel: coarser, an iris is a handful of pixels of lid shadow (Garrett's read x 2)
+BROW_COLOUR_MM = 0.8      # coarser, a brow's darkest third is half skin: its colour is not read (its density is)
 FIT_POINTS = 50000         # the solve's points (region means do not need every pixel)
 PRIOR = 0.04                # the pull back to the start, per share of a parameter's range (least change)
 STUBBLE_PROTO = {"amount": 1.0, "style": "short"}
@@ -824,7 +832,8 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print) 
     for k in reg:
         bv = list((r["regions"][k].get("by_view") or {}).values())
         sp = np.std(bv, 0) if len(bv) > 1 else np.array([2.0, 0.6, 0.6])
-        sig.append(np.hypot(SIGMA, sp) / np.sqrt(min(r["regions"][k]["px"], 2000.0) / 2000.0))
+        s0 = (LIP_SIGMA_L, SIGMA[1], SIGMA[2]) if k.startswith("lip_") else SIGMA
+        sig.append(np.hypot(s0, sp) / np.sqrt(min(r["regions"][k]["px"], 2000.0) / 2000.0))
     sig = np.array(sig)
 
     # A white-balance-only anchor gives the picture's albedo up to ONE unknown factor (its exposure): that factor is a
@@ -836,7 +845,9 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print) 
     def resid(x):
         m, _ = model(x[:np_])
         tg = _lab_scale(target, float(np.exp(x[np_]))) if free_e else target
+        bs = x[len(names):np_]
         return np.concatenate([((m - tg) / sig).ravel(), PRIOR * len(reg) ** 0.5 * (x[:np_] - x0[:np_]) / (hi - lo)[:np_]] +
+                              ([len(bz) ** 0.5 * (bs - bs.mean()) / BEARD_EVEN] if len(bz) else []) +
                               ([[len(reg) ** 0.5 * x[np_] / EXPOSURE]] if free_e else []))
 
     if free_e:
@@ -913,6 +924,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print) 
             changes.append(("features.freckles", fr["have"], new, f"dark specks per cm2, picture vs ours: {fr['views']}"))
     # brows: colour and density
     b = r["brows"]
+    native = min((v.get("mm_per_px", 0.3) for v in c.views), default=1.0)
     if "brows" in groups and b["read"]:
         hb = (sk1.get("hair") or {}).get("brows", 1.0)
         hb = {"amount": float(hb)} if isinstance(hb, (int, float)) else dict(hb or {})
@@ -924,7 +936,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print) 
         shown = col0 + g * (0.55 - col0)
         want = _srgb(np.clip(_lin(shown) * np.asarray(b["colour_ratio"]), 0, 1))
         new = dict(hb)
-        if np.abs(lab(_lin(want)) - lab(_lin(shown))).max() > 2.0:
+        if native <= BROW_COLOUR_MM and np.abs(lab(_lin(want)) - lab(_lin(shown))).max() > 2.0:
             new["color"] = "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in np.clip(want, 0, 1))
             new["grey"] = 0.0
             changes.append(("hair.brows.color", hb.get("color", "(default)") + (f" grey {g}" if g else ""), new["color"], f"brow hair colour x {b['colour_ratio']}"))
@@ -935,7 +947,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print) 
             changes.append(("hair.brows.density", round(d0, 3), d1, f"brow band coverage x {b['coverage_ratio']}"))
         sk1.setdefault("hair", {})["brows"] = new
     # eyeballs
-    if "eyeballs" in groups and sk1.get("eyes") is not False:
+    if "eyeballs" in groups and sk1.get("eyes") is not False and native <= IRIS_MM:
         from . import paint
         ey = dict(sk1.get("eyes") or {})
         for key, dflt, lim in (("iris", "#5a3a1e", (0.5, 2.0)),):
@@ -1046,12 +1058,13 @@ FOLD_OWN = 0.7         # ... and this share of our own valley there deeper than 
 FOLD_SHARE = 0.3       # ... along at least this share of the path's visible stations
 FOLD_MAX = 0.42        # log luminance: deeper than this is not a crease of skin
 FOLD_CONF = 0.5        # a fold is laid only from this confidence up
+BILATERAL = ("lid_fold",)   # folds every face has on both sides: one side's read stands in for the other
 FOLD_MOVE = 1.5        # mm: a fold of ours is moved only when the picture's lies this far from it (median)
 FOLD_STEP = 0.25       # mm between a profile's samples
 # what an amount-1 fold of ours reads as (median valley depth, log luminance, under the pictures' fitted lights):
 # calibrated on synthetic heads (spikes/skinread/foldval.py); the second round corrects what this gets wrong
-FOLD_REF = {"nasolabial": 0.15, "marionette": 0.11, "mouth_corner": 0.2, "mentolabial": 0.3, "tear_trough": 0.22,
-            "lid_fold": 0.2, "glabella": 0.135}
+FOLD_REF = {"nasolabial": 0.15, "marionette": 0.1, "mouth_corner": 0.2, "mentolabial": 0.22, "tear_trough": 0.19,
+            "lid_fold": 0.19, "glabella": 0.12}
 LEGACY = {"nasolabial": "nasolabial", "marionette": "marionette", "glabella": "glabella"}   # skin.wrinkles' own lines
 LEGACY_SHARE = 0.5     # what one unit of the legacy wrinkle is taken to be worth in fold amount when it is replaced
 # fields of fine lines (skin.wrinkles' swatch layers): zone, the picture resolution they need (mm a pixel), and what
@@ -1288,7 +1301,7 @@ def fold_text(fr: dict) -> str:
 def fold_fit(sk: dict, fr: dict, first: bool) -> list:
     """skin["folds"] and the fine-line amounts of skin["wrinkles"] set from a fold read (in place). Returns changes."""
     from . import skin_folds as sf
-    changes = []
+    changes, stuck = [], []
     folds = dict(sk.get("folds") or {})
     cur = sf.options(folds)
     for name, row in fr["folds"].items():
@@ -1307,6 +1320,11 @@ def fold_fit(sk: dict, fr: dict, first: bool) -> list:
             a1 = a0
             if s["present"] and s["confidence"] >= FOLD_CONF:
                 a1 = float(np.clip(a0 + a_leg + s["diff"] / FOLD_REF[name], 0, 1.5))
+                if a0 > 0.2 and s["ours"] < 0.3 * a0 * FOLD_REF[name]:
+                    # ours is laid and does not read under this light: more paint will not make it a form (a flat
+                    # frontal light hides painted relief; the picture's fold is geometry + occlusion)
+                    a1 = a0
+                    stuck.append(f"{name}{sd}")
             elif s["absent_in_picture"] and a0 > 0:
                 a1 = float(np.clip(a0 - s["excess"] / FOLD_REF[name], 0, 1.5))
             amounts[sd] = a1
@@ -1318,6 +1336,17 @@ def fold_fit(sk: dict, fr: dict, first: bool) -> list:
                 shift = s["shift"]
             new_sides[sd] = {"shift": shift,
                              "extent": s["extent"] if (s["present"] and "extent" in s and s["extent"][1] - s["extent"][0] > 0.2) else os_["extent"]}
+        # a fold both sides of every face have (the lid's crease): read on one side only, the other takes it over
+        # (hair, a shadow or the pose hid it there): INFERRED, and said so
+        mirrored = None
+        if name in BILATERAL and len(amounts) == 2:
+            (sa, sb) = list(amounts)
+            for one, other in ((sa, sb), (sb, sa)):
+                so, sn = row["sides"][one], row["sides"][other]
+                if so.get("present") and so["confidence"] >= FOLD_CONF and not sn.get("present") and amounts[other] < 0.5 * amounts[one]:
+                    amounts[other] = amounts[one]
+                    new_sides[other] = {"shift": list(new_sides[one]["shift"]), "extent": list(new_sides[one]["extent"])}
+                    mirrored = (one, other)
         top = max(amounts.values()) if amounts else 0.0
         a_old = old["amount"] if old else 0.0
         if top < 0.08:
@@ -1344,6 +1373,8 @@ def fold_fit(sk: dict, fr: dict, first: bool) -> list:
         folds[name] = entry
         why = "; ".join(f"{name}{sd}: valley {s['picture']:.3f} (ours {s['ours']:.3f}) along {int(100 * s['share'])} %, confidence {s['confidence']}"
                         for sd, s in row["sides"].items() if s.get("present") is not None)
+        if mirrored:
+            why += f"; {name}{mirrored[1]} was not read: it takes {name}{mirrored[0]}'s (INFERRED: both sides have this fold)"
         changes.append((f"folds.{name}", round(a_old, 2) if old else "none", entry, why))
         leg = LEGACY.get(name)
         if leg and old is None and float((sk.get("wrinkles") or {}).get(leg, 1.0)) != 0.0:
@@ -1353,6 +1384,10 @@ def fold_fit(sk: dict, fr: dict, first: bool) -> list:
         sk["folds"] = folds
     else:
         sk.pop("folds", None)
+    if stuck:
+        changes.append(("folds (NOT raised)", "", "", ", ".join(stuck) + ": laid, yet our render shows less than a third of what that "
+                        "amount should read under the picture's light. Painted relief does not carry it: the picture's fold is "
+                        "geometry (sculpt / block-in), not more paint"))
     from . import skin as skinmod
     p = skinmod.params({"skin": sk})
     for name, row in fr["fields"].items():
