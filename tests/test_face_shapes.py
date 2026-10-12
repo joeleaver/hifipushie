@@ -623,6 +623,52 @@ def test_gnm_head_shapes():
     assert (tv[1] + Dt["tongueOut"][1]) @ face.out > face.M @ face.out
 
 
+def test_jaw_leaves_the_body_under_the_neck():
+    """2026-10-12 (headbody; a regression of GNM's own mouth, 75a6a10): away from the face the jaw's rigid move was
+    laid on x 1.0 instead of x the jaw weight. Meant for GNM's teeth and tongue, it ran on the SKIN too: every body
+    vertex under the neck moved 25.9 mm with jawOpen, and the export's rigid_near (whatever a face shape moves is
+    head) then weighted the whole trunk 1.0 to the Head bone: a head turn carried the chest, a neck bend tore it away.
+    On a GNM-mouth head: no skin vertex under the neck moves with jawOpen (by index on the one mesh's own quads, and
+    by projection as a decimated low poly gets them), and the trunk's Head weight after rigid_near is 0."""
+    try:
+        from hifipushie import assets
+        assets.path("gnm", "gnm/shape/data/versions/v3_0/gnm_head.npz")
+    except Exception as err:
+        print("skipped:", str(err)[:80])
+        return
+    from hifipushie import humans, retopo
+    from hifipushie import rig as rigmod
+    sp = humans.spec(age=40, sex=1.0, seed=3, skin=False, source="human")  # (no interior key: GNM's own mouth)
+    sp.setdefault("parts", {}).setdefault("body", {})["topology"] = "wrap"
+    r = retopo.wrap(sp, log=[])
+    V, L, S, gnm = r["verts"], r["loops"], r["sizes"], np.asarray(r["gnm"])
+    st = np.r_[0, np.cumsum(S)[:-1]]
+    T = np.array([(L[a], L[a + j], L[a + j + 1]) for a, k in zip(st, S) for j in range(1, k - 1)])
+    face = faceshapes.face_of(sp)
+    assert face.gnm_mouth
+    chin_z = float(face.head["lm68"][8][2])
+    trunk = V[:, 2] < chin_z - 0.15
+    assert trunk.sum() > 3000 and (gnm[trunk] < 0).all()
+    moved = {}
+    for how, idx in (("by index", gnm), ("projected", None)):
+        Xn = V + face.neutral(V, "skin", idx)
+        D = face.displacements(V, Xn, faceshapes.vertex_normals(Xn, T), "skin", ["jawOpen", "tongueOut"], None, idx)
+        mv = np.max([np.linalg.norm(d, axis=1) for d in D.values()], 0)
+        assert mv[~trunk].max() > 0.015, how  # (the jaw does open)
+        assert mv[trunk].max() < rigmod.MOVED[0], (how, float(mv[trunk].max()))
+        moved[how] = mv
+    assert moved["by index"][gnm < 0].max() == 0.0  # (the one mesh: nothing under the seam ring moves at all)
+    bones = rigmod.rig_bones(sp)
+    names = [b["name"] for b in bones]
+    hi, sp2 = names.index(rigmod.PREFIX + "Head"), names.index(rigmod.PREFIX + "Spine2")
+    J = np.full((len(V), 4), sp2)
+    W = np.tile([1.0, 0.0, 0.0, 0.0], (len(V), 1))
+    for how, mv in moved.items():
+        Jr, Wr = rigmod.rigid_near(bones, {"body": (J, W)}, {"body": V}, {"body": mv}, band=0.08)["body"]
+        head = np.where(np.asarray(Jr) == hi, np.asarray(Wr), 0.0).sum(1)
+        assert head[~trunk].max() > 0.99 and head[trunk].max() == 0.0, (how, float(head[trunk].max()))
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
