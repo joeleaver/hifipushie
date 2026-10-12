@@ -10,7 +10,8 @@ import sys
 import numpy as np
 from PIL import Image
 
-sys.path[:0] = ["/home/joe/dev/hifipushie/spikes/garrett3", "/home/joe/dev/hifipushie/spikes/tour"]
+_S = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.join(_S, "garrett3"), os.path.join(_S, "tour")]  # (this checkout's: a compute job has no other)
 import stage  # noqa: E402
 import tour  # noqa: E402,F401
 

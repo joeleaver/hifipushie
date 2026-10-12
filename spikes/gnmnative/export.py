@@ -20,11 +20,6 @@ for line in (log or []):
     if "face shape" in line or "mouth" in line or "WARNING" in line or "teeth" in line or "tongue" in line:
         print("LOG", line[:400])
 glb = next(out.glob("*.glb"))
-g = faceshapes.read_glb(glb)
-for mesh, d in g.items():
-    names = d["names"]
-    mv = {n: float(np.abs(d["targets"][n]).max()) for n in names} if "targets" in d else {}
-    moved = [n for n, v in mv.items() if v > 1e-6]
-    print(f"MESH {mesh}: {d.get('count')} vertices, {len(names)} targets, {len(moved)} move it; "
-          + ", ".join(f"{n} {1000 * mv[n]:.1f} mm" for n in ("jawOpen", "tongueOut", "eyeBlinkLeft", "mouthSmileLeft", "eyeLookUpLeft") if n in mv))
+import subprocess  # noqa: E402
+print(subprocess.run([sys.executable, str(Path(__file__).with_name("glbcheck.py")), str(glb)], capture_output=True, text=True).stdout)
 print(json.dumps({k: v for k, v in (r if isinstance(r, dict) else {}).items() if k in ("triangles", "parts", "seconds", "glb")}, default=str)[:1500])
