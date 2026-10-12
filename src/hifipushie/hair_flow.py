@@ -84,6 +84,11 @@ def roots(sc, ga: dict, line, rng, xp=None):
         az_h, el_h = az_h[keep], el_h[keep]
     d_h = np.zeros(len(az_h))
     if edge > 0:
+        # (the row itself is not ruled: at the temples its roots stand up to ~7 mm inside the line, each its own depth
+        # (no random draw: the stream stays). On one line, locks that run straight off it were a saw, tesshair6)
+        fa = np.abs(_wrap(az_h))
+        jit = (np.arange(len(az_h)) * 0.6180339887) % 1.0
+        el_h = el_h + 5.0 * edge * jit * _ss_t((fa - 28.0) / 14.0) * (1.0 - _ss_t((fa - 105.0) / 10.0))
         # THE EDGE BAND (tesshair5; Joe: "a hard dark arc"): one row of locks on the line is a cliff, full density
         # from the first mm, and the strip behind it (up to where the inner roots begin, 0.6 x spacing) had no root at
         # all: at the temples and sideburns, where that strip is all the hair there is, it read as shaved skin. Fine
@@ -318,6 +323,19 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                 st["fine"] = round(float(np.clip(edge * (1.0 - ramp) * (1.0 - 0.5 * strip) + 0.3 * edge * climb, 0.0, 1.0)), 3)
                 st["rim"] = round(0.8 + 1.0 * edge, 2)
                 st["roots_m"] = round(0.008 + 0.02 * (1.0 - ramp), 4)
+                # hair that runs straight AWAY from the line at the temple (an up-style: high ponytail, top knot)
+                # shows every lock's start end-on: a row of teeth 8 mm wide (th_S1 / S5). Its strands start one by
+                # one ACROSS the band (over the first 3-4.5 cm of the lock, which is the band's depth and more), the
+                # lock is narrower and drawn finer: the edge is a gradient of single starts, not lock ends
+                da_ = float(_wrap(aa[2] - aa[0])) * np.cos(np.radians(float(ee[0])))
+                away = 1.0 - min(abs(da_) / max(float(np.hypot(da_, ee[2] - ee[0])), 1e-6), 1.0) ** 2
+                away *= float(_ss_t((fa_i - 28.0) / 14.0) * (1.0 - _ss_t((fa_i - 105.0) / 10.0)))
+                if away > 0.05:
+                    st["roots_m"] = round(st["roots_m"] + away * (0.022 + 0.015 * ((i * 0.6180339) % 1.0)), 4)  # (no draw: the stream stays)
+                    st["fine"] = round(float(np.clip(st["fine"] + 0.3 * away * (1.0 - ramp), 0.0, 1.0)), 3)
+                    st["rim"] = round(st["rim"] + 0.8 * away, 2)
+                    st["density"] = round(st["density"] * (1.0 - 0.7 * away * (1.0 - ramp)), 3)
+                    lk["width"] = round(lk["width"] * (1.0 - 0.3 * away), 4)
             if ga.get("feather"):
                 # where the hair runs ALONG the hairline (the temples, beside the part: every lock's start is a cut
                 # across the line) its strands start one by one far along the lock: a feathered edge instead of a
