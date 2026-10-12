@@ -148,6 +148,17 @@ lip just over the line (the eyeball is a constraint, not a stop: the crease stay
 Its dark line is calibrated on a photograph: amount 1 renders as dark as a clear photographed crease (read the same
 way, 0.32). The nasolabial path follows the HEAD'S OWN crease where the shape has one (a middle-aged GNM head does),
 else it runs from the nose's wing at 30-40 deg from the vertical, 12-15 mm outside the mouth's corner.
+`"chin_notch": 0.8`: the chin's midline notch / cleft with a soft lobe each side (0.9 mm deep, lobes 0.6 at amount 1;
+`roll` = the lobes). `commissure` and `chin_notch` are NOT READ by skin_from_reference (the mouth's own corner
+shadow / the chin's own shading lie in their windows: the reply says so): set them by eye.
+FOLDS UNDER EXPRESSION (export_asset(face_shapes=...)): a fold laid in the neutral would ride a face shape rigidly (a
+crease across a closed lid). Each fold has a gain per ARKit shape (`skin_folds.EXPRESSION`: lid_fold eyeBlink 0,
+eyeWide 1.3, eyeSquint 0.5, browDown 1.2; tear_trough eyeSquint / cheekSquint 1.4; nasolabial mouthSmile 1.5,
+cheekSquint 1.2, jawOpen 0.8; marionette jawOpen 0.6, mouthFrown 1.4; glabella browDown 1.6 ...; first guesses),
+and the export bakes (gain - 1) x the fold's own displacement into that shape's morph target (the report's
+`fold_expressions`: mm per fold and shape). GEOMETRY ONLY: the fold's normal map and its painted line are one
+texture for all shapes and stay (a GLB's morph targets carry POSITION and vertex NORMAL, no per-target texture):
+fading them with a shape needs a wrinkle-map blend in the engine. `"fold_expressions": false` leaves the folds rigid.
 The displacement fades out before the lid margins and the lips and never reaches the eyeball; with no
 folds nothing is built or evaluated. `"fold_relief": "paint"` keeps the older painted relief (bump only).
 Look at them with `look_skin` under two lights; a fold is a few voxels wide: judge close-ups, not the bust.

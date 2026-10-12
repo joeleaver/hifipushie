@@ -331,8 +331,44 @@ def test_fold_rules2():
     assert v[0] == 0 and v[1] == 0 and v[2] > 0.0007 and v[3] < 0.0001, v
 
 
+@_tmp
+def test_folds_under_expression():
+    """skinfolds2: a fold's gain per face shape goes into that shape's morph target: on a blink (gain 0) the lid
+    fold's vertices move back onto the fold-free skin; the other side's shape and a shape without a gain add nothing;
+    skin.fold_expressions = False turns it off."""
+    from hifipushie import images, sdf
+    spec = head_spec(age=30, folds={"lid_fold": 1.0, "nasolabial": 1.0})
+    J = skin._joints(spec)
+    ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["lid_fold"])
+    q = ps[("lid_fold", ".L")]
+    full, free = images.prims_on(spec, ["body"]), images.prims_on(sf.without(spec), ["body"])
+    # vertices ON the folded surface, 2 mm over the fold's line (its roll), along the path's middle third
+    i = np.arange(len(q["P"]) // 3, 2 * len(q["P"]) // 3)
+    X = q["P"][i] + 0.002 * q["across"][i]
+    for _ in range(6):
+        X = X - sdf.field_at(full, X)[:, None] * q["normal"][i]
+    before = np.abs(sdf.field_at(free, X))
+    assert before.max() > 0.0002, before.max()            # the fold stands there
+    T = np.array([[0, 1, 2]])
+    z = np.zeros_like(X)
+    mk_ = lambda: {"body": {"verts": X.copy(), "corner_vert": T.ravel(), "shapes": {k: (z.copy(), z.copy(), z.copy()) for k in  # noqa: E731
+                                                                               ("eyeBlinkLeft", "eyeBlinkRight", "jawForward", "eyeWideLeft")}}}
+    parts, log = mk_(), []
+    got = sf.expression(spec, parts, log)
+    d = parts["body"]["shapes"]["eyeBlinkLeft"][0]
+    after = np.abs(sdf.field_at(free, X + d))
+    assert after.max() < 0.35 * before.max(), (before.max(), after.max())      # unfolded
+    assert np.abs(parts["body"]["shapes"]["eyeBlinkRight"][0]).max() < 1e-9 and np.abs(parts["body"]["shapes"]["jawForward"][0]).max() < 1e-9
+    w = parts["body"]["shapes"]["eyeWideLeft"][0]
+    assert np.abs(w + 0.3 * d).max() < 1e-6, "eyes wide: 1.3 x the fold"            # (gain - 1) x the same displacement, the other way
+    assert "lid_fold.L" in got and log and "wrinkle-map" in log[0]
+    off = mk_()
+    assert sf.expression({**spec, "skin": {**spec["skin"], "fold_expressions": False}}, off, []) == {}
+    assert np.abs(off["body"]["shapes"]["eyeBlinkLeft"][0]).max() == 0
+
+
 if __name__ == "__main__":
-    for t in (test_shade_white_and_bounds, test_fold_rules2, test_valley_lab_and_specks, test_get_set_and_fold_options, test_beard_zones_partition_and_weights, test_fold_map_and_layers,
+    for t in (test_shade_white_and_bounds, test_fold_rules2, test_folds_under_expression, test_valley_lab_and_specks, test_get_set_and_fold_options, test_beard_zones_partition_and_weights, test_fold_map_and_layers,
               test_folds_are_geometry, test_step_and_tone_bound,
               test_colour_read_and_fit_recover_zones, test_fold_fit_rules):
         t0 = __import__("time").time()
