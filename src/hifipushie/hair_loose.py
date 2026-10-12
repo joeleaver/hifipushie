@@ -53,7 +53,7 @@ import numpy as np
 
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
-         "flow": None, "swoop": None}
+         "flow": None, "swoop": None, "below": None}
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
 SWOOP = {"at": 0.0, "span": 30.0, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01, "body": 1.6,
          "lay": 0.06}
@@ -153,6 +153,9 @@ def collider(name: str, spec: dict, sc) -> Collider:
     if key in _COLL:
         return _COLL[key]
     f = store._dir(name) / f"hair_body_{key}.npz"
+    shared = store.HOME / "_cache" / f"hair_body_{key}.npz"  # (the same body under another name: a copy, a riff)
+    if not f.exists() and shared.exists():
+        f = shared
     if f.exists():
         z = np.load(f)
         c = Collider(z["lo"], float(z["step"]), z["phi"])
@@ -175,6 +178,13 @@ def collider(name: str, spec: dict, sc) -> Collider:
         for old in store._dir(name).glob("hair_body_*.npz"):
             old.unlink()
         np.savez_compressed(f, lo=c.lo, step=c.step, phi=c.phi)
+        try:
+            shared.parent.mkdir(exist_ok=True)
+            for old in sorted(shared.parent.glob("hair_body_*.npz"), key=lambda q: q.stat().st_mtime)[:-7]:
+                old.unlink()
+            np.savez_compressed(shared, lo=c.lo, step=c.step, phi=c.phi)
+        except OSError:
+            pass
     _COLL[key] = c
     return c
 
@@ -197,6 +207,9 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     p = params(g["loose"])
     sp = float(p["spacing"])
     ok = lambda a, e: (inside(sc, line, a, e) > 0.004) & (e > sc.EL[0] + 4)  # noqa: E731
+    if p.get("below") is not None:  # only the hair rooted below a level (m from the head centre): the rest is tied (half up)
+        ok0, zb = ok, float(p["below"])
+        ok = lambda a, e: ok0(a, e) & ((sc.point(a, e, 0.0)[..., 2] - sc.C[2]) < zb)  # noqa: E731
     r0 = float(np.median(sc.R))
     az, el = _poisson(sc, rng, lambda a, e: np.full(len(a), sp), ok, n_try=int(np.clip(400 * r0 * r0 / sp ** 2, 4000, 40000)))
     m = len(az)

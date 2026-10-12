@@ -78,6 +78,11 @@ def strands_of(spec: dict) -> dict:
     bad = set(s) - set(STRANDS)
     if bad:
         raise ValueError(f"hair strands: unknown keys {sorted(bad)} (have {', '.join(sorted(STRANDS))})")
+    tied = (h.get("groom") or {}).get("tied")
+    if tied is not None:  # a tied style brings its own strand dials (neatness: strays, halo, frizz); the spec's own win
+        from . import hair_flow
+        st = hair_flow.style(tied)["strands"]
+        s = {**st, **s, **({"free": {**(st.get("free") or {}), **(s.get("free") or {})}} if (st.get("free") or s.get("free")) else {})}
     out = {**STRANDS, **s}
     if out.get("free"):
         bad = set(out["free"]) - set(STRANDS)

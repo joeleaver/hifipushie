@@ -31,6 +31,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import tempfile
 import os
 import time
@@ -102,6 +103,8 @@ GROOM = {
     # row: 0.35 shows between the wedges, 1 is buried under the underlayer) or per row {stem: sink | false}
     "hairline_edge": None,  # {"inset": m (negative: tucked into the skin), "reach": m}: every drawn clump whose edge
     # comes within reach of the hairline lays that edge on it (the volume's rim showed between clump edges and skin)
+    "tied": None,  # a tied STYLE (hair_flow.style: {"tie": low | mid | high.., "side", "tightness", "part", "tail",
+    # "escaped", "neatness", "half", ...}): makes `tie`, the parting and strand dials. The way to ask for a ponytail.
     "tie": None,  # tied hair (hair_tied.py): {"at": [az, el], "out", "gather", "tail", "escape", "band"} or a list
     "loose": None,  # loose hair (hair_loose.py): grown all over the scalp, combed at the roots, then falling / standing:
     # {"length", "level", "spacing", "body", "lift", "stiff", "out", "back", "messy", "uneven", "ends", "fringe"}
@@ -344,6 +347,17 @@ def groom_params(spec: dict) -> dict:
     bad = set(g) - set(GROOM)
     if bad:
         raise HairError(f"hair groom: unknown keys {sorted(bad)} (have {', '.join(sorted(GROOM))})")
+    if g.get("tied") is not None:  # the style makes the tie, the parting (and loose hair for half up)
+        from . import hair_flow
+        if g.get("tie"):
+            raise HairError("hair groom: `tied` (a style) makes the tie: give tie keys in tied.detail.tie, not groom.tie")
+        try:
+            st = hair_flow.style(g["tied"])
+        except ValueError as e:
+            raise HairError(str(e)) from None
+        g = {**g, "tie": st["tie"], "parting": {**st["parting"], **{k: v for k, v in (g.get("parting") or {}).items() if k != "side"}}}
+        if st.get("loose"):
+            g["loose"] = {**st["loose"], **(g.get("loose") or {})}
     if g.get("tie"):
         from . import hair_tied
         try:
@@ -361,6 +375,15 @@ def groom_params(spec: dict) -> dict:
         a = grey_age(spec)
         out["grey"] = {k: round(v * a, 4) for k, v in GROOM["grey"].items()}
     return out
+
+
+def needs_body(g: dict) -> bool:
+    """Tied hair that hangs (a hanging tail, escaped pieces) lies on the body's own surface (hair_loose.collider)."""
+    tie = g.get("tie")
+    if not tie:
+        return False
+    return any(((t.get("tail") or {}).get("hang") if isinstance(t.get("tail"), dict) else False) or t.get("escaped")
+               for t in (tie if isinstance(tie, list) else [tie]))
 
 
 GREY_AGES = (30.0, 50.0)   # the default groom grey: none before the first age, all of it from the second
@@ -780,6 +803,51 @@ def carry(src: str, src_spec: dict | None = None, sc: Scalp | None = None) -> di
     return h
 
 
+def tie_style(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
+              note: str = "") -> dict:
+    """A tied-back hairstyle on model `name` from a STYLE (hair_flow.TIED: tie height + side, tightness, lift, part,
+    ears, tail, escaped, neatness, half): `style` is merged into the model's groom.tied (a riff names only what
+    changes; no tied style yet = hair_flow's defaults, an ordinary low ponytail), the hair becomes a strand groom and
+    is regrown. `carry_from`: first wear that model's hair (hairline, look, strand dials, its tied style; hair.carry
+    scales it to this head). Any groom.tie / loose the model had is replaced by what the style makes."""
+    from . import hair_flow
+    spec = store.load(name)
+    if carry_from:
+        src = store.load(carry_from)
+        hc_ = carry(carry_from, src)
+        hc_.pop("locks", None)
+        hc_.pop("removed", None)
+        spec["hair"] = hc_
+        if (src.get("parts") or {}).get("hair"):
+            spec.setdefault("parts", {})["hair"] = copy.deepcopy(src["parts"]["hair"])
+    h = spec.setdefault("hair", {})
+    if h.get("style") not in ("strands", "cards"):
+        h["style"] = "strands"
+    g = h.setdefault("groom", {})
+    for k in ("tie", "loose"):
+        g.pop(k, None)
+    g["tied"] = merge_patch(g.get("tied") or {}, style or {})
+    (g.get("parting") or {}).pop("side", None)
+    if look:
+        h["look"] = merge_patch(h.get("look") or {}, look)
+    try:
+        made = hair_flow.style(g["tied"])
+    except ValueError as e:
+        raise HairError(str(e)) from None
+    store._dir(name).mkdir(parents=True, exist_ok=True)
+    validate(spec)
+    store.save(name, spec, note or "hair: tied style")
+    r = groom(name, replace=True, note=note or "hair: tied style")
+    kinds: dict = {}
+    for n in store.load(name)["hair"]["locks"]:
+        m = re.match(r"t\d*([a-z]+)", n)
+        k_ = m.group(1) if m else "l" if re.fullmatch(r"l\d+", n) else n
+        kinds[k_] = kinds.get(k_, 0) + 1
+    return {**r, "tied": g["tied"], "made": made,
+            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "band": "band", "l": "loose"}.get(k, k): v
+                      for k, v in kinds.items()}}
+
+
 def grow(sc: Scalp, g: dict, col=None) -> dict:
     """The first pass of locks from the groom: {name: lock}. `col`: the body's collider (hair_loose.collider) for
     hair that falls off the head."""
@@ -798,7 +866,7 @@ def grow(sc: Scalp, g: dict, col=None) -> dict:
         locks.update(hair_loose.grow(sc, g, line, rng, col))
     if g.get("tie"):  # tied hair makes the whole groom (with any drawn clumps): no generated tiers under it
         from . import hair_tied
-        locks.update(hair_tied.grow(sc, g, line, rng))
+        locks.update(hair_tied.grow(sc, g, line, rng, col))
         return locks
     if g.get("loose"):
         return locks
@@ -1360,7 +1428,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     sc = scalp(name, spec)
     g = groom_params(spec)
     col = None
-    if g.get("loose"):
+    if g.get("loose") or needs_body(g):
         from . import hair_loose
         col = hair_loose.collider(name, spec, sc)
     new = grow(sc, g, col)
@@ -2005,7 +2073,7 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
     if h.get("style") == "strands" and stage != "mass":
         from . import hair_strands
         col = None
-        if g.get("loose"):
+        if g.get("loose") or needs_body(g):
             from . import hair_loose
             col = hair_loose.collider(name, spec, sc)
         out["strands"] = hair_strands.job(sc, g, spec, locks, tmp, count=count, col=col)
@@ -2451,7 +2519,7 @@ VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0)
          "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42),
          # (az, el, distance, m the target sits under the head centre): the bust, for hair that falls
          "bust_front": (0.0, 4.0, 1.25, 0.14), "bust_three_quarter": (40.0, 8.0, 1.25, 0.14),
-         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14),
+         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14), "bust_side_r": (-90.0, 4.0, 1.25, 0.14),
          "bust_back_quarter": (140.0, 8.0, 1.25, 0.14), "long_back": (180.0, 4.0, 1.9, 0.26),
          "long_side": (90.0, 4.0, 1.9, 0.26)}
 
@@ -2564,8 +2632,12 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
                                                           cam=dict(zip(mnames, [rc for _, rc, _ in rvs])).get(f["name"]))
         look.gate = silhouette_gate(sc, pts)
         look.folds = folds(sc, j["hair"].get("locks") or []) if j["hair"] else {}
-        look.root_ends = root_ends(sc, groom_params(spec), j["hair"].get("locks") or []) if j["hair"] else {}
-        look.fins = fins(sc, groom_params(spec), j["hair"].get("locks") or []) if j["hair"] else {}
+        # (tied hair's own locks are strand guides, never a sculpted surface: a tail "stands 16 cm over the layer",
+        # every gather lock "rises out of it": 226 fins and 60 blunt ends on a good ponytail told the reader nothing)
+        solid = [k_ for k_ in (j["hair"].get("locks") or [])
+                 if not re.fullmatch(r"t\d*(g\d+_\d+|t\d+|e\d+_\d+|s\d+|f\d+|band)", str(k_.get("name", "")))] if j["hair"] else []
+        look.root_ends = root_ends(sc, groom_params(spec), solid) if solid else {}
+        look.fins = fins(sc, groom_params(spec), solid) if solid else {}
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t

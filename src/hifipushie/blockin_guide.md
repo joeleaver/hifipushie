@@ -418,6 +418,9 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 | after (with the expression). Stored in human_refs.json "expressions" (one {GNM expression comp: value} per view,
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
+### `block_in_solve`
+ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so. It does not see the surface inside the silhouette (cheeks). Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, parse. See section 3b.
+
 ### `lid_read`
 lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None, fold=None): the picture's lid margins
 against the iris (MediaPipe iris and lids, in iris radii: upper MRD1-like, lower MRD2-like, the opening's aspect) and

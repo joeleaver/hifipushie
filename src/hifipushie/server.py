@@ -137,13 +137,13 @@ TOOLSETS: dict[str, dict] = {
     "human": {"about": "realistic humans: the base body, the artist block-in of a head from pictures (the default), "
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
-                        "block_in_look", "block_in_step", "block_in_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
+                        "block_in_look", "block_in_step", "block_in_solve", "block_in_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
                         "look_skin", "skin_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
     "hair": {"about": "hair as curve locks: groom, look, reference, export", "also": ["scene"],
-             "tools": ["groom_hair", "look_hair", "hair_reference", "export_hair"]},
+             "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, construction checks, dress (sim), references", "also": ["scene"],
               "tools": ["design_garment", "look_pattern", "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
@@ -1269,6 +1269,30 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
 
 
 @mcp.tool(structured_output=False)
+def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
+             note: str = ""):
+    """A tied-back hairstyle (ponytail, bun, plait, half up) from a few words: style {tie: nape|low|mid|high|top,
+    side: centre|left|right, tightness 0..1, lift, part: centre|left|right|none, ears, tail {kind, length, fullness,
+    wave, to}, escaped, neatness 0..1, half}; a riff names only what changes. carry_from: wear another model's hair
+    first. Then look_hair(views="around"). Details: guide(topic="tie_hair")."""
+    from . import hair
+    r = hair.tie_style(name, _spec_arg(style) if style else None, carry_from=carry_from,
+                       look=_spec_arg(look) if look else None, note=note)
+    m = r["made"]["tie"]
+    ga, tl = m["gather"], m.get("tail") or {}
+    spec = store.load(name)
+    return (f"saved {name} v{r['version']}: " + ", ".join(f"{k} {v}" for k, v in r["kinds"].items())
+            + f"\nstyle (groom.tied): {json.dumps(r['tied'])}"
+            + f"\nmade: tie at az {m['at'][0]} el {m['at'][1]} ({m['out'] * 1000:.0f} mm off the scalp); the hair stands "
+              f"{ga['puff'] * 1000:.0f} mm off the head, lifts {ga['root_lift'] * 1000:.1f} mm at the roots, may hang "
+              f"{ga['overhang']:.0f} deg over the hairline at the temples; parting {r['made']['parting']['side']}"
+            + (f"; tail {tl['length'] * 100:.0f} cm, {tl['fullness'] * 1000:.0f} mm full, "
+               + ("a bun" if tl.get("coil") else "a plait" if tl.get("plait") else "hanging") if tl else "; no tail")
+            + f"\n{_hair_counts(spec)}\nnext: look_hair(name, views=['around']) (every side, with the bust: tied hair is "
+              "tuned through the front and is wrong from behind first); change one word of the style to riff")
+
+
+@mcp.tool(structured_output=False)
 def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: bool = True, layout: bool = False,
               reference: str | None = None, save: str | None = None, only: list[str] | None = None,
               tier: str | None = None, debug: str | None = None, engine: str = "eevee"):
@@ -1277,6 +1301,9 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     Needs `sync` once. Details: guide(topic="look_hair")."""
     from . import hair
     views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
+    if "around" in views:  # every side, with the bust (hair that hangs): the angles a front-tuned groom is wrong from
+        i = views.index("around")
+        views[i:i + 1] = ["bust_front", "bust_three_quarter", "bust_side", "bust_back_quarter", "bust_back", "bust_side_r"]
     only_layout = views == ["layout"]
     if "layout" in views:
         layout = True
@@ -1911,7 +1938,7 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     match=True: THE EYE STEP (a block-in step; set the ORBIT first: face_ruler), identity only: the opening (the eye
     ruler's margins and corners in mm), then the lid as ONE structure on GNM's lid rings: a crisp fold on the
     picture's fold line, brows held (fold="crisp", the default; fold="donor" / donor="s376": toward a donor head's
-    lid; fold="none": the opening only), with the eyeball guard; nothing painted. expression=True: GNM's eye-region expression too (a real pose). match="pose": the
+    lid; fold="none": the opening only), with the eyeball guard; nothing painted. expression=True: GNM's eye-region expression too. match="pose": the
     older lid_upper / lid_lower offsets. out, save (focus=eyes sheet), seen. Details: guide(topic="lid_read")."""
     from . import blockin as bi
     if not match:
@@ -1971,16 +1998,11 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto"):
-    """ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip
-    borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in
-    step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of
-    closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit"
-    (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole
-    move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the
-    detector on our render) | "absolute" | "none". parse: "auto" (outlines from the face parser where the
-    plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no
-    component passes 3 sd; pictures that disagree are down-weighted and SAID so. It does not see the surface inside
-    the silhouette (cheeks). Details: guide(topic="block_in")."""
+    """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
+    borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
+    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. cameras "free" | "trust" | "refit" (first
+    call, cameras fitted on another head); anchors "differential" | "absolute" | "none"; parse "auto" | "on" | "off";
+    out, share, seen, save. It does not see inside the silhouette (cheeks). Details: guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
