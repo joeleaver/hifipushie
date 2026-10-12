@@ -139,7 +139,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
         elif key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
-        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_, CX_ = ([] for _ in range(15))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_, CX_, FN_, EX_ = ([] for _ in range(17))
         wisp_tips = wisp_physical(S)["tips"]
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
@@ -222,6 +222,10 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                            if "tips" in own else 1.0)
             CX_.append(float(np.clip(own["clump"], 0, 1)) / max(float(np.clip(S["clump"], 0, 1)), 1e-3) - 1.0
                        if "clump" in own else 0.0)
+            # (rim: the lens's Edge for this lock, as what it adds to the object's 0.8: > 1 = strands thin out toward
+            # the lock's two side rims, a ribbon with soft sides)
+            EX_.append(float(np.clip(own["rim"], 0.2, 4.0)) / 0.8 - 1.0 if "rim" in own else 0.0)
+            FN_.append(float(np.clip(own.get("fine", 0.0), 0.0, 1.0)))  # (drawn fine: the hairline's thin rim)
             GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
             WS_.append(ws)
             WL_.append(wl)
@@ -238,6 +242,10 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                     "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_)}
         if any(CX_):  # (only when a lock asks: older jobs keep their files, and so their cache keys)
             out[key0]["clx"] = np.asarray(CX_, np.float32)
+        if any(EX_):
+            out[key0]["ex"] = np.asarray(EX_, np.float32)
+        if any(FN_):
+            out[key0]["fn"] = np.asarray(FN_, np.float32)
     return out
 
 

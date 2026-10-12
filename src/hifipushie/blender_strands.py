@@ -21,7 +21,7 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 11  # bump when the lens group changes
+VERSION = 12  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
@@ -183,7 +183,9 @@ def lens_group():
     c = math("MULTIPLY", c, math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Stray"], math("MULTIPLY", cs, cs))))
     a_e = math("ADD", a, math("MULTIPLY", math("SUBTRACT", ac, a), c))
     # a^Edge keeps strands off the lens's thin rim (Edge > 1) or pushes them to it (< 1)
-    a_s = math("MULTIPLY", math("SIGN", a_e), math("POWER", math("ABSOLUTE", a_e), gi.outputs["Edge"]))
+    # (hp_ex: a lock's own Edge, as what it adds to the object's: (lock - object) / object; absent = 0)
+    a_s = math("MULTIPLY", math("SIGN", a_e), math("POWER", math("ABSOLUTE", a_e),
+                                                   math("MULTIPLY", gi.outputs["Edge"], math("ADD", 1.0, named("hp_ex", "FLOAT")))))
     bb = named("hp_b", "FLOAT")
     b_e = math("ADD", bb, math("MULTIPLY", math("SUBTRACT", crand(-0.7, 0.7, 12), bb), c))
     b_s = math("MULTIPLY", b_e, math("SUBTRACT", 1.0, math("MULTIPLY", a_s, a_s)))
@@ -241,7 +243,8 @@ def lens_group():
     geo = store(geo, "hp_sub", kf)
     # single hairs (the halo, a lock of `hairs`): the EEVEE material draws them part transparent (a strand is never
     # drawn under a pixel wide: alone against skin or the backdrop, 0.08 mm hairs came out as 1 mm wires)
-    geo = store(geo, "hp_fine", math("MAXIMUM", halo, gi.outputs["Fine"]))
+    # (hp_fn: a lock's own share, the hairline's thin rim; absent = 0)
+    geo = store(geo, "hp_fine", math("MAXIMUM", math("MAXIMUM", halo, gi.outputs["Fine"]), named("hp_fn", "FLOAT")))
     geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
     sp = N.new("GeometryNodeSetPosition")
     L.new(geo, sp.inputs["Geometry"])
@@ -442,7 +445,8 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
                               ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value"),
-                              ("clx", "FLOAT", "CURVE", "value")):
+                              ("clx", "FLOAT", "CURVE", "value"), ("fn", "FLOAT", "CURVE", "value"),
+                              ("ex", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
