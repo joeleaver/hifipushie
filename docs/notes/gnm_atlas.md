@@ -5469,3 +5469,51 @@ garrett_a1 11.6 mm (he drew 0.0118 x 12 / 12.3 = 11.5).
 - Export: `asset.prune_hidden(own_surface=)`: GNM's teeth and tongue lie behind closed lips in the neutral and were
   ALL dropped as hidden (461,991 teeth faces on the first try); now the faces on GNM's own surface are kept and the
   shell's inside dropped.
+
+### C. Rebuilds on the GNM-native head (the method as it stands; logs /mnt/data/hifipushie/gnmnative/out/chain_*.log, reads_*.log)
+block_in_start now makes the GNM-native start: the refs model's `eye_radius`, `interior` / `mouth` and
+`skin.eyes.iris_size` are dropped (GNM's ball, GNM's mouth, the iris at GNM's limbus). Then spikes/chinread/cchain.py
+(block_in_solve x n: first call cameras="refit", then "free"; chin points auto, carried down-weighting: the merged
+defaults), then the reads (spikes/gnmnative/reads.py: iris_check, eye ruler, lid read, lip read) and ONE step from a
+read: `iris_mm` (the picture's limbus -> eyes_000). Nothing forced: no component reaches 3 sd in any final head.
+| subject | start -> final | calls: \\|dc\\| | \\|c\\|, largest | table | vs the current head (\\|dc\\|; face / eye-region surface rms, GNM mm) | vs the SAME method on our old ball |
+|---|---|---|---|---|---|---|
+| Tess (3 photos) | nt_T00 -> nt_T05, nt_T06 = + iris_mm 10.28 (eyes_000 -0.78) | 9.8, 3.7, 1.7d, 1.2d, 1.0d | 11.19, 2.50 sd | 20 / 26 | tess_a1 (11.74, 2.27): 8.5; 5.1 / 5.6 mm | tc_C05: 2.8; 0.9 / 1.2 mm |
+| Garrett (2 paintings) | ng_G00 -> ng_G05 (iris unreadable: 8 px) | 11.4, 2.7d, 1.7d, 1.5d, 1.0d | 10.87, 2.76 sd (call 1 touched 3.00) | 18 / 29 | garrett_a1 (9.32, 2.89): 3.6; 1.1 / 1.3 mm | gq_B05: 3.4; 1.1 / 1.4 mm |
+| Garrett, held-out | nh_G00 -> nh_G06, nh_G07 = + iris_mm 11.9 (eyes_000 +0.47) | 10.1, 3.0, 1.0d, 0.9d, 1.0d, 1.3d | 12.16, 2.77 sd | 14 / 26 | gc_C06 (12.26, 2.69): 2.4; 0.4 / 0.4 mm | (gc_C06 is that) |
+- What GNM's ball changes in the SOLVE is small: 0.4-1.2 mm of surface against the same method on our 12 mm ball
+  (the iris and limbus reads sit on a ball whose centre is 1-2 mm further back and whose front is further forward).
+- TESS IS NOT COMPARABLE HEAD FOR HEAD: tess_a1 (tk_T07) was solved with its cameras kept; the merged chain refits
+  them on the class mean first, and lands on a face 7 % smaller (pupils 51.4 mm apart against tess_a1's 55.3; a real
+  adult ~62) at fitted yaws 4.5 / 39.4 / 75.0 for pictures stated 0 / 45 / 90. chinread's tc_C05 (same chain, old
+  ball) is the same head to 0.9 mm. So 5 mm of the difference between nt_T06 and tess_a1 is the METHOD's camera
+  refit (size and distance trade), not the eyeball. Flagged for Joe: which Tess is the base, tess_a1's size or the
+  merged chain's. Not chased here.
+- MOVED WITH NO READ (the last call's list):
+  - Tess: nose_width -6.1 mm (-1.5 sd; read 0.24, carried by the lip front), cheekbone_width -8.1 mm (-1.0 sd),
+    brow_hollow +1.0 mm (+1.0 sd), skull_width -7.6 mm (-0.9 sd), skull_top -2.2 mm. Weak read: orbital_rim +1.3 sd.
+    Unread: neck_width.
+  - Garrett, paintings: cheekbone_width -4.3 mm (-0.5 sd), skull_width -3.6 mm, chin_width -2.1 mm, neck_width +3.8
+    mm. Weak reads: orbital_rim +2.8 sd, jaw_angle +2.2 sd, eyes_forward -8.7 mm (-2.2 sd), under_eye_forward -6.0 mm,
+    lower_lip_forward -1.9 mm. Unread: forehead_forward, skull_top, brow_hollow, mentolabial_depth, jaw_square,
+    chin_cleft, forehead_slope. (No lid read at all: 'lid': 0 of the solve's reads.)
+  - Garrett, held-out: jaw_square +1.2 sd, skull_top -4.4 mm (-1.0 sd), chin_width +3.9 mm (+0.7 sd; read 0.01: the
+    slab chin again), skull_width -4.2 mm, cheekbone_width -3.0 mm, neck_width +2.2 mm. Weak reads: forehead_slope
+    +2.8 sd, forehead_forward -7.4 mm (-2.5 sd), brow_hollow -2.0 mm, brow_ridge_forward -4.0 mm, ear_out +1.4 sd,
+    jaw_angle +1.2 sd.
+- Eye ruler, front picture, model - picture (mm at the model; * = past the reader's tolerance):
+| | iris diameter | opening at the pupil | iris hidden by the upper lid | upper / lower margin at the pupil | outer canthus u | upper lid's peak u | fissure |
+|---|---|---|---|---|---|---|---|
+| Tess NEW nt_T05 (GNM ball) | +0.47* (before the iris step; 10.3 = 10.3 after) | +0.26 | +0.11 | +0.13 / -0.14 | +1.85* | +2.50* | +0.85 |
+| Tess CURRENT tess_a1 | -0.35* | +0.02 | -0.52* | +0.34 / +0.32 | +0.40 | +1.03 | +0.02 |
+| held-out NEW nh_G06 | +0.02 (GNM's limbus as it comes: 11.54 vs 11.52) | +0.33 | -0.65* | +0.66* / +0.33 | +3.40* | +2.88* | +1.26 |
+| held-out CURRENT gc_C06 | +0.62* | +0.82* | -0.31 | +0.61* / -0.21 | +2.80* | +4.63* | +0.30 |
+| paintings NEW ng_G05 | (8 px iris: every read +- 1.1 mm) | +0.07 | +2.29* | -1.15* / -1.22* | +3.75* | +4.73* | +4.57* |
+| paintings CURRENT garrett_a1 | | +0.94* | +2.53* | -1.09* / -2.02* | +3.13* | +4.43* | +4.46* |
+  Read: the lids land where they did (the solve reads them on either ball); GNM's bigger ball shows 0.6-1.5 mm more
+  eyeball at the OUTER corner (outer canthus u +1.9 / +3.4 against +0.4 / +2.8): the visible eye is longer than the
+  pictures' on both Garretts and now on Tess too. That is the one eye number that got WORSE with GNM's ball. The
+  held-out Garrett's iris came out right with no setting at all (GNM's mean limbus x his head's scale).
+- Lip read (vermilion border miss upper / lower, seam miss, mm): Tess new 0.29 / 0.46 / 0.30 (current 0.48 / 0.46 /
+  0.72); paintings new 0.62 / 0.69 / 0.38 (current 1.03 / 1.03 / 0.73); held-out new 0.40 / 1.15 / 0.13 (current
+  0.32 / 1.31 / 0.32). The same or a little better; nothing in the mouth's fit depends on the interior.

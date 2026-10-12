@@ -79,7 +79,8 @@ def test_start_step_table_log_and_registration():
         assert not any(k in h for k in ("sliders", "warp", "fold", "pose", "shape"))
         assert np.allclose(bi.identity(sp), bi.data()["m_m"], atol=1e-4)
         assert h["gnm_base"] == bi.default_gnm_base(sp["base"]["body"]["age"])
-        assert h["eye_radius"] == 0.012   # every new human: an adult eyeball
+        assert "eye_radius" not in h      # (gnmnative) the start head has GNM's own eyeball and mouth: no override,
+        assert "interior" not in h        # no kit interior carried over from the refs model
         assert e["start"]["cameras"] == "kept"
         with pytest.raises(ValueError, match="exists"):
             bi.start(a, REF, sex="male")
@@ -191,7 +192,9 @@ def test_fixed_eyeball_radius():
 def test_new_human_eye_radius():
     from hifipushie import humans
     assert humans.eye_radius(40) == 0.012 and 0.0083 < humans.eye_radius(0) < 0.0085
-    assert humans.spec(age=30, sex=1, source="human")["base"]["head"]["eye_radius"] == 0.012
+    # (gnmnative, 2026-10-12) new humans get GNM's OWN eyeball: no eye_radius written (2026-10-10 .. 12 it was 0.012);
+    # the key is an explicit override now (test_fixed_eyeball_radius; tests/test_gnm_native.py)
+    assert "eye_radius" not in humans.spec(age=30, sex=1, source="human")["base"]["head"]
     assert "eye_radius" not in humans.spec(age=30, sex=1)["base"]["head"]   # the grafted head: unchanged
 
 
