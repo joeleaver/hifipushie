@@ -1,5 +1,5 @@
-"""train.py <out dir> <data root> [epochs=60] [bs=128] [lr=1e-3] [arch=18|34] [val=0.08] [workers=8] [limit=N samples]
-[seed=0]: train the denselm network on the dressings under <data root> (each a gen.py output folder).
+"""train.py <out dir> <data root> [epochs=60] [bs=128] [lr=1e-3] [arch=18|34|hm18|hm34] [val=0.08] [workers=8] [limit=N samples]
+[seed=0] [train_n=N]: train the denselm network on the dressings under <data root> (each a gen.py output folder).
 
 Pure torch + numpy + PIL (no torchvision, no pretrained weights). Dressings are held out WHOLE for validation (the
 last `val` share: a person's skin never on both sides). The training-time augmentation is where the pictures get
@@ -301,7 +301,7 @@ def main():
     print(f"step: packed {P['n']} samples of {nd} dressings in {time.time() - t0:.0f} s; train {len(tr)}, val {len(va)} ({nv} dressings)", flush=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(seed)
-    model = netmod.Net(L["n"], (3, 4, 6, 3) if arch == "34" else (2, 2, 2, 2)).to(dev)
+    model = netmod.make(arch, L["n"]).to(dev)
     if dev.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
     ds = Data(P, tr, L, True, seed)
@@ -311,7 +311,7 @@ def main():
     steps = epochs * len(dl)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, lr, total_steps=steps, pct_start=0.06)
     scaler = torch.amp.GradScaler(enabled=dev.type == "cuda")
-    ema = netmod.Net(L["n"], (3, 4, 6, 3) if arch == "34" else (2, 2, 2, 2)).to(dev)
+    ema = netmod.make(arch, L["n"]).to(dev)
     ema.load_state_dict(model.state_dict())
     log = []
     for ep in range(epochs):
