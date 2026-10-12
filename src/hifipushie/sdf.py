@@ -420,7 +420,14 @@ def mod_fold(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> np.
     return out.reshape(cur.shape)
 
 
-MODS = {"displace": mod_displace, "flatten": mod_flatten, "fold": mod_fold}  # op "modify": reshape what's been combined so far
+def mod_tissue(cur: np.ndarray, p: np.ndarray, pr: dict) -> np.ndarray:
+    """A soft-tissue fold (skin_folds.py: skin.folds as geometry): a groove + roll profile swept along a path on the
+    skin, kept off the lid margins / the lip line and clear of the eyeballs."""
+    from .skin_folds import mod_tissue as f
+    return f(cur, p, pr)
+
+
+MODS = {"displace": mod_displace, "flatten": mod_flatten, "fold": mod_fold, "tissue": mod_tissue}  # op "modify": reshape what's been combined so far
 
 
 @dataclass

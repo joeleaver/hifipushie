@@ -473,7 +473,7 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds", "fold_relief"}
 GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", "eye_rims")
 
 
