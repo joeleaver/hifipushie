@@ -1440,12 +1440,27 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
     for pn, p in parts.items():
         if pn in in_prefab:
             continue
-        meshes.append({"name": pn, "primitives": [primitive(p, pn)]})
-        if p.get("shapes"):  # names in extras.targetNames (the glTF convention engines and Blender read)
-            meshes[-1]["weights"] = [0.0] * len(p["shapes"])
-            meshes[-1]["extras"] = {"targetNames": list(p["shapes"])}
-        nodes.append({"name": f"{name}_{pn}", "mesh": len(meshes) - 1, **({"skin": 0} if pn in skinned else {})})
-        top.append(len(nodes) - 1)
+        # (headbody) a part written as SEVERAL meshes on the one skeleton (a native head and its body): p["meshes"] =
+        # {mesh name: triangle mask}. Each takes its triangles' corners of the SAME arrays, so the vertices of a shared
+        # edge loop (the neck's seam ring) are written twice with identical position, normal, tangent, uv and weights:
+        # no crack in any pose, no shading step. Morph targets go to the meshes named in p["shape_meshes"] only.
+        subs = [(pn, p)]
+        if p.get("meshes"):
+            subs = []
+            for mn, tm in p["meshes"].items():
+                cm = np.repeat(np.asarray(tm, bool), 3)
+                q = {**p, "corner_vert": p["corner_vert"][cm], "uv": p["uv"][cm], "normal": p["normal"][cm],
+                     "tangent": p["tangent"][cm], "sign": p["sign"][cm]}
+                if mn not in (p.get("shape_meshes") or [mn]):
+                    q.pop("shapes", None)
+                subs.append((mn, q))
+        for mn, q in subs:
+            meshes.append({"name": mn, "primitives": [primitive(q, pn)]})
+            if q.get("shapes"):  # names in extras.targetNames (the glTF convention engines and Blender read)
+                meshes[-1]["weights"] = [0.0] * len(q["shapes"])
+                meshes[-1]["extras"] = {"targetNames": list(q["shapes"])}
+            nodes.append({"name": f"{name}_{mn}", "mesh": len(meshes) - 1, **({"skin": 0} if pn in skinned else {})})
+            top.append(len(nodes) - 1)
     for pf, d in prefabs.items():
         M0 = d["instances"][d["bake"]]
         meshes.append({"name": pf, "primitives": [primitive(_local(parts[pn], M0), pn) for pn in d["parts"] if pn in parts]})
@@ -1469,6 +1484,63 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
         f.write(struct.pack("<III", 0x46546C67, 2, 12 + 8 + len(js) + 8 + len(bin_)))
         f.write(struct.pack("<II", len(js), 0x4E4F534A) + js)
         f.write(struct.pack("<II", len(bin_), 0x004E4942) + bytes(bin_))
+
+
+def head_body_meshes(spec: dict, parts: dict, topo: dict, log: list) -> dict | None:
+    """(headbody) A native head (base.head.attach "native") and its body as TWO meshes sharing the neck's seam ring:
+    sets parts[body]["meshes"] = {"head": triangles of GNM's vertices, "body": the rest} for write_glb when the body's
+    low poly is its own quads (parts.body.topology "wrap": every vertex knows its GNM vertex). base.head.mesh
+    "welded" keeps one mesh. -> {"part", "report": {mesh: {"triangles", "vertices"}, "seam": {"vertices", "gap",
+    "normal_deg"}}} or None."""
+    from . import onemesh
+    b = spec.get("base") or {}
+    if not onemesh.native(b):
+        return None
+    mode = (b.get("head") or {}).get("mesh", "separate")
+    if mode not in ("separate", "welded"):
+        raise ValueError('base.head.mesh: "separate" (head and body meshes sharing the seam ring; default) or "welded"')
+    if mode == "welded":
+        return None
+    for pn, (tp, _) in topo.items():
+        p = parts.get(pn)
+        z = np.load(tp)
+        if p is None or "gnm" not in z.files:
+            continue
+        gi = p.get("gnm_index")  # (face shapes checked it against the low poly before they moved anything)
+        if gi is None and len(z["verts"]) == len(p["verts"]) and np.allclose(np.asarray(p["verts"], float), z["verts"], atol=1e-5):
+            gi = z["gnm"]
+        if gi is None or len(gi) != len(p["verts"]):
+            log.append(f"WARNING head / body meshes: {pn}'s low poly isn't its topology's vertices "
+                       f"({len(p['verts'])} against {len(z['verts'])}): written as one mesh")
+            return None
+        gi = np.asarray(gi, int)
+        tri = np.asarray(p["corner_vert"]).reshape(-1, 3)
+        head = (gi[tri] >= 0).all(1)
+        p["meshes"] = {"head": head, "body": ~head}
+        p["shape_meshes"] = ["head"]
+        vh, vb = np.unique(tri[head]), np.unique(tri[~head])
+        ring = np.intersect1d(vh, vb)
+        # the ring's corners: the same vertex must carry the same normal on both sides (it does when the low poly's
+        # normals are smooth there: both meshes read one array). Reported, so a hard edge at the seam is seen.
+        cv = np.asarray(p["corner_vert"])
+        N = np.asarray(p["normal"], float)
+        hm = np.repeat(head, 3)
+        worst = 0.0
+        for v in ring:
+            a_, b_ = N[(cv == v) & hm], N[(cv == v) & ~hm]
+            if len(a_) and len(b_):
+                worst = max(worst, float(np.degrees(np.arccos(np.clip((a_[:, None] * b_[None]).sum(-1) /
+                            (np.linalg.norm(a_, axis=1)[:, None] * np.linalg.norm(b_, axis=1)[None] + 1e-12), -1, 1)).max())))
+        rep = {"head": {"triangles": int(head.sum()), "vertices": int(len(vh))},
+               "body": {"triangles": int((~head).sum()), "vertices": int(len(vb))},
+               "seam": {"vertices": int(len(ring)), "gap": 0.0, "normal_deg": round(worst, 3)}}
+        log.append(f"{pn}: written as two meshes on the one skeleton: head {rep['head']['triangles']} triangles (GNM's "
+                   f"topology, face shapes), body {rep['body']['triangles']}; they share the seam ring's {len(ring)} "
+                   f"vertices (same position, normal, uv, weights: largest normal difference across it {worst:.2f} deg)")
+        return {"part": pn, "report": rep}
+    log.append("WARNING head / body meshes: the body is decimated (no seam ring in it): one mesh. Set "
+               "parts.body.topology \"wrap\" for the two-mesh export")
+    return None
 
 
 def texel_sizes(parts: dict, sizes: dict, focus: dict | None = None) -> dict:
@@ -1922,6 +1994,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     for p in parts.values():  # (the lashes' roots: only face shapes needed them)
         p.pop("lash_root", None)
         p.pop("lash_centre", None)
+    seam = head_body_meshes(spec, parts, topo, log)
+    if seam:
+        report[seam["part"]]["meshes"] = seam["report"]
     write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()

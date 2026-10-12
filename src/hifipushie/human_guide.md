@@ -308,3 +308,24 @@ its own sigma; what you say in `read` wins). RENDERS ONLY: the regression is cal
 validated on photographs; on the study's truth renders it replaced a said read in-model (face 2.17 -> 1.94 mm).
 method "points" = the old least-squares on the given points alone (it makes heads WORSE than the untouched one
 on detector points: kept for comparison).
+
+## The head at GNM's own size on a fitted body: `base.head.attach: "native"`
+
+By default the one mesh carries GNM's head at the size and place of the MakeHuman body's own head (and MakeHuman's
+heads are small: a woman's is ~10 % under a measured one, so its figures stand ~8-9 heads tall and their eyeballs and
+irises come out small). `human(..., head={"attach": "native"})` or `edit_model set_key base.head.attach "native"`
+turns that round:
+- the HEAD is GNM's own evaluation (template + identity + expression) in GNM's real metres, every vertex from the
+  seam ring (low on the neck) up; nothing of the body's head, no blend, no head style sliders (`base.style.human`
+  head_size, cranium, eye_spacing ... and `base.head` gnm_base / dimorphism / scale are ignored and named in the report);
+- the BODY is fitted: its height is solved so the figure stands at `base.body.height` under this head, and its neck and
+  shoulders are moved to meet GNM's neck at the ring;
+- `base.head.size` (default 1.0) scales the head over GNM's own (a stylised figure; leave it for a likeness);
+- `measure_human` prints the attachment: head height, heads tall (adults measure ~7.5), eyes apart, eyeball radius,
+  neck girth head / body at the ring, and NOTES when the two disagree by more than 12 % (then change the body's
+  weight / muscle, not the head).
+- export: with `parts.body.topology: "wrap"` the GLB holds TWO skinned meshes, `head` (GNM's topology, the face
+  shapes) and `body`, sharing the seam ring's 110 vertices exactly (position, normal, uv, weights), on one skeleton.
+  `base.head.mesh: "welded"` writes one mesh. A decimated body has no ring: one mesh, with a WARNING.
+- after switching a model with fitted reference cameras to native, refit the cameras (the head changed size and
+  place); hair and clothes made on the old head must be remade.
