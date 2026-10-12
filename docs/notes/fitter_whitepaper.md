@@ -262,3 +262,17 @@ below as they land.
   route: ~10 s a job once the environment exists (a new commit: ~2-4 min once per machine).
   The laptop is 2-4x slower per render AND its GPU slot is shared with the other agents (one test waited 8 min
   for it): bulk rendering belongs on NICO-TOP (and enterprise when installed: CPU only? then EEVEE needs a GPU).
+- IN PRODUCTION (the pilot's 18 dressings x 300 samples, 2026-10-12 afternoon, both machines SHARED with other
+  agents' jobs), all in per sample: NICO-TOP bald 1.7 / 2.3 s, with hair 1.9-4.0 s (mean of 8 dressings 2.9 s);
+  this laptop bald 1.9-3.2 s (one outlier 7.4), with hair 3.2-3.3 s (mean 2.9 s). So ~1,200 samples an hour per
+  machine as things were, ~2,100 an hour on an idle 3070 Ti. Lessons: `chunk` must equal `n` (a second Blender
+  start per dressing pays the 50-90 s shader compile again: dl-A ran chunk 250 on n 300); locally the render must
+  NOT take the exclusive GPU claim (resources.heavy(gpu=True) waits for every other agent's stage shot, which
+  take no claim themselves: one chunk waited 8 min; now off, DL_GPU_CLAIM=1 brings it back); `pgrep -f` in a wait
+  loop matches the waiting shell itself (two of my queues hung or killed themselves that way).
+- NICO-TOP INCIDENT (15:52, from the coordinator / oxidegen): its second NVMe threw a controller error seconds
+  after the first TRAINING job (dl-p1: a 686 MB job folder fetched and written, to be followed by a multi-GB
+  torch install) started; every job after it died ("its machine went quiet mid-job, 3 times over"). Coincidence
+  or load is oxidegen's to settle; no data of ours was lost (4 cancelled render jobs, re-renderable by seed). The
+  pilot's training therefore ran on this laptop's CPU (below), and the GPU-only parts (learning curve, direct
+  vs heat-map head, a longer run) are NOT done.
