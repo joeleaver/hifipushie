@@ -79,9 +79,9 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0,
                 "hang": False, "spread": 0.35}}
-ESCAPED = {"count": 6, "where": ["temple", "ear"], "length": [0.06, 0.14], "hairs": [3, 7], "curve": 0.12,
+ESCAPED = {"count": 6, "where": ["temple", "ear"], "length": [0.06, 0.14], "hairs": [3, 7], "curve": 0.2,
            "wave": 0.008, "wavelength": 0.09, "strands": None}
-ESCAPED_AT = {"part": (4.0, 20.0), "temple": (32.0, 62.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}
+ESCAPED_AT = {"part": (4.0, 20.0), "temple": (44.0, 66.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}
 ESCAPED_STRANDS = {"flyaway": 0.0, "clump": 0.0, "tip_spread": 0.3, "flat": 1.0, "loose": 0.8, "frizz": 0.3, "curl": 0.0}
 CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "drape": 0.0, "dip": 0.0,
            "sag": 0.0, "rows": 1, "arch": 0.0, "arch_at": 25.0, "smooth": 0, "left": None, "right": None}
