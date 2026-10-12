@@ -1080,3 +1080,33 @@ First look, sf_tess front (things the whole sheets hid):
 - BUG / caveat: the "references projected" column is NOT pure reference: our own brows and our upper-lip layer are
   drawn OVER the projection (the projected mouth tile has our orange upper lip). The bar column needs those layers
   off (or the projection above them) to be the bar.
+
+## How others do the upper-lid fold (2026-10-12, coordinator; Joe asked for the literature)
+Joe: "that dang fold carries so much expression and identity with it, yet requires a ton of triangles and driving, and
+gnm and makehuman don't seem to support it, and I'm not sure game triangle budgets support it either."
+- Parametric models are KNOWN to fail here: Petikam, Hewitt, Saleh, Baltrusaitis (Microsoft), "Eyelid Fold Consistency
+  in Facial Modeling", SIGGRAPH Asia 2024 TC, arXiv 2410.13760. FLAME / BFM / their own models blur or miss hooded
+  lids because scan registrations put the same fold on DIFFERENT edge loops, so the statistics average it away; models
+  then lean on texture, which breaks blendshape / texture transfer. Their fix: the crease is ONE FIXED EDGE LOOP on
+  every mesh (upper lid above, lid platform below; on a hooded eye the platform is tucked BEHIND the hood: real
+  overlap), sharpened by a custom "pinch" BLENDSHAPE of the neighbouring loops with per-subject strength, and a
+  HOODEDNESS measure along the lid (0 = brow line, 1 = lid margin, > 1 = skin hangs in front of the margin; varies
+  nasal to temporal: lateral hooding with age, epicanthal fold nasally). Limits they state: one fold per lid.
+- Capture: Bermano et al., "Detailed Spatio-Temporal Reconstruction of Eyelids", SIGGRAPH 2015 (Disney): the lid skin
+  "is folded under while opening the eye"; they need a geometric deformation model as a prior + wrinkle detection
+  because the folded skin is occluded. Wen et al. 2017: real-time eyelid tracking from semantic edges (excludes
+  hooded lids).
+- Artists (forum practice, Reallusion's and Roblox's topology guides): the crease is an edge loop placed on the
+  subject's crease; model the lid HALF-CLOSED so the loops can serve both ends, then sculpt the open shape (skin
+  tucked up under the fold: "a larger shape with its own volume", not a scratched line) and the closed shape
+  (unfolded), plus an in-between corrective because the lid travels on an arc round the ball.
+- Game rigs (MetaHuman's RigLogic docs): joints for the big motion + per-vertex corrective shapes at LOD0 + expression
+  -driven wrinkle maps (a few normal / colour variants blended in the material by rig channels); lower LODs drop the
+  shapes and keep maps. Lid-to-ball contact is hidden by an eye-occlusion shell and a tear-line mesh.
+- WHAT IT MEANS FOR US: (1) the lid fold belongs in MESH space on a fixed loop of the head's own topology (GNM's lid
+  rings), as a per-subject pinch / tuck shape with hoodedness along the lid as its parameters: NOT in the SDF field
+  modifier (topology-blind: wobbles, rides the blink) and NOT in GNM's identity coefficients (forced: recipe A,
+  |dc| 16-20). (2) Blink / wide = corrective shapes on the same vertices (fold unfolds on the blink). (3) The fine
+  line and the far LODs = normal map + painted line. (4) Budget: two or three loops round each eye, of the order of a
+  few hundred triangles at LOD0; cheap next to the alternative. Soft broad features (bags, nasolabial, chin pad)
+  can stay in the field modifier, with expression gains.
