@@ -202,6 +202,20 @@ def foreground(img, bg=None, thr: float = 22.0):
     return ndi.binary_fill_holes(m)
 
 
+def plain_backdrop(img, thr: float = 30.0) -> float:
+    """How plain a picture's backdrop is: the share of its top and side border pixels (the bottom edge is the figure's)
+    within thr of their median colour. A studio photo: ~1; a painted or lit scene: under 0.8."""
+    a = np.asarray(img.convert("RGB"), float)
+    b = np.r_[a[:4].reshape(-1, 3), a[:, :4].reshape(-1, 3), a[:, -4:].reshape(-1, 3)]
+    return float((np.abs(b - np.median(b, 0)).sum(-1) < thr).mean())
+
+
+PARSE_MODEL = "mediapipe"   # faceparse: the outline's parser (validated: spikes/refread/pval.py)
+PARSE_SIG = 0.5             # mm: an outline read off the parser's mask (rms 0.2-0.5 on dressed renders, painted backdrop)
+PLAIN_MIN = 0.75            # parse="auto": the plain-background reader is used when the backdrop is this plain ...
+PLAIN_READS = 40            # ... and it finds this many outline samples in the view; else the parser
+
+
 def photo_masks(img, cam, head, thr: float = 30.0, origin=(0.0, 0.0), scale: float = 1.0):
     """A photo in front of a PLAIN background: (the figure's mask, where it is SKIN). Skin = as warm ((R - B) / sum) and
     at least 0.6 x as bright as the face's own skin, sampled at the model's nose bridge and cheeks through the fitted
@@ -510,7 +524,11 @@ def observe(head: dict, views: list, outline: bool = True, colour: bool = True) 
                 hv = hair_vertices(head)
                 oo = [ob for ob in oo if not hv[ob["v"]]]
             if view.get("face_only") and "face" in head:      # a photo: the neck and shoulders are a pose, not the head
-                oo = [ob for ob in oo if head["face"][ob["v"]]]
+                keep = head["face"] | head["ears"] if (view.get("ears") and "ears" in head) else head["face"]
+                oo = [ob for ob in oo if keep[ob["v"]]]
+            if view.get("outline_sig"):
+                for ob in oo:
+                    ob["sig"] = float(view["outline_sig"])
             obs += oo
         if colour and view.get("style", "clay") == "clay" and view.get("colour", True):
             obs += _colour_obs(head, view, im_m, view["img"])
@@ -551,6 +569,10 @@ def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0) -
         from scipy.spatial.transform import Rotation
         c["r"] = (Rotation.from_rotvec([float(np.radians(pitch)), 0.0, 0.0]) * Rotation.from_matrix(humanfit._rotvec(np.asarray(c["r"], float)))).as_rotvec().tolist()
     return c
+
+
+def _all_types(obs, weights) -> dict:
+    return {t: (weights or {}).get(t, 1.0) for t in {ob["type"] for ob in obs}}
 
 
 def cam_sd_of(cam_sd, kind):
@@ -602,7 +624,8 @@ def _cam_columns(obs, views, cam_sd):
 
 
 def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=None, views=None, huber: float = 2.5,
-          weights: dict | None = None, done=None, cam_done=None, prior_off=None) -> dict:
+          weights: dict | None = None, done=None, cam_done=None, prior_off=None, adapt: bool = False,
+          cmax: float | None = None) -> dict:
     """The gaps of the 23 measures from the observations. Default: the most likely identity change dc (prior N(0,
     tau^2) per comp) and the measures read off it, with posterior sd. span=True: least squares over the 23 `mm:` moves
     alone. cam_sd = (shift mm, shift mm, scale %, roll deg): the camera was fitted, so much of each is unknown."""
@@ -636,11 +659,32 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
     if keys:
         Cn = np.array([[(ob.get("nu") or {}).get(k, 0.0) for k in keys] for ob in obs], float)
         Jx, pri, m0, nn = np.c_[Jx, Cn], np.r_[pri, np.full(len(keys), NU_SD)], np.r_[m0, np.zeros(len(keys))], len(keys)
+    relax = 1.0
+    if cmax and not span:     # NOTHING FORCED: if the most likely head has a component past cmax sd, the pictures are
+        c_at = np.asarray(head["c"], float)   # (the head as it stands in this round)        # less consistent than
+        for _ in range(40):   # their sigmas say (two paintings of one man are two drawings): all sigmas x 1.3 until it fits
+            t_ = solve(obs, head, tau=tau, cam_sd=cam_sd, views=views, huber=huber, weights={k_: v_ * relax for k_, v_ in _all_types(obs, weights).items()},
+                       done=done, cam_done=cam_done, prior_off=prior_off, adapt=adapt)
+            if np.abs(c_at + t_["dc"]).max() <= cmax:
+                break
+            relax *= 1.3
+        t_["relax"] = relax
+        return t_
     w = 1.0 / sig ** 2
-    for _ in range(3):
+    sig0, grp, scale = sig.copy(), {}, {}
+    if adapt:
+        for i, ob in enumerate(obs):
+            grp.setdefault((ob["type"], ob["view"]), []).append(i)
+    for it in range(6 if adapt else 3):
         A = (Jx * w[:, None]).T @ Jx + np.diag(1.0 / pri ** 2)
         Ai = np.linalg.inv(A)
         th = Ai @ (Jx.T @ (w * o) + m0 / pri ** 2)
+        if adapt and it in (2, 3, 4):     # a group the model cannot explain to its sigma is NOISIER than assumed (a
+            for key, ii in grp.items():   # painting's outline, a detector on brush strokes): its sigma = its own scatter
+                if len(ii) >= ADAPT_MIN:
+                    s_ = 1.4826 * float(np.median(np.abs((o - Jx @ th)[ii])))
+                    scale[key] = max(1.0, s_ / float(np.median(sig0[ii])))
+                    sig[ii] = sig0[ii] * scale[key]
         r = (o - Jx @ th) / sig
         w = 1.0 / sig ** 2 * np.minimum(1.0, huber / np.maximum(np.abs(r), 1e-9))
     n1 = len(th) - nc - nn
@@ -663,7 +707,7 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
                      "view": gnm_mm.SEE[n][0], "see": gnm_mm.SEE[n][1]})
     rows.sort(key=lambda r: -abs(r["sd"]))
     full = ERR_POST ** 2 * cov + np.diag([ERR[n] ** 2 for n in names])
-    return {"dc": dc, "gaps": rows, "n": len(obs), "rms": float(np.sqrt(np.mean(r ** 2))),
+    return {"dc": dc, "gaps": rows, "n": len(obs), "rms": float(np.sqrt(np.mean(r ** 2))), "sig_scale": scale, "relax": 1.0,
             "cam": th[n1:n1 + nc].tolist() if nc else None, "cov": full, "names": names,
             "cam_post": np.sqrt(np.maximum(np.diag(Ai)[n1:n1 + nc], 0)).tolist() if nc else None}
 
@@ -682,6 +726,32 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
     free = kw.get("cam_sd") is not None
     ncam = len(cam_sd_of(kw["cam_sd"], views[0]["kind"])) if free else 4
     cam_done = np.zeros((len(views), ncam))
+    cam0 = kw.pop("cam_done0", None)     # the cameras' move in EARLIER calls (per view): the prior is on the whole of it
+    cam_first = int(kw.pop("cam_first", 0))
+    if not free:
+        cam_first = 0
+    for _ in range(cam_first):       # CAMERAS FIRST: the head held (tau tiny), each camera CAM_LOOSE x its freedom, never
+        for v in views:              # past 2.5 sd of that per round: a camera fitted on another head (a block-in's start
+            if v.get("extra"):       # with kept cameras) is first laid on THIS head's outline and anchors
+                v["extra_obs"] = v["extra"](cur, v)
+        obs = observe(cur, views)
+        if not obs:
+            break
+        loose = {kk: tuple(CAM_LOOSE * x for x in cam_sd_of(kw["cam_sd"], kk)) for kk in ("front", "3q", "profile")}
+        o_ = solve(obs, cur, views=views, **{**kw, "tau": 0.02, "cam_sd": loose})
+        th = np.asarray(o_["cam"], float).reshape(len(views), ncam)
+        lim = 2.5 * np.array([loose[v["kind"]] for v in views], float)
+        for v, t_ in zip(views, np.clip(th, -lim, lim)):
+            v["cam"] = cam_moved(v["cam"], *t_)
+        cam0 = None                  # refitted cameras are the new start
+    prior_cam = cam0 is not None and free
+    if prior_cam:
+        a0 = np.zeros_like(cam_done)
+        c0_ = np.atleast_2d(np.asarray(cam0, float))
+        a0[:min(len(a0), len(c0_)), :min(ncam, c0_.shape[1])] = c0_[:len(a0), :ncam]
+        cam_done = a0
+    cam_start = cam_done.copy()
+    relax = 1.0
     for k in range(rounds):
         for v in views:              # per-view extra observations follow the moved head and camera
             if v.get("extra"):
@@ -689,7 +759,8 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         obs = observe(cur, views)
         if not obs:
             raise ValueError("face_ruler: nothing could be read (no outline, no feature) in these pictures")
-        out = solve(obs, cur, views=views, done=done if k else None, cam_done=cam_done if (free and k) else None, **kw)
+        out = solve(obs, cur, views=views, done=done if k else None, cam_done=cam_done if (free and (k or prior_cam)) else None, **kw)
+        relax = max(relax, float(out.get("relax", 1.0)))
         done = done + out["dc"]
         if free:                     # the fitted cameras are refined too: the next round reads through the moved ones
             th = np.asarray(out["cam"], float).reshape(len(views), ncam)
@@ -701,6 +772,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         if k + 1 < rounds:
             cur = make(head["c"] + done)
     out["cam_done"], out["views"] = cam_done.tolist(), views
+    out["cam_step"], out["relax"] = (cam_done - cam_start).tolist(), relax
     if free and out.get("cam_post") is not None:
         out["cam_post"] = np.asarray(out["cam_post"], float).reshape(len(views), ncam).tolist()
     if rounds > 1 and head.get("kind") == "gnm":
@@ -1046,8 +1118,10 @@ def model_head(spec: dict, c=None, kappa=None) -> dict:
     order = [int(np.argmin(np.linalg.norm(off - (e - E.mean(0)), axis=1))) for e in E]
     face = np.zeros(len(P), bool)
     face[idx] = mh["face"][gid[idx]]
+    ears = np.zeros(len(P), bool)
+    ears[idx] = _gnm()["gr"]["ears"][gid[idx]]
     LB = kappa * sc * (mh["LB"] - jm) @ R.T                  # (170, 68, 3): the 68 landmarks' moves
-    return {"face": face, "LB": LB, "c": cid, "V": P, "F": F[hv[F].all(1)], "B": B, "bnd": np.zeros(len(P), bool), "mesh": mesh, "L": st["L"],
+    return {"face": face, "ears": ears, "LB": LB, "c": cid, "V": P, "F": F[hv[F].all(1)], "B": B, "bnd": np.zeros(len(P), bool), "mesh": mesh, "L": st["L"],
             "Jm": gnm_mm.jacobian()[:len(gnm_mm.NAMES)], "measures": {n: float(r[n]) for n in gnm_mm.NAMES},
             "kind": "model", "hair": hair, "spec": spec, "eye_X": E, "eye_B": [eyeB[:, j] for j in order],
             "kappa": kappa, "kappa_res": kres, "rebuild": lambda c2: model_head(spec, c2, kappa), "gid": gid}
@@ -1259,6 +1333,108 @@ def _shade_obs(head, view):
     return out
 
 
+SIG_NORMAL = 0.10           # radians: one learned-normal sample's tangent component (spikes/refread/nrmval.py)
+NORMAL_N = 400              # normal samples per view
+NORMAL_REGIONS = SHADE_REGIONS + ("nose_region",)
+
+
+def _normal_model(head, regions=NORMAL_REGIONS) -> dict:
+    """as _shade_model for any set of GNM regions (cached on the head)."""
+    key = "_nm_" + ",".join(regions)
+    if key in head:
+        return head[key]
+    old = head.pop("_shade", None)
+    global SHADE_REGIONS
+    keep = SHADE_REGIONS
+    try:
+        SHADE_REGIONS = tuple(regions)
+        head[key] = _shade_model(head)
+    finally:
+        SHADE_REGIONS = keep
+        head.pop("_shade", None)
+        if old is not None:
+            head["_shade"] = old
+    return head[key]
+
+
+def _normals_of_model(head, view) -> dict:
+    """The estimator's normals on the MODEL's own clay picture on the view's pixel grid (the differential reference of
+    _normal_obs: the same estimator on picture and render, as the anchors)."""
+    from . import facenormals as fnm
+    cam = view["cam"]
+    sc, org = float(view.get("scale", 1.0)), np.asarray(view.get("origin", (0.0, 0.0)), float)
+    im = _clay_crop(head, view)[0] if "scale" in view else clay(head, cam)
+    if im.size != view["img"].size:
+        im = im.resize(view["img"].size)
+    PL = (_cam_points(cam, np.asarray(head["L"], float)[:68])[1] - org) * sc
+    return fnm.estimate(im, fnm.head_box(PL, im.size))
+
+
+def _normal_obs(head, view, differential=None):
+    """LEARNED SURFACE NORMALS as the interior observation (refread, 2026-10-11): at sampled visible skin vertices
+    (NORMAL_REGIONS) the picture's normal from a monocular estimator (facenormals: camera frame) against the model's
+    own: the two tangent components of the difference (radians), each moving with the vertex's normal (dn / dc from
+    _shade_model, as the shading read). Nuisance per view: a small global ROTATION of the estimator's normals (3) and
+    its RELIEF gain (1: estimators flatten or exaggerate the turn away from the camera). differential = the
+    estimator's normals on a picture of the MODEL itself through the same camera ({"n", "box"}, facenormals.estimate):
+    then the observation is estimate(picture) - estimate(model's picture), the estimator's own bias taken out."""
+    from . import facenormals as fnm, humanfit
+    sm = _normal_model(head)
+    cam, kind = view["cam"], view["kind"]
+    sc, org = float(view.get("scale", 1.0)), np.asarray(view.get("origin", (0.0, 0.0)), float)
+    img = view["img"]
+    Wd, Hd = img.size
+    Rc = humanfit._cam_rot(cam)
+    X = np.asarray(head["V"], float)[sm["idx"]]
+    Xc, pc = _cam_points(cam, X)
+    px = (pc - org) * sc
+    nc_ = sm["N"] @ Rc.T
+    _, ps = _clay_crop(head, view) if "scale" in view else clay(head, cam, passes=True)
+    zb = ps["zb"]
+    kz = zb.shape[0] / float(Hd)
+    qx = np.clip(px[:, 0] * kz, 0, zb.shape[1] - 1).astype(int)
+    qy = np.clip(px[:, 1] * kz, 0, zb.shape[0] - 1).astype(int)
+    ok = (np.abs(zb[qy, qx] - Xc[:, 2]) < 0.004) & (-nc_[:, 2] > 0.35)
+    ok &= (px[:, 0] >= 2) & (px[:, 0] < Wd - 2) & (px[:, 1] >= 2) & (px[:, 1] < Hd - 2)
+    if "hair" in head and view.get("hair", True):
+        ok &= ~np.asarray(head["hair"], bool)[sm["idx"]]
+    if view.get("trust") is not None:
+        from scipy import ndimage as ndi
+        mmpx = float(cam["t"][2]) / cam["f"] * 1000.0 / sc
+        tr = ndi.binary_erosion(np.asarray(view["trust"], bool), iterations=max(int(2.0 / mmpx), 1))
+        ok &= tr[np.clip(px[:, 1].astype(int), 0, Hd - 1), np.clip(px[:, 0].astype(int), 0, Wd - 1)]
+    if ok.sum() < 60:
+        return []
+    if "_nrm" not in view:
+        PL = (_cam_points(cam, np.asarray(head["L"], float)[:68])[1] - org) * sc
+        view["_nrm"] = fnm.estimate(img, fnm.head_box(PL, img.size))
+    k = np.flatnonzero(ok)
+    ne = fnm.at(view["_nrm"], px[k])
+    ref = nc_[k]
+    if differential is not None:
+        ref = fnm.at(differential, px[k])
+    g = np.isfinite(ne).all(1) & np.isfinite(ref).all(1)
+    k, ne, ref = k[g], ne[g], ref[g]
+    if len(k) > NORMAL_N:
+        pick = np.round(np.linspace(0, len(k) - 1, NORMAL_N)).astype(int)
+        k, ne, ref = k[pick], ne[pick], ref[pick]
+    n = nc_[k]
+    t1 = np.cross(n, [0.0, 1.0, 0.0])
+    t1 /= np.maximum(np.linalg.norm(t1, axis=1, keepdims=True), 1e-9)
+    t2 = np.cross(n, t1)
+    dNc = np.einsum("knc,dc->knd", sm["dN"][:, k], Rc)                # (170, n, 3) camera frame
+    zc = np.array([0.0, 0.0, -1.0])
+    out = []
+    for i in range(len(k)):
+        for a, t in (("u", t1[i]), ("v", t2[i])):
+            rot = np.cross(n[i], t)
+            nu = {f"nr_{kind}_x": rot[0], f"nr_{kind}_y": rot[1], f"nr_{kind}_z": rot[2], f"nr_{kind}_gain": float(zc @ t)}
+            out.append({"type": "normal", "view": "normal:" + kind, "name": f"normal_{kind}_{i}.{a}", "o": float((ne[i] - ref[i]) @ t),
+                        "J": dNc[:, i] @ t, "sig": SIG_NORMAL, "nu": nu, "px": list(map(float, px[k[i]])),
+                        "vid": int(sm["idx"][k[i]])})
+    return out
+
+
 SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture's traced border
 
 
@@ -1350,12 +1526,81 @@ def _landmark_obs(head, view, points):
     return out
 
 
+ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
+CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
+CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
+SIG_IRIS_3Q = 0.5                     # mm: a 3/4 view's iris centre, detector on picture - detector on render (gaze differs)
+LM_SIG_DIFF = 1.0                    # mm: a DIFFERENTIAL anchor (the same detector on picture and render), + its pixel floor
+LM_PX = 0.6                           # picture px: the detector's own scatter on a small face (Garrett's: 1.2 mm / px)
+
+
+def _detect_model(head, cam, box):
+    """The detector's 478 points (picture px) on the MODEL's own clay picture through cam, cropped to box as the
+    picture's own detection is (likeness.model_sides does the same for the table); cached by head and camera."""
+    from . import likeness
+    key = (np.asarray(head["c"], np.float32).tobytes(),
+           tuple(np.round(np.r_[cam["r"], cam["t"], cam["f"], cam.get("yaw", 0.0), cam["centre"]], 6)), tuple(np.round(box, 1)))
+    D = _C.setdefault("det", {})
+    if key not in D:
+        if len(D) > 64:
+            D.clear()
+        im, k = likeness.render(head["mesh"], cam, box)[:2]
+        P = likeness.detect([im])[0]
+        D[key] = None if P is None else np.asarray(P, float) / k + [box[0], box[1]]
+    return D[key]
+
+
+def _anchor_obs(head, view, points, det):
+    """DIFFERENTIAL DETECTOR ANCHORS (refread, 2026-10-11): the detector's point on the PICTURE minus the same
+    detector's point on the model's own render through this view's camera (det = {"P": the picture's 478, "box"}),
+    as the block-in table compares them, moving with the landmark itself. _landmark_obs compares the detector with
+    the model's TRUE mesh landmarks: the detector's definition bias (3-12 mm on some points, more on a painting) then
+    goes into the identity (Garrett: 204 anchors forced comps to 3.9 sd). Falls back to _landmark_obs when the
+    detector finds no face on the render."""
+    from . import likeness
+    if det is None or det.get("P") is None:
+        return _landmark_obs(head, view, points)
+    Pm = _detect_model(head, view["cam"], det["box"])
+    if Pm is None:
+        return _landmark_obs(head, view, points)
+    out = []
+    L = np.asarray(head["L"], float)
+    keys = [k_ for k_ in (points or {}) if k_.startswith("lm") and k_[2:].isdigit() and int(k_[2:]) < 68]
+    if keys and view["kind"] in ("front", "3q"):      # the CHIN: a picture's stored points often leave the jaw contour out
+        keys += [f"lm{i}" for i in CHIN_LM if f"lm{i}" not in keys]   # (the detector guesses it); like with like it is the
+    for key in keys:                                  # table's own chin read, and nothing else sees the chin from the front
+        i = int(key[2:])
+        m = likeness.MP68[i]
+        Jp, mm1 = _proj_jac_pt(view["cam"], L[i], head["LB"][:, i])
+        p, q = Pm[m], np.asarray(det["P"], float)[m]
+        sig = float(np.hypot(LM_SIG_DIFF, LM_PX * mm1))
+        for ax in (0, 1):
+            out.append({"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1,
+                        "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
+                        "X": list(map(float, L[i])), "diff": True})
+    if view["kind"] == "3q" and keys and "eye_X" in head and len(Pm) > max(likeness.MP_EYES):
+        # BOTH IRIS CENTRES of a turned view (the detector's, picture - render): two irises pin its yaw (one limbus
+        # does not: the profile and 3/4 cameras over-rotated 3.5-4 deg over four calls on Tess)
+        xs = [float(e[0]) for e in head["eye_X"]]
+        for s_, m in enumerate(likeness.MP_EYES):     # the subject's right eye first (world x smaller)
+            j = int(np.argmin(xs)) if s_ == 0 else int(np.argmax(xs))
+            Jp, mm1 = _proj_jac_pt(view["cam"], head["eye_X"][j], head["eye_B"][j])
+            p, q = Pm[m], np.asarray(det["P"], float)[m]
+            sig = float(np.hypot(SIG_IRIS_3Q, LM_PX * mm1))
+            for ax in (0, 1):
+                out.append({"type": "iris", "view": view["kind"], "name": f"iris_{'rl'[s_]}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1,
+                            "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
+                            "X": list(map(float, head["eye_X"][j])), "diff": True})
+    return out
+
+
 def kind_of(yaw: float) -> str:
     a = abs(float(yaw or 0.0))
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
 
 
-def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False) -> tuple:
+def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False,
+                    anchors: str = "differential", parse: bool | str = False, normals: bool = False) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -1372,11 +1617,32 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1],
                 "face_only": True}
         pts = dict(v.get("points") or {})
-        extras = [lambda h, vw, pts=pts: _landmark_obs(h, vw, pts)]
+        det = None
+        if anchors == "differential" and any(k_.startswith("lm") and k_[2:].isdigit() for k_ in pts):
+            box = likeness._box(pts, img.size)       # the detector on the picture, on the crop the table uses
+            Pd = likeness.detect_region(img, box)
+            if Pd is None:
+                notes.append(f"{view['name']}: the detector finds no face: its stored points are absolute anchors")
+            else:
+                det = {"P": Pd, "box": box}
+        extras = [] if anchors == "none" else [lambda h, vw, pts=pts, det=det: _anchor_obs(h, vw, pts, det)]
         if v.get("outline"):
             view["outline"] = np.asarray(v["outline"], float)
         else:
             view["mask"], view["trust"] = photo_masks(img, cam, head)
+            use = bool(parse) and parse != "auto"
+            if parse == "auto":      # the plain-background reader where it works (a finer edge), the parser elsewhere
+                n0 = sum(ob["type"] == "outline" for ob in observe(head, [dict(view, limbus=False)], colour=False))
+                use = plain_backdrop(img) < PLAIN_MIN or n0 < PLAIN_READS
+            if use:
+                from . import faceparse
+                try:
+                    view["mask"], view["trust"], _ = faceparse.masks(img, cam, head, model=parse if parse in faceparse.SIZE else PARSE_MODEL)
+                    view["outline_sig"] = PARSE_SIG
+                    view["ears"] = True      # the parser knows hair from skin: an ear it shows bare is the head's outline
+                    notes.append(f"{view['name']}: outline from the face parser ({parse if parse in faceparse.SIZE else PARSE_MODEL})")
+                except (FileNotFoundError, RuntimeError, ValueError) as e:
+                    notes.append(f"{view['name']}: the face parser is not available ({str(e)[:160]}): plain-background outline")
         if k == "front":
             try:
                 P = bi.detect_view(img, v)
@@ -1400,6 +1666,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
         if shade:
             extras.append(_shade_obs)
+        if normals:      # OFF by default: failed its validation (the notes' "## refread", 3): differential against the
+            extras.append(lambda h, vw: _normal_obs(h, vw, _normals_of_model(h, vw)))     # model's own clay picture
         view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
         views.append(view)
     if iris_mm and np.isfinite(iris_mm):       # the turned views draw the limbus at the PICTURE's iris size (the limbus'
@@ -1409,21 +1677,25 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
 
 
 def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
-            prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False) -> dict:
+            prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False, anchors: str = "differential",
+            parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False,
+            cam_done0=None, cmax: float | None = None) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
-    head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade)
+    head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade, anchors=anchors, parse=parse,
+                                         normals=normals)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
-    res = read(head, views, rounds=rounds, cam_sd=cam_sd, **({} if prior_off is None else {"prior_off": prior_off}))
+    res = read(head, views, rounds=rounds, cam_sd=cam_sd, cam_first=cam_first, adapt=adapt, cam_done0=cam_done0, cmax=cmax,
+               **({} if prior_off is None else {"prior_off": prior_off}))
     from . import gnm_mm
     sd = gnm_mm.sd()
     for r in res["gaps"]:
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "shade")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "shade", "normal")}
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))
@@ -1435,6 +1707,14 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
                 cams.append(f"{v['kind']}: yaw {done[4]:+.1f} +-{post[4]:.1f} deg, pitch {done[5]:+.1f} +-{post[5]:.1f}")
     lim = sorted({(ob["view"], ob["name"][:8]) for ob in res["obs"] if ob["type"] == "limbus"})
     notes = list(notes) + [f"limbus read in: {', '.join(f'{a} {b}' for a, b in lim) or 'no turned view'}"]
+    if res.get("relax", 1.0) > 1.0:
+        notes.append(f"INCONSISTENT PICTURES: at their own sigmas the most likely head had a component past {cmax:g} sd; every "
+                     f"read's sigma was raised x{res['relax']:.2f} until none did (the pictures disagree with each other or "
+                     "with any one GNM head by that much: paintings, expressions, a wrong camera)")
+    big = {k: v for k, v in (res.get("sig_scale") or {}).items() if v > 1.5}
+    if big:
+        notes.append("NOISIER than assumed (the head that fits best leaves these reads scattered; their sigma was raised by): "
+                     + ", ".join(f"{t} {vw} x{v:.1f}" for (t, vw), v in sorted(big.items())))
     if cams:
         notes.append("cameras turned by the solve (their fitted yaw / pitch were left free): " + "; ".join(cams))
     per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
@@ -1444,7 +1724,8 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
     return {"rows": res["gaps"], "orbit": res["orbit"],
             "text": head_txt + "\n" + orbit_text(res["orbit"]) + "\n" + text(res["gaps"]) + ("\n" + "\n".join(notes) if notes else ""),
             "notes": notes, "n": n, "dc": res["dc"], "views": views, "head": head, "obs": res["obs"],
-            "cam_done": res.get("cam_done"), "cam_post": res.get("cam_post")}
+            "cam_done": res.get("cam_done"), "cam_post": res.get("cam_post"),
+            "sig_scale": res.get("sig_scale") or {}, "relax": res.get("relax", 1.0), "cam_step": res.get("cam_step")}
 
 
 

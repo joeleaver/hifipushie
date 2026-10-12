@@ -4448,3 +4448,197 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
    which. Send every sheet to Joe with a blunt caption; he caught the cheeks from one profile tile.
 10. Process: one heavy job at a time through resources.heavy and bin/capped; agents in worktrees with their own
    scratch models; notes + commit after every step; reference | result | rest on every sheet; lt19 / jw private.
+
+## refread (2026-10-11, "refread" agent, branch worktree-agent-afe13b70ba89a707e from main e033a25; Joe: "I'd like to be
+## able to get closer from a single or two references" and "let's try 1 through 3": three new kinds of observation for the
+## joint solve. Scratch DURABLE in /mnt/data/hifipushie/refread: run.sh <script> (capped, this worktree's src), out/;
+## scripts in spikes/refread (cmp.py <model> key=value..: the solve's read WITHOUT applying it, ~30 s); sheets human_renders/rr_*)
+STATE / NEXT (refread, DONE; the full line is at the section's end): 1 differential anchors PASS (on), 2a parser
+outlines PASS (on, parse="auto"), 2b interior contours FAIL (unused), 3 learned normals FAIL (off). Garrett from two
+paintings now settles unforced and beats gj_G03, NOT b3_G17; Tess 25 / 26 with cameras="refit" first, no regression.
+
+### 1. Differential detector anchors (face_ruler._anchor_obs; reference_views / compare / solve_step anchors="differential")
+- Built: observation = the detector's point on the PICTURE - the same detector's point on the model's own clay render
+  through that view's camera (likeness.render on the table's crop box, likeness.detect; `_detect_model`, cached by
+  head identity + camera + box, so each Gauss-Newton round and each call re-detects on the moved head), Jacobian =
+  the landmark's own move, sigma hypot(1.0 mm, 0.6 px) (was 1.5 mm absolute). anchors="absolute" = the old
+  _landmark_obs (also the fallback when the detector finds no face on the render), "none" = no anchors.
+- GARRETT, first call from gj_G00 (cmp.py, free cameras; nothing applied):
+  absolute:     reads outline 31, landmark 204, iris 4, lip 22; |dc| 16.6, |c| 5.45 -> 17.5, largest comp 3.46 sd, 14
+                comps past 2.5 sd; anchors' residual rms 1.9 mm front / 4.7 mm 3/4.
+  differential: reads outline 37, landmark 204, iris 4, lip 19; |dc| 10.8, |c| -> 11.75, largest comp 2.54 sd, 2 comps
+                past 2.5 sd; anchors' residual 1.4 mm front / 3.1 mm 3/4.
+  So the detector's bias WAS a third of the first step and most of what forced it. The 3/4 painting still disagrees
+  with the model by 3 mm rms on the anchors and its camera runs to the limit (yaw +5.0, pitch +5.0 deg = 2.5 sd):
+  the portrait's pose / drawing is not consistent with the front painting's head at the fitted camera.
+- TESS, same test: class mean tn_T00: absolute 262 reads (outline 194), |dc| 11.2, |c| -> 12.30, largest 2.72 sd;
+  differential 276 reads (outline 190), |dc| 10.8, |c| -> 12.28, largest 2.69 sd. Residuals after: anchors 2.07 / 1.82
+  -> 1.36 / 2.06 mm (front / 3/4), outlines the same (0.2-0.9 mm). On the settled tk_T06 (trusted cameras): absolute
+  |dc| 2.2 (it was solved with those), differential |dc| 4.7 with |c| 11.70 -> 11.62: the anchors now ask for a
+  slightly different head; nothing forced. The full Tess rerun is at the end.
+
+### 2. Face parsing for outlines (src/hifipushie/faceparse.py, asset pack "faceparse"; reference_views parse="auto")
+- Models tried (both run on CPU in the detector venv, ~1 s a picture, cached by the crop's bytes):
+  (i) MediaPipe selfie_multiclass_256x256 (Apache 2.0, shippable): background / hair / body skin / face skin / clothes
+  / others, through mediapipe's ImageSegmenter (confidence masks). (ii) BiSeNet ResNet-34 on CelebAMask-HQ, 19 classes
+  (yakhyo/face-parsing ONNX, MIT code, through cv2.dnn); CelebAMask-HQ is NON-COMMERCIAL RESEARCH ONLY, so those
+  weights are a measuring tool, never shipped (as faceid's ArcFace). First look on Garrett's two paintings and Tess's
+  three photos (out/parse_try.png): both label skin / hair / neck / clothes sensibly on the dark painted portrait.
+- VALIDATION (spikes/refread/pval.py; 7 known heads x their 2-3 fitted cameras = 19 dressed EEVEE shots (the judging
+  sheet's cached ones: tn_T00, tk_T06, tg_r1, tg_r2, tg_male, b3_G17, gj_G03), laid over a DARK PAINTED background (a
+  piece of Garrett's desk painting behind the shot's own mask); the model in the reader = the same head, so every
+  outline read's truth is 0 mm; "truth" = the reader on the shot's own mask (the dressed mesh is not exactly the
+  ruler's mesh: that floor)). bias / rms mm (reads per view):
+  | backdrop | view | truth mask | plain reader (photo_masks) | MediaPipe | BiSeNet |
+  |---|---|---|---|---|---|
+  | grey | front | -0.14 / 0.21 (29) | -0.12 / 0.16 (26) | -0.28 / 0.45 (29) | +0.17 / 0.45 (29) |
+  | grey | 3/4 | +0.10 / 0.53 (110) | +0.04 / 0.36 (107) | -0.07 / 0.52 (110) | +0.49 / 0.73 (112) |
+  | grey | profile | - | - (its border median is skin on these crops) | -0.32 / 0.47 (91) | +0.85 / 0.98 (116) |
+  | painted | front | -0.14 / 0.21 | +0.21 / 0.22 (3 reads) | -0.07 / 0.29 (29) | +0.31 / 0.48 (29) |
+  | painted | 3/4 | +0.10 / 0.53 | +0.25 / 0.35 (25 reads) | +0.04 / 0.39 (91) | +0.81 / 0.97 (103) |
+  | painted | profile | - | nothing | -0.27 / 0.40 (61) | +0.94 / 1.07 (75) |
+  | painted, 4x smaller (1.2 mm / px, Garrett's scale) | front | -0.11 / 0.24 | +0.41 / 0.52 (2) | +0.02 / 0.20 (27) | +0.33 / 0.50 |
+  | painted, 4x smaller | 3/4 | +0.12 / 0.60 | +0.59 / 0.78 (27) | +0.22 / 0.52 (108) | +0.85 / 1.02 |
+  | painted, 4x smaller | profile | - | nothing | -0.16 / 0.88 (p90 0.43; 72) | +0.95 / 1.12 |
+  PASS (a) with MediaPipe's model: 0.2-0.5 mm rms, bias within 0.3 mm, on a dark painted backdrop and at Garrett's
+  pixel size, with as many reads as the plain reader gets on a studio backdrop (which gets 2-27 on the painted one).
+  BiSeNet is worse here (+0.5..+0.9 mm outside, 1 mm rms). On Tess's REAL photos (rcount.py) the parser agrees with the
+  plain-background reader at the samples both read: 3/4 +0.03 / -0.02 mm (sd 0.18 / 0.22), profile -0.12 / -0.15 (sd
+  0.21 / 0.29); front -0.5..-0.6 (8 samples).
+- (b) outlines INSIDE the face (the nose against the far cheek in a 3/4), from BiSeNet's nose class: FAILS
+  (spikes/refread/nval.py: the model's own nose silhouette vertices against the parser's nose boundary on 7 dressed
+  3/4 shots: median 1.7 mm, rms 2.9, p90 5.4; 29 % under 1 mm). The class is a blob drawn round the nose, 2-3 mm
+  outside the occluding contour on the far side. NOT used.
+- WIRED: reference_views(parse=): False = the plain-background reader, True / a model name = the parser,
+  "auto" (block_in_solve's default) = the plain reader where the backdrop is plain (plain_backdrop >= 0.75) AND it
+  finds >= 40 outline samples in the view, else MediaPipe's parser (sigma 0.5 mm; the plain reader's stays 0.3). With
+  the parser the EARS count as the head's outline where it shows them bare (hair over an ear = no read).
+  Reads on the class-mean starts: Garrett outline 31-37 -> 203 (front 95, 3/4 108), then 250 once the cameras are laid
+  on the head; Tess 190 -> 221 (her front picture goes to the parser: 8 -> 38 reads; 3/4 and profile keep the plain reader).
+
+### Found on the way (all in face_ruler / blockin.solve_step)
+- Garrett's kept cameras were fitted on b3_G17: on the class mean the 3/4 outline is 9 mm off and the solve's camera
+  limit (2.5 sd) stops it short, so the identity is bent instead (first call with the parser's outlines: |c| 17.2,
+  a component at 5.2 sd). cameras="refit" (read(cam_first=2)): two rounds with the head held (tau 0.02) and twice
+  the camera freedom, then the solve; the refitted cameras are the new start.
+- solve(adapt=True): a group of reads (type, view; >= 8) whose scatter after the fit is over its sigma gets that scatter
+  as its sigma (1.48 x median |residual|): Garrett's lip borders (a 20 px mouth) x1.6-6; Tess: nothing raised.
+- solve(cmax=3.0): NOTHING FORCED as a rule of the solve. If the most likely head has a component past cmax sd, every
+  read's sigma is raised x1.3 until none has, and the factor is reported ("INCONSISTENT PICTURES x1.69" on Garrett's
+  first call; Tess 1.0). Two paintings of one man are two drawings: their reads disagree by more than a photo's.
+- The CHIN had no read from the front (no silhouette there; Garrett's stored points start at lm17): gq_G01..04 (steps
+  1 + 2 only) kept face_height -7.4 mm, chin_height -3.1 / -7.6, lower_third -4.8 / -6.5 on the table. The
+  differential anchors now always include the detector's chin points (lm 7, 8, 9: like with like, the table's own).
+- Coordinator's items (2026-10-11): (a) the camera prior is on the cameras' WHOLE move since the block-in's start
+  (human_refs.json blockin.cam_done, carried by solve_step; read(cam_done0=)), so repeated calls no longer walk
+  (gq_G01..04: the front camera moved +1.25 mm = the trust limit on EVERY call); cameras="trust" = a third of the
+  freedom on the whole move; use one setting for every call. (b) both IRIS centres of a 3/4 view as differential
+  detector reads (MediaPipe's 468 / 473 on picture and render, moving with the eye centres, sigma 0.5 mm + 0.6 px).
+
+### 3. Learned surface normals (src/hifipushie/facenormals.py, face_ruler._normal_obs / _normals_of_model): FAILS, left OFF
+- Model: Meta's Sapiens normal estimator, 0.3b, TorchScript (asset pack "facenormals", 1.36 GB; CC BY-NC 4.0: a
+  MEASURING TOOL only, never shipped). CPU, in its own venv (/mnt/data/hifipushie/normals_venv: torch CPU wheel,
+  numpy, pillow; HIFIPUSHIE_NORMALS_VENV), 1024 x 768 crop of the head, ~23 s and ~5 GB a picture, under
+  resources.heavy, cached by the crop's bytes. Axes: its output x (1, -1, -1) = the camera frame (nrmaxes.py). On a
+  dressed front shot of tk_T06 its normals are 6.5 deg (median) from the mesh's own (mean 7.9, p90 13.5).
+- The observation: at <= 400 visible skin vertices a view (shade regions + nose), the two tangent components of
+  (picture's normal - reference) in radians, J = the vertex normal's change per comp (as _shade_model), sigma 0.10;
+  nuisance per view: a global rotation of the estimate (3) + its relief gain (1). reference = the mesh's own normal
+  ("absolute"), or the estimator's normals on a picture of the MODEL ("differential", as the anchors).
+- VALIDATION (spikes/refread/nrmval.py = shval.py's method; A = tk_T06, picture = a render of A + a known change
+  through A's three cameras, only normals in the solve; cheek surface along the normal, mm rms read, corr; the true
+  rms is in the column head):
+  | picture / reference | null (read; its |dc|) | cheek_fullness +1.5 (1.86) | -1.5 (1.86) | sculpt:cheeks +2 (1.12) | sculpt:malar +2 (0.86) | random |dc| 2 (0.42) |
+  |---|---|---|---|---|---|---|
+  | clay / mesh normal | 1.30 mm; 7.4 | 1.97, +0.56 | 1.41, +0.48 | 1.81, +0.71 | 2.27, +0.11 | 1.38, -0.34 |
+  | clay / estimate on A's clay | 0 | 0.83, +0.42 | 1.83, +0.85 | 0.68, +0.79 | 1.25, +0.84 | 0.36, +0.36 |
+  | DRESSED / mesh normal | 1.86 mm; 12.0 | 1.04, -0.57 | 3.14, +0.91 | 1.59, +0.33 | 1.86, +0.27 | 2.12, +0.20 |
+  | DRESSED / estimate on A's dressed shot | 0 | 1.57, +0.94 | 1.64, +0.90 | 0.55, +0.35 | 0.54, +0.94 | 0.47, -0.04 |
+  | DRESSED / estimate on A's CLAY (what a photo would get) | 1.84 mm; 10.7 | 1.24, -0.64 | 3.09, +0.92 | 1.54, +0.21 | 1.97, +0.44 | 2.06, +0.34 |
+  (dressed = EEVEE shots of scratch models nv_*, the photo's light, bald. The first dressed differential run was
+  INVALID: A's cached shot is 1280 px, the new ones 1040, so the reference was read at the wrong pixels; fixed, rerun.)
+- VERDICT: FAIL. Against the mesh's own normals the NULL case reads 1.3-1.9 mm of cheek and |dc| 7-12: the
+  estimator's own error (5.6-7.2 deg sd, spatially smooth) is larger than the signal of these changes (1-3 deg sd)
+  and the solve reads it as identity. Like with like in the SAME renderer the bias cancels and cheek_fullness comes
+  back (+0.90 / +0.94, 85-88 % of its size, dressed), but sculpt:cheeks (+0.35) and the random change do not, and the
+  read |dc| is 2-4 x the true one (cos 0.1-0.5): the estimator's response to a change is ~2 x what the mesh's normals
+  predict and only 0.3-0.4 correlated with it. And a photo has no same-renderer twin: against the model's clay the
+  null fails again (1.84 mm). Not in block_in_solve; reference_views(normals=True) exists for experiments.
+- What could still work (NEXT, not done): the differential reference as a DRESSED render of the current model under
+  the photo's light (one stage shot a round, ~3 min), validated ACROSS renderers first (picture = Cycles or another
+  dressing, reference = EEVEE): if that null stays near 0, cheek FULLNESS (the 0.9 rows) is readable; a bigger
+  model (Sapiens 1b / 2b) for the response's fidelity. Until then: cheeks by eye after the solve, as before.
+
+### Garrett from the class mean (gr_G00 = blockin.fork of gj_G00; gr_G01..05; sheet human_renders/rr_01_garrett_judging.png)
+- block_in_solve x5 (cameras refit, then free; differential anchors, parser outlines, adapt, cmax 3):
+  | call | reads: outline / anchors / iris / limbus / lid / lip | |dc| | |c| | largest comp | every sigma raised | table |
+  |---|---|---|---|---|---|---|
+  | gj_G01..03 (before) | 54-56 / 204 / 4 / 2 / 0 / 22 | 7.4, 7.2 | 17.0, 15.9 | 3.8-3.9 sd | - | 18 / 29 at gj_G03 |
+  | gr_G01 | 228 / 216 / 8 / 2 / 0 / 18 | 8.8 | 10.1 | 2.98 | x1.69 | 13 / 29 |
+  | gr_G02 | 235 / 216 / 8 / 2 / 0 / 17 | 3.9 | 11.3 | 2.93 | x1.69 | 18 / 29 |
+  | gr_G03 | 236 / 216 / 8 / 0 / 0 / 17 | 4.2 | 9.6 | 2.74 | x2.20 | 15 / 29 |
+  | gr_G04 | 243 / 216 / 8 / 2 / 0 / 17 | 2.6 | 10.2 | 2.89 | x2.20 | 13 / 29 |
+  | gr_G05 | 250 / 216 / 8 / 2 / 0 / 17 | 2.4 | 9.3 | 2.89 | x2.20 | 18 / 29 |
+  b3_G17 (accepted): |c| 7.8, largest 1.67 sd, table 26 / 29. eyespan (iris span, nasion-chin; model / picture):
+  gr_G05 front 1.001 / 0.966, 3/4 1.006 / 1.034; b3_G17 front 1.000 / 0.982, 3/4 1.131 / 1.044.
+- It SETTLES now (|dc| 8.8 -> 2.4; gj: 7 a call), nothing passes 3 sd, and the solve says itself that the two
+  paintings disagree (every sigma x1.7-2.2; the lip borders another x1.5-2.7). The lids are still not read (8 px iris).
+- BLUNT READ of rr_01 (reference | gr_G05 | b3_G17 | gj_G03): gr_G05 is CLOSER THAN gj_G03: a plausible, symmetric
+  man instead of a distorted one, and its blends are sharp in both views (ears, jaw and the 3/4's far cheek line lie
+  on the paintings; b3_G17's 3/4 blend is a double image: its 3/4 camera is 13 % off on the iris span). It is NOT
+  closer than b3_G17 as a face: in its own dressing gr_G05 is broader and heavier in the lower face, the nose short,
+  broad and soft (b3_G17's nose is his), the eyes narrow slits under low lids, the mouth wide; the table agrees
+  (18 / 29 against 26 / 29: face_height -5 mm, the mouth rows 2 / 7). b3_G17 stays the accepted head. What the solve
+  got right that b3_G17 has not: the 3/4 view's pose and the head's outline in it.
+- Why it stops there: on a 110 px face (1.1-1.3 mm a pixel) nothing reads the nose's form, the lids or the mouth
+  to better than the detector's pixel; two paintings disagree by ~2 sigma everywhere, so the prior fills the face.
+  One or two references of THIS quality give the outline and the placement, not the features.
+
+### Tess from the class mean (tq_T00 = blockin.fork of tn_T00; sheet human_renders/rr_02_tess_judging.png)
+- Three chains of four calls, same code, the cameras' setting differing (eyespan: iris span / nasion-chin, model / picture):
+  | chain | |dc| per call | |c| | largest | every sigma raised | table | eyespan front | 3/4 | profile |
+  |---|---|---|---|---|---|---|---|---|
+  | tk_T06 (before refread; tess_a1's base) | "## reruns" | 11.7 | 2.32 | - | 22 / 26 | 0.989 / 1.004 | 0.950 / 1.005 | 0.799 / 1.047 |
+  | tq_T01..04, all "trust" | 10.0, 2.7, 2.5, 2.0 | 11.1 | 2.80 | x1.7-2.2 | 16 / 26 | 0.983 / 1.050 | 0.968 / 1.038 | 0.885 / 1.020 |
+  | tqf_T01..04, all "free" | 10.3, 4.2, 3.2, 2.4 | 12.0 | 2.78 | no | 17 / 26 | 0.988 / 1.037 | 0.954 / 1.012 | 0.771 / 1.050 |
+  | tqr_T01..04, "refit" then "free" | 9.2, 2.6, 2.0, 2.6 | 10.8 | 2.64 | no | 25 / 26 | 0.988 / 1.024 | 0.969 / 1.013 | 0.552 / 1.073 |
+  (tn_T00 with the original cameras: 0.988 / 0.974, 0.997 / 0.982, 0.971 / 0.926; tess_a1: 0.989 / 1.001, 0.950 / 1.003,
+  0.799 / 1.044.)
+- With the camera prior on the WHOLE move, her kept cameras (fitted on er_s4's head) are the problem: under "trust"
+  the 3/4 and profile cameras sit on their limits from the first call (shift -1.25 mm, scale -2.1 % / +2.1 %), the
+  identity takes what the cameras may not (face 5 % long in the front, chin rows out) and cmax down-weights the
+  reads; "free" hits the profile's limits too (shift 3.75 mm, roll -2.0, yaw -5). "refit" (cameras laid on the
+  class mean first) then "free": the best table any Tess solve has had (25 / 26: only the front philtrum, the row
+  the reruns already found inconsistent), |c| 10.8, nothing down-weighted. NO REGRESSION against tk_T06; by the
+  table and |c| it is better. So: after block_in_start with kept cameras, the first call is "refit".
+- eyespan, as the coordinator asked: front 0.988 / 1.024 and 3/4 0.969 / 1.013 (tess_a1: 0.989 / 1.001 and 0.950 /
+  1.003): the 3/4's iris span is 2 points closer, NOT ~1.00, and the front's nasion-chin went 2 % long. The 3/4's two
+  differential iris reads are in and leave 0.8 mm rms (sigma 0.53); the far cheek's outline (70 reads at 0.3 mm)
+  outvotes them. NOTE the two instruments differ: eyespan compares the detector's points on the picture with the
+  MODEL's eye centres / true landmarks 27 and 8 (not like with like), the solve compares detector with detector. The
+  PROFILE's ratio went the wrong way (0.80 -> 0.55): that row is MediaPipe's guess at a hidden far iris in a 90 deg
+  view; I do not trust the row, but I cannot show which is right. The profile camera's yaw remains the least pinned
+  thing (as the orbit notes say), and "refit" lets it turn before the identity is solved.
+- BLUNT READ of rr_02 (reference | tqr_T04 | tk_T06): the two are the same face to my eye; blends sharp in all three
+  views, the profile line on hers. tqr_T04's ears stand out wider from the front (hers are under hair: nothing reads
+  them, they are the prior's). Cheeks: unchanged (nothing reads them). Not a better likeness, not a worse one.
+
+### Wired, tests, handover
+- block_in_solve(name, out, share, seen, save, cameras="free" | "trust" | "refit", anchors="differential" |
+  "absolute" | "none", parse="auto" | "on" | "off"); blockin.solve_step(..., adapt=True, cmax=3.0, normals=False);
+  blockin.fork(src, name) (a block-in copied as its own root: reruns and tests never write the source's log; before
+  it existed my gq_ / gs_ chains appended 8 entries to gj_G00's blockin_log.json: taken out again, unlog.py).
+  Guide 3b rewritten from main's text (what the solve reads, cameras, nothing forced, lids and lips inside).
+- tests/test_refread.py (9, all pass, ~2.5 min with tn_T00 present): adapt, cmax, the camera prior on the whole move,
+  plain_backdrop, _lid_obs and _lip_obs against a known change (o = J dc, and 0 on the head itself), differential
+  anchors (+ the chin, + the 3/4's irises), the parser's outline against the plain reader on Tess's 3/4 photo,
+  solve_step twice (nothing past 3 sd, the cameras' whole move kept and inside the freedom, a smaller second step).
+  tests/test_face_ruler.py still passes (4).
+STATE / NEXT (refread, end): steps 1 and 2a PASS and are on by default; 2b (interior contours from the parser) and 3
+(learned normals) FAIL their validations and are off / unused. Garrett from two paintings: settles, unforced, closer
+than gj_G03, NOT closer than b3_G17. Tess: no regression (25 / 26 with cameras refit). NEXT: (1) what would actually
+help Garrett is pixels (a face over ~300 px): the lids, the nose and the mouth have no read at 110 px; (2) the
+profile camera's yaw (an ear / eye geometry read, or a stated yaw in generated references); (3) normals against a
+dressed render of the model, validated across renderers; (4) the 3/4's irises vs the far cheek outline: find which is
+right on dressed renders of known heads with a known gaze; (5) the solve still see-saws at |dc| ~2-2.6 a call
+(relinearisation + reads that come and go): average two calls or damp the last steps (share 0.5).

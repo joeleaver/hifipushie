@@ -382,6 +382,23 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
     return entry
 
 
+def fork(src: str, name: str, replace: bool = False) -> dict:
+    """A block-in model copied as the ROOT of a new block-in (its own log, the cameras as they stand = the new start):
+    reruns and tests step from the copy, so the source's log and directory are never written."""
+    from . import store
+    if (store.HOME / name / "spec.json").exists() and not replace:
+        raise ValueError(f"{name} exists: choose a new name or replace=True")
+    sp, rj = copy.deepcopy(store.load(src)), copy.deepcopy(_refs(src))
+    rj["blockin"] = {**(rj.get("blockin") or {}), "root": name}
+    rj["blockin"].pop("cam_done", None)
+    _save(name, sp, f"block_in fork of {src}", rj)
+    c = identity(sp)
+    entry = {"round": 0, "to": name, "start": {"fork": src}, "c_norm": round(float(np.linalg.norm(c)), 3),
+             "time": time.strftime("%Y-%m-%d %H:%M:%S")}
+    _log_path(rj, name).write_text(json.dumps([entry], indent=1))
+    return entry
+
+
 def fit_cameras(base: dict, views: list, rj: dict | None = None) -> list:
     """Each picture's camera fitted on this head, the head held (humanfit_map's camera-only fit); with rj, each view's
     camera on the head as that picture shows it (its fitted expression)."""
@@ -679,7 +696,8 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
 
 
 def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int = 3, seen: str = "",
-               cameras: str = "free", lids: bool = True, lips: bool = True) -> dict:
+               cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
+               parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -695,12 +713,18 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     off = None
     if root and (store.HOME / root / "spec.json").exists():
         off = c0 - identity(store.load(root))
-    if cameras not in ("free", "trust"):
-        raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch free) or '
-                         '"trust" (measured or already solved cameras: a third of that freedom)')
-    k = 1.0 if cameras == "free" else 1.0 / 3.0
+    if cameras not in ("free", "trust", "refit"):
+        raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch free), '
+                         '"trust" (measured cameras: a third of that freedom) or "refit" (cameras fitted on ANOTHER head: '
+                         'laid on this head first, then free). The freedom is on the WHOLE camera move since the '
+                         'block-in started, whatever the number of calls: use the same setting on every call.')
+    k = 1.0 / 3.0 if cameras == "trust" else 1.0
+    rj0 = _refs(src)
+    cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
     cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD6.items()}
-    c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips)
+    c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
+                   normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else 0, cmax=cmax,
+                   cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 6)))
     dc = float(share) * np.asarray(c["dc"], float)
     rep = step(src, {}, out=out, seen=seen or "the face ruler's joint solve (outlines, irises, limbus; every view)",
                why=f"its solved identity change applied ({share:g} of it): |dc| {np.linalg.norm(dc):.2f}", _identity=c0 + dc)
@@ -709,12 +733,14 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     rj = json.loads(rp.read_text())
     for i, v in enumerate(c["views"]):
         rj["cameras"][i] = {**rj["cameras"][i], **{k: (np.asarray(x).tolist() if hasattr(x, "tolist") else x) for k, x in v["cam"].items()}}
-    rp.write_text(json.dumps(rj))
+    rj.setdefault("blockin", {})["cam_done"] = np.round(np.asarray(c["cam_done"], float), 4).tolist()   # the cameras' whole
+    rp.write_text(json.dumps(rj))                       # move since the start: the next call's prior is on all of it
     t0, t1 = rep["table"], table(to)          # (the table again, through the solve's cameras)
     rep.update(table=t1, delta=table_delta(table(src), t1))
     rep["entry"]["passes"] = passes(t1)
-    rep["solve"] = {"n": c["n"], "dc": float(np.linalg.norm(dc)), "c": float(np.linalg.norm(c0 + dc)),
-                    "max_sd": float(np.abs(c0 + dc).max()), "cameras": np.round(np.asarray(c["cam_done"], float), 2).tolist()}
+    rep["solve"] = {"n": c["n"], "dc": float(np.linalg.norm(dc)), "c": float(np.linalg.norm(c0 + dc)), "notes": c["notes"],
+                    "max_sd": float(np.abs(c0 + dc).max()), "sig_scale": {f"{t} {v}": round(float(x), 2) for (t, v), x in c["sig_scale"].items()}, "cameras": np.round(np.asarray(c["cam_done"], float), 2).tolist(),
+                    "camera_step": np.round(np.asarray(c["cam_step"], float), 2).tolist(), "relax": float(c["relax"])}
     return rep
 
 

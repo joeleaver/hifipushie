@@ -65,27 +65,54 @@ eye catches what the points miss; the target table catches what your eye misses.
    **If the difference is something you can MEASURE** (a width, a height, how far a point stands forward in profile:
    the 23 measures of `gnm_controls(query="mm")`), measure it in mm on the sheet and use the `mm:` move: closing the
    8 largest of those gaps (in population sd) passed 30 / 42 pairs, more than the best 10 phrase moves (27 / 42).
-   **3b. THE JOINT STEP FIRST: `block_in_solve(name, cameras="trust" | "free")`** (2026-10-11). ONE solve over every
-   reference view at once: skin outlines, iris centres, the limbus in the turned views, the LID MARGINS and corners
-   (the eye ruler's rows, in the eye's own frame) and the LIP BORDERS (the front picture's traced vermilion), under
-   GNM's prior on the WHOLE identity (centred on the block-in's start head, so repeated calls settle), with each
-   camera partly free. It applies the solved change as a step and keeps the cameras it ended on. Run it from
-   block_in_start's head BEFORE any hand move, 3-4 calls until its |dc| falls under ~2.
-   - CAMERAS: `cameras="trust"` from the FIRST call when the references' cameras are good (measured, or fitted on an
-     earlier accepted head: block_in_start(cameras="keep")); "free" only for cameras fitted on the class mean. On
-     Tess a free first call turned the 3/4 camera 3.4 deg and the profile 5.8 deg and the shape absorbed it (eye span
-     in the 3/4 5 % short with the face length right). Check a solved head: iris span and face length, model /
-     picture, ~1.00 in the front and the 3/4 (spikes/reruns/eyespan.py).
-   - Tess from the class mean: |c| 5.4 -> 11.7, largest component 2.3 sd, eyes 3/3, lip borders 0.24 / 0.46 mm with
-     no separate eye or lips step: about ten hand rounds' worth in minutes, and solved rows no longer undo each other.
-   - It WARNS on a weak or forced solve (under ~120 outline reads, or a component past 3 sd): two paintings on dark
-     backgrounds gave 54 outline reads and a distorted head. It needs plain-background references in 2-3 views.
+   **3b. THE JOINT STEP FIRST: `block_in_solve(name, cameras="free" | "trust" | "refit")`** (2026-10-11). ONE solve
+   over every reference view at once, under GNM's prior on the WHOLE identity (centred on the block-in's start head, so
+   repeated calls settle), with each camera partly free. It applies the solved change as a step and keeps the cameras
+   it ended on. Run it from block_in_start's head BEFORE any hand move, 3-4 calls until its |dc| falls under ~2-3.
+   The lids and the lips are INSIDE this solve: there is no separate eye-opening or lip-border step to run after it
+   (the old separate steps were undone by later moves: lips 0.2 -> 1.8 mm).
+   - WHAT IT READS, per view (the reply lists the counts):
+     OUTLINES: the head's bare-skin silhouette (profile line, far cheek / brow / jaw in a 3/4, jaw and ears from the
+     front). In front of a plain backdrop from the picture's own pixels; on a painting, a dark or busy backdrop or
+     where that finds under 40 samples, from a FACE PARSER (`parse="auto"`, the default; "on" / "off" force it):
+     skin / hair / clothes per pixel, so hair, collars and backgrounds are not the head (0.2-0.5 mm on dressed
+     renders over a painted backdrop; the plain reader got 2-27 samples there, the parser ~100 a view).
+     ANCHORS: the detector's landmarks as weak anchors, DIFFERENTIAL (`anchors="differential"`, the default): the
+     detector on the picture minus the same detector on our own render through that camera, as the table compares
+     them, so the detector's definition bias does not go into the face ("absolute" = the old comparison with the
+     mesh's true landmarks: on two paintings it forced components to 3.9 sd). The chin's points are always in
+     (nothing else reads the chin from the front) and BOTH iris centres of a 3/4 (they pin its yaw).
+     EYES: iris centres (front), the limbus in the turned views (eye depth), the LID MARGINS at seven columns and
+     both canthi in the eye's own frame (needs a 30 px iris: a small or painted face gives none, and says so).
+     LIPS: the front picture's traced vermilion borders.
+   - CAMERAS. The freedom (shift, scale, roll, yaw, pitch) is on each camera's WHOLE move since the block-in
+     started, whatever the number of calls (it used to be per call: four trusted calls walked as far as one free
+     one and over-rotated Tess's 3/4 and profile 3.5-4 deg). So use ONE setting on every call: `"trust"` when the
+     references' cameras are good (measured, or fitted on an earlier accepted head of the same person and the start
+     head is close to it), `"free"` for cameras fitted on the class mean. `"refit"`, first call only: the cameras
+     were fitted on ANOTHER head (block_in_start(cameras="keep") from an old model onto a class mean: Garrett's 3/4
+     outline was 9 mm off): they are laid on this head first (head held), and that is the new start. That is the
+     usual case right after block_in_start, so START WITH "refit", then "free": Tess from her class mean, four calls:
+     refit + free = table 25 / 26, nothing down-weighted; all "trust" = 16 / 26 with the 3/4 and profile cameras
+     stuck at their limits, the face 5 % long and the reads down-weighted x1.7-2.2; all "free" = 17 / 26. Check a solved
+     head: iris span and face length, model / picture, ~1.00 in the front and the 3/4 (spikes/reruns/eyespan.py).
+   - NOTHING IS FORCED, by construction: if the most likely head has a component past 3 sd, every read is
+     down-weighted until none has, and the reply says INCONSISTENT PICTURES x<factor>; a group of reads the best head
+     leaves scattered (a 20 px mouth's lip borders) gets its own scatter as its sigma and is named. Two paintings of
+     one person are two drawings: expect a factor of 1.5-2.5 there and a compromise head; photos of one sitting
+     give 1.0. A weak solve (under ~120 outline reads) is carried by the anchors and the prior: where nothing was
+     read you get the class mean's face.
+   - Tess from the class mean (three studio photos): |c| 5.4 -> ~11, largest component under 2.7 sd, eyes 3/3, lip
+     borders ~0.3 mm with no separate eye or lips step: about ten hand rounds' worth in minutes.
    - It does NOT see the surface inside the silhouette (cheek volume), the lid's fold, the nose's planes: hand steps
-     for what you (or the user) see, after the solve. Do not force a fold from a class-mean head (lid_read
-     fold="crisp" cost |dc| 20 there; fold="none" = the opening only).
-   - JUDGE the result on the judging sheet (spikes/reruns/jsheet.py: photo | 50 % blend | the reference pictures
-     projected as the model's skin | own dressing), not on a dressed render in an unrelated dressing: look at the
-     blend before calling a feature wrong. Face-ID scores do not judge shape (they read the projected texture).
+     for what you (or the user) see, after the solve. Two interior reads were built and FAILED validation on renders
+     of known heads, so they are off: lambertian shading, and a learned normal estimator (docs/notes/gnm_atlas.md
+     "## refread"). Do not force a fold from a class-mean head (lid_read fold="crisp" cost |dc| 20 there;
+     fold="none" = the opening only).
+   - JUDGE the result on the judging sheet (spikes/refread/rsheet.py: reference | best: 50 % blend, the reference
+     pictures projected as its skin, own dressing | the rest), not on a dressed render in an unrelated dressing:
+     look at the blend before calling a feature wrong. Face-ID scores do not judge shape (they read the projected
+     texture).
 4. **One small step** (0.3-0.7 sd; a big mass difference 1-2 sd, see the manual's step sizes):
    `block_in_step(name, {direction: amount}, seen=..., why=...)`. Each step writes
    a NEW model (default: the next number), so every round stays comparable; `seen` and `why` go in the log.
@@ -149,7 +176,9 @@ eye catches what the points miss; the target table catches what your eye misses.
 7. **The EYE STEP: the lid as ONE structure, after the orbit** (Joe: "we shouldn't really ever use our 'fix'
    [lidfold]"; "We are treating the crease as if it's different from the eyelid but it's not"). ORDER: the ORBIT is
    set first (3a: eye depth and the brow over the eye are big masses; the lid is the sheet that hangs between the brow
-   and the ball), then `lid_read(name, match=True)`. The step reads the orbit rows itself and says ORBIT: UNREAD / OFF
+   and the ball), then `lid_read(name, match=True)`. (The lid MARGINS and canthi are already inside `block_in_solve`
+   (3b): after a settled solve the opening is right, and this step is for the FOLD's form; run with fold="none" it
+   only repeats the solve's margin reads without the solve's other reads to hold them.) The step reads the orbit rows itself and says ORBIT: UNREAD / OFF
    / read at the top of its report; do not polish a lid on an orbit that is OFF. What the step does (blockin_eyes.py,
    blockin_lid.py), IDENTITY ONLY: in GNM the open-eye fold is an identity feature; its eye-region expression only
    shears the whole lid-to-brow sheet and never forms a fold (`expression=True` adds the expression pairs for a real
@@ -211,7 +240,9 @@ eye catches what the points miss; the target table catches what your eye misses.
    membrane dragged the whole vermilion and halved the border's turn (24 -> 11 deg on Tess), the lips read as a flat
    painted pad. A closed mouth's field leaves GNM's crossed inner rolls out (the seam is one line, no pale band or
    dark corner holes). `lip_read(name)` reads the picture (the vermilion borders traced on the a* edge, the seam, the
-   Cupid's bow) beside the model through the front camera. `lip_read(name, match=True)` is the step: identity + GNM
+   Cupid's bow) beside the model through the front camera. The vermilion BORDERS are already inside `block_in_solve`
+   (3b; 0.2-0.5 mm after a settled solve): read `lip_read(name)` first and run the step only for what the solve does
+   not do (the seam, the bow, the closing expression). `lip_read(name, match=True)` is the step: identity + GNM
    lower-face expression for the borders (0.35 mm), the seam (0.4), the bow (0.1 mm) and the neutral closed, the 68
    landmarks off the mouth held; it ships head.expression, lip_close / lip_seal / mouth_gap cleared. Judge with
    focus=mouth AND dressed (the lips' paint follows GNM's own vermilion edges). Tess (gd_T12): borders 1.96 / 3.80 ->

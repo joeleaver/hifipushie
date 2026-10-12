@@ -2995,5 +2995,36 @@
     "sha256": "f37d8ee1bfa7c9d401ed37b2b6f256408d3f0c433e9070d01b4711a129b4c27c"
    }
   ]
+ },
+ "faceparse": {
+  "needed_by": "faceparse.py (per-pixel face parsing of reference pictures on any background: face_ruler's skin outlines; a measuring tool, never shipped)",
+  "source": "BiSeNet ResNet-34 face parsing, ONNX release v0.0.1 of https://github.com/yakhyo/face-parsing (trained on CelebAMask-HQ, 19 classes); MediaPipe selfie_multiclass_256x256 image segmenter (float32, version 1)",
+  "licence": "bisenet_resnet34.onnx: code and release MIT (yakhyo/face-parsing), but trained on CelebAMask-HQ, which is for non-commercial research and educational use only: a measuring tool here, never in an exported asset or the package. selfie_multiclass_256x256.tflite: Apache 2.0 (MediaPipe model card).",
+  "optional": true,
+  "files": [
+   {
+    "path": "bisenet_resnet34.onnx",
+    "url": "https://github.com/yakhyo/face-parsing/releases/download/v0.0.1/resnet34.onnx",
+    "sha256": "5b805bba7b5660ab7070b5a381dcf75e5b3e04199f1e9387232a77a00095102e"
+   },
+   {
+    "path": "selfie_multiclass_256x256.tflite",
+    "url": "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite",
+    "sha256": "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0"
+   }
+  ]
+ },
+ "facenormals": {
+  "needed_by": "facenormals.py (a learned monocular surface-normal read of reference pictures: face_ruler's interior observation; a measuring tool, never shipped)",
+  "source": "Meta Sapiens normal estimator, 0.3b, TorchScript: https://huggingface.co/facebook/sapiens-normal-0.3b-torchscript at commit f7f7207a380183c7531c335298a0cf940687576b (Khirodkar et al., Sapiens: Foundation for Human Vision Models, ECCV 2024)",
+  "licence": "CC BY-NC 4.0 (the model card): non-commercial use only: a measuring tool here, never in an exported asset or the package. Runs in its own venv with PyTorch (HIFIPUSHIE_NORMALS_VENV, default /mnt/data/hifipushie/normals_venv: `uv venv` + torch (CPU wheel), numpy, pillow).",
+  "optional": true,
+  "files": [
+   {
+    "path": "sapiens_0.3b_normal.pt2",
+    "url": "https://huggingface.co/facebook/sapiens-normal-0.3b-torchscript/resolve/f7f7207a380183c7531c335298a0cf940687576b/sapiens_0.3b_normal_render_people_epoch_66_torchscript.pt2",
+    "sha256": "aa2db29f0033e7415843842b3c55a7806397116ca3b7dc6c9b2e7914dacba313"
+   }
+  ]
  }
 }
