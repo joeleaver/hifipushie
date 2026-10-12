@@ -401,8 +401,10 @@ def _anchor(frames: list, mesh: dict, spec: dict, mode: str = "auto") -> dict:
                 c = f["P"][bg]
                 L = lab(c)
                 med = np.median(L, 0)
-                if np.hypot(med[1], med[2]) < NEUTRAL and np.percentile(np.abs(L[:, 0] - med[0]), 80) < 8:
-                    m = np.median(c, 0)
+                m = np.median(c, 0)
+                # neutral in Lab AND in its channels' ratio (a dark blue wall has little Lab chroma), and lit
+                if (np.hypot(med[1], med[2]) < NEUTRAL and np.percentile(np.abs(L[:, 0] - med[0]), 80) < 8 and med[0] > 40
+                        and m.max() / max(m.min(), 1e-4) < 1.3):
                     bd[f["view"]] = (m / (m @ Y)) / (LIGHT_WHITE / (LIGHT_WHITE @ Y))
     if mode == "sclera" and sc:   # (not in "auto": on photographs the sclera reads 0.5-0.6 x ours against the skin and its
         # colour differs view to view; it failed as an anchor, see docs/notes/skin.md "## skinread")
@@ -411,9 +413,10 @@ def _anchor(frames: list, mesh: dict, spec: dict, mode: str = "auto") -> dict:
                 "note": f"sclera through the same camera in view(s) {sorted(sc)} ({', '.join(str(v[1]) for v in sc.values())} px): "
                         "exposure and white balance; the tone's lightness rests on the sclera being lit as ours is (INFERRED)"}
     if mode in ("auto", "backdrop") and bd:
-        g = np.median(list(bd.values()), 0)
-        return {"kind": "backdrop", "gain": {f["view"]: bd.get(f["view"], g) for f in frames}, "level": True,
-                "note": f"plain neutral backdrop in view(s) {sorted(bd)}: white balance only; the tone's lightness is kept"}
+        return {"kind": "backdrop", "gain": {f["view"]: bd.get(f["view"]) for f in frames}, "level": True,
+                "note": f"plain neutral backdrop in view(s) {sorted(bd)}: white balance only (the exposure stays free)" +
+                        ("" if len(bd) == len(frames) else "; the other view(s) have their own light and no anchor: their plain skin "
+                         "is set to the anchored views' (they give zones, lips and folds, not the tone)")}
     return {"kind": "none", "gain": {f["view"]: None for f in frames},
             "note": "no anchor (no readable sclera, no plain neutral backdrop): the base tone is NOT READ; zones, lips and "
                     "marks are read against the face's own plain skin"}
@@ -450,7 +453,8 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
     plain = np.max([c.alb.zone(z) for z in PLAIN], 0)
     c.plain = plain
     Yv = np.array([0.2126, 0.7152, 0.0722])
-    for v in views:
+    carried = []           # the anchored views' plain skin, picture over ours (per channel): what an unanchored view is set to
+    for v in sorted(views, key=lambda v_: an["gain"][v_["view"]] is None):
         m = c.view == v["view"]
         g = an["gain"][v["view"]]
         pm = m & (plain > 0.5)
@@ -458,9 +462,11 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
             pm = m
         med = _wmedian(c.rho[pm], c.w[pm])
         if g is None:
-            g = med                                     # the plain skin's own mean: T == A there, by construction
+            # no anchor of its own: its plain skin's mean is ours (T == A there), or the anchored views' when there are some
+            g = med / (np.median(carried, 0) if carried else 1.0)
         elif an.get("level"):
             g = np.asarray(g) * float(med @ Yv) / float(np.asarray(g) @ Yv)   # white balance only
+            carried.append(med / g)
         c.rho[m] = c.rho[m] / np.asarray(g)
         v["gain"] = [round(float(x), 3) for x in np.asarray(g)]
         # the light's colour across the face: log chroma of the ratio along the normal (white light on our light: none)
@@ -672,6 +678,11 @@ def read_text(r: dict) -> str:
                              if b["read"] else f"NOT READ ({b.get('why')})"))
     for k, e in r["eyes"].items():
         L.append(f"  {k}: " + (f"picture / ours {e['ratio']} against the skin ({e['px']} px)" if e["read"] else "NOT READ (too few pixels)"))
+    e = r["regions"].get("eyelid") or {}
+    if e.get("read") and e["d"][0] < -8:
+        L.append(f"  NOTE the upper lids read {-e['d'][0]:.0f} L darker in the pictures than ours under the same light: mostly SHADE our head "
+                 "does not cast (a deeper-set eye, brow overhang, lashes) or lid pigment / make-up; the fit gives it to the "
+                 "eyelids / periorbital tints only up to their bounds. The rest is geometry (eye depth, hooding), not skin.")
     if r.get("folds"):
         L.append(fold_text(r["folds"]))
     return "\n".join(L)
@@ -681,8 +692,8 @@ def read_text(r: dict) -> str:
 
 BOUNDS = {"tone.melanin": (0.0, 1.0), "tone.blood": (0.0, 1.0), "tone.undertone": (-1.0, 1.0),
           "zones.forehead_yellow": (0.0, 3.0), "zones.midface_red": (0.0, 3.0), "zones.nose_red": (0.0, 3.0),
-          "zones.perioral_red": (0.0, 3.0), "zones.lower_cool": (0.0, 3.0), "zones.under_eye": (0.0, 3.0),
-          "zones.eyelids": (0.0, 3.0), "zones.periorbital": (0.0, 3.0), "features.flush": (0.0, 1.5),
+          "zones.perioral_red": (0.0, 3.0), "zones.lower_cool": (0.0, 2.0), "zones.under_eye": (0.0, 2.5),
+          "zones.eyelids": (0.0, 2.5), "zones.periorbital": (0.0, 1.5), "features.flush": (0.0, 1.5),
           "lips.blood": (0.15, 3.0), "lips.melanin": (0.2, 9.0), "lips.lower.blood": (0.4, 2.5), "lips.lower.melanin": (0.4, 2.5),
           }
 GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
@@ -692,7 +703,7 @@ GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
           "lips": ("lips.blood", "lips.melanin", "lips.lower.blood", "lips.lower.melanin"),
           "stubble": (), "brows": (), "freckles": (), "eyeballs": (), "folds": ()}
 DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "eyeballs", "folds")
-SIGMA = (3.0, 0.8, 0.8)     # Lab: what a region's read is worth (lightness carries the shading we do not model)
+SIGMA = (6.0, 0.8, 0.8)     # Lab: what a region's read is worth (lightness carries the shading we do not model)
 EXPOSURE = 0.5            # log units: how loosely the picture's unknown exposure is held to our skin's lightness
 FIT_POINTS = 50000         # the solve's points (region means do not need every pixel)
 PRIOR = 0.04                # the pull back to the start, per share of a parameter's range (least change)
@@ -1033,12 +1044,14 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
 FOLD_T = 0.02          # log luminance: a valley this deep, across a fold's path, is a fold there
 FOLD_OWN = 0.7         # ... and this share of our own valley there deeper than ours (the head's own shading under another light)
 FOLD_SHARE = 0.3       # ... along at least this share of the path's visible stations
+FOLD_MAX = 0.42        # log luminance: deeper than this is not a crease of skin
+FOLD_CONF = 0.5        # a fold is laid only from this confidence up
 FOLD_MOVE = 1.5        # mm: a fold of ours is moved only when the picture's lies this far from it (median)
 FOLD_STEP = 0.25       # mm between a profile's samples
 # what an amount-1 fold of ours reads as (median valley depth, log luminance, under the pictures' fitted lights):
 # calibrated on synthetic heads (spikes/skinread/foldval.py); the second round corrects what this gets wrong
 FOLD_REF = {"nasolabial": 0.15, "marionette": 0.11, "mouth_corner": 0.2, "mentolabial": 0.3, "tear_trough": 0.22,
-            "lid_fold": 0.14, "glabella": 0.135}
+            "lid_fold": 0.2, "glabella": 0.135}
 LEGACY = {"nasolabial": "nasolabial", "marionette": "marionette", "glabella": "glabella"}   # skin.wrinkles' own lines
 LEGACY_SHARE = 0.5     # what one unit of the legacy wrinkle is taken to be worth in fold amount when it is replaced
 # fields of fine lines (skin.wrinkles' swatch layers): zone, the picture resolution they need (mm a pixel), and what
@@ -1107,10 +1120,15 @@ def _fold_view(f: dict, q: dict, fd: dict) -> dict | None:
     ker = np.ones(5) / 5.0
     sm = lambda a: np.apply_along_axis(lambda c_: np.convolve(np.r_[c_[:2][::-1], c_, c_[-2:][::-1]], ker, "valid"), 0, a)  # noqa: E731
     pp, pr = sm(pp), sm(pr)
-    out = {"valid": valid, "u": u}
+    out = {"u": u}
     for key, a in (("picture", pp), ("ours", pr)):
         dv = np.array([_valley(a[i], u, fd["search"], flank) for i in range(len(P))])
-        out[key], out[key + "_u"] = dv[:, 0] * valid, dv[:, 1]
+        out[key], out[key + "_u"] = dv[:, 0], dv[:, 1]
+    # a "valley" deeper than any crease of skin is a feature's own edge (the mouth's corner, a nostril, lashes: the
+    # model's lies a millimetre from the picture's): not a fold
+    valid = valid & (out["picture"] < FOLD_MAX) & (out["ours"] < FOLD_MAX)
+    out["valid"] = valid
+    out["picture"], out["ours"] = out["picture"] * valid, out["ours"] * valid
     out["scale"] = float(np.median(sc[valid]))
     return out
 
@@ -1179,8 +1197,9 @@ def fold_read(c: Context) -> dict:
                     stat[k] += w / wsum * float(np.median(r_[k][use]))
                 stat["diff"] += w / wsum * float(np.median((r_["picture"] - r_["ours"])[use]))
                 stat["excess"] += w / wsum * float(np.median((r_["ours"] - r_["picture"])[val]))
-                if best is None or w > best[2]:
-                    best = (vi, r_, w, run)
+                wb = w * (1.0 + float(hit.sum()))          # (the view that shows the fold best places it)
+                if best is None or wb > best[2]:
+                    best = (vi, r_, wb, run)
             res.update({k: round(v, 4) for k, v in stat.items()})
             vi, r_, w, run = best
             res["present"] = bool(stat["share"] >= FOLD_SHARE and stat["diff"] >= FOLD_T + FOLD_OWN * stat["ours"] and stat["picture"] >= FOLD_T and run is not None)
@@ -1286,7 +1305,7 @@ def fold_fit(sk: dict, fr: dict, first: bool) -> list:
             leg = LEGACY.get(name)
             a_leg = LEGACY_SHARE * float((sk.get("wrinkles") or {}).get(leg, 0.0)) if (leg and old is None and s["present"]) else 0.0
             a1 = a0
-            if s["present"]:
+            if s["present"] and s["confidence"] >= FOLD_CONF:
                 a1 = float(np.clip(a0 + a_leg + s["diff"] / FOLD_REF[name], 0, 1.5))
             elif s["absent_in_picture"] and a0 > 0:
                 a1 = float(np.clip(a0 - s["excess"] / FOLD_REF[name], 0, 1.5))

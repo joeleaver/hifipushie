@@ -26,7 +26,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 2
+VERSION = 5
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -40,14 +40,15 @@ N_SHIFT = 9            # shift is given at this many stations by default (any nu
 # share of BULGE)) or None, search (mm either side of the path the reader looks), res (mm a picture pixel: coarser
 # pictures answer "cannot tell"), about.
 FOLDS = {
-    "nasolabial": {"path": [("lm_nostril.L", (0.1, 0.02, 0.05)), ("lm_mouth_corner.L", (0.2, 0.05, 0.1)),
-                            ("lm_mouth_corner.L", (0.23, 0.08, -0.22))], "plus": (1, 0, 0.3), "width": 3.5, "depth": 0.8,
+    "nasolabial": {"path": [("lm_nostril.L", (0.08, 0.02, 0.03)), ("lm_mouth_corner.L", (0.14, 0.05, 0.12)),
+                            ("lm_mouth_corner.L", (0.16, 0.07, -0.15))], "plus": (1, 0, 0.3), "width": 3.5, "depth": 0.8,
                    "tint": 0.5, "shade": 0.3, "roll": (4.5, 5.0, 0.35), "search": 6.0, "res": 1.6,
                    "about": "the fold from the nose's wing past the mouth's corner (the cheek's pad over it)"},
-    "marionette": {"path": [("lm_mouth_corner.L", (0.06, 0.02, -0.03)), ("lm_mouth_corner.L", (0.12, 0.05, -0.42))],
+    # (from under the corner's own dimple: a young mouth's corner shadow is not a marionette line)
+    "marionette": {"path": [("lm_mouth_corner.L", (0.07, 0.02, -0.12)), ("lm_mouth_corner.L", (0.12, 0.05, -0.45))],
                    "plus": (1, 0, 0), "width": 3.0, "depth": 0.7, "tint": 0.45, "shade": 0.3, "roll": (4.0, 4.5, 0.3),
                    "search": 4.5, "res": 1.4, "about": "the line down from the mouth's corner (the jowl's front edge)"},
-    "mouth_corner": {"path": [("lm_mouth_corner.L", (0.01, 0.0, 0.0)), ("lm_mouth_corner.L", (0.15, 0.06, -0.03))],
+    "mouth_corner": {"path": [("lm_mouth_corner.L", (0.06, 0.01, 0.0)), ("lm_mouth_corner.L", (0.18, 0.07, -0.03))],
                      "plus": (0, 0, 1), "width": 1.4, "depth": 0.45, "tint": 0.5, "shade": 0.15, "roll": None,
                      "search": 2.5, "res": 0.7, "about": "the crease running out from the mouth's corner"},
     "mentolabial": {"path": [("lm_lip_lower", (-0.3, 0.04, -0.13)), ("lm_lip_lower", (0.0, 0.0, -0.15)),
@@ -58,9 +59,9 @@ FOLDS = {
                              ("lm_lid_lower.L", (0.24, 0.06, -0.25))], "plus": (0, 0, 1), "width": 3.5, "depth": 0.7,
                     "tint": 0.4, "shade": 0.45, "roll": (4.0, 4.0, 0.8), "search": 5.0, "res": 1.6,
                     "about": "the groove under the lower lid; its roll is the eye bag over it"},
-    "lid_fold": {"path": [("lm_eye_inner.L", (0.07, 0.0, 0.045)), ("lm_lid_upper.L", (0.0, 0.0, 0.08)),
-                          ("lm_eye_outer.L", (-0.02, 0.02, 0.07))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
-                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.25, "flank": 1.5, "res": 0.5,
+    "lid_fold": {"path": [("lm_eye_inner.L", (0.07, 0.0, 0.035)), ("lm_lid_upper.L", (0.0, 0.0, 0.06)),
+                          ("lm_eye_outer.L", (-0.02, 0.02, 0.055))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
+                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.0, "flank": 1.0, "res": 0.5,
                  "about": "the upper eyelid's crease line (the fold GNM's lids only hint at)"},
     "glabella": {"path": [("lm_brow_inner.L", (-0.035, -0.01, 0.1)), ("lm_brow_inner.L", (-0.015, -0.01, -0.08))],
                  "plus": (1, 0, 0), "width": 1.4, "depth": 0.6, "tint": 0.5, "shade": 0.15, "roll": None, "search": 3.0,
@@ -184,11 +185,21 @@ def paths(spec: dict, part: str, J: dict, cfg: dict | None = None, names=None) -
         o = (cfg or {}).get(name)
         for sd, sx in (((".L", 1.0), (".R", -1.0)) if sided(name) else (("", 1.0),)):
             try:
-                pl = np.array([np.asarray(J[a[:-2] + sd if a.endswith(".L") else a], float) + io * np.array([sx * off[0], off[1], off[2]])
-                               for a, off in fd["path"]])
+                # each control point is WALKED over the skin from its landmark (half-millimetre steps, re-seated): the
+                # offset alone floats off the surface, and seating that along the wrap's ray (or onto the nearest
+                # vertex) put a lid's fold several mm up the lid on one side and across the eye's corner on the other
+                pl = []
+                for a, off in fd["path"]:
+                    p = S.seat(np.asarray(J[a[:-2] + sd if a.endswith(".L") else a], float)[None], snap=True)
+                    step = io * np.array([sx * off[0], off[1], off[2]])
+                    n = max(int(np.ceil(np.linalg.norm(step) / 0.0005)), 1)
+                    for _ in range(n):
+                        p = S.seat(p + step / n)
+                    pl.append(p[0])
+                pl = np.array(pl)
             except KeyError as err:
                 raise SpecError(f"skin folds.{name}: needs joint {err.args[0]!r} (a GNM head's lm_* landmarks)")
-            P = S.seat(_resample(S.seat(pl, snap=True), STATION))
+            P = S.seat(_resample(pl, STATION))
             nrm = S.normal(P)
             tan = np.gradient(P, axis=0)
             tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-12)
@@ -245,9 +256,13 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
         Q, ok, _ = rows(y0, y1)
         Q = Q.reshape(y1 - y0, W, 3)[:, x0:x1].reshape(-1, 3)
         ok = ok.reshape(y1 - y0, W)[:, x0:x1].ravel()
-        d, i = cKDTree(q["P"]).query(Q)
-        s = ((Q - q["P"][i]) * q["across"][i]).sum(1)
-        a = q["amount"][i] * ok
+        # (the distance to the LINE: its stations a millimetre apart, measured to the nearest, drew a lid's fold as dashes)
+        tt = np.linspace(0, 1, 10 * (len(q["P"]) - 1) + 1)
+        fine = lambda arr: np.stack([np.interp(tt, q["t"], arr[:, k_]) for k_ in range(arr.shape[1])], 1)  # noqa: E731
+        Pf, Af, amf = fine(q["P"]), fine(q["across"]), np.interp(tt, q["t"], q["amount"])
+        d, i = cKDTree(Pf).query(Q)
+        s = ((Q - Pf[i]) * Af[i]).sum(1)
+        a = amf[i] * ok
         sg = 0.001 * q["width"] / 2.355
         groove = a * fd["depth"] * np.exp(-0.5 * (d / sg) ** 2)
         shade = a * fd["shade"] * np.exp(-0.5 * (d / (2.6 * sg)) ** 2)
@@ -262,7 +277,7 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
         # r: the groove's depth (x DEPTH); g: the roll (x BULGE); b: the darkening (crease line + soft shade, 0..1)
         blk[..., 0] = np.maximum(blk[..., 0], (groove / 1.5).reshape(shp))
         blk[..., 1] = np.maximum(blk[..., 1], (roll / 1.5).reshape(shp))
-        blk[..., 2] = np.maximum(blk[..., 2], np.clip(np.maximum(tint, shade) / 1.5, 0, 1).reshape(shp))
+        blk[..., 2] = np.maximum(blk[..., 2], np.clip(np.maximum(tint, shade), 0, 1).reshape(shp))
         stats["folds"][name + sd] = {"stations": int(len(q["P"])), "amount": round(float(q["amount"].max()), 3)}
     for k in range(3):
         out[..., k] = gaussian_filter(out[..., k], 1.0)
@@ -280,7 +295,8 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
     im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
     base_r = ctx["base_r"]
     # (map values are amount x share / 1.5: the layers' strengths carry the 1.5 back)
-    layer("folds_shade", color=[0.66, 0.53, 0.5], mix="multiply", opacity=1.0, mask=[{**im("b"), "levels": [0.0, 1.0 / 1.5]}])
+    # (no "levels" on the image: a post-processed mask is measured per vertex, and a lid's 1 mm line came out as dots)
+    layer("folds_shade", color=[0.66, 0.53, 0.5], mix="multiply", opacity=1.0, mask=[im("b")])
     layer("folds_groove", height=-round(DEPTH * 1.5, 7), roughness=min(base_r + 0.08, 0.95), opacity=0.6, mask=[im("r")])
     layer("folds_roll", height=round(BULGE * 1.5, 7), mask=[im("g")])
 
