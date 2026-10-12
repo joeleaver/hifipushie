@@ -1928,13 +1928,7 @@ class GnmFace(Face):
                         # basis leaves them parted): a shape that parts them takes that close back in proportion
                         # (left in, jawOpen tore the inner rolls into shards against the closed contact ring)
                         D = D - self._meet_share(D, mt[1], index) * mt[1]
-                # (headbody, 2026-10-12) the jaw's rigid move in full is for GNM's own TEETH and TONGUE only: on the skin
-                # it gave every vertex away from the face (the whole body under the neck) jawOpen's 26 mm, and
-                # rigid_near then weighted all of it 1.0 to the Head bone (the chest turned with the head)
-                d = D * near[:, None] + rigid * ((1 - near) * (1.0 if self.gnm_mouth and kind != "skin" else wj))[:, None]
-                if index is not None and kind == "skin":  # (one mesh) the body under the stitch: GNM's shapes fade to
-                    # 0 at the seam ring, so nothing below it moves
-                    d[np.asarray(index) < 0] = 0.0
+                d = D * near[:, None] + rigid * ((1 - near) * (1.0 if self.gnm_mouth else wj))[:, None]
                 fam = family(name)
                 if fam == "mouth":
                     d *= mouth_mask[:, None]
