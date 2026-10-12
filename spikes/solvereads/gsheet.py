@@ -49,7 +49,11 @@ for cam, box in zip(rj["cameras"], rj["blockin"]["boxes"]):
     c = 0.5 * (P[33] + P[8]) + [0, 10 / mm]
     r = 58 / mm
     s = float(box[2] - box[0])
-    crops.append(((c[0] - r - box[0]) / s, (c[1] - r - box[1]) / s, (c[0] + r - box[0]) / s, (c[1] + r - box[1]) / s))
+    q = [(c[0] - r - box[0]) / s, (c[1] - r - box[1]) / s, (c[0] + r - box[0]) / s, (c[1] + r - box[1]) / s]
+    for a_ in (0, 1):                       # keep the crop inside the tile (slide it, same size)
+        d_ = max(0.0, -q[a_]) - max(0.0, q[a_ + 2] - 1.0)
+        q[a_], q[a_ + 2] = q[a_] + d_, q[a_ + 2] + d_
+    crops.append(tuple(q))
 for blk in range(2 if chin else 1):
     y0 = TOP + blk * blockh
     d.text((10, y0 + 8), "REFERENCE" if blk == 0 else "CHIN close-up", fill=(0, 0, 0), font=big)
