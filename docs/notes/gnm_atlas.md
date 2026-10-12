@@ -5824,8 +5824,9 @@ the socket lining behind it, where a lid lies on the ball):
 ## we've learned?" ONE dressed GNM-native Garrett from the two paintings only. Scratch DURABLE in /mnt/data/hifipushie/garrettnative:
 ## run.sh <script> (capped, this worktree's src, main's workspace), hv.py <gb> <script> (the same inside resources.heavy),
 ## chain.sh / tour.sh / tests.sh, out/ (logs; tiles out/<model>/...); scripts in spikes/garrettnative; models gn_G00.., garrett_n1)
-STATE (step 1 of 5 done): shape solved on the TRUE GNM BASE: gn_G00 (block_in_start gnm_base 1.0) -> gn_G08, the joint
-solve only. NEXT: clay tiles of gn_G08 against garrett_a1 and ng_N05, then skin_from_reference + folds, hair, the sheet.
+STATE (step 1 of 5 done): shape solved on the TRUE GNM BASE = gn_H03 (ng_N05's basin without its style slider; the
+clean restart gn_G08 see-sawed and kept a slab chin). Eye step tried and REJECTED. NEXT: skin_from_reference + folds on
+gn_D1 (fork of gn_H03), hair, tiles, the sheet.
 
 ### Step 1: the shape (the joint solve only; logs out/chain_gn_G.log)
 - LOOKED at ng_N05 first (gnmnative's quick true-base chain; clay tour tiles out/ng_N05/clay beside out/garrett_a1/clay):
@@ -5869,3 +5870,31 @@ solve only. NEXT: clay tiles of gn_G08 against garrett_a1 and ng_N05, then skin_
   forehead_slope. NO LID READ AT ALL ('lid': 0 on every call: the paintings' 5 px iris): the lid opening is the class
   mean's = INFERRED. So on this head the eye depth, the orbit, the cheeks, the jaw angle, the chin's width and
   projection, the skull and the forehead's profile are the prior's, not the paintings'.
+- SECOND CANDIDATE, the one kept: gn_H00 = ng_N05 with base.style.human.eye_spacing dropped (now the true base too),
+  three more calls (cameras free): |dc| 0.31, 0.20, 0.16; |c| 10.34, largest 2.97 sd; table 16 / 29: SETTLED (the G
+  chain never got under 1.0). jaw_width +6.9, gonial_width +3.4, jaw_angle +5.3 sd, chin_width +0.2, chin_length -2.7,
+  chin_forward -2.4 (GNM mm from GNM's mean).
+- CHOSEN BY THE CHIN TILES (clay, out/<model>/clay/chin_v0.png, chin_jaw_v0 / _v1), one at a time:
+  gn_G08: lower border broad and flat from jaw to jaw: the same slab as garrett_a1. gn_H03: a rounded pad, narrower
+  than the jaw, set off from it each side: nearer the painting's chin (which also has the notch and two lobes: no
+  parameter). The two differ in what NO read holds (chin_width read 0.05-0.08, gonial width): so the better chin is
+  luck of the basin, not a measurement, and it is said so. SHAPE = gn_H03.
+  BLUNT, gn_H03 against garrett_a1 in clay, front lower face: the outline (wide jaw) lies on the painting's in both; the
+  true base reads YOUNG: smooth full cheeks, fuller lips, no nasolabial crease, a boyish soft face; garrett_a1
+  (MakeHuman's aged head) has the hollower cheek and a crease from the nose wing and reads his age. On the true base
+  every age cue has to come from the fold layer and the skin. Nostrils show from the front as an "M" on both true-base
+  heads (the painting: soft dark nostrils, tip lower); mouth ~10 % wider than painted; ears stand out more.
+- THE EYE STEP, tried once and REJECTED (gn_G09 = server.lid_read(gn_G08, match=True, fold="none"); out/eyestep_gn_G09.log):
+  the eye ruler (edges, mm) says our opening is far too big (at the pupil 7.60 against 4.58 mm, lower margin 2.5 mm low,
+  fissure 25.9 against 19.2 mm); the eye step, which on a picture with an iris under 30 px works in IRIS RADII
+  (picture lids 0.46 / 0.72, model 0.26 / 0.75), RAISED the upper lid instead (opening 7.60 -> 8.12 mm; |dc| 2.2). The
+  two readers contradict each other on a 5 px iris (the detector's ring 11.6 +- 2.3 mm, the edge reader's 9.27), and a
+  19 mm fissure is no adult's: the painted eye is hooded and squinting, the lateral third hidden. So: NO lid step; the
+  lid opening is the class mean's (INFERRED), and his eyes are MORE OPEN AND ROUNDER than painted on this head (the
+  tile and the mm read agree on that). ORBIT: UNREAD.
+- GNM'S OWN LID GROOVE (coordinator + Joe: look in clay before laying a crease; spikes/garrettnative/lidgroove.py =
+  skin_folds.own_crease on the fold-free skin across the fold layer's lid_fold line): middle third: a faint concavity
+  (47-57 x 1e-3 / mm; the snap threshold is 35) 0.5 mm above (L) / 1.5 mm below (R) the layer's line; OUTER third:
+  none (2 / -9): GNM's identity gives him NO lateral hooding; inner third: only the lid-ball junction. The eye ruler's
+  ring-based fold line on the model: 3.5 / 2.9 / 3.1 mm over the margin at u -6 / 0 / +6; the layer's nominal line
+  3.8 / 4.0 / 3.8 mm (0.058 / 0.062 / 0.058 interoculars): the layer would draw its line 0.3-1.1 mm ABOVE GNM's groove.

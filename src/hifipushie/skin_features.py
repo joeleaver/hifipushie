@@ -474,7 +474,7 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
                 "mask": [_sp([q_], [0.0048], soft=0.85)]}
         pts = [np.asarray(J[f"lm_eye_outer{sd}"], float) + np.array([-sx * 0.0006, 0.0, 0.0]) for sd, sx in ((".L", 1.0), (".R", -1.0))]
         layer("canthus", pre=True, color=T(blood=4.5, melanin=1.6), opacity=round(min(0.6 * cn, 1.0), 3), roughness=0.2,
-              mask=[_sp(pts, [0.0016], soft=0.7)])
+              mask=[_sp(pts, [0.0016] * len(pts), soft=0.7)])
     cr = e.get("crease")
     if isinstance(cr, dict) and float(cr.get("amount", 0.6)) > 0 and cr.get("path"):
         # the fold LINE as the skin's own shadow (eyeruler; Joe: darkness the fold's shape does not give comes from the
