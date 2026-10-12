@@ -81,9 +81,28 @@ def dressing(rng) -> dict:
         k = float(np.clip((age - 25) / 40, 0.1, 1))
         sk["folds"] = {n: round(float(rng.uniform(0.3, 1.0) * k), 2) for n in ("nasolabial", "marionette", "tear_trough", "mentolabial")
                        if rng.random() < 0.6}
+    hr = None
+    share = float(os.environ.get("DL_HAIR", "0.55"))
+    if rng.random() < share:      # hair from the hair tools (curve locks): combed short / medium, loose (bob .. long, a fringe), cropped
+        kind = str(rng.choice(["combed", "loose", "loose_fringe", "crop"], p=[0.35, 0.25, 0.25, 0.15]))
+        if kind == "combed":
+            v, l = float(rng.uniform(0.45, 1.2)), float(rng.uniform(0.45, 1.3))
+            patch = {"volume": {k: round(x * v, 4) for k, x in (("front", 0.045), ("top", 0.036), ("crown", 0.02), ("sides", 0.012), ("back", 0.013))},
+                     "length": {k: round(x * l, 4) for k, x in (("front", 0.17), ("top", 0.15), ("sides", 0.055), ("back", 0.06))},
+                     "parting": {"side": str(rng.choice(["left", "right"]))}}
+        elif kind == "crop":
+            patch = {"loose": {"length": round(float(rng.uniform(0.012, 0.04)), 3), "messy": round(float(rng.uniform(0.1, 0.7)), 2),
+                               "stiff": round(float(rng.uniform(0.5, 0.9)), 2)}}
+        else:
+            patch = {"loose": {"length": round(float(rng.uniform(0.06, 0.36)), 3), "messy": round(float(rng.uniform(0.0, 0.5)), 2),
+                               "face": round(float(rng.uniform(0.3, 1.0)), 2), "ends": round(float(rng.uniform(-0.5, 0.8)), 2)}}
+            if kind == "loose_fringe":
+                patch["loose"]["fringe"] = {"length": round(float(rng.uniform(0.04, 0.09)), 3), "sweep": round(float(rng.uniform(-0.8, 0.8)), 2)}
+        hr = {"kind": kind, "patch": patch, "color": hair_col if rng.random() < 0.8 else str(rng.choice(HAIR_COL)), "grey": round(grey, 2)}
+        sk["hair"].pop("scalp", None)
     body = {"age": round(age, 1), "sex": round(float(np.clip((1.0 if male else 0.0) + rng.normal(0, 0.08), 0, 1)), 3),
             "weight": round(float(np.clip(rng.normal(0.45, 0.17), 0.1, 0.9)), 3)}
-    return {"male": male, "eth": eth, "body": body, "skin": sk}
+    return {"male": male, "eth": eth, "body": body, "skin": sk, "hair": hr}
 
 
 def base_spec(dr: dict) -> dict:
@@ -220,6 +239,8 @@ def main():
     allow_open = kw.get("open", "0") == "1"
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
+    if kw.get("hair") is not None:
+        os.environ["DL_HAIR"] = kw["hair"]
     import stage
     from hifipushie import base as basemod, denselm, humanfit, render, resources, scene, skin, store
     t0 = time.time()
@@ -232,8 +253,25 @@ def main():
     d.mkdir(parents=True, exist_ok=True)
     (d / "spec.json").write_text(json.dumps(sp))
     (out / "dressing.json").write_text(json.dumps(dr, indent=1))
+    hair_job = None
+    if dr.get("hair"):
+        from hifipushie import hair
+        try:
+            hair.groom(name, replace=True, note="denselm", patch=dr["hair"]["patch"])
+        except Exception as e_:  # noqa: BLE001  (a sampled groom the tools refuse: the default one)
+            print(f"step: groom {dr['hair']['kind']} failed ({str(e_)[:200]}): the default groom", flush=True)
+            hair.groom(name, replace=True, note="denselm")
+        sp = store.load(name)
+        sp["hair"]["look"] = {**(sp["hair"].get("look") or {}), **hair.seen_look(dr["hair"]["color"]), "grey_amount": dr["hair"].get("grey", 0.0)}
+        sp["hair"]["look"].pop("grey_amount")
+        (d / "spec.json").write_text(json.dumps(sp))
     with resources.heavy(f"denselm stage {name}", gb=8):
-        sn = stage.ensure(name, with_hair=False)
+        sn = stage.ensure(name, with_hair=bool(dr.get("hair")))
+    if dr.get("hair"):
+        from hifipushie import hair
+        st_ = json.loads((store._dir(sn) / "spec.json").read_text())
+        hair_job = out / "hair_job.json"
+        hair_job.write_text(json.dumps(hair.job(sn, st_)))
     t_stage = time.time() - t0
     print(f"step: stage {sn} in {t_stage:.0f} s", flush=True)
     st0 = humanfit.state(sp["base"])
@@ -323,9 +361,9 @@ def main():
                  gaze=np.array(meta["gaze"][a:b]), cam_eye=np.array(meta["cam_eye"][a:b]), cam_R=np.array(meta["cam_R"][a:b]),
                  fov=np.array(meta["fov"][a:b]), shift=np.array(meta["shift"][a:b]), LM=np.array(LMw[a:b], np.float32),
                  light=np.array(meta["light"][a:b]), size=size, samples=spp, first=a, tol=tol,
-                 eevee=json.dumps(json.loads(os.environ.get("DL_EEVEE", "{}"))))
+                 eevee=json.dumps(json.loads(kw.get("eevee") or os.environ.get("DL_EEVEE", "{}"))))
         cmd = [render.BLENDER, "-b", str(scene.blend_path(sn)), "--python-exit-code", "1", "--python", str(HERE / "blender_gen.py"),
-               "--", str(jp), str(out / f"part_{a:06d}")]
+               "--", str(jp), str(out / f"part_{a:06d}")] + ([str(hair_job)] if hair_job else [])
         with resources.heavy(f"denselm render {name} {a}", gb=6, gpu=True):
             r = resources.run(cmd, capture_output=True, text=True, timeout=7200)
         for line in r.stdout.splitlines():

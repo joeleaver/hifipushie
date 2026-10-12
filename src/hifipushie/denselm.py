@@ -177,24 +177,25 @@ def model_vertices(tpl_fid) -> np.ndarray:
 
 # ---- inference --------------------------------------------------------------------------------------------------------
 
-WEIGHTS_ENV = "HIFIPUSHIE_DENSELM"          # a .onnx / .pt of the trained network (an optional asset: not in git)
+WEIGHTS_ENV = "HIFIPUSHIE_DENSELM"          # the trained network's TorchScript file (model.pt; an optional asset: not in git)
+VENV = __import__("os").environ.get("HIFIPUSHIE_NORMALS_VENV", "/mnt/data/hifipushie/normals_venv")   # torch (CPU) + numpy + pillow
+SIZE = 256
+BOX_SCALE = 1.5 * 1.1                       # the crop: this x the 68 standard landmarks' extent (training's centre)
 
-
-def crop_box(box, margin: float = 0.0) -> tuple:
-    """a square pixel box (x0, y0, x1, y1) round a face box, grown by margin x its side."""
-    x0, y0, x1, y1 = map(float, box)
-    s = max(x1 - x0, y1 - y0) * (1 + margin)
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    return cx - s / 2, cy - s / 2, cx + s / 2, cy + s / 2
-
-
-def take_crop(img, box, size: int = 256):
-    """the square box of a PIL image resampled to size x size (outside the picture: edge colour's mean)."""
-    from PIL import Image
-    x0, y0, x1, y1 = box
-    im = img.convert("RGB")
-    fill = tuple(int(v) for v in np.asarray(im.resize((1, 1), Image.BOX)).ravel())
-    return im.transform((size, size), Image.EXTENT, (x0, y0, x1, y1), Image.BICUBIC, fillcolor=fill)
+_RUN_SRC = '''
+import sys, json, numpy as np, torch
+from PIL import Image
+torch.set_num_threads(2)
+m = torch.jit.load(sys.argv[1]).eval()
+out = []
+for f in sys.argv[3:]:
+    a = np.asarray(Image.open(f).convert("RGB"), np.float32) / 255.0
+    x = torch.from_numpy(np.stack([a, a[:, ::-1].copy()]).transpose(0, 3, 1, 2))
+    with torch.no_grad():
+        o = m(x).numpy()
+    out.append(o.tolist())
+json.dump(out, open(sys.argv[2], "w"))
+'''
 
 
 def weights_path() -> Path | None:
@@ -203,38 +204,94 @@ def weights_path() -> Path | None:
     return Path(p) if p and Path(p).exists() else None
 
 
-@functools.lru_cache(maxsize=2)
-def _net(path: str):
-    import onnxruntime as ort
-    so = ort.SessionOptions()
-    so.intra_op_num_threads = 2
-    return ort.InferenceSession(path, so, providers=["CPUExecutionProvider"])
+def available() -> bool:
+    return weights_path() is not None and (Path(VENV) / "bin" / "python").exists()
 
 
-def predict(img, box, weights: str | None = None, flip: bool = True) -> dict:
-    """The detector on a square crop (box in picture pixels: see crop_box) of a PIL image -> {"xy": (L, 2) picture
-    pixels, "sigma": (L,) picture pixels (the network's own: large = unsure / hidden)}. flip: average with the mirrored
-    crop's prediction (test-time augmentation)."""
+def box_of(xy68) -> tuple:
+    """the network's crop (x0, y0, x1, y1; square) from the 68 standard landmarks' pixels (any source)."""
+    xy68 = np.asarray(xy68, float)
+    lo, hi = xy68.min(0), xy68.max(0)
+    c, s = (lo + hi) / 2, BOX_SCALE * float(max(hi - lo))
+    return float(c[0] - s / 2), float(c[1] - s / 2), float(c[0] + s / 2), float(c[1] + s / 2)
+
+
+def take_crop(img, box, size: int = SIZE):
+    """the square box of a PIL image resampled to size x size (outside the picture: its mean colour)."""
+    from PIL import Image
+    im = img.convert("RGB")
+    fill = tuple(int(v) for v in np.asarray(im.resize((1, 1), Image.BOX)).ravel())
+    x0, y0, x1, y1 = box
+    big = (x1 - x0) / size > 1.5          # shrinking a lot: average first (EXTENT + BICUBIC alone aliases)
+    if big:
+        k = (x1 - x0) / size
+        w, h = max(1, int(round(im.size[0] / k))), max(1, int(round(im.size[1] / k)))
+        sx, sy = w / im.size[0], h / im.size[1]
+        im = im.resize((w, h), Image.LANCZOS)
+        x0, y0, x1, y1 = x0 * sx, y0 * sy, x1 * sx, y1 * sy
+    return im.transform((size, size), Image.EXTENT, (x0, y0, x1, y1), Image.BICUBIC, fillcolor=fill)
+
+
+def _run(crops: list, weights: str) -> list:
+    """[(2, L, 3)]: the network on each 256 px crop and on its mirror image."""
+    import hashlib
+    import json
+    import subprocess
+    import tempfile
+    from . import store
+    cdir = store.HOME / "_cache" / "denselm"
+    cdir.mkdir(parents=True, exist_ok=True)
+    wk = hashlib.sha1((str(Path(weights).stat().st_size) + str(Path(weights).stat().st_mtime_ns)).encode()).hexdigest()[:8]
+    keys = [hashlib.sha1(np.asarray(c).tobytes()).hexdigest()[:20] + "_" + wk for c in crops]
+    out, todo = [None] * len(crops), []
+    for i, k in enumerate(keys):
+        f = cdir / f"{k}.npy"
+        if f.exists():
+            out[i] = np.load(f)
+        else:
+            todo.append(i)
+    if todo:
+        with tempfile.TemporaryDirectory() as td:
+            ps = []
+            for i in todo:
+                crops[i].save(f"{td}/{i}.png")
+                ps.append(f"{td}/{i}.png")
+            Path(f"{td}/run.py").write_text(_RUN_SRC)
+            subprocess.run([str(Path(VENV) / "bin" / "python"), f"{td}/run.py", str(weights), f"{td}/out.json", *ps], check=True,
+                           capture_output=True, timeout=600)
+            got = json.loads(Path(f"{td}/out.json").read_text())
+        for i, o in zip(todo, got):
+            out[i] = np.asarray(o, np.float32)
+            np.save(cdir / f"{keys[i]}.npy", out[i])
+    return out
+
+
+def _merge(o) -> tuple:
+    """the crop's prediction and its mirror image's, joined by their own certainties: (xy in [-1, 1], log sigma)."""
+    L = landmarks()
+    xy, ls = o[0, :, :2], o[0, :, 2]
+    xy2, ls2 = o[1][L["mirror"], :2] * np.array([-1.0, 1.0]), o[1][L["mirror"], 2]
+    w1, w2 = np.exp(-2 * ls), np.exp(-2 * ls2)
+    return (xy * w1[:, None] + xy2 * w2[:, None]) / (w1 + w2)[:, None], -0.5 * np.log((w1 + w2) / 2)
+
+
+def predict(img, box, weights: str | None = None, passes: int = 2) -> dict:
+    """The detector on a PIL picture. box: a rough square (x0, y0, x1, y1) round the face in picture pixels, or the 68
+    standard landmarks' pixels from anything ((68, 2)); with passes=2 the crop is laid again on the network's own 68
+    and read once more (no other detector's idea of the face stays in the result).
+    -> {"xy": (L, 2) picture px, "sigma": (L,) picture px (large = unsure / hidden), "box": the crop used}."""
     w = weights or (str(weights_path()) if weights_path() else None)
     if not w:
-        raise RuntimeError(f"denselm: no trained network (set ${WEIGHTS_ENV} to its .onnx)")
-    net = _net(w)
-    size = int(net.get_inputs()[0].shape[-1])
-    im = np.asarray(take_crop(img, box, size), np.float32) / 255.0
+        raise RuntimeError(f"denselm: no trained network (set ${WEIGHTS_ENV} to its model.pt)")
+    box = np.asarray(box, float)
+    box = box_of(box) if box.ndim == 2 else tuple(map(float, box))
     L = landmarks()
-
-    def run(a):
-        x = ((a - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)).transpose(2, 0, 1)[None]
-        o = net.run(None, {net.get_inputs()[0].name: x.astype(np.float32)})[0][0].reshape(-1, 3)
-        return o[:, :2], o[:, 2]
-    xy, ls = run(im)
-    if flip:
-        xy2, ls2 = run(im[:, ::-1].copy())
-        xy2 = xy2[L["mirror"]] * np.array([-1.0, 1.0])
-        ls2 = ls2[L["mirror"]]
-        w1, w2 = np.exp(-2 * ls), np.exp(-2 * ls2)
-        xy = (xy * w1[:, None] + xy2 * w2[:, None]) / (w1 + w2)[:, None]
-        ls = -0.5 * np.log((w1 + w2) / 2)
-    x0, y0, x1, y1 = box
-    s = (x1 - x0) / 2.0
-    return {"xy": np.stack([x0 + (xy[:, 0] + 1) * s, y0 + (xy[:, 1] + 1) * s], 1), "sigma": np.exp(ls) * s}
+    for k in range(max(1, passes)):
+        xy, ls = _merge(_run([take_crop(img, box)], w)[0])
+        x0, y0, x1, y1 = box
+        s = (x1 - x0) / 2.0
+        P = np.stack([x0 + (xy[:, 0] + 1) * s, y0 + (xy[:, 1] + 1) * s], 1)
+        res = {"xy": P, "sigma": np.exp(ls) * s, "box": box}
+        if k + 1 < passes:
+            box = box_of(P[L["lm68"]])
+    return res

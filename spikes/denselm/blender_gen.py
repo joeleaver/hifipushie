@@ -110,19 +110,27 @@ def main():
     os.makedirs(out, exist_ok=True)
     scene = bpy.context.scene
     t0 = time.time()
+    if len(argv) > 2:           # the dressing's hair (hair.job): curve locks + the underlayer, shown as look_hair shows them
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "hifipushie"))
+        import blender_hair
+        blender_hair.show(json.load(open(argv[2])))
+        bpy.context.view_layer.update()
     P0, F = z["P0"].astype(np.float64), z["F"].astype(np.int64)
     body = bpy.data.objects["body"]
     eyes = bpy.data.objects.get("eyes")
-    lash = bpy.data.objects.get("hp_lashes")
     Mb = np.array(body.matrix_world)
     assert np.allclose(Mb, np.eye(4), atol=1e-6), "the stage's body is expected at the origin"
     Vb = coords(body.data)
     Tb, Wb, db = bind(Vb, P0, F)
     print(f"@@bind body {len(Vb)} verts in {time.time() - t0:.1f} s; distance to the one mesh: median {np.median(db) * 1e3:.2f} mm, "
           f"p99 {np.percentile(db, 99) * 1e3:.2f}, max {db.max() * 1e3:.2f}", flush=True)
-    if lash is not None:
-        Vl = coords(lash.data)
-        Tl, Wl, dl = bind(Vl, P0, F)
+    meshes = []                 # every other mesh rides the skin (lashes, the hair's underlayer)
+    for ob in bpy.data.objects:
+        if ob.type == "MESH" and ob.name not in ("body", "eyes") and not ob.hide_render and len(ob.data.vertices):
+            M = np.array(ob.matrix_world)
+            Vl = coords(ob.data)
+            Tl, Wl, _ = bind(Vl @ M[:3, :3].T + M[:3, 3], P0, F)
+            meshes.append((ob, Vl, Tl, Wl, np.linalg.inv(M)[:3, :3]))
     if eyes is not None:
         Ve = coords(eyes.data)
         e0 = z["eye0"].astype(np.float64)
@@ -176,8 +184,8 @@ def main():
         t = time.time()
         D = z["D"][s].astype(np.float64)
         put(body.data, Vb + (D[Tb] * Wb[:, :, None]).sum(1))
-        if lash is not None:
-            put(lash.data, Vl + (D[Tl] * Wl[:, :, None]).sum(1))
+        for ob, Vl, Tl, Wl, Mi3 in meshes:
+            put(ob.data, Vl + (D[Tl] * Wl[:, :, None]).sum(1) @ Mi3.T)
         if eyes is not None:
             e1, G = z["eye"][s].astype(np.float64), z["gaze"][s].astype(np.float64)
             Vn = np.empty_like(Ve)

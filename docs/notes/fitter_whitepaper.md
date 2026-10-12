@@ -168,6 +168,16 @@ below as they land.
   ours minus sigma). As a baseline it cannot answer the benchmark's question: its points live on BFM's topology, so
   only its 68 standard landmarks have a GNM correspondence, and those are what MediaPipe already gives us; its
   inference script is not turnkey (hard-coded paths, GPU assumed, imshow). NOT run; nothing built on it.
+- DAD-3DHeads (Martyniuk et al., CVPR 2022, arXiv 2204.03688; Joe's pointer; facts as the coordinator read them off
+  the dataset page, the paper itself not re-read here): the OTHER route to dense labels: REAL in-the-wild photos, a
+  head mesh fitted per image by annotators (per-image vertices + model-view / projection matrices; attributes for
+  pose, expression, occlusion, age, quality), with the DAD-3DNet model. LICENCE: CC BY-NC-SA 4.0, gated,
+  "non-commercial research and educational purposes only", no passing on: NOT requested, NOT downloaded, its weights
+  never in anything we ship. What it gives us without touching the data: (a) the honest alternative to synthetic
+  labels costs an annotation campaign and still ends on someone else's topology; (b) its benchmark's SHAPE is the
+  template for ours: pose error, landmark error on visible vs occluded points, each by attribute bucket (pose,
+  expression, occlusion, quality): `train.py`'s report already splits visible / hidden and by region; pose and
+  expression buckets are to add.
 
 ### Our design
 - THE LANDMARK SET (src/hifipushie/denselm.py `landmarks()`, version 1): 595 GNM skin vertices + 18 eyeball points
