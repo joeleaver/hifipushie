@@ -84,7 +84,10 @@ FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks 
 REGIONS = ("front", "top", "sides", "back", "nape")
 GROOM = {
     "fit": None,  # head_ref() of the head this groom was made on: lengths / volumes in metres scale with the head
-    "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
+    "hairline": {"front": 0.85, "temples": 0.008, "sideburns": None, "nape": 0.0, "ear": None, "ear_from": "mesh"},
+    # ear: m the line runs over the ear's top (default 0.01); sideburns: m they reach below the ear's top (default
+    # SIDEBURNS). ear_from "mesh": the ear is FOUND on the head (hair.ear); "brow": the old guess (its top at the
+    # outer brow + 4 mm, sideburns default 0.028 below that), for a groom that must keep the line it was made with
     "parting": {"side": "left", "offset": 0.03, "length": 0.1},
     "volume": {"front": 0.045, "top": 0.036, "crown": 0.02, "sides": 0.012, "back": 0.013, "nape": 0.005},
     "length": {"front": 0.17, "top": 0.15, "sides": 0.055, "back": 0.06, "nape": 0.03},
@@ -278,6 +281,7 @@ def scalp(name: str, spec: dict | None = None) -> Scalp:
         for old in store._dir(name).glob("hair_scalp_*.npz"):
             old.unlink()
         np.savez(f, C=sc.C, R=sc.R, lm=json.dumps(sc.lm))
+    sc.human = bool(spec.get("base"))  # (a base body: a human head, with or without face landmarks)
     _SCALPS[key] = sc
     return sc
 
@@ -414,6 +418,83 @@ POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the h
 HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
 
 
+EAR_OPEN = 19  # cells of azimuth (x Scalp.STEP deg = 38): what stands off the head narrower than this is "a bump"
+EAR_BUMP = 0.004  # m a ray must stand off the head without the bump to count as ear
+EAR_LOW = 0.0015  # m: ... and what the ear is grown into from there
+EAR_OVER = 0.006  # m the line runs over the found ear's top by default (groom.hairline.ear)
+EAR_CLEAR = 0.003  # m: the hairline never runs lower over the found ear than this above its top
+SIDEBURNS = 0.014  # m the sideburn reaches below the found ear's top by default
+
+
+def ear(sc: Scalp) -> dict | None:
+    """The EAR found on the head itself (the scalp's rays; every base, no landmark needed): the ear is the bump that
+    stands off the side of the head, narrower round the head than any of the skull's own curves. Per row of elevation
+    the rays' radius is opened along the azimuth (a flat grey opening EAR_OPEN cells wide: it removes what is narrower
+    and keeps the head), left and right averaged; what is left over EAR_BUMP at the side of the head, between brow
+    and jaw, is the ear. {"top", "lobe": world z (m) of its highest / lowest point, "front", "back": the azimuths
+    (deg, the left ear) its upper two thirds span, "az_top", "cells": [[az, el], ...]}, or None when the head has
+    no such bump (a creature, hair or a hat modelled into the body): callers then keep their old rule.
+    (hairline() guessed the ear's top at the outer brow + 4 mm: 0.7 - 3.2 cm too high on ten heads of three bases.)"""
+    got = getattr(sc, "_ear", False)
+    if got is not False:
+        return got
+    from scipy import ndimage
+    R = np.asarray(sc.R, float)
+    na = len(sc.A)
+    Rs = 0.5 * (R + R[(-np.arange(na)) % na])
+    pad = EAR_OPEN + 4
+    Rp = np.concatenate([Rs[-pad:], Rs, Rs[:pad]], 0)
+    D = Rs - ndimage.grey_opening(Rp, size=(EAR_OPEN, 1))[pad:-pad]
+    ia = np.nonzero((sc.A >= 66) & (sc.A <= 126))[0]
+    W = D[ia]
+    AA, EE = np.meshgrid(sc.A[ia], sc.E, indexing="ij")
+    Zw = sc.point(AA, EE, 0.0)[..., 2]
+    if "lm_brow_mid.L" in sc.lm and "lm_nose_base" in sc.lm:
+        z1 = sc.lm["lm_brow_mid.L"][2] + 0.02
+        z0 = sc.lm["lm_nose_base"][2] - 0.05
+    else:
+        z1, z0 = sc.C[2] + 0.06, sc.C[2] - 0.12
+    M = (W > EAR_BUMP) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
+    lab, n = ndimage.label(M, structure=np.ones((3, 3), int))
+    best, cells = 0.0, None
+    for c in range(1, n + 1):
+        m = lab == c
+        ca = float((AA[m] * W[m]).sum() / W[m].sum())
+        if not 80.0 <= ca <= 116.0:
+            continue
+        sz = float(W[m].sum())
+        if sz > best:
+            best, cells = sz, m
+    sc._ear = None
+    if cells is None or int(cells.sum()) < 10:
+        return None
+    # ... grown into what stands off less but belongs to it (hysteresis): the helix's top and front lie nearly flat
+    # on the head, and the bump over EAR_BUMP alone was the ear's back half (the line then crossed the ear's top)
+    lo = (W > EAR_LOW) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
+    lab2, _ = ndimage.label(lo, structure=np.ones((3, 3), int))
+    cells = np.isin(lab2, np.unique(lab2[cells])) & lo
+    thr = EAR_LOW
+    # its top, between the highest cell over the threshold and the one above it
+    jj = np.arange(W.shape[1])
+    top, az_top = -np.inf, 0.0
+    for i in np.nonzero(cells.any(1))[0]:
+        j = int(jj[cells[i]].max())
+        f = 0.0
+        if j + 1 < W.shape[1]:
+            f = float(np.clip((W[i, j] - thr) / max(W[i, j] - W[i, j + 1], 1e-6), 0.0, 1.0))
+        z = float(sc.point(float(AA[i, j]), float(EE[i, j]) + f * sc.STEP, 0.0)[2])
+        if z > top:
+            top, az_top = z, float(AA[i, j])
+    lobe = float(Zw[cells].min())
+    if not 0.02 <= top - lobe <= 0.13:
+        return None
+    up = cells & (Zw > top - 0.67 * (top - lobe))
+    sc._ear = {"top": top, "lobe": lobe, "front": float(AA[up].min()) - 0.5 * sc.STEP,
+               "back": float(AA[up].max()) + 0.5 * sc.STEP, "az_top": az_top,
+               "cells": np.stack([AA[cells], EE[cells]], 1).tolist()}
+    return sc._ear
+
+
 def hairline(sc: Scalp, g: dict) -> np.ndarray:
     """The hairline's elevation (degrees) at each whole degree of azimuth (360,), symmetric left/right: from the
     landmarks (front height in brow-to-nose units, temples receding, sideburns, clear of the ears, the nape)."""
@@ -422,12 +503,20 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
     if hl.get("points"):
         ctrl = [(float(a), float(z)) for a, z in hl["points"]]
     elif "lm_brow_mid.L" not in sc.lm:  # no landmarks: elevations (degrees from the centre) per azimuth
-        ea = float(hl.get("ear_az", 95))
-        el = {k: float(hl.get(k, d)) for k, d in (("front_el", 35), ("temple_el", 40), ("sideburn_el", -5),
-                                                   ("ear_el", 18), ("nape_el", -25))}
+        dflt = {"ear_az": 95.0, "front_el": 35.0, "temple_el": 40.0, "sideburn_el": -5.0, "ear_el": 18.0, "nape_el": -25.0}
+        # (only a human base's head: a creature's ear is whatever its maker built, and its elevations were set by eye)
+        er = ear(sc) if str(hl.get("ear_from") or "mesh") == "mesh" and getattr(sc, "human", False) else None
+        if er is not None:  # (a head without landmarks that HAS ears, e.g. a template body: the line over the found
+            # ear instead of 18 deg above the head joint; explicit elevations still win)
+            _, e_t, _ = sc.coords(sc.point(er["az_top"], 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] + 0.01])
+            _, e_s, _ = sc.coords(sc.point(er["front"] - 8.0, 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] - SIDEBURNS])
+            dflt.update({"ear_az": er["front"] + 6.0, "ear_el": float(e_t), "sideburn_el": float(e_s)})
+        ea = float(hl.get("ear_az", dflt["ear_az"]))
+        el = {k: float(hl.get(k, dflt[k])) for k in ("front_el", "temple_el", "sideburn_el", "ear_el", "nape_el")}
+        eb = ea + 20.0 if er is None or "ear_az" in hl else max(er["back"] + 1.0, ea)
         pts = [(0, el["front_el"]), (ea - 55, el["temple_el"]), (ea - 30, el["temple_el"] - 12),
                (ea - 18, el["sideburn_el"]), (ea - 10, el["sideburn_el"]), (ea - 6, el["ear_el"]),
-               (ea + 20, el["ear_el"]), (ea + 32, el["nape_el"] + 15), (180, el["nape_el"])]
+               (eb, el["ear_el"]), (eb + 12, el["nape_el"] + 15), (180, el["nape_el"])]
         ctrl = [(a, float(sc.point(a, e, 0.0)[2])) for a, e in pts]
     else:
         lm = sc.lm
@@ -437,15 +526,34 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
         tmp = float(hl.get("temples", 0.012))
         j0 = np.array(lm["lm_jaw_0.L"]) - sc.C
         az_j = float(np.degrees(np.arctan2(j0[0], -j0[1])))
-        ear_top = lm["lm_brow_outer.L"][2] + 0.004
+        brow_top = lm["lm_brow_outer.L"][2] + 0.004  # (the old guess of the ear's top: 1-3 cm over the real one)
         ear_bot = lm["lm_nose_base"][2] - 0.01
-        clear = float(hl.get("ear", 0.01))
-        sb = ear_top - float(hl.get("sideburns", 0.028))
         nape = ear_bot - 0.015 + float(hl.get("nape", 0.0))
-        ctrl = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
-                (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, ear_top + 0.012), (az_j - 10, sb + 0.006),
-                (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
-                (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+        front = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
+                 (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, brow_top + 0.012)]
+        er = ear(sc) if str(hl.get("ear_from") or "mesh") == "mesh" else None
+        if er is None:
+            ear_top = brow_top
+            clear = float(0.01 if hl.get("ear") is None else hl["ear"])
+            sb = ear_top - float(0.028 if hl.get("sideburns") is None else hl["sideburns"])
+            ctrl = front + [(az_j - 10, sb + 0.006), (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
+                            (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+        else:
+            # THE EAR AS IT IS ON THIS HEAD (tesshair6): the line passes `ear` m over the found ear's top from its
+            # front to its back, the sideburn hangs `sideburns` m below that top just in front of the ear's front
+            # attachment, and behind the ear the line comes down its back. (With the ear guessed from the brow the
+            # line ran 1-3 cm above the ear on every base: a bare band over the ear, the "shaved temple" of tied
+            # hair, and sideburns that ended above the ear's top.) The line never dips onto the ear itself: an
+            # `ear` below EAR_CLEAR (old grooms patched the high guess with negative values) is raised to it
+            ear_top = er["top"]
+            af, ab = er["front"], er["back"]
+            clear = max(float(EAR_OVER if hl.get("ear") is None else hl["ear"]), EAR_CLEAR)
+            sb = ear_top - max(float(SIDEBURNS if hl.get("sideburns") is None else hl["sideburns"]), 0.004 - clear)
+            lob = max(min(ear_bot, ear_top - 0.02), er["lobe"])
+            ctrl = [c for c in front if c[0] < af - 16] + [
+                (af - 11, sb + 0.007), (af - 7.5, sb), (af - 3.5, sb + 0.003), (af + 0.5, ear_top + clear),
+                (ab - 1, ear_top + clear), (ab + 4, ear_top + clear - 0.4 * (ear_top + clear - lob)),
+                (ab + 11, lob + 0.006), (150, nape + 0.006), (180, nape)]
     if hl.get("front_points"):  # traced (e.g. from the reference through the matched camera): [[az, z], ...] over the
         fp = sorted((float(x), float(z)) for x, z in hl["front_points"])  # front; the rest of the line kept
         # ...eased onto the traced end (HAIRLINE_JOIN deg): joined as it was, the default temple stood ~4 mm off the
@@ -844,7 +952,7 @@ def tie_style(name: str, style: dict | None = None, carry_from: str | None = Non
         k_ = m.group(1) if m else "l" if re.fullmatch(r"l\d+", n) else n
         kinds[k_] = kinds.get(k_, 0) + 1
     return {**r, "tied": g["tied"], "made": made,
-            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "w": "wisps", "wb": "baby hairs", "wl": "loose locks",
+            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "w": "wisps", "wb": "baby hairs", "wl": "loose locks", "ws": "swoop locks",
                        "y": "tail strays", "band": "band", "l": "loose"}.get(k, k): v
                       for k, v in kinds.items()}}
 
@@ -2501,6 +2609,143 @@ def make_stage(name: str, pad: float = 0.1, spec: dict | None = None) -> Path:
     return sp
 
 
+def human_refs(name: str, stage: str | None = None) -> dict:
+    """The model's reference pictures and their fitted cameras (human_refs.json: {"views": [{"image", "size"}],
+    "cameras": [{"r", "t", "f", "size", "centre"}]}; the stage model's when the model has none)."""
+    for n in (name, stage):
+        f = store._dir(n) / "human_refs.json" if n else None
+        if f is not None and f.exists():
+            return json.loads(f.read_text())
+    raise HairError(f"{name}: no human_refs.json (reference pictures with fitted cameras: block_in / face solve make it)")
+
+
+def human_ref_frames(name: str, names, stage: str | None = None) -> list:
+    """Render frames "ref<i>" through the i-th fitted camera of the model's reference pictures: the whole picture,
+    squared (a portrait 1152 x 1536 picture sits in the middle 3/4 of the frame's width)."""
+    if not names:
+        return []
+    from . import humanfit
+    refs = human_refs(name, stage)
+    out = []
+    for n in names:
+        i = int(str(n)[3:])
+        if i >= len(refs.get("cameras") or []):
+            raise HairError(f"view {n}: {name} has {len(refs.get('cameras') or [])} fitted reference cameras")
+        cam = refs["cameras"][i]
+        R = humanfit._cam_rot(cam)
+        eye = np.asarray(cam["centre"], float) - R.T @ np.asarray(cam["t"], float)
+        fwd = R.T @ np.array([0.0, 0.0, 1.0])
+        w, h = cam["size"]
+        side = float(max(w, h))
+        out.append({"name": str(n), "eye": eye.tolist(), "dir": (-fwd).tolist(), "up": (R.T @ np.array([0.0, -1.0, 0.0])).tolist(),
+                    "fov": float(np.degrees(2 * np.arctan(side / 2 / cam["f"]))), "shift": [0.0, 0.0],
+                    "center": (eye + fwd).tolist(), "near": 0.01, "scale": None, "axes": None})
+    return out
+
+
+def ref_square(img, size: int):
+    """A reference picture (or its mask) on the square a "ref<i>" view renders: centred, padded, resized."""
+    from PIL import Image
+    im = Image.open(img) if not hasattr(img, "size") else img
+    w, h = im.size
+    side = max(w, h)
+    sq = Image.new(im.mode, (side, side), 0 if im.mode in ("L", "1") else tuple([200] * len(im.getbands())))
+    sq.paste(im, ((side - w) // 2, (side - h) // 2))
+    return sq.resize((size, size), Image.NEAREST if im.mode in ("L", "1") else Image.LANCZOS)
+
+
+def _tail_numbers(m, tx: int, ty: int, mm: float) -> dict:
+    below = m[ty:]
+    if not below.any():
+        return {"below_px": 0, "length_mm": 0.0, "width_mm": 0.0, "back_mm": 0.0}
+    cnt = below.sum(1)
+    yy = np.repeat(np.arange(len(cnt)), cnt)
+    wd = below[int(15 / mm):].sum(1)
+    wd = wd[wd > 0]
+    xs = np.nonzero(below.any(0))[0]  # (what hangs below the tie only: the head's own width is not the tail's reach)
+    return {"below_px": int(below.sum()), "length_mm": round(float(np.percentile(yy, 99)) * mm, 1),
+            "width_mm": round(float(np.percentile(wd, 90)) * mm, 1) if len(wd) else 0.0,
+            "back_mm": round(float(max(xs.max() - tx, tx - xs.min())) * mm, 1)}
+
+
+def outline_measure(ours, ref, mm_px: float, tie=None) -> dict:
+    """Our hair's mask against a reference hair mask, like with like (both bool arrays on the same square of the same
+    camera): {"iou", "area": ours / hers, "chamfer_mm"} and, with `tie` = the tie's pixel [x, y] on that square, what
+    hangs below it for each (`hers`, `ours`: below_px, length_mm = from the tie down to the mask's lowest 1%,
+    width_mm = the 90th percentile row width below tie + 15 mm, back_mm = reach sideways from the tie's column) and
+    `below` = ours / hers - 1. One draw of a tail moves these about +-10 %: judge a style over 3-4 groom seeds."""
+    from scipy import ndimage as ndi
+    ours = ndi.binary_closing(ndi.binary_opening(np.asarray(ours, bool), iterations=1), iterations=3)
+    ref = np.asarray(ref, bool)
+    out = {"iou": round(float((ours & ref).sum() / max((ours | ref).sum(), 1)), 3),
+           "area": round(float(ours.sum() / max(ref.sum(), 1)), 3)}
+    eh, eo = ref ^ ndi.binary_erosion(ref), ours ^ ndi.binary_erosion(ours)
+    if eh.any() and eo.any():
+        dh, do = ndi.distance_transform_edt(~eh), ndi.distance_transform_edt(~eo)
+        out["chamfer_mm"] = round(float(0.5 * (do[eh].mean() + dh[eo].mean()) * mm_px), 1)
+    if tie is not None:
+        tx, ty = int(round(tie[0])), int(round(tie[1]))
+        out["hers"], out["ours"] = _tail_numbers(ref, tx, ty, mm_px), _tail_numbers(ours, tx, ty, mm_px)
+        out["below"] = round(out["ours"]["below_px"] / max(out["hers"]["below_px"], 1) - 1.0, 3)
+    return out
+
+
+def colour_bands(img, mask) -> dict:
+    """The colour of `img` (RGB image or array, sRGB) inside `mask`, as CIE L*, chroma, hue (deg): the mean and the
+    shadow / mid / highlight thirds by lightness. For matching a hair look to a picture: the same call on the render
+    (mask = our hair AND hers, eroded: dense hair only) and on the picture, per engine (EEVEE reads look.eevee_gain /
+    eevee_sat, Cycles look.cycles_fit / cycles_width / cycles_sat)."""
+    a = np.asarray(img, float)[..., :3] / 255.0
+    m = np.asarray(mask, bool)
+    if m.sum() < 30:
+        return {}
+    c = a[m]
+    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+    xyz = lin @ np.array([[0.4124, 0.2126, 0.0193], [0.3576, 0.7152, 0.1192], [0.1805, 0.0722, 0.9505]]) / [0.9505, 1.0, 1.089]
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    L, A, B = 116 * f[:, 1] - 16, 500 * (f[:, 0] - f[:, 1]), 200 * (f[:, 1] - f[:, 2])
+    q1, q2 = np.percentile(L, [33.3, 66.7])
+
+    def band(k):
+        return {"L": round(float(L[k].mean()), 1), "chroma": round(float(np.hypot(A[k], B[k]).mean()), 1),
+                "hue": round(float(np.degrees(np.arctan2(B[k].mean(), A[k].mean())) % 360), 1)}
+    return {"mean": band(np.ones(len(L), bool)), "shadow": band(L <= q1), "mid": band((L > q1) & (L <= q2)),
+            "highlight": band(L > q2)}
+
+
+def measure_ref(name: str, view: str, mask=None, tie=None, colour: bool = True, stage: str | None = None) -> dict:
+    """After look(views=[.., view]) with view = "ref<i>": the CURRENT hair against that reference picture:
+    `outline` (outline_measure against `mask`, a hair mask image in the picture's own pixels, white = hair; `tie` =
+    the tie's pixel in the picture) and `colour` (colour_bands of our render and of the picture over the dense hair
+    both have). Needs the look just made (look.ids / look.images)."""
+    from PIL import Image
+    from scipy import ndimage as ndi
+    ids, imgs = getattr(look, "ids", {}), getattr(look, "images", {})
+    if view not in ids:
+        raise HairError(f"measure: look the model through {view!r} first (look_hair(views=[..., {view!r}]))")
+    ours = ids[view]
+    n = ours.shape[0]
+    refs = human_refs(name, stage)
+    i = int(view[3:])
+    cam = refs["cameras"][i]
+    w, h = cam["size"]
+    side = float(max(w, h))
+    mm = float(cam["t"][2]) / float(cam["f"]) * 1000.0 * side / n
+    out = {"view": view, "mm_per_px": round(mm, 3)}
+    mref = None
+    if mask:
+        mref = np.asarray(ref_square(Image.open(mask).convert("L"), n)) > 127
+        t_ = None if tie is None else [(tie[0] + (side - w) / 2) * n / side, (tie[1] + (side - h) / 2) * n / side]
+        out["outline"] = outline_measure(ours, mref, mm, t_)
+    pic = ((refs.get("views") or [{}] * (i + 1))[i] or {}).get("image")
+    if colour and pic and Path(pic).exists() and view in imgs:
+        both = ours & mref if mref is not None else ours
+        dense = ndi.binary_erosion(both, iterations=max(1, n // 160))
+        out["colour"] = {"ours": colour_bands(imgs[view].resize((n, n)), dense),
+                         "picture": colour_bands(ref_square(Image.open(pic).convert("RGB"), n), dense)}
+    return out
+
+
 def reference_image(name: str, reference: str | None = None):
     """(path, crop or None) of the image the hair is judged against: `reference` if given, else the traced
     reference's image (ref_trace.json "image", cropped to the matched camera's crop), else none."""
@@ -2552,18 +2797,26 @@ LIGHTS = {
 def look(name: str, views=("front", "three_quarter", "side", "back", "top"), size: int = 480, save: str | None = None,
          reference: str | None = None, spec: dict | None = None, caption: str = "", clay: bool = True,
          only=None, engine: str = "eevee", count: int | None = None, samples: int | None = None,
-         budget: int | None = None, light=None, denoise: bool = True, debug: str | None = None) -> tuple:
+         budget: int | None = None, light=None, denoise: bool = True, debug: str | None = None,
+         stage: str | None = None) -> tuple:
     """A fast hair look: the head-cropped stage file + the hair from the spec, EEVEE, a few perspective views, a
-    thumbnail (how it reads small) and the reference beside. Returns (sheet image, seconds)."""
+    thumbnail (how it reads small) and the reference beside. Returns (sheet image, seconds).
+    Views "ref0", "ref1", ...: the FITTED cameras of the model's reference pictures (human_refs.json, the block-in /
+    solve's cameras), the whole picture squared: the hair as the picture shows it (look.ids[view] = its hair mask,
+    look.images[view] = the render; outline_measure / colour_bands compare them with the picture).
+    `stage`: another model with the same head whose scene the hair is shown on (a riff's copy needs no scene of its
+    own). The hair is always the spec's CURRENT hair (a stage file holds none)."""
     from PIL import Image, ImageDraw
     from . import render
     from .scene import _blender
     t = time.time()
     spec = store.load(name) if spec is None else spec
-    sp = make_stage(name, spec=spec)
+    sp = make_stage(stage or name, spec=spec)
     sc = scalp(name, spec)
+    ref_names = [v for v in views if re.fullmatch(r"ref\d+", str(v))]
+    views = [v for v in views if v not in ref_names]
     cams = cameras(sc, views)
-    frames = [render.camera_frame(c, i) for i, c in enumerate(cams)]
+    frames = [render.camera_frame(c, i) for i, c in enumerate(cams)] + human_ref_frames(name, ref_names, stage)
     rvs = ref_views(name)
     mnames = ["matched" if v == "matched" else f"matched_{v}" for v, _, _ in rvs]
     for fname, (v, rc, _) in zip(mnames, rvs):  # the reference's own cameras (fit_camera): compared with the
@@ -2579,7 +2832,7 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
         dump = str(Path(tmp) / "hair_pts.npy")
         cf = [{**f, "out": str(Path(tmp) / f"clay_{f['name']}.png")} for f in frames] if clay else []
         idf = [{**f, "out": str(Path(tmp) / f"id_{f['name']}.png"),
-                "size": 480 if f["name"].startswith("matched") else 240} for f in frames]  # (matched ones finer:
+                "size": 480 if f["name"].startswith(("matched", "ref")) else 240} for f in frames]  # (matched ones finer:
         # the hairline's edge is measured on them)
         j = {"mode": "hair_look", "blend": str(sp), "views": frames + [thumb], "size": size,
              "hair": job(name, spec, only=only, count=count, budget=budget),
@@ -2604,11 +2857,15 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
             out = _blender(j)
         clays = [Image.open(f["out"]).convert("RGB") for f in cf]
         look.mass_share, look.lit_mass, masks = {}, {}, {}
+        look.ids, look.images = {}, {}
         for f, fm in zip(idf, frames):  # red = the underlayer, green = locks (flat emission, nothing else drawn)
             a = np.asarray(Image.open(f["out"]).convert("RGB"), float)
             red, green = a[..., 0] > a[..., 1] + 60, a[..., 1] > a[..., 0] + 60
             if f["name"] in mnames:
                 masks[f["name"]] = red | green
+            if f["name"] in ref_names:
+                look.ids[f["name"]] = red | green
+                look.images[f["name"]] = Image.open(fm["out"]).convert("RGB")
             look.mass_share[f["name"]] = round(float(red.sum() / max(red.sum() + green.sum(), 1)), 3)
             # lit bare volume: where the volume shows AND is shaded like the locks around it (not a crevice or a
             # parting in shadow): the smooth patch the eye reads as a helmet

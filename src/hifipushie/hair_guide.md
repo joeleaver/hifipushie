@@ -639,6 +639,7 @@ tie_hair(name, style={"tie": "low", "side": "left", "tightness": 0.85, "neatness
                       "tail": {"length": 0.24, "wave": 0.6, "fullness": 0.75}})    # sleek head, front wisps, a poofed tail
 tie_hair(name, style={"hairline": 0.0})                                            # riff: a gelled, hard-edged hairline
 tie_hair(name, style={"tail": {"tousle": 0.9}})                                    # riff: a messier tail (ragged end, strays)
+tie_hair(name, style={"front": {"looseness": 0.6, "drape": 0.6}})                  # riff: a held-back head with a LOOSE front
 tie_hair(other, carry_from=name)                                                   # the same hair on another head
 look_hair(name, views=["around"])                                                  # six sides with the bust
 ```
@@ -653,8 +654,9 @@ What the words mean (all optional; `tie_hair(name)` alone is an ordinary low pon
 | `lift` | 0..1 | volume at the roots and over the top (default 1 - tightness) |
 | `part` | centre, left, right, none | none = combed straight back; a part is combed away from on both banks, in front only |
 | `ears` | tucked, covered | the hair passes over the ears' tops, or hangs over them |
-| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, tousle 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens out of the band as a fan, full by ~9 cm. `wave`: 0 = straight, 1 = loose waves that run through the bundle (neighbouring locks nearly in step: sheets, not ropes). `tousle`: 0 = brushed (an even end, nothing leaves the outline), 1 = tousled (locks end anywhere over the last third as pointed wisps that flick out, single hairs and thin wisps leave the outline all round); default 0.05 + 0.75 x wave |
+| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, tousle 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens out of the band as a fan, full by ~9 cm. `wave`: 0 = straight, 1 = loose waves that run through the bundle (neighbouring locks nearly in step: sheets, not ropes). `tousle`: 0 = brushed (an even end, nothing leaves the outline), 1 = tousled, as SOFT irregular hair: some locks loosened out of the bundle, lock ends anywhere over the last half and open (no points, no flick), strands drawn fine at up to 2.7 x the count, single hairs and a few thin locks up to 18 cm leaving the outline with a curl; default 0.05 + 0.75 x wave. The hang, fullness and wave are the brushed tail's |
 | `wisps` | 0..1, or {amount 0..1, where: [part, front, temple, sideburn, nape], length [m, m], softness 0..1, loose: n} | the short soft hair that never reached the tie: small clumps of fine hairs along the hairline that fall along the skin (the front's out toward the temples; the temples' are a short fringe in front of the ear, about half drawn back toward the tie). softness 0 = small defined locks, 1 = wide and frizzy. `loose`: THICK loose locks a side (18-45 hairs, 9-19 cm) out of the forehead's corner and the temple, swept back over the temple toward the ear and drooping; default round(2.5 x amount). Default amount from neatness (none on a neat head); independent of it when given: a sleek head WITH wisps is `neatness` 0.95 + `wisps` 0.7 |
+| `front` | 0..1, or {looseness 0..1, drape 0..1, locks: n a side} | the FRONT on its own: the hair in front of the ears sags and stands off the head as if the style were that much looser there, while the back stays as tight as `tightness` (`looseness`); it may hang further over the forehead's corners and temples (`drape`); `locks` = thick loosened locks (30-70 hairs) that fall from beside the part across the forehead's corner and are drawn back over the temple (default round(3 x looseness); none toward a tie above 30 deg). Front wisps get thicker, longer and more with it, so they read against skin from the front. Default none: a neat held-back arc |
 | `hairline` | 0..1 | how SOFT the hair's edge is. 0 = a clean hard line (gelled; a wig's edge); 1 = the hair thins out over the last centimetre before the line, fine baby hairs (1-4 cm) stand along it from the part to the sideburn, the part wanders a few mm. Default 0.8 - 0.3 x neatness: every real hairline is soft, so this is on for every style (a neat head has baby hairs too) |
 | `escaped` | n a side, or {count, where: [part, temple, ear, nape], length [m, m]} | single stray HAIRS (each a thin line: use `wisps` for anything soft); default none |
 | `neatness` | 0..1 | 0 = slept in (strays, halo, uneven lengths), 1 = every hair in place |
@@ -691,13 +693,16 @@ comes out redder than asked; Tess 0.65). EEVEE is untouched by both.
 
 Judge it from every side (`views=["around"]`), not the front: tied hair is wrong from behind first. What to read:
 on top the strands must run front-to-back (lateral bands = a cap); the tail must end hanging, not pointing; the
-hairline at the temples should be soft (a hard saw edge reads as a wig). BARE SKIN ABOVE OR IN FRONT OF THE EAR (a
-"shaved" temple, worst toward a high tie, where no hair passes back over it) is usually not the style: the hairline
-puts the ear's top at the outer brow's height + 4 mm, and on some heads (Tess's: 1.8 cm lower) the real ear sits well
-under that, so the line runs 2-3 cm above the ear and the sideburn stops short. Lower it on the model:
-`groom_hair(name, groom={"hairline": {"ear": -0.013, "sideburns": 0.035}}, replace=True)` (ear = m the line clears the
-assumed ear top, may be negative; sideburns = m the sideburn reaches below it), after tie_hair; the tied style is
-regrown on the new line. What is still weak (2026-10-12): the head
+hairline at the temples should be soft (a hard saw edge reads as a wig). The hairline finds the EAR on the head
+itself (hair.ear: the bump on the scalp's rays, every base) and passes `groom.hairline.ear` m (default 6 mm) over its
+top, with the sideburn `sideburns` m (default 14 mm) below that top in front of the ear: no per-model patch for a
+"shaved" temple any more (until tesshair6 the ear was guessed from the brow, 1-3 cm too high; a negative `ear` from
+those days is raised to 3 mm over the ear; `"ear_from": "brow"` keeps an old groom's line exactly). On an up-style
+(high ponytail, top knot) the hair runs straight off the temple's line: its row of roots stands at uneven depths and
+its strands start one by one over the band, so the edge is combed, not a row of teeth; it is still a visible combed
+edge close up. Judge a tail against a picture by MEASURE and over seeds: `look_hair(name, views=["ref2"],
+measure={"view": "ref2", "mask": hair_mask.png, "tie": [x, y]})` (below), with `groom_hair(name, groom={"seed": n},
+replace=True)` for 3-4 seeds: one draw moves a tail's area about +-10 %. What is still weak (2026-10-12): the head
 hair reads smoother than loose real hair in EEVEE; a tousled tail is stringier than real brushed-out hair (strands
 drawn a pixel wide with dark air between them) and its strays are few; single escaped hairs draw as thin lines (ask
 for wisps); the strip in front of the ear is thinner than real hair there.
@@ -933,7 +938,7 @@ the SDF body; guide(topic="hair") is the workflow. Needs a head with face landma
 groom "centre" joint.
 groom: a patch merged into the stored groom first (objects merge key by key, null deletes), e.g.
   {"volume": {"top": 0.04}, "parting": {"side": "left", "offset": 0.03}, "drawn": [...]}.
-  Keys: hairline (front, temples, sideburns, nape, ear, front_points), parting (side, offset, length, line, flat,
+  Keys: hairline (front, temples, sideburns = m below the FOUND ear's top, nape, ear = m over it, ear_from "mesh" | "brow", front_points), parting (side, offset, length, line, flat,
   full, depth), volume (front, top, crown, sides, back, nape: m of hair over the scalp; ramp, across, crest: x of the top's crest, taper: {from, to, floor} short tapered sides and back), length
   (per region, m), flow (per region: {"back"|"down"|"up"|"away"|...: weight}), tiers ({tier: {width, thickness,
   spacing, where, length, taper, belly, root, ...} | false}: strip = shingled side/back strips, gap = covers
@@ -1013,7 +1018,8 @@ tightness 0..1, lift 0..1, part (centre | left | right | none), ears (tucked | c
 plait | none, length m, fullness 0..1 (sleek .. bushy), wave 0..1 (straight .. loose waves), tousle 0..1 (brushed ..
 a ragged end and strays), to: back | shoulder} or just the kind), wisps (0..1 or {amount, where: [part, front, temple,
 sideburn, nape], length [m, m], softness 0..1, loose: n thick locks a side}: soft clumps of fine hairs at the hairline;
-default from neatness), hairline (0..1: 0 = a hard edge, 1 = thins out with baby hairs; default 0.8 - 0.3 x
+default from neatness), front (0..1 or {looseness, drape, locks}: the hair in front of the ears alone looser, hanging
+over the forehead corners, with thick loosened locks), hairline (0..1: 0 = a hard edge, 1 = thins out with baby hairs; default 0.8 - 0.3 x
 neatness), escaped (single hairs: n a side or
 {count, where, length}; default none), neatness 0..1, half (true) + length m, detail ({"tie": .., "strands": ..}: hair_tied's own
 keys, when a word is missing).
@@ -1023,7 +1029,7 @@ once). Heavy the first time on a body (its collider, ~1 min), 1-2 s after.
 
 ### `look_hair`
 
-`look_hair(name, views=None, size=480, clay=True, layout=False, reference=None, save=None, only=None, tier=None, debug=None, engine='eevee')`
+`look_hair(name, views=None, size=480, clay=True, layout=False, reference=None, save=None, only=None, tier=None, debug=None, engine='eevee', stage=None, measure=None)`
 
 A fast look at the hair (4-30 s): the head cropped from the model's Blender scene with the hair from the spec,
 rendered in EEVEE. Rows: the material, the same in clay (shape without colour: judge clumps there), and with a
@@ -1044,7 +1050,20 @@ A strand groom (hair.style "strands") renders its strands; engine="cycles" path-
 shows the game CARDS of that tier instead (cut from the strands); debug then isolates what makes a fault:
 "layers" (cards as solid quads coloured by layer: cap grey, 0 red, 1 green, 2 blue, 3 yellow), "cap_only",
 "cards_only", "no_normal", "unlit". export_hair judges the exported files themselves.
-Needs the scene once: `sync` the model first.
+views "ref0", "ref1", ...: the FITTED cameras of the model's reference pictures (human_refs.json: the block-in /
+face solve's cameras), the whole picture squared: the hair as each picture shows it, always the hair of the spec as
+it is NOW (a look never reads a mask or render back from an earlier one).
+stage: another model with the same head whose scene is used (a riff's copy of a head needs no scene of its own:
+`look_hair("riff", stage="the_head")`).
+measure: {"view": "ref2", "mask": png, "tie": [x, y], "colour": true}: the current hair against that picture. mask =
+a hair mask in the picture's own pixels (white = hair); the text then gives IoU, area, the outlines' distance (mm)
+and, with tie = the tie's pixel in the picture, what hangs below it against hers (area %, length, width, reach in mm).
+colour: CIE L* / chroma / hue of the dense hair's shadow / mid / highlight thirds, ours | the picture's, for the
+engine rendered: the numbers to set look.eevee_gain / eevee_sat (EEVEE) or look.cycles_fit / cycles_width /
+cycles_sat (Cycles) by. The look's own lights are used (look.light), not the picture's: compare bands, not single
+pixels. (Sheets before th_30 labelled "Cycles" were path-traced with 2 transmission bounces, which renders dark hair
+near black; look_hair(engine="cycles") uses 10.)
+Needs the scene once: `sync` the model (or its stage) first.
 
 ### `hair_reference`
 

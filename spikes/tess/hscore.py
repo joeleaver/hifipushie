@@ -36,30 +36,40 @@ def orient(L, mask):
 
 
 frames = [stage.fitted_frame(refs["cameras"][v], BOX, f"v{v}") for v in views]
-def idmask(frames):
-    """Our hair as an ID pass (blender_scene's id_parts: every object of the named parts flat white, everything else
-    flat black, transparent background): hair = opaque AND black. No luminance enters (the stage's hair objects carry
-    no part of their own)."""
+def current(frames):
+    """Our hair NOW: one hair_look job on the model's stage with the hair of the model's spec as it is on disk today
+    (hair.job from the spec in memory): the beauty tiles and the ID pass (hair objects flat red / green, everything
+    else black). Returns ({frame: bool mask}, {frame: RGB image}).
+    Until tesshair6 the ID pass rendered the stage's .blend in mode "render" and the beauty came from stage.shoot,
+    which reads the stage's own spec.json: both kept the hair the stage was BUILT with (stage.ensure's key leaves the
+    hair out, so a regrow rebuilt nothing) and scored a model's old hair after every regrow."""
     import tempfile
     from pathlib import Path
-    from hifipushie import scene
-    sn = stage.ensure(name)
+    from hifipushie import hair, scene
+    spec = store.load(name)
+    sn = stage.ensure(os.environ.get("STAGE_MODEL", name))
     st = json.loads((store._dir(sn) / "spec.json").read_text())
-    white = {p: [1.0, 1.0, 1.0] for p in list(st.get("parts") or {}) + ["body"] if p != "hair"}
-    out = {}
+    st["hair"] = spec["hair"]
+    ids, imgs = {}, {}
     with tempfile.TemporaryDirectory() as tmp:
         fr = [{**f, "out": str(Path(tmp) / f"{f['name']}.png")} for f in frames]
-        job = {"mode": "render", "blend": str(scene.blend_path(sn)), "views": fr, "size": PX, "samples": 4, "hide": [],
-               "flat": True, "transparent": True, "id_parts": white}
+        idv = [{**f, "out": str(Path(tmp) / f"{f['name']}_id.png")} for f in frames]
+        job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": PX, "samples": 24, "hide": [], "flat": False,
+               "transparent": True, "lighting": {**LIGHT, "target": fr[0]["center"]}, "eevee": stage.STAGE_EEVEE,
+               "mode": "hair_look", "hair": hair.job(sn, st), "clay_views": [], "id_views": idv, "look_engine": "eevee"}
         scene._blender(job, 2400)
-        for f in fr:
-            a = np.asarray(Image.open(f["out"]).convert("RGBA"), float)
-            out[f["name"]] = (a[..., 3] > 127) & (a[..., :3].max(-1) < 60)
-    return out
+        for f, g in zip(fr, idv):
+            a = np.asarray(Image.open(g["out"]).convert("RGBA"), float)
+            ids[f["name"]] = (a[..., 3] > 127) & (a[..., :3].max(-1) > 60)
+            im = Image.open(f["out"])
+            if im.mode == "RGBA":
+                bg = Image.new("RGBA", im.size, tuple(int(255 * min(1.0, c)) for c in LIGHT.get("backdrop", [0.86, 0.86, 0.86])) + (255,))
+                im = Image.alpha_composite(bg, im)
+            imgs[f["name"]] = im.convert("RGB").copy()
+    return ids, imgs
 
 
-ids = idmask(frames)
-on = stage.shoot(name, frames, LIGHT, size=PX, hair_on=True)
+ids, on = current(frames)
 for v in views:
     tr = json.load(open(f"{T}/{TR[v]}.json"))
     photo = Image.open(tr["photo"]).convert("RGB")

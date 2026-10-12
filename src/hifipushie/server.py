@@ -1301,10 +1301,13 @@ def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None
 @mcp.tool(structured_output=False)
 def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: bool = True, layout: bool = False,
               reference: str | None = None, save: str | None = None, only: list[str] | None = None,
-              tier: str | None = None, debug: str | None = None, engine: str = "eevee"):
-    """Fast hair renders (EEVEE, 4-30 s) with gates: outline dents, bare volume, fit to a traced reference. views,
-    clay, layout (top sketch), reference, only (lock names), tier (game cards) + debug, engine "cycles", size, save.
-    Needs `sync` once. Details: guide(topic="look_hair")."""
+              tier: str | None = None, debug: str | None = None, engine: str = "eevee",
+              stage: str | None = None, measure: dict | None = None):
+    """Fast hair renders (EEVEE, 4-30 s) with gates: outline dents, bare volume, fit to a traced reference. views
+    (+ "ref0".. = the reference pictures' fitted cameras), clay, layout (top sketch), reference, only (lock names),
+    tier (game cards) + debug, engine "cycles", size, save, stage (a model with the same head whose scene is used),
+    measure {"view": "ref2", "mask": png, "tie": [x, y], "colour": true} (outline / tail / colour against that
+    picture). Needs `sync` once (of the model or its stage). Details: guide(topic="look_hair")."""
     from . import hair
     views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
     if "around" in views:  # every side, with the bust (hair that hangs): the angles a front-tuned groom is wrong from
@@ -1314,9 +1317,13 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     if "layout" in views:
         layout = True
         views = [v for v in views if v != "layout"]
-    bad = [v for v in views if v not in hair.VIEWS]
+    measure = _spec_arg(measure) if measure else None
+    if measure and measure.get("view") and measure["view"] not in views:
+        views.append(measure["view"])
+    bad = [v for v in views if v not in hair.VIEWS and not re.fullmatch(r"ref\d+", str(v))]
     if bad:
-        raise ValueError(f"unknown views {bad} (have {', '.join(hair.VIEWS)}, layout)")
+        raise ValueError(f"unknown views {bad} (have {', '.join(hair.VIEWS)}, layout, ref0.. = the reference "
+                         f"pictures' fitted cameras)")
     spec = store.load(name)
     if not (spec.get("hair") or {}):
         raise ValueError(f"{name} has no hair: groom_hair(name, groom={{...}}) grows it")
@@ -1328,7 +1335,7 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
         spec = {**spec, "hair": {**spec["hair"], "style": "cards"}}
     if not only_layout:
         sheet, secs, fr = hair.look(name, views=tuple(views), size=size, reference=reference, spec=spec, clay=clay,
-                                    only=only, budget=tier, debug=debug, engine=engine)
+                                    only=only, budget=tier, debug=debug, engine=engine, stage=stage)
         st = next((ln[10:] for ln in fr if ln.startswith("@@strands")), None)
         if st:
             text += f"\nstrands: {st}"
@@ -1339,6 +1346,30 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
             gates += "\nstage mass: judge the silhouette (outline dents, IoU / outline px); bare-volume shares count " \
                      "once the locks are on (stage \"locks\")"
         text = f"rendered in {secs}s; {text}\n" + gates
+        if measure:
+            bad = set(measure) - {"view", "mask", "tie", "colour"}
+            if bad or not measure.get("view"):
+                raise ValueError(f"measure: {{'view': 'ref<i>', 'mask': png, 'tie': [x, y], 'colour': bool}}"
+                                 + (f" (unknown {sorted(bad)})" if bad else ""))
+            m = hair.measure_ref(name, measure["view"], mask=measure.get("mask"), tie=measure.get("tie"),
+                                 colour=bool(measure.get("colour", True)), stage=stage)
+            o = m.get("outline")
+            if o:
+                text += (f"\nagainst the picture ({m['view']}, {m['mm_per_px']} mm a px): IoU {o['iou']}, area x{o['area']}"
+                         + (f", outline {o['chamfer_mm']} mm apart" if "chamfer_mm" in o else ""))
+                if "below" in o:
+                    text += (f"\n  below the tie: {100 * o['below']:+.0f}% of hers; length {o['ours']['length_mm']} mm (hers "
+                             f"{o['hers']['length_mm']}), width {o['ours']['width_mm']} mm (hers {o['hers']['width_mm']}), "
+                             f"reach {o['ours']['back_mm']} mm (hers {o['hers']['back_mm']}). One draw moves these ~10%: "
+                             f"judge over 3-4 groom seeds")
+            c = m.get("colour") or {}
+            if c.get("ours") and c.get("picture"):
+                text += f"\n  colour over dense hair ({engine}), ours | picture (L*, chroma, hue):"
+                for b in ("mean", "shadow", "mid", "highlight"):
+                    a_, b_ = c["ours"][b], c["picture"][b]
+                    text += f"\n    {b}: {a_['L']} / {a_['chroma']} / {a_['hue']}  |  {b_['L']} / {b_['chroma']} / {b_['hue']}"
+                text += ("\n  (EEVEE: look.eevee_gain / eevee_sat; Cycles: look.cycles_fit, cycles_width for cover, "
+                         "cycles_sat for chroma)")
     hy = hair.hierarchy(spec, hair.scalp(name, spec))
     if hy:
         flag = ("  near-uniform: vary the widths (a few big shapes, some medium, a few small)"
