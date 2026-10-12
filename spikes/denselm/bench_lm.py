@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, denselm, face_ruler as fr, likeness, store
 
 tag = sys.argv[1]
-models = sys.argv[2:] or [f"cz_{t}_T" for t in ("c", "d", "e", "es", "f", "g", "h", "bs", "bq", "bm", "bp")] + ["sx_a_x_T", "sx_b_x_T"]
+models = sys.argv[2:] or [f"cz_{t}_T" for t in ("c", "d", "e", "es", "f", "g", "h", "bs", "bq", "bm", "bp")]
 out = Path(f"/mnt/data/hifipushie/denselm/out/bench_{tag}")
 out.mkdir(parents=True, exist_ok=True)
 L = denselm.landmarks()

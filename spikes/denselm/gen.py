@@ -364,7 +364,8 @@ def main():
                  eevee=json.dumps(json.loads(kw.get("eevee") or os.environ.get("DL_EEVEE", "{}"))))
         cmd = [render.BLENDER, "-b", str(scene.blend_path(sn)), "--python-exit-code", "1", "--python", str(HERE / "blender_gen.py"),
                "--", str(jp), str(out / f"part_{a:06d}")] + ([str(hair_job)] if hair_job else [])
-        with resources.heavy(f"denselm render {name} {a}", gb=6, gpu=True):
+        # (no exclusive GPU claim by default: an EEVEE render, as every stage shot of the other agents; DL_GPU_CLAIM=1 for it)
+        with resources.heavy(f"denselm render {name} {a}", gb=6, gpu=os.environ.get("DL_GPU_CLAIM", "0") == "1"):
             r = resources.run(cmd, capture_output=True, text=True, timeout=7200)
         for line in r.stdout.splitlines():
             if line.startswith("@@"):
