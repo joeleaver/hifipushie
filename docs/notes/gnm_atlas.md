@@ -5076,3 +5076,36 @@ heads, then the reads (chin over the collar in a 3/4; the under-chin shading ram
   a ramp into the under-jaw shade; along the jaw's sides the soft-lit picture shows NO edge. In the 3/4 the FAR chin /
   jaw corner lies in front of the shirt collar: the model's silhouette stands ~5 mm outside the picture's skin edge there
   (solvereads' "doubled chin line") and the outline reader never sees it (the collar is part of the figure's mask).
+
+### 2. The yardstick: SHAPE, not millimetres (spikes/chinread/errmap.py, bt.py)
+- Every camera's scale is free in the solve, so the pictures cannot tell a head 4 % larger from a camera 4 % closer. The
+  class-mean start is 2.9-3.6 % LARGER than the benchmark's two truths and every solved head stays 1-5 % large. solvereads'
+  "+6.4 / +7.6 mm too wide" is partly that: at the true head's size (a similarity fit over the hockey mask) today's solve on
+  head b is chin_width +3.9, jaw_width +3.2, gonial_width +4.4 mm, chin_length -2.8, and the lower face's surface (chin +
+  jaw body + jaw angle) is WORSE than the class-mean start: 2.99 mm rms against 1.84 (the chin alone 3.24 against 1.34).
+  bt.py reports: size error %, surface rms after the similarity fit per region, each measure's error at the true size.
+  Everything below is in those terms.
+
+### 3. Reads tried
+- (b / a) THE JAW'S LOWER EDGE AS A SHADING RAMP, differential (face_ruler._ramp_obs; view["chin"]["ramp"]; rval.py): the
+  picture's luminance profile across the model's jaw line (lm 4..12, every 3 mm, +-13 mm) against the SAME profile of the
+  model's own render under the picture's fitted light (blockin.lit_render: c0 + w.n, AO, soft cast shadow); the read = the
+  shift of best normalised correlation (gain and offset free), moving with the surface under the render's steepest fall;
+  kept only where both fall by 10 % and correlate over 0.9 with one clear best shift. FAIL. Null on dressed shots of known
+  heads (truth 0), the benchmark's light: front bias -1.3 mm, rms 3.1 (9.5 reads a picture; per-picture bias sd 2.1); 3/4
+  bias -1.6, rms 2.4 (13.5 reads). Known changes: chin_length +-4 read at slope 0.6-0.9 (corr 0.3-0.4), chin_width +-5 and
+  jaw_width +-6 at slopes -2 .. +7 per run (corr ~0): the profiles cross the jaw line vertically, a width moves them 0.4-0.9
+  mm, the null's scatter is 3. Our clay under a fitted c0 + w.n light is not the picture's shading under the jaw (the
+  dressed skin's stubble ends there, the real light is an area light, the neck bounces). On the good Garrett front it reads
+  the model's chin corners 4-8 mm low (out/ramp_gh_B06.png: plausible, it is what the eye sees) but with a 3 mm null that
+  is not a measurement. OFF, code kept. The whole-region shading read (a) uses the same instrument: not built.
+- (d) THE JAW IN FRONT OF CLOTH (face_ruler._cloth_obs; view["chin"]["cloth"]): the model's occluding contour over jaw and
+  chin (jaw_contour) against the edge where the parser's bare skin ends and CLOTH begins (skin 1-3.5 mm inside, cloth
+  outside, one edge in reach). The parser's skin / cloth maps are good on the good set (out/cloth_gh_B06.png), but the set
+  has almost no such edge: 3 reads in the 3/4 (the collar's tip touches the chin's corner; residual +0.4 mm: the model's
+  contour is RIGHT there), 1 in the front (the collar against the neck: a false one). solvereads' "doubled chin line" in the
+  3/4 is the model's under-chin contour hanging 5-10 mm below the picture's jaw edge on the NECK's skin, not at the collar.
+  NOT VALIDATED (no known head with cloth behind its jaw), OFF, code kept: it is the read for a head-down or from-above
+  reference (the brief).
+- (c) fold / stubble landmarks bracketing the chin ball: not built: the benchmark's heads have no marionette grooves and a
+  painted stubble, so nothing to validate it on.

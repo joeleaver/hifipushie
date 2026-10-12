@@ -383,3 +383,32 @@ def hold_rows(read, done=None, names=None) -> list:
         out.append({"type": "hold", "view": "prior", "name": f"hold_{n}", "o": float(-mv[j]), "J": rw["R"][j].copy(),
                     "sig": float(HOLD_SIG * rw["sd"][j])})
     return out
+
+
+# ---- the TIE (chinread, 2026-10-12): unread widths follow GNM's population, they do not drift ---------------------------
+TIE = ("chin_width", "jaw_width", "gonial_width", "jaw_square")       # what no picture of a front / shallow 3/4 / side set reads
+TIE_GIVEN = ("pupils_apart", "eyes_height", "mouth_width", "nose_length", "philtrum_length", "chin_length")   # read in a front view
+TIE_GIVEN_SIDE = ("chin_forward", "pogonion_forward", "tip_forward", "subnasale_forward", "upper_lip_forward", "lower_lip_forward",
+                  "forehead_forward", "mentolabial_depth")            # + read on a side view's outline
+TIE_SIG = 0.3            # x the measure's conditional sd: how tightly it is tied to its expectation
+
+
+def tie_rows(done=None, names=TIE, given=TIE_GIVEN + TIE_GIVEN_SIDE, sig: float = TIE_SIG) -> list:
+    """Pseudo-observations for solve(): each named measure TIED to its expectation given the measures the pictures do
+    read, in GNM's own population (comps ~ N(0, 1): cov = R R'). The row is the part of the measure that is independent
+    of the given ones, r = R_u - K R_g with K = R_u R_g' (R_g R_g')^-1; its whole move since the start (done = c - c0,
+    the class mean's head) is held at 0 with sigma = sig x |r| (the conditional sd). So a jaw may widen WITH a face
+    that the pictures show to be larger or longer, as people's do; it may not widen on its own account, which is what
+    biased reads did to it (+5 .. +9 mm on known heads whatever their truth: the notes' "## chinread")."""
+    rw = rows()
+    idx = {n: i for i, n in enumerate(rw["names"])}
+    G = np.array([rw["R"][idx[g]] for g in given if g not in names]) if given else np.zeros((0, rw["R"].shape[1]))
+    out = []
+    d = np.asarray(done, float) if done is not None else np.zeros(rw["R"].shape[1])
+    for n in names:
+        r = rw["R"][idx[n]].copy()
+        if len(G):
+            r = r - G.T @ np.linalg.solve(G @ G.T, G @ r)
+        cs = float(np.linalg.norm(r))
+        out.append({"type": "hold", "view": "prior", "name": f"tie_{n}", "o": float(-(r @ d)), "J": r, "sig": float(sig * cs), "cond_sd": cs})
+    return out
