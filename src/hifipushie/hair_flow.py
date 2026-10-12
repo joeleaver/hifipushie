@@ -1065,7 +1065,7 @@ def style(tied: dict) -> dict:
                           # (tesshair6: the tousle is SOFT: no flick of its own, open ends, locks loosened out of
                           # the bundle, strays up to 16 cm; as pointed wisps that flicked out it was stiff straw)
                           "ragged": round(0.25 + 0.6 * to_, 3), "strays": int(round((14 + 90 * to_) * (0.5 + fu))),
-                          "stray_length": [0.04, round(0.08 + 0.1 * to_, 3)], "soft": round(float(np.clip(0.3 + 0.9 * to_, 0, 1)), 3),
+                          "stray_length": [0.04, round(0.08 + 0.1 * to_, 3)], "soft": round(float(np.clip(0.1 + 1.27 * to_, 0, 1)), 3),
                           "in_step": round(0.7 - 0.3 * to_, 3),
                           "strands": {"wave": round(0.006 * wave, 4), "wavelength": 0.16, "random": 1.0,
                                       # (tousled ends are POINTED wisps: strands gather toward their tips (free.
