@@ -2015,10 +2015,9 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
     borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
     kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ and
-    what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" (what no
-    read looks at stays at the start head's value) | "none"; expression "view" | "shared" | "none" (the pictures'
-    expression as a nuisance); chin_points "auto" (the detector's chin points are left out when the set has a side
-    view: its outline reads the chin) | "on" | "off"; anchors, parse, out, share, seen, save. Details:
+    what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" |
+    "none"; expression "view" | "shared" | "none"; chin_points "auto" (the detector's chin points are left out when
+    the set has a side view) | "on" | "off"; anchors, parse, out, share, seen, save. Details:
     guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):

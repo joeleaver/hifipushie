@@ -80,8 +80,15 @@ eye catches what the points miss; the target table catches what your eye misses.
      ANCHORS: the detector's landmarks as weak anchors, DIFFERENTIAL (`anchors="differential"`, the default): the
      detector on the picture minus the same detector on our own render through that camera, as the table compares
      them, so the detector's definition bias does not go into the face ("absolute" = the old comparison with the
-     mesh's true landmarks: on two paintings it forced components to 3.9 sd). The chin's points are always in
-     (nothing else reads the chin from the front) and BOTH iris centres of a 3/4 (they pin its yaw).
+     mesh's true landmarks: on two paintings it forced components to 3.9 sd). BOTH iris centres of a 3/4 are in
+     (they pin its yaw). The detector's CHIN points (`chin_points="auto"`): in when the set has NO side view (nothing
+     else reads the chin from the front), LEFT OUT when it has one (a camera turned 60 deg or more: its outline
+     reads the chin's height and projection to 0.3 mm). The detector's chin on a picture is not its chin on our clay
+     render of the same head (2.6 +-1.1 mm higher, 2.4 mm aside on dressed renders of 8 known heads; the eyes agree
+     to 0.1), and against a side view's outline it left the chins of known heads 3.9 mm short on average and their
+     lower faces WORSE than the class mean they started from (3.4 mm rms against 3.0; without the points 2.15). The
+     table's chin_height / lower_third rows are those detector points: with a side view expect them 2-4 mm out
+     and do not chase them.
      EYES: iris centres (front), the limbus in the turned views (eye depth), the LID MARGINS at seven columns and
      both canthi in the eye's own frame (needs a 30 px iris: a small or painted face gives none, and says so).
      LIPS: the front picture's traced vermilion borders.
@@ -122,14 +129,28 @@ eye catches what the points miss; the target table catches what your eye misses.
      report a head. The direct read is a heuristic about geometry: it does not know a read is biased.
    - THE CHIN AND JAW (the audit behind it; Joe: "makes me wonder if we're measuring enough things there"): a side
      view reads the chin's projection, height and the chin-lip groove (direct read 0.8-0.95). NOTHING reads the
-     chin's and the jaw's WIDTH or the jaw's lower edge from a front, a 23 deg and a 72 deg view: they end on the
-     neck's skin, no silhouette. On a known head through those three cameras the solve laid every silhouette on the
-     picture to 0.2-0.4 mm and returned the jaw 7 mm and the chin 6.5 mm too wide. Two reads were built for it and
-     FAILED validation, so they are off: the jaw's edge against the neck as a luminance step (bias -1.8 .. -3 mm,
-     3-14 reads a view on dressed renders; nothing on a soft-lit photo) and the detector's jaw-line points as
-     differential anchors (they follow the detector's own prior: a 5 mm chin-width change read at slope 0.3, corr
-     0.1). So: read the report's chin rows, compare the front and 3/4 BLENDS at the chin, and set chin_width /
-     jaw_width / jaw_square by eye after the solve; ask for a picture that puts the jaw on a silhouette.
+     chin's own WIDTH or the jaw's lower edge between its angle and the chin from a front, a 23 deg and a 72 deg
+     view: they end on the neck's skin, no silhouette (the jaw's width AT ITS ANGLES is read: the front outline runs
+     down to them). Judge heads by SHAPE: every camera's scale is free, so a solved head's absolute
+     size is not read (known heads come back 1-8 % large; compare after a similarity fit: spikes/chinread/bt.py).
+     What the "chinread" audit found on 8 known heads (dressed renders through the good Garrett set's cameras):
+     (1) the old solve made the lower face WORSE than the class mean it started from (3.4 mm rms against 3.0; chin
+     3.9 mm short, chin / jaw / gonial width +3.7 / +3.4 / +3.7 mm) and the cause was the detector's chin points
+     (above): without them 2.15 mm, the chin's length within 1.5, the widths' bias gone (+1.1 / +0.1 / +0.3).
+     (2) What remains is unread, not biased: a chin 5 mm wider or narrower with the jaw held comes back 10-20 %
+     of the way; chin and jaw together 45-90 % (the jaw's angles are on the front outline). (3) FOUR reads were
+     built for the rest and did NOT validate, so they are off: solvereads' luminance step and detector jaw line;
+     the jaw's shading RAMP against our own render under the fitted light (null 2.4-3.1 mm rms; a width moves it
+     0.4-0.9 mm); the jaw in front of CLOTH from the parser's skin / cloth maps (3/4: median 0.2-0.4 mm but outliers
+     to rms 1.7, front fails; and real sets rarely have a collar behind the jaw). A TIE of the unread widths to
+     their expectation given the read measures (options `chin={"tie": ..}` of blockin.solve_step) did not beat
+     leaving them free either. (4) On the good Garrett set the solve's broad, square lower face is what outlines
+     + GNM's population give (his jaw IS wide at its angles: a narrower one leaves the front outline 2-6 mm inside
+     the picture's); the rounded chin ball between his marionette grooves is RELIEF inside the silhouette, which
+     no read sees. So: after the solve compare the front and 3/4 BLENDS and the lit clay at the chin, set
+     chin_width / jaw_square by eye with `mm:` / macro steps if the blend supports it, and leave grooves and
+     jowls to the skin's folds. Do not ask for tilted views to fix it: a view from 15 deg above or below made the
+     known head worse (lower face 1.4 -> 2.8 / 2.0 mm); a true 45 deg 3/4 and a true 90 deg side are what to ask for.
    - STEADIER REPEATS: the down-weighting factor is the smallest that fits (it moved in x1.3 steps), is carried
      across calls and comes down at most 15 % a call; each view keeps ONE outline reader for the whole block-in; a
      step that turns back on the last call's step (cosine under -0.2: the see-saw at |dc| ~2-2.6) is halved and
@@ -457,7 +478,7 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `block_in_solve`
-ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so (the factor is carried across calls). The reply lists what MOVED WITH NO READ, what moved far on a weak read and what is unread (solve_report's direct read: treat those as inferred), warns when a view's stated kind disagrees with its fitted camera, and marks a DAMPED step (it turned back on the last call's). hold: "none" (default) | "auto" (every measure no read looks at stays at the start head's value). expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's and jaw's width from front / shallow views. Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, parse, hold, expression. See section 3b.
+ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more: its outline reads the chin; kept when it has none) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so (the factor is carried across calls). The reply lists what MOVED WITH NO READ, what moved far on a weak read and what is unread (solve_report's direct read: treat those as inferred), warns when a view's stated kind disagrees with its fitted camera, and marks a DAMPED step (it turned back on the last call's). hold: "none" (default) | "auto" (every measure no read looks at stays at the start head's value). expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views (unread, not pushed: section 3b). Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, chin_points, parse, hold, expression. See section 3b.
 
 ### `lid_read`
 lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None, fold=None): the picture's lid margins

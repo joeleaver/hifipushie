@@ -2035,9 +2035,9 @@ SIZE_HOLD = False                     # compare(chin={"size": True}): the face's
 CHIN_TIE = False                      # compare(chin={"tie": ..}): the unread jaw / chin widths tied to their expectation (solve_report.tie_rows)
 TIE_OPEN = (35.0, 60.0)               # a view whose fitted camera is turned this much shows the far jaw on its silhouette: no tie on the jaw
 CHIN_LM_AXES = "auto"                 # ... "xy" | "y" | "x" | "none" | "auto" = left out when the set has a SIDE view (its outline reads
-#   the chin's height and projection to 0.3 mm; the detector's chin on a photo stands 5-9 mm from its chin on our clay
-#   render of the same head and, against that outline, left known heads' chins 3-6 mm short and their lower faces worse
-#   than the class mean they started from: the notes' "## chinread"), kept when it has none (nothing else reads the chin)
+#   the chin's height and projection to 0.3 mm; the detector's chin on a dressed picture stands 2.6 +-1.1 mm higher and
+#   2.4 mm aside of its chin on our clay render of the SAME head (eyes: 0.1) and, against that outline, left known heads'
+#   chins 3.9 mm short on average and their lower faces worse than the class mean they started from: the notes' "## chinread"), kept when it has none (nothing else reads the chin)
 SIDE_MIN = 60.0                       # degrees: a view whose fitted camera is turned at least this much is a side view
 LM_SIG_SCALE = 1.0                    # differential anchors: their sigma x this (their errors are CORRELATED: a bias, not scatter)
 LM_STRETCH = False                    # differential anchors: a free stretch (x, y apart) of the detector's face per view
