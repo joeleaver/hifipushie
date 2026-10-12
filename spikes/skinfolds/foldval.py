@@ -76,3 +76,34 @@ if kw.get("fit"):
     sk = copy.deepcopy(start)
     for ch in sr.fold_fit(sk, fr, True):
         print("  FIT", ch)
+if kw.get("apply"):
+    # THE ROUND TRIP: read -> skin.folds (geometry) -> render -> read again, then both heads side by side
+    from hifipushie import skin_folds as sf
+    res = sr.apply(vm, groups=("folds",), rounds=int(kw["apply"]), brow_shape=False, log=lambda s: None)
+    got = sf.options((res["skin"] or {}).get("folds"))
+    want = sf.options(truth.get("folds"))
+    print(f"== ROUND TRIP ({kw['apply']} rounds, {time.time() - t:.0f} s): fold side | truth amount | recovered amount | recovered shift (median mm) vs truth")
+    hits = miss = false = 0
+    errs = []
+    for name in sf.FOLDS:
+        for sd in ((".L", ".R") if sf.sided(name) else ("",)):
+            a_t = want[name]["amount"] * want[name]["sides"][sd]["amount"] if name in want else 0.0
+            a_g = got[name]["amount"] * got[name]["sides"][sd]["amount"] if name in got else 0.0
+            sh_t = float(np.median(want[name]["sides"][sd]["shift"])) if name in want and want[name]["sides"][sd]["shift"] else 0.0
+            sh_g = float(np.median(got[name]["sides"][sd]["shift"])) if name in got and got[name]["sides"][sd]["shift"] else 0.0
+            tagv = "HIT" if a_t > 0.3 and a_g > 0.3 else "MISS" if a_t > 0.3 else "FALSE" if a_g > 0.3 else "ok (absent)"
+            hits += tagv == "HIT"; miss += tagv == "MISS"; false += tagv == "FALSE"
+            if tagv == "HIT":
+                errs.append(a_g - a_t)
+            print(f"   {name + sd:15s} {a_t:5.2f} {a_g:5.2f}   shift {sh_g:+.1f} (truth {sh_t:+.1f})   {tagv}")
+    print(f"   hits {hits}, misses {miss}, false {false}; strength error on hits: mean {np.mean(errs) if errs else 0:+.2f}, rms {np.sqrt(np.mean(np.square(errs))) if errs else 0:.2f}")
+    print(res["reads"][-1][res["reads"][-1].find("  FOLDS"):][:6000])
+    import shots
+    cells = {}
+    for label, m in (("TRUTH", tm), ("READ BACK", vm)):
+        got_ = shots.shoot_all(m, store.load(m), ["eyes", "mouth", "q3"], ["photo", "rake"], size=512, log=lambda s: None)
+        for (ln, vn), a in got_.items():
+            cells[(f"{label} | {ln}", vn)] = a
+    p = shots.sheet(cells, [f"{a} | {b}" for b in ("photo", "rake") for a in ("TRUTH", "READ BACK")], ["eyes", "mouth", "q3"],
+                    f"fold validation {tag}: known folds (geometry) -> pictures -> read -> displacement -> render", f"{G}/fval_{tag}_roundtrip.png", 512)
+    print(p)

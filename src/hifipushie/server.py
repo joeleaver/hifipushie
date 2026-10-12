@@ -2205,7 +2205,7 @@ def skin_reference() -> str:
 def look_skin(name: str, views: list[str] | None = None, size: int = 768, light: str | None = None,
               flat: bool = False, layer: str | None = None, engine: str = "eevee", save: str | None = None):
     """Fast bare-skin close-ups with measurements vs real-skin photos. views (face, three_quarter, cheek, eye, mouth,
-    ear, hand, ...), light "studio"|"soft"|"back", flat (unlit colour), layer (one mask), engine "eevee"|"cycles",
+    ear, hand, ...), light "studio"|"soft"|"back"|"rake" (low side light: relief), flat (unlit colour), layer (one mask), engine "eevee"|"cycles",
     size, save. Details: guide(topic="look_skin")."""
     from . import skin_look
     sheet, text, _ = skin_look.look(name, views=tuple(views) if views else skin_look.DEFAULT, size=size, light=light,

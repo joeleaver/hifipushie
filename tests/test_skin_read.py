@@ -257,5 +257,6 @@ if __name__ == "__main__":
     for t in (test_valley_lab_and_specks, test_get_set_and_fold_options, test_beard_zones_partition_and_weights, test_fold_map_and_layers,
               test_folds_are_geometry, test_step_and_tone_bound,
               test_colour_read_and_fit_recover_zones, test_fold_fit_rules):
+        t0 = __import__("time").time()
         t()
-        print("ok", t.__name__)
+        print("ok", t.__name__, f"{__import__('time').time() - t0:.0f} s")

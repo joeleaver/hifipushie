@@ -857,7 +857,7 @@ def _stubble_opts(sk: dict):
     return {"amount": float(v)} if isinstance(v, (int, float)) else dict(v)
 
 
-def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None) -> dict:
+def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True) -> dict:
     """spec["skin"] set from a read: {"skin": the new description, "changes": [(parameter, old, new, why)], "text",
     "residual": the regions' read before / after as the forward model has it}. groups: what may change (GROUPS).
     stubble: whether a beard shadow may be ADDED to a face that has none (default: unless skin.sex says female)."""
@@ -926,7 +926,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     np_ = len(names) + len(bz)
     # the lightness anchor (context): the plain skin's albedo L* is held to the prior tone's (the start's), loosely
     # when a known white gives the exposure; the exposure itself is then free (prior) or the white's.
-    Wp = c.w[idx] * (c.plain[idx] > 0.5)
+    Wp = c.w[idx] * ((c.plain[idx] > 0.5) if getattr(c, "plain", None) is not None else np.max([R[z][idx] for z in PLAIN if z in R], 0))
     Wp = Wp / max(Wp.sum(), 1e-9)
     white = c.anchor.get("lightness") == "white" and c.anchor.get("exposure") is not None
     e_mid = float(c.anchor["exposure"]) if white else 0.0
@@ -1083,7 +1083,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         if ey:
             sk1["eyes"] = ey
     if "folds" in groups and r.get("folds"):
-        changes += fold_fit(sk1, r["folds"], True)
+        changes += fold_fit(sk1, r["folds"], True, lid_prior=lid_prior)
     resid_rows = {k: {"before": [round(float(x), 2) for x in (base0[i] - target[i])], "after": [round(float(x), 2) for x in (m1[i] - target[i])]}
                   for i, k in enumerate(reg)}
     out = {"skin": sk1, "changes": changes, "residual": resid_rows, "exposure": round(expo, 3),
@@ -1214,6 +1214,9 @@ STEP_REF = {"nasolabial": 0.39, "marionette": 0.2, "mouth_corner": 0.17, "mentol
 # column), not across the model's nominal path: that path sits a crease height over OUR lid and found, on Tess, a
 # faint arc above her real fold. shift = the picture's height over the lash line - the nominal path's over the same
 # line; amount from the line's darkness over ours.
+LID_PRIOR = {"amount": 0.6, "show": (3.3, 2.0), "nominal": 3.45}   # a lid fold the pictures CANNOT resolve is laid from
+# norms (INFERRED, said so): the platform show over the lashes, women / men (Price et al. 2009, lidfold.NORMS), against
+# the nominal path's own height (0.062 x the pupils' distance); its roll (the hooding) grows with age
 LID_COLS = (0.2, 0.35, 0.5, 0.65, 0.8)
 LID_DARK = 0.08        # read_lid's darkness (0..1): a line is there
 LID_REF = 0.22         # what an amount-1 lid_fold of ours adds to that darkness (calibrated)
@@ -1598,7 +1601,7 @@ def fold_text(fr: dict) -> str:
     return "\n".join(L)
 
 
-def fold_fit(sk: dict, fr: dict, first: bool) -> list:
+def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
     """skin["folds"] and the fine-line amounts of skin["wrinkles"] set from a fold read (in place). Returns changes."""
     from . import skin_folds as sf
     changes, stuck = [], []
@@ -1606,6 +1609,18 @@ def fold_fit(sk: dict, fr: dict, first: bool) -> list:
     cur = sf.options(folds)
     for name, row in fr["folds"].items():
         if not row["readable"]:
+            if name == "lid_fold" and name not in cur and lid_prior:
+                from . import skin as skinmod
+                pp = skinmod.params({"skin": sk})
+                masc = float(pp.get("masc", 0.0)) if sk.get("sex") is not None else 0.5
+                show = LID_PRIOR["show"][0] + (LID_PRIOR["show"][1] - LID_PRIOR["show"][0]) * masc
+                sh = round(show - LID_PRIOR["nominal"], 2)
+                entry = {"amount": LID_PRIOR["amount"], "roll": round(1.0 + 1.2 * skinmod._age_curve(pp["age"], 35, 75), 2),
+                         "L": {"shift": [sh] * 3}, "R": {"shift": [sh] * 3}}
+                folds[name] = entry
+                changes.append((f"folds.{name}", "none", entry, f"INFERRED, NOT READ ({row.get('why', 'cannot tell')}): every lid has a fold and the shape "
+                                f"model's is soft; laid from norms (platform show {show:.1f} mm over the lashes, hooding by age {pp['age']:.0f}). "
+                                "Check it against the person; set skin.folds.lid_fold yourself or to 0"))
             continue
         old = cur.get(name)
         new_sides, amounts = {}, {}

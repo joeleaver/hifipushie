@@ -28,7 +28,10 @@ SOFT = {"lights": [{"dir": [-0.2, -0.9, 0.35], "energy": 2.4, "color": [1.0, 0.9
 BACK = {"lights": [{"dir": [-0.35, 0.9, 0.2], "energy": 7.0, "color": [1.0, 0.97, 0.92], "angle": 6},
                    {"dir": [-0.6, -0.7, 0.2], "energy": 0.3, "angle": 40, "shadow": False}],
         "world": {"color": [0.3, 0.32, 0.35], "strength": 0.3}, "view": "Khronos PBR Neutral", "exposure": -0.3}
-LIGHTS = {"studio": STUDIO, "soft": SOFT, "back": BACK}
+# a low light from the side: what shows RELIEF (folds, bags, a lid's crease: skin.folds are geometry; skinfolds)
+RAKE = {"lights": [{"dir": [0.96, -0.25, 0.12], "energy": 4.0, "color": [1.0, 0.98, 0.96], "angle": 6}],
+        "world": {"color": [0.5, 0.5, 0.52], "strength": 0.12}, "view": "Khronos PBR Neutral", "exposure": -0.3}
+LIGHTS = {"studio": STUDIO, "soft": SOFT, "back": BACK, "rake": RAKE}
 # what 13 photographs of faces measured (skin_measure, medians; workspace/skin_refs): contrast per feature size
 PHOTO = {"octaves_mm": [0.35, 0.7, 1.4, 2.8, 5.6, 11.2], "L": [1.2, 1.26, 0.83, 0.78, 1.2, 2.15],
          "a": [0.25, 0.29, 0.41, 0.47, 0.51, 0.6], "b": [0.24, 0.26, 0.4, 0.51, 0.62, 0.72], "micro": 0.051,
@@ -104,8 +107,10 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
         # the orbits, lids to brows, finer (scene.refine_box): at 1 mm the lid margins came out ragged and the
         # lid's folds and rims (2-3 mm features) were a voxel or two wide
         e = np.array([J["eye.L"], J["eye.R"]])
+        # (with a tear trough laid, skin.folds: down to the trough under the bag, ~2 cm under the eye)
+        low = 0.024 if ((spec.get("skin") or {}).get("folds") or {}).get("tear_trough") else 0.016
         s["parts"][part]["refine"] = [{"lo": [round(float(e[:, 0].min()) - 0.024, 4), round(float(e[:, 1].min()) - 0.03, 4),
-                                              round(float(e[:, 2].min()) - 0.016, 4)],
+                                              round(float(e[:, 2].min()) - low, 4)],
                                        "hi": [round(float(e[:, 0].max()) + 0.024, 4), round(float(e[:, 1].max()) + 0.004, 4),
                                               round(float(e[:, 2].max()) + 0.026, 4)], "voxel": EYE_VOXEL}]
         if all(k in J for k in ("lm_mouth_corner.L", "lm_mouth_corner.R", "lm_lip_upper", "lm_lip_lower")):

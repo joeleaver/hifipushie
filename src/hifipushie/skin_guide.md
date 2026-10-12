@@ -292,7 +292,7 @@ skin or paint edit ~20-40 s.
 views: any of bust, face, three_quarter, side, cheek (macro), eye, mouth, forehead, ear (back-lit: light through
 the ear), hand, palm, forearm (default face, three_quarter, cheek, eye, mouth, ear).
 light: "studio" (a key from the model's right + a weak fill), "soft" (broad frontal: colour without highlights),
-"back" (back-lit); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
+"back" (back-lit), "rake" (a low light from the side: what shows relief: folds, bags, a lid's crease); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
 ("freckles" = "skin:freckles"; or any paint layer's name).
 engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
 shadow edges and back-lit ears).
