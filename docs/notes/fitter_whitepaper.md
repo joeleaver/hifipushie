@@ -88,3 +88,12 @@ What to do, in order (nothing started; Joe to say):
 4. The dense-landmark network on our own synthetic GNM renders (this file's idea): the read that makes per-view
    expression identifiable and reads interior relief (chin ball, cheeks). Data generation can now run on the other
    machines through the offload route.
+
+## Backup: DAD-3DHeads (Joe, 2026-10-12)
+Joe: "Let's keep it as a backup plan. I've applied for the gate." DAD-3DHeads (CVPR 2022, arXiv 2204.03688;
+huggingface.co/datasets/t-martyniuk/DAD-3DHeadsDataset; github.com/PinataFarms/DAD-3DHeads + DAD-3DNet): real
+in-the-wild photos with a per-image head mesh and camera, attribute buckets, ~40 GB. CC BY-NC-SA 4.0, gated,
+"non-commercial research and educational purposes only", no passing on. Joe applied for access himself. STATUS: a
+BACKUP, not in use. Nobody downloads or uses it until Joe says access is granted AND says what it may be used for
+(most likely: evaluation of sim-to-real transfer only, never training anything we ship). The primary plan stays our
+own synthetic GNM renders (denselm).
