@@ -57,3 +57,34 @@ regressor; Google hasn't released its own fitting code or the ~600 dense landmar
 On Tess (block-in target table): our block-in 26/26, published recipes and our old MAP fit 20-23/26, GNM's mean 22/26.
 So a dense-landmark network trained on our own synthetic GNM renders (above) would be the first of its kind in the open,
 which strengthens the white-paper case.
+
+## The paper's section 4.2 against what we do (2026-10-12, coordinator; Joe asked whether we followed through)
+GNM Head paper, arXiv 2607.23687v1, 4.2 "3D Face Reconstruction":
+- Shared method: optimisation to DENSE 2D landmarks (~600 from a detector, Chandran et al. 2023 / 2024; after Wood et
+  al. 2022, Hewitt et al. 2024). Variables: identity, expression, JOINT ROTATIONS, root translation, camera
+  intrinsics. Energy = landmarks + L2 prior (identity, expression) + ANATOMICAL penalty (skin against eyeballs, teeth,
+  tongue, gums) + temporal smoothness (video). Weights as Wood et al. 2022. Fitting code and detector NOT released.
+- 4.2.1 single view, synthetic: 2,000 images, ~7,000 GROUND-TRUTH surface landmarks: GNM 1.68 mm mean vs FLAME 2.17.
+- 4.2.2 MULTI-VIEW captures (synchronised studio video, extreme expressions): ONE identity shared over all frames;
+  expression, joint rotations and root translation PER FRAME. Qualitative.
+- 4.2.3 IN THE WILD single images: the INNER-MOUTH landmarks (teeth, tongue, gums) ANCHOR the fit; jaw opening,
+  tongue, asymmetric eye movement recovered. Qualitative.
+Where we stand:
+- 4.2.2: half. We share identity over views and free the cameras, but each view is a RIGID head: no per-view
+  expression (built by solvereads, failed validation: nothing independent reads it), no per-view joint rotations
+  (jaw, eyeballs / gaze, neck). And our reference sets are 2-4 neutral stills; the paper's strategy is MANY frames
+  with VARIED expressions, which is what separates identity from expression.
+- 4.2.3: not at all. We threw GNM's mouth away until today (gnmnative brings it back), have no inner-mouth reads,
+  and Tess's `tess_head_front_smile.png` (asked for in her brief, delivered) was never used for identity.
+What to do, in order (nothing started; Joe to say):
+1. After gnmnative: per-view JOINTS in the solve (jaw rotation, eyeball rotation from the iris reads, neck) and the
+   anatomical penalty: both need no new detector.
+2. TEETH as anchors without a dense network: teeth are high-contrast and rigid to the skull; the upper incisors'
+   edges / midline / occlusal line from a parsed mouth region in a smile or open-mouth picture, differential against
+   our render. Teeth are also a METRIC anchor (their size varies little), like the iris: that would pin the head's
+   SIZE, which chinread found unread (heads 1-8 % large).
+3. Reference briefs: add a smile showing teeth, jaw open, eyes closed and eyes wide to the neutral set (shared
+   identity + per-view expression then has something to separate), or a short turn-table / talking video.
+4. The dense-landmark network on our own synthetic GNM renders (this file's idea): the read that makes per-view
+   expression identifiable and reads interior relief (chin ball, cheeks). Data generation can now run on the other
+   machines through the offload route.
