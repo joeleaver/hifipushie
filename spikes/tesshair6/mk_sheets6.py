@@ -128,8 +128,8 @@ for e, lab in E:
     b, a = tiles(f"th_{e}b"), tiles(f"th_{e}")
     v = VERDICT.get(e, "")
     rows.append({"label": f"th_{e} = {lab}" + (f"\n{v}" if v else ""), "tiles": [b[0], a[0], b[1], a[1]]})
-build({"title": "The hairline on other humans: BEFORE (ear guessed at the brow + 4 mm) | AFTER (ear found on the head); copies th_E*, regrown both ways",
-       "tile": 600, "label_w": 520,
+build({"title": "Hairline on other humans: BEFORE (ear guessed from the brow) | AFTER (ear found). Copies th_E*",
+       "tile": 600, "label_w": 620,
        "cols": ["BEFORE side", "NEW AFTER side", "BEFORE three-quarter", "NEW AFTER three-quarter"], "rows": rows},
       HR + "th_42_hairline_other_humans.png")
 pl = ex(O + "hl_all.png")
@@ -170,7 +170,7 @@ for k, nm in (("1", "HIGH TIGHT PONYTAIL"), ("5", "TOP KNOT")):
             else:
                 ts.append(None)
     rows.append({"label": nm, "tiles": ts})
-build({"title": "Up-styles: the temple's edge close up (EEVEE): round five (toothed) | now (roots at their own depths, starts across the band)",
+build({"title": "Up-styles, the temple edge close up (EEVEE): round five | now",
        "tile": 700, "label_w": 380,
        "cols": ["ROUND FIVE three-quarter", "ROUND FIVE profile", "NEW three-quarter", "NEW profile"], "rows": rows},
       HR + "th_44_upstyle_temple.png")
