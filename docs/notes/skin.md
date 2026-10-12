@@ -1062,3 +1062,21 @@ NEXT, in the order I would:
    read the lips' a*b* at full weight and their L from the seam / body profile).
 7. Asset: run a full-body export with wrap topology + face shapes on sf_garrett and look at the GLB; fix
    export_check's preview.
+
+## Skin feature tour (2026-10-12, coordinator; spikes/tour/skintour.py)
+Joe on the feature tour (gnm_atlas.md "## Feature tour"): "I think this pattern will also really help you judge the
+texture work, and also set up the textures." `spikes/tour/skintour.py <model>`: per feature and view ONE small image:
+reference crop | the model dressed, same camera / crop / fitted light | 50 % overlay | references projected (the bar);
+files /mnt/data/hifipushie/tour/<model>_skin/. Use it to JUDGE a dressing and to SET UP one (look at the reference
+crop alone, list what the skin must carry there, then read / fit).
+First look, sf_tess front (things the whole sheets hid):
+- eyes: her brows are soft, thinner, tapered, with sparse hairs at the inner end; ours are a thick solid slab with a
+  flat top edge, too brown and saturated. Her upper lid has a crease AND a dark lash line / shadow under it; ours has
+  a pale crease line and no lash-line darkness. Our sclera is too white. Our skin is blotchy (mottled noise) where
+  hers is even, and tan / orange where hers is pale neutral.
+- mouth: her upper lip is a muted mauve-brown, the lower a pale pink with a soft highlight and fine vertical texture,
+  soft borders, a dark line between the lips; ours: the upper lip a flat saturated orange-brown with a hard edge and
+  too pointed a bow, the lower a flat peach, no highlight. Her nostrils are dark openings; ours are pale inside.
+- BUG / caveat: the "references projected" column is NOT pure reference: our own brows and our upper-lip layer are
+  drawn OVER the projection (the projected mouth tile has our orange upper lip). The bar column needs those layers
+  off (or the projection above them) to be the bar.
