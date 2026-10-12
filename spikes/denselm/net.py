@@ -101,12 +101,17 @@ def make(arch: str, n_landmarks: int):
     return NetHM(n_landmarks, layers) if arch.startswith("hm") else Net(n_landmarks, layers)
 
 
-def gnll(out, xy, weight=None):
-    """Wood et al. 2022's loss: sum_i [ log sigma_i^2 + |mu_i - x_i|^2 / (2 sigma_i^2) ] (x, y in [-1, 1])."""
+def gnll(out, xy, weight=None, beta: float = 0.0):
+    """Wood et al. 2022's loss: sum_i [ log sigma_i^2 + |mu_i - x_i|^2 / (2 sigma_i^2) ] (x, y in [-1, 1]).
+    beta > 0: the beta-NLL of Seitzer et al. 2022: each landmark's term x its own (detached) sigma^(2 beta), so a
+    landmark the network is unsure of still pulls on its position (the plain NLL's pull falls with 1 / sigma^2: the
+    mean fit stalls early); the optimum, and so the calibration, is the same."""
     o = out.view(out.shape[0], -1, 3)
     ls = o[..., 2].clamp(-7.0, 3.0)
     d2 = ((o[..., :2] - xy) ** 2).sum(-1)
     l = 2 * ls + d2 / (2 * torch.exp(2 * ls))
+    if beta > 0:
+        l = l * torch.exp(2 * beta * ls).detach()
     if weight is not None:
         l = l * weight
     return l.mean()

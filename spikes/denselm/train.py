@@ -10,7 +10,7 @@ their backgrounds and their damage (gen.py renders clean heads on a transparent 
   clothes     the bare bust below a neckline recoloured as cloth on 70 % (the stage is bare skin)
   colour      brightness, contrast, gamma, saturation, hue, grey on 10 %
   damage      downscale to 48-256 px and back, blur, sensor noise, JPEG 25-95, a painterly filter on 12 %
-Loss: Wood et al. 2022's Gaussian NLL over (x, y, log sigma) per landmark.
+Loss: Wood et al. 2022's Gaussian NLL over (x, y, log sigma) per landmark (beta=0), by default as beta-NLL (beta=0.5).
 Writes model.pt (TorchScript, CPU, takes 0..1 RGB NCHW at 256), weights.pth, log.json, val.npz (predictions on the
 held-out dressings: clean crops)."""
 import io
@@ -184,6 +184,7 @@ class Data(torch.utils.data.Dataset):
         self.P, self.idx, self.train, self.seed = P, idx, train, seed
         self.mirror, self.lm68 = L["mirror"], L["lm68"]
         self.epoch = 0
+        self.strength = 1.0        # the augmentation's strength, 0..1 (main ramps it up: see `ramp`)
 
     def __len__(self):
         return len(self.idx)
@@ -194,11 +195,12 @@ class Data(torch.utils.data.Dataset):
         rgba = np.asarray(self.P["img"][i], np.float32)
         xy = self.P["xy"][i].astype(np.float64)
         c, s0 = face_box(xy[self.lm68])
+        a_ = float(self.strength)
         if self.train:
-            s = s0 * rng.uniform(0.8, 1.35)
-            c = c + rng.uniform(-0.12, 0.12, 2) * s
-            th = np.radians(rng.uniform(-25, 25)) if rng.random() < 0.7 else 0.0
-            flip = rng.random() < 0.5
+            s = s0 * rng.uniform(1.1 - 0.3 * a_, 1.1 + 0.25 * a_)
+            c = c + rng.uniform(-0.12, 0.12, 2) * s * a_
+            th = np.radians(rng.uniform(-25, 25)) * a_ if rng.random() < 0.7 else 0.0
+            flip = rng.random() < 0.5 * min(1.0, 2 * a_)
             if rng.random() < 0.7:
                 rgba = clothe(rng, rgba, xy, self.lm68)
         else:
@@ -218,9 +220,9 @@ class Data(torch.utils.data.Dataset):
                                                                     Image.BICUBIC)
         fg = np.asarray(im, np.float32)
         al = fg[..., 3:4] / 255.0
-        bg = background(rng) if self.train else np.full((SIZE, SIZE, 3), 128.0, np.float32)
+        bg = background(rng) if (self.train and rng.random() < 0.3 + 0.7 * a_) else np.full((SIZE, SIZE, 3), 128.0, np.float32)
         img = Image.fromarray(np.clip(fg[..., :3] + bg * (1 - al), 0, 255).astype(np.uint8))
-        if self.train:
+        if self.train and rng.random() < a_:
             img = damage(rng, img)
         x = (np.asarray(img, np.float32) / 255.0 - MEAN) / STD
         # labels: source -> output pixel
@@ -281,6 +283,9 @@ def main():
     kw = dict(a.split("=", 1) for a in sys.argv[3:])
     epochs, bs, lr = int(kw.get("epochs", 60)), int(kw.get("bs", 128)), float(kw.get("lr", 1e-3))
     arch, val, workers = kw.get("arch", "18"), float(kw.get("val", 0.08)), int(kw.get("workers", 8))
+    beta = float(kw.get("beta", 0.5))
+    ramp = float(kw.get("ramp", 0.25))      # the augmentation comes in over this share of the epochs (from scratch, under the
+    # full augmentation from step 0, the network sat at the mean face for hundreds of steps: overfit.py)
     limit, seed = (int(kw["limit"]) if kw.get("limit") else None), int(kw.get("seed", 0))
     out.mkdir(parents=True, exist_ok=True)
     L = json.loads((root / "landmarks.json").read_text()) if (root / "landmarks.json").exists() else None
@@ -316,6 +321,7 @@ def main():
     log = []
     for ep in range(epochs):
         ds.epoch = ep
+        ds.strength = min(1.0, (ep + 1) / max(ramp * epochs, 1e-9)) if ramp > 0 else 1.0
         model.train()
         t1, tot, nb = time.time(), 0.0, 0
         for x, t, vis, mmpx, i in dl:
@@ -324,7 +330,7 @@ def main():
                 x = x.to(memory_format=torch.channels_last)
             with torch.autocast(dev.type, enabled=dev.type == "cuda"):
                 o = model(x)
-            loss = netmod.gnll(o.float(), t)
+            loss = netmod.gnll(o.float(), t, beta=beta)
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
