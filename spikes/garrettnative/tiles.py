@@ -2,7 +2,7 @@
 of a model, one small file per feature and view, through ITS OWN fitted cameras, for looking at one at a time:
   $G/out/<model>/<sub>/<feature>_v<i>.png (+ <feature>_v<i>_ref.png: the painting's own crop)
 features (hair off): eyes, eyeR, eyeL, nose, mouth, chin, mouth_chin, chin_jaw, brow_forehead, face
-with hair=1 (hair on): head_v0, head_v1 (the whole head through the fitted cameras) and the unseen angles profile,
+[views=0,1] [vlight=<view>] [suffix=..]; with hair=1 (hair on): head_v0, head_v1 (the whole head through the fitted cameras) and the unseen angles profile,
 three_quarter_other (no reference).
 boxes=<model>: the crop boxes (picture pixels) of ANOTHER model's landmarks, so two models' tiles are the same crop of
 the same picture. light=<model>: that model's fitted light at the picture's measured exposure (skin_read.photo_light:
@@ -57,13 +57,14 @@ def main():
     feats = [f for f in kw.get("feats", "eyes,eyeR,eyeL,nose,mouth,chin,mouth_chin,chin_jaw,brow_forehead,face").split(",") if f]
     hair_on = kw.get("hair", "1") == "1"
     rj = bi._refs(m)
-    VI = list(range(len(rj["views"])))
+    VI = [int(x) for x in kw["views"].split(",")] if kw.get("views") else list(range(len(rj["views"])))
     B = boxes_of(kw.get("boxes", m), feats + ["head"])
+    sfx = kw.get("suffix", "")
     lm = kw.get("light", m)
     spec = store.load(m)
     for vi in VI:
         cam = rj["cameras"][vi]
-        light = skin_read.photo_light(lm, vi)
+        light = skin_read.photo_light(lm, int(kw.get("vlight", vi)))   # vlight=0: the front picture's light on every view
         print(f"view {vi}: light of {lm}, exposure {light.get('exposure'):+.2f} EV (measured: {light.get('measured')})")
         fr = [stage.fitted_frame(cam, B[(f, vi)], f"{f}_v{vi}") for f in feats]
         with resources.heavy(f"garrettnative tiles {m} v{vi}", gb=6):
@@ -74,8 +75,8 @@ def main():
                     hf += stage.view_frames(spec, names=("profile_right", "three_quarter_other"))
                 own.update(stage.shoot(m, hf, light, size=T, hair_on=True))
         for k, im in own.items():
-            im.convert("RGB").resize((T, T), Image.LANCZOS).save(f"{out}/{k}.png")
-            print(f"{out}/{k}.png")
+            im.convert("RGB").resize((T, T), Image.LANCZOS).save(f"{out}/{k}{sfx}.png")
+            print(f"{out}/{k}{sfx}.png")
         img = Image.open(rj["views"][vi]["image"]).convert("RGB")
         for f in feats + ["head"]:
             img.crop(tuple(int(round(x)) for x in B[(f, vi)])).resize((T, T), Image.LANCZOS).save(f"{out}/{f}_v{vi}_ref.png")

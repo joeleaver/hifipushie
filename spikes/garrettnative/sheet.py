@@ -32,7 +32,7 @@ def clay(m, col):
 
 rows = [
     row([("REFERENCE (painting 1)", t(new, "head_v0_ref")), ("GNM-NATIVE garrett_n1", t(new, "head_v0")), ("CURRENT garrett_a1", t(old, "head_v0"))], T),
-    row([("REFERENCE (painting 2)", t(new, "head_v1_ref")), ("three-quarter", t(new, "head_v1")), ("", t(old, "head_v1"))], T),
+    row([("REFERENCE (painting 2)", t(new, "head_v1_ref")), ("three-quarter (front painting's light)", t(new, "head_v1_fl")), ("", t(old, "head_v1_fl"))], T),
     row([("NO REFERENCE", None), ("profile (unseen angle)", t(new, "profile_right")), ("", t(old, "profile_right"))], T),
     row([("eyes", t(new, "eyes_v0_ref")), ("", t(new, "eyes_v0")), ("", t(old, "eyes_v0"))], T),
     row([("mouth and chin", t(new, "mouth_chin_v0_ref")), ("", t(new, "mouth_chin_v0")), ("", t(old, "mouth_chin_v0"))], T),
