@@ -5270,3 +5270,31 @@ test_blockin, test_toolsets pass.
   report's "unread" list matters.
 - The machine: three agents ran it to load 35 with the swap full. Light jobs go through /mnt/data/hifipushie/bin/slot
   (spikes/chinread/runl.sh), renders through bin/capped + resources.heavy (run.sh); q.sh runs a queue file one job at a time.
+
+## Feature tour (2026-10-12, coordinator; spikes/tour/tour.py)
+Joe asked "when we 'read' a face, are we zooming and cropping each feature separately?" and, on the wide contact
+sheets: "that much detail is going to overwhelm your vision model". True on both counts: only the eye ruler and lip
+read zoom; the judging was done on whole sheets (a 6240 px sheet viewed at 2000 px), and `blockin.focus` (Joe,
+2026-10-10: focus on each feature, then zoom back out) fell out of use when the joint solve replaced the hand rounds.
+That is how Garrett's NOTCHED CHIN (a shallow cleft: a midline dip in the chin's lower border, a lobe each side) was
+missed until Joe pointed at it.
+- `spikes/tour/tour.py <model>`: one SMALL image per feature and view (reference crop | clay under the photo's light |
+  50 % overlay | clay under raking light; 4 x 480 px), features eyes, brow_forehead, nose, mouth, chin (new, tight),
+  chin_jaw, cheeks, ears; files in /mnt/data/hifipushie/tour/<model>/. RULE: after a solve, look at each tile ALONE and
+  write per feature what differs and WHAT IS HERE THAT THE MODEL HAS NO PARAMETER FOR. Sheets for Joe are a separate
+  product: few columns, large labels; never judge from them yourself.
+- First tour, gc_C06 (the held-out Garrett, good set):
+  - chin, front: he has a notch in the lower border on the midline and two soft lobes, framed by marionette grooves
+    with a jowl line out to the jaw; ours is ONE smooth pad, wider and flatter, no notch, no grooves.
+  - chin, 3/4: his chin is a distinct ball stepping forward under a deep mentolabial groove; ours has a shallow groove
+    and the chin merges into the jaw; our jaw's underside hangs lower and fuller.
+  - mouth: his upper lip is thin with a long flat philtrum and strong nasolabial folds from the nose wings; ours has a
+    fuller lower lip, a mouth line that reads slightly parted, corners turned down more, no folds.
+  - nose, side: dorsum and tip line up well; our nostril rim is a hard bright ellipse (the nostril opening reads as a
+    cut-out), his alar crease and the wing's fullness are missing.
+  - eyes: he has heavy lateral hooding, bags with a tear trough, crow's feet, forehead and glabella lines; ours has dark
+    sunken sockets (eye depth), no lid fold, a pinched glabella (his frown baked into the shape), the brow strip too
+    high and short at the tail.
+  Soft-tissue list for the fold layer (no GNM parameter): chin pad as two lobes + midline notch, marionette + jowl,
+  nasolabial, alar crease, lateral hooding, bags / tear trough. Shape list for the solve: eye depth too deep, glabella
+  pinched (expression), lower lip too full, jaw underside too low in the 3/4.
