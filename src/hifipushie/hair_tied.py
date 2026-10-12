@@ -61,6 +61,14 @@ them: bunches):
                             `strands`: {dial: value} over the pieces' own dials (hair_tied.FRAME_STRANDS)
    "band": 0.006}           the tie itself: a ring this thick round the tail's start (0 = none)
 
+SWEPT-BACK HAIR IS NOT MADE HERE ANY MORE (2026-10-11): ask for it as a style, `groom.tied` (hair_flow.style; the tool
+tie_hair), which fills a tie with hair_flow's construction: gather {"mode": "flow", "spacing", "body", "puff",
+"root_lift", "sag", "part_push", "part_length", "overhang", "ears", "above"} (a flow field from roots all over the
+scalp), tail {"hang": true, "spread"} (locks that fall, on the body's collider) and "escaped": {"count", "where",
+"length", "hairs", "curve", "wave", "wavelength", "strands"} (pieces of single hairs). The rows / curtain / frame /
+core-line tail below stay the default of a raw tie so older models regrow as they were; the curtain lays the front
+ACROSS the head (Joe: "flat across her head instead of swept back").
+
 Locks on the head are ordinary [az, el, h] locks; the tail and the escaped strands leave the head, so they are
 "space": "xyz" locks (metres from the head centre) with `free` 1 and, for the tail, `core` (its own axis: the cards'
 outward side and bent normals come from it, not from the head centre).

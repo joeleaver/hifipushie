@@ -2631,8 +2631,12 @@ def look(name: str, views=("front", "three_quarter", "side", "back", "top"), siz
                                                           cam=dict(zip(mnames, [rc for _, rc, _ in rvs])).get(f["name"]))
         look.gate = silhouette_gate(sc, pts)
         look.folds = folds(sc, j["hair"].get("locks") or []) if j["hair"] else {}
-        look.root_ends = root_ends(sc, groom_params(spec), j["hair"].get("locks") or []) if j["hair"] else {}
-        look.fins = fins(sc, groom_params(spec), j["hair"].get("locks") or []) if j["hair"] else {}
+        # (tied hair's own locks are strand guides, never a sculpted surface: a tail "stands 16 cm over the layer",
+        # every gather lock "rises out of it": 226 fins and 60 blunt ends on a good ponytail told the reader nothing)
+        solid = [k_ for k_ in (j["hair"].get("locks") or [])
+                 if not re.fullmatch(r"t\d*(g\d+_\d+|t\d+|e\d+_\d+|s\d+|f\d+|band)", str(k_.get("name", "")))] if j["hair"] else []
+        look.root_ends = root_ends(sc, groom_params(spec), solid) if solid else {}
+        look.fins = fins(sc, groom_params(spec), solid) if solid else {}
         imgs = [Image.open(f["out"]).convert("RGB") for f in frames]
         th = Image.open(thumb["out"]).convert("RGB")
     t_render = time.time() - t
