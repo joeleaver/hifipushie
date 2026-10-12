@@ -682,7 +682,10 @@ PRIOR_TONE = 6.0         # x PRIOR for the tone's three numbers: melanin / blood
                          # multiplies the tone's blood (lips, lids, flush) went inert, the lips brown from melanin alone
 SHADE_SIGMA_PLAIN = 0.05  # ... on the plain zones (the lit skin the exposure is levelled on)
 SHADE_SIGMA_BEARD = 0.05  # ... where a beard may be laid: its shadow IS a lightness (little colour of its own)
-SHADE_MAX = 1.0          # log: no region is more than this in shade
+SHADE_MAX = 0.7          # log: no region is more than this in shade (about -20 L*)
+EXPOSURE_SIGMA = 0.2     # log: the free exposure without a white (the read is already levelled on the plain skin, and the
+                         # model's plain L* is held to the prior: what is left to it is small. At 0.6 it traded against shade:
+                         # on the synthetic F2 head exposure went to x 0.40 with every other region "26-32 L in shade")
 SHADE_SAY = 0.1          # log: shade from here on is named in the reply
 FACE_BOUND = 3.0         # L*: the WHOLE face's mean albedo (stubble apart) may leave the prior's by this much
 ZONE_BOUND = (4.0, 5.0)  # L*, a*b*: a zone's offset from the face's mean may leave the prior's by this much (pigment that
@@ -1175,7 +1178,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     Wp = Wp / max(Wp.sum(), 1e-9)
     white = c.anchor.get("lightness") == "white" and c.anchor.get("exposure") is not None
     e_mid = float(c.anchor["exposure"]) if white else 0.0
-    e_sig = WHITE_SIGMA if white else 0.6
+    e_sig = WHITE_SIGMA if white else EXPOSURE_SIGMA
     L_sig, L_bound = (TONE_SIGMA_WHITE, TONE_BOUND_WHITE) if white else (TONE_SIGMA, TONE_BOUND)
 
     # THE WHOLE FACE (skinfolds2): every skin zone's trusted pixels, stubble apart. Holding the PLAIN zones alone let
