@@ -766,11 +766,18 @@ def regions(c: Context) -> dict:
 LIP_YAW = 50.0          # deg: views turned further do not give the detector's lip outline
 
 
-def lip_polygons(P68) -> dict:
-    """{"lip_upper", "lip_lower": (n, 2) polygons} of a picture's own lips from its 68 detector points (outer contour
-    48-59, inner 60-67)."""
-    P68 = np.asarray(P68, float)[:, :2]
-    return {"lip_upper": np.r_[P68[48:55], P68[64:59:-1]], "lip_lower": np.r_[P68[54:60], P68[48:49], P68[60:61], P68[67:63:-1]]}
+_MP_LIPS = {"outer_up": [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291], "outer_lo": [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291],
+            "inner_up": [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308], "inner_lo": [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308]}
+
+
+def lip_polygons(P) -> dict:
+    """{"lip_upper", "lip_lower": (n, 2) polygons} of a picture's own lips from its detector points: MediaPipe's face
+    mesh (468+ points: its own lip contours) or the 68 landmarks (outer contour 48-59, inner 60-67)."""
+    P = np.asarray(P, float)[:, :2]
+    if len(P) >= 468:
+        m = _MP_LIPS
+        return {"lip_upper": np.r_[P[m["outer_up"]], P[m["inner_up"][::-1]]], "lip_lower": np.r_[P[m["outer_lo"]], P[m["inner_lo"][::-1]]]}
+    return {"lip_upper": np.r_[P[48:55], P[64:59:-1]], "lip_lower": np.r_[P[54:60], P[48:49], P[60:61], P[67:63:-1]]}
 
 
 def _lip_read(c: Context) -> dict:
@@ -1252,9 +1259,10 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     if proto:
         xi[len(names):np_] = 0.5
     sol, cost = None, np.inf
+    c_start = 0.5 * float((resid(xi) ** 2).sum())
     for _ in range(6):   # (the solve stops early on its step tolerance in this bounded, curved problem: restart it)
         s_ = least_squares(resid, xi, bounds=(lo, hi), diff_step=0.02, x_scale=(hi - lo), max_nfev=30, xtol=1e-5, ftol=1e-6)
-        if sol is not None and s_.cost > cost * 0.985:
+        if sol is not None and s_.cost > cost - max(0.03 * (c_start - cost), 0.02):   # (the gain against what CAN change: with lips alone free the other regions hold 99 % of the cost, and 1.5 % of the total never came)
             sol = s_ if s_.cost < cost else sol
             break
         sol, cost = s_, s_.cost
