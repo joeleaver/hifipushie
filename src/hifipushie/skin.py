@@ -23,7 +23,7 @@ spec["skin"] = {
   "zones": {layer: strength},     per-layer strength of the built-in colour zones (see ZONE_LAYERS), 0 turns one off
   "lips": {"blood": 1, "melanin": 1, "roughness": 0.36, "dry": 0, "gradient": 1 (darker toward the wet line and the
            corners, a lighter lower-lip body; 0 = one flat colour), "border": 1.5 (mm: the vermilion border's
-           softness), "lower": {"blood": 1, "melanin": 1} (the lower
+           softness), "strength": 1 (0.2..2: x how much of the vermilion is the lips' own colour; a man's is 0.65 by default), "lower": {"blood": 1, "melanin": 1} (the lower
            lip's own colour, x the lips')}
   "features": {"freckles", "moles", "age_spots", "blemishes", "veins", "flush", "sunburn", "tan"}  (see FEATURES)
   "wrinkles": {"amount": null (from age) | 0..1, "<region>": 0..1}                                 (see WRINKLES)
@@ -534,12 +534,13 @@ def params(spec: dict) -> dict:
         raise SpecError(f"skin zones: unknown {sorted(bad)} (have {', '.join(ZONE_LAYERS)})")
     p["zones"] = {**ZONE_LAYERS, **{k: float(v) for k, v in z.items()}}
     lips = sk.get("lips") or {}
-    bad = set(lips) - {"blood", "melanin", "roughness", "dry", "lower", "gradient", "border"}
+    bad = set(lips) - {"blood", "melanin", "roughness", "dry", "lower", "gradient", "border", "strength"}
     low = lips.get("lower") or {}
     if bad or not isinstance(low, dict) or set(low) - {"blood", "melanin"}:
-        raise SpecError(f"skin lips: unknown keys {sorted(bad)} (have blood, melanin, roughness, dry, gradient, border, lower: {{blood, melanin}})")
+        raise SpecError(f"skin lips: unknown keys {sorted(bad)} (have blood, melanin, roughness, dry, gradient, border, strength, lower: {{blood, melanin}})")
     p["lips"] = {"blood": float(lips.get("blood", 1.0)), "melanin": float(lips.get("melanin", 1.0)),
                  "roughness": float(lips.get("roughness", 0.36)), "dry": float(lips.get("dry", 0.0)),
+                 "strength": float(np.clip(lips.get("strength", 1.0), 0.2, 2.0)),
                  "gradient": float(np.clip(lips.get("gradient", 1.0), 0, 2.5)), "border": float(np.clip(lips.get("border", 1.5), 0.3, 4.0)),
                  "lower": {"blood": float(low.get("blood", 1.0)), "melanin": float(low.get("melanin", 1.0))}}
     sh = sk.get("shading") or {}
@@ -758,8 +759,16 @@ def _build(spec: dict, J: dict) -> dict:
         # millimetre or two of mixed skin, the lower lip's more; at 1 mm both lips read as a cut-out fill (skinfolds)
         bg, bgl = lp["border"] / 1.2, 1.3 * lp["border"] / 1.2
         gr = lp["gradient"]
+        # (tried, skinfolds: a `venous` control, less oxygenated blood, to darken lips without melanin's brown: 0.62 ->
+        # 0.25 moved a lip 2 L and took 6 a* off: not a lever. What darkens a lip in this model is its melanin, and
+        # lips.melanin is x the TONE's: on a very fair tone, 0.04, it needs 10-20 to reach a dark upper lip)
+        ox = lambda o: o  # noqa: E731
+        # lips.strength (skinfolds): how much of the vermilion is the lips' own colour (x the layers' opacity: 0.85, a
+        # man's 0.65 by default). THE "STUCK" LIPS: at 0.65 a third of a man's lip is his skin's colour whatever
+        # lips.blood / melanin say (blood saturates at 3): Garrett's upper lip stayed 11 L lighter than the painting's
+        lop = round(float(np.clip((0.85 - 0.2 * p["masc"]) * lp["strength"], 0.0, 1.0)), 3)
         out["skin:lips_upper"] = {"part": part, "_pre": True, "color": T(melanin=lm * 1.15, blood=6.0 * lp["blood"], epidermis=le,
-                                                           oxygenation=0.62), "opacity": round(0.85 - 0.2 * p["masc"], 3), "roughness": lp["roughness"] + 0.04,
+                                                           oxygenation=ox(0.62)), "opacity": lop, "roughness": lp["roughness"] + 0.04,
                                   "mask": _z("lips", grow=bg)}  # (all the vermilion: the lower layer paints over its own
         # part next. Drawn as lip_upper (border -> the contact ring) it missed ~2/3 of the upper vermilion: seen from the
         # front the contact ring lies ABOVE the lip's own lower front, so the face's pale layers showed there and
@@ -770,8 +779,8 @@ def _build(spec: dict, J: dict) -> dict:
         # than the upper in the albedo: an orange-red flat lower lip that hid its own shading (gnmdetail2)
         out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * LOWER_LIP["melanin"] * lp["lower"]["melanin"],
                                                                    blood=LOWER_LIP["blood"] * lp["blood"] * lp["lower"]["blood"],
-                                                                   epidermis=le + LOWER_LIP["epidermis"], oxygenation=LOWER_LIP["oxygenation"]),
-                                  "opacity": round(0.85 - 0.2 * p["masc"], 3), "roughness": lp["roughness"], "mask": _z("lip_lower", grow=bgl)}
+                                                                   epidermis=le + LOWER_LIP["epidermis"], oxygenation=ox(LOWER_LIP["oxygenation"])),
+                                  "opacity": lop, "roughness": lp["roughness"], "mask": _z("lip_lower", grow=bgl)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
         out["skin:lip_border"] = {"part": part, "_pre": True, "color": T(melanin=0.7, blood=0.8), "opacity": round(0.22 * (1 - 0.6 * dark), 3),
                                   "mask": [{"zone": {"name": "lips", "grow": 1.6}},

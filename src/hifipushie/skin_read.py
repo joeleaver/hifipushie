@@ -771,13 +771,15 @@ BOUNDS = {"tone.melanin": (0.0, 1.0), "tone.blood": (0.0, 1.0), "tone.undertone"
           "zones.forehead_yellow": (0.0, 3.0), "zones.midface_red": (0.0, 3.0), "zones.nose_red": (0.0, 3.0),
           "zones.perioral_red": (0.0, 3.0), "zones.lower_cool": (0.0, 2.0), "zones.under_eye": (0.0, 2.5),
           "zones.eyelids": (0.0, 2.5), "zones.periorbital": (0.0, 1.5), "features.flush": (0.0, 1.5),
-          "lips.blood": (0.15, 3.0), "lips.melanin": (0.2, 9.0), "lips.lower.blood": (0.4, 2.5), "lips.lower.melanin": (0.4, 2.5),
+          # (lips.melanin is x the TONE's melanin: on a very fair tone a dark lip needs 10-20. At 9, and lower.melanin no
+          # lower than 0.4, Garrett's upper lip stayed 11 L lighter than the painting's: the "stuck" lips. skinfolds)
+          "lips.blood": (0.15, 3.0), "lips.melanin": (0.2, 30.0), "lips.lower.blood": (0.3, 2.5), "lips.lower.melanin": (0.1, 2.5), "lips.strength": (0.4, 1.6),
           }
 GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
           "zones": ("zones.forehead_yellow", "zones.midface_red", "zones.nose_red", "zones.perioral_red", "zones.lower_cool",
                     "features.flush"),
           "eyes": ("zones.under_eye", "zones.eyelids", "zones.periorbital"),
-          "lips": ("lips.blood", "lips.melanin", "lips.lower.blood", "lips.lower.melanin"),
+          "lips": ("lips.blood", "lips.melanin", "lips.strength", "lips.lower.blood", "lips.lower.melanin"),
           "stubble": (), "brows": (), "freckles": (), "eyeballs": (), "folds": ()}
 # ("eyeballs", the iris colour, is NOT a default: on Tess's photographs it turned grey-green irises orange-brown (the
 # picture's sclera sits in lid shadow, so "against the sclera" inflates the iris; right on synthetic pictures only)
@@ -1189,6 +1191,9 @@ FOLD_SHARE = 0.3       # ... along at least this share of the path's visible sta
 FOLD_MAX = 0.42        # log luminance: deeper than this is not a crease of skin
 FOLD_CONF = 0.5        # a fold is laid only from this confidence up
 BILATERAL = ("lid_fold",)   # folds every face has on both sides: one side's read stands in for the other
+PLACE_MM = 0.7         # mm a picture pixel: coarser, a fold's PLACE across its path is not read (it is laid on its landmark
+                       # path, whole): on Garrett's paintings (1.1-1.3 mm) the shifts came out +-5 mm from station to station and the
+                       # second round's moves ran to -8 mm
 FOLD_MOVE = 1.5        # mm: a fold of ours is moved only when the picture's lies this far from it (median)
 FOLD_STEP = 0.25       # mm between a profile's samples
 # what an amount-1 fold of ours reads as (median valley depth, log luminance, under the pictures' fitted lights):
@@ -1203,6 +1208,10 @@ FOLD_REF = {"nasolabial": 0.13, "marionette": 0.07, "mouth_corner": 0.095, "ment
 # minus side's, the picture's over OURS (our head's own shading across the path cancels), signed by the fitted light:
 # with the light from the plus side the wall under the roll is in shade (step < 0), from the minus side it is lit.
 STEP_T = 0.045         # log luminance: a step this much over ours, with the light's sign, is a fold there
+STEP_LINE = 1.0        # mm: the step's place along a fold may wander this much (rms about its median-filtered course)
+STEP_RUN = 10.0        # mm: ... and it runs on at least this far
+STEP_MIN = 0.3         # the step per unit of cross light below which it is our light's error, not a fold
+STEP_MAX = 1.0         # a fold read by its step alone is laid at most this strong (the step follows the light's angle)
 STEP_CROSS = 0.25      # the fitted light must lie this far across the path (|l . across|) for the step to mean a fold
 # what an amount-1 fold of ours reads as a step per unit of cross light (|l . across|); calibrated like FOLD_REF
 # (case A: nasolabial 0.46 / 0.32, mouth_corner 0.15 / 0.19, mentolabial 0.28, tear_trough 0.16 / 0.71, lid_fold 0.60 /
@@ -1218,6 +1227,7 @@ LID_PRIOR = {"amount": 0.6, "show": (3.3, 2.0), "nominal": 3.45}   # a lid fold 
 # norms (INFERRED, said so): the platform show over the lashes, women / men (Price et al. 2009, lidfold.NORMS), against
 # the nominal path's own height (0.062 x the pupils' distance); its roll (the hooding) grows with age
 LID_COLS = (0.2, 0.35, 0.5, 0.65, 0.8)
+LID_REACH = 8.5        # mm over the lashes the line is searched (further up is the brow's own shadow: 11-13 mm on a smooth head)
 LID_DARK = 0.08        # read_lid's darkness (0..1): a line is there
 LID_REF = 0.22         # what an amount-1 lid_fold of ours adds to that darkness (calibrated)
 LEGACY = {"nasolabial": "nasolabial", "marionette": "marionette", "glabella": "glabella"}   # skin.wrinkles' own lines
@@ -1312,8 +1322,20 @@ def _fold_view(f: dict, q: dict, fd: dict, ldir=None) -> dict | None:
         sgn = -np.sign(cross)
         V = S[:, inner] * sgn[:, None]
         k = np.nanargmax(V, 1)
-        out["step"] = np.where(valid & (np.abs(cross) >= STEP_CROSS), np.maximum(V[np.arange(len(P)), k], 0.0), 0.0)
+        # (the largest step of the light's sign within the search is positive for any noise: it counts only OVER the
+        # largest step of the other sign. First version without this: on Garrett's two paintings every fold "stepped"
+        # along 92-100 % of its path, the line jumping +-4 mm from station to station)
+        best = V[np.arange(len(P)), k] - np.nanmax(-V, 1)
+        # ... and the picture itself must step that way there, not only its difference to ours
+        Sp = np.full_like(D, np.nan)
+        Bp = box(pp)
+        Sp[:, off:-off] = Bp[:, 2 * off:] - Bp[:, :-2 * off]
+        own = (Sp[:, inner] * sgn[:, None])[np.arange(len(P)), k]
         out["step_u"] = u[inner][k]
+        # (a step on the window's edge is the edge of something beside the path: on Tess both tear troughs "stepped" at
+        # +5.0 mm, her lower lid's margin and lashes)
+        edge = np.abs(out["step_u"]) > fd["search"] - 1.5
+        out["step"] = np.where(valid & ~edge & (np.abs(cross) >= STEP_CROSS) & (own >= 0.5 * STEP_T), np.maximum(best, 0.0), 0.0)
         out["cross"] = np.abs(cross)
     out["valid"] = valid
     out["picture"], out["ours"] = out["picture"] * valid, out["ours"] * valid
@@ -1385,6 +1407,16 @@ def fold_read(c: Context) -> dict:
                 can = val & (r_["cross"] >= STEP_CROSS)
                 shit = can & (r_["step"] >= STEP_T)
                 srun = _run(shit)
+                if srun is not None:
+                    # a fold's step is a LINE: its place moves smoothly from station to station (STEP_LINE mm rms about
+                    # its own smoothed course), and it runs on for STEP_RUN mm
+                    from scipy.ndimage import median_filter as _mf
+                    seg = np.arange(srun[0], srun[1] + 1)
+                    seg = seg[shit[seg]]
+                    us = r_["step_u"][seg]
+                    rough = float(np.sqrt(np.mean((us - _mf(us, 5, mode="nearest")) ** 2))) if len(us) >= 5 else 9.0
+                    if rough > STEP_LINE or len(seg) * sf.STATION * 1000 < STEP_RUN:
+                        srun, shit = None, np.zeros(len(val), bool)
                 if can.sum() >= 4:
                     ssel = np.zeros(len(val), bool)
                     if srun:
@@ -1414,7 +1446,11 @@ def fold_read(c: Context) -> dict:
             vi, r_, w, run = best
             res["present"] = bool(stat["share"] >= FOLD_SHARE and stat["diff"] >= FOLD_T + FOLD_OWN * stat["ours"] and stat["picture"] >= FOLD_T and run is not None)
             res["by"] = "valley" if res["present"] else None
-            res["step_present"] = bool(sbest is not None and stat["step_share"] >= FOLD_SHARE and stat["step"] * max(stat["cross"], 1e-6) >= STEP_T)
+            # (only folds that ARE steps, the ones with a roll; and STEP_MIN per unit of cross light: on a smooth young
+            # head under an unknown light the mentolabial groove and both tear troughs "stepped" at 0.10-0.14, our fitted
+            # light standing in for theirs; real folds at amount 1 step at 0.3-0.7. foldval case B)
+            res["step_present"] = bool(sbest is not None and sf.RELIEF[name].get("roll") and stat["step_share"] >= FOLD_SHARE
+                                       and stat["step"] >= STEP_MIN and stat["step"] * max(stat["cross"], 1e-6) >= STEP_T)
             res["absent_in_picture"] = bool(stat["excess"] >= FOLD_T + FOLD_OWN * stat["picture"] and stat["ours"] >= FOLD_T)
             t = q["t"]
             if run is not None:
@@ -1432,7 +1468,11 @@ def fold_read(c: Context) -> dict:
                     du = median_filter(r_["picture_u"] - r_["ours_u"], 7, mode="nearest")
                     if abs(float(np.median(du[both]))) >= FOLD_MOVE:   # (the null moves +-1 mm: less is not a difference)
                         res["move"] = [round(float(x), 2) for x in np.interp(np.linspace(0, 1, sf.N_SHIFT), t[both], du[both])]
-            res["confidence"] = round(float(np.clip(stat["diff"] / (2.5 * FOLD_T), 0, 1) * np.clip(stat["share"] / 0.7, 0, 1)), 2)
+            res["confidence"] = round(float(np.clip(stat["diff"] / (2.5 * FOLD_T), 0, 1) * np.clip(stat["share"] / 0.5, 0, 1)), 2)
+            if "shift" in res:   # a fold's line is smooth: a parabola through the stations' reads, inside the search
+                ts_ = np.linspace(0, 1, len(res["shift"]))
+                co = np.polyfit(ts_, res["shift"], 2)
+                res["shift"] = [round(float(x), 2) for x in np.clip(np.polyval(co, ts_), -(fd["search"] - 1.0), fd["search"] - 1.0)]
             if res["step_present"] and not res["present"]:
                 # a side-lit fold: no valley, a step. Placed at the step's own line (the steep wall under the roll)
                 vi, r_, _, srun, shit = sbest
@@ -1444,6 +1484,10 @@ def fold_read(c: Context) -> dict:
                     uu = median_filter(r_["step_u"], 7, mode="nearest")
                     res["shift"] = [round(float(x), 2) for x in np.interp(np.linspace(0, 1, sf.N_SHIFT), t[shit], uu[shit])]
                 res["confidence"] = round(float(np.clip(stat["step"] * stat["cross"] / (2.0 * STEP_T), 0, 1) * np.clip(stat["step_share"] / 0.7, 0, 1)), 2)
+            if min(native[v_] for v_ in res["views"]) > PLACE_MM:
+                for k_ in ("shift", "move", "extent"):
+                    res.pop(k_, None)
+                res["placed"] = "on its landmark path (the pictures are too coarse to place it)"
             if name == "lid_fold" and lash.get(sd) is not None:
                 # the lash-line read PLACES the fold (the picture's own line over its own lashes); it is there when
                 # either read says so, as strong as the stronger says
@@ -1455,6 +1499,8 @@ def fold_read(c: Context) -> dict:
                     res["by"] = "lash line" + ("" if lq["present"] else f" (placed), {res.get('by')} (strength)")
                     res["present"] = True
                     res["shift"], res["extent"] = lq["shift"], lq["extent"]
+                    if float(res["amount"]) >= 1.49:
+                        res["placed"] = "at its strongest (the picture's fold line is darker than this control makes it)"
                     res["confidence"] = max(res["confidence"], lq["confidence"])
                     res.pop("move", None)
                     if lq["present"]:
@@ -1490,11 +1536,11 @@ def _lid_read(c: Context, nominal: dict) -> dict:
             return {}
         P = np.asarray(P, float)[:, :2]
         mm = float(f.get("mm_native", f["mm"]))
-        cols_p = lidfold.read_lid(img, P, mmpx=mm, fractions=LID_COLS)
+        cols_p = lidfold.read_lid(img, P, mmpx=mm, fractions=LID_COLS, reach_mm=LID_REACH)
         # ours: the render through the same camera, the same detector points carried into its crop
         k = N / (f["box"][2] - f["box"][0])
         ours = Image.fromarray(np.round(255 * np.clip(_srgb(f["R"]), 0, 1)).astype(np.uint8))
-        cols_o = lidfold.read_lid(ours, (P - np.asarray(f["box"][:2])) * k, mmpx=f["mm"], fractions=LID_COLS)
+        cols_o = lidfold.read_lid(ours, (P - np.asarray(f["box"][:2])) * k, mmpx=f["mm"], fractions=LID_COLS, reach_mm=LID_REACH)
     except Exception:  # noqa: BLE001
         return {}
     ex, ey = eye_frame(P)
@@ -1517,7 +1563,7 @@ def _lid_read(c: Context, nominal: dict) -> dict:
             t_path = float(np.interp(tcol * np.sign(span), (xt * np.sign(span))[order], q["t"][order]))
             rows.append({"col": fr_, "t": t_path, "tps": cp.get("tps", np.nan), "dark": cp.get("dark", 0.0), "dark_ours": co.get("dark", 0.0),
                          "tps_ours": co.get("tps", np.nan), "nominal": h_nom})
-        good = [r_ for r_ in rows if np.isfinite(r_["tps"]) and r_["dark"] >= LID_DARK]
+        good = [r_ for r_ in rows if np.isfinite(r_["tps"]) and r_["dark"] >= LID_DARK and 1.5 <= r_["nominal"] <= 6.0]
         dark = float(np.median([r_["dark"] for r_ in rows]))
         dark_o = float(np.median([r_["dark_ours"] for r_ in rows]))
         res = {"by": "lash line", "lash": {"view": f["view"], "columns": [{k_: (round(float(v_), 2) if np.isfinite(v_) else None) for k_, v_ in r_.items()} for r_ in rows]},
@@ -1530,7 +1576,8 @@ def _lid_read(c: Context, nominal: dict) -> dict:
             ts = np.array([r_["t"] for r_ in good])
             sh = np.array([r_["tps"] - r_["nominal"] for r_ in good])
             kk = np.argsort(ts)
-            res["shift"] = [round(float(x), 2) for x in np.clip(np.interp(np.linspace(0, 1, sf.N_SHIFT), ts[kk], sh[kk]), -4, 6)]
+            co = np.polyfit(ts[kk], sh[kk], 1 if len(good) < 4 else 2)        # a fold's line is smooth
+            res["shift"] = [round(float(x), 2) for x in np.clip(np.polyval(co, np.clip(np.linspace(0, 1, sf.N_SHIFT), ts.min(), ts.max())), -3, 5)]
             res["extent"] = [0.0, 1.0]
             res["amount"] = round(float(np.clip((dark - dark_o) / LID_REF, 0, 1.5)), 3)
             res.pop("move", None)
@@ -1634,7 +1681,8 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
             a_leg = LEGACY_SHARE * float((sk.get("wrinkles") or {}).get(leg, 0.0)) if (leg and old is None and s["present"]) else 0.0
             a1 = a0
             if s["present"] and s["confidence"] >= FOLD_CONF:
-                gain = (s["amount"] if "amount" in s else s["step"] / STEP_REF[name] if s.get("by") == "step" else s["diff"] / FOLD_REF[name])
+                gain = (s["amount"] if "amount" in s else min(s["step"] / STEP_REF[name], max(STEP_MAX - a0, 0.0)) if s.get("by") == "step"
+                        else s["diff"] / FOLD_REF[name])
                 a1 = float(np.clip(a0 + a_leg + gain, 0, 1.5))
                 if a0 > 0.2 and s.get("by") == "valley" and s["ours"] < 0.3 * a0 * FOLD_REF[name]:
                     # ours is laid and does not read under this light: more paint will not make it a form (a flat

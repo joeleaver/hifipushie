@@ -35,7 +35,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 7
+VERSION = 8
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -94,10 +94,16 @@ RELIEF = {
     "mouth_corner": {"depth": 0.3, "reach": 3.0},
     "mentolabial": {"depth": 0.8, "reach": 4.0},
     "tear_trough": {"depth": 0.6, "roll": (5.5, 2.8, 1.4, 3.0), "reach": 4.0},
-    "lid_fold": {"depth": 0.6, "roll": (2.3, 2.6, 0.5, 2.6), "plat": (0.15, 2.5), "reach": 3.0},
+    "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "reach": 3.0},
     "glabella": {"depth": 0.35, "reach": 3.0},
 }
 END = 0.004               # m: a fold's relief comes in from nothing over this length at each end of its extent
+# With the relief in the surface, what a tight crease still lacks in a rasterised render is its own OCCLUSION (skin
+# lying on skin: no light gets in; EEVEE has none at 0.5 mm): the crease line's share of a dark multiply layer
+# (folds_crease), 0.6 x the groove's width. Without it a lid's crease at amount 1 was a faint line (foldval's truth
+# pictures: read_lid darkness 0.05-0.13, a photograph's fold line reads 0.15-0.4).
+OCCLUSION = {"lid_fold": 1.0, "nasolabial": 0.35, "marionette": 0.25, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
+             "tear_trough": 0.0}
 KEEP = (0.0012, 0.0032)   # m: no displacement within KEEP[0] of a lid margin or the lips, all of it from KEEP[1]
 BALL = 0.0004             # m: the skin a fold pushes in stays this far outside the eyeball
 STEP = 0.0005             # m between the geometry's samples along a path
@@ -402,6 +408,8 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
         blk = out[y0:y1, x0:x1]
         shp = blk.shape[:2]
         # r: the groove's depth (x DEPTH); g: the roll (x BULGE); b: the darkening (crease line + soft shade, 0..1)
+        if geo:   # r: the crease's occlusion instead of a painted groove
+            groove = a * OCCLUSION[name] * np.exp(-0.5 * (d / (0.6 * sg)) ** 2)
         blk[..., 0] = np.maximum(blk[..., 0], (groove / 1.5).reshape(shp))
         blk[..., 1] = np.maximum(blk[..., 1], (roll / 1.5).reshape(shp))
         blk[..., 2] = np.maximum(blk[..., 2], np.clip(np.maximum(tint, shade), 0, 1).reshape(shp))
@@ -607,7 +615,10 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
     # light, where painted relief hardly shades, read as a brown smudge under Garrett's eye)
     layer("folds_shade", color=[0.74, 0.66, 0.64], mix="multiply", opacity=1.0, mask=[im("b")])
     if geometry_key(spec.get("skin") or {}) is not None:
-        return          # the relief is in the surface itself (prims): the map carries the colour only
+        # the relief is in the surface itself (prims): the map carries colour only: the shade, and the crease's occlusion
+        # (the map holds amount x share / 1.5: full strength at amount 1.5)
+        layer("folds_crease", color=[0.42, 0.3, 0.28], mix="multiply", opacity=1.0, mask=[im("r")])
+        return
     layer("folds_groove", height=-round(DEPTH * 1.5, 7), roughness=min(base_r + 0.08, 0.95), opacity=0.6, mask=[im("r")])
     layer("folds_roll", height=round(BULGE * 1.5, 7), mask=[im("g")])
 

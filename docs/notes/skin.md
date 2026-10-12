@@ -872,3 +872,66 @@ the head's shape; base.head.fold (lidfold.py) stays unused.)
   the frontal photo light, folds and lid crease under frontal and raking light and in 3/4. Blunt: at amount 1 the
   whole set on a 22-year-old reads as a tired 50; the nasolabial + marionette + mouth_corner meet in a busy knot at
   the mouth's corner; glabella lines are two straight nicks.
+- THE LID'S CREASE needed its own occlusion: at amount 1 the geometric crease (0.6 mm) was a faint line in the dressed
+  render (read_lid darkness 0.05-0.13 on the validation pictures; Tess's photographed fold line reads 0.31-0.38): a
+  rasteriser has no skin-on-skin shadow at 0.5 mm. Now: lid crease 0.85 mm deep, roll 0.6, and with geometry on the
+  fold map's r channel carries the crease's OCCLUSION (lid 1.0, glabella 0.45, mouth corner 0.4, nasolabial 0.35,
+  marionette 0.25; 0.6 x the groove's width) for a dark multiply layer `folds_crease` ([0.42, 0.30, 0.28]).
+
+### 2. The lightness anchor (skin_read.context / fit; `skin_from_reference(tone=...)`)
+- A picture gives exposure x albedo. Order: (1) the PRIOR = the model's stated skin.tone (or `tone=` a Fitzpatrick
+  type / skin.tone keys, written to the model before the first read); (2) a KNOWN WHITE in the picture (`_white`: the
+  parser's figure that is neither skin nor hair, under the chin, bright (sRGB > 0.35, L* > 62), neutral (chroma < 9),
+  250+ px; albedo taken as 0.8 and lit as the face: INFERRED); a grey backdrop gives the white balance only; the sclera
+  is never used (skinread: 0.45-0.9 x).
+- In the fit: the exposure is a free factor (sigma 0.6 log; with a white: centred on the white's, sigma 0.15) and the
+  plain skin's albedo L* (PLAIN zones, the forward model) is held to the prior's with sigma 1.0 L* (white: 4.0). After
+  the solve a HARD BOUND: if the plain skin left the prior by more than 3 L* (white: 8), the tone's move is scaled
+  back (bisection on the share of the move) and the reply says so. Later rounds keep the FIRST round's prior L (else
+  3 L a round). The reply states anchor, plain L* before -> after, bound, exposure.
+- Garrett (prior = garrett_a1's tone, melanin 0.04): plain L* 66.78 -> 66.55 / 66.77 / 66.78 over three rounds;
+  skinread had taken it to melanin 0.13 ("orange", ~12 L under the picture). Tess (prior F1): 73.23 -> 73.20 / 73.19.
+  Neither picture set has a white the detector accepts (Garrett's shirt is not in the head crop as a neutral).
+
+### 3. Lips (skin.py, VERSION 7)
+- Gradient (`lips.gradient`, 0..2.5, default 1): `lip_inner` (a wide soft line along the seam: darker, more venous),
+  `lip_corners`, `lip_body` (the lower lip's lighter middle), all inside the vermilion. Border (`lips.border`, mm,
+  default 1.5; the lower lip's 1.3 x): the outline's own soft edge (was 0.96 mm for both: a cut-out fill).
+- WHY THE LIPS WERE "STUCK" on Garrett (the read: upper lip 14 L darker than ours at +4 a* / +3 b*; three fits left
+  11 L): (a) lips.melanin is x the TONE's melanin: on a very fair tone (0.04) even the bound, 9, is little pigment;
+  (b) lips.blood saturates at ~3 (the blood fraction caps at 0.5); (c) the lip layers' opacity is 0.85 - 0.2 x masc: a
+  third of a man's lip is his skin whatever the parameters say. With L weighted under chroma the fit took the redder,
+  LIGHTER lip. Now: lips.melanin's bound 30, lower.melanin down to 0.1, and `lips.strength` (0.2..2, x the layers'
+  opacity) as a fitted parameter. Tried and dropped: `lips.venous` (oxygenation 0.62 -> 0.25 moved a lip 2 L and took
+  6 a* off: not a lever).
+- NOT read: the gradient and the border (no sub-region read of a lip at these resolutions): set by eye.
+
+### 4. Step detector, lid crease from the lash line (skin_read._fold_view, _lid_read)
+- STEP: per station, window means of log luminance either side of a centre c (windows max(width, 2 mm), gap 0.25 x
+  width), plus minus minus, of the DIFFERENTIAL profile (picture - ours), signed by the fitted light: -sign(l . across)
+  (with the light from the plus side the steep wall under the roll is in shade). History of making it honest:
+  v1 (the largest signed step within the search) fired on EVERYTHING on Garrett's paintings (92-100 % of every path,
+  the line jumping +-4 mm station to station): the max over a window is positive for noise. v2: the step counts only
+  OVER the largest step of the other sign, the picture alone must step that way too, the line must be smooth (1 mm
+  rms about its median-filtered course) and run 8+ mm. Null B then still had 3 false (mentolabial 0.14, both tear
+  troughs 0.10-0.11 per unit of cross light: our fitted light standing in for theirs), and Tess's photographs gave
+  both tear troughs at +5.0 mm = the search window's edge (her lower lid's margin). v3 (shipped): only folds that ARE
+  steps (those with a roll), STEP_MIN 0.3 per unit cross light (real amount-1 folds: 0.3-0.7), no step within 1.5 mm
+  of the window's edge, runs of 10+ mm, and a fold read by its step alone is laid at most at amount 1.
+  Synthetic lamp case (truth lit from low on the figure's right): with the folds as geometry the VALLEY detector
+  already finds both nasolabial folds (0.20 / 0.22): the step is needed for paintings, where there is no valley.
+- COARSE PICTURES (PLACE_MM 0.7): above 0.7 mm a pixel a fold's place across its path is not read (shift / extent /
+  move dropped; laid whole on its landmark path): on Garrett's paintings (1.1-1.3 mm) the shifts were noise (+-5 mm)
+  and round 2's "move" ran to -8 mm. Shifts that are read are now a parabola through the stations (a fold's line is
+  smooth), inside the search. Confidence's share term saturates at 50 % of the path (was 70 %: Garrett's left tear
+  trough, valley 0.20 along 31 %, fell to 0.45 and was never laid).
+- LID FROM THE LASH LINE: lidfold.read_lid on the picture (the detector's lid line as the lashes, the strongest valley
+  1.2-8.5 mm over it per column, 5 columns) in the most frontal view at 0.5 mm a pixel or finer; shift = the picture's
+  height over ITS lashes - the nominal path's height over the same line. Tess: line at 4.55-4.8 mm (L) / 3.95-5.1 (R)
+  over her lashes, darkness 0.31-0.38 in every column of both eyes; the nominal path sits at 3.0-3.6 -> shift +1.0..
+  +1.8 mm: her fold is HIGHER than the nominal path (skinread's read along the path found a faint arc; it could not
+  see a line 1.5 mm outside its own valley window of 2 mm). On the synthetic pictures the lash-line read is poor
+  (our rendered crease is faint; 2 of 5 columns land on the brow's shadow without the 8.5 mm reach): there the path's
+  valley / step read gives presence and strength and the lash line only places it.
+- LID PRIOR: when the pictures cannot resolve a lid at all (Garrett: 1.1 mm a pixel) the fold is laid from norms and
+  flagged INFERRED in the reply (amount 0.6, platform show women 3.3 / men 2.0 mm over the lashes, hooding by age).

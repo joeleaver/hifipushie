@@ -327,7 +327,8 @@ What it reads and sets (groups; default all):
 - `zones`: skin.zones forehead_yellow, midface_red, nose_red, perioral_red, lower_cool + features.flush.
 - `eyes`: zones under_eye, eyelids, periorbital (the socket's own darker, browner skin). These three overlap: judge
   the region's colour, not each number.
-- `lips`: lips.blood / melanin and lips.lower {blood, melanin} (the lower lip's own colour). The vermilion's own
+- `lips`: lips.blood / melanin (x the TONE's melanin: a dark lip on a very fair tone needs 10-20) , lips.strength (how much of
+  the vermilion is the lips' own colour: a man's is 0.65 of a woman's by default) and lips.lower {blood, melanin}. The vermilion's own
   gradient (darker toward the wet line and the corners, a lighter lower-lip body: `lips.gradient`, 0..2.5, default 1)
   and its border's softness (`lips.border`, mm, default 1.5) are NOT read: set them by eye.
 - `stubble`: hair.stubble's `zones` {moustache, chin, soul_patch, jaw, cheeks, neck} and density, from the lower
