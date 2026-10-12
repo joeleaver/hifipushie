@@ -567,8 +567,18 @@ def material(look: dict):
     A_, p_ = [float(v) for v in look.get("cycles_fit") or (1.0, 1.0)]
     # on the colour's LUMINANCE, the hue kept: colour x (Y / A)^(1/p) / Y. Per channel (the first version), the
     # 1/p power (x3.3) tripled every channel ratio: a faintly warm grey (#5a4f47) rendered light brown.
+    # look.cycles_sat: the look colour's saturation kept for Cycles (as eevee_sat for EEVEE). The hair BSDF gives
+    # back less chroma than it is given on a thin groom and MORE on a dense dark one (deep multiple scattering reddens:
+    # Tess's tied hair measured chroma 13-15 where her pictures have 8-9, tesshair5): fitted per look by measure
+    cs_ = look.get("cycles_sat")
+    col_c = col
+    if cs_ is not None and float(cs_) != 1.0:
+        sat_c = N.new("ShaderNodeHueSaturation")
+        sat_c.inputs["Saturation"].default_value = float(cs_)
+        L.new(col, sat_c.inputs["Color"])
+        col_c = sat_c.outputs["Color"]
     bw = N.new("ShaderNodeRGBToBW")
-    L.new(col, bw.inputs["Color"])
+    L.new(col_c, bw.inputs["Color"])
     ymax = N.new("ShaderNodeMath")
     ymax.operation = "MAXIMUM"
     ymax.inputs[1].default_value = 1e-4
@@ -587,7 +597,7 @@ def material(look: dict):
     L.new(ymax.outputs[0], kk.inputs[1])
     sc_ = N.new("ShaderNodeVectorMath")
     sc_.operation = "SCALE"
-    L.new(col, sc_.inputs[0])
+    L.new(col_c, sc_.inputs[0])
     L.new(kk.outputs[0], sc_.inputs["Scale"])
     L.new(sc_.outputs["Vector"], hb.inputs["Color"])
     hb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * 0.75
@@ -695,6 +705,19 @@ def show(sd: dict):
     except Exception:  # noqa: BLE001
         pass
     return made
+
+
+def cycles_width(k: float):
+    """Strands x k wide for a path-traced render (look.cycles_width). A path tracer draws a strand at its true width;
+    EEVEE never draws one under a pixel, so the same groom is far denser there. A groom of 70k strands stands in for
+    100-150k hairs: at true width its head hair is a see-through veil over the scalp in Cycles."""
+    for ob in strand_objects():
+        for mod in ob.modifiers:
+            if mod.type == "NODES" and mod.node_group and mod.node_group.name.startswith(PROFILE):
+                for it in mod.node_group.interface.items_tree:
+                    if it.item_type == "SOCKET" and it.in_out == "INPUT" and it.name == "Radius":
+                        mod[it.identifier] = float(mod[it.identifier]) * float(k)
+        ob.update_tag()
 
 
 def strand_objects() -> list:

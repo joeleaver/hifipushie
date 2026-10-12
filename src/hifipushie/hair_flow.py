@@ -96,6 +96,8 @@ def roots(sc, ga: dict, line, rng, xp=None):
         r0_ = float(np.median(sc.R))
         az_b, el_b = _poisson(sc, rng, lambda a_, e_: np.full(len(a_), 0.36 * sp), okb,
                               n_try=int(np.clip(2400 * r0_ * r0_ / sp ** 2, 12000, 60000)))
+        # (the row's own depth too: over a steep stretch of the line its roots were lifted into the hair)
+        d_h = np.clip(inside(sc, line, az_h % 360, el_h) - 0.003, 0.0, None)
         az_h, el_h = np.r_[az_h, az_b % 360], np.r_[el_h, el_b]
         d_h = np.r_[d_h, inside(sc, line, az_b % 360, el_b)]
     ok = lambda a_, e_: (inside(sc, line, a_, e_) > 0.6 * sp) & (e_ > sc.EL[0] + 4)  # noqa: E731
@@ -536,7 +538,7 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
             B.append(B[-1] + seg_ * d_)
         B = np.asarray(B)
         B[1:] = _push(sc, col, B[1:], 0.004)
-        locks[f"{pre}ts{j}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, B), "free": 1.0,
+        locks[f"{pre}y{j}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, B), "free": 1.0,
                                 "width": round(float(rng.uniform(0.001, 0.004)), 4), "thickness": 0.002, "taper": 0.5,
                                 "belly": 0.35, "root": 0.6, "cup": 0.0, "hairs": int(rng.integers(1, 5)),
                                 "strands": {"wisp_fan": 1.5, "wisp_round": 0.8, "tip_loss": 0.5, "wave": 0.004,
@@ -790,6 +792,8 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                     pull = pull + (0.12 + 0.9 * (1 - _ss_t((fa_ - 38.0) / 20.0))) * sw
                 curl = cu0 + cu1 * np.sin(2 * np.pi * s_ / lam_c + ph_c)
                 d = _unit(d + fall * ds * pull + curl * ds * np.cross(nrm, d))
+                if back and d[2] > 0:  # (a tucked one never climbs: its curl took it up the head behind the ear)
+                    d = _unit(d * np.array([1.0, 1.0, 0.0]) + 1e-9)
                 if dist < 0.008:  # near the skin it lies along it
                     d = _unit(d - max(float(d @ nrm), 0.0) * nrm)
                 q = P[-1] + ds * d

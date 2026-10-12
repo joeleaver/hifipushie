@@ -116,7 +116,7 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
         "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "eevee_sat": 0.35, "light": None, "card_gain": 1.0, "card_sat": 1.0, "card_grey": 0.5,
-        "cycles_fit": None, "seen": None, "fine_alpha": 0.5}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "cycles_fit": None, "seen": None, "fine_alpha": 0.5, "cycles_width": None, "cycles_sat": None}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
@@ -845,7 +845,7 @@ def tie_style(name: str, style: dict | None = None, carry_from: str | None = Non
         kinds[k_] = kinds.get(k_, 0) + 1
     return {**r, "tied": g["tied"], "made": made,
             "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "w": "wisps", "wb": "baby hairs", "wl": "loose locks",
-                       "ts": "tail strays", "band": "band", "l": "loose"}.get(k, k): v
+                       "y": "tail strays", "band": "band", "l": "loose"}.get(k, k): v
                       for k, v in kinds.items()}}
 
 

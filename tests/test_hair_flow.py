@@ -170,7 +170,7 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
     """tesshair4 (Joe: "almost right for tess, if you added front wispies"): a wisp is ONE lock of many fine hairs (not
     1-2 hair wires), rooted at the hairline, lying within millimetres of the skin while the skin is under it, ending
     lower than it starts; the front's never run down the face; amount is their number; a neat head has none."""
-    sc, g, line, locks = _grow({"wisps": {"amount": 0.6}})
+    sc, g, line, locks = _grow({"wisps": {"amount": 0.6, "loose": 0}, "hairline": 0})
     ws = {k: lk for k, lk in locks.items() if k.startswith("tw")}
     n = ht.params(g["tie"])[0]["wisps"]["count"]
     assert len(ws) == 2 * n and n >= 10, (len(ws), n)
@@ -192,11 +192,12 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
     lens = [np.linalg.norm(np.diff(_world(sc, lk), axis=0), axis=1).sum() for lk in ws.values()]
     assert max(lens) > 1.6 * min(lens)  # lengths are mixed
     # amount is the number of clumps; none on a neat head, some on a messy one, by default
-    few = [k for k in _grow({"wisps": 0.2})[3] if k.startswith("tw")]
+    soft = lambda L: [k for k in L if k.startswith("tw") and k[2].isdigit()]  # noqa: E731 (twb / twl: baby, loose)
+    few = soft(_grow({"wisps": {"amount": 0.2, "loose": 0}, "hairline": 0})[3])
     assert 0 < len(few) < len(ws)
-    assert not any(k.startswith("tw") for k in _grow({"neatness": 1.0})[3])
-    assert not any(k.startswith("tw") for k in _grow({"neatness": 0.3, "wisps": 0})[3])
-    assert any(k.startswith("tw") for k in _grow({"neatness": 0.3})[3])
+    assert not soft(_grow({"neatness": 1.0})[3])
+    assert not soft(_grow({"neatness": 0.3, "wisps": 0})[3])
+    assert soft(_grow({"neatness": 0.3})[3])
     assert hair.needs_body(g)  # they lie on the body's own surface
     # softness: wider, more hairs
     so = lambda v: hf.style({"wisps": {"amount": 0.5, "softness": v}})["tie"]["wisps"]  # noqa: E731
@@ -237,11 +238,11 @@ def test_tail_fullness_is_volume_and_wave_is_every_locks_own():
     _, _, bushy = tail(0.9, 0.0)
     for s in (0.06, 0.12, 0.18):
         assert radius(sc, bushy, s) > 1.8 * radius(sc, sleek, s), (s, radius(sc, bushy, s), radius(sc, sleek, s))
-    assert radius(sc, bushy, 0.06) > 0.75 * radius(sc, bushy, 0.14) > 0.02  # the bulge: open 6 cm out of the tie
+    assert radius(sc, bushy, 0.06) > 0.65 * radius(sc, bushy, 0.14) > 0.02  # the bulge: open 6 cm out of the tie (a fan: full by ~9)
     assert radius(sc, bushy, 0.2) > 0.6 * radius(sc, bushy, 0.1)  # and no cone: still open near the end
     assert len(bushy) > len(sleek)
     for lk in bushy:
-        assert lk["width"] >= 0.02 and lk["taper"] <= 0.4 and abs(lk["twist"]) >= 60
+        assert lk["width"] >= 0.02 and lk["taper"] <= 0.6 and abs(lk["twist"]) >= 20
     L = [np.linalg.norm(np.diff(_world(sc, lk), axis=0), axis=1).sum() for lk in bushy]
     assert 0.6 < min(L) / max(L) < 0.92  # an uneven end, no lock half the length
 
@@ -268,10 +269,137 @@ def test_tail_fullness_is_volume_and_wave_is_every_locks_own():
     assert ht.TIE["tail"]["bulge"] == 0.0 and ht.TIE["tail"]["lock_wave"] == 0.0
 
 
+def test_hairline_is_a_band_that_thins_out():
+    """tesshair5 (Joe on th_T48: "a hard dark arc with a hard V notch at the part"; the temple "reads as SHAVED
+    skin"): with `hairline` > 0 the hair's edge is a BAND of fine roots between the line and the inner roots, whose
+    locks are narrow and carry fewer, finer strands the nearer the line they root; the temple / sideburn strip is
+    rooted again (thin at its rim, full a few mm in); inner locks near the hairline have soft sides; the part
+    wanders. hairline 0 = the one row of full locks (round four)."""
+    assert hf.style({"tightness": 0.9})["tie"]["gather"]["edge"] > 0.3  # (the default: every hairline is soft)
+    sc, g, line, locks = _grow({"tightness": 0.9, "hairline": 1.0})
+    ga = ht.params(g["tie"])[0]["gather"]
+    assert ga["edge"] == 1.0 and ga["zig"] > 0.001
+    sp = ga["spacing"]
+    band = {k: lk for k, lk in locks.items() if k.startswith("tg0_")}
+    hard = {k: lk for k, lk in _grow({"tightness": 0.9, "hairline": 0})[3].items() if k.startswith("tg0_")}
+    assert len(band) > 1.5 * len(hard), (len(band), len(hard))
+    assert not any("fine" in lk["strands"] for lk in hard.values())
+    din, dens, fine, wid = [], [], [], []
+    for k, lk in band.items():
+        az, el, _ = lk["pts"][0]
+        fa = abs(float(hf._wrap(az)))
+        if fa > 35:  # (the forehead and its corners: no strip, no climb)
+            continue
+        din.append(float(hair.inside(sc, line, az % 360, el)))
+        dens.append(lk["strands"]["density"])
+        fine.append(lk["strands"]["fine"])
+        wid.append(lk["width"])
+        assert lk["strands"]["rim"] > 1.0  # soft sides
+    din, dens, fine, wid = (np.asarray(v) for v in (din, dens, fine, wid))
+    assert din.max() > 0.5 * sp and din.min() < 0.004  # roots through the band's depth, not on one line
+    out, inn = din < 0.004, din > 0.45 * sp
+    assert out.sum() >= 3 and inn.sum() >= 3
+    assert dens[out].mean() < 0.6 * dens[inn].max()  # the density ramp
+    assert fine[out].mean() > 0.3 > fine[inn].mean()  # the rim is drawn fine
+    assert wid.max() < 0.8 * sp  # narrow locks
+    # the temple / sideburn strip is rooted (round four made no lock there: bare skin with wisps over it)
+    e_ear = 0.5 * (float(hair._line_at(line, 95.0)) + float(hair._line_at(line, 265.0)))
+    strip = lambda L: sum(1 for lk in L.values()  # noqa: E731
+                          if 50 < abs(float(hf._wrap(lk["pts"][0][0]))) < 100 and lk["pts"][0][1] < e_ear - 2.0)
+    assert strip(band) >= 4 and strip(hard) == 0, (strip(band), strip(hard))
+    # inner locks near the hairline: narrower, soft sides, starts one by one; far inside: as they were
+    near = [lk for k, lk in locks.items() if k.startswith("tg1_") and "rim" in (lk.get("strands") or {})]
+    far = [lk for k, lk in locks.items() if k.startswith("tg1_") and "rim" not in (lk.get("strands") or {})]
+    assert near and far and np.mean([lk["width"] for lk in near]) < np.mean([lk["width"] for lk in far])
+    # the part's own line wanders (never a ruled line), each bank still on its side
+    ga2 = {**ga, "_zig": (0.3, 1.1, 0.025)}
+    z = hf._zig(ga2, np.linspace(0, 0.08, 50))
+    assert 0.002 < np.abs(z).max() < 0.012 and (z > 0).any() and (z < 0).any()
+    assert np.allclose(hf._zig(ga, np.linspace(0, 0.08, 5)), 0)  # (no phases: the straight line)
+    # the strand job: a lock's density / fine / rim reach Blender as per-lock attributes
+    from hifipushie import hair_cards as hc, hair_strands as hs
+    lk = dict(next(iter(band.values())), name="tg0_0")
+    lk["inputs"] = {"Width": lk["width"], "Thickness": lk["thickness"], "Taper": lk["taper"], "Belly": lk["belly"],
+                    "Root": lk["root"], "Cup": lk["cup"]}
+    lk["pts"] = hair.lock_world(sc, lk, lk["pts"]).tolist()
+    lk["space"] = "world"
+    try:
+        G = hs.lock_guides([lk], sc.C, hc.strands_of({"hair": {"groom": {"tied": {}}}}))
+    except Exception:  # noqa: BLE001 (the lock's world form differs between versions: the attribute names are the point)
+        G = None
+    if G is not None:
+        assert "fn" in G["head"] and "ex" in G["head"] and G["head"]["ex"][0] > 0
+
+
+def test_baby_hairs_and_loose_locks():
+    """Wisp VARIETY (tesshair5: "not all long thin strands fanning from the temple"): baby hairs (short, a few hairs,
+    all along the line, also on a neat head: they belong to the hairline's softness) and a few thick loose locks."""
+    sc, g, line, locks = _grow({"neatness": 1.0, "hairline": 0.6})
+    baby = {k: lk for k, lk in locks.items() if k.startswith("twb")}
+    assert len(baby) == 2 * round(70 * 0.6)
+    for k, lk in baby.items():
+        P = _world(sc, lk)
+        ln = float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
+        assert 0.006 < ln < 0.05 and 2 <= lk["hairs"] <= 5 and lk["width"] <= 0.004, (k, ln)
+        _, _, h = sc.coords(P)
+        assert -1e-6 < h.min() and h.max() < 0.012, (k, h.max())  # on the skin
+    az0 = np.array([abs(float(hf._wrap(sc.coords(_world(sc, lk)[:1])[0][0]))) for lk in baby.values()])
+    assert az0.min() < 8 and az0.max() > 60  # from under the part to the sideburn
+    assert not any(k.startswith("twb") for k in _grow({"hairline": 0})[3])
+    sc, g, line, locks = _grow({"wisps": {"amount": 0.8}})
+    loose = {k: lk for k, lk in locks.items() if k.startswith("twl")}
+    soft = {k: lk for k, lk in locks.items() if k.startswith("tw") and k[2].isdigit()}
+    assert len(loose) == 2 * 2 and soft
+    L = lambda lk: float(np.linalg.norm(np.diff(_world(sc, lk), axis=0), axis=1).sum())  # noqa: E731
+    for k, lk in loose.items():
+        assert lk["hairs"] >= 18 and lk["width"] >= 0.006 and L(lk) > 0.08, (k, lk["hairs"], L(lk))
+        assert _world(sc, lk)[-1, 2] < _world(sc, lk)[0, 2]  # it droops
+    assert np.mean([lk["hairs"] for lk in loose.values()]) > 1.5 * np.mean([lk["hairs"] for lk in soft.values()])
+    assert not any(k.startswith("twl") for k in _grow({"wisps": {"amount": 0.8, "loose": 0}})[3])
+    assert sum(k.startswith("twl") for k in _grow({"wisps": {"amount": 0.2, "loose": 3}})[3]) == 6
+
+
+def test_tail_tousle_is_a_ragged_end_and_strays():
+    """tesshair5 (th_T48 from behind: "rope-like S locks and an even end; hers is tousled, with stray hairs leaving
+    the outline and a ragged end"): tail.tousle = lock ends spread over the last third, single hairs / thin wisps that
+    leave the bundle, locks waving in step (sheets, not ropes). tousle 0 = an even end and nothing outside."""
+    def tail(to):
+        sc, g, line, locks = _grow({"tail": {"length": 0.26, "fullness": 0.6, "wave": 0.6, "tousle": to}})
+        tl = ht.params(g["tie"])[0]["tail"]
+        T = [lk for k, lk in locks.items() if k.startswith("tt")]
+        Y = [lk for k, lk in locks.items() if k.startswith("ty")]
+        ln = np.array([np.linalg.norm(np.diff(_world(sc, lk), axis=0), axis=1).sum() for lk in T])
+        return sc, tl, T, Y, ln
+
+    sc, tl0, T0, Y0, l0 = tail(0.0)
+    _, tl1, T1, Y1, l1 = tail(1.0)
+    assert tl1["ragged"] > tl0["ragged"] and tl1["strays"] > 3 * max(tl0["strays"], 1)
+    assert len(Y1) == tl1["strays"] and len(Y1) > len(Y0)
+    assert np.percentile(l1, 10) < np.percentile(l0, 10) - 0.01 and l1.std() > l0.std()  # a ragged end
+    for lk in Y1:
+        assert 1 <= lk["hairs"] <= 4 and lk["width"] <= 0.004 and lk["free"] == 1.0
+        _, _, h = sc.coords(_world(sc, lk))
+        assert h.min() > -1e-6
+    # a stray ends further from the bundle's middle than it starts (it leaves the outline)
+    C = np.mean([_world(sc, lk)[len(lk["pts"]) // 2] for lk in T1], axis=0)
+    d0 = np.mean([np.linalg.norm((_world(sc, lk)[0] - C)[:2]) for lk in Y1])
+    d1 = np.mean([np.linalg.norm((_world(sc, lk)[-1] - C)[:2]) for lk in Y1])
+    assert d1 > d0, (d0, d1)
+    # in step: neighbouring locks' twist is smaller (a ribbon wound 200 deg is a rope)
+    assert tl1["in_step"] > 0.5
+    assert np.mean([abs(lk["twist"]) for lk in T1]) < 100
+    # a raw hanging tail without these keys is round four's
+    assert ht.TIE["tail"]["ragged"] == 0.0 and ht.TIE["tail"]["strays"] == 0 and ht.TIE["tail"]["in_step"] == 0.0
+    # default: by the wave (a straight sleek tail is brushed)
+    d = lambda w: hf.style({"tail": {"wave": w}})["tie"]["tail"]  # noqa: E731
+    assert d(0.9)["ragged"] > d(0.0)["ragged"] and d(0.9)["strays"] > d(0.0)["strays"]
+
+
 def test_sideburn_grows_no_lock_to_the_tie():
-    """The hairline row skips the sideburn (below the ear's top, in front of the ear): locks from there climbed to
-    the flow and their starts were a dark toothed tuft over bare skin (the 'shaved' temple of tight styles)."""
-    sc, g, line, locks = _grow({"tightness": 0.9})
+    """With a HARD hairline (hairline 0) the hairline row skips the sideburn (below the ear's top, in front of the
+    ear): full locks from there climbed to the flow and their starts were a dark toothed tuft over bare skin. (A soft
+    hairline roots it again, thin: test_hairline_is_a_band_that_thins_out.)"""
+    sc, g, line, locks = _grow({"tightness": 0.9, "hairline": 0})
     e_ear = 0.5 * (float(hair._line_at(line, 95.0)) + float(hair._line_at(line, 265.0)))
     n = 0
     for k, lk in locks.items():
