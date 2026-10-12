@@ -382,7 +382,7 @@ def needs_body(g: dict) -> bool:
     tie = g.get("tie")
     if not tie:
         return False
-    return any(((t.get("tail") or {}).get("hang") if isinstance(t.get("tail"), dict) else False) or t.get("escaped")
+    return any(((t.get("tail") or {}).get("hang") if isinstance(t.get("tail"), dict) else False) or t.get("escaped") or t.get("wisps")
                for t in (tie if isinstance(tie, list) else [tie]))
 
 
@@ -844,7 +844,7 @@ def tie_style(name: str, style: dict | None = None, carry_from: str | None = Non
         k_ = m.group(1) if m else "l" if re.fullmatch(r"l\d+", n) else n
         kinds[k_] = kinds.get(k_, 0) + 1
     return {**r, "tied": g["tied"], "made": made,
-            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "band": "band", "l": "loose"}.get(k, k): v
+            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "w": "wisps", "band": "band", "l": "loose"}.get(k, k): v
                       for k, v in kinds.items()}}
 
 

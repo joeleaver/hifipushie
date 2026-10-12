@@ -79,6 +79,7 @@ from __future__ import annotations
 import numpy as np
 
 TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain": None, "frame": None, "escaped": None,
+       "wisps": None,
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "toward": "tie", "reach": 0.75, "ride": 0.003,
                   "inner_roots": None,
                   # mode "flow" (hair_flow.gather; the keys below are its own)
@@ -86,9 +87,20 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                   "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0,
-                "hang": False, "spread": 0.35}}
+                "hang": False, "spread": 0.35,
+                # the poof (hair_flow.tail, hang): bulge 1 = the bundle's radius is SET along it (opens out of the band
+                # at once, full to near the end), lock_wave m = every lock's own wave (own phase, amplitude, plane),
+                # air m = locks pushed apart toward their ends
+                "bulge": 0.0, "lock_wave": 0.0, "lock_wavelength": 0.08, "air": 0.0}}
 ESCAPED = {"count": 6, "where": ["temple", "ear"], "length": [0.06, 0.14], "hairs": [3, 7], "curve": 0.2,
            "wave": 0.008, "wavelength": 0.09, "strands": None}
+# wisps (hair_flow.wisps): small soft clumps of fine hairs that fall along the skin. count = clumps a side (or
+# [right, left]), hairs = [lo, hi] strands a clump, softness 0 = small defined locks .. 1 = wide, frizzy, open,
+# tuck = share of the temple / sideburn ones drawn back toward the tie, over = m they ride over the scalp inside the hair
+WISPS = {"count": 6, "where": ["part", "front", "temple", "sideburn"], "length": [0.04, 0.12], "hairs": [6, 22],
+         "softness": 0.6, "tuck": 0.25, "over": 0.008, "strands": None}
+WISP_AT = {"part": (3.0, 16.0), "front": (16.0, 44.0), "temple": (44.0, 64.0), "sideburn": (62.0, 80.0),
+           "nape": (140.0, 176.0)}
 ESCAPED_AT = {"part": (4.0, 20.0), "temple": (44.0, 66.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}
 ESCAPED_STRANDS = {"flyaway": 0.0, "clump": 0.0, "tip_spread": 0.3, "flat": 1.0, "loose": 0.8, "frizz": 0.3, "curl": 0.0}
 CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "drape": 0.0, "dip": 0.0,
@@ -113,7 +125,7 @@ def params(tie) -> list:
         if bad:
             raise ValueError(f"hair tie: unknown keys {sorted(bad)} (have {', '.join(sorted(TIE))})")
         p = {**TIE, **t}
-        for k, keys in (("curtain", CURTAIN), ("frame", FRAME), ("escaped", ESCAPED)):
+        for k, keys in (("curtain", CURTAIN), ("frame", FRAME), ("escaped", ESCAPED), ("wisps", WISPS)):
             if p[k]:
                 bad = set(p[k]) - set(keys)
                 if bad:
@@ -390,6 +402,8 @@ def grow(sc, g: dict, line, rng, col=None) -> dict:
                                   "strands": {"layers": 2, "flyaway": 0.6, "curl": 0.0}}
         if tp.get("escaped"):
             locks.update(hair_flow.escaped(sc, tp, tp["escaped"], line, rng, col, pre))
+        if tp.get("wisps") and tp["wisps"].get("count"):
+            locks.update(hair_flow.wisps(sc, tp, tp["wisps"], line, rng, col, pre))
         fm = tp.get("frame")
         cnt = (fm["count"] if isinstance(fm["count"], (list, tuple)) else [fm["count"]] * 2) if fm else [0, 0]
         cnt = [int(c) for c in cnt]  # [right, left]
