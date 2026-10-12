@@ -369,7 +369,12 @@ tool first. fbx: also <name>.fbx (Blender converts the
 GLB: skeleton, skin, embedded textures, no leaf bones, Y-primary bone axis), for Unity/Unreal import.
 face_shapes: True (all) or a list of ARKit blendshape names: morph targets for lipsync and expressions on a
 character with the face kit and a mouth that can open (kits.face.mouth.interior: slit, mouth bag, teeth,
-tongue), or a GNM base head (base.head.interior + mouth_gap >= 0.002: shapes from GNM's expression basis). On
+tongue), or a GNM base head: each shape is a set of GNM EXPRESSION COEFFICIENTS evaluated on every component (skin
+and mouth sock by index on the one mesh, GNM's own teeth + gums and tongue by their own vertices: the lower row and
+the tongue move with the jaw as GNM's basis says, the upper row never, tongueOut uses GNM's tongue components). GNM's
+own mouth is the default (parts "teeth" and "tongue"; nothing to set on a one-mesh human on its own quads; a
+field-meshed body needs base.head.mouth_gap >= 0.002); base.head.interior keeps the face kit's interior (rigid with
+the jaw) on older specs and is the fallback when a style pushed the lips off GNM's surface (the log says so). On
 the one human mesh with its own quads (base.body.source "human", parts.body.topology "wrap") the head's vertices
 ARE GNM's: shapes go by vertex index (no projection), GNM's mouth sock closes the mouth, the lips close on GNM's
 contact ring, and mouth_gap is best left out (GNM's own lips; the export closes them). True

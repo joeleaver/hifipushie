@@ -177,9 +177,9 @@ def spec(age: float = 30, sex: float | str = 0.5, weight: float = 0.5, muscle: f
         if "mouth_gap" not in (head or {}):  # the rest mouth closed, lips in contact along their width
             # (faceslide.seal_delta; GNM's own neutral parts them: a slit with the lower lip hanging)
             hd.setdefault("lip_seal", 1.0)
-        # an adult's eyeball, not GNM's 14.6 mm eye x the head's scale (blockin2; coordinator 2026-10-10: every NEW
-        # human; written into the spec, so accepted models keep theirs)
-        hd.setdefault("eye_radius", eye_radius(age))
+        # (gnmnative, 2026-10-12) GNM's OWN eyeball (its 14.6 mm scleral sphere x the head's scale, its limbus and
+        # cornea for the identity): no head.eye_radius. 2026-10-10 .. 12 every new human got eye_radius(age) written
+        # into its spec (an adult's 12 mm); those models keep it (the key overrides GNM's ball)
     elif source != "makehuman":
         raise ValueError('human: source is "makehuman" (a GNM head grafted onto the body) or "human" (one mesh)')
     base = {"body": body, "eyes": "eyes", "cornea": True, "head": hd}

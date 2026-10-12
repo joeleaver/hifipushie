@@ -429,6 +429,17 @@ def kit_reference() -> str:
 def _saved(name: str, v: int, spec: dict, extra: str = "") -> str:
     """The reply to a save: version, notes, warnings (things that saved but likely aren't what was meant), summary."""
     warn = "".join(f"WARNING: {w}\n" for w in paintmod.side_warnings(spec))
+    b = spec.get("base") or {}
+    hd = b.get("head") if isinstance(b.get("head"), dict) else None
+    if hd and (hd.get("shape") or hd.get("simplify") or b.get("style")):
+        # (GNM's own mouth needs the lips where GNM puts them: a style that pushed them falls back, and says so)
+        try:
+            from . import base as basemod, spec as specmod
+            note = basemod.mouth_note(b, basemod.head_of({"joints": specmod.expand_mirror(spec)["joints"]}, b))
+            if note:
+                warn += f"WARNING: {note}\n"
+        except Exception:  # noqa: BLE001  (a report line must never fail a save)
+            pass
     return f"saved {name} v{v}\n" + extra + warn + summarize(spec)
 
 
@@ -2042,13 +2053,13 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
-                   expression: str = "default", chin_points: str = "auto"):
+                   expression: str = "default", chin_points: str = "auto", size: str = "held"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
     borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
-    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ and
-    what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" |
-    "none"; expression "view" | "shared" | "none"; chin_points "auto" (the detector's chin points are left out when
-    the set has a side view) | "on" | "off"; anchors, parse, out, share, seen, save. Details:
+    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ.
+    cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); size "held" (the head's overall
+    size stays the start's: no picture reads it) | "iris" | "iris_pin" | "free"; hold "auto" | "none"; expression
+    "view" | "shared" | "none"; chin_points "auto" | "on" | "off"; anchors, parse, out, share, seen, save. Details:
     guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
@@ -2061,7 +2072,8 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                         parse={"auto": "auto", "on": True, "off": False}[parse],
                         hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
                         expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
-                        chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points]})
+                        chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
+                              "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size]})
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""

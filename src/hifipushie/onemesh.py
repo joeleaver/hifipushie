@@ -31,7 +31,7 @@ _CACHE: dict = {}
 CLOSED_GAP = 0.0008     # m: a GNM-closed mouth (the contact ring's halves within this, corner to corner) gets the seam field
 CLOSED_SEAL_V = (0.5,)  # its rows drawn toward the seam (base.SEAL_V's): the first only. The seal's three rows halved the
 # vermilion border's turn; the first alone keeps the border and makes the seam a V (-60 / +27 deg each side, Tess)
-VERSION = 14  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
+VERSION = 15  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
 HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
@@ -463,6 +463,14 @@ def _carried(ht: dict, mv, dz: float = 0.0) -> dict:
     out.update(verts=W, normals=N, h=h, hmax=float(h.max()), tree=cKDTree(W), eyes=[mv(e)[0] - sh for e in ht["eyes"]],
                eye_r=float(ht["eye_r"]) * k, forward=Rp @ ht["forward"], lm68=mv(ht["lm68"]) - sh,
                plane=(mv(cut)[0] - sh, Rp @ pn, band), carry=carry)
+    if ht.get("gnm_world") is not None:  # (gnmnative) GNM's loose pieces (eyeballs, teeth, tongue) ride the same map
+        out["gnm_world"] = mv(ht["gnm_world"]) - sh
+    if ht.get("eye_gnm"):
+        eg = ht["eye_gnm"]
+        out["eye_gnm"] = {**{kk: (vv * k if isinstance(vv, float) and kk != "pupil" else vv) for kk, vv in eg.items()},
+                          "axes": [Rp @ a for a in eg["axes"]],
+                          "per_eye": [{kk: (Rp @ vv if kk == "axis" else vv if kk == "pupil" else vv * k) for kk, vv in q.items()}
+                                      for q in eg["per_eye"]]}
     del retopo
     return out
 

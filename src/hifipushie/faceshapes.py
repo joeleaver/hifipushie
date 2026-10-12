@@ -813,6 +813,12 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
     face = face_of(spec)
     if "eyeBlinkLeft" in names and not face.eyes:
         log.append("face shapes: no lids on the face kit's eyes: eyeBlink shapes are flat")
+    if isinstance(face, GnmFace):
+        if face.note:
+            log.append("WARNING " + face.note)
+        log.append("face shapes: the mouth is " + ("GNM's own (bag, teeth and gums, tongue: each moved by its own share of "
+                                                    "every shape's GNM expression coefficients)" if face.gnm_mouth else
+                                                    "the face kit's (base.head.interior: teeth and tongue ride the jaw rigidly)"))
     got, kinds = {}, {}
     for pn, p in parts.items():
         if p.get("lash_root") is not None:  # the lashes (lashes.py) follow the lids' shapes, below
@@ -1008,17 +1014,26 @@ LIP_TAPER = 0.04  # share of the mouth's width over which the close tapers to no
 LIP_HOLD, LIP_FADE = 2, 4  # rings past the contact ring that ride with it fully (the lip's front), then fade out over
 
 class GnmFace(Face):
-    """A grafted GNM head (base.py): its mouth from the landmarks (base.mouth_lips), its interior from
-    base.head.interior (kits._interior), its shapes from GNM's expression basis carried onto the export."""
+    """A GNM head (base.py): its mouth from the landmarks (base.mouth_lips); its interior GNM's OWN (base.mouth_mode
+    "gnm", the default: mouth bag, teeth and tongue, each moved by its own share of a shape's expression coefficients)
+    or the face kit's (base.head.interior: kits._interior, moved rigidly with the jaw); its shapes from GNM's
+    expression basis carried onto the export."""
 
     def __init__(self, spec: dict):
         from . import base as basemod
         b = spec["base"]
         hd = b["head"]
-        if not hd.get("interior"):
-            raise SpecError("face_shapes on a GNM head needs a mouth that can open: base.head.interior (true, or "
-                            "{\"teeth\": true, \"tongue\": true}) and base.head.mouth_gap >= 0.002 (the lips parted "
-                            "while modelling; the export closes them)")
+        e = specmod.expand_mirror(spec)
+        head = basemod.head_of({"joints": e["joints"]}, b)
+        mode = basemod.mouth_mode(b, head)
+        self.gnm_mouth = mode == "gnm"
+        self.note = basemod.mouth_note(b, head)
+        if mode == "none":
+            raise SpecError("face_shapes on a GNM head needs a mouth that can open: GNM's own (the default; "
+                            + (self.note or "base.head.mouth is \"none\" here")
+                            + ") or the face kit's (base.head.interior: true, or {\"teeth\": true, \"tongue\": true}), and, "
+                            "unless the body is the one mesh on its own quads, base.head.mouth_gap >= 0.002 (the lips "
+                            "parted while modelling; the export closes them)")
         one = (b.get("body") or {}).get("source") == "human"  # (one mesh: GNM's own lips, never zipped unasked)
         self.own_quads = one and ((spec.get("parts") or {}).get("body") or {}).get("topology") == "wrap"
         if (float(hd.get("mouth_gap") or 0) < 0.0015) and not (one and hd.get("mouth_gap") is None):
@@ -1030,9 +1045,7 @@ class GnmFace(Face):
         bad = [a for a in self.amount if a not in ALL]
         if bad:
             raise SpecError(f"face_shapes.amount: unknown shape(s) {bad} (have the ARKit names {', '.join(ALL)})")
-        e = specmod.expand_mirror(spec)
         prims = {p.name: p for p in specmod.compile_prims(spec)}
-        head = basemod.head_of({"joints": e["joints"]}, b)
         self.head = head
         m = basemod.mouth_lips(head)
         lm = head["lm68"]
@@ -1045,11 +1058,22 @@ class GnmFace(Face):
         self.su, self.sz, self.sf = m["knots"], pts @ self.up, pts @ self.out
         self.corners = {"Left": lm[54], "Right": lm[48]}
         self.R = 0.5 * float(np.linalg.norm(lm[16] - lm[0]))
-        self._mouth_parts(prims, "face")
+        if self.gnm_mouth:
+            self._gnm_mouth_parts(m, b)
+        else:
+            self._mouth_parts(prims, "face")
         self.nose = []
         self.nose_bone = []
         self.eyes = {s: {"c": np.asarray(c, float), "r": float(head["eye_r"]), "ro": 1.3 * float(head["eye_r"]),
                          "part": b.get("eyes")} for s, c in zip(("Left", "Right"), head["eyes"])}
+        eg = head.get("eye_gnm")
+        if eg and b.get("cornea") is not False:  # GNM's own eyeball: its corneal sphere stands proud of the ball, and
+            # a lid must clear it too (displacements): centre on the gaze line, as base.inject places the bulge
+            for s, sfx in (("Left", ".L"), ("Right", ".R")):
+                if f"eye_front{sfx}" in e["joints"]:
+                    c = self.eyes[s]["c"]
+                    gz = _unit(np.asarray(e["joints"][f"eye_front{sfx}"]["pos"], float) - c)
+                    self.eyes[s]["cornea"] = (c + (float(eg["apex"]) - float(eg["cornea_r"])) * gz, float(eg["cornea_r"]))
         self.brows, self.cheeks = {}, {}
         jaw = opts.get("jaw") or {}
         self.P = (np.asarray(specmod.resolve_point(e, jaw["pivot"]), float) if "pivot" in jaw
@@ -1058,6 +1082,24 @@ class GnmFace(Face):
         self.depth = float(jaw.get("depth", 0.75 * self.R))
         self.lid_seal = lid_seal_options(opts.get("lid_seal"))
         self._gnm = {}
+
+    def _gnm_mouth_parts(self, m: dict, b: dict):
+        """GNM's own mouth (base.gnm_mouth): the numbers the kit's slit and bag gave (the lips' depth, the bag's
+        half sizes in the mouth's frame, how fine the teeth are meshed), and the pieces' own vertices."""
+        from . import base as basemod
+        mp = basemod.gnm_mouth(self.head)
+        self.slit = max(float(m["gap"]), 0.001)
+        self.slit_part = b.get("part", "body")
+        self.slit_u = np.array([0.0, 0.92])
+        self.slit_h = np.array([0.5 * self.slit, 0.25 * 0.5 * self.slit])
+        self.thick = 2.2 * self.lip
+        g = basemod._gnm_data()
+        own = np.asarray(g["groups"]["mouth_sock"])[mp["sock"]["ids"]] > 0.5
+        P = (mp["sock"]["verts"][own] - self.M) @ np.stack([self.side, self.out, self.up], 1)
+        self.bag = 0.5 * (P.max(0) - P.min(0))
+        self.parts_teeth, self.parts_tongue = {"teeth"}, {"tongue"}
+        self.teeth_t = 3 * float(basemod.MOUTH_PARTS["teeth"]["voxel"])
+        self.tongue = None
 
     # ---- GNM's frame, the solve, the carry ---------------------------------------------------------------------
 
@@ -1097,7 +1139,70 @@ class GnmFace(Face):
         w, t = w.ravel(), t.ravel()
         Aw = A * w[:, None]
         cf = np.linalg.solve(Aw.T @ Aw + 1e-6 * np.eye(len(comps)), Aw.T @ (t * w))
+        self._last = dict(zip(comps, cf))  # (shape_coeffs: a shape IS these expression coefficients)
         return np.tensordot(cf, B, 1)
+
+    TONGUE_OUT = 0.006  # m (world): how far past the lips' front the tongue's tip comes at tongueOut 1
+    TONGUE_COMPS = 6    # GNM's leading tongue components used (000 = out, 001 / 002 = up, 003 = sideways ...)
+
+    def _tongue_out(self) -> tuple:
+        """GNM's own tongue pushed out: the least change of its leading tongue components (GNM frame offsets of
+        every vertex, and the coefficients) that brings the tongue's front TONGUE_OUT past the lips, a little down."""
+        G = self._setup()
+        g, V = G["g"], G["c"]["V"]
+        names = [str(n) for n in g["expression_names"]]
+        comps = [i for i, n in enumerate(names) if n.startswith("tongue_") and n != "tongue_mean"][:self.TONGUE_COMPS]
+        tg = np.flatnonzero(np.asarray(g["groups"]["tongue"]) > 0.5)
+        front = tg[V[tg, 2] > np.percentile(V[tg, 2], 92)]
+        A = np.stack([g["expression_basis"][i][front].mean(0) for i in comps], 1).astype(float)  # (3, n)
+        X0 = G["X0"]
+        reach = float(max(X0[51][2], X0[57][2]) - V[front, 2].mean()) + self.TONGUE_OUT / float(G["c"]["s"])
+        t = np.array([0.0, -0.2 * reach, reach])
+        cf = A.T @ np.linalg.solve(A @ A.T + 1e-9 * np.eye(3), t)  # (min norm)
+        return np.tensordot(cf, g["expression_basis"][comps], 1), dict(zip(comps, cf))
+
+    def shape_coeffs(self, name: str) -> dict:
+        """A shape as GNM EXPRESSION COEFFICIENTS {component name: value}: what base.head.expression takes to pose the
+        model in that shape (every component then follows: skin, lower teeth, tongue). Shapes the basis has no
+        landmarks for (cheekPuff, cheekSquint) and the eyeLook turns have none: {}."""
+        g = self._setup()["g"]
+        names = [str(n) for n in g["expression_names"]]
+        if family(name) == "look":
+            return {}
+        mv, region = self._gnm_moves(name)
+        if region is None:
+            return {}
+        self._solve(mv, region)
+        out = {names[i]: float(v) for i, v in self._last.items()}
+        if name == "tongueOut" and self.gnm_mouth:
+            out.update({names[i]: float(v) for i, v in self._tongue_out()[1].items()})
+        return {k: round(v * self.amount.get(name, 1.0), 5) for k, v in out.items() if abs(v) > 1e-6}
+
+    def _piece_onto(self, X: np.ndarray, dV: np.ndarray, kind: str) -> np.ndarray:
+        """World offsets of a GNM mouth part's export vertices X (kind "teeth" | "tongue" | "sock") from GNM's own
+        offsets dV: inverse distance over the 4 nearest vertices of the GNM piece the vertex belongs to (the nearest
+        piece: a tooth row never takes the other row's move)."""
+        from scipy.spatial import cKDTree
+
+        from . import base as basemod
+        G = self._setup()
+        mp = basemod.gnm_mouth(self.head)
+        dW = self._by_index(dV)  # (a piece takes an expression's offsets as the skin does: base._gnm_pieces)
+        names = {"teeth": ("teeth_upper", "teeth_lower"), "tongue": ("tongue",), "sock": ("sock",)}[kind]
+        trees = G.setdefault("piece_trees", {})
+        for n in names:
+            if n not in trees:
+                trees[n] = cKDTree(mp[n]["verts"])
+        best = np.argmin(np.stack([trees[n].query(X)[0] for n in names]), 0) if len(names) > 1 else np.zeros(len(X), int)
+        out = np.zeros_like(X)
+        for j, n in enumerate(names):
+            m = best == j
+            if m.any():
+                d, i = trees[n].query(X[m], k=4)
+                out[m] = (dW[mp[n]["ids"][i]] * self._idw(d)[..., None]).sum(1)
+        return out
+
+    # ---- GNM's frame, the solve, the carry ---------------------------------------------------------------------
 
     def _jaw_moves(self, ang: float = None, shift=None) -> dict:
         """The jaw's landmarks (jaw line, lower lip; the corners half) turned about the ear line or shifted."""
@@ -1487,7 +1592,7 @@ class GnmFace(Face):
 
     def neutral(self, Xm: np.ndarray, kind: str, index=None) -> np.ndarray:
         """The lips closed: the inner lips' landmarks moved half the gap each, solved in the basis and carried."""
-        if kind != "skin":
+        if kind != "skin" and not (self.gnm_mouth and kind in ("teeth", "tongue")):
             return np.zeros_like(Xm)
         if "close" not in self._gnm:
             G = self._setup()
@@ -1506,6 +1611,8 @@ class GnmFace(Face):
             k = float(np.clip(-want / got, 1.0, 2.0) if got * want < 0 else 1.0)
             self._gnm["close"] = dW * k
             self._gnm["close_dV"] = dV * k
+        if kind != "skin":  # GNM's own teeth / tongue: their own share of the same closing expression
+            return self._piece_onto(Xm, self._gnm["close_dV"], kind)
         D, a = self._onto(Xm, self._gnm["close"])
         D = D * a[:, None]
         if index is not None:  # (one mesh, own quads) GNM's own vertices take GNM's own offsets
@@ -1779,7 +1886,10 @@ class GnmFace(Face):
             dVs = []
             for name in todo:
                 mv, region = self._gnm_moves(name)
-                dVs.append(mv if region is None else self._solve(mv, region))
+                dV = mv if region is None else self._solve(mv, region)
+                if name == "tongueOut" and self.gnm_mouth:  # GNM's own tongue components on top of the jaw's opening
+                    dV = dV + self._tongue_out()[0]
+                dVs.append(dV)
             G["dW"].update(zip(todo, self._carried(*dVs)))
             G.setdefault("dV", {}).update(zip(todo, dVs))
         # regions: the basis's lower-face components reach up to the lids and its eye components down the cheek;
@@ -1795,7 +1905,14 @@ class GnmFace(Face):
                 res[name] = np.zeros_like(Xm)
                 continue
             dW = G["dW"][name]
-            if name in JAW_SHAPES:
+            if self.gnm_mouth and kind in ("teeth", "tongue"):
+                # GNM's own teeth and tongue: the shape's expression coefficients on THEIR vertices (the lower row
+                # and the tongue go with the lower-face components, the tongue with its own; the upper row stays)
+                res[name] = self._piece_onto(Xn, G["dV"][name], kind) * self.amount.get(name, 1.0)
+                continue
+            if self.gnm_mouth:  # what isn't near the skin's own vertices is GNM's mouth sock: its own offsets
+                rigid = self._piece_onto(Xn, G["dV"][name], "sock") if kind == "skin" else np.zeros_like(Xn)
+            elif name in JAW_SHAPES:
                 Rr, a, b = self._rigid_jaw(dW)
                 rigid = (Xn - a) @ Rr.T + b - Xn  # the jaw's own move, for what isn't skin (bag, teeth, tongue)
             else:  # (the jaw line hardly moves: its fit is noise, and moved the teeth in a smile)
@@ -1811,7 +1928,7 @@ class GnmFace(Face):
                         # basis leaves them parted): a shape that parts them takes that close back in proportion
                         # (left in, jawOpen tore the inner rolls into shards against the closed contact ring)
                         D = D - self._meet_share(D, mt[1], index) * mt[1]
-                d = D * near[:, None] + rigid * ((1 - near) * wj)[:, None]
+                d = D * near[:, None] + rigid * ((1 - near) * (1.0 if self.gnm_mouth else wj))[:, None]
                 fam = family(name)
                 if fam == "mouth":
                     d *= mouth_mask[:, None]
@@ -1832,6 +1949,21 @@ class GnmFace(Face):
                     lim = np.minimum(ev["r"] + 0.0006, r0)
                     inside = (r < lim) & (r0 < 1.6 * ev["r"])
                     d[inside] += q[inside] * ((lim[inside] - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
+                    if ev.get("cornea"):  # GNM's corneal bulge: the closing UPPER lid rides over it, as over the ball
+                        cc, rc = ev["cornea"]
+                        r0c = np.linalg.norm(Xn - cc, axis=1)
+                        qc = Xn + d - cc
+                        rr = np.linalg.norm(qc, axis=1)
+                        limc = np.minimum(rc + 0.0001, r0c)
+                        # (the upper lid only: it does the closing. Pushing the lower lid's few vertices that reach
+                        # the cap made the skin under the eye jagged on a decimated face: unevenness 0.14 > 0.12)
+                        ins = (rr < limc) & (r0c < 1.4 * rc) & ((Xn - ev["c"]) @ self.up > -0.15 * ev["r"])
+                        d[ins] += qc[ins] * ((limc[ins] - rr[ins]) / np.maximum(rr[ins], 1e-9))[:, None]
+                        # (pushed off the cornea a vertex may have slid a hair back into the ball: the ball's limit again)
+                        q = Xn + d - ev["c"]
+                        r = np.linalg.norm(q, axis=1)
+                        inside = (r < lim) & (r0 < 1.6 * ev["r"])
+                        d[inside] += q[inside] * ((lim[inside] - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
             else:
                 d = rigid * wj[:, None]
             if name == "tongueOut" and kind == "tongue" and self.tongue is not None:

@@ -183,14 +183,17 @@ eye catches what the points miss; the target table catches what your eye misses.
    - `sex`, `eth0..2`: the sampler's sex axis (+1 = female mean -> male mean) and ethnicity contrasts.
    - BASE keys, SET: `head_scale` (base.style.human.head_size: the head's UNIFORM size about the neck, x the body's
      own head; 1 = the body's), `gnm_base`, `dimorphism`, `weight`, `eye_size` (base.head.eyes: the eye AND its
-     orbit scaled about the eye centre), `eye_radius` (base.head.eye_radius, m: an ABSOLUTE eyeball, 0.012 for an
-     adult, drawn iris ~6 mm; it seats itself under the lid rims; eye_size still multiplies it, head_scale doesn't).
-     block_in_start and every NEW one-mesh human (human tool) set it (by age: 0.012 from the late teens). Models
-     made before 2026-10-10 lack it: their ball is GNM's 14.6 mm eye x the head's scale (a 7.3 mm iris on a big
-     head); when you work on one, step `eye_radius: 0.012`, then `lid_read(match=True)` (the lids' iris-radius
-     read changes with the iris). 0.012 is right for an adult-SIZE head: on a small head (Tess: pupil distance 53
-     mm) it draws the iris 18 % too big; `brow_read(name)`'s IRIS line gives the picture's limbus in mm at the model
-     and the eye_radius that matches it.
+     orbit scaled about the eye centre), `eye_radius` (base.head.eye_radius, m: an OVERRIDE of GNM's eyeball by
+     an absolute ball of ours, seated by a search; 0 drops it). THE DEFAULT (2026-10-12) IS GNM'S OWN EYEBALL: its
+     14.6 mm scleral sphere at its eye joint x the head's scale, which GNM's lids are shaped on; block_in_start
+     drops a refs model's eye_radius (every head made 2026-10-10 .. 12 carries 0.012: on those the lids stand
+     ~0.5 mm further off the ball). Do not shrink the ball to fix an iris: the iris is its own quantity:
+   - GNM's OTHER identity components, SET: `iris_mm` (the iris' diameter in mm at the model: solves the identity's
+     `eyes_000`, GNM's limbus, sd ~0.4 mm of radius; `brow_read` / `eye_ruler`'s IRIS line gives the picture's),
+     `id:eyes_001` (the cornea's prominence, sd; only from a profile close-up), `id:teeth_NNN` (GNM's 80 teeth
+     components, sd; only from a picture that shows the teeth); expression components SET: `ex:pupils_000` (the
+     pupil: -1 = 0.33 of the iris, 0 = 0.5, +1 = 0.67), `ex:tongue_NNN`. They are the same identity / expression
+     vectors as the head's 170 + the eye / lower-face regions: every step and solve keeps them.
    - DESIGNED age / soft-tissue ops, SET: `shape:<op>`: faceslide's age sliders in their units (`age_nasolabial`
      +1 = a 2 mm fold, `age_prejowl`, `age_cheek_flat`, `age_lid_fold`, `face_planes`, `face_lean`, `cheek_hollow`
      +1 = 4 mm) and headage's ops without a slider (`eye_bag`, `lip_bow`, `lip_roll` in m, `lips_thin` a share).
@@ -279,17 +282,18 @@ eye catches what the points miss; the target table catches what your eye misses.
    visible opening's ends (the inner one is the canthal pocket's tip, 1.9 mm past where the eyeball shows). The eye
    step (`lid_read(match=True)`) now solves for the ruler's margins and corners in mm when the picture's iris is at
    least 30 px across. Three things the ruler found that are NOT the solve's to fix:
-   - the EYEBALL: GNM's lids are shaped on its own ball (14.5 mm on a full-size head). Keep `eye_radius` at its
-     default; a ball shrunk to make the drawn iris right (0.0101 on Tess) leaves the corners empty (1.2-1.4 mm of
-     socket lining at the outer end) and the eye reads short. The drawn iris has its own size: `skin.eyes.iris_size`.
+   - the EYEBALL: GNM's lids are shaped on its own ball (14.6 mm on a full-size head), and that ball is the default:
+     leave `eye_radius` unset. A ball shrunk to make the drawn iris right (0.0101 on Tess) leaves the corners empty
+     (1.2-1.4 mm of socket lining at the outer end) and the eye reads short. The iris has its own size: GNM's limbus
+     (`block_in_step {"iris_mm": mm}`; `skin.eyes.iris_size` overrides the drawn iris only).
    - the CARUNCLE: `skin.eyes.caruncle: 1` paints the inner corner's pocket wet dark red from GNM's inner-corner
      landmark to the eyeball. Unpainted, the pocket is skin-coloured and the eye ends ~2 mm early at the nose side.
    - the LASH LINE: a photographed lash line is a thin dark line; lashes 9 mm long and 0.15 mm thick (the defaults)
      read as a fringe. `base.lashes.upper` length / thickness / count.
 7b2. **Brows and iris before a dressed eye is judged** (Joe on a dressed sheet: "the eyebrows sit on top the crease ...
    so I can't really judge"): `brow_read(name)` gives the brow hair's miss against the picture and the iris line
-   (picture limbus vs drawn iris, mm at the model). If the iris is off by more than 5 %, set `skin.eyes.iris_size`
-   to the picture's (the DRAWN iris; do not shrink the ball: 7a); then `brow_read(name, match=True)` places the hair
+   (picture limbus vs drawn iris, mm at the model). If the iris is off by more than 5 %, step `iris_mm` to the
+   picture's (GNM's limbus component; do not shrink the ball: 7a); then `brow_read(name, match=True)` places the hair
    from the picture. Compare dressed renders with the
    picture ONLY through the picture's fitted camera and the same pixel crop (never an "11.7 mm iris" scale: the
    detector's iris points under-read our renders by 19 % and a photo by 6 %).
@@ -479,6 +483,15 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 
 ### `block_in_solve`
 ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more: its outline reads the chin; kept when it has none) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so (the factor is carried across calls). The reply lists what MOVED WITH NO READ, what moved far on a weak read and what is unread (solve_report's direct read: treat those as inferred), warns when a view's stated kind disagrees with its fitted camera, and marks a DAMPED step (it turned back on the last call's). hold: "none" (default) | "auto" (every measure no read looks at stays at the start head's value). expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views (unread, not pushed: section 3b). Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, chin_points, parse, hold, expression. See section 3b.
+SIZE (2026-10-12): the head's OVERALL SIZE is not something a picture reads (a bigger head further away is the same
+image; every camera's scale and distance are free), so the solve HOLDS it at the block-in's start head's (the class
+mean on that body) and leaves shape free: `size="held"`, the default; the reply's notes say so. Left free
+(`size="free"`) it drifts with GNM's width / size component (Tess -3 %, tess_a1 +3.4 %, the benchmark +1 .. +8 %).
+`size="iris"`: the front picture's iris against GNM's mean limbus (GNM's eyeball is absolute: 6.0 +- 0.44 mm) pulls
+it weakly (weight 0.34 against GNM's +- 5 % spread of size: combined +- 4 %), where the iris is at least 12 px in
+radius and the head has GNM's own eyeball; `size="iris_pin"`: the iris' size whole (an average iris assumed; the
+chain see-saws a little). `blockin.iris_size(name)` gives the check without solving ("an average iris says the head
+is x % against its size now"). Do not compare two solved heads' millimetres without it: size first.
 
 ### `lid_read`
 lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None, fold=None): the picture's lid margins
@@ -508,7 +521,7 @@ mesh instead) and on a photo whose line is fainter than 0.08; anything on a pict
 NOTE says so). model=<other>: that model against `name`'s picture and camera (same refs). The returned image is the
 picture's two eyes (nose side left) with its read drawn (green margins, red canthi, yellow limbus, cyan fold line,
 magenta brow edge) and the model's margin ring / margins / inner-corner landmark in blue, laid over by iris centre.
-MOVES name the tools: `lid_read(match=True)` (the eye step solves these margins and corners), `skin.eyes.iris_size`,
+MOVES name the tools: `lid_read(match=True)` (the eye step solves these margins and corners), `iris_mm` (GNM's limbus),
 `mm:pupils_apart`, `skin.eyes.caruncle`, `brow_read(match=True)`. Python: eye_ruler.read(img, P, mmpx) on any picture
 (a dressed render through the same camera reads the same way), eye_ruler.model(spec, cam), eye_ruler.compare(name).
 
@@ -552,13 +565,13 @@ gnm_head(c) or model_head(spec); clay pictures of GNM heads also read pupils, li
 brow_read(name, match=False, out=None): the DRESSED brows (the skin's hair picture, skin.hair.brows) against the front
 picture's brow hair, through its fitted camera, in mm at the model: the hair band's lower edge and middle line at 9
 columns across each brow (half contrast against the skin; + = ours lower, toward the eye), a WARNING past 1.5 mm; and
-the IRIS line: the picture's limbus diameter in mm at the model against the drawn iris, the `eye_radius` that makes
-them equal, the picture's iris colour. match=True fits skin.hair.brows' placement (drop, tilt, apart, fall, thickness,
+the IRIS line: the picture's limbus diameter in mm at the model against the drawn iris (GNM's limbus for the identity,
+or skin.eyes.iris_size), the `iris_mm` step that makes them equal (its eyes_000 in sd), the picture's iris colour. match=True fits skin.hair.brows' placement (drop, tilt, apart, fall, thickness,
 taper; "lift" folded in) to the picture's band and writes it (out: another model; default in place). Paint only.
 Why: GNM's brow landmarks are the ridge's, not the hair's; brows set by eye on one head travel with the dressing onto
 the next and end up on the lid's fold (Tess: 4-7 mm low). Run it after the eye step, before judging a dressed eye.
-An iris 1.18 x too big (the lids are matched in iris radii) opens the eye 1.18 x too tall and crowds the brow: step
-`eye_radius` to the value the line gives, run the eye step again, set skin.eyes.iris_size to the picture's.
+An iris 1.18 x too big (where the lids are matched in iris radii: a picture under 30 px of iris) opens the eye 1.18 x
+too tall and crowds the brow: step `iris_mm` to the picture's, then run the eye step again.
 
 ### `lip_read`
 lip_read(name, match=False, out=None, seen="", save=None): the front picture's lips (the vermilion borders traced on

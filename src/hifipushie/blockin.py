@@ -132,14 +132,31 @@ def ruler(a, b) -> list[dict]:
 
 
 def set_identity(spec: dict, c) -> None:
-    spec["base"]["head"]["identity"] = {f"head_{i:03d}": round(float(x), 5) for i, x in enumerate(c)}
+    """The head's 170 components written into the spec; GNM's OTHER identity components (eyes_000..002: limbus and
+    cornea; teeth_000..079) are kept as they are (they are the same identity: one vector, GNM's 253)."""
+    old = spec["base"]["head"].get("identity")
+    keep = {k: v for k, v in old.items() if not k.startswith("head_")} if isinstance(old, dict) else {}
+    spec["base"]["head"]["identity"] = {**{f"head_{i:03d}": round(float(x), 5) for i, x in enumerate(c)}, **keep}
+
+
+def identity_extra(spec: dict) -> dict:
+    """GNM's identity components beyond the head's 170 that the spec holds: {"eyes_000": .., "teeth_012": ..}
+    (unset = 0 = GNM's mean eye and teeth)."""
+    idn = spec["base"]["head"].get("identity")
+    return {k: float(v) for k, v in idn.items() if not k.startswith("head_")} if isinstance(idn, dict) else {}
+
+
+GNM_SET = ("eyes_", "teeth_")          # identity components a step may SET by name: "id:eyes_001": sd
+GNM_EXPR_SET = ("pupils_", "tongue_")  # expression components a step may SET by name: "ex:pupils_000": value
 
 
 def vocabulary() -> str:
     from . import humanmacro as hm
     return ("macros (free, size kept; append ! for held, ~ for the raw coupling incl. size): " + ", ".join(hm.NAMES) + "\ngaps: " + ", ".join("nd:" + n for n in gap_names())
             + "\nsex, eth0, eth1, eth2; base keys (set): weight, dimorphism, gnm_base, head_scale; lids (set, m): "
-            "lid_upper, lid_lower, eye_radius; DESIGNED age ops (set, not data): "
+            "lid_upper, lid_lower; eye_radius (set, m: OVERRIDES GNM's own eyeball, 0 drops it); GNM's other "
+            "components (set): iris_mm (mm: the identity's limbus, eyes_000), id:eyes_001 (cornea), id:teeth_NNN, "
+            "ex:pupils_000 (pupil), ex:tongue_NNN; DESIGNED age ops (set, not data): "
             + ", ".join("shape:" + k for k in SHAPE_MOVES) + "; local residuals (set): local:<faceslide slider>, e.g. "
             + ", ".join(f"local:{k} (sd {v})" for k, v in LOCAL_SD.items())
             + "; GNM region principal directions (coupled, size kept): pc:<GNM region><i>, e.g. pc:nose_region0 .. 7"
@@ -364,7 +381,17 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         c = np.asarray(D["m_m"] if male else D["m_f"], float)
     set_identity(sp, c)
     hd["gnm_base"] = float(default_gnm_base(a) if gnm_base is None else gnm_base)
-    hd.setdefault("eye_radius", humans.eye_radius(a))   # an adult eyeball (12 mm), not GNM's eye x the head's scale
+    # (gnmnative, 2026-10-12; Joe: "we might have done better to accept their eyeball, since their lid shapes are
+    # built around it") GNM's OWN eyeball: no eye_radius (2026-10-10 .. 12 every start set 0.012; a refs model's is
+    # dropped too). The key stays as an explicit override (block_in_step {"eye_radius": m})
+    hd.pop("eye_radius", None)
+    # GNM's own mouth too (the default without base.head.interior: a refs model's kit interior is dropped), and the
+    # iris at GNM's limbus for the identity: a refs model's drawn size (skin.eyes.iris_size) would hide it. The read
+    # sets it: iris_check -> block_in_step {"iris_mm": mm} (the identity's eyes_000)
+    for k in ("interior", "mouth"):
+        hd.pop(k, None)
+    if isinstance((sp.get("skin") or {}).get("eyes"), dict):
+        sp["skin"]["eyes"].pop("iris_size", None)
     rj = {"views": views, "cameras": cams}
     if cams is None or cameras == "refit":
         rj["cameras"] = fit_cameras(sp["base"], views)
@@ -597,6 +624,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     c = c0.copy()
     big, designed = [], []
     sculpts = {}
+    idx_extra, iris_mm = {}, None
     for k, v in (moves or {}).items():
         v = float(v)
         if k in BODY_KEYS:
@@ -607,6 +635,14 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"].setdefault("style", {}).setdefault("human", {})["head_size"] = v
         elif k in POSE_KEYS:
             sp["base"]["head"].setdefault("pose", {})[k] = v
+        elif k.startswith("id:") and k[3:].startswith(GNM_SET):   # GNM's eye / teeth identity components, SET (sd)
+            idx_extra[k[3:]] = v
+            if abs(v) > 3.0:
+                big.append(f"{k} (past 3 sd)")
+        elif k.startswith("ex:") and k[3:].startswith(GNM_EXPR_SET):   # the pupil / tongue expression components, SET
+            sp["base"]["head"].setdefault("expression", {})[k[3:]] = v
+        elif k == "iris_mm":   # the iris' diameter (mm at the model): GNM's limbus component, solved after the identity
+            iris_mm = v
         elif k.startswith("shape:"):   # DESIGNED soft-tissue ops (age): not data; flagged in the log and reply
             from . import faceslide, headage
             nm = k[6:]
@@ -651,6 +687,20 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         else:
             sp["base"]["head"][k] = v
     set_identity(sp, c)
+    for k, v in idx_extra.items():
+        from . import base as basemod
+        if k not in [str(n) for n in basemod._gnm_data()["identity_names"]]:
+            raise ValueError(f"id:{k}: not a GNM identity component (eyes_000..002, teeth_000..079)")
+        sp["base"]["head"]["identity"][k] = round(v, 5)
+    if iris_mm is not None:
+        from . import base as basemod
+        if sp["base"]["head"].get("eye_radius"):
+            raise ValueError("iris_mm: the head overrides GNM's eyeball (base.head.eye_radius); with the override the drawn "
+                             "iris is skin.eyes.iris_size. Drop the key first (block_in_step {\"eye_radius\": 0})")
+        li = basemod.limbus_identity(sp, iris_mm)
+        sp["base"]["head"]["identity"]["eyes_000"] = li["eyes_000"]
+        if isinstance((sp.get("skin") or {}).get("eyes"), dict):   # (the dressing's own drawn size would hide the limbus)
+            sp["skin"]["eyes"].pop("iris_size", None)
     out = out or _next_name(src)
     if (store.HOME / out / "spec.json").exists():
         raise ValueError(f"{out} exists: block-in steps write new models (revert = step again from an earlier one)")
@@ -759,6 +809,31 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
     relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
+    chin = dict(chin or {})
+    size_info = None
+    if chin.get("size") in ("iris", "iris_pin"):
+        # THE IRIS AS A RULER OF SIZE (gnmnative, 2026-10-12): the front picture's limbus (px, through this head's
+        # fitted camera = mm at the model) against GNM's MEAN limbus on this head (eyes_000 = 0) says how large the
+        # head is: GNM's eyeball is absolute, a head's size is not. "iris": that read at its person-to-person sigma
+        # (SIZE_IRIS_SIG 7 %) combined with GNM's own spread of head size about the start (the class mean): a weak
+        # pull. "iris_pin": the size the iris says, whole (an average iris assumed). Not read (a small picture: under
+        # blockin_eyes.MIN_IRIS_PX of iris radius; a head that overrides GNM's eyeball): held at the start's.
+        size_info = iris_size(src, off)
+        mode = chin["size"]
+        if size_info["read"]:
+            w = 1.0 if mode == "iris_pin" else size_info["weight"]
+            chin["size"] = float(w * size_info["iris_size"]) or 1e-9
+            chin["size_note"] = (f"SIZE: {'PINNED by' if mode == 'iris_pin' else 'pulled by'} the picture's IRIS: its limbus is "
+                                 f"{size_info['photo_mm']:.2f} mm at the model against GNM's mean {size_info['mean_mm']:.2f} mm here, so an "
+                                 f"average iris says the head is {100 * size_info['iris_size']:+.1f} % against the start head's size "
+                                 f"(+- {100 * size_info['iris_sd']:.0f} % person to person); GNM's own spread of size about the start is +- "
+                                 f"{100 * size_info['prior_sd']:.1f} %"
+                                 + (f": combined {100 * chin['size']:+.1f} % +- {100 * size_info['combined_sd']:.1f} % is held this call"
+                                    if mode == "iris" else f": {100 * chin['size']:+.1f} % is held this call")
+                                 + " (shape free; no picture reads size itself)")
+        else:
+            chin["size"] = True
+            chin["size_note"] = ("SIZE: held at the start head's: " + size_info["why"])
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else 0, cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 6)),
@@ -803,7 +878,10 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]]}
     if c.get("tie"):
-        rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size"))}
+        rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size")),
+                                "size_target": float(c["tie"].get("size_target") or 0.0)}
+    if size_info is not None:
+        rep["solve"]["size"] = {k: v for k, v in size_info.items()}
     if report and c.get("post") is not None:      # WHAT WAS READ, and what moved without a read (solve_report)
         from . import solve_report as sr
         croot = c0 - off if off is not None else None
@@ -812,6 +890,49 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         rp_ = sr.report(sup, c0 + dc, croot if croot is not None else c0, drc=drc)
         rep["solve"]["report"] = {"text": rp_["text"], "rows": rp_["rows"]}
     return rep
+
+
+def iris_size(name: str, off=None) -> dict:
+    """The head's size as the front picture's IRIS says it (a CHECK, and block_in_solve(size="iris")'s read):
+    {"read", "photo_mm" (the picture's limbus diameter in mm at the model, through its fitted camera), "mean_mm" (GNM's
+    mean limbus on this head: the identity's eyes_000 at 0), "now" (the head's size now against the start's, from the
+    identity), "iris_size" (the size against the start's that would make an AVERAGE iris fit), "iris_sd" (0.07: irises
+    differ +- 7 % between people), "prior_sd" (GNM's spread of head size), "weight" / "combined_sd" (the two combined),
+    "text"}. off: the identity's change since the block-in's start (default: read from the log's root)."""
+    from . import base as basemod, blockin_eyes as be, solve_report as sr, store
+    sp = store.load(name)
+    if off is None:
+        root = (_refs(name).get("blockin") or {}).get("root")
+        off = identity(sp) - identity(store.load(root)) if root and (store.HOME / root / "spec.json").exists() else np.zeros(170)
+    now = float(sr.size_gain() @ np.asarray(off, float))
+    psd, isd = sr.size_prior_sd(), sr.SIZE_IRIS_SIG
+    out = {"read": False, "now": now, "iris_sd": isd, "prior_sd": psd, "weight": psd ** 2 / (psd ** 2 + isd ** 2),
+           "combined_sd": float(1 / np.sqrt(1 / psd ** 2 + 1 / isd ** 2))}
+    if basemod.eye_native(sp) is None:
+        return {**out, "why": "the head overrides GNM's eyeball (base.head.eye_radius): its iris is not GNM's limbus",
+                "text": "IRIS SIZE CHECK: not read (the head overrides GNM's eyeball)"}
+    try:
+        ic = be.iris_check(name)
+    except ValueError as e:
+        return {**out, "why": str(e)[:120], "text": f"IRIS SIZE CHECK: not read ({str(e)[:80]})"}
+    if not ic.get("photo_mm"):
+        return {**out, "why": f"the front picture's iris is too small to read (under {be.MIN_IRIS_PX:.0f} px of radius)",
+                "text": f"IRIS SIZE CHECK: not read (the front picture's iris is under {be.MIN_IRIS_PX:.0f} px of radius)"}
+    sp0 = copy.deepcopy(sp)
+    if isinstance(sp0["base"]["head"].get("identity"), dict):
+        sp0["base"]["head"]["identity"].pop("eyes_000", None)
+    if isinstance((sp0.get("skin") or {}).get("eyes"), dict):
+        sp0["skin"]["eyes"].pop("iris_size", None)
+    mean_mm = 2000.0 * float(basemod.eye_native(sp0)["limbus"])
+    rel = mean_mm / float(ic["photo_mm"]) - 1.0          # how much larger the head must be than NOW for an average iris
+    tot = (1 + now) * (1 + rel) - 1
+    out.update(read=True, photo_mm=float(ic["photo_mm"]), mean_mm=mean_mm, iris_now=rel, iris_size=tot)
+    out["text"] = (f"IRIS SIZE CHECK: the picture's limbus is {ic['photo_mm']:.2f} mm at the model, GNM's mean limbus here "
+                   f"{mean_mm:.2f} mm: an average iris says the head is {100 * rel:+.1f} % against its size now "
+                   f"({100 * tot:+.1f} % against the start head's; the identity stands at {100 * now:+.1f} %). +- {100 * isd:.0f} % "
+                   f"person to person; with GNM's spread of size (+- {100 * psd:.1f} %) that is {100 * out['weight'] * tot:+.1f} % +- "
+                   f"{100 * out['combined_sd']:.1f} %")
+    return out
 
 
 def eye_follow(base0: dict, base1: dict) -> np.ndarray:

@@ -21,7 +21,7 @@ need_ref = pytest.mark.skipif(not (store.HOME / REF / "human_refs.json").exists(
 
 def test_defaults_what_validated_is_on_what_did_not_is_off():
     assert fr.CHIN_LM_AXES == "auto" and fr.SIDE_MIN == 60.0
-    assert fr.RAMP is False and fr.CLOTH_EDGE is False and fr.CHIN_TIE is False and fr.SIZE_HOLD is False
+    assert fr.RAMP is False and fr.CLOTH_EDGE is False and fr.CHIN_TIE is False and fr.SIZE_HOLD is True   # (size: held since 2026-10-12, Joe's decision: no picture reads it; tests/test_gnm_native.py)
     assert fr.LM_STRETCH is False and fr.LM_SIG_SCALE == 1.0
 
 

@@ -158,7 +158,7 @@ have no edge unless trimmed: match the fade on your reference before the colour.
 how far it comes down the forehead): the shadow of the hair under the skin plus cut hairs, so a head without a groom
 isn't a mannequin. Long lashes, beards and head hair are geometry (`groom_hair`).
 
-`"eyes"` (on by default when the body has eyeballs): `iris` colour, `iris_size`, `pupil`, `veins`, `sclera`. The iris
+`"eyes"` (on by default when the body has eyeballs): `iris` colour, `iris_size` (unset on a GNM head: GNM's limbus for the identity), `pupil` (unset: GNM's pupil, base.head.expression.pupils_000), `veins`, `sclera`. The iris
 is fibres running out from the pupil with a paler collarette and a dark limbal ring, the white is never white (pinker
 toward the corners, a few vessels), the upper lid shades the top of the eye, and the inner corner has a pink wet
 caruncle. A flat coloured disc with a black dot is the toy-eye tell.

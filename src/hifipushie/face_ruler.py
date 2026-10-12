@@ -1197,7 +1197,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
             from . import solve_report as sr
             whole = done + (np.asarray(poff, float) if poff is not None else 0.0)
             tk = {k_: v_ for k_, v_ in tie.items() if k_ != "size"}
-            obs = obs + (sr.tie_rows(done=whole, **tk) if tk.get("names") else []) + ([sr.size_row(done=whole)] if tie.get("size") else [])
+            obs = obs + (sr.tie_rows(done=whole, **tk) if tk.get("names") else []) + ([sr.size_row(done=whole, target=float(tie.get("size_target") or 0.0))] if tie.get("size") else [])
             out = solve(obs, cur, views=views, **skw)
         relax = float(out.get("relax", 1.0))
         done = done + out["dc"]
@@ -1296,10 +1296,8 @@ def limbus_model(head: dict, iris_mm: float | None = None) -> list:
     ht = st["head"]
     fwd = np.asarray(ht.get("forward", [0, -1, 0]), float)
     r = float(ht["eye_r"])
-    ri = 0.51 * 0.985 * r
-    drawn = ((head["spec"].get("skin") or {}).get("eyes") or {}).get("iris_size")
-    if drawn:
-        ri = 0.5 * float(drawn)
+    from . import base as _basemod
+    ri = _basemod.drawn_iris(head["spec"], r)   # skin.eyes.iris_size, else GNM's limbus (its eyeball), else 0.51 r
     if iris_mm:
         ri = iris_mm / 2000.0
     up = np.array([0.0, 0.0, 1.0]) - fwd * fwd[2]
@@ -2031,7 +2029,10 @@ def _landmark_obs(head, view, points):
 ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
 CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
 CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
-SIZE_HOLD = False                     # compare(chin={"size": True}): the face's size held at the start head's (solve_report.size_row)
+SIZE_HOLD = True                      # the face's SIZE is held at the block-in's start head's (solve_report.size_row): no picture reads
+# it (every camera's scale and distance are free: a bigger head further away is the same image), so left free it is whatever the prior's
+# correlations make of the shape reads (GNM's head_000 is width AND size: Tess's narrow face came out 3 % small, tess_a1 3.4 % large, the
+# benchmark's heads 1-8 % large). Joe, 2026-10-12: "I'd trust the model more". compare(chin={"size": False}) / block_in_solve(size="free") releases it
 CHIN_TIE = False                      # compare(chin={"tie": ..}): the unread jaw / chin widths tied to their expectation (solve_report.tie_rows)
 TIE_OPEN = (35.0, 60.0)               # a view whose fitted camera is turned this much shows the far jaw on its silhouette: no tie on the jaw
 CHIN_LM_AXES = "auto"                 # ... "xy" | "y" | "x" | "none" | "auto" = left out when the set has a SIDE view (its outline reads
@@ -2271,8 +2272,14 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     tie = None
     tc = (chin or {}).get("tie", CHIN_TIE)
-    if (chin or {}).get("size", SIZE_HOLD):
-        tie = {"names": (), "size": True}
+    sz = (chin or {}).get("size", SIZE_HOLD)
+    if sz is not False and sz is not None:      # True: held at the start's; a number: held at that size against the start's
+        tgt = 0.0 if sz is True else float(sz)
+        tie = {"names": (), "size": True, "size_target": tgt}
+        notes.append((chin or {}).get("size_note") or (
+            "SIZE: the head's overall size is HELD at the block-in's start head's (the class mean on this body): no "
+            "picture reads it (each camera's scale and distance are free), shape is free. block_in_solve(size=\"free\") "
+            "releases it; size=\"iris\" lets the picture's iris pull it (weakly: +- 7 % person to person); teeth would read it better"))
     if tc:
         from . import solve_report as sr
         side = any(abs(view_yaw(v["cam"])) >= 60.0 for v in views)       # a side view's outline reads the profile line

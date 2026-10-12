@@ -336,6 +336,7 @@ def _compile(spec: dict) -> list[Prim]:
     prims = _csg(s, prims, els)
     if s.get("base"):  # the base mesh first: everything else unions onto it
         prims.insert(0, _base(s, k_default))
+        prims[1:1] = _gnm_mouth(s, prims[0].part)
     prims = _deform(s, prims)
     out = _parts(prims, s.get("parts") or {}, k_default, s.get("joints"))
     if s.get("base"):  # the upper lids' fold (base.head.fold, lidfold.py): modifiers right after the base, seated on
@@ -373,6 +374,20 @@ def _base(s: dict, k_default: float) -> Prim:
                  "wt": surf.get("wt"), "seam": surf.get("seam"),
                  "key": surf["key"], "head": surf["head"]},
                 reach=1.0, part=b.get("part", "body"))
+
+
+def _gnm_mouth(s: dict, body_part: str) -> list[Prim]:
+    """GNM's own mouth for a GNM head (base.mouth_mode "gnm"): teeth + gums and tongue as parts of their own
+    (base.gnm_mouth_field; the bag is in the head's own field: base.sock_points)."""
+    from . import base as basemod
+    b = s["base"]
+    if basemod.mouth_mode(b) != "gnm":
+        return []
+    head = basemod.head_of(s, b)
+    if head is None or basemod.mouth_mode(b, head) != "gnm":
+        return []
+    return [Prim(e["name"], e["kind"], e["op"], e["blend"], e["layer"], e["lo"], e["hi"], e["params"], reach=1.0,
+                 part=e["part"] or body_part) for e in basemod.gnm_mouth_field(head)]
 
 
 def _deform(s: dict, prims: list[Prim]) -> list[Prim]:

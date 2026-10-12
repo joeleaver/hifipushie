@@ -91,6 +91,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   all reference views (outlines, irises, limbus, lids, lips; prior on the whole identity; cameras "trust" | "free")
   as a block-in step; judge heads with spikes/reruns/jsheet.py (references projected as skin + blend).
   -> full notes: docs/notes/gnm_atlas.md "## reruns" and "## LEARNINGS for the next agent"
+- GNM-native heads (2026-10-12, gnmnative): GNM's OWN eyeball (`base.gnm_eyes`; `head.eye_radius` = override) and mouth (teeth, tongue,
+  sock: `base.mouth_mode`; `head.interior` = the kit's), one evaluation of its 253 + 383 bases. -> docs/notes/gnm_atlas.md "## gnmnative"
 - `gnm_controls.py` + `gnm_sampler.py` (2026-10-10, gnmcontrols): GNM's control atlas (861 controls x 50 zones, macros,
   face-ID; MCP `gnm_controls`), the semantic samplers in numpy, and the block-in's `sculpt:<zone>` move (least-cost identity
   change for a zone, macros held). -> full notes: docs/notes/gnm_atlas.md "## gnmcontrols"
