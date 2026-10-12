@@ -21,7 +21,10 @@ them: bunches):
                             what leaves the tie: locks round a core line that starts along `dir` (default: out of the
                             head and down) and bends to gravity (stiff 0 = hangs at once, 1 = stands out straight);
                             fullness = the tail's radius at its fullest; coil = turns of the core wound round the tie
-                            (a bun); plait = three strands crossing; false = none (a knot)
+                            (a bun); plait = three strands crossing; false = none (a knot);
+                            sway = m the tail's AXIS swings side to side (a slow S every sway_length m: big soft waves
+                            of the whole tail; strand / lock waves only crimp it); flick = m the locks' ends turn out
+                            of the tail (flicked tips, each lock its own amount)
    "escape": 6,             strands that never reached the tie: they fall from the temples and nape
    "curtain": {"span": 70, "to": 80, "over": 10, "lift": 0.006}?
                             the front hair from a soft part sweeps DOWN AND OUT over the temples like curtains, rounds
@@ -38,13 +41,21 @@ them: bunches):
                             that run passes (the drape lying over the forehead's top); `sag` = deg the run on to the
                             ear's top hangs below its great circle at its middle (x closeness to the part): the hair
                             lower over the temples, the forehead a rounder arch instead of a peak under the part
-                            (faces3, Tess 2026-10-10). "left" / "right": {key: value}
+                            (faces3, Tess 2026-10-10). `arch` = deg the run over the forehead is RAISED for locks
+                            rooted `arch_at` deg from the part (none at the part, none past 2 x arch_at): rounds a
+                            pointed forehead's upper corners without lifting its centre; `rows` = how many rows from the hairline in take the way
+                            over the ear (each a little less; 1 = the hairline row alone). "left" / "right": {key: value}
                             for that side only (the person's left = +x): an asymmetric style. Default none: every
                             lock runs the great circle to the tie.
    "frame": {"count": 3, "az": [40, 95], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
              "wavelength": 0.075}?
                             face-framing pieces a side: soft separate wavy locks that fall from the temples and in front
-                            of the ears, of mixed lengths (styled, not strays); count may be [right, left]; default none
+                            of the ears, of mixed lengths (styled, not strays); count may be [right, left]; default none.
+                            `hairs`: n > 0 = each piece is 1..n SINGLE hairs (their own strand object) instead of a lock
+                            (a lock is never under ~8 strands side by side: a comb strip): loose hairs beside the face,
+                            many pieces of 1-3 hairs, width 1-3 mm; `curve`: 0..0.3, how far a piece bows off its
+                            line, x its length, each in its own plane with a slow S (0 = hangs straight);
+                            `strands`: {dial: value} over the pieces' own dials (hair_tied.FRAME_STRANDS)
    "band": 0.006}           the tie itself: a ring this thick round the tail's start (0 = none)
 
 Locks on the head are ordinary [az, el, h] locks; the tail and the escaped strands leave the head, so they are
@@ -60,11 +71,14 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "toward": "tie", "reach": 0.75, "ride": 0.003,
                   "inner_roots": None},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
-                "coil_radius": 0.03, "plait": False, "taper": 0.5}}
+                "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0}}
 CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "drape": 0.0, "dip": 0.0,
-           "sag": 0.0, "left": None, "right": None}
+           "sag": 0.0, "rows": 1, "arch": 0.0, "arch_at": 25.0, "left": None, "right": None}
 FRAME = {"count": 3, "az": [40.0, 95.0], "length": [0.07, 0.15], "width": [0.008, 0.014], "wave": 0.014,
-         "wavelength": 0.075}
+         "wavelength": 0.075, "hairs": 0, "curve": 0.0, "strands": None}
+# a face-framing piece's strand dials unless frame.strands says otherwise (a round wisp: flat, its few strands were
+# a comb)
+FRAME_STRANDS = {"flyaway": 0.25, "curl": 0.0, "clump": 0.3, "tip_spread": 0.7, "flat": 3.0}
 DOWN = np.array([0.0, 0.0, -1.0])
 
 
@@ -203,18 +217,29 @@ def grow(sc, g: dict, line, rng) -> dict:
                     if cw > 0 and r == 0:  # the drape: rooted behind the line, arcing forward over it
                         el += float(cu.get("drape", 0.0)) * cw
                     root = _slerp(dirs(az, el), inner, [f])[0]
-                    if cw > 0 and r == 0:
+                    # (curtain.rows: how many rows take that way round, each further in a little less: with the
+                    # hairline row alone it lies on the rest as a band, a rolled headband over the temple)
+                    crows = max(int(cu.get("rows", 1)), 1) if cu else 1
+                    route = cw > 0 and r < crows
+                    cwr = cw * (1.0 - r / crows)
+                    if route:
                         # down and out to its own side over the temple, round the ear's top, then back to the tie
                         sd = 1.0 if azw >= 0 else -1.0
                         ra, re = az_el(root)
                         raw = ((float(ra) + 180.0) % 360.0) - 180.0
                         way = dirs(sd * max(abs(raw) + 10.0, float(cu["to"])),
-                                   float(cu["over"]) + (float(re) - float(cu["over"])) * (1.0 - cw) * 0.5)
-                        al = float(cu.get("along", 0.0)) * cw
+                                   float(cu["over"]) + (float(re) - float(cu["over"])) * (1.0 - cwr) * 0.5)
+                        al = float(cu.get("along", 0.0)) * cw * (r == 0)
                         if al > 0:  # sideways at the root's height first, then down to the ear's top, then back
                             # (just inside the hairline there: it runs over the forehead's corner, not above it)
+                            # (arch: the run RAISED over the forehead's corners only, most for locks rooted arch_at
+                            # deg from the part, nothing at the part or past 2 x arch_at: a round arch. A negative dip
+                            # does it for every lock by its closeness to the part: the corners closed, but the centre
+                            # rose 4 mm and bared a notch under the part: Tess, 2026-10-11)
+                            bump = float(np.sin(np.pi * np.clip(abs(azw) / (2.0 * max(float(cu.get("arch_at", 25.0)), 1.0)), 0.0, 1.0)))
                             mid = dirs(float(ra) + sd * al, min(float(re), float(_line_at(line, float(ra) + sd * al)) + 3.0
-                                                               - float(cu.get("dip", 0.0)) * cw))
+                                                               - float(cu.get("dip", 0.0)) * cw
+                                                               + float(cu.get("arch", 0.0)) * bump))
                             t = np.linspace(0, 1, 11)
                             k0, k1 = 0.25, 0.5
                             D = np.concatenate([_slerp(root, mid, t[t <= k0] / k0),
@@ -227,12 +252,12 @@ def grow(sc, g: dict, line, rng) -> dict:
                             D = np.concatenate([_slerp(root, way, t[t <= k1] / k1),
                                                 _slerp(way, tie_dir, (t[t > k1] - k1) / (1 - k1))])
                             s_run = np.where(t <= k1, t / k1, 0.0)
-                        sag = float(cu.get("sag", 0.0)) * cw * np.sin(np.pi * s_run)
+                        sag = float(cu.get("sag", 0.0)) * cwr * np.sin(np.pi * s_run)
                     else:
                         t = np.linspace(0, 1, 7)
                         D = _slerp(root, tie_dir, t)
                     aa, ee = az_el(D)
-                    if cw > 0 and r == 0:
+                    if route:
                         ee = ee - sag
                     lift = float(ga["lift"]) * (1 + un * rng.uniform(-0.5, 0.8))
                     hb = 0.002 + float(ga.get("ride", 0.003)) * (rows - 1 - r)
@@ -261,6 +286,21 @@ def grow(sc, g: dict, line, rng) -> dict:
             K = core_line(sc, tp, tl)
             T, E1, E2 = _transport(K)
             s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(K, axis=0), axis=1))]
+            sway = float(tl.get("sway", 0.0))
+            if sway > 0 and not float(tl.get("coil", 0.0)) > 0:
+                # the whole tail swings: its axis a slow S (one big soft wave every sway_length m, growing from the
+                # tie), every lock with it. Waves on the locks or strands alone only crimp a straight tail
+                K = core_line(sc, tp, tl, n=28)
+                T, E1, E2 = _transport(K)
+                s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(K, axis=0), axis=1))]
+                ph0 = rng.uniform(0, 2 * np.pi)
+                env = _ss_t(s / 0.05)
+                lam = max(float(tl.get("sway_length", 0.16)), 0.02)
+                K = K + (sway * env * np.sin(2 * np.pi * s / lam + ph0))[:, None] * E1 \
+                    + (0.5 * sway * env * np.sin(2 * np.pi * s / (lam * 1.37) + ph0 + 1.3))[:, None] * E2
+                K = _clear(sc, K, float(tl["fullness"]) * 0.5 + 0.006)
+                T, E1, E2 = _transport(K)
+                s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(K, axis=0), axis=1))]
             n = int(tl["locks"])
             full, un = float(tl["fullness"]), float(tl["uneven"])
             r_tie = min(0.012, full * 0.4)
@@ -272,7 +312,7 @@ def grow(sc, g: dict, line, rng) -> dict:
                 else:
                     th0, rho = k * 2.39996, np.sqrt((k + 0.5) / n)
                 ln = 1 - un * rng.uniform(0, 0.4) * (0.3 if coil else 1.0)
-                t = np.linspace(0, 1, 9)
+                t = np.linspace(0, 1, 17 if (sway > 0 or float(tl.get("flick", 0.0)) > 0) else 9)
                 sk = t * ln * s[-1]
                 C = np.stack([np.interp(sk, s, K[:, j]) for j in range(3)], 1)
                 e1 = np.stack([np.interp(sk, s, E1[:, j]) for j in range(3)], 1)
@@ -284,6 +324,10 @@ def grow(sc, g: dict, line, rng) -> dict:
                 th = th0 + (2 * np.pi * 1.5 * tt * s[-1] / 0.12 if tl.get("plait") else un * rng.uniform(-0.6, 0.6) * tt)
                 P = C + (R * rho)[:, None] * (np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2)
                 P = P + un * 0.006 * rng.normal(0, 1, (len(t), 3)) * tt[:, None]
+                fl = float(tl.get("flick", 0.0))
+                if fl > 0:  # the lock's end turns out of the tail (and a little up): a flicked tip, each its own
+                    rad = np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2
+                    P = P + (fl * rng.uniform(0.3, 1.0) * (0.3 + rho) * _ss_t((tt - 0.6) / 0.4) ** 2)[:, None] * (rad + [0.0, 0.0, 0.35])
                 P[0] = P0 + 0.5 * (P[0] - P0)
                 w = full * (3.0 if coil else 2.2) / np.sqrt(max(n, 1)) * (1 + un * rng.uniform(-0.25, 0.35))
                 locks[f"{pre}t{k}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, _clear(sc, P, 0.004)),
@@ -335,12 +379,32 @@ def grow(sc, g: dict, line, rng) -> dict:
                 d = _unit(d + 0.5 * DOWN)
                 P.append(_clear(sc, (P[-1] + d * ln / 8)[None], 0.005)[0])
             w0, w1 = fm["width"]
+            hairs = int(fm.get("hairs") or 0)
+            cv = float(fm.get("curve") or 0.0)
+            if cv > 0:  # its own bend: bowed out from the face and back (a C), with a slow S along it; each piece
+                # in its own plane, so no two hang parallel (straight down, a row of them is a comb's teeth)
+                P = np.asarray(P)
+                sl = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
+                u = np.linspace(0, 1, 17)
+                P = np.stack([np.interp(u * sl[-1], sl, P[:, c_]) for c_ in range(3)], 1)
+                eo = P[0] - sc.C
+                eo = _unit(np.array([eo[0], eo[1], 0.0]))
+                es = np.array([-eo[1], eo[0], 0.0])
+                a = np.radians(rng.uniform(-110, 110))
+                bow = cv * ln * rng.uniform(0.4, 1.2)
+                e = np.cos(a) * eo + np.sin(a) * es
+                e2 = np.cross(e, [0.0, 0.0, 1.0])
+                k_, ph_ = rng.uniform(0.7, 1.3), rng.uniform(0, 2 * np.pi)
+                P = (P + (bow * np.sin(np.pi * u ** 0.8))[:, None] * e
+                     + (0.45 * bow * u * np.sin(2 * np.pi * k_ * u + ph_))[:, None] * e2
+                     + (0.5 * bow * u ** 3)[:, None] * eo)  # (the tip flicks out)
+                P = _clear(sc, P, 0.004)
             locks[f"{pre}f{k}"] = {"tier": "tie", "space": "xyz", "pts": _xyz(sc, P), "free": 1.0,
                                   "width": round(float(rng.uniform(w0, w1)), 4), "thickness": 0.003,
                                   "taper": 0.5, "belly": 0.35, "root": 0.6, "cup": 0.0,
-                                  "strands": {"flyaway": 0.25, "curl": 0.0, "wave": float(fm["wave"]),
-                                              "wavelength": float(fm["wavelength"]), "clump": 0.3, "tip_spread": 0.7,
-                                              "flat": 3.0}}  # (a round wisp: flat, its few strands were a comb)
+                                  **({"hairs": int(rng.integers(1, hairs + 1))} if hairs > 0 else {}),
+                                  "strands": {**FRAME_STRANDS, "wave": float(fm["wave"]),
+                                              "wavelength": float(fm["wavelength"]), **(fm.get("strands") or {})}}
         if tl and float(tp.get("band") or 0) > 0:  # the tie: a short stiff ring of locks round the tail's start
             K = core_line(sc, tp, tl)
             T, E1, E2 = _transport(K)

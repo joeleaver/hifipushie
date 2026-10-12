@@ -25,7 +25,7 @@ VERSION = 11  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
-OBJECTS = ("hair_guides", "hair_guides_free", "hair_under", "hair_scalp", "hair_collide")
+OBJECTS = ("hair_guides", "hair_guides_free", "hair_guides_wisp", "hair_under", "hair_scalp", "hair_collide")
 
 
 def essentials() -> dict:
@@ -78,6 +78,7 @@ def lens_group():
                                   ("Halo", "NodeSocketFloat", 0.0, 0.0, 1.0),
                                   ("Halo Distance", "NodeSocketFloat", 0.012, 0.0, 0.05),
                                   ("Halo Length", "NodeSocketFloat", 0.05, 0.005, 0.3),
+                                  ("Fine", "NodeSocketFloat", 0.0, 0.0, 1.0),
                                   ("Seed", "NodeSocketInt", 0, 0, 10000)):
         s = it.new_socket(name, in_out="INPUT", socket_type=typ)
         s.default_value = dv
@@ -173,7 +174,9 @@ def lens_group():
     expo = math("ADD", 0.35, math("MULTIPLY", gi.outputs["Clump Shape"], 2.65))
     open_tip = math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Tip Spread"],
                                           math("POWER", math("MAXIMUM", math("MULTIPLY", math("SUBTRACT", t, 0.7), 3.3333), 0.0), 2.0)))
-    c = math("MULTIPLY", math("MULTIPLY", gi.outputs["Clump"], math("POWER", t, expo)), open_tip)
+    # (hp_clx: a lock's own clump, as what it adds to the object's: (lock - object) / object; absent = 0)
+    clump_l = math("MINIMUM", math("MULTIPLY", gi.outputs["Clump"], math("ADD", 1.0, named("hp_clx", "FLOAT"))), 0.95)
+    c = math("MULTIPLY", math("MULTIPLY", clump_l, math("POWER", t, expo)), open_tip)
     # not every strand joins its clump as hard: with all of them on one line a clump is a rope with dark air between
     # it and the next (pasta); strays fill between the clumps
     cs = named("hp_cs", "FLOAT")
@@ -236,6 +239,9 @@ def lens_group():
                                                    math("MULTIPLY", htau, math("SINE", hang)))))
     off = vmath("ADD", off, hoff)
     geo = store(geo, "hp_sub", kf)
+    # single hairs (the halo, a lock of `hairs`): the EEVEE material draws them part transparent (a strand is never
+    # drawn under a pixel wide: alone against skin or the backdrop, 0.08 mm hairs came out as 1 mm wires)
+    geo = store(geo, "hp_fine", math("MAXIMUM", halo, gi.outputs["Fine"]))
     geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
     sp = N.new("GeometryNodeSetPosition")
     L.new(geo, sp.inputs["Geometry"])
@@ -435,7 +441,8 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("k", "INT", "CURVE", "value"), ("fd", "FLOAT", "CURVE", "value"),
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
-                              ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value")):
+                              ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value"),
+                              ("clx", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -611,6 +618,20 @@ def material(look: dict):
         pb.inputs["Sheen Tint"].default_value = (*_lin(look.get("sheen", "#86524a")), 1)
     except KeyError:
         pass
+    fa_ = float(look.get("fine_alpha", 0.5))
+    if fa_ < 1.0:  # single hairs (hp_fine) part transparent in EEVEE (dithered: the samples blend it)
+        fn = N.new("ShaderNodeAttribute")
+        fn.attribute_name = "hp_fine"
+        al = N.new("ShaderNodeMath")
+        al.operation = "MULTIPLY_ADD"
+        L.new(fn.outputs["Fac"], al.inputs[0])
+        al.inputs[1].default_value = fa_ - 1.0
+        al.inputs[2].default_value = 1.0
+        L.new(al.outputs[0], pb.inputs["Alpha"])
+        try:
+            m.surface_render_method = "DITHERED"
+        except Exception:  # noqa: BLE001
+            m.blend_method = "HASHED"
     L.new(pb.outputs[0], oe.inputs["Surface"])
     m["hp_look"] = json.dumps(look, sort_keys=True)
     return m

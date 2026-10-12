@@ -58,6 +58,8 @@ SAFE = {
     "halo_m": 0.012,  # m such a hair stands off its lock at its end (x 0.3..1.3 per hair)
     "halo_len": 0.05,  # m it runs (x 0.4..1.4)
 }
+WISPS = "hair_guides_wisp"  # the object of the locks of single hairs (lock["hairs"] = n)
+WISP_RADIUS = 0.8  # x the strand radius for single hairs (alone against skin a strand reads thicker than in a mass)
 WISP_FAN = 2.0  # a thin free lock (a wisp, < 16 mm) opens to (1 + this) x its width toward the tip, round in section
 
 
@@ -98,7 +100,8 @@ def physical(S: dict, free: bool = False) -> dict:
         "roots": SAFE["roots"] * c("roots") * (0.3 if free else 1.0),
         "curl": SAFE["curl_m"] * c("curl") * (1.0 if free else 0.3),
         "curl_freq": 1.0 / max(float(S["wavelength"]), 0.01),
-        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)),
+        # (a tail has its fly-aways; short hairs standing off it all round made it a bottle brush)
+        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if free else 1.0),
     }
 
 
@@ -114,17 +117,26 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
     from .hair import lock_width
     out = {}
     lam = max(float(S["wavelength"]), 0.01)
-    for key in ("head", "free"):
-        sel = [(i, lk) for i, lk in enumerate(locks) if (float(lk.get("free", 0.0)) > 0.5) == (key == "free")]
+    def kind(lk):  # "wisp": a lock of `hairs` SINGLE strands (its own object: a lock's share of the count is never
+        # under ~8 strands, and 8 side by side on one line are a comb strip, not loose hairs)
+        return "wisp" if int(lk.get("hairs") or 0) > 0 else "free" if float(lk.get("free", 0.0)) > 0.5 else "head"
+
+    for key0 in ("head", "free", "wisp"):
+        sel = [(i, lk) for i, lk in enumerate(locks) if kind(lk) == key0]
         if not sel:
             continue
+        key = "head" if key0 == "head" else "free"  # (single hairs are shaped like hair that has left the head)
         n = n_free if key == "free" else n_head
-        if key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
+        if key0 == "wisp":
+            n = 48
+        elif key == "free" and float(S["wave"]) > 0:  # curls need points: 8 a turn of the tightest swing
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
-        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_ = ([] for _ in range(14))
+        P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_, CX_ = ([] for _ in range(15))
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
+            if "wisp_fan" in (lk.get("strands") or {}):
+                Sl["wisp_fan"] = lk["strands"]["wisp_fan"]
             rng = np.random.default_rng([seed, int(hashlib.md5(lk["name"].encode()).hexdigest()[:8], 16)])
             inp = lk["inputs"]
             P, rad, tilt, u, s = hc.spine(lk, n)
@@ -189,18 +201,28 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                 # lock it scales the lock's share of it): 0 = every strand of this lock starts at the lock's root
                 rs_ *= float(np.clip(lk["strands"]["roots"], 0, 1)) / max(float(np.clip(S["roots"], 0, 1)), 1e-6)
             R_.append(rs_)
-            TS_.append(0.0 if gather else 1.0)
+            own = lk.get("strands") or {}
+            # a lock's own tips / clump (the dials are one number an object): as a factor on the object's
+            TS_.append(0.0 if gather else float(np.clip(own["tips"], 0, 1)) / max(float(np.clip(S["tips"], 0, 1)), 1e-3)
+                       if "tips" in own else 1.0)
+            CX_.append(float(np.clip(own["clump"], 0, 1)) / max(float(np.clip(S["clump"], 0, 1)), 1e-3) - 1.0
+                       if "clump" in own else 0.0)
             GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
             WS_.append(ws)
             WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
             I_.append(i)
             N_.append(lk["name"])
-        out[key] = {"counts": np.full(len(sel), n, np.int32), "pts": np.concatenate(P_).astype(np.float32),
+        if key0 == "wisp":
+            W_ = [0.0] * len(sel)  # (no share of the count: `hairs` strands each)
+        out[key0] = {"hairs": np.asarray([int(lk.get("hairs") or 0) for _, lk in sel], np.int32),
+                     "counts": np.full(len(sel), n, np.int32), "pts": np.concatenate(P_).astype(np.float32),
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
                     "weight": np.asarray(W_, float), "density": np.asarray(D_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
                     "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
                     "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_)}
+        if any(CX_):  # (only when a lock asks: older jobs keep their files, and so their cache keys)
+            out[key0]["clx"] = np.asarray(CX_, np.float32)
     return out
 
 
@@ -362,7 +384,7 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
             "names": np.asarray([f"u{i}" for i in range(len(P))])}
 
 
-def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0) -> dict:
+def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0, n_wisp: float = 0.0) -> dict:
     """Each object's modifier stack: [[node group, {input: value}], ...]. {"part": name} = the scene object of that
     part (the body: strands are kept out of it), {"attribute": name} = a named attribute as a field."""
     body = {"object": "hair_collide"}
@@ -392,7 +414,13 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
     if n_head > 0:
         out["hair_guides"] = lens_stack(physical(S), n_head, False)
     if n_free > 0:
-        out["hair_guides_free"] = lens_stack(physical(S, free=True), n_free, True)
+        out["hair_guides_free"] = lens_stack(physical({**S, **(S.get("free") or {})}, free=True), n_free, True)
+    if n_wisp > 0:  # single hairs: no clumps to join, no strays of strays; each keeps most of its length
+        ph = physical(S, free=True)
+        st = lens_stack({**ph, "clump": 0.0, "flyaway": 0.0, "halo": 0.0, "tips": 0.35 * ph["tips"], "roots": 0.0}, n_wisp, True)
+        st[-1][1]["Radius"] = ph["radius"] * WISP_RADIUS
+        st[0][1]["Fine"] = 1.0
+        out[WISPS] = st
     if n_under > 0:
         ph = physical(S)
         out["hair_under"] = [
@@ -453,12 +481,15 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
     n_locks = ph["count"] - n_under
     wsum = sum(float(G[k]["weight"].sum()) for k in G) or 1.0
     amount, groups = {}, []
-    for key, name in (("head", "hair_guides"), ("free", "hair_guides_free")):
+    for key, name in (("head", "hair_guides"), ("free", "hair_guides_free"), ("wisp", WISPS)):
         if key not in G:
             continue
         gg = G[key]
+        hairs = gg.pop("hairs")
         share = gg.pop("weight") * gg.pop("density", 1.0) / wsum * n_locks  # strands per lock
         base = np.maximum(np.round(share / 8.0), 1).astype(np.int32)  # hp_n: an eighth, the lens group's Amount = 8
+        if key == "wisp":  # exactly `hairs` strands a lock (Amount 1)
+            share = base = hairs
         gg["n"] = base
         gg["uv"] = scalp_uv(sc, gg["pts"].reshape(len(base), -1, 3)[:, 0], e0).astype(np.float32)
         amount[name] = float(share.sum() / max(base.sum(), 1))
@@ -470,7 +501,8 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         np.savez(tmp / "hair_under.npz", **ug)
         groups.append({"name": "hair_under", "guides": str(tmp / "hair_under.npz"), "locks": int(len(ug["counts"])),
                        "strands": int(round(n_under))})
-    st = stacks(S, amount.get("hair_guides", 0.0), amount.get("hair_guides_free", 0.0), n_under, area, seed)
+    st = stacks(S, amount.get("hair_guides", 0.0), amount.get("hair_guides_free", 0.0), n_under, area, seed,
+                n_wisp=amount.get(WISPS, 0.0))
     for grp in groups:
         grp["stack"] = st[grp["name"]]
     out = {"scalp": str(tmp / "strand_scalp.npz"), "collide": str(tmp / "strand_collide.npz"), "groups": groups, "look": look, "physical": ph,
