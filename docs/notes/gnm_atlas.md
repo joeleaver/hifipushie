@@ -5824,13 +5824,14 @@ the socket lining behind it, where a lid lies on the ball):
 ## we've learned?" ONE dressed GNM-native Garrett from the two paintings only. Scratch DURABLE in /mnt/data/hifipushie/garrettnative:
 ## run.sh <script> (capped, this worktree's src, main's workspace), hv.py <gb> <script> (the same inside resources.heavy),
 ## chain.sh / tour.sh / tests.sh, out/ (logs; tiles out/<model>/...); scripts in spikes/garrettnative; models gn_G00.., garrett_n1)
-STATE (DONE, 2026-10-12; branch `garrettnative`, NOT merged, NOT pushed): `garrett_n1` = the dressed GNM-native Garrett
-(true GNM base, GNM's eye and mouth, the joint solve only, skin + folds from the two paintings, h7_garrett's groom
-re-seated). Sheet workspace/human_renders/gn_garrett_native.png (REFERENCE | garrett_n1 | garrett_a1). Tiles
-/mnt/data/hifipushie/garrettnative/out/garrett_n1/dressed + clay, gn_a1h/ (garrett_a1 + the same groom), cmp/ (reference |
-new | a1 per feature). VERDICT: chin, mouth, bags / hooding, outer eye corner better; eye opening, brows and the face's
-AGE in the shape worse (the true base reads young: the folds carry his age); nose, jaw the same. garrett_a1 untouched.
-NEXT: Joe's decisions at the end of this section.
+STATE (2026-10-12, after Joe's follow-up; branch `garrettnative`, NOT merged, NOT pushed): three dressed heads on the
+same solved true-base shape: `garrett_n3` = GNM's SURFACE ONLY (no skin.folds, no sculpt strokes, painted wrinkles off),
+`garrett_n2` = no skin.folds (the 9 inherited strokes and the painted wrinkles still on), `garrett_n1` = with folds.
+MEASURED: the built head's GNM vertices are GNM evaluated directly to 0.03 mm rms / 0.09 mm max over face, jaw, skull,
+ears (one similarity, scale 1.0377); the neck is the body's. Sheets workspace/human_renders/gn_garrett_native_nofolds.png
+(REFERENCE | n3 | n2 | n1 | garrett_a1) and gn_garrett_native.png (n1 | a1). FAULT FOUND: block_in_start carries the refs
+model's spec["strokes"] onto the new head (garrett_a1's 9 sculpt strokes were on every gn_* / ng_* head).
+NEXT: Joe's decisions (end of this section); block_in_start should drop strokes (not changed here: no code changes asked).
 
 ### Step 1: the shape (the joint solve only; logs out/chain_gn_G.log)
 - LOOKED at ng_N05 first (gnmnative's quick true-base chain; clay tour tiles out/ng_N05/clay beside out/garrett_a1/clay):
@@ -5978,3 +5979,60 @@ NONE on the true base (no concavity on the outer third); all of it is the fold l
 3. His squint: an eye expression / lid pose on the true base (a pose, not identity), or a closer picture of the eyes.
 4. The true base reads young: get age from GNM's own age direction (gnm_sampler) instead of the fold layer alone?
 5. Two true-base chains from the same pictures gave two chins (gn_G08 slab, gn_H03 pad): the chin is still unread.
+
+### Follow-up (Joe on garrett_n1: "What is this weird stuff here?" at the mouth sides; "Can we take those out for now?
+### They aren't GNM native. Did we add our eye creases too?" and "it will be truly GNM, right, not blended?")
+- YES, ours: skin.folds nasolabial 1.20, marionette 0.90, tear_trough 0.90, lid_fold 0.6 / hood 1.0, chin_notch 0.4.
+  AND, missed until now: spec["strokes"], NINE SCULPT STROKES copied from garrett_a1 by block_in_start (it deep-copies
+  the refs model and drops only hair / cloth): nasolabial.L crease (1.0 mm) + naso_cheek.L clay, forehead_1/2/3.L
+  creases, glabella.L, under_eye.L crease, brow_ridge.L clay (1.4 mm), cheekbone.L clay (2.4 mm), each mirrored. They
+  are on gn_G* / gn_H* / gn_D1 / garrett_n1 (and gnmnative's ng_*): the "doubled scratches" beside the mouth are the old
+  stroke's crease beside the fold layer's. My step-1 line "no hand sculpting" was WRONG for the dressed head; the solve
+  and the clay tiles (blockin's base mesh) never saw the strokes, so the shape reads above stand.
+- garrett_n2 = garrett_n1 with skin.folds (and fold_expressions) removed; everything else kept.
+  garrett_n3 = garrett_n2 with spec.strokes = {} and skin.wrinkles.amount 0 (two keys, not one: the strokes are
+  geometry, the wrinkles painted height + a multiply tint by age: forehead, glabella 1.4, crow's feet, under-eye, lip
+  lines, neck). n3 is the head to look at for "GNM's own surface".
+- IS IT GNM? MEASURED (spikes/garrettnative/gnmtrue.py: template + all 253 identity components + GNM's lip_close solved
+  on the raw head, against onemesh.head_rest(base)["gnm_world"], best similarity fitted on the face; GNM's own mm):
+  | region | garrett_n2 / n3 rms, max | garrett_a1 rms, max |
+  |---|---|---|
+  | face (hockey mask, 4,592 v) | 0.029, 0.094 | 2.58, 5.40 |
+  | jaw and chin | 0.038, 0.068 | 2.83, 4.75 |
+  | mouth | 0.052, 0.094 | 3.02, 5.04 |
+  | skull (off the face and ears, fade 1) | 0.032, 0.085 | 10.6, 32.0 |
+  | ears | 0.020, 0.029 | 3.26, 4.64 |
+  | eye sockets' lining | 0.017, 0.019 | 1.43, 2.23 |
+  | neck (fade < 1; 3,104 v) | 23.8, 45.1 | 14.5, 31.5 |
+  Scale 1.0377 (face) / 1.0378 (face + skull together: ONE similarity, skull rms 0.020). No exterior vertex at fade 1 is
+  further than 0.3 mm from GNM (garrett_a1: 8,349 are). CAUSES: (1) the 0.03-0.09 mm residual = onemesh.hook scaling
+  the TEMPLATE by the fit into the body's head (1.009) while the identity offsets are not scaled (headbody's finding;
+  0.9 % of offsets up to ~10 mm); (2) the neck = onemesh.neck_fade: the head's own shape handed to MakeHuman's body
+  ring by ring: fade 0.9-1.0 rms 0.7 / max 1.7 mm, 0.7-0.9 3.4 / 6.1, 0.4-0.7 9.4 / 15, below 19-45 mm; the first
+  vertex past 0.3 mm is 181 mm over GNM's bib edge (the fade starts at 186; the chin's lowest face vertex is at 130: the
+  faded vertices at that height are the nape and the neck under the jaw, none in the hockey mask); (3) lip_close is
+  GNM's own expression basis with OUR coefficients (up to 3.6 mm at the lips; without it the face would differ 0.55 rms).
+  From the spec: gnm_base 1.0, dimorphism 0.0, eyes 1.0, no sliders / warp / shape / pose / features, style.human =
+  {head_size 1.03} only (size, in the similarity), no eye_radius, no interior. So nothing of MakeHuman, no dimorphism
+  field, no style slider, no eye scaling touches face, jaw, skull or ears. This is the BASE mesh: the meshed field adds
+  ~0.02 mm (gnmnative's rung 2), then on n1 the folds and on n1 / n2 the strokes (up to 2.4 mm) lie on top; on n3 nothing.
+- NOT GNM's own shape or part on garrett_n3 (the full list): size and place (one scale 1.0377 = fit 1.009 x head_size
+  1.03, rigid placement; base.head.scale 1.12 is a dead key); the NECK and everything below (MakeHuman's body, the
+  stitch, the fade above); lip_close (GNM's basis, our solve) + the sealed-seam field behind closed lips; the lids'
+  extra edge loops (gnmloops); the surface as an IMLS field meshed at ~1 mm; the eyeball as analytic spheres at GNM's
+  centre / radius / limbus / cornea with a PAINTED iris, pupil 0.33 (GNM 0.50), sclera colour, veins, lid shadow, tear
+  line, caruncle and the new canthus shading; gaze (look_at); teeth / tongue as shell solids of GNM's meshes; LASHES
+  (our curves, default on); BROWS and STUBBLE (the skin's hair pictures / cards, fitted to the painting); HAIR
+  (h7_garrett's groom); the SKIN: tone, zones, lips, mottle (variation 1.3), and MICRO RELIEF (skin.detail 1.8: pores
+  and fine lines as painted height / normal: still on in n3); paint layers g4_nostril.L (dark nostril interiors),
+  g4_body_tone, g4_neck_cool. No lid pose, no expression, no kits.
+- WHAT GNM'S OWN SURFACE GIVES (garrett_n3, tiles out/garrett_n3/dressed/, one at a time):
+  mouth side (mouth_chin_v0): NOTHING: a smooth cheek from the nose wing to the jaw, a soft mound at the mouth corner,
+  no nasolabial line, no marionette; the chin a clean rounded pad. upper lid (eyeR_v0): a narrow lid band with one soft
+  line just over the lashes, barely readable under this light and the even lid tone; no hooding. under the eye: FLAT:
+  no bag, no trough, no line. It is a clean, healthy, much younger eye and mouth than the painting's: his age is not in
+  GNM's identity as solved from these pictures.
+  garrett_n2 (strokes + painted wrinkles on): a faint soft crease from the nose wing on the right, forehead lines, a
+  glabella nick, crow's-feet lines: the old dressing, thin.
+- Joe to decide: (6) drop spec.strokes in block_in_start (I would); (7) where his age should come from if not our
+  folds: GNM's age direction, a better fold layer, or texture only.
