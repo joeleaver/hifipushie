@@ -553,6 +553,7 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
 
 
 HIDDEN_RIM = 0.012  # m: buried skin and cloth is kept this far in from what shows
+OWN_SURFACE = 0.0012  # m: a GNM mouth part's meshed vertex this near GNM's own (subdivided) vertices is its surface
 
 
 def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float = HIDDEN_RIM) -> np.ndarray:
@@ -572,14 +573,23 @@ def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float
     return deep
 
 
-def prune_hidden(ctx: dict, mesh: Path, log: list) -> Path:
+def prune_hidden(ctx: dict, mesh: Path, log: list, own_surface: dict | None = None) -> Path:
     """Drop faces buried inside another part (skin under solid clothing shells, the back of an eyeball in its
-    socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space."""
+    socket, tooth roots, a chair's feet in the floor): nobody sees them, and they'd take triangles and atlas space.
+    own_surface {part: (n, 3) points}: parts that are hidden only in the neutral (GNM's own teeth and tongue behind
+    closed lips: a jaw shape brings them out): of those, the faces ON these points (the piece's own outer surface)
+    are kept and the rest (the inside of its shell) dropped, whatever covers them."""
     z = dict(np.load(mesh))
     names = [str(n) for n in z["part_names"]]
     hidden = surface.hidden(ctx["streams"], z["verts"].astype(np.float64), z["part"], names, ctx["voxel"],
                             ctx.get("apart")) > 0.5
     hidden = _deep_hidden(z["verts"].astype(np.float64), hidden, z["part"])
+    for pn, pts in (own_surface or {}).items():
+        from scipy.spatial import cKDTree
+        for i, nm in enumerate(names):
+            if ctx["origin"].get(nm, nm) == pn or nm == pn:
+                m = z["part"] == i
+                hidden[m] = cKDTree(pts).query(z["verts"][m].astype(np.float64))[0] > OWN_SURFACE
     faces = z["faces"]
     keep = ~hidden[faces].all(1)
     dropped = {pn: int((~keep & (z["part"][faces[:, 0]] == i)).sum()) for i, pn in enumerate(names)}
@@ -1545,7 +1555,13 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     tm = time.time()
     high = mesh_parts(ctx, out_dir / "high.npz")
     log.append(f"meshed {len(ctx['streams'])} parts in {time.time() - tm:.1f}s (scene voxel {ctx['voxel'] * 1000:.1f} mm)")
-    prune_hidden(ctx, high, log)
+    own_surface = None
+    if face_shapes and getattr(fface, "gnm_mouth", False):  # GNM's own teeth and tongue lie behind the closed lips
+        from . import base as basemod
+        mp = basemod.gnm_mouth(fface.head)
+        pts = {k: basemod._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
+        own_surface = {"teeth": np.r_[pts["teeth_upper"], pts["teeth_lower"]], "tongue": pts["tongue"]}
+    prune_hidden(ctx, high, log, own_surface)
     if texel_density:
         split_big(high, ctx, {pn: _weight(defs, origin[pn], "texel_density") * texel_density for pn in ctx["streams"]},
                   texture, log)

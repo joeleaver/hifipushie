@@ -5379,3 +5379,93 @@ lip_close, one evaluation), carried by the translation and uniform scale that ta
 its lid margin and socket-lining rings -2 .. 2; teeth + tongue as ONE piece: the lip and chin regions) from GNM's
 evaluation to where our steps put it. With nothing of ours on the head it is the identity. After it: residual 0.000
 mm (eyes, upper teeth); the lower teeth / tongue differ from the neutral only by lip_close's own jaw turn.
+What changed in the build:
+- `base.gnm_eyes(V, g)` reads GNM's two-sphere eye off the posed vertices (centre, the ball = the outer shell's front
+  outside the cornea, gaze axis, corneal sphere through the apex, limbus = where the spheres meet, iris disc, pupil);
+  `gnm_head` returns `eye_gnm` (world) and `gnm_world` (every GNM vertex as placed). The eyeball is that sphere AT
+  GNM's centre x the head's scale (x the lids' own local scale on a body-bound head: garrett_a1 0.947, tess_a1 1.009):
+  NO seat search, no radius of ours. `base.inject`: the cornea is on by default and is GNM's corneal sphere
+  (`base.cornea: false` turns it off; given numbers win). `skin.eyes`: iris at 2 x limbus unless `iris_size` is set,
+  pupil = GNM's (0.50 of the iris at rest) unless `pupil` is set. `base.head.eye_radius` stays as the OVERRIDE (our
+  ball + seat search, exactly the old code path).
+- New reachable parameters: `base.head.identity.eyes_000` (limbus; `base.limbus_identity(spec, mm)`, block-in step
+  `iris_mm`), `eyes_001` (cornea prominence; step `id:eyes_001`), `base.head.expression.pupils_000` (dilation; step
+  `ex:pupils_000`). `blockin.set_identity` used to REWRITE the identity dict with the 170 head components only: it
+  now keeps the other GNM names (eyes_*, teeth_*), so they round-trip through every step and solve.
+- Readers: `base.drawn_iris(spec, r)` is the one place the drawn iris comes from (skin.eyes.iris_size, else GNM's
+  limbus, else the old 0.51 r): eye_ruler.model, face_ruler.limbus_model, skin_read._eye_classes, blockin_eyes.iris_check
+  (its text now gives the `iris_mm` step and eyes_000 in sd; "eye_radius" in its dict is None on GNM's ball).
+  eye_ruler.compare's iris row / move say `block_in_step {"iris_mm": ..}` on GNM's ball, and on a head that still
+  overrides the ball say so.
+
+Lid stand-off (spikes/gnmnative/standoff.py; mm; mean over the middle 14 mm of each lid, both eyes; rings by
+lidrings: -2 = the socket lining two rings behind the margin = where GNM's lid lies ON its ball, 0 = the margin's
+outer edge, a lid's thickness out). CORRECTION to the brief's "1.1-1.2 mm off at the margin": on RAW GNM (its own
+ball, no body) ring 0 is 1.1-1.35 mm (upper) / 0.64-0.93 (lower) off the ball too: that is the lid's thickness. The
+contact is ring -2 / -1, and that is where our ball stood off:
+| head | ball | r mm | upper -2 / -1 / 0 | lower -2 / -1 / 0 | cornea apex ahead of the upper / lower margin |
+|---|---|---|---|---|---|
+| RAW GNM, any identity | GNM | 14.58 | +0.07..0.21 / 0.36..0.50 / 1.10..1.35 | -0.14..-0.01 / 0.07..0.28 / 0.64..0.93 | |
+| female class mean (Tess's body) | ours 12.6 | 12.60 | 0.42 / 0.58 / 1.20 | 0.46 / 0.57 / 0.98 | +0.1 / +1.6 |
+| | GNM | 13.43 | -0.23 / 0.02 / 0.58 | -0.07 / 0.03 / 0.44 | +1.0 / +2.5 |
+| male class mean (Garrett's body) | ours 12 | 12.00 | 0.71 / 0.93 / 1.70 | 0.14 / 0.22 / 0.77 | -1.7 / +0.9 (no cornea: the ball's front 1.7 mm BEHIND the upper margin) |
+| | GNM | 14.06 | 0.55 / 0.74 / 1.53 | -0.57 / -0.42 / 0.14 | -0.0 / +2.6 |
+| tess_a1 | ours 12.6 | 12.60 | 0.43 / 0.63 / 1.29 | 0.48 / 0.64 / 1.02 | 0.0 / +1.3 |
+| | GNM | 13.37 | -0.20 / 0.09 / 0.69 | -0.08 / 0.07 / 0.46 | +0.8 / +2.1 |
+| garrett_a1 | ours 12 | 12.00 | 0.81 / 1.08 / 1.77 | 0.25 / 0.38 / 0.87 | -1.8 / +0.2 |
+| | GNM | 13.97 | 0.45 / 0.69 / 1.39 | -0.49 / -0.30 / 0.18 | +0.1 / +2.0 |
+| gc_C06 | ours 12 | 12.00 | 0.44 / 0.73 / 1.51 | -0.05 / 0.11 / 0.74 | -1.5 / +0.4 |
+| | GNM | 14.04 | 0.50 / 0.74 / 1.55 | -0.46 / -0.23 / 0.41 | -0.1 / +1.8 |
+(first table rows from before the cornea-fit fix; radii moved < 0.1 mm since.) Read: on Tess's body (gnm_base 0.5)
+GNM's ball closes the contact ring to GNM's own (-0.2 / -0.1 against RAW +0.1 / -0.1). On Garrett's body (gnm_base
+0: MakeHuman's head carries GNM's skin) the upper lid still stands 0.45-0.55 mm off and the lower lining sits 0.5 mm
+inside the ball: the body's head has deformed the socket (taller) and one sphere cannot follow both lids; the ball is
+placed by least squares on both lids' rings. That is the body binding's residue, not the ball's. The other large
+change on him: with our ball (no cornea in his spec) the eye's front stood 1.5-1.8 mm BEHIND the upper lid margin
+(the tour's "dark sunken sockets"); GNM's cornea brings it level.
+Iris: GNM's limbus on tess_a1's identity draws 11.08 mm (her read 10.97 was written as skin.eyes.iris_size);
+garrett_a1 11.6 mm (he drew 0.0118 x 12 / 12.3 = 11.5).
+
+### B. GNM's own mouth (base.mouth_mode / gnm_mouth / gnm_mouth_field / sd_gnm_piece / sock_points; faceshapes.GnmFace)
+- Default for a GNM head: `base.mouth_mode` = "gnm" unless the spec has `base.head.interior` (then "kit": an old
+  spec keeps its mouth) or `base.head.mouth` says otherwise ("gnm" | "kit" | "none").
+- Teeth + gums (both rows, part "teeth") and tongue (part "tongue") are field elements of a new kind `gnmpiece`:
+  the solid up to t (3 mm teeth, 8 mm tongue) under GNM's own surface (IMLS over its vertices, Catmull-Clark x 2).
+  DEAD END 1: the plain IMLS of these meshes: they are OPEN shells (50 free edges at each gum's back, 40 at the
+  tongue's root and under its front), and behind a free edge the plane fit made half the mouth "inside" (a slab of
+  tooth through the cavity). DEAD END 2: bounding the shell by the distance to its nearest vertex: the slab under the
+  tongue's front edge came out through the chin as a red bar; now a point whose nearest vertex lies SIDEWAYS of it
+  (past the edge) is outside.
+- The mouth BAG is GNM's sock: with the lips parted (`base.mouth_open`) its points (and the quads joining it to the
+  inner lip loop) join the head's own IMLS point set (`base.surface`), so the cavity is closed behind the lips as in
+  GNM's skin. DEAD END 3: the sock as a "subtract" cavity inside a box: left a curtain of skin hanging before the
+  teeth and a hollow lower lip (those were the sealed-lips field, see next). With CLOSED lips nothing changes: the
+  seam field and the fill behind it, teeth and tongue buried in the head.
+- FOUND: a jaw expression whose lips CROSS (lower_face_region_000 +2: the contact ring's halves pass each other)
+  counts as "closed by GNM" in onemesh.template (max gap < 0.8 mm) and gets the sealed-seam field. Left as is (a
+  crossed mouth is not a pose), noted.
+- Loose pieces under an expression: the piece's carry (translation + scale from the skin beside it) is computed in
+  the NEUTRAL (the expression's offsets taken off the anchors), then the expression's own offsets are added unscaled,
+  as the skin takes them. So the lower row and tongue move with GNM's jaw, the upper row stays (to 0.6 mm at a full
+  14 deg jawOpen: the neutral under an expression is estimated; lip_close's solve differs by ~0.4 mm between a posed
+  and an unposed build, not chased).
+- Fallback: `gnm_head` measures how far the head's own shape ops (pushes, simplify, under_eye / nostrils, jawline..)
+  moved the lip regions off GNM's placed surface (`mouth_off`); past 1 mm (`MOUTH_PUSHED`) `mouth_mode` returns
+  "kit" (if base.head.interior is given) or "none", and `base.mouth_note` says so: in every save reply (server
+  `_saved`, WARNING line), in the export log, and in the face-shapes error. examples/gnm_talk.json (the golfer: lips
+  pushed 6 mm) has `interior` and stays on the kit.
+- Dressing (minimal): `skin_features._gnm_mouth`: "skin:mouth_bag" (dark wet red on the skin's part) and "skin:gums"
+  (on part "teeth"), both masked by point clouds made from GNM's own `mouth_sock` / `gums` vertices (read like a
+  hand-painted mask, so the gum line is GNM's scalloped one). Teeth and tongue: flat part colours
+  (base.MOUTH_PARTS; a spec's own parts.teeth / parts.tongue keys win).
+- Face shapes (`GnmFace`): a shape is its GNM expression coefficients (`_solve` over the lower-face / eye-region
+  components; `shape_coeffs(name)` returns them, to pose a model through base.head.expression). On GNM's mouth the
+  teeth and tongue parts take THEIR vertices' own offsets (`_piece_onto`: 4 nearest vertices of the GNM piece the
+  export vertex belongs to), the skin far from GNM's skin vertices takes the sock's; the rigid Procrustes jaw is only
+  the kit path's now. tongueOut adds GNM's tongue components (the least-norm combination of tongue_000..005 that
+  brings the tongue's front 6 mm past the lips: 000 +3.45, others < 0.6). A blink's lid is kept off GNM's corneal
+  sphere too. The upper teeth never move; the lower row turns ~17 deg at jawOpen 1 through a LINEAR basis, so it is
+  off a true rotation by up to 1.6 mm (r (1 - cos)): GNM has no jaw joint.
+- Export: `asset.prune_hidden(own_surface=)`: GNM's teeth and tongue lie behind closed lips in the neutral and were
+  ALL dropped as hidden (461,991 teeth faces on the first try); now the faces on GNM's own surface are kept and the
+  shell's inside dropped.
