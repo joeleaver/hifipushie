@@ -90,7 +90,7 @@ def landmarks() -> dict:
     WL = np.asarray(g["lm68"], float)
     lm_v = []
     for r in WL:
-        ids, w = r[:3].astype(int), r[3:]
+        ids, w = r[0::2].astype(int), r[1::2]          # (vertex, weight) pairs
         lm_v.append(int(ids[int(np.argmax(w))]))
     seed = []
     for v in lm_v:
