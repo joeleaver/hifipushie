@@ -4379,3 +4379,13 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
   on a painting) carry the identity and force it past 3.5 sd. block_in_solve now WARNS under 120 outline reads or past
   3 sd. Garrett stays on b3_G17 until he has references the solve can read (plain background, front + 3/4 + profile,
   the face large; the shot brief) or the anchors' weight is made to depend on how much else is read.
+
+### Agents started (coordinator, 2026-10-11 evening)
+- "tesshair" (worktree; scratch /mnt/data/hifipushie/tesshair; notes in docs/notes/hair.md "## tesshair"): f3_t1's hair
+  carried onto tess_a1, scratch models th_T*, sheets th_NN_*; judges against her three references.
+- "refread" (worktree; scratch /mnt/data/hifipushie/refread; notes here under "## refread"): Joe: "I'd like to be able
+  to get closer from a single or two references" / "let's try 1 through 3": (1) differential detector anchors,
+  (2) face parsing for outlines on any background, (3) learned surface normals as the interior observation (validated
+  with shval.py's method or left off); then Garrett rerun from gj_G00 (gr_G*) and a Tess regression (tq_T*).
+  NOT started: (4) a single-image identity estimate as the solve's prior centre (fitter_whitepaper.md).
+- Both run capped, share resources.heavy, do not push or merge. lt19 / jw not started (waiting on Joe after Garrett).
