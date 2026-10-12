@@ -553,7 +553,8 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 d = _unit(g_t) + np.array([0.0, -1.0, 0.0]) * rng.uniform(-0.35, 0.12)
             if back:
                 to = tie_d - (tie_d @ nrm) * nrm
-                d = _unit(to) + 0.5 * _unit(g_t)
+                to[2] = min(to[2], 0.0)
+                d = _unit(to + 1e-9) + 0.5 * _unit(g_t)
             d = _unit(d - (d @ nrm) * nrm)
             fall = rng.uniform(5.0, 11.0) * (1.6 if zone in ("part", "front") else 1.0)  # per metre: how fast it turns down
             cu0 = rng.normal(0, 1) * 6.0 * (0.4 + soft)  # its slow curl in the surface (rad per metre) ...
@@ -573,6 +574,7 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 if back:  # drawn back toward the tie, drooping on the way; it never arrives
                     oo = dirs(az_[0], el_[0])
                     to = tie_d - (tie_d @ oo) * oo
+                    to[2] = min(to[2], 0.0)  # (toward a top knot they climbed the temple as dark blades: back, never up)
                     w_ = 1 - _ss_t((s_ / ln - 0.55) / 0.45)
                     pull = 0.8 * w_ * _unit(to) + (0.25 + 0.75 * (1 - w_)) * pull
                 elif zone in ("part", "front"):

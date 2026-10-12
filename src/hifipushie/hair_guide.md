@@ -635,6 +635,8 @@ tie_hair(name, style={"tie": "low", "side": "left", "tightness": 0.3, "neatness"
                       "tail": {"length": 0.24, "wave": 0.8, "fullness": 0.8}})     # a loose low side ponytail
 tie_hair(name, style={"tie": "high", "side": "centre", "tightness": 0.9, "part": "none"})   # riff: high and tight
 tie_hair(name, style={"tail": "bun", "tie": "top"})                                # riff: a top knot
+tie_hair(name, style={"tie": "low", "side": "left", "tightness": 0.85, "neatness": 0.95, "wisps": 0.7,
+                      "tail": {"length": 0.24, "wave": 0.6, "fullness": 0.75}})    # sleek head, front wisps, a poofed tail
 tie_hair(other, carry_from=name)                                                   # the same hair on another head
 look_hair(name, views=["around"])                                                  # six sides with the bust
 ```
@@ -649,8 +651,9 @@ What the words mean (all optional; `tie_hair(name)` alone is an ordinary low pon
 | `lift` | 0..1 | volume at the roots and over the top (default 1 - tightness) |
 | `part` | centre, left, right, none | none = combed straight back; a part is combed away from on both banks, in front only |
 | `ears` | tucked, covered | the hair passes over the ears' tops, or hangs over them |
-| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it) |
-| `escaped` | n a side, or {count, where: [part, temple, ear, nape], length [m, m]} | pieces that came loose (default from neatness) |
+| `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens right after the tie. `wave`: 0 = straight, 1 = loose waves, every lock its own |
+| `wisps` | 0..1, or {amount 0..1, where: [part, front, temple, sideburn, nape], length [m, m], softness 0..1} | the short soft hair that never reached the tie: small clumps of fine hairs along the hairline that fall along the skin (the front's out toward the temples, the temples' down in front of the ear, some drawn back toward the tie). softness 0 = small defined locks, 1 = wide and frizzy. Default from neatness (none on a neat head); independent of it when given: a sleek head WITH wisps is `neatness` 0.95 + `wisps` 0.7 |
+| `escaped` | n a side, or {count, where: [part, temple, ear, nape], length [m, m]} | single stray HAIRS (each a thin line: use `wisps` for anything soft); default none |
 | `neatness` | 0..1 | 0 = slept in (strays, halo, uneven lengths), 1 = every hair in place |
 | `half` | true + `length` m | half up: only the top is tied, the rest hangs loose |
 | `detail` | {"tie": {...}, "strands": {...}} | the escape hatch: hair_tied's own keys over what the style makes |
@@ -658,13 +661,21 @@ What the words mean (all optional; `tie_hair(name)` alone is an ordinary low pon
 How it is built (hair_flow.py), so you can predict it: roots all over the scalp (not rows from the hairline), each
 traced along the head toward the tie: toward the tie + away from the parting + down the head by looseness, never
 across bare skin. Hair rooted further from the tie lies over hair rooted nearer. The tail is a bundle of locks that
-each leave the tie in a cone and fall. Escaped pieces are a few single hairs from one root, each falling on its own.
+each leave the tie in a cone and fall; the bundle's radius is then SET along it (the bulge out of the band, full to
+near the end), every lock waves on its own phase and plane, turns on its way and ends at its own length, and its
+strands end over its last third (thin tapering locks were strings, all strands to the end planks). A wisp is ONE
+lock of 6-28 fine hairs (their own part-transparent strand object): its line starts in the hair at the hairline and
+is traced along the SKIN (gravity in the surface's tangent plane + a slow curl; it may not lift off while the skin
+is under it), its hairs fan a little and end one by one. Escaped pieces are a few single hairs from one root, each
+falling on its own. The sideburn grows no lock to the tie (the scalp layer and the wisps are that hair): locks from
+there were a dark toothed tuft over bare skin, the "shaved" temple of tight styles.
 
 Judge it from every side (`views=["around"]`), not the front: tied hair is wrong from behind first. What to read:
 on top the strands must run front-to-back (lateral bands = a cap); the tail must end hanging, not pointing; the
 hairline at the temples should be soft (a hard saw edge reads as a wig). What is still weak (2026-10-11): the head
-hair reads smoother than loose real hair in EEVEE, the front hairline can step where the overhang begins, single
-escaped hairs draw as thin lines.
+hair reads smoother than loose real hair in EEVEE, the front hairline steps beside the parting, on a tight style
+the temple's edge is a clean line (hair scraped back) with a nearly bare sideburn unless wisps cover it, single
+escaped hairs draw as thin lines (ask for wisps), and a full tail's end is evener than real tousled hair.
 
 The older by-hand tie (`groom.tie` with gather rows, `curtain`, `frame`, below under groom_hair) stays for models
 made with it; do not start new tied hair there: its curtain lays the front ACROSS the head.
@@ -974,10 +985,12 @@ the style makes. carry_from: first wear that model's whole hair (hairline, look,
 to this head (traced hairline heights move with the head centre). look: a patch of the hair's material.
 style keys: tie (nape | low | mid | high | top | deg), side (centre | left | right | deg, the person's own),
 tightness 0..1, lift 0..1, part (centre | left | right | none), ears (tucked | covered), tail ({kind: tail | bun |
-plait | none, length m, fullness 0..1, wave 0..1, to: back | shoulder} or just the kind), escaped (n a side or
-{count, where, length}), neatness 0..1, half (true) + length m, detail ({"tie": .., "strands": ..}: hair_tied's own
+plait | none, length m, fullness 0..1 (sleek .. bushy), wave 0..1 (straight .. loose waves), to: back | shoulder} or
+just the kind), wisps (0..1 or {amount, where: [part, front, temple, sideburn, nape], length [m, m], softness 0..1}:
+soft clumps of fine hairs at the hairline; default from neatness), escaped (single hairs: n a side or
+{count, where, length}; default none), neatness 0..1, half (true) + length m, detail ({"tie": .., "strands": ..}: hair_tied's own
 keys, when a word is missing).
-Returns what was grown (gather / tail / escaped hairs), the style as stored, and what it made in numbers (the
+Returns what was grown (gather / tail / wisps / escaped hairs), the style as stored, and what it made in numbers (the
 tie's place, how far the hair stands off the head, the tail). Then look_hair(name, views=["around"]) (needs `sync`
 once). Heavy the first time on a body (its collider, ~1 min), 1-2 s after.
 
