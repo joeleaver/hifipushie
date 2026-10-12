@@ -994,3 +994,10 @@ locks' flow with a few crossing strands (a `cross` share in the lens group), lif
 done this round: hair.carry onto another head, renders through the references' fitted cameras, the hline measure
 and an unseen-angle row in look_hair are still Python-only (iso.py's views are the row to add: backq, right, backl,
 topback).
+
+## Joe on tesshair2 (2026-10-11, th_03)
+"I feel like 11 actually reads better than 14, but the actual hair styling is wrong, it's flat across her head instead
+of swept back and hanging down. This is a super common hairstyle, so we need to be able to get it right and
+repeat/riff on it." -> th_T11 is the start, not th_T14. Round three ("tesshair3" agent, section "## tesshair3"): the
+construction of a tied-back style (flow from roots to the tie along the head, root lift, a tail that hangs), as a
+repeatable style with a small parameter set and an MCP tool, proven by riffs and on a second head.
