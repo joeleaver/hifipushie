@@ -143,7 +143,7 @@ TOOLSETS: dict[str, dict] = {
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
     "hair": {"about": "hair as curve locks: groom, look, reference, export", "also": ["scene"],
-             "tools": ["groom_hair", "look_hair", "hair_reference", "export_hair"]},
+             "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, construction checks, dress (sim), references", "also": ["scene"],
               "tools": ["design_garment", "look_pattern", "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
@@ -1269,6 +1269,30 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
 
 
 @mcp.tool(structured_output=False)
+def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
+             note: str = ""):
+    """A tied-back hairstyle (ponytail, bun, plait, half up) from a few words: style {tie: nape|low|mid|high|top,
+    side: centre|left|right, tightness 0..1, lift, part: centre|left|right|none, ears, tail {kind, length, fullness,
+    wave, to}, escaped, neatness 0..1, half}; a riff names only what changes. carry_from: wear another model's hair
+    first. Then look_hair(views="around"). Details: guide(topic="tie_hair")."""
+    from . import hair
+    r = hair.tie_style(name, _spec_arg(style) if style else None, carry_from=carry_from,
+                       look=_spec_arg(look) if look else None, note=note)
+    m = r["made"]["tie"]
+    ga, tl = m["gather"], m.get("tail") or {}
+    spec = store.load(name)
+    return (f"saved {name} v{r['version']}: " + ", ".join(f"{k} {v}" for k, v in r["kinds"].items())
+            + f"\nstyle (groom.tied): {json.dumps(r['tied'])}"
+            + f"\nmade: tie at az {m['at'][0]} el {m['at'][1]} ({m['out'] * 1000:.0f} mm off the scalp); the hair stands "
+              f"{ga['puff'] * 1000:.0f} mm off the head, lifts {ga['root_lift'] * 1000:.1f} mm at the roots, may hang "
+              f"{ga['overhang']:.0f} deg over the hairline at the temples; parting {r['made']['parting']['side']}"
+            + (f"; tail {tl['length'] * 100:.0f} cm, {tl['fullness'] * 1000:.0f} mm full, "
+               + ("a bun" if tl.get("coil") else "a plait" if tl.get("plait") else "hanging") if tl else "; no tail")
+            + f"\n{_hair_counts(spec)}\nnext: look_hair(name, views=['around']) (every side, with the bust: tied hair is "
+              "tuned through the front and is wrong from behind first); change one word of the style to riff")
+
+
+@mcp.tool(structured_output=False)
 def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: bool = True, layout: bool = False,
               reference: str | None = None, save: str | None = None, only: list[str] | None = None,
               tier: str | None = None, debug: str | None = None, engine: str = "eevee"):
@@ -1277,6 +1301,9 @@ def look_hair(name: str, views: list[str] | None = None, size: int = 480, clay: 
     Needs `sync` once. Details: guide(topic="look_hair")."""
     from . import hair
     views = list(views) if views else ["front", "three_quarter", "side", "back", "top"]
+    if "around" in views:  # every side, with the bust (hair that hangs): the angles a front-tuned groom is wrong from
+        i = views.index("around")
+        views[i:i + 1] = ["bust_front", "bust_three_quarter", "bust_side", "bust_back_quarter", "bust_back", "bust_side_r"]
     only_layout = views == ["layout"]
     if "layout" in views:
         layout = True

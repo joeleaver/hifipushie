@@ -31,6 +31,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import tempfile
 import os
 import time
@@ -346,7 +347,7 @@ def groom_params(spec: dict) -> dict:
     bad = set(g) - set(GROOM)
     if bad:
         raise HairError(f"hair groom: unknown keys {sorted(bad)} (have {', '.join(sorted(GROOM))})")
-    if g.get("tied"):  # the style makes the tie, the parting (and loose hair for half up)
+    if g.get("tied") is not None:  # the style makes the tie, the parting (and loose hair for half up)
         from . import hair_flow
         if g.get("tie"):
             raise HairError("hair groom: `tied` (a style) makes the tie: give tie keys in tied.detail.tie, not groom.tie")
@@ -800,6 +801,50 @@ def carry(src: str, src_spec: dict | None = None, sc: Scalp | None = None) -> di
     if g is not None and not g.get("fit"):
         g["fit"] = head_ref(sc if sc is not None else scalp(src, sp))
     return h
+
+
+def tie_style(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
+              note: str = "") -> dict:
+    """A tied-back hairstyle on model `name` from a STYLE (hair_flow.TIED: tie height + side, tightness, lift, part,
+    ears, tail, escaped, neatness, half): `style` is merged into the model's groom.tied (a riff names only what
+    changes; no tied style yet = hair_flow's defaults, an ordinary low ponytail), the hair becomes a strand groom and
+    is regrown. `carry_from`: first wear that model's hair (hairline, look, strand dials, its tied style; hair.carry
+    scales it to this head). Any groom.tie / loose the model had is replaced by what the style makes."""
+    from . import hair_flow
+    spec = store.load(name)
+    if carry_from:
+        src = store.load(carry_from)
+        hc_ = carry(carry_from, src)
+        hc_.pop("locks", None)
+        hc_.pop("removed", None)
+        spec["hair"] = hc_
+        if (src.get("parts") or {}).get("hair"):
+            spec.setdefault("parts", {})["hair"] = copy.deepcopy(src["parts"]["hair"])
+    h = spec.setdefault("hair", {})
+    if h.get("style") not in ("strands", "cards"):
+        h["style"] = "strands"
+    g = h.setdefault("groom", {})
+    for k in ("tie", "loose"):
+        g.pop(k, None)
+    g["tied"] = merge_patch(g.get("tied") or {}, style or {})
+    (g.get("parting") or {}).pop("side", None)
+    if look:
+        h["look"] = merge_patch(h.get("look") or {}, look)
+    try:
+        made = hair_flow.style(g["tied"])
+    except ValueError as e:
+        raise HairError(str(e)) from None
+    store._dir(name).mkdir(parents=True, exist_ok=True)
+    validate(spec)
+    store.save(name, spec, note or "hair: tied style")
+    r = groom(name, replace=True, note=note or "hair: tied style")
+    kinds: dict = {}
+    for n in store.load(name)["hair"]["locks"]:
+        m = re.match(r"t\d*([a-z]+)", n)
+        kinds[m.group(1) if m else n] = kinds.get(m.group(1) if m else n, 0) + 1
+    return {**r, "tied": g["tied"], "made": made,
+            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "band": "band", "l": "loose"}.get(k, k): v
+                      for k, v in kinds.items()}}
 
 
 def grow(sc: Scalp, g: dict, col=None) -> dict:
@@ -2473,7 +2518,7 @@ VIEWS = {"front": (0.0, 5.0), "three_quarter": (40.0, 12.0), "side": (90.0, 5.0)
          "close_back": (150.0, 20.0, 0.45), "close_front": (12.0, 8.0, 0.4), "close_side": (75.0, 15.0, 0.42),
          # (az, el, distance, m the target sits under the head centre): the bust, for hair that falls
          "bust_front": (0.0, 4.0, 1.25, 0.14), "bust_three_quarter": (40.0, 8.0, 1.25, 0.14),
-         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14),
+         "bust_side": (90.0, 4.0, 1.25, 0.14), "bust_back": (180.0, 6.0, 1.25, 0.14), "bust_side_r": (-90.0, 4.0, 1.25, 0.14),
          "bust_back_quarter": (140.0, 8.0, 1.25, 0.14), "long_back": (180.0, 4.0, 1.9, 0.26),
          "long_side": (90.0, 4.0, 1.9, 0.26)}
 

@@ -153,6 +153,9 @@ def collider(name: str, spec: dict, sc) -> Collider:
     if key in _COLL:
         return _COLL[key]
     f = store._dir(name) / f"hair_body_{key}.npz"
+    shared = store.HOME / "_cache" / f"hair_body_{key}.npz"  # (the same body under another name: a copy, a riff)
+    if not f.exists() and shared.exists():
+        f = shared
     if f.exists():
         z = np.load(f)
         c = Collider(z["lo"], float(z["step"]), z["phi"])
@@ -175,6 +178,13 @@ def collider(name: str, spec: dict, sc) -> Collider:
         for old in store._dir(name).glob("hair_body_*.npz"):
             old.unlink()
         np.savez_compressed(f, lo=c.lo, step=c.step, phi=c.phi)
+        try:
+            shared.parent.mkdir(exist_ok=True)
+            for old in sorted(shared.parent.glob("hair_body_*.npz"), key=lambda q: q.stat().st_mtime)[:-7]:
+                old.unlink()
+            np.savez_compressed(shared, lo=c.lo, step=c.step, phi=c.phi)
+        except OSError:
+            pass
     _COLL[key] = c
     return c
 
