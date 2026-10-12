@@ -86,6 +86,9 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
        "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "toward": "tie", "reach": 0.75, "ride": 0.003,
                   "inner_roots": None,
                   # mode "flow" (hair_flow.gather; the keys below are its own)
+                  # front {"loose": 0..1, "drape": 0..1}: the hair in front of the ears sags / stands off more (loose)
+                  # and may hang further over the forehead's corners and temples (drape), the back unchanged
+                  "front": None,
                   "mode": "rows", "spacing": 0.02, "body": 0.008, "puff": 0.008, "root_lift": 0.004, "sag": 0.15,
                   "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None, "feather": 0.0,
                   # edge 0..1: the hairline as a BAND of fine roots whose locks thin out and go fine toward the line
@@ -114,7 +117,10 @@ WISPS = {"count": 6, "where": ["part", "front", "temple", "sideburn"], "length":
          "softness": 0.6, "tuck": 0.25, "over": 0.008, "strands": None,
          # baby = short fine hairs a side all along the hairline (1-4 cm, 2-5 hairs each), loose = THICK loose locks a
          # side out of the forehead's corner / temple (30-70 hairs, 9-16 cm); each a count or [right, left]
-         "baby": 0, "loose": 0}
+         "baby": 0, "loose": 0,
+         # swoop (tesshair6) = thick loosened front locks a side: from beside the part out over the forehead's corner
+         # (drape 0..1: how far below the hairline), then drawn back over the temple
+         "swoop": 0, "drape": 0.5}
 WISP_AT = {"part": (3.0, 16.0), "front": (16.0, 44.0), "temple": (44.0, 64.0), "sideburn": (62.0, 80.0),
            "nape": (140.0, 176.0)}
 ESCAPED_AT = {"part": (4.0, 20.0), "temple": (44.0, 66.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}

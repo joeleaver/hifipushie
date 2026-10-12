@@ -150,6 +150,14 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
     side = np.where(np.abs(xs) < 0.002, rng.choice([-1.0, 1.0], m), np.sign(xs))
     push = float(ga["part_push"]) if xp is not None else 0.0
     sag = float(ga["sag"])
+    # THE FRONT ON ITS OWN (tesshair6, gather.front {"loose", "drape"}): hair off the part and the forehead's corners
+    # hangs looser than the rest of a held-back head: more sag for roots in front of the ears (loose), and its way may
+    # pass further below the hairline over the forehead's corners and temples (drape, deg). One tightness for the
+    # whole head gave either a neat held-back arc or a loose head all round
+    fr_ = ga.get("front") or {}
+    f_loose, f_drape = float(fr_.get("loose") or 0.0), float(fr_.get("drape") or 0.0)
+    if f_loose > 0:
+        sag = sag + 1.4 * f_loose * (1.0 - _ss_t((np.abs(_wrap(a0)) - 55.0) / 30.0))
     # (the front and temples hang most: hair off the part falls out over the temple; behind the ears it is on its way)
     frontw = 1.0 - 0.7 * _ss_t((np.abs(_wrap(a0)) - 80.0) / 40.0)
     yf = sc.C[1] - float(sc.r(0.0, 30.0)) * np.cos(np.radians(30.0))  # the scalp's front (as hair._part)
@@ -189,7 +197,7 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
             aw = side[:, None] * X[None]
             aw = aw - (aw * D).sum(1, keepdims=True) * D
             v = v + (push * wp * near)[:, None] * aw
-        if sag > 0:  # loose hair hangs between its root and the tie: down the head, on its own side on top
+        if np.any(sag > 0):  # loose hair hangs between its root and the tie: down the head, on its own side on top
             prog = 1 - ang / np.maximum(ang0, 1e-6)
             # (most just after the root: hair off a part falls outward over the temple before the tie takes it)
             # (only where the head is steep: on top the hair lies on it, and a pull to each side there opened the part
@@ -208,7 +216,8 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
         az, el = az_el(Dn)
         fa = np.abs(_wrap(az))
         lim = _line_at(line, az) + 1.0 - float(ga["overhang"]) * _ss_t((fa - 4) / 22) * (1 - _ss_t((fa - 62) / 22)) \
-            - float(ga["ears"]) * np.exp(-((fa - 95) / 22) ** 2)
+            - float(ga["ears"]) * np.exp(-((fa - 95) / 22) ** 2) \
+            - 11.0 * f_drape * _ss_t((fa - 8) / 14) * (1 - _ss_t((fa - 56) / 20))
         # ...and never further down in front of / over the ear than its top (the sideburn's line runs far below it)
         lim = np.where((fa > 52) & (fa < 112), np.maximum(lim, e_ear - 3.0 - float(ga["ears"])), lim)
         need = (el < lim) & (ang > np.radians(22)) & tie_in
@@ -269,6 +278,9 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             strip = float(_ss_t((fa_i - 40.0) / 15.0) * (1.0 - _ss_t((fa_i - 100.0) / 10.0)))
             ramp = float(_ss_t(din[i] / ((0.6 - 0.35 * strip) * sp)))
             onp = 0.35 + 0.45 * ramp
+        f_l = float((ga.get("front") or {}).get("loose") or 0.0)
+        if f_l > 0:  # (a loose front stands off the head at its roots: the rest stays as tight as the style)
+            onp = onp * (1.0 + 1.4 * f_l * float(1.0 - _ss_t((abs(float(_wrap(az[i]))) - 50.0) / 30.0)))
         puff = onp * float(ga["puff"]) * (0.4 + 0.6 * top) * min(w0[i] / np.radians(50), 1.0) * (1 + un * rng.uniform(-0.5, 0.9))
         lift = onp * float(ga["root_lift"]) * (1 + un * rng.uniform(-0.3, 0.5))
         ride = 0.002 + float(ga["body"]) * far
@@ -694,12 +706,20 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
     #       sweep out and hang in front of the ear with one slow curve.
     jobs = [(side, where[j % len(where)], "soft") for side, ns in ((-1, cnt[0]), (1, cnt[1])) for j in range(ns)]
     n_b, n_l = ws.get("baby") or 0, ws.get("loose") or 0
+    #   "swoop" (tesshair6): the LOOSENED FRONT LOCK: thick, rooted beside the part, it falls out along the hairline
+    #       over the forehead's corner (below the line by `drape`), down past the brow's tail, and is then drawn back
+    #       over the temple toward the tie: what a held-back front shows from the FRONT (th_T56's loose locks lay
+    #       back over the temple from their roots and hardly showed)
+    n_s = ws.get("swoop") or 0
+    n_s = [int(c) for c in (n_s if isinstance(n_s, (list, tuple)) else [n_s] * 2)]
+    drape = float(np.clip(ws.get("drape", 0.5), 0, 1))
     n_b = [int(c) for c in (n_b if isinstance(n_b, (list, tuple)) else [n_b] * 2)]
     n_l = [int(c) for c in (n_l if isinstance(n_l, (list, tuple)) else [n_l] * 2)]
     bz = [z for z in ("part", "front", "temple", "sideburn") if z in where] or ["front", "temple"]
     for si, side in enumerate((-1, 1)):
         jobs += [(side, "front" if j % 2 == 0 else "temple", "loose") for j in range(n_l[si])]
         jobs += [(side, None, "baby") for j in range(n_b[si])]
+        jobs += [(side, "front", "swoop") for j in range(n_s[si])]
     lo_b, hi_b = min(WISP_AT[z][0] for z in bz), max(WISP_AT[z][1] for z in bz)
     if "part" in bz:
         lo_b = 0.0  # (the hairline under the part itself: the notch between the banks)
@@ -716,14 +736,17 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 a0, a1 = WISP_AT[zone]
                 if kind == "loose":
                     a0, a1 = (20.0, 40.0) if zone == "front" else (40.0, 58.0)
+                elif kind == "swoop":
+                    a0, a1 = 5.0, 30.0
                 az = (side * (a0 + (a1 - a0) * rng.uniform(0, 1))) % 360
                 el = float(_line_at(line, az)) + 2.0
-                want = 0.006 if kind == "loose" else 0.004
+                want = 0.006 if kind in ("loose", "swoop") else 0.004
             for _ in range(8):  # rooted IN the hair, 4 mm inside the line (its start hides under the gather)
                 if float(inside(sc, line, az, el)) >= want:
                     break
                 el += 2.0
-            p = sc.point(az, el, 0.002 if kind != "baby" else 0.0008)
+            # (a swoop lies ON the gathered hair from its root: under it, the draped front hid it whole, th_T64)
+            p = sc.point(az, el, over + 0.003 if kind == "swoop" else 0.002 if kind != "baby" else 0.0008)
             out = dirs(az, el)
             eo = _unit(np.array([out[0], out[1], 0.0]))
             sidev = np.array([float(side), 0.0, 0.0])
@@ -746,6 +769,8 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 ln = rng.uniform(0.012, 0.04) * (0.7 if zone == "part" else 1.0)
             elif kind == "loose":
                 ln = rng.uniform(0.09, 0.16) * (1.0 if zone == "temple" else 1.1)
+            elif kind == "swoop":
+                ln = rng.uniform(0.13, 0.19)
             if back:
                 ln = max(ln, 0.07) * 1.2
             ds = ln / (m - 1)
@@ -776,17 +801,22 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
             fall = rng.uniform(5.0, 11.0) * (1.6 if zone in ("part", "front") else 1.0)  # per metre: how fast it turns down
             if comb:
                 fall *= 0.25
-            elif kind == "loose":
+            elif kind in ("loose", "swoop"):
                 fall *= 0.8
             cu0 = rng.normal(0, 1) * 6.0 * (0.4 + soft)  # its slow curl in the surface (rad per metre) ...
             # (at 6-16 rad / m every 4-9 cm, with a 4.5 cm strand wave on top, they were wet ringlets on the face)
             cu1, lam_c, ph_c = rng.uniform(8.0, 18.0) * (0.4 + soft), rng.uniform(0.05, 0.11), rng.uniform(0, 2 * np.pi)
             if kind == "baby":  # (short: it turns faster; a 3 cm hair with a 10 cm curl is a straight bristle)
                 cu0, cu1, lam_c = cu0 * 4.0, cu1 * 2.0, lam_c * 0.4
-            elif kind == "loose":  # (one slow curve, not a wriggle)
+            elif kind in ("loose", "swoop"):  # (one slow curve, not a wriggle)
                 cu0, cu1 = cu0 * 0.5, cu1 * 0.35
             gap0 = 0.0015 + 0.002 * rng.uniform(0, 1)
             sweep, drop = rng.uniform(0.5, 1.1), rng.uniform(10.0, 26.0)
+            t_back = rng.uniform(0.42, 0.6)  # (a swoop: where along it the tie takes it back)
+            if kind == "swoop":
+                # (it FALLS out of the part and bows: swept hard along the line it was a ruled plank across the forehead)
+                sweep, drop = rng.uniform(0.45, 0.8), 5.0 + 16.0 * drape * rng.uniform(0.7, 1.0)
+                fall, cu0, cu1 = fall * 1.5, cu0 * 2.0 + side * rng.uniform(2.0, 6.0), cu1 * 2.0
             P = [p]
             for i in range(m - 1):
                 s_ = i * ds
@@ -796,12 +826,13 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 hang = float(np.clip((dist - 0.006) / 0.006, 0, 1))  # off the skin: plain gravity
                 pull = hang * DOWN + (1 - hang) * g_t
                 az_, el_, _ = sc.coords(P[-1][None])
-                if back:  # drawn back toward the tie, drooping on the way; it never arrives
+                swb = kind == "swoop" and s_ / ln > t_back
+                if back or swb:  # drawn back toward the tie, drooping on the way; it never arrives
                     oo = dirs(az_[0], el_[0])
                     to = tie_d - (tie_d @ oo) * oo
                     to[2] = min(to[2], 0.0)  # (toward a top knot they climbed the temple as dark blades: back, never up)
-                    w_ = 1 - _ss_t((s_ / ln - 0.55) / 0.45)
-                    pull = 0.8 * w_ * _unit(to) + (0.25 + 0.75 * (1 - w_)) * pull
+                    w_ = 1 - _ss_t((s_ / ln - (0.8 if swb else 0.55)) / (0.2 if swb else 0.45))
+                    pull = (1.4 if swb else 0.8) * w_ * _unit(to) + (0.25 + 0.75 * (1 - w_)) * pull
                 elif comb:
                     pass
                 elif zone in ("part", "front"):
@@ -819,7 +850,7 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                     pull = pull + (0.12 + 0.9 * (1 - _ss_t((fa_ - 38.0) / 20.0))) * sw
                 curl = cu0 + cu1 * np.sin(2 * np.pi * s_ / lam_c + ph_c)
                 d = _unit(d + fall * ds * pull + curl * ds * np.cross(nrm, d))
-                if back and d[2] > 0:  # (a tucked one never climbs: its curl took it up the head behind the ear)
+                if (back or swb) and d[2] > 0:  # (a tucked one never climbs: its curl took it up the head behind the ear)
                     d = _unit(d * np.array([1.0, 1.0, 0.0]) + 1e-9)
                 if dist < 0.008:  # near the skin it lies along it
                     d = _unit(d - max(float(d @ nrm), 0.0) * nrm)
@@ -829,7 +860,8 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 az_, el_, _ = sc.coords(q[None])
                 # (only the tucked ones ride over the gathered hair; the rest come out from under it at the hairline:
                 # all of them lifted, the far temple's stood 1 cm off the head as a lace fringe)
-                gap = gap0 + (over * _ss_t(i / 6.0) if back and float(inside(sc, line, az_[0] % 360, el_[0])) > 0.004 else 0.0) \
+                gap = gap0 + ((over + 0.002 if kind == "swoop" else over * _ss_t(i / 6.0))
+                              if (back or kind == "swoop") and float(inside(sc, line, az_[0] % 360, el_[0])) > 0.004 else 0.0) \
                     + 0.005 * soft * (s_ / ln) ** 2
                 if dq < gap:
                     q = q + (gap - dq) * nq
@@ -837,7 +869,7 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                     # (all the way: pulled 60% a step, a wisp running sideways off the part left the forehead's
                     # corner as a horizontal wire into the air)
                     q = q - (dq - gap) * nq
-                if zone in ("part", "front") and i > 1:  # ... and never further down the forehead than ~2.5 cm
+                if zone in ("part", "front") and i > 1 and not swb:  # ... and never further down the forehead than ~2.5 cm
                     aq, eq, hq = sc.coords(q[None])
                     fq = abs(float(_wrap(aq[0])))
                     lo_ = float(_line_at(line, aq[0] % 360)) - drop
@@ -852,15 +884,17 @@ def wisps(sc, tp: dict, ws: dict, line, rng, col, pre: str) -> dict:
                 nh, width = int(rng.integers(2, 6)), rng.uniform(0.0015, 0.004)
             elif kind == "loose":
                 nh, width = int(rng.integers(18, 45)), rng.uniform(0.006, 0.011)
+            elif kind == "swoop":
+                nh, width = int(rng.integers(30, 70)), rng.uniform(0.009, 0.015)
             elif zone == "sideburn":  # (it hangs straight down bare skin: 20 hairs there were a dark blade in front of
                 # the ear, th_Q5: fewer, wider apart)
                 nh, width = max(4, nh // 2), width * 1.4
-            locks[f"{pre}w{'b' if kind == 'baby' else 'l' if kind == 'loose' else ''}{k}"] = {
+            locks[f"{pre}w{'b' if kind == 'baby' else 'l' if kind == 'loose' else 's' if kind == 'swoop' else ''}{k}"] = {
                 "tier": "tie", "space": "xyz", "pts": _xyz(sc, np.vstack([P[:-1:2], P[-1:]])), "free": 1.0,
                 "width": round(float(width), 4), "thickness": 0.0015, "taper": 0.55, "belly": 0.4, "root": 0.45,
                 "cup": 0.0, "hairs": nh,
-                "strands": {"wisp_fan": round((0.6 + 1.2 * soft) * (0.5 if kind == "loose" else 1.0), 2), "wisp_round": 0.3,
-                            "tip_loss": 0.6 if kind == "loose" else 0.75,
+                "strands": {"wisp_fan": round((0.6 + 1.2 * soft) * (0.5 if kind in ("loose", "swoop") else 1.0), 2), "wisp_round": 0.3,
+                            "tip_loss": 0.6 if kind in ("loose", "swoop") else 0.75,
                             "wave": round(0.002 + 0.004 * soft, 4), "wavelength": 0.08, "random": 1.0, "flat": 1.0,
                             "curl": 0.0, **(ws.get("strands") or {})}}
             k += 1
@@ -887,6 +921,11 @@ TIED = {
                           # and frizzy)}; default by neatness (none on a neat head)
     "escaped": None,      # single stray HAIRS (wires alone: wisps are the soft ones): a count a side, or {"count":
                           # n | [right, left], "where": ["part", "temple", "ear", "nape"], "length": [m, m]}; default 0
+    "front": None,        # the FRONT on its own (tesshair6): 0..1 or {"looseness": 0..1 (the hair in front of the ears
+                          # sags and stands off the head as if the style were that much looser there; the back stays
+                          # as tight as `tightness`), "drape": 0..1 (how far it hangs over the forehead's corners and
+                          # temples), "locks": n a side (thick loosened locks that swoop from beside the part across
+                          # the forehead's corner and tuck back over the temple; default round(3 x looseness))}
     "hairline": None,     # 0..1: how SOFT the hair's edge is: 0 = a clean hard line (gelled, a wig's edge) .. 1 = the
                           # hairline thins out over a cm, with baby hairs along it and a part that wanders; default
                           # 0.8 - 0.3 x neatness (every real hairline is soft; only its amount is style)
@@ -969,6 +1008,18 @@ def style(tied: dict) -> dict:
               "edge": round(hs, 3), "zig": round(0.0045 * hs, 4),
               "strands": {"wave": round(0.004 + 0.008 * lo, 4), "wavelength": 0.07, "random": 0.8, "flat": 1.5,
                           "flyaway": 0.0}}
+    frn = p["front"]
+    if isinstance(frn, (int, float)) and not isinstance(frn, bool):
+        frn = {"looseness": float(frn), "drape": float(frn)}
+    frn = frn or {}
+    bad = set(frn) - {"looseness", "drape", "locks"}
+    if bad:
+        raise ValueError(f"hair tied front: unknown keys {sorted(bad)} (have looseness, drape, locks)")
+    f_lo = float(np.clip(frn.get("looseness") or 0.0, 0, 1))
+    f_dr = float(np.clip(f_lo if frn.get("drape") is None else frn["drape"], 0, 1))
+    f_n = int(round(3 * f_lo)) if frn.get("locks") is None else int(frn["locks"])
+    if f_lo > 0 or f_dr > 0:
+        gather["front"] = {"loose": round(f_lo * T, 3), "drape": round(f_dr, 3)}  # (x T: loose only against a tight head)
     tie = {"at": [round(az, 1), el], "out": round(0.022 + 0.012 * lo, 4), "escape": 0, "gather": gather}
     kind = tl["kind"]
     if kind == "none":
@@ -1029,9 +1080,12 @@ def style(tied: dict) -> dict:
         am, so = float(np.clip(wsp["amount"], 0, 1)), float(np.clip(wsp["softness"], 0, 1))
         n_w = int(round(24 * am))
         if n_w > 0:
-            tie["wisps"] = {"count": n_w, "where": list(wsp["where"]), "length": [float(v) for v in wsp["length"]],
-                            "softness": so, "hairs": [6, int(round(14 + 14 * so))],
-                            "tuck": 0.45, "over": round(0.004 + 0.006 * lift, 4),
+            # (a loose front: its wisps are thicker and longer and fewer are tucked: from the front they must READ
+            # against skin, and 6-20 fine hairs a clump were a faint fuzz there)
+            tie["wisps"] = {"count": int(round(n_w * (1 + 0.5 * f_lo))), "where": list(wsp["where"]),
+                            "length": [float(wsp["length"][0]), float(wsp["length"][1]) * (1 + 0.4 * f_lo)],
+                            "softness": so, "hairs": [int(round(6 + 8 * f_lo)), int(round(14 + 14 * so + 22 * f_lo))],
+                            "tuck": round(0.45 - 0.2 * f_lo, 3), "over": round(0.004 + 0.006 * lift, 4),
                             # (none by default toward a high tie: the lock cannot lie back over the temple, it
                             # hangs down the cheek as a strap, th_S5)
                             "loose": (int(round(2.5 * am)) if el < 30.0 else 0) if wsp["loose"] is None else int(wsp["loose"])}
@@ -1039,6 +1093,10 @@ def style(tied: dict) -> dict:
         w0 = tie.get("wisps") or {"count": 0, "where": list(WISP_STYLE["where"]), "length": list(WISP_STYLE["length"]),
                                   "softness": 0.6, "hairs": [6, 20], "tuck": 0.3, "over": 0.006}
         tie["wisps"] = {**w0, "baby": int(round(70 * hs))}
+    if f_n > 0 and el < 30.0:  # (toward a high tie a lock cannot lie back over the temple: none)
+        w0 = tie.get("wisps") or {"count": 0, "where": list(WISP_STYLE["where"]), "length": list(WISP_STYLE["length"]),
+                                  "softness": 0.6, "hairs": [6, 20], "tuck": 0.3, "over": 0.006}
+        tie["wisps"] = {**w0, "swoop": f_n, "drape": round(f_dr, 3)}
     es = p["escaped"]
     if es is None:
         es = 0
@@ -1064,8 +1122,8 @@ def style(tied: dict) -> dict:
                                 "clump_shape": 0.6, "tip_spread": 0.6},
                        # (thickness 1.0 against the head's 0.7: at the head's strand width a clump of 6-28 hairs was a faint
                        # fuzz in EEVEE and nearly gone in Cycles, th_T47)
-                       "wisp": {"loose": 0.25, "frizz": 0.2, "wave": 0.004, "wavelength": 0.08, "random": 1.0,
-                                "thickness": 1.0}}}
+                       "wisp": {"loose": 0.25, "frizz": 0.2, "wave": round(0.004 + 0.004 * f_lo, 4), "wavelength": 0.08,
+                                "random": 1.0, "thickness": round(1.0 + 0.4 * f_lo, 2)}}}
     if p["half"]:
         gather["above"] = 0.012
         out["loose"] = {"length": float(p["length"]), "below": 0.03, "lift": 0.004, "face": 1.0}

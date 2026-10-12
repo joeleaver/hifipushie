@@ -952,7 +952,7 @@ def tie_style(name: str, style: dict | None = None, carry_from: str | None = Non
         k_ = m.group(1) if m else "l" if re.fullmatch(r"l\d+", n) else n
         kinds[k_] = kinds.get(k_, 0) + 1
     return {**r, "tied": g["tied"], "made": made,
-            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "w": "wisps", "wb": "baby hairs", "wl": "loose locks",
+            "kinds": {{"g": "gather", "t": "tail", "e": "escaped hairs", "w": "wisps", "wb": "baby hairs", "wl": "loose locks", "ws": "swoop locks",
                        "y": "tail strays", "band": "band", "l": "loose"}.get(k, k): v
                       for k, v in kinds.items()}}
 
