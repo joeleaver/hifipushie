@@ -125,12 +125,22 @@ sits in the dermis, so it is multiplied INTO the skin's colour under its relief 
 like a sticker; with years the lines spread, black drifts blue-green and thins, colours fade [14].
 
 ### 4b. Folds the shape does not make (`"folds"`)
-`"folds": {"tear_trough": 0.6, "nasolabial": {"amount": 0.8, "L": {"shift": [...], "extent": [0, 0.7]}}, "lid_fold": 0.7}`:
+`"folds": {"tear_trough": {"amount": 0.8, "roll": 1.3}, "nasolabial": {"amount": 0.8, "L": {"shift": [...], "extent": [0, 0.7]}}, "lid_fold": 0.7}`:
 the soft-tissue lines and bulges a GNM head's identity cannot give (eye bags, a deep nasolabial fold, a crisp lid
 crease, marionette lines, the groove over the chin, frown lines). Each is a path over the skin from the head's own
 landmarks; `shift` (mm across the path at stations along it), `extent` and per-side `amount` are the measured
-placement, which `skin_from_reference` fills in from the pictures. One unique map lays a groove and its roll as
-painted height and the crease's tint and shade as colour. Front-lit they read as form; they change no silhouette.
+placement, which `skin_from_reference` fills in from the pictures.
+They are GEOMETRY: each fold reshapes the skin's surface itself (a groove, and beside it a roll: the eye bag over a
+tear trough, the cheek's pad over a nasolabial fold, the hooding over a lid's crease), so it shows under frontal and
+raking light, in profile and in the silhouette, and is in the exported asset (the low poly as far as its triangles
+go, the rest in its normal and AO maps). The crease's tint and shade stay colour, from the same parameters.
+Per fold: `amount` 0..1.5, `width` (mm, the groove), `depth` and `roll` (0..3, x the feature's own: `roll` is the bag
+/ pad / hooding), per side `L` / `R`: `amount`, `shift`, `extent`. mm at amount 1: nasolabial groove 0.6 / pad 1.3,
+marionette 0.5 / 0.6, tear_trough 0.6 / bag 1.4, lid_fold crease 0.6 / roll 0.5, mentolabial 0.8, glabella 0.35,
+mouth_corner 0.3. A heavy bag: `"tear_trough": {"amount": 1.2, "roll": 1.6}`; a hooded lid: `"lid_fold": {"amount":
+1, "roll": 2}`. The displacement fades out before the lid margins and the lips and never reaches the eyeball; with no
+folds nothing is built or evaluated. `"fold_relief": "paint"` keeps the older painted relief (bump only).
+Look at them with `look_skin` under two lights; a fold is a few voxels wide: judge close-ups, not the bust.
 
 ### 5. Hair on the skin
 `"hair"`: `brows` are hairs, not a painted arc: a drawn picture of ~900 tapered hairs that grow up at the inner end,
@@ -282,7 +292,7 @@ skin or paint edit ~20-40 s.
 views: any of bust, face, three_quarter, side, cheek (macro), eye, mouth, forehead, ear (back-lit: light through
 the ear), hand, palm, forearm (default face, three_quarter, cheek, eye, mouth, ear).
 light: "studio" (a key from the model's right + a weak fill), "soft" (broad frontal: colour without highlights),
-"back" (back-lit); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
+"back" (back-lit), "rake" (a low light from the side: what shows relief: folds, bags, a lid's crease); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
 ("freckles" = "skin:freckles"; or any paint layer's name).
 engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
 shadow edges and back-lit ears).
@@ -290,7 +300,7 @@ Judge in this order: flat colour at bust distance (tone, zones), then the lit bu
 
 ### `skin_from_reference`
 
-`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto')`
+`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None)`
 
 The reference pictures as a MEASUREMENT of the skin: the description (spec["skin"]) is set from what the fitted
 references show, and the result is the ordinary procedural skin (clean under any light, from any angle). The picture
@@ -305,13 +315,22 @@ against the face's own plain skin (exposure and white balance cancel); folds are
 landmark path, the picture's against ours at the same place.
 
 What it reads and sets (groups; default all):
-- `tone`: melanin / blood / undertone, for the skin's HUE and SATURATION only. Needs an anchor: a plain NEUTRAL
-  backdrop gives the white balance. The tone's LIGHTNESS is never read (no picture says how it was exposed; left free
-  the fit ran dark): it stays as you set it. No plain backdrop: tone NOT READ, everything else still is.
+- `tone`: melanin / blood / undertone. A picture does not say how LIGHT a skin is (exposure x albedo), so lightness
+  has an anchor, in this order: (1) the PRIOR: the model's stated `skin.tone` (set it first, or pass `tone=` a
+  Fitzpatrick type 1..6 or skin.tone's own keys); the pictures then correct hue and saturation only and the plain
+  skin's lightness stays within 3 L* of the prior and its colour within 5 (a*b*: a backdrop is a weak white balance); (2) a KNOWN WHITE in the picture (a shirt collar under the chin,
+  found by the picture parser: bright, neutral, 250+ px): skin albedo = 0.8 x skin / white, which may move the
+  lightness up to 8 L* off the prior (the white's albedo and light are inferred). The reply says which was used and
+  the plain skin's L* before -> after. The white balance needs a plain NEUTRAL backdrop or that white; with neither
+  the tone is NOT READ (everything else still is). The sclera is never an anchor (lid and lash shadow).
+  anchor="prior" ignores a white.
 - `zones`: skin.zones forehead_yellow, midface_red, nose_red, perioral_red, lower_cool + features.flush.
 - `eyes`: zones under_eye, eyelids, periorbital (the socket's own darker, browner skin). These three overlap: judge
   the region's colour, not each number.
-- `lips`: lips.blood / melanin and lips.lower {blood, melanin} (the lower lip's own colour).
+- `lips`: lips.blood / melanin (x the TONE's melanin: a dark lip on a very fair tone needs 10-20) , lips.strength (how much of
+  the vermilion is the lips' own colour: a man's is 0.65 of a woman's by default) and lips.lower {blood, melanin}. The vermilion's own
+  gradient (darker toward the wet line and the corners, a lighter lower-lip body: `lips.gradient`, 0..2.5, default 1)
+  and its border's softness (`lips.border`, mm, default 1.5) are NOT read: set them by eye.
 - `stubble`: hair.stubble's `zones` {moustache, chin, soul_patch, jaw, cheeks, neck} and density, from the lower
   face's shadow zone by zone; a beard is ADDED to a face without one only if skin.sex is not female (or stubble=True),
   and taken off where the pictures show none.
@@ -325,10 +344,11 @@ What it reads and sets (groups; default all):
   PRESENT / absent / "ours has more" per side with strength, extent along its path, placement (mm across the path)
   and a confidence; and the fields of fine lines (forehead, crow's feet, under the eye, round the lips) as energy over
   the cheek's. Each feature states the picture resolution it needs and answers "cannot tell" below it (a face 110 px
-  wide: 1.4 mm a pixel reads the broad folds, never a lid crease or fine lines). They are laid by skin.folds (one
-  unique map: groove + roll as painted height, crease tint and shade as colour) and skin.wrinkles.
-  Painted relief is honest only as far as shading goes: no silhouette, nothing in profile. A heavy bag, hooding or a
-  deep jowl is geometry (block_in_step {"hooding": x}, sculpt).
+  wide: 1.4 mm a pixel reads the broad folds, never a lid crease or fine lines). Three detectors: a VALLEY of
+  luminance across the path; a lit / shaded STEP across it with the fitted light's sign (a side-lit fold, a painter's
+  nasolabial under a lamp: no valley); and, for the upper lid, the fold line searched up from the PICTURE's own lash
+  line (which places the crease: mm over the lashes per column). They are laid by skin.folds as GEOMETRY (section 4b)
+  with their tint and shade as colour.
 
 rounds: read -> fit -> re-render -> read again; the second round corrects what the first could only estimate
 (densities, fold strength and placement). ~3-5 min a round on a head. read_only=True returns the read (tables per
@@ -336,10 +356,11 @@ region and per fold) without changing anything: use it to see what the pictures 
 The reply is the side-effect report: every parameter changed, from -> to, and the read behind it; parameters "at its
 bound" say the picture asks for more than that control gives.
 What it does NOT read: roughness / oil / pores, fine lines (reported as energy, never fitted: they follow the light),
-anything under hair, make-up as such (a dark lid reads as periorbital skin), the tone's lightness, a fold that shows
-as a lit / shaded STEP under side light instead of a valley, and whatever the shape gets wrong (a fold the head's
-geometry already has is "as ours"). A fold that is laid and still does not read in our render is reported
-"NOT raised": that one is geometry, not paint.
+anything under hair, make-up as such (a dark lid reads as periorbital skin), the tone's lightness without an anchor
+(the prior holds it), the lips' gradient, and whatever the shape gets wrong (a fold the head's geometry already has is
+"as ours"). Fold STRENGTH is good to about a third (a valley's depth follows the light), presence and side are solid;
+placement of the horizontal grooves is biased toward the wall the light misses in round 1 and corrected in round 2
+(ours against the picture's), so run 2+ rounds.
 
 ### `skin_reference`
 

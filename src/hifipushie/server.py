@@ -2204,7 +2204,7 @@ def check_references(images: list[str], name: str | None = None) -> str:
 
 @mcp.tool(structured_output=False)
 def skin_from_reference(name: str, out: str = "", groups: list[str] | None = None, rounds: int = 2, read_only: bool = False,
-                        stubble: bool | None = None, anchor: str = "auto") -> str:
+                        stubble: bool | None = None, anchor: str = "auto", tone: float | dict | None = None) -> str:
     """Set the procedural skin from the model's fitted reference pictures, used as a MEASUREMENT (never as the
     albedo): tone, zone tints, lips, beard shadow by zone, brows, freckles, and the folds the shape model does not make
     (nasolabial, tear trough / eye bag, lid fold, marionette ...). read_only=True: the read alone. out: save to a copy.
@@ -2213,7 +2213,7 @@ def skin_from_reference(name: str, out: str = "", groups: list[str] | None = Non
     if read_only:
         return skin_read.read(name, anchor=anchor, log=lambda s: None)["text"]
     r = skin_read.apply(name, out=out or None, groups=tuple(groups) if groups else skin_read.DEFAULT_GROUPS, rounds=rounds,
-                        anchor=anchor, stubble=stubble, log=lambda s: None)
+                        anchor=anchor, stubble=stubble, log=lambda s: None, tone=tone)
     return r["text"]
 
 
@@ -2230,7 +2230,7 @@ def skin_reference() -> str:
 def look_skin(name: str, views: list[str] | None = None, size: int = 768, light: str | None = None,
               flat: bool = False, layer: str | None = None, engine: str = "eevee", save: str | None = None):
     """Fast bare-skin close-ups with measurements vs real-skin photos. views (face, three_quarter, cheek, eye, mouth,
-    ear, hand, ...), light "studio"|"soft"|"back", flat (unlit colour), layer (one mask), engine "eevee"|"cycles",
+    ear, hand, ...), light "studio"|"soft"|"back"|"rake" (low side light: relief), flat (unlit colour), layer (one mask), engine "eevee"|"cycles",
     size, save. Details: guide(topic="look_skin")."""
     from . import skin_look
     sheet, text, _ = skin_look.look(name, views=tuple(views) if views else skin_look.DEFAULT, size=size, light=light,

@@ -124,6 +124,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   and genders", incl. cosmetics, scars, tattoos, wrinkles, freckles; renders `workspace/skin_renders/sk_*`, references
   `workspace/skin_refs/` (24 CC photos, README + refs.json with skin-only boxes; never in the repo)). Guide:
   -> full notes: docs/notes/skin.md
+- Skin folds as geometry (2026-10-12, "skinfolds"): `skin.folds` are field modifiers (`skin_folds.prims`, sdf kind "tissue"; bags, nasolabial,
+  lid crease), read by `skin_from_reference` (valley / step / lash line; lightness prior). -> full notes: docs/notes/skin.md "## skinfolds"
 - Principle-based pattern drafting (2026-10-05, "clothflow" agent; the user: ready-made drafts are references, "we
   also need to distill the _principles_ so we can design jackets that don't exist yet, or any other arbitrary
   clothing"; sheets `workspace/cloth_renders/pd_*`). A new garment = a block + operations + details, as pattern makers
