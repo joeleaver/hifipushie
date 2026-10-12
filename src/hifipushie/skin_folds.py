@@ -35,7 +35,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 8
+VERSION = 9
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -66,9 +66,11 @@ FOLDS = {
                     "about": "the groove between the lower lip and the chin"},
     # (the orbit's lower rim: from under the inner corner down, and UP again toward the outer corner: with three
     # points running on down and out the bag over it was a box with a cut end, not a crescent)
-    "tear_trough": {"path": [("lm_eye_inner.L", (0.03, 0.0, -0.09)), ("lm_lid_lower_in.L", (0.0, 0.0, -0.18)),
-                             ("lm_lid_lower.L", (0.02, 0.0, -0.215)), ("lm_lid_lower_out.L", (0.05, 0.0, -0.185)),
-                             ("lm_eye_outer.L", (0.05, 0.0, -0.11))], "plus": (0, 0, 1), "width": 3.5, "depth": 0.7,
+    # (the lid-cheek junction lies ~10 mm under the lid's margin: at 0.215 x the pupils' distance, 13 mm, Garrett's
+    # painted troughs sat at the upper end of the reader's window and were read along 15-31 % of the path)
+    "tear_trough": {"path": [("lm_eye_inner.L", (0.03, 0.0, -0.08)), ("lm_lid_lower_in.L", (0.0, 0.0, -0.15)),
+                             ("lm_lid_lower.L", (0.02, 0.0, -0.175)), ("lm_lid_lower_out.L", (0.05, 0.0, -0.15)),
+                             ("lm_eye_outer.L", (0.05, 0.0, -0.09))], "plus": (0, 0, 1), "width": 3.5, "depth": 0.7,
                     "tint": 0.25, "shade": 0.25, "roll": (4.0, 4.0, 0.8), "search": 5.0, "res": 1.6,
                     "about": "the groove under the lower lid; its roll is the eye bag over it"},
     # (along the upper margin's own landmarks, a crease height over each: with three points the ends cut across the
@@ -93,7 +95,7 @@ RELIEF = {
     "marionette": {"depth": 0.5, "roll": (4.0, 2.6, 0.6, 2.5), "reach": 4.0},
     "mouth_corner": {"depth": 0.3, "reach": 3.0},
     "mentolabial": {"depth": 0.8, "reach": 4.0},
-    "tear_trough": {"depth": 0.6, "roll": (5.5, 2.8, 1.4, 3.0), "reach": 4.0},
+    "tear_trough": {"depth": 0.6, "roll": (4.6, 2.4, 1.4, 2.6), "reach": 4.0},
     "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "reach": 3.0},
     "glabella": {"depth": 0.35, "reach": 3.0},
 }

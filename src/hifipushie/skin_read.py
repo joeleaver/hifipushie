@@ -1190,6 +1190,8 @@ FOLD_OWN = 0.7         # ... and this share of our own valley there deeper than 
 FOLD_SHARE = 0.3       # ... along at least this share of the path's visible stations
 FOLD_MAX = 0.42        # log luminance: deeper than this is not a crease of skin
 FOLD_CONF = 0.5        # a fold is laid only from this confidence up
+SYMMETRIC = ("tear_trough", "nasolabial", "marionette")   # folds of age that come in pairs: a side that shows a valley
+# along too little of its path to count takes the read side's amount x its own valley's share of the other's (INFERRED)
 BILATERAL = ("lid_fold",)   # folds every face has on both sides: one side's read stands in for the other
 PLACE_MM = 0.7         # mm a picture pixel: coarser, a fold's PLACE across its path is not read (it is laid on its landmark
                        # path, whole): on Garrett's paintings (1.1-1.3 mm) the shifts came out +-5 mm from station to station and the
@@ -1432,6 +1434,15 @@ def fold_read(c: Context) -> dict:
                     sel[run[0]:run[1] + 1] = True
                 sel &= val
                 use = sel if sel.sum() >= 4 else val
+                if sel.sum() < 4:
+                    # no stretch where the picture has MORE than ours: compare where the PICTURE shows its valley (the
+                    # same stations round after round). Over all stations a fold the picture has along half its path
+                    # read 0.03 against 0.10 of ours, laid whole: "ours has more", taken off, read PRESENT again, ...
+                    prun = _run(val & (r_["picture"] >= FOLD_T))
+                    if prun is not None and prun[1] - prun[0] + 1 >= max(4, 0.3 * val.sum()):
+                        psel = np.zeros(len(val), bool)
+                        psel[prun[0]:prun[1] + 1] = True
+                        use = psel & val
                 stat["share"] += w / wsum * float(hit.sum() / max(val.sum(), 1))
                 # (each alone, at its own valley: the head's own shading there is in both and cancels in the difference;
                 # the valley of the RATIO image is not used: beside a fold of ours its roll and shade make false ones)
@@ -1690,7 +1701,11 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                     a1 = a0
                     stuck.append(f"{name}{sd}")
             elif s["absent_in_picture"] and a0 > 0:
-                a1 = float(np.clip(a0 - s["excess"] / (LID_REF if s.get("by") == "lash line" else FOLD_REF[name]), 0, 1.5))
+                if s["picture"] >= FOLD_T and s.get("by") != "lash line":
+                    # the picture has it, ours has more: toward the picture's share of ours, at most halved a round
+                    a1 = float(a0 * np.clip(s["picture"] / max(s["ours"], 1e-6), 0.5, 1.0))
+                else:
+                    a1 = float(np.clip(a0 - s["excess"] / (LID_REF if s.get("by") == "lash line" else FOLD_REF[name]), 0, 1.5))
             amounts[sd] = a1
             shift = os_["shift"]
             if s.get("move") and a0 > 0.2:        # ours has it: move it by the two valleys' distance
@@ -1710,6 +1725,15 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                 if so.get("present") and so["confidence"] >= FOLD_CONF and not sn.get("present") and amounts[other] < 0.5 * amounts[one]:
                     amounts[other] = amounts[one]
                     new_sides[other] = {"shift": list(new_sides[one]["shift"]), "extent": list(new_sides[one]["extent"])}
+                    mirrored = (one, other)
+        if name in SYMMETRIC and len(amounts) == 2 and mirrored is None:
+            (sa, sb) = list(amounts)
+            for one, other in ((sa, sb), (sb, sa)):
+                so, sn = row["sides"][one], row["sides"][other]
+                if (so.get("present") and so["confidence"] >= FOLD_CONF and not sn.get("present") and sn.get("present") is not None
+                        and sn["picture"] >= FOLD_T and sn["picture"] > sn["ours"] and amounts[other] < 0.4 * amounts[one]):
+                    amounts[other] = amounts[one] * float(np.clip(sn["picture"] / max(so["picture"], 1e-6), 0.3, 1.0))
+                    new_sides[other] = {"shift": list(new_sides[other]["shift"]), "extent": list(new_sides[other]["extent"])}
                     mirrored = (one, other)
         top = max(amounts.values()) if amounts else 0.0
         a_old = old["amount"] if old else 0.0
@@ -1738,7 +1762,9 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
         why = "; ".join(f"{name}{sd}: valley {s['picture']:.3f} (ours {s['ours']:.3f}) along {int(100 * s['share'])} %, confidence {s['confidence']}"
                         for sd, s in row["sides"].items() if s.get("present") is not None)
         if mirrored:
-            why += f"; {name}{mirrored[1]} was not read: it takes {name}{mirrored[0]}'s (INFERRED: both sides have this fold)"
+            why += (f"; {name}{mirrored[1]} was not read: it takes {name}{mirrored[0]}'s (INFERRED: both sides have this fold)" if name in BILATERAL else
+                    f"; {name}{mirrored[1]} shows a valley along too little of its path to count: it takes {name}{mirrored[0]}'s amount x its own "
+                    f"valley's share (INFERRED: these folds come in pairs)")
         changes.append((f"folds.{name}", round(a_old, 2) if old else "none", entry, why))
         leg = LEGACY.get(name)
         if leg and old is None and float((sk.get("wrinkles") or {}).get(leg, 1.0)) != 0.0:
