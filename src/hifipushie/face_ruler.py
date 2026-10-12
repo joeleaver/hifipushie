@@ -799,11 +799,11 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
         Jx, pri, m0, nn = np.c_[Jx, Cn], np.r_[pri, np.full(len(keys), NU_SD)], np.r_[m0, np.zeros(len(keys))], len(keys)
     xcols = []                             # EXPRESSION as a nuisance: per picture ("view") or one for the set ("shared"),
     if Xc_.shape[1] and not span:          # a strong prior at neutral; never applied to the head, so each round's estimate
-        pics = sorted({ob.get("of", ob["view"]) for ob in obs if ob["type"] != "hold"}) if expr_mode == "view" else ["all"]
+        pics = sorted({ob.get("of", ob["view"]) for ob in obs if ob["type"] in EXPR_TYPES}) if expr_mode == "view" else ["all"]
         xn = (head.get("expr") or {}).get("names") or [f"x{j}" for j in range(Xc_.shape[1])]     # is of the whole expression
         cols = []
         for pc in pics:
-            m_ = np.array([expr_mode != "view" or ob.get("of", ob["view"]) == pc for ob in obs], float)
+            m_ = np.array([(expr_mode != "view" or ob.get("of", ob["view"]) == pc) and ob["type"] in EXPR_TYPES for ob in obs], float)
             for j in range(Xc_.shape[1]):
                 cols.append(Xc_[:, j] * m_)
                 xcols.append((pc, xn[j]))
@@ -905,6 +905,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
     cur = head
     relax0 = float(kw.pop("relax0", 1.0))      # the down-weighting the block-in already stands at (cmax)
     hold = kw.pop("hold", None)                # None | "auto" (every measure no read looks at) | [measure names]
+    held0 = list(kw.pop("held0", None) or [])  # measures held in the block-in's earlier calls: they stay held
     poff = kw.get("prior_off")
     held = []
     views = [dict(v) for v in views]
@@ -951,9 +952,11 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
             # not carry an unread measure along with the read ones (garrett_a1's eye depth: 7.8 mm from nothing)
             from . import solve_report as sr
             whole = done + (np.asarray(poff, float) if poff is not None else 0.0)
-            if hold == "auto":
-                drc = sr.direct(out["post"], obs, views, cur, groups=False)
-                hrows = sr.hold_rows(drc["read"], done=whole)
+            if hold == "auto":      # STICKY: a measure whose read hovers at the threshold was held in one round and let
+                drc = sr.direct(out["post"], obs, views, cur, groups=False)       # go in the next, and drifted
+                now = [h["name"][5:] for h in sr.hold_rows(drc["read"], done=whole)]
+                held0 = held0 + [n for n in now if n not in held0]
+                hrows = sr.hold_rows(None, done=whole, names=held0)
             else:
                 hrows = sr.hold_rows(None, done=whole, names=list(hold))
             held = [h["name"][5:] for h in hrows]
@@ -1254,6 +1257,10 @@ EXPR_SET = ("compress_face", "surprise", "squint", "lips_roll_in", "corners_down
 EXPR_SAY = {"compress_face": "frown / brows drawn down and together", "surprise": "brows raised (jaw dropped)", "squint": "squint",
             "lips_roll_in": "lips pressed", "corners_down": "mouth corners down", "happy": "smile (corners pulled)",
             "mouth_left": "mouth pulled to its left", "mouth_right": "mouth pulled to its right"}
+# the reads an expression may explain: the INTERIOR ones. TRIED with the outlines in (solvereads): per-view expression then
+# ate the profile (compress +0.9, surprise -0.9 on the 72 deg view: chin 10 mm back, the head 3.5 mm rms from the truth
+# after three calls against 1.8 without the term): a silhouette cannot tell an expression from a shape.
+EXPR_TYPES = ("landmark", "lid", "lip")
 EXPR_SD = 0.35              # prior sd of one expression coefficient (1 = GNM's full prototype of that expression class)
 
 
@@ -1453,15 +1460,15 @@ def _lid_obs(head, view, rv):
             if not (np.isfinite(pic[k]) and np.isfinite(mod[k])):
                 continue
             out.append({"type": "lid", "view": "eye frame", "name": f"lid_{nm}_{u:+.0f}.y", "o": float(pic[k] - mod[k]),
-                        "J": col_J(sel, float(u)), "sig": SIG_LID[0] if abs(u) < 7 else SIG_LID[1], "of": view["kind"]})
+                        "J": col_J(sel, float(u)), "sig": SIG_LID[0] if abs(u) < 7 else SIG_LID[1], "of": view.get("kind", "front")})
     io, ii = int(np.argmax(x)), int(np.argmin(x))
     if np.isfinite(rv["outer"][0]):
         out.append({"type": "lid", "view": "eye frame", "name": "canthus_out.x", "o": float(rv["outer"][0] + be.OUT_RING - mg["ring_out"][0]),
-                    "J": Bx[:, io], "sig": SIG_LID[2], "of": view["kind"]})
+                    "J": Bx[:, io], "sig": SIG_LID[2], "of": view.get("kind", "front")})
     if np.isfinite(rv["inner"][0]):
         JL = (np.asarray(head["LB"][:, 42, 0], float) - EB[:, 0]) * 1000.0
         out.append({"type": "lid", "view": "eye frame", "name": "canthus_in.x", "o": float(rv["inner"][0] - mg["inner"][0]),
-                    "J": JL, "sig": SIG_LID[2], "of": view["kind"]})
+                    "J": JL, "sig": SIG_LID[2], "of": view.get("kind", "front")})
     return out
 
 
@@ -1987,7 +1994,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
 def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
             prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False, anchors: str = "differential",
             parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False,
-            cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, expr: bool | str = False,
+            cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
             expr_sd: float | None = None, kinds: list | None = None, readers: list | None = None, jaw_lm=None,
             jaw: bool = False) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
@@ -1998,7 +2005,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     res = read(head, views, rounds=rounds, cam_sd=cam_sd, cam_first=cam_first, adapt=adapt, cam_done0=cam_done0, cmax=cmax,
-               relax0=relax0, hold=hold, expr_mode="shared" if expr == "shared" else "view", expr_sd=expr_sd,
+               relax0=relax0, hold=hold, held0=held0, expr_mode="shared" if expr == "shared" else "view", expr_sd=expr_sd,
                **({} if prior_off is None else {"prior_off": prior_off}))
     from . import gnm_mm
     sd = gnm_mm.sd()

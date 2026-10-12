@@ -24,7 +24,9 @@ import numpy as np
 UNREAD = 0.25            # a measure with a read under this is the prior's, not the pictures'
 MOVED_SD = 0.7           # ... and having left the start by this many population sd it MOVED WITHOUT A READ
 MOVED_MM = 2.0           # (or by this many mm, for the measures in mm)
-HOLD_SIG = 0.15          # population sd: how tightly solve(hold=) keeps an unread measure at the start head's value
+WEAK = 0.6               # a read under this is WEAK: part measurement, part the prior
+WEAK_SD = 1.2            # ... and a move past this many population sd on a weak read is reported
+HOLD_SIG = 0.05          # population sd: how tightly solve(hold=) keeps an unread measure at the start head's value
 _C: dict = {}
 
 # the measures a profile alone shows: with no view turned past ~60 degrees they are INFERRED whatever the linear model says
@@ -339,9 +341,18 @@ def report(sup: dict, c, c0, turned: float | None = None, drc: dict | None = Non
     if mu:
         lines.append(f"MOVED WITH NO READ (left the start by > {MOVED_SD:g} sd or {MOVED_MM:g} mm while these pictures do not "
                      "show it: an invention of the prior's correlations, not a measurement): " + "; ".join(one(r) for r in mu))
+    # a WEAK read (a 3/4's foreshortened depth through detector points, one cheek's outline for both): the move is
+    # partly the pictures', partly the prior's; past WEAK_SD it is worth a look (garrett_a1's eye depth: read 0.52 from
+    # the 3/4 painting's detector points, moved -7.3 mm = 1.8 sd; the good set says 4-5 mm of that was wrong)
+    wk = sorted([r for r in out if not r["unread"] and r["read"] < WEAK and abs(r["moved_sd"]) >= WEAK_SD], key=lambda r: -abs(r["moved_sd"]))
+    for r in out:
+        r["weak"] = bool(not r["unread"] and r["read"] < WEAK)
+    if wk:
+        lines.append(f"MOVED FAR ON A WEAK READ (over {WEAK_SD:g} sd on a read under {WEAK:g}: part measurement, part the prior's "
+                     "correlations; INFERRED, check it by eye or get a picture that shows it): " + "; ".join(one(r) for r in wk))
     if un:
         lines.append("unread (left near the start head's: the pictures do not show it): " + ", ".join(r["measure"] for r in un))
-    return {"rows": out, "moved_unread": mu, "unread": un, "text": "\n".join(lines)}
+    return {"rows": out, "moved_unread": mu, "moved_weak": wk, "unread": un, "text": "\n".join(lines)}
 
 
 def table_text(rep: dict, region: str | None = None) -> str:

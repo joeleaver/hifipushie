@@ -48,7 +48,7 @@ for i in range(i0, i0 + n):
     c0 = bi.identity(store.load(src))
     cos = "" if prev is None else f", cos with the last step {float((c - c0) @ prev / max(np.linalg.norm(c - c0) * np.linalg.norm(prev), 1e-9)):+.2f}"
     prev = c - c0
-    print(f"-- {out} ({time.time() - t:.0f} s): reads {so['n']}; |dc| {so['dc']:.2f}{cos}; |c| {so['c']:.2f}; largest {so['max_sd']:.2f} sd; relax x{so['relax']:.3f}; "
+    print(f"-- {out} ({time.time() - t:.0f} s): reads {so['n']}; |dc| {so['dc']:.2f}{cos}; |c| {so['c']:.2f}; largest {so['max_sd']:.2f} sd; relax x{so['relax']:.3f}{' DAMPED x0.5' if so.get('damped', 1) < 1 else ''}; "
           f"table {sum(int(str(v).split('/')[0]) for v in rep['entry']['passes'].values())} / {sum(int(str(v).split('/')[1]) for v in rep['entry']['passes'].values())}")
     print(f"   views: stated {so['stated_yaw']} fitted {so['view_yaw']} kinds {so['kinds']} readers {so['readers']}; adapt {so['sig_scale']}")
     if so.get("held"):
