@@ -21,11 +21,11 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 10  # bump when the lens group changes
+VERSION = 11  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
-OBJECTS = ("hair_guides", "hair_guides_free", "hair_under", "hair_scalp", "hair_collide")
+OBJECTS = ("hair_guides", "hair_guides_free", "hair_guides_wisp", "hair_under", "hair_scalp", "hair_collide")
 
 
 def essentials() -> dict:
@@ -75,6 +75,10 @@ def lens_group():
                                   ("Loose", "NodeSocketFloat", 0.001, 0.0, 0.02),
                                   ("Wave Random", "NodeSocketFloat", 0.3, 0.0, 1.0),
                                   ("Stray", "NodeSocketFloat", 0.5, 0.0, 1.0),
+                                  ("Halo", "NodeSocketFloat", 0.0, 0.0, 1.0),
+                                  ("Halo Distance", "NodeSocketFloat", 0.012, 0.0, 0.05),
+                                  ("Halo Length", "NodeSocketFloat", 0.05, 0.005, 0.3),
+                                  ("Fine", "NodeSocketFloat", 0.0, 0.0, 1.0),
                                   ("Seed", "NodeSocketInt", 0, 0, 10000)):
         s = it.new_socket(name, in_out="INPUT", socket_type=typ)
         s.default_value = dv
@@ -170,7 +174,9 @@ def lens_group():
     expo = math("ADD", 0.35, math("MULTIPLY", gi.outputs["Clump Shape"], 2.65))
     open_tip = math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Tip Spread"],
                                           math("POWER", math("MAXIMUM", math("MULTIPLY", math("SUBTRACT", t, 0.7), 3.3333), 0.0), 2.0)))
-    c = math("MULTIPLY", math("MULTIPLY", gi.outputs["Clump"], math("POWER", t, expo)), open_tip)
+    # (hp_clx: a lock's own clump, as what it adds to the object's: (lock - object) / object; absent = 0)
+    clump_l = math("MINIMUM", math("MULTIPLY", gi.outputs["Clump"], math("ADD", 1.0, named("hp_clx", "FLOAT"))), 0.95)
+    c = math("MULTIPLY", math("MULTIPLY", clump_l, math("POWER", t, expo)), open_tip)
     # not every strand joins its clump as hard: with all of them on one line a clump is a rope with dark air between
     # it and the next (pasta); strays fill between the clumps
     cs = named("hp_cs", "FLOAT")
@@ -216,7 +222,26 @@ def lens_group():
                                                                          named("hp_fd", "FLOAT"))),
                                  math("ADD", 0.3, named("hp_rand", "FLOAT"))), math("POWER", ft, 1.7))
     off = vmath("ADD", off, vmath("SCALE", fdir, scale=famt))
+    # the halo: short broken hairs. A copy starts anywhere along the lock, runs Halo Length x (0.4..1.4) and, over
+    # that run, lifts off the lock's outer side and curls sideways: it ends in the air (a fly-away keeps its lock's
+    # whole length and its end)
+    halo = math("GREATER_THAN", named("hp_f", "FLOAT"), math("SUBTRACT", 1.0, gi.outputs["Halo"]))
+    h0 = math("MULTIPLY", named("hp_root", "FLOAT"), 0.8)
+    hspan = math("MINIMUM", math("DIVIDE", math("MULTIPLY", gi.outputs["Halo Length"],
+                                                 math("ADD", 0.4, named("hp_len", "FLOAT"))),
+                                 math("MAXIMUM", slen, 0.001)), 1.0)
+    h1 = math("MINIMUM", math("ADD", h0, hspan), 1.0)
+    htau = math("MINIMUM", math("MAXIMUM", math("DIVIDE", math("SUBTRACT", t, h0), math("MAXIMUM", hspan, 0.001)), 0.0), 1.0)
+    hd = math("MULTIPLY", math("MULTIPLY", halo, gi.outputs["Halo Distance"]), math("ADD", 0.3, named("hp_rand", "FLOAT")))
+    hang = math("ADD", fa, math("MULTIPLY", htau, 3.6))
+    hoff = vmath("ADD", vmath("SCALE", out_n, scale=math("MULTIPLY", hd, math("POWER", htau, 1.5))),
+                 vmath("SCALE", side_n, scale=math("MULTIPLY", math("MULTIPLY", hd, 0.7),
+                                                   math("MULTIPLY", htau, math("SINE", hang)))))
+    off = vmath("ADD", off, hoff)
     geo = store(geo, "hp_sub", kf)
+    # single hairs (the halo, a lock of `hairs`): the EEVEE material draws them part transparent (a strand is never
+    # drawn under a pixel wide: alone against skin or the backdrop, 0.08 mm hairs came out as 1 mm wires)
+    geo = store(geo, "hp_fine", math("MAXIMUM", halo, gi.outputs["Fine"]))
     geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
     sp = N.new("GeometryNodeSetPosition")
     L.new(geo, sp.inputs["Geometry"])
@@ -228,11 +253,13 @@ def lens_group():
     L.new(sp.outputs["Geometry"], trim.inputs["Curve"])
     ln = named("hp_len", "FLOAT")
     cl = crand(0.0, 1.0, 16)
-    L.new(math("MINIMUM", math("MULTIPLY", math("MULTIPLY", named("hp_root", "FLOAT"), gi.outputs["Roots"]),
-                               named("hp_rs", "FLOAT")), 0.6), _sock(trim, "Start", "VALUE"))
+    start = math("MINIMUM", math("MULTIPLY", math("MULTIPLY", named("hp_root", "FLOAT"), gi.outputs["Roots"]),
+                                 named("hp_rs", "FLOAT")), 0.6)
+    L.new(math("ADD", start, math("MULTIPLY", halo, math("SUBTRACT", h0, start))), _sock(trim, "Start", "VALUE"))
     short = math("ADD", math("MULTIPLY", math("MULTIPLY", ln, ln), 0.6), math("MULTIPLY", math("MULTIPLY", cl, cl), 0.4))
-    L.new(math("MAXIMUM", math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", short, gi.outputs["Tips"]),
-                                                      named("hp_ts", "FLOAT"))), 0.08), _sock(trim, "End", "VALUE"))
+    end = math("MAXIMUM", math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", short, gi.outputs["Tips"]),
+                                                       named("hp_ts", "FLOAT"))), 0.08)
+    L.new(math("ADD", end, math("MULTIPLY", halo, math("SUBTRACT", h1, end))), _sock(trim, "End", "VALUE"))
     L.new(trim.outputs["Curve"], go.inputs["Geometry"])
     return ng
 
@@ -414,7 +441,8 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("k", "INT", "CURVE", "value"), ("fd", "FLOAT", "CURVE", "value"),
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
-                              ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value")):
+                              ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value"),
+                              ("clx", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -590,6 +618,20 @@ def material(look: dict):
         pb.inputs["Sheen Tint"].default_value = (*_lin(look.get("sheen", "#86524a")), 1)
     except KeyError:
         pass
+    fa_ = float(look.get("fine_alpha", 0.5))
+    if fa_ < 1.0:  # single hairs (hp_fine) part transparent in EEVEE (dithered: the samples blend it)
+        fn = N.new("ShaderNodeAttribute")
+        fn.attribute_name = "hp_fine"
+        al = N.new("ShaderNodeMath")
+        al.operation = "MULTIPLY_ADD"
+        L.new(fn.outputs["Fac"], al.inputs[0])
+        al.inputs[1].default_value = fa_ - 1.0
+        al.inputs[2].default_value = 1.0
+        L.new(al.outputs[0], pb.inputs["Alpha"])
+        try:
+            m.surface_render_method = "DITHERED"
+        except Exception:  # noqa: BLE001
+            m.blend_method = "HASHED"
     L.new(pb.outputs[0], oe.inputs["Surface"])
     m["hp_look"] = json.dumps(look, sort_keys=True)
     return m

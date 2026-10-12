@@ -438,3 +438,46 @@ def test_seen_colour_reads_as_asked_in_eevee():
         assert s >= s0 and lk["card_sat"] == lk["eevee_sat"] and lk["scalp"] != lk["lit"]
     assert hair.full_look({"seen": "#9c7c62", "lit": "#123456"})["lit"] == "#123456"
     assert "scalp" not in hair.full_look({"lit": "#56352d"})  # without seen: the look as before
+
+
+# --- tesshair2 (2026-10-11): single hairs, the halo, a lock's own clump / tips / roots, strands.free
+
+def test_single_hair_locks_get_their_own_object():
+    """lock["hairs"] = n: the lock is n single strands in the wisp object (a lock's share is never under ~8 strands side
+    by side: a comb strip); ordinary locks are untouched by it."""
+    S = {**hc.STRANDS, "wave": 0.0}
+    P = [[0.06, -0.08, 0.0], [0.06, -0.08, -0.04], [0.06, -0.08, -0.08], [0.06, -0.08, -0.12]]
+    a = _lock("tt0", P, width=0.03)
+    w = dict(_lock("tf0", P, width=0.002), hairs=2)
+    G1, G2 = hs.lock_guides([a], np.zeros(3), S), hs.lock_guides([a, w], np.zeros(3), S)
+    assert set(G1) == {"free"} and set(G2) == {"free", "wisp"}
+    assert all(np.array_equal(G1["free"][k], G2["free"][k]) for k in G1["free"])
+    assert G2["wisp"]["hairs"].tolist() == [2] and float(G2["wisp"]["weight"].sum()) == 0.0
+    st = hs.stacks(S, 0.0, 8.0, 0.0, 0.05, n_wisp=1.0)[hs.WISPS]
+    assert st[0][1]["Amount"] == 1.0 and st[0][1]["Clump"] == 0.0 and st[0][1]["Fine"] == 1.0 and st[0][1]["Flyaway"] == 0.0
+
+
+def test_halo_and_free_dials_only_when_asked():
+    """halo = 0 and no strands.free: the stacks are the old ones exactly (the strand cache's key); halo adds the lens
+    inputs, less of it on hair that left the head; strands.free overrides dials for that hair alone."""
+    S = {**hc.STRANDS}
+    st = hs.stacks(S, 8.0, 8.0, 0.0, 0.05)
+    assert not any(k in st["hair_guides"][0][1] for k in ("Halo", "Fine"))
+    sh = hs.stacks({**S, "halo": 0.5}, 8.0, 8.0, 0.0, 0.05)
+    assert abs(sh["hair_guides"][0][1]["Halo"] - 0.05) < 1e-9
+    assert sh["hair_guides_free"][0][1]["Halo"] < 0.5 * sh["hair_guides"][0][1]["Halo"]
+    sf = hs.stacks({**S, "free": {"loose": 0.0}}, 8.0, 8.0, 0.0, 0.05)
+    assert sf["hair_guides"] == st["hair_guides"]
+    assert [g for g, _ in sf["hair_guides_free"]].count("Hair Curves Noise") == 0
+    assert [g for g, _ in st["hair_guides_free"]].count("Hair Curves Noise") == 1
+
+
+def test_lock_own_clump_tips_roots():
+    S = {**hc.STRANDS, "wave": 0.0, "clump": 0.2, "tips": 0.5, "roots": 0.4}
+    P = [[0.06, -0.08, 0.0], [0.06, -0.08, -0.04], [0.06, -0.08, -0.08], [0.06, -0.08, -0.12]]
+    a = _lock("tt0", P)
+    b = dict(_lock("tt1", P), strands={"clump": 0.6, "tips": 1.0, "roots": 0.0})
+    G0 = hs.lock_guides([a], np.zeros(3), S)["free"]
+    G = hs.lock_guides([a, b], np.zeros(3), S)["free"]
+    assert "clx" not in G0  # (no lock asks: the old file)
+    assert np.allclose(G["clx"], [0.0, 2.0]) and np.allclose(G["ts"], [1.0, 2.0]) and np.allclose(G["rs"], [1.0, 0.0])

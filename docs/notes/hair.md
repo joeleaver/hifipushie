@@ -862,3 +862,135 @@ NB a model's stage keeps the hair it was first synced with (the stage key leaves
   like-with-like hairline measure (spikes); look_hair has no "unseen angles" row, which is where this groom is worst.
 
 STATE / NEXT (end of session): best th_T04, sheet th_01_tess_hair_rounds.png, 5 rounds; NEXT = the list above.
+
+## tesshair2 (2026-10-11, "tesshair2" agent, branch `worktree-agent-a1369a88d9730a4d3`): Tess's hair, second round
+STATE / NEXT: 9 rounds (th_T06 .. T14), BEST = th_T14 (th_T04's recipe + spikes/tesshair2/p06 .. p14). Sheets
+`workspace/human_renders/th_03_tess_hair_rounds.png` (reference | T14 Cycles | T14 EEVEE | T11 | T07 | T06 | T04) and
+th_02 (the EEVEE rounds T11 / T09 / T08 / T07 / T06 / T04). The back shell is whole, the wisps are single curved
+hairs, the tail waves and ends in flicked points, the forehead is a round arch (hline stations within 2.2 mm but one),
+Cycles gives the soft matte read. Still NOT her hair: see the blunt read. NEXT: the list at the end of this section.
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair2/ (run.sh = this worktree's code, scripts looked up in
+spikes/tesshair2 then spikes/tesshair; mk.sh <NN> <patches> = th_T04's recipe + patches, refuses T01-T05; q.sh <tag>
+<patches> = 1 min: regrow, front + profile tiles, hline of the front; round.sh <NN> <patches> = a whole round;
+copies in spikes/tesshair2/). Scripts `spikes/tesshair2/`:
+- iso.py <model> <tag>=<variant> .. [views= size= fov= dz=]: ISOLATE faults: the model's hair changed in memory
+  (only:/drop: lock patterns, S.<dial>:v, L.<pat>.<key>:v, LS.<pat>.<dial>:v, joined with +) and rendered on one
+  shared stage, a row a variant, ~5 s a frame. Views backq / right / backl / back / topback / top / front / left /
+  frontq / frontr. THE tool of this round: every back shell fault was found with it in minutes.
+- shared.py: every th_* model has tess_a1's head, so they share ONE dressed stage (th_T04's) wearing the model's own
+  hair (no 53 s sync per model); shots2.py / v0.py use it. NB hscore's IoU reads the stage's OWN hair objects (ID
+  pass), so hs.py must run un-shared (round.sh does; hs2.py on the shared stage returns th_T04's IoU: do not use).
+- cyc.py <model> <tag>=<look json> ..: look variants in Cycles through a fitted camera, the picture beside.
+- napedots.py: the scalp mesh's density / radius by elevation at the nape. exptest.py: the Blender export test with
+  the workspace env (bare pytest skips it silently: "passed in 0.5 s" = no model found).
+
+### What caused each back-shell fault (th_T04; found by switching pieces off, iso.py)
+- BARE WEDGE behind the part / "dark object at the part's top" / the thick "headband" over the right ear / most of
+  the "hood rim": ONE cause. The tie is low and to her left ([151, -6]); the inner gather rows root "on the way from
+  the hairline to the tie", so rows 1-2 all rooted on the tie's side: the whole right half of the top had no lock but
+  the hairline row, which runs round the hairline to the tie (row 0 alone = a turban's band; rows 1 / 2 alone cover
+  only the left-back). The wedge between the two banks showed the scalp layer; its banks were the rim and the band.
+  FIX `gather.toward: "crown"` (inner rows root up the head from every side; + rows 4, locks 80, reach 0.9).
+- "The first row riding 8 mm high" (suspect): NOT the cause. `gather.ride` 0.003 -> 0.001 changed nothing visible.
+- "The 6 cm scalp under-layer" (suspect): partly. Alone it is a bowl cut with a mullet fringe below the nape; where
+  no lock covered it (the wedge) its ends were the crown's stubble. With the shell whole it is hidden; under_length
+  0.06 -> 0.025 all the same.
+- STUBBLE ON THE CROWN that stayed: `roots` (strand starts staggered along the lock, x4 on hairline locks) on the
+  INNER rows: starts in the middle of the hair. FIX `gather.inner_roots: 0` (the hairline row keeps its soft start;
+  roots 0 on every gather lock made the front hairline a hard edge).
+- DOTS AT THE NAPE (and dashes floating behind the neck): the scalp mesh. Her nape hairline is at -60 deg from the
+  head centre, where the scalp's rays step from the neck (r 0.103) out to the back (r 0.141): the margin row's quads
+  spanned that step as a sheet standing out behind the neck, with density 0.04-0.1: its few hairs were the dots.
+  FIX in `hair_strands.scalp_mesh`: quads whose corners differ 2 cm in radius are dropped (unconditional: such a quad
+  is never scalp).
+- TERRACED CONTOUR LINES AT THE TEMPLE ("finger waves" in front of the ear): the hairline row is the only hair over
+  the bare skin there (the groom's hairline is high at the sides) and it was THIN (gather density 0.6, the under layer
+  taking 60% of the count): its sub clumps drew as parallel lines on skin. FIX `gather.hairline_strands {"density": 2,
+  "clump": 0}`, under 2.0 -> 1.2, count 70k -> 85k. Better, not gone.
+- WHY flyaway 0.25 SHOWED NOTHING: the dial is x 0.12 (3% of strands), a gather lock's fly distance is x 0.3 of
+  min(2 cm, 0.8 width) = 6 mm, it grows as t^1.7 toward the TIP, and a gather lock's tip is IN the tie: 3% of the
+  strands lifting 6 mm on their way into the tie. Not a halo by construction. FIX the `halo` dial (below).
+
+### Code (old behaviour is the default everywhere; tests below)
+- hair_tied.py: gather `toward` ("tie" | "crown"), `reach`, `ride`, `inner_roots`, `hairline_strands`; curtain `rows`
+  (how many rows take the way over the ear), `arch` + `arch_at` (the run raised over the forehead's corners only),
+  `smooth`; frame `hairs` (pieces of 1..n SINGLE hairs), `curve` (each piece bowed in its own plane + a slow S + a
+  flicked tip), `strands` (the pieces' dials; the old hard-coded ones = FRAME_STRANDS); tail `sway` + `sway_length`
+  (the AXIS swings: big soft waves), `flick` (lock ends turn out).
+- hair.py: lock key `hairs` (LOCK_KEYS, resolve), look `fine_alpha` (0.5).
+- hair_strands.py: a third guide object `hair_guides_wisp` for locks with `hairs` (exactly n strands a lock, Amount 1,
+  no clump / flyaway, radius x 0.8, hp_fine 1): a lock's share is never under ~8 strands (hp_n >= 1 x Amount 8),
+  which IS the comb strip; a lock's own `clump` / `tips` / `roots` (per-curve hp_clx / hp_ts / hp_rs: the dials are
+  one number an object); `strands.free` {dial: value} = the dials of hair that left the head; `halo` dial (stack
+  inputs only when > 0, so older jobs keep their cache keys); the scalp mesh fix.
+- blender_strands.py: lens group VERSION 11: Halo / Halo Distance / Halo Length (a copy starts anywhere along its
+  lock, runs ~5 cm, lifts 4-16 mm off the lock's outer side and curls: ends in the air), Fine + hp_fine, hp_clx;
+  the EEVEE material draws hp_fine strands at look.fine_alpha (dithered): a strand is never drawn under a pixel wide,
+  so single hairs were 1 mm wires. hair_cards.py: STRANDS `halo`, `free`; cards also take wisp strands.
+- hair_guide.md: the low side tie recipe, arch, single hairs, tail sway / flick, halo, free, per-lock dials.
+- TESTS RUN: tests/test_hair_tied.py (14 passed: 6 new), test_hair_loose.py + test_hair_lift.py (15 passed),
+  test_hair_strands.py (23 passed: 3 new) + the Blender export test on hs_tess through exptest.py (passed, 38 s).
+
+### Rounds (hline front = like-with-like stations; hscore IoU front / 3q / profile; T04 = 0.680 / 0.489 / 0.722)
+- th_T06 (p06: toward crown, rows 4, locks 80, reach 0.9, inner_roots 0, under_length 0.025): the shell is whole from
+  every side. hline centre +1.4 / outer -0.9 / temples +0.9 mm, top +5.3 mm (T04 -3.4: four rows are taller), width
+  her right +7.2.
+- th_T07 (+ p07 single-hair frame [10, 6] x 1-3 hairs, curve 0.14, halo 0.5; p07c gather lift 9 -> 5 mm, arch 8,
+  dip -9): IoU 0.705 / 0.511 / 0.725; hline centre +1.5, outer +0.6, temples +1.9, top +2.1, width +4.3 / -1.5.
+  First tries that were WORSE and why: 12 + 10 pieces x 3 hairs at full opacity = bunches of wires; halo on the tail
+  = a bottle brush (now x 0.25 on free hair); curtain rows 3 = a tangled mound over the ear (left at 1).
+- th_T08 (+ p08 tail sway 0.012 / 0.17, flick 0.022, taper 0.1, uneven 1, locks 22, tail strands clump 0.75 tips 0.9
+  tip_spread 0.1 wave 0.02 / 0.15; strands.free loose 0.22): wavy locks with pointed ends, but IoU 0.649 / 0.440 /
+  0.685: the tail stood out too far and was thin (doll ringlets). THE WOOL WAS `loose`: with loose 0 on the tail the
+  locks are clean and defined; 0.7 (the head's) crimps every strand (Hair Curves Noise 8 mm).
+- th_T09 (+ p09 tail dir [0.7, 0.05, -0.6], stiff 0.3, length 0.25, sway 0.016 / 0.22, wave 0.012 / 0.2 random 0.7;
+  curtain smooth 3, left over 24): front IoU 0.691, profile 0.661 (too long); smoothing lifted the hairline +3 mm.
+- th_T10 / T11 (smooth 1, dip -6, arch 6; tail 0.225): T11 IoU 0.690 / 0.504 / 0.693, hline centre +0.5, outer +0.1,
+  temples +1.6, top +2.0. From behind the tail was thin wet ropes; contour lines at the temple.
+- th_T12 (+ p12 hairline_strands density 2 clump 0, under 1.2, count 85k, tail fullness 0.054 locks 28 clump 0.55,
+  free loose 0.35): front IoU 0.703, hairline band bare 17.3% (T04 22.8); the denser row made the forehead a TENT
+  again (straight diagonals).
+- th_T13 = th_T14 (+ p13 arch 8 at 22, her right arch 26, tail fullness 0.049; p14 look cycles_fit [0.9, 0.55]):
+  hline front stations (ours - hers, mm, her right .. her left): -1.5 -1.8 -0.8 -0.7 +1.3 +0.8 -0.2 -1.2 +2.2 +3.6
+  (th_T06, the shell fix alone with th_T04's curtain: -4.5 -1.8 -0.2 +0.8 +2.8 +3.4 +1.4 -1.2 +1.7 +3.6); centre +0.0, outer +0.1,
+  temples +1.8, top +1.8 mm, width above the eyes +4.9 / +2.0; forehead / lower face 0.344 vs hers 0.342.
+  IoU 0.695 / 0.514 / 0.674 (profile: ours 114.6k px vs hers 98.4k: the tail is too big from the side), hairline band
+  bare 17.8 / 11.8 / 8.5% (T04 22.8 / 20.6 / 8.4).
+- THE TWO ARCH MEASURES DISAGREE: hscore's "forehead arch" still says ours is 4-6 mm LOW at the corners (+3.9 +6.4
+  +3.7 +5.1 -3.1; centre peak hers 25.2, ours 16.8 mm up) where hline says within 2 mm. hscore finds "highest skin" on
+  the beauty render against a traced hull: fine hairs and the denser hairline row count as not-skin. I trust hline
+  (same detector on both pictures, overlay checked), but the tent in th_T12's overlay was real and hline's summary
+  hid it: READ THE STATIONS, not the summary line.
+- CYCLES (item 4): the stored look through the default cycles_fit (0.75, 0.307: fitted under the salon lights)
+  renders BLACK on this stage (photo light, exposure -0.55); cycles_fit [1, 1] = a pale ash haze; warm lit colours
+  with [1, 1] = ginger. cycles_fit [0.9, 0.55] with the look's own colours = dark brown with warm lit strands: the
+  nearest (cyc_th_T13_d_e_f_v0.png, a_b_c). In Cycles the texture is what EEVEE cannot show: soft, matte, fine;
+  the EEVEE columns over-state every strand (wires). JUDGE TEXTURE IN CYCLES, form and measures in EEVEE.
+
+### BLUNT READ of th_T14 against her pictures (the list of the brief)
+5. Unseen angles: FIXED (wedge, band, rim, crown stubble, nape dots, the object at the part: causes above). Left: the
+   nape and behind-ear edge is a clean combed fringe (hers has fine baby hairs), the temple still shows wave lines.
+2. Front wisps: BETTER in kind (single fine curved hairs, each its own bend), still wrong: too few and too regular,
+   they hang as separate arcs off the face; hers are many, mostly short, tangled into the hair beside the face. In
+   Cycles they nearly vanish (true width at 768 px).
+1. Texture: BETTER. Tail: big waves, separate locks, flicked tapered ends, bushy from behind; but the waves are too
+   regular (a doll's ringlets in EEVEE), and it is 16% too big in profile. Head: still combed bands in EEVEE; in
+   Cycles soft and matte, close to hers, but smoother (no loops, no loose strands crossing the flow). Halo: there
+   now, faint; hers is longer looping hairs, ours short bristles.
+3. Hairline shape: FIXED by measure (round arch, every station but one within 2.2 mm; th_T06 up to 4.5), height kept.
+   Her left corner (s +0.4) still +3.6 mm high.
+4. Sheen / colour: BETTER in Cycles only (dark brown, warm lit strands); still darker and flatter than her chestnut
+   highlights, the back views under-lit; EEVEE stays flat grey-brown (its material desaturates by design).
+   Three-quarter view: nothing new learned; its IoU stays ~0.5 for the reason in the tesshair notes.
+
+NEXT: (1) the look: a calibrated cycles_fit for the photo light (the fit was made under the salon lights), lighter
+tips / highlight streaks (look.tip_amount, vary), a rim light for the back views; (2) wisps: more and shorter, rooted
+along the whole front hairline, some lying INTO the curtain; loops in the halo (Halo Length 5 -> 10 cm, curl back to
+the head); (3) the tail's regularity: per-lock sway phase / wavelength spread, two lock lengths, fullness by view
+(flatten the tail: it is round, hers is a fan seen from the side); (4) the head's combed bands: break the gather
+locks' flow with a few crossing strands (a `cross` share in the lens group), lift at the front (her hair stands
+5 mm forward of ours over the forehead in profile); (5) baby hairs at the nape and behind the ear; (6) TOOLS, not
+done this round: hair.carry onto another head, renders through the references' fitted cameras, the hline measure
+and an unseen-angle row in look_hair are still Python-only (iso.py's views are the row to add: backq, right, backl,
+topback).

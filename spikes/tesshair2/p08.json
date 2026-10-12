@@ -1,0 +1,1 @@
+{"groom": {"tie": {"tail": {"sway": 0.012, "sway_length": 0.17, "flick": 0.022, "taper": 0.1, "uneven": 1.0, "locks": 22, "strands": {"wave": 0.02, "wavelength": 0.15, "random": 0.5, "tip_spread": 0.1, "clump": 0.75, "clump_size": 0.01, "tips": 0.9}}}}, "strands": {"free": {"loose": 0.22, "frizz": 0.3, "flyaway": 0.6, "stray": 0.6}}}
