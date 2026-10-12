@@ -333,7 +333,8 @@ def main():
             scaler.update()
             sched.step()
             with torch.no_grad():
-                dcy = 0.995
+                gstep = ep * len(dl) + nb
+                dcy = min(0.998, (1.0 + gstep) / (10.0 + gstep))
                 for pe, pm in zip(ema.parameters(), model.parameters()):
                     pe.mul_(dcy).add_(pm.detach(), alpha=1 - dcy)
                 for be, bm in zip(ema.buffers(), model.buffers()):
