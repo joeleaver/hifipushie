@@ -1,8 +1,7 @@
 """Compute job (spikes/offload/remote.sh ... gpu): train the denselm network on another machine's GPU. The job folder
 holds data.tar (dressing folders + landmarks.json, made by pack_data.sh) and params.txt = train.py's arguments on one
 line; several runs: one line each (learning-curve points share the unpacked data and the torch environment).
-A torch environment is built in the job's own folder (uv venv + the CUDA wheel: uv's wheel cache on the machine makes
-the second time quick); the model comes back as out.tar (model.pt, weights.pth, log.json, val.json, val.npz per run)."""
+The torch environment is the bundle's ({dir}/_torch: built once per machine by remote_train.sh's setup); the model comes back as out.tar (model.pt, weights.pth, log.json, val.json, val.npz per run)."""
 import os
 import subprocess
 import sys
@@ -29,12 +28,9 @@ def sh(cmd, **kw):
 with tarfile.open(os.path.join(job, "data.tar")) as tf:
     tf.extractall(os.path.join(job, "data"))
 os.remove(os.path.join(job, "data.tar"))
-py = os.path.join(job, "tv", "bin", "python")
-code = sh(["uv", "venv", "--python", "3.12", os.path.join(job, "tv")])
-code = code or sh(["uv", "pip", "install", "--python", py, "--index-url", os.environ.get("TORCH_INDEX", "https://download.pytorch.org/whl/cu124"),
-                   "--extra-index-url", "https://pypi.org/simple", "torch", "numpy", "pillow"])
-code = code or sh([py, "-c", "import torch; print('step: torch', torch.__version__, 'cuda', torch.cuda.is_available(), "
-                             "torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-')"])
+py = os.path.join(env, "_torch", "bin", "python")      # the torch venv in the machine's cache (remote_train.sh's setup)
+code = sh([py, "-c", "import torch; print('step: torch', torch.__version__, 'cuda', torch.cuda.is_available(), "
+                     "torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-')"])
 runs = [ln.split() for ln in open(os.path.join(job, "params.txt")).read().splitlines() if ln.strip()]
 for k, args in enumerate(runs):
     if code:
