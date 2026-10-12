@@ -348,3 +348,34 @@ later pass should add a proper turnaround.
 3. Lowering the ring itself (asset rebuild at ring ~9) is NOT needed for this and stays optional.
 4. POSE: after the faceshapes fix, re-measure the Head weight on the ring; then smooth it down the neck by height
    (Neck / Head sharing) in rig.py's rule for the native head, with a test.
+
+### After the faceshapes fix: the posed neck (2026-10-12; still at the gate, no rig.py change)
+- The fix is its own commit 855e77f (faceshapes.py + test_jaw_leaves_the_body_under_the_neck, which fails on main
+  with the trunk moved 23.0 mm). 2acf86c only takes the earlier mixed-in copy out.
+- hb_tess / hb_garrett re-exported (the pre-fix exports kept as /mnt/data/hifipushie/headbody/export_*_before).
+  Export log: "body: 3172 vertices the face shapes move 3 mm or more are Head 1.00+ (146 weren't: least 0.90)"
+  (was 12239 / 9213 weren't / least 0.00).
+- Sheet workspace/human_renders/hb_04_pose_after_weights_fix.png (spikes/headbody/sheet04.py): REFERENCE | NOW
+  raking | NOW shaded | BEFORE raking, head turned 45 and neck bent 35. BLUNT: nearly ALL of the crumple was the
+  regression. Now: no holes, no jagged bridge, no torn chest on either model in either pose; the neck's base turns
+  and bends as one smooth surface. What is left is the REST shape posed: a long stovepipe neck on a shelf (the gate's
+  subject), and on the neck-bent back views a soft dent where the nape meets the shoulders. It still does not read
+  as the references' necks (no trapezius rising to the skull, no SCM), but nothing is broken by the pose.
+- Head weight down the neck, read from the GLBs (vertices within 11 cm of the Neck joint's axis, 2 cm bands, mm
+  above the Neck joint; mean [min-max]):
+  | band | Garrett NOW | Garrett BEFORE | Tess NOW | Tess BEFORE |
+  |---|---|---|---|---|
+  | +45 | 0.99 [0.95-1.00] | same | 0.95 [0.82-1.00] | same |
+  | +25 | 0.95 [0.77-1.00] | same | 0.82 [0.57-1.00] | same |
+  | +5 | 0.79 [0.51-1.00] | same | 0.64 [0.36-0.86] | 0.69 [0.36-0.97] |
+  | -15 | 0.51 [0.22-0.97] | 0.61 [0.23-1.00] | 0.55 [0.49-0.61] | 0.82 [0.58-0.97] |
+  | -35 | 0.38 [0.03-0.60] | 0.77 [0.13-1.00] | | |
+  | -55 | 0.14 [0.00-0.31] | 0.93 | 0.00 | 0.00 (her chest is under the top) |
+  | -75 and below | 0.00 - 0.01 | 1.00 | | |
+  So the falloff is now monotone from the skull's base to 0 at ~7 cm under the Neck joint; Neck carries 0.16-0.33
+  and Spine2 takes over below. The spread inside a band (0.22-0.97 at -15 on Garrett) is front against nape: the
+  rule's floor climbs to the skull's base at the back by design. Whether that needs smoothing is for after the
+  placement fix: judged on the tiles, it does not crumple.
+- Reference gap (no more Commons requests): missing = a same-subject neutral front / side / back turnaround of a bare
+  neck and shoulders (a woman, a man), a bare male front and back, and the same subjects with the head turned ~45
+  and looking up.
