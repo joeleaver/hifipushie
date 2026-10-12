@@ -803,7 +803,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]]}
     if c.get("tie"):
-        rep["solve"]["chin"] = {"tied": list(c["tie"]["names"]), "given": list(c["tie"]["given"]), "sig": c["tie"]["sig"]}
+        rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size"))}
     if report and c.get("post") is not None:      # WHAT WAS READ, and what moved without a read (solve_report)
         from . import solve_report as sr
         croot = c0 - off if off is not None else None

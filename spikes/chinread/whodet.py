@@ -2,7 +2,7 @@
 import sys, numpy as np
 d = np.load(f"/mnt/data/hifipushie/chinread/out/who_{sys.argv[1]}.npz")
 mn = list(d["mnames"]); typ, view, nm, push, e = d["typ"], d["view"], d["names"], d["push"], d["e"]
-cols = [mn.index(x) for x in ("chin_width", "jaw_width", "gonial_width")]
+cols = [mn.index(x) for x in (sys.argv[2].split(",") if len(sys.argv) > 2 else ("chin_width", "jaw_width", "gonial_width"))]
 for vw in ("front", "3q"):
     ii = np.flatnonzero((typ == "landmark") & (view == vw))
     lm = {}

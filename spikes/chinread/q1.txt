@@ -1,0 +1,13 @@
+# q1: the benchmark's remaining heads (N = the detector's chin points in, C = left out), the paintings rerun, the reference tests
+spikes/chinread/b4.sh h "N C"
+spikes/chinread/b4.sh g "C"
+spikes/chinread/gc.sh gq_G00 gq_B 5 gq_B
+spikes/chinread/b4.sh bq "C N"
+spikes/chinread/b4.sh bp "C N"
+[ -d /home/joe/dev/hifipushie/workspace/cz_bm_00 ] || spikes/chinread/run.sh spikes/chinread/mkhead.py bm garrett_a1 pitch=-15 > /mnt/data/hifipushie/chinread/out/synth_bm.log 2>&1
+spikes/chinread/b4.sh bm "C N"
+[ -d /home/joe/dev/hifipushie/workspace/cz_bs_00 ] || spikes/chinread/run.sh spikes/chinread/mkhead.py bs garrett_a1 light=soft > /mnt/data/hifipushie/chinread/out/synth_bs.log 2>&1
+spikes/chinread/b4.sh bs "C N"
+[ -d /home/joe/dev/hifipushie/workspace/cz_es_00 ] || spikes/chinread/run.sh spikes/chinread/mkhead.py es rand:1:0.6 light=soft > /mnt/data/hifipushie/chinread/out/synth_es.log 2>&1
+spikes/chinread/b4.sh es "C N"
+spikes/chinread/b4.sh bqp "C"

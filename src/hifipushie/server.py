@@ -2011,22 +2011,27 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
-                   expression: str = "default"):
+                   expression: str = "default", chin_points: str = "auto"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
     borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
     kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ and
     what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" (what no
     read looks at stays at the start head's value) | "none"; expression "view" | "shared" | "none" (the pictures'
-    expression as a nuisance); anchors, parse, out, share, seen, save. Details: guide(topic="block_in_solve")."""
+    expression as a nuisance); chin_points "auto" (the detector's chin points are left out when the set has a side
+    view: its outline reads the chin) | "on" | "off"; anchors, parse, out, share, seen, save. Details:
+    guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
     if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "none"):
         raise ValueError('block_in_solve: hold = "auto" | "none"; expression = "view" | "shared" | "none"')
+    if chin_points not in ("auto", "on", "off"):
+        raise ValueError('block_in_solve: chin_points = "auto" | "on" | "off"')
     rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
                         parse={"auto": "auto", "on": True, "off": False}[parse],
                         hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
-                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression])
+                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
+                        chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points]})
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""

@@ -685,6 +685,7 @@ CLOTH_EDGE = False          # default of view["chin"]["cloth"]
 CLOTH_REACH = 9.0           # mm: the picture's skin / cloth edge is looked for this far either side of the model's contour
 SIG_CLOTH = 0.6             # mm: one read (validated on dressed renders with a collar laid behind the jaw: spikes/chinread/clval.py)
 CLOTH_STEP = 2.0            # mm between reads along the contour
+CLOTH_DROP = 0.012          # m: the model's own surface (or nothing) lies at least this far behind the contour, 2.5 and 5 mm outside it
 
 
 def _parse_maps(view, head):
@@ -731,7 +732,8 @@ def _cloth_obs(head, view, ps):
     qo = pi + n2 * (2.5 / mm1)[:, None]
     qi = pi - n2 * (1.0 / mm1)[:, None]
     dq = zat(qi) - X[:, 2]                                     # (1 mm inside a grazing surface stands ~1 cm nearer)
-    keep = inb & (zat(qo) - X[:, 2] > 0.004) & (dq > -0.03) & (dq < 0.004)       # an edge of the model too: visible, a drop behind it
+    qo2 = pi + n2 * (5.0 / mm1)[:, None]                       # a REAL step in depth behind it (a garment lies well behind a
+    keep = inb & (zat(qo) - X[:, 2] > CLOTH_DROP) & (zat(qo2) - X[:, 2] > CLOTH_DROP) & (dq > -0.03) & (dq < 0.004)   # jaw that stands in front of it: where the skin merely turns under and runs on into a collar the edge is the collar's)
     idx = np.flatnonzero(keep)
     if len(idx) < 3:
         return []
@@ -817,7 +819,11 @@ def _ramp_obs(head, view):
         a = np.asarray(view["img"].convert("RGB"), float) / 255.0
         view["_lump"] = a @ np.array([0.299, 0.587, 0.114])
     lp = view["_lump"]
-    lr, ps = _lit_model(head, view)
+    if view.get("ramp_lum") is not None:      # the model's picture from OUTSIDE (a dressed render of it under the picture's light:
+        lr = np.asarray(view["ramp_lum"], float)          # spikes/chinread/eev.py), luminance 0..1 in the picture's pixels
+        ps = clay(head, cam, passes=True)[1]
+    else:
+        lr, ps = _lit_model(head, view)
     H, W = lp.shape
     L = np.asarray(head["L"], float)
     Xc, P = _cam_points(cam, L[:68])
@@ -1190,7 +1196,8 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
             # TIE what no picture reads to its expectation given what they do read (solve_report.tie_rows; chinread)
             from . import solve_report as sr
             whole = done + (np.asarray(poff, float) if poff is not None else 0.0)
-            obs = obs + sr.tie_rows(done=whole, **tie)
+            tk = {k_: v_ for k_, v_ in tie.items() if k_ != "size"}
+            obs = obs + (sr.tie_rows(done=whole, **tk) if tk.get("names") else []) + ([sr.size_row(done=whole)] if tie.get("size") else [])
             out = solve(obs, cur, views=views, **skw)
         relax = float(out.get("relax", 1.0))
         done = done + out["dc"]
@@ -2024,9 +2031,14 @@ def _landmark_obs(head, view, points):
 ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
 CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
 CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
+SIZE_HOLD = False                     # compare(chin={"size": True}): the face's size held at the start head's (solve_report.size_row)
 CHIN_TIE = False                      # compare(chin={"tie": ..}): the unread jaw / chin widths tied to their expectation (solve_report.tie_rows)
 TIE_OPEN = (35.0, 60.0)               # a view whose fitted camera is turned this much shows the far jaw on its silhouette: no tie on the jaw
-CHIN_LM_AXES = "xy"                   # ... in x and y ("y": their height only; "none": left out)
+CHIN_LM_AXES = "auto"                 # ... "xy" | "y" | "x" | "none" | "auto" = left out when the set has a SIDE view (its outline reads
+#   the chin's height and projection to 0.3 mm; the detector's chin on a photo stands 5-9 mm from its chin on our clay
+#   render of the same head and, against that outline, left known heads' chins 3-6 mm short and their lower faces worse
+#   than the class mean they started from: the notes' "## chinread"), kept when it has none (nothing else reads the chin)
+SIDE_MIN = 60.0                       # degrees: a view whose fitted camera is turned at least this much is a side view
 LM_SIG_SCALE = 1.0                    # differential anchors: their sigma x this (their errors are CORRELATED: a bias, not scatter)
 LM_STRETCH = False                    # differential anchors: a free stretch (x, y apart) of the detector's face per view
 LM_STRETCH_UNIT = 0.05                # its nuisance column's unit: 5 % (prior sd NU_SD = 2 units: wide)
@@ -2068,7 +2080,10 @@ def _anchor_obs(head, view, points, det):
     L = np.asarray(head["L"], float)
     keys = [k_ for k_ in (points or {}) if k_.startswith("lm") and k_[2:].isdigit() and int(k_[2:]) < 68]
     ch = view.get("chin") or {}
-    chin_ax = {"xy": (0, 1), "y": (1,), "none": ()}[ch.get("chin_lm", CHIN_LM_AXES)]
+    cl = ch.get("chin_lm", CHIN_LM_AXES)
+    if cl == "auto":          # reference_views resolves it per set (a side view present or not); a bare view: the old behaviour
+        cl = "xy"
+    chin_ax = {"xy": (0, 1), "y": (1,), "x": (0,), "fx": (0,) if view["kind"] == "front" else (), "none": ()}[cl]
     if keys and view["kind"] in ("front", "3q") and chin_ax:      # the CHIN: a picture's stored points often leave the jaw contour out
         keys += [f"lm{i}" for i in view.get("jaw_lm", CHIN_LM) if f"lm{i}" not in keys]   # (the detector guesses it); like with like it is the
     stretch = ch.get("lm_stretch", LM_STRETCH)        # table's own chin read, and nothing else sees the chin from the front
@@ -2157,6 +2172,14 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
     head = model_head(spec, expr={"names": EXPR_SET} if expr else None)
     views, notes = [], []
     iris_mm = None
+    chin = dict(chin or {})
+    if chin.get("chin_lm", CHIN_LM_AXES) == "auto":
+        side = any(cam and abs(view_yaw(cam)) >= SIDE_MIN for cam in rj["cameras"])
+        chin["chin_lm"] = "none" if side else "xy"
+        if side and anchors == "differential":
+            notes.append("CHIN: the detector's chin points are left out: this set has a side view, whose outline reads the chin's "
+                         "height and projection (the block-in table's chin_height / lower_third rows are the detector's: expect "
+                         "them out by 2-4 mm where the side view disagrees with it)")
     for vi, (v, cam) in enumerate(zip(rj["views"], rj["cameras"])):
         # the READERS go by the view's STATED kind, fixed for the whole block-in (kinds). TRIED and wrong (solvereads):
         # the kind from the fitted camera. Tess's "profile" camera stands at 67 deg, so it became a second "3q": two
@@ -2248,15 +2271,17 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     tie = None
     tc = (chin or {}).get("tie", CHIN_TIE)
+    if (chin or {}).get("size", SIZE_HOLD):
+        tie = {"names": (), "size": True}
     if tc:
         from . import solve_report as sr
         side = any(abs(view_yaw(v["cam"])) >= 60.0 for v in views)       # a side view's outline reads the profile line
         t35 = [abs(view_yaw(v["cam"])) for v in views]
-        names = tuple(sr.TIE) if isinstance(tc, (bool, int, float)) else tuple(tc)
+        names = tuple(sr.TIE) if isinstance(tc, (bool, int, float)) else (tuple(tc.split("+")) if isinstance(tc, str) else tuple(tc))
         if any(TIE_OPEN[0] <= y <= TIE_OPEN[1] for y in t35):            # a TRUE 3/4: the far jaw and chin make its silhouette
             names = tuple(n for n in names if n not in ("jaw_width", "gonial_width", "jaw_square"))
             notes.append("CHIN / JAW: a view turned 35-60 deg shows the far jaw on its silhouette: jaw width and squareness are left to the pictures")
-        tie = {"names": names, "given": sr.TIE_GIVEN + (sr.TIE_GIVEN_SIDE if side else ()), "sig": float((chin or {}).get("tie_sig", sr.TIE_SIG))}
+        tie = {**(tie or {}), "names": names, "given": sr.TIE_GIVEN + (sr.TIE_GIVEN_SIDE if side else ()), "sig": float((chin or {}).get("tie_sig", sr.TIE_SIG))}
     res = read(head, views, rounds=rounds, cam_sd=cam_sd, cam_first=cam_first, adapt=adapt, cam_done0=cam_done0, cmax=cmax,
                relax0=relax0, hold=hold, held0=held0, tie=tie, expr_mode="shared" if expr == "shared" else "view", expr_sd=expr_sd,
                **({} if prior_off is None else {"prior_off": prior_off}))

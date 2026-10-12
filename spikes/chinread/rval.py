@@ -13,11 +13,17 @@ kind = sys.argv[1]
 truths = [a for a in sys.argv[2:] if "=" not in a]
 kw = dict(a.split("=", 1) for a in sys.argv[2:] if "=" in a)
 vsel = [int(x) for x in kw.pop("views", "0,1").split(",")]
+TOP = float(kw.pop("top", 8.0))
+NULL = kw.pop("null", "0") == "1"
 for k, v in kw.items():
     setattr(fr, k, float(v))
 MOVES = [("chin_width", 5.0), ("chin_width", -5.0), ("jaw_width", 6.0), ("jaw_width", -6.0), ("chin_length", 4.0), ("chin_length", -4.0),
          ("under_chin", 4.0), ("under_chin", -4.0)]
-fn = {"ramp": fr._ramp_obs, "cloth": None}[kind]
+def cloth_fn(h, v):
+    return fr._cloth_obs(h, v, fr.clay(h, v["cam"], passes=True)[1])
+
+
+fn = {"ramp": fr._ramp_obs, "cloth": cloth_fn}[kind]
 
 
 def views_of(T):
@@ -28,7 +34,11 @@ def views_of(T):
         f = v["image"]
         if not os.path.basename(f).startswith(("cz_", "sx_")):        # solvereads' truths keep the real pictures as refs
             f = f"/mnt/data/hifipushie/solvereads/synth/{T[:-2]}_{vi}.png"
-        out.append({"img": Image.open(f).convert("RGB"), "cam": cam, "kind": fr.kind_of(abs(fr.view_yaw(cam))), "style": "photo", "chin": {kind: True}, "name": os.path.basename(f)})
+        img = Image.open(f).convert("RGB")
+        if kind == "cloth":       # a collar laid in behind the jaw in true depth order (collar.py)
+            import collar
+            img = collar.dress(img, fr.model_head(store.load(T)), cam, top=TOP)[0]
+        out.append({"img": img, "cam": cam, "kind": fr.kind_of(abs(fr.view_yaw(cam))), "style": "photo", "chin": {kind: True}, "name": os.path.basename(f)})
     return out
 
 
@@ -43,7 +53,7 @@ for T in truths:
         o = np.array([x["o"] for x in ob])
         tot.setdefault(("null", v["kind"]), []).append(o)
         print(f"{T} {v['kind']:5s} NULL: n {len(o):2d}" + (f" bias {o.mean():+.2f} rms {np.sqrt((o ** 2).mean()):.2f} mm (median |o| {np.median(np.abs(o)):.2f})" if len(o) else ""), flush=True)
-    for nm, mmv in MOVES:
+    for nm, mmv in ([] if NULL else MOVES):
         d = gnm_mm.direction(nm) * mmv
         h = h0["rebuild"](c0 + d)
         for v in vs:

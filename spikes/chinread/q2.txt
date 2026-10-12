@@ -1,0 +1,14 @@
+# q2: the ramp read against a DRESSED render across renderers (null first), then the benchmark's last heads, the paintings, the reference tests
+spikes/chinread/run.sh spikes/chinread/eev.py e light=top > /mnt/data/hifipushie/chinread/out/eev_e_top.log 2>&1
+spikes/chinread/run.sh spikes/chinread/eev.py c light=top > /mnt/data/hifipushie/chinread/out/eev_c_top.log 2>&1
+spikes/chinread/b4.sh h "N C"
+spikes/chinread/b4.sh g "C"
+spikes/chinread/gc.sh gq_G00 gq_B 5 gq_B
+spikes/chinread/b4.sh bq "C N"
+spikes/chinread/b4.sh bp "C N"
+spikes/chinread/b4.sh bm "C N"
+spikes/chinread/b4.sh bqp "C"
+[ -d /home/joe/dev/hifipushie/workspace/cz_bs_00 ] || spikes/chinread/run.sh spikes/chinread/mkhead.py bs garrett_a1 light=soft > /mnt/data/hifipushie/chinread/out/synth_bs.log 2>&1
+spikes/chinread/b4.sh bs "C N"
+[ -d /home/joe/dev/hifipushie/workspace/cz_es_00 ] || spikes/chinread/run.sh spikes/chinread/mkhead.py es rand:1:0.6 light=soft > /mnt/data/hifipushie/chinread/out/synth_es.log 2>&1
+spikes/chinread/b4.sh es "C N"

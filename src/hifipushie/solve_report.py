@@ -412,3 +412,23 @@ def tie_rows(done=None, names=TIE, given=TIE_GIVEN + TIE_GIVEN_SIDE, sig: float 
         cs = float(np.linalg.norm(r))
         out.append({"type": "hold", "view": "prior", "name": f"tie_{n}", "o": float(-(r @ d)), "J": r, "sig": float(sig * cs), "cond_sd": cs})
     return out
+
+
+SIZE_SIG = 0.003         # the head's size held to +-0.3 % of the start head's
+
+
+def size_row(done=None, sig: float = SIZE_SIG) -> dict:
+    """A pseudo-observation for solve(): the face's SIZE stays the start head's. Every camera's scale is free, so no
+    picture can tell a head 4 % larger from a camera 4 % closer; left to itself the identity grows (the benchmark's
+    heads end 1-8 % large: bobble-heads on their bodies, and every mm measure off by as much). The row is the
+    similarity scale of the hockey mask per unit comp (linear at GNM's template)."""
+    if "size" not in _C:
+        from . import gnm_mm
+        sp = gnm_mm._space()
+        m = sp["gr"]["hockey_mask"]
+        X = sp["T"][m] - sp["T"][m].mean(0)
+        D = sp["IB"][:, m] - sp["IB"][:, m].mean(1, keepdims=True)
+        _C["size"] = np.einsum("vc,kvc->k", X, D) / float((X ** 2).sum())
+    g = _C["size"]
+    d = np.asarray(done, float) if done is not None else np.zeros(len(g))
+    return {"type": "hold", "view": "prior", "name": "hold_size", "o": float(-(g @ d)), "J": g.copy(), "sig": float(sig)}
