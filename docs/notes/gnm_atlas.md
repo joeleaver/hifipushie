@@ -4,7 +4,11 @@
 - Garrett: b3_G17 is the accepted head (2026-10-10). Joe: nose tip slightly UP ("his nose points down when it should
   be slightly up"; b3_G16 "looks much better"), narrow bridge via the GNM sculpt route (no designed local). Later
   Garrett work starts from b3_G17 and must not turn the tip down again (b2_G15 and rb_G14 have the old down tip).
-- Tess: b2_T06 lineage + gnmdetail2's lips step (g2_T12* models); her accepted dressed look is still f3_t1's dressing.
+- Tess: ACCEPTED HEAD (Joe, 2026-10-11, on tk_07: "actually tess looks pretty good. I wouldn't mind sending that down
+  the pipeline and get working on her hair again"): `tess_a1` = tk_T07 (class mean -> block_in_solve x6 with lids and
+  lips in the solve -> free cheek_fullness -0.8; |c| 11.7; no fold forced; "## reruns"). It replaces the b2_T06 /
+  g2_T12 / er_s4 lineage. Skin is still er_s4's dressing (freckles, lip colour far from her: skin thread); hair: the
+  "tesshair" agent carries f3_t1's hair onto it (docs/notes/hair.md).
 - HOLD (Joe, 2026-10-10): no further work on any model (Tess, Garrett, lt19, jw) until the GNM controls and the eye
   crease are sorted; then start over on all four with block-in v2 (GNM's own head, moves chosen from the control
   atlas, sculpt / relief first, the eye and lips steps).
