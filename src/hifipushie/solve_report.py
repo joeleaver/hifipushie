@@ -417,7 +417,20 @@ def tie_rows(done=None, names=TIE, given=TIE_GIVEN + TIE_GIVEN_SIDE, sig: float 
 SIZE_SIG = 0.003         # the head's size held to +-0.3 % of the start head's
 
 
-def size_row(done=None, sig: float = SIZE_SIG) -> dict:
+SIZE_IRIS_SIG = 0.07     # the iris as a ruler of the head's size: GNM's limbus is 6.0 +- 0.44 mm person to person
+
+
+def size_gain() -> np.ndarray:
+    """The head's SIZE per unit identity component (170,): the hockey mask's similarity scale, linear at the template."""
+    return size_row()["J"]
+
+
+def size_prior_sd() -> float:
+    """How much the head's size varies in GNM's population (c ~ N(0, 1) per component): |size_gain|."""
+    return float(np.linalg.norm(size_gain()))
+
+
+def size_row(done=None, sig: float = SIZE_SIG, target: float = 0.0) -> dict:
     """A pseudo-observation for solve(): the face's SIZE stays the start head's. Every camera's scale is free, so no
     picture can tell a head 4 % larger from a camera 4 % closer; left to itself the identity grows (the benchmark's
     heads end 1-8 % large: bobble-heads on their bodies, and every mm measure off by as much). The row is the
@@ -431,4 +444,5 @@ def size_row(done=None, sig: float = SIZE_SIG) -> dict:
         _C["size"] = np.einsum("vc,kvc->k", X, D) / float((X ** 2).sum())
     g = _C["size"]
     d = np.asarray(done, float) if done is not None else np.zeros(len(g))
-    return {"type": "hold", "view": "prior", "name": "hold_size", "o": float(-(g @ d)), "J": g.copy(), "sig": float(sig)}
+    # target: the size wanted against the start head's (0 = held there; +0.04 = 4 % larger: the iris' say)
+    return {"type": "hold", "view": "prior", "name": "hold_size", "o": float(target - (g @ d)), "J": g.copy(), "sig": float(sig)}

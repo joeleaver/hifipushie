@@ -477,10 +477,10 @@ def iris_check(name: str) -> dict:
                 + "): the eyeball stays GNM's 14.6 mm sphere x the head's scale (its lids are shaped on it), the iris "
                 "and the cornea's base change with the identity. skin.eyes.iris_size still overrides the DRAWN iris alone")
     elif abs(model / photo - 1) > 0.05:
-        txt += (f": set skin.eyes.iris_size {photo / 1000:.4f} (the drawn iris). Keep eye_radius: GNM's lids are shaped on "
-                f"its own ball, a smaller one leaves the corners empty; the eye step matches the lids in mm (eye_ruler), so "
-                f"the ball's size no longer sets the opening. (Without the ruler, on a small picture, the lids are "
-                f"matched in iris radii and eye_radius {want:.5f} makes those radii true.)")
+        txt += (f": set skin.eyes.iris_size {photo / 1000:.4f} (the drawn iris). This head OVERRIDES GNM's eyeball "
+                f"(base.head.eye_radius {r_ball / k_eye:.4f}: our ball, which GNM's lids stand ~0.5 mm off); do not shrink it "
+                f"further for the iris. A rebuild (block_in_start) or block_in_step {{\"eye_radius\": 0}} gives GNM's own "
+                f"ball, where the iris is the identity's limbus (block_in_step {{\"iris_mm\": {photo:.2f}}})")
     txt += f". The picture's iris ring colour: {hx} (skin.eyes.iris; check it rendered: the eye picture adds its own contrast)"
     return {"photo_mm": photo, "model_mm": model, "ratio": model / photo, "eye_radius": want, "eyes_000": e000, "iris_rgb": rgb.tolist(),
             "iris_hex": hx, "text": txt}

@@ -275,3 +275,21 @@ def test_block_in_keeps_the_whole_identity():
     # every GNM identity name is a valid key of the spec's identity (one vector: 170 + 3 + 80)
     g = base._gnm_data()
     assert len(base._gnm_coeffs(g["identity_names"], idn)) == 253
+
+
+def test_size_is_held_and_the_iris_is_its_weak_ruler():
+    """No picture reads the head's overall size (every camera's scale is free), so the joint solve holds it at the
+    start head's by default (Joe, 2026-10-12: "I'd trust the model more"); the iris may pull it, weakly."""
+    from hifipushie import face_ruler as fr, solve_report as sr
+    assert fr.SIZE_HOLD is True
+    g = sr.size_gain()
+    psd = sr.size_prior_sd()
+    assert g.shape == (170,) and 0.015 < psd < 0.08                 # GNM's own spread of head size: a few per cent
+    d = np.zeros(170)
+    d[0] = 1.0
+    r0, r1 = sr.size_row(done=d), sr.size_row(done=d, target=0.04)
+    assert abs(r0["o"] + g[0]) < 1e-12 and abs(r1["o"] - (0.04 - g[0])) < 1e-12 and r0["sig"] == sr.SIZE_SIG
+    # the iris' say at +- 7 % against the prior's spread: a weak pull, and a combined sigma under either
+    w = psd ** 2 / (psd ** 2 + sr.SIZE_IRIS_SIG ** 2)
+    comb = 1 / np.sqrt(1 / psd ** 2 + 1 / sr.SIZE_IRIS_SIG ** 2)
+    assert 0.03 < w < 0.6 and comb < min(psd, sr.SIZE_IRIS_SIG)

@@ -5517,3 +5517,94 @@ read: `iris_mm` (the picture's limbus -> eyes_000). Nothing forced: no component
 - Lip read (vermilion border miss upper / lower, seam miss, mm): Tess new 0.29 / 0.46 / 0.30 (current 0.48 / 0.46 /
   0.72); paintings new 0.62 / 0.69 / 0.38 (current 1.03 / 1.03 / 0.73); held-out new 0.40 / 1.15 / 0.13 (current
   0.32 / 1.31 / 0.32). The same or a little better; nothing in the mouth's fit depends on the interior.
+
+### INVENTORY: what GNM ships, and what we do with it now (Joe: "GNM even does pupils and tongues": use what GNM ships)
+| GNM provides | before 2026-10-12 | now | why / what is left |
+|---|---|---|---|
+| skin (12,060 vertices without the sock), 170 `head_*` identity components | USED | USED | the face's shape is GNM's (block-in, joint solve) |
+| eye-region + lower-face expression components (350) | USED (poses, lip_close, face shapes by landmark solves, the solve's expression columns) | USED | |
+| eyeball: scleral sphere at the eye joint (14.6 mm, held) | REPLACED: our ball (0.96 x GNM's x head scale, then 12 mm) moved back by a seat search | USED: the sphere read off GNM's eye vertices, at GNM's centre | `base.head.eye_radius` remains as an override. As GEOMETRY it is still OUR analytic sphere of GNM's radius and centre (the pipeline is a field), not GNM's 771 eye vertices: same shape, no vertex identity. |
+| eyeball position coupled to the head's identity (the 170 components translate it with its joint) | OVERRIDDEN: the seat search moved it 1-2 mm back per head; on a one-mesh head the eye vertices also went through the skin's fields (out of round by up to 1.9 mm, unseen) | USED: `_gnm_pieces` (GNM's own shape, carried by translation + scale with the lids' rings) | On a body-bound head (gnm_base < 1) the lids are no longer exactly GNM's, so the ball is placed by least squares on both lids' rings: residue 0.5 mm on Garrett (table above). |
+| cornea (outer shell's bulge) and limbus, identity `eyes_000..002` | IGNORED: our cornea 0.62 r / 0.09 r where asked for; iris drawn 0.51 r or skin.eyes.iris_size | USED: corneal sphere and limbus from the identity; `iris_mm` step solves eyes_000 | `eyes_001` (cornea prominence) is reachable (`id:eyes_001`) but nothing reads it yet (needs a profile close-up reader). `eyes_002` does nothing visible. |
+| recessed iris disc (anterior chamber 2.9 mm) under a clear shell | IGNORED (our optional `cornea.clear` build made its own, depth 2.8 mm fixed) | PARTLY: `cornea.clear` now takes GNM's chamber depth | The default look is still a painted iris on an opaque bulge. FOR JOE: make the clear cornea (GNM's actual construction) the default? It costs a transmissive part. |
+| pupil: expression `pupils_000` (radius 2.62 mm +- 0.87 per unit) | IGNORED: a paint constant (skin.eyes.pupil 0.36) | USED as a POSE value: base.head.expression.pupils_000 (`ex:pupils_000`) sets the painted pupil; skin.eyes.pupil overrides | NOT an export morph target: the pupil is paint on a sphere, and a morph cannot move paint. Needs the iris as geometry (clear cornea build) or a shader parameter on the consumer's side. GNM's rest pupil (0.50 of the iris) is a dim-room pupil; photographs in daylight read 0.3-0.35. FOR JOE: keep GNM's 0.50 as the default or default pupils_000 to about -0.8? |
+| gaze: eye joints + skinning weights | REPLACED: our sphere turned about its own centre (base.look_at, eyeLook shapes) | REPLACED, same mechanism, now about GNM's joint | Equivalent for a sphere. GNM's 4-joint skeleton (neck, head, eyes) and its skinning weights stay unused: the body's rig (rig.py) owns the neck and head. |
+| mouth sock (bag; 406 vertices, part of the skin) | export on the one mesh's own quads: USED (retopo._with_mouth_sock); field: LEFT OUT (kit slit + box bag, or a fill) | field: USED when the lips are parted (its points join the head's); export: as before | With CLOSED lips the field still has the fill behind the seam (as before): nothing shows. |
+| teeth + gums (2 x 1,440 vertices), identity `teeth_000..079` | REPLACED by the kit's two bands (placed from lip landmarks, rigid with a Procrustes jaw) | USED (part "teeth", GNM's mesh as a solid shell, the mean teeth unless teeth_* are set) | As geometry: meshed from the field at 0.4 mm and decimated (648 triangles in the test export), not GNM's own quads. No reader for teeth_* (needs a picture showing teeth). |
+| lower teeth and tongue moved by `lower_face_region_*`; `tongue_000..030`, `tongue_mean` | IGNORED | USED: poses through base.head.expression, face shapes by the pieces' own offsets, tongueOut from tongue_000..005 | `tongue_mean` (9.2 mm: the rest tongue lifted to GNM's mean pose) is left at 0: FOR JOE / NEXT: the template's tongue lies low and flat; `tongue_mean` 1.0 may be the better rest. ARKit has no other tongue shape; the rest of the tongue basis (up, sideways, curl) is reachable only as `ex:tongue_NNN`. |
+| semantic regions / vertex groups (46) | USED (regions, rings, zones) | USED (+ `gums`, `teeth`, `mouth_sock`, `scleras` / `irises` / `pupils` / `eye_exteriors` for the reads above) | |
+| 253-component identity as ONE vector | 170 stored (`blockin.set_identity` dropped the rest) | 253 reachable and kept by every step | The joint solve still solves 170 (eyes_000 by the iris read afterwards; teeth unread). |
+Remaining REPLACEMENTS, for Joe to decide: (1) eyeball and teeth as analytic / field geometry instead of GNM's own
+vertices (fine for looks; matters only if a consumer wants GNM's vertex ids there); (2) painted iris and pupil instead
+of GNM's recessed disc under a clear cornea; (3) gaze by our rotation instead of GNM's joints (equivalent); (4) the
+closed mouth's fill and seam field instead of GNM's sock (nothing shows); (5) lashes, brows and the caruncle are ours
+(GNM has none).
+
+### SIZE: held in the solve (Joe, 2026-10-12, on the 7 % smaller Tess: "I'd trust the model more, though, I think?")
+- MECHANISM of the drift (spikes/gnmnative/sizeof.py: the hockey mask's similarity scale against the start head):
+  the pictures read SHAPE (her face is narrow for its height: width 148 -> 142 GNM mm while nasion-chin grows
+  113.5 -> 115.5) and every camera's scale / distance is free, so nothing reads size. GNM's first component
+  (head_000) is width AND size at once (2.8 of nt_T05's -3.0 % sit on it): the cheapest identity change that makes
+  the face narrower also makes the whole head smaller, and the camera takes up the image scale (f / t 4050 -> 4339).
+  It is the outline reads against free camera scale, not the first call's refit: tess_a1 (cameras kept) drifted
+  +3.4 % the other way (its head_001), the paintings' Garrett -3.4 %, the held-out one -1.6 %, the benchmark's +1 ..
+  +8 %. "7 % smaller than tess_a1" = -3.0 % against +3.4 % from the same class mean.
+- SECOND FINDING behind the same number: tess_a1's eyeballs sat 1.1 mm LATERAL of their openings' middles each
+  (centres 56.0 mm apart, the lid openings' middles 53.9): onemesh.hook gave the eye JOINTS no gnm_base correction
+  while the skin got it (Tess: gnm_base 0.5), and our ball was seated on the joint. GNM's own ball follows the lids
+  (-0.1 mm). So tess_a1 was solved against irises 2.2 mm too far apart (spikes/gnmnative/eyepos.py). Garrett
+  (gnm_base 0) never had it (+0.01 mm).
+- BUILT: `face_ruler.SIZE_HOLD = True` (was chinread's option, off): solve_report.size_row holds the hockey mask's
+  scale at the block-in's START head's (+- 0.3 %) in every round; shape is free. block_in_solve(size="held" | "iris" |
+  "iris_pin" | "free"); the reply's notes say "SIZE: ... HELD ... size=\"free\" releases it".
+- VALIDATION on chinread's known heads (spikes/chinread/bt.py; SHAPE after a similarity fit, mm rms; size % against
+  the truth): heads c, d, e: free +7.3 % -> held +3.6 % (the class-mean start is +3.1 %); face 1.80 -> 1.85, lower
+  face 2.07 -> 2.28, chin 1.71 -> 1.77. Heads g, h (+ f): free +1.6 % -> held -0.3 % (start -0.6 %); face 2.48 ->
+  2.46, lower face 2.74 -> 2.69, chin 2.08 -> 1.86. So: the size error goes back to the START's (held is not
+  "right", it is "what the prior says": the class mean was 3 % large for c / d / e), and shape is unchanged within
+  +- 0.2 mm (a little worse on three heads, a little better on three). Mean-of-measures bias barely moves.
+- THE IRIS AS A RULER OF SIZE (`blockin.iris_size(name)`: a CHECK; `size="iris"` / `"iris_pin"`: a driver, NOT the
+  default): GNM's eyeball is absolute (its limbus 6.0 +- 0.44 mm, i.e. +- 7 % between people) while the head's size
+  is not, so the front picture's limbus in mm at the model against GNM's MEAN limbus on that head says how large the
+  head is. Read only when the picture's iris radius is >= 12 px (blockin_eyes.MIN_IRIS_PX: the paintings' 5 px iris
+  does not count) and the head has GNM's ball. "iris" combines it with GNM's own spread of head size about the start
+  (|size gain| over N(0, 1) components = +- 5.0 %): weight 0.34 on the iris, combined sigma +- 4.1 %. "iris_pin"
+  takes the iris whole (an average iris assumed).
+  NOT VALIDATED, so not the default: the benchmark's heads were rendered with OUR 12 mm ball and an absolute drawn
+  iris (0.51 r), not GNM's eye, so their irises say nothing about GNM's limbus; a benchmark shot with GNM-native
+  heads is needed first (NEXT).
+  | subject | size held: identity size vs the class mean | the iris says (average iris) | iris-pulled (0.34) | iris-pinned |
+  |---|---|---|---|---|
+  | Tess | nt_S05 -0.3 % | +4.9 % (picture 10.49 mm at the model, GNM's mean 11.01) | nt_W05 +1.1 % | nt_I06 +4.5 % (check then +0.5 %: 10.91 vs 10.97) |
+  | Garrett, held-out | nh_S06 -0.1 % | -3.4 % (11.95 vs 11.55) | nh_W06 -1.4 % | (not built) |
+  | Garrett, paintings | ng_S05 -0.8 % | not readable (5 px) | | |
+  The two iris readers disagree by ~2.5 % on Tess (eye_ruler's limbus circle 10.78 mm, iris_check's 10.5 on nt_S05):
+  the check is good to a few per cent before the +- 7 %.
+- TESS, the numbers Joe asked for (world mm; pupils = eyeball centres; openings = the lid openings' middles; GNM mm
+  in brackets: nasion-chin):
+  | head | size vs class mean | pupils apart | openings apart | nasion-chin (GNM mm) | face width (GNM mm) |
+  |---|---|---|---|---|---|
+  | class mean on her body nt_T00 | 0 | 51.8 | 52.3 | 113.5 | 148.3 |
+  | first rebuild nt_T05 / T06 (size free) | -3.0 % | 52.1 | 52.1 | 115.5 | 142.1 |
+  | size held nt_S05 / S06 | -0.3 % | 53.2 | 53.5 | 118.1 | 143.7 |
+  | iris-pulled nt_W05 | +1.1 % | | | 119.0 | 145.3 |
+  | IRIS-SIZED nt_I06 (GNM-driven; eyes_000 = 0) | +4.5 % | 55.2 | 56.4 | 122.3 | 148.5 |
+  | tess_a1 | +3.4 % | 56.0 (balls 1.1 mm lateral each) | 53.9 | 120.1 | 149.4 |
+  nt_I06 is 7.7 % larger than the first rebuild, 4.8 % larger than size-held, 1.1 % larger than tess_a1; against
+  tess_a1 its shape differs by 3.3 mm rms over the face (|dc| 9.1), against the first rebuild 4.4 mm (mostly the scale).
+  Its chain did not settle (|dc| 1.9-2.5 a call, see-sawing: the iris read moves with the camera each call).
+- Rebuilds with size held (the default now):
+  | subject | chain | \\|c\\|, largest | table | vs the current head: \\|dc\\|; face / eye rms mm |
+  |---|---|---|---|---|
+  | Tess | nt_T00 -> nt_S05 (+ iris_mm 10.5: eyes_000 -0.48 = nt_S06) | 11.23, 2.63 sd | 21-22 / 26 | tess_a1: 8.5; 3.9 / 4.5 |
+  | Tess, iris-sized | nt_T00 -> nt_I06 (size="iris_pin") | 11.06, 2.24 sd | 21 / 26 | tess_a1: 9.1; 3.3 / 3.8 |
+  | Garrett, paintings | ng_G00 -> ng_S05 | 12.10, 2.91 sd (call 1 at the 3.00 cap) | 16 / 29 | garrett_a1: 6.2; 2.8 / 2.3 |
+  | Garrett, held-out | nh_G00 -> nh_S06 (+ iris_mm 12.0: eyes_000 +0.49 = nh_S07) | 12.27, 2.76 sd | 12-13 / 26 | gc_C06: 2.4; 1.1 / 0.7 |
+  With size held the paintings' Garrett costs more (|c| 12.1 against 10.9 free): the shape reads must now be met
+  without the size component.
+- Eye ruler with size held (model - picture, mm): Tess nt_S05: opening +0.10, iris hidden by the upper lid +0.01,
+  margins at the pupil +0.10 / 0.00, fissure +0.56, OUTER CANTHUS +1.88*, upper lid's peak +2.45*; held-out nh_S06:
+  opening +0.38, iris hidden -0.74*, outer canthus +3.48*, fissure +1.26, peak +3.05*. So holding the size did not
+  change the long visible eye: the lid opening matches at the pupil to 0.1 mm; what remains is the BALL: GNM's larger
+  sphere shows 1.5-2 mm further out at the outer corner than the pictures' visible eye ends (in a face the lateral
+  canthus' skin and conjunctiva close that corner; GNM's lids end in a pocket there and the sphere shows in it).

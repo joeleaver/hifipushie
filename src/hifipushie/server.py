@@ -2053,13 +2053,15 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
-                   expression: str = "default", chin_points: str = "auto"):
+                   expression: str = "default", chin_points: str = "auto", size: str = "held"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
     borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
     kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ and
     what is unread. cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); hold "auto" |
     "none"; expression "view" | "shared" | "none"; chin_points "auto" (the detector's chin points are left out when
-    the set has a side view) | "on" | "off"; anchors, parse, out, share, seen, save. Details:
+    the set has a side view) | "on" | "off"; size "held" (the head's overall size stays the start head's: no picture
+    reads it, the cameras' scale is free) | "iris" (the front picture's iris against GNM's mean limbus pulls it, weakly:
+    +- 7 % person to person, combined with GNM's spread of size) | "iris_pin" (the iris' size, whole) | "free"; anchors, parse, out, share, seen, save. Details:
     guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
@@ -2072,7 +2074,8 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                         parse={"auto": "auto", "on": True, "off": False}[parse],
                         hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
                         expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
-                        chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points]})
+                        chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
+                              "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size]})
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""
