@@ -71,3 +71,6 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   per commit); jobs are sandboxed (no paths of this machine); be honest in ram_gb (killed past 1.25x); one GPU job a
   machine. Joe: private likenesses may go anywhere in his ecosystem, so lt19 / jw jobs may use it.
   Asked of oxidegen: an environment in layers (packs keyed apart from the code archive) so a new commit costs seconds.
+  (oxidegen v140, 2026-10-12: outputs kept in the department's storage are deleted 3 days after a job finished
+  (rented boxes, `--via-storage`, MCP uploads); `run --local` delivers straight to this computer and stores nothing.
+  Keep what you pull; never rely on re-downloading. The cloth batches of 10-09 are past that.)
