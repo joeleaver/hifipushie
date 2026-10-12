@@ -175,3 +175,34 @@ quotes them; the heads-tall column for ANSUR rests on them.
   heads, neck 390 against 384.
 - Found on the way: `onemesh.template` raised AttributeError when `hifipushie.headfit` had not been imported by
   something else first (main too); fixed.
+
+### Two meshes (built): `asset.head_body_meshes`, `write_glb` part "meshes"
+- With `parts.body.topology: "wrap"` (the body's low poly = the fused quads; every vertex knows its GNM vertex) a
+  native model's GLB holds mesh `head` (triangles whose three vertices are GNM's: skin, lids' loops, mouth sock) and
+  mesh `body` (the rest: MakeHuman's + the bridge), both skinned to the one skeleton, same material / atlas. They are
+  cut from the SAME corner arrays after uv, normals, tangents, bake and skin weights were made on the welded low
+  poly, so the ring's vertices are written twice with identical position, normal, tangent, uv, joints and weights.
+  Face-shape morph targets are on `head` only (53); `body` has none (the shapes fade to 0 at the ring: g_fade).
+- `base.head.mesh: "welded"` = one mesh as before. A decimated body (no topology key) has no ring: one mesh + WARNING.
+- hb_garrett export (rig, face shapes, 1024 px; 165 s warm): head 23,020 triangles / 11,566 vertices, body 19,020 /
+  9,566, seam 110 vertices, largest normal difference across it 0.00 deg. Read back from the GLB
+  (spikes/headbody/sheet02.py): 114 head vertices coincide with body vertices (110 places; 4 are uv-split copies),
+  weights differ by 0; posed (Neck 15 + Head 30 about the vertical; Neck 20 + Head 15 forward): largest gap between
+  the two meshes 0.00 um, largest normal difference 0.000 deg. No crack, no shading step: by construction.
+
+### Where the ring sits, and what is NOT good yet
+- The ring is the asset's stitch (GNM ring 13): in front ~55 mm under the chin (cricoid level), at the back ~32 mm
+  under the chin level (mid nape). A buttoned shirt collar or a crew neck covers the front; an open collar or a
+  t-shirt does not; at the back it stands ABOVE a collar and is covered only by long hair. It does not have to be
+  hidden (positions, normals, uv and material are continuous across it), but for separate head / body materials or
+  LODs it should sit lower: GNM has 13 more rings down to its bib (ring 8-10 = the neck's base, girth 457-511 mm,
+  shoulders 76-86 mm out). That is a rebuild of the asset (spikes/onemesh/make_asset.py RING / C_RING, a new bridge
+  onto MakeHuman's trapezius loop): NEXT, not done.
+- NECK BEND / HEAD TURN: the SEAM holds (0 gap, 0 deg), but the neck's base CRUMPLES in both poses: jagged
+  triangles in the bridge and the top of the trapezius. It is NOT the attach: the old path's export (gnmnative's
+  ng_G00.glb, one welded mesh) crumples the same way, a little worse (out/seam_ng_G00_old.png beside
+  seam_hb_garrett.png). Cause read from the GLB (spikes/headbody/wglb.py): the asset's own weights are smooth round
+  the ring (largest step between neighbours 0.026), but the exported Head weight on the ring is 0.33 .. 0.97 with
+  neighbour steps of 0.15 at the back (0.57, 0.77, 0.97, 0.96, 0.67, 0.54, 0.82, 0.96 ...): rig.py's rigid-head rule
+  (floor under the jaw climbing to the skull's base at the nape, HEAD_FALL / HEAD_COLUMN falloffs) lays a Head weight
+  on the nape rows that alternates vertex to vertex. Rig thread's to fix (rig.py `rigid_head`), on main as well.

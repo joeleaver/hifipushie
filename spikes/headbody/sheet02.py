@@ -18,9 +18,11 @@ g = rig_audit.read_glb(glb)
 bones, M = g["bones"], g["meshes"]
 names = [b["name"] for b in bones]
 print("meshes:", {k: (len(m["V"]), len(m["F"]), len(m.get("targets") or {})) for k, m in M.items()})
-hk = next(k for k in M if k.endswith("head"))
 bk = next(k for k in M if k.endswith("body"))
-H, Bd = M[hk], M[bk]
+hk = next((k for k in M if k.endswith("head")), None)
+Bd = M[bk]
+ONE = hk is None
+H = {k: (v[:3] if k in ("V", "N", "J", "W") else v[:1] if k == "F" else v) for k, v in Bd.items()} if ONE else M[hk]  # (a welded export: no head mesh)
 # the seam: vertices of the two meshes at one place
 d, j = cKDTree(Bd["V"]).query(H["V"])
 hi = np.flatnonzero(d < 1e-6)
@@ -98,10 +100,14 @@ with resources.heavy(f"headbody seam sheet {tag}", gb=8):
         V = np.r_[Pb, Ph]
         Fc = np.r_[Bd["F"], H["F"] + len(Pb)]
         N = np.r_[Nb, Nh]
+        if ONE:
+            V, Fc, N = Pb, Bd["F"], Nb
         cp = c if not turns else (skin({"V": c[None], "N": np.array([[0, 0, 1.0]]), "J": np.array([[names.index(P_ + "Neck")]]), "W": np.ones((1, 1))}, T)[0][0])
         ring = set((hi + len(Pb)).tolist())
         hedges = [(int(f[k]), int(f[(k + 1) % 3])) for f in Fc[len(Bd["F"]):] for k in range(3) if int(f[k]) in ring and int(f[(k + 1) % 3]) in ring]
         col = [(170, 190, 215)] * len(Bd["F"]) + [(205, 200, 192)] * len(H["F"])
+        if ONE:
+            hedges, col = [], [(190, 195, 200)] * len(Fc)
         with tempfile.TemporaryDirectory() as tmp:
             f = Path(tmp) / "posed.npz"
             np.savez(f, verts=V.astype(np.float32), faces=Fc, normals=N.astype(np.float32))
@@ -114,8 +120,8 @@ with resources.heavy(f"headbody seam sheet {tag}", gb=8):
             one = {"turns": {k: [*(float(x) for x in v[0]), float(v[1])] for k, v in turns.items()}}
             try:
                 sh = asset.preview(glb, [], size=T_, samples=32, poses=[one],
-                                   cameras=[{"eye": (cp + 1.6 * np.array([np.sin(np.radians(az)), -np.cos(np.radians(az)), 0.05])).tolist(),
-                                             "target": cp.tolist(), "fov": 11.0, "name": v} for v, az, _ in VIEWS])[0]
+                                   cameras=[{"eye": (cp + 1.5 * np.array([np.sin(np.radians(az)), -np.cos(np.radians(az)), 0.05])).tolist(),
+                                             "target": cp.tolist(), "fov": 13.0, "name": v} for v, az, _ in VIEWS])[0]
                 simgs = sh
             except Exception as e:
                 print("no shaded row:", str(e)[:300])
