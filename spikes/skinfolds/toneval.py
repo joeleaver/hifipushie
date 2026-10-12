@@ -21,7 +21,7 @@ VLIGHT = {"lights": [{"dir": [0.45, -0.72, 0.5], "energy": 2.9, "color": TINT.to
           "world": {"color": (0.75 * TINT).tolist(), "strength": 0.5}, "view": "Standard", "exposure": ev}
 truth = {"sex": 0, "age": 25, "tone": {"fitzpatrick": f_true, "blood": 0.6, "undertone": 0.35}, "wrinkles": {"amount": 0}}
 start = {"sex": 0, "age": 25, "tone": {"fitzpatrick": f_prior}, "wrinkles": {"amount": 0}}
-key = f"{tag}_f{f_true:g}_ev{ev:+.1f}".replace(".", "p") + ("_w" if white else "")
+key = f"{tag}_f{f_true:g}_ev{'m' if ev < 0 else 'p'}{abs(ev):.1f}".replace(".", "p") + ("_w" if white else "")
 tm, vm = f"sf_tt_{key}", f"sf_tv_{key}_p{f_prior:g}".replace(".", "p")
 nv = len(bi._refs(head)["views"])
 pics = [f"{G}/tone_{key}_{i}.png" for i in range(nv)]

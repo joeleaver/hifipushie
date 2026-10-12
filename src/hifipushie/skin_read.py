@@ -864,7 +864,7 @@ def _stubble_opts(sk: dict):
 
 
 def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True,
-        prior_ab=None) -> dict:
+        prior_ab=None, prior_tone: dict | None = None) -> dict:
     """spec["skin"] set from a read: {"skin": the new description, "changes": [(parameter, old, new, why)], "text",
     "residual": the regions' read before / after as the forward model has it}. groups: what may change (GROUPS).
     stubble: whether a beard shadow may be ADDED to a face that has none (default: unless skin.sex says female)."""
@@ -986,15 +986,21 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         inside = lambda xs_: (abs(plain_L(xs_) - L0) <= L_bound and float(np.hypot(*(plain_lab(xs_)[1:] - ab0))) <= C_bound)  # noqa: E731
         if ti and not inside(sol.x):
             xs = sol.x.copy()
+            # (back toward the PRIOR tone itself: in a later round the start is the last round's tone, which the new
+            # read's own points may already put outside the bound: Garrett's round 2 began 5.8 from the prior)
+            xp = x0.copy()
+            if prior_tone:
+                for i_ in ti:
+                    xp[i_] = float(np.clip(prior_tone[names[i_]], lo[i_], hi[i_]))
             a_lo, a_hi = 0.0, 1.0
             for _ in range(12):                 # the largest share of the tone's move that stays inside the bound
                 a_ = 0.5 * (a_lo + a_hi)
-                xs[ti] = x0[ti] + a_ * (sol.x[ti] - x0[ti])
+                xs[ti] = xp[ti] + a_ * (sol.x[ti] - xp[ti])
                 if not inside(xs):
                     a_hi = a_
                 else:
                     a_lo = a_
-            xs[ti] = x0[ti] + a_lo * (sol.x[ti] - x0[ti])
+            xs[ti] = xp[ti] + a_lo * (sol.x[ti] - xp[ti])
             d1, d2 = plain_lab(sol.x) - np.r_[L0, ab0], plain_lab(xs) - np.r_[L0, ab0]
             tone_note = (f"the solve wanted the plain skin {d1[0]:+.1f} L* / {d1[1]:+.1f} a* / {d1[2]:+.1f} b* from the prior; held to "
                          f"{d2[0]:+.1f} / {d2[1]:+.1f} / {d2[2]:+.1f} (bounds: {L_bound} L*, {C_bound} in a*b*: "
@@ -1171,9 +1177,11 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
         spec.setdefault("skin", {})["tone"] = {"fitzpatrick": float(tone)} if isinstance(tone, (int, float)) else dict(tone)
         store.save(dst, spec, "skin_from_reference: the stated tone (the lightness prior)")
     prior_L = prior_ab = None
+    sk_p = store.load(dst).get("skin") or {}
+    prior_tone = {p_: _get(sk_p, p_) for p_ in GROUPS["tone"]}
     for k in range(max(int(rounds), 1)):
         r = read(dst, anchor=anchor, log=log)
-        f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L, prior_ab=prior_ab)
+        f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L, prior_ab=prior_ab, prior_tone=prior_tone)
         prior_L, prior_ab = f["tone"]["prior_L"], f["tone"]["prior_ab"]
         reads.append(r["text"]); fits.append(f)
         spec = store.load(dst)
@@ -1338,16 +1346,17 @@ def _fold_view(f: dict, q: dict, fd: dict, ldir=None) -> dict | None:
         inner = (np.abs(u) <= fd["search"]) & np.isfinite(S[0])
         sgn = -np.sign(cross)
         V = S[:, inner] * sgn[:, None]
+        V = np.where(np.isfinite(V).any(1)[:, None], V, 0.0)       # (a row with no finite window: nanargmax raises)
         k = np.nanargmax(V, 1)
         # (the largest step of the light's sign within the search is positive for any noise: it counts only OVER the
         # largest step of the other sign. First version without this: on Garrett's two paintings every fold "stepped"
         # along 92-100 % of its path, the line jumping +-4 mm from station to station)
-        best = V[np.arange(len(P)), k] - np.nanmax(-V, 1)
+        best = np.nan_to_num(V[np.arange(len(P)), k] - np.nanmax(-V, 1), nan=0.0)   # (a station off the picture: no step)
         # ... and the picture itself must step that way there, not only its difference to ours
         Sp = np.full_like(D, np.nan)
         Bp = box(pp)
         Sp[:, off:-off] = Bp[:, 2 * off:] - Bp[:, :-2 * off]
-        own = (Sp[:, inner] * sgn[:, None])[np.arange(len(P)), k]
+        own = np.nan_to_num((Sp[:, inner] * sgn[:, None])[np.arange(len(P)), k], nan=0.0)
         out["step_u"] = u[inner][k]
         # (a step on the window's edge is the edge of something beside the path: on Tess both tear troughs "stepped" at
         # +5.0 mm, her lower lid's margin and lashes)
@@ -1356,6 +1365,8 @@ def _fold_view(f: dict, q: dict, fd: dict, ldir=None) -> dict | None:
         out["cross"] = np.abs(cross)
     out["valid"] = valid
     out["picture"], out["ours"] = out["picture"] * valid, out["ours"] * valid
+    if valid.sum() < 2:       # (every station was a feature's edge: no read of this view, and no NaN weight)
+        return None
     out["scale"] = float(np.median(sc[valid]))
     return out
 
@@ -1439,7 +1450,7 @@ def fold_read(c: Context) -> dict:
                     if srun:
                         ssel[srun[0]:srun[1] + 1] = True
                     suse = (ssel & can) if (ssel & can).sum() >= 4 else can
-                    stat["step"] += w / wsum * float(np.median(r_["step"][suse] / r_["cross"][suse]))
+                    stat["step"] += w / wsum * float(np.nan_to_num(np.median(r_["step"][suse] / np.maximum(r_["cross"][suse], 1e-6))))
                     stat["step_share"] += w / wsum * float(shit.sum() / max(can.sum(), 1))
                     stat["cross"] += w / wsum * float(np.median(r_["cross"][can]))
                     if srun is not None and (sbest is None or w * shit.sum() > sbest[2]):
