@@ -980,8 +980,8 @@ the head's shape; base.head.fold (lidfold.py) stays unused.)
   | F5 | -0.7 | 41.39 -> 41.28 | +2.3 -2.1 +0.9 | +1.6 -0.5 -0.3 |
   | F5 | +0.4 | 41.39 -> 41.28 | +2.3 -2.1 +0.9 | +1.6 -0.5 -0.3 |
   | F3.5, prior F2.5 (wrong) | +0.4 | 64.28 -> 62.80 | +9.2 -4.7 -5.1 | +6.2 -3.1 -3.9 |
-  (F2 / F3.5 at +0.4: out/toneval2.log.) The result does not depend on the exposure (F5: identical at -0.7 and +0.4
-  EV). The plain skin never left the prior by more than 1.5 L* (bound 3.0); the base tone itself (skin.tone_rgb, without
+  At +0.4 EV: F2 +1.5 -2.5 -2.0 (plain 65.72 -> 64.29), F3.5 +1.7 -1.7 -1.8 (59.15 -> 58.30), F5 as in the table. The
+  result does not depend on the exposure (all three tones within 0.2 Lab between -0.7 and +0.4 EV). The plain skin never left the prior by more than 1.5 L* (bound 3.0); the base tone itself (skin.tone_rgb, without
   zones) moved up to 3.1 L. Hue and saturation come about half way (the solve sends undertone to 0 and blood to
   ~0.5 for a truth of 0.35 / 0.6: the melanin / undertone trade skinread found). A WRONG prior stays wrong by design
   (one type too light: 9.2 -> 6.2 L).
