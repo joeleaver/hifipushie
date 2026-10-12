@@ -22,10 +22,10 @@ MARK = {30: (255, 40, 40), 8: (255, 230, 40), 45: (40, 255, 255), 36: (60, 90, 2
 S = Image.new("RGB", (6 * 256, 3 * 256))
 for k in range(18):
     x, t, vis, mmpx, i = ds[k]
-    a = (x.numpy().transpose(1, 2, 0) * T.STD + T.MEAN) * 255
+    a = (x.transpose(1, 2, 0) * T.STD + T.MEAN) * 255
     im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
     d = ImageDraw.Draw(im)
-    p = (t.numpy() + 1) * 128
+    p = (t + 1) * 128
     for lm, col in MARK.items():
         q = p[L["lm68"][lm]]
         d.ellipse((q[0] - 4, q[1] - 4, q[0] + 4, q[1] + 4), outline=col, width=2)

@@ -21,11 +21,11 @@ S = Image.new("RGB", (6 * 256, 4 * 256))
 for k in range(24):
     ds.epoch = k // 12
     x, t, vis, mmpx, i = ds[k % len(ds)]
-    a = (x.numpy().transpose(1, 2, 0) * T.STD + T.MEAN) * 255
+    a = (x.transpose(1, 2, 0) * T.STD + T.MEAN) * 255
     im = Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
     d = ImageDraw.Draw(im)
     if k % 2 == 0:
-        for j, (p, v) in enumerate(zip((t.numpy() + 1) * 128, vis.numpy())):
+        for j, (p, v) in enumerate(zip((t + 1) * 128, vis)):
             col = (60, 255, 60) if v else (255, 60, 60)
             if ".L" in Ld["names"][j]:
                 col = (0, 255, 255)

@@ -238,7 +238,17 @@ class Data(torch.utils.data.Dataset):
             uv, vis = uv[self.mirror], vis[self.mirror]
         t = (uv - h) / (SIZE / 2)
         mmpx = float(self.P["side"][i]) * 1000.0 / self.P["size"] * k_
-        return torch.from_numpy(x.transpose(2, 0, 1).copy()), torch.from_numpy(t.astype(np.float32)), torch.from_numpy(vis.astype(np.uint8)), mmpx, i
+        return x.transpose(2, 0, 1).copy(), t.astype(np.float32), vis.astype(np.uint8), np.float32(mmpx), np.int64(i)
+
+
+def collate(b):
+    """numpy batches (pickled through the workers' pipes): torch's default collate hands tensors over in shared memory
+    (/dev/shm), which a sandboxed compute job may not write: the first training job on NICO-TOP hung there."""
+    return tuple(np.stack(c) for c in zip(*b))
+
+
+def tens(b):
+    return tuple(torch.from_numpy(c) for c in b)
 
 
 class Wrapped(torch.nn.Module):
@@ -257,7 +267,8 @@ def evaluate(model, dl, dev, region):
     model.eval()
     E, S, V, MM, I, XY = [], [], [], [], [], []
     with torch.no_grad():
-        for x, t, vis, mmpx, i in dl:
+        for b_ in dl:
+            x, t, vis, mmpx, i = tens(b_)
             o = model(x.to(dev)).float().view(x.shape[0], -1, 3).cpu()
             E.append((o[..., :2] - t).norm(dim=-1).numpy() * SIZE / 2)
             S.append(torch.exp(o[..., 2]).numpy() * SIZE / 2)
@@ -315,8 +326,8 @@ def main():
     if dev.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
     ds = Data(P, tr, L, True, seed)
-    dl = torch.utils.data.DataLoader(ds, bs, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=False, pin_memory=dev.type == "cuda")
-    dv = torch.utils.data.DataLoader(Data(P, va, L, False), bs, shuffle=False, num_workers=min(workers, 4))
+    dl = torch.utils.data.DataLoader(ds, bs, shuffle=True, num_workers=workers, drop_last=True, persistent_workers=False, collate_fn=collate)
+    dv = torch.utils.data.DataLoader(Data(P, va, L, False), bs, shuffle=False, num_workers=min(workers, 4), collate_fn=collate)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
     steps = epochs * len(dl)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, lr, total_steps=steps, pct_start=0.06)
@@ -329,7 +340,10 @@ def main():
         ds.strength = min(1.0, (ep + 1) / max(ramp * epochs, 1e-9)) if ramp > 0 else 1.0
         model.train()
         t1, tot, nb = time.time(), 0.0, 0
-        for x, t, vis, mmpx, i in dl:
+        for b_ in dl:
+            x, t, vis, mmpx, i = tens(b_)
+            if nb == 0 and ep == 0:
+                print(f"step: first batch after {time.time() - t1:.0f} s on {dev}", flush=True)
             x, t = x.to(dev, non_blocking=True), t.to(dev, non_blocking=True)
             if dev.type == "cuda":
                 x = x.to(memory_format=torch.channels_last)
@@ -345,7 +359,7 @@ def main():
             sched.step()
             with torch.no_grad():
                 gstep = ep * len(dl) + nb
-                dcy = min(0.998, 1.0 - 25.0 / steps, (1.0 + gstep) / (10.0 + gstep))     # (a short run: a short memory)
+                dcy = max(0.0, min(0.998, 1.0 - 25.0 / steps, (1.0 + gstep) / (10.0 + gstep)))     # (a short run: a short memory)
                 for pe, pm in zip(ema.parameters(), model.parameters()):
                     pe.mul_(dcy).add_(pm.detach(), alpha=1 - dcy)
                 for be, bm in zip(ema.buffers(), model.buffers()):
