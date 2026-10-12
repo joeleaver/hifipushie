@@ -1496,7 +1496,7 @@ EXPR_SAY = {"compress_face": "frown / brows drawn down and together", "surprise"
 # the reads an expression may explain: the INTERIOR ones. TRIED with the outlines in (solvereads): per-view expression then
 # ate the profile (compress +0.9, surprise -0.9 on the 72 deg view: chin 10 mm back, the head 3.5 mm rms from the truth
 # after three calls against 1.8 without the term): a silhouette cannot tell an expression from a shape.
-EXPR_TYPES = ("landmark", "lid", "lip")
+EXPR_TYPES = ("landmark", "lid", "lip", "dense")
 EXPR_SD = 0.35              # prior sd of one expression coefficient (1 = GNM's full prototype of that expression class)
 
 
@@ -2117,6 +2117,59 @@ def _anchor_obs(head, view, points, det):
     return out
 
 
+# DENSE LANDMARKS (denselm, 2026-10-12; docs/notes/fitter_whitepaper.md "## denselm"): our own detector's ~600 points, each a
+# GNM skin vertex's picture position with the network's own sigma. ABSOLUTE (no render of the model): the network is
+# trained on our renders, so its landmark IS the vertex's projection. OFF by default (a pilot network).
+DENSE = False                         # reference_views(dense=None) takes this
+DENSE_SIG_SCALE = 2.0                 # x the network's sigma (its errors are correlated between neighbours: one crop, one net)
+DENSE_SIG_FLOOR = 0.5                 # mm: never surer than this
+DENSE_MAX_MM = 3.0                    # a landmark the network is less sure of than this (mm) is left out (hidden, under hair)
+DENSE_REGIONS = None                  # None = every skin landmark; or a tuple of denselm regions ("chin", "cheeks", ...)
+
+
+def dense_predict(head, view) -> dict | None:
+    """The detector on a view's picture, its crop laid on the model's own 68 landmarks through the view's camera (then
+    on the network's own 68: denselm.predict). None when no trained network is set up."""
+    from . import denselm
+    if not denselm.available():
+        return None
+    _, q = _cam_points(view["cam"], np.asarray(head["L"], float)[:68])
+    return denselm.predict(view["img"], q)
+
+
+def _dense_obs(head, view, pred):
+    """per confident skin landmark: (the detector's pixel - the model vertex's projection) in mm, x and y, the vertex's
+    own move per component, sigma = the network's own (x DENSE_SIG_SCALE, floored)."""
+    from . import denselm
+    if pred is None or "gid" not in head:
+        return []
+    Lm = denselm.landmarks()
+    if "dense_v" not in head:
+        gid = np.asarray(head["gid"], int)
+        at = np.full(int(gid.max()) + 1, -1)
+        at[gid[gid >= 0]] = np.where(gid >= 0)[0]
+        head["dense_v"] = at[Lm["gnm"]]
+    ch = view.get("chin") or {}
+    scale, floor = float(ch.get("dense_sig", DENSE_SIG_SCALE)), float(ch.get("dense_floor", DENSE_SIG_FLOOR))
+    regions = ch.get("dense_regions", DENSE_REGIONS)
+    out = []
+    _, Q = _cam_points(view["cam"], head["V"][head["dense_v"]])
+    for j, v in enumerate(head["dense_v"]):
+        if v < 0 or (regions and Lm["region"][j] not in regions):
+            continue
+        Jp, mm1 = _proj_jac(view["cam"], head, int(v))
+        sg = float(pred["sigma"][j]) * mm1
+        if not np.isfinite(sg) or sg > DENSE_MAX_MM:
+            continue
+        sig = max(floor, sg * scale)
+        for ax in (0, 1):
+            out.append({"type": "dense", "view": view["kind"], "name": f"{Lm['names'][j]}.{'xy'[ax]}",
+                        "o": float(pred["xy"][j, ax] - Q[j, ax]) * mm1, "J": Jp[ax] * mm1, "sig": sig,
+                        "p": list(map(float, Q[j])), "q": list(map(float, pred["xy"][j])), "X": list(map(float, head["V"][int(v)])),
+                        "region": str(Lm["region"][j])})
+    return out
+
+
 def kind_of(yaw: float) -> str:
     a = abs(float(yaw or 0.0))
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
@@ -2161,7 +2214,7 @@ def view_sanity(views: list, cameras: list) -> list:
 def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False,
                     anchors: str = "differential", parse: bool | str = False, normals: bool = False,
                     kinds: list | None = None, readers: list | None = None, jaw_lm=None, expr: bool = False,
-                    jaw: bool = False, chin: dict | None = None) -> tuple:
+                    jaw: bool = False, chin: dict | None = None, dense: bool | None = None) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -2246,6 +2299,16 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
         if shade:
             extras.append(_shade_obs)
+        if DENSE if dense is None else dense:      # our own dense landmarks (absolute; the picture is read ONCE per call)
+            try:
+                pred = dense_predict(head, view)
+                if pred is None:
+                    notes.append(f"{view['name']}: dense landmarks asked for, but no trained network is set up")
+                else:
+                    view["dense"] = pred
+                    extras.append(lambda h, vw, pred=pred: _dense_obs(h, vw, pred))
+            except Exception as e:  # noqa: BLE001
+                notes.append(f"{view['name']}: the dense landmarks were not read ({str(e)[:200]})")
         if normals:      # OFF by default: failed its validation (the notes' "## refread", 3): differential against the
             extras.append(lambda h, vw: _normal_obs(h, vw, _normals_of_model(h, vw)))     # model's own clay picture
         view["extra"] = lambda h, vw, extras=tuple(extras): [ob for f in extras for ob in f(h, vw)]
@@ -2291,7 +2354,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal", "dense")}
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))

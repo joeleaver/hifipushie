@@ -85,7 +85,10 @@ def landmarks() -> dict:
     mirror_v[idx_ok] = idx_ok[jm]
     sym = np.zeros(len(T), bool)
     sym[idx_ok] = dm < 0.0008
-    half = np.where(ok & sym & (T[:, 0] >= -1e-5))[0]
+    allv = np.arange(len(T))
+    sym &= mirror_v[np.maximum(mirror_v, 0)] == allv            # a true pair (or its own mirror image: the mid-line)
+    own = mirror_v == allv
+    half = np.where(ok & sym & (own | (T[:, 0] > 0)))[0]
     # the 68 standard landmarks' vertices are in from the start (their heaviest vertex)
     WL = np.asarray(g["lm68"], float)
     lm_v = []
@@ -94,7 +97,7 @@ def landmarks() -> dict:
         lm_v.append(int(ids[int(np.argmax(w))]))
     seed = []
     for v in lm_v:
-        v2 = v if T[v, 0] >= -1e-5 else int(mirror_v[v])
+        v2 = v if (own[v] or T[v, 0] > 0) else int(mirror_v[v])
         if v2 >= 0 and ok[v2] and sym[v2] and v2 not in seed:
             seed.append(v2)
     P = T[half]
@@ -111,7 +114,7 @@ def landmarks() -> dict:
         picks.append(i)
         dmin = np.minimum(dmin, np.linalg.norm(P - P[i], axis=1))
     left = half[picks]
-    mid = np.abs(T[left, 0]) < 1e-5
+    mid = own[left]
     vs = list(map(int, left)) + [int(mirror_v[v]) for v in left[~mid]]
     vs = np.array(vs)
     Ls = len(vs)
@@ -138,7 +141,8 @@ def landmarks() -> dict:
         o = Ls + (1 - si) * (1 + LIMBUS_N)
         em.append(o)
         em += [o + 1 + ((LIMBUS_N // 2 - k) % LIMBUS_N) for k in range(LIMBUS_N)]
-    lm68 = np.array([where[v] if v in where else -1 for v in lm_v])
+    # (a standard landmark whose own vertex is not exterior skin, an inner lip point: the set's nearest landmark)
+    lm68 = np.array([where[v] if v in where else int(np.argmin(np.linalg.norm(T[vs] - T[v], axis=1))) for v in lm_v])
     return {"gnm": vs, "region": np.array(region + ["eyeball"] * len(extra)), "mirror": np.r_[mirror, np.array(em)],
             "names": names + extra, "extra": extra, "n_skin": Ls, "n": Ls + len(extra), "lm68": lm68, "version": VERSION}
 
