@@ -87,21 +87,31 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                   "inner_roots": None,
                   # mode "flow" (hair_flow.gather; the keys below are its own)
                   "mode": "rows", "spacing": 0.02, "body": 0.008, "puff": 0.008, "root_lift": 0.004, "sag": 0.15,
-                  "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None, "feather": 0.0},
+                  "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None, "feather": 0.0,
+                  # edge 0..1: the hairline as a BAND of fine roots whose locks thin out and go fine toward the line
+                  # (0 = one row of full locks on the line: a hard edge); zig m: the parting's line wanders this far
+                  "edge": 0.0, "zig": 0.0},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0,
                 "hang": False, "spread": 0.35,
                 # the poof (hair_flow.tail, hang): bulge 1 = the bundle's radius is SET along it (opens out of the band
                 # at once, full to near the end), lock_wave m = every lock's own wave (own phase, amplitude, plane),
                 # air m = locks pushed apart toward their ends
-                "bulge": 0.0, "lock_wave": 0.0, "lock_wavelength": 0.08, "air": 0.0}}
+                "bulge": 0.0, "lock_wave": 0.0, "lock_wavelength": 0.08, "air": 0.0,
+                # tousled (tesshair5): ragged 0..1 = the END (locks end anywhere over the last ragged x 35% of the
+                # length, narrow to a point and turn out), strays = single hairs / thin wisps that leave the tail's
+                # outline, in_step 0..1 = how far neighbouring locks wave together (0 = every lock on its own: ropes)
+                "ragged": 0.0, "strays": 0, "in_step": 0.0}}
 ESCAPED = {"count": 6, "where": ["temple", "ear"], "length": [0.06, 0.14], "hairs": [3, 7], "curve": 0.2,
            "wave": 0.008, "wavelength": 0.09, "strands": None}
 # wisps (hair_flow.wisps): small soft clumps of fine hairs that fall along the skin. count = clumps a side (or
 # [right, left]), hairs = [lo, hi] strands a clump, softness 0 = small defined locks .. 1 = wide, frizzy, open,
 # tuck = share of the temple / sideburn ones drawn back toward the tie, over = m they ride over the scalp inside the hair
 WISPS = {"count": 6, "where": ["part", "front", "temple", "sideburn"], "length": [0.04, 0.12], "hairs": [6, 22],
-         "softness": 0.6, "tuck": 0.25, "over": 0.008, "strands": None}
+         "softness": 0.6, "tuck": 0.25, "over": 0.008, "strands": None,
+         # baby = short fine hairs a side all along the hairline (1-4 cm, 2-5 hairs each), loose = THICK loose locks a
+         # side out of the forehead's corner / temple (30-70 hairs, 9-16 cm); each a count or [right, left]
+         "baby": 0, "loose": 0}
 WISP_AT = {"part": (3.0, 16.0), "front": (16.0, 44.0), "temple": (44.0, 64.0), "sideburn": (62.0, 80.0),
            "nape": (140.0, 176.0)}
 ESCAPED_AT = {"part": (4.0, 20.0), "temple": (44.0, 66.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}
@@ -405,7 +415,7 @@ def grow(sc, g: dict, line, rng, col=None) -> dict:
                                   "strands": {"layers": 2, "flyaway": 0.6, "curl": 0.0}}
         if tp.get("escaped"):
             locks.update(hair_flow.escaped(sc, tp, tp["escaped"], line, rng, col, pre))
-        if tp.get("wisps") and tp["wisps"].get("count"):
+        if tp.get("wisps") and (tp["wisps"].get("count") or tp["wisps"].get("baby") or tp["wisps"].get("loose")):
             locks.update(hair_flow.wisps(sc, tp, tp["wisps"], line, rng, col, pre))
         fm = tp.get("frame")
         cnt = (fm["count"] if isinstance(fm["count"], (list, tuple)) else [fm["count"]] * 2) if fm else [0, 0]
@@ -460,6 +470,8 @@ def grow(sc, g: dict, line, rng, col=None) -> dict:
             K = core_line(sc, tp, {**tl, "dir": hair_flow.tail_dir(tp, tl).tolist()} if tl.get("hang") else tl)
             T, E1, E2 = _transport(K)
             r = min(0.012, float(tl["fullness"]) * 0.4) + 0.004
+            if float(tl.get("ragged") or 0) > 0 and tl.get("hang"):  # (the fan leaves the band narrow: a small elastic)
+                r = 0.7 * r
             c = K[0] + T[0] * 0.012
             ang = np.linspace(0, 2 * np.pi, 9)
             ring = c + r * (np.cos(ang)[:, None] * E1[0] + np.sin(ang)[:, None] * E2[0])

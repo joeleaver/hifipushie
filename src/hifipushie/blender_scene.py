@@ -1613,6 +1613,10 @@ def hair_look(job):
     if (job.get("hair") or {}).get("strands"):
         import blender_strands
         print("@@strands", json.dumps(blender_strands.stats()), flush=True)
+    cw = float((((job.get("hair") or {}).get("strands") or {}).get("look") or {}).get("cycles_width") or 1.0)
+    if job.get("look_engine") == "cycles" and cw != 1.0 and (job.get("hair") or {}).get("strands"):
+        import blender_strands
+        blender_strands.cycles_width(cw)
     render({**job, "opened": True, "engine": job.get("look_engine", "eevee")})
     if job.get("clay_views"):  # the same views with the hair as clay: form without the material's help
         blender_hair.clay()

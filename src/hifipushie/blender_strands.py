@@ -21,7 +21,7 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 11  # bump when the lens group changes
+VERSION = 12  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
@@ -183,7 +183,9 @@ def lens_group():
     c = math("MULTIPLY", c, math("SUBTRACT", 1.0, math("MULTIPLY", gi.outputs["Stray"], math("MULTIPLY", cs, cs))))
     a_e = math("ADD", a, math("MULTIPLY", math("SUBTRACT", ac, a), c))
     # a^Edge keeps strands off the lens's thin rim (Edge > 1) or pushes them to it (< 1)
-    a_s = math("MULTIPLY", math("SIGN", a_e), math("POWER", math("ABSOLUTE", a_e), gi.outputs["Edge"]))
+    # (hp_ex: a lock's own Edge, as what it adds to the object's: (lock - object) / object; absent = 0)
+    a_s = math("MULTIPLY", math("SIGN", a_e), math("POWER", math("ABSOLUTE", a_e),
+                                                   math("MULTIPLY", gi.outputs["Edge"], math("ADD", 1.0, named("hp_ex", "FLOAT")))))
     bb = named("hp_b", "FLOAT")
     b_e = math("ADD", bb, math("MULTIPLY", math("SUBTRACT", crand(-0.7, 0.7, 12), bb), c))
     b_s = math("MULTIPLY", b_e, math("SUBTRACT", 1.0, math("MULTIPLY", a_s, a_s)))
@@ -241,7 +243,8 @@ def lens_group():
     geo = store(geo, "hp_sub", kf)
     # single hairs (the halo, a lock of `hairs`): the EEVEE material draws them part transparent (a strand is never
     # drawn under a pixel wide: alone against skin or the backdrop, 0.08 mm hairs came out as 1 mm wires)
-    geo = store(geo, "hp_fine", math("MAXIMUM", halo, gi.outputs["Fine"]))
+    # (hp_fn: a lock's own share, the hairline's thin rim; absent = 0)
+    geo = store(geo, "hp_fine", math("MAXIMUM", math("MAXIMUM", halo, gi.outputs["Fine"]), named("hp_fn", "FLOAT")))
     geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
     sp = N.new("GeometryNodeSetPosition")
     L.new(geo, sp.inputs["Geometry"])
@@ -442,7 +445,8 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("rs", "FLOAT", "CURVE", "value"), ("ts", "FLOAT", "CURVE", "value"),
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
                               ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value"),
-                              ("clx", "FLOAT", "CURVE", "value")):
+                              ("clx", "FLOAT", "CURVE", "value"), ("fn", "FLOAT", "CURVE", "value"),
+                              ("ex", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -563,8 +567,18 @@ def material(look: dict):
     A_, p_ = [float(v) for v in look.get("cycles_fit") or (1.0, 1.0)]
     # on the colour's LUMINANCE, the hue kept: colour x (Y / A)^(1/p) / Y. Per channel (the first version), the
     # 1/p power (x3.3) tripled every channel ratio: a faintly warm grey (#5a4f47) rendered light brown.
+    # look.cycles_sat: the look colour's saturation kept for Cycles (as eevee_sat for EEVEE). The hair BSDF gives
+    # back less chroma than it is given on a thin groom and MORE on a dense dark one (deep multiple scattering reddens:
+    # Tess's tied hair measured chroma 13-15 where her pictures have 8-9, tesshair5): fitted per look by measure
+    cs_ = look.get("cycles_sat")
+    col_c = col
+    if cs_ is not None and float(cs_) != 1.0:
+        sat_c = N.new("ShaderNodeHueSaturation")
+        sat_c.inputs["Saturation"].default_value = float(cs_)
+        L.new(col, sat_c.inputs["Color"])
+        col_c = sat_c.outputs["Color"]
     bw = N.new("ShaderNodeRGBToBW")
-    L.new(col, bw.inputs["Color"])
+    L.new(col_c, bw.inputs["Color"])
     ymax = N.new("ShaderNodeMath")
     ymax.operation = "MAXIMUM"
     ymax.inputs[1].default_value = 1e-4
@@ -583,7 +597,7 @@ def material(look: dict):
     L.new(ymax.outputs[0], kk.inputs[1])
     sc_ = N.new("ShaderNodeVectorMath")
     sc_.operation = "SCALE"
-    L.new(col, sc_.inputs[0])
+    L.new(col_c, sc_.inputs[0])
     L.new(kk.outputs[0], sc_.inputs["Scale"])
     L.new(sc_.outputs["Vector"], hb.inputs["Color"])
     hb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * 0.75
@@ -691,6 +705,19 @@ def show(sd: dict):
     except Exception:  # noqa: BLE001
         pass
     return made
+
+
+def cycles_width(k: float):
+    """Strands x k wide for a path-traced render (look.cycles_width). A path tracer draws a strand at its true width;
+    EEVEE never draws one under a pixel, so the same groom is far denser there. A groom of 70k strands stands in for
+    100-150k hairs: at true width its head hair is a see-through veil over the scalp in Cycles."""
+    for ob in strand_objects():
+        for mod in ob.modifiers:
+            if mod.type == "NODES" and mod.node_group and mod.node_group.name.startswith(PROFILE):
+                for it in mod.node_group.interface.items_tree:
+                    if it.item_type == "SOCKET" and it.in_out == "INPUT" and it.name == "Radius":
+                        mod[it.identifier] = float(mod[it.identifier]) * float(k)
+        ob.update_tag()
 
 
 def strand_objects() -> list:
