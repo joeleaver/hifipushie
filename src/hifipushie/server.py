@@ -1957,6 +1957,13 @@ def lid_read(name: str, match: bool | str = False, out: str | None = None, seen:
     e = rep["eyes"]
     txt = (bi.step_text(rep) + "\n" + "\n".join(lines) + "\n" + be.text(e) + "\n" + bi.lid_text(bi.lid_read(to))
            + f"\nfocus=eyes sheet (before | after, raking light): {path}")
+    c0_, c1_ = bi.identity(store.load(name)), bi.identity(store.load(to))   # NOTHING FORCED is the solve's rule, not yet
+    big = int((abs(c1_) > 3.0).sum())                                       # this step's: say it when the step breaks it
+    if big or float(((c1_ - c0_) ** 2).sum()) ** 0.5 > 8.0:
+        txt = (f"WARNING: FORCED: the eye step moved the identity |dc| {float(((c1_ - c0_) ** 2).sum()) ** 0.5:.1f} "
+               f"(|c| {float((c0_ ** 2).sum()) ** 0.5:.1f} -> {float((c1_ ** 2).sum()) ** 0.5:.1f}; a typical head ~13), "
+               f"{big} component(s) past 3 sd (largest {float(abs(c1_).max()):.1f}). Do not keep it: step from {name} "
+               'again with fold="none" (the opening only) or leave the lids to block_in_solve.\n' + txt)
     return [_png(PILImage.open(path)), txt]
 
 

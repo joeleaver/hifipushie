@@ -4645,3 +4645,181 @@ profile camera's yaw (an ear / eye geometry read, or a stated yaw in generated r
 dressed render of the model, validated across renderers; (4) the 3/4's irises vs the far cheek outline: find which is
 right on dressed renders of known heads with a known gaze; (5) the solve still see-saws at |dc| ~2-2.6 a call
 (relinearisation + reads that come and go): average two calls or damp the last steps (share 0.5).
+
+## garrettgood (2026-10-11, "garrettgood" agent, branch worktree-agent-a67a8656f741df76e; a HELD-OUT run: Garrett from the
+## studio-quality generated head set /home/joe/dev/s0urc3/docs/img/garrett_ref_full (1152x1536, face ~580 px), never attached
+## to garrett_a1 / b3_G17 / gr_* / gj_*. Scratch DURABLE in /mnt/data/hifipushie/garrettgood: run.sh <script> (capped, this
+## worktree's src), chain*.sh, out/ (logs, block-in sheets, judging shots j_/d_/n_*); scripts in spikes/garrettgood; models gg_*;
+## sheets human_renders/gg_01_garrett_good_vs_a1.png, gg_02_garrett_unseen_angles.png)
+STATE / NEXT (garrettgood, DONE): gg best = `gg_A06` (class mean -> block_in_solve x6 on front + 3/4 + "profile"; |c| 11.06,
+largest 2.70 sd; it never settled under |dc| 2: 14.9, 9.9, 5.0, 4.0, 4.8, 2.4, then 5.1). Yardstick `gg_a1copy` = garrett_a1's
+identity under the good pictures (cameras only refit). VERDICT: from the front and the 3/4 the two heads are equally close
+(blends sharp; outlines 1.4 / 0.23 mm rms against 1.0 / 0.6); in PROFILE garrett_a1 is another man (profile outline 2.2 mm
+rms after its own camera refit against 0.24: chin 7-8 mm back, eyes set 4-5 mm deeper, forehead more upright, nose 3 mm
+short). NEXT (not done): the solve should carry each picture's EXPRESSION (these frown / squint); the cmax down-weighting
+should be continuous (its x1.3 steps make repeated calls hop); the eye step needs the nothing-forced rule (now a WARNING).
+
+### The reference set (check_references + what the cameras say)
+- One man, and the same man as the concepts by the turn-free proportions: lower_over_middle 1.41-1.44 over the four head
+  views, the front concept 1.43 (the desk portrait 1.34); eyes_to_mouth / mouth_to_chin 1.47-1.58. check_references' IDENTITY
+  alarm on the set comes only from closeup_mouth (a crop: 1.23 / 2.04): a FALSE alarm (it should skip pictures whose face
+  is cut by the frame). Its "NOT ONE PROJECTION ... the fitted camera 0" on every turned view is also false when no model is
+  named (no camera = 0 deg): tool faults, not picture faults.
+- The views are NOT at their nominal angles (fitted cameras, gg_A06): front yaw ~1 deg with the head ROLLED ~6 deg (his
+  right ear lower) and pitched chin-up; "three_quarter_left" is a 23 deg view (the detector's pose: 23; our camera 22.8),
+  not 45; "profile_left" is a ~72 deg view (camera 72; the far brow's hair shows in front of the nasion; the outer canthus
+  sits ~37 mm behind the nasion in the picture, ~20 on a true profile), not 90. So there is NO true profile: forehead
+  slope and chin projection ride on one camera's pitch and are INFERRED; face_ruler's orbit rows all say NOT READ.
+- Expression, all views: frown 0.56-0.61 and squint 0.57-0.65 (check_references); brows drawn together and raised at the
+  inner ends, two glabellar lines; the mouth is skewed (one corner higher, a one-sided press); gaze slightly off axis.
+  The front concept painting reads the same (squint 0.71, frown 0.66): it is the character's set face. block_in_solve has no
+  expression term (face_ruler has none), so this goes into identity or into "INCONSISTENT PICTURES".
+- Usable: front, three_quarter_left, profile_left (as a 72 deg view) in the solve; front_raking (side light, 80x contrast)
+  and the two close-ups for reading relief only; hair_as_worn_back not used. Run D (the "profile" as a 60 deg detector view,
+  108 more anchors) is WRONG: every sigma x8.2 / x3.7 / x4.8: the detector's points on a 72 deg face are junk.
+
+### Bugs / missing guards found on the way (general fixes, in this branch; tests/test_blockin.py + test_face_ruler.py pass)
+1. humanfit_map._fit_cam: a view with under 20 points (a profile's 8 clicks) fitted a 12 mm lens 15 cm from the face
+   (f 372 px against the 2240 prior). Now such a view keeps the lens prior (+-5 %). (A bound on the TURN too was tried and
+   removed: it held this 72 deg picture at 90, unregistered by 30-40 px. Six MIDLINE clicks alone pitch the camera 33 deg:
+   a profile's clicks must include eye_outer and mouth_corner.)
+2. blockin.start with a views list: bare {"image", "yaw"} views had NO stored lm points, and the joint solve takes its
+   anchors, the chin read and the 3/4's iris pair from the stored points' NAMES: my first run had 0 anchors and nothing
+   said so. `blockin.with_anchor_points` now stores the detector's lm17..67 on front / 3/4 views given without points.
+3. server.lid_read(match=True): the eye step has no "nothing forced" rule; it now prefixes WARNING: FORCED when a component
+   passes 3 sd or |dc| > 8 (the step's defaults are unchanged).
+- NOT fixed, for the owner of the solve: (a) cmax's down-weighting moves in x1.3 steps (1.30 / 1.69 / 2.20), so two
+  consecutive calls solve different problems and the head hops (|dc| 2.4, then 5.1 with nothing changed but the reads'
+  weights); (b) the outline count swings call to call (front + 3/4: 211, 77, 160, 161, 158; three views: 324, 181, 290),
+  same effect; (c) a view's stated yaw >= 70 makes it kind "profile" whatever its camera says; (d) the block-in table's
+  "photo" values are in each model's own camera scale, so rows of two models are not the same millimetres.
+
+### The runs (all from the male class mean on Garrett's body, |c| 5.45; body from gj_G00 with the old face style
+### eye_spacing 0.012 dropped; first call cameras="refit" (the profile camera came from 8 clicks), then "free")
+| run | views | |dc| per call | every sigma raised | end: |c|, largest | table |
+|---|---|---|---|---|---|
+| A (gg_G00 -> gg_A01..07) | front, 3/4, "profile" (clicks) | 14.9, 9.9, 5.0, 4.0, 4.8, 2.4, 5.1 | x1.69, 1.69, 1.69, 1.30, 1.69, 2.20, 2.20 | A06: 11.06, 2.70 sd | 11 / 26 |
+| C (gg_C00 -> gg_C01..05) | front, 3/4 | 12.1, 8.5, 6.2, 3.4, 2.4 | x1.30, 1.0, 1.30, 1.69, 1.30 | C05: 12.25, 2.94 sd | 22 / 29 (C04 25 / 29) |
+| D (gg_D00 -> gg_D01..03) | + "profile" as a 60 deg detector view | 11.0, 3.2, 2.8 | x8.16, 3.71, 4.83 | 10.9, 2.90 | 8 / 26: dropped |
+| B (gg_B01..02) | profile camera held near 90 (the removed turn bound) | 14.8, 5.2 | x1.30 | 16.1, 2.87 | profile unregistered: dropped |
+(gg_G01 / gg_G02 are the first, anchor-less run: ignore.)
+Reads at A06: outline 291, anchors 216, iris 8, limbus 0-2, lid 14, lip 18 ("lid eye frame" scattered x2.1-3.8 every call).
+Residuals at A06 (mm rms): outline front 1.40 (135 reads), 3/4 0.23 (55), profile 0.24 (106); anchors 1.10 / 1.20; front
+irises 0.17; lip borders 0.82. eyespan (model / picture): front iris span 0.998, nasion-chin 0.987; 3/4 0.991 / 0.986;
+profile nasion-chin 1.009 (its iris span 0.68 means nothing: the far iris is the detector's guess).
+- NOT SETTLED by the guide's own bar (|dc| < 2) in 7 calls, and clean studio pictures are down-weighted x1.3-2.2.
+  Causes, in the order I believe them (none proven): the expression (no term for it); the head's roll and pitch differing
+  per view with the cameras at their prior's limit (the profile camera's roll ended at +2.0 = the limit, pitch -3.4);
+  the generated views not being one head (the 3/4's anchors and the profile's outline disagree about the mid-face by ~5 mm:
+  A06's table reads middle_third -7.4 and nose_length -6.3 in the 3/4, C05 -0.8 / -0.6); and the hopping above.
+- The TABLE contradicts the sheets here: A06 scores 11 / 26, below the class-mean start (14 / 26) and garrett_a1 through the
+  same pictures (16 / 26; C05 22 / 29), yet A06 is the head whose outlines lie on all three pictures and the only one right
+  in profile. The table's detector rows do not see the profile; do not rank these heads with it.
+- gg best = gg_A06 (three views). gg_C05 (no profile) has the better table and an equal front, but its unseen right
+  profile is the prior's: chin_forward -9.4 (the class mean -6.8), under_chin 21: a receding chin over a full under-chin.
+  |c_A06 - c_C05| = 8.3 (cos 0.75). The "profile" picture, even at 72 deg, is what gives the head its side.
+
+### Eyes, lids, lips at 580 px (reads only; gg_A06)
+- eye_ruler READS for real (iris 11.4 mm across; all margin columns, both canthi, the fold line, the brow edge):
+  opening at the pupil picture 4.79 / model 5.63 mm; upper margin 0.6-1.0 mm too high over the centre and outer half,
+  1.0 too low at the inner end (his lid peaks at u -4.75, the nose side: the outer half is pressed down; GNM's at -0.3);
+  lower margin 0.2-0.8 low; fissure length 23.9 / 24.0; both canthi 2.6-2.7 mm toward the nose relative to the iris
+  (inner -15.6 / -13.0, outer 8.3 / 11.0); pupils apart 64.5 / 64.6; canthal tilt 0.2 / 0.5 deg.
+- FOLD: the picture's fold line sits 3.8-3.9 mm over the margin at all three columns (platform shown the same); the solved
+  model has 3.5 / 3.8 / 5.3 and 2.9 / 3.2 / 4.4: every row inside the 2.0 mm tolerance. The fold's HEIGHT came out of the
+  solve alone. HOODING: lateral, on his right eye: the fold skin comes down to the lash line over the outer third; his
+  left eye shows a platform along its whole length (asymmetric, and partly the squint).
+- THE CRISP FOLD STEP IS NOT UNFORCED HERE EITHER: lid_read(match=True) gg_A06 -> gg_A06L: opening |dc| 5.7, crisp fold |dc|
+  15.6 (turn 25 -> 58 deg at 3.8 mm); together |dc| 16.6, |c| 11.1 -> 19.7, largest component 6.46 sd, 7 past 3 sd.
+  Not kept (Tess's was |dc| 20). It is the fold's sharpness that costs, not its height.
+- lid_read's detector rows disagree with the ruler in sign (photo upper 0.41 radii, model 0.11 = "the model's lid is the
+  lower"; the ruler: 0.6 mm higher). Trust the ruler.
+- Lips (lip_read): borders upper 0.33 / lower 1.15 mm, seam 0.22, Cupid's bow picture 1.98 / model 1.35 mm. No lips step run
+  (the picture's mouth is an asymmetric press; an identity + expression step would bake it in).
+- brow_read: hair's lower edge 1.6 mm rms (ours 0.9 mm high); iris 11.8 mm picture / 12.1 drawn (1.02 x: leave).
+- No hand steps taken: no ruler row supports one, and the cheeks are unread.
+- OBSERVATIONS for the skin thread (close-ups + raking front; nothing built):
+  bags: a crescent under each eye from the inner canthus running down and out, lower edge roughly 9-12 mm under the lid
+  margin, deeper on his right; a tear trough from the inner canthus toward the cheek; fine crepe lines on both lower lids.
+  crow's feet: 3-4 lines from each outer canthus. glabella: two vertical lines, one deeper; one long horizontal forehead
+  line plus fainter ones. nasolabial: deep on both sides from the top of the ala round the mouth corner, one side deeper;
+  they run on as marionette lines below the corners. mouth: thin upper lip, soft bow, fuller lower lip; a mentolabial
+  groove and a curved chin crease under it. cheeks: a vertical line in front of the ear and long cheek creases in the
+  turned views. nose: broad rounded tip, flared alae, nostrils showing from the front. stubble: full beard area.
+  (millimetres here are by eye off the close-ups, not measured.)
+
+### The yardstick: garrett_a1 as a SHAPE against the good pictures (gg_a1copy: identity untouched, |c| 9.32; cameras =
+### gg_A06's, then four cameras-only rounds, head held, as "refit" does: spikes/garrettgood/a1copy.py)
+- Through gg_A06's cameras a1's outlines miss by 3.6 mm rms front (mean +2.8), 2.0 in the 3/4, 6.3 in the profile; after
+  its own camera refit 1.03 / 0.62 / 2.17 mm (gg_A06: 1.40 / 0.23 / 0.24). To get there its profile camera pitched 12 deg
+  and shifted 13 mm (at its per-round limit three rounds running), and the limbus then misses by 2-3 mm.
+- face_ruler on gg_a1copy READS two rows outside its error: chin_forward +7.2 mm (+2.1 sd, +-1.0) and tip_forward +2.2 mm
+  (+0.9 sd, +-0.8). Everything else is inside the reader's error or NOT READ.
+- |c_gg_A06 - c_a1| = 9.93 (|c| 11.06 and 9.32; cos +0.54; as departures from the male mean 9.61 and 7.86, cos +0.37).
+  |c_gg_C05 - c_a1| = 10.92. For scale: gg_A06 to gg_C05 (the same pictures with / without the profile) is 8.3.
+- gnm_mm (GNM's mm, the identity alone; spikes/garrettgood/mmdiff.py), gg_A06 - garrett_a1; "both" = the no-profile run
+  gg_C05 agrees in sign (its difference in brackets):
+  | region | measure | a1 | gg_A06 | diff mm | sd | how sure |
+  |---|---|---|---|---|---|---|
+  | chin | chin_forward | -7.6 | +0.9 | +8.5 | +2.4 | profile only (C05 -9.4; class mean -6.8); face_ruler reads +7.2 +-1.0 |
+  | forehead | forehead_forward | -6.8 | -13.4 | -6.5 | -2.2 | profile only (C05 -8.7); INFERRED (camera pitch) |
+  | nose | nose_length | 49.7 | 52.4 | +2.7 | +0.8 | both (+3.7) |
+  | nose | tip_forward | 15.1 | 18.2 | +3.1 | +1.2 | both (+2.4) |
+  | nose | subnasale_forward | 10.7 | 7.8 | -2.9 | -1.1 | both (-3.7) |
+  | nose | nose_width | 31.6 | 30.9 | -0.7 | -0.2 | same |
+  | eyes | pupils_apart | 61.9 | 64.3 | +2.4 | +0.8 | both (+2.8); a1 ships the 0.012 eye_spacing style: shipped interocular +1.0 |
+  | eyes | eyes_forward | -26.9 | -22.3 | +4.6 | +1.2 | NOT READ in either set (class mean -19.1: a1 moved it 7.8 mm unread) |
+  | brow | brow_ridge_forward | -4.6 | -6.9 | -2.3 | -1.1 | NOT READ; macros brow_ridge +2.1 -> -0.3, orbital_rim +2.4 -> 0.0 |
+  | mouth | mouth_width | 54.1 | 51.2 | -3.0 | -0.7 | both (-4.2); the table: a1 4.4 mm wide of the picture |
+  | chin | chin_width | 65.6 | 71.3 | +5.7 | +1.0 | both (+2.6) |
+  | jaw | jaw_width | 122.0 | 123.8 | +1.8 | +0.2 | not robust (C05 -3.5) |
+  | face | face_height (shipped head, 68 landmarks) | 116.2 | 120.4 | +4.2 | | both (+2.5) |
+  | under chin | under_chin | 13.4 | 17.5 | +4.2 | +0.9 | both (+8.0) |
+  | cheeks | cheek_fullness (macro, sd) | -1.9 | -0.2 | +1.8 | | both (C05 -0.5); unread in every set |
+  | skull | skull_top | 101.4 | 97.2 | -4.2 | -1.0 | under hair: the prior |
+  Eye opening: the same on both (eye_ruler at the pupil: a1 5.37, gg 5.63, the picture 4.6-4.8 mm). a1's lower lip border is
+  2.1 mm out (gg 1.15); its brow hair 2.8 mm rms off (gg 1.6). cheekbone_width +0.4, skull_width -0.2, philtrum +0.1.
+- WHAT THE POOR REFERENCES GOT RIGHT: the head from the front and in a 3/4: cheekbone and skull width, the eyes' height
+  and opening, the philtrum, nose width; the front and 3/4 blends of garrett_a1 on the good pictures are sharp.
+- WHAT THEY GOT WRONG: (1) the whole side: chin 7-8 mm too far back (it was simply left at the class mean), the eyes
+  4-5 mm too deep under a brow ridge 2 sd heavy, the forehead 3-6 mm more upright; (2) the nose 3 mm short, its tip 2-3 mm
+  short of projection, the nose base 3 mm too far forward: a shorter, blunter nose; (3) the mouth 3-4 mm too wide, the
+  lower lip 2 mm too full; (4) the face 2.5-4 mm short, the chin 3-6 mm narrow, less under the chin; (5) hollow cheeks.
+- WHICH OF THESE A TOOL COULD HAVE CAUGHT FROM THE PAINTINGS ALONE:
+  - (1) Nothing can MEASURE it: front + a 33 deg portrait have no side. A tool can say what happened instead: the chin
+    stayed at the class mean with no read, while eye depth moved 7.8 mm (2 sd) and the brow ridge and cheeks ~2 sd with no
+    read either (the anchors of a 110 px face). A "MOVED WITHOUT A READ" report (every gnm_mm measure / macro that left
+    the start by > 1 sd while its row is NOT READ, and every profile measure when no view is past ~60 deg) would have put
+    eye depth, brow ridge and cheek fullness on the table as inventions, and the chin as unknown. That is the check to add.
+  - (3) mouth width: yes. 4 mm is ~3.5 px on the paintings and gr_G05's own table had the mouth rows at 2 / 7; it was seen
+    and accepted as painting noise.
+  - (4) face length: yes, weakly: gr_G05's table said face_height -5 mm and it was not chased ("rows cannot all close").
+  - (2) nose length 3 mm = 2.5 px, and projection needs a side view: no.
+  - (5) cheeks: nothing reads them in either set.
+
+### Blunt read of the sheets (gg_01: reference | gg_A06 | garrett_a1 through the same cameras, per model 50 % blend,
+### projected skin, own dressing; gg_02: unseen angles, projected)
+- Front row: I cannot rank the two blends; both lie on the picture. Projected: a1's mouth shows a doubled lip line (its
+  lips are wider than the projected ones), gg's does not.
+- 3/4 row: both blends sharp; a1's ear ghosts by a few mm; projected, a1 has the heavier brow.
+- Profile row: gg_A06's blend is one image (profile line, ear, jaw); garrett_a1's is a double image at the forehead, brow,
+  lips and chin, and its projected head has a retreating chin under forward lips. This row is the result.
+- Own-dressing columns: both read as a bald, darker stranger with painted brows (LEARNINGS 1): ignore them.
+- Unseen angles: gg_A06's right profile mirrors the picture's left one; a1's has the weaker chin and the stronger brow;
+  gg_C05's a receding chin over a double chin (the prior). Low angle and the other 3/4: all three pass.
+- So: how much closer is the good-reference head? Not visibly from the front; decisively from the side, and that is one
+  picture's worth of evidence at 72 deg, itself down-weighted x2.2. gg_A06 is not a finished likeness: unsettled, lids
+  0.6-1.0 mm off, the fold soft, cheeks unread.
+- Face-ID (NOT a judge, LEARNINGS 5; for the record, projected, sface / arcface per view): gg_A06 0.31 / 0.43, 0.41 / 0.39,
+  0.54 / 0.36; garrett_a1 0.27 / 0.36, 0.27 / 0.29, 0.22 / 0.15.
+
+### What I would change in the tools
+1. An expression term in the joint solve (per picture; lower face and brows; small prior).
+2. "MOVED WITHOUT A READ" (above), in block_in_solve's reply.
+3. cmax's down-weighting continuous and carried across calls; one outline reader per view for a whole block-in.
+4. A view's kind from its fitted camera; block_in_start should say when the detector's pose and the stated yaw differ
+   by more than ~15 deg (23 vs 45 and ~60-72 vs 90 here).
+5. check_references: skip faces cut by the frame in the IDENTITY check; no "NOT ONE PROJECTION" without a fitted camera.
+6. reference_brief's validator should reject a "profile" in which the far brow shows and a "3/4" at 23 deg: this set
+   passed for studio quality and has no side view.
+7. The eye step under the nothing-forced rule (now only a warning); lid_read without its detector rows.
