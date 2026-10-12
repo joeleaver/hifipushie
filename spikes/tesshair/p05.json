@@ -1,0 +1,5 @@
+{"groom": {"tie": {"escape": 6,
+    "curtain": {"dip": -20},
+    "gather": {"strands": {"flyaway": 0.25, "frizz": 0.3}},
+    "frame": {"count": [4, 3], "width": [0.0015, 0.003], "length": [0.09, 0.17], "wave": 0.02, "wavelength": 0.06}}},
+ "strands": {"flyaway": 0.25}}
