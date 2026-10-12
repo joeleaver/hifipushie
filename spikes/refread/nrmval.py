@@ -13,7 +13,8 @@ from hifipushie import face_ruler as fr, facenormals as fnm, blockin as bi, stor
 
 mode = sys.argv[1]
 m = sys.argv[2] if len(sys.argv) > 2 else "tk_T06"
-diff = len(sys.argv) > 3 and sys.argv[3] in ("1", "diff=1")
+diff = (sys.argv[3].replace("diff=", "") if len(sys.argv) > 3 else "0")       # 0 | 1 (A's own picture of the same kind) | clay (A's clay)
+diff = {"0": None}.get(diff, diff)
 OUT = "/mnt/data/hifipushie/refread/out"
 spec = store.load(m)
 rj = bi._refs(m)
@@ -69,11 +70,13 @@ def views_of(name, head):
 
 
 ref = None
-if diff:
+if diff == "1":
     ref = []
     for vw in views_of(m, A):
         fr._normal_obs(A, vw)
         ref.append(vw["_nrm"])
+elif diff == "clay":
+    ref = [fr._normals_of_model(A, vw) for vw in views_of(m, A)]
 for cn, dct in CASES.items():
     name = m
     if cn != "null" and mode == "dressed":
@@ -94,6 +97,6 @@ for cn, dct in CASES.items():
     rms = lambda x: float(np.sqrt(np.mean(x[ck] ** 2)))
     cor = float(np.corrcoef(de[ck], dt[ck])[0, 1]) if rms(dt) > 1e-6 else float("nan")
     oc = float(np.corrcoef(o, pred)[0, 1]) if np.abs(pred).max() > 1e-9 else float("nan")
-    print(f"{mode}{' diff' if diff else ''} {SAY[cn]:20s} obs {len(obs)} | cheek surface along the normal: true {rms(dt):.2f} mm rms, read {rms(de):.2f}, "
+    print(f"{mode}{' diff=' + diff if diff else ''} {SAY[cn]:20s} obs {len(obs)} | cheek surface along the normal: true {rms(dt):.2f} mm rms, read {rms(de):.2f}, "
           f"corr {cor:+.2f}, miss {rms(de - dt):.2f} | |dc| true {np.linalg.norm(dct):.2f} read {np.linalg.norm(out['dc']):.2f}, cos {float(out['dc'] @ dct / max(np.linalg.norm(out['dc']) * np.linalg.norm(dct), 1e-9)):+.2f} | "
           f"obs: sd {np.degrees(o.std()):.1f} deg, predicted signal sd {np.degrees(pred.std()):.1f} deg, corr(obs, predicted) {oc:+.2f} | fit rms {out['rms']:.2f} sig", flush=True)

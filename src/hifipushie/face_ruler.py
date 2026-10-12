@@ -662,7 +662,7 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
     relax = 1.0
     if cmax and not span:     # NOTHING FORCED: if the most likely head has a component past cmax sd, the pictures are
         c_at = np.asarray(head["c"], float)   # (the head as it stands in this round)        # less consistent than
-        for _ in range(12):   # their sigmas say (two paintings of one man are two drawings): all sigmas x 1.3 until it fits
+        for _ in range(40):   # their sigmas say (two paintings of one man are two drawings): all sigmas x 1.3 until it fits
             t_ = solve(obs, head, tau=tau, cam_sd=cam_sd, views=views, huber=huber, weights={k_: v_ * relax for k_, v_ in _all_types(obs, weights).items()},
                        done=done, cam_done=cam_done, prior_off=prior_off, adapt=adapt)
             if np.abs(c_at + t_["dc"]).max() <= cmax:
@@ -1355,6 +1355,19 @@ def _normal_model(head, regions=NORMAL_REGIONS) -> dict:
         if old is not None:
             head["_shade"] = old
     return head[key]
+
+
+def _normals_of_model(head, view) -> dict:
+    """The estimator's normals on the MODEL's own clay picture on the view's pixel grid (the differential reference of
+    _normal_obs: the same estimator on picture and render, as the anchors)."""
+    from . import facenormals as fnm
+    cam = view["cam"]
+    sc, org = float(view.get("scale", 1.0)), np.asarray(view.get("origin", (0.0, 0.0)), float)
+    im = _clay_crop(head, view)[0] if "scale" in view else clay(head, cam)
+    if im.size != view["img"].size:
+        im = im.resize(view["img"].size)
+    PL = (_cam_points(cam, np.asarray(head["L"], float)[:68])[1] - org) * sc
+    return fnm.estimate(im, fnm.head_box(PL, im.size))
 
 
 def _normal_obs(head, view, differential=None):

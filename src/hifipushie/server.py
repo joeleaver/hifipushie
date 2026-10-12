@@ -1970,25 +1970,37 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
-                   cameras: str = "free"):
-    """ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus; GNM's prior; the
-    cameras free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head
-    (and again after big moves) instead of closing measures one at a time; then the eye and lips steps. share = how
-    much of the solved change to take; cameras="trust" for measured / already solved cameras (a third of the
-    freedom). The prior is on the whole identity (from the start head), so a second call settles. It does not see
-    the inside of the face. Details: guide(topic="block_in")."""
+                   cameras: str = "free", anchors: str = "differential", parse: str = "auto"):
+    """ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip
+    borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in
+    step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of
+    closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit"
+    (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole
+    move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the
+    detector on our render) | "absolute" | "none". parse: "auto" (outlines from the face parser where the
+    plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no
+    component passes 3 sd; pictures that disagree are down-weighted and SAID so. It does not see the surface inside
+    the silhouette (cheeks). Details: guide(topic="block_in")."""
     from . import blockin as bi
-    rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras)
+    if parse not in ("auto", "on", "off"):
+        raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
+    rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
+                        parse={"auto": "auto", "on": True, "off": False}[parse])
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""
-    if so["n"].get("outline", 0) < 120 or so["max_sd"] > 3.0:
-        warn = (f"WARNING: a weak or forced solve (outline reads {so['n'].get('outline', 0)}; it needs ~150+: plain background, "
-                f"skin outlines in 2-3 views; largest component {so['max_sd']:.1f} sd; past 3 the face is being forced). On "
-                "Garrett's two paintings (54 outline reads, 204 detector anchors) the result was distorted: do not keep it; "
-                "get references with a plain background or step by hand.\n")
+    if so["n"].get("outline", 0) < 120:
+        warn += (f"WARNING: a weak solve: {so['n'].get('outline', 0)} outline reads (it wants ~150+ over 2-3 views). The anchors "
+                 "and the prior carry it: expect the class mean's face where nothing was read.\n")
+    if so["relax"] > 1.0:
+        warn += (f"WARNING: INCONSISTENT PICTURES: at their own sigmas the solve wanted a component past 3 sd, so every read was "
+                 f"down-weighted (sigma x{so['relax']:.2f}) until none did. The references disagree with each other or with any "
+                 "one head by that much (paintings, expressions, a wrong camera): the result is a compromise, judge it on "
+                 "the judging sheet against the head you had.\n")
+    notes = "".join(f"  {x}\n" for x in so.get("notes") or [])
     return [sh[0], warn + f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
-                   f"cameras moved (shift mm, shift mm, scale %, roll, yaw, pitch deg per view): {so['cameras']}\n"
+                   f"cameras' whole move since the start (shift mm, shift mm, scale %, roll, yaw, pitch deg per view): {so['cameras']}"
+                   f" (this call: {so['camera_step']})\n" + notes
                    + bi.step_text(rep) + "\n" + sh[1]]
 
 
