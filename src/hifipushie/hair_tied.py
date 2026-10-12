@@ -5,6 +5,13 @@ them: bunches):
   {"at": [az, el],          where on the head the tie sits (180, 25 = the back, above the occiput)
    "out": 0.025,            m the tie stands off the scalp
    "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "from": [az0, az1]?,
+              "toward": "tie", "reach": 0.75,   (where the inner rows root: "tie" = on the way from the hairline
+                            to the tie (rings round a tie on the back of the head), "crown" = on the way to the top
+                            of the head (a LOW or off-centre tie: rows toward it leave the far side of the top bare);
+                            reach = how far along that way the innermost row gets, x (rows - 1) / rows)
+              "ride": 0.003,        m each row rides over the next one in (the hairline row on top)
+              "inner_roots": null,  the strand dial `roots` for the rows inside the hairline (0 = their strands all
+                            start at the lock's root: staggered like the hairline row's they are stubble on the crown)
               "strands": {dial: value}?},  (strand dials for the gathered hair alone, e.g. a loose texture on top:
                             {"wave": 0.02, "wavelength": 0.06, "random": 0.8})
                             the scalp hair: rows of locks from the hairline (row 0, on top) inward, each running
@@ -50,7 +57,8 @@ from __future__ import annotations
 import numpy as np
 
 TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain": None, "frame": None,
-       "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4},
+       "gather": {"rows": 3, "locks": 30, "lift": 0.012, "width": 0.05, "uneven": 0.4, "toward": "tie", "reach": 0.75, "ride": 0.003,
+                  "inner_roots": None},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5}}
 CURTAIN = {"span": 70.0, "to": 80.0, "over": 10.0, "lift": 0.006, "along": 0.0, "hug": 0.0, "drape": 0.0, "dip": 0.0,
@@ -174,7 +182,12 @@ def grow(sc, g: dict, line, rng) -> dict:
             a0, a1 = ga.get("from") or (0.0, 360.0)
             for r in range(rows):
                 nr = max(4, int(round(n * (1 - 0.25 * r) / sum(1 - 0.25 * q for q in range(rows)))))
-                f = r / rows * 0.75
+                f = r / rows * float(ga.get("reach", 0.75))
+                # where the inner rows root: on the way to the tie (a tie high on the back of the head: every row is
+                # a ring round it), or on the way to the CROWN (a low or off-centre tie: rows toward it all root on
+                # the tie's side and leave the far side of the top bare but for the first row, which then lies round
+                # the hairline like a headband: Tess, 2026-10-11)
+                inner = dirs(0.0, 90.0) if str(ga.get("toward", "tie")) == "crown" else tie_dir
                 for i in range(nr):
                     az = a0 + (a1 - a0) * (i + 0.5 * (r % 2) + un * rng.uniform(-0.3, 0.3)) / nr
                     el = float(_line_at(line, az)) + 1.5
@@ -189,7 +202,7 @@ def grow(sc, g: dict, line, rng) -> dict:
                     cw = float(np.clip(1.0 - abs(azw) / float(cu["span"]), 0.0, 1.0)) if cu else 0.0
                     if cw > 0 and r == 0:  # the drape: rooted behind the line, arcing forward over it
                         el += float(cu.get("drape", 0.0)) * cw
-                    root = _slerp(dirs(az, el), tie_dir, [f])[0]
+                    root = _slerp(dirs(az, el), inner, [f])[0]
                     if cw > 0 and r == 0:
                         # down and out to its own side over the temple, round the ear's top, then back to the tie
                         sd = 1.0 if azw >= 0 else -1.0
@@ -222,7 +235,7 @@ def grow(sc, g: dict, line, rng) -> dict:
                     if cw > 0 and r == 0:
                         ee = ee - sag
                     lift = float(ga["lift"]) * (1 + un * rng.uniform(-0.5, 0.8))
-                    hb = 0.002 + 0.003 * (rows - 1 - r)
+                    hb = 0.002 + float(ga.get("ride", 0.003)) * (rows - 1 - r)
                     h = (1 - t ** 3) * (hb * np.minimum(t * 6, 1) + lift * np.sin(np.pi * t)) + t ** 3 * float(tp["out"]) * 0.8
                     if cw > 0:  # a soft part: the hair rises at it and falls away (no bare furrow)
                         # ...and the curtain lies DOWN where it leaves the hairline: the row's own height (8 mm on the
@@ -238,6 +251,10 @@ def grow(sc, g: dict, line, rng) -> dict:
                         "width": round(float(ga["width"]) * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
                         "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003,
                         **({"strands": dict(ga["strands"])} if ga.get("strands") else {})}
+                    if ga.get("inner_roots") is not None and r > 0:  # rows inside the hairline: their strands'
+                        # starts are not staggered along the lock like the hairline row's (a soft hairline): inside
+                        # the hair they are stubble on the crown
+                        locks[f"{pre}g{r}_{i}"].setdefault("strands", {})["roots"] = float(ga["inner_roots"])
         tl = tp["tail"]
         P0 = sc.point(az0, el0, float(tp["out"]))
         if tl:

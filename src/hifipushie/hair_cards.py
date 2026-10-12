@@ -50,6 +50,8 @@ STRANDS = {
     "under": 1.0,  # x the scalp layer's density (hair rooted all over the scalp under the locks; 0 = none)
     "under_length": 0.04,  # m: how far the scalp layer's hairs run before they are under the locks
     "flat": 1.0,  # x a lock's thickness for its strands (1 = the lock's own lens; 2 = a rounder, fuller lock)
+    "halo": 0.0,  # 0..1: short broken hairs that stand up off the hair on the head and curl (the fine fuzz round a
+    # loose updo against the light); `flyaway` strands only drift a few mm off their own lock and end where it ends
 }
 # (kind, px wide at a 1024 atlas): what the cards choose from. Two of each so neighbours differ.
 TILES = [("dense", 136), ("dense", 136), ("medium", 136), ("medium", 136), ("sparse", 104), ("sparse", 104),

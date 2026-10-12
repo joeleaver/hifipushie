@@ -21,7 +21,7 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 10  # bump when the lens group changes
+VERSION = 11  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
@@ -75,6 +75,9 @@ def lens_group():
                                   ("Loose", "NodeSocketFloat", 0.001, 0.0, 0.02),
                                   ("Wave Random", "NodeSocketFloat", 0.3, 0.0, 1.0),
                                   ("Stray", "NodeSocketFloat", 0.5, 0.0, 1.0),
+                                  ("Halo", "NodeSocketFloat", 0.0, 0.0, 1.0),
+                                  ("Halo Distance", "NodeSocketFloat", 0.012, 0.0, 0.05),
+                                  ("Halo Length", "NodeSocketFloat", 0.05, 0.005, 0.3),
                                   ("Seed", "NodeSocketInt", 0, 0, 10000)):
         s = it.new_socket(name, in_out="INPUT", socket_type=typ)
         s.default_value = dv
@@ -216,6 +219,22 @@ def lens_group():
                                                                          named("hp_fd", "FLOAT"))),
                                  math("ADD", 0.3, named("hp_rand", "FLOAT"))), math("POWER", ft, 1.7))
     off = vmath("ADD", off, vmath("SCALE", fdir, scale=famt))
+    # the halo: short broken hairs. A copy starts anywhere along the lock, runs Halo Length x (0.4..1.4) and, over
+    # that run, lifts off the lock's outer side and curls sideways: it ends in the air (a fly-away keeps its lock's
+    # whole length and its end)
+    halo = math("GREATER_THAN", named("hp_f", "FLOAT"), math("SUBTRACT", 1.0, gi.outputs["Halo"]))
+    h0 = math("MULTIPLY", named("hp_root", "FLOAT"), 0.8)
+    hspan = math("MINIMUM", math("DIVIDE", math("MULTIPLY", gi.outputs["Halo Length"],
+                                                 math("ADD", 0.4, named("hp_len", "FLOAT"))),
+                                 math("MAXIMUM", slen, 0.001)), 1.0)
+    h1 = math("MINIMUM", math("ADD", h0, hspan), 1.0)
+    htau = math("MINIMUM", math("MAXIMUM", math("DIVIDE", math("SUBTRACT", t, h0), math("MAXIMUM", hspan, 0.001)), 0.0), 1.0)
+    hd = math("MULTIPLY", math("MULTIPLY", halo, gi.outputs["Halo Distance"]), math("ADD", 0.3, named("hp_rand", "FLOAT")))
+    hang = math("ADD", fa, math("MULTIPLY", htau, 3.6))
+    hoff = vmath("ADD", vmath("SCALE", out_n, scale=math("MULTIPLY", hd, math("POWER", htau, 1.5))),
+                 vmath("SCALE", side_n, scale=math("MULTIPLY", math("MULTIPLY", hd, 0.7),
+                                                   math("MULTIPLY", htau, math("SINE", hang)))))
+    off = vmath("ADD", off, hoff)
     geo = store(geo, "hp_sub", kf)
     geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
     sp = N.new("GeometryNodeSetPosition")
@@ -228,11 +247,13 @@ def lens_group():
     L.new(sp.outputs["Geometry"], trim.inputs["Curve"])
     ln = named("hp_len", "FLOAT")
     cl = crand(0.0, 1.0, 16)
-    L.new(math("MINIMUM", math("MULTIPLY", math("MULTIPLY", named("hp_root", "FLOAT"), gi.outputs["Roots"]),
-                               named("hp_rs", "FLOAT")), 0.6), _sock(trim, "Start", "VALUE"))
+    start = math("MINIMUM", math("MULTIPLY", math("MULTIPLY", named("hp_root", "FLOAT"), gi.outputs["Roots"]),
+                                 named("hp_rs", "FLOAT")), 0.6)
+    L.new(math("ADD", start, math("MULTIPLY", halo, math("SUBTRACT", h0, start))), _sock(trim, "Start", "VALUE"))
     short = math("ADD", math("MULTIPLY", math("MULTIPLY", ln, ln), 0.6), math("MULTIPLY", math("MULTIPLY", cl, cl), 0.4))
-    L.new(math("MAXIMUM", math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", short, gi.outputs["Tips"]),
-                                                      named("hp_ts", "FLOAT"))), 0.08), _sock(trim, "End", "VALUE"))
+    end = math("MAXIMUM", math("SUBTRACT", 1.0, math("MULTIPLY", math("MULTIPLY", short, gi.outputs["Tips"]),
+                                                       named("hp_ts", "FLOAT"))), 0.08)
+    L.new(math("ADD", end, math("MULTIPLY", halo, math("SUBTRACT", h1, end))), _sock(trim, "End", "VALUE"))
     L.new(trim.outputs["Curve"], go.inputs["Geometry"])
     return ng
 

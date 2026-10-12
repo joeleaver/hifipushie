@@ -54,6 +54,9 @@ SAFE = {
     "tips": 0.55,  # share of its length the shortest strand of a lock loses
     "roots": 0.12,  # share of a lock's length over which its strands' starts are staggered
     "curl_m": 0.006,  # radius of the ringlet a strand winds round its clump at curl = 1
+    "halo": 0.10,  # share of the strands that are short broken hairs standing off the hair at halo = 1
+    "halo_m": 0.012,  # m such a hair stands off its lock at its end (x 0.3..1.3 per hair)
+    "halo_len": 0.05,  # m it runs (x 0.4..1.4)
 }
 WISP_FAN = 2.0  # a thin free lock (a wisp, < 16 mm) opens to (1 + this) x its width toward the tip, round in section
 
@@ -95,6 +98,7 @@ def physical(S: dict, free: bool = False) -> dict:
         "roots": SAFE["roots"] * c("roots") * (0.3 if free else 1.0),
         "curl": SAFE["curl_m"] * c("curl") * (1.0 if free else 0.3),
         "curl_freq": 1.0 / max(float(S["wavelength"]), 0.01),
+        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)),
     }
 
 
@@ -180,7 +184,11 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             # (nor further than a quarter of its length: short hair had 4 cm spikes)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
-            R_.append(4.0 if lk.get("at_hairline") else 1.0)
+            rs_ = 4.0 if lk.get("at_hairline") else 1.0
+            if "roots" in (lk.get("strands") or {}):  # a lock's own `roots` (the dial is one number an object: per
+                # lock it scales the lock's share of it): 0 = every strand of this lock starts at the lock's root
+                rs_ *= float(np.clip(lk["strands"]["roots"], 0, 1)) / max(float(np.clip(S["roots"], 0, 1)), 1e-6)
+            R_.append(rs_)
             TS_.append(0.0 if gather else 1.0)
             GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
             WS_.append(ws)
@@ -217,7 +225,13 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     uvv = np.stack([AA / 360.0, (EE - e0) / (90.0 - e0)], -1).reshape(-1, 2)
     a, b, c, d = idx[:-1, :-1], idx[1:, :-1], idx[1:, 1:], idx[:-1, 1:]
     ok = (live[:-1, :-1] | live[1:, :-1] | live[1:, 1:] | live[:-1, 1:]).ravel()
-    q = np.stack([a.ravel(), b.ravel(), c.ravel(), d.ravel()], 1)[ok]
+    q = np.stack([a.ravel(), b.ravel(), c.ravel(), d.ravel()], 1)
+    # a quad whose corners are 2 cm apart in distance from the head centre is no scalp: the rays stepped from the
+    # neck out to the back or a shoulder (a low nape hairline, -60 deg on Tess: the margin row's quads stood out
+    # behind the neck as a sheet, and its few hairs were dots and dashes floating there, 2026-10-11)
+    rq = np.linalg.norm(V - sc.C, axis=1)[q]
+    ok = ok & ((rq.max(1) - rq.min(1)) < 0.02)
+    q = q[ok]
     F = np.concatenate([q[:, [0, 1, 2]], q[:, [0, 2, 3]]])
     # the pole: a fan from the top row to one vertex
     pole = len(V)
@@ -359,6 +373,8 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
                       "Clump Shape": ph["clump_shape"], "Tip Spread": ph["tip_spread01"], "Wave": ph["wave"],
                       "Wavelength": ph["wavelength"], "Curl": ph["curl01"], "Loose": ph["wander"], "Wave Random": ph["wave_random"],
                       "Stray": ph["stray"], "Seed": int(seed)}]]
+        if ph.get("halo", 0.0) > 0:  # (only when asked for: older jobs keep their stacks, and so their cache keys)
+            st[0][1].update({"Halo": ph["halo"], "Halo Distance": SAFE["halo_m"], "Halo Length": SAFE["halo_len"]})
         if ph["loose"] > 0:  # strands wandering together (Blender's noise is coherent in space: neighbours agree)
             st.append(["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"], "Shape": 0.5,
                                              "Scale": ph["loose_scale"], "Scale along Curve": 0.35,
