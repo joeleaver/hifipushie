@@ -180,8 +180,9 @@ below as they land.
   expression buckets are to add.
 
 ### Our design
-- THE LANDMARK SET (src/hifipushie/denselm.py `landmarks()`, version 1): 595 GNM skin vertices + 18 eyeball points
-  = 613. Skin: farthest-point sampling on GNM's template restricted to `skin_exterior` vertices the one human mesh
+- THE LANDMARK SET (src/hifipushie/denselm.py `landmarks()`, version 1): 570 GNM skin vertices + 18 eyeball points
+  = 588 (the per-region counts below are from a first draft of 595; now: scalp + neck 122, cheeks 88, nose 58,
+  forehead 55, orbit 52, lips 41, mouth region 40, ears 34, chin 31, brows 29, lid margins 20). Skin: farthest-point sampling on GNM's template restricted to `skin_exterior` vertices the one human mesh
   carries, with a density per region (lid margins x 3.2, lips x 3, orbit / nose x 2, lip region x 1.9, chin x 1.8,
   brows x 1.6, face x 1.25, ears x 1, scalp and neck x 0.55), on the LEFT half + mid-line and mirrored (so a mirror
   permutation exists for flip augmentation and test-time flips), seeded with the 68 standard landmarks' vertices
@@ -209,4 +210,55 @@ below as they land.
   Gauss-Newton round (~1 min each) and would cancel nothing we cannot measure directly: the synthetic held-out bias
   per landmark is known exactly and, if non-zero on real pictures, shows up in the benchmark. Its errors are
   correlated between neighbours (one network, one crop): the per-view sigma floor and solve(adapt=True) handle
-  that as they do for the anchors.
+  that as they do for the anchors. BUILT: face_ruler `_dense_obs` / `dense_predict`, reference_views(dense=) with
+  the module default `DENSE = False` (a pilot network: off), DENSE_SIG_SCALE 2, floor 0.5 mm, landmarks the
+  network gives more than 3 mm of sigma are left out; type "dense" may be explained by a per-view expression
+  (EXPR_TYPES). tests/test_denselm.py (4: the set, the limbus points, the crop, the observation against a known
+  identity change with a made-up reading).
+
+### The synthetic data pipeline (spikes/denselm/gen.py + blender_gen.py; measured 2026-10-12)
+- THE CHEAP PATH, found: ONE dressed head stage per PERSON'S SKIN ("dressing": sex, age, weight, tone, features,
+  stubble, brows, make-up, lips, iris, folds, hair; a class-mean head; `stage.ensure`, the same stage the judging
+  sheets use), then every sample RE-POSES that scene inside one Blender process: each skin vertex of the stage's
+  ~400k-vertex mesh is bound once (BVH, 1.5-3.6 s) to its closest point on the one mesh's skin triangles and carried
+  by that point's displacement for a NEW identity + expression (`humanfit.state` of the changed base: 0.1-0.35 s,
+  4 processes); the eyeballs move rigidly with their centres and turn for gaze; lashes, the hair's underlayer and
+  the hair locks' control points ride the same binding. The paint lives in vertex attributes (wpos / wnrm / hp*),
+  so it rides along and the 600-node skin material is compiled once (50-90 s, the first render). The stage mesh
+  lies on the one mesh to 0.04-0.05 mm (median), so a label = the vertex itself.
+- LABELS: the landmark's pixel through Blender's own camera (world_to_camera_view) and its visibility by a ray
+  cast against the evaluated scene (skin, eyeballs, lashes, hair); + identity (170), expression (383), gaze,
+  camera, light per sample in meta.npz. Pictures are RGBA with a transparent ground: backgrounds, "clothes" (the
+  bare bust below a neckline recoloured as cloth) and every degradation are laid at TRAINING time (train.py).
+- WHAT IS VARIED: see gen.py's docstring (identity: semantic sampler by sex / ethnicity + N(0, a^2) on the 170
+  components; expression: 35 % neutral, else 1-2 sampler classes + latent noise, both eyes closed on 12 %; gaze;
+  yaw to +-100, pitch +-30, roll; 30-200 mm with the matching distance, off-axis crops; a key sun + fill + rim,
+  plain worlds or Blender's 8 bundled CC0 studio HDRIs; exposure; three view transforms). Hair: the hair tools'
+  curve locks on 55 % of dressings (combed short / medium, loose bob .. long, loose with a fringe, cropped; the
+  "locks" style: stylised planks, not strands), a painted scalp shadow on some of the rest, bald otherwise.
+- NOT IN THE PILOT (stated, not hidden): (1) OPEN MOUTHS. The stage's lips are one fused surface (no teeth, no
+  mouth bag): the sampler's lip-parting classes (surprise, happy, smile_wide, funneler, stretch_face, snarl,
+  disgust, blow, tongue_center) stretch a lip-coloured membrane across the opening (probe sheet
+  /mnt/data/hifipushie/denselm/out/probe.png), so they are left out (`open=0`): closed-mouth expressions only.
+  Smiles with teeth and jaw-open pictures are OUT OF DISTRIBUTION for the pilot: after gnmnative. (2) glasses,
+  headwear, hands, distractor faces, real clothes, photo backgrounds, beards as geometry (stubble is paint).
+  (3) strand hair. (4) children. (5) large identity steps bend the hair locks (they ride the nearest skin point).
+- COST, measured (320 px, EEVEE with ray tracing + fast GI as the stage's looks):
+  | | this laptop (890M iGPU, shared) | NICO-TOP (RTX 3070 Ti) |
+  |---|---|---|
+  | stage sync (per dressing) | 96-150 s (+ 20-40 s with hair) | 107-164 s |
+  | first render (shader compile) | 18-39 s | 47-90 s |
+  | render, 16 TAA samples | 1.9-2.0 s | 0.89 s (0.60 without ray tracing; fast GI off: no further gain) |
+  | render, 8 TAA samples | - | 0.50 s (hair, 16 samples: 1.13 s) |
+  | re-pose in Blender / labels (ray casts) | 0.2 s / 0.4-0.5 s | 0.10-0.12 s / 0.17-0.26 s |
+  | new identity + expression (controller, 4 procs) | 0.1-0.25 s a sample | 0.15 s |
+  So on NICO-TOP at 8 samples: ~0.95 s a sample marginal (bald; ~1.2 with hair) + ~200-250 s per dressing; at 300
+  samples a dressing: ~1.7 s a sample all in. Under the 2 s target; NOT "well under". THE BOTTLENECK is EEVEE
+  itself, and it is per TAA sample (~0.05 s each at 320 px on a 3070 Ti): the 400k-vertex head with the 600-node
+  skin shader and 2-3 shadowed suns is redrawn per sample; pixels are not the cost (320 px). The next gains, in
+  order: fewer vertices (the stage is meshed at 1 mm / 0.5 mm at eyes and mouth for close-ups; a 256 px training
+  crop needs ~2 mm: ~4x fewer vertices), 4-6 TAA samples (the training crop is downscaled and degraded anyway),
+  labels by a z-buffer instead of ray casts (0.2 s), more samples per dressing. Round trip overhead of the offload
+  route: ~10 s a job once the environment exists (a new commit: ~2-4 min once per machine).
+  The laptop is 2-4x slower per render AND its GPU slot is shared with the other agents (one test waited 8 min
+  for it): bulk rendering belongs on NICO-TOP (and enterprise when installed: CPU only? then EEVEE needs a GPU).
