@@ -30,7 +30,8 @@ HAIR (skin.hair; colours sRGB):
   lashes     {"color", "amount": 0..1 (0.7)}: the lash lines darkened (upper more).
   stubble    {"amount", "color", "where", "size": 1 (the dots' size), "shadow": 1 (the under-skin shadow's strength; "shadow_color",
              "shadow_breakup": its noise, 0 = an even field: a dense stubble shadow reads as one grey-brown field),
-             "grey": 0..1 (+ "grey_color": a share of white hairs: salt and pepper)}: the beard area: a shadow under the
+             "grey": 0..1 (+ "grey_color": a share of white hairs: salt and pepper), "zones": {moustache, chin, soul_patch, jaw,
+             cheeks, neck: weight 0..1.5 (1)} (where it grows: a goatee, bare cheeks)}: the beard area: a shadow under the
              skin plus hair dots.
   scalp      {"amount", "color", "hairline": 0..1 (0.5: how far it comes down the forehead)}: a shaved or cropped
              head: the shadow of hair under the scalp's skin plus cut hairs, with a hairline. (Longer hair is geometry:
@@ -272,6 +273,8 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
 
     _eyes(spec, p, J, out, layer, T, ctx)
     _wrinkles(p, J, layer, T, ctx)
+    from . import skin_folds
+    skin_folds.build(spec, p, J, layer, ctx)
     _hair(p, J, layer, T, ctx)
     _scars(spec, p, J, layer, T, ctx)
     _tattoos(spec, p, layer, ctx)
@@ -604,7 +607,7 @@ def _hair(p, J, layer, T, ctx) -> None:
                 layer("lashes", color=col, opacity=op, roughness=0.4,
                       mask=_zones(["lash_upper"]) + [{"zone": "lash_lower", "blend": "max", "weight": 0.5}])
         o = _opt(h.get("stubble"), "hair.stubble", ("color", "length", "size", "shadow", "shadow_color", "shadow_breakup", "grey", "grey_color",
-                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine"))
+                                                     "style", "density", "patchy", "trim", "cheeks", "cheek_line", "neckline", "engine", "zones"))
         if o and o.get("engine", "map") == "map" and "lm_jaw_1.L" in J:
             _stubble_map(ctx["spec"], p, J, o, layer, T, ctx)
             o = None
@@ -682,7 +685,12 @@ def stubble_options(o: dict, age: float = 35) -> dict:
         raise SpecError(f"skin hair.stubble: style is one of {', '.join(skin_marks.STUBBLE_STYLES)}")
     base = dict(skin_marks.STUBBLE_STYLES[st])
     a = float(o["amount"])
-    return {"length": float(o.get("length", base["length"])), "density": float(np.clip(o.get("density", base["density"]) * min(a, 1.0), 0.02, 1.0)),
+    zw = o.get("zones") or {}
+    if not isinstance(zw, dict) or set(zw) - set(skin_marks.BEARD_ZONES):
+        raise SpecError(f"skin hair.stubble: zones is {{zone: weight}} over {', '.join(skin_marks.BEARD_ZONES)}")
+    zw = {k: round(float(np.clip(v, 0, 1.5)), 3) for k, v in zw.items() if abs(float(v) - 1.0) > 1e-6}
+    return {**({"zones": zw} if zw else {}),
+            "length": float(o.get("length", base["length"])), "density": float(np.clip(o.get("density", base["density"]) * min(a, 1.0), 0.02, 1.0)),
             "grey": float(np.clip(o.get("grey", 0.0), 0, 1)), "patchy": float(np.clip(o.get("patchy", base["patchy"]), 0, 1)),
             "trim": float(np.clip(o.get("trim", base["trim"]), 0, 1)), "cheeks": float(np.clip(o.get("cheeks", base["cheeks"]), 0, 1)),
             "cheek_line": float(o.get("cheek_line", 0.0)), "neckline": float(o.get("neckline", 0.0)),

@@ -138,7 +138,7 @@ TOOLSETS: dict[str, dict] = {
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
                         "block_in_look", "block_in_step", "block_in_solve", "block_in_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
-                        "look_skin", "skin_reference"]},
+                        "look_skin", "skin_reference", "skin_from_reference"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
@@ -2173,6 +2173,21 @@ def check_references(images: list[str], name: str | None = None) -> str:
     guide(topic="check_references")."""
     from . import likeness_brief as lb
     return lb.check_references(images, name)["text"]
+
+
+@mcp.tool(structured_output=False)
+def skin_from_reference(name: str, out: str = "", groups: list[str] | None = None, rounds: int = 2, read_only: bool = False,
+                        stubble: bool | None = None, anchor: str = "auto") -> str:
+    """Set the procedural skin from the model's fitted reference pictures, used as a MEASUREMENT (never as the
+    albedo): tone, zone tints, lips, beard shadow by zone, brows, freckles, and the folds the shape model does not make
+    (nasolabial, tear trough / eye bag, lid fold, marionette ...). read_only=True: the read alone. out: save to a copy.
+    Details: guide(topic="skin_from_reference")."""
+    from . import skin_read
+    if read_only:
+        return skin_read.read(name, anchor=anchor, log=lambda s: None)["text"]
+    r = skin_read.apply(name, out=out or None, groups=tuple(groups) if groups else skin_read.DEFAULT_GROUPS, rounds=rounds,
+                        anchor=anchor, stubble=stubble, log=lambda s: None)
+    return r["text"]
 
 
 @mcp.tool(structured_output=False)

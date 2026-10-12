@@ -315,6 +315,36 @@ def _lips_path(J):
     return _Poly([[J[n][0], J[n][2]] for n in names if n in J])
 
 
+BEARD_ZONES = ("moustache", "chin", "soul_patch", "jaw", "cheeks", "neck")
+
+
+def beard_zones(J: dict):
+    """zones(P) -> {zone: 0..1}: the beard area as a soft partition (the six sum to 1 at every point), from the
+    face's landmarks: moustache (over the mouth's line, between the corners), chin and soul_patch (under it, between
+    the corners), jaw (beside the mouth below its line), cheeks (beside it above), neck (under the jaw's edge).
+    `hair.stubble.zones` weighs the growth by them; skin_read reads the picture's beard shadow by them."""
+    from .skin import interocular
+    io = interocular(J)
+    L = lambda n: np.asarray(J[n], float)  # noqa: E731
+    mc, ll = L("lm_mouth_corner.L"), L("lm_lip_lower")
+    chain = [L(f"lm_jaw_{k}.L") for k in range(2, 8)] + [L("lm_chin")]
+    jx = np.array([abs(p[0]) for p in chain])[::-1]
+    jz = np.array([p[2] for p in chain])[::-1]
+
+    def zones(P):
+        q = np.asarray(P, float).copy()
+        q[:, 0] = np.abs(q[:, 0])
+        neck = _ramp(np.interp(q[:, 0], jx, jz) - q[:, 2], 0.05 * io, 0.2 * io)
+        rest = 1 - neck
+        lat = _ramp(q[:, 0], abs(mc[0]) - 0.05 * io, abs(mc[0]) + 0.2 * io)
+        up = _ramp(q[:, 2], mc[2] - 0.05 * io, mc[2] + 0.15 * io)
+        low = rest * (1 - lat) * (1 - up)
+        soul = low * np.exp(-((q[:, 0] / (0.16 * io)) ** 2 + ((q[:, 2] - (ll[2] - 0.2 * io)) / (0.13 * io)) ** 2))
+        return {"moustache": rest * (1 - lat) * up, "chin": low - soul, "soul_patch": soul, "jaw": rest * lat * (1 - up),
+                "cheeks": rest * lat * up, "neck": neck}
+    return zones
+
+
 def beard_density(J: dict, o: dict, curv=None):
     """density(P, N) -> 0..1: where the beard grows and how thickly, from the face's landmarks (interocular units) and,
     given `curv` (a function P -> head_curvature at those points), the surface's own forms. o = the stubble's options
@@ -424,7 +454,12 @@ def beard_density(J: dict, o: dict, curv=None):
                 fine_nz = noise(P, {"scale": 0.005, "octaves": 2, "seed": 310 + seed})
                 keep = anat * (0.5 + 0.5 * _ramp(fine_nz, 0.3, 0.7))   # thinning inside the patches: fewer hairs, not blotches
                 w *= (1 - pa) + pa * keep
+        if zw:   # hair.stubble.zones: the growth weighed zone by zone (a goatee, bare cheeks, a moustache alone)
+            u = bz(P)
+            w = w * sum(float(zw.get(k, 1.0)) * u[k] for k in BEARD_ZONES)
         return np.clip(d * w * float(o["density"]), 0, 1)
+    zw = {k: v for k, v in (o.get("zones") or {}).items() if abs(float(v) - 1.0) > 1e-6}
+    bz = beard_zones(J) if zw else None
     return dens
 
 

@@ -70,6 +70,9 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   painting, text on a page...)"): a planar decal (centre `at` = joint/xyz or a blob, seated on its face named by
   `dir`; right = up x dir so it reads from the front; depth window + facing ramp against print-through), image from
   -> full notes: docs/notes/images.md
+- Skin from the references (2026-10-11, `skin_read.py` + `skin_folds.py`, MCP `skin_from_reference`): the fitted pictures as a
+  MEASUREMENT (ratio image picture / our render x our albedo; regions, beard zones, brows, freckles, the folds checklist),
+  spec["skin"] set from it; `skin.folds` = grooves / rolls as one map. -> full notes: docs/notes/skin.md "## skinread"
 - `materials.py`: `{"material": ...}` paint layers expand (`paint.layers`) into sub-layers `<name>:<sub>` built
   only from ordinary generators (plus `tiles`/`weave`, 2D patterns laid triplanar by `paint._planar`); the
   layer's own masks confine every sub-layer as a trailing nested multiply; coverage reports the first
