@@ -46,3 +46,13 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   behind), and `profiling.run_jobs/pool_map` check between jobs. `dress`'s background sim thread is not under a cancel
   scope on purpose. Tests: tests/test_heavy.py (+ heavy_job.py), own state dir, ~10 s.
 
+
+- Light-job slots (2026-10-12, coordinator; three face / hair / skin agents put the laptop at load 35 with swap full:
+  `resources.heavy` only gates renders / exports, and one agent ran eight solver chains at once outside it):
+  `/mnt/data/hifipushie/bin/slot <cmd...>` = a flock semaphore of $HIFIPUSHIE_LIGHT_SLOTS (default 4) machine-wide
+  slots for LIGHT jobs (solver chains, benchmark sweeps, pytest; 1-3 GB), one BLAS / OMP thread each, run through
+  `capped` at 6 GB (CAP= to raise). Heavy jobs stay on `resources.heavy` + `capped`. Put BOTH in every agent brief.
+  Offloading (asked of the oxidegen session the same day): two idle sculpt-runner machines on the LAN (enterprise:
+  32 CPUs / 30 GB, Linux; NICO-TOP: 16 threads / 23 GB, WSL2) already have a hifipushie checkout, Blender 5.1.2, uv
+  and the packs; the practical route is rsync + SSH (`run-remote`), not the broker or the cloud fleet for 1-5 min
+  jobs; needs SSH access set up by Joe. oxidegen is proposing a general heavy-job design to Joe; not built.
