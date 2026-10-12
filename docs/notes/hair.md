@@ -1659,3 +1659,12 @@ or strands interpolated between lock guides), lighter single strands at the outl
 band's strands on the scalp under them (the scalp layer's way) instead of along locks; (4) look_hair: the picture's
 fitted light for ref views (colour bands then mean something), a `calibrate` that sets cycles_width / cycles_sat;
 (5) sync garrett-sized models for th_42 one at a time (8 GB each) and look at their hairlines rendered.
+
+## Joe on tesshair6 (2026-10-12, th_40)
+"Honestly, that's the best hair we've seen so far and I'm pretty pleased. We could leave it there and it would be
+_almost_ ok. The wispies could be dialed in a little more, but..." and then: "I agree with your 'still wrong' list,
+though." -> `th_T66` is Tess's hair for now (the baseline every later round must beat). The agreed still-wrong list:
+the draped temple covers the top of the ear (hers is clear); thin straight hairs down the cheek read as scraggly
+lines; the front is a smooth curtain, not separate loosened locks; the tail is wide ribbons from behind and ~16 % big
+in profile; up-style temples still serrated close up. Coordinator's dial-only pass on the wisps: th_X1 (no sideburn
+wisps, shorter, softer), th_X2 (short sideburn wisps, less drape, 3 loose locks a side).
