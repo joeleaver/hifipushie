@@ -185,7 +185,12 @@ def test_reference_brief_shape():
     ids = [s["id"] for s in b["shots"]]
     assert {"front", "profile_left", "three_quarter_left", "front_raking", "figure_front"} <= set(ids)
     for s in b["shots"]:
-        assert s["prompt"].startswith(b["common"]["prompt"]) and s["must_show"] and s["light"] in ("even", "raking")
+        assert s["must_show"] and s["light"] in ("even", "raking")
+        if s.get("expression"):   # an expression shot states its own face instead of the common "neutral" clause
+            assert "neutral relaxed expression" not in s["prompt"] and s["expression"] in s["prompt"]
+        else:
+            assert s["prompt"].startswith(b["common"]["prompt"])
+    assert {"front_smile_teeth", "front_jaw_open", "front_eyes_closed", "front_eyes_wide", "three_quarter_rear"} <= set(ids)
     covered = {i for s in b["shots"] for i in s["purpose"]}
     assert {it["id"] for it in lk.checklist() if it["measure"]["kind"] != "judge"} <= covered | {"stature"}
 

@@ -105,6 +105,27 @@ def reference_brief(kind: str = "head", subject: str = "") -> dict:
          "purpose": [], "must_show": ["the head from above: the skull's plan shape, the hair's parting"],
          "line": "Top view, camera above the head looking down."},
     ]
+    # EXPRESSION shots (2026-10-12; the GNM paper's fitting, arXiv 2607.23687 4.2.2 / 4.2.3: ONE identity over many
+    # frames with VARIED expressions is what separates identity from expression, and the inner mouth (teeth) anchors
+    # the fit and the head's size). Same person, light, camera and framing as the front shot; only the face moves.
+    expr = [("front_smile_teeth", "a broad natural smile with the lips parted and the upper front teeth clearly visible",
+             ["the upper incisors and canines, their edges sharp", "the mouth corners and the cheeks' lift"]),
+            ("front_jaw_open", "the mouth open wide (jaw dropped about three fingers), tongue resting in the floor of the mouth",
+             ["upper and lower teeth, the tongue, the lips' full outline", "the chin's drop against the neck"]),
+            ("front_eyes_closed", "the eyes gently closed as in a slow blink, the rest of the face neutral, mouth closed",
+             ["both closed lids whole, lashes down, the brows at rest"]),
+            ("front_eyes_wide", "the eyes opened wide and the brows raised, mouth closed",
+             ["the whole iris with white above it, the upper lid's fold, the forehead's lines"])]
+    for sid, what, must in expr:
+        shots.append({"id": sid, "view": {"yaw": 0, "pitch": 0, "framing": "bust"}, "light": "even", "optional": True,
+                      "purpose": [], "expression": what, "must_show": must,
+                      "line": f"Front view, identical pose, framing and light to the neutral front shot; EXPRESSION: {what}."})
+    shots.append({"id": "three_quarter_rear", "view": {"yaw": 120, "pitch": 0, "framing": "bust"}, "light": "even",
+                  "optional": True, "purpose": jaw_ids,
+                  "must_show": ["the head turned 120 degrees (seen from behind the left ear): the jaw's angle, lower border "
+                                "and the chin's side AGAINST THE BACKGROUND", "hair off the neck and jaw"],
+                  "line": "Rear three-quarter view from behind the subject's left shoulder, the head turned 120 degrees "
+                          "from the camera, the jaw line and chin in silhouette against the background."})
     if kind == "figure":
         shots += [
             {"id": "figure_front", "view": {"yaw": 0, "pitch": 0, "framing": "full"}, "light": "even",
@@ -117,12 +138,19 @@ def reference_brief(kind: str = "head", subject: str = "") -> dict:
              "must_show": ["the whole figure in profile, arms relaxed at the sides, standing straight"],
              "line": "Full-body left side view, standing straight, arms relaxed, head to feet."}]
     for s in shots:
-        s["prompt"] = f"{common} {s['line']} {LIGHT[s['light']]}"
+        c = common
+        if s.get("expression"):   # (the common text asks for a neutral face: an expression shot states its own)
+            c = c.replace("neutral relaxed expression, mouth closed, lips together, eyes open looking level at the horizon, ", "")
+        s["prompt"] = f"{c} {s['line']} {LIGHT[s['light']]}"
         s["worth"] = WORTH.get(s["id"], "")
     shots.sort(key=lambda s: ORDER.index(s["id"]) if s["id"] in ORDER else len(ORDER))
     text = [f"REFERENCE BRIEF ({kind}){sub}: shoot or generate these; optional ones help but aren't needed.",
             f"common to every shot: {common}", f"avoid: {NEGATIVE}"]
     text.append(STUDY)
+    text.append("STATE THE ANGLES: name each file by its shot id and say the true head turn in degrees; a \"profile\" must "
+                "hide the far eye and brow (90), a three-quarter is 45 (not 20-30). Head level in every solver view. "
+                "Expression shots (optional, each worth having): they let the fit tell the person from the expression "
+                "and the teeth pin the head's size; `avoid` applies to them except for the stated expression.")
     for s in shots:
         if s["worth"]:
             text.append(f"  [{s['worth']}]")
