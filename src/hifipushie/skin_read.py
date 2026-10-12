@@ -364,7 +364,8 @@ def _eye_classes(f: dict, mesh: dict, spec: dict) -> tuple:
     fwd = np.asarray(ht.get("forward", [0, -1, 0]), float)
     fwd = fwd / np.linalg.norm(fwd)
     r = float(ht.get("eye_r", 0.012))
-    ir = 0.5 * float(((spec.get("skin") or {}).get("eyes") or {}).get("iris_size", 0.0118))
+    from . import base as _basemod
+    ir = _basemod.drawn_iris(spec, 0.012, legacy=0.0059 / 0.012)   # skin.eyes.iris_size, GNM's limbus, else 11.8 mm
     a_iris = np.arcsin(min(ir / r, 0.99))
     scl, iris = np.zeros(f["eye"].shape, bool), np.zeros(f["eye"].shape, bool)
     X = f["X"][f["eye"]]

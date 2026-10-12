@@ -39,7 +39,7 @@ from scipy.spatial import cKDTree
 
 from . import retopo
 
-VERSION = 106  # bump when the base field changes: builds and live grids are keyed on it
+VERSION = 107  # bump when the base field changes: builds and live grids are keyed on it (107: GNM's own eyeball and mouth)
 K = 32
 FAR = 0.03  # m
 SEAM = 0.012  # m: half-width of the head graft's overlap
@@ -128,7 +128,10 @@ def inject(spec: dict) -> dict:
         # (a head that follows its body: the fill sized to the head. A child's head is 0.75-0.85 of the size the fill's
         # numbers were set at, and the fill came out through the lips' corners and showed pale inside the nostrils)
         ks = float(head["carry"]["s"]) / 1.1 if head.get("room") else 1.0
-        if (b.get("head") or {}).get("interior"):  # a mouth that can open (face shapes): slit, bag, teeth, tongue
+        mode = mouth_mode(b, head)
+        if mode == "gnm" and float(np.linalg.norm(iu - il)) > MOUTH_PARTED and head.get("skin_index") is None:
+            pass  # GNM's own mouth, open: its sock closes the cavity in the head's own field (surface); no fill
+        elif mode == "kit":  # the face kit's mouth that can open (face shapes): slit, bag, teeth, tongue
             mi = mouth_interior(head, b["head"])
             if float((b.get("head") or {}).get("lip_seal") or 0.0) >= 0.5:
                 # a SEALED mouth (lip_seal, field only): the slit and the bag kept (face shapes read them) but held
@@ -160,18 +163,26 @@ def inject(spec: dict) -> dict:
     if eb and b.get("eyes"):  # eyeballs as their own part, filling the base's sockets
         blobs = dict(out.get("blobs") or spec.get("blobs") or {})
         blobs.setdefault("eye.L", {"at": "eye.L", "size": [round(float(eb["r"]), 4)] * 3, "part": b["eyes"]})
-        if b.get("cornea") and "eye_front.L" in joints:  # the cornea's bulge over the iris (base "cornea": true |
-            # {"bulge": 0.09 (x the eyeball's radius), "radius": 0.62}): a smaller sphere standing proud where the
-            # gaze leaves the eyeball; highlights bend over it and the limbus gets a profile
-            co = b["cornea"] if isinstance(b["cornea"], dict) else {}
+        eg = head.get("eye_gnm") if head is not None else None  # (gnmnative) GNM's own two-sphere eye
+        if (b.get("cornea") if b.get("cornea") is not None else bool(eg)) and "eye_front.L" in joints:
+            # the cornea's bulge over the iris: a smaller sphere standing proud where the gaze leaves the eyeball;
+            # highlights bend over it and the limbus gets a profile. On a GNM head with GNM's own eyeball it is ON by
+            # default and it is GNM's corneal sphere for the identity (its eyes_* components: radius ~7.7 mm, apex
+            # ~1.6 mm proud on the template). base "cornea": true | false | {"bulge": 0.09 (x the eyeball's radius),
+            # "radius": 0.62} (given numbers win; they are also the defaults without GNM's eye)
+            co = b["cornea"] if isinstance(b.get("cornea"), dict) else {}
             R = float(eb["r"])
             rc, bulge = float(co.get("radius", 0.62)) * R, float(co.get("bulge", 0.09)) * R
+            if eg and "radius" not in co and "bulge" not in co:
+                rc, bulge = float(eg["cornea_r"]), float(eg["apex"]) - R
+                if co.get("clear") and "depth" not in co:  # the anterior chamber: GNM's iris disc behind its apex
+                    co = {**co, "depth": (float(eg["apex"]) - float(eg["iris_depth"])) * 0.0118 / R}
             for sd in (".L",):  # .R is its mirror (an explicit cornea.R blob came out as a second, giant eyeball)
                 c = np.array(joints[f"eye{sd}"]["pos"] if f"eye{sd}" in joints else np.array(joints["eye.L"]["pos"]) * [-1, 1, 1], float)
                 gz = np.array(joints[f"eye_front{sd}"]["pos"], float) - c
                 gz /= np.linalg.norm(gz)
                 if co.get("clear"):  # (eyedetail) a clear cornea over a recessed iris: see clear_cornea
-                    blobs.update(clear_cornea(b, c, gz, R, rc, bulge, sd))
+                    blobs.update(clear_cornea({**b, "cornea": co}, c, gz, R, rc, bulge, sd))
                     continue
                 # one group with its eyeball (joined softly, then unioned as one): as two elements with different
                 # blends the scene's chunked evaluation blew the mirrored eye up into a ball twice its size
@@ -215,13 +226,16 @@ def clear_cornea(b: dict, c, gz, R: float, rc: float, bulge: float, sd: str = ".
 
 def implied_parts(spec: dict) -> dict:
     """Parts the base makes that the spec needn't list, with their channels (a listed part's keys win, merged by
-    scene / asset): the clear cornea's lens."""
+    scene / asset): the clear cornea's lens; GNM's own mouth ("teeth": both rows with their gums, "tongue")."""
     b = spec.get("base") or {}
     co = b.get("cornea")
-    if not (isinstance(co, dict) and co.get("clear") and b.get("eyes")):
-        return {}
-    return {f"{b['eyes']}_cornea": {"color": "#ffffff", "transmission": 1.0, "ior": 1.376, "roughness": 0.02,
-                                    "specular": 0.6, "voxel": 0.0003, "rig_bone": None}}
+    out = {}
+    if isinstance(co, dict) and co.get("clear") and b.get("eyes"):
+        out[f"{b['eyes']}_cornea"] = {"color": "#ffffff", "transmission": 1.0, "ior": 1.376, "roughness": 0.02,
+                                      "specular": 0.6, "voxel": 0.0003, "rig_bone": None}
+    if mouth_mode(b) == "gnm":
+        out.update({k: dict(v) for k, v in MOUTH_PARTS.items()})
+    return out
 
 
 def part_defs(spec: dict) -> dict:
@@ -514,6 +528,12 @@ def surface(spec_expanded: dict, base: dict) -> dict:
         N = np.r_[N[kb], head["normals"][kh]]
         h = np.r_[h[kb], hh[kh]]
         wt = np.maximum(np.r_[wb, wh], 1e-4)
+    if head is not None and mouth_mode(base, head) == "gnm" and not (one and tpl.get("seal_field")):
+        sk = sock_points(head)
+        if sk is not None:  # GNM's mouth bag behind parted lips (points only: the faces and quads stay the skin's)
+            V, N, h = np.r_[V, sk["verts"]], np.r_[N, sk["normals"]], np.r_[h, sk["h"] * float(base.get("smooth", 1.0))]
+            if head is not None and not one:
+                wt = np.r_[wt, np.ones(len(sk["verts"]))]
     out = {"verts": V, "faces": F, "normals": N, "h": h, "hmax": float(h.max()), "quads": (W, faces), "tree": cKDTree(V),
            "key": key, "head": None, "graft": None if one else head, "src": src, "template": tpl.get("name"),
            "wt": wt if head is not None and not one else None,
@@ -528,8 +548,7 @@ GNM = "gnm/shape/data/versions/v3_0/gnm_head.npz"  # in the assets pack "gnm" (a
 GNM_CUT = 0.19  # GNM's own frame (Y up): the graft plane's height, above its bib's open edge (0.135), under its chin
 GNM_BAND = 0.028
 GNM_CHIN = 0.1912  # the mean head's chin landmark height, GNM's frame
-EYE_R = 0.96  # the eyeball's radius over GNM's eye (its median vertex distance)
-EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball
+EYE_SEAT = 0.0008  # m: the lid rims' clearance outside the eyeball (head.eye_radius, the override, only)
 GNM_TILT = 20.0  # degrees
 LIP_RING = 2  # GNM: the inner-lip contact ring (landmarks 61-63, 65-67), rings out from the skin's open mouth loop
 
@@ -1902,6 +1921,266 @@ def _local_smooth(W, E, deg, wv, iters):
     return W
 
 
+def eye_native(spec: dict) -> dict | None:
+    """GNM's own eye on a spec's built head (gnm_head's "eye_gnm", world metres: "limbus", "cornea_r", "apex",
+    "iris_r", "iris_depth", "pupil_r", "pupil" = the pupil over the iris disc), or None: no GNM head, or
+    base.head.eye_radius overrides the ball."""
+    b = spec.get("base") or {}
+    hd = b.get("head")
+    if not isinstance(hd, dict) or hd.get("eye_radius") or hd.get("source", "gnm") != "gnm":
+        return None
+    if (b.get("body") or {}).get("source") == "human":
+        from . import onemesh
+        ht = onemesh.head_rest(b)
+    else:
+        ht = head_of({"joints": inject(spec)["joints"]}, b)
+    return None if ht is None else ht.get("eye_gnm")
+
+
+def drawn_iris(spec: dict, r_ball: float | None = None, legacy: float = 0.51 * 0.985) -> float:
+    """The drawn iris' RADIUS (m): skin.eyes.iris_size / 2 when set; else GNM's limbus for the identity (its
+    `eyes_000` component; eye_native); else (our own ball) `legacy` x the ball's radius."""
+    drawn = ((spec.get("skin") or {}).get("eyes") or {}) if isinstance((spec.get("skin") or {}).get("eyes"), dict) else {}
+    if drawn.get("iris_size"):
+        return 0.5 * float(drawn["iris_size"])
+    eg = eye_native(spec)
+    if eg:
+        return float(eg["limbus"])
+    return legacy * float(r_ball if r_ball is not None else 0.012)
+
+
+def limbus_identity(spec: dict, iris_mm: float) -> dict:
+    """The identity's `eyes_000` (GNM's limbus component, sd 1: ~0.4 mm of limbus radius on its 14.6 mm ball) that
+    makes the built head's limbus DIAMETER iris_mm (mm, world), the other eye components kept: {"eyes_000": value,
+    "from_mm", "sd"}. Linear in the component; raises past 3 sd (no eye in GNM's population has that iris)."""
+    eg = eye_native(spec)
+    if eg is None:
+        raise ValueError("limbus_identity: the head has no GNM eyeball (base.head.eye_radius overrides it: drop that key)")
+    g = _gnm_data()
+    names = [str(n) for n in g["identity_names"]]
+    i = names.index("eyes_000")
+    T = g["template_vertex_positions"].astype(float)
+    cur = float(((spec["base"]["head"].get("identity") or {}) if isinstance(spec["base"]["head"].get("identity"), dict) else {}).get("eyes_000", 0.0))
+    l0, l1 = (gnm_eyes(T + v * g["vertex_identity_basis"][i], g)[0]["limbus"] for v in (cur, cur + 1.0))
+    k = float(eg["limbus"]) / l0  # world over GNM's frame (the head's scale x the eye piece's)
+    v = cur + (0.0005 * float(iris_mm) / k - l0) / (l1 - l0)
+    if abs(v) > 3.0:
+        raise ValueError(f"limbus_identity: an iris of {iris_mm:.2f} mm needs eyes_000 {v:+.2f} (past 3 sd; the model draws "
+                         f"{2000 * eg['limbus']:.2f} mm): check the read, or set skin.eyes.iris_size for a drawn iris")
+    return {"eyes_000": round(v, 4), "from_mm": round(2000 * float(eg["limbus"]), 3), "sd": round(v - cur, 3)}
+
+
+def _gnm_piece_sets(g: dict) -> list:
+    """GNM's loose pieces and the skin each follows: [(piece vertex ids, anchor skin vertex ids)]. An eyeball (its
+    inner and outer shells): that eye's lid margins and the socket lining behind them (lidrings -2 .. 2), so it keeps
+    GNM's own relation to the lids. Upper teeth, lower teeth and tongue, as ONE piece (the rows stay registered):
+    GNM's lip and chin regions (wide on purpose: a seal that presses the lips together must not shrink the teeth)."""
+    if "piece_sets" not in _CACHE:
+        from . import lidrings
+        gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
+        t, mir = lidrings.topo(), lidrings.mirror()
+        ring = np.concatenate([t["loops"][k] for k in range(-2, 3)])
+        mouth = gr["upper_teeth_and_gums"] | gr["lower_teeth_and_gums"] | gr["tongue"]
+        _CACHE["piece_sets"] = [(np.flatnonzero(gr["left_eye"]), ring), (np.flatnonzero(gr["right_eye"]), mir[ring]),
+                                (np.flatnonzero(mouth), np.flatnonzero(gr["upper_lip_region"] | gr["lower_lip_region"]
+                                                                        | gr["chin_region"]))]
+    return _CACHE["piece_sets"]
+
+
+def _gnm_pieces(V: np.ndarray, Vg: np.ndarray, g: dict) -> np.ndarray:
+    """GNM's loose pieces (eyeballs, teeth and gums, tongue) on a head our steps have moved: each is GNM's OWN shape
+    for these coefficients (Vg: template + identity + expression, one evaluation of its bases), carried by the
+    translation and uniform scale that take the skin beside it from GNM's evaluation to where it is now. With nothing
+    of ours on the head that is the identity: the pieces are exactly GNM's. (Before, 2026-10-12: they went through the
+    skin's own fields (the body's head, the dimorphism field, style sliders, the eye scaling): an eyeball up to 1.9 mm
+    out of round, tooth rows bent by up to 6 mm. Nobody saw it: our own ball and the kit's teeth were shown.)"""
+    V = np.array(V, float)
+    for ids, anc in _gnm_piece_sets(g):
+        c0, c1 = Vg[anc].mean(0), V[anc].mean(0)
+        k = float(np.sqrt(((V[anc] - c1) ** 2).sum() / max(((Vg[anc] - c0) ** 2).sum(), 1e-30)))
+        V[ids] = c1 + k * (Vg[ids] - c0)
+    return V
+
+
+def gnm_eyes(V: np.ndarray, g: dict) -> list:
+    """GNM's own TWO-SPHERE eye read off posed GNM vertices V (its frame; any unit), per eye (left, right): the scleral
+    sphere ("c", "r": the outer shell's, what the lids lie on; GNM holds it at 14.6 mm for every identity), the gaze
+    "axis", the corneal sphere ("cornea_r", "apex": its front pole's distance from c), the "limbus" (the circle where
+    the two spheres meet: the iris as seen from outside), the iris disc behind the cornea ("iris_r", "iris_depth") and
+    the pupil ("pupil_r"; "pupil" = pupil_r / iris_r). Limbus and cornea come from the identity's `eyes_*` components,
+    the pupil from the expression component `pupils_000`; the head's components only carry the ball with its joint."""
+    gr = g["groups"]
+    out = []
+    for side in ("left_eye", "right_eye"):
+        m = np.asarray(gr[side]) > 0.5
+        ext = V[m & (np.asarray(gr["eye_exteriors"]) > 0.5)]
+        scl = V[m & (np.asarray(gr["scleras"]) > 0.5)]
+        A = np.c_[2 * scl, np.ones(len(scl))]
+        x = np.linalg.lstsq(A, (scl ** 2).sum(1), rcond=None)[0]
+        c = x[:3]
+        pup = V[m & (np.asarray(gr["pupils"]) > 0.5)] - c
+        iris = V[m & (np.asarray(gr["irises"]) > 0.5)] - c
+        ax = _unit(pup.mean(0))
+        rad = lambda P: np.linalg.norm(P - np.outer(P @ ax, ax), axis=1)  # noqa: E731
+        e = ext - c
+        d = np.linalg.norm(e, axis=1)
+        back = (e @ ax) < 0  # the shell's back half is the plain sphere
+        r = float(np.median(d[back]))
+        apex = float((e @ ax).max())
+        # the corneal sphere through the apex and the shell's bulging points (least squares on its radius, centred
+        # on the axis): GNM's shell eases the junction, so the limbus is where the two SPHERES meet
+        bulge = e[(d > r * 1.004) & ~back]
+        if len(bulge) >= 6 and apex > r * 1.01:
+            h, a = apex - bulge @ ax, rad(bulge)
+            ok = h > 0.15 * (apex - r)
+            rc = float(np.median((h[ok] ** 2 + a[ok] ** 2) / (2 * h[ok]))) if ok.any() else r
+            cz = apex - rc  # the corneal sphere's centre, along the axis from c
+            zl = (r * r - rc * rc + cz * cz) / (2 * cz) if cz > 1e-9 else r
+            limbus = float(np.sqrt(max(r * r - zl * zl, 0.0)))
+        else:  # no bulge (a head whose eye vertices were flattened): the iris disc's own edge
+            rc, limbus = r, float(rad(iris).max())
+        ri = float(rad(iris).max())
+        out.append({"c": c, "r": r, "axis": ax, "cornea_r": rc, "apex": apex, "limbus": limbus, "iris_r": ri,
+                    "iris_depth": float((iris @ ax)[np.argmax(rad(iris))]), "pupil_r": float(rad(pup).max()),
+                    "pupil": float(rad(pup).max() / max(ri, 1e-12))})
+    return out
+
+
+MOUTH_PUSHED = 0.001  # m: lips a style moved this far off GNM's own surface no longer fit GNM's teeth (the kit's interior)
+MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (the bag is cut; closed, a fill)
+MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 600},
+               "tongue": {"color": [0.62, 0.3, 0.3], "roughness": 0.45, "voxel": 0.0008}}
+GUM_COLOR = [0.68, 0.32, 0.33]
+BAG_COLOR = [0.2, 0.07, 0.07]
+MOUTH_SUBDIVIDE = 2  # Catmull-Clark rounds on GNM's teeth / tongue before their field (edges ~2 mm -> ~0.5 mm)
+
+
+def mouth_mode(b: dict, head: dict | None = None) -> str:
+    """Which mouth a base's head has: "gnm" (GNM's own mouth bag, teeth and gums, tongue: THE DEFAULT for a GNM head),
+    "kit" (the face kit's slit / bag / teeth / tongue behind the lips: base.head.interior, as every head made before
+    2026-10-12 with an interior; or the FALLBACK when a style pushed the lips off GNM's surface, see mouth_note) or
+    "none" (lips with a fill behind them). base.head.mouth = "gnm" | "kit" | "none" asks for one; unset: "kit" if
+    base.head.interior is given (old specs keep their mouth), else "gnm"."""
+    hd = b.get("head") if isinstance(b.get("head"), dict) else None
+    if hd is None or hd.get("source", "gnm") != "gnm":
+        return "none"
+    m = hd.get("mouth")
+    if m is None:
+        m = "kit" if hd.get("interior") else "gnm"
+    if m in (False, "none"):
+        return "none"
+    if m not in ("gnm", "kit"):
+        raise ValueError('base.head.mouth: "gnm" (GNM\'s own bag, teeth and tongue), "kit" (the face kit\'s interior: '
+                         'base.head.interior) or "none"')
+    if m == "kit":
+        return "kit" if hd.get("interior") else "none"
+    if head is not None and float(head.get("mouth_off") or 0.0) > MOUTH_PUSHED:
+        return "kit" if hd.get("interior") else "none"
+    return "gnm"
+
+
+def mouth_note(b: dict, head: dict | None) -> str | None:
+    """What a build says about the mouth when GNM's own was asked for (or the default) and could not be used."""
+    hd = b.get("head") if isinstance(b.get("head"), dict) else None
+    if hd is None or head is None or hd.get("mouth", "gnm" if not hd.get("interior") else "kit") != "gnm":
+        return None
+    off = float(head.get("mouth_off") or 0.0)
+    if off > MOUTH_PUSHED:
+        return (f"mouth: the head's style moved the lips {off * 1000:.1f} mm off GNM's own surface (pushes / simplify / "
+                f"shape ops on the built head), so GNM's teeth and tongue no longer sit behind them: "
+                + ("the face kit's interior (base.head.interior) is used instead" if hd.get("interior") else
+                   "no mouth interior is built (give base.head.interior for the face kit's)")
+                + ". GNM's own mouth needs the lips where GNM puts them (identity / expression moves keep them there)")
+    return None
+
+
+def gnm_mouth(head: dict) -> dict:
+    """GNM's own mouth on a built head, world: {"teeth_upper" / "teeth_lower" / "tongue" / "sock": {"ids" (GNM vertex
+    ids), "verts", "faces" (quads, local), "gum" (teeth: per vertex, True on the gums)}, "frame": (M, out, up, side)}.
+    Every piece comes from the head's one evaluation of GNM's bases (gnm_head's "gnm_world"): the teeth from the
+    identity's 80 teeth components, the lower row and the tongue moved by the lower-face and tongue expressions."""
+    if head.get("_mouth") is not None:
+        return head["_mouth"]
+    g = _gnm_data()
+    gr = {k: np.asarray(v) > 0.5 for k, v in g["groups"].items()}
+    Q = np.asarray(g["quads"])
+    W = np.asarray(head["gnm_world"], float)
+    out = {}
+    for name, m in (("teeth_upper", gr["upper_teeth_and_gums"]), ("teeth_lower", gr["lower_teeth_and_gums"]),
+                    ("tongue", gr["tongue"]), ("sock", gr["mouth_sock"])):
+        q = Q[m[Q].any(1)] if name == "sock" else Q[m[Q].all(1)]  # (the sock with the quads joining it to the lips)
+        ids = np.unique(q)
+        loc = np.full(len(m), -1)
+        loc[ids] = np.arange(len(ids))
+        out[name] = {"ids": ids, "verts": W[ids], "faces": loc[q]}
+        if name.startswith("teeth"):
+            out[name]["gum"] = (gr["gums"] & ~gr["teeth"])[ids]
+    ml = mouth_lips(head)
+    out["frame"] = (ml["M"], ml["out"], ml["up"], ml["side"])
+    out["gap"] = ml["gap"]
+    head["_mouth"] = out
+    return out
+
+
+def _piece_points(V, faces, rounds: int = MOUTH_SUBDIVIDE) -> dict:
+    """A GNM piece's quads as an IMLS point set (verts, normals, h, tree): subdivided, normals outward."""
+    F = [list(map(int, f)) for f in faces]
+    for _ in range(rounds):
+        V, F = _catmull_clark(V, F)
+    N, h = _normals_and_h(V, F)
+    return {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "seam": None}
+
+
+MOUTH_SHELL = {"teeth": 0.003, "tongue": 0.012}  # m: how deep under GNM's surface a piece's solid reaches
+
+
+def gnm_mouth_field(head: dict) -> list:
+    """GNM's mouth as field elements for spec.compile_prims: [{"name", "part", "op", "kind", "blend", "layer",
+    "params", "lo", "hi"}]: the two tooth rows with their gums (part "teeth") and the tongue (part "tongue"), each the
+    solid under GNM's own surface (sd_gnm_piece). The mouth BAG is not an element: with the lips parted GNM's mouth
+    sock joins the head's own point set (surface: sock_points), as it joins GNM's skin."""
+    mp = gnm_mouth(head)
+    out = []
+    for name, part in (("teeth_upper", "teeth"), ("teeth_lower", "teeth"), ("tongue", "tongue")):
+        pr = _piece_points(mp[name]["verts"], mp[name]["faces"])
+        pr["t"] = MOUTH_SHELL[part]
+        pad = 2 * pr["hmax"]
+        out.append({"name": f"gnm_{name}", "part": part, "op": "add", "kind": "gnmpiece", "blend": 0.0, "layer": 0,
+                    "params": pr, "lo": pr["verts"].min(0) - pad, "hi": pr["verts"].max(0) + pad})
+    return out
+
+
+def sd_gnm_piece(p: np.ndarray, pr: dict) -> np.ndarray:
+    """One of GNM's loose mouth pieces as a solid: the space up to `t` under its surface (IMLS over its vertices),
+    within reach of its own vertices. GNM's tooth rows and tongue are OPEN shells (the gums end in a free edge at the
+    back, the tongue at its root): the plain IMLS made everything behind that edge "inside", a slab of tooth through
+    the whole mouth. Crowns are thinner than 2 t, so they come out solid; a gum is a sheet t thick."""
+    X = p.reshape(-1, 3)
+    d0 = pr["tree"].query(X)[0]
+    t = float(pr["t"])
+    out = d0 - t  # far from the piece: a (conservative) distance to the shell
+    near = d0 < t + 3 * pr["hmax"]
+    if near.any():
+        s = _imls(X[near], pr)
+        out[near] = np.maximum(np.maximum(s, -s - t), d0[near] - (t + 2 * pr["hmax"]))
+    return out.reshape(p.shape[:-1])
+
+
+def sock_points(head: dict) -> dict | None:
+    """GNM's mouth sock (and the quads that join it to the lips' inner loop) as IMLS points for the head's own field,
+    when the lips are parted and GNM's mouth is in use: the mouth's cavity is then GNM's bag, closed behind the lips
+    as it is in GNM's skin (without it the lips' inner rolls ended in a free edge: a curtain of skin hanging before
+    the teeth and a hollow lower lip). None with closed lips (the fill behind them stays)."""
+    if head.get("skin_index") is not None:
+        return None
+    mp = gnm_mouth(head)
+    if float(mp["gap"]) <= MOUTH_PARTED:
+        return None
+    if "points" not in mp["sock"]:
+        mp["sock"]["points"] = _piece_points(mp["sock"]["verts"], mp["sock"]["faces"], rounds=2)
+    return mp["sock"]["points"]
+
+
 def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
     """Google GNM's head skin, posed for the base: identity/expression applied (head["identity"] {name: value},
     head["seed"] for a random identity), eyes scaled about their centres (head["eyes"], e.g. 1.45: a stylised look),
@@ -1931,6 +2210,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         np.tensordot(ce, g["expression_basis"], 1)
     J = g["template_joint_positions"] + np.tensordot(ci, g["joint_identity_basis"], 1)
     V, J = V.astype(float), J.astype(float)
+    Vg = V.copy()  # GNM's OWN evaluation (template + identity + expression, every component from the same
+    # coefficients): what its loose pieces (eyeballs, teeth, tongue) are re-set from at the end (_gnm_pieces)
     slide = None
     if head.get("shape"):  # (faceslide.py) the older shape ops still work, but say what replaces them
         from . import faceslide
@@ -1962,7 +2243,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
                 V[a:a + 4096] += np.exp(-d2 / (2 * wp["sigma"] ** 2)) @ C_
     V = V + regional_identity(head.get("regions"))
     if head.get("pose"):  # landmark moves: a smile, lids, brows (least change of the regional expressions)
-        V = V + pose_expression(head["pose"], V, float(head.get("scale", 1.4)))
+        dp = pose_expression(head["pose"], V, float(head.get("scale", 1.4)))
+        V, Vg = V + dp, Vg + dp
     if head.get("mouth_gap") is not None:  # the lips parted by this much (m, world; 0 = closed): the least change of
         # the lower-face expression components that sets the inner lips' distance (slightly parted lips left
         # flecks at the corners where the slit ran out)
@@ -1974,7 +2256,8 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         want = float(head["mouth_gap"]) / float(head.get("scale", 1.4))
         for _ in range(3):  # (the gap is a norm: a few linearised steps)
             c = a * (want - gap(V)) / max(float(a @ a), 1e-12)
-            V = V + np.tensordot(c, g["expression_basis"][lower], 1)
+            dp = np.tensordot(c, g["expression_basis"][lower], 1)
+            V, Vg = V + dp, Vg + dp
             a = np.array([gap(V + 1e-3 * g["expression_basis"][i]) - gap(V) for i in lower]) / 1e-3
     k_eye = float(head.get("eyes", 1.0))
     r_eye = [float(np.median(np.linalg.norm(V[m] - J[2 + i], axis=1))) for i, m in enumerate(g["eye"])]
@@ -2019,7 +2302,9 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         if head.get("bound"):
             from . import onemesh as _om
             E = E * _om.neck_fade()[:, None]
-        V = V + lip_close_delta(V - E, g, float(head.get("scale", 1.4)))
+        dp = lip_close_delta(V - E, g, float(head.get("scale", 1.4)))
+        V, Vg = V + dp, Vg + dp
+    V = _gnm_pieces(V, Vg, g)
 
     def place(X):
         return eye_mid + s * (X - mid) @ R.T
@@ -2169,6 +2454,10 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         W, lm = _chin(W, lm, shape["chin"], float(eye_mid[0]), s)
     if shape.get("ears"):
         W = _ears(W, np.asarray(g["groups"]["ears"])[skin] > 0.5, shape["ears"], float(eye_mid[0]), s)
+    lipm = (np.asarray(g["groups"]["upper_lip_region"]) + np.asarray(g["groups"]["lower_lip_region"]) > 0.5)[skin]
+    # how far the head's own shape ops (pushes, simplify, under_eye / nostrils, jawline ...) moved the lips off GNM's
+    # surface: past MOUTH_PUSHED GNM's teeth no longer fit behind them (mouth_mode's fallback)
+    mouth_off = float(np.linalg.norm(W[lipm] - place(V[skin])[lipm], axis=1).max()) if len(W) == int(skin.sum()) else 0.0
     skin_index, zipped = None, 0
     if head.get("mouth_gap") is not None and float(head["mouth_gap"]) < 0.0015 and head.get("zip_lips", True):
         W, faces, skin_index, zipped = _zip_lips(W, faces, 0.5 * (lm[62] + lm[66]))
@@ -2181,32 +2470,45 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         W, faces = _catmull_clark(W, faces)
     N, h = _normals_and_h(W, faces)
     h = h * float(head.get("smooth", 1.0))
-    # the eyeballs seated behind the lids: GNM's eye joint is ahead of where a sphere of its eye's radius rests
-    # under the lid rims (centred there, the sphere stood 1-2 mm proud of the rims: bulging eyes in profile). Each
-    # centre moves back along the face until the sphere clears every lid landmark by EYE_SEAT
-    r_ball = s * k_eye * float(np.mean(r_eye)) * EYE_R
-    if head.get("eye_radius"):  # (blockin2) an ABSOLUTE eyeball radius (m, world; an adult's ~0.012), not GNM's eye x
-        # the head's scale: GNM's own eyeball is a 14.6 mm sphere (its limbus 6 mm), and x the body's head scale it
-        # made Garrett's 14.6 mm with a 7.3 mm drawn iris. Seated by the same search: it comes forward until it rests
-        # under the lid rims, its front near GNM's. Only eye size (head.eyes, a style's big eyes) multiplies it: not
-        # the head's size (block-in head_scale is a realistic head's size; adult eyeballs barely vary, ~24 mm long)
-        r_ball = float(head["eye_radius"]) * k_eye
+    # THE EYEBALLS. Default (gnmnative, 2026-10-12): GNM's OWN two-sphere eye, read off its eye vertices as they came
+    # through everything above with the skin (identity, the eye scaling, the body's head, a style): the scleral sphere
+    # where GNM puts it, its radius x the head's scale, limbus / cornea / pupil from the identity's eye components and
+    # the pupil expression (gnm_eyes). GNM's lids, blink and eye expressions are shaped round that ball (its paper:
+    # the scleral radius is HELD "maintaining eyelid compatibility"). No seat search, no radius of ours.
     back = -(R @ np.array([0, 0, 1.0]))
-    eyes = []
-    for j in (2, 3):
-        c = place(J[j])
-        rim = lm[42:48] if c[0] > 0 else lm[36:42]
-        lo, hi = -0.02, 0.02
-        for _ in range(40):  # the smallest move back where every rim point is EYE_SEAT outside the sphere
-            m = 0.5 * (lo + hi)
-            if np.linalg.norm(rim - (c + m * back), axis=1).min() >= r_ball + EYE_SEAT:
-                hi = m
-            else:
-                lo = m
-        eyes.append(c + hi * back)
+    eg = gnm_eyes(V, g)
+    eye_gnm = None
+    if head.get("eye_radius"):  # the OVERRIDE (blockin2; every head made 2026-10-10 .. 12 has it): an ABSOLUTE eyeball
+        # radius (m, world; an adult's ~0.012) x head.eyes, seated by a search: the centre moves back along the face
+        # from GNM's joint until the sphere clears every lid landmark by EYE_SEAT. The lids then stand ~1.1 mm off the
+        # ball at the margin (they are GNM's, shaped on its 14.6 mm sphere).
+        r_ball = float(head["eye_radius"]) * k_eye
+        eyes = []
+        for j in (2, 3):
+            c = place(J[j])
+            rim = lm[42:48] if c[0] > 0 else lm[36:42]
+            lo, hi = -0.02, 0.02
+            for _ in range(40):  # the smallest move back where every rim point is EYE_SEAT outside the sphere
+                m = 0.5 * (lo + hi)
+                if np.linalg.norm(rim - (c + m * back), axis=1).min() >= r_ball + EYE_SEAT:
+                    hi = m
+                else:
+                    lo = m
+            eyes.append(c + hi * back)
+    else:
+        eyes = [place(q["c"]) for q in eg]
+        r_ball = s * float(np.mean([q["r"] for q in eg]))
+        mean = lambda k: s * float(np.mean([q[k] for q in eg]))  # noqa: E731
+        eye_gnm = {"limbus": mean("limbus"), "cornea_r": mean("cornea_r"), "apex": mean("apex"), "iris_r": mean("iris_r"),
+                   "iris_depth": mean("iris_depth"), "pupil_r": mean("pupil_r"),
+                   "pupil": float(np.mean([q["pupil"] for q in eg])),
+                   "axes": [R @ q["axis"] for q in eg], "per_eye": [{k: (s * v if k not in ("axis", "c", "pupil") else v)
+                                                                      for k, v in q.items() if k != "c"} for q in eg]}
     rim = lm[42:48]
     return {"verts": W, "faces": faces, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(W),
-            "eyes": eyes, "eye_r": r_ball, "forward": -back,
+            "eyes": eyes, "eye_r": r_ball, "forward": -back, "eye_gnm": eye_gnm, "mouth_off": mouth_off,
+            # every GNM vertex (skin, sock, eyeballs, teeth, tongue) as placed: one evaluation of GNM's bases
+            "gnm_world": place(V),
             "eye_open": float(np.mean(rim[[1, 2], 2]) - np.mean(rim[[4, 5], 2])),  # the opening's height
             "lm68": lm, "skin_index": skin_index, "lips_zipped": zipped, "carry": carry,
             "plane": (cut, pn, s * GNM_BAND),

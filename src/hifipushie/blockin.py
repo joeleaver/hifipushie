@@ -132,7 +132,22 @@ def ruler(a, b) -> list[dict]:
 
 
 def set_identity(spec: dict, c) -> None:
-    spec["base"]["head"]["identity"] = {f"head_{i:03d}": round(float(x), 5) for i, x in enumerate(c)}
+    """The head's 170 components written into the spec; GNM's OTHER identity components (eyes_000..002: limbus and
+    cornea; teeth_000..079) are kept as they are (they are the same identity: one vector, GNM's 253)."""
+    old = spec["base"]["head"].get("identity")
+    keep = {k: v for k, v in old.items() if not k.startswith("head_")} if isinstance(old, dict) else {}
+    spec["base"]["head"]["identity"] = {**{f"head_{i:03d}": round(float(x), 5) for i, x in enumerate(c)}, **keep}
+
+
+def identity_extra(spec: dict) -> dict:
+    """GNM's identity components beyond the head's 170 that the spec holds: {"eyes_000": .., "teeth_012": ..}
+    (unset = 0 = GNM's mean eye and teeth)."""
+    idn = spec["base"]["head"].get("identity")
+    return {k: float(v) for k, v in idn.items() if not k.startswith("head_")} if isinstance(idn, dict) else {}
+
+
+GNM_SET = ("eyes_", "teeth_")          # identity components a step may SET by name: "id:eyes_001": sd
+GNM_EXPR_SET = ("pupils_", "tongue_")  # expression components a step may SET by name: "ex:pupils_000": value
 
 
 def vocabulary() -> str:
@@ -364,7 +379,10 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         c = np.asarray(D["m_m"] if male else D["m_f"], float)
     set_identity(sp, c)
     hd["gnm_base"] = float(default_gnm_base(a) if gnm_base is None else gnm_base)
-    hd.setdefault("eye_radius", humans.eye_radius(a))   # an adult eyeball (12 mm), not GNM's eye x the head's scale
+    # (gnmnative, 2026-10-12; Joe: "we might have done better to accept their eyeball, since their lid shapes are
+    # built around it") GNM's OWN eyeball: no eye_radius (2026-10-10 .. 12 every start set 0.012; a refs model's is
+    # dropped too). The key stays as an explicit override (block_in_step {"eye_radius": m})
+    hd.pop("eye_radius", None)
     rj = {"views": views, "cameras": cams}
     if cams is None or cameras == "refit":
         rj["cameras"] = fit_cameras(sp["base"], views)
@@ -597,6 +615,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     c = c0.copy()
     big, designed = [], []
     sculpts = {}
+    idx_extra, iris_mm = {}, None
     for k, v in (moves or {}).items():
         v = float(v)
         if k in BODY_KEYS:
@@ -607,6 +626,14 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
             sp["base"].setdefault("style", {}).setdefault("human", {})["head_size"] = v
         elif k in POSE_KEYS:
             sp["base"]["head"].setdefault("pose", {})[k] = v
+        elif k.startswith("id:") and k[3:].startswith(GNM_SET):   # GNM's eye / teeth identity components, SET (sd)
+            idx_extra[k[3:]] = v
+            if abs(v) > 3.0:
+                big.append(f"{k} (past 3 sd)")
+        elif k.startswith("ex:") and k[3:].startswith(GNM_EXPR_SET):   # the pupil / tongue expression components, SET
+            sp["base"]["head"].setdefault("expression", {})[k[3:]] = v
+        elif k == "iris_mm":   # the iris' diameter (mm at the model): GNM's limbus component, solved after the identity
+            iris_mm = v
         elif k.startswith("shape:"):   # DESIGNED soft-tissue ops (age): not data; flagged in the log and reply
             from . import faceslide, headage
             nm = k[6:]
@@ -651,6 +678,20 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
         else:
             sp["base"]["head"][k] = v
     set_identity(sp, c)
+    for k, v in idx_extra.items():
+        from . import base as basemod
+        if k not in [str(n) for n in basemod._gnm_data()["identity_names"]]:
+            raise ValueError(f"id:{k}: not a GNM identity component (eyes_000..002, teeth_000..079)")
+        sp["base"]["head"]["identity"][k] = round(v, 5)
+    if iris_mm is not None:
+        from . import base as basemod
+        if sp["base"]["head"].get("eye_radius"):
+            raise ValueError("iris_mm: the head overrides GNM's eyeball (base.head.eye_radius); with the override the drawn "
+                             "iris is skin.eyes.iris_size. Drop the key first (block_in_step {\"eye_radius\": 0})")
+        li = basemod.limbus_identity(sp, iris_mm)
+        sp["base"]["head"]["identity"]["eyes_000"] = li["eyes_000"]
+        if isinstance((sp.get("skin") or {}).get("eyes"), dict):   # (the dressing's own drawn size would hide the limbus)
+            sp["skin"]["eyes"].pop("iris_size", None)
     out = out or _next_name(src)
     if (store.HOME / out / "spec.json").exists():
         raise ValueError(f"{out} exists: block-in steps write new models (revert = step again from an earlier one)")

@@ -308,8 +308,10 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     collarette, a limbal ring, a soft pupil; a sclera pinker toward its edge with fine vessels), under a wet film;
     shadowed where the lids lie on it; on the skin, the pink wet caruncle at the inner corner and the waterline of the
     lower lid. Lashes are geometry (base.lashes, lashes.py) over the lid margins darkened (skin.hair.lashes).
-    {"iris": colour, "iris_size": m (the visible iris' diameter: adults 11-12.5 mm, 11.7 on average), "pupil": 0..1
-    of the iris' radius (0.36; bright daylight 0.2-0.3), "veins": 0..1, "sclera": colour, "limbal": 0..1 (0.72: the
+    {"iris": colour, "iris_size": m (the visible iris' diameter: adults 11-12.5 mm, 11.7 on average; unset on a GNM
+    head with GNM's own eyeball: its limbus for the identity, base.head.identity.eyes_000), "pupil": 0..1
+    of the iris' radius (0.36; bright daylight 0.2-0.3; unset on GNM's eyeball: its own pupil, 0.5 at rest, moved by
+    base.head.expression.pupils_000: +1 = 0.67, -1 = 0.33), "veins": 0..1, "sclera": colour, "limbal": 0..1 (0.72: the
     dark ring at the iris' edge, darker and wider in the young), "limbal_width": share of the radius (0.2),
     "iris_contrast": the fibres' contrast (1), "gloss": 0..1 (1: the tear film, a clear coat over a matte iris and
     sclera: the sharp catchlight on the cornea), "occlusion": 0..1 (1: the lids' shadow on the ball, all round the
@@ -338,7 +340,10 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     scl = _hex(e["sclera"]) if "sclera" in e else [round(x, 4) for x in (0.92 - 0.05 * old, 0.89 - 0.06 * old, 0.85 - 0.09 * old)]
     veins = float(e.get("veins", 0.4 + 0.4 * old))
     span = 2.1
-    path = skin_swatch.eye_image(iris, float(e.get("pupil", 0.36)), veins, tuple(scl), p["seed"], span,
+    from . import base as _base
+    eg = _base.eye_native(spec)  # (gnmnative) GNM's own eye: the iris at its limbus, the pupil as its geometry has it
+    # (the identity's eyes_* components and the expression's pupils_000: dilation is a pose value)
+    path = skin_swatch.eye_image(iris, float(e.get("pupil", eg["pupil"] if eg else 0.36)), veins, tuple(scl), p["seed"], span,
                                  limbal=float(e.get("limbal", 0.72)), contrast=float(e.get("iris_contrast", 1.0)),
                                  limbal_width=float(e.get("limbal_width", 0.2)))
     gloss = float(e.get("gloss", 1.0))
@@ -347,7 +352,7 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
         c, f = J[f"eye{sd}"], J[f"eye_front{sd}"]
         r = float(np.linalg.norm(f - c))
         d = (f - c) / max(r, 1e-9)
-        size = float(e.get("iris_size", 0.0118 * r / 0.0123)) * span
+        size = float(e.get("iris_size", 2 * eg["limbus"] if eg else 0.0118 * r / 0.0123)) * span
         nm = sd.replace(".", "_")
         out[f"skin:eye{nm}"] = {"part": part, "color": "image",
                                 # under the film (the part's coat, eye_base) the iris and sclera are matte; without a

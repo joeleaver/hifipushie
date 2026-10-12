@@ -5315,3 +5315,67 @@ TEST running: eb_tess / eb_garrett = the accepted heads without `eye_radius` (GN
 behaviour), eye tiles beside tess_a1 / garrett_a1 and the references. If it reads as well or better: make GNM's ball
 (exactly, at its joint) the default for GNM heads, take limbus and cornea from the identity, keep iris_size as the
 read sets it, and do the lid-fold track (A) on GNM's ball.
+
+## gnmnative (2026-10-12, "gnmnative" agent, branch `worktree-agent-a2fcb07f033d0d9ca` from main 99ecf39; scratch DURABLE in
+## /mnt/data/hifipushie/gnmnative: run.sh <script> (capped, this worktree's src, main's workspace), out/ (logs, tiles);
+## scripts in spikes/gnmnative; scratch models gn_* (forks), nt_* (Tess), ng_* (Garrett, paintings), nh_* (held-out Garrett))
+STATE: A (GNM's eyeball) built and measured, renders running. B (GNM's mouth), C (rebuilds), D (tour) not started.
+NEXT: see the end of this section.
+
+Joe, 2026-10-12: "I think we might have done better to accept their eyeball, since their lid shapes are built around
+it" ... "Yes, we will absolutely have to rebuild."; on the mouth: "Our own mouth isn't great, it was just low on my
+list. Let's throw it away and use GNM's, and we'll figure out the dressing as we go along."; then, through the
+coordinator: "GNM even does pupils and tongues." and "the interior features and the eyeball features are supposed to
+be driven by identity and expression also." So the rule of this section: USE WHAT GNM SHIPS; ONE evaluation of GNM's
+bases for every component; nothing of ours placed on top.
+
+### 0. What GNM's mesh holds (spikes/gnmnative/probe.py, eyeprobe.py, cornea.py)
+The brief's component list was wrong in one place: the two 1,440-vertex components are the TEETH, not the eyeballs.
+17,821 vertices, 8 connected components:
+| component | vertices | groups |
+|---|---|---|
+| skin | 12,466 | incl. `mouth_sock` 406 (the mouth bag IS part of the skin's component: it hangs from the inner lip loop) and `eye_sockets` 608 (the lining behind the lids) |
+| eye interior x 2 | 385 each | `scleras` 240 + `irises` 145 (of which `pupils` 49): the scleral sphere (r 14.50 mm) with a RECESSED iris disc (limbus ring r 5.25 mm at depth 13.28 mm, pupil r 2.62 mm at depth 12.82) |
+| eye exterior x 2 | 386 each | `eye_exteriors`: a clear shell, sphere r 14.59 mm with the corneal bulge (apex 16.22 mm, corneal sphere r 7.66 mm; the two spheres meet at r 6.04 mm = the paper's limbus 6.0) |
+| upper teeth + gums | 1,440 | `upper_teeth_and_gums` (teeth 934, gums 702 with the lower's) |
+| lower teeth + gums | 1,440 | `lower_teeth_and_gums` |
+| tongue | 933 | `tongue` |
+So GNM's eye is exactly the "clear cornea over a recessed iris" build (anterior chamber 2.94 mm; anatomical 2.5-3.2).
+Its 4 joints: 0 neck base, 1 head, 2 / 3 the eyes (the scleral spheres' centres, to 0.00 mm); skinning weights exist
+(gaze = rotation about the eye joints).
+
+What moves what (max vertex move per +1 of a component, mm):
+| basis | n | skin | eyeballs | lower teeth | upper teeth | tongue |
+|---|---|---|---|---|---|---|
+| identity `head_*` | 170 | 9.6 | 1.4 | 1.8 | 1.7 | 1.8 |
+| identity `eyes_*` | 3 | 0 | 0.40 | 0 | 0 | 0 |
+| identity `teeth_*` | 80 | 0 | 0 | 3.8 | 3.4 | 0 |
+| expression `left/right_eye_region_*` | 100 + 100 | 2.7 | 0 | 0 | 0 | 0 |
+| expression `lower_face_region_*` | 150 | 6.8 | 0 | 5.0 | 0 | 4.6 |
+| expression `tongue_*` (+ `tongue_mean`) | 32 | 0 | 0 | 0 | 0 | 11.5 |
+| expression `pupils_000` | 1 | 0 | 0.86 (iris disc only) | 0 | 0 | 0 |
+- The 170 HEAD components move every loose piece, and RIGIDLY: the eyeball is translated with its joint (fitted sphere
+  centre = joint to 0.00 mm on random heads, radius 14.50, limbus and cornea unchanged); teeth and tongue: a
+  translation up to 3.9 mm per 2 sd with scale 0.998-1.000 and a residual < 0.03 mm. So GNM DOES couple the interior
+  and the eyeballs to the head's identity, as placement; their own shape is the 3 + 80 components' alone.
+- `eyes_000` = the limbus (inner ring 4.56 .. 5.95 mm at -2 .. +2 sd, i.e. sd 0.35 mm; x 1.15 at the sphere junction
+  = the paper's N(6.0, 0.44)) with the pupil and the cornea's base in proportion; `eyes_001` = the cornea's prominence
+  (apex 16.68 .. 15.76 mm at -2 .. +2); `eyes_002` ~ nothing (0.02 mm).
+- `pupils_000`: pupil radius 2.62 mm +- 0.87 per unit (0.88 mm at -2, 4.36 at +2): dilation. At 0 the pupil is 0.50
+  of the iris disc (our painted default was 0.36).
+- `lower_face_region_*` move the lower teeth nearly rigidly (rigid residual 0.005-0.16 mm on moves of 0.4-9.9 mm):
+  GNM's jaw. The upper teeth never move with an expression. The eye-region expressions do not move the eyeballs
+  (gaze is the joints').
+- `tongue_mean` is an expression component of its own (9.2 mm, tongue only).
+
+### A. GNM's own eyeball (base.gnm_eyes, base._gnm_pieces, base.eye_native / drawn_iris / limbus_identity)
+What our code did to GNM's loose pieces before (spikes/gnmnative/hookprobe.py): on a one-mesh head every GNM vertex
+went through the SKIN's fields (the body's head binding, gnm_base, the dimorphism field, the style's head sliders,
+the eye scaling), also the eyeballs, teeth and tongue, which nobody looked at because our own ball and the kit's
+teeth were shown: garrett_a1's GNM eyeball came out 0.36 mm rms / 1.0 mm max out of round (x / y / z 0.964 / 0.945 /
+0.938), tess_a1's 1.9 mm max; the tooth rows bent by up to 5.8 mm, the tongue 5.2 mm. Fix (`base._gnm_pieces`): each
+loose piece is GNM's OWN shape for the head's coefficients (template + identity + expression incl. pose / mouth_gap /
+lip_close, one evaluation), carried by the translation and uniform scale that take the skin beside it (an eyeball:
+its lid margin and socket-lining rings -2 .. 2; teeth + tongue as ONE piece: the lip and chin regions) from GNM's
+evaluation to where our steps put it. With nothing of ours on the head it is the identity. After it: residual 0.000
+mm (eyes, upper teeth); the lower teeth / tongue differ from the neutral only by lip_close's own jaw turn.

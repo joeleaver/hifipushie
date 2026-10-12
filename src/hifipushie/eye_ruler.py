@@ -461,10 +461,9 @@ def model(spec: dict, cam: dict, brows: bool = True, px_mm: float = STEP) -> lis
     kk = mm / px_mm                                  # raster px per picture px
     _, k, ps = likeness.render(mesh, cam, box, px=int(round((box[2] - box[0]) * kk)), brows=False, passes=True)
     part = ps["part"]
-    r_iris = 0.51 * 0.985 * r * 1000
-    drawn = ((spec.get("skin") or {}).get("eyes") or {}).get("iris_size")     # the dressing's own iris diameter (m)
-    if drawn:
-        r_iris = 500.0 * float(drawn)
+    from . import base as _basemod
+    r_iris = 1000.0 * _basemod.drawn_iris(spec, r)   # the dressing's own iris (skin.eyes.iris_size), else GNM's limbus
+    # for the identity (its eyeball: eyes_000), else our own ball's 0.51 r
     Vh = np.asarray(ht["verts"], float)
     out = []
     for s in (0, 1):

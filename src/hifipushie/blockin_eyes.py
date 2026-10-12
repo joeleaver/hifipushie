@@ -439,34 +439,50 @@ def iris_check(name: str) -> dict:
     if P is None:
         raise ValueError("iris_check: the detector found no face on the front picture")
     lb = limbus(img, P)
-    base = store.load(name)["base"]
+    spec = store.load(name)
+    base = spec["base"]
     st = humanfit.state(base)
+    from . import base as basemod
+    native = basemod.eye_native(spec) is not None   # GNM's own eyeball: the iris is its limbus (identity eyes_000)
     mm = likeness._mm_per_px(cam, st["L"][27:48])
     photo = 2 * float(np.mean([e["r_px"] for e in lb])) * mm
     det_px = float(np.mean([e["detector_px"] for e in lb]))
     kd = det_px / max(float(np.mean([e["r_px"] for e in lb])), 1e-6)
     if det_px < MIN_IRIS_PX or not LIMBUS_OK[0] <= kd <= LIMBUS_OK[1]:
         det = 2 * det_px * mm
-        return {"photo_mm": None, "detector_mm": det, "model_mm": 2 * 0.51 * 0.985 * float(st["head"].get("eye_r", 0.012)) * 1000,
-                "ratio": None, "eye_radius": None, "iris_rgb": None, "iris_hex": None,
+        r0 = float(st["head"].get("eye_r", 0.012))
+        return {"photo_mm": None, "detector_mm": det,
+                "model_mm": 2000 * (basemod.drawn_iris(spec, r0) if native else 0.51 * 0.985 * r0),
+                "ratio": None, "eye_radius": None, "eyes_000": None, "iris_rgb": None, "iris_hex": None,
                 "text": (f"IRIS: not readable on the front picture (iris radius {det_px:.1f} px, {mm:.2f} mm / px: the "
                          f"limbus needs {MIN_IRIS_PX:.0f} px; the detector's ring gives {det:.1f} mm +- {2 * mm:.1f}). "
-                         f"Use a closer picture of the eyes to set eye_radius / the iris colour")}
+                         f"Use a closer picture of the eyes to set the iris' size (block_in_step {{\"iris_mm\": mm}}) / colour")}
     r_ball = float(st["head"].get("eye_r", 0.012))
-    model = 2 * 0.51 * 0.985 * r_ball * 1000
+    model = 2000 * basemod.drawn_iris(spec, r_ball) if native else 2 * 0.51 * 0.985 * r_ball * 1000
     k_eye = float(base["head"].get("eyes") or 1.0)
-    want = r_ball * photo / model / k_eye
+    want = None if native else r_ball * photo / model / k_eye
+    e000 = None
+    if native:
+        try:
+            e000 = basemod.limbus_identity(spec, photo)["eyes_000"]
+        except ValueError:
+            e000 = None
     rgb = np.mean([e["rgb"] for e in lb], 0)
     hx = "#%02x%02x%02x" % tuple(int(round(255 * float(x))) for x in rgb)
     txt = (f"IRIS: the picture's limbus is {photo:.1f} mm at the model (fitted camera), the model draws {model:.1f} mm "
            f"({model / photo:.2f} x)")
-    if abs(model / photo - 1) > 0.05:
+    if native and abs(model / photo - 1) > 0.05:
+        txt += (f": block_in_step {{\"iris_mm\": {photo:.2f}}} sets GNM's limbus component (identity eyes_000 -> "
+                + (f"{e000:+.2f} sd" if e000 is not None else "past 3 sd: check the read")
+                + "): the eyeball stays GNM's 14.6 mm sphere x the head's scale (its lids are shaped on it), the iris "
+                "and the cornea's base change with the identity. skin.eyes.iris_size still overrides the DRAWN iris alone")
+    elif abs(model / photo - 1) > 0.05:
         txt += (f": set skin.eyes.iris_size {photo / 1000:.4f} (the drawn iris). Keep eye_radius: GNM's lids are shaped on "
                 f"its own ball, a smaller one leaves the corners empty; the eye step matches the lids in mm (eye_ruler), so "
                 f"the ball's size no longer sets the opening. (Without the ruler, on a small picture, the lids are "
                 f"matched in iris radii and eye_radius {want:.5f} makes those radii true.)")
     txt += f". The picture's iris ring colour: {hx} (skin.eyes.iris; check it rendered: the eye picture adds its own contrast)"
-    return {"photo_mm": photo, "model_mm": model, "ratio": model / photo, "eye_radius": want, "iris_rgb": rgb.tolist(),
+    return {"photo_mm": photo, "model_mm": model, "ratio": model / photo, "eye_radius": want, "eyes_000": e000, "iris_rgb": rgb.tolist(),
             "iris_hex": hx, "text": txt}
 
 
