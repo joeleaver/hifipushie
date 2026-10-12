@@ -64,12 +64,14 @@ FOLDS = {
     "marionette": {"path": [("lm_mouth_corner.L", (0.05, 0.0, -0.05)), ("lm_mouth_corner.L", (0.085, 0.03, -0.22)),
                             ("lm_mouth_corner.L", (0.15, 0.07, -0.42))],
                    "plus": (1, 0, 0), "width": 6.0, "depth": 0.7, "tint": 0.12, "shade": 0.2, "roll": (6.0, 7.0, 0.3),
-                   "search": 5.0, "res": 1.4, "min_extent": 0.65,
+                   "search": 5.0, "res": 1.4, "min_extent": 0.65, "read_from": 0.3,   # (its first third lies in the mouth corner's own shadow)
                    "about": "the soft fold from the mouth's corner down and a little out toward the jaw (the jowl's pad beside it)"},
     "commissure": {"path": [("lm_mouth_corner.L", (0.06, 0.01, -0.01)), ("lm_mouth_corner.L", (0.09, 0.03, -0.05)),
                             ("lm_mouth_corner.L", (0.115, 0.05, -0.10))],
                    "plus": (1, 0, 0.5), "width": 5.0, "depth": 0.6, "tint": 0.1, "shade": 0.3, "roll": None,
-                   "search": 3.5, "res": 1.0, "about": "the depression at the mouth's corner (a soft pit turning the corner down)"},
+                   "search": 3.5, "res": 1.0, "read": False,
+                   "read_why": "the mouth's own corner and its shadow lie inside this feature's window: on Tess's photographs, a smooth 22-year-old, it read 0.14-0.19 and was laid at the cap",
+                   "about": "the depression at the mouth's corner (a soft pit turning the corner down)"},
     "mouth_corner": {"path": [("lm_mouth_corner.L", (0.06, 0.01, 0.0)), ("lm_mouth_corner.L", (0.18, 0.07, -0.03))],
                      "plus": (0, 0, 1), "width": 1.4, "depth": 0.45, "tint": 0.5, "shade": 0.15, "roll": None,
                      "search": 2.5, "res": 0.7, "about": "the crease running out from the mouth's corner"},
@@ -411,12 +413,11 @@ def paths(spec: dict | None, part: str, J: dict, cfg: dict | None = None, names=
             t = np.linspace(0, 1, len(P))
             snapped = None
             if fd.get("snap"):       # onto the head's own crease, where it has one
-                key = (id(S), name, sd)
-                if key not in _SNAP:
-                    if len(_SNAP) > 40:
-                        _SNAP.clear()
-                    _SNAP[key] = own_crease(S, P, ac, nrm, float(fd["snap"]))
-                off, share = _SNAP[key]
+                cache = S.__dict__.setdefault("_snap", {})
+                key = (name, sd, len(P))
+                if key not in cache:
+                    cache[key] = own_crease(S, P, ac, nrm, float(fd["snap"]))
+                off, share = cache[key]
                 snapped = (round(float(np.median(off)), 2), round(share, 2))
                 if np.abs(off).max() > 0.05:
                     P = S.seat(P + 0.001 * off[:, None] * ac)

@@ -761,6 +761,71 @@ def regions(c: Context) -> dict:
     return c._regions
 
 
+# ---------------------------------------------------------------- lips: in image space, at the picture's own lips
+
+LIP_YAW = 50.0          # deg: views turned further do not give the detector's lip outline
+
+
+def lip_polygons(P68) -> dict:
+    """{"lip_upper", "lip_lower": (n, 2) polygons} of a picture's own lips from its 68 detector points (outer contour
+    48-59, inner 60-67)."""
+    P68 = np.asarray(P68, float)[:, :2]
+    return {"lip_upper": np.r_[P68[48:55], P68[64:59:-1]], "lip_lower": np.r_[P68[54:60], P68[48:49], P68[60:61], P68[67:63:-1]]}
+
+
+def _lip_read(c: Context) -> dict:
+    """The lips' colour IN IMAGE SPACE, like with like (skinfolds2): the picture's pixels inside ITS OWN lip outline
+    (the detector's, a pixel in from the edge) against our render's pixels inside OUR lips, both under the fitted
+    light, the picture levelled to our exposure on the plain skin: {region: {"d": Lab picture - ours, "picture",
+    "ours", "px", "by_view"}}. Why not the albedo ratio at our lips' pixels: a mouth's shape is never the picture's
+    to the millimetre, and where our (fuller) lip lies over the picture's skin the read mixed her upper lip with the
+    skin over it: lighter and yellower than her lip (Tess: "orange-brown" for a brown-mauve lip). The rendered lip is
+    in the loop by construction: a second round reads what the first one's parameters render as."""
+    from PIL import Image, ImageDraw
+    from scipy import ndimage
+    from . import blockin
+    out = {}
+    try:
+        rj = blockin._refs(c.name)
+    except Exception:  # noqa: BLE001
+        return out
+    R = regions(c)
+    acc = {"lip_upper": [], "lip_lower": []}
+    for f, v in zip(c.frames, c.views):
+        if abs(f.get("yaw", 0.0)) > LIP_YAW or "R" not in f:
+            continue
+        try:
+            P = blockin.detect_view(Image.open(f["image"]).convert("RGB"), rj["views"][f["view"]])
+        except Exception:  # noqa: BLE001
+            P = None
+        if P is None:
+            continue
+        k = N / (f["box"][2] - f["box"][0])
+        g = np.asarray(v["gain"], float)
+        m = c.view == f["view"]
+        for key, poly in lip_polygons(P).items():
+            im = Image.new("L", (N, N), 0)
+            ImageDraw.Draw(im).polygon([tuple((np.asarray(q_) - np.asarray(f["box"][:2])) * k) for q_ in poly], fill=255)
+            pm = ndimage.binary_erosion(np.asarray(im) > 127, iterations=1)
+            ps_ = _srgb(f["P"])
+            pm &= (ps_.max(-1) < CLIP[1]) & (ps_.min(-1) > CLIP[0])
+            ours = np.zeros(N * N)
+            ours[c.pix[m]] = R[key][m]
+            om = (ours.reshape(N, N) > 0.5) & (f["alpha"] > 0.98)
+            if pm.sum() < MIN_PX or om.sum() < MIN_PX:
+                continue
+            lp, lo = lab(np.median(f["P"][pm], 0) / g), lab(np.median(f["R"][om], 0))
+            acc[key].append((v["weight"] * min(pm.sum(), om.sum()), lp, lo, f["view"], int(pm.sum())))
+    for key, rows in acc.items():
+        if not rows:
+            continue
+        w = np.array([r_[0] for r_ in rows])
+        lp, lo = np.average([r_[1] for r_ in rows], 0, w), np.average([r_[2] for r_ in rows], 0, w)
+        out[key] = {"d": [round(float(x), 2) for x in lp - lo], "picture": [round(float(x), 1) for x in lp], "ours": [round(float(x), 1) for x in lo],
+                    "px": int(sum(r_[4] for r_ in rows)), "by_view": {r_[3]: [round(float(x), 2) for x in r_[1] - r_[2]] for r_ in rows}}
+    return out
+
+
 # ---------------------------------------------------------------- fine marks: freckles (image space, per view)
 
 SPECK = (0.35, 1.3)     # mm: the band (two Gaussian sigmas) a freckle lives in
@@ -886,6 +951,15 @@ def read(name: str, spec: dict | None = None, frames: list | None = None, anchor
     R = regions(c)
     out = {"anchor": {k: v for k, v in c.anchor.items() if k != "gain"}, "views": c.views,
            "regions": {k: _region(c, wz) for k, wz in R.items()}}
+    # the lips: in image space at the picture's own lips (the albedo-ratio read at OUR lips' pixels kept beside it)
+    out["lips_image"] = _lip_read(c)
+    for key, q in out["lips_image"].items():
+        r0 = out["regions"].get(key)
+        if r0 and r0.get("read"):
+            r0["d_albedo"] = r0["d"]
+            r0["d"] = q["d"]
+            r0["by_view"] = q["by_view"]
+            r0["image"] = {"picture": q["picture"], "ours": q["ours"]}
     out["freckles"] = _freckle_read(c)
     out["brows"] = _brow_read(c)
     out["eyes"] = _eye_read(c)
@@ -904,7 +978,9 @@ def read_text(r: dict) -> str:
                  + (f" (the light changes colour across the face: {v['light_spread']})" if v["weight"] < 0.6 else ""))
     L.append(f"  (mm a pixel: the PICTURE's own, at the face) {'region':16s} {'px':>7s}  {'ours L a b':20s} {'picture L a b':20s} d L a b")
     for k, x in r["regions"].items():
-        L.append(f"  {k:16s} {x['px']:7.0f}  " + (f"{str(x['ours']):20s} {str(x['picture']):20s} {x['d']}" if x["read"] else "NOT READ"))
+        L.append(f"  {k:16s} {x['px']:7.0f}  " + (f"{str(x['ours']):20s} {str(x['picture']):20s} {x['d']}" if x["read"] else "NOT READ")
+                 + (f"   <- d in IMAGE SPACE at the picture's own lips: rendered {x['image']['ours']} vs the picture's {x['image']['picture']} "
+                    f"(the albedo ratio at our lips' pixels said {x['d_albedo']})" if x.get("image") else ""))
     fr = r["freckles"]
     L.append("  freckles: " + (f"picture asks amount {fr['amount']} (ours {fr['have']})" if fr["read"] else "NOT READ") + f"; specks / cm2 by view: {fr['views']}")
     b = r["brows"]
@@ -1601,7 +1677,7 @@ def _fold_view(f: dict, q: dict, fd: dict, ldir=None) -> dict | None:
     # the station itself: on the skin the camera sees (not behind the nose), not foreshortened to nothing
     ix, iy = np.clip(np.round(p0[:, 0]).astype(int), 0, N - 1), np.clip(np.round(p0[:, 1]).astype(int), 0, N - 1)
     seen = (np.linalg.norm(f["X"][iy, ix] - P, axis=1) < 0.003) & (sc > 0.45 / f["mm"])
-    valid = seen & (gs.mean(1) > 0.8)
+    valid = seen & (gs.mean(1) > 0.8) & (q["t"] >= float(fd.get("read_from", 0.0)))
     if valid.sum() < max(4, 0.25 * len(P)):
         return None
     sg = float(np.clip(0.3 * fd["width"] / f["mm"], 0.7, 4.0))
@@ -1693,8 +1769,12 @@ def fold_read(c: Context) -> dict:
             ldirs[f["view"]] = None
     lash = _lid_read(c, nominal)
     for name, fd in sf.FOLDS.items():
-        ok_views = [f for f in c.frames if native[f["view"]] <= fd["res"]]
+        ok_views = [f for f in c.frames if native[f["view"]] <= fd["res"]] if fd.get("read", True) else []
         row = {"readable": bool(ok_views), "sides": {}, "about": fd["about"]}
+        if not fd.get("read", True):
+            row["why"] = "NOT READ (" + fd["read_why"] + "): set skin.folds." + name + " by eye"
+            out[name] = row
+            continue
         if not ok_views:
             row["why"] = (f"cannot tell: the pictures have {min(native.values()):.2f} mm a pixel at the face, this needs "
                           f"{fd['res']} or finer (a {fd['width']} mm feature)")
@@ -1831,9 +1911,15 @@ def fold_read(c: Context) -> dict:
                     res.pop("move", None)
                     if lq["present"]:
                         res.update({k_: lq[k_] for k_ in ("picture", "ours", "diff", "excess", "share")})
-                elif lq["absent_in_picture"] and not res["present"]:
-                    res.update({k_: lq[k_] for k_ in ("picture", "ours", "diff", "excess", "share", "absent_in_picture")})
-                    res["by"] = "lash line"
+                elif lq.get("works"):
+                    # the lash-line read WORKS here (the picture's line, or ours, is found in 3+ columns) and says "as
+                    # ours" or "ours is darker": it is the lid's read, the valley across the path is not (round 2 on
+                    # Tess: her line 0.32, ours 0.30: as ours; the path's valley, 1.5 mm off her line, said "ours has
+                    # more" and took half the fold off again). skinfolds2
+                    res.update({k_: lq[k_] for k_ in ("picture", "ours", "diff", "excess", "share")})
+                    res["present"], res["by"], res["confidence"] = False, "lash line", 0.0
+                    res["absent_in_picture"] = bool(lq["excess"] >= 0.06)
+                    res.pop("move", None)
             row["sides"][sd] = res
         out[name] = row
     return {"folds": out, "fields": _field_read(c, native)}
@@ -1909,6 +1995,7 @@ def _lid_read(c: Context, nominal: dict) -> dict:
                "picture": round(dark, 3), "ours": round(dark_o, 3), "diff": round(dark - dark_o, 3), "share": round(len(good) / len(rows), 2),
                "excess": round(dark_o - dark, 3), "views": [f["view"]]}
         res["present"] = bool(len(good) >= 3 and dark - dark_o >= 0.04)
+        res["works"] = bool(len(good) >= 3 or sum(r_["dark_ours"] >= LID_DARK for r_ in rows) >= 3)
         res["absent_in_picture"] = bool(dark_o - dark >= 0.08 and dark < LID_DARK)
         res["confidence"] = round(float(np.clip(len(good) / 4.0, 0, 1) * np.clip((dark - dark_o) / 0.1, 0, 1)), 2)
         if len(good) >= 3:
@@ -2026,7 +2113,7 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                 gain = (s["amount"] if "amount" in s else min(s["step"] / STEP_REF[name], max(STEP_MAX - a0, 0.0)) if s.get("by") == "step"
                         else s["diff"] / FOLD_REF[name])
                 a1 = float(np.clip(a0 + a_leg + gain, 0, 1.5))
-                if a0 > 0.2 and s.get("by") == "valley" and s["ours"] < 0.3 * a0 * FOLD_REF[name]:
+                if a0 > 0.2 and s.get("by") == "valley" and s["ours"] < 0.5 * a0 * FOLD_REF[name]:
                     # ours is laid and does not read under this light: more paint will not make it a form (a flat
                     # frontal light hides painted relief; the picture's fold is geometry + occlusion)
                     a1 = a0
