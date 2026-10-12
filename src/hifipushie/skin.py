@@ -21,9 +21,14 @@ spec["skin"] = {
   "thin": 0..1 (0.5),             thin skin shows blood, veins and under-eye colour more, and scatters more
   "sun": 0..1 (0.3),              sun exposure: uneven pigment, freckles' kin, age spots with age
   "zones": {layer: strength},     per-layer strength of the built-in colour zones (see ZONE_LAYERS), 0 turns one off
-  "lips": {"blood": 1, "melanin": 1, "roughness": 0.36, "dry": 0}
+  "lips": {"blood": 1, "melanin": 1, "roughness": 0.36, "dry": 0, "lower": {"blood": 1, "melanin": 1} (the lower
+           lip's own colour, x the lips')}
   "features": {"freckles", "moles", "age_spots", "blemishes", "veins", "flush", "sunburn", "tan"}  (see FEATURES)
   "wrinkles": {"amount": null (from age) | 0..1, "<region>": 0..1}                                 (see WRINKLES)
+  "folds": {name: amount | {"amount", "width", "roll", "L" / "R": {"amount", "shift", "extent"}}}   (see FOLDS: the
+                                  soft-tissue lines and bulges the shape model does not make: nasolabial, marionette,
+                                  tear_trough (+ the eye bag), lid_fold, mentolabial, glabella, mouth_corner; colour and
+                                  painted relief, placed from landmarks + the placement skin_from_reference measures)
   "hair": {"stubble", "brows", "body"}                                                             (see HAIR)
   "scars": [{"kind": "cut" | "surgical" | "burn" | "keloid" | "pockmarks", ...}]                   (see SCARS)
   "tattoos": [{"image": {...paint image...}, "age": years, "opacity"}]
@@ -468,7 +473,7 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds"}
 GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", "eye_rims")
 
 
@@ -488,8 +493,8 @@ def group_of(layer: str) -> str:
     if n in ZONE_LAYERS or n.startswith("mottle_"):
         return "zones"
     return "features"
-ZONE_LAYERS = {"forehead_yellow": 1.0, "midface_red": 1.0, "nose_red": 1.0, "ears_red": 1.0, "lower_cool": 1.0,
-               "under_eye": 1.0, "eyelids": 1.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
+ZONE_LAYERS = {"forehead_yellow": 1.0, "midface_red": 1.0, "nose_red": 1.0, "perioral_red": 1.0, "ears_red": 1.0, "lower_cool": 1.0,
+               "under_eye": 1.0, "eyelids": 1.0, "periorbital": 0.0, "neck": 1.0, "palms": 1.0, "soles": 1.0, "knuckles": 1.0,
                "elbows_knees": 1.0, "fingertips": 1.0, "nails": 1.0}
 
 
@@ -526,17 +531,19 @@ def params(spec: dict) -> dict:
         raise SpecError(f"skin zones: unknown {sorted(bad)} (have {', '.join(ZONE_LAYERS)})")
     p["zones"] = {**ZONE_LAYERS, **{k: float(v) for k, v in z.items()}}
     lips = sk.get("lips") or {}
-    bad = set(lips) - {"blood", "melanin", "roughness", "dry"}
-    if bad:
-        raise SpecError(f"skin lips: unknown keys {sorted(bad)} (have blood, melanin, roughness, dry)")
+    bad = set(lips) - {"blood", "melanin", "roughness", "dry", "lower"}
+    low = lips.get("lower") or {}
+    if bad or not isinstance(low, dict) or set(low) - {"blood", "melanin"}:
+        raise SpecError(f"skin lips: unknown keys {sorted(bad)} (have blood, melanin, roughness, dry, lower: {{blood, melanin}})")
     p["lips"] = {"blood": float(lips.get("blood", 1.0)), "melanin": float(lips.get("melanin", 1.0)),
-                 "roughness": float(lips.get("roughness", 0.36)), "dry": float(lips.get("dry", 0.0))}
+                 "roughness": float(lips.get("roughness", 0.36)), "dry": float(lips.get("dry", 0.0)),
+                 "lower": {"blood": float(low.get("blood", 1.0)), "melanin": float(low.get("melanin", 1.0))}}
     sh = sk.get("shading") or {}
     bad = set(sh) - {"subsurface", "radius", "scale", "specular", "roughness", "coat", "coat_roughness", "sheen", "thickness"}
     if bad:
         raise SpecError(f"skin shading: unknown keys {sorted(bad)} (have subsurface, radius, scale, specular, roughness)")
     p["shading"] = sh
-    for k in ("features", "wrinkles", "hair", "makeup", "nails", "eyes"):
+    for k in ("features", "wrinkles", "hair", "makeup", "nails", "eyes", "folds"):
         p[k] = sk.get(k) or {}
         if not isinstance(p[k], dict):
             raise SpecError(f"skin {k} is an object")
@@ -692,6 +699,11 @@ def _build(spec: dict, J: dict) -> dict:
         add("under_eye", var * (0.7 + 0.6 * thin), color=T(blood=1.8, oxygenation=0.25, melanin=1.5, epidermis=0.7),   # (the tear trough: brown-violet)
             opacity=0.5, mask=_z("under_eye", "eye_corner"))
         add("eyelids", var, color=T(blood=1.9, oxygenation=0.55, melanin=1.1, epidermis=0.75), opacity=0.36, mask=_z("eyelid"))
+        # periorbital pigment (off unless asked: skin.zones.periorbital; skin_read sets it from the references): the
+        # whole socket, lid to tear trough, darker and browner (melanin and old blood in thin skin: deep-set and
+        # tired eyes, many South Asian and Mediterranean faces)
+        add("periorbital", 1.0, color=T(blood=1.5, oxygenation=0.35, melanin=2.2, epidermis=0.85), opacity=0.3,
+            mask=_z("eyelid", "under_eye", "eye_corner", grow=1.15))
         add("neck", var, color=T(blood=0.85, melanin=0.94), opacity=0.4, mask=_z("neck"))
     if hands:
         add("palms", 1.0, color=T(melanin=0.22 + 0.1 * (1 - dark), blood=1.7), opacity=0.85, mask=_z("palm"))
@@ -748,7 +760,8 @@ def _build(spec: dict, J: dict) -> dict:
         # the skin is the upper's +1 (median), and it reads lighter by ~16 L, of which the light from above gives
         # ~13 on our heads (clay). At blood 7 / melanin 0.9 / thinner epidermis it read +7 a* redder and 6 L darker
         # than the upper in the albedo: an orange-red flat lower lip that hid its own shading (gnmdetail2)
-        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * LOWER_LIP["melanin"], blood=LOWER_LIP["blood"] * lp["blood"],
+        out["skin:lips_lower"] = {"part": part, "_pre": True, "color": T(melanin=lm * LOWER_LIP["melanin"] * lp["lower"]["melanin"],
+                                                                   blood=LOWER_LIP["blood"] * lp["blood"] * lp["lower"]["blood"],
                                                                    epidermis=le + LOWER_LIP["epidermis"], oxygenation=LOWER_LIP["oxygenation"]),
                                   "opacity": round(0.85 - 0.2 * p["masc"], 3), "roughness": lp["roughness"], "mask": _z("lip_lower", grow=0.8)}
         # the vermilion border: a paler, slightly raised rim where lip meets skin (clearer on light skin)
@@ -890,4 +903,6 @@ def reference() -> str:
         "; albedo of the base tone (sRGB) at blood 0.4: " +
         ", ".join(f"F{k} {''.join(f'{int(round(c * 255)):02x}' for c in tone_rgb({'fitzpatrick': k}))}" for k in range(1, 7)),
         "BUILT-IN ZONE LAYERS (skin.zones: {layer: strength}): " + ", ".join(ZONE_LAYERS),
+        "",
+        __import__("hifipushie.skin_folds", fromlist=["reference"]).reference(),
     ])

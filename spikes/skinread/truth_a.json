@@ -1,0 +1,9 @@
+{"sex": 1, "age": 35,
+ "tone": {"melanin": 0.3, "blood": 0.55, "undertone": 0.4},
+ "zones": {"forehead_yellow": 1.8, "midface_red": 0.3, "nose_red": 2.0, "perioral_red": 0.2, "lower_cool": 0.4,
+           "under_eye": 2.2, "eyelids": 0.5, "periorbital": 1.2},
+ "features": {"flush": 0.6, "freckles": 0.5},
+ "lips": {"blood": 0.5, "melanin": 2.5, "lower": {"blood": 1.6, "melanin": 0.7}},
+ "hair": {"stubble": {"amount": 1.0, "style": "short", "zones": {"cheeks": 0.15, "neck": 0.3, "jaw": 0.6}},
+          "brows": {"color": "#2a1d16", "density": 1.2}},
+ "eyes": {"iris": "#3b2a1a", "sclera": "#cfc6bc"}}
