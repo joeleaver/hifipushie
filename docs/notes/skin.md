@@ -1221,3 +1221,74 @@ STATE / NEXT (skinfolds2): see "### Status (skinfolds2)" at the end of this sect
   (valley 0.098 along 58 %), L INFERRED 0.435 (was 0.16); nasolabial R 1.01 (0.097 along 45 %), L INFERRED.
 - The bags' AMOUNT is still under the painting's (0.44; it shows ~1): the valley at the trough's line is what is
   read, and a painted bag is mostly its lit pouch. Not solved at 1.1 mm a pixel.
+
+### 6. The game asset: what survives, and folds under expression (spikes/skinfolds2/export_check.py; sg_garrett FULL
+### BODY, his own export settings: parts.body.topology "wrap", triangle_weight 4, 2048 atlas, face_shapes=True; logs
+### out/export_g2.log (gains baked), export_g3.log (rigid); sheet human_renders/sg_03_garrett_export_expressions.png)
+- THE GLB PREVIEW RENDERS: asset.preview returns PIL images (one contact sheet, or a list per pose); skinfolds'
+  script wrote it as bytes. Nothing to fix in the library.
+- THE EXPORT: 42,040 triangles on the body (the wrap's own quads: 20,616 vertices "moved onto the field by mean 0.29
+  p95 0.96 max 3.9 mm"), edge length on the face p50 2.8 mm, texel 0.9 mm (0.4-0.5 in the head's focus), 53 morph
+  targets on body / eyes / teeth / tongue / lashes, 644 s.
+- GEOMETRY, measured on points over the head's triangles within 7 mm of each fold's line (relief = folded field -
+  fold-free field; error = the low poly's distance to the FOLDED surface; away from every fold the wrap's own fit
+  error is 0.73 mm rms):
+  | fold (amount) | relief in the exact field rms / max mm | low poly's error rms mm | of the relief LOST from the triangles |
+  |---|---|---|---|
+  | nasolabial (1.01) | 0.43 / 1.28 | 0.27-0.28 | 0.62-0.65: about a third of it is in the triangles |
+  | marionette (0.67 / 1.06) | 0.10-0.15 / 0.33-0.52 | 0.16-0.26 | > 1: under the wrap's own error |
+  | tear trough + bag (0.43) | 0.13 / 0.61 | 0.28-0.35 | > 1 |
+  | lid fold (0.6) | 0.15 / 0.65 | 0.33-0.38 | > 1 |
+  | chin notch (0.8) | 0.20 / 0.63 | 0.51 | > 1 |
+  So: at a 2.8 mm quad only the nasolabial fold is partly real geometry in the asset. Everything else (bags at this
+  amount, the lid's crease, marionette, the notch) is BELOW THE WRAP'S OWN FIT ERROR and lives in the NORMAL / AO /
+  HEIGHT maps (baked from the exact, folded field) and, for the creases, the painted line in the base colour. In
+  the Cycles preview of the GLB the bags and nasolabial folds read under frontal and raking light; the lid's crease
+  (0.6, a prior) is not readable at 0.4-0.9 mm a texel. Normal-map tilt at the fold's points (rms, through the GLB's
+  UVs): lid 22-25 deg, tear trough 16-18, against 13 away from folds, nasolabial 7 (weak as a number: the skin's own
+  micro relief is in the same map).
+- FACE SHAPES WITH THE FOLDS PRESENT (Joe: "if it's additive to gnm, it won't play nice"), answered with renders:
+  neutral | blink 0.5 | blink | eyes wide | squint (eye + cheek) | smile | jaw open, eye and mouth close-ups,
+  frontal and raking light, folds RIGID against GAINS BAKED IN (the sheet).
+  What goes wrong, per pose (blunt):
+  * blink: NO WELT across the closed lid in either version: at this density the lid's crease is texture, not
+    triangles. What does ride the lid rigidly is its TEXTURE (the painted line and the normal map's groove are
+    carried down with the lid's skin: on the closed lid they sit as a faint line; a real crease unfolds). In a blink
+    the fold line's vertices travel 1.8-2.8 mm where the margin under them travels 4.0 (GNM's own blink: the crease
+    does move with the lid, 45-70 % of the margin's way). The closed lids' texture smears and a dark streak stands
+    at the inner corner under raking light: both versions, the head's own (the export's quality report: "TORN OR
+    TANGLED at lm_lid_upper.R, lm_eye_inner.L": 19 + 19 folded edges; folded edges on the head: neutral 131, blink
+    158, wide 106, squint 159, smile 118, jaw 131, the same rigid and baked; a fold-free export was not run beside it).
+  * eyes wide / squint: the bag grows on a squint with the gains baked (visible in the tile), stays the same rigid.
+  * smile / jaw open: no tearing from the folds; the nasolabial fold's gain (+0.65 mm on a smile) is hardly visible
+    at this density. The ragged pale specks along the lip line and the teeth showing at the corners are the head's
+    own mouth (both versions, also without folds).
+  * the chin notch at 0.8 baked as a dark pit under the chin (raking): set to 0.4 on sg_garrett afterwards.
+- BUILT, the first step of "fold amounts as a function of expression" (skin_folds.EXPRESSION + `expression`, called
+  by asset.export after faceshapes.apply; skin["fold_expressions"] false = rigid): a GAIN per fold and ARKit shape
+  (x the neutral amount at the shape's full weight; "Left" / "Right" act on that side):
+    lid_fold: eyeBlink 0, eyeWide 1.3, eyeSquint 0.5, browDown 1.2 | tear_trough: eyeSquint 1.4, cheekSquint 1.4,
+    mouthSmile 1.2, eyeWide 0.8 | nasolabial: mouthSmile 1.5, cheekSquint 1.2, noseSneer 1.3, jawOpen 0.8,
+    mouthPucker 0.6 | marionette: jawOpen 0.6, mouthFrown 1.4, mouthSmile 0.5 | commissure: mouthSmile 0.4,
+    mouthFrown 1.3, jawOpen 0.7 | mouth_corner: mouthSmile 1.4, jawOpen 0.6 | mentolabial: jawOpen 0.7,
+    mouthShrugLower 1.4, mouthPucker 1.2 | glabella: browDown 1.6, browInnerUp 0.3 | chin_notch: mouthShrugLower 0.6
+  (first guesses from anatomy; crow's feet "from 0" need a fold that is absent in the neutral: not built).
+  Per fold primitive and low-poly vertex the fold's own displacement is measured on the field (the part's field
+  without that fold minus with it, along the fold-free normal); the shape's morph target gets (gain - 1) x it, and
+  the target's vertex normals are recomputed. Garrett's export: lid_fold eyeBlink -0.64 mm, eyeSquint 0.32, eyeWide
+  0.19; nasolabial mouthSmile +0.65; tear_trough eyeSquint / cheekSquint +0.24; marionette jawOpen 0.13-0.21.
+  Tested (test_folds_under_expression): on a blink the lid fold's vertices return to within 35 % of the fold-free
+  skin; the other side's shape and shapes without a gain are untouched.
+- WHAT A GLB CAN CARRY: per morph target POSITION and vertex NORMAL (and TANGENT) deltas. NOT a texture per target:
+  the fold's normal map and painted line are one texture for every shape. Fading the crease on a blink / deepening
+  a fold on a smile at texel scale needs a WRINKLE-MAP BLEND in the engine (a mask per fold region x the shape's
+  weight, blending a second normal map and a second base-colour line): for oxidegen / S0urc3, not built here. The
+  export could write those masks and the "no folds" normal map as extra textures + the gain table in the json.
+- THE SPLIT, geometry vs map, for the lid's crease: on the dressed head (0.5 mm mesh) the shallow real groove + its
+  broad low lip gives the profile, and the SHARPNESS is the painted occlusion line (the dark line is paint: a
+  rasteriser has no skin-on-skin shadow at half a millimetre). In the asset the split happens by itself: the
+  groove is under the wrap's fit error and goes to the normal map. So the crease does not fight the blink as
+  geometry; what remains to do is the texture's fade (above).
+- TESS could not be exported with face shapes: tess_a1 has no base.head.interior / mouth_gap ("face_shapes on a GNM
+  head needs a mouth that can open"). Giving her one changes her head: not done on a copy this round. Her lid fold
+  under a blink is therefore NOT rendered; Garrett's (0.6, a prior) stands in.
