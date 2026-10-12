@@ -4406,3 +4406,61 @@ step 3 (learned normals, validated by shval's method), then Garrett from gj_G00 
   -> 1.36 / 2.06 mm (front / 3/4), outlines the same (0.2-0.9 mm). On the settled tk_T06 (trusted cameras): absolute
   |dc| 2.2 (it was solved with those), differential |dc| 4.7 with |c| 11.70 -> 11.62: the anchors now ask for a
   slightly different head; nothing forced. The full Tess rerun is at the end.
+
+### 2. Face parsing for outlines (src/hifipushie/faceparse.py, asset pack "faceparse"; reference_views parse="auto")
+- Models tried (both run on CPU in the detector venv, ~1 s a picture, cached by the crop's bytes):
+  (i) MediaPipe selfie_multiclass_256x256 (Apache 2.0, shippable): background / hair / body skin / face skin / clothes
+  / others, through mediapipe's ImageSegmenter (confidence masks). (ii) BiSeNet ResNet-34 on CelebAMask-HQ, 19 classes
+  (yakhyo/face-parsing ONNX, MIT code, through cv2.dnn); CelebAMask-HQ is NON-COMMERCIAL RESEARCH ONLY, so those
+  weights are a measuring tool, never shipped (as faceid's ArcFace). First look on Garrett's two paintings and Tess's
+  three photos (out/parse_try.png): both label skin / hair / neck / clothes sensibly on the dark painted portrait.
+- VALIDATION (spikes/refread/pval.py; 7 known heads x their 2-3 fitted cameras = 19 dressed EEVEE shots (the judging
+  sheet's cached ones: tn_T00, tk_T06, tg_r1, tg_r2, tg_male, b3_G17, gj_G03), laid over a DARK PAINTED background (a
+  piece of Garrett's desk painting behind the shot's own mask); the model in the reader = the same head, so every
+  outline read's truth is 0 mm; "truth" = the reader on the shot's own mask (the dressed mesh is not exactly the
+  ruler's mesh: that floor)). bias / rms mm (reads per view):
+  | backdrop | view | truth mask | plain reader (photo_masks) | MediaPipe | BiSeNet |
+  |---|---|---|---|---|---|
+  | grey | front | -0.14 / 0.21 (29) | -0.12 / 0.16 (26) | -0.28 / 0.45 (29) | +0.17 / 0.45 (29) |
+  | grey | 3/4 | +0.10 / 0.53 (110) | +0.04 / 0.36 (107) | -0.07 / 0.52 (110) | +0.49 / 0.73 (112) |
+  | grey | profile | - | - (its border median is skin on these crops) | -0.32 / 0.47 (91) | +0.85 / 0.98 (116) |
+  | painted | front | -0.14 / 0.21 | +0.21 / 0.22 (3 reads) | -0.07 / 0.29 (29) | +0.31 / 0.48 (29) |
+  | painted | 3/4 | +0.10 / 0.53 | +0.25 / 0.35 (25 reads) | +0.04 / 0.39 (91) | +0.81 / 0.97 (103) |
+  | painted | profile | - | nothing | -0.27 / 0.40 (61) | +0.94 / 1.07 (75) |
+  | painted, 4x smaller (1.2 mm / px, Garrett's scale) | front | -0.11 / 0.24 | +0.41 / 0.52 (2) | +0.02 / 0.20 (27) | +0.33 / 0.50 |
+  | painted, 4x smaller | 3/4 | +0.12 / 0.60 | +0.59 / 0.78 (27) | +0.22 / 0.52 (108) | +0.85 / 1.02 |
+  | painted, 4x smaller | profile | - | nothing | -0.16 / 0.88 (p90 0.43; 72) | +0.95 / 1.12 |
+  PASS (a) with MediaPipe's model: 0.2-0.5 mm rms, bias within 0.3 mm, on a dark painted backdrop and at Garrett's
+  pixel size, with as many reads as the plain reader gets on a studio backdrop (which gets 2-27 on the painted one).
+  BiSeNet is worse here (+0.5..+0.9 mm outside, 1 mm rms). On Tess's REAL photos (rcount.py) the parser agrees with the
+  plain-background reader at the samples both read: 3/4 +0.03 / -0.02 mm (sd 0.18 / 0.22), profile -0.12 / -0.15 (sd
+  0.21 / 0.29); front -0.5..-0.6 (8 samples).
+- (b) outlines INSIDE the face (the nose against the far cheek in a 3/4), from BiSeNet's nose class: FAILS
+  (spikes/refread/nval.py: the model's own nose silhouette vertices against the parser's nose boundary on 7 dressed
+  3/4 shots: median 1.7 mm, rms 2.9, p90 5.4; 29 % under 1 mm). The class is a blob drawn round the nose, 2-3 mm
+  outside the occluding contour on the far side. NOT used.
+- WIRED: reference_views(parse=): False = the plain-background reader, True / a model name = the parser,
+  "auto" (block_in_solve's default) = the plain reader where the backdrop is plain (plain_backdrop >= 0.75) AND it
+  finds >= 40 outline samples in the view, else MediaPipe's parser (sigma 0.5 mm; the plain reader's stays 0.3). With
+  the parser the EARS count as the head's outline where it shows them bare (hair over an ear = no read).
+  Reads on the class-mean starts: Garrett outline 31-37 -> 203 (front 95, 3/4 108), then 250 once the cameras are laid
+  on the head; Tess 190 -> 221 (her front picture goes to the parser: 8 -> 38 reads; 3/4 and profile keep the plain reader).
+
+### Found on the way (all in face_ruler / blockin.solve_step)
+- Garrett's kept cameras were fitted on b3_G17: on the class mean the 3/4 outline is 9 mm off and the solve's camera
+  limit (2.5 sd) stops it short, so the identity is bent instead (first call with the parser's outlines: |c| 17.2,
+  a component at 5.2 sd). cameras="refit" (read(cam_first=2)): two rounds with the head held (tau 0.02) and twice
+  the camera freedom, then the solve; the refitted cameras are the new start.
+- solve(adapt=True): a group of reads (type, view; >= 8) whose scatter after the fit is over its sigma gets that scatter
+  as its sigma (1.48 x median |residual|): Garrett's lip borders (a 20 px mouth) x1.6-6; Tess: nothing raised.
+- solve(cmax=3.0): NOTHING FORCED as a rule of the solve. If the most likely head has a component past cmax sd, every
+  read's sigma is raised x1.3 until none has, and the factor is reported ("INCONSISTENT PICTURES x1.69" on Garrett's
+  first call; Tess 1.0). Two paintings of one man are two drawings: their reads disagree by more than a photo's.
+- The CHIN had no read from the front (no silhouette there; Garrett's stored points start at lm17): gq_G01..04 (steps
+  1 + 2 only) kept face_height -7.4 mm, chin_height -3.1 / -7.6, lower_third -4.8 / -6.5 on the table. The
+  differential anchors now always include the detector's chin points (lm 7, 8, 9: like with like, the table's own).
+- Coordinator's items (2026-10-11): (a) the camera prior is on the cameras' WHOLE move since the block-in's start
+  (human_refs.json blockin.cam_done, carried by solve_step; read(cam_done0=)), so repeated calls no longer walk
+  (gq_G01..04: the front camera moved +1.25 mm = the trust limit on EVERY call); cameras="trust" = a third of the
+  freedom on the whole move; use one setting for every call. (b) both IRIS centres of a 3/4 view as differential
+  detector reads (MediaPipe's 468 / 473 on picture and render, moving with the eye centres, sigma 0.5 mm + 0.6 px).

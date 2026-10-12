@@ -9,7 +9,7 @@ m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
 cams = kw.pop("cameras", "free")
 save = kw.pop("save", None)
-k = 1.0 if cams == "free" else 1.0 / 3.0
+k = 1.0 / 3.0 if cams == "trust" else 1.0
 cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD6.items()}
 
 
@@ -17,13 +17,17 @@ def val(v):
     return {"0": False, "1": True}.get(v, v)
 
 
-args = {"lids": True, "lips": True, **{a: val(b) for a, b in kw.items()}}
+args = {"lids": True, "lips": True, "parse": "auto", "adapt": True, "cmax": 3.0, **{a: val(b) for a, b in kw.items()}}
+if "cmax" in kw:
+    args["cmax"] = float(kw["cmax"]) or None
 rounds = int(args.pop("rounds", 3))
 c0 = bi.identity(store.load(m))
 root = (bi._refs(m).get("blockin") or {}).get("root")
 off = c0 - bi.identity(store.load(root)) if root else None
 t = time.time()
-c = fr.compare(m, rounds=rounds, prior_off=off, cam_sd=cam_sd, **args)
+cam0 = None if cams == "refit" else (bi._refs(m).get("blockin") or {}).get("cam_done")
+c = fr.compare(m, rounds=rounds, prior_off=off, cam_sd=cam_sd, cam_first=2 if cams == "refit" else 0,
+               cam_done0=cam0 if cam0 is not None else np.zeros((len(bi._refs(m)["views"]), 6)), **args)
 dc = np.asarray(c["dc"], float)
 print(f"{m} {args} cameras={cams}: {time.time() - t:.0f} s")
 print("reads", c["n"])
@@ -35,6 +39,7 @@ for typ in sorted({ob["type"] for ob in c["obs"]}):
         o = np.array([ob["o"] for ob in c["obs"] if ob["type"] == typ and ob["view"] == vw])
         sg = np.array([ob["sig"] for ob in c["obs"] if ob["type"] == typ and ob["view"] == vw])
         print(f"  {typ:9s} {vw:10s} n {len(o):4d}  mean {o.mean():+6.2f}  rms {np.sqrt((o ** 2).mean()):5.2f}  sig {sg.mean():.2f}")
+print("relax", c["relax"], "sigma scales", {k_: round(v_, 2) for k_, v_ in c["sig_scale"].items() if v_ > 1.2})
 print("cameras moved:", np.round(np.asarray(c["cam_done"], float), 2).tolist())
 print("\n".join(c["notes"]))
 if save:
