@@ -774,3 +774,39 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
 - Measured on jw (flat frontal light, EEVEE): the rendered lit hair matched the photo's lit-hair numbers but came out
   ~1.25x as saturated as seen, and the same numbers read ginger on our grey backdrop beside a photo with a warm wall:
   sample seen from the photo's LIT side (the render makes its own shadows) and ask a little less saturated.
+
+## tesshair (2026-10-11, "tesshair" agent, branch `worktree-agent-a1e75b477d022cecb`): Tess's hair on her accepted head tess_a1
+STATE / NEXT: th_T01 = tess_a1 + f3_t1's groom regrown: it carries cleanly (IoU 0.63 / 0.64 / 0.64). Round 2 (the
+tail) running. NEXT: judge T02, then top volume / slick texture, wisps, the forehead's arch.
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair/ (run.sh <script in spikes/tesshair> = this worktree's code on the main
+workspace, capped, 1 BLAS thread; round.sh <NN> <patch.json ..> = a whole round; p<NN>.json = the rounds' patches;
+out/ = tiles s_<model>_<view>.png, overlays hline_*, logs r<NN>_*.txt). Scripts `spikes/tesshair/`:
+- mk.py <dst> <head model> <groom model> [patches]: head model's spec + hair.carry(groom model) WITHOUT locks +
+  deep-merged patches, hair.groom(replace=True). 23 s. Only writes th_* models.
+- shots.py <model> [engine=cycles] [extra_only=1]: the dressed stage (garrett3/stage.py, `_g3_<model>`, 53 s sync) with
+  the groom through the three fitted cameras (the WHOLE picture squared, so the tail is in frame) + backl (the unfitted
+  back picture's side), backq and right (not in the references). Under resources.heavy.
+- hline.py <model> [0,1]: THE HAIRLINE BY PROPORTION, like with like: MediaPipe on her picture AND on our render through
+  that picture's camera; frame = eye-corner span, eye line, mouth line (U = eye -> mouth), brow line, chin; skin = Lab
+  distance to the forehead's own colour; per station across the forehead where skin ends (height over the eye line /
+  U), per level the forehead's half-width, forehead / lower-face ratio; and the OUTLINE (head + hair against the
+  backdrop): top per station, half-width per level. Misses in mm. Overlay hline_<model>_v<n>.png (check it: red = skin).
+- hs.py <model>: the tess agent's hscore.py (traces in /mnt/data/hifipushie/tess) under the heavy slot.
+- sheet.py <out> <title>=<model> ..: reference | best | earlier; six rows.
+NB a model's stage keeps the hair it was first synced with (the stage key leaves hair out): one model name per groom.
+
+- th_T01 (carry, no patch): groom.fit r 0.0746 -> this head 0.0710 (centre 3.9 mm lower, 1.3 mm back): lengths scale
+  x0.951. 86 locks. hscore IoU front / 3q / profile 0.630 / 0.641 / 0.639 (f3_t1 on its own head 0.601 / 0.596 /
+  0.651), hairline band bare 16.4 / 22.4 / 9.2%, forehead arch ours - hers +6.3 +5.9 +2.0 +6.1 -1.5 mm (+ = our edge
+  lower), colour bands within 2-10 levels of hers. hline FRONT: forehead / lower face 0.37 hers vs ours close (centre
+  hairline +0.9 mm, outer -2.1, temples -0.3: the hairline's HEIGHT is right on this head), outline top -5.3 mm (flat),
+  width above the eyes her right -1.0 / her left -5.5 mm, and at eye .. mouth level her left -27 .. -35 mm (the tail).
+  BLUNT READ: it is recognisably her style (centre part, low side ponytail, right colour family) and nothing broke in
+  the carry. Wrong, biggest first: (1) the TAIL is a straight narrow broom hanging down the neck; hers stands out to
+  her left / back from the tie and is a bushy, waved, flicked brush twice as wide; (2) the head hair is SLICK: dense
+  combed sheets, 5 mm flat on top, no loose halo; hers is matte, airy, tousled; (3) the WISPS are straight comb strips
+  hanging from the temples; hers are single fine curved strands; (4) the forehead is a pointed triangle under the part
+  (curtains run straight diagonals; +6 mm low at the upper corners); hers is a round arch; (5) a hooked swirl of curtain
+  strands in front of the ear in profile; (6) a dark object at the top of the part (seen from behind), dotted scalp at
+  the nape.
