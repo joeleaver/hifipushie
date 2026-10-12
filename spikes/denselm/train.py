@@ -334,7 +334,7 @@ def main():
             sched.step()
             with torch.no_grad():
                 gstep = ep * len(dl) + nb
-                dcy = min(0.998, (1.0 + gstep) / (10.0 + gstep))
+                dcy = min(0.998, 1.0 - 25.0 / steps, (1.0 + gstep) / (10.0 + gstep))     # (a short run: a short memory)
                 for pe, pm in zip(ema.parameters(), model.parameters()):
                     pe.mul_(dcy).add_(pm.detach(), alpha=1 - dcy)
                 for be, bm in zip(ema.buffers(), model.buffers()):
