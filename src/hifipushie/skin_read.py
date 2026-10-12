@@ -2030,20 +2030,27 @@ def _lid_read(c: Context, nominal: dict) -> dict:
             fr_g = np.array([r_["col"] for r_ in good])
             co_p = np.polyfit(fr_g, [r_["tps"] for r_ in good], 1, w=[max(r_["dark"], 0.05) for r_ in good])
             frs = xt / span
-            use = (frs >= 0.12) & (frs <= 0.88)
+            use = (frs >= 0.2) & (frs <= 0.8)
             ts = q["t"][use]
             sh = (np.polyval(co_p, frs[use]) - h_own[use]) / lean[use]
             kk = np.argsort(ts)
             co = np.polyfit(ts[kk], sh[kk], 2)
             res["offset_mm"] = [round(float(np.polyval(co_p, x_)), 2) for x_ in (0.2, 0.5, 0.8)]
-            ts = np.array([ts.min() - 0.08, ts.max() + 0.08])
+            ends = (float(ts.min()), float(ts.max()))
         elif len(good) >= 3:
             ts = np.array([r_["t"] for r_ in good])
             sh = np.array([(r_["tps"] - r_["nominal"]) / r_["lean"] for r_ in good])
             kk = np.argsort(ts)
             co = np.polyfit(ts[kk], sh[kk], 1 if len(good) < 4 else 2)        # a fold's line is smooth
         if len(good) >= 3:
-            res["shift"] = [round(float(x), 2) for x in np.clip(np.polyval(co, np.clip(np.linspace(0, 1, sf.N_SHIFT), ts.min(), ts.max())), -3, 6)]
+            tn = np.linspace(0, 1, sf.N_SHIFT)
+            shv = np.clip(np.polyval(co, np.clip(tn, ts.min(), ts.max())), -3, 6)
+            if h_own is not None:
+                # past the outer columns the constant offset ends: a crease runs into the corners with the lid, as the
+                # nominal path does (the quadratic carried on gave +6 mm at the inner end: a hook)
+                ramp = np.clip(np.minimum(tn / max(ends[0], 1e-3), (1 - tn) / max(1 - ends[1], 1e-3)), 0, 1)
+                shv = shv * (0.25 + 0.75 * ramp * ramp * (3 - 2 * ramp))
+            res["shift"] = [round(float(x), 2) for x in shv]
             res["extent"] = [0.0, 1.0]
             res["amount"] = round(float(np.clip((dark - dark_o) / LID_REF, 0, 1.5)), 3)
             res.pop("move", None)
