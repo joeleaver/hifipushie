@@ -84,7 +84,10 @@ FILL_SINK = 1.0  # how much of a fill lock's thickness the side/back mass sinks 
 REGIONS = ("front", "top", "sides", "back", "nape")
 GROOM = {
     "fit": None,  # head_ref() of the head this groom was made on: lengths / volumes in metres scale with the head
-    "hairline": {"front": 0.85, "temples": 0.008, "sideburns": 0.028, "nape": 0.0, "ear": 0.01},
+    "hairline": {"front": 0.85, "temples": 0.008, "sideburns": None, "nape": 0.0, "ear": None, "ear_from": "mesh"},
+    # ear: m the line runs over the ear's top (default 0.01); sideburns: m they reach below the ear's top (default
+    # SIDEBURNS). ear_from "mesh": the ear is FOUND on the head (hair.ear); "brow": the old guess (its top at the
+    # outer brow + 4 mm, sideburns default 0.028 below that), for a groom that must keep the line it was made with
     "parting": {"side": "left", "offset": 0.03, "length": 0.1},
     "volume": {"front": 0.045, "top": 0.036, "crown": 0.02, "sides": 0.012, "back": 0.013, "nape": 0.005},
     "length": {"front": 0.17, "top": 0.15, "sides": 0.055, "back": 0.06, "nape": 0.03},
@@ -278,6 +281,7 @@ def scalp(name: str, spec: dict | None = None) -> Scalp:
         for old in store._dir(name).glob("hair_scalp_*.npz"):
             old.unlink()
         np.savez(f, C=sc.C, R=sc.R, lm=json.dumps(sc.lm))
+    sc.human = bool(spec.get("base"))  # (a base body: a human head, with or without face landmarks)
     _SCALPS[key] = sc
     return sc
 
@@ -414,6 +418,82 @@ POCKET = 0.012  # m: (one mesh) air this deep along a scalp ray is outside the h
 HAIRLINE_JOIN = 25.0  # deg of azimuth over which the default line past traced front_points eases onto their end
 
 
+EAR_OPEN = 19  # cells of azimuth (x Scalp.STEP deg = 38): what stands off the head narrower than this is "a bump"
+EAR_BUMP = 0.004  # m a ray must stand off the head without the bump to count as ear
+EAR_LOW = 0.0015  # m: ... and what the ear is grown into from there
+EAR_CLEAR = 0.003  # m: the hairline never runs lower over the found ear than this above its top
+SIDEBURNS = 0.014  # m the sideburn reaches below the found ear's top by default
+
+
+def ear(sc: Scalp) -> dict | None:
+    """The EAR found on the head itself (the scalp's rays; every base, no landmark needed): the ear is the bump that
+    stands off the side of the head, narrower round the head than any of the skull's own curves. Per row of elevation
+    the rays' radius is opened along the azimuth (a flat grey opening EAR_OPEN cells wide: it removes what is narrower
+    and keeps the head), left and right averaged; what is left over EAR_BUMP at the side of the head, between brow
+    and jaw, is the ear. {"top", "lobe": world z (m) of its highest / lowest point, "front", "back": the azimuths
+    (deg, the left ear) its upper two thirds span, "az_top", "cells": [[az, el], ...]}, or None when the head has
+    no such bump (a creature, hair or a hat modelled into the body): callers then keep their old rule.
+    (hairline() guessed the ear's top at the outer brow + 4 mm: 0.7 - 3.2 cm too high on ten heads of three bases.)"""
+    got = getattr(sc, "_ear", False)
+    if got is not False:
+        return got
+    from scipy import ndimage
+    R = np.asarray(sc.R, float)
+    na = len(sc.A)
+    Rs = 0.5 * (R + R[(-np.arange(na)) % na])
+    pad = EAR_OPEN + 4
+    Rp = np.concatenate([Rs[-pad:], Rs, Rs[:pad]], 0)
+    D = Rs - ndimage.grey_opening(Rp, size=(EAR_OPEN, 1))[pad:-pad]
+    ia = np.nonzero((sc.A >= 66) & (sc.A <= 126))[0]
+    W = D[ia]
+    AA, EE = np.meshgrid(sc.A[ia], sc.E, indexing="ij")
+    Zw = sc.point(AA, EE, 0.0)[..., 2]
+    if "lm_brow_mid.L" in sc.lm and "lm_nose_base" in sc.lm:
+        z1 = sc.lm["lm_brow_mid.L"][2] + 0.02
+        z0 = sc.lm["lm_nose_base"][2] - 0.05
+    else:
+        z1, z0 = sc.C[2] + 0.06, sc.C[2] - 0.12
+    M = (W > EAR_BUMP) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
+    lab, n = ndimage.label(M, structure=np.ones((3, 3), int))
+    best, cells = 0.0, None
+    for c in range(1, n + 1):
+        m = lab == c
+        ca = float((AA[m] * W[m]).sum() / W[m].sum())
+        if not 80.0 <= ca <= 116.0:
+            continue
+        sz = float(W[m].sum())
+        if sz > best:
+            best, cells = sz, m
+    sc._ear = None
+    if cells is None or int(cells.sum()) < 10:
+        return None
+    # ... grown into what stands off less but belongs to it (hysteresis): the helix's top and front lie nearly flat
+    # on the head, and the bump over EAR_BUMP alone was the ear's back half (the line then crossed the ear's top)
+    lo = (W > EAR_LOW) & (W < 0.055) & (Zw < z1) & (Zw > z0) & (EE > sc.EL[0] + 4)
+    lab2, _ = ndimage.label(lo, structure=np.ones((3, 3), int))
+    cells = np.isin(lab2, np.unique(lab2[cells])) & lo
+    thr = EAR_LOW
+    # its top, between the highest cell over the threshold and the one above it
+    jj = np.arange(W.shape[1])
+    top, az_top = -np.inf, 0.0
+    for i in np.nonzero(cells.any(1))[0]:
+        j = int(jj[cells[i]].max())
+        f = 0.0
+        if j + 1 < W.shape[1]:
+            f = float(np.clip((W[i, j] - thr) / max(W[i, j] - W[i, j + 1], 1e-6), 0.0, 1.0))
+        z = float(sc.point(float(AA[i, j]), float(EE[i, j]) + f * sc.STEP, 0.0)[2])
+        if z > top:
+            top, az_top = z, float(AA[i, j])
+    lobe = float(Zw[cells].min())
+    if not 0.02 <= top - lobe <= 0.13:
+        return None
+    up = cells & (Zw > top - 0.67 * (top - lobe))
+    sc._ear = {"top": top, "lobe": lobe, "front": float(AA[up].min()) - 0.5 * sc.STEP,
+               "back": float(AA[up].max()) + 0.5 * sc.STEP, "az_top": az_top,
+               "cells": np.stack([AA[cells], EE[cells]], 1).tolist()}
+    return sc._ear
+
+
 def hairline(sc: Scalp, g: dict) -> np.ndarray:
     """The hairline's elevation (degrees) at each whole degree of azimuth (360,), symmetric left/right: from the
     landmarks (front height in brow-to-nose units, temples receding, sideburns, clear of the ears, the nape)."""
@@ -422,12 +502,20 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
     if hl.get("points"):
         ctrl = [(float(a), float(z)) for a, z in hl["points"]]
     elif "lm_brow_mid.L" not in sc.lm:  # no landmarks: elevations (degrees from the centre) per azimuth
-        ea = float(hl.get("ear_az", 95))
-        el = {k: float(hl.get(k, d)) for k, d in (("front_el", 35), ("temple_el", 40), ("sideburn_el", -5),
-                                                   ("ear_el", 18), ("nape_el", -25))}
+        dflt = {"ear_az": 95.0, "front_el": 35.0, "temple_el": 40.0, "sideburn_el": -5.0, "ear_el": 18.0, "nape_el": -25.0}
+        # (only a human base's head: a creature's ear is whatever its maker built, and its elevations were set by eye)
+        er = ear(sc) if str(hl.get("ear_from") or "mesh") == "mesh" and getattr(sc, "human", False) else None
+        if er is not None:  # (a head without landmarks that HAS ears, e.g. a template body: the line over the found
+            # ear instead of 18 deg above the head joint; explicit elevations still win)
+            _, e_t, _ = sc.coords(sc.point(er["az_top"], 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] + 0.01])
+            _, e_s, _ = sc.coords(sc.point(er["front"] - 8.0, 0.0, 0.0) * [1, 1, 0] + [0, 0, er["top"] - SIDEBURNS])
+            dflt.update({"ear_az": er["front"] + 6.0, "ear_el": float(e_t), "sideburn_el": float(e_s)})
+        ea = float(hl.get("ear_az", dflt["ear_az"]))
+        el = {k: float(hl.get(k, dflt[k])) for k in ("front_el", "temple_el", "sideburn_el", "ear_el", "nape_el")}
+        eb = ea + 20.0 if er is None or "ear_az" in hl else max(er["back"] + 1.0, ea)
         pts = [(0, el["front_el"]), (ea - 55, el["temple_el"]), (ea - 30, el["temple_el"] - 12),
                (ea - 18, el["sideburn_el"]), (ea - 10, el["sideburn_el"]), (ea - 6, el["ear_el"]),
-               (ea + 20, el["ear_el"]), (ea + 32, el["nape_el"] + 15), (180, el["nape_el"])]
+               (eb, el["ear_el"]), (eb + 12, el["nape_el"] + 15), (180, el["nape_el"])]
         ctrl = [(a, float(sc.point(a, e, 0.0)[2])) for a, e in pts]
     else:
         lm = sc.lm
@@ -437,15 +525,34 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
         tmp = float(hl.get("temples", 0.012))
         j0 = np.array(lm["lm_jaw_0.L"]) - sc.C
         az_j = float(np.degrees(np.arctan2(j0[0], -j0[1])))
-        ear_top = lm["lm_brow_outer.L"][2] + 0.004
+        brow_top = lm["lm_brow_outer.L"][2] + 0.004  # (the old guess of the ear's top: 1-3 cm over the real one)
         ear_bot = lm["lm_nose_base"][2] - 0.01
-        clear = float(hl.get("ear", 0.01))
-        sb = ear_top - float(hl.get("sideburns", 0.028))
         nape = ear_bot - 0.015 + float(hl.get("nape", 0.0))
-        ctrl = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
-                (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, ear_top + 0.012), (az_j - 10, sb + 0.006),
-                (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
-                (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+        front = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
+                 (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, brow_top + 0.012)]
+        er = ear(sc) if str(hl.get("ear_from") or "mesh") == "mesh" else None
+        if er is None:
+            ear_top = brow_top
+            clear = float(0.01 if hl.get("ear") is None else hl["ear"])
+            sb = ear_top - float(0.028 if hl.get("sideburns") is None else hl["sideburns"])
+            ctrl = front + [(az_j - 10, sb + 0.006), (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
+                            (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+        else:
+            # THE EAR AS IT IS ON THIS HEAD (tesshair6): the line passes `ear` m over the found ear's top from its
+            # front to its back, the sideburn hangs `sideburns` m below that top just in front of the ear's front
+            # attachment, and behind the ear the line comes down its back. (With the ear guessed from the brow the
+            # line ran 1-3 cm above the ear on every base: a bare band over the ear, the "shaved temple" of tied
+            # hair, and sideburns that ended above the ear's top.) The line never dips onto the ear itself: an
+            # `ear` below EAR_CLEAR (old grooms patched the high guess with negative values) is raised to it
+            ear_top = er["top"]
+            af, ab = er["front"], er["back"]
+            clear = max(float(0.01 if hl.get("ear") is None else hl["ear"]), EAR_CLEAR)
+            sb = ear_top - max(float(SIDEBURNS if hl.get("sideburns") is None else hl["sideburns"]), 0.004 - clear)
+            lob = max(min(ear_bot, ear_top - 0.02), er["lobe"])
+            ctrl = [c for c in front if c[0] < af - 16] + [
+                (af - 11, sb + 0.007), (af - 7.5, sb), (af - 3.5, sb + 0.003), (af + 0.5, ear_top + clear),
+                (ab - 1, ear_top + clear), (ab + 4, ear_top + clear - 0.4 * (ear_top + clear - lob)),
+                (ab + 11, lob + 0.006), (150, nape + 0.006), (180, nape)]
     if hl.get("front_points"):  # traced (e.g. from the reference through the matched camera): [[az, z], ...] over the
         fp = sorted((float(x), float(z)) for x, z in hl["front_points"])  # front; the rest of the line kept
         # ...eased onto the traced end (HAIRLINE_JOIN deg): joined as it was, the default temple stood ~4 mm off the
