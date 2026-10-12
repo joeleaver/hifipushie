@@ -62,7 +62,7 @@ def test_get_set_and_fold_options():
     o = sf.options({"nasolabial": 0.8, "tear_trough": {"amount": 1.0, "L": {"shift": [1, 2, 1], "extent": [0.1, 0.8]}}, "lid_fold": 0})
     assert set(o) == {"nasolabial", "tear_trough"} and o["tear_trough"]["sides"][".L"]["extent"] == [0.1, 0.8]
     assert o["tear_trough"]["sides"][".R"]["shift"] == [] and o["nasolabial"]["width"] == sf.FOLDS["nasolabial"]["width"]
-    for bad in ({"nose": 1}, {"nasolabial": {"depth": 1}}, {"nasolabial": {"L": {"extent": [0.8, 0.2]}}}, {"nasolabial": 3}):
+    for bad in ({"nose": 1}, {"nasolabial": {"deep": 1}}, {"nasolabial": {"roll": 5}}, {"nasolabial": {"L": {"extent": [0.8, 0.2]}}}, {"nasolabial": 3}):
         try:
             sf.options(bad)
             assert False, bad
@@ -100,12 +100,68 @@ def test_fold_map_and_layers():
     assert np.abs(((ps1[("nasolabial", ".R")]["P"] - ps0[("nasolabial", ".R")]["P"]) * 1000)).max() < 0.5, "the right side stays on its landmarks"
     assert float((q0["across"] @ np.array([1.0, 0, 0.3])).mean()) > 0, "plus is out toward the cheek"
     L = paint.layers(spec)
+    assert "skin:folds_shade" in L and "skin:folds_groove" not in L, "relief as geometry: the map carries the colour only"
+    spec["skin"]["fold_relief"] = "paint"
+    L = paint.layers(spec)
     assert {"skin:folds_shade", "skin:folds_groove", "skin:folds_roll"} <= set(L)
     assert L["skin:folds_groove"]["height"] < 0 < L["skin:folds_roll"]["height"] and L["skin:folds_shade"]["mix"] == "multiply"
     from PIL import Image
     a = np.asarray(Image.open(L["skin:folds_groove"]["mask"][0]["image"]["file"]).convert("RGB"), float) / 255
-    assert a[..., 0].max() > 0.4 and a[..., 1].max() > 0.2 and a[..., 2].max() > 0.15 and (a[..., 0] > 0.05).mean() < 0.05
+    assert a[..., 0].max() > 0.4 and a[..., 1].max() > 0.2 and a[..., 2].max() > 0.15 and (a[..., 0] > 0.05).mean() < 0.05, (a[..., 0].max(), a[..., 1].max(), a[..., 2].max(), (a[..., 0] > 0.05).mean())
     assert "skin:folds_groove" not in paint.layers(head_spec(age=30)), "no folds, no layers (the default skin is unchanged)"
+
+
+@_tmp
+def test_folds_are_geometry():
+    """skin.folds reshape the FIELD (skinfolds): a groove and a roll where asked, nothing elsewhere, nothing at amount
+    0, the build key untouched without folds, the displacement off the lid margins and clear of the eyeball."""
+    from hifipushie import images, sdf
+    from hifipushie.spec import compile_prims, geometry
+    plain = head_spec(age=30)
+    assert "tissue" not in geometry(plain) and "tissue" not in geometry(head_spec(age=30, folds={"nasolabial": 0}))
+    assert "tissue" not in geometry(head_spec(age=30, folds={"nasolabial": 1.0}, fold_relief="paint"))
+    assert not [p for p in compile_prims(plain) if p.kind == "tissue"], "no folds: no primitive, no cost"
+    spec = head_spec(age=30, folds={"nasolabial": {"amount": 1.0, "R": {"amount": 0.0}}, "tear_trough": 1.0, "lid_fold": 1.0})
+    assert geometry(spec)["tissue"]["folds"].keys() == {"nasolabial", "tear_trough", "lid_fold"}
+    prims = compile_prims(spec)
+    tis = {p.name for p in prims if p.kind == "tissue"}
+    assert tis == {"fold_nasolabial.L", "fold_tear_trough.L", "fold_tear_trough.R", "fold_lid_fold.L", "fold_lid_fold.R"}, tis
+    J = skin._joints(spec)
+    S = sf.surface(spec, "body", J)
+    body = [p for p in prims if p.part == "body"]
+    ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]))
+    def move(name, sd, u_mm):          # the skin's move along its normal (mm, + out) at u mm across the path's middle
+        q = ps[(name, sd)]
+        i = len(q["P"]) // 2
+        X = S.seat(q["P"][i] + 0.001 * np.asarray(u_mm, float)[:, None] * q["across"][i])
+        return -sdf.field_at(body, X) * 1000
+    n = move("nasolabial", ".L", [-9, 0, 5, 14])
+    assert abs(n[0]) < 0.05 and abs(n[3]) < 0.1, n                       # local
+    assert -0.75 < n[1] < -0.4 and 0.9 < n[2] < 1.5, n                 # the groove, the cheek's pad beside it
+    assert np.abs(move("nasolabial", ".R", [0, 5])).max() < 0.02        # the side that is off
+    t = move("tear_trough", ".L", [0, 5.5])
+    assert t[0] < -0.3 and t[1] > 0.9, t                               # the trough and the bag over it
+    # the keep-out: nothing moves at the lid's margin or on the lips
+    keep = sf.keep_lines(J)
+    assert len(keep) > 20
+    assert np.abs(sdf.field_at(body, keep) - sdf.field_at(images.prims_on(sf.without(spec), ["body"]), keep)).max() < 1e-5
+    # profile: a fold with a roll is a step (steep under the roll, a long wall on the other side)
+    pr = {"G": np.array([0.001]), "sg": np.array([0.001]), "O": np.array([0.001]), "Pl": np.array([0.0]), "lee": 2.2, "has_roll": True,
+          "r0": 0.004, "so": 0.002, "sh": 0.002, "has_plat": False, "ph": 0.001}
+    j = np.zeros(4, int)
+    v = sf.profile(np.array([-0.002, 0.0, 0.002, 0.004]), pr, j)
+    assert v[1] == -0.001 and v[0] < sf.profile(np.array([0.002]), {**pr, "has_roll": False}, j[:1])[0] and v[3] > 0.0009, v
+    # the eyeball: a fold pushed in over it stops BALL outside
+    c = np.array([0.0, 0.0, 0.0])
+    q = np.array([[0.0, -0.0121, 0.0], [0.0, -0.014, 0.0]])
+    tree = __import__("scipy.spatial", fromlist=["cKDTree"]).cKDTree(np.array([[0.0, -0.0125, 0.0], [0.001, -0.0125, 0.0]]))
+    mp = {"pts": tree.data, "nrm": np.array([[0, -1.0, 0]] * 2), "up": np.array([[0, 0, 1.0]] * 2), "along": np.array([[1.0, 0, 0]] * 2),
+          "taper": np.ones(2), "sa": 0.001, "wfull": 2.0, "reach": 0.004, "G": np.array([0.002] * 2), "sg": np.array([0.002] * 2), "O": np.zeros(2),
+          "Pl": np.zeros(2), "lee": 1.0, "has_roll": False, "r0": 0.0, "so": 0.001, "sh": 0.001, "has_plat": False, "ph": 0.001,
+          "keep": np.zeros((0, 3)), "keep_key": "none", "balls": np.array([[0, 0, 0, 0.012]]), "radius": 0.01, "k": 2, "tree": tree}
+    cur = np.array([-0.0004, 0.0015])           # a lid 0.5 mm thick over a 12 mm ball: the skin at 12.5 mm
+    new = sf.mod_tissue(cur.copy(), q, mp)
+    assert new[1] > cur[1] and new[0] <= 0.0, new       # pushed in outside, but the point 0.1 mm off the ball stays inside the skin
 
 
 class _Fake(sr.Context):
@@ -183,8 +239,23 @@ def test_fold_fit_rules():
     assert sk3["folds"] == {"tear_trough": 0.7}
 
 
+def test_step_and_tone_bound():
+    """The side-lit STEP detector's sign rule, and the fit's amount by how a fold was read."""
+    side = lambda **kw: {"present": False, "absent_in_picture": False, "picture": 0.0, "ours": 0.0, "diff": 0.0, "excess": 0.0,  # noqa: E731
+                         "share": 0.0, "confidence": 0.0, "views": [0], **kw}
+    st = side(present=True, by="step", step=0.5 * sr.STEP_REF["nasolabial"], step_share=0.8, confidence=0.9, extent=[0.1, 0.9], shift=[2.0] * 9)
+    lash = side(present=True, by="lash line", amount=0.8, confidence=0.9, extent=[0.0, 1.0], shift=[-1.5] * 9, picture=0.3, ours=0.1, diff=0.2)
+    sk = {"age": 50}
+    sr.fold_fit(sk, {"folds": {"nasolabial": {"readable": True, "sides": {".L": st, ".R": side()}},
+                               "lid_fold": {"readable": True, "sides": {".L": lash, ".R": lash}}}, "fields": {}}, True)
+    assert abs(sk["folds"]["nasolabial"]["amount"] - 0.5) < 0.02 and sk["folds"]["nasolabial"]["L"]["shift"] == [2.0] * 9, sk
+    assert abs(sk["folds"]["lid_fold"]["amount"] - 0.8) < 0.02 and sk["folds"]["lid_fold"]["L"]["shift"] == [-1.5] * 9, sk
+    assert sr.TONE_BOUND <= 3.0 < sr.TONE_BOUND_WHITE
+
+
 if __name__ == "__main__":
     for t in (test_valley_lab_and_specks, test_get_set_and_fold_options, test_beard_zones_partition_and_weights, test_fold_map_and_layers,
+              test_folds_are_geometry, test_step_and_tone_bound,
               test_colour_read_and_fit_recover_zones, test_fold_fit_rules):
         t()
         print("ok", t.__name__)

@@ -814,3 +814,61 @@ mouth. we need a system to look for them and parameters and layers for such thin
 6. The NULL's cast: calibrate the reader's own light colour by rendering a grey card in the stage (LIGHT_WHITE is a
    guess) and re-run val.py mode=null; false mouth folds on stubble: read folds on the stubble-free render pair.
 7. tests/test_toolsets.py fails on main for another reason (block_in_solve is in no toolset): not mine, not fixed here.
+
+## skinfolds (2026-10-12, "skinfolds" agent, branch worktree-agent-a50baa552dfb299b5; continues skinread. Joe agreed to four
+## steps: folds and bags as GEOMETRY (measurement-driven, general parameters, no hand sculpting), an exposure anchor for
+## skin lightness, lips with a gradient, a step detector + the lid crease from the lash line. Scratch DURABLE in
+## /mnt/data/hifipushie/skinfolds: run.sh <script> (capped, this worktree's src, main's workspace), fv.sh <tag> <truth>
+## <start> [k=v] (foldval), clay2.sh, patch*.py (how the code got here), out/; scripts in spikes/skinfolds; sheets sf_*)
+STATE / NEXT (skinfolds): see the end of this section ("Status").
+
+Joe (2026-10-11): "these reference hints are where we will pick up aging cues that gnm can't model, garrett's baggy
+eyes, garrett and tess's eyelid folds, the extras around the mouth. we need a system to look for them and parameters
+and layers for such things." Agreed 2026-10-12: bags and folds may be real displacement on top of the shape model as
+long as it is driven by measurement and general parameters. (This supersedes, for these soft-tissue features only,
+the 2026-10-10 "never a geometry layer" / "we shouldn't really ever use our 'fix' [lidfold]" decisions: GNM still owns
+the head's shape; base.head.fold (lidfold.py) stays unused.)
+
+### 1. Folds as geometry (src/hifipushie/skin_folds.py `prims`, sdf modifier kind "tissue")
+- WHERE THE DISPLACEMENT ENTERS: the skin part's FIELD, as "modify" primitives after everything else of that part
+  (spec._compile; the place base.head.fold's lidfold modifiers already used). Not the GNM vertices (the template's
+  cheek quads are 3-5 mm: a 3 mm groove cannot live there, and the IMLS kernel would smooth it) and not a Blender
+  displacement (the export and the reader would not see it). In the field it is meshed by every consumer at its own
+  resolution: the head stage (1 mm, 0.5 mm in the eye and mouth boxes), store.build, look close-ups, the export's
+  high poly.
+- `spec.geometry` used to drop all of spec["skin"]; it now keeps `spec["tissue"] = skin_folds.geometry_key(skin)`
+  ({"folds": validated options, "part", "v"}) ONLY when a fold has an amount and skin.fold_relief is not "paint". No
+  folds: no key, no primitive, the same build key and prim fingerprints as before (tested): no BUILD_VERSION bump
+  needed, nothing existing re-meshes; models WITH skin.folds (only sr_* so far) rebuild because their key changes.
+- One primitive per fold and side: the path's stations refined to 0.5 mm, per sample point / normal / across /
+  along; the field moved by a PROFILE of the signed distance across the line (`profile`): a groove (depth G, the
+  fold's width as FWHM; where the fold has a roll the wall on the other side is 2.2 x wider: a step, not a channel),
+  a roll rising from the groove's own line (smoothstep shoulder x a Gaussian peaking r0 out: lidfold's finding that a
+  symmetric bump half fills the groove), a platform on the minus side (the lid). Smooth along the line (normalised
+  Gaussian over the nearest samples, as sdf.mod_fold), relief eased in over 4 mm at each end of the extent, the roll
+  swelling toward the fold's middle (a bag is a crescent). RELIEF (mm at amount 1): nasolabial 0.6 deep / pad 1.3
+  (5 mm out, sigma 3.4), marionette 0.5 / 0.6, mouth_corner 0.3, mentolabial 0.8, tear_trough 0.6 / bag 1.4 (5.5 mm up,
+  sigma 2.8), lid_fold 0.6 / roll 0.5 / platform 0.15, glabella 0.35. New per-fold key `depth` (x), `roll` now 0..3.
+- KEEP-OUTS: (a) the displacement fades to nothing between 3.2 and 1.2 mm from the lid margins (the opening's eight
+  landmarks as a closed line per eye) and from the lips (vermilion borders, seam, and two lines through each lip's
+  body): tested, the field at those lines is unchanged to 1e-5 m. (b) where a fold pushes the skin IN it is clamped
+  0.4 mm outside each eyeball (head["eyes"], head["eye_r"]): min(new, max(old, distance to the ball)).
+- PATHS, the first bug: they are now seated on the fold-free field (`field_surface`: the part's primitives without the
+  tissue ones; the same surface for geometry, paint map and reader, so nothing chases its own displacement). Seating
+  by the field's CLOSEST POINT put the lid's landmarks on the lid's INSIDE and walked the tear trough round the
+  socket (ball clearance -2.4 mm; the groove vanished into the eyeball clamp, the bag's roll never decayed). Now a
+  path's control points are landmark + offset in the HEAD's own frame (right / front / up from the landmarks: a posed
+  head carries its folds) and seated where a ray from in front first meets the skin (the visible skin).
+  lid_fold's path got five control points along the upper margin's own landmarks (three cut across the corners into
+  the opening); tear_trough's five follow the orbit's rim down and UP again to the outer corner (three ran on down
+  and out: the bag was a box with a cut end).
+- Fast loop: spikes/skinfolds/clay.py ray-marches the field itself as clay (no mesh, no Blender; 30-50 s a box,
+  frontal | raking side | raking above); section.py prints the displacement really made across each path (mm).
+  Read off the field on Tess (amount 1): nasolabial -0.60 at the line, +1.08 at 4-5 mm; tear trough -0.60, bag +1.40
+  at 5-6 mm falling to 0 at the lid; lid crease -0.60 / roll +0.50.
+- Colour: with geometry on, the fold map keeps only `folds_shade` (tint line + soft shade); folds_groove / folds_roll
+  (painted height) exist only with fold_relief "paint".
+- First dressed look (out/shots_sf_t0_all1.png: Tess's head, all seven at amount 1): the bags are plainly there under
+  the frontal photo light, folds and lid crease under frontal and raking light and in 3/4. Blunt: at amount 1 the
+  whole set on a 22-year-old reads as a tired 50; the nasolabial + marionette + mouth_corner meet in a busy knot at
+  the mouth's corner; glabella lines are two straight nicks.

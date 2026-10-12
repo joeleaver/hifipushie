@@ -216,10 +216,10 @@ class _FieldSurface:
         from . import sdf
         return sdf.field_at(self.prims, np.asarray(X, float))
 
-    def seat(self, P: np.ndarray, snap: bool = False, reach: float = 0.03, step: float = 0.0005) -> np.ndarray:
+    def seat(self, P: np.ndarray, snap: bool = False, reach: float = 0.03, step: float = 0.00075) -> np.ndarray:
         P = np.asarray(P, float).reshape(-1, 3)
         O = P + reach * self.front
-        ts = np.arange(0.0, 2 * reach, step)
+        ts = np.arange(0.0, reach + 0.09, step)   # (well past the point: a landmark can float centimetres off a hand-made head)
         Q = O[:, None, :] - ts[None, :, None] * self.front
         f = self.f(Q.reshape(-1, 3)).reshape(len(P), len(ts))
         inside = f < 0
@@ -229,7 +229,7 @@ class _FieldSurface:
         a, b = f[np.arange(len(P)), i - 1], f[np.arange(len(P)), i]
         t = ts[i - 1] + step * np.clip(a / np.maximum(a - b, 1e-12), 0, 1)
         X = O - t[:, None] * self.front
-        for _ in range(2):          # the crossing refined (the field is close to a distance there)
+        for _ in range(3):          # the crossing refined (the field is close to a distance there)
             X = X - (self.f(X) / np.maximum(self.grad(X) @ self.front, 0.2))[:, None] * self.front
         return np.where(hit[:, None], X, P)
 
@@ -317,8 +317,11 @@ def paths(spec: dict | None, part: str, J: dict, cfg: dict | None = None, names=
                 # (in the head's own frame; seated from the FRONT: the visible skin under the offset point. The first
                 # version walked each point over a mesh from its landmark; on the exact field's closest point a lid's
                 # landmark landed inside the lid and the tear trough ran round the socket)
-                pl = np.array([np.asarray(J[a[:-2] + sd if a.endswith(".L") else a], float)
-                               + io * (sx * off[0] * S.right - off[1] * S.front + off[2] * S.up) for a, off in fd["path"]])
+                jn = lambda a: a[:-2] + sd if a.endswith(".L") else a  # noqa: E731
+                # (a head with the 68 landmarks only has no lm_lid_*_in / _out: the path runs through the rest)
+                cps = [(a, off) for a, off in fd["path"] if jn(a) in J or not a.split(".")[0].endswith(("_in", "_out"))]
+                pl = np.array([np.asarray(J[jn(a)], float)
+                               + io * (sx * off[0] * S.right - off[1] * S.front + off[2] * S.up) for a, off in cps])
                 pl = S.seat(pl)
             except KeyError as err:
                 raise SpecError(f"skin folds.{name}: needs joint {err.args[0]!r} (a GNM head's lm_* landmarks)")
@@ -610,7 +613,7 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
 
 
 def reference() -> str:
-    return "\n".join(["FOLDS (skin.folds: {name: amount | {amount, width mm, roll, L / R: {amount, shift [mm..], extent [t0, t1]}}}; "
-                      "colour + painted relief from one map; skin_from_reference reads them off the references):"] +
-                     [f"  {k:13s} {v['about']} (width {v['width']} mm" + (", with a roll" if v["roll"] else "") +
+    return "\n".join(["FOLDS (skin.folds: {name: amount | {amount, width mm, depth, roll, L / R: {amount, shift [mm..], extent [t0, t1]}}}; "
+                      "GEOMETRY (a groove + roll in the surface itself) + their tint; skin_from_reference reads them off the references):"] +
+                     [f"  {k:13s} {v['about']} (width {v['width']} mm, {RELIEF[k]['depth']} mm deep" + (f", a roll {RELIEF[k]['roll'][2]} mm high" if RELIEF[k].get("roll") else "") +
                       f"; readable from {v['res']} mm a pixel)" for k, v in FOLDS.items()])
