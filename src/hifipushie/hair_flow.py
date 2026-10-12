@@ -271,7 +271,7 @@ def tail(sc, tp: dict, tl: dict, rng, col, pre: str, P0) -> dict:
     out = dirs(*tp["at"])
     inw = np.minimum(d @ out - float(d0 @ out), 0.0)  # (no lock leaves the tie INTO the head: it lay over the crown)
     d = _unit(d - 0.8 * inw[:, None] * out[None])
-    gap = 0.004 + 1.2 * full * rng.uniform(0, 1, n)  # (lying on a shoulder the bundle keeps its thickness)
+    gap = 0.004 + 0.5 * full * rng.uniform(0, 1, n)  # (lying on a shoulder the bundle keeps its thickness)
     P = P0 + (r_tie * rho)[:, None] * rad
     pts = [P]
     for _ in range(ns):
@@ -498,7 +498,7 @@ def style(tied: dict) -> dict:
         else:
             # a tail hangs: it stands out of a high tight tie a little longer than out of a low loose one
             tail_.update({"hang": True, "stiff": round(0.2 + 0.1 * float(np.clip((el + 10) / 60, 0, 1)) + 0.04 * T, 3),
-                          "spread": round(0.3 + 0.3 * tl["fullness"], 3), "sway": round(0.034 * wave, 4),
+                          "spread": round(0.3 + 0.3 * tl["fullness"], 3), "sway": round(0.022 * wave, 4),
                           "sway_length": 0.21, "flick": round(0.04 * wave, 4)})
             if tl["to"] == "shoulder":  # brought forward over the shoulder on the tie's side (the left when centred)
                 sd = 1.0 if off >= 0 else -1.0
