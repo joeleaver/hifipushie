@@ -91,7 +91,7 @@ FOLDS = {
     "lid_fold": {"path": [("lm_eye_inner.L", (0.035, 0.0, 0.045)), ("lm_lid_upper_in.L", (0.0, 0.0, 0.058)),
                           ("lm_lid_upper.L", (0.0, 0.0, 0.062)), ("lm_lid_upper_out.L", (0.0, 0.0, 0.058)),
                           ("lm_eye_outer.L", (0.025, 0.0, 0.04))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
-                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.0, "flank": 1.0, "res": 0.5, "smooth": 3.0,
+                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.0, "flank": 1.0, "res": 0.5, "smooth": 4.0,
                  "about": "the upper eyelid's crease line (the fold GNM's lids only hint at)"},
     "glabella": {"path": [("lm_brow_inner.L", (-0.035, -0.01, 0.1)), ("lm_brow_inner.L", (-0.015, -0.01, -0.08))],
                  "plus": (1, 0, 0), "width": 1.4, "depth": 0.6, "tint": 0.5, "shade": 0.15, "roll": None, "search": 3.0,
@@ -124,8 +124,11 @@ END = 0.007               # m: a fold's relief comes in from nothing over this l
 # lying on skin: no light gets in; EEVEE has none at 0.5 mm): the crease line's share of a dark multiply layer
 # (folds_crease), 0.6 x the groove's width. Without it a lid's crease at amount 1 was a faint line (foldval's truth
 # pictures: read_lid darkness 0.05-0.13, a photograph's fold line reads 0.15-0.4).
-OCCLUSION = {"lid_fold": 1.0, "nasolabial": 0.35, "marionette": 0.08, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
+OCCLUSION = {"lid_fold": 0.9, "nasolabial": 0.35, "marionette": 0.08, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
              "tear_trough": 0.0, "commissure": 0.15}
+# the crease line's occlusion is this wide (x the groove's sigma; a lid's 0.3 mm line at 0.6 was under a pixel of a
+# 0.25 mm picture and read 0.05 dark where a photographed fold line, ~1 mm of skin lying on skin, reads 0.3)
+OCC_WIDTH = {"lid_fold": 1.5}
 HOOD_DROP = 1.7           # mm: at hood 1 the lid fold's line comes this much down toward the lashes at its outer end
 HOOD_ROLL = 1.6           # ... and its roll stands this much higher there (x 1 + HOOD_ROLL x hood)
 HOOD_KEEP = 0.3           # ... and reaches this much nearer the lid's margin (the keep-out x 1 - HOOD_KEEP x hood)
@@ -431,6 +434,10 @@ def paths(spec: dict | None, part: str, J: dict, cfg: dict | None = None, names=
                     P = S.seat(P + sh[:, None] * ac)
                 e0, e1 = q["extent"]
                 amount = o["amount"] * q["amount"] * ((t >= e0) & (t <= e1))
+            if fd.get("smooth") and o is not None:   # (the line itself: what the map draws and the geometry sweeps)
+                from scipy.ndimage import gaussian_filter1d
+                P = S.seat(gaussian_filter1d(P, fd["smooth"] * 0.001 / STATION, axis=0, mode="nearest"))
+                P = gaussian_filter1d(P, 1.5, axis=0, mode="nearest")
             ease = np.clip(np.minimum(t - (o["sides"][sd]["extent"][0] if o else 0.0), (o["sides"][sd]["extent"][1] if o else 1.0) - t) / 0.18, 0, 1)
             amount = amount * (0.25 + 0.75 * np.sin(0.5 * np.pi * ease))   # a fold fades toward its ends
             out[(name, sd)] = {"P": P, "across": ac, "t": t, "amount": amount, "width": (o or fd)["width"],
@@ -447,7 +454,7 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
     S = map_surface(spec, part, J)
     sp = S.sp
     geo = geometry_key(spec.get("skin") or {}) is not None
-    key = hashlib.sha1(json.dumps([cfg, geo, np.asarray(S.V[:50]).round(5).tolist(), len(S.V), sp["img"], VERSION, sm.VERSION, FOLDS],
+    key = hashlib.sha1(json.dumps([cfg, geo, np.asarray(S.V[:50]).round(5).tolist(), len(S.V), sp["img"], VERSION, sm.VERSION, FOLDS, OCCLUSION, OCC_WIDTH],
                                   sort_keys=True, default=str).encode()).hexdigest()[:16]
     path = store.HOME / "_images" / f"mk_folds_{key}.png"
     stats_f = path.with_suffix(".json")
@@ -478,6 +485,20 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
         Pf, Af, amf = fine(q["P"]), fine(q["across"]), np.interp(tt, q["t"], q["amount"])
         d, i = cKDTree(Pf).query(Q)
         s = ((Q - Pf[i]) * Af[i]).sum(1)
+        if geo:
+            # the map's pixels lie on the surface WITH the relief, the line on the fold-free one: the distance is
+            # measured IN the skin (the height over the line left out). In 3D a lid's crease lost its dark line
+            # exactly where the fold's lip stands highest (mid-lid: 0.7 mm out, the line's sigma 0.3-0.6 mm)
+            Nf = fine(q["normal"])
+            Nf /= np.maximum(np.linalg.norm(Nf, axis=1, keepdims=True), 1e-12)
+            hh = ((Q - Pf[i]) * Nf[i]).sum(1)
+            d = np.sqrt(np.maximum(d * d - hh * hh, 0.0))
+            # (and no cut ends: the colour eases in with the relief)
+            on_ = np.flatnonzero(amf > 0)
+            if len(on_):
+                sp_ = float(np.median(np.linalg.norm(np.diff(Pf, axis=0), axis=1)))
+                e_ = np.clip(np.minimum(np.arange(len(amf)) - on_[0], on_[-1] - np.arange(len(amf))) * sp_ / END, 0, 1)
+                amf = amf * e_ * e_ * (3 - 2 * e_)
         a = amf[i] * ok
         sg = 0.001 * q["width"] / 2.355
         groove = a * fd["depth"] * np.exp(-0.5 * (d / sg) ** 2)
@@ -492,7 +513,7 @@ def fold_map(spec: dict, part: str, J: dict, cfg: dict) -> tuple[str, dict, dict
         shp = blk.shape[:2]
         # r: the groove's depth (x DEPTH); g: the roll (x BULGE); b: the darkening (crease line + soft shade, 0..1)
         if geo:   # r: the crease's occlusion instead of a painted groove
-            groove = a * OCCLUSION[name] * np.exp(-0.5 * (d / (0.6 * sg)) ** 2)
+            groove = a * OCCLUSION[name] * np.exp(-0.5 * (d / (OCC_WIDTH.get(name, 0.6) * sg)) ** 2)
         blk[..., 0] = np.maximum(blk[..., 0], (groove / 1.5).reshape(shp))
         blk[..., 1] = np.maximum(blk[..., 1], (roll / 1.5).reshape(shp))
         blk[..., 2] = np.maximum(blk[..., 2], np.clip(np.maximum(tint, shade), 0, 1).reshape(shp))
@@ -723,7 +744,7 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
     if geometry_key(spec.get("skin") or {}) is not None:
         # the relief is in the surface itself (prims): the map carries colour only: the shade, and the crease's occlusion
         # (the map holds amount x share / 1.5: full strength at amount 1.5)
-        layer("folds_crease", color=[0.42, 0.3, 0.28], mix="multiply", opacity=1.0, mask=[im("r")])
+        layer("folds_crease", color=[0.5, 0.33, 0.27], mix="multiply", opacity=1.0, mask=[im("r")])
         return
     layer("folds_groove", height=-round(DEPTH * 1.5, 7), roughness=min(base_r + 0.08, 0.95), opacity=0.6, mask=[im("r")])
     layer("folds_roll", height=round(BULGE * 1.5, 7), mask=[im("g")])

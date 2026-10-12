@@ -1511,8 +1511,10 @@ FOLD_STEP = 0.25       # mm between a profile's samples
 # (skinfolds, 2026-10-12: recalibrated on the folds as GEOMETRY, spikes/skinfolds/foldval.py case A: nasolabial 0.18 /
 # 0.08 by side under a side light, marionette 0.07, mouth_corner 0.10 / 0.09, mentolabial 0.28, tear_trough 0.18 / 0.23,
 # glabella 0.15 / 0.11)
-FOLD_REF = {"nasolabial": 0.11, "marionette": 0.055, "mouth_corner": 0.095, "mentolabial": 0.28, "tear_trough": 0.2,
-            "lid_fold": 0.16, "glabella": 0.13, "commissure": 0.1}
+# (skinfolds2, the new paths and reliefs, foldval case A on folds2.json: nasolabial 0.23 / 0.15, marionette 0.094,
+# commissure 0.076, mouth_corner 0.15 / 0.10, mentolabial 0.27, glabella 0.13 / 0.105)
+FOLD_REF = {"nasolabial": 0.19, "marionette": 0.09, "mouth_corner": 0.12, "mentolabial": 0.28, "tear_trough": 0.2,
+            "lid_fold": 0.16, "glabella": 0.13, "commissure": 0.08}
 # THE STEP (skinfolds): a fold lit from its side is not a valley but a lit / shaded STEP across its line (a painter's
 # nasolabial fold under a lamp). Per station: the mean log luminance just past the line on the plus side minus the
 # minus side's, the picture's over OURS (our head's own shading across the path cancels), signed by the fitted light:
@@ -1539,7 +1541,9 @@ LID_PRIOR = {"amount": 0.6, "show": (3.3, 2.0), "nominal": 3.45}   # a lid fold 
 LID_COLS = (0.2, 0.35, 0.5, 0.65, 0.8)
 LID_REACH = 8.5        # mm over the lashes the line is searched (further up is the brow's own shadow: 11-13 mm on a smooth head)
 LID_DARK = 0.08        # read_lid's darkness (0..1): a line is there
-LID_REF = 0.22         # what an amount-1 lid_fold of ours adds to that darkness (calibrated)
+LID_REF = 0.32         # what an amount-1 lid_fold of ours adds to that darkness (skinfolds2, lidcal.py: our crease at amount 1,
+                       # read on the render at its full size, 0.32 / 0.32 by side; Tess's photographed fold: 0.32. Before
+                       # the crease's occlusion was measured in 3D and vanished mid-lid: 0.06-0.10 at amount 1.2)
 LEGACY = {"nasolabial": "nasolabial", "marionette": "marionette", "glabella": "glabella"}   # skin.wrinkles' own lines
 LEGACY_SHARE = 0.5     # what one unit of the legacy wrinkle is taken to be worth in fold amount when it is replaced
 # fields of fine lines (skin.wrinkles' swatch layers): zone, the picture resolution they need (mm a pixel), and what
@@ -1884,6 +1888,11 @@ def _lid_read(c: Context, nominal: dict) -> dict:
         X = humanfit.project(f["cam"], q["P"]) - o
         xt, xh = X @ ex, -(X @ ey)                      # along the eye, up the face (px)
         order = np.argsort(xt * np.sign(span))
+        # the lid leans back from the picture plane: a millimetre ALONG THE SKIN across the fold is this many up the
+        # picture (0.4-0.6 on Tess's lids). The shift is asked in skin millimetres: the picture's are divided by it
+        # (skinfolds2: laid 1:1, a fold read 1.6 mm over our path came out 0.8 over it)
+        Xa = humanfit.project(f["cam"], q["P"] + 0.001 * q["across"]) - o
+        lean = np.clip((-(Xa @ ey) - xh) * mm, 0.35, 1.0)
         rows = []
         for fr_, cp, co in zip(LID_COLS, cols_p[s_], cols_o[s_]):
             tcol = fr_ * span
@@ -1891,7 +1900,8 @@ def _lid_read(c: Context, nominal: dict) -> dict:
             h_nom = (float(np.interp(tcol * np.sign(span), (xt * np.sign(span))[order], xh[order])) + lid) * mm   # the path over the lash line
             t_path = float(np.interp(tcol * np.sign(span), (xt * np.sign(span))[order], q["t"][order]))
             rows.append({"col": fr_, "t": t_path, "tps": cp.get("tps", np.nan), "dark": cp.get("dark", 0.0), "dark_ours": co.get("dark", 0.0),
-                         "tps_ours": co.get("tps", np.nan), "nominal": h_nom})
+                         "tps_ours": co.get("tps", np.nan), "nominal": h_nom,
+                         "lean": float(np.interp(tcol * np.sign(span), (xt * np.sign(span))[order], lean[order]))})
         good = [r_ for r_ in rows if np.isfinite(r_["tps"]) and r_["dark"] >= LID_DARK and 1.5 <= r_["nominal"] <= 6.0]
         dark = float(np.median([r_["dark"] for r_ in rows]))
         dark_o = float(np.median([r_["dark_ours"] for r_ in rows]))
@@ -1903,10 +1913,10 @@ def _lid_read(c: Context, nominal: dict) -> dict:
         res["confidence"] = round(float(np.clip(len(good) / 4.0, 0, 1) * np.clip((dark - dark_o) / 0.1, 0, 1)), 2)
         if len(good) >= 3:
             ts = np.array([r_["t"] for r_ in good])
-            sh = np.array([r_["tps"] - r_["nominal"] for r_ in good])
+            sh = np.array([(r_["tps"] - r_["nominal"]) / r_["lean"] for r_ in good])
             kk = np.argsort(ts)
             co = np.polyfit(ts[kk], sh[kk], 1 if len(good) < 4 else 2)        # a fold's line is smooth
-            res["shift"] = [round(float(x), 2) for x in np.clip(np.polyval(co, np.clip(np.linspace(0, 1, sf.N_SHIFT), ts.min(), ts.max())), -3, 5)]
+            res["shift"] = [round(float(x), 2) for x in np.clip(np.polyval(co, np.clip(np.linspace(0, 1, sf.N_SHIFT), ts.min(), ts.max())), -3, 6)]
             res["extent"] = [0.0, 1.0]
             res["amount"] = round(float(np.clip((dark - dark_o) / LID_REF, 0, 1.5)), 3)
             res.pop("move", None)
