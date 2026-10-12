@@ -28,6 +28,8 @@ spec["skin"] = {
   "features": {"freckles", "moles", "age_spots", "blemishes", "veins", "flush", "sunburn", "tan"}  (see FEATURES)
   "wrinkles": {"amount": null (from age) | 0..1, "<region>": 0..1}                                 (see WRINKLES)
   "fold_relief": "geometry" (default: skin.folds reshape the surface, skin_folds.prims) | "paint" (bump only)
+  "fold_expressions": true (export: each fold's gain per face shape is baked into that shape's morph target,
+                                  skin_folds.EXPRESSION: a lid's crease unfolds on a blink) | false (the folds ride the shapes rigidly)
   "folds": {name: amount | {"amount", "width", "depth", "roll", "L" / "R": {"amount", "shift", "extent"}}}   (see FOLDS: the
                                   soft-tissue lines and bulges the shape model does not make: nasolabial, marionette,
                                   tear_trough (+ the eye bag), lid_fold, mentolabial, glabella, mouth_corner; colour and
@@ -476,7 +478,7 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds", "fold_relief"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds", "fold_relief", "fold_expressions"}
 GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", "eye_rims")
 
 

@@ -135,10 +135,31 @@ tear trough, the cheek's pad over a nasolabial fold, the hooding over a lid's cr
 raking light, in profile and in the silhouette, and is in the exported asset (the low poly as far as its triangles
 go, the rest in its normal and AO maps). The crease's tint and shade stay colour, from the same parameters.
 Per fold: `amount` 0..1.5, `width` (mm, the groove), `depth` and `roll` (0..3, x the feature's own: `roll` is the bag
-/ pad / hooding), per side `L` / `R`: `amount`, `shift`, `extent`. mm at amount 1: nasolabial groove 0.6 / pad 1.3,
-marionette 0.5 / 0.6, tear_trough 0.6 / bag 1.4, lid_fold crease 0.6 / roll 0.5, mentolabial 0.8, glabella 0.35,
-mouth_corner 0.3. A heavy bag: `"tear_trough": {"amount": 1.2, "roll": 1.6}`; a hooded lid: `"lid_fold": {"amount":
-1, "roll": 2}`. The displacement fades out before the lid margins and the lips and never reaches the eyeball; with no
+/ pad / the skin over a lid's crease), per side `L` / `R`: `amount`, `shift`, `extent`. mm at amount 1: nasolabial
+groove 0.4 / pad 1.3, marionette 0.3 / jowl pad 0.5 (a soft 6 mm fold from the mouth's corner down and a little out),
+commissure 0.45 (the depression at the mouth's corner), tear_trough 0.6 / bag 1.4, lid_fold crease 0.85 / roll 0.6,
+mentolabial 0.8, glabella 0.35, mouth_corner 0.3 (the crease running out from the corner). A heavy bag:
+`"tear_trough": {"amount": 1.2, "roll": 1.6}`.
+The upper lid: `"lid_fold": {"amount": 1, "hood": 0.8}`: `hood` (0..1.5, lid_fold only) is HOODING: over the outer
+half the fold's line comes down toward the lashes (1.7 mm at 1), the roll over it stands 1 + 1.6 x hood higher and
+reaches nearer the lid's margin; `roll` thickens the skin over the whole crease. Where the lid lies thin over the
+eyeball the crease cannot go in: it takes the room there is and the rest of its depth stands out as the fold's own
+lip just over the line (the eyeball is a constraint, not a stop: the crease stays one line from corner to corner).
+Its dark line is calibrated on a photograph: amount 1 renders as dark as a clear photographed crease (read the same
+way, 0.32). The nasolabial path follows the HEAD'S OWN crease where the shape has one (a middle-aged GNM head does),
+else it runs from the nose's wing at 30-40 deg from the vertical, 12-15 mm outside the mouth's corner.
+`"chin_notch": 0.8`: the chin's midline notch / cleft with a soft lobe each side (0.9 mm deep, lobes 0.6 at amount 1;
+`roll` = the lobes). `commissure` and `chin_notch` are NOT READ by skin_from_reference (the mouth's own corner
+shadow / the chin's own shading lie in their windows: the reply says so): set them by eye.
+FOLDS UNDER EXPRESSION (export_asset(face_shapes=...)): a fold laid in the neutral would ride a face shape rigidly (a
+crease across a closed lid). Each fold has a gain per ARKit shape (`skin_folds.EXPRESSION`: lid_fold eyeBlink 0,
+eyeWide 1.3, eyeSquint 0.5, browDown 1.2; tear_trough eyeSquint / cheekSquint 1.4; nasolabial mouthSmile 1.5,
+cheekSquint 1.2, jawOpen 0.8; marionette jawOpen 0.6, mouthFrown 1.4; glabella browDown 1.6 ...; first guesses),
+and the export bakes (gain - 1) x the fold's own displacement into that shape's morph target (the report's
+`fold_expressions`: mm per fold and shape). GEOMETRY ONLY: the fold's normal map and its painted line are one
+texture for all shapes and stay (a GLB's morph targets carry POSITION and vertex NORMAL, no per-target texture):
+fading them with a shape needs a wrinkle-map blend in the engine. `"fold_expressions": false` leaves the folds rigid.
+The displacement fades out before the lid margins and the lips and never reaches the eyeball; with no
 folds nothing is built or evaluated. `"fold_relief": "paint"` keeps the older painted relief (bump only).
 Look at them with `look_skin` under two lights; a fold is a few voxels wide: judge close-ups, not the bust.
 
@@ -292,7 +313,9 @@ skin or paint edit ~20-40 s.
 views: any of bust, face, three_quarter, side, cheek (macro), eye, mouth, forehead, ear (back-lit: light through
 the ear), hand, palm, forearm (default face, three_quarter, cheek, eye, mouth, ear).
 light: "studio" (a key from the model's right + a weak fill), "soft" (broad frontal: colour without highlights),
-"back" (back-lit), "rake" (a low light from the side: what shows relief: folds, bags, a lid's crease); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
+"back" (back-lit), "rake" (a low light from the side: what shows relief: folds, bags, a lid's crease), "photo" (the front
+reference's own fitted light AT THE PICTURE'S EXPOSURE, as the last skin_from_reference read measured it: the light to
+judge tone beside the reference; a render 10 L under its reference reads as a tan whatever the albedo); default per view. flat=True: the unlit colour. layer: one layer's mask, orange on grey clay
 ("freckles" = "skin:freckles"; or any paint layer's name).
 engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
 shadow edges and back-lit ears).
@@ -300,7 +323,7 @@ Judge in this order: flat colour at bust distance (tone, zones), then the lit bu
 
 ### `skin_from_reference`
 
-`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None)`
+`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None, white=None)`
 
 The reference pictures as a MEASUREMENT of the skin: the description (spec["skin"]) is set from what the fitted
 references show, and the result is the ordinary procedural skin (clean under any light, from any angle). The picture
@@ -318,16 +341,31 @@ What it reads and sets (groups; default all):
 - `tone`: melanin / blood / undertone. A picture does not say how LIGHT a skin is (exposure x albedo), so lightness
   has an anchor, in this order: (1) the PRIOR: the model's stated `skin.tone` (set it first, or pass `tone=` a
   Fitzpatrick type 1..6 or skin.tone's own keys); the pictures then correct hue and saturation only and the plain
-  skin's lightness stays within 3 L* of the prior and its colour within 5 (a*b*: a backdrop is a weak white balance); (2) a KNOWN WHITE in the picture (a shirt collar under the chin,
-  found by the picture parser: bright, neutral, 250+ px): skin albedo = 0.8 x skin / white, which may move the
-  lightness up to 8 L* off the prior (the white's albedo and light are inferred). The reply says which was used and
-  the plain skin's L* before -> after. The white balance needs a plain NEUTRAL backdrop or that white; with neither
-  the tone is NOT READ (everything else still is). The sclera is never an anchor (lid and lash shadow).
+  skin's lightness stays within 3 L* of the prior and its colour within 5 (a*b*: a backdrop is a weak white balance);
+  the WHOLE FACE's mean albedo (every skin zone, stubble apart) is held to the same bounds, and no zone's offset from
+  that mean may leave the prior's by more than 4 L* / 5 a*b* (the zone layers are scaled back, and the reply says so).
+  (2) a KNOWN WHITE in the picture: clothing under the face, searched in the WHOLE picture (the parser's cloth:
+  bright, neutral, 250+ px, brighter than the lit skin and no darker than 0.8 x a neutral backdrop: a pale grey shirt
+  is refused, and the reply says why), or one you point at: `white=[{"view": i, "box": [x0, y0, x1, y1] (picture
+  pixels), "albedo": 0.8}]` (paper, a shirt, a white wall: taken at your word). Skin albedo = its albedo x lit skin /
+  white, which may move the lightness up to 8 L* off the prior (that the white is lit as the face is INFERRED). A
+  backdrop is NOT an exposure anchor (its albedo and its own light are unknown): white balance only. The reply says
+  which was used and the plain skin's and whole face's Lab before -> after. With no neutral backdrop and no white the
+  tone is NOT READ (everything else still is). The sclera is never an anchor (lid and lash shadow).
   anchor="prior" ignores a white.
+- SHADE IS NOT PIGMENT: a region the pictures show darker than our render under the fitted light predicts is taken
+  first as shade our head does not cast (deeper-set eyes, the jaw turning from a light the fit only roughly knows),
+  in the pictures' own measured shade colour (darker and warmer: about r 0.8 / g 1.05 / b 1.3 as exponents on
+  photographs), and is NOT painted in; the reply lists those regions and their L*. What is left to the zone tints is
+  colour off that line (redder, bluer, greyer) and, where a beard may be, its shadow. A real tan line or dark circles:
+  set that zone's strength yourself. A parameter whose move is worth next to nothing to the fit is put back.
+- the reply's views state the picture's exposure against our render under its fitted light (EV); `look_skin(light=
+  "photo")` renders at it.
 - `zones`: skin.zones forehead_yellow, midface_red, nose_red, perioral_red, lower_cool + features.flush.
 - `eyes`: zones under_eye, eyelids, periorbital (the socket's own darker, browner skin). These three overlap: judge
   the region's colour, not each number.
-- `lips`: lips.blood / melanin (x the TONE's melanin: a dark lip on a very fair tone needs 10-20) , lips.strength (how much of
+- `lips` (their colour is read like a zone; check it in the reply's AFTER table, lip_upper / lip_lower d, and by eye
+  under light="photo"): lips.blood / melanin (x the TONE's melanin: a dark lip on a very fair tone needs 10-20) , lips.strength (how much of
   the vermilion is the lips' own colour: a man's is 0.65 of a woman's by default) and lips.lower {blood, melanin}. The vermilion's own
   gradient (darker toward the wet line and the corners, a lighter lower-lip body: `lips.gradient`, 0..2.5, default 1)
   and its border's softness (`lips.border`, mm, default 1.5) are NOT read: set them by eye.
@@ -339,16 +377,22 @@ What it reads and sets (groups; default all):
   the pictures show none.
 - `eyeballs` (NOT in the default groups: ask for it): the iris colour against the sclera beside it. Right on synthetic
   pictures, wrong on photographs (a real sclera sits in lid shadow): check the result against the picture by eye.
-- `folds`: the CHECKLIST of soft-tissue features the shape model does not make: nasolabial, marionette, mouth_corner,
-  mentolabial, tear_trough (its roll is the eye bag), lid_fold (the upper lid's crease as a line), glabella, each
+- `folds`: the CHECKLIST of soft-tissue features the shape model does not make: nasolabial, marionette, commissure,
+  mouth_corner, mentolabial, tear_trough (its roll is the eye bag), lid_fold (the upper lid's crease as a line), glabella, each
   PRESENT / absent / "ours has more" per side with strength, extent along its path, placement (mm across the path)
   and a confidence; and the fields of fine lines (forehead, crow's feet, under the eye, round the lips) as energy over
   the cheek's. Each feature states the picture resolution it needs and answers "cannot tell" below it (a face 110 px
   wide: 1.4 mm a pixel reads the broad folds, never a lid crease or fine lines). Three detectors: a VALLEY of
   luminance across the path; a lit / shaded STEP across it with the fitted light's sign (a side-lit fold, a painter's
   nasolabial under a lamp: no valley); and, for the upper lid, the fold line searched up from the PICTURE's own lash
-  line (which places the crease: mm over the lashes per column). They are laid by skin.folds as GEOMETRY (section 4b)
-  with their tint and shade as colour.
+  line (which places the crease: mm over the lashes per column, turned into millimetres along the leaning lid; its
+  strength is the line's darkness against OUR rendered crease's, read the same way at the same scale, so a second
+  round closes on it). They are laid by skin.folds as GEOMETRY (section 4b) with their tint and shade as colour.
+  SYMMETRY IS THE PRIOR where a side cannot be read: tear troughs / bags, nasolabial and marionette folds come in
+  pairs; when one side reads with confidence and the other is not seen, or the pictures are too coarse to place a
+  fold (0.7 mm a pixel or more: there "not found" is no evidence), the unread side takes the read side's amount and
+  the reply says INFERRED from the other side. On finer pictures a side that reads absent stays absent. A soft fold
+  is never laid shorter than 65 % of its path (a marionette nick reads as a scar).
 
 rounds: read -> fit -> re-render -> read again; the second round corrects what the first could only estimate
 (densities, fold strength and placement). ~3-5 min a round on a head. read_only=True returns the read (tables per

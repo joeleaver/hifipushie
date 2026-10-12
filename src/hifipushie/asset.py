@@ -1891,8 +1891,12 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 log.append(f"WARNING face shapes: {pn}'s low poly isn't its topology's vertices: shapes by projection")
         shapes = faceshapes.apply(spec, {pn: p for pn, p in parts.items()
                                          if pn not in pf_of and not report[pn].get("curves")}, face_shapes, log)
+        from . import skin_folds
+        fx = skin_folds.expression(spec, {pn: parts[pn] for pn in shapes}, log)   # the folds' own change with each shape
         for pn, nms in shapes.items():
             report[pn]["face_shapes"] = nms
+            if fx and parts[pn].get("shapes") and pn.split("/")[-1].split("~")[0] == (spec.get("skin") or {}).get("part", "body"):
+                report[pn]["fold_expressions"] = fx
             if parts[pn].get("shape_unevenness"):  # (faceshapes.unevenness: shapes over UNEVEN_COUNT, worst vertex)
                 report[pn]["face_shape_unevenness"] = parts[pn].pop("shape_unevenness")
         log.append(f"face shapes: {len(faceshapes.names_of(face_shapes))} on {len(shapes)} parts in "

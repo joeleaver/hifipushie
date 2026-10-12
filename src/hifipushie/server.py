@@ -2251,16 +2251,17 @@ def check_references(images: list[str], name: str | None = None) -> str:
 
 @mcp.tool(structured_output=False)
 def skin_from_reference(name: str, out: str = "", groups: list[str] | None = None, rounds: int = 2, read_only: bool = False,
-                        stubble: bool | None = None, anchor: str = "auto", tone: float | dict | None = None) -> str:
+                        stubble: bool | None = None, anchor: str = "auto", tone: float | dict | None = None,
+                        white: list[dict] | None = None) -> str:
     """Set the procedural skin from the model's fitted reference pictures, used as a MEASUREMENT (never as the
     albedo): tone, zone tints, lips, beard shadow by zone, brows, freckles, and the folds the shape model does not make
     (nasolabial, tear trough / eye bag, lid fold, marionette ...). read_only=True: the read alone. out: save to a copy.
     Details: guide(topic="skin_from_reference")."""
     from . import skin_read
     if read_only:
-        return skin_read.read(name, anchor=anchor, log=lambda s: None)["text"]
+        return skin_read.read(name, anchor=anchor, log=lambda s: None, white=white)["text"]
     r = skin_read.apply(name, out=out or None, groups=tuple(groups) if groups else skin_read.DEFAULT_GROUPS, rounds=rounds,
-                        anchor=anchor, stubble=stubble, log=lambda s: None, tone=tone)
+                        anchor=anchor, stubble=stubble, log=lambda s: None, tone=tone, white=white)
     return r["text"]
 
 

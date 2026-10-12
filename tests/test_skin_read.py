@@ -253,8 +253,122 @@ def test_step_and_tone_bound():
     assert sr.TONE_BOUND <= 3.0 < sr.TONE_BOUND_WHITE
 
 
+def test_shade_white_and_bounds():
+    """skinfolds2: Lab's inverse, the white anchor's rules (found / refused / declared), the shade and face bounds'
+    constants, every fold calibrated."""
+    x = np.array([[0.6, 0.42, 0.33], [0.1, 0.2, 0.05]])
+    assert np.abs(sr._unlab(sr.lab(x)) - x).max() < 1e-6
+    assert set(sr.FOLD_REF) == set(sf.FOLDS) == set(sr.STEP_REF) == set(sf.RELIEF) == set(sf.OCCLUSION)
+    # a chin's notch: a groove with a lobe on BOTH sides
+    pr = {"G": np.array([0.0009]), "sg": np.array([0.002]), "O": np.array([0.0006]), "Pl": np.array([0.0]), "lee": 1.0, "sym": True, "has_roll": True,
+          "r0": 0.0055, "so": 0.0035, "sh": 0.004, "has_plat": False, "ph": 0.001}
+    v = sf.profile(np.array([-0.0055, 0.0, 0.0055]), pr, np.zeros(3, int))
+    assert v[1] < -0.0008 and abs(v[0] - v[2]) < 1e-9 and v[0] > 0.0005, v
+    assert sr.SHADE_SIGMA_PLAIN < 0.1 < sr.SHADE_SIGMA and sr.FACE_BOUND <= sr.TONE_BOUND_WHITE and sr.ZONE_BOUND[0] <= 5
+    # a picture: grey backdrop 0.5, a face-coloured block, a shirt under it
+    def pic(shirt):
+        img = np.full((200, 160, 3), 0.5)
+        img[40:110, 50:110] = [0.45, 0.3, 0.24]
+        img[130:200, 20:140] = shirt
+        cloth = np.zeros((200, 160)); cloth[130:200, 20:140] = 1.0
+        f = {"white_patch": sr.white_patch(img, {"cloth": cloth, "figure": cloth, "skin": cloth * 0, "hair": cloth * 0}, 115.0), "view": 0}
+        return f
+    q, why = sr._white(pic([0.8, 0.8, 0.8]), backdrop_Y=0.5)
+    assert q is not None and why == "found" and abs(q["Y"] - 0.8) < 0.01 and q["albedo"] == sr.WHITE_ALBEDO and q["where"][1] >= 115, (q, why)
+    q, why = sr._white(pic([0.36, 0.36, 0.38]), backdrop_Y=0.5)
+    assert q is None and "backdrop" in why, why                       # a pale grey shirt under a brighter backdrop
+    q, why = sr._white(pic([0.8, 0.5, 0.4]), backdrop_Y=0.5)
+    assert q is None and "coloured" in why, why
+    assert sr._white({"view": 0})[0] is None
+    # declared: any box of the picture, taken at the caller's word
+    with tempfile.TemporaryDirectory() as d:
+        from PIL import Image
+        img = np.full((200, 160, 3), 0.5); img[10:60, 10:60] = [0.6, 0.62, 0.6]
+        Image.fromarray(np.round(255 * sr._srgb(img)).astype(np.uint8)).save(d + "/p.png")
+        q, why = sr._white({"view": 0, "image": d + "/p.png"}, declared={"box": [12, 12, 58, 58], "albedo": 0.7})
+        assert why == "declared" and q["albedo"] == 0.7 and abs(q["Y"] - 0.613) < 0.02 and q["declared"], q
+
+
+def test_fold_rules2():
+    """skinfolds2: hood on the lid only, symmetry as the prior on coarse pictures (and not on fine ones), a soft fold's
+    shortest extent, the lid's lip where the eyeball leaves no room."""
+    assert sf.options({"lid_fold": {"amount": 1, "hood": 0.8}})["lid_fold"]["hood"] == 0.8 and "hood" not in sf.options({"lid_fold": 1})["lid_fold"]
+    try:
+        sf.options({"nasolabial": {"amount": 1, "hood": 0.5}})
+        raise AssertionError("hood is the lid's")
+    except SpecError:
+        pass
+    side = lambda **kw: {"present": False, "absent_in_picture": False, "picture": 0.0, "ours": 0.0, "diff": 0.0, "excess": 0.0,  # noqa: E731
+                         "share": 0.0, "confidence": 0.0, "views": [0], **kw}
+    coarse = "on its landmark path (the pictures are too coarse to place it)"
+    hit = side(present=True, by="valley", picture=0.1, diff=0.1, share=0.6, confidence=0.9, placed=coarse)
+    sk = {"age": 50}
+    ch = sr.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(placed=coarse), ".R": hit}}}, "fields": {}}, True)
+    t = sk["folds"]["tear_trough"]
+    assert 0.4 < t["amount"] < 0.6 and "L" not in t and "R" not in t, t                 # both sides the same amount
+    assert any("INFERRED from the other side" in c_[3] for c_ in ch), ch
+    # round 2: the read side is "as ours", the unread one reads "ours has more": the pair stays
+    sr.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(placed=coarse, absent_in_picture=True, ours=0.05, excess=0.05),
+                                                                         ".R": side(placed=coarse, picture=0.1, ours=0.1)}}}, "fields": {}}, False)
+    t2 = sf.options(sk["folds"])["tear_trough"]
+    assert abs(t2["sides"][".L"]["amount"] - t2["sides"][".R"]["amount"]) < 0.05 and t2["amount"] > 0.4, t2
+    # fine pictures: a side that reads absent stays absent
+    sk = {"age": 50}
+    sr.fold_fit(sk, {"folds": {"tear_trough": {"readable": True, "sides": {".L": side(), ".R": {**hit, "placed": None, "extent": [0.0, 1.0]}}}}, "fields": {}}, True)
+    sk["folds"]["tear_trough"]["R"] if False else None
+    assert sf.options(sk["folds"])["tear_trough"]["sides"][".L"]["amount"] == 0.0, sk
+    # a soft fold is not laid as a nick
+    sk = {"age": 50}
+    m = side(present=True, by="valley", picture=0.1, diff=0.1, share=0.5, confidence=0.9, extent=[0.0, 0.3])
+    sr.fold_fit(sk, {"folds": {"marionette": {"readable": True, "sides": {".L": m, ".R": m}}}, "fields": {}}, True)
+    e = sk["folds"]["marionette"]["L"]["extent"]
+    assert e[1] - e[0] >= sf.FOLDS["marionette"]["min_extent"] - 0.01, e
+    # the lid's lip: no room over the ball -> the profile stands out just over the line instead of going in
+    pr = {"G": np.array([0.0]), "sg": np.array([0.0005]), "O": np.array([0.0]), "Pl": np.array([0.0]), "lee": 1.0, "has_roll": False,
+          "r0": 0.0, "so": 0.001, "sh": 0.001, "has_plat": False, "ph": 0.001, "has_over": True, "Ov": np.array([0.0008]), "or0": 0.0011,
+          "oso": 0.0013, "osh": 0.0009}
+    v = sf.profile(np.array([-0.001, 0.0, 0.001, 0.006]), pr, np.zeros(4, int))
+    assert v[0] == 0 and v[1] == 0 and v[2] > 0.0007 and v[3] < 0.0001, v
+
+
+@_tmp
+def test_folds_under_expression():
+    """skinfolds2: a fold's gain per face shape goes into that shape's morph target: on a blink (gain 0) the lid
+    fold's vertices move back onto the fold-free skin; the other side's shape and a shape without a gain add nothing;
+    skin.fold_expressions = False turns it off."""
+    from hifipushie import images, sdf
+    spec = head_spec(age=30, folds={"lid_fold": 1.0, "nasolabial": 1.0})
+    J = skin._joints(spec)
+    ps = sf.paths(spec, "body", J, sf.options(spec["skin"]["folds"]), names=["lid_fold"])
+    q = ps[("lid_fold", ".L")]
+    full, free = images.prims_on(spec, ["body"]), images.prims_on(sf.without(spec), ["body"])
+    # vertices ON the folded surface, 2 mm over the fold's line (its roll), along the path's middle third
+    i = np.arange(len(q["P"]) // 3, 2 * len(q["P"]) // 3)
+    X = q["P"][i] + 0.002 * q["across"][i]
+    for _ in range(6):
+        X = X - sdf.field_at(full, X)[:, None] * q["normal"][i]
+    before = np.abs(sdf.field_at(free, X))
+    assert before.max() > 0.0002, before.max()            # the fold stands there
+    T = np.array([[0, 1, 2]])
+    z = np.zeros_like(X)
+    mk_ = lambda: {"body": {"verts": X.copy(), "corner_vert": T.ravel(), "shapes": {k: (z.copy(), z.copy(), z.copy()) for k in  # noqa: E731
+                                                                               ("eyeBlinkLeft", "eyeBlinkRight", "jawForward", "eyeWideLeft")}}}
+    parts, log = mk_(), []
+    got = sf.expression(spec, parts, log)
+    d = parts["body"]["shapes"]["eyeBlinkLeft"][0]
+    after = np.abs(sdf.field_at(free, X + d))
+    assert after.max() < 0.35 * before.max(), (before.max(), after.max())      # unfolded
+    assert np.abs(parts["body"]["shapes"]["eyeBlinkRight"][0]).max() < 1e-9 and np.abs(parts["body"]["shapes"]["jawForward"][0]).max() < 1e-9
+    w = parts["body"]["shapes"]["eyeWideLeft"][0]
+    assert np.abs(w + 0.3 * d).max() < 1e-6, "eyes wide: 1.3 x the fold"            # (gain - 1) x the same displacement, the other way
+    assert "lid_fold.L" in got and log and "wrinkle-map" in log[0]
+    off = mk_()
+    assert sf.expression({**spec, "skin": {**spec["skin"], "fold_expressions": False}}, off, []) == {}
+    assert np.abs(off["body"]["shapes"]["eyeBlinkLeft"][0]).max() == 0
+
+
 if __name__ == "__main__":
-    for t in (test_valley_lab_and_specks, test_get_set_and_fold_options, test_beard_zones_partition_and_weights, test_fold_map_and_layers,
+    for t in (test_shade_white_and_bounds, test_fold_rules2, test_folds_under_expression, test_valley_lab_and_specks, test_get_set_and_fold_options, test_beard_zones_partition_and_weights, test_fold_map_and_layers,
               test_folds_are_geometry, test_step_and_tone_bound,
               test_colour_read_and_fit_recover_zones, test_fold_fit_rules):
         t0 = __import__("time").time()

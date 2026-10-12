@@ -1,0 +1,6 @@
+{"sex": 1, "age": 22, "wrinkles": {"amount": 1, "nasolabial": 0, "marionette": 0, "glabella": 0, "forehead": 1.0, "crows_feet": 1.0, "under_eye": 0, "lip_lines": 0, "neck": 0, "crepe": 0},
+ "folds": {"nasolabial": {"amount": 1.0, "L": {"shift": [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]}, "R": {"shift": [-2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0]}},
+           "marionette": {"amount": 1.0, "R": {"amount": 0.0}},
+           "tear_trough": {"amount": 1.0, "L": {"extent": [0.0, 0.6]}},
+           "lid_fold": {"amount": 1.0, "L": {"shift": [1.0, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.0, 1.0]}},
+           "mentolabial": 1.0, "glabella": 1.0, "mouth_corner": 1.0, "commissure": 1.0}}
