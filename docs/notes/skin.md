@@ -1135,3 +1135,89 @@ STATE / NEXT (skinfolds2): see "### Status (skinfolds2)" at the end of this sect
 - ON THE SUBJECTS: Garrett's shirt (the front painting) is a lilac-grey at L* 62: REFUSED ("the clothing under the
   face is not bright (L* 62): not a white"), which is right: taken as a 0.8 white it would have put his skin ~15 L
   too light. Tess: bare shoulders, no clothing. Neither subject has a white; validation is synthetic (below).
+
+### 3. The lid's crease (skin_folds.py, skin_read._lid_read; calibration spikes/skinfolds2/lidcal.py)
+- WHY IT WAS A PALE WELT WITH TWO TICKS (Joe: "that crease is still wobbly"), three separate faults:
+  (a) THE DARK LINE WAS MEASURED IN 3D. The fold map's pixels lie on the surface WITH the relief, the line on the
+  fold-free one; the crease's occlusion fell off with the 3D distance, so it vanished exactly where the fold stood
+  highest (mid-lid) and survived only at the eased ends: "two detached tick marks". Now the distance is taken IN the
+  skin (the height over the line left out), for every fold, and the colour eases in over END like the relief.
+  (b) THE EYEBALL WAS A HARD STOP: mid-lid the lid lies thinnest over the ball, the groove was clamped to nothing
+  there and the roll stood alone: a lit ridge. Now each sample's groove takes 85 % of the clearance there is
+  (smoothed over 2 mm) and 60 % of the depth it lacks stands out BROAD AND LOW over the line (RELIEF "over": peak at
+  2.2 mm, sigma 2.8, shoulder 1.8; a first version, 0.85 mm within a millimetre, was itself the welt). The clamp stays
+  as the safety.
+  (c) THE LINE FOLLOWED COLUMN NOISE: shift = (picture's height - nominal path's) per column, a parabola through 5
+  points held flat past the outer columns: Tess's right lid got 2.8 / 1.1 / 2.6 mm. And it was laid 1:1 in skin
+  millimetres although the lid leans back from the picture plane (0.4-0.6): a fold read 1.6 mm over our path came
+  out 0.8 over it. Now: the picture's height over its lashes as a STRAIGHT LINE in the column (2 numbers), laid over
+  OUR lash line (the upper lid's five landmarks through the same camera, a parabola) at every station between
+  columns 0.2 and 0.8, divided by the lean; that shift as a quadratic in t, running out into the corners past the
+  outer columns (x 0.25 at the ends: the first try extrapolated the quadratic: +6 mm, a hook). The path itself is
+  smoothed (4 mm) after its last seating, in the map and the geometry alike.
+- CALIBRATED TO THE PICTURE'S: lidfold.read_lid on OUR render at its full size (capture keeps R2, 1024 px: at the
+  512 crop our crease read half) against Tess's photograph, same detector points: amount 1.2 read 0.06-0.10 before
+  (a), 0.46-0.49 after (a) with the first colour (a pen line), 0.35 / 0.37 by side with OCCLUSION 1.1, OCC_WIDTH 1.15
+  x the groove's sigma, folds_crease [0.5, 0.33, 0.27] (brown, soft); her fold reads 0.32. LID_REF 0.22 -> 0.36.
+  The fit's loop closes on it: sg_tess round 1 laid 0.87, the AFTER read says "as ours" (picture 0.318 / 0.315, ours
+  0.307 / 0.291).
+- THE LID IS READ BY THE LASH LINE ALONE where that read works (3+ columns in the picture or in ours): the valley
+  across the nominal path, 1.5 mm off her line, said "ours has more" in round 2 and took half the fold off again.
+- HOODING: `lid_fold.hood` 0..1.5: over the outer half the line comes down toward the lashes (HOOD_DROP 1.7 mm), the
+  roll stands 1 + 1.6 x hood higher, the keep-out at the lid margin shrinks 30 %. Clay (out/clay_tess_a1_bh.png, hood
+  1.0 against ae, hood 0): the outer roll visibly fuller and lower. At hood 1 small artefacts remain at the outer
+  canthus (the displaced field folds where the lids meet). The lid prior (pictures that cannot show a lid) sets
+  hood 0.9 x age curve 40..75 (Garrett, 52: 0.24).
+- JUDGED at the 4x zoom (out/feat_sg_tess_zoomL.png / zoomR, on the sheet): ONE continuous dark brown line across
+  the lid at about her height, no welt, no ticks; sf_tess beside it: the pale ridge with two ticks. STILL WRONG: ours
+  is greyer and softer than her crisp line; her whole lid between crease and lashes is darker (shade our head does
+  not cast, now deliberately not painted: the socket reads paler than hers); no dark lash line; lashes long and
+  spiky where hers are a dense short line (not this task).
+
+### 4. Mouth and the fold paths (spikes/skinfolds2/nlpath.py on six heads: garrett_a1, tess_a1, th_E1, el_a1, om2_m1, oh_M1)
+- NASOLABIAL, measured: the old nominal path passed the mouth 10-12 mm outside the cheilion and then dropped
+  STRAIGHT DOWN for 10 mm (x constant): 20-24 deg from the vertical as a whole on all six. Anatomy: from the alar
+  crease at 30-40 deg, 12-15 mm outside the cheilion, on outward to about the lower lip's level. New control points
+  (0.17, 0.06, 0.13) / (0.24, 0.1, -0.1) x the pupils' distance from lm_mouth_corner: 12.6-15.1 mm outside the
+  cheilion, 27-37 deg as a whole on the six heads.
+  THE HEAD'S OWN CREASE: a middle-aged GNM head has a nasolabial crease in its shape (clay of garrett_a1 without
+  folds: out/clay_garrett_a1_bm0.png). `own_crease` snaps the nominal path onto it where the skin's own profile
+  across the path is concave enough (2nd derivative of the height at a 2 mm scale >= 0.035 / mm along 40 %+ of the
+  stations; a quadratic through those): Garrett -1.1 mm along 50 %; the other five heads: no crease of their own
+  (0-29 %): untouched. HONEST: on Garrett the own crease curls in round the mouth below the nose's wing, further
+  than the snap's 7 mm reach in its lower half; our fold runs outside it there: two lines in the clay under raking
+  light (the painted fold is the outer, oblique one). Not solved: either deepen the head's own line or take it out
+  of the shape (block-in).
+- MARIONETTE: was a 3 mm groove beginning 8 mm UNDER the corner, straight down at 9 deg (a nick: "a scar"). Now from
+  the commissure (cheilion + 4, -3.5 mm) down and out at 15 deg over 21-27 mm, 6 mm wide, 0.3 mm deep, the jowl's pad
+  beside it (0.5 mm at 7 mm, shoulder 6.5: at 0.8 over 4 mm it drew a second crease), occlusion 0.08, never laid
+  along less than 65 % of its path (`min_extent`), read only past its first 30 % (`read_from`: the mouth corner's own
+  shadow).
+- COMMISSURE (new: the depression at the mouth's corner, 5 mm wide, 0.45 deep) and CHIN_NOTCH (new, Joe on Garrett:
+  a midline notch with a lobe each side: RELIEF "sym": the roll on both sides; 0.9 deep, lobes 0.6 at 5.5 mm) are
+  NOT READ (`"read": False`): the commissure's detector read Tess's own mouth corners at 0.14-0.19 and laid 1.5 on a
+  22-year-old; a chin's midline dip under a frontal light is its own shading and Garrett's is under stubble. Both
+  are parameters for the eye. sg_garrett: chin_notch 0.4 BY EYE (INFERRED from Joe's description, not read). At 0.8
+  the exported asset showed it as a dark pit under the chin (raking light): too narrow and deep for the bake.
+- KNOWN FAULT, NOT MINE: garrett_a1's own field has a ball at his left mouth corner (clay without folds), and the
+  GLB shows ragged pale specks along the closed lip line: the head / export, not the folds.
+- LIPS: (a) read IN IMAGE SPACE AT THE PICTURE'S OWN LIPS (`_lip_read`: MediaPipe's lip contours on the picture, a
+  pixel in; our render inside OUR lips; picture levelled on the plain skin; front-ish views with the whitest light
+  only). The albedo-ratio read at our lips' pixels and the image read agree within ~1 Lab on Tess, so the read was
+  not the fault: her upper lip IS (46.5, 17.2, 19.5) in the picture, hue 48 deg: a brown. What read "orange" on
+  sf_02 was the sheet's exposure (x 1.36 on a -0.55 EV filmic render) over a face 1-3 b* too yellow.
+  (b) A lips-only fit stalled: the restart loop stopped at "< 1.5 % of the total cost", and with lips alone free the
+  other regions hold 99 % of it: now the gain is measured against what has been gained.
+  (c) RESULT, image space after 2 rounds: Tess upper lip rendered (46.9, 16.6, 19.1) for (46.5, 17.2, 19.5), lower
+  (59.5, 17.9, 18.7) for (59.2, 18.3, 18.8). Garrett: see "Applied".
+  NOT DONE: the lips' gradient / border / highlight are still set by eye (her lower lip: pale with a soft
+  highlight and fine vertical texture; ours a flat fill), the bow is the block-in's.
+
+### 5. Garrett within the paintings' limits
+- SYMMETRY AS THE PRIOR: tear_trough, nasolabial, marionette come in pairs; one side read with confidence and the
+  other NOT READABLE (not seen, or pictures too coarse to place a fold: PLACE_MM 0.7: "not found" is no evidence):
+  the unread side takes the read side's amount, and the reply says "INFERRED from the other side". On fine pictures
+  a side that reads absent stays absent (foldval's one-sided marionette: still absent). Garrett: tear_trough R 0.435
+  (valley 0.098 along 58 %), L INFERRED 0.435 (was 0.16); nasolabial R 1.01 (0.097 along 45 %), L INFERRED.
+- The bags' AMOUNT is still under the painting's (0.44; it shows ~1): the valley at the trough's line is what is
+  read, and a painted bag is mostly its lit pouch. Not solved at 1.1 mm a pixel.
