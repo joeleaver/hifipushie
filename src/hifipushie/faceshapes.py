@@ -1949,14 +1949,21 @@ class GnmFace(Face):
                     lim = np.minimum(ev["r"] + 0.0006, r0)
                     inside = (r < lim) & (r0 < 1.6 * ev["r"])
                     d[inside] += q[inside] * ((lim[inside] - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
-                    if ev.get("cornea"):  # GNM's corneal bulge: a closing lid rides over it, as over the ball
+                    if ev.get("cornea"):  # GNM's corneal bulge: the closing UPPER lid rides over it, as over the ball
                         cc, rc = ev["cornea"]
                         r0c = np.linalg.norm(Xn - cc, axis=1)
                         qc = Xn + d - cc
                         rr = np.linalg.norm(qc, axis=1)
-                        limc = np.minimum(rc + 0.0004, r0c)
-                        ins = (rr < limc) & (r0c < 1.4 * rc)
+                        limc = np.minimum(rc + 0.0001, r0c)
+                        # (the upper lid only: it does the closing. Pushing the lower lid's few vertices that reach
+                        # the cap made the skin under the eye jagged on a decimated face: unevenness 0.14 > 0.12)
+                        ins = (rr < limc) & (r0c < 1.4 * rc) & ((Xn - ev["c"]) @ self.up > -0.15 * ev["r"])
                         d[ins] += qc[ins] * ((limc[ins] - rr[ins]) / np.maximum(rr[ins], 1e-9))[:, None]
+                        # (pushed off the cornea a vertex may have slid a hair back into the ball: the ball's limit again)
+                        q = Xn + d - ev["c"]
+                        r = np.linalg.norm(q, axis=1)
+                        inside = (r < lim) & (r0 < 1.6 * ev["r"])
+                        d[inside] += q[inside] * ((lim[inside] - r[inside]) / np.maximum(r[inside], 1e-9))[:, None]
             else:
                 d = rigid * wj[:, None]
             if name == "tongueOut" and kind == "tongue" and self.tongue is not None:

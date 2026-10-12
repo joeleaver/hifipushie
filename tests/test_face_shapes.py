@@ -497,7 +497,9 @@ def test_blink_seal_leaves_the_cheek():
             for s in ("Left", "Right"):
                 nm = f"eyeBlink{s}"
                 ev = face.eyes[s]
-                below = (X - ev["c"]) @ face.up < -0.012
+                # (12 mm under the eye's centre on the 24.4 mm ball this stylised head had; with GNM's own ball, 4 %
+                # larger and not seated back, the lower lid's margin lies that much lower: half a radius)
+                below = (X - ev["c"]) @ face.up < -max(0.012, 0.5 * ev["r"])
                 ch = np.linalg.norm(D[nm] - raw[nm], axis=1)
                 assert ch.max() > 2e-4, (share, s, "the seal did nothing")
                 assert ch[below].max() < 1e-4, (share, s, "the seal moved the cheek", ch[below].max())
