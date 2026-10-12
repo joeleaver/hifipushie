@@ -1350,12 +1350,63 @@ def _landmark_obs(head, view, points):
     return out
 
 
+LM_SIG_DIFF = 1.0                     # mm: a DIFFERENTIAL anchor (the same detector on picture and render), + its pixel floor
+LM_PX = 0.6                           # picture px: the detector's own scatter on a small face (Garrett's: 1.2 mm / px)
+
+
+def _detect_model(head, cam, box):
+    """The detector's 478 points (picture px) on the MODEL's own clay picture through cam, cropped to box as the
+    picture's own detection is (likeness.model_sides does the same for the table); cached by head and camera."""
+    from . import likeness
+    key = (np.asarray(head["c"], np.float32).tobytes(),
+           tuple(np.round(np.r_[cam["r"], cam["t"], cam["f"], cam.get("yaw", 0.0), cam["centre"]], 6)), tuple(np.round(box, 1)))
+    D = _C.setdefault("det", {})
+    if key not in D:
+        if len(D) > 64:
+            D.clear()
+        im, k = likeness.render(head["mesh"], cam, box)[:2]
+        P = likeness.detect([im])[0]
+        D[key] = None if P is None else np.asarray(P, float) / k + [box[0], box[1]]
+    return D[key]
+
+
+def _anchor_obs(head, view, points, det):
+    """DIFFERENTIAL DETECTOR ANCHORS (refread, 2026-10-11): the detector's point on the PICTURE minus the same
+    detector's point on the model's own render through this view's camera (det = {"P": the picture's 478, "box"}),
+    as the block-in table compares them, moving with the landmark itself. _landmark_obs compares the detector with
+    the model's TRUE mesh landmarks: the detector's definition bias (3-12 mm on some points, more on a painting) then
+    goes into the identity (Garrett: 204 anchors forced comps to 3.9 sd). Falls back to _landmark_obs when the
+    detector finds no face on the render."""
+    from . import likeness
+    if det is None or det.get("P") is None:
+        return _landmark_obs(head, view, points)
+    Pm = _detect_model(head, view["cam"], det["box"])
+    if Pm is None:
+        return _landmark_obs(head, view, points)
+    out = []
+    L = np.asarray(head["L"], float)
+    for key in (points or {}):
+        if not (key.startswith("lm") and key[2:].isdigit()) or int(key[2:]) >= 68:
+            continue
+        i = int(key[2:])
+        m = likeness.MP68[i]
+        Jp, mm1 = _proj_jac_pt(view["cam"], L[i], head["LB"][:, i])
+        p, q = Pm[m], np.asarray(det["P"], float)[m]
+        sig = float(np.hypot(LM_SIG_DIFF, LM_PX * mm1))
+        for ax in (0, 1):
+            out.append({"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1,
+                        "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
+                        "X": list(map(float, L[i])), "diff": True})
+    return out
+
+
 def kind_of(yaw: float) -> str:
     a = abs(float(yaw or 0.0))
     return "front" if a < 20 else ("3q" if a < 70 else "profile")
 
 
-def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False) -> tuple:
+def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool = False, shade: bool = False,
+                    anchors: str = "differential", parse: bool | str = False, normals: bool = False) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -1372,7 +1423,15 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1],
                 "face_only": True}
         pts = dict(v.get("points") or {})
-        extras = [lambda h, vw, pts=pts: _landmark_obs(h, vw, pts)]
+        det = None
+        if anchors == "differential" and any(k_.startswith("lm") and k_[2:].isdigit() for k_ in pts):
+            box = likeness._box(pts, img.size)       # the detector on the picture, on the crop the table uses
+            Pd = likeness.detect_region(img, box)
+            if Pd is None:
+                notes.append(f"{view['name']}: the detector finds no face: its stored points are absolute anchors")
+            else:
+                det = {"P": Pd, "box": box}
+        extras = [] if anchors == "none" else [lambda h, vw, pts=pts, det=det: _anchor_obs(h, vw, pts, det)]
         if v.get("outline"):
             view["outline"] = np.asarray(v["outline"], float)
         else:
@@ -1409,11 +1468,13 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
 
 
 def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
-            prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False) -> dict:
+            prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False, anchors: str = "differential",
+            parse: bool | str = False, normals: bool = False) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
-    head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade)
+    head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade, anchors=anchors, parse=parse,
+                                         normals=normals)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     res = read(head, views, rounds=rounds, cam_sd=cam_sd, **({} if prior_off is None else {"prior_off": prior_off}))

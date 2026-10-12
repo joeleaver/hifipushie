@@ -4379,3 +4379,30 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
   on a painting) carry the identity and force it past 3.5 sd. block_in_solve now WARNS under 120 outline reads or past
   3 sd. Garrett stays on b3_G17 until he has references the solve can read (plain background, front + 3/4 + profile,
   the face large; the shot brief) or the anchors' weight is made to depend on how much else is read.
+
+## refread (2026-10-11, "refread" agent, branch worktree-agent-afe13b70ba89a707e from main e033a25; Joe: "I'd like to be
+## able to get closer from a single or two references" and "let's try 1 through 3": three new kinds of observation for the
+## joint solve. Scratch DURABLE in /mnt/data/hifipushie/refread: run.sh <script> (capped, this worktree's src), out/;
+## scripts in spikes/refread (cmp.py <model> key=value..: the solve's read WITHOUT applying it, ~30 s); sheets human_renders/rr_*)
+STATE / NEXT (refread): step 1 (differential anchors) DONE and on by default. NEXT: step 2 (face parsing for outlines),
+step 3 (learned normals, validated by shval's method), then Garrett from gj_G00 and Tess from tn_T00.
+
+### 1. Differential detector anchors (face_ruler._anchor_obs; reference_views / compare / solve_step anchors="differential")
+- Built: observation = the detector's point on the PICTURE - the same detector's point on the model's own clay render
+  through that view's camera (likeness.render on the table's crop box, likeness.detect; `_detect_model`, cached by
+  head identity + camera + box, so each Gauss-Newton round and each call re-detects on the moved head), Jacobian =
+  the landmark's own move, sigma hypot(1.0 mm, 0.6 px) (was 1.5 mm absolute). anchors="absolute" = the old
+  _landmark_obs (also the fallback when the detector finds no face on the render), "none" = no anchors.
+- GARRETT, first call from gj_G00 (cmp.py, free cameras; nothing applied):
+  absolute:     reads outline 31, landmark 204, iris 4, lip 22; |dc| 16.6, |c| 5.45 -> 17.5, largest comp 3.46 sd, 14
+                comps past 2.5 sd; anchors' residual rms 1.9 mm front / 4.7 mm 3/4.
+  differential: reads outline 37, landmark 204, iris 4, lip 19; |dc| 10.8, |c| -> 11.75, largest comp 2.54 sd, 2 comps
+                past 2.5 sd; anchors' residual 1.4 mm front / 3.1 mm 3/4.
+  So the detector's bias WAS a third of the first step and most of what forced it. The 3/4 painting still disagrees
+  with the model by 3 mm rms on the anchors and its camera runs to the limit (yaw +5.0, pitch +5.0 deg = 2.5 sd):
+  the portrait's pose / drawing is not consistent with the front painting's head at the fitted camera.
+- TESS, same test: class mean tn_T00: absolute 262 reads (outline 194), |dc| 11.2, |c| -> 12.30, largest 2.72 sd;
+  differential 276 reads (outline 190), |dc| 10.8, |c| -> 12.28, largest 2.69 sd. Residuals after: anchors 2.07 / 1.82
+  -> 1.36 / 2.06 mm (front / 3/4), outlines the same (0.2-0.9 mm). On the settled tk_T06 (trusted cameras): absolute
+  |dc| 2.2 (it was solved with those), differential |dc| 4.7 with |c| 11.70 -> 11.62: the anchors now ask for a
+  slightly different head; nothing forced. The full Tess rerun is at the end.
