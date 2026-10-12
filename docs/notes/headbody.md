@@ -1,17 +1,18 @@
 # hifipushie notes: headbody (how an untouched GNM head goes on our body: the join and the scale)
 
-STATE (2026-10-12): Part 1 (measure) DONE: table + plain answer below. Part 2 (how others do it) DONE. Part 3 (design +
-first build) IN PROGRESS. Branch `headbody` (worktree .claude/worktrees/headbody, from main 1ed30ce), not merged, not
-pushed. Scratch DURABLE in /mnt/data/hifipushie/headbody/: env.sh, run.sh <script> (capped; heavy), light.sh <script>
-(a light slot), out/. Scripts in spikes/headbody/. Models hb_*.
-Part 3 step 1 BUILT: `base.head.attach: "native"` (onemesh.native / _native_desc / _neck_field / attach_report,
-tests/test_headbody.py 5 pass); models hb_tess (from nt_N06), hb_garrett (from ng_N05).
-Step 2 BUILT: two-mesh export (head / body sharing the seam ring exactly), exports of hb_garrett / hb_tess, sheets
-workspace/human_renders/hb_01_scale.png, hb_02_seam.png. Old path bit-identical (tess_a1 / garrett_a1 / nt_N06 /
-ng_N05 template + head hashes equal main's; tests/test_onemesh.py 10 pass).
-NEXT (not done): the rig's rigid-head zigzag at the nape (neck crumples on turn / bend; old path too); a lower seam
-ring (asset rebuild); FBX, hair, cloth runs on a native model; block-in steps that are ignored should refuse;
-decisions for Joe at the end.
+STATE (2026-10-12, round 2, AT THE GATE): Joe on hb_01 / hb_02: "Both necks feel way off, way too tall, way too
+lumpy" / "pretty bad work, overall". Scale is accepted (Tess 7.6 heads); the NECK is the blocker. Measured + diagnosed
+("## Round 2" at the end), sheet workspace/human_renders/hb_03_neck_diagnosis.png, references in
+workspace/neck_refs/ (README: sources, licences, gaps). NO placement / bridge / weighting code changed yet: waiting
+for the coordinator's reply to the proposed fix. One fix IS in (a regression on main, found through the chest holes):
+faceshapes gave jawOpen's rigid 26 mm to every skin vertex under the neck and the rig then weighted the whole body 1.0
+to Head. Two meshes with matched open edges stay the design (never welded by default).
+Earlier: Part 1 (measure), Part 2 (others), Part 3 step 1 (`base.head.attach "native"`), step 2 (two-mesh export).
+Branch `headbody` (worktree .claude/worktrees/headbody), not merged, not pushed. Scratch DURABLE in
+/mnt/data/hifipushie/headbody/ (env.sh, run.sh heavy, light.sh, out/, ansur/ = ANSUR II public tables + ansur.py).
+NEXT (after the reply): seat the head by its own neck base (GNM's bib fitted to the body's shoulders), make the
+body's neck base / trapezius FOLLOW GNM's bib (project + relax, no pull-down), rig weights down the neck, hb_03_scale
+/ hb_04_neck with REFERENCE | NOW | previous.
 
 Joe, 2026-10-12: "that's some real work for us: how to get the body back on (and if we even want to, don't many games
 leave them as separate meshes?) and how to match the size/scale of the head and body well." ... "let's get that
@@ -244,3 +245,106 @@ quotes them; the heads-tall column for ANSUR rests on them.
 5. Two meshes by default (as built) or welded by default?
 6. The rig's rigid-head rule at the nape (crumpled neck base on head turn / neck bend, both paths): a card for the
    rig thread.
+
+## Round 2 (2026-10-12): the neck. Measured, diagnosed; fix proposed, NOT built (gate)
+
+### Anthropometry used (ANSUR II, computed from the public per-subject tables; /mnt/data/hifipushie/headbody/ansur/)
+| measure | women (n 1986) | men (n 4082) |
+|---|---|---|
+| top of head - suprasternale (stature - suprasternale height) | 298.8 +- 13.6 mm = 0.1836 of stature | 317.6 +- 14.4 = 0.1809 |
+| top of head - cervicale | 232.8 +- 11.9 | 238.9 +- 12.9 |
+| top of head - acromion | 293.4 | 315.5 |
+| tragion - suprasternale / - cervicale (stature - tragion-to-top - ...) | 172.3 / 106.3 | 186.5 / 107.8 |
+| neck circumference / at the base | 329.8 +- 19.2 / 371.2 | 397.6 +- 25.8 / 434.6 |
+Chin (menton) height is NOT in ANSUR II: "chin over the pit of the throat ~81 / ~86 mm" = the rows above minus the
+head heights 218 / 232 FROM MEMORY (ANSUR 1988). Landmarks on our meshes: suprasternale = MakeHuman body vertex 1522
+(front midline pit between the clavicles), acromion = vertex 8275; both are below the neck loop, in every build.
+
+### Neck length (spikes/headbody/p5_necklen.py; mm)
+| figure | head (top - chin) | chin over the pit | top over the pit (/ stature) | GNM's OWN chin -> its own pit (bib) |
+|---|---|---|---|---|
+| ANSUR women / men | 218 / 232 (memory) | ~81 / ~86 | 299 (0.184) / 318 (0.181) | |
+| Tess old attach nt_N06 | 182 | 74 | 257 (0.157) | |
+| MakeHuman's own, Tess's body | 206 | 75 | 280 (0.171) | |
+| Tess PREVIOUS NATIVE hb_tess | 216 | 85 | 300 (0.184) | 73 |
+| Garrett old attach ng_N05 | 229 | 90 | 318 (0.180) | |
+| MakeHuman's own, Garrett's body | 227 | 90 | 316 (0.179) | |
+| Garrett PREVIOUS NATIVE hb_garrett | 220 | 102 | 323 (0.182) | 84 |
+- In TOTAL the native stack is anthropometric (top over the pit 300 / 323 against ANSUR's 299 / 318): the stature
+  solve did not stretch anything. What is long is the NECK inside it: the chin stands 85 / 102 mm over the body's pit
+  where GNM's own neck (its bib has a pit of the throat: 73 mm under the chin on Tess's identity, 84 on Garrett's,
+  71 on the template) says 73 / 84, the old attach 74 / 90 and ANSUR ~81 / ~86. So the head sits 12 mm (Tess) / 18 mm
+  (Garrett) too high over the shoulders. Cause: the pivot rule put GNM's skull where MakeHuman's skull was; GNM's
+  neck is shorter than MakeHuman's from skull to pit, and Garrett's GNM head is 9 mm shorter than his MakeHuman head
+  with the top held by the stature.
+
+### Why it reads far taller than 12-18 mm, and lumpy (one cause; out/neck_overlay.png, out/gnm_bib.png)
+- GNM's own neck is SHORT and clean: its trapezius leaves the neck right under the ear (side silhouette, template:
+  half width 57 mm down to 16 mm under the chin level, 61 at 22, 68 at 27, 76 at 32, 97 at 44, 128 at 58). All of
+  that slope is in rings 0-12, the BIB, which our mesh cuts off at ring 13.
+- The asset's ring A is not where GNM's ring 13 is: when the one mesh was made the lower rings were SLID up
+  MakeHuman's neck (21 mm above loop C all round) to make room for the bridge. With the heads coincident GNM's true
+  ring 13 lies ~25 mm lower than that bound ring, i.e. ON MakeHuman's trapezius / in the bridge's zone.
+- `_neck_field` is a displacement field: to bring the bound ring to GNM's ring it moved the bridge AND MakeHuman's
+  trapezius rows 25-30 mm DOWN (and out). Result in the front silhouette: the neck's column runs straight down
+  40-45 mm further than on the old attach or on MakeHuman, then turns a corner into a near-level shelf (Tess: corner
+  ~15 mm above the pit; MakeHuman's slope starts ~60 mm above it). That shelf + corner is the "lump"; the extra
+  column is the "way too tall". Back view the same: a long nape on dropped shoulders.
+- Not the cause: the stature solve (total stack right), GNM's neck girth as such.
+
+### Tess's thick neck (item 3): whose is it
+- GNM's FEMALE CLASS MEAN neck is thick: 365 mm at its narrowest (ring 19), 407 at ring 13; ANSUR women 330 / 371
+  (base). Male class mean 385 / 423 (ANSUR 398 / 435). So GNM's prior is +11 % on women, -3 % on men.
+- Tess's SOLVED identity made it THINNER: 334 at the narrowest (= ANSUR's mean woman), 374 at ring 13. The change
+  from her class mean (-33 mm linear) is head_000 +0.91 sd (-29.7 mm) and head_001 -1.24 sd (-12.9 mm), then
+  head_003 / 024 / 009 / 004 (+1.5 .. +2.3 each). Garrett: 361 against his class mean's 385: head_001 -1.97 sd
+  (-20.5 mm), head_000 +0.22 (-7.2), head_004 +1.54 (+5.7).
+- So the neck IS moved with no read, by the two largest components (head_000: -32.7 mm of neck girth per sd, also
+  the head's size / width; head_001: +10.4): the neck's girth has an sd of 35.9 mm over GNM's identity prior and no
+  picture read holds it. FOR THE SOLVE (not touched): a read or a prior on neck girth (ring 19 loop length; the
+  linear row is in spikes/headbody/p7_gnmneck.py `dgirth`), e.g. held to the body's own neck or to 0.203 x stature
+  (women) / 0.227 (men) +- 6 %.
+- 374 "on a slim woman": that is ring 13 = the neck's BASE (ANSUR 371). Her narrowest is 334. The thin one is the
+  MakeHuman body at weight 0.15: 290 at the narrowest, 2 sd under ANSUR's women.
+- PROPOSED ATTACH RULE: never inflate the body to an unread neck blindly. Report head girth / body girth at the
+  narrowest ring; within +- 8 % the body follows the head's neck base; beyond it, the report names it as a conflict
+  to settle (body weight / muscle, or a neck-girth step in the solve), and the bib-following blend below still
+  joins them smoothly over the shoulder slope.
+
+### Chest holes in Tess's neck-bent tiles (item 4): a REGRESSION ON MAIN, fixed here
+- Not clothing, not normals. `faceshapes.displacements` (gnmnative, 75a6a10: GNM's own mouth) gave vertices away
+  from the face the jaw's rigid move x 1.0 instead of x the jaw weight; meant for GNM's teeth and tongue, it also ran
+  on the SKIN: every body vertex under the neck got jawOpen's 25.9 mm (old-path export ng_G00.glb: all 2,871 vertices
+  from 35 to 85 cm under the top move 25.9 mm in jawOpen, 9.9 in jawOpen_mouthClose, 8.9 in tongueOut). The export's
+  `rigid_near` then weights "whatever a face shape moves" 1.0 to Head: in all three GLBs read (hb_tess, hb_garrett,
+  ng_G00) the trunk within 16 cm of the centre line is Head 1.00 down to the hips. Head turn / neck bend carries
+  the chest with the head: Tess's bare chest skin swung 138 mm (mean) away and left holes; Garrett's is out of frame.
+  The log line "rig: body: 12239 vertices the face shapes move 3 mm or more are Head 1.00+ (9213 weren't)" was
+  saying it. The look-path skin (rig() on the built mesh) is right (Spine2 0.6-0.9 on the chest): only exports with
+  face shapes on a GNM-mouth head are hit.
+- This also made much of the "crumple" at the neck's base in hb_02 (the band between Head-1.0 chest and the neck).
+- FIX (faceshapes.py, 2 lines): the rigid share x 1.0 only for kind teeth / tongue; on a one-mesh skin by index,
+  vertices that are not GNM's (under the seam ring) get no face-shape move at all. tests/test_face_shapes.py passes.
+  Exports made since gnmnative's merge should be redone. The posed check will be re-run after the placement fix.
+
+### References (workspace/neck_refs/, README with sources and licences)
+Wikimedia Commons: Female_neck.jpg (woman, 3/4 front), Young_woman_s_neck.jpg (side, head turned),
+Sunburnt_neck_and_shoulders.jpg (back), Adam_s_apple_35.jpg (young man, side / 3/4), a shirtless bald man 3/4,
+Cou.jpg (old man, back), Gray's 1194 / 1195 / 385 (surface forms, SCM, trapezius), a 1913 landmarks plate. GAP: no
+same-subject neutral front / side / back set, no bare male front / back; Commons rate-limited the search. Joe or a
+later pass should add a proper turnaround.
+
+### Proposed fix (waiting for the coordinator)
+1. SEAT THE HEAD BY ITS OWN NECK BASE: GNM's evaluation includes the bib (rings 0-12: pit of the throat, clavicle
+   line, trapezius slope). Place the head so the bib lies on the body's shoulders: a least-squares translation
+   (up / forward) of GNM's bib onto MakeHuman's surface round the neck's base, instead of skull-on-skull. Expected:
+   chin over the pit 73 (Tess) / 84 (Garrett), top over the pit ~288 / ~305 (ANSUR 299 +- 14 / 318 +- 14), the
+   stature made up by trunk + legs as now.
+2. THE BODY FOLLOWS THE BIB, NO PULL-DOWN: replace the displacement field by project-and-relax. Target surface =
+   GNM's bib near the ring fading into MakeHuman's own surface over the whole shoulder slope (weight 1 at ring 13 ->
+   0 by about ring 3, ~11 cm out); the bridge's rows and MakeHuman's top loops are laid ON that surface and evened
+   out along it. The neck, pit and trapezius next to the head are then GNM's own forms (consistent with the head),
+   the shoulders MakeHuman's; nothing above the ring changes.
+3. Lowering the ring itself (asset rebuild at ring ~9) is NOT needed for this and stays optional.
+4. POSE: after the faceshapes fix, re-measure the Head weight on the ring; then smooth it down the neck by height
+   (Neck / Head sharing) in rig.py's rule for the native head, with a test.
