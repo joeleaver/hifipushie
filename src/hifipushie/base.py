@@ -415,7 +415,7 @@ def surface(spec_expanded: dict, base: dict) -> dict:
     settings = {k: base.get(k) for k in ("girth", "subdivide", "smooth", "head", "soften", "push", "body", "style")}
     if (base.get("body") or {}).get("source") == "human":  # (onemesh.py) its own version: old paths keep their keys
         from . import onemesh
-        settings["one"] = onemesh.VERSION
+        settings["one"] = onemesh.VERSION if not onemesh.native(base) else onemesh.build_version(base)
     used["_eyes"] = [spec_expanded["joints"][e]["pos"] for e in ("eye.L", "eye.R") if e in spec_expanded["joints"]]
     key = hashlib.sha1(json.dumps([name, used, settings, VERSION], sort_keys=True, default=float).encode()).hexdigest()
     if key in _CACHE:

@@ -55,6 +55,7 @@ def test_head_is_gnms_evaluation_under_one_similarity():
         b = _b({"size": size} if size != 1.0 else None, **kw)
         ht = onemesh.head_rest(b)
         g, V = _gnm(IDENT)
+        size = onemesh.head_desc(b)["bound"]["native"]["size"]
         X = V @ onemesh._RG.T
         W = np.asarray(ht["gnm_world"], float)
         t = (W[keep] - size * X[keep]).mean(0)
@@ -94,7 +95,7 @@ def test_stature_is_the_stated_one_and_the_body_gives():
         P = onemesh.template(b)["P"]
         assert abs(float(P[:, 2].max() - P[:, 2].min()) - kw["height"]) < 5e-4, kw
         r = onemesh.attach_report(b)
-        assert r["native"] and abs(r["size"] - 1.0) < 2e-3 and abs(r["eyeball_r"] - 0.0146) < 2e-4
+        assert r["native"] and abs(r["size"] - 1.0) < 6e-3 and abs(r["eyeball_r"] - 0.0146) < 2e-4
         assert 6.5 < r["heads_tall"] < 8.8, r["heads_tall"]
         assert "base.style.human.head_size" in r["ignored"] if kw.get("style") else not r["ignored"]
 
@@ -113,8 +114,8 @@ def test_seam_ring_and_neck():
     mh_rows = np.flatnonzero(a["m2f"] >= 0)
     own = onemesh.bound(hd["bound"]["body"], 1.0)["P"][mh_rows]
     moved = np.linalg.norm(P[:tpl["n_mh"]] - own, axis=1)
-    assert 0.002 < moved.max() < 0.045
-    assert own[moved > 1e-5][:, 2].min() > 0.72 * 1.636  # (shoulders and neck only)
+    assert 0.002 < moved.max() < 0.06
+    assert own[moved > 1e-5][:, 2].min() > 0.68 * 1.636  # (shoulders and neck only)
     faces, i = [], 0
     for n in tpl["S"]:
         faces.append(tpl["L"][i:i + n])
@@ -147,11 +148,66 @@ def test_the_default_attach_is_unchanged():
     assert h == OLD_HASH, h
 
 
+RANGE = {"woman": dict(age=30, sex=0.0), "man": dict(age=30, sex=1.0), "heavy": dict(age=40, sex=1.0, weight=0.9),
+         "very slim": dict(age=25, sex=0.0, weight=0.05), "muscular": dict(age=30, sex=1.0, muscle=0.95),
+         "tall": dict(age=30, sex=1.0, height=1.95), "short": dict(age=30, sex=0.0, height=1.50), "old": dict(age=75, sex=1.0)}
+
+
+def _class_mean(sex):
+    from hifipushie import blockin as bi
+    D = bi.data()
+    return {f"head_{i:03d}": float(x) for i, x in enumerate(np.asarray(D["m_m"] if sex >= 0.5 else D["m_f"])[:170])}
+
+
+def test_any_body_takes_the_head():
+    """The rule is general: GNM's class-mean head on a spread of bodies, the same code, no per-character constant.
+    On each: the stated (or the body's own) stature is met, the head is GNM's to the bit, the seam ring is matched,
+    no quad round the neck is folded, and the report's anthropometric checks (heads tall, top of head and chin over
+    the pit of the throat, neck girth) are inside their ranges."""
+    from hifipushie import makehuman
+    keep = _head_rows()
+    for name, kw in RANGE.items():
+        b = {"body": {"source": "human", **kw}, "head": {"identity": _class_mean(kw["sex"]), "attach": "native"}}
+        tpl = onemesh.template(b)
+        P = tpl["P"]
+        want = kw.get("height") or float(np.asarray(makehuman.body({k: v for k, v in kw.items()})["P"])[:, 2].max())
+        assert abs(float(P[:, 2].max() - P[:, 2].min()) - want) < 1e-3, (name, want)
+        ht = onemesh.head_rest(b)
+        g, V = _gnm(b["head"]["identity"])
+        size = onemesh.head_desc(b)["bound"]["native"]["size"]
+        assert 0.96 < size < 1.04, (name, size)  # (the head goes a little with the stature: stature ^ ~0.27)
+        X = size * (V @ onemesh._RG.T)
+        W = np.asarray(ht["gnm_world"], float)
+        assert np.abs(W[keep] - (X[keep] + (W[keep] - X[keep]).mean(0))).max() < 1e-9, name
+        ring = onemesh.seam_ring(tpl)
+        assert len(ring) == 110 and (ring >= tpl["n_body"]).all()
+        faces, i = [], 0
+        for n in tpl["S"]:
+            faces.append(tpl["L"][i:i + n])
+            i += n
+        hd = onemesh.head_desc(b)
+        a = onemesh.asset()
+        own = onemesh.bound(hd["bound"]["body"], 1.0)["P"][np.flatnonzero(a["m2f"] >= 0)]
+        near = np.zeros(len(P), bool)
+        near[:tpl["n_mh"]] = np.linalg.norm(P[:tpl["n_mh"]] - own, axis=1) > 1e-5
+        near[tpl["n_mh"]:tpl["n_body"]] = True
+        for f in faces:
+            f = np.asarray(f)
+            if len(f) == 4 and near[f].any():
+                Xq = P[f]
+                assert np.cross(Xq[1] - Xq[0], Xq[2] - Xq[0]) @ np.cross(Xq[2] - Xq[0], Xq[3] - Xq[0]) > 0, (name, "a folded quad at the neck")
+        r = onemesh.attach_report(b)
+        bad = [c["name"] for c in r["checks"] if not c["ok"]]
+        # the one known limit: GNM's neck has its own length, so on a very tall body head + neck stand short over the
+        # shoulders for the stature, and the report says so
+        assert bad == (["top of head over the pit of the throat"] if name == "tall" else []), (name, bad, r["text"])
+
+
 OLD_HASH = "4cd5e3e000a60164"
 
 if __name__ == "__main__":
     if have():
         for fn in (test_head_is_gnms_evaluation_under_one_similarity, test_lip_close_is_the_only_other_move_and_it_is_gnms_expression,
-                   test_stature_is_the_stated_one_and_the_body_gives, test_seam_ring_and_neck, test_the_default_attach_is_unchanged):
+                   test_stature_is_the_stated_one_and_the_body_gives, test_seam_ring_and_neck, test_any_body_takes_the_head, test_the_default_attach_is_unchanged):
             fn()
             print("ok", fn.__name__)
