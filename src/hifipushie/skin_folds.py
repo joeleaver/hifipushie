@@ -26,7 +26,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 1
+VERSION = 2
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -58,9 +58,9 @@ FOLDS = {
                              ("lm_lid_lower.L", (0.24, 0.06, -0.25))], "plus": (0, 0, 1), "width": 3.5, "depth": 0.7,
                     "tint": 0.4, "shade": 0.45, "roll": (4.0, 4.0, 0.8), "search": 5.0, "res": 1.6,
                     "about": "the groove under the lower lid; its roll is the eye bag over it"},
-    "lid_fold": {"path": [("lm_eye_inner.L", (0.07, 0.0, 0.06)), ("lm_lid_upper.L", (0.0, 0.0, 0.085)),
-                          ("lm_eye_outer.L", (-0.02, 0.02, 0.085))], "plus": (0, 0, 1), "width": 0.9, "depth": 0.3,
-                 "tint": 0.75, "shade": 0.25, "roll": None, "search": 3.5, "res": 0.5,
+    "lid_fold": {"path": [("lm_eye_inner.L", (0.07, 0.0, 0.045)), ("lm_lid_upper.L", (0.0, 0.0, 0.08)),
+                          ("lm_eye_outer.L", (-0.02, 0.02, 0.07))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
+                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.25, "flank": 1.5, "res": 0.5,
                  "about": "the upper eyelid's crease line (the fold GNM's lids only hint at)"},
     "glabella": {"path": [("lm_brow_inner.L", (-0.035, -0.01, 0.1)), ("lm_brow_inner.L", (-0.015, -0.01, -0.08))],
                  "plus": (1, 0, 0), "width": 1.4, "depth": 0.6, "tint": 0.5, "shade": 0.15, "roll": None, "search": 3.0,
@@ -119,12 +119,16 @@ class _Surface:
         keep = sm.outward(self.sp, V, Nn, V)
         self.o = np.asarray(self.sp["fr"]["o"], float)
         self._R = LinearNDInterpolator(sm.pix(self.sp, V[keep]), np.linalg.norm(V[keep] - self.o, axis=1))
-        self._tree, self._N, self.V, self.Nall = cKDTree(V[keep]), Nn[keep], V, Nn
+        self._tree, self._N, self.V, self.Nall, self._Vk = cKDTree(V[keep]), Nn[keep], V, Nn, V[keep]
 
-    def seat(self, P: np.ndarray) -> np.ndarray:
-        """Points moved along their ray from the wrap's centre onto the skin (left where the wrap does not see)."""
+    def seat(self, P: np.ndarray, snap: bool = False) -> np.ndarray:
+        """Points moved along their ray from the wrap's centre onto the skin (left where the wrap does not see).
+        snap: first to the nearest point of the skin (a landmark offset floats a few mm off it, and the ray from a centre
+        at the mouth's height would carry a point by the eye several mm up the lid)."""
         from . import skin_marks as sm
         P = np.asarray(P, float)
+        if snap:
+            P = self._Vk[self._tree.query(P)[1]]
         d = P - self.o
         r = np.linalg.norm(d, axis=1)
         R = self._R(sm.pix(self.sp, P))
@@ -184,7 +188,7 @@ def paths(spec: dict, part: str, J: dict, cfg: dict | None = None, names=None) -
                                for a, off in fd["path"]])
             except KeyError as err:
                 raise SpecError(f"skin folds.{name}: needs joint {err.args[0]!r} (a GNM head's lm_* landmarks)")
-            P = S.seat(_resample(S.seat(pl), STATION))
+            P = S.seat(_resample(S.seat(pl, snap=True), STATION))
             nrm = S.normal(P)
             tan = np.gradient(P, axis=0)
             tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-12)
@@ -276,7 +280,7 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
     im = lambda ch: {"image": {"file": path, **place, "channel": ch}}  # noqa: E731
     base_r = ctx["base_r"]
     # (map values are amount x share / 1.5: the layers' strengths carry the 1.5 back)
-    layer("folds_shade", color=[0.74, 0.62, 0.59], mix="multiply", opacity=1.0, mask=[{**im("b"), "levels": [0.0, 1.0 / 1.5]}])
+    layer("folds_shade", color=[0.66, 0.53, 0.5], mix="multiply", opacity=1.0, mask=[{**im("b"), "levels": [0.0, 1.0 / 1.5]}])
     layer("folds_groove", height=-round(DEPTH * 1.5, 7), roughness=min(base_r + 0.08, 0.95), opacity=0.6, mask=[im("r")])
     layer("folds_roll", height=round(BULGE * 1.5, 7), mask=[im("g")])
 

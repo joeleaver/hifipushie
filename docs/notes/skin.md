@@ -616,3 +616,42 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
 - Tools: albedo reads need the skin's own base colour (skin.part_base), not the part default grey.
 - Garrett (b2_G15, dressed, sheet human_renders/g2_09): lower lip da 11.5 -> 9.1, dL +0.8 -> +5.6 (lighter, less
   orange; his photo's lower lip is pale pink, lighter than the upper): reads closer; maybe a touch pale on him.
+
+## skinread (2026-10-11, "skinread" agent, branch worktree-agent-a7223453932fa0a32; Joe: "Can we have the reference photos
+## inform the dressing more than they do?" ... "project the reference, then drive the procedural params from the reference:
+## albedo, location of stubble, makeup, extras around eyes and mouth, etc." Scratch DURABLE in /mnt/data/hifipushie/skinread:
+## run.sh <script> (capped, this worktree's src, main's workspace), fd.sh (one read + fit against a truth, cached frames),
+## fv.sh / fvall.sh (the fold cases), out/; scripts in spikes/skinread; sheets human_renders/sr_*)
+STATE / NEXT (skinread): see the end of this section (kept current there).
+
+Scope addition (Joe, 2026-10-11, through the coordinator), a first-class part of the task: "these reference hints are where
+we will pick up aging cues that gnm can't model, garrets baggy eyes, garret and tesses eyelid folds, the extras around the
+mouth. we need a system to look for them and parameters and layers for such things."
+
+### The instrument (src/hifipushie/skin_read.py)
+- Per fitted reference view: P = the picture cropped to the block-in's box (512 px), R = OUR dressed head (its own
+  stage `_sr_<model>`: skin_look's head crop, bare skin + eyes, no hair) through the same camera under the picture's own
+  fitted light (blockin.photo_lighting on a "Standard" view transform, exposure 0: linear ratios), and A = our albedo at
+  every pixel's SURFACE POINT (likeness.render's depth pass -> world points), evaluated in Python. The picture's albedo is
+  T = A x P / R (the ratio image). Stage sync 20-45 s, a shot 7 s, masks at 390k points 20 s.
+- The Python albedo (`Albedo`: the paint layers' masks through paint.layer_mask on a surface.Points of the pixels, the
+  "_pre" layers composited first, then the rest, linear colour, as the scene does) against Blender's flat render through
+  the same camera on Tess: mean difference 0.02 / 0.01 / 0.01 Lab, rms 2.0 / 0.34 / 0.38 (pixel-level fine detail). Masks
+  are cached per mask definition, so a change of colours and strengths costs 0.09 s at 160k points: this is the fit's
+  forward model. The ruler mesh's silhouette and the stage's agree to IoU 0.9995 (same world frame: no registration step).
+- Trust per pixel: the model's skin facing its camera (cos 0.35 .. 0.7), the picture's parser (faceparse, MediaPipe
+  multiclass) saying skin and not hair, neither picture nor render clipped, the ratio within 4x of the view's median.
+- Views are weighed by how WHITE their light is against ours (the log chroma of P / R along the normal: `light_spread`;
+  weight 1 / (1 + (spread / 0.06)^2)): a painter's warm lamp + blue room would otherwise be read as skin zones.
+
+### Anchors: what failed
+- SCLERA as the exposure / white-balance anchor FAILS on photographs (Tess): the picture's sclera reads 0.45-0.9 x ours
+  against the skin (view by view: 0.449 / 0.52 / 0.897 in red) and its colour differs view to view (r/b 1.12, 0.89,
+  0.86); anchored on it her plain skin came out at L 93. Real scleras sit under lid and lash shadow and are never paper
+  white. Left in as anchor="sclera", never chosen by "auto".
+- A plain NEUTRAL BACKDROP (the parser's background, Lab chroma < 7, even) gives the white balance only. Holding the
+  plain skin's LIGHTNESS to ours while fitting the tone then FAILS: the target is "the truth, brightened", which the
+  pigment model cannot make with the true parameters, and the solve bent every darkening layer to compensate (under-eye
+  0, eyelids 0, lower_cool at its bound, beard 0). FIX: the exposure is a free factor of the solve (held to 1 with sigma
+  0.5 in log): the tone comes from the skin's chromaticity. chi2 on the synthetic case 1271 -> 29 (was 2682 -> 1085).
+- No anchor (a painted backdrop): the tone is NOT READ; all else is read against the face's own plain skin.

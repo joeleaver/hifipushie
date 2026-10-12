@@ -97,7 +97,7 @@ def stage_spec(spec: dict) -> dict:
 def _code() -> str:
     src = Path(__file__).parent
     return hashlib.sha1(b"".join((src / f).read_bytes() for f in
-                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "paint.py",
+                                 ("skin.py", "skin_features.py", "skin_makeup.py", "skin_marks.py", "skin_swatch.py", "skin_folds.py", "paint.py",
                                   "paintnodes.py", "blender_scene.py", "base.py", "skin_look.py", "scene.py"))).hexdigest()[:12]
 
 
@@ -229,6 +229,7 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
             parse[kname] = np.asarray(Image.fromarray(np.round(m * 255).astype(np.uint8)).crop(ib).resize((N, N), Image.BILINEAR), float) / 255.0
         f = {"view": i, "P": P, "X": X, "n": nw, "skin": on & (np.round(part) == 0), "eye": on & (np.round(part) == 1),
              "facing": fac, "parse": parse, "mm": 1000.0 * float(np.median(z)) / cam["f"] / k, "box": list(box), "cam": cam,
+             "mm_native": 1000.0 * float(np.median(z)) / cam["f"],
              "image": v["image"], "yaw": float(v.get("yaw", 0.0))}
         if render:
             r = np.asarray(Image.fromarray(shots[i]).resize((N, N), Image.LANCZOS), float) / 255.0
@@ -439,7 +440,7 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
         r = pb[sel] / np.maximum(rb[sel], 1e-4)
         X.append(f["X"][sel]); n.append(f["n"][sel]); w.append(t[sel]); rho.append(r)
         vw.append(np.full(sel.sum(), f["view"])); pix.append(np.flatnonzero(sel.ravel()))
-        views.append({"view": f["view"], "image": f["image"], "mm_per_px": round(f["mm"], 3), "trusted_px": int(sel.sum())})
+        views.append({"view": f["view"], "image": f["image"], "mm_per_px": round(f.get("mm_native", f["mm"]), 3), "trusted_px": int(sel.sum())})
     c = Context()
     c.name, c.spec, c.frames, c.anchor, c.mesh = name, spec, frames, an, mesh
     c.X, c.n, c.w, c.view, c.rho, c.pix = (np.concatenate(a) for a in (X, n, w, vw, rho, pix))
@@ -566,8 +567,8 @@ def _freckle_read(c: Context) -> dict:
     out = {"have": round(have, 3), "views": {}, "read": False}
     num = den = 0.0
     for f, v in zip(c.frames, c.views):
-        if f["mm"] > SPECK_MM:
-            out["views"][f["view"]] = f"NOT READ ({f['mm']:.2f} mm a pixel: freckles need {SPECK_MM} or finer)"
+        if f.get("mm_native", f["mm"]) > SPECK_MM:
+            out["views"][f["view"]] = f"NOT READ ({f.get('mm_native', f['mm']):.2f} mm a pixel: freckles need {SPECK_MM} or finer)"
             continue
         m = c.view == f["view"]
         w2 = np.zeros(N * N, bool)
@@ -649,6 +650,7 @@ def read(name: str, spec: dict | None = None, frames: list | None = None, anchor
     out["freckles"] = _freckle_read(c)
     out["brows"] = _brow_read(c)
     out["eyes"] = _eye_read(c)
+    out["folds"] = fold_read(c)
     out["ctx"] = c
     out["text"] = read_text(out)
     return out
@@ -660,7 +662,7 @@ def read_text(r: dict) -> str:
     for v in r["views"]:
         L.append(f"  view {v['view']}: {v['mm_per_px']} mm a pixel, {v['trusted_px']} trusted px, weight {v['weight']}"
                  + (f" (the light changes colour across the face: {v['light_spread']})" if v["weight"] < 0.6 else ""))
-    L.append(f"  {'region':16s} {'px':>7s}  {'ours L a b':20s} {'picture L a b':20s} d L a b")
+    L.append(f"  (mm a pixel: the PICTURE's own, at the face) {'region':16s} {'px':>7s}  {'ours L a b':20s} {'picture L a b':20s} d L a b")
     for k, x in r["regions"].items():
         L.append(f"  {k:16s} {x['px']:7.0f}  " + (f"{str(x['ours']):20s} {str(x['picture']):20s} {x['d']}" if x["read"] else "NOT READ"))
     fr = r["freckles"]
@@ -670,6 +672,8 @@ def read_text(r: dict) -> str:
                              if b["read"] else f"NOT READ ({b.get('why')})"))
     for k, e in r["eyes"].items():
         L.append(f"  {k}: " + (f"picture / ours {e['ratio']} against the skin ({e['px']} px)" if e["read"] else "NOT READ (too few pixels)"))
+    if r.get("folds"):
+        L.append(fold_text(r["folds"]))
     return "\n".join(L)
 
 
@@ -686,8 +690,8 @@ GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
                     "features.flush"),
           "eyes": ("zones.under_eye", "zones.eyelids", "zones.periorbital"),
           "lips": ("lips.blood", "lips.melanin", "lips.lower.blood", "lips.lower.melanin"),
-          "stubble": (), "brows": (), "freckles": (), "eyeballs": ()}
-DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "eyeballs")
+          "stubble": (), "brows": (), "freckles": (), "eyeballs": (), "folds": ()}
+DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "eyeballs", "folds")
 SIGMA = (3.0, 0.8, 0.8)     # Lab: what a region's read is worth (lightness carries the shading we do not model)
 EXPOSURE = 0.5            # log units: how loosely the picture's unknown exposure is held to our skin's lightness
 FIT_POINTS = 50000         # the solve's points (region means do not need every pixel)
@@ -937,6 +941,8 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print) 
                                 f"picture / ours {[round(float(x), 2) for x in ratio]} against the sclera beside it (INFERRED: the sclera taken as ours)"))
         if ey:
             sk1["eyes"] = ey
+    if "folds" in groups and r.get("folds"):
+        changes += fold_fit(sk1, r["folds"], True)
     resid_rows = {k: {"before": [round(float(x), 2) for x in (base0[i] - target[i])], "after": [round(float(x), 2) for x in (m1[i] - target[i])]}
                   for i, k in enumerate(reg)}
     out = {"skin": sk1, "changes": changes, "residual": resid_rows, "exposure": round(expo, 3)}
@@ -1020,3 +1026,327 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
                        ["AFTER:\n" + final["text"]])
     return {"model": dst, "reads": reads + [final["text"]], "fits": [{k: v for k, v in f.items()} for f in fits],
             "skin": store.load(dst).get("skin"), "text": text}
+
+
+# ---------------------------------------------------------------- folds: the checklist's detectors
+
+FOLD_T = 0.02          # log luminance: a valley this deep, across a fold's path, is a fold there
+FOLD_OWN = 0.7         # ... and this share of our own valley there deeper than ours (the head's own shading under another light)
+FOLD_SHARE = 0.3       # ... along at least this share of the path's visible stations
+FOLD_MOVE = 1.5        # mm: a fold of ours is moved only when the picture's lies this far from it (median)
+FOLD_STEP = 0.25       # mm between a profile's samples
+# what an amount-1 fold of ours reads as (median valley depth, log luminance, under the pictures' fitted lights):
+# calibrated on synthetic heads (spikes/skinread/foldval.py); the second round corrects what this gets wrong
+FOLD_REF = {"nasolabial": 0.15, "marionette": 0.11, "mouth_corner": 0.2, "mentolabial": 0.3, "tear_trough": 0.22,
+            "lid_fold": 0.14, "glabella": 0.135}
+LEGACY = {"nasolabial": "nasolabial", "marionette": "marionette", "glabella": "glabella"}   # skin.wrinkles' own lines
+LEGACY_SHARE = 0.5     # what one unit of the legacy wrinkle is taken to be worth in fold amount when it is replaced
+# fields of fine lines (skin.wrinkles' swatch layers): zone, the picture resolution they need (mm a pixel), and what
+# one unit of amount adds to the zone's fine-line energy over the cheek's
+FIELDS = {"forehead": ("forehead", 0.45, 0.6), "crows_feet": ("crows_feet", 0.45, 0.5), "under_eye": ("under_eye", 0.45, 0.4),
+          "lip_lines": ("upper_lip", 0.4, 0.4)}
+FIELD_BAND = (0.25, 0.9)   # mm: the band fine lines live in
+FIELD_FIT = False          # see fold_fit: the read failed its null
+FIELD_T = 0.25             # a zone's fine-line energy this far over ours (x the cheek's) is a difference
+
+
+def _valley(prof: np.ndarray, u: np.ndarray, search: float, flank: float) -> tuple:
+    """(depth, position) of the darkest valley within |u| <= search against the lower of the two rims within
+    `flank` of it; 0 when there is none."""
+    inner = np.abs(u) <= search
+    i = np.flatnonzero(inner)[np.argmin(prof[inner])]
+    left = prof[(u < u[i]) & (u >= u[i] - flank)]
+    right = prof[(u > u[i]) & (u <= u[i] + flank)]
+    if len(left) < 2 or len(right) < 2 or abs(u[i]) > search - 1.5 * (u[1] - u[0]):
+        return 0.0, float(u[i])       # (a minimum on the window's edge is the slope of something else beside the path)
+    return max(float(min(left.max(), right.max()) - prof[i]), 0.0), float(u[i])
+
+
+def _bil(img: np.ndarray, x, y):
+    h, w = img.shape
+    x = np.clip(np.asarray(x, float), 0, w - 1.001)
+    y = np.clip(np.asarray(y, float), 0, h - 1.001)
+    x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = x - x0, y - y0
+    return img[y0, x0] * (1 - fx) * (1 - fy) + img[y0, x0 + 1] * fx * (1 - fy) + img[y0 + 1, x0] * (1 - fx) * fy + img[y0 + 1, x0 + 1] * fx * fy
+
+
+def _fold_view(f: dict, q: dict, fd: dict) -> dict | None:
+    """One fold's path in one view: per station the valley across it in the picture, in ours, and in the picture
+    over ours (the differential), or None when the view does not show the path."""
+    from scipy import ndimage
+    from . import humanfit
+    Yv = np.array([0.2126, 0.7152, 0.0722])
+    box = f["box"]
+    k = N / (box[2] - box[0])
+    P, ac = q["P"], q["across"]
+    p0 = (humanfit.project(f["cam"], P) - np.asarray(box[:2])) * k
+    v = (humanfit.project(f["cam"], P + 0.001 * ac) - np.asarray(box[:2])) * k - p0       # px per mm across
+    sc = np.linalg.norm(v, axis=1)
+    flank = float(fd.get("flank", max(1.5 * fd["width"], 3.0)))
+    U = fd["search"] + flank
+    u = np.arange(-U, U + 1e-6, FOLD_STEP)
+    sx = p0[:, None, 0] + u[None, :] * v[:, None, 0]
+    sy = p0[:, None, 1] + u[None, :] * v[:, None, 1]
+    inb = (sx > 2) & (sx < N - 3) & (sy > 2) & (sy < N - 3)
+    good = (f["skin"] & (f["alpha"] > 0.98)).astype(float)
+    if f["parse"]:
+        good = good * (f["parse"]["skin"] > 0.5) * (f["parse"]["hair"] < 0.4)
+    gs = _bil(good, sx, sy) * inb
+    # the station itself: on the skin the camera sees (not behind the nose), not foreshortened to nothing
+    ix, iy = np.clip(np.round(p0[:, 0]).astype(int), 0, N - 1), np.clip(np.round(p0[:, 1]).astype(int), 0, N - 1)
+    seen = (np.linalg.norm(f["X"][iy, ix] - P, axis=1) < 0.003) & (sc > 0.45 / f["mm"])
+    valid = seen & (gs.mean(1) > 0.8)
+    if valid.sum() < max(4, 0.25 * len(P)):
+        return None
+    sg = float(np.clip(0.3 * fd["width"] / f["mm"], 0.7, 4.0))
+    lp = ndimage.gaussian_filter(np.log(np.maximum(f["P"] @ Yv, 2e-3)), sg)
+    lr = ndimage.gaussian_filter(np.log(np.maximum(f["R"] @ Yv, 2e-3)), sg)
+    pp, pr = _bil(lp, sx, sy), _bil(lr, sx, sy)
+    # (a couple of mm along the path: a fold runs on, noise does not)
+    ker = np.ones(5) / 5.0
+    sm = lambda a: np.apply_along_axis(lambda c_: np.convolve(np.r_[c_[:2][::-1], c_, c_[-2:][::-1]], ker, "valid"), 0, a)  # noqa: E731
+    pp, pr = sm(pp), sm(pr)
+    out = {"valid": valid, "u": u}
+    for key, a in (("picture", pp), ("ours", pr)):
+        dv = np.array([_valley(a[i], u, fd["search"], flank) for i in range(len(P))])
+        out[key], out[key + "_u"] = dv[:, 0] * valid, dv[:, 1]
+    out["scale"] = float(np.median(sc[valid]))
+    return out
+
+
+def _run(mask: np.ndarray, gap: int = 3) -> tuple:
+    """The longest run of True (gaps up to `gap` bridged): (i0, i1) inclusive, or None."""
+    best, start, last = None, None, None
+    for i, m in enumerate(mask):
+        if m:
+            if start is None or i - last > gap + 1:
+                start = i
+            last = i
+            if best is None or last - start > best[1] - best[0]:
+                best = (start, last)
+    return best
+
+
+def fold_read(c: Context) -> dict:
+    """The checklist: {fold: {"readable", "why", "sides": {side: {"present", "picture", "ours", "diff" (the picture's
+    valley over ours, log luminance), "excess" (ours over the picture's), "share", "extent" [t0, t1], "shift" [mm at
+    N_SHIFT stations], "confidence", "views"}}}}; + "fields": the fine-line zones."""
+    from . import skin as skinmod, skin_folds as sf
+    J = skinmod._joints(c.st)
+    part = (c.st.get("skin") or {}).get("part", "body")
+    native = {f["view"]: f.get("mm_native", f["mm"]) for f in c.frames}
+    out = {}
+    if "lm_jaw_1.L" not in J:
+        return {"folds": {}, "fields": {}, "why": "no GNM head landmarks"}
+    nominal = sf.paths(c.st, part, J, None)
+    for name, fd in sf.FOLDS.items():
+        ok_views = [f for f in c.frames if native[f["view"]] <= fd["res"]]
+        row = {"readable": bool(ok_views), "sides": {}, "about": fd["about"]}
+        if not ok_views:
+            row["why"] = (f"cannot tell: the pictures have {min(native.values()):.2f} mm a pixel at the face, this needs "
+                          f"{fd['res']} or finer (a {fd['width']} mm feature)")
+            out[name] = row
+            continue
+        for sd in ((".L", ".R") if sf.sided(name) else ("",)):
+            q = nominal[(name, sd)]
+            best, acc = None, []
+            for f in ok_views:
+                r_ = _fold_view(f, q, fd)
+                if r_ is None:
+                    continue
+                vw = next(v for v in c.views if v["view"] == f["view"])["weight"]
+                acc.append((f["view"], r_, vw * float(r_["valid"].sum()) * r_["scale"]))
+            if not acc:
+                row["sides"][sd] = {"present": None, "why": "not seen (turned away, hidden, or under hair) in any view"}
+                continue
+            res = {"views": [a[0] for a in acc]}
+            wsum = sum(a[2] for a in acc)
+            stat = {k: 0.0 for k in ("picture", "ours", "diff", "excess", "share")}
+            for vi, r_, w in acc:
+                val = r_["valid"]
+                hit = val & (r_["picture"] - r_["ours"] >= FOLD_T) & (r_["picture"] >= FOLD_T)
+                run = _run(hit)
+                sel = np.zeros(len(val), bool)
+                if run:
+                    sel[run[0]:run[1] + 1] = True
+                sel &= val
+                use = sel if sel.sum() >= 4 else val
+                stat["share"] += w / wsum * float(hit.sum() / max(val.sum(), 1))
+                # (each alone, at its own valley: the head's own shading there is in both and cancels in the difference;
+                # the valley of the RATIO image is not used: beside a fold of ours its roll and shade make false ones)
+                for k in ("picture", "ours"):
+                    stat[k] += w / wsum * float(np.median(r_[k][use]))
+                stat["diff"] += w / wsum * float(np.median((r_["picture"] - r_["ours"])[use]))
+                stat["excess"] += w / wsum * float(np.median((r_["ours"] - r_["picture"])[val]))
+                if best is None or w > best[2]:
+                    best = (vi, r_, w, run)
+            res.update({k: round(v, 4) for k, v in stat.items()})
+            vi, r_, w, run = best
+            res["present"] = bool(stat["share"] >= FOLD_SHARE and stat["diff"] >= FOLD_T + FOLD_OWN * stat["ours"] and stat["picture"] >= FOLD_T and run is not None)
+            res["absent_in_picture"] = bool(stat["excess"] >= FOLD_T + FOLD_OWN * stat["picture"] and stat["ours"] >= FOLD_T)
+            t = q["t"]
+            if run is not None:
+                res["extent"] = [round(float(t[max(run[0] - 1, 0)]), 2), round(float(t[min(run[1] + 1, len(t) - 1)]), 2)]
+                from scipy.ndimage import median_filter
+                uu = median_filter(r_["picture_u"], 7, mode="nearest")
+                good = r_["valid"] & (r_["picture"] - r_["ours"] >= FOLD_T) & (r_["picture"] >= FOLD_T)
+                if good.sum() >= 3:
+                    ts = np.linspace(0, 1, sf.N_SHIFT)
+                    res["shift"] = [round(float(x), 2) for x in np.interp(ts, t[good], uu[good])]
+                # where OURS shows the fold too, the two valleys' distance is the placement error with the light's
+                # bias gone (a valley's darkest line sits off the groove, toward the wall the light misses)
+                both = r_["valid"] & (r_["picture"] >= FOLD_T) & (r_["ours"] >= FOLD_T)
+                if both.sum() >= max(4, 0.3 * r_["valid"].sum()):
+                    du = median_filter(r_["picture_u"] - r_["ours_u"], 7, mode="nearest")
+                    if abs(float(np.median(du[both]))) >= FOLD_MOVE:   # (the null moves +-1 mm: less is not a difference)
+                        res["move"] = [round(float(x), 2) for x in np.interp(np.linspace(0, 1, sf.N_SHIFT), t[both], du[both])]
+            res["confidence"] = round(float(np.clip(stat["diff"] / (2.5 * FOLD_T), 0, 1) * np.clip(stat["share"] / 0.7, 0, 1)), 2)
+            row["sides"][sd] = res
+        out[name] = row
+    return {"folds": out, "fields": _field_read(c, native)}
+
+
+def _field_read(c: Context, native: dict) -> dict:
+    """Fields of fine lines (forehead, crow's feet, under the eye, round the lips): the zone's fine-line energy over
+    the cheek's, in the picture and in ours."""
+    from scipy import ndimage
+    Yv = np.array([0.2126, 0.7152, 0.0722])
+    out = {}
+    cheek = c.alb.zone("cheek") > 0.5
+    for name, (zone, res, _) in FIELDS.items():
+        zm = c.alb.zone(zone) > 0.5
+        rows, why = [], None
+        for f, v in zip(c.frames, c.views):
+            if native[f["view"]] > res:
+                why = f"cannot tell: {native[f['view']]:.2f} mm a pixel, fine lines need {res} or finer"
+                continue
+            m = c.view == f["view"]
+            e = {}
+            for key in ("P", "R"):
+                lg = np.log(np.maximum(f[key] @ Yv, 2e-3))
+                bp = ndimage.gaussian_filter(lg, FIELD_BAND[0] / f["mm"]) - ndimage.gaussian_filter(lg, FIELD_BAND[1] / f["mm"])
+                b = bp.ravel()[c.pix[m]]
+                ok = c.w[m] > 0
+                if (zm[m] & ok).sum() < 300 or (cheek[m] & ok).sum() < 300:
+                    e = None
+                    break
+                e[key] = float(np.sqrt(np.mean(b[zm[m] & ok] ** 2)) / max(np.sqrt(np.mean(b[cheek[m] & ok] ** 2)), 1e-5))
+            if e:
+                rows.append((v["weight"], e["P"], e["R"]))
+        if not rows:
+            out[name] = {"readable": False, "why": why or "the zone is not in trusted skin in any view"}
+            continue
+        w = np.array([r_[0] for r_ in rows])
+        p, o = float(np.average([r_[1] for r_ in rows], weights=w)), float(np.average([r_[2] for r_ in rows], weights=w))
+        out[name] = {"readable": True, "picture": round(p, 3), "ours": round(o, 3), "diff": round(p - o, 3)}
+    return out
+
+
+def fold_text(fr: dict) -> str:
+    L = ["  FOLDS and LINES the shape model does not make (a valley across each feature's landmark path; log luminance; "
+         "diff = the picture's over ours):"]
+    for name, row in fr["folds"].items():
+        if not row["readable"]:
+            L.append(f"    {name:13s} {row['why']}")
+            continue
+        for sd, s in row["sides"].items():
+            tag = f"{name}{sd}"
+            if s.get("present") is None:
+                L.append(f"    {tag:13s} {s['why']}")
+                continue
+            verdict = "PRESENT, ours lacks it" if s["present"] else ("ours has more than the picture" if s["absent_in_picture"] else
+                                                                       ("as ours" if s["picture"] >= FOLD_T else "absent"))
+            L.append(f"    {tag:13s} {verdict:28s} picture {s['picture']:.3f} ours {s['ours']:.3f} diff {s['diff']:.3f} excess {s['excess']:.3f}"
+                     f" along {int(100 * s['share'])} %" + (f", extent {s['extent']}, shift mm {s.get('shift')}" if s["present"] else "") +
+                     f"; confidence {s['confidence']} (views {s['views']})")
+    for name, row in fr["fields"].items():
+        L.append(f"    {name + ' lines':13s} " + (f"fine-line energy over the cheek's: picture {row['picture']}, ours {row['ours']} (diff {row['diff']:+.3f}; REPORTED ONLY: follows the light)"
+                                                   if row["readable"] else row["why"]))
+    return "\n".join(L)
+
+
+def fold_fit(sk: dict, fr: dict, first: bool) -> list:
+    """skin["folds"] and the fine-line amounts of skin["wrinkles"] set from a fold read (in place). Returns changes."""
+    from . import skin_folds as sf
+    changes = []
+    folds = dict(sk.get("folds") or {})
+    cur = sf.options(folds)
+    for name, row in fr["folds"].items():
+        if not row["readable"]:
+            continue
+        old = cur.get(name)
+        new_sides, amounts = {}, {}
+        for sd, s in row["sides"].items():
+            os_ = (old["sides"][sd] if old else {"amount": 0.0, "shift": [], "extent": [0.0, 1.0]})
+            a0 = (old["amount"] * os_["amount"]) if old else 0.0
+            if s.get("present") is None:
+                amounts[sd], new_sides[sd] = a0, os_
+                continue
+            leg = LEGACY.get(name)
+            a_leg = LEGACY_SHARE * float((sk.get("wrinkles") or {}).get(leg, 0.0)) if (leg and old is None and s["present"]) else 0.0
+            a1 = a0
+            if s["present"]:
+                a1 = float(np.clip(a0 + a_leg + s["diff"] / FOLD_REF[name], 0, 1.5))
+            elif s["absent_in_picture"] and a0 > 0:
+                a1 = float(np.clip(a0 - s["excess"] / FOLD_REF[name], 0, 1.5))
+            amounts[sd] = a1
+            shift = os_["shift"]
+            if s.get("move") and a0 > 0.2:        # ours has it: move it by the two valleys' distance
+                base = np.interp(np.linspace(0, 1, len(s["move"])), np.linspace(0, 1, len(shift)), shift) if shift else np.zeros(len(s["move"]))
+                shift = [round(float(x), 2) for x in base + np.asarray(s["move"])]
+            elif s["present"] and "shift" in s:
+                shift = s["shift"]
+            new_sides[sd] = {"shift": shift,
+                             "extent": s["extent"] if (s["present"] and "extent" in s and s["extent"][1] - s["extent"][0] > 0.2) else os_["extent"]}
+        top = max(amounts.values()) if amounts else 0.0
+        a_old = old["amount"] if old else 0.0
+        if top < 0.08:
+            if old:
+                folds.pop(name, None)
+                changes.append((f"folds.{name}", round(a_old, 2), "off", "the pictures do not show it"))
+            continue
+        moved = any(row["sides"][sd].get("move") for sd in row["sides"])
+        if old is not None and abs(top - a_old) < 0.06 and not moved and all(not row["sides"][sd].get("present") for sd in row["sides"]):
+            continue
+        entry = {"amount": round(top, 3)}
+        for sd, q in new_sides.items():
+            e = {**({"amount": round(amounts[sd] / top, 3)} if abs(amounts[sd] / top - 1) > 0.05 else {}),
+                 **({"shift": q["shift"]} if q["shift"] else {}), **({"extent": q["extent"]} if list(q["extent"]) != [0.0, 1.0] else {})}
+            if sd:
+                if e:
+                    entry[sd[1:]] = e
+            else:
+                entry.update(e)
+        if old:
+            for kk in ("width", "roll"):
+                if kk in (sk["folds"].get(name) if isinstance(sk["folds"].get(name), dict) else {}):
+                    entry[kk] = sk["folds"][name][kk]
+        folds[name] = entry
+        why = "; ".join(f"{name}{sd}: valley {s['picture']:.3f} (ours {s['ours']:.3f}) along {int(100 * s['share'])} %, confidence {s['confidence']}"
+                        for sd, s in row["sides"].items() if s.get("present") is not None)
+        changes.append((f"folds.{name}", round(a_old, 2) if old else "none", entry, why))
+        leg = LEGACY.get(name)
+        if leg and old is None and float((sk.get("wrinkles") or {}).get(leg, 1.0)) != 0.0:
+            sk.setdefault("wrinkles", {})[leg] = 0.0
+            changes.append((f"wrinkles.{leg}", "by age / as set", 0.0, f"replaced by the measured folds.{name}"))
+    if folds:
+        sk["folds"] = folds
+    else:
+        sk.pop("folds", None)
+    from . import skin as skinmod
+    p = skinmod.params({"skin": sk})
+    for name, row in fr["fields"].items():
+        # FIELD_FIT is off: the validation's null (the same lines in picture and ours, another light) read +0.47 where
+        # lines against none read +0.65: fine-line energy follows the light as much as the lines. Reported, not fitted.
+        if not FIELD_FIT or not row["readable"] or abs(row["diff"]) < FIELD_T:
+            continue
+        age = p["age"]
+        dflt = {"forehead": skinmod._age_curve(age, 26, 72), "crows_feet": skinmod._age_curve(age, 28, 70),
+                "under_eye": skinmod._age_curve(age, 30, 75), "lip_lines": skinmod._age_curve(age, 48, 85)}[name]
+        a0 = float((sk.get("wrinkles") or {}).get(name, dflt))
+        a1 = round(float(np.clip(a0 + row["diff"] / FIELDS[name][2], 0, 2.0)), 3)
+        if abs(a1 - a0) > 0.08:
+            sk.setdefault("wrinkles", {})[name] = a1
+            changes.append((f"wrinkles.{name}", round(a0, 3), a1, f"fine-line energy over the cheek's: picture {row['picture']}, ours {row['ours']}"))
+    return changes

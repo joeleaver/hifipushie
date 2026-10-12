@@ -124,6 +124,14 @@ the skin, flat or sunk, slightly shiny). Scar tissue has no pores: the micro rel
 sits in the dermis, so it is multiplied INTO the skin's colour under its relief and highlights, never laid on top
 like a sticker; with years the lines spread, black drifts blue-green and thins, colours fade [14].
 
+### 4b. Folds the shape does not make (`"folds"`)
+`"folds": {"tear_trough": 0.6, "nasolabial": {"amount": 0.8, "L": {"shift": [...], "extent": [0, 0.7]}}, "lid_fold": 0.7}`:
+the soft-tissue lines and bulges a GNM head's identity cannot give (eye bags, a deep nasolabial fold, a crisp lid
+crease, marionette lines, the groove over the chin, frown lines). Each is a path over the skin from the head's own
+landmarks; `shift` (mm across the path at stations along it), `extent` and per-side `amount` are the measured
+placement, which `skin_from_reference` fills in from the pictures. One unique map lays a groove and its roll as
+painted height and the crease's tint and shade as colour. Front-lit they read as form; they change no silhouette.
+
 ### 5. Hair on the skin
 `"hair"`: `brows` are hairs, not a painted arc: a drawn picture of ~900 tapered hairs that grow up at the inner end,
 along the brow in the middle and out-and-down at the tail (`density`, `thickness`, `color`, `grey`; `taper` thins the
@@ -279,6 +287,56 @@ light: "studio" (a key from the model's right + a weak fill), "soft" (broad fron
 engine: "eevee" (fast) or "cycles" (path traced, slower: real subsurface scattering: the shading check for
 shadow edges and back-lit ears).
 Judge in this order: flat colour at bust distance (tone, zones), then the lit bust, then the close-ups.
+
+### `skin_from_reference`
+
+`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto')`
+
+The reference pictures as a MEASUREMENT of the skin: the description (spec["skin"]) is set from what the fitted
+references show, and the result is the ordinary procedural skin (clean under any light, from any angle). The picture
+is never the albedo (that is texture_from_reference: it bakes the picture's light, brushwork and hair, and seams where
+no camera looked). Needs fitted references (human_reference / a block-in) and a head whose SHAPE is already accepted:
+every read lies where the model's own landmarks put it.
+
+How it measures (differential): per view, the picture P, OUR dressed head R through the same camera under the
+picture's own fitted light, and our albedo A at every pixel's surface point; the picture's albedo is A x P / R, so
+light, shading and scattering cancel as far as our head and light stand in for theirs. Region colours are read
+against the face's own plain skin (exposure and white balance cancel); folds are valleys of luminance across a
+landmark path, the picture's against ours at the same place.
+
+What it reads and sets (groups; default all):
+- `tone`: melanin / blood / undertone. Needs an anchor: a plain NEUTRAL backdrop gives the white balance; the
+  exposure stays a free factor, so the tone's lightness comes from the skin's chromaticity through the pigment model
+  (INFERRED, about +-5 L). No plain backdrop: tone NOT READ, everything else still is.
+- `zones`: skin.zones forehead_yellow, midface_red, nose_red, perioral_red, lower_cool + features.flush.
+- `eyes`: zones under_eye, eyelids, periorbital (the socket's own darker, browner skin). These three overlap: judge
+  the region's colour, not each number.
+- `lips`: lips.blood / melanin and lips.lower {blood, melanin} (the lower lip's own colour).
+- `stubble`: hair.stubble's `zones` {moustache, chin, soul_patch, jaw, cheeks, neck} and density, from the lower
+  face's shadow zone by zone; a beard is ADDED to a face without one only if skin.sex is not female (or stubble=True),
+  and taken off where the pictures show none.
+- `brows`: hair colour and density from the band's darkness; the band's placement and thickness by brow_read's fit.
+- `freckles`: dark specks per cm2 on cheeks, nose and forehead against ours (needs 0.5 mm a pixel or finer); 0 when
+  the pictures show none.
+- `eyeballs`: the iris colour against the sclera beside it (INFERRED).
+- `folds`: the CHECKLIST of soft-tissue features the shape model does not make: nasolabial, marionette, mouth_corner,
+  mentolabial, tear_trough (its roll is the eye bag), lid_fold (the upper lid's crease as a line), glabella, each
+  PRESENT / absent / "ours has more" per side with strength, extent along its path, placement (mm across the path)
+  and a confidence; and the fields of fine lines (forehead, crow's feet, under the eye, round the lips) as energy over
+  the cheek's. Each feature states the picture resolution it needs and answers "cannot tell" below it (a face 110 px
+  wide: 1.4 mm a pixel reads the broad folds, never a lid crease or fine lines). They are laid by skin.folds (one
+  unique map: groove + roll as painted height, crease tint and shade as colour) and skin.wrinkles.
+  Painted relief is honest only as far as shading goes: no silhouette, nothing in profile. A heavy bag, hooding or a
+  deep jowl is geometry (block_in_step {"hooding": x}, sculpt).
+
+rounds: read -> fit -> re-render -> read again; the second round corrects what the first could only estimate
+(densities, fold strength and placement). ~3-5 min a round on a head. read_only=True returns the read (tables per
+region and per fold) without changing anything: use it to see what the pictures say before deciding.
+The reply is the side-effect report: every parameter changed, from -> to, and the read behind it; parameters "at its
+bound" say the picture asks for more than that control gives.
+What it does NOT read: roughness / oil / pores, anything under hair, make-up as such (a dark lid reads as periorbital
+skin), the tone's absolute lightness, and whatever the shape gets wrong (a fold the head's geometry already has is
+"as ours").
 
 ### `skin_reference`
 
