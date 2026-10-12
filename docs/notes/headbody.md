@@ -4,7 +4,9 @@ STATE (2026-10-12): Part 1 (measure) DONE: table + plain answer below. Part 2 (h
 first build) IN PROGRESS. Branch `headbody` (worktree .claude/worktrees/headbody, from main 1ed30ce), not merged, not
 pushed. Scratch DURABLE in /mnt/data/hifipushie/headbody/: env.sh, run.sh <script> (capped; heavy), light.sh <script>
 (a light slot), out/. Scripts in spikes/headbody/. Models hb_*.
-NEXT: the native attach (`base.head.attach`), its test, the sheets hb_01 / hb_02, an export run.
+Part 3 step 1 BUILT: `base.head.attach: "native"` (onemesh.native / _native_desc / _neck_field / attach_report,
+tests/test_headbody.py 5 pass); models hb_tess (from nt_N06), hb_garrett (from ng_N05).
+NEXT: two meshes at export (the seam ring split), rig pose check, the sheets hb_01 / hb_02, an export run.
 
 Joe, 2026-10-12: "that's some real work for us: how to get the body back on (and if we even want to, don't many games
 leave them as separate meshes?) and how to match the size/scale of the head and body well." ... "let's get that
@@ -128,3 +130,48 @@ quotes them; the heads-tall column for ANSUR rests on them.
   blending only in the neck / on the body; (4) texture seam below the geometric neck line, one skin tone driving both
   materials; (5) a welded single mesh as an option. Nobody documents "the body proportioned to a fixed head": Epic
   scales the head or leaves it; we can do better because our body is parametric and our head is in real millimetres.
+
+## Part 3: the native attach (built 2026-10-12)
+
+### Measured before designing (spikes/headbody/p2_neck.py)
+- GNM's neck is real too: girth at its narrowest (ring 19, ~1 cm under the chin level) 360 mm on the template, 334 on
+  Tess's identity, 361 on Garrett's (ANSUR II: 330 women, 398 men); at ring 13: 374 Tess, 390 Garrett (ANSUR at the
+  base 371 / 435). Tess's MakeHuman body (weight 0.15) has a 292 mm neck (296 at ring 13): 14-26 % under GNM's and
+  11 % under ANSUR's mean; Garrett's body 361-385: equal to GNM's within 1 %.
+- GNM's skin has 110-vertex rings from the bib's open edge (ring 0: 125 mm under the chin in front, shoulders 128 mm
+  out) up to ring 25 under the jaw. The asset's stitch is ring 13: its front 55 mm under the chin (about the
+  cricoid), its back 32 mm under the chin level (mid nape). Rings 0-12 (the bib) are not in our mesh.
+- A blend in the neck cannot be right for Tess: GNM's neck at the jaw is thicker than her body's neck at its base
+  (336 against 296), so any hand-over to the body's neck above the ring makes a neck that narrows downward. The
+  body has to take the head's neck.
+
+### Design as built
+- KEY: `base.head.attach: "native"` (default "body" = the old path, bit-identical: hash test). `base.head.size`
+  (default 1.0) = the head over GNM's own metres (a child or a stylised figure; not for likeness).
+- HEAD: every GNM vertex from the seam ring up = GNM's evaluation (template + identity + expression, incl. the rest
+  mouth's lip_close) x size, translated: `onemesh.hook` returns GNM's vertices moved by one vector. No MakeHuman head,
+  no gnm_base fit, no dimorphism field, no style head sliders, no neck fade (`head_fade` = 1). Measured: max
+  deviation from the similarity 0.0000 mm on 10,630 skin vertices (test: < 1e-9 m).
+- PLACE: GNM's head joint (joint 1, the skull on the spine) on the body's skull pivot = where that joint lies when
+  GNM's template is least-squares-fitted to the head the MakeHuman body carries (`_pivot`; skull + face, not the
+  neck). The head therefore stands where the body's own head stood and grows / shrinks about the top of the spine.
+- STATURE: the body's MakeHuman height is solved so the figure's top is the STATED stature (`base.body.height`, or
+  MakeHuman's own for the age) under this head, style sliders (longer legs) included: Tess 1.636 -> body 1.601,
+  Garrett 1.7715 -> 1.766. Figure stature exact to 0.5 mm (test).
+- NECK: `_neck_field`: the body's vertices (MakeHuman's + the bridge) get the smoothest (biharmonic, cotangent
+  weights) move that equals "GNM's vertex minus where the body would carry it" on the head and 0 beyond 11 cm over
+  the surface from the ring (x stature / 1.7); the head's vertices are constraints two rings deep, so the surface
+  keeps its slope across the ring. Then the rows within 4.5 cm are evened out ALONG the surface (GNM's ring is not
+  parallel to the body's top loop; without it the bridge's rows were squeezed at the nape). Tess: 230-ish vertices
+  move, at most 30 mm (shoulders / trapezius / clavicle pit widen to a 374 mm neck base); Garrett 34 mm (mostly along
+  the surface: his girths agree).
+- STYLE: body sliders still work; the head RIDES them rigidly (the pivot's move), and the neck field runs again on
+  the styled body. Head sliders are ignored and named by `attach_report`.
+- BONES: MakeHuman's head bones (head and its 59 children) are scaled about the pivot by size / (the body's own head
+  size), so eye / jaw bones lie in the new head; the template's eye landmark and chin are GNM's.
+- REPORT: `onemesh.attach_report(base)` (in `measure_human`'s text): size, head height, heads tall, eyes apart,
+  eyeball, neck girth head / body at the ring, NOTES (neck mismatch > 12 %, heads tall outside 6.8 .. 8.3), ignored keys.
+  hb_tess: 1.000 x GNM, 216 mm, 7.59 heads, neck 374 against the body's 290 (+29 %: NOTE). hb_garrett: 220 mm, 8.03
+  heads, neck 390 against 384.
+- Found on the way: `onemesh.template` raised AttributeError when `hifipushie.headfit` had not been imported by
+  something else first (main too); fixed.

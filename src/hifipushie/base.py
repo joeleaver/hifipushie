@@ -2319,7 +2319,7 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         E = np.tensordot(ce, g["expression_basis"], 1)
         if head.get("bound"):
             from . import onemesh as _om
-            E = E * _om.neck_fade()[:, None]
+            E = E * _om.head_fade(head)[:, None]
         V = V + faceslide.seal_delta(V - E, float(np.clip(head["lip_seal"], 0.0, 1.0)))
     elif head.get("lip_close") and head.get("mouth_gap") is None:  # GNM's own closing (lip_close_delta), where the
         # seal goes: after the body's hook (it carries the template lips at their own gap) and on the head WITHOUT
@@ -2328,13 +2328,13 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
         E = np.tensordot(ce, g["expression_basis"], 1)
         if head.get("bound"):
             from . import onemesh as _om
-            E = E * _om.neck_fade()[:, None]
+            E = E * _om.head_fade(head)[:, None]
         dp = lip_close_delta(V - E, g, float(head.get("scale", 1.4)))
         V, Vg, En = V + dp, Vg + dp, En + dp
     pf = None
     if head.get("bound"):  # (the one mesh hands the head's own shape over to the body through the neck: neck_fade)
         from . import onemesh as _om
-        pf = _om.neck_fade()
+        pf = _om.head_fade(head)
     V = _gnm_pieces(V, Vg, g, En, pf)
 
     def place(X):

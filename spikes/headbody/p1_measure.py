@@ -86,64 +86,71 @@ def similarity(A, Bp):
 
 UPG, FWG = [0, 1, 0], [0, 0, 1]
 UPW, FWW = [0, 0, 1], [0, -1, 0]
-D = bi.data()
-res = {}
-print("== GNM's own evaluation (its units; no body)")
-print("template extent (m): x %s y %s z %s; joints (neck, head, eye L, eye R):\n%s" % (
-    np.round([Vt[:, 0].min(), Vt[:, 0].max()], 4), np.round([Vt[:, 1].min(), Vt[:, 1].max()], 4),
-    np.round([Vt[:, 2].min(), Vt[:, 2].max()], 4), np.round(Jt, 4)))
-for nm, c in (("GNM template", None), ("GNM female class mean", D["m_f"]), ("GNM male class mean", D["m_m"])):
-    ident = {} if c is None else {f"head_{i:03d}": float(x) for i, x in enumerate(np.asarray(c)[:170])}
-    V, J = gnm_eval(ident)
-    M = measures(V, J[2:4], UPG, FWG)
-    M["ball"] = ball(V, J)
-    res[nm] = M
-    row(nm, M, f"ball {1000 * M['ball']:.2f}")
 
-print("\n== MakeHuman's own head (GNM's vertices bound on the body's surface), stature, heads per stature")
-bodies = {"MH male 25 (default height)": {"age": 25, "sex": 1.0}, "MH female 25 (default height)": {"age": 25, "sex": 0.0},
-          "MH neutral 25": {"age": 25, "sex": 0.5}}
-models = [a for a in sys.argv[1:]]
-for mname in models:
-    bodies[f"{mname} body"] = onemesh.body_params(store.load(mname)["base"])
-io_scale = onemesh._reference()["io_scale"]
-print(f"asset io (MakeHuman reference eyes apart, GNM template eyes apart): {onemesh.asset()['io']}  io_scale {io_scale:.4f}")
-print("reference body:", json.loads(str(onemesh.asset()["reference"])))
-for nm, params in bodies.items():
-    bd = onemesh.bound(params)
-    P = bd["P"]
-    stat = float(P[:, 2].max() - P[:, 2].min())
-    M = measures(bd["B"], bd["eyes"], UPW, FWW)
-    res[nm] = {**M, "stature": stat, "k": bd["k"]}
-    row(nm, M, f"stature {1000 * stat:.0f} heads {stat / M['head_h']:.2f}  bound k {bd['k']:.4f} -> head scale s = k x io_scale = {bd['k'] * io_scale:.4f}")
 
-print("\n== the head as BUILT on each model, against GNM's own evaluation of the same identity")
-for mname in models:
-    sp = store.load(mname)
-    base = sp["base"]
-    hd = onemesh.head_desc(base)
-    ht = onemesh.head_rest(base)
-    tpl = onemesh.template(base)
-    P = tpl["P"]
-    stat = float(P[:, 2].max() - P[:, 2].min())
-    W = ht["gnm_world"]
-    eyes = np.array(ht["eyes"])
-    M = measures(W, eyes, UPW, FWW)
-    ident = {k: v for k, v in (base["head"].get("identity") or {}).items()}
-    Vg, Jg = gnm_eval(ident)
-    Mg = measures(Vg, Jg[2:4], UPG, FWG)
-    fade = onemesh.neck_fade()
-    hm = np.asarray(g["groups"]["hockey_mask"]) > 0.5
-    k_face = similarity(Vg[hm], W[hm])
-    full = SKIN & EXT & (fade > 0.999)
-    k_head = similarity(Vg[full], W[full])
-    hs = float(hd["bound"].get("head_size", 1.0))
-    res[mname] = {**M, "stature": stat, "k_face": k_face, "k_head": k_head, "s": hd["scale"], "head_size": hs,
-                  "eye_r": float(ht["eye_r"]), "gnm": Mg}
-    row(mname + " (built)", M, f"stature {1000 * stat:.0f} heads {stat / M['head_h']:.2f}")
-    row(mname + " (GNM's own, same identity)", Mg)
-    print(f"    carry: face (hockey mask) {k_face:.4f}, whole head above the neck fade {k_head:.4f}; hd.scale s {hd['scale']:.4f}, "
-          f"style head_size {hs}, gnm_base {base['head'].get('gnm_base')}, user head.scale {base['head'].get('scale')}, "
-          f"ball r {1000 * ht['eye_r']:.2f} mm; a body with GNM's head at 1.0 and the same heads-per-stature would stand "
-          f"{1000 * stat / k_head:.0f} mm; at ANSUR's 7.5 heads: {7.5 * Mg['head_h'] * 1000:.0f} mm")
-json.dump(res, open("/mnt/data/hifipushie/headbody/out/p1.json", "w"), indent=1, default=float)
+def main():
+    D = bi.data()
+    res = {}
+    print("== GNM's own evaluation (its units; no body)")
+    print("template extent (m): x %s y %s z %s; joints (neck, head, eye L, eye R):\n%s" % (
+        np.round([Vt[:, 0].min(), Vt[:, 0].max()], 4), np.round([Vt[:, 1].min(), Vt[:, 1].max()], 4),
+        np.round([Vt[:, 2].min(), Vt[:, 2].max()], 4), np.round(Jt, 4)))
+    for nm, c in (("GNM template", None), ("GNM female class mean", D["m_f"]), ("GNM male class mean", D["m_m"])):
+        ident = {} if c is None else {f"head_{i:03d}": float(x) for i, x in enumerate(np.asarray(c)[:170])}
+        V, J = gnm_eval(ident)
+        M = measures(V, J[2:4], UPG, FWG)
+        M["ball"] = ball(V, J)
+        res[nm] = M
+        row(nm, M, f"ball {1000 * M['ball']:.2f}")
+
+    print("\n== MakeHuman's own head (GNM's vertices bound on the body's surface), stature, heads per stature")
+    bodies = {"MH male 25 (default height)": {"age": 25, "sex": 1.0}, "MH female 25 (default height)": {"age": 25, "sex": 0.0},
+              "MH neutral 25": {"age": 25, "sex": 0.5}}
+    models = [a for a in sys.argv[1:]]
+    for mname in models:
+        bodies[f"{mname} body"] = onemesh.body_params(store.load(mname)["base"])
+    io_scale = onemesh._reference()["io_scale"]
+    print(f"asset io (MakeHuman reference eyes apart, GNM template eyes apart): {onemesh.asset()['io']}  io_scale {io_scale:.4f}")
+    print("reference body:", json.loads(str(onemesh.asset()["reference"])))
+    for nm, params in bodies.items():
+        bd = onemesh.bound(params)
+        P = bd["P"]
+        stat = float(P[:, 2].max() - P[:, 2].min())
+        M = measures(bd["B"], bd["eyes"], UPW, FWW)
+        res[nm] = {**M, "stature": stat, "k": bd["k"]}
+        row(nm, M, f"stature {1000 * stat:.0f} heads {stat / M['head_h']:.2f}  bound k {bd['k']:.4f} -> head scale s = k x io_scale = {bd['k'] * io_scale:.4f}")
+
+    print("\n== the head as BUILT on each model, against GNM's own evaluation of the same identity")
+    for mname in models:
+        sp = store.load(mname)
+        base = sp["base"]
+        hd = onemesh.head_desc(base)
+        ht = onemesh.head_rest(base)
+        tpl = onemesh.template(base)
+        P = tpl["P"]
+        stat = float(P[:, 2].max() - P[:, 2].min())
+        W = ht["gnm_world"]
+        eyes = np.array(ht["eyes"])
+        M = measures(W, eyes, UPW, FWW)
+        ident = {k: v for k, v in (base["head"].get("identity") or {}).items()}
+        Vg, Jg = gnm_eval(ident)
+        Mg = measures(Vg, Jg[2:4], UPG, FWG)
+        fade = onemesh.neck_fade()
+        hm = np.asarray(g["groups"]["hockey_mask"]) > 0.5
+        k_face = similarity(Vg[hm], W[hm])
+        full = SKIN & EXT & (fade > 0.999)
+        k_head = similarity(Vg[full], W[full])
+        hs = float(hd["bound"].get("head_size", 1.0))
+        res[mname] = {**M, "stature": stat, "k_face": k_face, "k_head": k_head, "s": hd["scale"], "head_size": hs,
+                      "eye_r": float(ht["eye_r"]), "gnm": Mg}
+        row(mname + " (built)", M, f"stature {1000 * stat:.0f} heads {stat / M['head_h']:.2f}")
+        row(mname + " (GNM's own, same identity)", Mg)
+        print(f"    carry: face (hockey mask) {k_face:.4f}, whole head above the neck fade {k_head:.4f}; hd.scale s {hd['scale']:.4f}, "
+              f"style head_size {hs}, gnm_base {base['head'].get('gnm_base')}, user head.scale {base['head'].get('scale')}, "
+              f"ball r {1000 * ht['eye_r']:.2f} mm; a body with GNM's head at 1.0 and the same heads-per-stature would stand "
+              f"{1000 * stat / k_head:.0f} mm; at ANSUR's 7.5 heads: {7.5 * Mg['head_h'] * 1000:.0f} mm")
+    json.dump(res, open("/mnt/data/hifipushie/headbody/out/p1.json", "w"), indent=1, default=float)
+
+
+if __name__ == "__main__":
+    main()
