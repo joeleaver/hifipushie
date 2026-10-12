@@ -305,9 +305,9 @@ against the face's own plain skin (exposure and white balance cancel); folds are
 landmark path, the picture's against ours at the same place.
 
 What it reads and sets (groups; default all):
-- `tone`: melanin / blood / undertone. Needs an anchor: a plain NEUTRAL backdrop gives the white balance; the
-  exposure stays a free factor, so the tone's lightness comes from the skin's chromaticity through the pigment model
-  (INFERRED, about +-5 L). No plain backdrop: tone NOT READ, everything else still is.
+- `tone`: melanin / blood / undertone, for the skin's HUE and SATURATION only. Needs an anchor: a plain NEUTRAL
+  backdrop gives the white balance. The tone's LIGHTNESS is never read (no picture says how it was exposed; left free
+  the fit ran dark): it stays as you set it. No plain backdrop: tone NOT READ, everything else still is.
 - `zones`: skin.zones forehead_yellow, midface_red, nose_red, perioral_red, lower_cool + features.flush.
 - `eyes`: zones under_eye, eyelids, periorbital (the socket's own darker, browner skin). These three overlap: judge
   the region's colour, not each number.
@@ -318,7 +318,8 @@ What it reads and sets (groups; default all):
 - `brows`: hair colour and density from the band's darkness; the band's placement and thickness by brow_read's fit.
 - `freckles`: dark specks per cm2 on cheeks, nose and forehead against ours (needs 0.5 mm a pixel or finer); 0 when
   the pictures show none.
-- `eyeballs`: the iris colour against the sclera beside it (INFERRED).
+- `eyeballs` (NOT in the default groups: ask for it): the iris colour against the sclera beside it. Right on synthetic
+  pictures, wrong on photographs (a real sclera sits in lid shadow): check the result against the picture by eye.
 - `folds`: the CHECKLIST of soft-tissue features the shape model does not make: nasolabial, marionette, mouth_corner,
   mentolabial, tear_trough (its roll is the eye bag), lid_fold (the upper lid's crease as a line), glabella, each
   PRESENT / absent / "ours has more" per side with strength, extent along its path, placement (mm across the path)
@@ -334,9 +335,11 @@ rounds: read -> fit -> re-render -> read again; the second round corrects what t
 region and per fold) without changing anything: use it to see what the pictures say before deciding.
 The reply is the side-effect report: every parameter changed, from -> to, and the read behind it; parameters "at its
 bound" say the picture asks for more than that control gives.
-What it does NOT read: roughness / oil / pores, anything under hair, make-up as such (a dark lid reads as periorbital
-skin), the tone's absolute lightness, and whatever the shape gets wrong (a fold the head's geometry already has is
-"as ours").
+What it does NOT read: roughness / oil / pores, fine lines (reported as energy, never fitted: they follow the light),
+anything under hair, make-up as such (a dark lid reads as periorbital skin), the tone's lightness, a fold that shows
+as a lit / shaded STEP under side light instead of a valley, and whatever the shape gets wrong (a fold the head's
+geometry already has is "as ours"). A fold that is laid and still does not read in our render is reported
+"NOT raised": that one is geometry, not paint.
 
 ### `skin_reference`
 

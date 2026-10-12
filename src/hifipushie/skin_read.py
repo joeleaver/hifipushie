@@ -702,12 +702,18 @@ GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
           "eyes": ("zones.under_eye", "zones.eyelids", "zones.periorbital"),
           "lips": ("lips.blood", "lips.melanin", "lips.lower.blood", "lips.lower.melanin"),
           "stubble": (), "brows": (), "freckles": (), "eyeballs": (), "folds": ()}
-DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "eyeballs", "folds")
+# ("eyeballs", the iris colour, is NOT a default: on Tess's photographs it turned grey-green irises orange-brown (the
+# picture's sclera sits in lid shadow, so "against the sclera" inflates the iris; right on synthetic pictures only)
+DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "folds")
 SIGMA = (6.0, 0.8, 0.8)     # Lab: what a region's read is worth (lightness carries the shading we do not model)
 EXPOSURE = 0.08           # log units: how closely the picture's unknown exposure is held to our skin's lightness. At 0.5
-                          # (free) the tone ran DARK on every case: the pigment model reaches a picture's chroma only by
-                          # adding melanin (validation: melanin 0.48 for a truth of 0.30; Garrett came out a tanned
-                          # orange-brown). The tone's lightness is not the pictures' to give: it stays ours.
+                          # (free) the tone ran DARK: the pigment model reaches a picture's chroma most cheaply by adding
+                          # melanin (validation: melanin 0.48 for a truth of 0.30; Garrett came out a tanned
+                          # orange-brown). Held, it still runs dark when the picture's skin is far more saturated than the
+                          # start (validation: 0.54), stays within ~3 L on the two subjects. The tone's lightness is NOT
+                          # a read: check it by eye.
+# (also tried: holding the base tone's own L to 1.5. On the far synthetic truth the solve then bent the zones to find the
+# chroma: perioral 2.8, flush 1.26, no beard. Taken out.)
 BEARD_EVEN = 0.6          # the beard's zone scales are held to their mean this loosely (side zones read lightness, the least
                           # trusted number; free, a jaw at 1 beside cheeks at 0 drew a band with an edge)
 LIP_SIGMA_L = 2.5         # the lips' lightness is theirs (a small region, read whole): trusted more than the skin's
@@ -1002,8 +1008,8 @@ def _unset(sk1: dict, sk0: dict, path: str) -> None:
 def fit_text(f: dict) -> str:
     L = ["SKIN FIT (what changed, from -> to, and the read behind it):"]
     if f.get("exposure", 1.0) != 1.0:
-        L.append(f"  the picture's exposure against our render: x {f['exposure']} (a free factor: the tone's lightness comes from the "
-                 "skin's chromaticity through the pigment model, INFERRED)")
+        L.append(f"  the picture's exposure against our render: x {f['exposure']} (held near 1: the tone's LIGHTNESS is not read, it "
+                 "stays ours; hue and saturation are the pictures')")
     for p, a, b, why in f["changes"]:
         L.append(f"  {p}: {a} -> {b}   [{why}]")
     if not f["changes"]:
@@ -1063,8 +1069,8 @@ FOLD_MOVE = 1.5        # mm: a fold of ours is moved only when the picture's lie
 FOLD_STEP = 0.25       # mm between a profile's samples
 # what an amount-1 fold of ours reads as (median valley depth, log luminance, under the pictures' fitted lights):
 # calibrated on synthetic heads (spikes/skinread/foldval.py); the second round corrects what this gets wrong
-FOLD_REF = {"nasolabial": 0.15, "marionette": 0.1, "mouth_corner": 0.2, "mentolabial": 0.22, "tear_trough": 0.19,
-            "lid_fold": 0.19, "glabella": 0.12}
+FOLD_REF = {"nasolabial": 0.125, "marionette": 0.05, "mouth_corner": 0.2, "mentolabial": 0.26, "tear_trough": 0.14,
+            "lid_fold": 0.16, "glabella": 0.13}
 LEGACY = {"nasolabial": "nasolabial", "marionette": "marionette", "glabella": "glabella"}   # skin.wrinkles' own lines
 LEGACY_SHARE = 0.5     # what one unit of the legacy wrinkle is taken to be worth in fold amount when it is replaced
 # fields of fine lines (skin.wrinkles' swatch layers): zone, the picture resolution they need (mm a pixel), and what
