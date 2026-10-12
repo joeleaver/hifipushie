@@ -1110,3 +1110,18 @@ gnm and makehuman don't seem to support it, and I'm not sure game triangle budge
   line and the far LODs = normal map + painted line. (4) Budget: two or three loops round each eye, of the order of a
   few hundred triangles at LOD0; cheap next to the alternative. Soft broad features (bags, nasolabial, chin pad)
   can stay in the field modifier, with expression gains.
+- Topology check (same day; wireframes /mnt/data/hifipushie/tour/topo/eye.png, mouth_cheek.png, drawn without depth
+  sorting: the eyeball and teeth show through): GNM's head is 17,821 vertices / 17,662 quads, an animation topology:
+  closed concentric quad RINGS round each eye (gnm_fold.py: ring 0 = the lid margin, rows 0.5-0.7 mm apart at rings
+  3-6 where the crease sits; gnm_fold.chains() = 7 radial chains x 13 rings up the lid) and a loop flow from the nose
+  wing sweeping down round the mouth corner (the nasolabial flow), rings round the mouth. So both the lid fold and the
+  nasolabial fold CAN be defined on GNM's own loops; no retopology needed at this level. (The game asset's topology is
+  another question: the wrap template / decimation: what survives there is the export test's job.)
+- PLAN agreed with Joe (2026-10-12; "it will really increase our quality if we get this right. We're not that far
+  away from a MetaHuman competitor, in a different space"): TWO TRACKS. (A) the LID FOLD in mesh space: a per-subject
+  pinch / tuck shape on a fixed ring of GNM's lid rings, parameters = crease height and HOODEDNESS along the lid
+  (Microsoft's 0 = brow, 1 = margin, > 1 = in front), blink / wide correctives on the same vertices, the fine line in
+  normal map + paint; the reads must produce those parameters. (B) the OTHER folds stay in the field layer and get
+  EXPRESSION GAIN tables baked into the exported shapes: nasolabial first (tested on a smile), then marionette / jowl,
+  bags; chin pad + notch static; crow's feet / forehead / glabella = expression-driven wrinkle normal maps, not
+  geometry. Start both when skinfolds2 has reported.
