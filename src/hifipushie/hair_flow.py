@@ -92,7 +92,9 @@ def roots(sc, ga: dict, line, rng, xp=None):
             d_ = inside(sc, line, a_ % 360, e_)
             fa_ = np.abs(_wrap(a_))
             low = (fa_ > 50) & (fa_ < 100) & (e_ < 0.5 * (float(_line_at(line, 95.0)) + float(_line_at(line, 265.0))) - 11.0)
-            return (d_ > 0.002) & (d_ < 0.62 * sp) & (e_ > sc.EL[0] + 4) & ~low
+            # (to a whole spacing in, over the first inner roots: those stand 2 cm apart, and where the hair runs
+            # straight AWAY from the line (a high tie's temples) the stretch between band and inner roots was bare)
+            return (d_ > 0.002) & (d_ < 1.05 * sp) & (e_ > sc.EL[0] + 4) & ~low
         r0_ = float(np.median(sc.R))
         az_b, el_b = _poisson(sc, rng, lambda a_, e_: np.full(len(a_), 0.36 * sp), okb,
                               n_try=int(np.clip(2400 * r0_ * r0_ / sp ** 2, 12000, 60000)))
@@ -284,7 +286,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             from .hair import inside
             nearf = edge * (1.0 - float(_ss_t((float(inside(sc, line, az[i] % 360, el[i])) - 0.01) / 0.025))) \
                 * (1.0 - float(_ss_t((abs(float(_wrap(az[i]))) - 60.0) / 30.0)))
-        wx = (0.42 + 0.2 * ramp if edge > 0 else 0.6) if hl[i] == 1 else 1.9 - 0.9 * nearf
+        wx = (0.42 + 0.2 * ramp if edge > 0 else 0.6) if hl[i] == 1 else 1.9 - 0.5 * nearf
         lk = {"tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)] for j in range(n)],
               "width": round(sp * wx * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
               "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003}
@@ -303,6 +305,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                 st["density"] = round(float(st.get("density", 1.0)) * thin * (1.0 + 1.5 * strip * ramp), 3)
                 st["fine"] = round(float(np.clip(edge * (1.0 - ramp) * (1.0 - 0.5 * strip) + 0.3 * edge * climb, 0.0, 1.0)), 3)
                 st["rim"] = round(0.8 + 1.0 * edge, 2)
+                st["roots_m"] = round(0.008 + 0.02 * (1.0 - ramp), 4)
             if ga.get("feather"):
                 # where the hair runs ALONG the hairline (the temples, beside the part: every lock's start is a cut
                 # across the line) its strands start one by one far along the lock: a feathered edge instead of a
@@ -997,7 +1000,9 @@ def style(tied: dict) -> dict:
             tie["wisps"] = {"count": n_w, "where": list(wsp["where"]), "length": [float(v) for v in wsp["length"]],
                             "softness": so, "hairs": [6, int(round(14 + 14 * so))],
                             "tuck": 0.45, "over": round(0.004 + 0.006 * lift, 4),
-                            "loose": int(round(2.5 * am)) if wsp["loose"] is None else int(wsp["loose"])}
+                            # (none by default toward a high tie: the lock cannot lie back over the temple, it
+                            # hangs down the cheek as a strap, th_S5)
+                            "loose": (int(round(2.5 * am)) if el < 30.0 else 0) if wsp["loose"] is None else int(wsp["loose"])}
     if hs > 0:  # the hairline's own baby hairs belong to the EDGE, not to the wisps: a neat head has them too
         w0 = tie.get("wisps") or {"count": 0, "where": list(WISP_STYLE["where"]), "length": list(WISP_STYLE["length"]),
                                   "softness": 0.6, "hairs": [6, 20], "tuck": 0.3, "over": 0.006}

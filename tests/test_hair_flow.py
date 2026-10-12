@@ -295,6 +295,7 @@ def test_hairline_is_a_band_that_thins_out():
         fine.append(lk["strands"]["fine"])
         wid.append(lk["width"])
         assert lk["strands"]["rim"] > 1.0  # soft sides
+        assert 0.005 < lk["strands"]["roots_m"] < 0.03  # its strands start over its first cm or two, in METRES
     din, dens, fine, wid = (np.asarray(v) for v in (din, dens, fine, wid))
     assert din.max() > 0.5 * sp and din.min() < 0.004  # roots through the band's depth, not on one line
     out, inn = din < 0.004, din > 0.45 * sp
@@ -329,6 +330,19 @@ def test_hairline_is_a_band_that_thins_out():
         G = None
     if G is not None:
         assert "fn" in G["head"] and "ex" in G["head"] and G["head"]["ex"][0] > 0
+
+
+def test_cycles_look_keys():
+    """look.cycles_width / cycles_sat (tesshair5): a path-traced render's strand width and the colour's saturation,
+    fitted by measure against a reference; absent by default (EEVEE and older looks untouched)."""
+    lk = hair.full_look({"cycles_width": 1.8, "cycles_sat": 0.65})
+    assert lk["cycles_width"] == 1.8 and lk["cycles_sat"] == 0.65
+    assert hair.full_look({})["cycles_width"] is None and hair.full_look({})["cycles_sat"] is None
+    from hifipushie import hair_strands as hs
+    S = {"count": 70000, "thickness": 0.7, "random": 0.5, "stray": 0.5, "taper": 0.9, "clump": 0.2, "wave": 0.0,
+         "wavelength": 0.1, "curl": 0.0, "loose": 0.2, "clump_size": 0.004, "clump_shape": 0.6, "tip_spread": 0.3,
+         "frizz": 0.1, "flyaway": 0.1, "tips": 0.6, "roots": 1.0}
+    assert hs.physical(S)["radius"] < 0.00006  # (a true hair's width: what cycles_width multiplies)
 
 
 def test_baby_hairs_and_loose_locks():
