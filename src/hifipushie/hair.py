@@ -102,6 +102,8 @@ GROOM = {
     # row: 0.35 shows between the wedges, 1 is buried under the underlayer) or per row {stem: sink | false}
     "hairline_edge": None,  # {"inset": m (negative: tucked into the skin), "reach": m}: every drawn clump whose edge
     # comes within reach of the hairline lays that edge on it (the volume's rim showed between clump edges and skin)
+    "tied": None,  # a tied STYLE (hair_flow.style: {"tie": low | mid | high.., "side", "tightness", "part", "tail",
+    # "escaped", "neatness", "half", ...}): makes `tie`, the parting and strand dials. The way to ask for a ponytail.
     "tie": None,  # tied hair (hair_tied.py): {"at": [az, el], "out", "gather", "tail", "escape", "band"} or a list
     "loose": None,  # loose hair (hair_loose.py): grown all over the scalp, combed at the roots, then falling / standing:
     # {"length", "level", "spacing", "body", "lift", "stiff", "out", "back", "messy", "uneven", "ends", "fringe"}
@@ -344,6 +346,17 @@ def groom_params(spec: dict) -> dict:
     bad = set(g) - set(GROOM)
     if bad:
         raise HairError(f"hair groom: unknown keys {sorted(bad)} (have {', '.join(sorted(GROOM))})")
+    if g.get("tied"):  # the style makes the tie, the parting (and loose hair for half up)
+        from . import hair_flow
+        if g.get("tie"):
+            raise HairError("hair groom: `tied` (a style) makes the tie: give tie keys in tied.detail.tie, not groom.tie")
+        try:
+            st = hair_flow.style(g["tied"])
+        except ValueError as e:
+            raise HairError(str(e)) from None
+        g = {**g, "tie": st["tie"], "parting": {**st["parting"], **{k: v for k, v in (g.get("parting") or {}).items() if k != "side"}}}
+        if st.get("loose"):
+            g["loose"] = {**st["loose"], **(g.get("loose") or {})}
     if g.get("tie"):
         from . import hair_tied
         try:
@@ -361,6 +374,15 @@ def groom_params(spec: dict) -> dict:
         a = grey_age(spec)
         out["grey"] = {k: round(v * a, 4) for k, v in GROOM["grey"].items()}
     return out
+
+
+def needs_body(g: dict) -> bool:
+    """Tied hair that hangs (a hanging tail, escaped pieces) lies on the body's own surface (hair_loose.collider)."""
+    tie = g.get("tie")
+    if not tie:
+        return False
+    return any(((t.get("tail") or {}).get("hang") if isinstance(t.get("tail"), dict) else False) or t.get("escaped")
+               for t in (tie if isinstance(tie, list) else [tie]))
 
 
 GREY_AGES = (30.0, 50.0)   # the default groom grey: none before the first age, all of it from the second
@@ -798,7 +820,7 @@ def grow(sc: Scalp, g: dict, col=None) -> dict:
         locks.update(hair_loose.grow(sc, g, line, rng, col))
     if g.get("tie"):  # tied hair makes the whole groom (with any drawn clumps): no generated tiers under it
         from . import hair_tied
-        locks.update(hair_tied.grow(sc, g, line, rng))
+        locks.update(hair_tied.grow(sc, g, line, rng, col))
         return locks
     if g.get("loose"):
         return locks
@@ -1360,7 +1382,7 @@ def groom(name: str, replace: bool = False, note: str = "", patch: dict | None =
     sc = scalp(name, spec)
     g = groom_params(spec)
     col = None
-    if g.get("loose"):
+    if g.get("loose") or needs_body(g):
         from . import hair_loose
         col = hair_loose.collider(name, spec, sc)
     new = grow(sc, g, col)
@@ -2005,7 +2027,7 @@ def job(name: str, spec: dict | None = None, only=None, budget: int | None = Non
     if h.get("style") == "strands" and stage != "mass":
         from . import hair_strands
         col = None
-        if g.get("loose"):
+        if g.get("loose") or needs_body(g):
             from . import hair_loose
             col = hair_loose.collider(name, spec, sc)
         out["strands"] = hair_strands.job(sc, g, spec, locks, tmp, count=count, col=col)
