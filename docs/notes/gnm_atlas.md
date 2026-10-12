@@ -5824,7 +5824,7 @@ the socket lining behind it, where a lid lies on the ball):
 ## we've learned?" ONE dressed GNM-native Garrett from the two paintings only. Scratch DURABLE in /mnt/data/hifipushie/garrettnative:
 ## run.sh <script> (capped, this worktree's src, main's workspace), hv.py <gb> <script> (the same inside resources.heavy),
 ## chain.sh / tour.sh / tests.sh, out/ (logs; tiles out/<model>/...); scripts in spikes/garrettnative; models gn_G00.., garrett_n1)
-STATE (step 1 of 5 done): shape solved on the TRUE GNM BASE = gn_H03 (ng_N05's basin without its style slider; the
+STATE (steps 1-2 of 5 done; tiles rendering): shape solved on the TRUE GNM BASE = gn_H03 (ng_N05's basin without its style slider; the
 clean restart gn_G08 see-sawed and kept a slab chin). Eye step tried and REJECTED. NEXT: skin_from_reference + folds on
 gn_D1 (fork of gn_H03), hair, tiles, the sheet.
 
@@ -5898,3 +5898,36 @@ gn_D1 (fork of gn_H03), hair, tiles, the sheet.
   none (2 / -9): GNM's identity gives him NO lateral hooding; inner third: only the lid-ball junction. The eye ruler's
   ring-based fold line on the model: 3.5 / 2.9 / 3.1 mm over the margin at u -6 / 0 / +6; the layer's nominal line
   3.8 / 4.0 / 3.8 mm (0.058 / 0.062 / 0.058 interoculars): the layer would draw its line 0.3-1.1 mm ABOVE GNM's groove.
+
+### Step 2: skin from the paintings, folds, hair (gn_D1 = fork of gn_H03; out/skin_gn_D1.txt = the whole report)
+- skin.eyes.pupil 0.33 (GNM's rest pupil 0.50 is a dim-room pupil: said, set), no iris_size (GNM's limbus: 12.4 mm at
+  this head's carry; the paintings' iris is unreadable: INFERRED), NEW key skin.eyes.canthus 0.8 (below).
+- skin_from_reference, 2 rounds (27 min; the stage syncs at ~180 s each): tone held to the stated prior (plain skin L*
+  70.6; the solve wanted +7.1 b*, held at +5.0: as on garrett_a1's copies), blood 0.164, zones midface_red 0.83,
+  nose_red 1.64, lower_cool 1.97; stubble zones moustache 1.0, chin 0.51, soul 0.62, jaw 0.87, cheeks 0.57, neck 0.21;
+  brows fitted by the apply (middle line rms 1.8 -> 0.6 mm, lower edge 2.1 -> 1.0 mm; drop 1.2 mm, tilt -8.5, apart
+  3.6 mm, fall 0.62, thickness 1.27, taper 0.43; colour x [0.65, 0.52, 0.39] wanted: the painting's brows are darker
+  and browner than ours). LIPS, measured in image space at the painting's own lips: upper rendered (45.2, 18.2, 16.2)
+  against the painting's (40.6, 19.2, 17.9); lower (61.7, 17.6, 17.0) against (65.9, 19.1, 18.9): no longer redder
+  than painted (a* 1-1.5 UNDER it); the upper lip is still 5 L too light (lips.melanin 19.3 x a tone melanin of 0.009:
+  the known limit, skin.md skinfolds2 NEXT 5).
+- FOLDS (the checklist): nasolabial 1.20 (R read 0.78 confidence, L INFERRED from R), marionette 0.90 (R read, L
+  INFERRED), tear_trough / bags 0.90 both (R read at 0.58, L INFERRED: on the true base the right bag reads twice
+  what it did on garrett_a1's copy, 0.44), lid_fold NOT READ (1.15 mm a pixel), chin_notch / commissure / glabella /
+  fine lines NOT READ.
+- SET BY HAND FROM NORMS / BY EYE, said as such: chin_notch 0.4 (Joe's circle; no detector); lid_fold: the apply's
+  norms gave shift -1.45 mm and hood 0.24; replaced by shift [-0.3, -1.1, -0.65] mm (= ON GNM's own groove as the eye
+  ruler reads it: the norm's -1.45 would have drawn a second line 0.4-1.1 mm under GNM's) and hood 1.0 (the painting's
+  heavy lateral hooding; INFERRED: nothing reads it at this resolution).
+- skin.eyes.canthus (NEW, general, off unless set; skin_features._eyes; tests/test_skin.py): the LATERAL corner: a
+  soft warm multiply shadow on the eyeball's outer end (4.8 mm spot at the outer canthus' place on the ball) + the
+  lid junction's wet red on the skin (1.6 mm). Against the white wedge running to a point that GNM's sharp outer
+  corner shows on every head.
+- HAIR: garrett_a1 carries NO groom (hair was never part of the accepted head). Garrett's groom = h7_garrett's
+  (hair7's "longer, swept back"), carried with hair.carry (groom.fit = the head it was made on: scalp radius 112.9 mm)
+  and regrown on the new scalp (94.3 mm: locks 732); the same on a fork of garrett_a1 (gn_a1h, scalp 99.3 mm) for the
+  sheet's third column. (gc_c1 / gc_dress hold the same groom; gc_* names are avoided here.)
+- HEAD ON BODY, for the headbody agent: the body carries GNM at 1.0386 (eyeball 15.16 mm against GNM's 14.6; pupils
+  64.8 mm apart, nasion-chin 118.1 mm, lm0-lm16 153.1 mm); garrett_a1: our 12 mm ball, pupils 64.2, nasion-chin 116.7,
+  lm0-lm16 149.1. base.head.scale 1.12 is still in the spec (a dead key on this path, per headbody). The scalp's
+  median radius is 5 % smaller than garrett_a1's (94.3 against 99.3 mm): MakeHuman's skull was larger than GNM's.
