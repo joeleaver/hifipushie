@@ -332,7 +332,7 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         views = rj["views"]
         cams = rj["cameras"]
     else:
-        views = refs
+        views = refs = with_anchor_points(refs)
         b = dict(body or {})
         a = float(age if age is not None else b.pop("age", 30))
         sx = b.pop("sex", sex if sex is not None else 0.5)
@@ -380,6 +380,29 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
              "c_norm": round(float(np.linalg.norm(c)), 3), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     _log_path(rj, name).write_text(json.dumps([entry], indent=1))
     return entry
+
+
+def with_anchor_points(views: list) -> list:
+    """A views list's front and 3/4 pictures given WITHOUT landmark points get the detector's lm17..67 as their stored
+    points (what human_reference writes). The joint solve takes its detector anchors, the chin's read and a 3/4's two
+    iris centres from the stored points' NAMES: a bare {"image", "yaw"} view silently had none of them (Garrett's good
+    set, 2026-10-11: 0 anchors, the 3/4's yaw unpinned). Views with any lm point, profiles and views without a face
+    are returned as they are."""
+    from . import likeness
+    if not likeness.detector_available():
+        return views
+    from PIL import Image
+    out = []
+    for v in views:
+        pts = v.get("points") or {}
+        if (abs(float(v.get("yaw", 0.0))) < 70 and v.get("image")
+                and not any(str(k).startswith("lm") and str(k)[2:].isdigit() for k in pts)):
+            P = likeness.detect([Image.open(v["image"]).convert("RGB")])[0]
+            if P is not None:
+                v = {**v, "points": {**{f"lm{i}": [round(float(P[likeness.MP68[i]][0]), 2), round(float(P[likeness.MP68[i]][1]), 2)]
+                                        for i in range(17, 68)}, **pts}}
+        out.append(v)
+    return out
 
 
 def fork(src: str, name: str, replace: bool = False) -> dict:
