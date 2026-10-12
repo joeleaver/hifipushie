@@ -178,6 +178,26 @@ def lighting(name: str, vi: int) -> dict:
     return blockin.photo_lighting(name, LIGHT, vi)
 
 
+def photo_light(name: str, vi: int | None = None) -> dict:
+    """View vi's fitted light (default: the front view's) AT THE PICTURE'S EXPOSURE: `lighting` + "exposure" = the EV
+    the last read measured between our render under that light and the picture on the plain skin (`context` stores
+    it beside the stage; "measured": False and EV 0 when no read has run). For renders set beside the reference.
+    WHY (skinfolds2): blockin.photo_lighting keeps the face's front as bright as its TEMPLATE lights it, which is not
+    how bright the photographer exposed it. The judging sheets' template (-0.55 EV, a filmic view) put every dressed
+    head ~10 L under its reference, and the same albedo 10 L down reads as a tan."""
+    from . import blockin, store
+    vi = blockin._front(blockin._refs(name)) if vi is None else vi
+    lt = lighting(name, vi)
+    ev = None
+    try:
+        ev = json.loads((store._dir(STAGE + name) / "sr_exposure.json").read_text()).get(str(vi))
+    except Exception:  # noqa: BLE001
+        pass
+    lt["exposure"] = float(ev) if ev is not None else 0.0
+    lt["measured"] = ev is not None
+    return lt
+
+
 # ---------------------------------------------------------------- the frames
 
 def _picture_masks(img, cam, head) -> dict:
@@ -237,13 +257,17 @@ def capture(name: str, spec: dict | None = None, views: list | None = None, log=
         parse = {}
         for kname, m in pm.items():
             parse[kname] = np.asarray(Image.fromarray(np.round(m * 255).astype(np.uint8)).crop(ib).resize((N, N), Image.BILINEAR), float) / 255.0
-        f = {"view": i, "P": P, "X": X, "n": nw, "skin": on & (np.round(part) == 0), "eye": on & (np.round(part) == 1),
+        ys_ = np.nonzero((on & (np.round(part) == 0)).any(1))[0]
+        chin_y = box[1] + (float(np.percentile(ys_, 80)) if len(ys_) else 0.8 * N) / k       # picture px: under this is not face
+        f = {"view": i, "white_patch": white_patch(_lin(np.asarray(img, float) / 255.0), pm, chin_y),
+             "P": P, "X": X, "n": nw, "skin": on & (np.round(part) == 0), "eye": on & (np.round(part) == 1),
              "facing": fac, "parse": parse, "mm": 1000.0 * float(np.median(z)) / cam["f"] / k, "box": list(box), "cam": cam,
              "mm_native": 1000.0 * float(np.median(z)) / cam["f"],
              "image": v["image"], "yaw": float(v.get("yaw", 0.0))}
         if render:
             r = np.asarray(Image.fromarray(shots[i]).resize((N, N), Image.LANCZOS), float) / 255.0
             f["R"], f["alpha"] = _lin(r[..., :3]), r[..., 3]
+            f["R2"] = shots[i][..., :3].copy()          # (sRGB uint8, 2N: the lid's fold line is read on it)
         out.append(f)
     return out
 
@@ -401,36 +425,81 @@ TONE_CHROMA = 5.0       # Lab a*b*: how far the plain skin's COLOUR may move fro
                         # exposed like the picture the head came out 5 b* too yellow: "orange")
 TONE_CHROMA_WHITE = 10.0
 TONE_SIGMA = 1.0        # L*: the solve's hold on the prior's lightness (the bound is checked after it)
-TONE_SIGMA_WHITE = 4.0
+TONE_SIGMA_WHITE = 12.0   # (the white leads, the bound holds: at 4 the prior took two thirds of what the white said)
 WHITE_SIGMA = 0.15      # log: what a white's exposure is worth
 
 
-def _white(f: dict) -> dict | None:
-    """A known white in a view (a shirt collar, a white top: the picture parser's figure that is neither skin nor hair,
-    under the face, bright and neutral): {"Y": its luminance in the picture (linear, the median of its lit half),
-    "rgb", "px"}, or None. The lightness anchor: skin albedo = WHITE_ALBEDO x skin / white, taking the white to be lit
-    as the face is."""
-    if not f["parse"]:
-        return None
+WHITE_BACKDROP = 0.8    # a "white" darker than this x a neutral backdrop in the same picture is a pale grey thing, not a white
+WHITE_OVER_SKIN = 1.1   # ... and it is brighter than the lit skin by this (albedo 0.8 against at most ~0.65)
+
+
+def white_patch(img: np.ndarray, parse: dict, chin_y: float, box=None) -> dict | None:
+    """The candidate white of a WHOLE picture (linear rgb, (h, w, 3)): what the parser calls clothing (or the figure
+    that is neither skin nor hair) under the face, bright and unclipped: {"Y" (the median of its lit 40 %), "rgb",
+    "px", "where" [x0, y0, x1, y1]}; with `box` (picture px [x0, y0, x1, y1]): that patch, as DECLARED by the caller
+    (no parser). None: nothing there. Whether it IS a white is `_white`'s call (neutral, brighter than skin and
+    backdrop). (skinfolds: the search ran inside the head crop, where a collar never is; it never fired.)"""
     Yv = np.array([0.2126, 0.7152, 0.0722])
-    ps = f["parse"]
-    cloth = ps["cloth"] if "cloth" in ps else np.clip(ps["figure"] - ps["skin"] - ps["hair"], 0, 1)
-    m = (cloth > 0.6) & (f["alpha"] < 0.02 if "alpha" in f else True)
-    ys = np.nonzero(f["skin"].any(1))[0]
-    if len(ys):                                     # under the model's chin only (no hat, no headband)
-        m[: int(np.percentile(ys, 80))] = False
-    srgb = _srgb(f["P"])
-    m &= (srgb.max(-1) < CLIP[1]) & (srgb.min(-1) > 0.35)
+    h, w = img.shape[:2]
+    if box is not None:
+        x0, y0, x1, y1 = (int(round(v_)) for v_ in box)
+        m = np.zeros((h, w), bool)
+        m[max(y0, 0):y1, max(x0, 0):x1] = True
+    else:
+        if not parse:
+            return None
+        cloth = parse["cloth"] if "cloth" in parse else np.clip(parse["figure"] - parse["skin"] - parse["hair"], 0, 1)
+        m = np.asarray(cloth) > 0.6
+        m[: int(max(chin_y, 0))] = False               # under the chin only (no hat, no headband)
+    srgb = _srgb(img)
+    m &= (srgb.max(-1) < CLIP[1]) & (srgb.min(-1) > (0.2 if box is not None else 0.35))
     if m.sum() < WHITE_PX:
         return None
-    c = f["P"][m]
+    c = img[m]
     y = c @ Yv
     lit = c[y >= np.percentile(y, 60)]
     med = np.median(lit, 0)
-    L = lab(med)
-    if np.hypot(L[1], L[2]) > WHITE_CHROMA or L[0] < 62:
-        return None
-    return {"Y": float(med @ Yv), "rgb": med, "px": int(m.sum()), "lab": [round(float(x), 1) for x in L]}
+    ys, xs = np.nonzero(m)
+    return {"Y": float(med @ Yv), "rgb": med, "px": int(m.sum()), "declared": box is not None,
+            "where": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]}
+
+
+def _white(f: dict, wb=None, backdrop_Y: float | None = None, declared: dict | None = None) -> tuple:
+    """(white | None, why): a view's KNOWN WHITE (the lightness anchor: skin albedo = its albedo x skin / white, the
+    white taken to be lit as the face is: INFERRED). Found (white_patch: clothing under the face) it must be NEUTRAL
+    (Lab chroma < WHITE_CHROMA after the backdrop's white balance `wb`), bright (L* > 62), brighter than the lit skin
+    and no darker than WHITE_BACKDROP x a neutral backdrop (a pale grey shirt is not a white: Garrett's lilac-grey one
+    reads half his backdrop). declared: {"box": [x0, y0, x1, y1] picture px, "albedo": 0.8}: the caller says this
+    patch is white (paper, a shirt, a wall): taken at its word."""
+    Yv = np.array([0.2126, 0.7152, 0.0722])
+    if declared is not None:
+        from PIL import Image
+        img = _lin(np.asarray(Image.open(f["image"]).convert("RGB"), float) / 255.0)
+        q = white_patch(img, {}, 0.0, box=declared["box"])
+        if q is None:
+            return None, f"the declared white {declared['box']} is clipped or too small ({WHITE_PX} px needed)"
+        q["albedo"] = float(declared.get("albedo", WHITE_ALBEDO))
+        q["lab"] = [round(float(x), 1) for x in lab(q["rgb"])]
+        return q, "declared"
+    q = f.get("white_patch")
+    if q is None:
+        return None, "no clothing under the face that is bright and unclipped"
+    q = dict(q)
+    rgb = np.asarray(q["rgb"], float) / (np.asarray(wb, float) / max(float(np.asarray(wb, float) @ Yv), 1e-9) if wb is not None else 1.0)
+    L = lab(rgb * (q["Y"] / max(float(rgb @ Yv), 1e-9)))
+    q["lab"] = [round(float(x), 1) for x in L]
+    q["albedo"] = WHITE_ALBEDO
+    if np.hypot(L[1], L[2]) > WHITE_CHROMA:
+        return None, f"the clothing under the face is coloured (Lab {q['lab']}): not a white"
+    if L[0] < 62:
+        return None, f"the clothing under the face is not bright (L* {L[0]:.0f}): not a white"
+    if backdrop_Y is not None and q["Y"] < WHITE_BACKDROP * backdrop_Y:
+        return None, (f"the pale clothing under the face (L* {L[0]:.0f}) reads {q['Y'] / backdrop_Y:.2f} x the neutral backdrop: a grey "
+                      "thing, not a known white")
+    sk = f["P"][trust(f) > 0.5] @ Yv if "P" in f else np.zeros(0)
+    if len(sk) > 200 and q["Y"] < WHITE_OVER_SKIN * float(np.percentile(sk, 75)):
+        return None, f"the pale clothing under the face (L* {L[0]:.0f}) is no brighter than the lit skin: not a known white"
+    return q, "found"
 
 
 def _anchor(frames: list, mesh: dict, spec: dict, mode: str = "auto") -> dict:
@@ -439,7 +508,7 @@ def _anchor(frames: list, mesh: dict, spec: dict, mode: str = "auto") -> dict:
     exposure and white balance); backdrop: a plain neutral backdrop gives the light's colour (lightness kept)."""
     from scipy import ndimage
     Y = np.array([0.2126, 0.7152, 0.0722])
-    sc, bd = {}, {}
+    sc, bd, bdY = {}, {}, {}
     for f in frames:
         scl, _ = _eye_classes(f, mesh, spec)
         ok = scl & (f["alpha"] > 0.98) & (_srgb(f["P"]).max(-1) < CLIP[1]) & (_srgb(f["R"]).max(-1) < CLIP[1])
@@ -458,6 +527,7 @@ def _anchor(frames: list, mesh: dict, spec: dict, mode: str = "auto") -> dict:
                 if (np.hypot(med[1], med[2]) < NEUTRAL and np.percentile(np.abs(L[:, 0] - med[0]), 80) < 8 and med[0] > 40
                         and m.max() / max(m.min(), 1e-4) < 1.3):
                     bd[f["view"]] = (m / (m @ Y)) / (LIGHT_WHITE / (LIGHT_WHITE @ Y))
+                    bdY[f["view"]] = float(m @ Y)
     if mode == "sclera" and sc:   # (not in "auto": on photographs the sclera reads 0.5-0.6 x ours against the skin and its
         # colour differs view to view; it failed as an anchor, see docs/notes/skin.md "## skinread")
         g = np.median([v[0] for v in sc.values()], 0)   # one camera set-up for a reference set: one gain
@@ -465,7 +535,7 @@ def _anchor(frames: list, mesh: dict, spec: dict, mode: str = "auto") -> dict:
                 "note": f"sclera through the same camera in view(s) {sorted(sc)} ({', '.join(str(v[1]) for v in sc.values())} px): "
                         "exposure and white balance; the tone's lightness rests on the sclera being lit as ours is (INFERRED)"}
     if mode in ("auto", "backdrop") and bd:
-        return {"kind": "backdrop", "gain": {f["view"]: bd.get(f["view"]) for f in frames}, "level": True,
+        return {"kind": "backdrop", "gain": {f["view"]: bd.get(f["view"]) for f in frames}, "level": True, "backdrop_Y": bdY,
                 "note": f"plain neutral backdrop in view(s) {sorted(bd)}: white balance only (the exposure stays free)" +
                         ("" if len(bd) == len(frames) else "; the other view(s) have their own light and no anchor: their plain skin "
                          "is set to the anchored views' (they give zones, lips and folds, not the tone)")}
@@ -478,14 +548,22 @@ class Context:
     """The pooled trusted pixels of every view with the picture's albedo there, and the forward model to fit to."""
 
 
-def context(name: str, spec: dict | None = None, frames: list | None = None, anchor: str = "auto", log=print) -> Context:
+def context(name: str, spec: dict | None = None, frames: list | None = None, anchor: str = "auto", log=print, white=None) -> Context:
     from scipy import ndimage
     from . import likeness as lk, store
     spec = spec or store.load(name)
     frames = frames or capture(name, spec, log=log)
     mesh = lk.model_mesh(spec["base"])
     an = _anchor(frames, mesh, spec, anchor if anchor not in ("prior", "white") else "auto")
-    wh = {} if anchor == "prior" else {f["view"]: q for f in frames for q in [_white(f)] if q is not None}
+    wh, wh_why = {}, {}
+    decl = {int(d_["view"]): d_ for d_ in (white or [])}
+    if anchor != "prior":
+        for f in frames:
+            q, why = _white(f, an["gain"].get(f["view"]) if an["kind"] == "backdrop" else None, (an.get("backdrop_Y") or {}).get(f["view"]),
+                            decl.get(f["view"]))
+            wh_why[f["view"]] = why
+            if q is not None:
+                wh[f["view"]] = q
     if an["kind"] == "none" and wh:      # no backdrop: the white gives the light's colour too
         Y_ = np.array([0.2126, 0.7152, 0.0722])
         an = {"kind": "white", "level": True,
@@ -539,7 +617,16 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
         ww = c.w[m]
         ww[far] = 0.0
         c.w[m] = ww * v["weight"]
+        # the picture's exposure against our render under the fitted light, on the plain skin (photo_light uses it)
+        v["ev"] = round(float(np.log2(max(float(_wmedian((c.rho[pm] * np.asarray(g)) @ Yv, c.w[pm] + 1e-9)), 1e-4))), 3)
     c.views = views
+    try:
+        from . import store as _store
+        d_ = _store._dir(STAGE + name)
+        if d_.exists():
+            (d_ / "sr_exposure.json").write_text(json.dumps({str(v_["view"]): v_["ev"] for v_ in views}))
+    except Exception:  # noqa: BLE001
+        pass
     # THE LIGHTNESS ANCHOR (skinfolds). A picture does not say how light a skin is (exposure x albedo). In this order:
     #   1. the PRIOR: the model's stated tone (skin.tone: a Fitzpatrick type or its own numbers). The picture then
     #      corrects hue and saturation only; the plain skin's lightness stays within TONE_BOUND of the prior's.
@@ -557,21 +644,28 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
                 continue
             f = next(f_ for f_ in frames if f_["view"] == v["view"])
             py = (f["P"].reshape(-1, 3)[c.pix[m]] @ Yv)
-            want = WHITE_ALBEDO * float(_wmedian(py, c.w[m])) / q["Y"]          # the plain skin's albedo luminance
-            have = float(_wmedian((c.A0[m] * c.rho[m]) @ Yv, c.w[m]))
+            # (the LIT skin against the white's lit part: the 75th percentile of the plain skin, as the white's own
+            # upper 40 %: a face's median sits in more shade than a shirt front's bright half)
+            want = q["albedo"] * float(np.percentile(py, 75)) / q["Y"]          # the plain skin's albedo luminance
+            have = float(np.percentile((c.A0[m] * c.rho[m]) @ Yv, 75))
             es.append(np.log(max(want, 1e-4) / max(have, 1e-4)))
             wts.append(v["weight"] * q["px"])
-            v["white"] = {"px": q["px"], "lab": q["lab"], "skin_albedo_Y": round(want, 3)}
+            v["white"] = {"px": q["px"], "lab": q["lab"], "skin_albedo_Y": round(want, 3), "where": q["where"], "albedo": q["albedo"],
+                          "declared": bool(q.get("declared"))}
         if es:
             an["exposure"] = float(np.average(es, weights=wts))
             an["lightness"] = "white"
             an["exposure_spread"] = round(float(np.std(es)), 3) if len(es) > 1 else None
     an["note"] += ("\n  LIGHTNESS: " + (
-        f"a known white in view(s) {sorted(k for k in wh)} (taken as albedo {WHITE_ALBEDO}, lit as the face: INFERRED) puts the plain skin "
+        f"a known white in view(s) {sorted(k for k in wh)} (" + "; ".join(f"view {k}: {'DECLARED' if q_.get('declared') else 'found: clothing under the face'} at "
+                                                                         f"{q_['where']} px, Lab {q_['lab']}, taken as albedo {q_['albedo']}" for k, q_ in sorted(wh.items())) +
+        f"; lit as the face: INFERRED) puts the plain skin "
         f"{100 * (np.exp(an['exposure']) - 1):+.0f} % from where the levelled read had it; the tone's lightness may move up to {TONE_BOUND_WHITE} L* "
         f"from the prior" if an["lightness"] == "white" else
         f"no exposure anchor in the pictures: the tone's lightness is held to the PRIOR (the model's stated skin.tone, plain skin "
-        f"L* {an['tone_prior'][0] if an['tone_prior'] else '?'}) within {TONE_BOUND} L*; the pictures correct its hue and saturation only"))
+        f"L* {an['tone_prior'][0] if an['tone_prior'] else '?'}) within {TONE_BOUND} L*; the pictures correct its hue and saturation only"
+        + ("" if anchor == "prior" else " (a white was looked for: " + "; ".join(f"view {k}: {w_}" for k, w_ in sorted(wh_why.items())) +
+           "; a backdrop is no exposure anchor: its albedo and its own light are unknown. Point at a known white with white=[{view, box, albedo}])")))
     c.T = c.A0 * c.rho
     c.dlab = lab(c.T) - lab(c.A0)
     c.J = None
@@ -586,6 +680,7 @@ PRUNE = 0.25             # half chi2 units: a parameter's move worth less than t
 PRIOR_TONE = 6.0         # x PRIOR for the tone's three numbers: melanin / blood / undertone trade against each other
                          # (the same colour from many triples); loose, blood ran to 0 on Tess and every layer that
                          # multiplies the tone's blood (lips, lids, flush) went inert, the lips brown from melanin alone
+SHADE_SIGMA_PLAIN = 0.05  # ... on the plain zones (the lit skin the exposure is levelled on)
 SHADE_SIGMA_BEARD = 0.05  # ... where a beard may be laid: its shadow IS a lightness (little colour of its own)
 SHADE_MAX = 1.0          # log: no region is more than this in shade
 SHADE_SAY = 0.1          # log: shade from here on is named in the reply
@@ -783,10 +878,11 @@ def _eye_read(c: Context) -> dict:
 
 # ---------------------------------------------------------------- the read
 
-def read(name: str, spec: dict | None = None, frames: list | None = None, anchor: str = "auto", log=print, ctx: Context | None = None) -> dict:
+def read(name: str, spec: dict | None = None, frames: list | None = None, anchor: str = "auto", log=print, ctx: Context | None = None,
+         white=None) -> dict:
     """The measurements: {"anchor", "views", "regions": {region: {"px", "ours" Lab, "picture" Lab, "d", "by_view"}},
     "freckles", "brows", "eyes", "text", "ctx" (the Context, for `fit`)}."""
-    c = ctx or context(name, spec, frames, anchor, log)
+    c = ctx or context(name, spec, frames, anchor, log, white=white)
     R = regions(c)
     out = {"anchor": {k: v for k, v in c.anchor.items() if k != "gain"}, "views": c.views,
            "regions": {k: _region(c, wz) for k, wz in R.items()}}
@@ -804,6 +900,7 @@ def read_text(r: dict) -> str:
          "  " + r["anchor"]["note"]]
     for v in r["views"]:
         L.append(f"  view {v['view']}: {v['mm_per_px']} mm a pixel, {v['trusted_px']} trusted px, weight {v['weight']}"
+                 + (f", the picture is exposed {v['ev']:+.2f} EV from our render under its fitted light" if "ev" in v else "")
                  + (f" (the light changes colour across the face: {v['light_spread']})" if v["weight"] < 0.6 else ""))
     L.append(f"  (mm a pixel: the PICTURE's own, at the face) {'region':16s} {'px':>7s}  {'ours L a b':20s} {'picture L a b':20s} d L a b")
     for k, x in r["regions"].items():
@@ -1034,7 +1131,10 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     # views), jaw and neck (7-10 L) were painted in as eyelid / under-eye / lower-face pigment up to the bounds.
     qs = shade_colour(c)
     Tlin = np.clip(_unlab(target), 1e-5, None)
-    s_sig = np.array([0.0 if k.startswith("lip_") else SHADE_SIGMA_BEARD if (k.startswith("beard:") and st_on) else SHADE_SIGMA for k in reg])
+    # (the PLAIN zones are the lit skin the exposure is levelled on: nearly no shade of their own, or a white's "this
+    # skin is darker than you say" would be explained away as shade everywhere)
+    s_sig = np.array([0.0 if k.startswith("lip_") else SHADE_SIGMA_BEARD if (k.startswith("beard:") and st_on) else
+                      SHADE_SIGMA_PLAIN if k in PLAIN else SHADE_SIGMA for k in reg])
 
     def shaded(sv, e):
         return lab(Tlin * np.exp(e + sv[:, None] * qs[None, :]))
@@ -1345,7 +1445,7 @@ def fit_text(f: dict) -> str:
 
 
 def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int = 2, anchor: str = "auto", stubble: bool | None = None,
-          brow_shape: bool = True, log=print, tone=None) -> dict:
+          brow_shape: bool = True, log=print, tone=None, white=None) -> dict:
     """Read the references, set spec["skin"] from the read, save (onto `out`: a block-in fork of `name`, or `name`
     itself). rounds: read -> fit -> re-render -> read again (the second round corrects what the first could only
     estimate: freckle and beard densities, brow coverage). Returns {"model", "reads": [text per round], "fits",
@@ -1364,7 +1464,7 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
     prior_tone = {p_: _get(sk_p, p_) for p_ in GROUPS["tone"]}
     prior_x = {p_: _get(sk_p, p_) for g_ in ("zones", "eyes") for p_ in GROUPS[g_]}
     for k in range(max(int(rounds), 1)):
-        r = read(dst, anchor=anchor, log=log)
+        r = read(dst, anchor=anchor, log=log, white=white)
         f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L, prior_ab=prior_ab, prior_tone=prior_tone,
                 prior_face=prior_face, prior_x=prior_x)
         prior_L, prior_ab, prior_face = f["tone"]["prior_L"], f["tone"]["prior_ab"], f["face"]["prior_face"]
@@ -1384,7 +1484,7 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
         log(f["text"])
         if not f["changes"]:
             break
-    final = read(dst, anchor=anchor, log=log)
+    final = read(dst, anchor=anchor, log=log, white=white)
     text = "\n\n".join([f"{dst}: skin from the reference pictures ({len(fits)} round(s))", reads[0]] + [f["text"] for f in fits] +
                        ["AFTER:\n" + final["text"]])
     return {"model": dst, "reads": reads + [final["text"]], "fits": [{k: v for k, v in f.items()} for f in fits],
@@ -1412,7 +1512,7 @@ FOLD_STEP = 0.25       # mm between a profile's samples
 # 0.08 by side under a side light, marionette 0.07, mouth_corner 0.10 / 0.09, mentolabial 0.28, tear_trough 0.18 / 0.23,
 # glabella 0.15 / 0.11)
 FOLD_REF = {"nasolabial": 0.11, "marionette": 0.055, "mouth_corner": 0.095, "mentolabial": 0.28, "tear_trough": 0.2,
-            "lid_fold": 0.16, "glabella": 0.13}
+            "lid_fold": 0.16, "glabella": 0.13, "commissure": 0.1}
 # THE STEP (skinfolds): a fold lit from its side is not a valley but a lit / shaded STEP across its line (a painter's
 # nasolabial fold under a lamp). Per station: the mean log luminance just past the line on the plus side minus the
 # minus side's, the picture's over OURS (our head's own shading across the path cancels), signed by the fitted light:
@@ -1427,7 +1527,7 @@ STEP_CROSS = 0.25      # the fitted light must lie this far across the path (|l 
 # (case A: nasolabial 0.46 / 0.32, mouth_corner 0.15 / 0.19, mentolabial 0.28, tear_trough 0.16 / 0.71, lid_fold 0.60 /
 # 0.69, glabella 0.17 / 0.19)
 STEP_REF = {"nasolabial": 0.39, "marionette": 0.2, "mouth_corner": 0.17, "mentolabial": 0.28, "tear_trough": 0.4,
-            "lid_fold": 0.65, "glabella": 0.18}
+            "lid_fold": 0.65, "glabella": 0.18, "commissure": 0.2}
 # THE LID'S CREASE FROM THE LASH LINE (skinfolds): on a picture fine enough, the upper lid's fold line is searched up
 # from the PICTURE's own lash line (lidfold.read_lid on the detector's lid: the strongest valley 1.2 mm+ over it, per
 # column), not across the model's nominal path: that path sits a crease height over OUR lid and found, on Tess, a
@@ -1761,8 +1861,15 @@ def _lid_read(c: Context, nominal: dict) -> dict:
         cols_p = lidfold.read_lid(img, P, mmpx=mm, fractions=LID_COLS, reach_mm=LID_REACH)
         # ours: the render through the same camera, the same detector points carried into its crop
         k = N / (f["box"][2] - f["box"][0])
-        ours = Image.fromarray(np.round(255 * np.clip(_srgb(f["R"]), 0, 1)).astype(np.uint8))
-        cols_o = lidfold.read_lid(ours, (P - np.asarray(f["box"][:2])) * k, mmpx=f["mm"], fractions=LID_COLS, reach_mm=LID_REACH)
+        # (ours at the render's full size: at the 512 crop, 0.5 mm a pixel, our own crease read 0.05-0.13 where the
+        # picture's, at 0.25 mm, read 0.3: half of that was the resolution. skinfolds2)
+        if "R2" in f:
+            k2 = f["R2"].shape[0] / (f["box"][2] - f["box"][0])
+            cols_o = lidfold.read_lid(Image.fromarray(f["R2"]), (P - np.asarray(f["box"][:2])) * k2, mmpx=f["mm"] * N / f["R2"].shape[0],
+                                      fractions=LID_COLS, reach_mm=LID_REACH)
+        else:
+            ours = Image.fromarray(np.round(255 * np.clip(_srgb(f["R"]), 0, 1)).astype(np.uint8))
+            cols_o = lidfold.read_lid(ours, (P - np.asarray(f["box"][:2])) * k, mmpx=f["mm"], fractions=LID_COLS, reach_mm=LID_REACH)
     except Exception:  # noqa: BLE001
         return {}
     ex, ey = eye_frame(P)
@@ -1886,6 +1993,9 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                 sh = round(show - LID_PRIOR["nominal"], 2)
                 entry = {"amount": LID_PRIOR["amount"], "roll": round(1.0 + 1.2 * skinmod._age_curve(pp["age"], 35, 75), 2),
                          "L": {"shift": [sh] * 3}, "R": {"shift": [sh] * 3}}
+                hood = round(0.9 * skinmod._age_curve(pp["age"], 40, 75), 2)
+                if hood >= 0.05:
+                    entry["hood"] = hood
                 folds[name] = entry
                 changes.append((f"folds.{name}", "none", entry, f"INFERRED, NOT READ ({row.get('why', 'cannot tell')}): every lid has a fold and the shape "
                                 f"model's is soft; laid from norms (platform show {show:.1f} mm over the lashes, hooding by age {pp['age']:.0f}). "
@@ -1924,8 +2034,12 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                 shift = [round(float(x), 2) for x in base + np.asarray(s["move"])]
             elif s["present"] and "shift" in s:
                 shift = s["shift"]
-            new_sides[sd] = {"shift": shift,
-                             "extent": s["extent"] if (s["present"] and "extent" in s and s["extent"][1] - s["extent"][0] > 0.2) else os_["extent"]}
+            ext = s["extent"] if (s["present"] and "extent" in s and s["extent"][1] - s["extent"][0] > 0.2) else os_["extent"]
+            me = sf.FOLDS[name].get("min_extent")
+            if me and ext[1] - ext[0] < me:    # (a soft fold laid along a third of its path is a nick: a scar, not a fold)
+                mid = float(np.clip(0.5 * (ext[0] + ext[1]), me / 2, 1 - me / 2))
+                ext = [round(mid - me / 2, 2), round(mid + me / 2, 2)]
+            new_sides[sd] = {"shift": shift, "extent": ext}
         # a fold both sides of every face have (the lid's crease): read on one side only, the other takes it over
         # (hair, a shadow or the pose hid it there): INFERRED, and said so
         mirrored = None
@@ -1937,6 +2051,22 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                     amounts[other] = amounts[one]
                     new_sides[other] = {"shift": list(new_sides[one]["shift"]), "extent": list(new_sides[one]["extent"])}
                     mirrored = (one, other)
+        # SYMMETRY AS THE PRIOR (skinfolds2): one side read with confidence, the other NOT READABLE (not seen, or pictures
+        # too coarse to place a fold: there "not found" is no evidence of absence): the unread side takes the read
+        # side's amount whole, INFERRED and said. (On pictures fine enough to place a fold a side that reads absent
+        # stays absent: foldval's one-sided marionette.) Before: Garrett's left bag came out at 0.16 beside 0.44.
+        if name in SYMMETRIC and len(amounts) == 2 and mirrored is None:
+            (sa, sb) = list(amounts)
+            for one, other in ((sa, sb), (sb, sa)):
+                so, sn = row["sides"][one], row["sides"][other]
+                poor = sn.get("present") is None or "placed" in sn
+                if (so.get("present") and so["confidence"] >= FOLD_CONF and not sn.get("present") and poor and amounts[other] < 0.8 * amounts[one]) or \
+                        (poor and "placed" in so and not so.get("present") and not sn.get("present") and amounts[one] > 0.2 and amounts[other] < 0.8 * amounts[one]
+                         and (cur.get(name) or {}).get("sides", {}).get(one, {}).get("amount", 0) > 0):
+                    amounts[other] = amounts[one]
+                    new_sides[other] = {"shift": list(new_sides[other]["shift"]), "extent": list(new_sides[one]["extent"])}
+                    mirrored = (one, other, "symmetry")
+                    break
         if name in SYMMETRIC and len(amounts) == 2 and mirrored is None:
             (sa, sb) = list(amounts)
             for one, other in ((sa, sb), (sb, sa)):
@@ -1966,7 +2096,7 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
             else:
                 entry.update(e)
         if old:
-            for kk in ("width", "roll"):
+            for kk in ("width", "roll", "depth", "hood"):
                 if kk in (sk["folds"].get(name) if isinstance(sk["folds"].get(name), dict) else {}):
                     entry[kk] = sk["folds"][name][kk]
         folds[name] = entry
@@ -1974,6 +2104,9 @@ def fold_fit(sk: dict, fr: dict, first: bool, lid_prior: bool = False) -> list:
                         for sd, s in row["sides"].items() if s.get("present") is not None)
         if mirrored:
             why += (f"; {name}{mirrored[1]} was not read: it takes {name}{mirrored[0]}'s (INFERRED: both sides have this fold)" if name in BILATERAL else
+                    f"; {name}{mirrored[1]} CANNOT BE READ in these pictures (not seen, or too coarse to place a fold): it takes {name}{mirrored[0]}'s amount "
+                    f"(INFERRED from the other side: these folds come in pairs; set skin.folds.{name}.{mirrored[1][1:]}.amount if the person is not symmetric)"
+                    if len(mirrored) == 3 else
                     f"; {name}{mirrored[1]} shows a valley along too little of its path to count: it takes {name}{mirrored[0]}'s amount x its own "
                     f"valley's share (INFERRED: these folds come in pairs)")
         changes.append((f"folds.{name}", round(a_old, 2) if old else "none", entry, why))

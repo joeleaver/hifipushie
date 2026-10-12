@@ -231,8 +231,12 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
     bad = [v for v in views if v not in VIEWS]
     if bad:
         raise ValueError(f"look_skin: unknown views {bad} (have {', '.join(VIEWS)})")
-    if light is not None and light not in LIGHTS:
-        raise ValueError(f"look_skin: light is one of {', '.join(LIGHTS)}")
+    if light is not None and light not in LIGHTS and light != "photo":
+        raise ValueError(f"look_skin: light is one of {', '.join(LIGHTS)}, photo")
+    lights = dict(LIGHTS)
+    if light == "photo":   # the front reference's fitted light at the picture's exposure (skin_read.photo_light)
+        from . import skin_read
+        lights["photo"] = {k: v for k, v in skin_read.photo_light(name).items() if k not in ("fitted", "measured")}
     spec = store.load(name)
     cams = cameras(spec)
     miss = [v for v in views if v not in cams]
@@ -256,7 +260,7 @@ def look(name: str, views=DEFAULT, size: int = 768, light: str | None = None, fl
                     frames.append(f)
                 job = {"mode": "render", "blend": str(scene.blend_path(sn)), "views": frames, "size": size, "hide": [],
                        "flat": flat, "samples": 16,
-                       "lighting": {**LIGHTS[lt], "target": [round(float(x), 4) for x in cams[group[0]]["target"]]}}
+                       "lighting": {**lights[lt], "target": [round(float(x), 4) for x in cams[group[0]]["target"]]}}
                 if engine == "cycles" and not flat and not layer:  # path traced: real subsurface scattering
                     job.update(engine="cycles", samples=64)
                 if layer:

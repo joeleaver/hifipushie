@@ -35,7 +35,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 10
+VERSION = 11
 PX = 0.0001            # m a map pixel at the face
 DEPTH = 0.0009         # m: the groove layer's painted depth at map value 1
 BULGE = 0.0010         # m: the roll layer's painted height at map value 1
@@ -49,14 +49,27 @@ N_SHIFT = 9            # shift is given at this many stations by default (any nu
 # share of BULGE)) or None, search (mm either side of the path the reader looks), res (mm a picture pixel: coarser
 # pictures answer "cannot tell"), about.
 FOLDS = {
-    "nasolabial": {"path": [("lm_nostril.L", (0.08, 0.02, 0.03)), ("lm_mouth_corner.L", (0.14, 0.05, 0.12)),
-                            ("lm_mouth_corner.L", (0.16, 0.07, -0.15))], "plus": (1, 0, 0.3), "width": 4.5, "depth": 0.8,
+    # (skinfolds2, nlpath.py on six heads: the old path passed the mouth 10-12 mm outside the cheilion and then DROPPED
+    # STRAIGHT DOWN for 10 mm (x constant): 20-24 deg from the vertical as a whole, "too upright, too close to the
+    # mouth". A nasolabial fold leaves the alar crease at 30-40 deg from the vertical, passes 12-15 mm outside the
+    # cheilion and goes on OUTWARD, ending about level with the lower lip)
+    "nasolabial": {"path": [("lm_nostril.L", (0.08, 0.02, 0.03)), ("lm_mouth_corner.L", (0.17, 0.06, 0.13)),
+                            ("lm_mouth_corner.L", (0.24, 0.1, -0.1))], "plus": (1, 0, 0.3), "width": 4.5, "depth": 0.8, "snap": 7.0,
                    "tint": 0.35, "shade": 0.2, "roll": (4.5, 5.0, 0.35), "search": 6.0, "res": 1.6,
                    "about": "the fold from the nose's wing past the mouth's corner (the cheek's pad over it)"},
     # (from under the corner's own dimple: a young mouth's corner shadow is not a marionette line)
-    "marionette": {"path": [("lm_mouth_corner.L", (0.07, 0.02, -0.12)), ("lm_mouth_corner.L", (0.12, 0.05, -0.45))],
-                   "plus": (1, 0, 0), "width": 3.0, "depth": 0.7, "tint": 0.3, "shade": 0.2, "roll": (4.0, 4.5, 0.3),
-                   "search": 4.5, "res": 1.4, "about": "the line down from the mouth's corner (the jowl's front edge)"},
+    # (skinfolds2: it began 8 mm UNDER the corner, a 3 mm groove straight down at 9 deg: on Garrett a short nick, "a
+    # scar". The labiomandibular fold begins AT the commissure and runs down and a little out (15-25 deg) toward the
+    # jaw's edge, soft and wide, the jowl's pad standing beside it)
+    "marionette": {"path": [("lm_mouth_corner.L", (0.05, 0.0, -0.05)), ("lm_mouth_corner.L", (0.085, 0.03, -0.22)),
+                            ("lm_mouth_corner.L", (0.15, 0.07, -0.42))],
+                   "plus": (1, 0, 0), "width": 6.0, "depth": 0.7, "tint": 0.12, "shade": 0.2, "roll": (6.0, 7.0, 0.3),
+                   "search": 5.0, "res": 1.4, "min_extent": 0.65,
+                   "about": "the soft fold from the mouth's corner down and a little out toward the jaw (the jowl's pad beside it)"},
+    "commissure": {"path": [("lm_mouth_corner.L", (0.06, 0.01, -0.01)), ("lm_mouth_corner.L", (0.09, 0.03, -0.05)),
+                            ("lm_mouth_corner.L", (0.115, 0.05, -0.10))],
+                   "plus": (1, 0, 0.5), "width": 5.0, "depth": 0.6, "tint": 0.1, "shade": 0.3, "roll": None,
+                   "search": 3.5, "res": 1.0, "about": "the depression at the mouth's corner (a soft pit turning the corner down)"},
     "mouth_corner": {"path": [("lm_mouth_corner.L", (0.06, 0.01, 0.0)), ("lm_mouth_corner.L", (0.18, 0.07, -0.03))],
                      "plus": (0, 0, 1), "width": 1.4, "depth": 0.45, "tint": 0.5, "shade": 0.15, "roll": None,
                      "search": 2.5, "res": 0.7, "about": "the crease running out from the mouth's corner"},
@@ -78,7 +91,7 @@ FOLDS = {
     "lid_fold": {"path": [("lm_eye_inner.L", (0.035, 0.0, 0.045)), ("lm_lid_upper_in.L", (0.0, 0.0, 0.058)),
                           ("lm_lid_upper.L", (0.0, 0.0, 0.062)), ("lm_lid_upper_out.L", (0.0, 0.0, 0.058)),
                           ("lm_eye_outer.L", (0.025, 0.0, 0.04))], "plus": (0, 0, 1), "width": 1.2, "depth": 0.3,
-                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.0, "flank": 1.0, "res": 0.5,
+                 "tint": 1.3, "shade": 0.5, "roll": None, "search": 2.0, "flank": 1.0, "res": 0.5, "smooth": 3.0,
                  "about": "the upper eyelid's crease line (the fold GNM's lids only hint at)"},
     "glabella": {"path": [("lm_brow_inner.L", (-0.035, -0.01, 0.1)), ("lm_brow_inner.L", (-0.015, -0.01, -0.08))],
                  "plus": (1, 0, 0), "width": 1.4, "depth": 0.6, "tint": 0.5, "shade": 0.15, "roll": None, "search": 3.0,
@@ -94,11 +107,16 @@ RELIEF = {
     # (nasolabial 0.6 deep at 3.5 mm wide and marionette 0.5 read, on Garrett at amounts 0.9-1.5, as incised lines with
     # a pit where each began beside the mouth: a nasolabial fold is mostly the cheek's pad standing over the lip)
     "nasolabial": {"depth": 0.4, "roll": (5.0, 3.4, 1.3, 3.0), "reach": 4.0},
-    "marionette": {"depth": 0.35, "roll": (4.0, 2.6, 0.6, 2.5), "reach": 4.0},
+    # (roll 0.8 over a 4 mm shoulder drew a second crease parallel to the nasolabial fold: "claw marks")
+    "marionette": {"depth": 0.3, "roll": (7.0, 5.0, 0.5, 6.5), "reach": 5.0},
+    "commissure": {"depth": 0.45, "reach": 3.0},
     "mouth_corner": {"depth": 0.3, "reach": 3.0},
     "mentolabial": {"depth": 0.8, "reach": 4.0},
     "tear_trough": {"depth": 0.6, "roll": (4.6, 2.4, 1.4, 2.6), "reach": 4.0},
-    "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "reach": 3.0},
+    # over: (peak offset mm, sigma mm, shoulder mm): where the groove cannot go in (the eyeball under a thin lid), the
+    # depth it lacks stands OUT as a tight ridge just over the line instead: the fold's own lip (skinfolds2: the hard
+    # stop at the ball broke Tess's crease mid-lid, where the lid lies thinnest)
+    "lid_fold": {"depth": 0.85, "roll": (2.3, 2.6, 0.6, 2.6), "plat": (0.15, 2.5), "over": (1.1, 1.3, 0.9), "reach": 3.0},
     "glabella": {"depth": 0.35, "reach": 3.0},
 }
 END = 0.007               # m: a fold's relief comes in from nothing over this length at each end of its extent
@@ -106,12 +124,15 @@ END = 0.007               # m: a fold's relief comes in from nothing over this l
 # lying on skin: no light gets in; EEVEE has none at 0.5 mm): the crease line's share of a dark multiply layer
 # (folds_crease), 0.6 x the groove's width. Without it a lid's crease at amount 1 was a faint line (foldval's truth
 # pictures: read_lid darkness 0.05-0.13, a photograph's fold line reads 0.15-0.4).
-OCCLUSION = {"lid_fold": 1.0, "nasolabial": 0.35, "marionette": 0.25, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
-             "tear_trough": 0.0}
+OCCLUSION = {"lid_fold": 1.0, "nasolabial": 0.35, "marionette": 0.08, "mouth_corner": 0.4, "glabella": 0.45, "mentolabial": 0.0,
+             "tear_trough": 0.0, "commissure": 0.15}
+HOOD_DROP = 1.7           # mm: at hood 1 the lid fold's line comes this much down toward the lashes at its outer end
+HOOD_ROLL = 1.6           # ... and its roll stands this much higher there (x 1 + HOOD_ROLL x hood)
+HOOD_KEEP = 0.3           # ... and reaches this much nearer the lid's margin (the keep-out x 1 - HOOD_KEEP x hood)
 KEEP = (0.0012, 0.0032)   # m: no displacement within KEEP[0] of a lid margin or the lips, all of it from KEEP[1]
 BALL = 0.0004             # m: the skin a fold pushes in stays this far outside the eyeball
 STEP = 0.0005             # m between the geometry's samples along a path
-KEYS = {"amount", "width", "roll", "depth", "L", "R", "shift", "extent"}
+KEYS = {"amount", "width", "roll", "depth", "hood", "L", "R", "shift", "extent"}
 SIDE_KEYS = {"amount", "shift", "extent"}
 
 
@@ -148,8 +169,11 @@ def options(folds: dict | None) -> dict:
             sides[s] = {"amount": float(np.clip(q.get("amount", 1.0), 0, 3)), "shift": [float(x) for x in q.get("shift", [])], "extent": ext}
         if not 0 <= float(v.get("roll", 1.0)) <= 3 or not 0 <= float(v.get("depth", 1.0)) <= 3:
             raise SpecError(f"skin folds.{name}: roll and depth are 0..3 (x the feature's own)")
+        hood = float(v.get("hood", 0.0))
+        if not 0 <= hood <= 1.5 or (hood and name != "lid_fold"):
+            raise SpecError(f"skin folds.{name}: hood is 0..1.5, on lid_fold only (the roll's skin hanging toward the lashes at the outer end)")
         out[name] = {"amount": a, "width": float(v.get("width", FOLDS[name]["width"])), "roll": float(v.get("roll", 1.0)),
-                     "depth": float(v.get("depth", 1.0)), "sides": sides}
+                     "depth": float(v.get("depth", 1.0)), "sides": sides, **({"hood": hood} if hood else {})}
     return out
 
 
@@ -290,6 +314,43 @@ def map_surface(spec: dict, part: str, J: dict) -> _Surface:
     return _MAPSURF[key]
 
 
+SNAP_CURV = 0.035      # 1 / mm: the surface's own crease across a path is at least this concave (a 30 mm radius)
+SNAP_SHARE = 0.4       # ... along this share of the path, or there is no crease of the head's own to follow
+
+
+def own_crease(S, P: np.ndarray, ac: np.ndarray, nrm: np.ndarray, reach: float) -> tuple:
+    """(offset mm per station, share): where the HEAD'S OWN crease lies across a path (the shape model's own fold: a
+    middle-aged GNM head has a nasolabial crease of its own, and a fold laid on the nominal path beside it reads as
+    two parallel cuts). Per station the skin's height profile across the path (seated points, height along the
+    path's normal), its second derivative at a 2 mm scale: the most concave point within `reach` mm, where it is
+    concave enough; a smooth curve through those (quadratic), 0 where the head has none. share: of stations with a
+    crease."""
+    from scipy.ndimage import gaussian_filter1d
+    du = 0.5
+    u = np.arange(-reach - 3.0, reach + 3.0 + 1e-6, du)
+    Q = P[:, None, :] + 0.001 * u[None, :, None] * ac[:, None, :]
+    X = S.seat(Q.reshape(-1, 3)).reshape(len(P), len(u), 3)
+    h = ((X - P[:, None, :]) * nrm[:, None, :]).sum(-1) * 1000.0            # mm
+    h = gaussian_filter1d(gaussian_filter1d(h, 2.0 / du, axis=1, mode="nearest"), 2.0, axis=0, mode="nearest")
+    d2 = np.gradient(np.gradient(h, du, axis=1), du, axis=1)
+    inner = np.abs(u) <= reach
+    k = np.argmax(np.where(inner[None, :], d2, -np.inf), 1)
+    val = d2[np.arange(len(P)), k]
+    ok = (val >= SNAP_CURV) & (np.abs(u[k]) < reach - 0.75)
+    share = float(ok.mean())
+    if ok.sum() < max(6, SNAP_SHARE * len(P)):
+        return np.zeros(len(P)), share
+    t = np.linspace(0, 1, len(P))
+    from scipy.ndimage import median_filter
+    uu = median_filter(u[k], 7, mode="nearest")
+    co = np.polyfit(t[ok], uu[ok], 2)
+    off = np.clip(np.polyval(co, np.clip(t, t[ok].min(), t[ok].max())), -reach, reach)
+    return off, share
+
+
+_SNAP: dict = {}
+
+
 def _resample(P: np.ndarray, step: float) -> np.ndarray:
     """A polyline as a smooth curve (Catmull-Rom) sampled every `step`."""
     P = np.asarray(P, float)
@@ -345,18 +406,36 @@ def paths(spec: dict | None, part: str, J: dict, cfg: dict | None = None, names=
             if float((ac @ plus).mean()) < 0:
                 ac = -ac
             t = np.linspace(0, 1, len(P))
+            snapped = None
+            if fd.get("snap"):       # onto the head's own crease, where it has one
+                key = (id(S), name, sd)
+                if key not in _SNAP:
+                    if len(_SNAP) > 40:
+                        _SNAP.clear()
+                    _SNAP[key] = own_crease(S, P, ac, nrm, float(fd["snap"]))
+                off, share = _SNAP[key]
+                snapped = (round(float(np.median(off)), 2), round(share, 2))
+                if np.abs(off).max() > 0.05:
+                    P = S.seat(P + 0.001 * off[:, None] * ac)
             amount = np.ones(len(P))
             if o is not None:
                 q = o["sides"][sd]
-                if q["shift"]:
-                    sh = np.interp(t, np.linspace(0, 1, len(q["shift"])), q["shift"]) * 0.001
+                sh = np.interp(t, np.linspace(0, 1, len(q["shift"])), q["shift"]) * 0.001 if q["shift"] else np.zeros(len(t))
+                if o.get("hood"):     # hooding: the line comes down toward the lashes over the outer half
+                    u_ = np.clip((t - 0.4) / 0.5, 0, 1)
+                    sh = sh - 0.001 * HOOD_DROP * o["hood"] * u_ * u_ * (3 - 2 * u_)
+                if q["shift"] or o.get("hood"):
+                    if fd.get("smooth"):     # (a fold's line is smooth: station-to-station steps in a measured shift kink it)
+                        from scipy.ndimage import gaussian_filter1d
+                        sh = gaussian_filter1d(sh, fd["smooth"] * 0.001 / STATION, mode="nearest")
                     P = S.seat(P + sh[:, None] * ac)
                 e0, e1 = q["extent"]
                 amount = o["amount"] * q["amount"] * ((t >= e0) & (t <= e1))
             ease = np.clip(np.minimum(t - (o["sides"][sd]["extent"][0] if o else 0.0), (o["sides"][sd]["extent"][1] if o else 1.0) - t) / 0.18, 0, 1)
             amount = amount * (0.25 + 0.75 * np.sin(0.5 * np.pi * ease))   # a fold fades toward its ends
             out[(name, sd)] = {"P": P, "across": ac, "t": t, "amount": amount, "width": (o or fd)["width"],
-                               "roll": (o["roll"] if o else 1.0), "depth": (o["depth"] if o else 1.0), "normal": S.normal(P)}
+                               "roll": (o["roll"] if o else 1.0), "depth": (o["depth"] if o else 1.0), "normal": S.normal(P),
+                               "hood": float((o or {}).get("hood", 0.0)), "snapped": snapped}
     return out
 
 
@@ -441,6 +520,9 @@ def profile(t: np.ndarray, pr: dict, j: np.ndarray) -> np.ndarray:
     if pr["has_plat"]:
         x = np.clip(-t / pr["ph"], 0, 1)
         out = out - pr["Pl"][j] * np.where(t < 0, np.sin(np.pi * x) ** 2, 0.0)
+    if pr.get("has_over"):
+        uo = np.clip(t / pr["osh"], 0, 1)
+        out = out + pr["Ov"][j] * uo * uo * (3 - 2 * uo) * np.exp(-0.5 * (np.maximum(t - pr["or0"], 0.0) / pr["oso"]) ** 2)
     return out
 
 
@@ -491,7 +573,8 @@ def mod_tissue(cur: np.ndarray, p: np.ndarray, pr: dict, chunk: int = 4096) -> n
         x = np.clip((hn - H) / H, 0, 1)
         fade = fade * (1 - x * x * (3 - 2 * x))
         if kt is not None:
-            x = np.clip((kt.query(q)[0] - KEEP[0]) / (KEEP[1] - KEEP[0]), 0, 1)
+            kd = pr.get("keep_d", KEEP)
+            x = np.clip((kt.query(q)[0] - kd[0]) / (kd[1] - kd[0]), 0, 1)
             fade = fade * x * x * (3 - 2 * x)
         c = c0[s_:s_ + chunk][hit]
         new = c - d * fade
@@ -566,7 +649,7 @@ def prims(s: dict, stream: list) -> list:
         n = int(round((len(q["P"]) - 1) * STATION / STEP)) + 1
         tt = np.linspace(0, 1, n)
         fine = lambda arr: np.stack([np.interp(tt, q["t"], arr[:, k_]) for k_ in range(arr.shape[1])], 1)  # noqa: E731
-        P = gaussian_filter1d(fine(q["P"]), 1.5, axis=0, mode="nearest")
+        P = gaussian_filter1d(fine(q["P"]), 1.5 if not FOLDS[name].get("smooth") else FOLDS[name]["smooth"] * 0.001 / STEP, axis=0, mode="nearest")
         Nn = gaussian_filter1d(fine(q["normal"]), 4.0, axis=0, mode="nearest")
         Nn /= np.linalg.norm(Nn, axis=1, keepdims=True)
         T = np.gradient(P, axis=0)
@@ -589,18 +672,37 @@ def prims(s: dict, stream: list) -> list:
         er = np.clip(np.minimum(np.arange(n) - on[0], on[-1] - np.arange(n)) / max(0.3 * (on[-1] - on[0]), 1), 0, 1)
         O = am * er * er * (3 - 2 * er) * (roll[2] * q["roll"] * 0.001 if roll else 0.0)
         Pl = am * (plat[0] * 0.001 if plat else 0.0)
+        hood = float(q.get("hood", 0.0))
+        if hood:      # the roll fuller over the outer half (its skin hanging toward the lashes)
+            u_ = np.clip((tt - 0.4) / 0.5, 0, 1)
+            O = O * (1.0 + HOOD_ROLL * hood * u_ * u_ * (3 - 2 * u_))
+        # THE EYEBALL AS A CONSTRAINT, not a stop: where the lid lies thin over the ball the groove takes what room
+        # there is (85 % of the clearance) and the rest of its depth stands out as the fold's lip (`over`)
+        over = rl.get("over")
+        Ov = np.zeros(n)
+        if len(balls):
+            cl = np.min([np.linalg.norm(P - b[:3], axis=1) - b[3] for b in balls], 0) - BALL
+            cl = gaussian_filter1d(np.maximum(cl, 0.0), 2.0 / (STEP * 1000), mode="nearest")
+            Gc = np.minimum(G, 0.85 * cl)
+            if over:
+                Ov = G - Gc
+            G = Gc
         so = 0.001 * roll[1] if roll else 0.001
         reach = 0.001 * rl["reach"]
-        Rr = float(max((0.001 * roll[0] + 3 * so) if roll else 0.0, 3.5 * float(sg.max()) * (2.2 if roll else 1.0), (0.001 * plat[1]) if plat else 0.0, 3 * sa) + 0.001)
+        Rr = float(max((0.001 * roll[0] + 3 * so) if roll else 0.0, 3.5 * float(sg.max()) * (2.2 if roll else 1.0), (0.001 * plat[1]) if plat else 0.0, 3 * sa,
+                       0.001 * (over[0] + 3 * over[1]) if over else 0.0) + 0.001)
         params = {"pts": P, "nrm": Nn, "up": U, "along": T, "taper": np.ones(n), "sa": sa,
                   "wfull": float(np.sqrt(2 * np.pi) * sa / sp) * 0.98, "reach": reach, "G": G, "sg": sg, "O": O, "Pl": Pl,
                   "lee": 2.2 if roll else 1.0, "has_roll": bool(roll), "r0": 0.001 * roll[0] if roll else 0.0, "so": so, "sh": 0.001 * roll[3] if roll else 0.001,
                   "has_plat": bool(plat), "ph": 0.001 * plat[1] if plat else 0.001,
+                  "has_over": bool(over) and bool((Ov > 0).any()), "Ov": Ov, "or0": 0.001 * over[0] if over else 0.0,
+                  "oso": 0.001 * over[1] if over else 0.001, "osh": 0.001 * over[2] if over else 0.001,
+                  "keep_d": tuple(k_ * (1.0 - HOOD_KEEP * min(hood, 1.0)) for k_ in KEEP),
                   "keep": keep, "keep_key": kkey, "balls": balls, "radius": float(np.hypot(Rr, 2 * reach)),
                   "k": int(min(n, 2 * (3.5 * sa) / sp + 6)), "tree": cKDTree(P)}
         lo, hi = P.min(0) - Rr - reach, P.max(0) + Rr + reach
         gm, om = float(am.max()) * rl["depth"] * q["depth"] * 0.001, float(am.max()) * (roll[2] * q["roll"] * 0.001 if roll else 0.0)
-        lip = 1.0 + 0.61 * gm / float(sg.min()) + 0.61 * om / min(so, params["sh"])
+        lip = 1.0 + 0.61 * gm / float(sg.min()) + 0.61 * om / min(so, params["sh"]) + 1.5 * float(Ov.max()) / params["osh"]
         out.append(Prim(f"fold_{name}{sd}", "tissue", "modify", 0.0, layer, lo, hi, params, lip=lip, part=part))
     return out
 
@@ -629,6 +731,7 @@ def build(spec: dict, p: dict, J: dict, layer, ctx: dict) -> None:
 
 def reference() -> str:
     return "\n".join(["FOLDS (skin.folds: {name: amount | {amount, width mm, depth, roll, L / R: {amount, shift [mm..], extent [t0, t1]}}}; "
-                      "GEOMETRY (a groove + roll in the surface itself) + their tint; skin_from_reference reads them off the references):"] +
+                      "GEOMETRY (a groove + roll in the surface itself) + their tint; lid_fold also takes hood 0..1.5 (the roll hanging toward the lashes at the outer end); "
+                      "skin_from_reference reads them off the references):"] +
                      [f"  {k:13s} {v['about']} (width {v['width']} mm, {RELIEF[k]['depth']} mm deep" + (f", a roll {RELIEF[k]['roll'][2]} mm high" if RELIEF[k].get("roll") else "") +
                       f"; readable from {v['res']} mm a pixel)" for k, v in FOLDS.items()])
