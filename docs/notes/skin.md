@@ -1125,3 +1125,15 @@ gnm and makehuman don't seem to support it, and I'm not sure game triangle budge
   EXPRESSION GAIN tables baked into the exported shapes: nasolabial first (tested on a smile), then marionette / jowl,
   bags; chin pad + notch static; crow's feet / forehead / glabella = expression-driven wrinkle normal maps, not
   geometry. Start both when skinfolds2 has reported.
+- CORRECTION to the topology check above (Joe asked "was that the eyeball itself I saw?": yes): the first wireframes
+  drew GNM's eyeballs and teeth over the skin (no depth sort, all components). Redrawn skin only, depth-sorted
+  (/mnt/data/hifipushie/tour/topo/eye_skin.png, mouth_cheek_skin.png). GNM's mesh is 8 components: skin 12,466
+  vertices, two eyeballs 1,440 each, 933 + 4 x ~386 (mouth interior / teeth / tongue). What the skin picture shows:
+  concentric quad rings round the eye opening, packed tight for the first ~8 rings above the margin (the crease zone)
+  then widening toward the brow, with poles at the inner and outer corners; rings round the mouth; the flow from the
+  nose wing sweeping round the mouth corner. So the claim stands, now seen and not only read from gnm_fold.py.
+- REQUIREMENT (Joe): the lid fold "by itself, really shouldn't affect any other part of the face". Track A's shape
+  moves ONLY vertices of the lid rings out to a stated ring (falloff to exactly zero before the brow and before the
+  lower lid's rings); brow, brow ridge, eye position and opening stay bit-identical; a test asserts zero displacement
+  outside the region. (That locality is exactly what GNM's identity route could not give: its fold lowered the brow
+  4-5 mm.)
