@@ -409,7 +409,8 @@ def test_tail_tousle_is_a_ragged_end_and_strays():
     d1 = np.mean([np.linalg.norm((_world(sc, lk)[-1] - C)[:2]) for lk in Y1])
     assert d1 > d0, (d0, d1)
     # in step: neighbouring locks' twist is smaller (a ribbon wound 200 deg is a rope)
-    assert tl0["in_step"] > 0.5 and tl1["in_step"] >= 0.35
+    # (tesshair7: less in step than round five, 0.55 - 0.3 x tousle: in step a tail read as wide ribbons from behind)
+    assert tl0["in_step"] > 0.4 and tl1["in_step"] >= 0.2 and tl1["in_step"] < tl0["in_step"]
     assert np.mean([abs(lk["twist"]) for lk in T1]) < 115  # (140 on their own; tousled locks are partly out of step)
     # a raw hanging tail without these keys is round four's
     assert ht.TIE["tail"]["ragged"] == 0.0 and ht.TIE["tail"]["strays"] == 0 and ht.TIE["tail"]["in_step"] == 0.0
