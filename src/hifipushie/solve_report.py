@@ -450,7 +450,11 @@ def size_row(done=None, sig: float = SIZE_SIG, target: float = 0.0) -> dict:
 
 # ---- the NECK (nativedefault, 2026-10-12): no picture reads its girth; GNM's identity moves it 36 mm per sd ------------------
 NECK_RINGS = range(14, 25)   # GNM's neck rings above the seam ring: the narrowest of them is "the neck's girth"
-NECK_SIG = 0.01          # the neck's girth held to +-1 % of its target (ANSUR's mean for the sex and stature)
+NECK_SIG = 0.01          # neck="held" / a given girth: +-1 % of the target. The DEFAULT is a PRIOR, not a hold: ANSUR's own
+# sd for the sex (women 5.5 %, men 6.3 %: onemesh.ANSUR) about its mean for the stature. Validated on chinread's known
+# heads (docs/notes/gnm_atlas.md "## nativedefault"): the free solve already finds a known head's neck to 13.5 mm rms
+# (GNM's correlations with the jaw and face it does read), a 1 % hold at the population's mean throws that away (31 mm
+# rms; one thin-necked head's lower face +0.9 mm) while the prior keeps it and only takes out GNM's bias (women +11 %)
 
 
 def neck_girth(c) -> tuple:
@@ -476,7 +480,8 @@ def neck_girth(c) -> tuple:
 
 
 def neck_row(c, target: float, sig: float = NECK_SIG) -> dict:
-    """A pseudo-observation for solve(): the neck's girth (GNM's metres, at its narrowest) is `target`, +- sig x target.
+    """A pseudo-observation for solve(): the neck's girth (GNM's metres, at its narrowest) is `target`, +- sig x target
+    (sig = ANSUR's sd: the anthropometric PRIOR, the default; 0.01: a hold).
     Linearised at the head as it stands (c: the whole identity), re-taken every round. As size_row: a statement no
     picture can make (collars, hair and the jaw's shadow hide the neck; a front view shows a width, not a girth)."""
     L, k, g = neck_girth(c)

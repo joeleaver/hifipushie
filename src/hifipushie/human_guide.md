@@ -333,5 +333,13 @@ turns that round:
 - export: with `parts.body.topology: "wrap"` the GLB holds TWO skinned meshes, `head` (GNM's topology, the face
   shapes) and `body`, sharing the seam ring's 110 vertices exactly (position, normal, uv, weights), on one skeleton.
   `base.head.mesh: "welded"` writes one mesh. A decimated body has no ring: one mesh, with a WARNING.
-- after switching a model with fitted reference cameras to native, refit the cameras (the head changed size and
-  place); hair and clothes made on the old head must be remade.
+- after switching a model with fitted reference cameras to native the cameras belong to another head:
+  `block_in_step(name, {"attach": "native"})` does the switch AND carries them (block_in_solve refuses stale cameras
+  and names that step); hair and clothes made on the old head must be remade.
+- `block_in_start` makes a native head BY DEFAULT (2026-10-12) with nothing of ours on its surface (no strokes, no
+  skin.folds, no wrinkle relief carried from the refs model); on it block_in_step refuses head_scale / gnm_base /
+  dimorphism / eye_size. The `human` tool itself is unchanged: its default head is still the grafted one, and
+  `source="human"` a body-carried seeded face; pass `head={"attach": "native"}` for a native one.
+- the NECK: GNM's female class-mean neck is 363 mm (ANSUR 330 +- 18) and MakeHuman's female neck ~290 at any weight:
+  a class-mean woman is flagged NECK CONFLICT. block_in_solve puts ANSUR's prior on the neck's girth (guide topic
+  block_in_solve); without pictures, `block_in_step {"neck_mm": mm}` sets it.

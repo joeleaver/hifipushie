@@ -192,26 +192,31 @@ def test_native_size_and_neck_target():
 
 
 @need_ref
-def test_solve_holds_the_neck_and_says_so():
-    """block_in_solve on a native start: the first call lays the carried cameras on the head (refit, said), the
-    neck's girth ends at ANSUR's mean for the sex and stature (a row of the solve; said: HELD, no read), the head's
-    size rule is in the reply; neck="free" releases it."""
-    from hifipushie import server
-    a, b, c = "nd_test_s0", "nd_test_s1", "nd_test_s2"
-    _rm(a, b, c)
+def test_solve_has_a_neck_prior_and_says_so():
+    """block_in_solve on a native start: the first call lays the carried cameras on the head (refit, said); the
+    neck's girth is under ANSUR's PRIOR for the sex and stature by default (a row of the solve; said: no direct read)
+    and comes down from GNM's female class mean toward it; neck="held" pins the mean; neck=False releases it; the
+    head's size rule is in the reply; the iris check says the model is in real mm."""
+    a, b, c, d = "nd_test_s0", "nd_test_s1", "nd_test_s2", "nd_test_s3"
+    _rm(a, b, c, d)
     try:
         bi.start(a, REF, sex="female")
         ns = onemesh.native_size(store.load(a)["base"])
-        rep = bi.solve_step(a, out=b, rounds=2)
-        so = rep["solve"]
-        assert any(x.startswith("CAMERAS: carried") for x in so["notes"]) and any(x.startswith("NECK: its girth is HELD") for x in so["notes"])
-        assert so["neck"]["held"] and abs(so["neck"]["before"] - 0.366) < 0.004
-        assert abs(so["neck"]["after"] / ns["neck"] - 1) < 0.02, so["neck"]
+        so = bi.solve_step(a, out=b, rounds=2)["solve"]
+        assert any(x.startswith("CAMERAS: carried") for x in so["notes"])
+        assert any(x.startswith("NECK: an anthropometric PRIOR") and "NO DIRECT READ" in x for x in so["notes"])
+        assert so["neck"]["mode"] == "prior" and abs(so["neck"]["before"] - 0.366) < 0.004
+        assert abs(so["neck"]["sig"] - ns["neck_sd"] / ns["neck"]) < 1e-6
         assert so["head_size"]["allometric"] and abs(so["head_size"]["size"] - ns["size"]) < 1e-9
         assert "cam_carried" not in bi._refs(b)["blockin"]
-        free = bi.solve_step(a, out=c, rounds=2, chin={"neck": False})["solve"]
-        assert not free["neck"]["held"] and not any(x.startswith("NECK:") for x in free["notes"])
-        ic = bi.iris_size(b)
-        assert "real millimetres" in ic["text"]
+        held = bi.solve_step(a, out=c, rounds=2, chin={"neck": "held"})["solve"]
+        assert held["neck"]["mode"] == "held" and abs(held["neck"]["after"] / ns["neck"] - 1) < 0.02, held["neck"]
+        assert any(x.startswith("NECK: its girth is HELD") for x in held["notes"])
+        free = bi.solve_step(a, out=d, rounds=2, chin={"neck": False})["solve"]
+        assert free["neck"]["mode"] == "free" and not any(x.startswith("NECK:") for x in free["notes"])
+        # the prior pulls toward ANSUR's mean, less than the hold
+        e = [abs(x["neck"]["after"] - ns["neck"]) for x in (held, so, free)]
+        assert e[0] < e[1] <= e[2] + 1e-9, e
+        assert "real millimetres" in bi.iris_size(b)["text"]
     finally:
-        _rm(a, b, c)
+        _rm(a, b, c, d)

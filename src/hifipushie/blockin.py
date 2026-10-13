@@ -1131,7 +1131,9 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         ns = onemesh.native_size(sp_src["base"])
         g0, g1 = sr.neck_girth(c0)[0] * ns["size"], sr.neck_girth(c0 + dc)[0] * ns["size"]
         held = (c.get("tie") or {}).get("neck")
+        sg = float((c.get("tie") or {}).get("neck_sig") or 0.0)
         rep["solve"]["neck"] = {"before": g0, "after": g1, "held": bool(held), "target": float(held) * ns["size"] if held else None,
+                                "sig": sg, "mode": "free" if not held else ("held" if sg <= 0.02 else "prior"),
                                 "ansur": ns["neck"], "ansur_sd": ns["neck_sd"]}
         rep["solve"]["head_size"] = {"size": ns["size"], "allometric": ns["allometric"], "stature": ns["stature"]}
     if report and c.get("post") is not None:      # WHAT WAS READ, and what moved without a read (solve_report)

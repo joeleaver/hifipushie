@@ -2086,13 +2086,14 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
                    expression: str = "default", chin_points: str = "auto", size: str = "held",
-                   neck: str | float = "held"):
+                   neck: str | float = "prior"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lids, lips, anchors;
     GNM's prior on the whole identity) applied as a block-in step, the solve's cameras kept. Use it FIRST from
     block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ. cameras "free" | "trust"
-    | "refit"; size "held" | "iris" | "iris_pin" | "free"; neck "held" (a native head's neck girth at ANSUR's mean
-    for the sex and stature: no picture reads it) | "free" | mm; hold, expression, chin_points, anchors, parse, out,
-    share, seen, save. Cameras of another head are refused. Details: guide(topic="block_in_solve")."""
+    | "refit"; size "held" | "iris" | "iris_pin" | "free"; neck "prior" (a native head's neck girth under ANSUR's
+    mean and sd for the sex and stature: no picture reads it) | "held" | "free" | mm; hold, expression, chin_points,
+    anchors, parse, out, share, seen, save. Cameras of another head are refused. Details:
+    guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
@@ -2106,7 +2107,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                         expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
                         chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
                               "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size],
-                              "neck": {"held": True, "free": False}[neck] if isinstance(neck, str) else float(neck)})
+                              "neck": {"prior": True, "held": "held", "free": False}[neck] if isinstance(neck, str) else float(neck)})
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""
@@ -2127,7 +2128,9 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
         n_ = so["neck"]
         rp += ("\n" if rp else "") + (
             f"NECK: girth {1e3 * n_['before']:.0f} -> {1e3 * n_['after']:.0f} mm at its narrowest; "
-            + (f"HELD at {1e3 * n_['target']:.0f}; no read" if n_["held"] else "FREE (neck=\"free\"): moved with no read")
+            + {"held": f"HELD at {1e3 * (n_['target'] or 0):.0f}; no read",
+               "prior": f"under the anthropometric PRIOR {1e3 * n_['ansur']:.0f} +- {1e3 * n_['ansur_sd']:.0f}; no direct read (INFERRED)",
+               "free": "FREE (neck=\"free\"): moved with no read"}[n_["mode"]]
             + f" (ANSUR II for this sex and stature: {1e3 * n_['ansur']:.0f} +- {1e3 * n_['ansur_sd']:.0f})")
         h_ = so["head_size"]
         rp += (f"\nHEAD SIZE: a GNM-native head: GNM's own size x {h_['size']:.3f} "

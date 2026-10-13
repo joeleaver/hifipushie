@@ -6041,9 +6041,10 @@ NONE on the true base (no concavity on the outer third); all of it is the fold l
 ## 990fa02; Joe's decisions consolidated: the GNM-native head is the DEFAULT start for a person's head. Scratch DURABLE in
 ## /mnt/data/hifipushie/nativedefault: env.sh, run.sh <script> (light slot), heavy.sh <gb> <script> (resources.heavy + capped),
 ## tests.sh <pytest args> (one file, log in out/), bench.sh <run> [opts] (chinread's known heads), out/; scripts spikes/nativedefault)
-STATE (2026-10-12, steps 1-2 committed): block_in_start is native by default and carries nothing of ours; a native head
-refuses its dead steps; cameras of another head are measured, refused by the solve and carried by a step.
-NEXT: step 3 (neck girth in the solve: benchmark running), 4 (size), 5 (tess_n1), 6 (judge).
+STATE (2026-10-12, steps 1-4 committed): block_in_start is native by default and carries nothing of ours; a native head
+refuses its dead steps; cameras of another head are measured, refused by the solve and carried by a step; the solve has
+an ANSUR prior on the neck's girth (validated: shape not worse); head size = GNM x the stature's allometry, said.
+NEXT: step 5 (tess_n1 from scratch on the default path), 6 (judge, sheets nd_tess_native / nd_tess_figure).
 
 ### 1. block_in_start's defaults (blockin.start, server.block_in_start)
 - `attach="native"` is the default: base.head {attach "native", gnm_base 1.0, dimorphism 0.0, eyes 1.0, lip_close}, no
@@ -6077,3 +6078,43 @@ NEXT: step 3 (neck girth in the solve: benchmark running), 4 (size), 5 (tess_n1)
   sized 3.6 %) is caught by the placement record in human_refs.json ("placement"): the next solve refits and says so.
 - Found: tests/test_orbit.py::test_eyeball_guard_reads_the_shipped_head fails on main 990fa02 too (0.90 against 0.8 +-
   0.15): not this branch's.
+
+### 3. The neck's girth in the joint solve (solve_report.neck_girth / neck_row / neck_move; face_ruler.NECK_HOLD)
+- `neck_girth(c)`: the loop length of GNM's narrowest neck ring (14..24; ring 19 on the class means) on GNM's own
+  evaluation, with its exact gradient: 36.0 mm per sd over the prior (head_000 -32.7). Female class mean 365, male 385.
+- The row: target = ANSUR II's mean for the sex and stature (onemesh.native_size: 0.3292 x (stature / 1.627) ^ 0.436
+  women, 0.3968 x (stature / 1.755) ^ 0.325 men) / the head's size, linearised at the head as it stands, every round.
+  NATIVE heads only (a body-carried head's neck is the body's); a number forces it anywhere (benchmarks).
+- DESIGN CHANGED BY THE VALIDATION: the brief's "hold (as SIZE is held)" at +- 1 % is NOT the default; a PRIOR with
+  ANSUR's own sd (women 5.5 %, men 6.3 %) is. chinread's known heads c..h (male, body-carried, bare-necked renders; 3
+  calls from cz_<h>_00; spikes/chinread/bt.py; /mnt/data/hifipushie/nativedefault/bench.sh; models cz_<h>_D0 / NP / NK / NW):
+  | run | face | lower face | chin | jaw body | jaw angle | neck vs the TRUE neck: mean, rms mm |
+  |---|---|---|---|---|---|---|
+  | start (class mean) | 2.62 | 3.13 | 2.42 | 2.94 | 4.17 | |
+  | D0 = today's default, no neck term | 2.17 | 2.45 | 1.82 | 2.54 | 3.02 | +5.5, 13.5 |
+  | NP = prior 398 +- 6.3 % (THE NEW DEFAULT) | 2.03 | 2.23 | 1.57 | 2.26 | 2.91 | +8.5, 14.3 |
+  | NK = held 398 +- 1 % | 2.19 | 2.55 | 1.76 | 2.56 | 3.35 | +21.4, 31.0 |
+  | NW = held 349 +- 1 % (a woman-sized pull, -36 mm) | 2.06 | 2.35 | 1.87 | 2.40 | 2.83 | -23.8, 33.0 |
+  Per head the chains differ by 0.2-0.9 mm run to run (the see-saw), so NP's "better" is noise; the claim is NOT WORSE.
+  FINDING: the free solve finds a known head's neck to 13.5 mm rms (0.37 of the prior's sd) though no read looks at
+  it: GNM's correlations with the jaw / face widths the outlines do read (head g: true 324, start 385, free 335). A
+  1 % hold at the population's mean throws that away (g: 391, its lower face 3.20 -> 4.06 mm). The prior keeps it
+  and only shifts the centre. So "nothing reads neck girth" = no DIRECT read; the reply says INFERRED.
+- Class-mean woman (hb_r_woman; spikes/nativedefault/woman.py; sheet human_renders/nd_01_neck_prior_woman.png, LOOKED
+  AT): head's neck 363 mm (+25 % against the body's 290; ANSUR 326 +- 18 at 1.59 m) -> 336 under the prior alone
+  (nd_w2: +16 %; |dc| 0.92; with no picture the jaw narrows 4.4 mm with it: GNM's correlation) -> 326 with
+  neck="held" and the face's measures held (nd_w1: +13 %; |dc| 3.49). Tiles: before, the neck is as wide as the jaw
+  (a bull neck); after, clearly narrower than the jaw in front and 3/4; reads as a woman's neck. The CONFLICT flag
+  stays (now "the BODY's own neck is the unusual one", -2.1 sd): MakeHuman's female neck is ~290 at any weight.
+- Options: block_in_solve(neck="prior" | "held" | "free" | mm); block_in_step {"neck_mm": mm} (neck_move: least
+  change, size held, every measure but the neck's held).
+- NOT DONE: a native-head benchmark (the known heads are body-carried and male); a class-mean start is not moved by
+  the prior until its first solve (block_in_start leaves the class mean alone); `human()` has no neck term.
+
+### 4. Head size on a native head
+- `onemesh.native_size(base)`: the one rule (stature, size = base.head.size or (stature / the sex's mean) ^ alpha,
+  ANSUR's neck for it); _native_desc's own copy of the arithmetic is the same numbers (test). The solve's SIZE hold
+  holds the IDENTITY's size at the start head's (the class mean) on top: the reply prints "HEAD SIZE: a GNM-native
+  head: GNM's own size x 1.002 (the stature's allometry at 1.636 m)".
+- iris_size / iris_check read through the fitted camera at the model: on a native head the model is in real mm, and
+  the text says which. Tess's numbers: step 5.

@@ -2031,7 +2031,7 @@ def _landmark_obs(head, view, points):
 ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
 CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
 CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
-NECK_HOLD = True                      # the NECK's girth is held at ANSUR's mean for the sex and stature on a GNM-native head (solve_report.neck_row)
+NECK_HOLD = True                      # an anthropometric PRIOR on the neck's girth (ANSUR's mean and sd for the sex and stature) on a GNM-native head (solve_report.neck_row)
 SIZE_HOLD = True                      # the face's SIZE is held at the block-in's start head's (solve_report.size_row): no picture reads
 # it (every camera's scale and distance are free: a bigger head further away is the same image), so left free it is whatever the prior's
 # correlations make of the shape reads (GNM's head_000 is width AND size: Tess's narrow face came out 3 % small, tess_a1 3.4 % large, the
@@ -2285,29 +2285,34 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
             "releases it; size=\"iris\" lets the picture's iris pull it (weakly: +- 7 % person to person); teeth would read it better"))
     nk = (chin or {}).get("neck", NECK_HOLD)
     if nk is not False and nk is not None:
-        # THE NECK (nativedefault): True = ANSUR's mean girth for the model's sex and stature, on a GNM-NATIVE head only
-        # (a body-carried head's neck is the body's: GNM's is faded out); a number = that girth in real mm (on a
-        # body-carried head: GNM's own mm, for benchmarks)
+        # THE NECK (nativedefault). On a GNM-NATIVE head only (a body-carried head's neck is the body's: GNM's is faded
+        # out): True / "prior" = ANSUR II's neck girth for the model's sex and stature as a PRIOR (its mean, its own sd);
+        # "held" = held at that mean (+- 1 %); a number = held at that girth in real mm (on a body-carried head: GNM's own
+        # mm, for benchmarks; chin["neck_sig"] sets its sigma)
         from . import onemesh, solve_report as sr, store as _store
         b_ = _store.load(name)["base"]
         nat = onemesh.native(b_)
-        tgt = None
+        tgt = sig_ = None
         if nat:
             ns = onemesh.native_size(b_)
-            tgt = (ns["neck"] if nk is True else float(nk) * 1e-3) / ns["size"]
+            given = not isinstance(nk, (bool, str))
+            tgt = (float(nk) * 1e-3 if given else ns["neck"]) / ns["size"]
+            sig_ = float((chin or {}).get("neck_sig") or (sr.NECK_SIG if (given or nk == "held") else ns["neck_sd"] / ns["neck"]))
             g0 = sr.neck_girth(head["c"])[0] * ns["size"]
+            an = f"ANSUR II for this sex and stature ({ns['stature']:.3f} m): {1e3 * ns['neck']:.0f} +- {1e3 * ns['neck_sd']:.0f} mm"
             notes.append(
-                f"NECK: its girth is HELD at {1e3 * tgt * ns['size']:.0f} mm" + (
-                    f" (ANSUR II's mean for this sex and stature {ns['stature']:.3f} m: {1e3 * ns['neck']:.0f} +- {1e3 * ns['neck_sd']:.0f})"
-                    if nk is True else " (given)")
-                + f"; it stood at {1e3 * g0:.0f}. NO READ: no picture reads the neck's girth, and GNM's identity moves it 36 mm per sd "
-                  "(its female class mean is 363, its male 385). block_in_solve(neck=\"free\") releases it; neck=<mm> holds a "
-                  "girth you measured")
-        elif nk is not True:
-            tgt = float(nk) * 1e-3
-            notes.append(f"NECK: GNM's own neck girth held at {float(nk):.0f} GNM mm (a body-carried head: its neck is the body's)")
+                (f"NECK: its girth is HELD at {1e3 * tgt * ns['size']:.0f} mm (+- {100 * sig_:.0f} %; " + ("given" if given else an) + ")"
+                 if sig_ <= 0.02 else
+                 f"NECK: an anthropometric PRIOR on its girth: {an} (a weak pull: GNM's correlations with the face the pictures "
+                 "do read may still move it)")
+                + f"; it stood at {1e3 * g0:.0f}. NO DIRECT READ: no picture reads the neck's girth, and GNM's identity moves it "
+                  "36 mm per sd (its female class mean is 363, 11 % over ANSUR; its male 385). block_in_solve(neck=\"free\") "
+                  "releases it, neck=\"held\" pins the mean, neck=<mm> holds a girth you measured")
+        elif not isinstance(nk, (bool, str)):
+            tgt, sig_ = float(nk) * 1e-3, float((chin or {}).get("neck_sig") or sr.NECK_SIG)
+            notes.append(f"NECK: GNM's own neck girth at {float(nk):.0f} GNM mm +- {100 * sig_:.1f} % (a body-carried head: its neck is the body's)")
         if tgt:
-            tie = {**(tie or {"names": ()}), "neck": tgt, "neck_sig": float((chin or {}).get("neck_sig", sr.NECK_SIG))}
+            tie = {**(tie or {"names": ()}), "neck": tgt, "neck_sig": sig_}
     if tc:
         from . import solve_report as sr
         side = any(abs(view_yaw(v["cam"])) >= 60.0 for v in views)       # a side view's outline reads the profile line
