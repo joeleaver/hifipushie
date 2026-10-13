@@ -97,8 +97,25 @@ each), data/ (samples), out/ (sheets, logs); code: src/hifipushie/denselm.py (th
 spikes/denselm (gen.py + blender_gen.py: the generator; job_gen.py; train.py + net.py; peek.py / augpeek.py).
 
 ### State
-STATE / NEXT: design written; generator built and running (local + NICO-TOP); pilot data / training / evaluation
-below as they land.
+STATE (2026-10-12, end of the round): VERDICT: YES, the direction pays, for closed-mouth faces; the full run is
+worth doing AFTER gnmnative (teeth / open mouths) and with three fixes to the data (wider identities, cheaper
+samples, real hair / clothes). A pilot trained on 4,800 of our own renders (18 dressings, 89 GPU-minutes) puts 570
+GNM vertices + 18 eye points on a picture with its own honest sigma: 1.8 mm mean on unseen synthetic people; on
+the known-head benchmark 1.4 mm median from the front (MediaPipe's 68: 4.0; ours on the same 68: 1.4), 2.0 mm on
+a 72 deg view MediaPipe cannot read; on Tess's photos, Garrett's paintings and the held-out Garrett photos the
+points lie on the features (eye, lid, nose, lips, chin outline; tiles judged one by one). In the joint solve it
+takes the six known heads from 2.18 to 1.46 mm face rms (lower face 2.54 -> 1.80) and fixes the head's SIZE (6 %
+-> 1.9 %). What it does NOT do: read the chin's own width (answers with the average chin; it made one broad-jawed
+benchmark head worse), open mouths (never seen one: lower lip 4-6 mm wrong on a smile with teeth), make the
+per-view expression term work. Code: denselm.py (set + inference), face_ruler `dense` (OFF by default),
+spikes/denselm (generator, trainer, job runners, evaluation). Tests: tests/test_denselm.py (4) + face_ruler /
+refread suites pass (17).
+NEXT (in order): (1) Joe's go / no-go on the full run and its options ("### The full-run plan"); (2) judge the
+dense solves of Tess / good Garrett on the judging sheet before `DENSE` becomes a default; per-region sigma scale
+for chin / jaw from the benchmark so the unread width cannot pull; (3) after gnmnative: landmark set v2 (teeth,
+tongue, gums, GNM's eyeball), open-mouth expressions in gen.py (`open=1`), then the wider identity sampler;
+(4) generator speed (2 mm stage mesh, 4-6 TAA samples, chunk = n); (5) the reference brief's expression shots
+become usable for the per-view expression term only with (3).
 
 ### What the literature actually did (primary sources read 2026-10-12; "not stated" = the paper does not say)
 - Wood et al. 2021, "Fake It Till You Make It" (ICCV; arXiv 2109.15102): 100,000 images at 512 px, Cycles, 48 h on
@@ -376,3 +393,59 @@ below as they land.
   a ~70 deg view: the dense reads see the turn the outline could not; tour tiles out/tour/dl_G_r?04/chin_jaw_v2:
   the overlay is one face with them, a doubled jaw line without); chin_width +8.0 (was +7.6: the slab stays).
   Paintings: settles, x1.5. Not judged on a judging sheet yet (no time): that is NEXT before any default changes.
+- LEARNING CURVE and head comparison (job dl-p2, the same 2 held-out dressings, every run the SAME number of
+  optimiser steps = 60 epochs of the full set; validation mean, px of 256 / mm): see "dl-p2" at the section's end.
+
+### The full-run plan (numbers from the pilot; nothing started; nothing billed without Joe's yes)
+- HOW MANY SAMPLES: the literature's size is 100,000 images x 300 epochs (Wood 2021 / 2022, Hewitt 2024: "starting
+  to plateau at 100,000"). Our curve at equal steps: 2,400 -> 4,800 samples takes the held-out error from 3.70 to
+  3.06 px (-17 % per doubling, and the run that trains 3.3x longer on 4,800 reaches 2.16 px): we are far from the
+  plateau in both data and steps. Proposal: TWO STAGES, deciding after the first: stage 1 = 30,000 samples of 100
+  dressings (6x the pilot), stage 2 = 100,000 of ~300 if stage 1's benchmark numbers still fall.
+- BEFORE the big render (code, a few agent-days; each is a measured gap of the pilot): (1) gnmnative merged:
+  teeth, tongue, gums, GNM's eyeball as landmarks (set v2) and OPEN MOUTHS in the data (today 9 of the sampler's
+  20 expression classes are left out); (2) WIDER IDENTITIES: the pilot draws the semantic sampler + a little
+  noise (|c| ~7); the solve meets heads at |c| 11-13 with jaws at 2 sd: mix in GNM's own N(0, 1) prior and
+  measure-space moves (chin / jaw width +-2 sd) so the unusual chin is in the data; (3) CHEAPER SAMPLES: the
+  stage meshed at 2 mm (now 1 mm / 0.5 mm: ~400k vertices redrawn per TAA sample), 4-6 TAA samples, chunk = n,
+  500 samples a dressing, labels from a z-buffer: target 0.6-0.8 s a sample on a 3070 Ti (measured today: 1.7 s
+  idle, 2.9 s shared); (4) VARIETY the literature found to matter (Wood 2021: no hair / clothing = 4x the failure
+  rate): strand or card hair instead of lock planks, beards, glasses, headwear, a collar / garment from the cloth
+  tools, CC0 photo backdrops (Poly Haven HDRIs are CC0), hands / occluders; (5) the chin: more hard and raking
+  light in the mix (relief is what tells a chin's width) and per-region sigma calibration from the benchmark.
+- RENDER HOURS (all in, incl. the stage build per dressing):
+  | | per sample | 30,000 | 100,000 |
+  |---|---|---|---|
+  | NICO-TOP as today, shared (measured) | 2.9 s | 24 h | 81 h |
+  | NICO-TOP idle (measured, 16 -> 8 samples) | 1.7 s | 14 h | 47 h |
+  | NICO-TOP after (3) (target, not measured) | 0.7 s | 6 h | 19 h |
+  | this laptop, shared (measured) | 2.9 s | 24 h | 81 h (not advised: two other agents live here) |
+  | enterprise (32 CPUs, no GPU known) | - | stage builds only (the CPU third of the cost), if the pipeline is split into build jobs and render jobs |
+  | a rented 4090-class box through oxidegen (est., untested: EEVEE needs EGL there; 16+ vCPUs for the builds) | ~0.5-0.7 s | 4-6 h | 14-20 h |
+- TRAINING HOURS: the pilot's trainer does ~180 samples a second on NICO-TOP (bound by the augmentation on 10 CPU
+  workers, not by the GPU). 30,000 x 100 epochs = 3 M samples = 4.6 h; 100,000 x 150 epochs = 15 M = 23 h (8-10 h
+  once the augmentation runs on the GPU or on 16+ workers). A ResNet-34 head-to-head costs the same again.
+  On a rented 4090 with 32 vCPUs: ~600-1,000 samples a second: 4-7 h for the 100k run.
+- STORAGE: 123 kB a sample as RGBA PNG at 320 px: 30k = 3.7 GB, 100k = 12.3 GB on /mnt/data/hifipushie/denselm
+  (slim JPEG + alpha for uploads: 39 kB: 3.9 GB for 100k); stages are deleted after their render (190 MB each).
+- COST OPTIONS: (A) local only (NICO-TOP + enterprise for builds): $0; 30k in ~1-2 days elapsed, 100k in ~4-6
+  days as the machines are shared (2 days after (3)); the GPU is single and also the sculpt runner's. (B) rented
+  through oxidegen (`where: "rented"`, one 4090-class box, oxidegen's cap $1.25 / h, typical $0.4-0.7): 100k
+  render 14-20 h + training 4-7 h + slack x2 = 40-55 box-hours = $20-70; elapsed ~1.5 days; needs Joe's yes and
+  a first unbilled smoke test of EEVEE on such a box. (C) mixed: render locally over a few nights, rent only the
+  training (5-15 h: $3-20).
+- WHAT IS RISKY: (1) the chin / jaw width: unread by the pilot and able to hurt a good outline solve; more data
+  may not fix what a picture does not show; mitigations above, and the dense read should enter the solve with
+  per-region sigmas, not as "truth". (2) SIM-TO-REAL IS UNMEASURED: every number above is on our own renderer;
+  on real pictures I have tiles and agreement with fitted models, no ground truth. (3) open mouths depend on
+  gnmnative. (4) the benchmark flatters us (same renderer, same skin system). (5) one shared GPU that failed
+  once today. (6) EEVEE skin is not a photograph; the literature's renders are path-traced with scanned textures.
+- WHAT I NEED FROM JOE: (a) go / no-go, and stage 1 only or both; (b) local-only (A) or a rented box (B / C) with a
+  budget cap; (c) whether enterprise has a GPU, and its install; (d) A REAL-IMAGE EVALUATION SET: worth asking for,
+  evaluation only, never training: without one, sim-to-real stays "by eye". Options: DAD-3DHeads' validation
+  split (CC BY-NC-SA, gated: his decision; it would give landmark error on real photos by pose / expression /
+  occlusion bucket, though on its own head topology (FLAME's, as far as I know: not re-checked): only the 68 map to ours), or better and ours: 3-5 people captured
+  properly (a phone photogrammetry / multi-view session with a neutral and four expressions each), fitted
+  offline, as a private ground-truth set; (e) whether an ImageNet-pretrained backbone is acceptable (Hewitt 2024
+  uses one; faster and better from little data; ImageNet's terms are research-only for the images, the weights'
+  status is the usual grey area): the pilot is from scratch and I would stay there unless he says otherwise.
