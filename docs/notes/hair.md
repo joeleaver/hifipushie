@@ -1677,6 +1677,28 @@ volume over the crown and sides). Ours: nearly straight lines laid flat along th
 flat brown. Round seven, "## tesshair7".
 
 ## tesshair7 (2026-10-13, "tesshair7" agent, branch `tesshair7`): volume from the parting, and a hair colour model
+### SUMMARY (one page; the diary follows)
+Goal: Tess's swept-back, loosely tied side ponytail as a STYLE any head can wear. Joe's verdicts: th_V86 "best hair yet";
+th_W09+ judged better than V86 by the coordinator. BEST = th_W13 (tess_a1 + one tie_hair call; spikes/tesshair7/styles/
+W13_*.json); the same on the GNM-native head = th_W20. Sheets human_renders/th_50..52 (round one), th_60..62 (round two).
+What was built (all as style / look words, tested, in the guide):
+- `volume` (hair_flow.gather): rise from the root with a bend radius, a dome by region, layers, a fall from the root
+  before the tie (convex arcs), hold; `locks` (height / width variety), `cross` (hair over the part). Gated off for
+  up-styles and half up.
+- the colour model (blender_strands.material, look keys variation / sun / highlights / highlight_contrast / fly_light /
+  depth / root_dark / gloss; hair_colour.py for the groom export's groom_color and the cards' vertex tone).
+- `wisps.curls` (escaped near-straight strands), `wisps.halo` (fine hairs off the top layer, some across the part).
+- measures: hair.colour_variation (in look_hair's measure), spikes standoff.py / colvar.py / flowlines.py / lockplot.py
+  / loops.py; shots7.py renders any groom variant in memory (drop= / S= / LS= / look=) to ISOLATE a fault.
+The rules that came out of it are the checklist at the top of hair_guide.md ("What makes hair read as hair").
+Faults found by isolation (each looked like something else): crown wire-grid = strands.halo on every lock; grey veil
+over the forehead = flat wisp clumps exposed by the lift; dark tangle at the part's start = the far bank's strands seen
+end-on (old: in T66 / V86 too); crown wavy wires = volume.locks at 1; tan tail bands = saturated highlight ribbons;
+ashy lengths = lightening that desaturated; hard temple edge = a shortened scalp-tint ramp.
+Still wrong on W13: the part dips (hair crosses it now); her tail narrower / more pointed; hue ~5 deg red; the
+export / cards colour only unit-tested; half up's pit (not volume's). NEXT: the learning work (distil, regression
+sheet, hair reader, a different hair type in 4 rounds).
+
 STATE / NEXT: DONE: the style word `volume` (gather.volume: the hair stands up out of its root with a bend radius,
 a dome by region in layers, the way FALLS from the root before the tie takes it, held until the tie), the look's colour
 model (`variation`, `sun` by the hair's age from the scalp, `highlights` as ~6 mm ribbons, `fly_light`, `depth`),
