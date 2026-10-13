@@ -1859,12 +1859,10 @@ def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = 
                    cameras: str = "keep", replace: bool = False, save: str | None = None, expression: bool = False,
                    attach: str = "native", carry: bool = False):
     """THE DEFAULT START for a person's head from pictures: their body, GNM's class mean for the sex on a GNM-NATIVE
-    head (true base, GNM's eyeball / mouth, its own size; the body fitted), nothing of ours on its surface (the refs
-    model's strokes / skin.folds / wrinkle relief are NOT carried: the reply names what was dropped), the cameras,
-    the first look + table. refs = a one-mesh human with fitted references, or a views list; sex, age, body,
-    ethnicity (one of GNM's classes, or a blend {class: weight}: the start's and the solve's prior centre; default the
-    pooled mean), cameras, attach ("native" | "body" = the old head, with gnm_base), carry (True keeps the refs model's
-    strokes / folds / wrinkles), replace, save, expression. Details: guide(topic="block_in_start")."""
+    head (true base, GNM's eyeball / mouth, its own size; the body fitted), nothing of ours on its surface (the reply
+    names what was dropped), the cameras, the first look + table. refs = a one-mesh human with fitted references, or
+    a views list; sex, age, body, ethnicity (a GNM class or a blend {class: weight}; default the pooled mean),
+    cameras, attach, carry, replace, save, expression. Details: guide(topic="block_in_start")."""
     from . import blockin as bi
     e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
                  age=age, body=body, gnm_base=gnm_base, ethnicity=ethnicity, cameras=cameras, replace=replace,
