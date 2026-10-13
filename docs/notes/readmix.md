@@ -405,7 +405,7 @@ chain noise is ~0.3 mm of face rms and ~1 mm of a width.
 | scan surface, FACE | 0.89 / 1.78 | 1.12 / 2.44 | 1.01 / 2.17 | 1.44 / 2.94 | 1.32 / 2.76 | 1.43 / 2.99 |
 | vertex face / lower face rms (vs the direct fit) | 2.01 / 2.90 | 2.64 / 3.74 | 2.55 / 3.88 | 2.41 / 3.62 | 2.08-2.15 / 2.26-2.33 | 2.36 / 2.95 |
 | nose_base_width, solved - truth | +3.9 | +5.3 | +4.2 (rm_h40_F call 6: +4.7) | +2.7 | +1.9 .. +2.2 | +1.5 |
-| alar_width | +0.7 | +2.6 | +2.6 | see gsum_h112.log | | |
+| alar_width | +0.7 | +2.6 | +2.6 | +0.3 | +1.6 | +1.1 |
 | tip_radius_h (- = sharper than the truth) | -2.8 | -1.5 | -1.0 | -3.9 | -3.7 | -3.6 |
 | mouth_width | -0.4 | +0.6 | +1.7 | +3.3 | -0.0 | +1.0 |
 | upper / lower vermilion (mid) | -0.3 / +0.6 | +0.3 / +1.4 | +0.3 / +1.0 | +1.2 / +0.8 | +0.4 / +0.3 | +0.6 / +0.1 |
