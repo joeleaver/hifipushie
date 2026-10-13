@@ -1851,14 +1851,15 @@ def _blockin_sheet(name: str, save: str | None, views: list | None = None, table
 
 @mcp.tool(structured_output=False)
 def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = None, age: float | None = None,
-                   body: dict | None = None, gnm_base: float | None = None, ethnicity: str | None = None,
+                   body: dict | None = None, gnm_base: float | None = None, ethnicity: str | dict | None = None,
                    cameras: str = "keep", replace: bool = False, save: str | None = None, expression: bool = False,
                    attach: str = "native", carry: bool = False):
     """THE DEFAULT START for a person's head from pictures: their body, GNM's class mean for the sex on a GNM-NATIVE
     head (true base, GNM's eyeball / mouth, its own size; the body fitted), nothing of ours on its surface (the refs
     model's strokes / skin.folds / wrinkle relief are NOT carried: the reply names what was dropped), the cameras,
     the first look + table. refs = a one-mesh human with fitted references, or a views list; sex, age, body,
-    ethnicity, cameras, attach ("native" | "body" = the old head, with gnm_base), carry (True keeps the refs model's
+    ethnicity (one of GNM's classes, or a blend {class: weight}: the start's and the solve's prior centre; default the
+    pooled mean), cameras, attach ("native" | "body" = the old head, with gnm_base), carry (True keeps the refs model's
     strokes / folds / wrinkles), replace, save, expression. Details: guide(topic="block_in_start")."""
     from . import blockin as bi
     e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
@@ -2086,34 +2087,43 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
                    expression: str = "default", chin_points: str = "auto", size: str = "held",
-                   neck: str | float = "prior"):
+                   neck: str | float = "prior", dense: str = "default", detector: str = "default", hair_edge: str = "default"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lids, lips, anchors;
     GNM's prior on the whole identity) applied as a block-in step, the solve's cameras kept. Use it FIRST from
     block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ. cameras "free" | "trust"
     | "refit"; size "held" | "iris" | "iris_pin" | "free"; neck "prior" (a native head's neck girth under ANSUR's
-    mean and sd for the sex and stature: no picture reads it) | "held" | "free" | mm; hold, expression, chin_points,
-    anchors, parse, out, share, seen, save. Cameras of another head are refused. Details:
-    guide(topic="block_in_solve")."""
+    mean and sd for the sex and stature: no picture reads it) | "held" | "free" | mm; dense "on" | "off" (our dense
+    landmark network); detector "mesh" | "anchors" (MediaPipe's lip / nostril / eye-contour points as absolute reads, or
+    its 68 as differential anchors); hair_edge "on" | "off" (the skin | hair boundary as a one-sided outline); hold,
+    expression, chin_points, anchors, parse, out, share, seen, save. Cameras of another head are refused. A view with a
+    known lens (lens_mm / EXIF) keeps its distance. Details: guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
-    if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "none"):
+    if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "lower", "none"):
         raise ValueError('block_in_solve: hold = "auto" | "none"; expression = "view" | "shared" | "none"')
     if chin_points not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: chin_points = "auto" | "on" | "off"')
+    if dense not in ("default", "on", "off") or detector not in ("default", "mesh", "anchors") or hair_edge not in ("default", "on", "off"):
+        raise ValueError('block_in_solve: dense = "on" | "off"; detector = "mesh" | "anchors"; hair_edge = "on" | "off" (each also "default")')
     rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
                         parse={"auto": "auto", "on": True, "off": False}[parse],
                         hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
-                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
+                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "lower": "lower", "none": False}[expression],
                         chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
                               "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size],
-                              "neck": {"prior": True, "held": "held", "free": False}[neck] if isinstance(neck, str) else float(neck)})
+                              "neck": {"prior": True, "held": "held", "free": False}[neck] if isinstance(neck, str) else float(neck)},
+                        dense={"default": None, "on": True, "off": False}[dense], mp={"default": None, "mesh": True, "anchors": False}[detector],
+                        hair_edge={"default": None, "on": True, "off": False}[hair_edge])
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""
     if so["n"].get("outline", 0) < 120:
         warn += (f"WARNING: a weak solve: {so['n'].get('outline', 0)} outline reads (it wants ~150+ over 2-3 views). The anchors "
                  "and the prior carry it: expect the class mean's face where nothing was read.\n")
+    for x in so.get("notes") or []:          # a VIEW without an outline (the total above hid a hair-covered front picture)
+        if x.startswith(("NO OUTLINE:", "STRONG PERSPECTIVE:", "INFERRED (the camera's distance")):
+            warn += "WARNING: " + x + "\n"
     if so["relax"] > 1.0:
         warn += (f"WARNING: INCONSISTENT PICTURES: at their own sigmas the solve wanted a component past 3 sd, so every read was "
                  f"down-weighted (sigma x{so['relax']:.2f}) until none did. The references disagree with each other or with any "
@@ -2122,7 +2132,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     for x in so.get("notes") or []:          # a view's stated kind against its fitted camera
         if x.startswith("VIEW:"):
             warn += "WARNING: " + x + "\n"
-    notes = "".join(f"  {x}\n" for x in so.get("notes") or [] if not x.startswith("VIEW:"))
+    notes = "".join(f"  {x}\n" for x in so.get("notes") or [] if not x.startswith(("VIEW:", "NO OUTLINE:", "STRONG PERSPECTIVE:", "INFERRED (the camera's distance")))
     rp = (so.get("report") or {}).get("text") or ""
     if so.get("neck"):
         n_ = so["neck"]

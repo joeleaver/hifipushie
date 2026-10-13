@@ -331,7 +331,7 @@ def _next_name(name: str) -> str:
 
 
 def start(name: str, refs, sex=None, age: float | None = None, body: dict | None = None, gnm_base: float | None = None,
-          ethnicity: str | None = None, cameras: str = "keep", replace: bool = False, expression: bool = False,
+          ethnicity: str | dict | None = None, cameras: str = "keep", replace: bool = False, expression: bool = False,
           attach: str = "native", carry: bool = False) -> dict:
     """The block-in's first model: the person's body (from the refs model, `body` merged over it), the head's local
     layers off, identity = GNM's sampler class mean for the sex (and ethnicity, if named); the references' fitted
@@ -392,13 +392,8 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         hd.pop(k, None)
     hd["lip_close"] = True
     D = data()
-    if ethnicity:
-        en = [str(x) for x in D["eth_names"]]
-        if ethnicity not in en:
-            raise ValueError(f"ethnicity: one of {en} (GNM's sampler classes) or omit it")
-        c = np.asarray(D["eth_means"][int(male), en.index(ethnicity)], float)
-    else:
-        c = np.asarray(D["m_m"] if male else D["m_f"], float)
+    blend = class_blend(ethnicity, male)
+    c = blend["c"]
     set_identity(sp, c)
     dropped = []
     if attach == "native":
@@ -478,15 +473,43 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         left.append(f"paint layers ({len(sp['paint'])})")
     if carry and sp.get("strokes"):
         left.append(f"strokes ({len(sp['strokes'])}: carry=True)")
-    _save(name, sp, f"block_in_start: {'male' if male else 'female'} class mean{' (' + ethnicity + ')' if ethnicity else ''}, "
+    rj.setdefault("blockin", {})["fallback"] = {k_: v_ for k_, v_ in blend.items() if k_ != "c"}
+    _save(name, sp, f"block_in_start: {'male' if male else 'female'} class mean ({blend['say']}), "
           f"age {a:g}, " + ("GNM native" if attach == "native" else f"gnm_base {hd['gnm_base']:.2f}"), rj)
     entry = {"round": 0, "to": name, "start": {"refs": refs if isinstance(refs, str) else f"{len(views)} views",
              "sex": "male" if male else "female", "age": a, "gnm_base": hd["gnm_base"], "ethnicity": ethnicity,
+             "fallback": {k_: v_ for k_, v_ in blend.items() if k_ != "c"},
              "attach": attach, "dropped": dropped, "left": left, "carry": bool(carry),
              "cameras": cam_note if cam_note != "kept" else "kept"},
              "c_norm": round(float(np.linalg.norm(c)), 3), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     _log_path(rj, name).write_text(json.dumps([entry], indent=1))
     return entry
+
+
+def class_blend(ethnicity, male: bool) -> dict:
+    """THE FALLBACK CENTRE (readmix, 2026-10-13): the identity the block-in starts from and the solve's prior is centred on.
+    None = the sex's POOLED class mean (GNM's sampler, its four classes together); a class name = that class's mean; a
+    dict {class: weight} = a BLEND of the class means (weights >= 0, normalised to 1: never outside the simplex). A
+    SHAPE parameter of the start, not a label of the person. -> {"c", "weights" | None, "source": "GIVEN" | "DEFAULT", "say"}.
+    Measured (docs/notes/readmix.md "## Fallback blend"): the classes' means differ by 1-3 mm in nose / mouth width;
+    the people tested differ from the nearest class mean by 3-8 mm: the fallback is a small part of a wide nose."""
+    D = data()
+    en = [str(x) for x in D["eth_names"]]
+    if not ethnicity:
+        return {"c": np.asarray(D["m_m"] if male else D["m_f"], float), "weights": None, "source": "DEFAULT",
+                "say": "the pooled mean of GNM's classes (none given)"}
+    w = {ethnicity: 1.0} if isinstance(ethnicity, str) else {str(k_): float(v_) for k_, v_ in dict(ethnicity).items()}
+    bad = [k_ for k_ in w if k_ not in en]
+    if bad:
+        raise ValueError(f"ethnicity: one of {en} (GNM's sampler classes), or a blend {{class: weight}} of them; not {bad}")
+    if any(v_ < 0 for v_ in w.values()) or sum(w.values()) <= 0:
+        raise ValueError("ethnicity blend: weights must be >= 0 and not all 0 (a blend inside the classes, never beyond them)")
+    tot = sum(w.values())
+    w = {k_: v_ / tot for k_, v_ in w.items() if v_ > 0}
+    E = np.asarray(D["eth_means"][int(male)], float)
+    c = sum(v_ * E[en.index(k_)] for k_, v_ in w.items())
+    return {"c": np.asarray(c, float), "weights": {k_: round(v_, 3) for k_, v_ in w.items()}, "source": "GIVEN",
+            "say": "GIVEN: " + " + ".join(f"{v_:.2f} {k_}" for k_, v_ in w.items())}
 
 
 def with_anchor_points(views: list) -> list:
@@ -1008,7 +1031,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
                parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
-               damp: bool = True, chin: dict | None = None, dense: bool | None = None) -> dict:
+               damp: bool = True, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
+               hair_edge: bool | None = None, nostrils: bool | None = None) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -1058,6 +1082,16 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     if (fr.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
         cam_sd = {kk: tuple(v[:6]) + (k * fr.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
+    # (readmix) A KNOWN LENS holds its view's distance, dense or not: the prior is on the whole move since block_in_start,
+    # whose fit stood at that lens
+    lens_notes = []
+    kinds0 = b0.get("kinds") or [fr.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
+    for v_, kk in zip(rj0["views"], kinds0):
+        lm_ = fr.lens_known(v_)
+        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > fr.PHOTO_CAM_DIST_LENS:
+            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (fr.PHOTO_CAM_DIST_LENS,)
+            lens_notes.append(f"LENS: {str(v_.get('image', kk)).split('/')[-1]} was taken through a known {lm_:.0f} mm lens (35 mm equivalent): its camera's "
+                              f"distance is held to +- {fr.PHOTO_CAM_DIST_LENS:g} % of the start's")
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
     relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
@@ -1089,7 +1123,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
-                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense)
+                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense,
+                   mp=mp, hair_edge=hair_edge, nostrils=nostrils)
     dc = float(share) * np.asarray(c["dc"], float)
     # THE SEE-SAW: a settled solve hops back and forth by |dc| 2-2.6 a call (Tess 2.6, 2.0, 2.6 with the cosine of
     # consecutive steps -0.4 .. -0.5: reads that come and go, the lids' and lips' re-linearisation). A step that turns
@@ -1114,7 +1149,10 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     rj.setdefault("blockin", {})["cam_done"] = np.round(np.asarray(c["cam_done"], float), 4).tolist()   # the cameras' whole
     rj["blockin"].pop("cam_carried", None)              # (they have been laid on this head now)
     rj["blockin"]["placement"] = list(_placement(sp_src["base"]))
-    c["notes"] = cam_notes + list(c["notes"])
+    fb = (b0.get("fallback") or {})
+    fb_note = ["FALLBACK: what no picture reads stays at " + (fb.get("say") or "the pooled mean of GNM's classes (none given)")
+               + ("" if fb.get("source") == "GIVEN" else ": INFERRED (block_in_start(ethnicity=<class> | {class: weight}) sets it; a shape parameter, not a label)")]
+    c["notes"] = cam_notes + lens_notes + fb_note + list(c["notes"])
     rj["blockin"].update(relax=round(float(c["relax"]), 4), kinds=list(c["kinds"]), readers=list(c["readers"]),
                          last_dc=np.round(dc, 5).tolist(), damped=damped)
     if c.get("held"):
@@ -1132,7 +1170,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "held": list(c.get("held") or []), "expression": xp, "damped": damped, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
                     "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]], "camera_lines": list(c.get("camera_lines") or []), "bound": list(c.get("bound") or []),
-                    "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()}}
+                    "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()},
+                    "n_view": c.get("n_view") or {}, "inferred": c.get("inferred") or {}}
     if c.get("tie"):
         rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size")),
                                 "size_target": float(c["tie"].get("size_target") or 0.0)}
