@@ -1965,3 +1965,18 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   * Colour: lightening was desaturating toward grey: sun + 30 % saturation, highlights + 45 %; look W08 eevee_sat
     0.48, lit #5c4834. Back 3/4 now warm brown, but OVERSHOT: chroma 14.5 vs hers 9 (W09 pulls back).
   * RESTART: best so far th_W08 (style / look spikes/tesshair7/styles/W08_*.json), but too saturated.
+  * W09 = W08 at eevee_sat 0.38, lit #574536, gap #211912: BEST (spikes/tesshair7/styles/W09_*.json;
+    `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W09 v0,v1,v2,backl 1536`). Warm mid brown, darker top, lighter
+    lengths; chroma 10.7 (hers 9); hue 62.5 (hers 69: ours ~6 deg red, worse than W06's 66.5: NEXT a yellower lit);
+    L_sd 6.1 | 7.6, strand 3.4 | 4.3, ribbon 2.75 | 2.95, light ribbons 6 % | 9 %. Sheets th_60 (REFERENCE | W09 |
+    V86), th_61 (close-ups), th_62 (riffs re-rendered). Tests: all 92 pass (tests.sh, slots).
+  * Riffs: ringlets gone (near-straight temple strands on every riff). CORRECTION: half up's dark PIT behind the crown
+    is still there with no volume: it is not volume's (round one's read was wrong). The two other heads' hair reads
+    ashy grey: they wear the DEFAULT look (LOOK lit #56352d at eevee_sat 0.35), not Tess's: NEXT a warmer default look.
+  * STILL WRONG on W09 (blunt): the PARTING is a clean notch between two smooth lobes (hers: a soft line, hair lifting
+    and falling both ways) - item 4, NOT done; no fine HALO of fly-aways along the silhouette (hers has many); the
+    forehead-corner fine hair is missing; the part-start loops lighter but present; tail still lock ribbons from
+    behind. Not done: tess_n1; the export / cards colour only unit-tested.
+  * NEXT (ordered): (1) the parting (banks falling over the line both ways; part short); (2) a light halo along the
+    silhouette from the TOP layers only (the old halo on every lock was the crown wire-grid); (3) forehead-corner fine
+    hair; (4) default look warmer (riffs grey); (5) half up's pit; (6) tess_n1; (7) export through Blender once.
