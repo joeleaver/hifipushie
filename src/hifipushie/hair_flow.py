@@ -345,9 +345,13 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             + t ** 3 * float(tp["out"]) * 0.8
         if vo:
             u_l = (i * 0.6180339887 + 0.37) % 1.0  # the lock's layer (no draw: the random stream stays)
+            if hl[i] == 1:
+                # (the hairline's own narrow locks all at ONE height: each at its own, side by side and parallel
+                # where the hair runs straight off the line (a high ponytail, a top knot), they were pleats, th_V9a3)
+                u_l = 0.6
             lay = 1.0 - float(np.clip(vo.get("layers", 0.7), 0, 1)) * (1.0 - u_l ** 0.6)
             s_m = w0[i] * r_med * t  # m along the way
-            rb = max(float(vo.get("rise", 0.012)) * (0.75 + 0.5 * ((i * 0.7548776662) % 1.0)), 1e-3)
+            rb = max(float(vo.get("rise", 0.012)) * (1.0 if hl[i] == 1 else 0.75 + 0.5 * ((i * 0.7548776662) % 1.0)), 1e-3)
             if xp is not None:
                 # (the banks of a part stand up at once: at the general bend radius the two banks leaned apart and
                 # the part was a 2 cm wide valley, the head a heart with two lobes from the front, th_V73)
@@ -371,7 +375,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             # (the edge band rises less toward the line: it is the thin rim; hair rooted near the tie has no way to rise)
             # (the band's thin fine rim stays low: lifted, it was a grey gauze standing over the forehead's corners, th_V74)
             onv = (0.3 + 0.7 * ramp) if (edge > 0 and hl[i] == 1) else 0.85 if hl[i] == 1 else 1.0
-            onv *= min(w0[i] / np.radians(40), 1.0) * (1 + 0.5 * un * rng.uniform(-0.5, 0.5))
+            onv *= min(w0[i] / np.radians(40), 1.0) * (1 + (0.0 if hl[i] == 1 else 0.5) * un * rng.uniform(-0.5, 0.5))
             h = (1 - t ** 3) * (ride * np.minimum(t * 6, 1) + onv * lay * Hd * rise * env) + t ** 3 * float(tp["out"]) * 0.8
             vo_thick = 0.25 * onv * float(np.max(Hd))  # (a lock of a standing mass is not a 4 mm sheet: layers run into each other)
             # (how deep in the mass this lock lies, 0 = the top layer: the look's `depth` darkens the under-layers,
@@ -1162,8 +1166,9 @@ def style(tied: dict) -> dict:
     if f_lo > 0 or f_dr > 0:
         gather["front"] = {"loose": round(f_lo * T, 3), "drape": round(f_dr, 3)}  # (x T: loose only against a tight head)
     v_g = gather.get("volume") or {}
-    # (a full head arrives at the tie standing off the scalp: the hair bridges from the dome to the band)
-    tie = {"at": [round(az, 1), el], "out": round(0.022 + 0.012 * lo + 1.2 * float(v_g.get("side", 0.0)) * float(v_g.get("hold", 0.0)), 4),
+    # (a full head arrives at the tie standing off the scalp: the hair bridges from the dome to the band; + 12 mm at
+    # most: at 4.4 cm off the scalp the hair rooted round the tie left a bare pit behind it, th_V9a5 half up)
+    tie = {"at": [round(az, 1), el], "out": round(0.022 + 0.012 * lo + min(1.2 * float(v_g.get("side", 0.0)) * float(v_g.get("hold", 0.0)), 0.012), 4),
            "escape": 0, "gather": gather}
     kind = tl["kind"]
     if kind == "none":

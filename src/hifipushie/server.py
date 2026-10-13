@@ -1283,11 +1283,11 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
 def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
              note: str = ""):
     """A tied-back hairstyle (ponytail, bun, plait, half up) from a few words: style {tie: nape|low|mid|high|top,
-    side: centre|left|right, tightness 0..1, lift, part: centre|left|right|none, ears, tail {kind, length, fullness,
-    wave, tousle, to} (fullness = volume, sleek .. bushy; tousle = ragged end + strays), wisps 0..1 (soft loose hair
-    at the hairline; {amount, loose: n thick locks}), hairline 0..1 (how soft the hair's edge is: 0 a hard line),
-    escaped, neatness 0..1, half}; a riff names only what changes. carry_from: wear another model's hair
-    first. Then look_hair(views="around"). Details: guide(topic="tie_hair")."""
+    side, tightness 0..1, volume 0..1 (body: the hair stands up from the roots / the part and arcs over; 0 = a cap),
+    part: centre|left|right|none, ears, tail {kind, length, fullness, wave, tousle, to}, wisps 0..1, front, hairline
+    0..1, escaped, neatness 0..1, half}; a riff names only what changes. carry_from: wear another model's hair first.
+    look: the colour {variation, sun (sun-lightened lengths), highlights, grey_amount: all 0..1}. Then
+    look_hair(views="around"). Details: guide(topic="tie_hair")."""
     from . import hair
     r = hair.tie_style(name, _spec_arg(style) if style else None, carry_from=carry_from,
                        look=_spec_arg(look) if look else None, note=note)
@@ -1297,7 +1297,10 @@ def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None
     return (f"saved {name} v{r['version']}: " + ", ".join(f"{k} {v}" for k, v in r["kinds"].items())
             + f"\nstyle (groom.tied): {json.dumps(r['tied'])}"
             + f"\nmade: tie at az {m['at'][0]} el {m['at'][1]} ({m['out'] * 1000:.0f} mm off the scalp); the hair stands "
-              f"{ga['puff'] * 1000:.0f} mm off the head, lifts {ga['root_lift'] * 1000:.1f} mm at the roots, may hang "
+              + (f"{(ga.get('volume') or {}).get('crown', 0) * 1000:.0f} mm off the crown and {(ga.get('volume') or {}).get('side', 0) * 1000:.0f} mm "
+                 f"off the sides (volume: it rises within ~{2000 * (ga.get('volume') or {}).get('rise', 0):.0f} mm of the root, arc "
+                 f"{(ga.get('volume') or {}).get('arc', 0):.2f})" if ga.get("volume") else f"{ga['puff'] * 1000:.0f} mm off the head")
+              + f", lifts {ga['root_lift'] * 1000:.1f} mm at the roots, may hang "
               f"{ga['overhang']:.0f} deg over the hairline at the temples; parting {r['made']['parting']['side']}"
             + (f"; tail {tl['length'] * 100:.0f} cm, {tl['fullness'] * 1000:.0f} mm full, "
                + ("a bun" if tl.get("coil") else "a plait" if tl.get("plait") else "hanging") if tl else "; no tail")

@@ -298,6 +298,12 @@ Material settings go in `spec.hair.look` (sRGB hex colours):
 | grooves, groove_depth | strand grooves as bump: soft, uneven |
 | anisotropic, roughness | highlight shape |
 | tip, tip_amount | tips lighter or warmer |
+| variation | 0..1 (strands; default 0.4): natural hair is never one colour. Locks drift in lightness, sub clumps and strands in hue and saturation. 0 = one flat colour (with `vary` 0) |
+| sun | 0..1 (strands; default 0.2): SUN-LIGHTENED lengths. The hair lightens and warms with its AGE, metres from the scalp (full by 28 cm): roots stay the look's colour, a ponytail's ends are the lightest. A tail's hair counts from where the gathered hair ended, not from a new root |
+| highlights, highlight_contrast | 0..1 (strands; default 0): the share of ~6 mm RIBBONS that are lighter and warmer, starting a few cm off the root, coming and going along their length, gathered a little on some locks; contrast 0..1.5 (default 0.6) |
+| fly_light | 0..1 (strands; default 0.3): hairs that left the mass (fly-aways, the halo, wisps) read lighter |
+| depth | 0..1 (strands; default 0.5): the under-layers of hair with `volume` are darker (the shadow EEVEE's strands do not cast on each other) |
+| vary | the value noise per strand / sub clump under all of it |
 | grey | greying (where: groom.grey) |
 
 - All of this lives in the material, and the export bakes it into the maps. It never goes into geometry.
@@ -640,6 +646,8 @@ tie_hair(name, style={"tie": "low", "side": "left", "tightness": 0.85, "neatness
 tie_hair(name, style={"hairline": 0.0})                                            # riff: a gelled, hard-edged hairline
 tie_hair(name, style={"tail": {"tousle": 0.9}})                                    # riff: a messier tail (ragged end, strays)
 tie_hair(name, style={"front": {"looseness": 0.6, "drape": 0.6}})                  # riff: a held-back head with a LOOSE front
+tie_hair(name, style={"volume": 0.6})                                              # riff: BODY: the hair stands up from the part and arcs over
+tie_hair(name, look={"sun": 0.8, "highlights": 0.4})                               # riff: sun-lightened lengths, lighter ribbons
 tie_hair(other, carry_from=name)                                                   # the same hair on another head
 look_hair(name, views=["around"])                                                  # six sides with the bust
 ```
@@ -651,7 +659,8 @@ What the words mean (all optional; `tie_hair(name)` alone is an ordinary low pon
 | `tie` | nape, low, mid, high, top (or deg) | the tie's height on the back of the head |
 | `side` | centre, left, right (or deg) | off to the person's own left / right (a side ponytail) |
 | `tightness` | 0..1 | 1 = scraped back flat; 0 = loose: the hair sags between root and tie, stands off the head, hangs over the temples |
-| `lift` | 0..1 | volume at the roots and over the top (default 1 - tightness) |
+| `lift` | 0..1 | a few mm of lift at the roots and over the top (default 1 - tightness); the default of `volume` |
+| `volume` | 0..1, or {amount 0..1, crown, sides, nape (x the amount there), root 0..1, arc 0..1, layers 0..1, hold 0..1} | the hair's BODY over the head. 0 = a cap lying on the skull (every strand runs straight to the tie along the scalp); 1 = big loose hair. With volume the hair STANDS UP out of its root, and out of the parting on both banks (`root`: 0 = eases off the scalp over ~4 cm, 1 = stands straight up and bends over within a cm), carries a dome (3.4 cm at the crown, 3 cm above the temples, 1.4 cm at the nape at amount 1; widest high, close where it passes over the ear), in LAYERS (`layers`: 0 = one shell, 1 = locks at every height: a thick mass, under-layers darker by look.depth), and its way first FALLS sideways and down from the root before the tie takes it back (`arc`: convex arcs from the part to the temple; default = amount), keeping its height until just before the tie (`hold`, default 1 - tightness; the tie then stands further off the head). Default: `lift`. Measured on Tess's pictures: her outline stands 17-19 mm off the skull over the top, 17-24 mm at the sides, 30+ mm above the tie; that is amount 0.5 (crown 0.75, sides 0.6, hold 1) |
 | `part` | centre, left, right, none | none = combed straight back; a part is combed away from on both banks, in front only |
 | `ears` | tucked, covered | the hair passes over the ears' tops, or hangs over them |
 | `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, tousle 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens out of the band as a fan, full by ~9 cm. `wave`: 0 = straight, 1 = loose waves that run through the bundle (neighbouring locks nearly in step: sheets, not ropes). `tousle`: 0 = brushed (an even end, nothing leaves the outline), 1 = tousled, as SOFT irregular hair: some locks loosened out of the bundle, lock ends anywhere over the last half and open (no points, no flick), strands drawn fine at up to 2.7 x the count, single hairs and a few thin locks up to 18 cm leaving the outline with a curl; default 0.05 + 0.75 x wave. The hang, fullness and wave are the brushed tail's |
@@ -988,6 +997,9 @@ strands: a patch of the strand dials (hair.strands; guide(topic="hair"), "Strand
   taper, clump, clump_size, clump_shape, stray, tip_spread, loose, wave (m), wavelength (m), curl, random, frizz,
   flyaway, tips, roots, under, under_length, flat, soft, baby. look: a patch of the material (lit, gap, tip,
   tip_amount, vary, root, roughness, light "salon" | "flat").
+  look, the colour model (strands): variation 0..1 (default 0.4), sun 0..1 (sun-lightened lengths, by the hair's
+  age from the scalp; default 0.2), highlights 0..1 + highlight_contrast (lighter warmer ribbons; default 0),
+  fly_light 0..1, depth 0..1 (under-layers of hair with volume darker). Flat on purpose: variation 0, sun 0, vary 0.
   look also: grey_amount (share of grey strands everywhere), grey_locks (x each lock's own "grey": greying
   temples and sideburns are locks with more grey), grey (its colour), scalp_tint, cycles_fit.
 fuller: {region: m} (front, top, sides, back, nape): the EXISTING locks made fuller there, as a barber's "more at
@@ -1014,7 +1026,9 @@ strand groom (hair.style "strands") and is regrown; any groom.tie / groom.loose 
 the style makes. carry_from: first wear that model's whole hair (hairline, look, strand dials, tied style), scaled
 to this head (traced hairline heights move with the head centre). look: a patch of the hair's material.
 style keys: tie (nape | low | mid | high | top | deg), side (centre | left | right | deg, the person's own),
-tightness 0..1, lift 0..1, part (centre | left | right | none), ears (tucked | covered), tail ({kind: tail | bun |
+tightness 0..1, lift 0..1, volume (0..1 or {amount, crown, sides, nape, root, arc, layers, hold}: the hair stands up
+from the roots / the part and arcs over, in layers; 0 = a cap on the skull; default = lift),
+part (centre | left | right | none), ears (tucked | covered), tail ({kind: tail | bun |
 plait | none, length m, fullness 0..1 (sleek .. bushy), wave 0..1 (straight .. loose waves), tousle 0..1 (brushed ..
 a ragged end and strays), to: back | shoulder} or just the kind), wisps (0..1 or {amount, where: [part, front, temple,
 sideburn, nape], length [m, m], softness 0..1, loose: n thick locks a side}: soft clumps of fine hairs at the hairline;
@@ -1058,7 +1072,11 @@ stage: another model with the same head whose scene is used (a riff's copy of a 
 measure: {"view": "ref2", "mask": png, "tie": [x, y], "colour": true}: the current hair against that picture. mask =
 a hair mask in the picture's own pixels (white = hair); the text then gives IoU, area, the outlines' distance (mm)
 and, with tie = the tie's pixel in the picture, what hangs below it against hers (area %, length, width, reach in mm).
-colour: CIE L* / chroma / hue of the dense hair's shadow / mid / highlight thirds, ours | the picture's, for the
+colour: CIE L* / chroma / hue of the dense hair's shadow / mid / highlight thirds, ours | the picture's, and
+`variation` (hair.colour_variation: L_sd, strand_sd (against its 1.5 mm neighbourhood), ribbon_sd (1.5 mm against
+9 mm: clumps, highlight ribbons), mass_sd (9 against 40 mm: form, roots / lengths), ribbons {share, contrast} = the
+share of the hair that is a LIGHT ribbon and its lift in L*, chroma_sd, hue_sd): set look.variation / sun / highlights
+by these (Tess's pictures: ribbon_sd 3.1, light ribbons 10 % of the hair at + 5.8 L*; a flat look reads ~2 and 3 %), for the
 engine rendered: the numbers to set look.eevee_gain / eevee_sat (EEVEE) or look.cycles_fit / cycles_width /
 cycles_sat (Cycles) by. The look's own lights are used (look.light), not the picture's: compare bands, not single
 pixels. (Sheets before th_30 labelled "Cycles" were path-traced with 2 transmission bounces, which renders dark hair

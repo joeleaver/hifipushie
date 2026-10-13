@@ -614,9 +614,10 @@ def material(look: dict):
         sat = sat if sat is not None else M("ADD", 1.0, 0.0)
         if sun > 0:
             fs = M("MULTIPLY", smooth(age, 0.0, 0.28), sun)
-            val = M("MULTIPLY", val, M("MULTIPLY_ADD", fs, 0.6, 1.0))
-            hue = M("MULTIPLY_ADD", fs, 0.012, hue)
-            sat = M("MULTIPLY_ADD", fs, 0.25, sat)
+            # (+ 50 % value at sun 1, a little warmer: at + 60 % with + 25 % saturation a sun 0.9 tail was orange straw, th_V9a3)
+            val = M("MULTIPLY", val, M("MULTIPLY_ADD", fs, 0.5, 1.0))
+            hue = M("MULTIPLY_ADD", fs, 0.004, hue)  # (+ 0.012 turned a brown tail olive under EEVEE's desaturation, th_V84)
+            sat = M("MULTIPLY_ADD", fs, 0.1, sat)
         if hl > 0:
             # (by the sub clump, a ribbon 4-8 mm wide; a lock only tips the odds: with 0.35 of the pick on the lock
             # whole 4 cm locks went pale, grey slabs across the head and tail, th_V71)
@@ -628,7 +629,7 @@ def material(look: dict):
             # (not every strand of a ribbon is lightened: all of them, it was a strip of pale tape, th_V74)
             fh = M("MULTIPLY", fh, M("LESS_THAN", info.outputs["Random"], 0.62))
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 1.0, 1.0))
-            hue = M("MULTIPLY_ADD", fh, 0.02, hue)
+            hue = M("MULTIPLY_ADD", fh, 0.008, hue)
             sat = M("MULTIPLY_ADD", fh, 1.0, sat)
     if fly > 0:
         val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_fly"), 0.6 * fly, 1.0))

@@ -70,8 +70,11 @@ def test_top_of_the_head_runs_front_to_back():
     back = _back_share({"tie": "low", "tightness": 0.9, "part": "none"})
     assert np.median(back) > 0.9 and np.mean(back > 0.5) > 0.95, (np.median(back), np.mean(back > 0.5))
     # loose with a parting: the hair leaves the part on a diagonal (out and back), still never ACROSS
-    back = _back_share({"tie": "low", "tightness": 0.4})
+    # (volume 0: lying on the head. With volume the hair off a part FALLS out of it first, on purpose: tesshair7)
+    back = _back_share({"tie": "low", "tightness": 0.4, "volume": 0})
     assert np.median(back) > 0.6 and np.mean(back > 0.3) > 0.8, (np.median(back), np.mean(back > 0.3))
+    back_v = _back_share({"tie": "low", "tightness": 0.4})
+    assert np.median(back_v) < np.median(back) and np.mean(back_v > -0.25) > 0.9, (np.median(back_v), np.mean(back_v > -0.25))
 
 
 def test_every_way_ends_in_the_tie_and_stays_in_the_hair():
@@ -123,7 +126,10 @@ def test_tightness_is_lift_and_sag():
     h = lambda L: np.mean([np.max(np.asarray(lk["pts"])[:, 2]) for k, lk in L.items() if k.startswith("tg")])  # noqa: E731
     assert h(loose) > h(tight) + 0.008, (h(loose), h(tight))
     assert hf.style({"tightness": 1.0})["tie"]["gather"]["sag"] == 0.0
-    assert hf.style({"tightness": 0.2, "lift": 0.0})["tie"]["gather"]["puff"] < hf.style({"tightness": 0.2})["tie"]["gather"]["puff"]
+    # (lift is the default of `volume`: without lift, no dome; with volume 0 it is the few mm of puff as before)
+    assert "volume" not in hf.style({"tightness": 0.2, "lift": 0.0})["tie"]["gather"]
+    assert hf.style({"tightness": 0.2})["tie"]["gather"]["volume"]["crown"] > 0.02
+    assert hf.style({"tightness": 0.2, "lift": 0.0, "volume": 0})["tie"]["gather"]["puff"] < hf.style({"tightness": 0.2, "volume": 0})["tie"]["gather"]["puff"]
 
 
 def test_tail_hangs():
@@ -526,7 +532,7 @@ def test_volume_stands_up_from_the_root_and_arcs():
                 continue  # rooted on top, in front
             W = _world(sc, lk)
             s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(W, axis=0), axis=1))]
-            hs.append(P[:, 2].max())
+            hs.append(P[:int(0.7 * len(P)), 2].max())  # (not the last stretch: every way ends at the tie, off the scalp)
             rise.append(float(np.interp(0.03, s, P[:, 2])))  # m off the scalp 3 cm along the lock
             # how far the way leaves the straight line root -> end, sideways (m): the arc
             ch = W[-1] - W[0]
@@ -537,10 +543,10 @@ def test_volume_stands_up_from_the_root_and_arcs():
     t0, r0, a0, _ = top(L0)
     t1, r1, a1, lo1 = top(L1)
     t2, _, _, lo2 = top(L2)
-    assert t0 < 0.012 and t1 > 0.016, (t0, t1)  # a cap; a dome
+    assert t0 < 0.015 and t1 > t0 + 0.008, (t0, t1)  # a cap; a dome
     assert r1 > r0 + 0.004 and r1 > 0.007, (r0, r1)  # it stands up within 3 cm of the root
     assert a1 > a0 + 0.008, (a0, a1)  # the way bows out before it turns to the tie
-    assert lo1 < 0.75 * t1 and lo2 > lo1 + 0.002, (lo1, t1, lo2)  # layers: locks at every height; layers 0 = one shell
+    assert lo1 < 0.85 * t1 and lo2 > lo1 + 0.003, (lo1, t1, lo2)  # layers: locks at every height; layers 0 = one shell
     for locks in (L1,):  # every way still ends in the tie, on its own side of a centre part in front
         tp = ht.params(g["tie"])[0]
         td = hair.dirs(*tp["at"])

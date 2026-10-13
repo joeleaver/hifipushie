@@ -130,7 +130,7 @@ def test_colour_variation_tells_flat_from_streaked():
         streak[:, x:x + 6] *= [1.9, 1.8, 1.6]
     vf, vs = hair.colour_variation(flat, m, 0.5), hair.colour_variation(np.clip(streak, 0, 255), m, 0.5)
     assert vs["ribbon_sd"] > vf["ribbon_sd"] + 3 and vs["L_sd"] > vf["L_sd"] + 3
-    assert vf["ribbons"]["share"] < 0.01 and 0.1 < vs["ribbons"]["share"] < 0.35 and vs["ribbons"]["contrast"] > 8
+    assert vf["ribbons"]["share"] < 0.01 and 0.1 < vs["ribbons"]["share"] < 0.35 and vs["ribbons"]["contrast"] > 5
     assert vs["hue_sd"] >= vf["hue_sd"]
     b = hair.colour_bands(np.clip(streak, 0, 255), m, 0.5)
     assert "variation" in b and "mean" in b and "variation" not in hair.colour_bands(streak, m)

@@ -1668,3 +1668,188 @@ the draped temple covers the top of the ear (hers is clear); thin straight hairs
 lines; the front is a smooth curtain, not separate loosened locks; the tail is wide ribbons from behind and ~16 % big
 in profile; up-style temples still serrated close up. Coordinator's dial-only pass on the wisps: th_X1 (no sideburn
 wisps, shorter, softer), th_X2 (short sideburn wisps, less drape, 3 loose locks a side).
+
+## Joe on th_T66, marked up (2026-10-13)
+On his markup of th_T66 beside her three-quarter picture (red lines from the parting; /mnt/data/hifipushie/tesshair7/
+joe_markup_part_lift.png): "it still hasn't nailed the _shape_ or the color variation, it's flat, in both senses." Hers:
+from the part the hair RISES, arcs up and over, then out and down the side to the temple (three nested convex arcs, real
+volume over the crown and sides). Ours: nearly straight lines laid flat along the skull, diagonally down and back; one
+flat brown. Round seven, "## tesshair7".
+
+## tesshair7 (2026-10-13, "tesshair7" agent, branch `tesshair7`): volume from the parting, and a hair colour model
+STATE / NEXT: DONE: the style word `volume` (gather.volume: the hair stands up out of its root with a bend radius,
+a dome by region in layers, the way FALLS from the root before the tie takes it, held until the tie), the look's colour
+model (`variation`, `sun` by the hair's age from the scalp, `highlights` as ~6 mm ribbons, `fly_light`, `depth`),
+`hair.colour_variation` (strand / ribbon / mass contrast, share of light ribbons; in look_hair's measure), the
+stand-off measure, tests, guide, tie_hair's text. BEST for Tess = th_V86 (one tie_hair call on tess_a1, style / look
+below). Sheets workspace/human_renders/th_50_tess_volume_colour.png (REFERENCE | th_V86 | th_T66; front, three-quarter,
+profile, back 3/4, crown), th_51_part_arcs.png (strand paths from the parting, hers | ours | T66), th_52_riffs.png (nine
+riffs on hu_w30 / hu_m30). SHAPE: yes, the hair now rises from the part and arcs, and the outline is hers within ~3 mm
+over the top and sides; NOT yet her texture (a smooth helmet, no loose locks) and the up-styles / half up are WORSE with
+volume (pleats, a pit). COLOUR: varies now (ribbons, lighter lengths), about two thirds of her measured variation.
+NEXT: the list at the end.
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair7/ (copies of the .sh in spikes/tesshair7/): run.sh <script> (this
+worktree's code on the main workspace, capped); r7.sh <NAME> [views] [size] (ONE heavy job: th_<NAME> = tess_a1 +
+tie_hair(styles/<NAME>.json, carry_from th_T66, looks/<NAME>.json) + seed 0 through the tools (riff7.py), lock plot,
+fitted-camera tiles (shots7.py), standoff.py, colvar.py, a row); crop.py <model> [other] (head crops hers | model |
+other). Scripts `spikes/tesshair7/`: hv.py (several scripts one after another in ONE process holding resources.heavy:
+the light slots were starved all day, ten solver chains queued, so every small step rode with a render), pt.py (tests,
+a file a process, inside hv), lockplot.py (locks' lines from five sides, NO Blender, + the top layer's height by
+region), standoff.py, colvar.py, flowlines.py, riffs7.py, mk_sheets7.py, shots7.py (= tesshair5's shots5 + S= / drop=
+/ tag= isolation in memory, view "crown"). Models th_V70 .. V86 (Tess rounds), th_V9a1..a5 / th_V9b1..b4 (riffs).
+FOUND ON THE WAY: th_T04 .. th_T46 and th_T34 disappeared from the workspace while this round ran (2026-10-13 ~12:20;
+not this agent: its scripts only write th_V7* .. V9*). The built stage `_g3_th_T04` is still there and shots7.py uses it
+as built; spikes that call stage.ensure("th_T04") (shots5, iso, tailfit, cu.sh) fail until that model is restored.
+
+### What groomers and look-dev do (checked before building)
+- Root lift is a DIRECTION given to the guides at the root, then a bend: Houdini's Guide Process Lift / Bend / Set
+  Direction on the first stretch of the guides, masked to the root zone (Gnomon, "Creature Grooming Techniques in
+  Houdini"); guides laid in LAYERS from the bottom up, upper over lower (Gnomon, "Creating a Female Hairstyle for
+  Production with Maya XGen"; SideFX forum topic 84298). -> rise with a bend radius per lock, locks at several heights.
+- Hair colour in production: melanin + a per-strand random (Blender's Principled Hair BSDF: Random Color "realistic
+  hair should have a minimum of variance between each strand"); a root -> tip ramp (MetaHuman Groom colour ramp;
+  Softimage's root / tip colours with a crossover); Redshift's Hair Random Color on hue / saturation / value;
+  highlights keyed to the clump. -> variation on H / S / V per lock, sub clump and strand; a gradient by the hair's
+  age; highlight ribbons by a random per ribbon across the lock.
+
+### 1a. Measured first: how far the hair's outline stands off the skull (standoff.py)
+The model's scalp rays projected through each picture's fitted camera = the skull's silhouette; the hair's outline read
+off her picture and off our render through the same camera; along rays from the head centre's pixel (0 = straight up,
++ = image right), mm from the skull's edge to the hair's edge. hers | th_T66 | th_V86:
+| where | hers | th_T66 | th_V86 |
+|---|---|---|---|
+| front view, over the top (-30..+30) | 17-19 | 8-17 (8 at the part) | 16-23 |
+| front view, her right side (-90..-40) | 17-19 | 13-17 | 21-23 |
+| front view, her left side (+40..+90) | 20-24 | 15-19 | 20-22 |
+| three-quarter, top and back (+10..+90) | 18-32 | 15-18 | 22-25 |
+| profile, over the forehead (-60..-50) | 13-15 | 5-6 | 6-11 |
+| profile, the top (0..+30) | 17-23 | 14-16 | 21-23 |
+| profile, back of the crown to the tie (+40..+80) | 28-38 | 15-16 | 21-24 |
+So hers stands ~18 mm off the skull all over the top and sides and 3-4 cm above the tie; T66 was 5-15 mm short
+everywhere and lowest AT the part (a dent where hers has no dent). Not the 3 cm one would guess by eye: the read
+"flat" was mostly the missing rise at the root and the straight paths. Still short on th_V86: the forehead (the hair's
+first cm over the hairline) and the back of the crown above the tie.
+Her arcs (th_51, flowlines.py: stream lines of the image's own strand direction from seeds on both banks of the part,
+the same place on the head in every panel): from the front they leave the part ~20 deg below horizontal and bow 18 mm
+off their chord; T66's 13 deg and 22 mm, th_V86's 19 deg and 22 mm. This measure is WEAK: at the outline the tracer
+rides the silhouette in all three, and in the three-quarter her lines run back over the crown (52 mm long, they leave
+the mask) where ours run 11 cm. The lock plot (cyan lines) is the honest picture of ours.
+
+### 1b. Why th_T66 was flat (by construction; lock plot out/locks_th_T66.png)
+- NO RISE: a lock's height was ride 2 mm + body x way + root_lift + puff x sin: at tightness 0.85 that is 2.7 mm of
+  root lift and 4.4 mm of puff (x 1.7 in front with front.looseness): the top layer 14 mm off the scalp at most, reached
+  halfway along the lock, 0 at the root. `lift` only scaled those few mm: a shell offset, no direction at the root.
+- STRAIGHT WAYS: paths() steps toward the tie from the first step ("always on toward the tie", v . to >= 0.35), with a
+  3.5 cm wide push off the part and a sag that is zero where the head is flat: off the part the hair ran diagonally
+  back in nearly straight lines (the red locks of the plot). Joe's lines exactly.
+- ONE SHELL: every lock at about the same height; nothing under it but the scalp layer.
+
+### 1c. The construction now (`hair_flow.gather` / `paths`, tie key gather.volume; style word `volume`)
+- RISE: h = layer x dome x (1 - exp(-s / rise)) x hold: the hair leaves the scalp at atan(dome / rise) (64 deg at 2 cm
+  over 1 cm) and is over within ~2 x rise. 18 points a lock, denser at the root (t^1.6). The banks of a part rise at
+  0.35 x the radius (at the full radius the two banks leaned apart: a 2 cm valley, the head a heart with two lobes).
+- DOME by region: crown (sin(el)^1.5), sides (fullest high, x 0.3 where the hair passes over the ear: full down to the
+  ear the head was widest at the cheek, a bob), the back of the head = the crown's value down to the nape's.
+- LAYERS: each lock its own height 1 - layers x (1 - u^0.6); lock thickness + 0.25 x dome; the lock's depth is its
+  strands' `shade` (hp_sh) and the look's `depth` darkens the under-layers. The hairline's own narrow locks all sit at
+  ONE height (side by side at their own heights they were pleats on the up-styles).
+- ARC: for the first 0.6 rad the way's direction is mixed with the FALL (down the head; sideways out of the part while
+  the head is still flat; never forward), after a 1 cm lean back along the part (tied hair was pulled back first), and
+  the fall stops 8 deg above the ear's line (falling all the way, every way ran along that line: a curtain with a
+  thick lower edge) but may reach the hairline over the forehead's corners.
+- HOLD: the height is kept until 0.4 + 0.45 x hold of the way, then drawn in; the tie stands up to 12 mm further off
+  the head with it.
+- With volume: strands loose / frizz / flyaway / halo + by V, gather wave + 6 mm x V, the scalp tint's ramp 22 -> 7 mm,
+  the edge band full by 5 mm at the forehead too.
+- Style (hair_flow.TIED / VOLUME): `volume` 0..1 or {amount, crown, sides, nape, root, arc, layers, hold}; at 1 the
+  top layer stands 3.4 / 3.0 / 1.4 cm off the crown / sides / nape; default = `lift` (= 1 - tightness): a sleek head
+  stays a cap, a loose one has body. volume 0 = the old gather exactly.
+
+### 2. The colour model (blender_strands.material / lens_group v16, hair_strands.lock_guides, hair.LOOK)
+- New strand attributes: hp_lv (a number per lock), hp_ch (per highlight RIBBON: by where the strand starts across
+  its lock, hp_hk = lock width / 6 mm ribbons), hp_a0 / hp_a1 (the hair's AGE in m from the scalp at the lock's start
+  / end: a tail's locks start at the median length of the gathered hair, not at a new dark root), hp_sh (depth in the
+  mass), hp_fly (hairs that left the mass: fly-aways, halo, single-hair objects; NOT the hairline's fine rim).
+- Look keys: `variation` (0.4: lock value +-14 % x v, hue +-0.01 x v by sub clump, saturation +-15 % x v by strand),
+  `sun` (0.2: value + 50 % x sun and a little warmer by age, full by 28 cm), `highlights` (0: the share of ribbons
+  lighter (x 2 at contrast 1) and more saturated, 62 % of a ribbon's strands, from 1-7 cm off the root, coming and
+  going along the hair), `highlight_contrast` (0.6), `fly_light` (0.3), `depth` (0.5). The defaults VARY (every hair
+  model's strands change a little on its next render); flat on purpose = variation 0, sun 0, vary 0.
+- Export: the attributes are on the evaluated curves (USD keeps per-curve attributes; Alembic does not). NOT DONE: a
+  baked per-strand colour primvar for the groom export, and the cards' atlas (hair_cards draws strands with `vary`
+  only): game cards do not get the model yet.
+- Measure: hair.colour_variation / colour_bands(mm_px) (in look_hair's measure "colour"); colvar.py = hers | ours over
+  the dense hair both have, three views:
+  | | hers | th_T66 | th_V86 |
+  |---|---|---|---|
+  | L_sd (all of it) | 7.6 | 3.9 | 5.7 |
+  | strand_sd (1.5 mm) | 4.2 | 2.0 | 2.5 |
+  | ribbon_sd (1.5 vs 9 mm) | 3.0 | 1.75 | 2.6 |
+  | mass_sd (9 vs 40 mm) | 2.4 | 1.6 | 1.8 |
+  | light ribbons: share / lift L* | 10 % / 5.7 | 1 % / 6.8 | 6 % / 6.0 |
+  | chroma_sd / hue_sd | 3.2 / 5.7 | 0.8 / 2.3 | 1.6 / 2.7 |
+  Mean colour th_V86 L* 19-23 (hers 17-20), chroma 10.8 (hers 8-9), hue 65.6 (hers 69.7: ours 4 deg red).
+
+### Rounds (r7.sh; out/row_<NAME>.jpg, c_th_<NAME>.jpg)
+- V70 (volume 0.65, first grow): real volume and arcs at once, but a bob: sides 29 mm, a deep open part, the front
+  fell FORWARD over the temples; per-lock value +-20 % made the tail's locks flat painted slabs.
+- V71 / V72: lean back before the fall, never forward, thicker locks; highlights picked 35 % by the lock = whole 4 cm
+  locks pale grey slabs; by the sub clump alone (4 mm) they averaged away; neatness 0.75 turned the tail into a stiff fan.
+- V73 / V74: ribbons of 1.7 sub clumps, then by the strand's place across the lock; depth shade; the part's banks
+  rise at once; the fall stops above the ear. Ribbons uniform along their length were pale tape: they come and go, 62 %
+  of their strands.
+- V75 .. V80, the GREY VEIL over the forehead's corners: not fly_light, not the edge band (drop tg0_*), not the scalp
+  layer's strands (S.under 0), not the scalp tint (look.scalp_tint 0): it was the WISPS (drop tw*): 36 clumps x 14-37
+  fine half-transparent hairs + 56 baby hairs lying on the corners, which the flat hair used to cover and the lifted
+  mass exposes. th_V81+: wisps amount 0.45, front.looseness 0.35, no swoop / loose locks, wisps only at temple /
+  sideburn (a front wisp hung across the eye).
+- V84 -> V86: the look. lit shifted toward yellow + sun's hue shift gave an olive-grey tail (V84); eevee_sat 0.62 a
+  ginger one (V85, chroma 14.5); V86 = eevee_sat 0.5, lit #58483a.
+th_V86 = tie_hair(style {"tie": "low", "side": 20, "tightness": 0.85, "neatness": 0.95, "volume": {"amount": 0.5,
+"crown": 0.75, "sides": 0.6, "hold": 1.0, "root": 0.85}, "front": {"looseness": 0.35, "drape": 0.6, "locks": 0},
+"wisps": {"amount": 0.45, "softness": 0.7, "loose": 0, "where": ["temple", "sideburn"]}, "tail": {"length": 0.195,
+"wave": 0.6, "fullness": 0.43, "tousle": 0.55}}, carry_from th_T66, look {"variation": 0.7, "sun": 0.35, "highlights":
+0.55, "highlight_contrast": 0.7, "depth": 0.8, "specular": 0.3, "roughness": 0.5, "vary": 0.45, "eevee_gain": 1.22,
+"eevee_sat": 0.5, "lit": "#58483a", "gap": "#221a13", "fly_light": 0.15, "cycles_width": 1.8, "cycles_sat": 0.65}) +
+groom seed 0.
+
+### Riffs (riffs7.py: tie_hair + sync + look_hair on hu_w30 / hu_m30, nothing tuned; th_52)
+- sleek low, volume 0, flat colour (both heads): the old cap, reads. LOOSE low, volume 0.7 (both): reads as hair with
+  body at once, arcs off the part; big (a bouffant), a kink where the lifted side meets the ear, from behind a small
+  furrow where the part ends. Low plait, volume 0.4, highlights: reads, fine streaks.
+- WORSE WITH VOLUME: the high ponytail and the man bun (part none, volume 0.5): radial RIDGES round the hairline
+  (corduroy), white specks of scalp at the crown; half up (volume 0.6): a bare PIT behind the crown above the tie.
+  Hair pulled UP to a tie does not fall from its root; the dome and layers are a low tie's.
+- sun 0.9 on a light brown: an orange straw tail from behind (too strong; toned down once, not re-judged).
+- Cost: tie_hair 55-60 s the first time on a head, 1 s after; sync 100 s; look_hair three views 30-45 s.
+
+### BLUNT READ of th_V86 beside her pictures (th_50)
+1. SHAPE: clearly closer than th_T66. The hair stands up on both banks of the part, arcs over and down the side to
+   the temple, the top is a dome instead of a cap, the ear's top is clear (hers), the outline is within ~3 mm of hers
+   over the top and sides. Wrong: it is a SMOOTH HELMET (one continuous combed shell; hers is loose locks with air,
+   strands crossing, a halo of flyaways); the part is a clean notch with two lobes where hers is short and soft; the
+   forehead's first cm lies low (6-11 vs 13-15 mm); the back above the tie is 1 cm short; the hairline is a clean line
+   again (the wisps were cut back to remove the veil).
+2. COLOUR: no longer one brown: lighter ribbons over darker hair, lighter lengths and tail, darker under-layers.
+   Wrong: about two thirds of her variation by measure; ribbons are regular fine pinstripes where hers are irregular
+   soft ribbons; no warm highlight where the light catches the arcs (that is shading, not pigment: EEVEE's strands
+   have no real specular lobe here); chroma a little high, hue 4 deg red.
+3. TAIL: as th_T66's (not this round's), lighter by `sun`; still wide ribbons from behind.
+
+### Dead ends
+- Per-lock value +-20 %: painted slabs. Highlights by the lock: pale slabs; by one 4 mm sub clump: invisible.
+- The fall with a forward component (- 0.3): a bob's curtain. Falling from the first mm: an open valley.
+- Lifting the edge band's thin rim with the mass: a gauze standing over the corners.
+- neatness lower for looseness on the head: it is the tail that changes (a stiff fan).
+- Shortening the scalp tint's ramp / the band's ramp to remove the veil: not the cause (kept: harmless).
+
+NEXT: (1) the head as LOCKS, not a shell: with volume the gather's 4 cm locks should separate (narrower, their own
+waves and heights changing ALONG the lock, a share lifted or crossing), a halo; the part shorter and softer (banks
+that fall over it); (2) up-styles and half up with volume: no fall / layers toward a tie above the root (volume there
+= a smooth pouf with the hairline's hair rising evenly), the pit behind a mid tie; re-judge every riff; (3) front
+wisps again without the veil (fewer hairs a clump, rooted ON the lifted hair's edge, opaque); the forehead's first cm;
+(4) colour: ribbons of irregular width, the cards' atlas and the groom export get the model (a baked per-strand
+colour), a highlight that follows the light (anisotropic strand shading in EEVEE); (5) tess_n1 was NOT tried (the
+GNM-native head's stage would need a build); (6) restore th_T04 or point the tesshair spikes at `_g3_th_T04`;
+(7) flowlines.py seeds only on the bank the camera sees, and a mask that keeps her flyaway edge out.
