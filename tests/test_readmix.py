@@ -243,7 +243,7 @@ def test_one_lens_convention_and_a_crop_frame():
     got = hm.lens_prior({"size": [w, h], "lens_mm": 85.0, "frame": [6000, 4000]})[0]
     assert abs(got - ff) < 1e-6 and got > 3 * hm.lens_prior({"size": [w, h], "lens_mm": 85.0})[0]
     assert abs(fr.lens_mm({"f": ff, "size": [w, h]}, frame=[6000, 4000]) - 85.0) < 1e-6
-    assert 1.0 < fr.LM_NOSE_WIDE < 2.5
+    assert fr.LM_NOSE_WIDE == 0.0                                            # off: failed on held-out subjects
 
 
 def test_fallback_blend_stays_on_the_simplex():

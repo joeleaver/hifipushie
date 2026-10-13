@@ -2514,7 +2514,9 @@ LM_PX = 0.6                           # picture px: the detector's own scatter o
 # PHOTOGRAPH draws the nose base (landmarks 31-35) +1.7 / +1.6 mm wider than on our render of the same head (two scanned heads;
 # -0.1 on a render of a scan): our renders of a nose do not look to it like a photographed one. That much width is taken out
 # of the nose-base anchors of a view styled "photo", in proportion to each point's place across the base (0 = left as it was)
-LM_NOSE_WIDE = 1.65
+LM_NOSE_WIDE = 0.0          # OFF (2026-10-14): scored on the three HELD-OUT HSRD subjects it was not calibrated on, the 1.65 mm
+#                             took the nose base from +0.6 / +1.4 / +0.6 mm to -0.9 / -0.8 / -1.5 (mean |error| 0.87 -> 1.07): the
+#                             wide nose of the two calibration heads is not a constant of the detector
 
 
 def _detect_model(head, cam, box):
