@@ -2219,8 +2219,11 @@ PHOTO_CAM_DIST_DENSE = 40.0
 # pictures went to 0.65 x / 1.6 x / 3 x their EXIF distance under PHOTO_CAM_DIST_DENSE, worth 3-4 mm of jaw width
 PHOTO_CAM_DIST_LENS = 7.0
 MP_DROPS_ANCHORS = False    # see reference_views
-LENS_PINS = True            # a view with a known lens: its focal length is PINNED and its scale freedom moves the camera's distance
-#                             (cam_moved(lens=True)): distance = focal x head size / pixels, not a free number under a prior
+LENS_PINS = False           # True: a view with a known lens has its focal length PINNED and its scale freedom moves the camera's
+#                             distance (cam_moved(lens=True)): distance = focal x head size / pixels. BUILT, and OFF: on a scanned head
+#                             (h112, the rig's lens told) four chains with it ended at face 2.45-2.67 / lower face 2.9-3.6 mm against
+#                             2.02-2.15 / 2.3-2.5 for three without (the lens held by PHOTO_CAM_DIST_LENS's prior instead, the front
+#                             camera's distance within 1 %): cause not found (docs/notes/readmix.md "## Distance")
 
 
 CLOSE_M = 0.6               # a front picture taken nearer than this: strong perspective, the distance must be KNOWN

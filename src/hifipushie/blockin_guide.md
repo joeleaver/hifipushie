@@ -113,12 +113,14 @@ eye catches what the points miss; the target table catches what your eye misses.
      line per view (turn / pitch / distance at the call's start -> end, the whole move against its prior) and FAR FROM
      ITS START when a camera stands past 1.5 sd of it: check that picture's stated angle.
      DISTANCE is the one thing a picture does not say, and the reply has a DISTANCE line per front / 3-4 view.
-     KNOWN LENS (`lens_mm` on the view = the 35 mm equivalent on the picture's DIAGONAL, f / diagonal x 43.27; or the
-     file's EXIF FocalLengthIn35mmFilm x DigitalZoomRatio; a picture CROPPED after capture is refused with a warning,
-     a resize is fine): the focal length is PINNED and the picture's scale IS the camera's distance (d = focal x head
-     size / pixels): no free distance, with the dense landmarks too. On a scanned head through the rig's cameras the
-     distance comes out to 1 % where the head's size is the class mean's, and off by the head's own size error
-     otherwise (a head 6 % large: 7-9 % near): the size hold's +-5 % is in the distance. NO LENS: the start stands at
+     KNOWN LENS (`lens_mm` on the view = the 35 mm equivalent on the picture's DIAGONAL, f / diagonal x 43.27, the
+     convention of EXIF and of every lens the reply prints; a head CROPPED from a larger photo: add `"frame": [w, h]`,
+     the uncropped frame in the crop's pixels; or the file's EXIF FocalLengthIn35mmFilm x DigitalZoomRatio; a picture
+     cropped after capture without a frame is refused with a warning, a resize is fine): block_in_start's fit stands
+     at that lens and the solve holds the camera's distance to +-7 % of it on its whole move, with the dense landmarks
+     too. On two scanned heads through the rig's cameras the distance then comes out to 1 % where the head's size is
+     the class mean's, and off by the head's own size error otherwise (a head 6 % large: 7-9 % near): the size hold's
+     +-5 % is in the distance. NO LENS: the start stands at
      a 70 mm portrait (a view flagged `"generated": true`: 105 mm, what our generated head shots behave like) and the
      distance is free under the prior above; the DISTANCE line says NOT KNOWN, what a 20 % error costs at that
      distance, and whether a side view is there to pin the face's depth. WHAT A DISTANCE ERROR COSTS (a 20 % error,

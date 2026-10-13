@@ -13,6 +13,10 @@ if "mp" in kw:
     mpread.ENABLED = kw["mp"] == "1"
 if "he" in kw:
     fr.HAIR_EDGE = kw["he"] == "1"
+if "lenspin" in kw:
+    fr.LENS_PINS = kw["lenspin"] == "1"
+if "nosebias" in kw:
+    fr.LM_NOSE_WIDE = float(kw["nosebias"])
 if "nos" in kw:
     fr.NOSTRIL = kw["nos"] == "1"
 if "lens" in kw:
