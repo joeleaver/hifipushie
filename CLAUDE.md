@@ -87,6 +87,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   -> full notes: docs/notes/faceshapes.md
 - `blockin.py` + tools block_in_start / block_in_look / block_in_step / lid_read (guide topic "block_in"): THE DEFAULT for a
   person's head from pictures (the artist block-in loop). -> full notes: docs/notes/gnm_atlas.md "## blockin"
+- Native default (2026-10-12): block_in_start makes a GNM-NATIVE head (true base, own size, nothing of ours on the surface;
+  neck girth under an ANSUR prior in the solve). -> full notes: docs/notes/gnm_atlas.md "## nativedefault"
 - Joint solve (2026-10-11): `blockin.solve_step` / MCP `block_in_solve` applies `face_ruler.compare`'s ONE solve over
   all reference views (outlines, irises, limbus, lids, lips; prior on the whole identity; cameras "trust" | "free")
   as a block-in step; judge heads with spikes/reruns/jsheet.py (references projected as skin + blend).
