@@ -140,6 +140,30 @@ def test_landmark_set_v2_keeps_the_skin_and_adds_gnms_own_pieces():
     assert denselm.by_count(L1["n"]) is L1 and denselm.by_count(n) is L2
 
 
+def test_landmark_set_v3_keeps_v2_and_adds_the_lip_borders_seam_and_nose_base():
+    L2, L3 = denselm.landmarks_v2(), denselm.landmarks_v3()
+    n2, n = L2["n"], L3["n"]
+    assert L3["n_v2"] == n2 and (L3["gnm_all"][:n2] == L2["gnm_all"]).all() and (L3["region"][:n2] == L2["region"]).all()
+    assert (L3["mirror"][:n2] == L2["mirror"]).all() and (L3["lm68"] == L2["lm68"]).all()       # old rows, old meaning
+    assert len(set(L3["gnm_all"].tolist())) == n and (L3["mirror"][L3["mirror"]] == np.arange(n)).all()
+    T, gr, present, _ = denselm._groups()
+    P = T[L3["gnm_all"]]
+    assert np.abs(P[L3["mirror"]] - P * [-1, 1, 1]).max() < 0.001
+    reg = L3["region"][n2:]
+    assert set(reg) == {"lip_border_upper", "lip_border_lower", "lip_seam", "nose_base", "philtrum"}
+    for r, lo in (("lip_border_upper", 12), ("lip_border_lower", 12), ("lip_seam", 24), ("nose_base", 30), ("philtrum", 8)):
+        assert (reg == r).sum() >= lo, r
+    new = P[n2:]
+    lips = P[:n2][np.isin(L2["region"], ("lips", "mouth"))]
+    for r in ("lip_border_upper", "lip_border_lower", "lip_seam"):                  # on the mouth: within its box
+        q = new[reg == r]
+        assert (q.min(0) > lips.min(0) - 0.008).all() and (q.max(0) < lips.max(0) + 0.008).all(), r
+    ub, lb = new[reg == "lip_border_upper"], new[reg == "lip_border_lower"]
+    assert ub[:, 2].mean() > lb[:, 2].mean()                                          # the upper border above the lower
+    assert new[reg == "nose_base"][:, 2].mean() > ub[:, 2].mean() and np.abs(new[reg == "philtrum"][:, 0]).max() < 0.015
+    assert denselm.by_count(n) is L3 and denselm.current() is L3
+
+
 def test_merge_reads_either_network_and_the_distance_row():
     rng = np.random.default_rng(0)
     for L, extra in ((denselm.landmarks(), 0), (denselm.landmarks_v2(), 1)):
