@@ -2035,6 +2035,27 @@ def _normal_obs(head, view, differential=None):
 
 
 SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture's traced border
+# (readmix, 2026-10-14) THE LIPS' READS ON A PHOTOGRAPH ARE NOT THE MODEL'S BORDER ROWS: at the TRUE head (seven HSRD training
+# subjects, the scan-fitted identity through the rig's cameras) the photograph's colour edge lies 0.5-2.4 mm ABOVE GNM's
+# upper border row and 0.4-4.0 mm BELOW its lower one (most at the middle), and MediaPipe's border points and the
+# differential anchors (picture minus our render) agree: our render's lips look thinner to every reader than the same
+# lips photographed. Uncorrected, the solve makes lips 3-8 mm too tall. Each read's mean vertical offset (per border
+# position / point) is taken out of a PHOTO's lip reads (lip_photo_bias.json; spikes/readmix/lipbias.py); per-person
+# scatter remains (sd 0.5-2.5 mm). The colour edge itself belongs to the PAINT, placed from the picture.
+LIP_PHOTO_BIAS = True
+
+
+def lip_bias(kind: str, key: str) -> float:
+    """The calibrated vertical offset (mm, + = the photo's point lies lower) of a lip read at the true head; 0 if none."""
+    if not LIP_PHOTO_BIAS:
+        return 0.0
+    if "lipcal" not in _C:
+        import json as _json
+        from pathlib import Path as _P
+        f = _P(__file__).with_name("lip_photo_bias.json")
+        _C["lipcal"] = _json.loads(f.read_text())["cal"] if f.exists() else {}
+    v = (_C["lipcal"].get(kind) or {}).get(key)
+    return float(v[0]) if v else 0.0
 
 
 def _gnm_to_model(head) -> dict:
@@ -2069,13 +2090,19 @@ def _lip_obs(head, view, ev):
         X = np.asarray(head["V"], float)[mv]
         px = _cam_points(cam, X)[1]
         d, q, ins = bl._poly_dist(px, (np.asarray(ev[nm], float) - o_) / 1.0)
+        _, qc = _cam_points(cam, np.asarray(head["L"], float)[[48, 54]])
+        c0_, ex_ = qc.mean(0), (qc[1] - qc[0]) / max(np.linalg.norm(qc[1] - qc[0]), 1e-9)
+        half_ = 0.5 * np.linalg.norm(qc[1] - qc[0])
+        photo = view.get("style") == "photo" and not view.get("render")
         for i in np.flatnonzero(ins):
             Jp, mm1 = _proj_jac_pt(cam, X[i], head["B"][:, mv[i]])
             if d[i] < 1e-6:
                 n = np.array([0.0, 1.0 if nm == "lower" else -1.0])
             else:
                 n = (q[i] - px[i]) / d[i]
-            out.append({"type": "lip", "view": view["kind"], "name": f"lip_{nm}_{i}", "o": float(d[i]) * mm1 / s_, "n": n.tolist(),
+            ub = int(np.clip(round((float((px[i] - c0_) @ ex_) / max(half_, 1e-9) + 1) * 5), 0, 10))
+            b_ = lip_bias("lip", f"{nm}:{ub}") if photo else 0.0
+            out.append({"type": "lip", "view": view["kind"], "name": f"lip_{nm}_{i}", "o": float(d[i]) * mm1 / s_ - b_ * float(n[1]), "n": n.tolist(),
                         "J": (n @ Jp) * mm1, "sig": SIG_LIP, "p": list(map(float, px[i])), "q": list(map(float, q[i])),
                         "X": list(map(float, X[i]))})
     return out
@@ -2578,7 +2605,8 @@ def _anchor_obs(head, view, points, det, skip=()):
                 fs = min(1.0, wd * mm1 / max(float(np.linalg.norm(L[35] - L[31])) * 1000.0, 1e-6))     # a turned view shows less of it
                 nb = LM_NOSE_WIDE * fs * (float((p - a_) @ u_) / wd - 0.5) * u_
         for ax in ((0, 1) if i not in CHIN_LM else chin_ax):
-            ob = {"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1 - float(nb[ax]),
+            lb_ = lip_bias("landmark", key) if (ax == 1 and 48 <= i <= 67 and view.get("style") == "photo" and not view.get("render")) else 0.0
+            ob = {"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1 - float(nb[ax]) - lb_,
                   "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
                   "X": list(map(float, L[i])), "diff": True}
             if stretch:       # THE DETECTOR'S OWN STRETCH (chinread): its face on a photo is not its face on our clay render

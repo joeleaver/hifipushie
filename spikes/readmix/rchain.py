@@ -17,6 +17,8 @@ if "lenspin" in kw:
     fr.LENS_PINS = kw["lenspin"] == "1"
 if "nosebias" in kw:
     fr.LM_NOSE_WIDE = float(kw["nosebias"])
+if "lipcal" in kw:
+    fr.LIP_PHOTO_BIAS = kw["lipcal"] == "1"
 if "alar" in kw:
     fr.ALAR = kw["alar"] == "1"
 if "alarbias" in kw:

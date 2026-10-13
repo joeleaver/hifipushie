@@ -151,6 +151,8 @@ def obs(head: dict, view: dict, P, mix: dict | None = None, neff: float | None =
         _, q = fr._cam_points(cam, X[None])
         p = np.asarray(P[int(pt["mp"])], float)
         s_ = float(np.hypot(sg, PX * mm1))
+        if view.get("style") == "photo" and not view.get("render") and pt["feature"] in ("vermilion border", "lip seam", "commissures"):
+            b = b + np.array([0.0, fr.lip_bias("mp", f"mp{pt['mp']}") if abs(yaw) < 25 else 0.0])
         for ax in (0, 1):
             out.append({"type": "mp", "view": view["kind"], "name": f"mp{pt['mp']}.{'xy'[ax]}", "o": float(p[ax] - q[0, ax]) * mm1 - float(b[ax]),
                         "J": Jp[ax] * mm1, "sig": s_, "p": list(map(float, q[0])), "q": list(map(float, p)), "X": list(map(float, X)),
