@@ -275,3 +275,55 @@ sets used another convention (f / width x 36 against lens_prior's f / diagonal x
    front 1.06 m = 113 mm eq., 3/4 1.15 m = 114 mm, "profile" 0.98 m = 93 mm (each weakly read: +7 / +20 / +3 % from the
    start). Stored as humanfit_map.GENERATED_LENS = 105 mm +- 20 % for views flagged {"generated": true}; nothing sets that
    flag yet (NEXT: the brief's own shots should carry it). The held-out line's notes were not read for this.
+
+### After Joe's "we can't count on good pictures out in the wild" (the coordinator's reorder: the NO-LENS case is primary)
+BUILT: face_ruler.distance_inferred: when a front / 3-4 view has no known lens, the widths that run ACROSS the face's depth
+(cheekbone_width, skull_width, jaw_width, gonial_width) are listed INFERRED with a +- in mm = what the apparent width
+changes by if the camera stood anywhere from half to twice its place (DIST_RANGE), in the reply as a WARNING and in
+solve["inferred"]; the STRONG PERSPECTIVE warning under 0.6 m. Measures at one depth (eye spacing, mouth, lids, lips, the
+nose's own width) are not listed: geometry says they do not depend on it (0.3 mm at 0.3 m).
+NOT BUILT (NEXT, in the order I would do them):
+1. the sigma of the reads themselves widened by their distance-dependence (today the uncertainty is REPORTED, the solve
+   still fits one distance): per read d(read)/d(log distance) is already a column (the camera's distance freedom): giving
+   that freedom a prior as wide as the range (log-uniform 0.25-3 m is sd ~0.7 in log) IS the marginalisation, but
+   solvecams measured what it costs on a head still far from the person (the column soaks up shape: a true camera drifted
+   +28 %); it needs the cameras-first rounds to hold identity and the wild benchmark below to judge.
+2. distance estimated from the picture: the perspective cues exist in the solve only as that column; the dense network's
+   near / far head is in denselm's coming weights, not the pilot's; picture type as a prior (a face filling a tall phone
+   frame): not built.
+3. THE WILD BENCHMARK (not run: no slot time left today; every piece exists): groundtruth's rast.py draws the Lee
+   Perry-Smith scan through any camera (distance 0.3 / 0.5 / 1 / 2 m, crops, light), the HSRD photos can be stripped and
+   cropped (hsrd.head_view), gexpr.py makes a smiling front; conditions: no metadata, random crop + resize, one front only,
+   front + one off-angle at a stated-wrong angle, selfie distance, a slight smile, hair over the outline (the tied-hair
+   head g of solvecams; a loose groom needs a dressed stage), uneven light. Score: nose / lips / jaw / face against the
+   scan AND whether |error| <= the stated +- for every measure distance_inferred lists (coverage), with EXIF and without.
+4. several casual pictures of one person, each with its own unknown distance: the solve already gives every view its own
+   camera; a second front picture needs views keyed by picture instead of by kind (reference_views keys reads by "front" /
+   "3q" / "profile": two fronts would share camera columns: solvereads' note): a real change, not done.
+
+## Hair-edge read (step 5; face_ruler._hair_edge_obs, type "hairedge"; ON by default)
+Built as familynative proposed: the parser's skin | hair boundary read like an outline, only where it lies at least 0.5 mm
+OUTSIDE the model's outline (the face reaches at least as far as the skin the picture shows), hair on the far side
+checked twice, the head's own skin from the chin up without ears and scalp; sigma 0.8 mm; front and 3/4 views. Per-view
+outline counts and a NO OUTLINE warning per view (under 20 reads) are in every reply (the old warning counted the total).
+VALIDATION: a unit test on a drawn picture (skin 3 mm wider than the model on one side, 4 mm narrower on the other: reads
+only on the wider side, 2-4 mm); on Tess (hair tied back, a fresh native start) it gives 37 / 61 / 0 / 4 / 14 / 0 / 3 / 13
+reads over eight calls (the temples: where the class-mean start is narrower than her skin) and the solved head's tiles show
+no change against main's. NOT validated against truth under LOOSE hair: there is no hair-covered head with known shape
+here (the family sets are another line's): the first thing to run in the wild benchmark.
+
+## Per-view expression (step 6): NOT made safe; OFF (as before)
+- WHY IT FAILED BEFORE (solvereads, denselm, read again): expression and identity are not separable from landmarks when
+  nothing independent says which is which; eight coefficients at sd 0.35 are a cheaper explanation than 170 identity
+  components for ANY mouth misfit, so on a neutral picture the term took identity (mouth_width +4.4 mm on the null).
+- WHAT IS BUILT TOWARD THE FIX: (a) solve(expr_prior={picture: {class: (mean, sd)}}): each picture's coefficients under
+  their own prior, so a picture that READS neutral can be pinned (sd 0.01-0.03: the null cannot leak; tested on a toy
+  system) and one that reads a smile gets a centre and a width; (b) the independent read to set it: MediaPipe's blendshape
+  scores calibrated on 6,060 renders with known ARKit-named weights (mpcorr.py expr): mouthSmile true = 1.03 x score + 0.13,
+  residual sd 0.21, a neutral face scores under 0.13 in 98 % of pictures; jawOpen and eyeBlink also usable; eyeSquint NOT
+  (corr 0.21: a neutral face scores 0.41), so a SQUINT cannot be gated this way.
+- WHAT IS MISSING: the map from an ARKit weight to face_ruler's expression columns (the sampler's "happy" prototype is not
+  ARKit's mouthSmile; denselm's arkit_expr.npz, the ARKit shapes solved on GNM's basis, lives on its branch) and the test
+  the brief asks for (the same known head from a neutral and from a slightly smiling front: lips within 0.5 mm):
+  groundtruth built that pair (gexpr.py: gt_exs_A00 / sc_a_A00) and its chains were still running. Until both exist the
+  term stays off: wiring an unvalidated gate into the default path is how the last two attempts went wrong.
