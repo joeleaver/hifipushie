@@ -540,3 +540,70 @@ WIDTH (front; lower-face width error, chin's x scale): a +0.0 mm / 1.00, b (narr
 1.03, d +0.7 / 1.03, e -1.8 / 0.99, g (hair) +4.7 / 1.00. CAMERA its landmarks imply on the true head: front pitch
 +1.6 deg (rms 1.9), true profile yaw +2.4 (rms 2.6) and distance +48 % (front distance is not determined by them:
 -23 % .. unbounded).
+
+### Landmark set v3 and the generator's second half (2026-10-13, after the coordinator's lips / nose finding)
+The pilot's lip and nose-base points sat off the features on real phone portraits while MediaPipe's sat on them (Joe:
+"mediapipe did a much better job, on the points that it did land"); my pilot line "MediaPipe's anchors add nothing once
+the dense reads are in" was measured on our own renders only and DOES NOT CARRY to photos.
+- denselm.landmarks_v3 (756; `current()`): v2 unchanged and first, + upper / lower vermilion border (the lip groups'
+  edge against the skin: 18 + 18), the lip seam (the contact ring's two halves: 36), the nose's lower third (47: every
+  exterior nose vertex below the tip's level by farthest-point picks: alar rims and grooves, nostril openings,
+  columella, subnasale), the philtrum (14). Regions lip_border_upper / lip_border_lower / lip_seam / nose_base / philtrum.
+- NO RE-RENDER: relabel.py recomputes a dressing's labels from its stored identity / teeth / expression / camera
+  (gen2.make_poser + the Blender camera's formula; the old landmarks recomputed the same way land within 0.05 px of
+  their stored pixels on all 37 dressings; a new landmark's visibility = its nearest old skin landmark's).
+- Generator from dressing 37 on: 20 % of samples at phone distance 0.25-0.5 m; closed smiles mostly slight and lopsided
+  (11 %); pressed / pursed / rolled / asymmetric mouths (10 %); nostril flare (8 %); lip colour strength 0.2-1.7.
+
+### The 10k checkpoint (36 dressings = 10,800 samples; hm18, plain NLL, 60 epochs, 40 GPU-minutes; models/s10k/hm18)
+- THE RUN WAS UNSTABLE: the plain NLL blew up several times (epoch losses +26, +160, +78; validation 6.6 -> 14 px at
+  epoch 25, 5.5 at the end). Final run: a floor on sigma (0.5 px), gradient clip 2, beta-NLL 0.5, a lower peak rate.
+  Held-out synthetic (3 dressings of the new, hard distribution): median 2.9 mm, mean 5.3 (front 3.9, 3/4 5.7, side
+  5.9, rear 12.0); calibration 1.4 visible / 0.96 hidden.
+- RENDERS, at the truth on solvecams' heads (rms per axis mm, pilot -> 10k; out/sc_pilot.txt, sc_s10k.txt; sc_cmp.py):
+  front: lids 0.55 -> 0.60, eyes 0.67 -> 0.61, brows 1.02 -> 0.73, nose 1.20 -> 0.72, lips 0.93 -> 0.77, mouth 1.02 ->
+  0.88, chin 1.17 -> 1.22, cheeks 1.55 -> 1.68, forehead 1.91 -> 1.64. 3/4: lids 0.89 -> 0.54, nose 1.19 -> 0.63,
+  chin 1.61 -> 1.29, cheeks 2.27 -> 1.55. TRUE PROFILE: lids 2.83 -> 1.52, eyes 2.99 -> 1.97, brows 3.09 -> 2.15,
+  cheeks 3.49 -> 2.59, forehead 3.84 -> 2.79; chin WORSE 1.68 -> 2.28. Dark skin under the hard top light (head e,
+  front): nose 1.49 -> 0.57, chin 1.32 -> 0.62, cheeks 1.82 -> 0.90. Hair (head g, front): ears 5.5 -> 2.4, scalp
+  8.7 -> 4.7, cheeks 2.2 -> 1.2; lids 0.50 -> 0.81, eyes 0.89 -> 1.22 worse. New regions front / 3/4: upper border
+  0.75 / 0.70, lower 0.73 / 0.72, seam 0.81 / 0.77, nose base 0.71 / 0.59, philtrum 0.59 / 0.53. Its sigma is now too
+  LARGE at the truth (honesty 0.2-0.8; the pilot's was too small: 1.5-15 on forehead / ears / scalp).
+  Camera its landmarks imply on the true head: front pitch +1.6 -> -0.9 deg, true-profile yaw +2.4 -> -0.1.
+  On the points both detectors have (front, mean error): lips outer 0.90 (pilot 1.21; MediaPipe 3.17), nose base 0.89
+  (1.25; 3.39), mouth width +1.0 mm (pilot +2.2; MediaPipe -2.4). RENDERS CANNOT SETTLE ours against MediaPipe.
+- REAL PHOTOS WITH SCAN TRUTH (spikes/denselm/real_gt.py + /mnt/data/hifipushie/denselm/real_gt.sh: the groundtruth
+  agent's HSRD-100 sets (CC BY 4.0), two heads x six rig views; the same truth, visibility test and per-view 2D
+  similarity as readmix's gmix.py, whose pilot row it reproduces; out/realgt_<tag>.txt). FRONT, per-axis rms mm RAW /
+  after the similarity, pilot -> 10k [MediaPipe, readmix]:
+  | region | pilot | 10k | MediaPipe |
+  |---|---|---|---|
+  | lids | 2.74 / 2.09 | 2.33 / 1.98 | eye contour 1.05 / 0.80 |
+  | orbit | 2.96 / 2.34 | 2.07 / 1.78 | 1.84 / 1.59 |
+  | nose | 2.07 / 1.53 | 1.28 / 1.08 (nose base 1.35 / 1.20) | 1.77 / 1.32 (alar 1.69 / 1.26) |
+  | lips | 1.90 / 1.81 | 1.65 / 1.47 (borders 1.47 / 1.27, 1.49 / 1.42; seam 1.81 / 1.73) | 1.57 / 1.43 (border 1.74 / 1.59; seam 1.54 / 1.35) |
+  | chin | 4.14 / 2.29 | 3.19 / 2.42 | 3.03 / 1.90 |
+  | cheeks | 3.26 / 2.36 | 2.00 / 1.99 | 2.48 / 2.06 |
+  | forehead | 3.75 / 2.78 | 2.75 / 2.39 | - |
+  Mouth width (commissures), ours - truth: pilot +4.7 .. +6.0 mm, 10k +3.7 .. +4.4 (MediaPipe -3.0 .. +1.1); alar
+  width +2.7 .. +5.0 (pilot +3.9 .. +6.6; MediaPipe +1.5 .. +6.5: the truth's alae may be narrow). Honesty after the
+  similarity 0.5-1.0, lids 1.5. So: 15-40 % better than the pilot on real photos, level with MediaPipe on lips and
+  cheeks, better on the nose, TWICE AS BAD ON THE LIDS, 4 mm wide at the mouth corners; and x2-3 worse than the same
+  regions on our renders: THE SIM-TO-REAL GAP IS THE LARGEST ERROR, largest at the eyes.
+  LOOKED AT (Tess front, out/real_s10k/tess_front_mouth.png, _eye.png): the mouth line, both borders and the nose base
+  lie on her features (the lower border was 1.5 mm inside with the pilot); her inner canthus is ~1.5 mm too lateral
+  (MediaPipe's is on it).
+- IN THE SOLVE (solvecams' acceptance chains, set A, heads a-d, starts fitted / true / distance x2, dense on;
+  /mnt/data/hifipushie/denselm/sc_suite.sh, letter s; out/suite_s.txt): face 1.11 (the pilot's suite d: 1.28), lower
+  face 1.69 (1.79), jaw spread between starts 0.2-0.6 mm (1.1-2.7). Jaw width error: a -0.4 .. -1.7 (pilot +0.8 ..
+  +1.9), b narrow +2.0 .. +2.2 (+5.1 .. +6.9), c wide -3.7 .. -5.4 (+1.8 .. +4.6), d -3.5 .. -4.6 (+1.3 .. +3.9): the
+  one-sided +3.5 mm is gone, SHRINKAGE is left. Front pitch a, b within +0.5 deg (pilot +1.2 .. +3.1), c, d -1.0 ..
+  -2.6; front distance c +24 .. +63 %.
+- WHY THE WIDTH IS BIASED (widthval.py, 302 held-out synthetic near-frontal samples): the lower face's width as placed
+  falls 1.1 % per +10 mm of true jaw width (6+ mm narrower than GNM's mean: +3.2 % = +4.1 mm; 6+ mm wider: -0.9 %),
+  + 1.2 % on female dressings, + 0.4 % per e-fold of distance: the regressor's shrinkage toward the average jaw
+  (~15 % of the deviation) where the picture does not pin it; not a labelling slide. What remains after better
+  training belongs in the solve (the outline is the width read).
+- THE DISTANCE OUTPUT: monotone but compressed (0.37 / 0.78 / 1.83 m read as 0.9 / 1.2 / 1.5 m; held-out log-slope
+  0.17, median error 45 %): its loss was 1 row of 757 in a mean (x30 in the final run), and a face-normalised crop
+  shows distance only as perspective: a near / far read at best, the metric distance is the solve's.
