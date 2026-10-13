@@ -2092,13 +2092,9 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                    neck: str | float = "prior", dense: str = "default", detector: str = "default", hair_edge: str = "default"):
     """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lids, lips, anchors;
     GNM's prior on the whole identity) applied as a block-in step, the solve's cameras kept. Use it FIRST from
-    block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ. cameras "free" | "trust"
-    | "refit"; size "held" | "iris" | "iris_pin" | "free"; neck "prior" (a native head's neck girth under ANSUR's
-    mean and sd for the sex and stature: no picture reads it) | "held" | "free" | mm; dense "on" | "off" (our dense
-    landmark network); detector "mesh" | "anchors" (MediaPipe's lip / nostril / eye-contour points as absolute reads, or
-    its 68 as differential anchors); hair_edge "on" | "off" (the skin | hair boundary as a one-sided outline); hold,
-    expression, chin_points, anchors, parse, out, share, seen, save. Cameras of another head are refused. A view with a
-    known lens (lens_mm / EXIF) keeps its distance. Details: guide(topic="block_in_solve")."""
+    block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ. cameras, size, neck
+    (default "prior": ANSUR's girth), dense, detector, hair_edge, hold, expression, chin_points, anchors, parse, out,
+    share, seen, save. A known lens (lens_mm / EXIF) keeps its distance. Details: guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
