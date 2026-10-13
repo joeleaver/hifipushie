@@ -3,8 +3,8 @@
   "name": "tess",
   "head": "tess_a1",
   "carry_from": "th_T66",
-  "style": "styles/W13_style.json",
-  "look": "styles/W13_look.json",
+  "style": "styles/W17_style.json",
+  "look": "styles/W17_look.json",
   "seed": 0,
   "shots": true,
   "views": [

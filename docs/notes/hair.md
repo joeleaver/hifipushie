@@ -1677,6 +1677,33 @@ volume over the crown and sides). Ours: nearly straight lines laid flat along th
 flat brown. Round seven, "## tesshair7".
 
 ## tesshair7 (2026-10-13, "tesshair7" agent, branch `tesshair7`): volume from the parting, and a hair colour model
+### STATE / NEXT (2026-10-14, end of the arc on Tess; MERGE-READY, not started on NEXT)
+STATE: branch tesshair7, BEST = th_W17 (tess_a1 + one tie_hair call; spikes/tesshair7/styles/W17_*.json; on the
+GNM-native head th_W20). Joe: "basically happy with Tess's hair shape now"; colour = the game-shader round (th_63).
+Sheets human_renders/th_50..52, th_60..63. The checklist "What makes hair read as hair" opens hair_guide.md (rule /
+fault / measure / knob, incl. the game-shader terms and how cards carry them). Regression sheet spikes/tesshair7/
+regress.py + accepted.json, accepted run "final" (2026-10-14; Tess W17 + 10 riffs). Tests 112 pass, 0 skipped (hair
+flow / tied / loose / lift / strands / ear, toolsets, tooling; one file a process through bin/slot).
+Small faults left: the part is a V (rule 5); a curly tangle at the forehead's corner seen end-on; hue ~6 deg red; the
+back view lighter / tanner than hers; half up's pit (not volume's); the export / cards colour only unit-tested;
+game-shader terms not built into the card export (written as card-material terms).
+NEXT ARC (agreed with the coordinator / Joe, NOT started): make the hair work LEARN.
+ (3) HAIR READER, like skin_from_reference: from the reference photos measure colour statistics (colour_bands +
+     colour_variation, edge / core), outline break-up / halo density, parting softness, hairline density, wisp count;
+     set the style and look from those as the START; measured vs set reported, INFERRED where a photo can't show it.
+     Gives rules 4 (halo) and 5 (part) their numbers.
+ (4) TEST on a clearly different hair type: propose 2-3 licence-clean references (curly, short, grey or a man's cut) to
+     the coordinator; Joe picks one; a fixed budget of 4 rounds starting from the reader + the checklist only; report
+     how far it got and which rule was missing.
+ Run the regression sheet before every gate (`run.sh regress.py run tag=X`, `regress.py sheet tag=X`).
+WHAT A FRESH AGENT WOULD GET WRONG: (1) machine rules: one heavy job at a time (run.sh = capped + resources.heavy via
+the scripts), light jobs through bin/slot and WAIT; Blender with -t 6 (spikes/tesshair7/blender6 via
+HIFIPUSHIE_BLENDER, set in run.sh / runl.sh / tests.sh); never kill a process not positively yours. (2) r8.sh is
+the round script; shots7.py renders a groom variant in memory (drop= / S= / LS= / look= / tag=) to isolate faults.
+(3) th_T04 .. T46 are gone: stages default to th_T66 / the built _g3_th_T04. (4) Look defaults now vary
+(variation, sun): an old model re-rendered is not its old picture. (5) colvar numbers depend on tile size, and its
+edge / core values on the mask intersection: compare at one size, as a direction.
+
 ### SUMMARY (one page; the diary follows)
 Goal: Tess's swept-back, loosely tied side ponytail as a STYLE any head can wear. Joe's verdicts: th_V86 "best hair yet";
 th_W09+ judged better than V86 by the coordinator. BEST = th_W13 (tess_a1 + one tie_hair call; spikes/tesshair7/styles/
