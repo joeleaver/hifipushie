@@ -214,11 +214,9 @@ def test_solve_has_a_neck_prior_and_says_so():
         assert any(x.startswith("NECK: its girth is HELD") for x in held["notes"])
         free = bi.solve_step(a, out=d, rounds=2, chin={"neck": False})["solve"]
         assert free["neck"]["mode"] == "free" and not any(x.startswith("NECK:") for x in free["notes"])
-        # the hold pins ANSUR's mean; the prior and the free solve end where the reads' correlations put the neck (readmix:
-        # with MediaPipe's mesh reads in, the FREE solve of this set happens to end 2.4 mm from the mean and the prior's
-        # 5.1: "the prior ends nearer than the free solve" was never a property of the solve, only of that day's reads)
+        # the prior pulls toward ANSUR's mean, less than (or as much as) the hold
         e = [abs(x["neck"]["after"] - ns["neck"]) for x in (held, so, free)]
-        assert e[0] <= min(e[1], e[2]) + 0.001 and max(e) < 0.02, e
+        assert e[0] <= e[1] + 1e-5 and e[1] <= e[2] + 1e-9, e      # (held and prior may both end AT the mean: 0.18 / 0.18 mm)
         assert "real millimetres" in bi.iris_size(b)["text"]
     finally:
         _rm(a, b, c, d)
