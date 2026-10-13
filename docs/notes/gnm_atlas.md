@@ -6118,3 +6118,59 @@ NEXT: step 5 (tess_n1 from scratch on the default path), 6 (judge, sheets nd_tes
   head: GNM's own size x 1.002 (the stature's allometry at 1.636 m)".
 - iris_size / iris_check read through the fitted camera at the model: on a native head the model is in real mm, and
   the text says which. Tess's numbers: step 5.
+
+### Coordinator's two questions (2026-10-12)
+- STITCH MARKS ON THE LIP LINE in nd_01's clay tiles: MESHING of the closed lip seam at a wide look's resolution, not
+  teeth and not lip_close. Probe /mnt/data/hifipushie/nativedefault/out/mouth_probe.png + mouth_probe_coarse.png
+  (t_mouth.py; the class-mean woman as native / native without lip_close / body-carried): in the nd_01 view (a 0.5 m
+  box at resolution 220 = 2.3 mm voxels) the seam is a row of ticks on the native head with or without lip_close, and a
+  broken line on the body-carried head; in a mouth close-up of the SAME heads (look focus + zoom 14: 0.5 mm voxels) it
+  is one clean thin line in all three, teeth and tongue shown or hidden. The closed seam is a crease narrower than a
+  voxel (CLAUDE.md: "sub-voxel creases render as zigzags"); the native head shows it more (its mouth is ~18 % larger
+  in the frame's voxels and the seam is GNM's own sharp contact line, not the seal's membrane). WHEN: any `look` /
+  build of a whole figure or bust with a closed GNM mouth (both attaches); NOT in close-ups, and to be checked on
+  tess_n1's scene mesh (clay and dressed) in step 6. Not fixed here (a wide look needs a finer grid at the lips, or the
+  seam widened to a voxel at coarse resolutions: a meshing card).
+- tests/test_orbit.py::test_eyeball_guard_reads_the_shipped_head (failed on main): it expected the lid landmarks to
+  clear OUR seated ball by the seat's 0.8 mm on fs_ge3; fs_ge3 has no base.head.eye_radius, and since gnmnative such a
+  head has GNM's own ball at GNM's centre (no seat): the landmarks touch it (-0.10 mm). A stale expectation: the test
+  now checks both (eye_radius 0.012 -> 0.80; GNM's ball -> contact +- 0.5). Commit 51fa7ed.
+
+### 5. Tess rebuilt on the default path (tess_n1; logs /mnt/data/hifipushie/nativedefault/out/start_nd_T00.log, chain_nd_T.log, reads_nd_T06.log, dress_*.log)
+- nd_T00 = server.block_in_start("nd_T00", "tess_a1", sex="female") with NO other argument: native, cameras carried
+  x1.211 (the face 30 mm elsewhere), DROPPED base.style.human.head_size 0.95 and the age's wrinkle relief; tess_a1 had
+  no strokes or folds. LEFT: tess_a1's skin dressing (dropped later by the dressing step, below). Her three round-1
+  photos (front, three_quarter_left, profile_left). Attach at the start: 1.001 x GNM, 214 mm head, 7.64 heads, neck
+  366 against the body's 291 (+26 %: NECK CONFLICT).
+- CHAIN (spikes/chinread/cchain.py, 6 x block_in_solve, defaults: size held, neck prior, chin points auto; the first
+  call's "free" became "refit" by itself): |dc| 10.13, 2.06d, 1.40d, 0.97d, 0.86d, 0.82d (damped from call 2); final
+  nd_T06 |c| 10.30, largest 2.83 sd; reads outline 254, landmark 40, iris 8, limbus 4, lid 16, lip 19; every sigma
+  x1.12 (falling from x1.22: mildly inconsistent pictures); cameras 4.6 / 39.2 / 70.7 deg for pictures stated 0 / 45 /
+  90 ("NO TRUE SIDE VIEW": round 1's profile is a ~70 deg view; round 2's true90 / true45 exist in the reference
+  folder and were NOT used: the brief's three photos). Table 15 / 26 (its tolerances are absolute mm and the head is
+  now 18 % larger in mm; front misses: nose_length -4.3 mm, philtrum +3.9, mouth_width -4.2, intercanthal +3.1,
+  chin_height +5.3: the detector's rows, not chased, LEARNINGS 8).
+- MOVED WITH NO READ (last call): jaw_square -1.7 sd (read 0.25), nose_width -4.9 mm (-1.2 sd; read 0.09),
+  gonial_width -9.8 mm (-0.9 sd), chin_width -4.6 mm (-0.8 sd; read 0.05), neck_width -9.3 mm (read 0.00), skull_top.
+  MOVED FAR ON A WEAK READ: cheek_fullness -1.7 sd (read 0.59). Unread: cheekbone_width, skull_width. Not hand-tuned.
+- NECK: 366 -> 332 mm under the prior (ANSUR 330 +- 18 at 1.636 m; headbody's free-solved Tess was 334): the head's
+  neck is ANSUR's mean; the body's own 288 (-2.3 sd) keeps the CONFLICT flag at +15 % ("the BODY's own neck is the
+  unusual one"). Chin over the pit 72 mm, top of head over the pit 287 (ANSUR 300 +- 11), 7.64 heads tall.
+- Look sheet out/look_nd_T06.png, LOOKED AT: front and profile overlays are sharp (eyes, nose, mouth register; the
+  profile line lies on hers), the 3/4 outline follows her jaw and nose; the clay is a narrow oval face with a small jaw.
+- IRIS, in real mm now (step 4): the front picture's limbus reads 13.0 mm at the model (eye ruler's circle 13.36)
+  against GNM's mean 12.00 on this head: an average iris says the NATIVE head is 7.7 % LARGE for her (+- 7 % person
+  to person; with GNM's spread of size -2.6 % +- 4.1 %). Pupils 65.0 mm apart in the picture at the model (ANSUR
+  women 61.7 +- 3). The old head read the other way (its iris said it was small) because its eyeball was scaled with
+  the head. So on the real-size head her iris and IPD both say "a little large": either her eyes are large (the
+  references are generated portraits) or the class-mean size is ~5-8 % big for her. NOT acted on (size is held at
+  the class mean by decision); block_in_solve(size="iris") would take -2.6 %. For Joe.
+- IRIS STEP: nd_T07 = block_in_step {"iris_mm": 13.01}: eyes_000 +1.20 sd (the drawn iris 13.0 mm).
+- Eye ruler nd_T06 (model - picture, mm; * past the reader's tolerance): opening at the pupil -0.09, fissure -1.63,
+  outer canthus +0.75, inner canthus +2.37*, upper lid's peak +2.23*, iris hidden by the upper lid -1.04*, lid
+  platform shown -2.0* (GNM's lid shows less platform than hers), canthal tilt -1.7 deg. Lips: border miss 0.28 /
+  0.69 mm, seam 0.49.
+- GNM TO WITHIN (spikes/garrettnative/gnmtrue.py, GNM's vertices as placed, against GNM evaluated directly + its own
+  lip_close): nd_T07 0.002 mm max over face, jaw, mouth, skull, ears AND neck (one similarity, scale 1.0016 = the
+  stature's allometry); tess_a1 face 2.75 rms / 10.6 max, jaw + chin 4.55 / 10.6, skull 8.2 / 18.1, ears 5.9 / 7.1
+  (scale 0.823). CAVEAT: the vertices as placed, not the meshed field that is rendered (+ ~0.02 mm).
