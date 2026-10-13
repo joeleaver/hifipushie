@@ -39,6 +39,25 @@ Isolate a fault before fixing it: render the groom with one piece off at a time 
 `S=<strand dials>`, `LS=<pattern>:<dials>`, `look=@file`): the crown's wire grid was the halo dial, the grey veil the
 flat wisp clumps, the dark tangle at the part's start the far bank's strands seen end-on.
 
+## The look: colour keys for strand hair (`look` in tie_hair / groom_hair)
+| key | what it does |
+|---|---|
+| gap, lit | the dark-to-lit range |
+| root, edge | how far root and edges darken |
+| vary | value per lock |
+| tip, tip_amount | tips lighter or warmer |
+| variation | 0..1 (strands; default 0.4): natural hair is never one colour. Locks drift in lightness, sub clumps and strands in hue and saturation. 0 = one flat colour (with `vary` 0) |
+| sun | 0..1 (strands; default 0.2): SUN-LIGHTENED lengths. The hair lightens and warms with its AGE, metres from the scalp (full by 28 cm): roots stay the look's colour, a ponytail's ends are the lightest. A tail's hair counts from where the gathered hair ended, not from a new root |
+| highlights, highlight_contrast | 0..1 (strands; default 0): lighter, warmer RIBBONS at two scales (many thin ~4 mm, a few broad soft ~15 mm, irregular edges), starting a few cm off the root, coming and going along their length, gathered where the sun reaches (the top layers, round the face, a tail's outside) and a little on some locks; contrast 0..1.5 (default 0.6) |
+| root_dark | 0..1 (default 0.5): how dark the root's first stretch (`root` of the length) is; 1 = the gap colour. A tail's strands have no dark root |
+| gloss | 0..1 (EEVEE strands; default 0): the highlight where light catches the hair, as two lobes: a sharp pale one shifted toward the root and a broader one in the hair's own warm colour shifted toward the tip |
+| fly_light | 0..1 (strands; default 0.3): hairs that left the mass (fly-aways, the halo, wisps) read lighter |
+| depth | 0..1 (strands; default 0.5): the under-layers of hair with `volume` are darker (the shadow EEVEE's strands do not cast on each other) |
+| vary | the value noise per strand / sub clump under all of it |
+| tip_alpha, backscatter, scatter | 0..1 each (EEVEE strands; default 0 = off): the game hair shader's terms: see-through tips, warm light through thin / back-lit hair, a darker richer core with lighter outer layers (Tess: 0.5 / 0.6 / 0.8; checklist 11b, 11c) |
+Also: eevee_sat / eevee_gain (how EEVEE draws the colour; Tess 0.3 / 1.4), seen (the colour it should READ, e.g. from a
+photo), grey_amount, cycles_* (Cycles only). Match by measure: look_hair measure "colour" (colour_bands + variation).
+
 ## The stages
 
 1. **Groom the shapes** as for any hair: hairline, parting; LOOSE hair with `groom.loose` (below); tied hair with
