@@ -612,7 +612,9 @@ the dense reads are in" was measured on our own renders only and DOES NOT CARRY 
 STATE (2026-10-13 14:55): rendering STOPPED (data_s1/STOP_NICO + STOP_LOCAL exist; no queue running). The stage-1 set is
 COMPLETE for training: /mnt/data/hifipushie/denselm/data_s1/ = 92 dressings x 300 = 27,600 samples, all labelled with set
 v3 (756 columns; checked: none incomplete, none on an older set). Final training run `s30k` on NICO-TOP in resumable
-segments (below; status in models/s30k/STATUS). The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
+segments (below; status in models/s30k/STATUS): driver started 14:47 (start_s30k.sh), segment e0 on NICO-TOP's GPU
+from 14:50 (cuda, 93 s an epoch on 25,500 train / 2,100 val samples = 7 held-out dressings; ~25 min a segment with the
+1.2 GB data transfer) -> 60 epochs expected DONE ~16:50. The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
 nothing rented or billed; HSRD is the groundtruth agent's (read-only, do not download more).
 NEXT, in order: (1) watch s30k to DONE (or resume it); (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
 then sc_table + sc_cmp against s10k / pilot, held-out synthetic per bin (models/s30k/hm18/val.json), widthval.py (the
@@ -624,13 +626,14 @@ stronger randomisation).
 
 THE TRAINING JOB (spikes/denselm/train_seg.sh; the copy that runs: /mnt/data/hifipushie/denselm/train_seg.sh):
 - A DRIVER on THIS laptop (setsid nohup: outlives the agent's shell) submits one compute job per segment of 12 epochs
-  through the oxidegen bundle route in direct mode (the laptop serves the 475 MB data tar and receives the outputs: the
+  through the oxidegen bundle route in direct mode (the laptop serves the 1.2 GB data tar (data_s1_slim) and receives the outputs: the
   driver must stay alive while a segment runs). Each segment's job ends with models/s30k/hm18/state.pth (weights, EMA,
   AdamW, OneCycle schedule, scaler, epoch, log; also written every 3 epochs inside the job) + model.pt / weights.pth /
   val.json of the EMA so far. COPYING BACK IS AUTOMATIC: the driver unpacks each segment's outputs into
   /mnt/data/hifipushie/denselm/models/s30k/ (and keeps model_e<k>.pt per segment).
 - START / RESUME = the same one line (resumes from the last state.pth the driver has; data list, args and code commit
   are fixed at the first call in models/s30k/run.txt, dirs.txt, commit.txt; a lock stops two drivers):
+  /mnt/data/hifipushie/denselm/start_s30k.sh   (= this line; the tool refuses it typed directly in this worktree:)
   setsid nohup /mnt/data/hifipushie/denselm/train_seg.sh s30k 60 12 "name=hm18 arch=hm18 bs=128 lr=1e-3 workers=11 val=0.08 beta=0.5 ramp=0.25 dist_weight=30 clip=2.0" >> /mnt/data/hifipushie/denselm/out/train_s30k.log 2>&1 < /dev/null &
 - CHECK: `cat /mnt/data/hifipushie/denselm/models/s30k/STATUS` (one line per segment submitted / back / FAILED; a DONE
   file at the end); live epochs: `grep -o 'step: {"epoch[^}]*' /mnt/data/hifipushie/denselm/out/train_s30k.log | tail -3`;
