@@ -10,6 +10,17 @@ hsrd100 are links into the groundtruth agent's data, read-only; out/ is ours), o
 Models rm_* (main's workspace). The groundtruth agent's scripts (spikes/groundtruth on branch groundtruth) are run from
 its worktree through PYTHONPATH with THIS worktree's src (rchain.py sets readmix's switches first).
 
+RESUMED (2026-10-14, the coordinator's scoped job: the FALLBACK BLEND, then the alar-edge read; the 1.65 mm nose
+correction scored on subjects it was NOT calibrated on). Held-out HSRD subjects (groundtruth's fixed split: HSR0023 m 62,
+HSR0027 f 41, HSR0102 f 22) made solve-ready by spikes/readmix/hmk.py <pose> <k> classes=..: rm_<k>_T (truth = the
+pose's Part 1 fit, set A = front ~15 deg / ~45 / ~85, the rig's true cameras, pictures in /mnt/data/hifipushie/readmix/pics),
+rm_<k>_L<class>00 (block_in_start, lens told on the diagonal, start = pooled | blend (ORACLE: the simplex blend nearest the
+true identity, for measuring only) | white | black). k = h23 / h27 / h102. Landmark check LOOKED AT (out/heldout_check.png).
+Queue: q8.txt via ./q8run.sh (resumable: skips a chain whose log has 5 SHAPE lines; 4 calls each); logs logs/h<k>_*.log.
+Score: ./run.sh spikes/readmix/hscore.py <k> after=rm_<k>_A nb0=rm_<k>_A0 before=rm_<k>_B blend=rm_<k>_Cb ...
+BUILT: blockin.class_blend + block_in_start(ethnicity = class | {class: weight}) (simplex only; tested), the solve's reply
+line "FALLBACK: ... GIVEN | INFERRED". NOT built: the blend SOLVED as 3 weights (static numbers below say it cannot buy much).
+
 RESTART BLOCK (2026-10-13 late; branch `readmix`, NOT merged, NOT pushed; every item below is committed)
 STATE, item by item (T = has tests in tests/test_readmix.py unless said; "default" = what block_in_solve does now):
 - MediaPipe mesh -> GNM correspondence: DONE (src/hifipushie/mp_gnm.json + mpread.py; T). "## Step 1".
