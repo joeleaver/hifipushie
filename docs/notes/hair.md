@@ -1932,3 +1932,22 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
 - WISPS "thin black wires": the curls had the dark root ramp and full opacity: now no dark root (hp_fine), fly_light
   0.45, 8-16 hairs 2-5 mm. On W05 they nearly vanish from the front: NEXT make them read (more, longer, lighter).
 - Dark scribbly tuft at the part's start (three-quarter): the `cross` bump of the part's bank locks: NEXT smaller.
+- SHEETS (2026-10-14, from th_W06, EEVEE): workspace/human_renders/th_60_tess_colour_wisps.png (REFERENCE | th_W06 |
+  th_V86; front, three-quarter, profile, back 3/4), th_61_closeups.png (hers | W06: parting, both temples, forehead
+  corner, the dome, tail; the left-temple pair frames a little differently), th_62_riffs.png (riffs8.py, th_W9a* on
+  hu_w30, th_W9b* on hu_m30, through tie_hair + sync + look_hair).
+- RIFFS read: all ten read at a glance. Up-styles and half up at DEFAULT volume = the pre-volume construction (no
+  dome, no fall): half up's bare pit is GONE. The asked-for pouf (a6) and the default up-styles still show the
+  serrated temple edge of round six (not volume's). New on every riff: default `curls` (round(9 x amount)) hang as
+  small RINGLETS at the temples: reads, a little doll-like on the up-styles; NEXT: fewer / straighter by default when
+  the tie is high.
+- STATE: best th_W06. Done this resume: crown wire-grid (halo), tail tan ribbons, temple edge, black-wire wisps,
+  sheets th_60 / 61 / 62. NOT done: tess_n1; the colour model in the export / cards has only its numpy test (never
+  exported through Blender); gloss judged only by eye on W04..W06 (warmer than without; no lit close-up beside hers).
+- STILL WRONG on W06 (blunt): the parting is still a hard notch with the two banks' smooth lobes; a small dark tuft of
+  crossing / lifted strands at the part's start in the three-quarter; the temple and forehead hairline is cleaner and
+  harder than hers (her loose fine hair over the corners is missing); the curls are faint; the tail's lock ribbons
+  still read as ribbons from behind; hers is lighter brown overall and warmer (our hue 66.5 vs 69.7).
+- NEXT: (1) the part: banks that fall over the line from both sides, short (fade out by 4 cm back); (2) loose fine hair
+  over the forehead's corners (wisps.baby / front looseness under volume, without the veil); (3) tess_n1; (4) export
+  through Blender once (export_asset hair) and look at the cards' colour; (5) up-style curls by tie height.
