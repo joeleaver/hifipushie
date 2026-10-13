@@ -2023,3 +2023,13 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   checklist into hair_guide.md (rule + measure + knob) and cut the guide; a 1-page summary atop "## tesshair7";
   (2) a regression sheet script (current best styles + riffs beside the last accepted renders); GATE; (3) a hair
   reader from reference photos; (4) a test on a different hair type, 4 rounds.
+- LEARN step 1 + 2 (2026-10-14): hair_guide.md now OPENS with "What makes hair read as hair" (13 rules: rule, the
+  fault when missing, measure, knob) and is 98 -> 59 KB: the sculpted-locks / cards workflow moved to guide topic
+  `hair_locks` (hair_locks_guide.md), practice / sources / engines / what-went-wrong to `hair_background`
+  (hair_background.md). REGRESSION SHEET: spikes/tesshair7/regress.py + accepted.json (Tess = W13 through her fitted
+  cameras, 4 views; riffs a1..a6, b1..b4 on hu_w30 / hu_m30 through look_hair on their synced copies th_W9a1 /
+  th_W9b1). Accepted = run "base" (2026-10-14, out/reg/accepted). A second run: mean |diff| 0.00 on all eleven
+  (deterministic): any > 0.3 flags MOVED. Probe (W12's three-quarter swapped in): 2.65, the diff image outlines the
+  tail. Cost: one heavy job ~10 min (11 tie_hair + renders). Blender now runs with -t 6 (blender6 wrapper via
+  HIFIPUSHIE_BLENDER in run.sh / runl.sh / tests.sh). GATE: waiting for the coordinator on the checklist + the sheet.
+  RESTART: then step 3, the hair reader.

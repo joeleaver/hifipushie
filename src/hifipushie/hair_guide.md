@@ -29,7 +29,10 @@ fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it
 | 12 | A TAIL is strands from behind, not wide ribbons: finer strands, locks a little out of step, a ragged soft end | wavy ropes / ribbons, straw | back three-quarter beside the photo; tail area / length / width by mask (look_hair measure) | `tail.wave` (Tess 0.35), `tail.fullness`, `tail.tousle` |
 | 13 | Up-styles (high ponytail, top knot, man bun) and half up have NO volume by default: hair pulled up does not fall from its roots | radial ridges round the hairline, specks at the crown | the riffs sheet | volume is gated by tie height and half up; asked for there it is a smooth pouf |
 Before a change ships: re-render the accepted styles and riffs beside their last accepted renders (the regression
-sheet, spikes/tesshair7/regress.py) so a fix can't silently break what worked.
+sheet: `run.sh regress.py run tag=X` then `regress.py sheet tag=X`, spikes/tesshair7/regress.py + accepted.json:
+Tess's best through her fitted cameras + ten riffs on two other heads, each ACCEPTED | NOW | difference; renders are
+deterministic, so any mean difference over 0.3 flags MOVED; `regress.py accept tag=X` after a human look) so a fix
+can't silently break what worked.
 Isolate a fault before fixing it: render the groom with one piece off at a time (shots7.py `drop=<lock pattern>`,
 `S=<strand dials>`, `LS=<pattern>:<dials>`, `look=@file`): the crown's wire grid was the halo dial, the grey veil the
 flat wisp clumps, the dark tangle at the part's start the far bank's strands seen end-on.
