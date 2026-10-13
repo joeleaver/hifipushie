@@ -9,9 +9,9 @@ from PIL import Image, ImageDraw
 from hifipushie import blockin as bi, face_ruler as fr, store
 
 RM = Path(os.environ["HIFIPUSHIE_READMIX"])
-allo = {"lateral": [], "medial": []}
+allo = {}
 for k in sys.argv[1:]:
-    name = f"gt_{k}_T"
+    name = k if k.startswith("sc_") else f"gt_{k}_T"
     head = fr.model_head(store.load(name))
     rj = bi._refs(name)
     for v, cam in zip(rj["views"], rj["cameras"]):
@@ -23,11 +23,14 @@ for k in sys.argv[1:]:
         txt = "; ".join(f"{ob['name'][8:]} {ob['o']:+.2f}" for ob in obs)
         w = None
         lat = {ob["name"][8]: ob for ob in obs if ob["name"].endswith("lateral")}
-        if len(lat) == 2:
-            w = -lat["r"]["o"] + lat["l"]["o"] if False else (lat["l"]["o"] + lat["r"]["o"])
+        med = {ob["name"][8]: ob for ob in obs if ob["name"].endswith("medial")}
+        if len(lat) == 2:      # o is along u (toward the subject's left): the openings' outer width, picture - model
+            w = lat["l"]["o"] - lat["r"]["o"]
+            allo.setdefault("outer width", []).append(w)
+            allo.setdefault("lateral end, outward", []).extend([lat["l"]["o"], -lat["r"]["o"]])
+        if len(med) == 2:
+            allo.setdefault("medial end, toward the midline", []).extend([-med["l"]["o"], med["r"]["o"]])
         print(f"{k} {v['name']} (turn {abs(fr.view_yaw(cam)):.0f}, pitch {fr.view_pitch(cam):+.0f}): {txt or 'NOT READ'}" + (f" | outer width picture - truth {w:+.2f} mm" if w is not None else ""))
-        for ob in obs:
-            allo[ob["name"].split("_")[-1]].append(ob["o"])
         rims = fr.nostril_rims(head)
         _, P = fr._cam_points(cam, np.asarray(head["V"], float)[np.r_[rims[0], rims[1]]])
         c = P.mean(0)

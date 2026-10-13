@@ -112,11 +112,25 @@ eye catches what the points miss; the target table catches what your eye misses.
      when block_in_start carried or refitted them, and says so). Use one setting on every call. The reply has a CAMERA
      line per view (turn / pitch / distance at the call's start -> end, the whole move against its prior) and FAR FROM
      ITS START when a camera stands past 1.5 sd of it: check that picture's stated angle.
-     DISTANCE is the weakest thing a picture reads. A view with a KNOWN LENS (`lens_mm` on the view = the 35 mm
-     equivalent on the frame's DIAGONAL, f / diagonal x 43.27; or the file's EXIF FocalLengthIn35mmFilm; the picture
-     must not be cropped) keeps its distance to +-7 % of the start's, with the dense landmarks too (the reply says
-     LENS: ...). Without a lens the start stands at a 70 mm portrait and the distance is free as above (40 % with the
-     dense landmarks): give the lens whenever it is known, a phone's 24 mm most of all.
+     DISTANCE is the one thing a picture does not say, and the reply has a DISTANCE line per front / 3-4 view.
+     KNOWN LENS (`lens_mm` on the view = the 35 mm equivalent on the picture's DIAGONAL, f / diagonal x 43.27; or the
+     file's EXIF FocalLengthIn35mmFilm x DigitalZoomRatio; a picture CROPPED after capture is refused with a warning,
+     a resize is fine): the focal length is PINNED and the picture's scale IS the camera's distance (d = focal x head
+     size / pixels): no free distance, with the dense landmarks too. On a scanned head through the rig's cameras the
+     distance comes out to 1 % where the head's size is the class mean's, and off by the head's own size error
+     otherwise (a head 6 % large: 7-9 % near): the size hold's +-5 % is in the distance. NO LENS: the start stands at
+     a 70 mm portrait (a view flagged `"generated": true`: 105 mm, what our generated head shots behave like) and the
+     distance is free under the prior above; the DISTANCE line says NOT KNOWN, what a 20 % error costs at that
+     distance, and whether a side view is there to pin the face's depth. WHAT A DISTANCE ERROR COSTS (a 20 % error,
+     mm of apparent width; geometry, `face_ruler.distance_cost`):
+       camera at   nose vs the ears' plane   cheekbone width   jaw width   nose's own width
+       0.3 m       x1.50                     4.0               2.4         0.3
+       0.5 m       x1.28                     2.8               1.6         0.2
+       1.0 m       x1.14                     1.6               0.9         0.1
+       2.0 m       x1.07                     0.8               0.5         0.0
+     So beyond ~1.5 m it hardly matters, and under 0.6 m (a phone at arm's length) the reply warns STRONG PERSPECTIVE:
+     keep the original file with its EXIF, or retake from 1.5-2 m with 2-3x zoom. The nose's WIDTH does not depend on
+     it (it lies near the eyes' plane): a wide nose is not a distance fault.
    - NOTHING IS FORCED, as a BOUND: no identity component may end past 3 sd. Components that would are HELD AT the
      bound and the rest solved again; no read is down-weighted for it and nothing is carried between calls (the old
      "INCONSISTENT PICTURES x<factor>" inflation is gone: one component at 3.11 sd used to cost every read x15). The
@@ -129,16 +143,18 @@ eye catches what the points miss; the target table catches what your eye misses.
      correspondence to GNM's surface, only the features it is good at: eye contours (0.9 mm front, 1.0 to ~35 deg),
      mouth corners (1.1), the lip seam (1.4) and the vermilion border (1.5), the nasal bridge; its points err together
      (a view's reads count as 16). NOT its nose wings / nostrils / tip (it draws a more average nose: alar width +2.4
-     and +5.5 mm on the two scanned heads), not its face oval (a generic jaw: 4 mm), not its brows. Where the mesh is
-     read, the same detector's differential inner anchors are left out (the same evidence); `detector="anchors"` =
-     the old 68 differential anchors only. `dense="on"` adds our own dense landmark network (a pilot trained on our
+     and +5.5 mm on the two scanned heads), not its face oval (a generic jaw: 4 mm), not its brows. These are ADDED to the
+     differential anchors (dropping the anchors where the mesh is read cost a scanned head 1.7 mm of mouth width);
+     `detector="anchors"` = the 68 differential anchors only. `dense="on"` adds our own dense landmark network (a pilot trained on our
      renders): on real faces it is a COARSE read (1.4-2.8 mm after its own placement, lids 2.1, chin 2.3: its sigmas
      say so now); it helps pose, large turns and a head with few outlines, it does not read fine features.
-   - THE NOSE'S WIDTH has one read of its own: the NOSTRIL OPENINGS in a front or shallow 3/4 picture (each dark
-     opening's lateral and medial end against the model's nostril rim). The reply says NOSE READ ... or that the picture
-     shows no opening (a tip that hides them, flat light, a moustache): then the width is NOT read (on two scanned heads
-     the solve left the nose 2-5 mm too wide with true cameras: it stays near the class average) and belongs under
-     MOVED WITH NO READ / unread: check it against the front picture by eye.
+   - THE NOSE'S WIDTH IS NOT READ. On two scanned heads the solve left the nose 2-5 mm too wide with the cameras at
+     the truth: no outline shows the wings from the front and neither detector's nose points follow a narrow nose
+     (MediaPipe's alar width +2.4 / +5.5 mm), so it stays near the class average; the reply lists nose_width under
+     MOVED WITH NO READ / unread: check the nose against the front picture by eye and set it with a `mm:nose_width`
+     step. A read of the NOSTRIL OPENINGS exists (face_ruler.NOSTRIL, off: each dark opening's ends against the model's
+     nostril rim; right in kind on the one scanned head that shows its nostrils, with a 1-2 mm offset known from that
+     head alone; silent where the tip hides them): not a default until more heads with truth confirm the offset.
    - HAIR OVER THE FACE'S EDGE (`hair_edge="on"`, the default). An outline is read only where the figure's edge is bare
      skin. With loose hair down both sides a front picture gives NO outline (the reply lists OUTLINE READS per view and
      warns NO OUTLINE for a view under 20): the face's widths there are GNM's average, not a measurement. Where the
@@ -533,7 +549,7 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `block_in_solve`
-ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines + the one-sided skin | hair edge, irises, limbus, lid margins, lip borders, MediaPipe's mesh for eye contours / mouth corners / lip seam and border, the nostril openings; GNM's prior on the whole identity; cameras under a prior) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only): a PRIOR on each camera's whole move since the start (shift, scale, roll, yaw, pitch, distance), never a clip; a view with a known lens (lens_mm / EXIF) keeps its distance to +-7 %. detector: "mesh" (default: MediaPipe's mesh as absolute reads of the features it is good at) | "anchors" (its 68 landmarks as differential anchors, as before). dense: "off" (default) | "on" (our dense landmark network: a coarse read on real faces). hair_edge: "on" (default) | "off". anchors: "differential" | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few) | "on" | "off". Nothing is forced: a component that would pass 3 sd is held at the bound (AT THE BOUND in the reply), no read is down-weighted for it. The reply lists OUTLINE READS per view (NO OUTLINE warns), the CAMERA lines, DISAGREE (read groups left past 2 sigma), NOSE READ, what MOVED WITH NO READ, what moved far on a weak read and what is unread (treat those as inferred), a view whose stated kind disagrees with its fitted camera, and a DAMPED step. hold: "none" (default) | "auto". expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views. Parameters: name, out, share, seen, save, cameras, anchors, chin_points, parse, hold, expression, size, neck, dense, detector, hair_edge. See section 3b.
+ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines + the one-sided skin | hair edge, irises, limbus, lid margins, lip borders, MediaPipe's mesh for eye contours / mouth corners / lip seam and border; GNM's prior on the whole identity; cameras under a prior) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only): a PRIOR on each camera's whole move since the start (shift, scale, roll, yaw, pitch, distance), never a clip; a view with a known lens (lens_mm / EXIF) keeps its distance to +-7 %. detector: "mesh" (default: MediaPipe's mesh as absolute reads of the features it is good at) | "anchors" (its 68 landmarks as differential anchors, as before). dense: "off" (default) | "on" (our dense landmark network: a coarse read on real faces). hair_edge: "on" (default) | "off". anchors: "differential" | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few) | "on" | "off". Nothing is forced: a component that would pass 3 sd is held at the bound (AT THE BOUND in the reply), no read is down-weighted for it. The reply lists OUTLINE READS per view (NO OUTLINE warns), the CAMERA lines, DISAGREE (read groups left past 2 sigma), what MOVED WITH NO READ, what moved far on a weak read and what is unread (treat those as inferred), a view whose stated kind disagrees with its fitted camera, and a DAMPED step. hold: "none" (default) | "auto". expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views. Parameters: name, out, share, seen, save, cameras, anchors, chin_points, parse, hold, expression, size, neck, dense, detector, hair_edge. See section 3b.
 SIZE (2026-10-12): the head's OVERALL SIZE is not something a picture reads (a bigger head further away is the same
 image; every camera's scale and distance are free), so the solve HOLDS it at the block-in's start head's (the class
 mean on that body) and leaves shape free: `size="held"`, the default; the reply's notes say so. Left free

@@ -163,8 +163,9 @@ WHAT IT SAYS
 | MediaPipe vermilion border | 1.5 | 1.7 | - | - |
 | MediaPipe nasal bridge | 1.5 | 1.5 | - | - |
 | MediaPipe alar / nostril / tip, oval, brows, chin, cheeks, forehead | not read | | | |
-Sigma x sqrt(n / 16) (NEFF) and a 0.6 px floor. Where these are read the same detector's differential inner anchors (17-67)
-are left out (the same evidence). Dense: every region at max(render, real-photo) error, NEFF 80 as before. The traced lip
+Sigma x sqrt(n / 16) (NEFF) and a 0.6 px floor. TRIED: leaving the same detector's differential inner anchors (17-67) out
+where these are read (the same evidence): h40's mouth width +0.6 -> +2.3 mm (102 anchors at ~1 mm replaced by reads that count
+as 16): the anchors STAY (face_ruler.MP_DROPS_ANCHORS = False), the mesh's reads are added. Dense: every region at max(render, real-photo) error, NEFF 80 as before. The traced lip
 borders (0.3 mm) and lid margins (0.2-0.4 mm) stay the fine reads of the front picture.
 
 ## The nose (the coordinator's order after the gate: find the CAUSE of the wide nose before building a read)
@@ -228,3 +229,49 @@ same starts with the lens told in the pipeline's convention (h40 185-188 mm, h11
   (a grey-green rim round an amber centre) and ours is one muted brown: a single iris colour cannot say that. Verdict: it
   now sets a defensible colour instead of leaving the default; it does not make her eyes green. NEXT: two zones (rim /
   collarette) in skin.eyes, read the same way.
+
+## Distance (Joe: "anything more specific we need to do about the distance problem"; the coordinator's four items)
+WHAT WAS WRONG: (1) with a lens told, the solve still let the camera run (prior 15 % front, 40 % with dense: familynative's
+phone pictures 0.65 x / 1.6 x / 3 x their EXIF distance; here +7 % of focal on h40); (2) the scale freedom changed the
+FOCAL LENGTH, so "known lens" was not kept; (3) nothing said what an unknown distance costs; (4) groundtruth's told-lens
+sets used another convention (f / width x 36 against lens_prior's f / diagonal x 43.27: 39 % off on a portrait crop).
+1. KNOWN LENS = KNOWN DISTANCE (BUILT, default: face_ruler.LENS_PINS, lens_info, cam_moved(lens=True)). A view with a
+   known lens keeps its focal length; its scale freedom moves the camera (d = focal x head size / pixels); the free
+   distance / lens trade does not exist for it (its column is computed per read by finite differences: 1 % nearer is
+   not a pure magnification). lens_info: the view's lens_mm, else EXIF FocalLengthIn35mmFilm x DigitalZoomRatio; a picture
+   whose pixel aspect is not the EXIF's PixelXDimension : PixelYDimension is CROPPED: its lens is refused and said (a
+   resize keeps it); block_in_start's lens prior uses the same function. NOT DONE: FocalLength + sensor size (needs a
+   sensor table), portrait-mode crops that keep the aspect (not detectable from EXIF alone).
+   MEASURED on the two scanned heads, the lens told in the right convention (rm_<k>_L00, block_in_start's own fit,
+   distance error against the rig's cameras, front / 44 deg / profile): h112 +1.1 / -1.1 / -0.5 %; h40 -7.3 / -8.2 / -9.4 %
+   = this man's head is 6.3 % larger than the class mean the size hold keeps: the head's size error IS the distance
+   error (size = "iris" would read it: not run). After six calls under the old prior scheme the front camera's FOCAL had
+   run +7.0 / +8.2 % on h40 to make up for it (dense on / old reads); with the lens pinned it cannot (final-default chains
+   rm_<k>_P / Pd: see the validation table). The phone-distance renders (groundtruth's gphone sets): not in the workspace
+   when this was written: NOT measured.
+2. NO LENS KNOWN: (a) the dense network's near / far output: the pilot weights have none: NOT built; (b, c) BUILT:
+   face_ruler.distance_lines: a DISTANCE line per front / 3-4 view in every reply: from the lens, or "NOT KNOWN: it stands
+   at x m (a 70 mm portrait assumed): a 20 % error shows as a mm of cheekbone and b mm of jaw width ... a side view is /
+   is not in the set". NOT built: a wider sigma on the perspective-sensitive measures (the number is reported instead).
+3. SENSITIVITY (spikes/readmix/distsens.py; geometry on GNM's class means, the picture's scale kept at the eyes' plane; a
+   +20 % distance error as mm of apparent width):
+   | true distance | nose against the ears' plane | alar | mouth | cheekbone | jaw (gonial) | ear to ear |
+   |---|---|---|---|---|---|---|
+   | 0.3 m | x1.50 | +0.26 | +0.27 | -3.98 | -2.37 | -6.21 |
+   | 0.4 | x1.36 | +0.19 | +0.20 | -3.28 | -1.90 | -5.29 |
+   | 0.5 | x1.28 | +0.15 | +0.16 | -2.78 | -1.58 | -4.58 |
+   | 0.7 | x1.20 | +0.11 | +0.11 | -2.13 | -1.18 | -3.61 |
+   | 1.0 | x1.14 | +0.07 | +0.08 | -1.57 | -0.86 | -2.72 |
+   | 1.5 | x1.09 | +0.05 | +0.05 | -1.09 | -0.59 | -1.93 |
+   | 2.0 | x1.07 | +0.04 | +0.04 | -0.84 | -0.45 | -1.49 |
+   | 3.0 | x1.04 | +0.02 | +0.03 | -0.57 | -0.30 | -1.03 |
+   (a camera believed at HALF its distance: cheekbone +19 mm at 0.3 m, +8.7 at 1 m, +4.8 at 2 m.) So: beyond ~1.5 m a
+   distance error hardly matters; close up it is the deep widths (cheekbones, jaw, ears) that go, NOT the nose's own
+   width (it lies near the eyes' plane: 0.3 mm). The wide nose is not a distance fault (and the chains agree: above).
+   NOT measured on the scans by re-rendering at 0.3-2 m (no time; the geometry is exact for a pinhole).
+   WARNINGS: STRONG PERSPECTIVE when a front camera stands under 0.6 m (in the solve's reply: distance_lines); the
+   reference brief has a distance line (likeness_brief.DISTANCE; test). block_in_start itself does not warn yet.
+4. GENERATED REFERENCES: one calibration only: Tess's generated head shots, solved with the readmix defaults (rm_TN08):
+   front 1.06 m = 113 mm eq., 3/4 1.15 m = 114 mm, "profile" 0.98 m = 93 mm (each weakly read: +7 / +20 / +3 % from the
+   start). Stored as humanfit_map.GENERATED_LENS = 105 mm +- 20 % for views flagged {"generated": true}; nothing sets that
+   flag yet (NEXT: the brief's own shots should carry it). The held-out line's notes were not read for this.

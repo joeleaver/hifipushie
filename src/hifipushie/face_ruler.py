@@ -960,16 +960,20 @@ def _clay_crop(head, view):
     return out[0], out[2]
 
 
-def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0, dist=0.0) -> dict:
+def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0, dist=0.0, lens: bool = False) -> dict:
     """A fitted camera moved by the ruler's camera freedoms: mm of shift (x, y), % of scale, degrees of roll, of YAW
     (the head turned about the vertical through the camera's centre point) and of PITCH (nodded about the picture's
     horizontal), and DISTANCE (dist: log units x 100, ~ % further away, the lens lengthened to match: the picture's
     scale at the head's centre stays, its PERSPECTIVE changes; solvecams)."""
     from . import humanfit
     c = dict(cam)
-    kd = float(np.exp(0.01 * dist)) if dist else 1.0
-    c["t"] = [c["t"][0] + dx * 1e-3, c["t"][1] + dy * 1e-3, c["t"][2] * kd]
-    c["f"] = c["f"] * (1 + 0.01 * sc) * kd
+    if lens:      # A KNOWN LENS (readmix): the focal length is the picture's own (EXIF / lens_mm) and stays; the picture's SCALE
+        #           is then the camera's DISTANCE (d = f x size / pixels) and the free distance / lens trade does not exist
+        c["t"] = [c["t"][0] + dx * 1e-3, c["t"][1] + dy * 1e-3, c["t"][2] / (1 + 0.01 * sc)]
+    else:
+        kd = float(np.exp(0.01 * dist)) if dist else 1.0
+        c["t"] = [c["t"][0] + dx * 1e-3, c["t"][1] + dy * 1e-3, c["t"][2] * kd]
+        c["f"] = c["f"] * (1 + 0.01 * sc) * kd
     r = list(c.get("r", [0.0, 0.0, 0.0]))
     c["r"] = [r[0], r[1], r[2] + float(np.radians(roll))]
     if yaw:
@@ -1007,14 +1011,17 @@ def _cam_columns(obs, views, cam_sd):
             X = np.array([obs[i]["X"] for i in iv], float)
             p0 = _cam_points(view["cam"], X)[1]
             for j, key in ((4, "yaw"), (5, "pitch"), (6, "dist"))[:len(sds) - 4]:
-                d = (_cam_points(cam_moved(view["cam"], **{key: 0.5}), X)[1] - p0) / 0.5 * sc * mm     # mm per degree / per % of distance
+                d = (_cam_points(cam_moved(view["cam"], **{key: 0.5}, lens=bool(view.get("lens_known"))), X)[1] - p0) / 0.5 * sc * mm     # mm per degree / per % of distance
                 rot[j] = dict(zip(iv, d))
+            if view.get("lens_known"):      # a known lens: 1 % of scale = the camera 1 % nearer (its perspective with it), per read
+                d = (_cam_points(cam_moved(view["cam"], sc=0.5, lens=True), X)[1] - p0) / 0.5 * sc * mm
+                rot[2] = dict(zip(iv, d))
         for j, (nm, sd) in enumerate(zip(("dx", "dy", "scale", "roll", "yaw", "pitch", "dist"), sds)):
             col = np.zeros(len(obs))
             for i, ob in enumerate(obs):
                 if ob["view"] != k:
                     continue
-                if j >= 4:
+                if j >= 4 or (j == 2 and i in rot.get(2, ())):
                     if i not in rot.get(j, ()):
                         continue
                     d = rot[j][i]
@@ -1225,7 +1232,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         lim = (2.0 if cam_reset else 1.0) * np.asarray(CAM_STEP[:ncam], float)      # a round's STEP is limited (the columns are a linearisation); the whole move is not
         th = np.clip(th, -lim, lim)
         for v, t_ in zip(views, th):
-            v["cam"] = cam_moved(v["cam"], *t_)
+            v["cam"] = cam_moved(v["cam"], *t_, lens=bool(v.get("lens_known")))
         if cam_reset:
             cam0 = None              # refitted cameras are the new start
         else:
@@ -1281,7 +1288,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
             th = np.clip(th, -lim, lim)
             cam_done += th
             for v, t_ in zip(views, th):
-                v["cam"] = cam_moved(v["cam"], *t_)
+                v["cam"] = cam_moved(v["cam"], *t_, lens=bool(v.get("lens_known")))
         if k + 1 < rounds:
             cur = make(head["c"] + done)
     out["cam_done"], out["views"] = cam_done.tolist(), views
@@ -2062,7 +2069,10 @@ def _lip_obs(head, view, ev):
 # / +5.5 mm there). The picture itself shows the nostril openings: dark, high contrast. Each opening's LATERAL and MEDIAL end
 # along the line through both openings is read against the model's nostril RIM (GNM's exterior skin where it turns into the
 # nostril: fixed vertices) through the view's camera.
-NOSTRIL = True              # reference_views(nostrils=None) takes this
+NOSTRIL = False             # reference_views(nostrils=None) takes this. OFF: validated on ONE scanned head's front picture only (the
+#                             other scanned head's tip hides its nostrils, our own renders have no dark openings): there the
+#                             picture's opening ends 1.1 mm OUTSIDE the true rim on each side and 2.1 mm past it toward the midline
+#                             (the half-depth contour is larger than GNM's rim loop): a bias known from one head is not a calibration
 NOSTRIL_TURN = 30.0         # degrees: read in views turned less than this
 SIG_NOSTRIL = (0.8, 1.2)    # mm: an opening's lateral end / its medial end (validated on scanned heads: spikes/readmix/nostril_eval.py)
 NOSTRIL_ROI = 7.0           # mm round the model's rims that the picture is searched in
@@ -2208,21 +2218,102 @@ PHOTO_CAM_DIST_DENSE = 40.0
 # distance held this tightly (log x 100 ~ %) round the start's, WITH the dense landmarks too: familynative's phone
 # pictures went to 0.65 x / 1.6 x / 3 x their EXIF distance under PHOTO_CAM_DIST_DENSE, worth 3-4 mm of jaw width
 PHOTO_CAM_DIST_LENS = 7.0
+MP_DROPS_ANCHORS = False    # see reference_views
+LENS_PINS = True            # a view with a known lens: its focal length is PINNED and its scale freedom moves the camera's distance
+#                             (cam_moved(lens=True)): distance = focal x head size / pixels, not a free number under a prior
+
+
+CLOSE_M = 0.6               # a front picture taken nearer than this: strong perspective, the distance must be KNOWN
+
+
+def lens_info(v: dict) -> dict:
+    """What is known of a reference view's LENS: {"mm": the 35 mm equivalent on the frame's DIAGONAL (f / diagonal x 43.27:
+    what humanfit_map.lens_prior counts) | None, "source": "lens_mm" | "exif" | None, "warn": str}. The view's own
+    "lens_mm" is taken as given. EXIF: FocalLengthIn35mmFilm x DigitalZoomRatio; a picture CROPPED after capture (its
+    pixel aspect is not the EXIF's PixelXDimension : PixelYDimension, either way up) no longer has that field of view:
+    not known, and said. A resize keeps it."""
+    if v.get("lens_mm"):
+        return {"mm": float(v["lens_mm"]), "source": "lens_mm", "warn": ""}
+    try:
+        from PIL import Image
+        im = Image.open(v["image"])
+        ex = im.getexif().get_ifd(0x8769)
+        mm = ex.get(41989)
+        if not mm:
+            return {"mm": None, "source": None, "warn": ""}
+        mm = float(mm)
+        zoom = ex.get(41988)
+        try:
+            zoom = float(zoom) if zoom else 1.0
+        except (TypeError, ValueError, ZeroDivisionError):
+            zoom = 1.0
+        if zoom > 1.001:
+            mm *= zoom
+        ew, eh = ex.get(40962), ex.get(40963)
+        if ew and eh:
+            a_pic, a_ex = max(im.size) / min(im.size), max(float(ew), float(eh)) / min(float(ew), float(eh))
+            if abs(a_pic / a_ex - 1.0) > 0.02:
+                return {"mm": None, "source": None, "warn": (
+                    f"LENS: {str(v.get('image', '')).split('/')[-1]} was CROPPED after capture ({im.size[0]} x {im.size[1]} against the camera's "
+                    f"{int(ew)} x {int(eh)}): its EXIF lens ({mm:.0f} mm eq.) no longer gives its field of view: NOT used. Keep the original "
+                    "file, or state the crop's own lens_mm (f / diagonal x 43.27)")}
+        return {"mm": mm, "source": "exif", "warn": ""}
+    except Exception:  # noqa: BLE001
+        return {"mm": None, "source": None, "warn": ""}
 
 
 def lens_known(v: dict) -> float | None:
-    """A reference view's KNOWN lens (35 mm equivalent): its "lens_mm", else the picture file's EXIF; None = not known
-    (the 70 mm portrait prior was used)."""
-    if v.get("lens_mm"):
-        return float(v["lens_mm"])
-    try:
-        from PIL import Image
-        mm = Image.open(v["image"]).getexif().get_ifd(0x8769).get(41989)
-        return float(mm) if mm else None
-    except Exception:  # noqa: BLE001
-        return None
-CAM_STEP = (3.0, 3.0, 4.0, 2.0, 5.0, 4.0, 15.0)      # the most one Gauss-Newton round moves a camera (same units)
-LM_SIG = 1.5                          # mm: a clicked / detected landmark as an anchor (biased, never the measure)
+    """A reference view's KNOWN lens (35 mm equivalent on the diagonal), None = not known (lens_info)."""
+    return lens_info(v)["mm"]
+
+
+def distance_cost(dist_m: float, err: float = 0.2) -> dict:
+    """What a camera-distance error of `err` (0.2 = believed 20 % too far, the picture's scale at the eyes kept) shows as,
+    in mm of apparent width at the face, on GNM's mean head: {"cheekbone", "jaw", "alar", "nose_vs_ears"}. Geometry only
+    (spikes/readmix/distsens.py): the face's deep parts (cheekbones 80 mm, jaw angles 60 mm behind the eyes' plane) shrink
+    against its front as the camera comes closer; what the solve cannot tell from a narrower jaw."""
+    if "dcost" not in _C:
+        sp = _gnm()["sp"]
+        L = sp["WL"] @ _world(sp["T"])
+        eye = L[36:48].mean(0)
+        _C["dcost"] = {k: (a[0], b[0], a[1] - eye[1], b[1] - eye[1]) for k, (a, b) in
+                       {"alar": (L[31], L[35]), "cheekbone": (L[1], L[15]), "jaw": (L[4], L[12])}.items()}
+        _C["dcost"]["nose_ear"] = (float(L[30][1] - eye[1]), float(0.5 * (L[0][1] + L[16][1]) - eye[1]))
+    out = {}
+    for k in ("alar", "cheekbone", "jaw"):
+        xa, xb, za, zb = _C["dcost"][k]
+        w = lambda d: (xb * d / (d + zb) - xa * d / (d + za)) * 1000.0  # noqa: E731
+        out[k] = float(w(dist_m) - w(dist_m * (1 + err)))
+    zn, ze = _C["dcost"]["nose_ear"]
+    out["nose_vs_ears"] = float((dist_m + ze) / (dist_m + zn))
+    return out
+
+
+def distance_lines(views: list, lens: list | None) -> list:
+    """Per front / 3-4 view what its DISTANCE rests on, and what not knowing it costs (readmix; Joe: "anything more
+    specific we need to do about the distance problem")."""
+    out = []
+    side = any(abs(view_yaw(v["cam"])) >= SIDE_MIN for v in views)
+    for i, v in enumerate(views):
+        if v["kind"] == "profile":
+            continue
+        d = float(v["cam"]["t"][2])
+        li = (lens[i] if lens and i < len(lens) else None) or {}
+        nm = v.get("name", v["kind"])
+        c = distance_cost(d, 0.2)
+        if li.get("mm"):
+            out.append(f"DISTANCE {nm}: {d:.2f} m, from its lens ({li['mm']:.0f} mm eq., {'stated' if li.get('source') == 'lens_mm' else 'EXIF'}) and the head's size "
+                       f"(d = focal x size / pixels; the head's size is held at the start's: +- 5 % person to person, the same in the distance)")
+        else:
+            out.append(f"DISTANCE {nm}: NOT KNOWN (no lens_mm, no usable EXIF): it stands at {d:.2f} m ({lens_mm(v['cam']):.0f} mm eq.; block_in_start "
+                       f"assumes a 70 mm portrait). At that distance an error of 20 % shows as {abs(c['cheekbone']):.1f} mm of cheekbone width and "
+                       f"{abs(c['jaw']):.1f} mm of jaw width (the nose's own width {abs(c['alar']):.1f}): those widths are uncertain by about that much"
+                       + ("; a side view is in the set, so the face's depth is read and the solve may find the distance (its CAMERA line says how far it moved)"
+                          if side else "; NO side view pins the face's depth: the set cannot determine it") + ". Give lens_mm or keep the file's EXIF")
+        if v["kind"] == "front" and d < CLOSE_M:
+            out.append(f"STRONG PERSPECTIVE: {nm} was taken from {d:.2f} m: the nose is drawn x{c['nose_vs_ears']:.2f} against the ears' plane and every width "
+                       "depends on the distance" + ("" if li.get("mm") else ": it MUST be known: keep the original file with its EXIF, or retake from 1.5-2 m with 2-3x zoom"))
+    return out
 
 
 def _landmark_obs(head, view, points):
@@ -2519,6 +2610,12 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         img = Image.open(v["image"]).convert("RGB")
         view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1],
                 "face_only": True, "reader": "points", "jaw": bool(jaw), "chin": dict(chin or {})}
+        li = lens_info(v)
+        view["lens"] = li
+        if li["mm"] and LENS_PINS:       # a known lens: the focal length stays, the picture's scale is the camera's distance
+            view["lens_known"] = True
+        if li["warn"]:
+            notes.append(li["warn"])
         if jaw_lm:
             view["jaw_lm"] = tuple(jaw_lm)
         pts = dict(v.get("points") or {})
@@ -2536,14 +2633,17 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         extras = []
         if mp_view and det is not None:
             # MEDIAPIPE'S MESH AS ABSOLUTE READS (readmix): lips / mouth corners / nostril base / eye contours / bridge through the
-            # learned correspondence, at the sigma measured on photographs of scanned heads. The differential anchors of the
-            # same detector's inner-face points (brows .. mouth: 17-67) are then the SAME evidence: left out where these are read
+            # learned correspondence, at the sigma measured on photographs of scanned heads
             mix_ = (chin or {}).get("mp_mix")
             view["mp_P"] = det["P"]
 
             def _mp_and_anchors(h, vw, pts=pts, det=det, mix_=mix_):
                 m = mpread.obs(h, vw, det["P"], mix=mix_, neff=(vw.get("chin") or {}).get("mp_neff"))
-                a = [] if anchors == "none" else _anchor_obs(h, vw, pts, det if anchors == "differential" else None, skip=tuple(range(17, 68)) if m else ())
+                # (MP_DROPS_ANCHORS: TRIED dropping the same detector's differential inner anchors where the mesh is read: on a
+                # scanned head the mouth's width went from +0.6 to +2.3 mm: 102 anchors at 1 mm each were replaced by reads that
+                # count as 16. They stay; the mesh's reads are ADDED at their honest weight)
+                a = [] if anchors == "none" else _anchor_obs(h, vw, pts, det if anchors == "differential" else None,
+                                                             skip=tuple(range(17, 68)) if (m and MP_DROPS_ANCHORS) else ())
                 return m + a
             extras.append(_mp_and_anchors)
         elif anchors != "none":
@@ -2747,7 +2847,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
     if big:
         notes.append("NOISIER than assumed (the head that fits best leaves these reads scattered; their sigma was raised by): "
                      + ", ".join(f"{t} {vw} x{v:.1f}" for (t, vw), v in sorted(big.items())))
-    notes = list(notes) + cam_lines
+    notes = list(notes) + cam_lines + distance_lines(res["views"], [v.get("lens") for v in views])
     per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
     head_txt = (f"face ruler: {name} against its {len(views)} pictures ({', '.join(f'{k}: {m} reads' for k, m in per.items())}); "
                 "gap = picture - model in GNM's mm; cameras were fitted, so a shift / scale / roll of each picture is left free")
@@ -2773,10 +2873,11 @@ def nostril_lines(obs: list, views: list) -> list:
             continue
         oo = [ob for ob in obs if ob["type"] == "nostril" and ob["view"] == v["kind"]]
         if oo:
-            lat = [ob["o"] for ob in oo if ob["name"].endswith("lateral")]
+            lat = {ob["name"][8]: ob["o"] for ob in oo if ob["name"].endswith("lateral")}
+            wd = lat["l"] - lat["r"] if len(lat) == 2 else None      # (o runs along the line toward the subject's left)
             out.append(f"NOSE READ in {v.get('name', v['kind'])}: the nostril openings ({len(oo)} reads): "
                        + ", ".join(f"{ob['name'][8:].replace('_', ' ')} {ob['o']:+.1f} mm" for ob in oo)
-                       + (f"; the openings' outer width picture - model {sum(lat):+.1f} mm" if len(lat) == 2 else "")
+                       + (f"; the openings' outer width picture - model {wd:+.1f} mm" if wd is not None else "")
                        + " (read at the call's last round: near 0 = the model's nostrils lie on the picture's)")
         elif (NOSTRIL and abs(view_yaw(v["cam"])) <= NOSTRIL_TURN):
             out.append(f"NOSE: no nostril opening found in {v.get('name', v['kind'])} (hidden under the tip, filled by a flat light, or a "

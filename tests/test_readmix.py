@@ -155,3 +155,60 @@ def test_expression_prior_pins_a_neutral_picture():
     assert a["expr"]["front"]["happy"][0] > 0.5 and abs(b["expr"]["front"]["happy"][0]) < 0.05
     assert abs(c["expr"]["front"]["happy"][0] - 0.9) < 0.1
     assert b["dc"][0] > 3 * abs(a["dc"][0]) and abs(c["dc"][0]) < 0.6 * b["dc"][0]
+
+
+@need_ref
+def test_nostril_read_finds_drawn_openings_and_refuses_bare_skin(tess):
+    from PIL import Image, ImageDraw
+    spec, head, rj = tess
+    cam = rj["cameras"][0]
+    rims = fr.nostril_rims(head)
+    assert min(len(r) for r in rims) >= 6
+    V = np.asarray(head["V"], float)
+    assert V[rims[0], 0].mean() < 0 < V[rims[1], 0].mean()                  # the subject's right first
+    w, h = cam["size"]
+    mm1 = float(cam["t"][2] / cam["f"] * 1000.0)
+
+    def picture(shift_mm):
+        im = Image.new("RGB", (w, h), (200, 160, 140))
+        d = ImageDraw.Draw(im)
+        for side, rv in enumerate(rims):
+            P = fr._cam_points(cam, V[rv])[1]
+            c = P.mean(0) + [(-1 if side == 0 else 1) * shift_mm / mm1, 0.0]
+            rx, ry = 0.5 * np.ptp(P[:, 0]), 0.5 * np.ptp(P[:, 1])
+            d.ellipse([c[0] - rx, c[1] - ry, c[0] + rx, c[1] + ry], fill=(25, 15, 12))
+        return im
+    assert fr._nostril_obs(head, {"img": Image.new("RGB", (w, h), (200, 160, 140)), "cam": cam, "kind": "front"}) == []     # no opening: no read
+    o0 = {ob["name"]: ob["o"] for ob in fr._nostril_obs(head, {"img": picture(0.0), "cam": cam, "kind": "front"})}
+    o2 = {ob["name"]: ob["o"] for ob in fr._nostril_obs(head, {"img": picture(2.0), "cam": cam, "kind": "front"})}
+    assert len(o0) == 4 and len(o2) == 4
+    # both openings drawn 2 mm further OUT: the left one's ends move +2 along the line (toward the subject's left), the right one's -2
+    for k, sgn in (("nostril_l_lateral", 1), ("nostril_l_medial", 1), ("nostril_r_lateral", -1), ("nostril_r_medial", -1)):
+        assert abs((o2[k] - o0[k]) - 2.0 * sgn) < 0.5, (k, o0[k], o2[k])
+    assert fr.NOSTRIL is False                                                # not a default: one head's validation
+
+
+def test_distance_lens_exif_crop_and_the_brief(tmp_path):
+    from PIL import Image
+    from hifipushie import likeness_brief as lb
+    # the brief asks for distance and the lens
+    assert "1.5-2 m" in lb.DISTANCE and "lens_mm" in lb.DISTANCE and "EXIF" in lb.DISTANCE
+    # EXIF: 35 mm equivalent x digital zoom; a crop (another aspect than the camera's frame) is refused with a warning
+    ex = Image.Exif()
+    ifd = ex.get_ifd(0x8769)
+    ifd[41989], ifd[41988], ifd[40962], ifd[40963] = 24, 2.0, 4000, 3000
+    Image.new("RGB", (400, 300)).save(tmp_path / "resized.jpg", exif=ex)
+    Image.new("RGB", (300, 300)).save(tmp_path / "cropped.jpg", exif=ex)
+    a, b = fr.lens_info({"image": str(tmp_path / "resized.jpg")}), fr.lens_info({"image": str(tmp_path / "cropped.jpg")})
+    assert a["mm"] == 48.0 and a["source"] == "exif" and not a["warn"]
+    assert b["mm"] is None and "CROPPED" in b["warn"]
+    # a pinned lens: the scale freedom moves the camera, the focal length stays; without it the focal length scales
+    cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.4], "f": 1500.0, "size": [1000, 1400], "centre": [0.0, 0.0, 1.6], "yaw": 0.0}
+    m1, m2 = fr.cam_moved(cam, sc=10.0, lens=True), fr.cam_moved(cam, sc=10.0, dist=20.0)
+    assert m1["f"] == 1500.0 and abs(m1["t"][2] - 0.4 / 1.1) < 1e-9
+    assert fr.cam_moved(cam, sc=10.0, dist=20.0, lens=True)["t"][2] == m1["t"][2]         # no free distance with a known lens
+    assert m2["f"] > 1500.0 * 1.1 and m2["t"][2] > 0.4
+    # what a distance error costs: large close up, small from 2 m; the nose's own width hardly at all
+    c3, c20 = fr.distance_cost(0.3), fr.distance_cost(2.0)
+    assert 3.0 < abs(c3["cheekbone"]) < 5.5 and abs(c20["cheekbone"]) < 1.2 and abs(c3["alar"]) < 0.6
+    assert 1.4 < c3["nose_vs_ears"] < 1.65 and c20["nose_vs_ears"] < 1.1

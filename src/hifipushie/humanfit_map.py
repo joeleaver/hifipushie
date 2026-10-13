@@ -84,6 +84,9 @@ def detector_points(view: dict):
     return d
 
 
+GENERATED_LENS = (105.0, 0.2)     # 35 mm equivalent on the diagonal, relative sd: views flagged {"generated": true}
+
+
 def lens_prior(v: dict) -> tuple:
     """(focal in px, relative sigma) for a view: its "lens_mm" (35 mm-film equivalent, the EXIF FocalLengthIn35mmFilm:
     measured on the frame's DIAGONAL, so the picture must not be cropped; resizing is fine), else the image file's own
@@ -94,15 +97,13 @@ def lens_prior(v: dict) -> tuple:
     mm = v.get("lens_mm")
     sd = 0.05
     if mm is None and v.get("image"):
-        try:
-            from PIL import Image
-            ex = Image.open(v["image"]).getexif().get_ifd(0x8769)
-            mm = ex.get(41989)   # FocalLengthIn35mmFilm
-            sd = 0.08
-        except Exception:  # noqa: BLE001  (no file / no EXIF: the portrait prior)
-            mm = None
+        from . import face_ruler      # (readmix) FocalLengthIn35mmFilm x DigitalZoomRatio; a picture cropped after capture: not used
+        mm = face_ruler.lens_info(v)["mm"]
+        sd = 0.08
     if mm:
         return float(mm) / 43.27 * diag, sd
+    if v.get("generated"):      # (readmix) a GENERATED reference (our brief's shots: no lens): what the one calibrated set behaves
+        return GENERATED_LENS[0] / 43.27 * diag, GENERATED_LENS[1]     # like (Tess: the solve ends its head shots at 93-114 mm eq.)
     return LENS[0] / 36.0 * w, LENS[1]
 
 

@@ -50,6 +50,11 @@ WORTH = {"front": "ESSENTIAL: with a character read it is worth as much as front
 STUDY = ("priority (measured): 1 a neutral long-lens FRONT, 2 a TRUE PROFILE, 3 a character read in words (worth more than any "
          "third picture), 4 a three-quarter for judging. Every picture of one set must be the same head: a view that "
          "disagrees with the others by more than 5 mm is dropped by the fit.")
+# (readmix, 2026-10-13) the camera's DISTANCE is the one thing a picture does not say: a 20 % error is 4 mm of cheekbone width
+# at 0.3 m, 1.6 at 1 m, 0.8 at 2 m (face_ruler.distance_cost)
+DISTANCE = ("distance: front and three-quarter shots from 1.5-2 m or further through a long lens (2-3x zoom on a phone), never a "
+            "selfie at arm's length; STATE the distance or the lens (lens_mm) with each picture and keep the original files "
+            "(their EXIF carries the lens; a cropped picture's does not).")
 
 
 def _items(stages=None, views=None) -> list:
@@ -147,6 +152,7 @@ def reference_brief(kind: str = "head", subject: str = "") -> dict:
     text = [f"REFERENCE BRIEF ({kind}){sub}: shoot or generate these; optional ones help but aren't needed.",
             f"common to every shot: {common}", f"avoid: {NEGATIVE}"]
     text.append(STUDY)
+    text.append(DISTANCE)
     text.append("STATE THE ANGLES: name each file by its shot id and say the true head turn in degrees; a \"profile\" must "
                 "hide the far eye and brow (90), a three-quarter is 45 (not 20-30). Head level in every solver view. "
                 "Expression shots (optional, each worth having): they let the fit tell the person from the expression "

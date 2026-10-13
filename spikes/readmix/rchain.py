@@ -30,6 +30,9 @@ if kw.get("camfreeze") == "1":      # the cameras FROZEN where the chain starts 
 if "distfreeze" in kw:               # only the DISTANCE held (%), the rest free
     fr.PHOTO_CAM_SD7 = {k: tuple(v[:6]) + (float(kw["distfreeze"]),) for k, v in fr.PHOTO_CAM_SD7.items()}
     fr.PHOTO_CAM_DIST_DENSE = float(kw["distfreeze"])
+if "scout" in kw:                    # a solvecams chain's records: under this directory's out/ instead of solvecams' own
+    import common as _C_
+    _C_.S = kw["scout"]
 print("readmix switches:", {"mp": mpread.ENABLED, "hair_edge": fr.HAIR_EDGE, "lens": fr.PHOTO_CAM_DIST_LENS, "expr": bi.SOLVE_EXPRESSION, "mix": sorted(mpread.MIX)}, flush=True)
 sys.argv = sys.argv[i + 1:]
 runpy.run_path(sys.argv[0], run_name="__main__")
