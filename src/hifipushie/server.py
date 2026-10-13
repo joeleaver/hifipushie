@@ -2121,7 +2121,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
         warn += (f"WARNING: a weak solve: {so['n'].get('outline', 0)} outline reads (it wants ~150+ over 2-3 views). The anchors "
                  "and the prior carry it: expect the class mean's face where nothing was read.\n")
     for x in so.get("notes") or []:          # a VIEW without an outline (the total above hid a hair-covered front picture)
-        if x.startswith("NO OUTLINE:"):
+        if x.startswith(("NO OUTLINE:", "STRONG PERSPECTIVE:", "INFERRED (the camera's distance")):
             warn += "WARNING: " + x + "\n"
     if so["relax"] > 1.0:
         warn += (f"WARNING: INCONSISTENT PICTURES: at their own sigmas the solve wanted a component past 3 sd, so every read was "
@@ -2131,7 +2131,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     for x in so.get("notes") or []:          # a view's stated kind against its fitted camera
         if x.startswith("VIEW:"):
             warn += "WARNING: " + x + "\n"
-    notes = "".join(f"  {x}\n" for x in so.get("notes") or [] if not x.startswith(("VIEW:", "NO OUTLINE:")))
+    notes = "".join(f"  {x}\n" for x in so.get("notes") or [] if not x.startswith(("VIEW:", "NO OUTLINE:", "STRONG PERSPECTIVE:", "INFERRED (the camera's distance")))
     rp = (so.get("report") or {}).get("text") or ""
     if so.get("neck"):
         n_ = so["neck"]

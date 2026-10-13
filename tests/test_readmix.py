@@ -212,3 +212,19 @@ def test_distance_lens_exif_crop_and_the_brief(tmp_path):
     c3, c20 = fr.distance_cost(0.3), fr.distance_cost(2.0)
     assert 3.0 < abs(c3["cheekbone"]) < 5.5 and abs(c20["cheekbone"]) < 1.2 and abs(c3["alar"]) < 0.6
     assert 1.4 < c3["nose_vs_ears"] < 1.65 and c20["nose_vs_ears"] < 1.1
+
+
+def test_unknown_distance_marks_the_deep_widths_inferred():
+    cam = {"r": [0.0, 0.0, 0.0], "t": [0.0, 0.0, 0.45], "f": 1500.0, "size": [1000, 1400], "centre": [0.0, 0.0, 1.6], "yaw": 0.0}
+    views = [{"kind": "front", "cam": cam, "name": "selfie.jpg"}]
+    inf = fr.distance_inferred(views, [{"mm": None}])
+    assert {"cheekbone_width", "jaw_width", "gonial_width"} <= set(inf) and inf["cheekbone_width"] > inf["jaw_width"] > 2.0
+    assert "nose_width" not in inf and "mouth_width" not in inf           # one depth: distance-free
+    assert fr.distance_inferred(views, [{"mm": 24.0, "source": "exif"}]) == {}       # a known lens: nothing inferred
+    far = fr.distance_inferred([{"kind": "front", "cam": {**cam, "t": [0.0, 0.0, 2.5]}}], [None])
+    assert far.get("cheekbone_width", 0.0) < 0.5 * inf["cheekbone_width"]      # from 2.5 m it matters much less
+    L = fr.distance_lines(views, [{"mm": None}])
+    assert any(x.startswith("DISTANCE selfie.jpg: NOT KNOWN") for x in L) and any(x.startswith("STRONG PERSPECTIVE") for x in L)
+    assert any(x.startswith("INFERRED (the camera's distance") for x in L)
+    L2 = fr.distance_lines(views, [{"mm": 24.0, "source": "exif"}])
+    assert any("from its lens (24 mm eq., EXIF)" in x for x in L2) and not any(x.startswith("INFERRED") for x in L2)

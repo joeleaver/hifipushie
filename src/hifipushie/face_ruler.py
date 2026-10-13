@@ -2289,6 +2289,29 @@ def distance_cost(dist_m: float, err: float = 0.2) -> dict:
     return out
 
 
+DIST_RANGE = (0.5, 2.0)     # a distance that is NOT known is taken to lie between these multiples of where the camera stands
+DIST_MEASURES = {"cheekbone": ("cheekbone_width", "skull_width"), "jaw": ("jaw_width", "gonial_width")}
+
+
+def distance_inferred(views: list, lens: list | None) -> dict:
+    """The measures a front / shallow view's UNKNOWN distance leaves uncertain: {measure: +- mm}: what the apparent
+    width across the face's depth changes by if the camera really stood anywhere in DIST_RANGE x its place (the larger
+    side; distance_cost). Empty when every front / 3-4 view has a known lens. Measures between features at one depth (eye
+    spacing, mouth width, lids, lips, the nose's own width) do not depend on it and are not listed."""
+    out = {}
+    for i, v in enumerate(views):
+        if v["kind"] == "profile" or ((lens[i] if lens and i < len(lens) else None) or {}).get("mm"):
+            continue
+        d = float(v["cam"]["t"][2])
+        lo, hi = distance_cost(d, DIST_RANGE[0] - 1.0), distance_cost(d, DIST_RANGE[1] - 1.0)
+        k_ = max(0.0, float(np.cos(np.radians(min(abs(view_yaw(v["cam"])), 89.0)))))      # a turned view shows less of the width
+        for key, names in DIST_MEASURES.items():
+            pm = k_ * max(abs(lo[key]), abs(hi[key]))
+            for n in names:
+                out[n] = min(out[n], pm) if n in out else pm          # the view that depends on it least says how well it is known
+    return {n: round(float(x), 1) for n, x in out.items() if x >= 0.5}
+
+
 def distance_lines(views: list, lens: list | None) -> list:
     """Per front / 3-4 view what its DISTANCE rests on, and what not knowing it costs (readmix; Joe: "anything more
     specific we need to do about the distance problem")."""
@@ -2313,7 +2336,16 @@ def distance_lines(views: list, lens: list | None) -> list:
         if v["kind"] == "front" and d < CLOSE_M:
             out.append(f"STRONG PERSPECTIVE: {nm} was taken from {d:.2f} m: the nose is drawn x{c['nose_vs_ears']:.2f} against the ears' plane and every width "
                        "depends on the distance" + ("" if li.get("mm") else ": it MUST be known: keep the original file with its EXIF, or retake from 1.5-2 m with 2-3x zoom"))
+    inf = distance_inferred(views, lens)
+    if inf:
+        out.append("INFERRED (the camera's distance is not known: taken anywhere from half to twice where it stands): "
+                   + ", ".join(f"{n} +- {x:.1f} mm" for n, x in sorted(inf.items(), key=lambda t: -t[1]))
+                   + ". Widths between features at ONE depth (eyes, mouth, lids, lips, the nose's own width) do not depend on it")
     return out
+
+
+CAM_STEP = (3.0, 3.0, 4.0, 2.0, 5.0, 4.0, 15.0)      # the most one Gauss-Newton round moves a camera (same units)
+LM_SIG = 1.5                          # mm: a clicked / detected landmark as an anchor (biased, never the measure)
 
 
 def _landmark_obs(head, view, points):
@@ -2859,7 +2891,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             "sig_scale": res.get("sig_scale") or {}, "relax": res.get("relax", 1.0), "cam_step": res.get("cam_step"),
             "held": res.get("held") or [], "tie": tie, "expr": res.get("expr") or {}, "kinds": [v["kind"] for v in views],
             "readers": [v.get("reader") for v in views], "camera_lines": cam_lines, "bound": res.get("bound") or [], "disagree": dis["groups"],
-            "n_view": n_view}
+            "n_view": n_view, "inferred": distance_inferred(res["views"], [v.get("lens") for v in views])}
 
 
 
