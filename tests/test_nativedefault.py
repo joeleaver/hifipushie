@@ -218,7 +218,7 @@ def test_solve_has_a_neck_prior_and_says_so():
         # with MediaPipe's mesh reads in, the FREE solve of this set happens to end 2.4 mm from the mean and the prior's
         # 5.1: "the prior ends nearer than the free solve" was never a property of the solve, only of that day's reads)
         e = [abs(x["neck"]["after"] - ns["neck"]) for x in (held, so, free)]
-        assert e[0] < e[1] and e[0] < e[2] and max(e[1], e[2]) < 0.02, e
+        assert e[0] <= min(e[1], e[2]) + 0.001 and max(e) < 0.02, e
         assert "real millimetres" in bi.iris_size(b)["text"]
     finally:
         _rm(a, b, c, d)
