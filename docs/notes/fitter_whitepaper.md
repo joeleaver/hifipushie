@@ -623,6 +623,31 @@ the dense reads are in" was measured on our own renders only and DOES NOT CARRY 
   ~60 % (ancestry) of heads, which only attenuates the second slope. Consequence: the remedy is not class-balancing;
   it is what the network can see of the jaw edge (and the solve owning width through the outline).
 
+### Real photos, HSRD's HELD-OUT PEOPLE (spikes/denselm/real_hsrd.py; /mnt/data/hifipushie/denselm/real_hsrd.sh)
+The groundtruth agent's labelled set (hsrdset.py; "dl3" labels = OUR v3 set projected from its GNM fit to each scan,
+P.good = visible + on measured skin within 1.5 mm). Held out by subject (its split, fixed): HSR0023 (m 62), HSR0027
+(f 41), HSR0102 (f 22): 6 poses, 108 photos (up to 6 per pose x view class; rear skipped), turned upright by the head's
+roll (a late-bound closure first applied the wrong turn: 12-58 mm "errors"; fixed, and the crop checked by eye on one
+photo). Studio flash, 2.0-2.4 m, 90-166 mm lenses, neutral faces, no beards. Per-axis rms mm RAW / AFTER the
+detector's own 2D similarity [honesty], pilot -> s10k:
+| region | front | 3/4 | profile |
+|---|---|---|---|
+| lids | 3.69 / 2.30 [1.6] -> 2.44 / 1.88 [1.0] | 3.13 / 2.48 -> 2.80 / 2.35 | 3.55 / 2.14 -> 3.44 / 2.05 |
+| eyes | 4.79 / 3.16 -> 3.31 / 2.53 [1.5] | 3.94 / 3.12 -> 3.73 / 2.95 | 5.89 / 2.89 -> 4.59 / 2.75 |
+| nose | 3.64 / 2.07 -> 2.40 / 1.52 [0.9] (nose base 2.21 / 1.49) | 3.41 / 2.31 -> 2.58 / 1.68 | 4.26 / 2.30 -> 3.45 / 2.02 |
+| lips | 3.27 / 2.36 -> 2.25 / 1.86 [0.8] (borders 2.13 / 1.79, 2.19 / 1.99; seam 2.05 / 1.66) | 2.81 / 2.12 -> 2.80 / 1.98 | 4.33 / 2.48 -> 3.35 / 2.21 |
+| mouth | 3.78 / 2.42 -> 2.42 / 1.99 | 2.83 / 2.27 -> 2.70 / 2.09 | 4.91 / 2.81 -> 3.86 / 2.41 |
+| chin | 6.32 / 4.31 -> 3.91 / 3.00 [0.5] | 4.25 / 3.42 -> 3.33 / 2.83 | 7.29 / 5.12 -> 6.02 / 4.23 |
+| cheeks | 6.42 / 4.57 -> 4.67 / 3.97 [1.5] | 5.58 / 4.80 -> 5.07 / 4.55 | 9.83 / 7.24 -> 6.66 / 5.43 |
+| forehead | 5.56 / 4.51 -> 4.49 / 4.20 | 4.28 / 3.87 -> 4.70 / 4.23 | 9.54 / 5.64 -> 8.15 / 5.12 |
+Front mouth width (ours - truth, 36 photos): pilot median +2.1 mm (-19 .. +8) -> s10k -0.8 (-11 .. +3); alar width
++2.9 -> +0.1. Distance read 1.1-2.0 m for a true 2.0-2.4 m (always short: the training's distances are log-uniform
+0.25-3 m and phone-heavy). Honesty (s10k) 0.5-1.5: the sigmas are of the right size on real photos except cheeks /
+eyes / brows (too small by ~1.2x) and chin (too large). Smooth-skin rows (cheeks, forehead) carry the labels' own
+1-3 mm slide along the surface (the groundtruth agent's caveat): read edges (lids, nose, lips, mouth) first.
+READ: s10k is 20-35 % better than the pilot on the inner face of people it never saw; on the edges it sits at 1.5-2.0
+mm after the similarity, against 0.6-0.9 mm on our own renders: THE SIM-TO-REAL GAP IS STILL x2-3.
+
 ### RESTART (stage 1; rewritten after every step; read this first)
 STATE (2026-10-13 14:55): rendering STOPPED (data_s1/STOP_NICO + STOP_LOCAL exist; no queue running). The stage-1 set is
 COMPLETE for training: /mnt/data/hifipushie/denselm/data_s1/ = 92 dressings x 300 = 27,600 samples, all labelled with set
