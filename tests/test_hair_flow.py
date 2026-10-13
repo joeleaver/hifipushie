@@ -593,7 +593,7 @@ def test_escaped_curls_are_fine_separate_locks_near_the_face():
     lens, sides, curl = [], [], []
     for k, lk in cu.items():
         P = _world(sc, lk) - sc.C
-        assert 4 <= lk["hairs"] <= 12 and lk["width"] <= 0.004 and lk["free"] == 1.0, k
+        assert 4 <= lk["hairs"] <= 16 and lk["width"] <= 0.005 and lk["free"] == 1.0, k
         az0 = abs(np.degrees(np.arctan2(P[0, 0], -P[0, 1])))
         assert 12 < az0 < 90, (k, az0)  # the forehead's corner .. in front of the ear
         assert P[-1, 2] < P[0, 2] - 0.01, k  # it falls

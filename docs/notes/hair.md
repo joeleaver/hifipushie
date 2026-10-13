@@ -1916,3 +1916,19 @@ WHAT A FRESH AGENT WOULD GET WRONG:
   under layer: do not chase those again.
 - colvar's numbers depend on the tile size (strand_sd most): compare models at the same size (the table above mixes
   1024 and 1536 tiles for V86 / W04).
+
+### tesshair7 round two, RESUMED (2026-10-14): fixes on th_W04 (the coordinator's read)
+RESTART: tests all pass at 65bd468 (92). Best now th_W05 (= W04 style + look fly_light 0.45, code below;
+spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W05 v0,v1,v2,backl 1024`).
+- CROWN WIRE-GRID (front view, top of the dome): isolated with shots7 S= patches (out/iso_w04b.jpg): it was the
+  HALO (short broken hairs standing off the locks), which round one raised to 0.45 x messiness + 0.5 x volume:
+  0.12 x volume now. Leftover white glints = gloss's sharp lobe on crossing strands: roughness floor 0.4, specular
+  + 0.3 x gloss (was + 0.5). Gloss itself is NOT the grid, and with gloss 0 the hair reads grey and flat (iso_w04.jpg).
+- TAIL "flat tan ribbons": the highlight ribbons (gone with highlights 0). Broad ribbons x 0.35 (was 0.6), half a
+  ribbon's strands (was 62 %), value + 85 %, saturation + 25 % (was + 100 %: the tan). STILL visible as pale flat
+  bands on W05: NEXT lower highlight_contrast for the tail / shade them along the strand.
+- TEMPLE hard edge: the scalp tint's ramp (round one shortened it to 7 mm under volume while chasing the veil: not
+  its cause): 16 mm now. And no dark root on fine strands (hp_fine: the rim, single hairs).
+- WISPS "thin black wires": the curls had the dark root ramp and full opacity: now no dark root (hp_fine), fly_light
+  0.45, 8-16 hairs 2-5 mm. On W05 they nearly vanish from the front: NEXT make them read (more, longer, lighter).
+- Dark scribbly tuft at the part's start (three-quarter): the `cross` bump of the part's bank locks: NEXT smaller.

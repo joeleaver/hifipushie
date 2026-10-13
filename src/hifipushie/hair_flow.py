@@ -1121,8 +1121,8 @@ def curls(sc, tp: dict, ws: dict, line, seed: int, col, pre: str) -> dict:
                 continue
             locks[f"{pre}k{k}"] = {
                 "tier": "tie", "space": "xyz", "pts": _xyz(sc, P), "free": 1.0,
-                "width": round(float(rng.uniform(0.0015, 0.004)), 4), "thickness": 0.0015, "taper": 0.5, "belly": 0.4,
-                "root": 0.5, "cup": 0.0, "hairs": int(rng.integers(5, 13)),
+                "width": round(float(rng.uniform(0.002, 0.005)), 4), "thickness": 0.0015, "taper": 0.5, "belly": 0.4,
+                "root": 0.5, "cup": 0.0, "hairs": int(rng.integers(8, 17)),
                 "strands": {"wisp_fan": 1.2, "wisp_round": 0.9, "tip_loss": 0.75, "wave": 0.002, "wavelength": 0.05,
                             "random": 1.0, "flat": 1.0, "curl": 0.0}}
             k += 1
@@ -1392,12 +1392,12 @@ def style(tied: dict) -> dict:
             "width": 0.004, "depth": 0.2},
            # (+ by the volume: hair that stands off the head is not combed flat; its strands wander, a few leave it)
            "strands": {**STRANDS, "loose": round(0.15 + 0.6 * me + 0.35 * V, 3), "frizz": round(0.08 + 0.25 * me + 0.1 * V, 3),
-                       "flyaway": round(0.03 + 0.25 * me + 0.25 * V, 3), "halo": round(0.45 * me + 0.5 * V, 3), "baby": round(0.5 + 2.5 * me, 2),
+                       "flyaway": round(0.03 + 0.25 * me + 0.25 * V, 3), "halo": round(0.45 * me + 0.12 * V, 3), "baby": round(0.5 + 2.5 * me, 2),
                        "clump": 0.2,
                        # (under hair with volume the scalp's tint is SEEN at the forehead's corners (the mass stands
                        # up behind the line instead of lying over it): its 2 cm ramp was a grey veil over skin,
                        # th_V75..79 (isolated: not the scalp layer's strands, not the edge band). Full by 7 mm)
-                       "soft": round(0.022 - 0.015 * min(V / 0.3, 1.0), 4),
+                       "soft": round(0.022 - 0.006 * min(V / 0.3, 1.0), 4),  # (7 mm was a hard dark edge at the temples, th_W04)
                        # (the tail: a full one is airier and frizzier whatever the head's neatness; its sub clumps
                        # swing out of step by `wave`)
                        # (tousle is NOT strand wander: at loose 0.45 every strand of the tail wriggled on its own, a

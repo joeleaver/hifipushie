@@ -578,7 +578,15 @@ def material(look: dict):
     L.new(k0.outputs[0], fm_.inputs["Factor"])
     L.new(info.outputs["Intercept"], fm_.inputs[2])
     L.new(f1.outputs[0], fm_.inputs[3])
-    L.new(fm_.outputs[0], ramp.inputs["Fac"])
+    # (... nor do the hairline's fine rim and single hairs (hp_fine): dark roots there were a hard dark edge at the
+    # temples and black wires for wisps, th_W04)
+    fnr = N.new("ShaderNodeAttribute")
+    fnr.attribute_name = "hp_fine"
+    fmx = N.new("ShaderNodeMath")
+    fmx.operation = "MAXIMUM"
+    L.new(fm_.outputs[0], fmx.inputs[0])
+    L.new(fnr.outputs["Fac"], fmx.inputs[1])
+    L.new(fmx.outputs[0], ramp.inputs["Fac"])
     # per strand value
     hsv = N.new("ShaderNodeHueSaturation")
     mr = N.new("ShaderNodeMapRange")
@@ -668,15 +676,17 @@ def material(look: dict):
             # (absent attributes are 0: an object without the lens never lights up)
             f_t = M("MULTIPLY", smooth(M("ADD", ch_, su_), thr_t, thr_t + 0.05), M("GREATER_THAN", ch_, 0.0))
             f_b = M("MULTIPLY", smooth(M("ADD", cb_, su_), thr_b, thr_b + 0.2), M("GREATER_THAN", cb_, 0.0))
-            fh = M("MULTIPLY", M("MULTIPLY", M("MAXIMUM", f_t, M("MULTIPLY", f_b, 0.6)), smooth(age, 0.01, 0.07)), hlc)
+            # (broad ribbons soft: at 0.6 they were flat tan painted bands down a tail, th_W04)
+            fh = M("MULTIPLY", M("MULTIPLY", M("MAXIMUM", f_t, M("MULTIPLY", f_b, 0.35)), smooth(age, 0.01, 0.07)), hlc)
             # (a ribbon comes and goes along its length, each on its own rhythm: uniform it was pale tape, th_V73)
             fh = M("MULTIPLY", fh, M("MULTIPLY_ADD", M("SINE", M("ADD", M("MULTIPLY_ADD", age, 38.0, M("MULTIPLY", ch_, 40.0)),
                                                                   M("MULTIPLY", cb_, 25.0))), 0.42, 0.58))
             # (not every strand of a ribbon is lightened: all of them, it was a strip of pale tape, th_V74)
-            fh = M("MULTIPLY", fh, M("LESS_THAN", info.outputs["Random"], 0.62))
-            val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 1.0, 1.0))
-            hue = M("MULTIPLY_ADD", fh, 0.008, hue)
-            sat = M("MULTIPLY_ADD", fh, 1.0, sat)
+            # (half the strands of a ribbon, and little saturation: + 100 % saturation turned them tan, th_W04)
+            fh = M("MULTIPLY", fh, M("LESS_THAN", info.outputs["Random"], 0.5))
+            val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 0.85, 1.0))
+            hue = M("MULTIPLY_ADD", fh, 0.006, hue)
+            sat = M("MULTIPLY_ADD", fh, 0.25, sat)
     if fly > 0:
         val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_fly"), 0.6 * fly, 1.0))
     dep = float(np.clip(look.get("depth", 0.5) or 0.0, 0.0, 1.0))
@@ -806,8 +816,9 @@ def material(look: dict):
             L.new(ad_n.outputs["Vector"], no_n.inputs[0])
             return no_n.outputs["Vector"]
         L.new(tilted(-0.12), pb.inputs["Normal"])
-        pb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * (1.0 - 0.35 * gl_)
-        pb.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5)) * 0.6 + 0.5 * gl_
+        # (a softer primary: sharper, crossing strands at the crown glinted as a white wire grid, th_W04)
+        pb.inputs["Roughness"].default_value = max(float(look.get("roughness", 0.42)) * (1.0 - 0.15 * gl_), 0.4)
+        pb.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5)) * 0.6 + 0.3 * gl_
         try:
             pb.inputs["Coat Weight"].default_value = 0.7 * gl_
             pb.inputs["Coat Roughness"].default_value = 0.45
