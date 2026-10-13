@@ -1853,3 +1853,66 @@ wisps again without the veil (fewer hairs a clump, rooted ON the lifted hair's e
 colour), a highlight that follows the light (anisotropic strand shading in EEVEE); (5) tess_n1 was NOT tried (the
 GNM-native head's stage would need a build); (6) restore th_T04 or point the tesshair spikes at `_g3_th_T04`;
 (7) flowlines.py seeds only on the bank the camera sees, and a mask that keeps her flyaway edge out.
+
+### tesshair7 ROUND TWO: RESTART BLOCK (2026-10-13 evening; written for an agent with no memory of the session)
+Joe on th_V86: "That's the best hair yet, for sure. If we got the color/texture and whispies dialed in, I'd likely ship
+with it. Keep going." Round two = colour structure, texture (locks, parting), wisps; no regressions on up-styles.
+STATE: BEST = th_W04 (tess_a1 + ONE tie_hair call; style spikes/tesshair7/styles/W04_style.json, look
+W04_look.json, carry_from th_T66, groom seed 0). It beats th_V86 by measure and by eye in the head crops
+(/mnt/data/hifipushie/tesshair7/out/c_th_W03.jpg = hers | W03 | W02; W04 = W03's geometry with a lighter look);
+its tiles out/s_th_W04_{v0,v1,v2,backl}.png are rendered at 1536 (EEVEE, fitted cameras). NOT YET LOOKED AT closely at
+1536, no sheet built from it.
+Colour variation, hers | th_T66 | th_V86 | th_W04 (colvar.py, mean of three views): L_sd 7.5 | 3.9 | 5.7 | 7.6;
+strand_sd 4.3 | 2.0 | 2.5 | 3.5; ribbon_sd 3.0 | 1.75 | 2.6 | 3.05; mass_sd 2.4 | 1.6 | 1.8 | 2.4; light ribbons
+9 % at + 5.7 L* | 1 % | 6 % | 8 % at + 6.4; chroma_sd 3.1 | 0.8 | 1.6 | 2.0; hue_sd 6.4 | 2.3 | 2.7 | 3.2. Mean colour
+W04 L* 17-23 (hers 16.5-20), chroma 9.0 (hers 8-9), hue 66.5 (hers 69.7).
+Stand-off W04 (mm, hers | ours): front top 17-19 | 16-23, sides 17-24 | 19-24; profile forehead 13-15 | 5-9 (STILL
+SHORT), top 17-23 | 20-23, crown to tie 28-38 | 19-27 (still ~1 cm short).
+Round-two items:
+- DONE in code + tests written: (1) irregular ribbons (lens v17: hp_ch thin ~4 mm, hp_cb broad ~15 mm, soft wandering
+  edges; gathered by hp_su = sun exposure per lock (top layers, round the face, the tail's outside); hp_cm 1.5 mm
+  strand-scale value; root_dark; a tail's strands enter the ramp past the dark root); (2) highlight shading: look
+  `gloss` (EEVEE: Principled's specular with its normal tilted toward the root + a warm coat lobe tilted toward the
+  tip; EEVEE has no anisotropic reflection, the tangent is used for the tilt only). NOT JUDGED in a lit close-up of
+  the dome yet; (3) locks: gather.volume.locks (height swells / sinks along each lock, wander, 8 % lifted, widths and
+  clump sizes differ; inner strands of a lock darker by hp_b); (4) soft parting: gather.volume.cross (bank locks lean
+  over the line), zig x 1.6; by eye the part is still a notch: PARTLY; (5) wisps: `wisps.curls` = hair_flow.curls
+  (fine curled locks, 5-12 hairs, names tk<k>, own random stream), flat clumps cut back under volume; they read as
+  small curls at the temples in W02 / W03, thin; (6) up-style regressions: default volume is 0 for tie high / top
+  (smoothly by tie height) and for half up; asked for there = a pouf (arc / layers / locks 0). NOT RE-RENDERED:
+  riffs8.py has never run; (7) export colour: src/hifipushie/hair_colour.py (numpy) -> blender_strands.export_groom
+  writes per-point `groom_color`, hair_cards.mesh stores tone / peak in the cards' vertex colour and the atlas is
+  lifted by peak. NEVER RUN in Blender / never looked at on cards: only the numpy test; (8) old spikes repointed to
+  th_T66 (commit 5b83a4a).
+- NOT DONE: seat on tess_n1; sheets th_60 / th_61 / th_62; guide has the new words, CLAUDE.md pointer unchanged (fine).
+- TESTS: the last full run was BEFORE the final fixes. test_hair_flow had 1 failure (the hairline-band test; fixed
+  since by giving it "volume": 0 and scaling lock width variety by `locks`: NOT re-run); test_hair_strands'
+  new test_colour_model_outside_the_material was rewritten after failing: NOT re-run. Run all seven files first.
+NEXT, in order:
+1. tests: `/mnt/data/hifipushie/tesshair7/tests.sh` (each file through bin/slot; it WAITS for a light slot).
+2. Look at th_W04 at 1536 one area at a time beside her photo, then build th_60 / th_61:
+   `cd /mnt/data/hifipushie/tesshair7 && TOUT=$PWD/out python3 <worktree>/spikes/tesshair7/mk_sheets8.py th_W04 which=60,61`
+   (th_V86's tiles are in out/ at 1024; mk_sheets8's crop boxes for th_61 were set blind: check each pair).
+3. Riffs (HEAVY: sync + renders; one job): `W=<worktree> ./run.sh hv.py riffs8.py` -> out/rf8_*.png, then
+   `mk_sheets8.py th_W04 which=62`. Judge the up-styles (a3, a4, a6, b3) and half up (a5) against th_52's faults.
+4. tess_n1: `HEAD=tess_n1 SRC=th_W04 STYLE=W04 ./r8.sh W10` will fail at shots7 unless STAGE_MODEL=tess_n1 is exported
+   (the stage of tess_a1 is `_g3_th_T04`; tess_n1's is `_g3_tess_n1`, stage.ensure may rebuild it: heavy).
+5. Still wrong on W04 by eye: the part is a notch; the forehead's first cm lies low; curls are thin dark lines (more
+   hairs, finer, lighter); the tail unchanged (wide ribbons); gloss unjudged.
+To rebuild the best: `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W04 v0,v1,v2,backl 1536` (styles/W04.json +
+looks/W04.json there are the same files as spikes/tesshair7/styles/W04_*.json). EEVEE only.
+WHAT A FRESH AGENT WOULD GET WRONG:
+- Machine rules (the coordinator, firmly): ONE heavy job at a time; light jobs through bin/slot and WAIT; never put
+  light steps inside the heavy slot (round one did: hv.py without HV_LIGHT=1); never kill a process not positively
+  identified as yours (round one killed a shell by a pgrep -f pattern that matched its own command line: never
+  `pkill -f` / `pgrep -f` with a pattern that is in your own command).
+- r8.sh is the round script (three queues); r7.sh is round one's (everything in the heavy slot): do not use it.
+- Scripts run from the worktree as cwd: give ABSOLUTE output paths.
+- shots7.py uses the built stage `_g3_th_T04` because th_T04 is gone; shots5 / iso now default to th_T66, whose stage
+  does not exist yet (first use builds it: minutes, heavy).
+- The look's defaults vary now (variation 0.4, sun 0.2): an old model re-rendered is not its old picture; the "before"
+  columns use tiles rendered earlier (out/s_th_V86_*.png, tesshair6/out/s_th_T66_*.png).
+- The grey veil over the forehead's corners is the flat WISP clumps (drop=tw*), not the band, the scalp tint or the
+  under layer: do not chase those again.
+- colvar's numbers depend on the tile size (strand_sd most): compare models at the same size (the table above mixes
+  1024 and 1536 tiles for V86 / W04).
