@@ -67,6 +67,13 @@ def source(b: dict) -> dict:
 
 
 def _source_key(b: dict) -> str:
+    if (b.get("body") or {}).get("source") == "human":
+        # the one mesh's joints follow its HEAD too (identity, attach, size, style): keyed on the body alone, the first
+        # head a process evaluated gave every later head of that body its head / landmark / eye joints (solvecams,
+        # 2026-10-12: after block_in_start + a new identity in ONE process the build stood 14 mm and 4 % off the
+        # model the solve reads; a long-lived MCP server does exactly that)
+        from . import onemesh
+        return onemesh._tkey(b)
     return json.dumps([b.get("template", "male_stylized"), b.get("body")], sort_keys=True, default=float)
 
 
