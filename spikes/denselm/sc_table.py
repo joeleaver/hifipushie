@@ -14,35 +14,44 @@ import numpy as np
 from PIL import Image
 from scipy.optimize import least_squares
 
-from hifipushie import blockin as bi, denselm, face_ruler as fr, store
+from hifipushie import blockin as bi, denselm, face_ruler as fr, humanfit, likeness, store
 
 tag = sys.argv[1]
 heads = sys.argv[2] if len(sys.argv) > 2 else "abcdeg"
 KIND = {"f": "front", "fu": "front", "fd": "front", "fn": "front", "ff": "front", "q23": "3q", "q45": "3q", "s72": "side72", "s90": "side90"}
-REG = ("lids", "eyes", "brows", "nose", "lips", "mouth", "chin", "cheeks", "forehead", "ears", "scalp_neck")
+REG = ("lids", "eyes", "brows", "nose", "nose_base", "philtrum", "lips", "lip_border_upper", "lip_border_lower", "lip_seam", "mouth", "chin",
+       "cheeks", "forehead", "ears", "scalp_neck", "eyeball")
 L1 = denselm.landmarks()
 reg = L1["region"][:L1["n_skin"]]
-acc, cams, width = {}, [], []
+acc, cams, width, h2h = {}, [], [], []
 for h in heads:
     name = f"sc_{h}_T"
     if not (store.HOME / name / "spec.json").exists():
         continue
     rj = json.loads((store.HOME / name / "human_refs.json").read_text())
-    head = fr.model_head(store.load(name))
+    spec = store.load(name)
+    head = fr.model_head(spec)
+    Wg = np.asarray(humanfit.state(spec["base"])["head"]["gnm_world"], float)      # GNM's own pieces (eyeballs) as placed
+    gidm = np.asarray(head["gid"], int)
+    atm = np.full(int(gidm.max()) + 1, -1)
+    atm[gidm[gidm >= 0]] = np.where(gidm >= 0)[0]
     for v, cam in zip(rj["views"], rj["cameras"]):
         vn = v.get("name") or Path(v["image"]).stem.split("_")[-1]
         img = Image.open(v["image"]).convert("RGB")
         _, q68 = fr._cam_points(cam, np.asarray(head["L"], float)[:68])
         pr = denselm.predict(img, q68)
-        if "dense_v" not in head:
-            fr._dense_obs(head, {"cam": cam, "kind": "front"}, pr)
-        hv = head["dense_v"]
-        X = head["V"][hv]
+        Ls = pr.get("set") or L1
+        ids_all = Ls.get("gnm_all", Ls["gnm"])
+        rg_all = Ls["region"][:len(ids_all)]
+        keep = ~np.isin(rg_all, ("teeth_upper", "teeth_lower", "tongue"))          # (a closed mouth shows neither)
+        eyeb = rg_all == "eyeball"
+        ids, reg = ids_all[keep], rg_all[keep]
+        X = np.where((reg == "eyeball")[:, None], Wg[ids], head["V"][np.maximum(atm[ids], 0)])
         Xc, Q = fr._cam_points(cam, X)
         mm1 = float(cam["t"][2]) / cam["f"] * 1000.0
-        P = pr["xy"][:len(hv)]
+        P = pr["xy"][:len(ids_all)][keep]
         d = (P - Q) * mm1
-        sg = pr["sigma"][:len(hv)] * mm1
+        sg = pr["sigma"][:len(ids_all)][keep] * mm1
         kind = KIND.get(vn, fr.kind_of(fr.view_yaw(cam)))
         key = (kind, "hard top, dark skin" if h == "e" else "hair" if h == "g" else "plain")
         a = acc.setdefault(key, {"d": [], "sg": [], "reg": []})
@@ -60,6 +69,29 @@ for h in heads:
         cams.append({"head": h, "view": vn, "kind": kind, "yaw_true": round(abs(fr.view_yaw(cam)), 1), "yaw_err": round(float(s[4]), 2), "pitch_err": round(float(s[5]), 2),
                      "dist_err_pct": round(float(np.expm1(0.01 * s[6]) * 100), 1), "scale_pct": round(float(s[2]), 2), "dist_true_m": round(dist_true, 2),
                      "dist_head_m": None if dn is None else round(dn[0], 2)})
+        if kind in ("front", "3q"):      # LIPS and NOSE BASE head to head with MediaPipe, on the standard points both have
+            Lt = np.asarray(head["L"], float)[:68]
+            o68 = pr["xy"][Ls["lm68"]]
+            mp = likeness.detect_region(img, likeness._box({str(i): p_ for i, p_ in enumerate(q68)}, img.size))
+            row = {"head": h, "view": vn, "kind": kind}
+            for nm, sel in (("lips_outer", range(48, 60)), ("lips_inner", range(60, 68)), ("nose_base", range(31, 36))):
+                sel = list(sel)
+                row[nm + "_ours"] = round(float(np.linalg.norm(o68[sel] - q68[sel], axis=1).mean() * mm1), 2)
+                if mp is not None:
+                    row[nm + "_mp"] = round(float(np.linalg.norm(np.asarray(mp, float)[likeness.MP68][sel] - q68[sel], axis=1).mean() * mm1), 2)
+            if kind == "front":
+                wt = np.linalg.norm(q68[54] - q68[48])
+                row["mouth_width_ours"] = round(float((np.linalg.norm(o68[54] - o68[48]) - wt) * mm1), 2)
+                at_ = np.linalg.norm(q68[35] - q68[31])
+                row["alar_width_ours"] = round(float((np.linalg.norm(o68[35] - o68[31]) - at_) * mm1), 2)
+                if mp is not None:
+                    m68 = np.asarray(mp, float)[likeness.MP68]
+                    row["mouth_width_mp"] = round(float((np.linalg.norm(m68[54] - m68[48]) - wt) * mm1), 2)
+                    row["alar_width_mp"] = round(float((np.linalg.norm(m68[35] - m68[31]) - at_) * mm1), 2)
+                nb = reg == "nose_base"
+                if nb.any():
+                    row["alar_width_dense"] = round(float((np.ptp(P[nb, 0]) - np.ptp(Q[nb, 0])) * mm1), 2)
+            h2h.append(row)
         if kind == "front":
             x0 = Q[:, 0].mean()
             row = {"head": h, "view": vn}
@@ -70,7 +102,7 @@ for h in heads:
             jaw = np.isin(reg, ("chin", "cheeks"))
             row["lower_face_width_mm"] = round(float((np.ptp(P[jaw, 0]) - np.ptp(Q[jaw, 0])) * mm1), 2)
             width.append(row)
-out = {"regions": {}, "cameras": cams, "width": width}
+out = {"regions": {}, "cameras": cams, "width": width, "h2h": h2h}
 print(f"REGION TABLE {tag} (mm at the face; rms per axis | bias x, y | median sigma | honesty = mean d^2 / (2 sigma^2))")
 for (kind, cond), a in sorted(acc.items()):
     d, sg, rg = np.concatenate(a["d"]), np.concatenate(a["sg"]), np.concatenate(a["reg"])
@@ -96,6 +128,16 @@ for kind in ("front", "3q", "side72", "side90"):
 for c in cams:
     if c["kind"] in ("front", "side90"):
         print("     ", c)
+print("\nLIPS / NOSE BASE against MediaPipe on the standard points both have (mean error mm at the truth; RENDERS: MediaPipe was trained on photos,"
+      " we on these renders: this cannot settle which is better on a photo)")
+for kind in ("front", "3q"):
+    rs = [r for r in h2h if r["kind"] == kind]
+    if rs:
+        f = lambda k: np.mean([r[k] for r in rs if k in r]) if any(k in r for r in rs) else float("nan")
+        print(f"   {kind}: lips outer ours {f('lips_outer_ours'):.2f} / MediaPipe {f('lips_outer_mp'):.2f}; inner {f('lips_inner_ours'):.2f} / {f('lips_inner_mp'):.2f}; "
+              f"nose base {f('nose_base_ours'):.2f} / {f('nose_base_mp'):.2f}"
+              + (f"; mouth width bias ours {f('mouth_width_ours'):+.2f} (|.| {np.mean([abs(r['mouth_width_ours']) for r in rs]):.2f}) / MediaPipe {f('mouth_width_mp'):+.2f}; "
+                 f"alar width bias ours {f('alar_width_ours'):+.2f} / MediaPipe {f('alar_width_mp'):+.2f}; dense nose-base width {f('alar_width_dense'):+.2f}" if kind == "front" else ""))
 print("\nWIDTH in the front views (x scale predicted / true about the mid-line; lower-face width error mm)")
 for r in width:
     print("   ", r)
