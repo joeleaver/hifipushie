@@ -147,6 +147,118 @@ def landmarks() -> dict:
             "names": names + extra, "extra": extra, "n_skin": Ls, "n": Ls + len(extra), "lm68": lm68, "version": VERSION}
 
 
+def _sym_fps(T, cand, n_half: int, seed=()):
+    """Farthest-point picks on the vertex subset `cand` (ids) of the template T, as mirror pairs about x = 0:
+    (ids (n,), mirror (n,) = each pick's partner's position in ids). Vertices without a mirror partner in the subset
+    (within 0.8 mm) are left out."""
+    from scipy.spatial import cKDTree
+    cand = np.asarray(cand, int)
+    dm, jm = cKDTree(T[cand]).query(T[cand] * np.array([-1.0, 1.0, 1.0]))
+    part = cand[jm]
+    back = dict(zip(cand.tolist(), part.tolist()))
+    ok = (dm < 0.0008) & np.array([back.get(int(q), -1) == int(v) for v, q in zip(cand, part)])
+    own = part == cand
+    half = np.where(ok & (own | (T[cand, 0] > 0)))[0]
+    P = T[cand[half]]
+    picks, dmin = [], np.full(len(half), np.inf)
+    for v in seed:
+        k = np.where(cand[half] == v)[0]
+        if len(k):
+            picks.append(int(k[0]))
+            dmin = np.minimum(dmin, np.linalg.norm(P - P[k[0]], axis=1))
+    if not picks:
+        picks.append(int(np.argmax(P[:, 2] - np.abs(P[:, 0]))))          # the most forward point nearest the mid-line
+        dmin = np.linalg.norm(P - P[picks[0]], axis=1)
+    while len(picks) < min(n_half, len(half)):
+        i = int(np.argmax(dmin))
+        picks.append(i)
+        dmin = np.minimum(dmin, np.linalg.norm(P - P[i], axis=1))
+    left = cand[half[picks]]
+    mid = own[half[picks]]
+    ids = np.r_[left, part[half[picks]][~mid]]
+    mirror = np.arange(len(ids))
+    nm = np.where(~mid)[0]
+    mirror[nm] = len(left) + np.arange(len(nm))
+    mirror[len(left):] = nm
+    return ids, mirror
+
+
+TEETH_HALF = 7              # landmarks per half tooth row (the front arc: what a smile or an open jaw shows)
+TONGUE_HALF = 5
+TEETH_ARC = 0.016           # m: a tooth vertex this far behind its row's most forward one is still "the front arc"
+
+
+@functools.lru_cache(maxsize=1)
+def landmarks_v2() -> dict:
+    """VERSION 2 (stage 1, after gnmnative): version 1's skin landmarks, UNCHANGED and first (so regions, the 68 and
+    every reader of the skin part stay valid), then GNM's OWN loose pieces, all as GNM vertex ids ("gnm_all"): per eye
+    the pupil's centre vertex and 8 vertices round the iris disc's rim (GNM's recessed iris: its limbus ring), the
+    front arc of the upper and of the lower teeth, the tongue's upper front. Regions "eyeball", "teeth_upper",
+    "teeth_lower", "tongue". Mirror pairs throughout."""
+    L1 = landmarks()
+    T, gr, present, g = _groups()
+    ns = L1["n_skin"]
+    ids, mirror, region, names = [L1["gnm"]], [L1["mirror"][:ns]], list(L1["region"][:ns]), list(L1["names"][:ns])
+    off = ns
+    Q = np.asarray(g["quads"], int)
+
+    def add(v, m, reg, tag):
+        nonlocal off
+        ids.append(np.asarray(v, int))
+        mirror.append(off + np.asarray(m, int))
+        region.extend([reg] * len(v))
+        names.extend([f"{tag}_{int(x)}" for x in v])
+        off += len(v)
+    # eyes: the left eye's picks, the right eye's by mirror image
+    iris = gr["irises"]
+    q_iris = Q[iris[Q].any(1)]
+    rim = np.zeros(len(T), bool)
+    rim[q_iris[~iris[q_iris].all(1)].ravel()] = True
+    rim &= iris                                             # iris vertices sharing a quad with the sclera
+    from scipy.spatial import cKDTree
+    eye_ids = []
+    for side in ("left_eye", "right_eye"):
+        m = gr[side] & gr["eye_interiors"] if "eye_interiors" in gr else gr[side]
+        pv = np.where(m & gr["pupils"])[0]
+        rv = np.where(m & rim)[0]
+        eye_ids.append((pv, rv))
+    pv, rv = eye_ids[0]
+    c = T[np.where(gr["left_eye"] & iris)[0]].mean(0)
+    pc = pv[int(np.argmin(np.linalg.norm(T[pv] - T[pv].mean(0), axis=1)))]
+    ang = np.arctan2(T[rv, 1] - c[1], T[rv, 0] - c[0])
+    ring = [int(rv[int(np.argmin(np.abs(np.angle(np.exp(1j * (ang - 2 * np.pi * k / LIMBUS_N))))))]) for k in range(LIMBUS_N)]
+    left = np.array([pc] + ring)
+    pv2, rv2 = eye_ids[1]
+    cand = np.r_[pv2, rv2]
+    _, j = cKDTree(T[cand]).query(T[left] * np.array([-1.0, 1.0, 1.0]))
+    right = cand[j]
+    n1 = len(left)
+    add(np.r_[left, right], np.r_[n1 + np.arange(n1), np.arange(n1)], "eyeball", "eye")
+    # teeth: each row's front arc
+    for row, reg in (("upper_teeth_and_gums", "teeth_upper"), ("lower_teeth_and_gums", "teeth_lower")):
+        tv = np.where(gr[row] & gr["teeth"])[0]
+        tv = tv[T[tv, 2] > T[tv, 2].max() - TEETH_ARC]
+        v, m = _sym_fps(T, tv, TEETH_HALF)
+        add(v, m, reg, "tooth")
+    # tongue: its upper surface, front half
+    tv = np.where(gr["tongue"])[0]
+    tv = tv[(T[tv, 2] > np.median(T[tv, 2])) & (T[tv, 1] > np.median(T[tv, 1]))]
+    v, m = _sym_fps(T, tv, TONGUE_HALF)
+    add(v, m, "tongue", "tongue")
+    ids = np.concatenate(ids)
+    return {"gnm": L1["gnm"], "gnm_all": ids, "region": np.array(region), "mirror": np.concatenate(mirror), "names": names,
+            "extra": names[ns:], "n_skin": ns, "n": len(ids), "lm68": L1["lm68"], "version": 2,
+            "eye": (ns, ns + 2 * n1), "left_eye": np.arange(ns, ns + n1), "right_eye": np.arange(ns + n1, ns + 2 * n1)}
+
+
+def by_count(n: int) -> dict:
+    """the landmark set a network with n landmark outputs was trained on."""
+    for L in (landmarks(), landmarks_v2()):
+        if L["n"] == n:
+            return L
+    raise ValueError(f"denselm: no landmark set of {n} landmarks (version 1: {landmarks()['n']}, version 2: {landmarks_v2()['n']})")
+
+
 def limbus_points(centre, axis, eye_r: float, iris_r: float, up=(0.0, 0.0, 1.0)) -> np.ndarray:
     """(1 + LIMBUS_N, 3): the iris centre (on the limbus plane) and LIMBUS_N points round the limbus of an eyeball
     (centre, gaze axis, radius; iris radius). Point k is at angle 2 pi k / n from the eye's +x (the subject's left)
