@@ -1980,3 +1980,10 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   * NEXT (ordered): (1) the parting (banks falling over the line both ways; part short); (2) a light halo along the
     silhouette from the TOP layers only (the old halo on every lock was the crown wire-grid); (3) forehead-corner fine
     hair; (4) default look warmer (riffs grey); (5) half up's pit; (6) tess_n1; (7) export through Blender once.
+- ROUND TWO, fourth read (the coordinator on W09: "better than V86"), 2026-10-14: (1) THE HALO: `wisps.halo` n fine single
+  hairs (hair_flow.halo, names <pre>h<k>) rooted on the TOP layer of the gather (locks with shade < 0.2), following
+  their lock 4-13 cm while standing 2-9 mm off it mid-way, a gentle loose curve (0.4-1.3 mm at 4-9 cm); 28 % rooted on
+  the part's banks (lock strands `bank`) CROSS the line. Default round(420 x volume share x (1 - up)) = 420 for Tess.
+  At 240 with 0.8-2.5 mm curls (W10) they were kinky wiggles. th_W11 = W09 + this: BEST. The silhouette in front and
+  profile now has her fine standing hair. Part: hair across it, still a dip; far-bank tangle in three-quarter still the
+  weakest spot. RESTART: `./r8.sh W11 v0,v1,v2,backl 1536`; style / look spikes/tesshair7/styles/W11_*.json.

@@ -612,6 +612,27 @@ def test_escaped_curls_are_fine_separate_locks_near_the_face():
     assert [k for k in L0 if not k.startswith("tk")] == [k for k in L if not k.startswith("tk")]  # the others' draws stay
 
 
+def test_halo_stands_off_the_top_layer_and_crosses_the_part():
+    """tesshair7 round two (the coordinator on th_W09: "the fly-away halo along the whole silhouette ... what makes hers
+    read as hair and ours as a surface"): wisps.halo = fine single hairs on the TOP layer of the gathered hair, a few mm
+    off it, some crossing the part; with volume by default, none on an up-style or a cap."""
+    base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "volume": 0.5, "wisps": {"amount": 0.6, "curls": 0}}
+    assert hf.style(base)["tie"]["wisps"]["halo"] > 200
+    assert hf.style({**base, "volume": 0})["tie"]["wisps"].get("halo", 0) == 0
+    assert hf.style({**base, "tie": "high", "part": "none"})["tie"]["wisps"].get("halo", 0) == 0
+    sc, g, line, L = _grow({**base, "wisps": {"amount": 0.6, "curls": 0, "halo": 120}})
+    H = {k: lk for k, lk in L.items() if k.startswith("th")}
+    assert len(H) == 120
+    xs = []
+    for k, lk in H.items():
+        P = _world(sc, lk) - sc.C
+        assert 1 <= lk["hairs"] <= 2 and lk["width"] <= 0.0025, k
+        _, _, h = sc.coords(P + sc.C)
+        assert np.asarray(h).min() > -0.002 and np.asarray(h).max() < 0.06, (k, np.asarray(h).max())
+        xs.append((P[0, 0], P[-1, 0]))
+    assert sum(1 for a, b in xs if np.sign(a) != np.sign(b) and abs(a) < 0.02) >= 5  # some cross the part
+
+
 def test_sideburn_grows_no_lock_to_the_tie():
     """With a HARD hairline (hairline 0) the hairline row skips the sideburn (below the ear's top, in front of the
     ear): full locks from there climbed to the flow and their starts were a dark toothed tuft over bare skin. (A soft

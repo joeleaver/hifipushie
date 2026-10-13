@@ -131,7 +131,10 @@ WISPS = {"count": 6, "where": ["part", "front", "temple", "sideburn"], "length":
          "swoop": 0, "drape": 0.5,
          # curls (tesshair7) = fine separate curled locks a side that escape at the forehead's corners, the temples
          # and in front of the ears (hair_flow.curls: 4-9 hairs each, own fall, own helix)
-         "curls": 0}
+         "curls": 0,
+         # halo (tesshair7) = fine single hairs standing a few mm off the TOP layer of the gathered hair, some across
+         # the part (hair_flow.halo)
+         "halo": 0}
 WISP_AT = {"part": (3.0, 16.0), "front": (16.0, 44.0), "temple": (44.0, 64.0), "sideburn": (62.0, 80.0),
            "nape": (140.0, 176.0)}
 ESCAPED_AT = {"part": (4.0, 20.0), "temple": (44.0, 66.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}
@@ -439,6 +442,8 @@ def grow(sc, g: dict, line, rng, col=None) -> dict:
             locks.update(hair_flow.wisps(sc, tp, tp["wisps"], line, rng, col, pre))
         if tp.get("wisps") and tp["wisps"].get("curls"):  # (their own random stream: the others' draws stay)
             locks.update(hair_flow.curls(sc, tp, tp["wisps"], line, int(g.get("seed") or 0), col, pre))
+        if tp.get("wisps") and tp["wisps"].get("halo"):
+            locks.update(hair_flow.halo(sc, locks, int(tp["wisps"]["halo"]), int(g.get("seed") or 0), pre))
         fm = tp.get("frame")
         cnt = (fm["count"] if isinstance(fm["count"], (list, tuple)) else [fm["count"]] * 2) if fm else [0, 0]
         cnt = [int(c) for c in cnt]  # [right, left]
