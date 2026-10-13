@@ -2158,7 +2158,9 @@ def nostril_picture(img, centre, u, mmpx: float, roi_mm: float = NOSTRIL_ROI):
 # groove's shadow, or the step from the lit wing to the cheek behind it. Per contour vertex the picture's luminance along
 # the camera's horizontal, outward, and the read is where the chosen FEATURE lies against the model's contour, minus its
 # BIAS measured at the truth on TRAIN subjects only (spikes/readmix/alar_eval.py); scored on the held-out ones.
-ALAR = False                # reference_views(alar=None) takes this
+ALAR = True                 # reference_views(alar=None) takes this. ON (2026-10-14): on the three HELD-OUT HSRD subjects (4 calls, the
+#                             told-lens pooled start) the alar width error +1.7 / +1.1 / +1.7 -> +0.4 / +0.7 / +0.4 mm, nose base
+#                             +0.6 / +1.4 / +0.6 -> -0.9 / +0.9 / -0.8, lower face 2.74 / 3.49 / 3.61 -> 2.93 / 3.11 / 3.03 mm
 ALAR_TURN = 25.0            # degrees: read in views turned less than this
 ALAR_WIN = (-2.5, 4.5)      # mm along the outward horizontal, from the model's contour, searched
 ALAR_FEATURE = "edge"       # "valley" = the darkest point (the groove's shadow) | "edge" = the steepest fall going outward

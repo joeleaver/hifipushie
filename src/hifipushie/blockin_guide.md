@@ -150,13 +150,12 @@ eye catches what the points miss; the target table catches what your eye misses.
      `detector="anchors"` = the 68 differential anchors only. `dense="on"` adds our own dense landmark network (a pilot trained on our
      renders): on real faces it is a COARSE read (1.4-2.8 mm after its own placement, lids 2.1, chin 2.3: its sigmas
      say so now); it helps pose, large turns and a head with few outlines, it does not read fine features.
-   - THE NOSE'S WIDTH IS NOT READ. On two scanned heads the solve left the nose 2-5 mm too wide with the cameras at
-     the truth: no outline shows the wings from the front and neither detector's nose points follow a narrow nose
-     (MediaPipe's alar width +2.4 / +5.5 mm), so it stays near the class average; the reply lists nose_width under
-     MOVED WITH NO READ / unread: check the nose against the front picture by eye and set it with a `mm:nose_width`
-     step. A read of the NOSTRIL OPENINGS exists (face_ruler.NOSTRIL, off: each dark opening's ends against the model's
-     nostril rim; right in kind on the one scanned head that shows its nostrils, with a 1-2 mm offset known from that
-     head alone; silent where the tip hides them): not a default until more heads with truth confirm the offset.
+   - THE NOSE'S WIDTH is read from its WINGS (2026-10-14, default): from a front or shallow 3/4 picture (under 25 deg)
+     each ala's outer edge is an occluding contour of the model; the picture's steepest fall in brightness going outward
+     from it (the groove's shadow beside the wing) is read against it, one read a side, its bias measured at the truth on
+     five scanned heads (+0.3 mm). On three held-out scanned heads the solved alar width came from +1.1..+1.7 mm wide to
+     +0.4..+0.7. Neither face detector reads it: both draw a more average, wider nose. The nostril openings
+     (face_ruler.NOSTRIL) stay off (one head's validation).
    - HAIR OVER THE FACE'S EDGE (`hair_edge="on"`, the default). An outline is read only where the figure's edge is bare
      skin. With loose hair down both sides a front picture gives NO outline (the reply lists OUTLINE READS per view and
      warns NO OUTLINE for a view under 20): the face's widths there are GNM's average, not a measurement. Where the

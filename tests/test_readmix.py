@@ -260,3 +260,29 @@ def test_fallback_blend_stays_on_the_simplex():
     for bad in ({en[0]: -0.5, en[1]: 1.5}, {"martian": 1.0}, {en[0]: 0.0}):
         with pytest.raises(ValueError):
             bi.class_blend(bad, True)
+
+
+@need_ref
+def test_alar_read_follows_a_drawn_wing(tess):
+    from PIL import Image, ImageDraw
+    spec, head, rj = tess
+    cam = rj["cameras"][0]
+    w, h = cam["size"]
+    prs0 = fr.alar_profiles(head, cam, Image.new("RGB", (w, h), (200, 160, 140)))
+    assert len(prs0) == 2 and all(len(p["v"]) >= 2 for p in prs0)
+
+    def picture(out_mm):
+        im = Image.new("RGB", (w, h), (205, 165, 145))
+        d = ImageDraw.Draw(im)
+        for pr in prs0:            # a dark groove just outside each wing, `out_mm` beyond the model's contour
+            u = np.asarray(pr["u"])
+            for p in pr["px"]:
+                q = p + u * (out_mm + 0.6) / pr["mm1"]
+                d.ellipse([q[0] - 0.6 / pr["mm1"], q[1] - 1.2 / pr["mm1"], q[0] + 0.6 / pr["mm1"], q[1] + 1.2 / pr["mm1"]], fill=(110, 80, 70))
+        return im
+    a = {ob["name"]: ob["o"] for ob in fr._alar_obs(head, {"img": picture(0.0), "cam": cam, "kind": "front"})}
+    b = {ob["name"]: ob["o"] for ob in fr._alar_obs(head, {"img": picture(2.0), "cam": cam, "kind": "front"})}
+    assert set(a) == set(b) == {"alar_r", "alar_l"}
+    for k in a:
+        assert abs((b[k] - a[k]) - 2.0) < 0.6, (k, a[k], b[k])
+    assert fr._alar_obs(head, {"img": Image.new("RGB", (w, h), (200, 160, 140)), "cam": cam, "kind": "front"}) == []

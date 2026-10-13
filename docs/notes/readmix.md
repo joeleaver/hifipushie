@@ -480,3 +480,28 @@ mouthSmile 0.48 and her scan fit carries a lower-face expression: the expression
 MediaPipe's border read the COLOUR edge, GNM's border vertices are the form: groundtruth found the colour edge 1.5 mm off
 on another head) as large as the lips themselves on dark, full lips. NEXT for the lips: the border as paint, and the
 lip reads' sigma / bias measured against these scans before they move identity.
+
+## The alar-edge read and the fallback classes on the held-out subjects (2026-10-14; COMPUTED; one chain each, 4 calls)
+| subject | chain | face / low | nose base | alar | mouth width | upper / lower vermilion |
+|---|---|---|---|---|---|---|
+| h23 | readmix (no nose correction) | 2.19 / 2.74 | +0.6 | +1.7 | +0.8 | +3.7 / +4.0 |
+| h23 | + ALAR read | 2.25 / 2.93 | -0.9 | +0.4 | +0.2 | +3.6 / +4.0 |
+| h23 | start: wrong class (black) | 2.40 / 3.04 | +1.0 | +1.6 | +1.0 | +3.7 / +3.8 |
+| h27 | readmix | 4.80 / 3.49 | +1.4 | +1.1 | +2.0 | +3.2 / +2.8 |
+| h27 | + ALAR | 4.74 / 3.11 | +0.9 | +0.7 | +2.2 | +3.1 / +2.7 |
+| h27 | start: white | 4.67 / 3.08 | +0.9 | +0.9 | +2.3 | +3.2 / +2.6 |
+| h27 | start: black | 4.70 / 3.27 | +1.8 | +1.6 | +2.7 | +3.1 / +2.5 |
+| h102 | readmix | 2.50 / 3.61 | +0.6 | +1.7 | +5.4 | +5.9 / +8.2 |
+| h102 | + ALAR | 2.17 / 3.03 | -0.8 | +0.4 | +2.2 | +5.3 / +7.6 |
+| h102 | start: oracle blend (= black) | 2.85 / 4.18 | +1.1 | +2.5 | +6.2 | +6.6 / +9.1 |
+| h102 | start: wrong class (white) | 2.49 / 3.57 | -0.3 | +0.6 | +5.7 | +6.2 / +8.5 |
+ALAR: ON by default (alar width mean |error| 1.5 -> 0.5 mm; lower face better on two of three). Its at-truth bias: "## The
+nose" + face_ruler.ALAR_BIAS (train subjects only).
+FALLBACK: after four calls the start's class moves the nose base by under 1 mm and the mouth by under 1 mm; a WRONG class
+cost at most 0.4 mm of nose base here; the oracle blend (the simplex blend nearest the true identity) was no better than
+the pooled mean on h102. Static numbers agree: the classes' means differ by 1-3 mm in nose / mouth width, people differ from
+the nearest one by 3-8 mm, and the distance from a true identity to the pooled mean and to the nearest class mean differs
+by under 0.2 of 11-21 (sd units). So: the blend is given by the caller (block_in_start(ethnicity={class: weight}): a
+shape parameter, said GIVEN / INFERRED in the reply); SOLVING it as 3 more dimensions is NOT built: it could move the prior
+centre by about one class difference (~1 mm) and the reads already decide these measures. For denselm: its training
+identities were drawn evenly from the four classes, so its shrinkage is toward the POOLED mean.
