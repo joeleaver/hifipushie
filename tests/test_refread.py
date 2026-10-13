@@ -58,10 +58,10 @@ def test_cmax_keeps_every_component_within_reach():
     obs = _synthetic(c, 300, 0.3)
     free, held = fr.solve(obs, head), fr.solve(obs, head, cmax=3.0)
     assert np.abs(free["dc"]).max() > 4.0
-    assert np.abs(held["dc"]).max() <= 3.0 + 1e-9
-    assert held["relax"] > 1.0 and free["relax"] == 1.0
+    assert np.abs(held["dc"]).max() <= 3.0 + 2e-3
+    assert held["bound"] == [40] and held["relax"] == 1.0      # (solvecams) held AT the bound; no read down-weighted
     ok = fr.solve(_synthetic(_step(3, 4.0), 300, 0.3), head, cmax=3.0)
-    assert ok["relax"] == 1.0                       # nothing forced: nothing relaxed
+    assert ok["bound"] == []                        # nothing forced: nothing held
 
 
 def test_camera_prior_is_on_the_whole_move():
@@ -183,13 +183,13 @@ def test_solve_step_is_not_forced_and_keeps_the_cameras_whole_move():
         assert so["max_sd"] <= 3.0 + 1e-6 and 6.0 < so["c"] < 14.0
         rj = json.loads((store.HOME / a / "human_refs.json").read_text())
         done = np.asarray(rj["blockin"]["cam_done"], float)
-        assert done.shape == (3, 6) and np.allclose(done, so["cameras"], atol=0.01)
-        lim = 2.5 * np.array([fr.PHOTO_CAM_SD6[k] for k in ("front", "3q", "profile")])
-        assert (np.abs(done) <= lim + 1e-6).all()
+        assert done.shape == (3, 7) and np.allclose(done, so["cameras"], atol=0.01)     # (solvecams: + distance)
+        lim = 4.0 * np.array([fr.PHOTO_CAM_SD7[k] for k in ("front", "3q", "profile")])   # a prior now, no clip: a good set stays well inside it
+        assert (np.abs(done) <= lim + 1e-6).all() and len(so["camera_lines"]) == 3
         r2 = bi.solve_step(a, out=b)
         s2 = r2["solve"]
         assert np.allclose(np.asarray(s2["cameras"]), done + np.asarray(s2["camera_step"]), atol=0.02)
-        assert (np.abs(np.asarray(s2["cameras"])) <= lim + 1e-6).all()      # the WHOLE move stays inside the freedom
+        assert (np.abs(np.asarray(s2["cameras"])) <= lim + 1e-6).all()      # the WHOLE move stays near its prior
         assert s2["dc"] < so["dc"]                                           # the second call is the smaller step
     finally:
         for n in (root, a, b):

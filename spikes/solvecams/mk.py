@@ -11,13 +11,20 @@ import common as C
 
 tag = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
-sex, seed, sd, moves = C.HEADS[tag]
+sex, seed, sd, moves = C.HEADS[tag][:4]
+opt = C.HEADS[tag][4] if len(C.HEADS[tag]) > 4 else {}
 T = f"sc_{tag}_T"
 rng = np.random.default_rng(1000 + seed)
 if not (store.HOME / T / "spec.json").exists():
     bi.start(T, [], sex=sex, age=35, replace=True)
     sp = store.load(T)
-    c = bi.identity(sp) + sd * np.random.default_rng(seed).standard_normal(170)
+    c0 = bi.identity(sp)
+    if opt.get("from"):          # another model's body, skin, hair (read only), the class mean's identity + the draw
+        sp = copy.deepcopy(store.load(opt["from"]))
+        sp.pop("cloth", None)
+    if opt.get("skin"):
+        sp["skin"].update(opt["skin"])
+    c = c0 + sd * np.random.default_rng(seed).standard_normal(170)
     for x in [x for x in moves.split(",") if x]:
         c = c + gnm_mm.direction(x.split(":")[0]) * float(x.split(":")[1])
     bi.set_identity(sp, c)
@@ -40,8 +47,12 @@ for vn, (yaw, pitch, lens) in C.VIEWS.items():
     fn = f"{C.S}/synth/sc_{tag}_{vn}.png"
     if not os.path.exists(fn):
         lt = copy.deepcopy(stage.FRONT_LIGHT)
+        if opt.get("light") == "top":      # a hard light from above (chinread's)
+            lt["lights"][0].update({"dir": [0.1, -0.45, 0.89], "energy": 4.0, "angle": 12})
+            lt["lights"][1]["energy"] = 0.35
+            lt["world"]["strength"] = 0.3
         with resources.heavy(f"solvecams reference {T} {vn}", gb=6):
-            im = stage.shoot(T, [stage.fitted_frame(cam, [w / 2 - h / 2, 0.0, w / 2 + h / 2, float(h)], vn)], lt, size=int(h), hair_on=False)[vn]
+            im = stage.shoot(T, [stage.fitted_frame(cam, [w / 2 - h / 2, 0.0, w / 2 + h / 2, float(h)], vn)], lt, size=int(h), hair_on=bool(opt.get("hair")))[vn]
         x0 = int(round((h - w) / 2))
         im.convert("RGB").crop((x0, 0, x0 + w, h)).save(fn)
         print("shot", fn, "turn", round(abs(fr.view_yaw(cam)), 2), flush=True)
@@ -62,7 +73,14 @@ for s in (kw.get("sets") or ",".join(C.SETS)).split(","):
                       "blockin": {"root": ST, "attach": "native", "placement": list(bi._placement(sp["base"]))}})
     S0 = f"sc_{tag}_{s}00"
     if not (store.HOME / S0 / "spec.json").exists():
-        e = bi.start(S0, [copy.deepcopy(views[i]) for i in ii], sex=sex, age=35, cameras="refit", replace=True)
+        if opt.get("from"):      # the start = block_in_start on that model's body with these pictures (as the tool is used)
+            hold = f"sc_{tag}_{s}R"
+            store._dir(hold).mkdir(parents=True, exist_ok=True)
+            (store.HOME / hold / "spec.json").write_text(json.dumps(store.load(opt["from"])))
+            C.write_refs(hold, {"views": [copy.deepcopy(views[i]) for i in ii], "cameras": [None] * len(ii)})
+            e = bi.start(S0, hold, sex=sex, cameras="refit", replace=True)
+        else:
+            e = bi.start(S0, [copy.deepcopy(views[i]) for i in ii], sex=sex, age=35, cameras="refit", replace=True)
         r0 = C.refs(S0)
         L0 = C.landmarks(S0)
         print(f"start {S0}: {e['start']['cameras']}")

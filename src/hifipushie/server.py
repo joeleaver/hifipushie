@@ -2143,7 +2143,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
         rp += ("\n" if rp else "") + (f"expression read in the {pc} picture (1 = GNM's full prototype; taken out of the identity): "
                                       + (", ".join(big) if big else "neutral"))
     return [sh[0], warn + f"joint solve: {so['n']} reads; |dc| {so['dc']:.2f}, |c| {so['c']:.2f}, largest component {so['max_sd']:.2f} sd; "
-                   f"cameras' whole move since the start (shift mm, shift mm, scale %, roll, yaw, pitch deg per view): {so['cameras']}"
+                   f"cameras' whole move since the start (shift mm, shift mm, scale %, roll, yaw, pitch deg, distance % per view; a prior, not a clip: see the CAMERA lines): {so['cameras']}"
                    f" (this call: {so['camera_step']})\n" + notes + (rp + "\n" if rp else "")
                    + bi.step_text(rep) + "\n" + sh[1]]
 

@@ -645,13 +645,20 @@ def fork(src: str, name: str, replace: bool = False) -> dict:
     return entry
 
 
+FIT_LENS_SD = 0.05      # block_in_start's camera fit: the lens at its prior (EXIF / lens_mm, else a 70 mm portrait), +- this
+FIT_PITCH_SD = 5.0      # ... and the camera level with the head, +- this many degrees
+
+
 def fit_cameras(base: dict, views: list, rj: dict | None = None) -> list:
     """Each picture's camera fitted on this head, the head held (humanfit_map's camera-only fit); with rj, each view's
     camera on the head as that picture shows it (its fitted expression)."""
     from . import humanfit_map
+    # (solvecams) the detector's points cannot tell the camera's PITCH or its LENS / distance (known heads: pitch 4.6 deg
+    # rms, distance -78 .. +94 %): both under a prior here (level; the view's lens); the joint solve refines them
+    cp = {"lens_sd": FIT_LENS_SD, "pitch_sd": FIT_PITCH_SD}
     if rj and any(rj.get("expressions") or []):
-        return [humanfit_map.fit(view_base(base, rj, i), [v], free=())[1]["cameras"][0] for i, v in enumerate(views)]
-    _, rep = humanfit_map.fit(base, views, free=())
+        return [humanfit_map.fit(view_base(base, rj, i), [v], free=(), cam_prior=cp)[1]["cameras"][0] for i, v in enumerate(views)]
+    _, rep = humanfit_map.fit(base, views, free=(), cam_prior=cp)
     return rep["cameras"]
 
 
@@ -992,6 +999,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
 SOLVE_HOLD = None            # "auto": every measure no read looks at is held at the start head's value
 SOLVE_EXPRESSION = False     # "view" | "shared": the pictures' expression as a nuisance (face_ruler.EXPR_SET)
 SOLVE_JAW_LM = None          # detector landmarks added to the differential anchors (the jaw line: 3..13)
+CAM_FIRST = 1                # cameras-first rounds of every block_in_solve call (the head held; "refit": 2, wider, and the new start)
 SEESAW_COS = -0.2            # a step whose cosine with the last call's step is under this is halved
 RELAX_KEEP = 0.85            # the cmax down-weighting comes down at most this share a call (it goes up at once)
 
@@ -1000,7 +1008,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
                parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
-               damp: bool = True, chin: dict | None = None) -> dict:
+               damp: bool = True, chin: dict | None = None, dense: bool | None = None) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -1017,10 +1025,10 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     if root and (store.HOME / root / "spec.json").exists():
         off = c0 - identity(store.load(root))
     if cameras not in ("free", "trust", "refit"):
-        raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch free), '
-                         '"trust" (measured cameras: a third of that freedom) or "refit" (cameras fitted on ANOTHER head: '
-                         'laid on this head first, then free). The freedom is on the WHOLE camera move since the '
-                         'block-in started, whatever the number of calls: use the same setting on every call.')
+        raise ValueError('block_in_solve: cameras = "free" (fitted cameras: shift / scale / roll / yaw / pitch / distance under '
+                         'a wide prior: face_ruler.PHOTO_CAM_SD7), "trust" (measured cameras: a third of those widths) or '
+                         '"refit" (cameras fitted on ANOTHER head: laid on this head first, then free). A prior, never a '
+                         'clip, on the WHOLE camera move since the block-in started: use the same setting on every call.')
     k = 1.0 / 3.0 if cameras == "trust" else 1.0
     rj0 = _refs(src)
     # (nativedefault) CAMERAS MUST BELONG TO THIS HEAD. A head switched to GNM-native by an edit is 10-20 % larger and
@@ -1045,7 +1053,10 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                          + 'laid on THIS head first this call (cameras="refit" instead of "free"); later calls use what you pass')
         cameras = "refit"
     cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
-    cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD6.items()}
+    cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD7.items()}
+    from . import denselm
+    if (fr.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
+        cam_sd = {kk: tuple(v[:6]) + (k * fr.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
@@ -1076,9 +1087,9 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
             chin["size"] = True
             chin["size_note"] = ("SIZE: held at the start head's: " + size_info["why"])
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
-                   normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else 0, cmax=cmax,
-                   cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 6)),
-                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin)
+                   normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
+                   cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
+                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense)
     dc = float(share) * np.asarray(c["dc"], float)
     # THE SEE-SAW: a settled solve hops back and forth by |dc| 2-2.6 a call (Tess 2.6, 2.0, 2.6 with the cosine of
     # consecutive steps -0.4 .. -0.5: reads that come and go, the lids' and lips' re-linearisation). A step that turns
@@ -1120,7 +1131,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "camera_step": np.round(np.asarray(c["cam_step"], float), 2).tolist(), "relax": float(c["relax"]),
                     "held": list(c.get("held") or []), "expression": xp, "damped": damped, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
                     "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
-                    "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]]}
+                    "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]], "camera_lines": list(c.get("camera_lines") or []), "bound": list(c.get("bound") or []),
+                    "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()}}
     if c.get("tie"):
         rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size")),
                                 "size_target": float(c["tie"].get("size_target") or 0.0)}
