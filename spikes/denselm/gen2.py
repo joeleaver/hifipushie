@@ -385,17 +385,51 @@ def main():
         ex = [(sum((w * A[k] for k, w in f.items()), np.zeros(383)), f) for f in fam for _ in (0, 1)]
         what = ["probe"] * n
     E = np.array([e for e, _ in ex])
-    procs = int(os.environ.get("DL_PROCS", "4"))
+    # THE POSE OF EVERY SAMPLE, LINEAR (0.01 s; humanfit.state takes 2 s a head on a native head: the body's neck is
+    # re-fitted to every identity): GNM's own bases at the stage's placement. Checked against the exact build
+    # (scratch fast.py): the face 0.13-0.24 mm rms, teeth 0.1 mm, eyeballs 0.00 after a rigid move (the exact build
+    # also re-seats the head on the neck by a few mm: a rigid move of the whole head, which a picture cannot show).
+    # The neck: the head's move fades to 0 over the rings above the stitch (the asset's g_fade), the body stands.
     t1 = time.time()
-    jobs = [(sp["base"], ids[i], teeth[i], E[i]) for i in range(n)]
-    if procs > 1:
-        import multiprocessing as mp
-        with mp.get_context("fork").Pool(procs) as pool:
-            res = pool.map(_state, jobs, chunksize=8)
-    else:
-        res = [_state(j) for j in jobs]
+    names_i = [str(x) for x in g["identity_names"]]
+    IB = np.asarray(g["vertex_identity_basis"], np.float32)
+    EB = np.asarray(g["expression_basis"], np.float32)
+    JB = np.asarray(g["joint_identity_basis"], np.float64)[:, 2:4]
+    Tg = np.asarray(g["template_vertex_positions"], float)
+    idn0, ex0 = sp["base"]["head"]["identity"], sp["base"]["head"].get("expression") or {}
+    c0 = np.array([float(idn0.get(nm, 0.0)) for nm in names_i])
+    e0 = np.array([float(ex0.get(nm, 0.0)) for nm in _enames()])
+    world = lambda X: np.stack([X[..., 0], -X[..., 2], X[..., 1]], -1)      # GNM frame -> world (face_ruler._world)
+    G0 = world(Tg + np.tensordot(c0, IB, 1) + np.tensordot(e0, EB, 1))
+    fv = LMS["gnm"][np.isin(LMS["region"][:LMS["n_skin"]], ["lids", "eyes", "nose", "lips", "mouth", "chin", "cheeks", "brows", "forehead"])]
+    ca, cb = G0[fv].mean(0), W0[fv].mean(0)
+    U, S_, Vt = np.linalg.svd((G0[fv] - ca).T @ (W0[fv] - cb))
+    dd_ = np.sign(np.linalg.det(U @ Vt))
+    Rp = (U @ np.diag([1, 1, dd_]) @ Vt).T
+    sc = float((S_ * [1, 1, dd_]).sum() / ((G0[fv] - ca) ** 2).sum())
+    fade = np.asarray(onemesh.asset()["g_fade"], float)
+    hv = np.where(gid >= 0)[0]
+    WL = np.zeros((68, len(Tg)))
+    for li, r_ in enumerate(np.asarray(g["lm68"], float)):
+        WL[li, r_[0::2].astype(int)] = r_[1::2]
+    Jw0 = world(np.asarray(g["template_joint_positions"], float)[2:4] + np.tensordot(c0, JB, 1))
+    jord = [int(np.argmin(np.linalg.norm(eye0 - (cb + sc * (j_ - ca) @ Rp.T), axis=1))) for j_ in Jw0]
+    tix = [names_i.index(f"teeth_{k:03d}") for k in range(80)]
+    res = []
+    for i in range(n):
+        cf = c0.copy()
+        cf[:170] = ids[i]
+        cf[tix] = teeth[i]
+        Wn = W0 + sc * world(np.tensordot((cf - c0).astype(np.float32), IB, 1) + np.tensordot((E[i] - e0).astype(np.float32), EB, 1)) @ Rp.T
+        P = P0.copy()
+        P[hv] += fade[gid[hv]][:, None] * (Wn[gid[hv]] - W0[gid[hv]])
+        eye = eye0.copy()
+        dJ = sc * world(np.tensordot(cf - c0, JB, 1)) @ Rp.T
+        for j_, k_ in enumerate(jord):
+            eye[k_] = eye0[k_] + dJ[j_]
+        res.append((P, Wn, WL @ Wn, eye))
     t_state = time.time() - t1
-    print(f"step: {n} heads posed in {t_state:.0f} s ({procs} procs)", flush=True)
+    print(f"step: {n} heads posed in {t_state:.1f} s (GNM's bases, linear)", flush=True)
     meta = {k: [] for k in ("cam_eye", "cam_R", "fov", "shift", "yaw", "pitch", "roll", "f_mm", "dist", "side", "gaze", "light", "eye")}
     Ds, LMw = [], []
     for i in range(n):
