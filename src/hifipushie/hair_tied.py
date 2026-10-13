@@ -93,7 +93,13 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                   "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None, "feather": 0.0,
                   # edge 0..1: the hairline as a BAND of fine roots whose locks thin out and go fine toward the line
                   # (0 = one row of full locks on the line: a hard edge); zig m: the parting's line wanders this far
-                  "edge": 0.0, "zig": 0.0},
+                  "edge": 0.0, "zig": 0.0,
+                  # volume (tesshair7): {"crown", "side", "nape": m the top layer stands off the scalp there, "rise": m
+                  # (the bend radius: the hair leaves its root standing and is over within ~2 x this), "arc": 0..1 (the
+                  # way first falls from the root, down / out of the part, before the tie takes it: convex arcs),
+                  # "arc_length": rad, "layers": 0..1 (spread of the locks' heights: 0 = one shell), "hold": 0..1 (how
+                  # long the way keeps its height before it is drawn in to the tie)}; None = the flat cap of before
+                  "volume": None},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0,
                 "hang": False, "spread": 0.35,
@@ -107,7 +113,9 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                 "ragged": 0.0, "strays": 0, "in_step": 0.0,
                 # soft 0..1 (tesshair6): the tousle as soft irregular locks (some loosened out of the bundle, open ends,
                 # a fuller hang); stray_length [m, m] of the strays
-                "soft": 0.0, "stray_length": None}}
+                "soft": 0.0, "stray_length": None,
+                # sun_out: the tail's outer locks are where the sun reaches (the look's highlights gather there)
+                "sun_out": 0}}
 ESCAPED = {"count": 6, "where": ["temple", "ear"], "length": [0.06, 0.14], "hairs": [3, 7], "curve": 0.2,
            "wave": 0.008, "wavelength": 0.09, "strands": None}
 # wisps (hair_flow.wisps): small soft clumps of fine hairs that fall along the skin. count = clumps a side (or
@@ -120,7 +128,13 @@ WISPS = {"count": 6, "where": ["part", "front", "temple", "sideburn"], "length":
          "baby": 0, "loose": 0,
          # swoop (tesshair6) = thick loosened front locks a side: from beside the part out over the forehead's corner
          # (drape 0..1: how far below the hairline), then drawn back over the temple
-         "swoop": 0, "drape": 0.5}
+         "swoop": 0, "drape": 0.5,
+         # curls (tesshair7) = fine separate curled locks a side that escape at the forehead's corners, the temples
+         # and in front of the ears (hair_flow.curls: 4-9 hairs each, own fall, own helix)
+         "curls": 0,
+         # halo (tesshair7) = fine single hairs standing a few mm off the TOP layer of the gathered hair, some across
+         # the part (hair_flow.halo)
+         "halo": 0}
 WISP_AT = {"part": (3.0, 16.0), "front": (16.0, 44.0), "temple": (44.0, 64.0), "sideburn": (62.0, 80.0),
            "nape": (140.0, 176.0)}
 ESCAPED_AT = {"part": (4.0, 20.0), "temple": (44.0, 66.0), "ear": (66.0, 92.0), "nape": (140.0, 176.0)}
@@ -426,6 +440,10 @@ def grow(sc, g: dict, line, rng, col=None) -> dict:
             locks.update(hair_flow.escaped(sc, tp, tp["escaped"], line, rng, col, pre))
         if tp.get("wisps") and (tp["wisps"].get("count") or tp["wisps"].get("baby") or tp["wisps"].get("loose")):
             locks.update(hair_flow.wisps(sc, tp, tp["wisps"], line, rng, col, pre))
+        if tp.get("wisps") and tp["wisps"].get("curls"):  # (their own random stream: the others' draws stay)
+            locks.update(hair_flow.curls(sc, tp, tp["wisps"], line, int(g.get("seed") or 0), col, pre))
+        if tp.get("wisps") and tp["wisps"].get("halo"):
+            locks.update(hair_flow.halo(sc, locks, int(tp["wisps"]["halo"]), int(g.get("seed") or 0), pre))
         fm = tp.get("frame")
         cnt = (fm["count"] if isinstance(fm["count"], (list, tuple)) else [fm["count"]] * 2) if fm else [0, 0]
         cnt = [int(c) for c in cnt]  # [right, left]

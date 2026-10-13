@@ -124,6 +124,10 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
     from .hair import lock_width
     out = {}
     lam = max(float(S["wavelength"]), 0.01)
+    import re
+    gl_ = [float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for lk in locks if is_gather(lk)]
+    age_tail = float(np.median(gl_)) if gl_ else 0.0  # m of hair between the scalp and a tie
+
     def kind(lk):  # "wisp": a lock of `hairs` SINGLE strands (its own object: a lock's share of the count is never
         # under ~8 strands, and 8 side by side on one line are a comb strip, not loose hairs)
         return "wisp" if int(lk.get("hairs") or 0) > 0 else "free" if float(lk.get("free", 0.0)) > 0.5 else "head"
@@ -140,6 +144,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
         P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_, CX_, FN_, EX_ = ([] for _ in range(17))
+        A0_, A1_, SH_, HK_, SU_ = [], [], [], [], []
         wisp_tips = wisp_physical(S)["tips"]
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
@@ -232,6 +237,14 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             EX_.append(float(np.clip(own["rim"], 0.2, 4.0)) / 0.8 - 1.0 if "rim" in own else 0.0)
             FN_.append(float(np.clip(own.get("fine", 0.0), 0.0, 1.0)))  # (drawn fine: the hairline's thin rim)
             GR_.append(float(np.clip(inp.get("Grey", lk.get("grey", 0.0)), 0.0, 1.0)))  # share of grey hairs
+            # the hair's AGE along the lock, m from the scalp (the look's `sun` / `highlights`): a tail's lock starts
+            # where the gathered hair ended, not at a new root
+            a0_ = age_tail if (age_tail > 0 and re.fullmatch(r"t\d*[ty]\d+", str(lk.get("name", "")))) else 0.0
+            A0_.append(a0_)
+            A1_.append(a0_ + float(s[-1]))
+            HK_.append(float(max(1.0, round(2.0 * float(np.max(hw)) / 0.006))))  # highlight ribbons across the lock, ~6 mm each
+            SH_.append(float(np.clip((lk.get("strands") or {}).get("shade", 0.0), 0.0, 1.0)))  # depth in the mass
+            SU_.append(float(np.clip((lk.get("strands") or {}).get("sun", 0.0), -0.5, 0.5)))  # where the sun reaches
             WS_.append(ws)
             WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
@@ -244,7 +257,13 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                     "side": np.concatenate(S_).astype(np.float32), "out": np.concatenate(O_).astype(np.float32),
                     "weight": np.asarray(W_, float), "density": np.asarray(D_, float), "lock": np.asarray(I_, np.int32), "k": np.asarray(K_, np.int32), "fd": np.asarray(F_, np.float32), "rs": np.asarray(R_, np.float32), "ts": np.asarray(TS_, np.float32),
                     "ws": np.asarray(WS_, np.float32), "wl": np.asarray(WL_, np.float32),
-                    "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_)}
+                    "gr": np.asarray(GR_, np.float32), "names": np.asarray(N_),
+                    "a0": np.asarray(A0_, np.float32), "a1": np.asarray(A1_, np.float32),
+                    "hk": np.asarray(HK_, np.float32)}
+        if any(SH_):
+            out[key0]["sh"] = np.asarray(SH_, np.float32)
+        if any(SU_):
+            out[key0]["su"] = np.asarray(SU_, np.float32)
         if any(CX_):  # (only when a lock asks: older jobs keep their files, and so their cache keys)
             out[key0]["clx"] = np.asarray(CX_, np.float32)
         if any(EX_):

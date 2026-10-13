@@ -1,4 +1,4 @@
-"""shots5.py <model> [engine=eevee|cycles] [size=768] [views=v0,v1,v2,backl,backq,right,back] [stage=th_T04]
+"""shots5.py <model> [engine=eevee|cycles] [size=768] [views=v0,v1,v2,backl,backq,right,back] [stage=th_T66]
 [look=@file.json]: the model's CURRENT hair on the shared dressed stage: through the three references' fitted cameras
 under the fitted photo light (v0 front, v1 three-quarter, v2 profile; the whole picture, squared) and the views the
 pictures do not show (the front light turned round the head with the camera). Tiles $TOUT/s_<model>_<view>[_cyc].png.
@@ -38,7 +38,7 @@ nt = J["lm_nose_tip"]
 c = np.array([0.0, nt[1] + 0.11, nt[2] - 0.03])
 DIRS = {"backl": [0.62, 0.78, 0.06], "backq": [-0.6, 0.8, 0.08], "right": [-1, 0.0, 0.0], "back": [0.0, 1.0, 0.1],
         "left": [1.0, 0.0, 0.0], "front": [0.0, -1.0, 0.05]}
-sn = stage.ensure(kw.get("stage", os.environ.get("STAGE_MODEL", "th_T04")))
+sn = stage.ensure(kw.get("stage", os.environ.get("STAGE_MODEL", "th_T66")))
 st = json.loads((store._dir(sn) / "spec.json").read_text())
 st["hair"] = spec["hair"]
 

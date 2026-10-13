@@ -238,7 +238,7 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     gradient, strand id, depth, alpha; "tiles": [{"kind", "u0", "u1"}] (v runs the whole height: 0 = the root, at the
     top of the picture)}. Colour = the look's gap colour deep down to its lit colour on top, a value per strand."""
     key = hashlib.sha1(json.dumps([{k: S.get(k) for k in ("clump", "frizz", "curl", "tips", "atlas", "short")},
-                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID], sort_keys=True).encode()).hexdigest()
+                                   {k: look.get(k) for k in ("gap", "lit", "vary", "band", "card_gain", "card_sat", "grey", "grey_share", "card_grey", "grey_locks", "grey_amount", "sun", "highlights", "highlight_contrast", "variation")}, key, sorted(SHORT_TILE.items()), SHORT_DEPTH, EDGE_SOLID], sort_keys=True).encode()).hexdigest()
     if key in _ATLAS:
         return _ATLAS[key]
     from scipy import ndimage
@@ -266,6 +266,9 @@ def atlas(S: dict, look: dict, lines: dict | None = None, cap: dict | None = Non
     # a value per strand: what makes a card read as hairs, not a painted sheet (strands: +-vary and more)
     val = (1 + float(look.get("vary", 0.25)) * 3.0 * (idm - 0.5))[..., None]
     gain = float(look.get("card_gain", 1.0))  # measured against the strand look (hair.match_cards)
+    if S.get("colour_model", True) and not S.get("short"):  # (the cards' vertex colours carry tone / peak: mesh())
+        from . import hair_colour as hcol
+        gain = gain * hcol.peak(look)
     base = gap[None, None] * (1 - shade) + lit[None, None] * shade
     gs = float(look.get("grey_share") or 0.0) * (float(look.get("card_grey", 0.5)) if S.get("short") else 1.0)  # grey hairs: that share of the strands (by their id) in the grey colour
     if gs > 0:  # (the strand look's own rule: look.grey_amount + the locks' grey x look.grey_locks; cards_job sets it)
@@ -510,6 +513,18 @@ def mesh(cards: list, S: dict, look: dict, tiles: list, segment: float | None = 
         ramp = rootd + (1 - rootd) * _ss(c["u"] / max(rootl, 1e-3))
         ramp = ramp * (1 + tip_amt * 0.35 * _ss((c["u"] - 0.55) / 0.45))
         lay = 1.0  # (lower layers were darkened here AND by the atlas's depth: a dark band wherever layer 0 showed)
+        if S.get("colour_model", True) and not S.get("short"):
+            # the look's colour model on the cards (tesshair7; hair_colour): each card is a ribbon: its lock's drift
+            # and depth, lighter with the hair's age along it, a share of cards highlight ribbons. Stored / peak (a
+            # vertex colour cannot brighten); the atlas is lifted by the same peak (atlas colour x col = the tone)
+            from . import hair_colour as hcol
+            import re as _re
+            nm = str(c.get("lock", ""))
+            hsh_ = int(hashlib.md5(nm.encode()).hexdigest()[:8], 16)
+            age = (c["s"] - c["s"][0]) + (hcol.TAIL_AGE if _re.fullmatch(r"t\d*[ty]\d+", nm) else 0.0)
+            tone = hcol.lock_tone(look, (hsh_ % 1000) / 999.0, float(c.get("shade", 0.0))) \
+                * hcol.along_tone(look, age, ((hsh_ // 1000 + ci * 7919) % 1000) / 999.0 + 1e-4, float(c.get("sun", 0.0)))
+            ramp = ramp * tone / hcol.peak(look)
         COL.append(np.repeat(np.clip(ramp * lay * c.get("value", 1.0) * c.get("cval", 1.0), 0, 1)[:, None]
                              * np.ones(3)[None], 2, 0))
         AL.append(np.repeat(c["u"], 2))

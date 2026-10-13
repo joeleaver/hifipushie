@@ -119,7 +119,29 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "sheen_amount": 0.45, "vary": 0.25, "grooves": 5, "groove_depth": 0.12, "anisotropic": 0.7,
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
         "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "eevee_sat": 0.35, "light": None, "card_gain": 1.0, "card_sat": 1.0, "card_grey": 0.5,
-        "cycles_fit": None, "seen": None, "fine_alpha": 0.5, "cycles_width": None, "cycles_sat": None}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "cycles_fit": None, "seen": None, "fine_alpha": 0.5, "cycles_width": None, "cycles_sat": None,
+        # cycles_melanin 0..1 (+ cycles_redness 0..1, cycles_random_color): Cycles renders the hair BSDF from MELANIN
+        # (physical colour and light transport), the look's colour model as a tint on it; None = from the colour
+        "cycles_melanin": None, "cycles_redness": None, "cycles_random_color": None,
+        # the colour model (tesshair7; strands only): natural hair is never one colour, so the defaults vary
+        # variation 0..1: locks differ in lightness, sub clumps / strands a little in hue and saturation
+        # sun 0..1: sun-lightened lengths: the hair lightens and warms with its age (m from the scalp, full by 28 cm;
+        #   a ponytail's ends are its oldest hair); roots stay the look's colour
+        # highlights 0..1: the share of sub clumps that are lighter, warmer ribbons (gathered on some locks, starting
+        #   a few cm off the root); highlight_contrast 0..1.5: how much lighter
+        # fly_light 0..1: single fine hairs (fly-aways, halo, wisps, the hairline's rim) read lighter
+        # (grey_amount: a share of grey strands; vary: the per-strand / sub-clump value noise under all of it)
+        # depth 0..1: the under-layers of hair with volume are darker (a lock's "shade": the shadow strands do not cast
+        #   on each other in EEVEE)
+        # root_dark 0..1: how dark the first stretch (`root` of the length) is, 1 = the gap colour
+        # gloss 0..1 (EEVEE strands): the two highlight lobes where light catches the hair (a sharp pale one toward
+        #   the root, a broader one in the hair's own warm colour toward the tip); 0 = the matt strand of before
+        "variation": 0.4, "sun": 0.2, "highlights": 0.0, "highlight_contrast": 0.6, "fly_light": 0.3, "depth": 0.5,
+        "root_dark": 0.5, "gloss": 0.0,
+        # the game-shader terms (EEVEE strands; each a game hair / card shader can do): tip_alpha 0..1 (see-through
+        # tips), backscatter 0..1 (warm light through thin / back-lit hair), scatter 0..1 (fake multiple scattering:
+        # a darker, richer core by depth, lighter outer layers). 0 = off (the default: other models unchanged)
+        "tip_alpha": 0.0, "backscatter": 0.0, "scatter": 0.0}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
@@ -2690,15 +2712,73 @@ def outline_measure(ours, ref, mm_px: float, tie=None) -> dict:
     return out
 
 
-def colour_bands(img, mask) -> dict:
+def _lab(img):
+    a = np.asarray(img, float)[..., :3] / 255.0
+    lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    xyz = lin @ np.array([[0.4124, 0.2126, 0.0193], [0.3576, 0.7152, 0.1192], [0.1805, 0.0722, 0.9505]]) / [0.9505, 1.0, 1.089]
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return 116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])
+
+
+def colour_variation(img, mask, mm_px: float) -> dict:
+    """How much the hair's colour VARIES inside `mask` (the flat-brown check: the same call on our render and on the
+    picture, same mask, same camera). Scales in mm on the head (`mm_px`):
+      L_sd / L_p10 / L_p90   the spread of lightness over the whole mask (light, form and colour together)
+      strand_sd              L* against its own 1.5 mm neighbourhood: strand-to-strand contrast
+      ribbon_sd              the 1.5 mm average against the 9 mm one: clump / ribbon contrast (highlight ribbons, locks)
+      mass_sd                the 9 mm average against the 40 mm one: broad light and dark masses (form, roots / lengths)
+      ribbons {"share", "contrast"}  the share of the mask that is a LIGHT ribbon (ribbon band > + 1 sd of the
+                             picture-independent 4 L*) and those ribbons' mean lift in L*
+      chroma_sd, hue_sd      the spread of chroma, and of hue (deg, over pixels with chroma > 4)
+    Blurs are normalised by the mask (no bleeding in from skin or backdrop)."""
+    from scipy import ndimage as ndi
+    m = np.asarray(mask, bool)
+    if m.sum() < 200:
+        return {}
+    L, A, B = _lab(img)
+    w = m.astype(float)
+
+    def blur(x, mm):
+        sg = max(mm / max(mm_px, 1e-6), 0.5)
+        return ndi.gaussian_filter(x * w, sg) / np.maximum(ndi.gaussian_filter(w, sg), 1e-3)
+    b1, b2, b3 = blur(L, 1.5), blur(L, 9.0), blur(L, 40.0)
+    rb = (b1 - b2)[m]
+    C = np.hypot(A, B)[m]
+    Hh = np.degrees(np.arctan2(B, A))[m]
+    lite = rb > 4.0
+    return {"L_sd": round(float(L[m].std()), 2), "L_p10": round(float(np.percentile(L[m], 10)), 1),
+            "L_p90": round(float(np.percentile(L[m], 90)), 1), "strand_sd": round(float((L - b1)[m].std()), 2),
+            "ribbon_sd": round(float(rb.std()), 2), "mass_sd": round(float((b2 - b3)[m].std()), 2),
+            "ribbons": {"share": round(float(lite.mean()), 3), "contrast": round(float(rb[lite].mean()), 1) if lite.any() else 0.0},
+            "chroma_sd": round(float(C.std()), 2), "hue_sd": round(float(Hh[C > 4].std()), 1) if (C > 4).sum() > 50 else 0.0,
+            # EDGE vs CORE: thin hair at the outline (within 3 mm of the mask's edge) against the mass more than 8 mm in:
+            # light through thin hair (transmission) lightens and warms the edge; an opaque stand-in shader does not
+            **_edge_core(L, A, B, m, mm_px)}
+
+
+def _edge_core(L, A, B, m, mm_px):
+    from scipy import ndimage as ndi
+    d = ndi.distance_transform_edt(m) * mm_px
+    e, c = m & (d <= 3.0), m & (d > 8.0)
+    if e.sum() < 30 or c.sum() < 30:
+        return {}
+    ch = np.hypot(A, B)
+    return {"edge_L": round(float(L[e].mean()), 1), "core_L": round(float(L[c].mean()), 1),
+            "edge_chroma": round(float(ch[e].mean()), 1), "core_chroma": round(float(ch[c].mean()), 1)}
+
+
+def colour_bands(img, mask, mm_px: float | None = None) -> dict:
     """The colour of `img` (RGB image or array, sRGB) inside `mask`, as CIE L*, chroma, hue (deg): the mean and the
     shadow / mid / highlight thirds by lightness. For matching a hair look to a picture: the same call on the render
     (mask = our hair AND hers, eroded: dense hair only) and on the picture, per engine (EEVEE reads look.eevee_gain /
-    eevee_sat, Cycles look.cycles_fit / cycles_width / cycles_sat)."""
+    eevee_sat, Cycles look.cycles_fit / cycles_width / cycles_sat). With `mm_px` (mm on the head a pixel) also
+    "variation": colour_variation (strand / ribbon / mass contrast, the share and lift of light ribbons)."""
     a = np.asarray(img, float)[..., :3] / 255.0
     m = np.asarray(mask, bool)
     if m.sum() < 30:
         return {}
+    if mm_px:
+        return {**colour_bands(img, mask), "variation": colour_variation(img, mask, float(mm_px))}
     c = a[m]
     lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
     xyz = lin @ np.array([[0.4124, 0.2126, 0.0193], [0.3576, 0.7152, 0.1192], [0.1805, 0.0722, 0.9505]]) / [0.9505, 1.0, 1.089]
@@ -2741,8 +2821,8 @@ def measure_ref(name: str, view: str, mask=None, tie=None, colour: bool = True, 
     if colour and pic and Path(pic).exists() and view in imgs:
         both = ours & mref if mref is not None else ours
         dense = ndi.binary_erosion(both, iterations=max(1, n // 160))
-        out["colour"] = {"ours": colour_bands(imgs[view].resize((n, n)), dense),
-                         "picture": colour_bands(ref_square(Image.open(pic).convert("RGB"), n), dense)}
+        out["colour"] = {"ours": colour_bands(imgs[view].resize((n, n)), dense, mm),
+                         "picture": colour_bands(ref_square(Image.open(pic).convert("RGB"), n), dense, mm)}
     return out
 
 

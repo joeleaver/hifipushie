@@ -1,6 +1,6 @@
 """iso.py <model> <tag>=<variant> ... [views=backq,right,backl,topback] [size=640]: ISOLATE a groom's faults by
 switching pieces off one at a time. Each variant is the model's hair changed IN MEMORY (nothing saved) and rendered on
-one shared dressed stage (the stage of $STAGE_MODEL, default th_T04: every th_* model has tess_a1's head).
+one shared dressed stage (the stage of $STAGE_MODEL, default th_T66: every th_* model has tess_a1's head).
 Variants (joined with +):
   base            the groom as it is
   only:<pat,pat>  only these locks (fnmatch on lock names: tg0_* = gather row 0, tt* = the tail, tf* = frame pieces)
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     N = int(kw.get("size", 640))
     OUT = os.environ["TOUT"]
     spec = store.load(m)
-    sn = stage.ensure(os.environ.get("STAGE_MODEL", "th_T04"))
+    sn = stage.ensure(os.environ.get("STAGE_MODEL", "th_T66"))
     frames, c = frames_for(spec, views, fov=float(kw.get("fov", 17.0)), dz=float(kw.get("dz", -0.03)))
     sh = Image.new("RGB", (N * len(views), (N + 18) * len(vs)), "white")
     d = ImageDraw.Draw(sh)

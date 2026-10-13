@@ -1,0 +1,3 @@
+#!/bin/bash
+# blender6: Blender with 6 render / scene threads (the coordinator, 2026-10-14: Joe's desktop lagged)
+exec /home/joe/.local/bin/blender -t 6 "$@"
