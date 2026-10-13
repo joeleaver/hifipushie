@@ -23,6 +23,10 @@ from hifipushie import denselm
 tag = sys.argv[1]
 split = sys.argv[2] if len(sys.argv) > 2 else "heldout"
 cap = int(sys.argv[3]) if len(sys.argv) > 3 else 6
+# [photos=<tag>]: exactly the photos of out/realhsrd_<tag>.json
+FIXED = None
+if len(sys.argv) > 4 and sys.argv[4].startswith("photos="):
+    FIXED = {(p["pose"], p["cam"], p["col"]) for p in json.load(open(f"/mnt/data/hifipushie/denselm/out/realhsrd_{sys.argv[4][7:]}.json"))["photos"]}
 REG = ("lids", "eyes", "brows", "nose", "nose_base", "philtrum", "lips", "lip_border_upper", "lip_border_lower", "lip_seam", "mouth", "chin",
        "cheeks", "forehead", "ears")
 COLS = (("front", 0, 30), ("3q", 30, 70), ("profile", 70, 115))
@@ -59,13 +63,15 @@ L68 = np.asarray(Ls["lm68"])
 reg_all = np.asarray(Ls["region"])
 acc, widths, used_photos = {}, [], []
 rms1 = lambda d: float(np.sqrt((d ** 2).sum(1).mean() / 2))
-for pose in H.poses(split):
+for pose in (sorted({p for p, _, _ in FIXED}) if FIXED is not None else H.poses(split)):
     P = H.Pose(pose)
     lab_reg = np.asarray(P.lab["dl3_region"]).astype(str)
     assert len(lab_reg) == Ls["n"] and (lab_reg == reg_all).all(), "the labelled set is not our v3"
     for col, lo, hi in COLS:
         cams = [c for c in P.photos() if lo <= abs(P.camera(c)["az"]) < hi]
         cams = sorted(cams, key=lambda c: -P.good(c, "dl3").sum())[:cap]
+        if FIXED is not None:                     # the same photos as an earlier run (the set grows as poses are added)
+            cams = [c for c in P.photos() if (pose, c, col) in FIXED]
         for cam in cams:
             K = P.camera(cam)
             xy, vis, q = P.labels(cam, "dl3")
