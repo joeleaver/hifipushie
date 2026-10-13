@@ -2033,3 +2033,8 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   tail. Cost: one heavy job ~10 min (11 tie_hair + renders). Blender now runs with -t 6 (blender6 wrapper via
   HIFIPUSHIE_BLENDER in run.sh / runl.sh / tests.sh). GATE: waiting for the coordinator on the checklist + the sheet.
   RESTART: then step 3, the hair reader.
+- Gate passed (checklist, guide cut, regression sheet). W14 / W15 on the two small faults: crossing halo hairs 16 %,
+  near-straight; part rows density x 0.7 and 1.2 x higher; part scalp line 2.5 mm under volume; all halo curls 0.2-0.6
+  mm; look fly_light 0.8. Corner tangle a little less curly, the part still a V: both SMALL, on the list. th_W15 =
+  current (styles/W15_*.json). Joe: "basically happy with Tess's hair shape now" but "we haven't nailed the color".
+  NEXT: the shader test (EEVEE stand-in vs Cycles Principled Hair BSDF vs her photo), then the reader.

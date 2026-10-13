@@ -378,6 +378,9 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             # line itself: hers is 13-15 mm off the skull there, ours lay at 6-11)
             onv = (0.7 + 0.3 * ramp) if (edge > 0 and hl[i] == 1) else 0.85 if hl[i] == 1 else 1.0
             onv *= min(w0[i] / np.radians(40), 1.0) * (1 + (0.0 if hl[i] == 1 else 0.5) * un * rng.uniform(-0.5, 0.5))
+            if hl[i] == 2:  # (the part's banks a little higher than the dome beside them: the two lobes meet over the
+                # line instead of a notch between them, th_W13; rule 5)
+                onv *= 1.2
             # LOCKS, not a shell (tesshair7 round two; Joe: "the color/texture ... dialed in"; the read: a smooth
             # helmet): `locks` 0..1 = each inner lock's height swells and sinks along it on its own wavelength, it
             # wanders sideways a little (locks cross), a few are LIFTED off the mass, widths differ, and its strands
@@ -497,7 +500,7 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             # the loops to the next locks). Hers are fine light hairs there: drawn fine (no dark root), denser
             st["fine"] = 0.85  # (0.55 and density x 1.3: lighter but still a dark tangle end-on, th_W09 / W11)
             st["bank"] = 1.0 if dx_ >= 0 else -1.0  # (which bank: hair_flow.halo crosses the part from it)
-            st["density"] = round(float(st.get("density", 1.0)) * 1.0, 3)
+            st["density"] = round(float(st.get("density", 1.0)) * 0.7, 3)  # (fewer: the end-on knot, th_W13)
         if vo:
             # where the sun reaches (the look's highlights gather there): the top layers, most round the face and
             # over the top; -0.5 .. 0.5
@@ -1173,7 +1176,7 @@ def halo(sc, locks: dict, n: int, seed: int, pre: str) -> dict:
             P = hair_lock_world(sc, lk)
             cache[k] = spine({**lk, "pts": P.tolist()}, 64)[0]
         return cache[k]
-    n_b = int(round(0.28 * n)) if bank else 0
+    n_b = int(round(0.16 * n)) if bank else 0  # (28 %: with the end-on bank strands a wiry knot at the corner, th_W13)
     for j in range(n):
         crossing = j < n_b
         k = bank[int(rng.integers(len(bank)))] if crossing else top[int(rng.integers(len(top)))]
@@ -1181,7 +1184,7 @@ def halo(sc, locks: dict, n: int, seed: int, pre: str) -> dict:
         s_ = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(S, axis=0), axis=1))]
         L = float(s_[-1])
         a0 = (rng.uniform(0.0, 0.12) if crossing else rng.uniform(0.15, 0.85)) * L
-        ln = rng.uniform(0.04, 0.13) * (0.7 if crossing else 1.0)
+        ln = rng.uniform(0.04, 0.13) * (0.5 if crossing else 1.0)
         m = int(np.clip(ln / 0.003, 12, 40))
         ss = np.clip(a0 + np.linspace(0, ln, m + 1), 0, L)
         Q = np.stack([np.interp(ss, s_, S[:, c]) for c in range(3)], 1)
@@ -1195,7 +1198,9 @@ def halo(sc, locks: dict, n: int, seed: int, pre: str) -> dict:
             sgn = -float(locks[k]["strands"]["bank"])
             sw = sgn * rng.uniform(0.008, 0.02) * _ss_t(u / 0.6) * np.sign((side[0] @ X) or 1.0)
         # (a gentle loose curve: 0.8-2.5 mm at 2-5 cm read as kinky wiggles, th_W10)
-        R = rng.uniform(0.0004, 0.0013)
+        # (seen end-on at the forehead's corner, 0.4-1.3 mm curls knotted into a dark wiry tangle, th_W13 / W14: hers
+        # are long gentle arcs there)
+        R = rng.uniform(0.0002, 0.0006) * (0.3 if crossing else 1.0)  # (those over the part near-straight)
         ph, lam = rng.uniform(0, 2 * np.pi), rng.uniform(0.04, 0.09)
         cs = np.cos(2 * np.pi * ss / lam + ph)
         P = Q + (off + R * cs)[:, None] * nrm + (sw + R * np.sin(2 * np.pi * ss / lam + ph))[:, None] * side
@@ -1477,7 +1482,7 @@ def style(tied: dict) -> dict:
         tie["escaped"] = {"where": ["ear", "temple", "nape", "ear"], "length": [0.04, 0.12], "curve": 0.3, **es}
     out = {"parting": {"side": "none"} if p["part"] == "none" else
            {"side": "centre" if p["part"] == "center" else p["part"], "offset": 0.03, "length": round(0.035 + 0.06 * lo, 4),
-            "width": 0.004, "depth": 0.2},
+            "width": 0.004 if V <= 0.02 else 0.0025, "depth": 0.2},
            # (+ by the volume: hair that stands off the head is not combed flat; its strands wander, a few leave it)
            "strands": {**STRANDS, "loose": round(0.15 + 0.6 * me + 0.35 * V, 3), "frizz": round(0.08 + 0.25 * me + 0.1 * V, 3),
                        "flyaway": round(0.03 + 0.25 * me + 0.25 * V, 3), "halo": round(0.45 * me + 0.12 * V, 3), "baby": round(0.5 + 2.5 * me, 2),
