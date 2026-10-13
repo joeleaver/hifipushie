@@ -10,8 +10,72 @@ hsrd100 are links into the groundtruth agent's data, read-only; out/ is ours), o
 Models rm_* (main's workspace). The groundtruth agent's scripts (spikes/groundtruth on branch groundtruth) are run from
 its worktree through PYTHONPATH with THIS worktree's src (rchain.py sets readmix's switches first).
 
-STATE (2026-10-13, in progress): see the steps below.
-NEXT: -
+RESTART BLOCK (2026-10-13 late; branch `readmix`, NOT merged, NOT pushed; every item below is committed)
+STATE, item by item (T = has tests in tests/test_readmix.py unless said; "default" = what block_in_solve does now):
+- MediaPipe mesh -> GNM correspondence: DONE (src/hifipushie/mp_gnm.json + mpread.py; T). "## Step 1".
+- Both detectors on scanned heads' photos + the region mix: DONE, default ON (mpread.ENABLED / MIX: eye contours, mouth
+  corners, lip seam, vermilion border, nasal bridge; ADDED to the differential anchors; dense floors raised to the
+  real-photo errors: face_ruler.DENSE_REGION_SIG). "## Step 2", "## The mix". Measured gain on the two scanned heads:
+  none clear (within chain-to-chain noise, "## Validation").
+- Nose: CAUSE found (nothing reads its width; both detectors see a photographed nose 1.6-2.6 mm wider than a rendered one).
+  (a) nostril-opening read: built, T, OFF (face_ruler.NOSTRIL: one head's validation, an offset known from that head only);
+  (b) the differential nose-base anchors' photo-vs-render width (LM_NOSE_WIDE 1.65 mm, from groundtruth's two heads) taken
+  out: ON for views not flagged "render" (calibrated on the same two heads it was then run on: not an independent test).
+  NOT built: alar-edge read, 3/4 nose silhouette, the fallback-blend item (below). "## The nose".
+- Distance / lens / crop: lens_info (EXIF x zoom, crop refused, "frame" for a crop), known-lens distance prior 7 % on the
+  whole move (default), DISTANCE / STRONG PERSPECTIVE / INFERRED lines, distance_cost, the brief's line: DONE, T.
+  LENS_PINS (focal pinned, scale = distance): built, T, OFF: it REGRESSED h112 (face 2.02-2.15 -> 2.45-2.67): cause not
+  found: the first thing to debug (face_ruler.cam_moved(lens=True) + _cam_columns' rot[2] column). "## Distance".
+- lens_mm convention bug: FIXED in the reply (face_ruler.lens_mm is on the diagonal now), T. likeness.lens_mm and
+  humanfit_map's 70 mm prior (LENS, on the width) NOT touched.
+- Hair edge (one-sided) + per-view outline counts / NO OUTLINE warning: DONE, default ON, unit-tested; not validated on a
+  hair-covered head with truth. "## Hair-edge read".
+- Per-view expression: NOT made safe, OFF. Built: solve(expr_prior=), the blendshape calibration (corr/mp_expr.json);
+  missing: ARKit -> expression-column map, the neutral / smiling pair test (groundtruth's gt_exs_A00 vs sc_a_A00; target
+  from its notes: mouth, nose base and jaw within 0.5-1 mm; a smile is +3.4 / +2.9 / +3.3 mm today). "## Per-view expression".
+- Iris colour: DONE, in skin_from_reference's default groups, T (tests/test_skin_read.py). Sets a muted brown on Tess's
+  hazel eyes: defensible, not green. "## Iris colour".
+- Guide: blockin_guide.md section 3b + the block_in_solve entry rewritten (cameras as priors, the bound, detectors, distance,
+  hair edge); skin_guide.md's eyeballs line. server.block_in_solve has dense / detector / hair_edge parameters.
+- FALLBACK BLEND (the coordinator's last item: the pooled class mean is wider-nosed than a given class: "white" -1.67 mm of
+  nose_width against the pooled mean): NOT STARTED. Plan: blockin.data()["eth_means"]; the solve's prior centre is
+  `prior_off` (blockin.solve_step: c0 - identity(root)): a blend = 3 more columns (class mean differences) with a weak
+  prior, or block_in_start(ethnicity={class: weight}); measure (a) pooled (b) right (c) wrong class on synthetic heads
+  drawn from one class (denselm's gen2 sampler draws by class) and the HSRD subjects. For denselm: its training identities
+  were drawn evenly from the four classes (gen.py / gen2.py), so the network's shrinkage is toward the POOLED mean.
+- The WILD benchmark, the distance marginalisation, several casual pictures a person: NOT built (plans in "## Distance").
+NEXT (ordered): 1 read the final chains below into "## Validation" if the table is not there yet; 2 debug LENS_PINS on
+rm_h112_L00 (ablation: `gch.sh x lenspin=1 nosebias=0 -- rm_h112_L00 rm_h112_X 4 truth=gt_h112_AT cameras=free` against
+lenspin=0); 3 the fallback blend; 4 the wild benchmark; 5 alar-edge read; 6 expression gate; 7 merge decision: the
+defaults changed here (mesh reads, hair edge, nose-base width, dense floors, iris) have NO measured gain on scans yet and
+no regression on the known-head benchmark: say so when proposing the merge.
+HOW TO RERUN (all under /mnt/data/hifipushie/readmix; env.sh sets HIFIPUSHIE_HOME = main's workspace,
+HIFIPUSHIE_GROUNDTRUTH = readmix/gt (links into groundtruth's data + our own out/), PYTHONPATH incl. the groundtruth
+worktree's spikes):
+- correspondence: `/mnt/data/hifipushie/facerefs_venv/bin/python spikes/readmix/mpdet.py corr/mp_data.npz <denselm data_s1 dirs>`;
+  `./run.sh spikes/readmix/mpcorr.py proj | learn | expr` -> corr/proj.npz, corr/mp_gnm.json (copy to src/hifipushie/), corr/mp_expr.json.
+- detectors on scans: `./run.sh spikes/readmix/gmix.py HSR0040-Body-023 HSR0112-Body-018` -> logs + out/gmix_*.png;
+  tiles `spikes/readmix/nosetile.py <tag>`, `nostril_eval.py h40 h112 lps`, `cmp.py <model>` (one solve's reads, not applied).
+- scan chains: `./gch.sh <log> <switches> -- <start> <prefix> <n> truth=gt_<k>_AT cameras=free [dense=1]` (switches of
+  spikes/readmix/rchain.py: mp he nos lens lenspin nosebias camfreeze distfreeze expr); starts rm_h40_L00 / rm_h112_L00
+  (mkl.py: the lens told on the diagonal); records gt/out/chains/<prefix>.json, logs logs/<log>.log (7 SHAPE lines = a
+  6-call chain done). Summary: `./run.sh $G/spikes/groundtruth/gsum.py <tag> label=<prefix> ..`.
+- known heads: `./sch.sh <log> <switches> -- sc_<h>_A00 rm_sc_<h>_<tag> 3 truth=sc_<h>_AT refit=1 cameras=free` -> sc/out/.
+- Tess: `./tess.sh` (rm_TF01..08 from sc_T00), tiles `./tour.sh <model>` -> tour/<model>/.
+- iris: `./heavy.sh 8 spikes/readmix/iris2.py sc_TN06 rm_iris1`, then `iris.py rm_iris1 rm_iris2 out/x.png`.
+- tests: one file a process, `./tests.sh tests/test_readmix.py` (also test_skin_read, test_solvecams, test_refread,
+  test_nativedefault, test_denselm, test_face_ruler, test_solvereads, test_chinread: all passed on a08edb1 or later).
+WHAT A FRESH AGENT WOULD GET WRONG: (1) groundtruth's gt_<k>_AL00 "told lens" sets tell f / width x 36: use rm_<k>_L00;
+(2) bin/slot is not FIFO: a job can wait 40 min behind others' xargs queues; never `pkill -f <pattern>` / `pgrep -f` with
+a pattern that is in your own command line (it kills your shell: exit 144); (3) the "truth" vermilion border of a
+scan-fitted GNM is ~1.5 mm off the photo's lip edge and vertex numbers under ~1.3 mm are inside the truth's slack;
+(4) chain-to-chain noise on one scanned head is ~0.3 mm of face rms and ~1 mm of a width: do not read single chains;
+(5) LM_NOSE_WIDE is skipped only for views flagged "render": the solvecams benchmark's pictures are NOT flagged, so its
+noses would come out ~1.6 mm narrow now (the sc/out records here were run BEFORE that change);
+(6) rm_h40_N / P / Q / h112_P / Q chains were run on INTERMEDIATE code (lens pinned, or anchors dropped): the final
+defaults are rm_<k>_F (no dense), _Fd (dense), _Fn (nostril on, h40).
+RUNNING when this was written: `xargs -a q7.txt -P 2 -L 1 ./gch.sh` (rm_h40_Fd, rm_h112_Fd, rm_h40_Fn; logs/h40_Fd.log ..;
+done = 7 "SHAPE" lines each). Finished: rm_h40_F, rm_h112_F, rm_TF08 (Tess, final defaults; tiles not made yet).
 
 ## How things are run
 - `/mnt/data/hifipushie/readmix/run.sh spikes/readmix/<script>.py ..` (a light slot); MediaPipe's own venv for mpdet.py.
