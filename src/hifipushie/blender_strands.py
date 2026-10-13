@@ -684,6 +684,9 @@ def material(look: dict):
             # (not every strand of a ribbon is lightened: all of them, it was a strip of pale tape, th_V74)
             # (half the strands of a ribbon, and little saturation: + 100 % saturation turned them tan, th_W04)
             fh = M("MULTIPLY", fh, M("LESS_THAN", info.outputs["Random"], 0.5))
+            # (a tail's ribbons at half contrast: hair off the head has no layers over it to break a ribbon up, and
+            # full ones were flat pale bands down the tail, th_W05)
+            fh = M("MULTIPLY", fh, M("SUBTRACT", 1.0, M("MULTIPLY", M("GREATER_THAN", at_("hp_a0"), 0.005), 0.5)))
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 0.85, 1.0))
             hue = M("MULTIPLY_ADD", fh, 0.006, hue)
             sat = M("MULTIPLY_ADD", fh, 0.25, sat)

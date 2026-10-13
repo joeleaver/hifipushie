@@ -402,7 +402,8 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                 # side, so the part is no clean valley between two lobes (hers: short, soft, hair across it)
                 Pw = sc.point(aa, ee, h)
                 bump = np.exp(-((s_m - 0.014) / 0.012) ** 2)
-                Pw = Pw - (np.sign(dx_) or 1.0) * (0.005 + 0.009 * hsh[2]) * bump[:, None] * X[None]
+                # (3-7 mm: at 5-14 mm the crossing locks stood as a dark scribbly tuft at the part's start, th_W05)
+                Pw = Pw - (np.sign(dx_) or 1.0) * (0.003 + 0.004 * hsh[2]) * bump[:, None] * X[None]
                 aa, ee, h = (np.asarray(v_, float) for v_ in sc.coords(Pw))
                 h = np.maximum(h, 0.0)
             vo_thick = 0.25 * onv * float(np.max(Hd))  # (a lock of a standing mass is not a 4 mm sheet: layers run into each other)

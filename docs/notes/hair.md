@@ -1918,7 +1918,7 @@ WHAT A FRESH AGENT WOULD GET WRONG:
   1024 and 1536 tiles for V86 / W04).
 
 ### tesshair7 round two, RESUMED (2026-10-14): fixes on th_W04 (the coordinator's read)
-RESTART: tests all pass at 65bd468 (92). Best now th_W05 (= W04 style + look fly_light 0.45, code below;
+RESTART: tests all pass at 65bd468 (92). Best now th_W06 (W05 + wisps.curls 10, length [0.05, 0.14]; tail ribbons at half contrast, part-cross bump 3-7 mm; colvar L_sd 6.6 | hers 7.6, ribbon 3.1 | 3.0, light ribbons 9 % | 10 %. Earlier best th_W05 = W04 style + look fly_light 0.45, code below;
 spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W05 v0,v1,v2,backl 1024`).
 - CROWN WIRE-GRID (front view, top of the dome): isolated with shots7 S= patches (out/iso_w04b.jpg): it was the
   HALO (short broken hairs standing off the locks), which round one raised to 0.45 x messiness + 0.5 x volume:
