@@ -955,6 +955,92 @@ def _eye_read(c: Context) -> dict:
     return out
 
 
+def _iris_rel(name: str, c: Context) -> dict:
+    """THE IRIS AGAINST THE SCLERA BESIDE IT, picture over ours (readmix, 2026-10-13): what sets skin.eyes.iris.
+    PICTURE: at the picture's OWN iris (blockin_eyes.limbus: the limbus circle found on the picture; the ring's colour
+    along rays in the two lateral sectors, where no lid covers it) and the sclera just outside the limbus on the same
+    rays, its BRIGHT part (a picture's sclera lies half under lid and lash shadow: Tess's front reads luminance 0.08 /
+    0.16 / 0.25 at its 20 / 50 / 80 %). OURS: the render's eyeball pixels by the model's own geometry. Both tried and
+    wrong on Tess: the model's geometry on the PICTURE (its eye opening is not the picture's: lid skin in the ring, a warm
+    cast: the iris came out orange-brown whatever the start), and the sclera's median (in shadow: the iris too light).
+    Views turned past 50 deg or with an iris under IRIS_R_PX of radius are left out. -> {"read", "ratio" (linear, per
+    channel), "views", "px"}."""
+    from PIL import Image
+    from . import blockin, blockin_eyes as be, lidfold
+    from .likeness_eyes import frame
+    rj = blockin._refs(name)
+    rel, npx = [], 0
+    for f in c.frames:
+        vi = int(f["view"])
+        v = rj["views"][vi]
+        if abs(float(v.get("yaw", 0.0) or 0.0)) > 50.0:
+            continue
+        scl, iris = _eye_classes(f, c.mesh, c.spec)
+        ok = (f["alpha"] > 0.98) & (_srgb(f["R"]).max(-1) < CLIP[1])
+        scl, iris = scl & ok, iris & ok
+        if iris.sum() < SCLERA_PX // 2 or scl.sum() < SCLERA_PX:
+            continue
+        ours = np.median(f["R"][iris], 0) / np.maximum(np.median(f["R"][scl], 0), 1e-4)
+        try:
+            img = Image.open(v["image"]).convert("RGB")
+            P = blockin.detect_view(img, v)
+            if P is None:
+                continue
+            lb = be.limbus(img, P)
+        except Exception:  # noqa: BLE001
+            continue
+        A = _lin(np.asarray(img, float) / 255.0)
+        H, W = A.shape[:2]
+        ex, ey = (np.asarray(x_, float) for x_ in frame(np.asarray(P, float)[:, :2]))
+        for e in lb:
+            r, cen = float(e["r_px"]), np.asarray(e["centre"], float)
+            if r < IRIS_R_PX:
+                continue
+            ring, white = [], []
+            for sg in (-1, 1):
+                for a in np.radians(np.arange(-30, 31, 5)):
+                    d = sg * (np.cos(a) * ex + np.sin(a) * ey)
+                    for q, dst in [(q_, ring) for q_ in np.linspace(0.5, 0.85, 8)] + [(q_, white) for q_ in np.linspace(1.15, 1.7, 10)]:
+                        p_ = cen + q * r * d
+                        dst.append(A[int(np.clip(round(p_[1]), 0, H - 1)), int(np.clip(round(p_[0]), 0, W - 1))])
+            ring, white = np.array(ring), np.array(white)
+            lr, lw = ring.mean(1), white.mean(1)
+            ring = np.median(ring[(lr <= np.percentile(lr, 80)) & (lr >= np.percentile(lr, 10))], 0)
+            white = np.median(white[lw >= np.percentile(lw, 80)], 0)
+            if white.mean() < 1.6 * ring.mean():      # no sclera beside this iris (a turned eye's far side, lashes): not a reference
+                continue
+            rel.append((r * r, (ring / np.maximum(white, 1e-4)) / np.maximum(ours, 1e-4)))
+            npx += int(r * r)
+    if not rel:
+        return {"read": False, "px": 0, "views": 0}
+    w = np.array([n_ for n_, _ in rel], float)
+    return {"read": True, "px": npx, "views": len(rel),
+            "ratio": [round(float(x), 3) for x in np.exp((w[:, None] * np.log(np.maximum(np.array([r_ for _, r_ in rel]), 1e-4))).sum(0) / w.sum())]}
+
+
+IRIS_R_PX = 10.0          # an iris under this radius (picture px) is not read for colour
+IRIS_STEP = (0.2, 5.0)    # the most one read changes the iris' lightness (x); its hue is never clipped per channel
+IRIS_Y = (0.012, 0.42)    # linear luminance an iris colour may have (near-black brown .. pale grey-blue)
+
+
+def iris_colour(c0, ratio) -> str:
+    """skin.eyes.iris from the read: the colour now (c0: sRGB 0..1) x the picture's (iris / bright sclera) over ours
+    (ratio, linear, per channel). The CHANGE's size is limited as a whole (IRIS_STEP on its luminance) and the result's
+    luminance kept in IRIS_Y; the channels keep their proportions. (The old rule clipped each channel to 0.5 .. 2: from
+    the default brown a grey-green iris needs x1.5 / x4.5 / x11, which the clip turned into orange-brown.)"""
+    lumw = np.array([0.2126, 0.7152, 0.0722])
+    l0 = _lin(np.asarray(c0, float)[:3])
+    want = l0 * np.asarray(ratio, float)
+    y0, y1 = float(l0 @ lumw), float(want @ lumw)
+    k = float(np.clip(y1 / max(y0, 1e-6), *IRIS_STEP)) * y0 / max(y1, 1e-6)
+    want = want * k
+    y = float(want @ lumw)
+    want = want * (float(np.clip(y, *IRIS_Y)) / max(y, 1e-6))
+    if want.max() > 1.0:
+        want = want / want.max()
+    return "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in np.clip(_srgb(np.clip(want, 0, 1)), 0, 1))
+
+
 # ---------------------------------------------------------------- the read
 
 def read(name: str, spec: dict | None = None, frames: list | None = None, anchor: str = "auto", log=print, ctx: Context | None = None,
@@ -977,6 +1063,10 @@ def read(name: str, spec: dict | None = None, frames: list | None = None, anchor
     out["freckles"] = _freckle_read(c)
     out["brows"] = _brow_read(c)
     out["eyes"] = _eye_read(c)
+    try:
+        out["eyes"]["iris_rel"] = _iris_rel(name, c)
+    except Exception as e_:  # noqa: BLE001
+        out["eyes"]["iris_rel"] = {"read": False, "px": 0, "views": 0, "why": str(e_)[:120]}
     out["folds"] = fold_read(c)
     out["ctx"] = c
     out["text"] = read_text(out)
@@ -1028,9 +1118,10 @@ GROUPS = {"tone": ("tone.melanin", "tone.blood", "tone.undertone"),
           "eyes": ("zones.under_eye", "zones.eyelids", "zones.periorbital"),
           "lips": ("lips.blood", "lips.melanin", "lips.strength", "lips.lower.blood", "lips.lower.melanin"),
           "stubble": (), "brows": (), "freckles": (), "eyeballs": (), "folds": ()}
-# ("eyeballs", the iris colour, is NOT a default: on Tess's photographs it turned grey-green irises orange-brown (the
-# picture's sclera sits in lid shadow, so "against the sclera" inflates the iris; right on synthetic pictures only)
-DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "folds")
+# ("eyeballs", the iris colour, was not a default until 2026-10-13: on Tess's photographs it turned grey-green irises
+# orange-brown: the picture's sclera sits in lid shadow, and the change was clipped per channel. Now read against the
+# sclera's bright part with the hue kept (iris_colour): in the default set, so a head no longer keeps the default brown)
+DEFAULT_GROUPS = ("tone", "zones", "eyes", "lips", "stubble", "brows", "freckles", "folds", "eyeballs")
 SIGMA = (6.0, 0.8, 0.8)     # Lab: what a region's read is worth (lightness carries the shading we do not model)
 EXPOSURE = 0.08           # log units: how closely the picture's unknown exposure is held to our skin's lightness. At 0.5
                           # (free) the tone ran DARK: the pigment model reaches a picture's chroma most cheaply by adding
@@ -1107,7 +1198,8 @@ def _stubble_opts(sk: dict):
 
 
 def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, prior_L: float | None = None, lid_prior: bool = True,
-        prior_ab=None, prior_tone: dict | None = None, prior_face: dict | None = None, prior_x: dict | None = None) -> dict:
+        prior_ab=None, prior_tone: dict | None = None, prior_face: dict | None = None, prior_x: dict | None = None,
+        iris_prev=None) -> dict:
     """spec["skin"] set from a read: {"skin": the new description, "changes": [(parameter, old, new, why)], "text",
     "residual": the regions' read before / after as the forward model has it}. groups: what may change (GROUPS).
     stubble: whether a beard shadow may be ADDED to a face that has none (default: unless skin.sex says female)."""
@@ -1451,18 +1543,26 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     if "eyeballs" in groups and sk1.get("eyes") is not False and native <= IRIS_MM:
         from . import paint
         ey = dict(sk1.get("eyes") or {})
-        for key, dflt, lim in (("iris", "#5a3a1e", (0.5, 2.0)),):
-            e = r["eyes"][key]
-            if not e["read"] or not r["eyes"]["sclera"]["read"]:
-                continue
-            c0 = np.asarray(paint.colour(ey.get(key, dflt)), float)[:3]
-            # against the sclera beside it (taken as ours): an eye's lid shadow and the exposure cancel
-            ratio = np.clip(np.asarray(e["ratio"]) / np.asarray(r["eyes"]["sclera"]["ratio"]), *lim)
-            want = _srgb(np.clip(_lin(c0) * ratio, 0, 1))
-            if np.abs(lab(_lin(want)) - lab(_lin(c0))).max() > 2.0:
-                ey[key] = "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in np.clip(want, 0, 1))
-                changes.append((f"eyes.{key}", "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in c0), ey[key],
-                                f"picture / ours {[round(float(x), 2) for x in ratio]} against the sclera beside it (INFERRED: the sclera taken as ours)"))
+        e = r["eyes"].get("iris_rel") or {}
+        if e.get("read"):
+            c0 = np.asarray(paint.colour(ey.get("iris", "#5a3a1e")), float)[:3]
+            hx0 = "#" + "".join(f"{int(round(255 * float(x))):02x}" for x in c0)
+            rt = np.asarray(e["ratio"], float)
+            if iris_prev is not None:
+                # the SECOND read: our eye picture answers a colour change with less than the whole of it (catchlight, cornea,
+                # limbal ring: Tess, blue x1.39 applied, x1.24 still missing). The share it made of the last step, per
+                # channel (0.5 .. 1), is taken into this one (a secant step)
+                l0, l1 = np.log(np.maximum(np.asarray(iris_prev, float), 1e-4)), np.log(np.maximum(rt, 1e-4))
+                gam = np.clip(np.where(np.abs(l0) > 0.05, 1.0 - l1 / np.where(np.abs(l0) > 0.05, l0, 1.0), 1.0), 0.5, 1.0)
+                rt = np.exp(l1 / gam)
+            hx1 = iris_colour(c0, rt)
+            if np.abs(lab(_lin(np.asarray(paint.colour(hx1), float)[:3])) - lab(_lin(c0))).max() > 2.0:
+                ey["iris"] = hx1
+                changes.append(("eyes.iris", hx0, hx1, f"the picture's iris ring against its sclera's bright part, over ours: x {[round(float(x), 2) for x in e['ratio']]} "
+                                                       f"({e['views']} eye(s); INFERRED: the sclera taken as ours, the hue is the picture's)"))
+        else:
+            changes.append(("eyes.iris", ey.get("iris", "default"), ey.get("iris", "default"),
+                            f"NOT READ: no view shows an iris of {IRIS_R_PX:g} px radius with sclera beside it: the iris colour is NOT the picture's (set skin.eyes.iris by hand)"))
         if ey:
             sk1["eyes"] = ey
     if "folds" in groups and r.get("folds"):
@@ -1471,6 +1571,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
                   for i, k in enumerate(reg)}
     shade = {k: round(float(sv1[i]), 3) for i, k in enumerate(reg) if sv1[i] >= SHADE_SAY}
     out = {"skin": sk1, "changes": changes, "residual": resid_rows, "exposure": round(expo, 3),
+           "iris_ratio": (r["eyes"].get("iris_rel") or {}).get("ratio") if "eyeballs" in groups else None,
            "shade": {"q": [round(float(v_), 3) for v_ in qs], "regions": shade,
                      "L": {k: round(float(lab(Tlin[i])[0] - lab(Tlin[i] * np.exp(sv1[i] * qs))[0]), 1) for i, k in enumerate(reg) if sv1[i] >= SHADE_SAY}},
            "face": {"prior": [round(float(v_), 2) for v_ in prior_face["lab"]], "fitted": [round(float(v_), 2) for v_ in st_end[1]],
@@ -1563,7 +1664,7 @@ def apply(name: str, out: str | None = None, groups=DEFAULT_GROUPS, rounds: int 
     for k in range(max(int(rounds), 1)):
         r = read(dst, anchor=anchor, log=log, white=white)
         f = fit(r, groups=groups, stubble=stubble, log=log, prior_L=prior_L, prior_ab=prior_ab, prior_tone=prior_tone,
-                prior_face=prior_face, prior_x=prior_x)
+                prior_face=prior_face, prior_x=prior_x, iris_prev=fits[-1].get("iris_ratio") if fits else None)
         prior_L, prior_ab, prior_face = f["tone"]["prior_L"], f["tone"]["prior_ab"], f["face"]["prior_face"]
         reads.append(r["text"]); fits.append(f)
         spec = store.load(dst)

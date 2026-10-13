@@ -375,8 +375,11 @@ What it reads and sets (groups; default all):
 - `brows`: hair colour and density from the band's darkness; the band's placement and thickness by brow_read's fit.
 - `freckles`: dark specks per cm2 on cheeks, nose and forehead against ours (needs 0.5 mm a pixel or finer); 0 when
   the pictures show none.
-- `eyeballs` (NOT in the default groups: ask for it): the iris colour against the sclera beside it. Right on synthetic
-  pictures, wrong on photographs (a real sclera sits in lid shadow): check the result against the picture by eye.
+- `eyeballs` (in the default groups since 2026-10-13): `eyes.iris` from the picture's OWN iris (the limbus found on the
+  picture; the ring's middle tones along its lateral rays: no catchlight, no lid) against the BRIGHT part of the sclera
+  just outside it, over the same ratio in our render; front and 3/4 views with an iris of 10 px radius or more. The hue
+  is never clipped per channel. INFERRED (the sclera is taken as ours): check it against the picture. "NOT READ" in the
+  changes = the colour was left alone: set `skin.eyes.iris` by hand.
 - `folds`: the CHECKLIST of soft-tissue features the shape model does not make: nasolabial, marionette, commissure,
   mouth_corner, mentolabial, tear_trough (its roll is the eye bag), lid_fold (the upper lid's crease as a line), glabella, each
   PRESENT / absent / "ours has more" per side with strength, extent along its path, placement (mm across the path)

@@ -1008,7 +1008,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
                parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
-               damp: bool = True, chin: dict | None = None, dense: bool | None = None) -> dict:
+               damp: bool = True, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
+               hair_edge: bool | None = None) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -1058,6 +1059,16 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     if (fr.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
         cam_sd = {kk: tuple(v[:6]) + (k * fr.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
+    # (readmix) A KNOWN LENS holds its view's distance, dense or not: the prior is on the whole move since block_in_start,
+    # whose fit stood at that lens
+    lens_notes = []
+    kinds0 = b0.get("kinds") or [fr.kind_of(v.get("yaw", 0)) for v in rj0["views"]]
+    for v_, kk in zip(rj0["views"], kinds0):
+        lm_ = fr.lens_known(v_)
+        if lm_ and kk in cam_sd and len(cam_sd[kk]) > 6 and cam_sd[kk][6] > fr.PHOTO_CAM_DIST_LENS:
+            cam_sd[kk] = tuple(cam_sd[kk][:6]) + (fr.PHOTO_CAM_DIST_LENS,)
+            lens_notes.append(f"LENS: {str(v_.get('image', kk)).split('/')[-1]} was taken through a known {lm_:.0f} mm lens (35 mm equivalent): its camera's "
+                              f"distance is held to +- {fr.PHOTO_CAM_DIST_LENS:g} % of the start's")
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
     relax0 = 1.0 + RELAX_KEEP * (float(b0.get("relax", 1.0)) - 1.0)
@@ -1089,7 +1100,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
-                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense)
+                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense,
+                   mp=mp, hair_edge=hair_edge)
     dc = float(share) * np.asarray(c["dc"], float)
     # THE SEE-SAW: a settled solve hops back and forth by |dc| 2-2.6 a call (Tess 2.6, 2.0, 2.6 with the cosine of
     # consecutive steps -0.4 .. -0.5: reads that come and go, the lids' and lips' re-linearisation). A step that turns
@@ -1114,7 +1126,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     rj.setdefault("blockin", {})["cam_done"] = np.round(np.asarray(c["cam_done"], float), 4).tolist()   # the cameras' whole
     rj["blockin"].pop("cam_carried", None)              # (they have been laid on this head now)
     rj["blockin"]["placement"] = list(_placement(sp_src["base"]))
-    c["notes"] = cam_notes + list(c["notes"])
+    c["notes"] = cam_notes + lens_notes + list(c["notes"])
     rj["blockin"].update(relax=round(float(c["relax"]), 4), kinds=list(c["kinds"]), readers=list(c["readers"]),
                          last_dc=np.round(dc, 5).tolist(), damped=damped)
     if c.get("held"):
@@ -1132,7 +1144,8 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                     "held": list(c.get("held") or []), "expression": xp, "damped": damped, "kinds": list(c["kinds"]), "readers": list(c["readers"]),
                     "view_yaw": [round(abs(fr.view_yaw(v["cam"])), 1) for v in c["views"]],
                     "stated_yaw": [abs(float(v.get("yaw", 0.0) or 0.0)) for v in rj0["views"]], "camera_lines": list(c.get("camera_lines") or []), "bound": list(c.get("bound") or []),
-                    "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()}}
+                    "disagree": {f"{t} {v}": round(x["sig"], 2) for (t, v), x in (c.get("disagree") or {}).items()},
+                    "n_view": c.get("n_view") or {}}
     if c.get("tie"):
         rep["solve"]["chin"] = {"tied": list(c["tie"].get("names") or ()), "size_held": bool(c["tie"].get("size")),
                                 "size_target": float(c["tie"].get("size_target") or 0.0)}
