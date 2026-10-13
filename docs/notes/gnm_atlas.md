@@ -6041,10 +6041,18 @@ NONE on the true base (no concavity on the outer third); all of it is the fold l
 ## 990fa02; Joe's decisions consolidated: the GNM-native head is the DEFAULT start for a person's head. Scratch DURABLE in
 ## /mnt/data/hifipushie/nativedefault: env.sh, run.sh <script> (light slot), heavy.sh <gb> <script> (resources.heavy + capped),
 ## tests.sh <pytest args> (one file, log in out/), bench.sh <run> [opts] (chinread's known heads), out/; scripts spikes/nativedefault)
-STATE (2026-10-12, steps 1-4 committed): block_in_start is native by default and carries nothing of ours; a native head
-refuses its dead steps; cameras of another head are measured, refused by the solve and carried by a step; the solve has
-an ANSUR prior on the neck's girth (validated: shape not worse); head size = GNM x the stature's allometry, said.
-NEXT: step 5 (tess_n1 from scratch on the default path), 6 (judge, sheets nd_tess_native / nd_tess_figure).
+STATE (2026-10-12, DONE; branch `nativedefault`, NOT merged, NOT pushed): block_in_start is native by default and carries
+nothing of ours; a native head refuses its dead steps; cameras of another head are measured, refused by the solve and
+carried by a step; the solve has an ANSUR PRIOR on the neck's girth (validated: shape not worse; a hold was worse);
+head size = GNM x the stature's allometry, said. `tess_n1` = Tess from scratch on the default path, dressed. Sheets
+workspace/human_renders/nd_tess_native.png, nd_tess_figure.png, nd_01_neck_prior_woman.png; tiles
+/mnt/data/hifipushie/nativedefault/out/{tess_n1,th_T66}/dressed, {tess_n1,tess_a1}/clay, tri_*.png (reference | n1 | a1).
+VERDICT (mine, tiles looked at): tess_n1 does NOT read as her and is not better than tess_a1 as a likeness: the figure's
+proportions, the mouth's outline, the profile and the iris size are better; the brows, the eyes' depth, the lip colour
+and the neck from the front are worse; nostrils have no dark interior on either. Tests: test_nativedefault 6,
+test_blockin 19, test_headbody 6 (hash green), test_toolsets 8, test_orbit 10.
+NEXT: Joe's decisions (end of this section); a front-outline read of the neck's width; nostril interiors and lid depth in
+the default dressing; brows' weight from the read; a native-head benchmark.
 
 ### 1. block_in_start's defaults (blockin.start, server.block_in_start)
 - `attach="native"` is the default: base.head {attach "native", gnm_base 1.0, dimorphism 0.0, eyes 1.0, lip_close}, no
@@ -6174,3 +6182,55 @@ NEXT: step 5 (tess_n1 from scratch on the default path), 6 (judge, sheets nd_tes
   lip_close): nd_T07 0.002 mm max over face, jaw, mouth, skull, ears AND neck (one similarity, scale 1.0016 = the
   stature's allometry); tess_a1 face 2.75 rms / 10.6 max, jaw + chin 4.55 / 10.6, skull 8.2 / 18.1, ears 5.9 / 7.1
   (scale 0.823). CAVEAT: the vertices as placed, not the meshed field that is rendered (+ ~0.02 mm).
+- DRESSING (spikes/nativedefault/dress.py nd_T07 nd_D1; 21 min; tess_n1 = a fork of nd_D1): tess_a1's zones and
+  features (flush, FRECKLES) dropped, wrinkles 0, no folds, no strokes, no paint layers; pupil 0.33, canthus 0.8, no
+  iris_size; skin_from_reference groups tone / lips / eyes / brows ONLY (folds off, stubble off): tone melanin 0.133,
+  blood 0.044; lips melanin 14.7 (!), blood 1.26; brows colour #32251a, density 1.6; it also wrote zones.eyelids 2.48
+  (the eyes group). The read's fold checklist says lid_fold PRESENT in the picture, ours lacks it (confidence 1.0):
+  left off by decision. brow_read(match=True): middle line 0.8 mm, lower edge 0.7 -> 0.6 mm. Lashes: the default.
+  HAIR: th_T66's style WORDS through hair.tie_style (carry_from th_T66: its look and strand dials) + groom seed 0:
+  622 locks (gather 381, tail 39, tail strays 59, wisps 62, baby hairs 72, loose 4, swoop 4); th_X2's wisps NOT used.
+- STILL NOT GNM on tess_n1: the body and the neck's base below the seam ring (MakeHuman, laid on GNM's bib); size x
+  1.0016 and the rigid placement; lip_close (GNM's basis, our coefficients: up to 5.1 mm at the lips) and the sealed
+  seam behind closed lips; the lids' extra edge loops; the surface as a field meshed at ~1 mm; the eyeball as analytic
+  spheres with a PAINTED iris (limbus from eyes_000 +1.20 sd), pupil 0.33, sclera, veins, caruncle / canthus shading;
+  teeth / tongue as shells of GNM's meshes; LASHES; BROWS (hair picture fitted to the photo); HAIR (tied groom); the
+  SKIN: tone, lips' pigment, eyelid zone 2.48, mottle (variation 0.6), micro relief (detail 0.45). No strokes, no
+  folds, no wrinkles, no paint layers, no kits, no sliders, no pose, no expression.
+
+### 6. Judged, look first (tiles one at a time; reference | tess_n1 | tess_a1 = th_T66 for the hair)
+SQUINT, whole head front beside her photo: NOT the same woman, either model. Both are flat mannequins under this
+EEVEE light (LEARNINGS 1: our own dressing misleads; the block-in overlays out/look_nd_T06.png ARE sharp). tess_n1
+reads as a sharper, plainer relative: heavy dark brows, small-looking flat eyes, a brown flat mouth, a V-shaped lower
+face; tess_a1 as a softer, freckled relative with a wider jaw. Neither wins the squint; a1 is softer, n1 has her oval.
+| feature | vs tess_a1 | reads as her? | what the tile shows |
+|---|---|---|---|
+| whole head, front | same | no | n1: her oval and narrow chin, but harsher (brows, lips); a1: softer, jaw too wide, freckles |
+| three-quarter | same | no | both angular; n1's jaw line and chin nearer hers, nose tip longer / sharper than hers |
+| profile | slightly better | partly | forehead, nose, lips and chin line lie on hers (overlay sharp); ear clear of hair as hers; a1 has scraggly cheek hairs and a fuller lip |
+| eyes | same (differently wrong) | no | n1: iris the right size now (13.0 mm drawn, a1's too small), opening right at the pupil (-0.1 mm), but NO lid platform / crease, no shadow under the brow, top of the iris too exposed (-1.0 mm), hard lash line: a staring sticker eye. a1's pink lid zones give depth n1 lacks (I dropped zones) |
+| brows | worse | no | n1: too heavy, dark and blocky (density 1.6 from the read), square inner ends; hers thinner with a tapered tail. a1: thin and pale, nearer in weight |
+| nose | same | partly | shape plausible on both; NO dark nostril interior on either (pale bumps): the most fake-looking thing in the tile; n1's alae a little narrow (nose_width moved -4.9 mm with no read) |
+| mouth | better (shape), worse (colour) | shape yes, colour no | n1: Cupid's bow, width and lower lip follow hers (border miss 0.3 / 0.7 mm); upper lip a dark brown slab (lips.melanin 14.7 from the read), a dark speck at mid-seam. a1: wider, flatter bow, even pink. No stitch ticks on the seam in the dressed tiles |
+| chin | same / slightly better | partly | n1: rounded narrow chin as hers, a touch pointed; a1: broad with a flat underside |
+| jaw | same | partly | n1 narrower than hers (gonial_width -9.8 mm with no read: a V), a1 wider than hers: she is between |
+| cheeks | same / slightly worse | partly | n1 a little lean under the cheekbone (cheek_fullness -1.7 sd on a weak read); hers full and smooth; clays of n1 and a1 are near twins in 3/4 |
+| neck, front | WORSE | no | n1: thick and short, nearly as wide as the jaw, shoulders rising early; blank (no clavicles, SCM, pit). Hers is long and slender. a1's thin MakeHuman neck (290) is nearer her. 332 mm is ANSUR's mean woman, not Tess: her bare neck's WIDTH is visible in the front picture and nothing reads it |
+| neck, side | same | partly | n1 clean, forward lean right, a little thick; a1 thinner with ripples on the nape. Like hb_05: reads as a neck, not as hers |
+| hairline / hair | same | partly | the same style words give the same hair on the bigger head; n1's temple wisps cover less of the ear; colour grey-brown and flat against her warm brown on both |
+| figure (nd_tess_figure) | BETTER | n/a | n1: a normally proportioned woman (7.6 heads); a1: a pin head on the same body (8.9 heads) |
+| clay, wide look | n/a | n/a | faint ticks along the lip seam and jagged lid edges at 1.3 mm voxels on n1 (the meshing artefact above); none in close-ups or in the dressed scene mesh |
+
+### Decisions for Joe
+1. tess_n1 is GNM to 0.002 mm and stands right on her body, but it is not a better likeness than tess_a1. Which goes down
+   the pipeline? (I would not replace tess_a1 on this sheet.)
+2. Her NECK: the ANSUR prior gives the mean woman's 332 mm and it reads thick on her. Read the neck's width from the
+   front outline (bare in her pictures), or hold a girth by hand (block_in_solve(neck=<mm>)), or accept.
+3. SIZE: on the real-size head her iris reads 13.0 mm and her pupils 65 mm apart: "7.7 % large" by an average iris.
+   Keep the class-mean size (held), or let the iris pull (size="iris": -2.6 %)?
+4. The default dressing of a native head needs, to read as a face at all: dark nostril interiors, depth round the
+   eyes (lid platform / shadow: zones or the fold as texture), a lighter brow read (density 1.6 is too heavy), a cap on
+   lips.melanin. All ours, all paint: allowed on a "nothing of ours on the surface" head?
+5. Round 2's true45 / true90 / rear pictures exist and were not used (round 1's "profile" fits at 71 deg): rerun on them?
+6. `human(source="human")` is still body-carried and seeded with `features`: make it native too?
+7. A class-mean start keeps GNM's neck (women 363) until its first solve; apply the prior in block_in_start as well?

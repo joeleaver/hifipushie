@@ -23,7 +23,7 @@ tgt = np.array([0.0, chin[1] + 0.06, chin[2] - 0.5 * r["chin_over_pit"] - 0.015]
 frames = []
 for nm, d in (("neck_front", [0, -1, 0.0]), ("neck_side", [1, 0.0, 0.0]), ("neck_34", [0.66, -0.75, 0.05])):
     d = np.asarray(d, float) / np.linalg.norm(d)
-    frames.append(render.camera_frame({"eye": (tgt + d * 1.4).tolist(), "target": tgt.tolist(), "fov": 14.5, "name": nm}, len(frames)))
+    frames.append(render.camera_frame({"eye": (tgt + d * 1.4).tolist(), "target": tgt.tolist(), "fov": float(kw.get("fov", 10.0)), "name": nm}, len(frames)))
 light = skin_read.photo_light(kw.get("light", m), 0)
 with resources.heavy(f"nativedefault necks {m}", gb=8):
     ims = stage.shoot(m, frames, light, size=T, hair_on=bool(spec.get("hair")))

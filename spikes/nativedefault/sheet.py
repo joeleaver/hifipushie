@@ -23,14 +23,14 @@ def cell(p):
 
 
 LAB = 64
-HEAD = 210
+HEAD = 250
 W = Image.new("RGB", (3 * T + 40, HEAD + len(ROWS) * (T + LAB) + 20), (250, 250, 250))
 d = ImageDraw.Draw(W)
-d.text((20, 10), "TESS", font=F(60), fill=(0, 0, 0))
-for j, lab in enumerate(("REFERENCE", f"{n1}  (GNM native, default path)", f"{a1}  (accepted; hair th_T66)")):
-    d.text((20 + j * T + 8, 90), lab, font=F(34), fill=(0, 0, 0))
-for i, ln in enumerate(title2.split("|")):
-    d.text((20, 140 + i * 32), ln.strip(), font=F(24), fill=(0, 90, 30))
+d.text((20, 10), "TESS:  REFERENCE  |  tess_n1  |  tess_a1", font=F(60), fill=(0, 0, 0))
+for j, lab in enumerate(("REFERENCE", f"{n1}  (GNM native)", f"{a1}  (accepted; hair th_T66)")):
+    d.text((20 + j * T + 8, 196), lab, font=F(32), fill=(0, 0, 0))
+for i, ln in enumerate(title2.split(";;")):
+    d.text((20, 96 + i * 44), ln.strip(), font=F(30), fill=(0, 90, 30))
 for i, (lab, key, ref) in enumerate(ROWS):
     y = HEAD + i * (T + LAB)
     d.text((24, y + 8), lab, font=F(40), fill=(0, 0, 0))
@@ -41,8 +41,8 @@ H = 1100
 W = Image.new("RGB", (4 * 800 + 40, H + 170), (250, 250, 250))
 d = ImageDraw.Draw(W)
 d.text((20, 10), f"TESS, FULL FIGURE:   {n1} (GNM native head)   |   {a1} (accepted)", font=F(50), fill=(0, 0, 0))
-for i, ln in enumerate(title2.split("|")):
-    d.text((20, 76 + i * 30), ln.strip(), font=F(24), fill=(0, 90, 30))
+for i, ln in enumerate(title2.split(";;")):
+    d.text((20, 72 + i * 36), ln.strip(), font=F(28), fill=(0, 90, 30))
 for j, (m, v) in enumerate(((n1, "front"), (n1, "side"), (a1h, "front"), (a1h, "side"))):
     try:
         im = Image.open(f"{O}/{m}/dressed/figure_{v}.png").convert("RGB")
