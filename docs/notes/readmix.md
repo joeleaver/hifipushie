@@ -10,6 +10,13 @@ hsrd100 are links into the groundtruth agent's data, read-only; out/ is ours), o
 Models rm_* (main's workspace). The groundtruth agent's scripts (spikes/groundtruth on branch groundtruth) are run from
 its worktree through PYTHONPATH with THIS worktree's src (rchain.py sets readmix's switches first).
 
+STATE 2026-10-14 (end of the resumed round; branch readmix): ALAR read ON (held-out alar width error 1.5 -> 0.5 mm); the
+1.65 mm nose-base correction OFF (overshot on held-out); fallback blend GIVEN-only (block_in_start ethnicity= class |
+{class: weight}); expression="lower" built, OFF (not safe: one held-out head broke). Tables: "## Held-out HSRD subjects",
+"## The alar-edge read and the fallback classes", "## Per-picture expression". NEXT: lip-border read bias (+3-8 mm lip
+heights on every held-out head, main's reads too); expression evidence from a second picture; more held-out heads (the
+HSRD pull) and chain repeats before trusting single-chain differences under ~1 mm.
+
 RESUMED (2026-10-14, the coordinator's scoped job: the FALLBACK BLEND, then the alar-edge read; the 1.65 mm nose
 correction scored on subjects it was NOT calibrated on). Held-out HSRD subjects (groundtruth's fixed split: HSR0023 m 62,
 HSR0027 f 41, HSR0102 f 22) made solve-ready by spikes/readmix/hmk.py <pose> <k> classes=..: rm_<k>_T (truth = the
@@ -505,3 +512,24 @@ by under 0.2 of 11-21 (sd units). So: the blend is given by the caller (block_in
 shape parameter, said GIVEN / INFERRED in the reply); SOLVING it as 3 more dimensions is NOT built: it could move the prior
 centre by about one class difference (~1 mm) and the reads already decide these measures. For denselm: its training
 identities were drawn evenly from the four classes, so its shrinkage is toward the POOLED mean.
+Oracle blend on the other two (pooled -> oracle blend, alar read off): h23 nose base +0.6 -> +0.3, alar +1.7 -> +1.2, mouth
++0.8 -> +0.4; h27 +1.4 -> +0.3, +1.1 -> +0.3, +2.0 -> +1.6; face rms 0.1 mm worse on both. Even the BEST possible fallback
+centre buys 0.3-1.1 mm of nose width and costs nothing elsewhere; a wrong class costs up to 0.4. Worth giving when known.
+
+## Per-picture expression, expression="lower" (2026-10-14; built, NOT safe, OFF)
+Leak test (solvecams' known head a; truth = its NEUTRAL identity; the same set with a neutral front / with the front shot
+again with GNM's happy x0.3: groundtruth's gexpr.py pictures; 4 calls; nosebias 0, alar read off; COMPUTED):
+| front picture, mode | calls | face / low rms | jaw width | mouth width | nose base | alar | upper / lower vermilion |
+|---|---|---|---|---|---|---|---|
+| neutral, off | 4 | 2.65 / 1.89 | +2.0 | +0.7 | -0.1 | -0.4 | +0.0 / -0.0 |
+| neutral, lower | 4 | 2.27 / 1.34 | +1.5 | +1.9 | +2.4 | +1.3 | +0.7 / +0.6 |
+| smiling, off | 4 | 2.64 / 2.01 | +3.9 | +4.0 | +3.4 | +1.3 | +0.8 / +1.0 |
+| smiling, lower | 4 | 2.64 / 1.81 | +2.5 | +3.0 | +2.6 | +1.2 | +0.8 / +1.0 |
+LEAK (smiling - neutral): off: mouth +3.3, nose base +3.5, jaw +1.9 mm; lower: +1.1 / +0.2 / +1.0, but only because the
+NEUTRAL solve got worse with the term (mouth +0.7 -> +1.9, nose base -0.1 -> +2.4): against the truth the smiling solve
+moved only 1 mm (mouth +4.0 -> +3.0, nose base +3.4 -> +2.6). Held-out real check (alar read on): h23 (neutral photo)
+did not acquire an expression (face 2.25 -> 2.11, every measure within 0.6 mm); h102 (her photo scores mouthSmile 0.48)
+went WRONG: nose base -0.8 -> -6.4, mouth +2.2 -> -5.3, face 2.17 -> 3.17: the free mouth expression took the identity's
+place. Not safe: OFF. What it needs, as solvereads and denselm found: evidence that tells expression from identity (a
+second picture of the same face with another expression, or the picture's own expression read independently: MediaPipe's
+smile score does not see a slight smile (0.024 for happy x0.3) and its scale on clay is nonlinear (smilecal.py)).
