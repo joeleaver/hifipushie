@@ -569,7 +569,7 @@ def test_volume_is_gated_for_up_styles_and_half_up():
     v = hf.style({"tie": "high", "part": "none", "volume": 0.5})["tie"]["gather"]["volume"]
     assert v["crown"] > 0.01 and v["arc"] == 0.0 and v["layers"] == 0.0 and v["locks"] == 0.0
     lo = hf.style({"tie": "low", "volume": 0.5})["tie"]["gather"]["volume"]
-    assert lo["arc"] > 0.4 and lo["layers"] > 0.5 and lo["locks"] == 1.0 and lo["cross"] == 1.0
+    assert lo["arc"] > 0.4 and lo["layers"] > 0.5 and lo["locks"] == 0.4 and lo["cross"] == 1.0
     # the old gather exactly for a default high ponytail: same locks as with volume 0
     _, _, _, a = _grow({"tie": "high", "tightness": 0.6, "part": "none"})
     _, _, _, b = _grow({"tie": "high", "tightness": 0.6, "part": "none", "volume": 0})
@@ -606,7 +606,7 @@ def test_escaped_curls_are_fine_separate_locks_near_the_face():
         sides.append(np.sign(P[0, 0]))
         assert np.sign(P[-1, 0]) == np.sign(P[0, 0]) or abs(P[-1, 0]) < 0.02, k  # on its own side of the face
     assert max(lens) > 1.6 * min(lens) and {-1.0, 1.0} <= set(sides)
-    assert np.mean(curl) > 1.06 and min(curl) > 1.0, (np.mean(curl), min(curl))
+    assert 1.0 < np.mean(curl) < 1.08 and min(curl) >= 1.0, (np.mean(curl), min(curl))
     _, _, _, L0 = _grow({**base, "wisps": {"amount": 0.6, "curls": 0}})
     assert not any(k.startswith("tk") for k in L0)
     assert [k for k in L0 if not k.startswith("tk")] == [k for k in L if not k.startswith("tk")]  # the others' draws stay

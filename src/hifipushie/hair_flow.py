@@ -490,6 +490,13 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                     lk["root"] = round(0.8 - 0.55 * nr, 3)
         if vo and vo_shade > 0:
             st["shade"] = vo_shade
+        if vo and hl[i] == 2:
+            # the part's own banks stand up out of the line and are seen END-ON from the side: drawn opaque with dark
+            # roots they were black tangled loops at the part's start in every three-quarter view (th_T66 .. th_W06;
+            # isolated: not wisps, halo, wave, clumps, fly-aways, the arc or crossing: dropping these rows only moved
+            # the loops to the next locks). Hers are fine light hairs there: drawn fine (no dark root), denser
+            st["fine"] = 0.55
+            st["density"] = round(float(st.get("density", 1.0)) * 1.3, 3)
         if vo:
             # where the sun reaches (the look's highlights gather there): the top layers, most round the face and
             # over the top; -0.5 .. 0.5
@@ -1102,8 +1109,10 @@ def curls(sc, tp: dict, ws: dict, line, seed: int, col, pre: str) -> dict:
                     d = _unit(d)
                 core.append(core[-1] + ds * d)
             core = np.asarray(core)
-            R = rng.uniform(0.002, 0.006) * (0.5 + soft) * min(1.0, ln / 0.06)
-            lam = rng.uniform(0.025, 0.05)
+            # (a slow bend, not a ringlet: corkscrews of 2-6 mm at 2.5-5 cm read doll-like, th_W06 / th_62; hers are
+            # near-straight escaped strands with a soft bend)
+            R = rng.uniform(0.0008, 0.0025) * (0.5 + soft) * min(1.0, ln / 0.06)
+            lam = rng.uniform(0.06, 0.11)
             ph, hand = rng.uniform(0, 2 * np.pi), rng.choice([-1.0, 1.0])
             core[1:] = _push(sc, col, core[1:], 0.002 + 0.6 * R)
             for _ in range(2):  # (the push kinks it where it meets the cheek)
@@ -1274,7 +1283,9 @@ def style(tied: dict) -> dict:
             # (asked for on an up-style: a smooth pouf: no fall, one shell, no separate locks)
             "arc": round(float(np.clip(V * (1.0 - up) if vol["arc"] is None else vol["arc"], 0, 1)), 3),
             "layers": round(float(np.clip((0.7 * (1.0 - up)) if vol["layers"] is None else vol["layers"], 0, 1)), 3),
-            "locks": round(float(np.clip((min(V / 0.3, 1.0) * (1.0 - up)) if vol["locks"] is None else vol["locks"], 0, 1)), 3),
+            # (0.4 at full: at 1 each lock's height swelled and sank along it and at the crown's silhouette the stacked
+            # waves were dark wavy wires, th_W06)
+            "locks": round(float(np.clip((0.4 * min(V / 0.3, 1.0) * (1.0 - up)) if vol["locks"] is None else vol["locks"], 0, 1)), 3),
             "cross": round(float(np.clip(min(V / 0.3, 1.0) if vol["cross"] is None else vol["cross"], 0, 1)), 3),
             "hold": round(float(np.clip(lo if vol["hold"] is None else vol["hold"], 0, 1)), 3)}
         # (the dome is the volume's now: lift's few mm of puff under it would only add to the top layer)

@@ -1951,3 +1951,17 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
 - NEXT: (1) the part: banks that fall over the line from both sides, short (fade out by 4 cm back); (2) loose fine hair
   over the forehead's corners (wisps.baby / front looseness under volume, without the veil); (3) tess_n1; (4) export
   through Blender once (export_asset hair) and look at the cards' colour; (5) up-style curls by tie height.
+- ROUND TWO, third read (the coordinator on th_60 / 61: "I'd take V86's front over W06"), 2026-10-14:
+  * DARK WIRY CLUMP at the part's start / forehead corner (three-quarter): in th_T66 and th_V86 too (old). Isolated
+    with shots7 (drop= / S= / LS= in memory, out/iso_w06*.jpg, iso_w07*.jpg): NOT the wisps, curls, baby hairs, halo,
+    fly-aways, strays, the edge band, the scalp layer, strand wave / curl / loose / frizz / clump, root darkness, the
+    arc, the part crossing or the root's bend radius. It goes with the inner locks (drop tg1_*), and dropping the
+    part's own root rows only MOVES it to the next locks behind: it is the far bank's strands seen END-ON at the
+    silhouette, drawn opaque and dark. Her photo has fly-away loops in the same place, fine and light. Fix: the part
+    rows drawn fine (hp_fine 0.55: part transparent, no dark root), density x 1.3. Lighter and smaller on W08, not gone.
+    The front view's crown "wavy wires" were `volume.locks` at 1 (W07c, locks 0: gone): default now 0.4 x amount.
+  * Curls: corkscrews -> a slow bend (radius 0.8-2.5 mm, 6-11 cm a wave). Ringlets gone (riffs too, by construction;
+    th_62 not re-rendered).
+  * Colour: lightening was desaturating toward grey: sun + 30 % saturation, highlights + 45 %; look W08 eevee_sat
+    0.48, lit #5c4834. Back 3/4 now warm brown, but OVERSHOT: chroma 14.5 vs hers 9 (W09 pulls back).
+  * RESTART: best so far th_W08 (style / look spikes/tesshair7/styles/W08_*.json), but too saturated.

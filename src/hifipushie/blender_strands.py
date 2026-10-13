@@ -666,7 +666,7 @@ def material(look: dict):
             # (+ 50 % value at sun 1, a little warmer: at + 60 % with + 25 % saturation a sun 0.9 tail was orange straw, th_V9a3)
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fs, 0.5, 1.0))
             hue = M("MULTIPLY_ADD", fs, 0.004, hue)  # (+ 0.012 turned a brown tail olive under EEVEE's desaturation, th_V84)
-            sat = M("MULTIPLY_ADD", fs, 0.1, sat)
+            sat = M("MULTIPLY_ADD", fs, 0.3, sat)  # (lighter AND warmer: at + 10 % the light lengths went ashy grey, th_W06)
         if hl > 0:
             # ribbons at two scales, gathered where the sun reaches (hp_su: the top layers, round the face, a tail's
             # outside) and a little on some locks: many thin ones, a few broad SOFT ones (lower contrast, a wide edge)
@@ -689,7 +689,7 @@ def material(look: dict):
             fh = M("MULTIPLY", fh, M("SUBTRACT", 1.0, M("MULTIPLY", M("GREATER_THAN", at_("hp_a0"), 0.005), 0.5)))
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 0.85, 1.0))
             hue = M("MULTIPLY_ADD", fh, 0.006, hue)
-            sat = M("MULTIPLY_ADD", fh, 0.25, sat)
+            sat = M("MULTIPLY_ADD", fh, 0.45, sat)
     if fly > 0:
         val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_fly"), 0.6 * fly, 1.0))
     dep = float(np.clip(look.get("depth", 0.5) or 0.0, 0.0, 1.0))

@@ -35,6 +35,12 @@ if kw.get("S"):  # S=<json>: a patch of hair.strands, in memory (isolating a lay
 if kw.get("drop"):  # drop=<pat,pat>: without these locks (fnmatch), in memory
     from fnmatch import fnmatch
     spec["hair"]["locks"] = {n: l for n, l in spec["hair"]["locks"].items() if not any(fnmatch(n, p) for p in kw["drop"].split(","))}
+if kw.get("LS"):  # LS=<pat>:<json>: every lock matching pat gets these strand dials (in memory)
+    from fnmatch import fnmatch
+    pat_, js_ = kw["LS"].split(":", 1)
+    for n_, l_ in spec["hair"]["locks"].items():
+        if fnmatch(n_, pat_):
+            l_["strands"] = {**(l_.get("strands") or {}), **json.loads(js_)}
 TAG = kw.get("tag", "")
 refs = json.loads((store.HOME / m / "human_refs.json").read_text())
 W, H = 1152, 1536
