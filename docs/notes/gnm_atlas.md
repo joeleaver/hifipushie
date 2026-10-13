@@ -6036,3 +6036,44 @@ NONE on the true base (no concavity on the outer third); all of it is the fold l
   glabella nick, crow's-feet lines: the old dressing, thin.
 - Joe to decide: (6) drop spec.strokes in block_in_start (I would); (7) where his age should come from if not our
   folds: GNM's age direction, a better fold layer, or texture only.
+
+## nativedefault (2026-10-12, "nativedefault" agent, branch `nativedefault` (worktree .claude/worktrees/nativedefault) from main
+## 990fa02; Joe's decisions consolidated: the GNM-native head is the DEFAULT start for a person's head. Scratch DURABLE in
+## /mnt/data/hifipushie/nativedefault: env.sh, run.sh <script> (light slot), heavy.sh <gb> <script> (resources.heavy + capped),
+## tests.sh <pytest args> (one file, log in out/), bench.sh <run> [opts] (chinread's known heads), out/; scripts spikes/nativedefault)
+STATE (2026-10-12, steps 1-2 committed): block_in_start is native by default and carries nothing of ours; a native head
+refuses its dead steps; cameras of another head are measured, refused by the solve and carried by a step.
+NEXT: step 3 (neck girth in the solve: benchmark running), 4 (size), 5 (tess_n1), 6 (judge).
+
+### 1. block_in_start's defaults (blockin.start, server.block_in_start)
+- `attach="native"` is the default: base.head {attach "native", gnm_base 1.0, dimorphism 0.0, eyes 1.0, lip_close}, no
+  eye_radius / interior / mouth (GNM's own parts), the head's dead keys dropped (base.head.scale, gnm_base_rest / blend /
+  age, toward) and EVERY head style slider incl. `base.style.human.head_size` (onemesh ignores them on a native head).
+- `carry=False` is the default: spec["strokes"] emptied, skin.folds and skin.fold_expressions removed, skin.wrinkles =
+  {"amount": 0} (the age's own painted wrinkle relief too). The reply has a DROPPED line (every key, the strokes by name)
+  and a LEFT line (the refs model's skin tone / zones / features / lips / eyes, micro relief skin.detail, paint layers:
+  ours, kept, said). `carry=True` keeps strokes / folds / wrinkles; `attach="body"` is the old head (gnm_base by age).
+  `gnm_base` with attach="native" is refused.
+- CAMERAS: a refs model's cameras were fitted on ITS head. `blockin.carry_cameras(base0, base1, cams)`: the two heads'
+  landmark similarity (scale + translation) and each camera with it (centre' = d + s x centre, t' = s x t, f kept): the
+  new head lies where the old one lay in every picture, yaw and pitch as fitted. Tess (tess_a1 -> the native class
+  mean): x1.211, the face 30 mm elsewhere. The start's cameras are flagged `cam_carried`; the first block_in_solve
+  lays them on the head (cameras="refit" forced when "free" was passed; "trust" is honoured) and says so.
+- The `human` TOOL is LEFT as it was: its default is the grafted head (source "makehuman"), and source="human" makes a
+  seeded face with `features` (a headfit warp: ours) for a person made from a DESCRIPTION. A person from PICTURES goes
+  through block_in_start, which rewrites the head. `human(..., source="human", head={"attach": "native"})` is there for
+  who wants it; making it the default changes every described human's proportions (7.9 -> 7.6 heads) and its tests.
+  For Joe.
+
+### 2. What a native head refuses, and cameras of another head
+- block_in_step on a native head: `head_scale`, `gnm_base`, `gnm_base_rest`, `dimorphism`, `eye_size` raise
+  "REFUSED on a GNM-native head: <reason>" (blockin.NATIVE_REFUSE); nothing is written. On a body-carried head they work.
+- `blockin.cameras_fit(base, refs)`: MEASURED: the head's landmarks through each camera against the picture's stored
+  lm points: size ratio and centre offset; stale past 10 % / 0.3 of the face's spread (Tess's old cameras on her native
+  head: x1.17, 0.46 off: stale; carried: x0.95, 0.01).
+- block_in_solve on stale cameras REFUSES and names the step: `block_in_step(name, {"attach": "native"})` =
+  `blockin.native_step`: a new model with the head native (true-base keys set, dead keys dropped and named) and the
+  cameras carried (the old head = the same spec without the attach key). A milder change (base.head.size, a Garrett-
+  sized 3.6 %) is caught by the placement record in human_refs.json ("placement"): the next solve refits and says so.
+- Found: tests/test_orbit.py::test_eyeball_guard_reads_the_shipped_head fails on main 990fa02 too (0.90 against 0.8 +-
+  0.15): not this branch's.

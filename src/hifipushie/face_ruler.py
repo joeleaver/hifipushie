@@ -1196,8 +1196,10 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
             # TIE what no picture reads to its expectation given what they do read (solve_report.tie_rows; chinread)
             from . import solve_report as sr
             whole = done + (np.asarray(poff, float) if poff is not None else 0.0)
-            tk = {k_: v_ for k_, v_ in tie.items() if k_ != "size"}
+            tk = {k_: v_ for k_, v_ in tie.items() if k_ not in ("size", "size_target", "neck", "neck_sig")}
             obs = obs + (sr.tie_rows(done=whole, **tk) if tk.get("names") else []) + ([sr.size_row(done=whole, target=float(tie.get("size_target") or 0.0))] if tie.get("size") else [])
+            if tie.get("neck"):      # THE NECK's girth at its anthropometric target (solve_report.neck_row; nothing reads it)
+                obs = obs + [sr.neck_row(np.asarray(head["c"], float) + done, float(tie["neck"]), float(tie.get("neck_sig") or sr.NECK_SIG))]
             out = solve(obs, cur, views=views, **skw)
         relax = float(out.get("relax", 1.0))
         done = done + out["dc"]
@@ -2029,6 +2031,7 @@ def _landmark_obs(head, view, points):
 ADAPT_MIN = 8                         # solve(adapt=True): groups (type, view) of at least this many reads get their own scale
 CAM_LOOSE = 2.0                       # read(cam_first=n): the cameras-first rounds' freedom, x the cameras' sd
 CHIN_LM = (7, 8, 9)                   # differential anchors always include the chin's three
+NECK_HOLD = True                      # the NECK's girth is held at ANSUR's mean for the sex and stature on a GNM-native head (solve_report.neck_row)
 SIZE_HOLD = True                      # the face's SIZE is held at the block-in's start head's (solve_report.size_row): no picture reads
 # it (every camera's scale and distance are free: a bigger head further away is the same image), so left free it is whatever the prior's
 # correlations make of the shape reads (GNM's head_000 is width AND size: Tess's narrow face came out 3 % small, tess_a1 3.4 % large, the
@@ -2280,6 +2283,31 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
             "SIZE: the head's overall size is HELD at the block-in's start head's (the class mean on this body): no "
             "picture reads it (each camera's scale and distance are free), shape is free. block_in_solve(size=\"free\") "
             "releases it; size=\"iris\" lets the picture's iris pull it (weakly: +- 7 % person to person); teeth would read it better"))
+    nk = (chin or {}).get("neck", NECK_HOLD)
+    if nk is not False and nk is not None:
+        # THE NECK (nativedefault): True = ANSUR's mean girth for the model's sex and stature, on a GNM-NATIVE head only
+        # (a body-carried head's neck is the body's: GNM's is faded out); a number = that girth in real mm (on a
+        # body-carried head: GNM's own mm, for benchmarks)
+        from . import onemesh, solve_report as sr, store as _store
+        b_ = _store.load(name)["base"]
+        nat = onemesh.native(b_)
+        tgt = None
+        if nat:
+            ns = onemesh.native_size(b_)
+            tgt = (ns["neck"] if nk is True else float(nk) * 1e-3) / ns["size"]
+            g0 = sr.neck_girth(head["c"])[0] * ns["size"]
+            notes.append(
+                f"NECK: its girth is HELD at {1e3 * tgt * ns['size']:.0f} mm" + (
+                    f" (ANSUR II's mean for this sex and stature {ns['stature']:.3f} m: {1e3 * ns['neck']:.0f} +- {1e3 * ns['neck_sd']:.0f})"
+                    if nk is True else " (given)")
+                + f"; it stood at {1e3 * g0:.0f}. NO READ: no picture reads the neck's girth, and GNM's identity moves it 36 mm per sd "
+                  "(its female class mean is 363, its male 385). block_in_solve(neck=\"free\") releases it; neck=<mm> holds a "
+                  "girth you measured")
+        elif nk is not True:
+            tgt = float(nk) * 1e-3
+            notes.append(f"NECK: GNM's own neck girth held at {float(nk):.0f} GNM mm (a body-carried head: its neck is the body's)")
+        if tgt:
+            tie = {**(tie or {"names": ()}), "neck": tgt, "neck_sig": float((chin or {}).get("neck_sig", sr.NECK_SIG))}
     if tc:
         from . import solve_report as sr
         side = any(abs(view_yaw(v["cam"])) >= 60.0 for v in views)       # a side view's outline reads the profile line

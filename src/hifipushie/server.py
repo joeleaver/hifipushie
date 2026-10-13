@@ -1852,21 +1852,36 @@ def _blockin_sheet(name: str, save: str | None, views: list | None = None, table
 @mcp.tool(structured_output=False)
 def block_in_start(name: str, refs: str | list[dict], sex: str | float | None = None, age: float | None = None,
                    body: dict | None = None, gnm_base: float | None = None, ethnicity: str | None = None,
-                   cameras: str = "keep", replace: bool = False, save: str | None = None, expression: bool = False):
-    """THE DEFAULT START for a person's head from pictures: a base of the right kind (their body, GNM's class mean for
-    the sex, an age-dependent GNM base) with the references' cameras, and its first block-in look + target table.
-    refs = a one-mesh human with fitted references, or a views list; sex, age, body, gnm_base, ethnicity, cameras
-    ("keep" | "refit"), replace, save, expression (fit each picture's expression now; usually later with
-    block_in_expression). Details: guide(topic="block_in_start")."""
+                   cameras: str = "keep", replace: bool = False, save: str | None = None, expression: bool = False,
+                   attach: str = "native", carry: bool = False):
+    """THE DEFAULT START for a person's head from pictures: their body, GNM's class mean for the sex on a GNM-NATIVE
+    head (true base, GNM's eyeball / mouth, its own size; the body fitted), nothing of ours on its surface (the refs
+    model's strokes / skin.folds / wrinkle relief are NOT carried: the reply names what was dropped), the cameras,
+    the first look + table. refs = a one-mesh human with fitted references, or a views list; sex, age, body,
+    ethnicity, cameras, attach ("native" | "body" = the old head, with gnm_base), carry (True keeps the refs model's
+    strokes / folds / wrinkles), replace, save, expression. Details: guide(topic="block_in_start")."""
     from . import blockin as bi
     e = bi.start(name, _spec_arg(refs) if isinstance(refs, str) and refs.strip().startswith("[") else refs, sex=sex,
                  age=age, body=body, gnm_base=gnm_base, ethnicity=ethnicity, cameras=cameras, replace=replace,
-                 expression=expression)
+                 expression=expression, attach=attach, carry=carry)
     s = e["start"]
     out = _blockin_sheet(name, save)
-    out[1] = (f"started {name}: {s['sex']} class mean{' (' + s['ethnicity'] + ')' if s['ethnicity'] else ''}, age {s['age']:g}, "
-              f"gnm_base {s['gnm_base']:.2f}, cameras {s['cameras']}, |c| {e['c_norm']:.2f}\n" + out[1]
-              + "\nNEXT: squint at the sheet, name the single biggest difference in masses and planes, block_in_step ONE small move.")
+    head = ("GNM-NATIVE head (true base, GNM's eyeball / mouth / teeth, GNM's own size; the body fitted)" if s["attach"] == "native"
+            else f"body-carried head, gnm_base {s['gnm_base']:.2f}")
+    txt = (f"started {name}: {s['sex']} class mean{' (' + s['ethnicity'] + ')' if s['ethnicity'] else ''}, age {s['age']:g}, "
+           f"{head}, cameras {s['cameras']}, |c| {e['c_norm']:.2f}\n")
+    txt += ("DROPPED from the refs model (not GNM's, not this person's read): " + "; ".join(s["dropped"]) + "\n" if s["dropped"]
+            else "DROPPED from the refs model: nothing (it had no strokes, folds, wrinkle relief or head sliders)\n")
+    if s.get("carry"):
+        txt += "carry=True: the refs model's strokes / skin.folds / skin.wrinkles were KEPT (they are on this head's surface)\n"
+    if s.get("left"):
+        txt += "LEFT as the refs model had it (ours, not GNM's): " + "; ".join(s["left"]) + "\n"
+    if s["attach"] == "native":
+        from . import onemesh
+        txt += onemesh.attach_report(store.load(name)["base"])["text"] + "\n"
+    out[1] = (txt + out[1]
+              + "\nNEXT: block_in_solve (the joint step; its first call lays the cameras on this head), 3-4 calls until |dc| < 2; "
+                "then squint at the sheet and name the single biggest difference in masses and planes.")
     return out
 
 
@@ -1906,6 +1921,21 @@ def block_in_step(name: str, moves: dict, out: str | None = None, seen: str = ""
     guide(topic="block_in_step")."""
     from . import blockin as bi
     mv = _spec_arg(moves) if isinstance(moves, str) else dict(moves or {})
+    if "attach" in mv:   # (nativedefault) the head switched to GNM-native, its cameras carried: a step of its own
+        if mv != {"attach": "native"}:
+            raise ValueError('block_in_step: {"attach": "native"} is a step of its own (the head switched to GNM-native, the '
+                             "cameras carried); the other way is a new block_in_start(attach=\"body\")")
+        r = bi.native_step(name, out=out, seen=seen)
+        to = r["entry"]["to"]
+        text = (f"{to} (from {name}): the head is GNM-NATIVE now (true base, GNM's own size, the body fitted). CAMERAS CARRIED "
+                f"onto its new size and place (x{r['scale']:.3f}, the face moved {1000 * r['shift']:.0f} mm): the next block_in_solve "
+                'lays them on this head first (cameras="refit" for that call). '
+                + ("DROPPED (no meaning on a native head): " + "; ".join(r["dropped"]) if r["dropped"] else "no head key dropped")
+                + ". Hair and clothes made on the old head must be remade.")
+        if not look:
+            return text
+        sh = _blockin_sheet(to, save, before=None)
+        return [sh[0], text + "\n" + sh[1]]
     rep = bi.step(name, mv, out=out, seen=seen, why=why, cameras=cameras, feature=feature)
     text = bi.step_text(rep)
     if not look:
@@ -2055,14 +2085,14 @@ def eye_ruler(name: str, model: str | None = None, save: str | None = None):
 @mcp.tool(structured_output=False)
 def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: str = "", save: str | None = None,
                    cameras: str = "free", anchors: str = "differential", parse: str = "auto", hold: str = "default",
-                   expression: str = "default", chin_points: str = "auto", size: str = "held"):
-    """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lid margins, lip
-    borders, detector anchors; GNM's prior on the whole identity) applied as a block-in step, the solve's cameras
-    kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ.
-    cameras "free" | "trust" | "refit" (first call, cameras fitted on another head); size "held" (the head's overall
-    size stays the start's: no picture reads it) | "iris" | "iris_pin" | "free"; hold "auto" | "none"; expression
-    "view" | "shared" | "none"; chin_points "auto" | "on" | "off"; anchors, parse, out, share, seen, save. Details:
-    guide(topic="block_in_solve")."""
+                   expression: str = "default", chin_points: str = "auto", size: str = "held",
+                   neck: str | float = "held"):
+    """ONE JOINT STEP: face_ruler's solve over every reference view (outlines, irises, limbus, lids, lips, anchors;
+    GNM's prior on the whole identity) applied as a block-in step, the solve's cameras kept. Use it FIRST from
+    block_in_start's head, 3-4 calls until |dc| < 2. The reply says what MOVED WITH NO READ. cameras "free" | "trust"
+    | "refit"; size "held" | "iris" | "iris_pin" | "free"; neck "held" (a native head's neck girth at ANSUR's mean
+    for the sex and stature: no picture reads it) | "free" | mm; hold, expression, chin_points, anchors, parse, out,
+    share, seen, save. Cameras of another head are refused. Details: guide(topic="block_in_solve")."""
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
@@ -2075,7 +2105,8 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
                         hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
                         expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
                         chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
-                              "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size]})
+                              "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size],
+                              "neck": {"held": True, "free": False}[neck] if isinstance(neck, str) else float(neck)})
     to, so = rep["entry"]["to"], rep["solve"]
     sh = _blockin_sheet(to, save, before=name)
     warn = ""
@@ -2092,6 +2123,16 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
             warn += "WARNING: " + x + "\n"
     notes = "".join(f"  {x}\n" for x in so.get("notes") or [] if not x.startswith("VIEW:"))
     rp = (so.get("report") or {}).get("text") or ""
+    if so.get("neck"):
+        n_ = so["neck"]
+        rp += ("\n" if rp else "") + (
+            f"NECK: girth {1e3 * n_['before']:.0f} -> {1e3 * n_['after']:.0f} mm at its narrowest; "
+            + (f"HELD at {1e3 * n_['target']:.0f}; no read" if n_["held"] else "FREE (neck=\"free\"): moved with no read")
+            + f" (ANSUR II for this sex and stature: {1e3 * n_['ansur']:.0f} +- {1e3 * n_['ansur_sd']:.0f})")
+        h_ = so["head_size"]
+        rp += (f"\nHEAD SIZE: a GNM-native head: GNM's own size x {h_['size']:.3f} "
+               + (f"(the stature's allometry at {h_['stature']:.3f} m)" if h_["allometric"] else "(base.head.size, given)")
+               + "; the solve's size hold keeps the identity's size at the start head's on top of that")
     if so.get("held"):
         rp += ("\n" if rp else "") + "HELD at the start head's value (no read looks at them): " + ", ".join(so["held"])
     for pc, d in (so.get("expression") or {}).items():

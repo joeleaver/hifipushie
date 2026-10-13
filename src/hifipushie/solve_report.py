@@ -446,3 +446,66 @@ def size_row(done=None, sig: float = SIZE_SIG, target: float = 0.0) -> dict:
     d = np.asarray(done, float) if done is not None else np.zeros(len(g))
     # target: the size wanted against the start head's (0 = held there; +0.04 = 4 % larger: the iris' say)
     return {"type": "hold", "view": "prior", "name": "hold_size", "o": float(target - (g @ d)), "J": g.copy(), "sig": float(sig)}
+
+
+# ---- the NECK (nativedefault, 2026-10-12): no picture reads its girth; GNM's identity moves it 36 mm per sd ------------------
+NECK_RINGS = range(14, 25)   # GNM's neck rings above the seam ring: the narrowest of them is "the neck's girth"
+NECK_SIG = 0.01          # the neck's girth held to +-1 % of its target (ANSUR's mean for the sex and stature)
+
+
+def neck_girth(c) -> tuple:
+    """(girth m, ring, gradient (170,) m per component) of GNM's neck at its NARROWEST ring for the identity c (170):
+    the loop's length on GNM's own evaluation (GNM's metres; a native head stands at x base.head.size of it). GNM's
+    female class mean is 363 mm (ANSUR II women 330 +- 18), its male mean 385 (398 +- 25), and head_000 / head_001
+    carry 33 / 10 mm of it per sd with no picture reading it (docs/notes/headbody.md)."""
+    from . import gnm_mm, onemesh
+    sp = gnm_mm._space()
+    c = np.asarray(c, float)[:170]
+    best = None
+    for k in NECK_RINGS:
+        lp = onemesh._ring_loop(k)
+        X = sp["T"][lp] + np.tensordot(c, sp["IB"][:, lp], 1)
+        e = X - np.roll(X, -1, 0)
+        L = float(np.linalg.norm(e, axis=1).sum())
+        if best is None or L < best[0]:
+            best = (L, k, lp, e)
+    L, k, lp, e = best
+    u = e / np.linalg.norm(e, axis=1, keepdims=True)
+    D = sp["IB"][:, lp]
+    return L, int(k), np.einsum("vc,kvc->k", u, D - np.roll(D, -1, 1))
+
+
+def neck_row(c, target: float, sig: float = NECK_SIG) -> dict:
+    """A pseudo-observation for solve(): the neck's girth (GNM's metres, at its narrowest) is `target`, +- sig x target.
+    Linearised at the head as it stands (c: the whole identity), re-taken every round. As size_row: a statement no
+    picture can make (collars, hair and the jaw's shadow hide the neck; a front view shows a width, not a girth)."""
+    L, k, g = neck_girth(c)
+    return {"type": "hold", "view": "prior", "name": "hold_neck", "o": float(target - L), "J": g, "sig": float(sig * target)}
+
+
+def neck_move(c, target: float, hold: float = 5.0, rounds: int = 4) -> dict:
+    """The least identity change that brings the neck's girth to `target` (GNM's metres) with the head's SIZE kept and
+    every measure of rows() but the neck's own held (weight `hold` per population sd): what a block-in step
+    {"neck_mm": mm} applies. -> {"dc", "girth0", "girth", "ring", "cost" (|dc|), "moved": [(measure, change, unit)]}."""
+    rw = rows()
+    keep = [i for i, n in enumerate(rw["names"]) if "neck" not in n]
+    H = hold * rw["R"][keep] / rw["sd"][keep][:, None]
+    sz = size_row()["J"]
+    c = np.asarray(c, float)[:170].copy()
+    c0 = c.copy()
+    g0 = neck_girth(c)[0]
+    for _ in range(rounds):
+        L, k, g = neck_girth(c)
+        # min |d|^2 + |H (c + d - c0)|^2  s.t.  g.d = target - L, sz.(c + d - c0) = 0
+        M = np.eye(170) + H.T @ H
+        rhs = -H.T @ (H @ (c - c0))
+        C = np.vstack([g, sz])
+        b = np.array([target - L, -float(sz @ (c - c0))])
+        Mi = np.linalg.inv(M)
+        lam = np.linalg.solve(C @ Mi @ C.T, b - C @ Mi @ rhs)
+        c = c + Mi @ (rhs + C.T @ lam)
+    L, k, _ = neck_girth(c)
+    mv = rw["R"] @ (c - c0)
+    top = sorted(((n, float(x), u, float(x / s_)) for n, x, u, s_ in zip(rw["names"], mv, rw["unit"], rw["sd"])), key=lambda t: -abs(t[3]))[:5]
+    return {"dc": c - c0, "girth0": g0, "girth": L, "ring": k, "cost": float(np.linalg.norm(c - c0)),
+            "moved": [(n, x, u) for n, x, u, _ in top]}
