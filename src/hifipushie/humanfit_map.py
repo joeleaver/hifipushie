@@ -112,10 +112,15 @@ def _fit_cam(cam, X, uv, wt):
     f0, fsd = cam.get("f_prior") or (LENS[0] / 36.0 * cam["size"][0], LENS[1])
     if len(X) < THIN:   # a handful of clicked points (a profile: all near one plane) cannot tell lens from distance
         fsd = min(fsd, THIN_LENS)
+    cp = cam.get("cam_prior") or {}
+    if cp.get("lens_sd"):     # (solvecams) nor can the detector's 51 inner-face points: -78 .. +94 % of distance on known heads
+        fsd = min(fsd, float(cp["lens_sd"]))
+    psd = np.radians(float(cp["pitch_sd"])) if cp.get("pitch_sd") else None    # nor the camera's pitch (4.6 deg rms): level, +- this
 
     def res(p):
         c = {**cam, "r": p[:3], "t": p[3:6], "f": float(p[6])}
-        return np.r_[((humanfit.project(c, X) - uv) * wt[:, None]).ravel(), np.log(max(p[6], 1.0) / f0) / fsd]
+        return np.r_[((humanfit.project(c, X) - uv) * wt[:, None]).ravel(), np.log(max(p[6], 1.0) / f0) / fsd,
+                     [] if psd is None else [p[0] / psd]]
     sol = least_squares(res, np.r_[cam["r"], cam["t"], cam["f"]], x_scale=[0.1, 0.1, 0.1, 0.05, 0.05, 0.3, 500.0], loss="soft_l1", f_scale=3.0)
     return {**cam, "r": [float(v) for v in sol.x[:3]], "t": [float(v) for v in sol.x[3:6]], "f": float(sol.x[6])}
 
@@ -192,7 +197,7 @@ def measured_read(views: list) -> dict | None:
 
 
 def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8, lam: float = 1.0, force: bool = False,
-        free=("identity",), drop_bad: bool = True, measure: bool = False, prior_mean=None) -> tuple:
+        free=("identity",), drop_bad: bool = True, measure: bool = False, prior_mean=None, cam_prior: dict | None = None) -> tuple:
     """(new base, report); see _fit. A view whose points still miss by more than VIEW_BAD mm rms after the fit is
     dropped from the identity's evidence (its camera is still fitted and returned) and the fit run again.
     measure=True: macros MEASURED on the front picture (humanmeasure: a regression calibrated on renders only, not
@@ -202,6 +207,8 @@ def fit(base: dict, views: list, read: dict | None = None, read_sd: float = 0.8,
     meas = measured_read(views) if measure and "identity" in free else None
     if meas:
         read = {**{k: tuple(v) for k, v in meas["macros"].items()}, **(read or {})}
+    if cam_prior:      # {"lens_sd": relative, "pitch_sd": deg}: each camera's lens at its prior and pitch at level, that firmly (_fit_cam)
+        views = [{**v, "cam_prior": dict(cam_prior)} for v in views]
     nb, rep = _fit(base, views, read, read_sd, lam, force, free, None, prior_mean)
     bad =[i for i, v in enumerate(rep["views"]) if v["rms_mm"] > VIEW_BAD]
     if drop_bad and bad and len(bad) < len(views) and "identity" in free:
@@ -273,7 +280,8 @@ def _fit(base: dict, views: list, read, read_sd, lam, force, free, skip, prior_m
                     z0 = f0 * np.ptp(X, axis=0).max() / max(np.ptp(e["uv"], axis=0).max(), 1.0)
                     uc = e["uv"].mean(0)
                     cams[vi] = {"r": [0.0, 0.0, 0.0], "t": [(uc[0] - w_ / 2) / f0 * z0, (uc[1] - h_ / 2) / f0 * z0, z0], "f": f0,
-                                "size": [w_, h_], "centre": ctr.tolist(), "yaw": float(v.get("yaw", 0.0)), "f_prior": [f0, fsd]}
+                                "size": [w_, h_], "centre": ctr.tolist(), "yaw": float(v.get("yaw", 0.0)), "f_prior": [f0, fsd],
+                                **({"cam_prior": v["cam_prior"]} if v.get("cam_prior") else {})}
                 cam = cams[vi]
                 mm0 = cam["t"][2] / cam["f"] * 1000
                 cam = cams[vi] = _fit_cam(cam, X, e["uv"], mm0 / e["sig"])

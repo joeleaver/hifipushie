@@ -914,14 +914,16 @@ def _clay_crop(head, view):
     return out[0], out[2]
 
 
-def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0) -> dict:
+def cam_moved(cam: dict, dx=0.0, dy=0.0, sc=0.0, roll=0.0, yaw=0.0, pitch=0.0, dist=0.0) -> dict:
     """A fitted camera moved by the ruler's camera freedoms: mm of shift (x, y), % of scale, degrees of roll, of YAW
     (the head turned about the vertical through the camera's centre point) and of PITCH (nodded about the picture's
-    horizontal)."""
+    horizontal), and DISTANCE (dist: log units x 100, ~ % further away, the lens lengthened to match: the picture's
+    scale at the head's centre stays, its PERSPECTIVE changes; solvecams)."""
     from . import humanfit
     c = dict(cam)
-    c["t"] = [c["t"][0] + dx * 1e-3, c["t"][1] + dy * 1e-3, c["t"][2]]
-    c["f"] = c["f"] * (1 + 0.01 * sc)
+    kd = float(np.exp(0.01 * dist)) if dist else 1.0
+    c["t"] = [c["t"][0] + dx * 1e-3, c["t"][1] + dy * 1e-3, c["t"][2] * kd]
+    c["f"] = c["f"] * (1 + 0.01 * sc) * kd
     r = list(c.get("r", [0.0, 0.0, 0.0]))
     c["r"] = [r[0], r[1], r[2] + float(np.radians(roll))]
     if yaw:
@@ -958,16 +960,16 @@ def _cam_columns(obs, views, cam_sd):
         if len(sds) > 4 and iv:       # the rotations: finite differences of each observation's own 3D point
             X = np.array([obs[i]["X"] for i in iv], float)
             p0 = _cam_points(view["cam"], X)[1]
-            for j, key in ((4, "yaw"), (5, "pitch")):
-                d = (_cam_points(cam_moved(view["cam"], **{key: 0.5}), X)[1] - p0) / 0.5 * sc * mm     # mm per degree
+            for j, key in ((4, "yaw"), (5, "pitch"), (6, "dist"))[:len(sds) - 4]:
+                d = (_cam_points(cam_moved(view["cam"], **{key: 0.5}), X)[1] - p0) / 0.5 * sc * mm     # mm per degree / per % of distance
                 rot[j] = dict(zip(iv, d))
-        for j, (nm, sd) in enumerate(zip(("dx", "dy", "scale", "roll", "yaw", "pitch"), sds)):
+        for j, (nm, sd) in enumerate(zip(("dx", "dy", "scale", "roll", "yaw", "pitch", "dist"), sds)):
             col = np.zeros(len(obs))
             for i, ob in enumerate(obs):
                 if ob["view"] != k:
                     continue
                 if j >= 4:
-                    if i not in rot[j]:
+                    if i not in rot.get(j, ()):
                         continue
                     d = rot[j][i]
                     col[i] = d @ np.asarray(ob["n"]) if "n" in ob else (d[0] if ob["name"].endswith(".x") else d[1])
@@ -1143,28 +1145,42 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
     cam_done = np.zeros((len(views), ncam))
     cam0 = kw.pop("cam_done0", None)     # the cameras' move in EARLIER calls (per view): the prior is on the whole of it
     cam_first = int(kw.pop("cam_first", 0))
+    cam_reset = bool(kw.pop("cam_reset", True))     # "refit": the cameras-first rounds' result is the NEW start (cameras of another head)
     if not free:
         cam_first = 0
-    for _ in range(cam_first):       # CAMERAS FIRST: the head held (tau tiny), each camera CAM_LOOSE x its freedom, never
-        for v in views:              # past 2.5 sd of that per round: a camera fitted on another head (a block-in's start
-            if v.get("extra"):       # with kept cameras) is first laid on THIS head's outline and anchors
-                v["extra_obs"] = v["extra"](cur, v)
-        obs = observe(cur, views)
-        if not obs:
-            break
-        loose = {kk: tuple(CAM_LOOSE * x for x in cam_sd_of(kw["cam_sd"], kk)) for kk in ("front", "3q", "profile")}
-        o_ = solve(obs, cur, views=views, **{**kw, "tau": 0.02, "cam_sd": loose})
-        th = np.asarray(o_["cam"], float).reshape(len(views), ncam)
-        lim = 2.5 * np.array([loose[v["kind"]] for v in views], float)
-        for v, t_ in zip(views, np.clip(th, -lim, lim)):
-            v["cam"] = cam_moved(v["cam"], *t_)
-        cam0 = None                  # refitted cameras are the new start
-    prior_cam = cam0 is not None and free
+    prior_cam = cam0 is not None and free and not (cam_first and cam_reset)
     if prior_cam:
         a0 = np.zeros_like(cam_done)
         c0_ = np.atleast_2d(np.asarray(cam0, float))
         a0[:min(len(a0), len(c0_)), :min(ncam, c0_.shape[1])] = c0_[:len(a0), :ncam]
         cam_done = a0
+    for _ in range(cam_first):
+        # CAMERAS FIRST (solvecams: on EVERY call now): the head held (tau tiny), the cameras laid on its outline and
+        # anchors under their prior, before identity may move: a wrong front pitch is otherwise paid in jaw width (1.4 mm
+        # a degree). cam_reset ("refit"): each camera CAM_LOOSE x its freedom and the result is the new start. DISTANCE
+        # is held in these rounds unless the dense read is in (an outline's misfit on a held head is shape, and it would
+        # be explained as perspective)
+        for v in views:
+            if v.get("extra"):
+                v["extra_obs"] = v["extra"](cur, v)
+        obs = observe(cur, views)
+        if not obs:
+            break
+        k_ = CAM_LOOSE if cam_reset else 1.0
+        dense_in = any(ob["type"] == "dense" for ob in obs)
+        loose = {kk: tuple((k_ * x if (j < 6 or dense_in) else 1e-3) for j, x in enumerate(cam_sd_of(kw["cam_sd"], kk))) for kk in ("front", "3q", "profile")}
+        o_ = solve(obs, cur, views=views, **{**kw, "tau": 0.02, "cam_sd": loose, "cmax": None,
+                                             "cam_done": None if (cam_reset or not prior_cam) else cam_done})
+        th = np.asarray(o_["cam"], float).reshape(len(views), ncam)
+        lim = (2.0 if cam_reset else 1.0) * np.asarray(CAM_STEP[:ncam], float)      # a round's STEP is limited (the columns are a linearisation); the whole move is not
+        th = np.clip(th, -lim, lim)
+        for v, t_ in zip(views, th):
+            v["cam"] = cam_moved(v["cam"], *t_)
+        if cam_reset:
+            cam0 = None              # refitted cameras are the new start
+        else:
+            cam_done = cam_done + th
+            prior_cam = True
     cam_start = cam_done.copy()
     relax = 1.0
     for k in range(rounds):
@@ -1175,6 +1191,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         if not obs:
             raise ValueError("face_ruler: nothing could be read (no outline, no feature) in these pictures")
         skw = dict(done=done if k else None, cam_done=cam_done if (free and (k or prior_cam)) else None, relax0=max(relax0, relax), **kw)
+        skw.pop("cam_reset", None)
         out = solve(obs, cur, views=views, **skw)
         if hold and "gid" in cur and not kw.get("span"):
             # HOLD what no read looks at (solve_report.direct) at the START head's value: the prior's correlations may
@@ -1205,8 +1222,12 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         done = done + out["dc"]
         if free:                     # the fitted cameras are refined too: the next round reads through the moved ones
             th = np.asarray(out["cam"], float).reshape(len(views), ncam)
-            lim = 2.5 * np.array([cam_sd_of(kw["cam_sd"], v["kind"]) for v in views], float)   # never past 2.5 sd of the fit
-            th = np.clip(cam_done + th, -lim, lim) - cam_done
+            # (solvecams, 2026-10-13) NO CLIP on the whole move: it was clipped at 2.5 sd of the start (a "trust" front
+            # camera 8 deg off in pitch could be corrected by 1.67: 1.4 mm of jaw width per degree left in). The prior
+            # (cam_sd, on the whole move since the block-in's start) is what holds a camera now; only a round's STEP is
+            # limited, the columns being a linearisation
+            lim = np.asarray(CAM_STEP[:ncam], float)
+            th = np.clip(th, -lim, lim)
             cam_done += th
             for v, t_ in zip(views, th):
                 v["cam"] = cam_moved(v["cam"], *t_)
@@ -2008,6 +2029,21 @@ PHOTO_CAM_SD = (1.5, 1.5, 2.5, 0.8)   # a block-in's cameras were fitted to THIS
 # block-in (few landmarks, all near the midline: Tess's was refitted by 30 degrees once), a 3/4's is held by both eyes
 PHOTO_CAM_SD6 = {"front": (1.5, 1.5, 2.5, 0.8, 2.0, 2.0), "3q": (1.5, 1.5, 2.5, 0.8, 4.0, 2.0),
                  "profile": (1.5, 1.5, 2.5, 0.8, 6.0, 2.0)}
+# (solvecams, 2026-10-13; docs/notes/solvecams.md) THE CAMERAS' PRIOR, seven numbers a view: shift mm (x, y), scale %,
+# roll, YAW, PITCH deg, DISTANCE (log x 100 ~ %): the sd of each camera's WHOLE move since the block-in's start. Measured on
+# known heads: block_in_start's fit is off by 2.2 deg yaw, 3.5 deg pitch (the front 4.6, worst 8.7), 3.5 % scale, 1-4 mm
+# rms and has no idea of the distance; at the right head the reads hold every rotation to 0.2-0.6 deg (a side view 1-2).
+# 5 deg of FRONT pitch = 7 mm of jaw width, half the distance = +6 mm of jaw and +9 of cheekbone, so these are wide: the
+# reads decide. block_in_solve(cameras="free") = these; "trust" = a third of them (cameras measured or carried from an
+# accepted head); never a clip (read()).
+PHOTO_CAM_SD7 = {"front": (3.0, 3.0, 4.0, 1.5, 3.0, 6.0, 15.0), "3q": (3.0, 3.0, 4.0, 1.5, 8.0, 4.0, 12.0),
+                 "profile": (3.0, 3.0, 4.0, 1.5, 10.0, 4.0, 8.0)}
+# DISTANCE: outlines and anchors read it weakly (at the right head, reads alone: front 20 %, 3/4 13 %, side 63 %) and on a
+# head still far from the person its column soaks up shape (a true camera drifted +28 %, a +100 % start went to +129 %):
+# held near the start's lens (lens_mm / EXIF / the 70 mm portrait prior) unless a read that sees perspective is in (the
+# dense landmarks: 5-9 %; then PHOTO_CAM_DIST_DENSE)
+PHOTO_CAM_DIST_DENSE = 40.0
+CAM_STEP = (3.0, 3.0, 4.0, 2.0, 5.0, 4.0, 15.0)      # the most one Gauss-Newton round moves a camera (same units)
 LM_SIG = 1.5                          # mm: a clicked / detected landmark as an anchor (biased, never the measure)
 
 
@@ -2191,6 +2227,39 @@ def view_yaw(cam: dict) -> float:
     return float(np.degrees(np.arctan2(f[0], -f[2])))
 
 
+def view_pitch(cam: dict) -> float:
+    """How far the camera looks DOWN on the head (degrees; 0 = level with it, + = from above: the head reads as nodded
+    forward), from the fitted camera: the head's up axis against the picture's vertical, in the camera's frame."""
+    from . import humanfit
+    u = humanfit._cam_rot(cam) @ np.array([0.0, 0.0, 1.0])      # the head's up (+Z) in the camera's frame (y down, z away)
+    return float(np.degrees(np.arctan2(-u[2], -u[1])))
+
+
+def lens_mm(cam: dict) -> float:
+    """The camera's focal length as a 35 mm-equivalent (on the picture's width, as the lens prior counts it)."""
+    return float(cam["f"]) * 36.0 / float(cam["size"][0])
+
+
+def camera_lines(views0: list, views1: list, cam_done, cam_sd, stated=None) -> list:
+    """What each camera did in a solve, one line a view: turn / pitch / distance at the call's start -> end, the whole
+    move since the block-in's start against its prior, and what the picture was said to be."""
+    out = []
+    for i, (v0, v1) in enumerate(zip(views0, views1)):
+        a, b = v0["cam"], v1["cam"]
+        sd = cam_sd_of(cam_sd, v1["kind"]) if cam_sd is not None else None
+        d = list(cam_done[i]) if cam_done is not None else []
+        st = "" if not stated else f" (given as {abs(float(stated[i])):.0f})"
+        s = (f"CAMERA {v1.get('name', v1['kind'])}: turn {abs(view_yaw(a)):.1f} -> {abs(view_yaw(b)):.1f} deg{st}; pitch {view_pitch(a):+.1f} -> "
+             f"{view_pitch(b):+.1f}; distance {a['t'][2]:.2f} -> {b['t'][2]:.2f} m (a {lens_mm(a):.0f} -> {lens_mm(b):.0f} mm lens)")
+        if sd is not None and len(d) > 5:
+            far = [f"{nm} {d[j]:+.1f} = {abs(d[j]) / sd[j]:.1f} sd" for j, nm in ((4, "yaw"), (5, "pitch"), (6, "distance")) if j < len(d) and j < len(sd) and abs(d[j]) > 1.5 * sd[j]]
+            s += (f"; whole move since the start: yaw {d[4]:+.1f} (prior +-{sd[4]:.1f}), pitch {d[5]:+.1f} (+-{sd[5]:.1f})"
+                  + (f", distance {d[6]:+.0f} % (+-{sd[6]:.0f})" if len(d) > 6 and len(sd) > 6 else "")
+                  + (". FAR FROM ITS START: " + ", ".join(far) + " (the reads pull this camera well away from where it was fitted or given: check the picture's angle)" if far else ""))
+        out.append(s)
+    return out
+
+
 def view_sanity(views: list, cameras: list) -> list:
     """Per reference view: what it was SAID to be against what its fitted camera says ({"stated", "fitted", "kind",
     "stated_kind", "warn"}). A "profile" whose camera sits at 72 degrees has no true side (the far brow shows: depth
@@ -2323,9 +2392,9 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
     return head, views, notes
 
 
-def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True, views: list | None = None,
+def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True, views: list | None = None,
             prior_off=None, lids: bool = False, lips: bool = False, shade: bool = False, anchors: str = "differential",
-            parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False,
+            parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False, cam_reset: bool = True,
             cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
             expr_sd: float | None = None, kinds: list | None = None, readers: list | None = None, jaw_lm=None,
             jaw: bool = False, chin: dict | None = None) -> dict:
@@ -2385,7 +2454,8 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
             names = tuple(n for n in names if n not in ("jaw_width", "gonial_width", "jaw_square"))
             notes.append("CHIN / JAW: a view turned 35-60 deg shows the far jaw on its silhouette: jaw width and squareness are left to the pictures")
         tie = {**(tie or {}), "names": names, "given": sr.TIE_GIVEN + (sr.TIE_GIVEN_SIDE if side else ()), "sig": float((chin or {}).get("tie_sig", sr.TIE_SIG))}
-    res = read(head, views, rounds=rounds, cam_sd=cam_sd, cam_first=cam_first, adapt=adapt, cam_done0=cam_done0, cmax=cmax,
+    views_in = [dict(v) for v in views]
+    res = read(head, views, rounds=rounds, cam_sd=cam_sd, cam_first=cam_first, cam_reset=cam_reset, adapt=adapt, cam_done0=cam_done0, cmax=cmax,
                relax0=relax0, hold=hold, held0=held0, tie=tie, expr_mode="shared" if expr == "shared" else "view", expr_sd=expr_sd,
                **({} if prior_off is None else {"prior_off": prior_off}))
     from . import gnm_mm
@@ -2400,10 +2470,16 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
         r["err"] = float(np.hypot(r["err"], fl))
         r["read"] = float(max(0.0, 1 - (r["err"] / r["sd"]) ** 2))
     cams = []
+    cam_lines = []
     if res.get("cam_post"):
-        for v, done, post in zip(res["views"], res["cam_done"], res["cam_post"]):
-            if len(done) > 4:
-                cams.append(f"{v['kind']}: yaw {done[4]:+.1f} +-{post[4]:.1f} deg, pitch {done[5]:+.1f} +-{post[5]:.1f}")
+        try:
+            from . import blockin as bi
+            st_ = [v.get("yaw", 0.0) or 0.0 for v in bi._refs(name)["views"]]
+            if only is not None:
+                st_ = [x for i, x in enumerate(st_) if i in set(int(j) for j in only)]
+        except Exception:  # noqa: BLE001
+            st_ = None
+        cam_lines = camera_lines(views_in, res["views"], res["cam_done"], cam_sd, st_)
     try:      # each view's stated kind against the camera the solve ended on
         from . import blockin as bi
         rv_ = bi._refs(name)["views"]
@@ -2422,8 +2498,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
     if big:
         notes.append("NOISIER than assumed (the head that fits best leaves these reads scattered; their sigma was raised by): "
                      + ", ".join(f"{t} {vw} x{v:.1f}" for (t, vw), v in sorted(big.items())))
-    if cams:
-        notes.append("cameras turned by the solve (their fitted yaw / pitch were left free): " + "; ".join(cams))
+    notes = list(notes) + cam_lines
     per = {v["kind"]: sum(ob["view"] == v["kind"] for ob in res["obs"]) for v in views}
     head_txt = (f"face ruler: {name} against its {len(views)} pictures ({', '.join(f'{k}: {m} reads' for k, m in per.items())}); "
                 "gap = picture - model in GNM's mm; cameras were fitted, so a shift / scale / roll of each picture is left free")
@@ -2434,7 +2509,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD6, hair: bool = True,
             "cam_done": res.get("cam_done"), "cam_post": res.get("cam_post"), "post": res.get("post"),
             "sig_scale": res.get("sig_scale") or {}, "relax": res.get("relax", 1.0), "cam_step": res.get("cam_step"),
             "held": res.get("held") or [], "tie": tie, "expr": res.get("expr") or {}, "kinds": [v["kind"] for v in views],
-            "readers": [v.get("reader") for v in views]}
+            "readers": [v.get("reader") for v in views], "camera_lines": cam_lines}
 
 
 
