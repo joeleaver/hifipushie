@@ -768,6 +768,26 @@ def material(look: dict):
     L.new(col_c, sc_.inputs[0])
     L.new(kk.outputs[0], sc_.inputs["Scale"])
     L.new(sc_.outputs["Vector"], hb.inputs["Color"])
+    mel = look.get("cycles_melanin")
+    if mel is not None:
+        # PHYSICAL hair colour (Blender's Principled Hair BSDF, melanin parametrization: eumelanin amount + redness,
+        # Random Color varies it per strand): the light transport (multiple scattering, transmission, the coloured
+        # TRT lobe) comes from the shader, our colour model rides on it as a TINT = the strand's colour / the look's
+        # lit colour (ribbons, sun, roots, depth), never brighter than 1.6
+        hb.parametrization = "MELANIN"
+        hb.inputs["Melanin"].default_value = float(mel)
+        hb.inputs["Melanin Redness"].default_value = float(look.get("cycles_redness", 0.5))
+        hb.inputs["Random Color"].default_value = float(look.get("cycles_random_color", 0.12))
+        lit_v = [max(x, 1e-4) for x in lit]
+        dv = N.new("ShaderNodeVectorMath")
+        dv.operation = "DIVIDE"
+        L.new(col, dv.inputs[0])
+        dv.inputs[1].default_value = lit_v
+        mn = N.new("ShaderNodeVectorMath")
+        mn.operation = "MINIMUM"
+        L.new(dv.outputs["Vector"], mn.inputs[0])
+        mn.inputs[1].default_value = (1.6, 1.6, 1.6)
+        L.new(mn.outputs["Vector"], hb.inputs["Tint"])
     hb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * 0.75
     hb.inputs["Radial Roughness"].default_value = 0.4
     hb.inputs["Random Roughness"].default_value = 0.2
@@ -852,7 +872,99 @@ def material(look: dict):
             m.surface_render_method = "DITHERED"
         except Exception:  # noqa: BLE001
             m.blend_method = "HASHED"
-    L.new(pb.outputs[0], oe.inputs["Surface"])
+    # THE GAME HAIR SHADER TERMS (tesshair7; engine-agnostic: what UE's groom / card shaders and Kajiya-Kay / Marschner
+    # approximations do; the coordinator: "the photo's warm translucent lengths, the glow where hair is thin against
+    # the light, the lighter see-through tips and the golden lobe are light transport, not pigment"). The two
+    # highlight lobes are `gloss` (above). Here:
+    #   tip_alpha 0..1   see-through TIPS: alpha falls toward the tip (dithered), over the last 30 % of a strand
+    #   backscatter 0..1 light through THIN hair: a warm translucent term (lit from BEHIND the strand) weighted to
+    #                    thin hair (tips, fine / single hairs): brighter and warmer where the hair is thin or back-lit
+    #   scatter 0..1     fake multiple scattering: the core (deep in the mass, hp_sh) darker AND richer (saturated),
+    #                    the outer layers lighter
+    ta_ = float(np.clip(look.get("tip_alpha", 0.0) or 0.0, 0, 1))
+    alpha_out = al.outputs[0] if fa_ < 1.0 else None
+    if ta_ > 0:
+        ss_t = N.new("ShaderNodeMapRange")
+        ss_t.interpolation_type = "SMOOTHSTEP"
+        L.new(info.outputs["Intercept"], ss_t.inputs["Value"])
+        ss_t.inputs["From Min"].default_value, ss_t.inputs["From Max"].default_value = 0.7, 1.0
+        ss_t.inputs["To Min"].default_value, ss_t.inputs["To Max"].default_value = 1.0, 1.0 - ta_
+        if fa_ < 1.0:
+            mul = N.new("ShaderNodeMath")
+            mul.operation = "MULTIPLY"
+            L.new(al.outputs[0], mul.inputs[0])
+            L.new(ss_t.outputs["Result"], mul.inputs[1])
+            alpha_out = mul.outputs[0]
+        else:
+            alpha_out = ss_t.outputs["Result"]
+        try:
+            m.surface_render_method = "DITHERED"
+        except Exception:  # noqa: BLE001
+            m.blend_method = "HASHED"
+    sc_k = float(np.clip(look.get("scatter", 0.0) or 0.0, 0, 1))
+    if sc_k > 0:  # (on the EEVEE base colour: richer, darker core; lighter outer layers)
+        shv = N.new("ShaderNodeAttribute")
+        shv.attribute_name = "hp_sh"
+        rich = N.new("ShaderNodeHueSaturation")
+        sm = N.new("ShaderNodeMath")
+        sm.operation = "MULTIPLY_ADD"
+        L.new(shv.outputs["Fac"], sm.inputs[0])
+        sm.inputs[1].default_value = 0.6 * sc_k
+        sm.inputs[2].default_value = 1.0
+        L.new(sm.outputs[0], rich.inputs["Saturation"])
+        vm = N.new("ShaderNodeMath")
+        vm.operation = "MULTIPLY_ADD"
+        L.new(shv.outputs["Fac"], vm.inputs[0])
+        vm.inputs[1].default_value = -0.45 * sc_k
+        vm.inputs[2].default_value = 1.0 + 0.12 * sc_k
+        L.new(vm.outputs[0], rich.inputs["Value"])
+        L.new(bright.outputs["Result"], rich.inputs["Color"])
+        L.new(rich.outputs["Color"], pb.inputs["Base Color"])
+    out_sh = pb.outputs[0]
+    bs_ = float(np.clip(look.get("backscatter", 0.0) or 0.0, 0, 1))
+    if bs_ > 0:
+        tr = N.new("ShaderNodeBsdfTranslucent")  # (lit from behind the strand: what passes through thin hair)
+        warm_t = N.new("ShaderNodeHueSaturation")
+        warm_t.inputs["Saturation"].default_value = 1.5
+        warm_t.inputs["Value"].default_value = 2.2
+        warm_t.inputs["Hue"].default_value = 0.51
+        L.new(bright.outputs["Result"], warm_t.inputs["Color"])
+        L.new(warm_t.outputs["Color"], tr.inputs["Color"])
+        thin = N.new("ShaderNodeMapRange")
+        thin.interpolation_type = "SMOOTHSTEP"
+        L.new(info.outputs["Intercept"], thin.inputs["Value"])
+        thin.inputs["From Min"].default_value, thin.inputs["From Max"].default_value = 0.4, 1.0
+        fz = N.new("ShaderNodeAttribute")
+        fz.attribute_name = "hp_fine"
+        mx = N.new("ShaderNodeMath")
+        mx.operation = "MAXIMUM"
+        L.new(thin.outputs["Result"], mx.inputs[0])
+        L.new(fz.outputs["Fac"], mx.inputs[1])
+        wt = N.new("ShaderNodeMath")
+        wt.operation = "MULTIPLY_ADD"
+        L.new(mx.outputs[0], wt.inputs[0])
+        wt.inputs[1].default_value = 0.7 * bs_
+        wt.inputs[2].default_value = 0.3 * bs_
+        mixs = N.new("ShaderNodeMixShader")
+        L.new(wt.outputs[0], mixs.inputs["Fac"])
+        L.new(pb.outputs[0], mixs.inputs[1])
+        addt = N.new("ShaderNodeAddShader")
+        L.new(pb.outputs[0], addt.inputs[0])
+        L.new(tr.outputs[0], addt.inputs[1])
+        L.new(addt.outputs[0], mixs.inputs[2])
+        out_sh = mixs.outputs[0]
+    if alpha_out is not None and (ta_ > 0 or bs_ > 0):
+        # (the transparency as ONE final mix with a transparent shader: the translucent term is outside the
+        # Principled, and its own Alpha would have left that term opaque at the tips)
+        for lk_ in list(pb.inputs["Alpha"].links):
+            nt.links.remove(lk_)
+        trn = N.new("ShaderNodeBsdfTransparent")
+        fin = N.new("ShaderNodeMixShader")
+        L.new(alpha_out, fin.inputs["Fac"])
+        L.new(trn.outputs[0], fin.inputs[1])
+        L.new(out_sh, fin.inputs[2])
+        out_sh = fin.outputs[0]
+    L.new(out_sh, oe.inputs["Surface"])
     m["hp_look"] = json.dumps(look, sort_keys=True)
     return m
 

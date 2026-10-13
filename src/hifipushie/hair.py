@@ -120,6 +120,9 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "edge": 0.55, "root": 0.12, "specular": 0.5, "band_shift": 0.25, "tip": "#7a5038", "tip_amount": 0.0,
         "band": "#23252b", "strand_relief": 0.6, "scalp_tint": 0.85, "grey_amount": 0.0, "grey_locks": 1.0, "eevee_gain": 1.6, "eevee_sat": 0.35, "light": None, "card_gain": 1.0, "card_sat": 1.0, "card_grey": 0.5,
         "cycles_fit": None, "seen": None, "fine_alpha": 0.5, "cycles_width": None, "cycles_sat": None,
+        # cycles_melanin 0..1 (+ cycles_redness 0..1, cycles_random_color): Cycles renders the hair BSDF from MELANIN
+        # (physical colour and light transport), the look's colour model as a tint on it; None = from the colour
+        "cycles_melanin": None, "cycles_redness": None, "cycles_random_color": None,
         # the colour model (tesshair7; strands only): natural hair is never one colour, so the defaults vary
         # variation 0..1: locks differ in lightness, sub clumps / strands a little in hue and saturation
         # sun 0..1: sun-lightened lengths: the hair lightens and warms with its age (m from the scalp, full by 28 cm;
@@ -134,7 +137,11 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         # gloss 0..1 (EEVEE strands): the two highlight lobes where light catches the hair (a sharp pale one toward
         #   the root, a broader one in the hair's own warm colour toward the tip); 0 = the matt strand of before
         "variation": 0.4, "sun": 0.2, "highlights": 0.0, "highlight_contrast": 0.6, "fly_light": 0.3, "depth": 0.5,
-        "root_dark": 0.5, "gloss": 0.0}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "root_dark": 0.5, "gloss": 0.0,
+        # the game-shader terms (EEVEE strands; each a game hair / card shader can do): tip_alpha 0..1 (see-through
+        # tips), backscatter 0..1 (warm light through thin / back-lit hair), scatter 0..1 (fake multiple scattering:
+        # a darker, richer core by depth, lighter outer layers). 0 = off (the default: other models unchanged)
+        "tip_alpha": 0.0, "backscatter": 0.0, "scatter": 0.0}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
@@ -2743,7 +2750,21 @@ def colour_variation(img, mask, mm_px: float) -> dict:
             "L_p90": round(float(np.percentile(L[m], 90)), 1), "strand_sd": round(float((L - b1)[m].std()), 2),
             "ribbon_sd": round(float(rb.std()), 2), "mass_sd": round(float((b2 - b3)[m].std()), 2),
             "ribbons": {"share": round(float(lite.mean()), 3), "contrast": round(float(rb[lite].mean()), 1) if lite.any() else 0.0},
-            "chroma_sd": round(float(C.std()), 2), "hue_sd": round(float(Hh[C > 4].std()), 1) if (C > 4).sum() > 50 else 0.0}
+            "chroma_sd": round(float(C.std()), 2), "hue_sd": round(float(Hh[C > 4].std()), 1) if (C > 4).sum() > 50 else 0.0,
+            # EDGE vs CORE: thin hair at the outline (within 3 mm of the mask's edge) against the mass more than 8 mm in:
+            # light through thin hair (transmission) lightens and warms the edge; an opaque stand-in shader does not
+            **_edge_core(L, A, B, m, mm_px)}
+
+
+def _edge_core(L, A, B, m, mm_px):
+    from scipy import ndimage as ndi
+    d = ndi.distance_transform_edt(m) * mm_px
+    e, c = m & (d <= 3.0), m & (d > 8.0)
+    if e.sum() < 30 or c.sum() < 30:
+        return {}
+    ch = np.hypot(A, B)
+    return {"edge_L": round(float(L[e].mean()), 1), "core_L": round(float(L[c].mean()), 1),
+            "edge_chroma": round(float(ch[e].mean()), 1), "core_chroma": round(float(ch[c].mean()), 1)}
 
 
 def colour_bands(img, mask, mm_px: float | None = None) -> dict:

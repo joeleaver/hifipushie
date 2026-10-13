@@ -26,7 +26,7 @@ def hairmask(im, bg_tol=26):
     return (np.abs(a - bg).max(-1) > bg_tol) & (lum < 0.52 * (bg @ [0.2126, 0.7152, 0.0722]))
 
 
-keys = ("L_sd", "strand_sd", "ribbon_sd", "mass_sd", "chroma_sd", "hue_sd")
+keys = ("L_sd", "strand_sd", "ribbon_sd", "mass_sd", "chroma_sd", "hue_sd", "edge_L", "core_L", "edge_chroma", "core_chroma")
 acc = {"hers": [], "ours": []}
 out = {}
 for i in (0, 1, 2):
@@ -53,10 +53,10 @@ for i in (0, 1, 2):
               f"   hue {r['hers'][b]['hue']:5.1f} | {r['ours'][b]['hue']:5.1f}")
     vh, vo = r["hers"]["variation"], r["ours"]["variation"]
     for k_ in keys:
-        print(f"   {k_:10s} {vh[k_]:5.2f} | {vo[k_]:5.2f}")
+        print(f"   {k_:10s} {vh.get(k_, float('nan')):5.2f} | {vo.get(k_, float('nan')):5.2f}")
     print(f"   light ribbons: share {vh['ribbons']['share']:.3f} | {vo['ribbons']['share']:.3f}   lift L* {vh['ribbons']['contrast']:.1f} | {vo['ribbons']['contrast']:.1f}")
-    acc["hers"].append([vh[k_] for k_ in keys] + [vh["ribbons"]["share"], vh["ribbons"]["contrast"]])
-    acc["ours"].append([vo[k_] for k_ in keys] + [vo["ribbons"]["share"], vo["ribbons"]["contrast"]])
+    acc["hers"].append([vh.get(k_, np.nan) for k_ in keys] + [vh["ribbons"]["share"], vh["ribbons"]["contrast"]])
+    acc["ours"].append([vo.get(k_, np.nan) for k_ in keys] + [vo["ribbons"]["share"], vo["ribbons"]["contrast"]])
 if acc["hers"]:
     a, b = np.mean(acc["hers"], 0), np.mean(acc["ours"], 0)
     print(m, "MEAN over views, hers | ours: " + "  ".join(f"{k_} {x:.2f}|{y:.2f}" for k_, x, y in zip(keys + ("rib_share", "rib_lift"), a, b)))

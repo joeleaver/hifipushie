@@ -2038,3 +2038,21 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   mm; look fly_light 0.8. Corner tangle a little less curly, the part still a V: both SMALL, on the list. th_W15 =
   current (styles/W15_*.json). Joe: "basically happy with Tess's hair shape now" but "we haven't nailed the color".
   NEXT: the shader test (EEVEE stand-in vs Cycles Principled Hair BSDF vs her photo), then the reader.
+- GAME-SHADER COLOUR ROUND (2026-10-14; Joe: "we haven't nailed the color"; the coordinator first asked for a Cycles
+  hair-BSDF comparison, then REVISED: no ray tracing, "our first target is general game assets"). A Cycles melanin
+  render of W15 was made before the revision (out/s_th_W15_c640_*_cyc.png, look key `cycles_melanin`): NOT used,
+  not judged. Built in the EEVEE strand material (blender_strands.material), each a term a game shader has:
+  `tip_alpha` (dithered alpha over a strand's last 30 %), `backscatter` (a Translucent BSDF, lit from behind,
+  warmer / brighter, weighted to thin hair: tips and fine / single hairs), `scatter` (by depth hp_sh: core darker and
+  more saturated, outer layers lighter); transparency is one final mix with a Transparent BSDF. The two highlight
+  lobes were already `gloss`. Defaults 0 (others unchanged). Measure `colour_variation` edge_L / core_L / edge_chroma /
+  core_chroma (3 mm rim vs > 8 mm in). W15 (now) -> W16 (terms on) -> W17 (terms + darker base: eevee_gain 1.4,
+  eevee_sat 0.3, backscatter 0.6, scatter 0.8), at 1024, hers | ours: L_sd 7.5 | 6.9 -> 7.7, strand_sd 4.2 | 3.3 ->
+  3.9, mean L* front 21.4 | 20.4 -> 20.5, chroma ~8 | 10.5 -> 10.2, hue 69 | 62 -> 63. Edge vs core: ours ~0 -> +4.4
+  (W17). Her own value read +5.5 (W15 run) and +2.4 (W17 run): the masks are intersections of hers and ours, so the
+  numbers are not on one scale: a direction, not a match. By eye: softer see-through ends, warmer tail tips, a
+  stronger dome band; the back view still lighter and tanner than her deeper brown, hue ~6 deg red. Sheet
+  human_renders/th_63_game_shader.png (REFERENCE | EEVEE now W15 | EEVEE new W17: front, 3/4, back 3/4, dome, tail).
+  BEST = th_W17 (styles/W17_*.json; `./r8.sh W17 v0,v1,v2,backl 1024`). Cards: tips' alpha is in the atlas; gloss /
+  backscatter / scatter are card-material terms (anisotropic two-lobe spec on the cards' tangents, a transmission /
+  wrap term, depth already in the cards' vertex colour): written in the checklist, NOT built into the card export.
