@@ -412,8 +412,22 @@ def main():
     ema.load_state_dict(model.state_dict())
     wrow = torch.ones(L["n"] + 1, device=dev)
     wrow[-1] = float(kw.get("dist_weight", 30.0))      # the distance row is 1 of 757: unweighted it did not learn (53 % error at 10k)
-    log = []
-    for ep in range(epochs):
+    log, ep0 = [], 0
+    # RESUMABLE IN SEGMENTS (a job's folder dies with the job: the state travels back as an output and into the next
+    # job's folder): resume=<state.pth> loads everything a continued run needs if the file exists; stop=<epoch> ends
+    # this call BEFORE that epoch with state.pth + an evaluable model.pt of the EMA so far.
+    resume, stop = kw.get("resume"), int(kw.get("stop", epochs))
+    if resume and Path(resume).exists():
+        st = torch.load(resume, map_location=dev, weights_only=False)
+        assert st["epochs"] == epochs and st["steps_per_epoch"] == len(dl), "resume: a different run (epochs / data / batch size)"
+        model.load_state_dict(st["model"]), ema.load_state_dict(st["ema"]), opt.load_state_dict(st["opt"])
+        sched.load_state_dict(st["sched"]), scaler.load_state_dict(st["scaler"])
+        log, ep0 = st["log"], st["epoch"]
+        print(f"step: resumed at epoch {ep0} of {epochs}", flush=True)
+
+    for ep in range(ep0, epochs):
+        if ep >= stop:
+            break
         ds.epoch = ep
         ds.strength = min(1.0, (ep + 1) / max(ramp * epochs, 1e-9)) if ramp > 0 else 1.0
         model.train()
@@ -451,16 +465,20 @@ def main():
         log.append(row)
         print("step: " + json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}), flush=True)
         (out / "log.json").write_text(json.dumps(log))
-        if (ep + 1) % max(1, epochs // 4) == 0 and ep + 1 < epochs:       # checkpoints kept (a quarter of the run each)
-            torch.save({"ema": ema.state_dict(), "epoch": ep}, out / "checkpoint.pth")
+        if (ep + 1) % 3 == 0 or ep + 1 in (stop, epochs):                 # the whole state, every 3 epochs and at a segment's end
+            torch.save({"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),
+                        "scaler": scaler.state_dict(), "epoch": ep + 1, "epochs": epochs, "steps_per_epoch": len(dl), "log": log,
+                        "args": kw}, out / "state.tmp")
+            os.replace(out / "state.tmp", out / "state.pth")
+    done = len(log) >= epochs
     rep, pred = evaluate(ema, dv, dev, L["region"], P)
-    (out / "val.json").write_text(json.dumps({**rep, "train_n": int(len(tr)), "val_n": int(len(va)), "epochs": epochs, "arch": arch}, indent=1))
+    (out / "val.json").write_text(json.dumps({**rep, "train_n": int(len(tr)), "val_n": int(len(va)), "epochs": epochs, "epochs_done": len(log), "arch": arch}, indent=1))
     np.savez_compressed(out / "val.npz", **pred)
     torch.save(ema.state_dict(), out / "weights.pth")
     w = Wrapped(ema).cpu().eval()
     ts = torch.jit.trace(w, torch.zeros(1, 3, SIZE, SIZE))
     ts.save(str(out / "model.pt"))
-    print("step: done " + json.dumps({k: v for k, v in rep.items() if k not in ("regions", "bins")}), flush=True)
+    print(("step: done " if done else f"step: segment end at epoch {len(log)} of {epochs} ") + json.dumps({k: v for k, v in rep.items() if k not in ("regions", "bins")}), flush=True)
     print(json.dumps(rep["regions"], indent=1))
 
 

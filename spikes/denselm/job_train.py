@@ -40,9 +40,14 @@ for k, args in enumerate(runs):
         break
     name = next((a.split("=", 1)[1] for a in args if a.startswith("name=")), f"run{k}")
     args = [a for a in args if not a.startswith("name=")]
+    st = os.path.join(job, "state.pth")              # a continued run: the last segment's state, sent in the job folder
+    if os.path.exists(st):
+        os.makedirs(os.path.join(job, "out", name), exist_ok=True)
+        os.replace(st, os.path.join(job, "out", name, "state.pth"))
+    args.append("resume=" + os.path.join(job, "out", name, "state.pth"))
     code = sh([py, os.path.join(env, "spikes/denselm/train.py"), os.path.join(job, "out", name), os.path.join(job, "data")] + args,
               env={**os.environ, "PYTHONUNBUFFERED": "1"})
-    for f in ("pack_img.npy",):
+    for f in ("pack_img.npy", "pack_lab.npz"):
         p = os.path.join(job, "out", name, f)
         if os.path.exists(p):
             os.remove(p)
