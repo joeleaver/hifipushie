@@ -2134,6 +2134,109 @@ def nostril_picture(img, centre, u, mmpx: float, roi_mm: float = NOSTRIL_ROI):
     return {"lo": float(a.min()), "hi": float(a.max()), "top": float(b.min()), "bottom": float(b.max()), "area": area, "contrast": 1 - dark / skin}
 
 
+# ---- the NOSE's width from its WING's edge (readmix, 2026-10-14) ----------------------------------------------------------
+# From the front the ala is drawn IN FRONT of the cheek: its outer edge is an occluding contour of the model (a vertex with a
+# face turned to the camera and one turned away, in GNM's nose region) and in a photograph a dark line: the alar-facial
+# groove's shadow, or the step from the lit wing to the cheek behind it. Per contour vertex the picture's luminance along
+# the camera's horizontal, outward, and the read is where the chosen FEATURE lies against the model's contour, minus its
+# BIAS measured at the truth on TRAIN subjects only (spikes/readmix/alar_eval.py); scored on the held-out ones.
+ALAR = False                # reference_views(alar=None) takes this
+ALAR_TURN = 25.0            # degrees: read in views turned less than this
+ALAR_WIN = (-2.5, 4.5)      # mm along the outward horizontal, from the model's contour, searched
+ALAR_FEATURE = "edge"       # "valley" = the darkest point (the groove's shadow) | "edge" = the steepest fall going outward
+ALAR_BIAS = 0.3             # mm: the feature against the TRUE contour (+ = outside it): the steepest fall lies 0.29 mm
+#                             outside it on five TRAIN subjects (16 sides, sd 1.46); on the three HELD-OUT ones +0.15 (6 sides, sd 0.76)
+SIG_ALAR = 1.0              # mm: one side's read (its contour vertices count as one)
+ALAR_MIN = 0.04             # the least depth of the valley / step (luminance 0..1, against the profile's ends)
+
+
+def alar_profiles(head, cam, img, step_mm: float = 0.2):
+    """Per side (the subject's right, left) the model's alar contour vertices (model ids) and the picture's luminance
+    along the camera's horizontal from each, outward: {"side", "v", "px", "u", "prof" (n, m), "t" (m,) mm, "mm1"}."""
+    from scipy import ndimage as ndi
+    gr = _gnm()["gr"]
+    gid = np.asarray(head["gid"], int)
+    nose = np.zeros(len(gid), bool)
+    nose[gid >= 0] = gr["nose_region"][gid[gid >= 0]]
+    sv, Xc, P = _silhouette_vertices(head, cam)
+    sv = sv[nose[sv]]
+    if len(sv) < 6:
+        return []
+    L = np.asarray(head["L"], float)
+    V = np.asarray(head["V"], float)
+    # the wing's band: from the nostril sill (lm 31 / 35) up to the tip's height (lm 30), in world height
+    z0, z1 = float(L[[31, 35], 2].mean()) - 0.002, float(L[30, 2]) + 0.002
+    mid = float(L[27:31, 0].mean())
+    lum = np.asarray(img.convert("L"), float) / 255.0
+    _, q = _cam_points(cam, L[[31, 35]])
+    u = q[1] - q[0]
+    u /= max(np.linalg.norm(u), 1e-9)                       # toward the subject's left in the picture
+    mm1 = float(np.median(Xc[sv, 2]) / cam["f"] * 1000.0)
+    lum = ndi.gaussian_filter(lum, max(0.25 / mm1, 0.5))
+    t = np.arange(ALAR_WIN[0], ALAR_WIN[1] + 1e-9, step_mm)
+    out = []
+    for side, sg in ((0, -1.0), (1, 1.0)):
+        m = (V[sv, 2] > z0) & (V[sv, 2] < z1) & (sg * (V[sv, 0] - mid) > 0.006)
+        vv = sv[m]
+        if len(vv) < 2:
+            continue
+        # per picture row band only the OUTERMOST contour vertex (the wing's own edge, not a fold inside it)
+        p = P[vv]
+        a = (p - p.mean(0)) @ u * sg
+        rows = np.round((p @ np.array([-u[1], u[0]])) * mm1 / 0.8).astype(int)
+        keep = [int(np.flatnonzero(rows == r_)[np.argmax(a[rows == r_])]) for r_ in np.unique(rows)]
+        vv, p = vv[keep], p[keep]
+        prof = np.array([_bil(lum, p_[0] + sg * u[0] * t / mm1, p_[1] + sg * u[1] * t / mm1) for p_ in p])
+        out.append({"side": side, "v": vv, "px": p, "u": (sg * u).tolist(), "prof": prof, "t": t, "mm1": mm1})
+    return out
+
+
+def alar_feature(prof, t, feature: str = None):
+    """The feature's place (mm along t) on one profile and its strength; None when too weak."""
+    feature = feature or ALAR_FEATURE
+    if feature == "valley":
+        j = int(np.argmin(prof))
+        if j in (0, len(prof) - 1):
+            return None
+        depth = float(min(prof[:j].max(), prof[j:].max()) - prof[j])
+        if depth < ALAR_MIN:
+            return None
+        if 0 < j < len(prof) - 1:                    # sub-sample: a parabola through the three
+            a_, b_, c_ = prof[j - 1], prof[j], prof[j + 1]
+            den = a_ - 2 * b_ + c_
+            off = 0.5 * (a_ - c_) / den if den > 1e-9 else 0.0
+            return float(t[j] + off * (t[1] - t[0])), depth
+        return float(t[j]), depth
+    g = np.gradient(prof, t)
+    j = int(np.argmin(g))                            # the steepest FALL going outward
+    if -g[j] * 1.0 < ALAR_MIN:
+        return None
+    return float(t[j]), float(-g[j])
+
+
+def _alar_obs(head, view):
+    """Per side one read: the median feature place over the side's contour vertices against the model's contour (mm,
+    + = the picture's wing reaches further out), moving with those vertices (their mean move along the outward direction)."""
+    cam = view["cam"]
+    if "gid" not in head or abs(view_yaw(cam)) > ALAR_TURN:
+        return []
+    out = []
+    for pr in alar_profiles(head, cam, view["img"]):
+        f = [alar_feature(pp, pr["t"]) for pp in pr["prof"]]
+        ok = [i for i, x in enumerate(f) if x is not None]
+        if len(ok) < 2:
+            continue
+        o = float(np.median([f[i][0] for i in ok])) - ALAR_BIAS
+        vv = pr["v"][ok]
+        Jp, mm1 = _proj_jac(cam, head, vv)
+        n = np.asarray(pr["u"], float)
+        out.append({"type": "alar", "view": view["kind"], "name": f"alar_{'rl'[pr['side']]}", "o": o, "n": n.tolist(),
+                    "J": (n @ Jp) * mm1, "sig": float(np.hypot(SIG_ALAR, LM_PX * mm1)), "p": list(map(float, pr["px"][ok].mean(0))),
+                    "q": list(map(float, pr["px"][ok].mean(0) + n * o / mm1)), "X": list(map(float, np.asarray(head["V"], float)[vv].mean(0))),
+                    "nv": len(ok)})
+    return out
+
+
 def _nostril_obs(head, view):
     """Per nostril two reads along the line through both openings (u, toward the subject's left): its LATERAL end and its
     MEDIAL end, the picture's dark opening against the model's rim, each moving with the rim vertex that makes it."""
@@ -2632,7 +2735,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     anchors: str = "differential", parse: bool | str = False, normals: bool = False,
                     kinds: list | None = None, readers: list | None = None, jaw_lm=None, expr: bool = False,
                     jaw: bool = False, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
-                    hair_edge: bool | None = None, nostrils: bool | None = None) -> tuple:
+                    hair_edge: bool | None = None, nostrils: bool | None = None, alar: bool | None = None) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -2756,6 +2859,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
         if (NOSTRIL if nostrils is None else nostrils) and k != "profile":      # the nose's own read: the nostril openings
             extras.append(_nostril_obs)
+        if (ALAR if alar is None else alar) and k != "profile":                 # the nose's width from the wings' edges
+            extras.append(_alar_obs)
         if shade:
             extras.append(_shade_obs)
         if DENSE if dense is None else dense:      # our own dense landmarks (absolute; the picture is read ONCE per call)
@@ -2784,13 +2889,13 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
             expr_sd: float | None = None, kinds: list | None = None, readers: list | None = None, jaw_lm=None,
             jaw: bool = False, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
-            hair_edge: bool | None = None, nostrils: bool | None = None) -> dict:
+            hair_edge: bool | None = None, nostrils: bool | None = None, alar: bool | None = None) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
     head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade, anchors=anchors, parse=parse,
                                          normals=normals, kinds=kinds, readers=readers, jaw_lm=jaw_lm, expr=bool(expr), jaw=jaw, chin=chin, dense=dense,
-                                         mp=mp, hair_edge=hair_edge, nostrils=nostrils)
+                                         mp=mp, hair_edge=hair_edge, nostrils=nostrils, alar=alar)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     tie = None
@@ -2852,7 +2957,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "hairedge", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal", "dense", "mp", "nostril")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "hairedge", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal", "dense", "mp", "nostril", "alar")}
     # OUTLINE READS PER VIEW (readmix): the total hid a front picture with none (loose hair: the figure's edge is hair)
     n_view = {v["kind"]: {t: sum(ob["type"] == t and ob["view"] == v["kind"] for ob in res["obs"]) for t in ("outline", "hairedge", "mp", "dense", "lip", "lid")} for v in views}
     notes = list(notes) + ["OUTLINE READS per view: " + "; ".join(

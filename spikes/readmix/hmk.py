@@ -116,7 +116,7 @@ views = bi.with_anchor_points(views)
 (store.HOME / T / "human_refs.json").write_text(json.dumps({"views": views, "cameras": cams, "blockin": {"root": T, "attach": "native", "truth": {"pose": pose}}}))
 D = bi.data()
 en = [str(x) for x in D["eth_names"]]
-for cls in kw.get("classes", "pooled").split(","):
+for cls in [c_ for c_ in kw.get("classes", "pooled").split(",") if c_]:
     vv = [dict(v, lens_mm=v["truth"]["lens_diag_mm"]) for v in views]
     S0 = f"rm_{k}_L{cls}00"
     if cls == "pooled":
