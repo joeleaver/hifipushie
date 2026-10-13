@@ -2042,7 +2042,9 @@ SIG_LIP = 0.3               # mm: a vermilion border vertex against the picture'
 # lips photographed. Uncorrected, the solve makes lips 3-8 mm too tall. Each read's mean vertical offset (per border
 # position / point) is taken out of a PHOTO's lip reads (lip_photo_bias.json; spikes/readmix/lipbias.py); per-person
 # scatter remains (sd 0.5-2.5 mm). The colour edge itself belongs to the PAINT, placed from the picture.
-LIP_PHOTO_BIAS = True
+LIP_PHOTO_BIAS = False      # OFF (2026-10-14, the coordinator's decision): on three held-out HSRD heads it took the lip heights' error
+#                             4.4 -> 1.8 mm against the fit's vertices, but the scan's SURFACE did not confirm it (lips 1.06 / 0.69 /
+#                             1.60 -> 1.03 / 0.80 / 1.76 mm; one chin 1.29 -> 2.00): an option, docs/notes/readmix.md "## TALL LIPS"
 
 
 def lip_bias(kind: str, key: str) -> float:

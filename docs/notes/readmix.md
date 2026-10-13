@@ -10,7 +10,11 @@ hsrd100 are links into the groundtruth agent's data, read-only; out/ is ours), o
 Models rm_* (main's workspace). The groundtruth agent's scripts (spikes/groundtruth on branch groundtruth) are run from
 its worktree through PYTHONPATH with THIS worktree's src (rchain.py sets readmix's switches first).
 
-STATE 2026-10-14 late: TALL LIPS done (LIP_PHOTO_BIAS on: "## TALL LIPS"); expression pass waits. Earlier: (end of the resumed round; branch readmix): ALAR read ON (held-out alar width error 1.5 -> 0.5 mm); the
+STATE 2026-10-14 final (for the coordinator's review / merge): defaults ON = MediaPipe mesh reads (eye contours, mouth
+corners, lip seam / border, bridge) added to the anchors, dense floors at real-photo errors, hair-edge read + per-view
+outline warnings, known-lens distance prior 7 %, DISTANCE / INFERRED lines, lens convention fixed, the ALAR read, iris colour
+in skin_from_reference, fallback blend as a GIVEN option. OFF / options: LENS_PINS, NOSTRIL, LM_NOSE_WIDE (0),
+LIP_PHOTO_BIAS, expression="lower". Expression pass PARKED. Tests: see "## Tests at the end". Earlier: (end of the resumed round; branch readmix): ALAR read ON (held-out alar width error 1.5 -> 0.5 mm); the
 1.65 mm nose-base correction OFF (overshot on held-out); fallback blend GIVEN-only (block_in_start ethnicity= class |
 {class: weight}); expression="lower" built, OFF (not safe: one held-out head broke). Tables: "## Held-out HSRD subjects",
 "## The alar-edge read and the fallback classes", "## Per-picture expression". NEXT: lip-border read bias (+3-8 mm lip
@@ -573,9 +577,15 @@ a similarity; mean |d| (mean signed, + = outside the scan), mm):
 | h102 | | 2.73 / 1.60 / 1.76 | 1.06 / 0.93 / 0.89 | 3.16 / 1.29 / 2.00 | 1.57 / 1.13 / 1.01 | 1.54 / 1.08 / 1.05 |
 VERDICT: the lip HEIGHTS come down by 2-4 mm on all three (mean |error| of the six heights 4.4 -> 1.8 mm) and the vertex
 face / lower face improve on all three; on the scan SURFACE the lips are within noise (1.06 / 0.69 / 1.60 -> 1.03 / 0.80
-/ 1.76) and h102's chin is worse (1.29 -> 2.00): the surface does not confirm the vertex gain for the lips. ON by default
-(LIP_PHOTO_BIAS), flagged: single chains, three heads.
+/ 1.76) and h102's chin is worse (1.29 -> 2.00): the surface does not confirm the vertex gain for the lips. OFF by default
+(the coordinator's decision: the surface is the trustworthy measure); face_ruler.LIP_PHOTO_BIAS = True is the option.
+The finding stands: the photo's colour border is not the lip's form: the vermilion edge goes to PAINT (projskin), the
+geometry follows the form reads.
 TEST NOTE: test_nativedefault's neck assertion: first relaxed on intermediate code where the prior ended 5.1 mm from ANSUR's
 mean and the free solve 2.4 (a real ordering failure then); on the final code the ordering holds (held / prior / free 0.18 /
 0.18 / 0.48 mm in the test; 0.5 / 3.5 / 11.5 mm on the full tess set against main's 1.3 / 14.6 / 21.7): restored to the
 strict ordering with a 1e-5 tie tolerance. It hides nothing now.
+
+## Tests at the end (2026-10-14, final code, LIP_PHOTO_BIAS off; one file a process through bin/slot, HIFIPUSHIE_ASSETS set; 0 skipped)
+test_readmix 12, test_skin_read 12, test_face_ruler 4, test_solvecams 3, test_refread 9, test_solvereads 11, test_chinread 7,
+test_nativedefault 6, test_denselm 4: all passed.
