@@ -391,3 +391,44 @@ here (the family sets are another line's): the first thing to run in the wild be
   the brief asks for (the same known head from a neutral and from a slightly smiling front: lips within 0.5 mm):
   groundtruth built that pair (gexpr.py: gt_exs_A00 / sc_a_A00) and its chains were still running. Until both exist the
   term stays off: wiring an unvalidated gate into the default path is how the last two attempts went wrong.
+
+## Validation (numbers COMPUTED; tiles LOOKED AT where said). The verdict first: the nose and lips did NOT get measurably nearer the scans.
+(A) THE TWO SCANNED HEADS (HSRD rig photos, set A = front / 44 deg / profile; groundtruth's gsum.py; logs/gsum_h40.log, gsum_h112.log).
+"main" = groundtruth's chains on main's code (8 calls, no lens: the cameras end 58-75 % near); "lens, old reads" = main's
+reads from the correct-lens start rm_<k>_L00 (6 calls); "readmix" = this branch's defaults from the same start (rm_<k>_F,
+6 calls: mesh reads + anchors, hair edge, nose-base width taken out, lens prior 7 %, no dense). One chain each: chain-to-
+chain noise is ~0.3 mm of face rms and ~1 mm of a width.
+| | h40 main | h40 lens, old reads | h40 readmix | h112 main | h112 lens, old reads | h112 readmix |
+|---|---|---|---|---|---|---|
+| scan surface, NOSE mean / p90 mm | 0.89 / 1.69 | 1.49 / 3.43 | 1.34 / 2.93 | 0.98 / 1.95 | 1.02 / 2.07 | 1.07 / 2.10 |
+| scan surface, LIPS | 0.88 / 1.85 | 1.07 / 2.34 | 0.86 / 1.83 | 1.31 / 2.34 | 1.13 / 1.91 | 1.27 / 2.09 |
+| scan surface, FACE | 0.89 / 1.78 | 1.12 / 2.44 | 1.01 / 2.17 | 1.44 / 2.94 | 1.32 / 2.76 | 1.43 / 2.99 |
+| vertex face / lower face rms (vs the direct fit) | 2.01 / 2.90 | 2.64 / 3.74 | 2.55 / 3.88 | 2.41 / 3.62 | 2.08-2.15 / 2.26-2.33 | 2.36 / 2.95 |
+| nose_base_width, solved - truth | +3.9 | +5.3 | +4.2 (rm_h40_F call 6: +4.7) | +2.7 | +1.9 .. +2.2 | +1.5 |
+| alar_width | +0.7 | +2.6 | +2.6 | see gsum_h112.log | | |
+| tip_radius_h (- = sharper than the truth) | -2.8 | -1.5 | -1.0 | -3.9 | -3.7 | -3.6 |
+| mouth_width | -0.4 | +0.6 | +1.7 | +3.3 | -0.0 | +1.0 |
+| upper / lower vermilion (mid) | -0.3 / +0.6 | +0.3 / +1.4 | +0.3 / +1.0 | +1.2 / +0.8 | +0.4 / +0.3 | +0.6 / +0.1 |
+| front camera: pitch deg, distance % | -2.5, -60 | -3.4, +1 | -2.3, -6 | -4.4, -58 | -0.7 .. -1.8, -1 .. +4 | -2.2, +2 |
+| profile camera: pitch deg, distance % | -5.1, -75 | +15.2, -9 | +12.6, -9 | +17.6, -74 | | +0.9, -1 |
+READ BLUNTLY: (1) the nose's base stays 1.5-4.7 mm wide: the calibrated anchor width took ~0.7 mm off h112 and nothing
+reliable off h40; h40's nose against the scan is WORSE than main's (1.34 against 0.89): main's wrong-distance solve
+happened to sit nearer. (2) lips: within noise. (3) what the right lens buys is the CAMERAS (distance -60 % -> within 6 %;
+h112's profile pitch +17.6 -> +0.9 deg) and h112's lower face (3.62 -> 2.3-2.95); h40's profile camera still runs 12-15 deg
+in pitch. (4) the wide tip Joe saw is not here: both heads' tips come out SHARPER than the truth (radius -1 .. -3.9 mm).
+With the nostril read on (h40 only, intermediate code): see logs/h40_Fn.log / RESTART.
+(B) KNOWN HEADS (solvecams' a-d, set A, starts fitted / true with the front pitched 8 deg, 3 calls; before = its suites c
+(no dense) and d; after = sc/out/rm_sc_*; run BEFORE the nose-base width change):
+| | before | after |
+|---|---|---|
+| face / lower face rms, mean of 8 chains (no dense) | 1.79 / 2.01 | 1.80 / 2.01 |
+| jaw width between the two starts, per head a-d | 5.1 1.4 3.6 0.5 | 2.1 3.4 0.8 0.5 |
+| dense, fitted start: head a face / low | 1.44 / 1.68 | 1.72 / 1.69 |
+| dense: head b | 1.55 / 2.51 | 1.61 / 2.28 |
+No regression without dense; with dense head a's face is 0.3 mm worse (the dense read now counts for less: its floors are
+the real-photo errors, and on our own renders it was better than that).
+(C) TESS (fresh native start sc_T00, 8 calls): LOOKED AT, one tile at a time (out/tess_nose_v0.png, tess_mouth_v0.png:
+photo | clay | overlay | raking; before = sc_TN06 on main, after = rm_TN08 on an intermediate state of this branch: mesh
+reads without the anchors, no nose-base width): NOSE: no visible change; both clay noses lie on hers, a little boxier at
+the wings with larger nostril openings than hers. MOUTH: no visible change; the lips lie on hers in both. rm_TF08 (the
+final defaults) is solved; its tiles were NOT made or looked at.
