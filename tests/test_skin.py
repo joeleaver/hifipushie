@@ -116,6 +116,17 @@ def test_only_some_groups():
     rims = paint.layers(head_spec(only=["eyes", "eye_rims"]))
     assert "skin:caruncle" in rims and not any(v.get("_pre") for v in rims.values())
     assert paint.layers(full)["skin:caruncle"].get("_pre")
+    # (garrettnative) the lateral canthus: off unless asked; then a multiply shadow on each eyeball's outer end (the
+    # eyes group) and the corner's red on the skin (a rim), each on its own side of the eye
+    assert not any("canthus" in k for k in paint.layers(full))
+    cs = head_spec(tone={"fitzpatrick": 2}, age=52, eyes={"iris": "#56666e", "canthus": 0.8})
+    cs["blobs"]["eye.L"]["part"] = "eyes"
+    CL = paint.layers(cs)
+    assert CL["skin:eye_canthus_L"]["part"] == "eyes" and CL["skin:eye_canthus_L"]["mix"] == "multiply"
+    assert CL["skin:eye_canthus_L"]["mask"][0]["spot"]["at"][0][0] > 0 > CL["skin:eye_canthus_R"]["mask"][0]["spot"]["at"][0][0]
+    assert skin.group_of("skin:eye_canthus_L") == "eyes" and skin.group_of("skin:canthus") == "eye_rims"
+    assert CL["skin:canthus"].get("_pre")
+    paint.validate(cs)
     # every layer of a full description belongs to a group, and the groups add up to it
     names = set(paint.layers(full))
     got = set()

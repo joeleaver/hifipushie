@@ -55,6 +55,26 @@ def test_vocabulary():
     assert bi.default_gnm_base(20) == 0.5 and bi.default_gnm_base(60) == 0.0 and 0.2 < bi.default_gnm_base(37.5) < 0.3
 
 
+@need_ref
+def test_a_true_gnm_start_keeps_nothing_of_the_body_templates_head():
+    """(garrettnative) gnm_base=1.0 is the TRUE GNM base: no dimorphism field (the one-mesh default is 0.8), no eye
+    scaling, no face style slider from the refs model; the head's size on the body (head_size) stays."""
+    a, r = "bi_test_tg", "bi_test_tg_ref"
+    _rm(a, r)
+    try:
+        shutil.copytree(store.HOME / REF, store.HOME / r)
+        sp = json.loads((store.HOME / r / "spec.json").read_text())
+        sp["base"].setdefault("style", {}).setdefault("human", {}).update({"eye_spacing": 0.012, "jaw": 0.1, "head_size": 1.03})
+        sp["base"]["head"]["eyes"] = 1.05
+        (store.HOME / r / "spec.json").write_text(json.dumps(sp))
+        bi.start(a, r, sex="male", gnm_base=1.0)
+        b = store.load(a)["base"]
+        assert b["head"]["gnm_base"] == 1.0 and b["head"]["dimorphism"] == 0.0 and b["head"]["eyes"] == 1.0
+        assert b["style"]["human"] == {"head_size": 1.03}
+    finally:
+        _rm(a, r)
+
+
 def test_registration_lands_eyes_on_eyes():
     """The anchor on a picture whose detector points ARE the model's projected eye corners + nasion: zero shift; a
     picture moved by (7, -3) px: that shift."""

@@ -485,9 +485,9 @@ GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", 
 def group_of(layer: str) -> str:
     """Which group of the description (skin.only) a layer "skin:<name>" belongs to."""
     n = layer[5:] if layer.startswith("skin:") else layer
-    if n.startswith(("eye_L", "eye_R", "eye_shade", "eye_tear")):
+    if n.startswith(("eye_L", "eye_R", "eye_shade", "eye_tear", "eye_canthus")):
         return "eyes"
-    if n in ("caruncle", "waterline"):
+    if n in ("caruncle", "waterline", "canthus"):
         return "eye_rims"
     if n.startswith(("lips_", "lip_")) or n == "micro_lip_lines":
         return "lips"
@@ -633,7 +633,7 @@ _LAYERS: dict = {}
 
 
 APERTURE_KEEP = (0.001, 0.0007)  # m: (within, soft) of the eyeballs where the skin's eye-region layers fade out
-APERTURE_OWN = ("skin:waterline", "skin:caruncle", "skin:caruncle_wet", "skin:lashes", "skin:lid_crease_line")  # the margin's own colours (+ the fold line: the lid's platform lies within 1-2 mm of the ball, the keep-out erased it)
+APERTURE_OWN = ("skin:waterline", "skin:caruncle", "skin:caruncle_wet", "skin:canthus", "skin:lashes", "skin:lid_crease_line")  # the margin's own colours (+ the fold line: the lid's platform lies within 1-2 mm of the ball, the keep-out erased it)
 
 
 def _aperture_keep_out(spec: dict, part: str, out: dict) -> None:
