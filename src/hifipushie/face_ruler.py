@@ -2172,6 +2172,8 @@ DENSE_REGION_SIG = {"front": {"lids": 0.5, "eyes": 0.7, "lips": 0.8, "brows": 1.
                     "3q": {"lids": 1.0, "eyes": 0.9, "lips": 1.0, "brows": 1.0, "mouth": 1.2, "chin": 1.7, "nose": 1.2, "cheeks": 2.6, "forehead": 1.8},
                     "profile": {"lids": 2.9, "eyes": 2.6, "lips": 1.3, "brows": 2.5, "mouth": 1.8, "chin": 1.7, "nose": 1.5, "cheeks": 2.6, "forehead": 2.5}}
 DENSE_REGIONS = tuple(DENSE_REGION_SIG["front"])     # None = every skin landmark; or a tuple of denselm regions
+DENSE_IDENTITY = "all"                # "all" | "inner" (DENSE_INNER's regions only) | "none": the dense reads that may move identity
+DENSE_INNER = ("lids", "eyes", "lips", "brows", "mouth", "nose")
 DENSE_NEFF = 80                       # a view's dense reads count as this many independent ones (one crop, one network: neighbours err
 #                                       together): every sigma x sqrt(n / DENSE_NEFF)
 
@@ -2211,9 +2213,11 @@ def _dense_obs(head, view, pred):
         if not np.isfinite(sg) or sg > DENSE_MAX_MM:
             continue
         sig = max(floor, sg * scale, float((DENSE_REGION_SIG.get(view["kind"]) or {}).get(str(Lm["region"][j]), 0.0)) if ch.get("dense_region_sig", True) else 0.0)
+        idn = ch.get("dense_identity", DENSE_IDENTITY)       # which dense reads may move the IDENTITY (all of them move the cameras)
+        keep_id = idn == "all" or (idn == "inner" and str(Lm["region"][j]) in DENSE_INNER)
         for ax in (0, 1):
             out.append({"type": "dense", "view": view["kind"], "name": f"{Lm['names'][j]}.{'xy'[ax]}",
-                        "o": float(pred["xy"][j, ax] - Q[j, ax]) * mm1, "J": Jp[ax] * mm1, "sig": sig,
+                        "o": float(pred["xy"][j, ax] - Q[j, ax]) * mm1, "J": Jp[ax] * mm1 if keep_id else np.zeros_like(Jp[ax]), "sig": sig,
                         "p": list(map(float, Q[j])), "q": list(map(float, pred["xy"][j])), "X": list(map(float, head["V"][int(v)])),
                         "region": str(Lm["region"][j])})
     neff = float(ch.get("dense_neff", DENSE_NEFF) or 0)

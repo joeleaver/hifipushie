@@ -105,18 +105,18 @@ def _forced(n=300):
     return _obs(J, J @ c + 0.3 * rng.standard_normal(n))
 
 
-def test_cmax_relaxation_is_continuous_and_carried():
+def test_cmax_is_a_bound_not_a_factor():
+    """(solvecams, 2026-10-13) a component the reads push past cmax is HELD AT it, the others solved again; no sigma
+    is raised and nothing is carried (the factor went x15 for a component at 3.11 sd and stuck)."""
     head = fr.gnm_head(np.zeros(170))
     obs = _forced()
     a = fr.solve(obs, head, cmax=3.0)
-    assert a["relax"] > 1.0
-    assert 2.9 < np.abs(a["dc"]).max() <= 3.0 + 1e-9       # the SMALLEST factor that fits (was the next power of 1.3)
-    b = fr.solve(obs, head, cmax=3.0, relax0=a["relax"])   # carried: the same problem again
-    assert abs(b["relax"] - a["relax"]) < 1e-9 and np.allclose(a["dc"], b["dc"])
-    hi = fr.solve(obs, head, cmax=3.0, relax0=2.0 * a["relax"])
-    assert abs(hi["relax"] - 2.0 * a["relax"]) < 1e-9      # never under the floor it is handed
+    assert a["relax"] == 1.0 and a["bound"] == [40]
+    assert abs(np.abs(a["dc"]).max() - 3.0) < 1e-3
+    b = fr.solve(obs, head, cmax=3.0, relax0=5.0)          # an old carried factor changes nothing
+    assert np.allclose(a["dc"], b["dc"])
     free = fr.solve(_obs(*(lambda J: (J, J @ np.r_[2.0, np.zeros(169)]))(np.random.default_rng(2).standard_normal((200, 170)))), head, cmax=3.0)
-    assert free["relax"] == 1.0
+    assert free["bound"] == []
 
 
 def test_expression_columns_take_a_pictures_expression_out_of_the_identity():

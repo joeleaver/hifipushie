@@ -5,8 +5,9 @@ first (PART 1), a gate, then the fix (PART 2). Scratch DURABLE in /mnt/data/hifi
 (light slot), heavy.sh <gb> <script> (capped; the script takes resources.heavy), synth/ (the benchmark's pictures), out/
 (logs, one json per chain). Scripts spikes/solvecams. Models sc_* (main's workspace).
 
-STATE (2026-10-13, PART 2 IN PROGRESS: steps 1-3 built and measured, step 4 (dense) built, its suite running; the
-acceptance is NOT met yet): cameras are priors with a distance freedom and no clips, block_in_start's fit has a pitch /
+STATE (2026-10-13, PART 2 IN PROGRESS: steps 1-4 built and measured ("### Step 4: dense" at the end: with dense on the
+six starts agree to 1.1-2.7 mm of jaw and the face is 1.28 mm, but widths are +3.5 mm wide; dense stays OFF by default);
+the acceptance is met for repeatability only with dense, and not for the lower face): cameras are priors with a distance freedom and no clips, block_in_start's fit has a pitch /
 lens prior, every call starts with a cameras-first round, the sticky sigma inflation is a bound (active set) with
 DISAGREE / AT THE BOUND / CAMERA lines in the reply. Against main: the "trust" disaster is gone (head c fitted + trust:
 jaw +15.8 -> +10.0, face 4.70 -> 1.99) and no chain stalls at x15 any more, but the jaw's width still differs by 3-11 mm
@@ -393,3 +394,33 @@ mm of jaw_width per degree, 3/4 yaw -0.5 jaw / -0.9 cheekbone, side yaw 0.06.)
   on the SAME place (start-independent: good) but a biased one: head c (wide jaw): front distance -54 %, pitch +2 .. +4,
   side +72 %; head a: front +22 %, pitch +2.4. A held head's shape misfit is read as perspective. So distance is never
   solved in the cameras-first rounds; it has to be solved WITH identity.
+
+### Step 4: dense (suite d = steps 1-3 + the dense read with DENSE_REGION_SIG / DENSE_NEFF / ears, scalp, neck out, distance
+### prior 40 % and solved WITH identity only; 3 calls, cameras "free"; tables out/acc_def.md)
+| head | jaw_width error from fitted / true / pitch +8 / pitch -8 / distance x0.5 / x2 | SPREAD (without dense; target 2) | front pitch error at the end | front distance error at the end | face / lower face (range over the starts) |
+|---|---|---|---|---|---|
+| a | +1.0 / +1.5 / +0.9 / +1.4 / +1.9 / +0.8 | 1.1 (10.5) | +1.2 .. +2.3 | -6 .. -12 % | 1.36-1.47 / 1.51-1.68 |
+| b | +6.8 / +5.1 / +6.6 / +5.8 / +6.9 / +5.4 | 1.8 (7.4) | +1.7 .. +3.1 | -3 .. +9 % | 1.36-1.55 / 2.11-2.58 |
+| c | +4.6 / +3.1 / +4.1 / +4.1 / +3.4 / +1.8 | 2.3 (12.9) | -0.5 .. -0.1 | -13 .. -24 % | 1.06-1.17 / 1.13-1.51 |
+| d | +2.1 / +1.3 / +3.6 / +3.9 / +3.5 / +3.6 | 2.7 (9.7) | -1.2 .. -0.8 | -13 .. -19 % | 1.01-1.18 / 1.50-1.98 |
+Mean of the 24 free chains: face 1.28 (1.86 without dense), lower face 1.79 (2.00). "trust" from the fitted and the pitch
++8 start ends inside the same ranges (c fitted + trust: jaw +6.4, face 1.35; the worst cell).
+- DOES DENSE CLOSE THE DISTANCE AMBIGUITY: PARTLY. From x0.5 and x2 the front camera comes back to the same place as
+  from the true start (to within ~10 %), and so does the pitch: the START no longer matters (spread 1.1-2.7 mm against
+  7-13). But the place it comes back to is BIASED: distance -6 .. -24 % (too close) on three heads, pitch +1.2 .. +3.1 deg
+  on the two male heads. Both biases widen the jaw.
+- WIDTH BIAS: mean error over the 24 chains jaw_width +3.5, gonial_width +3.9, chin_width +2.6, cheekbone +1.3 mm (old
+  dense weighting, Part 1: +5.3 / +5.6 / +4.1; no dense, suite c: +1.2 / +2.0 / +0.9 / +1.6 with a scatter of 3-4 mm).
+  Head b (the NARROW jaw and chin) is the worst: +5 .. +7: the network answers a featureless jaw with the average one
+  (denselm's known gap), now also through the camera (pitch +2-3 deg).
+- VARIANTS of which dense reads may move IDENTITY (all of them always move the cameras; 4 starts each):
+  | variant | face / lower face | jaw spread a / b / c / d | note |
+  |---|---|---|---|
+  | all regions (KEPT, DENSE_IDENTITY "all") | 1.28 / 1.79 | 1.1 / 1.8 / 2.3 / 2.7 | the table above |
+  | none (cameras only) | 2.20 / 2.75 | 14.7 / 3.9 / 5.5 / 2.3 | head a runs away: front pitch +5 .. +7, distance -45 %, jaw +11 .. +16 |
+  | inner face only (lids, eyes, lips, brows, mouth, nose) | 1.49 / 1.86 | 2.5 / 1.1 / 4.7 / 2.2 | c and d better (jaw -1 .. +4, lower face 0.8-1.5), a and b worse (a face 2.0, b jaw +6) |
+  "all" is kept: best mean and the only one no head loses with; "none" shows again that a camera read against a head
+  that cannot follow is read as perspective.
+- ACCEPTANCE with dense: jaw spread 1.1 / 1.8 / 2.3 / 2.7 (target 2: two heads just over); face <= 1.6 on every chain;
+  lower face <= 1.6 NOT met (b 2.1-2.6, d 1.5-2.0); worse than the class mean: only b's lower face from some starts
+  (2.1-2.6 against 2.37) and a's face by 0.05. Without dense: repeatability not met (7-13 mm). DENSE stays OFF by default.

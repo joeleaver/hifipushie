@@ -24,7 +24,10 @@ first = kw.pop("first", cams_mode)
 dense = kw.pop("dense", "0") == "1"
 start, pert, freeze = kw.pop("start", ""), kw.pop("pert", ""), kw.pop("freeze", "")
 kw_refit = kw.pop("refit", "0") == "1"      # the start's cameras fitted again by blockin.fit_cameras (today's code), as block_in_start would
-extra = {a: (b if a in ("anchors", "parse") else (None if b == "none" else float(b))) for a, b in kw.items()}
+chin = {a[5:]: b for a, b in kw.items() if a.startswith("chin.")}
+extra = {a: (b if a in ("anchors", "parse") else (None if b == "none" else float(b))) for a, b in kw.items() if not a.startswith("chin.")}
+if chin:
+    extra["chin"] = chin
 fr.DENSE = dense
 if freeze == "all":
     fr.PHOTO_CAM_SD6 = {k: (1e-4,) * 6 for k in fr.PHOTO_CAM_SD6}
@@ -35,7 +38,7 @@ if hasattr(fr, "PHOTO_CAM_SD7") and freeze:
 ct = bi.identity(store.load(truth))
 rt = C.refs(truth)
 Lt = C.landmarks(truth)
-names = [v["name"] for v in rt["views"]]
+names = [v.get("name") or v["image"].split("/")[-1].rsplit(".", 1)[0].split("_")[-1] for v in rt["views"]]
 MEAS = ("jaw_width", "gonial_width", "chin_width", "cheekbone_width", "chin_length", "chin_forward", "eyes_forward", "mouth_width")
 
 
