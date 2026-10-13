@@ -413,6 +413,7 @@ def main():
     wrow = torch.ones(L["n"] + 1, device=dev)
     wrow[-1] = float(kw.get("dist_weight", 30.0))      # the distance row is 1 of 757: unweighted it did not learn (53 % error at 10k)
     log, ep0 = [], 0
+    guard = [0.0, 1.0]                      # the spike guard's running loss and its mean deviation
     # RESUMABLE IN SEGMENTS (a job's folder dies with the job: the state travels back as an output and into the next
     # job's folder): resume=<state.pth> loads everything a continued run needs if the file exists; stop=<epoch> ends
     # this call BEFORE that epoch with state.pth + an evaluable model.pt of the EMA so far.
@@ -423,6 +424,7 @@ def main():
         model.load_state_dict(st["model"]), ema.load_state_dict(st["ema"]), opt.load_state_dict(st["opt"])
         sched.load_state_dict(st["sched"]), scaler.load_state_dict(st["scaler"])
         log, ep0 = st["log"], st["epoch"]
+        guard = list(st.get("guard", guard))
         print(f"step: resumed at epoch {ep0} of {epochs}", flush=True)
 
     for ep in range(ep0, epochs):
@@ -431,7 +433,7 @@ def main():
         ds.epoch = ep
         ds.strength = min(1.0, (ep + 1) / max(ramp * epochs, 1e-9)) if ramp > 0 else 1.0
         model.train()
-        t1, tot, nb = time.time(), 0.0, 0
+        t1, tot, nb, skipped = time.time(), 0.0, 0, 0
         for b_ in dl:
             x, t, vis, mmpx, i = tens(b_)
             if nb == 0 and ep == 0:
@@ -442,6 +444,16 @@ def main():
             with torch.autocast(dev.type, enabled=dev.type == "cuda"):
                 o = model(x)
             loss = netmod.gnll(o.float(), t, weight=wrow, beta=beta)
+            lv = float(loss)
+            gstep_ = ep * len(dl) + nb
+            if not math.isfinite(lv) or (gstep_ > 100 and lv > guard[0] + 8 * guard[1] + 1.0):
+                skipped += 1                       # SPIKE GUARD: a batch far above the running loss is not stepped on
+                opt.zero_grad(set_to_none=True)
+                sched.step()
+                nb += 1
+                continue
+            guard[0] += 0.02 * (lv - guard[0])
+            guard[1] += 0.02 * (abs(lv - guard[0]) - guard[1])
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
@@ -456,9 +468,9 @@ def main():
                     pe.mul_(dcy).add_(pm.detach(), alpha=1 - dcy)
                 for be, bm in zip(ema.buffers(), model.buffers()):
                     be.copy_(bm)
-            tot += float(loss)
+            tot += lv
             nb += 1
-        row = {"epoch": ep, "loss": tot / max(nb, 1), "sec": round(time.time() - t1, 1)}
+        row = {"epoch": ep, "loss": tot / max(nb - skipped, 1), "skipped": skipped, "sec": round(time.time() - t1, 1)}
         if ep % max(1, epochs // 12) == 0 or ep == epochs - 1:
             rep, _ = evaluate(ema, dv, dev, L["region"], P)
             row.update({k: v for k, v in rep.items() if k not in ("regions", "bins")})
@@ -468,7 +480,7 @@ def main():
         if (ep + 1) % 3 == 0 or ep + 1 in (stop, epochs):                 # the whole state, every 3 epochs and at a segment's end
             torch.save({"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),
                         "scaler": scaler.state_dict(), "epoch": ep + 1, "epochs": epochs, "steps_per_epoch": len(dl), "log": log,
-                        "args": kw}, out / "state.tmp")
+                        "args": kw, "guard": guard}, out / "state.tmp")
             os.replace(out / "state.tmp", out / "state.pth")
     done = len(log) >= epochs
     rep, pred = evaluate(ema, dv, dev, L["region"], P)

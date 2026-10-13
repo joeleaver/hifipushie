@@ -627,11 +627,17 @@ the dense reads are in" was measured on our own renders only and DOES NOT CARRY 
 STATE (2026-10-13 14:55): rendering STOPPED (data_s1/STOP_NICO + STOP_LOCAL exist; no queue running). The stage-1 set is
 COMPLETE for training: /mnt/data/hifipushie/denselm/data_s1/ = 92 dressings x 300 = 27,600 samples, all labelled with set
 v3 (756 columns; checked: none incomplete, none on an older set). Final training run `s30k` on NICO-TOP in resumable
-segments (below; status in models/s30k/STATUS): driver started 14:47 (start_s30k.sh), segment e0 on NICO-TOP's GPU
-from 14:50 (cuda, 93 s an epoch on 25,500 train / 2,100 val samples = 7 held-out dressings; ~25 min a segment with the
-1.2 GB data transfer) -> 60 epochs expected DONE ~16:50. The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
+segments (below; status in models/s30k/STATUS). FIRST TRY DIVERGED (models/s30k_diverged1: lr 1e-3; epoch losses
+-0.36 .. 2.5 then 148 at epoch 9, 53 / 52 / 47 in segment 2; held-out median 5.5 mm at epoch 5 -> 14.1 at 12; cancelled
+15:29). CAUSE: the sigma floor was a hard clamp in the loss: no gradient below it, so a landmark whose sigma sank under
+it could never raise it and its d^2 / sigma^2 term (thousands on a hard sample) dominated. FIX (net.soft_floor, in the
+network so loss / evaluation / export agree): sigma^2 = exp(2 ls) + exp(2 * -5.5); + a SPIKE GUARD in train.py (a batch
+whose loss is over the running loss + 8 mean deviations is not stepped on; counted per epoch as "skipped"); peak lr
+7e-4. Second try started ~15:35; ~25 min a segment (93-110 s an epoch on 25,500 train / 2,100 val samples = 7 held-out
+dressings N_s1033..39, + the 1.2 GB transfer) -> DONE expected ~17:45. The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
 nothing rented or billed; HSRD is the groundtruth agent's (read-only, do not download more).
-NEXT, in order: (1) watch s30k to DONE (or resume it); (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
+NEXT, in order: (1) watch s30k to DONE (or resume it); if a segment's "skipped" climbs or the held-out median rises
+two segments running, stop (cancel the batch) and say so: do not loop; (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
 then sc_table + sc_cmp against s10k / pilot, held-out synthetic per bin (models/s30k/hm18/val.json), widthval.py (the
 shrinkage slope before / after; done for s10k, see the section above: rerun widthval.sh s30k), the distance
 head (widthval prints its log-slope; realgt prints distance read vs true), sc_suite (letter t), Tess tiles; (3) the
@@ -660,6 +666,9 @@ THE TRAINING JOB (spikes/denselm/train_seg.sh; the copy that runs: /mnt/data/hif
 - The machine: NICO-TOP (GPU), reached only through the bundle route (no ssh). Shared with S0urc3 and other agents: one
   training job at a time, no render batches beside it.
 - EVALUATION (on this laptop; W = /mnt/data/hifipushie/denselm/models/s30k/hm18/model.pt):
+  REAL PHOTOS FIRST, HSRD's HELD-OUT PEOPLE: /mnt/data/hifipushie/denselm/real_hsrd.sh s30k W  (-> out/realhsrd_s30k.txt;
+  beside realhsrd_s10k / realhsrd_pilot: same photos, ~100 of them over the five held-out poses)
+  width: /mnt/data/hifipushie/denselm/widthval.sh s30k W   (beside out/widthval_s10k.txt)
   real photos: /mnt/data/hifipushie/denselm/real_gt.sh s30k W   (-> out/realgt_s30k.txt; beside realgt_s10k / realgt_pilot)
   renders at the truth: HIFIPUSHIE_DENSELM=W WS=main /mnt/data/hifipushie/denselm/run.sh spikes/denselm/sc_table.py s30k; then run.sh spikes/denselm/sc_cmp.py s10k s30k
   width / distance: /mnt/data/hifipushie/normals_venv/bin/python spikes/denselm/widthval.py W /mnt/data/hifipushie/denselm/data_s1 <val dressings = the last 8 % of models/s30k/dirs.txt>
