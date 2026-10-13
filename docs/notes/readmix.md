@@ -166,3 +166,65 @@ WHAT IT SAYS
 Sigma x sqrt(n / 16) (NEFF) and a 0.6 px floor. Where these are read the same detector's differential inner anchors (17-67)
 are left out (the same evidence). Dense: every region at max(render, real-photo) error, NEFF 80 as before. The traced lip
 borders (0.3 mm) and lid margins (0.2-0.4 mm) stay the fine reads of the front picture.
+
+## The nose (the coordinator's order after the gate: find the CAUSE of the wide nose before building a read)
+Before, on main's code (groundtruth's chains, records copied to gt/out/chains): nose_width (the nostril sills, landmarks
+31-35; solved - scan fit, after a similarity) per call:
+| head, chain | start (class mean) | calls 1 .. 8 | front camera's distance error |
+|---|---|---|---|
+| h40, free | +4.7 | 6.2 5.1 4.5 4.5 4.0 3.6 3.6 3.9 | -74 -> -60 % |
+| h40, free + dense | +4.7 | 5.6 5.5 5.4 5.2 5.2 5.2 5.0 5.0 | -74 -> +11 % |
+| h40, TRUE cameras at the start, front pitched 8 deg | +4.7 | 6.3 5.2 4.8 4.3 3.8 3.7 3.3 3.3 | 0 -> +12 % |
+| h112, free | +3.0 | 2.3 2.5 2.8 3.1 3.5 3.2 3.0 2.7 | -69 -> -58 % |
+| h112, free + dense | +3.0 | 2.9 2.8 2.9 2.8 2.7 2.8 2.9 2.8 | -69 -> -34 % |
+| h112, TRUE cameras, pitched start | +3.0 | 0.9 1.0 1.2 1.6 2.0 2.0 2.1 2.1 | 0 -> +3 % |
+| h112, every camera FROZEN at the truth (rm_h112_tc, 4 calls) | +3.0 | 3.2 .. 3.2 | 0 |
+| h112, true start, only the DISTANCE frozen (rm_h112_td) | +3.0 | 2.6 .. 2.2 | 0 |
+(h40 with the true cameras as the start and nothing moved is REFUSED by block_in_solve's stale-camera check: the class
+mean through the true cameras stands at x0.90 the pictures' points.)
+1. CAMERA DISTANCE IS NOT THE CAUSE. With the front camera at its true distance (frozen, or within 3-12 %) the nose is
+   +2.1 .. +3.3 mm wide; at -60 % it is +2.7 .. +3.9; at +42 % (groundtruth's told-lens sets, below) +2.0 .. +3.5.
+2. NOTHING READS IT: THIS IS THE CAUSE. The class mean's nose is 3.0 / 4.7 mm wider than these two people's, and the solve
+   leaves it there (h40: 4.7 -> 3.3-5.0 after eight calls) while the mouth's width, which IS read (corners, lip borders),
+   goes from +3.8 to 0.0-1.4. No outline shows the wings from the front, the differential anchors compare MediaPipe with
+   MediaPipe (both draw an average nose), the dense network's nose points sit 1.5-2.1 mm off on a real face and answer
+   with the average, and MediaPipe's own alar points are 2.4-5.5 mm wide (step 2). solve_report already said so: nose_width
+   under MOVED WITH NO READ / unread.
+3. THE PROFILE: not examined beyond this: the tip's projection and the profile line come from the side outline (0.3 mm
+   reads) and Joe judged the profile "pretty amazingly close"; the fault is the front's width and the tip's roundness.
+ALSO FOUND: groundtruth's told-lens sets (gt_<k>_AL00) tell `lens_mm` = f / WIDTH x 36; humanfit_map.lens_prior counts the
+35 mm equivalent on the frame's DIAGONAL (f / diag x 43.27). On these 1152 x 1536 crops that is a lens 39 % too long:
+those chains START +28 .. +40 % far and (rightly, for a told lens) stay there. rm_<k>_L00 (spikes/readmix/mkl.py) are the
+same starts with the lens told in the pipeline's convention (h40 185-188 mm, h112 166-196 mm).
+
+### The nostril read (face_ruler._nostril_obs; type "nostril"; ON by default; spikes/readmix/nostril_eval.py)
+- WHAT: in a view turned under 30 deg, each nostril's dark opening in the picture (the component nearest the model's rim,
+  at half the depth between the opening's darkest and the skin round it; 3-160 mm2; refused when the darkest part is not
+  under 0.55 x the skin: hidden under the tip, a flat light) against the model's nostril RIM (GNM's exterior nose skin
+  bordering the nostril's interior: fixed vertices): its LATERAL end and its MEDIAL end along the line through both
+  openings, sigma 0.8 / 1.2 mm. Four reads a view; the picture is read once per call.
+- AT THE TRUTH (the scan-fitted head through the rig's cameras; a read should be 0): h40 front: right lateral -1.4,
+  left lateral +0.9 (a 1 mm sideways shift the camera's shift takes; the openings' OUTER WIDTH picture - truth: -0.55 mm),
+  medial -1.9 / +2.3; h40 at 19 deg: the near nostril -1.7 / -0.5. h112 (front, pitched, 24 deg): NOT READ, rightly: LOOKED
+  AT (out/nostril_sheet0.png): her tip hides the openings from the front: brown slits, no dark opening. The Lee Perry-Smith
+  renders: NOT READ (the scan's texture is lit flat: its nostrils are light). So: validated on ONE head's two views
+  (width to 0.6 mm); it refuses where there is nothing to read; it is silent on a nose like h112's.
+- NOT BUILT (NEXT): the wing's outer edge (the alar-facial groove) as a shading edge: visible on every tile looked at,
+  including the two heads the nostril read cannot do; the profile-matching machinery of face_ruler._ramp_obs (picture
+  against the lit model across a contour) is the place to start. The nose's silhouette in a 3/4 against the cheek.
+
+## Iris colour (step 7; skin_read._iris_rel / iris_colour; "eyeballs" is in skin_from_reference's default groups now)
+- WHY IT FAILED BEFORE (Tess: grey-green -> orange-brown): (a) the change was clipped per CHANNEL to 0.5 .. 2 (from the
+  default brown a grey-green iris needs x1.5 / 4.5 / 11: the clip made orange); (b) the picture's iris and sclera were taken
+  at the MODEL's eyeball pixels: its opening is not the picture's, so lid skin got into the ring (a warm cast: orange-brown
+  whatever the start); (c) the sclera's MEDIAN lies in lid and lash shadow (luminance 0.08 / 0.16 / 0.25 at 20 / 50 / 80 %).
+- NOW: the picture's own limbus (blockin_eyes.limbus), the ring's middle tones on its lateral rays, the sclera's bright
+  fifth just outside it on the same rays; ours from the render's eyeball pixels; front and 3/4 views with an iris of 10 px
+  radius; the change limited as a whole (hue kept); the second round takes a secant step (our eye picture answers a colour
+  change with 35-80 % of it per channel). "NOT READ" is said when no view qualifies.
+- TESS (a fork of sc_TN06, the iris set back to the default brown; two rounds; tess_a1 only read): #5a3a1e -> #503e24 ->
+  #4d3e2e. LOOKED AT (out/iris_tess2.png, the picture's eyes beside ours): no longer orange, the ring's median colour
+  agrees with the picture's (#584839 against #4a3f30), darker and less saturated than the default; but her iris is HAZEL
+  (a grey-green rim round an amber centre) and ours is one muted brown: a single iris colour cannot say that. Verdict: it
+  now sets a defensible colour instead of leaving the default; it does not make her eyes green. NEXT: two zones (rim /
+  collarette) in skin.eyes, read the same way.

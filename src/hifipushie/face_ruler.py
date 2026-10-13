@@ -342,15 +342,20 @@ def _hair_edge_obs(head, view, mask_model):
     AT or OUTSIDE that boundary (hair hangs in front of the cheek or behind it; skin is never drawn where there is no face). So
     the boundary is read like an outline, but only where it lies OUTSIDE the model's own outline (the model is too
     narrow there: it must reach at least the skin the picture shows); where the model is already outside it nothing is
-    said. view["hair_edge"] = {"skin", "hair"} picture masks (faceparse). Face vertices only."""
+    said. view["hair_edge"] = {"skin", "hair"} picture masks (faceparse)."""
     he = view.get("hair_edge")
-    if not he or "face" not in head:
+    if not he or "gid" not in head or "ears" not in head:
         return []
     skin, hair = np.asarray(he["skin"], bool), np.asarray(he["hair"], bool)
     H, W = hair.shape
     out = []
+    # the head's own skin from the chin up, ears and scalp left out (an ear under hair is not seen; the neck is a pose):
+    # in a front view the cheek's and the jaw's silhouette is made by vertices beside GNM's face mask, so "face" alone
+    # would leave the jaw line's last centimetres only
+    V = np.asarray(head["V"], float)
+    keep = (np.asarray(head["gid"], int) >= 0) & ~np.asarray(head["ears"], bool) & ~hair_vertices(head) & (V[:, 2] > float(np.asarray(head["L"], float)[8, 2]) + 0.004)
     for ob in _outline_obs(head, view, mask_model, skin, None):
-        if not head["face"][ob["v"]] or ob["o"] < HAIR_EDGE_MIN:
+        if not keep[ob["v"]] or ob["o"] < HAIR_EDGE_MIN:
             continue
         q, n = np.asarray(ob["q"], float), np.asarray(ob["n"], float)
         ok = True
@@ -2051,6 +2056,116 @@ def _lip_obs(head, view, ev):
     return out
 
 
+# ---- the NOSE's own read: the nostril openings (readmix, 2026-10-13) -----------------------------------------------------
+# On two scanned heads the solved nose stayed 2-5 mm too WIDE with the front camera at its true distance: nothing read it (the
+# class mean's nose is that much wider, and neither detector's nose points follow a narrow nose: MediaPipe's alar width +2.4
+# / +5.5 mm there). The picture itself shows the nostril openings: dark, high contrast. Each opening's LATERAL and MEDIAL end
+# along the line through both openings is read against the model's nostril RIM (GNM's exterior skin where it turns into the
+# nostril: fixed vertices) through the view's camera.
+NOSTRIL = True              # reference_views(nostrils=None) takes this
+NOSTRIL_TURN = 30.0         # degrees: read in views turned less than this
+SIG_NOSTRIL = (0.8, 1.2)    # mm: an opening's lateral end / its medial end (validated on scanned heads: spikes/readmix/nostril_eval.py)
+NOSTRIL_ROI = 7.0           # mm round the model's rims that the picture is searched in
+NOSTRIL_AREA = (3.0, 160.0) # mm2: an opening smaller / larger than this is not one (hidden under the tip; a moustache's shadow)
+NOSTRIL_BIAS = (0.0, 0.0)   # mm: the picture's dark opening against the rim at the TRUE head (lateral, medial), taken out
+
+
+def nostril_rims(head) -> list:
+    """The model's nostril rims: per side (the subject's right: world -X first) the model vertices of GNM's EXTERIOR
+    nose skin that border the nostril's interior."""
+    key = ("nrim", len(head["gid"]))
+    if key not in _C:
+        from . import base as basemod
+        g, gg = basemod._gnm_data(), _gnm()
+        gr, T = gg["gr"], gg["sp"]["T"]
+        Q = np.asarray(g["quads"], int)
+        ext, sk, nose = gr["skin_exterior"], gr["skin"], gr["nose_region"]
+        inn = sk & ~ext
+        q = Q[(inn[Q].any(1)) & (ext[Q].any(1)) & (nose[Q].any(1))]
+        rim = np.unique(q[ext[q]])
+        Lt = gg["sp"]["WL"] @ T
+        rim = rim[(np.abs(T[rim, 0]) < 0.03) & (np.abs(T[rim, 1] - Lt[33, 1]) < 0.02)]
+        g2m = _gnm_to_model(head)
+        _C[key] = [np.array([g2m[int(v)] for v in rim[(T[rim, 0] < 0) == neg] if int(v) in g2m], int) for neg in (True, False)]
+    return _C[key]
+
+
+def nostril_picture(img, centre, u, mmpx: float, roi_mm: float = NOSTRIL_ROI):
+    """The picture's dark opening next to `centre` (px): its ends along u and across it, at half the depth between the
+    opening's darkest tenth and the skin round it. -> {"lo", "hi" (px along u, from centre), "top", "bottom" (across),
+    "area" mm2, "contrast"} | None."""
+    from scipy import ndimage as ndi
+    A = np.asarray(img.convert("L"), float) / 255.0
+    H, W = A.shape
+    r = int(round(roi_mm / mmpx))
+    x0, y0 = int(round(centre[0])) - r, int(round(centre[1])) - r
+    if x0 < 0 or y0 < 0 or x0 + 2 * r >= W or y0 + 2 * r >= H or r < 6:
+        return None
+    pat = ndi.gaussian_filter(A[y0:y0 + 2 * r + 1, x0:x0 + 2 * r + 1], max(0.3 / mmpx, 0.7))
+    skin, dark = float(np.percentile(pat, 75)), float(np.percentile(pat, 2))
+    if dark > 0.55 * skin:           # no dark opening here (the tip hides it; a flat frontal light fills it)
+        return None
+    lab, n = ndi.label(pat < dark + 0.5 * (skin - dark))
+    if not n:
+        return None
+    yy, xx = np.mgrid[:pat.shape[0], :pat.shape[1]]
+    best, bd = None, 1e9
+    for i in range(1, n + 1):        # the component whose darkest part lies nearest the model's rim centre
+        m = lab == i
+        core = m & (pat <= np.percentile(pat[m], 30))
+        d = float(np.hypot(xx[core].mean() - r, yy[core].mean() - r))
+        if d < bd:
+            best, bd = m, d
+    area = float(best.sum()) * mmpx ** 2
+    if bd * mmpx > 4.5 or not NOSTRIL_AREA[0] <= area <= NOSTRIL_AREA[1] or best[0].any() or best[-1].any() or best[:, 0].any() or best[:, -1].any():
+        return None
+    P = np.stack([xx[best] - r, yy[best] - r], 1).astype(float)
+    a, b = P @ u, P @ np.array([-u[1], u[0]])
+    return {"lo": float(a.min()), "hi": float(a.max()), "top": float(b.min()), "bottom": float(b.max()), "area": area, "contrast": 1 - dark / skin}
+
+
+def _nostril_obs(head, view):
+    """Per nostril two reads along the line through both openings (u, toward the subject's left): its LATERAL end and its
+    MEDIAL end, the picture's dark opening against the model's rim, each moving with the rim vertex that makes it."""
+    cam = view["cam"]
+    if "gid" not in head or abs(view_yaw(cam)) > NOSTRIL_TURN:
+        return []
+    rims = nostril_rims(head)
+    if min(len(r) for r in rims) < 4:
+        return []
+    V = np.asarray(head["V"], float)
+    Xc, P = _cam_points(cam, V[np.r_[rims[0], rims[1]]])
+    Pr, Pl = P[:len(rims[0])], P[len(rims[0]):]
+    u = Pl.mean(0) - Pr.mean(0)
+    u /= max(np.linalg.norm(u), 1e-9)
+    mmpx = float(np.median(Xc[:, 2]) / cam["f"] * 1000.0)
+    out = []
+    for side, (rv, Pp) in enumerate(((rims[0], Pr), (rims[1], Pl))):
+        c = Pp.mean(0)
+        pic = (view.get("_nostril") or {}).get(side, "none")
+        if pic == "none":            # the picture is read ONCE per call round its start place (the head moves under it)
+            pic = nostril_picture(view["img"], c, u, mmpx)
+            view.setdefault("_nostril", {})[side] = (pic, c.copy()) if pic else None
+        else:
+            pic = pic
+        ent = view["_nostril"][side]
+        if not ent:
+            continue
+        pic, c0 = ent
+        a = (Pp - c0) @ u
+        lat, med = (int(np.argmin(a)), int(np.argmax(a))) if side == 0 else (int(np.argmax(a)), int(np.argmin(a)))
+        for nm, j, edge, sig, bias in (("lateral", lat, pic["lo"] if side == 0 else pic["hi"], SIG_NOSTRIL[0], NOSTRIL_BIAS[0]),
+                                       ("medial", med, pic["hi"] if side == 0 else pic["lo"], SIG_NOSTRIL[1], NOSTRIL_BIAS[1])):
+            Jp, mm1 = _proj_jac(cam, head, int(rv[j]))
+            sgn = (-1.0 if side == 0 else 1.0) * (1.0 if nm == "lateral" else -1.0)       # + = outward (lateral end) / toward the midline (medial end)
+            o = (edge - a[j]) * mm1 - sgn * bias
+            out.append({"type": "nostril", "view": view["kind"], "name": f"nostril_{'rl'[side]}_{nm}", "o": float(o), "n": u.tolist(),
+                        "J": (u @ Jp) * mm1, "sig": float(np.hypot(sig, LM_PX * mm1)), "p": list(map(float, Pp[j])),
+                        "q": list(map(float, c0 + edge * u + ((Pp[j] - c0) @ np.array([-u[1], u[0]])) * np.array([-u[1], u[0]]))),
+                        "X": list(map(float, V[int(rv[j])])), "area": pic["area"]})
+    return out
+
+
 # A FITTED camera: mm of shift (x, y), % of scale, degrees of roll left free per view. Measured (spikes/faceruler/
 # arms2.py): a camera fitted by laying the MODEL's landmarks on the picture's is off by 1.9 mm / 1.7 mm / 4.8 % / 1.1 deg
 # rms when the model is a regional transplant away from the person (the scale up to 9 %: a broader jaw reads as "closer").
@@ -2374,7 +2489,7 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     anchors: str = "differential", parse: bool | str = False, normals: bool = False,
                     kinds: list | None = None, readers: list | None = None, jaw_lm=None, expr: bool = False,
                     jaw: bool = False, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
-                    hair_edge: bool | None = None) -> tuple:
+                    hair_edge: bool | None = None, nostrils: bool | None = None) -> tuple:
     """A block-in model's reference pictures as the ruler's views: per picture its fitted camera, the skin's own
     outline where the picture has one (a profile in front of a plain background: blockin.profile_contour; any view's
     "outline" points), and on the front picture the iris centres (eye_ruler). -> (views, notes)."""
@@ -2485,6 +2600,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
                     extras.append(lambda h, vw, lev=lev: _lip_obs(h, vw, lev))
                 except Exception as e:  # noqa: BLE001
                     notes.append(f"{view['name']}: the lip borders were not read ({e})")
+        if (NOSTRIL if nostrils is None else nostrils) and k != "profile":      # the nose's own read: the nostril openings
+            extras.append(_nostril_obs)
         if shade:
             extras.append(_shade_obs)
         if DENSE if dense is None else dense:      # our own dense landmarks (absolute; the picture is read ONCE per call)
@@ -2513,13 +2630,13 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
             expr_sd: float | None = None, kinds: list | None = None, readers: list | None = None, jaw_lm=None,
             jaw: bool = False, chin: dict | None = None, dense: bool | None = None, mp: bool | None = None,
-            hair_edge: bool | None = None) -> dict:
+            hair_edge: bool | None = None, nostrils: bool | None = None) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
     head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade, anchors=anchors, parse=parse,
                                          normals=normals, kinds=kinds, readers=readers, jaw_lm=jaw_lm, expr=bool(expr), jaw=jaw, chin=chin, dense=dense,
-                                         mp=mp, hair_edge=hair_edge)
+                                         mp=mp, hair_edge=hair_edge, nostrils=nostrils)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     tie = None
@@ -2581,7 +2698,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
         r["picture"] = r["current"] + r["gap"]
         r["err"] = float(np.hypot(r["err"], MODEL_ERR[r["measure"]]))
         r["read"] = float(max(0.0, 1 - (r["err"] / sd[r["measure"]]) ** 2))
-    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "hairedge", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal", "dense", "mp")}
+    n = {t: sum(ob["type"] == t for ob in res["obs"]) for t in ("outline", "hairedge", "iris", "landmark", "limbus", "lid", "lip", "jaw", "cloth", "ramp", "shade", "normal", "dense", "mp", "nostril")}
     # OUTLINE READS PER VIEW (readmix): the total hid a front picture with none (loose hair: the figure's edge is hair)
     n_view = {v["kind"]: {t: sum(ob["type"] == t and ob["view"] == v["kind"] for ob in res["obs"]) for t in ("outline", "hairedge", "mp", "dense", "lip", "lid")} for v in views}
     notes = list(notes) + ["OUTLINE READS per view: " + "; ".join(
@@ -2594,7 +2711,7 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
                          + (": the face's WIDTHS in this view (cheekbone, jaw, gonial) are " + ("the dense landmarks' and " if nv["dense"] else "") + "GNM's average for the rest of the head, not a measurement"
                             if v["kind"] != "profile" else ": the profile line is not read"))
     from . import mpread
-    notes = list(notes) + mpread.nose_lines(res["obs"])
+    notes = list(notes) + mpread.nose_lines(res["obs"]) + nostril_lines(res["obs"], views)
     for r in res["orbit"]:        # the orbit rows' error: never under the block-in path's validated floor
         fl = np.sqrt(sum((w * MODEL_ERR[k]) ** 2 for k, w in gnm_mm.ORBIT_SEEN[r["row"]].items()))
         r["err"] = float(np.hypot(r["err"], fl))
@@ -2645,6 +2762,26 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             "n_view": n_view}
 
 
+
+
+def nostril_lines(obs: list, views: list) -> list:
+    """The nose's own reads, said per view: each nostril opening's ends against the model's rim (mm, + = the picture's
+    opening reaches further out / further toward the midline than the model's), or that the picture shows none."""
+    out = []
+    for v in views:
+        if v["kind"] == "profile":
+            continue
+        oo = [ob for ob in obs if ob["type"] == "nostril" and ob["view"] == v["kind"]]
+        if oo:
+            lat = [ob["o"] for ob in oo if ob["name"].endswith("lateral")]
+            out.append(f"NOSE READ in {v.get('name', v['kind'])}: the nostril openings ({len(oo)} reads): "
+                       + ", ".join(f"{ob['name'][8:].replace('_', ' ')} {ob['o']:+.1f} mm" for ob in oo)
+                       + (f"; the openings' outer width picture - model {sum(lat):+.1f} mm" if len(lat) == 2 else "")
+                       + " (read at the call's last round: near 0 = the model's nostrils lie on the picture's)")
+        elif (NOSTRIL and abs(view_yaw(v["cam"])) <= NOSTRIL_TURN):
+            out.append(f"NOSE: no nostril opening found in {v.get('name', v['kind'])} (hidden under the tip, filled by a flat light, or a "
+                       "moustache): the nose's WIDTH is not read in this view")
+    return out
 
 
 DISAGREE = 2.0        # a read group left at more than this many of its own sigmas (rms) after the solve is named

@@ -13,6 +13,8 @@ if "mp" in kw:
     mpread.ENABLED = kw["mp"] == "1"
 if "he" in kw:
     fr.HAIR_EDGE = kw["he"] == "1"
+if "nos" in kw:
+    fr.NOSTRIL = kw["nos"] == "1"
 if "lens" in kw:
     fr.PHOTO_CAM_DIST_LENS = float(kw["lens"])
 if "mix" in kw:
@@ -21,6 +23,13 @@ if "neff" in kw:
     mpread.NEFF = float(kw["neff"])
 if "expr" in kw:
     bi.SOLVE_EXPRESSION = {"0": False, "view": "view", "gate": "gate"}[kw["expr"]]
+if kw.get("camfreeze") == "1":      # the cameras FROZEN where the chain starts them (start=true: at the truth)
+    fr.PHOTO_CAM_SD7 = {k: tuple(1e-3 for _ in v) for k, v in fr.PHOTO_CAM_SD7.items()}
+    fr.PHOTO_CAM_DIST_DENSE = 1e-3
+    bi.CAM_FIRST = 0
+if "distfreeze" in kw:               # only the DISTANCE held (%), the rest free
+    fr.PHOTO_CAM_SD7 = {k: tuple(v[:6]) + (float(kw["distfreeze"]),) for k, v in fr.PHOTO_CAM_SD7.items()}
+    fr.PHOTO_CAM_DIST_DENSE = float(kw["distfreeze"])
 print("readmix switches:", {"mp": mpread.ENABLED, "hair_edge": fr.HAIR_EDGE, "lens": fr.PHOTO_CAM_DIST_LENS, "expr": bi.SOLVE_EXPRESSION, "mix": sorted(mpread.MIX)}, flush=True)
 sys.argv = sys.argv[i + 1:]
 runpy.run_path(sys.argv[0], run_name="__main__")

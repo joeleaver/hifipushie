@@ -101,23 +101,51 @@ eye catches what the points miss; the target table catches what your eye misses.
      EYES: iris centres (front), the limbus in the turned views (eye depth), the LID MARGINS at seven columns and
      both canthi in the eye's own frame (needs a 30 px iris: a small or painted face gives none, and says so).
      LIPS: the front picture's traced vermilion borders.
-   - CAMERAS. The freedom (shift, scale, roll, yaw, pitch) is on each camera's WHOLE move since the block-in
-     started, whatever the number of calls (it used to be per call: four trusted calls walked as far as one free
-     one and over-rotated Tess's 3/4 and profile 3.5-4 deg). So use ONE setting on every call: `"trust"` when the
-     references' cameras are good (measured, or fitted on an earlier accepted head of the same person and the start
-     head is close to it), `"free"` for cameras fitted on the class mean. `"refit"`, first call only: the cameras
-     were fitted on ANOTHER head (block_in_start(cameras="keep") from an old model onto a class mean: Garrett's 3/4
-     outline was 9 mm off): they are laid on this head first (head held), and that is the new start. That is the
-     usual case right after block_in_start, so START WITH "refit", then "free": Tess from her class mean, four calls:
-     refit + free = table 25 / 26, nothing down-weighted; all "trust" = 16 / 26 with the 3/4 and profile cameras
-     stuck at their limits, the face 5 % long and the reads down-weighted x1.7-2.2; all "free" = 17 / 26. Check a solved
-     head: iris span and face length, model / picture, ~1.00 in the front and the 3/4 (spikes/reruns/eyespan.py).
-   - NOTHING IS FORCED, by construction: if the most likely head has a component past 3 sd, every read is
-     down-weighted until none has, and the reply says INCONSISTENT PICTURES x<factor>; a group of reads the best head
-     leaves scattered (a 20 px mouth's lip borders) gets its own scatter as its sigma and is named. Two paintings of
-     one person are two drawings: expect a factor of 1.5-2.5 there and a compromise head; photos of one sitting
-     give 1.0. A weak solve (under ~120 outline reads) is carried by the anchors and the prior: where nothing was
-     read you get the class mean's face.
+   - CAMERAS (2026-10-13). Each camera is under a PRIOR, never a clip: seven freedoms a view (shift x / y, scale,
+     roll, yaw, pitch, DISTANCE), the prior on its WHOLE move since the block-in started, whatever the number of calls;
+     only one round's step is limited. Every call begins with a cameras-first round (the head held, distance held).
+     `"free"` (the default; cameras fitted by block_in_start): front +-3 mm, 4 % scale, 3 deg yaw, 6 deg pitch, 15 %
+     distance (3/4: 8 deg yaw, 12 %; profile: 10 deg yaw, 8 %): wide on purpose, because block_in_start's fit is off by
+     ~4.6 deg of front pitch and has no idea of the distance, and 5 deg of front pitch is 7 mm of jaw width. `"trust"`:
+     a third of those widths (measured cameras, or carried from an accepted head). `"refit"`, first call only: cameras
+     fitted on ANOTHER head are laid on this one first and that is the new start (the solve switches to it by itself
+     when block_in_start carried or refitted them, and says so). Use one setting on every call. The reply has a CAMERA
+     line per view (turn / pitch / distance at the call's start -> end, the whole move against its prior) and FAR FROM
+     ITS START when a camera stands past 1.5 sd of it: check that picture's stated angle.
+     DISTANCE is the weakest thing a picture reads. A view with a KNOWN LENS (`lens_mm` on the view = the 35 mm
+     equivalent on the frame's DIAGONAL, f / diagonal x 43.27; or the file's EXIF FocalLengthIn35mmFilm; the picture
+     must not be cropped) keeps its distance to +-7 % of the start's, with the dense landmarks too (the reply says
+     LENS: ...). Without a lens the start stands at a 70 mm portrait and the distance is free as above (40 % with the
+     dense landmarks): give the lens whenever it is known, a phone's 24 mm most of all.
+   - NOTHING IS FORCED, as a BOUND: no identity component may end past 3 sd. Components that would are HELD AT the
+     bound and the rest solved again; no read is down-weighted for it and nothing is carried between calls (the old
+     "INCONSISTENT PICTURES x<factor>" inflation is gone: one component at 3.11 sd used to cost every read x15). The
+     reply says AT THE BOUND: <n> component(s) and DISAGREE: the read groups (type, picture) the solved head and cameras
+     still miss by more than 2 of their own sigmas, with their mm: that read, that picture's camera, or a shape GNM does
+     not reach. A group of reads the best head leaves scattered (a 20 px mouth's lip borders) still gets its own scatter
+     as its sigma and is named (NOISIER than assumed).
+   - WHICH DETECTOR READS WHAT (2026-10-13; measured on photographs of scanned heads through the rig's cameras:
+     docs/notes/readmix.md). `detector="mesh"` (the default): MediaPipe's face mesh as ABSOLUTE reads through a learned
+     correspondence to GNM's surface, only the features it is good at: eye contours (0.9 mm front, 1.0 to ~35 deg),
+     mouth corners (1.1), the lip seam (1.4) and the vermilion border (1.5), the nasal bridge; its points err together
+     (a view's reads count as 16). NOT its nose wings / nostrils / tip (it draws a more average nose: alar width +2.4
+     and +5.5 mm on the two scanned heads), not its face oval (a generic jaw: 4 mm), not its brows. Where the mesh is
+     read, the same detector's differential inner anchors are left out (the same evidence); `detector="anchors"` =
+     the old 68 differential anchors only. `dense="on"` adds our own dense landmark network (a pilot trained on our
+     renders): on real faces it is a COARSE read (1.4-2.8 mm after its own placement, lids 2.1, chin 2.3: its sigmas
+     say so now); it helps pose, large turns and a head with few outlines, it does not read fine features.
+   - THE NOSE'S WIDTH has one read of its own: the NOSTRIL OPENINGS in a front or shallow 3/4 picture (each dark
+     opening's lateral and medial end against the model's nostril rim). The reply says NOSE READ ... or that the picture
+     shows no opening (a tip that hides them, flat light, a moustache): then the width is NOT read (on two scanned heads
+     the solve left the nose 2-5 mm too wide with true cameras: it stays near the class average) and belongs under
+     MOVED WITH NO READ / unread: check it against the front picture by eye.
+   - HAIR OVER THE FACE'S EDGE (`hair_edge="on"`, the default). An outline is read only where the figure's edge is bare
+     skin. With loose hair down both sides a front picture gives NO outline (the reply lists OUTLINE READS per view and
+     warns NO OUTLINE for a view under 20): the face's widths there are GNM's average, not a measurement. Where the
+     parser shows skin ending against HAIR, that boundary is read ONE-SIDED: the face reaches at least that far, so it
+     pulls only where it lies outside the model.
+   - A weak solve (under ~120 outline reads in all, or a view with none) is carried by the anchors and the prior:
+     where nothing was read you get the class mean's face.
    - Tess from the class mean (three studio photos): |c| 5.4 -> ~11, largest component under 2.7 sd, eyes 3/3, lip
      borders ~0.3 mm with no separate eye or lips step: about ten hand rounds' worth in minutes.
    - It does NOT see the surface inside the silhouette (cheek volume), the lid's fold, the nose's planes: hand steps
@@ -505,7 +533,7 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `block_in_solve`
-ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more: its outline reads the chin; kept when it has none) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so (the factor is carried across calls). The reply lists what MOVED WITH NO READ, what moved far on a weak read and what is unread (solve_report's direct read: treat those as inferred), warns when a view's stated kind disagrees with its fitted camera, and marks a DAMPED step (it turned back on the last call's). hold: "none" (default) | "auto" (every measure no read looks at stays at the start head's value). expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views (unread, not pushed: section 3b). Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, chin_points, parse, hold, expression, size, neck. See section 3b.
+ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines + the one-sided skin | hair edge, irises, limbus, lid margins, lip borders, MediaPipe's mesh for eye contours / mouth corners / lip seam and border, the nostril openings; GNM's prior on the whole identity; cameras under a prior) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only): a PRIOR on each camera's whole move since the start (shift, scale, roll, yaw, pitch, distance), never a clip; a view with a known lens (lens_mm / EXIF) keeps its distance to +-7 %. detector: "mesh" (default: MediaPipe's mesh as absolute reads of the features it is good at) | "anchors" (its 68 landmarks as differential anchors, as before). dense: "off" (default) | "on" (our dense landmark network: a coarse read on real faces). hair_edge: "on" (default) | "off". anchors: "differential" | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few) | "on" | "off". Nothing is forced: a component that would pass 3 sd is held at the bound (AT THE BOUND in the reply), no read is down-weighted for it. The reply lists OUTLINE READS per view (NO OUTLINE warns), the CAMERA lines, DISAGREE (read groups left past 2 sigma), NOSE READ, what MOVED WITH NO READ, what moved far on a weak read and what is unread (treat those as inferred), a view whose stated kind disagrees with its fitted camera, and a DAMPED step. hold: "none" (default) | "auto". expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views. Parameters: name, out, share, seen, save, cameras, anchors, chin_points, parse, hold, expression, size, neck, dense, detector, hair_edge. See section 3b.
 SIZE (2026-10-12): the head's OVERALL SIZE is not something a picture reads (a bigger head further away is the same
 image; every camera's scale and distance are free), so the solve HOLDS it at the block-in's start head's (the class
 mean on that body) and leaves shape free: `size="held"`, the default; the reply's notes say so. Left free
