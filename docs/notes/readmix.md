@@ -475,3 +475,8 @@ lies on the cheeks). (2) on these heads the solved NOSE BASE is within +-1.4 mm 
 of the two calibration heads does not generalise, and the 1.65 mm correction overshoots (0.87 -> 1.07 mean |error|): OFF.
 (3) the LIPS come out 3-8 mm too TALL against the identity fit and h102's mouth +5 mm wide: her photo's mouth scores
 mouthSmile 0.48 and her scan fit carries a lower-face expression: the expression item's real case.
+(4) The tall lips are NOT the photos' expressions: the scan fits' own expression changes the lip heights by under 1.5 mm
+(and the other way on h102: -1.0 / -1.5). Main's reads give the same +3-8 mm: a lip-border read bias (the traced border /
+MediaPipe's border read the COLOUR edge, GNM's border vertices are the form: groundtruth found the colour edge 1.5 mm off
+on another head) as large as the lips themselves on dark, full lips. NEXT for the lips: the border as paint, and the
+lip reads' sigma / bias measured against these scans before they move identity.
