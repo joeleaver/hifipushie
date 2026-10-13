@@ -1987,3 +1987,8 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   At 240 with 0.8-2.5 mm curls (W10) they were kinky wiggles. th_W11 = W09 + this: BEST. The silhouette in front and
   profile now has her fine standing hair. Part: hair across it, still a dip; far-bank tangle in three-quarter still the
   weakest spot. RESTART: `./r8.sh W11 v0,v1,v2,backl 1536`; style / look spikes/tesshair7/styles/W11_*.json.
+  (3) far-bank tangle: part rows fine 0.85 at normal density (W12): reads as fine light fluff like hers. (4) tail from
+  behind: tail strands fine 0.35 + 0.3 t, in_step 0.55 - 0.3 t, and Tess's tail wave 0.6 -> 0.35 (W13): strands, not
+  wide wavy ribbons. th_W13 = BEST (styles/W13_*.json; `./r8.sh W13 v0,v1,v2,backl 1536`). Colour variation W13 |
+  hers: L_sd 6.7 | 7.5, strand 3.25 | 4.3, ribbon 3.2 | 2.95, light ribbons 9 % | 9 %. Still wrong: the part dips
+  (hair crosses it now); hers' tail is narrower and more pointed; hue a few deg red.

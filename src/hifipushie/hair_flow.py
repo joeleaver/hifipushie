@@ -495,9 +495,9 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             # roots they were black tangled loops at the part's start in every three-quarter view (th_T66 .. th_W06;
             # isolated: not wisps, halo, wave, clumps, fly-aways, the arc or crossing: dropping these rows only moved
             # the loops to the next locks). Hers are fine light hairs there: drawn fine (no dark root), denser
-            st["fine"] = 0.55
+            st["fine"] = 0.85  # (0.55 and density x 1.3: lighter but still a dark tangle end-on, th_W09 / W11)
             st["bank"] = 1.0 if dx_ >= 0 else -1.0  # (which bank: hair_flow.halo crosses the part from it)
-            st["density"] = round(float(st.get("density", 1.0)) * 1.3, 3)
+            st["density"] = round(float(st.get("density", 1.0)) * 1.0, 3)
         if vo:
             # where the sun reaches (the look's highlights gather there): the top layers, most round the face and
             # over the top; -0.5 .. 0.5
@@ -1410,7 +1410,8 @@ def style(tied: dict) -> dict:
                           # the bundle, strays up to 16 cm; as pointed wisps that flicked out it was stiff straw)
                           "ragged": round(0.25 + 0.6 * to_, 3), "strays": int(round((14 + 90 * to_) * (0.5 + fu))),
                           "stray_length": [0.04, round(0.08 + 0.1 * to_, 3)], "soft": round(float(np.clip(0.1 + 1.27 * to_, 0, 1)), 3),
-                          "in_step": round(0.7 - 0.3 * to_, 3),
+                          # (- 0.15: in step, a tail's locks read as wide ribbons from behind, th_W06 .. W11)
+                          "in_step": round(0.55 - 0.3 * to_, 3),
                           "strands": {"wave": round(0.006 * wave, 4), "wavelength": 0.16, "random": 1.0,
                                       # (tousled ends are POINTED wisps: strands gather toward their tips (free.
                                       # clump_shape) and do not open again; open, each lock ended as a flat 2 cm
@@ -1419,7 +1420,7 @@ def style(tied: dict) -> dict:
                                       # the end ragged by lock lengths and strands ending one by one; and drawn
                                       # FINE (part transparent) at twice the count: air between hairs, not locks)
                                       "clump": round((0.3 - 0.15 * fu) * (1 - 0.6 * to_), 3), "flat": 2.5, "clump_size": 0.006,
-                                      "tips": 0.9, "tip_spread": round(0.6 + 0.3 * to_, 3), "fine": round(0.2 + 0.3 * to_, 3),
+                                      "tips": 0.9, "tip_spread": round(0.6 + 0.3 * to_, 3), "fine": round(0.35 + 0.3 * to_, 3),
                                       # (more strands than its share: thin, a full tail is strings with the backdrop
                                       # between them)
                                       "density": round(1.4 + 1.2 * to_, 2)}})
