@@ -331,7 +331,7 @@ def _next_name(name: str) -> str:
 
 
 def start(name: str, refs, sex=None, age: float | None = None, body: dict | None = None, gnm_base: float | None = None,
-          ethnicity: str | None = None, cameras: str = "keep", replace: bool = False, expression: bool = False,
+          ethnicity: str | dict | None = None, cameras: str = "keep", replace: bool = False, expression: bool = False,
           attach: str = "native", carry: bool = False) -> dict:
     """The block-in's first model: the person's body (from the refs model, `body` merged over it), the head's local
     layers off, identity = GNM's sampler class mean for the sex (and ethnicity, if named); the references' fitted
@@ -392,13 +392,8 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         hd.pop(k, None)
     hd["lip_close"] = True
     D = data()
-    if ethnicity:
-        en = [str(x) for x in D["eth_names"]]
-        if ethnicity not in en:
-            raise ValueError(f"ethnicity: one of {en} (GNM's sampler classes) or omit it")
-        c = np.asarray(D["eth_means"][int(male), en.index(ethnicity)], float)
-    else:
-        c = np.asarray(D["m_m"] if male else D["m_f"], float)
+    blend = class_blend(ethnicity, male)
+    c = blend["c"]
     set_identity(sp, c)
     dropped = []
     if attach == "native":
@@ -478,15 +473,43 @@ def start(name: str, refs, sex=None, age: float | None = None, body: dict | None
         left.append(f"paint layers ({len(sp['paint'])})")
     if carry and sp.get("strokes"):
         left.append(f"strokes ({len(sp['strokes'])}: carry=True)")
-    _save(name, sp, f"block_in_start: {'male' if male else 'female'} class mean{' (' + ethnicity + ')' if ethnicity else ''}, "
+    rj.setdefault("blockin", {})["fallback"] = {k_: v_ for k_, v_ in blend.items() if k_ != "c"}
+    _save(name, sp, f"block_in_start: {'male' if male else 'female'} class mean ({blend['say']}), "
           f"age {a:g}, " + ("GNM native" if attach == "native" else f"gnm_base {hd['gnm_base']:.2f}"), rj)
     entry = {"round": 0, "to": name, "start": {"refs": refs if isinstance(refs, str) else f"{len(views)} views",
              "sex": "male" if male else "female", "age": a, "gnm_base": hd["gnm_base"], "ethnicity": ethnicity,
+             "fallback": {k_: v_ for k_, v_ in blend.items() if k_ != "c"},
              "attach": attach, "dropped": dropped, "left": left, "carry": bool(carry),
              "cameras": cam_note if cam_note != "kept" else "kept"},
              "c_norm": round(float(np.linalg.norm(c)), 3), "time": time.strftime("%Y-%m-%d %H:%M:%S")}
     _log_path(rj, name).write_text(json.dumps([entry], indent=1))
     return entry
+
+
+def class_blend(ethnicity, male: bool) -> dict:
+    """THE FALLBACK CENTRE (readmix, 2026-10-13): the identity the block-in starts from and the solve's prior is centred on.
+    None = the sex's POOLED class mean (GNM's sampler, its four classes together); a class name = that class's mean; a
+    dict {class: weight} = a BLEND of the class means (weights >= 0, normalised to 1: never outside the simplex). A
+    SHAPE parameter of the start, not a label of the person. -> {"c", "weights" | None, "source": "GIVEN" | "DEFAULT", "say"}.
+    Measured (docs/notes/readmix.md "## Fallback blend"): the classes' means differ by 1-3 mm in nose / mouth width;
+    the people tested differ from the nearest class mean by 3-8 mm: the fallback is a small part of a wide nose."""
+    D = data()
+    en = [str(x) for x in D["eth_names"]]
+    if not ethnicity:
+        return {"c": np.asarray(D["m_m"] if male else D["m_f"], float), "weights": None, "source": "DEFAULT",
+                "say": "the pooled mean of GNM's classes (none given)"}
+    w = {ethnicity: 1.0} if isinstance(ethnicity, str) else {str(k_): float(v_) for k_, v_ in dict(ethnicity).items()}
+    bad = [k_ for k_ in w if k_ not in en]
+    if bad:
+        raise ValueError(f"ethnicity: one of {en} (GNM's sampler classes), or a blend {{class: weight}} of them; not {bad}")
+    if any(v_ < 0 for v_ in w.values()) or sum(w.values()) <= 0:
+        raise ValueError("ethnicity blend: weights must be >= 0 and not all 0 (a blend inside the classes, never beyond them)")
+    tot = sum(w.values())
+    w = {k_: v_ / tot for k_, v_ in w.items() if v_ > 0}
+    E = np.asarray(D["eth_means"][int(male)], float)
+    c = sum(v_ * E[en.index(k_)] for k_, v_ in w.items())
+    return {"c": np.asarray(c, float), "weights": {k_: round(v_, 3) for k_, v_ in w.items()}, "source": "GIVEN",
+            "say": "GIVEN: " + " + ".join(f"{v_:.2f} {k_}" for k_, v_ in w.items())}
 
 
 def with_anchor_points(views: list) -> list:
@@ -1126,7 +1149,10 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     rj.setdefault("blockin", {})["cam_done"] = np.round(np.asarray(c["cam_done"], float), 4).tolist()   # the cameras' whole
     rj["blockin"].pop("cam_carried", None)              # (they have been laid on this head now)
     rj["blockin"]["placement"] = list(_placement(sp_src["base"]))
-    c["notes"] = cam_notes + lens_notes + list(c["notes"])
+    fb = (b0.get("fallback") or {})
+    fb_note = ["FALLBACK: what no picture reads stays at " + (fb.get("say") or "the pooled mean of GNM's classes (none given)")
+               + ("" if fb.get("source") == "GIVEN" else ": INFERRED (block_in_start(ethnicity=<class> | {class: weight}) sets it; a shape parameter, not a label)")]
+    c["notes"] = cam_notes + lens_notes + fb_note + list(c["notes"])
     rj["blockin"].update(relax=round(float(c["relax"]), 4), kinds=list(c["kinds"]), readers=list(c["readers"]),
                          last_dc=np.round(dc, 5).tolist(), damped=damped)
     if c.get("held"):

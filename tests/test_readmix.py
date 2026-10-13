@@ -244,3 +244,19 @@ def test_one_lens_convention_and_a_crop_frame():
     assert abs(got - ff) < 1e-6 and got > 3 * hm.lens_prior({"size": [w, h], "lens_mm": 85.0})[0]
     assert abs(fr.lens_mm({"f": ff, "size": [w, h]}, frame=[6000, 4000]) - 85.0) < 1e-6
     assert 1.0 < fr.LM_NOSE_WIDE < 2.5
+
+
+def test_fallback_blend_stays_on_the_simplex():
+    from hifipushie import blockin as bi
+    D = bi.data()
+    en = [str(x) for x in D["eth_names"]]
+    p = bi.class_blend(None, True)
+    assert p["source"] == "DEFAULT" and np.allclose(p["c"], D["m_m"])
+    one = bi.class_blend(en[0], False)
+    assert one["source"] == "GIVEN" and np.allclose(one["c"], D["eth_means"][0][0])
+    half = bi.class_blend({en[0]: 2.0, en[1]: 2.0}, True)                     # normalised
+    assert half["weights"] == {en[0]: 0.5, en[1]: 0.5}
+    assert np.allclose(half["c"], 0.5 * (np.asarray(D["eth_means"][1][0]) + np.asarray(D["eth_means"][1][1])))
+    for bad in ({en[0]: -0.5, en[1]: 1.5}, {"martian": 1.0}, {en[0]: 0.0}):
+        with pytest.raises(ValueError):
+            bi.class_blend(bad, True)
