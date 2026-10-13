@@ -34,7 +34,7 @@ def idmask(name, frames):
     the model's CURRENT hair on the shared stage. (A stage's own .blend keeps the hair it was built with: hscore's
     ID pass through mode "render" measures THAT, stale after a regrow.)"""
     spec = store.load(name)
-    sn = stage.ensure(os.environ.get("STAGE_MODEL", "th_T04"))
+    sn = stage.ensure(os.environ.get("STAGE_MODEL", "th_T66"))
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     st["hair"] = spec["hair"]
     out = {}
