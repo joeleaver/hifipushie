@@ -451,3 +451,27 @@ photo | clay | overlay | raking; before = sc_TN06 on main, after = rm_TN08 on an
 reads without the anchors, no nose-base width): NOSE: no visible change; both clay noses lie on hers, a little boxier at
 the wings with larger nostril openings than hers. MOUTH: no visible change; the lips lie on hers in both. rm_TF08 (the
 final defaults) is solved; its tiles were NOT made or looked at.
+
+## Held-out HSRD subjects (2026-10-14; hscore.py; vertex measures after errmap's similarity; truth = the pose's Part 1
+## IDENTITY fit: the photo's own resting expression is NOT in it: lip heights / mouth width carry it where a subject's scan
+## fit has a lower-face expression; 4 calls from the told-lens pooled start; COMPUTED)
+| subject | chain | face / low rms | nose base | alar | tip radius h | nose proj. | mouth width | upper / lower vermilion |
+|---|---|---|---|---|---|---|---|---|
+| h23 (m) | start | 2.79 / 4.05 | -1.0 | +1.8 | -1.8 | -3.9 | -0.9 | +2.6 / +2.5 |
+| h23 | before (main's reads) | 2.56 / 3.68 | -0.9 | +0.1 | -1.6 | -1.6 | +0.0 | +4.0 / +4.2 |
+| h23 | readmix, nose correction 0 | 2.19 / 2.74 | +0.6 | +1.7 | -1.7 | -1.6 | +0.8 | +3.7 / +4.0 |
+| h23 | readmix, nose correction 1.65 | 2.20 / 2.80 | -0.9 | +0.8 | -1.5 | -1.8 | +0.1 | +3.5 / +4.1 |
+| h27 (f) | start | 5.13 / 3.72 | +5.5 | +3.7 | +0.6 | -2.8 | +2.4 | +2.5 / +1.3 |
+| h27 | before | 4.57 / 3.55 | +1.3 | +1.1 | -0.3 | -1.2 | +1.8 | +3.1 / +2.7 |
+| h27 | readmix, 0 | 4.80 / 3.49 | +1.4 | +1.1 | -0.5 | -1.6 | +2.0 | +3.2 / +2.8 |
+| h27 | readmix, 1.65 | 4.70 / 3.64 | -0.8 | -0.2 | -0.7 | -1.4 | +1.4 | +3.0 / +2.6 |
+| h102 (f) | start | 3.67 / 4.79 | -6.1 | -3.8 | -3.2 | +0.1 | -8.8 | -1.5 / -3.0 |
+| h102 | before | 3.10 / 4.72 | +0.1 | +2.0 | -1.3 | -1.0 | +7.0 | +6.7 / +8.6 |
+| h102 | readmix, 0 | 2.50 / 3.61 | +0.6 | +1.7 | -0.6 | -1.6 | +5.4 | +5.9 / +8.2 |
+| h102 | readmix, 1.65 | 2.62 / 3.95 | -1.5 | -0.4 | -0.9 | -2.0 | +4.5 | +6.3 / +8.2 |
+READ: (1) the readmix reads (mesh, hair edge, lens prior) improve the face / lower face on two of three held-out heads
+(h23 2.56 / 3.68 -> 2.19 / 2.74; h102 3.10 / 4.72 -> 2.50 / 3.61; h27 a little worse in face rms, 4.57 -> 4.80: her hair
+lies on the cheeks). (2) on these heads the solved NOSE BASE is within +-1.4 mm without any correction: the wide nose
+of the two calibration heads does not generalise, and the 1.65 mm correction overshoots (0.87 -> 1.07 mean |error|): OFF.
+(3) the LIPS come out 3-8 mm too TALL against the identity fit and h102's mouth +5 mm wide: her photo's mouth scores
+mouthSmile 0.48 and her scan fit carries a lower-face expression: the expression item's real case.
