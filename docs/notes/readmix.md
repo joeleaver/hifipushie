@@ -10,7 +10,7 @@ hsrd100 are links into the groundtruth agent's data, read-only; out/ is ours), o
 Models rm_* (main's workspace). The groundtruth agent's scripts (spikes/groundtruth on branch groundtruth) are run from
 its worktree through PYTHONPATH with THIS worktree's src (rchain.py sets readmix's switches first).
 
-STATE 2026-10-14 (end of the resumed round; branch readmix): ALAR read ON (held-out alar width error 1.5 -> 0.5 mm); the
+STATE 2026-10-14 late: TALL LIPS done (LIP_PHOTO_BIAS on: "## TALL LIPS"); expression pass waits. Earlier: (end of the resumed round; branch readmix): ALAR read ON (held-out alar width error 1.5 -> 0.5 mm); the
 1.65 mm nose-base correction OFF (overshot on held-out); fallback blend GIVEN-only (block_in_start ethnicity= class |
 {class: weight}); expression="lower" built, OFF (not safe: one held-out head broke). Tables: "## Held-out HSRD subjects",
 "## The alar-edge read and the fallback classes", "## Per-picture expression". NEXT: lip-border read bias (+3-8 mm lip
@@ -533,3 +533,49 @@ went WRONG: nose base -0.8 -> -6.4, mouth +2.2 -> -5.3, face 2.17 -> 3.17: the f
 place. Not safe: OFF. What it needs, as solvereads and denselm found: evidence that tells expression from identity (a
 second picture of the same face with another expression, or the picture's own expression read independently: MediaPipe's
 smile score does not see a slight smile (0.024 for happy x0.3) and its scale on clay is nonlinear (smilecal.py)).
+
+## TALL LIPS (2026-10-14; the coordinator: "upper lip about twice the photo's height" on a family head)
+WHICH READS SET LIP HEIGHT: the traced vermilion borders (type "lip": blockin_lips.photo_evidence, the COLOUR edge, sigma
+0.3 mm: the strongest), MediaPipe's border / seam points (type "mp"), the differential anchors lm 48-67 (type "landmark");
+dense is off by default. MEASURED AT THE TRUE HEAD (spikes/readmix/lipbias.py; the scan-fitted identity through the rig's
+cameras, front view; seven TRAINING subjects; picture minus model, vertical mm, + = lower; mean (sd over subjects)):
+| read | upper centre | upper bow | upper corners | seam | lower centre | lower bow | lower corners |
+|---|---|---|---|---|---|---|---|
+| traced border (lip) | -2.39 (2.36) | -1.26 (1.75) | -0.69 (0.73) | - | +3.86 (2.15) | +2.74 (1.92) | +0.76 (0.92) |
+| MediaPipe mesh (mp) | -1.37 (1.32) | -0.98 (1.30) | +0.12 (0.93) | +1.1 (0.6) | +3.47 (1.92) | +3.27 (1.47) | +1.82 (1.02) |
+| anchors (landmark) | -2.27 (1.67) | -2.04 (1.49) | -0.78 (0.92) | +0.3 (0.5) | +2.75 (2.17) | +2.44 (1.96) | +1.02 (1.34) |
+Every read sees the photographed lips TALLER than the scan-fitted head's border rows, most at the middle: the colour edge
+of a real lip lies above (upper) / below (lower) GNM's border vertex row, and our render's lips look thinner to the
+detectors than photographed ones. WHICH TRUTH: the scan's FORM (the fit's border rows) for what the solve fits; the
+picture's colour edge for the PAINT (the vermilion as a texture line: for projskin). So each read's mean offset per border
+position / point is taken out of a PHOTO's reads (face_ruler.LIP_PHOTO_BIAS, lip_photo_bias.json; not for views flagged
+"render"). At the truth on the three HELD-OUT subjects the corrected reads are within -1.4..+0 mm on average (per subject
+sd 1-2.7: per-person scatter remains).
+HELD-OUT, solved (4 calls, told-lens pooled start, alar read on; ONE chain per cell). Vertex measures against the scan's
+identity fit (a 1-4 mm floor on rms: groundtruth's two-scan finding):
+| subject | chain | face / low rms | upper / lower vermilion height | mouth width | nose base |
+|---|---|---|---|---|---|
+| h23 | main's reads | 2.56 / 3.68 | +4.0 / +4.2 | +0.0 | -0.9 |
+| h23 | readmix | 2.25 / 2.93 | +3.6 / +4.0 | +0.2 | -0.9 |
+| h23 | + lip correction | 2.05 / 2.26 | +1.6 / +1.2 | +0.7 | +0.8 |
+| h27 | main's reads | 4.57 / 3.55 | +3.1 / +2.7 | +1.8 | +1.3 |
+| h27 | readmix | 4.74 / 3.11 | +3.1 / +2.7 | +2.2 | +0.9 |
+| h27 | + lip correction | 4.66 / 3.07 | +0.5 / -0.8 | +1.9 | +0.8 |
+| h102 | main's reads | 3.10 / 4.72 | +6.7 / +8.6 | +7.0 | +0.1 |
+| h102 | readmix | 2.17 / 3.03 | +5.3 / +7.6 | +2.2 | -0.8 |
+| h102 | + lip correction | 1.81 / 2.49 | +2.8 / +3.9 | +1.0 | +0.3 |
+Against the SCAN'S SURFACE (spikes/readmix/hsurf.py: the solved identity with the scan's own expression, laid on the fit by
+a similarity; mean |d| (mean signed, + = outside the scan), mm):
+| subject | chain | lips | nose | chin | cheeks | face |
+|---|---|---|---|---|---|---|
+| h23 | main / readmix / + lip corr. | 1.07 / 1.06 / 1.03 | 1.05 / 0.92 / 1.05 | 1.19 / 1.03 / 1.14 | 1.18 / 1.19 / 0.95 | 1.20 / 1.17 / 1.16 |
+| h27 | | 0.99 / 0.69 / 0.80 | 1.26 / 1.18 / 1.15 | 1.15 / 1.38 / 1.32 | 2.09 / 1.95 / 1.82 | 1.74 / 1.71 / 1.63 |
+| h102 | | 2.73 / 1.60 / 1.76 | 1.06 / 0.93 / 0.89 | 3.16 / 1.29 / 2.00 | 1.57 / 1.13 / 1.01 | 1.54 / 1.08 / 1.05 |
+VERDICT: the lip HEIGHTS come down by 2-4 mm on all three (mean |error| of the six heights 4.4 -> 1.8 mm) and the vertex
+face / lower face improve on all three; on the scan SURFACE the lips are within noise (1.06 / 0.69 / 1.60 -> 1.03 / 0.80
+/ 1.76) and h102's chin is worse (1.29 -> 2.00): the surface does not confirm the vertex gain for the lips. ON by default
+(LIP_PHOTO_BIAS), flagged: single chains, three heads.
+TEST NOTE: test_nativedefault's neck assertion: first relaxed on intermediate code where the prior ended 5.1 mm from ANSUR's
+mean and the free solve 2.4 (a real ordering failure then); on the final code the ordering holds (held / prior / free 0.18 /
+0.18 / 0.48 mm in the test; 0.5 / 3.5 / 11.5 mm on the full tess set against main's 1.3 / 14.6 / 21.7): restored to the
+strict ordering with a 1e-5 tie tolerance. It hides nothing now.
