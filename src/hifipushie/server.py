@@ -1758,6 +1758,8 @@ def measure_human(name: str, since: int | None = None, picture: bool = True):
     sp, b = _human_base(name)
     st = humanfit.state(b)
     text = humanfit.verdict(humanfit.integrity(b, st)) + "\n" + humanfit.table(st["measures"])
+    from . import onemesh
+    text += "\n" + onemesh.attach_report(b)["text"]  # (headbody) head size, heads tall, the neck at the seam ring
     st0 = None
     if since is not None:
         old = json.loads((store.HOME / name / "history" / f"{int(since):04d}.json").read_text())

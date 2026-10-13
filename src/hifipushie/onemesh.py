@@ -34,8 +34,15 @@ CLOSED_SEAL_V = (0.5,)  # its rows drawn toward the seam (base.SEAL_V's): the fi
 VERSION = 15  # bump when the one mesh's built field changes (store's build key, base.surface's key; old paths keep theirs)
 DIMORPHISM = 0.8  # as headfit's: under a seed's individuality MakeHuman's own difference reads as neither sex
 ANCHORS = 48  # skin vertices a loose piece (eye, teeth, tongue) follows
-HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck")  # head keys handled here (the
-# rest are base.gnm_head's)
+HEAD_KEYS = ("toward", "dimorphism", "features", "follow_body", "like", "neck", "attach", "size")  # head keys handled
+# here (the rest are base.gnm_head's)
+# (headbody, 2026-10-12) base.head.attach "native": GNM's head UNTOUCHED, at GNM's own size (metres; x base.head.size),
+# down to the seam ring (the asset's stitch, GNM's neck ring 13); the BODY is fitted to it (stature, neck). See `native`.
+NATIVE_REACH = 0.11  # m over the body's surface from the seam ring: how far the body's neck / shoulders give to meet it
+NATIVE_RELAX = 0.045  # m from the ring: the body's rows evened out along the surface after the move (the bridge)
+NATIVE_RELAX_ITERS = 40
+NATIVE_DROP = ("gnm_base", "gnm_base_rest", "gnm_base_blend", "gnm_base_age", "scale")  # head keys with no meaning there
+_RG = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])  # GNM (Y up, facing +Z) -> world (Z up, facing -Y)
 
 
 def applies(base: dict | None) -> bool:
@@ -149,6 +156,311 @@ def bound(params: dict, toward: float = 1.0) -> dict:
     return out
 
 
+NATIVE_VERSION = 2  # bump when a NATIVE head's build changes (2: seated by the bib, the body laid on it); other one-mesh
+# models keep their build keys
+
+
+def build_version(base: dict | None) -> str:
+    """What store / base.surface key a one-mesh build on."""
+    return f"{VERSION}" + (f"n{NATIVE_VERSION}" if native(base) else "")
+
+
+def native(base: dict | None) -> bool:
+    """base.head.attach == "native": the head is GNM's own evaluation under ONE similarity (its size in metres x
+    base.head.size, a rigid placement on the body's skull pivot), every vertex from the seam ring up; nothing of the
+    body's head, no blend above the ring, no style head sliders. The body gives: its height is set so the figure
+    stands at the stated stature (base.body.height) under THIS head, and its neck / shoulders are moved to meet GNM's
+    ring (`_neck_field`). `attach_report(base)` has the numbers."""
+    return applies(base) and (base.get("head") or {}).get("attach") == "native"
+
+
+def _pivot(params: dict) -> tuple:
+    """Where GNM's HEAD JOINT (joint 1: the skull on the spine) lies on the MakeHuman body made from `params`, and the
+    size of that body's own head over GNM's template: GNM's template fitted (translation + uniform scale) to the head
+    the body carries, above the neck. -> (pivot (3,), k)."""
+    from . import base as basemod
+    g = basemod._gnm_data()
+    r = _reference()
+    a = asset()
+    bd = bound(params, 1.0)
+    m = r["val"] & (a["g_lev"].astype(int) >= r["meta"]["RING"] + 12)  # (the skull and face: not the neck's rings)
+    Xg = g["template_vertex_positions"].astype(float) @ _RG.T
+    c0, c1, k = _similar(Xg[m], bd["B"][m])
+    return c1 + k * (g["template_joint_positions"].astype(float)[1] @ _RG.T - c0), k
+
+
+def _closest(X: np.ndarray, V: np.ndarray, T: np.ndarray, k: int = 12) -> tuple:
+    """Closest points of a triangle mesh (V, T) to points X: (points (n, 3), barycentric (n, 3), triangle (n,))."""
+    from scipy.spatial import cKDTree
+    from .rig_template import _closest_on_triangles
+    X = np.asarray(X, float)
+    k = min(k, len(T))
+    cand = cKDTree(V[T].mean(1)).query(X, k=k)[1].reshape(len(X), k)
+    best, bb, bt = np.full(len(X), np.inf), np.zeros((len(X), 3)), np.zeros(len(X), int)
+    for j in range(k):
+        t = T[cand[:, j]]
+        w, d = _closest_on_triangles(X, V[t[:, 0]], V[t[:, 1]], V[t[:, 2]])
+        take = d < best
+        best[take], bb[take], bt[take] = d[take], w[take], cand[take, j]
+    return (bb[:, :, None] * V[T[bt]]).sum(1), bb, bt
+
+
+def _bib() -> dict:
+    """GNM's BIB: the part of its skin under the seam ring (rings 0 .. RING: the neck's base, the pit of the throat,
+    the clavicle line, the slope of the trapezius), which the one mesh leaves out. {"tri": triangles (GNM vertex
+    ids), "lev": ring per GNM vertex, "ids": its vertices}. It is GNM's own statement of how this head's neck meets
+    shoulders: the head is seated by it and the body's neck base is laid on it (`_seat`, `_neck_follow`)."""
+    if "bib" not in _CACHE:
+        from . import base as basemod
+        g = basemod._gnm_data()
+        lev = asset()["g_lev"].astype(int)[:len(g["template_vertex_positions"])]
+        ring = _reference()["meta"]["RING"]
+        Q = np.asarray(g["quads"])
+        Q = Q[((lev[Q] >= 0) & (lev[Q] <= ring)).all(1)]
+        _CACHE["bib"] = {"tri": np.r_[Q[:, [0, 1, 2]], Q[:, [0, 2, 3]]], "lev": lev, "ids": np.unique(Q)}
+    return _CACHE["bib"]
+
+
+SEAT_RINGS = (0, 9)  # the bib's rings the head is seated by: the shoulder slope, clavicle line and upper back (not the
+# neck's column: a head whose neck is thicker than the body's must not ride up or down for it)
+SEAT_REACH = 0.04    # m: bib points further than this from the body's surface do not count
+
+
+def _seat(params: dict, Vid: np.ndarray, Jid: np.ndarray) -> np.ndarray:
+    """Where GNM's head joint goes on the MakeHuman body of `params`: the head is SEATED BY ITS OWN NECK BASE. Start
+    skull on skull (`_pivot`), then move the head up / down and forward / back until its bib (GNM's own shoulder
+    slope and throat, rings SEAT_RINGS) lies on the body's shoulders: least squares of the bib's distances to the
+    body's surface along the surface's normal. Vid: GNM's evaluation of the identity (world axes, x size); Jid: its
+    head joint. General: no constant of any one character in it."""
+    key = ("seat", json.dumps(params, sort_keys=True, default=float), hash(Vid.tobytes()))
+    if key in _CACHE:
+        return _CACHE[key]
+    mb = bound(params, 1.0)["mh"]
+    P = np.asarray(mb["P"], float)
+    faces, i = [], 0
+    for n in mb["S"]:
+        faces.append(mb["L"][i:i + n])
+        i += n
+    T = np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)], int)
+    piv = _pivot(params)[0]
+    b = _bib()
+    ids = b["ids"][(b["lev"][b["ids"]] >= SEAT_RINGS[0]) & (b["lev"][b["ids"]] <= SEAT_RINGS[1])]
+    X0 = Vid[ids] - Jid  # the bib about the head joint
+    zc = piv[2] + X0[:, 2].mean()
+    T = T[(np.abs(P[T][:, :, 2] - zc) < 0.25).all(1) & (np.abs(P[T][:, :, 0]) < 0.3).all(1)]
+    Nf = np.cross(P[T[:, 1]] - P[T[:, 0]], P[T[:, 2]] - P[T[:, 0]])
+    Nf /= np.linalg.norm(Nf, axis=1, keepdims=True) + 1e-15
+    t = np.zeros(3)
+    for _ in range(12):
+        X = piv + t + X0
+        q, _, ti = _closest(X, P, T)
+        n = Nf[ti]
+        r = ((q - X) * n).sum(1)
+        ok = np.linalg.norm(q - X, axis=1) < SEAT_REACH
+        if ok.sum() < 30:
+            break
+        A = n[ok][:, 1:]  # (y, z): the centre line stays the centre line
+        dt = np.linalg.lstsq(A.T @ A + 1e-9 * np.eye(2), A.T @ r[ok], rcond=None)[0]
+        t[1:] += dt
+        if np.abs(dt).max() < 5e-5:
+            break
+    out = piv + t
+    _CACHE[key] = out
+    return out
+
+
+BIB_FULL, BIB_NONE = 10.0, 1.0  # the body takes GNM's bib whole from this ring up (to the seam ring), not at all from this ring down
+FOLLOW_REACH = 0.17   # m over the body's surface from the seam ring (x stature / 1.7): the vertices that may move
+FOLLOW_ITERS = 80
+
+
+def _neck_follow(rest: np.ndarray, start: np.ndarray, faces: list, n_body: int, ring: np.ndarray, reach: float,
+                 bibV: np.ndarray) -> np.ndarray:
+    """The body's neck base and shoulder slope LAID ON GNM's own bib next to the head, fading into the body's own
+    shoulders: where the body's vertices go (n_body, 3). rest: the fused mesh as the body alone would have it;
+    start: where the vertices start (the head's rows at GNM's places: fixed); bibV: every GNM vertex as placed.
+    Each round the free vertices (the body's, within `reach` of the ring over the surface) are evened out ALONG the
+    surface (toward their neighbours' mean, the normal's part left out) and put back on the target surface: the
+    point of GNM's bib nearest them x w + the point of the body's own rest surface nearest them x (1 - w), w = 1
+    from ring BIB_FULL up, 0 from BIB_NONE down. Nothing is pulled through space (the first version's displacement
+    field dragged the trapezius 3 cm down to the ring: a column on a shelf); rows only slide on a surface that is
+    GNM's by the head and the body's at the shoulders."""
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import dijkstra
+    from . import retopo
+    n = len(rest)
+    tris = np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)], int)
+    e = np.r_[tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]
+    G = sp.coo_matrix((np.linalg.norm(rest[e[:, 0]] - rest[e[:, 1]], axis=1) + 1e-9, (e[:, 0], e[:, 1])), (n, n)).tocsr()
+    G = G.maximum(G.T)
+    dist = dijkstra(G, directed=False, indices=np.asarray(ring, int), min_only=True)
+    free = np.flatnonzero((np.arange(n) < n_body) & (dist < reach))
+    if not len(free):
+        return start[:n_body].copy()
+    A = (G > 0).astype(float)
+    deg = np.asarray(A.sum(1)).ravel()
+    edge = np.clip((reach - dist[free]) / (0.25 * reach), 0, 1)[:, None]  # nothing moves at the zone's rim
+    b = _bib()
+    lev = b["lev"].astype(float)
+    Tr = tris[(dist[tris] < reach + 0.08).all(1)]  # the body's own surface round the zone (its neck included)
+    Y = start.copy()
+    for it in range(FOLLOW_ITERS):
+        if it % 4 == 0:
+            N = retopo._vnormals(Y, tris)[free]
+        d = (A[free] @ Y) / deg[free, None] - Y[free]
+        X = Y[free] + 0.5 * edge * (d - (d * N).sum(1, keepdims=True) * N)
+        qb, wb, tb = _closest(X, bibV, b["tri"])
+        rho = (wb * lev[b["tri"][tb]]).sum(1)
+        w = np.clip((rho - BIB_NONE) / (BIB_FULL - BIB_NONE), 0, 1)
+        w = (w * w * (3 - 2 * w))[:, None]
+        qm = _closest(X, rest, Tr)[0]
+        Y[free] = Y[free] + edge * ((1 - w) * qm + w * qb - Y[free])
+    return Y[:n_body]
+
+
+def _native_desc(base: dict, hd: dict, params: dict) -> dict:
+    """head_desc for attach "native": the head's scale is GNM's (x size), the body's height is solved so the top of
+    the head stands at the stated stature, and hd["bound"]["native"] carries the placement."""
+    from . import base as basemod
+    from . import makehuman
+    g = basemod._gnm_data()
+    user = base.get("head") or {}
+    stature = float(params["height"]) if params.get("height") else float(np.asarray(makehuman.body(params)["P"])[:, 2].max())
+    sex = float(np.clip(params.get("sex", 1.0), 0, 1))
+    s0 = (1 - sex) * ANSUR_STATURE[0] + sex * ANSUR_STATURE[1]
+
+    # SIZE: GNM's head is an average adult's. People's heads grow a little with their stature (ANSUR: head measures go
+    # as stature ^ ~0.27): by default the head is GNM's x that, 1.000 at the sex's mean stature (a 1.95 m man 1.026, a
+    # 1.50 m woman 0.977). base.head.size = a number fixes it.
+    al = (1 - sex) * ANSUR["head_height"][0][1] + sex * ANSUR["head_height"][1][1]
+    size = float(user["size"]) if isinstance(user.get("size"), (int, float)) else float((stature / s0) ** al)
+    # (The NECK's length cannot follow the stature the same way: lifting the seat for a tall body was tried and does
+    # nothing, the body's neck base is laid on GNM's bib wherever it stands. GNM's neck is its own length x size; on a
+    # very tall body the report flags "top of head over the pit of the throat" short. Known limit.)
+    # the head's top over its pivot: GNM's evaluation of the identity (what the head will be, but for expression / pose)
+    ci = basemod._gnm_coeffs(g["identity_names"], hd.get("identity") or {}, hd.get("seed"), hd.get("spread", 1.0))
+    ext = np.asarray(g["skin"], bool) & (np.asarray(g["groups"]["skin_exterior"]) > 0.5)
+    Vy = (g["template_vertex_positions"][ext, 1] + np.tensordot(ci, g["vertex_identity_basis"][:, ext, 1], 1)).max()
+    Jy = g["template_joint_positions"][1, 1] + float(np.tensordot(ci, g["joint_identity_basis"][:, 1, 1], 1))
+    top = size * float(Vy - Jy)
+    from . import humanstyle
+    bs = humanstyle.active(base, humanstyle.BODY)
+
+    Vid = size * ((g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1)).astype(float) @ _RG.T)
+    Jid = size * ((g["template_joint_positions"][1] + np.tensordot(ci, g["joint_identity_basis"][:, 1], 1)).astype(float) @ _RG.T)
+
+    def seat(p):
+        return _seat(p, Vid, Jid)
+
+    def pivot_height(p):  # the head joint's height over the soles on the body as it will stand (a style's longer legs lift it)
+        sp_ = seat(p)
+        z = float(sp_[2])
+        if bs:
+            lift, dz = _style_lift(p, bs, sp_)
+            z += float(lift[2]) - dz
+        return z
+    fit = {**params, "height": round(stature, 6)}
+    for _ in range(3):  # (MakeHuman's height is a uniform scale and the sliders are ratios: the seat's height goes with it)
+        fit = {**params, "height": round((stature - top) * float(fit["height"]) / pivot_height(fit), 6)}
+    piv0, k = _pivot(fit)
+    piv = seat(fit)
+    hd = {k_: v for k_, v in hd.items() if k_ not in NATIVE_DROP}
+    hd["scale"] = round(size, 9)
+    hd["subdivide"] = 0
+    hd["bound"] = {"body": fit, "toward": 1.0,
+                   "native": {"pivot": [round(float(x), 7) for x in piv], "size": size, "stature": round(stature, 6),
+                              "own": round(float(k), 6), "own_pivot": [round(float(x), 7) for x in piv0]}}
+    return hd
+
+
+def _style_lift(params: dict, bs: dict, at) -> tuple:
+    """(how the style's body sliders move the point `at` on the MakeHuman body of `params`, the soles' new height)."""
+    key = ("lift", json.dumps([params, bs, [round(float(x), 6) for x in at]], sort_keys=True, default=float))
+    if key not in _CACHE:
+        from . import humanstyle, retopo
+        mb = bound(params, 1.0)["mh"]
+        J2, girth = humanstyle.body_targets(mb["J"], bs)
+        V, _, _, fn, _ = retopo._skeleton_warp(np.asarray(mb["P"], float), mb["J"], {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
+        _CACHE[key] = (fn(np.atleast_2d(np.asarray(at, float)))[0][0] - np.asarray(at, float), float(V[:, 2].min()))
+    return _CACHE[key]
+
+
+def head_fade(head: dict) -> np.ndarray:
+    """Per GNM vertex: how much of the head's own shape a vertex takes on a one-mesh head: `neck_fade`, or 1
+    everywhere on a native head (GNM's own neck down to the seam ring)."""
+    if (head.get("bound") or {}).get("native"):
+        return np.ones(len(asset()["g_lev"]))
+    return neck_fade()
+
+
+def _neck_field(X: np.ndarray, faces: list, n_body: int, D_head: np.ndarray, ring: np.ndarray, reach: float) -> np.ndarray:
+    """The body's neck moved to meet a head that is NOT where the body's own head was. X: the fused mesh at rest (the
+    body's vertices, then the head's where the BODY would carry them); D_head: how far each head vertex is from there;
+    ring: the seam ring's rows. -> the move of the body's vertices (n_body, 3): the smoothest (biharmonic, cotangent
+    weights) field that equals D_head on the head, 0 on the body beyond `reach` metres (over the mesh) from the ring.
+    The head's vertices are fixed, with their neighbours' neighbours: the surface keeps its slope across the ring."""
+    import scipy.sparse as sp
+    from scipy.sparse.csgraph import dijkstra
+    from scipy.sparse.linalg import spsolve
+    n = len(X)
+    tris = np.array([(f[0], f[j], f[j + 1]) for f in faces for j in range(1, len(f) - 1)], int)
+    e = np.r_[tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]
+    G = sp.coo_matrix((np.linalg.norm(X[e[:, 0]] - X[e[:, 1]], axis=1) + 1e-9, (e[:, 0], e[:, 1])), (n, n)).tocsr()
+    G = G.maximum(G.T)
+    dist = dijkstra(G, directed=False, indices=np.asarray(ring, int), min_only=True)
+    free = np.zeros(n, bool)
+    free[:n_body] = dist[:n_body] < reach
+    sub = free.copy()
+    A = (G > 0).astype(float)
+    for _ in range(3):
+        sub = sub | (A @ sub > 0)
+    idx = np.flatnonzero(sub)
+    loc = np.full(n, -1)
+    loc[idx] = np.arange(len(idx))
+    T = loc[tris[sub[tris].all(1)]]
+    P = X[idx]
+    m = len(idx)
+    W = sp.lil_matrix((m, m))
+    area = np.zeros(m)
+    for a_, b_, c_ in ((0, 1, 2), (1, 2, 0), (2, 0, 1)):  # the edge (a, b) gets cot of the angle at c
+        u, v = P[T[:, a_]] - P[T[:, c_]], P[T[:, b_]] - P[T[:, c_]]
+        cr = np.linalg.norm(np.cross(u, v), axis=1)
+        cot = np.clip((u * v).sum(1) / np.maximum(cr, 1e-14), 0.05, 20.0)  # (slivers: kept positive, bounded)
+        W = W + sp.coo_matrix((0.5 * cot, (T[:, a_], T[:, b_])), (m, m))
+        np.add.at(area, T[:, c_], cr / 6.0)
+    W = sp.csr_matrix(W)
+    W = W + W.T
+    L = sp.diags(np.asarray(W.sum(1)).ravel()) - W
+    Q = (L @ sp.diags(1.0 / np.maximum(area, 1e-12)) @ L).tocsr()
+    fr = loc[np.flatnonzero(free)]
+    fx = np.setdiff1d(np.arange(m), fr)
+    Dc = np.zeros((m, 3))
+    hrows = idx[fx] >= n_body
+    Dc[fx[hrows]] = D_head[idx[fx[hrows]] - n_body]
+    rhs = -(Q[fr][:, fx] @ Dc[fx])
+    Qff = Q[fr][:, fr].tocsc()
+    out = np.zeros((n_body, 3))
+    out[idx[fr]] = np.column_stack([spsolve(Qff, rhs[:, j]) for j in range(3)])
+    # the rows next to the ring evened out ALONG the surface (GNM's ring is not parallel to the body's top loop: where
+    # it dips, the bridge's rows were squeezed and folded): each vertex toward its neighbours' mean, the part along
+    # the normal left out, the ring and everything beyond NATIVE_RELAX fixed
+    Y = X.copy()
+    Y[:n_body] += out
+    Y[n_body:] += D_head
+    mv = np.flatnonzero(free & (dist < NATIVE_RELAX * reach / NATIVE_REACH))
+    if len(mv):
+        from . import retopo
+        deg = np.asarray(A.sum(1)).ravel()
+        fade = np.clip((NATIVE_RELAX * reach / NATIVE_REACH - dist[mv]) / (0.3 * NATIVE_RELAX * reach / NATIVE_REACH), 0, 1)[:, None]
+        for it in range(NATIVE_RELAX_ITERS):
+            if it % 5 == 0:
+                N = retopo._vnormals(Y, tris)[mv]
+            d = (A[mv] @ Y) / deg[mv, None] - Y[mv]
+            Y[mv] += 0.5 * fade * (d - (d * N).sum(1, keepdims=True) * N)
+        out = Y[:n_body] - X[:n_body]
+    return out
+
+
 NECK_RINGS = (10, 20)  # rings above the stitch over which the hand-over runs: at the throat, at the nape
 NECK_FADE = True  # the head's own shape handed over to the body's through the whole neck (stitch -> chin level)
 
@@ -189,6 +501,10 @@ def hook(V, J, head: dict, R, eye_mid, s: float, mid):
     (identity, expression, regions, pose, eye size, planes...) is kept as a DIFFERENCE from the template, faded out
     toward the stitch, and laid on the head this body carries. Returns (V, J)."""
     from . import base as basemod
+    nat = head["bound"].get("native")
+    if nat:  # (headbody) GNM's own evaluation, whole: only moved so its head joint lands on the body's skull pivot
+        T = (np.asarray(nat["pivot"], float) - np.asarray(eye_mid, float)) @ R / s - np.asarray(J, float)[1] + mid
+        return V + T, np.asarray(J, float) + T
     g = basemod._gnm_data()
     a = asset()
     bd = bound(head["bound"]["body"], float(head["bound"].get("toward", 1.0)))
@@ -281,6 +597,10 @@ def head_desc(base: dict) -> dict:
             own = [] if not own else (own if isinstance(own, list) else [own])
             hd["warp"] = [f["warp"], *own] if own else f["warp"]
         hd.pop("seed", None)  # (it is in the identity now)
+    if user.get("attach") == "native":  # (headbody) GNM's head as GNM makes it; the body is fitted to it
+        return _native_desc(base, hd, params)
+    if user.get("attach") not in (None, "body"):
+        raise ValueError('base.head.attach: "native" (GNM\'s head untouched at its own size, the body fitted) or "body" (default)')
     from . import humanstyle
     hs = humanstyle.active(base, humanstyle.HEAD + ("exaggerate",))
     if hs.get("exaggerate") is not None and hd.get("identity"):  # the same person, further from the mean
@@ -391,26 +711,67 @@ def template(base: dict) -> dict:
                       "outer": [(rows(r[R["upper"][r]]), rows(r[~R["upper"][r]])) for r in R["rings"][kc + 1:kc + 4]]}
         if seal_v is not None:
             seal_field["v"] = list(seal_v)
+    nat = hd["bound"].get("native")
+    if nat:  # (headbody) the body's neck and shoulders meet GNM's ring; the head's vertices are not touched
+        nb = len(mh_rows) + len(br)
+        rest = np.r_[V[:nb], bd["B"][gid[hrow]]]
+        ring = nb + np.flatnonzero(a["g_lev"].astype(int)[gid[hrow]] == _reference()["meta"]["RING"])
+        reach = NATIVE_REACH * float(P[:, 2].max()) / 1.7
+        freach = FOLLOW_REACH * float(P[:, 2].max()) / 1.7
+        V[:nb] += _neck_field(rest, faces, nb, V[nb:] - rest[nb:], ring, reach)  # (a start; then laid on the bib)
+        V[:nb] = _neck_follow(rest, V, faces, nb, ring, freach, np.asarray(ht["gnm_world"], float))
     V, fid, faces, loop_rows = _with_loops(V, fid, faces, gid[hrow], len(mh_rows) + len(br))
     if len(loop_rows) and ht.get("loop_offsets") is not None:  # (faceslide.py) the sliders on the loops' vertices
         V[loop_rows] += ht["loop_offsets"]
     from . import humanstyle
+    from . import headfit  # noqa: F401  (the lines below reach it through the package)
     Jb, bones, chin_z, face, chin_lm, carry_fn = mb["J"], mb["bones"], mb["chin_z"], mb["face"], float(ht["lm68"][8][2]), None
     chin_mh_ = float(P[__import__("hifipushie").headfit.table()["lm68"][8], 2])
+    if nat:  # the head's bones and landmarks are the HEAD's: MakeHuman's (in its own head) taken about the pivot
+        from . import makehuman
+        piv, kk = np.asarray(nat["pivot"], float), float(nat["size"]) / float(nat["own"])
+        piv0 = np.asarray(nat.get("own_pivot", nat["pivot"]), float)  # (where the body's own skull stood)
+        sk = makehuman.skeleton()["bones"]
+        kids, todo = {"head"}, ["head"]
+        while todo:
+            p_ = todo.pop()
+            for n_, b_ in sk.items():
+                if b_.get("parent") == p_ and n_ not in kids:
+                    kids.add(n_)
+                    todo.append(n_)
+        bones = {n_: ((piv + kk * (h_ - piv0), piv + kk * (t_ - piv0)) if n_ in kids else (h_, t_)) for n_, (h_, t_) in bones.items()}
+        Jb = {**Jb, "head": piv + kk * (np.asarray(Jb["head"], float) - piv0)}
+        face = {"landmarks": {"eye.L": [float(x) for x in max(ht["eyes"], key=lambda e_: e_[0])]}}
+        chin_z = chin_mh_ = chin_lm
     bs = humanstyle.active(base, humanstyle.BODY)
     if bs:  # (humanstyle.py) proportions: joints move and girths scale, and the mesh goes with them
         from . import retopo
         J2, girth = humanstyle.body_targets(Jb, bs)
+        V0, head_j = V, Jb["head"]
         V, _, _, carry_fn, _ = retopo._skeleton_warp(V, Jb, {"joints": {k: {"pos": v} for k, v in J2.items()}}, [], girth=girth)
         mv = lambda X: carry_fn(np.atleast_2d(np.asarray(X, float)))[0]  # noqa: E731
+        mvh = mv
+        if nat:  # (headbody) the head RIDES the styled body, rigid (the pivot's move); the body's neck meets it again
+            nb = len(mh_rows) + len(br)
+            tr = mv(nat["pivot"])[0] - np.asarray(nat["pivot"], float)
+            carry_fn = lambda X, tr=tr: (np.atleast_2d(np.asarray(X, float)) + tr,)  # noqa: E731
+            mvh = lambda X: carry_fn(X)[0]  # noqa: E731
+            restw = V.copy()  # (the styled body, the head where that body would carry it)
+            restw[:nb] = mv(rest[:nb])
+            restw[nb:len(rest)] = mv(rest[nb:])
+            V[nb:] = V0[nb:] + tr
+            V[:nb] = _neck_follow(restw, V, faces, nb, ring, freach, np.asarray(ht["gnm_world"], float) + tr)
         dz = float(V[:, 2].min())
         V = V - [0, 0, dz]
         Jb = {k: np.asarray(v, float) - [0, 0, dz] for k, v in J2.items()}
-        bones = {n: (mv(h_)[0] - [0, 0, dz], mv(t_)[0] - [0, 0, dz]) for n, (h_, t_) in bones.items()}
-        chin_z = float(mv([0, 0, chin_z])[0][2] - dz)
-        face = {"landmarks": {"eye.L": (mv(face["landmarks"]["eye.L"])[0] - [0, 0, dz]).tolist()}}
-        chin_lm = float(mv(ht["lm68"][8])[0][2] - dz)
-        chin_mh_ = float(mv(P[__import__("hifipushie").headfit.table()["lm68"][8]])[0][2] - dz)
+        if nat:
+            Jb["head"] = mvh(head_j)[0] - [0, 0, dz]
+        bones = {n: ((mvh if nat and n in kids else mv)(h_)[0] - [0, 0, dz], (mvh if nat and n in kids else mv)(t_)[0] - [0, 0, dz])
+                 for n, (h_, t_) in bones.items()}
+        chin_z = float(mvh([0, 0, chin_z])[0][2] - dz)
+        face = {"landmarks": {"eye.L": (mvh(face["landmarks"]["eye.L"])[0] - [0, 0, dz]).tolist()}}
+        chin_lm = float(mvh(ht["lm68"][8])[0][2] - dz)
+        chin_mh_ = float(mvh(P[__import__("hifipushie").headfit.table()["lm68"][8]])[0][2] - dz) if not nat else chin_lm
         _CACHE[("style_carry", key[1])] = (carry_fn, dz)
     out = {"name": "human", "P": V, "L": np.array([v for f in faces for v in f]), "S": np.array([len(f) for f in faces]),
            "J": Jb, "bones": bones, "rig": mb["rig"], "chin_z": chin_z, "face": face, "styled": bool(bs),
@@ -523,6 +884,164 @@ def head(s: dict, base: dict) -> dict:
     # what face shapes multiply GNM's deltas by: 0 at the stitch .. 1 on the head, x a style's head size
     out["carry"] = {**out["carry"], "fade": asset()["g_fade"].astype(float) * float(head_desc(base)["bound"].get("head_size", 1.0))}
     _CACHE[key] = out
+    return out
+
+
+def seam_ring(tpl: dict) -> np.ndarray:
+    """The seam ring's rows in the one mesh's template, in order round the neck from the front centre (110 vertices:
+    GNM's neck ring 13, the lowest ring of GNM's topology in the mesh; the body's bridge hangs from it)."""
+    a = asset()
+    row = np.full(int(np.max(tpl["fid"])) + 1, -1)
+    row[np.asarray(tpl["fid"], int)] = np.arange(len(tpl["fid"]))
+    return row[a["loop_a"].astype(int)]
+
+
+SUPRASTERNALE, ACROMION = 1522, 8275  # MakeHuman body vertices: the pit of the throat (front midline, between the
+# clavicles) and the shoulder's outer top; both under the neck loop, so in every one-mesh build
+# ANSUR II (2012; fitted here to the public per-subject tables, docs/notes/headbody.md "## Round 2"): each measure as
+# value at the sex's mean stature x (stature / that stature) ^ alpha, with the residual's sd (of the log): (women, men).
+# A head does not grow in step with the body (alpha ~0.3), so "heads tall" rises with stature by itself.
+ANSUR_STATURE = (1.627, 1.755)
+ANSUR = {"top_over_pit": ((0.2985, 0.687, 0.0368), (0.3173, 0.682, 0.0370)),  # top of head - suprasternale height
+         "neck_girth": ((0.3292, 0.436, 0.0549), (0.3968, 0.325, 0.0629)),    # neck circumference
+         "head_height": ((0.218, 0.29, 0.048), (0.232, 0.24, 0.046))}         # menton - top of head: the VALUES are ANSUR
+# 1988's FROM MEMORY (not in the public tables); alpha and sd are tragion - top of head's
+NECK_CONFLICT = 0.08  # the head's neck girth against the body's own, at the narrowest: past this the report says so
+SD_FLAG = 2.5
+
+
+def _ring_loop(k: int) -> np.ndarray:
+    """GNM's neck ring k as an ordered closed loop of GNM vertex ids."""
+    key = ("ring_loop", int(k))
+    if key not in _CACHE:
+        from . import base as basemod
+        g = basemod._gnm_data()
+        lev = asset()["g_lev"].astype(int)[:len(g["template_vertex_positions"])]
+        ids = set(int(v) for v in np.flatnonzero(lev == k))
+        adj = {v: set() for v in ids}
+        for q in np.asarray(g["quads"]):
+            for a_, b_ in zip(q, np.roll(q, -1)):
+                if int(a_) in ids and int(b_) in ids:
+                    adj[int(a_)].add(int(b_))
+                    adj[int(b_)].add(int(a_))
+        loop = [min(ids)]
+        prev = None
+        while True:
+            nx = [w for w in adj[loop[-1]] if w != prev and w not in loop[1:]]
+            nx = [w for w in nx if w != loop[0]] or nx
+            if not nx or nx[0] == loop[0]:
+                break
+            prev = loop[-1]
+            loop.append(nx[0])
+        _CACHE[key] = np.array(loop, int)
+    return _CACHE[key]
+
+
+def _girth(X: np.ndarray, rings=range(14, 25)) -> tuple:
+    """(the least loop length over GNM's neck rings, its ring) on GNM vertices X (17821, 3)."""
+    L = [(float(np.linalg.norm(X[lp] - np.roll(X[lp], -1, 0), axis=1).sum()), k) for k in rings for lp in [_ring_loop(k)]]
+    return min(L)
+
+
+def attach_report(base: dict) -> dict:
+    """How the head sits on the body, as numbers with their anthropometric ranges: {"native", "size" (the head over
+    GNM's own evaluation), "head_height", "stature", "heads_tall", "eyes_apart", "eyeball_r" (m), "chin_over_pit",
+    "top_over_pit" (m; the pit of the throat = the body's suprasternale), "neck": {"head": the head's neck girth at its
+    narrowest ring, "body": the body's own neck there, "ring": GNM's girth at the seam ring}, "checks": [{"name",
+    "value", "range" (lo, hi), "ok"}], "flags": [text], "ignored": [keys with no effect], "text"}. A wrong neck or
+    head-on-shoulders proportion is a FLAG here, not something to find by eye."""
+    from . import base as basemod
+    g = basemod._gnm_data()
+    hd = head_desc(base)
+    tpl = template(base)
+    ht = head_rest(base)
+    a = asset()
+    nat = hd["bound"].get("native")
+    W = np.asarray(ht["gnm_world"], float)
+    skin = np.asarray(g["skin"], bool) & (np.asarray(g["groups"]["skin_exterior"]) > 0.5)
+    lev = a["g_lev"].astype(int)[:len(skin)]
+    ci = basemod._gnm_coeffs(g["identity_names"], hd.get("identity") or {}, hd.get("seed"), hd.get("spread", 1.0))
+    Vg = (g["template_vertex_positions"] + np.tensordot(ci, g["vertex_identity_basis"], 1)).astype(float)
+    m = skin & (lev >= _reference()["meta"]["RING"] + 12)
+    size = float(np.sqrt(((W[m] - W[m].mean(0)) ** 2).sum() / ((Vg[m] - Vg[m].mean(0)) ** 2).sum()))
+    P = np.asarray(tpl["P"], float)
+    stature = float(P[:, 2].max() - P[:, 2].min())
+    chin = float(ht["lm68"][8][2])
+    hh = float(W[skin][:, 2].max() - chin)
+    mh_rows = np.flatnonzero(a["m2f"] >= 0)
+    pit = float(P[int(np.flatnonzero(mh_rows == SUPRASTERNALE)[0]), 2])
+    bd = bound(hd["bound"]["body"], float(hd["bound"].get("toward", 1.0)))
+    gh, kr = _girth(W)
+    lp = _ring_loop(kr)
+    gb = float(np.linalg.norm(bd["B"][lp] - np.roll(bd["B"][lp], -1, 0), axis=1).sum())
+    l13 = _ring_loop(_reference()["meta"]["RING"])
+    params = hd["bound"]["body"]
+    sex = float(np.clip(params.get("sex", 1.0), 0, 1))
+    age = float(params.get("age", 25))
+    def expect(k):  # (the measure's mean for this sex and stature, its sd)
+        w = [(v0 * (stature / s0) ** al, sd_) for (v0, al, sd_), s0 in zip(ANSUR[k], ANSUR_STATURE)]
+        mu_ = (1 - sex) * w[0][0] + sex * w[1][0]
+        return mu_, mu_ * ((1 - sex) * w[0][1] + sex * w[1][1])
+    out = {"native": bool(nat), "size": size, "head_height": hh, "stature": stature, "heads_tall": stature / hh,
+           "eyes_apart": float(np.linalg.norm(np.asarray(ht["eyes"][0]) - np.asarray(ht["eyes"][1]))), "eyeball_r": float(ht["eye_r"]),
+           "chin_over_pit": chin - pit, "top_over_pit": float(P[:, 2].max()) - pit,
+           "neck": {"head": gh, "body": gb, "ring": float(np.linalg.norm(W[l13] - np.roll(W[l13], -1, 0), axis=1).sum())},
+           "ignored": [], "checks": [], "flags": []}
+
+    def check(name, value, mu_, sd_, why):
+        lo, hi = mu_ - SD_FLAG * sd_, mu_ + SD_FLAG * sd_
+        ok = bool(lo <= value <= hi)
+        out["checks"].append({"name": name, "value": float(value), "expected": float(mu_), "sd": float(sd_),
+                              "z": float((value - mu_) / sd_), "range": (float(lo), float(hi)), "ok": ok})
+        if not ok:
+            out["flags"].append(f"{name} {value * 1000:.0f} mm is outside {lo * 1000:.0f} .. {hi * 1000:.0f} (ANSUR for this sex and "
+                                f"stature: {mu_ * 1000:.0f} +- {sd_ * 1000:.0f}): {why}")
+    mh_, sh_ = expect("head_height")
+    check("head height", hh, mh_, sh_, "the head is the wrong size for this stature (base.body.height / age, or base.head.size)")
+    mt_, st_ = expect("top_over_pit")
+    check("top of head over the pit of the throat", out["top_over_pit"], mt_, st_, "head + neck too long or too short over the shoulders")
+    check("chin over the pit of the throat", out["chin_over_pit"], mt_ - mh_, float(np.hypot(st_, sh_)),
+          "the neck is too long or too short in front")
+    mu, sd = expect("neck_girth")
+    check("neck girth", gh, mu, sd, "the head's neck is too thick or too thin for this body (GNM's identity moves the neck with "
+          "no picture read)")
+    mu, sd = mu / stature, sd / stature
+    out["neck_conflict"] = gh / gb - 1.0
+    zh, zb = (gh / stature - mu) / sd, (gb / stature - mu) / sd
+    out["neck_z"] = {"head": float(zh), "body": float(zb)}
+    if abs(out["neck_conflict"]) > NECK_CONFLICT:
+        # RULE: the neck from the seam ring up is the HEAD's (GNM's, with its identity); the body's neck base is laid on
+        # it whatever the difference. A difference past NECK_CONFLICT is reported with WHICH side is unusual for the
+        # stature (ANSUR), so the caller changes that side: it is never settled silently by inflating or thinning.
+        who = ("the BODY's own neck is the unusual one" if abs(zb) > abs(zh) + 0.5 else
+               "the HEAD's neck is the unusual one" if abs(zh) > abs(zb) + 0.5 else "both are off the mean, opposite ways")
+        out["flags"].append(f"NECK CONFLICT: the head's neck is {100 * out['neck_conflict']:+.0f} % against the body's own "
+                            f"({gh * 1000:.0f} / {gb * 1000:.0f} mm; {zh:+.1f} / {zb:+.1f} sd of ANSUR for this stature): {who}"
+                            + (". The head's neck is used and the body's neck base laid on it. (MakeHuman's female neck is ~295 mm "
+                               "at any weight; GNM's female class mean is 365 mm; ANSUR 330.)" if nat and sex < 0.5 else
+                               ". The head's neck is used and the body's neck base laid on it." if nat else ""))
+    if age < 16:
+        out["flags"].append(f"age {age:g}: the ranges above are ADULTS' (ANSUR) and GNM is an adult head model: a child's "
+                            "head-on-body proportions are not checked here")
+    if nat:
+        user = base.get("head") or {}
+        from . import humanstyle
+        out["ignored"] = [f"base.head.{k}" for k in (*NATIVE_DROP, "dimorphism", "toward") if user.get(k) not in (None, 0, 0.0) and not (k == "gnm_base" and float(user[k]) == 1.0)] \
+            + [f"base.style.human.{k}" for k in humanstyle.active(base, humanstyle.HEAD + ("exaggerate",))]
+        out["body_height"] = float(hd["bound"]["body"]["height"])
+        out["own_head"] = float(nat["own"])
+    t = [f"head: {'GNM native' if nat else 'carried by the body'}, {size:.3f} x GNM's own size; head height {hh * 1000:.0f} mm, eyes "
+         f"{out['eyes_apart'] * 1000:.1f} mm apart, eyeball r {out['eyeball_r'] * 1000:.1f} mm (GNM 14.6)",
+         f"figure: stature {stature:.3f} m = {out['heads_tall']:.2f} heads tall; top of head {out['top_over_pit'] * 1000:.0f} mm and chin "
+         f"{out['chin_over_pit'] * 1000:.0f} mm over the pit of the throat",
+         f"neck: the head's girth {gh * 1000:.0f} mm at its narrowest (ring {kr}), the body's own there {gb * 1000:.0f} mm "
+         f"({100 * out['neck_conflict']:+.0f} %); at the seam ring {out['neck']['ring'] * 1000:.0f} mm",
+         "checks (value, ANSUR for this sex and stature, sd away): " + "; ".join(
+             f"{c['name']} {c['value'] * 1000:.0f} ({c['expected'] * 1000:.0f} +- {c['sd'] * 1000:.0f}, {c['z']:+.1f})" for c in out["checks"])]
+    t += [f"  FLAG: {f}" for f in out["flags"]] or ["  all attach checks inside their ranges"]
+    if out["ignored"]:
+        t.append("  ignored on a native head (they reshape or resize GNM's head): " + ", ".join(out["ignored"]))
+    out["text"] = "\n".join(t)
     return out
 
 
