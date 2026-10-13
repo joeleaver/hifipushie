@@ -607,3 +607,60 @@ the dense reads are in" was measured on our own renders only and DOES NOT CARRY 
 - THE DISTANCE OUTPUT: monotone but compressed (0.37 / 0.78 / 1.83 m read as 0.9 / 1.2 / 1.5 m; held-out log-slope
   0.17, median error 45 %): its loss was 1 row of 757 in a mean (x30 in the final run), and a face-normalised crop
   shows distance only as perspective: a near / far read at best, the metric distance is the solve's.
+
+### RESTART (stage 1; rewritten after every step; read this first)
+STATE (2026-10-13 14:55): rendering STOPPED (data_s1/STOP_NICO + STOP_LOCAL exist; no queue running). The stage-1 set is
+COMPLETE for training: /mnt/data/hifipushie/denselm/data_s1/ = 92 dressings x 300 = 27,600 samples, all labelled with set
+v3 (756 columns; checked: none incomplete, none on an older set). Final training run `s30k` on NICO-TOP in resumable
+segments (below; status in models/s30k/STATUS). The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
+nothing rented or billed; HSRD is the groundtruth agent's (read-only, do not download more).
+NEXT, in order: (1) watch s30k to DONE (or resume it); (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
+then sc_table + sc_cmp against s10k / pilot, held-out synthetic per bin (models/s30k/hm18/val.json), widthval.py (the
+shrinkage slope before / after; toward the POOLED mean or the class mean: add the class-mean regressor), the distance
+head (widthval prints its log-slope; realgt prints distance read vs true), sc_suite (letter t), Tess tiles; (3) the
+notes; (4) report 3 to the coordinator: real-photo numbers leading, width shrinkage, distance head, the realism-gap
+recommendation with cost (projskin de-lit skin; HSRD subjects held out whole as validation, maybe fine-tuning;
+stronger randomisation).
+
+THE TRAINING JOB (spikes/denselm/train_seg.sh; the copy that runs: /mnt/data/hifipushie/denselm/train_seg.sh):
+- A DRIVER on THIS laptop (setsid nohup: outlives the agent's shell) submits one compute job per segment of 12 epochs
+  through the oxidegen bundle route in direct mode (the laptop serves the 475 MB data tar and receives the outputs: the
+  driver must stay alive while a segment runs). Each segment's job ends with models/s30k/hm18/state.pth (weights, EMA,
+  AdamW, OneCycle schedule, scaler, epoch, log; also written every 3 epochs inside the job) + model.pt / weights.pth /
+  val.json of the EMA so far. COPYING BACK IS AUTOMATIC: the driver unpacks each segment's outputs into
+  /mnt/data/hifipushie/denselm/models/s30k/ (and keeps model_e<k>.pt per segment).
+- START / RESUME = the same one line (resumes from the last state.pth the driver has; data list, args and code commit
+  are fixed at the first call in models/s30k/run.txt, dirs.txt, commit.txt; a lock stops two drivers):
+  setsid nohup /mnt/data/hifipushie/denselm/train_seg.sh s30k 60 12 "name=hm18 arch=hm18 bs=128 lr=1e-3 workers=11 val=0.08 beta=0.5 ramp=0.25 dist_weight=30 clip=2.0" >> /mnt/data/hifipushie/denselm/out/train_s30k.log 2>&1 < /dev/null &
+- CHECK: `cat /mnt/data/hifipushie/denselm/models/s30k/STATUS` (one line per segment submitted / back / FAILED; a DONE
+  file at the end); live epochs: `grep -o 'step: {"epoch[^}]*' /mnt/data/hifipushie/denselm/out/train_s30k.log | tail -3`;
+  driver alive: `pgrep -af "[t]rain_seg.sh"`; batches on the fleet: `OXIDEGEN_TOKEN=$(cat ~/.config/oxidegen/hifipushie-cloth-token)
+  python3 /home/joe/dev/oxidegen/scripts/bundle/bundle_client.py list` (batch names dl-s30ke<epoch>-HHMMSS; `status <batch>`).
+  DIED = a FAILED file, or no driver process and no DONE: run the START line again (a dead segment loses at most its
+  own 12 epochs). A job that dies near its start: tell the coordinator the exact time, do not loop resubmits. A hung
+  segment: `bundle_client.py cancel <batch>`; the driver then records FAILED; rerun.
+- The machine: NICO-TOP (GPU), reached only through the bundle route (no ssh). Shared with S0urc3 and other agents: one
+  training job at a time, no render batches beside it.
+- EVALUATION (on this laptop; W = /mnt/data/hifipushie/denselm/models/s30k/hm18/model.pt):
+  real photos: /mnt/data/hifipushie/denselm/real_gt.sh s30k W   (-> out/realgt_s30k.txt; beside realgt_s10k / realgt_pilot)
+  renders at the truth: HIFIPUSHIE_DENSELM=W WS=main /mnt/data/hifipushie/denselm/run.sh spikes/denselm/sc_table.py s30k; then run.sh spikes/denselm/sc_cmp.py s10k s30k
+  width / distance: /mnt/data/hifipushie/normals_venv/bin/python spikes/denselm/widthval.py W /mnt/data/hifipushie/denselm/data_s1 <val dressings = the last 8 % of models/s30k/dirs.txt>
+  solve: /mnt/data/hifipushie/denselm/sc_suite.sh t W "a b c d e g" "fit tru dx"
+  Tess tiles: HIFIPUSHIE_DENSELM=W WS=main /mnt/data/hifipushie/denselm/run.sh spikes/denselm/real.py s30k tess
+- VENV / TORCH: on NICO-TOP the torch venv is $OXIDEGEN_CACHE/dl_torch_v2, built by the bundle's SETUP step
+  (remote_train.sh): uv venv py3.12 + numpy pillow + torch from https://download.pytorch.org/whl/cu124 ONLY. Locally the
+  torch venv is /mnt/data/hifipushie/normals_venv (HIFIPUSHIE_NORMALS_VENV; denselm.predict runs through it).
+
+WHAT A FRESH AGENT WOULD GET WRONG:
+- Torch from PyPI (CUDA 13 wheels): NICO-TOP's driver has no CUDA 13 -> cuda False, CPU training. Use cu124 (dl_torch_v2).
+- A venv made INSIDE a job: the sandbox cannot write uv's cache or the machine cache -> build it in the bundle setup.
+- DataLoader workers hang in the sandbox (/dev/shm not writable) -> train.py's numpy `collate`; keep it.
+- remote.sh / remote_train.sh ship an archive of a COMMIT (HP_REF, else HEAD): uncommitted code does not travel.
+- Big job folders: the 690 MB raw set coincided with NICO-TOP's NVMe failure; ship data_s1_slim (JPEG + alpha, slim.py).
+- Plain NLL blows up on this data (loss spikes, val 6.6 -> 14 px): sigma floor (net.gnll clamp), clip 2, beta 0.5.
+- The distance row is 1 of 757 in the loss mean: dist_weight 30 or it learns nothing.
+- Label sets by column count: 588 = v1, 623 = v2, 756 = v3 (denselm.by_count); old-set dressings are relabelled with
+  relabel.py (no render), never mixed in.
+- Shell: version-control commands combined with cd / heredocs / loops are refused in this worktree (plain commands
+  only); `pgrep -f pattern` matches its own shell (use "[t]rain_seg.sh"); foreground sleeps are blocked (until-loops).
+- Do not open: the held-out Garrett photos, refs_lt19 / the wife's sets, out/real_fam/.
