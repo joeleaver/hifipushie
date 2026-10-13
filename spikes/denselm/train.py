@@ -410,6 +410,8 @@ def main():
     scaler = torch.amp.GradScaler(enabled=dev.type == "cuda")
     ema = netmod.make(arch, L["n"], extra=1).to(dev)
     ema.load_state_dict(model.state_dict())
+    wrow = torch.ones(L["n"] + 1, device=dev)
+    wrow[-1] = float(kw.get("dist_weight", 30.0))      # the distance row is 1 of 757: unweighted it did not learn (53 % error at 10k)
     log = []
     for ep in range(epochs):
         ds.epoch = ep
@@ -425,11 +427,11 @@ def main():
                 x = x.to(memory_format=torch.channels_last)
             with torch.autocast(dev.type, enabled=dev.type == "cuda"):
                 o = model(x)
-            loss = netmod.gnll(o.float(), t, beta=beta)
+            loss = netmod.gnll(o.float(), t, weight=wrow, beta=beta)
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), float(kw.get("clip", 2.0)))
             scaler.step(opt)
             scaler.update()
             sched.step()

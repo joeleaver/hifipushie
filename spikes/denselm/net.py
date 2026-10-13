@@ -109,7 +109,7 @@ def gnll(out, xy, weight=None, beta: float = 0.0):
     landmark the network is unsure of still pulls on its position (the plain NLL's pull falls with 1 / sigma^2: the
     mean fit stalls early); the optimum, and so the calibration, is the same."""
     o = out.view(out.shape[0], -1, 3)
-    ls = o[..., 2].clamp(-7.0, 3.0)
+    ls = o[..., 2].clamp(-5.5, 3.0)      # sigma >= 0.5 px of 256: without a floor the plain NLL blew up on the stage-1 data
     d2 = ((o[..., :2] - xy) ** 2).sum(-1)
     l = 2 * ls + d2 / (2 * torch.exp(2 * ls))
     if beta > 0:

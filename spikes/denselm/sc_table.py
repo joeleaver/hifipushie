@@ -46,7 +46,9 @@ for h in heads:
         keep = ~np.isin(rg_all, ("teeth_upper", "teeth_lower", "tongue"))          # (a closed mouth shows neither)
         eyeb = rg_all == "eyeball"
         ids, reg = ids_all[keep], rg_all[keep]
-        X = np.where((reg == "eyeball")[:, None], Wg[ids], head["V"][np.maximum(atm[ids], 0)])
+        X = Wg[ids].copy()
+        sk_ = reg != "eyeball"
+        X[sk_] = head["V"][atm[ids[sk_]]]
         Xc, Q = fr._cam_points(cam, X)
         mm1 = float(cam["t"][2]) / cam["f"] * 1000.0
         P = pr["xy"][:len(ids_all)][keep]
