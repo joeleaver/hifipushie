@@ -18,6 +18,14 @@ rm_<k>_L<class>00 (block_in_start, lens told on the diagonal, start = pooled | b
 true identity, for measuring only) | white | black). k = h23 / h27 / h102. Landmark check LOOKED AT (out/heldout_check.png).
 Queue: q8.txt via ./q8run.sh (resumable: skips a chain whose log has 5 SHAPE lines; 4 calls each); logs logs/h<k>_*.log.
 Score: ./run.sh spikes/readmix/hscore.py <k> after=rm_<k>_A nb0=rm_<k>_A0 before=rm_<k>_B blend=rm_<k>_Cb ...
+QUEUES (each resumable, waits for the one before): q8run.sh (held-out: after / nose-bias off / before / fallback classes),
+q9run.sh (alar=1 on the held-out), q10run.sh (expression="lower" leak test: gt_exs_A00 smiling vs sc_a_A00 neutral, off / lower,
+nosebias=0 on these renders; and held-out h23 / h102 must not acquire an expression). Logs logs/<first word of the line>.log.
+ALAR read (face_ruler._alar_obs, OFF until its chains are read): at the truth the steepest fall outward lies +0.29 mm (sd 1.46,
+16 sides) outside the wing's true contour on five TRAIN subjects (gt_h40_T gt_h112_T rm_h42_T rm_h81_T rm_h28_T) -> ALAR_BIAS
+0.3; on the three HELD-OUT +0.15 (sd 0.76, 6 sides). LOOKED AT out/alar_rm_h23_T_f.png: the contour hugs the wings.
+EXPRESSION: MediaPipe's mouthSmile cannot gate a slight smile (the smiling benchmark front, happy x0.3 dressed: 0.024;
+neutral 0.001; one held-out "neutral" subject scores 0.48 (her scan fit carries a lower-face expression)).
 BUILT: blockin.class_blend + block_in_start(ethnicity = class | {class: weight}) (simplex only; tested), the solve's reply
 line "FALLBACK: ... GIVEN | INFERRED". NOT built: the blend SOLVED as 3 weights (static numbers below say it cannot buy much).
 
