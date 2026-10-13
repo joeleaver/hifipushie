@@ -476,3 +476,67 @@ become usable for the per-view expression term only with (3).
   offline, as a private ground-truth set; (e) whether an ImageNet-pretrained backbone is acceptable (Hewitt 2024
   uses one; faster and better from little data; ImageNet's terms are research-only for the images, the weights'
   status is the usual grey area): the pilot is from scratch and I would stay there unless he says otherwise.
+
+## denselm stage 1 (2026-10-13; Joe's GO through the coordinator: stage 1 only, ~30,000 samples, our own machines,
+## nothing rented; stage 2 NOT approved. Branch `worktree-agent-a2e75a7e571826c88`, main 94516bf merged in. Scratch as
+## the pilot's + data_s1/ (the set), s1_nico.sh / s1_local.sh (render queues), out/sc_<tag>.txt (region tables))
+STATE / NEXT: see "### State (stage 1)" at this section's end.
+
+### What stage 1 must fix (the coordinator's list, from solvecams + heldoutnative with the pilot in the solve)
+(1) a featureless jaw answered with the AVERAGE jaw (widths +3.5 mm on known heads, +5-7 on a narrow one); (2) a true
+90 deg profile read as ~75-87; (3) front pitch +2-4 deg on male heads and under hair; (4) cameras sent to 2.7-3.4 m to
+explain the width bias; (5) true-profile lids 4 mm off; (6) open mouths wrong; (7) dark skin under a hard top light weak.
+
+### The generator (spikes/denselm/gen2.py; blender_gen.py binds teeth / tongue to their own GNM surfaces)
+- GNM-NATIVE heads (attach "native": GNM's own head, eyeballs, teeth, tongue, mouth bag). The stage is built with the
+  JAW HALF OPEN (jawOpen 0.55), so lips, teeth, tongue and bag are separate surfaces, and every sample re-poses it,
+  closed mouths included (probe sheet out/p2probe.png, mouths out/p2mouth.png: the cavity and the teeth are there;
+  the teeth are coarse and dull: 0.8 mm voxel, a flat colour).
+- LANDMARK SET v2 (denselm.landmarks_v2, 623): the pilot's 570 skin vertices UNCHANGED and first, + per eye GNM's
+  pupil centre and 8 iris-rim vertices (18), the upper / lower teeth's front arc (14 + 13), the tongue's upper front
+  (8). A network's row count says which set it has (denselm.predict / by_count); face_ruler reads the skin rows as before.
+- IDENTITY (a): c = class mean (the sample's sex x one of GNM's 4 ethnicity classes) + s z, z ~ N(0, I) over the 170
+  head components, s ~ U(0.75, 1.0) (GNM's prior is s = 1; the pilot's samples had |c| ~7, these ~11-14); the
+  deviation's part in the subspace of jaw / gonial / chin / cheekbone / skull width, lower-face height, chin length,
+  nose length, skull top is x 1.5; 12 % of samples: one of those measures set to +-2..3 population sd; 15 %: s ~
+  U(0.2, 0.5) (near the class means); components clipped at +-4.5. Teeth components ~ N(0, 0.8^2). Bodies 18-78
+  years, both sexes (per dressing).
+- VIEWS (b): yaw 55 % U(-110, 110) + 45 % N(0, 30); pitch N(0, 14) in +-35; roll N(0, 8); camera DISTANCE
+  log-uniform 0.3-3 m, the lens that frames a 0.25-0.37 m crop there, off-axis crops on half; distance / yaw / pitch
+  in meta.npz. The network gets ONE MORE OUTPUT ROW: log distance (+ its sigma).
+- EXPRESSIONS (c): ARKit-named shapes solved on GNM's basis once (arkit_expr.npz, 41 shapes) + the sampler's
+  classes: lower face 40 % neutral, 15 % smile with teeth, 7 % closed smile, 13 % jaw open, 10 % speech-like, 8 %
+  other closed, 7 % a sampler class; upper face 50 % neutral, 10 % eyes closed, 8 % wide, 10 % squint, 10 % brows
+  down, 10 % brows up, 2 % wink.
+- APPEARANCE (d): tones Fitzpatrick 1-6 by class as the pilot; 15 % of samples under a HARD TOP light (a 1-5 deg sun
+  at 60-88 deg elevation, a dark room); hair on 60 % of dressings (loose 36 %, loose + fringe 22 %, combed 27 %, crop
+  15 %; loose hair may hang over cheeks and jaw: `face` 0..1), stubble / beard shadow on 60 % of men (amount to 1.4);
+  training-time: backgrounds, clothes recolour, phone damage (noise, JPEG 25-95, downscale, blur) + NEW radial lens
+  distortion (k +-0.12 on 25 %) and motion blur (15 %). NOT in: glasses (a stage geometry of their own: not cheap),
+  strand hair (lock planks, as the pilot), real garments.
+- CHEAPER (f), measured on 200 samples at 320 px:
+  | | pilot | stage 1, this laptop | stage 1, NICO-TOP |
+  |---|---|---|---|
+  | all in, per sample | 2.9 s | 0.86 s (n 200), 0.94 s (n 300 with hair) | 1.08 s (n 300) |
+  | Blender: render / re-pose / labels | 1.2-1.5 / 0.2 / 0.35 s | 0.25 / 0.07 / 0.07 s | 0.48 / 0.08 / 0.06 s |
+  | stage build per dressing | 100-290 s | 90-140 s | ~120 s |
+  What bought it: the stage meshed at 2 mm (eyes / mouth 1 mm, teeth 0.8 mm: 125k vertices against 400k), 6 TAA
+  samples, one Blender start per dressing, and the POSE: humanfit.state takes 2 s a head on a native head (the
+  neck is re-fitted per identity; 0.87 s a sample on 4 processes = the first run's largest cost), so each sample is
+  posed from GNM's own bases at the stage's placement (0.01 s; against the exact build: face 0.13-0.24 mm rms, teeth
+  0.1 mm, eyeballs 0.00 after a rigid move: the exact build also re-seats the head on the neck by 1-12 mm, a rigid
+  move a picture cannot show; the head's move fades to 0 over the rings above the neck stitch, the body stands).
+
+### The baseline to beat: the pilot at the truth on solvecams' heads (spikes/denselm/sc_table.py; out/sc_pilot.txt)
+rms per axis, mm (bias x, y): FRONT (20 pictures, plain): lids 0.55, eyes 0.67, lips 0.93, brows 1.02, mouth 1.02,
+chin 1.17, nose 1.20 (y +1.0), cheeks 1.55, forehead 1.91, ears 3.5, scalp / neck 5.0. 3/4 (8): lids 0.89, eyes
+0.82, lips 1.00, mouth 1.10, nose 1.19, chin 1.61 (x +1.3), forehead 1.70, cheeks 2.27, ears 3.3. 72 deg (4): lips
+0.95, nose 1.17, mouth 1.17, chin 1.37, lids 1.53, eyes 1.70, brows 1.92, cheeks 2.36, forehead 2.53. TRUE PROFILE
+(4): lips 1.29, nose 1.52, chin 1.68, mouth 1.82, lids 2.83, eyes 2.99, brows 3.09, cheeks 3.49, forehead 3.84
+(= solvecams' DENSE_REGION_SIG). Under the hard top light on dark skin (head e) the front nose is 1.49 (y +1.8) and
+the chin y -1.7; with hair (head g) front ears 5.5 / scalp 8.7 (y -5.6 / -9.7: it puts them where a bald head's
+are), cheeks 2.2, forehead 2.1. Its sigma there is too small by x1.5-3 (honesty 2.3-15 on forehead / ears / scalp).
+WIDTH (front; lower-face width error, chin's x scale): a +0.0 mm / 1.00, b (narrow) +0.9 / 1.08, c (wide) +4.8 /
+1.03, d +0.7 / 1.03, e -1.8 / 0.99, g (hair) +4.7 / 1.00. CAMERA its landmarks imply on the true head: front pitch
++1.6 deg (rms 1.9), true profile yaw +2.4 (rms 2.6) and distance +48 % (front distance is not determined by them:
+-23 % .. unbounded).
