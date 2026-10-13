@@ -1992,3 +1992,12 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   wide wavy ribbons. th_W13 = BEST (styles/W13_*.json; `./r8.sh W13 v0,v1,v2,backl 1536`). Colour variation W13 |
   hers: L_sd 6.7 | 7.5, strand 3.25 | 4.3, ribbon 3.2 | 2.95, light ribbons 9 % | 9 %. Still wrong: the part dips
   (hair crosses it now); hers' tail is narrower and more pointed; hue a few deg red.
+  tess_n1 (GNM-native Tess): th_W20 = W13's style + look through tie_hair(carry_from th_T66) on tess_n1, rendered on
+  its own stage (`HEAD=tess_n1 EXTRA="stage=tess_n1" ./r8.sh W20 ...`): seats with no work (dome, halo, curls, tail);
+  colour variation the same as on tess_a1 (L_sd 6.6 | 7.4, ribbon 3.1 | 3.1). Tests: 93 pass (two tail tests' bounds
+  follow the less-in-step default). ROUND TWO DONE except: the part still dips; the tail narrower / more pointed in
+  hers; hue a few deg red; the export / cards colour only unit-tested.
+  NEXT (queued by the coordinator, Joe agreed): make the hair work LEARN: (1) distil a "what makes hair read as hair"
+  checklist into hair_guide.md (rule + measure + knob) and cut the guide; a 1-page summary atop "## tesshair7";
+  (2) a regression sheet script (current best styles + riffs beside the last accepted renders); GATE; (3) a hair
+  reader from reference photos; (4) a test on a different hair type, 4 rounds.
