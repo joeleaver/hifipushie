@@ -1152,6 +1152,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         c0_ = np.atleast_2d(np.asarray(cam0, float))
         a0[:min(len(a0), len(c0_)), :min(ncam, c0_.shape[1])] = c0_[:len(a0), :ncam]
         cam_done = a0
+    cam_start0 = cam_done.copy()         # (the call's whole camera step counts its cameras-first rounds too, unless they are a new start)
     for _ in range(cam_first):
         # CAMERAS FIRST (solvecams: on EVERY call now): the head held (tau tiny), the cameras laid on its outline and
         # anchors under their prior, before identity may move: a wrong front pitch is otherwise paid in jaw width (1.4 mm
@@ -1179,7 +1180,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         else:
             cam_done = cam_done + th
             prior_cam = True
-    cam_start = cam_done.copy()
+    cam_start = cam_done.copy() if (cam_reset or not cam_first) else cam_start0
     relax = 1.0
     for k in range(rounds):
         for v in views:              # per-view extra observations follow the moved head and camera

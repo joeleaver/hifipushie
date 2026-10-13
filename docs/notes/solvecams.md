@@ -5,16 +5,22 @@ first (PART 1), a gate, then the fix (PART 2). Scratch DURABLE in /mnt/data/hifi
 (light slot), heavy.sh <gb> <script> (capped; the script takes resources.heavy), synth/ (the benchmark's pictures), out/
 (logs, one json per chain). Scripts spikes/solvecams. Models sc_* (main's workspace).
 
-STATE (2026-10-13, PART 2 IN PROGRESS: steps 1-4 built and measured ("### Step 4: dense" at the end: with dense on the
-six starts agree to 1.1-2.7 mm of jaw and the face is 1.28 mm, but widths are +3.5 mm wide; dense stays OFF by default);
-the acceptance is met for repeatability only with dense, and not for the lower face): cameras are priors with a distance freedom and no clips, block_in_start's fit has a pitch /
-lens prior, every call starts with a cameras-first round, the sticky sigma inflation is a bound (active set) with
-DISAGREE / AT THE BOUND / CAMERA lines in the reply. Against main: the "trust" disaster is gone (head c fitted + trust:
-jaw +15.8 -> +10.0, face 4.70 -> 1.99) and no chain stalls at x15 any more, but the jaw's width still differs by 3-11 mm
-between starts after 3 calls (target 2): a front pitch left 1.5-3.5 deg off and a distance the outlines cannot read
-(+-10-20 % call to call) are what remains; 8 calls bring it to ~4 mm on the worst head. Section "## PART 2".
-NEXT: the dense suite (vd: pitch 0.2 deg / distance 5 % if it holds on a class-mean start), then acceptance on 6 heads
-(e = another dressing / top light, g = hair), chinread's heads, Tess by tiles.
+STATE (2026-10-13, PART 2 DONE as far as it goes; branch `solvecams`, NOT merged, NOT pushed; dense OFF by default):
+cameras are priors with a distance freedom and no clips, block_in_start's fit has a pitch / lens prior, every call
+starts with a cameras-first round, the sticky sigma inflation is a bound, the reply has CAMERA / DISAGREE / AT THE BOUND
+lines, the dense read has measured per-region sigmas and an effective N. ACCEPTANCE: NOT MET without dense (the jaw's
+width differs 7-13 mm between six camera starts; main: 14-18), MET FOR REPEATABILITY with dense (1.1-2.7 mm, face 1.28 mm)
+but with a width bias of +3.5 mm and the lower face at 1.8 (target 1.6). What is fixed for good: "trust" no longer
+freezes a wrong front pitch (head c: jaw +15.8 -> +8-10, face 4.70 -> 2.0), no chain stalls at x15, block_in_start no
+longer puts a camera at half or twice its distance. What is not: outlines + detector anchors do not read a camera's
+DISTANCE, and the solve now keeps the lens prior (70 mm unless lens_mm / EXIF): on pictures through a 126 mm lens
+(chinread's heads) that costs: 2.27 / 2.76 mm against main's 2.0-2.2 / 2.2-2.5. Tess, looked at: no visible change.
+NEXT (for the coordinator / Joe): (1) the held-out test belongs to that line: run it with cameras "free", once with
+dense, read the CAMERA lines; (2) a LENS per reference picture (lens_mm in the brief / file name) is the cheapest fix
+of the distance ambiguity; (3) the dense network's biases (narrow jaws answered with the average; pitch +2-3 deg on
+male heads, +3.9 under hair; a true profile's lids) are training-data matters for denselm's full run; (4) guide topic
+block_in_solve still describes clips and the inflation: rewrite; (5) merge the base.template_joints cache fix on its
+own if this branch waits.
 PART 1's state, as it stood at the gate: (2026-10-13, PART 1 DONE, at the GATE; no solver code changed; one cache bug fixed, below): on four GNM-native
 known heads the solve's lower-face error is the CAMERAS': with true camera rotations the widths come out to 1.0-1.6 mm
 and the face to 1.5 mm rms; from block_in_start's own cameras, "trust" leaves the heads WORSE than the class mean they
@@ -424,3 +430,46 @@ Mean of the 24 free chains: face 1.28 (1.86 without dense), lower face 1.79 (2.0
 - ACCEPTANCE with dense: jaw spread 1.1 / 1.8 / 2.3 / 2.7 (target 2: two heads just over); face <= 1.6 on every chain;
   lower face <= 1.6 NOT met (b 2.1-2.6, d 1.5-2.0); worse than the class mean: only b's lower face from some starts
   (2.1-2.6 against 2.37) and a's face by 0.05. Without dense: repeatability not met (7-13 mm). DENSE stays OFF by default.
+
+### Wider benchmark, older sets, Tess (suite w = heads e, g, four starts; q3.txt; all on the final code)
+- HEAD e (another dressing: dark skin, age 60, a hard TOP light; bald), no dense: jaw_width -1.7 / -5.9 / -4.3 / -7.9
+  (fitted / true / pitch +8 / distance x2), face 2.1-2.8, lower face 1.4-2.3: WORSE than its class mean (1.69 / 2.01)
+  from every start; front pitch -1.6 .. -3.5 deg. With dense: +2.1 .. +3.2 (spread 1.1), face 1.47-1.57, lower face
+  1.94-2.35, pitch -0.2 .. +1.3, distance -3 .. -9 %. The hard top light costs the plain solve ~0.7 mm of face.
+- HEAD g (tess_n1's body, skin and strand HAIR tied back: the scalp's outline and the ears' tops under hair), no dense:
+  jaw +0.1 / -0.6 / -0.8 / -2.8, face 1.22-1.42, lower face 1.24-1.60 (class mean 1.69 / 1.99): the BEST head of the
+  six; front pitch +0.8 .. +1.3 deg, distance -8 .. +5 % (x2 start stays +91 %). Hair over the scalp outline did NOT
+  degrade the cameras here (the skin outline that is left, the cheeks / jaw / chin and the profile line, is what holds
+  them; one head, one hairstyle, tied back: not loose hair over the jaw). With dense: jaw +3.9 .. +4.8, front pitch
+  +3.9 deg from every start: under hair the network's pitch bias is its largest.
+- CHINREAD's heads c-h (body-carried, old attach; NOT re-rendered: they ran as they are; pictures through a ~126 mm
+  lens; fitted start, 3 calls): no dense 2.27 / 2.76 (start 2.62 / 3.13; main today 2.0-2.2 / 2.2-2.5): a little WORSE
+  than main: the start fit now holds the 70 mm prior (-45 % of distance) where main's free lens happened to land nearer,
+  and the wide heads pay (g: jaw +11.0, h +1.5, f +7.6). With dense 1.49 / 1.81 (denselm's D: 1.46 / 1.80): the same.
+- SOLVEREADS' set (sx a_x, a_n, b_x, b_n): no dense 2.72 / 2.07 (start 2.87 / 2.69); dense 2.37 / 2.45.
+- TESS (sc_T00 = block_in_start("tess_a1", sex female) on the new path; 6 calls; sc_TN06 no dense, sc_TD06 dense;
+  logs out/tess_*.log). LOOKED AT, tiles one at a time (feature tour, clay: /mnt/data/hifipushie/tour/<model>/), sheet
+  workspace/human_renders/sc_tess_cameras.png (REFERENCE | sc_TN06 | tess_n1):
+  | tile | after against before (tess_n1) | against her |
+  |---|---|---|
+  | jaw + chin, front | SAME: I cannot tell the two apart | on her outline where hair leaves it; her chin is smaller and more pointed than either |
+  | chin, front | SAME | a broader, rounder chin pad than hers |
+  | eyes, front | SAME placement (the overlay is sharp at both irises) | openings narrower than hers in both |
+  | jaw + chin, three-quarter | SAME | the model's chin and jaw line lie a few mm outside hers (a ghost edge under the chin) |
+  | jaw + chin, profile | SAME (the under-chin perhaps 1 mm nearer) | chin's front on her line; under-chin fuller / lower than hers |
+  Cameras: 4.7 / 39.0 / 74.3 deg (tess_n1: 4.6 / 39.2 / 70.7), front pitch -4.7, distances +6 / +5 / -1 % from the
+  start, no FAR FROM ITS START line at the end, DISAGREE: lids 2.4 sigma (0.9 mm). With priors and no clip the 3/4 still
+  sits at 39 and the "profile" at 74: that is what the reads say those two pictures are, not a cap. Dense (sc_TD06):
+  5.2 / 39.5 / 71.2, the profile's distance +43 %; the lower face a little BROADER than without (looked at: worse).
+  So on Tess the camera work changes nothing visible: her cameras were not what was wrong.
+### What changed by default (exactly), tests
+- face_ruler: PHOTO_CAM_SD7 / CAM_STEP / PHOTO_CAM_DIST_DENSE, cam_moved(dist=), the distance column, no whole-move
+  clip, cameras-first on every call (read(cam_first, cam_reset)), solve(cmax) = bound (out["bound"], "resid"),
+  disagreement(), camera_lines(), view_pitch(), lens_mm(); compare(cam_sd=PHOTO_CAM_SD7, dense=). Dense: DENSE_SIG_SCALE
+  1, DENSE_REGION_SIG, DENSE_REGIONS (no ears / scalp_neck), DENSE_NEFF, DENSE_IDENTITY; DENSE still False.
+- blockin: fit_cameras under FIT_LENS_SD / FIT_PITCH_SD (humanfit_map.fit(cam_prior=)), solve_step(dense=), CAM_FIRST 1,
+  cam_done has 7 columns (older models' 6 are padded), rep["solve"] gains camera_lines / bound / disagree; relax is
+  always 1.0 (RELAX_KEEP inert). base._source_key: the cache fix (top of this note).
+- Tests (one file a process, HIFIPUSHIE_ASSETS set, none skipped): test_solvecams 3, test_refread 9 (two rewritten:
+  the bound, 7 camera numbers), test_solvereads 11 (one rewritten: the bound), test_face_ruler 4, test_blockin 19,
+  test_chinread 7, test_denselm 4, test_nativedefault 6, test_orbit 10, test_headbody 6.
