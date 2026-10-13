@@ -146,6 +146,50 @@ for vi, kd in enumerate(kinds):
         print(f"  {kd:8s} {CN[j]:9s} prior {e['prior']:4.1f} | free {e['sd_free']:5.2f} trust {e['sd_trust']:5.2f} | reads {e['sd_reads']:6.2f} | "
               + " ".join(f"-{t[:4]} {v:.2f}" for t, v in e["without"].items()) + " | " + " ".join(f"{m[:8]} {x:+.2f}" for m, x in zip(MEAS, dm)) + f" |dc| {e['dc_per_unit']:.2f}")
 out["ident"] = ident
+# ---- the camera's DISTANCE (not a freedom of today's solve): one more column per view = each read's change per 10 %
+# of distance with the lens to match (the picture scale at the head's centre kept), by finite differences
+sc_mm = lambda v: float(v["cam"]["t"][2]) / v["cam"]["f"] * 1000.0 / float(v.get("scale", 1.0))
+D = np.zeros((len(obs), len(views)))
+for vi, v in enumerate(views):
+    iv = [i for i, ob in enumerate(obs) if ob["view"] == v["kind"] and "X" in ob]
+    if not iv:
+        continue
+    X = np.array([obs[i]["X"] for i in iv], float)
+    far = {**v["cam"], "t": [x * 1.1 for x in v["cam"]["t"]], "f": v["cam"]["f"] * 1.1}
+    d = (fr._cam_points(far, X)[1] - fr._cam_points(v["cam"], X)[1]) * float(v.get("scale", 1.0)) * sc_mm(v)
+    for i, dd in zip(iv, d):
+        ob = obs[i]
+        D[i, vi] = dd @ np.asarray(ob["n"]) if "n" in ob else (dd[0] if ob["name"].endswith(".x") else dd[1])
+J2 = np.c_[Jx, D]
+p2 = np.r_[pri, np.full(len(views), 1e3)]
+p2[n1:n1 + nc] = 1e3
+
+
+def A2(wsel, cam_wide=True):
+    q = p2.copy()
+    if not cam_wide:
+        q[n1:n1 + nc] = pri[n1:n1 + nc]
+    return (J2 * (w * wsel)[:, None]).T @ J2 + np.diag(1.0 / q ** 2)
+
+
+print("DISTANCE (per 10 % of camera distance at the same picture scale): sd from the reads alone (x10 %), without each type, shape per +10 % left uncorrected")
+dist = []
+Af = A2(ones)
+Afi = np.linalg.inv(Af)
+for vi, kd in enumerate(kinds):
+    col = P + vi
+    # what a +10 % distance error costs when the solve CANNOT move distance (today): the other freedoms' response
+    g = -np.linalg.solve(A_free, (Jx * w[:, None]).T @ D[:, vi])
+    dm = Rm @ g[:n1]
+    e = {"view": kd, "sd_reads": float(np.sqrt(Afi[col, col])), "sd_cam_prior": float(np.sqrt(np.linalg.inv(A2(ones, False))[col, col])),
+         "shape": {m: float(x) for m, x in zip(MEAS, dm)}, "dc": float(np.linalg.norm(g[:n1])), "without": {}}
+    for t in types:
+        if t != "hold":
+            e["without"][t] = float(np.sqrt(np.linalg.inv(A2(np.array([ob["type"] != t for ob in obs], float)))[col, col]))
+    dist.append(e)
+    print(f"  {kd:8s} reads alone {10 * e['sd_reads']:6.1f} % (cameras at today's priors: {10 * e['sd_cam_prior']:.1f} %) | " + " ".join(f"-{t[:4]} {10 * v:.1f}" for t, v in e["without"].items())
+          + " | +10 % too far, uncorrected: " + " ".join(f"{m[:8]} {x:+.2f}" for m, x in zip(MEAS, dm)) + f" |dc| {e['dc']:.2f}")
+out["dist"] = dist
 # the softest directions of the whole system (reads alone on the cameras), in the prior's units: what they are made of
 S = np.r_[np.ones(n1), np.tile(np.array([1.5, 1.5, 2.5, 0.8, 6.0, 2.0]), len(views)), np.ones(P - n1 - nc)]   # one scale per freedom
 ev, V = np.linalg.eigh((A_data * S[:, None]) * S[None, :])

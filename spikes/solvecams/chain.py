@@ -5,8 +5,9 @@ a similarity). Records -> /mnt/data/hifipushie/solvecams/out/<prefix>.json (+ a 
     first "free" a "refit" as in the tool)
   dense=1                 the dense-landmark read on
   start=true              the start's cameras replaced by the TRUE ones (then pert), not laid on the head again
-  pert=<view>:<yaw|pitch>:<deg>,..   true-camera start moved: yaw = the head's turn changed by deg (- = toward the
-                          front), pitch = nodded by deg; the head's centre stays where it is in the picture
+  pert=<view>:<yaw|pitch|dist>:<deg>,..   true-camera start moved: yaw = the head's turn changed by deg (- = toward the
+                          front), pitch = nodded by deg, dist = the camera that many % further away with the lens to
+                          match; the head's centre stays where it is in the picture
   freeze=all|rot          camera freedoms off: all six, or yaw and pitch only (shift / scale / roll as `cameras`)
   anything else           -> solve_step (anchors=none ..)"""
 import copy, json, sys, time
@@ -65,6 +66,9 @@ if start == "true" or pert:
             c1 = fr.cam_moved(cams[i], yaw=float(deg))
             if abs(abs(fr.view_yaw(c1)) - abs(fr.view_yaw(cams[i])) - float(deg)) > 0.5:
                 c1 = fr.cam_moved(cams[i], yaw=-float(deg))
+        elif what == "dist":      # the camera deg % further away with the lens to match: the same picture scale at the head's centre
+            k_ = 1 + 0.01 * float(deg)
+            c1 = {**cams[i], "t": [x * k_ for x in cams[i]["t"]], "f": cams[i]["f"] * k_}
         else:
             c1 = fr.cam_moved(cams[i], pitch=float(deg))
         cams[i] = {k: (np.asarray(v).tolist() if hasattr(v, "tolist") or isinstance(v, (list, tuple)) else v) for k, v in c1.items()}
