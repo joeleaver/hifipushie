@@ -32,7 +32,7 @@ if "mix" in kw:
 if "neff" in kw:
     mpread.NEFF = float(kw["neff"])
 if "expr" in kw:
-    bi.SOLVE_EXPRESSION = {"0": False, "view": "view", "gate": "gate"}[kw["expr"]]
+    bi.SOLVE_EXPRESSION = {"0": False, "view": "view", "lower": "lower"}[kw["expr"]]
 if kw.get("camfreeze") == "1":      # the cameras FROZEN where the chain starts them (start=true: at the truth)
     fr.PHOTO_CAM_SD7 = {k: tuple(1e-3 for _ in v) for k, v in fr.PHOTO_CAM_SD7.items()}
     fr.PHOTO_CAM_DIST_DENSE = 1e-3

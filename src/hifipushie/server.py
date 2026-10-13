@@ -2100,7 +2100,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     from . import blockin as bi
     if parse not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: parse = "auto" | "on" | "off"')
-    if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "none"):
+    if hold not in ("default", "auto", "none") or expression not in ("default", "view", "shared", "lower", "none"):
         raise ValueError('block_in_solve: hold = "auto" | "none"; expression = "view" | "shared" | "none"')
     if chin_points not in ("auto", "on", "off"):
         raise ValueError('block_in_solve: chin_points = "auto" | "on" | "off"')
@@ -2109,7 +2109,7 @@ def block_in_solve(name: str, out: str | None = None, share: float = 1.0, seen: 
     rep = bi.solve_step(name, out=out, share=share, seen=seen, cameras=cameras, anchors=anchors,
                         parse={"auto": "auto", "on": True, "off": False}[parse],
                         hold={"default": bi.SOLVE_HOLD, "auto": "auto", "none": None}[hold],
-                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "none": False}[expression],
+                        expression={"default": bi.SOLVE_EXPRESSION, "view": "view", "shared": "shared", "lower": "lower", "none": False}[expression],
                         chin={"chin_lm": {"auto": "auto", "on": "xy", "off": "none"}[chin_points],
                               "size": {"held": True, "free": False, "iris": "iris", "iris_pin": "iris_pin"}[size],
                               "neck": {"prior": True, "held": "held", "free": False}[neck] if isinstance(neck, str) else float(neck)},
