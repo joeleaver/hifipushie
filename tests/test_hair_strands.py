@@ -422,6 +422,28 @@ def test_lock_density_scales_its_strand_share():
     assert abs(w[1] / w[0] - 1.0) < 1e-6 and d.tolist() == [1.0, 0.5], (w, d)
 
 
+def test_hair_age_runs_on_through_the_tie():
+    """tesshair7 (the colour model): the look's `sun` / `highlights` go by the hair's AGE, m from the scalp (guide
+    arrays a0 / a1). A tail's lock starts where the gathered hair ended, not at a new dark root; head locks and
+    wisps start at 0. And the look's defaults VARY (natural hair is never one colour), flat is asked for."""
+    from hifipushie import hair
+    S = {**hc.STRANDS, "wave": 0.0}
+    P = [[0.0, -0.09, 0.05], [0.0, -0.06, 0.08], [0.0, -0.02, 0.1], [0.0, 0.03, 0.1]]
+    Q = [[0.0, 0.03, 0.1], [0.0, 0.06, 0.05], [0.0, 0.07, 0.0], [0.0, 0.07, -0.08]]
+    g = _lock("tg1_0", P, free=0.0)
+    t = _lock("tt0", Q, free=1.0)
+    G = hs.lock_guides([g, t], np.zeros(3), S)
+    gl = float(np.linalg.norm(np.diff(np.asarray(P), axis=0), axis=1).sum())
+    assert G["head"]["a0"].tolist() == [0.0] and abs(float(G["head"]["a1"][0]) - gl) < 0.01
+    assert abs(float(G["free"]["a0"][0]) - gl) < 1e-6 and float(G["free"]["a1"][0]) > gl + 0.15
+    G2 = hs.lock_guides([dict(_lock("loose3", Q, free=1.0))], np.zeros(3), S)  # loose hair: its own root
+    assert G2["free"]["a0"].tolist() == [0.0]
+    lk = hair.full_look({})
+    assert lk["variation"] > 0 and lk["sun"] > 0 and lk["highlights"] == 0 and lk["fly_light"] > 0
+    flat = hair.full_look({"variation": 0, "sun": 0, "fly_light": 0, "vary": 0})
+    assert flat["variation"] == 0 and flat["sun"] == 0
+
+
 def test_seen_colour_reads_as_asked_in_eevee():
     """look.seen (the colour the hair should read, e.g. off a photo): lit is asked more saturated for the renderer's
     loss, and eevee_sat is set so EEVEE's Hue/Saturation (HSV saturation x eevee_sat, linear) gives seen back; the

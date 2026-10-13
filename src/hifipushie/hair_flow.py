@@ -137,9 +137,9 @@ def roots(sc, ga: dict, line, rng, xp=None):
     return az, el, hl, din
 
 
-def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
+def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12, t=None):
     """The way of each root (unit directions D0 from the head centre) over the head to the tie: (m, n, 3) unit
-    directions, and each way's length (radians)."""
+    directions, and each way's length (radians). `t`: where along the way the n points stand (default evenly)."""
     from .hair import _line_at, az_el, dirs
     D = _unit(np.array(D0, float))
     m = len(D)
@@ -171,6 +171,16 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
     mid_d = dirs(180.0, float(te))  # the tie brought to the back's middle: what the FRONT of the head is combed to
     e_ear = 0.5 * (float(_line_at(line, 95.0)) + float(_line_at(line, 265.0)))  # the hairline over the ears
     tie_in = float(te) > float(_line_at(line, float(tz))) + 2.0  # (a tie below the hairline: no keep-in near it)
+    # THE ARC (tesshair7, gather.volume.arc; Joe's red lines on her picture: three nested convex arcs from the part up,
+    # out and down the side to the temple, ours straight diagonals to the tie): loose hair first FALLS from its root,
+    # down the head on its own side (off a part: sideways out of it while the head is still flat), and only then is
+    # taken back by the tie. `arc` is how much of the first stretch (arc_len rad) belongs to the fall
+    vo_ = ga.get("volume") or {}
+    arc = float(vo_.get("arc") or 0.0)
+    arc_len = float(vo_.get("arc_length") or 0.6)
+    # (not the hair that is already on its way: rooted near the tie, or under it)
+    arc_w = arc * np.minimum(ang0 / (np.pi / 2), 1.0) ** 2 * _ss_t((e0 - float(te)) / 25.0)
+    trav = np.zeros(m)
     P = [D.copy()]
     for _ in range(int(2.5 * np.pi / step)):
         c = np.clip(D @ tie_d, -1, 1)
@@ -212,9 +222,37 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
             dn[:, 1] = np.maximum(dn[:, 1], -0.6 * np.linalg.norm(dn, axis=1))  # (forward only a little: over the forehead's corners)
             v = v + (sag * frontw * np.sin(np.pi * np.clip(prog, 0, 1) ** 0.35) * np.minimum(ang0 / (np.pi / 2), 1.0) * near)[:, None] * dn
         v = _unit(v)
-        low = (v * to).sum(1) < 0.35  # (always on toward the tie)
+        thr = 0.35
+        if arc > 0:
+            # (not from the first mm: tied hair was pulled BACK first, so off a part it leans back along the part before
+            # it falls out of it; falling sideways at once, the two banks stood apart as a wide open valley, th_V70)
+            wa = arc_w * _ss_t(trav / 0.12) * (1.0 - _ss_t(trav / arc_len)) * near
+            # (... and the fall ends well above where the hair may hang to: falling all the way to that line, every
+            # way then ran along it and the side was a bob's curtain with a thick lower edge over the ear, th_V73)
+            fa_ = np.abs(_wrap(az))
+            lim_ = np.maximum(_line_at(line, az) + 1.0, np.where((fa_ > 40) & (fa_ < 120), e_ear + 4.0, -90.0))
+            # (over the forehead's corners it may come down to the line: held 8 deg above it there, the corners were
+            # left to the thin edge band alone, a grey veil over skin, th_V77/78)
+            side_ = _ss_t((fa_ - 35.0) / 15.0)
+            wa = wa * _ss_t((el - lim_ - 8.0 * side_) / (6.0 + 12.0 * side_))
+            dn = DOWN[None] - (D @ DOWN)[:, None] * D  # (its length = how steep the head is here)
+            stp = np.linalg.norm(dn, axis=1)
+            fall = dn
+            if xp is not None:
+                Q = sc.point(az, el, 0.0)
+                inpart = 1.0 - _ss_t((Q[:, 1] - yf - plen) / 0.04)
+                lat = side[:, None] * X[None]
+                lat = lat - (lat * D).sum(1, keepdims=True) * D
+                fall = dn + (inpart * (1.0 - stp))[:, None] * lat
+            fl_ = np.linalg.norm(fall, axis=1)
+            fall[:, 1] = np.maximum(fall[:, 1], 0.0)  # (never forward: at -0.3 the front hung as a bob's curtain, th_V70)
+            wf = (wa * np.minimum(fl_, 1.0))[:, None]
+            v = _unit((1.0 - wf) * v + wf * 1.6 * fall)
+            thr = 0.35 - 0.8 * wa  # (falling, a way may run across the tie's direction, even a little off it)
+        low = (v * to).sum(1) < thr  # (always on toward the tie)
         v[low] = _unit(v[low] + to[low])
         st = np.minimum(step, ang)
+        trav = trav + st
         Dn = _unit(D * np.cos(st)[:, None] + v * np.sin(st)[:, None])
         # the way stays in the hair: above the hairline (so over the ears' tops, not across the temples' skin or the
         # ear), but for `overhang` deg at the front and temples and `ears` deg round the ears
@@ -235,7 +273,7 @@ def paths(sc, line, D0, tie_d, xp, ga: dict, rng, n: int = 12):
     P = np.stack(P, 1)  # (m, steps, 3)
     seg = np.arccos(np.clip((P[:, 1:] * P[:, :-1]).sum(-1), -1, 1))
     cum = np.concatenate([np.zeros((m, 1)), np.cumsum(seg, 1)], 1)
-    t = np.linspace(0, 1, n)
+    t = np.linspace(0, 1, n) if t is None else np.asarray(t, float)
     out = np.zeros((m, n, 3))
     for i in range(m):
         if cum[i, -1] < 1e-6:
@@ -262,8 +300,19 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
     e_ear = 0.5 * (float(_line_at(line, 95.0)) + float(_line_at(line, 265.0)))
     tie_d = dirs(*tp["at"])
     n = 12
-    D, w0 = paths(sc, line, dirs(az, el), tie_d, xp, ga, rng, n)
     t = np.linspace(0, 1, n)
+    # VOLUME (tesshair7, gather.volume; Joe: "it's flat"): the hair STANDS UP out of its root and bends over (a rise
+    # with a bend radius, not a shell offset by a few mm), carries a dome over the crown / the sides / the nape, in
+    # LAYERS (each lock its own height: the mass has thickness, the under-layers lie tighter), and is drawn in to the
+    # tie only over the last stretch (hold). More points near the root: the bend is 1-2 cm long
+    vo = ga.get("volume") or None
+    if vo and max(float(vo.get(k_) or 0.0) for k_ in ("crown", "side", "nape")) <= 0 and not vo.get("arc"):
+        vo = None
+    if vo:
+        n = 18
+        t = np.linspace(0, 1, n) ** 1.6
+    D, w0 = paths(sc, line, dirs(az, el), tie_d, xp, ga, rng, n, t)
+    r_med = float(np.median(sc.R))
     un = float(ga["uneven"])
     sp = float(ga["spacing"])
     locks = {}
@@ -281,7 +330,10 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
             # whole temple was a thin gauze over skin, th_T51)
             fa_i = abs(float(_wrap(az[i])))
             strip = float(_ss_t((fa_i - 40.0) / 15.0) * (1.0 - _ss_t((fa_i - 100.0) / 10.0)))
-            ramp = float(_ss_t(din[i] / ((0.6 - 0.35 * strip) * sp)))
+            # (under hair with VOLUME the band is seen: the mass stands up behind it instead of lying over it, and 1-2 cm
+            # of thin fine hair on the forehead's corners was a grey veil over skin, th_V75/76: full by 5 mm there too)
+            v_b = float(np.clip(max(float((ga.get("volume") or {}).get(k_) or 0.0) for k_ in ("crown", "side")) / 0.012, 0.0, 1.0))
+            ramp = float(_ss_t(din[i] / ((0.6 - 0.35 * max(strip, v_b)) * sp)))
             onp = 0.35 + 0.45 * ramp
         f_l = float((ga.get("front") or {}).get("loose") or 0.0)
         if f_l > 0:  # (a loose front stands off the head at its roots: the rest stays as tight as the style)
@@ -291,6 +343,40 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
         ride = 0.002 + float(ga["body"]) * far
         h = (1 - t ** 3) * (ride * np.minimum(t * 6, 1) + lift * _ss_t(t / 0.15) * (1 - 0.5 * t) + puff * np.sin(np.pi * t) ** 0.9) \
             + t ** 3 * float(tp["out"]) * 0.8
+        if vo:
+            u_l = (i * 0.6180339887 + 0.37) % 1.0  # the lock's layer (no draw: the random stream stays)
+            lay = 1.0 - float(np.clip(vo.get("layers", 0.7), 0, 1)) * (1.0 - u_l ** 0.6)
+            s_m = w0[i] * r_med * t  # m along the way
+            rb = max(float(vo.get("rise", 0.012)) * (0.75 + 0.5 * ((i * 0.7548776662) % 1.0)), 1e-3)
+            if xp is not None:
+                # (the banks of a part stand up at once: at the general bend radius the two banks leaned apart and
+                # the part was a 2 cm wide valley, the head a heart with two lobes from the front, th_V73)
+                p0_ = sc.point(az[i], el[i], 0.0) - sc.C
+                dx_ = float(p0_[0] - xp - _zig(ga, p0_[1] + float(sc.r(0.0, 30.0)) * np.cos(np.radians(30.0))))
+                rb = rb * (1.0 - 0.65 * float(np.exp(-(dx_ / 0.02) ** 2)))
+            rise = 1.0 - np.exp(-s_m / rb)
+            er = np.radians(ee)
+            wc = np.clip(np.sin(er), 0.0, 1.0) ** 1.5  # over the top
+            wn = _ss_t((np.abs(_wrap(aa)) - 105.0) / 40.0) * (1.0 - _ss_t((ee + 5.0) / 35.0))  # the nape
+            fa_p = np.abs(_wrap(aa))
+            wb_ = _ss_t((fa_p - 100.0) / 40.0)  # the BACK of the head: the dome runs on down to the tie there
+            # (the sides are fullest above the temple and lie close where the hair passes over the ear: full down to
+            # the ear the head was widest at the cheek, a bob, th_V74; hers is widest high and tapers in to the ear)
+            sd_ = float(vo.get("side") or 0.0) * (0.3 + 0.7 * _ss_t((ee - e_ear) / 24.0))
+            bk_ = float(vo.get("crown") or 0.0) * (1 - wn) + float(vo.get("nape") or 0.0) * wn
+            Hd = float(vo.get("crown") or 0.0) * wc + (1 - wc) * (sd_ * (1 - wb_) + bk_ * wb_)
+            hold = float(np.clip(vo.get("hold", 0.5), 0, 1))
+            th_ = 0.4 + 0.45 * hold
+            env = 1.0 - _ss_t((t - th_) / max(1.0 - th_, 1e-3))
+            # (the edge band rises less toward the line: it is the thin rim; hair rooted near the tie has no way to rise)
+            # (the band's thin fine rim stays low: lifted, it was a grey gauze standing over the forehead's corners, th_V74)
+            onv = (0.3 + 0.7 * ramp) if (edge > 0 and hl[i] == 1) else 0.85 if hl[i] == 1 else 1.0
+            onv *= min(w0[i] / np.radians(40), 1.0) * (1 + 0.5 * un * rng.uniform(-0.5, 0.5))
+            h = (1 - t ** 3) * (ride * np.minimum(t * 6, 1) + onv * lay * Hd * rise * env) + t ** 3 * float(tp["out"]) * 0.8
+            vo_thick = 0.25 * onv * float(np.max(Hd))  # (a lock of a standing mass is not a 4 mm sheet: layers run into each other)
+            # (how deep in the mass this lock lies, 0 = the top layer: the look's `depth` darkens the under-layers,
+            # the self-shadow EEVEE's strands do not cast on each other)
+            vo_shade = round(float(np.clip(vo.get("layers", 0.7), 0, 1)) * (1.0 - u_l ** 0.6), 3)
         aa = aa + un * 4.0 * np.sin(np.pi * t) * rng.uniform(-1, 1)
         r = 0 if hl[i] == 1 else 1
         name = f"{pre}g{r}_{k[r]}"
@@ -305,7 +391,8 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                 * (1.0 - float(_ss_t((abs(float(_wrap(az[i]))) - 60.0) / 30.0)))
         wx = (0.42 + 0.2 * ramp if edge > 0 else 0.6) if hl[i] == 1 else 1.9 - 0.5 * nearf
         lk = {"tier": "tie", "pts": [[round(float(aa[j]), 2), round(float(ee[j]), 2), round(float(h[j]), 4)] for j in range(n)],
-              "width": round(sp * wx * (1 + un * rng.uniform(-0.3, 0.3)), 4), "thickness": 0.004,
+              "width": round(sp * wx * (1 + un * rng.uniform(-0.3, 0.3)), 4),
+              "thickness": round(0.004 + (vo_thick if vo else 0.0), 4),
               "taper": 0.6, "belly": 0.45, "root": 0.8, "cup": 0.003}
         st = dict(ga.get("strands") or {})
         if hl[i] == 1:
@@ -367,6 +454,8 @@ def gather(sc, g: dict, tp: dict, ga: dict, line, rng, pre: str) -> dict:
                     st["roots"] = round(max(st["roots"], nr), 3)
                     st["roots_x"] = 4.0
                     lk["root"] = round(0.8 - 0.55 * nr, 3)
+        if vo and vo_shade > 0:
+            st["shade"] = vo_shade
         if st:
             lk["strands"] = st
         locks[name] = lk
@@ -929,6 +1018,16 @@ TIED = {
     "tightness": 0.5,     # 0 = loose (hair sags between root and tie, stands off the head, hangs over the hairline)
                           # .. 1 = scraped back tight and flat
     "lift": None,         # 0..1: volume at the roots and over the top (default: 1 - tightness)
+    "volume": None,       # (tesshair7) the hair's BODY over the head: 0 = a cap lying on the skull .. 1 = big loose hair.
+                          # The hair stands up out of its root (and out of the parting, on both banks) and bends
+                          # over, arcs out and down the side before the tie takes it back, in layers. A number, or
+                          # {"amount": 0..1, "crown" / "sides" / "nape": x the amount there (default 1 / 1 / 1),
+                          # "root": 0..1 (how steeply it stands at the root: 0 = eases off the scalp over ~4 cm,
+                          # 1 = stands straight up and bends within ~1 cm), "arc": 0..1 (how far the way falls
+                          # sideways / down from the root before it turns to the tie), "layers": 0..1 (0 = one shell,
+                          # 1 = locks at every height from the scalp up: a thick mass), "hold": 0..1 (0 = drawn in
+                          # to the tie from halfway, 1 = full until just before it; default 1 - tightness)};
+                          # default: `lift`
     "part": "centre",     # centre | left | right | none (none = combed straight back)
     "ears": "tucked",     # tucked (the hair passes over the ears' tops, behind them) | covered (it hangs over them)
     "tail": {},           # {"kind": "tail" | "bun" | "plait" | "none", "length": m, "fullness": 0..1, "wave": 0..1,
@@ -952,6 +1051,8 @@ TIED = {
     "length": 0.3,        # m: the loose hair's length for half up
     "detail": None,       # {"tie": {...}, "strands": {...}}: overrides of what the style makes (hair_tied's own keys)
 }
+VOLUME = {"amount": 0.0, "crown": 1.0, "sides": 1.0, "nape": 1.0, "root": 0.6, "arc": None, "layers": 0.7, "hold": None}
+VOLUME_M = (0.034, 0.03, 0.014)  # m the top layer stands off the scalp at volume 1: crown, sides, nape
 TAIL = {"kind": "tail", "length": 0.25, "fullness": 0.5, "wave": 0.3, "to": "back", "tousle": None}
 # tousle 0 = brushed (locks apart, an even end, nothing leaves the outline) .. 1 = tousled (a ragged end, stray hairs
 # all round, strands crossing); default 0.05 + 0.75 x wave
@@ -1021,11 +1122,33 @@ def style(tied: dict) -> dict:
     gather = {"mode": "flow", "spacing": 0.02, "uneven": round(0.2 + 0.6 * me, 3),
               "puff": round(0.002 + 0.016 * lift, 4), "root_lift": round(0.0015 + 0.008 * lift, 4),
               "body": round(0.005 + 0.005 * lo, 4), "sag": round(2.6 * lo, 3), "overhang": round(22.0 * lo, 2),
-              "ears": 14.0 if p["ears"] == "covered" else 0.0, "part_length": round(0.035 + 0.06 * lo, 4),
+              "ears": 14.0 if p["ears"] == "covered" else 0.0, "part_length": round(0.035 + 0.06 * lo, 4),  # (the groom's parting below: the same length)
               "hairline_strands": {"density": 1.6, "roots": 0.3}, "feather": 1.0,
               "edge": round(hs, 3), "zig": round(0.0045 * hs, 4),
               "strands": {"wave": round(0.004 + 0.008 * lo, 4), "wavelength": 0.07, "random": 0.8, "flat": 1.5,
                           "flyaway": 0.0}}
+    vol = p["volume"]
+    if vol is None:
+        vol = lift
+    if isinstance(vol, (int, float)) and not isinstance(vol, bool):
+        vol = {"amount": float(vol)}
+    bad = set(vol) - set(VOLUME)
+    if bad:
+        raise ValueError(f"hair tied volume: unknown keys {sorted(bad)} (have {', '.join(sorted(VOLUME))})")
+    vol = {**VOLUME, **vol}
+    V = float(np.clip(vol["amount"], 0, 1))
+    if V > 0.02:
+        v_root = float(np.clip(vol["root"], 0, 1))
+        gather["volume"] = {
+            "crown": round(VOLUME_M[0] * V * float(vol["crown"]), 4), "side": round(VOLUME_M[1] * V * float(vol["sides"]), 4),
+            "nape": round(VOLUME_M[2] * V * float(vol["nape"]), 4), "rise": round(0.03 - 0.022 * v_root, 4),
+            "arc": round(float(np.clip(V if vol["arc"] is None else vol["arc"], 0, 1)), 3),
+            "layers": round(float(np.clip(vol["layers"], 0, 1)), 3),
+            "hold": round(float(np.clip(lo if vol["hold"] is None else vol["hold"], 0, 1)), 3)}
+        # (the dome is the volume's now: lift's few mm of puff under it would only add to the top layer)
+        gather["puff"] = round(gather["puff"] * (1.0 - min(V / 0.3, 1.0)), 4)
+        # (hair with body is looser hair: its strands wave a little more on the head)
+        gather["strands"]["wave"] = round(gather["strands"]["wave"] + 0.006 * V, 4)
     frn = p["front"]
     if isinstance(frn, (int, float)) and not isinstance(frn, bool):
         frn = {"looseness": float(frn), "drape": float(frn)}
@@ -1038,7 +1161,10 @@ def style(tied: dict) -> dict:
     f_n = int(round(3 * f_lo)) if frn.get("locks") is None else int(frn["locks"])
     if f_lo > 0 or f_dr > 0:
         gather["front"] = {"loose": round(f_lo * T, 3), "drape": round(f_dr, 3)}  # (x T: loose only against a tight head)
-    tie = {"at": [round(az, 1), el], "out": round(0.022 + 0.012 * lo, 4), "escape": 0, "gather": gather}
+    v_g = gather.get("volume") or {}
+    # (a full head arrives at the tie standing off the scalp: the hair bridges from the dome to the band)
+    tie = {"at": [round(az, 1), el], "out": round(0.022 + 0.012 * lo + 1.2 * float(v_g.get("side", 0.0)) * float(v_g.get("hold", 0.0)), 4),
+           "escape": 0, "gather": gather}
     kind = tl["kind"]
     if kind == "none":
         tie["tail"] = False
@@ -1125,9 +1251,14 @@ def style(tied: dict) -> dict:
     out = {"parting": {"side": "none"} if p["part"] == "none" else
            {"side": "centre" if p["part"] == "center" else p["part"], "offset": 0.03, "length": round(0.035 + 0.06 * lo, 4),
             "width": 0.004, "depth": 0.2},
-           "strands": {**STRANDS, "loose": round(0.15 + 0.6 * me, 3), "frizz": round(0.08 + 0.25 * me, 3),
-                       "flyaway": round(0.03 + 0.25 * me, 3), "halo": round(0.45 * me, 3), "baby": round(0.5 + 2.5 * me, 2),
+           # (+ by the volume: hair that stands off the head is not combed flat; its strands wander, a few leave it)
+           "strands": {**STRANDS, "loose": round(0.15 + 0.6 * me + 0.35 * V, 3), "frizz": round(0.08 + 0.25 * me + 0.1 * V, 3),
+                       "flyaway": round(0.03 + 0.25 * me + 0.15 * V, 3), "halo": round(0.45 * me + 0.2 * V, 3), "baby": round(0.5 + 2.5 * me, 2),
                        "clump": 0.2,
+                       # (under hair with volume the scalp's tint is SEEN at the forehead's corners (the mass stands
+                       # up behind the line instead of lying over it): its 2 cm ramp was a grey veil over skin,
+                       # th_V75..79 (isolated: not the scalp layer's strands, not the edge band). Full by 7 mm)
+                       "soft": round(0.022 - 0.015 * min(V / 0.3, 1.0), 4),
                        # (the tail: a full one is airier and frizzier whatever the head's neatness; its sub clumps
                        # swing out of step by `wave`)
                        # (tousle is NOT strand wander: at loose 0.45 every strand of the tail wriggled on its own, a

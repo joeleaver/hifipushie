@@ -21,7 +21,7 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 12  # bump when the lens group changes
+VERSION = 16  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
@@ -246,6 +246,32 @@ def lens_group():
     # (hp_fn: a lock's own share, the hairline's thin rim; absent = 0)
     geo = store(geo, "hp_fine", math("MAXIMUM", math("MAXIMUM", halo, gi.outputs["Fine"]), named("hp_fn", "FLOAT")))
     geo = store(geo, "hp_cv", crand(0.0, 1.0, 17))  # a value per sub clump: the material's streaks
+    # (hp_fly: the hairs that have LEFT the mass (fly-aways, the halo, an object of single hairs): the look's fly_light.
+    # Not hp_fn, the hairline's thin rim: lightened, it was a grey veil over the forehead's corners, th_V75)
+    geo = store(geo, "hp_fly", math("MAXIMUM", math("MAXIMUM", halo, gi.outputs["Fine"]), fly))
+    # (tesshair7, the colour model: natural hair is never one colour) hp_ch: a second number per sub clump, (0, 1]:
+    # which sub clumps are highlight ribbons (0 = an object without the lens: never); hp_lv: a number per LOCK,
+    # -1..1: locks differ in lightness, and highlights gather on some locks
+    # (a ribbon is 2-3 sub clumps side by side, ~1 cm: one sub clump (4 mm) alone averaged away at head size, th_V72)
+    hr = N.new("FunctionNodeRandomValue")
+    hr.data_type = "FLOAT"
+    _sock(hr, "Min", "VALUE").default_value = 0.0001
+    _sock(hr, "Max", "VALUE").default_value = 1.0
+    # (by where the strand starts across its lock, in ribbons ~6 mm wide (hp_hk a lock: its width / 6 mm; absent =
+    # the sub clumps): by sub clumps alone a tail's ribbons were 2 cm of pale tape, th_V75)
+    hk_ = math("MAXIMUM", named("hp_hk", "FLOAT"), 0.0)
+    hk_ = math("ADD", hk_, math("MULTIPLY", math("LESS_THAN", hk_, 0.5), K))
+    L.new(math("ADD", math("MULTIPLY", named("hp_lock", "INT"), 131.0),
+               math("FLOOR", math("MULTIPLY", math("MULTIPLY", math("ADD", a, 1.0), 0.5), hk_))), hr.inputs["ID"])
+    L.new(math("ADD", gi.outputs["Seed"], 18.0), hr.inputs["Seed"])
+    geo = store(geo, "hp_ch", _sock(hr, "Value", "VALUE", out=True))
+    lr = N.new("FunctionNodeRandomValue")
+    lr.data_type = "FLOAT"
+    _sock(lr, "Min", "VALUE").default_value = -1.0
+    _sock(lr, "Max", "VALUE").default_value = 1.0
+    L.new(named("hp_lock", "INT"), lr.inputs["ID"])
+    L.new(math("ADD", gi.outputs["Seed"], 19.0), lr.inputs["Seed"])
+    geo = store(geo, "hp_lv", _sock(lr, "Value", "VALUE", out=True))
     sp = N.new("GeometryNodeSetPosition")
     L.new(geo, sp.inputs["Geometry"])
     L.new(off, sp.inputs["Offset"])
@@ -446,7 +472,9 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("ws", "FLOAT", "CURVE", "value"), ("wl", "FLOAT", "CURVE", "value"),
                               ("tile", "INT", "CURVE", "value"), ("gr", "FLOAT", "CURVE", "value"),
                               ("clx", "FLOAT", "CURVE", "value"), ("fn", "FLOAT", "CURVE", "value"),
-                              ("ex", "FLOAT", "CURVE", "value")):
+                              ("ex", "FLOAT", "CURVE", "value"), ("a0", "FLOAT", "CURVE", "value"),
+                              ("a1", "FLOAT", "CURVE", "value"), ("sh", "FLOAT", "CURVE", "value"),
+                              ("hk", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -532,8 +560,85 @@ def material(look: dict):
     L.new(half.outputs[0], mixv.inputs[0])
     L.new(half2.outputs[0], mixv.inputs[1])
     L.new(mixv.outputs[0], mr.inputs["Value"])
-    L.new(mr.outputs[0], hsv.inputs["Value"])
     L.new(ramp.outputs["Color"], hsv.inputs["Color"])
+    # THE COLOUR MODEL (tesshair7; Joe: "one flat brown"). What production grooms vary (Blender's Principled Hair
+    # BSDF: melanin + Random Color per strand; MetaHuman's groom colour ramp root -> tip; Redshift's Hair Random Color
+    # on hue / saturation / value; highlights keyed to the clump): here on the look colour's hue, saturation and value,
+    #   variation   locks differ in lightness (hp_lv), sub clumps and strands a little in hue (with `vary`: value)
+    #   sun         the hair's AGE lightens and warms it: by metres from the scalp (hp_a0..hp_a1: a tail starts where
+    #               the gathered hair ended, not at a new root), full by 28 cm
+    #   highlights  a share of sub clumps, gathered on some locks, is lighter and warmer from a few cm off the root
+    #   fly_light   single fine hairs (fly-aways, the halo, wisps, the hairline's rim) read lighter
+    def at_(name):
+        n_ = N.new("ShaderNodeAttribute")
+        n_.attribute_name = name
+        return n_.outputs["Fac"]
+
+    def M(op, a, b=None, c=None, clamp=False):
+        n_ = N.new("ShaderNodeMath")
+        n_.operation = op
+        n_.use_clamp = clamp
+        for i_, v_ in enumerate((a, b, c)):
+            if v_ is None:
+                continue
+            if isinstance(v_, (int, float)):
+                n_.inputs[i_].default_value = float(v_)
+            else:
+                L.new(v_, n_.inputs[i_])
+        return n_.outputs[0]
+
+    def smooth(x, lo, hi):
+        n_ = N.new("ShaderNodeMapRange")
+        n_.interpolation_type = "SMOOTHSTEP"
+        L.new(x, n_.inputs["Value"])
+        n_.inputs["From Min"].default_value, n_.inputs["From Max"].default_value = lo, hi
+        n_.inputs["To Min"].default_value, n_.inputs["To Max"].default_value = 0.0, 1.0
+        return n_.outputs["Result"]
+
+    var = float(np.clip(look.get("variation", 0.4) or 0.0, 0.0, 1.0))
+    sun = float(np.clip(look.get("sun", 0.2) or 0.0, 0.0, 1.0))
+    hl = float(np.clip(look.get("highlights", 0.0) or 0.0, 0.0, 1.0))
+    hlc = float(np.clip(look.get("highlight_contrast", 0.6), 0.0, 1.5))
+    fly = float(np.clip(look.get("fly_light", 0.3) or 0.0, 0.0, 1.0))
+    val, hue, sat = mr.outputs[0], None, None
+    lv = at_("hp_lv")
+    if var > 0:
+        # (a lock is up to 4 cm wide: at +-20 % each a tail's locks read as flat painted slabs, th_V70. The contrast
+        # belongs to the sub clumps (vary, highlights); locks only drift)
+        val = M("MULTIPLY", val, M("MULTIPLY_ADD", lv, 0.14 * var, 1.0))
+        hue = M("MULTIPLY_ADD", M("SUBTRACT", cv.outputs["Fac"], 0.5), 0.02 * var, 0.5)
+        sat = M("MULTIPLY_ADD", M("SUBTRACT", info.outputs["Random"], 0.5), 0.3 * var, 1.0)
+    if sun > 0 or hl > 0:
+        age = M("MULTIPLY_ADD", M("SUBTRACT", at_("hp_a1"), at_("hp_a0")), info.outputs["Intercept"], at_("hp_a0"))
+        hue = hue if hue is not None else M("ADD", 0.5, 0.0)
+        sat = sat if sat is not None else M("ADD", 1.0, 0.0)
+        if sun > 0:
+            fs = M("MULTIPLY", smooth(age, 0.0, 0.28), sun)
+            val = M("MULTIPLY", val, M("MULTIPLY_ADD", fs, 0.6, 1.0))
+            hue = M("MULTIPLY_ADD", fs, 0.012, hue)
+            sat = M("MULTIPLY_ADD", fs, 0.25, sat)
+        if hl > 0:
+            # (by the sub clump, a ribbon 4-8 mm wide; a lock only tips the odds: with 0.35 of the pick on the lock
+            # whole 4 cm locks went pale, grey slabs across the head and tail, th_V71)
+            sel = M("MULTIPLY_ADD", M("MULTIPLY_ADD", lv, 0.5, 0.5), 0.15, M("MULTIPLY", at_("hp_ch"), 0.85))
+            thr = 1.0 - 0.6 * hl
+            fh = M("MULTIPLY", M("MULTIPLY", smooth(sel, thr, thr + 0.04), smooth(age, 0.01, 0.07)), hlc)
+            # (a ribbon comes and goes along its length: uniform from root to tip it was a strip of pale tape, th_V73)
+            fh = M("MULTIPLY", fh, M("MULTIPLY_ADD", M("SINE", M("MULTIPLY_ADD", age, 45.0, M("MULTIPLY", at_("hp_ch"), 40.0))), 0.4, 0.6))
+            # (not every strand of a ribbon is lightened: all of them, it was a strip of pale tape, th_V74)
+            fh = M("MULTIPLY", fh, M("LESS_THAN", info.outputs["Random"], 0.62))
+            val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 1.0, 1.0))
+            hue = M("MULTIPLY_ADD", fh, 0.02, hue)
+            sat = M("MULTIPLY_ADD", fh, 1.0, sat)
+    if fly > 0:
+        val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_fly"), 0.6 * fly, 1.0))
+    dep = float(np.clip(look.get("depth", 0.5) or 0.0, 0.0, 1.0))
+    if dep > 0:  # the under-layers of a standing mass are darker (hp_sh, a lock's depth in it: hair_flow's volume)
+        val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_sh"), -0.75 * dep, 1.0))
+    L.new(val, hsv.inputs["Value"])
+    if hue is not None:
+        L.new(hue, hsv.inputs["Hue"])
+        L.new(sat, hsv.inputs["Saturation"])
     col = hsv.outputs["Color"]
     ga = float(look.get("grey_amount", 0.0))
     gl = float(look.get("grey_locks", 1.0))  # x each lock's own grey (its "grey": temples, sideburns)

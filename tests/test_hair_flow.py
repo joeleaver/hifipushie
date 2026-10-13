@@ -490,6 +490,67 @@ def test_front_is_looser_than_the_rest():
         assert np.sign(P[-1, 0]) == np.sign(P[0, 0])  # on its own side
 
 
+def test_volume_stands_up_from_the_root_and_arcs():
+    """tesshair7 (Joe's red lines on Tess: hers RISES from the parting, arcs up and over, then out and down the side;
+    ours ran "in nearly straight lines, laid flat along the skull like a combed cap"; "it's flat"). The style word
+    `volume`: the hair stands up out of its root within a couple of cm (a rise, not a shell offset), carries a dome
+    in layers, keeps it until just before the tie, and its way first FALLS sideways / down from the root before it
+    turns to the tie (convex). volume 0 = the cap of before, exactly."""
+    base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "wisps": 0}
+    s0, s1 = hf.style({**base, "volume": 0}), hf.style({**base, "volume": 0.6})
+    assert "volume" not in s0["tie"]["gather"]
+    v = s1["tie"]["gather"]["volume"]
+    assert 0.015 < v["crown"] < 0.03 and v["nape"] < v["side"] and 0 < v["rise"] < 0.03 and v["arc"] > 0.4
+    # default: the style's lift (1 - tightness): a sleek head stays a cap, a loose one has body
+    assert hf.style({"tightness": 0.95})["tie"]["gather"].get("volume", {"crown": 0})["crown"] < 0.003
+    assert hf.style({"tightness": 0.2})["tie"]["gather"]["volume"]["crown"] > 0.02
+    assert hf.style({**base, "volume": {"amount": 0.6, "crown": 0.5}})["tie"]["gather"]["volume"]["crown"] < v["crown"] * 0.6
+    assert hf.style({**base, "volume": {"amount": 0.6, "root": 1.0}})["tie"]["gather"]["volume"]["rise"] < v["rise"]
+    try:
+        hf.style({**base, "volume": {"amout": 1}})
+        raise AssertionError("accepted a wrong key")
+    except ValueError as e:
+        assert "amount" in str(e)
+    sc, g, line, L0 = _grow({**base, "volume": 0})
+    _, _, _, L1 = _grow({**base, "volume": 0.6})
+    _, _, _, L2 = _grow({**base, "volume": {"amount": 0.6, "layers": 0.0}})
+
+    def top(locks, layer=95):
+        hs, rise, lat = [], [], []
+        for k, lk in locks.items():
+            if not k.startswith("tg1_"):
+                continue
+            P = np.asarray(lk["pts"], float)
+            fa = abs(((P[0, 0] + 180) % 360) - 180)
+            if fa > 60 or P[0, 1] < 35:
+                continue  # rooted on top, in front
+            W = _world(sc, lk)
+            s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(W, axis=0), axis=1))]
+            hs.append(P[:, 2].max())
+            rise.append(float(np.interp(0.03, s, P[:, 2])))  # m off the scalp 3 cm along the lock
+            # how far the way leaves the straight line root -> end, sideways (m): the arc
+            ch = W[-1] - W[0]
+            d = W - W[0]
+            off = d - np.outer(d @ ch / (ch @ ch), ch)
+            lat.append(np.linalg.norm(off, axis=1).max())
+        return float(np.percentile(hs, layer)), float(np.median(rise)), float(np.median(lat)), float(np.percentile(hs, 10))
+    t0, r0, a0, _ = top(L0)
+    t1, r1, a1, lo1 = top(L1)
+    t2, _, _, lo2 = top(L2)
+    assert t0 < 0.012 and t1 > 0.016, (t0, t1)  # a cap; a dome
+    assert r1 > r0 + 0.004 and r1 > 0.007, (r0, r1)  # it stands up within 3 cm of the root
+    assert a1 > a0 + 0.008, (a0, a1)  # the way bows out before it turns to the tie
+    assert lo1 < 0.75 * t1 and lo2 > lo1 + 0.002, (lo1, t1, lo2)  # layers: locks at every height; layers 0 = one shell
+    for locks in (L1,):  # every way still ends in the tie, on its own side of a centre part in front
+        tp = ht.params(g["tie"])[0]
+        td = hair.dirs(*tp["at"])
+        for k, lk in locks.items():
+            if k.startswith("tg"):
+                P = _world(sc, lk) - sc.C
+                assert np.degrees(np.arccos(np.clip(P[-1] @ td / np.linalg.norm(P[-1]), -1, 1))) < 4, k
+                assert np.asarray(lk["pts"])[:, 2].min() >= 0.0, k
+
+
 def test_sideburn_grows_no_lock_to_the_tie():
     """With a HARD hairline (hairline 0) the hairline row skips the sideburn (below the ear's top, in front of the
     ear): full locks from there climbed to the flow and their starts were a dark toothed tuft over bare skin. (A soft

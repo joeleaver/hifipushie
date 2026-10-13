@@ -93,7 +93,13 @@ TIE = {"at": [180.0, 25.0], "out": 0.025, "escape": 6, "band": 0.006, "curtain":
                   "part_push": 0.9, "part_length": 0.07, "overhang": 0.0, "ears": 0.0, "above": None, "feather": 0.0,
                   # edge 0..1: the hairline as a BAND of fine roots whose locks thin out and go fine toward the line
                   # (0 = one row of full locks on the line: a hard edge); zig m: the parting's line wanders this far
-                  "edge": 0.0, "zig": 0.0},
+                  "edge": 0.0, "zig": 0.0,
+                  # volume (tesshair7): {"crown", "side", "nape": m the top layer stands off the scalp there, "rise": m
+                  # (the bend radius: the hair leaves its root standing and is over within ~2 x this), "arc": 0..1 (the
+                  # way first falls from the root, down / out of the part, before the tie takes it: convex arcs),
+                  # "arc_length": rad, "layers": 0..1 (spread of the locks' heights: 0 = one shell), "hold": 0..1 (how
+                  # long the way keeps its height before it is drawn in to the tie)}; None = the flat cap of before
+                  "volume": None},
        "tail": {"length": 0.3, "fullness": 0.045, "locks": 16, "stiff": 0.45, "uneven": 0.4, "coil": 0.0,
                 "coil_radius": 0.03, "plait": False, "taper": 0.5, "sway": 0.0, "sway_length": 0.16, "flick": 0.0,
                 "hang": False, "spread": 0.35,

@@ -116,3 +116,22 @@ def test_colour_bands_tell_dark_from_light_and_grey_from_brown():
     assert 40 < b["mean"]["hue"] < 80
     assert b["shadow"]["L"] < b["mid"]["L"] < b["highlight"]["L"]
     assert hair.colour_bands(brown, np.zeros((40, 40), bool)) == {}
+
+
+def test_colour_variation_tells_flat_from_streaked():
+    """tesshair7 (Joe: "one flat brown"): colour_variation puts numbers on strand / ribbon contrast and on the share
+    of light ribbons, so a look is matched to a picture by measure."""
+    rng = np.random.default_rng(1)
+    n = 240
+    m = np.ones((n, n), bool)
+    flat = np.tile(np.array([70.0, 50.0, 38.0]), (n, n, 1)) * rng.uniform(0.97, 1.03, (n, n, 1))
+    streak = flat.copy()
+    for x in range(10, n, 30):  # light warm ribbons 6 px (3 mm at 0.5 mm / px) wide
+        streak[:, x:x + 6] *= [1.9, 1.8, 1.6]
+    vf, vs = hair.colour_variation(flat, m, 0.5), hair.colour_variation(np.clip(streak, 0, 255), m, 0.5)
+    assert vs["ribbon_sd"] > vf["ribbon_sd"] + 3 and vs["L_sd"] > vf["L_sd"] + 3
+    assert vf["ribbons"]["share"] < 0.01 and 0.1 < vs["ribbons"]["share"] < 0.35 and vs["ribbons"]["contrast"] > 8
+    assert vs["hue_sd"] >= vf["hue_sd"]
+    b = hair.colour_bands(np.clip(streak, 0, 255), m, 0.5)
+    assert "variation" in b and "mean" in b and "variation" not in hair.colour_bands(streak, m)
+    assert hair.colour_variation(flat, np.zeros((n, n), bool), 0.5) == {}
