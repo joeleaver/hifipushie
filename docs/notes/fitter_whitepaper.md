@@ -659,7 +659,14 @@ it could never raise it and its d^2 / sigma^2 term (thousands on a hard sample) 
 network so loss / evaluation / export agree): sigma^2 = exp(2 ls) + exp(2 * -5.5); + a SPIKE GUARD in train.py (a batch
 whose loss is over the running loss + 8 mean deviations is not stepped on; counted per epoch as "skipped"); peak lr
 7e-4. Second try started ~15:35; ~25 min a segment (93-110 s an epoch on 25,500 train / 2,100 val samples = 7 held-out
-dressings N_s1033..39, + the 1.2 GB transfer) -> DONE expected ~17:45. The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
+dressings N_s1033..39, + the 1.2 GB transfer) -> DONE expected ~17:45.
+  Progress (models/s30k/STATUS): e0 back 15:57 (held-out median 8.0 mm: worse than epoch 5's 4.5 at the peak rate,
+  as s10k did mid-run), e12 back 16:23 (4.2 mm, calibration 1.09), e24 submitted 16:23.
+  Side runs done while it trains: real_hsrd s10k on the TRAIN-split people (230 photos: raw 4-9 mm, 1.7-2.2 after the
+  similarity on the inner face; not a score: those people stay for calibration / fine-tuning); s10k in the solve on
+  heads e (dark skin, hard top light) and g (hair): face 1.27-1.29 / 1.15-1.19, lower face 1.52-1.64 / 1.23-1.32,
+  jaw width e -3.5 .. -4.7 (narrow read; its class-mean start -5.2), g -0.5 .. +0.2; front pitch e -2.5, g +2.4 deg;
+  jaw spread 0.7 mm (out/suite_s_eg.txt). The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
 nothing rented or billed; HSRD is the groundtruth agent's (read-only, do not download more).
 NEXT, in order: (1) watch s30k to DONE (or resume it); if a segment's "skipped" climbs or the held-out median rises
 two segments running, stop (cancel the batch) and say so: do not loop; (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
