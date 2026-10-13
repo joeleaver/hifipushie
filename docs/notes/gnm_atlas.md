@@ -6036,3 +6036,201 @@ NONE on the true base (no concavity on the outer third); all of it is the fold l
   glabella nick, crow's-feet lines: the old dressing, thin.
 - Joe to decide: (6) drop spec.strokes in block_in_start (I would); (7) where his age should come from if not our
   folds: GNM's age direction, a better fold layer, or texture only.
+
+## nativedefault (2026-10-12, "nativedefault" agent, branch `nativedefault` (worktree .claude/worktrees/nativedefault) from main
+## 990fa02; Joe's decisions consolidated: the GNM-native head is the DEFAULT start for a person's head. Scratch DURABLE in
+## /mnt/data/hifipushie/nativedefault: env.sh, run.sh <script> (light slot), heavy.sh <gb> <script> (resources.heavy + capped),
+## tests.sh <pytest args> (one file, log in out/), bench.sh <run> [opts] (chinread's known heads), out/; scripts spikes/nativedefault)
+STATE (2026-10-12, DONE; branch `nativedefault`, NOT merged, NOT pushed): block_in_start is native by default and carries
+nothing of ours; a native head refuses its dead steps; cameras of another head are measured, refused by the solve and
+carried by a step; the solve has an ANSUR PRIOR on the neck's girth (validated: shape not worse; a hold was worse);
+head size = GNM x the stature's allometry, said. `tess_n1` = Tess from scratch on the default path, dressed. Sheets
+workspace/human_renders/nd_tess_native.png, nd_tess_figure.png, nd_01_neck_prior_woman.png; tiles
+/mnt/data/hifipushie/nativedefault/out/{tess_n1,th_T66}/dressed, {tess_n1,tess_a1}/clay, tri_*.png (reference | n1 | a1).
+VERDICT (mine, tiles looked at): tess_n1 does NOT read as her and is not better than tess_a1 as a likeness: the figure's
+proportions, the mouth's outline, the profile and the iris size are better; the brows, the eyes' depth, the lip colour
+and the neck from the front are worse; nostrils have no dark interior on either. Tests: test_nativedefault 6,
+test_blockin 19, test_headbody 6 (hash green), test_toolsets 8, test_orbit 10.
+NEXT: Joe's decisions (end of this section); a front-outline read of the neck's width; nostril interiors and lid depth in
+the default dressing; brows' weight from the read; a native-head benchmark.
+
+### 1. block_in_start's defaults (blockin.start, server.block_in_start)
+- `attach="native"` is the default: base.head {attach "native", gnm_base 1.0, dimorphism 0.0, eyes 1.0, lip_close}, no
+  eye_radius / interior / mouth (GNM's own parts), the head's dead keys dropped (base.head.scale, gnm_base_rest / blend /
+  age, toward) and EVERY head style slider incl. `base.style.human.head_size` (onemesh ignores them on a native head).
+- `carry=False` is the default: spec["strokes"] emptied, skin.folds and skin.fold_expressions removed, skin.wrinkles =
+  {"amount": 0} (the age's own painted wrinkle relief too). The reply has a DROPPED line (every key, the strokes by name)
+  and a LEFT line (the refs model's skin tone / zones / features / lips / eyes, micro relief skin.detail, paint layers:
+  ours, kept, said). `carry=True` keeps strokes / folds / wrinkles; `attach="body"` is the old head (gnm_base by age).
+  `gnm_base` with attach="native" is refused.
+- CAMERAS: a refs model's cameras were fitted on ITS head. `blockin.carry_cameras(base0, base1, cams)`: the two heads'
+  landmark similarity (scale + translation) and each camera with it (centre' = d + s x centre, t' = s x t, f kept): the
+  new head lies where the old one lay in every picture, yaw and pitch as fitted. Tess (tess_a1 -> the native class
+  mean): x1.211, the face 30 mm elsewhere. The start's cameras are flagged `cam_carried`; the first block_in_solve
+  lays them on the head (cameras="refit" forced when "free" was passed; "trust" is honoured) and says so.
+- The `human` TOOL is LEFT as it was: its default is the grafted head (source "makehuman"), and source="human" makes a
+  seeded face with `features` (a headfit warp: ours) for a person made from a DESCRIPTION. A person from PICTURES goes
+  through block_in_start, which rewrites the head. `human(..., source="human", head={"attach": "native"})` is there for
+  who wants it; making it the default changes every described human's proportions (7.9 -> 7.6 heads) and its tests.
+  For Joe.
+
+### 2. What a native head refuses, and cameras of another head
+- block_in_step on a native head: `head_scale`, `gnm_base`, `gnm_base_rest`, `dimorphism`, `eye_size` raise
+  "REFUSED on a GNM-native head: <reason>" (blockin.NATIVE_REFUSE); nothing is written. On a body-carried head they work.
+- `blockin.cameras_fit(base, refs)`: MEASURED: the head's landmarks through each camera against the picture's stored
+  lm points: size ratio and centre offset; stale past 10 % / 0.3 of the face's spread (Tess's old cameras on her native
+  head: x1.17, 0.46 off: stale; carried: x0.95, 0.01).
+- block_in_solve on stale cameras REFUSES and names the step: `block_in_step(name, {"attach": "native"})` =
+  `blockin.native_step`: a new model with the head native (true-base keys set, dead keys dropped and named) and the
+  cameras carried (the old head = the same spec without the attach key). A milder change (base.head.size, a Garrett-
+  sized 3.6 %) is caught by the placement record in human_refs.json ("placement"): the next solve refits and says so.
+- Found: tests/test_orbit.py::test_eyeball_guard_reads_the_shipped_head fails on main 990fa02 too (0.90 against 0.8 +-
+  0.15): not this branch's.
+
+### 3. The neck's girth in the joint solve (solve_report.neck_girth / neck_row / neck_move; face_ruler.NECK_HOLD)
+- `neck_girth(c)`: the loop length of GNM's narrowest neck ring (14..24; ring 19 on the class means) on GNM's own
+  evaluation, with its exact gradient: 36.0 mm per sd over the prior (head_000 -32.7). Female class mean 365, male 385.
+- The row: target = ANSUR II's mean for the sex and stature (onemesh.native_size: 0.3292 x (stature / 1.627) ^ 0.436
+  women, 0.3968 x (stature / 1.755) ^ 0.325 men) / the head's size, linearised at the head as it stands, every round.
+  NATIVE heads only (a body-carried head's neck is the body's); a number forces it anywhere (benchmarks).
+- DESIGN CHANGED BY THE VALIDATION: the brief's "hold (as SIZE is held)" at +- 1 % is NOT the default; a PRIOR with
+  ANSUR's own sd (women 5.5 %, men 6.3 %) is. chinread's known heads c..h (male, body-carried, bare-necked renders; 3
+  calls from cz_<h>_00; spikes/chinread/bt.py; /mnt/data/hifipushie/nativedefault/bench.sh; models cz_<h>_D0 / NP / NK / NW):
+  | run | face | lower face | chin | jaw body | jaw angle | neck vs the TRUE neck: mean, rms mm |
+  |---|---|---|---|---|---|---|
+  | start (class mean) | 2.62 | 3.13 | 2.42 | 2.94 | 4.17 | |
+  | D0 = today's default, no neck term | 2.17 | 2.45 | 1.82 | 2.54 | 3.02 | +5.5, 13.5 |
+  | NP = prior 398 +- 6.3 % (THE NEW DEFAULT) | 2.03 | 2.23 | 1.57 | 2.26 | 2.91 | +8.5, 14.3 |
+  | NK = held 398 +- 1 % | 2.19 | 2.55 | 1.76 | 2.56 | 3.35 | +21.4, 31.0 |
+  | NW = held 349 +- 1 % (a woman-sized pull, -36 mm) | 2.06 | 2.35 | 1.87 | 2.40 | 2.83 | -23.8, 33.0 |
+  Per head the chains differ by 0.2-0.9 mm run to run (the see-saw), so NP's "better" is noise; the claim is NOT WORSE.
+  FINDING: the free solve finds a known head's neck to 13.5 mm rms (0.37 of the prior's sd) though no read looks at
+  it: GNM's correlations with the jaw / face widths the outlines do read (head g: true 324, start 385, free 335). A
+  1 % hold at the population's mean throws that away (g: 391, its lower face 3.20 -> 4.06 mm). The prior keeps it
+  and only shifts the centre. So "nothing reads neck girth" = no DIRECT read; the reply says INFERRED.
+- Class-mean woman (hb_r_woman; spikes/nativedefault/woman.py; sheet human_renders/nd_01_neck_prior_woman.png, LOOKED
+  AT): head's neck 363 mm (+25 % against the body's 290; ANSUR 326 +- 18 at 1.59 m) -> 336 under the prior alone
+  (nd_w2: +16 %; |dc| 0.92; with no picture the jaw narrows 4.4 mm with it: GNM's correlation) -> 326 with
+  neck="held" and the face's measures held (nd_w1: +13 %; |dc| 3.49). Tiles: before, the neck is as wide as the jaw
+  (a bull neck); after, clearly narrower than the jaw in front and 3/4; reads as a woman's neck. The CONFLICT flag
+  stays (now "the BODY's own neck is the unusual one", -2.1 sd): MakeHuman's female neck is ~290 at any weight.
+- Options: block_in_solve(neck="prior" | "held" | "free" | mm); block_in_step {"neck_mm": mm} (neck_move: least
+  change, size held, every measure but the neck's held).
+- NOT DONE: a native-head benchmark (the known heads are body-carried and male); a class-mean start is not moved by
+  the prior until its first solve (block_in_start leaves the class mean alone); `human()` has no neck term.
+
+### 4. Head size on a native head
+- `onemesh.native_size(base)`: the one rule (stature, size = base.head.size or (stature / the sex's mean) ^ alpha,
+  ANSUR's neck for it); _native_desc's own copy of the arithmetic is the same numbers (test). The solve's SIZE hold
+  holds the IDENTITY's size at the start head's (the class mean) on top: the reply prints "HEAD SIZE: a GNM-native
+  head: GNM's own size x 1.002 (the stature's allometry at 1.636 m)".
+- iris_size / iris_check read through the fitted camera at the model: on a native head the model is in real mm, and
+  the text says which. Tess's numbers: step 5.
+
+### Coordinator's two questions (2026-10-12)
+- STITCH MARKS ON THE LIP LINE in nd_01's clay tiles: MESHING of the closed lip seam at a wide look's resolution, not
+  teeth and not lip_close. Probe /mnt/data/hifipushie/nativedefault/out/mouth_probe.png + mouth_probe_coarse.png
+  (t_mouth.py; the class-mean woman as native / native without lip_close / body-carried): in the nd_01 view (a 0.5 m
+  box at resolution 220 = 2.3 mm voxels) the seam is a row of ticks on the native head with or without lip_close, and a
+  broken line on the body-carried head; in a mouth close-up of the SAME heads (look focus + zoom 14: 0.5 mm voxels) it
+  is one clean thin line in all three, teeth and tongue shown or hidden. The closed seam is a crease narrower than a
+  voxel (CLAUDE.md: "sub-voxel creases render as zigzags"); the native head shows it more (its mouth is ~18 % larger
+  in the frame's voxels and the seam is GNM's own sharp contact line, not the seal's membrane). WHEN: any `look` /
+  build of a whole figure or bust with a closed GNM mouth (both attaches); NOT in close-ups, and to be checked on
+  tess_n1's scene mesh (clay and dressed) in step 6. Not fixed here (a wide look needs a finer grid at the lips, or the
+  seam widened to a voxel at coarse resolutions: a meshing card).
+- tests/test_orbit.py::test_eyeball_guard_reads_the_shipped_head (failed on main): it expected the lid landmarks to
+  clear OUR seated ball by the seat's 0.8 mm on fs_ge3; fs_ge3 has no base.head.eye_radius, and since gnmnative such a
+  head has GNM's own ball at GNM's centre (no seat): the landmarks touch it (-0.10 mm). A stale expectation: the test
+  now checks both (eye_radius 0.012 -> 0.80; GNM's ball -> contact +- 0.5). Commit 51fa7ed.
+
+### 5. Tess rebuilt on the default path (tess_n1; logs /mnt/data/hifipushie/nativedefault/out/start_nd_T00.log, chain_nd_T.log, reads_nd_T06.log, dress_*.log)
+- nd_T00 = server.block_in_start("nd_T00", "tess_a1", sex="female") with NO other argument: native, cameras carried
+  x1.211 (the face 30 mm elsewhere), DROPPED base.style.human.head_size 0.95 and the age's wrinkle relief; tess_a1 had
+  no strokes or folds. LEFT: tess_a1's skin dressing (dropped later by the dressing step, below). Her three round-1
+  photos (front, three_quarter_left, profile_left). Attach at the start: 1.001 x GNM, 214 mm head, 7.64 heads, neck
+  366 against the body's 291 (+26 %: NECK CONFLICT).
+- CHAIN (spikes/chinread/cchain.py, 6 x block_in_solve, defaults: size held, neck prior, chin points auto; the first
+  call's "free" became "refit" by itself): |dc| 10.13, 2.06d, 1.40d, 0.97d, 0.86d, 0.82d (damped from call 2); final
+  nd_T06 |c| 10.30, largest 2.83 sd; reads outline 254, landmark 40, iris 8, limbus 4, lid 16, lip 19; every sigma
+  x1.12 (falling from x1.22: mildly inconsistent pictures); cameras 4.6 / 39.2 / 70.7 deg for pictures stated 0 / 45 /
+  90 ("NO TRUE SIDE VIEW": round 1's profile is a ~70 deg view; round 2's true90 / true45 exist in the reference
+  folder and were NOT used: the brief's three photos). Table 15 / 26 (its tolerances are absolute mm and the head is
+  now 18 % larger in mm; front misses: nose_length -4.3 mm, philtrum +3.9, mouth_width -4.2, intercanthal +3.1,
+  chin_height +5.3: the detector's rows, not chased, LEARNINGS 8).
+- MOVED WITH NO READ (last call): jaw_square -1.7 sd (read 0.25), nose_width -4.9 mm (-1.2 sd; read 0.09),
+  gonial_width -9.8 mm (-0.9 sd), chin_width -4.6 mm (-0.8 sd; read 0.05), neck_width -9.3 mm (read 0.00), skull_top.
+  MOVED FAR ON A WEAK READ: cheek_fullness -1.7 sd (read 0.59). Unread: cheekbone_width, skull_width. Not hand-tuned.
+- NECK: 366 -> 332 mm under the prior (ANSUR 330 +- 18 at 1.636 m; headbody's free-solved Tess was 334): the head's
+  neck is ANSUR's mean; the body's own 288 (-2.3 sd) keeps the CONFLICT flag at +15 % ("the BODY's own neck is the
+  unusual one"). Chin over the pit 72 mm, top of head over the pit 287 (ANSUR 300 +- 11), 7.64 heads tall.
+- Look sheet out/look_nd_T06.png, LOOKED AT: front and profile overlays are sharp (eyes, nose, mouth register; the
+  profile line lies on hers), the 3/4 outline follows her jaw and nose; the clay is a narrow oval face with a small jaw.
+- IRIS, in real mm now (step 4): the front picture's limbus reads 13.0 mm at the model (eye ruler's circle 13.36)
+  against GNM's mean 12.00 on this head: an average iris says the NATIVE head is 7.7 % LARGE for her (+- 7 % person
+  to person; with GNM's spread of size -2.6 % +- 4.1 %). Pupils 65.0 mm apart in the picture at the model (ANSUR
+  women 61.7 +- 3). The old head read the other way (its iris said it was small) because its eyeball was scaled with
+  the head. So on the real-size head her iris and IPD both say "a little large": either her eyes are large (the
+  references are generated portraits) or the class-mean size is ~5-8 % big for her. NOT acted on (size is held at
+  the class mean by decision); block_in_solve(size="iris") would take -2.6 %. For Joe.
+- IRIS STEP: nd_T07 = block_in_step {"iris_mm": 13.01}: eyes_000 +1.20 sd (the drawn iris 13.0 mm).
+- Eye ruler nd_T06 (model - picture, mm; * past the reader's tolerance): opening at the pupil -0.09, fissure -1.63,
+  outer canthus +0.75, inner canthus +2.37*, upper lid's peak +2.23*, iris hidden by the upper lid -1.04*, lid
+  platform shown -2.0* (GNM's lid shows less platform than hers), canthal tilt -1.7 deg. Lips: border miss 0.28 /
+  0.69 mm, seam 0.49.
+- GNM TO WITHIN (spikes/garrettnative/gnmtrue.py, GNM's vertices as placed, against GNM evaluated directly + its own
+  lip_close): nd_T07 0.002 mm max over face, jaw, mouth, skull, ears AND neck (one similarity, scale 1.0016 = the
+  stature's allometry); tess_a1 face 2.75 rms / 10.6 max, jaw + chin 4.55 / 10.6, skull 8.2 / 18.1, ears 5.9 / 7.1
+  (scale 0.823). CAVEAT: the vertices as placed, not the meshed field that is rendered (+ ~0.02 mm).
+- DRESSING (spikes/nativedefault/dress.py nd_T07 nd_D1; 21 min; tess_n1 = a fork of nd_D1): tess_a1's zones and
+  features (flush, FRECKLES) dropped, wrinkles 0, no folds, no strokes, no paint layers; pupil 0.33, canthus 0.8, no
+  iris_size; skin_from_reference groups tone / lips / eyes / brows ONLY (folds off, stubble off): tone melanin 0.133,
+  blood 0.044; lips melanin 14.7 (!), blood 1.26; brows colour #32251a, density 1.6; it also wrote zones.eyelids 2.48
+  (the eyes group). The read's fold checklist says lid_fold PRESENT in the picture, ours lacks it (confidence 1.0):
+  left off by decision. brow_read(match=True): middle line 0.8 mm, lower edge 0.7 -> 0.6 mm. Lashes: the default.
+  HAIR: th_T66's style WORDS through hair.tie_style (carry_from th_T66: its look and strand dials) + groom seed 0:
+  622 locks (gather 381, tail 39, tail strays 59, wisps 62, baby hairs 72, loose 4, swoop 4); th_X2's wisps NOT used.
+- STILL NOT GNM on tess_n1: the body and the neck's base below the seam ring (MakeHuman, laid on GNM's bib); size x
+  1.0016 and the rigid placement; lip_close (GNM's basis, our coefficients: up to 5.1 mm at the lips) and the sealed
+  seam behind closed lips; the lids' extra edge loops; the surface as a field meshed at ~1 mm; the eyeball as analytic
+  spheres with a PAINTED iris (limbus from eyes_000 +1.20 sd), pupil 0.33, sclera, veins, caruncle / canthus shading;
+  teeth / tongue as shells of GNM's meshes; LASHES; BROWS (hair picture fitted to the photo); HAIR (tied groom); the
+  SKIN: tone, lips' pigment, eyelid zone 2.48, mottle (variation 0.6), micro relief (detail 0.45). No strokes, no
+  folds, no wrinkles, no paint layers, no kits, no sliders, no pose, no expression.
+
+### 6. Judged, look first (tiles one at a time; reference | tess_n1 | tess_a1 = th_T66 for the hair)
+SQUINT, whole head front beside her photo: NOT the same woman, either model. Both are flat mannequins under this
+EEVEE light (LEARNINGS 1: our own dressing misleads; the block-in overlays out/look_nd_T06.png ARE sharp). tess_n1
+reads as a sharper, plainer relative: heavy dark brows, small-looking flat eyes, a brown flat mouth, a V-shaped lower
+face; tess_a1 as a softer, freckled relative with a wider jaw. Neither wins the squint; a1 is softer, n1 has her oval.
+| feature | vs tess_a1 | reads as her? | what the tile shows |
+|---|---|---|---|
+| whole head, front | same | no | n1: her oval and narrow chin, but harsher (brows, lips); a1: softer, jaw too wide, freckles |
+| three-quarter | same | no | both angular; n1's jaw line and chin nearer hers, nose tip longer / sharper than hers |
+| profile | slightly better | partly | forehead, nose, lips and chin line lie on hers (overlay sharp); ear clear of hair as hers; a1 has scraggly cheek hairs and a fuller lip |
+| eyes | same (differently wrong) | no | n1: iris the right size now (13.0 mm drawn, a1's too small), opening right at the pupil (-0.1 mm), but NO lid platform / crease, no shadow under the brow, top of the iris too exposed (-1.0 mm), hard lash line: a staring sticker eye. a1's pink lid zones give depth n1 lacks (I dropped zones) |
+| brows | worse | no | n1: too heavy, dark and blocky (density 1.6 from the read), square inner ends; hers thinner with a tapered tail. a1: thin and pale, nearer in weight |
+| nose | same | partly | shape plausible on both; NO dark nostril interior on either (pale bumps): the most fake-looking thing in the tile; n1's alae a little narrow (nose_width moved -4.9 mm with no read) |
+| mouth | better (shape), worse (colour) | shape yes, colour no | n1: Cupid's bow, width and lower lip follow hers (border miss 0.3 / 0.7 mm); upper lip a dark brown slab (lips.melanin 14.7 from the read), a dark speck at mid-seam. a1: wider, flatter bow, even pink. No stitch ticks on the seam in the dressed tiles |
+| chin | same / slightly better | partly | n1: rounded narrow chin as hers, a touch pointed; a1: broad with a flat underside |
+| jaw | same | partly | n1 narrower than hers (gonial_width -9.8 mm with no read: a V), a1 wider than hers: she is between |
+| cheeks | same / slightly worse | partly | n1 a little lean under the cheekbone (cheek_fullness -1.7 sd on a weak read); hers full and smooth; clays of n1 and a1 are near twins in 3/4 |
+| neck, front | WORSE | no | n1: thick and short, nearly as wide as the jaw, shoulders rising early; blank (no clavicles, SCM, pit). Hers is long and slender. a1's thin MakeHuman neck (290) is nearer her. 332 mm is ANSUR's mean woman, not Tess: her bare neck's WIDTH is visible in the front picture and nothing reads it |
+| neck, side | same | partly | n1 clean, forward lean right, a little thick; a1 thinner with ripples on the nape. Like hb_05: reads as a neck, not as hers |
+| hairline / hair | same | partly | the same style words give the same hair on the bigger head; n1's temple wisps cover less of the ear; colour grey-brown and flat against her warm brown on both |
+| figure (nd_tess_figure) | BETTER | n/a | n1: a normally proportioned woman (7.6 heads); a1: a pin head on the same body (8.9 heads) |
+| clay, wide look | n/a | n/a | faint ticks along the lip seam and jagged lid edges at 1.3 mm voxels on n1 (the meshing artefact above); none in close-ups or in the dressed scene mesh |
+
+### Decisions for Joe
+1. tess_n1 is GNM to 0.002 mm and stands right on her body, but it is not a better likeness than tess_a1. Which goes down
+   the pipeline? (I would not replace tess_a1 on this sheet.)
+2. Her NECK: the ANSUR prior gives the mean woman's 332 mm and it reads thick on her. Read the neck's width from the
+   front outline (bare in her pictures), or hold a girth by hand (block_in_solve(neck=<mm>)), or accept.
+3. SIZE: on the real-size head her iris reads 13.0 mm and her pupils 65 mm apart: "7.7 % large" by an average iris.
+   Keep the class-mean size (held), or let the iris pull (size="iris": -2.6 %)?
+4. The default dressing of a native head needs, to read as a face at all: dark nostril interiors, depth round the
+   eyes (lid platform / shadow: zones or the fold as texture), a lighter brow read (density 1.6 is too heavy), a cap on
+   lips.melanin. All ours, all paint: allowed on a "nothing of ours on the surface" head?
+5. Round 2's true45 / true90 / rear pictures exist and were not used (round 1's "profile" fits at 71 deg): rerun on them?
+6. `human(source="human")` is still body-carried and seeded with `features`: make it native too?
+7. A class-mean start keeps GNM's neck (women 363) until its first solve; apply the prior in block_in_start as well?

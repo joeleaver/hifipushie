@@ -15,11 +15,20 @@ eye catches what the points miss; the target table catches what your eye misses.
 ## The loop
 
 1. **Start from a base of the right kind**: `block_in_start(name, refs, sex=...)`. The person's body (MakeHuman's
-   age / weight / height from `refs`, a one-mesh human whose pictures are fitted by `human_reference`), the head's
-   local layers OFF (sliders, warp, folds, pose, shape), the identity = GNM's sampler CLASS MEAN for the sex (and an
-   ethnicity class only if you know it), `gnm_base` by age (0.5 young: a soft adult face; 0 from 50: MakeHuman's own
-   aged head reads older and leaner, which an older person needs). Never start from a previous fit: it carries that
-   fit's mistakes. The reply is the first sheet and table.
+   age / weight / height from `refs`, a one-mesh human whose pictures are fitted by `human_reference`), the identity =
+   GNM's sampler CLASS MEAN for the sex (and an ethnicity class only if you know it), on a **GNM-NATIVE head** (the
+   default since 2026-10-12): GNM's true base (`gnm_base` 1, `dimorphism` 0, `eyes` 1, no head style sliders), GNM's
+   own eyeball / mouth / teeth / tongue, at GNM's own size with the body fitted to it (`base.head.attach: "native"`,
+   guide topic human). **Nothing of ours is on its surface**: the head's local layers are off (sliders, warp, folds,
+   pose, shape) and the refs model's sculpt `strokes`, `skin.folds` and painted wrinkle relief (`skin.wrinkles`) are
+   NOT carried; the reply lists what was DROPPED and what was LEFT (skin tone, zones, paint layers, micro relief).
+   `carry=True` keeps them, `attach="body"` gives the old body-carried head (with `gnm_base` by age): both are the
+   old behaviour, asked for explicitly. The cameras of a refs model whose head stood at another size or place are
+   CARRIED onto the new head (same view, same yaw) and the first `block_in_solve` lays them on it. Never start from a
+   previous fit: it carries that fit's mistakes. The reply is the first sheet and table.
+   On a native head `head_scale`, `gnm_base`, `dimorphism` and `eye_size` steps are REFUSED with the reason (they do
+   nothing there); an older model becomes native with `block_in_step(name, {"attach": "native"})` (a step of its own:
+   the head switched, the cameras carried, the dead keys dropped and named).
 2. **Look** (`block_in_look`, also returned by every step): per picture photo | clay under THE PHOTO'S OWN fitted light
    (hair cap: bald clay reads male; the person's own brows, SEATED on the surface: the front picture's detector brow
    band painted where it lands on the skin, so in 3/4 and profile they foreshorten and the far brow hides behind the
@@ -427,16 +436,27 @@ block_in_step: `"gnm:<control>": amount` (identity controls) or `"sculpt:<zone>"
 
 ### `block_in_start`
 block_in_start(name, refs, sex=None, age=None, body=None, gnm_base=None, ethnicity=None, cameras="keep",
-replace=False, save=None): the block-in's first model.
+replace=False, save=None, expression=False, attach="native", carry=False): the block-in's first model.
 - refs: a one-mesh human whose pictures are fitted (`human_reference` wrote its human_refs.json: views + cameras):
   its body is taken (body = keys merged over it, e.g. {"weight": 0.3}); or a views list ([{"image", "size", "yaw",
   "points"}] as human_reference) with age / sex / body for a new body, cameras fitted on the new head.
 - sex: "male" | "female" | 0..1 (default the body's): the base is that sex's class mean in GNM's semantic sampler.
-- age: overrides the body's age; gnm_base: default by age (0.5 to 25, 0 from 50, linear between).
+- attach: "native" (default): GNM's own head: true base, its eyeball / mouth / teeth, its own size (x the stature's
+  allometry: `base.head.size`), the body fitted (stature exact, the neck base laid on GNM's). Head keys with no
+  meaning there are dropped and named (`base.style.human.head_size`, `base.head.scale` ...). "body": the old
+  body-carried head; then gnm_base: default by age (0.5 to 25, 0 from 50, linear between). gnm_base with
+  attach="native" is refused (it IS the true base).
+- carry: False (default): the refs model's `strokes`, `skin.folds`, `skin.fold_expressions` are removed and
+  `skin.wrinkles` set to {"amount": 0}: a new head has nothing of ours on its surface (garrett_a1's nine sculpt
+  strokes once rode unseen on every head started from it). True keeps them. The reply's DROPPED line names every
+  key removed, its LEFT line what stayed of the refs model's dressing (skin tone / zones / paint layers / micro relief).
+- age: overrides the body's age.
 - ethnicity: one of GNM's sampler classes (middle_eastern, asian, white, black) for that class mean; omit it unless
   you know it (eth0..2 steps can move along the contrasts later).
-- cameras: "keep" the refs model's fitted cameras (they were fitted on another head: fine for a start), "refit" them
-  on the new head (camera only).
+- cameras: "keep" the refs model's fitted cameras; when its head stood at another size or place (a body-carried
+  head under a native start: Tess's was 0.85 of GNM's size) they are CARRIED by the two heads' similarity (each view
+  and its yaw kept; the reply says "carried ... x1.21"). "refit" refits them on the new head by its landmarks
+  (camera only). Either way the first block_in_solve lays them on the head (its cameras="refit", by itself).
 - name must be new (replace=True overwrites); the log (blockin_log.json) lives in this model's folder and every
   later step appends to it. save: the sheet's path (default workspace/human_renders/blockin_<name>.png).
 Returns the first sheet and target table. The rest mouth is closed by GNM's expression (head.lip_close; lip_seal and
@@ -463,8 +483,11 @@ block_in_step(name, moves, out=None, seen="", why="", cameras=None, look=True, s
 - moves: {direction: amount}: macros free / held (`name!`), `nd:<gap>`, `sex`, `eth0..2`, `pc:<region><i>`,
   `gnm:<control>` add (amount in sd); `sculpt:<zone>` / `relief:<zone>` add the least-cost GNM move per mm (macros
   held; the reply gives its |dc|, the macros let go and the skin moved elsewhere);
-  `head_scale`, `gnm_base`, `dimorphism`, `weight`, `lid_upper`, `lid_lower` are SET. An unknown name lists the
-  vocabulary.
+  `weight`, `lid_upper`, `lid_lower` are SET; `head_scale`, `gnm_base`, `dimorphism`, `eye_size` are SET on a
+  body-carried head and REFUSED on a GNM-native one (they do nothing there; the refusal says why). `neck_mm`: the
+  neck's girth at its narrowest in real mm (native heads; the least identity change, the head's size and the face's
+  measures held; the reply gives |dc|). `{"attach": "native"}` alone: the head switched to GNM-native, its cameras
+  carried onto the new size and place, dead keys dropped and named. An unknown name lists the vocabulary.
 - out: the new model's name (default: name with its number + 1, or name_01); an existing name is refused.
 - seen: the biggest difference you named; why: why this move answers it. Both logged.
 - cameras: view indices whose camera to refit on the result head (camera only, the head held), e.g. a painted view
@@ -482,7 +505,7 @@ before -> after on the detector points, |e| and the largest comps, then the tabl
 {} = neutral); blockin.view_base(base, refs, vi) gives the head as that picture shows it.
 
 ### `block_in_solve`
-ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more: its outline reads the chin; kept when it has none) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so (the factor is carried across calls). The reply lists what MOVED WITH NO READ, what moved far on a weak read and what is unread (solve_report's direct read: treat those as inferred), warns when a view's stated kind disagrees with its fitted camera, and marks a DAMPED step (it turned back on the last call's). hold: "none" (default) | "auto" (every measure no read looks at stays at the start head's value). expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views (unread, not pushed: section 3b). Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, chin_points, parse, hold, expression. See section 3b.
+ONE JOINT STEP: face_ruler's solve over every reference view (skin outlines, irises, limbus, lid margins, lip borders, detector anchors; GNM's prior on the whole identity; cameras partly free) applied whole as a block-in step, the solve's cameras kept. Use it FIRST from block_in_start's head, 3-4 calls until |dc| < 2, instead of closing measures one at a time. cameras: "free" | "trust" (measured cameras: a third of the freedom) | "refit" (cameras fitted on ANOTHER head: laid on this one first; first call only); the freedom is on the cameras' whole move since the start, so keep one setting. anchors: "differential" (the detector on the picture minus the detector on our render) | "absolute" | "none". chin_points: "auto" (default: the detector's chin points are left out when the set has a side view, 60 deg or more: its outline reads the chin; kept when it has none) | "on" | "off". parse: "auto" (outlines from the face parser where the plain-background reader finds too few: paintings, dark or busy backdrops) | "on" | "off". Nothing is forced: no component passes 3 sd; pictures that disagree are down-weighted and SAID so (the factor is carried across calls). The reply lists what MOVED WITH NO READ, what moved far on a weak read and what is unread (solve_report's direct read: treat those as inferred), warns when a view's stated kind disagrees with its fitted camera, and marks a DAMPED step (it turned back on the last call's). hold: "none" (default) | "auto" (every measure no read looks at stays at the start head's value). expression: "none" (default) | "view" | "shared" (the pictures' expression as a nuisance; did not validate). It does not see the surface inside the silhouette (cheeks), nor the chin's own width and the jaw's lower edge from front / shallow views (unread, not pushed: section 3b). Parameters: name, out (new model name), share (fraction of the step), seen (what you saw, logged), save (sheet path), cameras, anchors, chin_points, parse, hold, expression, size, neck. See section 3b.
 SIZE (2026-10-12): the head's OVERALL SIZE is not something a picture reads (a bigger head further away is the same
 image; every camera's scale and distance are free), so the solve HOLDS it at the block-in's start head's (the class
 mean on that body) and leaves shape free: `size="held"`, the default; the reply's notes say so. Left free
@@ -492,6 +515,24 @@ it weakly (weight 0.34 against GNM's +- 5 % spread of size: combined +- 4 %), wh
 radius and the head has GNM's own eyeball; `size="iris_pin"`: the iris' size whole (an average iris assumed; the
 chain see-saws a little). `blockin.iris_size(name)` gives the check without solving ("an average iris says the head
 is x % against its size now"). Do not compare two solved heads' millimetres without it: size first.
+NECK (2026-10-12, native heads): the neck's girth is not read directly by any picture, and GNM's identity moves it
+36 mm per sd (its female class mean is 363 mm, 11 % over ANSUR II's 330 +- 18; its male 385 against 398 +- 25). The
+solve carries an anthropometric PRIOR on it: `neck="prior"`, the default: ANSUR's mean for the model's sex and stature
+with ANSUR's own sd (a row in the solve, as size is). It is a prior and not a hold on purpose: on known heads the free
+solve finds the true neck to 13.5 mm rms through GNM's correlations with the jaw it does read, the prior keeps that
+(14.3) and a 1 % hold at the mean loses it (31; lower face +0.9 mm on a thin-necked head); face / lower face / chin
+shape errors 2.17 / 2.45 / 1.82 mm without the term, 2.03 / 2.23 / 1.57 with the prior. `neck="held"` pins the mean
+(+- 1 %), `neck=<mm>` holds a girth you measured, `neck="free"` releases it. The reply has a line "NECK: girth a -> b
+mm ... no direct read (INFERRED)". A body-carried head has no neck term (its neck is the body's). Outside the solve:
+`block_in_step {"neck_mm": mm}` (the least identity change, size and the face's measures held).
+HEAD SIZE on a native head: GNM's own metres x `base.head.size`, by default the stature's allometry (ANSUR: head
+height goes as stature ^ 0.29 women / 0.24 men; 1.000 at 1.627 / 1.755 m); the solve's size hold keeps the IDENTITY's
+size at the start head's on top of that, and the reply says so ("HEAD SIZE: ..."). `blockin.iris_size` (the iris as a
+ruler) reads in real millimetres there.
+CAMERAS OF ANOTHER HEAD: the solve first measures whether the cameras belong to this head (its landmarks through them
+against the pictures' stored points). A head switched to native by an edit is refused with the step that carries
+them (`block_in_step(name, {"attach": "native"})`); cameras carried or refitted by block_in_start are laid on the head
+by the first call (`cameras="refit"` in place of "free", said in the reply; "trust" is honoured).
 
 ### `lid_read`
 lid_read(name, match=False, out=None, seen="", save=None, expression=False, donor=None, fold=None): the picture's lid margins

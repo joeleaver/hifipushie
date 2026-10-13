@@ -318,6 +318,26 @@ def _neck_follow(rest: np.ndarray, start: np.ndarray, faces: list, n_body: int, 
     return Y[:n_body]
 
 
+def native_size(base: dict) -> dict:
+    """A native head's SIZE rule, and the neck ANSUR expects under it: {"stature" (the stated one: base.body.height, or
+    MakeHuman's own for the age), "sex", "size" (base.head.size, else (stature / the sex's mean stature) ^ alpha: the
+    head goes a little with the stature), "allometric": bool, "neck": ANSUR II's mean neck girth for this sex and
+    stature (m), "neck_sd" (m)}. The same for any body: no constant of a character."""
+    from . import makehuman
+    params = body_params(base)
+    user = base.get("head") or {}
+    stature = float(params["height"]) if params.get("height") else float(np.asarray(makehuman.body(params)["P"])[:, 2].max())
+    sex = float(np.clip(params.get("sex", 1.0), 0, 1))
+    s0 = (1 - sex) * ANSUR_STATURE[0] + sex * ANSUR_STATURE[1]
+    al = (1 - sex) * ANSUR["head_height"][0][1] + sex * ANSUR["head_height"][1][1]
+    given = isinstance(user.get("size"), (int, float))
+    size = float(user["size"]) if given else float((stature / s0) ** al)
+    w = [(v0 * (stature / st0) ** a_, sd_) for (v0, a_, sd_), st0 in zip(ANSUR["neck_girth"], ANSUR_STATURE)]
+    neck = (1 - sex) * w[0][0] + sex * w[1][0]
+    return {"stature": stature, "sex": sex, "size": size, "allometric": not given, "neck": float(neck),
+            "neck_sd": float(neck * ((1 - sex) * w[0][1] + sex * w[1][1]))}
+
+
 def _native_desc(base: dict, hd: dict, params: dict) -> dict:
     """head_desc for attach "native": the head's scale is GNM's (x size), the body's height is solved so the top of
     the head stands at the stated stature, and hd["bound"]["native"] carries the placement."""

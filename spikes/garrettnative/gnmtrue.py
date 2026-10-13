@@ -75,4 +75,4 @@ for m in sys.argv[1:]:
     print(f"   exterior skin at fade 1 further than 0.3 mm from GNM: {int(far.sum())} vertices" + (f" (lowest at {y[far].min():.0f} mm, highest at {y[far].max():.0f} mm; by group: " + ", ".join(f"{k} {int((far & v).sum())}" for k, v in G.items() if k.endswith('_region') and (far & v).sum()) + ")" if far.any() else ""))
     chin_y = float(y[face].min())
     k = ext & (fade < 1)
-    print(f"   the fade starts (fade < 1) at {y[k].max():.0f} mm; the chin's lowest face vertex is at {chin_y:.0f} mm; first deviation > 0.3 mm going down: {y[ext & (d > 0.3)].max():.0f} mm")
+    print(f"   the fade starts (fade < 1) at {y[k].max():.0f} mm; the chin's lowest face vertex is at {chin_y:.0f} mm; first deviation > 0.3 mm going down: " + (f"{y[ext & (d > 0.3)].max():.0f} mm" if (ext & (d > 0.3)).any() else "none (a native head: GNM to the bib)"))

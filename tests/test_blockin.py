@@ -57,7 +57,8 @@ def test_vocabulary():
 
 @need_ref
 def test_a_true_gnm_start_keeps_nothing_of_the_body_templates_head():
-    """(garrettnative) gnm_base=1.0 is the TRUE GNM base: no dimorphism field (the one-mesh default is 0.8), no eye
+    """(garrettnative) on the OLD body-carried head (attach="body"; the default start is native: test_nativedefault)
+    gnm_base=1.0 is the TRUE GNM base: no dimorphism field (the one-mesh default is 0.8), no eye
     scaling, no face style slider from the refs model; the head's size on the body (head_size) stays."""
     a, r = "bi_test_tg", "bi_test_tg_ref"
     _rm(a, r)
@@ -67,7 +68,7 @@ def test_a_true_gnm_start_keeps_nothing_of_the_body_templates_head():
         sp["base"].setdefault("style", {}).setdefault("human", {}).update({"eye_spacing": 0.012, "jaw": 0.1, "head_size": 1.03})
         sp["base"]["head"]["eyes"] = 1.05
         (store.HOME / r / "spec.json").write_text(json.dumps(sp))
-        bi.start(a, r, sex="male", gnm_base=1.0)
+        bi.start(a, r, sex="male", gnm_base=1.0, attach="body")
         b = store.load(a)["base"]
         assert b["head"]["gnm_base"] == 1.0 and b["head"]["dimorphism"] == 0.0 and b["head"]["eyes"] == 1.0
         assert b["style"]["human"] == {"head_size": 1.03}
@@ -93,7 +94,7 @@ def test_start_step_table_log_and_registration():
     a, b, c = "bi_test_00", "bi_test_01", "bi_test_02"
     _rm(a, b, c)
     try:
-        e = bi.start(a, REF, sex="male")
+        e = bi.start(a, REF, sex="male", attach="body")   # (the old path: the default start is native, test_nativedefault)
         sp = store.load(a)
         h = sp["base"]["head"]
         assert not any(k in h for k in ("sliders", "warp", "fold", "pose", "shape"))
@@ -103,7 +104,7 @@ def test_start_step_table_log_and_registration():
         assert "interior" not in h        # no kit interior carried over from the refs model
         assert e["start"]["cameras"] == "kept"
         with pytest.raises(ValueError, match="exists"):
-            bi.start(a, REF, sex="male")
+            bi.start(a, REF, sex="male", attach="body")
         # the table on a known model: the picture's reads don't depend on the head (Garrett's concept: pupils ~65.9 mm)
         t = bi.table(a)
         pd = next(r for r in t["eye placement"] if r["id"] == "pupil_distance")
