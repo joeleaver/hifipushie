@@ -1040,35 +1040,32 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
         Cx = np.array(cols).T
         Jx, pri, m0 = np.c_[Jx, Cx], np.r_[pri, np.full(len(xcols), EXPR_SD if expr_sd is None else float(expr_sd))], np.r_[m0, np.zeros(len(xcols))]
         nn += len(xcols)
-    if cmax and not span:     # NOTHING FORCED: if the most likely head has a component past cmax sd, the pictures are
-        c_at = np.asarray(head["c"], float)   # (the head as it stands in this round)        # less consistent than
-        # their sigmas say (two paintings of one man are two drawings): every sigma x relax, the SMALLEST factor at
-        # which no component passes cmax, found by bisection (solvereads: it moved in x1.3 steps, 1.30 / 1.69 / 2.20, so
-        # two calls on the same pictures solved different problems and the head hopped |dc| 2.4 -> 5.1), and never
-        # under relax0: the factor the block-in already stands at (solve_step lets it come down 15 % a call)
-
-        def at(rx):
-            t_ = solve(obs, head, tau=tau, cam_sd=cam_sd, views=views, huber=huber, weights={k_: v_ * rx for k_, v_ in _all_types(obs, weights).items() if k_ != "hold"},
-                       done=done, cam_done=cam_done, prior_off=prior_off, adapt=adapt, expr_mode=expr_mode, expr_sd=expr_sd)
-            return t_, float(np.abs(c_at + t_["dc"]).max())
-        lo = max(float(relax0), 1.0)
-        t_, m_ = at(lo)
-        if m_ > cmax:
-            hi = lo
-            for _ in range(40):
-                hi *= 1.3
-                t_hi, m_ = at(hi)
-                if m_ <= cmax:
-                    break
-            for _ in range(7):                # the factor to ~1 %
-                mid = float(np.sqrt(lo * hi))
-                t_m, m_ = at(mid)
-                if m_ <= cmax:
-                    hi, t_hi = mid, t_m
-                else:
-                    lo = mid
-            t_, lo = t_hi, hi
-        t_["relax"] = lo
+    if cmax and not span:
+        # NOTHING FORCED, as a BOUND (solvecams, 2026-10-13): no identity component may end past cmax sd. Until now a
+        # component past it turned EVERY read's sigma up until none was (x1.2 .. x18, carried from call to call): on a
+        # known head with its TRUE cameras one component at 3.11 instead of 3.00 (pushed there by the size hold and the
+        # neck prior's rows, which the factor never touched) cost x15.3 and the head ended worse than it started. Now
+        # the components that would pass the bound are HELD AT it and the rest solved again (an active set: the most
+        # likely head inside the box); no read is down-weighted, nothing is carried. out["bound"] names them.
+        c_at = np.asarray(head["c"], float)   # (the head as it stands in this round)
+        kb = dict(tau=tau, cam_sd=cam_sd, views=views, huber=huber, weights=weights, done=done, cam_done=cam_done,
+                  prior_off=prior_off, adapt=adapt, expr_mode=expr_mode, expr_sd=expr_sd)
+        rows_b, held_b = [], {}
+        t_ = solve(obs, head, **kb)
+        for _ in range(8):
+            c_new = c_at + t_["dc"]
+            bad = [int(i) for i in np.where(np.abs(c_new) > cmax + 1e-6)[0] if int(i) not in held_b]
+            if not bad:
+                break
+            for i in bad:
+                held_b[i] = float(np.sign(c_new[i]) * cmax)
+                e = np.zeros(K)
+                e[i] = 1.0
+                rows_b.append({"type": "hold", "view": "prior", "name": f"bound_c{i}", "o": float(held_b[i] - c_at[i]), "J": e, "sig": 1e-3})
+            t_ = solve(list(obs) + rows_b, head, **kb)
+        t_["relax"] = 1.0
+        t_["bound"] = sorted(held_b)
+        t_["bound_rows"] = rows_b
         return t_
     w = 1.0 / sig ** 2
     sig0, grp, scale = sig.copy(), {}, {}
@@ -1109,6 +1106,7 @@ def solve(obs: list, head: dict, tau: float = TAU, span: bool = False, cam_sd=No
     rows.sort(key=lambda r: -abs(r["sd"]))
     full = ERR_POST ** 2 * cov + np.diag([ERR[n] ** 2 for n in names])
     return {"dc": dc, "gaps": rows, "n": len(obs), "rms": float(np.sqrt(np.mean(r ** 2))), "sig_scale": scale, "relax": 1.0,
+            "resid": ((o - Jx @ th) / sig0).tolist(),      # what is left of each read after the solve, in its own sigmas
             "cam": th[n1:n1 + nc].tolist() if nc else None, "cov": full, "names": names,
             "cam_post": np.sqrt(np.maximum(np.diag(Ai)[n1:n1 + nc], 0)).tolist() if nc else None,
             # the linear-Gaussian system as solved (solve_report: what each measure's posterior owes to which reads)
@@ -1219,6 +1217,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
                 obs = obs + [sr.neck_row(np.asarray(head["c"], float) + done, float(tie["neck"]), float(tie.get("neck_sig") or sr.NECK_SIG))]
             out = solve(obs, cur, views=views, **skw)
         relax = float(out.get("relax", 1.0))
+        obs = obs + list(out.get("bound_rows") or [])
         done = done + out["dc"]
         if free:                     # the fitted cameras are refined too: the next round reads through the moved ones
             th = np.asarray(out["cam"], float).reshape(len(views), ncam)
@@ -2490,6 +2489,8 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
         pass
     lim = sorted({(ob["view"], ob["name"][:8]) for ob in res["obs"] if ob["type"] == "limbus"})
     notes = list(notes) + [f"limbus read in: {', '.join(f'{a} {b}' for a, b in lim) or 'no turned view'}"]
+    dis = disagreement(res)
+    notes = list(notes) + dis["lines"]
     if res.get("relax", 1.0) > 1.0:
         notes.append(f"INCONSISTENT PICTURES: at their own sigmas the most likely head had a component past {cmax:g} sd; every "
                      f"read's sigma was raised x{res['relax']:.2f} until none did (the pictures disagree with each other or "
@@ -2509,9 +2510,36 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             "cam_done": res.get("cam_done"), "cam_post": res.get("cam_post"), "post": res.get("post"),
             "sig_scale": res.get("sig_scale") or {}, "relax": res.get("relax", 1.0), "cam_step": res.get("cam_step"),
             "held": res.get("held") or [], "tie": tie, "expr": res.get("expr") or {}, "kinds": [v["kind"] for v in views],
-            "readers": [v.get("reader") for v in views], "camera_lines": cam_lines}
+            "readers": [v.get("reader") for v in views], "camera_lines": cam_lines, "bound": res.get("bound") or [], "disagree": dis["groups"]}
 
 
+
+
+DISAGREE = 2.0        # a read group left at more than this many of its own sigmas (rms) after the solve is named
+
+
+def disagreement(res: dict) -> dict:
+    """WHY a solve is strained, by read type and picture (instead of one factor on every sigma): each group's rms
+    residual after the solve in its own sigmas and in mm, the groups past DISAGREE named, and the identity components
+    held at the bound. {"groups": {(type, view): {"n", "sig", "mm"}}, "lines"}."""
+    obs, rs = res.get("obs") or [], res.get("resid")
+    g = {}
+    if rs is not None and len(rs) == len(obs):
+        for ob, r in zip(obs, rs):
+            if ob["type"] != "hold":
+                g.setdefault((ob["type"], ob["view"]), []).append((float(r), float(r) * float(ob["sig"])))
+    groups = {k: {"n": len(v), "sig": float(np.sqrt(np.mean([a * a for a, _ in v]))), "mm": float(np.sqrt(np.mean([b * b for _, b in v])))} for k, v in g.items()}
+    lines = []
+    bad = sorted(((k, x) for k, x in groups.items() if x["sig"] > DISAGREE and x["n"] >= 2), key=lambda t: -t[1]["sig"])
+    if bad:
+        lines.append("DISAGREE (reads the solved head and cameras still miss by more than " + f"{DISAGREE:g} of their own sigmas, rms): "
+                     + "; ".join(f"{t} in the {vw} picture {x['sig']:.1f} sigma ({x['mm']:.1f} mm, {x['n']} reads)" for (t, vw), x in bad)
+                     + ": that read, that picture's camera, or a shape GNM does not reach there")
+    bd = res.get("bound") or []
+    if bd:
+        lines.append(f"AT THE BOUND: {len(bd)} identity component(s) held at the limit ({', '.join(str(i) for i in bd[:8])}): the reads ask for a head "
+                     "more unusual than the bound allows there; nothing was down-weighted for it")
+    return {"groups": groups, "lines": lines}
 
 
 def overlay(res: dict, height: int = 640):
