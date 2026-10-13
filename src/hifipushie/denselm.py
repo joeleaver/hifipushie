@@ -251,12 +251,74 @@ def landmarks_v2() -> dict:
             "eye": (ns, ns + 2 * n1), "left_eye": np.arange(ns, ns + n1), "right_eye": np.arange(ns + n1, ns + 2 * n1)}
 
 
+BORDER_HALF = 9             # per half vermilion border / lip seam line (17 a line with the mid-line point)
+NOSE_BASE_HALF = 26         # extra picks per half on the nose's lower third (alar rims and grooves, nostrils, columella, subnasale)
+PHILTRUM_HALF = 8
+
+
+@functools.lru_cache(maxsize=1)
+def landmarks_v3() -> dict:
+    """VERSION 3 (stage 1; after the pilot's lips and nose base sat off the features on real phone portraits while
+    MediaPipe's sat on them): version 2 UNCHANGED and first, then the places where identity is fine-grained, as GNM
+    vertices: the UPPER and LOWER VERMILION BORDER (the lip groups' edge against the skin: cupid's bow, mid-line dip,
+    commissures: regions "lip_border_upper" / "lip_border_lower"), the LIP SEAM (the contact ring's two halves:
+    "lip_seam"), the NOSE'S LOWER THIRD densely ("nose_base": alar rims, alar-facial grooves, nostril openings,
+    columella, subnasale: farthest-point picks over every exterior nose vertex below the tip's level that set 2 does
+    not hold) and the PHILTRUM ("philtrum": the upper-lip region between the nose and the border). Mirror pairs."""
+    L2 = landmarks_v2()
+    T, gr, present, g = _groups()
+    from . import base as basemod, faceslide
+    ext, skin = gr["skin_exterior"], np.asarray(g["skin"], bool)
+    Q = np.asarray(g["quads"], int)
+    e = np.r_[Q[:, [0, 1]], Q[:, [1, 2]], Q[:, [2, 3]], Q[:, [3, 0]]]
+    e = np.r_[e, e[:, ::-1]]
+    ids, mirror, region, names = [L2["gnm_all"]], [L2["mirror"]], list(L2["region"]), list(L2["names"])
+    have = set(L2["gnm_all"].tolist())
+    off = L2["n"]
+
+    def add(cand, n_half, reg, tag):
+        nonlocal off
+        cand = np.array([v for v in np.unique(cand) if int(v) not in have and present[v]], int)
+        if len(cand) < 2:
+            return
+        v, m = _sym_fps(T, cand, n_half)
+        ids.append(v)
+        mirror.append(off + m)
+        region.extend([reg] * len(v))
+        names.extend([f"{tag}_{int(x)}" for x in v])
+        have.update(int(x) for x in v)
+        off += len(v)
+    for grp, reg in (("upper_lip", "lip_border_upper"), ("lower_lip", "lip_border_lower")):
+        m = gr[grp] & ext
+        add(e[m[e[:, 0]] & ~m[e[:, 1]] & ext[e[:, 1]] & skin[e[:, 1]], 0], BORDER_HALF, reg, "border")
+    R = faceslide._lip_rings()
+    C = np.asarray(R["rings"][R["contact"]], int)
+    up = np.asarray(R["upper"], bool)[C]
+    add(C[up], BORDER_HALF, "lip_seam", "seam")
+    add(C[~up], BORDER_HALF, "lip_seam", "seam")
+    nose = np.where(gr["nose_region"] & ext)[0]
+    tip = nose[int(np.argmax(T[nose, 2]))]
+    add(nose[T[nose, 1] < T[tip, 1] + 0.004], NOSE_BASE_HALF, "nose_base", "nose")
+    ul = np.where(gr["upper_lip_region"] & ext & ~gr["upper_lip"])[0]
+    add(ul[np.abs(T[ul, 0]) < 0.014], PHILTRUM_HALF, "philtrum", "philtrum")
+    ids = np.concatenate(ids)
+    out = dict(L2)
+    out.update({"gnm_all": ids, "region": np.array(region), "mirror": np.concatenate(mirror), "names": names,
+                "extra": names[L2["n_skin"]:], "n": len(ids), "version": 3, "n_v2": L2["n"]})
+    return out
+
+
+def current() -> dict:
+    """the set new data is labelled with and new networks are trained on."""
+    return landmarks_v3()
+
+
 def by_count(n: int) -> dict:
     """the landmark set a network with n landmark outputs was trained on."""
-    for L in (landmarks(), landmarks_v2()):
+    for L in (landmarks(), landmarks_v2(), landmarks_v3()):
         if L["n"] == n:
             return L
-    raise ValueError(f"denselm: no landmark set of {n} landmarks (version 1: {landmarks()['n']}, version 2: {landmarks_v2()['n']})")
+    raise ValueError(f"denselm: no landmark set of {n} landmarks (versions 1, 2, 3: {landmarks()['n']}, {landmarks_v2()['n']}, {landmarks_v3()['n']})")
 
 
 def limbus_points(centre, axis, eye_r: float, iris_r: float, up=(0.0, 0.0, 1.0)) -> np.ndarray:

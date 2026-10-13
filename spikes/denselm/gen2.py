@@ -13,16 +13,18 @@ head stage per person's skin, every sample a re-pose of it in one Blender proces
                  its population sd (the extremes); components clipped at +-4.5. Teeth: the 80 teeth components ~
                  N(0, 0.8^2).
   expression     ARKit-named shapes solved on GNM's basis (arkit_expr.npz) + the sampler's classes: lower face 40 %
-                 neutral, 15 % smile WITH TEETH, 7 % closed smile, 13 % jaw open, 10 % speech-like, 8 % other closed
+                 neutral, 15 % smile WITH TEETH, 11 % closed smile (mostly slight, lopsided), 11 % jaw open, 8 % speech-like, 10 % other closed
                  (frown, press, pucker ..), 7 % a sampler class; upper face 50 % neutral, 10 % eyes closed, 8 % wide,
                  10 % squint, 10 % brows down, 10 % brows up, 2 % wink.
   views          yaw 55 % U(-110, 110), 45 % N(0, 30); pitch N(0, 14) in +-35; roll N(0, 8); the camera's DISTANCE
-                 log-uniform 0.3 .. 3 m (a phone selfie to a tele) with the lens that frames a 0.25-0.37 m crop there;
+                 0.25 .. 3 m (20 % at phone distance 0.25-0.5 m, the rest log-uniform) with the lens that frames a 0.25-0.37 m crop there;
                  off-axis crops on half. Distance, yaw, pitch are in the labels (meta.npz).
   light          as gen.py + 15 % a HARD TOP light (a small high sun, a dark room: the dark-skin failure case).
   appearance     as gen.py, with hair on 60 % (loose hair more often and allowed over the face and jaw), heavier
                  stubble / beard shadow on 60 % of men. No glasses (not cheap: stage geometry of its own).
-Landmarks: denselm.landmarks_v2() (623: the pilot's 570 skin vertices first, then GNM's iris rims, teeth, tongue).
+Landmarks: denselm.current() (version 3, 756: the pilot's 570 skin vertices first, then GNM's iris rims, teeth, tongue,
+then the vermilion borders, the lip seam, the nose's lower third and the philtrum; dressings rendered before version 3
+were re-labelled from their stored identities and cameras: relabel.py).
 Cheaper: the stage meshed at `voxel` (2 mm; eyes / mouth at half; teeth 0.8 mm), 6 TAA samples, one Blender start."""
 import copy
 import json
@@ -84,6 +86,7 @@ def dressing(rng) -> dict:
     elif rng.random() < 0.4:
         sk["hair"]["scalp"] = {"amount": round(float(rng.uniform(0.4, 1.0)), 2), "color": hair_col, "hairline": round(float(rng.uniform(0.3, 0.7)), 2)}
     dr["hair"] = hr
+    sk["lips"]["strength"] = round(float(rng.uniform(0.2, 1.7)), 2)      # 0.2 = lips nearly the skin's colour (the hard case)
     dr["eyes_id"] = [round(float(x), 3) for x in np.clip(rng.normal(0, 1, 2), -2, 2)]      # GNM's limbus size, cornea prominence
     return dr
 
@@ -192,9 +195,13 @@ def expression(rng) -> tuple:
         both("mouthUpperUp", rng.uniform(0.2, 0.8))
         both("mouthLowerDown", rng.uniform(0.0, 0.5))
         add("jawOpen", rng.uniform(0.0, 0.25))
-    elif u < 0.62:                              # closed smile
-        both("mouthSmile", rng.uniform(0.3, 0.8))
-    elif u < 0.75:                              # jaw open
+    elif u < 0.66:                              # closed smile, mostly SLIGHT, often lopsided (the phone-portrait mouth)
+        both("mouthSmile", rng.uniform(0.12, 0.5) if rng.random() < 0.7 else rng.uniform(0.5, 0.85), 0.4)
+        if rng.random() < 0.3:
+            both("mouthPress", rng.uniform(0.2, 0.6))
+        if rng.random() < 0.25:
+            both("mouthDimple", rng.uniform(0.2, 0.6))
+    elif u < 0.77:                              # jaw open
         add("jawOpen", rng.uniform(0.25, 1.0))
         if rng.random() < 0.4:
             add("mouthFunnel", rng.uniform(0.1, 0.5))
@@ -202,22 +209,24 @@ def expression(rng) -> tuple:
             both("mouthLowerDown", rng.uniform(0.1, 0.6))
         if rng.random() < 0.3:
             both("mouthUpperUp", rng.uniform(0.1, 0.6))
-    elif u < 0.85:                              # speech-like
+    elif u < 0.85:                              # speech-like (8 %)
         add("jawOpen", rng.uniform(0.05, 0.35))
         for n in rng.choice(["mouthFunnel", "mouthPucker", "mouthStretch", "mouthUpperUp", "mouthLowerDown", "mouthLeft", "mouthRight",
                              "jawLeft", "jawRight", "jawForward"], int(rng.integers(1, 3)), replace=False):
             w = rng.uniform(0.2, 0.7)
             (both(str(n), w) if str(n) + "Left" in A else add(str(n), w))
-    elif u < 0.93:                              # other closed mouths
+    elif u < 0.95:                              # other closed mouths: pressed, pursed, rolled, pulled to a side, asymmetric
         for n in rng.choice(["mouthFrown", "mouthPress", "mouthPucker", "mouthRollLower", "mouthRollUpper", "mouthShrugLower",
-                             "mouthShrugUpper", "mouthDimple", "mouthLeft", "mouthRight"], int(rng.integers(1, 3)), replace=False):
+                             "mouthShrugUpper", "mouthDimple", "mouthLeft", "mouthRight", "mouthStretch"], int(rng.integers(1, 3)), replace=False):
             w = rng.uniform(0.3, 0.9)
-            (both(str(n), w) if str(n) + "Left" in A else add(str(n), w))
+            (both(str(n), w, 0.5) if str(n) + "Left" in A else add(str(n), w))
     else:                                       # one of the sampler's whole-face classes
         c = str(rng.choice(gs.EXPR))
         w = float(rng.uniform(0.3, 1.0))
         e = e + gs.expression()(rng.normal(size=64) * 0.8, gs.ex_label(c))[0] * w
         mix["class:" + c] = round(w, 3)
+    if rng.random() < 0.08:                     # nostrils flared / the nose wrinkled
+        both("noseSneer", rng.uniform(0.3, 1.0), 0.3)
     u = rng.random()
     if u < 0.50:
         pass
@@ -246,7 +255,8 @@ def camera(rng, centre) -> dict:
     yaw = float(rng.uniform(-110, 110)) if rng.random() < 0.55 else float(np.clip(rng.normal(0, 30), -110, 110))
     pitch = float(np.clip(rng.normal(0, 14), -35, 35))
     roll = float(np.clip(rng.normal(0, 8), -25, 25))
-    dist = float(np.exp(rng.uniform(np.log(0.3), np.log(3.0))))
+    # 20 % at PHONE distance (0.25-0.5 m: the nose enlarged), the rest log-uniform 0.25 .. 3 m
+    dist = float(rng.uniform(0.25, 0.5)) if rng.random() < 0.2 else float(np.exp(rng.uniform(np.log(0.25), np.log(3.0))))
     side = float(rng.uniform(0.25, 0.37))
     fov = 2 * np.arctan(side / 2 / dist)
     y, p = np.radians(yaw), np.radians(pitch)
@@ -280,6 +290,57 @@ def lighting(rng, cam) -> str:
     return json.dumps({"lights": L, "world": {"color": [g, g, g], "strength": float(rng.uniform(0.04, 0.3))},
                        "exposure": float(np.clip(rng.normal(-0.3, 0.45), -1.5, 0.8)),
                        "view": str(rng.choice(["Khronos PBR Neutral", "AgX", "Standard"], p=[0.5, 0.35, 0.15])), "hard_top": True})
+
+
+def make_poser(sp: dict, st0: dict, fv_set=None):
+    """pose(c (170), teeth (80), e (383)) -> (the one mesh's vertices P, GNM's vertices as placed W, the 68 landmarks,
+    the two eye centres) for a GNM-native base at its stage's placement, LINEAR in GNM's own bases (see main)."""
+    from hifipushie import base as basemod, denselm, onemesh
+    g = basemod._gnm_data()
+    tpl, h0 = st0["tpl"], st0["head"]
+    P0 = np.asarray(tpl["P"], float)
+    W0 = np.asarray(h0["gnm_world"], float)
+    gid = np.asarray(onemesh.asset()["gnm_id"], int)[np.asarray(tpl["fid"])]
+    LMS = fv_set or denselm.current()
+    eye0 = np.array([np.asarray(q, float)[:3] for q in h0["eyes"]])
+    names_i = [str(x) for x in g["identity_names"]]
+    IB = np.asarray(g["vertex_identity_basis"], np.float32)
+    EB = np.asarray(g["expression_basis"], np.float32)
+    JB = np.asarray(g["joint_identity_basis"], np.float64)[:, 2:4]
+    Tg = np.asarray(g["template_vertex_positions"], float)
+    idn0, ex0 = sp["base"]["head"]["identity"], sp["base"]["head"].get("expression") or {}
+    c0 = np.array([float(idn0.get(nm, 0.0)) for nm in names_i])
+    e0 = np.array([float(ex0.get(nm, 0.0)) for nm in _enames()])
+    world = lambda X: np.stack([X[..., 0], -X[..., 2], X[..., 1]], -1)      # GNM frame -> world (face_ruler._world)
+    G0 = world(Tg + np.tensordot(c0, IB, 1) + np.tensordot(e0, EB, 1))
+    fv = LMS["gnm"][np.isin(LMS["region"][:LMS["n_skin"]], ["lids", "eyes", "nose", "lips", "mouth", "chin", "cheeks", "brows", "forehead"])]
+    ca, cb = G0[fv].mean(0), W0[fv].mean(0)
+    U, S_, Vt = np.linalg.svd((G0[fv] - ca).T @ (W0[fv] - cb))
+    dd_ = np.sign(np.linalg.det(U @ Vt))
+    Rp = (U @ np.diag([1, 1, dd_]) @ Vt).T
+    sc = float((S_ * [1, 1, dd_]).sum() / ((G0[fv] - ca) ** 2).sum())
+    fade = np.asarray(onemesh.asset()["g_fade"], float)
+    hv = np.where(gid >= 0)[0]
+    WL = np.zeros((68, len(Tg)))
+    for li, r_ in enumerate(np.asarray(g["lm68"], float)):
+        WL[li, r_[0::2].astype(int)] = r_[1::2]
+    Jw0 = world(np.asarray(g["template_joint_positions"], float)[2:4] + np.tensordot(c0, JB, 1))
+    jord = [int(np.argmin(np.linalg.norm(eye0 - (cb + sc * (j_ - ca) @ Rp.T), axis=1))) for j_ in Jw0]
+    tix = [names_i.index(f"teeth_{k:03d}") for k in range(80)]
+
+    def pose(c, teeth, e):
+        cf = c0.copy()
+        cf[:170] = c
+        cf[tix] = teeth
+        Wn = W0 + sc * world(np.tensordot((cf - c0).astype(np.float32), IB, 1) + np.tensordot((np.asarray(e, float) - e0).astype(np.float32), EB, 1)) @ Rp.T
+        P = P0.copy()
+        P[hv] += fade[gid[hv]][:, None] * (Wn[gid[hv]] - W0[gid[hv]])
+        eye = eye0.copy()
+        dJ = sc * world(np.tensordot(cf - c0, JB, 1)) @ Rp.T
+        for j_, k_ in enumerate(jord):
+            eye[k_] = eye0[k_] + dJ[j_]
+        return P, Wn, WL @ Wn, eye
+    return pose
 
 
 def _state(args):
@@ -356,7 +417,7 @@ def main():
     F_teeth = tris(gr["upper_teeth_and_gums"] | gr["lower_teeth_and_gums"])
     F_tongue = tris(gr["tongue"])
     ALL0 = np.concatenate([P0, W0[pid]])
-    LMS = denselm.landmarks_v2()
+    LMS = denselm.current()          # version 3: + vermilion borders, lip seam, the nose's base, philtrum
     lid = LMS["gnm_all"]
     # the model's vertex of each GNM vertex (skin: the one mesh's own; a check that both evaluations agree)
     at = np.full(int(gid.max()) + 1, -1)
@@ -391,43 +452,8 @@ def main():
     # also re-seats the head on the neck by a few mm: a rigid move of the whole head, which a picture cannot show).
     # The neck: the head's move fades to 0 over the rings above the stitch (the asset's g_fade), the body stands.
     t1 = time.time()
-    names_i = [str(x) for x in g["identity_names"]]
-    IB = np.asarray(g["vertex_identity_basis"], np.float32)
-    EB = np.asarray(g["expression_basis"], np.float32)
-    JB = np.asarray(g["joint_identity_basis"], np.float64)[:, 2:4]
-    Tg = np.asarray(g["template_vertex_positions"], float)
-    idn0, ex0 = sp["base"]["head"]["identity"], sp["base"]["head"].get("expression") or {}
-    c0 = np.array([float(idn0.get(nm, 0.0)) for nm in names_i])
-    e0 = np.array([float(ex0.get(nm, 0.0)) for nm in _enames()])
-    world = lambda X: np.stack([X[..., 0], -X[..., 2], X[..., 1]], -1)      # GNM frame -> world (face_ruler._world)
-    G0 = world(Tg + np.tensordot(c0, IB, 1) + np.tensordot(e0, EB, 1))
-    fv = LMS["gnm"][np.isin(LMS["region"][:LMS["n_skin"]], ["lids", "eyes", "nose", "lips", "mouth", "chin", "cheeks", "brows", "forehead"])]
-    ca, cb = G0[fv].mean(0), W0[fv].mean(0)
-    U, S_, Vt = np.linalg.svd((G0[fv] - ca).T @ (W0[fv] - cb))
-    dd_ = np.sign(np.linalg.det(U @ Vt))
-    Rp = (U @ np.diag([1, 1, dd_]) @ Vt).T
-    sc = float((S_ * [1, 1, dd_]).sum() / ((G0[fv] - ca) ** 2).sum())
-    fade = np.asarray(onemesh.asset()["g_fade"], float)
-    hv = np.where(gid >= 0)[0]
-    WL = np.zeros((68, len(Tg)))
-    for li, r_ in enumerate(np.asarray(g["lm68"], float)):
-        WL[li, r_[0::2].astype(int)] = r_[1::2]
-    Jw0 = world(np.asarray(g["template_joint_positions"], float)[2:4] + np.tensordot(c0, JB, 1))
-    jord = [int(np.argmin(np.linalg.norm(eye0 - (cb + sc * (j_ - ca) @ Rp.T), axis=1))) for j_ in Jw0]
-    tix = [names_i.index(f"teeth_{k:03d}") for k in range(80)]
-    res = []
-    for i in range(n):
-        cf = c0.copy()
-        cf[:170] = ids[i]
-        cf[tix] = teeth[i]
-        Wn = W0 + sc * world(np.tensordot((cf - c0).astype(np.float32), IB, 1) + np.tensordot((E[i] - e0).astype(np.float32), EB, 1)) @ Rp.T
-        P = P0.copy()
-        P[hv] += fade[gid[hv]][:, None] * (Wn[gid[hv]] - W0[gid[hv]])
-        eye = eye0.copy()
-        dJ = sc * world(np.tensordot(cf - c0, JB, 1)) @ Rp.T
-        for j_, k_ in enumerate(jord):
-            eye[k_] = eye0[k_] + dJ[j_]
-        res.append((P, Wn, WL @ Wn, eye))
+    pose = make_poser(sp, st0, fv_set=LMS)
+    res = [pose(ids[i], teeth[i], E[i]) for i in range(n)]
     t_state = time.time() - t1
     print(f"step: {n} heads posed in {t_state:.1f} s (GNM's bases, linear)", flush=True)
     meta = {k: [] for k in ("cam_eye", "cam_R", "fov", "shift", "yaw", "pitch", "roll", "f_mm", "dist", "side", "gaze", "light", "eye")}
