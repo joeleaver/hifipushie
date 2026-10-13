@@ -73,7 +73,7 @@ def titled(tiles, labels, title):
 
 def main():
     tag = sys.argv[1]
-    subs = sys.argv[2:] or list(SUBJECTS)
+    subs = sys.argv[2:] or ["tess", "garrett_paintings"]      # (the held-out Garrett set is another line's: name it to run it)
     out = Path(f"/mnt/data/hifipushie/denselm/out/real_{tag}")
     out.mkdir(parents=True, exist_ok=True)
     L = denselm.landmarks()
@@ -104,13 +104,15 @@ def main():
                 continue
             pr = denselm.predict(img, init)
             xy, sg = pr["xy"], pr["sigma"]
+            L = pr.get("set") or L
+            reg = L["region"]
             o68 = xy[L["lm68"]]
             ext = float(np.ptp(o68[:, 1]))
             mmpx = 120.0 / max(ext, 1.0) if cam is None else likeness._mm_per_px(cam, np.asarray(head["L"], float)[27:48])
             # (no camera: ~120 mm brow-to-chin over the 68's height: a rough scale for the sigma colours only)
             sgmm = sg * mmpx
             line = f"{sub} {vname}: face {ext:.0f} px ({mmpx:.2f} mm/px); our sigma (mm) median by region: " + ", ".join(
-                f"{r} {np.median(sgmm[reg == r]):.2f}" for r in ("lids", "eyes", "nose", "lips", "mouth", "chin", "cheeks", "forehead", "ears", "eyeball"))
+                f"{r} {np.median(sgmm[reg == r]):.2f}" for r in ("lids", "eyes", "nose", "lips", "mouth", "chin", "cheeks", "forehead", "ears", "eyeball", "teeth_upper", "teeth_lower") if (reg == r).any()) + ("" if pr.get("distance") is None else f"; camera distance read {pr['distance'][0]:.2f} m (x/ {np.exp(pr['distance'][1]):.2f})")
             if mp is not None:
                 m68 = np.asarray(mp, float)[likeness.MP68]
                 d = np.linalg.norm(o68 - m68, axis=1) * mmpx

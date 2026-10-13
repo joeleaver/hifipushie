@@ -117,3 +117,44 @@ def test_dense_obs_reads_a_known_change_and_nothing_on_the_head_itself(tess):
     assert len(fr._dense_obs(head, view, {"xy": Q, "sigma": sg})) < len(obs)
     regs = {ob["region"] for ob in fr._dense_obs(head, {**view, "chin": {"dense_regions": ("chin", "cheeks")}}, {"xy": Q, "sigma": np.full(L["n"], 0.5)})}
     assert regs == {"chin", "cheeks"}
+
+
+def test_landmark_set_v2_keeps_the_skin_and_adds_gnms_own_pieces():
+    L1, L2 = denselm.landmarks(), denselm.landmarks_v2()
+    ns = L1["n_skin"]
+    assert L2["n_skin"] == ns and (L2["gnm_all"][:ns] == L1["gnm"]).all()          # the pilot's skin rows, unchanged and first
+    assert (L2["region"][:ns] == L1["region"][:ns]).all() and (L2["lm68"] == L1["lm68"]).all()
+    n = L2["n"]
+    assert len(set(L2["gnm_all"].tolist())) == n and (L2["mirror"][L2["mirror"]] == np.arange(n)).all()
+    T, gr, present, _ = denselm._groups()
+    P = T[L2["gnm_all"]]
+    assert np.abs(P[L2["mirror"]] - P * [-1, 1, 1]).max() < 0.001
+    reg = L2["region"]
+    assert (reg == "eyeball").sum() == 2 * (1 + denselm.LIMBUS_N)
+    assert (reg == "teeth_upper").sum() >= 10 and (reg == "teeth_lower").sum() >= 10 and (reg == "tongue").sum() >= 6
+    assert gr["teeth"][L2["gnm_all"][np.char.startswith(reg, "teeth")]].all() and gr["tongue"][L2["gnm_all"][reg == "tongue"]].all()
+    e = L2["left_eye"]                                                              # the pupil's centre, then the iris rim round it
+    assert T[L2["gnm_all"][e], 0].mean() > 0 and gr["pupils"][L2["gnm_all"][e[0]]]
+    r = np.linalg.norm(P[e[1:]] - P[e[0]], axis=1)
+    assert 0.004 < r.min() and r.max() < 0.007 and r.max() - r.min() < 0.0005
+    assert denselm.by_count(L1["n"]) is L1 and denselm.by_count(n) is L2
+
+
+def test_merge_reads_either_network_and_the_distance_row():
+    rng = np.random.default_rng(0)
+    for L, extra in ((denselm.landmarks(), 0), (denselm.landmarks_v2(), 1)):
+        n = L["n"]
+        a = rng.normal(0, 0.3, (n + extra, 3)).astype(np.float32)
+        a[:, 2] = -2.0
+        b = a.copy()                                  # the mirror image's prediction of the same face
+        b[:n] = a[:n][L["mirror"]]
+        b[:n, 0] *= -1
+        if extra:
+            a[-1] = b[-1] = [np.log(0.8) / denselm.DIST_UNIT, 0.0, -1.5]
+        xy, ls, Lg, dist = denselm._merge(np.stack([a, b]))
+        assert Lg is L and xy.shape == (n, 2)
+        assert np.abs(xy - a[:n, :2]).max() < 1e-5       # both halves agree: the merge is the prediction
+        if extra:
+            assert abs(dist[0] - 0.8) < 1e-4 and dist[1] > 0
+        else:
+            assert dist is None
