@@ -24,8 +24,9 @@ SUBJECTS = {
                      ("eyes_closed", None, None, G + "garrett_head_front_eyes_closed.png"),
                      ("true45", None, None, G + "garrett_head_three_quarter_left_true45.png")],
 }
-FEATS = {"eyes": list(range(17, 27)) + list(range(36, 48)), "nose": list(range(27, 36)), "mouth": list(range(48, 68)),
-         "chin_jaw": list(range(3, 14)) + [57]}
+# feature -> (the standard landmarks its crop is laid on, pad): TIGHT crops, one feature a tile
+FEATS = {"eye": (list(range(42, 48)) + [22, 26], 1.7), "eyes": (list(range(36, 48)), 1.25), "nose": (list(range(27, 36)), 1.7),
+         "mouth": (list(range(48, 68)), 1.5), "chin_jaw": (list(range(5, 12)) + [57], 1.2)}
 FONT = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
 SMALL = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
 
@@ -34,7 +35,8 @@ def col(sig_mm):
     return (40, 230, 60) if sig_mm < 1.0 else (250, 220, 30) if sig_mm < 2.0 else (255, 60, 50)
 
 
-def panel(img, box, pts, cols, px=520, r=2.0):
+def panel(img, box, pts, cols, px=520, r=2.0, big=None):
+    """big: the 68 standard points among pts (indices): drawn as rings, so the two detectors' SAME points can be compared."""
     x0, y0, x1, y1 = box
     k = px / (x1 - x0)
     im = img.crop((int(x0), int(y0), int(x1), int(y1))).resize((px, px), Image.LANCZOS)
@@ -43,6 +45,10 @@ def panel(img, box, pts, cols, px=520, r=2.0):
         x, y = (p[0] - int(x0)) * k, (p[1] - int(y0)) * k
         if -5 < x < px + 5 and -5 < y < px + 5:
             d.ellipse((x - r, y - r, x + r, y + r), fill=c, outline=(0, 0, 0))
+    for i in (big if big is not None else ()):
+        x, y = (pts[i][0] - int(x0)) * k, (pts[i][1] - int(y0)) * k
+        if -5 < x < px + 5 and -5 < y < px + 5:
+            d.ellipse((x - 5, y - 5, x + 5, y + 5), outline=(255, 255, 255), width=2)
     return im
 
 
@@ -125,27 +131,27 @@ def main():
                         if ((reg[:len(hv)] == r) & sure).any())
             print(line, flush=True)
             cols = [col(s) for s in sgmm]
-            for f, ids in FEATS.items():
-                bx = square(o68[ids], 1.5 if f != "nose" else 1.9)
-                a = panel(img, bx, xy, cols)
-                b = panel(img, bx, [] if mp is None else mp, [(60, 220, 255)] * 478)
+            for f, (ids, pad) in FEATS.items():
+                bx = square(o68[ids], pad)
+                a = panel(img, bx, xy, cols, big=L["lm68"])
+                b = panel(img, bx, [] if mp is None else mp, [(60, 220, 255)] * 478, big=None if mp is None else likeness.MP68)
                 c = panel(img, bx, [], [])
-                titled([c, a, b], ["the picture", "ours (green: sure < 1 mm, yellow < 2, red: unsure)", "MediaPipe (478)"],
+                titled([c, a, b], ["the picture", "ours (green < 1 mm sigma, yellow < 2, red unsure; rings = the 68)", "MediaPipe (478; rings = its 68)"],
                        f"{sub} {vname}: {f}").save(out / f"{sub}_{vname}_{f}.png")
             bx = square(o68, 1.55)
             rows.append((vname, panel(img, bx, xy, cols, 640, 2.2), panel(img, bx, [] if mp is None else mp, [(60, 220, 255)] * 478, 640, 2.2)))
-        if rows:
-            S = Image.new("RGB", (2 * 640 + 8, len(rows) * (640 + 50) + 60), (20, 20, 20))
+        for part, k0 in enumerate(range(0, len(rows), 3)):       # at most three views a sheet: ours | MediaPipe, large labels
+            rs = rows[k0:k0 + 3]
+            S = Image.new("RGB", (2 * 640 + 8, len(rs) * (640 + 50) + 60), (20, 20, 20))
             d = ImageDraw.Draw(S)
-            d.text((8, 10), f"{sub}: OUR dense landmarks (colour = its own certainty)   |   MediaPipe", fill=(255, 255, 255), font=FONT)
-            for i, (vn, a, b) in enumerate(rows):
+            d.text((8, 10), f"{sub}: OUR dense landmarks (green = sure, red = unsure)  |  MediaPipe", fill=(255, 255, 255), font=FONT)
+            for i, (vn, a, b) in enumerate(rs):
                 y = 60 + i * 690
                 d.text((8, y + 8), vn, fill=(255, 255, 255), font=FONT)
                 S.paste(a, (0, y + 50))
                 S.paste(b, (648, y + 50))
-            p = Path(f"/home/joe/dev/hifipushie/workspace/human_renders/dl_{tag}_{sub}.png")
+            p = Path(f"/home/joe/dev/hifipushie/workspace/human_renders/dl_{tag}_{sub}{'_' + str(part + 1) if len(rows) > 3 else ''}.png")
             S.save(p)
             print("sheet", p)
-
 
 main()
