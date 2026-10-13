@@ -309,7 +309,9 @@ become usable for the per-view expression term only with (3).
   the validation crops for 25 epochs on 1,800 samples); the same network overfits 64 clean samples to 4.9 px in
   240 steps, and with the augmentation RAMPED IN (strength 0 -> 1 over the first quarter) it learns: `ramp`.
   (2) the plain Gaussian NLL lets sigma grow to the error and the pull on the position falls with 1 / sigma^2:
-  beta-NLL (Seitzer et al. 2022, beta 0.5; same optimum, so the calibration is untouched) is the default.
+  beta-NLL (Seitzer et al. 2022, beta 0.5; same optimum) was my answer and the pilot model was trained with it;
+  WRONG as a default: once the augmentation is ramped in, the plain NLL is 11 % better (dl-p2 below): the
+  trainer's default is the plain NLL again.
   (3) a heat-map head (integral regression: 32 x 32 soft-argmax per landmark + a global offset + log sigma;
   `net.NetHM`, 12.7 M parameters, ~0.1 s on two CPU threads) beside Wood's direct regressor (`net.Net`): the pilot
   is the heat-map one; the direct-vs-heat-map and plain-NLL comparisons are job dl-p2 (below, when it lands).
@@ -380,6 +382,11 @@ become usable for the per-view expression term only with (3).
   jaw_square +1.8 sd) gets WORSE with the dense reads: the same average-chin answer, now pulling a correct outline
   solve off. So the dense read helps where the outline solve was poor and can hurt where it was already right:
   the chin / jaw landmarks need either honest (larger) sigmas there or better data (below).
+  TRIED: leaving the chin / cheek / jaw-line / neck landmarks OUT of the solve (DL_REGIONS = lids, lips, orbit,
+  brows, nose, mouth, forehead, ears): WORSE everywhere (the six heads' abs. face rms 2.72 against 1.86 with all
+  of them; a_x 3.13 against 2.38): the lower-face landmarks carry the gain, and they are not what hurts head a.
+  So the fix is not to drop them; what does hurt head a is not found yet (NEXT: who.py's split of the step by
+  read group, with the dense reads in).
 - PER-VIEW EXPRESSION (solvereads' failed term, expression="view", with the dense reads; face rms): a_x 1.92
   (term, no dense) -> 2.68 (term + dense); b_x 3.86 -> 3.26; a_n (the null) 2.59 -> 2.25. NO: it does not make the
   term work. The reason solvereads gave stands: when every picture shows the same expression, no landmark set
@@ -394,7 +401,18 @@ become usable for the per-view expression term only with (3).
   the overlay is one face with them, a doubled jaw line without); chin_width +8.0 (was +7.6: the slab stays).
   Paintings: settles, x1.5. Not judged on a judging sheet yet (no time): that is NEXT before any default changes.
 - LEARNING CURVE and head comparison (job dl-p2, the same 2 held-out dressings, every run the SAME number of
-  optimiser steps = 60 epochs of the full set; validation mean, px of 256 / mm): see "dl-p2" at the section's end.
+  optimiser steps = 60 epochs of the full set; validation mean on visible landmarks):
+  | run | training samples (dressings) | px of 256 | mm | sigma honesty (1 = exact) |
+  |---|---|---|---|---|
+  | heat-map head | 1,200 (4) | 4.11 | 3.41 | 1.73 (too sure: it has memorised 4 skins) |
+  | heat-map head | 2,400 (8) | 3.70 | 3.10 | 1.23 |
+  | heat-map head | 4,800 (16) | 3.04 | 2.58 | 0.83 |
+  | DIRECT regression (Wood's head), ResNet-18 | 4,800 | 3.51 | 2.97 | 0.62 |
+  | heat-map head, PLAIN NLL (beta 0) | 4,800 | 2.71 | 2.29 | 0.96 |
+  (the pilot model = heat-map, beta 0.5, 4,800, 3.3x the steps: 2.16 px / 1.82 mm, 1.07.) So: each doubling of
+  the data still buys 10-18 % at fixed steps (no plateau in sight at 4,800; the literature's is at ~100,000), more
+  steps buy another 29 %, the heat-map head beats direct regression by 13 % at this size, and the plain NLL
+  beats beta-NLL by 11 %: a plain-NLL rerun of the 200-epoch pilot is the cheapest next gain (89 GPU-minutes).
 
 ### The full-run plan (numbers from the pilot; nothing started; nothing billed without Joe's yes)
 - HOW MANY SAMPLES: the literature's size is 100,000 images x 300 epochs (Wood 2021 / 2022, Hewitt 2024: "starting

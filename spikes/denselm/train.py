@@ -10,7 +10,7 @@ their backgrounds and their damage (gen.py renders clean heads on a transparent 
   clothes     the bare bust below a neckline recoloured as cloth on 70 % (the stage is bare skin)
   colour      brightness, contrast, gamma, saturation, hue, grey on 10 %
   damage      downscale to 48-256 px and back, blur, sensor noise, JPEG 25-95, a painterly filter on 12 %
-Loss: Wood et al. 2022's Gaussian NLL over (x, y, log sigma) per landmark (beta=0), by default as beta-NLL (beta=0.5).
+Loss: Wood et al. 2022's Gaussian NLL over (x, y, log sigma) per landmark (beta=0, the default; beta=0.5 = beta-NLL).
 Writes model.pt (TorchScript, CPU, takes 0..1 RGB NCHW at 256), weights.pth, log.json, val.npz (predictions on the
 held-out dressings: clean crops)."""
 import io
@@ -299,7 +299,7 @@ def main():
     kw = dict(a.split("=", 1) for a in sys.argv[3:])
     epochs, bs, lr = int(kw.get("epochs", 60)), int(kw.get("bs", 128)), float(kw.get("lr", 1e-3))
     arch, val, workers = kw.get("arch", "18"), float(kw.get("val", 0.08)), int(kw.get("workers", 8))
-    beta = float(kw.get("beta", 0.5))
+    beta = float(kw.get("beta", 0.0))      # plain NLL: with the ramp in, it beat beta 0.5 (dl-p2: 2.71 against 3.04 px)
     ramp = float(kw.get("ramp", 0.25))      # the augmentation comes in over this share of the epochs (from scratch, under the
     # full augmentation from step 0, the network sat at the mean face for hundreds of steps: overfit.py)
     limit, seed = (int(kw["limit"]) if kw.get("limit") else None), int(kw.get("seed", 0))
