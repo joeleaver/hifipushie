@@ -127,14 +127,20 @@ def clothe(rng, rgba, xy, lm68):
     col = rng.uniform(0, 255, 3)
     if rng.random() < 0.4:
         col = np.full(3, rng.uniform(0, 255))
-    lum = rgba[..., :3].mean(-1, keepdims=True)
-    lum = lum / max(float(np.median(lum[rgba[..., 3] > 128])) if (rgba[..., 3] > 128).any() else 128.0, 1.0)
+    y0 = int(np.clip(np.floor(line.min()) - 2, 0, n))
+    if y0 >= n:
+        return rgba
+    sub = rgba[::4, ::4]
+    fgm = sub[..., 3] > 128
+    ref = max(float(sub[..., :3].mean(-1)[fgm].mean()) if fgm.any() else 128.0, 1.0)
+    lum = rgba[y0:, :, :3].mean(-1, keepdims=True) / ref
+    m = m[y0:]
     cloth = np.clip(col * (0.35 + 0.65 * lum), 0, 255)
     if rng.random() < 0.3:
         per = rng.uniform(3, 14)
-        cloth = cloth * (0.8 + 0.2 * np.sign(np.sin((xx * rng.uniform(-1, 1) + yy) * 2 * np.pi / per)))[..., None]
+        cloth = cloth * (0.8 + 0.2 * np.sign(np.sin((xx * rng.uniform(-1, 1) + yy[y0:]) * 2 * np.pi / per)))[..., None]
     out = rgba.copy()
-    out[..., :3] = rgba[..., :3] * (1 - m) + cloth * m
+    out[y0:, :, :3] = rgba[y0:, :, :3] * (1 - m) + cloth * m
     return out
 
 
