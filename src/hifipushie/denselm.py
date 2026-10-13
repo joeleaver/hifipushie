@@ -382,32 +382,47 @@ def _run(crops: list, weights: str) -> list:
     return out
 
 
+DIST_UNIT = 1.2            # a stage-1 network's distance row: log(metres) / DIST_UNIT (spikes/denselm/train.py)
+
+
 def _merge(o) -> tuple:
-    """the crop's prediction and its mirror image's, joined by their own certainties: (xy in [-1, 1], log sigma)."""
-    L = landmarks()
+    """the crop's prediction and its mirror image's, joined by their own certainties: (xy in [-1, 1], log sigma, the
+    landmark set, distance (m, its log's sigma) | None). The network's row count says which set it was trained on:
+    588 = version 1 (the pilot); 623 + 1 = version 2 + the camera's distance (stage 1)."""
+    rows = o.shape[1]
+    dist = None
+    if rows == landmarks()["n"]:
+        L = landmarks()
+    else:
+        L = by_count(rows - 1)
+        d = o[:, -1]
+        w = np.exp(-2 * d[:, 2])
+        dist = (float(np.exp(DIST_UNIT * (d[:, 0] * w).sum() / w.sum())), float(DIST_UNIT * np.sqrt(1.0 / w.mean())))
+        o = o[:, :-1]
     xy, ls = o[0, :, :2], o[0, :, 2]
     xy2, ls2 = o[1][L["mirror"], :2] * np.array([-1.0, 1.0]), o[1][L["mirror"], 2]
     w1, w2 = np.exp(-2 * ls), np.exp(-2 * ls2)
-    return (xy * w1[:, None] + xy2 * w2[:, None]) / (w1 + w2)[:, None], -0.5 * np.log((w1 + w2) / 2)
+    return (xy * w1[:, None] + xy2 * w2[:, None]) / (w1 + w2)[:, None], -0.5 * np.log((w1 + w2) / 2), L, dist
 
 
 def predict(img, box, weights: str | None = None, passes: int = 2) -> dict:
     """The detector on a PIL picture. box: a rough square (x0, y0, x1, y1) round the face in picture pixels, or the 68
     standard landmarks' pixels from anything ((68, 2)); with passes=2 the crop is laid again on the network's own 68
     and read once more (no other detector's idea of the face stays in the result).
-    -> {"xy": (L, 2) picture px, "sigma": (L,) picture px (large = unsure / hidden), "box": the crop used}."""
+    -> {"xy": (L, 2) picture px, "sigma": (L,) picture px (large = unsure / hidden), "box": the crop used, "set": the
+    landmark set (landmarks() or landmarks_v2(): the first n_skin rows are the same skin vertices in both),
+    "distance": (metres from the camera to the head, the sigma of its log) from a stage-1 network, else None}."""
     w = weights or (str(weights_path()) if weights_path() else None)
     if not w:
         raise RuntimeError(f"denselm: no trained network (set ${WEIGHTS_ENV} to its model.pt)")
     box = np.asarray(box, float)
     box = box_of(box) if box.ndim == 2 else tuple(map(float, box))
-    L = landmarks()
     for k in range(max(1, passes)):
-        xy, ls = _merge(_run([take_crop(img, box)], w)[0])
+        xy, ls, L, dist = _merge(_run([take_crop(img, box)], w)[0])
         x0, y0, x1, y1 = box
         s = (x1 - x0) / 2.0
         P = np.stack([x0 + (xy[:, 0] + 1) * s, y0 + (xy[:, 1] + 1) * s], 1)
-        res = {"xy": P, "sigma": np.exp(ls) * s, "box": box}
+        res = {"xy": P, "sigma": np.exp(ls) * s, "box": box, "set": L, "distance": dist}
         if k + 1 < passes:
             box = box_of(P[L["lm68"]])
     return res

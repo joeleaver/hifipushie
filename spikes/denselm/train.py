@@ -42,7 +42,7 @@ def pack(root: Path, out: Path, limit: int | None = None) -> dict:
     if info.exists() and json.loads(info.read_text())["dirs"] == [d.name for d in dirs] and json.loads(info.read_text()).get("limit") == limit:
         j = json.loads(info.read_text())
     else:
-        xs, vs, dr, side, files = [], [], [], [], []
+        xs, vs, dr, side, files, yaw, pitch, dist = [], [], [], [], [], [], [], []
         size = None
         for k, d in enumerate(dirs):
             lab = np.load(d / "labels.npz")
@@ -54,6 +54,7 @@ def pack(root: Path, out: Path, limit: int | None = None) -> dict:
             vs.append(lab["vis"][:n])
             dr += [k] * n
             side.append(meta["side"][:n])
+            yaw.append(meta["yaw"][:n]), pitch.append(meta["pitch"][:n]), dist.append(meta["dist"][:n])
             files += fs[:n]
         if limit:
             files = files[:limit]
@@ -69,7 +70,7 @@ def pack(root: Path, out: Path, limit: int | None = None) -> dict:
         mm.flush()
         del mm
         np.savez(out / "pack_lab.npz", xy=np.concatenate(xs)[:N], vis=np.concatenate(vs)[:N], dressing=np.array(dr)[:N],
-                 side=np.concatenate(side)[:N])
+                 side=np.concatenate(side)[:N], yaw=np.concatenate(yaw)[:N], pitch=np.concatenate(pitch)[:N], dist=np.concatenate(dist)[:N])
         j = {"dirs": [d.name for d in dirs], "n": N, "size": size, "limit": limit}
         info.write_text(json.dumps(j))
     lab = np.load(out / "pack_lab.npz")
@@ -179,6 +180,22 @@ def damage(rng, im):
     return im
 
 
+DIST_UNIT = 1.2            # the distance output: log(metres) / DIST_UNIT (0.3 .. 3 m = -1.0 .. +0.9)
+
+
+def motion_blur(rng, im):
+    """a short straight smear (a hand-held phone): a 5 x 5 line kernel at a random angle."""
+    k = np.zeros((5, 5), np.float32)
+    th = rng.uniform(0, np.pi)
+    n = int(rng.integers(2, 4))
+    for t in np.linspace(-n / 2, n / 2, 9):
+        x, y = int(round(2 + t * np.cos(th))), int(round(2 + t * np.sin(th)))
+        if 0 <= x < 5 and 0 <= y < 5:
+            k[y, x] += 1
+    k /= k.sum()
+    return im.filter(ImageFilter.Kernel((5, 5), k.ravel().tolist(), scale=1.0))
+
+
 def face_box(xy68):
     lo, hi = xy68.min(0), xy68.max(0)
     return (lo + hi) / 2, 1.5 * float(max(hi - lo))
@@ -221,22 +238,47 @@ class Data(torch.utils.data.Dataset):
         cy = c[1] - d * h - e * h
         pm = rgba.copy()
         pm[..., :3] *= pm[..., 3:4] / 255.0
-        im = Image.fromarray(pm.astype(np.uint8), "RGBA").transform((SIZE, SIZE), Image.AFFINE, (a, b, cx, d, e, cy),
-                                                                    Image.BICUBIC)
+        M = np.array([[a, b], [d, e]])
+        kd = float(rng.uniform(-0.12, 0.12)) * a_ if (self.train and rng.random() < 0.25) else 0.0      # LENS DISTORTION (radial, about the crop's centre)
+        if kd:
+            G = 10
+            g = np.linspace(0, SIZE, G + 1)
+            U, V = np.meshgrid(g, g)
+            nn = np.stack([U - h, V - h], -1) / h
+            nd = nn * (1 + kd * (nn ** 2).sum(-1, keepdims=True))
+            S = (nd * h + h) @ M.T + np.array([cx, cy])                  # source position of each grid corner
+            mesh = []
+            for yy in range(G):
+                for xx in range(G):
+                    q = [S[yy, xx], S[yy + 1, xx], S[yy + 1, xx + 1], S[yy, xx + 1]]          # NW, SW, SE, NE
+                    mesh.append(((int(g[xx]), int(g[yy]), int(g[xx + 1]), int(g[yy + 1])), tuple(float(v) for p_ in q for v in p_)))
+            im = Image.fromarray(pm.astype(np.uint8), "RGBA").transform((SIZE, SIZE), Image.MESH, mesh, Image.BICUBIC)
+        else:
+            im = Image.fromarray(pm.astype(np.uint8), "RGBA").transform((SIZE, SIZE), Image.AFFINE, (a, b, cx, d, e, cy), Image.BICUBIC)
         fg = np.asarray(im, np.float32)
         al = fg[..., 3:4] / 255.0
         bg = background(rng) if (self.train and rng.random() < 0.3 + 0.7 * a_) else np.full((SIZE, SIZE, 3), 128.0, np.float32)
         img = Image.fromarray(np.clip(fg[..., :3] + bg * (1 - al), 0, 255).astype(np.uint8))
         if self.train and rng.random() < a_:
+            if rng.random() < 0.15:
+                img = motion_blur(rng, img)
             img = damage(rng, img)
         x = (np.asarray(img, np.float32) / 255.0 - MEAN) / STD
         # labels: source -> output pixel
-        M = np.array([[a, b], [d, e]])
         uv = (xy - np.array([cx, cy])) @ np.linalg.inv(M).T
+        if kd:                       # the labels through the same lens: n (1 + k |n|^2) = n_d, solved for n
+            nd = (uv - h) / h
+            nn = nd.copy()
+            for _ in range(8):
+                nn = nd / (1 + kd * (nn ** 2).sum(-1, keepdims=True))
+            uv = nn * h + h
         vis = self.P["vis"][i]
         if flip:
             uv, vis = uv[self.mirror], vis[self.mirror]
         t = (uv - h) / (SIZE / 2)
+        # one more row: the camera's DISTANCE (log metres), read from the perspective; it does not change with the crop
+        t = np.concatenate([t, [[math.log(float(self.P["dist"][i])) / DIST_UNIT, 0.0]]])
+        vis = np.r_[vis, 1]
         mmpx = float(self.P["side"][i]) * 1000.0 / self.P["size"] * k_
         return x.transpose(2, 0, 1).copy(), t.astype(np.float32), vis.astype(np.uint8), np.float32(mmpx), np.int64(i)
 
@@ -263,35 +305,63 @@ class Wrapped(torch.nn.Module):
         return self.m((x - self.mean) / self.std).view(x.shape[0], -1, 3)
 
 
-def evaluate(model, dl, dev, region):
+BINS = (("front", 0, 20), ("3q", 20, 60), ("side", 60, 95), ("rear", 95, 181))
+
+
+def evaluate(model, dl, dev, region, P=None):
+    """Held-out errors: visible landmarks in px and mm, the sigma's honesty (mean d^2 / (2 sigma^2): 1 = exact), overall,
+    per region, and per VIEW BIN x region (|yaw| < 20, 20-60, 60-95, 95+); the distance output's error."""
     model.eval()
-    E, S, V, MM, I, XY = [], [], [], [], [], []
+    E, S, V, MM, I, XY, DD = [], [], [], [], [], [], []
     with torch.no_grad():
         for b_ in dl:
             x, t, vis, mmpx, i = tens(b_)
             o = model(x.to(dev)).float().view(x.shape[0], -1, 3).cpu()
+            DD.append(torch.stack([o[:, -1, 0] - t[:, -1, 0], o[:, -1, 2]], 1).numpy())
+            o, t, vis = o[:, :-1], t[:, :-1], vis[:, :-1]
             E.append((o[..., :2] - t).norm(dim=-1).numpy() * SIZE / 2)
             S.append(torch.exp(o[..., 2]).numpy() * SIZE / 2)
             V.append(vis.numpy())
             MM.append(mmpx.numpy())
             I.append(i.numpy())
             XY.append(o.numpy())
-    E, S, V, MM = np.concatenate(E), np.concatenate(S), np.concatenate(V).astype(bool), np.concatenate(MM)
+    E, S, V, MM, I, DD = np.concatenate(E), np.concatenate(S), np.concatenate(V).astype(bool), np.concatenate(MM), np.concatenate(I), np.concatenate(DD)
+    Em = E * MM[:, None]
+    cal = lambda m: float((E[m] ** 2 / (2 * S[m] ** 2)).mean()) if m.any() else None
     rep = {"px_visible": float(E[V].mean()), "px_hidden": float(E[~V].mean()) if (~V).any() else None,
-           "px_median_visible": float(np.median(E[V])), "mm_visible": float((E * MM[:, None])[V].mean()),
-           "mm_median_visible": float(np.median((E * MM[:, None])[V])),
-           "calib_visible": float((E[V] ** 2 / (2 * S[V] ** 2)).mean()), "calib_hidden": float((E[~V] ** 2 / (2 * S[~V] ** 2)).mean()) if (~V).any() else None,
+           "px_median_visible": float(np.median(E[V])), "mm_visible": float(Em[V].mean()),
+           "mm_median_visible": float(np.median(Em[V])),
+           "calib_visible": cal(V), "calib_hidden": cal(~V),
            "within_1sigma": float((E < S)[V].mean()), "within_2sigma": float((E < 2 * S)[V].mean()),
-           "sigma_px_visible": float(np.median(S[V])), "sigma_px_hidden": float(np.median(S[~V])) if (~V).any() else None, "regions": {}}
-    for r in sorted(set(region.tolist())):
+           "sigma_px_visible": float(np.median(S[V])), "sigma_px_hidden": float(np.median(S[~V])) if (~V).any() else None,
+           "dist_err_pct": float(np.median(np.abs(np.expm1(DD[:, 0] * DIST_UNIT))) * 100), "dist_bias_pct": float(np.expm1(np.median(DD[:, 0]) * DIST_UNIT) * 100),
+           "dist_calib": float((DD[:, 0] ** 2 / np.exp(2 * DD[:, 1])).mean()), "regions": {}, "bins": {}}
+    regs = sorted(set(region.tolist()))
+    for r in regs:
         m = (region == r)[None, :] & V
         if m.any():
-            rep["regions"][r] = {"px": round(float(E[m].mean()), 3), "mm": round(float((E * MM[:, None])[m].mean()), 3),
-                                 "mm_median": round(float(np.median((E * MM[:, None])[m])), 3),
-                                 "calib": round(float((E[m] ** 2 / (2 * S[m] ** 2)).mean()), 3), "sigma_px": round(float(np.median(S[m])), 3),
+            rep["regions"][r] = {"px": round(float(E[m].mean()), 3), "mm": round(float(Em[m].mean()), 3),
+                                 "mm_median": round(float(np.median(Em[m])), 3), "calib": round(cal(m), 3), "sigma_px": round(float(np.median(S[m])), 3),
                                  "visible_share": round(float(m.sum() / max((region == r).sum() * len(E), 1)), 3)}
+    if P is not None:
+        ya = np.abs(P["yaw"][I])
+        for name, lo, hi in BINS:
+            k = (ya >= lo) & (ya < hi)
+            if not k.any():
+                continue
+            d_ = DD[k, 0]
+            row = {"n": int(k.sum()), "mm": round(float(Em[k][V[k]].mean()), 3), "calib": round(cal(k[:, None] & V), 3), "calib_hidden": cal(k[:, None] & ~V),
+                   "dist_err_pct": round(float(np.median(np.abs(np.expm1(d_ * DIST_UNIT))) * 100), 1), "regions": {}}
+            for r in regs:
+                m = k[:, None] & (region == r)[None, :]
+                mv, mh = m & V, m & ~V
+                if mv.any():
+                    row["regions"][r] = {"mm": round(float(Em[mv].mean()), 2), "calib": round(cal(mv), 2), "sigma_mm": round(float(np.median((S * MM[:, None])[mv])), 2),
+                                         "hidden_mm": round(float(Em[mh].mean()), 2) if mh.any() else None, "hidden_calib": round(cal(mh), 2) if mh.any() else None,
+                                         "hidden_sigma_mm": round(float(np.median((S * MM[:, None])[mh])), 2) if mh.any() else None}
+            rep["bins"][name] = row
     return rep, {"err_px": E.astype(np.float32), "sigma_px": S.astype(np.float32), "vis": V, "mmpx": MM.astype(np.float32),
-                 "index": np.concatenate(I), "out": np.concatenate(XY).astype(np.float32)}
+                 "index": I, "out": np.concatenate(XY).astype(np.float32), "dist": DD.astype(np.float32)}
 
 
 def main():
@@ -322,7 +392,7 @@ def main():
     print(f"step: packed {P['n']} samples of {nd} dressings in {time.time() - t0:.0f} s; train {len(tr)}, val {len(va)} ({nv} dressings)", flush=True)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(seed)
-    model = netmod.make(arch, L["n"]).to(dev)
+    model = netmod.make(arch, L["n"], extra=1).to(dev)
     if dev.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
     ds = Data(P, tr, L, True, seed)
@@ -332,7 +402,7 @@ def main():
     steps = epochs * len(dl)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, lr, total_steps=steps, pct_start=0.06)
     scaler = torch.amp.GradScaler(enabled=dev.type == "cuda")
-    ema = netmod.make(arch, L["n"]).to(dev)
+    ema = netmod.make(arch, L["n"], extra=1).to(dev)
     ema.load_state_dict(model.state_dict())
     log = []
     for ep in range(epochs):
@@ -368,19 +438,21 @@ def main():
             nb += 1
         row = {"epoch": ep, "loss": tot / max(nb, 1), "sec": round(time.time() - t1, 1)}
         if ep % max(1, epochs // 12) == 0 or ep == epochs - 1:
-            rep, _ = evaluate(ema, dv, dev, L["region"])
-            row.update({k: v for k, v in rep.items() if k != "regions"})
+            rep, _ = evaluate(ema, dv, dev, L["region"], P)
+            row.update({k: v for k, v in rep.items() if k not in ("regions", "bins")})
         log.append(row)
         print("step: " + json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in row.items()}), flush=True)
         (out / "log.json").write_text(json.dumps(log))
-    rep, pred = evaluate(ema, dv, dev, L["region"])
+        if (ep + 1) % max(1, epochs // 4) == 0 and ep + 1 < epochs:       # checkpoints kept (a quarter of the run each)
+            torch.save({"ema": ema.state_dict(), "epoch": ep}, out / "checkpoint.pth")
+    rep, pred = evaluate(ema, dv, dev, L["region"], P)
     (out / "val.json").write_text(json.dumps({**rep, "train_n": int(len(tr)), "val_n": int(len(va)), "epochs": epochs, "arch": arch}, indent=1))
     np.savez_compressed(out / "val.npz", **pred)
     torch.save(ema.state_dict(), out / "weights.pth")
     w = Wrapped(ema).cpu().eval()
     ts = torch.jit.trace(w, torch.zeros(1, 3, SIZE, SIZE))
     ts.save(str(out / "model.pt"))
-    print("step: done " + json.dumps({k: v for k, v in rep.items() if k != "regions"}), flush=True)
+    print("step: done " + json.dumps({k: v for k, v in rep.items() if k not in ("regions", "bins")}), flush=True)
     print(json.dumps(rep["regions"], indent=1))
 
 
