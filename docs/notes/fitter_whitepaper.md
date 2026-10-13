@@ -608,6 +608,21 @@ the dense reads are in" was measured on our own renders only and DOES NOT CARRY 
   0.17, median error 45 %): its loss was 1 row of 757 in a mean (x30 in the final run), and a face-normalised crop
   shows distance only as perspective: a near / far read at best, the metric distance is the solve's.
 
+### Width shrinkage: toward the pooled mean or the class mean? (widthval.py + widthval_rows.py; /mnt/data/hifipushie/denselm/widthval.sh)
+- MEASURE FIXED: the first widthval read the lower face's x-scale ABSOLUTE in the crop; on the s30k held-out dressings
+  (N_s1033..39, 736 near-frontal samples, never trained on by s10k or s30k) the inner face (eyes, nose, mouth) is itself
+  placed 5 % narrow, so the absolute number mixes a whole-face scale error into "width". Now: lower-face scale RELATIVE
+  to the inner face's, robust (Huber IRLS) regression, medians per bin, a bootstrap sd.
+- s10k on that set: median relative width error +0.3 % (robust sd 3.4 %); -0.91 % per +10 mm of true jaw width (true
+  jaw 6+ mm narrower than GNM's mean: +1.7 % = +2.2 mm; 6+ mm wider: -0.8 % = -1.0 mm); per e-fold of distance -1.25 %.
+- POOLED OR CLASS: the generator drew identities round 8 class means (sex x ancestry, eth_means; their jaw widths span
+  6.6 mm, mostly by sex). Splitting the true jaw into (class mean - pooled mean) + (jaw - class mean): the slope on the
+  within-class part is -0.92 % / 10 mm (bootstrap sd 0.09), on the class means' offset +1.5 (sd 0.65). Shrinkage to the
+  POOLED mean would make both -0.92; they differ by ~3.8 sd. So the network shrinks toward the mean of the class it
+  reads from the face (sex shows), not toward the pooled average; the nominal class label is right for ~95 % (sex) /
+  ~60 % (ancestry) of heads, which only attenuates the second slope. Consequence: the remedy is not class-balancing;
+  it is what the network can see of the jaw edge (and the solve owning width through the outline).
+
 ### RESTART (stage 1; rewritten after every step; read this first)
 STATE (2026-10-13 14:55): rendering STOPPED (data_s1/STOP_NICO + STOP_LOCAL exist; no queue running). The stage-1 set is
 COMPLETE for training: /mnt/data/hifipushie/denselm/data_s1/ = 92 dressings x 300 = 27,600 samples, all labelled with set
@@ -618,7 +633,7 @@ from 14:50 (cuda, 93 s an epoch on 25,500 train / 2,100 val samples = 7 held-out
 nothing rented or billed; HSRD is the groundtruth agent's (read-only, do not download more).
 NEXT, in order: (1) watch s30k to DONE (or resume it); (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
 then sc_table + sc_cmp against s10k / pilot, held-out synthetic per bin (models/s30k/hm18/val.json), widthval.py (the
-shrinkage slope before / after; toward the POOLED mean or the class mean: add the class-mean regressor), the distance
+shrinkage slope before / after; done for s10k, see the section above: rerun widthval.sh s30k), the distance
 head (widthval prints its log-slope; realgt prints distance read vs true), sc_suite (letter t), Tess tiles; (3) the
 notes; (4) report 3 to the coordinator: real-photo numbers leading, width shrinkage, distance head, the realism-gap
 recommendation with cost (projskin de-lit skin; HSRD subjects held out whole as validation, maybe fine-tuning;
