@@ -1008,7 +1008,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
                cameras: str = "free", lids: bool = True, lips: bool = True, anchors: str = "differential",
                parse: bool | str = "auto", normals: bool = False, adapt: bool = True, cmax: float | None = 3.0,
                hold=SOLVE_HOLD, expression=SOLVE_EXPRESSION, jaw_lm=SOLVE_JAW_LM, report: bool = True,
-               damp: bool = True, chin: dict | None = None) -> dict:
+               damp: bool = True, chin: dict | None = None, dense: bool | None = None) -> dict:
     """ONE JOINT STEP (reruns, 2026-10-11): the face ruler's own solve applied whole. face_ruler.compare reads every
     reference view at once (skin outlines, iris centres, the turned views' limbus) and finds the most likely identity
     change under GNM's prior with each camera's shift / scale / roll / yaw / pitch free; until now only the measures
@@ -1054,6 +1054,9 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
         cameras = "refit"
     cam0 = None if cameras == "refit" else (rj0.get("blockin") or {}).get("cam_done")
     cam_sd = {kk: tuple(k * x for x in v) for kk, v in fr.PHOTO_CAM_SD7.items()}
+    from . import denselm
+    if (fr.DENSE if dense is None else dense) and denselm.available():      # the dense landmarks read perspective (distance to 5-9 %)
+        cam_sd = {kk: tuple(v[:6]) + (k * fr.PHOTO_CAM_DIST_DENSE,) for kk, v in cam_sd.items()}
     b0 = rj0.get("blockin") or {}
     # carried across the block-in's calls: the down-weighting the pictures needed (it may come down 15 % a call, never
     # jump), each view's kind (from its fitted camera at the first solve) and its outline reader
@@ -1086,7 +1089,7 @@ def solve_step(src: str, out: str | None = None, share: float = 1.0, rounds: int
     c = fr.compare(src, rounds=rounds, prior_off=off, cam_sd=cam_sd, lids=lids, lips=lips, anchors=anchors, parse=parse,
                    normals=normals, adapt=adapt, cam_first=2 if cameras == "refit" else CAM_FIRST, cam_reset=cameras == "refit", cmax=cmax,
                    cam_done0=cam0 if cam0 is not None else np.zeros((len(rj0["views"]), 7)),
-                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin)
+                   relax0=relax0, hold=hold, held0=b0.get("held") if hold == "auto" else None, expr=expression, kinds=b0.get("kinds"), readers=b0.get("readers"), jaw_lm=jaw_lm, chin=chin, dense=dense)
     dc = float(share) * np.asarray(c["dc"], float)
     # THE SEE-SAW: a settled solve hops back and forth by |dc| 2-2.6 a call (Tess 2.6, 2.0, 2.6 with the cosine of
     # consecutive steps -0.4 .. -0.5: reads that come and go, the lids' and lips' re-linearisation). A step that turns

@@ -1156,8 +1156,9 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         # CAMERAS FIRST (solvecams: on EVERY call now): the head held (tau tiny), the cameras laid on its outline and
         # anchors under their prior, before identity may move: a wrong front pitch is otherwise paid in jaw width (1.4 mm
         # a degree). cam_reset ("refit"): each camera CAM_LOOSE x its freedom and the result is the new start. DISTANCE
-        # is held in these rounds unless the dense read is in (an outline's misfit on a held head is shape, and it would
-        # be explained as perspective)
+        # is HELD in these rounds, with the dense read too: on a held head a shape misfit is explained as perspective
+        # (measured, cameras only on the class mean with dense: a wide-jawed head's front camera goes to -54 % from
+        # any start, a head near the mean's to +22 %): distance is solved WITH identity or not at all
         for v in views:
             if v.get("extra"):
                 v["extra_obs"] = v["extra"](cur, v)
@@ -1165,8 +1166,7 @@ def read(head: dict, views: list, rounds: int = 3, **kw) -> dict:
         if not obs:
             break
         k_ = CAM_LOOSE if cam_reset else 1.0
-        dense_in = any(ob["type"] == "dense" for ob in obs)
-        loose = {kk: tuple((k_ * x if (j < 6 or dense_in) else 1e-3) for j, x in enumerate(cam_sd_of(kw["cam_sd"], kk))) for kk in ("front", "3q", "profile")}
+        loose = {kk: tuple((k_ * x if j < 6 else 1e-3) for j, x in enumerate(cam_sd_of(kw["cam_sd"], kk))) for kk in ("front", "3q", "profile")}
         o_ = solve(obs, cur, views=views, **{**kw, "tau": 0.02, "cam_sd": loose, "cmax": None,
                                              "cam_done": None if (cam_reset or not prior_cam) else cam_done})
         th = np.asarray(o_["cam"], float).reshape(len(views), ncam)
@@ -2160,10 +2160,20 @@ def _anchor_obs(head, view, points, det):
 # GNM skin vertex's picture position with the network's own sigma. ABSOLUTE (no render of the model): the network is
 # trained on our renders, so its landmark IS the vertex's projection. OFF by default (a pilot network).
 DENSE = False                         # reference_views(dense=None) takes this
-DENSE_SIG_SCALE = 2.0                 # x the network's sigma (its errors are correlated between neighbours: one crop, one net)
+DENSE_SIG_SCALE = 1.0                 # x the network's sigma (2.0 until solvecams: the region floors and DENSE_NEFF do that job now)
 DENSE_SIG_FLOOR = 0.5                 # mm: never surer than this
 DENSE_MAX_MM = 3.0                    # a landmark the network is less sure of than this (mm) is left out (hidden, under hair)
-DENSE_REGIONS = None                  # None = every skin landmark; or a tuple of denselm regions ("chin", "cheeks", ...)
+# (solvecams, 2026-10-13) THE NETWORK'S MEASURED ERROR at known heads through true cameras (6 heads, 3 dressings, one with
+# hair; spikes/solvecams/dres.py): per-axis mm by view kind and region = the FLOOR of a dense read's sigma there. Its own
+# sigma said 1.5-2.5 mm everywhere; at the truth it is 0.7 mm on a front view's lids and 4 on a true profile's, and the
+# solve fitted it to 1.6-1.9 mm rms where its error is 2.3-3.0: it fitted the network's biases (every width +4-6 mm).
+# EARS and SCALP / NECK are out (4-9 and 5-12 mm; under hair worse).
+DENSE_REGION_SIG = {"front": {"lids": 0.5, "eyes": 0.7, "lips": 0.8, "brows": 1.0, "mouth": 1.0, "chin": 1.1, "nose": 1.2, "cheeks": 1.8, "forehead": 2.0},
+                    "3q": {"lids": 1.0, "eyes": 0.9, "lips": 1.0, "brows": 1.0, "mouth": 1.2, "chin": 1.7, "nose": 1.2, "cheeks": 2.6, "forehead": 1.8},
+                    "profile": {"lids": 2.9, "eyes": 2.6, "lips": 1.3, "brows": 2.5, "mouth": 1.8, "chin": 1.7, "nose": 1.5, "cheeks": 2.6, "forehead": 2.5}}
+DENSE_REGIONS = tuple(DENSE_REGION_SIG["front"])     # None = every skin landmark; or a tuple of denselm regions
+DENSE_NEFF = 80                       # a view's dense reads count as this many independent ones (one crop, one network: neighbours err
+#                                       together): every sigma x sqrt(n / DENSE_NEFF)
 
 
 def dense_predict(head, view) -> dict | None:
@@ -2200,12 +2210,17 @@ def _dense_obs(head, view, pred):
         sg = float(pred["sigma"][j]) * mm1
         if not np.isfinite(sg) or sg > DENSE_MAX_MM:
             continue
-        sig = max(floor, sg * scale)
+        sig = max(floor, sg * scale, float((DENSE_REGION_SIG.get(view["kind"]) or {}).get(str(Lm["region"][j]), 0.0)) if ch.get("dense_region_sig", True) else 0.0)
         for ax in (0, 1):
             out.append({"type": "dense", "view": view["kind"], "name": f"{Lm['names'][j]}.{'xy'[ax]}",
                         "o": float(pred["xy"][j, ax] - Q[j, ax]) * mm1, "J": Jp[ax] * mm1, "sig": sig,
                         "p": list(map(float, Q[j])), "q": list(map(float, pred["xy"][j])), "X": list(map(float, head["V"][int(v)])),
                         "region": str(Lm["region"][j])})
+    neff = float(ch.get("dense_neff", DENSE_NEFF) or 0)
+    if neff and len(out) > 2 * neff:
+        k_ = float(np.sqrt(len(out) / (2 * neff)))
+        for ob in out:
+            ob["sig"] *= k_
     return out
 
 
@@ -2396,12 +2411,12 @@ def compare(name: str, rounds: int = 3, cam_sd=PHOTO_CAM_SD7, hair: bool = True,
             parse: bool | str = False, normals: bool = False, cam_first: int = 0, adapt: bool = False, cam_reset: bool = True,
             cam_done0=None, cmax: float | None = None, relax0: float = 1.0, hold=None, held0=None, expr: bool | str = False,
             expr_sd: float | None = None, kinds: list | None = None, readers: list | None = None, jaw_lm=None,
-            jaw: bool = False, chin: dict | None = None) -> dict:
+            jaw: bool = False, chin: dict | None = None, dense: bool | None = None) -> dict:
     """The face ruler on a block-in model: its reference pictures against the model, the 23 measures' gaps (picture -
     model, GNM's mm), largest first, each with the reader's error and its `mm:` move. {"rows", "text", "notes", "n"}."""
     only = views
     head, views, notes = reference_views(name, hair, lids=lids, lips=lips, shade=shade, anchors=anchors, parse=parse,
-                                         normals=normals, kinds=kinds, readers=readers, jaw_lm=jaw_lm, expr=bool(expr), jaw=jaw, chin=chin)
+                                         normals=normals, kinds=kinds, readers=readers, jaw_lm=jaw_lm, expr=bool(expr), jaw=jaw, chin=chin, dense=dense)
     if only is not None:          # a subset of the pictures (indices): what one view alone says
         views = [v for i, v in enumerate(views) if i in set(int(j) for j in only)]
     tie = None

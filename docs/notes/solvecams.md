@@ -5,7 +5,16 @@ first (PART 1), a gate, then the fix (PART 2). Scratch DURABLE in /mnt/data/hifi
 (light slot), heavy.sh <gb> <script> (capped; the script takes resources.heavy), synth/ (the benchmark's pictures), out/
 (logs, one json per chain). Scripts spikes/solvecams. Models sc_* (main's workspace).
 
-STATE (2026-10-13, PART 1 DONE, at the GATE; no solver code changed; one cache bug fixed, below): on four GNM-native
+STATE (2026-10-13, PART 2 IN PROGRESS: steps 1-3 built and measured, step 4 (dense) built, its suite running; the
+acceptance is NOT met yet): cameras are priors with a distance freedom and no clips, block_in_start's fit has a pitch /
+lens prior, every call starts with a cameras-first round, the sticky sigma inflation is a bound (active set) with
+DISAGREE / AT THE BOUND / CAMERA lines in the reply. Against main: the "trust" disaster is gone (head c fitted + trust:
+jaw +15.8 -> +10.0, face 4.70 -> 1.99) and no chain stalls at x15 any more, but the jaw's width still differs by 3-11 mm
+between starts after 3 calls (target 2): a front pitch left 1.5-3.5 deg off and a distance the outlines cannot read
+(+-10-20 % call to call) are what remains; 8 calls bring it to ~4 mm on the worst head. Section "## PART 2".
+NEXT: the dense suite (vd: pitch 0.2 deg / distance 5 % if it holds on a class-mean start), then acceptance on 6 heads
+(e = another dressing / top light, g = hair), chinread's heads, Tess by tiles.
+PART 1's state, as it stood at the gate: (2026-10-13, PART 1 DONE, at the GATE; no solver code changed; one cache bug fixed, below): on four GNM-native
 known heads the solve's lower-face error is the CAMERAS': with true camera rotations the widths come out to 1.0-1.6 mm
 and the face to 1.5 mm rms; from block_in_start's own cameras, "trust" leaves the heads WORSE than the class mean they
 started from (face 2.56 against 2.10, jaw / gonial width 5.4 / 5.7 mm, one head +15.8 / +17.9) and "free" no better than
@@ -233,11 +242,11 @@ the no-error chain itself (r0):
 | camera error | costs |
 |---|---|
 | FRONT pitch, per degree | jaw_width 1.4 mm, gonial_width 1.1, chin_width 0.7-1.0 (sign: the camera pitched + = wider); with dense on 0.8 / 0.3 / 0.6 |
-| FRONT distance -50 % (-30 %) | jaw +6.6 (+0.6), gonial +6.3 (+0.6), cheekbone +9.6 (+3.0), chin_width +2.2; +40 %: jaw -2.6, gonial -1.6; sigma x2-5. With dense on: jaw +5.6, gonial +6.8 (no better: distance is no freedom) |
+| FRONT distance -50 % (-30 %) | jaw +7.5 (+3.9), gonial +8.2 (+4.0), cheekbone +11.1 (+2.3), chin_width +3.0; +40 %: jaw -2.4, gonial -2.9; +100 %: -5.1 / -6.2; sigma x3.9 at -50 % only. With dense on: jaw +4.8, gonial +6.2 (little better: distance is no freedom). CORRECTED 2026-10-13: the first run of these chains also slid the picture (the whole t was scaled, not its depth); rerun, tables above are the rerun |
 | 3/4 yaw, per degree | cheekbone_width 0.7 mm, jaw_width 0.15-0.2, chin_width 0.2-0.35, chin_length 0.2-0.3, eyes_forward 0.3; face rms +0.9 mm at 5 deg, +1.8 at 10 |
 | SIDE view yaw, per degree | widths under 0.15 mm; eyes_forward 0.2 mm |
 | front yaw 5 deg | cheekbone +4.8, gonial -1.8 |
-| 3/4 or side distance -30 % | jaw -1.1 / -2.2, cheekbone +2.8 / 0, chin_length -0.5 / -2.1, eyes_forward +0.6 / -2.8 |
+| 3/4 or side distance -30 % | under 1 mm on every width (cheekbone +1.6 for the 3/4): only the FRONT camera's distance matters (corrected, as above) |
 So 5 deg of yaw error on the SIDE view costs ~0.7 mm of jaw width; on the 3/4, ~1 mm of jaw and 3.6 mm of cheekbone;
 5 deg of FRONT pitch costs 7 mm of jaw width. (The linearised numbers at the truth, ident.py, agree: front pitch +0.96
 mm of jaw_width per degree, 3/4 yaw -0.5 jaw / -0.9 cheekbone, side yaw 0.06.)
@@ -327,3 +336,60 @@ mm of jaw_width per degree, 3/4 yaw -0.5 jaw / -0.9 cheekbone, side yaw 0.06.)
   centre): three chains missing in the tables, said there.
 - All four light slots were mine for ~3 h (176 + 32 chains, 45-90 s a call; dense doubles a call).
 - Chain tags are also model prefixes (sc_<h>_<set><code>NN): keep codes free of trailing digits.
+
+## PART 2 (after the coordinator's go, 2026-10-13; suites = mkv.py <letter>: per head a-d, set A, six starts free (fitted
+## by today's block_in_start fit, TRUE, true with the front pitched +8 / -8, true with the front camera at x0.5 / x2 the
+## distance) + fitted and pitch +8 under "trust"; 3 calls; acc.py <letter>; all tables /mnt/data/hifipushie/solvecams/out/acc_abc.md)
+### What was built
+1. face_ruler: PHOTO_CAM_SD7 (shift, shift, scale, roll, yaw, pitch, DISTANCE: the prior sd of each camera's whole move
+   since the start; "free" = these, "trust" = a third), cam_moved(dist=) (log distance, the lens to match), the distance
+   column (finite differences), NO clip on the whole move (CAM_STEP limits one round's step), view_pitch / lens_mm /
+   camera_lines: a CAMERA line per picture in the reply (turn / pitch / distance start -> end, whole move against its
+   prior, FAR FROM ITS START past 1.5 sd). blockin.fit_cameras: pitch 0 +- 5 deg and the lens +- 5 % of its prior
+   (humanfit_map.fit(cam_prior=)): block_in_start's front distance error -59 .. +45 % -> -17 .. -14 % (= 70 mm against
+   the true 85), its pitch +8.7 -> +6.8 on head c (the detector insists; the solve then corrects it).
+   Distance priors: front 15 %, 3/4 12 %, side 8 % without the dense read (see "what does not work"), 40 % with it.
+2. read(cam_first=, cam_reset=): one cameras-first round (head held) on EVERY call under the mode's own prior, the whole
+   move tracked; "refit" as before (2 rounds, wider, the new start). Distance is HELD in these rounds.
+3. solve(cmax=): an active-set BOUND (components that would pass cmax are held at it, the rest solved again); no sigma
+   factor, nothing carried between calls (relax is always 1.0 now; the size hold and the neck prior cannot trigger
+   anything). disagreement(): DISAGREE (read groups left past 2 of their own sigmas, by type and picture) and AT THE
+   BOUND lines.
+4. (built, suite running) dense: DENSE_REGION_SIG (the measured per-axis error by view kind and region as the sigma's
+   floor), ears / scalp / neck out, DENSE_NEFF 80 (sigma x sqrt(n / 80)), block_in_solve(dense=); still OFF by default.
+### Measured (3 calls; jaw_width error mm per start: fitted / true / pitch +8 / pitch -8 / distance x0.5 / x2)
+| head (class mean's jaw error) | main "free" (nearest starts: fitted, true, pitch +10, pitch -5, x0.5, x2) | main "trust" (fitted, true, pitch +10, -5) | a: step 1 (distance prior 30 %) | b: + step 2 (distance 15 / 12 / 8 %) | c: + step 3 |
+|---|---|---|---|---|---|
+| a (-1.0) | -0.1 / -0.2 / -0.3 / -1.5 / +8.2 / -6.1 | -0.4 / -1.8 / +8.0 / -6.3 | -0.8 / -0.5 / +1.3 / -1.5 / +3.8 / -4.3 | +1.9 / +1.2 / +7.0 / +0.3 / +3.3 / -3.5 | +1.9 / +1.2 / +7.0 / +0.3 / +5.9 / -3.5 |
+| b (+0.5) | -4.5 / +0.0 / - / - / +9.4 / -3.5 | -2.1 / -0.3 | -4.2 / +0.8 / +0.3 / +0.2 / +0.6 / +0.5 | +3.5 / +0.9 / +2.1 / +2.6 / +6.0 / -2.2 | +3.5 / +4.5 / +2.1 / +5.3 / +4.2 / -2.2 |
+| c (+9.8) | +9.0 / +2.3 / +7.3 / -1.1 / +10.7 / -4.2 | +15.8 / +2.1 / +8.2 / -4.3 | +7.8 / -0.1 / +0.8 / -5.0 / +5.5 / -5.9 | +8.6 / +2.9 / +5.0 / -2.0 / +7.0 / -4.5 | +8.6 / +3.6 / +5.0 / -2.0 / +5.4 / -4.2 |
+| d (+10.7) | -3.0 / -0.7 / - / - / +9.2 / -8.9 | -3.3 / +1.6 | -7.5 / +0.2 / +2.4 / +0.7 / +1.9 / -6.9 | -2.3 / -2.0 / -1.8 / -2.2 / +8.4 / -9.7 | -2.3 / -2.0 / -1.8 / -2.2 / -0.1 / -9.7 |
+| SPREAD of the jaw over the six starts, a / b / c / d (target 2) | 14.3 / 13.9 / 14.9 / 18.1 | - | 8.1 / 5.0 / 13.7 / 9.8 | 10.5 / 8.2 / 13.1 / 18.1 | 10.5 / 7.4 / 12.9 / 9.7 |
+| ... over fitted / true / pitch +-8 only | 1.4 (a) / 10.1 (c) | 14.3 (a) / 20.1 (c) | 2.8 / 5.0 / 12.8 / 9.8 | 6.6 / 2.5 / 10.6 / 0.5 | 6.6 / 3.2 / 10.6 / 0.5 |
+| face / lower face, mean of the 24 free chains | - | - | 1.70 / 1.89 | 1.81 / 2.08 | 1.86 / 2.00 |
+(main's fitted-start chains for comparison, 4 heads: free 2.16 / 2.66, trust 2.56 / 3.62; class mean 2.10 / 3.25.)
+- STEP 1 HELPED where main failed: under "trust" a wrong front pitch is now corrected (pitch +8 trust: front pitch ends
+  +1.1 .. +1.5 deg, was +8.3 at +10; head c fitted + trust: jaw +15.8 -> +8.2, face 4.70 -> 2.13), distance moves the
+  right way from x0.5 (-50 -> -21 .. -44 %; jaw +9 -> +0.6 .. +5.5) and the start fit no longer puts a camera at half
+  or twice its distance. It did NOT make starts agree: 8-14 mm of jaw between them after 3 calls.
+- STEP 2 (cameras first; measured together with the tighter distance prior): head d's four non-distance starts now end
+  within 0.5 mm of each other (9.8 before) and b's within 2.5; a and c got no better (6.6, 10.6). The tight distance
+  prior costs the x0.5 / x2 starts (they stay at -35 / +70-100 %): expected, see below.
+- STEP 3 (bound instead of inflation): changes only the chains that were inflating: head d from a x0.5 camera: face
+  3.14 -> 2.38, distance -37 -> -7 %, jaw +8.4 -> -0.1 (it had stalled at x7-9). Nothing else moved.
+- STILL WORSE THAN THE CLASS MEAN (face or lower face): 10 of 24 chains, 9 of them heads a and b, whose class mean is
+  already 1.4-1.75 mm from the truth; with TRUE frozen rotations (Part 1, r0) head a ends at 2.48 too: the reads'
+  ceiling on that head, not the cameras. Heads c and d (class mean 2.9 / 2.3 mm off, jaw +10) end better from every
+  start except c fitted + trust (lower face 3.57 against 4.34: better, but 8-10 mm of jaw).
+- MORE CALLS (8, suite c's code): head a pitch +8: jaw +7.0 at call 3 -> +1.5 at call 8 (true start: +1.2); head c
+  fitted: +8.6 -> +6.1 (pitch +2.0, distance -9 %), true start +3.6 -> +2.2 (pitch 0.0, distance +9 %). So 3 calls is
+  not converged (steps are halved from the first see-saw on), and what is left on c is 2 deg of front pitch and ~18 % of
+  distance between the two chains = the 4 mm.
+### What does not work (measured)
+- DISTANCE from outlines and detector anchors: at the truth 20 % (1 sd); in chains it wanders +-10-20 % from call to
+  call, a TRUE camera drifted to +28 %, a x2 start went to +129 % (suite a, prior 30 %). Hence the tight prior without
+  dense: a wrong lens is then simply kept (x0.5 start: jaw +3 .. +8 mm).
+- CAMERAS ONLY WITH DENSE on a class-mean head (camfit.py): from any start (true, pitch +8, x0.5, x2) the cameras land
+  on the SAME place (start-independent: good) but a biased one: head c (wide jaw): front distance -54 %, pitch +2 .. +4,
+  side +72 %; head a: front +22 %, pitch +2.4. A held head's shape misfit is read as perspective. So distance is never
+  solved in the cameras-first rounds; it has to be solved WITH identity.

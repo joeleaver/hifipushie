@@ -9,7 +9,11 @@ from hifipushie import blockin as bi, face_ruler as fr, humanfit, store
 
 S = "/mnt/data/hifipushie/solvecams"
 HEADS = {"a": ("male", 11, 0.6, ""), "b": ("male", 12, 0.6, "chin_width:-6,jaw_width:-6"),
-         "c": ("female", 13, 0.6, "chin_width:5,jaw_width:6"), "d": ("female", 14, 0.6, "")}
+         "c": ("female", 13, 0.6, "chin_width:5,jaw_width:6"), "d": ("female", 14, 0.6, ""),
+         # the widened set (Part 2): e = another dressing (dark skin, age 60) under a hard TOP light; g = tess_n1's body,
+         # skin and strand HAIR (tied back; over the scalp's outline and the ears' tops) with a random identity
+         "e": ("male", 17, 0.6, "jaw_width:4", {"skin": {"tone": {"fitzpatrick": 5}, "age": 60.0}, "light": "top"}),
+         "g": ("female", 16, 0.6, "", {"from": "tess_n1", "hair": True})}
 # view name: (nominal yaw, nominal pitch, lens mm (35 mm equivalent))
 VIEWS = {"f": (0, 0, 85), "q23": (23, 0, 85), "q45": (45, 0, 85), "s72": (72, 0, 85), "s90": (90, 0, 85),
          "fu": (0, 8, 85), "fd": (0, -8, 85), "fn": (0, 0, 40), "ff": (0, 0, 200)}

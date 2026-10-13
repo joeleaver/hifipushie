@@ -60,7 +60,7 @@ print("| start error | free: end error a / c | trust: end error a / c | free: fa
 SW = [("none", "", "s90", "yaw"), ("s90 yaw -5", "s5m", "s90", "yaw"), ("s90 yaw -10", "s10m", "s90", "yaw"), ("s90 yaw -15", "s15m", "s90", "yaw"), ("s90 yaw +10", "s10p", "s90", "yaw"),
       ("q45 yaw -5", "q5m", "q45", "yaw"), ("q45 yaw -10", "q10m", "q45", "yaw"), ("q45 yaw -15", "q15m", "q45", "yaw"), ("q45 yaw +10", "q10p", "q45", "yaw"),
       ("front pitch +5", "p5p", "f", "pitch"), ("front pitch +10", "p10p", "f", "pitch"), ("front pitch -5", "p5m", "f", "pitch"),
-      ("front distance -50 %", "dm50", "f", "dist"), ("front distance -30 %", "dm30", "f", "dist"), ("front distance +40 %", "dp40", "f", "dist"), ("front distance +100 %", "dp100", "f", "dist")]
+      ("front distance -50 %", "dmh", "f", "dist"), ("front distance -30 %", "dmt", "f", "dist"), ("front distance +40 %", "dpf", "f", "dist"), ("front distance +100 %", "dpx2", "f", "dist")]
 for lab, k, v, what in SW:
     def cell(mode, kind, dn=""):
         out = []
@@ -80,8 +80,8 @@ for lab, k, v, what in SW:
 print("\n### Shape per unit of camera error (set A, TRUE cameras, the error FROZEN in: yaw / pitch frozen, shift / scale / roll free; change against the same chain with no error; mm)")
 print("| camera error | heads | face rms | lower face | jaw_width | gonial_width | chin_width | cheekbone_width | chin_length | eyes_forward | sigma x |\n|---|---|---|---|---|---|---|---|---|---|---|")
 PR = [("s90 yaw -5", "rs5m"), ("s90 yaw +5", "rs5p"), ("s90 yaw -10", "rs10m"), ("q45 yaw -5", "rq5m"), ("q45 yaw +5", "rq5p"), ("q45 yaw -10", "rq10m"), ("front pitch +5", "rp5p"), ("front pitch -5", "rp5m"), ("front yaw 5", "ry5"),
-      ("front distance -50 %", "rdm50"), ("front distance -30 %", "rdm30"), ("front distance +40 %", "rdp40"), ("front distance +100 %", "rdp100"), ("q45 distance -30 %", "rqdm30"), ("s90 distance -30 %", "rsdm30"),
-      ("DENSE: s90 yaw -5", "rs5md"), ("DENSE: q45 yaw -5", "rq5md"), ("DENSE: front pitch +5", "rp5pd"), ("DENSE: front distance -50 %", "rdm50d"), ("DENSE: front distance +100 %", "rdp100d")]
+      ("front distance -50 %", "rdmh"), ("front distance -30 %", "rdmt"), ("front distance +40 %", "rdpf"), ("front distance +100 %", "rdpx2"), ("q45 distance -30 %", "rqdmt"), ("s90 distance -30 %", "rsdmt"),
+      ("DENSE: s90 yaw -5", "rs5md"), ("DENSE: q45 yaw -5", "rq5md"), ("DENSE: front pitch +5", "rp5pd"), ("DENSE: front distance -50 %", "rdmhd"), ("DENSE: front distance +100 %", "rdpx2d")]
 for lab, code in PR:
     base = "r0d" if code.endswith("d") and "DENSE" in lab else "r0"
     D = []
