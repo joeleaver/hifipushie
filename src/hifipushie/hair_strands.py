@@ -144,7 +144,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             lmax = max(float(np.linalg.norm(np.diff(np.asarray(lk["pts"], float), axis=0), axis=1).sum()) for _, lk in sel)
             n = int(np.clip(np.ceil(8 * lmax / lam), n, 160))
         P_, S_, O_, W_, I_, N_, K_, F_, R_, WS_, WL_, TS_, GR_, D_, CX_, FN_, EX_ = ([] for _ in range(17))
-        A0_, A1_, SH_, HK_ = [], [], [], []
+        A0_, A1_, SH_, HK_, SU_ = [], [], [], [], []
         wisp_tips = wisp_physical(S)["tips"]
         for i, lk in sel:
             Sl = {**S, **{k: v for k, v in (lk.get("strands") or {}).items() if k in S}}
@@ -244,6 +244,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             A1_.append(a0_ + float(s[-1]))
             HK_.append(float(max(1.0, round(2.0 * float(np.max(hw)) / 0.006))))  # highlight ribbons across the lock, ~6 mm each
             SH_.append(float(np.clip((lk.get("strands") or {}).get("shade", 0.0), 0.0, 1.0)))  # depth in the mass
+            SU_.append(float(np.clip((lk.get("strands") or {}).get("sun", 0.0), -0.5, 0.5)))  # where the sun reaches
             WS_.append(ws)
             WL_.append(wl)
             K_.append(max(1, int(round(W / float(np.clip(Sl["clump_size"], 0.002, 0.03))))))
@@ -261,6 +262,8 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                     "hk": np.asarray(HK_, np.float32)}
         if any(SH_):
             out[key0]["sh"] = np.asarray(SH_, np.float32)
+        if any(SU_):
+            out[key0]["su"] = np.asarray(SU_, np.float32)
         if any(CX_):  # (only when a lock asks: older jobs keep their files, and so their cache keys)
             out[key0]["clx"] = np.asarray(CX_, np.float32)
         if any(EX_):

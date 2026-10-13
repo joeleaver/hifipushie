@@ -130,7 +130,11 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         # (grey_amount: a share of grey strands; vary: the per-strand / sub-clump value noise under all of it)
         # depth 0..1: the under-layers of hair with volume are darker (a lock's "shade": the shadow strands do not cast
         #   on each other in EEVEE)
-        "variation": 0.4, "sun": 0.2, "highlights": 0.0, "highlight_contrast": 0.6, "fly_light": 0.3, "depth": 0.5}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        # root_dark 0..1: how dark the first stretch (`root` of the length) is, 1 = the gap colour
+        # gloss 0..1 (EEVEE strands): the two highlight lobes where light catches the hair (a sharp pale one toward
+        #   the root, a broader one in the hair's own warm colour toward the tip); 0 = the matt strand of before
+        "variation": 0.4, "sun": 0.2, "highlights": 0.0, "highlight_contrast": 0.6, "fly_light": 0.3, "depth": 0.5,
+        "root_dark": 0.5, "gloss": 0.0}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's

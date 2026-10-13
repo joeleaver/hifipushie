@@ -16,7 +16,7 @@ def arg(a):
 
 dst, head, src, st = sys.argv[1:5]
 kw = dict(a.split("=", 1) for a in sys.argv[5:])
-assert dst.startswith(("th_V7", "th_V8", "th_V9", "th_W7")), dst  # (this round's names only)
+assert dst.startswith(("th_V7", "th_V8", "th_V9", "th_W")), dst  # (this round's names only)
 d = store.HOME / dst
 d.mkdir(exist_ok=True)
 sp = json.loads((store.HOME / head / "spec.json").read_text())

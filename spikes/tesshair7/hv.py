@@ -20,7 +20,12 @@ for a in sys.argv[1:]:
 if cur:
     jobs.append(cur)
 W = os.environ.get("W", ".")
-with resources.heavy("tesshair7 " + " ".join(os.path.basename(j[0]) for j in jobs)[:60], gb=float(os.environ.get("HV_GB", 8))):
+import contextlib
+
+# (round two, the coordinator: light steps go through bin/slot and WAIT; they do not ride in the heavy slot. HV_LIGHT=1
+# = this chain is a light job (run it through runl.sh): no heavy slot is taken here; a script that renders takes it itself)
+with (contextlib.nullcontext() if os.environ.get("HV_LIGHT") else
+      resources.heavy("tesshair7 " + " ".join(os.path.basename(j[0]) for j in jobs)[:60], gb=float(os.environ.get("HV_GB", 8)))):
     for j in jobs:
         s = j[0]
         if not os.path.isabs(s):

@@ -176,7 +176,7 @@ def test_wisps_are_soft_clumps_that_hug_the_head():
     """tesshair4 (Joe: "almost right for tess, if you added front wispies"): a wisp is ONE lock of many fine hairs (not
     1-2 hair wires), rooted at the hairline, lying within millimetres of the skin while the skin is under it, ending
     lower than it starts; the front's never run down the face; amount is their number; a neat head has none."""
-    sc, g, line, locks = _grow({"wisps": {"amount": 0.6, "loose": 0}, "hairline": 0})
+    sc, g, line, locks = _grow({"wisps": {"amount": 0.6, "loose": 0, "curls": 0}, "hairline": 0, "volume": 0})
     ws = {k: lk for k, lk in locks.items() if k.startswith("tw")}
     n = ht.params(g["tie"])[0]["wisps"]["count"]
     assert len(ws) == 2 * n and n >= 10, (len(ws), n)
@@ -282,12 +282,12 @@ def test_hairline_is_a_band_that_thins_out():
     rooted again (thin at its rim, full a few mm in); inner locks near the hairline have soft sides; the part
     wanders. hairline 0 = the one row of full locks (round four)."""
     assert hf.style({"tightness": 0.9})["tie"]["gather"]["edge"] > 0.3  # (the default: every hairline is soft)
-    sc, g, line, locks = _grow({"tightness": 0.9, "hairline": 1.0})
+    sc, g, line, locks = _grow({"tightness": 0.9, "hairline": 1.0, "volume": 0})
     ga = ht.params(g["tie"])[0]["gather"]
     assert ga["edge"] == 1.0 and ga["zig"] > 0.001
     sp = ga["spacing"]
     band = {k: lk for k, lk in locks.items() if k.startswith("tg0_")}
-    hard = {k: lk for k, lk in _grow({"tightness": 0.9, "hairline": 0})[3].items() if k.startswith("tg0_")}
+    hard = {k: lk for k, lk in _grow({"tightness": 0.9, "hairline": 0, "volume": 0})[3].items() if k.startswith("tg0_")}
     assert len(band) > 1.5 * len(hard), (len(band), len(hard))
     assert not any("fine" in lk["strands"] for lk in hard.values())
     din, dens, fine, wid = [], [], [], []
@@ -555,6 +555,61 @@ def test_volume_stands_up_from_the_root_and_arcs():
                 P = _world(sc, lk) - sc.C
                 assert np.degrees(np.arccos(np.clip(P[-1] @ td / np.linalg.norm(P[-1]), -1, 1))) < 4, k
                 assert np.asarray(lk["pts"])[:, 2].min() >= 0.0, k
+
+
+def test_volume_is_gated_for_up_styles_and_half_up():
+    """tesshair7 round two (NO REGRESSIONS): hair pulled UP to a tie does not fall from its roots: with the default
+    volume a high ponytail had radial ridges round the hairline and scalp specks at the crown, half up a bare pit
+    behind the crown. By default those styles get no volume (what they were before the word); asked for on an
+    up-style it is a smooth pouf: no fall, one shell, no separate locks."""
+    assert hf.style({"tie": "low", "tightness": 0.4})["tie"]["gather"]["volume"]["crown"] > 0.015
+    for st in ({"tie": "high", "tightness": 0.4, "part": "none"}, {"tie": "top", "tightness": 0.4, "tail": "bun"},
+               {"tie": "mid", "half": True, "tightness": 0.4}):
+        assert "volume" not in hf.style(st)["tie"]["gather"], st
+    v = hf.style({"tie": "high", "part": "none", "volume": 0.5})["tie"]["gather"]["volume"]
+    assert v["crown"] > 0.01 and v["arc"] == 0.0 and v["layers"] == 0.0 and v["locks"] == 0.0
+    lo = hf.style({"tie": "low", "volume": 0.5})["tie"]["gather"]["volume"]
+    assert lo["arc"] > 0.4 and lo["layers"] > 0.5 and lo["locks"] == 1.0 and lo["cross"] == 1.0
+    # the old gather exactly for a default high ponytail: same locks as with volume 0
+    _, _, _, a = _grow({"tie": "high", "tightness": 0.6, "part": "none"})
+    _, _, _, b = _grow({"tie": "high", "tightness": 0.6, "part": "none", "volume": 0})
+    ka = [k for k in a if k.startswith("tg")]
+    assert ka == [k for k in b if k.startswith("tg")] and all(a[k]["pts"] == b[k]["pts"] for k in ka)
+
+
+def test_escaped_curls_are_fine_separate_locks_near_the_face():
+    """tesshair7 round two (Joe since round one: "front wispies", softer, curlier, separate): wisps.curls = fine
+    separate locks (a few hairs, a few mm wide) that leave the hair at the forehead's corners, the temples and in
+    front of the ears, each with its own length and curl, hanging close to the face and never over an eye. Under hair
+    with volume the flat clumps on the skin are cut back (they were a grey veil)."""
+    base = {"tie": "low", "tightness": 0.85, "neatness": 0.95, "volume": 0.5, "wisps": {"amount": 0.6}}
+    st = hf.style(base)
+    assert st["tie"]["wisps"]["curls"] == 5
+    assert st["tie"]["wisps"]["count"] < hf.style({**base, "volume": 0})["tie"]["wisps"]["count"]
+    assert hf.style({**base, "wisps": {"amount": 0.6, "curls": 0}})["tie"]["wisps"]["curls"] == 0
+    sc, g, line, L = _grow({**base, "wisps": {"amount": 0.6, "curls": 8}})
+    cu = {k: lk for k, lk in L.items() if k.startswith("tk")}
+    assert 10 <= len(cu) <= 16, len(cu)
+    lens, sides, curl = [], [], []
+    for k, lk in cu.items():
+        P = _world(sc, lk) - sc.C
+        assert 4 <= lk["hairs"] <= 12 and lk["width"] <= 0.004 and lk["free"] == 1.0, k
+        az0 = abs(np.degrees(np.arctan2(P[0, 0], -P[0, 1])))
+        assert 12 < az0 < 90, (k, az0)  # the forehead's corner .. in front of the ear
+        assert P[-1, 2] < P[0, 2] - 0.01, k  # it falls
+        assert np.linalg.norm(P - P[0], axis=1).max() < 0.2
+        d = np.linalg.norm(P, axis=1) - np.linalg.norm(P[0])
+        assert d.max() < 0.055, (k, d.max())  # close to the head, not out in the air
+        s = np.linalg.norm(np.diff(P, axis=0), axis=1).sum()
+        curl.append(s / np.linalg.norm(P[-1] - P[0]))  # curled: longer than its chord
+        lens.append(s)
+        sides.append(np.sign(P[0, 0]))
+        assert np.sign(P[-1, 0]) == np.sign(P[0, 0]) or abs(P[-1, 0]) < 0.02, k  # on its own side of the face
+    assert max(lens) > 1.6 * min(lens) and {-1.0, 1.0} <= set(sides)
+    assert np.mean(curl) > 1.06 and min(curl) > 1.0, (np.mean(curl), min(curl))
+    _, _, _, L0 = _grow({**base, "wisps": {"amount": 0.6, "curls": 0}})
+    assert not any(k.startswith("tk") for k in L0)
+    assert [k for k in L0 if not k.startswith("tk")] == [k for k in L if not k.startswith("tk")]  # the others' draws stay
 
 
 def test_sideburn_grows_no_lock_to_the_tie():

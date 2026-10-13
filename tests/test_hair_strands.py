@@ -503,3 +503,34 @@ def test_lock_own_clump_tips_roots():
     G = hs.lock_guides([a, b], np.zeros(3), S)["free"]
     assert "clx" not in G0  # (no lock asks: the old file)
     assert np.allclose(G["clx"], [0.0, 2.0]) and np.allclose(G["ts"], [1.0, 2.0]) and np.allclose(G["rs"], [1.0, 0.0])
+
+
+def test_colour_model_outside_the_material():
+    """tesshair7 round two: the look's colour model reaches what is not the strand material: hair_colour (numpy) gives
+    the groom export its per-point colour and the game cards their vertex tone. Sun lightens by age, a highlight
+    ribbon is lighter from a few cm off the root, under-layers are darker, and cards store tone / peak (<= 1)."""
+    from hifipushie import hair_colour as hcol
+    look = {"sun": 0.8, "highlights": 0.5, "highlight_contrast": 0.6, "variation": 0.5, "depth": 0.6}
+    age = np.array([0.0, 0.05, 0.15, 0.3])
+    a = hcol.along_tone(look, age)
+    assert a[0] == 1.0 and np.all(np.diff(a) > 0) and abs(a[-1] - 1.4) < 1e-6
+    hl = hcol.along_tone(look, age, r_ribbon=0.99)
+    no = hcol.along_tone(look, age, r_ribbon=0.2)
+    assert np.allclose(no, a) and hl[0] == a[0] and hl[-1] > a[-1] * 1.5
+    assert hcol.lock_tone(look, 0.5, shade=0.8) < 0.7 * hcol.lock_tone(look, 0.5, shade=0.0)
+    assert hcol.peak(look) >= float(hl.max()) * hcol.lock_tone(look, 1.0) - 1e-6
+    flat = {"sun": 0, "highlights": 0, "variation": 0, "depth": 0, "fly_light": 0}
+    assert hcol.peak(flat) == 1.0 and np.allclose(hcol.strand_tone(flat, age, 0.7, 0.5, 0.99, 0.3, 0.2, 1.0), 1.0)
+    t = hcol.strand_tone(look, age, np.zeros(4), np.zeros(4), np.full(4, 0.99), np.zeros(4), 0.0)
+    assert np.allclose(t, hl)
+    # cards: the same look on a lock's cards: lighter toward the tip with sun, never over 1
+    S = {**hc.strands_of({}), "soft": 0.008}
+    P = [[0.0, 0.03, 0.1], [0.0, 0.06, 0.05], [0.0, 0.07, 0.0], [0.0, 0.07, -0.12]]
+    cards = hc.cards_of([_lock("x0", P, free=1.0)], np.zeros(3), S, {})
+    tiles = [{"kind": k, "u0": 0.0, "u1": 1.0} for k in sorted({c["kind"] for c in cards})]
+    m0 = hc.mesh(cards, S, flat, tiles)
+    m1 = hc.mesh(cards, S, {**flat, "sun": 1.0}, tiles)
+    c0, c1 = m0["col"][:, 0], m1["col"][:, 0]
+    assert c1.max() <= 1.0 + 1e-6 and c0.max() <= 1.0 + 1e-6
+    # (stored tone / peak: the young end of a sun-lightened card is darker than its old end by up to 1 / 1.5)
+    assert c1.min() < c0.min() - 0.1 and (c1.max() - c1.min()) > (c0.max() - c0.min()) + 0.05, (c0.min(), c1.min(), c1.max())

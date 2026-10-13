@@ -21,7 +21,7 @@ import bpy
 import numpy as np
 
 LENS = "hp_lens"
-VERSION = 16  # bump when the lens group changes
+VERSION = 17  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
@@ -252,19 +252,39 @@ def lens_group():
     # (tesshair7, the colour model: natural hair is never one colour) hp_ch: a second number per sub clump, (0, 1]:
     # which sub clumps are highlight ribbons (0 = an object without the lens: never); hp_lv: a number per LOCK,
     # -1..1: locks differ in lightness, and highlights gather on some locks
-    # (a ribbon is 2-3 sub clumps side by side, ~1 cm: one sub clump (4 mm) alone averaged away at head size, th_V72)
-    hr = N.new("FunctionNodeRandomValue")
-    hr.data_type = "FLOAT"
-    _sock(hr, "Min", "VALUE").default_value = 0.0001
-    _sock(hr, "Max", "VALUE").default_value = 1.0
-    # (by where the strand starts across its lock, in ribbons ~6 mm wide (hp_hk a lock: its width / 6 mm; absent =
-    # the sub clumps): by sub clumps alone a tail's ribbons were 2 cm of pale tape, th_V75)
+    # HIGHLIGHT RIBBONS by where the strand starts across its lock (hp_hk a lock = its width / 6 mm; absent = the sub
+    # clumps), at TWO scales with random edges: many THIN ones (hp_ch, ~4 mm) and a few BROAD soft ones (hp_cb,
+    # ~15 mm), each its own number in (0, 1]: evenly 6 mm wide they were regular pinstripes (th_V86). And hp_cm, a
+    # value per ~1.5 mm of the lock's width, -1..1: strand-to-strand contrast that survives a pixel (single strands
+    # average away at head size)
     hk_ = math("MAXIMUM", named("hp_hk", "FLOAT"), 0.0)
     hk_ = math("ADD", hk_, math("MULTIPLY", math("LESS_THAN", hk_, 0.5), K))
-    L.new(math("ADD", math("MULTIPLY", named("hp_lock", "INT"), 131.0),
-               math("FLOOR", math("MULTIPLY", math("MULTIPLY", math("ADD", a, 1.0), 0.5), hk_))), hr.inputs["ID"])
-    L.new(math("ADD", gi.outputs["Seed"], 18.0), hr.inputs["Seed"])
-    geo = store(geo, "hp_ch", _sock(hr, "Value", "VALUE", out=True))
+    x01 = math("MULTIPLY", math("ADD", a, 1.0), 0.5)
+
+    def band(scale, seed_off, lo, hi, jitter):
+        n_ = N.new("FunctionNodeRandomValue")
+        n_.data_type = "FLOAT"
+        _sock(n_, "Min", "VALUE").default_value = lo
+        _sock(n_, "Max", "VALUE").default_value = hi
+        # (the edges wander: + a number per lock, and the strand's own jitter so a band's rim is soft)
+        pos = math("ADD", math("MULTIPLY", math("MULTIPLY", x01, hk_), scale),
+                   math("ADD", math("MULTIPLY", named("hp_cs", "FLOAT"), jitter), lrand(0.0, 1.0, seed_off + 30)))
+        L.new(math("ADD", math("MULTIPLY", named("hp_lock", "INT"), 131.0), math("FLOOR", pos)), n_.inputs["ID"])
+        L.new(math("ADD", gi.outputs["Seed"], float(seed_off)), n_.inputs["Seed"])
+        return _sock(n_, "Value", "VALUE", out=True)
+
+    def lrand(lo, hi, seed_off):  # a number per lock
+        n_ = N.new("FunctionNodeRandomValue")
+        n_.data_type = "FLOAT"
+        _sock(n_, "Min", "VALUE").default_value = lo
+        _sock(n_, "Max", "VALUE").default_value = hi
+        L.new(named("hp_lock", "INT"), n_.inputs["ID"])
+        L.new(math("ADD", gi.outputs["Seed"], float(seed_off)), n_.inputs["Seed"])
+        return _sock(n_, "Value", "VALUE", out=True)
+
+    geo = store(geo, "hp_ch", band(1.5, 18, 0.0001, 1.0, 0.5))
+    geo = store(geo, "hp_cb", band(0.4, 22, 0.0001, 1.0, 0.25))
+    geo = store(geo, "hp_cm", band(4.0, 23, -1.0, 1.0, 0.0))
     lr = N.new("FunctionNodeRandomValue")
     lr.data_type = "FLOAT"
     _sock(lr, "Min", "VALUE").default_value = -1.0
@@ -474,7 +494,7 @@ def curves_object(name: str, path: str, scalp, mat):
                               ("clx", "FLOAT", "CURVE", "value"), ("fn", "FLOAT", "CURVE", "value"),
                               ("ex", "FLOAT", "CURVE", "value"), ("a0", "FLOAT", "CURVE", "value"),
                               ("a1", "FLOAT", "CURVE", "value"), ("sh", "FLOAT", "CURVE", "value"),
-                              ("hk", "FLOAT", "CURVE", "value")):
+                              ("hk", "FLOAT", "CURVE", "value"), ("su", "FLOAT", "CURVE", "value")):
         if k in z.files:
             at = cu.attributes.new("hp_" + k, dt, dom)
             at.data.foreach_set(field, z[k].astype(np.int32 if dt == "INT" else np.float32).ravel())
@@ -532,13 +552,33 @@ def material(look: dict):
     # colour along the strand: darker at the root, the tip colour by tip_amount
     ramp = N.new("ShaderNodeValToRGB")
     ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[0].color = (*[g * 0.5 + c * 0.5 for g, c in zip(gap, lit)], 1)
+    rd_ = float(np.clip(look.get("root_dark", 0.5), 0.0, 1.0))  # how dark the root's first stretch is (1 = the gap colour)
+    ramp.color_ramp.elements[0].color = (*[g * rd_ + c * (1 - rd_) for g, c in zip(gap, lit)], 1)
     ramp.color_ramp.elements[1].position = max(0.02, float(look.get("root", 0.12)))
     ramp.color_ramp.elements[1].color = (*lit, 1)
     ta = float(look.get("tip_amount", 0.0))
     e = ramp.color_ramp.elements.new(1.0)
     e.color = (*[a * (1 - ta) + b * ta for a, b in zip(lit, tip)], 1)
-    L.new(info.outputs["Intercept"], ramp.inputs["Fac"])
+    # (a strand that does not start at the scalp (a tail's, hp_a0 > 0) has no dark root: it enters the ramp past it)
+    a0n = N.new("ShaderNodeAttribute")
+    a0n.attribute_name = "hp_a0"
+    k0 = N.new("ShaderNodeMath")
+    k0.operation = "MULTIPLY"
+    k0.use_clamp = True
+    L.new(a0n.outputs["Fac"], k0.inputs[0])
+    k0.inputs[1].default_value = 100.0
+    rpos = max(0.02, float(look.get("root", 0.12)))
+    f1 = N.new("ShaderNodeMath")  # root + (1 - root) x intercept
+    f1.operation = "MULTIPLY_ADD"
+    L.new(info.outputs["Intercept"], f1.inputs[0])
+    f1.inputs[1].default_value = 1.0 - rpos
+    f1.inputs[2].default_value = rpos
+    fm_ = N.new("ShaderNodeMix")
+    fm_.data_type = "FLOAT"
+    L.new(k0.outputs[0], fm_.inputs["Factor"])
+    L.new(info.outputs["Intercept"], fm_.inputs[2])
+    L.new(f1.outputs[0], fm_.inputs[3])
+    L.new(fm_.outputs[0], ramp.inputs["Fac"])
     # per strand value
     hsv = N.new("ShaderNodeHueSaturation")
     mr = N.new("ShaderNodeMapRange")
@@ -606,6 +646,7 @@ def material(look: dict):
         # (a lock is up to 4 cm wide: at +-20 % each a tail's locks read as flat painted slabs, th_V70. The contrast
         # belongs to the sub clumps (vary, highlights); locks only drift)
         val = M("MULTIPLY", val, M("MULTIPLY_ADD", lv, 0.14 * var, 1.0))
+        val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_cm"), 0.32 * var, 1.0))  # strand-to-strand, ~1.5 mm
         hue = M("MULTIPLY_ADD", M("SUBTRACT", cv.outputs["Fac"], 0.5), 0.02 * var, 0.5)
         sat = M("MULTIPLY_ADD", M("SUBTRACT", info.outputs["Random"], 0.5), 0.3 * var, 1.0)
     if sun > 0 or hl > 0:
@@ -619,13 +660,18 @@ def material(look: dict):
             hue = M("MULTIPLY_ADD", fs, 0.004, hue)  # (+ 0.012 turned a brown tail olive under EEVEE's desaturation, th_V84)
             sat = M("MULTIPLY_ADD", fs, 0.1, sat)
         if hl > 0:
-            # (by the sub clump, a ribbon 4-8 mm wide; a lock only tips the odds: with 0.35 of the pick on the lock
-            # whole 4 cm locks went pale, grey slabs across the head and tail, th_V71)
-            sel = M("MULTIPLY_ADD", M("MULTIPLY_ADD", lv, 0.5, 0.5), 0.15, M("MULTIPLY", at_("hp_ch"), 0.85))
-            thr = 1.0 - 0.6 * hl
-            fh = M("MULTIPLY", M("MULTIPLY", smooth(sel, thr, thr + 0.04), smooth(age, 0.01, 0.07)), hlc)
-            # (a ribbon comes and goes along its length: uniform from root to tip it was a strip of pale tape, th_V73)
-            fh = M("MULTIPLY", fh, M("MULTIPLY_ADD", M("SINE", M("MULTIPLY_ADD", age, 45.0, M("MULTIPLY", at_("hp_ch"), 40.0))), 0.4, 0.6))
+            # ribbons at two scales, gathered where the sun reaches (hp_su: the top layers, round the face, a tail's
+            # outside) and a little on some locks: many thin ones, a few broad SOFT ones (lower contrast, a wide edge)
+            su_ = M("MULTIPLY_ADD", at_("hp_su"), 0.5, M("MULTIPLY", lv, 0.08))
+            ch_, cb_ = at_("hp_ch"), at_("hp_cb")
+            thr_t, thr_b = 1.0 - 0.5 * hl, 1.0 - 0.28 * hl
+            # (absent attributes are 0: an object without the lens never lights up)
+            f_t = M("MULTIPLY", smooth(M("ADD", ch_, su_), thr_t, thr_t + 0.05), M("GREATER_THAN", ch_, 0.0))
+            f_b = M("MULTIPLY", smooth(M("ADD", cb_, su_), thr_b, thr_b + 0.2), M("GREATER_THAN", cb_, 0.0))
+            fh = M("MULTIPLY", M("MULTIPLY", M("MAXIMUM", f_t, M("MULTIPLY", f_b, 0.6)), smooth(age, 0.01, 0.07)), hlc)
+            # (a ribbon comes and goes along its length, each on its own rhythm: uniform it was pale tape, th_V73)
+            fh = M("MULTIPLY", fh, M("MULTIPLY_ADD", M("SINE", M("ADD", M("MULTIPLY_ADD", age, 38.0, M("MULTIPLY", ch_, 40.0)),
+                                                                  M("MULTIPLY", cb_, 25.0))), 0.42, 0.58))
             # (not every strand of a ribbon is lightened: all of them, it was a strip of pale tape, th_V74)
             fh = M("MULTIPLY", fh, M("LESS_THAN", info.outputs["Random"], 0.62))
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fh, 1.0, 1.0))
@@ -636,6 +682,9 @@ def material(look: dict):
     dep = float(np.clip(look.get("depth", 0.5) or 0.0, 0.0, 1.0))
     if dep > 0:  # the under-layers of a standing mass are darker (hp_sh, a lock's depth in it: hair_flow's volume)
         val = M("MULTIPLY", val, M("MULTIPLY_ADD", at_("hp_sh"), -0.75 * dep, 1.0))
+        # ... and inside a lock the strands on its head side are darker than those on its outer face (hp_b: -1 the
+        # head's side .. 1 the outer face): what shows between clumps is dark, the gaps read as depth
+        val = M("MULTIPLY", val, M("MULTIPLY_ADD", M("SUBTRACT", at_("hp_b"), 1.0), 0.2 * dep, 1.0))
     L.new(val, hsv.inputs["Value"])
     if hue is not None:
         L.new(hue, hsv.inputs["Hue"])
@@ -733,6 +782,43 @@ def material(look: dict):
     pb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42))
     pb.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5)) * 0.6
     pb.inputs["Anisotropic"].default_value = 0.0
+    gl_ = float(np.clip(look.get("gloss", 0.0) or 0.0, 0.0, 1.0))
+    if gl_ > 0:
+        # THE HIGHLIGHT where light catches the arcs (tesshair7 round two; hers: a soft warm band over the dome). A
+        # hair has two lobes (Marschner; Kajiya-Kay in real-time practice): a sharp near-white one off the cuticle,
+        # shifted toward the ROOT, and a broader one that passed through the hair and took its colour, shifted toward
+        # the TIP. EEVEE's strand is a camera-facing ribbon with a round normal, so each lobe is a specular with its
+        # normal tilted along the strand's tangent: the Principled's own (toward the root) and its coat, tinted
+        # (toward the tip). (EEVEE has no anisotropic reflection: the tangent is used for the tilt only.)
+        geo_n = N.new("ShaderNodeNewGeometry")
+
+        def tilted(k):
+            sc_n = N.new("ShaderNodeVectorMath")
+            sc_n.operation = "SCALE"
+            L.new(info.outputs["Tangent Normal"], sc_n.inputs[0])
+            sc_n.inputs["Scale"].default_value = k
+            ad_n = N.new("ShaderNodeVectorMath")
+            ad_n.operation = "ADD"
+            L.new(geo_n.outputs["Normal"], ad_n.inputs[0])
+            L.new(sc_n.outputs["Vector"], ad_n.inputs[1])
+            no_n = N.new("ShaderNodeVectorMath")
+            no_n.operation = "NORMALIZE"
+            L.new(ad_n.outputs["Vector"], no_n.inputs[0])
+            return no_n.outputs["Vector"]
+        L.new(tilted(-0.12), pb.inputs["Normal"])
+        pb.inputs["Roughness"].default_value = float(look.get("roughness", 0.42)) * (1.0 - 0.35 * gl_)
+        pb.inputs["Specular IOR Level"].default_value = float(look.get("specular", 0.5)) * 0.6 + 0.5 * gl_
+        try:
+            pb.inputs["Coat Weight"].default_value = 0.7 * gl_
+            pb.inputs["Coat Roughness"].default_value = 0.45
+            L.new(tilted(0.22), pb.inputs["Coat Normal"])
+            warm = N.new("ShaderNodeHueSaturation")
+            warm.inputs["Saturation"].default_value = 1.6
+            warm.inputs["Value"].default_value = 3.0
+            L.new(sat_e.outputs["Color"], warm.inputs["Color"])
+            L.new(warm.outputs["Color"], pb.inputs["Coat Tint"])
+        except KeyError:
+            pass
     try:
         pb.inputs["Sheen Weight"].default_value = float(look.get("sheen_amount", 0.45)) * 0.3
         pb.inputs["Sheen Tint"].default_value = (*_lin(look.get("sheen", "#86524a")), 1)
@@ -897,6 +983,12 @@ def export_groom(abc: str | None, usd: str | None) -> dict:
     Blender's Alembic writer drops per-curve attributes, its USD writer keeps them)."""
     dg = bpy.context.evaluated_depsgraph_get()
     P, C, G, R, I = [], [], [], [], []
+    COL = []
+    import hair_colour as hcol  # (the colour model in numpy: this file's directory is on sys.path inside Blender)
+    mat_ = bpy.data.materials.get("hp_strand")
+    look = json.loads(mat_["hp_look"]) if mat_ is not None and mat_.get("hp_look") else {}
+    lit_, gap_ = np.asarray(_lin(look.get("lit", "#56352d"))), np.asarray(_lin(look.get("gap", "#221310")))
+    rd_, rpos = float(look.get("root_dark", 0.5)), max(0.02, float(look.get("root", 0.12)))
     for gi_, ob in enumerate(strand_objects()):
         d = ob.evaluated_get(dg).data
         a = np.empty(len(d.points) * 3, np.float32)
@@ -910,6 +1002,23 @@ def export_groom(abc: str | None, usd: str | None) -> dict:
         P.append(a.reshape(-1, 3))
         C.append(cnt)
         R.append(rad)
+
+        def cattr(name, default=0.0):
+            at_ = d.attributes.get(name)
+            v_ = np.full(len(cnt), default, np.float32)
+            if at_ is not None and at_.domain == "CURVE" and at_.data_type in ("FLOAT", "INT"):
+                at_.data.foreach_get("value", v_)
+            return np.repeat(v_, cnt)
+        # the colour a strand has in the look (hair_colour: variation, depth, sun by age, highlight ribbons), per
+        # POINT, linear RGB: the dark root, then lit x tone. Unreal's groom reads groom_color; USD keeps it as a primvar
+        tpt = np.concatenate([np.linspace(0.0, 1.0, int(c_)) for c_ in cnt]) if len(cnt) else np.zeros(0)
+        a0_, a1_ = cattr("hp_a0"), cattr("hp_a1")
+        age = a0_ + (a1_ - a0_) * tpt
+        tone = hcol.strand_tone(look, age, cattr("hp_lv"), cattr("hp_sh"), np.maximum(cattr("hp_ch"), cattr("hp_cb") * 0.9),
+                                cattr("hp_cm"), cattr("hp_su"), cattr("hp_fly"))
+        rootf = np.where(a0_ > 0.005, 1.0, hcol._ss(tpt / rpos))
+        base = (gap_ * rd_ + lit_ * (1 - rd_))[None] * (1 - rootf)[:, None] + lit_[None] * rootf[:, None]
+        COL.append((base * tone[:, None]).astype(np.float32))
         G.append(np.full(len(cnt), gi_, np.int32))
     P, C, R, G = np.concatenate(P), np.concatenate(C), np.concatenate(R), np.concatenate(G)
     cu = bpy.data.hair_curves.new("groom")
@@ -921,6 +1030,8 @@ def export_groom(abc: str | None, usd: str | None) -> dict:
     cu.attributes.new("groom_id", "INT", "CURVE").data.foreach_set("value", np.arange(n, dtype=np.int32))
     cu.attributes.new("groom_guide", "INT", "CURVE").data.foreach_set("value", (np.arange(n) % 40 == 0).astype(np.int32))
     cu.attributes.new("groom_width", "FLOAT", "POINT").data.foreach_set("value", (R * 2 * 100).astype(np.float32))
+    if COL:
+        cu.attributes.new("groom_color", "FLOAT_VECTOR", "POINT").data.foreach_set("vector", np.concatenate(COL).ravel())
     ob = bpy.data.objects.new("groom", cu)
     ob["groom_version_major"], ob["groom_version_minor"] = 1, 5
     ob["groom_tool"] = "hifipushie"
@@ -929,6 +1040,11 @@ def export_groom(abc: str | None, usd: str | None) -> dict:
         o.select_set(o is ob)
     bpy.context.view_layer.objects.active = ob
     out = {"strands": int(n), "points": int(len(P))}
+    if COL:
+        cc_ = np.concatenate(COL)
+        yy_ = cc_ @ np.array([0.2126, 0.7152, 0.0722])
+        out["color"] = {"attribute": "groom_color", "mean": [round(float(x), 4) for x in cc_.mean(0)],
+                        "value_p10_p90": [round(float(np.percentile(yy_, 10)), 4), round(float(np.percentile(yy_, 90)), 4)]}
     if abc:
         bpy.ops.wm.alembic_export(filepath=abc, selected=True, global_scale=100.0, export_custom_properties=True)
         out["abc"] = os.path.getsize(abc)
