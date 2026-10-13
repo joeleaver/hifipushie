@@ -2232,8 +2232,8 @@ def lens_info(v: dict) -> dict:
     "lens_mm" is taken as given. EXIF: FocalLengthIn35mmFilm x DigitalZoomRatio; a picture CROPPED after capture (its
     pixel aspect is not the EXIF's PixelXDimension : PixelYDimension, either way up) no longer has that field of view:
     not known, and said. A resize keeps it."""
-    if v.get("lens_mm"):
-        return {"mm": float(v["lens_mm"]), "source": "lens_mm", "warn": ""}
+    if v.get("lens_mm"):       # ("frame": [w, h] = the uncropped frame in this picture's pixels: the lens is the frame's)
+        return {"mm": float(v["lens_mm"]), "source": "lens_mm", "warn": "", "frame": v.get("frame")}
     try:
         from PIL import Image
         im = Image.open(v["image"])
@@ -2256,7 +2256,7 @@ def lens_info(v: dict) -> dict:
                 return {"mm": None, "source": None, "warn": (
                     f"LENS: {str(v.get('image', '')).split('/')[-1]} was CROPPED after capture ({im.size[0]} x {im.size[1]} against the camera's "
                     f"{int(ew)} x {int(eh)}): its EXIF lens ({mm:.0f} mm eq.) no longer gives its field of view: NOT used. Keep the original "
-                    "file, or state the crop's own lens_mm (f / diagonal x 43.27)")}
+                    "file, or give the view \"lens_mm\" with \"frame\": [w, h] (the uncropped frame's size in this picture's pixels)")}
         return {"mm": mm, "source": "exif", "warn": ""}
     except Exception:  # noqa: BLE001
         return {"mm": None, "source": None, "warn": ""}
@@ -2328,8 +2328,8 @@ def distance_lines(views: list, lens: list | None) -> list:
             out.append(f"DISTANCE {nm}: {d:.2f} m, from its lens ({li['mm']:.0f} mm eq., {'stated' if li.get('source') == 'lens_mm' else 'EXIF'}) and the head's size "
                        f"(d = focal x size / pixels; the head's size is held at the start's: +- 5 % person to person, the same in the distance)")
         else:
-            out.append(f"DISTANCE {nm}: NOT KNOWN (no lens_mm, no usable EXIF): it stands at {d:.2f} m ({lens_mm(v['cam']):.0f} mm eq.; block_in_start "
-                       f"assumes a 70 mm portrait). At that distance an error of 20 % shows as {abs(c['cheekbone']):.1f} mm of cheekbone width and "
+            out.append(f"DISTANCE {nm}: NOT KNOWN (no lens_mm, no usable EXIF): it stands at {d:.2f} m (as if the picture were the whole frame of a "
+                       f"{lens_mm(v['cam']):.0f} mm lens, 35 mm equivalent on the diagonal; a head CROPPED from a larger photo was taken through a longer one, from further). At that distance an error of 20 % shows as {abs(c['cheekbone']):.1f} mm of cheekbone width and "
                        f"{abs(c['jaw']):.1f} mm of jaw width (the nose's own width {abs(c['alar']):.1f}): those widths are uncertain by about that much"
                        + ("; a side view is in the set, so the face's depth is read and the solve may find the distance (its CAMERA line says how far it moved)"
                           if side else "; NO side view pins the face's depth: the set cannot determine it") + ". Give lens_mm or keep the file's EXIF")
@@ -2386,6 +2386,11 @@ LM_STRETCH_UNIT = 0.05                # its nuisance column's unit: 5 % (prior s
 SIG_IRIS_3Q = 0.5                     # mm: a 3/4 view's iris centre, detector on picture - detector on render (gaze differs)
 LM_SIG_DIFF = 1.0                    # mm: a DIFFERENTIAL anchor (the same detector on picture and render), + its pixel floor
 LM_PX = 0.6                           # picture px: the detector's own scatter on a small face (Garrett's: 1.2 mm / px)
+# (readmix, from groundtruth's Part 2) THE DIFFERENTIAL ANCHORS DO NOT CANCEL AT THE NOSE: at the TRUE head the detector on a
+# PHOTOGRAPH draws the nose base (landmarks 31-35) +1.7 / +1.6 mm wider than on our render of the same head (two scanned heads;
+# -0.1 on a render of a scan): our renders of a nose do not look to it like a photographed one. That much width is taken out
+# of the nose-base anchors of a view styled "photo", in proportion to each point's place across the base (0 = left as it was)
+LM_NOSE_WIDE = 1.65
 
 
 def _detect_model(head, cam, box):
@@ -2435,8 +2440,17 @@ def _anchor_obs(head, view, points, det, skip=()):
         Jp, mm1 = _proj_jac_pt(view["cam"], L[i], head["LB"][:, i])
         p, q = Pm[m], np.asarray(det["P"], float)[m]
         sig = float(np.hypot(LM_SIG_DIFF, LM_PX * mm1)) * float(ch.get("lm_sig", LM_SIG_SCALE))
+        nb = np.zeros(2)
+        if 31 <= i <= 35 and LM_NOSE_WIDE and view.get("style") == "photo" and not view.get("render"):
+            # the sim-to-real width: along the base's own line in the render, in proportion to the point's place across it
+            a_, b_ = Pm[likeness.MP68[31]], Pm[likeness.MP68[35]]
+            wd = float(np.linalg.norm(b_ - a_))
+            if wd > 1e-6:
+                u_ = (b_ - a_) / wd
+                fs = min(1.0, wd * mm1 / max(float(np.linalg.norm(L[35] - L[31])) * 1000.0, 1e-6))     # a turned view shows less of it
+                nb = LM_NOSE_WIDE * fs * (float((p - a_) @ u_) / wd - 0.5) * u_
         for ax in ((0, 1) if i not in CHIN_LM else chin_ax):
-            ob = {"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1,
+            ob = {"type": "landmark", "view": view["kind"], "name": f"{key}.{'xy'[ax]}", "o": float(q[ax] - p[ax]) * mm1 - float(nb[ax]),
                   "J": Jp[ax] * mm1, "sig": sig, "p": list(map(float, p)), "q": list(map(float, q)),
                   "X": list(map(float, L[i])), "diff": True}
             if stretch:       # THE DETECTOR'S OWN STRETCH (chinread): its face on a photo is not its face on our clay render
@@ -2559,9 +2573,12 @@ def view_pitch(cam: dict) -> float:
     return float(np.degrees(np.arctan2(-u[2], -u[1])))
 
 
-def lens_mm(cam: dict) -> float:
-    """The camera's focal length as a 35 mm-equivalent (on the picture's width, as the lens prior counts it)."""
-    return float(cam["f"]) * 36.0 / float(cam["size"][0])
+def lens_mm(cam: dict, frame=None) -> float:
+    """The camera's focal length as a 35 mm equivalent in EXIF's convention: on the frame's DIAGONAL (f / diagonal x
+    43.27), the one a view's lens_mm and FocalLengthIn35mmFilm are in (readmix: this counted on the WIDTH, x1.39 on a 3:4
+    portrait against what a caller states). frame: the uncropped frame's size when the picture is a crop of it."""
+    w, h = frame or cam["size"]
+    return float(cam["f"]) * 43.27 / float(np.hypot(w, h))
 
 
 def camera_lines(views0: list, views1: list, cam_done, cam_sd, stated=None) -> list:
@@ -2642,6 +2659,8 @@ def reference_views(name: str, hair: bool = True, lids: bool = False, lips: bool
         img = Image.open(v["image"]).convert("RGB")
         view = {"img": img, "cam": cam, "kind": k, "style": "photo", "hair": hair, "name": str(v["image"]).split("/")[-1],
                 "face_only": True, "reader": "points", "jaw": bool(jaw), "chin": dict(chin or {})}
+        if v.get("render"):          # one of OUR renders as a reference (a benchmark): the detector sees it as it sees the model's
+            view["render"] = True
         li = lens_info(v)
         view["lens"] = li
         if li["mm"] and LENS_PINS:       # a known lens: the focal length stays, the picture's scale is the camera's distance

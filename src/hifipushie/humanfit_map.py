@@ -93,7 +93,8 @@ def lens_prior(v: dict) -> tuple:
     EXIF, else the portrait prior LENS. A phone's 24 mm at 27 cm is not a 70 mm portrait: with the portrait prior a
     close phone photo's perspective (centre features big, the face's edges small) was fitted as shape."""
     w, h = v["size"]
-    diag = float(np.hypot(w, h))
+    diag = float(np.hypot(*(v.get("frame") or (w, h))))      # (readmix) a crop: the lens is the uncropped FRAME's ("frame": [w, h]
+    #                                                           in this picture's pixels), the focal length in pixels the same
     mm = v.get("lens_mm")
     sd = 0.05
     if mm is None and v.get("image"):

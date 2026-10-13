@@ -228,3 +228,19 @@ def test_unknown_distance_marks_the_deep_widths_inferred():
     assert any(x.startswith("INFERRED (the camera's distance") for x in L)
     L2 = fr.distance_lines(views, [{"mm": 24.0, "source": "exif"}])
     assert any("from its lens (24 mm eq., EXIF)" in x for x in L2) and not any(x.startswith("INFERRED") for x in L2)
+
+
+def test_one_lens_convention_and_a_crop_frame():
+    from hifipushie import humanfit_map as hm
+    # a 3:4 portrait whose focal length is that of a 50 mm lens on the DIAGONAL: the reply says 50, not 69
+    w, h = 1200, 1600
+    f = 50.0 / 43.27 * float(np.hypot(w, h))
+    cam = {"f": f, "size": [w, h]}
+    assert abs(fr.lens_mm(cam) - 50.0) < 1e-6
+    assert abs(hm.lens_prior({"size": [w, h], "lens_mm": 50.0})[0] - f) < 1e-6          # stated and replied in one convention
+    # a head cropped out of a 6000 x 4000 frame taken through an 85 mm lens: the same focal length in pixels as the frame's
+    ff = 85.0 / 43.27 * float(np.hypot(6000, 4000))
+    got = hm.lens_prior({"size": [w, h], "lens_mm": 85.0, "frame": [6000, 4000]})[0]
+    assert abs(got - ff) < 1e-6 and got > 3 * hm.lens_prior({"size": [w, h], "lens_mm": 85.0})[0]
+    assert abs(fr.lens_mm({"f": ff, "size": [w, h]}, frame=[6000, 4000]) - 85.0) < 1e-6
+    assert 1.0 < fr.LM_NOSE_WIDE < 2.5
