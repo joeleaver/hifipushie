@@ -273,6 +273,106 @@ below as they land.
 - NICO-TOP INCIDENT (15:52, from the coordinator / oxidegen): its second NVMe threw a controller error seconds
   after the first TRAINING job (dl-p1: a 686 MB job folder fetched and written, to be followed by a multi-GB
   torch install) started; every job after it died ("its machine went quiet mid-job, 3 times over"). Coincidence
-  or load is oxidegen's to settle; no data of ours was lost (4 cancelled render jobs, re-renderable by seed). The
-  pilot's training therefore ran on this laptop's CPU (below), and the GPU-only parts (learning curve, direct
-  vs heat-map head, a longer run) are NOT done.
+  or load is oxidegen's to settle; no data of ours was lost (4 cancelled render jobs, re-renderable by seed). After
+  Joe's reboot the training ran there (below). What the staged restart taught about TRAINING jobs on the offload
+  route (all in spikes/denselm/remote_train.sh + job_train.py now): a job cannot write uv's cache (build the torch
+  venv in the bundle's SETUP step, in the machine's cache: `dl_torch_v2`); PyPI's newest torch (CUDA 13 libraries)
+  finds no GPU on NICO-TOP's driver: install from the cu124 index only; torch's DataLoader hands batches over in
+  /dev/shm, which the sandbox closes: the job hung at its first batch until batches went as numpy through the
+  workers' pipes; upload the data slim (slim.py: JPEG + alpha, 690 -> 200 MB for 5,400 samples).
+
+### The pilot (2026-10-12; model /mnt/data/hifipushie/denselm/models/p1/hm18/model.pt, 48 MB TorchScript, NOT in git,
+### not yet an asset pack: a pilot; HIFIPUSHIE_DENSELM points denselm.predict / face_ruler at it)
+- DATA: 18 dressings x 300 = 5,400 samples (8 rendered on NICO-TOP, 10 on this laptop; 6 men / 12 women; white 6,
+  black 5, asian 5, middle eastern 2; 9 with hair: combed 5, loose 3, fringe 1; 9 bald), 320 px. 16 dressings
+  (4,800) train, 2 (600) held out whole. A sixth of the "one overnight" I planned: the afternoon went to machine
+  contention (both GPUs shared; ~1,200 samples an hour each) and the NICO-TOP outage.
+- TRAINING, what it took (three findings, each cost an hour): (1) from scratch under the FULL augmentation the
+  network sits at the mean face (train error = the targets' own spread, 40 px, for 240+ steps; flat ~25 px on
+  the validation crops for 25 epochs on 1,800 samples); the same network overfits 64 clean samples to 4.9 px in
+  240 steps, and with the augmentation RAMPED IN (strength 0 -> 1 over the first quarter) it learns: `ramp`.
+  (2) the plain Gaussian NLL lets sigma grow to the error and the pull on the position falls with 1 / sigma^2:
+  beta-NLL (Seitzer et al. 2022, beta 0.5; same optimum, so the calibration is untouched) is the default.
+  (3) a heat-map head (integral regression: 32 x 32 soft-argmax per landmark + a global offset + log sigma;
+  `net.NetHM`, 12.7 M parameters, ~0.1 s on two CPU threads) beside Wood's direct regressor (`net.Net`): the pilot
+  is the heat-map one; the direct-vs-heat-map and plain-NLL comparisons are job dl-p2 (below, when it lands).
+  Run: hm18, 200 epochs, batch 128, AdamW 1.5e-3 one-cycle, EMA; 89 min on NICO-TOP's 3070 Ti (27 s an epoch:
+  ~180 img/s, bound by the augmentation in 10 CPU workers, not by the GPU). On this laptop's CPU: ~13-20 img/s.
+- (a) HELD-OUT SYNTHETIC (600 samples of 2 unseen dressings, clean crops; error at the face, visible landmarks):
+  mean 1.82 mm (2.16 px of 256), median 1.49 mm; hidden landmarks 3.13 px. By region (mean mm): lid margins 1.13,
+  nose 1.21, orbit 1.30, brows 1.37, forehead 1.76, lips 1.81, mouth region 1.80, cheeks 1.99, chin 2.16, ears
+  2.18, eyeball points 2.34, scalp / neck 2.84. SIGMA IS HONEST: mean d^2 / (2 sigma^2) = 1.07 visible, 1.03 hidden
+  (1 = exact); 42 % of visible landmarks inside 1 sigma (39 % expected), 85 % inside 2 (86 %). Learning along
+  the run (validation mean mm): epoch 16: 4.1, 48: 3.0, 96: 2.3, 128: 2.0, 199: 1.82: still falling slowly at the
+  end. The 30-epoch run of the same data: 3.35 mm.
+- (c1) THE KNOWN-HEAD BENCHMARK'S PICTURES (spikes/denselm/bench_lm.py: chinread's 11 dressed heads x 3 cameras: a
+  body, dressing, light and cameras no training sample has; the same renderer), against the truth's own vertices:
+  | view | ours, dense (sure = sigma < 2 mm) | ours, the 68 | MediaPipe, its 68 | calibration |
+  |---|---|---|---|---|
+  | front | median 1.40 mm, mean 1.65, p90 3.2 (93 % sure) | 1.36 (inner 1.19, jaw line 1.86, chin 3.0) | 4.00 (inner 2.79, jaw 12.7, chin 3.6) | 1.12 |
+  | 23 deg | 1.67 / 1.92 / 3.5 (86 %) | 1.88 (inner 1.82, jaw 2.30) | 4.09 (inner 2.93, jaw 13.5) | 1.36 |
+  | 72 deg | 2.02 / 2.22 / 3.8 (45 % sure: the far side is rightly unsure) | 2.68 | finds no face | 1.21 |
+  Front, median mm per region: lids 0.70, nose 0.85, brows 0.83, orbit 0.89, forehead 1.35, mouth 1.38, lips 1.49,
+  chin 2.05, cheeks 2.08. So on our own renderer the pilot is 2-3x closer to the true vertices than MediaPipe on
+  the points both have, reads the side view MediaPipe cannot, and knows where it is unsure. BIASES it has: the
+  chin region +1.5 mm low (front) and STRETCHED (x 1.06-1.17 vertically); the lips +1.0 mm (front) / +2.0 mm (3/4)
+  to one side; and the CHIN'S WIDTH IS STILL NOT READ (widthbias.py: on the two narrow-chinned heads the chin
+  region's landmarks come out 13-16 % too wide, on the wide ones right: where the skin has no feature the network
+  answers with the average chin; every other region's width is within 3 %).
+- (b) SIM-TO-REAL, by eye, one feature a tile (spikes/denselm/real.py; tiles /mnt/data/hifipushie/denselm/out/
+  real_p1/<subject>_<view>_<feature>.png: picture | ours | MediaPipe, the 68 ringed in both; sheets for Joe
+  workspace/human_renders/dl_p1_tess_1/2, dl_p1_garrett_paintings, dl_p1_garrett_good_1..3). BLUNT READS:
+  - Tess front, EYE: our six lid points lie on her lid margins and both corners; the iris points on the iris;
+    brow points on the brow's upper edge. As good as MediaPipe's here.
+  - Tess front, MOUTH: corners right, the upper border right, the mouth line right; our LOWER border sits ~1.5 mm
+    inside the lip (MediaPipe's is on it).
+  - Tess front, CHIN / JAW: our "jaw line" 68 lie 6-8 mm ABOVE the visible chin edge, MediaPipe's on it: that is
+    the DEFINITION, not an error: ours are the mesh's own landmark vertices (on the benchmark: 1.9 mm from the
+    truth, MediaPipe's 12.7), MediaPipe's slide to the silhouette. A row of our chin points follows the chin's
+    lower border. The chin's interior points are yellow (1-2 mm sigma), none green.
+  - Tess PROFILE (a real 76 deg photo): lips, mouth corner, the chin's front and underside all on her profile
+    line; the far side's points red (unsure), as they should be. MediaPipe's points there are a guess.
+  - Garrett's PAINTING, front (a 126 px face, painterly): eyes, nose line (it leans, as painted), mouth on the
+    features. It transfers to the painting.
+  - The good Garrett set, front chin: lips right through the stubble; the chin's lower border followed.
+  - Tess SMILE (teeth) and Garrett jaw_open: WRONG at the mouth, as predicted: the network has never seen an open
+    mouth and "closes" it: the lower lip's points sit on the teeth, 4-6 mm high; it does say so (red / yellow).
+    Upper face unaffected. This is the data gap (no teeth / mouth bag until gnmnative), not a transfer failure.
+  Numbers on the real pictures (NOT against a truth: against the accepted fitted models, which were solved with
+  MediaPipe's points): our 68 lie CLOSER to the fitted model than MediaPipe's own do: Tess front 1.7 mm (inner
+  1.5) vs 3.4 (2.1); 3/4 1.8 vs 2.6; Garrett's paintings 2.9 / 3.2 vs 4.4 / 4.6; good Garrett front 2.4 vs 4.4.
+  Our own sigma on real pictures is what it is on synthetic ones (lids / nose 0.8-1.1 mm, chin 1.4-1.9): the
+  network is not alarmed by real skin.
+- (c2) THE SOLVE WITH THE DENSE OBSERVATION (face_ruler DENSE on; dchain.py = chinread's chain, 3 calls from the
+  male class mean; chinread's six known heads c d e f g h; bt.py: SHAPE errors after a similarity fit):
+  | run | size error | face rms mm | lower face | chin | jaw body | jaw angle | abs. face rms (size in) | measures' rms |
+  |---|---|---|---|---|---|---|---|---|
+  | start (class mean) | 2.9 % | 2.62 | 3.13 | 2.42 | 2.94 | 4.17 | - | - |
+  | N: today's solve | 6.0 % | 2.18 | 2.54 | 2.09 | 2.64 | 2.90 | 4.20 | 0.80 sd |
+  | D: + dense | 1.9 % | 1.46 | 1.80 | 1.43 | 1.94 | 2.04 | 1.86 | 0.47 sd |
+  | E: dense, NO MediaPipe anchors | 1.4 % | 1.51 | 1.82 | 1.45 | 1.98 | 2.01 | 1.74 | 0.46 sd |
+  Face better on 5 of 6 heads, lower face on 5 of 6 (head g, the narrowest chin, worse: 2.87 -> 3.32). Per measure
+  (RMS error mm, N -> D): chin_length 1.7 -> 1.0, chin_forward 1.2 -> 0.5, eyes_forward 3.1 -> 2.0, gonial_width
+  2.4 -> 1.7, cheekbone_width 1.5 -> 1.2, jaw_width 2.7 -> 2.6, CHIN_WIDTH 4.0 -> 4.2 (unread, as above),
+  mouth_width 0.7 -> 1.2 (worse: the lips' side bias). The HEAD'S SIZE is read now (6 % -> 1.9 % / 1.4 %:
+  chinread's "heads come back 1-8 % large"): hundreds of landmarks through a perspective camera fix the distance
+  the outlines left free. The solve settles (|dc| 9.4, 2.2, 1.3 on head c). MediaPipe's anchors add nothing once
+  the dense reads are in (E = D).
+  BUT on solvereads' other benchmark (sx: two identities, a = gg_A06's, b = garrett_a1's; face rms after 3 calls,
+  abs.): a_x 1.63 -> 2.38 (jaw / chin 2.1 -> 4.5), a_n 2.01 -> 2.55, b_x 4.24 -> 3.55. Head a (a broad square jaw,
+  jaw_square +1.8 sd) gets WORSE with the dense reads: the same average-chin answer, now pulling a correct outline
+  solve off. So the dense read helps where the outline solve was poor and can hurt where it was already right:
+  the chin / jaw landmarks need either honest (larger) sigmas there or better data (below).
+- PER-VIEW EXPRESSION (solvereads' failed term, expression="view", with the dense reads; face rms): a_x 1.92
+  (term, no dense) -> 2.68 (term + dense); b_x 3.86 -> 3.26; a_n (the null) 2.59 -> 2.25. NO: it does not make the
+  term work. The reason solvereads gave stands: when every picture shows the same expression, no landmark set
+  separates it from identity; the dense read becomes useful for expression only with reference sets that VARY it
+  (the brief's smile / jaw-open / eyes-closed shots), and those need the open-mouth training data first.
+- ON THE REAL SETS (from each class-mean start, 4 calls, dense on; not scoreable, the accepted heads are no
+  truth): Tess: |c| 11.3 (11.2 without), nothing forced, NO inconsistency flag (relax x1.0: her photos and the
+  dense reads agree), table 20 / 26 (22), the profile camera 75.9 -> 68.7 deg; the solved head is 3.8 mm rms from
+  tess_a1. Good Garrett: |c| 12.3 -> 9.8, table 15 -> 19 / 26, but every sigma raised x3.4 (the pictures' frown /
+  squint against a neutral head, now read by 2,800 points), the "profile" camera 95.7 -> 66.2 deg (the picture IS
+  a ~70 deg view: the dense reads see the turn the outline could not; tour tiles out/tour/dl_G_r?04/chin_jaw_v2:
+  the overlay is one face with them, a doubled jaw line without); chin_width +8.0 (was +7.6: the slab stays).
+  Paintings: settles, x1.5. Not judged on a judging sheet yet (no time): that is NEXT before any default changes.
