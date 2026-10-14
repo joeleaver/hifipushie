@@ -159,3 +159,14 @@ seed head)).
     the side-light shot from the brief); ears; the jaw contour finder's noise; `human(..., refs=)`; photo scale uses
     the first model's mm/px in cmpsheet (photo column shifts 1-2% between runs with different models).
 
+
+## Guide rewrite (2026-10-14, "guides" agent)
+likeness_guide 396 -> 132 lines: tools, the character read (stage 0) first, the checklist order, staged fitting,
+a self-review loop over EVERY item; background -> likeness_reading, contours -> likeness_profile, references ->
+likeness_references, tools -> likeness_tools. Removed: "on Garrett the clay read young, round, soft" (now generic),
+"Garrett's desk painting reads 31 degrees by head pose, 45 by the fitted camera", Joe's quote on handed vs generated
+references (now said as a rule). human_guide 345 -> 141 (describe-the-person + self-review added; head shape controls,
+structure after a fit, analysis by synthesis, age, native attach -> human_shape; tools -> human_tools; "Garrett,
+blind-read by 3 readers" and the 2026-10-1x dates removed). gnm_driving: the driving-test numbers (8 / 42 without,
+19 / 42 with, v1-v4) and the docs/notes pointer left the intro; "Garrett: -1 mm" and "Garrett's accepted fix" made
+generic. Parser (gnm_manual) unchanged: 80 entries, test_gnm_manual passes (needs HIFIPUSHIE_ASSETS in a worktree).

@@ -6,7 +6,7 @@ Read guide(topic="block_in") first: the loop, the stage-0 description and the se
    age / weight / height from `refs`, a one-mesh human whose pictures are fitted by `human_reference`), the identity =
    GNM's sampler CLASS MEAN for the sex (and an ethnicity class only if you know it), on a **GNM-NATIVE head**: GNM's true base (`gnm_base` 1, `dimorphism` 0, `eyes` 1, no head style sliders), GNM's
    own eyeball / mouth / teeth / tongue, at GNM's own size with the body fitted to it (`base.head.attach: "native"`,
-   guide topic human). **Nothing of ours is on its surface**: the head's local layers are off (sliders, warp, folds,
+   guide topic human_shape). **Nothing of ours is on its surface**: the head's local layers are off (sliders, warp, folds,
    pose, shape) and the refs model's sculpt `strokes`, `skin.folds` and painted wrinkle relief (`skin.wrinkles`) are
    NOT carried; the reply lists what was DROPPED and what was LEFT (skin tone, zones, paint layers, micro relief).
    `carry=True` keeps them, `attach="body"` gives the old body-carried head (with `gnm_base` by age): both are the

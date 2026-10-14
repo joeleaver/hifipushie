@@ -167,6 +167,9 @@ Full fault table with causes and fixes: guide(topic="cloth_faults").
 - A fitted jacket's side-back and underarm seams start far open (one start cylinder at the widest level): read their
   start gaps on every fitted jacket.
 - A notched collar's ends where they meet the lapels can crumple; `collar_ends: "draped"` is experimental.
+- Worn garments are drafted from a `base` body's measurements: a creature built from blobs has none. It can take a
+  flat piece draped over the model (`{"drape": {"over": "model"}}`) or a clothing shell part with fold strokes
+  (guide(topic="parts")).
 - Welt pockets' cut and bag, a lining with its own pleat, pleats that die inside a piece.
 
 ## Where sims run

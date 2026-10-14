@@ -2,12 +2,9 @@
 
 A face that differs from the picture differs in a few big masses and many small ways. This manual turns what you
 see, said the way an artist says it, into the GNM control that fixes it: sign, rough size per step, what to hold, and
-what the move drags along. It was built and tested on a driving test ("gnmdrive", 2026-10-10: synthetic GNM pairs,
-drivers who saw only clay renders, an oracle that knew the least-cost answer). On 14 pairs driven by two fresh groups,
-drivers WITHOUT the manual passed 3 / 14, WITH it (v1) 7 / 14; on 14 more pairs 3 / 14 vs (v2) 6 / 14; on 14 fresh
-pairs v3 6 / 14: 8 / 42 without, 19 / 42 with. The phrase tables have a ceiling (their best 10 moves pass 27 / 42);
-the millimetre measures of section 0a reach further (v4): start there. Method, numbers and dead ends:
-docs/notes/gnm_atlas.md "## gnmdrive".
+what the move drags along. It was built and tested on a driving test (synthetic GNM pairs, drivers who saw only clay
+renders): drivers with the manual passed more than twice as many pairs as without it. The phrase tables have a
+ceiling; the millimetre measures of section 0a reach further: start there.
 
 Moves are block-in moves (`block_in_step`): `<macro>` FREE (the population's conditional mean; head size kept;
 neighbours come along), `<macro>!` HELD (that measure alone, every other macro held), `pc:<GNM region><k>` (GNM's own
@@ -172,8 +169,8 @@ The eye is the weak link, not the control. What the drivers found:
 | Tip projects more (less), the bridge right | `mm:tip_forward` (mm: the tip against the nose base, the bridge held) or `nose_projection` free (+) | tip +3.6, nasion +2.1 mm | free nose_projection (-) drops the bridge with the tip: mm:tip_forward is the clean one. | drags upturn -0.78 sd and the eyes back; `nose_projection!` costs |dc| 5.1 and lifts the tip 2.2 mm |
 | The dorsum proud / scooped between nasion and tip (a convex or a dished bridge), the tip right | `bridge_hump` free with `mm:tip_forward` to put the tip back (hump +0.9 with tip -2 mm), or `bridge_hump!` | | two s5 drivers, both kept; free bridge_hump alone drags the tip 2 mm forward |
 | High bridge at the radix only | `sculpt:radix` (+, mm) | nasion +1.1 mm per mm | `bridge_height!` is a TRAP (|dc| 7.5: moves lips and chin 3 mm) |
-| Narrow, steep-sided bridge (walls) | `sculpt:bridge_walls|hold=dorsum` (-, mm) | Garrett: -1 mm took the walls 0.75 -> 0.59 | no macro reads dorsum width; `nd:tip_width|held` "did nothing visible" for a pinched tip (driver) |
-| Tip turned up (more nostril) / drooping | `nose_upturn` | free: the tip 2.5 mm back as it turns | `nose_upturn!` (|dc| 3.9) lifts the tip 2.3 mm and pushes lips / chin forward 1-1.6. Garrett's accepted fix: nose_upturn! +1.4 with nose_projection! -0.4 |
+| Narrow, steep-sided bridge (walls) | `sculpt:bridge_walls|hold=dorsum` (-, mm) | e.g. -1 mm took the walls 0.75 -> 0.59 | no macro reads dorsum width; `nd:tip_width|held` "did nothing visible" for a pinched tip (driver) |
+| Tip turned up (more nostril) / drooping | `nose_upturn` | free: the tip 2.5 mm back as it turns | `nose_upturn!` (|dc| 3.9) lifts the tip 2.3 mm and pushes lips / chin forward 1-1.6. An accepted fix: nose_upturn! +1.4 with nose_projection! -0.4 |
 | Longer nose (tip and base lower) | `nose_length` free (+3.5 mm eyes-to-nose-base per sd) | | face longer too |
 | The eyes AND brows sit lower (higher) over the same nose base | `mm:eyes_height` (mm) or `nose_length!` (+: they rise; -: they drop) | eyes +1.9, nose base -1.5 mm per +1 | nose_length! drags face_length +0.6 per sd (the head longer): pair it with `face_length` (-). | (driver find: the irises doubled one above the other in the onion skin) |
 | Broad, round tip | `nd:tip_width|held` | | the free one flattens the bridge |
