@@ -438,6 +438,13 @@ come last. The reference sections below cover each part.
   height on BOTH sides. One side wrong while the other is right is an asymmetric input, not a draft fault: find it
   with a place-only mirror check of every sim input before any sim (see "What goes wrong").
 - **One stage run at a time.** Overlapping runs of the same queue submit the same sim twice.
+- **Know the noise before reading a change.** ZOZO repeats closely: Garrett's jacket re-keyed by a no-op change
+  matched within 2 mm on every checklist number. So a single-sim difference over ~5 mm is the change; under 2 mm is
+  nothing. One change per sim, and read each build's numbers from its own report (two checklists grepped together
+  were read swapped once: a working measure got blamed).
+- **A front-view width is what sticks out, not the seam it is named after.** Shoulder width read from the front is
+  the sleeve heads: narrowing the block's shoulder moved the shoulder points in 13 mm a side and the front-view width
+  UP; less sleeve cap ease (0.045 -> 0.03) brought it into tolerance.
 - **Surfaces in clay, or the exported GLB through `asset.preview`.** Textured EEVEE looks show pale grainy shards on
   cloth that the GLB doesn't have. A pale zigzag down a seam in a render you made yourself from raw arrays is the
   seam's two rows of vertices drawn unwelded; `look_cloth` welds closed seams.
@@ -612,7 +619,7 @@ The same maps go into `scene.blend` and the export.
 | `ccd failed` at frame 0, or the fine settle refuses its start, with a triangle 3-4x stretched next to a placket | A roll fold's line ends just past the band's inner row and crosses it at a shallow angle: a sliver | End the roll a few cm above the fastening (the over front's 2 cm above button 1, the under front's 6 cm) |
 | The fine settle's start fails on one body and not another, or with a small change of a collar number: `ccd failed` with "made pieces start 300-600% stretched past their rest", or the start check refuses a front 3-11x by the roll's end; or the result is CORRUPT with a made piece crumpled (an open collar's wing curled) | The made pieces were constructed twice, on the coarse sim's mesh and on the fine mesh, and came out different (a fall turns as far as clears what is under it, which the mesh samples; collar p90 8-38 mm apart). The fine start was then built from two shapes | Fixed: ONE construction (`made_from`, default "fine"): the fine mesh is placed first and the coarse sim carries a sampled copy of its made pieces. Read `made_reshaped` in the result's `constructed` (must be empty) and the log's "made pieces start N% stretched past their rest" (under ~100%). `made_from: "each"` is the old behaviour |
 | `dress` says NOT simulated | Stages 1-3 fail | Read the failures, fix the sheet or the pattern; `force=True` only to look at the fault |
-| An open jacket's fronts bow forward to the hem (a tent from the side) | The side panel's hem spring (`contour` +16 mm per edge at the hem = 64 mm of flare a side), not the canvas, not front balance | Panel seams straight below the waist (`contour` [["waist", 0], ["hem", 0]]); hip room from `hips_ease` |
+| An open jacket's fronts bow forward to the hem (a tent from the side) | The side panel's hem spring (`contour` +16 mm per edge at the hem = 64 mm of flare a side), not the canvas, not front balance | Panel seams straight below the waist (`contour` [["waist", 0], ["hem", 0]]); hip room from `hips_ease`. Even 6 mm of spring per edge stood Garrett's fronts 54 mm off the body; 0 brought them to 46 and the hem sweep into tolerance; 12 mm narrowed the hem 48 mm without helping (front_hang in `check`) |
 | Both lapels unroll into a funnel round the neck | The collar stand was lowered (to show more shirt collar): the roll line comes down from it and the collar's turn pulls the lapels up | Keep the stand (shirt stand + a few mm); lower the back neck (`neckline` op first) and the notch (`gorge_drop`, `break_y`) |
 | Lapels stand off the front (gap over 10 mm) | The roll line's fold is soft | `lapel` op `roll_radius` 0.003, `roll_strength` 1.0. Not `made_folds` (no gain, crossings at the gorge) |
 | A notched collar is a fat roll round the neck | The collar marked draped: a stiff strip resting on the flat pattern, bent round the neck | Leave the collar made (the default) |
