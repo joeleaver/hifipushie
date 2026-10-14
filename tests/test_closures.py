@@ -342,6 +342,19 @@ def test_a_cuffs_holes_run_along_the_cuff():
         raise AssertionError("unknown finish accepted")
 
 
+def test_a_worn_state_entry_without_over_validates():
+    """The guide's own example (a garment's closures [{"name": "front", "state": "open"}] laid over the design's
+    closure by name) was refused at save: 'each closure needs name and over' (dress-tess)."""
+    from hifipushie import closures
+    closures.validate([{"name": "front", "state": "open"}])
+    try:
+        closures.validate([{"state": "open"}])
+    except closures.ClosureError:
+        pass
+    else:
+        raise AssertionError("a closure with no name must fail")
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

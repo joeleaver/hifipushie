@@ -401,7 +401,11 @@ def op_pocket(D: dict, piece: str, type: str = "patch", at=None, width: float = 
         seen.add(tn)
         mk = f"{name}_{tn}"
         pc["marks"][mk] = np.asarray(q, float) + (np.array([0.0015, 0.0]) if abs(q[0]) < 1e-6 and sym == "fold" else 0.0)
-        D.setdefault("sym_stitches", []).append([f"{name}:{tn}", f"{piece}:{mk}"])
+        if D.get("unfolded"):  # (a pocket on ONE side after unfold, a chest pocket on front.L: its tacks are
+            # stitches now; as sym_stitches they were never written and the pocket was "sewn to nothing", dress-tess)
+            D["stitches"].append([f"{name}:{tn}", f"{piece}:{mk}"])
+        else:
+            D.setdefault("sym_stitches", []).append([f"{name}:{tn}", f"{piece}:{mk}"])
     D["log"].append(f"{type} pocket {name} on {piece}: {np.ptp(Q[:, 0]) * (2 if sym == 'fold' else 1) * 1000:.0f} x "
                     f"{np.ptp(Q[:, 1]) * 1000:.0f} mm, laid on its outside, {len(seen)} tacks along its sewn edges "
                     f"({'top and bottom; the slanted sides open' if type == 'kangaroo' else 'sides and bottom; the top open'})")

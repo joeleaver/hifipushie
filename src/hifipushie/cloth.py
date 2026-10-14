@@ -87,13 +87,24 @@ def expanded(g: dict) -> dict:
 def fabric(g: dict) -> dict:
     g = expanded(g)
     f = g.get("fabric", "shirting")
+    from .garment_design import kb_physical
     if isinstance(f, str):
         if f not in FABRICS:
             raise ValueError(f"no fabric {f!r} (have {', '.join(FABRICS)})")
-        return dict(FABRICS[f], name=f)
-    base = dict(FABRICS[f.get("preset", "shirting")])
-    base.update({k: v for k, v in f.items() if k != "preset"})
-    return dict(base, name=f.get("preset", "custom"))
+        out = dict(FABRICS[f], name=f)
+        kbn = f
+    else:
+        base = dict(FABRICS[f.get("preset", "shirting")])
+        base.update({k: v for k, v in f.items() if k != "preset"})
+        out = dict(base, name=f.get("preset", "custom"))
+        kbn = f.get("kb")
+    # what ZOZO gets (cloth_job.physical): the KB fabric's real numbers (gsm, bending length) under the garment's own
+    # "physical"; a fabric the KB has no numbers for falls back to the preset's PHYSICAL (physical_source says which)
+    kp = kb_physical(kbn)
+    if kp or out.get("physical"):
+        out["physical"] = dict(kp, **(out.get("physical") or {}))
+    out["physical_source"] = "kb" if kp else ("garment" if out.get("physical") else "preset")
+    return out
 
 
 # ---------------------------------------------------------------- pieces
@@ -1656,6 +1667,13 @@ def _leg_tube(body, pcs: dict, names: list, to: str, nm: str, U: np.ndarray, z_w
     mine = [o for o in names if pcs[o]["wrap"].get("to") == to and not pcs[o]["wrap"].get("lies_on")]
     fr = [o for o in mine if pcs[o]["wrap"].get("side", "front") == "front"]
     bk = [o for o in mine if pcs[o]["wrap"].get("side", "front") == "back"]
+    # (dress-tess: jeans cut a leg into more pieces than one front and one back: the front's scoop pocket side and
+    # the back's yoke sit at the waist, on the seat's cylinder. The leg's own pieces are the ones that run down to
+    # the hem (pattern y lowest); with the old "exactly one front and one back" rule jeans fell back to the seat's
+    # cylinder all the way down: front and back started as slabs, start seam gaps median 160 / p95 232 mm)
+    if fr and bk:
+        fr = [min(fr, key=lambda o: float(pcs[o]["P"][:, 1].min()))]
+        bk = [min(bk, key=lambda o: float(pcs[o]["P"][:, 1].min()))]
     if len(fr) != 1 or len(bk) != 1 or nm not in (fr[0], bk[0]):
         return None
     zc = float(at["crotch_z"])
@@ -1913,7 +1931,10 @@ def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: floa
             continue
         sel = np.where(ok & (col == c))[0]
         d_hem = U[sel, 1] - U[sel, 1].min()
-        w = np.clip(1.0 - d_hem / LEG_BREAK, 0.0, 1.0)
+        # (the band the length is gathered over is at least the deficit / LEG_GATHER: a lift of ds spread linearly
+        # over a band shorter than ds turns the rows over (the hem above the rows over it): dress-tess's jeans cut to
+        # the floor over a trainer's tongue lost 8-9 cm in a 9 cm band and the front leg started through itself)
+        w = np.clip(1.0 - d_hem / max(LEG_BREAK, ds[c] / LEG_GATHER), 0.0, 1.0)
         out[sel, 2] += ds[c] * w
     # and nothing inside the worn parts: what hangs beside a shoe (its sides, the counter at the back) is pushed out
     # of it along its surface (resting only on what faces up, the sides of the hem went through the shoe's walls)
@@ -1961,6 +1982,7 @@ WORN_REACH = 0.03  # m: the most _clear_of_worn moves a vertex in all
 
 
 LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
+LEG_GATHER = 0.6  # the most of a gathered band's length the gather takes (rows keep >= 40% of their spacing)
 WORN_CLEAR = 0.005  # m a start is kept off the worn parts (vertices: a 2 cm triangle's chord dips ~3 mm between them;
 # the solver's contact offset is 1-2 mm)
 HEM_REST_NZ = 0.5  # a surface a hem rests on faces up at least this much (|normal z|)
@@ -3967,6 +3989,66 @@ def _lay_on(B: dict, M: dict, X: np.ndarray, faces: dict) -> np.ndarray:
             more[bad] += 0.0015
             X[bad] = base[bad] + dirs[bad] * (LIES + more[bad])[:, None]
     return X
+
+
+POCKET_LIES = 0.0015  # a patch pocket seated on its piece after the sim: this far outside it (two cloth layers)
+
+
+def seat_patch_pockets(V: np.ndarray, M: dict, pcs: dict, body: "Body", gap: float = POCKET_LIES) -> tuple:
+    """A patch pocket is topstitched flat onto its piece on the table: after the sim it is laid again on the piece
+    under it as that piece finally lies (each vertex at its pattern place on the piece's surface, `gap` outside it),
+    as a closed lap is (closures.seat). dress-tess, 2026-10-14: in the sim the jeans' back pockets, held by their
+    tacks only, slid 2 cm and sank through the backs (31 crossings, CORRUPT) though they started clean outside them.
+    Only pieces wrapped `lies_on` with `face` "out" (pockets); facings stay as simulated. Returns (V, report)."""
+    names, pid, F, uv = M["names"], M["piece"], M["F"], M["uv"]
+    todo = [(k, nm, pcs[nm]["wrap"]["lies_on"]) for k, nm in enumerate(names)
+            if nm in pcs and pcs[nm]["wrap"].get("lies_on") in names and pcs[nm]["wrap"].get("face") == "out"]
+    if not todo:
+        return V, []
+    X = V.copy()
+    N = np.zeros_like(X)
+    fn = np.cross(X[F[:, 1]] - X[F[:, 0]], X[F[:, 2]] - X[F[:, 0]])
+    for c in range(3):
+        np.add.at(N, F[:, c], fn)
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    faces = piece_faces(M, X, body, pcs)
+    rep = []
+    for k, nm, on in todo:
+        j = names.index(on)
+        Fo = F[pid[F[:, 0]] == j]
+        A, Bv, C = uv[Fo[:, 0]], uv[Fo[:, 1]], uv[Fo[:, 2]]
+        d0, d1 = Bv - A, C - A
+        den = d0[:, 0] * d1[:, 1] - d0[:, 1] * d1[:, 0]
+        den = np.where(np.abs(den) < 1e-14, np.nan, den)
+        sel = np.where(pid == k)[0]
+        moved, base, dirs = [], np.zeros((len(sel), 3)), np.zeros((len(sel), 3))
+        for ii, v in enumerate(sel):
+            d2 = uv[v] - A
+            b1 = (d2[:, 0] * d1[:, 1] - d2[:, 1] * d1[:, 0]) / den
+            b2 = (d0[:, 0] * d2[:, 1] - d0[:, 1] * d2[:, 0]) / den
+            worst = np.nan_to_num(np.minimum(np.minimum(1 - b1 - b2, b1), b2), nan=-np.inf)
+            t = int(np.argmax(worst))
+            w = np.clip(np.array([1 - b1[t] - b2[t], b1[t], b2[t]]), 0, None)
+            w /= w.sum()
+            nn = w @ N[Fo[t]]
+            nn /= max(np.linalg.norm(nn), 1e-12)
+            base[ii], dirs[ii] = w @ X[Fo[t]], faces.get(on, 1.0) * nn  # (the outside of the piece: away from the body)
+            p = base[ii] + gap * dirs[ii]
+            moved.append(np.linalg.norm(p - V[v]))
+            X[v] = p
+        # (over a curved piece the pocket's chords cut the piece's own triangles at 1.5 mm (different meshes): the
+        # vertices of what crosses stand a little further off, until nothing does, as _lay_on does)
+        more = np.zeros(len(sel))
+        loc = {int(v): ii for ii, v in enumerate(sel)}
+        for _ in range(10):
+            bad = [loc[int(b_)] for b_ in _pair_crossing_verts(X, F, pid, k, j) if int(b_) in loc]
+            if not bad:
+                break
+            more[bad] += 0.001
+            X[sel[bad]] = base[bad] + dirs[bad] * (gap + more[bad])[:, None]
+        rep.append({"piece": nm, "on": on, "moved_mm_p95": round(float(np.percentile(moved, 95)) * 1000, 1),
+                    "lifted": int((more > 0).sum()), "lift_max_mm": round(float(more.max()) * 1000, 1)})
+    return X, rep
 
 
 def _pair_crossing_verts(X: np.ndarray, F: np.ndarray, pid: np.ndarray, ka: int, kb: int) -> np.ndarray:
@@ -6813,6 +6895,14 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 res["sculpted"] = int(np.sum(np.linalg.norm(off, axis=1) > 2e-4))
     elif sc:
         res["sculpt_stale"] = True  # hand edits made on another sim of this garment: not applied
+    # patch pockets are sewn flat onto their piece: laid on it as it finally lies (kept only if nothing new crosses)
+    if not hang and (g.get("cleanup") is not False) and (g.get("cleanup") or {}).get("pockets", True):
+        Vp_, rp_ = seat_patch_pockets(res["V"], M, Bp["pieces"], body_real)
+        if rp_:
+            n0_, n1_ = int(_crossing_verts(res["V"], M).sum()), int(_crossing_verts(Vp_, M).sum())
+            if n1_ <= n0_:
+                res["V"] = Vp_
+            res["pockets_seat"] = [dict(r_, kept=n1_ <= n0_, crossing_verts=[n0_, n1_]) for r_ in rp_]
     # closures: the plackets' bands stand their extra layers proud, the buttons are small geometry on them, and each
     # chosen closure is measured in the result
     from . import closures as closuremod
@@ -7884,7 +7974,7 @@ def validate(spec: dict) -> None:
         elif isinstance(f, dict):
             if f.get("preset", "shirting") not in FABRICS:
                 raise ClothError(f"{where}: fabric preset {f.get('preset')!r} unknown (have {', '.join(FABRICS)})")
-            bad = set(f) - set(FABRICS["shirting"]) - {"preset", "quality", "sewing", "stiff_tension", "rest", "physical"}
+            bad = set(f) - set(FABRICS["shirting"]) - {"preset", "quality", "sewing", "stiff_tension", "rest", "physical", "kb"}
             if bad:
                 raise ClothError(f"{where}: fabric keys {sorted(bad)} unknown (have {sorted(FABRICS['shirting'])})")
         else:

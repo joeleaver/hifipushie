@@ -80,8 +80,11 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
                spec={"color": "#8fb3d9", "quality": "draft"})
 ```
 
-- **kind:** shirt, blouse, tee, hoodie, jacket, coat, trousers, shorts, skirt, dress, flat. It sets the fit's ease
-  bands, the default details, the sleeve cap's ease band and the sewing order.
+- **kind:** shirt, blouse, tee, hoodie, jacket, coat, trousers, jeans, suit_trousers, shorts, skirt, dress, flat. It
+  sets the fit's ease bands, the default details, the sleeve cap's ease band and the sewing order. `jeans` and
+  `suit_trousers` draft themselves (`{"kind": "jeans", "fit": "straight"}` is five-pocket jeans: yoke, scoop and patch
+  pockets, fly, band, mid rise). A crew-neck SWEATER is kind `hoodie` from `"block": "knit"` with details collar
+  `rib_neckband`, cuff `rib`, hem `rib_band`, pockets `none`, plus garment key `worn_top: true` (see "Knits" below).
 - **from:** what drafts it. `simon` (shirt, FreeSewing), `carlton` (overcoat, FreeSewing), `skirt_block` (our own
   skirt draft). Leave it out and give own `pieces` + `seams` on the garment (name each piece's `"role"`).
 - **fit:** the kind's fits (shirt slim/regular/relaxed, skirt straight/a_line/full). Stage 2 checks the pattern's
@@ -89,6 +92,13 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 - **fabric:** a fabric with physical numbers (weight, thickness, woven or knit, bending length) mapped to the solver's
   preset: cotton_shirting, oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit,
   french_terry. Different fabrics must bend differently: one preset on every garment reads generic.
+  **ZOZO gets the fabric's real numbers** (2026-10-14, Joe: "use the real cloth values"): density from the KB's gsm,
+  flexural rigidity B = w g c^3 from its bending length c (`garment_design.kb_physical`; the construction stage prints
+  "ZOZO gets (kb): ..."). Until then ZOZO ran every fabric on 5 presets: cotton twill as 400 g/m2 denim, french terry as
+  180 g/m2 jersey 8x too limp. A fabric with no KB numbers (rib_knit has no bending length; a bare preset name like
+  "shirting") falls back to the preset and stage 3 WARNS. To change a fabric, add or correct its numbers in
+  garment_kb.json `fabrics`; a one-off garment can still give `"fabric": {"preset": ..., "physical": {"density",
+  "bend"}}`, which wins.
 - **details:** one choice per detail, or `{"type": choice, "options": {raw draft options}}`. Anything you leave out
   takes the kind's default, and the reply says so. `garment_reference(detail="collar")` lists the choices with what
   each is made of, its seams, fold lines, interfacing, dimensions and checks.
@@ -151,6 +161,33 @@ Tailoring numbers the knowledge base carries (all checked in stage 2 where the p
 **Stale options.** `design_garment` merges the sheet key by key, so an option you set rounds ago is still there
 (`block_options.darts: true` did nothing on a hip-length bodice, then made fish-eye darts under a princess line once
 that code arrived). Read the sheet back in the reply; give `false`, null, or `replace=True` to clear.
+
+**What makes jeans read as JEANS, not slacks** (the coordinator on Tess's first jeans: "smooth dark slacks"), and
+which stage makes each:
+
+| Tell | Made by | How here |
+|---|---|---|
+| Heavy, stiff denim: broad folds behind and in front of the knee, a stack at the hem | Fabric + sim | denim at its KB numbers (395 g/m2, 26 mm: B 6.9e-5, automatic now); a hem that rests on the shoe's tongue (`collide`), length "floor". A longer cut to stack (1.05 m) went CORRUPT at 2 cm: not yet |
+| Fuller straight leg below the knee | Pattern | `block_options` `knee` / `hem` (half girths, m): Tess 0.20 / 0.19 |
+| Back yoke, scoop pockets, patch pockets, fly, band, belt loops | Construction (kind `jeans`) | automatic; patch pockets seated after the sim |
+| Contrast topstitching (double rows on the felled seams, fly J, pocket edges, hem) | Detail maps | `detail.thread` golden (#b8843a); the kind's `felled` seams draw two rows |
+| Back-pocket stitched design (arcuate), rivets, coin pocket, button | Detail maps / trims | NOT built yet |
+| Indigo wear and fades (whiskers, knees, seam edges, hem) | Paint | NOT built for cloth (garments take one colour + the detail maps) |
+
+**Knits (a sweater, a sweatshirt; dress-tess 2026-10-14).** `"block": "knit"` + `{"op": "sleeve"}`; the rib details
+make their own bands (the KB's `draft.generate`: neckband laid up from the neckline, `wrap: seam`, 3 mm out; cuffs
+round each arm following the sleeve's wrist; hem band from CB on the torso, aligned on the front's centre). Override
+one band with a garment `generate` entry of the same `band` name (it replaces the design's), or a detail's
+`{"type": "rib", "generate": {"height": 0.06}}`. Rules:
+- `worn_top: true`: the body pieces laid on the form, so the seam-laid neckband starts round the neck (on a loose
+  tube it started 2x stretched). The armhole then sits at the true armpit: `sleeve` `length_bonus` ~ +0.06.
+- `block_options.hips_ease` only acts with `"fitted": true`; unfitted, the knit hangs straight from the chest.
+- Length: `block_options.length` in metres below the HPS at CB. A body cut within 3 cm of the waist names its hem
+  points `cbWaist` / `waist` / `cfWaist`, not `cbHem` / `hem` / `cfHem`: a hem band's chain must name those (give the
+  band's own `generate` entry), else "piece 'back' has no point 'cbHem'". Measure the target: where the BAND's lower
+  edge is on the reference (Tess: 485 mm under the HPS) less the band's height.
+- A hem band laid from the seam (`wrap: seam`) started 135% stretched: keep the torso + align wrap. Its closing seam
+  starts ~30 cm open at the back (stage 4 WARN): the declared rib stretch lets the solver close it.
 
 ### 2. The pattern, laid flat and looked at (`look_pattern`)
 
@@ -430,6 +467,15 @@ come last. The reference sections below cover each part.
   (the suit trousers use it). A seam that STARTS far apart is a placement fault: stiffness can't fix it and made a
   jacket's pit seams worse (stage 4).
 - A Garrett-sized jacket over a shirt at 2 cm: ~6-13 min on a rented 4090, ~30-50 min on this laptop.
+- **Where sims run, and what they cost (2026-10-14).** oxidegen bundle jobs: `where: "local"` (bundle_client `run
+  --local --gpu --via-storage`) runs on the department's own GPU (NICO-TOP, a laptop 3070 Ti) for $0, about 5x slower
+  than a rented 4090 (~4.5 s a frame on 2800-vertex jeans: give it a 20 min timeout, not 8). Use it first; send heavy
+  sims (a coat over a sweater) or a hurry to the rented fleet (~$0.03-0.08 a 2 cm garment). Never resubmit a job
+  that went up and came back without a result (a crawling sim billed twice once): find why first. A job "provisioning"
+  is queued behind another client's batch (its shown cost is not billed); cancel it if you need the box.
+- **A sim that crawls** (seconds a frame where its siblings ran fast) is a fault in its start until shown otherwise:
+  a piece through ITSELF (stage 4 fails it now), a hem gathered onto a shoe through itself, a too-tight fit. Read the
+  place stage before resubmitting.
 
 #### Read the report
 
@@ -687,6 +733,12 @@ The same maps go into `scene.blend` and the export.
 | A detail (buttons, a trim) missing and a sim queued to add it | Buttons are constructed after the sim on the drape; a render that leaves them out is the renderer's fault | No sim: look_cloth / export draw `res["buttons"]`; a scratch render must draw them too (anchored to their vertex `at`, moved with the constructed jacket). Adding / moving one re-keys the sim (marks are mesh vertices) |
 | A ZOZO job runs 10x longer than usual and fails (frame 116/150 after 21 min) | A draft that leaves the cloth no room (Garrett's jacket at chest_ease 0.03: contact-heavy); the stall guard never fires because the GPU is busy | Cancel at ~5 min, never resubmit the same job (scratch stage.sh records what it sent); go back to the previous ease |
 | A sim billed twice | Two stage runs over the same queue overlapped (the first one's upload failed but the script carried on) | One stage run at a time: check for a running stage.sh before starting one; a failed upload ends the run |
+| Trousers / jeans start as slabs in front of and behind the legs (start seam gaps median 160 mm) | The leg tube took exactly one front and one back piece per leg; jeans also have a scoop pocket side and a yoke on the leg | Fixed (dress-tess): the leg's own pieces are the ones reaching the hem; jeans start at median 23 mm. Read the start seam gaps of every new lower-body design |
+| "a neckband piece (none in the pattern)" on a drafted knit | The rib details had no way to make their bands in a block + ops design | Fixed: the KB's band details generate them (Knits, stage 1) |
+| Patch pockets (jeans' back pockets) through the cloth they're sewn on: CORRUPT, 20-30 crossings | Held by their tacks only, they slid and sank through in the sim | Fixed as construction: a patch pocket is laid on its piece as it finally lies after the sim (`seat_patch_pockets`, report `pockets_seat`; `cleanup.pockets` false = off) |
+| A pocket on one side after `unfold` (a chest pocket on `front.L`) "sewn to nothing" | Its tacks were queued for the mirror pass, which had already run | Fixed (op_pocket) |
+| `closures: [{"name": "front", "state": "open"}]` refused at save ("needs name and over") | The validator asked for `over` on an entry that only says how a closure is worn | Fixed: an entry without `over` is laid over the design's closure of that name |
+| A fleet job sits "provisioning" for many minutes with its cost climbing | The rented box never came up | Cancel the batch (cost returns to $0 on a never-started job); take the job out of sent.txt and resubmit once |
 
 ## Designing a garment that doesn't exist: block + operations
 

@@ -203,13 +203,6 @@ def test_a_ring_band_is_no_opening():
     assert "cuff.L" not in txt and "front.L and front.R" in txt, txt
 
 
-if __name__ == "__main__":
-    for k, f in list(globals().items()):
-        if k.startswith("test_"):
-            f()
-            print("ok", k)
-
-
 def test_waist_band_follows_the_body():
     """A garment cut straight from the chest: its waist band's top comes from THIS body's chest-to-waist drop (a
     woman's waist 0.74 x her chest: a jumper at +16% chest is +57% at the waist, honestly); a man's barely changes,
@@ -305,3 +298,35 @@ def test_a_start_inside_the_contact_standoff_is_named():
     X = np.array([[0.3, 0.3, 0.02], [0.2, 0.2, 0.02], [0.3, 0.3, 0.001], [0.2, 0.2, 0.01]])
     near = cloth_workflow.start_in_standoff(X, M, body)
     assert set(near) == {"band"} and abs(near["band"][0] - 1.0) < 0.05
+
+
+def test_a_drafted_sweater_makes_its_rib_bands():
+    """dress-tess: a crew-neck sweater from the knit block (kind hoodie, rib_neckband / rib / rib_band) failed 'a
+    neckband piece (none in the pattern)': the band details now generate their bands (details.<d>.<c>.draft.generate);
+    the garment's own band of a name replaces the design's."""
+    from hifipushie import garment_design as gd
+    sheet = {"kind": "hoodie", "block": "knit", "fit": "regular",
+             "details": {"collar": "rib_neckband", "cuff": "rib", "hem": "rib_band", "pockets": "none"},
+             "ops": [{"op": "sleeve"}]}
+    bands = {e["band"] for e in gd.compile_sheet(sheet)["generate"]}
+    assert bands == {"neckband", "cuff.L", "cuff.R", "hem_band"}, bands
+    own = {"band": "hem_band", "role": "hem_band", "along": ["back:cbWaist>waist.m"], "ratio": 0.9, "height": 0.05}
+    g = gd.expand({"design": sheet, "generate": [own]})
+    hb = [e for e in g["generate"] if e["band"] == "hem_band"]
+    assert hb == [own], hb
+
+
+def test_a_piece_through_itself_is_only_excused_where_it_is_sewn_to_itself():
+    """dress-tess: a jeans leg whose start folded through itself was only warned about (the sim crawled to its
+    limit); a cuff closed on itself (a self seam / stitch) still is."""
+    from hifipushie import cloth_workflow as wf
+    M = {"names": ["front.L", "cuff.L"], "piece": np.array([0, 0, 1, 1]),
+         "sew": np.array([[2, 3]]), "stitch": np.zeros((0, 2), np.int64)}
+    assert wf.sewn_crossings([("front.L", "front.L"), ("cuff.L", "cuff.L")], M) == [("cuff.L", "cuff.L")]
+
+
+if __name__ == "__main__":  # (at the END: tests defined after it never ran as a script, until dress-tess)
+    for k, f in list(globals().items()):
+        if k.startswith("test_"):
+            f()
+            print("ok", k)

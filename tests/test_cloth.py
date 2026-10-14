@@ -157,6 +157,32 @@ def test_hanger_measures():
     assert not ok and "pins carry" in line, line
 
 
+def test_a_kb_fabrics_real_numbers_reach_the_job(tmp=None):
+    """Joe 2026-10-14, "use the real cloth values": a design sheet's KB fabric gives ZOZO its own density (gsm) and
+    flexural rigidity (B = w g c^3 from its bending length), not its solver preset's (cotton twill ran as 400 g/m2
+    denim, a 300 g/m2 french terry as 180 g/m2 jersey with B 1e-6). A fabric without KB numbers keeps the preset's
+    and says so; a garment's own fabric.physical still wins."""
+    import json
+    import tempfile
+    from pathlib import Path
+    from hifipushie import cloth_job, garment_design as gd
+    g = gd.expand({"design": {"kind": "hoodie", "block": "knit", "fabric": "french_terry",
+                              "details": {"pockets": "none"}}})
+    fab = cloth.fabric(g)
+    assert fab["physical_source"] == "kb" and abs(fab["physical"]["density"] - 0.315) < 1e-9
+    assert abs(fab["physical"]["bend"] - 0.315 * 9.81 * 0.014 ** 3) < 1e-8
+    d = Path(tempfile.mkdtemp())
+    cloth_job.write(d, {"fabric": fab}, {"x": np.zeros(1)})
+    ph = json.loads((d / "job.json").read_text())["fabric"]["physical"]
+    assert abs(ph["density"] - 0.315) < 1e-9 and abs(ph["bend"] - fab["physical"]["bend"]) < 1e-12
+    assert ph["stretch"] == cloth_job.PHYSICAL["jersey"]["stretch"]  # (no membrane numbers in the KB: the preset's)
+    tw = cloth.fabric(gd.expand({"design": {"kind": "coat", "block": "bodice", "fabric": "cotton_twill"}}))
+    assert abs(tw["physical"]["density"] - 0.24) < 1e-9  # (was denim's 0.40)
+    assert cloth.fabric({"fabric": "shirting"})["physical_source"] == "preset"
+    own = cloth.fabric({"fabric": {"preset": "denim", "kb": "denim", "physical": {"bend": 1e-4}}})
+    assert own["physical"]["bend"] == 1e-4 and abs(own["physical"]["density"] - 0.395) < 1e-9
+
+
 def test_zozo_backend_keys():
     """A ZOZO result is keyed on its runner (cloth_zozo.py), never on blender_cloth.py, and not on where it ran: a
     pod's result is found locally (the tooling card: a 27-min result lost to an edit of the Blender script)."""
@@ -566,8 +592,14 @@ def test_hem_stops_on_the_shoe_with_a_break():
     front = hem & (U[:, 0] < -0.015)
     back = hem & (U[:, 0] > 0.015)
     assert (X[front, 2] >= 0.10 + gap - 1e-6).all() and np.allclose(X[back], out[back])
-    high = U[:, 1] - U[:, 1].min() > cloth.LEG_BREAK
-    assert np.allclose(X[high], out[high])  # above the break nothing moves
+    # above the break nothing moves: the band is LEG_BREAK, or longer where the deficit needs it (here 74 mm to lose:
+    # the band is 74 / LEG_GATHER = 123 mm, so its rows keep 40% of their spacing; dress-tess)
+    band = max(cloth.LEG_BREAK, (0.10 + gap - 0.03) / cloth.LEG_GATHER)
+    high = U[:, 1] - U[:, 1].min() > band + 1e-6
+    assert np.allclose(X[high], out[high])
+    for c in xs[xs < -0.015]:  # and no row of a gathered column is pressed under 40% of its spacing
+        zc = X[np.isclose(U[:, 0], c), 2]
+        assert (np.diff(zc) >= (1 - cloth.LEG_GATHER) * (zs[1] - zs[0]) - 1e-9).all()
     # each front column keeps its order (gathered, not turned inside out)
     for c in xs[xs < -0.015]:
         zc = X[np.isclose(U[:, 0], c), 2]

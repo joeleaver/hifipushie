@@ -61,8 +61,12 @@ def validate(entries, where: str = "closures") -> None:
         raise ClosureError(f"{where}: a list of closures ({{name, kind, over, under, ...}})")
     seen = set()
     for c in entries:
-        if not isinstance(c, dict) or not c.get("name") or not c.get("over"):
-            raise ClosureError(f'{where}: each closure needs "name" and "over" (the lapping piece)')
+        # (an entry without "over" is laid over the design's / draft's closure of that name (cloth.build: how it
+        # is WORN, e.g. {"name": "front", "state": "open"}); the guide's own example was refused here at save
+        # until dress-tess, 2026-10-14)
+        if not isinstance(c, dict) or not c.get("name"):
+            raise ClosureError(f'{where}: each closure needs "name" (and "over", the lapping piece, unless it is laid '
+                               f'over the design\'s closure of that name)')
         bad = set(c) - KEYS
         if bad:
             raise ClosureError(f"{where} {c['name']!r}: unknown keys {sorted(bad)} (have {sorted(KEYS)})")
