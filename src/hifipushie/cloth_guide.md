@@ -71,6 +71,13 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 - **fabric:** a fabric with physical numbers (weight, thickness, woven or knit, bending length) mapped to the solver's
   preset: cotton_shirting, oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit,
   french_terry. Different fabrics must bend differently: one preset on every garment reads generic.
+  **CHECK what ZOZO gets (dress-tess, 2026-10-14):** ZOZO reads only `cloth_job.PHYSICAL` (5 presets: shirting,
+  jersey, wool_coating, denim, linen), NOT the KB fabric's gsm / bending length. A KB fabric runs on its preset's
+  numbers: cotton_twill as denim (400 g/m2), french_terry and rib_knit as jersey (180 g/m2, B 1e-6), and even denim's
+  preset is softer than the KB's denim (B 3e-5 N m = bending length 19.7 mm; KB 22-30). Give the numbers yourself:
+  `"fabric": {"preset": "denim", "physical": {"density": 0.40, "bend": 6.9e-5}}` with B = w g c^3 (w kg/m2, c the
+  bending length in m: denim 400 g/m2 at 26 mm = 6.9e-5; a 300 g/m2 knit at 14 mm = 8e-6; a 240 g/m2 twill at 19 mm =
+  1.6e-5).
 - **details:** one choice per detail, or `{"type": choice, "options": {raw draft options}}`. Anything you leave out
   takes the kind's default, and the reply says so. `garment_reference(detail="collar")` lists the choices with what
   each is made of, its seams, fold lines, interfacing, dimensions and checks.
@@ -133,6 +140,18 @@ Tailoring numbers the knowledge base carries (all checked in stage 2 where the p
 **Stale options.** `design_garment` merges the sheet key by key, so an option you set rounds ago is still there
 (`block_options.darts: true` did nothing on a hip-length bodice, then made fish-eye darts under a princess line once
 that code arrived). Read the sheet back in the reply; give `false`, null, or `replace=True` to clear.
+
+**What makes jeans read as JEANS, not slacks** (the coordinator on Tess's first jeans: "smooth dark slacks"), and
+which stage makes each:
+
+| Tell | Made by | How here |
+|---|---|---|
+| Heavy, stiff denim: broad folds behind and in front of the knee, a stack at the hem | Fabric + sim | The fabric's real bending (above: B 6.9e-5); a hem that rests on the shoe's tongue (`collide`), length "floor". A longer cut to stack (1.05 m) went CORRUPT at 2 cm: not yet |
+| Fuller straight leg below the knee | Pattern | `block_options` `knee` / `hem` (half girths, m): Tess 0.20 / 0.19 |
+| Back yoke, scoop pockets, patch pockets, fly, band, belt loops | Construction (kind `jeans`) | automatic; patch pockets seated after the sim |
+| Contrast topstitching (double rows on the felled seams, fly J, pocket edges, hem) | Detail maps | `detail.thread` golden (#b8843a); the kind's `felled` seams draw two rows |
+| Back-pocket stitched design (arcuate), rivets, coin pocket, button | Detail maps / trims | NOT built yet |
+| Indigo wear and fades (whiskers, knees, seam edges, hem) | Paint | NOT built for cloth (garments take one colour + the detail maps) |
 
 **Knits (a sweater, a sweatshirt; dress-tess 2026-10-14).** `"block": "knit"` + `{"op": "sleeve"}`; the rib details
 make their own bands (the KB's `draft.generate`: neckband laid up from the neckline, `wrap: seam`, 3 mm out; cuffs

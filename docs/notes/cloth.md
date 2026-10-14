@@ -2595,3 +2595,17 @@ MISSING / WRONG (fixed in code, or written into the guide):
   2-3 folds; ours taper slightly, hang clean (almost no folds) and show a sliver of sock at the front.
 - j4: knee 0.20 / hem 0.19 (half girths: 397 / 380 mm round) for her fuller leg; NICO-TOP.
 - Spend: $0.044 (j1) + $0.077 (j3 rented) + $0.032 (j2t rented) = $0.153.
+- j4 (NICO-TOP $0): fits, 0 crossings; fuller below the knee, hem covers the tongue. Coordinator: "smooth dark SLACKS,
+  not jeans": (1) fabric behaviour, (2) fuller below the knee, (3) denim details (contrast topstitching, yoke, pocket
+  design, loops, rivets, coin pocket) and indigo wear (paint); say in the guide which is construction vs paint.
+- (13) FOUND: ZOZO reads only cloth_job.PHYSICAL (5 presets), never the KB fabric's gsm / bending length: cotton_twill
+  runs as 400 g/m2 denim, french_terry / rib_knit as 180 g/m2 jersey (B 1e-6), and denim's own preset is soft (B 3e-5 =
+  19.7 mm bending length, KB 22-30). Per garment: fabric {"preset", "physical": {"density", "bend"}} with B = w g c^3.
+  NOT changed as a default (it would re-key every cached sim): coordinator's call.
+- j5 = j4 + denim B 6.9e-5 (26 mm) + golden thread (#b8843a): fits, 0 crossings, folds rms 3.3 mm (unchanged): in a
+  straight A-pose stance stiffer denim still hangs clean; her knee / ankle folds are worn-in memory and a stack the 2 cm
+  sim can't hold (j3). Guide: "What makes jeans read as JEANS" table (fabric+sim / pattern / construction / detail
+  maps / paint; arcuate stitching, rivets, coin pocket and cloth wear paint NOT built). Jeans: 6 rounds (j1, j2, j3
+  dead end, j2t, j4, j5).
+- Sweater s7: s6 + over jeans + fabric {jersey, physical 0.30 / 8e-6}; pre-sim stages pass (hem band closing seam
+  starts 30 cm open: WARN, as tess2's). Sim on NICO-TOP.
