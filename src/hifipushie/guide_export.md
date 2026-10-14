@@ -12,8 +12,23 @@ solid clothing, eyeball backs) are removed first.
 - Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
   variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
   these; the exported GLB in EEVEE does.
-- `triangles` (drawn: a prefab counts once per instance) ~15k suits a hero creature; 5k for a crowd; a
-  furnished building 50-100k. `texture=1024` for quick checks, 2048 to ship.
+- Budgets follow from ROLE and TARGET: state them, never invent them. The default target is a mainstream gaming
+  PC (RTX 3060/4060 class, 8 GB VRAM, 1080p-1440p at 60 fps, about a PS5). The profile (`budgets.json`, every
+  number with its sources; `hifipushie.budgets` reads it) for characters, LOD0 triangles:
+
+  | role | LOD0 (range) | head / body / clothing / hair cards / eyes+lashes | maps | face / body px/m |
+  |---|---|---|---|---|
+  | hero (player, close-ups) | 100k (60-150k) | 25k / 15k / 25k / 25k / 5k | 2K head, 2K body+clothes, 2K hair | 2048 / 1024 |
+  | main NPC (dialogue) | 50k (35-70k) | 15k / 8k / 12k / 10k / 3k | 1K head, 2K body+clothes, 1K hair | 1024 / 512 |
+  | secondary NPC | 20k (12-30k) | 5k / 4k / 5k / 4k / 1k | one 2K atlas | 512 |
+  | crowd | 6k (3-10k) | 1.5k / 1.5k / 1.5k / 1k / 0.3k | one shared 1K atlas | 256 |
+
+  LODs: 1 / 0.5 / 0.25 / 0.12 of LOD0 above the neck and for props; below the neck 1 / 0.25 / 0.11 / 0.05; hair
+  cards end in a hair mesh. Face shapes on LOD0 (hero LOD0-1) only. Switch screen sizes 1 / 0.5 / 0.25 / 0.12 are a
+  starting point to tune in the engine. Hero prop ~8k at 1024 px/m; other props 512 px/m.
+  To override, say the role and the target (e.g. "secondary NPC on a handheld: 10k") and pass the numbers:
+  `triangles=`, `parts.<p>.triangle_weight`, `parts.<p>.texel_density`, `texture=`. `triangles` counts drawn
+  triangles (a prefab once per instance); a furnished building runs 50-100k. `texture=1024` for quick checks.
 - Prefabs with 2+ instances export once: one mesh (a primitive per part) and one set of texels, placed by a
   glTF node per instance, meshed in a box of their own (finer than the scene's voxel when small). Each is baked
   at its first instance (its paint, AO and sky as it stands there), so every chair gets that chair's grime. When
