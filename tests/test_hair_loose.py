@@ -225,6 +225,22 @@ def test_face_rule_by_side():
     assert l1 > 5 and r1 == 0, (l1, r1)
 
 
+def test_face_over_one_holds_the_hair_back_to_the_ear():
+    """face 1.5: below the hairline the hair is kept out of ~87 deg either side of the face's centre (swept back off the
+    cheek and temple to the ear, lt19's profile); face 1 lets it hang over the cheek (58 deg)."""
+    def cheek(face):
+        sc, _c, locks = _grow({"length": 0.3, "spacing": 0.025, "messy": 0.0, "uneven": 0.0, "face": face},
+                              parting="centre")
+        n = 0
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            az, el = hair.az_el(P[3:] - sc.C)
+            a = np.abs(((az + 180) % 360) - 180)
+            n += int(((a > 62) & (a < 80) & (el < -5) & (el > -50)).sum())
+        return n
+    assert cheek(1.5) < 0.5 * max(cheek(1.0), 1), (cheek(1.5), cheek(1.0))
+
+
 def test_soft_halo_is_denser_shorter_and_closer():
     from hifipushie import hair_strands as hs
     S = hc.strands_of({"hair": {"strands": {"halo": 0.5}}})

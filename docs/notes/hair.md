@@ -2322,6 +2322,14 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   makes them): hp_cells (blender_strands) gives them from the root's jittered cell per scale + the strand's length
   (E13: some lock light behind / 3-4; the profile still one dark mass). Open: separation in the mass (gaps between
   locks, see-through edges), and the profile camera.
+- Re-seated (coordinator): lt19 on hl_ps = ltn_hd2_ps (ltn_h06's shape, mouth lowered; hl_g0 was ltn_hd), jw on hj_ps
+  = jwn_hd_ps. lt19 E15 (hl_ps): flow sides [0, .8, -.6] (combed back to the ear), lift 12 -> 6 mm, body 18 -> 10 mm:
+  the profile outline within 2-5 mm on top (was +12) and 7-9 mm at the back (was 13-22). The cheek was still covered:
+  the FACE RULE holds hair out of 58 deg either side of the face's centre, which in profile is mid-cheek. `face` now goes
+  to 1.6 (1.5 = to the ear, ~87 deg): E16 face 1.5: the cheek clear, our front edge on hers from the forehead past the
+  temple to behind the jaw. From the front E16 is narrower than her full sides (body 10 mm: next), a few strands stand up
+  at the part. Garrett E3 (grey fix): the grey is back; the back reads coarse / streaky ("pine needles", nearest-guide
+  bundles + Clump on a crop) with speckles low on the back (~1 %): for a crop the even layer is not yet better than r14.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)

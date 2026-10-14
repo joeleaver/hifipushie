@@ -21,8 +21,10 @@ capability, `groom.loose`:
                             parting, `back`). `out` and `stiff` may also be given per region ({"front": 0.5, ...}).
    "messy": 0.15,           0..1 (or per region): each lock's root direction turned at random (tousled)
    "uneven": 0.3,           0..1: lengths differ lock to lock
-   "face": 1.0,             0..1: how far the hair is kept from hanging over the face (1 = it frames it: curtains
-                            beside the cheeks; 0 = it falls where it falls); the fringe is not held back
+   "face": 1.0,             0..1.6: how far the hair is kept from hanging over the face (1 = it frames it: curtains
+                            beside the cheeks, out of 58 deg either side of the face's centre; 0 = it falls where it
+                            falls; over 1 = held further back, 1.5 = to the ear: hair swept back off the cheek and
+                            temple, lt19's profile); the fringe is not held back
    "ends": 0.0,             -1..1: the ends turn under toward the neck (a bob's bevel, +) or flick out (-)
    "swoop": {"at": 0, "span": 30, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01, "body": 1.6,
              "lay": 0.06},
@@ -398,7 +400,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         face_l = np.where(azs_ >= 0, float(p["face"].get("left", 1.0)), float(p["face"].get("right", 1.0)))
     else:
         face_l = np.full(m, float(p["face"]))
-    face_l = np.clip(face_l, 0, 1)
+    face_l = np.clip(face_l, 0, 1.6)  # (over 1: further back than the cheek, to the ear at ~1.5)
     face = float(face_l.max())
     side0 = np.where(away != 0, away, np.where(rng.uniform(size=m) < 0.5, -1.0, 1.0))
     axis_xy = sc.C[:2] + np.array([0.0, 0.02])
