@@ -62,7 +62,8 @@ import numpy as np
 
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
-         "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None}
+         "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None,
+         "inset": None}
 TUCK = {"side": "both", "amount": 1.0}  # hair over the ear combed back BEHIND it (one side, or both)
 FADE = {"width": 0.02, "length": 0.009, "density": 0.25}  # a short cut fading out toward the nape hairline (locks
 # under 8 mm are not grown: length stays over that)
@@ -229,7 +230,10 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     from .hair import _line_at, _part_x, _poisson, az_el, inside, weights
     p = params(g["loose"])
     sp = float(p["spacing"])
-    ok = lambda a, e: (inside(sc, line, a, e) > 0.004) & (e > sc.EL[0] + 4)  # noqa: E731
+    # roots from `inset` m inside the hairline (default 4 mm). A short cut wants them ON the line (0.0005): 4 mm in, the
+    # strip in front of the first roots was bare scalp-tinted skin, a dark band under a wall of hair (hair-heads, Garrett)
+    ins_ = float(p.get("inset") if p.get("inset") is not None else 0.004)
+    ok = lambda a, e: (inside(sc, line, a, e) > ins_) & (e > sc.EL[0] + 4)  # noqa: E731
     if p.get("below") is not None:  # only the hair rooted below a level (m from the head centre): the rest is tied (half up)
         ok0, zb = ok, float(p["below"])
         ok = lambda a, e: ok0(a, e) & ((sc.point(a, e, 0.0)[..., 2] - sc.C[2]) < zb)  # noqa: E731

@@ -56,8 +56,10 @@ y = 34
 for nm, v, b in rows:
     d.text((6, y + 2), nm, fill=(0, 0, 0), font=font)
     y += 28
-    ims = [refimg[v]] + [hair_read.render_as_picture(f"{OUT}/s_{c.split(':')[0]}{c.split(':')[1]}_{v}.png" if ":" in c
-                                                     else f"{OUT}/s_{m}{c}_{v}.png", (W, H)) for c in cols]
+    def tile(c):
+        p = f"{OUT}/s_{c.split(':')[0]}{c.split(':')[1]}_{v}.png" if ":" in c else f"{OUT}/s_{m}{c}_{v}.png"
+        return hair_read.render_as_picture(p, (W, H)) if os.path.exists(p) else Image.new("RGB", (W, H), (90, 90, 90))
+    ims = [refimg[v]] + [tile(c) for c in cols]
     for j, im in enumerate(ims):
         sheet.paste(im.crop(tuple(int(round(t)) for t in b)).resize((T, T), Image.LANCZOS), (j * T, y))
     y += T

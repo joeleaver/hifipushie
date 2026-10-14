@@ -9,6 +9,24 @@ paths, pick by the job:
 - GAME export: cards cut from the strands (`export_hair` / `export_asset`).
 Why the tools are built this way (practice, sources, engines, what went wrong): guide(topic="hair_background").
 
+## Step 0: DESCRIBE THE STYLE IN WORDS from every photo before grooming (hair-heads; Joe on three heads: "a completely different hairstyle")
+Before any knob, write down from the front, three-quarter and profile pictures, then the same for OUR render, then the
+differences; rebuild the groom from the description (hairline curve, part, comb direction and lift by region, edge
+density), never by tuning the last groom. Numbers (the reader) do not see a style: a short cut combed ACROSS read
+"brushed up and back" by every measure while the render was a different haircut. Say:
+- the hairline: its curve, how far the temples recede, where the front edge sits against the brows (in cm), whether the
+  visible edge is the hairline or hair lying over it, how thin the very front is, whether skin shows through;
+- the part: where, how deep, how much scalp shows (or none);
+- which way the hair is combed and lifted by region (front, top, sides, back) as SEEN in each view: up / back / across /
+  forward, lying flat or standing, and how far the front stands off at the forelock in profile;
+- long hair: how it leaves the part and falls, volume at the crown, how it frames the face, what is tucked / swept /
+  in front of the shoulders, the length and how the ends sit, the wave pattern by region.
+Then groom from those sentences, one region at a time, and judge the region against its sentence.
+Learned on the man's short cut: the front read "up and back" from the reader's sweep; in words it is combed ACROSS to
+one side, lying low, the edge lower and rounder than the bare hairline: `flow.front` across (x), `lay` 0.6, roots ON the
+line (`loose.inset` 0.0005: 4 mm in, the strip in front of the roots was dark scalp-tinted skin under a wall of hair)
+and the hairline's front points ~1 cm lower where hair lies over the forehead.
+
 ## What makes hair read as hair (the checklist; tesshair7, from seven rounds of Tess's ponytail beside her photos)
 Judge each, one area at a time, against the reference in the same camera (`look_hair(views=["ref0", ...])` or
 fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it, its KNOB what sets it.

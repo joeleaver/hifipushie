@@ -2171,6 +2171,23 @@ mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), cmp.py <model>
   scalp-layer band under it; the nape ends in a ledge, not a fade (the nape's density needs the same ramp DOWNWARD,
   over ~1-2 cm: not built). Regression hg2: riff_a5 (half up's loose part) MOVED 1.96: the same style, its strands
   redrawn by the hairline ramp (no new fault seen; not accepted: the coordinator's call).
+### hair-heads (2026-10-14, branch `hair-heads` from main 8343151): one head at a time to Tess's th_W18 standard
+Joe: the arc isn't done; each head is "a completely different hairstyle" (Garrett's front, both family heads). Method
+per round: describe the style in words from every photo (now Step 0 of hair_guide.md), then ours, then the differences;
+rebuild from the description; isolate before fixing; sheet REFERENCE | now | previous every round.
+Garrett round 8 (sheets human_renders/hg_08_garrett_front_style.jpg + hg_08_garrett_front_crops.jpg; patches
+hair_garrett/styles/r8*.json; per-picture description in the private notes):
+- ISOLATED: the dark band under the front hair is NOT the scalp-layer strands (under 0: still there): loose roots
+  started 4 mm inside the hairline (hair_loose ok(): inside > 0.004), the strip in front was scalp-tinted skin. New
+  `groom.loose.inset` (m; default 0.004 unchanged): 0.0005 puts the roots on the line.
+- STYLE: from the photos the front is combed ACROSS to one side, lying low, its edge lower and rounder than the bare
+  hairline; ours was brushed up and back (the reader's "sweep" read it so) and stood as a palisade. Tried a forward
+  side-swept fringe (r8: a bowl fringe to the brows, wrong) and a short stiff one (r8b: spiky, wrong); r8c (flow front /
+  top across, lay 0.6, no fringe) gave the right kind of front; r8d lowered the front points ~1 cm (temples 1.3 cm).
+- Left on Garrett: the sweep is diagonal where his edge is a rounder arc; the top reads browner than his grey top;
+  nape (next); the halo.
+RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
+stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)
 STATE: `strands.halo_soft` 0..1 (a dense soft halo: x4 halo hairs at 1, their stand-off x 0.35 (~4 mm), length x 0.4;
 pair with look.fine_alpha 0.2-0.3; hair_strands.SOFT_HALO); `look.seen` may be [r, g, b] sRGB floats and the reader's
