@@ -184,7 +184,7 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
     key = f"{density:.3f}_{thickness:.3f}_{length_mm:.2f}_{width_mm:.1f}_{seed}_{tail:.2f}_{VERSION}" + \
         (f"_f{fall:.2f}" if fall != 1.0 else "") + (f"_t{taper:.2f}" if taper != 0.82 else "")
     # (fall: how far the tail drops past the arch, x the default; taper: how much the band thins from the body to the
-    # tail, 0.82 = to 18 %: a dense brow drawn thick (thickness > 1) kept its heavy tail, lt19b)
+    # tail, 0.82 = to 18 %: a dense brow drawn thick (thickness > 1) kept its heavy tail)
     import hashlib
     out = images.store_dir() / f"brow_{hashlib.sha1(key.encode()).hexdigest()[:12]}.png"
     h_mm = 0.42 * width_mm

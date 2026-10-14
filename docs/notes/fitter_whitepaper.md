@@ -794,4 +794,4 @@ WHAT A FRESH AGENT WOULD GET WRONG:
   relabel.py (no render), never mixed in.
 - Shell: version-control commands combined with cd / heredocs / loops are refused in this worktree (plain commands
   only); `pgrep -f pattern` matches its own shell (use "[t]rain_seg.sh"); foreground sleeps are blocked (until-loops).
-- Do not open: the held-out Garrett photos, refs_lt19 / the wife's sets, out/real_fam/.
+- Do not open: the held-out Garrett photos, the private subjects' reference sets, out/real_fam/.

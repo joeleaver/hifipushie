@@ -925,7 +925,7 @@ def start(r: dict, spec: dict) -> dict:
             g["loose"]["flyaway"] = put("groom.loose.flyaway", round(float(np.clip(0.01 * s["wisps_per_10cm"], 0.02, 0.2)), 3),
                                         f"MEASURED {s['wisps_per_10cm']} wisps / 10 cm")
         # The two principles (hair_guide.md, top): EVEN ROOTS (EVERY strand from one even sampling of the scalp; the
-        # locks are dense GUIDES 4 mm apart that only steer direction, each bank of the part its own: lt19 E9, magenta
+        # locks are dense GUIDES 4 mm apart that only steer direction, each bank of the part its own, magenta
         # only on the part line) and ARC UP, THEN FALL (out of the scalp by region, from the measured stand-off)
         g["loose"].update({"spacing": 0.004, "width": 2.4})
         arc = {reg: round(float(np.clip(0.25 * (1000 * so_all.get(reg, 0.008) / 10.0) * w, 0.0, 0.4)), 3)

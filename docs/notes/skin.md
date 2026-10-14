@@ -584,7 +584,7 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   their strength reads low; (3) lips read as lipstick decals on both heads (flat fill, hard border) in every read;
   (4) grey stubble: bright specular tips + a chroma'd grey-blue root shadow; (5) the nose-side seam on Tess.
 
-## Very fair skin (2026-10-10, "jw2" agent)
+## Very fair skin (2026-10-10)
 - The tone model could not make very fair skin: melanin 0 stopped at ITA 52 deg (L* 71, b* 16.2: Chardon / Del Bino's
   "light"; "very light" is ITA > 55, about L* 70, b* 12), undertone -1 only traded b* for a darker L*. The floor was
   the epidermis's melanosome fraction (MELANIN[0] 1.3%) and the fixed carotene baseline. Now (skin.melanosomes,

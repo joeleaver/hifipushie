@@ -1,5 +1,5 @@
 """humans.py: every model in the workspace with hair: base kind, groom mode, hairline overrides, whether a scalp is
-cached. (lt19 / jw are private: listed by name only, never opened further.)"""
+cached. (private subjects' models: listed by name only, never opened further.)"""
 import json
 
 from hifipushie import store

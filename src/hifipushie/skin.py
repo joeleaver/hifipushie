@@ -102,7 +102,7 @@ _XYZ2RGB = np.array([[3.2404542, -1.5371385, -0.4985314], [-0.9692660, 1.8760108
 MELANIN = (0.013, 0.55)  # melanosome volume fraction of the epidermis at melanin 0 and 1 (Jacques: 1.3% .. 43%+)
 BLOOD = (0.01, 0.12)  # blood volume fraction of the dermis at blood 0 and 1
 FITZPATRICK = {1: 0.02, 2: 0.14, 3: 0.3, 4: 0.48, 5: 0.7, 6: 0.9}  # melanin (0..1) per Fitzpatrick type
-# The very fair end (jw, 2026-10-10): with MELANIN[0] and a fixed carotene baseline, melanin 0 stopped at ITA 52 deg
+# The very fair end (2026-10-10): with MELANIN[0] and a fixed carotene baseline, melanin 0 stopped at ITA 52 deg
 # (L* 71, b* 16: Chardon / Del Bino's "light"), so "very light" skin (ITA > 55: L* ~70, b* ~12) was out of reach and
 # rendered tan. Below FAIR_TO (F2), the melanosome fraction falls geometrically to MELANIN_FAIR and the carotene
 # baseline to FAIR_CAROTENE of itself; F2 and darker are unchanged. Melanin 0: ITA ~59, F1: ~58, F2: 47.

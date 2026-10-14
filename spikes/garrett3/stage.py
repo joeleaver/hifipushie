@@ -33,7 +33,7 @@ STAGE_EEVEE = (json.loads(os.environ["STAGE_EEVEE"]) if os.environ.get("STAGE_EE
 
 def photo_light(name, vi=None):
     """FRONT_LIGHT re-aimed and re-balanced to the front picture's own fitted light (blockin.photo_lighting: the clay
-    sheets' light): use it for dressed vs photo comparisons (jw2: the fixed 42-deg key read narrower / harder)."""
+    sheets' light): use it for dressed vs photo comparisons (the fixed 42-deg key read narrower / harder)."""
     from hifipushie import blockin
     return blockin.photo_lighting(name, FRONT_LIGHT, vi)
 

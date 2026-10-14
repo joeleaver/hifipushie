@@ -25,7 +25,7 @@ capability, `groom.loose`:
    "face": 1.0,             0..1.6: how far the hair is kept from hanging over the face (1 = it frames it: curtains
                             beside the cheeks, out of 58 deg either side of the face's centre; 0 = it falls where it
                             falls; over 1 = held further back, 1.5 = to the ear: hair swept back off the cheek and
-                            temple, lt19's profile); the fringe is not held back
+                            temple); the fringe is not held back
    "ends": 0.0,             -1..1: the ends turn under toward the neck (a bob's bevel, +) or flick out (-)
    "swoop": {"at": 0, "span": 30, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01, "body": 1.6,
              "lay": 0.06},
@@ -265,7 +265,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     away_w = away.copy() if hasattr(away, "copy") else away
     pc = p.get("part_soft")
     if xp is not None and pc:
-        # A SOFT PART (rule 5, hair-heads: lt19's "bald stripe"): next to the part the roots are NOT combed away from it
+        # A SOFT PART (rule 5, hair-heads: a centre part's "bald stripe"): next to the part the roots are NOT combed away from it
         # (every root combed sideways off the line opened a bare V that widened toward the forehead); the away comb
         # comes in over `width` m, and a `cross` share of the roots within it is combed over to the other side
         pc = {"width": 0.015, "cross": 0.25} if pc is True else {"width": 0.015, "cross": 0.25, **pc}
@@ -386,7 +386,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     layer = 0.7 * rank + 0.3 * rng.uniform(0, 1, m)
     # lift: one number, or per region (a short cut stands off the skull by region: a lifted top over clipped sides)
     lift = np.clip(by_region(p["lift"], LOOSE["lift"]), 0.0, 0.05)
-    # body: one number, or per region (fuller at the sides than on top: lt19 E16 from the front)
+    # body: one number, or per region (fuller at the sides than on top)
     target = lift + np.clip(by_region(p["body"], LOOSE["body"]), 0.0, 0.06) * layer
     target[is_fr] = 0.004 + 0.006 * layer[is_fr]
     n = 44
@@ -396,7 +396,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     ends = float(p["ends"])
     rest = np.zeros(m, bool)
     # face: one number, or {"left": .., "right": ..} (the person's own sides: one long curtain falling over a cheek while
-    # the other side is tucked, hair-heads jw): per lock by the side its root is on
+    # the other side is tucked, hair-heads): per lock by the side its root is on
     if isinstance(p["face"], dict):
         azs_ = ((az + 180) % 360) - 180
         face_l = np.where(azs_ >= 0, float(p["face"].get("left", 1.0)), float(p["face"].get("right", 1.0)))

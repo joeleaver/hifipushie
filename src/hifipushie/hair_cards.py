@@ -60,7 +60,7 @@ STRANDS = {
     # nearest lock guides (locks only steer: a part / sweep / whorl is the comb, never a gap between locks; hair-heads);
     # 1 = every strand (the locks are dense guides only)
     "even_guides": 0,  # guides a child of the even layer takes its shape from (0 = auto: 1 at even 1, else 3). One: at
-    # a split in the comb (a part, a tuck behind the ear) children averaging both sides took the middle path (jw E1)
+    # a split in the comb (a part, a tuck behind the ear) children averaging both sides took the middle path
     "wave_from": 0.0,  # m along a lock where its waves start (long hair straight on top, wavy below the ear: ~0.10-0.14);
     # 0 = from the first 3 cm
     "halo_soft": 0.0,  # 0..1: the halo DENSE AND SOFT (rule 4, hair-garrett3): many more halo hairs, shorter and closer
