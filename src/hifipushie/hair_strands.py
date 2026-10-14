@@ -75,7 +75,7 @@ def _unit(v):
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
-def physical(S: dict, free: bool = False) -> dict:
+def physical(S: dict, free: bool = False, tail: bool = True) -> dict:
     """The dials as the numbers Blender's nodes take (metres, factors). `free`: hair that has left the head."""
     c = lambda k: float(np.clip(S[k], 0.0, 1.0))  # noqa: E731
     count = max(int(S["count"]), 200)
@@ -103,8 +103,9 @@ def physical(S: dict, free: bool = False) -> dict:
         "roots": SAFE["roots"] * c("roots") * (0.3 if free else 1.0),
         "curl": SAFE["curl_m"] * c("curl") * (1.0 if free else 0.3),
         "curl_freq": 1.0 / max(float(S["wavelength"]), 0.01),
-        # (a tail has its fly-aways; short hairs standing off it all round made it a bottle brush)
-        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if free else 1.0),
+        # (a tail has its fly-aways; short hairs standing off it all round made it a bottle brush: quartered on hair that
+        # left the head IN A TAIL. Loose hair (groom.loose: free locks, no tie) keeps the dial: rule 4, hair-garrett)
+        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if (free and tail) else 1.0),
     }
 
 
@@ -434,7 +435,8 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
             "names": np.asarray([f"u{i}" for i in range(len(P))])}
 
 
-def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0, n_wisp: float = 0.0) -> dict:
+def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0, n_wisp: float = 0.0,
+           tail: bool = True) -> dict:
     """Each object's modifier stack: [[node group, {input: value}], ...]. {"part": name} = the scene object of that
     part (the body: strands are kept out of it), {"attribute": name} = a named attribute as a field."""
     body = {"object": "hair_collide"}
@@ -464,7 +466,7 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
     if n_head > 0:
         out["hair_guides"] = lens_stack(physical(S), n_head, False)
     if n_free > 0:
-        out["hair_guides_free"] = lens_stack(physical({**S, **(S.get("free") or {})}, free=True), n_free, True)
+        out["hair_guides_free"] = lens_stack(physical({**S, **(S.get("free") or {})}, free=True, tail=tail), n_free, True)
     if n_wisp > 0:  # single hairs: no clumps to join, no strays of strays; each keeps most of its length
         ph = wisp_physical(S)
         st = lens_stack(ph, n_wisp, True)
@@ -561,8 +563,15 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         np.savez(tmp / "hair_under.npz", **ug)
         groups.append({"name": "hair_under", "guides": str(tmp / "hair_under.npz"), "locks": int(len(ug["counts"])),
                        "strands": int(round(n_under))})
+    # is the free hair a TAIL (tied hair that left the head) or LOOSE hair (groom.loose, no tie)? a tail keeps its
+    # quartered halo; loose hair takes groom.loose's own halo / flyaway words (rule 4's knob for a loose head)
+    tail = any(float(k_.get("free", 0.0)) > 0.5 and k_.get("tier") != "loose" for k_ in hair_locks)
+    lo_ = g.get("loose") or {}
+    if not tail and (lo_.get("halo") is not None or lo_.get("flyaway") is not None):
+        fw = {k: float(lo_[k]) for k in ("halo", "flyaway") if lo_.get(k) is not None}
+        S = {**S, "free": {**(S.get("free") or {}), **fw}}
     st = stacks(S, amount.get("hair_guides", 0.0), amount.get("hair_guides_free", 0.0), n_under, area, seed,
-                n_wisp=amount.get(WISPS, 0.0))
+                n_wisp=amount.get(WISPS, 0.0), tail=tail)
     for grp in groups:
         grp["stack"] = st[grp["name"]]
     out = {"scalp": str(tmp / "strand_scalp.npz"), "collide": str(tmp / "strand_collide.npz"), "groups": groups, "look": look, "physical": ph,

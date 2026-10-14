@@ -910,6 +910,13 @@ def start(r: dict, spec: dict) -> dict:
         g["loose"] = {"length": round(ln, 3), "level": round(lvl, 3), "spacing": 0.02, "body": body, "lift": lift,
                       "stiff": 0.25, "messy": 0.08, "uneven": 0.35, "face": 1.0}
         put("groom.loose (rest)", "spacing 0.02, stiff 0.25, messy 0.08, uneven 0.35, face 1", "the guide's long-hair recipes")
+        if s.get("halo_all") is not None:  # loose hair's own halo / fly-away words (rule 4 / 7)
+            g["loose"]["halo"] = put("groom.loose.halo", round(float(np.clip(2.5 * s["halo_all"], 0.1, 1.0)), 2),
+                                     f"MEASURED halo density {s['halo_all']} (hair-garrett family r4: 1.0 read ~0.3 of it "
+                                     f"with the old quartered dial)")
+        if s.get("wisps_per_10cm") is not None:
+            g["loose"]["flyaway"] = put("groom.loose.flyaway", round(float(np.clip(0.01 * s["wisps_per_10cm"], 0.02, 0.2)), 3),
+                                        f"MEASURED {s['wisps_per_10cm']} wisps / 10 cm")
         st_long = {"count": 120000, "clump": 0.45, "loose": 0.2, "stray": 0.6, "tips": 0.5}
         if wv is not None:
             k = float(np.clip((wv - 0.08) / 0.3, 0.0, 1.0))  # 0 straight .. 1 waves
@@ -949,6 +956,8 @@ def start(r: dict, spec: dict) -> dict:
                                                   "the skin; pushed out, they crumple into curls (hair-garrett r1-r2)")
         put("groom.loose (rest)", "spacing 0.008, width 2.4, messy low (combed), uneven 0.5, stiff per region",
             "a combed short cut")
+        loose["fade"] = put("groom.loose.fade", {"width": 0.02}, "a short cut fades out at the nape (prior: a barber's "
+                                                                 "fade over 2 cm; the nape ended in a ledge without it)")
         g["loose"] = loose
     # hairline: the measured front points (|az| <= 75: the front and temples), heights in m
     hp = [[a, z] for a, z, e, n in s.get("hairline") or [] if a <= 75]

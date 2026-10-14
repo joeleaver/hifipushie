@@ -33,7 +33,16 @@ capability, `groom.loose`:
                             `length` m longer, laid by `lay` so the wave rolls back behind the hairline, not tousled
                             by messy, and its locks are `body` x wider and thicker with their strands kept together
                             (one coherent lock); weights fade smoothly
-   "fringe": {"length": 0.07, "span": 40, "depth": 0.045, "sweep": 0.0, "level": None}}
+   "fringe": {"length": 0.07, "span": 40, "depth": 0.045, "sweep": 0.0, "level": None, "curtain": 0.0},
+                            (sweep "away" + curtain 0..1: CURTAIN BANGS, each side swept down and away from the part,
+                            longer toward the outer edges)
+   "tuck": "left" | {"side": "left" | "right" | "both", "amount": 1.0},
+                            hair over and in front of the (found) ear combed back and passing BEHIND it
+   "fade": {"width": 0.02, "length": 0.009, "density": 0.25},
+                            the back's locks shorten and thin out over `width` m toward the nape hairline (a fade)
+   "halo": 0..1, "flyaway": 0..1}
+                            loose hair's own halo / fly-aways (the strands' dials for its free locks; a TAIL's halo
+                            stays quartered, loose hair's is not)}
                             hair rooted within `depth` m of the front hairline, `span` deg either side of the
                             centre, combed forward over the forehead (sweep -1..1: to his right / left); level
                             (m from the head centre) cuts it straight, e.g. at the brows
@@ -53,8 +62,11 @@ import numpy as np
 
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
-         "flow": None, "swoop": None, "below": None}
-FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45}
+         "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None}
+TUCK = {"side": "both", "amount": 1.0}  # hair over the ear combed back BEHIND it (one side, or both)
+FADE = {"width": 0.02, "length": 0.009, "density": 0.25}  # a short cut fading out toward the nape hairline (locks
+# under 8 mm are not grown: length stays over that)
+FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45, "curtain": 0.0}
 SWOOP = {"at": 0.0, "span": 30.0, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "stiff": 0.75, "length": 0.01, "body": 1.6,
          "lay": 0.06}
 DOWN = np.array([0.0, 0.0, -1.0])
@@ -96,6 +108,17 @@ def params(lo) -> dict:
         if bad:
             raise ValueError(f"hair loose swoop: unknown keys {sorted(bad)} (have {', '.join(sorted(SWOOP))})")
         p["swoop"] = {**SWOOP, **sw}
+    for key, dflt in (("tuck", TUCK), ("fade", FADE)):
+        if p.get(key):
+            v = {} if p[key] is True else ({"side": p[key]} if key == "tuck" and isinstance(p[key], str) else p[key])
+            bad = set(v) - set(dflt)
+            if bad:
+                raise ValueError(f"hair loose {key}: unknown keys {sorted(bad)} (have {', '.join(sorted(dflt))})")
+            p[key] = {**dflt, **v}
+    if p.get("tuck") and p["tuck"]["side"] not in ("left", "right", "both"):
+        raise ValueError("hair loose tuck.side: left, right or both (the person's own)")
+    if p.get("fringe") and isinstance(p["fringe"].get("sweep"), str) and p["fringe"]["sweep"] != "away":
+        raise ValueError('hair loose fringe.sweep: -1..1, or "away" (curtain bangs: each side swept away from the part)')
     return p
 
 
@@ -254,10 +277,35 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     is_fr = np.zeros(m, bool)
     if fr:
         is_fr = (fa < float(fr["span"])) & (d_in < float(fr["depth"]))
-        swp = float(fr["sweep"])
-        comb[is_fr] = np.array([swp * 1.2, -1.0, -0.8])
+        if fr["sweep"] == "away":  # CURTAIN BANGS: each side swept down and away from the parting, framing the face
+            sgn_ = np.sign(P0[:, 0] - sc.C[0] - (xp or 0.0))
+            sgn_ = np.where(sgn_ == 0, 1.0, sgn_)
+            comb[is_fr] = np.stack([sgn_[is_fr] * 1.1, np.full(int(is_fr.sum()), -0.8), np.full(int(is_fr.sum()), -1.0)], 1)
+        else:
+            swp = float(fr["sweep"])
+            comb[is_fr] = np.array([swp * 1.2, -1.0, -0.8])
         L[is_fr] = float(fr["length"]) * (1 - 0.5 * float(p["uneven"]) * rng.uniform(0, 0.3, int(is_fr.sum())))
+        # curtain 0..1: the fringe is longer toward its outer edges (curtain bangs reach the cheekbones at the sides)
+        L[is_fr] *= 1 + float(fr["curtain"]) * np.clip(fa[is_fr] / max(float(fr["span"]), 1.0), 0, 1)
         L[is_fr] += d_in[is_fr] * 0.9  # (rooted further back, it has further to go to the same edge)
+    tk = p.get("tuck")
+    wt = np.zeros(m)
+    er = None
+    if tk:  # TUCKED behind the ear: hair rooted over and in front of the ear is combed back behind it
+        from .hair import ear as _ear
+        er = _ear(sc)
+        ef, eb = (float(er["front"]), float(er["back"])) if er else (80.0, 105.0)
+        azs = ((az + 180) % 360) - 180  # (+ = the person's left)
+        sidem = (azs > 0) if tk["side"] == "left" else (azs < 0) if tk["side"] == "right" else np.ones(m, bool)
+        wt = float(tk["amount"]) * sidem * _ss((fa - (ef - 45.0)) / 20.0) * (1 - _ss((fa - (eb + 5.0)) / 10.0)) * ~is_fr
+        comb = comb * (1 - wt[:, None]) + wt[:, None] * _unit(np.array([0.0, 0.85, -0.5]))[None]
+    fd = p.get("fade")
+    fdens = np.ones(m)
+    if fd:  # a FADE at the nape: the back's locks shorten and thin out toward the nape hairline (a barber's fade)
+        backw = _ss((fa - 100.0) / 30.0)
+        ramp = _ss(d_in / max(float(fd["width"]), 1e-3))
+        L = L * (1 - backw) + backw * (float(fd["length"]) + (L - float(fd["length"])) * ramp)
+        fdens = 1 - backw * (1 - (float(fd["density"]) + (1 - float(fd["density"])) * ramp))
     sw = p.get("swoop")
     wsw = np.zeros(m)
     if sw:  # a front lock lifting off the forehead and curving up and back (over to one side): a weight that is 1
@@ -356,6 +404,20 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
                 v = q[mv] - sc.C
                 c_, s_ = np.cos(rot), np.sin(rot)
                 q[mv] = sc.C + np.stack([v[:, 0] * c_ - v[:, 1] * s_, v[:, 0] * s_ + v[:, 1] * c_, v[:, 2]], 1)
+        if tk is not None and wt.any():  # tucked: between the ear's top and its lobe the hair passes BEHIND the ear
+            a_, e_ = az_el(q - sc.C)
+            as_ = ((a_ + 180) % 360) - 180
+            f_ = np.abs(as_)
+            top_ = float(er["top"]) if er else sc.C[2] - 0.01
+            lobe_ = float(er["lobe"]) if er else sc.C[2] - 0.06
+            band = (q[:, 2] > lobe_ - 0.015) & (q[:, 2] < top_ + 0.025)
+            lim = (eb + 10.0) * band
+            mv = (wt > 0.05) & (f_ < lim) & (f_ > 20.0)
+            if mv.any():
+                rot = np.radians((lim - f_) * wt * np.sign(as_))[mv]  # (+ az = toward the back on the left side)
+                v = q[mv] - sc.C
+                c_, s_ = np.cos(rot), np.sin(rot)
+                q[mv] = sc.C + np.stack([v[:, 0] * c_ - v[:, 1] * s_, v[:, 0] * s_ + v[:, 1] * c_, v[:, 2]], 1)
         if col is not None:
             low = q[:, 2] < sc.C[2] - 0.12
             rest = low & (col.at(q) < clear + 0.002) & (col.grad(q)[:, 2] > 0.45) & ~is_fr
@@ -407,6 +469,8 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             lk["thickness"] = round(lk["thickness"] * k_, 4)
             lk["strands"] = {"tip_spread": 0.15, "wave": 0.0, "random": 0.1}
             lk["swoop"] = round(float(wsw[i]), 3)  # (game cards: the swoop gets its own lock cards, hair.cards_job)
+        if fdens[i] < 0.995:  # the fade: fewer strands toward the nape hairline
+            lk["strands"] = {**(lk.get("strands") or {}), "density": round(float(fdens[i]), 3)}
         gy = max(_grey(g, float(az[i]), float(el[i]), line), float(GR[i]))  # greying temples / sideburns / regions
         if gy > 0.01:
             lk["grey"] = round(gy, 3)
