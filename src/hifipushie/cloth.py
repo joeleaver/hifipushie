@@ -3874,6 +3874,13 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         # nothing may start through anything else (a solver that keeps its contacts can't undo it): a sleeve whose cap
         # starts through the bodice round the armhole goes 1 cm further down the arm at a time (the sewing pulls it up)
         _xp = sorted(_piece_crossings(Xp, M))
+        if lim_ > 0.05:
+            # (a KNIT's sleeve cap crossing the bodice it is sewn to stays where it is: ZOZO starts with the crossing of
+            # sewn pieces allowed (stage 4 says so), and sent 1 cm at a time down the arm the cap started 6-11 cm off
+            # its armhole; the stitches then hauled the armhole 4-5 cm down the arm (dress-tess, Tess's sweater:
+            # placed 2 cm under the armpit, 6 cm in every result))
+            from .cloth_workflow import sewn_crossings as _sewn_x
+            _xp = [p_ for p_ in _xp if p_ not in set(_sewn_x(_xp, M))]
         B.setdefault("sleeve_hits", []).append([p_ for p_ in _xp if any(pcs[q_]["wrap"].get("to", "").startswith("arm.") for q_ in p_)])
         hit = {a for a, b in _xp for a in (a, b)
                if pcs[a]["wrap"].get("to", "").startswith("arm.") and "follow" not in pcs[a]["wrap"]}
