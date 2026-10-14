@@ -2310,6 +2310,33 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   (1.1 %), but darker, less grey and streakier than r14: the even guides lost their grey (eg took `gr` only with a
   "head" group; loose hair has only "free": fixed), Clump and nearest-guide bundles suit long hair more than a crop.
   360k strands for Garrett's magenta render (450k: the job's memory cgroup killed Blender at 5.5 GB).
+- lt19 after the merge (coordinator: E10 a heavy solid black hood in profile, flat on top). MEASURED first
+  (spikes/hair_garrett/profover.py: our outline over the picture through the fitted camera, edge distance from the head
+  centre per ray). FIRST READ WAS WRONG: "our face 2.7 cm behind hers" was the front edge of our HAIR (it hangs down
+  over her cheek); drawn with the render's whole silhouette (blue) the head registers on her photo (forehead, nose,
+  chin). Read: our crown edge 12 mm ABOVE hers (the top is not low), the back 13-22 mm further out, and our side hair
+  falls straight down from the forehead corner over the temple and cheek where hers sweeps back over the temple to the
+  ear (at eye level her hair starts ~3 cm further back). The "hood" is that, not the top's height. Tuck on both sides
+  (E14) only thinned it at the jaw: the temple needs its comb swept back (open). The hood: look dials alone (E11: depth .85, gloss .6, variation .6, highlights .35, clump .75) barely moved
+  it; the even children had none of the colour model's per-lock numbers (hp_lv, hp_ch, hp_cb, hp_cm, hp_a1: the lens
+  makes them): hp_cells (blender_strands) gives them from the root's jittered cell per scale + the strand's length
+  (E13: some lock light behind / 3-4; the profile still one dark mass). Open: separation in the mass (gaps between
+  locks, see-through edges), and the profile camera.
+- Re-seated (coordinator): lt19 on hl_ps = ltn_hd2_ps (ltn_h06's shape, mouth lowered; hl_g0 was ltn_hd), jw on hj_ps
+  = jwn_hd_ps. lt19 E15 (hl_ps): flow sides [0, .8, -.6] (combed back to the ear), lift 12 -> 6 mm, body 18 -> 10 mm:
+  the profile outline within 2-5 mm on top (was +12) and 7-9 mm at the back (was 13-22). The cheek was still covered:
+  the FACE RULE holds hair out of 58 deg either side of the face's centre, which in profile is mid-cheek. `face` now goes
+  to 1.6 (1.5 = to the ear, ~87 deg): E16 face 1.5: the cheek clear, our front edge on hers from the forehead past the
+  temple to behind the jaw. From the front E16 is narrower than her full sides (body 10 mm: next), a few strands stand up
+  at the part. Garrett E3 (grey fix): the grey is back; the back reads coarse / streaky ("pine needles", nearest-guide
+  bundles + Clump on a crop) with speckles low on the back (~1 %): for a crop the even layer is not yet better than r14.
+- Nearest guide only where the comb splits (coordinator): on a crop every child copying one guide made bundles of
+  identical strands with gaps ("pine needles", Garrett E2-E3). The even layer is now split per bank into a BLEND object
+  (3 guides) and a NEAREST one (`_n`, 1 guide) by a split-zone mask (hair_strands._split_zone): long loose hair
+  (> 15 cm) is ALL split zone: blending outside the hairline strip (E17) hung children of a front and a back guide
+  across the neck and chest (the shoulders are a split too); a crop blends everywhere except round a tuck. Garrett E4
+  (blend): the top and sides a fine combed surface; left: a starburst of scalp at the back above the nape (0.96 %
+  behind: guides combed apart there, the whorl hunt) and the nape hairline's speckles. groom.loose.body by region.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
