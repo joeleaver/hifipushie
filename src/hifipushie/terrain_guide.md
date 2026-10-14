@@ -85,3 +85,9 @@ report; `look_terrain(name, map=True, masks=True, views=[...])` for the images.
 | Judging forms in flat light | The auto sun, or a low side sun per view |
 | Sending part of a list in a patch | Lists are replaced whole |
 | Promising tides, lava, glaciers, overhangs in a heightmap | Say what can't be built first; caves and overhangs are 3D mesh tiles only |
+
+## Known gaps (say so to the designer)
+
+- Nothing measures that a place is reachable only by climbing: build it as a wall exception plus a `hide` check, and
+  say the climb itself isn't checked.
+- A long sea inlet between walls (a fjord) has no recipe yet: it's an unknown kind, so the designer's answers define it.

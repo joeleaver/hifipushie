@@ -1,7 +1,8 @@
 # Product guides rewrite ("guides" agent, 2026-10-14)
 
-STATE: cloth, vegetation, hair (+locks), skin, blockin, guide.md done and tested; EEVEE judging rule applied; guide(topic="tool:<name>").
-NEXT: human / likeness / gnm_driving, tools_guide, terrain (clutter_guide: studio lines).
+STATE: all guides done (cloth, vegetation, hair + locks, skin, blockin, guide.md, human, likeness, gnm_driving,
+tools_guide, terrain, clutter scrub); each core 87-181 lines (hair_locks 273); every core tested by a fresh agent.
+NEXT: Joe / coordinator review; tooling suggestion: look_pattern line "armhole bottom N mm below the armpit".
 
 Why: the product guides (src/hifipushie/*_guide.md, served by the `guide` tool) had grown into lab notebooks (~800 KB;
 cloth 918 lines, vegetation 1,142). Key rules were buried: game-ready Tess's sweater was a sweatshirt block with
@@ -50,3 +51,20 @@ judging, no engine (Godot) checks. Engine-importer facts and reference shaders s
 - a vegetation look path (blender_vegetation.py ~1156, near aim_sun).
 - look_hair / look_skin engine="cycles" (optional, not the default; the guides call it reference only).
 Bakes (bake_maps, bake_inputs, export_bake) use Cycles as a baker, not a judging render.
+
+## Cores after the rewrite (lines)
+cloth 181, vegetation 149, hair 138, hair_locks 273, skin 125, block_in 129, playbook 134, human 141, likeness 132,
+terrain 87. Total product markdown is about the same (~820 KB: details moved, not cut); what an agent reads FIRST
+went from 345-1,142 lines to 87-181.
+
+## Test agents (fresh, plan only, the guide tool only)
+cloth (knit crewneck: described, measured armhole on the draft before any sim), vegetation (storybook oak: style,
+structure, massing first; skeleton bare before style), hair (wavy side part: 9-item description for reference AND
+render first), skin (fifties man: forms before the read, close-ups per feature), block_in (3 phone photos: stage 0
+with authority per item, INFERRED list), playbook (badger-knight: stage-0 sheet, gates), likeness (jaw and nose:
+character read first, every item), terrain (fjord brief). All followed the key rules; frictions fixed in the guides.
+
+## Found, not fixed (outside the guides)
+- Private subject tags (lt19, jw) appear in code comments in hair*.py, blockin*.py, makehuman.py, skin_swatch.py,
+  blender_strands.py (pre-existing; the repo is public).
+- Default paths under /mnt/data/hifipushie in env defaults (facenormals, denselm, humannormals, faceext).
