@@ -168,6 +168,52 @@ def test_skin_under_cloth_is_dropped_with_a_rim():
     assert keep[(cz < 0) & (cz > -0.02)].all(), "the rim at the opening stays"
 
 
+def test_cards_take_the_strands_desaturation():
+    from hifipushie import hair
+    lk = hair.full_look({"eevee_sat": 0.3})
+    assert abs(lk["card_sat"] - 0.3 ** hair.CARD_SAT_EXP) < 1e-3
+    assert hair.full_look({"eevee_sat": 0.3, "card_sat": 0.9})["card_sat"] == 0.9  # (given wins)
+    assert hair.full_look({})["card_sat"] == hair.LOOK["card_sat"]
+
+
+def test_card_lod_thins_one_layer_by_whole_cards():
+    from hifipushie import lods
+    # 10 cards of 2 triangles (4 verts each) after a 2-triangle cap: one layer, as tied hair has
+    V, F = [], []
+    for c in range(11):
+        o = len(V)
+        V += [[c, 0, 0], [c + 0.5, 0, 0], [c, 1 + c, 0], [c + 0.5, 1 + c, 0]]
+        F += [[o, o + 1, o + 2], [o + 1, o + 3, o + 2]]
+    cv = np.array(F).ravel()
+    n = len(cv)
+    p = {"verts": np.array(V, float), "corner_vert": cv, "uv": np.zeros((n, 2)), "normal": np.zeros((n, 3)),
+         "tangent": np.zeros((n, 3)), "sign": np.ones(n)}
+    q, rep = lods.card_lod(p, {"cap": [0, 2], "layer0": [2, 20]}, 0.5)
+    assert rep["triangles"] <= 12 and rep["triangles"] >= 6
+    kept = q["corner_vert"].reshape(-1, 3)
+    assert {0, 1, 2}.issubset(set(kept[:1].ravel()))  # the cap stays
+    assert len(kept) % 2 == 0  # whole cards
+
+
+def test_shading_notes_cover_every_material():
+    from hifipushie import shading
+    with tempfile.TemporaryDirectory() as d:
+        info = {"glb": f"{d}/x.glb", "triangles": 10, "skin": {"part": "body", "subsurface": {"mean_free_path_m": [2e-3, 7e-4, 4e-4]}},
+                "atlases": {"0": {"parts": ["body", "eyes"], "maps": {"basecolor": f"{d}/b.png", "blink": f"{d}/k.png"}},
+                            "hair": {"parts": ["hair"], "maps": {"basecolor": f"{d}/h.png", "aux": f"{d}/a.png"}}},
+                "parts": {"body": {"mm_per_texel": 0.8}, "eyes": {}, "hair": {"curves": True}},
+                "lods": [{"lod": 1, "glb": f"{d}/x_LOD1.glb", "triangles": 5}],
+                "face_shapes": {"names": ["eyeBlinkLeft"], "correctives": {}}}
+        j, m = shading.write(info, Path(d), "x", eyes_part="eyes")
+        n = __import__("json").load(open(j))
+        kinds = {mm["model"]: mm for mm in n["materials"]}
+        assert set(kinds) == {"skin", "eye", "hair_cards"}
+        assert "blink" in kinds["skin"]["maps"] and "blink" not in kinds["eye"]["maps"]
+        assert any("lerp(1, blink, 1 - eyeBlink)" in f for f in kinds["skin"]["formulas"])
+        assert n["lods"][1]["switch_m"] > 0 and "unreal" in kinds["hair_cards"]["engines"]
+        assert "## LODs" in open(m).read()
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

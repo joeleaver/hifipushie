@@ -19,6 +19,7 @@ from scipy.spatial import cKDTree
 
 LOD_RATIOS = (0.5, 0.25, 0.12)  # share of LOD0's triangles per level (Joe's call: budgets per tier)
 MIN_PATCH = 12  # triangles: smaller patches are kept as they are
+HAIR_TIERS = ("main", "npc", "far")  # the hair's card tier at LOD1, 2, 3+ (hair.CARD_TIERS: one atlas for all)
 MIN_PART = 1000  # triangles: smaller parts (eyes, teeth, props) are kept whole (the LOD3 eyes lost their cornea)
 CARDS_MIN = 0.2  # a hair LOD keeps at least this share of its card layer's triangles (the biggest cards)
 

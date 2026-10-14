@@ -50,6 +50,23 @@ def _blender(job: dict, timeout: float = 600):
             raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
 
 
+GAME_SCRIPT = Path(__file__).with_name("blender_game.py")
+
+
+def game(glb: Path, timeout: float = 900, **job) -> str:
+    """The game-like EEVEE render of an exported GLB (blender_game.py): job keys frames / poses / size / hide
+    (asset.preview) or shots / anim / out (the engine-stage checks). Returns Blender's log."""
+    with tempfile.TemporaryDirectory(prefix="hifipushie-game-") as tmp:
+        p = Path(tmp) / "job.json"
+        p.write_text(json.dumps({"glb": str(glb), **{k: v for k, v in job.items() if v is not None}}))
+        from . import resources
+        r = resources.run([render.BLENDER, "-b", *render._threads(), "--factory-startup", "--python-exit-code", "1",
+                           "--python", str(GAME_SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
+        if r.returncode:
+            raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
+        return r.stdout
+
+
 def margin_px(texture: int) -> int:
     """Gap between UV islands in texels: enough for bilinear filtering and the first mips (dilation fills it)."""
     return max(2, texture // 512)
@@ -2108,10 +2125,38 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         from . import lods as lodmod
         ratios = list(lodmod.LOD_RATIOS) if lods is True else [float(r) for r in lods]
         cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
+        tier_parts = {}
+        if locals().get("hair_cards") and rigged:  # hair LODs are the groom's own card TIERS (one atlas for all:
+            # hair.export_hair), cut for their budget; thinning LOD0's cards dropped the tail first
+            from . import hair as hairmod
+            hb_ = next((i for i, b in enumerate(rigged["bones"]) if b["name"].endswith("Head")), 0)
+            for k, r in enumerate(ratios, 1):
+                tier_ = lodmod.HAIR_TIERS[min(k, len(lodmod.HAIR_TIERS)) - 1]
+                sp_ = {**spec, "hair": {**spec["hair"], "export": {**(spec["hair"].get("export") or {}), "tier": tier_}}}
+                try:
+                    tp_, _tf = hairmod.export_cards(name, out_dir / f"_lod{k}", sp_, log)
+                except Exception as e:  # (LOD0 hair kept)
+                    log.append(f"WARNING LOD{k}: hair tier {tier_} failed ({type(e).__name__}: {e}); LOD0's cards kept")
+                    continue
+                tp_.pop("hair", None)
+                tp_["atlas"] = parts[pn_h]["atlas"]
+                nv_ = len(tp_["verts"])
+                Jh = np.zeros((nv_, 4), np.int64)
+                Jh[:, 0] = hb_
+                Wh = np.zeros((nv_, 4), np.float32)
+                Wh[:, 0] = 1.0
+                tier_parts[k] = (tp_, (Jh, Wh), tier_)
         for k, r in enumerate(ratios, 1):
             tl = time.time()
             lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards,
-                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") else None)
+                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None)
+            if k in tier_parts:
+                tp_, w_, tier_ = tier_parts[k]
+                lp[pn_h] = tp_
+                if lr is not None:
+                    lr["weights"][pn_h] = w_
+                rep_l[pn_h] = {"triangles0": len(parts[pn_h]["corner_vert"]) // 3,
+                               "triangles": len(tp_["corner_vert"]) // 3, "tier": tier_}
             lg = out_dir / f"{aname}_LOD{k}.glb"
             write_glb(lg, aname, lp, atlas_files, {}, looks, lr, extra_ext, external=True)
             tri_k = sum(v["triangles"] for v in rep_l.values())
@@ -2119,6 +2164,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                              "parts": {pn: v["triangles"] for pn, v in rep_l.items()}})
             log.append(f"LOD{k} ({r:g} of LOD0): {tri_k} triangles in {time.time() - tl:.1f}s -> {lg.name} (maps "
                        f"by file name beside it); " + ", ".join(f"{pn} {v['triangles']}" for pn, v in rep_l.items()))
+        import shutil
+        for k in tier_parts:  # (the tiers' own copies of the shared hair atlas)
+            shutil.rmtree(out_dir / f"_lod{k}", ignore_errors=True)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
@@ -2185,14 +2233,26 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                             "prefabs": "one mesh per prefab (a primitive per part, in the prefab's frame), a node "
                                        "per instance with extras.prefab"},
             "seconds": round(time.time() - t, 1), "log": log}
+    try:  # the engine-agnostic shading notes beside the GLB (shading.py): what each material is meant to do
+        from . import shading
+        from .hair import look_of as _hlook
+        sj, sm = shading.write(info, out_dir, aname, looks=looks,
+                               hair_look=_hlook(spec) if spec.get("hair") else None, eyes_part=ek[0] if ek else None)
+        info["shading"] = {"json": str(sj), "md": str(sm)}
+    except Exception as e:  # (notes never fail an export; said in the log)
+        log.append(f"WARNING shading notes not written: {type(e).__name__}: {e}")
     (out_dir / f"{aname}.json").write_text(json.dumps(info, indent=1))
     return info
 
 
 def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
             hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None,
-            denoise: bool = True, poses: list[dict] | None = None):
-    """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
+            denoise: bool = True, poses: list[dict] | None = None, engine: str = "game"):
+    """Render the exported GLB as a game draws it: re-imported by Blender's glTF importer and rendered in EEVEE set up
+    like a game (no ray tracing, alpha-tested cards, shadow maps), its materials built from the export's shading notes
+    (<asset>_shading.json: blender_game.py, the engine stage of docs/notes/gates.md), face shapes and the blink map
+    driven as an engine drives them. engine="cycles": the old path-traced look of the importer's materials (lighting,
+    samples, denoise apply to it only).
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
     walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene.look
     takes), so the preview compares with the painted look; default a neutral studio under Standard. cameras:
@@ -2205,9 +2265,12 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
             render.camera_frame(c, i) for i, c in enumerate(cameras or [])]  # perspective: {"eye", "target", "fov"}
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
-        _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
-                  "hide": list(hide or []), "lighting": lighting, "denoise": denoise, "poses": poses},
-                 timeout=600 + 60 * len(poses or []))
+        if engine == "game":
+            game(glb, frames=frames, size=size, hide=hide, poses=poses, timeout=600 + 60 * len(poses or []))
+        else:
+            _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
+                      "hide": list(hide or []), "lighting": lighting, "denoise": denoise, "poses": poses},
+                     timeout=600 + 60 * len(poses or []))
         if poses is None:
             return render.contact_sheet([Image.open(f["out"]).convert("RGB") for f in frames], frames)
         return [render.contact_sheet([Image.open(f"{f['out'][:-4]}_p{i}.png").convert("RGB") for f in frames], frames)

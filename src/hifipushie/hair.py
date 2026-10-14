@@ -154,6 +154,7 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
 # and eevee_sat = seen's saturation / lit's (EEVEE then draws seen exactly; Cycles gets what the gamut allows).
 # Keys given in the look still win.
 SEEN = {"gap": 0.3, "sheen": 1.45, "tip": 1.12}  # x lit (linear)
+CARD_SAT_EXP = 0.55  # card_sat = eevee_sat ** this when the look has eevee_sat and no card_sat (full_look)
 
 
 def _lin(c) -> np.ndarray:
@@ -194,6 +195,13 @@ def full_look(look: dict | None) -> dict:
     lk = dict(look or {})
     if lk.get("seen"):
         lk = {**seen_look(lk["seen"], float(lk.get("eevee_sat", LOOK["eevee_sat"]))), **lk}
+    if "card_sat" not in lk and "eevee_sat" in lk:
+        # the cards are drawn by a plain material, as EEVEE draws the strands: the same desaturation of the look's
+        # colours (asked for Cycles' hair BSDF). Tess's W18 look sets eevee_sat 0.3 and no card_sat: her cards came
+        # out 1.8x the strands' saturation (check_tiers), orange beside the approved strand look
+        # measured (check_tiers on Tess's W18 hero cards: card_sat 1.0 -> 1.8x the strands' saturation, 0.3 -> 0.7x):
+        # the cards' atlas is not the strands' colour pipeline, so not the same factor: eevee_sat ** CARD_SAT_EXP
+        lk["card_sat"] = round(float(lk["eevee_sat"]) ** CARD_SAT_EXP, 3)
     return {**LOOK, **lk}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands", "swoop", "hairs"}
@@ -2331,6 +2339,10 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
 SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
 SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
 SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
+CUT_GROUPS = ["sub", "pair", "lock", "free"][:3]  # finer -> coarser card cuts (clump_cards' groups; "free" drops lying hair)
+PRIO_FLY = 2.0  # budget priority offsets (lower = kept first): single hairs after every coverage layer
+PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of hair lying on the head
+CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
 SWOOP_WIDTH = 0.026  # m: their width
 SWOOP_BACK = 0.003  # m inside the hairline where they start
 SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
@@ -2409,6 +2421,38 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     core = None
     if D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
+        if budget and not short:
+            # a groom with many locks (tesshair7's volume rows, halo, curls: Tess's W18 cut 7,123 cards / 243k
+            # triangles for a 40k hero) left the budget to drop whole layers AND whole regions (the tail's cards, every
+            # layer over the coverage one: 34 % of her silhouette bare). Cut coarser instead, as an artist would: the
+            # coverage layer of every lock must fit in CUT_SHARE of the budget, else the next coarser group, wider cards
+            S_ = S
+            for _ in range(len(CUT_GROUPS)):
+                cov_ = [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"]
+                if hc.triangles(cov_, S_, float(S_["segment"]) * 1.5) <= CUT_SHARE * int(budget):
+                    break
+                gi_ = CUT_GROUPS.index(S_.get("group", "sub")) if S_.get("group", "sub") in CUT_GROUPS else 0
+                if gi_ + 1 >= len(CUT_GROUPS):
+                    break
+                S_ = {**S_, "group": CUT_GROUPS[gi_ + 1], "card_width": float(S_["card_width"]) * 1.4}
+                cards = hc.clump_cards(D, hair_locks, sc.C, S_, lk, int(g.get("seed", 0)))
+            if S_ is not S:
+                print(f"hair cards: cut as group {S_['group']!r}, card_width {S_['card_width'] * 1000:.0f} mm (the tier's "
+                      f"{S.get('group')!r} cut's coverage layer alone was over {CUT_SHARE:.0%} of {int(budget)} triangles)",
+                      flush=True)
+                S = {**S, "group": S_["group"], "card_width": S_["card_width"]}
+            # what the budget keeps first: hanging hair (a tail, loose lengths) is the silhouette and goes before the
+            # second layer of hair lying on the head; single hairs (halo, curls, strays) go before both, except the
+            # face-framing wisps at the hairline. Tess's W18 kept 420 halo cards and 85 tail cards (a thin black tail)
+            by_ = {k_["name"]: k_ for k_ in hair_locks}
+            for c_ in cards:
+                lk_ = by_.get(c_.get("lock")) or {}
+                p_ = float(c_.get("prio", c_["layer"]))
+                if c_["kind"] == "fly":
+                    p_ += 0.2 if lk_.get("at_hairline") else PRIO_FLY
+                elif float(lk_.get("free", 0.0)) > 0.5:
+                    p_ += PRIO_FREE
+                c_["prio"] = p_
         if short:  # cards wherever the groom has length, lying just over the cap (which stands at the hair's mid
             # height), on the open tiles (a few thick strands, no opaque base). The budget thins them EVENLY: what
             # stands off the cap (the lifted front, the outline) and the hairline's cards stay longest, the rest go
