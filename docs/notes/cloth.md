@@ -2388,3 +2388,22 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
     j2.sh <t>; renders: HL=0 bash vw.sh c12_<t>c c12_<t> fig=1 notch=1; sheet: NOTCH=1 uv run python sheet.py <now>
     <before> <png> <title>; fronts: uv run python edges.py out/c12_<t>.npz; sims: bash stage.sh <queue> 3 (one at a
     time; q_n*.txt are the lines used; check `ps aux | grep stage.sh` first).
+- Gate 5 (coordinator: the mirrored mesh as an OPT-IN flag, one test sim, the fronts' numbers).
+  - Garment key `mirror_mesh` (default false: no cached sim re-keys): cloth.mesh anchors each piece's interior hex
+    lattice on the pattern's x = 0, so a .R piece drafted as the mirror of its .L piece meshes as the exact mirror
+    (mmchk.py on su_gc's jacket: back / front / side pairs 0.0 mm apart, equal counts; off: 492/493, 547/555, 137/139
+    vertices, up to 17 mm apart). test_cloth::test_mirror_mesh_meshes_a_mirrored_piece_as_the_mirror.
+  - Sim c12_n7 = n1 + mirror_mesh ($0.030): the wearer's right front still hangs 75-92 mm off centre (n1: 78-92), the
+    left moved further IN (9-66; n1 21-93). The mesh is NOT the cause.
+  - NEW SUSPECT (found while checking every sim input for symmetry; body, poses, padded collider, stiffness and fold
+    arrays are all symmetric within 6 mm): the made COLLAR's start. The collar is carried (held through the poses,
+    carryPoses) and its two ends start up to 133 mm from mirror images: the wearer's right end (uv x -208..-175) starts
+    on the CHEST near centre front (x -26..+3, y -157..-174, z 1457-1480), the left end at the side neck (x 73-75,
+    z 1563). Sewn to the gorges, the right end then drags the right front through the sew. n6 (fronts start alike)
+    still 46 mm asymmetric. The drafted turn line is symmetric ([1] / [-2] at x -151 / +151 mm); the asymmetry comes
+    from cloth._on_seam's worn / notched chain (the chart of each partner's worn point: `placed` fronts use their own
+    start positions) or its chain relaxation. Next: print LAY_INFO[collar] chain vs chart per side on a place-only
+    build (no sim), fix the placement, then one sim.
+  - Spend: $0.352 total (this gate $0.030).
+  - STATE: mirror_mesh in (opt-in, tested); the right front's swing NOT fixed; the collar's asymmetric carried start is
+    the lead. NEXT: the collar placement (cloth._on_seam notched chain), then one sim with it fixed.

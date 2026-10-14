@@ -619,8 +619,18 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         lo, hi = ring.min(0), ring.max(0)
         dy = h * math.sqrt(3) / 2
         rows = []
+        mirror_mesh = bool(B.get("mirror_mesh", False))
         for r, y in enumerate(np.arange(lo[1] + dy / 2, hi[1], dy)):
-            xs = np.arange(lo[0] + (h / 2 if r % 2 else 0), hi[0], h)
+            if mirror_mesh:
+                # (garment key mirror_mesh, OPT-IN: the lattice anchored on the pattern's x = 0, symmetric about it, so a
+                # .R piece drafted as the mirror of its .L piece gets the mirror lattice: meshed from each piece's own
+                # corner, Garrett's fronts differed (538 / 540 vertices) and the right front swung 4-5 cm further open
+                # in every sim, cloth12; default off: no cached sim re-keys)
+                o_ = h / 2 if r % 2 else 0.0
+                k0, k1 = math.ceil((lo[0] - o_) / h), math.floor((hi[0] - o_) / h)
+                xs = o_ + h * np.arange(k0, k1 + 1)
+            else:
+                xs = np.arange(lo[0] + (h / 2 if r % 2 else 0), hi[0], h)
             rows.append(np.c_[xs, np.full(len(xs), y)])
         Q = np.concatenate(rows) if rows else np.zeros((0, 2))
         if len(Q):
@@ -7117,7 +7127,7 @@ def place_keys(Bp: dict, g: dict) -> dict:
     # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
     # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
     # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap"):
+    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap", "mirror_mesh"):
         if g.get(k_) is not None:
             Bp[k_] = g[k_]
     return Bp
@@ -7802,7 +7812,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "fine_relax", "under_fall", "collar_ends", "pad_over"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 

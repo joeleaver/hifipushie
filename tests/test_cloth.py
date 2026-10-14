@@ -655,6 +655,27 @@ def test_band_ends_run_past_cf_only_as_far_as_the_button_or_the_collar_point():
     assert np.array_equal(out3["stand"]["P"], P3)  # (only ever shortens)
 
 
+def test_mirror_mesh_meshes_a_mirrored_piece_as_the_mirror():
+    """Garment key mirror_mesh (opt-in): a .R piece drafted as the mirror of its .L piece is meshed as the mirror of
+    its mesh (the interior lattice anchored on x = 0). Off (the default), each piece's lattice starts at its own corner:
+    Garrett's fronts came out 538 / 540 vertices and the right front hung 4-5 cm further open in every sim (cloth12)."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+    from hifipushie import pattern
+    P = np.array([[0.02, 0], [0.23, 0], [0.25, 0.3], [0.12, 0.42], [0.03, 0.35]])
+    L = {"P": P, "names": {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4}, "marks": {}, "lines": {}}
+    B = {"pieces": {"f.L": L, "f.R": pattern.mirror_x(L)}, "seams": [["f.L:a>b", "f.R:a>b"], ["f.L:c>d", "f.R:c>d"]],
+         "stitches": []}
+    res = {}
+    for mm in (False, True):
+        M = cloth.mesh(dict(B, mirror_mesh=mm), 0.02)
+        pc, uv = np.asarray(M["piece"]), np.asarray(M["uv"])
+        a, b = uv[pc == 0], uv[pc == 1]
+        res[mm] = (len(a), len(b), float(cKDTree(a * [-1, 1]).query(b)[0].max()))
+    assert res[True][0] == res[True][1] and res[True][2] < 1e-9, res
+    assert res[False][2] > 1e-3, res  # (off: the old meshes, every cached sim's key unchanged)
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):
