@@ -316,6 +316,15 @@ def test_a_drafted_sweater_makes_its_rib_bands():
     assert hb == [own], hb
 
 
+def test_a_piece_through_itself_is_only_excused_where_it_is_sewn_to_itself():
+    """dress-tess: a jeans leg whose start folded through itself was only warned about (the sim crawled to its
+    limit); a cuff closed on itself (a self seam / stitch) still is."""
+    from hifipushie import cloth_workflow as wf
+    M = {"names": ["front.L", "cuff.L"], "piece": np.array([0, 0, 1, 1]),
+         "sew": np.array([[2, 3]]), "stitch": np.zeros((0, 2), np.int64)}
+    assert wf.sewn_crossings([("front.L", "front.L"), ("cuff.L", "cuff.L")], M) == [("cuff.L", "cuff.L")]
+
+
 if __name__ == "__main__":  # (at the END: tests defined after it never ran as a script, until dress-tess)
     for k, f in list(globals().items()):
         if k.startswith("test_"):

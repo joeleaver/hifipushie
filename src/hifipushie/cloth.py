@@ -1920,7 +1920,10 @@ def _hem_on_shoe(body, out: np.ndarray, U: np.ndarray, ok: np.ndarray, sgn: floa
             continue
         sel = np.where(ok & (col == c))[0]
         d_hem = U[sel, 1] - U[sel, 1].min()
-        w = np.clip(1.0 - d_hem / LEG_BREAK, 0.0, 1.0)
+        # (the band the length is gathered over is at least the deficit / LEG_GATHER: a lift of ds spread linearly
+        # over a band shorter than ds turns the rows over (the hem above the rows over it): dress-tess's jeans cut to
+        # the floor over a trainer's tongue lost 8-9 cm in a 9 cm band and the front leg started through itself)
+        w = np.clip(1.0 - d_hem / max(LEG_BREAK, ds[c] / LEG_GATHER), 0.0, 1.0)
         out[sel, 2] += ds[c] * w
     # and nothing inside the worn parts: what hangs beside a shoe (its sides, the counter at the back) is pushed out
     # of it along its surface (resting only on what faces up, the sides of the hem went through the shoe's walls)
@@ -1968,6 +1971,7 @@ WORN_REACH = 0.03  # m: the most _clear_of_worn moves a vertex in all
 
 
 LEG_BREAK = 0.09  # m above a trouser hem over which the length the shoe stops is gathered (the break; 0 = the old ease)
+LEG_GATHER = 0.6  # the most of a gathered band's length the gather takes (rows keep >= 40% of their spacing)
 WORN_CLEAR = 0.005  # m a start is kept off the worn parts (vertices: a 2 cm triangle's chord dips ~3 mm between them;
 # the solver's contact offset is 1-2 mm)
 HEM_REST_NZ = 0.5  # a surface a hem rests on faces up at least this much (|normal z|)

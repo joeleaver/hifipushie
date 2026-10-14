@@ -677,12 +677,15 @@ def _overlap_pairs(Bp: dict) -> list:
 
 
 def sewn_crossings(cr: list, M: dict) -> list:
-    """The crossing piece pairs that are sewn or stitched to each other (or a piece crossing itself)."""
+    """The crossing piece pairs that are sewn or stitched to each other (or a piece crossing itself where it is sewn
+    or stitched to itself: a cuff's lap, a sleeve's underarm). A piece crossing itself with no seam to itself is NOT
+    one of them (dress-tess: jeans legs whose gathered hem folded through itself on a taller shoe were only warned
+    about, and the sim crawled at 4.7 s a frame until its 8 min limit)."""
     jn = set()
     for key in ("sew", "stitch"):
         pr = np.asarray(M.get(key, []), np.int64).reshape(-1, 2)
         jn |= {tuple(sorted((M["names"][M["piece"][a]], M["names"][M["piece"][b]]))) for a, b in pr}
-    return [p for p in cr if p[0] == p[1] or tuple(sorted(p)) in jn]
+    return [p for p in cr if tuple(sorted(p)) in jn]
 
 
 def stage_place(c: Ctx, image: bool = True) -> dict:

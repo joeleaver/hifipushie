@@ -2579,3 +2579,19 @@ MISSING / WRONG (fixed in code, or written into the guide):
   <garment> /mnt/data/hifipushie/dress_tess/<design>.json [stages]. Sims: echo "<tag> dt_tess <garment>" > q_x.txt;
   bash stage.sh /mnt/data/hifipushie/dress_tess/q_x.txt 3 (ONE at a time; cached results: BROKER=1 bash q.sh q_x.txt);
   renders workspace/cloth_renders/<tag>*.png; spend from stage_*.out "batch done" lines.
+- j2 sim (NICO-TOP, $0): band now 0.965-1.004 m (natural waist 1.035), still a sliver of sock at the front: the
+  stand-in shoe is a SLIPPER (no tongue): the hem rests on its vamp, ~66 mm up, below which the throat shows sock. A
+  raised shoe collar (box region top 96 -> 118 mm) gave an upward cap: the hem start stopped on it and the leg folded
+  through ITSELF; stage 4 only warned (any piece crossing itself was excused) and the sim crawled at 4.7 s a frame to
+  its time limit. FIXED: (11) a piece through itself is excused only where it is sewn / stitched to itself (cuff lap,
+  sleeve underarm), else stage 4 FAILS; (12) `_hem_on_shoe` gathers over max(LEG_BREAK, deficit / LEG_GATHER 0.6), so
+  rows never turn over. The shoe got a TONGUE instead (blob shoe_tongue.L, layer 1, part shoes).
+- j3 (length 1.05 m from the waist, for a stack): CORRUPT at the hem (54 crossings, 2-3% crumpled), the hem wraps
+  under the shoe: too much length for a 2 cm sim to stack. Rented $0.077 (231 s on a 4090: the same job ran 4.5 s a
+  frame on NICO-TOP). Dead end at this resolution.
+- j2t (floor + tongue): fits, 0 crossings, seams closed; rented $0.032. SHEET workspace/cloth_renders/
+  dt_01_jeans_sheet.png. My read: straight jeans at the right rise and colour; WRONG vs the reference: her jeans are
+  fuller from the knee down (hem ~370 mm round vs our 344, knee ~400 vs 370) and stack on the trainers' tongue with
+  2-3 folds; ours taper slightly, hang clean (almost no folds) and show a sliver of sock at the front.
+- j4: knee 0.20 / hem 0.19 (half girths: 397 / 380 mm round) for her fuller leg; NICO-TOP.
+- Spend: $0.044 (j1) + $0.077 (j3 rented) + $0.032 (j2t rented) = $0.153.

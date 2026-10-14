@@ -566,8 +566,14 @@ def test_hem_stops_on_the_shoe_with_a_break():
     front = hem & (U[:, 0] < -0.015)
     back = hem & (U[:, 0] > 0.015)
     assert (X[front, 2] >= 0.10 + gap - 1e-6).all() and np.allclose(X[back], out[back])
-    high = U[:, 1] - U[:, 1].min() > cloth.LEG_BREAK
-    assert np.allclose(X[high], out[high])  # above the break nothing moves
+    # above the break nothing moves: the band is LEG_BREAK, or longer where the deficit needs it (here 74 mm to lose:
+    # the band is 74 / LEG_GATHER = 123 mm, so its rows keep 40% of their spacing; dress-tess)
+    band = max(cloth.LEG_BREAK, (0.10 + gap - 0.03) / cloth.LEG_GATHER)
+    high = U[:, 1] - U[:, 1].min() > band + 1e-6
+    assert np.allclose(X[high], out[high])
+    for c in xs[xs < -0.015]:  # and no row of a gathered column is pressed under 40% of its spacing
+        zc = X[np.isclose(U[:, 0], c), 2]
+        assert (np.diff(zc) >= (1 - cloth.LEG_GATHER) * (zs[1] - zs[0]) - 1e-9).all()
     # each front column keeps its order (gathered, not turned inside out)
     for c in xs[xs < -0.015]:
         zc = X[np.isclose(U[:, 0], c), 2]
