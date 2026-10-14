@@ -281,6 +281,66 @@ def test_swatches_and_styles():
     assert terrain_style.CONTRACT >= 5 and 5 in terrain_style.CONTRACT_LOG
 
 
+def test_water_design_covers_the_water(T, field):
+    """meta.json's river widths are the FULL width the water covers as the built ground holds it (pushieworld note
+    126: they were river_water_lines' half widths, and the cut banks drop ground beside the channel under the water;
+    a game trimming its water to +- width / 2 cut real water). Every point of the field's ground under a written
+    point's level, across its line and connected to the channel, lies within width / 2."""
+    import json
+    import tempfile
+    from pathlib import Path
+    from scipy import ndimage
+    out = Path(tempfile.mkdtemp())
+    T.export(out)
+    meta = json.loads((out / "meta.json").read_text())
+    rw = T.river_water_lines["brook"]
+    W = np.array(meta["rivers"]["brook"]["water"])
+    half = np.asarray(rw["width"])[::4]
+    live = half > 0
+    assert (W[live, 3] >= 2 * half[live] - 1e-6).all(), (W[live, 3][:8], half[live][:8])
+    xy = W[:, :2]
+    t = np.gradient(xy, axis=0)
+    t /= np.linalg.norm(t, axis=1, keepdims=True)
+    n = np.c_[-t[:, 1], t[:, 0]]
+    o = np.arange(-25, 25.01, 0.25)
+    worst = []
+    for k in np.flatnonzero(live):
+        P = xy[k] + o[:, None] * n[k]
+        h, _ = field.column(P[:, 0], P[:, 1])
+        wet = h < W[k, 2] - 0.15
+        lab, _ = ndimage.label(wet)
+        c = lab[len(o) // 2]
+        if c == 0:
+            continue
+        reach = np.abs(o[lab == c]).max()
+        if reach < 24:  # (a side open to the edge of the section is ground falling away, not standing water)
+            worst.append(reach - W[k, 3] / 2)
+    worst = np.array(worst)
+    assert len(worst) > 10 and (worst <= 0.6).mean() > 0.95, np.sort(worst)[-10:]
+    print(f"ok water design: {len(worst)} sections, water past width / 2 by p99 {np.percentile(worst, 99):.2f} m; widths "
+          f"{np.median(W[live, 3]):.1f} m median for half widths {np.median(half[live]):.1f}")
+
+
+def test_hold_rivers():
+    """The 3D field's own ground edits (facets taken out, styles softened) never open a way round a river's banks
+    (vale_river's 6 m fall: a 19 m facet spire taken out left a 13 m pit beside the lip, under its water)."""
+    from types import SimpleNamespace
+    xs = ys = np.arange(0, 60.0, 1.0)
+    H = np.full((60, 60), 12.0)
+    T_ = SimpleNamespace(xs=xs, ys=ys, river_water_lines={"r": {"xy": np.c_[np.full(60, 30.0), ys],
+                                                                "level": np.full(60, 10.0), "width": np.full(60, 2.0)}})
+    Hf = H.copy()
+    Hf[20:25, 36:40] = 4.0  # (the field's ground dug under the water beside the channel)
+    Hf[20:25, 29:32] = 8.0  # (the channel itself: left alone, the terrain's own ground there is under the water)
+    ref = H.copy()
+    ref[:, 28:33] = 8.0
+    out = tm.hold_rivers(T_, Hf, ref)
+    assert out[22, 37] == 10.0 + tm.HOLD_FREEBOARD, out[22, 37]
+    assert out[22, 30] == 8.0
+    assert (out[:, :20] == Hf[:, :20]).all()
+    print("ok hold rivers")
+
+
 if __name__ == "__main__":
     t0 = time.time()
     T = _load(SPEC)
@@ -290,6 +350,8 @@ if __name__ == "__main__":
     print("zone and layers ok")
     test_bed_shape_only_under_water(T, field, mats)
     print("bed shape ok")
+    test_water_design_covers_the_water(T, field)
+    test_hold_rivers()
     n = test_clutter_rules(T, field, mats)
     print("clutter ok", n)
     test_energy_sets_the_character(T, n)

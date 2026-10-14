@@ -1171,6 +1171,42 @@ def _local_thickness(H, c, r_open, thin):
     return lab, comps
 
 
+HOLD_REACH = 30.0  # m from a river's water line where the 3D field's ground keeps the banks the terrain grid has
+HOLD_FREEBOARD = 0.3  # m over the water the banks are kept (forms.water grades banks from level + 0.3)
+
+
+def hold_rivers(T, H, ref):
+    """H (the field's ground grid after its own edits: facets taken out, styles softened) kept from dropping below a
+    river's banks: within HOLD_REACH of a water line, wherever `ref` (the terrain's ground) stands at least
+    HOLD_FREEBOARD over the nearest water-line sample's level, H stays at least there. The channel, and ground the
+    terrain already had under the water (fall amphitheatres, pools), are left as they are."""
+    lines = getattr(T, "river_water_lines", None) or {}
+    if not lines:
+        return H
+    from scipy.spatial import cKDTree
+    xs, ys = np.asarray(T.xs, float), np.asarray(T.ys, float)
+    guard = np.full(H.shape, np.inf)
+    for rw in lines.values():
+        xy, lv, wd = np.asarray(rw["xy"], float), np.asarray(rw["level"], float), np.asarray(rw["width"], float)
+        live = wd > 0
+        if not live.any():
+            continue
+        lo, hi = xy[live].min(0) - HOLD_REACH, xy[live].max(0) + HOLD_REACH
+        ix = np.flatnonzero((xs >= lo[0]) & (xs <= hi[0]))
+        iy = np.flatnonzero((ys >= lo[1]) & (ys <= hi[1]))
+        if not len(ix) or not len(iy):
+            continue
+        X, Y = np.meshgrid(xs[ix], ys[iy])
+        d, i = cKDTree(xy[live]).query(np.c_[X.ravel(), Y.ravel()], distance_upper_bound=HOLD_REACH)
+        g = np.where(np.isfinite(d), lv[live][np.minimum(i, live.sum() - 1)] + HOLD_FREEBOARD, np.inf).reshape(X.shape)
+        sub = guard[iy[0]:iy[-1] + 1, ix[0]:ix[-1] + 1]
+        np.minimum(sub, g, out=sub)
+    hold = np.isfinite(guard) & (ref >= guard) & (H < guard)
+    if not hold.any():
+        return H
+    return np.where(hold, guard, H)
+
+
 FACE_SLOPE_H = 0.25  # m: the stencil of the slope correction where a fall's face edits the column (Field.column)
 
 
@@ -1241,6 +1277,10 @@ class Field:
                     if float(s["rock"].get("soften_m", 0) or 0) > 0:
                         wr = np.maximum(wr, s["w"])
                 self.H = self.H - wr * fdel
+            # (the facets taken out or a style's softening must not open a way round a river's banks: below
+            # vale_river's 6 m fall a 19 m facet spire came out and left a 13 m pit beside the lip, under the lip's
+            # water: the water solve filled it, outside every design; pushieworld note 126)
+            self.H = hold_rivers(T, self.H, H_unstyled)
             # the faces' horizontal normal (downhill), smoothed over ~3 cells: which joint families cross a face
             sy, sx = np.gradient(ndimage.gaussian_filter(self.H, 3.0), self.c)
             self._fdx, self._fdy = -sx, -sy
@@ -3872,7 +3912,10 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             manifest["corridors"] = cm
     if getattr(T, "falls", None):  # (waterfalls: for the engine's falling sheet and spray; terrain_falls)
         from . import terrain_falls
-        manifest["falls"] = {"falls": T.falls, "note": terrain_falls.META_NOTE}
+        from . import terrain_stream
+        wr = terrain_stream.wet_design(T)["pools"] or [None] * len(T.falls)
+        manifest["falls"] = {"falls": [{**f, "pool": {**f["pool"], "wet_radius": r}} if f.get("pool") and r is not None
+                                       else f for f, r in zip(T.falls, wr)], "note": terrain_falls.META_NOTE}
     if cfg.get("maps") and cfg.get("grass_detail", True) and any(nm in mats.layers for nm in ("grass", "scrub",
                                                                                                 "turf", "sand")):
         from . import terrain_ground  # (the turf's tiling detail: terrain_ground.grass_swatch, one per kind)

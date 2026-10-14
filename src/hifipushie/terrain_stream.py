@@ -596,6 +596,113 @@ class Streams:
         return out
 
 
+# ---------------------------------------------------------------------------------------------- the water as built
+
+WET_REACH = 30.0  # m out from a river's water line (or a pool's centre) the water the ground holds is followed
+WET_STEP = 0.25  # m between samples along a cross-section
+WET_DEEP = 0.05  # m: ground this far under the level is water
+WET_GAP = 1.0  # m: a dry run shorter than this (a stone, a bar's crest) doesn't end the water
+FALL_HOLD = 6.0  # m upstream of a fall's lip whose cross-sections are left at the design (the lip band, the faces' hold)
+
+
+def _wet_run(wet, step, start):
+    """Per row of `wet` (samples out from a centre, `step` apart, the first at `step`): how far the water reaches,
+    contiguous from the centre (the first `start` m always counted), dry runs shorter than WET_GAP bridged; and whether
+    a rim ended it (False: wet to the row's end, ground falling away that holds no standing water at that level)."""
+    n = wet.shape[1]
+    o = (np.arange(n) + 1) * step
+    w = wet | (o[None] <= start[:, None])
+    gap = max(1, int(round(WET_GAP / step)))
+    dry = (~w).astype(np.int32)
+    cs = np.cumsum(np.c_[np.zeros(len(w), np.int32), dry], 1)
+    ends = (cs[:, gap:] - cs[:, :-gap]) == gap  # (a dry run `gap` long starts here)
+    rim = ends.any(1)
+    first = np.where(rim, ends.argmax(1), n)
+    idx = np.where(w & (np.arange(n)[None] < first[:, None]), np.arange(n)[None], -1).max(1)
+    return np.where(idx >= 0, o[np.maximum(idx, 0)], 0.0), rim
+
+
+def wet_design(T, streams=None):
+    """The water as the built ground holds it, for the designs a game trims its water to (pushieworld note 126: meta's
+    widths were river_water_lines' HALF widths, and the cut banks drop ground beside the channel under the water).
+    Per river, per water-line sample: the full width that covers the water across it, 2 x the farther side where a
+    bank closes it (ground falling away holds no standing water), never under 2 x the design's half width; samples
+    over a fall's lip band and pool keep the design (the pool says it). Per fall: the pool's wet radius at its level
+    where its basin closes on every side but downstream, else its radius (None in the sea). Ground = the terrain grid
+    as the field reads it (cubic B-spline) plus the stream beds' shape (Streams.dz). Cached on T."""
+    got = getattr(T, "_wet_design", None)
+    if got is not None:
+        return got
+    lines = getattr(T, "river_water_lines", None) or {}
+    if streams is None and lines:
+        cfg = config(T)
+        streams = Streams(T, cfg) if cfg is not None else None
+    streams = streams if streams is not None and streams.any else None
+    H = np.ascontiguousarray(T.H, float)
+    x0, y0, c = float(T.xs[0]), float(T.ys[0]), float(T.cell)
+
+    def ground(P):
+        h = ndimage.map_coordinates(H, [(P[:, 1] - y0) / c, (P[:, 0] - x0) / c], order=3, prefilter=False,
+                                    mode="nearest")
+        if streams is not None:
+            h = h + streams.dz(P[:, 0], P[:, 1], h)
+        return h
+
+    o = np.arange(1, int(WET_REACH / WET_STEP) + 1) * WET_STEP
+    pools = []
+    for f in getattr(T, "falls", None) or []:
+        pl = f.get("pool") or {}
+        if not pl.get("xyz") or pl.get("depth") is None:  # (the sea)
+            pools.append(None)
+            continue
+        pc, lev, r0 = np.array(pl["xyz"][:2], float), float(pl["xyz"][2]), float(pl.get("radius") or 0.0)
+        # rays out from the centre at its level, up the river and to the sides (downstream the river runs on at its
+        # own, lower level), each as far as the ground stays under the level. Where the ground falls away on some
+        # side (a pool perched on a hillside) the water runs off there, it doesn't stand at the pool's level
+        ang = np.linspace(0, 2 * np.pi, 72, endpoint=False)
+        d = np.c_[np.cos(ang), np.sin(ang)]
+        up = d @ (np.asarray(f["flow"], float) / max(np.linalg.norm(f["flow"]), 1e-9)) < 0.5
+        P = pc[None, None] + o[None, :, None] * d[up][:, None, :]
+        g = ground(P.reshape(-1, 2)).reshape(int(up.sum()), len(o))
+        r, rim = _wet_run(g < lev - WET_DEEP, WET_STEP, np.full(int(up.sum()), r0))
+        # (a basin only if every side closes: an open side drains it to the outlet's level, the pool's own radius)
+        pools.append(round(float(max(r0, r.max()) if rim.all() else r0), 2))
+    rivers = {}
+    for nm, rw in lines.items():
+        xy = np.asarray(rw["xy"], float)
+        lv = np.asarray(rw["level"], float)
+        wd = np.asarray(rw["width"], float)
+        out = 2 * wd
+        live = wd > 0
+        for f, wr in zip(getattr(T, "falls", None) or [], pools):  # (a fall's lip and pool: the pool's wet radius
+            if f["river"] != nm:  # says it; across the lip band and the amphitheatre a cross-section is meaningless)
+                continue
+            lc = np.mean(np.array(f["lip"], float)[:, :2], 0)
+            tf = np.asarray(f["flow"], float) / max(np.linalg.norm(f["flow"]), 1e-9)
+            pl = (f.get("pool") or {}).get("xyz")
+            reach = (float((np.array(pl[:2]) - lc) @ tf) + (wr or 0.0)) if pl else 0.0
+            reach = max(reach, 2.0)
+            u = (xy - lc) @ tf
+            live &= ~((u > -FALL_HOLD) & (u < reach) & (np.hypot(*(xy - lc).T) < reach + FALL_HOLD))
+        k = np.flatnonzero(live)
+        if len(k) and len(xy) > 1:
+            t = np.gradient(xy, axis=0)
+            t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
+            n = np.c_[-t[:, 1], t[:, 0]]
+            far = np.zeros(len(k))
+            for side in (1.0, -1.0):
+                for a in range(0, len(k), 1000):
+                    kk = k[a:a + 1000]
+                    P = xy[kk, None, :] + side * o[None, :, None] * n[kk, None, :]
+                    g = ground(P.reshape(-1, 2)).reshape(len(kk), len(o))
+                    r, rim = _wet_run(g < lv[kk, None] - WET_DEEP, WET_STEP, wd[kk])
+                    far[a:a + len(kk)] = np.maximum(far[a:a + len(kk)], np.where(rim, r, 0.0))
+            out[k] = 2 * np.maximum(wd[k], far)
+        rivers[nm] = out
+    T._wet_design = {"rivers": rivers, "pools": pools}
+    return T._wet_design
+
+
 # ---------------------------------------------------------------------------------------------- clutter
 
 def clutter(T, mats, field, box=None, seed=11):

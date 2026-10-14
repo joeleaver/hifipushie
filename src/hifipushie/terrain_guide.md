@@ -240,8 +240,10 @@ and the `"story"`.
     distance of its water.
   - Views and sight lines from out at sea stand on the water.
 - **fords**: `{"name": {"on": "river@0.5", "width": m, "depth": m}}`: a shallow crossing. Rivers carry water; routes
-  cross at fords, and anywhere else the report says a bridge is needed. River water width: `rivers.x.water` (0 for a
-  dry bed); steep reaches narrow to a torrent a few metres wide.
+  cross at fords, and anywhere else the report says a bridge is needed. River water:
+  `rivers.x.water` = how far the water reaches either side of the line (a HALF width: 3 makes a 6 m river; 0 for a
+  dry bed); steep reaches narrow to a torrent a few metres wide. meta.json `rivers.<r>.water` gives per point the FULL
+  width the water covers as the built ground holds it (cut banks included), centred on the point.
 - **rivers** (optional detail):
   ```
   {"name": {"source": [x, y, z], "through": [[x, y] or [x, y, z]], "mouth": [x, y, z] | "into": river,
@@ -263,7 +265,8 @@ and the `"story"`.
   round a plunge pool (radius ~ half the width + 0.15-0.6 x the drop, 1.2-6 m deep), the river running on from the
   pool. `width` = the falling sheet (default the water's width). meta.json and the tiles' manifest carry `falls`:
   the lip line (two xyz at the lip's water level), drop, width, flow direction, the pool (centre xyz at its level,
-  radius, depth) and `into` (river | lake | sea), for the engine's falling sheet and spray; the stream clutter puts
+  radius, depth, wet_radius: how far its level stands where the basin closes) and `into` (river | lake | sea), for the
+  engine's falling sheet and spray; the stream clutter puts
   boulders round the pool and fallen blocks at the face's foot.
   The source and the mouth need a height (z); through points may leave it out. The river's heights are its bed: set
   them near the ground they cross (the report warns of a **trench**, the bed far below the ground either side: a
