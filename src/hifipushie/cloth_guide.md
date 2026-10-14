@@ -136,7 +136,7 @@ Tailoring numbers the knowledge base carries (all checked in stage 2 where the p
 | `interfaced` | garment | Whole pieces or bands: `{"piece": "front.L", "near": ["break", "lapelPoint"], "within": 0.1}` is a jacket's chest canvas |
 | `zozo.stitch_stiffness` | garment | 1 default. 8 closes trouser / skirt seams that ZOZO leaves 3-15 mm open, at ~3x the time. It does NOT fix seams that start far apart (a jacket's pit seams got worse at 3) |
 | `fine_settle` | garment | false skips the fine settle (a garment whose fine start fails the start check, e.g. trousers over a shirt) |
-| `move` | garment | `{"knees": 40, "steps": 3}`: after the pose stage's arms the body curls each lower leg back 40 deg and returns before gravity (worn-in folds behind / in front of the knee). `pose_frames` defaults to 72 with it. Not with worn parts AND an under garment yet |
+| `move` | garment | `{"knees": 40, "steps": 3}`: after the pose stage's arms the body curls each lower leg back 40 deg and returns before gravity (worn-in folds behind / in front of the knee). `pose_frames` defaults to 72 with it. Not with worn parts AND an under garment yet. Opt-in, PARKED: on Tess's jeans it left NO memory folds (fold rms 3.3 -> 3.4 mm): our cloth is elastic and rests on its flat pattern, so it springs back when the knee straightens. Worn-in folds need plastic set (ZOZO's plastic_state, unused by our jobs) or authored folds (`detail.folds`, a Blender hand pass) |
 
 **Stale options.** `design_garment` merges the sheet key by key, so an option you set rounds ago is still there
 (`block_options.darts: true` did nothing on a hip-length bodice, then made fish-eye darts under a princess line once

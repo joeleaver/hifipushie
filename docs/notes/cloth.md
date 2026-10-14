@@ -2622,3 +2622,14 @@ MISSING / WRONG (fixed in code, or written into the guide):
   and is elastic (no plasticity in our ZOZO jobs): it springs back once the knee straightens; and in method "settle"
   the pose stage was 30 frames (fixed: 72 with a move). Worn-in folds need plastic set (ZOZO has a plastic_state) or
   authored folds (detail.folds / a Blender hand pass). Test test_cloth::test_a_knee_move_curls_the_shins_and_comes_back.
+- BODY: Tess's head frozen at tp_h3 (tess_n1 + jaw / chin): dt_tess v26 carries tp_h3's base (neck 331.7 mm round,
+  +1.7 over n1; HPS +2 mm). Jeans and sweater re-simmed on it (dj7, ds9).
+- Sweater s8 (on n1; fabric french_terry from the KB: 315 g/m2, B 8.5e-6; length 0.487 m from the HPS so the band's
+  lower edge lies ~2 cm under the jeans' front top; over jeans; worn_top): coarse sim fine (NICO-TOP $0); the FINE
+  start was refused locally (31 triangles over 1.6x, neckband 2.0x, hem band 1.9x): tess2's open item (folded bands'
+  fold rows cross themselves when the coarse sim is carried onto the fine mesh) is still open. s9 = s8 +
+  fine_settle false (tess2's interim: the coarse drape carried to 1 cm).
+- stage.sh: a layered garment's build writes its under garment's job too; the same job came up in two logs and the
+  broker refused the batch ("appears twice"): de-duplicated.
+- Rounds so far: jeans 7 (j1, j2, j3 dead end, j2t, j4, j5, j6/j7 re-sims on new bodies), sweater 9 design passes (s1-s9;
+  s1-s5 pre-sim only), 1 sim before the body switch.
