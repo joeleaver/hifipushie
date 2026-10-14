@@ -2677,3 +2677,17 @@ MISSING / WRONG (fixed in code, or written into the guide):
   coat at 18% chest ease had no room over a sweater that is itself +17.5% (the guide: body girths stay the bare
   body's, give the ease for what's under it): chest 0.26 (seat +30%, the regular band's top; hips_ease does
   nothing on an unfitted block: same rule as the knit). layer_gap 0.006.
+- MACHINE RULES (coordinator / Joe, 2026-10-14): every Blender runs under /mnt/data/hifipushie/bin/capped, which loads
+  a GPU lock around each render call (the desktop froze sharing the GPU); "gpulock: waited N s" is queueing, not a
+  hang; never start Blender outside capped, never take the lock around whole scripts. Size check renders to what is
+  judged: ~512 px close-ups for an armpit / cuff / band / collar, ~768 px for a whole garment; the smallest thing judged
+  spans 3-4 px or more; don't read sheets over ~1600 px when a crop answers; full multi-view sheets only for the gate
+  sheets sent to the coordinator.
+- Coat (lab coat over the sweater, c9 -> c10): chest ease 26% (an unfitted block's seat follows the chest: 30%);
+  armhole_depth 0.16; layer_gap 0.006, under_cap 0.004. The coarse start was refused locally 3x (1.2-2.3 mm inside the
+  standoff from the sweater at the back armpit): (20) the exact clear's 8 rounds weren't enough; 24 clear it (5ab54fa,
+  also in the fine start). The coat's coarse sim ran (NICO-TOP); its FINE settle died at frame 0 on NICO-TOP
+  ("contact starts overlapping", a coat vertex vs the sweater collider; the fine start's separation from the collider
+  was 0.00 mm with its made pieces held): c10 = fine_settle false (re-keys the coarse: rented, to save time).
+- (21) A chain of layered garments re-sims from the bottom whenever anything upstream re-keys (a code change to the
+  jeans' key re-simmed jeans, sweater and coat in turn): batch upstream changes before simming the outer layer.

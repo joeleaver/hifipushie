@@ -6768,7 +6768,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 # (over another garment the collider holds that garment's own cloth, wound as its pattern lies: read
                 # as a closed body, its normals pushed the trousers' back INTO the tucked shirt's tail: 102 triangles
                 # 1.6-3.9x at the back's waist corner, tr_22 / tr_24. Against its triangles, on the side each point is)
-                st_, _n = _clear_exact(st_, M["F"], mv_, coll["bodyV"], coll["bodyT"], gap=START_GAP, rounds=8,
+                st_, _n = _clear_exact(st_, M["F"], mv_, coll["bodyV"], coll["bodyT"], gap=START_GAP, rounds=24,
                                        signed=len(body_real.T))
             for _ in range(3 if under is None else 0):  # (the exact pass's few rounds leave the worst pairs short: again, from where they got)
                 st_ = _clear_of_body(st_, M["F"], mv_, cb_, START_GAP, START_GAP, CLEAR_GROW)
