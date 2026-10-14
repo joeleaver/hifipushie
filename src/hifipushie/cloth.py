@@ -6688,7 +6688,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                 # bunches: the jumper's armpits under the coat's sides), the draped pieces only
                 fr0_ = ~np.isin(Ms["piece"], [Ms["names"].index(p) for p in held0_ if p in Ms["names"]])
                 X0_, nmv_ = _clear_exact(np.asarray(arrays["X"], float), Ms["F"], fr0_, bc_.V, bc_.T, gap=so_ + 0.0005,
-                                         rounds=8, signed=len(body_real.T))
+                                         rounds=24, signed=len(body_real.T))  # (8 left a lab coat 1.5-2.3 mm off a sweater's armpit: 24 cleared it)
                 near1_ = {p: v for p, v in cwf_.start_in_standoff(X0_, Ms, bc_, 0.9 * so_).items() if p not in held0_}
                 # (kept only if it is clearer: cloth that starts THROUGH the under garment's cloth is pushed away on
                 # the side it is on, deeper in: the coat's side through the jumper's bunched armpit went 1.5 -> 0.13 mm)
