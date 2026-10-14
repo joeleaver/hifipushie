@@ -2274,6 +2274,14 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   masks fixed most of it. lt19 E2 (even 0.7, lift 12 mm, out top 0.25 / front 0.2, stiff 0.35): from above an even
   cover with a clean thin centre part (the crossing ribbons and crown gaps gone), volume from the arc. A few stray
   interpolated hairs still cross the forehead.
+- The veil, isolated (front, one change each): it is the even layer (even 0: clean), not halo / fly-aways. Interpolated
+  children TRANSLATE their guides' shapes: one rooted beside / in front of its guides falls where the guide would if it
+  stood there, past the face rule, which only the guides obey. Splitting the scalp into two mesh islands along the part
+  (Part by Mesh Islands: children use only guides on their own side) did NOT remove it; masking the front 4 cm did, but
+  left the front of the part uncovered. What works: the even layer is a COVER layer, trimmed to EVEN_LEN 7 cm (x
+  0.6-1): it covers the scalp under the lengths, the lengths are the locks' (lt19 E5: face and profile clean). Dense
+  narrow Python locks instead (spacing 6 mm, width 1.3, even 0: E4) kept the face clean but from above read as ribbed
+  ribbons with scalp along the part.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)

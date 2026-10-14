@@ -64,7 +64,8 @@ EDGE_RAMP = 0.008  # m over which a LOOSE lock's strand count ramps up to full (
 EDGE_START = 0.0035  # ... from this far inside the hairline (the first loose roots)
 EDGE_MIN = 0.15  # the share of its strands a loose lock rooted on the line keeps
 EVEN_EDGE = 0.012  # m inside the hairline before the even layer starts (its children there hung over the forehead)
-EVEN_FRONT = 0.04  # ... over the face (|az| < 50): children of guides that fall past the face rule hung in front of it
+EVEN_LEN = 0.07  # m: the even (cover) layer's strand length
+EVEN_FRONT = 0.015  # ... over the face (|az| < 50): children of guides that fall past the face rule hung in front of it
 LOOSE_HALO = 2.0  # x the halo share on LOOSE hair (a long head's crown fly-aways: at 1 x the halo read 0.05 vs 0.22-0.25)
 SOFT_HALO = (3.0, 0.65, 0.6)  # halo_soft = 1: x (1 + 3) halo hairs, their stand-off x 0.35 (~4 mm), length x 0.4 (~2 cm)
 HALO_MAX = 0.2  # the halo share at most (a guard: loose x2 x soft x4 reached 0.56 of the strands, the hair a thin veil of
@@ -344,6 +345,17 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
                                           np.stack([(uvv[fan[:, 0], 0] + uvv[fan[:, 1], 0]) / 2,
                                                     np.ones(len(fan))], 1)], 1)])
     del uvp
+    from .hair import _part_x
+    xp_ = _part_x(g) if (float(S.get("even") or 0.0) > 0 and (g.get("parting") or {}).get("side", "left") != "none") else None
+    if xp_ is not None:
+        # TWO ISLANDS split along the part (the even layer interpolates with "Part by Mesh Islands"): a child takes its
+        # shape only from guides on ITS side of the part. Averaged across the part, guides going left and right made
+        # children that fell straight down the middle: a veil over the face (hair-heads, lt19 E2)
+        cx = V[F].mean(1)[:, 0] - sc.C[0] - xp_
+        F = np.where((cx > 0)[:, None], F + len(V), F)
+        V = np.vstack([V, V])
+        dens = np.r_[dens, dens]
+        dens_even = np.r_[dens_even, dens_even]
     used = np.unique(F)
     remap = -np.ones(len(V), int)
     remap[used] = np.arange(len(used))
@@ -505,11 +517,16 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
         out["hair_even"] = [
             ["Interpolate Hair Curves", {"Surface:Object": {"object": "hair_scalp"},
                                          "Surface UV Map": {"attribute": "UVMap"}, "Surface Rest Position": False,
-                                         "Follow Surface Normal": False, "Part by Mesh Islands": False,
+                                         "Follow Surface Normal": False, "Part by Mesh Islands": True,
                                          "Interpolation Guides": 3, "Distance to Guides": 0.03,
                                          "Density": float(n_even / max(area, 1e-6)),
                                          "Density Mask": {"attribute": "hp_density_even"}, "Viewport Amount": 1.0,
                                          "Seed": int(seed) + 7}],
+            # a COVER layer, not the lengths: trimmed to EVEN_LEN m (x 0.6..1): interpolated children translate their
+            # guides' shapes, and full-length ones near the face hung over it as a veil (lt19 E2-E3); the lengths are the
+            # locks' (which keep the face rule), the even layer covers the scalp under them
+            ["Trim Hair Curves", {"Scale Uniform": True, "Length Factor": EVEN_LEN, "Replace Length": True,
+                                  "Random Offset": 0.4, "Seed": int(seed) + 8}],
             ["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"] + 0.0008, "Shape": 0.5,
                                    "Scale": ph["loose_scale"] * 2, "Scale along Curve": 0.35, "Offset per Curve": 0.3,
                                    "Seed": int(seed) + 2, "Preserve Length": True}],
