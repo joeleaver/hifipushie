@@ -619,8 +619,18 @@ def mesh(B: dict, h: float = 0.02, fold_width: float = 0.0) -> dict:
         lo, hi = ring.min(0), ring.max(0)
         dy = h * math.sqrt(3) / 2
         rows = []
+        mirror_mesh = bool(B.get("mirror_mesh", False))
         for r, y in enumerate(np.arange(lo[1] + dy / 2, hi[1], dy)):
-            xs = np.arange(lo[0] + (h / 2 if r % 2 else 0), hi[0], h)
+            if mirror_mesh:
+                # (garment key mirror_mesh, OPT-IN: the lattice anchored on the pattern's x = 0, symmetric about it, so a
+                # .R piece drafted as the mirror of its .L piece gets the mirror lattice: meshed from each piece's own
+                # corner, Garrett's fronts differed (538 / 540 vertices) and the right front swung 4-5 cm further open
+                # in every sim, cloth12; default off: no cached sim re-keys)
+                o_ = h / 2 if r % 2 else 0.0
+                k0, k1 = math.ceil((lo[0] - o_) / h), math.floor((hi[0] - o_) / h)
+                xs = o_ + h * np.arange(k0, k1 + 1)
+            else:
+                xs = np.arange(lo[0] + (h / 2 if r % 2 else 0), hi[0], h)
             rows.append(np.c_[xs, np.full(len(xs), y)])
         Q = np.concatenate(rows) if rows else np.zeros((0, 2))
         if len(Q):
@@ -2421,6 +2431,14 @@ NOTCH_OPEN_STEPS = (1.0, 0.75, 0.5, 0.25)  # how open the fall is at the start a
 NOTCH_FALL = 0.0  # the fall lies this far over what the stand's own clearance leaves under it
 
 
+def _end_points(P2: np.ndarray, Q: np.ndarray, X2: np.ndarray, r2: np.ndarray, back: float = 0.01) -> np.ndarray:
+    """A notched collar's points that belong to ONE end (pattern): past the point X2 where its roll line meets the
+    neck edge (along the run-on r2, `back` m of slack), and on that end's side of the collar (the neck edge's middle ->
+    X2). The half-plane alone also took the OTHER end where the pattern's arc comes round (cloth12, Garrett)."""
+    c = np.asarray(Q, float).mean(0)
+    return (((P2 - X2) @ r2) > -back) & (((P2 - c) @ (X2 - c)) > 0)
+
+
 def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edge3, worn_pt, hz: float, Bk, Bq,
                  uv: np.ndarray, pid: np.ndarray, M: dict, pcs: dict, body: "Body", w: dict, lay: float,
                  info: dict | None = None) -> np.ndarray:
@@ -2563,7 +2581,11 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
         r2 = rts[kx if sgn > 0 else kx - 1] * sgn  # (pointing along the run-on, away from the band)
         m2 = side * perp(rts[kx if sgn > 0 else kx - 1])
         rel = P2 - X2
-        sel = (rel @ r2 > -0.01)
+        # (only this END's side of the collar: the half-plane past the meeting point also held points of the OTHER
+        # end round the back, where the pattern's arc comes round: carried into this front's pattern 0.2 m off it, their
+        # worn points dragged the plane, and Garrett's right collar end started on his chest by centre front, 133 mm
+        # from the left's mirror image, pulling the right front open through the sew, cloth12)
+        sel = _end_points(P2, Q, X2, r2)
         pts = P2[sel] - 2 * np.outer((P2[sel] - X2) @ m2, m2)
         pts = np.r_[pts, X2 + np.outer(np.linspace(0, 0.12, 7), r2)]
         qf = pts @ G.T + g0
@@ -2596,6 +2618,7 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
         _, q3, nrm, clmin, clmed = best
         Bf3 = np.outer(r3, r2) + np.outer(-q3, m2)  # the collar's pattern -> the plane, unturned (turned flat: -q3 -> q3)
         ends[sgn] = {"X2": X2, "kx": kx, "fit_mm": [round(clmin * 1000, 1), round(clmed * 1000, 1)], "O": O, "r2": r2, "m2": m2,
+                     "qf": qf, "Wp": Wp, "piece": M["names"][Bk[je]], "je": je, "jx": jx,
                      "r3": r3, "q3": q3, "n": nrm, "tx": frame(X2)[6] * (1.0 if frame(X2)[6] @ r2 > 0 else -1.0)}
         for k in np.where(run == sgn)[0]:
             S[k] = S[kx] + Bf3 @ (Ld[k] - X2)
@@ -2733,6 +2756,7 @@ def _notched_lay(P2: np.ndarray, Q: np.ndarray, Lr: np.ndarray, side: float, edg
         info["open"] = opens
         info["closed"] = out.copy()
         kb = np.where(run == 0)[0]
+        info["ends"] = ends
         info["dbg"] = {"P2": P2, "foot": foot, "turned": turned, "run": run, "th": th, "sd": sd, "S": S, "out": out.copy()}
         info.update({"turn_deg": [round(math.degrees(float(th[kb].min())), 0), round(math.degrees(float(th[kb[len(kb) // 2]])), 0)],
                      "plane_fit_mm": [ends[-1]["fit_mm"], ends[1]["fit_mm"]], "stations": int(n_st)})
@@ -7117,7 +7141,7 @@ def place_keys(Bp: dict, g: dict) -> dict:
     # garment keys "press_lay" (m a pressed lapel lies off its forepart, PRESS_LAY) and "worn_envelope" (smoothing
     # rounds of the body a worn top is laid on, ENVELOPE_ROUNDS): over a bumpy under garment (an open shirt collar's
     # points on the chest under the lapels) a 3 mm lay crossed the forepart at Garrett's left roll line
-    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap"):
+    for k_ in ("press_lay", "worn_envelope", "open_gap", "collar_spread", "open_lap", "mirror_mesh"):
         if g.get(k_) is not None:
             Bp[k_] = g[k_]
     return Bp
@@ -7802,7 +7826,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "fine_relax", "under_fall", "collar_ends", "pad_over"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
