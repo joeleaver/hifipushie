@@ -39,6 +39,13 @@ GLTF_NOTES = {
 }
 
 
+
+# Where each term of a hair card's albedo lives (applied ONCE: the shader adds no shade of its own, "aux_shade": None).
+# hair_cards.atlas bakes the clump depth and the value per strand into the colour; hair_cards.mesh puts the root
+# ramp, the tip lift and the lock's tone into COLOR_0. The notes once had the shader multiply all three again from aux.
+HAIR_ALBEDO_TERMS = {"clump_depth": "atlas", "strand_value": "atlas", "root_ramp": "COLOR_0", "tip_lift": "COLOR_0",
+                     "lock_tone": "COLOR_0"}
+
 def _kind(pn: str, r: dict, skin_part: str, eyes: str | None) -> str:
     if r.get("curves") or r.get("cards"):
         return "hair_cards"
@@ -125,8 +132,13 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
                       "alpha-to-coverage with MSAA; no sorting (cards write depth like opaque geometry); keep the alpha's "
                       "coverage in the mip chain (scale alpha per mip to the base level's coverage)",
                       "two-sided with ONE normal for both faces: do not flip the normal on back faces",
-                      "shade: albedo *= (1 - 0.35 aux.r) * lerp(0.65, 1, aux.b) * (1 + 0.12 (2 aux.g - 1)) (root, clump "
-                      "depth, a value per strand)",
+                      "shade: NONE in the shader. Each term is applied once, where it lives: the clump depth "
+                      "(0.45 + 0.55 depth^0.8 between the gap and lit colours) and the value per strand are BAKED IN "
+                      "THE ATLAS (basecolor); the root-to-tip ramp, the tip lift and the tone per lock / card are in "
+                      "COLOR_0. Do not multiply aux.r / aux.g / aux.b into the albedo again (that darkened the cards "
+                      "twice: front L* 13 against the strands' 26.7). aux is for what the atlas can't hold: the "
+                      "specular shift jitter (aux.g), backscatter weighted to thin hair (aux.b), an engine's own "
+                      "root / depth masks",
                       "specular: two Kajiya-Kay lobes along T' = normalize(T + shift N): lobe 1 white, power ~90, shift "
                       "+0.06 (toward the tip), strength 0.35; lobe 2 tinted by the albedo, power ~22, shift -0.10, strength "
                       "0.45; per-strand shift jitter 0.3 x (aux.g - 0.5)  (T = the bitangent of TANGENT: the atlas's v "
@@ -134,6 +146,7 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
                       "diffuse: wrapped  max(0, (N.L + 0.45) / 1.45); keep ~0.55 of the shadow map (hair lets light through)",
                       "scalp: the cap carries the scalp chart; under it the skin's own scalp tint"]
                 m["params"] = {"alpha_mode": "MASK", "alpha_cutoff": 0.33, "two_sided": True,
+                               "albedo_terms": dict(HAIR_ALBEDO_TERMS), "aux_shade": None,
                                "look": {k_: lk.get(k_) for k_ in ("lit", "gap", "sheen", "gloss", "tip_alpha",
                                                                   "backscatter", "scatter", "root_dark", "sun")
                                         if lk.get(k_) is not None},

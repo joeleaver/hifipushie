@@ -212,6 +212,29 @@ def test_shading_notes_cover_every_material():
         assert any("lerp(1, blink, 1 - eyeBlink)" in f for f in kinds["skin"]["formulas"])
         assert 0 < n["lods"][1]["screen_size"] < 1 and "unreal" in kinds["hair_cards"]["engines"]
         assert "## LODs" in open(m).read()
+        # a hair card's albedo terms are applied ONCE: clump depth and the value per strand are in the atlas, the
+        # root ramp / tip / lock tone in COLOR_0; the shader adds no aux shade (it darkened the cards twice)
+        hc = kinds["hair_cards"]
+        assert hc["params"]["aux_shade"] is None
+        assert hc["params"]["albedo_terms"] == shading.HAIR_ALBEDO_TERMS
+        assert set(shading.HAIR_ALBEDO_TERMS.values()) == {"atlas", "COLOR_0"}
+        assert not any("aux.r)" in f or "lerp(0.65, 1, aux.b)" in f for f in hc["formulas"])
+
+
+def test_hair_atlas_bakes_what_the_notes_say():
+    """shading.HAIR_ALBEDO_TERMS against the atlas itself: deep strands are darker and the strands' values differ IN
+    the colour, so a shader must not apply them again."""
+    import numpy as np
+    from hifipushie import hair_cards as hc
+    S = {**hc.strands_of({}), "atlas": 128, "source": "drawn"}
+    at = hc.atlas(S, {"gap": "#201810", "lit": "#806040", "vary": 0.25})
+    col, aux = at["color"], at["aux"]
+    on = aux[..., 3] > 0.9
+    lum = col[..., :3].mean(-1)
+    deep, high = on & (aux[..., 2] < 0.4), on & (aux[..., 2] > 0.8)
+    assert deep.any() and high.any() and lum[deep].mean() < 0.97 * lum[high].mean()  # (sRGB)
+    lo, hi = on & (aux[..., 2] > 0.8) & (aux[..., 1] < 0.3), on & (aux[..., 2] > 0.8) & (aux[..., 1] > 0.7)
+    assert lum[lo].mean() < lum[hi].mean()  # the value per strand (id)
 
 
 def test_budget_gate_maps_parts_and_flags_over():
