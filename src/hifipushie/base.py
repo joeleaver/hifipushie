@@ -2293,6 +2293,10 @@ def gnm_head(head: dict, eye_mid: np.ndarray, up: np.ndarray) -> dict:
             dp = np.tensordot(c, g["expression_basis"][lower], 1)
             V, Vg, En = V + dp, Vg + dp, En + dp
             a = np.array([gap(V + 1e-3 * g["expression_basis"][i]) - gap(V) for i in lower]) / 1e-3
+    if head.get("lid_fold"):  # (projskin) the upper lid's fold in MESH space: GNM's own lid rings re-sectioned (platform,
+        # slit, roll), local by construction; a blink unfolds it (gnm_fold.mesh_delta)
+        from . import gnm_fold
+        V = V + gnm_fold.mesh_delta(V - En, En, head["lid_fold"])
     k_eye = float(head.get("eyes", 1.0))
     r_eye = [float(np.median(np.linalg.norm(V[m] - J[2 + i], axis=1))) for i, m in enumerate(g["eye"])]
     esc = np.ones(len(V))  # how much the eye scaling magnifies each vertex's neighbourhood (face shapes carry deltas)

@@ -232,19 +232,22 @@ def brow_image(density: float = 0.8, thickness: float = 1.0, length_mm: float = 
 
 
 def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89, 0.85), seed: int = 0, span: float = 2.1,
-              limbal: float = 0.72, contrast: float = 1.0, limbal_width: float = 0.2):
+              limbal: float = 0.72, contrast: float = 1.0, limbal_width: float = 0.2, inner=None, inner_to: float = 0.55):
     """The front of an eyeball as a picture (RGB PNG in the image store), `span` iris diameters across: an iris of
     radial fibres with a paler collarette round the pupil, a dark limbal ring fading into the white, a soft-edged
     pupil (`pupil` = its share of the iris' radius); the sclera warmer and pinker toward its edge, with fine
     vessels wandering in from the corners (`veins`). iris: sRGB colour. `limbal`: how dark the limbal ring is at the
     iris' edge (0 none .. 1 black; real rings read 0.5-0.85, darker and wider in the young), `limbal_width` its width
     as a share of the iris' radius; `contrast`: the fibres' and collarette's contrast (1 as before; 0 a flat disc).
+    `inner`: a SECOND iris colour for the zone round the pupil (a hazel eye: amber inside a grey-green rim; central
+    heterochromia), handing over to `iris` about `inner_to` of the radius (soft, over a quarter of the radius).
     Returns the path."""
     import hashlib
     from PIL import Image, ImageDraw, ImageFilter
     from . import images
     iris = tuple(round(float(c), 4) for c in iris)
-    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION) + ((limbal, contrast, limbal_width) if (limbal, contrast, limbal_width) != (0.72, 1.0, 0.2) else ())).encode()).hexdigest()[:12]
+    key = hashlib.sha1(repr((iris, pupil, veins, tuple(sclera), seed, span, VERSION) + ((limbal, contrast, limbal_width) if (limbal, contrast, limbal_width) != (0.72, 1.0, 0.2) else ())
+                              + ((tuple(round(float(x), 4) for x in inner), round(float(inner_to), 3)) if inner is not None else ())).encode()).hexdigest()[:12]
     out = images.store_dir() / f"eye_{key}.png"
     if out.exists():
         return out
@@ -295,7 +298,13 @@ def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89,
     twist = ((th + np.pi + 0.25 * r) / (2 * np.pi) * n).astype(int) % n
     f = fib[0][ai] + fib[1][twist] + fib[2][ai] * np.clip(r * 1.3, 0, 1) + fib[3][ai]
     f = np.clip(0.5 + 0.28 * contrast * f, 0, 1)
-    col = c[None, None] * (0.55 + 0.9 * f[..., None])
+    if inner is not None:   # two zones: the colour round the pupil, the colour toward the rim
+        ti = np.clip((r - (inner_to - 0.125)) / 0.25, 0, 1)
+        ti = (ti * ti * (3 - 2 * ti))[..., None]
+        c = np.asarray(inner, np.float64)[None, None] * (1 - ti) + c[None, None] * ti
+    else:
+        c = c[None, None]
+    col = c * (0.55 + 0.9 * f[..., None])
     # crypts: darker pits and furrows between the fibres, blotchy rather than radial (a photographed iris is a
     # mottled, darker disc with a lighter collarette, not a starburst)
     from scipy import ndimage
@@ -306,7 +315,7 @@ def eye_image(iris, pupil: float = 0.36, veins: float = 0.4, sclera=(0.92, 0.89,
     cn = ndimage.map_coordinates(G, [rr_.ravel(), aa_.ravel()], order=1, mode="grid-wrap").reshape(r.shape)
     col = col * (1 - 0.32 * min(contrast, 1.5) * np.clip((cn - 0.3) / 1.2, 0, 1))[..., None]
     coll = np.exp(-0.5 * ((r - (pupil + 0.16)) / 0.09) ** 2)[..., None]  # the collarette: a paler, yellower ring
-    col = col + coll * 0.45 * min(contrast, 1.5) * (np.clip(c * 1.5 + np.array([0.16, 0.1, 0.0]), 0, 1) - col)
+    col = col + coll * (0.45 if inner is None else 0.15) * min(contrast, 1.5) * (np.clip(c * 1.5 + np.array([0.16, 0.1, 0.0]), 0, 1) - col)
     w_ = max(float(limbal_width), 0.02)
     limb = np.clip((r - (0.98 - w_)) / w_, 0, 1)[..., None] ** 1.5  # the limbal ring
     col = col * (1 - float(limbal) * limb)

@@ -78,6 +78,14 @@ def camera_frame(cam: dict, index: int = 0) -> dict:
             **({"shift": [float(v) for v in cam["shift"]]} if cam.get("shift") else {})}  # lens shift (fit_camera)
 
 
+def _threads() -> list:
+    """["-t", N] when $HIFIPUSHIE_BLENDER_THREADS is set: Blender's render / compute threads capped (a shared machine:
+    an uncapped render ran at ~950 % CPU and lagged the desktop)."""
+    import os
+    n = os.environ.get("HIFIPUSHIE_BLENDER_THREADS")
+    return ["-t", str(int(n))] if n else []
+
+
 class _Blender:
     """One headless Blender kept running between looks (render jobs go in on stdin), so a look doesn't pay
     for Blender's startup. Restarted if it dies; one job at a time."""
@@ -88,7 +96,7 @@ class _Blender:
         self.lock = threading.Lock()
 
     def _start(self):
-        self.proc = subprocess.Popen([BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--", "--serve"],
+        self.proc = subprocess.Popen([BLENDER, "-b", *_threads(), "--factory-startup", "--python", str(SCRIPT), "--", "--serve"],
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                      text=True, bufsize=1)
         self.lines = queue.Queue()
@@ -138,7 +146,7 @@ def render_views(mesh_npz: Path, frames: list[dict], size: int, matcap: str, cav
         try:
             _BLENDER.render(job)
         except (RuntimeError, OSError):  # fall back to a one-off Blender, which reports its own errors
-            r = subprocess.run([BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--", str(job)],
+            r = subprocess.run([BLENDER, "-b", *_threads(), "--factory-startup", "--python", str(SCRIPT), "--", str(job)],
                                capture_output=True, text=True, timeout=300)
             if r.returncode:
                 raise RuntimeError(f"blender render failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")

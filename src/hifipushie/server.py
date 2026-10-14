@@ -138,7 +138,7 @@ TOOLSETS: dict[str, dict] = {
                        "measurements, fits, skin",
               "tools": ["human", "measure_human", "fit_human", "nudge_human", "human_reference", "block_in_start",
                         "block_in_look", "block_in_step", "block_in_solve", "block_in_expression", "lid_read", "eye_ruler", "face_ruler", "lip_read", "brow_read", "gnm_controls", "skin",
-                        "look_skin", "skin_reference", "skin_from_reference"]},
+                        "look_skin", "skin_reference", "skin_from_reference", "skin_project"]},
     "likeness": {"about": "matching a real person's face and look from reference pictures",
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
@@ -2327,17 +2327,46 @@ def check_references(images: list[str], name: str | None = None) -> str:
 @mcp.tool(structured_output=False)
 def skin_from_reference(name: str, out: str = "", groups: list[str] | None = None, rounds: int = 2, read_only: bool = False,
                         stubble: bool | None = None, anchor: str = "auto", tone: float | dict | None = None,
-                        white: list[dict] | None = None) -> str:
-    """Set the procedural skin from the model's fitted reference pictures, used as a MEASUREMENT (never as the
-    albedo): tone, zone tints, lips, beard shadow by zone, brows, freckles, and the folds the shape model does not make
-    (nasolabial, tear trough / eye bag, lid fold, marionette ...). read_only=True: the read alone. out: save to a copy.
-    Details: guide(topic="skin_from_reference")."""
-    from . import skin_read
+                        white: list[dict] | None = None, project: bool = False, layers: bool = True) -> str:
+    """Set the skin from the model's fitted reference pictures, used as a MEASUREMENT (the photo's pixels never ship):
+    project=True first makes the de-lit atlas (skin_project, as a measurement); with an atlas on the model the read
+    uses it, and layers=True stores the skin as a STACK OF LAYER MAPS decomposed from it (pigment, redness, periorbital,
+    brows, lips, beard, shade: skin.stack). Without an atlas: the per-picture read of tone, zones, lips, beard, brows,
+    freckles, folds. read_only=True: the read alone. out: save to a copy. Details: guide(topic="skin_from_reference")."""
+    from . import skin_layers, skin_project as spj, skin_read, store
+    dst = out or name
+    pre = ""
+    if project and not read_only:
+        a = spj.apply(name, out=out or None, opacity=0.0, log=lambda s: None)
+        pre = a["text"] + "\n\n"
+        name = dst
     if read_only:
         return skin_read.read(name, anchor=anchor, log=lambda s: None, white=white)["text"]
-    r = skin_read.apply(name, out=out or None, groups=tuple(groups) if groups else skin_read.DEFAULT_GROUPS, rounds=rounds,
+    has_atlas = skin_read.atlas_source(store.load(name)) is not None
+    g = tuple(groups) if groups else (tuple(x for x in skin_read.DEFAULT_GROUPS if x not in ("eyes", "folds")) if has_atlas else skin_read.DEFAULT_GROUPS)
+    r = skin_read.apply(name, out=(out or None) if not project else None, groups=g, rounds=rounds,
                         anchor=anchor, stubble=stubble, log=lambda s: None, tone=tone, white=white)
-    return r["text"]
+    text = pre + r["text"]
+    if layers and has_atlas:
+        text += "\n\n" + skin_layers.apply(dst, log=lambda s: None)["text"]
+    return text
+
+
+@mcp.tool(structured_output=False)
+def skin_project(name: str, out: str = "", views: list[int] | None = None, remove: bool = False, report_only: bool = False,
+                 delight: bool = True, ears: bool = False, mirror: bool = True, tone: str = "model", opacity: float = 0.0,
+                 detail_depth: float = 0.00012, parse: str = "mediapipe", eyes: bool = False, stubble: str = "picture") -> str:
+    """The fitted reference pictures as a de-lit ATLAS in the head's own texture space (the measurement
+    skin_from_reference fits the skin's layer stack to): projected, DE-LIT into albedo, the unseen filled, fine lines as
+    relief; saved as skin.projection. opacity 0 (default): nothing of the photo is laid as colour; 1 = "photo skin" (the
+    ceiling / a judging overlay). The reply says what was left out and what is ambiguous. out: save to a copy; remove=True takes it out. Details: guide(topic="skin_project")."""
+    from . import skin_project as spj
+    kw = dict(views=views, delight=delight, ears=ears, mirror=mirror, tone=tone, parse=parse or None, log=lambda s: None)
+    if remove:
+        return spj.apply(name, out=out or None, remove=True)["text"]
+    if report_only:
+        return spj.make(name, **kw)["text"]
+    return spj.apply(name, out=out or None, opacity=opacity, detail_depth=detail_depth, eyes=eyes, stubble=stubble, **kw)["text"]
 
 
 @mcp.tool(structured_output=False)
