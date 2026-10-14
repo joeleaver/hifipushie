@@ -34,6 +34,8 @@ func _tex(path: String) -> ImageTexture:
 	return ImageTexture.create_from_image(im)
 
 func _load_glb(path: String) -> Node:
+	if path.begins_with("res://"):  # a GLB imported by the project (retarget.py: Godot's humanoid retargeting)
+		return (load(path) as PackedScene).instantiate()
 	var doc := GLTFDocument.new()
 	var st := GLTFState.new()
 	if doc.append_from_file(path, st) != OK:
@@ -172,30 +174,75 @@ func _retarget(sk: Skeleton3D, src: Skeleton3D) -> int:
 			sk.set_bone_pose_position(i, sk.get_bone_rest(i).origin + Rt.inverse() * d)
 	return n
 
+# Mixamo name -> Godot's humanoid profile name (the retargeted import renames mapped bones; retarget.py MAP)
+const PROFILE := {"Hips": "Hips", "Spine": "Spine", "Spine1": "Chest", "Spine2": "UpperChest", "Neck": "Neck", "Head": "Head",
+	"Shoulder": "Shoulder", "Arm": "UpperArm", "ForeArm": "LowerArm", "Hand": "Hand", "UpLeg": "UpperLeg", "Leg": "LowerLeg",
+	"Foot": "Foot", "ToeBase": "Toes"}
+
+func _bone(sk: Skeleton3D, mix: String) -> int:
+	# a bone by its Mixamo name ("LeftForeArm", "mixamorig:LeftHand"), raw or retargeted
+	var n := mix.replace("mixamorig:", "").replace("mixamorig_", "")
+	var i := sk.find_bone(P + n)
+	if i >= 0:
+		return i
+	var side := ""
+	var rest := n
+	for sd in ["Left", "Right"]:
+		if n.begins_with(sd):
+			side = sd
+			rest = n.substr(sd.length())
+	if PROFILE.has(rest):
+		return sk.find_bone(side + PROFILE[rest])
+	return sk.find_bone(n)
+
+func _turn_global(sk: Skeleton3D, i: int, axis_g: Vector3, deg: float) -> void:
+	# turn bone i about an axis in skeleton space (independent of the bone's own rest axes / roll)
+	var par := sk.get_bone_parent(i)
+	var gp := sk.get_bone_global_pose(par).basis.get_rotation_quaternion() if par >= 0 else Quaternion()
+	var gi := gp * sk.get_bone_pose_rotation(i)
+	var ng := Quaternion(axis_g.normalized(), deg_to_rad(deg)) * gi
+	sk.set_bone_pose_rotation(i, gp.inverse() * ng)
+
+func _seg_axis(sk: Skeleton3D, j: int) -> Vector3:
+	# rest direction (skeleton space) of the segment starting at bone j: to its first child that is not a twist joint
+	var o := sk.get_bone_global_rest(j).origin
+	for c in sk.get_bone_children(j):
+		if not sk.get_bone_name(c).contains("Twist"):
+			var d := sk.get_bone_global_rest(c).origin - o
+			if d.length() > 1e-6:
+				return d.normalized()
+	return Vector3.UP
+
 func _drive_twist(sk: Skeleton3D, info: Dictionary) -> int:
+	# the export's twist recipe, frame-agnostic: the driver's roll (its pose against its rest, in its own rest frame)
+	# about the twist joint's segment axis, x share, applied to the twist joint about the same axis in ITS rest frame.
+	# Works on the raw import (unrotated rests) and on Godot's retargeted one (profile rests and axes).
 	var driven := 0
 	for tw in info["rig"]["twist"]:
 		var ti := sk.find_bone(String(tw["bone"]).replace(":", "_"))
-		var di := sk.find_bone(String(tw["driver"]).replace(":", "_"))
+		var di := _bone(sk, String(tw["driver"]))
 		if ti < 0 or di < 0:
 			continue
-		var axis := _b2g(tw["axis"])
+		var seg := _seg_axis(sk, sk.get_bone_parent(ti))
+		var dr := sk.get_bone_global_rest(di).basis.get_rotation_quaternion()
 		var q := sk.get_bone_rest(di).basis.get_rotation_quaternion().inverse() * sk.get_bone_pose_rotation(di)
-		var roll := 2.0 * atan2(Vector3(q.x, q.y, q.z).dot(axis), q.w)
+		var ax_d := dr.inverse() * seg
+		var roll := 2.0 * atan2(Vector3(q.x, q.y, q.z).dot(ax_d), q.w)
 		if roll > PI:
 			roll -= TAU
 		if roll < -PI:
 			roll += TAU
-		sk.set_bone_pose_rotation(ti, sk.get_bone_rest(ti).basis.get_rotation_quaternion() * Quaternion(Vector3.UP, float(tw["share"]) * roll))
+		var tr := sk.get_bone_global_rest(ti).basis.get_rotation_quaternion()
+		sk.set_bone_pose_rotation(ti, sk.get_bone_rest(ti).basis.get_rotation_quaternion() * Quaternion(tr.inverse() * seg, float(tw["share"]) * roll))
 		if absf(roll) > 1e-4:
 			driven += 1
 	return driven
 
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()
-	var here := (get_script() as Script).resource_path.get_base_dir()
-	hair_shader = _shader(ProjectSettings.globalize_path("res://").path_join("../godot_hair/hair_cards.gdshader"))
-	skin_shader = _shader(ProjectSettings.globalize_path("res://").path_join("skin_blink.gdshader"))
+	var here := OS.get_environment("GR_DIR") if OS.get_environment("GR_DIR") != "" else ProjectSettings.globalize_path("res://")
+	hair_shader = _shader(here.path_join("../godot_hair/hair_cards.gdshader"))
+	skin_shader = _shader(here.path_join("skin_blink.gdshader"))
 	var scene := _load_glb(a[0])
 	if scene == null:
 		quit(1)
@@ -217,9 +264,10 @@ func _initialize() -> void:
 	print("export bones not found in the imported skeleton: ", missing, " of ", info["rig"]["bones"].size())
 	var src: Skeleton3D = null
 	var player: AnimationPlayer = null
+	var own_player: AnimationPlayer = null
+	var src_scene: Node3D = null
 	if a.size() > 4:
 		var an := _load_glb(a[4])
-		an.visible = false if an is Node3D else true
 		root.add_child(an)
 		var ss: Array = []
 		_find(an, "Skeleton3D", ss)
@@ -227,7 +275,16 @@ func _initialize() -> void:
 		var pl: Array = []
 		_find(an, "AnimationPlayer", pl)
 		player = pl[0]
+		src_scene = an
 		print("animation source: ", src.get_bone_count(), " bones, clips ", player.get_animation_list())
+		if sk.name == "GeneralSkeleton" and src.name == "GeneralSkeleton":
+			# both imported through Godot's humanoid retargeting (retarget.py): the source's clips play on OUR skeleton
+			own_player = AnimationPlayer.new()
+			scene.add_child(own_player)
+			own_player.root_node = own_player.get_path_to(scene)
+			own_player.add_animation_library("src", player.get_animation_library(""))
+			print("retarget: Godot's BoneMap / SkeletonProfileHumanoid import (rest fixer), clips on our own player")
+		an.position = Vector3(float(OS.get_environment("GR_BESIDE")) if OS.get_environment("GR_BESIDE") != "" else 0.9, 0, 0)
 
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -260,21 +317,29 @@ func _initialize() -> void:
 			for k in m.mesh.get_blend_shape_count():
 				m.set_blend_shape_value(k, 0.0)
 		var nret := 0
+		if src_scene != null:
+			src_scene.visible = bool(pz.get("beside", false)) and pz.has("anim")
 		if pz.has("anim") and player != null:
 			player.play(pz["anim"][0])
 			player.seek(float(pz["anim"][1]), true)
 			player.pause()
-			nret = _retarget(sk, src)
+			if own_player != null:  # the engine's own retarget: the same clip through %GeneralSkeleton tracks
+				own_player.play("src/" + String(pz["anim"][0]))
+				own_player.seek(float(pz["anim"][1]), true)
+				own_player.pause()
+				nret = -1
+			else:
+				nret = _retarget(sk, src)
 		var turns: Dictionary = pz.get("turns", {})
 		for bn in turns:
-			var i := sk.find_bone(P + bn)
+			var i := _bone(sk, bn)
 			if i < 0:
 				push_error("no bone " + bn)
 				continue
 			var t = turns[bn]
-			sk.set_bone_pose_rotation(i, sk.get_bone_pose_rotation(i) * Quaternion(_b2g(t[0]), deg_to_rad(t[1])))
+			_turn_global(sk, i, _b2g(t[0]), float(t[1]))
 		if pz.has("hips_drop"):
-			var hi := sk.find_bone(P + "Hips")
+			var hi := _bone(sk, "Hips")
 			sk.set_bone_pose_position(hi, sk.get_bone_pose_position(hi) + Vector3(0, -float(pz["hips_drop"]), float(pz.get("hips_back", 0.0))))
 		var driven := _drive_twist(sk, info)
 		var shapes: Dictionary = pz.get("shapes", {})
@@ -298,7 +363,7 @@ func _initialize() -> void:
 				if String(m.name).ends_with("_" + String(k_)):
 					vis = false
 			m.visible = vis
-		var fi := sk.find_bone(P + String(pz.get("focus", "Spine2")))
+		var fi := _bone(sk, String(pz.get("focus", "Spine2")))
 		await process_frame
 		var at: Vector3 = (sk.global_transform * sk.get_bone_global_pose(fi)).origin + Vector3(0, float(pz.get("lift", 0.0)), 0)
 		var dist := float(pz.get("dist", 1.5))
