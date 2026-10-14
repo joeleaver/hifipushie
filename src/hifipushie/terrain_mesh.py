@@ -1207,6 +1207,20 @@ def hold_rivers(T, H, ref):
     return np.where(hold, guard, H)
 
 
+class Metric:
+    """A Field read for distances (the AO's rays): its value with the waterfalls' slope taken from the faced column
+    right up to the face (terrain_falls.SLOPE_NEAR: the meshing field keeps the grid's slope there, for the face's
+    normals). Over a fall's lip the grid's slope under-reported the distance 6x and the AO found rock everywhere."""
+
+    def __init__(self, field):
+        self.field = field
+
+    def value(self, p):
+        if getattr(self.field, "faces", None) is None:
+            return self.field.value(p)
+        return self.field.value(p, metric=True)
+
+
 FACE_SLOPE_H = 0.25  # m: the stencil of the slope correction where a fall's face edits the column (Field.column)
 
 
@@ -1314,13 +1328,15 @@ class Field:
         if self.faces is not None and not self.faces.any:
             self.faces = None
 
-    def column(self, x, y):
+    def column(self, x, y, metric=False):
         """Ground height h and the slope correction 1 / sqrt(1 + |grad h|^2) at columns (with the ground edits:
-        turf lips, bunkers; and the waterfalls' faces)."""
+        turf lips, bunkers; and the waterfalls' faces). metric: the faces' slope right up to the face (Metric: AO)."""
         h, s = self._edited_column(x, y)
         if getattr(self, "faces", None) is not None:
             col = lambda a, b: self._edited_column(a, b)[0]
-            h, k = self.faces.column(x, y, h, col, touched=True)
+            h, k, wk = self.faces.column(x, y, h, col, touched=True, near=not metric)
+            k = k[wk > 0]
+            wk = wk[wk > 0]
             if len(k):
                 # the slope correction of the column as the faces leave it, not the grid's: the grid holds a fall's
                 # face as a ramp over ~2 cells each way, and its s (0.15 on crown_beck's tall fall) on the lip's
@@ -1332,7 +1348,7 @@ class Field:
                 hy = [self.faces.column(xk, yk + d, col(xk, yk + d), col) for d in (e, -e)]
                 gx, gy = (hx[0] - hx[1]) / (2 * e), (hy[0] - hy[1]) / (2 * e)
                 s = np.array(s, float, copy=True)
-                s[k] = 1.0 / np.sqrt(1.0 + gx * gx + gy * gy)
+                s[k] = s[k] + wk * (1.0 / np.sqrt(1.0 + gx * gx + gy * gy) - s[k])
         return h, s
 
     def _edited_column(self, x, y, riser=None, wmin=None):
@@ -1636,9 +1652,9 @@ class Field:
             mic[i] += a[i] * float(Rk.get("micro", 1.0))
         return R, mic
 
-    def value(self, p):
+    def value(self, p, metric=False):
         p = np.asarray(p, float)
-        h, s = self.column(p[:, 0], p[:, 1])
+        h, s = self.column(p[:, 0], p[:, 1], metric) if metric else self.column(p[:, 0], p[:, 1])
         return self.solid(p, (p[:, 2] - h) * s, s)
 
     def value_gradient(self, p, h):
@@ -4578,7 +4594,7 @@ def _textured_prep(P, N, W, F, k, origin, stem):
         # (a cliff shell's sunk edge takes the AO of the true ground over it: its vertices metres down read 0, and
         # interpolated up its dive, the strip that shows over the heightmap was black: pushieworld note 104)
         Pa, Na = terrain_cliffs.lifted(c["field"], Pa, Na)
-    ao_v = terrain_bake.bake_ao(c["base"], Pa, Na)
+    ao_v = terrain_bake.bake_ao(Metric(c["base"]), Pa, Na)
     info = {}
     if k == 0:  # how well the triangles follow the rock's creases (terrain_sharp.crease_error)
         fn_ = np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]])

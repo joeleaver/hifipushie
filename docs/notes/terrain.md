@@ -1340,8 +1340,8 @@ export into out/<tag>), glb.py (GLB reader: primitives in world xyz, embedded im
 directions / material weights at the lip), notch.py (the column across the lip), rend124.py <tiles dir> <tag>
 (renders terrain3d_renders/pw124_*), orig/src = HEAD before item 1 (PYTHONPATH it to run a test on old code).
 
-RESTART: items 1-4 done (commits below; item 4 = two stale slice_a cards closed); the island re-export is Pushieworld's. NEXT: item 5
-(note 123: buried backs over the heightmap at fall feet: terrain_cliffs._faced, uncommitted in the tree; + guide material name).
+RESTART: items 1-5 done (commits below; item 4 = two stale slice_a cards closed); the island re-export is Pushieworld's. NEXT: item 6
+(note 122: `water` on steep reaches + the floating piece at [225, 1058]; then note 121, bankfull check).
 
 - Item 1, note 124 (black slab at crown_beck's tall-fall lip, [1310, 1511], tile 20_23). Two causes:
   (1) AO. `Field.column` took the faces' step (terrain_falls.Faces, note 120) for h but kept the GRID's slope correction s,
@@ -1410,3 +1410,26 @@ RESTART: items 1-4 done (commits below; item 4 = two stale slice_a cards closed)
   5d84560 (3 caves) has every tile within budget (max 12000; cave tile 16,25 11994), slowest tile 80 s, 0 open /
   non-manifold edges at every LOD, shards LOD 0/1 0.002 / 0.008 %, heightmap .npy fortran_order False; its one seam
   failure is the floating piece at [225, 1058] (note 122). slice_a itself was not re-exported.
+- Item 5, note 123 (295 m2 of buried backs > 0.5 m over the heightmap in eight tiles; the guide's material name).
+  Scratch buried.py <tiles dir> i j (their measure on one tile). All eight tiles are at falls (22_6 pencil, 3_21 /
+  3_22 kaze sea fall, 20_23 / 21_24 crown, 5_21 kaze, 9_6 / 10_6 downs). Cause: the shell's back
+  (`Region.back`, the ground grid eroded by a `thick` ball) was built from the field's H GRID, which holds a fall's face
+  as a ramp; the Faces step lowers the column (and the pushed heightmap) to the pool below the lip, the back followed
+  the ramp and stood 1-3 m over the heightmap round the pool. `terrain_cliffs._faced(base)`: the grid with each fall's
+  faced column cut in (min) inside the Faces' boxes, before the erosion. Single-tile / block exports: 20_23 41.3 ->
+  0.5 m2 (the rest a sliver inside the lip's rock 24 m over the pool's pushed ground), 22_6 66.8 -> 10.9, 3_21 49.7
+  -> 6.4, 3_22 25.2 -> 15.1 (all under the sea at the sea fall's foot, inside the rock under the lip shelf).
+  The check is in the export's report now: ground check `buried_over_ground` {area_m2, tiles, worst} (info: most of
+  it lies inside the rock and is never seen; `buried_in_the_open` stays the visible failure). On their 5d84560 export
+  it reads 279 m2 in the same eight tiles (their tool: 295).
+  Guide: the buried primitive's material is `terrain_buried` (it said terrain_reference).
+  REGRESSION FOUND AND FIXED on the way (item 1's slope): the kaze block 3,21-3,22 exported with items 1-3 FAILED its
+  seam check (LOD 1 shards 0.07 %, LOD 2 0.66 %; HEAD before item 1: 0 failures, same block, same machine). The
+  faced slope taken right up to the face swung s 1 -> 0.01 -> 1 across the 0.24 m riser; normals sampled off the
+  surface ((z - h) x grad s) turned against the face. Now: the meshing field eases from the grid's slope to the faced
+  one between `terrain_falls.SLOPE_NEAR` 0.5 and SLOPE_FAR 1.5 m from the lip line (and back out at the hold's end), and
+  the AO reads `terrain_mesh.Metric(field)` (Field.value(metric=True): the faced slope right up to the face). Kaze
+  block: 0 failures. 20_23: lip box AO under 60/255 0.1 m2 (p5 101), the four quoted points 87-120; LOD 0 back to 4497
+  triangles (largest face 67 m2 again: the decimation reads the eased field), the corridor is the drawn surface
+  anyway (item 3). tests/test_falls::test_face_normals (normals on the sea fall's face point downstream; it does NOT
+  reproduce the export's shards: HEAD-with-items-1-3 passes it too; the block export is the real check).

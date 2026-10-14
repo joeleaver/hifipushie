@@ -51,6 +51,29 @@ def sink_share(S):
     return 1.0 - _smooth(0.0, SINK_EDGE, S)
 
 
+def _faced(base):
+    """The field's ground grid with each waterfall's face cut in (terrain_falls.Faces: the column is a step on the
+    lip line, the plunge pool's ground below it), for the shell's back. From the grid alone the back followed the
+    grid's ramp over the face's foot and stood 1-3 m over the pushed heightmap round the pool (pushieworld note 123:
+    the worst buried faces were all at falls)."""
+    H = base.H
+    faces = getattr(base, "faces", None)
+    if faces is None or not faces.any:
+        return H
+    H = H.copy()
+    ny, nx = H.shape
+    for F in faces.items:
+        r = F["r"]
+        i0, i1 = max(0, int((F["c"][0] - r - base.x0) / base.c)), min(nx, int((F["c"][0] + r - base.x0) / base.c) + 2)
+        j0, j1 = max(0, int((F["c"][1] - r - base.y0) / base.c)), min(ny, int((F["c"][1] + r - base.y0) / base.c) + 2)
+        if i0 >= i1 or j0 >= j1:
+            continue
+        X, Y = np.meshgrid(base.x0 + base.c * np.arange(i0, i1), base.y0 + base.c * np.arange(j0, j1))
+        h = np.asarray(base.column(X.ravel(), Y.ravel())[0], float).reshape(X.shape)
+        H[j0:j1, i0:i1] = np.minimum(H[j0:j1, i0:i1], h)
+    return H
+
+
 class Region:
     """Where the cliff meshes go (S), the pushed heightmap and the holes, on the world's heightmap lattice (spacing
     `d` = tile / (samples - 1), from the tile grid's origin: tiles' samples are lattice nodes)."""
@@ -77,7 +100,7 @@ class Region:
         r2 = (xx * xx + yy * yy) * base.c ** 2
         ball = np.sqrt(np.maximum(self.thick ** 2 - r2, 0.0))
         self.back = np.ascontiguousarray(ndimage.gaussian_filter(
-            ndimage.grey_erosion(base.H, footprint=r2 <= self.thick ** 2, structure=ball, mode="nearest"), 0.7))
+            ndimage.grey_erosion(_faced(base), footprint=r2 <= self.thick ** 2, structure=ball, mode="nearest"), 0.7))
         m = float(cfg["cliff_margin"])
         self.nx = int(round(G.span[0] / d)) + 1
         self.ny = int(round(G.span[1] / d)) + 1
@@ -732,12 +755,59 @@ def ground_check(out: Path, M: dict, R: Region | None = None, memo=None, tile_ke
                             f"{f['clearance_m']:.2f} m over the heightmap, at {f['at']})")
         ex = exposed_buried(out, M, R)
         summary["buried_in_the_open"] = ex[:20]
+        summary["buried_over_ground"] = buried_over_ground(out, M)
         for r in [r for r in ex if r["area_m2"] > EXPOSED_LIMIT][:8]:
             failures.append(f"tile {r['tile'][0]},{r['tile'][1]} LOD {r['lod']}: {r['area_m2']:.1f} m2 of the cliff "
                             f"shell's buried back stands in the open ({r['faces']} faces, the largest at {r['at']}): "
                             f"drawn with the plain buried material: flat triangles in the cliff")
     summary["failures"] = len(failures)
     return {"summary": summary, "failures": failures}
+
+
+OVER_GROUND = 0.5  # m: a buried face whose centre stands this far over its ground tile's heightmap is counted
+
+
+def buried_over_ground(out: Path, M: dict, lod: int = 0) -> dict:
+    """The guarantee "the shell's back sinks under the heightmap" measured as a consumer does (pushieworld note 123,
+    their tools/dev/buried_exposed.py): LOD `lod` "buried" faces whose centre stands more than OVER_GROUND m over
+    the highest corner of the ground tile's heightmap cell under it. Most of it lies inside the rock (between the
+    shell's surface and the pushed ground) and is never seen; `buried_in_the_open` is the visible kind. Info, not a
+    failure: {area_m2, tiles: [[i, j, m2]] worst first, worst: [[x, y, z, m over]]}."""
+    hm = {(e["i"], e["j"]): e for e in M.get("ground", []) if e.get("heightmap")}
+    T = float(M["tile_size"])
+    total, per, worst = 0.0, [], []
+    for e in M["tiles"]:
+        L = e["lods"][lod] if len(e["lods"]) > lod else None
+        g = hm.get((e["i"], e["j"]))
+        if not L or g is None:
+            continue
+        H = np.load(out / g["heightmap"])[::-1]  # (row 0 south)
+        n = H.shape[0] - 1
+        d = T / n
+        x0, y0 = g["min"][0], g["min"][1]
+        tr, prims = tm.read_glb(out / L["file"])
+        o = tm._from_gltf(tr[None])[0]
+        for p in prims:
+            if p["extras"].get("role") != "buried":
+                continue
+            P = tm._from_gltf(p["POSITION"].astype(np.float64)) + o
+            F = p["indices"]
+            c = P[F].mean(1)
+            a = np.linalg.norm(np.cross(P[F[:, 1]] - P[F[:, 0]], P[F[:, 2]] - P[F[:, 0]]), axis=1) / 2
+            xi = np.clip(((c[:, 0] - x0) / d).astype(int), 0, n - 1)
+            yi = np.clip(((c[:, 1] - y0) / d).astype(int), 0, n - 1)
+            top = np.maximum(np.maximum(H[yi, xi], H[yi + 1, xi]), np.maximum(H[yi, xi + 1], H[yi + 1, xi + 1]))
+            up = c[:, 2] - top
+            m = up > OVER_GROUND
+            if m.any():
+                ar = float(a[m].sum())
+                total += ar
+                per.append([e["i"], e["j"], round(ar, 1)])
+                k = np.flatnonzero(m)[np.argsort(-up[m])[:2]]
+                worst += [[*c[i].round(1).tolist(), round(float(up[i]), 2)] for i in k]
+    per.sort(key=lambda r: -r[2])
+    worst.sort(key=lambda r: -r[3])
+    return {"area_m2": round(total, 1), "tiles": per[:10], "worst": worst[:6]}
 
 
 EXPOSED_OFF = 0.5  # m out from a buried face's centre (along its normal) where the open air must not be
