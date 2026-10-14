@@ -19,6 +19,7 @@ from scipy.spatial import cKDTree
 
 LOD_RATIOS = (0.5, 0.25, 0.12)  # share of LOD0's triangles per level (Joe's call: budgets per tier)
 MIN_PATCH = 12  # triangles: smaller patches are kept as they are
+MIN_PART = 1000  # triangles: smaller parts (eyes, teeth, props) are kept whole (the LOD3 eyes lost their cornea)
 CARDS_MIN = 0.2  # a hair LOD keeps at least this share of its card layer's triangles (the biggest cards)
 
 
@@ -228,7 +229,7 @@ def lod_parts(parts: dict, rigged: dict | None, ratio: float, skip=(), cards: di
             if w is not None:
                 neww[pn] = w
             continue
-        if pn in skip:
+        if pn in skip or len(p["corner_vert"]) // 3 < MIN_PART:
             out[pn] = p
             if w is not None:
                 neww[pn] = w
