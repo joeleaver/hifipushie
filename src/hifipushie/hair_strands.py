@@ -341,6 +341,11 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
         # ramp, no inset (the inset was for children of guides 1+ cm away hanging over the face; at a guide spacing of a
         # few mm a child follows its guides' face rule)
         dens_even = dens.copy()
+    # the SPLIT ZONE (strands.even 1): where neighbouring guides comb opposite ways, a child averaging them takes the
+    # middle path (over the cheek at a tuck's edge, jw E1; down the face where the face rule turns hair aside): there a
+    # child copies its NEAREST guide; everywhere else it blends three (copies of one guide on short dense hair were
+    # bundles of identical strands with gaps: Garrett E2-E3's "pine needles", the coordinator)
+    zone = _split_zone(sc, g, AA, EE, d_in, fa_) if float(S.get("even") or 0.0) >= EVEN_ALL else np.zeros_like(d_in)
     dens = dens * (1 - 0.9 * np.clip(_part(sc, g, AA % 360, EE, 0.25 * pw), 0, 1))
     na, ne = AA.shape
     idx = np.arange(na * ne).reshape(na, ne)
@@ -365,6 +370,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     F = np.concatenate([F, fan])
     dens = np.r_[dens.ravel(), 1.0]
     dens_even = np.r_[dens_even.ravel(), 1.0]
+    zone = np.r_[zone.ravel(), 0.0]
     uv_corner = np.concatenate([uvv[F[:len(F) - len(fan)]],
                                 np.stack([uvv[fan[:, 0]], uvv[fan[:, 1]],
                                           np.stack([(uvv[fan[:, 0], 0] + uvv[fan[:, 1], 0]) / 2,
@@ -381,6 +387,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
         V = np.vstack([V, V])
         dens = np.r_[dens, dens]
         dens_even = np.r_[dens_even, dens_even]
+        zone = np.r_[zone, zone]
         # ... and the right island's UVs one unit over (u + 1): Interpolate finds a guide's island by its surface UV, and
         # with both islands on one chart every guide was on either side: children took guides from across the part,
         # the veil over the face that the split did not remove (hair-heads, lt19 E6). scalp_uv(xp=) shifts the roots
@@ -395,13 +402,20 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
         h_ = len(dens_even) // 2
         banks = {"hp_density_even_l": np.r_[dens_even[:h_], np.zeros(h_)][used].astype(np.float32),
                  "hp_density_even_r": np.r_[np.zeros(h_), dens_even[h_:]][used].astype(np.float32)}
+    if zone.any():  # blend outside the split zone, nearest guide in it: each even mask split in two (_n = the zone)
+        z_ = zone[used].astype(np.float32)
+        base_ = banks or {"hp_density_even": dens_even[used].astype(np.float32)}
+        banks = {}
+        for k_, v_ in base_.items():
+            banks[k_] = v_ * (1 - z_)
+            banks[k_ + "_n"] = v_ * z_
     remap = -np.ones(len(V), int)
     remap[used] = np.arange(len(used))
     tri = V[F]
     area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
     return {"verts": V[used].astype(np.float32), "faces": remap[F].astype(np.int32),
             "uv": uv_corner.reshape(-1, 2).astype(np.float32), "hp_density": dens[used].astype(np.float32),
-            "hp_density_even": dens_even[used].astype(np.float32),
+            "hp_density_even": dens_even[used].astype(np.float32),  # (overridden by the zone split, below)
             "area": float((area * dens[F].mean(1)).sum()), "e0": e0, "xp": xp_, **banks}
 
 
@@ -422,6 +436,29 @@ def collide_mesh(sc, step: float = 4.0) -> dict:
     top = idx[:, -1]
     fan = np.stack([top, np.roll(top, -1), np.full(na, pole)], 1)
     return {"verts": V.astype(np.float32), "faces": np.concatenate([q[:, [0, 1, 2]], q[:, [0, 2, 3]], fan]).astype(np.int32)}
+
+
+def _split_zone(sc, g: dict, AA, EE, d_in, fa):
+    """1 where the comb splits (EVEN children copy their nearest guide there), else 0. LONG loose hair (over 15 cm):
+    everywhere: it splits at the part, the tuck, the face rule AND over the shoulders (in front of them or behind):
+    blended children of a front and a back guide hung across the neck and chest (lt19 E17). Short hair: round the EAR
+    when tucked behind it; elsewhere none (blend: a fine combed surface, Garrett E4)."""
+    lo = g.get("loose") or {}
+    z = np.zeros_like(d_in, dtype=float)
+    ln = lo.get("length", 0.0)
+    lmax = max(float(v) for v in ln.values()) if isinstance(ln, dict) else float(ln or 0.0)
+    if lmax > 0.15:
+        return np.ones_like(d_in, dtype=float)
+    tk = lo.get("tuck")
+    if tk:
+        from .hair import ear as _ear
+        er = _ear(sc)
+        ef, eb = (float(er["front"]), float(er["back"])) if er else (80.0, 105.0)
+        top_ = float(er["top"]) if er else sc.C[2] - 0.01
+        a0 = float(tk["from"]) if tk.get("from") is not None else ef - 45.0
+        zc = sc.point(AA % 360, EE, 0.0)[..., 2]
+        z = np.maximum(z, ((fa > a0 - 10.0) & (fa < eb + 20.0) & (zc < top_ + 0.05)).astype(float))
+    return z
 
 
 def _guides_subset(G: dict, sel) -> dict:
@@ -524,7 +561,8 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
 
 
 def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0, n_wisp: float = 0.0,
-           tail: bool = True, n_even: float = 0.0, even_all: bool = False, banks: bool = False) -> dict:
+           tail: bool = True, n_even: float = 0.0, even_all: bool = False, banks: bool = False,
+           even_objs: list | None = None) -> dict:
     """Each object's modifier stack: [[node group, {input: value}], ...]. {"part": name} = the scene object of that
     part (the body: strands are kept out of it), {"attribute": name} = a named attribute as a field."""
     body = {"object": "hair_collide"}
@@ -604,12 +642,21 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
                                         "Offset Distance": 0.0015, "Smoothing Steps": 1, "Lock Roots": True}],
             ["hp_profile", {"Radius": ph["radius"], "Tip": ph["tip_radius"], "Taper": 0.3, "Root": 0.8}],
         ]
-    if n_even > 0 and banks:  # the right bank: the same stack on its own mask (Part by Mesh Islands off: one bank)
+    if n_even > 0 and banks and not even_objs:  # the right bank: the same stack on its own mask
         import copy as _copy
         st_r = _copy.deepcopy(out["hair_even"])
         st_r[0][1]["Density Mask"] = {"attribute": "hp_density_even_r"}
         st_r[0][1]["Seed"] = int(seed) + 17
         out["hair_even_r"] = st_r
+    if n_even > 0 and even_objs:  # [(object, mask attribute, guides)]: the bank x zone objects (the same stack each)
+        import copy as _copy
+        base_ = out.pop("hair_even")
+        for i_, (nm_, attr_, ng_) in enumerate(even_objs):
+            st_ = _copy.deepcopy(base_)
+            st_[0][1]["Density Mask"] = {"attribute": attr_}
+            st_[0][1]["Interpolation Guides"] = int(ng_)
+            st_[0][1]["Seed"] = int(seed) + 7 + 10 * i_
+            out[nm_] = st_
     if n_under > 0:
         ph = physical(S)
         out["hair_under"] = [
@@ -666,6 +713,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
                 k_["edge_density"] = float(EDGE_MIN + (1 - EDGE_MIN) * _ss((d0 - EDGE_START) / EDGE_RAMP))
     sm = scalp_mesh(sc, g, line, S)
     area, e0, xp_ = sm.pop("area"), sm.pop("e0"), sm.pop("xp")
+    sm_keys = list(sm)
     np.savez(tmp / "strand_scalp.npz", **sm)
     np.savez(tmp / "strand_collide.npz", **(col.mesh() if col is not None else collide_mesh(sc)))  # (loose hair: the
     # body's own surface down to the back, hair_loose.Collider)
@@ -721,6 +769,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         groups.append({"name": name, "guides": str(tmp / f"{name}.npz"), "locks": int(len(base)),
                        "strands": int(round(share.sum()))})
     banks = eg is not None and xp_ is not None
+    even_objs = []
     if eg is not None:
         sides = [("hair_even", None)]
         if banks:
@@ -728,14 +777,25 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
             first_ = np.r_[0, np.cumsum(cnt_)[:-1]]
             right = (eg["pts"][first_, 0] - sc.C[0] - xp_) > 0
             sides = [("hair_even", ~right), ("hair_even_r", right)]
+        zoned = any(k.endswith("_n") for k in sm_keys)
+        ng_auto = S.get("even_guides")
         for nm_, sel_ in sides:
             e_ = eg if sel_ is None else _guides_subset(eg, sel_)
             if sel_ is not None and not sel_.any():
                 continue
             np.savez(tmp / f"{nm_}.npz", **e_)
             share_ = 1.0 if sel_ is None else float(sel_.mean())
-            groups.append({"name": nm_, "guides": str(tmp / f"{nm_}.npz"), "locks": int(len(e_["counts"])),
-                           "strands": int(round(n_even * share_))})
+            attr_ = "hp_density_even" + ("" if sel_ is None else ("_r" if nm_.endswith("_r") else "_l"))
+            if zoned:  # blend (3 guides) outside the split zone, the nearest guide in it
+                for nm2, a2, ng2 in ((nm_, attr_, int(ng_auto or 3)), (nm_ + "_n", attr_ + "_n", int(ng_auto or 1))):
+                    groups.append({"name": nm2, "guides": str(tmp / f"{nm_}.npz"), "locks": int(len(e_["counts"])),
+                                   "strands": int(round(n_even * share_ * 0.5))})
+                    even_objs.append((nm2, a2, ng2))
+            else:
+                groups.append({"name": nm_, "guides": str(tmp / f"{nm_}.npz"), "locks": int(len(e_["counts"])),
+                               "strands": int(round(n_even * share_))})
+                if even_all:
+                    even_objs.append((nm_, attr_ if sel_ is not None else "hp_density_even", int(ng_auto or 3)))
     if ug is not None:
         ug["uv"] = scalp_uv(sc, ug["pts"].reshape(len(ug["counts"]), -1, 3)[:, 0], e0, xp_).astype(np.float32)
         np.savez(tmp / "hair_under.npz", **ug)
@@ -749,7 +809,8 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         fw = {k: float(lo_[k]) for k in ("halo", "flyaway") if lo_.get(k) is not None}
         S = {**S, "free": {**(S.get("free") or {}), **fw}}
     st = stacks(S, amount.get("hair_guides", 0.0), amount.get("hair_guides_free", 0.0), n_under, area, seed,
-                n_wisp=amount.get(WISPS, 0.0), tail=tail, n_even=n_even, even_all=even_all, banks=banks)
+                n_wisp=amount.get(WISPS, 0.0), tail=tail, n_even=n_even, even_all=even_all, banks=banks,
+                even_objs=even_objs or None)
     for grp in groups:
         grp["stack"] = st[grp["name"]]
     out = {"scalp": str(tmp / "strand_scalp.npz"), "collide": str(tmp / "strand_collide.npz"), "groups": groups, "look": look, "physical": ph,

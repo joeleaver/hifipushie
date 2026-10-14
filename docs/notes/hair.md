@@ -2330,6 +2330,13 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   temple to behind the jaw. From the front E16 is narrower than her full sides (body 10 mm: next), a few strands stand up
   at the part. Garrett E3 (grey fix): the grey is back; the back reads coarse / streaky ("pine needles", nearest-guide
   bundles + Clump on a crop) with speckles low on the back (~1 %): for a crop the even layer is not yet better than r14.
+- Nearest guide only where the comb splits (coordinator): on a crop every child copying one guide made bundles of
+  identical strands with gaps ("pine needles", Garrett E2-E3). The even layer is now split per bank into a BLEND object
+  (3 guides) and a NEAREST one (`_n`, 1 guide) by a split-zone mask (hair_strands._split_zone): long loose hair
+  (> 15 cm) is ALL split zone: blending outside the hairline strip (E17) hung children of a front and a back guide
+  across the neck and chest (the shoulders are a split too); a crop blends everywhere except round a tuck. Garrett E4
+  (blend): the top and sides a fine combed surface; left: a starburst of scalp at the back above the nape (0.96 %
+  behind: guides combed apart there, the whorl hunt) and the nape hairline's speckles. groom.loose.body by region.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)

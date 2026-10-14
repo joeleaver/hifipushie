@@ -559,3 +559,14 @@ def test_banks_split_the_even_layer_at_the_part():
     G = {"counts": np.array([2, 3], np.int32), "pts": np.arange(15, dtype=float).reshape(5, 3), "names": np.array(["a", "b"])}
     sub = hs._guides_subset(G, np.array([False, True]))
     assert sub["counts"].tolist() == [3] and sub["pts"].shape == (3, 3) and sub["names"].tolist() == ["b"]
+
+
+def test_split_zone_long_everywhere_short_none():
+    """Even children copy their nearest guide where the comb splits: on long loose hair everywhere (part, tuck, face,
+    shoulders: blended children hung across the neck, lt19 E17); on a crop without a tuck nowhere (copies of one guide
+    were bundles of identical strands, Garrett E2-E3)."""
+    d = np.full((4, 3), 0.03)
+    fa = np.full((4, 3), 40.0)
+    long_ = hs._split_zone(None, {"loose": {"length": 0.45}}, None, None, d, fa)
+    crop = hs._split_zone(None, {"loose": {"length": {"front": 0.045, "top": 0.04, "sides": 0.02}}}, None, None, d, fa)
+    assert long_.min() == 1.0 and crop.max() == 0.0
