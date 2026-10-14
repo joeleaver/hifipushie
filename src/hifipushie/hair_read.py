@@ -510,6 +510,58 @@ def parting(img, solid, a_skin, mm: float, top_px: int, hairline_px: int, c) -> 
             "sweep": round(sweep, 3) if np.isfinite(sweep) else None, "profile": np.round(sm, 2).tolist()}
 
 
+def pixel_z(cam: dict, C, uv) -> np.ndarray:
+    """World z of pixels on the plane through C facing the camera (hair hanging beside / behind the head)."""
+    eye, D = pixel_rays(cam, uv)
+    fwd = np.asarray(C, float) - eye
+    fwd /= np.linalg.norm(fwd)
+    t = ((np.asarray(C, float) - eye) @ fwd) / np.maximum(D @ fwd, 1e-6)
+    return (eye + t[:, None] * D)[:, 2]
+
+
+def waviness(img, mask, mm: float) -> float | None:
+    """0 straight .. ~1 curly: 1 - the coherence of the strand direction over 15 mm windows (the structure tensor's
+    orientation at ~1.5 mm, as unit vectors of twice the angle, averaged): straight lengths keep one direction over a
+    window, waves turn within it."""
+    from scipy import ndimage as ndi
+    m = np.asarray(mask, bool)
+    if m.sum() < 400:
+        return None
+    ang, coh = strand_field(img, m, mm / 2.0)  # (sigma ~1.6 mm)
+    th = np.radians(ang)
+    w = coh * m
+    s = max(15.0 / mm / 2.0, 2.0)
+    cx = ndi.gaussian_filter(np.cos(2 * th) * w, s)
+    sx = ndi.gaussian_filter(np.sin(2 * th) * w, s)
+    ww = ndi.gaussian_filter(w, s)
+    R = np.hypot(cx, sx) / np.maximum(ww, 1e-6)
+    inner = ndi.binary_erosion(m, iterations=max(1, int(round(4.0 / mm))))
+    return round(float(1.0 - np.median(R[inner])), 3) if inner.sum() > 200 else None
+
+
+def lengths(f: dict, sc, solid, mm: float) -> dict:
+    """{"bottom_m": how far under the head centre the hair reaches in this view (m, + = below), "waviness" of the
+    hair more than 4 cm under the centre (the lengths), or {} when the hair stops above the jaw}."""
+    from scipy import ndimage as ndi
+    lab, n = ndi.label(solid)
+    if not n:
+        return {}
+    k = 1 + int(np.argmax(ndi.sum(solid, lab, range(1, n + 1))))
+    m = lab == k
+    ys, xs = np.nonzero(m)
+    j = np.argsort(ys)[-max(5, len(ys) // 1000):]  # the lowest 0.1 % (not one stray pixel)
+    zb = float(np.median(pixel_z(f["cam"], sc.C, np.stack([xs[j], ys[j]], 1).astype(float))))
+    out = {"bottom_m": round(float(sc.C[2] - zb), 3)}
+    # the lengths: hair pixels whose plane height is 4+ cm under the centre
+    H, W = m.shape
+    rows = np.arange(H)
+    zr = pixel_z(f["cam"], sc.C, np.stack([np.full(H, f["c"][0]), rows], 1).astype(float))
+    low = m & (zr[:, None] < sc.C[2] - 0.04)
+    if low.sum() > 400:
+        out["waviness"] = waviness(f["image"], low, mm)
+    return out
+
+
 def colour_split(img, dense, mm: float, T: float | None = None) -> dict:
     """The dense hair's colour (colour_bands with variation) and a TWO-MODE split: the pigmented hair (darker) and the
     light / grey strands (lighter, low chroma), at the Otsu threshold of L*. seen = the median of the upper half of the
@@ -629,6 +681,9 @@ def read(name: str, spec: dict | None = None, authority: int | None = None, log=
             T = v["colour"]["threshold_L"]
             v["light_share_by_region"] = {r: round(float((L[hit & (reg == r)] > T).mean()), 3)
                                           for r in REGIONS if (hit & (reg == r)).sum() >= 100}
+        # LONG hair: how far down it reaches (the hair mask's lowest point, on the plane through the head centre facing
+        # the camera: m under the centre) and how WAVY its lengths are (below the ear)
+        v.update(lengths(f, sc, hn["solid"], mm))
         # parting (front-ish views only: within 50 deg of frontal)
         if abs(((f["yaw"] + 180) % 360) - 180) <= 50:
             cols = np.nonzero(hn["solid"].any(0))[0]
@@ -687,6 +742,10 @@ def summarise(r: dict) -> dict:
     s["hairline_softness_mm"] = {k: round(float(np.median(w)), 1) for k, w in soft.items()}
     bp = [v["baby_per_cm"] for v in vs if v.get("baby_per_cm") is not None]
     s["baby_per_cm"] = round(float(np.median(bp)), 2) if bp else None
+    bm = [v["bottom_m"] for v in vs if v.get("bottom_m") is not None]
+    s["bottom_m"] = round(float(max(bm)), 3) if bm else None  # (the view that sees the most of it hanging)
+    wv = [v["waviness"] for v in vs if v.get("waviness") is not None]
+    s["waviness"] = round(float(np.median(wv)), 3) if wv else None
     s["parting"] = au.get("parting") or next((v.get("parting") for v in vs if v.get("parting")), None)
     s["colour"] = au.get("colour") or {}
     s["colour_view"] = r["authority"]
@@ -718,6 +777,10 @@ def read_text(r: dict) -> str:
                  "; ".join(f"{a:.0f}: {z} / {e}" for a, z, e, n in s["hairline"][:8]) + (" ..." if len(s["hairline"]) > 8 else ""))
     L.append(f"hairline softness (20->80 % hair across the line, mm): {s['hairline_softness_mm']}; baby hairs "
              f"{s['baby_per_cm']} per cm; left - right height {s.get('hairline_asym_mm')} mm")
+    if s.get("bottom_m") is not None:
+        L.append(f"lengths: the hair reaches {s['bottom_m']} m under the head centre (the view that shows most of it; "
+                 f"the jaw is ~0.11, the shoulders' top ~0.17); waviness of the lengths {s.get('waviness')} (0 straight .. 1 "
+                 f"curly)")
     p = s.get("parting") or {}
     if p:
         L.append("parting (rule 5): " + ("SEEN" if p.get("seen") else "NOT SEEN (a part needs a sharp flip of strand "
@@ -754,6 +817,7 @@ CROP = {"strands": {"count": 220000, "thickness": 0.9, "clump": 0.1, "stray": 0.
 SHORT_MM = 30.0     # mm: a mean stand-off under this (and no region over 1.5x) is a short cut
 LIFT_SPREAD = 0.005  # m a laid short lock's strands stand over its guide (render stand-off ~ lift + this)
 LOOSE_THICK = 0.003  # m: a short laid lock's thickness (6 mm sank half the strands into the skin: curls)
+LONG_BELOW = 0.12  # m under the head centre: hair reaching lower (past the jaw) is loose LONG hair
 
 
 def start(r: dict, spec: dict) -> dict:
@@ -772,13 +836,41 @@ def start(r: dict, spec: dict) -> dict:
                                 "back": so.get("sides", top), "front": top, "sides": 0.8 * top, "top": top}[reg])
               for reg in REGIONS}
     inferred = {reg: reg not in so for reg in REGIONS}
-    if np.mean(list(so_all.values())) * 1000 > SHORT_MM or max(so_all.values()) * 1000 > 1.5 * SHORT_MM:
-        rows.append(("style", None, f"mean stand-off {1000 * np.mean(list(so_all.values())):.0f} mm: not a short cut; "
-                                    "the reader sets hairline, parting and look only (groom the shape by hand)"))
+    bottom = s.get("bottom_m")
+    long_ = bottom is not None and bottom > LONG_BELOW
+    if long_ or np.mean(list(so_all.values())) * 1000 > SHORT_MM or max(so_all.values()) * 1000 > 1.5 * SHORT_MM:
         short = False
+        if not long_:
+            rows.append(("style", None, f"mean stand-off {1000 * np.mean(list(so_all.values())):.0f} mm and no hair below "
+                                        "the jaw: not a short cut, not loose long hair; the reader sets hairline, parting "
+                                        "and look only (groom the shape by hand: tied hair is tie_hair's)"))
     else:
         short = True
     g = {}
+    if long_:
+        # LOOSE LONG hair (the guide's loose-hair recipes): a one-length cut at the measured bottom (`level`), long
+        # enough to reach it, `body` and `lift` from the stand-off at the sides and top, framed off the face
+        lvl = -float(bottom) + 0.01  # (m from the head centre; the lowest 0.1 % of the mask is the longest strand)
+        ln = float(np.clip(bottom + 0.16, 0.15, 0.8))
+        put("groom.loose.level", round(lvl, 3), f"MEASURED: the hair reaches {bottom} m under the head centre (the view "
+                                                "showing most of it; behind the shoulders it may reach further: INFERRED)")
+        put("groom.loose.length", round(ln, 3), "the level + the crown's way down (INFERRED; the level cuts it)")
+        side_so = so_all.get("sides", 0.015)
+        body = round(float(np.clip(side_so - 0.006, 0.006, 0.04)), 4)
+        lift = round(float(np.clip(so_all.get("top", 0.012) - 0.008, 0.002, 0.015)), 4)
+        put("groom.loose.body", body, f"MEASURED side stand-off {round(1000 * side_so, 1)} mm - 6 mm (the strands' spread)")
+        put("groom.loose.lift", lift, f"MEASURED top stand-off {round(1000 * so_all.get('top', 0.012), 1)} mm - 8 mm")
+        wv = s.get("waviness")
+        g["loose"] = {"length": round(ln, 3), "level": round(lvl, 3), "spacing": 0.02, "body": body, "lift": lift,
+                      "stiff": 0.25, "messy": 0.08, "uneven": 0.35, "face": 1.0}
+        put("groom.loose (rest)", "spacing 0.02, stiff 0.25, messy 0.08, uneven 0.35, face 1", "the guide's long-hair recipes")
+        st_long = {"count": 120000, "clump": 0.45, "loose": 0.2, "stray": 0.6, "tips": 0.5}
+        if wv is not None:
+            k = float(np.clip((wv - 0.08) / 0.3, 0.0, 1.0))  # 0 straight .. 1 waves
+            st_long.update({"wave": round(0.002 + 0.014 * k, 4), "wavelength": round(0.16 - 0.07 * k, 3), "curl": round(0.25 * k, 2)})
+            put("strands.wave / wavelength / curl", [st_long["wave"], st_long["wavelength"], st_long["curl"]],
+                f"MEASURED waviness {wv} of the lengths (0.08 straight .. 0.38 waves; the guide's straight / waves recipes)")
+        put("strands (rest)", "count 120000, clump 0.45, loose 0.2, stray 0.6, tips 0.5", "the guide's long-hair recipes")
     if short:
         # LIFT by region (groom.loose.lift; groom.volume does nothing to loose hair): a laid short lock's strands
         # spread ~LIFT_SPREAD m over its guide, so the guide stands at the stand-off less that
@@ -833,19 +925,27 @@ def start(r: dict, spec: dict) -> dict:
     c = s.get("colour") or {}
     look = {}
     if c:
-        base = min(ls.values()) if ls else c.get("light_share", 0.0)
-        ga = round(float(np.clip(base, 0.0, 0.9)), 3)
-        look["grey_amount"] = put("look.grey_amount", ga, f"MEASURED: the light-strand share of the least grey region "
-                                                         f"(view {s['colour_view']})")
-        gr = {k: round(float(np.clip(v - base, 0, 1)) / max(1 - base, 0.1), 3) for k, v in ls.items()
-              if k in ("front", "top", "sides", "back", "nape")}  # (groom.grey's regions: no crown)
-        if gr:
-            g["grey"] = {**gr, "temples": round(max(gr.get("sides", 0.0), gr.get("front", 0.0)), 3), "sideburns": round(gr.get("sides", 0.0), 3)}
-            put("groom.grey", g["grey"], "MEASURED: light share by region above grey_amount (temples / sideburns = the sides')")
+        from .hair import grey_age
+        ga_ok = grey_age(spec) > 0.2 if spec else True  # (under ~34 the light pixels are LIT hair, not grey hairs)
+        ga = 0.0
+        if not ga_ok:
+            g["grey"] = {"temples": 0.0, "sideburns": 0.0}
+            look["grey_amount"] = put("look.grey_amount", 0.0, "the model's age: the light pixels are lit hair, not grey "
+                                                               "(no grey under ~34; groom.grey 0)")
+        else:
+            base = min(ls.values()) if ls else c.get("light_share", 0.0)
+            ga = round(float(np.clip(base, 0.0, 0.9)), 3)
+            look["grey_amount"] = put("look.grey_amount", ga, f"MEASURED: the light-strand share of the least grey region "
+                                                             f"(view {s['colour_view']})")
+            gr = {k: round(float(np.clip(v - base, 0, 1)) / max(1 - base, 0.1), 3) for k, v in ls.items()
+                  if k in ("front", "top", "sides", "back", "nape")}  # (groom.grey's regions: no crown)
+            if gr:
+                g["grey"] = {**gr, "temples": round(max(gr.get("sides", 0.0), gr.get("front", 0.0)), 3), "sideburns": round(gr.get("sides", 0.0), 3)}
+                put("groom.grey", g["grey"], "MEASURED: light share by region above grey_amount (temples / sideburns = the sides')")
         if c.get("seen"):
             look["seen"] = put("look.seen", c["seen"], f"MEASURED: the lit half of the pigmented hair, view {s['colour_view']}")
         gs = c.get("grey_strand") or c.get("grey")
-        if gs:
+        if gs and ga_ok:
             look["grey"] = put("look.grey", gs, f"MEASURED: the lightest quarter of the light / grey pixels (a grey strand: "
                                                 f"the pixels' median mixes it with dark hair), view {s['colour_view']}")
         va = (c.get("bands") or {}).get("variation") or {}
@@ -857,7 +957,7 @@ def start(r: dict, spec: dict) -> dict:
                                  if ga > 0.15 else "default")
         if ga > 0.15 or (c.get("dark_L") or 0) > 40:
             look["scalp_tint"] = put("look.scalp_tint", 0.5, "grey / fair hair: the guide's 0.3-0.5")
-    st = copy.deepcopy(CROP["strands"]) if short else {}
+    st = copy.deepcopy(CROP["strands"]) if short else (st_long if long_ else {})
     h_ = s.get("halo_all")
     if h_ is not None:
         st["halo"] = put("strands.halo", round(float(np.clip(1.2 * h_, 0.05, 0.6)), 2), f"MEASURED halo density {h_}")

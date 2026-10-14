@@ -167,6 +167,34 @@ def test_long_hair_is_not_given_a_crop():
     assert not st["short"] and "loose" not in st["hair"]["groom"]
 
 
+def test_long_hair_gets_a_loose_long_start_and_no_grey_when_young():
+    r = _fake_read()
+    r["summary"]["standoff"] = {"top": 16.0, "sides": 20.0, "front": 14.0, "back": 30.0}
+    r["summary"]["bottom_m"] = 0.25
+    r["summary"]["waviness"] = 0.3
+    st = hr.start(r, {"base": {"body": {"age": 19}}})
+    h = st["hair"]
+    assert not st["short"]
+    lo = h["groom"]["loose"]
+    assert abs(lo["level"] - (-0.24)) < 1e-6 and lo["length"] > 0.25
+    assert h["strands"]["wave"] > 0.008  # wavy lengths
+    assert h["look"]["grey_amount"] == 0.0 and h["groom"]["grey"] == {"temples": 0.0, "sideburns": 0.0}
+    spec = {"hair": {"style": h["style"], "groom": h["groom"], "strands": h["strands"], "look": h["look"]}}
+    hair.validate(spec)
+
+
+def test_waviness_separates_straight_from_wavy():
+    from PIL import Image
+    n, mm = 400, 0.3
+    y, x = np.mgrid[:n, :n].astype(float)
+    straight = np.sin(x * 1.2) * 40 + 100
+    wavy = np.sin((x + 15 * np.sin(y / 12.0)) * 1.2) * 40 + 100  # (waves ~23 mm long at 0.3 mm a px)
+    m = np.ones((n, n), bool)
+    w0 = hr.waviness(Image.fromarray(np.stack([straight] * 3, -1).astype(np.uint8)), m, mm)
+    w1 = hr.waviness(Image.fromarray(np.stack([wavy] * 3, -1).astype(np.uint8)), m, mm)
+    assert w1 > w0 + 0.1, (w0, w1)
+
+
 def test_render_as_picture_undoes_the_square():
     from PIL import Image
     sq = Image.new("RGB", (1536, 1536), (0, 0, 0))
