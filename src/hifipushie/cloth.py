@@ -26,6 +26,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import threading
 import time
@@ -8364,6 +8365,34 @@ def dress(name: str, which: list | None = None, wait: float = 0.0) -> dict:
 # ---------------------------------------------------------------- the report
 
 
+UNDERARM_MM = (10, 45)  # a set-in sleeve's underarm below the body's armpit (knit crewneck 20-40, shirts 20-30)
+
+
+def underarm_drop(res: dict) -> dict:
+    """{sleeve piece: mm} how far the sleeve's seam to the body pieces dips below the body's armpit (the tape's waist
+    level + waistToArmpit), in the RESULT. dress-tess (Joe on Tess's sweater, "these arm holes make no sense"): the
+    draft's underarm sat ~1 cm under the armpit along the back's tape, but the tape runs down the back's curve (447 mm
+    HPS to waist against 380 vertical), so the armscye landed ~5 cm low in the world and the sleeves' seams read as
+    side lines to the hem band; nothing measured it."""
+    M, V, body = res["mesh"], res["V"], res["body"]
+    names, pc = list(M["names"]), np.asarray(M["piece"])
+    mm_ = body.m["mm"]
+    if "waistToArmpit" not in mm_ or "waist_z" not in body.at:
+        return {}
+    apz = float(body.at["waist_z"]) + float(mm_["waistToArmpit"]) / 1000.0
+    sw = np.asarray(M["sew"]).reshape(-1, 2)
+    roles = {nm: (res["pieces"]["pieces"].get(nm) or {}).get("role", "") for nm in names}
+    torso = [k for k, nm in enumerate(names) if roles[nm] in ("front", "back", "side", "side_front", "side_back")]
+    out = {}
+    for k, nm in enumerate(names):
+        if roles[nm] != "sleeve" and not nm.startswith("sleeve"):
+            continue
+        m = ((pc[sw[:, 0]] == k) & np.isin(pc[sw[:, 1]], torso)) | ((pc[sw[:, 1]] == k) & np.isin(pc[sw[:, 0]], torso))
+        if m.any():
+            out[nm] = 1000.0 * (apz - float(V[sw[m].ravel(), 2].min()))
+    return out
+
+
 def report(gname: str, res: dict) -> str:
     """The text an agent judges a garment by: verdict, sizing, fit, integrity, surface numbers, what was done."""
     L = [f"{gname}: {res['fit']['verdict']}"]
@@ -8371,6 +8400,17 @@ def report(gname: str, res: dict) -> str:
     if sz:
         L.append("  ease from the flat pattern (garment - body at the tailor's girths; negative = TOO SMALL): "
                  + ", ".join(f"{k} {v['ease_mm']:+.0f} mm ({v['ease'] * 100:+.0f}%)" for k, v in sz.items()))
+    try:
+        ua_ = underarm_drop(res)
+    except Exception:  # (a garment without sleeves sewn to a torso, or a body without an armpit level)
+        ua_ = None
+    if ua_:
+        bad_ = {k: v for k, v in ua_.items() if not (UNDERARM_MM[0] <= v <= UNDERARM_MM[1])}
+        L.append(f"  {'!!' if bad_ else 'ok'} underarm (the sleeve seam's lowest point below the body's armpit, mm; a "
+                 f"set-in sleeve {UNDERARM_MM[0]}-{UNDERARM_MM[1]}): "
+                 + ", ".join(f"{k} {v:.0f}" for k, v in ua_.items())
+                 + (" (a deep armscye reads as side lines down the body: raise the draft's armhole, block option "
+                    "armhole_depth)" if bad_ else ""))
     fr = res["fit"]["regions"]
     if fr:
         lim = res["fabric"]["limit"]
@@ -8450,7 +8490,7 @@ def report(gname: str, res: dict) -> str:
 DETAIL = {"thread": None, "button": None, "seam_finish": None, "seam_finishes": None,
           "seam": None, "seam_width": None, "allowance": None, "topstitch": None, "stitch": 0.003,
           "stitch_gap": 0.0015, "stitch_depth": 0.0003, "hem": 0.02, "hem_height": 0.0007, "buttons": True,
-          "texture": 2048, "folds": None, "fold_gain": 1.0, "fold_opts": None}
+          "texture": 2048, "folds": None, "fold_gain": 1.0, "fold_opts": None, "surface": None, "knit": None}
 # seam_finish / seam_finishes: how seams are finished (garment_kb.json seam_finishes; seam_kinds); seam, seam_width,
 # allowance: override every finish's groove depth, groove half width, allowance rise (m; None = the finish's own);
 # topstitch: the row on free edges (hems), None = the garment kind's hem default (hem_topstitch)
@@ -8772,6 +8812,10 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
                 slot = (ey < w * 0.9) & (ex < 0.6 * hh)
                 H[sub] += np.where(rim, 0.0004, 0) - np.where(slot, 0.0012, 0)
                 thread[sub] = np.maximum(thread[sub], np.where(rim & ~slot, 1.0, 0))
+    knit_v = None
+    if o.get("surface") == "knit":  # the fabric's own surface: knitted stitches (dress-tess: "a smooth sweatshirt")
+        Hk, knit_v = knit_surface(M, uv, side, T, mpt, o)
+        H += Hk
     if extra is not None:  # authored fine folds (fine_folds), under the sewing details
         H += np.asarray(extra, np.float32)
     H *= inside
@@ -8783,9 +8827,65 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     N = ((n * 0.5 + 0.5) * 255).round().astype(np.uint8)
     Hc = H - (np.asarray(extra, np.float32) * inside if extra is not None else 0)  # (folds don't darken like grooves)
     cav = (np.clip(1 + Hc / 0.004, 0.7, 1.0) * np.where(inside, shadow, 1)).astype(np.float32)
+    if knit_v is not None:  # (yarn: the troughs between stitches darker, the fibre's fuzz a fine mottle)
+        cav = (cav * np.where(inside, knit_v, 1.0)).astype(np.float32)
     btn *= inside
     return {"height": H, "normal": N, "cavity": cav, "thread": thread.astype(np.float32), "button": btn, "inside": inside,
             "texels_per_m": T / side}
+
+
+KNIT = {"wale": 0.0045, "course": 0.0036, "depth": 0.0007, "rib": ["neckband", "cuff", "hem_band"], "rib_knit": 2,
+        "rib_purl": 2, "rib_depth": 0.0012, "fuzz": 0.06, "trough": 0.22}
+# a knit's surface (garment detail "surface": "knit", detail "knit" overrides): stockinette (columns of V stitches
+# `wale` apart, `course` tall) on the body pieces, k`rib_knit` p`rib_purl` rib on the band roles; wales run along the
+# pattern's y (the grain: down a body piece, along a sleeve, ACROSS a band). Tess's mustard sweater: ~5.5 stitches /
+# inch, medium gauge.
+
+
+def knit_surface(M: dict, uv: np.ndarray, side: float, T: int, mpt: float, o: dict) -> tuple:
+    """(height m, shade 0..1) of knitted stitches on the flat-pattern atlas, per piece by its name / role."""
+    from PIL import Image, ImageDraw
+    kp = dict(KNIT, **(o.get("knit") or {}))
+    ids = Image.new("I", (T, T), 0)
+    dr = ImageDraw.Draw(ids)
+    for k in range(len(M["names"])):
+        ring = np.where((M["piece"] == k) & M["border"])[0]
+        if len(ring) >= 3:
+            dr.polygon([(uv[i][0] * T, (1 - uv[i][1]) * T) for i in ring], fill=k + 1)
+    ids = np.asarray(ids)
+    yy, xx = np.mgrid[0:T, 0:T].astype(np.float64)
+    X, Y = xx * mpt, (T - yy) * mpt  # metres in the atlas (pattern x, y: islands keep the grain straight)
+    w, c = float(kp["wale"]), float(kp["course"])
+    fu = (X / w) % 1.0 - 0.5  # across a column: -0.5 .. 0.5
+    v = (Y / c) % 1.0  # up a stitch
+    # a stitch: two legs leaning in to a V (each leg a bump centred off the column's middle by a share that narrows
+    # up the stitch), the legs' tops tucked under the next course
+    leg = 0.26 - 0.12 * v
+    bump = np.exp(-((np.abs(fu) - leg) / 0.14) ** 2) * (0.55 + 0.45 * np.sin(np.pi * v))
+    st = bump - 0.35  # (0 mean-ish: grooves between the columns and the courses)
+    Hs = float(kp["depth"]) * st
+    shade = 1.0 - float(kp["trough"]) * np.clip(-st / 0.35, 0, 1)
+    rib_roles = set(kp["rib"])
+    rib_k = [k for k, nm in enumerate(M["names"]) if re.sub(r"\.(L|R)$", "", nm) in rib_roles]
+    if rib_k:
+        m = np.isin(ids, [k + 1 for k in rib_k])
+        per = (int(kp["rib_knit"]) + int(kp["rib_purl"])) * w
+        ph = (X % per) / per  # knit columns raised, purl columns sunk
+        kn = float(kp["rib_knit"]) / (int(kp["rib_knit"]) + int(kp["rib_purl"]))
+        rib = 0.5 + 0.5 * np.tanh((kn / 2 - np.abs(ph - kn / 2)) / 0.06)
+        Hr = float(kp["rib_depth"]) * (rib - 0.5) + 0.6 * Hs * rib
+        Hs = np.where(m, Hr, Hs)
+        shade = np.where(m, 1.0 - 0.3 * (1 - rib), shade)
+    rng = np.random.default_rng(7)
+    fz = ndimage_gaussian(rng.standard_normal((T, T)), 1.2)
+    fz /= max(float(np.abs(fz).max()), 1e-9)
+    shade = shade * (1.0 + float(kp["fuzz"]) * fz)
+    return (Hs * (ids > 0)).astype(np.float32), np.clip(shade, 0.5, 1.15).astype(np.float32)
+
+
+def ndimage_gaussian(a, s):
+    from scipy import ndimage
+    return ndimage.gaussian_filter(a, s)
 
 
 def write_maps(path_stem: Path, M: dict, uv: np.ndarray, side: float, g: dict, texture: int | None = None,

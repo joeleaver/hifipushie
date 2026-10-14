@@ -459,7 +459,8 @@
   "wool_coating": {"preset": "wool_coating", "gsm": [450, 600], "thickness_mm": [1.5, 2.5], "stretch": "woven", "bending_length_mm": [16, 22], "uses": ["coat"]},
   "jersey": {"preset": "jersey", "gsm": [150, 200], "thickness_mm": [0.5, 0.7], "stretch": "knit", "bending_length_mm": [6, 10], "uses": ["tee", "dress"]},
   "rib_knit": {"preset": "jersey", "overrides": {"tension": 3, "limit": 0.4, "bending": 0.03, "thickness": 0.001}, "gsm": [220, 280], "thickness_mm": [0.8, 1.2], "stretch": "knit", "uses": ["neckband", "cuff", "hem_band"]},
-  "french_terry": {"preset": "jersey", "overrides": {"mass": 0.35, "bending": 0.2, "thickness": 0.0015, "limit": 0.2}, "gsm": [280, 350], "thickness_mm": [1.2, 1.8], "stretch": "knit", "bending_length_mm": [12, 16], "uses": ["hoodie"]}
+  "french_terry": {"preset": "jersey", "overrides": {"mass": 0.35, "bending": 0.2, "thickness": 0.0015, "limit": 0.2}, "gsm": [280, 350], "thickness_mm": [1.2, 1.8], "stretch": "knit", "bending_length_mm": [12, 16], "uses": ["hoodie"]},
+  "sweater_knit": {"preset": "jersey", "overrides": {"mass": 0.4, "bending": 0.15, "thickness": 0.0025, "limit": 0.3}, "gsm": [330, 420], "thickness_mm": [2.0, 3.0], "stretch": "knit", "bending_length_mm": [11, 15], "uses": ["sweater"], "_doc": "a medium-gauge knitted sweater (wool or blend, ~5 stitches / inch): heavier and softer than french terry, stretches 30%; draw it with detail surface knit (dress-tess)"}
  },
 
  "designs": {

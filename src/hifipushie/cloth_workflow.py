@@ -157,6 +157,25 @@ def seam_rows(c: Ctx) -> list:
     return rows
 
 
+UNDERARM_DRAFT = (0, 35)  # mm the draft's underarm may land below the armpit (a set-in sleeve; jackets lower it)
+
+
+def draft_underarm(c: Ctx):
+    """Where a bodice / knit block's armhole bottom (meta chest_y, down the back's tape from the HPS) lands on this
+    body, in mm below the armpit (the tape's waist level + waistToArmpit), the back's tape scaled to the vertical (it
+    runs down the back's curve: Tess 447 mm HPS to waist against 380 vertical). None without a drafted block.
+    dress-tess: Tess's sweater's armscye was ~4 cm deep in the world (7 cm after a knit's sag) and nothing said so."""
+    meta = ((c.Bp.get("draft") or {}).get("meta") or {})
+    mm_, at = c.body.m.get("mm") or {}, c.body.m.get("at") or {}
+    if "chest_y" not in meta or "hpsToWaistBack" not in mm_ or "waistToArmpit" not in mm_ or "hps.L" not in at \
+            or "waist_z" not in at:
+        return None
+    hz, wz = float(at["hps.L"][2]), float(at["waist_z"])
+    scale = (hz - wz) / (float(mm_["hpsToWaistBack"]) / 1000.0)
+    z_ua = hz + float(meta["chest_y"]) * scale
+    return 1000.0 * (wz + float(mm_["waistToArmpit"]) / 1000.0 - z_ua)
+
+
 def stage_pattern(c: Ctx, image: bool = True) -> dict:
     o = _out("pattern")
     Bp = c.Bp
@@ -220,6 +239,13 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         (o["info"] if ok else o["fail"]).append(line)
     if D:
         o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items() if not k.startswith("_")))
+    ua = draft_underarm(c)
+    if ua is not None:
+        line = (f"underarm (the draft's armhole bottom, where it lands on this body): {ua:.0f} mm below the armpit "
+                f"(set-in sleeve {UNDERARM_DRAFT[0]}-{UNDERARM_DRAFT[1]}; a knit sags ~3 cm more in the sim)")
+        (o["warn"] if not (UNDERARM_DRAFT[0] <= ua <= UNDERARM_DRAFT[1]) else o["info"]).append(
+            line + ("" if UNDERARM_DRAFT[0] <= ua <= UNDERARM_DRAFT[1] else
+                    ": raise / lower it with block option armhole_depth (a deep armscye reads as side lines down the body)"))
     if (Bp.get("draft") or {}).get("derived_mm"):
         o["info"].append("draft: " + json.dumps(Bp["draft"]["derived_mm"]))
     if image:

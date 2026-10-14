@@ -2691,3 +2691,25 @@ MISSING / WRONG (fixed in code, or written into the guide):
   was 0.00 mm with its made pieces held): c10 = fine_settle false (re-keys the coarse: rented, to save time).
 - (21) A chain of layered garments re-sims from the bottom whenever anything upstream re-keys (a code change to the
   jeans' key re-simmed jeans, sweater and coat in turn): batch upstream changes before simming the outer layer.
+- PROCESS (2026-10-14, docs/notes/gates.md on main): every piece DESCRIBED first as a checklist
+  (workspace/checklists/tess_sweater.json, git-ignored), every item MEASURED every round (table on every sheet),
+  LOOKED at by the blind reviewer (/mnt/data/hifipushie/bin/review, pairs per region) until it PASSES, APPROVED only
+  by Joe / the coordinator (workspace/approved.json). No sim until the pattern passes its checklist items. Sims go to
+  the RENTED fleet by default (Joe: cloth budget $5/day), NICO-TOP (LOCAL=1 in stage.sh) as the fallback; never
+  resubmit a failed job; timeouts set.
+- Joe on the sweater (ds17): "These arm holes make no sense": the armscye ran deep, its seams read as side lines to
+  the hem. Measured (armpit.py on the results): the sleeve's lowest seam point was 66-79 mm under the body's armpit
+  in every round (ds9 66, ds10 79, ds15 72, ds17 74). CAUSE (22): the bodice / knit block places the underarm
+  `waistToArmpit` up from the waist along the BACK's tape (chest_y -227 mm under the HPS), but on Tess the back's tape
+  is 18% longer than the vertical (447 HPS to waist against 380): the draft's underarm lands ~41 mm under the armpit in
+  the world, and the knit sags ~30 mm more in the sim. Not the hoodie kind and not the armpit-hole fix. GATES added:
+  stage 2 `draft_underarm` (where the draft's armhole bottom lands on this body, WARN outside 0-35 mm) and the report's
+  `underarm` line on the result (`underarm_drop`, 10-45 mm). s19: armhole_depth -0.15 -> the draft lands 10 mm under
+  the armpit.
+- The first table (ds17 against tess_sweater.json): neckline_drop_cf 12 mm (ref 35-60) FAIL (a mock neck); neckband
+  17 mm (18-30) FAIL; hem band bottom 456 (465-505) FAIL; hem band height 47 PASS; blousing 1.10 (1.00-1.06) FAIL;
+  side lines seen from the front FAIL; underarm 74 (15-45) FAIL; chest ease +17.5% PASS; knit surface / neck rib /
+  hem rib FAIL (none); colour #b07a26 vs #946a2a FAIL; clean: 0 crossings but cuff ring seams 43 mm open FAIL.
+- (23) Knit surface: detail "surface": "knit" (cloth.knit_surface: stockinette V columns, wale 4.5 / course 3.6 mm,
+  k2p2 rib on the band roles, yarn fuzz in the shade); fabric sweater_knit (KB: 375 g/m2, bending length 13 mm, 30%
+  stretch). The hoodie kind's seams are topstitched: a knit's are pressed_to_side.
