@@ -16,7 +16,7 @@ size = int(lab["size"]) * sc
 cols = min(len(files), 6)
 rows = (len(files) + cols - 1) // cols
 sheet = Image.new("RGB", (cols * size, rows * size), (120, 120, 120))
-ns = lab["xy"].shape[1] - 18
+ns = 570
 for k, f in enumerate(files):
     i = int(f.stem)
     im = Image.open(f).convert("RGBA")

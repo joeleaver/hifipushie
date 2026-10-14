@@ -7,8 +7,11 @@
 set -e
 R=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 outs=$1; ram=$2; cpus=$3; shift 3
-A=${XDG_RUNTIME_DIR:-/tmp}/hp_repo_$(git -C "$R" rev-parse --short HEAD).tar.gz
-[ -f "$A" ] || git -C "$R" archive --format=tar.gz --prefix=repo/ -o "$A" HEAD
+# HP_REF = the commit whose code runs (default HEAD): a run in segments (train_seg.sh) pins it, so that commits made
+# while it trains (notes) do not rebuild the environment on the machine for every segment.
+REF=${HP_REF:-HEAD}
+A=${XDG_RUNTIME_DIR:-/tmp}/hp_repo_$(git -C "$R" rev-parse --short $REF).tar.gz
+[ -f "$A" ] || git -C "$R" archive --format=tar.gz --prefix=repo/ -o "$A" $REF
 ln -sf "$A" repo.tar.gz
 PACKS=${PACKS:-gnm makehuman faceid hbm}
 K=hp_assets_$(cat "$R/src/hifipushie/assets.json" <(echo "$PACKS") | sha256sum | cut -c1-12)

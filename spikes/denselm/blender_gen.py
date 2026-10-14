@@ -129,7 +129,10 @@ def main():
         if ob.type == "MESH" and ob.name not in ("body", "eyes") and not ob.hide_render and len(ob.data.vertices):
             M = np.array(ob.matrix_world)
             Vl = coords(ob.data)
-            Tl, Wl, _ = bind(Vl @ M[:3, :3].T + M[:3, 3], P0, F)
+            # (stage 1) GNM's teeth and tongue are bound to THEIR OWN surfaces, never to the skin beside them
+            Fo = z["F_" + ob.name].astype(np.int64) if ("F_" + ob.name) in z.files else F
+            Tl, Wl, dl_ = bind(Vl @ M[:3, :3].T + M[:3, 3], P0, Fo)
+            print(f"@@bind {ob.name} {len(Vl)} verts: median {np.median(dl_) * 1e3:.2f} mm, p99 {np.percentile(dl_, 99) * 1e3:.2f}", flush=True)
             meshes.append((ob, Vl, Tl, Wl, np.linalg.inv(M)[:3, :3]))
     if eyes is not None:
         Ve = coords(eyes.data)

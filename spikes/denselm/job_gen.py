@@ -17,7 +17,9 @@ e = {**os.environ, "HIFIPUSHIE_HOME": ws, "HIFIPUSHIE_ASSETS": os.path.join(env,
 os.makedirs(e["XDG_RUNTIME_DIR"], exist_ok=True)
 os.makedirs(ws, exist_ok=True)
 print("step: denselm gen", " ".join(args), flush=True)
-p = subprocess.Popen([os.path.join(env, ".venv/bin/python"), os.path.join(env, "spikes/denselm/gen.py"), out] + args,
+script = "gen2.py" if "v=2" in args else "gen.py"       # v=2: the stage-1 generator
+args = [a for a in args if a != "v=2"]
+p = subprocess.Popen([os.path.join(env, ".venv/bin/python"), os.path.join(env, "spikes/denselm", script), out] + args,
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=e, cwd=job)
 log = []
 for line in p.stdout:

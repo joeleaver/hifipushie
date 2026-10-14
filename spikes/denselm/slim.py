@@ -14,10 +14,10 @@ shutil.copy(src / "landmarks.json", dst / "landmarks.json")
 n = 0
 for d in sorted(p for p in src.iterdir() if (p / "labels.npz").exists() and (p / "meta.npz").exists()):
     o = dst / d.name
-    if (o / "labels.npz").exists():
-        continue
     o.mkdir(exist_ok=True)
     for f in sorted(d.glob("[0-9]*.png")):
+        if (o / (f.stem + ".jpg")).exists():
+            continue
         im = Image.open(f).convert("RGBA")
         im.convert("RGB").save(o / (f.stem + ".jpg"), quality=q, subsampling=0)
         im.getchannel("A").save(o / (f.stem + "_a.png"), optimize=True)

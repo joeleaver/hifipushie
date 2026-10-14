@@ -476,3 +476,322 @@ become usable for the per-view expression term only with (3).
   offline, as a private ground-truth set; (e) whether an ImageNet-pretrained backbone is acceptable (Hewitt 2024
   uses one; faster and better from little data; ImageNet's terms are research-only for the images, the weights'
   status is the usual grey area): the pilot is from scratch and I would stay there unless he says otherwise.
+
+## denselm stage 1 (2026-10-13; Joe's GO through the coordinator: stage 1 only, ~30,000 samples, our own machines,
+## nothing rented; stage 2 NOT approved. Branch `worktree-agent-a2e75a7e571826c88`, main 94516bf merged in. Scratch as
+## the pilot's + data_s1/ (the set), s1_nico.sh / s1_local.sh (render queues), out/sc_<tag>.txt (region tables))
+STATE / NEXT: PARKED 2026-10-13; see "### STAGE 1 RESULT" near this section's end.
+
+### What stage 1 must fix (the coordinator's list, from solvecams + heldoutnative with the pilot in the solve)
+(1) a featureless jaw answered with the AVERAGE jaw (widths +3.5 mm on known heads, +5-7 on a narrow one); (2) a true
+90 deg profile read as ~75-87; (3) front pitch +2-4 deg on male heads and under hair; (4) cameras sent to 2.7-3.4 m to
+explain the width bias; (5) true-profile lids 4 mm off; (6) open mouths wrong; (7) dark skin under a hard top light weak.
+
+### The generator (spikes/denselm/gen2.py; blender_gen.py binds teeth / tongue to their own GNM surfaces)
+- GNM-NATIVE heads (attach "native": GNM's own head, eyeballs, teeth, tongue, mouth bag). The stage is built with the
+  JAW HALF OPEN (jawOpen 0.55), so lips, teeth, tongue and bag are separate surfaces, and every sample re-poses it,
+  closed mouths included (probe sheet out/p2probe.png, mouths out/p2mouth.png: the cavity and the teeth are there;
+  the teeth are coarse and dull: 0.8 mm voxel, a flat colour).
+- LANDMARK SET v2 (denselm.landmarks_v2, 623): the pilot's 570 skin vertices UNCHANGED and first, + per eye GNM's
+  pupil centre and 8 iris-rim vertices (18), the upper / lower teeth's front arc (14 + 13), the tongue's upper front
+  (8). A network's row count says which set it has (denselm.predict / by_count); face_ruler reads the skin rows as before.
+- IDENTITY (a): c = class mean (the sample's sex x one of GNM's 4 ethnicity classes) + s z, z ~ N(0, I) over the 170
+  head components, s ~ U(0.75, 1.0) (GNM's prior is s = 1; the pilot's samples had |c| ~7, these ~11-14); the
+  deviation's part in the subspace of jaw / gonial / chin / cheekbone / skull width, lower-face height, chin length,
+  nose length, skull top is x 1.5; 12 % of samples: one of those measures set to +-2..3 population sd; 15 %: s ~
+  U(0.2, 0.5) (near the class means); components clipped at +-4.5. Teeth components ~ N(0, 0.8^2). Bodies 18-78
+  years, both sexes (per dressing).
+- VIEWS (b): yaw 55 % U(-110, 110) + 45 % N(0, 30); pitch N(0, 14) in +-35; roll N(0, 8); camera DISTANCE
+  log-uniform 0.3-3 m, the lens that frames a 0.25-0.37 m crop there, off-axis crops on half; distance / yaw / pitch
+  in meta.npz. The network gets ONE MORE OUTPUT ROW: log distance (+ its sigma).
+- EXPRESSIONS (c): ARKit-named shapes solved on GNM's basis once (arkit_expr.npz, 41 shapes) + the sampler's
+  classes: lower face 40 % neutral, 15 % smile with teeth, 7 % closed smile, 13 % jaw open, 10 % speech-like, 8 %
+  other closed, 7 % a sampler class; upper face 50 % neutral, 10 % eyes closed, 8 % wide, 10 % squint, 10 % brows
+  down, 10 % brows up, 2 % wink.
+- APPEARANCE (d): tones Fitzpatrick 1-6 by class as the pilot; 15 % of samples under a HARD TOP light (a 1-5 deg sun
+  at 60-88 deg elevation, a dark room); hair on 60 % of dressings (loose 36 %, loose + fringe 22 %, combed 27 %, crop
+  15 %; loose hair may hang over cheeks and jaw: `face` 0..1), stubble / beard shadow on 60 % of men (amount to 1.4);
+  training-time: backgrounds, clothes recolour, phone damage (noise, JPEG 25-95, downscale, blur) + NEW radial lens
+  distortion (k +-0.12 on 25 %) and motion blur (15 %). NOT in: glasses (a stage geometry of their own: not cheap),
+  strand hair (lock planks, as the pilot), real garments.
+- CHEAPER (f), measured on 200 samples at 320 px:
+  | | pilot | stage 1, this laptop | stage 1, NICO-TOP |
+  |---|---|---|---|
+  | all in, per sample | 2.9 s | 0.86 s (n 200), 0.94 s (n 300 with hair) | 1.08 s (n 300) |
+  | Blender: render / re-pose / labels | 1.2-1.5 / 0.2 / 0.35 s | 0.25 / 0.07 / 0.07 s | 0.48 / 0.08 / 0.06 s |
+  | stage build per dressing | 100-290 s | 90-140 s | ~120 s |
+  What bought it: the stage meshed at 2 mm (eyes / mouth 1 mm, teeth 0.8 mm: 125k vertices against 400k), 6 TAA
+  samples, one Blender start per dressing, and the POSE: humanfit.state takes 2 s a head on a native head (the
+  neck is re-fitted per identity; 0.87 s a sample on 4 processes = the first run's largest cost), so each sample is
+  posed from GNM's own bases at the stage's placement (0.01 s; against the exact build: face 0.13-0.24 mm rms, teeth
+  0.1 mm, eyeballs 0.00 after a rigid move: the exact build also re-seats the head on the neck by 1-12 mm, a rigid
+  move a picture cannot show; the head's move fades to 0 over the rings above the neck stitch, the body stands).
+
+### The baseline to beat: the pilot at the truth on solvecams' heads (spikes/denselm/sc_table.py; out/sc_pilot.txt)
+rms per axis, mm (bias x, y): FRONT (20 pictures, plain): lids 0.55, eyes 0.67, lips 0.93, brows 1.02, mouth 1.02,
+chin 1.17, nose 1.20 (y +1.0), cheeks 1.55, forehead 1.91, ears 3.5, scalp / neck 5.0. 3/4 (8): lids 0.89, eyes
+0.82, lips 1.00, mouth 1.10, nose 1.19, chin 1.61 (x +1.3), forehead 1.70, cheeks 2.27, ears 3.3. 72 deg (4): lips
+0.95, nose 1.17, mouth 1.17, chin 1.37, lids 1.53, eyes 1.70, brows 1.92, cheeks 2.36, forehead 2.53. TRUE PROFILE
+(4): lips 1.29, nose 1.52, chin 1.68, mouth 1.82, lids 2.83, eyes 2.99, brows 3.09, cheeks 3.49, forehead 3.84
+(= solvecams' DENSE_REGION_SIG). Under the hard top light on dark skin (head e) the front nose is 1.49 (y +1.8) and
+the chin y -1.7; with hair (head g) front ears 5.5 / scalp 8.7 (y -5.6 / -9.7: it puts them where a bald head's
+are), cheeks 2.2, forehead 2.1. Its sigma there is too small by x1.5-3 (honesty 2.3-15 on forehead / ears / scalp).
+WIDTH (front; lower-face width error, chin's x scale): a +0.0 mm / 1.00, b (narrow) +0.9 / 1.08, c (wide) +4.8 /
+1.03, d +0.7 / 1.03, e -1.8 / 0.99, g (hair) +4.7 / 1.00. CAMERA its landmarks imply on the true head: front pitch
++1.6 deg (rms 1.9), true profile yaw +2.4 (rms 2.6) and distance +48 % (front distance is not determined by them:
+-23 % .. unbounded).
+
+### Landmark set v3 and the generator's second half (2026-10-13, after the coordinator's lips / nose finding)
+The pilot's lip and nose-base points sat off the features on real phone portraits while MediaPipe's sat on them (Joe:
+"mediapipe did a much better job, on the points that it did land"); my pilot line "MediaPipe's anchors add nothing once
+the dense reads are in" was measured on our own renders only and DOES NOT CARRY to photos.
+- denselm.landmarks_v3 (756; `current()`): v2 unchanged and first, + upper / lower vermilion border (the lip groups'
+  edge against the skin: 18 + 18), the lip seam (the contact ring's two halves: 36), the nose's lower third (47: every
+  exterior nose vertex below the tip's level by farthest-point picks: alar rims and grooves, nostril openings,
+  columella, subnasale), the philtrum (14). Regions lip_border_upper / lip_border_lower / lip_seam / nose_base / philtrum.
+- NO RE-RENDER: relabel.py recomputes a dressing's labels from its stored identity / teeth / expression / camera
+  (gen2.make_poser + the Blender camera's formula; the old landmarks recomputed the same way land within 0.05 px of
+  their stored pixels on all 37 dressings; a new landmark's visibility = its nearest old skin landmark's).
+- Generator from dressing 37 on: 20 % of samples at phone distance 0.25-0.5 m; closed smiles mostly slight and lopsided
+  (11 %); pressed / pursed / rolled / asymmetric mouths (10 %); nostril flare (8 %); lip colour strength 0.2-1.7.
+
+### The 10k checkpoint (36 dressings = 10,800 samples; hm18, plain NLL, 60 epochs, 40 GPU-minutes; models/s10k/hm18)
+- THE RUN WAS UNSTABLE: the plain NLL blew up several times (epoch losses +26, +160, +78; validation 6.6 -> 14 px at
+  epoch 25, 5.5 at the end). Final run: a floor on sigma (0.5 px), gradient clip 2, beta-NLL 0.5, a lower peak rate.
+  Held-out synthetic (3 dressings of the new, hard distribution): median 2.9 mm, mean 5.3 (front 3.9, 3/4 5.7, side
+  5.9, rear 12.0); calibration 1.4 visible / 0.96 hidden.
+- RENDERS, at the truth on solvecams' heads (rms per axis mm, pilot -> 10k; out/sc_pilot.txt, sc_s10k.txt; sc_cmp.py):
+  front: lids 0.55 -> 0.60, eyes 0.67 -> 0.61, brows 1.02 -> 0.73, nose 1.20 -> 0.72, lips 0.93 -> 0.77, mouth 1.02 ->
+  0.88, chin 1.17 -> 1.22, cheeks 1.55 -> 1.68, forehead 1.91 -> 1.64. 3/4: lids 0.89 -> 0.54, nose 1.19 -> 0.63,
+  chin 1.61 -> 1.29, cheeks 2.27 -> 1.55. TRUE PROFILE: lids 2.83 -> 1.52, eyes 2.99 -> 1.97, brows 3.09 -> 2.15,
+  cheeks 3.49 -> 2.59, forehead 3.84 -> 2.79; chin WORSE 1.68 -> 2.28. Dark skin under the hard top light (head e,
+  front): nose 1.49 -> 0.57, chin 1.32 -> 0.62, cheeks 1.82 -> 0.90. Hair (head g, front): ears 5.5 -> 2.4, scalp
+  8.7 -> 4.7, cheeks 2.2 -> 1.2; lids 0.50 -> 0.81, eyes 0.89 -> 1.22 worse. New regions front / 3/4: upper border
+  0.75 / 0.70, lower 0.73 / 0.72, seam 0.81 / 0.77, nose base 0.71 / 0.59, philtrum 0.59 / 0.53. Its sigma is now too
+  LARGE at the truth (honesty 0.2-0.8; the pilot's was too small: 1.5-15 on forehead / ears / scalp).
+  Camera its landmarks imply on the true head: front pitch +1.6 -> -0.9 deg, true-profile yaw +2.4 -> -0.1.
+  On the points both detectors have (front, mean error): lips outer 0.90 (pilot 1.21; MediaPipe 3.17), nose base 0.89
+  (1.25; 3.39), mouth width +1.0 mm (pilot +2.2; MediaPipe -2.4). RENDERS CANNOT SETTLE ours against MediaPipe.
+- REAL PHOTOS WITH SCAN TRUTH (spikes/denselm/real_gt.py + /mnt/data/hifipushie/denselm/real_gt.sh: the groundtruth
+  agent's HSRD-100 sets (CC BY 4.0), two heads x six rig views; the same truth, visibility test and per-view 2D
+  similarity as readmix's gmix.py, whose pilot row it reproduces; out/realgt_<tag>.txt). FRONT, per-axis rms mm RAW /
+  after the similarity, pilot -> 10k [MediaPipe, readmix]:
+  | region | pilot | 10k | MediaPipe |
+  |---|---|---|---|
+  | lids | 2.74 / 2.09 | 2.33 / 1.98 | eye contour 1.05 / 0.80 |
+  | orbit | 2.96 / 2.34 | 2.07 / 1.78 | 1.84 / 1.59 |
+  | nose | 2.07 / 1.53 | 1.28 / 1.08 (nose base 1.35 / 1.20) | 1.77 / 1.32 (alar 1.69 / 1.26) |
+  | lips | 1.90 / 1.81 | 1.65 / 1.47 (borders 1.47 / 1.27, 1.49 / 1.42; seam 1.81 / 1.73) | 1.57 / 1.43 (border 1.74 / 1.59; seam 1.54 / 1.35) |
+  | chin | 4.14 / 2.29 | 3.19 / 2.42 | 3.03 / 1.90 |
+  | cheeks | 3.26 / 2.36 | 2.00 / 1.99 | 2.48 / 2.06 |
+  | forehead | 3.75 / 2.78 | 2.75 / 2.39 | - |
+  Mouth width (commissures), ours - truth: pilot +4.7 .. +6.0 mm, 10k +3.7 .. +4.4 (MediaPipe -3.0 .. +1.1); alar
+  width +2.7 .. +5.0 (pilot +3.9 .. +6.6; MediaPipe +1.5 .. +6.5: the truth's alae may be narrow). Honesty after the
+  similarity 0.5-1.0, lids 1.5. So: 15-40 % better than the pilot on real photos, level with MediaPipe on lips and
+  cheeks, better on the nose, TWICE AS BAD ON THE LIDS, 4 mm wide at the mouth corners; and x2-3 worse than the same
+  regions on our renders: THE SIM-TO-REAL GAP IS THE LARGEST ERROR, largest at the eyes.
+  LOOKED AT (Tess front, out/real_s10k/tess_front_mouth.png, _eye.png): the mouth line, both borders and the nose base
+  lie on her features (the lower border was 1.5 mm inside with the pilot); her inner canthus is ~1.5 mm too lateral
+  (MediaPipe's is on it).
+- IN THE SOLVE (solvecams' acceptance chains, set A, heads a-d, starts fitted / true / distance x2, dense on;
+  /mnt/data/hifipushie/denselm/sc_suite.sh, letter s; out/suite_s.txt): face 1.11 (the pilot's suite d: 1.28), lower
+  face 1.69 (1.79), jaw spread between starts 0.2-0.6 mm (1.1-2.7). Jaw width error: a -0.4 .. -1.7 (pilot +0.8 ..
+  +1.9), b narrow +2.0 .. +2.2 (+5.1 .. +6.9), c wide -3.7 .. -5.4 (+1.8 .. +4.6), d -3.5 .. -4.6 (+1.3 .. +3.9): the
+  one-sided +3.5 mm is gone, SHRINKAGE is left. Front pitch a, b within +0.5 deg (pilot +1.2 .. +3.1), c, d -1.0 ..
+  -2.6; front distance c +24 .. +63 %.
+- WHY THE WIDTH IS BIASED (widthval.py, 302 held-out synthetic near-frontal samples): the lower face's width as placed
+  falls 1.1 % per +10 mm of true jaw width (6+ mm narrower than GNM's mean: +3.2 % = +4.1 mm; 6+ mm wider: -0.9 %),
+  + 1.2 % on female dressings, + 0.4 % per e-fold of distance: the regressor's shrinkage toward the average jaw
+  (~15 % of the deviation) where the picture does not pin it; not a labelling slide. What remains after better
+  training belongs in the solve (the outline is the width read).
+- THE DISTANCE OUTPUT: monotone but compressed (0.37 / 0.78 / 1.83 m read as 0.9 / 1.2 / 1.5 m; held-out log-slope
+  0.17, median error 45 %): its loss was 1 row of 757 in a mean (x30 in the final run), and a face-normalised crop
+  shows distance only as perspective: a near / far read at best, the metric distance is the solve's.
+
+### Width shrinkage: toward the pooled mean or the class mean? (widthval.py + widthval_rows.py; /mnt/data/hifipushie/denselm/widthval.sh)
+- MEASURE FIXED: the first widthval read the lower face's x-scale ABSOLUTE in the crop; on the s30k held-out dressings
+  (N_s1033..39, 736 near-frontal samples, never trained on by s10k or s30k) the inner face (eyes, nose, mouth) is itself
+  placed 5 % narrow, so the absolute number mixes a whole-face scale error into "width". Now: lower-face scale RELATIVE
+  to the inner face's, robust (Huber IRLS) regression, medians per bin, a bootstrap sd.
+- s10k on that set: median relative width error +0.3 % (robust sd 3.4 %); -0.91 % per +10 mm of true jaw width (true
+  jaw 6+ mm narrower than GNM's mean: +1.7 % = +2.2 mm; 6+ mm wider: -0.8 % = -1.0 mm); per e-fold of distance -1.25 %.
+- POOLED OR CLASS: the generator drew identities round 8 class means (sex x ancestry, eth_means; their jaw widths span
+  6.6 mm, mostly by sex). Splitting the true jaw into (class mean - pooled mean) + (jaw - class mean): the slope on the
+  within-class part is -0.92 % / 10 mm (bootstrap sd 0.09), on the class means' offset +1.5 (sd 0.65). Shrinkage to the
+  POOLED mean would make both -0.92; they differ by ~3.8 sd. So the network shrinks toward the mean of the class it
+  reads from the face (sex shows), not toward the pooled average; the nominal class label is right for ~95 % (sex) /
+  ~60 % (ancestry) of heads, which only attenuates the second slope. Consequence: the remedy is not class-balancing;
+  it is what the network can see of the jaw edge (and the solve owning width through the outline).
+
+### Real photos, HSRD's HELD-OUT PEOPLE (spikes/denselm/real_hsrd.py; /mnt/data/hifipushie/denselm/real_hsrd.sh)
+The groundtruth agent's labelled set (hsrdset.py; "dl3" labels = OUR v3 set projected from its GNM fit to each scan,
+P.good = visible + on measured skin within 1.5 mm). Held out by subject (its split, fixed): HSR0023 (m 62), HSR0027
+(f 41), HSR0102 (f 22): 6 poses, 108 photos (up to 6 per pose x view class; rear skipped), turned upright by the head's
+roll (a late-bound closure first applied the wrong turn: 12-58 mm "errors"; fixed, and the crop checked by eye on one
+photo). Studio flash, 2.0-2.4 m, 90-166 mm lenses, neutral faces, no beards. Per-axis rms mm RAW / AFTER the
+detector's own 2D similarity [honesty], pilot -> s10k:
+| region | front | 3/4 | profile |
+|---|---|---|---|
+| lids | 3.69 / 2.30 [1.6] -> 2.44 / 1.88 [1.0] | 3.13 / 2.48 -> 2.80 / 2.35 | 3.55 / 2.14 -> 3.44 / 2.05 |
+| eyes | 4.79 / 3.16 -> 3.31 / 2.53 [1.5] | 3.94 / 3.12 -> 3.73 / 2.95 | 5.89 / 2.89 -> 4.59 / 2.75 |
+| nose | 3.64 / 2.07 -> 2.40 / 1.52 [0.9] (nose base 2.21 / 1.49) | 3.41 / 2.31 -> 2.58 / 1.68 | 4.26 / 2.30 -> 3.45 / 2.02 |
+| lips | 3.27 / 2.36 -> 2.25 / 1.86 [0.8] (borders 2.13 / 1.79, 2.19 / 1.99; seam 2.05 / 1.66) | 2.81 / 2.12 -> 2.80 / 1.98 | 4.33 / 2.48 -> 3.35 / 2.21 |
+| mouth | 3.78 / 2.42 -> 2.42 / 1.99 | 2.83 / 2.27 -> 2.70 / 2.09 | 4.91 / 2.81 -> 3.86 / 2.41 |
+| chin | 6.32 / 4.31 -> 3.91 / 3.00 [0.5] | 4.25 / 3.42 -> 3.33 / 2.83 | 7.29 / 5.12 -> 6.02 / 4.23 |
+| cheeks | 6.42 / 4.57 -> 4.67 / 3.97 [1.5] | 5.58 / 4.80 -> 5.07 / 4.55 | 9.83 / 7.24 -> 6.66 / 5.43 |
+| forehead | 5.56 / 4.51 -> 4.49 / 4.20 | 4.28 / 3.87 -> 4.70 / 4.23 | 9.54 / 5.64 -> 8.15 / 5.12 |
+Front mouth width (ours - truth, 36 photos): pilot median +2.1 mm (-19 .. +8) -> s10k -0.8 (-11 .. +3); alar width
++2.9 -> +0.1. Distance read 1.1-2.0 m for a true 2.0-2.4 m (always short: the training's distances are log-uniform
+0.25-3 m and phone-heavy). Honesty (s10k) 0.5-1.5: the sigmas are of the right size on real photos except cheeks /
+eyes / brows (too small by ~1.2x) and chin (too large). Smooth-skin rows (cheeks, forehead) carry the labels' own
+1-3 mm slide along the surface (the groundtruth agent's caveat): read edges (lids, nose, lips, mouth) first.
+READ: s10k is 20-35 % better than the pilot on the inner face of people it never saw; on the edges it sits at 1.5-2.0
+mm after the similarity, against 0.6-0.9 mm on our own renders: THE SIM-TO-REAL GAP IS STILL x2-3.
+
+### STAGE 1 RESULT (2026-10-13 evening; report 3). The line is PARKED after this (Joe: likeness now comes from eyes / mouth / folds / textures)
+Weights: models/s30k/hm18/model.pt (27,600 samples, 60 epochs, soft sigma floor, beta-NLL 0.5, lr 7e-4) and
+models/s10k/hm18/model.pt (10,800 samples, plain NLL). Neither is in git. RECOMMENDED for the solve: s10k (below).
+1. REAL PHOTOS, HSRD's held-out people (HSR0023, HSR0027, HSR0102; 9 poses, the SAME 161 photos for every row:
+   real_hsrd.sh <tag> <weights> heldout 6 photos=s30k_e36; MediaPipe: mp_hsrd.py on the same photos, scored on readmix's
+   MediaPipe -> GNM points by the same GNM regions; it found no face on 44, mostly profiles). FRONT, per-axis rms mm
+   after the detector's own 2D similarity (raw in brackets):
+   | region | s30k | s10k | pilot (108-photo subset) | MediaPipe |
+   |---|---|---|---|---|
+   | lids | 2.37 (3.07) | 2.11 (2.60) | 2.30 | 1.88 (2.41) |
+   | eyes | 3.17 | 2.73 | 3.16 | 2.29 |
+   | nose | 2.17 (4.81) | 1.99 (3.86) | 2.07 | 1.73 (2.39) |
+   | nose base | 2.20 | 2.01 | - | - |
+   | lips | 2.77 (5.10) | 2.46 (4.08) | 2.36 | 1.73 (2.10) |
+   | lip seam | 2.52 | 2.17 | - | - |
+   | mouth | 2.96 | 2.75 | 2.42 | 2.39 |
+   | chin | 4.09 | 3.38 | 4.31 | 2.98 |
+   | cheeks | 5.07 | 4.75 | 4.57 | 4.13 |
+   3/4 and profile go the same way (s30k 5-20 % worse than s10k in every inner region). Mouth width (front, median):
+   s30k -2.4 mm, s10k -1.7, MediaPipe -0.7. Honesty 0.6-1.3 for both (sigmas about right on real photos).
+   VERDICT: s30k is WORSE than s10k on real photos, and both are behind MediaPipe on lids, eyes, nose and lips (by
+   0.2-0.9 mm). Three times the synthetic data bought 0.0 on renders' held-out (3.1 vs 2.9 mm; different held-out sets)
+   and lost 5-20 % on real faces: more of the same synthetic look fits the synthetic look better. (Confound: s30k also
+   changed the loss (soft floor, beta 0.5) and the rate; a clean split would need one more run: not worth it now.)
+2. WIDTH SHRINKAGE (widthval.sh; s30k's 7 held-out dressings, 736 near-frontal samples, relative to the inner face,
+   robust): s10k -0.92 % per +10 mm of true jaw (sd 0.09); s30k -1.34 (sd 0.09): STRONGER, not weaker (narrow jaws
+   +4.4 mm with s30k, +2.2 with s10k). Toward which mean: within-class slope -1.34 vs class-mean slope -0.13 (sd 0.64)
+   for s30k; -0.92 vs +1.5 for s10k: the network shrinks toward the CLASS mean it reads off the face, not the pooled
+   mean of the four sampled classes. Remedy is the solve (the outline owns width; the dense lower-face sigmas floored),
+   not class balancing.
+3. DISTANCE HEAD: held-out synthetic log-slope 0.25 (s10k) -> 0.52 (s30k), median error 60 -> 41 %; on the HSRD photos
+   (true 1.6-2.4 m) it reads 0.65-2.6 m (s30k) / 1.1-2.0 m (s10k): still a near / far cue at best; the solve's distance
+   prior must stay in charge.
+4. IN THE SOLVE, against the SCAN'S SURFACE (gch.sh = the groundtruth agent's gchain.py with our src, 4 block_in_solve
+   calls from readmix's pooled start rm_<k>_Lpooled00, cameras free; hsurf.sh = readmix's hsurf.py: mean |d| mm
+   (signed), the solved identity with the scan's own expression; one chain each: differences under ~0.2 mm are noise):
+   | head | dense | lips | nose | chin | cheeks | FACE |
+   |---|---|---|---|---|---|---|
+   | h23 (m 62) | start | 0.80 | 1.52 | 1.55 | 1.64 | 1.46 |
+   | h23 | off | 1.07 | 1.05 | 1.19 | 1.18 | 1.20 |
+   | h23 | on, s10k | 0.81 | 0.98 | 1.00 | 0.86 | 1.09 |
+   | h23 | on, s30k | 0.89 | 1.05 | 1.14 | 0.87 | 1.21 |
+   | h102 (f 22) | start | 3.54 | 1.61 | 2.02 | 1.42 | 1.91 |
+   | h102 | off | 2.73 | 1.06 | 3.16 | 1.57 | 1.54 |
+   | h102 | on, s10k | 1.58 | 0.69 | 1.12 | 1.26 | 1.05 |
+   | h102 | on, s30k | 1.34 | 0.57 | 2.15 | 0.96 | 0.86 |
+   Dense ON helps both heads with s10k (face 1.20 -> 1.09, 1.54 -> 1.05; h102's chin 3.16 -> 1.12); s30k is better
+   on h102 (0.86) and no help on h23 (1.21). (Off = main's reads: identical to readmix's "main's reads" rows: the
+   chain is deterministic.) For scale: two scans of one person disagree 1-4 mm vertex to vertex; surface numbers have
+   no such floor. Records: out/hsurf_*.json, logs/h*_*.log; models dl_h23_* / dl_h102_* in main's workspace.
+5. THE REALISM GAP, recommendation (do not render more of the same look; stage 2 as specified would not help):
+   (a) FIRST, cheap: train / calibrate on what is real and licence-clean NOW: the HSRD TRAIN-split people (7 subjects,
+   20 poses, ~230 head photos with v3 labels, CC BY 4.0, already pulled by the groundtruth agent) as a small real term
+   mixed into fine-tuning (5-10 % of batches, labels weighted by the set's own quality, edges only: lids, nose, lips,
+   mouth), scored on the held-out three. Cost: ~0.5 day agent work + 1 GPU-hour on NICO-TOP; no download. Risk: it
+   learns this studio (white cyc, flash, 2.2 m): read the held-out numbers per region before believing it.
+   (b) SECOND: real skin on synthetic heads: the projskin agent's de-lit, atlas-space skin (any GNM head shares the
+   atlas, so one de-lit texture dresses every identity) from the HSRD train-split scans' 16k textures + Tess; 10-20
+   skins, jittered in tone, replacing the procedural skin on ~1/3 of new samples (~10k samples = 5-6 h on our two
+   machines) + a fine-tune of s10k (1-2 GPU-hours). Cost ~1-1.5 days agent work; needs the coordinator to arrange the
+   groundtruth agent's scan textures (no new download). This attacks the lids / lip edges directly (real lash lines,
+   lid margins, vermilion edges), where the gap is largest.
+   (c) Stronger randomisation alone (sensor noise, JPEG, sharpening, flash, long lenses): cheap but s30k says more
+   variation of our own look does not transfer by itself; only as part of (b).
+   And meanwhile: MediaPipe is the better reader on real photos for lids / eyes / lips / nose; the dense network's
+   value is the jaw / chin / profile, where MediaPipe has nothing (and the solve gains: section 4).
+STATE: PARKED (2026-10-13). Branch merge-ready: main ac3e191 merged in; tests one per process through bin/slot with
+HIFIPUSHIE_ASSETS set: test_denselm 7, test_toolsets 8, test_face_ruler 4, test_readmix 12, test_solvecams 3: all
+passed, 0 skipped. Nothing running.
+NEXT (if the line is resumed): (a) then (b) above, scored first on real_hsrd.sh (held-out three, photos=s30k_e36) and
+hsurf on h23 / h102 / h27; set HIFIPUSHIE_DENSELM to s10k where dense is used.
+
+### RESTART (stage 1; read this first). FINAL STATE: PARKED, see "### STAGE 1 RESULT" above; the training below is DONE
+(models/s30k DONE 17:44). Earlier state (2026-10-13 14:55): rendering STOPPED (data_s1/STOP_NICO + STOP_LOCAL exist; no queue running). The stage-1 set is
+COMPLETE for training: /mnt/data/hifipushie/denselm/data_s1/ = 92 dressings x 300 = 27,600 samples, all labelled with set
+v3 (756 columns; checked: none incomplete, none on an older set). Final training run `s30k` on NICO-TOP in resumable
+segments (below; status in models/s30k/STATUS). FIRST TRY DIVERGED (models/s30k_diverged1: lr 1e-3; epoch losses
+-0.36 .. 2.5 then 148 at epoch 9, 53 / 52 / 47 in segment 2; held-out median 5.5 mm at epoch 5 -> 14.1 at 12; cancelled
+15:29). CAUSE: the sigma floor was a hard clamp in the loss: no gradient below it, so a landmark whose sigma sank under
+it could never raise it and its d^2 / sigma^2 term (thousands on a hard sample) dominated. FIX (net.soft_floor, in the
+network so loss / evaluation / export agree): sigma^2 = exp(2 ls) + exp(2 * -5.5); + a SPIKE GUARD in train.py (a batch
+whose loss is over the running loss + 8 mean deviations is not stepped on; counted per epoch as "skipped"); peak lr
+7e-4. Second try started ~15:35; ~25 min a segment (93-110 s an epoch on 25,500 train / 2,100 val samples = 7 held-out
+dressings N_s1033..39, + the 1.2 GB transfer) -> DONE expected ~17:45.
+  Progress (models/s30k/STATUS): e0 back 15:57 (held-out median 8.0 mm: worse than epoch 5's 4.5 at the peak rate,
+  as s10k did mid-run), e12 back 16:23 (4.2 mm, calibration 1.09), e24 submitted 16:23.
+  Side runs done while it trains: real_hsrd s10k on the TRAIN-split people (230 photos: raw 4-9 mm, 1.7-2.2 after the
+  similarity on the inner face; not a score: those people stay for calibration / fine-tuning); s10k in the solve on
+  heads e (dark skin, hard top light) and g (hair): face 1.27-1.29 / 1.15-1.19, lower face 1.52-1.64 / 1.23-1.32,
+  jaw width e -3.5 .. -4.7 (narrow read; its class-mean start -5.2), g -0.5 .. +0.2; front pitch e -2.5, g +2.4 deg;
+  jaw spread 0.7 mm (out/suite_s_eg.txt). The 10k model is models/s10k/hm18/model.pt. Stage 2 NOT approved,
+nothing rented or billed; HSRD is the groundtruth agent's (read-only, do not download more).
+NEXT, in order: (1) watch s30k to DONE (or resume it); if a segment's "skipped" climbs or the held-out median rises
+two segments running, stop (cancel the batch) and say so: do not loop; (2) evaluation with REAL-PHOTO numbers first: real_gt.sh s30k,
+then sc_table + sc_cmp against s10k / pilot, held-out synthetic per bin (models/s30k/hm18/val.json), widthval.py (the
+shrinkage slope before / after; done for s10k, see the section above: rerun widthval.sh s30k), the distance
+head (widthval prints its log-slope; realgt prints distance read vs true), sc_suite (letter t), Tess tiles; (3) the
+notes; (4) report 3 to the coordinator: real-photo numbers leading, width shrinkage, distance head, the realism-gap
+recommendation with cost (projskin de-lit skin; HSRD subjects held out whole as validation, maybe fine-tuning;
+stronger randomisation).
+
+THE TRAINING JOB (spikes/denselm/train_seg.sh; the copy that runs: /mnt/data/hifipushie/denselm/train_seg.sh):
+- A DRIVER on THIS laptop (setsid nohup: outlives the agent's shell) submits one compute job per segment of 12 epochs
+  through the oxidegen bundle route in direct mode (the laptop serves the 1.2 GB data tar (data_s1_slim) and receives the outputs: the
+  driver must stay alive while a segment runs). Each segment's job ends with models/s30k/hm18/state.pth (weights, EMA,
+  AdamW, OneCycle schedule, scaler, epoch, log; also written every 3 epochs inside the job) + model.pt / weights.pth /
+  val.json of the EMA so far. COPYING BACK IS AUTOMATIC: the driver unpacks each segment's outputs into
+  /mnt/data/hifipushie/denselm/models/s30k/ (and keeps model_e<k>.pt per segment).
+- START / RESUME = the same one line (resumes from the last state.pth the driver has; data list, args and code commit
+  are fixed at the first call in models/s30k/run.txt, dirs.txt, commit.txt; a lock stops two drivers):
+  /mnt/data/hifipushie/denselm/start_s30k.sh   (= this line; the tool refuses it typed directly in this worktree:)
+  setsid nohup /mnt/data/hifipushie/denselm/train_seg.sh s30k 60 12 "name=hm18 arch=hm18 bs=128 lr=1e-3 workers=11 val=0.08 beta=0.5 ramp=0.25 dist_weight=30 clip=2.0" >> /mnt/data/hifipushie/denselm/out/train_s30k.log 2>&1 < /dev/null &
+- CHECK: `cat /mnt/data/hifipushie/denselm/models/s30k/STATUS` (one line per segment submitted / back / FAILED; a DONE
+  file at the end); live epochs: `grep -o 'step: {"epoch[^}]*' /mnt/data/hifipushie/denselm/out/train_s30k.log | tail -3`;
+  driver alive: `pgrep -af "[t]rain_seg.sh"`; batches on the fleet: `OXIDEGEN_TOKEN=$(cat ~/.config/oxidegen/hifipushie-cloth-token)
+  python3 /home/joe/dev/oxidegen/scripts/bundle/bundle_client.py list` (batch names dl-s30ke<epoch>-HHMMSS; `status <batch>`).
+  DIED = a FAILED file, or no driver process and no DONE: run the START line again (a dead segment loses at most its
+  own 12 epochs). A job that dies near its start: tell the coordinator the exact time, do not loop resubmits. A hung
+  segment: `bundle_client.py cancel <batch>`; the driver then records FAILED; rerun.
+- The machine: NICO-TOP (GPU), reached only through the bundle route (no ssh). Shared with S0urc3 and other agents: one
+  training job at a time, no render batches beside it.
+- EVALUATION (on this laptop; W = /mnt/data/hifipushie/denselm/models/s30k/hm18/model.pt):
+  REAL PHOTOS FIRST, HSRD's HELD-OUT PEOPLE: /mnt/data/hifipushie/denselm/real_hsrd.sh s30k W  (-> out/realhsrd_s30k.txt;
+  beside realhsrd_s10k / realhsrd_pilot: same photos, ~100 of them over the five held-out poses)
+  width: /mnt/data/hifipushie/denselm/widthval.sh s30k W   (beside out/widthval_s10k.txt)
+  real photos: /mnt/data/hifipushie/denselm/real_gt.sh s30k W   (-> out/realgt_s30k.txt; beside realgt_s10k / realgt_pilot)
+  renders at the truth: HIFIPUSHIE_DENSELM=W WS=main /mnt/data/hifipushie/denselm/run.sh spikes/denselm/sc_table.py s30k; then run.sh spikes/denselm/sc_cmp.py s10k s30k
+  width / distance: /mnt/data/hifipushie/normals_venv/bin/python spikes/denselm/widthval.py W /mnt/data/hifipushie/denselm/data_s1 <val dressings = the last 8 % of models/s30k/dirs.txt>
+  solve: /mnt/data/hifipushie/denselm/sc_suite.sh t W "a b c d e g" "fit tru dx"
+  Tess tiles: HIFIPUSHIE_DENSELM=W WS=main /mnt/data/hifipushie/denselm/run.sh spikes/denselm/real.py s30k tess
+- VENV / TORCH: on NICO-TOP the torch venv is $OXIDEGEN_CACHE/dl_torch_v2, built by the bundle's SETUP step
+  (remote_train.sh): uv venv py3.12 + numpy pillow + torch from https://download.pytorch.org/whl/cu124 ONLY. Locally the
+  torch venv is /mnt/data/hifipushie/normals_venv (HIFIPUSHIE_NORMALS_VENV; denselm.predict runs through it).
+
+WHAT A FRESH AGENT WOULD GET WRONG:
+- Torch from PyPI (CUDA 13 wheels): NICO-TOP's driver has no CUDA 13 -> cuda False, CPU training. Use cu124 (dl_torch_v2).
+- A venv made INSIDE a job: the sandbox cannot write uv's cache or the machine cache -> build it in the bundle setup.
+- DataLoader workers hang in the sandbox (/dev/shm not writable) -> train.py's numpy `collate`; keep it.
+- remote.sh / remote_train.sh ship an archive of a COMMIT (HP_REF, else HEAD): uncommitted code does not travel.
+- Big job folders: the 690 MB raw set coincided with NICO-TOP's NVMe failure; ship data_s1_slim (JPEG + alpha, slim.py).
+- Plain NLL blows up on this data (loss spikes, val 6.6 -> 14 px): sigma floor (net.gnll clamp), clip 2, beta 0.5.
+- The distance row is 1 of 757 in the loss mean: dist_weight 30 or it learns nothing.
+- Label sets by column count: 588 = v1, 623 = v2, 756 = v3 (denselm.by_count); old-set dressings are relabelled with
+  relabel.py (no render), never mixed in.
+- Shell: version-control commands combined with cd / heredocs / loops are refused in this worktree (plain commands
+  only); `pgrep -f pattern` matches its own shell (use "[t]rain_seg.sh"); foreground sleeps are blocked (until-loops).
+- Do not open: the held-out Garrett photos, refs_lt19 / the wife's sets, out/real_fam/.

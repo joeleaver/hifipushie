@@ -54,7 +54,7 @@ class NetHM(nn.Module):
     the pooled features (so a landmark can lie outside the crop, and hidden ones get their own uncertainty). The
     output and the loss are the same as Net's: (x, y, log sigma) per landmark, Gaussian NLL. For SMALL training sets
     (the pilot): the direct regressor has to learn where things are from scratch through one pooled vector."""
-    def __init__(self, n_landmarks: int, layers=(2, 2, 2, 2), width: int = 64, grid: int = 32):
+    def __init__(self, n_landmarks: int, layers=(2, 2, 2, 2), width: int = 64, grid: int = 32, extra: int = 0):
         super().__init__()
         self.n = n_landmarks
         self.stem = nn.Sequential(nn.Conv2d(3, width, 7, 2, 3, bias=False), nn.BatchNorm2d(width), nn.ReLU(inplace=True),
@@ -69,11 +69,12 @@ class NetHM(nn.Module):
         self.lat = nn.ModuleList([nn.Conv2d(width * 2 ** i, d, 1) for i in (1, 2, 3)])
         self.smooth = nn.Sequential(nn.Conv2d(d, d, 3, 1, 1, bias=False), nn.BatchNorm2d(d), nn.ReLU(inplace=True))
         self.maps = nn.Conv2d(d, n_landmarks, 1)
-        self.head = nn.Linear(cin, n_landmarks * 3)
+        self.extra = extra          # rows after the landmarks that have no heat map (the camera's distance): from the pooled features alone
+        self.head = nn.Linear(cin, (n_landmarks + extra) * 3)
         nn.init.zeros_(self.head.weight)
         nn.init.zeros_(self.head.bias)
         with torch.no_grad():
-            self.head.bias.view(n_landmarks, 3)[:, 2] = -2.0
+            self.head.bias.view(n_landmarks + extra, 3)[:, 2] = -2.0
         g = (torch.arange(grid, dtype=torch.float32) + 0.5) / grid * 2 - 1
         self.register_buffer("gx", g.view(1, 1, 1, grid).repeat(1, 1, grid, 1).reshape(1, 1, -1))
         self.register_buffer("gy", g.view(1, 1, grid, 1).repeat(1, 1, 1, grid).reshape(1, 1, -1))
@@ -91,14 +92,27 @@ class NetHM(nn.Module):
         h = self.maps(self.smooth(p)).float()
         w = torch.softmax(h.flatten(2) * self.temp, dim=2)
         sx, sy = (w * self.gx).sum(2), (w * self.gy).sum(2)
-        o = self.head(torch.flatten(F.adaptive_avg_pool2d(c[3], 1), 1)).float().view(x.shape[0], self.n, 3)
-        return torch.stack([sx + o[..., 0], sy + o[..., 1], o[..., 2]], dim=2).flatten(1)
+        o = self.head(torch.flatten(F.adaptive_avg_pool2d(c[3], 1), 1)).float().view(x.shape[0], self.n + self.extra, 3)
+        lm = torch.stack([sx + o[:, :self.n, 0], sy + o[:, :self.n, 1], soft_floor(o[:, :self.n, 2])], dim=2)
+        ex = torch.stack([o[:, self.n:, 0], o[:, self.n:, 1], soft_floor(o[:, self.n:, 2])], dim=2)
+        return torch.cat([lm, ex], dim=1).flatten(1)
 
 
-def make(arch: str, n_landmarks: int):
+LS_MIN = -5.5         # sigma >= ~0.5 px of the 256 crop (coordinates in [-1, 1])
+
+
+def soft_floor(ls):
+    """log sigma with a SOFT floor: sigma^2 = exp(2 ls) + exp(2 LS_MIN). The earlier hard clamp in the loss had zero
+    gradient below the floor: a landmark whose sigma went under it could not raise it again, and its d^2 / sigma^2 term
+    (thousands on a hard sample) blew the stage-1 runs up (s10k; s30k's first try: loss 0.9 -> 148 at epoch 9). In the
+    network, so the loss, the evaluation and the exported model all see the same sigma."""
+    return 0.5 * torch.logaddexp(2 * ls, torch.full_like(ls, 2 * LS_MIN))
+
+
+def make(arch: str, n_landmarks: int, extra: int = 0):
     """arch: "18" | "34" (direct regression, Wood et al.) | "hm18" | "hm34" (the heat-map head)."""
     layers = (3, 4, 6, 3) if arch.endswith("34") else (2, 2, 2, 2)
-    return NetHM(n_landmarks, layers) if arch.startswith("hm") else Net(n_landmarks, layers)
+    return NetHM(n_landmarks, layers, extra=extra) if arch.startswith("hm") else Net(n_landmarks + extra, layers)
 
 
 def gnll(out, xy, weight=None, beta: float = 0.0):
@@ -107,7 +121,7 @@ def gnll(out, xy, weight=None, beta: float = 0.0):
     landmark the network is unsure of still pulls on its position (the plain NLL's pull falls with 1 / sigma^2: the
     mean fit stalls early); the optimum, and so the calibration, is the same."""
     o = out.view(out.shape[0], -1, 3)
-    ls = o[..., 2].clamp(-7.0, 3.0)
+    ls = o[..., 2].clamp(max=3.0)        # the floor is soft_floor's, in the network (NetHM); a hard clamp here had no gradient
     d2 = ((o[..., :2] - xy) ** 2).sum(-1)
     l = 2 * ls + d2 / (2 * torch.exp(2 * ls))
     if beta > 0:
