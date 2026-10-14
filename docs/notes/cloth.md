@@ -2477,3 +2477,36 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - Spend this agent: $0.472 (this gate $0.076).
   - STATE: best = out/c12_n10c.pkl (q_n9.txt line 2: gorge_drop 0.10, collar point 0.015, lapel stand 0.012).
     NEXT: shoulders (item 3), CB collar crossings, the shirt re-sim on the final measures; the chest V width.
+- Gate 8 (coordinator: (1) the notch V, (2) the chest V ~2 cm narrow, (3) the left side-neck lump; + DISTIL). One
+  batch, two sims ($0.069): n11 = n10 + break_y 0.49 -> 0.455 + lapel notch 0.035 -> 0.020; n12 = the same with notch
+  0.027. notchv.py <pkl>: the V per side (apex = collar gorge end, collar point, lapel point; angle 3D / front view,
+  mouth, both edges).
+  - (1) NOTCH V. n10: V 74-77 deg (3D), mouth 47-50 mm, collar end edge 40 mm, lapel top edge 38 mm (= the draft's
+    notch 35 mm). n11 (notch 20 mm): 67-73 deg, mouth 37-39, lapel top 20 mm, but the apex 10-15 mm LOW (a shorter
+    notch runs the collar further down the gorge). n12 (27 mm): 81-86 deg, mouth 50-53, apex 5-9 mm low. A 10-15 mm
+    mouth with a 40 mm collar end edge is not geometry: the concept's notch has short arms (~20 mm each); ours has
+    the collar's full end width as one arm. In clay the lapel's top edge past the collar end is a faint line (the
+    lapel lies 3 mm over its forepart, same normal, a 0.8 mm rendered sheet): the step that reads is the collar end's.
+    Not yet crisp. Levers left: a narrower collar END (the draft's end width / point), a lapel edge rendered at the
+    cloth's real thickness (3-4 mm: wool + canvas + facing).
+  - (2) CHEST V: the break raised to the concept's (396-404 vs 398 mm below the chin; was 430-436) but the chest
+    opening stayed ~160 mm (concept ~182): the roll lines' top sits in. Not fixed; lever: the roll line's top
+    (lapel roll_stand) or the neckline width.
+  - (3) LEFT SIDE NECK: in the front neck view the collar's stand turning the side neck reads as a ridge with a gap
+    under it (closes: clean). Per-station check: no fold > 100 deg; one 93 deg crease at the station where the
+    transition starts (st 57 / 8), outer edge 0.4-0.5 of its cut length there. Transition columns now at their cut
+    length (transition_length, default on): no visible change. Left as is.
+  - Sheet workspace/cloth_renders/c12_g8_sheet.png (concept | n12 | n10). At figure scale n12 ~ n10.
+  - DISTIL (Joe's question, via the coordinator): cloth_guide.md gained the cloth12 rules (fault table: lopsided
+    result -> mirror check of every sim input place-only; measure what you name; made pieces at their cut length /
+    width; transition one smooth edge; lapel roll; notch rim; button stance; tuck never into the body; stencil
+    shadows; one stage run at a time), "Judging what you see" (shadows off, both sides, one run) and a new section
+    "Made pieces constructed after the drape (construct)" (the construct key was undocumented). Background (how
+    artists work, sources, the skirt and suit-trouser walk-throughs, where each lesson lives) moved to
+    cloth_background.md (guide topic cloth_background): guide 112 -> 102 KB. PROPOSED further cut (not mechanical):
+    the fault table's rows whose fix is "Fixed: ..." (closed bugs, ~40% of its 25 KB) to the background as history,
+    and "Tool reference" (9.6 KB) folded into each tool's guide(topic=<tool>).
+  - Spend this agent: $0.541 (this gate $0.069).
+  - STATE: best c12_n12c (gorge_drop 0.10, collar point 15 mm, stance 12 mm, break_y 0.455, notch 27 mm) or n10
+    (break 35 mm low, notch at height); gates pass on both. NEXT: the notch's arms (collar end width), the chest V
+    (roll line top), shoulders, CB crossings, the shirt re-sim.
