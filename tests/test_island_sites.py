@@ -14,7 +14,12 @@ from hifipushie import terrain
 SPECS = [Path("/home/joe/dev/pushieworld/pushie/terrain/island.json"),
          Path(os.environ.get("HIFIPUSHIE_HOME", "workspace")) / "terrain" / "pw_island2" / "spec.json"]
 # 3f2d1f1's pads; vale_village is the fix (33.85 there: under the river)
-LEVELS = {"crown_camp": 69.9, "downs_green": 51.67, "pencil_landing": 3.0, "vale_village": 41.52, "kaze_lookout": 82.48}
+# crown_camp 69.9 -> 70.40: Pushieworld moved the site in its own spec, 2026-10-14; set_terrain on 118bf2f: pad 28 m
+# across at 70 m, centre [1010, 820].
+# vale_village 41.52 -> 38.99: their spec gained vale_river's 6 m fall at 0.12 (0f5794f, 2026-10-09) upstream of the
+# village, which lowers the river beside it (34.02 m) and so the pad; the same 38.99 at 77b4681 (before the
+# pushieworld-items work) and on 30c9c3c. Still 4.97 m over the water beside it for its above_water 3 (checked below).
+LEVELS = {"crown_camp": 70.40, "downs_green": 51.67, "pencil_landing": 3.0, "vale_village": 38.99, "kaze_lookout": 82.48}
 
 
 def main():
