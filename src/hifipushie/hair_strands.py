@@ -60,6 +60,9 @@ SAFE = {
 }
 WISPS = "hair_guides_wisp"  # the object of the locks of single hairs (lock["hairs"] = n)
 WISP_RADIUS = 0.8  # x the strand radius for single hairs (alone against skin a strand reads thicker than in a mass)
+EDGE_RAMP = 0.008  # m over which a LOOSE lock's strand count ramps up to full (rule 15) ...
+EDGE_START = 0.0035  # ... from this far inside the hairline (the first loose roots)
+EDGE_MIN = 0.15  # the share of its strands a loose lock rooted on the line keeps
 WISP_FAN = 2.0  # a thin free lock (a wisp, < 16 mm) opens to (1 + this) x its width toward the tip, round in section
 
 
@@ -207,7 +210,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
                       * (1.0 if key == "head" else (0.9 if fan <= 0 else 0.3) if thin else 2.5))  # (a wisp: few strands)
             # strands.density on a lock (a region): x its strands, ABSOLUTE (not a share: scaling every lock of the head
             # alike would change nothing): an airy top where the strands don't fill the lock's lens
-            D_.append(float(np.clip((lk.get("strands") or {}).get("density", 1.0), 0.05, 4.0)))
+            D_.append(float(np.clip((lk.get("strands") or {}).get("density", 1.0), 0.05, 4.0)) * float(lk.get("edge_density", 1.0)))
             # a fly-away gets as far as its lock is wide (a thin face strand has no 4 cm strays)
             # (nor further than a quarter of its length: short hair had 4 cm spikes)
             F_.append(min(SAFE["flyaway_m"] * (2.0 if key == "free" else 1.0), 0.8 * W, 0.25 * float(s[-1])) * (0.3 if gather else 1.0))
@@ -512,6 +515,16 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         if not k_.get("free"):
             a0, e0_, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
             k_["at_hairline"] = bool(h0[0] < 0.01 and inside(sc, line, a0, e0_)[0] < 0.008)
+        elif k_.get("tier") == "loose":
+            # LOOSE hair rooted at the hairline (hair-garrett, rule 15): the same staggered starts, and FEWER strands
+            # the nearer the line (a density ramp over EDGE_RAMP m: real hairlines thin out over 3-4 mm). Without it
+            # each front lock started all its strands on one row: the hairline was a row of comb teeth
+            a0, e0_, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
+            d0 = float(inside(sc, line, a0, e0_)[0])
+            # (loose roots start ~4 mm inside the line, the scalp layer covers the strip: the ramp runs from there)
+            if h0[0] < 0.01 and d0 < EDGE_START + EDGE_RAMP:
+                k_["at_hairline"] = True
+                k_["edge_density"] = float(EDGE_MIN + (1 - EDGE_MIN) * _ss((d0 - EDGE_START) / EDGE_RAMP))
     sm = scalp_mesh(sc, g, line, S)
     area, e0 = sm.pop("area"), sm.pop("e0")
     np.savez(tmp / "strand_scalp.npz", **sm)

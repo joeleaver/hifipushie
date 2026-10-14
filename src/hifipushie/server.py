@@ -143,7 +143,7 @@ TOOLSETS: dict[str, dict] = {
                  "tools": ["likeness", "fit_likeness", "likeness_points", "character_read", "project_reference",
                            "texture_from_reference", "reference_brief", "check_references"]},
     "hair": {"about": "hair as curve locks: groom, look, reference, export", "also": ["scene"],
-             "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "export_hair"]},
+             "tools": ["groom_hair", "tie_hair", "look_hair", "hair_reference", "hair_from_reference", "export_hair"]},
     "cloth": {"about": "garments: design, pattern, construction checks, dress (sim), references", "also": ["scene"],
               "tools": ["design_garment", "look_pattern", "check_garment", "dress", "look_cloth", "garment_reference",
                         "garment_from_reference", "check_garment_reference", "garment_reference_brief"]},
@@ -1429,6 +1429,26 @@ def export_hair(name: str, out_dir: str, tiers: list[str] | None = None, groom: 
         from PIL import Image as _I
         out.append(_png(_I.open(save)))
     return [*out, "\n".join(lines)]
+
+
+@mcp.tool(structured_output=False)
+def hair_from_reference(name: str, out: str = "", read_only: bool = False, authority: int | None = None,
+                        compare: dict | None = None, seed: int = 0) -> str:
+    """The HAIR READER: measure the hair on the model's fitted reference pictures (stand-off by region, halo, edge
+    roughness, wisps, hairline height / softness / baby hairs, parting, colour with grey by region from ONE authority
+    view) and set a START groom / strands / look from it (measured vs set, INFERRED where a picture can't show it).
+    read_only: the read alone. out: groom a copy. authority: the colour view (default the most frontal). compare
+    {view index: render png through that fitted camera}: the same read on our renders, ours | picture.
+    Details: guide(topic="hair_from_reference")."""
+    from . import hair_read
+    if compare:
+        c = hair_read.compare(name, {int(k): v for k, v in _spec_arg(compare).items()}, authority=authority)
+        st = hair_read.colour_step(c, (store.load(name).get("hair") or {}).get("look") or {})
+        return c["text"] + ("\ncolour step (authority view): " + st["why"] if st.get("why") else "")
+    if read_only:
+        r = hair_read.read(name, authority=authority, log=lambda s: None)
+        return r["text"] + "\n" + hair_read.start(r, store.load(name))["text"] + "\n(read only: nothing saved)"
+    return hair_read.apply(name, out=out or None, authority=authority, seed=seed, log=lambda s: None)["text"]
 
 
 @mcp.tool(structured_output=False)

@@ -20,7 +20,7 @@ export_plant wind_plant sync_plant plant_history heavy_status heavy_queue make_c
 clutter_kit""".split()
 # added since: the artist block-in (2026-10-10)
 ADDED = {"block_in_start", "block_in_look", "block_in_step", "block_in_solve", "lid_read", "block_in_expression", "gnm_controls", "lip_read",
-         "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference"}
+         "brow_read", "eye_ruler", "face_ruler", "tie_hair", "skin_from_reference", "hair_from_reference"}
 
 
 def _tokens(tools) -> int:
