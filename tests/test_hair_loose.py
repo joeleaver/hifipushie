@@ -185,7 +185,7 @@ def test_fade_shortens_and_thins_the_nape():
 def test_loose_halo_is_not_quartered_but_a_tails_is():
     from hifipushie import hair_strands as hs
     S = {**hc.strands_of({"hair": {"strands": {"halo": 1.0}}})}
-    assert hs.physical(S, free=True, tail=False)["halo"] == pytest.approx(4 * hs.physical(S, free=True, tail=True)["halo"])
+    assert hs.physical(S, free=True, tail=False)["halo"] == pytest.approx(4 * hs.LOOSE_HALO * hs.physical(S, free=True, tail=True)["halo"])
 
 
 def test_level_fringe_and_afro():

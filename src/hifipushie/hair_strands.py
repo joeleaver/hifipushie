@@ -63,6 +63,7 @@ WISP_RADIUS = 0.8  # x the strand radius for single hairs (alone against skin a 
 EDGE_RAMP = 0.008  # m over which a LOOSE lock's strand count ramps up to full (rule 15) ...
 EDGE_START = 0.0035  # ... from this far inside the hairline (the first loose roots)
 EDGE_MIN = 0.15  # the share of its strands a loose lock rooted on the line keeps
+LOOSE_HALO = 2.0  # x the halo share on LOOSE hair (a long head's crown fly-aways: at 1 x the halo read 0.05 vs 0.22-0.25)
 WISP_FAN = 2.0  # a thin free lock (a wisp, < 16 mm) opens to (1 + this) x its width toward the tip, round in section
 
 
@@ -105,7 +106,7 @@ def physical(S: dict, free: bool = False, tail: bool = True) -> dict:
         "curl_freq": 1.0 / max(float(S["wavelength"]), 0.01),
         # (a tail has its fly-aways; short hairs standing off it all round made it a bottle brush: quartered on hair that
         # left the head IN A TAIL. Loose hair (groom.loose: free locks, no tie) keeps the dial: rule 4, hair-garrett)
-        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if (free and tail) else 1.0),
+        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if (free and tail) else LOOSE_HALO if free else 1.0),
     }
 
 

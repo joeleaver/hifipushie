@@ -275,12 +275,15 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         return np.full(m, float(v))
     fr = p["fringe"]
     is_fr = np.zeros(m, bool)
+    curtain_ = False
     if fr:
         is_fr = (fa < float(fr["span"])) & (d_in < float(fr["depth"]))
         if fr["sweep"] == "away":  # CURTAIN BANGS: each side swept down and away from the parting, framing the face
+            curtain_ = True
             sgn_ = np.sign(P0[:, 0] - sc.C[0] - (xp or 0.0))
             sgn_ = np.where(sgn_ == 0, 1.0, sgn_)
-            comb[is_fr] = np.stack([sgn_[is_fr] * 1.1, np.full(int(is_fr.sum()), -0.8), np.full(int(is_fr.sum()), -1.0)], 1)
+            # (out to the side first: down and forward, they hung as a thin veil over the forehead, hair-garrett lt r5)
+            comb[is_fr] = np.stack([sgn_[is_fr] * 1.6, np.full(int(is_fr.sum()), -0.5), np.full(int(is_fr.sum()), -0.7)], 1)
         else:
             swp = float(fr["sweep"])
             comb[is_fr] = np.array([swp * 1.2, -1.0, -0.8])
@@ -398,7 +401,8 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             sg = np.where(np.abs(q[:, 0] - sc.C[0]) > 0.004, np.sign(q[:, 0] - sc.C[0]), side0)
             f_ = np.abs(((a_ + 180) % 360) - 180)
             lim = face * FACE_AZ * _ss((_line_at(line, a_) - e_) / 12.0) * _ss((e_ + 75) / 15)
-            mv = (f_ < lim) & ~is_fr
+            # (a fringe hangs over the forehead on purpose; CURTAIN bangs frame the face: they keep to its sides)
+            mv = (f_ < lim) & ~(is_fr & (not curtain_))
             if mv.any():
                 rot = np.radians((lim - f_) * sg)[mv]  # (az grows toward +x: the head's left)
                 v = q[mv] - sc.C
@@ -457,7 +461,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         short = s[-1] < 0.05
         lk = {"tier": "loose", "space": "xyz", "pts": [[round(float(v), 4) for v in q] for q in Q - sc.C],
               "free": 1.0, "width": round(float(w0 * (1 + 0.3 * float(p["uneven"]) * rng.uniform(-1, 1))), 4),
-              "thickness": float(p["thickness"]) * (0.6 if is_fr[i] else 1.0), "taper": 0.2 if lvl is not None else 0.35,
+              "thickness": float(p["thickness"]) * (0.6 if is_fr[i] and not curtain_ else 1.0), "taper": 0.2 if lvl is not None else 0.35,
               "belly": 0.4, "root": 0.7, "cup": 0.0}
         if fan is not None:
             lk["radius"] = [round(float(v), 3) for v in fan]

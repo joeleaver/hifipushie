@@ -2171,6 +2171,22 @@ mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), cmp.py <model>
   scalp-layer band under it; the nape ends in a ledge, not a fade (the nape's density needs the same ramp DOWNWARD,
   over ~1-2 cm: not built). Regression hg2: riff_a5 (half up's loose part) MOVED 1.96: the same style, its strands
   redrawn by the hairline ramp (no new fault seen; not accepted: the coordinator's call).
+### hair-garrett2 (2026-10-14, branch `hair-garrett2` from main 1b2817d): loose-hair words, the nape fade
+STATE: groom.loose words `halo` / `flyaway` (loose hair's free locks no longer get the tail's quartered halo, and
+LOOSE_HALO 2x), `tuck` (one side behind the found ear), curtain bangs (`fringe.sweep "away"` + `curtain`; the face rule
+keeps them to the face's sides), `fade` (the nape shortens and thins over `width`); the reader sets halo / flyaway on
+long hair and a fade on a short cut. Tests: test_hair_loose 16 (tuck, curtain, fade, halo factor). Regression hg3 / hg4:
+all eleven identical. Sheets (REFERENCE | now | r4): human_renders/hg_06_garrett_now.jpg (+ hg_06_garrett_fade_closeups),
+hg_jw_now.jpg, hg_lt19_now.jpg.
+Measured, ours | picture: wisps / 10 cm 2.5 -> 6.8 | 6.8 and 3.3 -> 7.5 | 16.1; halo density 0.06-0.08 -> 0.073-0.076 |
+0.22-0.25: the halo dial now reaches the hair but the measure barely moves: EEVEE's halo hairs are single, half-alpha
+(fine_alpha 0.5) and few; the pictures' edge is a dense soft fuzz. The tuck works (the ear shows, the hair passes behind
+it). Curtain bangs: the first try hung as a thin veil over the forehead (fringe locks are thin and exempt from the face
+rule); now thicker, swept out first, kept to the face's sides. A bug caught by test_loose_hair_falls_and_stays_out:
+`~False` on a Python bool is -1, not True (use `not`). The fade softens the nape's ledge but the line is still
+horizontal and high, with the scalp layer's dark band under it.
+NEXT: a dense soft halo (more, opaque-ish fine hairs at the outline) if the halo measure is to match; the nape hairline's
+own height and shape (a fade needs the line lower and tapered at the corners); the front hairline still reads as a wall.
 ### Two long-haired heads, 4 rounds each (general findings; per-person notes are private)
 - The reader on phone pictures in a room: the backdrop must be read LOCALLY (a warm wall, a dark couch, a black
   shirt beside dark hair were counted as hair with one global backdrop colour); hair hanging over the cheeks meets
