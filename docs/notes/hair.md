@@ -2206,6 +2206,15 @@ Garrett round 10-11 (sheets human_renders/hg_11_garrett_density.jpg + hg_11_garr
   with a little forward ([-0.3, -0.25, 0.35]).
 Left: the profile front edge (his projects forward; ours ends short); the nape still shows a crown whorl hole and a
 curly bottom row in the back views; the halo.
+Garrett round 12 (sheets human_renders/hg_12_garrett.jpg + hg_12_garrett_crops.jpg; styles/r12.json): front points +5 mm
+at the centre (+2.5 over the temple corners; the coordinator: brow-to-hairline ~15 % short after r8-r9); look fly_light
+0.1 + strands tips 0.3 (the bright ragged tips read as wire); nape stiff 0.8 / lay 0.5 (the bottom row no longer curls).
+OPEN, isolated but not found: a radial "whorl" bare spot at the back (az ~180, mid-height). It is on the head (stays put
+from y160 and y180), not the scalp layer (under 0), not halo / flyaway, not the collider (scalp-ray collide mesh: same),
+not the locks' directions (all point down there), not scalp-radius spikes or scalp-mesh holes; it moves when the back's
+lift / lay change. Next suspect: the strand generator's root spread at the head's back pole.
+GPU: a second amdgpu context loss ("hard recovery") with 600k strands, the scalp layer off (all of them in the locks),
+2048 px: judging renders now use count 450k.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)
