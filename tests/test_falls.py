@@ -194,6 +194,28 @@ def test_lip_open(T):
     print(f"ok lip open: field 3 m up {up.min():.2f}, AO {ao.min():.2f}, bedrock {bedrock.mean():.2f}")
 
 
+def test_steep_water(T):
+    """`water: {"width", "steep"}` sets how wide a steep reach's water stays (pushieworld note 122: crown_beck stayed 2
+    m wide whatever `water` said), and the report says how much of a river the steep reaches narrow."""
+    rep = T.report()
+    assert "river beck: water 3 m either side" in rep and "narrow it on" in rep, rep[-1500:]
+    w0 = np.asarray(T.river_water_lines["beck"]["width"])
+    assert abs(w0[w0 > 0].min() - 2.0) < 1e-6, w0.min()
+    spec = copy.deepcopy(SPECS["inland"])
+    spec["rivers"]["beck"]["water"] = {"width": 3, "steep": 2.6}
+    T2 = _load(spec)
+    w = np.asarray(T2.river_water_lines["beck"]["width"])
+    assert abs(w[w > 0].min() - 2.6) < 1e-6 and w.max() <= 3.0 + 1e-6, (w.min(), w.max())
+    bad = copy.deepcopy(SPECS["inland"])
+    bad["rivers"]["beck"]["water"] = {"width": 3, "steeep": 2}
+    try:
+        _load(bad)
+        raise AssertionError("an unknown water key passed")
+    except ValueError as e:
+        assert "steeep" in str(e)
+    print(f"ok steep water: default floor 2.0 m, set 2.6 m ({np.mean(w < 3 - 0.01):.0%} of the beck narrowed)")
+
+
 def test_errors():
     s = copy.deepcopy(SPECS["inland"])
     s["rivers"]["beck"]["falls"] = [{"at": 0.5, "drop": 60}]
@@ -224,6 +246,7 @@ if __name__ == "__main__":
     test_meta(T)
     test_clutter(T)
     test_lip_open(T)
+    test_steep_water(T)
     Ts = _load(SPECS["sea"])
     test_sea(Ts)
     fs = _cliff_field(Ts)
