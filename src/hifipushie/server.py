@@ -349,7 +349,10 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.m
                 "hair_locks": "hair_locks_guide.md", "hair_background": "hair_background.md",
                 "cloth_background": "cloth_background.md", "cloth_tools": "cloth_tools.md",
                 "cloth_design": "cloth_design.md", "cloth_construction": "cloth_construction.md",
-                "cloth_sim": "cloth_sim.md", "cloth_faults": "cloth_faults.md", "cloth_blocks": "cloth_blocks.md"}
+                "cloth_sim": "cloth_sim.md", "cloth_faults": "cloth_faults.md", "cloth_blocks": "cloth_blocks.md",
+                "vegetation_spec": "vegetation_spec.md", "vegetation_styles": "vegetation_styles.md",
+                "vegetation_forest": "vegetation_forest.md", "vegetation_small": "vegetation_small.md",
+                "vegetation_export": "vegetation_export.md", "vegetation_tools": "vegetation_tools.md"}
 
 
 def _tool_section(name: str) -> str:
