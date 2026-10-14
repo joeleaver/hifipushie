@@ -167,6 +167,21 @@ def test_long_hair_is_not_given_a_crop():
     assert not st["short"] and "loose" not in st["hair"]["groom"]
 
 
+def test_colour_step_without_grey_moves_lightness_and_chroma_not_hue():
+    """No grey (lit pigmented hair): the step is in Lab on the mean colour. Ours darker and more saturated than the
+    picture, same hue: the ask gets lighter and less saturated, its hue kept (per channel it turned purple / green)."""
+    from hifipushie.skin_read import lab
+    pic, ours, ask = "#4b3a36", "#442a1e", "#58453f"
+    cmp = {"ours": {"views": [{"i": 0, "colour": {"mean_rgb": ours}}]},
+           "picture": {"authority": 0, "views": [{"i": 0, "colour": {"mean_rgb": pic, "chroma_ratio": 1.5}}]}}
+    st = hr.colour_step(cmp, {"seen": ask})
+    a, b = lab(hr._lin_hex(ask)), lab(hr._lin_hex(st["seen"]))
+    assert b[0] > a[0]  # lighter (the picture's mean is lighter than ours)
+    assert np.hypot(b[1], b[2]) < np.hypot(a[1], a[2])  # less saturated
+    ha, hb = np.degrees(np.arctan2(a[2], a[1])), np.degrees(np.arctan2(b[2], b[1]))
+    assert abs(((hb - ha + 180) % 360) - 180) <= 20.5
+
+
 def test_long_hair_gets_a_loose_long_start_and_no_grey_when_young():
     r = _fake_read()
     r["summary"]["standoff"] = {"top": 16.0, "sides": 20.0, "front": 14.0, "back": 30.0}

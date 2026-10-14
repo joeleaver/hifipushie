@@ -1444,7 +1444,7 @@ def hair_from_reference(name: str, out: str = "", read_only: bool = False, autho
     if compare:
         c = hair_read.compare(name, {int(k): v for k, v in _spec_arg(compare).items()}, authority=authority)
         st = hair_read.colour_step(c, (store.load(name).get("hair") or {}).get("look") or {})
-        return c["text"] + ("\ncolour step (look, per linear channel; authority view): " + st["why"] if st.get("why") else "")
+        return c["text"] + ("\ncolour step (authority view): " + st["why"] if st.get("why") else "")
     if read_only:
         r = hair_read.read(name, authority=authority, log=lambda s: None)
         return r["text"] + "\n" + hair_read.start(r, store.load(name))["text"] + "\n(read only: nothing saved)"

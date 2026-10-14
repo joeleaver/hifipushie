@@ -267,12 +267,34 @@ def colour_step(cmp: dict, look: dict, gain: float = 1.0) -> dict:
     co = next((v["colour"] for v in ro["views"] if v["i"] == au), {}) or {}
     cp = next((v["colour"] for v in rp["views"] if v["i"] == au), {}) or {}
     out, why = {}, []
+    # hair without grey: `seen` was set from the LIT mode, so the lit modes are compared (the start's rule)
+    grey = cp.get("chroma_ratio") is None or cp["chroma_ratio"] < GREY_CHROMA
+    if not grey and look.get("seen") and co.get("mean_rgb") and cp.get("mean_rgb"):
+        # NO GREY: the step in Lab, as lightness, chroma and hue SEPARATELY on the mean colour (comparing lit modes
+        # failed when ours had 1 % lit pixels and the picture 30 %). Per linear channel it blew up (hair-garrett,
+        # family round 2: a brown asked bluer came out PURPLE, a near-black asked greener came out GREEN): `seen`
+        # derives lit with its saturation / eevee_sat, so a small hue change in seen is a big one in the strands
+        from .skin_read import _unlab, lab
+        Lp, Lo, Ls = (lab(_lin_hex(h)) for h in (cp["mean_rgb"], co["mean_rgb"], look["seen"]))
+        Cp, Co, Cs = (float(np.hypot(x[1], x[2])) for x in (Lp, Lo, Ls))
+        hp_, ho_, hs_ = (float(np.degrees(np.arctan2(x[2], x[1]))) for x in (Lp, Lo, Ls))
+        L1 = float(np.clip(Ls[0] + gain * (Lp[0] - Lo[0]), 2.0, 90.0))
+        C1 = float(np.clip(Cs * (Cp / max(Co, 0.5)) ** gain, 0.0, 40.0))
+        dh = float(np.clip(((hp_ - ho_ + 180) % 360 - 180) * gain, -20.0, 20.0))  # (a small turn at most)
+        h1 = np.radians(hs_ + dh)
+        out["seen"] = _hex_lin(_unlab(np.array([L1, C1 * np.cos(h1), C1 * np.sin(h1)])))
+        why.append(f"seen (mean colour, Lab): picture L* {Lp[0]:.1f} C {Cp:.1f} h {hp_:.0f}, ours L* {Lo[0]:.1f} C {Co:.1f} h "
+                   f"{ho_:.0f} (view {au}): asked {look['seen']} -> {out['seen']} (L* {Ls[0]:.1f} -> {L1:.1f}, C {Cs:.1f} -> "
+                   f"{C1:.1f}, hue {dh:+.0f} deg)")
     for key in ("seen", "grey"):
-        if co.get(key) and cp.get(key) and look.get(key):
-            r = _lin_hex(cp[key]) / np.maximum(_lin_hex(co[key]), 1e-4)
+        mk = key
+        if key in out or not grey and key == "seen":
+            continue
+        if co.get(mk) and cp.get(mk) and look.get(key):
+            r = _lin_hex(cp[mk]) / np.maximum(_lin_hex(co[mk]), 1e-4)
             r = np.clip(r, 0.25, 4.0) ** float(gain)
             out[key] = _hex_lin(_lin_hex(look[key]) * r)
-            why.append(f"{key}: asked {look[key]}, rendered {co[key]}, picture {cp[key]} (view {au}) -> {out[key]}")
+            why.append(f"{key} ({mk} mode): asked {look[key]}, rendered {co[mk]}, picture {cp[mk]} (view {au}) -> {out[key]}")
     out["why"] = "; ".join(why)
     return out
 
@@ -608,6 +630,8 @@ def colour_split(img, dense, mm: float, T: float | None = None) -> dict:
            "chroma_ratio": (round(float(np.median(C[light]) / max(np.median(C[dark]), 0.5)), 2)
                             if light.sum() > 20 and dark.sum() > 20 else None),
            "lit": _hex(np.median(px[light], 0)) if light.sum() > 20 else None,
+           # the mean colour (linear light, back to sRGB): what one colour step matches when the modes differ in share
+           "mean_rgb": _hex_lin(np.mean(np.where(px / 255 <= 0.04045, px / 255 / 12.92, ((px / 255 + 0.055) / 1.055) ** 2.4), 0)),
            "dark_L": round(float(np.median(L[dark])), 1) if dark.any() else None,
            "light_L": round(float(np.median(L[light])), 1) if light.any() else None,
            "chroma": round(float(np.median(C)), 1)}
