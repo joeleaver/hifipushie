@@ -201,6 +201,16 @@ def test_a_knee_move_curls_the_shins_and_comes_back():
     assert cloth._move_poses(body, None) == []
 
 
+def test_a_knit_is_held_to_its_own_strain_limit():
+    """dress-tess: ZOZO held every fabric to 5%, so a knit sweater couldn't stretch onto the arm or take its rib bands;
+    a knit's limit is its fabric's (french terry 20%, rib 40%), a woven keeps ZOZO's 5%, the garment's own wins."""
+    from hifipushie import garment_design as gd
+    sweater = gd.expand({"design": {"kind": "hoodie", "block": "knit", "fabric": "french_terry", "details": {"pockets": "none"}}})
+    assert abs(cloth.strain_limit_of(sweater) - 0.2) < 1e-9
+    assert cloth.strain_limit_of({"fabric": "denim"}) == 0.05 and cloth.strain_limit_of({"fabric": "shirting"}) == 0.05
+    assert cloth.strain_limit_of(dict(sweater, zozo={"strain_limit": 0.1})) == 0.1
+
+
 def test_zozo_backend_keys():
     """A ZOZO result is keyed on its runner (cloth_zozo.py), never on blender_cloth.py, and not on where it ran: a
     pod's result is found locally (the tooling card: a 27-min result lost to an edit of the Blender script)."""

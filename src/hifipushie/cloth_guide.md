@@ -154,7 +154,10 @@ which stage makes each:
 | Back-pocket stitched design (arcuate), rivets, coin pocket, button | Detail maps / trims | NOT built yet |
 | Indigo wear and fades (whiskers, knees, seam edges, hem) | Paint | NOT built for cloth (garments take one colour + the detail maps) |
 
-**Knits (a sweater, a sweatshirt; dress-tess 2026-10-14).** `"block": "knit"` + `{"op": "sleeve"}`; the rib details
+**Knits (a sweater, a sweatshirt; dress-tess 2026-10-14).** A KNITTED sweater (fully fashioned, Tess's mustard crew
+neck) takes `knitted_rib` for collar, cuff and hem: single-layer rib knitted on, laid stretched onto its edge; a
+cut-and-sew sweatshirt takes the folded `rib_neckband` / `rib` / `rib_band`. Rib TEXTURE is not built (paint: a
+rib detail map). `"block": "knit"` + `{"op": "sleeve"}`; the rib details
 make their own bands (the KB's `draft.generate`: neckband laid up from the neckline, `wrap: seam`, 3 mm out; cuffs
 round each arm following the sleeve's wrist; hem band from CB on the torso, aligned on the front's centre). Override
 one band with a garment `generate` entry of the same `band` name (it replaces the design's), or a detail's
@@ -721,6 +724,7 @@ The same maps go into `scene.blend` and the export.
 | Patch pockets (jeans' back pockets) through the cloth they're sewn on: CORRUPT, 20-30 crossings | Held by their tacks only, they slid and sank through in the sim | Fixed as construction: a patch pocket is laid on its piece as it finally lies after the sim (`seat_patch_pockets`, report `pockets_seat`; `cleanup.pockets` false = off) |
 | A pocket on one side after `unfold` (a chest pocket on `front.L`) "sewn to nothing" | Its tacks were queued for the mirror pass, which had already run | Fixed (op_pocket) |
 | `closures: [{"name": "front", "state": "open"}]` refused at save ("needs name and over") | The validator asked for `over` on an entry that only says how a closure is worn | Fixed: an entry without `over` is laid over the design's closure of that name |
+| A knit's sleeves, armholes and rib bands end 20-50 mm OPEN (holes under the arms, ruffled cuffs) | (1) ZOZO held every fabric to 5%: a knit could not stretch onto the arm or take its bands. (2) The start: a sleeve narrower than the arm (knits have negative ease) was laid as a bigger cylinder 12 mm off the arm, its underarm 79-116 mm open; the start relaxation then took every triangle back to 3%. (3) Ring bands laid at their CUT length round a bigger girth: closing seams 76-310 mm open at the start | Fixed: a knit is held to its fabric's limit (`strain_limit_of`: french terry 20%), its sleeves stretched on round the arm, its start relaxed to its own limit (underarm 79 -> 12-20 mm at the start). Knitted sweaters take `knitted_rib` neckband / hem / cuffs: single layer, laid STRETCHED ON the edge (wrap seam `stretch_on`; the hem band `dir: "down"`): rings 76 -> 27, 310 -> 38 mm. READ the per-seam start gaps (dress-tess sg.py) on every knit: stage 4's "far apart" warning only fires past 25 cm |
 | A fleet job sits "provisioning" for many minutes with its cost climbing | The rented box never came up | Cancel the batch (cost returns to $0 on a never-started job); take the job out of sent.txt and resubmit once |
 
 ## Designing a garment that doesn't exist: block + operations

@@ -703,6 +703,7 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     M = cloth.mesh(Bp, h)
     smooth = cloth.placement_of(c.gx) == "smooth"
     body_p = c.body.straight_arms()[0] if smooth else c.body
+    Bp["stretch_limit"] = cloth.strain_limit_of(c.gx)
     X = cloth.place(Bp, M, body_p, smooth=smooth)
     cr = sorted(cloth._piece_crossings(X, M))
     if cr and smooth:
@@ -776,7 +777,7 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     stiff = cloth.interfacing(Bp, M)
     if smooth:
         tri, _ = cloth.edge_strain(X, M["uv"], M["F"])  # the rest is the flat pattern (made pieces left out below)
-        lim = float((c.gx.get("zozo") or {}).get("strain_limit", 0.05))
+        lim = cloth.strain_limit_of(c.gx)
         madep = np.isin(M["piece"][M["F"][:, 0]], [M["names"].index(n) for n in cloth.made_pieces(M, stiff)])
         allow = cloth.declared_stretch(Bp, M)  # (a rib band stretched on starts stretched by design)
         over = (tri > lim + allow) & ~madep

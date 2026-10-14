@@ -3232,7 +3232,14 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 dev = np.linalg.norm(offs - (np.outer(ts, fit_[0]) + fit_[1]), axis=1)
                 offs = np.outer(ts, fit_[0]) + fit_[1]
                 rmax = rmax + dev
-            Rp = max(R, float(rmax[on].max()) + gap if on.any() else R)
+            # (a knit, stretch_limit over 5%: the cylinder only clears the arm by the contact standoff; the rows
+            # still inside the arm are pushed out, a stretch inside its limit: the seam starts closed)
+            gap_arm = gap if float(B.get("stretch_limit", 0.05)) <= 0.05 else min(gap, 0.004)
+            Rp = max(R, float(rmax[on].max()) + gap_arm if on.any() else R)
+            if os.environ.get("HP_DEBUG_ARM"):
+                _i = int(np.argmax(np.where(on, rmax, -1)))
+                print(f"ARM {nm}: girth {girth*1000:.0f} R {R*1000:.1f} Rp {Rp*1000:.1f} rmax at t={ts[_i]:.2f} "
+                      f"({rmax[_i]*1000:.1f}) gap {gap*1000:.1f} t {tt.min():.2f}..{tt.max():.2f}")
             cx = 0.5 * (P[:, 0].max() + P[:, 0].min())
             if "cx" in w:  # the pattern x that lies along the top of the arm (a kimono sleeve's overarm seam: its
                 cx = float(w["cx"])  # front and back halves each start there)
@@ -3267,6 +3274,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                             shifts[w["follow"][0]] = (t_anchor, float(t.max() - t_lim))
                         t = t - (t.max() - t_lim)
             rad = np.full(len(U), Rp)
+            rang = None  # (a knit's own angle radius per row, below)
             taper = smooth and not closed and SLEEVE_TAPER and bool(B.get("worn_top"))  # (jackets, coats: shirts unchanged)
             if taper:
                 # smooth: a cone, not one cylinder: each row on the radius its own girth needs (this piece's width
@@ -3278,12 +3286,20 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 yfit = np.polyfit(t, U[:, 1], 1)
                 tg = np.arange(t.min() - 0.01, t.max() + 0.011, 0.005)
                 wg = np.array([_piece_width_at(P, float(np.polyval(yfit, tt))) for tt in tg])
-                cg = np.interp(tg, ts, rmax) + gap + float(w.get("out", 0)) + (_out or {}).get(nm, 0.0)
+                cg = np.interp(tg, ts, rmax) + gap_arm + float(w.get("out", 0)) + (_out or {}).get(nm, 0.0)
                 Rg = np.maximum(wg / max(share, 1e-6) / (2 * np.pi), cg)
                 Rg = np.minimum(Rg, Rp)
                 ker = np.exp(-0.5 * (np.arange(-8, 9) * 0.005 / 0.015) ** 2)
                 Rg = np.convolve(np.pad(Rg, 8, mode="edge"), ker / ker.sum(), mode="valid")
                 rad = np.interp(t, tg, Rg)
+                # (a knit is stretched ON round the arm where the arm is fuller than the sleeve, up to most of its
+                # strain limit, so its underarm seam starts closed: each row wraps its own girth's circle round the
+                # row's radius. dress-tess: a knit sleeve 12% under the deltoid laid isometric on a bigger cone
+                # started 71-116 mm open under the arm and ended 17-30 mm open)
+                lim_k = float(B.get("stretch_limit", 0.05))
+                if lim_k > 0.05:
+                    rown = np.interp(t, tg, wg / max(share, 1e-6) / (2 * np.pi))
+                    rang = np.maximum(rown, rad / (1 + 0.8 * lim_k))
             if _blouse and nm in _blouse and smooth:  # the excess taken up along the arm over the sleeve's last part
                 t_h, ex = _blouse[nm]
                 z0 = t_h - max(3 * ex, 0.08)
@@ -3362,7 +3378,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                     ang = float(w.get("front", 1)) * th[i] + turn_w
                     out[i] = at_t(ti, ang, rr[i])[0]
                     continue
-                ang = float(w.get("front", 1)) * (x - cx) / (rad[i] if taper else Rp) + turn_w
+                ang = float(w.get("front", 1)) * (x - cx) / ((rang[i] if rang is not None else rad[i]) if taper else Rp) + turn_w
                 arm_ang[vi_[i]] = ang
                 p, u = at_t(ti, ang, rad[i])
                 _, u1 = at_t(seg[0] - 1e-6, ang, rad[i])
@@ -3834,13 +3850,19 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
     mv = np.where(fl_ | laid_, 0.0, np.linalg.norm(Xp - X, axis=1))
     # what pushing the start out of the body moved: it becomes stretch in the rest shape (rest = placed)
     B["push"] = {nm: round(float(mv[pid == k].max() * 1000), 1) for k, nm in enumerate(names) if mv[pid == k].max() > 0.002}
+    # how far a sleeve's start may be pushed off the arm before it stands out as a whole cylinder (which opens its
+    # underarm seam: 2 pi x the extra radius): a woven at a 5% strain limit 1.5 mm; a knit at its own limit (a 20%
+    # knit ~8 mm: a ring of radius 5 cm stretches 2% a mm). dress-tess: a knit sweater's sleeves stood out 12 mm as
+    # cylinders, their underarms started 79-100 mm open and ended 17-30 mm open after the sim
+    lim_ = float(B.get("stretch_limit", 0.05))
+    push_ok = 0.0015 if lim_ <= 0.05 else 0.012  # (a local push of 1 cm over a 5 cm span is ~2% stretch)
     if smooth and (_out or {}).get("_n", 0) < 3:
         # resting on the flat pattern, a vertex pushed out of the body is stretch the solver starts with (a sleeve cap
         # pushed 6 mm off the deltoid: 7.5%, past a 5% strain limit): a sleeve (not closed on itself) stands that much
         # further out as a whole instead, still a cylinder
         more = {nm: float(mv[pid == k].max()) + 0.001 for k, nm in enumerate(names)
                 if pcs[nm]["wrap"].get("to", "").startswith("arm.") and not _closed_girth(M, nm)
-                and mv[pid == k].max() > 0.0015}
+                and mv[pid == k].max() > push_ok}
         if more:  # (again until clear: a further-out cylinder can meet the hand further down)
             out_ = dict(_out or {})
             for nm, v in more.items():
@@ -3857,7 +3879,7 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
         # a sleeve still pushed off the body where it stands out further already (a coat's under sleeve's corner at
         # the armpit: 12% stretch) goes down the arm too
         hit |= {nm for k, nm in enumerate(names) if pcs[nm]["wrap"].get("to", "").startswith("arm.")
-                and not _closed_girth(M, nm) and "follow" not in pcs[nm]["wrap"] and "align" not in pcs[nm]["wrap"] and mv[pid == k].max() > 0.0015}
+                and not _closed_girth(M, nm) and "follow" not in pcs[nm]["wrap"] and "align" not in pcs[nm]["wrap"] and mv[pid == k].max() > push_ok}
         # (not a piece aligned to another on its arm, a two-piece sleeve's under sleeve: moved down alone it started 11 cm
         # below its top sleeve, the seams 130 mm apart, and the hindarm seam stayed 40-66 mm open: su_54, su_61)
         down = dict(_down or {})
@@ -3888,22 +3910,26 @@ def place(B: dict, M: dict, body: Body, gap: float = 0.012, _blouse: dict | None
                 for row in fd["rows"]:
                     made_v[row] = True
             worn_k = [names.index(nm) for nm in (B.get("worn_top_pieces") or {})]
+            # (the start's stretch is relaxed to what the solver's strain limit can start from: a woven 3% / 2% at the
+            # edges, a knit most of its own limit: relaxed to 3% a knit sleeve stretched on round the arm opened again)
+            rl_s = 0.03 if lim_ <= 0.05 else 0.6 * lim_
+            rl_e = 0.02 if lim_ <= 0.05 else 0.5 * lim_
             for _ in range(12 if worn_k else 6):
                 _, hi_, _, _ = __import__("hifipushie.cloth_detail", fromlist=["x"]).strain_field(M, Xp)
-                if hi_[~made_v[M["F"]].any(1)].max() <= 1.04:
+                if hi_[~made_v[M["F"]].any(1)].max() <= 1.01 + rl_s:
                     break
                 if worn_k:
                     # pieces laid where they are worn keep their pinned seams shut while they relax (relaxed
                     # alone, a jacket's shoulder seams opened again to 5-10 cm)
                     for _ in range(10):
-                        Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=4)
-                        Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=30)
+                        Xp = _relax_stretch(Xp, M, ~made_v, rl_e, iters=4)
+                        Xp = _relax_strain(Xp, M, ~made_v, rl_s, iters=30)
                         Xp = _pin_seams(Xp, M, worn_k, sigma=WORN_PIN / 4,
                                         fixed=[j for j in range(len(names)) if made_v[pid == j].all() and j not in worn_k], pull=WORN_PULL)
                         Xp = _repress(Xp, B, M, smooth)  # (pressed lapels follow their foreparts)
                 else:
-                    Xp = _relax_stretch(Xp, M, ~made_v, 0.02, iters=40)
-                    Xp = _relax_strain(Xp, M, ~made_v, 0.03, iters=300)
+                    Xp = _relax_stretch(Xp, M, ~made_v, rl_e, iters=40)
+                    Xp = _relax_strain(Xp, M, ~made_v, rl_s, iters=300)
                 Xp = _clear_of_body(Xp, M["F"], ~made_v, body, float(gaps.min()) * 0.5, 0.0034)
                 Xp = _clear_of_worn(Xp, ~made_v, body, WORN_CLEAR)
                 if worn_k:  # (the base moved: its pressed flaps with it)
@@ -4415,6 +4441,20 @@ def interfacing(Bp: dict, M: dict) -> np.ndarray:
 
 NOT_SIM = ("color", "roughness", "cleanup", "detail", "sculpt", "note", "design", "_design", "trims", "construct")  # never change the sim
 # (a design sheet changes the sim only through the keys it compiles into)
+
+
+def strain_limit_of(g: dict) -> float:
+    """The strain limit ZOZO holds this garment's cloth to: the garment's zozo.strain_limit, else the fabric's own
+    (its preset's "limit": a knit stretches 20-40%), never under ZOZO's 5%. dress-tess: every fabric ran at 5%, so a
+    knit sweater could not stretch to close its sleeves or take its rib bands (they only had their declared stretch)."""
+    zz = g.get("zozo") or {}
+    if zz.get("strain_limit") is not None:
+        return float(zz["strain_limit"])
+    try:
+        lim = float(fabric(g).get("limit", 0.0))
+    except Exception:  # (a garment without a known fabric: ZOZO's default)
+        lim = 0.0
+    return max(0.05, lim)
 
 
 def _fabric_at(g: dict, h: float) -> dict:
@@ -6418,12 +6458,14 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         # at the gate (front 11.5x)" and "ccd failed (collar 3-6x)" with 2 cm of collar gap or another body
         M_f = mesh(Bp, h, FOLD_WIDTH_MADE)
         Bf = dict(Bp)
+        Bf["stretch_limit"] = strain_limit_of(g)
         X0_f = place(Bf, M_f, body_p, smooth=smooth)
         Bp["fold_info_fine"] = Bf.get("fold_info")  # (the construction's own folds: what the report should read)
         mk_ = [nm for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in M_f["names"]]
         if mk_:
             Bp["_made_as"] = {"pieces": mk_, "X": transfer(M_f, X0_f, Ms),
                               "U": transfer(M_f, Bf["start_unpushed"], Ms) if Bf.get("start_unpushed") is not None else None}
+    Bp["stretch_limit"] = strain_limit_of(g)
     Xs = place(Bp, Ms, body_p, smooth=smooth)
     ends_ = _draped_ends(g, Bp, Ms)
     Bp.pop("_made_as", None)
@@ -6542,6 +6584,8 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         keyed.append(["solver", solver])
     if result is not None:  # a hand-carried out.npz: its own key, never cached
         keyed.append(["result", hashlib.sha1(Path(result).read_bytes()).hexdigest()])
+    if solver == "zozo" and strain_limit_of(g) > 0.05 and not (g.get("zozo") or {}).get("strain_limit"):
+        keyed.append(["strain_limit", strain_limit_of(g)])  # (a knit's own limit: woven sims keep their keys)
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
     coll = _collider(body_real, under, smooth, move=g.get("move"))
@@ -6578,7 +6622,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         t = time.time()
         job_dir = out_dir or (_cache_dir() / f"job_{key}")
         stiff_s = interfacing(Bp, Ms)
-        cfg = {"fabric": fab_s, "frames": int(frames or g.get("frames", 90)), "state": state, "name": name,
+        cfg = {"fabric": fab_s, **({"strain_limit": strain_limit_of(g)} if strain_limit_of(g) > 0.05 else {}), "frames": int(frames or g.get("frames", 90)), "state": state, "name": name,
                "color": g.get("color", "#5b7fa6"), "render": render,
                "self_collision": bool(g.get("self_collision", True)), "trace": g.get("_trace", []),
                "placement": placement_of(g), **({"zozo": dict(g["zozo"])} if g.get("zozo") else {}),
@@ -6779,7 +6823,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             # (less what a piece is declared to start with: its own limit is raised to that in the runner)
             need_ = float((hi_ - declared_stretch(Bp, M))[loose_t].max()) - 1.0 if loose_t.any() else 0.0
             zz = dict(g.get("zozo") or {})
-            zz.setdefault("strain_limit", float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)))
+            zz.setdefault("strain_limit", max(float(np.clip(1.15 * need_ + 0.02, 0.05, 0.6)), strain_limit_of(g)))
             # a contact solver can't start inside its standoff either, and the made pieces are held where the coarse
             # sim carried them (a cuff round a wrist can't be pushed clear on one side without closing on the other):
             # the body's contact offset for this settle is what the start leaves (it stopped on a pair 1.9 mm apart
