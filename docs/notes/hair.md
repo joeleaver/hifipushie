@@ -2237,6 +2237,19 @@ part with the front and top combed ACROSS to the other side (flow front / top wi
 24 mm, body 4 mm, lift 1 mm, 70k strands), one side tucked (`tuck.from` 12: the ear shows in profile), mid-brown with
 grey 0.015 (the white-line strands gone). Missing knob: a ONE-SIDED face rule (`face` is symmetric): her long curtain
 falls over one cheek and in front of that shoulder while the other side is tucked.
+jw r8 (sheet human_renders/hg_jw_r8.jpg: REFERENCE | r8 | r7): `groom.loose.face` may be {"left", "right"} (tested); with
+the curtain side's face 0 the curtain still hangs beside the cheek, not over it: the hair falls straight down from the
+part, so a curtain OVER the cheek needs that side combed forward / across as it falls (a flow word for the lengths), not
+only the face rule let off. Colour: by measure the MEAN matches (L* 25-26 vs 23, hue 36-40 vs 40) but the range is too
+narrow (shadow L* 17 vs 9, highlight 33 vs 36, L_sd 7.2 vs 11.8): darker roots (root_dark 0.8), depth 0.7, sun 0.7 with
+sun_warm 0.4 and highlights 0.4 did not open it much; the lengths stay mid-brown. NEXT on jw: a per-region flow for the
+lengths (the curtain over the cheek), the colour RANGE (light lengths, dark roots).
+### hair-heads STATE (merge-ready, 2026-10-14)
+Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
+New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15
+on grey, a denser short-cut start (spacing 5 mm, width 2.4, body 4 mm, 600k). Checklist: Step 0 (describe first), rule 1
+(measure by height in a room), rule 15 (density = lock coverage). Heads: Garrett r12, lt19 r13, jw r8.
+NEXT (the coordinator's order): lt19's cheek-level width, Garrett's back whorl; jw's curtain over the cheek and colour range.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)

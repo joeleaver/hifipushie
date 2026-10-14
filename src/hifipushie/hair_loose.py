@@ -377,7 +377,15 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     P[:, 0] = P0
     ends = float(p["ends"])
     rest = np.zeros(m, bool)
-    face = float(np.clip(p["face"], 0, 1))
+    # face: one number, or {"left": .., "right": ..} (the person's own sides: one long curtain falling over a cheek while
+    # the other side is tucked, hair-heads jw): per lock by the side its root is on
+    if isinstance(p["face"], dict):
+        azs_ = ((az + 180) % 360) - 180
+        face_l = np.where(azs_ >= 0, float(p["face"].get("left", 1.0)), float(p["face"].get("right", 1.0)))
+    else:
+        face_l = np.full(m, float(p["face"]))
+    face_l = np.clip(face_l, 0, 1)
+    face = float(face_l.max())
     side0 = np.where(away != 0, away, np.where(rng.uniform(size=m) < 0.5, -1.0, 1.0))
     axis_xy = sc.C[:2] + np.array([0.0, 0.02])
     for k in range(1, n):
@@ -407,7 +415,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             a_, e_ = az_el(q - sc.C)
             sg = np.where(np.abs(q[:, 0] - sc.C[0]) > 0.004, np.sign(q[:, 0] - sc.C[0]), side0)
             f_ = np.abs(((a_ + 180) % 360) - 180)
-            lim = face * FACE_AZ * _ss((_line_at(line, a_) - e_) / 12.0) * _ss((e_ + 75) / 15)
+            lim = face_l * FACE_AZ * _ss((_line_at(line, a_) - e_) / 12.0) * _ss((e_ + 75) / 15)
             # (a fringe hangs over the forehead on purpose; CURTAIN bangs frame the face: they keep to its sides)
             mv = (f_ < lim) & ~(is_fr & (not curtain_))
             if mv.any():
