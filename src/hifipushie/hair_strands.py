@@ -65,6 +65,8 @@ EDGE_START = 0.0035  # ... from this far inside the hairline (the first loose ro
 EDGE_MIN = 0.15  # the share of its strands a loose lock rooted on the line keeps
 LOOSE_HALO = 2.0  # x the halo share on LOOSE hair (a long head's crown fly-aways: at 1 x the halo read 0.05 vs 0.22-0.25)
 SOFT_HALO = (3.0, 0.65, 0.6)  # halo_soft = 1: x (1 + 3) halo hairs, their stand-off x 0.35 (~4 mm), length x 0.4 (~2 cm)
+HALO_MAX = 0.2  # the halo share at most (a guard: loose x2 x soft x4 reached 0.56 of the strands, the hair a thin veil of
+# broken hairs: hair-heads, lt19 r9)
 
 
 def _soft(S) -> float:
@@ -114,7 +116,7 @@ def physical(S: dict, free: bool = False, tail: bool = True) -> dict:
         # (a tail has its fly-aways; short hairs standing off it all round made it a bottle brush: quartered on hair that
         # left the head IN A TAIL. Loose hair (groom.loose: free locks, no tie) keeps the dial: rule 4, hair-garrett)
         "halo": min(SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if (free and tail) else LOOSE_HALO if free else 1.0)
-                    * (1.0 + SOFT_HALO[0] * _soft(S)), 0.6),
+                    * (1.0 + SOFT_HALO[0] * _soft(S)), HALO_MAX),
         # halo_soft: closer to the hair and shorter (a fuzz a few mm deep), x (1 - k x ..)
         "halo_m": SAFE["halo_m"] * (1.0 - SOFT_HALO[1] * _soft(S)),
         "halo_len": SAFE["halo_len"] * (1.0 - SOFT_HALO[2] * _soft(S)),
@@ -200,7 +202,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             Rc = max(R - 0.6, 0.0) / 0.4
             wl = wl * (1 + 0.35 * Rc * rng.uniform(-1, 1))
             ph = rng.uniform(-1, 1) * (R * 1.2 + Rc * (np.pi - 1.2)) + 2 * np.pi * s / (lam * wl)
-            env = _ss(s / 0.03)
+            wf_ = float(Sl.get("wave_from") or 0.0)  # (m along the lock where the waves start: long hair straight on top,
+            # wavy in the lengths below the ear; 0 = from 3 cm, as before)
+            env = _ss(s / 0.03) if wf_ <= 0 else _ss((s - wf_) / 0.06)
             P = P + B * (A * env * np.sin(ph))[:, None] + N * (A * env * float(Sl["curl"]) * fr * np.cos(ph))[:, None]
             hw = W / 2 * lw
             thin = W < 0.016

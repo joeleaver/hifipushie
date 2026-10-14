@@ -62,8 +62,11 @@ import numpy as np
 
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
-         "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None}
-TUCK = {"side": "both", "amount": 1.0}  # hair over the ear combed back BEHIND it (one side, or both)
+         "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None,
+         "inset": None}
+TUCK = {"side": "both", "amount": 1.0, "from": None}  # hair over the ear combed back BEHIND it (one side, or both);
+# from: deg of azimuth from which hair is tucked (default 45 deg in front of the ear: the temple; 10-15: the front
+# hair from the part too, swept back over the ear on that side)
 FADE = {"width": 0.02, "length": 0.009, "density": 0.25}  # a short cut fading out toward the nape hairline (locks
 # under 8 mm are not grown: length stays over that)
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45, "curtain": 0.0}
@@ -229,7 +232,10 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     from .hair import _line_at, _part_x, _poisson, az_el, inside, weights
     p = params(g["loose"])
     sp = float(p["spacing"])
-    ok = lambda a, e: (inside(sc, line, a, e) > 0.004) & (e > sc.EL[0] + 4)  # noqa: E731
+    # roots from `inset` m inside the hairline (default 4 mm). A short cut wants them ON the line (0.0005): 4 mm in, the
+    # strip in front of the first roots was bare scalp-tinted skin, a dark band under a wall of hair (hair-heads, Garrett)
+    ins_ = float(p.get("inset") if p.get("inset") is not None else 0.004)
+    ok = lambda a, e: (inside(sc, line, a, e) > ins_) & (e > sc.EL[0] + 4)  # noqa: E731
     if p.get("below") is not None:  # only the hair rooted below a level (m from the head centre): the rest is tied (half up)
         ok0, zb = ok, float(p["below"])
         ok = lambda a, e: ok0(a, e) & ((sc.point(a, e, 0.0)[..., 2] - sc.C[2]) < zb)  # noqa: E731
@@ -300,7 +306,8 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         ef, eb = (float(er["front"]), float(er["back"])) if er else (80.0, 105.0)
         azs = ((az + 180) % 360) - 180  # (+ = the person's left)
         sidem = (azs > 0) if tk["side"] == "left" else (azs < 0) if tk["side"] == "right" else np.ones(m, bool)
-        wt = float(tk["amount"]) * sidem * _ss((fa - (ef - 45.0)) / 20.0) * (1 - _ss((fa - (eb + 5.0)) / 10.0)) * ~is_fr
+        a0_ = float(tk["from"]) if tk.get("from") is not None else ef - 45.0
+        wt = float(tk["amount"]) * sidem * _ss((fa - a0_) / 20.0) * (1 - _ss((fa - (eb + 5.0)) / 10.0)) * ~is_fr
         comb = comb * (1 - wt[:, None]) + wt[:, None] * _unit(np.array([0.0, 0.85, -0.5]))[None]
     fd = p.get("fade")
     fdens = np.ones(m)
@@ -370,7 +377,15 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     P[:, 0] = P0
     ends = float(p["ends"])
     rest = np.zeros(m, bool)
-    face = float(np.clip(p["face"], 0, 1))
+    # face: one number, or {"left": .., "right": ..} (the person's own sides: one long curtain falling over a cheek while
+    # the other side is tucked, hair-heads jw): per lock by the side its root is on
+    if isinstance(p["face"], dict):
+        azs_ = ((az + 180) % 360) - 180
+        face_l = np.where(azs_ >= 0, float(p["face"].get("left", 1.0)), float(p["face"].get("right", 1.0)))
+    else:
+        face_l = np.full(m, float(p["face"]))
+    face_l = np.clip(face_l, 0, 1)
+    face = float(face_l.max())
     side0 = np.where(away != 0, away, np.where(rng.uniform(size=m) < 0.5, -1.0, 1.0))
     axis_xy = sc.C[:2] + np.array([0.0, 0.02])
     for k in range(1, n):
@@ -400,7 +415,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
             a_, e_ = az_el(q - sc.C)
             sg = np.where(np.abs(q[:, 0] - sc.C[0]) > 0.004, np.sign(q[:, 0] - sc.C[0]), side0)
             f_ = np.abs(((a_ + 180) % 360) - 180)
-            lim = face * FACE_AZ * _ss((_line_at(line, a_) - e_) / 12.0) * _ss((e_ + 75) / 15)
+            lim = face_l * FACE_AZ * _ss((_line_at(line, a_) - e_) / 12.0) * _ss((e_ + 75) / 15)
             # (a fringe hangs over the forehead on purpose; CURTAIN bangs frame the face: they keep to its sides)
             mv = (f_ < lim) & ~(is_fr & (not curtain_))
             if mv.any():

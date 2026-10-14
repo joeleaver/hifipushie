@@ -9,13 +9,31 @@ paths, pick by the job:
 - GAME export: cards cut from the strands (`export_hair` / `export_asset`).
 Why the tools are built this way (practice, sources, engines, what went wrong): guide(topic="hair_background").
 
+## Step 0: DESCRIBE THE STYLE IN WORDS from every photo before grooming (hair-heads; Joe on three heads: "a completely different hairstyle")
+Before any knob, write down from the front, three-quarter and profile pictures, then the same for OUR render, then the
+differences; rebuild the groom from the description (hairline curve, part, comb direction and lift by region, edge
+density), never by tuning the last groom. Numbers (the reader) do not see a style: a short cut combed ACROSS read
+"brushed up and back" by every measure while the render was a different haircut. Say:
+- the hairline: its curve, how far the temples recede, where the front edge sits against the brows (in cm), whether the
+  visible edge is the hairline or hair lying over it, how thin the very front is, whether skin shows through;
+- the part: where, how deep, how much scalp shows (or none);
+- which way the hair is combed and lifted by region (front, top, sides, back) as SEEN in each view: up / back / across /
+  forward, lying flat or standing, and how far the front stands off at the forelock in profile;
+- long hair: how it leaves the part and falls, volume at the crown, how it frames the face, what is tucked / swept /
+  in front of the shoulders, the length and how the ends sit, the wave pattern by region.
+Then groom from those sentences, one region at a time, and judge the region against its sentence.
+Learned on the man's short cut: the front read "up and back" from the reader's sweep; in words it is combed ACROSS to
+one side, lying low, the edge lower and rounder than the bare hairline: `flow.front` across (x), `lay` 0.6, roots ON the
+line (`loose.inset` 0.0005: 4 mm in, the strip in front of the roots was dark scalp-tinted skin under a wall of hair)
+and the hairline's front points ~1 cm lower where hair lies over the forehead.
+
 ## What makes hair read as hair (the checklist; tesshair7, from seven rounds of Tess's ponytail beside her photos)
 Judge each, one area at a time, against the reference in the same camera (`look_hair(views=["ref0", ...])` or
 fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it, its KNOB what sets it.
 
 | # | rule | the fault when it is missing | measure | knob |
 |---|---|---|---|---|
-| 1 | The mass stands OFF the skull: real hair is ~1.5-2 cm off the skull over the top and sides, 3-4 cm above a low tie | a combed cap hugging the skull ("flat") | outline stand-off from the skull through the fitted camera (spikes/tesshair7/standoff.py; mm per direction) | `volume` (amount, crown / sides / nape, hold) |
+| 1 | The mass stands OFF the skull: real hair is ~1.5-2 cm off the skull over the top and sides, 3-4 cm above a low tie | a combed cap hugging the skull ("flat") | outline stand-off from the skull through the fitted camera (spikes/tesshair7/standoff.py; mm per direction); in a ROOM (a couch, a shirt) the stand-off only counts where hair meets the backdrop: measure the outline by HEIGHT from the parser instead (spikes/hair_garrett/widths.py: width per cm in front, reach behind the skull in profile) | `volume` (amount, crown / sides / nape, hold); loose long hair: `groom.loose.body` (the lengths fill out as locks come down: 8 -> 25 mm took a lank head to her mass), waves in the lengths (`wave_from`) |
 | 2 | From the parting the hair RISES and arcs over, then falls down the side: convex arcs, not straight lines to the tie | straight diagonal strands laid flat | strand paths from the part drawn on both pictures (flowlines.py); the lock plot (lockplot.py) | `volume.root` (bend radius), `volume.arc` |
 | 3 | The mass is LOCKS with depth, not one shell: under-layers darker, locks of different height and width | a smooth helmet | by eye in close-ups; colour_variation `mass_sd` | `volume.layers`, `volume.locks` (keep <= 0.4: at 1 the crown's silhouette is wavy wires), look `depth` |
 | 4 | A HALO: fine, light, slightly curly hairs standing a few mm off the top layer along the whole silhouette | a surface, not hair (the strongest single tell) | by eye at the silhouette in front / profile; hair_from_reference: halo density, wisps / 10 cm (compare= ours vs picture) | `wisps.halo` (default with volume; gentle curls, never the old `strands.halo` on every lock: a wire grid); LOOSE hair: `groom.loose.halo` / `flyaway` (its free locks were quartered like a tail: two long heads read a third of their pictures. halo; hair-garrett) |
@@ -31,7 +49,7 @@ fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it
 | 12 | A TAIL is strands from behind, not wide ribbons: finer strands, locks a little out of step, a ragged soft end | wavy ropes / ribbons, straw | back three-quarter beside the photo; tail area / length / width by mask (look_hair measure) | `tail.wave` (Tess 0.35), `tail.fullness`, `tail.tousle` |
 | 13 | Up-styles (high ponytail, top knot, man bun) and half up have NO volume by default: hair pulled up does not fall from its roots | radial ridges round the hairline, specks at the crown | the riffs sheet | volume is gated by tie height and half up; asked for there it is a smooth pouf |
 | 14 | A SHORT CUT has LENGTH AND LAY BY REGION: longer on top and front (4-6 cm), clipped sides and back (1-2 cm), a taper to the nape (~0.5 cm, a soft edge); combed ONE way per region; fine, straight, dense strands (hair-garrett) | long-hair machinery on a crop: wavy clumped noodles, wings at the sides, a curly astrakhan back (laid locks thicker than twice their clearance sink half their strands into the skin and crumple when pushed out) | `hair_from_reference` stand-off by region ours vs picture (`compare=`); the back and nape close-ups; the lock plot | `groom.loose` length / lay / flow / lift (per region), `thickness` <= 3 mm; strands: count 200k+, thickness ~0.9, clump ~0.1, wave / curl / loose 0 (the reader's start sets these) |
-| 15 | FINE strands at the picture's scale: short hair at bust distance is a near-continuous fine texture; strand-to-strand contrast as the picture's | wires, straw, a hairline of comb teeth (each lock's strands start as one blunt row) | `hair_from_reference(compare=)` colour variation `strand_sd` ours vs picture (hair-garrett r4: 9.3 vs 6.8: too coarse) and hairline softness (1.0 vs 3.5 mm) | strands `thickness` / `count` / `clump`, `fly_light` lower on grey hair, the hairline's density ramp (`soft`, `baby`): NOT yet enough on a crop (hair-garrett) |
+| 15 | FINE strands at the picture's scale: short hair at bust distance is a near-continuous fine texture; strand-to-strand contrast as the picture's | wires, straw, a hairline of comb teeth (each lock's strands start as one blunt row) | `hair_from_reference(compare=)` colour variation `strand_sd` ours vs picture (hair-garrett r4: 9.3 vs 6.8: too coarse) and hairline softness (1.0 vs 3.5 mm) | strands `thickness` / `count` / `clump`, `fly_light` lower on grey hair, the hairline's density ramp (`soft`, `baby`): NOT yet enough on a crop (hair-garrett). DENSITY that reads as one combed surface is the LOCKS' coverage, not the strand count: `groom.loose` spacing 5 mm, width 2.4, body 4 mm (+ count 600k) closed the scalp-between-ridges look on a crop; count, thickness, clump and stray alone barely moved it (hair-heads r11, isolated one at a time) |
 JUDGING RENDERS AT A PICTURE'S SCALE SUPERSAMPLE: EEVEE draws every strand at least one pixel wide, so at a photo's
 own scale (~0.3 mm a pixel for a head-and-shoulders picture) a 0.05 mm hair is drawn as a 0.3 mm wire: the hair reads
 coarse and wiry whatever the strand dials say. Render 2x and average down (hair-garrett hgshots `ss=2`) with more
@@ -226,10 +244,10 @@ body's own signed distance, so it lies on the shoulders and down the back, and o
 | flow | per region, the way the hair is combed there as a world direction [x his left, y back, z up] | front [0.55, -0.45, 0.7] (up and forward to his left), sides [0, 0.75, -0.65] |
 | out, stiff per region | either may be {region: value} | a lifted front: out {front 0.3, top 0.12, sides 0}, stiff {front 0.9, sides 0.55} |
 | ends | the ends turn under (+) or flick out (-) | a bob 0.5 |
-| face | 1 = hair is turned aside where it would hang over the face (curtains beside the cheeks); 0 = it falls where it falls | 1 |
+| face | 1 = hair is turned aside where it would hang over the face (curtains beside the cheeks); 0 = it falls where it falls; or {"left", "right"} (the person's own sides: one curtain allowed over a cheek, the other kept clear) | 1 (keep 1 for long loose hair: below 1 the hair hung over the face in profile) |
 | fringe | `{length, span (deg either side), depth (m behind the hairline), sweep (-1..1), level, stiff}`: combed forward over the forehead | length 0.07, level -0.004 (the brows) |
 | fringe sweep "away" + curtain | CURTAIN BANGS: each side of the part swept down and away from it, longer toward the outer edges (`curtain` 0..1) | fringe {length 0.06, span 35, sweep "away", curtain 0.8} with parting centre |
-| tuck | `"left"` / `"right"` / `"both"` or {side, amount}: hair over and in front of the FOUND ear combed back behind it | one side tucked: "left" (the person's own) |
+| tuck | `"left"` / `"right"` / `"both"` or {side, amount, from}: hair over and in front of the FOUND ear combed back behind it; `from` (deg of azimuth, default the temple) 10-15 tucks the front hair from the part too | one side tucked: "left" (the person's own). WHICH side a profile picture shows: check on a render through its fitted camera (a picture's "profile_left" name was the other side once): the untucked side hung a curtain over the face in profile |
 | fade | {width, length, density}: the back's locks shorten and thin out toward the nape hairline (a barber's fade) | {width 0.02} on a short cut (the reader sets it) |
 | halo, flyaway | 0..1: loose hair's own halo of fine hairs and its fly-aways (a TAIL's halo stays quartered; loose hair's is not: rule 4) | from the reader's halo density / wisps; long heads 0.5-1.0 / 0.05-0.15 |
 
@@ -243,7 +261,7 @@ The texture is the `strands` dials, not the groom:
 | tight curls (ringlets) | length 0.22, body 0.035, lift 0.012, stiff 0.45, out 0.25 | wave 0.03, wavelength 0.028, curl 1, random 1, clump 0.85, clump_size 0.012, clump_shape 0.1 |
 | afro (coils) | length 0.085, out 1, stiff 1, body 0, lift 0, spacing 0.02 | wave 0.03, wavelength 0.012, curl 1, random 1, clump 0.3, frizz 0.8, count 40000 |
 | short tousled | length {front .05, top .055, sides .03, back .035, nape .018}, stiff 0.6, out 0.3, messy 0.7, spacing 0.015 | clump 0.4, tip_spread 0.7, loose 0.6, tips 0.8 |
-| combed short cut (from the hair reader: `hair_from_reference`) | length {front .05, top .05, sides .018, back .018, nape .006}, lift per region = the measured stand-off - 5 mm, thickness 0.003, lay {front .35, top .65, sides .5, back .6, nape .6}, flow one way per region, messy low, spacing 0.008 | count 220000, thickness 0.9, clump 0.1, stray 0.9, loose 0, wave 0, curl 0, frizz 0.02, under_length 0.01 |
+| combed short cut (from the hair reader: `hair_from_reference`) | length {front .05, top .05, sides .018, back .018, nape .006}, lift per region = the measured stand-off - 5 mm, thickness 0.003, lay {front .35, top .65, sides .5, back .6, nape .6}, flow one way per region, messy low, spacing 0.005, width 2.4, body 0.004 (a continuous surface) | count 600000, thickness 0.9, clump 0.1, stray 0.9, loose 0, wave 0, curl 0, frizz 0.02, under_length 0.01 |
 | short textured crop (a man's 2-3 cm cut, front lifted) | length {front .026, top .02, sides .022, back .022, nape .012}, spacing 0.009, width 2.4, lift 0.001, body 0.002, messy 0.35, uneven 0.8, flow + out + stiff per region (above), parting none, volume 3-4 mm | count 140000, thickness 1.6, clump 0.15, stray 0.9, roots 0.9, loose 0.18, frizz 0.15, wave 0.0004, curl 0, under_length 0.022; look scalp_tint 0.85 |
 | short back and sides | length {front .045, top .04, sides .012, back .012, nape .006}, stiff 0.3, out 0.03, back 0.35 | clump 0.3, under_length 0.014 (the clipped sides ARE the scalp layer) |
 | a child's fine hair | length 0.24, body 0.012, lift 0.004, stiff 0.2, fringe | thickness 0.6, count 60000, clump 0.2, clump_size 0.004 |
@@ -286,7 +304,8 @@ the guides. Worked on Garrett (624 thin hand locks, a short combed cut going gre
    `look.cycles_fit: [1, 1]` turns it off). Mid and light colours land within ~5-40% of `look.lit`; near-black
    can't go under the highlights' own floor. Judge colour on the Cycles look, shape on the EEVEE one.
 6. Dark slits between layers of locks are the scalp's tint in shadow (`look.scalp_tint`, default 0.85, made for
-   dark hair): on grey or fair hair lower it (0.3-0.5).
+   dark hair): on grey or fair hair lower it (0.3-0.5; a grey crop with receded temple corners 0.15: at 0.5 the bare
+   corners read as dark patches, hair-heads).
 
 ## Short cuts as a baked cap + sparse cards (crops, short back and sides)
 

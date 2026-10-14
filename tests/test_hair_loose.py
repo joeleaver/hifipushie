@@ -188,6 +188,25 @@ def test_loose_halo_is_not_quartered_but_a_tails_is():
     assert hs.physical(S, free=True, tail=False)["halo"] == pytest.approx(4 * hs.LOOSE_HALO * hs.physical(S, free=True, tail=True)["halo"])
 
 
+def test_face_rule_by_side():
+    """face {"left": 0, "right": 1}: hair on the person's left may fall over that side of the face, the right side's is
+    kept off it (one long curtain over a cheek, the other side clear)."""
+    def over_face(loose):
+        sc, _c, locks = _grow(loose, parting="right")
+        L, R = 0, 0
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            az, el = hair.az_el(P[3:] - sc.C)
+            a = ((az + 180) % 360) - 180
+            inside = (np.abs(a) < 35) & (el < 0) & (el > -60)
+            L += int((inside & (a > 0)).sum())
+            R += int((inside & (a < 0)).sum())
+        return L, R
+    base = {"length": 0.3, "spacing": 0.025, "messy": 0.0, "uneven": 0.0}
+    l1, r1 = over_face({**base, "face": {"left": 0.0, "right": 1.0}})
+    assert l1 > 5 and r1 == 0, (l1, r1)
+
+
 def test_soft_halo_is_denser_shorter_and_closer():
     from hifipushie import hair_strands as hs
     S = hc.strands_of({"hair": {"strands": {"halo": 0.5}}})
