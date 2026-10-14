@@ -231,6 +231,9 @@ def compile_sheet(sheet: dict) -> dict:
         if band and "chest_ease" not in bo and block in ("bodice", "knit"):
             bo["chest_ease"] = round(0.5 * (band[0] + band[1]), 3)  # ease by garment category: the fit's middle
         ops = list(sheet.get("ops") or [])
+        # (a kind's own draft ops, e.g. the sweater's set-in sleeve, unless the sheet has an op of that kind)
+        mine_ = {o_.get("op") for o_ in ops}
+        ops += [dict(o_) for o_ in (kdr.get("ops") or []) if o_.get("op") not in mine_]
         # (an op is known by its kind AND its name: two details may each cut a style line, a yoke and a pocket scoop)
         have = {(o_.get("op"), o_.get("name")) for o_ in ops}
         for info in r["details"].values():

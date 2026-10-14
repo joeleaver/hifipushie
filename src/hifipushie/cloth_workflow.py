@@ -171,8 +171,15 @@ def draft_underarm(c: Ctx):
             or "waist_z" not in at:
         return None
     hz, wz = float(at["hps.L"][2]), float(at["waist_z"])
-    scale = (hz - wz) / (float(mm_["hpsToWaistBack"]) / 1000.0)
-    z_ua = hz + float(meta["chest_y"]) * scale
+    tape = np.asarray((c.body.m.get("loops") or {}).get("hpsToWaistBack", []), float)
+    if len(tape) >= 2:
+        # (down the back's own tape: the upper back runs far flatter than the waist's average, Tess 220 mm of tape to
+        # the armpit's 152 mm of drop; one scale for the whole back put a draft 2 cm off)
+        s_ = np.r_[0, np.cumsum(np.linalg.norm(np.diff(tape, axis=0), axis=1))]
+        z_ua = float(np.interp(-float(meta["chest_y"]), s_, tape[:, 2]))
+    else:
+        scale = (hz - wz) / (float(mm_["hpsToWaistBack"]) / 1000.0)
+        z_ua = hz + float(meta["chest_y"]) * scale
     return 1000.0 * (wz + float(mm_["waistToArmpit"]) / 1000.0 - z_ua)
 
 
@@ -241,11 +248,12 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items() if not k.startswith("_")))
     ua = draft_underarm(c)
     if ua is not None:
-        line = (f"underarm (the draft's armhole bottom, where it lands on this body): {ua:.0f} mm below the armpit "
-                f"(set-in sleeve {UNDERARM_DRAFT[0]}-{UNDERARM_DRAFT[1]}; a knit sags ~3 cm more in the sim)")
-        (o["warn"] if not (UNDERARM_DRAFT[0] <= ua <= UNDERARM_DRAFT[1]) else o["info"]).append(
-            line + ("" if UNDERARM_DRAFT[0] <= ua <= UNDERARM_DRAFT[1] else
-                    ": raise / lower it with block option armhole_depth (a deep armscye reads as side lines down the body)"))
+        lo_, hi_ = ((c.res or {}).get("kind_kb") or {}).get("underarm_mm") or UNDERARM_DRAFT
+        ok_ = lo_ <= ua <= hi_
+        # (an ESTIMATE down the back's tape: the placement doesn't lay the back exactly along it (Tess: estimate 2.1 cm,
+        # placed 6.0); stage 4 measures where the start puts it and warns there)
+        o["info"].append(f"underarm (estimate, down the back's tape): the draft's armhole bottom ~{ua / 10:.1f} cm below "
+                         f"the body's armpit (this kind {lo_ / 10:.1f}-{hi_ / 10:.1f} cm; stage 4 measures it as placed)")
     if (Bp.get("draft") or {}).get("derived_mm"):
         o["info"].append("draft: " + json.dumps(Bp["draft"]["derived_mm"]))
     if image:
@@ -733,6 +741,17 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     body_p = c.body.straight_arms()[0] if smooth else c.body
     Bp["stretch_limit"] = cloth.strain_limit_of(c.gx)
     X = cloth.place(Bp, M, body_p, smooth=smooth)
+    try:  # the armhole's bottom where the start lays it on this body (the honest version of stage 2's estimate)
+        ua_ = cloth.underarm_drop_at(M, X, Bp, c.body)
+    except Exception:
+        ua_ = {}
+    if ua_:
+        lo_, hi_ = ((c.res or {}).get("kind_kb") or {}).get("underarm_mm") or UNDERARM_DRAFT
+        bad_ = {k: v for k, v in ua_.items() if not (lo_ <= v <= hi_)}
+        (o["warn"] if bad_ else o["info"]).append(
+            "underarm as placed: " + ", ".join(f"{k} {v / 10:.1f} cm" for k, v in ua_.items())
+            + f" below the body's armpit (this kind {lo_ / 10:.1f}-{hi_ / 10:.1f} cm)"
+            + (": WARNING the armscye is placed too deep / high (side lines down the body)" if bad_ else ""))
     cr = sorted(cloth._piece_crossings(X, M))
     if cr and smooth:
         # pieces sewn or stitched to each other (or a piece to itself: a cuff's lap) crossing where they join start

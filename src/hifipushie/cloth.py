@@ -4396,7 +4396,7 @@ def _cache_dir() -> Path:
     return d
 
 
-def _assembly(Bp: dict, M: dict, body: Body) -> dict | None:
+def _assembly(Bp: dict, M: dict, body: Body, set_sleeves=None) -> dict | None:
     """The sim's stage 0 (blender_cloth): the pieces wrapped on the torso are sewn first, everything else held where
     it was placed against the body (the sleeves, the collar), as a shirt is made."""
     wraps = {nm: Bp["pieces"][nm]["wrap"].get("to", "torso") for nm in M["names"]}
@@ -4407,6 +4407,11 @@ def _assembly(Bp: dict, M: dict, body: Body) -> dict | None:
     # setting a sleeve: the cap's underarm starts ~8 cm down an A-posed arm, and closing it dragged one sleeve's cuff
     # up to the elbow (marginal: one side of a symmetric pair did, the other not)
     hold = [k for k, nm in enumerate(M["names"]) if wraps[nm].startswith("arm.") and _closed_girth(M, nm)]
+    if set_sleeves == "into_armhole":
+        # (garment key set_sleeves "into_armhole": the bodice is held while the sleeves are sewn, so the sleeve comes up
+        # to the armhole as a maker sets it, instead of the stitches dragging the armhole down to a cap that starts
+        # down the arm. dress-tess: a knit sweater's armhole started 17 mm under the armpit and ended 62 mm under it)
+        hold = hold + [k for k, nm in enumerate(M["names"]) if wraps[nm] == "torso"]
     return {"fixed": np.where(~torso)[0].tolist(), "hold": np.where(np.isin(M["piece"], hold))[0].tolist()}
 
 
@@ -6637,7 +6642,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
             cfg.update(carry=True, sew_frames=int(g.get("sew_frames", 60)), pose_frames=int(g.get("pose_frames", 72 if g.get("move") else 30)),
                        frames=int(frames or g.get("frames", 48)), settle_frames=int(g.get("settle_frames", 12)))
         elif g.get("assemble", True):
-            cfg["assemble"] = _assembly(Bp, Ms, body)
+            cfg["assemble"] = _assembly(Bp, Ms, body, set_sleeves=g.get("set_sleeves"))
         pins_of = None
         if hg is not None:
             cfg["hanger"], cfg["hanger_thickness"] = hangmod.to_job(hg), HANGER_SKIN * hs
@@ -8006,7 +8011,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames", "set_sleeves"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 
@@ -8374,22 +8379,28 @@ def underarm_drop(res: dict) -> dict:
     draft's underarm sat ~1 cm under the armpit along the back's tape, but the tape runs down the back's curve (447 mm
     HPS to waist against 380 vertical), so the armscye landed ~5 cm low in the world and the sleeves' seams read as
     side lines to the hem band; nothing measured it."""
-    M, V, body = res["mesh"], res["V"], res["body"]
+    return underarm_drop_at(res["mesh"], res["V"], res["pieces"], res["body"])
+
+
+def underarm_drop_at(M: dict, V: np.ndarray, Bp: dict, body) -> dict:
+    """underarm_drop on any vertex positions (a placed start, a result): the TORSO side of each sleeve's armhole seam,
+    its lowest point below the body's armpit (mm)."""
     names, pc = list(M["names"]), np.asarray(M["piece"])
     mm_ = body.m["mm"]
     if "waistToArmpit" not in mm_ or "waist_z" not in body.at:
         return {}
     apz = float(body.at["waist_z"]) + float(mm_["waistToArmpit"]) / 1000.0
     sw = np.asarray(M["sew"]).reshape(-1, 2)
-    roles = {nm: (res["pieces"]["pieces"].get(nm) or {}).get("role", "") for nm in names}
+    roles = {nm: (Bp["pieces"].get(nm) or {}).get("role", "") for nm in names}
     torso = [k for k, nm in enumerate(names) if roles[nm] in ("front", "back", "side", "side_front", "side_back")]
     out = {}
     for k, nm in enumerate(names):
         if roles[nm] != "sleeve" and not nm.startswith("sleeve"):
             continue
-        m = ((pc[sw[:, 0]] == k) & np.isin(pc[sw[:, 1]], torso)) | ((pc[sw[:, 1]] == k) & np.isin(pc[sw[:, 0]], torso))
-        if m.any():
-            out[nm] = 1000.0 * (apz - float(V[sw[m].ravel(), 2].min()))
+        tv = np.r_[sw[(pc[sw[:, 0]] == k) & np.isin(pc[sw[:, 1]], torso), 1],
+                   sw[(pc[sw[:, 1]] == k) & np.isin(pc[sw[:, 0]], torso), 0]]
+        if len(tv):
+            out[nm] = 1000.0 * (apz - float(V[tv, 2].min()))
     return out
 
 
@@ -8834,8 +8845,10 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
             "texels_per_m": T / side}
 
 
-KNIT = {"wale": 0.0045, "course": 0.0036, "depth": 0.0007, "rib": ["neckband", "cuff", "hem_band"], "rib_knit": 2,
-        "rib_purl": 2, "rib_depth": 0.0012, "fuzz": 0.06, "trough": 0.22}
+KNIT = {"wale": 0.0055, "course": 0.0045, "depth": 0.0009, "rib": ["neckband", "cuff", "hem_band"], "rib_knit": 1,
+        "rib_purl": 1, "rib_depth": 0.0014, "rib_shade": 0.08, "fuzz": 0.05, "trough": 0.12, "jitter": 0.10}
+# (dress-tess review: k2p2 bands shaded 30% read as "printed stripes"; a 4.5 mm even grid read as "mesh / waffle":
+# ribs by relief with little shade, a chunkier, irregular stitch)
 # a knit's surface (garment detail "surface": "knit", detail "knit" overrides): stockinette (columns of V stitches
 # `wale` apart, `course` tall) on the body pieces, k`rib_knit` p`rib_purl` rib on the band roles; wales run along the
 # pattern's y (the grain: down a body piece, along a sleeve, ACROSS a band). Tess's mustard sweater: ~5.5 stitches /
@@ -8856,8 +8869,11 @@ def knit_surface(M: dict, uv: np.ndarray, side: float, T: int, mpt: float, o: di
     yy, xx = np.mgrid[0:T, 0:T].astype(np.float64)
     X, Y = xx * mpt, (T - yy) * mpt  # metres in the atlas (pattern x, y: islands keep the grain straight)
     w, c = float(kp["wale"]), float(kp["course"])
-    fu = (X / w) % 1.0 - 0.5  # across a column: -0.5 .. 0.5
-    v = (Y / c) % 1.0  # up a stitch
+    rng0 = np.random.default_rng(11)
+    jit = ndimage_gaussian(rng0.standard_normal((T, T)), max(1.0, 0.6 * w / mpt))
+    jit *= float(kp["jitter"]) / max(float(np.abs(jit).std()) * 2.5, 1e-9)  # (yarn: stitches a little uneven)
+    fu = ((X / w + jit) % 1.0) - 0.5  # across a column: -0.5 .. 0.5
+    v = ((Y / c + 0.7 * jit) % 1.0)  # up a stitch
     # a stitch: two legs leaning in to a V (each leg a bump centred off the column's middle by a share that narrows
     # up the stitch), the legs' tops tucked under the next course
     leg = 0.26 - 0.12 * v
@@ -8875,7 +8891,7 @@ def knit_surface(M: dict, uv: np.ndarray, side: float, T: int, mpt: float, o: di
         rib = 0.5 + 0.5 * np.tanh((kn / 2 - np.abs(ph - kn / 2)) / 0.06)
         Hr = float(kp["rib_depth"]) * (rib - 0.5) + 0.6 * Hs * rib
         Hs = np.where(m, Hr, Hs)
-        shade = np.where(m, 1.0 - 0.3 * (1 - rib), shade)
+        shade = np.where(m, 1.0 - float(kp["rib_shade"]) * (1 - rib), shade)
     rng = np.random.default_rng(7)
     fz = ndimage_gaussian(rng.standard_normal((T, T)), 1.2)
     fz /= max(float(np.abs(fz).max()), 1e-9)
