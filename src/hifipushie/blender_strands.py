@@ -362,6 +362,97 @@ def profile_group():
     return ng
 
 
+CELLS = "hp_cells"
+
+
+def cells_group():
+    """`hp_cells`: the colour model's per-lock numbers for strands without a lens (the even layer's interpolated
+    children, hair-heads lt19 E11: every strand alike, a solid black hood), from WHERE THE STRAND ROOTS: a jittered
+    cell of the root per scale, a random number per cell (neighbours shade alike, in patches the size of a lock):
+    hp_lv (-1..1, ~12 mm: lock lightness), hp_cb (~15 mm) and hp_ch (~4 mm) (0..1: broad / thin highlight ribbons),
+    hp_cm (-1..1, ~1.5 mm: strand-to-strand contrast)."""
+    ng = bpy.data.node_groups.get(CELLS)
+    if ng is not None and ng.get("hp_version") == VERSION:
+        return ng
+    if ng is not None:
+        ng.name = CELLS + "_old"
+    ng = bpy.data.node_groups.new(CELLS, "GeometryNodeTree")
+    ng["hp_version"] = VERSION
+    ng.is_modifier = True
+    it = ng.interface
+    it.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    it.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    sk = it.new_socket("Seed", in_out="INPUT", socket_type="NodeSocketInt")
+    sk.default_value = 0
+    N, L = ng.nodes, ng.links
+    gi, go = N.new("NodeGroupInput"), N.new("NodeGroupOutput")
+    # the root's position, per curve: Position at the curve's first point
+    poc = N.new("GeometryNodePointsOfCurve")
+    fai = N.new("GeometryNodeFieldAtIndex")
+    fai.domain, fai.data_type = "POINT", "FLOAT_VECTOR"
+    L.new(N.new("GeometryNodeInputPosition").outputs[0], fai.inputs["Value"])
+    L.new(poc.outputs["Point Index"], fai.inputs["Index"])
+    root = fai.outputs["Value"]
+    # (a little noise on the root so the cells' edges wander: a grid of axis-aligned blocks read as tiles)
+    tn = N.new("ShaderNodeTexNoise")
+    tn.noise_dimensions = "3D"
+    tn.inputs["Scale"].default_value = 60.0
+    L.new(root, tn.inputs["Vector"])
+    jit = N.new("ShaderNodeVectorMath")
+    jit.operation = "SUBTRACT"
+    L.new(tn.outputs["Color"], jit.inputs[0])
+    jit.inputs[1].default_value = (0.5, 0.5, 0.5)
+    geo = gi.outputs["Geometry"]
+    for name, size, lo, hi, so in (("hp_lv", 0.012, -1.0, 1.0, 19), ("hp_cb", 0.015, 0.0001, 1.0, 22),
+                                   ("hp_ch", 0.004, 0.0001, 1.0, 18), ("hp_cm", 0.0015, -1.0, 1.0, 23)):
+        sj = N.new("ShaderNodeVectorMath")
+        sj.operation = "SCALE"
+        L.new(jit.outputs[0], sj.inputs[0])
+        sj.inputs["Scale"].default_value = size
+        ad = N.new("ShaderNodeVectorMath")
+        ad.operation = "ADD"
+        L.new(root, ad.inputs[0])
+        L.new(sj.outputs[0], ad.inputs[1])
+        sc_ = N.new("ShaderNodeVectorMath")
+        sc_.operation = "SCALE"
+        L.new(ad.outputs[0], sc_.inputs[0])
+        sc_.inputs["Scale"].default_value = 1.0 / size
+        fl = N.new("ShaderNodeVectorMath")
+        fl.operation = "FLOOR"
+        L.new(sc_.outputs[0], fl.inputs[0])
+        dt = N.new("ShaderNodeVectorMath")
+        dt.operation = "DOT_PRODUCT"
+        L.new(fl.outputs[0], dt.inputs[0])
+        dt.inputs[1].default_value = (73.0, 7919.0, 104729.0)
+        rv = N.new("FunctionNodeRandomValue")
+        rv.data_type = "FLOAT"
+        _sock(rv, "Min", "VALUE").default_value = lo
+        _sock(rv, "Max", "VALUE").default_value = hi
+        L.new(dt.outputs["Value"], rv.inputs["ID"])
+        ad2 = N.new("ShaderNodeMath")
+        ad2.operation = "ADD"
+        L.new(gi.outputs["Seed"], ad2.inputs[0])
+        ad2.inputs[1].default_value = float(so)
+        L.new(ad2.outputs[0], rv.inputs["Seed"])
+        st = N.new("GeometryNodeStoreNamedAttribute")
+        st.data_type, st.domain = "FLOAT", "CURVE"
+        st.inputs["Name"].default_value = name
+        L.new(geo, st.inputs["Geometry"])
+        L.new(_sock(rv, "Value", "VALUE", out=True), st.inputs["Value"])
+        geo = st.outputs["Geometry"]
+    # the hair's AGE along the strand (hp_a1: m from the root to the tip; hp_a0 0): the highlights and the sun start a
+    # few cm off the root by it, and without it the children had none
+    sl = N.new("GeometryNodeSplineLength")
+    st = N.new("GeometryNodeStoreNamedAttribute")
+    st.data_type, st.domain = "FLOAT", "CURVE"
+    st.inputs["Name"].default_value = "hp_a1"
+    L.new(geo, st.inputs["Geometry"])
+    L.new(sl.outputs["Length"], st.inputs["Value"])
+    geo = st.outputs["Geometry"]
+    L.new(geo, go.inputs["Geometry"])
+    return ng
+
+
 def _set(mod, vals: dict):
     """Modifier inputs by socket name ("Name" or "Name:Type" where a group has two of a name); a value {"attribute":
     name} reads a named attribute (a field input)."""
@@ -521,7 +612,7 @@ def add_stack(ob, stack: list):
     groups = essentials()
     wrote = {}
     for i, (gname, vals) in enumerate(stack):
-        ng = lens_group() if gname == LENS else profile_group() if gname == PROFILE else groups[gname]
+        ng = lens_group() if gname == LENS else profile_group() if gname == PROFILE else cells_group() if gname == CELLS else groups[gname]
         mod = ob.modifiers.new(gname, "NODES")
         mod.node_group = ng
         _set(mod, vals)

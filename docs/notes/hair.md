@@ -2310,6 +2310,16 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   (1.1 %), but darker, less grey and streakier than r14: the even guides lost their grey (eg took `gr` only with a
   "head" group; loose hair has only "free": fixed), Clump and nearest-guide bundles suit long hair more than a crop.
   360k strands for Garrett's magenta render (450k: the job's memory cgroup killed Blender at 5.5 GB).
+- lt19 after the merge (coordinator: E10 a heavy solid black hood in profile, flat on top). MEASURED first
+  (spikes/hair_garrett/profover.py: our outline over the picture through the fitted camera, edge distance from the head
+  centre per ray): the fitted PROFILE camera / head does not register on her photo: our face profile sits ~2.7 cm
+  behind hers, our crown edge 12 mm ABOVE hers and the back 13-22 mm behind: a head-fit / camera finding, not hair (the
+  stand-off vs the skull also says our top is +6 mm over hers). Outline comparisons in profile are unreliable until that
+  is fixed. The hood: look dials alone (E11: depth .85, gloss .6, variation .6, highlights .35, clump .75) barely moved
+  it; the even children had none of the colour model's per-lock numbers (hp_lv, hp_ch, hp_cb, hp_cm, hp_a1: the lens
+  makes them): hp_cells (blender_strands) gives them from the root's jittered cell per scale + the strand's length
+  (E13: some lock light behind / 3-4; the profile still one dark mass). Open: separation in the mass (gaps between
+  locks, see-through edges), and the profile camera.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)

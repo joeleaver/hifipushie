@@ -591,6 +591,9 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
                                                            "Preserve Length": True,
                                                            "Guide Distance": float(ph["clump_size"]),
                                                            "Guide Mask": 1.0, "Existing Guide Map": False}])
+            # ... and the colour model's per-lock numbers (lock lightness, highlight ribbons) from the root's cell:
+            # without them every child shaded alike, one solid black hood (lt19 E11)
+            out["hair_even"].append(["hp_cells", {"Seed": int(seed)}])
         out["hair_even"] += [
             ["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"] + 0.0008, "Shape": 0.5,
                                    "Scale": ph["loose_scale"] * 2, "Scale along Curve": 0.35, "Offset per Curve": 0.3,
