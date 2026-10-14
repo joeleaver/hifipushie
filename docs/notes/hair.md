@@ -2232,6 +2232,11 @@ hers is narrower at cheek level but ~4 cm wider at the shoulders and reaches 1.5
 (38-83 mm vs 22-48). groom.loose.body 8 -> 25 mm + waves 2 cm in the lengths: the mass fills out (ours now wider than hers
 at cheek level: 240 vs 179 mm; the top stays smooth). Left: the curtains at cheek level too wide, the profile near side
 hangs over the jaw again with the waves, crown halo, part V.
+jw r7 (sheet human_renders/hg_jw_r7.jpg: REFERENCE | r7 | r6; description private): rebuilt from words: a deep side
+part with the front and top combed ACROSS to the other side (flow front / top with x), thin flat hair (loose spacing
+24 mm, body 4 mm, lift 1 mm, 70k strands), one side tucked (`tuck.from` 12: the ear shows in profile), mid-brown with
+grey 0.015 (the white-line strands gone). Missing knob: a ONE-SIDED face rule (`face` is symmetric): her long curtain
+falls over one cheek and in front of that shoulder while the other side is tucked.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)
