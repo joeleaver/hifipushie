@@ -60,6 +60,26 @@ STOP_FREE_GB = 10.0  # stop a running session when free disk falls under this
 KEEP_LAST = 8  # vert_N.bin frames kept at the end (the result and Vprev)
 
 
+def _solver_said(session: Path, n: int = 12) -> str:
+    """The solver's own account of a failure, from its session logs: the '###' diagnosis lines, the last frame time
+    and newton step it reached, and the panic line (a few lines, for the batch status: the session is deleted)."""
+    out = []
+    try:
+        lines = (session / "stdout.log").read_text(errors="replace").splitlines()
+        diag = [ln[:300] for ln in lines if ln.startswith("###")]
+        at = [ln for ln in lines if ln.startswith("* time =") or ln.startswith("------ newton step")]
+        out += [f"solver: {at[-2:]}" if at else "solver: no frame reached"] + diag[-n:]
+    except OSError:
+        out.append("solver: no stdout.log")
+    try:
+        err = [ln for ln in (session / "error.log").read_text(errors="replace").splitlines() if ln.strip()]
+        out += [f"error.log: {ln[:300]}" for ln in err[-3:]]
+    except OSError:
+        pass
+    print("\n".join(out), flush=True)
+    return "\n".join(out)
+
+
 def _free_gb(path) -> float:
     return shutil.disk_usage(path).free / 2**30
 
@@ -721,6 +741,12 @@ def main():
     pruner.start()
     try:
         sess.start(blocking=True)
+    except RuntimeError as ex:
+        # (dress-tess, 2026-10-14: three fine settles failed on the rented fleet with only "Solver exited with status
+        # 1; see .../error.log": the box and its session are gone when the batch ends, so the solver's own diagnosis
+        # ("### contact starts overlapping: ...", the frame it stopped at) never came back. Said here, in the error the
+        # batch status carries)
+        raise RuntimeError(f"{ex}\n{_solver_said(app_root / 'session')}") from None
     finally:
         pruner.stop_flag.set()
     pruner.prune()
