@@ -247,9 +247,15 @@ def compare_text(ro: dict, rp: dict) -> str:
     return "\n".join(L)
 
 
-def _lin_hex(h: str) -> np.ndarray:
-    c = np.array([int(h.lstrip("#")[i:i + 2], 16) / 255.0 for i in (0, 2, 4)])
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+def _lin_hex(h) -> np.ndarray:
+    from .hair import _lin
+    return _lin(h)  # ("#rrggbb" or [r, g, b] sRGB floats)
+
+
+def _srgb_list(c) -> list:
+    """Linear rgb -> [r, g, b] sRGB floats, 4 decimals: look.seen without 8-bit quantisation."""
+    c = np.clip(np.asarray(c, float), 0, 1)
+    return [round(float(x), 4) for x in np.where(c <= 0.0031308, 12.92 * c, 1.055 * c ** (1 / 2.4) - 0.055)]
 
 
 def _hex_lin(c) -> str:
@@ -282,7 +288,8 @@ def colour_step(cmp: dict, look: dict, gain: float = 1.0) -> dict:
         C1 = float(np.clip(Cs * (Cp / max(Co, 0.5)) ** gain, 0.0, 40.0))
         dh = float(np.clip(((hp_ - ho_ + 180) % 360 - 180) * gain, -20.0, 20.0))  # (a small turn at most)
         h1 = np.radians(hs_ + dh)
-        out["seen"] = _hex_lin(_unlab(np.array([L1, C1 * np.cos(h1), C1 * np.sin(h1)])))
+        # (as sRGB FLOATS: near-grey hair's hue does not survive 8 bits: #5b504f asked +6 deg came back the same hex)
+        out["seen"] = _srgb_list(_unlab(np.array([L1, C1 * np.cos(h1), C1 * np.sin(h1)])))
         why.append(f"seen (mean colour, Lab): picture L* {Lp[0]:.1f} C {Cp:.1f} h {hp_:.0f}, ours L* {Lo[0]:.1f} C {Co:.1f} h "
                    f"{ho_:.0f} (view {au}): asked {look['seen']} -> {out['seen']} (L* {Ls[0]:.1f} -> {L1:.1f}, C {Cs:.1f} -> "
                    f"{C1:.1f}, hue {dh:+.0f} deg)")
