@@ -103,6 +103,25 @@ def test_top_lay_leaves_the_upper_sides():
     assert np.median(top1) < 0.6 * np.median(top0), (np.median(top0), np.median(top1))
 
 
+def test_lift_by_region():
+    """`lift` per region (hair-garrett: a short cut stands off the skull by region, a lifted top over clipped sides):
+    the top's laid locks stand higher than with the sides' lift everywhere; a scalar lift is unchanged."""
+    crop = {"length": 0.03, "spacing": 0.012, "stiff": 0.6, "out": 0.0, "body": 0.0, "messy": 0.0, "uneven": 0.0,
+            "lay": 0.6, "thickness": 0.003}
+
+    def h_mid(loose):
+        sc, _col, locks = _grow(loose, parting="none")
+        R = np.array([np.asarray(lk["pts"])[0] + sc.C for lk in locks.values()])
+        M = np.array([np.asarray(lk["pts"])[len(lk["pts"]) // 2] + sc.C for lk in locks.values()])
+        _, el, _ = sc.coords(R)
+        _, _, h = sc.coords(M)
+        return np.median(h[el > 70]), np.median(h[(el > 0) & (el < 35)])
+    t0, s0 = h_mid({**crop, "lift": 0.001})
+    t1, s1 = h_mid({**crop, "lift": {"top": 0.008, "front": 0.001, "sides": 0.001, "back": 0.001, "nape": 0.001}})
+    assert t1 > t0 + 0.0025, (t0, t1)  # (lift comes in over the first 3 cm: half of it at mid-lock)
+    assert abs(s1 - s0) < 0.0015, (s0, s1)
+
+
 def test_level_fringe_and_afro():
     sc, col, bob = _grow({"length": 0.3, "level": -0.08, "uneven": 0.0, "spacing": 0.03,
                           "fringe": {"length": 0.06, "level": -0.01}}, parting="none")

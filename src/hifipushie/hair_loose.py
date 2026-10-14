@@ -7,7 +7,7 @@ capability, `groom.loose`:
                             below: about -0.10 the jaw, -0.17 the shoulders' top): a one-length cut, a bob
    "spacing": 0.026,        m between lock roots on the scalp (width follows)
    "body": 0.02,            m: how thick the mass gets where the locks lie over each other (higher roots lie outside)
-   "lift": 0.006,           m the hair stands off the scalp at its roots (root volume)
+   "lift": 0.006,           m the hair stands off the scalp at its roots (root volume); or per region {"top": .., ..}
    "stiff": 0.3,            0 = hangs at once .. 1 = keeps the direction it left the scalp in (short hair, an afro)
    "out": 0.0,              0 = combed along the scalp .. 1 = straight out of the scalp
    "lay": 0.0,              0..1 (or per region): the hair is pressed onto the head along its flow, as a comb or a
@@ -309,7 +309,9 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     # layers: locks rooted higher (and further from the hairline) lie over the ones under them
     rank = np.clip((el - line.min()) / max(90.0 - line.min(), 1.0), 0, 1)
     layer = 0.7 * rank + 0.3 * rng.uniform(0, 1, m)
-    target = float(p["lift"]) + float(p["body"]) * layer
+    # lift: one number, or per region (a short cut stands off the skull by region: a lifted top over clipped sides)
+    lift = np.clip(by_region(p["lift"], LOOSE["lift"]), 0.0, 0.05)
+    target = lift + float(p["body"]) * layer
     target[is_fr] = 0.004 + 0.006 * layer[is_fr]
     n = 44
     ds = L / (n - 1)
@@ -342,7 +344,7 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         q = P[:, k - 1] + d * ds[:, None]
         # the mass builds up as locks come down over the ones rooted under them (not at their own roots: lifted
         # there, the top stood up in tufts along the parting)
-        clear = 0.0015 + float(p["lift"]) * _ss(s / 0.03) + (target - float(p["lift"])) * _ss((P0[:, 2] - q[:, 2]) / 0.07)
+        clear = 0.0015 + lift * _ss(s / 0.03) + (target - lift) * _ss((P0[:, 2] - q[:, 2]) / 0.07)
         if face > 0:  # off the face: a point hanging in front of it, under the hairline, is turned out to its side
             a_, e_ = az_el(q - sc.C)
             sg = np.where(np.abs(q[:, 0] - sc.C[0]) > 0.004, np.sign(q[:, 0] - sc.C[0]), side0)

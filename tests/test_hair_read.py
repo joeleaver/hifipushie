@@ -140,7 +140,11 @@ def test_start_is_a_valid_short_cut_groom():
     g = h["groom"]
     assert g["parting"] == {"side": "none"}  # not seen: no part invented
     assert g["hairline"]["front_points"][0][0] == 2.5
-    assert abs(g["volume"]["top"] - 0.6 * 0.012) < 1e-6
+    assert abs(g["loose"]["lift"]["top"] - (0.012 - hr.LIFT_SPREAD)) < 1e-6  # (loose hair: lift, not volume)
+    assert "volume" not in g
+    ln = g["loose"]["length"]
+    assert ln["top"] > 2 * ln["sides"] and ln["nape"] < ln["back"]  # longer on top, a taper to the nape
+    assert g["loose"]["thickness"] <= 0.003  # thin laid locks: thick ones sink into the skin and crumple
     assert h["look"]["grey_amount"] == 0.2 and g["grey"]["sides"] > 0.4
     assert "crown" not in g["grey"]
     keys = [k for k, _, _ in st["rows"]]

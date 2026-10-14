@@ -535,6 +535,10 @@ def colour_split(img, dense, mm: float, T: float | None = None) -> dict:
            "light_share": round(float(light.mean()), 3),
            "seen": _hex(np.median(px[upper], 0)) if upper.sum() > 20 else None,
            "grey": _hex(np.median(px[light & (C < max(8.0, np.median(C)))], 0)) if (light & (C < max(8.0, np.median(C)))).sum() > 20 else None,
+           # a grey STRAND is lighter than the light pixels' median: strands are finer than a pixel, so most light
+           # pixels are grey hairs mixed with dark ones (salt and pepper); the lightest quarter is nearer one strand
+           "grey_strand": (_hex(np.median(px[light & (C < max(8.0, np.median(C))) & (L >= np.percentile(L[light], 75))], 0))
+                           if light.sum() > 80 else None),
            "dark_L": round(float(np.median(L[dark])), 1) if dark.any() else None,
            "light_L": round(float(np.median(L[light])), 1) if light.any() else None,
            "chroma": round(float(np.median(C)), 1)}
@@ -744,9 +748,12 @@ def read_text(r: dict) -> str:
 
 # ------------------------------------------------------------------------------------------------ the start
 
-CROP = {"strands": {"count": 140000, "thickness": 1.6, "clump": 0.15, "stray": 0.9, "roots": 0.9, "loose": 0.18,
-                    "frizz": 0.15, "wave": 0.0004, "curl": 0.0, "tips": 0.8, "tip_spread": 0.6}}
-SHORT_MM = 30.0     # mm: a mean stand-off under this (and no hair below the jaw) is a short cut
+# fine, straight, dense short hair: many thin strands, no wave / curl, little clumping (long-hair dials made noodles)
+CROP = {"strands": {"count": 220000, "thickness": 0.9, "clump": 0.1, "stray": 0.9, "roots": 0.9, "loose": 0.0,
+                    "frizz": 0.02, "wave": 0.0, "curl": 0.0, "tips": 0.6, "tip_spread": 0.3, "under_length": 0.01}}
+SHORT_MM = 30.0     # mm: a mean stand-off under this (and no region over 1.5x) is a short cut
+LIFT_SPREAD = 0.005  # m a laid short lock's strands stand over its guide (render stand-off ~ lift + this)
+LOOSE_THICK = 0.003  # m: a short laid lock's thickness (6 mm sank half the strands into the skin: curls)
 
 
 def start(r: dict, spec: dict) -> dict:
@@ -772,32 +779,38 @@ def start(r: dict, spec: dict) -> dict:
     else:
         short = True
     g = {}
-    vol = {reg: round(0.6 * so_all[reg], 4) for reg in REGIONS}
-    put("groom.volume", vol, "0.6 x the measured stand-off per region (strands stand ~1.6x the volume off the scalp; "
-                             "INFERRED for " + ", ".join(k for k in REGIONS if inferred[k]) + ")"
-        if any(inferred.values()) else "0.6 x the measured stand-off per region")
-    g["volume"] = vol
     if short:
-        ln = {"front": float(np.clip(4.0 * so_all["front"], 0.012, 0.08)), "top": float(np.clip(4.0 * so_all["top"], 0.012, 0.08)),
-              "sides": float(np.clip(3.0 * so_all["sides"], 0.008, 0.05)), "back": float(np.clip(3.0 * so_all["back"], 0.008, 0.05)),
-              "nape": float(np.clip(3.0 * so_all["nape"], 0.006, 0.03))}
+        # LIFT by region (groom.loose.lift; groom.volume does nothing to loose hair): a laid short lock's strands
+        # spread ~LIFT_SPREAD m over its guide, so the guide stands at the stand-off less that
+        lift = {reg: round(float(np.clip(so_all[reg] - LIFT_SPREAD, 0.001, 0.02)), 4) for reg in ("front", "top", "sides", "back", "nape")}
+        put("groom.loose.lift", lift, f"MEASURED stand-off per region - {1000 * LIFT_SPREAD:.0f} mm (the strands' own spread"
+            + (f"; INFERRED for {', '.join(k for k in REGIONS if inferred[k])})" if any(inferred.values()) else ")"))
+        # a combed short cut is longer on top and front, clipped at the sides and back, tapering to the nape (a
+        # barber's taper); the stand-off sets the scale
+        ln = {"front": float(np.clip(4.0 * so_all["front"], 0.03, 0.08)), "top": float(np.clip(4.0 * so_all["top"], 0.03, 0.08)),
+              "sides": float(np.clip(1.5 * so_all["sides"], 0.01, 0.025)), "back": float(np.clip(1.5 * so_all["back"], 0.01, 0.025)),
+              "nape": float(np.clip(0.6 * so_all["nape"], 0.005, 0.012))}
         ln = {k: round(v, 3) for k, v in ln.items()}
-        put("groom.loose.length", ln, "INFERRED: a short cut lies over itself, its length is not in a picture; 4x the "
-                                     "stand-off on top and front, 3x at the sides / back / nape")
+        put("groom.loose.length", ln, "INFERRED: a short cut lies over itself, its length is not in a picture; top / front "
+                                     "4x the stand-off, sides / back 1.5x, the nape tapering (a barber's taper)")
         p = s.get("parting") or {}
         sweep = p.get("sweep")
         sx = 0.0 if sweep is None else float(np.clip(sweep, -1, 1))
         # front: up and back, over to the side the front is combed toward (image right = his left = +x, front view)
-        flow = {"front": [round(0.6 * sx, 2), 0.75, 0.45], "top": [round(0.4 * sx, 2), 0.9, 0.0], "sides": [0.0, 0.85, -0.55],
-                "back": [0.0, 0.3, -1.0], "nape": [0.0, 0.1, -1.0]}
-        put("groom.loose.flow", flow, f"front combed up and back, over by the measured sweep {sweep} (prior: brushed back)")
-        lay = {"front": 0.35, "top": 0.65, "sides": 0.0, "back": 0.7, "nape": 0.6}
-        put("groom.loose.lay", lay, "prior (a combed short cut: hair7's Garrett-crop numbers); not measurable")
-        loose = {"length": ln, "spacing": 0.009, "width": 2.4, "lift": 0.001, "body": 0.002, "messy": 0.35, "uneven": 0.8,
-                 "flow": flow, "lay": lay, "stiff": {"front": 0.55, "top": 0.45, "sides": 0.55, "back": 0.6, "nape": 0.5},
-                 "out": {"front": 0.15, "top": 0.05, "sides": 0.18, "back": 0.0, "nape": 0.0}}
-        put("groom.loose (rest)", "spacing 0.009, width 2.4, messy 0.35, uneven 0.8, stiff / out per region",
-            "the guide's short-textured-crop recipe")
+        flow = {"front": [round(0.6 * sx, 2), 0.75, 0.45], "top": [round(0.4 * sx, 2), 0.9, 0.0], "sides": [0.0, 0.7, -0.7],
+                "back": [0.0, 0.15, -1.0], "nape": [0.0, 0.05, -1.0]}
+        put("groom.loose.flow", flow, f"one comb direction per region: front up and back, over by the measured sweep {sweep}; "
+                                      "sides back and down; back and nape down (prior: a combed short cut)")
+        lay = {"front": 0.35, "top": 0.65, "sides": 0.5, "back": 0.6, "nape": 0.6}
+        put("groom.loose.lay", lay, "prior (combed flat along the flow); with the locks thin enough (thickness) not to sink")
+        loose = {"length": ln, "spacing": 0.008, "width": 2.4, "lift": lift, "body": 0.002, "thickness": LOOSE_THICK,
+                 "messy": {"front": 0.25, "top": 0.25, "sides": 0.1, "back": 0.06, "nape": 0.04}, "uneven": 0.5,
+                 "flow": flow, "lay": lay, "stiff": {"front": 0.55, "top": 0.5, "sides": 0.6, "back": 0.65, "nape": 0.6},
+                 "out": {"front": 0.15, "top": 0.05, "sides": 0.0, "back": 0.0, "nape": 0.0}}
+        put("groom.loose.thickness", LOOSE_THICK, "a laid lock thicker than twice its clearance sinks half its strands into "
+                                                  "the skin; pushed out, they crumple into curls (hair-garrett r1-r2)")
+        put("groom.loose (rest)", "spacing 0.008, width 2.4, messy low (combed), uneven 0.5, stiff per region",
+            "a combed short cut")
         g["loose"] = loose
     # hairline: the measured front points (|az| <= 75: the front and temples), heights in m
     hp = [[a, z] for a, z, e, n in s.get("hairline") or [] if a <= 75]
@@ -831,8 +844,10 @@ def start(r: dict, spec: dict) -> dict:
             put("groom.grey", g["grey"], "MEASURED: light share by region above grey_amount (temples / sideburns = the sides')")
         if c.get("seen"):
             look["seen"] = put("look.seen", c["seen"], f"MEASURED: the lit half of the pigmented hair, view {s['colour_view']}")
-        if c.get("grey"):
-            look["grey"] = put("look.grey", c["grey"], f"MEASURED: the light / grey strands' median, view {s['colour_view']}")
+        gs = c.get("grey_strand") or c.get("grey")
+        if gs:
+            look["grey"] = put("look.grey", gs, f"MEASURED: the lightest quarter of the light / grey pixels (a grey strand: "
+                                                f"the pixels' median mixes it with dark hair), view {s['colour_view']}")
         va = (c.get("bands") or {}).get("variation") or {}
         if va.get("strand_sd") is not None:
             look["variation"] = put("look.variation", round(float(np.clip(0.4 * va["strand_sd"] / 4.2, 0.2, 0.8)), 2),
