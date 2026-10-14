@@ -139,6 +139,31 @@ def _made_lay(stand, fall, sh, asym_max):
     assert ok.sum() > 20 and np.percentile(asym, 95) < asym_max, (ok.sum(), np.percentile(asym, 95))
 
 
+def test_end_points_take_only_their_own_end():
+    """cloth._end_points: a notched collar end's points are those past where its roll line meets the neck edge AND on
+    that end's side. A collar cut with much spring is a deep arc: the half-plane past one end's meeting point, run on
+    along that end's run-on, also holds the OTHER end; carried into this front's pattern, its worn points dragged the
+    end's plane and Garrett's right collar end started on his chest (133 mm from the left's mirror image)."""
+    from hifipushie import cloth
+    # the neck edge: a deep arc of 240 deg (CB at the top), the collar's points out to 4 cm beyond it
+    a = np.radians(np.linspace(-120, 120, 49))
+    R = 0.12
+    Q = np.c_[R * np.sin(a), R * np.cos(a)]
+    pts = np.concatenate([np.c_[(R + d) * np.sin(a), (R + d) * np.cos(a)] for d in (0.0, 0.02, 0.04)])
+    k = 44  # the right-hand end's meeting point; its run-on carries on along the edge's tangent there
+    X2 = Q[k]
+    r2 = Q[k + 1] - Q[k - 1]
+    r2 /= np.linalg.norm(r2)
+    half = ((pts - X2) @ r2) > -0.01
+    other = pts[:, 0] < -0.05
+    assert (half & other).any()  # (the half-plane alone takes the other end: the bug)
+    sel = cloth._end_points(pts, Q, X2, r2)
+    assert sel.any() and not (sel & other).any() and (pts[sel, 0] > 0).all()
+    # mirror symmetric: the left end takes the mirror image of the right end's points
+    sel_l = cloth._end_points(pts, Q, X2 * [-1, 1], r2 * [-1, 1])
+    assert sel_l.sum() == sel.sum() and (pts[sel_l, 0] < 0).all()
+
+
 def test_worn_forepart():
     """A jacket's fronts and backs started where they are worn (cloth._worn_top, garment_kb kinds.jacket.worn_top):
     the shoulder and centre back seams pinned shut (PIN_GAP apart), the collar's neck seam on the placed neckline, the
@@ -168,6 +193,16 @@ def test_worn_forepart():
     _, hi, _, _ = cloth_detail.strain_field(M, X)
     fr = np.isin(pid[M["F"][:, 0]], [names.index("front.L"), names.index("front.R")])
     assert np.percentile(hi[fr], 99) < 1.3, np.percentile(hi[fr], 99)
+    # the collar's two ENDS start as mirror images (each end laid in its own front's lapel plane from its own side of
+    # the collar only: points of the other end round the back were carried into this front's pattern, and Garrett's
+    # right collar end started on his chest 133 mm from the left's mirror image, dragging the right front open, cloth12)
+    from scipy.spatial import cKDTree
+    uv = M["uv"]
+    vc = np.where(pid == names.index("collar"))[0]
+    dm, jm = cKDTree(uv[vc]).query(uv[vc] * [-1, 1])
+    endv = (dm < 0.004) & (np.abs(uv[vc, 0]) > 0.6 * np.abs(uv[vc, 0]).max())
+    err = np.linalg.norm(X[vc[endv]] - X[vc[jm[endv]]] * [-1, 1, 1], axis=1)
+    assert endv.sum() > 6 and err.max() < 0.025, (int(endv.sum()), err.max())
 
 
 if __name__ == "__main__":

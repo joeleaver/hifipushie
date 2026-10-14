@@ -2407,3 +2407,33 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - Spend: $0.352 total (this gate $0.030).
   - STATE: mirror_mesh in (opt-in, tested); the right front's swing NOT fixed; the collar's asymmetric carried start is
     the lead. NEXT: the collar placement (cloth._on_seam notched chain), then one sim with it fixed.
+- Gate 6 (coordinator: place-only check of the collar's start, fix, a test, ONE sim).
+  - CAUSE (collchain.py: su_gc's jacket built place-only, BROKER=1, no sim; prints the notched chain per side and each
+    end's lay): the band chain was symmetric within 7 mm, but each END is laid in its front's lapel plane from the
+    collar points past where its roll line meets the neck edge, and that selection was only a half-plane (along the
+    run-on): with the collar's deep arc it ALSO took the other end round the back. Carried into front.R's pattern
+    they landed 0.2 m off the piece (qf x +229 mm on a piece spanning -234..+20), their extrapolated worn points
+    turned the right end's plane (fit clearance -43 / +61 mm) and the end started on the chest by centre front. Fix:
+    cloth._end_points = past the meeting point AND on that end's side of the collar (neck edge's middle -> meeting
+    point). Place-only after: collar start mirror error max 133 -> 15.6 mm, both ends' fits sane (-2.5..6.4 /
+    4.5..10 mm). Tests: test_collar::test_end_points_take_only_their_own_end (a deep arc where the half-plane takes the
+    other end; fails on the old rule), test_worn_forepart now also asserts the ends start as mirror images (< 25 mm;
+    the ga_suit fixture's collar never hit the bug, so this alone doesn't catch it). This fix changes the start
+    of any notched collar whose half-plane reached the other end: those sims re-key.
+  - ONE SIM c12_n8 = n1's line with the fix ($0.044): the fronts' edges from centre, R / L by height 1400..1150:
+    75/60, 71/56, 66/52, 62/49, 58/45, 53/45 mm (n1: 92/76, 89/73, 84/69, 78/65, 89/61, 88/93): the right front no
+    longer swings, the two hang within 13-15 mm of each other (below 1100 the left closes further: 31-63 vs 50-71).
+    Gap at the chest 135 mm, at the button 98 mm (concept ~182 / ~131): now a little MORE closed than the concept.
+    Gates PASS (0 skin px, 0 visible crossings), lapels 63 / 63 mm, notch 61 / 47 mm below the chin (concept 63 / 56;
+    the left 9 mm high), across -127 / +110 mm. Notch corners (end edge vs gorge seam) 86 / 93 deg: symmetric now
+    (n4: 125 / 105). Sheet workspace/cloth_renders/c12_g6_collar_start_sheet.png (concept | n8 | n1, + notch closes):
+    the right side neck's knot is gone, both collar ends read alike; the notch V is still weak in clay (n8 has no
+    collar point: the point 15 mm on top of this is the next sim).
+  - Merge-ready: tests.sh, 15 cloth files one per process, HIFIPUSHIE_ASSETS set: all rc 0, 0 skipped (cloth 27,
+    collar 5, cloth_layers 13, cloth_made 13 ...). mirror_mesh stays opt-in (default off).
+    Spend this agent: $0.396 (this gate $0.044).
+  - STATE: best = out/c12_n8c.pkl (gorge_drop 0.10, collar start fixed; gates PASS). NEXT: collar point 15 mm on n8
+    (one sim) and its tuck slit at the shirt collar point; the left notch 9 mm high / 17 mm in; the fronts now a
+    little closed below the break; shoulders; CB crossings; the shirt on the final measures.
+  - RESTART: as gate 4's, plus: place-only collar check: BROKER=1 bash run.sh collchain.py [key=json]; the fronts:
+    uv run python edges.py out/c12_<t>.npz.
