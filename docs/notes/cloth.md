@@ -2633,3 +2633,21 @@ MISSING / WRONG (fixed in code, or written into the guide):
   broker refused the batch ("appears twice"): de-duplicated.
 - Rounds so far: jeans 7 (j1, j2, j3 dead end, j2t, j4, j5, j6/j7 re-sims on new bodies), sweater 9 design passes (s1-s9;
   s1-s5 pre-sim only), 1 sim before the body switch.
+- s9 (tp_h3, over jeans, fine_settle false; NICO-TOP $0): CORRUPT (neckband 29% / cuffs 9% / hem band 11% crumpled,
+  armhole seams 24 mm and cuff seams 36 mm open). Close-ups: the neckband was INVISIBLE: (15) a generated band's
+  `height` is its CUT height; folded in half it shows half: tess2's 22 mm neckband was an 11 mm rim, and stage 2's
+  neckband_width reported 22 and passed. FIXED (bad56b4): stage 2 reports folded bands' finished heights
+  (neckband_width, cuff_height, band_height), KB cuts 44 / 100 / 100 mm (22 / 50 / 50 finished).
+- s10 = KB band sizes + armhole_depth 0.06 + sleeve length_bonus 0: neckband and hem band now READ (sheet); still
+  CORRUPT (neckband 15% crumpled, cuffs 5%), armhole seams 30 mm open, cuff ring seams 48 mm open. Start gaps
+  (sg.py: per seam, place_only): sleeve caps 76 / 143 mm, underarms 79, neckband ring 76, cuff rings 92-103, hem band
+  ring 310 (!): the rings are laid at their CUT length round a bigger girth, the sim can't close them.
+- (16) `wrap` "seam" + `stretch_on: true` (lay a band stretched ON the edge it is sewn to) and `dir: "down"` (a hem
+  band runs down): ring closing seams 76 -> 4 mm (neckband), 310 -> 2 mm (hem band), but the start is 97-146%
+  stretched and lies inside the contact standoff (neckband stands up the neck like a turtleneck, hem band flares):
+  NOT usable yet (s11, not simmed). Kept as opt-in keys.
+- SWEATER SHEET workspace/cloth_renders/dt_02_sweater_sheet.png (s10). My read: reads as a mustard crew-neck
+  sweater from the front, relaxed, blousing over the band like hers, the band at the right height; WRONG: the hem
+  band reads as a folded roll, not ribbed (no rib texture: detail maps have no rib), the neckband ruffles at the back,
+  armhole holes and ruffled cuffs (both hidden under the coat). Sweater: 4 sims (s7 cancelled, s8 fine start refused,
+  s9, s10), 11 design passes.

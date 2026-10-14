@@ -2137,6 +2137,10 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
     Cs = np.zeros_like(Cp)
     Cs[mid] = snap(Cp[mid])
     whole = float(np.linalg.norm(np.diff(Cp, axis=0), axis=1).sum()) <= 1.15 * float(lq.sum())
+    # (wrap "stretch_on": a band cut shorter than its edge and stretched on (a rib neckband / hem band at 0.85) is laid
+    # ON the edge, stretched to it, as it is sewn: laid at its own lengths its ring's ends started 76-310 mm apart and
+    # the sim never closed them (dress-tess). Its declared stretch gets a local strain limit in the solver)
+    whole = whole or bool(w.get("stretch_on"))
     if whole:  # one piece's edge, as long as the pattern's (a collar on its stand): that edge itself
         Cs = Cp.copy()
     worn = None
@@ -2264,6 +2268,7 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
     inside = uv[mine].mean(0)
     hub = Cs.mean(0)
     up0 = np.array([0.0, 0.0, 1.0])
+    run0 = -up0 if w.get("dir") == "down" else up0  # (dir "down": a hem band runs down from the hem it is sewn to)
     lean = math.radians(float(w.get("lean", 0.0)))
     out = np.zeros((len(mine), 3))
     seg = Q[1:] - Q[:-1]
@@ -2290,7 +2295,7 @@ def _on_seam(M: dict, X: np.ndarray, uv: np.ndarray, pid: np.ndarray, k: int, nm
         else:
             # up, along the body's surface and square to the edge (a stand against the neck; on a shoulder's top,
             # where up leaves the surface, toward the middle of the edge's curve: the neck)
-            U3 = up0 - Ts[i_] * (up0 @ Ts[i_])
+            U3 = run0 - Ts[i_] * (run0 @ Ts[i_])
             U3 = U3 - n3 * (U3 @ n3)
             alt = np.cross(n3, Ts[i_])
             if alt @ (hub - Cs[i_]) < 0:
