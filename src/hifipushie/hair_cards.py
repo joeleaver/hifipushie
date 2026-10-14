@@ -56,6 +56,9 @@ STRANDS = {
     # the free hair's (frizz, loose, wave, wavelength, tips, taper, thickness)
     "halo": 0.0,  # 0..1: short broken hairs that stand up off the hair on the head and curl (the fine fuzz round a
     # loose updo against the light); `flyaway` strands only drift a few mm off their own lock and end where it ends
+    "halo_soft": 0.0,  # 0..1: the halo DENSE AND SOFT (rule 4, hair-garrett3): many more halo hairs, shorter and closer
+    # to the hair (a fuzz a few mm deep along the silhouette, not a few single hairs standing off); pair with a low
+    # look.fine_alpha (0.2-0.3) so each reads faint
 }
 # (kind, px wide at a 1024 atlas): what the cards choose from. Two of each so neighbours differ.
 TILES = [("dense", 136), ("dense", 136), ("medium", 136), ("medium", 136), ("sparse", 104), ("sparse", 104),

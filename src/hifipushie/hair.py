@@ -144,7 +144,7 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         "tip_alpha": 0.0, "backscatter": 0.0, "scatter": 0.0,
         # sun_length m: the hair's age (m from the scalp) by which `sun` lightening is full (default 0.28); shorter =
         # the dome lightens too, not only the lengths (the front view sees the first cm of every strand)
-        "sun_length": None}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "sun_length": None, "sun_warm": None}  # sun_warm 0..1 (default 1): the sun-lightened lengths also warm; 0 = ash  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
@@ -156,7 +156,12 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
 SEEN = {"gap": 0.3, "sheen": 1.45, "tip": 1.12}  # x lit (linear)
 
 
-def _lin(c: str) -> np.ndarray:
+def _lin(c) -> np.ndarray:
+    """A colour as linear RGB: "#rrggbb", or [r, g, b] sRGB 0..1 floats (look.seen from the hair reader's colour step:
+    near-grey hair's hue does not survive 8 bits: at chroma ~5 one step of a hex digit is 5-10 deg of hue)."""
+    if not isinstance(c, str):
+        s = np.clip(np.asarray(c, float)[:3], 0.0, 1.0)
+        return np.where(s <= 0.04045, s / 12.92, ((s + 0.055) / 1.055) ** 2.4)
     s = np.array([int(c.lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)])
     return np.where(s <= 0.04045, s / 12.92, ((s + 0.055) / 1.055) ** 2.4)
 

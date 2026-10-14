@@ -667,8 +667,11 @@ def material(look: dict):
             fs = M("MULTIPLY", smooth(age, 0.0, float(look.get("sun_length") or 0.28)), sun)
             # (+ 50 % value at sun 1, a little warmer: at + 60 % with + 25 % saturation a sun 0.9 tail was orange straw, th_V9a3)
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fs, 0.5, 1.0))
-            hue = M("MULTIPLY_ADD", fs, 0.004, hue)  # (+ 0.012 turned a brown tail olive under EEVEE's desaturation, th_V84)
-            sat = M("MULTIPLY_ADD", fs, 0.3, sat)  # (lighter AND warmer: at + 10 % the light lengths went ashy grey, th_W06)
+            # sun_warm 0..1 (default 1): how much the lightened lengths also warm. 0 = ASH lengths, lighter only (a
+            # mousy / ash brown whose lengths are lighter and greyer, not golder: hair-garrett3)
+            sw_ = float(np.clip(look.get("sun_warm", 1.0) if look.get("sun_warm") is not None else 1.0, 0.0, 1.0))
+            hue = M("MULTIPLY_ADD", fs, 0.004 * sw_, hue)  # (+ 0.012 turned a brown tail olive under EEVEE's desaturation, th_V84)
+            sat = M("MULTIPLY_ADD", fs, 0.3 * sw_ - 0.25 * (1 - sw_), sat)  # (lighter AND warmer: at + 10 % the light lengths went ashy grey, th_W06)
         if hl > 0:
             # ribbons at two scales, gathered where the sun reaches (hp_su: the top layers, round the face, a tail's
             # outside) and a little on some locks: many thin ones, a few broad SOFT ones (lower contrast, a wide edge)

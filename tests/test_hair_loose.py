@@ -188,6 +188,21 @@ def test_loose_halo_is_not_quartered_but_a_tails_is():
     assert hs.physical(S, free=True, tail=False)["halo"] == pytest.approx(4 * hs.LOOSE_HALO * hs.physical(S, free=True, tail=True)["halo"])
 
 
+def test_soft_halo_is_denser_shorter_and_closer():
+    from hifipushie import hair_strands as hs
+    S = hc.strands_of({"hair": {"strands": {"halo": 0.5}}})
+    a, b = hs.physical(S), hs.physical({**S, "halo_soft": 1.0})
+    assert b["halo"] > 3 * a["halo"] and b["halo_m"] < 0.5 * a["halo_m"] and b["halo_len"] < 0.5 * a["halo_len"]
+    assert a["halo_m"] == hs.SAFE["halo_m"]  # (off by default: older stacks unchanged)
+
+
+def test_seen_takes_srgb_floats():
+    """look.seen as [r, g, b] sRGB floats: near-grey hair's hue survives (in 8 bits a 6 deg turn came back unchanged)."""
+    assert np.allclose(hair._lin([0.3568, 0.3137, 0.3098]), hair._lin("#5b504f"), atol=2e-3)
+    lk = hair.full_look({"seen": [0.35, 0.32, 0.3]})
+    assert lk["lit"].startswith("#") and 0 < lk["eevee_sat"] <= 1
+
+
 def test_level_fringe_and_afro():
     sc, col, bob = _grow({"length": 0.3, "level": -0.08, "uneven": 0.0, "spacing": 0.03,
                           "fringe": {"length": 0.06, "level": -0.01}}, parting="none")

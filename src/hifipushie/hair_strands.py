@@ -64,6 +64,13 @@ EDGE_RAMP = 0.008  # m over which a LOOSE lock's strand count ramps up to full (
 EDGE_START = 0.0035  # ... from this far inside the hairline (the first loose roots)
 EDGE_MIN = 0.15  # the share of its strands a loose lock rooted on the line keeps
 LOOSE_HALO = 2.0  # x the halo share on LOOSE hair (a long head's crown fly-aways: at 1 x the halo read 0.05 vs 0.22-0.25)
+SOFT_HALO = (3.0, 0.65, 0.6)  # halo_soft = 1: x (1 + 3) halo hairs, their stand-off x 0.35 (~4 mm), length x 0.4 (~2 cm)
+
+
+def _soft(S) -> float:
+    return float(np.clip(S.get("halo_soft", 0.0) or 0.0, 0.0, 1.0))
+
+
 WISP_FAN = 2.0  # a thin free lock (a wisp, < 16 mm) opens to (1 + this) x its width toward the tip, round in section
 
 
@@ -106,7 +113,11 @@ def physical(S: dict, free: bool = False, tail: bool = True) -> dict:
         "curl_freq": 1.0 / max(float(S["wavelength"]), 0.01),
         # (a tail has its fly-aways; short hairs standing off it all round made it a bottle brush: quartered on hair that
         # left the head IN A TAIL. Loose hair (groom.loose: free locks, no tie) keeps the dial: rule 4, hair-garrett)
-        "halo": SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if (free and tail) else LOOSE_HALO if free else 1.0),
+        "halo": min(SAFE["halo"] * float(np.clip(S.get("halo", 0.0), 0.0, 1.0)) * (0.25 if (free and tail) else LOOSE_HALO if free else 1.0)
+                    * (1.0 + SOFT_HALO[0] * _soft(S)), 0.6),
+        # halo_soft: closer to the hair and shorter (a fuzz a few mm deep), x (1 - k x ..)
+        "halo_m": SAFE["halo_m"] * (1.0 - SOFT_HALO[1] * _soft(S)),
+        "halo_len": SAFE["halo_len"] * (1.0 - SOFT_HALO[2] * _soft(S)),
     }
 
 
@@ -449,7 +460,8 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
                       "Wavelength": ph["wavelength"], "Curl": ph["curl01"], "Loose": ph["wander"], "Wave Random": ph["wave_random"],
                       "Stray": ph["stray"], "Seed": int(seed)}]]
         if ph.get("halo", 0.0) > 0:  # (only when asked for: older jobs keep their stacks, and so their cache keys)
-            st[0][1].update({"Halo": ph["halo"], "Halo Distance": SAFE["halo_m"], "Halo Length": SAFE["halo_len"]})
+            st[0][1].update({"Halo": ph["halo"], "Halo Distance": ph.get("halo_m", SAFE["halo_m"]),
+                             "Halo Length": ph.get("halo_len", SAFE["halo_len"])})
         if ph["loose"] > 0:  # strands wandering together (Blender's noise is coherent in space: neighbours agree)
             st.append(["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"], "Shape": 0.5,
                                              "Scale": ph["loose_scale"], "Scale along Curve": 0.35,
