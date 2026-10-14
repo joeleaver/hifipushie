@@ -1589,7 +1589,8 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
-            fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None) -> dict:
+            fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
+            lods: bool | list | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1605,7 +1606,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     movable asset (a prefab of one instance too), as in the Blender scene. The paint and AO maps are baked by
     Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects).
     face_shapes: True (every ARKit shape faceshapes.py makes) or a list of names: morph targets on the parts that
-    move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json."""
+    move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json.
+    lods: True (lods.LOD_RATIOS) or a list of shares of LOD0's triangles: <asset>_LOD<k>.glb beside the GLB, the same
+    skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name), cards (hair, lashes) as LOD0."""
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
@@ -2007,12 +2010,28 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     if seam:
         report[seam["part"]]["meshes"] = seam["report"]
     write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
+    lod_info = []
+    if lods:
+        from . import lods as lodmod
+        ratios = list(lodmod.LOD_RATIOS) if lods is True else [float(r) for r in lods]
+        cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
+        for k, r in enumerate(ratios, 1):
+            tl = time.time()
+            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards)
+            lg = out_dir / f"{aname}_LOD{k}.glb"
+            write_glb(lg, aname, lp, atlas_files, {}, looks, lr, extra_ext, external=True)
+            tri_k = sum(v["triangles"] for v in rep_l.values())
+            lod_info.append({"lod": k, "ratio": r, "glb": str(lg), "triangles": tri_k,
+                             "parts": {pn: v["triangles"] for pn, v in rep_l.items()}})
+            log.append(f"LOD{k} ({r:g} of LOD0): {tri_k} triangles in {time.time() - tl:.1f}s -> {lg.name} (maps "
+                       f"by file name beside it); " + ", ".join(f"{pn} {v['triangles']}" for pn, v in rep_l.items()))
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
         log.append(f"wrote {glb.with_suffix('.fbx').name} in {time.time() - tf:.1f}s")
     for _, f in atlas_files:
-        f["specular"].unlink()
+        if not lods:  # (the LODs' GLBs read it by name)
+            f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()
     high.unlink()
     out_dir.joinpath("high_focus.npz").unlink(missing_ok=True)
@@ -2040,7 +2059,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             "atlases": {an: {"size": sizes[ai], "maps": maps_info[an], "height_range_m": heights[an],
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
-            "parts": report, "prefabs": prefabs, **({"skin": skin_recipe} if skin_recipe else {}),
+            "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}), **({"skin": skin_recipe} if skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
                         "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
                         "layers_seated": rigged.get("layers_seated", []),

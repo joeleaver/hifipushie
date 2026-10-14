@@ -86,6 +86,60 @@ def test_freeze_thaw_round_trip_keeps_the_garment_and_takes_look_overrides():
                 pass
 
 
+def _sheet_part(n=24):
+    """A curved n x n sheet as an export part with TWO uv islands (left / right halves: a seam down the middle),
+    per-vertex weights (2 bones by x) and one face shape (a bump)."""
+    xs = np.linspace(0, 1, n + 1)
+    X, Y = np.meshgrid(xs, xs, indexing="ij")
+    V = np.stack([X.ravel(), Y.ravel(), 0.1 * np.sin(3 * X.ravel()) * np.cos(2 * Y.ravel())], 1)
+    vid = lambda i, j: i * (n + 1) + j  # noqa: E731
+    F = []
+    for i in range(n):
+        for j in range(n):
+            F += [[vid(i, j), vid(i + 1, j), vid(i + 1, j + 1)], [vid(i, j), vid(i + 1, j + 1), vid(i, j + 1)]]
+    F = np.array(F)
+    cv = F.ravel()
+    left = V[F].mean(1)[:, 0] < 0.5
+    uv = V[cv, :2].copy()
+    uv[np.repeat(~left, 3), 0] += 0.25  # the right island shifted in the atlas: a uv seam at x 0.5
+    nrm = np.tile([0.0, 0.0, 1.0], (len(cv), 1))
+    tan = np.tile([1.0, 0.0, 0.0], (len(cv), 1))
+    p = {"verts": V.astype(np.float32), "corner_vert": cv, "uv": uv.astype(np.float32), "normal": nrm.astype(np.float32),
+         "tangent": tan.astype(np.float32), "sign": np.ones(len(cv), np.float32), "atlas": 0}
+    d = np.zeros_like(V)
+    d[:, 2] = 0.01 * np.exp(-((V[:, 0] - 0.3) ** 2 + (V[:, 1] - 0.5) ** 2) / 0.02)
+    p["shapes"] = {"bump": (d, np.tile([0, 0, 1.0], (len(V), 1)), np.tile([0, 0, 1.0], (len(V), 1)))}
+    J = np.zeros((len(V), 4), np.int64)
+    J[:, 1] = 1
+    W = np.zeros((len(V), 4))
+    W[:, 0], W[:, 1] = 1 - V[:, 0], V[:, 0]
+    return p, (J, W)
+
+
+def test_lod_keeps_seams_weights_and_shapes():
+    from hifipushie import lods
+    p, w = _sheet_part()
+    q, wq, rep = lods.lod_part(p, w, 0.3)
+    assert rep["triangles"] < 0.6 * rep["triangles0"], rep
+    assert rep["patches"] == 2
+    V = np.asarray(q["verts"], float)
+    # the seam's vertices are held: every LOD0 vertex on x = 0.5 is still a vertex, on both sides
+    seam0 = np.asarray(p["verts"], float)[np.isclose(p["verts"][:, 0], 0.5)]
+    on = np.isclose(V[:, 0], 0.5, atol=1e-6)
+    assert len(np.unique(np.round(V[on], 6), axis=0)) == len(seam0)
+    # uv: each vertex keeps its own island's uv (the right one shifted 0.25)
+    cv = q["corner_vert"]
+    x = V[cv, 0]
+    du = q["uv"][:, 0] - x
+    assert np.all(np.isclose(du, 0, atol=2e-3) | np.isclose(du, 0.25, atol=2e-3))
+    # weights follow x; the shape's bump survives
+    Jn, Wn = wq
+    w1 = np.where(Jn == 1, Wn, 0).sum(1)
+    assert np.abs(w1 - V[:, 0]).max() < 0.02
+    d = q["shapes"]["bump"][0]
+    assert abs(d[:, 2].max() - 0.01) < 0.002
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):
