@@ -22,7 +22,11 @@ from hifipushie import hair, render, resources, scene, skin_look, store
 
 m = sys.argv[1]
 kw = dict(a.split("=", 1) for a in sys.argv[2:])
-N = int(kw.get("size", 1536))
+N0 = int(kw.get("size", 1536))
+# ss=<k>: render k x larger and average down. EEVEE draws every strand at least a pixel wide: at the pictures' own
+# scale (~0.3 mm a pixel) a 0.05 mm hair became a 0.3 mm wire (hair-garrett r4: strand_sd 9.3 vs the photo's 6.8)
+SS = int(kw.get("ss", 1))
+N = N0 * SS
 views = kw.get("views", "v0,v1,v2,y125,y180").split(",")
 OUT = os.environ["TOUT"]
 TAG = kw.get("tag", "")
@@ -118,6 +122,9 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
         else:
             f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
             f, lt = turned(f0, stage.photo_light(m, 0), float(v[1:]), C)
-        shoot(sn, st, f, lt).save(f"{OUT}/s_{m}{TAG}_{v}.png")
+        im = shoot(sn, st, f, lt)
+        if SS > 1:  # supersampled: rendered SS x larger, averaged down (strands thinner than a pixel blend as in a photo)
+            im = im.resize((N0, N0), Image.LANCZOS)
+        im.save(f"{OUT}/s_{m}{TAG}_{v}.png")
         print("done", v, flush=True)
 print("done", m)

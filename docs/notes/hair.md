@@ -2116,7 +2116,7 @@ Round 4 by the reader (ours | picture): stand-off sides -0.4, back +2.7, nape +1
 39.9 | 41.9, highlight 51.5 | 53.6, light share 0.36 | 0.45; chroma 6.4 | 4.9 (browner); strand_sd 9.3 | 6.8 (coarse);
 hairline softness 1.0 | 3.5 mm. By eye: a combed-back short grey cut now (no curls), but coarse wiry strands, a
 comb-teeth hairline, a ragged nape.
-NEXT: the coordinator's go -> the family heads (reader start + up to 4 rounds each); open faults on the crop: rule 15
+NEXT: the family heads (GO given; reader start + up to 4 rounds each; sheets after r1 and r4); open faults on the crop: rule 15
 (strand fineness, the hairline's density ramp), front stand-off, chroma (one more colour_step).
 RESTART: scratch DURABLE /mnt/data/hifipushie/hair_garrett/: env.sh, run.sh <script> (heavy: capped; scripts in
 spikes/hair_garrett, tesshair7, tesshair5, garrett3), runl.sh (light: bin/slot), blender6 (-t 6). Scripts
@@ -2152,6 +2152,18 @@ mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), cmp.py <model>
 - Stages: a dressed stage per groom model (stage.ensure(model)) costs a sync each AND fills the shared _g3_ budget,
   so store.prune_stages evicted another agent's stage (the regression's _g3_th_T04; rebuilt from tess_a1 as th_T04,
   regression identical). hgshots.py now takes stage=<head model>: one stage for every groom on a head.
+- RULE 15 STEP (r5, before | after close-ups human_renders/hg_05_*): (1) EEVEE draws every strand at least a pixel
+  wide; at the pictures' own scale (~0.3 mm a px) a hair is a 0.3 mm wire. Judging renders now SUPERSAMPLE
+  (hgshots ss=2: rendered 2x, averaged down) with more strands (count 300k): strand_sd 9.3 -> 8.4 (picture 6.8). The
+  game analogue is TAA / alpha-to-coverage on thin cards, not thicker strands. Supersampled, coverage drops: mean L*
+  39.9 -> 33.8: colour_step again after changing ss. (2) loose locks at the hairline got no hairline treatment
+  (only tied / gathered locks were flagged `at_hairline`): now loose locks rooted within EDGE_START + EDGE_RAMP
+  (3.5 + 8 mm) of the line stagger their roots and keep EDGE_MIN (0.15) .. 1 of their strands
+  (hair_strands.EDGE_*): front softness 1.0 -> 2.8 mm (picture 3.5). (3) nape holes closed by spacing 0.007 + a
+  denser, longer scalp layer (under 1.6, under_length 16 mm). Left: the hairline still reads as a line with a dark
+  scalp-layer band under it; the nape ends in a ledge, not a fade (the nape's density needs the same ramp DOWNWARD,
+  over ~1-2 cm: not built). Regression hg2: riff_a5 (half up's loose part) MOVED 1.96: the same style, its strands
+  redrawn by the hairline ramp (no new fault seen; not accepted: the coordinator's call).
 - Short cuts: the STRAND groom owns the shape and the look (it is what the reader and the sheets judge); the game
   export of a short cut stays the guide's baked cap + sparse cards, baked FROM the strands (export_hair's SHORT_TIERS):
   one source of truth, the cap / cards are its LOD, not a second groom.
