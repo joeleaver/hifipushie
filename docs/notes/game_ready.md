@@ -26,6 +26,13 @@ validate() know it. Garrett's jacket (c12_n18c) was simulated on a body of the s
 NOTE: the light run.py pickles the cloth agents keep (V, mesh names / piece / uv / F / sew / folds, made, buttons) are
 NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, closures): freeze the FULL result.
 
+## Machine rules for renders (Joe, 2026-10-14)
+- GPU lock: Blender under bin/capped takes a machine-wide lock per render call (BLENDER_SYSTEM_SCRIPTS gpulock);
+  godot-quiet holds it for the whole run: keep each Godot run SHORT (one scene's shots, then exit). Never start Blender
+  outside capped. "gpulock: waited N s" is queueing.
+- Size check renders to what is judged: ~512 px close-ups of a joint / poke-through / mouth, ~768 px whole figure; the
+  smallest judged thing >= 3-4 px; don't read sheets > ~1600 px when a crop answers; full sheets only for gate sheets.
+
 ## Gates (numbers + pictures per character)
 (filled in as they run)
 

@@ -1590,7 +1590,7 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
-            lods: bool | list | None = None) -> dict:
+            lods: bool | list | None = None, cloth_triangles: int | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1608,7 +1608,9 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     face_shapes: True (every ARKit shape faceshapes.py makes) or a list of names: morph targets on the parts that
     move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json.
     lods: True (lods.LOD_RATIOS) or a list of shares of LOD0's triangles: <asset>_LOD<k>.glb beside the GLB, the same
-    skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name), cards (hair, lashes) as LOD0."""
+    skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name); hair cards by whole layers.
+    cloth_triangles: the simulated garments together decimated to this many triangles (their sim mesh, two-sided, is
+    10-40k each: Tess's jeans 38k, sweater 28k); None keeps the sim mesh."""
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
@@ -1875,8 +1877,19 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
     if spec.get("cloth"):  # simulated garments (cloth.py): their settled meshes, the flat pattern as the uv
         from . import cloth as clothmod
-        for pn_c, cpart, cfiles in clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048),
-                                                         log=log.append):
+        cparts = clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048), log=log.append)
+        n_c = sum(len(cp["corner_vert"]) // 3 for _, cp, _ in cparts)
+        if cloth_triangles and n_c > cloth_triangles:  # the sim's 1 cm mesh (two-sided) is far over a game budget:
+            # decimated like a LOD (patches with their borders held: seams, hems, the pattern's uv)
+            from . import lods as lodmod
+            dec = []
+            for pn_c, cpart, cfiles in cparts:
+                q, _, r_ = lodmod.lod_part(cpart, None, cloth_triangles / n_c)
+                log.append(f"cloth {pn_c}: {r_['triangles0']} -> {r_['triangles']} triangles (cloth_triangles "
+                           f"{cloth_triangles} over {n_c})")
+                dec.append((pn_c, q, cfiles))
+            cparts = dec
+        for pn_c, cpart, cfiles in cparts:
             cpart["atlas"] = len(atlas_files)
             parts[pn_c] = cpart
             origin[pn_c] = pn_c
@@ -2017,7 +2030,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
         for k, r in enumerate(ratios, 1):
             tl = time.time()
-            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards)
+            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards,
+                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") else None)
             lg = out_dir / f"{aname}_LOD{k}.glb"
             write_glb(lg, aname, lp, atlas_files, {}, looks, lr, extra_ext, external=True)
             tri_k = sum(v["triangles"] for v in rep_l.values())

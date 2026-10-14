@@ -167,13 +167,42 @@ def lod_part(p: dict, weights: tuple | None, ratio: float) -> tuple[dict, tuple 
     return out, w_out, rep
 
 
-def lod_parts(parts: dict, rigged: dict | None, ratio: float, skip=()) -> tuple[dict, dict | None, dict]:
-    """Every part at `ratio` (parts named in `skip`, cards, are carried as they are)."""
+def card_lod(p: dict, ranges: dict, ratio: float) -> tuple[dict, dict]:
+    """Hair cards at a LOD: the export orders card triangles by layer (hair.export_cards: the cap, then layer0 (the
+    base layer), layer1..., the tie), so a LOD keeps the cap, the tie and whole layers from the bottom up while they fit
+    `ratio` of the triangles (at least the base layer)."""
+    n = len(p["corner_vert"]) // 3
+    keep = np.zeros(n, bool)
+    for nm in ("cap", "tie"):
+        if nm in ranges:
+            s, c = ranges[nm]
+            keep[s:s + c] = True
+    layers = sorted((k for k in ranges if k.startswith("layer")), key=lambda k: int(k[5:]))
+    for i, nm in enumerate(layers):
+        s, c = ranges[nm]
+        if i > 0 and keep.sum() + c > ratio * n:
+            break
+        keep[s:s + c] = True
+    cm = np.repeat(keep, 3)
+    q = {**p, "corner_vert": p["corner_vert"][cm], "uv": p["uv"][cm], "normal": p["normal"][cm],
+         "tangent": p["tangent"][cm], "sign": p["sign"][cm]}
+    return q, {"triangles0": n, "triangles": int(keep.sum()), "layers": [k for k in layers if keep[ranges[k][0]]]}
+
+
+def lod_parts(parts: dict, rigged: dict | None, ratio: float, skip=(), cards: dict | None = None
+              ) -> tuple[dict, dict | None, dict]:
+    """Every part at `ratio` (parts named in `skip` are carried as they are; `cards` {part: layer ranges}: hair cards
+    by whole layers, card_lod)."""
     out, rep = {}, {}
     wts = dict((rigged or {}).get("weights") or {})
     neww = {}
     for pn, p in parts.items():
         w = wts.get(pn)
+        if cards and pn in cards:
+            out[pn], rep[pn] = card_lod(p, cards[pn], ratio)
+            if w is not None:
+                neww[pn] = w
+            continue
         if pn in skip:
             out[pn] = p
             if w is not None:

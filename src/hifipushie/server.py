@@ -1105,15 +1105,17 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
                  hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
-                 face_shapes: bool | list[str] = False, asset_name: str | None = None):
+                 face_shapes: bool | list[str] = False, asset_name: str | None = None,
+                 lods: bool | list[float] = False, cloth_triangles: int | None = None):
     """Game-ready export into out_dir: low poly (~`triangles`, a mesh per part), UV atlases and PBR maps (`texture` px;
     normal/height from the exact model, paint and AO baked by Cycles), GLB (+ fbx=True). Key options: texel_density
     / atlases, instancing (prefabs once), rig=True (skinned, Mixamo for humanoids), face_shapes (ARKit morphs),
-    preview (Cycles check), hide, asset_name. Minutes; progress in progress.log. Details:
-    guide(topic="export_asset")."""
+    preview (Cycles check), hide, asset_name, lods (True or shares of LOD0's triangles: <asset>_LOD<k>.glb sharing
+    the maps), cloth_triangles (garments decimated to that many). Minutes; progress in progress.log. Details: guide(topic="export_asset")."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing, rig, fbx, face_shapes or None, asset_name=asset_name)
+                        instancing, rig, fbx, face_shapes or None, asset_name=asset_name, lods=lods or None,
+                        cloth_triangles=cloth_triangles)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"

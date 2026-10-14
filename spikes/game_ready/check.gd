@@ -77,7 +77,7 @@ func _materials(scene: Node, info: Dictionary, glb_dir: String) -> void:
 			for k in m.mesh.get_surface_count():
 				m.set_surface_override_material(k, sm)
 			print("mesh ", m.name, ": hair cards shader")
-		elif maps.has("blink") or (info.has("skin") and String(pn) == String(info["skin"].get("part", "body"))):
+		elif String(pn) == (String(info["skin"].get("part", "body")) if info.has("skin") else "body"):
 			var sm := ShaderMaterial.new()
 			sm.shader = skin_shader
 			sm.set_shader_parameter("albedo_tex", _tex(maps["basecolor"]))
@@ -278,6 +278,14 @@ func _initialize() -> void:
 			blink = maxf(blink, float(shapes.get(s, 0.0)))
 		for sm in skin_mats:
 			sm.set_shader_parameter("eye_blink", blink)
+			if sm.get_shader_parameter("blink_tex") != null:
+				sm.set_shader_parameter("has_blink", bool(pz.get("blink_map", true)))
+		for m in meshes:  # parts left out of this shot (mesh node "<asset>_<part>")
+			var vis := true
+			for k_ in pz.get("hide", []):
+				if String(m.name).ends_with("_" + String(k_)):
+					vis = false
+			m.visible = vis
 		var fi := sk.find_bone(P + String(pz.get("focus", "Spine2")))
 		await process_frame
 		var at: Vector3 = (sk.global_transform * sk.get_bone_global_pose(fi)).origin + Vector3(0, float(pz.get("lift", 0.0)), 0)
