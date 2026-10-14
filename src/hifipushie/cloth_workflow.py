@@ -519,6 +519,11 @@ def stage_construction(c: Ctx) -> dict:
                          "(the shoulder line and the sleeve cap are held out from inside)")
     K = garment_design.kb()
     lo, hi = 3, 40
+    if fab.get("physical_source") == "preset" and cloth.cloth_job_backend(c.gx) == "zozo":
+        o["warn"].append(f"fabric {fab.get('name')}: no measured numbers in the KB (gsm, bending length): ZOZO gets the "
+                         f"preset's (cloth_job.PHYSICAL); name a KB fabric or give fabric.physical {{density, bend}}")
+    elif fab.get("physical"):
+        o["info"].append(f"ZOZO gets ({fab.get('physical_source')}): {json.dumps(fab['physical'])}")
     if not (lo <= float(fab.get("stiff", 0)) <= hi):
         o["warn"].append(f"interfacing multiplier {fab.get('stiff')} outside practice ({lo}-{hi}x the shell's bending)")
     if c.res:

@@ -87,13 +87,24 @@ def expanded(g: dict) -> dict:
 def fabric(g: dict) -> dict:
     g = expanded(g)
     f = g.get("fabric", "shirting")
+    from .garment_design import kb_physical
     if isinstance(f, str):
         if f not in FABRICS:
             raise ValueError(f"no fabric {f!r} (have {', '.join(FABRICS)})")
-        return dict(FABRICS[f], name=f)
-    base = dict(FABRICS[f.get("preset", "shirting")])
-    base.update({k: v for k, v in f.items() if k != "preset"})
-    return dict(base, name=f.get("preset", "custom"))
+        out = dict(FABRICS[f], name=f)
+        kbn = f
+    else:
+        base = dict(FABRICS[f.get("preset", "shirting")])
+        base.update({k: v for k, v in f.items() if k != "preset"})
+        out = dict(base, name=f.get("preset", "custom"))
+        kbn = f.get("kb")
+    # what ZOZO gets (cloth_job.physical): the KB fabric's real numbers (gsm, bending length) under the garment's own
+    # "physical"; a fabric the KB has no numbers for falls back to the preset's PHYSICAL (physical_source says which)
+    kp = kb_physical(kbn)
+    if kp or out.get("physical"):
+        out["physical"] = dict(kp, **(out.get("physical") or {}))
+    out["physical_source"] = "kb" if kp else ("garment" if out.get("physical") else "preset")
+    return out
 
 
 # ---------------------------------------------------------------- pieces
@@ -7963,7 +7974,7 @@ def validate(spec: dict) -> None:
         elif isinstance(f, dict):
             if f.get("preset", "shirting") not in FABRICS:
                 raise ClothError(f"{where}: fabric preset {f.get('preset')!r} unknown (have {', '.join(FABRICS)})")
-            bad = set(f) - set(FABRICS["shirting"]) - {"preset", "quality", "sewing", "stiff_tension", "rest", "physical"}
+            bad = set(f) - set(FABRICS["shirting"]) - {"preset", "quality", "sewing", "stiff_tension", "rest", "physical", "kb"}
             if bad:
                 raise ClothError(f"{where}: fabric keys {sorted(bad)} unknown (have {sorted(FABRICS['shirting'])})")
         else:

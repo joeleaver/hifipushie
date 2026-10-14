@@ -174,9 +174,34 @@ def fabric_spec(f) -> dict:
         return {"name": f.get("preset", "custom"), "solver": f, "physical": {}}
     if f in K["fabrics"]:
         e = K["fabrics"][f]
-        solver = dict({"preset": e["preset"]}, **e.get("overrides", {})) if e.get("overrides") else e["preset"]
+        # the solver gets the fabric's own name ("kb"): cloth.fabric gives ZOZO its real numbers (kb_physical)
+        solver = dict({"preset": e["preset"], "kb": f}, **e.get("overrides", {}))
         return {"name": f, "solver": solver, "physical": {k: v for k, v in e.items() if k not in ("preset", "overrides")}}
     return {"name": f, "solver": f, "physical": {}}
+
+
+G = 9.81
+
+
+def kb_physical(name) -> dict:
+    """The SI numbers ZOZO takes (cloth_job.PHYSICAL keys) from a KB fabric's measured ones: density (kg/m2) = the
+    middle of its gsm / 1000; flexural rigidity B (N m) = w g c^3 with c the middle of its bending length (Peirce's
+    cantilever: c = (B / w g)^(1/3)). {} for a name the KB doesn't have, or a fabric without those numbers (then the
+    solver preset's PHYSICAL numbers are used). Joe, 2026-10-14: "use the real cloth values" (dress-tess found ZOZO ran
+    a 240 g/m2 cotton twill as 400 g/m2 denim and a 300 g/m2 knit as 180 g/m2 jersey 8x too limp)."""
+    e = (kb().get("fabrics") or {}).get(name) if isinstance(name, str) else None
+    if not isinstance(e, dict):
+        return {}
+    out = {}
+    if e.get("gsm"):
+        out["density"] = round(0.5 * (e["gsm"][0] + e["gsm"][1]) / 1000.0, 4)
+    if e.get("bending_length_mm") and "density" in out:
+        c = 0.5 * (e["bending_length_mm"][0] + e["bending_length_mm"][1]) / 1000.0
+        out["bend"] = float(f"{out['density'] * G * c ** 3:.3g}")
+    for k in ("stretch_n_m", "shear_n_m"):  # (none in the KB yet: the preset's membrane numbers stand)
+        if e.get(k) is not None:
+            out[k.split("_")[0]] = float(e[k])
+    return out
 
 
 def _merge(a: dict, b: dict) -> dict:

@@ -71,13 +71,13 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 - **fabric:** a fabric with physical numbers (weight, thickness, woven or knit, bending length) mapped to the solver's
   preset: cotton_shirting, oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit,
   french_terry. Different fabrics must bend differently: one preset on every garment reads generic.
-  **CHECK what ZOZO gets (dress-tess, 2026-10-14):** ZOZO reads only `cloth_job.PHYSICAL` (5 presets: shirting,
-  jersey, wool_coating, denim, linen), NOT the KB fabric's gsm / bending length. A KB fabric runs on its preset's
-  numbers: cotton_twill as denim (400 g/m2), french_terry and rib_knit as jersey (180 g/m2, B 1e-6), and even denim's
-  preset is softer than the KB's denim (B 3e-5 N m = bending length 19.7 mm; KB 22-30). Give the numbers yourself:
-  `"fabric": {"preset": "denim", "physical": {"density": 0.40, "bend": 6.9e-5}}` with B = w g c^3 (w kg/m2, c the
-  bending length in m: denim 400 g/m2 at 26 mm = 6.9e-5; a 300 g/m2 knit at 14 mm = 8e-6; a 240 g/m2 twill at 19 mm =
-  1.6e-5).
+  **ZOZO gets the fabric's real numbers** (2026-10-14, Joe: "use the real cloth values"): density from the KB's gsm,
+  flexural rigidity B = w g c^3 from its bending length c (`garment_design.kb_physical`; the construction stage prints
+  "ZOZO gets (kb): ..."). Until then ZOZO ran every fabric on 5 presets: cotton twill as 400 g/m2 denim, french terry as
+  180 g/m2 jersey 8x too limp. A fabric with no KB numbers (rib_knit has no bending length; a bare preset name like
+  "shirting") falls back to the preset and stage 3 WARNS. To change a fabric, add or correct its numbers in
+  garment_kb.json `fabrics`; a one-off garment can still give `"fabric": {"preset": ..., "physical": {"density",
+  "bend"}}`, which wins.
 - **details:** one choice per detail, or `{"type": choice, "options": {raw draft options}}`. Anything you leave out
   takes the kind's default, and the reply says so. `garment_reference(detail="collar")` lists the choices with what
   each is made of, its seams, fold lines, interfacing, dimensions and checks.
@@ -146,7 +146,7 @@ which stage makes each:
 
 | Tell | Made by | How here |
 |---|---|---|
-| Heavy, stiff denim: broad folds behind and in front of the knee, a stack at the hem | Fabric + sim | The fabric's real bending (above: B 6.9e-5); a hem that rests on the shoe's tongue (`collide`), length "floor". A longer cut to stack (1.05 m) went CORRUPT at 2 cm: not yet |
+| Heavy, stiff denim: broad folds behind and in front of the knee, a stack at the hem | Fabric + sim | denim at its KB numbers (395 g/m2, 26 mm: B 6.9e-5, automatic now); a hem that rests on the shoe's tongue (`collide`), length "floor". A longer cut to stack (1.05 m) went CORRUPT at 2 cm: not yet |
 | Fuller straight leg below the knee | Pattern | `block_options` `knee` / `hem` (half girths, m): Tess 0.20 / 0.19 |
 | Back yoke, scoop pockets, patch pockets, fly, band, belt loops | Construction (kind `jeans`) | automatic; patch pockets seated after the sim |
 | Contrast topstitching (double rows on the felled seams, fly J, pocket edges, hem) | Detail maps | `detail.thread` golden (#b8843a); the kind's `felled` seams draw two rows |
