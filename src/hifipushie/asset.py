@@ -1335,6 +1335,16 @@ def _head_share(rigged: dict, pn: str, bone: int) -> np.ndarray:
     return (np.asarray(W) * (np.asarray(J) == bone)).sum(1)
 
 
+BEND_RECIPE = ("Bend helpers (<joint>Bend: ForeArmBend at the elbow, LegBend at the knee, ArmBend at the shoulder, "
+               "UpLegBend at the hip) are leaf joints after the Mixamo set, children of the joint's PARENT, standing at the "
+               "joint. Drive each every frame after the animation: local rotation = slerp(identity, the driver joint's "
+               "local rotation from its rest, share) (share 0.5: half the elbow's bend). The blend zone of the hinge's "
+               "skin rides them, so a bent elbow / knee keeps its volume instead of collapsing to the chord. Undriven they "
+               "stay on the parent and the hinge's skin lags: they MUST be driven (Unreal: a Control Rig / AnimBP "
+               "'Copy Bone' with weight 0.5 or a pose driver; Unity: a Multi-Rotation Constraint at 0.5; Godot: copy "
+               "the slerped rotation in _process).")
+
+
 TWIST_RECIPE = {
     "what": "Twist bones are extra leaf joints after the Mixamo set (children of the Arm / ForeArm / UpLeg / Leg "
             "joints, named <segment>Twist<k>, k counted away from the body). Nothing animates them: left alone they "
@@ -1529,6 +1539,9 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                     "axis_local": [0.0, 1.0, 0.0], "axis_parent": [round(float(x), 6) for x in a]}}
                 ibm[i, :3, :3] = R.T
                 ibm[i, :3, 3] = -R.T @ head[i]
+            bd = b.get("bend")
+            if bd:  # a bend helper (rig.py): rests unrotated like the joint it follows; driven by BEND_RECIPE
+                nodes[-1]["extras"] = {"hifipushie_bend": {"driver": bd["driver"], "share": bd["share"]}}
         for i, b in enumerate(bones):
             if b["parent"] >= 0:
                 nodes[base + b["parent"]].setdefault("children", []).append(base + i)
@@ -2275,7 +2288,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}),
             **({"role": role, "budget": budget_gate} if rb is not None else {}), **({"skin": skin_recipe} if skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
-                        "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
+                        "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist") and not b.get("bend")),
                         "layers_seated": rigged.get("layers_seated", []),
                         "rest": "every base joint unrotated at its head, pose as modelled; twist joints rotated so "
                                 "local +Y runs along their segment",
@@ -2283,6 +2296,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                         "twist_axes": "Blender axes here (Z up, faces -Y); the GLB's node extras.hifipushie_twist "
                                       "carry the same per joint in glTF axes (axis_parent) and local (+Y)",
                         "twist_recipe": TWIST_RECIPE,
+                        "bend": rigmod.bend_table(rigged["bones"]), "bend_recipe": BEND_RECIPE,
                         "head": (f"rigid: {hf['how']}; falloff to the neck over {hf['band'] * 1e3:.0f} mm below; "
                                  "face-shape vertices, teeth, tongue and eyes Head 1.0") if hf else "not rigid"}}
                if rigged else {}),

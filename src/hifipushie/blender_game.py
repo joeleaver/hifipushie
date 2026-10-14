@@ -440,6 +440,20 @@ def drive_twist():
         tax = (tb.matrix_local.to_3x3().inverted() @ seg).normalized()
         tp.rotation_quaternion = Quaternion(tax, float(tw["share"]) * roll)
         n += abs(roll) > 1e-4
+    for bd in info.get("rig", {}).get("bend", []):  # bend helpers: slerp(identity, the joint's turn, share)
+        b, dname = bd["bone"], bd["driver"]
+        if b not in arm.pose.bones or dname not in arm.pose.bones:
+            continue
+        dp = arm.pose.bones[dname]
+        dp.rotation_mode = "QUATERNION"
+        Rd = arm.data.bones[dname].matrix_local.to_quaternion()
+        Rh = arm.data.bones[b].matrix_local.to_quaternion()
+        delta = Rd @ dp.rotation_quaternion @ Rd.inverted()  # the joint's turn in armature space
+        half = Quaternion().slerp(delta, float(bd["share"]))
+        hp_ = arm.pose.bones[b]
+        hp_.rotation_mode = "QUATERNION"
+        hp_.rotation_quaternion = Rh.inverted() @ half @ Rh
+        n += 1
     bpy.context.view_layer.update()
     return n
 
@@ -597,6 +611,18 @@ for pz in job.get("shots", []):
             if o.type == "MESH":
                 o.hide_render = True
     bpy.context.view_layer.update()
+    if pz.get("clay") is not None or "_saved_mats" in globals():  # clay: one grey material (the forms without the maps)
+        global _saved_mats
+        if "_saved_mats" not in globals():
+            _saved_mats = {ob.name: [ms.material for ms in ob.material_slots] for ob in meshes}
+            _clay = bpy.data.materials.new("_clay")
+            _clay.use_nodes = True
+            _clay.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.55, 0.55, 0.55, 1)
+            _clay.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.6
+            globals()["_clay_mat"] = _clay
+        for ob in meshes:
+            for k_, ms in enumerate(ob.material_slots):
+                ms.material = globals()["_clay_mat"] if pz.get("clay") else _saved_mats[ob.name][k_]
     fb = arm.pose.bones[P + pz.get("focus", "Spine2")]
     at = arm.matrix_world @ fb.head + Vector((0, 0, float(pz.get("lift", 0.0))))
     scene.render.resolution_x, scene.render.resolution_y = int(pz.get("w", 640)), int(pz.get("h", 640))

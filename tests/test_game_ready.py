@@ -228,6 +228,26 @@ def test_budget_gate_maps_parts_and_flags_over():
     assert not any(ln.startswith("WARNING budget: head") for ln in g["lines"])
 
 
+def test_bend_helper_takes_the_hinge_overlap_and_is_driven_by_half():
+    from hifipushie import rig
+    P = rig.PREFIX
+    rb = [{"name": P + "Hips", "head": np.zeros(3), "parent": -1, "end": False},
+          {"name": P + "LeftUpLeg", "head": np.array([0.1, 0, 0]), "parent": 0, "end": False},
+          {"name": P + "LeftLeg", "head": np.array([0.1, 0, -0.4]), "parent": 1, "end": False},
+          {"name": P + "LeftFoot", "head": np.array([0.1, 0, -0.8]), "parent": 2, "end": False}]
+    rb = rig._add_bend(rb, ["Leg"])
+    assert rb[-1]["name"] == P + "LeftLegBend" and rb[-1]["parent"] == 1
+    J = np.array([[1, 2, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]])
+    W = np.array([[0.6, 0.4, 0, 0], [1.0, 0, 0, 0], [1.0, 0, 0, 0]])
+    J2, W2 = rig._share_bend(rb, J, W)
+    assert np.allclose(W2.sum(1), 1.0)
+    h = len(rb) - 1
+    wh = np.where(J2 == h, W2, 0).sum(1)
+    assert abs(wh[0] - 0.8) < 1e-9 and wh[1] == 0 and wh[2] == 0  # 2 x min(0.6, 0.4)
+    t = rig.drive_twist(rb, {P + "LeftLeg": ([1, 0, 0], 90.0)})
+    assert t[P + "LeftLegBend"] == ([1, 0, 0], 45.0)
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

@@ -38,7 +38,7 @@ def _skin(**opts):
     key = json.dumps(opts, sort_keys=True)
     if key not in _CACHE:
         spec = copy.deepcopy(m["spec"])
-        spec.setdefault("rig", {}).update(opts)
+        spec.setdefault("rig", {}).update({"bend": False, **opts})  # (twist alone: the bend helpers are tested in test_game_ready)
         bones = rig.rig_bones(spec)
         J, W = rig.skin_mesh(spec, bones, m["V"], m["F"], m["part"], m["names"])
         _CACHE[key] = (spec, bones, J, W)

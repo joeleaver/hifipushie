@@ -307,9 +307,12 @@ def audit(bones: list[dict], V: np.ndarray, F: np.ndarray, J: np.ndarray, W: np.
     V = np.asarray(V, np.float64)
     keep = np.ones(len(V), bool) if skip is None else ~np.asarray(skip, bool)
     fam = np.arange(n)
+    names_ = [b["name"] for b in bones]
     for i, b in enumerate(bones):
         if b.get("twist"):
             fam[i] = b["parent"]
+        if b.get("bend") and b["bend"]["driver"] in names_:  # (a bend helper counts as the joint it follows)
+            fam[i] = names_.index(b["bend"]["driver"])
     dense = np.zeros((len(V), n))
     np.add.at(dense, (np.repeat(np.arange(len(V)), J.shape[1]), fam[J].ravel()), W.ravel())
     own, girth, seg, (ids, D0) = owners(bones, V, F, flesh)
