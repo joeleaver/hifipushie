@@ -2107,9 +2107,16 @@ Goal: show the checklist (hair_guide.md "What makes hair read as hair") carries 
 the hair READER. Subjects: a short men's cut from a held-out photo set, then two family heads. Per-person / per-picture
 notes are NEVER here (held-out set: /mnt/data/hifipushie/hair_garrett/notes_private.md; family: workspace/private_notes/).
 ### STATE / NEXT / RESTART
-STATE (2026-10-14, after the man's 4 rounds; WAITING for the coordinator's go before the family heads):
-`hair_read.py` + MCP `hair_from_reference` (read, START, `compare=` ours | picture, `colour_step`) + tests
-(test_hair_read 13, test_hair_loose +1: lift per region; test_toolsets updated); `groom.loose.lift` may be per region.
+STATE (2026-10-14, END OF THE BRIEF: the man 4 rounds + a rule-15 step (r5), two long-haired heads 4 rounds each;
+sheets sent): `hair_read.py` + MCP `hair_from_reference` (read incl. long hair: bottom / waviness; START for a short cut
+and for loose long hair; `compare=` ours | picture; `colour_step`: grey hair per channel on the modes, other hair in Lab
+on the mean) + tests (test_hair_read 17, test_hair_loose +1: lift per region; test_toolsets updated); `groom.loose.lift`
+may be per region; loose locks at the hairline get the hairline ramp (hair_strands.EDGE_*). Regression accepted "hg2".
+Checklist rules 14, 15 added; rule 4's knob note: loose hair has none that reaches the halo.
+NEXT (proposed): (1) halo / fly-away words for LOOSE hair (rule 4 / 7: the knob that is missing on long heads); (2) a
+one-side ear tuck and curtain bangs from a centre part as groom.loose words; (3) the nape fade (the hairline ramp running
+down over 1-2 cm) on the man's crop; (4) re-seat the man's groom on projskin's head once its skin stack is on main.
+Earlier STATE (after the man's 4 rounds):
 Checklist rules 14 (short cut: length and lay by region) and 15 (fine strands at the picture's scale) added.
 Sheets workspace/human_renders/hg_00 (reader start) .. hg_04 (round 4). Regression run "hg1": all eleven 0.00 (same).
 Round 4 by the reader (ours | picture): stand-off sides -0.4, back +2.7, nape +1.8, top +4.8, front -5.3 mm; mean L*
@@ -2164,6 +2171,27 @@ mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), cmp.py <model>
   scalp-layer band under it; the nape ends in a ledge, not a fade (the nape's density needs the same ramp DOWNWARD,
   over ~1-2 cm: not built). Regression hg2: riff_a5 (half up's loose part) MOVED 1.96: the same style, its strands
   redrawn by the hairline ramp (no new fault seen; not accepted: the coordinator's call).
+### Two long-haired heads, 4 rounds each (general findings; per-person notes are private)
+- The reader on phone pictures in a room: the backdrop must be read LOCALLY (a warm wall, a dark couch, a black
+  shirt beside dark hair were counted as hair with one global backdrop colour); hair hanging over the cheeks meets
+  skin too and is not a hairline (kept only above the sideburns in front of the ears); a frame that cuts the hair off
+  makes its length a LOWER bound (INFERRED; both heads fall 10-15 cm past the shoulders).
+- GREY vs LIT by chroma: the light pixels of grey hair are LESS chromatic than the dark ones (0.73 on the man), the lit
+  side of brown / black hair MORE (1.4-1.55 on three heads). Without that rule a 45-year-old brunette got grey strands.
+  With no grey, `seen` = the lit mode.
+- COLOUR STEP for hair without grey must be in Lab (lightness, chroma, a small hue turn) on the MEAN colour: per linear
+  channel, the step turned a brown purple and a near-black green (round 2 lost to it): `seen` derives `lit` by
+  dividing the saturation by eevee_sat, so a small hue change in `seen` is a big one in the strands. Lit modes are no
+  good either when ours has 1 % lit pixels and the picture 30 %. One Lab step: L*/C/h 20.0/16.5/51 -> 26.0/9.5/34 (picture
+  23.0/8.2/40) and 5.4/10.8 -> 12.6/4.2 (11.0/4.5).
+- Long loose hair from the guide's recipes (long straight; loose waves) with the reader's level / body: the outline
+  matched within 1 mm on one head, +6.5 mm at the sides on the other (body 6 mm is the floor).
+- MISSING KNOB (rule 4 / 7 for loose hair): `strands.halo` is quartered on free locks and loose locks are free, so
+  halo 1.0 + flyaway 0.1 left halo at 0.04-0.08 vs the pictures' 0.22-0.25 and wisps at 2.5-3.3 vs 6.8-16 per 10 cm.
+  Loose hair needs its own halo / fly-away words (as tie_hair's `wisps.halo`), and a one-side ear tuck and curtain
+  bangs from a centre part (neither is a groom.loose word yet).
+- GPU: one 3072 px supersampled EEVEE render of long hair lost the amdgpu context ("hard recovery"); family renders
+  stay at 2048 px (1024 x2).
 - Short cuts: the STRAND groom owns the shape and the look (it is what the reader and the sheets judge); the game
   export of a short cut stays the guide's baked cap + sparse cards, baked FROM the strands (export_hair's SHORT_TIERS):
   one source of truth, the cap / cards are its LOD, not a second groom.
