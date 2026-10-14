@@ -1036,7 +1036,7 @@ def start(r: dict, spec: dict) -> dict:
             look["highlights"] = put("look.highlights", 0.0, "light ribbons on grey hair are the grey strands (not sun streaks)"
                                      if ga > 0.15 else "default")
         if ga > 0.15 or (c.get("dark_L") or 0) > 40:
-            look["scalp_tint"] = put("look.scalp_tint", 0.5, "grey / fair hair: the guide's 0.3-0.5")
+            look["scalp_tint"] = put("look.scalp_tint", 0.15, "grey / fair hair: at 0.5 the receded temple corners of a grey crop read as dark patches (hair-heads r9)")
     st = copy.deepcopy(CROP["strands"]) if short else (st_long if long_ else {})
     h_ = s.get("halo_all")
     if h_ is not None:

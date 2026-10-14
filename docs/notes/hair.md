@@ -2186,6 +2186,15 @@ hair_garrett/styles/r8*.json; per-picture description in the private notes):
   top across, lay 0.6, no fringe) gave the right kind of front; r8d lowered the front points ~1 cm (temples 1.3 cm).
 - Left on Garrett: the sweep is diagonal where his edge is a rounder arc; the top reads browner than his grey top;
   nape (next); the halo.
+Garrett round 9 (sheets human_renders/hg_09_garrett.jpg + hg_09_garrett_front_crops.jpg; styles/r9*.json):
+- front edge an even rounded arc: the hairline's front points lowered 0.5 cm at the centre and 1.2 cm over the temple
+  corners (the M notches closed), the front combed mostly back with a little across ([-0.3, 0.05, 0.35]); a fully
+  across comb (r8) fell diagonally low on one side; a fully up-back comb (r9c) brought the palisade back.
+- shorter and closer: top 4 / sides 2 / back 2.2 / nape 1.2 cm, lift 1-4 mm, width 1.2, clump 0.1.
+- the dark temple patches (3/4, profile) were the scalp TINT on the receded corners (isolated: look.scalp_tint 0.15
+  removes them; the reader now sets 0.15 on grey hair, was 0.5).
+- grey top: groom.grey per region (top / front 0.3) + a less chromatic `seen` (x0.55 chroma, as floats).
+Left: his profile front edge curls a little FORWARD (ours stands up in tufts); the nape; the halo.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)

@@ -304,7 +304,8 @@ the guides. Worked on Garrett (624 thin hand locks, a short combed cut going gre
    `look.cycles_fit: [1, 1]` turns it off). Mid and light colours land within ~5-40% of `look.lit`; near-black
    can't go under the highlights' own floor. Judge colour on the Cycles look, shape on the EEVEE one.
 6. Dark slits between layers of locks are the scalp's tint in shadow (`look.scalp_tint`, default 0.85, made for
-   dark hair): on grey or fair hair lower it (0.3-0.5).
+   dark hair): on grey or fair hair lower it (0.3-0.5; a grey crop with receded temple corners 0.15: at 0.5 the bare
+   corners read as dark patches, hair-heads).
 
 ## Short cuts as a baked cap + sparse cards (crops, short back and sides)
 
