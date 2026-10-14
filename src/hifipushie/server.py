@@ -358,7 +358,11 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.m
                 "hair_export": "hair_export.md", "hair_tools": "hair_tools.md", "hair_locks_detail": "hair_locks_detail.md",
                 "skin_layers": "skin_layers.md", "skin_tools": "skin_tools.md",
                 "blockin_solve": "blockin_solve.md", "blockin_steps": "blockin_steps.md",
-                "blockin_features": "blockin_features.md", "blockin_tools": "blockin_tools.md"}
+                "blockin_features": "blockin_features.md", "blockin_tools": "blockin_tools.md",
+                "spec": "guide_spec.md", "looking": "guide_looking.md", "blockout": "guide_blockout.md",
+                "strokes": "guide_blockout.md", "parts": "guide_blockout.md", "props": "guide_props.md",
+                "style": "guide_style.md", "story": "guide_story.md", "paint": "guide_paint.md",
+                "game_export": "guide_export.md", "rigging": "guide_rigging.md"}
 
 
 def _tool_section(name: str) -> str:
