@@ -6178,12 +6178,47 @@ def _draped_ends(g: dict, Bp: dict, M: dict) -> np.ndarray:
 UNDER_SLIVER = 0.01  # a collider face thinner than this share of its longest edge squared (x2 area) is left out
 
 
-def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
+def knee_bend(V: np.ndarray, J: dict, deg: float, band: float = 0.05) -> np.ndarray:
+    """V with each lower leg (and foot) turned `deg` about its knee's left-right axis, the foot swinging BACK (a leg
+    curl), the turn blended over +-band across the knee's horizontal plane. Each side's own half (x sign) only."""
+    out = V.copy()
+    th = math.radians(deg)
+    for side, sg in (("L", 1.0), ("R", -1.0)):
+        if f"knee.{side}" not in J:
+            continue
+        kn = np.asarray(J[f"knee.{side}"], float)
+        sel = (sg * V[:, 0] > 0.02) & (V[:, 2] < kn[2] + band)
+        w = np.clip((kn[2] + band - V[sel, 2]) / (2 * band), 0, 1)
+        w = w * w * (3 - 2 * w)
+        a = th * w
+        dy, dz = V[sel, 1] - kn[1], V[sel, 2] - kn[2]
+        out[sel, 1] = kn[1] + dy * np.cos(a) - dz * np.sin(a)
+        out[sel, 2] = kn[2] + dy * np.sin(a) + dz * np.cos(a)
+    return out
+
+
+def _move_poses(body: "Body", move) -> list:
+    """Garment key "move" (dress-tess, Joe's "one movement settle"): body poses the collider passes through AFTER it
+    is back in its pose and before gravity settles the cloth, so the garment takes the creases a moving body leaves
+    (worn-in memory folds). {"knees": deg}: a leg curl to deg and back, in `steps` poses each way."""
+    if not move:
+        return []
+    out = []
+    kd = float(move.get("knees", 0.0)) if isinstance(move, dict) else 0.0
+    n = int(move.get("steps", 3)) if isinstance(move, dict) else 3
+    if kd:
+        ups = [knee_bend(body.V, body.J, kd * (k + 1) / n) for k in range(n)]
+        out += ups + ups[-2::-1] + [body.V]
+    return out
+
+
+def _collider(body: "Body", under: dict | None, smooth: bool, move=None) -> dict:
     """The sim's collider arrays (cloth_job: bodyV / bodyT, and for a smooth placement bodyV0 + bodyPoses: straight
     arms bending back): the body, and with it the garment worn under this one, one mesh. The under garment rides the
     body through the poses by its nearest body vertices' moves (a collider only: at the last pose it is exactly its
     own finished shape)."""
     poses = [body.straight_arms(frac=f)[0].V for f in (1.0, 0.75, 0.5, 0.25)] if smooth else []
+    extra = _move_poses(body, move) if smooth else []  # (body vertex arrays, after the final pose)
     V, T = body.V, body.T
     if getattr(body, "worn", None):  # (garment key "collide": the model's own parts, as an under garment is)
         wv = dict(body.worn)
@@ -6212,8 +6247,11 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
                 w /= w.sum(1, keepdims=True)
                 carry_ = lambda P: U + np.einsum("nk,nkd->nd", w, (P - V)[i])
                 out.update(bodyV0=np.r_[poses[0], carry_(poses[0])],
-                           bodyPoses=np.stack([np.r_[P, carry_(P)] for P in poses[1:]] + [out["bodyV"]]))
+                           bodyPoses=np.stack([np.r_[P, carry_(P)] for P in poses[1:]] + [out["bodyV"]]
+                                              + [np.r_[P, carry_(P)] for P in extra]))
             return out
+        if extra:
+            raise ClothError('garment key "move" with worn parts AND a garment under it is not built yet')
         # with an under garment too: the worn parts join the body first (they ride it)
         V, T = out_["bodyV"], out_["bodyT"]
         poses = [np.r_[P, np.asarray(wv["V"], float)] for P in poses]
@@ -6221,7 +6259,7 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
     if under is None:
         out = {"bodyV": V, "bodyT": T}
         if smooth:
-            out.update(bodyV0=poses[0], bodyPoses=np.stack(poses[1:] + [V]))
+            out.update(bodyV0=poses[0], bodyPoses=np.stack(poses[1:] + [V] + extra))
         return out
     U = np.asarray(under["V"], float)
     d, i = cKDTree(V).query(U, k=4)
@@ -6252,7 +6290,8 @@ def _collider(body: "Body", under: dict | None, smooth: bool) -> dict:
     out = {"bodyV": np.r_[V, U], "bodyT": np.r_[T, FU + len(V)]}
     if smooth:
         out.update(bodyV0=np.r_[poses[0], carry(poses[0])],
-                   bodyPoses=np.stack([np.r_[P, carry(P)] for P in poses[1:]] + [out["bodyV"]]))
+                   bodyPoses=np.stack([np.r_[P, carry(P)] for P in poses[1:]] + [out["bodyV"]]
+                                      + [np.r_[P, carry(P)] for P in extra]))
     return out
 
 
@@ -6386,7 +6425,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
     if smooth and under is not None:
         # placed on the PADDED body; the sim's collider is the body + the under garment's own mesh, and where that
         # stands proud of the pad (a pressed sleeve's fold at the elbow) draped cloth started on it
-        c0_ = _collider(body_real, under, smooth)
+        c0_ = _collider(body_real, under, smooth, move=g.get("move"))
         free_ = ~np.isin(Ms["piece"], [Ms["names"].index(nm) for nm in made_pieces(Ms, interfacing(Bp, Ms)) if nm in Ms["names"]])
         free_[ends_] = True  # (a notched collar's draped ends are solved: cleared like the draped cloth)
         Xs, n_ex = _clear_exact(Xs, Ms["F"], free_, c0_.get("bodyV0", c0_["bodyV"]), c0_["bodyT"],
@@ -6500,7 +6539,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         keyed.append(["result", hashlib.sha1(Path(result).read_bytes()).hexdigest()])
     key = hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:16]
     cache = _cache_dir() / f"{key}.npz"
-    coll = _collider(body_real, under, smooth)
+    coll = _collider(body_real, under, smooth, move=g.get("move"))
     Bp.pop("_worn_body", None)  # (a Body: not part of the result)
     res = {"pieces": Bp, "mesh": M, "X0": X0, "body": body_real, "collider": body, "under": under,
            "fabric": fab, "key": key, "refined": refine,
@@ -6542,9 +6581,10 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
                "made": made_pieces(Ms, stiff_s),
                **({"declared": declared_pieces(Bp, Ms["names"])} if declared_pieces(Bp, Ms["names"]) else {}),
                **{k: g[k] for k in ("sew_force", "sew_frames", "worn_frames", "settle_frames", "self_collision_sew",
-                                    "hang_frames", "hang_sew_force", "hang_air", "lower_frames") if k in g}}
+                                    "hang_frames", "hang_sew_force", "hang_air", "lower_frames", "pose_frames") if k in g},
+               **({"pose_frames": int(g.get("pose_frames", 72))} if g.get("move") else {})}
         if settle:  # nothing assembled in stages: the made pieces are held, the loose cloth sews onto them
-            cfg.update(carry=True, sew_frames=int(g.get("sew_frames", 60)), pose_frames=int(g.get("pose_frames", 30)),
+            cfg.update(carry=True, sew_frames=int(g.get("sew_frames", 60)), pose_frames=int(g.get("pose_frames", 72 if g.get("move") else 30)),
                        frames=int(frames or g.get("frames", 48)), settle_frames=int(g.get("settle_frames", 12)))
         elif g.get("assemble", True):
             cfg["assemble"] = _assembly(Bp, Ms, body)
@@ -7916,7 +7956,7 @@ GARMENT_KEYS = {"pattern", "pieces", "seams", "stitches", "drop", "alter", "fabr
                 "state", "resolution", "coarse", "quality", "frames", "self_collision", "self_collision_sew", "assemble",
                 "sew_force", "sew_frames", "worn_frames", "settle_frames", "hang_frames", "hang_sew_force", "hang_air", "refine_frames",
                 "refine_ease", "cleanup", "detail", "sculpt", "note", "backend", "placement", "lower_arms", "lower_frames", "zozo", "_trace",
-                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over"}
+                "design", "folds", "generate", "method", "made", "fine_settle", "tacks", "over", "layer_gap", "support", "export_hidden", "hidden_margin", "under_cap", "closures", "trims", "tie", "collide", "construct", "made_folds", "worn_top", "press_lay", "worn_envelope", "collar_spread", "open_gap", "open_lap", "mirror_mesh", "fine_relax", "under_fall", "collar_ends", "pad_over", "move", "pose_frames"}
 WRAPS = ("torso", "arm.L", "arm.R", "leg.L", "leg.R", "neck", "head", "seam", "flat")
 
 

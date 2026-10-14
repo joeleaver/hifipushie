@@ -136,6 +136,7 @@ Tailoring numbers the knowledge base carries (all checked in stage 2 where the p
 | `interfaced` | garment | Whole pieces or bands: `{"piece": "front.L", "near": ["break", "lapelPoint"], "within": 0.1}` is a jacket's chest canvas |
 | `zozo.stitch_stiffness` | garment | 1 default. 8 closes trouser / skirt seams that ZOZO leaves 3-15 mm open, at ~3x the time. It does NOT fix seams that start far apart (a jacket's pit seams got worse at 3) |
 | `fine_settle` | garment | false skips the fine settle (a garment whose fine start fails the start check, e.g. trousers over a shirt) |
+| `move` | garment | `{"knees": 40, "steps": 3}`: after the pose stage's arms the body curls each lower leg back 40 deg and returns before gravity (worn-in folds behind / in front of the knee). `pose_frames` defaults to 72 with it. Not with worn parts AND an under garment yet |
 
 **Stale options.** `design_garment` merges the sheet key by key, so an option you set rounds ago is still there
 (`block_options.darts: true` did nothing on a hip-length bodice, then made fish-eye darts under a princess line once
@@ -448,7 +449,10 @@ come last. The reference sections below cover each part.
 - A Garrett-sized jacket over a shirt at 2 cm: ~6-13 min on a rented 4090, ~30-50 min on this laptop.
 - **Where sims run, and what they cost (2026-10-14).** oxidegen bundle jobs: `where: "local"` (bundle_client `run
   --local --gpu --via-storage`) runs on the department's own GPU (NICO-TOP, a laptop 3070 Ti) for $0, about 5x slower
-  than a rented 4090 (~4.5 s a frame on 2800-vertex jeans: give it a 20 min timeout, not 8). Use it first; send heavy
+  than a rented 4090 (~4.5 s a frame on 2800-vertex jeans: a 150-frame trousers sim ~12 min). Give local jobs a long
+  limit (`timeout_minutes` ~30; up to 360, free; `stall_minutes`, default 10, still stops a hung job); rented ones 8.
+  A job that died at once with an empty log on NICO-TOP before oxidegen v143 was a leftover solver holding the GPU
+  (fixed); failed local jobs now return their logs in the batch's outputs. Use it first; send heavy
   sims (a coat over a sweater) or a hurry to the rented fleet (~$0.03-0.08 a 2 cm garment). Never resubmit a job
   that went up and came back without a result (a crawling sim billed twice once): find why first. A job "provisioning"
   is queued behind another client's batch (its shown cost is not billed); cancel it if you need the box.

@@ -2609,3 +2609,16 @@ MISSING / WRONG (fixed in code, or written into the guide):
   dead end, j2t, j4, j5).
 - Sweater s7: s6 + over jeans + fabric {jersey, physical 0.30 / 8e-6}; pre-sim stages pass (hem band closing seam
   starts 30 cm open: WARN, as tess2's). Sim on NICO-TOP.
+- (14) Joe: "use the real cloth values": ZOZO now gets the KB fabric's numbers by default (commit 5cccb4f, alone for
+  merging): density = gsm / 1000, B = w g c^3 (garment_design.kb_physical via cloth.fabric); presets only as a
+  fallback with a stage-3 WARN; test test_cloth::test_a_kb_fabrics_real_numbers_reach_the_job.
+- BODY SWITCH: Joe picked tess_n1 (GNM-native head). dt_tess now has tess_n1's `base` (v22, to_n1.py). The body is
+  NOT the same below the neck: neck 297 -> 330 mm round, neckHeight 40 -> 45, shoulders 350 -> 336, chest 847 -> 838,
+  HPS 24 mm lower and 27 mm further forward (1.426 -> 1.402 m). Every garment re-drafts from it.
+- j6 (= j5, fabric "denim" from the KB: 395 g/m2, B 6.81e-5) on n1: fits, 0 crossings, folds 3.3 mm.
+- MOVEMENT SETTLE (Joe: one try): garment key `move` {"knees": 40, "steps": 3} (cloth.knee_bend / _move_poses: after
+  the pose stage's arms the collider curls each lower leg back 40 deg and returns, then gravity). dj6m: fits, 0
+  crossings, folds 3.3 -> 3.4 mm, NO memory folds to see (out/move_cmp.png). Why: the cloth rests on its flat pattern
+  and is elastic (no plasticity in our ZOZO jobs): it springs back once the knee straightens; and in method "settle"
+  the pose stage was 30 frames (fixed: 72 with a move). Worn-in folds need plastic set (ZOZO has a plastic_state) or
+  authored folds (detail.folds / a Blender hand pass). Test test_cloth::test_a_knee_move_curls_the_shins_and_comes_back.

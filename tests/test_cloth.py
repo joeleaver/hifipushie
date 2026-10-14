@@ -183,6 +183,24 @@ def test_a_kb_fabrics_real_numbers_reach_the_job(tmp=None):
     assert own["physical"]["bend"] == 1e-4 and abs(own["physical"]["density"] - 0.395) < 1e-9
 
 
+def test_a_knee_move_curls_the_shins_and_comes_back():
+    """Garment key "move" {"knees": deg}: after the arms are back the collider curls each lower leg back about its
+    knee and returns (worn-in folds), the thigh untouched, the last pose the body itself."""
+    import types
+    z = np.linspace(0.0, 0.9, 46)
+    V = np.r_[np.c_[np.full_like(z, 0.1), np.zeros_like(z), z], np.c_[np.full_like(z, -0.1), np.zeros_like(z), z]]
+    J = {"knee.L": np.array([0.1, 0.0, 0.5]), "knee.R": np.array([-0.1, 0.0, 0.5])}
+    K = cloth.knee_bend(V, J, 40.0)
+    foot = np.argmin(np.abs(V[:, 2]) + (V[:, 0] < 0))  # the left foot
+    d = K[foot] - J["knee.L"]
+    assert abs(np.degrees(np.arctan2(d[1], -d[2])) - 40.0) < 0.5  # swung 40 deg BACK (+y)
+    assert np.allclose(K[V[:, 2] > 0.56], V[V[:, 2] > 0.56])  # above the knee's band nothing moves
+    body = types.SimpleNamespace(V=V, J=J)
+    P = cloth._move_poses(body, {"knees": 40, "steps": 3})
+    assert len(P) == 6 and np.allclose(P[-1], V) and np.allclose(P[2], K)
+    assert cloth._move_poses(body, None) == []
+
+
 def test_zozo_backend_keys():
     """A ZOZO result is keyed on its runner (cloth_zozo.py), never on blender_cloth.py, and not on where it ran: a
     pod's result is found locally (the tooling card: a 27-min result lost to an edit of the Blender script)."""
