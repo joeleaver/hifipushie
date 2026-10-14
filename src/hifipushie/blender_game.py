@@ -53,6 +53,18 @@ if not _jp.exists() and Path(job["glb"]).stem.split("_LOD")[0] != Path(job["glb"
     _jp = Path(job["glb"]).parent / (Path(job["glb"]).stem.split("_LOD")[0] + ".json")
 info = json.load(open(_jp)) if _jp.exists() else {"parts": {}, "glb": job["glb"]}
 meshes = [o for o in ours if o.type == "MESH"]
+if job.get("mush"):  # a delta mush (Blender's Corrective Smooth) after the skinning: what a corrective layer can give
+    for o in meshes:
+        if any(m.type == "ARMATURE" for m in o.modifiers) and len(o.data.vertices) > 2000:
+            cs = o.modifiers.new("mush", "CORRECTIVE_SMOOTH")
+            cs.iterations, cs.factor = int(job["mush"]) if int(job["mush"]) > 1 else 12, 0.5
+            cs.smooth_type, cs.rest_source = "LENGTH_WEIGHTED", "ORCO"
+            cs.use_pin_boundary = True
+if job.get("dqs"):  # dual-quaternion skinning (Blender's "Preserve Volume"): what a volume-keeping skinning looks like
+    for o in meshes:
+        for m in o.modifiers:
+            if m.type == "ARMATURE":
+                m.use_deform_preserve_volume = True
 
 # ---- game-like EEVEE: no ray tracing, shadow maps, a plain world, two suns
 scene.render.engine = "BLENDER_EEVEE" if "BLENDER_EEVEE" in [e.identifier for e in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items] else "BLENDER_EEVEE_NEXT"
@@ -311,7 +323,7 @@ def align(bn):
     return C
 
 
-REST_POSED = ("Shoulder", "Arm", "Hand", "Leg", "Foot", "Toe", "Hips", "Spine")  # limbs (A-pose vs T-pose) and the trunk below the neck (its lean is the clip's); the neck and head keep our posture (aligned, our forward neck tipped the head back)
+REST_POSED = ("Shoulder", "Arm", "Hand", "Leg", "Hips", "Spine")  # limbs (A-pose vs T-pose) and the trunk below the neck (its lean is the clip's); the neck and head keep our posture (aligned, our forward neck tipped the head back); feet and toes keep theirs: both rests stand flat, and our ankle -> toe joint line is steeper than a mannequin's ankle -> ball (aligned, the foot stood toe-down)
 
 
 def rot(M):
@@ -588,7 +600,16 @@ for pz in job.get("shots", []):
         worst = sorted(de.items(), key=lambda kv: -kv[1])[:6]
         print(f"@@direction {pz['name']}: max {worst[0][1]} deg; worst {worst}; {body_}", flush=True)
     for bn, t in (pz.get("turns") or {}).items():
-        turn(P + bn if not bn.startswith(P) else bn, t[0], float(t[1]))
+        full = P + bn if not bn.startswith(P) else bn
+        par = arm.pose.bones[full].parent
+        a0 = math.degrees(rest_dir(arm, full).angle(rest_dir(arm, par.name))) if par is not None else 0.0
+        ax_ = t[0]
+        if isinstance(ax_, str) and ax_ == "roll":  # about the segment this joint ends (a hand: the forearm), posed
+            ax_ = (arm.matrix_world.to_3x3().inverted() @ pose_dir(arm, par.name)) if par is not None else (0, 0, 1)
+        turn(full, ax_, float(t[1]))
+        if par is not None:  # the joint's angle (parent direction vs its own) at rest and as turned: what was asked
+            a1 = math.degrees(pose_dir(arm, full).angle(pose_dir(arm, par.name)))
+            print(f"@@turn {bn}: asked {t[1]} deg about {t[0]}; joint angle {a0:.1f} -> {a1:.1f} deg", flush=True)
     if pz.get("hips_drop"):
         pb = arm.pose.bones[P + "Hips"]
         M = pb.matrix.copy()
