@@ -15,13 +15,17 @@ Why the tools are built this way (practice, sources, engines, what went wrong): 
    a whorl is the COMB DIRECTION of strands from roots on both sides, never an absence of roots. Locks / clumps steer
    direction. Knob: `strands.even` (0..0.95: that share of the strands grows from the even sampling, shaped by the
    nearest lock guides; 0.7 on a long head closed the crown gaps and the "bald stripe" the lock-rooted layout left).
+   The even layer is a COVER layer, trimmed to ~7 cm: full-length interpolated children copy their guides' shapes
+   from wherever they root, so those beside the face fell over it as a veil. 0.5 (+ count 260k, locks 1 cm apart)
+   is the reader's default for loose long hair.
    Measure: the MAGENTA COVERAGE check (spikes/hair_garrett/hcover.py: the scalp painted magenta, the share of it
-   showing inside the hair region from above / behind / 3-4; target ~0 outside the part line).
+   showing inside the hair region from above / behind / 3-4; target ~0 outside the part line). A GATE: no head ships
+   with more than ~1 % from above (t60) or any from behind; run it beside the regression sheet.
 2. **Hair ARCS UP from the scalp, then falls; flat-from-the-root is a style choice (slicked, wet, tight), never the
    default.** Every strand leaves the scalp at an angle, rises by its root lift + the hair under it, turns and falls;
    the top's volume comes from that arc and it also covers the scalp. Knob (loose hair): `groom.loose.lift` from the
    measured stand-off (~1-1.5 cm on long hair), `out` 0.2-0.25 on the front / top, `stiff` ~0.35; tied hair: `volume`
-   (rules 1-2).
+   (rules 1-2). The reader's loose start sets `out` by region from the measured stand-off (0.25 x mm / 10 on top).
 
 ## Step 0: DESCRIBE THE STYLE IN WORDS from every photo before grooming (hair-heads; Joe on three heads: "a completely different hairstyle")
 Before any knob, write down from the front, three-quarter and profile pictures, then the same for OUR render, then the

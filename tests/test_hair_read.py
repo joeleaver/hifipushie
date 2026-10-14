@@ -193,6 +193,10 @@ def test_long_hair_gets_a_loose_long_start_and_no_grey_when_young():
     lo = h["groom"]["loose"]
     assert abs(lo["level"] - (-0.24)) < 1e-6 and lo["length"] > 0.25
     assert h["strands"]["wave"] > 0.008  # wavy lengths
+    # the two principles: even roots, and the lengths arc up out of the scalp (most on top, none at the nape)
+    assert h["strands"]["even"] == 0.5
+    out = lo["out"]
+    assert out["top"] > out["sides"] > 0 and out["nape"] == 0.0 and out["top"] <= 0.4
     assert h["look"]["grey_amount"] == 0.0 and h["groom"]["grey"] == {"temples": 0.0, "sideburns": 0.0}
     spec = {"hair": {"style": h["style"], "groom": h["groom"], "strands": h["strands"], "look": h["look"]}}
     hair.validate(spec)
