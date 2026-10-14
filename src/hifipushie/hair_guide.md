@@ -13,14 +13,18 @@ Why the tools are built this way (practice, sources, engines, what went wrong): 
 1. **Hair is distributed EVENLY over the growing area; parts are from styling, not distribution.** Roots come from one
    even sampling of the hair-bearing scalp (inside the hairline, its only ramp the hairline's own edge); a part, a sweep,
    a whorl is the COMB DIRECTION of strands from roots on both sides, never an absence of roots. Locks / clumps steer
-   direction. Knob: `strands.even` (0..0.95: that share of the strands grows from the even sampling, shaped by the
-   nearest lock guides; 0.7 on a long head closed the crown gaps and the "bald stripe" the lock-rooted layout left).
-   The even layer is a COVER layer, trimmed to ~7 cm: full-length interpolated children copy their guides' shapes
-   from wherever they root, so those beside the face fell over it as a veil. 0.5 (+ count 260k, locks 1 cm apart)
-   is the reader's default for loose long hair.
+   direction. Knob: `strands.even` 1 (the reader's default for loose long hair): EVERY strand is a child
+   interpolated at its even root from the nearest lock GUIDES (the locks are guides, not root owners: march them dense,
+   `groom.loose.spacing` 0.004), each bank of the part its own object (the left / right guides only; Blender's "Part by
+   Mesh Islands" alone still averaged guides across the part: children on the line fell down the forehead as a veil).
+   The guide field must be SMOOTH: a child averages ~3 guides, so a guide combed the other way among its neighbours
+   (`part_soft.cross`) makes children down the middle (keep cross 0 with even 1), and guide wave phases come from a
+   smooth field of the root (random phases cancelled into straight hair). Interpolated children get Blender's Clump.
+   Below 1, `even` is a share: a cover layer trimmed to 7 cm under the lock strands (the older workaround).
    Measure: the MAGENTA COVERAGE check (spikes/hair_garrett/hcover.py: the scalp painted magenta, the share of it
    showing inside the hair region from above / behind / 3-4; target ~0 outside the part line). A GATE: no head ships
-   with more than ~1 % from above (t60) or any from behind; run it beside the regression sheet.
+   with magenta OFF the part line from above (t60; a clean part line alone is ~1.2 % on a long head) or any from
+   behind; run it beside the regression sheet. hcover finds magenta by hue (seen through dark hair it is dim purple).
 2. **Hair ARCS UP from the scalp, then falls; flat-from-the-root is a style choice (slicked, wet, tight), never the
    default.** Every strand leaves the scalp at an angle, rises by its root lift + the hair under it, turns and falls;
    the top's volume comes from that arc and it also covers the scalp. Knob (loose hair): `groom.loose.lift` from the

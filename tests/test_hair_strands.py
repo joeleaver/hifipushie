@@ -534,3 +534,28 @@ def test_colour_model_outside_the_material():
     assert c1.max() <= 1.0 + 1e-6 and c0.max() <= 1.0 + 1e-6
     # (stored tone / peak: the young end of a sun-lightened card is darker than its old end by up to 1 / 1.5)
     assert c1.min() < c0.min() - 0.1 and (c1.max() - c1.min()) > (c0.max() - c0.min()) + 0.05, (c0.min(), c1.min(), c1.max())
+
+
+def test_all_even_roots_are_full_length_children():
+    """strands.even 1 (Joe: density is uniform, the style is only direction): the even layer is the whole hair, children
+    of the dense lock guides at full length (no cover-layer trim); below 1 it stays the trimmed cover layer."""
+    S = {**hc.STRANDS}
+    part = hs.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0)["hair_even"]
+    full = hs.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0, even_all=True)["hair_even"]
+    assert [g for g, _ in part].count("Trim Hair Curves") == 1
+    assert [g for g, _ in full].count("Trim Hair Curves") == 0
+    assert full[0][1]["Part by Mesh Islands"] is True
+    assert [g for g, _ in full].count("Clump Hair Curves") == 1  # (interpolated children: clumps back, not a helmet)
+
+
+def test_banks_split_the_even_layer_at_the_part():
+    """Each bank of the part is its own even object (Blender's mesh-island parting still averaged guides across the
+    part: children on the line fell down the forehead): hair_even_r is the same stack on the right bank's mask."""
+    S = {**hc.STRANDS}
+    st = hs.stacks(S, 0.0, 0.0, 0.0, 0.05, n_even=1000.0, even_all=True, banks=True)
+    assert st["hair_even"][0][1]["Density Mask"] == {"attribute": "hp_density_even_l"}
+    assert st["hair_even_r"][0][1]["Density Mask"] == {"attribute": "hp_density_even_r"}
+    assert [g for g, _ in st["hair_even"]] == [g for g, _ in st["hair_even_r"]]
+    G = {"counts": np.array([2, 3], np.int32), "pts": np.arange(15, dtype=float).reshape(5, 3), "names": np.array(["a", "b"])}
+    sub = hs._guides_subset(G, np.array([False, True]))
+    assert sub["counts"].tolist() == [3] and sub["pts"].shape == (3, 3) and sub["names"].tolist() == ["b"]

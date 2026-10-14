@@ -2287,6 +2287,20 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   direction parting the cover layer there, not missing roots). The reader's loose start now sets even 0.5 + out by
   region (dbf260f). STATE: coverage gate in the guide; NEXT: the part-front patch, then even roots on jw and Garrett
   (whorl), Garrett's hairline, the widths thickness / scale measure.
+- ALL ROOTS EVEN, properly (coordinator / Joe: locks are guides, not root owners; strands.even 1): every strand an
+  interpolated child at an even root, the locks marched dense as guides (spacing 4 mm, 1900 on lt19), no trim. The
+  veil, found by evaluating the strands (spikes/hair_garrett/veileval.py: strands crossing a box in front of the face, by
+  object and root): (1) children ROOTED ON THE PART fell straight down the forehead: Blender's "Part by Mesh Islands"
+  did not keep them to their bank, even with the right island's UVs moved to u + 1 (kept); fixed by one OBJECT per bank
+  (hair_even = left, hair_even_r = right: own guides, own density mask hp_density_even_l / _r): 58 -> 47; (2) the rest
+  were `part_soft.cross`: guides combed over the part among their neighbours, children averaging both ways: cross 0 ->
+  0 strands over the face. No guide ever crossed the face (veilq: 0 locks): it was always the children. Then (3) the
+  lengths hung dead straight: lock_guides damps waves on narrow locks as wisps (W = 2.4 x 4 mm: 0.32 x amplitude,
+  1.6 x wavelength) and random per-guide phases cancel in the average: in even mode ws = wl = 1 and the phase is a
+  smooth field of the root (~3 cm); interpolated children get Blender's Clump Hair Curves (guide distance =
+  clump_size). lt19 E9: face clean, waves in the lengths, magenta only ON the part line (t60 1.24 %, behind 0.01 %).
+  hcover counted by brightness and missed dim magenta under dark hair: by hue now (recounted: r14 8.37 %, E5 4.61 %,
+  E9 1.24 % from above). Open: the profile reads as a darker solid mass than E5 (less separation).
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
