@@ -2713,3 +2713,17 @@ MISSING / WRONG (fixed in code, or written into the guide):
 - (23) Knit surface: detail "surface": "knit" (cloth.knit_surface: stockinette V columns, wale 4.5 / course 3.6 mm,
   k2p2 rib on the band roles, yarn fuzz in the shade); fabric sweater_knit (KB: 375 g/m2, bending length 13 mm, 30%
   stretch). The hoodie kind's seams are topstitched: a knit's are pressed_to_side.
+- (24) The coordinator made the back-tape underarm the DEFAULT for every block (block option underarm_rule
+  "waist_tape_legacy" = the old rule) and sleeves set into the armhole by default (set_sleeves "free" = old); Garrett's
+  approved su_gc garments pinned to both. Garrett's jacket c12_n18 measured: the under sleeve's armhole bottom 73-77 mm
+  under his armpit at the start, 79-80 in the result (for Joe).
+- s19 -> s22: placed 17-19 mm, the RESULT still 62-67 mm under the armpit: the underarm point slides 45 mm out and
+  down the A-posed arm in the sim (x 0.167 -> 0.212). Not the stitches alone (set_sleeves hold: no change), not
+  biceps ease (0.18: no change). CAUSE (25): the knit sleeve's cap was 201 mm tall, 108% of the armhole depth (the
+  draft LOGGED "!! the cap stands higher than the armhole is deep" and no gate printed it): its underarm seam was
+  292 mm for an arm that needs ~350, and with the cuff held at the wrist the short underarm hauled the armhole down
+  the arm. FIX: stage 2 now prints every "!!" line of the draft log as a WARNING and the cap height as info; s24 =
+  biceps ease 35%, cap eased 6% onto the armhole (knit), chest ease 12% -> cap 143 mm (77%), underarm seam 353 mm.
+- s22's fine settle failed on the rented box (exit 1, "the step is held by dynamic edge 13512, time of impact
+  1.5e-4": a collision stall); not resubmitted.
+- Spend $0.70 (s19 0.077, s21 0.19, s22 0.12, c11 chain 0.11 before it was stopped: the sweater changed under it).

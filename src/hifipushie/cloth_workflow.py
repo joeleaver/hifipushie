@@ -254,6 +254,13 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         # placed 6.0); stage 4 measures where the start puts it and warns there)
         o["info"].append(f"underarm (estimate, down the back's tape): the draft's armhole bottom ~{ua / 10:.1f} cm below "
                          f"the body's armpit (this kind {lo_ / 10:.1f}-{hi_ / 10:.1f} cm; stage 4 measures it as placed)")
+    # the draft's own warnings ("!!" in its log) are stage 2's: Tess's knit sleeve logged "the cap stands higher than the
+    # armhole is deep" (201 mm, 108%) and nobody saw it; its short underarm seam dragged the armhole 5 cm down the arm
+    for l_ in (Bp.get("draft") or {}).get("log") or []:
+        if str(l_).lstrip().startswith("!!"):
+            o["warn"].append("draft: " + str(l_).lstrip("! ").strip())
+        elif "cap height" in str(l_):
+            o["info"].append("draft: " + str(l_)[:200])
     if (Bp.get("draft") or {}).get("derived_mm"):
         o["info"].append("draft: " + json.dumps(Bp["draft"]["derived_mm"]))
     if image:
