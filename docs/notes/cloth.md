@@ -2258,3 +2258,25 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   along the gorge from the side neck to the notch; where it meets the back collar (the transition, stations 8-17 /
   47-51) the wearer's right is a KNOT, the left a sharp elbow; kinks.py: quads folded > 100 deg across stations 8, 9,
   12, 13, 15, 17 and 48-49. In the front view the outer corner of that elbow pokes up above the shoulder line: the "tab".
+  Measured (stp.py: per station, 3D / pattern length): in the transition the made collar's OUTER EDGE ran at 0.35-0.47
+  of its pattern length and the columns at 26-37 of 45-58 mm: the fall was squeezed, not laid, so it stood as a wall
+  beside the neck and its outer corner bunched into the knot. (Also: gc1 is reproducible bit-for-bit for construct
+  work: run_c11.sh rebuilds its sim keys; the jacket's in.npz differed from cloth11's only by 1e-16 float noise in the
+  body arrays, so results/job_145426d722484014_sim was reused under the new key d5661d1b33a79621.)
+  FIX (cloth_made.notched_collar, construction only): (a) the fall board takes each column's PATTERN length from the
+  roll down (collar_options board_length "pattern", default; "laid" = before); (b) the TRANSITION (stations with end
+  weight 0 < wE < transition_end 0.98, widened transition_widen 2 into the back) is no longer a point blend / patch:
+  its outer edge is ONE Hermite curve from the last pure end column's outer corner to the first boarded back column's
+  end, carrying both edges' directions on; each column = the back's own stand + fold (stands under transition_flat
+  6 mm laid flat), then straight from the roll's top to its point on that edge; inner rows evened (transition_smooth 4).
+  collar_options transition "patch" = cloth11's patch_transition (kept). plotc.py <pkl> <png> [side] plots the grid
+  (front / top / side views): out/plot_k0.png (before: the outer edge's S-bend at the corner) vs plot_k7.png.
+  Result c12_k9 (con on c11_gc1's sim): folds > 100 deg 8 -> 6, the outer edge one curve; gates as gc1 (0 skin px,
+  collar / V 0.00 mm, 32 visible shirt x jacket crossings, lapels roll 4.7-5.3 / edge 0.1-0.3 mm).
+  GATE 1 sheet workspace/cloth_renders/c12_g1_tabs_sheet.png (concept | c12_k9 | c11_gc1). My read: the upright
+  horns at the shoulder tops in the front neck view are gone, the collar now lies out over the shoulders and turns
+  the corner at the wearer's left cleanly. STILL WRONG: the wearer's right inner corner (by the seam where the end
+  meets the back) still crumples (3-5 mm, rows next to the seam: the end lay's own first rows lie forward of the seam
+  and the seam carry there is 8 mm); the collar end reads as a ~20 mm strap lying ON the lapel (its columns 28-33 of
+  39 mm: on_pattern compresses it) and the notch's V is not visible; at figure scale the gap to the concept is the
+  fronts hanging open (lapels vertical, a wide shirt V), not the collar. transition_end 0.9999 tried: worse.

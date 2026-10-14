@@ -830,6 +830,9 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         uv = pat["E"][:, None] + pat["col"][:, None] * (want / np.maximum(tot, 1e-9)[:, None])[..., None]
     wE = np.zeros(n)
     einfo = []
+    G0 = G.copy()  # (the back's own columns, before any end is blended in)
+    XE = np.full((n, m, 3), np.nan)  # (each end station's lay as a whole)
+    trans = p.get("transition", "board")
     for e in ends or []:
         if pat is None:
             break
@@ -880,11 +883,24 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         einfo.append({"side": sd_, "stations": int(len(sel)), "seam_carry_max_mm": round(float(np.linalg.norm(C[sel] - X[:, 0], axis=1).max()) * 1000, 1),
                       "meets_seam_at_mm": round(float(s_meet_a) * 1000, 1)})
         X = X + dl
+        XE[sel] = X
         G[sel] = (1 - we[sel])[:, None, None] * G[sel] + we[sel][:, None, None] * X
         wE = np.maximum(wE, we)
     gp = np.where(want[:, 1:] > (h + arc_len)[:, None] + 1e-9, lay, 0.001)
     gp = np.where(wE[:, None] > 0.5, np.minimum(gp, 0.0015 + p["thickness"]), gp)
-    if wE.any():
+    zone = np.zeros(n, bool)
+    if wE.any() and trans == "board" and p.get("fall_board", True):
+        # the TRANSITION from the ends to the back laid by the fall board (below): every station between a pure end
+        # lay and the back is the back's own stand + fold, its fall a board at its PATTERN length, turned from the
+        # back's way down to the end's way out by the end weight. (Blending the two lays point by point crossed them;
+        # patching between whole boundary columns kept them crossing-free but squeezed the fall's outer edge to a third
+        # of its length at the side neck: the knot / elbow that read as a "tab", cloth12 on gc1.)
+        we_ = float(p.get("transition_end", 0.98))  # (stations with less end weight than this are the transition)
+        zone = (wE > 0) & (wE < we_)
+        for _ in range(int(p.get("transition_widen", 2))):  # (into the back: the turn spread over more stations)
+            zone[1:-1] |= (zone[:-2] | zone[2:]) & (wE[1:-1] < we_)
+        G[zone] = G0[zone]
+    if wE.any() and trans != "board":
         mix = ((wE > 0) & (wE < 1)).astype(float)
         for _ in range(int(p.get("blend_reach", 2))):
             mix[1:-1] = np.maximum(mix[1:-1], np.maximum(mix[:-2], mix[2:]))
@@ -901,9 +917,10 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
             Y = G.copy()
             Y[1:-1] = 0.5 * G[1:-1] + 0.25 * (G[:-2] + G[2:])
             G = G + (mix[:, None, None] * rowf[None, :, None]) * (Y - G)
+    if wE.any():
         he = float(p.get("end_hug", 0.006))
         if he > 0:  # the end lies DOWN on what is under it (a board bridges hollows only that deep)
-            en = np.where(wE > 0.5)[0]
+            en = np.where((wE > 0.5) & ~zone)[0]
             te = G[en, 1:].reshape(-1, 3)
             te, _, _ = Under(u_own.layers).settle(te, gp[en].ravel(), hug=he)
             G[en, 1:] = te.reshape(len(en), -1, 3)
@@ -925,16 +942,24 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         DN = _unit(zd[None] - (n_un @ zd)[:, None] * n_un)
         DN = _unit(_smooth_curve(DN, sm)) if sm else DN
         ends, cols = {}, {}
+
+        def fr_of(i, r0):
+            seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(G[i, r0:], axis=0), axis=1))]
+            if p.get("board_length", "pattern") == "pattern":
+                # the fall's PATTERN length from the roll down (its rows as cut): the laid column had lost up to half
+                # of it at the side neck (cloth12, gc1: 26-37 of 45-58 mm), so the fall stood as a wall beside the
+                # neck instead of lying out over the shoulder, its outer edge squeezed into the side-neck "tab"
+                seglen = want[i, r0:] - want[i, r0]
+            return seglen, float(seglen[-1])
         for i in range(n):
-            bw = (1.0 - wE[i]) * (1.0 if h[i] > 0.004 else 0.0)
+            bw = 0.0 if zone[i] else (1.0 - wE[i]) * (1.0 if h[i] > 0.004 else 0.0)
             if bw <= 0:
                 continue
             col = G[i]
             r0 = int(np.argmax(col[:, 2]))
             if r0 >= m - 2:
                 continue
-            seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(col[r0:], axis=0), axis=1))]
-            Lr = float(seglen[-1])
+            seglen, Lr = fr_of(i, r0)
             dn = DN[i]
             top = col[r0]
             base = C[i] + lay * n_un[i]
@@ -947,6 +972,34 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
                     hi_ = mid
             ends[i] = base + lo * dn
             cols[i] = (bw, r0, top, seglen / max(Lr, 1e-9))
+        # the TRANSITION: its outer edge one smooth curve (Hermite, by arc) from the last pure end's outer corner to the
+        # first boarded back column's end, carrying both edges' directions on; each column the back's own stand +
+        # fold, then straight from the roll's top (the seam where no stand rises) to its point on that edge
+        lab = np.cumsum(np.r_[zone[0], zone[1:] & ~zone[:-1]]) * zone
+        for z_ in range(1, int(lab.max()) + 1 if zone.any() else 1):
+            idx = np.where(lab == z_)[0]
+            ia, ib = int(idx[0]) - 1, int(idx[-1]) + 1
+            if ia < 1 or ib >= n - 1:
+                continue
+            if wE[ia] < wE[ib]:  # (ia = the end's side)
+                ia, ib = ib, ia
+            st_ = 1 if ib > ia else -1
+            Ob = ends.get(ib, G[ib, -1])
+            Oa = G[ia, -1]
+            Oa0 = G[ia - st_, -1]
+            Ob1 = ends.get(ib + st_, G[ib + st_, -1])
+            ch_ = np.linalg.norm(Ob - Oa)
+            Ta, Tb = _unit(Oa - Oa0) * ch_, _unit(Ob1 - Ob) * ch_
+            for i in idx:
+                t = abs(s[i] - s[ia]) / max(abs(s[ib] - s[ia]), 1e-9)
+                h00, h10, h01, h11 = 2 * t**3 - 3 * t**2 + 1, t**3 - 2 * t**2 + t, -2 * t**3 + 3 * t**2, t**3 - t**2
+                # (a stand lower than `transition_flat` laid flat: its few-mm fold by the seam's corner crumpled)
+                r0 = int(np.argmax(G[i, :, 2])) if h[i] > float(p.get("transition_flat", 0.006)) else 0
+                if r0 >= m - 2:
+                    r0 = 0
+                seglen, Lr = fr_of(int(i), r0)
+                ends[int(i)] = h00 * Oa + h10 * Ta + h01 * Ob + h11 * Tb
+                cols[int(i)] = (1.0, r0, G[i, r0].copy(), seglen / max(Lr, 1e-9))
         if ends and sm:
             ks = np.array(sorted(ends))
             Ee = np.array([ends[k] for k in ks])
@@ -957,6 +1010,17 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         for i, (bw, r0, top, fr) in cols.items():
             line_ = top[None] + fr[:, None] * (ends[i] - top)[None]
             G[i, r0:] = (1 - bw) * G[i, r0:] + bw * line_
+        if zone.any():  # (the transition's inner rows evened with their neighbours: where the end lays meet the
+            # straight columns, by the seam's corner, the rows next to the seam crumpled)
+            zz = zone.copy()
+            for _ in range(2):
+                zz[1:-1] |= zz[:-2] | zz[2:]
+            zi = np.where(zz)[0]
+            zi = zi[(zi > 0) & (zi < n - 1)]
+            for _ in range(int(p.get("transition_smooth", 4))):
+                Y = G.copy()
+                Y[zi, 1:-1] = 0.5 * G[zi, 1:-1] + 0.125 * (G[zi - 1, 1:-1] + G[zi + 1, 1:-1] + G[zi, :-2] + G[zi, 2:])
+                G = Y
     tail = G[:, 1:].reshape(-1, 3)
     tail, _, _ = Under(u_own.layers).settle(tail, gp.ravel(), hug=0.0)
     G[:, 1:] = tail.reshape(n, -1, 3)
@@ -970,7 +1034,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
             "roll_meets_seam_mm_from_cb": [round(float(am_l) * 1000, 1), round(float(am_r) * 1000, 1)],
             "top_cb_z": round(float(G[k_cb, :, 2].max()), 4), "stations": int(n), "stretch": stretch(Vg, Fg, uv),
             "ends": einfo, "params": p,
-            "per_station": {"h": np.round(h, 4), "gorge": np.round(g, 3), "end_w": np.round(wE, 3)}}
+            "per_station": {"h": np.round(h, 4), "gorge": np.round(g, 3), "end_w": np.round(wE, 3), "zone": zone.copy()}}
     return {"parts": [{"name": "collar", "V": Vg, "F": Fg, "uv": uv, "grid": (n, m), "seam_row": np.arange(n) * m}], "info": info}
 
 

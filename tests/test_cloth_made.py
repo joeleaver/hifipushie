@@ -213,6 +213,11 @@ def test_notched_collar_follows_its_draft():
     assert 0.019 < G[cb, :, 2].max() - G[cb, 0, 2] < 0.028  # it stands to the draft's roll line (22 mm + the roll)
     assert G[0, :, 2].max() - G[0, 0, 2] < 0.012  # and not at its ends
     assert np.linalg.norm(G[:, 0] - np.array([cm._stations(P, 0.010)[0]])[0], axis=1).max() < 1e-9  # on the seam
+    # every column keeps its pattern length (the fall boarded at its CUT length: laid, it lost up to half at the side
+    # neck and stood as a wall there, cloth12), within the roll's turn
+    l3 = np.linalg.norm(np.diff(G, axis=1), axis=-1).sum(1)
+    lu = np.linalg.norm(np.diff(uv, axis=1), axis=-1).sum(1)
+    assert np.all(np.abs(l3 / lu - 1) < 0.15), np.round(l3 / lu, 2)
 
 
 def test_patch_transition_never_folds_where_two_lays_meet():
