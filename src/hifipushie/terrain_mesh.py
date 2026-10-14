@@ -1171,6 +1171,9 @@ def _local_thickness(H, c, r_open, thin):
     return lab, comps
 
 
+FACE_SLOPE_H = 0.25  # m: the stencil of the slope correction where a fall's face edits the column (Field.column)
+
+
 class Field:
     def __init__(self, T, vols: list[Tube], rock=None, dolines=None, cuts=None, bunkers=None):
         self.H = np.ascontiguousarray(T.H, float)
@@ -1276,7 +1279,20 @@ class Field:
         turf lips, bunkers; and the waterfalls' faces)."""
         h, s = self._edited_column(x, y)
         if getattr(self, "faces", None) is not None:
-            h = self.faces.column(x, y, h, lambda a, b: self._edited_column(a, b)[0])
+            col = lambda a, b: self._edited_column(a, b)[0]
+            h, k = self.faces.column(x, y, h, col, touched=True)
+            if len(k):
+                # the slope correction of the column as the faces leave it, not the grid's: the grid holds a fall's
+                # face as a ramp over ~2 cells each way, and its s (0.15 on crown_beck's tall fall) on the lip's
+                # level top under-reported the field there 6x, so the AO rays found rock everywhere: a black slab
+                # in the game (pushieworld note 124)
+                xk, yk = np.asarray(x, float)[k], np.asarray(y, float)[k]
+                e = FACE_SLOPE_H
+                hx = [self.faces.column(xk + d, yk, col(xk + d, yk), col) for d in (e, -e)]
+                hy = [self.faces.column(xk, yk + d, col(xk, yk + d), col) for d in (e, -e)]
+                gx, gy = (hx[0] - hx[1]) / (2 * e), (hy[0] - hy[1]) / (2 * e)
+                s = np.array(s, float, copy=True)
+                s[k] = 1.0 / np.sqrt(1.0 + gx * gx + gy * gy)
         return h, s
 
     def _edited_column(self, x, y, riser=None, wmin=None):

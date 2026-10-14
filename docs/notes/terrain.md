@@ -1330,3 +1330,33 @@ breaks through cliffs, peak forms and wall structure, surroundings beyond the fr
 4. DONE: MCP tools.
 Then maybe A (more forms per kind: sea/coast, cones, lava, canyon breaks) and B (realism: SDF cliffs).
 
+
+## pushieworld items (2026-10-13, "pushieworld-items" agent, branch `worktree-agent-a15ad6048155220dd`)
+Pushieworld's open notes 121-126 (/home/joe/dev/pushieworld/docs/hifipushie-notes.md), one at a time. Our copy of their
+island spec: terrain `pwi_island`. Scratch DURABLE /mnt/data/hifipushie/pushieworld_items/: run.sh <script> (this worktree,
+capped), tests.sh [names] (test files one per process, light slot, logs in out/), exp.py <terrain> <tag> '<cfg>' (tiles
+export into out/<tag>), glb.py (GLB reader: primitives in world xyz, embedded images), look124.py / lipstats.py <tiles dir>
+(tile 20_23 LOD 0 round the tall-fall lip: AO, albedo, normal tilt on open level faces), probe124.py (field values / AO
+directions / material weights at the lip), notch.py (the column across the lip), rend124.py <tiles dir> <tag>
+(renders terrain3d_renders/pw124_*), orig/src = HEAD before item 1 (PYTHONPATH it to run a test on old code).
+
+RESTART: item 1 done in code + test (commit below); island re-export is Pushieworld's (message sent to main). NEXT: item 2
+(note 126: meta.json river `water` widths / pool radii vs the water the cut channels hold).
+
+- Item 1, note 124 (black slab at crown_beck's tall-fall lip, [1310, 1511], tile 20_23). Two causes:
+  (1) AO. `Field.column` took the faces' step (terrain_falls.Faces, note 120) for h but kept the GRID's slope correction s,
+  and the grid holds a 17 m fall as a ramp over ~2 cells each way: s 0.15 on the lip's level top, so the field read 0.25
+  "m" 1.6 m up and the AO's rays (terrain_bake.ambient: value / distance) found rock everywhere: vertex AO 0. Now where a
+  face edits the column, s is re-derived from the edited column (central differences, `FACE_SLOPE_H` 0.25 m;
+  `Faces.column(touched=True)` says which columns). The zero set is unchanged; values (so Newton steps, the decimation's
+  error, AO) are metric there. Tile 20_23 alone re-exported (out/lip_after, 0 check failures, 503 s): open level faces in
+  [1300-1322, 1500-1520]: AO mean 118 -> 135, p5 11 -> 101, under 60/255 18.7 -> 0.6 m2; at Pushieworld's four points
+  4-79 -> 100-134 (open flat ground reads ~137 by the formula). Side effect: the decimation now sees the lip's real
+  error: LOD 0 visible triangles 3258 -> 8470 (total 4499 -> 11999, the tile budget), largest face 62.9 -> 17.5 m2.
+  (2) Colour. The stream layers read the lip as dry bank / bare earth (earth 0.99 at [1312, 1510.5]): the `level` grid's
+  cells straddle the drop, the pool's level pulls it down, so depth < 0 on the lip. New `Streams.lip` grid (falls only):
+  bedrock (wet_rock) across the channel + 1.5 m for the faces' hold upstream of the lip line: wet_rock 0.6-0.9 there now.
+  Albedo there 132,123,90 (flat tan) -> 90,87,70. Normal map stays calm on the lip (Faces.calm: no rock relief by design).
+  Seen (pw124_pair_top/lip): the slab no longer reads black; the face's fade into the grid's ramp past the water's edge
+  (|v| > half width + 1 cell) is still a steep slanted corner facet, unchanged in the field (now meshed finer).
+  Test tests/test_falls.py::test_lip_open (field 3 m over the lip > 2.4, AO > 0.4, bedrock > 0.5; on HEAD 0.44 m).
