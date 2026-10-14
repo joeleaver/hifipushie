@@ -2215,6 +2215,16 @@ not the locks' directions (all point down there), not scalp-radius spikes or sca
 lift / lay change. Next suspect: the strand generator's root spread at the head's back pole.
 GPU: a second amdgpu context loss ("hard recovery") with 600k strands, the scalp layer off (all of them in the locks),
 2048 px: judging renders now use count 450k.
+lt19 rounds 7-11 (sheet human_renders/hg_lt19_r11.jpg: REFERENCE | r11 | r6; style description in private notes):
+- described first (soft centre part, smooth straight top, curtains close to the face over the temples, waves only in
+  the lengths, a dense curly halo at the crown, one side behind the ear); rebuilt: smooth top (no wave from the roots:
+  wave 9 mm, wavelength 13 cm, random 0.7), tucked side, closer curtains, lower lift at the part.
+- `face` < 1 let the hair hang over the face in profile (r7): keep 1 for loose long hair.
+- `tuck.from` (new): the front hair from the part is tucked too on that side. The profile picture showed the OTHER
+  side from the one its name said: the untucked side hung a veil over the cheek (r8-r10); r11 tucks the side the
+  fitted profile camera sees. Halo share capped at HALO_MAX 0.2 as a guard (loose x2 x soft x4 reached 0.56).
+- Left on lt19: the lengths are now too straight (her loose waves below the ear), the crown halo still faint, the part
+  shows a narrow scalp V, the ear is covered where hers shows, no volume at the crown.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)

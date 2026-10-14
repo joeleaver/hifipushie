@@ -247,7 +247,7 @@ body's own signed distance, so it lies on the shoulders and down the back, and o
 | face | 1 = hair is turned aside where it would hang over the face (curtains beside the cheeks); 0 = it falls where it falls | 1 |
 | fringe | `{length, span (deg either side), depth (m behind the hairline), sweep (-1..1), level, stiff}`: combed forward over the forehead | length 0.07, level -0.004 (the brows) |
 | fringe sweep "away" + curtain | CURTAIN BANGS: each side of the part swept down and away from it, longer toward the outer edges (`curtain` 0..1) | fringe {length 0.06, span 35, sweep "away", curtain 0.8} with parting centre |
-| tuck | `"left"` / `"right"` / `"both"` or {side, amount}: hair over and in front of the FOUND ear combed back behind it | one side tucked: "left" (the person's own) |
+| tuck | `"left"` / `"right"` / `"both"` or {side, amount, from}: hair over and in front of the FOUND ear combed back behind it; `from` (deg of azimuth, default the temple) 10-15 tucks the front hair from the part too | one side tucked: "left" (the person's own). WHICH side a profile picture shows: check on a render through its fitted camera (a picture's "profile_left" name was the other side once): the untucked side hung a curtain over the face in profile |
 | fade | {width, length, density}: the back's locks shorten and thin out toward the nape hairline (a barber's fade) | {width 0.02} on a short cut (the reader sets it) |
 | halo, flyaway | 0..1: loose hair's own halo of fine hairs and its fly-aways (a TAIL's halo stays quartered; loose hair's is not: rule 4) | from the reader's halo density / wisps; long heads 0.5-1.0 / 0.05-0.15 |
 

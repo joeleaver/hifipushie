@@ -64,7 +64,9 @@ LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
          "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None,
          "inset": None}
-TUCK = {"side": "both", "amount": 1.0}  # hair over the ear combed back BEHIND it (one side, or both)
+TUCK = {"side": "both", "amount": 1.0, "from": None}  # hair over the ear combed back BEHIND it (one side, or both);
+# from: deg of azimuth from which hair is tucked (default 45 deg in front of the ear: the temple; 10-15: the front
+# hair from the part too, swept back over the ear on that side)
 FADE = {"width": 0.02, "length": 0.009, "density": 0.25}  # a short cut fading out toward the nape hairline (locks
 # under 8 mm are not grown: length stays over that)
 FRINGE = {"length": 0.07, "span": 40.0, "depth": 0.045, "sweep": 0.0, "level": None, "stiff": 0.45, "curtain": 0.0}
@@ -304,7 +306,8 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         ef, eb = (float(er["front"]), float(er["back"])) if er else (80.0, 105.0)
         azs = ((az + 180) % 360) - 180  # (+ = the person's left)
         sidem = (azs > 0) if tk["side"] == "left" else (azs < 0) if tk["side"] == "right" else np.ones(m, bool)
-        wt = float(tk["amount"]) * sidem * _ss((fa - (ef - 45.0)) / 20.0) * (1 - _ss((fa - (eb + 5.0)) / 10.0)) * ~is_fr
+        a0_ = float(tk["from"]) if tk.get("from") is not None else ef - 45.0
+        wt = float(tk["amount"]) * sidem * _ss((fa - a0_) / 20.0) * (1 - _ss((fa - (eb + 5.0)) / 10.0)) * ~is_fr
         comb = comb * (1 - wt[:, None]) + wt[:, None] * _unit(np.array([0.0, 0.85, -0.5]))[None]
     fd = p.get("fade")
     fdens = np.ones(m)
