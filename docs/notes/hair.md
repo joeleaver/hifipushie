@@ -1678,7 +1678,7 @@ flat brown. Round seven, "## tesshair7".
 
 ## tesshair7 (2026-10-13, "tesshair7" agent, branch `tesshair7`): volume from the parting, and a hair colour model
 ### STATE / NEXT (2026-10-14, end of the arc on Tess; MERGE-READY, not started on NEXT)
-STATE: branch tesshair7, BEST = th_W17 (tess_a1 + one tie_hair call; spikes/tesshair7/styles/W17_*.json; on the
+STATE: branch tesshair7, BEST = th_W18 (= W17 + the front lightened like the back, below; styles/W18_*.json; W17 on the
 GNM-native head th_W20). Joe: "basically happy with Tess's hair shape now"; colour = the game-shader round (th_63).
 Sheets human_renders/th_50..52, th_60..63. The checklist "What makes hair read as hair" opens hair_guide.md (rule /
 fault / measure / knob, incl. the game-shader terms and how cards carry them). Regression sheet spikes/tesshair7/
@@ -2089,3 +2089,15 @@ Joe: the back-view reference's highlights are a different colour from the front 
 been judging. Tess's references are generated concept views and are not colour-consistent across views, so colour measures
 averaged over all views chase a mix. NEXT (whoever tunes colour again): take hair colour targets from the front view only (the
 3/4 as a check), say which view each target came from, and do not judge the back view's colour against its own reference.
+
+- FRONT LIKE THE BACK (2026-10-14; Joe likes OUR back three-quarter's colour in th_63, wants the front like it; the
+  target is our own back render, not a photo: Tess's references disagree on colour between views). WHY they differed:
+  NOT the light rig (the front under the back view's rig was as dark: core L* 14.9 vs the back's 21.9); the hair's AGE
+  along the strand: from the front one sees the first 2-10 cm of every strand (the dark-root stretch, too young for
+  `sun`, full only by 28 cm, and before the ribbons start), from the back the 10-25 cm lengths. FIX: look key
+  `sun_length` (m by which sun-lightening is full; default 0.28 unchanged) + Tess's look sun 0.7, sun_length 0.06,
+  root 0.05, root_dark 0.5, highlights 0.7 = th_W18. colour_bands (our renders, spikes/tesshair7/bands.py), back
+  target | front before | front after: mean L* 27.0 | 24.4 | 26.4, shadow 16.1 | 13.7 | 16.6, highlight 38.1 | 37.0 |
+  37.4, core 21.9 | 17.8 | 22.7, chroma 11.1 | 10.9 | 11.9. A little root darkness kept at the part. The back itself
+  got ~2 L* lighter with it. Sheet human_renders/th_64_front_like_back.png (OUR BACK | front before | after; 3/4
+  before | after). Regression: only Tess moved (1.3), riffs identical; accepted run "w18". Tests 112 pass, 0 skipped.

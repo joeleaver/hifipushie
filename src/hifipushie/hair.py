@@ -141,7 +141,10 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
         # the game-shader terms (EEVEE strands; each a game hair / card shader can do): tip_alpha 0..1 (see-through
         # tips), backscatter 0..1 (warm light through thin / back-lit hair), scatter 0..1 (fake multiple scattering:
         # a darker, richer core by depth, lighter outer layers). 0 = off (the default: other models unchanged)
-        "tip_alpha": 0.0, "backscatter": 0.0, "scatter": 0.0}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
+        "tip_alpha": 0.0, "backscatter": 0.0, "scatter": 0.0,
+        # sun_length m: the hair's age (m from the scalp) by which `sun` lightening is full (default 0.28); shorter =
+        # the dome lightens too, not only the lengths (the front view sees the first cm of every strand)
+        "sun_length": None}  # fine_alpha: EEVEE's opacity of single hairs (the halo, locks of `hairs`)  # band: a tie's colour; strand_relief: the cards' normal map  # edge: how far across a lock its edges darken; root: how far
 # along the root darkens (0..1 of the length)
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's

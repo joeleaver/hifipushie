@@ -41,7 +41,7 @@ def along_tone(look: dict, age, r_ribbon=None, sun_x: float = 0.0):
     """The tone along a strand / a card by its age (m from the scalp, array): sun-lightening, and, if r_ribbon (0..1,
     a number per ribbon / card) picks it, a highlight. sun_x -0.5..0.5: where the sun reaches (tips the pick)."""
     age = np.asarray(age, float)
-    out = 1 + 0.5 * _k(look, "sun", 0.2) * _ss(age / SUN_M)
+    out = 1 + 0.5 * _k(look, "sun", 0.2) * _ss(age / float(look.get("sun_length") or SUN_M))
     hl = _k(look, "highlights", 0.0)
     if hl > 0 and r_ribbon is not None:
         pick = _ss((np.asarray(r_ribbon, float) + 0.5 * float(sun_x) - (1.0 - 0.5 * hl)) / 0.05)
