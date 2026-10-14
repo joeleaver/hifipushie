@@ -169,3 +169,14 @@ def test_render_as_picture_undoes_the_square():
     sq.paste(Image.new("RGB", (1152, 1536), (255, 255, 255)), (192, 0))
     p = np.asarray(hr.render_as_picture(sq, (1152, 1536)))
     assert p.shape == (1536, 1152, 3) and p.min() > 250
+
+
+def test_colour_step_corrects_by_the_render_gain():
+    # asked #606060, rendered half as bright (linear), the picture is the asked colour: the step doubles the ask
+    half = hr._hex_lin(hr._lin_hex("#606060") * 0.5)
+    cmp = {"ours": {"views": [{"i": 0, "colour": {"seen": half, "grey": None}}]},
+           "picture": {"authority": 0, "views": [{"i": 0, "colour": {"seen": "#606060", "grey": None}}]}}
+    st = hr.colour_step(cmp, {"seen": "#606060"})
+    got = hr._lin_hex(st["seen"])
+    assert np.allclose(got, hr._lin_hex("#606060") * 2, rtol=0.03)
+    assert "grey" not in st and "view 0" in st["why"]

@@ -206,8 +206,10 @@ def compare(name: str, images: dict, spec: dict | None = None, authority: int | 
     fo = frames(name, spec, images=images)
     fp = [f for f in frames(name, spec) if f["i"] in images]
     au = authority if authority is not None else _authority(fp)
-    ro = read(name, spec, authority=au, fs=fo, log=lambda s: None)
     rp = read(name, spec, authority=au, fs=fp, log=lambda s: None)
+    # ours split at the PICTURE's light / dark threshold: the light shares then count the same thing
+    th = {v["i"]: v["colour"]["threshold_L"] for v in rp["views"] if v.get("colour")}
+    ro = read(name, spec, authority=au, fs=fo, log=lambda s: None, thresholds=th)
     return {"ours": ro, "picture": rp, "text": compare_text(ro, rp)}
 
 
@@ -243,6 +245,36 @@ def compare_text(ro: dict, rp: dict) -> str:
         if lo and lp:
             L.append(f"    light share by region: " + ", ".join(f"{k} {lo.get(k)} | {lp.get(k)}" for k in REGIONS if k in lo or k in lp))
     return "\n".join(L)
+
+
+def _lin_hex(h: str) -> np.ndarray:
+    c = np.array([int(h.lstrip("#")[i:i + 2], 16) / 255.0 for i in (0, 2, 4)])
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def _hex_lin(c) -> str:
+    c = np.clip(np.asarray(c, float), 0, 1)
+    return _hex(255 * np.where(c <= 0.0031308, 12.92 * c, 1.055 * c ** (1 / 2.4) - 0.055))
+
+
+def colour_step(cmp: dict, look: dict, gain: float = 1.0) -> dict:
+    """One colour correction from a compare (the AUTHORITY view only): each mode's colour as asked (look seen / grey)
+    x (the picture's mode / our render's mode), per LINEAR channel (lightness, hue and chroma at once: what the
+    renderer, the light and the mass's own shade do to a colour is taken as a fixed gain per channel). gain < 1 takes
+    part of the step. Returns {"seen", "grey", "why"} (keys whose modes are missing are left out)."""
+    ro, rp = cmp["ours"], cmp["picture"]
+    au = rp["authority"]
+    co = next((v["colour"] for v in ro["views"] if v["i"] == au), {}) or {}
+    cp = next((v["colour"] for v in rp["views"] if v["i"] == au), {}) or {}
+    out, why = {}, []
+    for key in ("seen", "grey"):
+        if co.get(key) and cp.get(key) and look.get(key):
+            r = _lin_hex(cp[key]) / np.maximum(_lin_hex(co[key]), 1e-4)
+            r = np.clip(r, 0.25, 4.0) ** float(gain)
+            out[key] = _hex_lin(_lin_hex(look[key]) * r)
+            why.append(f"{key}: asked {look[key]}, rendered {co[key]}, picture {cp[key]} (view {au}) -> {out[key]}")
+    out["why"] = "; ".join(why)
+    return out
 
 
 def _ec(v):
@@ -478,7 +510,7 @@ def parting(img, solid, a_skin, mm: float, top_px: int, hairline_px: int, c) -> 
             "sweep": round(sweep, 3) if np.isfinite(sweep) else None, "profile": np.round(sm, 2).tolist()}
 
 
-def colour_split(img, dense, mm: float) -> dict:
+def colour_split(img, dense, mm: float, T: float | None = None) -> dict:
     """The dense hair's colour (colour_bands with variation) and a TWO-MODE split: the pigmented hair (darker) and the
     light / grey strands (lighter, low chroma), at the Otsu threshold of L*. seen = the median of the upper half of the
     pigmented mode (its lit side, as look.seen wants); grey = the median of the light strands."""
@@ -496,7 +528,7 @@ def colour_split(img, dense, mm: float) -> dict:
     w0 = np.cumsum(p)
     mu = np.cumsum(p * (e[:-1] + e[1:]) / 2)
     var = (mu[-1] * w0 - mu) ** 2 / np.maximum(w0 * (1 - w0), 1e-9)
-    T = float(e[int(np.argmax(var)) + 1])
+    T = float(e[int(np.argmax(var)) + 1]) if T is None else float(T)  # (given: the picture's, so shares compare)
     dark, light = L <= T, L > T
     upper = dark & (L >= np.median(L[dark])) if dark.any() else dark
     out = {"bands": colour_bands(img, m, mm), "threshold_L": round(T, 1),
@@ -517,7 +549,8 @@ def _authority(fs: list, authority=None) -> int:
     return int(min(range(len(fs)), key=lambda k: abs(((fs[k]["yaw"] + 180) % 360) - 180)))
 
 
-def read(name: str, spec: dict | None = None, authority: int | None = None, log=print, fs: list | None = None) -> dict:
+def read(name: str, spec: dict | None = None, authority: int | None = None, log=print, fs: list | None = None,
+         thresholds: dict | None = None) -> dict:
     """Measure the hair on every fitted reference view (see the module's text). authority = the view whose colour is
     the target (default: the most frontal)."""
     from scipy import ndimage as ndi
@@ -579,7 +612,7 @@ def read(name: str, spec: dict | None = None, authority: int | None = None, log=
         v["baby_per_cm"] = round(v["baby_hairs"] / max(hl_len, 1e-6), 2) if hl_len > 1 else None
         # colour: the dense hair (solid eroded 2 mm, parser sure)
         dense = ndi.binary_erosion(hn["solid"], iterations=max(1, int(round(2.0 / mm)))) & (f["hair"] > 0.8)
-        v["colour"] = colour_split(f["image"], dense, mm)
+        v["colour"] = colour_split(f["image"], dense, mm, T=(thresholds or {}).get(f["i"]))
         # light share by region: dense pixels cast onto the hair's surface
         ys, xs = np.nonzero(dense)
         if len(xs) > 200 and v["colour"]:
