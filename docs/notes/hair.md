@@ -2244,6 +2244,13 @@ only the face rule let off. Colour: by measure the MEAN matches (L* 25-26 vs 23,
 narrow (shadow L* 17 vs 9, highlight 33 vs 36, L_sd 7.2 vs 11.8): darker roots (root_dark 0.8), depth 0.7, sun 0.7 with
 sun_warm 0.4 and highlights 0.4 did not open it much; the lengths stay mid-brown. NEXT on jw: a per-region flow for the
 lengths (the curtain over the cheek), the colour RANGE (light lengths, dark roots).
+lt19 r14-r15 (cheek-level width): body 18 mm + lay on the sides took 240 -> 230 mm (hers 179); `face` 0.5 (r15) put the
+curtains over the face's edges (224 mm) but hid her whole face in profile: rejected, face stays 1. By height from the
+parser, OUR outline is ~2.3 cm wider even at the crown where the hair is thin (146 vs 123 mm at 6 cm over the centre):
+most of the cheek-level difference is the head / camera scale, not the hair. Compare hair THICKNESS (outline minus the
+skull's own width at that height), not the outline's width, before tuning width on this head.
+Garrett's back whorl: still open. It has been in every loose groom's back view since the first rounds (a pit at the back
+in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
 ### hair-heads STATE (merge-ready, 2026-10-14)
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
 New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15
