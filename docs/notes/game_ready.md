@@ -141,6 +141,16 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
   joint angle, MetaHuman-style) and / or hand-painted hip / shoulder weights + more loops at the knee in the body
   topology. Not built.
 
+- Would MakeHuman's own skeleton do better (A: default.mhskel + unfolded default_weights.mhw, B: our folded Mixamo
+  rig)? Not for these bends, by construction: every bone the fold merges is a serial split of one segment
+  (pelvis.L -> upperleg01 -> upperleg02 -> lowerleg01 -> lowerleg02 -> foot; clavicle -> shoulder01 -> upperarm01 ->
+  upperarm02 -> lowerarm01) and turns rigidly with it in a hinge bend, so folding sums weights onto one bone with the
+  same transform; LBS is linear in the weights, so A = B to the vertex. pelvis.L (buttock) and breast.L stay still in
+  a hip / arm turn in MH too (they fold into Hips / Spine2). MH's extra bones only add (a) twist spread along the
+  split segments (our twist joints) and (b) shoulder01 as a half-way clavicle joint, which only helps if something
+  drives it: Mixamo clips don't; our ArmBend helper is that joint, driven. So the seated buttock bag and knee pinch are
+  MakeHuman's own weights under plain LBS: the fix stays weights / loops in the file, then correctives.
+
 ## STATE / NEXT
 STATE (Tess v3, 89k LOD0 incl. 40k hero hair; LOD1 45.6k / LOD2 27.7k / LOD3 20.8k): motion directions exact, review
 disputes recorded; hair cards improved by numbers but FAIL review (STUCK sent); skin draft; undressed.
