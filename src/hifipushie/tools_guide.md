@@ -36,8 +36,8 @@ The hifipushie playbook: how to work in stages (plan, blockout, secondary forms,
 strokes and parts, how to judge renders and diagnose artifacts. Read it before modelling.
 topic="terrain": the terrain vocabulary (landscapes and game levels in a level designer's words: world kinds,
 basins, passes, canyons, sites, routes, walls, cover, intent checks), for set_terrain and the other terrain tools.
-topic="hair": stylised hair as sculpted locks, the way artists groom it (silhouette, big shapes, clumps, breakup),
-with groom_hair, look_hair, hair_reference and sync(hair_only=True).
+topic="hair": hair from a description of the hairstyle: realistic strand grooms (tied with tie_hair, loose with
+groom_hair), short cuts, game cards (export_hair); topic="hair_locks": stylised sculpted locks.
 topic="cloth": garments the way pattern makers and garment artists make them, in stages (design sheet, flat
 pattern and its checks, construction plan, arrangement, draft, final), with design_garment, look_pattern,
 check_garment, garment_reference, dress, look_cloth and sync(cloth_only=True).
@@ -56,6 +56,9 @@ reports on every change.
 topic="block_in": THE DEFAULT for a person's head from pictures: the artist block-in loop (a base of the right kind,
 an eye-registered sheet beside the pictures, one small whole-face step a round, a target table, lids by measure), with
 block_in_start, block_in_look, block_in_step and lid_read.
+topic="tool:<name>": always that tool's section, also where a topic has the tool's name (skin, human, likeness).
+Each domain topic is a short core (describe the reference first, stages, craft rules, self-review); its details
+are sub-topics it names (e.g. cloth_design, vegetation_styles, hair_tied, blockin_solve, paint, rigging).
 topic="clutter": the small things a terrain is scattered with (boulders, river rocks, cobbles, slabs, driftwood,
 bushes, litter, reeds) as game assets in five styles, with make_clutter, look_clutter and clutter_kit.
 topic="likeness": the facial-likeness checklist (forensic examiners' feature list, likeness artists' order,

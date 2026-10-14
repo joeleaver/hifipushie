@@ -10,7 +10,7 @@ landmarks).
 
 Sub-topics (guide(topic=...)): `skin_layers` (every stage in detail: the person under the skin, pigment model, zones,
 mottling, features, folds, hair on the skin, eyes, micro detail, roughness, cosmetics, shading; what goes wrong;
-sources), `skin_tools` (every skin tool's parameters).
+sources), `skin_tools` (every skin tool's parameters; guide(topic="tool:skin") is the `skin` tool's own section).
 
 **The rule everything else follows: read the skin from the reference before setting anything.** Tone, redness and
 where it sits, texture scale, lips, under-eye, brows, creases, eyes: as measured items, each compared close-up beside

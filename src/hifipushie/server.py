@@ -329,8 +329,10 @@ def _spec_arg(spec) -> dict:
 def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
     "cloth_reference", "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
-    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference); or any tool's name for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
+    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference); or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
+    if t.startswith("tool:"):  # always a tool's section, even where a topic has the tool's name (skin, human, likeness)
+        return _tool_section(topic.strip()[5:].strip())
     if t in GUIDE_TOPICS:
         return Path(__file__).with_name(GUIDE_TOPICS[t]).read_text()
     if topic.strip() in _TOOLS:

@@ -1,7 +1,7 @@
 # Product guides rewrite ("guides" agent, 2026-10-14)
 
-STATE: cloth rewritten (core + 5 sub-topics), test agent running. NEXT: vegetation, hair, skin, blockin, guide.md,
-human/likeness/gnm, tools_guide, terrain.
+STATE: cloth, vegetation, hair (+locks), skin, blockin, guide.md done and tested; EEVEE judging rule applied; guide(topic="tool:<name>").
+NEXT: human / likeness / gnm_driving, tools_guide, terrain (clutter_guide: studio lines).
 
 Why: the product guides (src/hifipushie/*_guide.md, served by the `guide` tool) had grown into lab notebooks (~800 KB;
 cloth 918 lines, vegetation 1,142). Key rules were buried: game-ready Tess's sweater was a sweatshirt block with
@@ -32,3 +32,21 @@ The shape of every rewritten guide:
   off the pattern sheet / draft meta. A `look_pattern` line "armhole bottom N mm below the armpit" would make the
   knit-sweater fault impossible to miss (tooling suggestion, not built).
 - Found: the old guide's "Sims cost money ... $0.66" and the oxidegen / NICO-TOP section were studio-only.
+
+## guide(topic="tool:<name>") (the one code change)
+Topics skin / human / likeness shadowed the tools of the same name: guide("skin") could never return the `skin`
+tool's section. `guide("tool:<name>")` always returns a tool's section; test_toolsets asserts every registered tool is
+reachable that way (and by its bare name where no topic shadows it).
+
+## EEVEE, not Cycles (coordinator, from Joe 2026-10-14: "Blender with eevee built like a game would work is enough")
+Guides judge in EEVEE and judge exports as the GLB re-imported into Blender EEVEE set up like a game; no Cycles
+judging, no engine (Godot) checks. Engine-importer facts and reference shaders stay as consumer information.
+
+### Cycles judging renders still in code (parked; not changed by the guides work)
+- export_asset(preview=) / asset.preview renders the exported GLB with Cycles (blender_asset.py ~974): handed to the
+  assembly agent (it is building the game-like EEVEE check).
+- look_terrain perspective views (blender_terrain.py ~1050) and terrain tile views (blender_tiles.py ~1110).
+- look_clutter (blender_clutter.py ~99, module-level render setup).
+- a vegetation look path (blender_vegetation.py ~1156, near aim_sun).
+- look_hair / look_skin engine="cycles" (optional, not the default; the guides call it reference only).
+Bakes (bake_maps, bake_inputs, export_bake) use Cycles as a baker, not a judging render.

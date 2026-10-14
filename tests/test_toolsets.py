@@ -95,6 +95,12 @@ def test_short_descriptions_point_at_the_guide():
     assert "### `groom_hair`" in server.guide("hair_tools")  # domain cores are rules first; tool sections in <domain>_tools
     assert server.guide("look").startswith("### `look`") and "paint_layer" in server.guide("look")
     assert "Tool reference" in server.guide("tools")
+    # every tool's section is reachable through guide(): "tool:<name>" always, the bare name unless a topic shadows it
+    for name in server._TOOLS:
+        assert server.guide(f"tool:{name}").startswith(f"### `{name}`"), name
+        if name.lower() not in server.GUIDE_TOPICS:
+            assert server.guide(name).startswith(f"### `{name}`"), name
+    assert server.guide("skin").startswith("#") and server.guide("tool:skin").startswith("### `skin`")
 
 
 def test_compact_schema():
