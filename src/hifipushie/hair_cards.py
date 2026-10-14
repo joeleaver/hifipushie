@@ -865,7 +865,7 @@ def pooled_singles(G: dict, locks: list, pool: list, C, L: int, rng) -> list:
         hw = np.clip(1.6 * c["sx"], 0.002, 0.005) * (1 - 0.4 * _ss((s / s[-1] - 0.6) / 0.4))
         out.append({"P": c["P"], "X": c["X"], "N": c["N"], "hw": hw, "u": c["u"], "s": s, "kind": "fly", "layer": L,
                     "prio": L + 1.0, "cval": 1.0, "bend": c["bend"], "T": c["T"], "lock": locks[lis[0]]["name"],
-                    "value": 1.0, "sn": c["sn"]})
+                    "value": 1.0, "sn": c["sn"], "pooled": True})
     return out
 
 

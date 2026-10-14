@@ -2463,6 +2463,7 @@ SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
 CUT_GROUPS = ["sub", "pair", "lock", "free"][:3]  # finer -> coarser card cuts (clump_cards' groups; "free" drops lying hair)
 PRIO_FLY = 2.0  # budget priority offsets (lower = kept first): single hairs after every coverage layer
 PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of hair lying on the head
+PRIO_HALO = 0.35  # pooled single hairs (the halo as ~30 fly cards, ~400 triangles): kept just before a tail's second layer
 PRIO_FACE = -0.8  # face-framing hair (wisps, curls at the temples) before anything but the coverage layer's core
 FACE_IN, FACE_AZ = 0.02, 115.0  # m inside the hairline, deg from the front: where a free lock's root counts as face-framing
 CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
@@ -2593,7 +2594,9 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             for c_ in cards:
                 lk_ = by_.get(c_.get("lock")) or {}
                 p_ = float(c_.get("prio", c_["layer"]))
-                if lk_.get("face"):
+                if c_.get("pooled"):  # cheap and it is the outline's soft edge: before any second layer
+                    p_ = PRIO_HALO
+                elif lk_.get("face"):
                     p_ += PRIO_FACE
                 elif lk_.get("off_head"):  # a tail's strays are its ragged outline, not single hairs on the head
                     p_ += PRIO_FREE
