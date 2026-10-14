@@ -53,7 +53,7 @@ _load = store.load
 
 def load(name, *a, **k):  # (stage.ensure loads the model: hand it the skin-stripped spec)
     sp = _load(name, *a, **k)
-    if name == m:
+    if name == m or name == kw.get("stage", os.environ.get("HG_STAGE")):
         sp = copy.deepcopy(sp)
         if sp.get("skin"):
             sp["skin"] = _known_skin(sp["skin"])
@@ -102,7 +102,11 @@ def turned(f, lt, deg, C):
 
 
 with resources.heavy(f"hair-garrett shots {m}", gb=8):
-    sn = stage.ensure(m, with_hair=False)
+    # ONE stage for every groom on the same head (stage=<head model>, default the model's source head hg_g0 / the
+    # model): a stage per groom model cost a sync each and its ~0.33 GB pushed other agents' stages (the regression's
+    # _g3_th_T04) out of the shared _g3_ budget (store.prune_stages)
+    _st = kw.get("stage", os.environ.get("HG_STAGE", m))
+    sn = stage.ensure(_st, with_hair=False)
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     st["hair"] = spec["hair"]
     C = hair.scalp(m, spec).C

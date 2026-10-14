@@ -30,6 +30,8 @@ fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it
 | 11c | The CORE of the mass is darker and richer than its outer layers (multiple scattering inside a mass) | one flat value through the mass | colour_variation `core_L`, `core_chroma` | look `scatter` (by a lock's depth hp_sh: darker, more saturated) with `depth`. Cards: the cards' vertex colour carries depth (lower layers darker); saturation is a card-material tint |
 | 12 | A TAIL is strands from behind, not wide ribbons: finer strands, locks a little out of step, a ragged soft end | wavy ropes / ribbons, straw | back three-quarter beside the photo; tail area / length / width by mask (look_hair measure) | `tail.wave` (Tess 0.35), `tail.fullness`, `tail.tousle` |
 | 13 | Up-styles (high ponytail, top knot, man bun) and half up have NO volume by default: hair pulled up does not fall from its roots | radial ridges round the hairline, specks at the crown | the riffs sheet | volume is gated by tie height and half up; asked for there it is a smooth pouf |
+| 14 | A SHORT CUT has LENGTH AND LAY BY REGION: longer on top and front (4-6 cm), clipped sides and back (1-2 cm), a taper to the nape (~0.5 cm, a soft edge); combed ONE way per region; fine, straight, dense strands (hair-garrett) | long-hair machinery on a crop: wavy clumped noodles, wings at the sides, a curly astrakhan back (laid locks thicker than twice their clearance sink half their strands into the skin and crumple when pushed out) | `hair_from_reference` stand-off by region ours vs picture (`compare=`); the back and nape close-ups; the lock plot | `groom.loose` length / lay / flow / lift (per region), `thickness` <= 3 mm; strands: count 200k+, thickness ~0.9, clump ~0.1, wave / curl / loose 0 (the reader's start sets these) |
+| 15 | FINE strands at the picture's scale: short hair at bust distance is a near-continuous fine texture; strand-to-strand contrast as the picture's | wires, straw, a hairline of comb teeth (each lock's strands start as one blunt row) | `hair_from_reference(compare=)` colour variation `strand_sd` ours vs picture (hair-garrett r4: 9.3 vs 6.8: too coarse) and hairline softness (1.0 vs 3.5 mm) | strands `thickness` / `count` / `clump`, `fly_light` lower on grey hair, the hairline's density ramp (`soft`, `baby`): NOT yet enough on a crop (hair-garrett) |
 Before a change ships: re-render the accepted styles and riffs beside their last accepted renders (the regression
 sheet: `run.sh regress.py run tag=X` then `regress.py sheet tag=X`, spikes/tesshair7/regress.py + accepted.json:
 Tess's best through her fitted cameras + ten riffs on two other heads, each ACCEPTED | NOW | difference; renders are
@@ -208,7 +210,7 @@ body's own signed distance, so it lies on the shoulders and down the back, and o
 | length | m of hair from the root; or per region `{front, top, sides, back, nape}` (a layered cut, a short back and sides) | 0.3 shoulder, 0.5 mid-back, 0.04 a crop |
 | level | every lock is cut where it crosses this height, m from the head centre (about the brows): a one-length cut | -0.105 jaw (a bob), -0.17 shoulders |
 | spacing | m between lock roots (lock width follows) | 0.02 long hair, 0.015 short |
-| body, lift | m the mass builds up as locks come down over each other; m of root volume | 0.02, 0.006; curls 0.035, 0.012 |
+| body, lift | m the mass builds up as locks come down over each other; m of root volume (lift may be per region: the stand-off of a short cut; groom.volume does not reach loose hair) | 0.02, 0.006; curls 0.035, 0.012 |
 | stiff | 0 hangs at once .. 1 keeps the direction it left the scalp in | 0.2-0.3 long, 0.6 short, 1 an afro |
 | out | 0 combed along the scalp .. 1 straight out of it | 0; tousled 0.3; an afro 1 |
 | back, messy, uneven | combed back over the crown; root directions turned at random; lengths differ | |
@@ -228,6 +230,7 @@ The texture is the `strands` dials, not the groom:
 | tight curls (ringlets) | length 0.22, body 0.035, lift 0.012, stiff 0.45, out 0.25 | wave 0.03, wavelength 0.028, curl 1, random 1, clump 0.85, clump_size 0.012, clump_shape 0.1 |
 | afro (coils) | length 0.085, out 1, stiff 1, body 0, lift 0, spacing 0.02 | wave 0.03, wavelength 0.012, curl 1, random 1, clump 0.3, frizz 0.8, count 40000 |
 | short tousled | length {front .05, top .055, sides .03, back .035, nape .018}, stiff 0.6, out 0.3, messy 0.7, spacing 0.015 | clump 0.4, tip_spread 0.7, loose 0.6, tips 0.8 |
+| combed short cut (from the hair reader: `hair_from_reference`) | length {front .05, top .05, sides .018, back .018, nape .006}, lift per region = the measured stand-off - 5 mm, thickness 0.003, lay {front .35, top .65, sides .5, back .6, nape .6}, flow one way per region, messy low, spacing 0.008 | count 220000, thickness 0.9, clump 0.1, stray 0.9, loose 0, wave 0, curl 0, frizz 0.02, under_length 0.01 |
 | short textured crop (a man's 2-3 cm cut, front lifted) | length {front .026, top .02, sides .022, back .022, nape .012}, spacing 0.009, width 2.4, lift 0.001, body 0.002, messy 0.35, uneven 0.8, flow + out + stiff per region (above), parting none, volume 3-4 mm | count 140000, thickness 1.6, clump 0.15, stray 0.9, roots 0.9, loose 0.18, frizz 0.15, wave 0.0004, curl 0, under_length 0.022; look scalp_tint 0.85 |
 | short back and sides | length {front .045, top .04, sides .012, back .012, nape .006}, stiff 0.3, out 0.03, back 0.35 | clump 0.3, under_length 0.014 (the clipped sides ARE the scalp layer) |
 | a child's fine hair | length 0.24, body 0.012, lift 0.004, stiff 0.2, fringe | thickness 0.6, count 60000, clump 0.2, clump_size 0.004 |
@@ -562,9 +565,13 @@ camera is the bare skull. It reads:
   -> rules 8-11
 - length: not in a picture of a short cut (it lies over itself): INFERRED from the stand-off.
 The START (saved to `out`, a copy, or the model; read_only shows it without saving): style strands; a short cut
-(mean stand-off < 30 mm) gets `groom.loose` from the short-textured-crop recipe with lengths (INFERRED), volume per
-region = 0.6 x stand-off, flow over by the sweep, lay (prior), hairline front_points (MEASURED), parting (MEASURED or
-none), grey by region; look seen / grey / grey_amount / variation; strands halo / flyaway / soft / baby from the read.
+(mean stand-off < 30 mm) gets `groom.loose` as a combed short cut (rule 14): lengths by region (INFERRED: a taper),
+`lift` per region = the stand-off less the strands' own ~5 mm (groom.volume does nothing to loose hair), thin laid
+locks, flow one way per region (the front over by the measured sweep), lay (prior), hairline front_points (MEASURED),
+parting (MEASURED or none), grey by region; look seen / grey (a grey STRAND: the lightest quarter of the light pixels,
+since strands finer than a pixel mix with dark ones) / grey_amount / variation; strands: fine, straight, dense, with
+halo / flyaway / soft / baby from the read. `colour_step` (in the compare reply) then corrects seen and grey per
+linear channel by picture / render on the authority view: one step took the mean L* from 30 to 40 (picture 42).
 Longer hair: hairline, parting and look only (groom the shape by hand). Every line says what it came from.
 `compare={0: "s_v0.png", 1: ...}`: the same read on OUR renders through those fitted cameras (square renders as
 look_hair's "ref<i>" views), as a table ours | picture: the round's measure, like with like.

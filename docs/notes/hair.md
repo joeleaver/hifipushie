@@ -2107,19 +2107,24 @@ Goal: show the checklist (hair_guide.md "What makes hair read as hair") carries 
 the hair READER. Subjects: a short men's cut from a held-out photo set, then two family heads. Per-person / per-picture
 notes are NEVER here (held-out set: /mnt/data/hifipushie/hair_garrett/notes_private.md; family: workspace/private_notes/).
 ### STATE / NEXT / RESTART
-STATE (step 1): `hair_read.py` + MCP `hair_from_reference` (hair toolset; guide section in hair_guide.md) + tests
-(tests/test_hair_read.py, 12, synthetic: no nets / Blender). Reads stand-off by region, halo, roughness, wisps,
-hairline (cast onto the scalp) + softness + baby hairs, parting (flip + scalp line), colour from ONE authority view
-with grey by region; sets a START (loose short-cut groom, hairline front_points, parting, grey, look, strand dials).
-`compare=` runs the same read on our renders through the fitted cameras (ours | picture).
-NEXT: round 1 on the held-out man's head (reader start), sheet, coordinator; then up to 3 more rounds.
+STATE (2026-10-14, after the man's 4 rounds; WAITING for the coordinator's go before the family heads):
+`hair_read.py` + MCP `hair_from_reference` (read, START, `compare=` ours | picture, `colour_step`) + tests
+(test_hair_read 13, test_hair_loose +1: lift per region; test_toolsets updated); `groom.loose.lift` may be per region.
+Checklist rules 14 (short cut: length and lay by region) and 15 (fine strands at the picture's scale) added.
+Sheets workspace/human_renders/hg_00 (reader start) .. hg_04 (round 4). Regression run "hg1": all eleven 0.00 (same).
+Round 4 by the reader (ours | picture): stand-off sides -0.4, back +2.7, nape +1.8, top +4.8, front -5.3 mm; mean L*
+39.9 | 41.9, highlight 51.5 | 53.6, light share 0.36 | 0.45; chroma 6.4 | 4.9 (browner); strand_sd 9.3 | 6.8 (coarse);
+hairline softness 1.0 | 3.5 mm. By eye: a combed-back short grey cut now (no curls), but coarse wiry strands, a
+comb-teeth hairline, a ragged nape.
+NEXT: the coordinator's go -> the family heads (reader start + up to 4 rounds each); open faults on the crop: rule 15
+(strand fineness, the hairline's density ramp), front stand-off, chroma (one more colour_step).
 RESTART: scratch DURABLE /mnt/data/hifipushie/hair_garrett/: env.sh, run.sh <script> (heavy: capped; scripts in
 spikes/hair_garrett, tesshair7, tesshair5, garrett3), runl.sh (light: bin/slot), blender6 (-t 6). Scripts
 spikes/hair_garrett/: copyhead.py <src> <dst> (hg_* / hj_* / hl_* copies; skin copied, never edited), readprobe.py
 <model> (read + start + overlays), hround.py <head> <dst> [patch=@json] (reader start onto a copy + a round patch through
-server.groom_hair), hgshots.py <model> (EEVEE tiles through the fitted cameras + the front camera turned: y125, y180;
+server.groom_hair; ABSOLUTE patch paths: run.sh cds to the worktree), hgshots.py <model> [stage=<head model>] (EEVEE tiles through the fitted cameras + the front camera turned: y125, y180;
 this branch has no skin layer stack, so skin.projection / skin.stack are dropped from the STAGE in memory),
-mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), pyc.py (a snippet in this environment).
+mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), cmp.py <model> (hair_read.compare on the tiles), pyc.py (a snippet in this environment). Round patches: /mnt/data/hifipushie/hair_garrett/styles/r1..r4.json (r4 = best). The regression: TOUT=/mnt/data/hifipushie/tesshair7/out run.sh regress.py run tag=X, then runl.sh regress.py sheet tag=X.
 ### Reader findings (general)
 - The face parsers find short grey hair on a pale backdrop well (MediaPipe crisper at the outline, BiSeNet softer):
   hair = their mean; the pixel-level hairness (backdrop -> dense hair colour) carries the fine edge the nets smooth.
@@ -2127,3 +2132,26 @@ mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), pyc.py (a snip
   a profile: the head's shape and that picture disagree (or the camera's fit is off there); the stand-off goes negative
   there and the views disagree by > 10 mm at the back. Read such a region from the other views; don't groom to it.
 - Baby-hair counting needs a thin-shape test (area < 0.5 mm x length): skin texture (pores, creases) counted 4x.
+- Validated on Tess's pictures: the reader's stand-off over the top 16.6-19 mm = tesshair7's standoff.py (17-19);
+  halo 0.25 and 7 wisps / 10 cm on her loose updo vs 0.07 and 1.7 on a combed short cut: the measure separates them.
+- Light shares must be compared at ONE threshold (the picture's): each image's own Otsu split counted different things.
+### The short man's cut in 4 rounds (general findings; per-picture notes are private)
+- `groom.volume` does NOTHING to loose hair (only the generated tiers): a loose groom's stand-off is `lift` (+ `body`
+  as locks come down over each other) + the strands' own spread (~5 mm laid). `lift` is now per region.
+- THE CURLS on a short back were not strand dials (all off: still curls) nor the under layer. Isolated (back view, one
+  change each): (a) LAY with 6 mm thick locks: the lock's guide lies ~2.5 mm off the skull, half its strands are under
+  the skin and are pushed out crumpled (r2: astrakhan; lay 0.3 + lift 4 mm: straight); (b) SHORT locks (19 mm) with a
+  LIFT near their length rise and fall in one arc: every lock a hook, the back fish scales / curls (lift 12 mm on 19 mm
+  locks: worst; narrower locks only showed the scales one by one). Straight laid short hair needs lift << length
+  (2 mm on 30 mm) and locks <= 3 mm thick. Locks under 8 mm are skipped by hair_loose: a 6 mm nape left bare scalp.
+- The stand-off of clipped sides (12 mm here) is not reachable with 1-2 cm hair laid flat: by measure the sides need
+  ~3 cm laid hair (or a fuller under layer); trust the stand-off over "it looks short".
+- Colour: one `colour_step` (asked x picture / render per linear channel, front view) took the mean L* 30 -> 40 (42);
+  the rest was the grey SHARE, not the grey colour: grey strands are finer than a pixel, so the light pixels' median is
+  a mix; the start now asks for the lightest quarter of them as the grey strand colour.
+- Stages: a dressed stage per groom model (stage.ensure(model)) costs a sync each AND fills the shared _g3_ budget,
+  so store.prune_stages evicted another agent's stage (the regression's _g3_th_T04; rebuilt from tess_a1 as th_T04,
+  regression identical). hgshots.py now takes stage=<head model>: one stage for every groom on a head.
+- Short cuts: the STRAND groom owns the shape and the look (it is what the reader and the sheets judge); the game
+  export of a short cut stays the guide's baked cap + sparse cards, baked FROM the strands (export_hair's SHORT_TIERS):
+  one source of truth, the cap / cards are its LOD, not a second groom.
