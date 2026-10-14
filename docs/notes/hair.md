@@ -2259,6 +2259,11 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   away, the away comb over 15 mm, 25 % crossing; test) + spacing 10 mm, width 2.4, 220k strands + scalp_tint 0.15: hair
   runs up to the part from both sides, a few gaps left at the crown from above. Sheet human_renders/hg_lt19_part.jpg
   (REFERENCE | now | before; front crop + from above).
+- From above (the coordinator: game cameras look down on heads): crown gaps + wide crossing ribbons. Narrower, denser
+  locks (spacing 7 mm, width 2.0) made it WORSE (more crossings, more gaps); what closed it: scalp_tint back to 0.85 on
+  dark hair (a dark scalp reads as the shadow between hairs, as on a real dark head: 0.15 suits GREY hair only) and the
+  part's crossing share 0.1 (crossed locks left gaps behind them). Sheet hg_lt19_part2.jpg. scalp_tint by the hair's
+  darkness: dark hair 0.85, grey / fair 0.15-0.3.
 ### hair-heads STATE (merge-ready, 2026-10-14)
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
 New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15
