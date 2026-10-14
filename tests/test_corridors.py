@@ -157,7 +157,69 @@ def test_scan_starts_in_air():
     print("ok scan over rock 25 m up:", z.round(3))
 
 
+def test_drawn_surface():
+    """Where a cliff shell is on top, the corridor is its drawn LOD 0 surface (pushieworld note 125: the water solved
+    on the field's exact top stood 10-20 cm off the drawn facets under crown_beck's tall fall, a film's depth): a tile
+    GLB's "surface" primitive read back (glTF axes, the node's translation) and rastered at the corridor's samples;
+    the "buried" primitive is not drawn."""
+    from types import SimpleNamespace
+    d = Path(tempfile.mkdtemp())
+    # a tilted plane over the tile 0,0 (z = 5 + 0.1 x) as the surface, a flat 9 m sheet as the buried back
+    P = np.array([[0, 0, 5.0], [64, 0, 11.4], [64, 64, 11.4], [0, 64, 5.0]])
+    B = np.array([[0, 0, 9.0], [64, 0, 9.0], [64, 64, 9.0], [0, 64, 9.0]])
+    F = np.array([[0, 1, 2], [0, 2, 3]], np.uint32)
+    o = np.array([0.0, 0.0, 0.0])
+    tm.write_glb(d / "tile_0_0_lod0.glb", "t", [
+        {"attrs": {"POSITION": tm._to_gltf(P - o)}, "indices": F, "material": None, "extras": {"role": "surface"}},
+        {"attrs": {"POSITION": tm._to_gltf(B - o)}, "indices": F, "material": None, "extras": {"role": "buried"}}],
+        tm._to_gltf(o[None])[0].tolist(), [{"name": "m"}])
+    tris = co._tile_surface(d / "tile_0_0_lod0.glb")
+    assert tris.shape == (2, 3, 3), tris.shape
+    D = co.drawn_top(tris, 10.0, 30.0, 0.25, 9, 9)  # (rows from y 30 down, columns from x 10)
+    x = 10.0 + 0.25 * np.arange(9)
+    assert np.allclose(D, (5.0 + 0.1 * x)[None].repeat(9, 0), atol=1e-4), D[0]
+
+    class _F:  # the field's top 4 cm under the drawn plane, the ground far under
+        rock = None
+
+        def column(self, x, y):
+            return np.full(len(x), -20.0), np.ones(len(x))
+
+        def value(self, p):
+            return p[:, 2] - (5.0 + 0.1 * p[:, 0] - 0.04)
+
+        def _boxes(self):
+            return [(np.array([0.0, 0.0]), np.array([64.0, 64.0]))]
+
+    class _R:
+        d = 1.0
+
+        def s(self, x, y):
+            return np.ones(len(x))
+
+        def height(self, x, y):
+            return np.full(len(x), -20.0)
+
+    T_ = SimpleNamespace(river_water_lines={"r": {"xy": np.c_[np.full(40, 32.0), np.linspace(5, 59, 40)],
+                                                  "width": np.full(40, 2.0), "level": np.full(40, 8.0)}},
+                         lakes={}, falls=[], xs=np.arange(0, 65.0), ys=np.arange(0, 65.0))
+    G_ = SimpleNamespace(origin=np.array([0.0, 0.0]), tile=64.0, ni=1, nj=1)
+    import unittest.mock as um
+    with um.patch.object(co, "pushed_grid", lambda region, xs, ys: np.full((len(ys), len(xs)), -20.0)):
+        m = co.write(T_, _F(), _R(), d, {"corridors": True}, log=lambda *a: None, grid=G_)
+    assert m and m["drawn_samples"] > 0, m
+    r = m["rects"][0]
+    A = np.load(d / r["file"])
+    (x0, y0), (x1, y1) = r["extent"]
+    X = x0 + r["spacing"] * np.arange(r["cols"])
+    inside = (X > 0.5) & (X < 63.5)
+    drawn = 5.0 + 0.1 * X
+    assert np.abs(A[:, inside] - drawn[inside]).max() < 0.002, np.abs(A[:, inside] - drawn[inside]).max()
+    print(f"ok corridor on the drawn surface: {m['drawn_samples']} samples, |corridor - drawn| < 2 mm")
+
+
 if __name__ == "__main__":
+    test_drawn_surface()
     test_scan_starts_in_air()
     T = _load(SPEC)
     n, pts, took = test_corridors(T)

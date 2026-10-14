@@ -1340,8 +1340,8 @@ export into out/<tag>), glb.py (GLB reader: primitives in world xyz, embedded im
 directions / material weights at the lip), notch.py (the column across the lip), rend124.py <tiles dir> <tag>
 (renders terrain3d_renders/pw124_*), orig/src = HEAD before item 1 (PYTHONPATH it to run a test on old code).
 
-RESTART: items 1-2 done (commits below); the island re-export is Pushieworld's (main told). NEXT: item 3
-(note 125: the cliff shell's drawn surface vs the corridor ground; item 1 already took it from >10 cm on 12 % to 1 %).
+RESTART: items 1-4 done (commits below; item 4 = two stale slice_a cards closed); the island re-export is Pushieworld's. NEXT: item 5
+(note 123: buried backs over the heightmap at fall feet: terrain_cliffs._faced, uncommitted in the tree; + guide material name).
 
 - Item 1, note 124 (black slab at crown_beck's tall-fall lip, [1310, 1511], tile 20_23). Two causes:
   (1) AO. `Field.column` took the faces' step (terrain_falls.Faces, note 120) for h but kept the GRID's slope correction s,
@@ -1393,3 +1393,20 @@ RESTART: items 1-2 done (commits below); the island re-export is Pushieworld's (
   lip 2.0 -> 4.0 (the pond itself was facet removal: held now); downs' mouth stays 0 (the sea's water).
   Tests: test_streams::test_water_design_covers_the_water (the field's water across 167 sections within width/2 +
   0.6 m; HEAD: widths were half), ::test_hold_rivers.
+- Item 3, note 125 (the cliff shell's drawn surface vs the corridor ground under streams, 10-20 cm below crown_beck's
+  tall fall). Scratch dvc.py <tiles dir> <corridor dir> x0 y0 x1 y1 (drawn top = ground GLB + LOD 0 surface primitive,
+  rastered at 0.25 m, minus the corridor). Below the tall fall, [1300-1330, 1516-1536]: their export (5d84560) p5 / p95
+  -0.11 / +0.11 m, |d| > 10 cm on 12 %; item 1 alone (metric field, so the decimation saw the real error) -0.05 /
+  +0.06, 1 %; now 0 / 0. Two parts: (1) item 1; (2) `terrain_corridors.write(grid=G)`: where a cliff shell is drawn
+  over the ground tile and within DRAWN_MAX 0.5 m of the field's top, the corridor sample IS the drawn LOD 0 surface
+  (each tile's "surface" primitive read back and rastered, topmost up-facing triangle; tiles not written, e.g. outside
+  an `only` block, keep the field). The water solved on a corridor now stands on what the game draws (LOD 0; LOD 1-2
+  are farther). Whole tile 20_23: 3841 m2 of shell on top, all within 1 mm; heightmap on top unchanged (p95 +0.044).
+  Manifest corridors: `drawn_samples`, `drawn_max_m`, the `what` text says so. Also `rects` read the water lines'
+  width as a full width (0.5 x): it is a half width, rects are now the water + 15 m as meant.
+  Test test_corridors::test_drawn_surface (a GLB written and read back, buried primitive ignored, the corridor on the
+  drawn plane within 2 mm while the field is 4 cm under it).
+- Item 4 (cards cmuyba8py / cmuybaba7, slice_a's seam check and budget, 2026-10-07): stale, closed. The island export on
+  5d84560 (3 caves) has every tile within budget (max 12000; cave tile 16,25 11994), slowest tile 80 s, 0 open /
+  non-manifold edges at every LOD, shards LOD 0/1 0.002 / 0.008 %, heightmap .npy fortran_order False; its one seam
+  failure is the floating piece at [225, 1058] (note 122). slice_a itself was not re-exported.

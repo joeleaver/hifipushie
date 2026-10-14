@@ -803,10 +803,11 @@ The shell run writes its outputs beside the spec:
   river's water path, lake shore and fall pool (+ `buffer` m), each listed in the manifest's `corridors.rects` (file,
   extent [[x0, y0], [x1, y1]] of the outer samples, cols, rows, spacing, follows): the top surface as the tiles build
   it (the ground with its stream beds and banks, the cliff meshes' rock at fall lips and faces where it stands
-  higher), sampled from the export's field, no clutter.
+  higher), sampled from the export's field, no clutter; where a cliff shell is on top, its drawn LOD 0 surface
+  (`drawn_samples` counts them), so water solved there stands on what is drawn.
   - `tile_<i>_<j>_lod<k>.glb`: one node at the tile's south-west corner (glTF: x east, y up, z south), primitives
     by `extras.role` and material: "surface" first (what is seen; material `terrain_baked`), then in cliffs mode
-    "buried" (the shell's back under the heightmap: skip it, or draw it; material `terrain_reference`), then "skirt"
+    "buried" (the shell's back under the heightmap: skip it, or draw it; material `terrain_buried`, a flat dark rock colour), then "skirt"
     (double-sided, material `terrain_skirt`). An importer that drops extras (Godot) can go by the material name. Per
     vertex NORMAL, TANGENT, TEXCOORD_0 (the baked maps),
     TEXCOORD_1 (the splat) and `_WEIGHTS0`, `_WEIGHTS1` (ground layer weights, 4 per attribute, summing to 1); with
