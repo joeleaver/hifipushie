@@ -202,7 +202,9 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             Rc = max(R - 0.6, 0.0) / 0.4
             wl = wl * (1 + 0.35 * Rc * rng.uniform(-1, 1))
             ph = rng.uniform(-1, 1) * (R * 1.2 + Rc * (np.pi - 1.2)) + 2 * np.pi * s / (lam * wl)
-            env = _ss(s / 0.03)
+            wf_ = float(Sl.get("wave_from") or 0.0)  # (m along the lock where the waves start: long hair straight on top,
+            # wavy in the lengths below the ear; 0 = from 3 cm, as before)
+            env = _ss(s / 0.03) if wf_ <= 0 else _ss((s - wf_) / 0.06)
             P = P + B * (A * env * np.sin(ph))[:, None] + N * (A * env * float(Sl["curl"]) * fr * np.cos(ph))[:, None]
             hw = W / 2 * lw
             thin = W < 0.016

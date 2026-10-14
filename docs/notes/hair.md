@@ -2225,6 +2225,13 @@ lt19 rounds 7-11 (sheet human_renders/hg_lt19_r11.jpg: REFERENCE | r11 | r6; sty
   fitted profile camera sees. Halo share capped at HALO_MAX 0.2 as a guard (loose x2 x soft x4 reached 0.56).
 - Left on lt19: the lengths are now too straight (her loose waves below the ear), the crown halo still faint, the part
   shows a narrow scalp V, the ear is covered where hers shows, no volume at the crown.
+lt19 r12-r13 (sheet human_renders/hg_lt19_r13.jpg: REFERENCE | r13 | r12): new strand dial `wave_from` (m along the lock
+where waves start: 0.12 = straight top, waves below the ear). VOLUME: the reader's stand-off said ours was WIDER at the
+sides (+8 mm) because her room (couch, shirt) hid the outline; by height from the parser (spikes/hair_garrett/widths.py)
+hers is narrower at cheek level but ~4 cm wider at the shoulders and reaches 1.5-2x further behind the head in profile
+(38-83 mm vs 22-48). groom.loose.body 8 -> 25 mm + waves 2 cm in the lengths: the mass fills out (ours now wider than hers
+at cheek level: 240 vs 179 mm; the top stays smooth). Left: the curtains at cheek level too wide, the profile near side
+hangs over the jaw again with the waves, crown halo, part V.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)
