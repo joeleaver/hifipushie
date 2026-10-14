@@ -26,10 +26,20 @@ The faults were in the PROCESS, at four points:
 2. **MEASURE**: every item is measured on the result, every round, and printed as a table: item | reference |
    ours | pass. A failed item is the fault list; the author fixes the biggest one first. Tool gates (crossings,
    validator, coverage) are still run, but they're necessary, never sufficient.
-3. **LOOK** (independent review): a fresh reviewer agent with no stake gets ONLY reference crops and result
-   crops (same framing, side by side, per item region), no captions, no numbers, no claims. It lists everything
-   that reads wrong, worst first. The author answers each point (fixed / disputed with evidence). The
-   coordinator looks at the crops BEFORE reading the author's or reviewer's text.
+3. **LOOK, by the agent itself, every round** (Joe: "the own agents need some sort of process by which they're
+   like 'does this _look_ good? No it does not, here's what it needs, keep trying'"). Every round, the agent runs
+   `/mnt/data/hifipushie/bin/review <out_dir> "<region>=<ref_crop>:<result_crop>" ... --context "<one neutral
+   line>"`: a blind art-director review (a separate headless Claude) that sees ONLY reference | result pairs per
+   checklist region, no captions, numbers or claims, and lists every fault MAJOR / MINOR with a "needs:" line,
+   ending VERDICT PASS (no MAJOR) or FAIL. ~1 min. The agent fixes the worst MAJOR fault and loops.
+   - Crops cover EVERY checklist region (a region left out is a fail), same framing both sides, big enough to
+     judge (the reviewer says when it isn't). Never write claims into --context.
+   - The agent answers each point in its notes: fixed (with the next review's pair), or disputed WITH evidence
+     (e.g. the reference doesn't show it). It never overrides a MAJOR by its own opinion.
+   - Nothing goes to the coordinator until the review PASSES on every region, EXCEPT: a decision that is Joe's,
+     or STUCK (the same MAJOR fault survived 3 honest attempts with different approaches): then send the review
+     history and what was tried, and keep working on other faults meanwhile.
+   - The coordinator looks at the pairs BEFORE reading any text, and re-runs `review` on spot checks.
 4. **APPROVE**: only Joe, or the coordinator from a reference-beside-result look, marks a piece approved in
    `workspace/approved.json` (`bin/approve`). The next stage consumes ONLY approved pieces, by the exact model /
    file named there. Anything else is "draft" and never goes into an assembly or to Joe as a result.
