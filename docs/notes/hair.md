@@ -2438,3 +2438,82 @@ workspace/checklists/tess_hair_reseat.json (copy in scratch checklists/).
   above the ear sits a little higher (more helix shows in 3q), front wisps hang in front of the ear rather than
   across it. OTHER STAGES (not hair): face / skin / neck seam / bust cut (the ga_tess stage's draft skin).
 STATE: re-seat hc_s2 PASSES review; sent to the coordinator for approval. NEXT: the cards on the approved re-seat.
+
+## Handover 2026-10-14 ~18:00 (hair-cards agent; stopped by the coordinator for context size)
+Branch `worktree-agent-a54a66de6d6970c0b` (worktree .claude/worktrees/agent-a54a66de6d6970c0b) = main 76b6292 (budgets) +
+the assembly branch (worktree-agent-ad0815704f43e0e00: blender_game, shading, lods, the card-cut fixes) + this work.
+Commits: d3f6066 (re-seat), 1f2e17b (cards WIP), + the handover commit (pooled single hairs: UNTESTED, compiles).
+APPROVED: hair/tess_reseat = hc_s2 (coordinator, from review/reseat_r1 sheet_views.png).
+
+### Re-seat (done): see "## hair-cards" above. hair.reseat / tie_hair(carry_from, reseat=True) = W18's grown locks lock
+for lock (scaled by the scalp radius ratio 1.149, far points rigid, `_ear_warp`), fit.abs_r for tie metres. Compare
+heads through the ORIGINAL's cameras moved with the head (`like=th_W18`), never the new head's own fitted cameras.
+
+### Scratch /mnt/data/hifipushie/haircards (all through capped / slots; env.sh = this worktree's code + main workspace)
+- run.sh <gb> <script> (heavy: resources.heavy + capped), runl.sh <script> (light slot), tests.sh <pytest args>.
+- mk_seat.py <dst> (head tp_h3 + reseat th_W18), mk_reseat.py (the old REGROW, for comparison), seat_round.sh <m>.
+- hx.py <model> <out dir> [tiers=hero] [tt={"hero": n}]: export_hair without the check; prints the budget report
+  incl. `by_class` (face / hanging / head / single x layer: cards + triangles cut vs kept) and the fixed parts.
+- shots_hc.py (local, a Blender start per view; 768 px 8 samples now) and spikes/haircards/shots.py (IN THE REPO: all
+  views in ONE Blender start via per-view light rigs; strands, or glb= cards drawn by blender_cards.game_material;
+  `like=`, `only=` triangle ranges to isolate cap / layer0 / layer1). Both write s_<m><tag>_<v>.png + id_ (hair masks).
+- card_round.sh <exp> <tier> [params] [views]: render a tier GLB + measure vs the strands (tiles hc_s2L) + montage.
+- measure_hc.py <A> <B> tagA= tagB= [cams=th_W18]: IoU (closed masks) / area / bottom (tail tip) / lower width /
+  face-wisp reach / ear cover / front colour (L*, chroma, hue). mont.py: A / B / mask-diff rows (for MY look only).
+- glbprobe.py <m> <glb> <report> <tier>: each layer's height off the scalp by region vs the locks.
+- colprobe.py <glb> <basecolor>: COLOR_0 and atlas colour stats. layers.sh: render layer ranges alone.
+- crops.py + rv.sh: the review's region crops + bin/review. offload.sh <job> <renders.json> <exp dirs>: pack hc_s2 +
+  th_W18 + GLBs, spikes/offload/remote.sh -> spikes/haircards/job_cards.py on NICO-TOP, tiles back into out/.
+- IN FLIGHT at handover: offload job `e3a` (remote/r_e3.json: strands hc_s2 tag R + e3 hero cards tag _e3heroR, 1024 px
+  / 24 samples on stage hc_s2). Results: remote/results/hc-e3a/e3a/ (out.tar, log.txt). First use of the route by this
+  agent: check log.txt before trusting it.
+
+### GPU rule (coordinator, 2026-10-14): the laptop GPU was reset 3x by heavy Blender hair renders. Locally: fewest
+strands that still judge, ~768 px, low samples, log frame wall time (> ~5 s a frame is a risk). Heavy renders (full
+grooms, card GLBs with alpha, gate sheets) go to NICO-TOP via spikes/offload/remote.sh (COMMIT first: the repo travels
+at HEAD; batch views per Blender start: shader compile 50-90 s).
+
+### Cards: state (hero only measured; budgets.json hero hair_cards = 25k / 12.5k / 8.25k / 2.5k for hero/main/npc/far)
+- CARD_TIERS' triangles now come from budgets (hair.tier_triangles; hair.export.role / tier_triangles override).
+- e0 (as inherited) -> e1 (cap under cards) -> e3 (all fixes below), hero vs the strands (measure_hc, 768 px): IoU
+  front / 3q / profile / back 0.69 / 0.71 / 0.73 / 0.76 -> 0.74 / 0.78 / 0.78 / 0.79; tail tip (profile) strands 828
+  | cards 779 -> 815 px; tail lower width 296 | 221 -> 194 (narrow); front L* 26.7 | 13 (CARDS FAR TOO DARK).
+- Where e3 hero's 25k go (hx by_class): cap 3.1k + core 0.55k + tie 0.13k; head L0 398 cards 12.5k; hanging L0 4.9k
+  (+1.2k L1); face L0+L1 2.6k; head L1/L2 (24k) and singles (7.5k) all CUT. The cut coarsens to group 'lock' (24 mm
+  cards) at 25k: the 'sub' cut's coverage layer alone is over 45 % of the tier. Keeping everything at the 'lock' cut
+  is ~70k. THE TRIANGLE CURVE IS NOT MEASURED YET (hx.py tt= at 25 / 40 / 60 / 80k + review each).
+- Open MAJORs by my own look (no blind review run on cards yet): far too dark; tail narrower / shorter than the strands;
+  forehead hairline a hard dark notched edge (strands: soft, light); face wisps faint; one-layer head reads flat (no L1
+  at 25k); halo absent (pooled singles just written, untested); e1 had plank cards standing up at the part (fine part
+  rows -> sparse tile in e3: not yet looked at).
+- Why hair3 v8 was good: its groom (hs_tess) had ~100 broad locks: the 'sub' cut fit 40k with 2-3 layers. W18 has 950
+  locks (325 gather rows in volume layers, 420 halo hairs, 72 baby, 59 strays, 20 curls, 14 wisps): cut per lock it
+  explodes (7k cards / 243k triangles), the budget drops layers and whole classes, and the coarsened 'lock' cut gives
+  one narrow card per thin lock. Three faults independent of the groom, fixed: (1) the cap = the groom's ENVELOPE stood
+  25 mm off the top where the cards lie at 17: the lighter "helmet" with a seam (hair.cap_under_cards); (2) face wisps
+  are free locks, never `at_hairline`, so ranked as single hairs and cut first (lock["face"], PRIO_FACE); (3) fly-tile
+  hairs 0.12 mm wide on a 5 mm wisp card fell under the alpha cutoff (FLY_HAIR 0.07 of the tile's width).
+- Colour: atlas covered texels linear ~0.14 (lifted by hair_colour.peak 2.55), COLOR_0 mean 0.64: albedo ~0.09; the
+  strands render ~2.5x the luminance under the same light. The shading notes' aux-shade formula (shading.py, the
+  assembly's) DOUBLE-applies root / depth / strand value already in the atlas: blender_cards defaults aux_shade 0;
+  fix shading.py's formula to match, then calibrate a card gain (look.card_gain, in the atlas) by the measured
+  luminance ratio and write it + the backscatter / translucency term into <asset>_shading.json/.md.
+
+### Tried / dead ends
+- tie_hair(carry_from) regrow on tp_h3: re-rolls wisps, IoU 0.78-0.85 (reseat 0.86-0.94). Without the ear warp: a ledge
+  at both temples. Comparing through tp_h3's own fitted cameras: misleading (head proportions differ).
+- export_hair(check=True) needs the model's scene.blend (hc_s2 has none): use hx.py + shots instead.
+
+### NEXT (in order)
+1. Read the e3a offload result; if the route works, all card renders go there (remote/r_*.json, several per job).
+2. Colour: fix shading.py's hair_cards formula (no aux shade on top of the atlas), measure the strand / card luminance
+   ratio in the common mask, set the card gain (and backscatter) so front L* / chroma match within 1.5.
+3. Tail width / length: why the hanging cards are narrower (hw clip 0.9 x card_width, end_share); compare the tail's
+   strand spread per station with the cards'. Hairline: the cap edge / hairline tile at the forehead.
+4. Test pooled_singles (halo as ~50 fly cards); tests for cap_under_cards, face priority, pooled singles,
+   tier_triangles (card tests live in tests/test_hair_strands.py).
+5. Triangle curve: hero at 25k / 40k / 60k / 80k (hx.py tt=), each rendered and blind-reviewed (crops.py + rv.sh,
+   --stage "game hair cards: silhouette, coverage, flow, separation, colour, card artefacts" --not "head shape; skin;
+   garments"); report to the coordinator the triangles the approved look needs per tier vs 25k (Joe's decision).
+6. Then main / npc / far, the checklist workspace/checklists/tess_hair_cards.json (NOT written yet), the shading notes'
+   game terms (root-to-tip, per-strand tint, th_63 colour), docs.

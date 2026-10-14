@@ -702,10 +702,13 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
     Rr = float(S["random"])
     C = np.asarray(C, float)
     out = []
+    pool = [int(li) for li in np.unique(G["lock"]) if is_single(locks[int(li)])] if S.get("pool_singles", True) else []
     for li in np.unique(G["lock"]):
         lk = locks[int(li)]
         free = float(lk.get("free", 0.0)) > 0.5
         if group == "free" and not free:
+            continue
+        if int(li) in pool:
             continue
         sel = G["lock"] == li
         A, sub = G["A"][sel], G["sub"][sel]
@@ -818,6 +821,51 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                     out.append({"P": Pq, "X": _unit(np.cross(Tq, Nq)), "N": Nq, "hw": np.full(len(Pq), 0.004),
                                 "u": G["u"][okq], "s": sq, "kind": "fly", "layer": L, "prio": L + 1.0,
                                 "cval": 1.0, "bend": oq, "T": Tq, "lock": lk["name"], "value": val})
+    if pool:
+        out += pooled_singles(G, locks, pool, C, L, rng)
+    return out
+
+
+SINGLES_PER_CARD = 8  # single-hair locks (a halo, escaped hairs) pooled onto one fly card: a card of the fly tile pictures
+# a few hairs; 420 halo hairs cut as 3 cards each (Tess's W18) were 7k triangles, all of them cut by any game budget
+
+
+def is_single(lk: dict) -> bool:
+    """A lock of a few single hairs lying on the head hair (a halo, escaped hairs): not face-framing, not a tail's."""
+    return int(lk.get("hairs") or 0) > 0 and not lk.get("face") and not lk.get("off_head")
+
+
+def pooled_singles(G: dict, locks: list, pool: list, C, L: int, rng) -> list:
+    """Single-hair locks clustered by where they run (root, middle, end), SINGLES_PER_CARD a cluster, each cluster ONE
+    fly card along its hairs' mean path: the halo as a few cards standing where the hairs stand."""
+    from scipy.cluster.vq import kmeans2
+    C = np.asarray(C, float)
+    feats = []
+    for li in pool:
+        P = np.asarray(locks[li]["pts"], float)
+        feats.append(np.r_[P[0], P[len(P) // 2], P[-1]])
+    feats = np.asarray(feats)
+    k = max(1, int(np.ceil(len(pool) / SINGLES_PER_CARD)))
+    if k < len(pool):
+        _, lab = kmeans2(feats, k, minit="++", seed=int(rng.integers(1 << 30)))
+    else:
+        lab = np.arange(len(pool))
+    out = []
+    for g in np.unique(lab):
+        lis = [pool[i] for i in np.nonzero(lab == g)[0]]
+        A = G["A"][np.isin(G["lock"], lis)]
+        if len(A) < 1:
+            continue
+        c = _clump(A, G["u"], lambda P: C[None], min_share=0.25)
+        if c is None:
+            continue
+        s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(c["P"], axis=0), axis=1))]
+        if s[-1] < 0.01:
+            continue
+        hw = np.clip(1.6 * c["sx"], 0.002, 0.005) * (1 - 0.4 * _ss((s / s[-1] - 0.6) / 0.4))
+        out.append({"P": c["P"], "X": c["X"], "N": c["N"], "hw": hw, "u": c["u"], "s": s, "kind": "fly", "layer": L,
+                    "prio": L + 1.0, "cval": 1.0, "bend": c["bend"], "T": c["T"], "lock": locks[lis[0]]["name"],
+                    "value": 1.0, "sn": c["sn"]})
     return out
 
 
