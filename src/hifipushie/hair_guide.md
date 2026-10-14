@@ -20,6 +20,11 @@ knob.** Then groom from those sentences, one region at a time, and judge each re
 don't see a style: a short cut combed ACROSS once read "brushed up and back" by every measure while the render was a
 different haircut. When a groom is wrong, rewrite the description and rebuild from it; don't tune the last groom.
 
+**Groom on the FINAL head.** The hair sits on the head that will ship. A groom made on an earlier head must be
+re-seated and re-checked against the reference after any head change (hairline height, stand-off per region,
+coverage, the part, the ears): `tie_hair(other, carry_from=name)` carries the style words and look, not a check.
+Never carry a groom across heads, or re-tie one with defaults, without describing and judging it again.
+
 ## Stage 0: describe the hairstyle (before any groom)
 
 From the front, three-quarter and profile references, write each item with what you see, a number where one can be
@@ -51,16 +56,16 @@ from the pictures and writes a start; read its lines as measurements, not as the
 
 ## The stages
 
-| # | Stage | Tools | Gate before going on |
-|---|---|---|---|
-| 0 | Describe | (words), `hair_from_reference` | The description above, written for the reference and for the current render |
-| 1 | Shape | `tie_hair` / `groom_hair(groom=...)`, `look_hair(stage="mass")` | Silhouette, stand-off per region, hairline, part, comb direction match the description from every side |
-| 2 | Strands | `groom_hair(strands=...)` | Lock separation, waves, halo, wisps match (checklist rules 3-7, 12-15) |
-| 3 | Colour | `look` keys, `look.seen` | Colour bands and variation match (rules 8-11) |
-| 4 | Export | `export_hair` / `export_asset` | Each tier judged as an engine draws it |
+| # | Stage | Tools | Read first | Gate before going on |
+|---|---|---|---|---|
+| 0 | Describe | (words), `hair_from_reference` | `hair_checklist` (what to look for) | The description above, for the reference and for the current render |
+| 1 | Shape | `tie_hair` / `groom_hair(groom=...)`, `look_hair(stage="mass")` | `hair_tied` (tied), `hair_loose` (loose: recipes per hair type), `hair_short` (crops) | Silhouette, stand-off per region, hairline, part, comb direction match the description from every side |
+| 2 | Strands | `groom_hair(strands=...)` | `hair_checklist` ("Strand dials", rules 3-7, 12-15) | Lock separation, waves, halo, wisps match |
+| 3 | Colour | `look` keys, `look.seen` | `hair_colour` | Colour bands and variation match (rules 8-11) |
+| 4 | Export | `export_hair` / `export_asset` | `hair_export` | Each tier judged as an engine draws it |
 
 Look after every change (`look_hair` takes 4-30 s); judge from every side (`views=["around"]`): tied hair is wrong
-from behind first. On an approved head only: the hair is seated on the head that will ship.
+from behind first.
 
 ## Two principles every groom keeps
 
@@ -120,7 +125,7 @@ differs: the description decides. Argue a MAJOR away only with evidence that the
 | Long-hair machinery on a crop (wavy noodles, wings, a curly back) | The short-cut recipe: lengths and lay by region, wave 0, fine dense strands |
 | A clean notch of scalp at the part, scalp patches from above | Even roots (`strands.even` 1), soft part (`part_soft`), dense guides |
 | Colour typed into `lit` from a photo (renders grey-blond) | `look.seen` |
-| Hair seated on a head that isn't the approved one | Groom on the approved head; `tie_hair(other, carry_from=name)` carries a style |
+| A groom carried or re-tied onto a changed head with defaults | Groom on the final head; after any head change re-seat, re-describe and re-judge (hairline, stand-off, coverage) |
 | Judging the strands, shipping cards | `look_hair(tier=...)` / `export_hair(check=True)`: judge each tier as the engine draws it |
 
 ## Limits today
