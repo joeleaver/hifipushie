@@ -87,16 +87,19 @@ Rig and weights
   (no tube bends, no candy-wrapper, measured twist), garments and hair ride without poke-through.
 
 Motion
-- Each clip judged beside the SAME clip on its source skeleton, frame by frame (retarget errors show as
+- Each clip (in Blender) judged beside the SAME clip on its source skeleton, frame by frame (retarget errors show as
   arcs, cocked wrists, arms held out). Silhouette per frame.
 
 Expressions (ARKit)
 - For the key shapes (eyeBlink, jawOpen, mouthSmile, browInnerUp, mouthFunnel...): beside a reference of a
   real person making that expression. Lids close fully, teeth / tongue / lashes follow, the crease fades.
 
-Engine (Godot)
-- The same views in Godot beside the Blender render beside the reference: colour (skin L*a*b* in the same
-  boxes), hair, materials. Engine-specific faults (colour space, tonemap, alpha) found by measurement.
+Engine (none: hifipushie is engine-agnostic; Joe 2026-10-14: "It doesn't need a godot check ... Blender with
+eevee built like a game would work is enough")
+- The exported GLB re-imported into Blender and rendered in EEVEE set up like a game: the glTF importer's
+  materials only (no Cycles, no ray tracing), alpha clip / hashed hair cards, the blink map and face shapes
+  driven as an engine would, LODs at their switch distances. Beside the approved pieces' own sheets and the
+  reference. No Godot or other engine in any gate.
 
 ## Reviewer brief (the LOOK step)
 Spawn a fresh agent per gate sheet. Give it: the reference crops and result crops as image paths, the stage's
