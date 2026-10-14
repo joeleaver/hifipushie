@@ -346,7 +346,8 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.m
                 "block_in": "blockin_guide.md", "blockin": "blockin_guide.md", "block-in": "blockin_guide.md",
                 "likeness": "likeness_guide.md", "terrain": "terrain_guide.md", "vegetation": "vegetation_guide.md",
                 "clutter": "clutter_guide.md", "gnm_driving": "gnm_driving_guide.md", "driving": "gnm_driving_guide.md",
-                "hair_locks": "hair_locks_guide.md", "hair_background": "hair_background.md"}
+                "hair_locks": "hair_locks_guide.md", "hair_background": "hair_background.md",
+                "cloth_background": "cloth_background.md"}
 
 
 def _tool_section(name: str) -> str:

@@ -2244,6 +2244,26 @@ NO SIM WAS RUN.
 - 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed; since prod v132 its box time is billed). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.
 
 ## cloth12 (2026-10-13, "cloth12" agent; continues cloth11 on Garrett's jacket, model su_gc)
+SUMMARY (one page; details per gate below). Garrett's jacket (su_gc) from "a strap with a tab" to reading as the
+concept at figure scale; 9 broker sims + 1 duplicate, $0.47; construction worked on cached sims (con.py, seconds).
+- Side-neck tabs: the made collar's outer edge was squeezed to 0.35-0.5 of its cut length where the end turns into
+  the back: fall boarded at its pattern length + the transition as one smooth outer edge (Hermite), straight columns.
+- Collar end a strap: laid on the forepart's eased cloth (21-33 of 39 mm): end columns at their cut width.
+- Notch: measured the wrong point before (the collar tip); the apex was 13-17 mm low -> lapel gorge_drop 0.12 -> 0.10.
+  Rim: the collar end lies on the lapel by its thickness. Shape: collar point 15 mm.
+- Lapel: canvassed roll graded 2 -> 7 mm from break to gorge (made_lapel roll_top).
+- "Jagged cut edges": Workbench stencil shadows, not the cut (render shadows switch; judge with shadows off).
+- Production cut: the tuck moved the shirt up to 38 mm into the body (skin showing): never closer than 1 mm now.
+- Right front swinging open: ruled out pattern, body, shirt, closure lap, start, mesh (opt-in mirror_mesh) one test
+  each; cause was the made collar's carried START: one end's lay took points of the other end round the back
+  (cloth._end_points). Then the button stance 20 -> 12 mm put both fronts at the concept's opening at the button.
+- Best: out/c12_n10c.pkl (gorge_drop 0.10, collar point 0.015, lapel stand 0.012); gates pass (0 skin px, 0 visible
+  crossings), notch 57 / 55 mm below the chin (concept 63 / 56), fronts symmetric, 132-138 mm apart at the button.
+- Rules distilled into cloth_guide.md ("What goes wrong", "Judging what you see", "Made pieces constructed after the
+  drape"); background split to cloth_background.md (guide topic cloth_background).
+- Open: notch V crispness, chest V ~2 cm narrow, a ridge at the left side neck, shoulders, CB collar crossings, the
+  shirt re-sim on the final measures.
+
 Scratch DURABLE in /mnt/data/hifipushie/cloth12/: cloth11's tools retargeted to this worktree (env.sh: BLAS/OMP 4
 threads; stage.sh: --timeout-minutes 30; bl.sh: oxidegen's maintained scripts/bundle/bundle_client.py), + run_c11.sh /
 q_c11.sh (the same on cloth11's code, src_c11 = `git archive 2770134 src`: reproduces c11_gc1's sim keys for a construct
