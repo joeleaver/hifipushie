@@ -2101,3 +2101,29 @@ averaged over all views chase a mix. NEXT (whoever tunes colour again): take hai
   37.4, core 21.9 | 17.8 | 22.7, chroma 11.1 | 10.9 | 11.9. A little root darkness kept at the part. The back itself
   got ~2 L* lighter with it. Sheet human_renders/th_64_front_like_back.png (OUR BACK | front before | after; 3/4
   before | after). Regression: only Tess moved (1.3), riffs identical; accepted run "w18". Tests 112 pass, 0 skipped.
+
+## hair-garrett (2026-10-14, "hair-garrett" agent, branch `worktree-agent-a9414ffa57394154a`): the hair READER, new hair types
+Goal: show the checklist (hair_guide.md "What makes hair read as hair") carries to new people and hair types, and build
+the hair READER. Subjects: a short men's cut from a held-out photo set, then two family heads. Per-person / per-picture
+notes are NEVER here (held-out set: /mnt/data/hifipushie/hair_garrett/notes_private.md; family: workspace/private_notes/).
+### STATE / NEXT / RESTART
+STATE (step 1): `hair_read.py` + MCP `hair_from_reference` (hair toolset; guide section in hair_guide.md) + tests
+(tests/test_hair_read.py, 12, synthetic: no nets / Blender). Reads stand-off by region, halo, roughness, wisps,
+hairline (cast onto the scalp) + softness + baby hairs, parting (flip + scalp line), colour from ONE authority view
+with grey by region; sets a START (loose short-cut groom, hairline front_points, parting, grey, look, strand dials).
+`compare=` runs the same read on our renders through the fitted cameras (ours | picture).
+NEXT: round 1 on the held-out man's head (reader start), sheet, coordinator; then up to 3 more rounds.
+RESTART: scratch DURABLE /mnt/data/hifipushie/hair_garrett/: env.sh, run.sh <script> (heavy: capped; scripts in
+spikes/hair_garrett, tesshair7, tesshair5, garrett3), runl.sh (light: bin/slot), blender6 (-t 6). Scripts
+spikes/hair_garrett/: copyhead.py <src> <dst> (hg_* / hj_* / hl_* copies; skin copied, never edited), readprobe.py
+<model> (read + start + overlays), hround.py <head> <dst> [patch=@json] (reader start onto a copy + a round patch through
+server.groom_hair), hgshots.py <model> (EEVEE tiles through the fitted cameras + the front camera turned: y125, y180;
+this branch has no skin layer stack, so skin.projection / skin.stack are dropped from the STAGE in memory),
+mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), pyc.py (a snippet in this environment).
+### Reader findings (general)
+- The face parsers find short grey hair on a pale backdrop well (MediaPipe crisper at the outline, BiSeNet softer):
+  hair = their mean; the pixel-level hairness (backdrop -> dense hair colour) carries the fine edge the nets smooth.
+- The skull (scalp projected through the fitted camera) can stand OUTSIDE the photo's hair at the back of the head in
+  a profile: the head's shape and that picture disagree (or the camera's fit is off there); the stand-off goes negative
+  there and the views disagree by > 10 mm at the back. Read such a region from the other views; don't groom to it.
+- Baby-hair counting needs a thin-shape test (area < 0.5 mm x length): skin texture (pores, creases) counted 4x.

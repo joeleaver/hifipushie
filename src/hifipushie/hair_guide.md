@@ -18,7 +18,7 @@ fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it
 | 1 | The mass stands OFF the skull: real hair is ~1.5-2 cm off the skull over the top and sides, 3-4 cm above a low tie | a combed cap hugging the skull ("flat") | outline stand-off from the skull through the fitted camera (spikes/tesshair7/standoff.py; mm per direction) | `volume` (amount, crown / sides / nape, hold) |
 | 2 | From the parting the hair RISES and arcs over, then falls down the side: convex arcs, not straight lines to the tie | straight diagonal strands laid flat | strand paths from the part drawn on both pictures (flowlines.py); the lock plot (lockplot.py) | `volume.root` (bend radius), `volume.arc` |
 | 3 | The mass is LOCKS with depth, not one shell: under-layers darker, locks of different height and width | a smooth helmet | by eye in close-ups; colour_variation `mass_sd` | `volume.layers`, `volume.locks` (keep <= 0.4: at 1 the crown's silhouette is wavy wires), look `depth` |
-| 4 | A HALO: fine, light, slightly curly hairs standing a few mm off the top layer along the whole silhouette | a surface, not hair (the strongest single tell) | by eye at the silhouette in front / profile; (reader: TODO) | `wisps.halo` (default with volume; gentle curls, never the old `strands.halo` on every lock: a wire grid) |
+| 4 | A HALO: fine, light, slightly curly hairs standing a few mm off the top layer along the whole silhouette | a surface, not hair (the strongest single tell) | by eye at the silhouette in front / profile; hair_from_reference: halo density, wisps / 10 cm (compare= ours vs picture) | `wisps.halo` (default with volume; gentle curls, never the old `strands.halo` on every lock: a wire grid) |
 | 5 | The PARTING is a soft line: hair rises and falls both ways, crosses it, scalp barely shows; it fades out a few cm back | a clean notch between two lobes, dark roots | close-up of the part from the front | `hairline` (zig), `volume.cross`, halo crossing (28 % of `wisps.halo`), part rows drawn fine |
 | 6 | The HAIRLINE thins out over ~1 cm with fine baby hairs; the temple is hair down to the ear | a hard dark edge, a shaved temple, a grey veil | close-ups of both temples and the forehead's corners | `hairline`, `wisps.baby`; the ear is found on the mesh (hair.ear) |
 | 7 | WISPS / escaped strands are fine, near-straight with a soft bend, a little lighter, hanging close to the face | corkscrew ringlets (doll-like), black wires, a grey veil of flat clumps | close-ups of the temples and in front of the ears | `wisps.curls` (escaped strands), `wisps.amount`; flat clumps are cut back automatically under volume |
@@ -539,6 +539,35 @@ cycles_sat (Cycles) by. The look's own lights are used (look.light), not the pic
 pixels. (Sheets before th_30 labelled "Cycles" were path-traced with 2 transmission bounces, which renders dark hair
 near black; look_hair(engine="cycles") uses 10.)
 Needs the scene once: `sync` the model (or its stage) first.
+
+### `hair_from_reference`
+`hair_from_reference(name, out="", read_only=False, authority=None, compare=None, seed=0)`: the HAIR READER. The
+model's fitted reference pictures (human_refs.json, from the block-in / face solve) are MEASURED, never used as a
+texture (as skin_from_reference): face parsers (MediaPipe multiclass + BiSeNet) give hair / skin / backdrop, a
+pixel-level hairness runs from the backdrop's colour to the dense hair's, the model's scalp projected through each
+camera is the bare skull. It reads:
+- stand-off (mm from the skull's edge to the solid hair's edge, by region: front, top, crown, sides, back, nape; per
+  view and the median; NEGATIVE where the skull pokes through the hair = the head and the picture disagree there:
+  fix the head or trust another view, not the groom) -> rule 1
+- halo density (mean hairness 0.5-4 mm past the solid edge: 0 a cut-out .. 1 solid), edge roughness (mm against its
+  own 15 deg trend), wisps (detached hair pieces within 12 mm, per 10 cm of outline) -> rules 4, 7
+- hairline: every hair / bare-skin boundary pixel cast onto the scalp (height per |az|, left and right together, and
+  their difference), softness (20 -> 80 % hair across the line, mm), baby hairs (thin specks on the skin side, per cm)
+  -> rule 6
+- parting: a sharp flip of the strands' direction over the top WITH a line of scalp (front-ish views); else NOT SEEN
+  and the start has no part (INFERRED); the front's sweep (which way it is combed) -> rule 5
+- colour from ONE authority view (default the most frontal; the others are printed as checks: pictures disagree on
+  colour between views): colour_bands + colour_variation, a two-mode split into pigmented hair (`seen`) and light /
+  grey strands (`grey`, their share), and the light share BY REGION (salt and pepper greys at the sides first)
+  -> rules 8-11
+- length: not in a picture of a short cut (it lies over itself): INFERRED from the stand-off.
+The START (saved to `out`, a copy, or the model; read_only shows it without saving): style strands; a short cut
+(mean stand-off < 30 mm) gets `groom.loose` from the short-textured-crop recipe with lengths (INFERRED), volume per
+region = 0.6 x stand-off, flow over by the sweep, lay (prior), hairline front_points (MEASURED), parting (MEASURED or
+none), grey by region; look seen / grey / grey_amount / variation; strands halo / flyaway / soft / baby from the read.
+Longer hair: hairline, parting and look only (groom the shape by hand). Every line says what it came from.
+`compare={0: "s_v0.png", 1: ...}`: the same read on OUR renders through those fitted cameras (square renders as
+look_hair's "ref<i>" views), as a table ours | picture: the round's measure, like with like.
 
 ### `hair_reference`
 
