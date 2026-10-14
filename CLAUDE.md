@@ -249,6 +249,12 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   -> full notes: docs/notes/resources.md
 - `tests/test_tooling.py`: reproductions of the tooling cards' incidents (`uv run python tests/test_tooling.py`).
 
+## Gates: every stage, reference first (2026-10-14; read docs/notes/gates.md before any stage)
+DESCRIBE the reference as measurable items before choosing a template; MEASURE every item each round; LOOK =
+an independent reviewer on reference | result crops (no captions); APPROVE = Joe or the coordinator only, in
+workspace/approved.json (/mnt/data/hifipushie/bin/approve). Stages consume ONLY approved pieces. Clean != right;
+"runs end to end" is plumbing, not a result.
+
 ## Notes per thread (docs/notes/)
 Every thread's history (findings, numbers, dead ends, handovers) lives in `docs/notes/<thread>.md`: rig, base, hair,
 cloth, skin, onemesh, likeness, refstudy, garrett_head, measuremodels, terrain, streambeds, vegetation, clutter,
