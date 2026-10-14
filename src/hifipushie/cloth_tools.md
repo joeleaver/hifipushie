@@ -78,9 +78,11 @@ state: "worn" (default: sewn on the body and settled), "draped" (laid flat and d
   "rail": {"length", "radius", "posts"} | false}}). The report's "hanger" line says what carries it.
 quality: "draft" (one coarse 2 cm sim, ~1 min: judge fit and big shape) or "final" (default: the coarse sim, then
   refined at 1 cm and cleaned up, ~3-5 min).
-backend (spec key): "blender" (default, local) or "zozo" (ZOZO's contact solver: intersection-free, strain
-  limited; one sim at `resolution`, placement "smooth"; on this machine's GPU, ~2 s/frame at 2 cm, or on a GPU box
-  via $HIFIPUSHIE_ZOZO_REMOTE; `zozo` = solver options). Judge ZOZO at "resolution": 0.02 locally.
+backend (spec key): "blender" (default, local), "zozo" (ZOZO's contact solver: intersection-free, strain
+  limited; one sim at `resolution`, placement "smooth"; on the local GPU, or through your own command in
+  $HIFIPUSHIE_ZOZO_REMOTE; `zozo` = solver options; judge at "resolution": 0.02 on a laptop GPU), "file" (the job
+  folder is written and its out.npz waited for) or "remote" ($HIFIPUSHIE_CLOTH_REMOTE runs the job folder): see
+  guide(topic="cloth_sim").
 The sim runs in the background (one at a time on the machine); this waits up to `wait` s and returns either the
 report (when done) or the progress. Call dress(name) again (no spec) or look_cloth to see where it is: a sim
 already running or cached isn't started again. Returns the save, then per garment: status, report.

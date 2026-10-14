@@ -111,9 +111,9 @@ Read the panels before believing a number: a measure can be wrong (a hem read on
 read on a sleeve that rode up on one arm). The report says which misses are the MEASURE's fault when it can tell
 (the item's reference confidence is low, or the two arms disagree by more than the tolerance).
 
-## What usually goes wrong (from Garrett's suit, 2026-10)
+## What usually goes wrong (a tailored suit)
 
-Every hand correction made on the suit is an item, so a check would have found it:
+Every hand correction a suit typically needs is a checklist item, so the check finds it:
 - buttons: two done up instead of one (`jacket.buttons_done`), the jacket worn open vs closed (`jacket.front_state`);
 - no visible shirt placket (`shirt.placket`, choice + `relief` visibility);
 - jacket collar and shirt collar placed wrong (`jacket.collar_show`, `jacket.collar_hug`, `shirt.collar_state`);
@@ -143,9 +143,9 @@ the shot list from the checklist (`cloth_reference.reference_brief`; the same fo
 `garment_reference_brief(..., views=[...])` (`cloth_reference.check_references`) validates a set you already have:
 per checklist item, which picture supports it, or why none does (wrong direction, a perspective or seated painting
 can't give numbers, a close item too small in a full-length shot, folds without raking light, colour under warm or
-dramatic light) and which brief shot would supply it. Garrett's two concepts (an A-pose front + a seated 3/4 oil
-painting) support 57 of 73 items; the back, side and raking shots are what's missing (back length, vent, collar show,
-the tent, collar hug, the trouser break, drape and folds).
+dramatic light) and which brief shot would supply it. Typical: an A-pose front concept plus a seated 3/4
+painting supports most items; the back, side and raking shots are what's usually missing (back length, vent, collar
+show, the tent, collar hug, the trouser break, drape and folds).
 
 ## Tool reference
 
