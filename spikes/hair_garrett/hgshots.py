@@ -5,8 +5,8 @@ The model's CURRENT hair (its spec, in memory) on its dressed head stage (spikes
            three-quarter from his left, y180 = the back), its light turned with it: framed like the front, so the
            unfitted back pictures (same generator framing) sit beside it
 Tiles $TOUT/s_<model><tag>_<view>.png (size x size; the picture's 1152 x 1536 sits in the middle 3/4 of the width).
-Skin: this branch has no skin layer stack (projskin, unmerged): skin.projection / skin.stack are dropped from the
-STAGE in memory (the procedural skin stands in); the model's spec is never changed."""
+Skin: this branch has no skin layer stack (projskin, unmerged): skin keys this branch doesn't know (projection, stack,
+eyes.iris_inner ...) are dropped from the STAGE in memory (the procedural skin stands in); the model's spec is never changed."""
 import copy
 import json
 import os
@@ -31,10 +31,19 @@ eng = kw.get("engine", "eevee")
 _ss = skin_look.stage_spec
 
 
+def _known_skin(sk):
+    """Only the skin keys this branch knows (projskin's newer keys dropped: the procedural skin stands in)."""
+    from hifipushie import skin as skin_mod, skin_features
+    sk = {k: v for k, v in (sk or {}).items() if k in skin_mod.KEYS}
+    if isinstance(sk.get("eyes"), dict):
+        sk["eyes"] = {k: v for k, v in sk["eyes"].items() if k in skin_features.EYE_KEYS}
+    return sk
+
+
 def stage_spec(spec, region, voxel=None):
     s = _ss(spec, region, voxel) if voxel is not None else _ss(spec, region)
-    for k in ("projection", "stack"):
-        (s.get("skin") or {}).pop(k, None)
+    if s.get("skin"):
+        s["skin"] = _known_skin(s["skin"])
     return s
 
 
@@ -46,8 +55,8 @@ def load(name, *a, **k):  # (stage.ensure loads the model: hand it the skin-stri
     sp = _load(name, *a, **k)
     if name == m:
         sp = copy.deepcopy(sp)
-        for kk in ("projection", "stack"):
-            (sp.get("skin") or {}).pop(kk, None)
+        if sp.get("skin"):
+            sp["skin"] = _known_skin(sp["skin"])
     return sp
 
 

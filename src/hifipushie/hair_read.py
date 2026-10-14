@@ -732,7 +732,7 @@ def start(r: dict, spec: dict) -> dict:
                                 "back": so.get("sides", top), "front": top, "sides": 0.8 * top, "top": top}[reg])
               for reg in REGIONS}
     inferred = {reg: reg not in so for reg in REGIONS}
-    if np.mean(list(so_all.values())) * 1000 > SHORT_MM:
+    if np.mean(list(so_all.values())) * 1000 > SHORT_MM or max(so_all.values()) * 1000 > 1.5 * SHORT_MM:
         rows.append(("style", None, f"mean stand-off {1000 * np.mean(list(so_all.values())):.0f} mm: not a short cut; "
                                     "the reader sets hairline, parting and look only (groom the shape by hand)"))
         short = False
