@@ -558,6 +558,43 @@ HIDDEN_RIM = 0.012  # m: buried skin and cloth is kept this far in from what sho
 OWN_SURFACE = 0.0012  # m: a GNM mouth part's meshed vertex this near GNM's own (subdivided) vertices is its surface
 
 
+UNDER_CLOTH_REACH = 0.06  # m: skin with a garment this close along its normal is covered
+UNDER_CLOTH_TUBE = 0.012  # m: ... within this radius of the normal's line (the sim mesh is ~1 cm)
+UNDER_CLOTH_RIM = 0.04  # m: covered skin this close to uncovered skin stays (a sleeve's cuff, a collar, a hem
+# lifting in a pose: what the opening shows)
+
+
+def under_cloth_keep(p: dict, cloth: list[dict]) -> np.ndarray:
+    """Per triangle of an export part (the skin): False where all three corners are covered by a garment (one of
+    `cloth`'s export parts lies within UNDER_CLOTH_REACH along the vertex normal, inside a UNDER_CLOTH_TUBE line) and
+    no uncovered vertex is within UNDER_CLOTH_RIM: the skin under clothes, which games leave out (never seen; in a pose
+    it pokes through the cloth)."""
+    from scipy.spatial import cKDTree
+    V = np.asarray(p["verts"], np.float64)
+    cv = np.asarray(p["corner_vert"], np.int64)
+    N = np.zeros_like(V)
+    np.add.at(N, cv, np.asarray(p["normal"], np.float64))
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    G = np.concatenate([np.asarray(c["verts"], np.float64) for c in cloth])
+    tree = cKDTree(G)
+    used = np.unique(cv)
+    covered = np.zeros(len(V), bool)
+    for s in range(0, len(used), 20000):
+        ids = used[s:s + 20000]
+        for i, nb in zip(ids, tree.query_ball_point(V[ids], UNDER_CLOTH_REACH)):
+            if not nb:
+                continue
+            d = G[nb] - V[i]
+            a = d @ N[i]
+            r = np.linalg.norm(d - a[:, None] * N[i], axis=1)
+            covered[i] = bool(((a > 0) & (r < UNDER_CLOTH_TUBE)).any())
+    open_ = used[~covered[used]]
+    if len(open_):
+        near = cKDTree(V[open_]).query(V[used], distance_upper_bound=UNDER_CLOTH_RIM)[0] < UNDER_CLOTH_RIM
+        covered[used[near]] = False
+    return ~covered[cv.reshape(-1, 3)].all(1)
+
+
 def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float = HIDDEN_RIM) -> np.ndarray:
     """Hidden vertices with no visible vertex of their own part within `rim`. Faces were dropped right where a part
     goes under another, so the cut ran along every hem, cuff and neckline as a ragged edge one triangle deep (the
@@ -1590,7 +1627,8 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
-            lods: bool | list | None = None, cloth_triangles: int | None = None) -> dict:
+            lods: bool | list | None = None, cloth_triangles: int | None = None,
+            cull_under_cloth: bool = True) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1610,7 +1648,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     lods: True (lods.LOD_RATIOS) or a list of shares of LOD0's triangles: <asset>_LOD<k>.glb beside the GLB, the same
     skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name); hair cards by whole layers.
     cloth_triangles: the simulated garments together decimated to this many triangles (their sim mesh, two-sided, is
-    10-40k each: Tess's jeans 38k, sweater 28k); None keeps the sim mesh."""
+    10-40k each: Tess's jeans 38k, sweater 28k); None keeps the sim mesh. cull_under_cloth: the skin (and shells on
+    it without a garment fit, socks) the garments cover is left out (under_cloth_keep), a rim kept at the openings."""
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
@@ -1900,6 +1939,29 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             names.append(pn_c)
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_c]["triangles"]
+        if cull_under_cloth and cparts:  # skin the garments cover: never seen, and a bent limb pokes it through
+            cl = [parts[pn_c] for pn_c, _, _ in cparts]
+            skin_pn = (spec.get("skin") or {}).get("part", "body")
+            under = {skin_pn} | {p_ for p_, d_ in defs.items() if (d_ or {}).get("shell") == skin_pn
+                                 and not (d_ or {}).get("garment")}  # (the skin and paint-like shells: socks)
+            for pn in list(parts):
+                if report.get(pn, {}).get("cloth") or report.get(pn, {}).get("curves") or pn in pf_of:
+                    continue
+                if origin.get(pn) not in under:
+                    continue
+                n0 = len(parts[pn]["corner_vert"]) // 3
+                keep = under_cloth_keep(parts[pn], cl)
+                if keep.all():
+                    continue
+                cm = np.repeat(keep, 3)
+                for k_ in ("corner_vert", "uv", "normal", "tangent", "sign"):
+                    parts[pn][k_] = parts[pn][k_][cm]
+                report[pn]["triangles"] = int(keep.sum())
+                report[pn]["under_cloth_dropped"] = int(n0 - keep.sum())
+                ntri -= int(n0 - keep.sum())
+                log.append(f"{pn}: {n0 - int(keep.sum())} of {n0} triangles under the garments dropped (covered "
+                           f"within {UNDER_CLOTH_REACH * 1000:.0f} mm along the normal, {UNDER_CLOTH_RIM * 1000:.0f} mm "
+                           "rim kept at every opening)")
     from . import lashes as lashmod
     lash = lashmod.export_part(spec, out_dir, log=log.append)
     if lash:  # eyelash ribbons (lashes.py): their own mesh and tiny maps, two-sided; face shapes turn them with the lids

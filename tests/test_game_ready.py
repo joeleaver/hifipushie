@@ -140,6 +140,33 @@ def test_lod_keeps_seams_weights_and_shapes():
     assert abs(d[:, 2].max() - 0.01) < 0.002
 
 
+def _sphere(r, n=40):
+    th, ph = np.meshgrid(np.linspace(0.05, np.pi - 0.05, n), np.linspace(0, 2 * np.pi, 2 * n, endpoint=False), indexing="ij")
+    V = r * np.stack([np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)], -1).reshape(-1, 3)
+    F = []
+    m = 2 * n
+    for i in range(n - 1):
+        for j in range(m):
+            a, b, c, d = i * m + j, i * m + (j + 1) % m, (i + 1) * m + (j + 1) % m, (i + 1) * m + j
+            F += [[a, b, c], [a, c, d]]
+    F = np.array(F)
+    cv = F.ravel()
+    nrm = V[cv] / r
+    return {"verts": V, "corner_vert": cv, "normal": nrm}
+
+
+def test_skin_under_cloth_is_dropped_with_a_rim():
+    from hifipushie import asset
+    skin = _sphere(0.1)
+    cloth = _sphere(0.11)
+    cloth["verts"] = cloth["verts"][cloth["verts"][:, 2] < 0]  # a garment over the lower half
+    keep = asset.under_cloth_keep(skin, [cloth])
+    cz = skin["verts"][skin["corner_vert"].reshape(-1, 3)].mean(1)[:, 2]
+    assert keep[cz > 0].all(), "uncovered skin stays"
+    assert not keep[cz < -0.07].any(), "deeply covered skin goes"
+    assert keep[(cz < 0) & (cz > -0.02)].all(), "the rim at the opening stays"
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):
