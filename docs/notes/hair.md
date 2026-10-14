@@ -2195,6 +2195,17 @@ Garrett round 9 (sheets human_renders/hg_09_garrett.jpg + hg_09_garrett_front_cr
   removes them; the reader now sets 0.15 on grey hair, was 0.5).
 - grey top: groom.grey per region (top / front 0.3) + a less chromatic `seen` (x0.55 chroma, as floats).
 Left: his profile front edge curls a little FORWARD (ours stands up in tufts); the nape; the halo.
+Garrett round 10-11 (sheets human_renders/hg_11_garrett_density.jpg + hg_11_garrett_crops.jpg; styles/r10, T7, T8 = r11):
+- TEXTURE / DENSITY (the coordinator: wiry and sparse, scalp between, a ragged temple corner). Isolated on the 3/4 view
+  one at a time on r10: count 600k (a little denser), strand thickness 0.55, a combed set (stray / tips / roots / frizz
+  low), clump 0.35: none changed the read much. The cause was the LOCK level: 8 mm root spacing with locks 1.2 x wide
+  left ridges with scalp between and a wedge at the temple corner where the front's comb and the sides' meet. Spacing
+  5 mm, width 2.4, body 4 mm (+ 600k strands): a continuous combed surface, the temple corner closed. The reader's
+  short-cut start now uses these (and count 600k).
+- r10 (inside r11): nape hairline 1.2 cm lower (groom.hairline.nape -0.012), fade width 3 cm, nape lay 0.8; front flow
+  with a little forward ([-0.3, -0.25, 0.35]).
+Left: the profile front edge (his projects forward; ours ends short); the nape still shows a crown whorl hole and a
+curly bottom row in the back views; the halo.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)

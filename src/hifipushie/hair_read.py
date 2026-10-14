@@ -864,7 +864,7 @@ def read_text(r: dict) -> str:
 # ------------------------------------------------------------------------------------------------ the start
 
 # fine, straight, dense short hair: many thin strands, no wave / curl, little clumping (long-hair dials made noodles)
-CROP = {"strands": {"count": 220000, "thickness": 0.9, "clump": 0.1, "stray": 0.9, "roots": 0.9, "loose": 0.0,
+CROP = {"strands": {"count": 600000, "thickness": 0.9, "clump": 0.1, "stray": 0.9, "roots": 0.9, "loose": 0.0,
                     "frizz": 0.02, "wave": 0.0, "curl": 0.0, "tips": 0.6, "tip_spread": 0.3, "under_length": 0.01}}
 SHORT_MM = 30.0     # mm: a mean stand-off under this (and no region over 1.5x) is a short cut
 LIFT_SPREAD = 0.005  # m a laid short lock's strands stand over its guide (render stand-off ~ lift + this)
@@ -955,13 +955,13 @@ def start(r: dict, spec: dict) -> dict:
                                       "sides back and down; back and nape down (prior: a combed short cut)")
         lay = {"front": 0.35, "top": 0.65, "sides": 0.5, "back": 0.6, "nape": 0.6}
         put("groom.loose.lay", lay, "prior (combed flat along the flow); with the locks thin enough (thickness) not to sink")
-        loose = {"length": ln, "spacing": 0.008, "width": 2.4, "lift": lift, "body": 0.002, "thickness": LOOSE_THICK,
+        loose = {"length": ln, "spacing": 0.005, "width": 2.4, "lift": lift, "body": 0.004, "thickness": LOOSE_THICK,
                  "messy": {"front": 0.25, "top": 0.25, "sides": 0.1, "back": 0.06, "nape": 0.04}, "uneven": 0.5,
                  "flow": flow, "lay": lay, "stiff": {"front": 0.55, "top": 0.5, "sides": 0.6, "back": 0.65, "nape": 0.6},
                  "out": {"front": 0.15, "top": 0.05, "sides": 0.0, "back": 0.0, "nape": 0.0}}
         put("groom.loose.thickness", LOOSE_THICK, "a laid lock thicker than twice its clearance sinks half its strands into "
                                                   "the skin; pushed out, they crumple into curls (hair-garrett r1-r2)")
-        put("groom.loose (rest)", "spacing 0.008, width 2.4, messy low (combed), uneven 0.5, stiff per region",
+        put("groom.loose (rest)", "spacing 0.005, width 2.4, body 0.004 (a dense, continuous combed surface: at 8 mm the locks parted into ridges with scalp between, hair-heads r11), messy low, uneven 0.5, stiff per region",
             "a combed short cut")
         loose["fade"] = put("groom.loose.fade", {"width": 0.02}, "a short cut fades out at the nape (prior: a barber's "
                                                                  "fade over 2 cm; the nape ended in a ledge without it)")
