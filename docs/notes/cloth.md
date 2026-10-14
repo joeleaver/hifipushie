@@ -2693,3 +2693,141 @@ MISSING / WRONG (fixed in code, or written into the guide):
   dead end, j2t, j4, j5).
 - Sweater s7: s6 + over jeans + fabric {jersey, physical 0.30 / 8e-6}; pre-sim stages pass (hem band closing seam
   starts 30 cm open: WARN, as tess2's). Sim on NICO-TOP.
+
+## Guide rewrite (2026-10-14, "guides" agent): history moved out of the cloth guides
+
+cloth_guide.md went from 918 lines to a ~170-line core (describe the garment first, construction before solver,
+stages with gates, self-review loop, common mistakes, known gaps) plus sub-topics cloth_design, cloth_construction,
+cloth_sim, cloth_faults, cloth_blocks. What left the product (kept here as the record):
+- The founding lesson (2026-10-03): a day of solver tuning (stiffness, shear, plasticity, mesh size) chased symptoms
+  whose causes were construction: a sleeve cap with 44% ease, a collar stand stretched over a long neckline, a
+  missing belt, a lapped pleat sewn shut, no sleeve placket, a coat with no lapel roll or facing, a collar never
+  pressed, every fabric with the same bend.
+- ZOZO real fabric numbers (2026-10-14, Joe: "use the real cloth values"): until then ZOZO ran every fabric on 5
+  presets (cotton twill as 400 g/m2 denim, french terry as 180 g/m2 jersey, 8x too limp).
+- Studio-only sim logistics (not product content): "sims cost money"; Garrett's jacket at chest_ease 0.03 crawled at
+  10x and cost $0.66 in two tries; oxidegen bundle jobs `where: "local"` (bundle_client `run --local --gpu
+  --via-storage`) on NICO-TOP (laptop 3070 Ti, $0, ~5x slower than a rented 4090, ~4.5 s a frame on 2800-vertex
+  jeans: 20 min timeout); the rented fleet ~$0.03-0.08 a 2 cm garment; a Garrett-sized jacket over a shirt at 2 cm
+  ~6-13 min on a 4090; a job "provisioning" is queued behind another client's batch; one stage.sh run at a time (a
+  sim billed twice when two overlapped); take a never-started job out of sent.txt and resubmit once.
+- Body measurements moved on 2026-10-06 (down-the-body tapes taut, shoulder slope from the shoulder line): every
+  draft changed (armhole 6 cm higher, a jacket 7 cm shorter at CB); results before then aren't comparable. Before
+  2026-10-06 the advice was to leave a short neck's collar open (the solver's standoff, gone since).
+- The shirt wear rule until 2026-10-08 also undid the top front button (two open: the user called it wrong).
+- Model-specific numbers dropped from the tables: Garrett jacket length_bonus 0.18, hips_ease 0.14, worn_envelope 10
+  (30 rode the jacket up, collar showing -5 mm), lapel stand 0.02 -> 0.012 (~131 mm at the button), the tent
+  numbers (6 mm spring: fronts 54 mm off the body; 0: 46; 12 mm narrowed the hem 48 mm), short-neck stand 16 mm
+  (lapels 33-41 deg), su_om_garrett armhole_depth 0.14; Tess's sweater band 485 mm under the HPS, jeans knee / hem
+  0.20 / 0.19; the jeans "smooth dark slacks" verdict; cloth12's asymmetry (the right collar END started on the chest
+  133 mm from the left's mirror image; scratch collchain.py, edges.py) fixed in `cloth._end_points`; the test
+  shirt's settle numbers (205 s vs 290-450 s, crease 3.4 vs 6.7 mm, fold spacing 8.7 vs 19.7, collar fall 5 mm below
+  vs 12 above the seam, 18 crossings); c10ship notch=1 camera; section.py / edges.py-style front-edge numbers.
+
+### Moved from cloth_guide.md "block + operations" (prose designs and draft comparisons)
+
+Checked against a known draft: our bodice block on the test body against FreeSewing's Brian at the same ease has
+the same chest width, armhole depth, shoulder seam and side seam to 0.1 mm, back armhole within 2 mm, necklines
+within 1 mm, and the back outline within 2 mm on average (`workspace/cloth_renders/pd_00_block_vs_brian.png`). Ours
+hollows the front armhole 9 mm more (Aldrich's narrower across-front), and for the same biceps ease our sleeve is
+35 mm narrower with a 26 mm higher cap: Brian widens its sleeve by its own rule, ours solves the cap for the width
+asked.
+
+**Three garments designed from prose through these tools** (sheets and draft renders `workspace/cloth_renders/
+pd_20..22_*`), judged honestly:
+- *Wide-leg trousers* (trouser block, relaxed, waistband generated): all stages pass; the 2 cm draft reads as
+  trousers, verdict "fits", 0 crossings, strain p95 5.9%. Wrong: they slide 9 cm down (a waistband 17 mm over the
+  waist holds nothing), pool on the feet (the block's length runs to 3 cm off the floor), and balloon at the hem.
+- *Asymmetric wrap tunic* (bodice, neckline widened, princess lines, `unfold`, the left front extended 22 cm and
+  both fronts cut to V lines, tied by a stitch): reads as a wrap tunic; 2 crossings, strain 11.8%, the hem hangs
+  9 cm lower on the wrap side, the under front bunches at the neck. The gate was right three times on the way
+  (waist ease outside the fit, a take-in that ran into the hips): shaping lives at the DRAFT's waist line, the
+  check measures at the body's.
+- *Cropped shawl-collar princess jacket* (bodice, princess lines, `shawl`, facing, one button, two-piece sleeve):
+  the pattern and construction stages pass and the sheet reads as that jacket. The draft sim is CORRUPT: the
+  cut-on collar starts standing up the front of the neck and Blender's sewing doesn't bring it round (twisted
+  collar seams), and the two-piece sleeves bunch at the shoulders. This design needs a start that lays the collar
+  round the neck (a fold-aware placement) and method "settle"; neither was available here.
+
+**A blazer from our blocks against FreeSewing's Jaeger** on the same body (`pd_30_blazer_vs_jaeger.png`): centre
+back length, shoulder seam, upper armhole and back neck agree within 1-5 mm, the armhole within 12 mm (2%), top +
+under sleeve width within 2 mm. Where a tailor's draft differs from ours, and what to build next: Jaeger shapes the
+centre back seam and cuts a side panel that drops from the armhole (ours: a straight CB and a diagonal style line);
+its waist is 17% over the body where ours is 29% (the fitted block leaves 36 mm a quarter for seams we only half
+used); its hem has 12% over the seat (ours 2%: hips ease is taken at the high hip); its sleeve is 30 mm longer,
+bent far more at the elbow, with a hollowed under sleeve and a hem 39 mm wider; its gorge is a straight line and the
+front hem is cut away in a curve.
+
+Since then: `contour` (the shaped centre back, the hem's spring), `join` (the side panel with no side seam), the
+straight gorge, `round_corner` (the cut-away hem), `fisheye`, the bent two-piece sleeve, and `take_in` on a straight
+cut (it had shaped nothing: the cut had no vertices) bring the same blazer to waist +16% (Jaeger +17%) and hem +12%
+(+12%).
+
+### Moved from cloth_background.md (lesson index, still-open list, closed faults)
+
+#### Where each lesson lives
+
+| Lesson (cloth_audit.md, 2026-10-03) | Where it is enforced |
+|---|---|
+| Sleeve cap ease 44% on the coat | Stage 2 seam check, cap band by kind |
+| Stand stretched over a long neckline; collar shorter than its stand | Stage 2 band seams; simon's collar is drafted with no gap |
+| Missing belt (side seams -20%) | Stage 2 plain seams; `belt` detail |
+| Lapped pleat sewn shut | `back_vent: lapped_vent` evidence: a fold on the tail |
+| No sleeve placket | `cuff: barrel` needs `sleeve_placket`; cuff seam band |
+| No lapel roll, no facing, fronts frozen | `collar: notched_lapel` evidence; stage 3 made or draped |
+| Collar never pressed; the 10 mm U | Fold lines with angle; stage 3 warns on a placed-only fold |
+| The fall didn't cover the stand | `fall_cover` in stage 2; collar cover target in stage 5 |
+| Every fabric the same bend | Fabrics with physical numbers; interfacing multiplier check |
+| Layers held 5-17 mm apart | Layer gaps at the start (stage 4) and settled (stage 5) |
+| Cloth reads thick (no crest under 7 mm at 1 cm) | Crest radius target; finals at 5 mm or less |
+| 20 mm hems everywhere, 11 mm buttons on a coat | Hem depth per hem choice; the plan warns about coat buttons |
+| Sleeves splayed on the hanger | Sleeve angle target |
+| Pieces crossed or overstretched at the start | Stage 4 |
+
+The suit rounds (2026-10-06..08: a shirt, a blazer from our blocks over it, suit trousers, on a test body and on
+Garrett):
+
+| Lesson | Where it is enforced |
+|---|---|
+| A garment worn over another is drafted over it | Automatic with `over` (draft log "drafted over"); layer tells in stage 5 (collar / cuff show, lapel gap, collar hug, crossings) |
+| Jackets and coats are built on the form | Kind default `worn_top`; no check of its own (stage 4 start gaps show a failure) |
+| Bands closed on themselves start closed | Stage 4 fails "<band> starts with its fastening N mm open" |
+| Seams close: p95 gap <= 0.5 mm after the clean-up, closures <= 6 mm | Stage 5 targets `seam_gap_p95_mm`, `closure_gap_max_mm`; OPEN SEAM lines in the report |
+| A strain-limited start: shear counts, 3% target, fine start under 1.6x | Stage 4 start strain (`start_strain_over_limit`); the fine settle's start check refuses before the GPU |
+| Openings at the centre are joined or declared | Stage 3 openings: a seam, stitches, a closure, a closure worn open, or `design.open` |
+| A chosen closure has a closure entry | Stage 3 fails a `front_closure` / `cuff` / `fly` with none |
+| A trouser hem can be pulled on | Stage 2 hem per leg piece against heel + instep |
+| Seat ease from the centre seam to the side seam | Stage 2 `leg_ease` |
+| A jacket's hip room from `hips_ease`, not flare; the tent is the side panel's spring | NONE: read hem level and the open fronts on the sim (target `hem_level_mm` covers the hem only) |
+| Don't lower a jacket stand to show the shirt collar | NONE: `layer_collar_show_mm` measures the result; the lapels' roll angles are in the report's fold lines |
+| A shirt without a tie: only the collar open, collar spread | Kind default (`kinds.shirt.wear`, `collar_spread`); no check |
+| Collar size from the neck | Applied by `collar_rule` on Simon; stage 4 HINT when a neck band is pushed > 8 mm off the neck |
+| A placket / faced edge shows by its finish | Closure defaults by kind (`kinds.<k>.closure`: shirt box / french, jacket and coat facing, holes across); no check |
+| Pit seams start too far apart on a fitted jacket | NONE yet: stage 4 lists seam start gaps; read them |
+| The padded body folds in hollows | Fixed in the code; no check |
+| Judge in clay / GLB, not the textured look; renders before a change show old code | NONE: discipline |
+
+Still open (the checks say so where they can):
+- Carlton's facing and lapel roll; pleats as folds (they are seam gaps: a fold that dies out inside a piece is a
+  cone, and a pleat's layers are finer than a 1-2 cm mesh); double-layer (bagged) cuffs and collars;
+- welt / flap / in-seam pockets; a lining's own pleat and fabric;
+- button size and buttonhole direction are per closure now (`size`, `hole`) but not defaulted per kind (a jacket's
+  closure needs `finish` / `hole` set by hand);
+- a fitted jacket's pit seams (start); the jacket collar hugging the shirt collar (`collar_hug` 23-27 mm, target 6);
+  front, back and collar disagreeing on the neck point (shoulder seam open ~10 mm there); the shirt's side seams
+  standing as a fin the press can't flatten; hem height spread reads designed curves (a shirttail, a yoke) as
+  unevenness;
+- crease width and fold spacing measured by the tools; grain anisotropy.
+
+#### Closed faults (history)
+
+Faults the code now prevents; kept as the record of what was seen and why.
+
+| What you see | Why | Fix |
+|---|---|---|
+| White flecks of shirt through a jacket's sleeves / armholes | The clean-up moved jacket cloth through the shirt under it | Fixed: crossings with the under garment send those vertices back to the sim's surface |
+| A cached build or a look killed for memory (exit 137) with one huge start triangle | `_piece_crossings` searched every edge against every triangle at the largest triangle's radius | Fixed (per-size search, chunked); a start with a huge triangle is still worth reading (st.py-style: worst start triangles) |
+| A jacket front reads open "0 stitches" in stage 2 | A front worn open has its buttons as a closure with no stitches | Fixed (closures' fastenings count); state "open" is fine |
+| ZOZO "ccd failed", max_sigma ~11 at frame 0 | A sliver edge (under 1 mm) in the mesh: a fold row or a mark next to the outline | Fixed in the mesher; the fine start check names the place if one comes back |
+| ZOZO builder: assertion `left > right` 0.0 / 0.0 while "computing constraints" | A collider vertex whose faces have no area (an under garment's welded seam slivers), or none at all | Fixed in the collider (faces under 0.0005 mm2 and the vertices they orphan are left out) |
+| A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |

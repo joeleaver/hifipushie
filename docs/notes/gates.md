@@ -32,6 +32,10 @@ The faults were in the PROCESS, at four points:
    line>"`: a blind art-director review (a separate headless Claude) that sees ONLY reference | result pairs per
    checklist region, no captions, numbers or claims, and lists every fault MAJOR / MINOR with a "needs:" line,
    ending VERDICT PASS (no MAJOR) or FAIL. ~1 min. The agent fixes the worst MAJOR fault and loops.
+   - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
+     the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
+     routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the
+     region (e.g. skin crops without the groom).
    - Crops cover EVERY checklist region (a region left out is a fail), same framing both sides, big enough to
      judge (the reviewer says when it isn't). Never write claims into --context.
    - The agent answers each point in its notes: fixed (with the next review's pair), or disputed WITH evidence

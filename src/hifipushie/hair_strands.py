@@ -70,7 +70,7 @@ EVEN_FRONT = 0.015  # ... over the face (|az| < 50): children of guides that fal
 LOOSE_HALO = 2.0  # x the halo share on LOOSE hair (a long head's crown fly-aways: at 1 x the halo read 0.05 vs 0.22-0.25)
 SOFT_HALO = (3.0, 0.65, 0.6)  # halo_soft = 1: x (1 + 3) halo hairs, their stand-off x 0.35 (~4 mm), length x 0.4 (~2 cm)
 HALO_MAX = 0.2  # the halo share at most (a guard: loose x2 x soft x4 reached 0.56 of the strands, the hair a thin veil of
-# broken hairs: hair-heads, lt19 r9)
+# broken hairs: hair-heads)
 
 
 def _soft(S) -> float:
@@ -210,7 +210,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             ws = float(np.clip(W / 0.03, 0.2, 1.0))
             wl = 1.0 + 1.2 * float(np.clip(1.0 - W / 0.02, 0.0, 1.0))
             if even_all:  # dense GUIDES, not wisps: their width is the guide spacing, the waves are the hair's own
-                # (damped as wisps, lt19 E8's lengths hung dead straight)
+                # (damped as wisps, the lengths hung dead straight)
                 ws, wl = 1.0, 1.0
             A = min(A * ws, 0.3 * lam * wl)  # (never wider than a third of the wavelength: it would fold over)
             # neighbours wave nearly in step (a tail swings as sheets of hair; every lock on its own phase is pasta)
@@ -218,7 +218,7 @@ def lock_guides(locks: list, C, S: dict, seed: int = 0, n_head: int = 24, n_free
             # in step are a crimped sheet with ridges running round the head)
             Rc = max(R - 0.6, 0.0) / 0.4
             if even_all:  # the locks are dense GUIDES (strands.even 1): a child averages a few of them, so their waves
-                # must agree with their neighbours' (random phases cancelled: straight hair, lt19 E6). Phase and
+                # must agree with their neighbours' (random phases cancelled: straight hair). Phase and
                 # wavelength are a smooth field of the root (~3 cm), as neighbouring real hairs wave in step
                 u1, u2 = _smooth_field(P[0], seed), _smooth_field(P[0], seed + 1)
                 wl = wl * (1 + 0.35 * Rc * u2)
@@ -342,7 +342,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
         # few mm a child follows its guides' face rule)
         dens_even = dens.copy()
     # the SPLIT ZONE (strands.even 1): where neighbouring guides comb opposite ways, a child averaging them takes the
-    # middle path (over the cheek at a tuck's edge, jw E1; down the face where the face rule turns hair aside): there a
+    # middle path (over the cheek at a tuck's edge; down the face where the face rule turns hair aside): there a
     # child copies its NEAREST guide; everywhere else it blends three (copies of one guide on short dense hair were
     # bundles of identical strands with gaps: Garrett E2-E3's "pine needles", the coordinator)
     zone = _split_zone(sc, g, AA, EE, d_in, fa_) if float(S.get("even") or 0.0) >= EVEN_ALL else np.zeros_like(d_in)
@@ -381,7 +381,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     if xp_ is not None:
         # TWO ISLANDS split along the part (the even layer interpolates with "Part by Mesh Islands"): a child takes its
         # shape only from guides on ITS side of the part. Averaged across the part, guides going left and right made
-        # children that fell straight down the middle: a veil over the face (hair-heads, lt19 E2)
+        # children that fell straight down the middle: a veil over the face (hair-heads)
         cx = V[F].mean(1)[:, 0] - sc.C[0] - xp_
         F = np.where((cx > 0)[:, None], F + len(V), F)
         V = np.vstack([V, V])
@@ -390,14 +390,14 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
         zone = np.r_[zone, zone]
         # ... and the right island's UVs one unit over (u + 1): Interpolate finds a guide's island by its surface UV, and
         # with both islands on one chart every guide was on either side: children took guides from across the part,
-        # the veil over the face that the split did not remove (hair-heads, lt19 E6). scalp_uv(xp=) shifts the roots
+        # the veil over the face that the split did not remove (hair-heads). scalp_uv(xp=) shifts the roots
         uv_corner = uv_corner.reshape(len(F), 3, 2).copy()
         uv_corner[cx > 0, :, 0] += 1.0
     used = np.unique(F)
     banks = {}
     if xp_ is not None:
         # ... and that was not enough either: Blender's islands still averaged guides across the part (the children
-        # rooted ON the part fell straight down the forehead, lt19 E7). Each bank is its own object (hair_even = the
+        # rooted ON the part fell straight down the forehead). Each bank is its own object (hair_even = the
         # left bank, x < the part, hair_even_r the right), with its own guides and a mask that is 0 on the other bank
         h_ = len(dens_even) // 2
         banks = {"hp_density_even_l": np.r_[dens_even[:h_], np.zeros(h_)][used].astype(np.float32),
@@ -441,7 +441,7 @@ def collide_mesh(sc, step: float = 4.0) -> dict:
 def _split_zone(sc, g: dict, AA, EE, d_in, fa):
     """1 where the comb splits (EVEN children copy their nearest guide there), else 0. LONG loose hair (over 15 cm):
     everywhere: it splits at the part, the tuck, the face rule AND over the shoulders (in front of them or behind):
-    blended children of a front and a back guide hung across the neck and chest (lt19 E17). Short hair: round the EAR
+    blended children of a front and a back guide hung across the neck and chest. Short hair: round the EAR
     when tucked behind it; elsewhere none (blend: a fine combed surface, Garrett E4)."""
     lo = g.get("loose") or {}
     z = np.zeros_like(d_in, dtype=float)
@@ -614,13 +614,13 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
         ]
         if not even_all:
             # a COVER layer, not the lengths: trimmed to EVEN_LEN m (x 0.6..1): interpolated children translate their
-            # guides' shapes, and full-length ones near the face hung over it as a veil (lt19 E2-E3); the lengths are the
+            # guides' shapes, and full-length ones near the face hung over it as a veil; the lengths are the
             # locks' (which keep the face rule), the even layer covers the scalp under them
             out["hair_even"].append(["Trim Hair Curves", {"Scale Uniform": True, "Length Factor": EVEN_LEN,
                                                           "Replace Length": True, "Random Offset": 0.4,
                                                           "Seed": int(seed) + 8}])
         else:
-            # interpolated children are smooth and evenly spaced: no clumps, a helmet (lt19 E6). Blender's Clump
+            # interpolated children are smooth and evenly spaced: no clumps, a helmet. Blender's Clump
             # (its own guide map: one guide every clump_size m) draws neighbours together toward the tips
             out["hair_even"].append(["Clump Hair Curves", {"Factor": float(np.clip(ph["clump"], 0.0, 1.0)), "Shape": 0.5,
                                                            "Tip Spread": 0.002 * float(ph["tip_spread01"]),
@@ -630,7 +630,7 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
                                                            "Guide Distance": float(ph["clump_size"]),
                                                            "Guide Mask": 1.0, "Existing Guide Map": False}])
             # ... and the colour model's per-lock numbers (lock lightness, highlight ribbons) from the root's cell:
-            # without them every child shaded alike, one solid black hood (lt19 E11)
+            # without them every child shaded alike, one solid black hood
             out["hair_even"].append(["hp_cells", {"Seed": int(seed)}])
         out["hair_even"] += [
             ["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"] + 0.0008, "Shape": 0.5,

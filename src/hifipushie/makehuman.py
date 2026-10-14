@@ -192,7 +192,7 @@ MEASURES = {"hips": "measure-hips-circ", "waist": "measure-waist-circ", "shoulde
 
 # MakeHuman's neck modifiers (targets/neck, CC0), same 0..1 convention: "neck_double" = the soft fullness under the
 # chin and at the front of the neck (a double chin at 1), "neck_depth" = the neck's front-to-back depth. The one mesh's
-# GNM head reaches only to its stitch under the chin; the neck front below it is this body (lt19, 2026-10-10).
+# GNM head reaches only to its stitch under the chin; the neck front below it is this body (2026-10-10).
 NECK = {"neck_double": "neck-double", "neck_depth": "neck-scale-depth"}
 
 

@@ -448,7 +448,7 @@ def test_seen_colour_reads_as_asked_in_eevee():
     """look.seen (the colour the hair should read, e.g. off a photo): lit is asked more saturated for the renderer's
     loss, and eevee_sat is set so EEVEE's Hue/Saturation (HSV saturation x eevee_sat, linear) gives seen back; the
     scalp tint and cards don't get the boosted lit (an orange scalp showed). A photo's light brown typed into lit
-    rendered grey-blond (jw, 2026-10-10); explicit colour keys still win."""
+    rendered grey-blond (2026-10-10); explicit colour keys still win."""
     import colorsys
 
     from hifipushie import hair
@@ -563,7 +563,7 @@ def test_banks_split_the_even_layer_at_the_part():
 
 def test_split_zone_long_everywhere_short_none():
     """Even children copy their nearest guide where the comb splits: on long loose hair everywhere (part, tuck, face,
-    shoulders: blended children hung across the neck, lt19 E17); on a crop without a tuck nowhere (copies of one guide
+    shoulders: blended children hung across the neck); on a crop without a tuck nowhere (copies of one guide
     were bundles of identical strands, Garrett E2-E3)."""
     d = np.full((4, 3), 0.03)
     fa = np.full((4, 3), 40.0)

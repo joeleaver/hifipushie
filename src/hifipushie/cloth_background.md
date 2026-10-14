@@ -1,7 +1,7 @@
-# Clothes: background (practice, sources, worked examples, where each lesson lives)
+# Clothes: background (practice, sources, worked examples)
 
 Why the cloth tools are built the way they are: how garment makers and artists work, the sources, two worked garment
-kinds and the index of lessons. Not needed to make clothes; read it when changing the tools.
+kinds. Not needed to make clothes; read it when changing the tools.
 
 ## How artists do it
 
@@ -160,7 +160,7 @@ What a pattern cutter decides first, and where it is here:
 - **Length** (`length`: break, floor, shoe, ankle, cropped, calf, knee, shorts). "break" (the suit trousers'
   default) is cut 30 mm over the floor with the back 12 mm longer than the front; the start hangs each column to the
   floor, stops it on whatever faces up under it (the shoe) and gathers the extra into the bottom 9 cm: one soft break,
-  no ankle showing (Garrett: hem 94 mm up at the front, on the vamp, 58 at the back). Give the shoes as colliders
+  no ankle showing. Give the shoes as colliders
   (`collide: ["shoes", "soles"]`) or the hem passes through them. Cutting the length from the shoe's own heights came
   out 5 cm short: cut from the floor. "shoe" ends the hem 3 cm over the floor with no back difference.
 - **The legs start on the legs** (a tube round each leg's own axis, blended into the seat at the crotch): on one
@@ -175,70 +175,3 @@ What a pattern cutter decides first, and where it is here:
 - **Trims** (garment key `trims`, `cloth_trims.py`): a belt (with a buckle) and belt loops are built ON the
   finished waistband after the sim, as artists model them on the simulated trousers; they are in `look_cloth`,
   not in the sim, the scene or the export yet.
-
-## Where each lesson lives
-
-| Lesson (cloth_audit.md, 2026-10-03) | Where it is enforced |
-|---|---|
-| Sleeve cap ease 44% on the coat | Stage 2 seam check, cap band by kind |
-| Stand stretched over a long neckline; collar shorter than its stand | Stage 2 band seams; simon's collar is drafted with no gap |
-| Missing belt (side seams -20%) | Stage 2 plain seams; `belt` detail |
-| Lapped pleat sewn shut | `back_vent: lapped_vent` evidence: a fold on the tail |
-| No sleeve placket | `cuff: barrel` needs `sleeve_placket`; cuff seam band |
-| No lapel roll, no facing, fronts frozen | `collar: notched_lapel` evidence; stage 3 made or draped |
-| Collar never pressed; the 10 mm U | Fold lines with angle; stage 3 warns on a placed-only fold |
-| The fall didn't cover the stand | `fall_cover` in stage 2; collar cover target in stage 5 |
-| Every fabric the same bend | Fabrics with physical numbers; interfacing multiplier check |
-| Layers held 5-17 mm apart | Layer gaps at the start (stage 4) and settled (stage 5) |
-| Cloth reads thick (no crest under 7 mm at 1 cm) | Crest radius target; finals at 5 mm or less |
-| 20 mm hems everywhere, 11 mm buttons on a coat | Hem depth per hem choice; the plan warns about coat buttons |
-| Sleeves splayed on the hanger | Sleeve angle target |
-| Pieces crossed or overstretched at the start | Stage 4 |
-
-The suit rounds (2026-10-06..08: a shirt, a blazer from our blocks over it, suit trousers, on a test body and on
-Garrett):
-
-| Lesson | Where it is enforced |
-|---|---|
-| A garment worn over another is drafted over it | Automatic with `over` (draft log "drafted over"); layer tells in stage 5 (collar / cuff show, lapel gap, collar hug, crossings) |
-| Jackets and coats are built on the form | Kind default `worn_top`; no check of its own (stage 4 start gaps show a failure) |
-| Bands closed on themselves start closed | Stage 4 fails "<band> starts with its fastening N mm open" |
-| Seams close: p95 gap <= 0.5 mm after the clean-up, closures <= 6 mm | Stage 5 targets `seam_gap_p95_mm`, `closure_gap_max_mm`; OPEN SEAM lines in the report |
-| A strain-limited start: shear counts, 3% target, fine start under 1.6x | Stage 4 start strain (`start_strain_over_limit`); the fine settle's start check refuses before the GPU |
-| Openings at the centre are joined or declared | Stage 3 openings: a seam, stitches, a closure, a closure worn open, or `design.open` |
-| A chosen closure has a closure entry | Stage 3 fails a `front_closure` / `cuff` / `fly` with none |
-| A trouser hem can be pulled on | Stage 2 hem per leg piece against heel + instep |
-| Seat ease from the centre seam to the side seam | Stage 2 `leg_ease` |
-| A jacket's hip room from `hips_ease`, not flare; the tent is the side panel's spring | NONE: read hem level and the open fronts on the sim (target `hem_level_mm` covers the hem only) |
-| Don't lower a jacket stand to show the shirt collar | NONE: `layer_collar_show_mm` measures the result; the lapels' roll angles are in the report's fold lines |
-| A shirt without a tie: only the collar open, collar spread | Kind default (`kinds.shirt.wear`, `collar_spread`); no check |
-| Collar size from the neck | Applied by `collar_rule` on Simon; stage 4 HINT when a neck band is pushed > 8 mm off the neck |
-| A placket / faced edge shows by its finish | Closure defaults by kind (`kinds.<k>.closure`: shirt box / french, jacket and coat facing, holes across); no check |
-| Pit seams start too far apart on a fitted jacket | NONE yet: stage 4 lists seam start gaps; read them |
-| The padded body folds in hollows | Fixed in the code; no check |
-| Judge in clay / GLB, not the textured look; renders before a change show old code | NONE: discipline |
-
-Still open (the checks say so where they can):
-- Carlton's facing and lapel roll; pleats as folds (they are seam gaps: a fold that dies out inside a piece is a
-  cone, and a pleat's layers are finer than a 1-2 cm mesh); double-layer (bagged) cuffs and collars;
-- welt / flap / in-seam pockets; a lining's own pleat and fabric;
-- button size and buttonhole direction are per closure now (`size`, `hole`) but not defaulted per kind (a jacket's
-  closure needs `finish` / `hole` set by hand);
-- a fitted jacket's pit seams (start); the jacket collar hugging the shirt collar (`collar_hug` 23-27 mm, target 6);
-  front, back and collar disagreeing on the neck point (shoulder seam open ~10 mm there); the shirt's side seams
-  standing as a fin the press can't flatten; hem height spread reads designed curves (a shirttail, a yoke) as
-  unevenness;
-- crease width and fold spacing measured by the tools; grain anisotropy.
-
-## Closed faults (history)
-
-Faults the code now prevents; kept as the record of what was seen and why.
-
-| What you see | Why | Fix |
-|---|---|---|
-| White flecks of shirt through a jacket's sleeves / armholes | The clean-up moved jacket cloth through the shirt under it | Fixed: crossings with the under garment send those vertices back to the sim's surface |
-| A cached build or a look killed for memory (exit 137) with one huge start triangle | `_piece_crossings` searched every edge against every triangle at the largest triangle's radius | Fixed (per-size search, chunked); a start with a huge triangle is still worth reading (st.py-style: worst start triangles) |
-| A jacket front reads open "0 stitches" in stage 2 | A front worn open has its buttons as a closure with no stitches | Fixed (closures' fastenings count); state "open" is fine |
-| ZOZO "ccd failed", max_sigma ~11 at frame 0 | A sliver edge (under 1 mm) in the mesh: a fold row or a mark next to the outline | Fixed in the mesher; the fine start check names the place if one comes back |
-| ZOZO builder: assertion `left > right` 0.0 / 0.0 while "computing constraints" | A collider vertex whose faces have no area (an under garment's welded seam slivers), or none at all | Fixed in the collider (faces under 0.0005 mm2 and the vertices they orphan are left out) |
-| A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |

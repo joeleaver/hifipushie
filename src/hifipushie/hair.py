@@ -149,7 +149,7 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
 # seen: the hair's colour as it should READ (sRGB hex; e.g. the brighter half of a photo's hair pixels). The colour
 # keys are asked for the renderer, which gives back about eevee_sat of their saturation (Cycles' hair BSDF; EEVEE's
 # strands copy it with a Hue/Saturation node: HSV saturation x eevee_sat, scene-linear), so a photo's light brown
-# typed into lit rendered grey-blond (jw, 2026-10-10), and at 0.35 no lit at all could reach a saturated brown in
+# typed into lit rendered grey-blond (2026-10-10), and at 0.35 no lit at all could reach a saturated brown in
 # EEVEE. seen derives lit (seen's hue and value, saturation / eevee_sat, capped at 1), gap, sheen and tip around it,
 # and eevee_sat = seen's saturation / lit's (EEVEE then draws seen exactly; Cycles gets what the gamut allows).
 # Keys given in the look still win.
@@ -413,7 +413,7 @@ def groom_params(spec: dict) -> dict:
         except ValueError as e:
             raise HairError(str(e)) from None
     out = _merge(GROOM, g)
-    if "grey" not in g:   # greying temples / sideburns by AGE (lt19b: the default 0.35 / 0.5 put grey locks on a 19-year-old)
+    if "grey" not in g:   # greying temples / sideburns by AGE (the default 0.35 / 0.5 put grey locks on a young head)
         a = grey_age(spec)
         out["grey"] = {k: round(v * a, 4) for k, v in GROOM["grey"].items()}
     return out

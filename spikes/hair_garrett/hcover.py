@@ -27,7 +27,7 @@ tiles, rows = [], []
 for v in views:
     im = np.asarray(Image.open(f"{OUT}/s_{m}_mag_{v}.png").convert("RGB"), float)
     R, G, B = im[..., 0], im[..., 1], im[..., 2]
-    # magenta by HUE, not brightness: seen through dark hair it is a dim purple (lt19 E6 read 0.0 % with R, B > 150
+    # magenta by HUE, not brightness: seen through dark hair it is a dim purple (a dark head read 0.0 % with R, B > 150
     # while the top showed it); skin (B < G) and grey hair (R ~ G ~ B) are not
     mag = (R - G > 35) & (B - G > 35) & (np.abs(R - B) < 0.5 * np.maximum(R, B))
     bg = (np.abs(im - im[:8, :8].reshape(-1, 3).mean(0)).max(-1) < 10)

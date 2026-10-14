@@ -70,7 +70,7 @@ FOLDS = {
                             ("lm_mouth_corner.L", (0.115, 0.05, -0.10))],
                    "plus": (1, 0, 0.5), "width": 5.0, "depth": 0.6, "tint": 0.1, "shade": 0.3, "roll": None,
                    "search": 3.5, "res": 1.0, "read": False,
-                   "read_why": "the mouth's own corner and its shadow lie inside this feature's window: on Tess's photographs, a smooth 22-year-old, it read 0.14-0.19 and was laid at the cap",
+                   "read_why": "the mouth's own corner and its shadow lie inside this feature's window: on photographs of a smooth young face it read 0.14-0.19 and was laid at the cap",
                    "about": "the depression at the mouth's corner (a soft pit turning the corner down)"},
     "mouth_corner": {"path": [("lm_mouth_corner.L", (0.06, 0.01, 0.0)), ("lm_mouth_corner.L", (0.18, 0.07, -0.03))],
                      "plus": (0, 0, 1), "width": 1.4, "depth": 0.45, "tint": 0.5, "shade": 0.15, "roll": None,

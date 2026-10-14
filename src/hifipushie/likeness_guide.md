@@ -20,94 +20,53 @@ The checklist itself is data: `src/hifipushie/likeness.json` (items, stages; add
 ORDER: the artist block-in (guide(topic="block_in"): base of the right kind, whole-face steps judged by eye and by a
 target table drawn from this checklist) comes FIRST and gets the masses, planes and proportions right; the staged
 fitting below is for features after it.
+Sub-topics (guide(topic=...)): `likeness_reading` (where the list comes from: FISWG, artists, anthropometry; how
+each item is read, shape items, the jaw's L, profile items, judge items, coverage), `likeness_profile` (a profile
+from a turned view: contour traces), `likeness_references` (handed references vs references we ask for),
+`likeness_tools` (every likeness tool's parameters; guide(topic="tool:likeness") is the `likeness` tool's section).
 
-## Where the list comes from
+## Stage 0: the character read
 
-**Forensic facial comparison (FISWG / ASTM E3149).** The Facial Identification Scientific Working Group's "Facial
-Image Comparison Feature List for Morphological Analysis", standardised as ASTM E3149-18, is the list examiners use:
-a set of facial COMPONENTS (skin; face / head outline; face / head composition, i.e. proportions; hair; forehead;
-eyebrows; eyes; cheeks; nose; ears; mouth; chin / jawline; neck; facial hair; facial lines; scars; facial marks;
-alterations), each with characteristics (e.g. the nose: bridge, tip, wings, nostrils, columella) and descriptors
-(shape, size, position, symmetry). Examiners go through every component and note similar / dissimilar, as far as the
-image quality allows: a component that can't be seen is recorded as not assessable, not guessed. We take three things
-from it: the components (our items cover all of them; skin, hair, lines and marks are paint or groom, so they are
-judge-by-eye items here), the habit of going through ALL of them on purpose, and "not assessable" as an answer.
-(AAFS factsheet for ASTM E3149-18: https://www.aafs.org/sites/default/files/media/documents/ASTM%20E3149-18%20Facial%20ID.pdf;
-ASTM: https://store.astm.org/e3149-18.html.)
+Before any millimetre, say who this is: "a lean, weathered man, long face on a square jaw, strong broad chin,
+straight nose, heavy brow". A person knows a three-quarter view is wrong because it doesn't fit that macro; the
+checklist's rows can all pass while the read fails. So:
 
-**Portrait and caricature artists: the order.** Artists block a likeness big to small: the head's overall shape
-and proportions first (the face's thirds, where the eyes and mouth sit, the outline), then the features, then
-details; Loomis's head construction (Drawing the Head and Hands, 1956) is the classic version. Caricaturists make the
-same list explicit: identity lives in how a face DEPARTS from the average (Brennan's computational caricature, 1985:
-exaggerate the differences from a mean face and recognition improves), so the features worth checking first are the
-ones that carry those departures: face shape and widths, eye spacing and shape, the brow-to-eye distance, the nose,
-the mouth's width and corners, the jaw and chin. Perception research agrees on the brows (Sadr, Jarudi & Sinha 2003,
-"The role of eyebrows in face recognition", Perception 32: removing the brows hurt recognition MORE than removing
-the eyes) and on configuration (the spacing between features matters as much as the features: Sinha et al. 2006,
-"Face recognition by humans: 19 results", Proc. IEEE 94). Our stages follow this order: proportions, widths, eyes,
-brows, nose, mouth, chin and jaw, ears.
+1. `character_read(name)` gives the form: gestalt descriptors by group (build, face shape, jaw, chin, nose, brow,
+   eyes, cheeks, overall), as portrait artists' head types, casting vocabulary and forensic class descriptors use
+   them. Fill it LOOKING at the references (confidence clear / likely / hint, which picture shows it) and store it:
+   `character_read(name, "reference", read=...)`.
+2. Each descriptor is bound to bands on checklist items in every view, seen or not ("square jaw" = gonial angle
+   <= 122, ramus <= 12 deg from vertical, jaw / cheekbone width >= 0.86, a neck step, a jaw corner in the shading).
+   The stored read is a PRIOR: an item no picture measures takes the band; a measured reference value outside its
+   own read is flagged (suspect that picture's camera or expression); the model outside the band is flagged. The
+   bands are first values, not yet calibrated on real heads.
+3. The round trip is the intuition check: `character_read(name, render=True)` draws the model from each reference
+   camera and from views no reference shows (both profiles, the other three-quarter, low angle). A reader that has
+   NOT seen the references (a fresh agent given only the form and the sheet) fills one form per panel; store each
+   (`character_read(name, "<tag>", read, view)`), then `character_read(name, "<tag>")` is the diff: kept /
+   CONTRADICTS (an opposite read instead) / missing / adds per view, and the controls the read needs that we lack.
+   `likeness(name)` leads with it.
 
-**Anthropometry: the measures.** Farkas (Anthropometry of the Head and Face, 1994) defines the landmarks and the
-standard measures behind every clinical face measurement: nasion (n), subnasale (sn), menton (gn), zygion (zy),
-gonion (go), endocanthion / exocanthion (en / ex), alare (al), cheilion (ch), labrale superius / inferius, stomion,
-pronasale (prn), columella. Our items are those measures (face height n-gn, bizygomatic zy-zy, bigonial go-go,
-intercanthal en-en, palpebral fissure en-ex and height, alar width al-al, mouth width ch-ch, philtrum sn-ls,
-vermilion heights, chin height li-gn, nasolabial angle at sn) plus the clinical angles (canthal tilt; the
-nasolabial angle, ~90-95 degrees in men and 95-105 in women in the rhinoplasty literature) and the classical
-proportion checks (lower third ~ middle third; alar width ~ intercanthal; mouth ~ 1.5 x alar).
+The USER's read wins: `character_read(name, "reference", read, author="user")` for their own words ("chunky, square
+jaw, cleft chin, cute nose"). The LLM reader's descriptors stay unless one is the opposite of the user's; every
+disagreement comes back as a QUESTION to put to the user (which should the model show? which picture shows it?),
+never settled silently.
 
-## How each item is read
+The six-view sheet is stage 0 AND the final check: `likeness(name)` renders it by default and leads with the diff.
 
-Every item is a 2D quantity in the reference picture, in mm at the face's depth through that picture's fitted
-camera (human_refs.json), on the face's own axes (x across, y down the line nasion -> chin), so a tilted head reads
-the same. Both sides use the same reader: MediaPipe's Face Landmarker (478 points, Apache-2.0, in its own venv,
-$HIFIPUSHIE_MEDIAPIPE) on the photo, and on a clay render of the model through the same camera (eyeballs with iris
-discs; brows drawn as strokes through the model's brow landmarks, because brows are paint). A detector's own
-definition errors (where it puts a jaw contour on a soft jaw, iris centres vs eyeball centres) then fall the same way
-on both sides. The model's own landmarks (GNM's 68) give a second reading: the table's "lm miss"; a '!' where the two
-readings disagree by more than the tolerance means the miss depends on the definition: look at the panel.
+**The projection test** (`project_reference(name)`): the reference picture projected onto the fitted head through its
+camera as an unlit texture, seen from the six views. A smooth clay bust beside a photo of a skinned 50-year-old with
+hair is not a fair comparison (a clay head can read "young, round, soft" while the same head wearing the photo
+reads as the person); this one is. Where the picture smears or lands on the wrong part when the head turns (ears on the
+cheeks = the face too narrow, as pass 6; the nose's side; the jaw's edge), the geometry is wrong there. Run it before
+spending blind readers or skin renders.
+A view that can't show a descriptor (a face shape in a profile, chin projection from the front) is left out of that
+view's count. Repeatability (`likeness_read.agreement`): on one head three blind readers agreed on gaunt, heavy brow,
+deep-set, hooded, straight nose, lean and square jaw; they did NOT agree on strong chin, narrow jaw or broad nose, so
+weigh those by the profile panels and the contour items, not by one reader's word.
 
-Four kinds of item go beyond points:
-
-- **Shape items** (the planes at temple / cheekbone / jaw, the cheek hollow, the nasolabial fold, the under-eye
-  hollow, the brow ridge). Distances between landmarks can't see them, and a checklist without them rewards soft
-  heads. They are read two ways. On the MODEL in 3D (`likeness_shape.measures3d`, mm: hull deficits of horizontal and
-  vertical sections, the corner radius of the front-to-side turn, the brow in front of the cornea): these compare one
-  model with another. Against the PHOTO by its shading: one light (ambient + a direction) is fitted to the photo's face
-  skin on the model's own normals, the model is rendered lit that way, and the item is the photo's luminance minus
-  that prediction in a region, against a reference region beside it, in % of the face's median. Negative = the photo
-  is darker there than the model's shape explains (a deeper hollow, a sharper turn away from the light). It is
-  confounded by albedo (stubble, brows, make-up) and assumes one light, so: tolerance 8%, scored on FRONT photos only
-  (a turned or painted view shows the number in its panel, unscored), and the panel puts the model LIT LIKE THE PHOTO
-  beside the photo. Trust the direction and the ranking between models, not the percent.
-- **The jaw's L** (ramus angle from vertical, gonial angle, the lower border's straightness, the angle's height
-  against the ear lobe and the mouth line, the neck's step in under the border). No detector finds a gonion, so these
-  need a TRACE on the reference: `likeness_points(name, image, points, lines)` (stored in
-  `<model>/likeness_points.json`; pixels of the full picture; `.R` / `.L` = the subject's right / left; `lines["jaw.R"]`
-  runs from under the ear lobe DOWN the ramus, round the angle and FORWARD along the lower border to the chin;
-  `lines["neck.R"]` is the neck's contour under it; `points["ear_lobe.R"]`). The model's side is its own contour found
-  along the trace in its render: the depth edge where the jaw occludes the neck, else where its surface turns fastest.
-  A model whose jaw is one soft diagonal from ear to chin reads a gonial angle near 160 and a leaning ramus.
-- **Profile items without a profile** (nose projection, nasolabial angle, bridge profile, lips against the nose-chin
-  line, chin projection): read from a three-quarter view when no profile exists, marked INFERRED ('~' in the table),
-  tolerance x1.5. Never blank while a three-quarter picture exists; columella show, forehead slope and ears stay
-  judge items.
-- **Judge items** (hairline, lid fold, brow thickness, chin shape, neck, lines and marks, ears): no number; a focus
-  panel with the model lit like the photo.
-
-Turned views' cameras are REFITTED per model on the detector's points (the photo's 478 against the model's surface
-under the same points of its render, unprojected through the render's depth; pose and focal, two rounds). The
-table's `cam` column is the residual at each item's points in mm (it includes real shape misses) and widens that
-item's tolerance by half of it: a painting's camera is loose, and its items shouldn't outrank a photo's.
-
-The report leads with COVERAGE: how many items these pictures measure, infer, leave to the eye or can't support and
-why, what a true profile would add, and each picture's problems (lens from the fitted focal, expression from the
-detector's blendshapes, how hard the light is and how badly one light explains it, ears / forehead hidden).
-
-What this still can't do: ears and the hairline have no points at all; resolution (a full-figure concept is ~1.3 mm
-a pixel at the face: items whose tolerance is about a pixel are "low" confidence); the clay render is not the painted
-model (lid margins read from shading, the iris disc's size is a guess); a generated or painted reference may squint
-or frown (the coverage line says so) and its picture may not be one consistent face.
+Limits: the renders are bald clay with drawn brows (no stubble or hair stand-in yet: a bald clay head reads heavier
+and older); keep the summary sentence and read the sheet by eye too.
 
 ## The checklist (likeness.json), in the order to check it
 
@@ -160,237 +119,14 @@ photo's shading). It does not make a likeness by itself: the shading levers are 
 way), the jaw's L and the fold have no control that draws them, and a face is more than its list. Use it for the
 first pass, then judge the panels and the whole head.
 
-## Stage 0: the character read
+## Self-review loop (every stage)
 
-Before any millimetre, say who this is: "a lean, weathered man, long face on a square jaw, strong broad chin,
-straight nose, heavy brow". A person knows a three-quarter view is wrong because it doesn't fit that macro; the
-checklist's rows can all pass while the read fails. So:
-
-1. `character_read(name)` gives the form: gestalt descriptors by group (build, face shape, jaw, chin, nose, brow,
-   eyes, cheeks, overall), as portrait artists' head types, casting vocabulary and forensic class descriptors use
-   them. Fill it LOOKING at the references (confidence clear / likely / hint, which picture shows it) and store it:
-   `character_read(name, "reference", read=...)`.
-2. Each descriptor is bound to bands on checklist items in every view, seen or not ("square jaw" = gonial angle
-   <= 122, ramus <= 12 deg from vertical, jaw / cheekbone width >= 0.86, a neck step, a jaw corner in the shading).
-   The stored read is a PRIOR: an item no picture measures takes the band; a measured reference value outside its
-   own read is flagged (suspect that picture's camera or expression); the model outside the band is flagged. The
-   bands are first values, not yet calibrated on real heads.
-3. The round trip is the intuition check: `character_read(name, render=True)` draws the model from each reference
-   camera and from views no reference shows (both profiles, the other three-quarter, low angle). A reader that has
-   NOT seen the references (a fresh agent given only the form and the sheet) fills one form per panel; store each
-   (`character_read(name, "<tag>", read, view)`), then `character_read(name, "<tag>")` is the diff: kept /
-   CONTRADICTS (an opposite read instead) / missing / adds per view, and the controls the read needs that we lack.
-   `likeness(name)` leads with it.
-
-The USER's read wins: `character_read(name, "reference", read, author="user")` for their own words ("chunky, square
-jaw, cleft chin, cute nose"). The LLM reader's descriptors stay unless one is the opposite of the user's; every
-disagreement comes back as a QUESTION to put to the user (which should the model show? which picture shows it?),
-never settled silently.
-
-The six-view sheet is stage 0 AND the final check: `likeness(name)` renders it by default and leads with the diff.
-
-**The projection test** (`project_reference(name)`): the reference picture projected onto the fitted head through its
-camera as an unlit texture, seen from the six views. A smooth clay bust beside a photo of a skinned 50-year-old with
-hair is not a fair comparison (on Garrett the clay read "young, round, soft" while the same head wearing the photo
-read as the man); this one is. Where the picture smears or lands on the wrong part when the head turns (ears on the
-cheeks = the face too narrow, as pass 6; the nose's side; the jaw's edge), the geometry is wrong there. Run it before
-spending blind readers or skin renders.
-A view that can't show a descriptor (a face shape in a profile, chin projection from the front) is left out of that
-view's count. Repeatability (`likeness_read.agreement`): on one head three blind readers agreed on gaunt, heavy brow,
-deep-set, hooded, straight nose, lean and square jaw; they did NOT agree on strong chin, narrow jaw or broad nose, so
-weigh those by the profile panels and the contour items, not by one reader's word.
-
-Limits: the renders are bald clay with drawn brows (no stubble or hair stand-in yet: a bald clay head reads heavier
-and older); keep the summary sentence and read the sheet by eye too.
-
-## A profile from a turned view (contours)
-
-A three-quarter picture holds a profile at a known angle: the FAR side of the face against the background (forehead,
-brow ridge, the far orbit and cheek, the mouth's line, the chin's corner, the under-jaw) and the nose's own edge
-against the far cheek (bridge, tip, columella). Artists trace exactly these two lines. So when there is no true
-profile, trace them:
-
-    likeness_points(name, image, lines={"profile": [[u, v], ...], "nose": [[u, v], ...]})
-
-"profile" runs from the forehead down round the chin (a dozen points by eye are enough: it is snapped to the
-picture's edge against the background when read); "nose" from between the brows down the bridge, round the tip, back
-to the columella's base (by hand: +-1 px). The model's own contours are found through the same camera (its render's
-silhouette; the extreme of its nose's vertices), both are read in one frame (inner eye corners -> the mouth's
-corners), and the contour items compare them: forehead slope, brow ridge over the orbit, the cheek's line at the
-mouth's height, chin projection (the contour's chin corner against the brow's peak), chin depth below the mouth,
-mentolabial fold, upper / lower lip out of the mouth's notch, nose tip projection, the tip's gap to the far cheek's
-line, nose length, the bridge's bow. They replace the "inferred ~" detector readings of the same things on that
-picture. Units are mm IN THE PICTURE (a turned view foreshortens depth), read alike on both sides.
-
-What to know before believing them:
-- 1 degree of camera yaw moves the nose's gap to the cheek line by ~1 mm. A generated painting need not be one
-  projection: Garrett's desk painting reads 31 degrees by the detector's head pose, 45 by the fitted camera, and its
-  nose is drawn as if turned further still. The far eye corner's gap to the contour is the cross-check (it agreed
-  with the fitted camera there).
-- The lips are named only where a notch between them breaks the contour; at 45 degrees the far cheek usually hides
-  them ("the lips don't break this contour"), and the mouth's line is then the cheek's.
-- The chin "corner" is the point standing furthest out of the chord from the mouth's height to the under-jaw: it
-  exists on any chin, but on a round one it slides.
-
-The fit (`fit_likeness(name, "profile")`, also run inside the nose and chin_jaw stages when the lines exist): the
-contour's miss at the model vertices that make its contour becomes targets for `humanfit.fit_region` (GNM identity
-components inside the nose region / the chin + lower lip region, every other landmark held, integrity-guarded), with
-the part's landmarks held where the FRONT picture has them (a turned view says how far forward things stand; heights
-and widths are the front view's), one camera through all rounds, up to five rounds judged on the contour's own rms.
-
-## References: what we're handed, and what to ask for
-
-Two modes (Joe: "We don't have any way of predicting what kind of reference photos we'll get, unless hifipushie is
-the one responsible for generating them. But when we are, we can try to get the best ones we can.").
-
-**Handed references.** Everything above is built to degrade honestly: each item says what it was measured from, with
-a confidence, "inferred" from a weaker view, hand-placed points where the detector fails, and the coverage line.
-`check_references(images, name=None)` judges a set before any fitting: views present (the detector's head pose),
-lens (the fitted camera's focal when the model has one: under ~60 mm equivalent swells the nose), expression (smile,
-open mouth, squint, raised or furrowed brows from the detector's blendshapes), the light's evenness, ears and
-forehead covered (a colour heuristic: treat as a hint), and identity consistency between views (vertical proportions
-that don't change with the head's turn should agree within 8%). It ends with the brief's shots to ask for.
-
-**References we generate or ask for.** `reference_brief(kind="head" | "figure", subject)` is the shot list derived
-from the checklist, with what makes each shot usable and prompt wording per shot (one shared identity block, so a
-generator keeps the person):
-
-- front, true left profile, three-quarter (45 deg); the front and three-quarter again under ONE side light (the
-  planes: the shape items read shading); optional back and top; for a figure, full-body A-pose front and side;
-- a long lens (85-135 mm equivalent) at eye height; neutral expression, mouth closed, eyes open to the horizon;
-- soft even frontal light for the measuring shots; a plain background;
-- hair off the ears and the hairline; the neck and jaw uncovered; nothing over the features;
-- the same identity, light, scale and camera height in every view.
-
-The brief's shape ({subject, common: {prompt, negative}, shots: [{id, view, light, purpose, must_show, prompt}],
-text}) is shared with the clothing checklist's (`cloth_reference.reference_brief`), so one generator step can serve
-both.
-
-## Tool reference
-
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `likeness` toolset: enable_toolset("likeness") turns it on.
-
-### `likeness`
-
-`likeness(name, targets=False, top=8)`
-
-The likeness CHECKLIST on a one-mesh human against its reference pictures (human_refs.json, from
-human_reference): ~50 facial features in artists' order (proportions, face widths, eyes, brows, nose, mouth,
-chin / jaw, ears; guide(topic="likeness")), each MEASURED the same way on the photo and on the model through the
-picture's fitted camera (MediaPipe's 478 points on the photo and on a clay render of the model, so a detector's
-definition errors cancel; the model's own landmarks as a second reading: '!' where they disagree). The reply: a
-table ranked by miss / tolerance (beyond tolerance first), what can't be measured from these views and why
-("profile needed", "judge by eye"), and FOCUS PANELS (photo | model at the same crop and camera, the feature's
-points on both: red photo, blue model) for the top misses and the judge-by-eye items: look there, on purpose.
-It leads with a one-glance COVERAGE: what these pictures support, what is inferred from a weaker view (profile
-items from a three-quarter view, tolerance x1.5), what only by eye, what not and why, and each picture's problems
-(lens, expression, light, ears / hairline). SHAPE items (planes, cheek hollow, folds, under-eye, brow ridge) are
-read from the photo's shading against the model lit like the photo, with the model's own 3D number beside; the JAW's
-L (ramus, gonial angle, lower border, neck step) from a trace (likeness_points) against the model's contour.
-Turned views' cameras are refitted on the detector's points; the residual per item is in the table.
-targets=True instead measures the references alone and stores the target sheet (<model>/likeness_targets.json:
-value, view, tolerance, confidence or "unmeasurable" per item) with the stage plan: what fit_likeness will do,
-which items have a control and which are gaps. Measures only; never edits the model.
-
-### `fit_likeness`
-
-`fit_likeness(name, stage, force=False, save=True)`
-
-ONE stage of the likeness fit from the checklist, in artists' order: "proportions" (face height, the thirds),
-"widths" (the outline, level by level: fit_outline), "eyes" (spacing, size; hooded lids by fit_hood), "brows",
-"nose", "mouth", "chin_jaw", "ears". The stage's items that miss beyond tolerance (front view) ask humanfit's
-minimal-change solver for exactly those measures; every earlier stage's measures are pinned, so the nose can't
-undo the widths. Integrity-guarded: a result that breaks the mesh is refused, not saved. The reply: the stage's
-items before -> after, items with no solver measure (GAPS: what a person does by hand), earlier stages' items that
-got worse, and the stage's focus panels. Approve each stage (look at the panels) before calling the next.
-Run likeness(name, targets=True) first for the target sheet and the plan.
-stage "profile": only the nose and the chin, fitted to a turned view's CONTOURS (likeness_points lines "profile" =
-the far side of the face against the background, "nose" = the nose's own edge): GNM components inside the nose /
-chin region moved until the model's own contour through that camera lies on the traced one, heights and widths
-held where the front picture has them. The nose and chin_jaw stages run it too when the lines exist.
-
-### `likeness_points`
-
-`likeness_points(name, image, points=None, lines=None, by='', replace=False)`
-
-Hand-placed points on a reference picture for features the detector can't find (stored in
-<model>/likeness_points.json; the format onemesh2's traces use). Pixels of the FULL picture (u right, v down);
-.R / .L = the subject's right / left. points: {"gonion.R", "ear_lobe.R", "tragus.R", "menton", "pogonion",
-"jaw_notch.R": [u, v]}; lines: {"jaw.R": [[u, v], ...] (from just under the ear lobe DOWN the ramus, round the
-angle, FORWARD along the lower border to the chin), "neck.R": [[u, v], ...] (the neck's contour under that border,
-top to bottom), "profile": the far side of the face against the background in a turned view, forehead down round
-the chin (snapped to the picture's edge when read), "nose": the nose's own edge in that view, from between the
-brows down the bridge, round the tip, back to the columella's base}. Merged name by name (null deletes one) unless replace. The jaw items (ramus angle, gonial angle,
-lower border, gonion against the ear lobe and the mouth, the neck's step) read them; the focus panels draw them.
-
-### `character_read`
-
-`character_read(name, tag='', read=None, view='', render=False, author='llm')`
-
-Stage 0 of the likeness checklist: the CHARACTER READ (what a person knows from one look: "square jaw, strong
-chin, straight nose"), as a form of gestalt descriptors, each bound to bands on checklist items in every view.
-- character_read(name): the form to fill while LOOKING at the reference pictures.
-- character_read(name, "reference", read={"descriptors": {id: {"confidence": clear|likely|hint, "picture", "note"}},
-  "summary"}): store the references' read (the prior). author="user" when the read is the USER's own words
-  ("chunky, square jaw, cleft chin, cute nose"): theirs wins group by group, and where it differs from the LLM
-  reader's the reply lists QUESTIONS to ask them (never settle those silently).
-- character_read(name, render=True): a sheet of the model from each reference camera and from views no reference
-  shows (both profiles, the other three-quarter, low angle). Give that sheet and the form to a reader that has NOT
-  seen the references (a fresh agent), one read per panel, and store each: character_read(name, "<tag>", read, view).
-- character_read(name, "<tag>"): the diff, reference vs the model's blind reads view by view (kept / CONTRADICTS /
-  missing / adds, and the controls the read needs that we lack). Read it before the millimetres.
-
-### `project_reference`
-
-`project_reference(name, view=0, save='')`
-
-The fastest honest judge of a fitted head's GEOMETRY: reference picture number `view` (of the model's fitted
-references: human_reference first) projected onto the model through its fitted camera as an unlit texture, then
-shown from the reference cameras, both profiles, the other three-quarter and a low angle. A clay bust beside a
-photo of a skinned, haired person compares two different things; this compares like with like. Where the
-likeness holds when the head is turned, the geometry carries it; where the picture smears, doubles or slides
-(ears landing on cheeks = the face too narrow; the nose's side, the jaw's edge, the chin in profile), the
-geometry is wrong THERE. Skin the reference's camera does not see is dim clay. The picture's own light is on the
-surface: judge outlines and proportions in turned views, not shading.
-
-### `texture_from_reference`
-
-`texture_from_reference(name, views=None, opacity=0.9, delight=True, match='tone', remove=False)`
-
-The fitted reference pictures as the head's ALBEDO (the projection test, kept as paint): each picture is
-projected onto the model through its fitted camera (human_reference first), its light taken out roughly (one
-fitted light on the model's own normals), and laid over the skin as an ordinary paint layer "ref_texture_<view>"
-(an image decal along that camera's axis, colour = the image, alpha = how far to trust it).
-What is the picture and what is ours: the PICTURE gives colour where its camera saw skin square-on (zones, brows,
-stubble shadow, lips, lines: at the picture's own resolution, said in the reply); OURS stays on ears, under the
-chin and nose, hair, eyeballs, skin turned away, neck and body, and for ALL relief, roughness and scattering (the
-skin description's pores and highlights still shape the surface). Cast shadows and a painter's strokes stay in:
-use a photograph with even light; a painting's brushwork lands on the skin.
-views: which of the model's fitted pictures (default all with an image; each later one lies OVER the earlier:
-list the most trusted last). opacity: the layer's strength. delight=False keeps the picture's light.
-match: "tone" (default: the picture's median skin colour is brought to the skin description's tone, so the
-picture gives its variation and the join with the procedural skin doesn't show), "level" (lightness only), ""
-(as de-lit). remove=True takes the layers out.
-The decal is made on the head's shape as it is NOW: after any change of the head's shape call this again (a
-stale layer is reported by name). Then sync + look, or look_skin.
-
-### `reference_brief`
-
-`reference_brief(kind='head', subject='')`
-
-The REFERENCE BRIEF derived from the likeness checklist, for references we generate or ask for: the shot list
-(front, true left profile, three-quarter, the side-light passes for the planes, optional back and top; kind
-"figure" adds full-body A-pose front and side for the body's proportions), what each shot must show (long lens at
-eye height, neutral closed mouth, eyes level, even soft light + a side-light pass, plain background, hair off the
-ears and hairline, the same identity / light / scale in every view, nothing over the features), which checklist
-items each serves, and the prompt wording for an image generator per shot (one shared identity block).
-
-### `check_references`
-
-`check_references(images, name=None)`
-
-What a set of reference pictures can and can't support for the likeness checklist, and why: the views present
-(the detector's head pose), the lens (a fitted camera's focal, with `name`: the model's human_refs.json), the
-expression (the detector's blendshapes: smile, mouth open, squint, raised or furrowed brows), the light's evenness,
-ears / hairline covered (a colour heuristic), and identity consistency between views (vertical proportions that
-don't change with the head's turn). Ends with which reference_brief shots to ask for.
+1. The six-view sheet and the focus panels: the reference beside the model through the SAME camera and crop, per
+   item; the projection test where clay vs photo is unfair.
+2. Go through EVERY item of the list in order (not the one that caught your eye); per item: similar / dissimilar /
+   not assessable, with the measured miss. Mark each miss MAJOR (it changes who the face is: proportions, widths,
+   structure, the character read) or MINOR. Big to small: proportions before features before details.
+3. Fix the worst MAJOR with one stage or step (the block-in's moves for masses); re-measure; keep it only if no earlier
+   item got worse.
+4. Repeat until no MAJOR; then the character read round trip (fresh readers on the renders) as the final check.
+Every row can pass while the read fails: the character read and the whole head decide.

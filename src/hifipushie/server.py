@@ -329,8 +329,10 @@ def _spec_arg(spec) -> dict:
 def guide(topic: str = "") -> str:
     """The playbook and reference. topic "" = modelling playbook (read before modelling); a domain: "hair", "cloth",
     "cloth_reference", "skin", "human", "block_in", "gnm_driving" (a difference you see -> the GNM control),
-    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference); or any tool's name for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
+    "likeness", "terrain", "vegetation", "clutter", "tools" (core tools' reference); or any tool's name (or "tool:<name>") for that tool's full parameters and behaviour. Details: guide(topic="guide")."""
     t = topic.strip().lower()
+    if t.startswith("tool:"):  # always a tool's section, even where a topic has the tool's name (skin, human, likeness)
+        return _tool_section(topic.strip()[5:].strip())
     if t in GUIDE_TOPICS:
         return Path(__file__).with_name(GUIDE_TOPICS[t]).read_text()
     if topic.strip() in _TOOLS:
@@ -347,7 +349,29 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.m
                 "likeness": "likeness_guide.md", "terrain": "terrain_guide.md", "vegetation": "vegetation_guide.md",
                 "clutter": "clutter_guide.md", "gnm_driving": "gnm_driving_guide.md", "driving": "gnm_driving_guide.md",
                 "hair_locks": "hair_locks_guide.md", "hair_background": "hair_background.md",
-                "cloth_background": "cloth_background.md", "cloth_tools": "cloth_tools.md"}
+                "cloth_background": "cloth_background.md", "cloth_tools": "cloth_tools.md",
+                "cloth_design": "cloth_design.md", "cloth_construction": "cloth_construction.md",
+                "cloth_sim": "cloth_sim.md", "cloth_faults": "cloth_faults.md", "cloth_blocks": "cloth_blocks.md",
+                "vegetation_spec": "vegetation_spec.md", "vegetation_styles": "vegetation_styles.md",
+                "vegetation_forest": "vegetation_forest.md", "vegetation_small": "vegetation_small.md",
+                "vegetation_export": "vegetation_export.md", "vegetation_tools": "vegetation_tools.md",
+                "hair_checklist": "hair_checklist.md", "hair_tied": "hair_tied.md", "hair_loose": "hair_loose.md",
+                "hair_short": "hair_short.md", "hair_colour": "hair_colour.md", "hair_color": "hair_colour.md",
+                "hair_export": "hair_export.md", "hair_tools": "hair_tools.md", "hair_locks_detail": "hair_locks_detail.md",
+                "skin_layers": "skin_layers.md", "skin_tools": "skin_tools.md",
+                "blockin_solve": "blockin_solve.md", "blockin_steps": "blockin_steps.md",
+                "blockin_features": "blockin_features.md", "blockin_tools": "blockin_tools.md",
+                "spec": "guide_spec.md", "looking": "guide_looking.md", "blockout": "guide_blockout.md",
+                "strokes": "guide_blockout.md", "parts": "guide_blockout.md", "props": "guide_props.md",
+                "style": "guide_style.md", "story": "guide_story.md", "paint": "guide_paint.md",
+                "game_export": "guide_export.md", "rigging": "guide_rigging.md",
+                "human_shape": "human_shape.md", "human_tools": "human_tools.md",
+                "likeness_reading": "likeness_reading.md", "likeness_profile": "likeness_profile.md",
+                "likeness_references": "likeness_references.md", "likeness_tools": "likeness_tools.md",
+                "terrain_world": "terrain_world.md", "terrain_shapes": "terrain_shapes.md",
+                "terrain_places": "terrain_places.md", "terrain_streams": "terrain_streams.md",
+                "terrain_styles": "terrain_styles.md", "terrain_running": "terrain_running.md",
+                "terrain_tools": "terrain_tools.md"}
 
 
 def _tool_section(name: str) -> str:

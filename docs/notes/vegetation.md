@@ -957,3 +957,21 @@ grow/bend/prune years, Palubicki 2009, Megascans atlases, proxy-normal blob tree
   typical Scots pine, and was leading the realistic pine astray. Moved to workspace/veg_refs/atypical/. Judge the
   realistic pine against pine_a (dense rounded mature crown) and pine_b (open-grown, flat-topped, orange upper trunk);
   pine_d is too distant and pine_e is snow-loaded, so use them for colour/context only.
+
+## Guide rewrite (2026-10-14, "guides" agent): what left vegetation_guide.md
+
+vegetation_guide.md 1,142 -> ~150 lines (describe the reference first: style, branching structure, canopy massing,
+bark, leaves, size; stages with gates; self-review loop; common mistakes; known gaps). Details moved, unchanged
+except as below, to vegetation_spec, vegetation_styles, vegetation_forest, vegetation_small, vegetation_export,
+vegetation_tools. Why: the village oak (r5) was grown from the oak preset in the realistic style for an approved
+storybook concept (soft cloud clumps, a tall trunk twisting and dividing as it rises): noisy leaf clutter, a squat
+trunk with every limb fanning from one point, scaly plate bark. The old guide never asked for a description of the
+concept before growing.
+Removed from the product (studio provenance): workspace/veg_refs paths (forest README, pine_form), "pixar since round
+5", "vegstyle3, Godot 4.7.2" on the anime numbers, "the consumer has not reported it from Godot", the consumer's
+island volcano, the pushieworld demo, /mnt/data/hifipushie/realtrees/od_glb.py, spikes/godot_veg cards.gd / field.gd
+/ meadow.gd / octa.gd / octa_measure.py / ground_measure.py as judging scripts (the impostor and sward reference
+shaders in spikes/ are still named: the export's extras point at them), "a laptop GPU lost its context at 60 full
+spruces".
+Wrong in the old guide: "Not built yet" listed LODs, wind animation data, autumn / snow / wet variants, collision
+proxies and a pixar style, all of which are built (the export section documented them).
