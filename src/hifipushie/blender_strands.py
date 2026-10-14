@@ -662,7 +662,9 @@ def material(look: dict):
         hue = hue if hue is not None else M("ADD", 0.5, 0.0)
         sat = sat if sat is not None else M("ADD", 1.0, 0.0)
         if sun > 0:
-            fs = M("MULTIPLY", smooth(age, 0.0, 0.28), sun)
+            # (sun_length: by how many metres from the scalp the lightening is full. At 0.28 the dome seen from the FRONT,
+            # the first 2-10 cm of every strand, stayed dark while the back's lengths were light, tesshair7 / th_63)
+            fs = M("MULTIPLY", smooth(age, 0.0, float(look.get("sun_length") or 0.28)), sun)
             # (+ 50 % value at sun 1, a little warmer: at + 60 % with + 25 % saturation a sun 0.9 tail was orange straw, th_V9a3)
             val = M("MULTIPLY", val, M("MULTIPLY_ADD", fs, 0.5, 1.0))
             hue = M("MULTIPLY_ADD", fs, 0.004, hue)  # (+ 0.012 turned a brown tail olive under EEVEE's desaturation, th_V84)

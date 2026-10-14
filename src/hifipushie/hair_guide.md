@@ -54,6 +54,7 @@ flat wisp clumps, the dark tangle at the part's start the far bank's strands see
 | fly_light | 0..1 (strands; default 0.3): hairs that left the mass (fly-aways, the halo, wisps) read lighter |
 | depth | 0..1 (strands; default 0.5): the under-layers of hair with `volume` are darker (the shadow EEVEE's strands do not cast on each other) |
 | vary | the value noise per strand / sub clump under all of it |
+| sun_length | m (default 0.28): the hair's age from the scalp by which `sun` lightening is full. The FRONT view sees the first 2-10 cm of every strand, the back the lengths: at 0.28 the dome stays dark from the front while the back is light; Tess 0.06 (with root 0.05: a little root darkness at the part) |
 | tip_alpha, backscatter, scatter | 0..1 each (EEVEE strands; default 0 = off): the game hair shader's terms: see-through tips, warm light through thin / back-lit hair, a darker richer core with lighter outer layers (Tess: 0.5 / 0.6 / 0.8; checklist 11b, 11c) |
 Also: eevee_sat / eevee_gain (how EEVEE draws the colour; Tess 0.3 / 1.4), seen (the colour it should READ, e.g. from a
 photo), grey_amount, cycles_* (Cycles only). Match by measure: look_hair measure "colour" (colour_bands + variation).
