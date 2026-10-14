@@ -1340,8 +1340,8 @@ export into out/<tag>), glb.py (GLB reader: primitives in world xyz, embedded im
 directions / material weights at the lip), notch.py (the column across the lip), rend124.py <tiles dir> <tag>
 (renders terrain3d_renders/pw124_*), orig/src = HEAD before item 1 (PYTHONPATH it to run a test on old code).
 
-RESTART: items 1-5 done (commits below; item 4 = two stale slice_a cards closed); the island re-export is Pushieworld's. NEXT: item 6
-(note 122: `water` on steep reaches + the floating piece at [225, 1058]; then note 121, bankfull check).
+RESTART: ALL six items done (commits below; item 4 = two stale slice_a cards closed); the island re-export is
+Pushieworld's. NEXT: what their re-export finds (the lip in the game, water trims, corridors, buried_over_ground).
 
 - Item 1, note 124 (black slab at crown_beck's tall-fall lip, [1310, 1511], tile 20_23). Two causes:
   (1) AO. `Field.column` took the faces' step (terrain_falls.Faces, note 120) for h but kept the GRID's slope correction s,
@@ -1433,3 +1433,31 @@ RESTART: items 1-5 done (commits below; item 4 = two stale slice_a cards closed)
   triangles (largest face 67 m2 again: the decimation reads the eased field), the corridor is the drawn surface
   anyway (item 3). tests/test_falls::test_face_normals (normals on the sea fall's face point downstream; it does NOT
   reproduce the export's shards: HEAD-with-items-1-3 passes it too; the block export is the real check).
+- Item 6a, note 122 / card cmv5kne5q. (1) `water` on steep reaches: forms.water narrows the water with the grade to a
+  floor of 2 m (half width) at 20%+, whatever `water` says; the island's crown_beck / kaze_burn are 2 m on 31 of 44
+  points. Now `rivers.<r>.water` may be {"width": m, "steep": m} (`steep` = that floor, default
+  `terrain_forms.STEEP_WATER` 2.0; unknown keys are a ValueError), and the report says per river: "river crown_beck:
+  water 5 m either side of its line [(the default ...)]; steep reaches (grade 4% up) narrow it on 70% of its length,
+  to 2 m at its steepest (rivers.crown_beck.water = {"width": m, "steep": m} sets that)". Their "water": 5 WAS the
+  default (floor / 3 capped 3-25). Nothing changes for specs without it. Not done: their 3 m deeper V valley not
+  moving the 2 m heightmap's cross-sections (gdamp note 85): the valley profile is the valley's, the channel the
+  water's; widen the water first and see. (2) The floating 4-triangle piece at [224.7, 1057.8, 1.4] (tile 3,16): a
+  CLOSED tetrahedron 4-30 mm off the sheet (comp.py: 6 edges each used twice), i.e. `_unpinch` (note 117) stepping a
+  pinched bubble PINCH_GAP off its sheet. Not reproducible in a single tile or the 3x3 block (2,15)-(4,17), with
+  either HEAD or the pre-item-1 code: the decimation differs by a few faces from the full island export (11987 vs
+  11978 at LOD 0). Now `_split_nonmanifold` drops closed pieces of <= SPECK_FACES 16 faces beside a sheet of 8x that
+  (`_drop_closed_specks`; the name `_drop_specks` was taken). tests/test_tiles::test_unpinch_drops_specks,
+  test_falls::test_steep_water. (Single-tile 3,16 also "fails" heightmap_through_cliff 3.3 %: the same with the old
+  code; a percentage over one tile's few samples, not a fault: the island export reads 0.196 %.)
+- Item 6b, note 121 / card cmv5fackj (bankfull check, design flow). `wet_design` also figures, per water-line sample,
+  the flow the channel as built carries at its design level: the cross-section's wet area and wetted perimeter (the
+  same rays as the widths), Manning Q = A R^(2/3) S^(1/2) / n, S the water's own grade over ~30 m (fall steps left
+  out, at least 0.2 %), n 0.035 (gravel) to 0.07 (a boulder torrent at 20 %). meta.json rivers.<r>.flow_m3s (per
+  written point, the least of the 5 samples it stands for; null over a fall) and design_flow_m3s (the 10th
+  percentile); the report: "river crown_beck: its channel carries 0.38 m3/s at its design level (10th percentile;
+  median 6.8, least 0 at [1297, 1497]) ... Its bed stands at or over its water's level for 4 m (from ...): a water
+  simulation runs a film over the ground there". Island p10: vale 1.9, crown 0.38, kaze 1.2, downs 1.1, pencil 0.14
+  m3/s (their empirical spring 0.19 x w^2 = 0.76 for the becks spilled a little: same order). The dry stretches are at
+  fall lips (vale [1512, 1201], crown's pond [1297, 1497], pencil): their remaining 7 m patch above the tall fall.
+  tests/test_streams::test_water_design_covers_the_water checks the meta keys and the report line.
+  (tests/test_island_sites.py fails on HEAD before this work too: crown_camp 70.40 vs 69.9; their spec moved.)

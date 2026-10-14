@@ -602,6 +602,7 @@ WET_REACH = 30.0  # m out from a river's water line (or a pool's centre) the wat
 WET_STEP = 0.25  # m between samples along a cross-section
 WET_DEEP = 0.05  # m: ground this far under the level is water
 WET_GAP = 1.0  # m: a dry run shorter than this (a stone, a bar's crest) doesn't end the water
+MIN_GRADE = 0.002  # the least grade a reach's flow is figured at (a level reach still drains)
 FALL_HOLD = 6.0  # m upstream of a fall's lip whose cross-sections are left at the design (the lip band, the faces' hold)
 
 
@@ -667,12 +668,13 @@ def wet_design(T, streams=None):
         r, rim = _wet_run(g < lev - WET_DEEP, WET_STEP, np.full(int(up.sum()), r0))
         # (a basin only if every side closes: an open side drains it to the outlet's level, the pool's own radius)
         pools.append(round(float(max(r0, r.max()) if rim.all() else r0), 2))
-    rivers = {}
+    rivers, flow = {}, {}
     for nm, rw in lines.items():
         xy = np.asarray(rw["xy"], float)
         lv = np.asarray(rw["level"], float)
         wd = np.asarray(rw["width"], float)
         out = 2 * wd
+        flow[nm] = np.full(len(xy), np.nan)
         live = wd > 0
         for f, wr in zip(getattr(T, "falls", None) or [], pools):  # (a fall's lip and pool: the pool's wet radius
             if f["river"] != nm:  # says it; across the lip band and the amphitheatre a cross-section is meaningless)
@@ -690,6 +692,8 @@ def wet_design(T, streams=None):
             t /= np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-9)
             n = np.c_[-t[:, 1], t[:, 0]]
             far = np.zeros(len(k))
+            area, perim = np.zeros(len(k)), np.zeros(len(k))
+            g0 = ground(xy[k])
             for side in (1.0, -1.0):
                 for a in range(0, len(k), 1000):
                     kk = k[a:a + 1000]
@@ -697,10 +701,59 @@ def wet_design(T, streams=None):
                     g = ground(P.reshape(-1, 2)).reshape(len(kk), len(o))
                     r, rim = _wet_run(g < lv[kk, None] - WET_DEEP, WET_STEP, wd[kk])
                     far[a:a + len(kk)] = np.maximum(far[a:a + len(kk)], np.where(rim, r, 0.0))
+                    # the cross-section's wet area and wetted perimeter out to where the water ends on this side
+                    inside = o[None] <= r[:, None] + 1e-9
+                    dep = np.clip(lv[kk, None] - g, 0, None) * inside
+                    area[a:a + len(kk)] += dep.sum(1) * WET_STEP
+                    gg = np.c_[g0[a:a + len(kk)], g]
+                    seg = np.hypot(WET_STEP, np.diff(gg, axis=1)) * (np.c_[inside[:, :1], inside[:, 1:]] & (
+                        np.minimum(gg[:, 1:], gg[:, :-1]) < lv[kk, None]))
+                    perim[a:a + len(kk)] += seg.sum(1)
             out[k] = 2 * np.maximum(wd[k], far)
+            # the flow the channel carries at its design level (Manning: Q = A R^(2/3) S^(1/2) / n), the water's own
+            # grade (steps at falls left out), n from gravel (0.035) to a boulder torrent (0.07) with the grade
+            s_ = np.r_[np.linalg.norm(np.diff(xy, axis=0), axis=1), 1.0]
+            dl = np.r_[np.clip(-np.diff(lv), 0, None), 0.0] / np.maximum(s_, 1e-6)
+            dl = np.where(dl > 0.6, np.nan, dl)  # (a fall's step)
+            win = max(3, int(30.0 / max(float(np.median(s_)), 1e-3)))
+            num = ndimage.uniform_filter1d(np.nan_to_num(dl), win, mode="nearest")
+            den = ndimage.uniform_filter1d(np.isfinite(dl).astype(float), win, mode="nearest")
+            S = np.clip(num / np.maximum(den, 1e-6), MIN_GRADE, None)[k]
+            man = 0.035 + 0.035 * np.clip(S / 0.2, 0, 1)
+            R = area / np.maximum(perim, 1e-6)
+            Q = np.full(len(xy), np.nan)
+            Q[k] = area * R ** (2.0 / 3.0) * np.sqrt(S) / man
+            flow[nm] = Q
         rivers[nm] = out
-    T._wet_design = {"rivers": rivers, "pools": pools}
+    T._wet_design = {"rivers": rivers, "pools": pools, "flow": flow}
     return T._wet_design
+
+
+def report_flow(T):
+    """Per river: the flow its channel carries at its design level, as built (wet_design's Manning figure), and the
+    reach that carries least (pushieworld note 121: a game fed every river 8 m3/s, ten times what its becks hold)."""
+    if not getattr(T, "river_water_lines", None):
+        return []
+    D = wet_design(T)
+    out = []
+    for nm, q in D.get("flow", {}).items():
+        q = np.asarray(q, float)
+        ok = np.isfinite(q)
+        if not ok.any():
+            continue
+        xy = np.asarray(T.river_water_lines[nm]["xy"], float)
+        i = int(np.flatnonzero(ok)[np.argmin(q[ok])])
+        line = (f"river {nm}: its channel carries {np.nanpercentile(q, 10):.2g} m3/s at its design level "
+                f"(10th percentile; median {np.nanmedian(q):.2g}, least {q[i]:.2g} at "
+                f"[{xy[i, 0]:.0f}, {xy[i, 1]:.0f}]): meta.json rivers.{nm}.design_flow_m3s; more spills over the "
+                f"banks (a wider `water` or a deeper valley holds more)")
+        dry = np.flatnonzero(ok & (q < 0.01))
+        if len(dry):
+            st = np.r_[np.linalg.norm(np.diff(xy, axis=0), axis=1), 0.0]
+            line += (f". Its bed stands at or over its water's level for {st[dry].sum():.0f} m (from "
+                     f"[{xy[dry[0], 0]:.0f}, {xy[dry[0], 1]:.0f}]): a water simulation runs a film over the ground there")
+        out.append(line)
+    return out
 
 
 # ---------------------------------------------------------------------------------------------- clutter

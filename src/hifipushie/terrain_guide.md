@@ -242,7 +242,8 @@ and the `"story"`.
 - **fords**: `{"name": {"on": "river@0.5", "width": m, "depth": m}}`: a shallow crossing. Rivers carry water; routes
   cross at fords, and anywhere else the report says a bridge is needed. River water:
   `rivers.x.water` = how far the water reaches either side of the line (a HALF width: 3 makes a 6 m river; 0 for a
-  dry bed); steep reaches narrow to a torrent a few metres wide. meta.json `rivers.<r>.water` gives per point the FULL
+  dry bed; default floor / 3, 3-25 m); steep reaches (grade 4% up) narrow it to a torrent, 2 m either side at 20%+:
+  `"water": {"width": 5, "steep": 4}` sets that floor (the report says how much of each river narrows). meta.json `rivers.<r>.water` gives per point the FULL
   width the water covers as the built ground holds it (cut banks included), centred on the point.
 - **rivers** (optional detail):
   ```

@@ -2563,17 +2563,59 @@ def _drop_twins(v, f):
 PINCH_GAP = 0.005  # m each copy of a pinched vertex steps into its own sheet (`_unpinch`)
 
 
+SPECK_FACES = 16  # a closed piece this small split off by `_unpinch` is dropped (`_drop_closed_specks`)
+
+
 def _split_nonmanifold(v, f):
     """`_unpinch` until no edge has more than two faces: a pinch whose faces were paired across the sheets (the other
-    of the two ways round) stays shared after a pass, and the next pass pairs it the other way. None if it can't."""
+    of the two ways round) stays shared after a pass, and the next pass pairs it the other way. None if it can't.
+    Closed specks the split leaves (`_drop_closed_specks`) go."""
     for k in range(4):
         if _manifold(f):
-            return v, f
+            return _drop_closed_specks(v, f) if k else (v, f)
         got = _unpinch(v, f, k % 2)
         if got is None:
             return None
         v, f = got
-    return (v, f) if _manifold(f) else None
+    return _drop_closed_specks(v, f) if _manifold(f) else None
+
+
+def _drop_closed_specks(v, f):
+    """Closed pieces of at most SPECK_FACES faces dropped (vertices left unused too). Unpinching a pyfqmr pinch can cut
+    a tiny closed bubble (a tetrahedron, 4 faces) off the sheet it sat on, a few mm from it: the island's tile 3,16
+    exported one 6 m over the heightmap at [224.7, 1057.8, 1.4] and the floating check failed (pushieworld note 122).
+    A closed piece has no border edges: the tile's border and the sheet round it are untouched."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    if len(f) < 2:
+        return v, f
+    nf = len(f)
+    rows = np.repeat(np.arange(nf), 3)
+    A = coo_matrix((np.ones(3 * nf), (rows, f.ravel())), shape=(nf, len(v))).tocsr()
+    nc, lab = connected_components(A @ A.T, directed=False)
+    if nc < 2:
+        return v, f
+    size = np.bincount(lab)
+    if size.max() < 8 * SPECK_FACES:  # (only beside a real sheet: a mesh of nothing but small pieces is left as it is)
+        return v, f
+    small = np.flatnonzero(size <= SPECK_FACES)
+    if not len(small):
+        return v, f
+    drop = np.zeros(nf, bool)
+    n = len(v)
+    for c in small:
+        fc = f[lab == c]
+        e = np.concatenate([fc[:, [0, 1]], fc[:, [1, 2]], fc[:, [2, 0]]])
+        und = np.minimum(e[:, 0], e[:, 1]) * n + np.maximum(e[:, 0], e[:, 1])
+        if np.all(np.unique(und, return_counts=True)[1] == 2):  # (closed)
+            drop[lab == c] = True
+    if not drop.any():
+        return v, f
+    f = f[~drop]
+    used = np.unique(f)
+    remap = np.full(len(v), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    return v[used], remap[f]
 
 
 def _unpinch(v, f, offset=0):

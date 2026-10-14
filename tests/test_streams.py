@@ -298,6 +298,11 @@ def test_water_design_covers_the_water(T, field):
     half = np.asarray(rw["width"])[::4]
     live = half > 0
     assert (W[live, 3] >= 2 * half[live] - 1e-6).all(), (W[live, 3][:8], half[live][:8])
+    # the flow the channel carries at its level (pushieworld note 121): per written point and the river's design flow
+    r = meta["rivers"]["brook"]
+    q = np.array([np.nan if v is None else v for v in r["flow_m3s"]], float)
+    assert len(q) == len(W) and np.isfinite(q).mean() > 0.8 and 0 < r["design_flow_m3s"] <= np.nanmedian(q), r
+    assert "river brook: its channel carries" in T.report()
     xy = W[:, :2]
     t = np.gradient(xy, axis=0)
     t /= np.linalg.norm(t, axis=1, keepdims=True)

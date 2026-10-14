@@ -1672,6 +1672,10 @@ class Terrain:
                        f"raised the land round it)")
         from . import terrain_falls
         out += terrain_falls.report(self)
+        from . import terrain_forms as forms_mod
+        out += forms_mod.report_water(self)
+        from . import terrain_stream as stream_mod
+        out += stream_mod.report_flow(self)
         if getattr(self, "ground_rms", None) is not None:
             out.append(f"ground texture (measured): gentle ground varies {self.ground_rms:.2f} m rms about its ~50 m "
                        f"trend ({self.ground_before:.2f} m before the undulation, swales and hummocks; plaster-smooth "
@@ -1934,6 +1938,11 @@ class Terrain:
                 ww = np.where(np.asarray(rw["width"]) > 0, ww, 0.0)
                 river["water"] = [[round(float(x), 2), round(float(y), 2), round(float(z), 2), round(float(w), 2)]
                                   for (x, y), z, w in zip(rw["xy"][::4], rw["level"][::4], ww[::4])]
+                q = np.asarray(wet.get("flow", {}).get(nm, np.full(len(rw["xy"]), np.nan)), float)
+                if np.isfinite(q).any():  # (the flow the channel carries at its design level: pushieworld note 121)
+                    qm = -ndimage.maximum_filter1d(-np.where(np.isfinite(q), q, np.inf), 5, mode="nearest")
+                    river["flow_m3s"] = [None if not np.isfinite(v) else round(float(v), 2) for v in qm[::4]]
+                    river["design_flow_m3s"] = round(float(np.nanpercentile(q, 10)), 2)
             rivers[nm] = river
         falls = [{**f, "pool": {**f["pool"], "wet_radius": r}} if f.get("pool") and r is not None else f
                  for f, r in zip(getattr(self, "falls", None) or [], wet["pools"] or [None] * len(self.falls or []))]
@@ -1957,7 +1966,10 @@ class Terrain:
                 "trees": "trees.csv (x, y, z, kind, layer), world metres; tree layers aren't in the splats",
                 "rivers": rivers, "rivers_water": "per point [x, y, water surface z, water width m]: the full width the "
                                                   "water covers as the ground holds it, centred on the point (0 where "
-                                                  "it's dry or in a lake)",
+                                                  "it's dry or in a lake); flow_m3s per point (null over a fall), the flow "
+                                                  "the channel as built carries at that level (Manning), and "
+                                                  "design_flow_m3s (its 10th percentile: what the river holds without "
+                                                  "spilling): size a water simulation's sources by it",
                 **({"falls": falls, "falls_note": __import__("hifipushie.terrain_falls", fromlist=["x"]).META_NOTE}
                    if getattr(self, "falls", None) else {}),  # (waterfalls, terrain_falls)
                 "fords": {nm: {"at": f["xy"], "river": f["river"], "width": f["width"], "depth": f["depth"],

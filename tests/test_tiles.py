@@ -432,8 +432,45 @@ def test_pinched_sheets_split():
     assert tm._manifold(tm._split_nonmanifold(P, F[::-1])[1])
 
 
+def test_unpinch_drops_specks():
+    """A tiny closed piece pinched onto a big sheet (a tetrahedron sharing an edge with a closed shell) comes off as a
+    speck a few mm from it when unpinched: it is dropped (the island's tile 3,16: 4 faces 6 m over the heightmap, the
+    floating check failed: pushieworld note 122); the sheet stays closed and whole."""
+    # a closed shell: an octahedron subdivided twice (128 faces) at radius 2
+    V = [np.array(p, float) for p in ([2, 0, 0], [-2, 0, 0], [0, 2, 0], [0, -2, 0], [0, 0, 2], [0, 0, -2])]
+    F = [[0, 2, 4], [2, 1, 4], [1, 3, 4], [3, 0, 4], [2, 0, 5], [1, 2, 5], [3, 1, 5], [0, 3, 5]]
+    for _ in range(3):
+        mid, F2 = {}, []
+        def m(a, b):
+            k = (min(a, b), max(a, b))
+            if k not in mid:
+                p = V[a] + V[b]
+                V.append(2 * p / np.linalg.norm(p))
+                mid[k] = len(V) - 1
+            return mid[k]
+        for a, b, c in F:
+            ab, bc, ca = m(a, b), m(b, c), m(c, a)
+            F2 += [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
+        F = F2
+    P = np.array(V)
+    F = np.array(F, np.int64)
+    assert tm._manifold(F) and len(F) >= 8 * tm.SPECK_FACES
+    a, b = F[0, 0], F[0, 1]  # (a tetrahedron outside the shell on one of its edges)
+    out = (P[a] + P[b]) / 2 * 1.3
+    out2 = out + np.cross(P[b] - P[a], out) * 0.2
+    P = np.r_[P, [out, out2]]
+    i, j = len(P) - 2, len(P) - 1
+    tet = _closed(P, np.array([[a, b, i], [a, b, j], [a, i, j], [b, i, j]]))
+    F3 = np.r_[F, tet]
+    assert not tm._manifold(F3)
+    P2, F4 = tm._split_nonmanifold(P, F3)
+    assert len(F4) == len(F) and tm._manifold(F4) and len(tm._boundary_edges(F4)) == 0, len(F4)
+    print("ok unpinch drops a closed speck:", len(F3) - len(F4), "faces")
+
+
 if __name__ == "__main__":
     t0 = time.time()
+    test_unpinch_drops_specks()
     test_plane_chain()
     test_long_tube_by_runs()
     test_unflip_corners()

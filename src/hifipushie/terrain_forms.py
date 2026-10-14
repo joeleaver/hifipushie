@@ -269,6 +269,23 @@ def _ease_level(hl, xy, reach=12.0):
     return np.minimum.accumulate(np.minimum(s, hl))
 
 
+STEEP_WATER = 2.0  # m: the half width a river's water narrows to on steep reaches (grade 20%+), unless water.steep says
+
+
+def report_water(T):
+    """Per river: its water's half width, where it comes from, and how much of it the steep reaches narrow."""
+    out = []
+    for nm, w in (getattr(T, "river_water_info", None) or {}).items():
+        line = (f"river {nm}: water {w['water']:g} m either side of its line"
+                + (" (the default: floor / 3, 3-25 m; set rivers." + nm + ".water)" if w["default"] else ""))
+        if w["narrowed"] > 0.05:
+            line += (f"; steep reaches (grade 4% up) narrow it on {100 * w['narrowed']:.0f}% of its length, to "
+                     f"{w['min']:g} m at its steepest" + ("" if w["set_steep"] else
+                                                   f" (rivers.{nm}.water = {{\"width\": m, \"steep\": m}} sets that)"))
+        out.append(line)
+    return out
+
+
 def water(T):
     """Rivers carry water (a channel a metre or so deep) except where they're dry; fords are wide and shallow."""
     fords = []
@@ -278,21 +295,38 @@ def water(T):
     T.fords = {n: {"xy": xy.tolist(), "width": w, "depth": dp,
                    "river": (T.spec.get("fords") or {})[n]["on"].split("@")[0]} for n, xy, w, dp in fords}
     T.river_water_lines = {}
+    T.river_water_info = {}
     T.falls = []
     T.river_water = np.zeros(T.X.shape, bool)
     T.ford_mask = np.zeros(T.X.shape, bool)
     for L in (L for L in T.lines.values() if L.kind == "river"):
         r = (T.spec.get("rivers") or {}).get(L.name, {})
-        wd = r.get("water", max(3.0, min(L.props["floor"] / 3, 25.0)))
+        default = max(3.0, min(L.props["floor"] / 3, 25.0))
+        wspec = r.get("water", default)
+        # `water`: the water's HALF width (m either side of the line), or {"width": m, "steep": m}: `steep` the half
+        # width steep reaches narrow to (default STEEP_WATER; pushieworld note 122: a beck over 15-22 m falls stayed 2 m
+        # wide whatever `water` said, and nothing said so)
+        if isinstance(wspec, dict):
+            unknown = set(wspec) - {"width", "steep"}
+            if unknown:
+                raise ValueError(f"rivers.{L.name}.water: unknown keys {sorted(unknown)} (have width, steep)")
+            wd = float(wspec.get("width", default))
+            floor_w = float(wspec.get("steep", STEEP_WATER))
+        else:
+            wd, floor_w = wspec, STEEP_WATER
         if not wd:
             continue
+        floor_w = min(float(floor_w), float(wd))
         # steep reaches carry a torrent, not a pool: the water narrows with the grade (a 25 m wide sheet of water
         # stood down a 66% volcano flank), to a few metres at 20%+
         falls = L.props.get("falls") or []
         step = np.linalg.norm(np.diff(L.xy, axis=0), axis=1)
         grade = np.r_[np.abs(np.diff(_falls.no_steps(L.h, falls))) / np.maximum(step, 1e-6), 0]  # (a fall isn't a torrent)
         grade = ndimage.uniform_filter1d(grade, max(3, int(30 / max(float(np.mean(step)), 1e-3))), mode="nearest")
-        width = np.where(grade > 0.04, np.maximum(2.0, wd * np.clip((0.2 - grade) / 0.16, 0, 1)), wd)
+        width = np.where(grade > 0.04, np.maximum(floor_w, wd * np.clip((0.2 - grade) / 0.16, 0, 1)), wd)
+        T.river_water_info[L.name] = {"water": float(wd), "default": "water" not in r, "steep": float(floor_w),
+                                      "narrowed": float(np.mean(width < wd - 0.01)), "min": float(width.min()),
+                                      "set_steep": isinstance(wspec, dict) and "steep" in wspec}
         reach = max(3 * T.cell, 30.0)  # (the banks: graded down to the water within this)
         d, i = cKDTree(L.xy).query(T.P, distance_upper_bound=wd + reach)
         d, i = d.reshape(T.X.shape), np.minimum(i, len(L.xy) - 1).reshape(T.X.shape)
