@@ -883,6 +883,14 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         einfo.append({"side": sd_, "stations": int(len(sel)), "seam_carry_max_mm": round(float(np.linalg.norm(C[sel] - X[:, 0], axis=1).max()) * 1000, 1),
                       "meets_seam_at_mm": round(float(s_meet_a) * 1000, 1)})
         X = X + dl
+        if p.get("end_length", "pattern") == "pattern":
+            # each end column at its CUT length from the seam: laid on the forepart's board it took the forepart's
+            # own ease (the neckline drawn in by hug_neckline, the cloth within 12 cm following): the collar's end
+            # came out at 70-80 % of its width (cloth12, gc1: 28-33 of 39 mm), a strap with no notch to see
+            cl_ = np.concatenate([np.zeros((len(sel), 1)), np.cumsum(np.linalg.norm(np.diff(X, axis=1), axis=-1), axis=1)], 1)
+            tg_ = want[sel] - want[sel][:, :1]
+            f_ = np.where(cl_ > 1e-6, tg_ / np.maximum(cl_, 1e-9), 1.0)
+            X = X[:, :1] + f_[..., None] * (X - X[:, :1])
         XE[sel] = X
         G[sel] = (1 - we[sel])[:, None, None] * G[sel] + we[sel][:, None, None] * X
         wE = np.maximum(wE, we)
@@ -899,6 +907,9 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         zone = (wE > 0) & (wE < we_)
         for _ in range(int(p.get("transition_widen", 2))):  # (into the back: the turn spread over more stations)
             zone[1:-1] |= (zone[:-2] | zone[2:]) & (wE[1:-1] < we_)
+        for _ in range(int(p.get("transition_widen_end", 2))):  # (into the end: its outer corner by the seam's corner
+            # hooks back; the curve then starts from an end column further out)
+            zone[1:-1] |= (zone[:-2] | zone[2:]) & (wE[1:-1] >= we_)
         G[zone] = G0[zone]
     if wE.any() and trans != "board":
         mix = ((wE > 0) & (wE < 1)).astype(float)

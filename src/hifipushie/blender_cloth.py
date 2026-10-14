@@ -466,7 +466,9 @@ def render(job, d):
     sh.studio_light = "outdoor.sl" if "outdoor.sl" in [l.name for l in bpy.context.preferences.studio_lights] else sh.studio_light
     sh.show_cavity = True
     sh.cavity_type = "BOTH"
-    sh.show_shadows = True
+    # (Workbench shadows are stencil shadows of the casting mesh's silhouette: a 2 cm draft jacket threw jagged-edged
+    # shadows on the shirt that read as torn cloth, cloth12; job "shadows": false turns them off)
+    sh.show_shadows = bool(job.get("shadows", True))
     sh.shadow_intensity = 0.35
     # cloth is matte: the studio light's specular highlight made dark wool read as leather (tr_11)
     sh.show_specular_highlight = bool(job.get("specular", False))

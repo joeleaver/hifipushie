@@ -9199,7 +9199,7 @@ def strain_colors(strain: np.ndarray, limit: float) -> np.ndarray:
 
 
 def render(objects: list, prefix: str, views=("front", "side", "back"), resolution: int = 700, box=None,
-           aspect: float = 0.62, textured: bool = False, suns=None) -> list:
+           aspect: float = 0.62, textured: bool = False, suns=None, shadows: bool | None = None) -> list:
     """objects: [{"name", "V", "F", "color" | "C" (linear RGB per vertex), "thickness", "uv"?, "maps"?}] -> PNG paths.
     textured: EEVEE with each object's maps (basecolor, normal) on its uv; else workbench clay."""
     from . import render as rmod
@@ -9222,7 +9222,9 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
     np.savez(d / f"_{tag}_render.npz", **data)
     job = {"mode": "render", "data": f"_{tag}_render.npz", "objects": objs, "out_prefix": prefix,
            "views": list(views), "resolution": resolution, "aspect": aspect, "textured": bool(textured), "suns": suns,
-           "box": [list(map(float, box[0])), list(map(float, box[1]))] if box is not None else None}
+           "box": [list(map(float, box[0])), list(map(float, box[1]))] if box is not None else None,
+           # (workbench shadows: stencil shadows of coarse cloth read as torn edges; HIFIPUSHIE_CLOTH_SHADOWS=0 off)
+           "shadows": bool(shadows) if shadows is not None else os.environ.get("HIFIPUSHIE_CLOTH_SHADOWS", "1") != "0"}
     jp = d / f"_{tag}_render.json"
     jp.write_text(json.dumps(job))
     # (render threads capped: the machine is shared; HIFIPUSHIE_BLENDER_THREADS, default 6)

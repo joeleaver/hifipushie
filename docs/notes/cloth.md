@@ -2280,3 +2280,42 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   and the seam carry there is 8 mm); the collar end reads as a ~20 mm strap lying ON the lapel (its columns 28-33 of
   39 mm: on_pattern compresses it) and the notch's V is not visible; at figure scale the gap to the concept is the
   fronts hanging open (lapels vertical, a wide shirt V), not the collar. transition_end 0.9999 tried: worse.
+- Gate 2 (coordinator after gate 1: (a) the lapel reads as a strap with no notch V and no roll, (b) the fronts hang wide
+  open, (c) jagged white cut edges at the neck; diagnose in pattern / construction terms, fix in that order).
+  New baseline on CURRENT main: c12_b0 = c11_gc1's queue line + layer_gap 0.005 (the new coarse-start standoff check,
+  dae08b3, refused gc1's jacket start: side.R 1.65 mm from the shirt). Every build: con.py on its dump with this code
+  (c12_<t>c), j2.sh <t> (gates, lapels, trace, trace_g.py = the GORGE END itself, not the collar's end tip, + across).
+  - (a) CAUSES: (1) the collar END was laid on the forepart's board, which carries the forepart's ease near the neck
+    (hug_neckline draws the neckline in, 12 cm of cloth follows): the end came out at 21-33 of its 39 mm cut width, a
+    strap; (2) the gorge end (the notch's apex) sat 13-17 mm LOW below the chin (b0: 80 / 69 mm vs concept 63 / 56; by
+    trace_g, the old "notch" number was the collar end's tip, 30 mm away). Lapel width itself is the concept's: 63-67
+    mm from the roll (concept ~64 front view; at the notch ~65 mm across in the concept crop, out/concept_chest.png).
+    FIXES: construction: each end column at its CUT length from the seam (collar_options end_length "pattern",
+    default): end widths 38-41 mm = the pattern; the transition starts transition_widen_end 2 stations inside the end
+    (its outer corner hooked back by the seam's corner: the knot came back on the new sim). Draft: lapel gorge_drop
+    0.12 -> 0.10 (sim c12_n1): gorge end 63 / 52 mm below the chin (concept 63 / 56), across 0.63 / 0.57 of the half
+    shoulder (concept ~0.56); 0.09 (n2) overshoots 11-13 mm high, 137 visible crossings. NOT fixed: the notch's V
+    does not read in clay (the lapel's top edge past the collar end lies flush on the forepart, same grey, no rim),
+    and the lapel has no soft roll (made_lapel lays it as a ruled board).
+  - (b) MEASURED (gap.py, front edge to front edge by height): n1 169 at the chest, 138-181 from the break down;
+    concept ~182 at the chest, ~131 at the top button (1.14 mm/px): ours is the concept's at the chest and 1-5 cm
+    too open at and below the break: the roll lines run vertical instead of closing to the button. Tried: button
+    stance (lapel stand) 0.02 -> 0.03 (c12_n3, $0.04): WORSE (gap 161-183, 122 visible crossings): the wider extension
+    rolls out with the lapel. CAUSE (not yet fixed): the fronts' balance below the break (they swing out from the
+    chest), not the stance; next lever: front balance / the hem's spring (cloth11's front_hang 112 mm), chest canvas.
+  - (c) The "jagged white cut edges" were Workbench STENCIL SHADOWS of the 2 cm draft jacket on the shirt, not the cut:
+    rendered with shadows off the edges are clean (the cut, a 4 cm opening margin and a feathered tuck changed
+    nothing). cloth.render(shadows=) / job "shadows" / HIFIPUSHIE_CLOTH_SHADOWS=0 (default stays on; cloth12's env.sh
+    sets 0). The production cut (c10ship cover=pipe) on this pair shows SKIN at the wearer's right chest: tucked moves
+    covered shirt up to 38 mm, into the body there (pipeline item 5, not done).
+  - GATE 2 sheet workspace/cloth_renders/c12_g2_sheet.png (concept | c12_n1c | c11_gc1, all without shadows).
+    Spend this agent: $0.092 baseline (incl. a $0.021 duplicate shirt sim: two stage.sh runs overlapped) + $0.054
+    notch pair + $0.040 stance = $0.186.
+  - RESTART: scratch /mnt/data/hifipushie/cloth12 (env.sh: shirt sims cached in results/). Best = out/c12_n1c.pkl over
+    c12_n1_under.pkl (q_n.txt line 1: gorge_drop 0.10). Rebuild after construct code changes: SRC=con_n1 BASE=c12_n1
+    bash cv.sh c12_n1c; judge: bash j2.sh n1; views: HL=0 bash vw.sh c12_n1c c12_n1 fig=1; sheet: uv run python
+    sheet.py c12_n1c c12_gc1s <png> <title>. Sims: bash stage.sh <queue> 3 (ONE at a time: check `ps aux | grep
+    stage.sh` first).
+    NEXT: (b) front balance (fronts 1-5 cm too open below the break), the notch V reading (lapel edge rim / roll), the
+    wearer's right inner corner, then items 3-5 (shoulders, CB collar crossings, cut rules in the pipeline: the
+    tucked skin hole).
