@@ -9,6 +9,28 @@ paths, pick by the job:
 - GAME export: cards cut from the strands (`export_hair` / `export_asset`).
 Why the tools are built this way (practice, sources, engines, what went wrong): guide(topic="hair_background").
 
+## Two principles (Joe, hair-heads) that every groom keeps
+1. **Hair is distributed EVENLY over the growing area; parts are from styling, not distribution.** Roots come from one
+   even sampling of the hair-bearing scalp (inside the hairline, its only ramp the hairline's own edge); a part, a sweep,
+   a whorl is the COMB DIRECTION of strands from roots on both sides, never an absence of roots. Locks / clumps steer
+   direction. Knob: `strands.even` 1 (the reader's default for loose long hair): EVERY strand is a child
+   interpolated at its even root from the nearest lock GUIDES (the locks are guides, not root owners: march them dense,
+   `groom.loose.spacing` 0.004), each bank of the part its own object (the left / right guides only; Blender's "Part by
+   Mesh Islands" alone still averaged guides across the part: children on the line fell down the forehead as a veil).
+   The guide field must be SMOOTH: a child averages ~3 guides, so a guide combed the other way among its neighbours
+   (`part_soft.cross`) makes children down the middle (keep cross 0 with even 1), and guide wave phases come from a
+   smooth field of the root (random phases cancelled into straight hair). Interpolated children get Blender's Clump.
+   Below 1, `even` is a share: a cover layer trimmed to 7 cm under the lock strands (the older workaround).
+   Measure: the MAGENTA COVERAGE check (spikes/hair_garrett/hcover.py: the scalp painted magenta, the share of it
+   showing inside the hair region from above / behind / 3-4; target ~0 outside the part line). A GATE: no head ships
+   with magenta OFF the part line from above (t60; a clean part line alone is ~1.2 % on a long head) or any from
+   behind; run it beside the regression sheet. hcover finds magenta by hue (seen through dark hair it is dim purple).
+2. **Hair ARCS UP from the scalp, then falls; flat-from-the-root is a style choice (slicked, wet, tight), never the
+   default.** Every strand leaves the scalp at an angle, rises by its root lift + the hair under it, turns and falls;
+   the top's volume comes from that arc and it also covers the scalp. Knob (loose hair): `groom.loose.lift` from the
+   measured stand-off (~1-1.5 cm on long hair), `out` 0.2-0.25 on the front / top, `stiff` ~0.35; tied hair: `volume`
+   (rules 1-2). The reader's loose start sets `out` by region from the measured stand-off (0.25 x mm / 10 on top).
+
 ## Step 0: DESCRIBE THE STYLE IN WORDS from every photo before grooming (hair-heads; Joe on three heads: "a completely different hairstyle")
 Before any knob, write down from the front, three-quarter and profile pictures, then the same for OUR render, then the
 differences; rebuild the groom from the description (hairline curve, part, comb direction and lift by region, edge
@@ -247,6 +269,7 @@ body's own signed distance, so it lies on the shoulders and down the back, and o
 | face | 1 = hair is turned aside where it would hang over the face (curtains beside the cheeks); 0 = it falls where it falls; or {"left", "right"} (the person's own sides: one curtain allowed over a cheek, the other kept clear) | 1 (keep 1 for long loose hair: below 1 the hair hung over the face in profile) |
 | fringe | `{length, span (deg either side), depth (m behind the hairline), sweep (-1..1), level, stiff}`: combed forward over the forehead | length 0.07, level -0.004 (the brows) |
 | fringe sweep "away" + curtain | CURTAIN BANGS: each side of the part swept down and away from it, longer toward the outer edges (`curtain` 0..1) | fringe {length 0.06, span 35, sweep "away", curtain 0.8} with parting centre |
+| part_soft | true or {width (m, 0.015), cross (0..1, 0.25)}: a SOFT parting on loose hair (rule 5): roots beside the part are not combed sideways off it (that opened a bare V widening toward the forehead), the comb comes in over `width`, and a `cross` share of them is combed over the line. Pair with dense locks (spacing ~10 mm, width 2.4 on long hair: from above, 18 mm spacing left the whole top a patchwork of ribbons with scalp between) | true |
 | tuck | `"left"` / `"right"` / `"both"` or {side, amount, from}: hair over and in front of the FOUND ear combed back behind it; `from` (deg of azimuth, default the temple) 10-15 tucks the front hair from the part too | one side tucked: "left" (the person's own). WHICH side a profile picture shows: check on a render through its fitted camera (a picture's "profile_left" name was the other side once): the untucked side hung a curtain over the face in profile |
 | fade | {width, length, density}: the back's locks shorten and thin out toward the nape hairline (a barber's fade) | {width 0.02} on a short cut (the reader sets it) |
 | halo, flyaway | 0..1: loose hair's own halo of fine hairs and its fly-aways (a TAIL's halo stays quartered; loose hair's is not: rule 4) | from the reader's halo density / wisps; long heads 0.5-1.0 / 0.05-0.15 |

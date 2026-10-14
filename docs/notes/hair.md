@@ -2244,6 +2244,74 @@ only the face rule let off. Colour: by measure the MEAN matches (L* 25-26 vs 23,
 narrow (shadow L* 17 vs 9, highlight 33 vs 36, L_sd 7.2 vs 11.8): darker roots (root_dark 0.8), depth 0.7, sun 0.7 with
 sun_warm 0.4 and highlights 0.4 did not open it much; the lengths stay mid-brown. NEXT on jw: a per-region flow for the
 lengths (the curtain over the cheek), the colour RANGE (light lengths, dark roots).
+lt19 r14-r15 (cheek-level width): body 18 mm + lay on the sides took 240 -> 230 mm (hers 179); `face` 0.5 (r15) put the
+curtains over the face's edges (224 mm) but hid her whole face in profile: rejected, face stays 1. By height from the
+parser, OUR outline is ~2.3 cm wider even at the crown where the hair is thin (146 vs 123 mm at 6 cm over the centre):
+most of the cheek-level difference is the head / camera scale, not the hair. Compare hair THICKNESS (outline minus the
+skull's own width at that height), not the outline's width, before tuning width on this head.
+Garrett's back whorl: still open. It has been in every loose groom's back view since the first rounds (a pit at the back
+in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
+### hair-heads2 (branch from main 118bf2f): lt19's part, Garrett's front hairline, thickness, the whorl
+- lt19's "bald stripe" (Joe): isolated from the front and from ABOVE (hgshots view `t60`: the front camera tipped 60 deg
+  over the top). Above showed the real cause: the whole top was a patchwork of flat lock ribbons with scalp between
+  (loose spacing 18 mm, width 1.5); the part was only its worst line, and every root next to it was combed sideways off
+  it (the away comb), opening a V toward the forehead. New `groom.loose.part_soft` (roots beside the part not combed
+  away, the away comb over 15 mm, 25 % crossing; test) + spacing 10 mm, width 2.4, 220k strands + scalp_tint 0.15: hair
+  runs up to the part from both sides, a few gaps left at the crown from above. Sheet human_renders/hg_lt19_part.jpg
+  (REFERENCE | now | before; front crop + from above).
+- From above (the coordinator: game cameras look down on heads): crown gaps + wide crossing ribbons. Narrower, denser
+  locks (spacing 7 mm, width 2.0) made it WORSE (more crossings, more gaps); what closed it: scalp_tint back to 0.85 on
+  dark hair (a dark scalp reads as the shadow between hairs, as on a real dark head: 0.15 suits GREY hair only) and the
+  part's crossing share 0.1 (crossed locks left gaps behind them). Sheet hg_lt19_part2.jpg. scalp_tint by the hair's
+  darkness: dark hair 0.85, grey / fair 0.15-0.3.
+- Joe: "still left bald spots" (the dark tint only hid them) + two principles (now the top of the checklist): roots
+  EVEN over the growing area (parts are the comb, not missing roots); hair ARCS up from the scalp then falls (flat from
+  the root is a style choice). BUILT: `strands.even` (0..0.95): that share of the strands is a new object `hair_even`,
+  Blender's Interpolate Hair Curves on the scalp mesh (even density, its own mask `hp_density_even`: no thinning at the
+  part, none in the first EVEN_EDGE 12 mm inside the hairline / EVEN_FRONT 40 mm over the face), shaped by the nearest
+  3 lock guides within 3 cm (the locks' own guide curves). First try hung a sparse veil over the forehead and eyes:
+  children rooted in front of the guides take their shape translated forward, past the face rule; the edge / front
+  masks fixed most of it. lt19 E2 (even 0.7, lift 12 mm, out top 0.25 / front 0.2, stiff 0.35): from above an even
+  cover with a clean thin centre part (the crossing ribbons and crown gaps gone), volume from the arc. A few stray
+  interpolated hairs still cross the forehead.
+- The veil, isolated (front, one change each): it is the even layer (even 0: clean), not halo / fly-aways. Interpolated
+  children TRANSLATE their guides' shapes: one rooted beside / in front of its guides falls where the guide would if it
+  stood there, past the face rule, which only the guides obey. Splitting the scalp into two mesh islands along the part
+  (Part by Mesh Islands: children use only guides on their own side) did NOT remove it; masking the front 4 cm did, but
+  left the front of the part uncovered. What works: the even layer is a COVER layer, trimmed to EVEN_LEN 7 cm (x
+  0.6-1): it covers the scalp under the lengths, the lengths are the locks' (lt19 E5: face and profile clean). Dense
+  narrow Python locks instead (spacing 6 mm, width 1.3, even 0: E4) kept the face clean but from above read as ribbed
+  ribbons with scalp along the part.
+- Coverage, the long head (magenta, % of the hair region; lock-rooted r14 -> even cover layer E5): from above 4.83 -> 0.87,
+  behind 0.3 -> 0.0, 3/4 back 0.08 -> 0.0, profile 0 -> 0. The rest is one patch beside the part's front half (comb
+  direction parting the cover layer there, not missing roots). The reader's loose start now sets even 0.5 + out by
+  region (dbf260f). STATE: coverage gate in the guide; NEXT: the part-front patch, then even roots on jw and Garrett
+  (whorl), Garrett's hairline, the widths thickness / scale measure.
+- ALL ROOTS EVEN, properly (coordinator / Joe: locks are guides, not root owners; strands.even 1): every strand an
+  interpolated child at an even root, the locks marched dense as guides (spacing 4 mm, 1900 on lt19), no trim. The
+  veil, found by evaluating the strands (spikes/hair_garrett/veileval.py: strands crossing a box in front of the face, by
+  object and root): (1) children ROOTED ON THE PART fell straight down the forehead: Blender's "Part by Mesh Islands"
+  did not keep them to their bank, even with the right island's UVs moved to u + 1 (kept); fixed by one OBJECT per bank
+  (hair_even = left, hair_even_r = right: own guides, own density mask hp_density_even_l / _r): 58 -> 47; (2) the rest
+  were `part_soft.cross`: guides combed over the part among their neighbours, children averaging both ways: cross 0 ->
+  0 strands over the face. No guide ever crossed the face (veilq: 0 locks): it was always the children. Then (3) the
+  lengths hung dead straight: lock_guides damps waves on narrow locks as wisps (W = 2.4 x 4 mm: 0.32 x amplitude,
+  1.6 x wavelength) and random per-guide phases cancel in the average: in even mode ws = wl = 1 and the phase is a
+  smooth field of the root (~3 cm); interpolated children get Blender's Clump Hair Curves (guide distance =
+  clump_size). lt19 E9: face clean, waves in the lengths, magenta only ON the part line (t60 1.24 %, behind 0.01 %).
+  hcover counted by brightness and missed dim magenta under dark hair: by hue now (recounted: r14 8.37 %, E5 4.61 %,
+  E9 1.24 % from above). Open: the profile reads as a darker solid mass than E5 (less separation).
+- Nearest guide (strands.even_guides, auto 1 at even 1): every split in the comb (part, tuck behind the ear, a curtain's
+  edge) makes children that average both sides take the middle path: jw E1's tuck put a sparse veil over the cheek.
+  One guide (4 mm away at most) never takes a middle path, and keeps each guide's waves (lt19 E10: more lock texture
+  than E9, face clean, 1.45 % from above = the part line). jw E2: cheek mostly clean, but from above a 3 cm starburst
+  of scalp at the front of her side part (9 %: the divergent comb with lift 0.001; open). Garrett on the frozen head
+  (hg_h6 = gp_h6c) E2: the crown hole is GONE (the whorl was the lock layout), speckles low on the back / nape
+  (1.1 %), but darker, less grey and streakier than r14: the even guides lost their grey (eg took `gr` only with a
+  "head" group; loose hair has only "free": fixed), Clump and nearest-guide bundles suit long hair more than a crop.
+  360k strands for Garrett's magenta render (450k: the job's memory cgroup killed Blender at 5.5 GB).
+- spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
+  view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
 New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15

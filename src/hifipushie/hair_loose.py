@@ -63,7 +63,7 @@ import numpy as np
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
          "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None,
-         "inset": None}
+         "inset": None, "part_soft": None}
 TUCK = {"side": "both", "amount": 1.0, "from": None}  # hair over the ear combed back BEHIND it (one side, or both);
 # from: deg of azimuth from which hair is tucked (default 45 deg in front of the ear: the temple; 10-15: the front
 # hair from the part too, swept back over the ear on that side)
@@ -259,11 +259,25 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     x = P0[:, 0] - sc.C[0]
     away = np.sign(x - xp) if xp is not None else np.sign(x) * 0.0
     away = np.where(away == 0, 1.0, away) if xp is not None else away
+    away_w = away.copy() if hasattr(away, "copy") else away
+    pc = p.get("part_soft")
+    if xp is not None and pc:
+        # A SOFT PART (rule 5, hair-heads: lt19's "bald stripe"): next to the part the roots are NOT combed away from it
+        # (every root combed sideways off the line opened a bare V that widened toward the forehead); the away comb
+        # comes in over `width` m, and a `cross` share of the roots within it is combed over to the other side
+        pc = {"width": 0.015, "cross": 0.25} if pc is True else {"width": 0.015, "cross": 0.25, **pc}
+        dx = np.abs(x - xp)
+        near = dx < float(pc["width"])
+        away_w = away * _ss(dx / max(float(pc["width"]), 1e-3))
+        flip = near & (rng.uniform(size=m) < float(pc["cross"]))
+        away_w = np.where(flip, -away * 0.6, away_w)
     back = float(p["back"])
     if xp is None and back <= 0:
         back = 1.0  # (no parting: the top has to go somewhere)
     comb = DOWN[None] * (1 - 0.8 * frontw[:, None]) + tw[:, None] * (
-        (1 - 0.6 * back) * away[:, None] * np.array([1.0, 0, 0]) + back * np.array([0, 1.0, -0.15]))
+        (1 - 0.6 * back) * away_w[:, None] * np.array([1.0, 0, 0]) + back * np.array([0, 1.0, -0.15]))
+    if xp is not None and pc:  # (what is not combed away at the part goes back over the head, not down the forehead)
+        comb = comb + tw[:, None] * (0.8 * (1 - np.abs(away_w)))[:, None] * np.array([0, 1.0, -0.15])
     from .hair import REGIONS
     if p.get("flow"):  # a combing direction per region, by the region weights (what a traced flow gives)
         bad = set(p["flow"]) - set(REGIONS)

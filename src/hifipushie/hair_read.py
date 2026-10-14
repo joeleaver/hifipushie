@@ -924,7 +924,17 @@ def start(r: dict, spec: dict) -> dict:
         if s.get("wisps_per_10cm") is not None:
             g["loose"]["flyaway"] = put("groom.loose.flyaway", round(float(np.clip(0.01 * s["wisps_per_10cm"], 0.02, 0.2)), 3),
                                         f"MEASURED {s['wisps_per_10cm']} wisps / 10 cm")
-        st_long = {"count": 120000, "clump": 0.45, "loose": 0.2, "stray": 0.6, "tips": 0.5}
+        # The two principles (hair_guide.md, top): EVEN ROOTS (EVERY strand from one even sampling of the scalp; the
+        # locks are dense GUIDES 4 mm apart that only steer direction, each bank of the part its own: lt19 E9, magenta
+        # only on the part line) and ARC UP, THEN FALL (out of the scalp by region, from the measured stand-off)
+        g["loose"].update({"spacing": 0.004, "width": 2.4})
+        arc = {reg: round(float(np.clip(0.25 * (1000 * so_all.get(reg, 0.008) / 10.0) * w, 0.0, 0.4)), 3)
+               for reg, w in (("front", 0.8), ("top", 1.0), ("sides", 0.4), ("back", 0.4), ("nape", 0.0))}
+        g["loose"]["out"] = put("groom.loose.out", arc, "ARC UP THEN FALL: 0.25 x stand-off / 10 mm x (front .8, top 1, "
+                                                        "sides / back .4, nape 0)")
+        st_long = {"count": 260000, "clump": 0.45, "loose": 0.2, "stray": 0.6, "tips": 0.5, "even": 1.0, "halo_soft": 1.0}
+        put("strands.even", 1.0, "EVEN ROOTS: every strand from one even sampling of the scalp, shaped by the lock "
+                                 "guides (groom.loose.spacing 4 mm: guides, not root owners); count 260k")
         if wv is not None:
             k = float(np.clip((wv - 0.08) / 0.3, 0.0, 1.0))  # 0 straight .. 1 waves
             st_long.update({"wave": round(0.002 + 0.014 * k, 4), "wavelength": round(0.16 - 0.07 * k, 3), "curl": round(0.25 * k, 2)})

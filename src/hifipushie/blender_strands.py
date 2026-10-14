@@ -25,7 +25,7 @@ VERSION = 17  # bump when the lens group changes
 ESSENTIALS = ["Clump Hair Curves", "Curl Hair Curves", "Frizz Hair Curves", "Hair Curves Noise",
               "Shrinkwrap Hair Curves", "Set Hair Curve Profile", "Braid Hair Curves", "Interpolate Hair Curves",
               "Trim Hair Curves", "Smooth Hair Curves", "Duplicate Hair Curves"]
-OBJECTS = ("hair_guides", "hair_guides_free", "hair_guides_wisp", "hair_under", "hair_scalp", "hair_collide")
+OBJECTS = ("hair_guides", "hair_guides_free", "hair_guides_wisp", "hair_under", "hair_even", "hair_even_r", "hair_scalp", "hair_collide")
 
 
 def essentials() -> dict:
@@ -440,7 +440,9 @@ def scalp_object(path: str, tint=(0.02, 0.012, 0.008), amount: float = 0.85):
     me.update()
     uv = me.uv_layers.new(name="UVMap")
     uv.data.foreach_set("uv", z["uv"].astype(np.float32).ravel())
-    for k in ("hp_density",):
+    for k in ("hp_density", "hp_density_even", "hp_density_even_l", "hp_density_even_r"):
+        if k not in z.files:
+            continue
         at = me.attributes.new(k, "FLOAT", "POINT")
         at.data.foreach_set("value", z[k].astype(np.float32))
     rest = me.attributes.new("rest_position", "FLOAT_VECTOR", "POINT")

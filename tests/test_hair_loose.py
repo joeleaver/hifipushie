@@ -188,6 +188,24 @@ def test_loose_halo_is_not_quartered_but_a_tails_is():
     assert hs.physical(S, free=True, tail=False)["halo"] == pytest.approx(4 * hs.LOOSE_HALO * hs.physical(S, free=True, tail=True)["halo"])
 
 
+def test_soft_part_keeps_the_roots_at_the_part():
+    """part_soft: roots beside the part are not combed sideways off it (a bare V), some cross it."""
+    def spread(loose):
+        sc, _c, locks = _grow(loose, parting="centre")
+        dx = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            if abs(P[0, 0] - sc.C[0]) < 0.008 and e[0] > 50:
+                k = min(3, len(P) - 1)
+                dx.append(abs(P[k, 0] - P[0, 0]))
+        return np.median(dx), len(dx)
+    base = {"length": 0.3, "spacing": 0.012, "messy": 0.0, "uneven": 0.0}
+    d0, n0 = spread(base)
+    d1, n1 = spread({**base, "part_soft": True})
+    assert n0 > 3 and d1 < 0.6 * d0, (d0, d1)
+
+
 def test_face_rule_by_side():
     """face {"left": 0, "right": 1}: hair on the person's left may fall over that side of the face, the right side's is
     kept off it (one long curtain over a cheek, the other side clear)."""
