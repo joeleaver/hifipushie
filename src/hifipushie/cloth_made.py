@@ -520,6 +520,14 @@ def made_lapel(V: np.ndarray, F: np.ndarray, uv: np.ndarray, sel: np.ndarray, fl
         R_f = Rr(a_f)
         kk = np.clip(s_f / np.maximum(p["roll_width"] * R_f + 0.008, 1e-6), 0, 1)
         X = X - (R_f * (kk * kk * (3 - 2 * kk)))[:, None] * N
+    if p.get("point_lift", 0.0) > 0:
+        # (the lapel's POINT stands a little off its forepart: the top of the lapel by the notch lifts `point_lift`
+        # over `point_reach` of its length, so the notch's V shows an edge of the lapel over a shadowed under-layer
+        # instead of one flush surface, cloth12)
+        a_top = a1 if top_hi else a0
+        tt = np.clip(1.0 - np.abs(a_f - a_top) / max(float(p.get("point_reach", 0.03)), 1e-6), 0.0, 1.0)
+        tt = tt * tt * (3 - 2 * tt) * np.clip(s_f / 0.02, 0.0, 1.0)
+        X = X + (float(p["point_lift"]) * tt)[:, None] * N
     A_ = np.c_[np.ones(len(X)), a_f - a0, s_f]
     coef = plane_lift(A_, clearance(X, 2 * p["lay"]))
     k = np.clip(s_f / max(np.pi * p["roll_r"], 1e-6), 0, 1)
@@ -1062,6 +1070,23 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
     tail = G[:, 1:].reshape(-1, 3)
     tail, _, _ = Under(u_own.layers).settle(tail, gp.ravel(), hug=0.0)
     G[:, 1:] = tail.reshape(n, -1, 3)
+    if zone.any() and int(p.get("settle_smooth", 2)):
+        # (the settle pushed each point of the transition off what lies under it on its own: by the side neck, over
+        # the shirt's stand, the collar's top came out spiky in silhouette, cloth12 n16): evened along the seam and
+        # down the columns, then settled again, `settle_smooth` rounds
+        zz = zone.copy()
+        for _ in range(3):
+            zz[1:-1] |= zz[:-2] | zz[2:]
+        zi = np.where(zz)[0]
+        zi = zi[(zi > 0) & (zi < n - 1)]
+        for _ in range(int(p.get("settle_smooth", 2))):
+            for _ in range(3):
+                Y = G.copy()
+                Y[zi, 1:-1] = 0.5 * G[zi, 1:-1] + 0.125 * (G[zi - 1, 1:-1] + G[zi + 1, 1:-1] + G[zi, :-2] + G[zi, 2:])
+                G = Y
+            t2 = G[zi, 1:].reshape(-1, 3)
+            t2, _, _ = Under(u_own.layers).settle(t2, gp[zi].ravel(), hug=0.0)
+            G[zi, 1:] = t2.reshape(len(zi), -1, 3)
     uv = uv.reshape(-1, 2)
     Vg, Fg = G.reshape(-1, 3), grid_faces(n, m)
     kk = k_cb * m + m - 2

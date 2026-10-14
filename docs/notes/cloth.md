@@ -2529,3 +2529,22 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - Sheet workspace/cloth_renders/c12_g9_sheet.png (concept | n13 | n12). Spend this agent: $0.605.
   - STATE: best c12_n13c (q_n13.txt line 1). NEXT: shoulders, CB collar crossings, the shirt re-sim; chest V (the
     neckline's front width / roll line top), the notch gap's depth.
+- Gate 10 (shoulders). Checklist (ck.sh <t> -> out/check_<t>.txt) on n13: shoulder_width 514 mm front view (concept
+  482, +6.7%), chest 435 (397), front_hang 53 mm (rule -40..10), hem_sweep -14%, cuff_show 12 mm (18), pockets none
+  (the concept has flap pockets). Three single-change sims ($0.128):
+  - n15 block shoulder_ease -0.04: the shoulder POINTS came in 13 mm a side but the front-view width went UP (519):
+    the width is the sleeve heads, not the shoulder seam; front_hang 75. Rejected.
+  - n16 sleeve cap_ease 0.045 -> 0.03 (CHOSEN): shoulder width 509 (within tolerance), hem_sweep -9%, gates pass, notch
+    61 / 59, break 396 / 402; cuff_show 6 mm (the sleeve hangs lower: next, sleeve length_bonus).
+  - n17 flap pockets (run.py addop=<json op>, a pocket op type flap on the front): the fronts got heavier and wavier,
+    front_hang 90, notch asymmetric: rejected for now (the checklist still says "pockets none": it reads
+    design.details, not the ops).
+  - The "spike at a shoulder seam" was the MADE COLLAR's top at the side neck, seen edge-on from behind: the final
+    settle pushed each transition point off the shirt's stand on its own, a ragged silhouette. Fix: the transition
+    smoothed and settled again after the final settle (collar_options settle_smooth, default 2): a rounded top
+    (out/spike*.png). No-op where there is no transition.
+  - Sheet workspace/cloth_renders/c12_g10_sheet.png (concept | n16 | n13), shoulders c12_g10_shoulders.png.
+    Spend this agent: $0.733.
+  - CB collar crossings (item 4): 0 visible shirt x made collar on every build since cloth11's stand clearance; closed.
+  - STATE: best c12_n16c (q_n16.txt line 1). NEXT: cuff show (sleeve length_bonus), front_hang (side panel hem spring:
+    run.py can only patch every contour op at once: add an index), the shirt re-sim, pockets (with a front check).
