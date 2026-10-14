@@ -2,7 +2,8 @@
 the skull fit and the head scale are what the stand-off numbers depend on). Draws the picture's solid hair (green edge)
 and ours (red edge, from the tile's alpha / non-backdrop) and prints, along rays from the head centre every 15 deg over
 the top half, the hair edge's distance from the head centre in mm, picture vs ours. $TOUT/s_<model><tag>_v<view>.png in,
-$TOUT/profover_<model><tag>_v<view>.png out."""
+$TOUT/profover_<model><tag>_v<view>.png out. The render's whole silhouette is drawn too (blue): it checks the head's
+registration on the picture."""
 import os
 import sys
 
@@ -59,7 +60,9 @@ for ang, e1, e2 in rows:
     print(f"  {ang:4d}  {e1} | {e2} | {d}")
 vis = Image.blend(img.convert("RGB"), rgba.convert("RGB"), 0.35)
 d = ImageDraw.Draw(vis)
-for mask, col in ((theirs, (0, 255, 0)), (ours, (255, 0, 0))):
+# the whole render's silhouette (face and body too) in BLUE: whether OUR HEAD sits on the picture's (the red hair edge
+# runs down the face where our hair hangs beside the cheek: read alone it looked like our face profile)
+for mask, col in ((theirs, (0, 255, 0)), (ours, (255, 0, 0)), (fg, (0, 120, 255))):
     e = mask & ~ndi.binary_erosion(mask, iterations=2)
     ys, xs = np.nonzero(e)
     for x, y in zip(xs[::3], ys[::3]):

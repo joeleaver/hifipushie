@@ -2312,10 +2312,12 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   360k strands for Garrett's magenta render (450k: the job's memory cgroup killed Blender at 5.5 GB).
 - lt19 after the merge (coordinator: E10 a heavy solid black hood in profile, flat on top). MEASURED first
   (spikes/hair_garrett/profover.py: our outline over the picture through the fitted camera, edge distance from the head
-  centre per ray): the fitted PROFILE camera / head does not register on her photo: our face profile sits ~2.7 cm
-  behind hers, our crown edge 12 mm ABOVE hers and the back 13-22 mm behind: a head-fit / camera finding, not hair (the
-  stand-off vs the skull also says our top is +6 mm over hers). Outline comparisons in profile are unreliable until that
-  is fixed. The hood: look dials alone (E11: depth .85, gloss .6, variation .6, highlights .35, clump .75) barely moved
+  centre per ray). FIRST READ WAS WRONG: "our face 2.7 cm behind hers" was the front edge of our HAIR (it hangs down
+  over her cheek); drawn with the render's whole silhouette (blue) the head registers on her photo (forehead, nose,
+  chin). Read: our crown edge 12 mm ABOVE hers (the top is not low), the back 13-22 mm further out, and our side hair
+  falls straight down from the forehead corner over the temple and cheek where hers sweeps back over the temple to the
+  ear (at eye level her hair starts ~3 cm further back). The "hood" is that, not the top's height. Tuck on both sides
+  (E14) only thinned it at the jaw: the temple needs its comb swept back (open). The hood: look dials alone (E11: depth .85, gloss .6, variation .6, highlights .35, clump .75) barely moved
   it; the even children had none of the colour model's per-lock numbers (hp_lv, hp_ch, hp_cb, hp_cm, hp_a1: the lens
   makes them): hp_cells (blender_strands) gives them from the root's jittered cell per scale + the strand's length
   (E13: some lock light behind / 3-4; the profile still one dark mass). Open: separation in the mass (gaps between
