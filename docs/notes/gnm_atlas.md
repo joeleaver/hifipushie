@@ -6280,3 +6280,42 @@ Method that worked (scratch scripts in /mnt/data/hifipushie/garrett_handpass: hs
    < 0.5 mm" gate of a hand pass, and the profile / 3/4 outline rigid rms by zone (familynative finding 2).
 6. A dressed render per step costs a stage sync (~3 min mesh) + the heavy slot queue (10-30 min under load): a cheap
    dressed preview (texture baked once, mesh swapped) would make judged hand passes 3-5x faster.
+
+## tess_handpass (2026-10-14, "tess-handpass" agent, branch `worktree-agent-ab36534c7b08eb30a`; one judged hand round on the
+## solved GNM-native Tess (tess_n1) with garrett_handpass's method; per-picture notes PRIVATE in /mnt/data/hifipushie/tess_handpass)
+STATE: round done, 2 steps kept of 14 tried (jaw width, chin width), then a pass that kept nothing. FREEZE: tp_h3.
+Scripts (scratch): garrett_handpass's, plus st.py (step + judging through EXTRA reference views without re-solving),
+mkr2.py (extra views' cameras fitted on the frozen start head, head held; <model>_r2 = the model with those fixed refs),
+camsearch.py (a camera's yaw / pitch swept, outline rigid rms per setting).
+- Same finding as Garrett: what the solve set with NO read is where the hand pass pays. Tess's solve moved jaw_width /
+  gonial_width -8.5..-8.8 mm and chin_width -2.8 with no read: a V lower face where the pictures show a U.
+  `mm:jaw_width` +2.5 (detector jaw -1.7 -> +0.4 mm; other zones < 0.36) and `mm:chin_width` +2 (ears 0.68 down: the same
+  side effect as Garrett's chin step) were the only clean, visibly closer moves. A well-solved young face leaves little.
+- EXTRA VIEWS FOR JUDGING ONLY: a set's later pictures (round-2 true45 / true90) can be added as judge-only refs on a
+  copy (cameras fitted once on the start head, then held for every step) without re-solving. A profile with 8 clicked
+  points fitted at 64 deg for a ~90 deg picture (rms 2.5 mm): clicks near the midline do not pin yaw. Sweeping the yaw
+  for the outline's rigid rms gave a flat minimum at 89-95 deg (pick the stated angle inside it). For a 3/4 picture the
+  detector camera is better than an outline sweep (the outline pulled 45 -> 35 deg: it absorbs shape).
+- SEPARATE GENERATIONS DISAGREE: two generated profiles of one person (70 and 90 deg) disagreed by ~1.2 mm on tip
+  projection and the two 3/4s by ~1 mm on cheek fullness. A step that helps one and hurts the other (mm:tip_forward,
+  cheek_fullness!) was not visible in the dressed tiles: rejected. Do not chase a generated set's outlines below ~1 mm.
+- Cheek volume: `sculpt:cheeks` (+) dragged mouth corners / ears ~1 mm (as Garrett's (-)); with `|hold=` of the
+  neighbours it cost |dc| 3.9 and moved temples / ears / neck more. `cheek_fullness!` is the cleanest of the three.
+- Lips: `sculpt:lower_vermilion` moved the whole muzzle forward 0.4-0.5 mm (not the lip); `lip_fullness!` dropped
+  the chin 1.1 mm. The lower lip's volume / eversion in profile is not reachable cleanly (Garrett's gap 2 again).
+- `nose_upturn!` 0.4 (to show the nostrils) moved forehead / mouth 0.5-0.7 mm; `nd:tip_width|held` again ~0.2 mm.
+- EYES "read smaller" (coordinator's ask): through the front camera the geometric opening at the pupil is within
+  0.1 mm and the upper margin 0.3 mm HIGHER than hers; the fissure's -1.65 mm is all at the INNER canthus (+2.4 mm:
+  GNM's caruncle-tip landmark vs the picture's visible corner; an unpainted caruncle reads as skin) while the outer
+  canthus is already 0.7 mm past hers. `eye_width!` lengthens at the OUTER corner (+0.2 mm there, wrong end). So the
+  small read is the inner corner (paint: skin.eyes.caruncle) and the missing lid platform / fold shadow, not the opening.
+- Front detector again said nose 2.6 mm short / philtrum 2.1 long on every model while the profile fits: camera pitch.
+
+### Tool gaps met (add to garrett_handpass's list)
+7. An INNER-CANTHUS move (the medial corner further toward the nose, the outer corner held), and an eye-ruler row that
+   says how much of a short fissure is the caruncle's paint vs geometry.
+8. A CHEEK VOLUME (soft tissue) move: fuller lower cheek between the zygoma and the jaw with mouth corners, ears and the
+   3/4 silhouette elsewhere held; `sculpt:cheeks` drags the mouth and ears.
+9. Judge-only reference views as a first-class option (add a picture, camera fitted with the head held, never read by
+   the solve), with a yaw prior for a clicked profile.
+10. (gap 1 again) the nose LOBULE's volume / roundness with projection held: Tess's rounder tip with visible nostrils.
