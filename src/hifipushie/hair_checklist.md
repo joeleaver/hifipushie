@@ -43,7 +43,7 @@ cannot reach values that stop reading as hair):
 
 | dial | what it does | when wrong |
 |---|---|---|
-| count | strands in a look (30k default; 60-100k for a Cycles beauty) | too few: see-through in Cycles |
+| count | strands in a look (30k default; more for a close-up) | too few: see-through |
 | clump, clump_size (m), clump_shape | strands gather into sub clumps; where along the strand | 1 / shape 0: ropes |
 | stray | share of strands that only half join their clump | 0: each clump a rope with air between (pasta) |
 | wave (m), wavelength (m), curl, random | the lock's swing; `random` = how far sub clumps fall out of step | random 1 on a tail: pasta |

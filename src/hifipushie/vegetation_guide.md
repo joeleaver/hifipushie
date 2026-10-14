@@ -94,6 +94,8 @@ Distance and budget
 - The export is another object: judge `look_plant(..., triangles=N)`, which renders exactly what `export_plant(...,
   triangles=N)` writes, not the full-detail tree.
 - At 70 m a tree is silhouette, mass and colour; judge every LOD at the pixel size it's drawn at.
+- Judge the export as the GLB re-imported into Blender EEVEE set up like a game (its own materials, alpha clip /
+  hashed cards, no ray tracing), never in a path tracer.
 - Card foliage costs overdraw, not triangles: aim at 4-5 card layers per covered pixel for LOD 0.
 
 ## Self-review loop (every round, from stage 1)

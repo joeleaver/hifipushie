@@ -129,7 +129,7 @@ Returns the images and the measured gates: the outline's dents (front, 3/4: a pi
 the bare-volume share per view (the volume showing between locks reads as a helmet), and with a trace the fit to
 the reference (part start px / direction deg, hairline px, silhouette IoU, outline px, clump directions).
 A strand groom (hair.style "strands") renders its strands; engine="cycles" path-traces them with the hair BSDF
-(the truthful look; minutes, and it waits for the machine's heavy slot). tier: "hero" | "main" | "npc" | "far"
+(for reference only, never the judging render: minutes, and it waits for the machine's heavy slot). tier: "hero" | "main" | "npc" | "far"
 shows the game CARDS of that tier instead (cut from the strands); debug then isolates what makes a fault:
 "layers" (cards as solid quads coloured by layer: cap grey, 0 red, 1 green, 2 blue, 3 yellow), "cap_only",
 "cards_only", "no_normal", "unlit". export_hair judges the exported files themselves.

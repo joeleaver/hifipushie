@@ -39,7 +39,7 @@ comes out redder than asked; e.g. 0.65). EEVEE is untouched by both.
 5. **Colour in Cycles.** The hair BSDF's colour is not what a lit mass of strands renders as: uncalibrated, a dark
    grey-brown came out 3.5-4x too light. The look colour goes through a measured inverse (`hair_strands.CYCLES_FIT`;
    `look.cycles_fit: [1, 1]` turns it off). Mid and light colours land within ~5-40% of `look.lit`; near-black
-   can't go under the highlights' own floor. Judge colour on the Cycles look, shape on the EEVEE one.
+   can't go under the highlights' own floor. Judge shape and colour in EEVEE (the export's look); Cycles is for reference only.
 6. Dark slits between layers of locks are the scalp's tint in shadow (`look.scalp_tint`, default 0.85, made for
    dark hair): on grey or fair hair lower it (0.3-0.5; a grey crop with receded temple corners 0.15: at 0.5 the bare
    corners read as dark patches).

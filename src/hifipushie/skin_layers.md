@@ -202,8 +202,8 @@ shadow on the lid with a deeper `crease` and an `outer` V, lipstick to the vermi
 
 ### 9. Shading check
 - `look_skin` renders in EEVEE: seconds a view once the material is compiled (a skin edit costs 20-150 s, more with
-  many scars, tattoos and make-up). `engine="cycles"` path-traces instead (real subsurface scattering: use it for this
-  check); a skin with very many fine layers can exceed what Cycles' shader holds and renders BLACK: thin it out.
+  many scars, tattoos and make-up). Judge the shading check in EEVEE and then on the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing): that is what a game
+  draws. (`engine="cycles"` exists for reference only; a skin with very many fine layers renders BLACK in it.)
 - `look_skin(views=["face", "ear"])`: under the studio light the shadow edge should turn redder, not grey; back-lit,
   ears and nostril wings should glow. `"shading"`: `subsurface` weight, `radius` per channel (red travels 2-3x
   further than green and blue [18]), `scale` (m). Too much scattering reads as wax, especially on hands [21].

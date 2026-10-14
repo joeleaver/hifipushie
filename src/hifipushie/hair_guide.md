@@ -85,6 +85,8 @@ from behind first.
   cameras) or a fitted close-up; fix in checklist order: mass and stand-off, arcs from the part, locks with depth,
   halo, part, hairline, wisps, colour, highlights, gloss, tail, short-cut lay, strand fineness.
 - The silhouette first (`stage: "mass"`): every later stage inherits it.
+- Judge in EEVEE, and the export as the exported GLB re-imported into Blender EEVEE set up like a game (its own
+  materials, alpha clip / hashed cards, no ray tracing). Cycles is never the judging render.
 - A mass of LOCKS with depth, never one shell; under-layers darker.
 - The hairline thins over ~1 cm with baby hairs; the temple is hair down to the ear. A hard edge reads as a wig.
 - Short cuts are not long hair cut short: length and lay by region, combed one way per region, fine dense strands.

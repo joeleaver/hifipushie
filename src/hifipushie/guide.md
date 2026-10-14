@@ -83,7 +83,7 @@ the spec. AO and sky there are per asset: a prop shades only itself, the buildin
 export_asset makes the game-ready version: low poly + UV atlases (per-part texel density, texel_focus for
 faces, triangle_weight) + PBR maps (basecolor, normal, roughness,
 metallic, specular, ao, orm, height) and a GLB: normal and height texel by texel from the exact model, paint and AO
-baked by Cycles from the Blender scene; paint layers carry roughness/metallic/specular too. Check its Cycles preview (and close-ups of the face) before calling it done.
+baked by Cycles from the Blender scene; paint layers carry roughness/metallic/specular too. Check the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing) (and close-ups of the face) before calling it done.
 Close-ups (look with focus + zoom) rebuild just that region at full resolution: use them to judge
 faces and hands.
 
@@ -486,7 +486,7 @@ normal and height maps, and paint is as sharp as the texture. Faces buried insid
 solid clothing, eyeball backs) are removed first.
 - Give materials their numbers in paint: `parts.<p>.roughness/metallic/specular` for defaults, layers for
   variation (wet lips `roughness: 0.2`, metal buckle `metallic: 1, roughness: 0.3`). The clay views don't show
-  these; the export preview (Cycles) does.
+  these; the exported GLB in EEVEE does.
 - `triangles` (drawn: a prefab counts once per instance) ~15k suits a hero creature; 5k for a crowd; a
   furnished building 50-100k. `texture=1024` for quick checks, 2048 to ship.
 - Prefabs with 2+ instances export once: one mesh (a primitive per part) and one set of texels, placed by a

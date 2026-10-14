@@ -68,7 +68,7 @@ pigment model (never a colour picker), then features, folds, hair, eyes, make-up
 | 6 | Micro detail | `detail` (tiling pores and lines) | `views=["cheek"]` |
 | 7 | Roughness, highlight | `oil`, roughness zones | lit close-ups: highlight breakup |
 | 8 | Cosmetics | `makeup` | close-ups |
-| 9 | Shading check | `shading` (subsurface) | `engine="cycles"`, `views=["face", "ear"]` |
+| 9 | Shading check | `shading` (subsurface) | EEVEE `views=["face", "ear"]`, then the exported GLB in EEVEE set up like a game |
 
 From pictures: `skin_from_reference` reads the pictures as a MEASUREMENT (de-lit against your own render under each
 picture's fitted light) and sets tone, zones, features, brows, stubble, eyes and folds from them, in rounds;
@@ -91,6 +91,8 @@ or their shading is taken as pigment.
 - Never one flat roughness: the T-zone smoother and oilier with a second tighter lobe.
 - Every cosmetic changes roughness and specular, not only colour; pores stay on top of it.
 - Too much scattering reads as wax; the shadow edge turns redder, not grey; ears glow back-lit.
+- Judge in EEVEE, and the export as the GLB re-imported into Blender EEVEE set up like a game (no ray tracing):
+  never in Cycles.
 
 ## Self-review loop (every round)
 
@@ -120,4 +122,4 @@ reference. Argue a MAJOR away only with evidence that the reference doesn't show
 | A tattoo that looks printed | `tattoos` (multiplied, aged), not a paint layer on top |
 | Make-up that looks like paint | Check its finish; foundation still carries some `variation` |
 | A shading shadow in the photo taken as pigment | Put the form in the head first (lid fold, bags), then read / project |
-| Cycles renders the skin BLACK | Too many fine layers for its shader: thin them |
+| Judging skin in a path tracer (Cycles) | Judge in EEVEE and on the exported GLB in EEVEE set up like a game: that is what ships |

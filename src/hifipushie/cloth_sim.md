@@ -94,7 +94,8 @@ These targets say the cloth behaves; the description's items say it's the right 
 - Judge clay with shadows off (`HIFIPUSHIE_CLOTH_SHADOWS=0`): stencil shadows of a coarse mesh draw jagged edges that
   read as torn cloth.
 - Small features (a notch, the side neck, a cuff) in close cameras: `look_cloth(focus="jacket:collar", zoom=0.35)`.
-- Surfaces in clay, or the exported GLB. Textured EEVEE looks can show pale grainy shards the GLB doesn't have.
+- Surfaces in clay, or the exported GLB re-imported into Blender EEVEE set up like a game (its own materials, no
+  ray tracing): that is the final judge. Textured EEVEE looks can show pale grainy shards the GLB doesn't have.
 - An under garment is drawn pressed in a look with the garment over it; a tucked under garment is never drawn
   without the garment over it (it's flattened onto the outer one's inner face). Show the untucked one alone, or the
   tucked one with the outer garment on. Every look, the scene and the export go through `cloth.worn_together`; a

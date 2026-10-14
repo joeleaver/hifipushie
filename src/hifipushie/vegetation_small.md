@@ -107,7 +107,7 @@ ground; blades hide 38 / 78 / 94 / 100% at 2 / 6 / 12 / 30 m. So: blades.
 - Styles (sheet block `sward`: width, density, height, bend, tones, tip point | round, tuft + tuft_fan, round, dry,
   tip_light, taper, drift): blobby = few fat round-tipped blades in two tones; cartoon = broad pointed blades in fans
   of three; anime = long sweeping blades in three painted steps, light tips; pixar = a tenth more, slightly finer blades (half again as many cost 5 M triangles).
-- Judge it as a FIELD in an engine, never as one tile: tiles over 60 m with their rings and fade, at eye level and
+- Judge it as a FIELD (the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing)), never as one tile: tiles over 60 m with their rings and fade, at eye level and
   25 m up, the ground in the terrain's grass colour; measure ground hidden by distance, triangles, GPU time. `look_plant` refuses a sward for that reason.
 - Not built: flowers / seed heads mixed into the tile (scatter the groundcover-grade tufts over it), trampling,
   blades following a slope's normal (tiles are flat: fine to ~20 deg), seasons beyond a colour per season.
@@ -135,5 +135,5 @@ bake is the plant exactly as its full export draws it, in its style and in every
   (pixar grass LOD 0 lost 93% of its area by 12 m in Godot). Import the textures WITHOUT mipmaps (coverage holds,
   some shimmer), or WITH them and alpha scaled up by the mip level in the shader (recipe in the material's
   extras.alpha_mips; 0.76-0.98 of the full plant's area from 2 to 12 m). Turn the importer's own mesh LOD generation off.
-- Judge it in the engine against the full plant's LOD 0 (area, outline IoU, colour per distance) and as a meadow with
+- Judge it (the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing)) against the full plant's LOD 0 (area, outline IoU, colour per distance) and as a meadow with
   the game's placement, thinning and budgets.

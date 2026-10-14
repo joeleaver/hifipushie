@@ -3,7 +3,7 @@
 Read guide(topic="hair") first: describe the hairstyle in words before touching a knob.
 
 **Looking at strands**: `look_hair` renders the strands in EEVEE in seconds under a key, a fill and a rim light (`look.light`
-   "salon"; "flat" = one sun). `engine="cycles"` path-traces them with the hair BSDF: the truthful look (1-4 min). EEVEE draws every strand at least a pixel wide, Cycles at its true width:
+   "salon"; "flat" = one sun). Judge in EEVEE (`engine="cycles"` path-traces them for reference only, 1-4 min: never the judging render). EEVEE draws every strand at least a pixel wide, Cycles at its true width:
    a groom that looks full in EEVEE and thin in Cycles needs more `count`, not more thickness.
 **Export for a game**: `export_hair(name, out_dir, tiers=["hero", "main", "npc", "far"], save="sheet.png")`.
    Cards are CUT FROM THE STRANDS: the strands of a lock are clustered (hero: the groom's sub clumps; main: pairs;
@@ -22,7 +22,7 @@ Read guide(topic="hair") first: describe the hairstyle in words before touching 
    "unlit" it is the cards' geometry and shading.
 
 ### Drawing the cards in an engine
-Judge game hair in the game's renderer. `spikes/godot_hair/hair_cards.gdshader` (README beside it) is a reference
+Judge game hair as the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing). `spikes/godot_hair/hair_cards.gdshader` (README beside it) is a reference
 Godot shader for the exported cards: two shifted strand highlights along TANGENT's bitangent, wrapped diffuse, the
 aux texture's root / clump shade, alpha-to-coverage. Godot's own StandardMaterial reads none of the aux texture
 and draws the cards as a fine uniform hatch. Back faces: the cards share one normal on both faces; an engine that

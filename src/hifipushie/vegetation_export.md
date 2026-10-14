@@ -29,7 +29,7 @@ crossed cards, standing where the tree has such a bough. How the foliage is cut 
   0.85 of its LOD 0 and lost its top; and MID-sized boughs (2-3 m) on any card read as palm fronds or round leaves
   from 30 m. Fine or whole limbs, not between.
 Judge every LOD at the distance and PIXEL SIZE it is drawn at (a 26 m tree at 64 m is ~310 px of a 1080p screen: a
-6 m piece of crown is 150 px; needle detail is not there, silhouette and tone patches are), and in the engine
+6 m piece of crown is 150 px; needle detail is not there, silhouette and tone patches are), and as the exported GLB re-imported into Blender and rendered in EEVEE set up like a game (the glTF importer's materials, alpha clip / hashed cards, no ray tracing)
 (covered area at each switch; overdraw = summed card area / covered area).
 Raise the budget if the crown falls apart (a game tree: 10-40k; a hero tree 40-100k).
 
