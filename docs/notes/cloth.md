@@ -2548,3 +2548,20 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - CB collar crossings (item 4): 0 visible shirt x made collar on every build since cloth11's stand clearance; closed.
   - STATE: best c12_n16c (q_n16.txt line 1). NEXT: cuff show (sleeve length_bonus), front_hang (side panel hem spring:
     run.py can only patch every contour op at once: add an index), the shirt re-sim, pockets (with a front check).
+- Gate 11 (front hang, cuff show, run-to-run variance). run.py gained op:<name>@<k>.<field> (only the k-th op of
+  that name: the jacket has two contour ops, centre back and the side panels). Four sims ($0.183 with n21):
+  - VARIANCE: n21 = n16 re-keyed by a no-op (layer_gap 0.005 -> 0.0051): every checklist number within 2 mm of n16
+    (front_hang 54.2 / 53.7, cuff 5.5 / 6.2, hem 435 / 437, chest 440 / 439, shoulders 509 / 509, notch +-2 mm). So a
+    one-sim difference over ~5 mm is the change, not the solver.
+  - n18 side-panel hem spring 6 -> 0 mm (the guide's tent fix): front_hang 54 -> 66, hem sweep 437 -> 425: worse here.
+  - n20 hem spring 6 -> 12 mm: front_hang 55 (same), hem sweep 389 (-48 mm): the side panels' spring is not this
+    jacket's front-hang lever. Rejected.
+  - n19 sleeve length_bonus 0.018 -> 0.008: cuff show 6 -> 4 mm (WORSE: the cuff_show measure does not move with the
+    sleeve's length the way its hint says), front_hang 46, hem sweep 454 (in tolerance), but 8 visible shirt x jacket
+    crossings (n16: 0). Not adopted.
+  - The shirt: simulated on current main this session (c12_b0's shirt, job d038...); alone it reads clean (collar,
+    band ends under the points, top button open): out c11_w_<t>.png top rows. No re-sim needed.
+  - Sheet workspace/cloth_renders/c12_g11_sheet.png (concept | n19 | n16): visually the same at every scale.
+  - Spend this agent: $0.916.
+  - STATE: best still c12_n16c. NEXT: front_hang (53 mm; levers left: canvas / chest ease / the fronts' balance at the
+    shoulder), chest width +10% (chest_ease 0.06 -> 0.03), the cuff_show measure, pockets.
