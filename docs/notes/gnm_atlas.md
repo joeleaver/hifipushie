@@ -6234,3 +6234,49 @@ face; tess_a1 as a softer, freckled relative with a wider jaw. Neither wins the 
 5. Round 2's true45 / true90 / rear pictures exist and were not used (round 1's "profile" fits at 71 deg): rerun on them?
 6. `human(source="human")` is still body-carried and seeded with `features`: make it native too?
 7. A class-mean start keeps GNM's neck (women 363) until its first solve; apply the prior in block_in_start as well?
+
+## garrett_handpass (2026-10-14, "garrett-handpass" agent, branch `worktree-agent-a3c45ae528da2b5ce`; one judged hand round on a
+## solved GNM-native head from photographic references; per-picture notes PRIVATE in /mnt/data/hifipushie/garrett_handpass)
+STATE: round 1 done (5 steps kept of 11 tried, then a pass that kept nothing). General findings only here.
+Method that worked (scratch scripts in /mnt/data/hifipushie/garrett_handpass: hstep.py, detdiff.py, tiles.py, cmp.py):
+- Every step: `blockin.step`, then the per-ZONE displacement src -> out after a rigid (Procrustes) fit of face + cranium
+  (what moved where, mm), the outlines' residual after the best 2D shift / rotation / scale per view (familynative's
+  rigid_rms) broken down by GNM zone, and a DIFFERENTIAL MediaPipe table: the detector on the reference crop and on a
+  DRESSED EEVEE render of the model through the same fitted camera and the same crop (mm at the face from the picture's
+  pupils). Its noise between steps that do not touch a feature is ~0.6 mm (the nasion point wanders): only trust a change
+  that is consistent over several models or over 1 mm.
+- What the hand pass fixed: things the joint solve sets with NO read. On a front picture the jaw lies on the neck (no edge),
+  so jaw / chin / gonial width are the prior's and can read wide in the dressed front tile.
+  `mm:jaw_width`, `mm:chin_width` and `sculpt:jaw_angle` (negative) narrowed them cleanly (|dc| 1-1.5, face zones elsewhere
+  < 0.4 mm; `sculpt:jaw_angle` the most local). `mm:nose_width` -2 again worked on the alar base (familynative's finding).
+  `iris_mm` to eye_ruler's limbus diameter moves only that component.
+- The FRONT outline reads at the jawline / parotid say "picture outside" by 2-3 mm and grow as the jaw narrows: they are
+  the NECK's silhouette, not the jaw (familynative finding 4 again). Do not let them veto a jaw step.
+- Held macros (`nose_width!`, `chin_width!`) moved MORE elsewhere (neck ~1 mm, ears 1.2 mm, profile worse) than the `mm:`
+  measure for the same change: prefer `mm:` / `sculpt:` for hand steps.
+- The neck moves 0.6-1.2 mm on almost every identity step (the native attach re-seats the body): not a face change, but
+  whoever dresses / seats the body afterwards should re-check the neck seam.
+- `relief:nose_tip` (+1 mm) projects the tip 2 mm and drags lips / chin ~1 mm (|dc| 3.4): not a lobule-volume move.
+  `nd:tip_width|held` 0.6 moved the tip zone 0.1 mm on this head: not productive.
+- `sculpt:cheeks` -1 (a hollow under the cheekbone) broke the 3/4 cheek silhouette (rigid rms 0.28 -> 0.49 mm) and moved
+  mouth corners / ears 1.2-1.4 mm: the photographic submalar hollow on a lean older face is shading / skin, not that plane.
+- `mm:mouth_width` was asked by the detector (model 1.3 mm narrow, every model) but the dressed tile read the mouth already
+  as wide as the picture's: MediaPipe's mouth corners on a photo vs a render disagree like its alar points do.
+- A front picture's vertical proportions (nose length, chin length) from the detector disagreed with the profile's outline by
+  1.2-1.5 mm in opposite directions on every model: the front camera's pitch (solved +5 deg) is the suspect; the profile
+  (rigid, by zone) was taken as the arbiter and nothing was moved.
+
+### Tool gaps met (add to the list)
+1. A NOSE-TIP VOLUME move: the lobule rounder / fuller (bulbous, supra-tip break, alar groove) without projecting the tip
+   or moving the dorsum, with the profile held. Neither `relief:nose_tip` nor `nd:tip_width|held` does it.
+2. VERMILION BORDER measures (familynative's ask, met again): upper-lip vermilion thinner at the sides with a deeper Cupid's
+   bow (lip_read showed the bow half as deep as the picture's), as `mm:` measures with the profile held.
+3. A JAW-WIDTH READ on a front picture: the jaw's lower border against the neck is a shading edge, not a silhouette;
+   nothing reads it, so the solve leaves it to the prior. A one-sided read from the stubble / shading
+   edge, or the 3/4 picture's near jaw line, would replace the hand step.
+4. The PROFILE camera solved at ~74 deg for a picture believed 88-92 deg (the VIEW warning): the profile check rides on that
+   camera. A known turntable angle (or a yaw prior tied to the picture's stated angle) is needed before trusting depth rows.
+5. `block_in_step` should report the zone displacement table (after a rigid fit) itself: it is the "other features moved
+   < 0.5 mm" gate of a hand pass, and the profile / 3/4 outline rigid rms by zone (familynative finding 2).
+6. A dressed render per step costs a stage sync (~3 min mesh) + the heavy slot queue (10-30 min under load): a cheap
+   dressed preview (texture baked once, mesh swapped) would make judged hand passes 3-5x faster.
