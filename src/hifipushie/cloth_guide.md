@@ -62,12 +62,23 @@ the item list as a form and turns your answers into a design-sheet patch and a t
 6. **Surface details that make it read.** Rib, topstitching (and its colour), plackets, buttons, rivets, seams.
    Note any the tools can't build yet (see "Known gaps") so they're decided, not forgotten.
 
-Then pick the kind, draft source or block, fit, fabric and details, and say which item justifies each. Example: "a
-knit crewneck: kind `hoodie` (the KB's pullover knit kind) with `"block": "knit"` (not a woven bodice, not a
-sweatshirt draft), set-in `{"op": "sleeve"}`, details collar `rib_neckband` / cuff `rib` / hem `rib_band` / pockets
-`none`, `worn_top: true`, underarm 2-4 cm below the armpit, rib band heights read from the reference (a crew
-neckband is usually 2-3 cm, cuffs and hem 5-7 cm), hem at the high hip, fabric jersey (a sweatshirt: french_terry)". Kinds, details and fabrics: guide(topic="cloth_design"), `garment_reference(kind=...)` (read
-the kind's `lessons` before designing it).
+Then pick the kind, draft source or block, fit, fabric and details, and say which item justifies each. Kinds,
+details and fabrics: guide(topic="cloth_design"), `garment_reference(kind=...)` (read the kind's `lessons` before
+designing it).
+
+**Knit tops and the kind `hoodie`.** There is no "sweater" kind. `hoodie` is the knowledge base's generic
+PULLOVER-KNIT kind (the name is a historical accident): its defaults are a hooded sweatshirt's (french_terry, a
+loose `regular` / `boxy` fit of 10-35% ease, hood, kangaroo pocket, topstitched seams, and in its derivation a
+dropped shoulder with the sleeve in a DEEPER armhole). A fitted crewneck sweater uses this kind but overrides almost
+all of that from the description:
+- `"block": "knit"` with a set-in `{"op": "sleeve"}` (no dropped-shoulder reshape), shoulder seam at the shoulder point;
+- details collar `rib_neckband` (a crew neckline at the neck's base), cuff `rib`, hem `rib_band`, pockets `none`;
+- the fit and ease you read (a fitted knit 0-10%), fabric `jersey`, garment key `worn_top: true`;
+- **armhole depth: the target is the underarm 2-4 cm below the armpit. Don't trust the kind's default: measure the
+  draft's armhole bottom against the body's armpit on the pattern sheet (stage 2) and fix it before any sim.**
+- band heights read from the reference (a crew neckband is usually 2-3 cm, cuffs and hem 5-7 cm), hem where the
+  reference puts it.
+A sweatshirt (drop shoulder, deep armhole, boxy, french terry) is a different garment: the description decides which.
 
 ## Stage 2: measure the draft against the description
 
@@ -135,7 +146,7 @@ evidence that the reference doesn't show it.
 
 | Mistake | Instead |
 |---|---|
-| Picking the nearest template (hoodie, simon shirt) and fixing faults one at a time | Describe first; choose kind / block / details from the description |
+| Taking a kind's defaults as the design (`hoodie` gives a sweatshirt; simon a dress shirt) and fixing faults one at a time | Describe first; override the kind's defaults item by item from the description, and measure the draft |
 | A knit made on a woven block, or a sweatshirt cut for a fitted sweater (deep armholes, boxy) | `"block": "knit"`, set-in `sleeve`, rib details, `worn_top: true`; check armhole depth vs the armpit on the draft |
 | Simulating to find out whether the pattern is right | Read `look_pattern` and measure the draft first; a sim takes minutes, a pattern sheet seconds |
 | Raising stiffness, stitch strength or resolution to fix puffed caps, gathered seams, a funnel collar, open seams | These are construction faults: cap ease, seam lengths, a missing piece, a seam that starts far apart (stage 4) |

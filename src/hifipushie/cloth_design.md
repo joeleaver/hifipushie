@@ -18,8 +18,11 @@ design_garment(name, "shirt", design={"kind": "shirt", "from": "simon", "fit": "
 - **kind:** shirt, blouse, tee, hoodie, jacket, coat, trousers, jeans, suit_trousers, shorts, skirt, dress, flat. It
   sets the fit's ease bands, the default details, the sleeve cap's ease band and the sewing order. `jeans` and
   `suit_trousers` draft themselves (`{"kind": "jeans", "fit": "straight"}` is five-pocket jeans: yoke, scoop and
-  patch pockets, fly, band, mid rise). A crew-neck SWEATER is kind `hoodie` with `"block": "knit"`, details collar
-  `rib_neckband`, cuff `rib`, hem `rib_band`, pockets `none`, plus garment key `worn_top: true` (see "Knits").
+  patch pockets, fly, band, mid rise). There is no sweater kind: `hoodie` is the generic pullover-knit kind (a historical
+  name) and its DEFAULTS are a hooded sweatshirt's (french terry, loose fit, hood, kangaroo pocket, dropped shoulder
+  into a deep armhole). A crew-neck sweater overrides them: `"block": "knit"`, set-in sleeve, collar `rib_neckband`,
+  cuff `rib`, hem `rib_band`, pockets `none`, jersey, `worn_top: true`, and its armhole MEASURED on the draft against
+  the armpit (see "Knits").
 - **from:** what drafts it. `simon` (shirt, FreeSewing), `carlton` (overcoat, FreeSewing), `skirt_block` (our own
   skirt draft). Or a `block` + `ops` (guide(topic="cloth_blocks")). Or leave both out and give own `pieces` +
   `seams` on the garment (name each piece's `"role"`).
