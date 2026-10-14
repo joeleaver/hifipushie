@@ -210,8 +210,22 @@ def test_shading_notes_cover_every_material():
         assert set(kinds) == {"skin", "eye", "hair_cards"}
         assert "blink" in kinds["skin"]["maps"] and "blink" not in kinds["eye"]["maps"]
         assert any("lerp(1, blink, 1 - eyeBlink)" in f for f in kinds["skin"]["formulas"])
-        assert n["lods"][1]["switch_m"] > 0 and "unreal" in kinds["hair_cards"]["engines"]
+        assert 0 < n["lods"][1]["screen_size"] < 1 and "unreal" in kinds["hair_cards"]["engines"]
         assert "## LODs" in open(m).read()
+
+
+def test_budget_gate_maps_parts_and_flags_over():
+    from hifipushie import asset, budgets
+    rb = budgets.role("hero")
+    report = {"body": {"triangles": 41000, "meshes": {"head": {"triangles": 23000}, "body": {"triangles": 18000}}},
+              "hair": {"triangles": 40000, "curves": True}, "lashes": {"triangles": 4900, "lashes": True},
+              "eyes": {"triangles": 350}, "cloth_jeans": {"triangles": 9000, "cloth": True}, "shoes": {"triangles": 745}}
+    g = asset.budget_check(rb, report, {})
+    assert g["parts"]["head"][0] == 23000 and g["parts"]["body"][0] == 18000
+    assert g["parts"]["eyes_mouth_lashes"][0] == 5250 and g["parts"]["accessories"][0] == 745
+    over = [ln for ln in g["lines"] if "OVER" in ln]
+    assert any("hair_cards" in ln for ln in over) and any("body" in ln for ln in over)
+    assert not any(ln.startswith("WARNING budget: head") for ln in g["lines"])
 
 
 if __name__ == "__main__":

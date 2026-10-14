@@ -53,6 +53,31 @@ def _blender(job: dict, timeout: float = 600):
 GAME_SCRIPT = Path(__file__).with_name("blender_game.py")
 
 
+def budget_check(rb: dict, report: dict, spec: dict) -> dict:
+    """LOD0 triangles by budget part (budgets.json's parts: head, body, clothing, hair_cards, eyes_mouth_lashes,
+    accessories) against the role's defaults: {"parts": {part: [count, budget]}, "total": [count, budget], "lines"}."""
+    skin_pn = (spec.get("skin") or {}).get("part", "body")
+    have: dict = {}
+    for pn, r in report.items():
+        n = int(r.get("triangles", 0))
+        if pn == skin_pn and r.get("meshes"):
+            have["head"] = have.get("head", 0) + int(r["meshes"].get("head", {}).get("triangles", 0))
+            have["body"] = have.get("body", 0) + int(r["meshes"].get("body", {}).get("triangles", 0))
+            continue
+        k = ("body" if pn == skin_pn else "clothing" if r.get("cloth") else "hair_cards" if (r.get("curves") or r.get("cards"))
+             else "eyes_mouth_lashes" if (r.get("lashes") or pn in ("eyes", "teeth", "tongue", "brows")) else "accessories")
+        have[k] = have.get(k, 0) + n
+    bp = rb["parts"]
+    parts = {k: [have.get(k, 0), int(bp[k]["default"]) if k in bp else None] for k in sorted(set(have) | set(bp))}
+    tot = [sum(have.values()), int(rb["lod0_triangles"]["default"])]
+    lines = []
+    for k, (n, b) in parts.items():
+        over = b is not None and n > b
+        lines.append(("WARNING budget: " if over else "budget: ") + f"{k} {n} of {b}" + (" (OVER)" if over else ""))
+    lines.append(("WARNING budget: " if tot[0] > tot[1] else "budget: ") + f"total {tot[0]} of {tot[1]} (LOD0)")
+    return {"parts": parts, "total": tot, "lines": lines}
+
+
 def game(glb: Path, timeout: float = 900, **job) -> str:
     """The game-like EEVEE render of an exported GLB (blender_game.py): job keys frames / poses / size / hide
     (asset.preview) or shots / anim / out (the engine-stage checks). Returns Blender's log."""
@@ -1658,11 +1683,11 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
         return _export(name, out_dir, *args, **kw)
 
 
-def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
+def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
             lods: bool | list | None = None, cloth_triangles: int | None = None,
-            cull_under_cloth: bool = True) -> dict:
+            cull_under_cloth: bool = True, role: str | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1686,6 +1711,27 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     it without a garment fit, socks) the garments cover is left out (under_cloth_keep), a rim kept at the openings."""
     log = _Log(name)
     t = time.time()
+    rb = None
+    if role:  # the budgets profile (budgets.json, docs/notes/budgets.md): what this role may cost; explicit arguments win
+        from . import budgets as budgetmod
+        rb = budgetmod.role(role)
+        bp_ = rb["parts"]
+        if triangles is None:  # what the joint decimation spends: the body (head + body meshes) and the small parts
+            triangles = sum(int(bp_[k]["default"]) for k in ("head", "body", "eyes_mouth_lashes", "accessories") if k in bp_)
+        if cloth_triangles is None and "clothing" in bp_:
+            cloth_triangles = int(bp_["clothing"]["default"])
+        texture = min(texture, int((rb.get("textures") or {}).get("max_map", texture)))
+        if texel_density is None:  # atlases sized by the role's texel density (the face's higher density is the
+            # model's parts.<skin>.texel_focus; separate head / body texture SETS need the native head unwrapped as its
+            # own part: not built, the two meshes share one atlas)
+            texel_density = float(((rb.get("textures") or {}).get("texel_density_px_per_m") or {}).get("body", 1024))
+        if lods is None:
+            lods = True
+        log.append(f"budgets: role {role!r}: triangles {triangles} (head + body + eyes/mouth/lashes + accessories), "
+                   f"clothing {cloth_triangles}, maps <= {texture}, LOD0 total {rb['lod0_triangles']['default']}")
+    if triangles is None:
+        triangles = 15000
+        log.append("WARNING budgets: no role given and no triangles: 15000 (not a stated budget; pass role=)")
     spec = store.load(name)
     aname = asset_name or name
     from .base import part_defs
@@ -2124,6 +2170,14 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     if lods:
         from . import lods as lodmod
         ratios = list(lodmod.LOD_RATIOS) if lods is True else [float(r) for r in lods]
+        ratio_of, mesh_r, shape_lods = None, None, None
+        if rb is not None and lods is True:
+            from . import budgets as budgetmod
+            above, below = budgetmod.lod_ratios("head"), budgetmod.lod_ratios("body")
+            ratios = budgetmod.lod_ratios(None)[1:]
+            shape_lods = set((rb.get("face_shapes") or {}).get("lods") or [0])
+
+            ratio_of = True
         cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
         tier_parts = {}
         if locals().get("hair_cards") and rigged:  # hair LODs are the groom's own card TIERS (one atlas for all:
@@ -2148,8 +2202,20 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 tier_parts[k] = (tp_, (Jh, Wh), tier_)
         for k, r in enumerate(ratios, 1):
             tl = time.time()
-            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards,
-                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None)
+            if ratio_of is not None:  # above the neck holds detail longer than below it (budgets.lod_ratios)
+                kk_ = min(k, len(above) - 1)
+                skin_pn_ = (spec.get("skin") or {}).get("part", "body")
+
+                def r_part(pn, kk_=kk_):  # head parts (the skin's head mesh by mesh_ratios) above, the rest below
+                    if pn == skin_pn_ or pn in ("eyes", "teeth", "tongue"):
+                        return above[kk_]
+                    return below[min(kk_, len(below) - 1)]
+                rr_, mesh_r = r_part, {"head": above[kk_], "body": below[min(kk_, len(below) - 1)]}
+            else:
+                rr_ = r
+            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, rr_, skip=cards,
+                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None,
+                                             mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods))
             if k in tier_parts:
                 tp_, w_, tier_ = tier_parts[k]
                 lp[pn_h] = tp_
@@ -2167,6 +2233,11 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         import shutil
         for k in tier_parts:  # (the tiers' own copies of the shared hair atlas)
             shutil.rmtree(out_dir / f"_lod{k}", ignore_errors=True)
+    budget_gate = None
+    if rb is not None:  # each part's count against the role's budget (a gate line; over = WARNING)
+        budget_gate = budget_check(rb, report, spec)
+        for ln in budget_gate["lines"]:
+            log.append(ln)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
@@ -2201,7 +2272,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             "atlases": {an: {"size": sizes[ai], "maps": maps_info[an], "height_range_m": heights[an],
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
-            "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}), **({"skin": skin_recipe} if skin_recipe else {}),
+            "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}),
+            **({"role": role, "budget": budget_gate} if rb is not None else {}), **({"skin": skin_recipe} if skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
                         "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
                         "layers_seated": rigged.get("layers_seated", []),

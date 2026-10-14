@@ -53,7 +53,8 @@ def _decimate(V: np.ndarray, F: np.ndarray, target: int) -> tuple[np.ndarray, np
     return np.asarray(v, np.float64), np.asarray(f, np.int64)
 
 
-def lod_part(p: dict, weights: tuple | None, ratio: float) -> tuple[dict, tuple | None, dict]:
+def lod_part(p: dict, weights: tuple | None, ratio: float, mesh_ratios: dict | None = None,
+             shapes: bool = True) -> tuple[dict, tuple | None, dict]:
     """(part dict as write_glb takes it, its (joints, weights) or None, report) at `ratio` of p's triangles."""
     from .rig_template import _closest_on_triangles
     meshes = p.get("meshes")
@@ -78,11 +79,14 @@ def lod_part(p: dict, weights: tuple | None, ratio: float) -> tuple[dict, tuple 
         vs, Tl_loc = np.unique(Tl, return_inverse=True)
         Tl_loc = Tl_loc.reshape(-1, 3)
         Vl = P0[vs]
-        if len(tf) < MIN_PATCH or ratio >= 0.999:
+        r_ = ratio
+        if mesh_ratios and meshes and tri_mesh is not None:  # (a native head and its body: their own shares)
+            r_ = float(mesh_ratios.get(mnames[int(tri_mesh[tf[0]])], ratio))
+        if len(tf) < MIN_PATCH or r_ >= 0.999:
             Vd, Fd = Vl, Tl_loc
             kept += len(tf)
         else:
-            Vd, Fd = _decimate(Vl, Tl_loc, int(round(len(tf) * ratio)))
+            Vd, Fd = _decimate(Vl, Tl_loc, int(round(len(tf) * r_)))
             decim += len(tf)
             if len(Fd) == 0:
                 Vd, Fd = Vl, Tl_loc
@@ -128,7 +132,7 @@ def lod_part(p: dict, weights: tuple | None, ratio: float) -> tuple[dict, tuple 
     vsrc = src[corners]  # part vertices (n, 3) of each new vertex's triangle
     if p.get("vcolor") is not None:
         out["vcolor"] = np.einsum("nk,nkc->nc", bb, np.asarray(p["vcolor"], np.float64)[vsrc]).astype(np.float32)
-    if p.get("shapes"):
+    if p.get("shapes") and shapes:
         sh = {}
         for nm, (d, n0, n1) in p["shapes"].items():
             d_ = np.einsum("nk,nkc->nc", bb, np.asarray(d, np.float64)[vsrc])
@@ -216,8 +220,8 @@ def card_lod(p: dict, ranges: dict, ratio: float) -> tuple[dict, dict]:
     return q, {"triangles0": n, "triangles": int(keep.sum()), "layers": [k for k in layers if keep[ranges[k][0]]]}
 
 
-def lod_parts(parts: dict, rigged: dict | None, ratio: float, skip=(), cards: dict | None = None
-              ) -> tuple[dict, dict | None, dict]:
+def lod_parts(parts: dict, rigged: dict | None, ratio, skip=(), cards: dict | None = None, mesh_ratios: dict | None = None,
+              shapes: bool = True) -> tuple[dict, dict | None, dict]:
     """Every part at `ratio` (parts named in `skip` are carried as they are; `cards` {part: layer ranges}: hair cards
     by whole layers, card_lod)."""
     out, rep = {}, {}
@@ -226,17 +230,17 @@ def lod_parts(parts: dict, rigged: dict | None, ratio: float, skip=(), cards: di
     for pn, p in parts.items():
         w = wts.get(pn)
         if cards and pn in cards:
-            out[pn], rep[pn] = card_lod(p, cards[pn], ratio)
+            out[pn], rep[pn] = card_lod(p, cards[pn], ratio(pn) if callable(ratio) else ratio)
             if w is not None:
                 neww[pn] = w
             continue
         if pn in skip or len(p["corner_vert"]) // 3 < MIN_PART:
-            out[pn] = p
+            out[pn] = p if shapes or not p.get("shapes") else {k: v for k, v in p.items() if k != "shapes"}
             if w is not None:
                 neww[pn] = w
             rep[pn] = {"triangles0": len(p["corner_vert"]) // 3, "triangles": len(p["corner_vert"]) // 3, "kept": True}
             continue
-        q, wq, r = lod_part(p, w, ratio)
+        q, wq, r = lod_part(p, w, ratio(pn) if callable(ratio) else ratio, mesh_ratios=mesh_ratios, shapes=shapes)
         out[pn] = q
         if wq is not None:
             neww[pn] = wq

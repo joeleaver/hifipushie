@@ -13,9 +13,6 @@ import json
 from pathlib import Path
 
 VERSION = 1
-# a LOD's switch distance (m) for a human-sized character on a 1080p screen at ~60 deg vertical fov: where its share of
-# LOD0's triangles still puts ~1 triangle per few pixels (screen height covered ~ 1.8 m * 1080 / (2 d tan 30))
-LOD_DISTANCE = {1: 4.0, 2: 9.0, 3: 18.0}
 
 ENGINES = {
     "skin": {"unity": "HDRP Lit, Material Type Subsurface Scattering + a Diffusion Profile from subsurface.mean_free_path_m; "
@@ -164,19 +161,22 @@ def notes(info: dict, aname: str, looks: dict | None = None, hair_look: dict | N
             m["gltf"] = {e: GLTF_NOTES.get(e, "") for e in sorted(ext)}
             mats.append(m)
     fs = info.get("face_shapes") or {}
-    lods = [{"lod": 0, "file": Path(info["glb"]).name, "triangles": info["triangles"], "switch_m": 0.0}]
+    from . import budgets as budgetmod
+    ss = budgetmod.load()["characters"]["lod_screen_size"]
+    sizes = ss.get(info.get("role") or "default") or ss["default"]
+    lods = [{"lod": 0, "file": Path(info["glb"]).name, "triangles": info["triangles"], "screen_size": sizes[0]}]
     for L in info.get("lods") or []:
         lods.append({"lod": L["lod"], "file": Path(L["glb"]).name, "triangles": L["triangles"],
-                     "switch_m": LOD_DISTANCE.get(L["lod"], 18.0 * 2 ** (L["lod"] - 3))})
+                     "screen_size": sizes[L["lod"]] if L["lod"] < len(sizes) else sizes[-1] / 2 ** (L["lod"] - len(sizes) + 1)})
     return {"version": VERSION, "asset": aname, "conventions": info.get("conventions"), "materials": mats,
             "face_shapes": {"names": fs.get("names"), "couplings": [
                 "eyeBlinkLeft / eyeBlinkRight also fade the skin's blink map: albedo = basecolor * lerp(1, blink, 1 - eyeBlink)",
                 *[f"{c}: set each frame to {v}" for c, v in (fs.get("correctives") or {}).items()]]} if fs else None,
             "twist": (info.get("rig") or {}).get("twist_recipe"),
             "lods": lods,
-            "lod_rule": "switch by distance for a human-sized character on a 1080p, ~60 deg vertical fov screen; scale "
-                        "the distances by (screen height / 1080) x (tan 30 deg / tan(fov / 2)). The LODs share LOD0's "
-                        "skeleton, maps and face shapes"}
+            "lod_rule": "switch by screen size (Unreal-style: the projected bounding-sphere diameter / the screen's larger "
+                        "dimension; LOD k below screen_size[k]; budgets.json lod_screen_size, with hysteresis). The LODs share "
+                        "LOD0's skeleton and maps; face shapes only on the LODs the role keeps them (hero: LOD0-1)"}
 
 
 def markdown(n: dict) -> str:
@@ -199,8 +199,8 @@ def markdown(n: dict) -> str:
                 + ", ".join(n["face_shapes"]["names"] or []), ""] + [f"- {c}" for c in n["face_shapes"]["couplings"]] + [""]
     if n.get("twist"):
         out += ["## Twist joints", "", n["twist"] if isinstance(n["twist"], str) else json.dumps(n["twist"]), ""]
-    out += ["## LODs", "", n["lod_rule"], ""] + [f"- LOD{L['lod']}: `{L['file']}`, {L['triangles']} triangles, from "
-                                                 f"{L['switch_m']:g} m" for L in n["lods"]]
+    out += ["## LODs", "", n["lod_rule"], ""] + [f"- LOD{L['lod']}: `{L['file']}`, {L['triangles']} triangles, below "
+                                                 f"screen size {L['screen_size']:g}" for L in n["lods"]]
     return "\n".join(out) + "\n"
 
 
