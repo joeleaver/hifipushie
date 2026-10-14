@@ -122,6 +122,72 @@ def test_lift_by_region():
     assert abs(s1 - s0) < 0.0015, (s0, s1)
 
 
+def test_tuck_passes_behind_the_ear_on_one_side():
+    """tuck "left": hair rooted over / in front of the ear on the person's left passes behind the ear at ear height;
+    the right side still hangs in front."""
+    base = {"length": 0.3, "spacing": 0.025, "stiff": 0.25, "messy": 0.0, "uneven": 0.0}
+
+    def side_az(loose, left):
+        sc, _c, locks = _grow(loose, parting="none")
+        out = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            a0 = ((a[0] + 180) % 360) - 180
+            if (a0 > 0) != left or not (55 < abs(a0) < 100) or e[0] < 0:
+                continue
+            k = np.argmin(np.abs(P[:, 2] - (sc.C[2] - 0.035)))  # (about the ear's middle)
+            ak, _ = hair.az_el(P[k] - sc.C)
+            out.append(abs(((ak + 180) % 360) - 180))
+        return np.median(out)
+    l0, l1 = side_az(base, True), side_az({**base, "tuck": "left"}, True)
+    r0, r1 = side_az(base, False), side_az({**base, "tuck": "left"}, False)
+    assert l1 > 105 and l1 > l0 + 10, (l0, l1)  # behind the ear (no ear on the ball: back at 105 deg)
+    assert abs(r1 - r0) < 2, (r0, r1)
+
+
+def test_curtain_bangs_part_both_ways():
+    sc, _c, locks = _grow({"length": 0.3, "spacing": 0.02, "uneven": 0.0, "messy": 0.0,
+                           "fringe": {"length": 0.06, "span": 35, "sweep": "away", "curtain": 0.8}}, parting="centre")
+    ends, lens = [], []
+    for n, lk in locks.items():
+        if not n.startswith("lf"):
+            continue
+        P = np.asarray(lk["pts"]) + sc.C
+        ends.append((np.sign(P[0, 0] - sc.C[0]), P[-1, 0] - P[0, 0], abs(P[0, 0] - sc.C[0]),
+                     np.linalg.norm(np.diff(P, axis=0), axis=1).sum()))
+    E = np.array(ends)
+    assert len(E) > 4
+    assert np.all(E[:, 0] * E[:, 1] > -0.002)  # each side swept away from the part (outward), never across it
+    inner, outer = E[E[:, 2] < np.median(E[:, 2]), 3], E[E[:, 2] >= np.median(E[:, 2]), 3]
+    assert np.median(outer) > np.median(inner)  # longer toward the outer edges
+
+
+def test_fade_shortens_and_thins_the_nape():
+    base = {"length": {"front": 0.05, "top": 0.05, "sides": 0.03, "back": 0.03, "nape": 0.02}, "spacing": 0.01,
+            "messy": 0.0, "uneven": 0.0, "lay": 0.5, "thickness": 0.003, "lift": 0.002}
+
+    def nape(loose):
+        sc, _c, locks = _grow(loose, parting="none")
+        L, D = [], []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            a, e, _ = sc.coords(P[:1])
+            if abs(((a[0] + 180) % 360) - 180) > 140 and e[0] < -10:
+                L.append(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
+                D.append((lk.get("strands") or {}).get("density", 1.0))
+        return np.median(L), np.min(D) if D else 1.0
+    l0, d0 = nape(base)
+    l1, d1 = nape({**base, "fade": {"width": 0.03}})
+    assert l1 < l0 - 0.003 and d1 < 0.6 and d0 == 1.0, (l0, l1, d0, d1)
+
+
+def test_loose_halo_is_not_quartered_but_a_tails_is():
+    from hifipushie import hair_strands as hs
+    S = {**hc.strands_of({"hair": {"strands": {"halo": 1.0}}})}
+    assert hs.physical(S, free=True, tail=False)["halo"] == pytest.approx(4 * hs.LOOSE_HALO * hs.physical(S, free=True, tail=True)["halo"])
+
+
 def test_level_fringe_and_afro():
     sc, col, bob = _grow({"length": 0.3, "level": -0.08, "uneven": 0.0, "spacing": 0.03,
                           "fringe": {"length": 0.06, "level": -0.01}}, parting="none")
