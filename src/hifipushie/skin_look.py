@@ -40,6 +40,7 @@ VIEWS = {"bust": "head", "face": "head", "three_quarter": "head", "side": "head"
          "mouth": "head", "forehead": "head", "brows": "head", "ear": "head", "hand": "arm", "palm": "arm", "forearm": "arm"}
 EYE_VOXEL = float(__import__("os").environ.get("HIFIPUSHIE_EYE_VOXEL", "0.0005"))  # m: the head stage's orbits (lids, folds,
 # brows) are meshed this fine (an env value >= the stage voxel turns the refinement off)
+SEAM_VOXEL = float(__import__("os").environ.get("HIFIPUSHIE_SEAM_VOXEL", "0.0002"))  # m: the closed lips' seam is meshed this fine
 DEFAULT = ("face","three_quarter", "cheek", "eye", "mouth", "ear")
 
 
@@ -120,6 +121,14 @@ def stage_spec(spec: dict, region: str, voxel: float | None = None) -> dict:
                                                       round(float(m[:, 2].min()) - 0.008, 4)],
                                                "hi": [round(float(m[:, 0].max()) + 0.006, 4), round(float(m[:, 1].max()) + 0.012, 4),
                                                       round(float(m[:, 2].max()) + 0.008, 4)], "voxel": EYE_VOXEL})
+            if "lm_lip_seam" in J and SEAM_VOXEL < EYE_VOXEL:
+                # the closed lips' SEAM: the two lip surfaces touch within a voxel, and at 0.5 mm marching cubes cut it into a
+                # jagged line with hairline gaps (the lips' unshaded inner faces showed through: a pale zigzag at the
+                # parting on every head). A thin box along the seam meshed finer
+                zc = float(J["lm_lip_seam"][2])
+                s["parts"][part]["refine"].append({"lo": [round(float(m[:, 0].min()) - 0.003, 4), round(float(m[:, 1].min()) - 0.004, 4), round(zc - 0.0022, 4)],
+                                                   "hi": [round(float(m[:, 0].max()) + 0.003, 4), round(float(m[:, 1].max()) + 0.008, 4), round(zc + 0.0022, 4)],
+                                                   "voxel": SEAM_VOXEL})
     s.pop("symmetry", None) if False else None
     return s
 

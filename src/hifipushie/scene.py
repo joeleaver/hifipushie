@@ -93,7 +93,7 @@ def _blender(job: dict, timeout: float = 900, progress=None) -> str:
     with tempfile.TemporaryDirectory(prefix="hifipushie-scene-") as tmp:
         p = Path(tmp) / "job.json"
         p.write_text(json.dumps(job))
-        cmd = [render.BLENDER, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(SCRIPT), "--", str(p)]
+        cmd = [render.BLENDER, "-b", *render._threads(), "--factory-startup", "--python-exit-code", "1", "--python", str(SCRIPT), "--", str(p)]
         if progress is None:
             from . import resources  # killed with a heavy job whose tool call is cancelled
             r = resources.run(cmd, capture_output=True, text=True, timeout=timeout)

@@ -455,7 +455,7 @@ class _Nodes:
         ramp. Returns (mask, linear colour)."""
         wrap = e.get("wrap", "planar")
         nrm = self.vmath("NORMALIZE", self.attr("wnrm", True))
-        if wrap == "surface":  # geodesic coordinates, flipped already; the weight holds depth, facing and reach
+        if wrap in ("surface", "uv"):  # measured coordinates (geodesic, or the model's atlas); the weight holds depth, facing and reach
             u, v, wgt = (self.attr(a) for a in uv_attrs)
         elif wrap in ("cylinder", "sphere"):  # images.wrap_coords
             q = self.vmath("SUBTRACT", self.attr("wpos", True), fr["o"])
@@ -652,6 +652,7 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
         col = cmb.outputs[0]
         ch["roughness"], ch["specular"] = N.attr(pre[3]), N.attr(pre[4])
     height = None  # painted relief (paint.bump): the layers' height x mask, summed (m)
+    blink = None   # a switch on the blink-faded layers (crease line, lid occlusion)
     detail = None  # a switch on the tiling micro-detail layers: the export's bakes turn them off (they ship as tiling maps)
     for i, ly in enumerate(layers):
         N.x = 400 * (i + 1)
@@ -662,6 +663,12 @@ def _paint_material(part, base, layers, quantiles, prog_hash, packing, show=None
                 dn.outputs[0].default_value = 1.0
                 detail = dn.outputs[0]
             mask = N.math("MULTIPLY", mask, detail)
+        if ly.get("blink"):   # (skin_layers: the crease line and the lid's occlusion) the export bakes them apart: one
+            if blink is None:  # switch, 0 for the base colour without them (the engine fades them by 1 - eyeBlink)
+                bn = N.node("ShaderNodeValue", name="hp_blink", label="hp_blink")
+                bn.outputs[0].default_value = 1.0
+                blink = bn.outputs[0]
+            mask = N.math("MULTIPLY", mask, blink)
         if ly.get("height"):
             hm = N.math("MULTIPLY", N.math("MAXIMUM", N.math("MINIMUM", mask, 1.0), 0.0), ly["height"]) \
                 if not isinstance(mask, float) else ly["height"] * mask
@@ -1178,6 +1185,8 @@ def render(job):
             ld.specular_factor = float(L["specular"])
         sun = bpy.data.objects.new(f"hp_sun{i}", ld)
         scene.collection.objects.link(sun)
+        if job.get("engine") == "cycles" and float(L.get("angle", 3.0)) > 20.0:   # (Cycles reflects a broad sun's whole
+            sun.visible_glossy = False   # disc: big grey patches over the irises in the cornea; EEVEE's soft highlight kept)
         sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
         if L.get("window"):  # the light's HIGHLIGHT comes from a rectangle (a window, a soft box) instead of the sun's
             # disc: the sun keeps the diffuse light and shadows; an area light of the same irradiance at the target
@@ -1330,6 +1339,9 @@ def bake_maps(job):
         else:
             highs[pt["key"]] = src
     WHAT = ("color", "rms", "aoh")  # ao and painted height share a pass (red, green)
+    blink_nodes = [m.node_tree.nodes.get("hp_blink") for m in bpy.data.materials if m.node_tree and m.node_tree.nodes.get("hp_blink")]
+    if blink_nodes:   # the blink-faded layers (crease line, lid occlusion): the base colour WITHOUT them, then a second
+        WHAT = WHAT + ("color_blink",)   # colour pass WITH them: their own multiplier map (the engine fades it by 1 - eyeBlink)
     # Cycles bakes one point per texel (texel centres, no filtering): a sharp edge in the material lands on each
     # chart's own texel grid, a texel apart from one chart to the next. Bake ss x ss points per texel and average
     # them (a box filter). No margin: the texels past each island's edge are filled across its seam by
@@ -1376,8 +1388,10 @@ def bake_maps(job):
     times = {}
     res = {ai: {} for ai in job["atlases"]}
     for what in WHAT:
+        for bn in blink_nodes:
+            bn.outputs[0].default_value = 1.0 if what == "color_blink" else 0.0
         for m in {mat for ob in highs.values() for mat in ob.data.materials if mat}:
-            _emit(m, what)
+            _emit(m, "color" if what == "color_blink" else what)
         imgs = new_images(what)  # one pass's images at a time (supersampled ones are big)
         t1 = time.time()
         for i, pt in enumerate(job["parts"]):
@@ -1404,6 +1418,10 @@ def bake_maps(job):
         aoh = out.pop("aoh")
         out["ao"] = aoh[..., [0, 0, 0, 3]]
         out["height"] = aoh[..., [1, 1, 1, 3]]
+        if "color_blink" in out:   # the multiplier the blink-faded layers make: with / without (<= 1), alpha as baked
+            cb = out.pop("color_blink")
+            ratio = np.clip(cb[..., :3] / np.maximum(out["color"][..., :3], 1e-4), 0, 1)
+            out["blink"] = np.concatenate([ratio, out["color"][..., 3:]], -1)
         np.savez(f"{job['out']}/atlas{ai}.npz", **out)
     times["total"] = round(time.time() - t0, 1)
     print("@@times", json.dumps(times))

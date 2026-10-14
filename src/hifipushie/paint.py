@@ -299,7 +299,7 @@ def validate(spec: dict) -> None:
             if c in ly and not 0 <= float(ly[c]) <= 1:
                 raise SpecError(f"paint {name!r}: {c} is 0..1")
         flat = {g: ly[g] for g in GENERATORS if g in ly and g != "mask"}
-        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", "_pre", "_detail", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
+        unknown = set(ly) - {*CHANNELS, "height", "opacity", "part", "mask", "mix", "_of", "_pre", "_detail", "_blink", *GENERATORS, *(k for v in PARAMS.values() for k in v)}
         if ly.get("mix", "mix") not in MIXES:
             raise SpecError(f"paint {name!r}: mix is one of {', '.join(MIXES)}")
         if unknown:
@@ -403,7 +403,7 @@ def check_refs(spec: dict, prims: list) -> None:
             fr = images.frame(spec, img, expanded, what=f"paint {name!r} image", parts=lp)
             on = [p for p in prims if p.op == "add" and (lp == "*" or p.part in ([lp] if isinstance(lp, str) else lp))]
             on = [p for p in prims if p.part in {q.part for q in on}]  # with their cuts
-            if images.coverage(fr, on) == 0:
+            if fr["wrap"] != "uv" and images.coverage(fr, on) == 0:
                 raise SpecError(f"paint {name!r}: image at {img.get('at', img.get('axis'))!r} hits nothing on part(s) "
                                 f"{lp!r} within its depth {fr['depth']:.3f} m of the decal's {fr['wrap']} surface (centre {np.round(fr['c'], 3).tolist()}, "
                                 f"dir {np.round(fr['dir'], 2).tolist()}): check at/dir, or raise depth")
@@ -485,11 +485,13 @@ def _check_generator(name: str, g: str, e: dict) -> None:
         if wrap not in images.WRAPS:
             raise SpecError(f"paint {name!r}: image wrap is one of {', '.join(images.WRAPS)}")
         sz = img.get("size")
-        if not ((isinstance(sz, list) and len(sz) == 2 and any(sz) and all(x is None or float(x) > 0 for x in sz))
+        if wrap == "uv":  # the model's own texture space: no placement (images._uv_frame checks its keys)
+            pass
+        elif not ((isinstance(sz, list) and len(sz) == 2 and any(sz) and all(x is None or float(x) > 0 for x in sz))
                 or ("span" in img and wrap in ("cylinder", "sphere"))):
             raise SpecError(f"paint {name!r}: image size is [width, height] in m, > 0 (one may be null: from the "
                             f"image's aspect)" + ("; or a span in degrees" if wrap in ("cylinder", "sphere") else ""))
-        if "at" not in img and not (wrap == "cylinder" and "axis" in img):
+        if "at" not in img and not (wrap == "cylinder" and "axis" in img) and wrap != "uv":
             raise SpecError(f"paint {name!r}: image needs \"at\" (its centre: a joint, a blob, [x, y, z])")
     if g == "spot":
         sp = e[g]

@@ -80,8 +80,8 @@ MAX_PX = 4096  # a text page's longer side at most
 FACES = {"front": (0, -1, 0), "back": (0, 1, 0), "left": (1, 0, 0), "right": (-1, 0, 0), "top": (0, 0, 1),
          "bottom": (0, 0, -1)}
 KEYS = {"file", "id", "text", "name", "at", "dir", "up", "size", "rotate", "depth", "facing", "channel", "flip",
-        "mirror", "mirror_image", "wrap", "axis", "seam", "span", "style", "on", "unroll", "offset"}
-WRAPS = ("planar", "cylinder", "sphere", "surface")
+        "mirror", "mirror_image", "wrap", "axis", "seam", "span", "style", "on", "unroll", "offset", "box"}
+WRAPS = ("planar", "cylinder", "sphere", "surface", "uv")
 PLACE_KEYS = {"id", "file", "text", "at", "dir", "up", "size", "rotate", "offset", "wrap", "axis", "seam", "span",
               "unroll", "on"}  # entries alike in these share one gizmo in the scene (scene.decal_gizmos)
 UNROLLS = ("auto", "cone", "arc")
@@ -462,6 +462,8 @@ def frame(spec: dict, img: dict, expanded: dict | None = None, what: str = "imag
     wrap = img.get("wrap", "planar")
     if wrap not in WRAPS:
         raise SpecError(f"{what}: wrap is one of {', '.join(WRAPS)}")
+    if wrap == "uv":  # the model's own texture space (skin_project.lookup): no placement, the image covers "box"
+        return _uv_frame(spec, img, what)
     if "at" not in img and not (wrap == "cylinder" and "axis" in img):
         raise SpecError(f"{what}: needs \"at\" (the decal's centre: a joint, a blob, [x, y, z])")
     for k in ("axis", "seam", "span"):
@@ -664,6 +666,37 @@ def _wrap_frame(spec, s, img, blob, R, wrap, pw, ph, parts, what) -> dict:
     return out
 
 
+_UVBASE: dict = {}  # a uv frame's "geo" -> the base whose atlas it is laid in
+
+
+def _uv_frame(spec: dict, img: dict, what: str) -> dict:
+    """wrap "uv": the image lies in the model's own texture space (the one human mesh's atlas; skin_project.atlas):
+    "box" [u0, v0, u1, v1] = the rectangle of the atlas the image covers (default the whole atlas). No "at", "size" or
+    "dir": the surface says where each texel is. Measured per vertex (u, v, weight), sampled per pixel."""
+    import hashlib
+    import json
+    from . import onemesh
+    b = spec.get("base") or {}
+    if not onemesh.applies(b):
+        raise SpecError(f"{what}: wrap \"uv\" needs a model with a texture atlas of its own (the one human mesh: base.body.source \"human\")")
+    bad = set(img) - {"file", "id", "name", "wrap", "box", "channel", "style"}
+    if bad:
+        raise SpecError(f"{what}: wrap \"uv\" takes file | id, box, channel (not {sorted(bad)})")
+    box = [float(x) for x in img.get("box", [0.0, 0.0, 1.0, 1.0])]
+    if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
+        raise SpecError(f"{what}: box is [u0, v0, u1, v1] in atlas units")
+    path = source_path(img)
+    pw, ph = image_size(path)
+    ch = img.get("channel", "alpha")
+    if ch not in CHANNELS:
+        raise SpecError(f"{what}: channel is one of {', '.join(CHANNELS)}")
+    geo = hashlib.sha1(json.dumps(b, sort_keys=True, default=str).encode()).hexdigest()[:16]
+    _UVBASE[geo] = b
+    return {"path": str(path), "wrap": "uv", "facing": 0.0, "channel": ch, "flip": False, "mirror": False, "px": [pw, ph],
+            "mirror_image": False, "box": box, "geo": geo, "c": [0.0, 0.0, 0.0], "right": [1.0, 0.0, 0.0], "up": [0.0, 0.0, 1.0],
+            "dir": [0.0, -1.0, 0.0], "w": 1.0, "h": 1.0, "depth": 1.0}
+
+
 def mirrored(fr: dict) -> dict:
     """The placement reflected across X with the picture still reading the right way."""
     M = np.array([-1.0, 1.0, 1.0])
@@ -743,6 +776,14 @@ def project(fr: dict, pos: np.ndarray, nrm: np.ndarray):
         wgt = _ramp(dist, fr["depth"], 0.8 * fr["depth"]) * _ramp((nn * N).sum(1), fr["facing"] - 0.15, fr["facing"])
         wgt = wgt * _ramp(np.linalg.norm(U, axis=1), fr["reach"], 0.9 * fr["reach"])
         wgt[off] = 0
+    elif wrap == "uv":
+        from . import skin_project
+        b = _UVBASE.get(fr["geo"])
+        if b is None:
+            raise RuntimeError("a uv image's frame must be made in this process (images.frame) before it's used")
+        ua, va, wgt = skin_project.lookup(b, pos)
+        u0, v0, u1, v1 = fr["box"]
+        u, v = (ua - u0) / (u1 - u0), (va - v0) / (v1 - v0)
     else:
         p = np.asarray(pos, float) - fr["c"]
         u = p @ fr["right"] / fr["w"] + 0.5

@@ -323,7 +323,38 @@ Judge in this order: flat colour at bust distance (tone, zones), then the lit bu
 
 ### `skin_from_reference`
 
-`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None, white=None)`
+`skin_from_reference(name, out='', groups=None, rounds=2, read_only=False, stubble=None, anchor='auto', tone=None, white=None, project=False, layers=True)`
+
+WITH A DE-LIT ATLAS (the default route for photographs of a person): `project=True` first runs skin_project as a
+MEASUREMENT (the atlas, its confidence and each view's fitted light colour are stored on the model; its colour layer
+stays off), the read then takes the atlas as its picture (one albedo for every view, light and shading already out;
+ours = our albedo at the same surface points: no stage, no render; the irises and the folds are not read this way),
+and `layers=True` stores the skin's colour as a STACK OF LAYER MAPS decomposed from the atlas (`skin.stack`,
+skin_layers.py): in optical density the atlas is split per texel into melanin, haemoglobin (the two chromophores of
+Tsumura et al. 1999 / 2003; the axes are OUR pigment model's own colours for melanin and blood at the model's tone,
+and the reply says how far the data's own ICA axes lie from them) and a neutral darkness; from these, in order, each
+cause takes its own map inside its own support at its own scale: pigment (4 mm), redness (2.5 mm), periorbital
+(dark circles, lid colour: 1.2 mm), brows (the skin-level darkness under the brow hairs: 0.7 mm, laid at 0.4), lips
+(inside the vermilion, whose edge is the picture's own colour edge: 0.8 mm), beard (stubble shadow: 2 mm; our
+stubble then keeps its hairs and loses its own shadow), shade (dark with no pigment colour and no layer: 3 mm), plus a
+freckle DENSITY map that confines the freckle generator. Each map is a multiply layer `skin:stack_<name>` over the
+base (the lightest skin), filled where no picture saw: mirror image, then the layer's own neighbourhood, then its
+mean (a provenance image marks measured / mirrored / inferred). The reply gives the RECOMPOSITION's error against the
+atlas by zone and band: what the stack does not carry is the fine band (our generators' job) and the residual.
+Editing one cause = one layer's strength (skin_layers.edit: blush, pale, tan, older, no_stubble, rested, tired). The
+export bakes the stack like any paint. The photo's pixels do not ship; the decomposition does.
+EYE FORMS AND THE BAKE (projskin): the head's forms come first (base.head.lid_fold with its crease tail, head.shape
+eye_bag / cheek_flat), THEN the atlas is projected on that head (its de-lighting sees their shading, so the photo's crease
+and bag shadow are not taken as pigment), then the stack. The stack carries a baked OCCLUSION (ambient occlusion x a
+cavity term from the final geometry, floor 0.55: EEVEE and game lights lose a lid fold's occlusion) and a CREASE LINE (the
+fold's platform under the hood + the roll's edge + the tail), each with a strength measured against the photo. The crease
+line and the lid's share of the occlusion fade with the pose's lid close in looks, and the export ships them OUT of
+basecolor as <atlas>_blink_multiply.png: shade basecolor x lerp(1, map, 1 - eyeBlink) (a blink-driven wrinkle map).
+An export of a full human head with these maps needs ~15-20 GB: under the machine's 12 GB job cap it is killed (exit 137);
+run it with CAP=20G (bin/capped). The lid fold's vertices keep their built positions in the export's wrap (the field
+would collapse the hood); the bake's rays inside the fold's slit still pick up speckle on the upper lid (open).
+
+WITHOUT an atlas (paintings, a model with no projection): the per-picture read below.
 
 The reference pictures as a MEASUREMENT of the skin: the description (spec["skin"]) is set from what the fitted
 references show, and the result is the ordinary procedural skin (clean under any light, from any angle). The picture
@@ -408,6 +439,62 @@ anything under hair, make-up as such (a dark lid reads as periorbital skin), the
 "as ours"). Fold STRENGTH is good to about a third (a valley's depth follows the light), presence and side are solid;
 placement of the horizontal grooves is biased toward the wall the light misses in round 1 and corrected in round 2
 (ours against the picture's), so run 2+ rounds.
+
+### `skin_project`
+
+`skin_project(name, out='', views=None, remove=False, report_only=False, delight=True, ears=False, mirror=True, tone='model', opacity=0.0, detail_depth=0.00012, parse='mediapipe', eyes=False, stubble='picture')`
+
+The fitted reference pictures as a de-lit ATLAS in the head's own texture space: the MEASUREMENT skin_from_reference
+fits the skin to (its layer stack). By default nothing of the photograph is laid as colour (`opacity=0`); `opacity=1`
+is the explicit "photo skin" mode (the de-lit picture itself as the colour: the ceiling, a judging overlay). Each picture is
+projected through its fitted camera into the head's own texture space (the one human mesh's atlas, ~0.2 mm a texel),
+de-lit into albedo, blended, the unseen filled, and saved as `skin.projection` = {albedo, detail, box, opacity,
+detail_depth, head}: two images the skin lays as layers `skin:projection` (colour, over the skin's own colours and
+painted hair, under scars / tattoos / make-up) and `skin:projection_detail` (fine relief). Relief, roughness,
+scattering, eyes, strands and the lid margins (wet line, caruncle, lash roots) stay the procedural skin's. export_asset
+bakes it like any paint. Needs a one-mesh head with fitted references and an ACCEPTED shape: the pictures land where
+the model's surface is. After the head's shape changes, run it again (the layer stores the head's key).
+
+Use it when the references are photographs of the person and likeness matters more than a clean procedural skin: the
+face's own pigment, brows, stubble shadow, lines and asymmetries come with it. Not for paintings (brushwork lands on
+the skin) and not as a way round a wrong shape (a misplaced feature is painted where the picture has it, with no
+form under it).
+
+Steps, and what each cannot know (the reply reports all of it per model):
+- PROJECT: per texel and picture the colour, facing angle and a confidence (seen, square-on, unclipped, lit).
+- EXCLUDE: the picture's hair, loose hairs near it, clothing and backdrop (the picture's own parse: `parse`
+  "mediapipe", Apache 2.0, decides what ships; "" = a colour rule; "bisenet" is trained on non-commercial data and is
+  a measuring tool only: do not ship a texture cut with it); the lid margins (a band that grows with the lids'
+  measured misfit); ears (`ears=False`: left to the procedural skin; True: projected only where the picture's ear
+  lands on the model's, else left out and said so); skin at a grazing angle.
+- DE-LIGHT (`delight`): picture = albedo x shading; the shading is what THIS head's geometry does under a
+  low-frequency light (order-2 SH through each texel's own visibility: occlusion and soft self-shadow included) plus
+  one soft key light with its cast shadow when the fit finds one, per picture and colour channel, fitted on the
+  plain skin and re-fitted against the views' agreed albedo. What the fit explains goes; pigment and fine lines stay.
+  So does the shading of forms the head does not have (a bag's shadow, a fold's dark side): reported per region as
+  "dark the light does not explain" (neutral = shadow-like, coloured = pigment-like). Those folds need FORM, not paint.
+- `tone`: "model" = the projected plain skin takes the model's own `skin.tone` (exposure and white balance are the
+  model's: set the tone first, by hand or skin_from_reference); "picture" = the picture's colour, only its lightness
+  the model's.
+- BLEND in two bands (broad colour by confidence, fine detail from the best view).
+- FILL: the mirror image where only the other side was seen (`mirror`; INFERRED), small holes from the skin round
+  them, then the procedural skin retoned to the projected skin at the border with fine texture of its statistics.
+  Scalp, nape, under-chin and ears are normally ours.
+- DETAIL: grooves from the albedo's fine dark LINES where the picture is trusted and their directions agree (wrinkle
+  bundles; not hairs, specks, freckles), `detail_depth` m deep.
+
+- EYES: the eyeballs are never pasted. The irises are READ in the views within 35 deg of the front (a radial
+  profile inside the sectors the lids leave open, 22 deg either side of horizontal, catchlights left out) and always
+  reported; `eyes=True` sets `skin.eyes.iris` (the iris' body) from it (off by default: on a hooded eye a wider
+  sector read lid skin and turned a grey iris brown; judge the read beside the photograph first), as albedo through the gain of the skin under the eye (INFERRED: the eye lit as that skin; on the
+  synthetic head the read returned the true colour within 1 dE). The limbal ring's darkness and the colour round the
+  pupil are reported, not set (the read is not calibrated to the parameter).
+
+`out`: save to a copy (references and cameras copied). `report_only`: the report without saving. `remove`: take the
+projection out. `views`: which reference views to use. Files (albedo, raw = not de-lit, detail, confidence: red
+picture / green mirrored / blue ours, report) go to `<model>/skin_projection/`.
+Stubble: the picture carries its own beard shadow, so `stubble="picture"` (default) removes `skin.hair.stubble` from
+the saved model and says so; "keep" keeps ours on top (one or the other is the rule). Judge beside the photographs under the photo's light AND a new side light, from angles no picture has.
 
 ### `skin_reference`
 

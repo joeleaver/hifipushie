@@ -282,7 +282,64 @@ def trust(f: dict) -> np.ndarray:
     if "R" in f:
         rs = _srgb(f["R"])
         t = t * (f["alpha"] > 0.98) * ((rs.min(-1) > CLIP[0]) & (rs.max(-1) < CLIP[1]))
+    if "atlas_conf" in f:      # (the atlas as the source: where a picture vouches for the de-lit albedo)
+        t = t * f["atlas_conf"]
     return t
+
+
+# ---------------------------------------------------------------- the de-lit atlas as the source (projskin)
+
+def atlas_source(spec: dict) -> dict | None:
+    """The model's de-lit projection atlas (skin.projection, made by skin_project) as this reader's source: {"albedo"
+    (H, W, 3) linear, "conf" (H, W) 0..1 (a picture vouches for the texel directly: not mirrored, not filled), "box",
+    "light_colour" {view: rgb}} or None (no projection, a raw one, or one made on another head shape)."""
+    from PIL import Image
+    from . import images, skin_project
+    pj = (spec.get("skin") or {}).get("projection")
+    if not (isinstance(pj, dict) and pj.get("albedo") and pj.get("confidence") and pj.get("delight", True)) or skin_project.stale(spec):
+        return None
+    try:
+        a = np.asarray(Image.open(images.id_path(pj["albedo"])).convert("RGB"), float) / 255.0
+        cf = np.asarray(Image.open(images.id_path(pj["confidence"])).convert("RGB"), float)[..., 0] / 255.0
+    except Exception:  # noqa: BLE001
+        return None
+    return {"albedo": _lin(a), "conf": cf, "box": [float(x) for x in pj["box"]],
+            "light_colour": {int(k): np.asarray(v, float) for k, v in (pj.get("light_colour") or {}).items()}}
+
+
+def atlas_frames(spec: dict, frames: list, src: dict, log=print) -> list:
+    """capture(render=False)'s frames with the ATLAS as the picture: on the model's skin P = the de-lit albedo at each
+    pixel's surface point (one albedo for every view: light, shading and the views' disagreement already taken out by
+    skin_project) and R = OUR albedo there (no render: the instrument stays differential, T = A x P / R = the atlas);
+    off the model P stays the photograph (the backdrop anchor reads it). "atlas_conf" gates the trust."""
+    from . import skin_project
+    st = stage_spec(spec)
+    H, W = src["conf"].shape
+    u0, v0, u1, v1 = src["box"]
+    out = []
+    for f in frames:
+        sk = f["skin"]
+        X, n = f["X"][sk], f["n"][sk]
+        u, v, w = skin_project.lookup(spec["base"], X)
+        x = np.clip((u - u0) / (u1 - u0) * W - 0.5, 0, W - 1.001)
+        y = np.clip((v1 - v) / (v1 - v0) * H - 0.5, 0, H - 1.001)
+        x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+        fx, fy = x - x0, y - y0
+
+        def bil(img):
+            fx_, fy_ = (fx[:, None], fy[:, None]) if img.ndim == 3 else (fx, fy)
+            return (img[y0, x0] * (1 - fx_) * (1 - fy_) + img[y0, x0 + 1] * fx_ * (1 - fy_) + img[y0 + 1, x0] * (1 - fx_) * fy_
+                    + img[y0 + 1, x0 + 1] * fx_ * fy_)
+        P = f["P"].copy()
+        P[sk] = bil(src["albedo"])
+        cf = np.zeros(sk.shape)
+        cf[sk] = bil(src["conf"]) * (w > 0.5)
+        R = f["P"].copy()
+        R[sk] = Albedo(st, X, n, log=None)()
+        g = {**f, "P": P, "R": R, "alpha": (f["skin"] | f["eye"]).astype(float), "atlas_conf": np.clip((cf - 0.4) / 0.3, 0, 1),
+             "white_patch": None, "atlas": True, "P_photo": f["P"]}
+        out.append(g)
+    return out
 
 
 # ---------------------------------------------------------------- our albedo, in Python
@@ -303,7 +360,7 @@ class Albedo:
 
     def _mask(self, spec: dict, name: str, ly: dict) -> np.ndarray:
         from . import paint
-        skip = ("color", "opacity", "roughness", "specular", "metallic", "height", "mix", "part", "_pre", "_detail", "_of")
+        skip = ("color", "opacity", "roughness", "specular", "metallic", "height", "mix", "part", "_pre", "_detail", "_blink", "_of")
         gens = {k: v for k, v in ly.items() if k not in skip}
         key = hashlib.sha1(json.dumps([name.endswith(".L"), gens], sort_keys=True, default=str).encode()).hexdigest()
         if key not in self.masks:
@@ -553,9 +610,12 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
     from scipy import ndimage
     from . import likeness as lk, store
     spec = spec or store.load(name)
+    src = atlas_source(spec) if frames is None else None
+    if src is not None:       # the de-lit atlas is the picture (no stage, no render): docs/notes/skin.md "## projskin"
+        frames = atlas_frames(spec, capture(name, spec, log=log, render=False), src, log=log)
     frames = frames or capture(name, spec, log=log)
     mesh = lk.model_mesh(spec["base"])
-    an = _anchor(frames, mesh, spec, anchor if anchor not in ("prior", "white") else "auto")
+    an = _anchor([{**f, "P": f.get("P_photo", f["P"])} for f in frames], mesh, spec, anchor if anchor not in ("prior", "white") else "auto")
     wh, wh_why = {}, {}
     decl = {int(d_["view"]): d_ for d_ in (white or [])}
     if anchor != "prior":
@@ -573,6 +633,11 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
               "note": f"a white (shirt / collar) in view(s) {sorted(wh)}: white balance from it"}
     X, n, w, vw, rho, pix = [], [], [], [], [], []
     views = []
+    src_lc = {}
+    if frames and frames[0].get("atlas"):
+        src_lc = (atlas_source(spec) or {}).get("light_colour", {})
+        an["note"] = ("SOURCE: the de-lit projection atlas (skin_project): one albedo for every view, light and shading already out; "
+                      "ours = our albedo evaluated at the same surface points (no render). " + an["note"])
     for f in frames:
         t = trust(f)
         sel = t > 0.3
@@ -599,7 +664,28 @@ def context(name: str, spec: dict | None = None, frames: list | None = None, anc
         if pm.sum() < MIN_PX:
             pm = m
         med = _wmedian(c.rho[pm], c.w[pm])
-        if g is None:
+        f_ = next(q_ for q_ in frames if q_["view"] == v["view"])
+        if f_.get("atlas"):
+            # the atlas' plain skin has the tone skin_project fitted its lights with (the model's own): its HUE is free
+            # only where something else says what colour the light was. A neutral backdrop does: the fitted light's
+            # colour over the backdrop's = how far the skin's colour is from the model's tone. One correction for the
+            # whole atlas (the median over the anchored views), then the lightness levelled as ever.
+            cors = []
+            for q_ in frames:
+                bd_, lc_ = an["gain"].get(q_["view"]) if an["kind"] == "backdrop" else None, src_lc.get(q_["view"])
+                if bd_ is not None and lc_ is not None:
+                    true = np.asarray(bd_, float) * LIGHT_WHITE
+                    cr = np.asarray(lc_, float) / (true / (true @ Yv))
+                    cors.append(cr / (cr @ Yv))
+            if cors:
+                cor = np.median(cors, 0)
+                c.rho[m] = c.rho[m] * cor
+                med = med * cor
+                g = np.full(3, float(med @ Yv))
+                v["atlas_tone"] = [round(float(x), 3) for x in cor]
+            else:
+                g = med                                   # no anchor: the tone is not read (T == A on the plain skin)
+        elif g is None:
             # no anchor of its own: its plain skin's mean is ours (T == A there), or the anchored views' when there are some
             g = med / (np.median(carried, 0) if carried else 1.0)
         elif an.get("level"):
@@ -690,6 +776,10 @@ EXPOSURE_SIGMA = 0.2     # log: the free exposure without a white (the read is a
 SHADE_LOCAL = 0.03       # log: the hold on the shaded regions' lower quartile (shade is local)
 SHADE_SAY = 0.1          # log: shade from here on is named in the reply
 FACE_BOUND = 3.0         # L*: the WHOLE face's mean albedo (stubble apart) may leave the prior's by this much
+ATLAS_SHADE_SIGMA = 0.15  # ... when the source is the de-lit ATLAS: the light and the head's own occlusion are already out,
+                          # so what a region reads darker is pigment or a form the head lacks, not a wrong light: the
+                          # tints may take it (Stage 2's forms take back what is form)
+ATLAS_ZONE_BOUND = (12.0, 8.0)   # ... and the zones may leave the prior further (the measurement is one albedo, all views agreed)
 ZONE_BOUND = (4.0, 5.0)  # L*, a*b*: a zone's offset from the face's mean may leave the prior's by this much (pigment that
                          # no exposure anchor and no shade model vouches for); the zone layers are scaled back to it
 
@@ -1062,12 +1152,18 @@ def read(name: str, spec: dict | None = None, frames: list | None = None, anchor
             r0["image"] = {"picture": q["picture"], "ours": q["ours"]}
     out["freckles"] = _freckle_read(c)
     out["brows"] = _brow_read(c)
-    out["eyes"] = _eye_read(c)
-    try:
-        out["eyes"]["iris_rel"] = _iris_rel(name, c)
-    except Exception as e_:  # noqa: BLE001
-        out["eyes"]["iris_rel"] = {"read": False, "px": 0, "views": 0, "why": str(e_)[:120]}
-    out["folds"] = fold_read(c)
+    atlas = bool(c.frames and c.frames[0].get("atlas"))
+    # (from the atlas: no eyeball render and no lit render: the irises are skin_project's read, the folds Stage 2's forms)
+    if atlas:
+        out["eyes"] = {"sclera": {"read": False, "px": 0}, "iris": {"read": False, "px": 0}}
+    else:
+        out["eyes"] = _eye_read(c)
+        try:
+            out["eyes"]["iris_rel"] = _iris_rel(name, c)
+        except Exception as e_:  # noqa: BLE001
+            out["eyes"]["iris_rel"] = {"read": False, "px": 0, "views": 0, "why": str(e_)[:120]}
+    out["folds"] = {} if atlas else fold_read(c)
+    out["source"] = "atlas" if atlas else "pictures"
     out["ctx"] = c
     out["text"] = read_text(out)
     return out
@@ -1316,7 +1412,8 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
     # (the PLAIN zones are the lit skin the exposure is levelled on: nearly no shade of their own, or a white's "this
     # skin is darker than you say" would be explained away as shade everywhere)
     s_sig = np.array([0.0 if k.startswith("lip_") else SHADE_SIGMA_BEARD if (k.startswith("beard:") and st_on) else
-                      SHADE_SIGMA_PLAIN if k in PLAIN else SHADE_SIGMA for k in reg])
+                      SHADE_SIGMA_PLAIN if k in PLAIN else (ATLAS_SHADE_SIGMA if r.get("source") == "atlas" else SHADE_SIGMA) for k in reg])
+    ZB = ATLAS_ZONE_BOUND if r.get("source") == "atlas" else ZONE_BOUND
 
     def shaded(sv, e):
         return lab(Tlin * np.exp(e + sv[:, None] * qs[None, :]))
@@ -1399,7 +1496,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
         bad = {}
         for k, o in off.items():
             d_ = o - np.asarray(prior_face["zones"].get(k, o), float)
-            if abs(d_[0]) > ZONE_BOUND[0] or float(np.hypot(d_[1], d_[2])) > ZONE_BOUND[1]:
+            if abs(d_[0]) > ZB[0] or float(np.hypot(d_[1], d_[2])) > ZB[1]:
                 bad[k] = d_
         return bad
 
@@ -1420,7 +1517,7 @@ def fit(r: dict, groups=DEFAULT_GROUPS, stubble: bool | None = None, log=print, 
                     a_lo = a_
             xs[zi] = xp[zi] + a_lo * (sol.x[zi] - xp[zi])
             zone_note = ("the solve put " + ", ".join(f"{k} {d_[0]:+.1f} L* / {float(np.hypot(d_[1], d_[2])):.1f} a*b*" for k, d_ in bad.items()) +
-                         f" from where the prior has that zone against the face (bounds {ZONE_BOUND[0]} L*, {ZONE_BOUND[1]} a*b*): "
+                         f" from where the prior has that zone against the face (bounds {ZB[0]} L*, {ZB[1]} a*b*): "
                          f"the zone layers' move is held to {100 * a_lo:.0f} % of it")
             sol.x[:] = xs
     if free_e:

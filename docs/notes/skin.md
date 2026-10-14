@@ -1499,3 +1499,48 @@ NEXT, in the order I would:
    (the reruns / refread stages' layering): not fixed here.
 9. skintour.py renders under g3stage.photo_light (the -0.55 EV filmic template): its tiles sit ~10 L under the
    references; it should use skin_read.photo_light.
+
+## projskin (2026-10-13/14, "projskin" agent, branch projskin, squashed onto main as projskin-merge). Per-head and
+## per-picture notes (numbers by subject, sheets, logs) are NOT in the repo: workspace/private_notes/ (git-ignored) and
+## /mnt/data/hifipushie/projskin/ (scratch, scripts' logs, renders). Spikes: spikes/projskin.
+
+WHAT IT IS: skin from the reference pictures as a MEASUREMENT, not as shipped pixels, and the eye-region forms.
+- skin_project.py: the fitted views projected into the head's atlas (onemesh UV, 0.235 mm / texel), exclusions (MediaPipe
+  parse, wisps, long hair strands connected to the hair, the lid band), de-lighting (order-2 SH through each texel's own
+  visibility + a searched soft key; multi-view agreement; per-view CHROMA harmonisation at 12 mm before the blend), fill,
+  report, iris read, stage_light (a view's fitted light as scene suns). The atlas is opacity 0 by default (a measuring
+  instrument). "ours" (the tone / fill reference) never includes a measured stack (re-projection drifted greyer each pass).
+- skin_layers.py: the atlas decomposed into a STACK of layer maps (Tsumura-style optical density: melanin / haemoglobin /
+  neutral): base, pigment, redness, periorbital (venous axis), brows, lips (texels or "indications": the photo's outline +
+  mid-lip colour, the mesh's own lip rows inside), beard (men / stubble only), shade, parting; freckle and BLEMISH density
+  (the fine band's dark excess over its light excess: grain cancels) driving our generators; a fine-texture strength map
+  with a floor on plain skin; hidden texels filled by a soft multi-reach blend; redness / shade carried under the lips; the
+  base capped below 1 (a clipped red channel read grey). A measured beard layer brings our stubble hairs.
+- Eye-region FORMS (gnm_fold, lidfit spike): the upper-lid fold in GNM's mesh (platform, slit, roll; local, blink-safe),
+  its crease traced in the front picture; a crease TAIL past the outer canthus (a groove along the traced path on GNM
+  vertices, starting where the fold's chains end); bags / tear trough from the bag's lower edge (head.shape eye_bag /
+  cheek_flat); the slit only as deep as the drape over it. eyefit: one step of the fold against the photo with the same
+  lid reader on our render (platform, misread columns skipped, steps <= 1 mm).
+- FORMS FIRST, THEN THE ATLAS: the pictures are projected onto the head WITH its forms, so the de-lighting explains the
+  crease / bag shading by the form, not as pigment.
+- BAKED OCCLUSION + CREASE LINE (skin_layers.occlusion / crease_map): AO (no eyeball occluders) x a cavity term from the
+  final geometry, floored 0.55, soft 1.2 mm, WARM (each channel darkens by the skin's own shadow hue from the atlas, 0.6 of
+  it); a crease line on the fold's platform under the hood + the roll's edge + the tail. Strengths measured against the
+  photo (occfit: fold-line darkness / orbit darkness by eyecmp, on an EEVEE render). EEVEE's GI loses a lid fold's
+  occlusion (Cycles shows it): the bake puts it back; judge in EEVEE, Cycles as the geometry check.
+- BLINK: the crease line and the lid's share of the occlusion ("_blink" paint layers) fade with the pose's lid close in
+  looks; the export bakes them apart (one material switch "hp_blink", a second colour pass) as <atlas>_blink_multiply.png,
+  out of basecolor: shade basecolor x lerp(1, map, 1 - eyeBlink). An export of a human head needs CAP=20G.
+- lashes.py (VERSION 20): closed-lid rules only when the head's lids are shut (head["eye_open"] < 1.5 mm); a closed lid's
+  lashes hang down along the seam, the seam from the lower-lid landmarks; a degenerate rim prints LASHES WARNING (blocks
+  a sheet); cornea-aware opening on GNM-eyed heads.
+- retopo wrap: the lid fold's vertices keep their built positions (the field collapsed the re-entrant hood).
+- Cycles stage: broad soft suns are hidden from glossy rays (their discs reflected in the cornea as grey patches).
+- Tools: skin_project (MCP), skin_from_reference(project=, layers=); guide: skin_guide "projection", "EYE FORMS AND THE BAKE".
+
+OPEN (for whoever continues): the bake's rays in the fold's slit speckle the upper lid in the export; folded edges at the
+outer / inner corners in the export (some are faces genuinely under the overhang); a lens-shaped gap at the closed seam on
+a hooded head (blink geometry with the fold); orbit occlusion not yet concentrated on the upper lid / inner corner; fine
+texture / pores still weak under the stack; freckle density uncalibrated against a freckled synthetic truth; a proper
+wrinkle map driven by the faceshapes export's blink weights (the blink map is the minimal version).
+RESTART: the detailed history and the per-head state are in workspace/private_notes/skin_notes_projskin_full.md.

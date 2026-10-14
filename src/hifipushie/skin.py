@@ -42,6 +42,14 @@ spec["skin"] = {
   "makeup": {"look": "natural" | "everyday" | "evening", "foundation", "concealer", "bronzer", "contour", "blush", "highlight",
              "eyeshadow", "eyeliner", "mascara", "brows", "lipstick", "nails"}                       (see MAKEUP)
   "shading": {"subsurface": 0..1, "radius": [r, g, b], "scale": m, "specular": 0..1, "roughness": 0..1}
+  "projection": {...}             the reference pictures as the head's albedo + fine relief, in the head's own texture
+                                  space (made by the skin_project tool: de-lit, filled; see skin_project.py). Laid over
+                                  the skin's own colours and painted hair, under scars, tattoos and make-up.
+  "stack": {...}                  the skin's colour as a STACK OF LAYER MAPS in the head's atlas, decomposed from the de-lit
+                                  reference (skin_layers.py; made by skin_from_reference / skin_layers.apply): a base +
+                                  pigment, redness, periorbital, brows, lips, beard, shade maps, each a multiply layer
+                                  "skin:stack_<name>" with its own opacity (an edit changes one map); over the skin's
+                                  broad colour layers, under every fine generator.
   "only": [groups]                lay only these groups of the description and nothing else, for a character whose skin
                                   is already painted by hand: "eyes" (the eyeball pictures, on the eyes part),
                                   "eye_rims" (caruncle and waterline, on the skin), "zones" (colour zones, mottling,
@@ -63,7 +71,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 7  # 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
+VERSION = 9  # 9: pores at full strength under a measured stack (projskin); 8: the face microrelief (cells network base, sparser pores; projskin); 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
 LOWER_LIP = {"melanin": 0.72, "blood": 3.8, "epidermis": 0.0, "oxygenation": 0.66}  # x the lips' melanin / blood (see _build)
 # the face's base map layers (skin_marks.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
 # x sqrt(variation) / sqrt(detail): tuned on Tess (variation .6, detail .45); linear, Garrett's 1.3 / 1.8 read as sandpaper
@@ -478,7 +486,8 @@ def expand_zones(spec: dict, ly: dict, what: str = "paint") -> dict:
 # ---- the description -> layers ----------------------------------------------------------------------------------
 
 KEYS = {"part", "tone", "age", "variation", "detail", "oil", "thin", "sun", "zones", "lips", "features", "wrinkles",
-        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds", "fold_relief", "fold_expressions"}
+        "hair", "scars", "tattoos", "makeup", "shading", "nails", "seed", "eyes", "sex", "only", "folds", "fold_relief", "fold_expressions",
+        "projection", "stack"}
 GROUPS = ("shading", "zones", "lips", "roughness", "micro", "features", "eyes", "eye_rims")
 
 
@@ -558,6 +567,10 @@ def params(spec: dict) -> dict:
         p[k] = sk.get(k) or []
         if not isinstance(p[k], list):
             raise SpecError(f"skin {k} is a list")
+    from . import skin_project
+    p["projection"] = skin_project.check(sk.get("projection"))
+    from . import skin_layers
+    p["stack"] = skin_layers.check(sk.get("stack"))
     only = sk.get("only")
     if only is not None:
         only = [only] if isinstance(only, str) else list(only)
@@ -592,7 +605,8 @@ def part_base(spec: dict) -> tuple[str, dict] | None:
                        "subsurface": weight, "subsurface_radius": [float(x) for x in radius], "subsurface_scale": scale,
                        # the oily film is a second, tighter highlight over the skin's broad one (a dual lobe: Unreal's
                        # skin mixes two at 0.85); vellus hair gives a soft sheen at grazing angles
-                       "coat": float(sh.get("coat", 0.015 + 0.07 * p["oil"])), "coat_roughness": float(sh.get("coat_roughness", 0.34)),
+                       "coat": float(sh.get("coat", 0.01 + 0.03 * p["oil"])),   # (0.015 + 0.07 x oil: a wet, plastic cheek under raking light)
+                       "coat_roughness": float(sh.get("coat_roughness", 0.34)),
                        "sheen": float(sh.get("sheen", 0.12)), "sheen_roughness": 0.5,
                        "thickness": float(sh.get("thickness", 0.007)),  # light comes through what is thinner (ears, nostrils)
                        "_old": old}
@@ -842,7 +856,10 @@ def _build(spec: dict, J: dict) -> dict:
                                  "mask": [{"noise": {"scale": 0.005, "range": [0.38, 0.72], "seed": seed + 21}}]}
     out["skin:rough_fine"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.14, 0.95), 3), "opacity": 0.6,
                               "mask": [{"noise": {"scale": 0.0022, "range": [0.42, 0.7], "seed": seed + 23}}]}
-    out["skin:rough_sheen"] = {"part": part, "_pre": True, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": 0.6,
+    if face:   # the cheeks hold little sheen (the photographs: a soft broad sheen on forehead and nose, matte cheeks)
+        out["skin:rough_cheeks"] = {"part": part, "_pre": True, "roughness": round(min(base_r + 0.1, 0.9), 3), "opacity": 0.85,
+                                    "mask": _z("cheek", "cheekbone", "cheek_side", "jaw", grow=1.0)}
+    out["skin:rough_sheen"] = {"part": part, "_pre": True, "roughness": round(max(base_r - 0.1, 0.15), 3), "opacity": 0.3,
                                "mask": [{"noise": {"scale": 0.011, "range": [0.55, 0.85], "seed": seed + 22, "warp": 0.6}}]}
 
     from . import skin_features
@@ -858,7 +875,16 @@ def _build(spec: dict, J: dict) -> dict:
         body_k = 1.0 + 0.5 * old
         micro = []
         if face:
-            micro.append(("pores", "pores", 0.0003 * d * (0.8 + 0.4 * p["oil"]), _z("face") + [{"zone": "lips", "blend": "subtract"}]))
+            # THE FACE'S MICRORELIEF (projskin; Joe: "lots of big pores, but real skin has a sort of 'cells' look"): the
+            # network of fine crossing furrows ("lines" swatch: polygonal plateaus, small pits at the crossings) is the
+            # base everywhere on the face, finer on the lids and under the eye, deeper with age; the pores are a
+            # second, sparser layer on the nose and central cheeks only (they were round pits everywhere, too big)
+            age_k = 1.0 + 0.9 * old
+            micro.append(("cells", "lines", 0.0003 * d * age_k, _z("face") + [{"zone": "lips", "blend": "subtract"},
+                                                                                {"mask": _z("eyelid", "under_eye", grow=1.2), "blend": "subtract"}]))
+            micro.append(("cells_fine", "lines_fine", 0.00022 * d * age_k, _z("eyelid", "under_eye", grow=1.2)))
+            micro.append(("pores", "pores", 0.00013 * d * (0.8 + 0.4 * p["oil"]), _z("nose_tip", "nose_wing", "cheek", grow=1.0) +
+                          [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
             micro.append(("lines", "lines", 0.00013 * d * body_k, [{"mask": _z("face"), "invert": True}]))
         else:
@@ -866,15 +892,19 @@ def _build(spec: dict, J: dict) -> dict:
         if hands or joints_:
             micro.append(("coarse", "coarse", 0.00016 * d * body_k, _z(*((["knuckles"] if hands else []) + joints_), grow=1.25)))
         for name, sw, depth, mask in micro:
-            stack = [{"tile": {"swatch": sw}}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
+            tile = {"swatch": "lines", "size": round(0.45 * 0.016, 5)} if sw == "lines_fine" else {"swatch": sw}   # (lids: cells ~0.2-0.5 mm)
+            stack = [{"tile": tile}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.7, 0.55, 0.5] if name == "pores" else [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min(((0.3 if base_map is not None else 0.65) if name == "pores" else 0.45 if name == "lip_lines" else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "opacity": round(min(((0.15 if base_map is not None and not p.get("stack") else 0.3) if name == "pores" else 0.45 if name == "lip_lines" else 0.22 if name.startswith("cells") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
         if base_map is not None:  # the face's own relief: baked into the export's unique normal map (not a tiling detail)
             out["skin:micro_map"] = {"part": part, "height": -round(BASE_MAP["depth"] * d ** 0.5, 7), "mask": [base_map("r")] + copy.deepcopy(no_pores)}
             # (no cavity tint of its own: a pores-only colour layer changed nothing visible at face distance, and the
             # tiling pores' tint, 0.65 -> 0.3 here, were the dark specks a blind read called dirt)
     _aperture_keep_out(spec, part, out)
+    if p.get("stack") and float(p["stack"].get("base_opacity", 1.0)) > 0:   # (projskin) the colour is the stack of measured maps: our own colour zones and mottle are not laid
+        # over it (they painted over the stack's base: a stippled "moustache" above Tess's lip, blotches on her lids)
+        out = {k: v for k, v in out.items() if group_of(k) != "zones" or k.startswith("skin:stack_")}
     if p["only"] is not None:  # only some groups; without the shading nothing can be composited into the part's base
         out = {k: v for k, v in out.items() if group_of(k) in p["only"]}
         if "shading" not in p["only"]:
@@ -900,9 +930,11 @@ def export_recipe(spec: dict, out_dir, stem: str) -> dict | None:
         if tile is None:
             continue
         sw, depth = tile["swatch"], abs(float(ly["height"]))
-        f = Path(out_dir) / f"{stem}_skin_{sw}_normal.png"
+        tag = sw if name[5:] == f"micro_{sw}" else name[11:] if name.startswith("skin:micro_") else name[5:]   # (two layers share "lines": cells, cells_fine)
+        f = Path(out_dir) / f"{stem}_skin_{tag}_normal.png"
         skin_swatch.normal_map(sw, depth, f)
-        where = {"micro_pores": "the face (not the lips)", "micro_lip_lines": "the lips", "micro_lines": "the body (everything but the face)",
+        where = {"micro_pores": "nose and central cheeks", "micro_cells": "the face's microrelief network (not lids, under-eye, lips)",
+                 "micro_cells_fine": "lids and under the eye (the finer network)", "micro_lip_lines": "the lips", "micro_lines": "the body (everything but the face)",
                  "micro_coarse": "knuckles, elbows, knees"}.get(name[5:], name[5:])
         details.append({"layer": name[5:], "normal": f.name, "period_m": float(tile.get("size", skin_swatch.PERIOD[sw])),
                         "depth_m": round(depth, 7), "cavity_tint": ly.get("color"), "cavity_opacity": ly.get("opacity"),
@@ -925,6 +957,13 @@ def export_recipe(spec: dict, out_dir, stem: str) -> dict | None:
                      "note": "a tight second lobe over the broad one (the oily film): KHR_materials_clearcoat in the GLB; "
                              "Unreal's dual specular (lobe mix) or Unity's dual lobe do the same"},
         "sheen": base["sheen"],
+        **({"blink_multiply": {"file": "<atlas>_blink_multiply.png", "uv": "the atlas' own (as basecolor)",
+                               "note": "the lid fold's crease line and the lid's occlusion, kept OUT of basecolor (paint is "
+                                       "fixed on the skin: a blink pulls the lid over the eye and they would lie on the closed "
+                                       "lid as a dark gash). Shade basecolor x lerp(1, blink_multiply, 1 - eyeBlink) with "
+                                       "eyeBlink = the ARKit morph weight (eyeBlinkLeft / Right by the map's side), i.e. a "
+                                       "wrinkle map driven by the blink: open eye = the full crease, closed = clean."}}
+           if ((spec.get("skin") or {}).get("stack") or {}).get("crease") else {}),
         "tone": tone_params((spec.get("skin") or {}).get("tone")), "base_color_srgb": base["color"],
     }
 

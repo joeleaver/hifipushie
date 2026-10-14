@@ -31,7 +31,7 @@ import json
 
 import numpy as np
 
-VERSION = 2  # 2: seated on the filled front map (holes in the sampled skin threw points off)
+VERSION = 20  # 5: a fully closed lid roots on its closed line, never a fold slit; 4: the lid line's piece scored by size and height (a fold's slit was taken); 3: a blink's slit joined, the largest piece taken (projskin); 2: seated on the filled front map (holes in the sampled skin threw points off)
 DEFAULTS = {
     "upper": {"count": 230, "length": 9.0, "curl": 62.0, "lift": -12.0, "flare": 24.0, "thickness": 0.15,
               "clump": 0.6, "clump_size": [3, 6], "vary": 0.35, "rows": 0.25, "offset": 0.15, "start": 0.08, "end": 1.0},
@@ -131,8 +131,112 @@ def lid_lines(head: dict, cell: float = 0.0002, n: int = 360) -> list:
         g = (np.arange(2 * nn) - nn + 0.5) * cell
         q = r * r - g[:, None] ** 2 - g[None, :] ** 2
         ball = np.where(q > 0, np.sqrt(np.maximum(q, 0)), -np.inf)
-        lab, _ = ndimage.label((ball > front) & (q > 0))
+        eg = head.get("eye_gnm")
+        if eg and eg.get("cornea_r") and eg.get("apex"):
+            # GNM's OWN eyeball (native heads) is IN the head's mesh, cornea and all: its cornea stands ~1.5 mm proud of
+            # the sphere, so the sphere test took the cornea for skin in front of the ball and found no opening (an older head:
+            # ~240 crumbs, a lower rim 0.2 mm long, every lower lash at one point). The eyeball's own surface = the sphere
+            # or the cornea's cap, with 0.3 mm of slack (the eye's surface vertices are themselves in the map)
+            cr, ap = float(eg["cornea_r"]), float(eg["apex"])
+            qc = cr * cr - g[:, None] ** 2 - g[None, :] ** 2
+            cap = np.where(qc > 0, np.sqrt(np.maximum(qc, 0)) + (ap - cr), -np.inf)
+            ball = np.maximum(ball, cap) + 0.0003
+        opening = (ball > front) & (q > 0)
+        # a nearly closed lid (a blink) leaves a thin slit, broken into small pieces at this cell size: joined along the
+        # lid's own direction (the grid's first axis = `side`), else one tiny piece was taken and every lash rooted on it
+        # (a clump sticking out of the closed lid). A wide-open opening is unchanged by this closing.
+        opening = opening | (ndimage.binary_closing(opening, structure=np.ones((int(0.003 / cell) | 1, 1), bool)) & (q > 0))
+        lab, nlab = ndimage.label(opening)
+        # the CLOSED-lid rules (the lowest big piece is the lid line; a thin piece means the seam is found in the skin)
+        # only when the head says the lids are (nearly) shut: on an OPEN hooded eye (an older head: a 3.5 mm tall opening
+        # under the ball's centre) they took a crumb under the eye and every lower lash went to one point
+        closed = float(head.get("eye_open", 1.0)) < 0.0015
+        band_origin, seam2 = None, None
         seed_lab = lab[nn, nn]
+        if nlab > 1:   # the piece that is the LID LINE: large, and lying where a closing lid's margin lies (a little below
+            # the ball's middle). A blink also opens other pieces (a deep lid fold's slit dips behind the ball's sphere):
+            # taken as "the largest", the lashes rooted along the fold, a wiggly black line over the closed lid
+            vv = np.broadcast_to(g[None, :], lab.shape)
+            best, seed_lab = -1.0, seed_lab
+            sizes = np.bincount(lab.ravel(), minlength=nlab + 1)
+            big = max(int(sizes[1:].max()), 1)
+            for k in range(1, nlab + 1):
+                if sizes[k] < 0.2 * big:     # (the fold's slit, deepened, opens wide pieces ABOVE the lid line in a blink:
+                    continue                 # among the big pieces the LOWEST is the lid line; the lashes stood on the
+                                             # fold's slit, a black line over Tess's and a test head's closed lids)
+                m_ = lab == k
+                n_ = int(m_.sum())
+                if n_ < 4:
+                    continue
+                vc = float(vv[m_].mean())
+                if vc > 0.25 * r:      # high on the ball: a fold's slit, never the lid line
+                    continue
+                sc = n_ * np.exp(-((vc + 0.15 * r) / (0.35 * r)) ** 2) * (np.exp(-vc / (0.1 * r)) if closed else 1.0)   # closed: lower wins
+                if sc > best:
+                    best, seed_lab = sc, k
+            if best < 0:
+                seed_lab = -1
+        narrow = False
+        if seed_lab > 0:   # a piece much narrower than the eye is a FRAGMENT of a nearly closed slit, not the lid line: every
+            # lash rooted round it stood out of the closed lid as one clump (Tess, an older test head, a test head)
+            ii_ = np.nonzero(lab == seed_lab)[0]
+            narrow = len(ii_) > 0 and (float(g[ii_].max() - g[ii_].min()) < 0.9 * r) and nlab > 1
+            jj_ = np.nonzero(lab == seed_lab)[1]
+            # a THIN piece (a slit, not an open eye's opening) may be the fold's slit over a fully closed seam: the
+            # lid line is then found in the skin (the lowest valley), never on the piece
+            narrow = narrow or (closed and len(jj_) > 0 and float(g[jj_].max() - g[jj_].min()) < 0.25 * r)
+        if closed or seed_lab == -1 or narrow or (seed_lab > 0 and float(np.broadcast_to(g[None, :], lab.shape)[lab == seed_lab].mean()) > 0.25 * r):
+            # a CLOSED lid (the head says so; whatever crumbs of opening are left, an older test head's blink had one 0.2 mm crumb and
+            # no lashes at all) or a FULLY closed lid: no opening left but a fold's slit. The lashes root on the closed lid line: a thin band
+            # across the ball a little below its middle (where the margins meet), as wide as the ball shows
+            # (at the slit's OWN height when pieces of it show: at the fixed -0.15 r the lashes stood as a hard black line
+            # above Tess's closed lid line)
+            # THE SEAM from the skin itself: per column across the eye, the LOWEST valley in the skin's depth over the ball
+            # (where the margins meet; the fold's slit is a valley too, but above it). At the slit pieces' height (v7) or a
+            # fixed -0.15 r the lashes stood as a hard black line ~2.5 mm over Tess's, a test head's and a test head's seams.
+            vb = np.full(2 * nn, np.nan)
+            ff = ndimage.gaussian_filter(np.where(front < -1, np.nan_to_num(front, nan=-1), front), 1.0)
+            dv = max(int(round(0.001 / cell)), 1)
+            jv = np.flatnonzero((g > -0.75 * r) & (g < 0.25 * r))
+            for i in np.flatnonzero(np.abs(g) < 0.85 * r):
+                col = ff[i]
+                bestd = 0.00005   # the DEEPEST valley (the seam's gap; the lowest one was the lower lid's own fold: the
+                for j in jv[jv - dv >= 0]:   # lash row sat ~1 mm under a test head's and a test head's seams)
+                    if j + dv >= len(col):
+                        continue
+                    dep_ = min(col[j - dv], col[j + dv]) - col[j]
+                    if col[j] > -1 and dep_ > bestd and col[j] <= col[j - 1] and col[j] <= col[j + 1]:
+                        bestd, vb[i] = dep_, g[j]
+            lm = head.get("lm68")
+            if lm is not None:   # THE SEAM FROM THE LANDMARKS when the head has them: a closed lid's margins meet on the
+                # lower lid's line (it hardly moves in a blink; the corners hold): the skin's valleys also found the fold
+                # (above) and the lower lid's own fold (below): the lash row sat over / under the seam on three heads
+                lm = np.asarray(lm, float)
+                sets = ((36, 41, 40, 39), (42, 47, 46, 45))
+                pts = min((lm[list(st_)] for st_ in sets), key=lambda P_: float(np.linalg.norm(P_.mean(0) - c)))
+                du, dv_ = (pts - c) @ side, (pts - c) @ up
+                o_ = np.argsort(du)
+                k_ = np.polyfit(du[o_], dv_[o_], 2 if len(o_) >= 4 else 1)
+                vb = np.polyval(k_, g)
+            okc = np.isfinite(vb)
+            if lm is None and okc.sum() >= 5:
+                ii_ = np.arange(2 * nn)
+                vb = np.interp(ii_, ii_[okc], ndimage.median_filter(vb[okc], 5))
+                # a smooth seam (a staircase of per-column picks broke the band into steps: every ray left it at once)
+                vb = ndimage.gaussian_filter1d(vb, 0.0015 / cell, mode="nearest")
+                # ... and as a lid's line is: a smooth curve (a quadratic across the eye: the per-column valleys wobbled
+                # and the lash row waved along Tess's closed lid)
+                sel_ = (np.abs(g) < 0.8 * r) & okc
+                if sel_.sum() >= 6:
+                    vb = np.polyval(np.polyfit(g[sel_], vb[sel_], 2), g)
+            elif lm is None:
+                vb = np.full(2 * nn, -0.15 * r)
+            band = (np.abs(g[None, :] - vb[:, None]) < 3.0 * cell) & (q > 0) & (np.abs(g[:, None]) < 0.85 * r)
+            band_origin = (float(nn), float(np.argmin(np.abs(g - vb[nn]))))
+            uu = np.abs(g) < 0.8 * r
+            seam2 = np.c_[g[uu], vb[uu]]   # the seam itself as the closed lid's rim (rays from its middle left a curved seam)
+            lab = band.astype(int)
+            seed_lab = 1
         if seed_lab == 0:  # the opening needn't cover the ball's centre (a hooded or low-set lid): the component with
             # most cells near it
             near = (np.hypot(g[:, None], g[None, :]) < 0.5 * r) & (lab > 0)
@@ -142,6 +246,8 @@ def lid_lines(head: dict, cell: float = 0.0002, n: int = 360) -> list:
         op = lab == seed_lab
         ci, cj = np.nonzero(op)  # rays from the opening's own middle (the ball's centre can lie under a lid)
         oi, oj = float(ci.mean()), float(cj.mean())
+        if band_origin is not None:   # a closed lid's seam band: from the seam's own middle (the band's mean lies off a curved seam)
+            oi, oj = band_origin
         o2 = np.array([(oi - nn + 0.5) * cell, (oj - nn + 0.5) * cell])
         th = np.linspace(0, 2 * np.pi, n, endpoint=False)
         rho = np.zeros(n)
@@ -153,10 +259,13 @@ def lid_lines(head: dict, cell: float = 0.0002, n: int = 360) -> list:
             j = np.argmin(inside) if not inside.all() else len(steps) - 1
             rho[k] = steps[max(j - 1, 0)] + 0.5 * cell
         # smooth along the rim (grid steps), circularly
+        # a lone ray escaping through a gap of the traced opening rooted a lash bundle ~8 mm under an older test head's left eye
+        # (a white star in front light, a dark dash at 3/4): outliers off by a running median first
+        rho = ndimage.median_filter(rho, size=9, mode="wrap")
         rho = ndimage.gaussian_filter1d(rho, 2.0, mode="wrap")
         inner = -np.sign(c[0]) * side if abs(c[0]) > 1e-6 else side
         U = np.cos(th)[:, None] * side + np.sin(th)[:, None] * up
-        out.append({"centre": c, "fwd": fwd, "up": up, "side": side, "inner": inner, "theta": th, "rho": rho,
+        out.append({"centre": c, "fwd": fwd, "up": up, "side": side, "inner": inner, "theta": th, "rho": rho, "closed": closed, "seam2": seam2,
                     "dirs": U, "front": front, "cell": cell, "nn": nn, "o2": o2,
                     # (for seating points on the skin: cells the samples missed take their neighbours' depth; the
                     # opening above is traced on the unfilled map, which the filling would shrink)
@@ -202,9 +311,25 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
         for li, lid in enumerate(("upper", "lower")):
             p = cfg[lid]
             col = np.array(_hex(cfg["color"] if lid == "upper" else cfg.get("lower_color", cfg["color"])))
+            if lid == "lower" and L.get("closed"):   # a closed eye: the lower lashes lie tucked under the upper lid's;
+                continue                             # both rows on one seam drew a hard black streak (Tess)
             idx = _arc(L, lid)
             rim2 = L["o2"] + np.c_[(L["dirs"][idx] @ L["side"]) * L["rho"][idx], (L["dirs"][idx] @ L["up"]) * L["rho"][idx]]
+            if L.get("closed") and L.get("seam2") is not None and len(L["seam2"]) > 8:
+                # a closed lid's lashes along the whole seam, inner corner -> outer (the ray-traced rim covered its middle
+                # third: a short clump in the middle of Tess's closed lid)
+                sm = np.asarray(L["seam2"], float)
+                isg = float(np.sign(L["inner"] @ L["side"])) or 1.0
+                rim2 = sm[np.argsort(-sm[:, 0] * isg)]
+                idx = np.arange(len(rim2))
             seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(rim2, axis=0), axis=1))]
+            span = float(np.linalg.norm(rim2[-1] - rim2[0])) if len(rim2) > 1 else 0.0
+            if len(idx) < 4 or span < 0.6 * r_ball:
+                # a degenerate rim (corners found next to each other): every lash of this lid was rooted at ONE point
+                # (~200 lower lashes as a tuft 10 mm under an older test head's left eye). Not laid, and LOUD: a sheet with it
+                # is not shown (mismatched eyes read wrong at close range); the cause is to be found, not hidden
+                print(f"LASHES WARNING: eye {ei} {lid} lid's rim is degenerate (span {span * 1000:.1f} mm): its lashes NOT laid", flush=True)
+                continue
             s_all = seglen / seglen[-1]
             # the lash line itself (no scatter): where the painted root tone goes (skin.hair.lashes with geometry)
             sc = np.linspace(p["start"], p["end"], 24)
@@ -224,6 +349,9 @@ def build(head: dict, cfg: dict, sides=(".L", ".R")) -> dict:
             tan2 = np.c_[np.gradient(P2[:, 0]), np.gradient(P2[:, 1])]
             tan = _unit(tan2[:, :1] * L["side"] + tan2[:, 1:] * L["up"])
             outv = _unit(out2[:, :1] * L["side"] + out2[:, 1:] * L["up"])
+            if L.get("closed"):   # a closed eye's lashes hang DOWN over the seam (out of the thin band "out" is up: they
+                # stood up into the closed lid and were pushed out of the skin as a short black streak at the seam)
+                outv = np.tile(-L["up"], (len(outv), 1))
             # length profile: short at the inner canthus, longest over the middle-outer third, a little shorter outside
             prof = (0.5 + 0.5 * np.clip((s - p["start"]) / 0.45, 0, 1) ** 0.8) * (1 - 0.25 * np.clip((s - 0.75) / 0.25, 0, 1) ** 2)
             length = p["length"] * 1e-3 * prof * rng.uniform(1.0 - float(p["vary"]), 1.08, cnt)

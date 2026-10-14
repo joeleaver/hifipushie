@@ -147,6 +147,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     dark = t["melanin"]
     ctx = {**ctx, "torso": "chest" in J, "spec": spec}
     ctx["smooth"] = []
+    if p.get("stack") and ctx["face"]:   # (skin_layers) the colour as a stack of layer maps from the reference: over the
+        from . import skin_layers       # broad colour layers laid so far, under every fine generator below
+        skin_layers.layers(spec, p["stack"], out, part)
     from . import paint as _paint
     ctx["eyes"] = all(e in (_paint._expanded(spec).get("blobs") or {}) for e in ("eye.L", "eye.R"))  # eyeballs: lid margins
     from . import lashes as _lashes
@@ -248,8 +251,11 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
         tile = {"swatch": "freckles", "size": size, "vary": False, "rotate": True}
         layer("blemish_halo", o.get("mask"), color=T(blood=5.5, oxygenation=0.8), opacity=0.75 * (0.5 + 0.5 * show),
               mask=[{"tile": {**tile, "range": [round(lo, 3), round(lo + 0.25, 3)]}}] + w)
+        # (under a measured stack: colour only, no height: a stacked head's material is near Cycles' shader stack limit,
+        # and the blemishes' bump tipped Tess's and a test head's over: "would render black")
+        hk = {} if p.get("stack") else {"height": 0.0004}
         layer("blemish_bump", o.get("mask"), color=T(blood=6.5, melanin=1.15), opacity=0.6 * (0.5 + 0.5 * show), roughness=max(base_r - 0.14, 0.2),
-              height=0.0004, mask=[{"tile": {**tile, "range": [round(lo + 0.3, 3), round(lo + 0.5, 3)]}}] + w)
+              mask=[{"tile": {**tile, "range": [round(lo + 0.3, 3), round(lo + 0.5, 3)]}}] + w, **hk)
 
     # ---- veins
     v_def = max(0.0, 0.25 * thin - 0.05 + 0.6 * old) * (1 - 0.6 * dark)
@@ -277,6 +283,9 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     from . import skin_folds
     skin_folds.build(spec, p, J, layer, ctx)
     _hair(p, J, layer, T, ctx)
+    if p.get("projection") and ctx["face"]:   # the references as albedo (skin_project): over our colours and painted hair
+        from . import skin_project
+        skin_project.layers(spec, p["projection"], out, part)
     _scars(spec, p, J, layer, T, ctx)
     _tattoos(spec, p, layer, ctx)
     from . import skin_makeup
@@ -307,7 +316,10 @@ def _gnm_mouth(spec, out, part) -> None:
     from scipy.spatial import cKDTree
     d_own = cKDTree(mp["sock"]["verts"][own]).query(sk["verts"])[0]
     d_rim = cKDTree(mp["sock"]["verts"][~own]).query(sk["verts"])[0] if (~own).any() else np.full(len(sk["verts"]), 1.0)
-    pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim).astype(float), 0.003)
+    # (the cloud's own spacing, and only points clearly inside the sock: at a 3 mm spacing the mask reached ~6 mm and
+    # printed the bag's near-black red onto the outer skin at the mouth corners: two black "curls" on every GNM head)
+    sp_ = float(np.median(cKDTree(sk["verts"]).query(sk["verts"], k=2)[0][:, 1]))
+    pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
     out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
                              "mask": [{"painted": pid}]}
     pos, nrm, val = [], [], []
@@ -326,7 +338,7 @@ def _gnm_mouth(spec, out, part) -> None:
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",
-            "iris_contrast", "gloss", "occlusion", "caruncle", "crease", "canthus")
+            "iris_contrast", "gloss", "occlusion", "caruncle", "crease", "canthus", "iris_inner", "iris_inner_to")
 
 
 def eye_base(spec: dict) -> tuple[str, dict] | None:
@@ -350,7 +362,8 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     collarette, a limbal ring, a soft pupil; a sclera pinker toward its edge with fine vessels), under a wet film;
     shadowed where the lids lie on it; on the skin, the pink wet caruncle at the inner corner and the waterline of the
     lower lid. Lashes are geometry (base.lashes, lashes.py) over the lid margins darkened (skin.hair.lashes).
-    {"iris": colour, "iris_size": m (the visible iris' diameter: adults 11-12.5 mm, 11.7 on average; unset on a GNM
+    {"iris": colour (the iris toward its rim), "iris_inner": colour (the zone round the pupil, when it differs: hazel,
+    central heterochromia; "iris_inner_to": where it hands over, share of the radius, 0.55), "iris_size": m (the visible iris' diameter: adults 11-12.5 mm, 11.7 on average; unset on a GNM
     head with GNM's own eyeball: its limbus for the identity, base.head.identity.eyes_000), "pupil": 0..1
     of the iris' radius (0.36; bright daylight 0.2-0.3; unset on GNM's eyeball: its own pupil, 0.5 at rest, moved by
     base.head.expression.pupils_000: +1 = 0.67, -1 = 0.33), "veins": 0..1, "sclera": colour, "limbal": 0..1 (0.72: the
@@ -389,7 +402,8 @@ def _eyes(spec, p, J, out, layer, T, ctx) -> None:
     # (the identity's eyes_* components and the expression's pupils_000: dilation is a pose value)
     path = skin_swatch.eye_image(iris, float(e.get("pupil", eg["pupil"] if eg else 0.36)), veins, tuple(scl), p["seed"], span,
                                  limbal=float(e.get("limbal", 0.72)), contrast=float(e.get("iris_contrast", 1.0)),
-                                 limbal_width=float(e.get("limbal_width", 0.2)))
+                                 limbal_width=float(e.get("limbal_width", 0.2)),
+                                 inner=_hex(e["iris_inner"]) if e.get("iris_inner") else None, inner_to=float(e.get("iris_inner_to", 0.55)))
     gloss = float(e.get("gloss", 1.0))
     occ = float(e.get("occlusion", 1.0))
     for sd in (".L", ".R"):

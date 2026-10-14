@@ -198,12 +198,12 @@ class _Compiler:
             if fr["wrap"] in ("cylinder", "sphere"):  # drawn per pixel from wpos (atan2, asin in nodes)
                 ent.update({k: fr[k] for k in ("o", "k", "r0", "phic", "seam", "dc", "su", "sv", "m", "unroll", "ta", "Rc",
                                                "sg") if k in fr})
-            elif fr["wrap"] == "surface":  # geodesic coordinates measured per vertex (decalmap, images.project)
+            elif fr["wrap"] in ("surface", "uv"):  # coordinates measured per vertex (decalmap / the model's atlas; images.project)
                 from . import decalmap
+                ver = (decalmap.VERSION, decalmap.method()) if fr["wrap"] == "surface" else ("uv", fr["geo"], {k: v for k, v in e["image"].items() if k in ("box",)})
                 def uvw(mir):
                     return [self.attr("decal", layer, e["image"], parts, mir, comp,
-                                      key=("decal", e["image"], parts, mir, comp, decalmap.VERSION,
-                                           decalmap.method()), parts=self.parts)
+                                      key=("decal", e["image"] if fr["wrap"] == "surface" else None, parts, mir, comp, *ver), parts=self.parts)
                             for comp in range(3)]
                 ent["uv"] = uvw(False)
                 if fr["mirror"]:
@@ -257,7 +257,7 @@ class _Compiler:
                 ly["image"], sort_keys=True, default=str).encode()).hexdigest()[:10]):
             raise SpecError(f"paint {name!r}: \"color\": \"image\" needs the layer's own flat \"image\" key")
         return {"name": name, "color_from": img["key"] if img else None, "parts": parts if isinstance(parts, list) else [parts], "channels": channels,
-                "height": float(ly.get("height", 0.0)), "mix": ly.get("mix", "mix"), "detail": bool(ly.get("_detail")),
+                "height": float(ly.get("height", 0.0)), "mix": ly.get("mix", "mix"), "detail": bool(ly.get("_detail")), "blink": bool(ly.get("_blink")),
                 "opacity": float(ly.get("opacity", 1.0)), "entries": entries, "expose": expose}
 
 

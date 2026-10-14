@@ -266,6 +266,8 @@ def decal_focus(spec: dict, pn: str, base: float, box=None) -> list:
             if exp is None:
                 exp = paint._expanded(spec)
             fr = images.frame(spec, img, exp, what=f"paint {name!r} image", parts=lp)
+            if fr["wrap"] == "uv":  # no placement of its own (the whole head): the part's own density stands
+                continue
             want = min(DECAL_MAX, fr["px"][0] / fr["w"], fr["px"][1] / fr["h"])
             k = float(np.clip(want / max(base, 1e-9), 1.0, DECAL_GAIN))
             if k <= 1.0:
@@ -915,6 +917,8 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     put_given("metallic", given["rms"][..., 1:2])
     put_given("specular", given["rms"][..., 2:3])
     put_given("ao", given["ao"][..., :1])
+    if "blink" in given:   # (skin) the crease line and the lid's occlusion as their own multiplier map, out of basecolor
+        put_given("blink", given["blink"][..., :3])
     put("normal", tn * 0.5 + 0.5, 0.5)
     put("height", (height / hr * 0.5 + 0.5)[:, None], 0.5)
     maps["orm"] = np.concatenate([maps["ao"], maps["roughness"], maps["metallic"]], -1)
@@ -1822,6 +1826,11 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             _png(files[key], maps[key])
         files["height"] = out_dir / f"{stem}_height.png"
         _png(files["height"], maps["height"], bits=16)
+        if "blink" in maps:   # the minimal wrinkle map: basecolor x lerp(1, blink, 1 - eyeBlink)
+            files["blink"] = out_dir / f"{stem}_blink_multiply.png"
+            _png(files["blink"], maps["blink"])
+            log.append(f"  {stem}_blink_multiply.png: the crease line + lid occlusion, NOT in basecolor; engine: "
+                       "basecolor x lerp(1, map, 1 - eyeBlink) (eyeBlink = the ARKit morph weight; open eye = full)")
         # glTF reads specular from the alpha channel of its texture
         spec_rgba = out_dir / f"{stem}_specular_gltf.png"
         a = (np.clip(maps["specular"][..., 0], 0, 1) * 255 + 0.5).astype(np.uint8)

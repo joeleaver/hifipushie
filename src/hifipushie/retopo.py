@@ -1278,6 +1278,14 @@ def base_quads(spec: dict, log: list) -> dict | None:
         inner = (gnm >= 0) & ~ext[rid]  # lid insides, inner lip rolls, nostrils' depths
         ears = np.asarray(g["groups"]["ears"]) > 0.5  # (thin folded shells: dropped onto the smoothed field their
         inner |= (gnm >= 0) & ears[rid]  # quads folded: TORN at the head, 60 spots on Garrett's ears)
+        lf = (spec["base"].get("head") or {}).get("lid_fold")
+        if lf:   # (projskin) the lid FOLD is re-entrant (the hood hangs over its own slit): projected onto the field its
+            # sheets collapsed into each other, TORN OR TANGLED at both lids (300 folded edges on an older head, 82 without the
+            # fold): the fold's own vertices stay as base.head.lid_fold built them (exact; the field is the smoothed copy)
+            from . import gnm_fold
+            dlt = gnm_fold.mesh_delta(gnm_fold.vertices() / 1000.0, None, lf)
+            moved = np.linalg.norm(dlt, axis=1) > 1e-6
+            inner |= (gnm >= 0) & moved[np.clip(rid, 0, len(moved) - 1)]
     V = surface.newton(prims, V, voxel * 0.125, voxel, iterations=12)[0]
     # (the cage stands <= ~2.5 mm off; what moves further is the neck tube's upper rings inside a grafted head, cut
     # away below, or a step that went astray)
