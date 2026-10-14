@@ -2463,6 +2463,8 @@ SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
 CUT_GROUPS = ["sub", "pair", "lock", "free"][:3]  # finer -> coarser card cuts (clump_cards' groups; "free" drops lying hair)
 PRIO_FLY = 2.0  # budget priority offsets (lower = kept first): single hairs after every coverage layer
 PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of hair lying on the head
+PRIO_FACE = -0.8  # face-framing hair (wisps, curls at the temples) before anything but the coverage layer's core
+FACE_IN, FACE_AZ = 0.02, 115.0  # m inside the hairline, deg from the front: where a free lock's root counts as face-framing
 CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
 SWOOP_WIDTH = 0.026  # m: their width
 SWOOP_BACK = 0.003  # m inside the hairline where they start
@@ -2475,15 +2477,30 @@ SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
 CARD_TIERS = {
-    "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
+    "hero": {"cap_step": 6.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
              "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000},
-    "main": {"triangles": 16000, "cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
+    "main": {"cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
              "baby": 0.6, "core_sides": 10, "mass": 3500},
-    "npc": {"triangles": 6000, "cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
+    "npc": {"cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
             "baby": 0.0, "core_sides": 8, "mass": 1800},
-    "far": {"triangles": 1500, "cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
+    "far": {"cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
             "baby": 0.0, "core_sides": 6, "mass": 800},
 }
+# the tiers ARE the hair's LODs: their triangles come from the export budgets (budgets.json, a hero character's
+# hair_cards at LOD0..3: sourced, not chosen here; it was a made-up 40k / 16k / 6k / 1.5k). A groom's own
+# hair.export.tier_triangles {tier: n} or hair.export.role (hero / main_npc / secondary_npc / crowd) overrides
+CARD_TIER_LOD = {"hero": 0, "main": 1, "npc": 2, "far": 3}
+
+
+def tier_triangles(tier: str, role: str = "hero", own: dict | None = None) -> int:
+    from . import budgets
+    if own and tier in own:
+        return int(own[tier])
+    return budgets.triangles(role, "hair_cards", CARD_TIER_LOD[tier])
+
+
+for _t in CARD_TIERS:
+    CARD_TIERS[_t]["triangles"] = tier_triangles(_t)
 
 
 def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None,
@@ -2502,7 +2519,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
         tier = {**CARD_TIERS[budget], **(SHORT_TIERS[budget] if short else {})}
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
-        budget = int(tier["triangles"])
+        ex_ = h.get("export") or {}
+        budget = tier_triangles(budget, ex_.get("role", "hero"), ex_.get("tier_triangles"))
     if short:
         S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
              "short": True}
@@ -2535,9 +2553,15 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     bands = [k_ for k_ in locks if re.fullmatch(r"t\d*band", k_["name"])]  # the tie is its own mesh, not hair
     line = hairline(sc, g)
     for k_ in locks:  # locks rooted at the hairline wear the thin-rooted tile there
+        a0, e0, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
         if not k_.get("free"):
-            a0, e0, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
             k_["at_hairline"] = bool(h0[0] < 0.01 and inside(sc, line, a0, e0)[0] < 0.008)
+        # FACE-FRAMING: hair off the head rooted near the hairline in front of the ears (wisps, curls, loose locks
+        # at the temples): the budget keeps it with the coverage. Ranked as single hairs, Tess's W18 lost every
+        # face wisp at every tier (the assembly review, hair_r2)
+        k_["face"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] < 0.02 and inside(sc, line, a0, e0)[0] < FACE_IN
+                          and abs(((float(a0[0]) + 180.0) % 360.0) - 180.0) < FACE_AZ)
+        k_["off_head"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] > 0.02)  # (rooted in hanging hair: a tail's strays)
     hair_locks = [k_ for k_ in locks if k_ not in bands]
     core = None
     if D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
@@ -2569,7 +2593,11 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             for c_ in cards:
                 lk_ = by_.get(c_.get("lock")) or {}
                 p_ = float(c_.get("prio", c_["layer"]))
-                if c_["kind"] == "fly":
+                if lk_.get("face"):
+                    p_ += PRIO_FACE
+                elif lk_.get("off_head"):  # a tail's strays are its ragged outline, not single hairs on the head
+                    p_ += PRIO_FREE
+                elif c_["kind"] == "fly":
                     p_ += 0.2 if lk_.get("at_hairline") else PRIO_FLY
                 elif float(lk_.get("free", 0.0)) > 0.5:
                     p_ += PRIO_FREE
@@ -2690,6 +2718,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     Vc = np.asarray(V, float)
     lift = 0.1 * (1 - np.cos(np.radians(cap_step) / 2)) * 1.6 + 0.002  # (+ the scalp grid vs the skin mesh: ~1 mm)
     Vc = Vc + lift * _unit(Vc - sc.C)
+    if D is not None and not short and cards:  # the cap is UNDER the cards: it is the scalp's tint between them, never
+        # the surface. The groom's envelope stood 25 mm off the top of Tess's W18 where the coverage cards lie at 17:
+        # a lighter, flatter helmet over the cards with a seam where they came out from under it (hair_r2)
+        Vc = cap_under_cards(sc, Vc, [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"], lift)
     if short and D is not None:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
         # skin at the hairline (on the scalp itself the head's profile was a bald dome under a fringe of cards)
         ca_, ce_, _ch = sc.coords(Vc)
@@ -2712,8 +2744,12 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     if budget:  # the budget is the whole hair's: the cap, the baby hairs and the tie come off it first
         fixed = (len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
                  + (len(core["tris"]) if core is not None else 0))
+        before_ = cards
         cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
         info["asked"], info["fixed"] = int(budget), int(fixed)
+        info["fixed_parts"] = {"cap": len(cap["tris"]), "core": len(core["tris"]) if core is not None else 0,
+                               "baby": len(mb["tris"]), "tie": sum(len(b["tris"]) for b in band)}
+        info["by_class"] = card_classes(before_, cards, S, seg, {k_["name"]: k_ for k_ in hair_locks})
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
     # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
     # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
@@ -2741,6 +2777,51 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             "triangles": int(len(m["tris"])),
             "cap_triangles": int(len(cap["tris"])), "cards": len(cards), "baby": len(baby), "budget": info,
             "coverage": at["coverage"], "clearance": clearance}
+
+
+def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
+    """Where a budget's cards went: per class of lock (face-framing, hanging hair, head hair, single hairs) and card
+    layer, cards and triangles cut vs kept. The export report carries it, so a tier that loses a region says so."""
+    from . import hair_cards as hc
+
+    def cls(c):
+        lk = locks.get(c.get("lock")) or {}
+        if lk.get("face"):
+            return "face"
+        if lk.get("off_head"):
+            return "hanging"
+        if int(lk.get("hairs") or 0) > 0 or c["kind"] == "fly":
+            return "single"
+        return "hanging" if float(lk.get("free", 0.0)) > 0.5 else "head"
+    out: dict = {}
+    for tag, cs in (("cut", before), ("kept", after)):
+        for c in cs:
+            k = f"{cls(c)}/L{int(c['layer'])}"
+            d = out.setdefault(k, {"cut": [0, 0], "kept": [0, 0]})
+            d[tag][0] += 1
+            d[tag][1] += hc.triangles([c], S, seg)
+    return dict(sorted(out.items()))
+
+
+CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
+CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
+
+
+def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015):
+    """Cap vertices pushed down (toward the head's centre) to CAP_UNDER under the lowest coverage card within
+    CAP_REACH, never under `floor` off the scalp; where no card passes over a vertex it keeps its height."""
+    from scipy.spatial import cKDTree
+    V = np.asarray(V, float)
+    if not cards:
+        return V
+    P = np.concatenate([np.asarray(c["P"], float) for c in cards])
+    pa, pe, ph = sc.coords(P)
+    va, ve, vh = sc.coords(V)
+    tree = cKDTree(dirs(pa, pe))
+    near = tree.query_ball_point(dirs(va, ve), 2 * np.sin(np.radians(CAP_REACH) / 2))
+    lo = np.array([ph[n].min() if n else np.inf for n in near])
+    h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - CAP_UNDER, floor)), vh)
+    return V + (h - vh)[:, None] * _unit(V - sc.C)
 
 
 CARD_CLEAR = 0.0015  # m: every card vertex stays this far outside the head (None: measure only)

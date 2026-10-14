@@ -167,6 +167,9 @@ def _drawn_lines(kind: str, w: int, S: dict, rng) -> list:
 
 
 SHORT_TILE = {"medium": (56, 2.2), "sparse": (34, 2.0), "baby": (9, 3.0), "fly": (5, 4.0)}  # strands per 272 px, px thick
+FLY_HAIR = 0.07  # share of the fly tile's width one of its hairs is drawn: ~0.35 mm on a 5 mm wisp card, about a pixel at a
+# hero's close-up (Tess's W18 face wisps: drawn 3 texels of 128 = 0.12 mm they fell under the alpha cutoff and vanished,
+# where EEVEE draws every strand at least a pixel wide)
 EDGE_SOLID = 0.5  # texels under this alpha take the colour / depth of the nearest texel over it (edge padding): at
 # 0.03 the anti-aliased rim of every strand kept its own low depth = a dark outline round each strand and card (Godot)
 SHORT_DEPTH = 0.45  # a short cut's card strands: the least of the depth shade (they lie over the cap, which is the shade)
@@ -188,7 +191,7 @@ def _tile(kind: str, w: int, H: int, S: dict, rng, ss: int = 3, lines: list | No
     # at 3 texels a hair is 0.3 mm, a few hairs lying together, and still there after an alpha test at arm's length;
     # at one texel the whole wisp fell under the cutoff and vanished) from a root that starts at full strength (it
     # comes out of the hair, its root buried there: faded in, the wisp seemed to start on bare skin lower down)
-    thick = (3.0 * ss if kind == "fly" else max(k["thick"] * ss * w / 160, 1.15 * ss)) if kind in ("fly", "baby") else k["thick"] * ss
+    thick = (max(3.0 * ss, FLY_HAIR * w * ss) if kind == "fly" else max(k["thick"] * ss * w / 160, 1.15 * ss)) if kind in ("fly", "baby") else k["thick"] * ss
     if lines is None:  # drawn strands (no groom at hand); else `lines` = real strands of the groom's own clumps
         lines = _drawn_lines(kind, w, S, rng)
     if short and kind in SHORT_TILE:  # a short cut's card is ~1 cm wide and seen 3-4 mips down: a few strands, each
@@ -573,6 +576,8 @@ def cards_of(locks: list, C, S: dict, look: dict | None = None) -> list:
 # ------------------------------------------------------------------------------------------ cards from the strands
 
 GRID = 40  # stations along a lock at which its strands are compared
+FINE_SPARSE = 0.5  # a lock whose strands are drawn at least this fine (strands.fine: see-through) is cut on the sparse tile
+FREE_END = 0.1  # hanging hair's cards run on until only this share of their strands is left (at 0.3 Tess's tail ended ~5 cm short)
 
 
 def strand_grid(D: dict, locks: list, n: int = GRID) -> dict:
@@ -621,15 +626,20 @@ def _nan_smooth(x, k: int = 2):
     return out
 
 
-def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04):
+def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_share: float | None = None):
     """A set of strands (m, n, 3 with NaN) as one clump: its centre line, frame and spread, over the stations where
-    at least `min_share` of its strands run. None if too short."""
+    at least `min_share` of its strands run (`end_share`: on to the last station where that share still runs: hanging
+    hair's ragged ends). None if too short."""
     with np.errstate(invalid="ignore"):
         cnt = np.isfinite(A[..., 0]).sum(0)
     ok = cnt >= max(1, int(np.ceil(min_share * len(A))))
     idx = np.nonzero(ok)[0]
     if len(idx) < 4:
         return None
+    if end_share is not None:
+        last = np.nonzero(cnt >= max(1, int(np.ceil(end_share * len(A)))))[0]
+        if len(last) and last[-1] > idx[-1]:
+            idx = np.r_[idx, np.arange(idx[-1] + 1, last[-1] + 1)]
     # a clump starts where its FIRST strands do (roots are staggered: the card's picture fades its root in; started
     # where a third of them run, the front row stood as a ledge 1.5 cm behind the hairline) and ends where few are left
     first = np.nonzero(cnt >= max(1, int(np.ceil(start_share * len(A)))))[0]
@@ -722,9 +732,11 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
             keys = np.zeros(len(sub), int)
         edge = bool(lk.get("at_hairline"))
         gather = is_gather(lk)
+        fine = not free and float((lk.get("strands") or {}).get("fine", 0.0) or 0.0) >= FINE_SPARSE  # (hanging hair
+        # drawn fine, a tail, still has a body to cover)
         for kk in np.unique(keys):
             Ag = A[keys == kk]
-            c0 = _clump(Ag, G["u"], cen_of)
+            c0 = _clump(Ag, G["u"], cen_of, end_share=FREE_END if free else None)
             if c0 is None:
                 continue
             width = 2 * 1.7 * float(np.percentile(c0["sx"], 75))
@@ -734,7 +746,7 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                 part = Ag[order[j * len(order) // na:(j + 1) * len(order) // na]] if na > 1 else Ag
                 if len(part) < 1:
                     continue
-                c = _clump(part, G["u"], cen_of) if na > 1 else c0
+                c = _clump(part, G["u"], cen_of, end_share=FREE_END if free else None) if na > 1 else c0
                 if c is None:
                     continue
                 s = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(c["P"], axis=0), axis=1))]
@@ -753,6 +765,8 @@ def clump_cards(D: dict, locks: list, C, S: dict, look: dict | None = None, seed
                 for la in range(nl):
                     if thin:  # a wisp: two or three thin cards of separate hairs side by side, never a filled
                         kind = "fly"  # ribbon (under an alpha test that was a dark slash)
+                    elif fine:  # a lock the strands draw FINE (part rows, the rim: see-through hair): never the dense
+                        kind = "sparse"  # tile (Tess's part rows rose off the part as opaque planks: the "fan" at the part)
                     elif la == 0:
                         kind = "hairline" if (edge and not free) else "dense"
                     else:
