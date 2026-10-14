@@ -18,6 +18,27 @@ other things from flat pieces: a tablecloth is one piece laid flat and draped on
 How garment makers and artists work, sources, worked examples (the skirt, suit trousers) and where each lesson
 lives: guide(topic="cloth_background").
 
+## Rules first (read these before dressing anything)
+
+Each has its fault, measure and fix in "What goes wrong, and the fix" and the stage it belongs to.
+1. **Fix the construction, never the solver.** A fault in the cloth is a pattern / sewing / made-piece fault first.
+2. **Lopsided result = an asymmetric input.** Before any draft change, run a place-only build and check every sim
+   input for mirror symmetry (pattern, body, poses, start, carried made pieces). Garrett's right front swung open
+   because one collar end started on his chest (`cloth._end_points`).
+3. **Measure what you name, both sides, one build per report.** A "notch" number was the collar tip; two reports
+   grepped together were read swapped. Run-to-run noise is ~2 mm: over ~5 mm is the change.
+4. **Made pieces at their cut length and width,** laid on the drape, never on eased cloth (collar ends, fall, lapels:
+   "Made pieces constructed after the drape").
+5. **Buttons, trims and made details are constructed on the finished drape; never re-simulate for them.** Buttons are
+   built after the sim (`closures.buttons_mesh`) and drawn by look_cloth / export. (Today their marks are mesh
+   vertices, so ADDING or MOVING a button re-keys the sim; changing their look does not.)
+6. **Judge clay with shadows off,** in close cameras for small features (notch, side neck), and beside the reference.
+7. **Front-view widths are what sticks out** (shoulder width = the sleeve heads: cap ease, not the block's shoulder);
+   an open jacket's fronts tent from the side panels' hem spring.
+8. **A tuck never moves the under garment into the body;** what no view direction sees is cut, not pushed.
+9. **Sims cost money:** one stage run at a time; a normal ZOZO job takes 1-3 min: one past ~5 min is broken: cancel it,
+   never resubmit it (a tight chest ease made Garrett's jacket crawl at 10x and cost $0.66 in two tries).
+
 ## The stages and their tools
 
 | Stage | What a maker does | Tool | You get |
@@ -663,6 +684,8 @@ The same maps go into `scene.blend` and the export.
 | An open jacket too closed (or open) below the break, the shirt V the wrong width at the button | The button stance (lapel `stand`): the extension sets where the fronts' edges sit; more stance closes them | Lapel `stand` (Garrett: 0.02 -> 0.012 gave the concept's ~131 mm at the button). Measure each front's edge from centre by height (edges.py), both sides |
 | Skin through an under garment where an outer garment lies on the skin (a rolled lapel's forepart on the chest) | The tuck laid the shirt `gap` under the outer cloth's inner face even where that face is on the skin: up to 38 mm INTO the body, the skin drew over it | Fixed: `cloth_layers.tucked` never moves a vertex closer than TUCK_BODY (1 mm) to the body; `hold` keeps chosen vertices where they are |
 | Jagged, torn-looking white edges on a shirt under a jacket in clay renders | NOT the cut: Workbench stencil shadows of a coarse (2 cm draft) jacket mesh | Judge with shadows off: `cloth.render(shadows=False)` / HIFIPUSHIE_CLOTH_SHADOWS=0 |
+| A detail (buttons, a trim) missing and a sim queued to add it | Buttons are constructed after the sim on the drape; a render that leaves them out is the renderer's fault | No sim: look_cloth / export draw `res["buttons"]`; a scratch render must draw them too (anchored to their vertex `at`, moved with the constructed jacket). Adding / moving one re-keys the sim (marks are mesh vertices) |
+| A ZOZO job runs 10x longer than usual and fails (frame 116/150 after 21 min) | A draft that leaves the cloth no room (Garrett's jacket at chest_ease 0.03: contact-heavy); the stall guard never fires because the GPU is busy | Cancel at ~5 min, never resubmit the same job (scratch stage.sh records what it sent); go back to the previous ease |
 | A sim billed twice | Two stage runs over the same queue overlapped (the first one's upload failed but the script carried on) | One stage run at a time: check for a running stage.sh before starting one; a failed upload ends the run |
 
 ## Designing a garment that doesn't exist: block + operations

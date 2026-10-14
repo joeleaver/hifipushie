@@ -2571,3 +2571,26 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
     mm (the measure DOES track the sleeve: nothing to fix in it), front_hang 66, 8 visible crossings. n20 spring 12 mm:
     front_hang 55, hem sweep 389. So: best = n18 (q_n18.txt line 1). Lesson: one file per reading (the grep -h of
     several checklists interleaved their lines; read each build's numbers from its own file).
+- WRAP (2026-10-14; Joe: the jacket is done for now). Best = out/c12_n18c.pkl (q_n18.txt line 1: gorge_drop 0.095,
+  break_y 0.455, lapel notch 0.025 / stand 0.012, collar point 0.015 / height_front 0.028, sleeve cap_ease 0.03, side
+  panels' hem spring 0); gates pass (0 skin px, 0 visible crossings), notch 61 / 59 mm below the chin (concept 63 / 56),
+  break 398 / 403 (398), fronts symmetric, front_hang 46 mm, shoulders 504 mm (482), hem sweep 454 (482).
+  - Chest-width batch n22 (chest_ease 0.06 -> 0.03) COST $0.664: the job did not stall, it crawled (frame 116/150 at
+    21 min, ~10x normal) and failed at 22 min ($0.397); stage.sh's next round resubmitted it ($0.267 until cancelled).
+    stage.sh now never resubmits a job it sent before (sent.txt) and times jobs out at 8 min. Same ease that hung
+    cloth11's gc2: on this jacket a tighter chest makes ZOZO crawl.
+  - Buttons: built on the finished drape (closures.buttons_mesh, after the sim), drawn by look_cloth and export; the
+    jacket had both all along at the stance on the wearer's right front (closure front.L over front.R); only the
+    scratch harness didn't draw them (c10ship now does, jbtn=1). No sim. Note: their MARKS are mesh vertices, so adding /
+    moving buttons re-keys the sim; anchoring open closures' buttons by pattern position instead would change every
+    buttoned garment's mesh once (a default for Joe).
+  - Guide: "Rules first" list at the top of cloth_guide.md (9 rules, each pointing at its fault row / stage), fault
+    rows for a detail queued for a sim and for a crawling ZOZO job; front hang / noise / front-view width lessons.
+  - FINAL sheet workspace/cloth_renders/c12_final_sheet.png (concept | n18 | c11_gc1, shadows off).
+  - STILL OFF vs the concept: the notch V is an edge, not an open dark gap; the chest opening ~2.5 cm narrow (~155 vs
+    ~182 mm at the chest); the chest +10% wide (440 vs 397; a tighter ease makes the sim crawl); the fronts still 46 mm
+    forward of the body (rule <= 10); cuff show 4-6 mm (18); no flap pockets or breast welt (one try made the fronts
+    heavy); buttonholes only in the textured maps; a small ridge where the collar stand turns at the side neck.
+  - Spend this agent: $1.58 (of it $0.66 the n22 chest batch).
+  - STATE: done, merge-ready. NEXT (when the jacket comes back): the notch gap's depth, the chest opening (neckline
+    front width), pockets with a front-hang check, button marks without re-keying (decision).
