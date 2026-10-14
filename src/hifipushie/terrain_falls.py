@@ -260,12 +260,14 @@ class Faces:
         rx, ry = x[k] - F["c"][0], y[k] - F["c"][1]
         return k, rx * F["t"][0] + ry * F["t"][1], rx * F["n"][0] + ry * F["n"][1]
 
-    def column(self, x, y, h, col):
-        """h at columns with each fall's face as a step on its lip line; col(x, y): the column without the faces."""
+    def column(self, x, y, h, col, touched=False):
+        """h at columns with each fall's face as a step on its lip line; col(x, y): the column without the faces.
+        touched: also return the indices of the columns a face changed (their slope is no longer the grid's)."""
         if not self.any:
-            return h
+            return (h, np.zeros(0, np.int64)) if touched else h
         x, y = np.asarray(x, float), np.asarray(y, float)
         out = None
+        hit = []
         for F in self.items:
             k, u, v = self._local(F, x, y)
             if not len(k):
@@ -283,7 +285,11 @@ class Faces:
             he = np.maximum(h0, hu) * (1 - w) + np.minimum(h0, hd) * w
             wa = smoothstep(F["half"] + F["fade"], F["half"], np.abs(v))
             out[k] = h0 + wa * (he - h0)
-        return h if out is None else out
+            hit.append(k)
+        res = h if out is None else out
+        if touched:
+            return res, (np.unique(np.concatenate(hit)) if hit else np.zeros(0, np.int64))
+        return res
 
     def calm(self, p):
         """0..1 at points: how far the rock relief is kept off (the water's band from the lip's hold out to the throw:

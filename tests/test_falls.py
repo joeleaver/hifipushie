@@ -138,6 +138,31 @@ def test_clutter(T):
     print(f"ok clutter at the 12 m fall: {rocks.sum()} boulders round the pool, {slabs.sum()} blocks at the foot")
 
 
+def test_lip_open(T):
+    """The lip's level top over a fall reads as open ground and as bedrock (pushieworld note 124): the column there is
+    the faces' step, but its slope correction was the grid's ramp (s 0.15 on crown_beck's 17 m fall), the field
+    under-reported distance 6x up from the top, the AO rays found rock everywhere (ORM 10-47 / 255: a black slab), and
+    the stream layers read dry bank / bare earth there (the level grid's cells straddle the drop)."""
+    from hifipushie import terrain_bake as tb, terrain_mesh as tm
+    base = tm.build_field(T)[0]
+    f = T.falls[1]
+    c, t_, n = _frame(f)
+    pts = np.array([c + u * t_ + v * n for u in (-2.5, -1.5, -0.8) for v in (-0.25, 0.0, 0.25) * np.array(f["width"])])
+    h, s = base.column(pts[:, 0], pts[:, 1])
+    X = np.c_[pts, h]
+    up = base.value(X + [0, 0, 3.0])
+    assert (up > 2.4).all(), (up, s)  # (metres: 3 m up is ~3 m from the surface)
+    ao = tb.ambient(base, X, np.tile([0, 0, 1.0], (len(X), 1)))
+    assert ao.min() > 0.4, ao  # (open flat ground reads ~0.54; it read 0 before)
+    mats = tm.Materials(T, base)
+    Wt, _ = mats.weights(X, np.tile([0, 0, 1.0], (len(X), 1)))
+    L = mats.layers
+    bedrock = Wt[:, L.index("wet_rock")] + Wt[:, L.index("rock")]
+    dryish = Wt[:, L.index("earth")] + Wt[:, L.index("bank")] + Wt[:, L.index("grass")]
+    assert bedrock.mean() > 0.5 and dryish.mean() < 0.3, (np.round(Wt, 2), L)
+    print(f"ok lip open: field 3 m up {up.min():.2f}, AO {ao.min():.2f}, bedrock {bedrock.mean():.2f}")
+
+
 def test_errors():
     s = copy.deepcopy(SPECS["inland"])
     s["rivers"]["beck"]["falls"] = [{"at": 0.5, "drop": 60}]
@@ -167,6 +192,7 @@ if __name__ == "__main__":
     test_inland(T)
     test_meta(T)
     test_clutter(T)
+    test_lip_open(T)
     Ts = _load(SPECS["sea"])
     test_sea(Ts)
     test_sea_face(Ts)

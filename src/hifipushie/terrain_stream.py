@@ -261,7 +261,9 @@ class Streams:
         # waterfalls (terrain_falls): the plunge pool (1 inside, 0 past 1.4 radii) and the face's foot (fallen blocks)
         falls = [f for f in (getattr(T, "falls", None) or []) if f.get("into") != "sea"]  # (local: the grids are
         if falls:  # what tiles read, windowed; a list on self made every fall edit a global change)
-            plunge, foot = np.zeros(shape), np.zeros(shape)
+            plunge, foot, lipw = np.zeros(shape), np.zeros(shape), np.zeros(shape)
+            from .terrain_falls import HOLD_CELLS, HOLD_MIN
+            hold = max(HOLD_CELLS * float(T.cell), HOLD_MIN)
             for f in falls:
                 pc, R = np.array(f["pool"]["xyz"][:2]), float(f["pool"]["radius"])
                 plunge = np.maximum(plunge, _ss(1.4 * R, 0.8 * R, np.hypot(X - pc[0], Y - pc[1])))
@@ -272,7 +274,12 @@ class Streams:
                 reach = 0.35 * float(f["drop"]) + 3.0
                 foot = np.maximum(foot, _ss(-0.5, 0.5, al) * _ss(reach, 0.5 * reach, al) *
                                   _ss(0.5 * f["width"] + reach, 0.5 * f["width"], ac))
-            self.plunge, self.foot = np.ascontiguousarray(plunge), np.ascontiguousarray(foot)
+                # the lip: water-worn bedrock across the channel for the face's hold upstream of the lip line. The
+                # level grid can't say it's under water there (its cells straddle the drop: the pool's level pulled
+                # it down), so the lip read as dry bank and bare earth: a flat tan slab (pushieworld note 124)
+                lipw = np.maximum(lipw, _ss(-hold - 2.0, -hold, al) * _ss(0.6, 0.0, al) *
+                                  _ss(0.5 * f["width"] + 1.5, 0.5 * f["width"] + 0.3, ac))
+            self.plunge, self.foot, self.lip = (np.ascontiguousarray(a) for a in (plunge, foot, lipw))
         ford = np.zeros(shape)
         for f in (getattr(T, "fords", None) or {}).values():
             fw = float(f.get("width", 8.0))
@@ -313,7 +320,7 @@ class Streams:
                                                          "ford", "side", "still")}
         g["still"] = np.clip(g["still"], 0, 1)
         g["energy"] = np.clip(g["energy"], 0, 1)
-        for k in ("plunge", "foot"):  # (waterfalls only)
+        for k in ("plunge", "foot", "lip"):  # (waterfalls only)
             g[k] = np.clip(self._at(getattr(self, k), xy), 0, 1) if hasattr(self, k) else np.zeros(len(xy))
         g["side"] = np.clip(g["side"], -1, 1)
         g["curve"] = np.clip(g["bend"], -1, 1)  # (the path's own bends)
@@ -459,6 +466,13 @@ class Streams:
         silt = silt * (1 - g["still"]) + lake * g["still"]
         rock = rock * (1 - g["still"])
         # (the bar's dry side is bed too: gravel above the water)
+        # a fall's lip: bedrock under the sheet of water going over (terrain_falls), whatever the level grid says
+        lw = g["lip"] * gate
+        bed = np.maximum(bed, lw)
+        damp = damp * (1 - lw)
+        dry = dry * (1 - lw)
+        rock = np.maximum(rock, lw)
+        silt = silt * (1 - lw)
         tot = bed + dry
         rock = np.where(tot > 1e-6, rock * bed / np.maximum(tot, 1e-6), rock)
         silt = np.where(tot > 1e-6, silt * bed / np.maximum(tot, 1e-6), silt)
