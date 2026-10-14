@@ -199,3 +199,40 @@ everywhere inside the hairline (the soft hairline, the cover under the locks). S
 - Cards as white plates under a rim light: a card is one flat sheet standing for many round hairs; half the
   specular, tinted to the hair.
 
+
+# Hair cards: the method every card tool shares
+
+1. **Groom a few strand CLUMPS, not the head**: 4-16 variants from dense and opaque to sparse, fly-away and
+   tip-heavy.
+2. **Bake them orthographically onto a plane = the atlas.** Passes, the union across tools: opacity, depth / height,
+   normal, root-to-tip gradient, per-strand id / random, AO, flow (tangent), colour. Unreal's minimal set is
+   diffuse, depth, root, unique id (80.lv XGen breakdown); FiberShop writes 10 at 4K (albedo, alpha, height, normal,
+   id, root/tip, flow, AO, translucency, specular; snippet); FiberBake (a Blender add-on, GPL, paid) bakes 12 with
+   Cycles and packs the atlas: the proof that a Cycles bake of Hair Curves is the Blender way.
+3. **Place cards in layers by opacity**: the base layer is the most opaque and hides the scalp; each layer above is
+   more transparent; break-up and fly-aways last. Epic's Hair Card Generator tutorial gives the only published
+   numbers (a messy bun, LOD 0, ~54.5k triangles):
+
+   | layer | clumps | triangles | atlas islands |
+   |---|---|---|---|
+   | coverage | 50 | 2,000 | 25 |
+   | mid | 200 | 7,500 | 60 |
+   | top | 500 | 25,000 | 60 |
+   | fly-aways | 371 single-strand cards | 10,000 | 25 |
+   | short hairs | 500 | 10,000 | 75 |
+
+   It makes the cards automatically: strands are clustered into clumps, three cards a clump, then the atlas. LODs
+   either cut triangles on the same textures or regenerate cards into reserved atlas space.
+
+Tools and what each teaches (none is a dependency: paid ones are method references only):
+- Hair Tool (B. Styperek, paid): cards generated from hair curves or a geometry-nodes hair system; bakes normal, AO,
+  diffuse, tangent, id, root, flow, depth; automatic UVs (snippet).
+- D. Bystedt's "Hair cards from curves" (free geometry nodes): card meshes deformed along hair curves, twist aligned
+  to the head surface. Cards from guides need nothing but nodes.
+- GS CurveTools is Maya only (curve-controlled cards with per-point width and twist, layers). HairNet makes guides,
+  not cards.
+- Blender Conference 2024, "Mesh Hair with Geometry Nodes and Hair Curves" (S. Matsumoto): editable cards and tubes
+  from nodes, hair curves used to make their textures.
+- Hair cap and hairline: only tutorial-level sources. Houdini's docs describe finer "transitional" cards between
+  layers; the usual scalp texture baked from the groom + single-strand cards along the hairline has no primary source.
+

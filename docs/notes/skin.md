@@ -1544,3 +1544,11 @@ a hooded head (blink geometry with the fold); orbit occlusion not yet concentrat
 texture / pores still weak under the stack; freckle density uncalibrated against a freckled synthetic truth; a proper
 wrinkle map driven by the faceshapes export's blink weights (the blink map is the minimal version).
 RESTART: the detailed history and the per-head state are in workspace/private_notes/skin_notes_projskin_full.md.
+
+## Guide rewrite (2026-10-14, "guides" agent)
+
+skin_guide.md 505 -> ~150 lines: read-the-skin-from-the-reference first (tone boxes, redness, texture, lips, eye
+area, brows, creases, facial hair, cosmetics), the stages as a table, craft rules, a per-feature self-review loop,
+common mistakes. The stages in detail + sources -> skin_layers; tool sections -> skin_tools. Removed provenance:
+"Before 2026-10-10 melanin 0 stopped at ITA 52 and very fair people rendered tan"; "eyeballs in the default groups
+since 2026-10-13"; the "(projskin)" label on the eye-forms paragraph.

@@ -3,7 +3,7 @@ every tile and LOD (grids on the terrain's cells read as cubic B-splines, and no
 
 The consumer's note (pushieworld 110; Joe: "streambeds aren't textured right, and they aren't typically empty, they
 have clutter and debris, rocks"): with real water in the river the bed showed, and it was the meadow's grass and
-earth, banks included, with nothing in the channel. What real streams have (terrain_guide.md "Stream beds", with
+earth, banks included, with nothing in the channel. What real streams have (guide topic terrain_streams, with
 sources; photos in workspace/level_refs/streams):
 - the bed's material follows the stream's ENERGY (its grade): bedrock and boulders on steep reaches (cascade,
   step-pool), cobbles and gravel on middling ones (plane-bed, riffles), sand and silt where the water slows (pools,

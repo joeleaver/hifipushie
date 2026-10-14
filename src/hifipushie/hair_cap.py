@@ -2,7 +2,7 @@
 
 What game hair artists do for crops and short back and sides: a cap mesh close over the head wears a texture BAKED
 from the strand groom (colour, alpha, normal, depth / AO, flow, id), opaque wherever the hair is dense, and a sparse
-layer of cards over it breaks the surface and the outline (hair_guide.md, "Short cuts as a cap + cards").
+layer of cards over it breaks the surface and the outline (guide topic hair_short).
 
 `chart` rasterises every strand onto the scalp chart (u = azimuth / 360, v = elevation e0..90, row 0 = the top) with a
 z-buffer by height over the scalp, each strand a constant width in METRES (the chart's texels are not square: ~0.3 mm

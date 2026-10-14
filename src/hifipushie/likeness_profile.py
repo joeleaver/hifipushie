@@ -1,4 +1,4 @@
-"""The profile a turned view shows (likeness_guide.md, "A profile from a three-quarter view").
+"""The profile a turned view shows (guide topic likeness_profile).
 
 In a three-quarter picture the far side of the face against the background IS a profile, at a known angle: forehead,
 brow ridge, the far orbit and cheek, lips, mentolabial fold, chin, under-chin. The nose's own edge against the far cheek
