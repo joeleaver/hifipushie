@@ -2437,3 +2437,23 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
     little closed below the break; shoulders; CB crossings; the shirt on the final measures.
   - RESTART: as gate 4's, plus: place-only collar check: BROKER=1 bash run.sh collchain.py [key=json]; the fronts:
     uv run python edges.py out/c12_<t>.npz.
+- Gate 7 (branch cloth12b off main 17974ff; coordinator: the collar point on n8 + the shirt-collar slit, the left
+  notch 9 mm high, the fronts slightly closed below the button). One broker batch, two sims ($0.076):
+  n9 = n8 + collar point 15 mm; n10 = n9 + button stance (lapel stand) 0.02 -> 0.012.
+  - Left notch high, diagnosed first on n8: the SIM put the left gorge end 14 mm higher and 17 mm further in than
+    the right (constructed = simulated there), while the fronts' upper parts agree within 2 mm: a residual front
+    asymmetry, not construction.
+  - n9: gates PASS with the point (0 skin px: the 13 px slit of n4 came with the old asymmetric collar start), notch
+    62 / 53 mm below the chin, fronts as n8 (R 54-76 / L 48-61 mm from centre).
+  - n10 (CHOSEN): gates PASS (0 skin px, 0 visible crossings), notch 57 / 55 mm below the chin (concept 63 / 56) and
+    across -127 / +131 mm: both sides now alike; fronts R 64-77 / L 65-81 mm from centre at 1150-1400 (symmetric),
+    gap 158 mm at the chest, 132-138 at the button (concept ~182 / ~131); collar-end corners 108 / 112 deg (drafted
+    111); lapels 63 / 63 mm; collar folds > 100 deg: 0. The narrower stance let the fronts sit back to the concept's
+    opening at the button (and evened the two sides, with them the notches).
+  - Sheet workspace/cloth_renders/c12_g7_sheet.png (concept | n10 | n8, + notch closes). My read: the fronts and the
+    shirt V now match the concept's proportions at the button; both collar ends are pointed alike over their lapels;
+    still weak: the notch V reads only as an edge in clay, the chest V is narrower than the concept's (158 vs ~182 mm:
+    the lapels' roll lines sit in), a small lump at the wearer's left side neck in the front neck view.
+  - Spend this agent: $0.472 (this gate $0.076).
+  - STATE: best = out/c12_n10c.pkl (q_n9.txt line 2: gorge_drop 0.10, collar point 0.015, lapel stand 0.012).
+    NEXT: shoulders (item 3), CB collar crossings, the shirt re-sim on the final measures; the chest V width.
