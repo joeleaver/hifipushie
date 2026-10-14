@@ -2171,6 +2171,21 @@ mksheet.py <model> [prev=] (REFERENCE | ours | prev + close-ups), cmp.py <model>
   scalp-layer band under it; the nape ends in a ledge, not a fade (the nape's density needs the same ramp DOWNWARD,
   over ~1-2 cm: not built). Regression hg2: riff_a5 (half up's loose part) MOVED 1.96: the same style, its strands
   redrawn by the hairline ramp (no new fault seen; not accepted: the coordinator's call).
+### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)
+STATE: `strands.halo_soft` 0..1 (a dense soft halo: x4 halo hairs at 1, their stand-off x 0.35 (~4 mm), length x 0.4;
+pair with look.fine_alpha 0.2-0.3; hair_strands.SOFT_HALO); `look.seen` may be [r, g, b] sRGB floats and the reader's
+colour step emits them; `look.sun_warm` 0..1 (0 = sun-lightened lengths ASH: lighter, slightly less saturated, no warm
+turn). Tests: test_hair_loose 18, test_hair_read 17, test_hair_strands 26. Regression hg5: all eleven identical.
+Sheets (REFERENCE | now | previous): human_renders/hg_07_garrett_final.jpg, hg_jw_final.jpg, hg_lt19_final.jpg.
+FINDINGS: (1) the "render path's hue shift" on near-grey brown was 8-BIT QUANTISATION: at chroma ~5 one hex digit is
+5-10 deg of hue, so the Lab step's +6 deg came back as the same hex, and `seen_look` then amplifies the saturation x
+1/eevee_sat. With seen as floats one step landed: hue 33.7 -> 40.3 (picture 39.9). (2) halo_soft: the man's crop halo
+0.083 vs his 0.071 (matched; a visible soft fuzz on the crown's outline); the two long dark / brown heads did not move
+(0.05-0.08 vs 0.22-0.25): faint (alpha 0.3) single halo hairs over dark long hair are not the photos' dense bright
+fuzz: the remaining tell, to build as a back-lit / lighter halo (fly_light) or many more fine hairs, not more alpha.
+(3) Ash lengths + a few grey strands on a brown head (sun_warm 0, grey_amount 0.04, highlights 0.5): reads ash-brown
+with lighter lengths, but overall L* 30.6 vs 23 (too light) and the grey / ribbon strands are distinct white lines:
+less of each next time.
 ### hair-garrett2 (2026-10-14, branch `hair-garrett2` from main 1b2817d): loose-hair words, the nape fade
 STATE: groom.loose words `halo` / `flyaway` (loose hair's free locks no longer get the tail's quartered halo, and
 LOOSE_HALO 2x), `tuck` (one side behind the found ear), curtain bangs (`fringe.sweep "away"` + `curtain`; the face rule

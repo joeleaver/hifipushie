@@ -62,6 +62,8 @@ flat wisp clumps, the dark tangle at the part's start the far bank's strands see
 | fly_light | 0..1 (strands; default 0.3): hairs that left the mass (fly-aways, the halo, wisps) read lighter |
 | depth | 0..1 (strands; default 0.5): the under-layers of hair with `volume` are darker (the shadow EEVEE's strands do not cast on each other) |
 | vary | the value noise per strand / sub clump under all of it |
+| sun_warm | 0..1 (default 1): how much the sun-lightened lengths also warm; 0 = ASH lengths (lighter, a little less saturated: a mousy / ash brown) |
+| seen as floats | `look.seen` may be [r, g, b] sRGB 0..1: near-grey hair's hue does not survive 8 bits (one hex digit = 5-10 deg at chroma ~5); the reader's colour step emits floats |
 | sun_length | m (default 0.28): the hair's age from the scalp by which `sun` lightening is full. The FRONT view sees the first 2-10 cm of every strand, the back the lengths: at 0.28 the dome stays dark from the front while the back is light; Tess 0.06 (with root 0.05: a little root darkness at the part) |
 | tip_alpha, backscatter, scatter | 0..1 each (EEVEE strands; default 0 = off): the game hair shader's terms: see-through tips, warm light through thin / back-lit hair, a darker richer core with lighter outer layers (Tess: 0.5 / 0.6 / 0.8; checklist 11b, 11c) |
 Also: eevee_sat / eevee_gain (how EEVEE draws the colour; Tess 0.3 / 1.4), seen (the colour it should READ, e.g. from a
@@ -85,6 +87,7 @@ photo), grey_amount, cycles_* (Cycles only). Match by measure: look_hair measure
    | tips, roots, taper | ragged ends, staggered roots, strands thinning to a point | tips 0: a cut brush |
    | under, under_length (m), soft (m), baby | the scalp layer and the hairline's fade | under 0: skin through the hair |
    | halo | short broken hairs standing up off the hair and curling (the fuzz round a loose updo against the light); flyaway strands only drift mm off their lock and end where it ends, so flyaway alone shows no halo | 1: a bristly brush; 0.5 a soft fuzz |
+   | halo_soft | 0..1: the halo DENSE AND SOFT: up to 4x the halo hairs, ~4 mm off the hair and ~2 cm long (a fuzz along the silhouette, not a few hairs standing off); pair with look `fine_alpha` 0.2-0.3. Matched a grey crop's halo; not enough on long dark hair (hair-garrett3) | 0: the old single halo hairs |
    | free: {dial: value} | the dials of hair that has LEFT the head (a tail) where they differ: a tousled top (loose 0.7) with a tail of defined wavy locks (free loose 0.2-0.35) | loose 0.7 on a tail: crimped wool |
    | on one lock: strands {clump, tips, roots, density} | that lock's own share of the object's dial | |
 
