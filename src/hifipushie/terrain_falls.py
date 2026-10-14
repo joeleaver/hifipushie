@@ -213,6 +213,10 @@ EDGE_CELLS = 1.0  # cells: the crisp face reaches this far past the water's edge
 CLEAR_MARGIN = 1.0  # m: the sheet's clearance reaches this far past the water's edge each side
 CLEAR_UP = 3.0  # m over the lip's water the clearance reaches
 CLEAR_BLEND = 0.3  # m: the clearance's cut rounded by this
+SLOPE_NEAR, SLOPE_FAR = 0.5, 1.5  # m from the lip line: the field's slope correction eased from the grid's to the faced
+# column's (Field.column). Taken from the faced column right up to the face (FD over 0.25 m), s swung 1 -> 0.01 -> 1
+# across the riser and the face's normals (stencils metres off the surface: (z - h) x grad s) turned against it: black
+# shards on Kaze's sea-cliff fall at LOD 1-2
 
 
 class Faces:
@@ -262,14 +266,19 @@ class Faces:
         rx, ry = x[k] - F["c"][0], y[k] - F["c"][1]
         return k, rx * F["t"][0] + ry * F["t"][1], rx * F["n"][0] + ry * F["n"][1]
 
-    def column(self, x, y, h, col, touched=False):
+    def column(self, x, y, h, col, touched=False, near=True):
         """h at columns with each fall's face as a step on its lip line; col(x, y): the column without the faces.
-        touched: also return the indices of the columns a face changed (their slope is no longer the grid's)."""
+        touched: also return the indices of the columns a face changed (their slope is no longer the grid's) and, per
+        index, how far the slope may be taken from the faced column (0 within SLOPE_NEAR of the lip line, where the
+        face is: there the grid's smooth slope keeps the field's gradient, so the face's normals, as before; 1 from
+        SLOPE_FAR out, back to 0 at the hold's end, where the grid's own column takes over). near=False: from the face
+        itself too (a metric field for the AO, never for meshing or normals)."""
         if not self.any:
-            return (h, np.zeros(0, np.int64)) if touched else h
+            return (h, np.zeros(0, np.int64), np.zeros(0)) if touched else h
         x, y = np.asarray(x, float), np.asarray(y, float)
         out = None
         hit = []
+        wsl = np.zeros(len(x)) if touched else None
         for F in self.items:
             k, u, v = self._local(F, x, y)
             if not len(k):
@@ -288,9 +297,14 @@ class Faces:
             wa = smoothstep(F["half"] + F["fade"], F["half"], np.abs(v))
             out[k] = h0 + wa * (he - h0)
             hit.append(k)
+            if touched:
+                au = np.abs(u)
+                wsl[k] = np.maximum(wsl[k], wa * (smoothstep(SLOPE_NEAR, SLOPE_FAR, au) if near else 1.0)
+                                    * smoothstep(F["hold"], F["hold"] - 1.0, au))
         res = h if out is None else out
         if touched:
-            return res, (np.unique(np.concatenate(hit)) if hit else np.zeros(0, np.int64))
+            k = np.unique(np.concatenate(hit)) if hit else np.zeros(0, np.int64)
+            return res, k, wsl[k]
         return res
 
     def calm(self, p):

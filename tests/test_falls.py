@@ -120,6 +120,35 @@ def test_sea_face(T, field=None):
     print(f"ok sea fall in the cliff field: lip to the lip line, sheet clear {throw:.1f} m out, {len(P)} points air")
 
 
+def test_face_normals(T, field=None):
+    """The meshing field's normal on a fall's face points out of it, downstream (the slope correction taken from the
+    faced column right up to the face swung 1 -> 0.01 -> 1 across the riser; normals sampled off the surface turned
+    against the face: black shards on Kaze's sea-cliff fall at LOD 1-2). The AO's Metric field is only for AO."""
+    from hifipushie import terrain_mesh as tm
+    cf, R, G, *_ = field or _cliff_field(T)
+    f = T.falls[0]
+    c, t_, n = _frame(f)
+    up, dn, wl = f["lip"][0][2], f["pool"]["xyz"][2], f["width"]
+    pts = []
+    for v in np.linspace(-0.4, 0.4, 5) * wl:
+        for z in np.linspace(dn + 1.0, up - 1.0, 12):
+            lo, hi = -2.0, 2.0  # (along the flow: rock upstream, air downstream)
+            P = lambda u: np.array([[*(c + u * t_ + v * n), z]])
+            if not (cf.value(P(lo))[0] < 0 < cf.value(P(hi))[0]):
+                continue
+            for _ in range(30):
+                m = 0.5 * (lo + hi)
+                lo, hi = (m, hi) if cf.value(P(m))[0] < 0 else (lo, m)
+            pts.append(P(0.5 * (lo + hi))[0])
+    pts = np.array(pts)
+    assert len(pts) > 30, len(pts)
+    g = cf.value_gradient(pts, tm.NORMAL_H * G.v(0))[1]
+    g /= np.linalg.norm(g, axis=1, keepdims=True)
+    out = g[:, :2] @ t_
+    assert (out > 0.3).mean() > 0.97, np.sort(out)[:8]
+    print(f"ok face normals: {len(pts)} points on the face, downstream share p5 {np.percentile(out, 5):.2f}")
+
+
 def test_clutter(T):
     from hifipushie import terrain_mesh as tm, terrain_stream as ts
     base = tm.build_field(T)[0]
@@ -150,9 +179,11 @@ def test_lip_open(T):
     pts = np.array([c + u * t_ + v * n for u in (-2.5, -1.5, -0.8) for v in (-0.25, 0.0, 0.25) * np.array(f["width"])])
     h, s = base.column(pts[:, 0], pts[:, 1])
     X = np.c_[pts, h]
-    up = base.value(X + [0, 0, 3.0])
+    up = tm.Metric(base).value(X + [0, 0, 3.0])  # (the AO's field; the meshing field eases to it 0.5-1.5 m from the lip)
+    far = np.abs(np.array([u for u in (-2.5, -1.5, -0.8) for _ in range(3)])) >= 1.5
+    assert (base.value(X[far] + [0, 0, 3.0]) > 2.4).all()
     assert (up > 2.4).all(), (up, s)  # (metres: 3 m up is ~3 m from the surface)
-    ao = tb.ambient(base, X, np.tile([0, 0, 1.0], (len(X), 1)))
+    ao = tb.ambient(tm.Metric(base), X, np.tile([0, 0, 1.0], (len(X), 1)))
     assert ao.min() > 0.4, ao  # (open flat ground reads ~0.54; it read 0 before)
     mats = tm.Materials(T, base)
     Wt, _ = mats.weights(X, np.tile([0, 0, 1.0], (len(X), 1)))
@@ -195,5 +226,7 @@ if __name__ == "__main__":
     test_lip_open(T)
     Ts = _load(SPECS["sea"])
     test_sea(Ts)
-    test_sea_face(Ts)
+    fs = _cliff_field(Ts)
+    test_sea_face(Ts, fs)
+    test_face_normals(Ts, fs)
     print(f"all ok {time.time() - t:.0f} s")
