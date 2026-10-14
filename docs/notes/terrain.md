@@ -1340,8 +1340,8 @@ export into out/<tag>), glb.py (GLB reader: primitives in world xyz, embedded im
 directions / material weights at the lip), notch.py (the column across the lip), rend124.py <tiles dir> <tag>
 (renders terrain3d_renders/pw124_*), orig/src = HEAD before item 1 (PYTHONPATH it to run a test on old code).
 
-RESTART: item 1 done in code + test (commit below); island re-export is Pushieworld's (message sent to main). NEXT: item 2
-(note 126: meta.json river `water` widths / pool radii vs the water the cut channels hold).
+RESTART: items 1-2 done (commits below); the island re-export is Pushieworld's (main told). NEXT: item 3
+(note 125: the cliff shell's drawn surface vs the corridor ground; item 1 already took it from >10 cm on 12 % to 1 %).
 
 - Item 1, note 124 (black slab at crown_beck's tall-fall lip, [1310, 1511], tile 20_23). Two causes:
   (1) AO. `Field.column` took the faces' step (terrain_falls.Faces, note 120) for h but kept the GRID's slope correction s,
@@ -1360,3 +1360,36 @@ RESTART: item 1 done in code + test (commit below); island re-export is Pushiewo
   Seen (pw124_pair_top/lip): the slab no longer reads black; the face's fade into the grid's ramp past the water's edge
   (|v| > half width + 1 cell) is still a steep slanted corner facet, unchanged in the field (now meshed finer).
   Test tests/test_falls.py::test_lip_open (field 3 m over the lip > 2.4, AO > 0.4, bedrock > 0.5; on HEAD 0.44 m).
+- Item 2, note 126 (deep water outside meta.json's river widths / pool radii; their 1508 m2). Scratch measure126.py
+  <export dir> <tiles dir> (the corridors' ground flooded at each river's nearest water-line level, deeper than 15 cm,
+  connected to the channel, outside line +- width/2 + 1 m, pools, lips, lakes: a STATIC spread, so it over-counts round
+  falls; same places as theirs), wet126.py, xs126.py / pool126.py / fieldlow.py / pit.py (cross-sections, a pool's
+  surroundings, field vs T.H under the water), cor126.py <terrain> <tag> (heightmap export + whole-terrain corridors).
+  Three causes:
+  (1) meta.json `rivers.<r>.water` wrote river_water_lines' `width`, which is a HALF width (forms.water: wet = d <=
+  width; Streams, corridors and the falls' `width` all read it as half). A game trimming to +- width/2 kept a quarter
+  of the channel's width on each side. Now meta writes the FULL width (the description says so).
+  (2) The cut banks (Streams.dz) drop ground beside the channel under the water. `terrain_stream.wet_design(T)`: per
+  water-line sample, cross-sections of the ground as the field reads it (T.H cubic + Streams.dz) out to 30 m each
+  side, wet under the level by 5 cm, gaps under 1 m bridged, counted only where a bank closes it (ground falling away
+  holds no standing water); width = 2 x the farther side, never under 2 x half. Over a fall's lip band and pool the
+  design is kept (cross-sections there run along the lip band / into the amphitheatre: 60 m). meta's points take the
+  widest of the 5 samples each stands for. Island: widened at 102 / 41 / 40 / 15 / 2 samples by up to 2-3.6 m.
+  Pools: `pool.wet_radius` (meta and tiles manifest falls; META_NOTE) = how far the pool's level stands, by rays at
+  its level up the river and to the sides, only when the basin closes on every side (the island's pools sit on
+  hillsides open on one side: all keep their radius; a flood fill reached 30 m on the crown tall fall's open side).
+  (3) The vale_river 6 m fall's "13 m deep, 231 m2 round [1522, 1202]": not the pool. The 3D field takes the
+  heightfield's facets back out on steep ground (Field: H - wr x facet_delta); a 19 m facet spire beside the lip
+  came out and left a pit at 63 m beside a lip at 73.7 (corridor 55-62 m): the river's water ran into it.
+  `terrain_mesh.hold_rivers(T, H, ref)` after the field's own H edits: within 30 m of a water line, where the
+  terrain's ground (before the field's edits) stands 0.3 m over the nearest sample's level, the field's ground stays
+  at least there. Field ground under a river's level where T.H is over it: 656 -> 420 m2 on the island (vale 352 ->
+  172, Field.H itself 220 -> 0; the rest are the column's own edits: cut banks 0.2-0.4 m, a fall's downstream
+  side). Corridor at the vale lip: the pit's floor 55 -> 67.7 m (pool level 67.7).
+  Before / after with measure126 (static spread, both on our corridors' ground): 3480 -> 630 m2; what is left sits
+  round fall lips and pools, where the static measure gives cells beside an amphitheatre the lip's level.
+  Spots they named (meta width before -> after): vale [1719, 935] 12.97 -> 26.36, [1630, 993] 7.99 -> 18.0,
+  [1773, 854] 19.23 -> 40.5, [1570, 1087] 3.01 -> 6.35; kaze [285, 1392] 3.42 -> 7.5; crown's pond above the tall
+  lip 2.0 -> 4.0 (the pond itself was facet removal: held now); downs' mouth stays 0 (the sea's water).
+  Tests: test_streams::test_water_design_covers_the_water (the field's water across 167 sections within width/2 +
+  0.6 m; HEAD: widths were half), ::test_hold_rivers.

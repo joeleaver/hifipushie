@@ -1917,6 +1917,8 @@ class Terrain:
         (x0, y0), (x1, y1) = self.spec["extent"]
         span = (n - 1) * self.cell  # the square the grid covers (padded frames reach past the level)
         rivers = {}
+        from . import terrain_stream
+        wet = terrain_stream.wet_design(self) if getattr(self, "river_water_lines", None) else {"rivers": {}, "pools": []}
         for nm, L in self.lines.items():
             if L.kind != "river":
                 continue
@@ -1924,9 +1926,17 @@ class Terrain:
             pts = [[*map(float, xy), float(h)] for xy, h in zip(L.xy[::4], L.h[::4])]
             river = {"bed_xyz": [[round(v, 2) for v in p] for p in pts]}
             if rw is not None:
+                # the FULL width the water covers as the ground holds it (river_water_lines' width is a half width:
+                # meta gave that, and a game trimming its water to +- width / 2 cut real water; pushieworld note 126),
+                # the widest of the samples each written point stands for
+                ww = ndimage.maximum_filter1d(np.asarray(wet["rivers"].get(nm, 2 * np.asarray(rw["width"])), float), 5,
+                                              mode="nearest")
+                ww = np.where(np.asarray(rw["width"]) > 0, ww, 0.0)
                 river["water"] = [[round(float(x), 2), round(float(y), 2), round(float(z), 2), round(float(w), 2)]
-                                  for (x, y), z, w in zip(rw["xy"][::4], rw["level"][::4], rw["width"][::4])]
+                                  for (x, y), z, w in zip(rw["xy"][::4], rw["level"][::4], ww[::4])]
             rivers[nm] = river
+        falls = [{**f, "pool": {**f["pool"], "wet_radius": r}} if f.get("pool") and r is not None else f
+                 for f, r in zip(getattr(self, "falls", None) or [], wet["pools"] or [None] * len(self.falls or []))]
         from .terrain_sea import cliff_feet
         from . import terrain_lines
         meta = {"extent": self.spec["extent"], "cell": cell, "height_range": [lo, hi], "size": [H.shape[1], H.shape[0]],
@@ -1945,9 +1955,10 @@ class Terrain:
                           "dry ground a person can walk (45 deg or less) and the roads",
                           **{nm: "density 0..1" for nm in self.cover}},
                 "trees": "trees.csv (x, y, z, kind, layer), world metres; tree layers aren't in the splats",
-                "rivers": rivers, "rivers_water": "per point [x, y, water surface z, water width m] (0 where it's dry "
-                                                  "or in a lake)",
-                **({"falls": self.falls, "falls_note": __import__("hifipushie.terrain_falls", fromlist=["x"]).META_NOTE}
+                "rivers": rivers, "rivers_water": "per point [x, y, water surface z, water width m]: the full width the "
+                                                  "water covers as the ground holds it, centred on the point (0 where "
+                                                  "it's dry or in a lake)",
+                **({"falls": falls, "falls_note": __import__("hifipushie.terrain_falls", fromlist=["x"]).META_NOTE}
                    if getattr(self, "falls", None) else {}),  # (waterfalls, terrain_falls)
                 "fords": {nm: {"at": f["xy"], "river": f["river"], "width": f["width"], "depth": f["depth"],
                                "bed": round(self.height(f["xy"]), 2)} for nm, f in getattr(self, "fords", {}).items()},

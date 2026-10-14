@@ -27,7 +27,9 @@ from .terrain import smoothstep
 
 META_NOTE = ("per waterfall: lip = two [x, y, z] points across the falling water at the lip's water level (the "
              "sheet's top edge), drop m (lip to the pool's water), width m, flow = the river's direction [x, y], pool = "
-             "the plunge pool (xyz = its centre at its water level, radius m, depth m; null in the sea), into = river | "
+             "the plunge pool (xyz = its centre at its water level, radius m, depth m, wet_radius m = how far the water "
+             "stands at that level where the basin closes round it (the radius when a side is open); null in the sea), "
+             "into = river | "
              "lake | sea. Draw the sheet from the lip down to pool z, spray and foam at the pool. The rivers' water "
              "points step down at the lip.")
 FACE_MIN_DEG = 60.0  # the report warns when the built face is gentler than this (cells too coarse for the drop)
