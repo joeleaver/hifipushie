@@ -67,5 +67,7 @@ def test_camera_distance_is_a_freedom_that_keeps_the_picture_scale():
 def test_dense_reads_are_no_surer_than_their_measured_error():
     from hifipushie import face_ruler as fr
     assert "ears" not in fr.DENSE_REGIONS and "scalp_neck" not in fr.DENSE_REGIONS
-    assert fr.DENSE_REGION_SIG["profile"]["lids"] > 4 * fr.DENSE_REGION_SIG["front"]["lids"]     # a true profile's lids: 4 mm against 0.7
+    assert fr.DENSE_REGION_SIG["profile"]["lids"] > fr.DENSE_REGION_SIG["front"]["lids"] >= 2.0   # a true profile's lids: 4 mm on renders;
+    #   the front's 0.5 (renders) is 2.1 on photographs of scanned heads (readmix): each floor is the larger measurement
+    assert min(min(v.values()) for v in fr.DENSE_REGION_SIG.values()) >= 1.3
     assert fr.DENSE is False

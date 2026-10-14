@@ -1,0 +1,1 @@
+{"cycles_width": 1.8, "cycles_sat": 0.65, "variation": 0.8, "sun": 0.35, "highlights": 0.6, "highlight_contrast": 0.7, "depth": 0.7, "specular": 0.3, "roughness": 0.5, "vary": 0.5, "eevee_gain": 1.65, "eevee_sat": 0.33, "lit": "#58493a", "gap": "#221a13", "fly_light": 0.2, "root_dark": 0.8, "gloss": 0.6}

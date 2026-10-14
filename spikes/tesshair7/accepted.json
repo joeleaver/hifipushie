@@ -1,0 +1,260 @@
+[
+ {
+  "name": "tess",
+  "head": "tess_a1",
+  "carry_from": "th_T66",
+  "style": "styles/W17_style.json",
+  "look": "styles/W17_look.json",
+  "seed": 0,
+  "shots": true,
+  "views": [
+   "v0",
+   "v1",
+   "v2",
+   "backl"
+  ],
+  "size": 768
+ },
+ {
+  "name": "riff_a1",
+  "head": "hu_w30",
+  "label": "sleek low | colour FLAT",
+  "style": {
+   "tie": "low",
+   "tightness": 0.9,
+   "neatness": 0.9,
+   "volume": 0
+  },
+  "look": {
+   "variation": 0,
+   "sun": 0,
+   "highlights": 0,
+   "fly_light": 0,
+   "vary": 0.0,
+   "depth": 0
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9a1"
+ },
+ {
+  "name": "riff_a2",
+  "head": "hu_w30",
+  "label": "LOOSE low (default volume 0.6) | default colour",
+  "style": {
+   "tie": "low",
+   "tightness": 0.4,
+   "neatness": 0.7
+  },
+  "look": null,
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9a1"
+ },
+ {
+  "name": "riff_a3",
+  "head": "hu_w30",
+  "label": "high ponytail (default: no volume) | SUN 0.8",
+  "style": {
+   "tie": "high",
+   "tightness": 0.7,
+   "part": "none",
+   "tail": {
+    "length": 0.3,
+    "wave": 0.3,
+    "fullness": 0.6
+   }
+  },
+  "look": {
+   "sun": 0.8
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9a1"
+ },
+ {
+  "name": "riff_a4",
+  "head": "hu_w30",
+  "label": "top knot (default) | HIGHLIGHTS 0.7",
+  "style": {
+   "tie": "top",
+   "tightness": 0.6,
+   "part": "none",
+   "tail": "bun"
+  },
+  "look": {
+   "highlights": 0.7,
+   "highlight_contrast": 0.8
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9a1"
+ },
+ {
+  "name": "riff_a5",
+  "head": "hu_w30",
+  "label": "half up (default: no volume) | variation 1",
+  "style": {
+   "tie": "mid",
+   "half": true,
+   "length": 0.24,
+   "tightness": 0.5,
+   "tail": {
+    "length": 0.2,
+    "wave": 0.3,
+    "fullness": 0.3
+   }
+  },
+  "look": {
+   "variation": 1.0
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9a1"
+ },
+ {
+  "name": "riff_a6",
+  "head": "hu_w30",
+  "label": "high ponytail, volume 0.5 ASKED (a pouf) | gloss 0.6",
+  "style": {
+   "tie": "high",
+   "tightness": 0.7,
+   "part": "none",
+   "volume": 0.5,
+   "tail": {
+    "length": 0.3,
+    "wave": 0.3,
+    "fullness": 0.6
+   }
+  },
+  "look": {
+   "gloss": 0.6
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9a1"
+ },
+ {
+  "name": "riff_b1",
+  "head": "hu_m30",
+  "label": "sleek low | colour FLAT",
+  "style": {
+   "tie": "low",
+   "tightness": 0.9,
+   "neatness": 0.9,
+   "volume": 0,
+   "tail": {
+    "length": 0.16
+   }
+  },
+  "look": {
+   "variation": 0,
+   "sun": 0,
+   "highlights": 0,
+   "fly_light": 0,
+   "vary": 0.0,
+   "depth": 0
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9b1"
+ },
+ {
+  "name": "riff_b2",
+  "head": "hu_m30",
+  "label": "LOOSE low side (default volume) | default colour",
+  "style": {
+   "tie": "low",
+   "side": "left",
+   "tightness": 0.4,
+   "neatness": 0.6,
+   "tail": {
+    "length": 0.18,
+    "wave": 0.5
+   }
+  },
+  "look": null,
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9b1"
+ },
+ {
+  "name": "riff_b3",
+  "head": "hu_m30",
+  "label": "man bun (default) | SUN 0.8 + grey 0.08",
+  "style": {
+   "tie": "high",
+   "tightness": 0.6,
+   "part": "none",
+   "tail": "bun"
+  },
+  "look": {
+   "sun": 0.8,
+   "grey_amount": 0.08
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9b1"
+ },
+ {
+  "name": "riff_b4",
+  "head": "hu_m30",
+  "label": "low plait, volume 0.4 | HIGHLIGHTS 0.6",
+  "style": {
+   "tie": "low",
+   "tightness": 0.6,
+   "volume": 0.4,
+   "tail": {
+    "kind": "plait",
+    "length": 0.3,
+    "fullness": 0.6
+   }
+  },
+  "look": {
+   "highlights": 0.6
+  },
+  "views": [
+   "front",
+   "three_quarter",
+   "back"
+  ],
+  "size": 420,
+  "stage": "th_W9b1"
+ }
+]

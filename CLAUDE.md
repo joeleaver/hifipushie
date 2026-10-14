@@ -115,7 +115,7 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   with one shared Geometry Nodes group `hp_lock`: resample, flat side facing away from the head centre + Flip + Twist and
   -> full notes: docs/notes/hair.md
 - `hair_flow.py` (2026-10-11): swept-back tied hair as a STYLE (`groom.tied`, tool `tie_hair`: ponytail / bun / plait /
-  half up; flow-field gather, hanging tail, escaped hairs). -> full notes: docs/notes/hair.md "## tesshair3"
+  half up; flow-field gather, hanging tail, escaped hairs; `volume`, look variation / sun / highlights: "## tesshair7"). -> full notes: docs/notes/hair.md "## tesshair3"
 - Cloth (2026-10-01, `cloth.py` + `blender_cloth.py`, `pattern.py`, `tailor.py`, `freesewing.py`; the user: garments as
   real construction, drafted made-to-measure, sewn and simulated, never a finished garment warped onto another body).
   `spec["cloth"] = {name: garment}`: `pattern.from` a design in `cloth_designs.json` (FreeSewing parts by name, wraps,

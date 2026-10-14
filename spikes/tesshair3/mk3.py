@@ -1,6 +1,6 @@
 """mk3.py <dst> <head model> <style.json | '{json}'> [from=<model: hairline + look>] [seed=3]: dst = the head model's
 spec wearing a tied STYLE (groom.tied, hair_flow.style) and nothing else: the hairline and look are taken from `from`
-(default th_T11: Tess's traced hairline; "none" = the head's default hairline and look). Only writes th_* models.
+(default th_T66: Tess's traced hairline; "none" = the head's default hairline and look). Only writes th_* models.
 Prints the lock counts; plot=1 also draws the locks' lines from four sides ($TOUT/locks_<dst>.png: no Blender)."""
 import copy, json, os, shutil, sys, time
 import numpy as np
@@ -11,7 +11,7 @@ kw = dict(a.split("=", 1) for a in sys.argv[4:])
 assert dst.startswith("th_"), dst
 tied = json.loads(st) if st.lstrip().startswith("{") else json.load(open(st))
 sp = copy.deepcopy(store.load(head))
-src = kw.get("from", "th_T11")
+src = kw.get("from", "th_T66")
 groom = {"tied": tied, "seed": int(kw.get("seed", 3))}
 h = {"style": "strands", "groom": groom}
 if src != "none":

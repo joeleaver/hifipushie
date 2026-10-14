@@ -64,7 +64,7 @@ def main():
         lk_ = kw["look"]
         spec["hair"]["look"] = {**(spec["hair"].get("look") or {}), **json.loads(open(lk_[1:]).read() if lk_.startswith("@") else lk_)}
     refs = json.loads((store.HOME / name / "human_refs.json").read_text())
-    sn = stage.ensure(os.environ.get("STAGE_MODEL", "th_T04"))
+    sn = stage.ensure(os.environ.get("STAGE_MODEL", "th_T66"))
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     st["hair"] = spec["hair"]
     res = {}

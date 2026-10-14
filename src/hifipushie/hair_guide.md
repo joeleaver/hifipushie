@@ -1,579 +1,62 @@
-# Hair: stylised, sculpted locks
+# Hair
 
-This is about feature-animation hair: a few big designed shapes that read as hair, not thousands of strands. Each lock
-is a Bezier curve in the model's Blender scene, swept with a cupped lens profile (wide and flat, thin edges, tapering
-to a point) whose flat side lies on the volume under it. Hair isn't part of the SDF field, so hair edits never
-rebuild the body.
+Hair is not part of the SDF field: it lives in the model's Blender scene, so hair edits never rebuild the body. Three
+paths, pick by the job:
+- REALISTIC hair (the default for a realistic human): a STRAND groom on Blender's Hair Curves (`hair.style`
+  "strands"). Tied back (ponytail, bun, plait, half up): `tie_hair` with a few style words (below). Loose: `groom_hair`
+  with `groom.loose`. Short cuts: a baked cap + sparse cards (below). Judge in EEVEE (`look_hair`).
+- STYLISED, feature-animation hair: sculpted LOCKS (a few big designed shapes): guide(topic="hair_locks").
+- GAME export: cards cut from the strands (`export_hair` / `export_asset`).
+Why the tools are built this way (practice, sources, engines, what went wrong): guide(topic="hair_background").
 
-Tools:
-- `groom_hair(name, groom={patch}, replace, stage)`: merges a patch into `spec.hair.groom` and regrows the generated
-  locks. Locks shaped by hand are kept. `drawn` can be patched by name instead of resent whole:
-  `{"drawn": {"sweep2": {"width": 0.07}, "qf*": {"root": 0.12}, "fringe": null, "stray1": {"azel": [...]}}}`
-  (patterns match several clumps, null drops one, a new name is added).
-- `look_hair(name, views, layout)`: the renders, plus the gates measured on them. Views include `close_front` and
-  `close_side` for the hairline and the part.
-- `hair_reference(name, trace, image_path, apply)`: matches a reference picture.
-- `edit_model` with kind `"hair.locks"` / `"hair.groom"` / `"hair"`: edits numbers directly.
-- `sync(name, hair_only=True)`: puts the locks in scene.blend for a person to shape. `pull` brings their edits back.
-- `export_asset`: exports the hair as its own atlas.
+## What makes hair read as hair (the checklist; tesshair7, from seven rounds of Tess's ponytail beside her photos)
+Judge each, one area at a time, against the reference in the same camera (`look_hair(views=["ref0", ...])` or
+fitted-camera close-ups); fix in this order. A rule's MEASURE is how to check it, its KNOB what sets it.
 
-## How artists do it
+| # | rule | the fault when it is missing | measure | knob |
+|---|---|---|---|---|
+| 1 | The mass stands OFF the skull: real hair is ~1.5-2 cm off the skull over the top and sides, 3-4 cm above a low tie | a combed cap hugging the skull ("flat") | outline stand-off from the skull through the fitted camera (spikes/tesshair7/standoff.py; mm per direction) | `volume` (amount, crown / sides / nape, hold) |
+| 2 | From the parting the hair RISES and arcs over, then falls down the side: convex arcs, not straight lines to the tie | straight diagonal strands laid flat | strand paths from the part drawn on both pictures (flowlines.py); the lock plot (lockplot.py) | `volume.root` (bend radius), `volume.arc` |
+| 3 | The mass is LOCKS with depth, not one shell: under-layers darker, locks of different height and width | a smooth helmet | by eye in close-ups; colour_variation `mass_sd` | `volume.layers`, `volume.locks` (keep <= 0.4: at 1 the crown's silhouette is wavy wires), look `depth` |
+| 4 | A HALO: fine, light, slightly curly hairs standing a few mm off the top layer along the whole silhouette | a surface, not hair (the strongest single tell) | by eye at the silhouette in front / profile; (reader: TODO) | `wisps.halo` (default with volume; gentle curls, never the old `strands.halo` on every lock: a wire grid) |
+| 5 | The PARTING is a soft line: hair rises and falls both ways, crosses it, scalp barely shows; it fades out a few cm back | a clean notch between two lobes, dark roots | close-up of the part from the front | `hairline` (zig), `volume.cross`, halo crossing (28 % of `wisps.halo`), part rows drawn fine |
+| 6 | The HAIRLINE thins out over ~1 cm with fine baby hairs; the temple is hair down to the ear | a hard dark edge, a shaved temple, a grey veil | close-ups of both temples and the forehead's corners | `hairline`, `wisps.baby`; the ear is found on the mesh (hair.ear) |
+| 7 | WISPS / escaped strands are fine, near-straight with a soft bend, a little lighter, hanging close to the face | corkscrew ringlets (doll-like), black wires, a grey veil of flat clumps | close-ups of the temples and in front of the ears | `wisps.curls` (escaped strands), `wisps.amount`; flat clumps are cut back automatically under volume |
+| 8 | COLOUR varies like real hair: per-strand and per-ribbon variation, darker roots, lighter older lengths, light ribbons ~10 % of the hair | "one flat brown" | `hair.colour_variation` (look_hair measure colour): hers on Tess L_sd 7.5, strand_sd 4.2, ribbon_sd 3.0, light ribbons 9-10 % at + 5.7 L* | look `variation`, `vary`, `highlights` + `highlight_contrast`, `root_dark`, `sun` |
+| 9 | LIGHTENING is lighter AND warmer, never greyer; the overall colour by measure (chroma, hue) | ashy grey lengths; ginger when overshot | colour_bands chroma / hue against the picture (Tess: chroma 8-9, hue ~69) | look `lit`, `gap`, `eevee_sat` (Tess 0.38), `sun` |
+| 10 | Highlight RIBBONS are irregular: a few broad soft ones and many thin, fading along their length, on the top layers | regular pinstripes; flat tan painted bands | colour_variation `ribbons.share` / `contrast`; by eye | look `highlights` (two scales built in) |
+| 11 | A light catches the hair: a sharp pale lobe toward the root and a broad warm lobe toward the tip (Kajiya-Kay / Marschner R and TRT) | matt, grey, plastic | a lit close-up of the dome beside the photo | look `gloss` (EEVEE; 0.6 on Tess). Cards: the card material's anisotropic two-lobe specular along the tangent (the cards carry tangents) |
+| 11b | Thin hair GLOWS: tips and fine / single hairs lighter and warmer (light through them), and see-through toward the tip | an opaque cut-out silhouette, solid tips | colour_variation `edge_L` vs `core_L` (Tess: the outline's thin hair ~2-5 L* lighter than the mass) | look `backscatter` (a translucent, back-lit warm term weighted to thin hair), `tip_alpha` (dithered alpha over the last 30 % of a strand). Cards: the atlas already fades its tips' alpha; back-scatter is the card material's transmission / subsurface term (UE groom: dual-scattering; a card shader: a back-lit wrap term) |
+| 11c | The CORE of the mass is darker and richer than its outer layers (multiple scattering inside a mass) | one flat value through the mass | colour_variation `core_L`, `core_chroma` | look `scatter` (by a lock's depth hp_sh: darker, more saturated) with `depth`. Cards: the cards' vertex colour carries depth (lower layers darker); saturation is a card-material tint |
+| 12 | A TAIL is strands from behind, not wide ribbons: finer strands, locks a little out of step, a ragged soft end | wavy ropes / ribbons, straw | back three-quarter beside the photo; tail area / length / width by mask (look_hair measure) | `tail.wave` (Tess 0.35), `tail.fullness`, `tail.tousle` |
+| 13 | Up-styles (high ponytail, top knot, man bun) and half up have NO volume by default: hair pulled up does not fall from its roots | radial ridges round the hairline, specks at the crown | the riffs sheet | volume is gated by tie height and half up; asked for there it is a smooth pouf |
+Before a change ships: re-render the accepted styles and riffs beside their last accepted renders (the regression
+sheet: `run.sh regress.py run tag=X` then `regress.py sheet tag=X`, spikes/tesshair7/regress.py + accepted.json:
+Tess's best through her fitted cameras + ten riffs on two other heads, each ACCEPTED | NOW | difference; renders are
+deterministic, so any mean difference over 0.3 flags MOVED; `regress.py accept tag=X` after a human look) so a fix
+can't silently break what worked.
+Isolate a fault before fixing it: render the groom with one piece off at a time (shots7.py `drop=<lock pattern>`,
+`S=<strand dials>`, `LS=<pattern>:<dials>`, `look=@file`): the crown's wire grid was the halo dial, the grey veil the
+flat wisp clumps, the dark tangle at the part's start the far bank's strands seen end-on.
 
-The sources (Hossimo, Dan Eder on 80.lv, Pablander, Brooke Eggleston, Emmyroid, MelanciaComics, Scheuermann, Animal
-Logic, Blender Studio, Disney's Tangled notes) agree on the order. The numbers are theirs where they give any.
-
-1. **Plan from the reference.**
-   - Squint at it, or blur it, to find the few big high-contrast chunks.
-   - Find the hairline, the parting, and the whorl/crown that everything flows from.
-   - A good design still reads when blurred, and from its outline alone.
-2. **Silhouette first: one volume.**
-   - A single solid mass fills the planned outline and covers the scalp completely.
-   - It sits a little off the skull: hair has thickness, and painted-on hair loses its volume.
-   - Judge it against the reference from the front, the 3/4 views and the back.
-   - Animal Logic's production tool works the same way: artists model an explicit outer silhouette and the hair is
-     made inside it.
-3. **Big shapes: split the mass along the flow.**
-   - Divide it into sections: fringe/front, top, sides, back.
-   - The part makes two masses on its own.
-   - Lines run unbroken from the part or crown to the tips. Long hair uses S-curves, but no two S's are the same.
-4. **Clumps, layered.**
-   - Each section breaks into clumps that sit on top of each other like shingles, not side by side.
-   - Higher and front clumps lie over the roots of the ones below and behind.
-   - The darkest values are deep in the overlaps.
-   - Sizes vary on purpose. MelanciaComics' 6-3-1: big shapes ~60% of the area (they carry the silhouette), medium
-     ~30% (direction, leading the eye), small ~10% (breaking up the big forms).
-5. **Breakup, sparingly.**
-   - Split some tips into twos and threes, leaving negative space between them. These gaps are what make hair read
-     as hair rather than a carved helmet.
-   - Add a few smaller clumps and one or two strays at the outline.
-   - Stylised hair keeps this pass light: many thin tips read as noise ("spaghetti").
-6. **Shading.**
-   - Roots and gaps dark, from a root-to-tip gradient and occlusion between clumps.
-   - Each lock a slightly different value.
-   - An anisotropic highlight band running along each lock, shifted per lock so the bands don't line up into one
-     stripe (Scheuermann's shifted Kajiya-Kay lobes, with noise on the shift).
-   - Optional: a rim on the edges, and the tips a shade lighter.
-
-What to avoid:
-- **Helmet:** the volume or one smooth surface showing, with grooves drawn on it.
-- **Spaghetti / noodles:** many thin locks.
-- **Clay:** too few shapes, nothing separating.
-- **Uniform locks:** the same width, length and spacing, with parallel tangents.
-- **Twins and symmetry:** repeated shapes, mirrored sides.
-- **Wig:** a hairline that doesn't grow from the skin.
-- **Claws:** tips standing up off the head.
-- **Curling ends.**
-
-## The workflow with the tools
-
-Look after every change: a look takes 4-30 s. The gates are numbers, but judge the pictures too. The clay row shows
-the shapes without colour; the thumbnail shows how the hair reads small.
-
-### 0. Setup
-
-- The head needs face landmarks: a `base` head gives `lm_*` joints. A kit head takes `groom.centre` (a joint).
-- `sync` the model once so the Blender scene exists. look_hair renders a head-cropped copy of it.
-- With a reference picture, match it first (the rule: every hair look is judged against the reference, from the
-  reference's own camera). Trace the image by reading pixels off zoomed crops with a grid:
-  - 8-10 landmarks;
-  - the part, from its front end back;
-  - the hairline;
-  - the visible hair outline;
-  - each big clump's flow, root to tip, with its width in px.
-- Then call `hair_reference(name, trace={...}, image_path=...)`. It fits the camera; expect a few px of error per
-  landmark, and more means a mislabelled point. Check the returned picture: landmarks green, the reprojection cyan.
-- `apply=True` carries the trace onto the head: the parting line, hairline front points, and drawn clumps along the
-  traced flows, plus rows behind and on the part side that the picture can't show.
-- Put a landmark beside the ear in the trace (`lm_jaw_0.R` or `.L`, the face's edge just in front of the ear at
-  eye level). Face landmarks alone barely fix the camera's pitch, and the cranium is what hair sits on. On the
-  golfer, the face-only camera put the bare skull at the reference's hair top, so every outline number on top was
-  wrong by ~10 mm. One ear point moved the IoU from 0.60 to 0.73 with no change to the hair.
-- Match every view of the character you have: `trace["views"] = {"far": {landmarks, hair, hairline, part?, clip_y,
-  crop}}`. A view can be another figure in the same picture (it shares the lens, so only the pose is fitted) or
-  another picture, such as a turnaround's side or back (give it its own `"image"`). Each view gets its own matched
-  row and its own numbers in look_hair. Where two views disagree by more than the camera error, no single fix will
-  satisfy both: split the difference and say so.
-
-### 1. Silhouette
-
-```
-groom_hair(name, groom={"hairline": {...}, "parting": {...}, "volume": {...}}, stage="mass")
-```
-
-- The volume, in metres of hair over the scalp per region: front, top, crown, sides, back, nape.
-- `ramp`: how the front rises. About 0.03 gives a quiff's rolled front. 0.02 is a wall the front locks jut over;
-  0.06 leans the front back into a slope.
-- `across`: how round it is across the top.
-- `crest`: where across the head the top's crest runs (x in metres, his left positive). On a side part, put it just
-  across the part on the swept side (golfer: 0.025): the quiff is highest there and falls away toward the swept
-  side.
-- `taper` `{"from": el, "to": el, "floor": f}`: sides and back keep their full volume down to elevation `from`
-  (degrees), then ease to `floor` x that volume at `to`. This gives short tapered sides and back under a full
-  occiput, instead of a bucket that is as full at the nape as higher up.
-- `parting.full` piles volume onto the swept side. On the golfer it was the main reason that side stuck out 12 mm
-  too far: set it from the outline numbers, not by eye.
-- The hairline is a crisp, designed line: `hairline.front` (in brow-to-nose units), temples, sideburns, nape.
-
-Check:
-- Gate: the outline's dents. They must be <= 1.5 mm in front and 3/4. A pinched temple reads as a divot, and locks
-  never fix that later.
-- Height over the brows, width at the temples, and IoU / outline px against the trace.
-- The outline per head region, in every matched view: front, top, side.L/R, back.L/R, back.
-  - Each ray from the head centre is labelled by the part of the volume that makes the outline there.
-  - `err` = ours minus the reference, in mm; + means ours sticks out further.
-  - `ref_hair` / `our_hair` = how far each outline stands outside the bare head. A negative `ref_hair` means the bare
-    head is already outside the reference there: hair can't fix that, so check the camera or the head.
-  - `over_brow_mm` = [reference, ours]: the hair's top above the brows.
-  - Change the region named, by the millimetres given.
-- Measure before you decide what is wrong. On the golfer, "the hair hugs the skull" turned out to be hair 10-14 mm
-  TOO TALL, too full on the swept side and thin at the back sides. What read as flat was the front's shape and the
-  locks.
-- Get the outline right here: it's the one thing every later stage inherits.
-
-### 2. Big shapes
-
-```
-groom_hair(name, groom={"drawn": [...]}, stage="locks")
-```
-
-Draw the big clumps rather than generating them on a hero head.
-
-How to draw them:
-- Each one is `{"name": "sweep1", "top": [[x, y], ...]}`, metres from the head centre seen from above, root first.
-  Or use `"azel": [[az, el], ...]` on the head itself.
-- `"width"`: the clump's widest, in metres. Optional: `"taper"`, `"lie"`.
-- Name rows stem + number (sweep1, sweep2, ...). An under-layer clump is then laid between each pair of neighbours,
-  so their parting tips show hair, not the volume.
-- `look_hair(name, views=["layout"])` draws the plan from above.
-
-Rules from the artists:
-- **Count:** about 8-12 big clumps on a short or medium cut. Fewer reads as clay; more becomes a mop.
-- **Hierarchy:** one or two dominant sweeps (the fringe / front sweep) wider than the rest. look_hair reports the
-  hierarchy by area; aim near 0.6 / 0.3 / 0.1.
-  - Widths that are all equal (spread cv < 0.2) are the "uniform locks" look: make the front sweep 1.3-1.6x the
-    others and the part side 0.6-0.7x.
-- **Flow:** a fan from the part (or the crown whorl).
-  - Rows never cross, and tips run calmly the same way.
-  - Each row is a little longer and lower than the one in front; vary the lengths so the tips don't end on one line.
-- **Overlap:** front rows over the roots of the rows behind, higher clumps over lower ones. The roots lie flat; they
-  don't climb out of the parting.
-- **Asymmetry:** the part side short and flat, the swept side full (`parting.flat`, `parting.full`).
-- **A quiff's front:** 4-5 rows from the part sweeping across and down over the far temple. Make the front two big
-  (8-9 cm wide) and the rows behind 5.5-6.5 cm. Lay the front row 2+ cm behind the hairline, so it rides the front
-  roll; laid along the hairline, it sits in the ramp and dips and twists. Draw gentle arcs: chevrons twist a wide
-  lens. On the golfer, seven traced rows plus their under clumps in the front 6 cm stacked into slats and flakes.
-- **Keep paths inside the hairline.** A clump that crosses the hairline drops to the skin there and stands up again
-  as a fin. (On the golfer, the part-side clump curled past the temple.)
-- **Folds:** look_hair lists "folded locks". These are places where the spine turns within the lock's own half width,
-  so the inner edge runs backwards and the lens crumples into flakes. Ease the path or narrow the lock.
-  - Drawn clumps are eased automatically on the head (`hair.ease_bends`).
-  - A root takes the next point's tilt.
-  - A root dives just under the underlayer, not to the scalp. Sent to the scalp, it climbed 2 cm in its first
-    centimetre and folded: those were the flakes along the part.
-- **Find the culprit:** `look_hair(name, views=[...], only=["pside*", "sweep1"])` shows only those locks on the
-  underlayer, so you can see which locks make a busy patch.
-
-### 3. Secondary: sides and back
-
-Draw the sides and back as rows of broad drawn clumps on the head (`azel` paths), not as generated tiers. This
-worked on the golfer test head (hair_t13): 47 locks, back bare share 0.07, a calm combed read.
-
-```
-{"name": "bk1", "azel": [[141, 68], [112, 54], [118, 36], [124, 14], [129, -12]], "width": 0.07, "taper": 0.7}
-```
-
-- **Upper back row** (bk1..bk5): roots at the crown (el ~65), tips half-way down the back. Converge them a little
-  toward the back centre (az 180), and make the middle widest (0.09) and the ends narrower (0.065).
-- **Lower row** (nk1..nk5): roots just under the upper row's tips, tips at the nape hairline. This row tucks under
-  the one above, like shingles.
-- **Sides, per side:** 2-3 sweeps from near the part or temple back to behind the ear (sideR1..3, sideL1..3), each
-  lower one narrower.
-- **Blunt tips:** taper 0.7-0.8. Pointed wedges side by side leave a row of bare triangles.
-- **Under clumps:** each row's under clumps (between neighbours, automatic) show in the wedge gaps
-  (`drawn_under`: a sink of 0.35 by default). Per row: `{"sweep": 1.0}` buries them, false drops them.
-- **Gate:** bare-volume share of the visible hair < 0.10 in every view, the back too; lit bare volume < 0.03. The
-  volume is filler, never a surface. Some of the front's share is the parting's own shadow line: judge that one in
-  the picture.
-- **Generated tiers:**
-  - `tiers.strip` (shingled strips to the nape) read as tiles.
-  - `tiers.gap` at 4 cm made a mop of small locks at mixed angles.
-  - Use them only for quick coverage, never on a hero head. If you do, gap locks should be broad (6 cm) and kept to
-    sides/back/nape.
-
-### 3b. The hairline and the front
-
-The hairline is one designed line, and the front's strands come out of it at an angle. look_hair measures both in
-every matched view:
-- **hairline edge**: the rendered hair's edge against the skin, followed along the traced hairline.
-  - `rough_mm` (rms against its own running median) should be <= 1, and `tooth_mm` (the worst tip or notch) <= 3.
-  - `teeth` names the lock that makes each tooth.
-  - `holes` is skin showing just inside the edge.
-- **strand direction just inside the hairline**: the strands' angle to the hairline, read off the reference and our
-  render alike (structure tensor) in the band 4-28 mm inside it, in 6 stretches. 0 runs along the hairline like a
-  headband; 90 comes straight out of it. On the golfer the reference reads 10-30 degrees: a shallow diagonal, not
-  perpendicular.
-- **where the bare volume shows**: by head region, "hairline" meaning within 15 mm of it.
-
-What worked on the golfer (workspace/hair_r3, renders hr01-hr04):
-- **Front locks grow out of the edge.** Draw 3-4 front locks rooted along the hairline from the part's corner,
-  rising at the reference's angle and sweeping over to the far temple, with `"root": 0.1-0.15, "climb": 0.025`.
-  - The narrow root comes out of the layer and the lock's body forms 2-3 cm back.
-  - With full-width roots, a row of root ends read as scales along the forehead.
-  - A lock drawn along the hairline (a fringe) reads as a headband.
-- **`to_hairline`** (on a drawn clump): an inset in m, negative to tuck it into the skin, or `{"inset", "reach"}`.
-  The clump is moved across so its edge runs along the hairline, and cupped so that edge comes down onto the layer.
-  Good for one lock that should BE the edge. Don't use it at a temple corner: offsetting a path round a tight
-  corner folds it.
-- **`groom.hairline_edge`** `{"inset", "reach"}` does the same for every clump whose edge comes within `reach` of the
-  hairline. On the golfer it bent the side rows round the temples into folds; prefer per-clump.
-- **A root drawn on or past the hairline grows out of the skin** (its end is buried).
-- **`volume.edge_sink`** (0..1): the underlayer's front edge sunk under the front locks. Unsunk, it stands up as a
-  dark lip under the quiff. With a gentle `ramp` it hardly matters.
-- **`parting.front`** (m, default 0.015): the part's dip fades in that far behind the hairline. Dipping right to
-  the edge, it cut a V notch.
-- The underlayer's rows follow the hairline, and traced `front_points` ease onto the default line at the temples.
-  On a fixed grid the rim was a staircase of fine serrations; the old join stepped 4 mm at the temple corner.
-
-### 3c. Fins, blunt root ends, folds
-
-- **fins**: a lock edge standing over the layer by more than its own thickness + 3 mm. A wide flat lock laid
-  across the volume's shoulder stands on one edge.
-- **blunt root ends**: a lock's width where it rises out of the layer, times how steeply it rises. Over 15 mm, the
-  cut end shows: crescent fins along a parting in the side view, scales along a hairline. Lower `root` (0.1-0.2) and
-  raise `climb` (0.02-0.03 m) on rows that start at a parting or the crown.
-  - Not on the side rows: their narrow roots left the temples bare (bare share 0.09 -> 0.13).
-- **Folds at u ~0.15 on short rows** (the nape) were the root's climb out of the layer. On a lens tilted ~35
-  degrees, that bend lies in the lens's own plane. They are hidden under the row above, but real.
-  - Now the climb takes at least 12 mm (`climb`), and the root's tilt is half the lie's (ROOT_TILT).
-
-### 4. Breakup
-
-- Split the tips of a few big clumps: `"split": 2` (or `{"n": 2|3, "at": 0.6, "fan": 0.5, "keep": 0.2}`) on a
-  drawn clump.
-  - The clump stops a little past `at`.
-  - n narrower locks start there, lie over it and fan apart.
-  - The gaps between them are the negative space.
-- Use it on 2-4 clumps, mostly at the outline and the fringe, not everywhere. Twos more than threes.
-- Check every split in clay. A split in the middle of the top hardly shows: the clump on top covers it. The split
-  pays off at the outline, at the tips of the fringe, and over the ears and nape.
-- One or two small locks where the outline wants a break (a stray at the crown or temple) can be drawn too.
-- The size hierarchy (look_hair) counts small locks as narrower than 0.4x the widest:
-  - A 2-way split of a big clump only makes medium locks.
-  - 3-way splits on the nape and swept-side rows, plus 3-5 strays (2-2.5 cm wide, `root` 0.3) at the crown, over
-    the ears and at the far temple's outline, took the golfer from 0.8 / 0.2 / 0 to 0.64 / 0.27 / 0.09.
-  - Narrowing the outer back rows and two side rows to ~5.5 cm moved them to medium.
-  - Don't split the dominant front sweep. Splitting it re-laid the whole front (direction error 20 -> 26 deg) and
-    raised a 13 mm fin.
-  - 3-way splits at the nape read as a comb from behind: twos there if the back shows.
-- Gate: the clump steps at the outline (notches) should read: 2-5 mm. A perfectly smooth outline reads as a helmet;
-  steps much deeper than that read as spikes.
-
-### 5. Hand-shaping (when numbers won't get it)
-
-- `sync(name, hair_only=True)`, then edit the curves in scene.blend: points, handles, Alt+S radius, Ctrl+T tilt, the
-  modifier's Width / Thickness / Taper / Belly / Root / Edge. Shift+D adds a lock; X deletes one.
-- Then `pull`. Edits come back as `"hand": true` locks that a regrow leaves alone; new curves come back as new locks;
-  deletions go to `hair.removed` and are never regrown.
-- A person can do this in their own running Blender: sync and pull use the live session.
-- Single numbers can also be changed without Blender:
-  `edit_model(name, [{"op": "set", "kind": "hair.locks", "name": "sweep3", "value": {"width": 0.07}}])`.
-  Add `"hand": true` in the same value to keep the change through a regrow.
-- What has worked:
-  - A few BROAD locks (7-10 cm wide, ~6 mm thick, thin edges `edge` 1.6) lying on the volume, with a steady tilt.
-  - A top fan from the part.
-  - Sideburn, nape and behind-ear locks for coverage.
-- To fix a gate dent: find the lock that makes that height of the outline and pull it out 2-4 mm.
-
-### 6. Material
-
-Material settings go in `spec.hair.look` (sRGB hex colours):
-
-| Setting | What it does |
+## The look: colour keys for strand hair (`look` in tie_hair / groom_hair)
+| key | what it does |
 |---|---|
 | gap, lit | the dark-to-lit range |
 | root, edge | how far root and edges darken |
 | vary | value per lock |
-| sheen, sheen_amount | the band along the crown |
-| band_shift | how far each lock's band slides along it: keep it above 0, or the bands line up into one stripe |
-| grooves, groove_depth | strand grooves as bump: soft, uneven |
-| anisotropic, roughness | highlight shape |
 | tip, tip_amount | tips lighter or warmer |
-| grey | greying (where: groom.grey) |
-
-- All of this lives in the material, and the export bakes it into the maps. It never goes into geometry.
-- Judge it with the material on AND in clay, and in close-ups (views "close", "close_back").
-
-### 7. Export
-
-`export_asset` includes the hair:
-- The locks at 24 x 10 plus the underlayer.
-- Its own atlas, with KHR_materials_anisotropy (along the lock) and sheen.
-- Bound rigidly to `parts.hair.rig_bone`.
-
-## What goes wrong, and the fix
-
-| Symptom | Fix |
-|---|---|
-| Tips standing up (claws) | `lie` lower, the tip tucked onto the layer below |
-| Ends curling | fewer control points; the tip's tilt from the point before |
-| A mop | too many small locks at mixed angles: fewer, broader, one flow |
-| Helmet | volume visible between clumps: widen and overlap the big clumps, add under clumps, split some tips |
-| Tiles or shingles on the sides | uniform generated strips: broad hand or drawn locks |
-| Comb | equal tips on one line: vary lengths; split only some |
-| One highlight stripe across the head | band_shift up |
-| Jagged, torn hairline | `teeth` in the hairline-edge line names the lock: narrow its root, or lay one front lock with `to_hairline` |
-| A dark band under the quiff | "where the bare volume shows" says front hairline: front locks rooted at the edge, `volume.edge_sink` |
-| A headband across the forehead | the front lock runs along the hairline: compare the strand direction with the reference, re-lay it diagonally |
-| Scales along the hairline, crescents at the part | blunt root ends: `root` 0.1-0.2, `climb` 0.025 |
-| A lock on its edge (fin) | the fins line names it: narrow it, lower `lie`, or move it off the volume's shoulder |
-
-Adding small locks makes every one of these worse. Fix the big shapes first.
-
-# Hair: soft, loose hair as strand cards
-
-Sculpted locks (above) are the feature-animation answer. Soft, loose, wavy or tied hair is made another way in games:
-**hair cards**. `spec.hair.style = "cards"` draws the same locks as cards; everything above about silhouette, flow,
-hierarchy and the hairline still holds, because a lock stays the unit you design and edit.
-
-## How game artists do it
-
-The sources (listed at the end) agree on the method. Numbers are theirs.
-
-1. **A strand atlas.** A handful of pictures of strand clumps, each running root to tip: usually 6-8 of them, in a
-   density hierarchy. Sykutera's curly-hair atlas: 2 for volume, 3 for breakup, 1 of clumped strays and fly-aways, 1 of
-   short curls for the neckline. They are baked from a real strand groom (XGen, Blender hair curves, FiberShop,
-   Hair Card Designer, Fiberbake) or painted. Each picture comes as several maps: colour, **alpha**, and the three an
-   engine hair shader asks for: a **root** gradient (root-to-tip colour ramp), a per-strand **ID** (value variation)
-   and **depth** (strands deep in the clump darker, less specular; Unreal also offsets pixel depth with it), often
-   packed in one texture, plus a normal or flow/tangent map.
-2. **A hair cap first.** A "hair helmet" textured as hair under everything, so no scalp shows between cards and the
-   head already has the hair's base shading. Where the cap meets the skin, the scalp itself is painted with a hairline
-   shadow.
-3. **Cards in layers, most opaque first** (80.lv, CGMA, Polycount):
-   - a **base layer** of broad, nearly opaque cards blocking in the whole structure;
-   - one to three **breakup layers** of less and less opaque cards over it (clumps of 2-3 cards each);
-   - **fly-aways**: single-strand cards standing off the silhouette;
-   - last, the **transitions**: the hairline, temples, nape and ears, with short **baby hairs** (4-5 variations
-     round the neck, ears and temples, 2-3 on the forehead in the 80.lv ponytail).
-   Cards are few-segment strips, with edge loops only where they bend; a lengthwise fold or cup gives them body.
-   Roots are widened to hide the scalp. Leave negative space between clumps of curls.
-4. **Tied hair** (the 80.lv ponytail): cover the scalp with cards that run to the tie; define the tail's volume
-   with longer cards; then breakup cards, fly-aways and baby hairs. The tail hangs from the tie under gravity and
-   is fullest a little below it.
-5. **Shading.** Two-sided, one normal for both faces, bent toward the hair volume's own normal (transferred from
-   the cap or a proxy) so the mass shades as one soft form; anisotropic highlight along the strands, shifted per
-   strand by the ID map (Scheuermann); the root darker, tips lighter and more transparent; ambient occlusion baked
-   per layer into vertex colours.
-6. **Alpha.** Alpha blending sorts badly, so cards are drawn alpha-tested with dithering + temporal AA, or
-   alpha-to-coverage (hair "doesn't need blending, just alpha testing", and coverage antialiases it); mips must not
-   erode the alpha (visible scalp gaps come from too little overlap in the base layer or from mip erosion).
-7. **Budgets.** Marketplace game hair: 10-15k triangles "low", 25-37k "mid"; hero hair in current AAA games up to
-   ~100k. A whole character of the previous generation was 25-30k. Textures 1-2k for one head of hair. Three LODs,
-   the far ones dropping the upper layers and fly-aways.
-8. **Tools worth knowing:** GS CurveTools (Maya: cards bound to curves, so the groom stays curve-editable: what
-   our locks are), Hair Card Designer and Fiberbake (Blender: atlas baking + card grooming), FiberShop (atlas
-   baking), Unreal's Hair Card Generator (clusters a strand groom into clumps, one card per clump, textures shared
-   between similar clumps).
-
-What reads wrong: **plates** (cards too wide, too few, too opaque at the tips), **helmet** (no fly-aways, a clean
-outline), a **hard hairline** (no fade, no baby hairs), **scalp gaps**, **one-sided shading** (cards dark from
-behind), a **stiff tail** (no wave, every card the same length), **spaghetti** (only sparse cards, no base).
-
-## What the tools do (cards)
-
-- `hair.style: "cards"`: every lock becomes a stack of cards inside its own lens: a dense layer underneath, clumped
-  cards over it, wisps on top, fly-aways off it. The lock is still the Bezier curve you edit (numbers, or in
-  Blender + pull).
-- `hair.strands` (all optional):
-
-  | key | what |
-  |---|---|
-  | wave, wavelength | m the lock swings side to side, m per swing. Full on free hair, a third on hair lying on the head |
-  | curl | 0..1: how much of the wave leaves the lock's plane (1 = ringlets); free hair only |
-  | random | how far cards differ in phase, amplitude, length |
-  | clump | strands in the pictures gather into pointed sub clumps |
-  | frizz | single strands wander |
-  | flyaway | stray single-hair cards per card |
-  | layers | 1-3 card layers per lock |
-  | card_width | m, the widest card |
-  | tips | how ragged the ends are |
-  | baby | baby hairs per cm of hairline (0 = none) |
-  | soft | m over which the hairline breaks up into strands |
-  | round | how far normals bend to the volume's (soft shading) |
-
-  A lock can carry its own `"strands": {...}`.
-- The atlas is generated (8 tiles: dense x2, medium x2, sparse x2, fly-aways, baby hairs; colour + alpha, normal,
-  and an aux map: root / id / depth / alpha).
-- The underlayer is the hair cap: it wears a dense tile whose ragged end lies on the hairline.
-- **Tied hair**: `groom.tie` (see groom_hair): hair gathered over the head to a tie point, a tail that leaves it
-  (free under gravity, coiled into a bun, or plaited), the strands that escaped, the band.
-- Locks that leave the head are `"space": "xyz"` (metres from the head centre) with `"free": 1`: their underside
-  is hair, not the dark gap side (solid locks too).
-
-## Sources
-
-- Hossimo, [The right way to think about doing hair as an artist](https://hossimo.com/articles/tips-and-tricks-an-artist-friendly-approach-to-sculpt-groom-hair/):
-  primary / secondary / tertiary, no scalp at the first stage, the blur test.
-- Dan Eder (80.lv), [Sculpting stylized hair in ZBrush](https://80.lv/articles/guide-sculpting-stylized-hair-in-zbrush):
-  blockout first; repetition, wobble, symmetry and clipping as the common mistakes.
-- Pablander Academy, [Sculpting stylised hair in ZBrush](https://www.pablander.academy/tutorials/sculpting-stylised-hair-in-zbrush):
-  squint for the big chunks, volume then crevices.
-- Brooke Eggleston, [How to draw and design hair for characters](https://brookeseggleston.com/blog/how-to-draw-and-design-hair-for-characters):
-  big / medium / small, the part as two shapes, S-curves, negative space, the wig look.
-- Emmyroid, [Clip Studio tips](https://tips.clip-studio.com/en-us/articles/10830): ribbons, the whorl and part, no
-  repeated S, "grass", shadow / highlight / rim.
-- MelanciaComics, [Clip Studio tips](https://tips.clip-studio.com/en-us/articles/15907): the 6-3-1 size rule.
-- 80.lv, [Voluminous hair](https://80.lv/articles/004adk-005cg-cgma-student-project-voluminous-hair): opaque layers
-  first, root gradients, a grey value per strand group.
-- Scheuermann, [Hair rendering and shading (ATI, GDC 2004)](https://web.engr.oregonstate.edu/~mjb/cs557/Projects/Papers/HairRendering.pdf):
-  two shifted anisotropic lobes, noise on the shift, AO.
-- Animal Logic, [Hair Tubes (SIGGRAPH Asia 2023)](https://animallogic.com/wp-content/uploads/2023/12/HairTubes.pdf):
-  artists model the silhouette as a mesh and strands are made inside it.
-- Blender Studio, [Procedural hair nodes](https://studio.blender.org/blog/procedural-hair-nodes/): strand / clump
-  tools; for big stylised locks, curves with a profile remain the editable choice.
-- AWN, [Rapunzel lets her hair down](https://www.awn.com/animationworld/rapunzel-lets-her-hair-down-tangled): rhythm,
-  volume, twist and a designed swoop.
-\n
-More sources (cards):
-- 80.lv, [Creating a ponytail hairstyle with Maya XGen and Unreal Engine](https://80.lv/articles/creating-a-ponytail-hairstyle-with-maya-xgen-unreal-engine/):
-  scalp cards first, the tail's volume with longer cards, breakup, baby hairs (counts), FiberShop bakes, GS CurveTools, 3 LODs.
-- 80.lv, [Creating hair for real-time projects](https://80.lv/articles/creating-hair-for-real-time-projects/):
-  diffuse / alpha / depth / ID / root maps, layers placed by opacity, pixel depth offset.
-- 80.lv, [Tips and tricks on hair for games](https://80.lv/articles/tips-tricks-on-hair-for-games/): opaque base,
-  then breakup layers of less opaque cards, clumps of 2-3 cards, hairline and fly-aways last, AO per layer in the vertices.
-- Thomas Sykutera (Games Artist), [Curly hair breakdown](https://gamesartist.co.uk/curly-hair-character-breakdown-thomas-sykutera/):
-  the atlas's hierarchy, ~6 clump and 5 fly-away meshes reused, curls by bending cards along curves, a lengthwise
-  fold, negative space, shader settings.
-- Epic, [Photorealistic character: hair](https://docs.unrealengine.com/4.26/en-US/Resources/Showcases/PhotorealisticCharacter)
-  and [Hair Card Generator](https://dev.epicgames.com/documentation/unreal-engine/hair-card-generator-for-grooms-in-unreal-engine):
-  the hair shading model's textures (root, depth, ID), two-sided material, cards generated from clustered strands.
-- Polycount, [alpha test vs alpha-to-coverage for hair](https://polycount.com/discussion/comment/2500017).
-- Budgets: FlippedNormals game-hair listings ([short male](https://flippednormals.com/product/hair-short-male-hairstyle-16197):
-  11k low / 25k mid), Ellie Porfyridou, [Real-time hair](https://www.digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+) (up to ~100k in current games).
-- Superhive, [Fiberbake](https://superhivemarket.com/products/fiberbake-hair-cards): strand effects (curl, clump,
-  braid, frizz), atlas packing, a live triangle readout.
-
-# From a strand groom to game hair: what artists do, and where we stand
-
-Research of 2026-10-05 (the user: "do more research on how to turn blender hair into game-ready assets"). Claims
-marked (snippet) were read in a search summary only, not on the page; "not found" means no source turned up.
-
-## The method every tool shares
-
-1. **Groom a few strand CLUMPS, not the head**: 4-16 variants from dense and opaque to sparse, fly-away and
-   tip-heavy.
-2. **Bake them orthographically onto a plane = the atlas.** Passes, the union across tools: opacity, depth / height,
-   normal, root-to-tip gradient, per-strand id / random, AO, flow (tangent), colour. Unreal's minimal set is
-   diffuse, depth, root, unique id (80.lv XGen breakdown); FiberShop writes 10 at 4K (albedo, alpha, height, normal,
-   id, root/tip, flow, AO, translucency, specular; snippet); FiberBake (a Blender add-on, GPL, paid) bakes 12 with
-   Cycles and packs the atlas: the proof that a Cycles bake of Hair Curves is the Blender way.
-3. **Place cards in layers by opacity**: the base layer is the most opaque and hides the scalp; each layer above is
-   more transparent; break-up and fly-aways last. Epic's Hair Card Generator tutorial gives the only published
-   numbers (a messy bun, LOD 0, ~54.5k triangles):
-
-   | layer | clumps | triangles | atlas islands |
-   |---|---|---|---|
-   | coverage | 50 | 2,000 | 25 |
-   | mid | 200 | 7,500 | 60 |
-   | top | 500 | 25,000 | 60 |
-   | fly-aways | 371 single-strand cards | 10,000 | 25 |
-   | short hairs | 500 | 10,000 | 75 |
-
-   It makes the cards automatically: strands are clustered into clumps, three cards a clump, then the atlas. LODs
-   either cut triangles on the same textures or regenerate cards into reserved atlas space.
-
-Tools and what each teaches (none is a dependency: paid ones are method references only):
-- Hair Tool (B. Styperek, paid): cards generated from hair curves or a geometry-nodes hair system; bakes normal, AO,
-  diffuse, tangent, id, root, flow, depth; automatic UVs (snippet).
-- D. Bystedt's "Hair cards from curves" (free geometry nodes): card meshes deformed along hair curves, twist aligned
-  to the head surface. Cards from guides need nothing but nodes.
-- GS CurveTools is Maya only (curve-controlled cards with per-point width and twist, layers). HairNet makes guides,
-  not cards.
-- Blender Conference 2024, "Mesh Hair with Geometry Nodes and Hair Curves" (S. Matsumoto): editable cards and tubes
-  from nodes, hair curves used to make their textures.
-- Hair cap and hairline: only tutorial-level sources. Houdini's docs describe finer "transitional" cards between
-  layers; the usual scalp texture baked from the groom + single-strand cards along the hairline has no primary source.
-
-## Engines
-
-- **Unreal**: a Groom asset from an Alembic file. Schema (Epic's docs): `groom_version_major/minor` (1, 5),
-  per curve `groom_guide`, `groom_group_id`, `groom_id`, `groom_root_uv`, optional `groom_closest_guides` /
-  `groom_guide_weights`, per vertex `groom_color`, widths from the curves (`groom_width`). Each groom LOD is
-  strands, cards or a mesh; card textures are Depth, Coverage, Tangent, Attributes (root uv / coord u / seed),
-  Material, Auxiliary. Strands run on Windows, Mac (M2+), Linux, PS5, Xbox Series; cards and meshes everywhere.
-  Card shading: the Hair shading model with the tangent in place of the normal, dithered opacity resolved by
-  TAA / TSR, the depth map into pixel depth offset (snippet).
-- **Unity**: `com.unity.demoteam.hair` (strands from Alembic curves, clustering LODs, GPU simulation); HDRP's Hair
-  material is Kajiya-Kay ("approximate", for cards) or Marschner ("physical").
-- **Godot**: no strand hair. Cards with alpha scissor / alpha hash + TAA or alpha-to-coverage, anisotropy with a
-  flow map or a custom Kajiya-Kay shader.
-- **glTF**: `MASK` + alpha-to-coverage, or two passes (an opaque clip pass ~0.7 for depth, then a blended pass for
-  soft edges). `KHR_materials_anisotropy` is a brushed-metal lobe, not a hair BSDF: no transmission, no root / id
-  inputs. Hair in glTF is cards + a recipe for the engine's own hair shader.
-- **Blender writes strands**: Hair Curves go into Alembic and USD since 4.2 (release notes). Whether the stock
-  exporter passes named `groom_*` attributes through is unverified (a third-party exporter writes them with
-  pyalembic); Unreal wants centimetres (scale 100) and applied transforms.
-
-## Budgets (what could be sourced)
-
-Aloy (Horizon Zero Dawn): ~100k hair triangles on ~50 splines (snippet). A student LOD study: the same style at
-65k / 30k / 13k / 6k / 4k / 2.5k, quality holding "down to a point"; complex female hair 19k. Epic's tutorial: ~54k
-at LOD 0. Textures: 4K on marketplace assets, 512 px cited once for production (snippets). No published per-LOD
-table for NPC or mobile hair was found; cards -> fewer cards -> a helmet mesh matches Unreal's strands / cards /
-mesh LOD types but is not sourced as numbers.
-
-## "Volumised" strands (the user's remembered production pipeline)
-
-Nothing documented matches a strand-to-solid-mesh conversion. Sprite Fright's hair meshes were sculpted and
-retopologised by hand beside the particle hair and "updated to match grooming" (production log, May 2021). Blender
-Studio's procedural hair nodes post only notes that larger radii self-intersect when converted to mesh. No Charge or
-Wing It write-up, no per-clump Points to Volume pipeline. The nearest real practice is a profile swept along each
-clump's curve (Curve to Mesh): which is what our solid locks are.
-
-**Tried once and closed (2026-10-06, `spikes/hair_strands/hs3/volumise.py`, render ht_12_volumise_try.png):** each
-sub clump of Tess's tail (77 clumps), its strand points through Blender's Points to Volume (2 mm) -> Volume to Mesh
-(0.8 mm voxels): 3.6 million triangles in 45 s, and the result is rows of beads (strand points are 1 cm apart, so
-the spheres do not merge along a strand; resampling to under the radius multiplies the points by ten), with no
-strand detail and no material. It would still need a remesh, a retopology and a bake to be an asset: a worse route
-to what a swept lens lock already is. Stylised solid hair stays on locks (style "locks"); realistic hair is strands
-+ cards. Do not reopen without a documented production pipeline to copy.
-
-## Where our pipeline stands against that practice
-
-| practice | ours today | gap |
-|---|---|---|
-| groom on strands | Hair Curves from the spec's locks (`style: "strands"`) | in progress |
-| clump variants baked to an atlas, 8+ passes | a drawn numpy atlas (colour, alpha, normal, aux) | bake from the groom's own clumps with Cycles: alpha, depth, normal, root-tip, id, flow, AO; unlit colour |
-| cards generated from clumps, 3 a clump, layered by opacity | cards cut from each lock, 1-3 layers | cut from the strand groom's clumps; Epic's five layers and triangle shares as the default recipe |
-| scalp cap texture + hairline cards | a cap mesh wearing a hairline tile, baby cards | bake the scalp layer onto the scalp's UV; single-strand hairline cards |
-| LODs: fewer triangles on one atlas, then a helmet | one budget | LOD chain; the solid locks / cap as the last LOD |
-| engine shader: tangent-space hair BSDF, dithered alpha, depth offset | glTF MASK + anisotropy + extras | ship root / id / depth / flow maps + a recipe per engine |
-| strands for film and high-end engines | none | Alembic groom (`groom_*`) + USD beside the cards |
-
-## Sources (this section)
-
-- Epic, Alembic for grooms: https://dev.epicgames.com/documentation/unreal-engine/using-alembic-for-grooms-in-unreal-engine
-- Epic, Hair Card Generator tutorial: https://dev.epicgames.com/documentation/unreal-engine/creating-hair-cards-and-lods-using-hair-card-generator
-- Epic, cards and meshes for grooms: https://dev.epicgames.com/documentation/unreal-engine/setting-up-cards-and-meshes-for-grooms-in-unreal-engine
-- Epic, groom platform support: https://dev.epicgames.com/documentation/unreal-engine/groom-platform-support-in-unreal-engine
-- Blender 4.2 release notes, I/O: https://developer.blender.org/docs/release_notes/4.2/pipeline_assets_io/
-- Groom Exporter for Unreal (third party): https://blenderartists.org/t/groom-exporter-for-unreal-engine/1415778
-- 80.lv, hair for real-time projects (XGen): https://80.lv/articles/creating-hair-for-real-time-projects/
-- 80.lv, Bystedt's free hair cards from curves: https://80.lv/articles/free-hair-cards-from-curves-setup-for-blender/
-- FiberBake: https://superhivemarket.com/products/fiberbake-hair-cards
-- Unity demo team hair: https://github.com/Unity-Technologies/com.unity.demoteam.hair
-- Blender Studio, procedural hair nodes: https://studio.blender.org/blog/procedural-hair-nodes
-- Sprite Fright production log: https://studio.blender.org/films/sprite-fright/production-logs/2021/may
-- BCon24, mesh hair with geometry nodes: https://conference.blender.org/2024/presentations/1990/
-- DAE graduation work, real-time hair LODs: https://digitalartsandentertainment.com/article/367/+Ellie+Porfyridou++Graduation+Work%3A++Real-time+Hair+
-- Godot BaseMaterial3D: https://docs.godotengine.org/en/4.3/classes/class_basematerial3d.html
-
-# Strand grooms through the tools (realistic hair, and its game cards)
-
-For realistic hair the locks stay what you reason in, but they become GUIDES: `groom_hair(name, style="strands")`
-turns every lock into a flat clump of strands on Blender's Hair Curves, and a scalp layer of short hairs grows
-everywhere inside the hairline (the soft hairline, the cover under the locks). Solid stylised hair is style "locks"
-(the rest of this guide); nothing about it changes.
+| variation | 0..1 (strands; default 0.4): natural hair is never one colour. Locks drift in lightness, sub clumps and strands in hue and saturation. 0 = one flat colour (with `vary` 0) |
+| sun | 0..1 (strands; default 0.2): SUN-LIGHTENED lengths. The hair lightens and warms with its AGE, metres from the scalp (full by 28 cm): roots stay the look's colour, a ponytail's ends are the lightest. A tail's hair counts from where the gathered hair ended, not from a new root |
+| highlights, highlight_contrast | 0..1 (strands; default 0): lighter, warmer RIBBONS at two scales (many thin ~4 mm, a few broad soft ~15 mm, irregular edges), starting a few cm off the root, coming and going along their length, gathered where the sun reaches (the top layers, round the face, a tail's outside) and a little on some locks; contrast 0..1.5 (default 0.6) |
+| root_dark | 0..1 (default 0.5): how dark the root's first stretch (`root` of the length) is; 1 = the gap colour. A tail's strands have no dark root |
+| gloss | 0..1 (EEVEE strands; default 0): the highlight where light catches the hair, as two lobes: a sharp pale one shifted toward the root and a broader one in the hair's own warm colour shifted toward the tip |
+| fly_light | 0..1 (strands; default 0.3): hairs that left the mass (fly-aways, the halo, wisps) read lighter |
+| depth | 0..1 (strands; default 0.5): the under-layers of hair with `volume` are darker (the shadow EEVEE's strands do not cast on each other) |
+| vary | the value noise per strand / sub clump under all of it |
+| tip_alpha, backscatter, scatter | 0..1 each (EEVEE strands; default 0 = off): the game hair shader's terms: see-through tips, warm light through thin / back-lit hair, a darker richer core with lighter outer layers (Tess: 0.5 / 0.6 / 0.8; checklist 11b, 11c) |
+Also: eevee_sat / eevee_gain (how EEVEE draws the colour; Tess 0.3 / 1.4), seen (the colour it should READ, e.g. from a
+photo), grey_amount, cycles_* (Cycles only). Match by measure: look_hair measure "colour" (colour_bands + variation).
 
 ## The stages
 
@@ -640,6 +123,8 @@ tie_hair(name, style={"tie": "low", "side": "left", "tightness": 0.85, "neatness
 tie_hair(name, style={"hairline": 0.0})                                            # riff: a gelled, hard-edged hairline
 tie_hair(name, style={"tail": {"tousle": 0.9}})                                    # riff: a messier tail (ragged end, strays)
 tie_hair(name, style={"front": {"looseness": 0.6, "drape": 0.6}})                  # riff: a held-back head with a LOOSE front
+tie_hair(name, style={"volume": 0.6})                                              # riff: BODY: the hair stands up from the part and arcs over
+tie_hair(name, look={"sun": 0.8, "highlights": 0.4})                               # riff: sun-lightened lengths, lighter ribbons
 tie_hair(other, carry_from=name)                                                   # the same hair on another head
 look_hair(name, views=["around"])                                                  # six sides with the bust
 ```
@@ -651,11 +136,12 @@ What the words mean (all optional; `tie_hair(name)` alone is an ordinary low pon
 | `tie` | nape, low, mid, high, top (or deg) | the tie's height on the back of the head |
 | `side` | centre, left, right (or deg) | off to the person's own left / right (a side ponytail) |
 | `tightness` | 0..1 | 1 = scraped back flat; 0 = loose: the hair sags between root and tie, stands off the head, hangs over the temples |
-| `lift` | 0..1 | volume at the roots and over the top (default 1 - tightness) |
+| `lift` | 0..1 | a few mm of lift at the roots and over the top (default 1 - tightness); the default of `volume` |
+| `volume` | 0..1, or {amount 0..1, crown, sides, nape (x the amount there), root 0..1, arc 0..1, layers 0..1, hold 0..1} | the hair's BODY over the head. 0 = a cap lying on the skull (every strand runs straight to the tie along the scalp); 1 = big loose hair. With volume the hair STANDS UP out of its root, and out of the parting on both banks (`root`: 0 = eases off the scalp over ~4 cm, 1 = stands straight up and bends over within a cm), carries a dome (3.4 cm at the crown, 3 cm above the temples, 1.4 cm at the nape at amount 1; widest high, close where it passes over the ear), in LAYERS (`layers`: 0 = one shell, 1 = locks at every height: a thick mass, under-layers darker by look.depth), and its way first FALLS sideways and down from the root before the tie takes it back (`arc`: convex arcs from the part to the temple; default = amount), keeping its height until just before the tie (`hold`, default 1 - tightness; the tie then stands further off the head). Also `locks` 0..1 (the mass as LOCKS, not one combed shell: each lock's height swells and sinks along it, it wanders and crosses its neighbours, a few are lifted off the mass, widths and clump sizes differ; default by the amount) and `cross` 0..1 (a share of a part's bank locks lean over the line: no clean valley between two lobes). Default: `lift`, but NONE for an up-style (tie high / top: hair pulled up does not fall from its roots; asked for there it is a smooth pouf without fall, layers or locks) and none for half up. Measured on Tess's pictures: her outline stands 17-19 mm off the skull over the top, 17-24 mm at the sides, 30+ mm above the tie; that is amount 0.5 (crown 0.75, sides 0.6, hold 1) |
 | `part` | centre, left, right, none | none = combed straight back; a part is combed away from on both banks, in front only |
 | `ears` | tucked, covered | the hair passes over the ears' tops, or hangs over them |
 | `tail` | {kind: tail / bun / plait / none, length m, fullness 0..1, wave 0..1, tousle 0..1, to: back / shoulder} | what leaves the tie; a tail HANGS (gravity, the neck and shoulders hold it). `fullness` is its VOLUME: 0 = a sleek thin tail (1.8 cm radius), 1 = bushy (6 cm, more locks, airier, frizzier); it opens out of the band as a fan, full by ~9 cm. `wave`: 0 = straight, 1 = loose waves that run through the bundle (neighbouring locks nearly in step: sheets, not ropes). `tousle`: 0 = brushed (an even end, nothing leaves the outline), 1 = tousled, as SOFT irregular hair: some locks loosened out of the bundle, lock ends anywhere over the last half and open (no points, no flick), strands drawn fine at up to 2.7 x the count, single hairs and a few thin locks up to 18 cm leaving the outline with a curl; default 0.05 + 0.75 x wave. The hang, fullness and wave are the brushed tail's |
-| `wisps` | 0..1, or {amount 0..1, where: [part, front, temple, sideburn, nape], length [m, m], softness 0..1, loose: n} | the short soft hair that never reached the tie: small clumps of fine hairs along the hairline that fall along the skin (the front's out toward the temples; the temples' are a short fringe in front of the ear, about half drawn back toward the tie). softness 0 = small defined locks, 1 = wide and frizzy. `loose`: THICK loose locks a side (18-45 hairs, 9-19 cm) out of the forehead's corner and the temple, swept back over the temple toward the ear and drooping; default round(2.5 x amount). Default amount from neatness (none on a neat head); independent of it when given: a sleek head WITH wisps is `neatness` 0.95 + `wisps` 0.7 |
+| `wisps` | 0..1, or {amount 0..1, where: [part, front, temple, sideburn, nape], length [m, m], softness 0..1, loose: n, curls: n} (`curls`: fine separate CURLED locks a side, 5-12 hairs each, that leave the hair at the forehead's corners, the temples and in front of the ears and hang close to the face, each with its own length and helix; default round(9 x amount). Under hair with `volume` the flat clumps are cut back: lying on the skin they show as a grey veil) | the short soft hair that never reached the tie: small clumps of fine hairs along the hairline that fall along the skin (the front's out toward the temples; the temples' are a short fringe in front of the ear, about half drawn back toward the tie). softness 0 = small defined locks, 1 = wide and frizzy. `loose`: THICK loose locks a side (18-45 hairs, 9-19 cm) out of the forehead's corner and the temple, swept back over the temple toward the ear and drooping; default round(2.5 x amount). Default amount from neatness (none on a neat head); independent of it when given: a sleek head WITH wisps is `neatness` 0.95 + `wisps` 0.7 |
 | `front` | 0..1, or {looseness 0..1, drape 0..1, locks: n a side} | the FRONT on its own: the hair in front of the ears sags and stands off the head as if the style were that much looser there, while the back stays as tight as `tightness` (`looseness`); it may hang further over the forehead's corners and temples (`drape`); `locks` = thick loosened locks (30-70 hairs) that fall from beside the part across the forehead's corner and are drawn back over the temple (default round(3 x looseness); none toward a tie above 30 deg). Front wisps get thicker, longer and more with it, so they read against skin from the front. Default none: a neat held-back arc |
 | `hairline` | 0..1 | how SOFT the hair's edge is. 0 = a clean hard line (gelled; a wig's edge); 1 = the hair thins out over the last centimetre before the line, fine baby hairs (1-4 cm) stand along it from the part to the sideburn, the part wanders a few mm. Default 0.8 - 0.3 x neatness: every real hairline is soft, so this is on for every style (a neat head has baby hairs too) |
 | `escaped` | n a side, or {count, where: [part, temple, ear, nape], length [m, m]} | single stray HAIRS (each a thin line: use `wisps` for anything soft); default none |
@@ -891,29 +377,6 @@ and draws the cards as a fine uniform hatch. Back faces: the cards share one nor
 flips it on back faces (Godot does) draws a black fringe round the outline: un-flip it in the material. Not yet in
 any game.
 
-## What went wrong on the way (so you can recognise it)
-
-- Hair painted onto the face and shoulders like a stain: the collision proxy mesh was inside out (Shrinkwrap pulls
-  what it takes for "inside" to the surface). `tests/test_hair_loose.py::test_collider_mesh_faces_out`.
-- A curtain of hair over one eye, tufts standing along the parting: front hair has no direction from gravity (on
-  the forehead it points over the face), and the mass was lifted at the roots. Hair is turned aside where it would
-  hang in front of the face; the mass builds up as locks descend, not at their roots.
-- Long hair fanned out over both arms: a lock lying on a shoulder kept its sideways direction. It slides off to
-  the front or the back.
-
-- A dark band above the forehead: lower card layers darkened twice (vertex colour AND the atlas's depth shade) and
-  every upper card starting at one distance behind the line. One shade only; roots staggered and faded by alpha.
-- Brown stamps along the hairline: baby-hair tiles full of parallel hairs touching the quad's border, lines thinner
-  than a texel (an alpha test kept only where they crossed). A baby tile is 4-6 hairs with empty margins.
-- A "wire mesh" tail: thin ribbons on separate wave phases with no opaque base. Cards from the strands' own clumps
-  wave together; the core closes what is behind them.
-- Wisps as dark slashes that seem to start on the cheek: one filled ribbon whose root faded in. A wisp is 2-3 thin
-  cards of separate thick hairs on a tile whose root starts at full strength, rooted 8 mm inside the hairline. The
-  measurement said they were NOT under the skin; the visible part began lower because the root was faded.
-- Brick lines across the flow under an alpha test: staggered card roots on a tile that starts as a cut edge.
-- Cards as white plates under a rim light: a card is one flat sheet standing for many round hairs; half the
-  specular, tinted to the hair.
-
 ## Limits today
 
 Cards are still smoother than strands at bust distance (less strand-to-strand contrast), a few dark slits show
@@ -988,6 +451,11 @@ strands: a patch of the strand dials (hair.strands; guide(topic="hair"), "Strand
   taper, clump, clump_size, clump_shape, stray, tip_spread, loose, wave (m), wavelength (m), curl, random, frizz,
   flyaway, tips, roots, under, under_length, flat, soft, baby. look: a patch of the material (lit, gap, tip,
   tip_amount, vary, root, roughness, light "salon" | "flat").
+  look, the colour model (strands): variation 0..1 (default 0.4), sun 0..1 (sun-lightened lengths, by the hair's
+  age from the scalp; default 0.2), highlights 0..1 + highlight_contrast (lighter warmer ribbons; default 0),
+  fly_light 0..1, depth 0..1 (under-layers of hair with volume darker), root_dark 0..1, gloss 0..1 (the two
+  highlight lobes in EEVEE). Flat on purpose: variation 0, sun 0, vary 0. The groom export carries the model as a
+  per-point `groom_color`, the game cards as vertex tone (hair_colour.py).
   look also: grey_amount (share of grey strands everywhere), grey_locks (x each lock's own "grey": greying
   temples and sideburns are locks with more grey), grey (its colour), scalp_tint, cycles_fit.
 fuller: {region: m} (front, top, sides, back, nape): the EXISTING locks made fuller there, as a barber's "more at
@@ -1014,7 +482,9 @@ strand groom (hair.style "strands") and is regrown; any groom.tie / groom.loose 
 the style makes. carry_from: first wear that model's whole hair (hairline, look, strand dials, tied style), scaled
 to this head (traced hairline heights move with the head centre). look: a patch of the hair's material.
 style keys: tie (nape | low | mid | high | top | deg), side (centre | left | right | deg, the person's own),
-tightness 0..1, lift 0..1, part (centre | left | right | none), ears (tucked | covered), tail ({kind: tail | bun |
+tightness 0..1, lift 0..1, volume (0..1 or {amount, crown, sides, nape, root, arc, layers, hold}: the hair stands up
+from the roots / the part and arcs over, in layers; 0 = a cap on the skull; default = lift),
+part (centre | left | right | none), ears (tucked | covered), tail ({kind: tail | bun |
 plait | none, length m, fullness 0..1 (sleek .. bushy), wave 0..1 (straight .. loose waves), tousle 0..1 (brushed ..
 a ragged end and strays), to: back | shoulder} or just the kind), wisps (0..1 or {amount, where: [part, front, temple,
 sideburn, nape], length [m, m], softness 0..1, loose: n thick locks a side}: soft clumps of fine hairs at the hairline;
@@ -1058,7 +528,11 @@ stage: another model with the same head whose scene is used (a riff's copy of a 
 measure: {"view": "ref2", "mask": png, "tie": [x, y], "colour": true}: the current hair against that picture. mask =
 a hair mask in the picture's own pixels (white = hair); the text then gives IoU, area, the outlines' distance (mm)
 and, with tie = the tie's pixel in the picture, what hangs below it against hers (area %, length, width, reach in mm).
-colour: CIE L* / chroma / hue of the dense hair's shadow / mid / highlight thirds, ours | the picture's, for the
+colour: CIE L* / chroma / hue of the dense hair's shadow / mid / highlight thirds, ours | the picture's, and
+`variation` (hair.colour_variation: L_sd, strand_sd (against its 1.5 mm neighbourhood), ribbon_sd (1.5 mm against
+9 mm: clumps, highlight ribbons), mass_sd (9 against 40 mm: form, roots / lengths), ribbons {share, contrast} = the
+share of the hair that is a LIGHT ribbon and its lift in L*, chroma_sd, hue_sd): set look.variation / sun / highlights
+by these (Tess's pictures: ribbon_sd 3.1, light ribbons 10 % of the hair at + 5.8 L*; a flat look reads ~2 and 3 %), for the
 engine rendered: the numbers to set look.eevee_gain / eevee_sat (EEVEE) or look.cycles_fit / cycles_width /
 cycles_sat (Cycles) by. The look's own lights are used (look.light), not the picture's: compare bands, not single
 pixels. (Sheets before th_30 labelled "Cycles" were path-traced with 2 transmission bounces, which renders dark hair

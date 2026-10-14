@@ -1668,3 +1668,424 @@ the draped temple covers the top of the ear (hers is clear); thin straight hairs
 lines; the front is a smooth curtain, not separate loosened locks; the tail is wide ribbons from behind and ~16 % big
 in profile; up-style temples still serrated close up. Coordinator's dial-only pass on the wisps: th_X1 (no sideburn
 wisps, shorter, softer), th_X2 (short sideburn wisps, less drape, 3 loose locks a side).
+
+## Joe on th_T66, marked up (2026-10-13)
+On his markup of th_T66 beside her three-quarter picture (red lines from the parting; /mnt/data/hifipushie/tesshair7/
+joe_markup_part_lift.png): "it still hasn't nailed the _shape_ or the color variation, it's flat, in both senses." Hers:
+from the part the hair RISES, arcs up and over, then out and down the side to the temple (three nested convex arcs, real
+volume over the crown and sides). Ours: nearly straight lines laid flat along the skull, diagonally down and back; one
+flat brown. Round seven, "## tesshair7".
+
+## tesshair7 (2026-10-13, "tesshair7" agent, branch `tesshair7`): volume from the parting, and a hair colour model
+### STATE / NEXT (2026-10-14, end of the arc on Tess; MERGE-READY, not started on NEXT)
+STATE: branch tesshair7, BEST = th_W17 (tess_a1 + one tie_hair call; spikes/tesshair7/styles/W17_*.json; on the
+GNM-native head th_W20). Joe: "basically happy with Tess's hair shape now"; colour = the game-shader round (th_63).
+Sheets human_renders/th_50..52, th_60..63. The checklist "What makes hair read as hair" opens hair_guide.md (rule /
+fault / measure / knob, incl. the game-shader terms and how cards carry them). Regression sheet spikes/tesshair7/
+regress.py + accepted.json, accepted run "final" (2026-10-14; Tess W17 + 10 riffs). Tests 112 pass, 0 skipped (hair
+flow / tied / loose / lift / strands / ear, toolsets, tooling; one file a process through bin/slot).
+Small faults left: the part is a V (rule 5); a curly tangle at the forehead's corner seen end-on; hue ~6 deg red; the
+back view lighter / tanner than hers; half up's pit (not volume's); the export / cards colour only unit-tested;
+game-shader terms not built into the card export (written as card-material terms).
+NEXT ARC (agreed with the coordinator / Joe, NOT started): make the hair work LEARN.
+ (3) HAIR READER, like skin_from_reference: from the reference photos measure colour statistics (colour_bands +
+     colour_variation, edge / core), outline break-up / halo density, parting softness, hairline density, wisp count;
+     set the style and look from those as the START; measured vs set reported, INFERRED where a photo can't show it.
+     Gives rules 4 (halo) and 5 (part) their numbers.
+ (4) TEST on a clearly different hair type: propose 2-3 licence-clean references (curly, short, grey or a man's cut) to
+     the coordinator; Joe picks one; a fixed budget of 4 rounds starting from the reader + the checklist only; report
+     how far it got and which rule was missing.
+ Run the regression sheet before every gate (`run.sh regress.py run tag=X`, `regress.py sheet tag=X`).
+WHAT A FRESH AGENT WOULD GET WRONG: (1) machine rules: one heavy job at a time (run.sh = capped + resources.heavy via
+the scripts), light jobs through bin/slot and WAIT; Blender with -t 6 (spikes/tesshair7/blender6 via
+HIFIPUSHIE_BLENDER, set in run.sh / runl.sh / tests.sh); never kill a process not positively yours. (2) r8.sh is
+the round script; shots7.py renders a groom variant in memory (drop= / S= / LS= / look= / tag=) to isolate faults.
+(3) th_T04 .. T46 are gone: stages default to th_T66 / the built _g3_th_T04. (4) Look defaults now vary
+(variation, sun): an old model re-rendered is not its old picture. (5) colvar numbers depend on tile size, and its
+edge / core values on the mask intersection: compare at one size, as a direction.
+
+### SUMMARY (one page; the diary follows)
+Goal: Tess's swept-back, loosely tied side ponytail as a STYLE any head can wear. Joe's verdicts: th_V86 "best hair yet";
+th_W09+ judged better than V86 by the coordinator. BEST = th_W13 (tess_a1 + one tie_hair call; spikes/tesshair7/styles/
+W13_*.json); the same on the GNM-native head = th_W20. Sheets human_renders/th_50..52 (round one), th_60..62 (round two).
+What was built (all as style / look words, tested, in the guide):
+- `volume` (hair_flow.gather): rise from the root with a bend radius, a dome by region, layers, a fall from the root
+  before the tie (convex arcs), hold; `locks` (height / width variety), `cross` (hair over the part). Gated off for
+  up-styles and half up.
+- the colour model (blender_strands.material, look keys variation / sun / highlights / highlight_contrast / fly_light /
+  depth / root_dark / gloss; hair_colour.py for the groom export's groom_color and the cards' vertex tone).
+- `wisps.curls` (escaped near-straight strands), `wisps.halo` (fine hairs off the top layer, some across the part).
+- measures: hair.colour_variation (in look_hair's measure), spikes standoff.py / colvar.py / flowlines.py / lockplot.py
+  / loops.py; shots7.py renders any groom variant in memory (drop= / S= / LS= / look=) to ISOLATE a fault.
+The rules that came out of it are the checklist at the top of hair_guide.md ("What makes hair read as hair").
+Faults found by isolation (each looked like something else): crown wire-grid = strands.halo on every lock; grey veil
+over the forehead = flat wisp clumps exposed by the lift; dark tangle at the part's start = the far bank's strands seen
+end-on (old: in T66 / V86 too); crown wavy wires = volume.locks at 1; tan tail bands = saturated highlight ribbons;
+ashy lengths = lightening that desaturated; hard temple edge = a shortened scalp-tint ramp.
+Still wrong on W13: the part dips (hair crosses it now); her tail narrower / more pointed; hue ~5 deg red; the
+export / cards colour only unit-tested; half up's pit (not volume's). NEXT: the learning work (distil, regression
+sheet, hair reader, a different hair type in 4 rounds).
+
+STATE / NEXT: DONE: the style word `volume` (gather.volume: the hair stands up out of its root with a bend radius,
+a dome by region in layers, the way FALLS from the root before the tie takes it, held until the tie), the look's colour
+model (`variation`, `sun` by the hair's age from the scalp, `highlights` as ~6 mm ribbons, `fly_light`, `depth`),
+`hair.colour_variation` (strand / ribbon / mass contrast, share of light ribbons; in look_hair's measure), the
+stand-off measure, tests, guide, tie_hair's text. BEST for Tess = th_V86 (one tie_hair call on tess_a1, style / look
+below). Sheets workspace/human_renders/th_50_tess_volume_colour.png (REFERENCE | th_V86 | th_T66; front, three-quarter,
+profile, back 3/4, crown), th_51_part_arcs.png (strand paths from the parting, hers | ours | T66), th_52_riffs.png (nine
+riffs on hu_w30 / hu_m30). SHAPE: yes, the hair now rises from the part and arcs, and the outline is hers within ~3 mm
+over the top and sides; NOT yet her texture (a smooth helmet, no loose locks) and the up-styles / half up are WORSE with
+volume (pleats, a pit). COLOUR: varies now (ribbons, lighter lengths), about two thirds of her measured variation.
+NEXT: the list at the end.
+
+Scratch DURABLE /mnt/data/hifipushie/tesshair7/ (copies of the .sh in spikes/tesshair7/): run.sh <script> (this
+worktree's code on the main workspace, capped); r7.sh <NAME> [views] [size] (ONE heavy job: th_<NAME> = tess_a1 +
+tie_hair(styles/<NAME>.json, carry_from th_T66, looks/<NAME>.json) + seed 0 through the tools (riff7.py), lock plot,
+fitted-camera tiles (shots7.py), standoff.py, colvar.py, a row); crop.py <model> [other] (head crops hers | model |
+other). Scripts `spikes/tesshair7/`: hv.py (several scripts one after another in ONE process holding resources.heavy:
+the light slots were starved all day, ten solver chains queued, so every small step rode with a render), pt.py (tests,
+a file a process, inside hv), lockplot.py (locks' lines from five sides, NO Blender, + the top layer's height by
+region), standoff.py, colvar.py, flowlines.py, riffs7.py, mk_sheets7.py, shots7.py (= tesshair5's shots5 + S= / drop=
+/ tag= isolation in memory, view "crown"). Models th_V70 .. V86 (Tess rounds), th_V9a1..a5 / th_V9b1..b4 (riffs).
+FOUND ON THE WAY: th_T04 .. th_T46 and th_T34 disappeared from the workspace while this round ran (2026-10-13 ~12:20;
+not this agent: its scripts only write th_V7* .. V9*). The built stage `_g3_th_T04` is still there and shots7.py uses it
+as built; spikes that call stage.ensure("th_T04") (shots5, iso, tailfit, cu.sh) fail until that model is restored.
+
+### What groomers and look-dev do (checked before building)
+- Root lift is a DIRECTION given to the guides at the root, then a bend: Houdini's Guide Process Lift / Bend / Set
+  Direction on the first stretch of the guides, masked to the root zone (Gnomon, "Creature Grooming Techniques in
+  Houdini"); guides laid in LAYERS from the bottom up, upper over lower (Gnomon, "Creating a Female Hairstyle for
+  Production with Maya XGen"; SideFX forum topic 84298). -> rise with a bend radius per lock, locks at several heights.
+- Hair colour in production: melanin + a per-strand random (Blender's Principled Hair BSDF: Random Color "realistic
+  hair should have a minimum of variance between each strand"); a root -> tip ramp (MetaHuman Groom colour ramp;
+  Softimage's root / tip colours with a crossover); Redshift's Hair Random Color on hue / saturation / value;
+  highlights keyed to the clump. -> variation on H / S / V per lock, sub clump and strand; a gradient by the hair's
+  age; highlight ribbons by a random per ribbon across the lock.
+
+### 1a. Measured first: how far the hair's outline stands off the skull (standoff.py)
+The model's scalp rays projected through each picture's fitted camera = the skull's silhouette; the hair's outline read
+off her picture and off our render through the same camera; along rays from the head centre's pixel (0 = straight up,
++ = image right), mm from the skull's edge to the hair's edge. hers | th_T66 | th_V86:
+| where | hers | th_T66 | th_V86 |
+|---|---|---|---|
+| front view, over the top (-30..+30) | 17-19 | 8-17 (8 at the part) | 16-23 |
+| front view, her right side (-90..-40) | 17-19 | 13-17 | 21-23 |
+| front view, her left side (+40..+90) | 20-24 | 15-19 | 20-22 |
+| three-quarter, top and back (+10..+90) | 18-32 | 15-18 | 22-25 |
+| profile, over the forehead (-60..-50) | 13-15 | 5-6 | 6-11 |
+| profile, the top (0..+30) | 17-23 | 14-16 | 21-23 |
+| profile, back of the crown to the tie (+40..+80) | 28-38 | 15-16 | 21-24 |
+So hers stands ~18 mm off the skull all over the top and sides and 3-4 cm above the tie; T66 was 5-15 mm short
+everywhere and lowest AT the part (a dent where hers has no dent). Not the 3 cm one would guess by eye: the read
+"flat" was mostly the missing rise at the root and the straight paths. Still short on th_V86: the forehead (the hair's
+first cm over the hairline) and the back of the crown above the tie.
+Her arcs (th_51, flowlines.py: stream lines of the image's own strand direction from seeds on both banks of the part,
+the same place on the head in every panel): from the front they leave the part ~20 deg below horizontal and bow 18 mm
+off their chord; T66's 13 deg and 22 mm, th_V86's 19 deg and 22 mm. This measure is WEAK: at the outline the tracer
+rides the silhouette in all three, and in the three-quarter her lines run back over the crown (52 mm long, they leave
+the mask) where ours run 11 cm. The lock plot (cyan lines) is the honest picture of ours.
+
+### 1b. Why th_T66 was flat (by construction; lock plot out/locks_th_T66.png)
+- NO RISE: a lock's height was ride 2 mm + body x way + root_lift + puff x sin: at tightness 0.85 that is 2.7 mm of
+  root lift and 4.4 mm of puff (x 1.7 in front with front.looseness): the top layer 14 mm off the scalp at most, reached
+  halfway along the lock, 0 at the root. `lift` only scaled those few mm: a shell offset, no direction at the root.
+- STRAIGHT WAYS: paths() steps toward the tie from the first step ("always on toward the tie", v . to >= 0.35), with a
+  3.5 cm wide push off the part and a sag that is zero where the head is flat: off the part the hair ran diagonally
+  back in nearly straight lines (the red locks of the plot). Joe's lines exactly.
+- ONE SHELL: every lock at about the same height; nothing under it but the scalp layer.
+
+### 1c. The construction now (`hair_flow.gather` / `paths`, tie key gather.volume; style word `volume`)
+- RISE: h = layer x dome x (1 - exp(-s / rise)) x hold: the hair leaves the scalp at atan(dome / rise) (64 deg at 2 cm
+  over 1 cm) and is over within ~2 x rise. 18 points a lock, denser at the root (t^1.6). The banks of a part rise at
+  0.35 x the radius (at the full radius the two banks leaned apart: a 2 cm valley, the head a heart with two lobes).
+- DOME by region: crown (sin(el)^1.5), sides (fullest high, x 0.3 where the hair passes over the ear: full down to the
+  ear the head was widest at the cheek, a bob), the back of the head = the crown's value down to the nape's.
+- LAYERS: each lock its own height 1 - layers x (1 - u^0.6); lock thickness + 0.25 x dome; the lock's depth is its
+  strands' `shade` (hp_sh) and the look's `depth` darkens the under-layers. The hairline's own narrow locks all sit at
+  ONE height (side by side at their own heights they were pleats on the up-styles).
+- ARC: for the first 0.6 rad the way's direction is mixed with the FALL (down the head; sideways out of the part while
+  the head is still flat; never forward), after a 1 cm lean back along the part (tied hair was pulled back first), and
+  the fall stops 8 deg above the ear's line (falling all the way, every way ran along that line: a curtain with a
+  thick lower edge) but may reach the hairline over the forehead's corners.
+- HOLD: the height is kept until 0.4 + 0.45 x hold of the way, then drawn in; the tie stands up to 12 mm further off
+  the head with it.
+- With volume: strands loose / frizz / flyaway / halo + by V, gather wave + 6 mm x V, the scalp tint's ramp 22 -> 7 mm,
+  the edge band full by 5 mm at the forehead too.
+- Style (hair_flow.TIED / VOLUME): `volume` 0..1 or {amount, crown, sides, nape, root, arc, layers, hold}; at 1 the
+  top layer stands 3.4 / 3.0 / 1.4 cm off the crown / sides / nape; default = `lift` (= 1 - tightness): a sleek head
+  stays a cap, a loose one has body. volume 0 = the old gather exactly.
+
+### 2. The colour model (blender_strands.material / lens_group v16, hair_strands.lock_guides, hair.LOOK)
+- New strand attributes: hp_lv (a number per lock), hp_ch (per highlight RIBBON: by where the strand starts across
+  its lock, hp_hk = lock width / 6 mm ribbons), hp_a0 / hp_a1 (the hair's AGE in m from the scalp at the lock's start
+  / end: a tail's locks start at the median length of the gathered hair, not at a new dark root), hp_sh (depth in the
+  mass), hp_fly (hairs that left the mass: fly-aways, halo, single-hair objects; NOT the hairline's fine rim).
+- Look keys: `variation` (0.4: lock value +-14 % x v, hue +-0.01 x v by sub clump, saturation +-15 % x v by strand),
+  `sun` (0.2: value + 50 % x sun and a little warmer by age, full by 28 cm), `highlights` (0: the share of ribbons
+  lighter (x 2 at contrast 1) and more saturated, 62 % of a ribbon's strands, from 1-7 cm off the root, coming and
+  going along the hair), `highlight_contrast` (0.6), `fly_light` (0.3), `depth` (0.5). The defaults VARY (every hair
+  model's strands change a little on its next render); flat on purpose = variation 0, sun 0, vary 0.
+- Export: the attributes are on the evaluated curves (USD keeps per-curve attributes; Alembic does not). NOT DONE: a
+  baked per-strand colour primvar for the groom export, and the cards' atlas (hair_cards draws strands with `vary`
+  only): game cards do not get the model yet.
+- Measure: hair.colour_variation / colour_bands(mm_px) (in look_hair's measure "colour"); colvar.py = hers | ours over
+  the dense hair both have, three views:
+  | | hers | th_T66 | th_V86 |
+  |---|---|---|---|
+  | L_sd (all of it) | 7.6 | 3.9 | 5.7 |
+  | strand_sd (1.5 mm) | 4.2 | 2.0 | 2.5 |
+  | ribbon_sd (1.5 vs 9 mm) | 3.0 | 1.75 | 2.6 |
+  | mass_sd (9 vs 40 mm) | 2.4 | 1.6 | 1.8 |
+  | light ribbons: share / lift L* | 10 % / 5.7 | 1 % / 6.8 | 6 % / 6.0 |
+  | chroma_sd / hue_sd | 3.2 / 5.7 | 0.8 / 2.3 | 1.6 / 2.7 |
+  Mean colour th_V86 L* 19-23 (hers 17-20), chroma 10.8 (hers 8-9), hue 65.6 (hers 69.7: ours 4 deg red).
+
+### Rounds (r7.sh; out/row_<NAME>.jpg, c_th_<NAME>.jpg)
+- V70 (volume 0.65, first grow): real volume and arcs at once, but a bob: sides 29 mm, a deep open part, the front
+  fell FORWARD over the temples; per-lock value +-20 % made the tail's locks flat painted slabs.
+- V71 / V72: lean back before the fall, never forward, thicker locks; highlights picked 35 % by the lock = whole 4 cm
+  locks pale grey slabs; by the sub clump alone (4 mm) they averaged away; neatness 0.75 turned the tail into a stiff fan.
+- V73 / V74: ribbons of 1.7 sub clumps, then by the strand's place across the lock; depth shade; the part's banks
+  rise at once; the fall stops above the ear. Ribbons uniform along their length were pale tape: they come and go, 62 %
+  of their strands.
+- V75 .. V80, the GREY VEIL over the forehead's corners: not fly_light, not the edge band (drop tg0_*), not the scalp
+  layer's strands (S.under 0), not the scalp tint (look.scalp_tint 0): it was the WISPS (drop tw*): 36 clumps x 14-37
+  fine half-transparent hairs + 56 baby hairs lying on the corners, which the flat hair used to cover and the lifted
+  mass exposes. th_V81+: wisps amount 0.45, front.looseness 0.35, no swoop / loose locks, wisps only at temple /
+  sideburn (a front wisp hung across the eye).
+- V84 -> V86: the look. lit shifted toward yellow + sun's hue shift gave an olive-grey tail (V84); eevee_sat 0.62 a
+  ginger one (V85, chroma 14.5); V86 = eevee_sat 0.5, lit #58483a.
+th_V86 = tie_hair(style {"tie": "low", "side": 20, "tightness": 0.85, "neatness": 0.95, "volume": {"amount": 0.5,
+"crown": 0.75, "sides": 0.6, "hold": 1.0, "root": 0.85}, "front": {"looseness": 0.35, "drape": 0.6, "locks": 0},
+"wisps": {"amount": 0.45, "softness": 0.7, "loose": 0, "where": ["temple", "sideburn"]}, "tail": {"length": 0.195,
+"wave": 0.6, "fullness": 0.43, "tousle": 0.55}}, carry_from th_T66, look {"variation": 0.7, "sun": 0.35, "highlights":
+0.55, "highlight_contrast": 0.7, "depth": 0.8, "specular": 0.3, "roughness": 0.5, "vary": 0.45, "eevee_gain": 1.22,
+"eevee_sat": 0.5, "lit": "#58483a", "gap": "#221a13", "fly_light": 0.15, "cycles_width": 1.8, "cycles_sat": 0.65}) +
+groom seed 0.
+
+### Riffs (riffs7.py: tie_hair + sync + look_hair on hu_w30 / hu_m30, nothing tuned; th_52)
+- sleek low, volume 0, flat colour (both heads): the old cap, reads. LOOSE low, volume 0.7 (both): reads as hair with
+  body at once, arcs off the part; big (a bouffant), a kink where the lifted side meets the ear, from behind a small
+  furrow where the part ends. Low plait, volume 0.4, highlights: reads, fine streaks.
+- WORSE WITH VOLUME: the high ponytail and the man bun (part none, volume 0.5): radial RIDGES round the hairline
+  (corduroy), white specks of scalp at the crown; half up (volume 0.6): a bare PIT behind the crown above the tie.
+  Hair pulled UP to a tie does not fall from its root; the dome and layers are a low tie's.
+- sun 0.9 on a light brown: an orange straw tail from behind (too strong; toned down once, not re-judged).
+- Cost: tie_hair 55-60 s the first time on a head, 1 s after; sync 100 s; look_hair three views 30-45 s.
+
+### BLUNT READ of th_V86 beside her pictures (th_50)
+1. SHAPE: clearly closer than th_T66. The hair stands up on both banks of the part, arcs over and down the side to
+   the temple, the top is a dome instead of a cap, the ear's top is clear (hers), the outline is within ~3 mm of hers
+   over the top and sides. Wrong: it is a SMOOTH HELMET (one continuous combed shell; hers is loose locks with air,
+   strands crossing, a halo of flyaways); the part is a clean notch with two lobes where hers is short and soft; the
+   forehead's first cm lies low (6-11 vs 13-15 mm); the back above the tie is 1 cm short; the hairline is a clean line
+   again (the wisps were cut back to remove the veil).
+2. COLOUR: no longer one brown: lighter ribbons over darker hair, lighter lengths and tail, darker under-layers.
+   Wrong: about two thirds of her variation by measure; ribbons are regular fine pinstripes where hers are irregular
+   soft ribbons; no warm highlight where the light catches the arcs (that is shading, not pigment: EEVEE's strands
+   have no real specular lobe here); chroma a little high, hue 4 deg red.
+3. TAIL: as th_T66's (not this round's), lighter by `sun`; still wide ribbons from behind.
+
+### Dead ends
+- Per-lock value +-20 %: painted slabs. Highlights by the lock: pale slabs; by one 4 mm sub clump: invisible.
+- The fall with a forward component (- 0.3): a bob's curtain. Falling from the first mm: an open valley.
+- Lifting the edge band's thin rim with the mass: a gauze standing over the corners.
+- neatness lower for looseness on the head: it is the tail that changes (a stiff fan).
+- Shortening the scalp tint's ramp / the band's ramp to remove the veil: not the cause (kept: harmless).
+
+NEXT: (1) the head as LOCKS, not a shell: with volume the gather's 4 cm locks should separate (narrower, their own
+waves and heights changing ALONG the lock, a share lifted or crossing), a halo; the part shorter and softer (banks
+that fall over it); (2) up-styles and half up with volume: no fall / layers toward a tie above the root (volume there
+= a smooth pouf with the hairline's hair rising evenly), the pit behind a mid tie; re-judge every riff; (3) front
+wisps again without the veil (fewer hairs a clump, rooted ON the lifted hair's edge, opaque); the forehead's first cm;
+(4) colour: ribbons of irregular width, the cards' atlas and the groom export get the model (a baked per-strand
+colour), a highlight that follows the light (anisotropic strand shading in EEVEE); (5) tess_n1 was NOT tried (the
+GNM-native head's stage would need a build); (6) restore th_T04 or point the tesshair spikes at `_g3_th_T04`;
+(7) flowlines.py seeds only on the bank the camera sees, and a mask that keeps her flyaway edge out.
+
+### tesshair7 ROUND TWO: RESTART BLOCK (2026-10-13 evening; written for an agent with no memory of the session)
+Joe on th_V86: "That's the best hair yet, for sure. If we got the color/texture and whispies dialed in, I'd likely ship
+with it. Keep going." Round two = colour structure, texture (locks, parting), wisps; no regressions on up-styles.
+STATE: BEST = th_W04 (tess_a1 + ONE tie_hair call; style spikes/tesshair7/styles/W04_style.json, look
+W04_look.json, carry_from th_T66, groom seed 0). It beats th_V86 by measure and by eye in the head crops
+(/mnt/data/hifipushie/tesshair7/out/c_th_W03.jpg = hers | W03 | W02; W04 = W03's geometry with a lighter look);
+its tiles out/s_th_W04_{v0,v1,v2,backl}.png are rendered at 1536 (EEVEE, fitted cameras). NOT YET LOOKED AT closely at
+1536, no sheet built from it.
+Colour variation, hers | th_T66 | th_V86 | th_W04 (colvar.py, mean of three views): L_sd 7.5 | 3.9 | 5.7 | 7.6;
+strand_sd 4.3 | 2.0 | 2.5 | 3.5; ribbon_sd 3.0 | 1.75 | 2.6 | 3.05; mass_sd 2.4 | 1.6 | 1.8 | 2.4; light ribbons
+9 % at + 5.7 L* | 1 % | 6 % | 8 % at + 6.4; chroma_sd 3.1 | 0.8 | 1.6 | 2.0; hue_sd 6.4 | 2.3 | 2.7 | 3.2. Mean colour
+W04 L* 17-23 (hers 16.5-20), chroma 9.0 (hers 8-9), hue 66.5 (hers 69.7).
+Stand-off W04 (mm, hers | ours): front top 17-19 | 16-23, sides 17-24 | 19-24; profile forehead 13-15 | 5-9 (STILL
+SHORT), top 17-23 | 20-23, crown to tie 28-38 | 19-27 (still ~1 cm short).
+Round-two items:
+- DONE in code + tests written: (1) irregular ribbons (lens v17: hp_ch thin ~4 mm, hp_cb broad ~15 mm, soft wandering
+  edges; gathered by hp_su = sun exposure per lock (top layers, round the face, the tail's outside); hp_cm 1.5 mm
+  strand-scale value; root_dark; a tail's strands enter the ramp past the dark root); (2) highlight shading: look
+  `gloss` (EEVEE: Principled's specular with its normal tilted toward the root + a warm coat lobe tilted toward the
+  tip; EEVEE has no anisotropic reflection, the tangent is used for the tilt only). NOT JUDGED in a lit close-up of
+  the dome yet; (3) locks: gather.volume.locks (height swells / sinks along each lock, wander, 8 % lifted, widths and
+  clump sizes differ; inner strands of a lock darker by hp_b); (4) soft parting: gather.volume.cross (bank locks lean
+  over the line), zig x 1.6; by eye the part is still a notch: PARTLY; (5) wisps: `wisps.curls` = hair_flow.curls
+  (fine curled locks, 5-12 hairs, names tk<k>, own random stream), flat clumps cut back under volume; they read as
+  small curls at the temples in W02 / W03, thin; (6) up-style regressions: default volume is 0 for tie high / top
+  (smoothly by tie height) and for half up; asked for there = a pouf (arc / layers / locks 0). NOT RE-RENDERED:
+  riffs8.py has never run; (7) export colour: src/hifipushie/hair_colour.py (numpy) -> blender_strands.export_groom
+  writes per-point `groom_color`, hair_cards.mesh stores tone / peak in the cards' vertex colour and the atlas is
+  lifted by peak. NEVER RUN in Blender / never looked at on cards: only the numpy test; (8) old spikes repointed to
+  th_T66 (commit 5b83a4a).
+- NOT DONE: seat on tess_n1; sheets th_60 / th_61 / th_62; guide has the new words, CLAUDE.md pointer unchanged (fine).
+- TESTS: the last full run was BEFORE the final fixes. test_hair_flow had 1 failure (the hairline-band test; fixed
+  since by giving it "volume": 0 and scaling lock width variety by `locks`: NOT re-run); test_hair_strands'
+  new test_colour_model_outside_the_material was rewritten after failing: NOT re-run. Run all seven files first.
+NEXT, in order:
+1. tests: `/mnt/data/hifipushie/tesshair7/tests.sh` (each file through bin/slot; it WAITS for a light slot).
+2. Look at th_W04 at 1536 one area at a time beside her photo, then build th_60 / th_61:
+   `cd /mnt/data/hifipushie/tesshair7 && TOUT=$PWD/out python3 <worktree>/spikes/tesshair7/mk_sheets8.py th_W04 which=60,61`
+   (th_V86's tiles are in out/ at 1024; mk_sheets8's crop boxes for th_61 were set blind: check each pair).
+3. Riffs (HEAVY: sync + renders; one job): `W=<worktree> ./run.sh hv.py riffs8.py` -> out/rf8_*.png, then
+   `mk_sheets8.py th_W04 which=62`. Judge the up-styles (a3, a4, a6, b3) and half up (a5) against th_52's faults.
+4. tess_n1: `HEAD=tess_n1 SRC=th_W04 STYLE=W04 ./r8.sh W10` will fail at shots7 unless STAGE_MODEL=tess_n1 is exported
+   (the stage of tess_a1 is `_g3_th_T04`; tess_n1's is `_g3_tess_n1`, stage.ensure may rebuild it: heavy).
+5. Still wrong on W04 by eye: the part is a notch; the forehead's first cm lies low; curls are thin dark lines (more
+   hairs, finer, lighter); the tail unchanged (wide ribbons); gloss unjudged.
+To rebuild the best: `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W04 v0,v1,v2,backl 1536` (styles/W04.json +
+looks/W04.json there are the same files as spikes/tesshair7/styles/W04_*.json). EEVEE only.
+WHAT A FRESH AGENT WOULD GET WRONG:
+- Machine rules (the coordinator, firmly): ONE heavy job at a time; light jobs through bin/slot and WAIT; never put
+  light steps inside the heavy slot (round one did: hv.py without HV_LIGHT=1); never kill a process not positively
+  identified as yours (round one killed a shell by a pgrep -f pattern that matched its own command line: never
+  `pkill -f` / `pgrep -f` with a pattern that is in your own command).
+- r8.sh is the round script (three queues); r7.sh is round one's (everything in the heavy slot): do not use it.
+- Scripts run from the worktree as cwd: give ABSOLUTE output paths.
+- shots7.py uses the built stage `_g3_th_T04` because th_T04 is gone; shots5 / iso now default to th_T66, whose stage
+  does not exist yet (first use builds it: minutes, heavy).
+- The look's defaults vary now (variation 0.4, sun 0.2): an old model re-rendered is not its old picture; the "before"
+  columns use tiles rendered earlier (out/s_th_V86_*.png, tesshair6/out/s_th_T66_*.png).
+- The grey veil over the forehead's corners is the flat WISP clumps (drop=tw*), not the band, the scalp tint or the
+  under layer: do not chase those again.
+- colvar's numbers depend on the tile size (strand_sd most): compare models at the same size (the table above mixes
+  1024 and 1536 tiles for V86 / W04).
+
+### tesshair7 round two, RESUMED (2026-10-14): fixes on th_W04 (the coordinator's read)
+RESTART: tests all pass at 65bd468 (92). Best now th_W06 (W05 + wisps.curls 10, length [0.05, 0.14]; tail ribbons at half contrast, part-cross bump 3-7 mm; colvar L_sd 6.6 | hers 7.6, ribbon 3.1 | 3.0, light ribbons 9 % | 10 %. Earlier best th_W05 = W04 style + look fly_light 0.45, code below;
+spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W05 v0,v1,v2,backl 1024`).
+- CROWN WIRE-GRID (front view, top of the dome): isolated with shots7 S= patches (out/iso_w04b.jpg): it was the
+  HALO (short broken hairs standing off the locks), which round one raised to 0.45 x messiness + 0.5 x volume:
+  0.12 x volume now. Leftover white glints = gloss's sharp lobe on crossing strands: roughness floor 0.4, specular
+  + 0.3 x gloss (was + 0.5). Gloss itself is NOT the grid, and with gloss 0 the hair reads grey and flat (iso_w04.jpg).
+- TAIL "flat tan ribbons": the highlight ribbons (gone with highlights 0). Broad ribbons x 0.35 (was 0.6), half a
+  ribbon's strands (was 62 %), value + 85 %, saturation + 25 % (was + 100 %: the tan). STILL visible as pale flat
+  bands on W05: NEXT lower highlight_contrast for the tail / shade them along the strand.
+- TEMPLE hard edge: the scalp tint's ramp (round one shortened it to 7 mm under volume while chasing the veil: not
+  its cause): 16 mm now. And no dark root on fine strands (hp_fine: the rim, single hairs).
+- WISPS "thin black wires": the curls had the dark root ramp and full opacity: now no dark root (hp_fine), fly_light
+  0.45, 8-16 hairs 2-5 mm. On W05 they nearly vanish from the front: NEXT make them read (more, longer, lighter).
+- Dark scribbly tuft at the part's start (three-quarter): the `cross` bump of the part's bank locks: NEXT smaller.
+- SHEETS (2026-10-14, from th_W06, EEVEE): workspace/human_renders/th_60_tess_colour_wisps.png (REFERENCE | th_W06 |
+  th_V86; front, three-quarter, profile, back 3/4), th_61_closeups.png (hers | W06: parting, both temples, forehead
+  corner, the dome, tail; the left-temple pair frames a little differently), th_62_riffs.png (riffs8.py, th_W9a* on
+  hu_w30, th_W9b* on hu_m30, through tie_hair + sync + look_hair).
+- RIFFS read: all ten read at a glance. Up-styles and half up at DEFAULT volume = the pre-volume construction (no
+  dome, no fall): half up's bare pit is GONE. The asked-for pouf (a6) and the default up-styles still show the
+  serrated temple edge of round six (not volume's). New on every riff: default `curls` (round(9 x amount)) hang as
+  small RINGLETS at the temples: reads, a little doll-like on the up-styles; NEXT: fewer / straighter by default when
+  the tie is high.
+- STATE: best th_W06. Done this resume: crown wire-grid (halo), tail tan ribbons, temple edge, black-wire wisps,
+  sheets th_60 / 61 / 62. NOT done: tess_n1; the colour model in the export / cards has only its numpy test (never
+  exported through Blender); gloss judged only by eye on W04..W06 (warmer than without; no lit close-up beside hers).
+- STILL WRONG on W06 (blunt): the parting is still a hard notch with the two banks' smooth lobes; a small dark tuft of
+  crossing / lifted strands at the part's start in the three-quarter; the temple and forehead hairline is cleaner and
+  harder than hers (her loose fine hair over the corners is missing); the curls are faint; the tail's lock ribbons
+  still read as ribbons from behind; hers is lighter brown overall and warmer (our hue 66.5 vs 69.7).
+- NEXT: (1) the part: banks that fall over the line from both sides, short (fade out by 4 cm back); (2) loose fine hair
+  over the forehead's corners (wisps.baby / front looseness under volume, without the veil); (3) tess_n1; (4) export
+  through Blender once (export_asset hair) and look at the cards' colour; (5) up-style curls by tie height.
+- ROUND TWO, third read (the coordinator on th_60 / 61: "I'd take V86's front over W06"), 2026-10-14:
+  * DARK WIRY CLUMP at the part's start / forehead corner (three-quarter): in th_T66 and th_V86 too (old). Isolated
+    with shots7 (drop= / S= / LS= in memory, out/iso_w06*.jpg, iso_w07*.jpg): NOT the wisps, curls, baby hairs, halo,
+    fly-aways, strays, the edge band, the scalp layer, strand wave / curl / loose / frizz / clump, root darkness, the
+    arc, the part crossing or the root's bend radius. It goes with the inner locks (drop tg1_*), and dropping the
+    part's own root rows only MOVES it to the next locks behind: it is the far bank's strands seen END-ON at the
+    silhouette, drawn opaque and dark. Her photo has fly-away loops in the same place, fine and light. Fix: the part
+    rows drawn fine (hp_fine 0.55: part transparent, no dark root), density x 1.3. Lighter and smaller on W08, not gone.
+    The front view's crown "wavy wires" were `volume.locks` at 1 (W07c, locks 0: gone): default now 0.4 x amount.
+  * Curls: corkscrews -> a slow bend (radius 0.8-2.5 mm, 6-11 cm a wave). Ringlets gone (riffs too, by construction;
+    th_62 not re-rendered).
+  * Colour: lightening was desaturating toward grey: sun + 30 % saturation, highlights + 45 %; look W08 eevee_sat
+    0.48, lit #5c4834. Back 3/4 now warm brown, but OVERSHOT: chroma 14.5 vs hers 9 (W09 pulls back).
+  * RESTART: best so far th_W08 (style / look spikes/tesshair7/styles/W08_*.json), but too saturated.
+  * W09 = W08 at eevee_sat 0.38, lit #574536, gap #211912: BEST (spikes/tesshair7/styles/W09_*.json;
+    `cd /mnt/data/hifipushie/tesshair7 && ./r8.sh W09 v0,v1,v2,backl 1536`). Warm mid brown, darker top, lighter
+    lengths; chroma 10.7 (hers 9); hue 62.5 (hers 69: ours ~6 deg red, worse than W06's 66.5: NEXT a yellower lit);
+    L_sd 6.1 | 7.6, strand 3.4 | 4.3, ribbon 2.75 | 2.95, light ribbons 6 % | 9 %. Sheets th_60 (REFERENCE | W09 |
+    V86), th_61 (close-ups), th_62 (riffs re-rendered). Tests: all 92 pass (tests.sh, slots).
+  * Riffs: ringlets gone (near-straight temple strands on every riff). CORRECTION: half up's dark PIT behind the crown
+    is still there with no volume: it is not volume's (round one's read was wrong). The two other heads' hair reads
+    ashy grey: they wear the DEFAULT look (LOOK lit #56352d at eevee_sat 0.35), not Tess's: NEXT a warmer default look.
+  * STILL WRONG on W09 (blunt): the PARTING is a clean notch between two smooth lobes (hers: a soft line, hair lifting
+    and falling both ways) - item 4, NOT done; no fine HALO of fly-aways along the silhouette (hers has many); the
+    forehead-corner fine hair is missing; the part-start loops lighter but present; tail still lock ribbons from
+    behind. Not done: tess_n1; the export / cards colour only unit-tested.
+  * NEXT (ordered): (1) the parting (banks falling over the line both ways; part short); (2) a light halo along the
+    silhouette from the TOP layers only (the old halo on every lock was the crown wire-grid); (3) forehead-corner fine
+    hair; (4) default look warmer (riffs grey); (5) half up's pit; (6) tess_n1; (7) export through Blender once.
+- ROUND TWO, fourth read (the coordinator on W09: "better than V86"), 2026-10-14: (1) THE HALO: `wisps.halo` n fine single
+  hairs (hair_flow.halo, names <pre>h<k>) rooted on the TOP layer of the gather (locks with shade < 0.2), following
+  their lock 4-13 cm while standing 2-9 mm off it mid-way, a gentle loose curve (0.4-1.3 mm at 4-9 cm); 28 % rooted on
+  the part's banks (lock strands `bank`) CROSS the line. Default round(420 x volume share x (1 - up)) = 420 for Tess.
+  At 240 with 0.8-2.5 mm curls (W10) they were kinky wiggles. th_W11 = W09 + this: BEST. The silhouette in front and
+  profile now has her fine standing hair. Part: hair across it, still a dip; far-bank tangle in three-quarter still the
+  weakest spot. RESTART: `./r8.sh W11 v0,v1,v2,backl 1536`; style / look spikes/tesshair7/styles/W11_*.json.
+  (3) far-bank tangle: part rows fine 0.85 at normal density (W12): reads as fine light fluff like hers. (4) tail from
+  behind: tail strands fine 0.35 + 0.3 t, in_step 0.55 - 0.3 t, and Tess's tail wave 0.6 -> 0.35 (W13): strands, not
+  wide wavy ribbons. th_W13 = BEST (styles/W13_*.json; `./r8.sh W13 v0,v1,v2,backl 1536`). Colour variation W13 |
+  hers: L_sd 6.7 | 7.5, strand 3.25 | 4.3, ribbon 3.2 | 2.95, light ribbons 9 % | 9 %. Still wrong: the part dips
+  (hair crosses it now); hers' tail is narrower and more pointed; hue a few deg red.
+  tess_n1 (GNM-native Tess): th_W20 = W13's style + look through tie_hair(carry_from th_T66) on tess_n1, rendered on
+  its own stage (`HEAD=tess_n1 EXTRA="stage=tess_n1" ./r8.sh W20 ...`): seats with no work (dome, halo, curls, tail);
+  colour variation the same as on tess_a1 (L_sd 6.6 | 7.4, ribbon 3.1 | 3.1). Tests: 93 pass (two tail tests' bounds
+  follow the less-in-step default). ROUND TWO DONE except: the part still dips; the tail narrower / more pointed in
+  hers; hue a few deg red; the export / cards colour only unit-tested.
+  NEXT (queued by the coordinator, Joe agreed): make the hair work LEARN: (1) distil a "what makes hair read as hair"
+  checklist into hair_guide.md (rule + measure + knob) and cut the guide; a 1-page summary atop "## tesshair7";
+  (2) a regression sheet script (current best styles + riffs beside the last accepted renders); GATE; (3) a hair
+  reader from reference photos; (4) a test on a different hair type, 4 rounds.
+- LEARN step 1 + 2 (2026-10-14): hair_guide.md now OPENS with "What makes hair read as hair" (13 rules: rule, the
+  fault when missing, measure, knob) and is 98 -> 59 KB: the sculpted-locks / cards workflow moved to guide topic
+  `hair_locks` (hair_locks_guide.md), practice / sources / engines / what-went-wrong to `hair_background`
+  (hair_background.md). REGRESSION SHEET: spikes/tesshair7/regress.py + accepted.json (Tess = W13 through her fitted
+  cameras, 4 views; riffs a1..a6, b1..b4 on hu_w30 / hu_m30 through look_hair on their synced copies th_W9a1 /
+  th_W9b1). Accepted = run "base" (2026-10-14, out/reg/accepted). A second run: mean |diff| 0.00 on all eleven
+  (deterministic): any > 0.3 flags MOVED. Probe (W12's three-quarter swapped in): 2.65, the diff image outlines the
+  tail. Cost: one heavy job ~10 min (11 tie_hair + renders). Blender now runs with -t 6 (blender6 wrapper via
+  HIFIPUSHIE_BLENDER in run.sh / runl.sh / tests.sh). GATE: waiting for the coordinator on the checklist + the sheet.
+  RESTART: then step 3, the hair reader.
+- Gate passed (checklist, guide cut, regression sheet). W14 / W15 on the two small faults: crossing halo hairs 16 %,
+  near-straight; part rows density x 0.7 and 1.2 x higher; part scalp line 2.5 mm under volume; all halo curls 0.2-0.6
+  mm; look fly_light 0.8. Corner tangle a little less curly, the part still a V: both SMALL, on the list. th_W15 =
+  current (styles/W15_*.json). Joe: "basically happy with Tess's hair shape now" but "we haven't nailed the color".
+  NEXT: the shader test (EEVEE stand-in vs Cycles Principled Hair BSDF vs her photo), then the reader.
+- GAME-SHADER COLOUR ROUND (2026-10-14; Joe: "we haven't nailed the color"; the coordinator first asked for a Cycles
+  hair-BSDF comparison, then REVISED: no ray tracing, "our first target is general game assets"). A Cycles melanin
+  render of W15 was made before the revision (out/s_th_W15_c640_*_cyc.png, look key `cycles_melanin`): NOT used,
+  not judged. Built in the EEVEE strand material (blender_strands.material), each a term a game shader has:
+  `tip_alpha` (dithered alpha over a strand's last 30 %), `backscatter` (a Translucent BSDF, lit from behind,
+  warmer / brighter, weighted to thin hair: tips and fine / single hairs), `scatter` (by depth hp_sh: core darker and
+  more saturated, outer layers lighter); transparency is one final mix with a Transparent BSDF. The two highlight
+  lobes were already `gloss`. Defaults 0 (others unchanged). Measure `colour_variation` edge_L / core_L / edge_chroma /
+  core_chroma (3 mm rim vs > 8 mm in). W15 (now) -> W16 (terms on) -> W17 (terms + darker base: eevee_gain 1.4,
+  eevee_sat 0.3, backscatter 0.6, scatter 0.8), at 1024, hers | ours: L_sd 7.5 | 6.9 -> 7.7, strand_sd 4.2 | 3.3 ->
+  3.9, mean L* front 21.4 | 20.4 -> 20.5, chroma ~8 | 10.5 -> 10.2, hue 69 | 62 -> 63. Edge vs core: ours ~0 -> +4.4
+  (W17). Her own value read +5.5 (W15 run) and +2.4 (W17 run): the masks are intersections of hers and ours, so the
+  numbers are not on one scale: a direction, not a match. By eye: softer see-through ends, warmer tail tips, a
+  stronger dome band; the back view still lighter and tanner than her deeper brown, hue ~6 deg red. Sheet
+  human_renders/th_63_game_shader.png (REFERENCE | EEVEE now W15 | EEVEE new W17: front, 3/4, back 3/4, dome, tail).
+  BEST = th_W17 (styles/W17_*.json; `./r8.sh W17 v0,v1,v2,backl 1024`). Cards: tips' alpha is in the atlas; gloss /
+  backscatter / scatter are card-material terms (anisotropic two-lobe spec on the cards' tangents, a transmission /
+  wrap term, depth already in the cards' vertex colour): written in the checklist, NOT built into the card export.
+
+## Joe on th_63 (2026-10-13): the references disagree on colour
+Joe: the back-view reference's highlights are a different colour from the front view's, and the FRONT view is the one he has
+been judging. Tess's references are generated concept views and are not colour-consistent across views, so colour measures
+averaged over all views chase a mix. NEXT (whoever tunes colour again): take hair colour targets from the front view only (the
+3/4 as a check), say which view each target came from, and do not judge the back view's colour against its own reference.

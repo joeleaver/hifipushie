@@ -374,3 +374,23 @@ if __name__ == "__main__":
         t0 = __import__("time").time()
         t()
         print("ok", t.__name__, f"{__import__('time').time() - t0:.0f} s")
+
+
+def test_iris_colour_keeps_the_hue():
+    """(readmix) the iris from the read: the change is limited as a whole, never per channel (the old clip turned the
+    default brown into orange-brown where the picture's iris was grey-green)."""
+    from hifipushie import paint, skin_read as sr
+    lin = lambda h: sr._lin(np.asarray(paint.colour(h), float)[:3])  # noqa: E731
+    brown, green = "#5a3a1e", "#6b7f6a"
+    ratio = lin(green) / lin(brown)                      # what the read says when ours is brown and the picture's is grey-green
+    assert ratio[2] > 4 and ratio[0] < 2                 # (far outside the old 0.5 .. 2 clip on blue)
+    got = lin(sr.iris_colour(np.asarray(paint.colour(brown), float)[:3], ratio))
+    want = lin(green)
+    assert np.abs(got / got.sum() - want / want.sum()).max() < 0.02          # the picture's chromaticity
+    assert got[1] >= got[0] * 0.98                                            # not orange
+    # nothing to change: the same colour back
+    assert sr.iris_colour(np.asarray(paint.colour(green), float)[:3], [1.0, 1.0, 1.0]) == green
+    # a wild read (an iris "x 40 brighter") is limited in lightness, its hue kept
+    wild = lin(sr.iris_colour(np.asarray(paint.colour(brown), float)[:3], 40 * ratio))
+    assert wild @ np.array([0.2126, 0.7152, 0.0722]) <= sr.IRIS_Y[1] + 1e-3
+    assert np.abs(wild / wild.sum() - want / want.sum()).max() < 0.03
