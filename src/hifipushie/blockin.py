@@ -699,11 +699,11 @@ def _boxes(base: dict, rj: dict) -> list:
 
 
 # ---------------------------------------------------------------- per-picture expression
-# GNM's identity is the relaxed neutral; a picture shows the person WITH an expression (lt19's front: a slight smile:
+# GNM's identity is the relaxed neutral; a picture shows the person WITH an expression (a front picture with a slight smile:
 # fuller lips, lifted corners, a cheek apple). Comparing the neutral clay with it leaks the smile into mouth / cheek
 # identity steps. Each view may carry its own fitted expression (human_refs "expressions": one {GNM expression comp:
 # value} per view, {} = neutral), applied in look / focus / the table / lid reads / camera refits, never to the model.
-# Lower face only by default: with 6 eye-region comps per side lt19's fit dropped the upper lid from 0.75 to 0.36 iris
+# Lower face only by default: with 6 eye-region comps per side a fit dropped the upper lid from 0.75 to 0.36 iris
 # radii (the detector's calibrated lid points disagree with the iris-radius lid read that lid_read matches: the comps
 # fought the lid pose); EYE_COMPS is the opt-in (a picture that clearly squints)
 EXPR_COMPS = {"lower_face_region": 20}
@@ -957,7 +957,7 @@ def step(src: str, moves: dict, out: str | None = None, seen: str = "", why: str
     cam_moves = []
     if "head_scale" in (moves or {}):
         # the head scales about the NECK: the face rises / drops, which a refit would answer by moving the camera back
-        # (distance trades with size: lt19's 1.06 came back as the same pixels). Each camera follows the face's
+        # (distance trades with size: a head_scale of 1.06 came back as the same pixels). Each camera follows the face's
         # landmark centre instead (centre shifted with it: the same point at the same pixel, the size change visible)
         from . import humanfit
         d = humanfit.state(sp["base"])["L"][:68].mean(0) - humanfit.state(store.load(src)["base"])["L"][:68].mean(0)
@@ -1339,7 +1339,7 @@ def _row(r: dict) -> dict:
     if r["id"] in FLAGGED:
         row["flag"] = FLAGGED[r["id"]]
     elif r["unit"] == "%" and r["model"] == 0.0 and r["photo"] != 0.0:
-        # (lt19: radix / dorsum width, nasolabial fold, under-eye read exactly 0.00 on every clay: no reading there)
+        # (radix / dorsum width, nasolabial fold, under-eye read exactly 0.00 on every clay: no reading there)
         row["flag"] = "the clay reader returned nothing (0.00 exactly): shown, not counted"
     return row
 
@@ -1515,7 +1515,7 @@ def brow_source(mesh: dict, rj: dict) -> dict | None:
 def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float = 0.66, density: bool = True,
                    tail_mm: float = 4.0):
     """The brows as the HAIR the picture shows, not the detector's band: MediaPipe's brow contour is a smooth arch of
-    a fixed thickness (lt19's straight, dense brows came out thinner and more arched). Inside the detector band grown by
+    a fixed thickness (straight, dense brows came out thinner and more arched). Inside the detector band grown by
     grow_mm, the pixels darker than `dark` x the surrounding skin; the largest pieces per side kept. A mask over the
     band's own box (origin o, picture pixels) or None when it finds too little. density: the mask is the hair's
     density (its darkness against the skin, 0..1)."""
@@ -1545,7 +1545,7 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
         inner = np.asarray(pm) > 0
         grown = np.asarray(pm.filter(ImageFilter.MaxFilter(2 * g + 1))) > 0
         # not past the band's own ends (side hair at the temples is dark too)
-        # not past the inner end; past the OUTER end by tail_mm (MediaPipe's brow stops short of the tail: lt19's
+        # not past the inner end; past the OUTER end by tail_mm (MediaPipe's brow stops short of the tail: a
         # profile showed a short patch)
         outer_left = q[:, 0].mean() < (allp[:, 0].mean() - o[0])
         lo_, hi_ = (tail_mm, 0.5) if outer_left else (0.5, tail_mm)
@@ -1570,7 +1570,7 @@ def brow_hair_band(img, polys, o, cam, mesh, grow_mm: float = 2.0, dark: float =
     keep = ndimage.binary_closing(keep, iterations=2)
     if not density:
         return Image.fromarray((keep * 255).astype(np.uint8))
-    # DENSITY, not a flat shape (lt19b: a binary mask painted at one strength drew the tails as heavy as the dense inner
+    # DENSITY, not a flat shape (a binary mask painted at one strength drew the tails as heavy as the dense inner
     # ends): how far each kept pixel is below the skin level, so sparse tails come out light and thin, the dense heads
     # dark
     dens = np.where(keep, np.clip((skin_lvl - crop) / np.maximum(skin_lvl * (1 - 0.35), 1.0), 0, 1), 0.0)
@@ -1777,7 +1777,7 @@ def photo_lighting(name: str, template: dict, vi: int | None = None) -> dict:
     re-aimed and re-balanced to the picture's own light, as the clay sheets are (lit_render's SH fit on the face's
     skin): the key along the fitted light's first-order direction, key : fill (a frontal fill from the camera, no
     shadow) from its ambient vs directional parts (the fitted c0 + w.n: ambient c0, key |w|), the face's
-    front kept as bright as the template lights it. jw2: the stage's fixed key 42 deg up put the sides of a flat-lit
+    front kept as bright as the template lights it. The stage's fixed key 42 deg up put the sides of a flat-lit
     phone photo's face in shadow and the dressed head read narrower and harder than the photo and the clay. Returns a
     new dict (+ "fitted": {dir, elevation_deg, key, ambient})."""
     from PIL import Image

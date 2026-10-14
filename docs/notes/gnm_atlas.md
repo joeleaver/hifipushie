@@ -12,7 +12,7 @@
   lips in the solve -> free cheek_fullness -0.8; |c| 11.7; no fold forced; "## reruns"). It replaces the b2_T06 /
   g2_T12 / er_s4 lineage. Skin is still er_s4's dressing (freckles, lip colour far from her: skin thread); hair: the
   "tesshair" agent carries f3_t1's hair onto it (docs/notes/hair.md).
-- HOLD (Joe, 2026-10-10): no further work on any model (Tess, Garrett, lt19, jw) until the GNM controls and the eye
+- HOLD (Joe, 2026-10-10): no further work on any model (Tess, Garrett, the two private subjects) until the GNM controls and the eye
   crease are sorted; then start over on all four with block-in v2 (GNM's own head, moves chosen from the control
   atlas, sculpt / relief first, the eye and lips steps).
 - CREASE (Joe, 2026-10-10, after gnmcrease's gk_01): GNM CAN make the right fold: sampled gnm#376 and gnm#540 "read
@@ -44,7 +44,7 @@
   in the profile), marked INFERRED (+-3 mm), and don't spend rounds refining it. General rule: work with the references
   handed to us, mark what is inferred. (4) Then the HOLD lifts: a fresh Tess block-in from her photos with only the
   new tools (face_ruler first, orbit, eye_ruler, recipe A, brow_read), result beside the photo; then Garrett (needs a
-  closer picture of his eyes: 5 px iris), lt19, jw (start blend by measurement). DECIDED (Joe: yes): add "hooding" as a named
+  closer picture of his eyes: 5 px iris), the private subjects (start blend by measurement). DECIDED (Joe: yes): add "hooding" as a named
   block-in control (gnm_fold.hood_direction; do it with step 1). Open: skin._aperture_keep_out fading paint on the lid; her lid platform darker than
   the skin above (skin thread).
 - HOOK-UP DONE (2026-10-11, coordinator; "## overhang" > "Hook-up, done"): recipe A is the eye step's default shape
@@ -60,7 +60,7 @@
 - DRIVING (2026-10-11): measure, then one control per measure. face_ruler / eye_ruler / brow_read read the pictures; by eye
   alone Claude misreads sizes 30-50 %. Synthetic gate: drivers 11/14 with the picture ruler; the photo path is not proven.
 - Rules: GNM owns the face's shape (no hand-made layers unless a documented gap AND Joe agrees); the artist block-in
-  is the default; private family likenesses (lt19, jw) are never in the repo.
+  is the default; private likenesses are never in the repo.
 
 Joe: "Every hand-made slider we made should control the model as a whole. Nothing should really work in isolation.
 We need to comprehend the model." Step 1 of the redesign: what GNM's identity space can express, and what moves
@@ -1611,8 +1611,8 @@ top: a 4 mm vertical disagreement that biases profile registration).
   block_in_start sets it too (setdefault). Accepted models keep theirs (no key: the old ball); re-match when worked on.
   Guides: blockin_guide (BASE keys), human_guide (top). Tests: test_new_human_eye_radius, start asserts it.
 
-## lt19 (2026-10-10; a private likeness: per-person notes, body settings and rounds are in the git-ignored
-## workspace/private_notes/lt19.md, never in the repo). General tool findings from it, now in code:
+## Private subject A (2026-10-10; a private likeness: per-person notes, body settings and rounds are in the git-ignored
+## workspace/private_notes/, never in the repo). General tool findings from it, now in code:
 - Phone references: the 70 mm portrait lens prior folded close-camera perspective into the face shape; a view's
   "lens_mm" (35 mm-equivalent, diagonal) or the image's EXIF now sets the focal prior (humanfit_map.lens_prior).
 - A profile facing image-left needs yaw -90 (not auto-resolved at 90 deg); likeness.render / humannormals cull at a
@@ -1623,14 +1623,14 @@ top: a 4 mm vertical disagreement that biases profile registration).
   neck_depth (MakeHuman CC0 neck targets; 0.5 = none) for the neck front across the stitch.
 - Per-picture expression (GNM lower-face comps) explains part of a smiling reference's fuller lips / cheek apple:
   fit it per view so the neutral identity isn't compared against a smile.
-- lt19b (branch worktree-agent-a7249a6883601c2d3), now in code:
+- Subject A, second round (branch worktree-agent-a7249a6883601c2d3), now in code:
   - block_in_expression / blockin.expression_step: each detector view's expression (GNM lower_face_region comps 0-19,
     prior sd 0.8; identity and camera held), Jacobian by finite differences once + chord iterations (~16 s), stored in
     human_refs "expressions" and applied (blockin.view_base) in look / focus / the table (likeness.model_sides takes
     per-photo meshes) / lid reads / camera refits; the model stays neutral. Eye-region comps are opt-in (eyes=True):
     with them the upper lid fell 0.75 -> 0.36 iris radii (the detector's calibrated lid points disagree with the
-    iris-radius lid read, so the comps fought the lid pose). With a smile applied, rows it had hidden show (philtrum
-    +1.5 mm, nose length +1 mm on lt19): steps taken against the neutral clay had compensated for the smile.
+    iris-radius lid read, so the comps fought the lid pose). With a smile applied, rows it had hidden show (philtrum,
+    nose length): steps taken against the neutral clay had compensated for the smile.
   - Widening steps driven by the blind alar row are worth undoing: judge alae on same-scale crops against the
     inner-canthal span. A free bridge_height step cost |c| ~0, the held one +1.7 for the same profile.
   - Presentation brows: the hair band as density (darkness against the skin), not a flat mask; the band's canvas and
@@ -1641,20 +1641,20 @@ top: a 4 mm vertical disagreement that biases profile registration).
   - Five cheek-area clay readers (corner_temple, corner_cheekbone, under_eye, cheek_hollow, nasolabial_fold) return
     exactly 0.00 on the clay: flagged, not counted, but those rows carry no information yet.
 
-## jw (2026-10-10; a private likeness: per-person notes, body settings, rounds and reads are in the git-ignored
-## workspace/private_notes/jw.md, never in the repo). General tool findings from it:
+## Private subject B (2026-10-10; a private likeness: per-person notes, body settings, rounds and reads are in the git-ignored
+## workspace/private_notes/, never in the repo). General tool findings from it:
 - A profile facing image-RIGHT (yaw +90) crashed the block-in (registration hard-wired to eye_outer.L) and its photo
   contour was scanned from the wrong side: _eye_anchor uses eye_outer.R / lm36, profile_contour reads the picture
-  mirrored (test_profile_contour_either_side). +90 vs -90 matters as lt19 found (the wrong sign: 2.3x the rms, dropped).
-- profile_contour on a warm (tan) wall behind fair skin: |rgb - bg| is under 40 while the chromaticity differs by
+  mirrored (test_profile_contour_either_side). +90 vs -90 matters (the wrong sign: 2.3x the rms, dropped).
+- profile_contour on a backdrop close to the skin's colour (a warm wall behind light skin): |rgb - bg| is under 40 while the chromaticity differs by
   ~0.07: a hue test (5x5-smoothed, > 0.05) is OR-ed in; the per-row background is a band just in front of the most
   forward clicked point (a wall's light falls off across the picture), and a 5-row median removes lash / fold spikes.
 - Profile focus crops: the light was fitted inside the crop (a 34 mm eye crop: lashes, brow hair, wall) and lit the
   clay white; a clicked view's crop now uses the whole face's fitted light. The raking light comes from the side the
   face looks to, and the crop is at least 0.75 x nasion-chin (a profile foreshortens the corner-to-corner span).
-- Brows in the block-in presentation take the picture's own colour (darkest quarter of the band's pixels): light,
-  fine brows (brow_hair_band finds too little dark hair and falls back to the detector band) read as heavy dark bars
-  in the fixed dark brown.
+- Brows in the block-in presentation take the picture's own colour (darkest quarter of the band's pixels): light or
+  fine brows (brow_hair_band finds too little dark hair and falls back to the detector band) otherwise read as heavy
+  dark bars in the fixed dark brown.
 - The table's clay readers drift ~1-1.5 mm with lower-face / neck SHADING alone: over four rounds that changed only
   the submental region and a body key (neck_double), the model's own landmark lengths stayed identical to 0.1 mm
   while middle_third moved 1.8 -> 3.2 mm and mouth_width 0.3-0.6 mm. Items within ~1.5 mm of their tolerance can flip
@@ -1662,16 +1662,16 @@ top: a 4 mm vertical disagreement that biases profile registration).
 - Held bridge_height costs much |c| when free steps had pushed it up (+0.92 -> +0.42 sd cost |c| +1.1) and moved the
   profile nose as a whole: a radix that reads proud may be the free nose_projection's coupling; try the free step's
   held variant first.
-- MakeHuman weight barely moves a one-mesh body's waist (62 -> 66 cm for weight 0.6 -> 1.0): the measure modifiers
+- MakeHuman weight barely moves a one-mesh body's waist (a few cm from weight 0.6 to 1.0): the measure modifiers
   (waist / hips / chest / shoulders) carry a full build. human_reference reports the lens width-based ("~33 mm") for
   a 24 mm diagonal-equivalent EXIF lens (the focal itself is right).
 - A stature from a room photo: pitch from the wall seams' vertical vanishing point, the camera's distance from a
   standard-size object on the wall (an outlet plate, 114 mm), its height from the wall base, then the person's heel
   point and head top (+-6 cm with a 5 % uncertainty in the object's size).
 - Dressed check (garrett3 stage / shot.light): light-brown hair looks (lit lighter than ~#7a5a3c) render grey-blond and
-  very fair skin (melanin 0.02-0.08) reads tan / ruddy: FIXED by jw2 (below: skin.tone_rgb's fair end, hair look.seen).
+  very fair skin (melanin 0.02-0.08) reads tan / ruddy: FIXED in the second round (below: skin.tone_rgb's fair end, hair look.seen).
 
-## jw2 (2026-10-10, continues jw; branch worktree-agent-aec6be48f7479a3e4; per-person notes in the private file).
+## Private subject B, second round (2026-10-10; branch worktree-agent-aec6be48f7479a3e4; per-person notes private).
 General findings:
 - The EYE STEP on a model that had lid POSE offsets: the solve starts from the pose-free lids (its "before" reads the
   head without head.pose), so a well-matched pose model shows a big "before" miss; the shipped result clears the pose.
@@ -1689,7 +1689,7 @@ General findings:
   rounder and fairer at once; (2) hair hanging flush down both sides of the face; (3) heavy dark straight brows.
   For likeness sheets light the dressed head like the photo (the clay already uses the photo's fitted SH light);
   porting that SH fit to the dressed stage is the general fix (not done).
-- Loose hair can't say "the part side combed back behind the ear, the swept side falling forward": loose.flow is per
+- Loose hair can't say "one side combed back behind the ear, the other falling forward": loose.flow is per
   REGION (front, top, sides ...), the same world direction on both sides, and per-region flow on front / top forced
   everything across and bared the part's other side; stiff >= 0.4 on long front hair hooks the ends; hair resting on
   bare shoulders hooks up. A per-side (part side / swept side) flow, or the traced route (hair_reference apply=True)
@@ -1790,7 +1790,7 @@ State: Garrett b2_G15 (12 mm eye, fold 0.6, nose tip down / projection, DESIGNED
 alae in, eye step with a low crease); b2_G09 is the fold-1.0 alternative from G08. Tess b2_T06 (12 mm eye x 1.05,
 eye step: fold at 5.3 mm, 1.1 mm deep).
 Open, in order: (1) Joe on the designed dorsum local (b2_G11's); (2) the eye_width / eye_opening readers on clay
-(Garrett: row 28.8 mm vs his own corner landmarks 26.1) and lt19's weak-perspective scale in the eye-placement readers;
+(Garrett: row 28.8 mm vs his own corner landmarks 26.1) and a private subject's weak-perspective scale in the eye-placement readers;
 (3) the profile lip_upper click vs lm51; (4) the eye step: a true overhang (GNM made none for Garrett: test a bigger
 prior / expression range), Tess's iris reads 5.1 mm in camera mm (iris-radius targets may be ~15 % inflated for her);
 (5) age: the decision on a licensed older-age source (section 4); the designed shape: ops meanwhile (Garrett: fold,
@@ -1812,7 +1812,7 @@ hollow, lips by eye: note his lower lip reads FULLER than ours on the table, not
   3/4 (look_skin) reads slightly up. Cost: a little more nostril show in the clay 3/4.
 - Table: philtrum front +0.02 -> +1.46 and chin_height front -> +2.16 "went out", mouth_width came in. The model's OWN
   3D landmarks moved < 0.5 mm (lmd.py: philtrum 18.71 -> 18.73, chin 39.06 -> 39.12, face height 121.1 -> 121.0): the
-  clay DETECTOR re-reads the whole lower face when the tip turns (jw's drift note). Check lmd.py before reverting.
+  clay DETECTOR re-reads the whole lower face when the tip turns (the clay readers' drift note). Check lmd.py before reverting.
 - Designed dorsum local (nose_dorsum_width -0.8, Joe "yes maybe"): kept; with the tip up it still reads (narrow bridge,
   darker walls); at 0 the bridge reads broad again (out/n3.png).
 - Sheet for Joe: b3_G16_nose_before_after.png (pictures; G15 / G16: front | 3/4 | built profile | dressed front | 3/4),
@@ -1940,7 +1940,7 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 - A picture's expression in prototypes vs the block-in's 20 raw lower-face comps (scripts/expr_classes.py, front
   pictures, identity and camera held): lower-face parts of the 20 prototypes fit as well (Tess chi2 43.8 -> 35.5 vs
   35.2; Garrett 342 -> 248 vs 261) with named weights (Tess: blow 0.24, surprise -0.2); WHOLE prototypes fit far more
-  (Tess 29.3, Garrett 146) but by opening the eyes (Garrett wink_right -1.24, squint -1.21), the lt19 fight between the
+  (Tess 29.3, Garrett 146) but by opening the eyes (Garrett wink_right -1.24, squint -1.21), the fight (seen on a private subject) between the
   detector's lid points and the eye step: keep eye parts off unless the picture squints. Negative weights are
   anti-expressions: a non-negative prototype basis would be the plausible one (not built).
 
@@ -2050,7 +2050,7 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
   concept's lean face); G17 reads broader and squarer; neither has the concept's deep-set, hooded tiredness yet. On the
   table G17 wins. Not a clear win for the regional base after 14 rounds; it is at least as good a start.
 - The table's noise floor: with every macro HELD exactly (a sculpt can't move a landmark proportion), mouth_width moved
-  +1.0 mm and chin_height +0.45 mm: clay-reader drift from shading (jw's finding). Edge flips under ~1 mm are noise.
+  +1.0 mm and chin_height +0.45 mm: clay-reader drift from shading (a private subject's finding). Edge flips under ~1 mm are noise.
 - AGE THE GNM WAY (agecues.py; relief = a zone against its 5 mm surround, size projected out):
   | cue | sculpt cost |dc| per mm (macros held) | GNM's population sd of the cue (mm) |
   |---|---|---|
@@ -2076,7 +2076,7 @@ HIFIPUSHIE_HOME: rc_*, gb_*, *_fit_* models), out/. Sheets human_renders/gc_01..
 - Code (branch worktree-agent-aecab3f9c741dd586): gnm_controls.py / .npz, gnm_sampler.py / .npz, blockin (sculpt:,
   relief:, gnm:, gnm_base_rest), onemesh (gnm_base_rest, gnm_base_age, face_weight), humanfit_map prior_mean, server
   gnm_controls (human toolset), blockin_guide (loop 4, feature pass, "GNM's controls", tool reference), tests
-  test_gnm_controls (5) + test_toolsets' list (block_in_expression was missing since lt19b).
+  test_gnm_controls (5) + test_toolsets' list (block_in_expression was missing).
 - Main workspace: b3_G17, rb_G00 .. rb_G14 (the regional-base trial; rb_G14 its last step).
 - Rebuild the table after changing zones / the perception runs: scripts/atlas.py build (18 s; perception: perc_all.py
   <families>, ~25 min for all), sheets: atlas.py sheets [families] (~2 s a page), index: atlas.py index.
@@ -2534,7 +2534,7 @@ s2+s3 pooled: no manual 6/28, manual 13/28. Manual v3 (+ mm: moves, gnm_mm.py) s
 arms (3 drivers each). Next: score s4 / m4, final sheets, report to main.
 
 Joe: learn to DRIVE GNM with intent (see a difference, name it in an artist's words, know the control), not search.
-A driving test (synthetic GNM pairs only: HOLD on Tess / Garrett / lt19 / jw) and a driving manual.
+A driving test (synthetic GNM pairs only: HOLD on every real head) and a driving manual.
 
 ### The test (scripts in /mnt/data/hifipushie/gnmdrive/scripts; copied to spikes/gnmdrive at the end)
 - Heads: GNM's raw head, identity = 170 head comps, expression 0 (drv.verts), clay via gnmcontrols' gnmc.render
@@ -3875,7 +3875,7 @@ Read (blunt):
   mm, none under 0.25. A seat against the lid's skin (rings 1..7 clear by 0.25 mm, landmarks still 0.8) would move:
   0 of 120 random heads, none of the listed real models, gk_s376 by 0.04-0.07 mm, el_f3 by 0.34-0.40 mm.
   RECOMMENDATION: do not change the global seat. Only DESIGNED lids come near the ball and the eye step's guard
-  handles those; a ring-based seat would move nobody's eyes. (lt19 / jw were not measured: private.)
+  handles those; a ring-based seat would move nobody's eyes. (the private subjects were not measured.)
 - DECISION 1 in the code: the eye step's report and the guide recommend no painted fold line, crease make-up or liner
   (eye_ruler.compare's skin.eyes.crease move removed; the report says the line's darkness is not a target).
   skin.eyes.crease / crease_path stay in the code, unused.
@@ -4179,7 +4179,7 @@ STATE / NEXT: hook-up merged on main. NEXT: the four reruns (Tess first, only th
 ## step + sheet + face_ruler's READ rows), dsheet.py <out> <title>=<model>.. (DRESSED: reference | result | rest, each
 ## view through its fitted camera + an eyes row); out/ logs and shots; sheets human_renders/tn_*)
 STATE / NEXT (reruns): Tess at tn_T06 after 6 rounds, sheet tn_01_tess_dressed.png sent to Joe: NOT a likeness, lower
-face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper, nose tip), then Garrett, lt19, jw.
+face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper, nose tip), then Garrett and the private subjects.
 
 ### Tess (tn_T00 .. tn_T06; refs and dressing from er_s4, cameras KEPT)
 - block_in_start(cameras="refit") on the class mean is WRONG for her: face_ruler then turned the profile camera 10.8 deg
@@ -4218,7 +4218,7 @@ face worse than er_s4. NEXT: Tess's lower face by eye + table (jaw / chin taper,
   face shape, tn_T08 the better lid.
 STATE / NEXT (reruns, 2026-10-11): STOPPED at tn_T08 for Joe's choice: (a) keep grinding Tess from the class mean by
 eye, then the other three the same way, or (b) start each of the four from its previous lineage's head and apply only
-the new eye work (decided eye depth, crisp fold, ruler rows). Garrett / lt19 / jw not started.
+the new eye work (decided eye depth, crisp fold, ruler rows). Garrett and the private subjects not started.
 
 ### Tess from scratch WITHOUT the fold (Joe, 2026-10-11: "try tess without worrying about the eye fold ... all the way from
 ### scratch, just doing the best we can with the gnm controls and not forcing anything crazy")
@@ -4367,7 +4367,7 @@ cheek zones' sculpt), then as observations in the solve if it validates on known
   so it only pulls such a step back toward the class mean by the prior).
 STATE / NEXT (tooling): joint solve = outlines + irises + limbus + lids + lips (in, pushed); shading built, failed
 validation, off. Open: cheeks (above), brow band and alae in the solve, tests for the new observations, the guide's
-3b text, the table's bad front rows, then the solve on Garrett / lt19 / jw with judging sheets.
+3b text, the table's bad front rows, then the solve on Garrett and the private subjects with judging sheets.
 
 ### Garrett with the joint solve (2026-10-11): FAILS on his references
 - gj_G00 = block_in_start from b3_G17's refs (male class mean, age 52, gnm_base 0, cameras kept; two views: the front
@@ -4391,7 +4391,7 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
   (2) face parsing for outlines on any background, (3) learned surface normals as the interior observation (validated
   with shval.py's method or left off); then Garrett rerun from gj_G00 (gr_G*) and a Tess regression (tq_T*).
   NOT started: (4) a single-image identity estimate as the solve's prior centre (fitter_whitepaper.md).
-- Both run capped, share resources.heavy, do not push or merge. lt19 / jw not started (waiting on Joe after Garrett).
+- Both run capped, share resources.heavy, do not push or merge. The private subjects not started (waiting on Joe after Garrett).
 
 ### The turned views' cameras (Joe: "I agree about checking head size, that's a big difference"; 2026-10-11)
 - tesshair found: through the 3/4 camera our eye span is smaller than hers. Measured (spikes/reruns/eyespan.py: the
@@ -4450,7 +4450,7 @@ validation, off. Open: cheeks (above), brow band and alae in the solve, tests fo
 9. My eye is a poor instrument (sizes 30-50 % off; whole-face reads fooled by dressing): measure, blend, and say
    which. Send every sheet to Joe with a blunt caption; he caught the cheeks from one profile tile.
 10. Process: one heavy job at a time through resources.heavy and bin/capped; agents in worktrees with their own
-   scratch models; notes + commit after every step; reference | result | rest on every sheet; lt19 / jw private.
+   scratch models; notes + commit after every step; reference | result | rest on every sheet; private subjects stay private.
 
 ## refread (2026-10-11, "refread" agent, branch worktree-agent-afe13b70ba89a707e from main e033a25; Joe: "I'd like to be
 ## able to get closer from a single or two references" and "let's try 1 through 3": three new kinds of observation for the

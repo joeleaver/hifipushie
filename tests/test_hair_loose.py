@@ -227,7 +227,7 @@ def test_face_rule_by_side():
 
 def test_face_over_one_holds_the_hair_back_to_the_ear():
     """face 1.5: below the hairline the hair is kept out of ~87 deg either side of the face's centre (swept back off the
-    cheek and temple to the ear, lt19's profile); face 1 lets it hang over the cheek (58 deg)."""
+    cheek and temple to the ear); face 1 lets it hang over the cheek (58 deg)."""
     def cheek(face):
         sc, _c, locks = _grow({"length": 0.3, "spacing": 0.025, "messy": 0.0, "uneven": 0.0, "face": face},
                               parting="centre")
@@ -392,7 +392,7 @@ def test_carried_groom_keeps_its_hairline_on_the_head():
 
 
 def test_default_grey_follows_age():
-    """lt19b: the default temple / sideburn grey put grey locks on a 19-year-old; it now follows the model's age
+    """The default temple / sideburn grey put grey locks on a young head; it now follows the model's age
     (none to 30, all of it from 50); a groom's own grey and models without an age are unchanged."""
     g19 = hair.groom_params({"base": {"body": {"age": 19}}, "hair": {"groom": {}}})
     assert all(v == 0 for v in g19["grey"].values())

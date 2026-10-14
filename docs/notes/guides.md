@@ -65,6 +65,6 @@ with authority per item, INFERRED list), playbook (badger-knight: stage-0 sheet,
 character read first, every item), terrain (fjord brief). All followed the key rules; frictions fixed in the guides.
 
 ## Found, not fixed (outside the guides)
-- Private subject tags (lt19, jw) appear in code comments in hair*.py, blockin*.py, makehuman.py, skin_swatch.py,
-  blender_strands.py (pre-existing; the repo is public).
+- Private subject tags in code comments (hair*.py, blockin*.py, makehuman.py, skin_swatch.py, blender_strands.py):
+  removed 2026-10-14 (generic wording).
 - Default paths under /mnt/data/hifipushie in env defaults (facenormals, denselm, humannormals, faceext).

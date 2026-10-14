@@ -763,7 +763,7 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
 ### Garrett's hair carried onto the new head (2026-10-09, tess agent)
 - New general groom key `fit` (hair.fit_to_head / head_ref; test_hair_loose::test_groom_fits_a_smaller_head): the head a groom was made on; lengths / volumes / offsets in metres scale by the new head's scalp radius over that one, traced front_points move with the head centre. Applied in hair.grow and hair.hairline. h7_garrett's groom (hair7-12, head_size 1.138) onto fs_gj8 (1.0): gc_raw (metres as written) vs gc_fit. Hand-traced hair outlines (trace_garrett.json, gscore.py): front IoU old 0.687 / raw 0.476 / fit 0.687 (chamfer 9.6 / 11.8 / 8.8 mm). Desk painting: 0.38 / 0.31 / 0.33, unreliable (the painting's fitted camera frames the head differently from the photo crop). Colour: ours lighter than the concept (front mid #9a8c82 vs #6a5e54).
 
-## Hair colour from a photo: look.seen (2026-10-10, "jw2" agent)
+## Hair colour from a photo: look.seen (2026-10-10)
 - A light-brown photo colour typed into `lit` rendered grey-blond: EEVEE's strand material multiplies the colour's
   HSV saturation by eevee_sat 0.35 (linear) to copy Cycles' chroma loss, so it can never show more than 0.35 saturation:
   a light brown (linear HSV saturation ~0.6) is out of reach for ANY lit. New key `look.seen` (hair.seen_look /
@@ -771,7 +771,7 @@ Moved out of CLAUDE.md on 2026-10-09 so agents don't load every thread's history
   eevee_sat = seen's / lit's (EEVEE draws seen exactly), gap / sheen / tip as multiples of lit, and the scalp tint
   ("scalp") and card_sat from seen (the boosted lit showed as an orange scalp between partings). Explicit colour keys
   win. test_hair_strands::test_seen_colour_reads_as_asked_in_eevee.
-- Measured on jw (flat frontal light, EEVEE): the rendered lit hair matched the photo's lit-hair numbers but came out
+- Measured on a private test subject (flat frontal light, EEVEE): the rendered lit hair matched the photo's lit-hair numbers but came out
   ~1.25x as saturated as seen, and the same numbers read ginger on our grey backdrop beside a photo with a warm wall:
   sample seen from the photo's LIT side (the render makes its own shadows) and ask a little less saturated.
 
@@ -1446,7 +1446,7 @@ nothing does. On the model: groom.hairline {"ear": -0.013, "sideburns": 0.035} (
 the wedge is gone on the high ponytail, Tess's temple is a dense mass down to the ear like hers. This is also what
 round four's "shaved" three-quarter was (it un-rooted the tuft that had covered some of it).
 NOT DONE: hair.hairline finding the ear on the mesh (it would move every human model's hairline on its next regrow:
-its own change, with a look at garrett / jw / lt19).
+its own change, with a look at every human model).
 
 ### Dead ends
 - Thinning the hairline row alone (density) to soften the edge: the edge was not that row.
@@ -1555,7 +1555,7 @@ replace=True).
   rs_real_S3 BETTER (hair down to the ear, a sideburn), lk_mem SLIGHTLY BETTER, dg_hair_long WORSE FOR THAT GROOM (its
   ear -0.03 rooted hair on the ear to hide its top; the ear now shows whole: `ear_from: "brow"` or longer side hair
   restores it). garrett_v20 / om_garrett / the template: line plots only (th_42 bottom; their syncs were the 8 GB job).
-  NOT rendered: lt19, jw (private, untouched).
+  NOT rendered: the private test subjects (untouched).
 
 ### 2. The front (`front`: looseness, drape, locks)
 - gather.front {"loose", "drape"} (hair_flow.paths / gather): roots in front of the ears (fading az 55..85) get sag +
@@ -2215,54 +2215,40 @@ not the locks' directions (all point down there), not scalp-radius spikes or sca
 lift / lay change. Next suspect: the strand generator's root spread at the head's back pole.
 GPU: a second amdgpu context loss ("hard recovery") with 600k strands, the scalp layer off (all of them in the locks),
 2048 px: judging renders now use count 450k.
-lt19 rounds 7-11 (sheet human_renders/hg_lt19_r11.jpg: REFERENCE | r11 | r6; style description in private notes):
-- described first (soft centre part, smooth straight top, curtains close to the face over the temples, waves only in
-  the lengths, a dense curly halo at the crown, one side behind the ear); rebuilt: smooth top (no wave from the roots:
-  wave 9 mm, wavelength 13 cm, random 0.7), tucked side, closer curtains, lower lift at the part.
-- `face` < 1 let the hair hang over the face in profile (r7): keep 1 for loose long hair.
-- `tuck.from` (new): the front hair from the part is tucked too on that side. The profile picture showed the OTHER
-  side from the one its name said: the untucked side hung a veil over the cheek (r8-r10); r11 tucks the side the
-  fitted profile camera sees. Halo share capped at HALO_MAX 0.2 as a guard (loose x2 x soft x4 reached 0.56).
-- Left on lt19: the lengths are now too straight (her loose waves below the ear), the crown halo still faint, the part
-  shows a narrow scalp V, the ear is covered where hers shows, no volume at the crown.
-lt19 r12-r13 (sheet human_renders/hg_lt19_r13.jpg: REFERENCE | r13 | r12): new strand dial `wave_from` (m along the lock
-where waves start: 0.12 = straight top, waves below the ear). VOLUME: the reader's stand-off said ours was WIDER at the
-sides (+8 mm) because her room (couch, shirt) hid the outline; by height from the parser (spikes/hair_garrett/widths.py)
-hers is narrower at cheek level but ~4 cm wider at the shoulders and reaches 1.5-2x further behind the head in profile
-(38-83 mm vs 22-48). groom.loose.body 8 -> 25 mm + waves 2 cm in the lengths: the mass fills out (ours now wider than hers
-at cheek level: 240 vs 179 mm; the top stays smooth). Left: the curtains at cheek level too wide, the profile near side
-hangs over the jaw again with the waves, crown halo, part V.
-jw r7 (sheet human_renders/hg_jw_r7.jpg: REFERENCE | r7 | r6; description private): rebuilt from words: a deep side
-part with the front and top combed ACROSS to the other side (flow front / top with x), thin flat hair (loose spacing
-24 mm, body 4 mm, lift 1 mm, 70k strands), one side tucked (`tuck.from` 12: the ear shows in profile), mid-brown with
-grey 0.015 (the white-line strands gone). Missing knob: a ONE-SIDED face rule (`face` is symmetric): her long curtain
-falls over one cheek and in front of that shoulder while the other side is tucked.
-jw r8 (sheet human_renders/hg_jw_r8.jpg: REFERENCE | r8 | r7): `groom.loose.face` may be {"left", "right"} (tested); with
-the curtain side's face 0 the curtain still hangs beside the cheek, not over it: the hair falls straight down from the
-part, so a curtain OVER the cheek needs that side combed forward / across as it falls (a flow word for the lengths), not
-only the face rule let off. Colour: by measure the MEAN matches (L* 25-26 vs 23, hue 36-40 vs 40) but the range is too
-narrow (shadow L* 17 vs 9, highlight 33 vs 36, L_sd 7.2 vs 11.8): darker roots (root_dark 0.8), depth 0.7, sun 0.7 with
-sun_warm 0.4 and highlights 0.4 did not open it much; the lengths stay mid-brown. NEXT on jw: a per-region flow for the
-lengths (the curtain over the cheek), the colour RANGE (light lengths, dark roots).
-lt19 r14-r15 (cheek-level width): body 18 mm + lay on the sides took 240 -> 230 mm (hers 179); `face` 0.5 (r15) put the
-curtains over the face's edges (224 mm) but hid her whole face in profile: rejected, face stays 1. By height from the
-parser, OUR outline is ~2.3 cm wider even at the crown where the hair is thin (146 vs 123 mm at 6 cm over the centre):
-most of the cheek-level difference is the head / camera scale, not the hair. Compare hair THICKNESS (outline minus the
-skull's own width at that height), not the outline's width, before tuning width on this head.
+Private test subjects A and B, rounds (sheets and per-person descriptions in the private notes). General findings:
+- `face` < 1 let loose long hair hang over the face in profile: keep 1 for loose long hair (0.5 put curtains over
+  the face's edges but hid the whole face in profile: rejected).
+- `tuck.from` (new): the front hair from the part is tucked too on that side. A profile picture can show the OTHER
+  side from the one its name says: tuck the side the fitted profile camera sees. Halo share capped at HALO_MAX 0.2 as
+  a guard (loose x2 x soft x4 reached 0.56).
+- New strand dial `wave_from` (m along the lock where waves start: 0.12 = straight top, waves below the ear): a smooth
+  top with waves only in the lengths (smoothing the top had otherwise straightened the lengths too).
+- VOLUME: the reader's stand-off can read ours WIDER when the picture's room (couch, shirt) hides the hair's outline;
+  measure by height from the parser (spikes/hair_garrett/widths.py) instead. groom.loose.body + waves in the lengths
+  fill the mass out (the top stays smooth). Compare hair THICKNESS (outline minus the skull's own width at that
+  height), not the outline's width, before tuning width: most of a cheek-level width difference can be head / camera
+  scale, not hair.
+- `groom.loose.face` may be {"left", "right"} (tested): a ONE-SIDED face rule for a curtain on one side and a tuck on
+  the other. With the curtain side's face 0 the curtain still hangs beside the cheek, not over it: the hair falls
+  straight down from the part, so a curtain OVER the cheek needs that side combed forward / across as it falls (a flow
+  word for the lengths), not only the face rule let off. Open.
+- Colour: a measured MEAN can match while the RANGE is too narrow (shadow / highlight L*, L_sd); darker roots
+  (root_dark), depth, sun with sun_warm and highlights did not open it much. Open: the colour range (light lengths,
+  dark roots).
 Garrett's back whorl: still open. It has been in every loose groom's back view since the first rounds (a pit at the back
 in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
-### hair-heads2 (branch from main 118bf2f): lt19's part, Garrett's front hairline, thickness, the whorl
-- lt19's "bald stripe" (Joe): isolated from the front and from ABOVE (hgshots view `t60`: the front camera tipped 60 deg
+### hair-heads2 (branch from main 118bf2f): a centre part's bald stripe, Garrett's front hairline, thickness, the whorl
+- A centre part's "bald stripe" (Joe, on a private test subject): isolated from the front and from ABOVE (hgshots view `t60`: the front camera tipped 60 deg
   over the top). Above showed the real cause: the whole top was a patchwork of flat lock ribbons with scalp between
   (loose spacing 18 mm, width 1.5); the part was only its worst line, and every root next to it was combed sideways off
   it (the away comb), opening a V toward the forehead. New `groom.loose.part_soft` (roots beside the part not combed
   away, the away comb over 15 mm, 25 % crossing; test) + spacing 10 mm, width 2.4, 220k strands + scalp_tint 0.15: hair
-  runs up to the part from both sides, a few gaps left at the crown from above. Sheet human_renders/hg_lt19_part.jpg
+  runs up to the part from both sides, a few gaps left at the crown from above. Sheet (private)
   (REFERENCE | now | before; front crop + from above).
 - From above (the coordinator: game cameras look down on heads): crown gaps + wide crossing ribbons. Narrower, denser
   locks (spacing 7 mm, width 2.0) made it WORSE (more crossings, more gaps); what closed it: scalp_tint back to 0.85 on
   dark hair (a dark scalp reads as the shadow between hairs, as on a real dark head: 0.15 suits GREY hair only) and the
-  part's crossing share 0.1 (crossed locks left gaps behind them). Sheet hg_lt19_part2.jpg. scalp_tint by the hair's
+  part's crossing share 0.1 (crossed locks left gaps behind them). scalp_tint by the hair's
   darkness: dark hair 0.85, grey / fair 0.15-0.3.
 - Joe: "still left bald spots" (the dark tint only hid them) + two principles (now the top of the checklist): roots
   EVEN over the growing area (parts are the comb, not missing roots); hair ARCS up from the scalp then falls (flat from
@@ -2271,7 +2257,7 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   part, none in the first EVEN_EDGE 12 mm inside the hairline / EVEN_FRONT 40 mm over the face), shaped by the nearest
   3 lock guides within 3 cm (the locks' own guide curves). First try hung a sparse veil over the forehead and eyes:
   children rooted in front of the guides take their shape translated forward, past the face rule; the edge / front
-  masks fixed most of it. lt19 E2 (even 0.7, lift 12 mm, out top 0.25 / front 0.2, stiff 0.35): from above an even
+  masks fixed most of it. E2 (even 0.7, lift 12 mm, out top 0.25 / front 0.2, stiff 0.35): from above an even
   cover with a clean thin centre part (the crossing ribbons and crown gaps gone), volume from the arc. A few stray
   interpolated hairs still cross the forehead.
 - The veil, isolated (front, one change each): it is the even layer (even 0: clean), not halo / fly-aways. Interpolated
@@ -2279,16 +2265,16 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   stood there, past the face rule, which only the guides obey. Splitting the scalp into two mesh islands along the part
   (Part by Mesh Islands: children use only guides on their own side) did NOT remove it; masking the front 4 cm did, but
   left the front of the part uncovered. What works: the even layer is a COVER layer, trimmed to EVEN_LEN 7 cm (x
-  0.6-1): it covers the scalp under the lengths, the lengths are the locks' (lt19 E5: face and profile clean). Dense
+  0.6-1): it covers the scalp under the lengths, the lengths are the locks' (E5: face and profile clean). Dense
   narrow Python locks instead (spacing 6 mm, width 1.3, even 0: E4) kept the face clean but from above read as ribbed
   ribbons with scalp along the part.
 - Coverage, the long head (magenta, % of the hair region; lock-rooted r14 -> even cover layer E5): from above 4.83 -> 0.87,
   behind 0.3 -> 0.0, 3/4 back 0.08 -> 0.0, profile 0 -> 0. The rest is one patch beside the part's front half (comb
   direction parting the cover layer there, not missing roots). The reader's loose start now sets even 0.5 + out by
-  region (dbf260f). STATE: coverage gate in the guide; NEXT: the part-front patch, then even roots on jw and Garrett
+  region (dbf260f). STATE: coverage gate in the guide; NEXT: the part-front patch, then even roots on the other heads and Garrett
   (whorl), Garrett's hairline, the widths thickness / scale measure.
 - ALL ROOTS EVEN, properly (coordinator / Joe: locks are guides, not root owners; strands.even 1): every strand an
-  interpolated child at an even root, the locks marched dense as guides (spacing 4 mm, 1900 on lt19), no trim. The
+  interpolated child at an even root, the locks marched dense as guides (spacing 4 mm, ~1900 on a long head), no trim. The
   veil, found by evaluating the strands (spikes/hair_garrett/veileval.py: strands crossing a box in front of the face, by
   object and root): (1) children ROOTED ON THE PART fell straight down the forehead: Blender's "Part by Mesh Islands"
   did not keep them to their bank, even with the right island's UVs moved to u + 1 (kept); fixed by one OBJECT per bank
@@ -2298,36 +2284,34 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   lengths hung dead straight: lock_guides damps waves on narrow locks as wisps (W = 2.4 x 4 mm: 0.32 x amplitude,
   1.6 x wavelength) and random per-guide phases cancel in the average: in even mode ws = wl = 1 and the phase is a
   smooth field of the root (~3 cm); interpolated children get Blender's Clump Hair Curves (guide distance =
-  clump_size). lt19 E9: face clean, waves in the lengths, magenta only ON the part line (t60 1.24 %, behind 0.01 %).
+  clump_size). E9: face clean, waves in the lengths, magenta only ON the part line (t60 1.24 %, behind 0.01 %).
   hcover counted by brightness and missed dim magenta under dark hair: by hue now (recounted: r14 8.37 %, E5 4.61 %,
   E9 1.24 % from above). Open: the profile reads as a darker solid mass than E5 (less separation).
 - Nearest guide (strands.even_guides, auto 1 at even 1): every split in the comb (part, tuck behind the ear, a curtain's
-  edge) makes children that average both sides take the middle path: jw E1's tuck put a sparse veil over the cheek.
-  One guide (4 mm away at most) never takes a middle path, and keeps each guide's waves (lt19 E10: more lock texture
-  than E9, face clean, 1.45 % from above = the part line). jw E2: cheek mostly clean, but from above a 3 cm starburst
-  of scalp at the front of her side part (9 %: the divergent comb with lift 0.001; open). Garrett on the frozen head
+  edge) makes children that average both sides take the middle path: a tuck put a sparse veil over the cheek.
+  One guide (4 mm away at most) never takes a middle path, and keeps each guide's waves (E10: more lock texture
+  than E9, face clean, 1.45 % from above = the part line). On a side part: cheek mostly clean, but from above a 3 cm starburst
+  of scalp at the front of the part (9 %: the divergent comb with lift 0.001; open). Garrett on the frozen head
   (hg_h6 = gp_h6c) E2: the crown hole is GONE (the whorl was the lock layout), speckles low on the back / nape
   (1.1 %), but darker, less grey and streakier than r14: the even guides lost their grey (eg took `gr` only with a
   "head" group; loose hair has only "free": fixed), Clump and nearest-guide bundles suit long hair more than a crop.
   360k strands for Garrett's magenta render (450k: the job's memory cgroup killed Blender at 5.5 GB).
-- lt19 after the merge (coordinator: E10 a heavy solid black hood in profile, flat on top). MEASURED first
+- Long loose hair after the merge (coordinator: E10 a heavy solid black hood in profile, flat on top). MEASURED first
   (spikes/hair_garrett/profover.py: our outline over the picture through the fitted camera, edge distance from the head
-  centre per ray). FIRST READ WAS WRONG: "our face 2.7 cm behind hers" was the front edge of our HAIR (it hangs down
-  over her cheek); drawn with the render's whole silhouette (blue) the head registers on her photo (forehead, nose,
-  chin). Read: our crown edge 12 mm ABOVE hers (the top is not low), the back 13-22 mm further out, and our side hair
-  falls straight down from the forehead corner over the temple and cheek where hers sweeps back over the temple to the
-  ear (at eye level her hair starts ~3 cm further back). The "hood" is that, not the top's height. Tuck on both sides
+  centre per ray). FIRST READ WAS WRONG: "our face behind the picture's" was the front edge of our HAIR (it hangs down
+  over the cheek); drawn with the render's whole silhouette (blue) the head registers on the photo (forehead, nose,
+  chin). Read: our side hair falls straight down from the forehead corner over the temple and cheek where the
+  picture's sweeps back over the temple to the ear. The "hood" is that, not the top's height. Tuck on both sides
   (E14) only thinned it at the jaw: the temple needs its comb swept back (open). The hood: look dials alone (E11: depth .85, gloss .6, variation .6, highlights .35, clump .75) barely moved
   it; the even children had none of the colour model's per-lock numbers (hp_lv, hp_ch, hp_cb, hp_cm, hp_a1: the lens
   makes them): hp_cells (blender_strands) gives them from the root's jittered cell per scale + the strand's length
   (E13: some lock light behind / 3-4; the profile still one dark mass). Open: separation in the mass (gaps between
   locks, see-through edges), and the profile camera.
-- Re-seated (coordinator): lt19 on hl_ps = ltn_hd2_ps (ltn_h06's shape, mouth lowered; hl_g0 was ltn_hd), jw on hj_ps
-  = jwn_hd_ps. lt19 E15 (hl_ps): flow sides [0, .8, -.6] (combed back to the ear), lift 12 -> 6 mm, body 18 -> 10 mm:
-  the profile outline within 2-5 mm on top (was +12) and 7-9 mm at the back (was 13-22). The cheek was still covered:
+- Re-seated on the private subjects' newer heads (coordinator). E15: flow sides [0, .8, -.6] (combed back to the ear),
+  lift and body lowered: the profile outline closer on top and at the back. The cheek was still covered:
   the FACE RULE holds hair out of 58 deg either side of the face's centre, which in profile is mid-cheek. `face` now goes
-  to 1.6 (1.5 = to the ear, ~87 deg): E16 face 1.5: the cheek clear, our front edge on hers from the forehead past the
-  temple to behind the jaw. From the front E16 is narrower than her full sides (body 10 mm: next), a few strands stand up
+  to 1.6 (1.5 = to the ear, ~87 deg): E16 face 1.5: the cheek clear, our front edge on the picture's from the forehead past the
+  temple to behind the jaw. From the front E16 is narrower than the picture's sides (body: next), a few strands stand up
   at the part. Garrett E3 (grey fix): the grey is back; the back reads coarse / streaky ("pine needles", nearest-guide
   bundles + Clump on a crop) with speckles low on the back (~1 %): for a crop the even layer is not yet better than r14.
 - Nearest guide only where the comb splits (coordinator): on a crop every child copying one guide made bundles of
@@ -2343,8 +2327,8 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
 New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15
 on grey, a denser short-cut start (spacing 5 mm, width 2.4, body 4 mm, 600k). Checklist: Step 0 (describe first), rule 1
-(measure by height in a room), rule 15 (density = lock coverage). Heads: Garrett r12, lt19 r13, jw r8.
-NEXT (the coordinator's order): lt19's cheek-level width, Garrett's back whorl; jw's curtain over the cheek and colour range.
+(measure by height in a room), rule 15 (density = lock coverage). Heads: Garrett r12, the private subjects' latest rounds.
+NEXT (the coordinator's order): cheek-level width, Garrett's back whorl; a curtain over the cheek and colour range.
 RESTART: ./run.sh hround.py hg_g0 hg_<tag> patch=@styles/<tag>.json; ./run.sh hgshots.py hg_<tag> views=v0,v1,v2,y125,y180
 stage=hg_r4 size=1024 ss=2; ./runl.sh mksheet.py hg_<tag> prev=hg_<prev>.
 ### hair-garrett3 (2026-10-14, branch `hair-garrett3` from main e5dcc62; the last round: MERGE-READY, STOPPED)
@@ -2352,7 +2336,7 @@ STATE: `strands.halo_soft` 0..1 (a dense soft halo: x4 halo hairs at 1, their st
 pair with look.fine_alpha 0.2-0.3; hair_strands.SOFT_HALO); `look.seen` may be [r, g, b] sRGB floats and the reader's
 colour step emits them; `look.sun_warm` 0..1 (0 = sun-lightened lengths ASH: lighter, slightly less saturated, no warm
 turn). Tests: test_hair_loose 18, test_hair_read 17, test_hair_strands 26. Regression hg5: all eleven identical.
-Sheets (REFERENCE | now | previous): human_renders/hg_07_garrett_final.jpg, hg_jw_final.jpg, hg_lt19_final.jpg.
+Sheets (REFERENCE | now | previous): human_renders/hg_07_garrett_final.jpg (the private subjects' sheets: private).
 FINDINGS: (1) the "render path's hue shift" on near-grey brown was 8-BIT QUANTISATION: at chroma ~5 one hex digit is
 5-10 deg of hue, so the Lab step's +6 deg came back as the same hex, and `seen_look` then amplifies the saturation x
 1/eevee_sat. With seen as floats one step landed: hue 33.7 -> 40.3 (picture 39.9). (2) halo_soft: the man's crop halo
@@ -2368,7 +2352,7 @@ LOOSE_HALO 2x), `tuck` (one side behind the found ear), curtain bangs (`fringe.s
 keeps them to the face's sides), `fade` (the nape shortens and thins over `width`); the reader sets halo / flyaway on
 long hair and a fade on a short cut. Tests: test_hair_loose 16 (tuck, curtain, fade, halo factor). Regression hg3 / hg4:
 all eleven identical. Sheets (REFERENCE | now | r4): human_renders/hg_06_garrett_now.jpg (+ hg_06_garrett_fade_closeups),
-hg_jw_now.jpg, hg_lt19_now.jpg.
+the private subjects' sheets (private).
 Measured, ours | picture: wisps / 10 cm 2.5 -> 6.8 | 6.8 and 3.3 -> 7.5 | 16.1; halo density 0.06-0.08 -> 0.073-0.076 |
 0.22-0.25: the halo dial now reaches the hair but the measure barely moves: EEVEE's halo hairs are single, half-alpha
 (fine_alpha 0.5) and few; the pictures' edge is a dense soft fuzz. The tuck works (the ear shows, the hair passes behind
@@ -2384,7 +2368,7 @@ own height and shape (a fade needs the line lower and tapered at the corners); t
   skin too and is not a hairline (kept only above the sideburns in front of the ears); a frame that cuts the hair off
   makes its length a LOWER bound (INFERRED; both heads fall 10-15 cm past the shoulders).
 - GREY vs LIT by chroma: the light pixels of grey hair are LESS chromatic than the dark ones (0.73 on the man), the lit
-  side of brown / black hair MORE (1.4-1.55 on three heads). Without that rule a 45-year-old brunette got grey strands.
+  side of brown / black hair MORE (1.4-1.55 on three heads). Without that rule a brown head without grey got grey strands.
   With no grey, `seen` = the lit mode.
 - COLOUR STEP for hair without grey must be in Lab (lightness, chroma, a small hue turn) on the MEAN colour: per linear
   channel, the step turned a brown purple and a near-black green (round 2 lost to it): `seen` derives `lit` by
@@ -2397,7 +2381,7 @@ own height and shape (a fade needs the line lower and tapered at the corners); t
   halo 1.0 + flyaway 0.1 left halo at 0.04-0.08 vs the pictures' 0.22-0.25 and wisps at 2.5-3.3 vs 6.8-16 per 10 cm.
   Loose hair needs its own halo / fly-away words (as tie_hair's `wisps.halo`), and a one-side ear tuck and curtain
   bangs from a centre part (neither is a groom.loose word yet).
-- GPU: one 3072 px supersampled EEVEE render of long hair lost the amdgpu context ("hard recovery"); family renders
+- GPU: one 3072 px supersampled EEVEE render of long hair lost the amdgpu context ("hard recovery"); these renders
   stay at 2048 px (1024 x2).
 - Short cuts: the STRAND groom owns the shape and the look (it is what the reader and the sheets judge); the game
   export of a short cut stays the guide's baked cap + sparse cards, baked FROM the strands (export_hair's SHORT_TIERS):

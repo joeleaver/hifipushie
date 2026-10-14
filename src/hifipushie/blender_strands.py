@@ -368,7 +368,7 @@ CELLS = "hp_cells"
 
 def cells_group():
     """`hp_cells`: the colour model's per-lock numbers for strands without a lens (the even layer's interpolated
-    children, hair-heads lt19 E11: every strand alike, a solid black hood), from WHERE THE STRAND ROOTS: a jittered
+    children, hair-heads: every strand alike, a solid black hood), from WHERE THE STRAND ROOTS: a jittered
     cell of the root per scale, a random number per cell (neighbours shade alike, in patches the size of a lock):
     hp_lv (-1..1, ~12 mm: lock lightness), hp_cb (~15 mm) and hp_ch (~4 mm) (0..1: broad / thin highlight ribbons),
     hp_cm (-1..1, ~1.5 mm: strand-to-strand contrast)."""

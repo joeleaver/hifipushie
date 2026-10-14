@@ -243,7 +243,7 @@ def test_profile_contour_either_side(tmp_path):
 
 
 def test_neck_double_and_lens_prior():
-    """lt19: MakeHuman's neck-double target as a body key (0.5 = none) moves only the neck front; a view's lens_mm sets
+    """MakeHuman's neck-double target as a body key (0.5 = none) moves only the neck front; a view's lens_mm sets
     the camera fit's focal prior (35 mm-equivalent, on the frame's diagonal)."""
     from hifipushie import humanfit_map, makehuman as mh
     if not (mh.root() / "targets" / "neck" / "neck-double-incr.target").exists():
@@ -263,7 +263,7 @@ def test_neck_double_and_lens_prior():
 
 @need_ref
 def test_per_view_expression():
-    """lt19b: a picture's own expression, fitted with identity and camera held, stored per view in the refs, applied
+    """A picture's own expression, fitted with identity and camera held, stored per view in the refs, applied
     in the clay of that view only (look / table / lids), never to the model; clear removes it."""
     a, b, c = "bi_test_x0", "bi_test_x1", "bi_test_x2"
     _rm(a, b, c)
