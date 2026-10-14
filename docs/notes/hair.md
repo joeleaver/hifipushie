@@ -2301,6 +2301,15 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   clump_size). lt19 E9: face clean, waves in the lengths, magenta only ON the part line (t60 1.24 %, behind 0.01 %).
   hcover counted by brightness and missed dim magenta under dark hair: by hue now (recounted: r14 8.37 %, E5 4.61 %,
   E9 1.24 % from above). Open: the profile reads as a darker solid mass than E5 (less separation).
+- Nearest guide (strands.even_guides, auto 1 at even 1): every split in the comb (part, tuck behind the ear, a curtain's
+  edge) makes children that average both sides take the middle path: jw E1's tuck put a sparse veil over the cheek.
+  One guide (4 mm away at most) never takes a middle path, and keeps each guide's waves (lt19 E10: more lock texture
+  than E9, face clean, 1.45 % from above = the part line). jw E2: cheek mostly clean, but from above a 3 cm starburst
+  of scalp at the front of her side part (9 %: the divergent comb with lift 0.001; open). Garrett on the frozen head
+  (hg_h6 = gp_h6c) E2: the crown hole is GONE (the whorl was the lock layout), speckles low on the back / nape
+  (1.1 %), but darker, less grey and streakier than r14: the even guides lost their grey (eg took `gr` only with a
+  "head" group; loose hair has only "free": fixed), Clump and nearest-guide bundles suit long hair more than a crop.
+  360k strands for Garrett's magenta render (450k: the job's memory cgroup killed Blender at 5.5 GB).
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)

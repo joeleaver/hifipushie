@@ -568,7 +568,8 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
             ["Interpolate Hair Curves", {"Surface:Object": {"object": "hair_scalp"},
                                          "Surface UV Map": {"attribute": "UVMap"}, "Surface Rest Position": False,
                                          "Follow Surface Normal": False, "Part by Mesh Islands": True,
-                                         "Interpolation Guides": 3, "Distance to Guides": 0.03,
+                                         "Interpolation Guides": int(S.get("even_guides") or (1 if even_all else 3)),
+                                         "Distance to Guides": 0.03,
                                          "Density": float(n_even / max(area, 1e-6)),
                                          "Density Mask": {"attribute": "hp_density_even_l" if banks else "hp_density_even"},
                                          "Viewport Amount": 1.0, "Seed": int(seed) + 7}],
@@ -693,11 +694,10 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         first = np.r_[0, np.cumsum(cnt)[:-1]]
         eg = {"counts": cnt, "pts": pts, "uv": scalp_uv(sc, pts[first], e0, xp_).astype(np.float32),
               "names": np.asarray([f"e{i}" for i in range(len(cnt))])}
-        if "gr" in G.get("head", {}):
-            eg["gr"] = np.concatenate([G[k]["gr"] for k in ("head", "free") if k in G and "gr" in G[k]]).astype(np.float32) \
-                if all("gr" in G[k] for k in ("head", "free") if k in G) else None
-            if eg["gr"] is None:
-                eg.pop("gr")
+        # each guide's grey share (hp_gr) for its children: from whichever groups there are (loose hair has only
+        # "free" guides: keyed on "head", the even children of a grey crop lost their grey, Garrett E2)
+        if all("gr" in G[k] for k in ("head", "free") if k in G):
+            eg["gr"] = np.concatenate([G[k]["gr"] for k in ("head", "free") if k in G]).astype(np.float32)
         n_even = ev * n_locks
         n_locks = n_locks - n_even
     wsum = sum(float(G[k]["weight"].sum()) for k in G) or 1.0

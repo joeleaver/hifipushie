@@ -56,8 +56,11 @@ STRANDS = {
     # the free hair's (frizz, loose, wave, wavelength, tips, taper, thickness)
     "halo": 0.0,  # 0..1: short broken hairs that stand up off the hair on the head and curl (the fine fuzz round a
     # loose updo against the light); `flyaway` strands only drift a few mm off their own lock and end where it ends
-    "even": 0.0,  # 0..0.95: the share of strands grown from ONE EVEN sampling of the hair-bearing scalp, shaped by the
-    # nearest lock guides (locks only steer: a part / sweep / whorl is the comb, never a gap between locks; hair-heads)
+    "even": 0.0,  # 0..1: the share of strands grown from ONE EVEN sampling of the hair-bearing scalp, shaped by the
+    # nearest lock guides (locks only steer: a part / sweep / whorl is the comb, never a gap between locks; hair-heads);
+    # 1 = every strand (the locks are dense guides only)
+    "even_guides": 0,  # guides a child of the even layer takes its shape from (0 = auto: 1 at even 1, else 3). One: at
+    # a split in the comb (a part, a tuck behind the ear) children averaging both sides took the middle path (jw E1)
     "wave_from": 0.0,  # m along a lock where its waves start (long hair straight on top, wavy below the ear: ~0.10-0.14);
     # 0 = from the first 3 cm
     "halo_soft": 0.0,  # 0..1: the halo DENSE AND SOFT (rule 4, hair-garrett3): many more halo hairs, shorter and closer
