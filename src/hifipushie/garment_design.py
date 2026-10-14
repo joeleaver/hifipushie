@@ -231,6 +231,13 @@ def compile_sheet(sheet: dict) -> dict:
         drop += rc.get("drop", [])
         folds += rc.get("folds", [])
         gen += rc.get("generate", [])
+        if r["from"] == "draft":
+            # a drafted design's band details make their own bands (details.<d>.<choice>.draft.generate: a knit's rib
+            # neckband, cuffs and hem band sized from the edges they're sewn to). dress-tess: a crew-neck sweater from
+            # the knit block failed "a neckband piece (none in the pattern)" with nothing saying how to make one.
+            # The detail's params "generate" lie over each entry (e.g. {"rib": {"generate": {"height": 0.06}}})
+            gp_ = info["params"].get("generate") or {}
+            gen += [_merge(e_, gp_) for e_ in (info["kb"].get("draft") or {}).get("generate", [])]
         detail.update(info["kb"].get("detail", {}))
     if sheet.get("pattern") and "pattern" in out:
         out["pattern"] = _merge(out["pattern"], sheet["pattern"])
@@ -274,7 +281,11 @@ def expand(g: dict) -> dict:
     out = _merge(base, own) if own else base
     for k in ("folds", "generate", "drop"):  # lists add up: the design's and the garment's
         if k in base and k in own:
-            out[k] = list(base[k]) + [x for x in own[k] if x not in base[k]]
+            b_ = list(base[k])
+            if k == "generate":  # a band the garment generates itself replaces the design's band of that name
+                mine_ = {e_.get("band") for e_ in own[k] if isinstance(e_, dict)}
+                b_ = [e_ for e_ in b_ if not (isinstance(e_, dict) and e_.get("band") in mine_)]
+            out[k] = b_ + [x for x in own[k] if x not in b_]
     out["_design"] = sheet
     return out
 

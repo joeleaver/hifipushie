@@ -2510,3 +2510,72 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - STATE: best c12_n12c (gorge_drop 0.10, collar point 15 mm, stance 12 mm, break_y 0.455, notch 27 mm) or n10
     (break 35 mm low, notch at height); gates pass on both. NEXT: the notch's arms (collar end width), the chest V
     (roll line top), shoulders, CB crossings, the shirt re-sim.
+
+## dress-tess (2026-10-14, "dress-tess" agent, branch `worktree-agent-ac06d0eb5553e576b`; Tess's outfit, model dt_tess)
+SUMMARY (one page; kept current). The test: do the cloth guide's rules carry from Garrett's suit to a new person and
+new garment kinds (jeans, a knit sweater, an open lab coat)? Model `dt_tess` = tess_a1's spec (MakeHuman body, the
+shoes.py grey trainers, socks; hair th_W18 left alone). References (never copied): s0urc3/docs/img/tess_ref_full/
+tess_apose_v4_70110ef2.png (A-pose; 1.24 mm/px, HPS at y ~280) and tess_concept_v1_db4c5da5.png.
+Scratch DURABLE in /mnt/data/hifipushie/dress_tess/: cloth12's env.sh / run.sh / q.sh / stage.sh (cloth12's FIXED copy:
+never resubmits a sent job, 8 min job timeout; sent.txt) / bl.sh / have.sh / run.py retargeted; dg.py <model> <garment>
+<json> [stages] (design sheet + checks, images out/<model>_<garment>_<tag>_*), sheet.py (REFERENCE | ours), pz.py /
+side.py (piece extents, pocket outside its piece), meas.py (the body's tapes), tests.sh. Designs: j*.json (jeans),
+s*.json (sweater), c*.json (coat).
+
+### 0. The outfit in words (from both pictures)
+- JEANS: dark indigo, near black-navy (#171b26), five-pocket, mid rise (the top hidden under the sweater's band),
+  straight leg, relaxed at the thigh, no crease; long: the hem stacks on the trainers' tongue in 2-3 soft folds, no
+  sock showing; soft knee folds; heavy denim (holds broad folds, no fine crinkle).
+- SWEATER: mustard / ochre (#b07a26) crew-neck knit, medium gauge, relaxed (falls straight from the chest, blouses a
+  little over the band); ribbed neckband ~20 mm sitting close at the base of the neck; ribbed hem band ~50 mm whose
+  bottom edge is ~45 mm under the natural waist (485 mm under the HPS), over the jeans' waistband; sleeves hidden
+  under the coat; knit drape: soft, rounded, no crisp creases.
+- LAB COAT: white (#e9e8e3) poly-cotton twill, light, unlined, no pads; knee length (hem ~885 mm under the HPS),
+  straight, single-breasted with 4 buttons ~130 mm apart from the break (~235 mm under the HPS) down to mid-thigh,
+  worn OPEN: the fronts hang ~15-20 cm apart at the chest, closer below (the A-pose arms pull them to the sides);
+  notched lapels, notch ~60 mm under the HPS, lapel ~70 mm wide, soft roll; collar low round the neck; chest patch
+  pocket on her LEFT (~110 x 130, top ~185 mm under the HPS), two hip patch pockets (~170 x 190, top ~445 mm under
+  the HPS); set-in sleeves, straight and loose, to the base of the hand; many long vertical folds from shoulder to hem.
+- LANYARD: dark blue strap round the neck over the sweater, clip, ID badge in a blue holder at mid chest.
+- SHOES: grey trainers, white soles (the existing shoes.py stand-in on tess_a1).
+
+### Rules used / rules missing (running list)
+USED (carried over): length + collide shoes (trousers); start seam gaps read before simming (stage 4); a rib band
+shorter than its edge (KB); waist_drop for mid rise ("Trousers read high-waisted"); fix in the pattern / construction.
+From tess2's notes, NOT the guide: worn_top for a knit whose neckband is laid from the seam; a hem band on torso +
+align; sleeve length_bonus +0.06 on a worn_top knit.
+MISSING / WRONG (fixed in code, or written into the guide):
+1. jeans and suit_trousers are kinds, but stage 1's kind list doesn't name them (found via garment_reference).
+2. Stage 4 says trouser legs start on tubes (side 15 / inseam 8 mm); jeans started as SLABS (median 160 / p95 232
+   mm): `_leg_tube` took exactly one front + one back piece per leg, and jeans have pocket_side / yoke too. FIXED
+   (cloth._leg_tube: the leg's own pieces are the ones reaching the hem): median 23 / p95 162 mm.
+3. A drafted knit (block knit, details rib_neckband / rib / rib_band) failed "a neckband piece (none in the pattern)"
+   with nothing saying how to make one (`generate` is only in cloth_background, for own pieces). FIXED: the KB's band
+   details carry `draft.generate` (tess2's proven bands), compile_sheet adds them; a garment's own band of a name
+   replaces the design's.
+4. `block_options.hips_ease` does nothing unless `fitted: true` (the knit hangs straight from the chest).
+5. A body cut to the waist (`length` <= hpsToWaistBack + 3 cm) names its hem points cbWaist / waist, not cbHem / hem:
+   hem-band chains must follow (KeyError otherwise).
+6. A hem band laid from the seam (wrap seam, like the neckband) started 135% stretched: keep torso + align.
+7. The guide's own `closures: [{"name": "front", "state": "open"}]` was refused at save ("needs name and over"):
+   FIXED (closures.validate: an entry without over is an overlay by name).
+8. A patch pocket on one side after `unfold` (a chest pocket on front.L) was "sewn to nothing": FIXED (op_pocket:
+   after unfold its tacks are stitches).
+9. Jeans back pockets sank through the backs in the sim (31 crossings, CORRUPT): FIXED as construction (a patch
+   pocket is topstitched flat): `cloth.seat_patch_pockets` lays each `lies_on` / face-out piece on its piece as it
+   finally lies, 1.5 mm out (+1 mm steps where chords cross), kept only if nothing new crosses: 31 -> 0.
+10. tests/test_cloth_workflow.py ran only the tests above its `__main__` block (6 never ran as a script): moved.
+
+### Jeans
+- j1 ({kind: jeans, fit straight, denim, collide shoes}): every pre-sim check passed first time. Sim dj1 ($0.044
+  coarse + fine): reads as straight trousers, clean hang; CORRUPT from the pockets (fixed above; re-judged on the
+  cached sim: "fits", 0 crossings). Wrong against the reference: no stack (sock shows at the front: cut to "break"),
+  the band about at the natural waist (high), almost no folds, colour too blue.
+- j2: waist_drop 0.07, length "floor", colour #171b26.
+- STATE (step 1): jeans j1 judged, fixes 2/7/8/9 in code with tests (cloth test set 15 files rc 0, 0 skipped); j2 sim
+  queued; sweater s6 and coat c2 pass their pre-sim stages. Spend $0.044.
+  NEXT: judge j2 -> jeans sheet; sweater over the jeans; coat over the sweater.
+  RESTART: scratch /mnt/data/hifipushie/dress_tess (source env.sh via run.sh). Checks: bash run.sh dg.py dt_tess
+  <garment> /mnt/data/hifipushie/dress_tess/<design>.json [stages]. Sims: echo "<tag> dt_tess <garment>" > q_x.txt;
+  bash stage.sh /mnt/data/hifipushie/dress_tess/q_x.txt 3 (ONE at a time; cached results: BROKER=1 bash q.sh q_x.txt);
+  renders workspace/cloth_renders/<tag>*.png; spend from stage_*.out "batch done" lines.

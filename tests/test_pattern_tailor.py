@@ -416,6 +416,30 @@ def test_jeans_are_construction():
     assert Bp["pieces"]["back_pocket.L"]["wrap"].get("lies_on")
 
 
+def test_a_pocket_on_one_side_after_unfold_is_tacked():
+    """dress-tess: a chest pocket on front.L after `unfold` was 'sewn to nothing' (its tacks went to sym_stitches,
+    which unfold had already written)."""
+    D = pd.start("bodice", MM, {"cb": "seam"})
+    pd.apply(D, [{"op": "unfold"}, {"op": "pocket", "piece": "front.L", "type": "patch", "at": [0.1, -0.19],
+                                     "width": 0.11, "height": 0.13, "name": "chest_pocket"}])
+    st = [s for s in D["stitches"] if s[0].startswith("chest_pocket:")]
+    assert len(st) >= 6 and all(s[1].startswith("front.L:") for s in st), st
+
+
+def test_jeans_legs_start_on_their_tubes():
+    """dress-tess: jeans cut each leg into a leg piece + a scoop pocket side (front) and a yoke (back); the leg tube
+    took exactly one front and one back, so jeans started as slabs (start seam gaps median 160 mm)."""
+    from hifipushie import garment_design as gd, cloth
+    pat = gd.compile_sheet({"kind": "jeans", "fit": "straight"})["pattern"]
+    Bp = cloth.pieces({"pattern": pat}, MM)
+    pcs = Bp["pieces"]
+    fr = [o for o in pcs if pcs[o]["wrap"].get("to") == "leg.L" and pcs[o]["wrap"].get("side", "front") == "front"
+          and not pcs[o]["wrap"].get("lies_on")]
+    assert len(fr) >= 2, fr  # the case the old rule refused
+    lowest = min(fr, key=lambda o: float(pcs[o]["P"][:, 1].min()))
+    assert lowest == "front.L", lowest
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
