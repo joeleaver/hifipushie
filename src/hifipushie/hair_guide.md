@@ -9,6 +9,20 @@ paths, pick by the job:
 - GAME export: cards cut from the strands (`export_hair` / `export_asset`).
 Why the tools are built this way (practice, sources, engines, what went wrong): guide(topic="hair_background").
 
+## Two principles (Joe, hair-heads) that every groom keeps
+1. **Hair is distributed EVENLY over the growing area; parts are from styling, not distribution.** Roots come from one
+   even sampling of the hair-bearing scalp (inside the hairline, its only ramp the hairline's own edge); a part, a sweep,
+   a whorl is the COMB DIRECTION of strands from roots on both sides, never an absence of roots. Locks / clumps steer
+   direction. Knob: `strands.even` (0..0.95: that share of the strands grows from the even sampling, shaped by the
+   nearest lock guides; 0.7 on a long head closed the crown gaps and the "bald stripe" the lock-rooted layout left).
+   Measure: the MAGENTA COVERAGE check (spikes/hair_garrett/coverage.py: the scalp painted magenta, the share of it
+   showing inside the hair region from above / behind / 3-4; target ~0 outside the part line).
+2. **Hair ARCS UP from the scalp, then falls; flat-from-the-root is a style choice (slicked, wet, tight), never the
+   default.** Every strand leaves the scalp at an angle, rises by its root lift + the hair under it, turns and falls;
+   the top's volume comes from that arc and it also covers the scalp. Knob (loose hair): `groom.loose.lift` from the
+   measured stand-off (~1-1.5 cm on long hair), `out` 0.2-0.25 on the front / top, `stiff` ~0.35; tied hair: `volume`
+   (rules 1-2).
+
 ## Step 0: DESCRIBE THE STYLE IN WORDS from every photo before grooming (hair-heads; Joe on three heads: "a completely different hairstyle")
 Before any knob, write down from the front, three-quarter and profile pictures, then the same for OUR render, then the
 differences; rebuild the groom from the description (hairline curve, part, comb direction and lift by region, edge

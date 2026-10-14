@@ -63,6 +63,8 @@ WISP_RADIUS = 0.8  # x the strand radius for single hairs (alone against skin a 
 EDGE_RAMP = 0.008  # m over which a LOOSE lock's strand count ramps up to full (rule 15) ...
 EDGE_START = 0.0035  # ... from this far inside the hairline (the first loose roots)
 EDGE_MIN = 0.15  # the share of its strands a loose lock rooted on the line keeps
+EVEN_EDGE = 0.012  # m inside the hairline before the even layer starts (its children there hung over the forehead)
+EVEN_FRONT = 0.04  # ... over the face (|az| < 50): children of guides that fall past the face rule hung in front of it
 LOOSE_HALO = 2.0  # x the halo share on LOOSE hair (a long head's crown fly-aways: at 1 x the halo read 0.05 vs 0.22-0.25)
 SOFT_HALO = (3.0, 0.65, 0.6)  # halo_soft = 1: x (1 + 3) halo hairs, their stand-off x 0.35 (~4 mm), length x 0.4 (~2 cm)
 HALO_MAX = 0.2  # the halo share at most (a guard: loose x2 x soft x4 reached 0.56 of the strands, the hair a thin veil of
@@ -307,6 +309,12 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     soft = max(float(S["soft"]), 0.001)
     dens = _ss((d_in + 0.0015) / soft)
     pw = float(g["parting"].get("width", 0.012))
+    # the even layer's own density: no thinning at the part (a part is the comb, never fewer roots: hair-heads, Joe), and
+    # none in the first EVEN_EDGE m inside the hairline: there an interpolated child takes the shape of guides rooted
+    # behind it and hung over the forehead as a sparse veil; the hairline's own locks carry the edge
+    fa_ = np.abs(((AA + 180) % 360) - 180)
+    edge_ = EVEN_EDGE + (EVEN_FRONT - EVEN_EDGE) * (1 - _ss((fa_ - 50.0) / 30.0))  # (deeper in over the face)
+    dens_even = _ss((d_in - edge_) / 0.015)
     dens = dens * (1 - 0.9 * np.clip(_part(sc, g, AA % 360, EE, 0.25 * pw), 0, 1))
     na, ne = AA.shape
     idx = np.arange(na * ne).reshape(na, ne)
@@ -330,6 +338,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     fan = np.stack([top[:-1], top[1:], np.full(na - 1, pole)], 1)
     F = np.concatenate([F, fan])
     dens = np.r_[dens.ravel(), 1.0]
+    dens_even = np.r_[dens_even.ravel(), 1.0]
     uv_corner = np.concatenate([uvv[F[:len(F) - len(fan)]],
                                 np.stack([uvv[fan[:, 0]], uvv[fan[:, 1]],
                                           np.stack([(uvv[fan[:, 0], 0] + uvv[fan[:, 1], 0]) / 2,
@@ -342,6 +351,7 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
     area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
     return {"verts": V[used].astype(np.float32), "faces": remap[F].astype(np.int32),
             "uv": uv_corner.reshape(-1, 2).astype(np.float32), "hp_density": dens[used].astype(np.float32),
+            "hp_density_even": dens_even[used].astype(np.float32),
             "area": float((area * dens[F].mean(1)).sum()), "e0": e0}
 
 
@@ -452,7 +462,7 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
 
 
 def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0, n_wisp: float = 0.0,
-           tail: bool = True) -> dict:
+           tail: bool = True, n_even: float = 0.0) -> dict:
     """Each object's modifier stack: [[node group, {input: value}], ...]. {"part": name} = the scene object of that
     part (the body: strands are kept out of it), {"attribute": name} = a named attribute as a field."""
     body = {"object": "hair_collide"}
@@ -490,6 +500,25 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
         st[-1][1]["Radius"] = ph["radius"] * WISP_RADIUS
         st[0][1]["Fine"] = 1.0
         out[WISPS] = st
+    if n_even > 0:  # even roots, shaped by the lock guides (the guides are these curves; the children replace them)
+        ph = physical({**S, **(S.get("free") or {})}, free=True, tail=tail)
+        out["hair_even"] = [
+            ["Interpolate Hair Curves", {"Surface:Object": {"object": "hair_scalp"},
+                                         "Surface UV Map": {"attribute": "UVMap"}, "Surface Rest Position": False,
+                                         "Follow Surface Normal": False, "Part by Mesh Islands": False,
+                                         "Interpolation Guides": 3, "Distance to Guides": 0.03,
+                                         "Density": float(n_even / max(area, 1e-6)),
+                                         "Density Mask": {"attribute": "hp_density_even"}, "Viewport Amount": 1.0,
+                                         "Seed": int(seed) + 7}],
+            ["Hair Curves Noise", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["loose"] + 0.0008, "Shape": 0.5,
+                                   "Scale": ph["loose_scale"] * 2, "Scale along Curve": 0.35, "Offset per Curve": 0.3,
+                                   "Seed": int(seed) + 2, "Preserve Length": True}],
+            ["Frizz Hair Curves", {"Cumulative Offset": False, "Factor": 1.0, "Distance": ph["frizz"] + 0.0001, "Shape": 0.5,
+                                   "Seed": int(seed) + 2, "Preserve Length": True}],
+            ["Shrinkwrap Hair Curves", {"Surface:Object": body, "Factor": 1.0, "Above Surface": 0.0015,
+                                        "Offset Distance": 0.0015, "Smoothing Steps": 1, "Lock Roots": True}],
+            ["hp_profile", {"Radius": ph["radius"], "Tip": ph["tip_radius"], "Taper": 0.3, "Root": 0.8}],
+        ]
     if n_under > 0:
         ph = physical(S)
         out["hair_under"] = [
@@ -558,6 +587,28 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         if not G:
             n_under = max(n_under, 0.9 * ph["count"])
     n_locks = ph["count"] - n_under
+    # EVEN ROOTS (hair-heads; Joe: "hair distribution over the growing area is fairly even; parts are from styling, not
+    # distribution"): a share `even` of the strands grows from ONE even sampling of the hair-bearing scalp (Blender's
+    # Interpolate Hair Curves on the scalp mesh, its density the hairline ramp only, no thinning at the part) and takes
+    # its SHAPE from the nearest lock guides: the locks only steer direction, so a part, a sweep or a whorl is the comb,
+    # never a gap between locks. The rest stays lock strands (clumps, ribbons, the detail).
+    ev = float(np.clip(S.get("even") or 0.0, 0.0, 0.95))
+    n_even, eg = 0.0, None
+    if ev > 0 and any(k in G for k in ("head", "free")):
+        cs = [G[k]["counts"] for k in ("head", "free") if k in G]
+        ps = [G[k]["pts"] for k in ("head", "free") if k in G]
+        cnt = np.concatenate(cs).astype(np.int32)
+        pts = np.concatenate(ps).astype(np.float32)
+        first = np.r_[0, np.cumsum(cnt)[:-1]]
+        eg = {"counts": cnt, "pts": pts, "uv": scalp_uv(sc, pts[first], e0).astype(np.float32),
+              "names": np.asarray([f"e{i}" for i in range(len(cnt))])}
+        if "gr" in G.get("head", {}):
+            eg["gr"] = np.concatenate([G[k]["gr"] for k in ("head", "free") if k in G and "gr" in G[k]]).astype(np.float32) \
+                if all("gr" in G[k] for k in ("head", "free") if k in G) else None
+            if eg["gr"] is None:
+                eg.pop("gr")
+        n_even = ev * n_locks
+        n_locks = n_locks - n_even
     wsum = sum(float(G[k]["weight"].sum()) for k in G) or 1.0
     amount, groups = {}, []
     for key, name in (("head", "hair_guides"), ("free", "hair_guides_free"), ("wisp", WISPS)):
@@ -575,6 +626,10 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         np.savez(tmp / f"{name}.npz", **gg)
         groups.append({"name": name, "guides": str(tmp / f"{name}.npz"), "locks": int(len(base)),
                        "strands": int(round(share.sum()))})
+    if eg is not None:
+        np.savez(tmp / "hair_even.npz", **eg)
+        groups.append({"name": "hair_even", "guides": str(tmp / "hair_even.npz"), "locks": int(len(eg["counts"])),
+                       "strands": int(round(n_even))})
     if ug is not None:
         ug["uv"] = scalp_uv(sc, ug["pts"].reshape(len(ug["counts"]), -1, 3)[:, 0], e0).astype(np.float32)
         np.savez(tmp / "hair_under.npz", **ug)
@@ -588,7 +643,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         fw = {k: float(lo_[k]) for k in ("halo", "flyaway") if lo_.get(k) is not None}
         S = {**S, "free": {**(S.get("free") or {}), **fw}}
     st = stacks(S, amount.get("hair_guides", 0.0), amount.get("hair_guides_free", 0.0), n_under, area, seed,
-                n_wisp=amount.get(WISPS, 0.0), tail=tail)
+                n_wisp=amount.get(WISPS, 0.0), tail=tail, n_even=n_even)
     for grp in groups:
         grp["stack"] = st[grp["name"]]
     out = {"scalp": str(tmp / "strand_scalp.npz"), "collide": str(tmp / "strand_collide.npz"), "groups": groups, "look": look, "physical": ph,

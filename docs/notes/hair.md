@@ -2264,6 +2264,18 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   dark hair (a dark scalp reads as the shadow between hairs, as on a real dark head: 0.15 suits GREY hair only) and the
   part's crossing share 0.1 (crossed locks left gaps behind them). Sheet hg_lt19_part2.jpg. scalp_tint by the hair's
   darkness: dark hair 0.85, grey / fair 0.15-0.3.
+- Joe: "still left bald spots" (the dark tint only hid them) + two principles (now the top of the checklist): roots
+  EVEN over the growing area (parts are the comb, not missing roots); hair ARCS up from the scalp then falls (flat from
+  the root is a style choice). BUILT: `strands.even` (0..0.95): that share of the strands is a new object `hair_even`,
+  Blender's Interpolate Hair Curves on the scalp mesh (even density, its own mask `hp_density_even`: no thinning at the
+  part, none in the first EVEN_EDGE 12 mm inside the hairline / EVEN_FRONT 40 mm over the face), shaped by the nearest
+  3 lock guides within 3 cm (the locks' own guide curves). First try hung a sparse veil over the forehead and eyes:
+  children rooted in front of the guides take their shape translated forward, past the face rule; the edge / front
+  masks fixed most of it. lt19 E2 (even 0.7, lift 12 mm, out top 0.25 / front 0.2, stiff 0.35): from above an even
+  cover with a clean thin centre part (the crossing ribbons and crown gaps gone), volume from the arc. A few stray
+  interpolated hairs still cross the forehead.
+- spikes/hair_garrett/coverage.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
+  view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
 New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15
