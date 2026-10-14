@@ -183,6 +183,19 @@ def test_long_hair_gets_a_loose_long_start_and_no_grey_when_young():
     hair.validate(spec)
 
 
+def test_lit_hair_is_not_read_as_grey():
+    """The light mode MORE chromatic than the dark one is the lit side of pigmented hair (brown, black), not grey:
+    no grey, and `seen` is the lit mode's colour."""
+    r = _fake_read()
+    r["summary"]["bottom_m"] = 0.22
+    r["summary"]["colour"].update({"chroma_ratio": 1.5, "lit": "#6a564c", "seen": "#372724"})
+    st = hr.start(r, {"base": {"body": {"age": 45}}})
+    lk = st["hair"]["look"]
+    assert lk["grey_amount"] == 0.0 and lk["seen"] == "#6a564c" and "grey" not in lk
+    r["summary"]["colour"]["chroma_ratio"] = 0.73  # grey hairs: less chromatic than the dark ones
+    assert hr.start(r, {"base": {"body": {"age": 45}}})["hair"]["look"]["grey_amount"] > 0
+
+
 def test_waviness_separates_straight_from_wavy():
     from PIL import Image
     n, mm = 400, 0.3

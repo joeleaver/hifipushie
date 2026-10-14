@@ -603,6 +603,11 @@ def colour_split(img, dense, mm: float, T: float | None = None) -> dict:
            # pixels are grey hairs mixed with dark ones (salt and pepper); the lightest quarter is nearer one strand
            "grey_strand": (_hex(np.median(px[light & (C < max(8.0, np.median(C))) & (L >= np.percentile(L[light], 75))], 0))
                            if light.sum() > 80 else None),
+           # GREY or LIT: grey hairs are LESS chromatic than the pigmented ones (the man's crop 0.73), the lit side of
+           # pigmented hair MORE (1.4-1.55 on three heads of brown / black hair): light mode chroma / dark mode chroma
+           "chroma_ratio": (round(float(np.median(C[light]) / max(np.median(C[dark]), 0.5)), 2)
+                            if light.sum() > 20 and dark.sum() > 20 else None),
+           "lit": _hex(np.median(px[light], 0)) if light.sum() > 20 else None,
            "dark_L": round(float(np.median(L[dark])), 1) if dark.any() else None,
            "light_L": round(float(np.median(L[light])), 1) if light.any() else None,
            "chroma": round(float(np.median(C)), 1)}
@@ -834,6 +839,7 @@ SHORT_MM = 30.0     # mm: a mean stand-off under this (and no region over 1.5x) 
 LIFT_SPREAD = 0.005  # m a laid short lock's strands stand over its guide (render stand-off ~ lift + this)
 LOOSE_THICK = 0.003  # m: a short laid lock's thickness (6 mm sank half the strands into the skin: curls)
 LONG_BELOW = 0.12  # m under the head centre: hair reaching lower (past the jaw) is loose LONG hair
+GREY_CHROMA = 1.0  # light mode chroma / dark mode chroma under this: the light hairs are GREY (else lit pigmented hair)
 
 
 def start(r: dict, spec: dict) -> dict:
@@ -949,12 +955,16 @@ def start(r: dict, spec: dict) -> dict:
     look = {}
     if c:
         from .hair import grey_age
-        ga_ok = grey_age(spec) > 0.2 if spec else True  # (under ~34 the light pixels are LIT hair, not grey hairs)
+        cr = c.get("chroma_ratio")
+        young = (grey_age(spec) <= 0.2) if spec else False  # (under ~34 the light pixels are LIT hair, not grey hairs)
+        lit_not_grey = cr is not None and cr >= GREY_CHROMA
+        ga_ok = not young and not lit_not_grey
         ga = 0.0
         if not ga_ok:
             g["grey"] = {"temples": 0.0, "sideburns": 0.0}
-            look["grey_amount"] = put("look.grey_amount", 0.0, "the model's age: the light pixels are lit hair, not grey "
-                                                               "(no grey under ~34; groom.grey 0)")
+            look["grey_amount"] = put("look.grey_amount", 0.0, (
+                f"MEASURED: the light pixels are LIT hair, not grey: as chromatic as the dark ones or more (ratio {cr}; "
+                f"grey hair < {GREY_CHROMA})" if lit_not_grey else "the model's age: no grey under ~34") + "; groom.grey 0")
         else:
             base = min(ls.values()) if ls else c.get("light_share", 0.0)
             ga = round(float(np.clip(base, 0.0, 0.9)), 3)
@@ -965,7 +975,9 @@ def start(r: dict, spec: dict) -> dict:
             if gr:
                 g["grey"] = {**gr, "temples": round(max(gr.get("sides", 0.0), gr.get("front", 0.0)), 3), "sideburns": round(gr.get("sides", 0.0), 3)}
                 put("groom.grey", g["grey"], "MEASURED: light share by region above grey_amount (temples / sideburns = the sides')")
-        if c.get("seen"):
+        if not ga_ok and c.get("lit"):  # no grey: the two modes are shadow and lit hair; `seen` is the LIT hair's
+            look["seen"] = put("look.seen", c["lit"], f"MEASURED: the lit hair (the lighter mode), view {s['colour_view']}")
+        elif c.get("seen"):
             look["seen"] = put("look.seen", c["seen"], f"MEASURED: the lit half of the pigmented hair, view {s['colour_view']}")
         gs = c.get("grey_strand") or c.get("grey")
         if gs and ga_ok:
@@ -976,8 +988,13 @@ def start(r: dict, spec: dict) -> dict:
             look["variation"] = put("look.variation", round(float(np.clip(0.4 * va["strand_sd"] / 4.2, 0.2, 0.8)), 2),
                                     f"strand_sd {va['strand_sd']} (Tess calibration: 4.2 at 0.4)")
         look["sun"] = put("look.sun", 0.0 if short else 0.2, "INFERRED: a short cut has no old lengths" if short else "default")
-        look["highlights"] = put("look.highlights", 0.0, "light ribbons on grey hair are the grey strands (not sun streaks)"
-                                 if ga > 0.15 else "default")
+        rib = (va.get("ribbons") or {}).get("share") if va else None
+        if long_ and not ga_ok and rib is not None:
+            look["highlights"] = put("look.highlights", round(float(np.clip(6.0 * rib, 0.0, 0.8)), 2),
+                                     f"MEASURED light ribbons {round(100 * rib)} % of the hair (Tess: 9-10 % at 0.7)")
+        else:
+            look["highlights"] = put("look.highlights", 0.0, "light ribbons on grey hair are the grey strands (not sun streaks)"
+                                     if ga > 0.15 else "default")
         if ga > 0.15 or (c.get("dark_L") or 0) > 40:
             look["scalp_tint"] = put("look.scalp_tint", 0.5, "grey / fair hair: the guide's 0.3-0.5")
     st = copy.deepcopy(CROP["strands"]) if short else (st_long if long_ else {})
