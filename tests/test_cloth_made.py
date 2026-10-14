@@ -213,6 +213,11 @@ def test_notched_collar_follows_its_draft():
     assert 0.019 < G[cb, :, 2].max() - G[cb, 0, 2] < 0.028  # it stands to the draft's roll line (22 mm + the roll)
     assert G[0, :, 2].max() - G[0, 0, 2] < 0.012  # and not at its ends
     assert np.linalg.norm(G[:, 0] - np.array([cm._stations(P, 0.010)[0]])[0], axis=1).max() < 1e-9  # on the seam
+    # every column keeps its pattern length (the fall boarded at its CUT length: laid, it lost up to half at the side
+    # neck and stood as a wall there, cloth12), within the roll's turn
+    l3 = np.linalg.norm(np.diff(G, axis=1), axis=-1).sum(1)
+    lu = np.linalg.norm(np.diff(uv, axis=1), axis=-1).sum(1)
+    assert np.all(np.abs(l3 / lu - 1) < 0.15), np.round(l3 / lu, 2)
 
 
 def test_patch_transition_never_folds_where_two_lays_meet():
@@ -275,12 +280,21 @@ def test_construct_presses_lapels_and_is_not_in_the_sims_key():
     hide, parts = cm.drawn({"mesh": M, "made": made})
     assert not hide.any() and parts == []
     # the CONSTRUCTED lapel (the default): on a flat front it is the same mirror image, its edges straight
-    Vm, mm_ = cm.construct(V, M, bV, bT, {})
+    Vm, mm_ = cm.construct(V, M, bV, bT, {"construct": {"lapel_options": {"roll_top": 0.0}}})  # (pressed flat)
     assert mm_["info"]["made_lapel"]["front"]["made"] == len(flap)
     assert np.allclose(Vm[flap, 0], 0.16 - uv[flap, 0], atol=1e-6) and np.allclose(Vm[flap, 1], uv[flap, 1], atol=1e-6)
     assert (Vm[flap, 2] > 0).all() and Vm[flap, 2].max() <= 0.0061
     far = np.setdiff1d(np.where(uv[:, 0] > 0.18)[0], flap)
     assert np.allclose(Vm[far], V[far])  # the forepart beyond the lapel's reach untouched
+    # the default ROLL (canvassed): the roll line stands off the front, most at its top (the gorge), and the lapel
+    # comes down to lie flat toward its outer edge (cloth12)
+    Vr, _ = cm.construct(V, M, bV, bT, {})
+    roll_v = flap[np.abs(uv[flap, 0] - 0.07) < 1e-6]  # (the flap's column next to the roll line)
+    outer_v = flap[uv[flap, 0] < 0.02]
+    hr = Vr[roll_v, 2]
+    assert hr.max() > hr.min() + 0.002, (hr.min(), hr.max())  # graded along the line (break -> gorge)
+    hi_ = roll_v[hr > np.percentile(hr, 75)]
+    assert Vr[hi_, 2].mean() > Vr[outer_v[np.isin(uv[outer_v, 1], uv[hi_, 1])], 2].mean() + 0.002  # flat at its edge
 
 
 def test_pressed_flaps_by_fold_prefix():

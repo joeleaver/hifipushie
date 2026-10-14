@@ -204,10 +204,12 @@ TUCK_REACH = 0.08  # m: outer cloth further than this from a vertex doesn't cove
 TUCK_FEATHER = 5  # rings of uncovered cloth that follow the covered cloth beside them
 TUCK_FALL = 0.6  # the share of its neighbours' mean move an uncovered vertex beside covered cloth takes, ring by ring
 TUCK_EVEN = 0.7  # a covered vertex moves no less than this share of its neighbours' mean move
+TUCK_BODY = 0.001  # m: a tucked vertex stops this far outside the body (where the outer cloth lies on the skin, the
+# under cloth is laid on the skin, never through it: Garrett's right chest under the rolled lapel, 38 mm in, skin showing)
 
 
 def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | None = None,
-           keep_shown: bool = True) -> tuple:
+           keep_shown: bool = True, hold: np.ndarray | None = None) -> tuple:
     """The under garment's FINISHED surface as it is worn with the outer one over it: (V, covered per vertex).
     What shows of it (collar, the front in the jacket's V, cuffs) stays exactly as finished (relief, bands, made
     pieces: the surface the buttons and maps were made for); only vertices the outer garment lies over, and that
@@ -221,7 +223,9 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
     Drawn pressed everywhere instead (the collider the outer garment was simulated over: cloth.pressed), the shirt
     front in a jacket's V was a crumpled surface with no band and no buttons (the user: "where the placket?").
     `rigid` (per vertex group id, -1 none: made pieces, closure bands): a group moves by ONE vector (the mean of its
-    members' moves), so a collar or a placket keeps its shape."""
+    members' moves), so a collar or a placket keeps its shape. `hold` (per vertex): never moved (a shirt's front by its
+    own collar point: tucked under a jacket's collar point it opened skin beside the shirt collar, cloth12 n4).
+    Nothing is ever laid into the body (TUCK_BODY)."""
     from .closures import _closest_on
     Vu, Mu = np.asarray(under["V"], float), under["mesh"]
     Vo, Mo = np.asarray(outer["V"], float), outer["mesh"]
@@ -309,6 +313,23 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
                 if fixed[m].any():
                     D[m] = D[m][fixed[m]].mean(0) if fixed[m].mean() > 0.5 else 0.0
         V = V + D
+    if hold is not None:
+        V = np.where(np.asarray(hold, bool)[:, None], Vu, V)
+        covered = covered & ~np.asarray(hold, bool)
+    if tree is not None and hasattr(body, "clearance"):
+        # never into the body: each move cut back to where the vertex still clears it (a start already inside keeps
+        # its place)
+        c0 = body.clearance(Vu)
+        c1 = body.clearance(V)
+        bad = (c1 < TUCK_BODY) & (c0 >= TUCK_BODY) & (np.linalg.norm(V - Vu, axis=1) > 1e-6)
+        if bad.any():
+            lo, hi = np.zeros(int(bad.sum())), np.ones(int(bad.sum()))
+            A0, A1 = Vu[bad], V[bad]
+            for _ in range(12):
+                mid = 0.5 * (lo + hi)
+                ok = body.clearance(A0 + mid[:, None] * (A1 - A0)) >= TUCK_BODY
+                lo, hi = np.where(ok, mid, lo), np.where(ok, hi, mid)
+            V[bad] = A0 + lo[:, None] * (A1 - A0)
     if keep_shown:
         # what SHOWS stays bit-identical to the finished under garment: only covered vertices take the move (the
         # feather onto uncovered cloth beside the outer garment's edge nudged the visible shirt up to 9 mm; a garment

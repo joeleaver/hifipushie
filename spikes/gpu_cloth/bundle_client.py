@@ -71,8 +71,21 @@ def api(method, path, body=None):
 
 def put(url, data):
     """PUT a file to a signed upload link (a re-PUT replaces it, so retrying is safe)."""
-    req = urllib.request.Request(url, data=data, method="PUT", headers={"Content-Type": "application/octet-stream"})
-    return send(req, 600)
+    # (the link goes straight to the object store now, which answers with an EMPTY body: never parsed as JSON;
+    # oxidegen's scripts/bundle/bundle_client.py is the maintained client)
+    for i, wait in enumerate((0,) + RETRY_WAITS):
+        time.sleep(wait)
+        try:
+            req = urllib.request.Request(url, data=data, method="PUT", headers={"Content-Type": "application/octet-stream"})
+            with urllib.request.urlopen(req, timeout=600) as r:
+                r.read()
+            return {}
+        except urllib.error.HTTPError as e:
+            if e.code not in RETRY_CODES or i == len(RETRY_WAITS):
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if i == len(RETRY_WAITS):
+                raise
 
 
 def tar_folder(path):

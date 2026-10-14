@@ -404,7 +404,7 @@ def press_flap(V: np.ndarray, F: np.ndarray, uv: np.ndarray, flap: np.ndarray, l
     return Vn
 
 
-MADE_LAPEL = {"lay": 0.003, "roll_r": 0.004, "line_reach": 0.025}
+MADE_LAPEL = {"lay": 0.003, "roll_r": 0.004, "line_reach": 0.025, "roll_break": 0.002, "roll_top": 0.007, "roll_width": 2.5}
 
 
 def away_simple(V: np.ndarray, F: np.ndarray, out: np.ndarray) -> np.ndarray:
@@ -486,9 +486,22 @@ def made_lapel(V: np.ndarray, F: np.ndarray, uv: np.ndarray, sel: np.ndarray, fl
     Al = np.c_[np.ones(len(a_s)), a_s - a0]
     cl = plane_lift(Al, clearance(chord(a_s), 2 * p["lay"]))
 
+    # the ROLL (a canvassed lapel rolls, it is not pressed flat): the roll line stands off the chest by R(a), from
+    # `roll_break` at the break to `roll_top` at the gorge (eased), and the lapel falls from it to lie flat by
+    # `roll_width` x R across; roll_top 0 = the pressed board as before
+    top_hi = bool((R1 - R0)[2] > 0)  # (which end of the row is the gorge)
+
+    def Rr(a):
+        if p["roll_top"] <= 0:
+            return np.zeros(np.shape(a))
+        t_ = np.clip((np.asarray(a, float) - a0) / max(a1 - a0, 1e-9), 0, 1)
+        t_ = t_ if top_hi else 1 - t_
+        t_ = t_ * t_ * (3 - 2 * t_)
+        return p["roll_break"] + (p["roll_top"] - p["roll_break"]) * t_
+
     def line(a):
         a = np.asarray(a, float)
-        return chord(a) + (cl[0] + cl[1] * (a - a0))[..., None] * N
+        return chord(a) + (cl[0] + cl[1] * (a - a0) + Rr(a))[..., None] * N
 
     # the base near the row onto the lifted line (its bow taken out; only within line_reach of it)
     w = np.clip(1 - s_b / p["line_reach"], 0, 1)
@@ -502,6 +515,11 @@ def made_lapel(V: np.ndarray, F: np.ndarray, uv: np.ndarray, sel: np.ndarray, fl
     # until it clears what is under the jacket by 2 x lay (the forepart lies between); a ruled sheet lifted by a plane
     # stays ruled: straight edges. Rising from the fold over the soft roll.
     X = line(a_f) + s_f[:, None] * cross
+    if p["roll_top"] > 0:  # (from the standing roll down to lying flat: the line's own lift R undone across the lapel,
+        # before the lift that clears what is under it)
+        R_f = Rr(a_f)
+        kk = np.clip(s_f / np.maximum(p["roll_width"] * R_f + 0.008, 1e-6), 0, 1)
+        X = X - (R_f * (kk * kk * (3 - 2 * kk)))[:, None] * N
     A_ = np.c_[np.ones(len(X)), a_f - a0, s_f]
     coef = plane_lift(A_, clearance(X, 2 * p["lay"]))
     k = np.clip(s_f / max(np.pi * p["roll_r"], 1e-6), 0, 1)
@@ -830,6 +848,9 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         uv = pat["E"][:, None] + pat["col"][:, None] * (want / np.maximum(tot, 1e-9)[:, None])[..., None]
     wE = np.zeros(n)
     einfo = []
+    G0 = G.copy()  # (the back's own columns, before any end is blended in)
+    XE = np.full((n, m, 3), np.nan)  # (each end station's lay as a whole)
+    trans = p.get("transition", "board")
     for e in ends or []:
         if pat is None:
             break
@@ -873,18 +894,45 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         mir = img - 2 * (dist * flap_side)[:, None] * np.stack([-fT[:, 1], fT[:, 0]], 1)
         X, Nn = on_pattern(np.asarray(e["V"], float), np.asarray(e["F"]), np.asarray(e["uv"], float), mir, e.get("out"),
                            board=e.get("board", 0.02))
-        X = X + np.minimum(e.get("lay", 0.003), e.get("wedge", 0.35) * dist)[:, None] * Nn
+        # (the end lies ON the turned lapel: its own thickness over the lapel's lay, so its edge stands as a step over
+        # the lapel's top at the notch instead of sinking flush into it: the notch had no rim to read, cloth12)
+        lay_e = e.get("lay", 0.003) + float(p.get("end_over", 1.0)) * p["thickness"]
+        X = X + np.minimum(lay_e, e.get("wedge", 0.35) * dist + float(p.get("end_over", 1.0)) * p["thickness"])[:, None] * Nn
         X = X.reshape(len(sel), m, 3)
         # the seam row is the seam as it lies (the pressed lapel's own edge): the board is carried onto it
         dl = (C[sel] - X[:, 0])[:, None, :] * np.exp(-(want[sel] / 0.03) ** 2)[..., None]
         einfo.append({"side": sd_, "stations": int(len(sel)), "seam_carry_max_mm": round(float(np.linalg.norm(C[sel] - X[:, 0], axis=1).max()) * 1000, 1),
                       "meets_seam_at_mm": round(float(s_meet_a) * 1000, 1)})
         X = X + dl
+        if p.get("end_length", "pattern") == "pattern":
+            # each end column at its CUT length from the seam: laid on the forepart's board it took the forepart's
+            # own ease (the neckline drawn in by hug_neckline, the cloth within 12 cm following): the collar's end
+            # came out at 70-80 % of its width (cloth12, gc1: 28-33 of 39 mm), a strap with no notch to see
+            cl_ = np.concatenate([np.zeros((len(sel), 1)), np.cumsum(np.linalg.norm(np.diff(X, axis=1), axis=-1), axis=1)], 1)
+            tg_ = want[sel] - want[sel][:, :1]
+            f_ = np.where(cl_ > 1e-6, tg_ / np.maximum(cl_, 1e-9), 1.0)
+            X = X[:, :1] + f_[..., None] * (X - X[:, :1])
+        XE[sel] = X
         G[sel] = (1 - we[sel])[:, None, None] * G[sel] + we[sel][:, None, None] * X
         wE = np.maximum(wE, we)
     gp = np.where(want[:, 1:] > (h + arc_len)[:, None] + 1e-9, lay, 0.001)
     gp = np.where(wE[:, None] > 0.5, np.minimum(gp, 0.0015 + p["thickness"]), gp)
-    if wE.any():
+    zone = np.zeros(n, bool)
+    if wE.any() and trans == "board" and p.get("fall_board", True):
+        # the TRANSITION from the ends to the back laid by the fall board (below): every station between a pure end
+        # lay and the back is the back's own stand + fold, its fall a board at its PATTERN length, turned from the
+        # back's way down to the end's way out by the end weight. (Blending the two lays point by point crossed them;
+        # patching between whole boundary columns kept them crossing-free but squeezed the fall's outer edge to a third
+        # of its length at the side neck: the knot / elbow that read as a "tab", cloth12 on gc1.)
+        we_ = float(p.get("transition_end", 0.98))  # (stations with less end weight than this are the transition)
+        zone = (wE > 0) & (wE < we_)
+        for _ in range(int(p.get("transition_widen", 2))):  # (into the back: the turn spread over more stations)
+            zone[1:-1] |= (zone[:-2] | zone[2:]) & (wE[1:-1] < we_)
+        for _ in range(int(p.get("transition_widen_end", 2))):  # (into the end: its outer corner by the seam's corner
+            # hooks back; the curve then starts from an end column further out)
+            zone[1:-1] |= (zone[:-2] | zone[2:]) & (wE[1:-1] >= we_)
+        G[zone] = G0[zone]
+    if wE.any() and trans != "board":
         mix = ((wE > 0) & (wE < 1)).astype(float)
         for _ in range(int(p.get("blend_reach", 2))):
             mix[1:-1] = np.maximum(mix[1:-1], np.maximum(mix[:-2], mix[2:]))
@@ -901,9 +949,10 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
             Y = G.copy()
             Y[1:-1] = 0.5 * G[1:-1] + 0.25 * (G[:-2] + G[2:])
             G = G + (mix[:, None, None] * rowf[None, :, None]) * (Y - G)
+    if wE.any():
         he = float(p.get("end_hug", 0.006))
         if he > 0:  # the end lies DOWN on what is under it (a board bridges hollows only that deep)
-            en = np.where(wE > 0.5)[0]
+            en = np.where((wE > 0.5) & ~zone)[0]
             te = G[en, 1:].reshape(-1, 3)
             te, _, _ = Under(u_own.layers).settle(te, gp[en].ravel(), hug=he)
             G[en, 1:] = te.reshape(len(en), -1, 3)
@@ -925,16 +974,24 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         DN = _unit(zd[None] - (n_un @ zd)[:, None] * n_un)
         DN = _unit(_smooth_curve(DN, sm)) if sm else DN
         ends, cols = {}, {}
+
+        def fr_of(i, r0):
+            seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(G[i, r0:], axis=0), axis=1))]
+            if p.get("board_length", "pattern") == "pattern":
+                # the fall's PATTERN length from the roll down (its rows as cut): the laid column had lost up to half
+                # of it at the side neck (cloth12, gc1: 26-37 of 45-58 mm), so the fall stood as a wall beside the
+                # neck instead of lying out over the shoulder, its outer edge squeezed into the side-neck "tab"
+                seglen = want[i, r0:] - want[i, r0]
+            return seglen, float(seglen[-1])
         for i in range(n):
-            bw = (1.0 - wE[i]) * (1.0 if h[i] > 0.004 else 0.0)
+            bw = 0.0 if zone[i] else (1.0 - wE[i]) * (1.0 if h[i] > 0.004 else 0.0)
             if bw <= 0:
                 continue
             col = G[i]
             r0 = int(np.argmax(col[:, 2]))
             if r0 >= m - 2:
                 continue
-            seglen = np.r_[0, np.cumsum(np.linalg.norm(np.diff(col[r0:], axis=0), axis=1))]
-            Lr = float(seglen[-1])
+            seglen, Lr = fr_of(i, r0)
             dn = DN[i]
             top = col[r0]
             base = C[i] + lay * n_un[i]
@@ -947,6 +1004,34 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
                     hi_ = mid
             ends[i] = base + lo * dn
             cols[i] = (bw, r0, top, seglen / max(Lr, 1e-9))
+        # the TRANSITION: its outer edge one smooth curve (Hermite, by arc) from the last pure end's outer corner to the
+        # first boarded back column's end, carrying both edges' directions on; each column the back's own stand +
+        # fold, then straight from the roll's top (the seam where no stand rises) to its point on that edge
+        lab = np.cumsum(np.r_[zone[0], zone[1:] & ~zone[:-1]]) * zone
+        for z_ in range(1, int(lab.max()) + 1 if zone.any() else 1):
+            idx = np.where(lab == z_)[0]
+            ia, ib = int(idx[0]) - 1, int(idx[-1]) + 1
+            if ia < 1 or ib >= n - 1:
+                continue
+            if wE[ia] < wE[ib]:  # (ia = the end's side)
+                ia, ib = ib, ia
+            st_ = 1 if ib > ia else -1
+            Ob = ends.get(ib, G[ib, -1])
+            Oa = G[ia, -1]
+            Oa0 = G[ia - st_, -1]
+            Ob1 = ends.get(ib + st_, G[ib + st_, -1])
+            ch_ = np.linalg.norm(Ob - Oa)
+            Ta, Tb = _unit(Oa - Oa0) * ch_, _unit(Ob1 - Ob) * ch_
+            for i in idx:
+                t = abs(s[i] - s[ia]) / max(abs(s[ib] - s[ia]), 1e-9)
+                h00, h10, h01, h11 = 2 * t**3 - 3 * t**2 + 1, t**3 - 2 * t**2 + t, -2 * t**3 + 3 * t**2, t**3 - t**2
+                # (a stand lower than `transition_flat` laid flat: its few-mm fold by the seam's corner crumpled)
+                r0 = int(np.argmax(G[i, :, 2])) if h[i] > float(p.get("transition_flat", 0.006)) else 0
+                if r0 >= m - 2:
+                    r0 = 0
+                seglen, Lr = fr_of(int(i), r0)
+                ends[int(i)] = h00 * Oa + h10 * Ta + h01 * Ob + h11 * Tb
+                cols[int(i)] = (1.0, r0, G[i, r0].copy(), seglen / max(Lr, 1e-9))
         if ends and sm:
             ks = np.array(sorted(ends))
             Ee = np.array([ends[k] for k in ks])
@@ -957,6 +1042,17 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
         for i, (bw, r0, top, fr) in cols.items():
             line_ = top[None] + fr[:, None] * (ends[i] - top)[None]
             G[i, r0:] = (1 - bw) * G[i, r0:] + bw * line_
+        if zone.any():  # (the transition's inner rows evened with their neighbours: where the end lays meet the
+            # straight columns, by the seam's corner, the rows next to the seam crumpled)
+            zz = zone.copy()
+            for _ in range(2):
+                zz[1:-1] |= zz[:-2] | zz[2:]
+            zi = np.where(zz)[0]
+            zi = zi[(zi > 0) & (zi < n - 1)]
+            for _ in range(int(p.get("transition_smooth", 4))):
+                Y = G.copy()
+                Y[zi, 1:-1] = 0.5 * G[zi, 1:-1] + 0.125 * (G[zi - 1, 1:-1] + G[zi + 1, 1:-1] + G[zi, :-2] + G[zi, 2:])
+                G = Y
     tail = G[:, 1:].reshape(-1, 3)
     tail, _, _ = Under(u_own.layers).settle(tail, gp.ravel(), hug=0.0)
     G[:, 1:] = tail.reshape(n, -1, 3)
@@ -970,7 +1066,7 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
             "roll_meets_seam_mm_from_cb": [round(float(am_l) * 1000, 1), round(float(am_r) * 1000, 1)],
             "top_cb_z": round(float(G[k_cb, :, 2].max()), 4), "stations": int(n), "stretch": stretch(Vg, Fg, uv),
             "ends": einfo, "params": p,
-            "per_station": {"h": np.round(h, 4), "gorge": np.round(g, 3), "end_w": np.round(wE, 3)}}
+            "per_station": {"h": np.round(h, 4), "gorge": np.round(g, 3), "end_w": np.round(wE, 3), "zone": zone.copy()}}
     return {"parts": [{"name": "collar", "V": Vg, "F": Fg, "uv": uv, "grid": (n, m), "seam_row": np.arange(n) * m}], "info": info}
 
 
@@ -1190,7 +1286,8 @@ def _weld(V: np.ndarray, F: np.ndarray, tol: float = 0.0006) -> np.ndarray:
 
 def options(g: dict) -> dict | None:
     """The garment's `construct` key resolved (None: nothing is constructed): true / {} = the defaults (lapels
-    pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options", "hug" (with
+    pressed, the collar as simulated), false = off, {"lapels", "collar", "lapel_lay", "wedge", "collar_options",
+    "lapel_options" (made_lapel keys: roll_top / roll_break / roll_width = the canvassed roll), "hug" (with
     collar and an under garment: the neckline drawn in to the under collar, hug_neckline; false or {gap, reach, max_pull,
     gorge}), "over_under" (pressed lapels lifted out over the under garment; default on), "board" (the forepart under a
     lapel laid as a ruled strip first, board_lapel; default OFF, experimental: on Garrett it straightened the roll line
@@ -1265,7 +1362,7 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
             if under is not None:
                 und_m = [{"V": np.asarray(under["V"], float), "F": away(np.asarray(under["V"], float), np.asarray(under["F"]), np.asarray(bV, float), bFo)}]
             V, minfo = made_lapel(V, F, uv, L["sel"], L["flap"], L["line"], L["row"], L["out"], und_m,
-                                  lay=opt["lapel_lay"])
+                                  lay=opt["lapel_lay"], **dict(opt.get("lapel_options") or {}))
             made["info"].setdefault("made_lapel", {})[L["piece"]] = minfo
         else:
             V = press_flap(V, Fp, uv, L["flap"], L["line"], lay=opt["lapel_lay"], wedge=opt["wedge"], out=L["out"])
