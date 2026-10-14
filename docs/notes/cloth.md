@@ -2319,3 +2319,34 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
     NEXT: (b) front balance (fronts 1-5 cm too open below the break), the notch V reading (lapel edge rim / roll), the
     wearer's right inner corner, then items 3-5 (shoulders, CB collar crossings, cut rules in the pipeline: the
     tucked skin hole).
+- Gate 3 (coordinator: (1) the lapel's ROLL, (2) a notch V with a rim, (3) front balance below the break, then item 5).
+  - (1) ROLL: made_lapel laid the lapel as a pressed board (3 mm over its forepart). Now a canvassed roll (made_lapel
+    roll_break / roll_top / roll_width, construct key lapel_options; default roll_top 7 mm): the roll line stands
+    off the chest by R, from 2 mm at the break to roll_top at the gorge (eased), the lapel falling from it to lie flat
+    by roll_width x R + 8 mm across; the fall is built BEFORE the clearance lift (after it, the lapel's outer part
+    sank through the shirt: a shirt button showed through the lapel). roll_top 10-12 mm put a knot back at the
+    wearer's right side neck (the collar end lies on the lifted gorge): 7 mm is clean. In clay the roll is subtle.
+    Test test_construct_presses_lapels... asserts the graded roll (flat case kept with roll_top 0).
+  - (2) NOTCH V: (a) the collar's END now lies on the lapel by its own thickness (collar_options end_over 1.0: it had
+    sunk flush into the lapel, no rim); (b) draft: collar point 15 mm (op collar point: the end's outer corner run
+    on toward the lapel point: the end edge leans like the concept's and the V narrows) = sim c12_n4 ($0.048). Notch
+    closes (c10ship notch=1: out/c12_v_<tag>_noA/noB.png): the wearer's right reads as a collar point over a lapel
+    with a step; the wearer's left still reads square from three-quarter. n4 gate: 13 new skin px in one close
+    three-quarter camera (FAIL; n1 with the same construction passes); notch 62 / 47 mm below the chin (concept
+    63 / 56), the left one 9 mm high and 20 mm further in than n1.
+  - (3) FRONT BALANCE: NOT FIXED. Per side (gap.py idea at 20 mm steps, out/ n4/r12 numbers): the wearer's LEFT front
+    edge runs 60 -> 24 mm off x 0 from the break down (close to the concept's ~65 at the button); the wearer's RIGHT
+    hangs at 85-100 mm the whole way: the open look is the right front swinging out (an asymmetric sim; the button
+    stance is not the lever, gate 2). Next: find why the right front swings (its start / the closure's "open" state
+    / the lapel roll's fold strength on that side) before any draft change.
+  - (5) PRODUCTION CUT, skin at the right chest: cloth_layers.tucked laid covered shirt `gap` under the jacket's
+    inner face even where that face lies on the skin: moved up to 38 mm INTO the body, so the skin drew over it.
+    Now no tucked vertex goes under TUCK_BODY (1 mm) outside the body (each move cut back by bisection; a start already
+    inside keeps its place): c10ship cover=pipe on r12: the skin patch is gone (out/pipe_cmp.png), V moved p95 9.2 /
+    max 28.8 mm (was 11.2 / 38.0). test_cloth_layers passes (12 ok); no new test yet for this guard.
+  - GATE 3 sheet workspace/cloth_renders/c12_g3_sheet.png (concept | c12_n4c | c11_gc1, + notch closes; shadows off).
+    Spend: $0.186 + n4 $0.048 = $0.234.
+  - RESTART: best passing = out/c12_n1c.pkl (gorge_drop 0.10, roll 7 mm, end over the lapel; gates PASS, 0 visible
+    crossings); best notch shape = out/c12_n4c.pkl (+ collar point 0.015; 13 skin px). Commands as in gate 2's
+    RESTART; notch closes: HL=0 bash vw.sh <tag> <pair> notch=1; sheet: NOTCH=1 uv run python sheet.py ...
+    NEXT: the right front's swing, n4's 13 skin px, the left notch end, a test for the tuck's body guard.
