@@ -159,11 +159,12 @@ def test_skin_under_cloth_is_dropped_with_a_rim():
     from hifipushie import asset
     skin = _sphere(0.1)
     cloth = _sphere(0.11)
-    cloth["verts"] = cloth["verts"][cloth["verts"][:, 2] < 0]  # a garment over the lower half
+    T = cloth["corner_vert"].reshape(-1, 3)
+    cloth["corner_vert"] = T[(cloth["verts"][T][:, :, 2] < 0).all(1)].ravel()  # a garment over the lower half
     keep = asset.under_cloth_keep(skin, [cloth])
     cz = skin["verts"][skin["corner_vert"].reshape(-1, 3)].mean(1)[:, 2]
     assert keep[cz > 0].all(), "uncovered skin stays"
-    assert not keep[cz < -0.07].any(), "deeply covered skin goes"
+    assert not keep[(cz < -0.06) & (cz > -0.08)].any(), "deeply covered skin goes"  # (the grid's pole is a hole)
     assert keep[(cz < 0) & (cz > -0.02)].all(), "the rim at the opening stays"
 
 

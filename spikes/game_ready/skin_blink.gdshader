@@ -12,6 +12,8 @@ uniform bool has_blink = false;
 uniform float eye_blink = 0.0;
 uniform float specular = 0.5;
 uniform float sss_strength = 0.25;
+uniform float ao_amount = 1.0;     // the ORM's occlusion (0 = off: the base colour already has the bake's warm occlusion)
+uniform float ao_light_affect = 0.6;
 
 void fragment() {
 	vec3 alb = texture(albedo_tex, UV).rgb;
@@ -21,8 +23,8 @@ void fragment() {
 	}
 	vec3 orm = texture(orm_tex, UV).rgb;
 	ALBEDO = alb;
-	AO = orm.r;
-	AO_LIGHT_AFFECT = 0.6;
+	AO = mix(1.0, orm.r, ao_amount);
+	AO_LIGHT_AFFECT = ao_light_affect;
 	ROUGHNESS = orm.g;
 	METALLIC = orm.b;
 	SPECULAR = specular;

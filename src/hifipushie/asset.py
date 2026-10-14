@@ -575,19 +575,36 @@ def under_cloth_keep(p: dict, cloth: list[dict]) -> np.ndarray:
     N = np.zeros_like(V)
     np.add.at(N, cv, np.asarray(p["normal"], np.float64))
     N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
-    G = np.concatenate([np.asarray(c["verts"], np.float64) for c in cloth])
-    tree = cKDTree(G)
+    tris = []
+    for c in cloth:
+        Vc = np.asarray(c["verts"], np.float64)
+        tris.append(Vc[np.asarray(c["corner_vert"], np.int64).reshape(-1, 3)])
+    T = np.concatenate(tris)  # (m, 3, 3)
+    A, E1, E2 = T[:, 0], T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+    cen = T.mean(1)
+    rad = np.linalg.norm(T - cen[:, None], axis=2).max()
+    tree = cKDTree(cen)
     used = np.unique(cv)
     covered = np.zeros(len(V), bool)
     for s in range(0, len(used), 20000):
         ids = used[s:s + 20000]
-        for i, nb in zip(ids, tree.query_ball_point(V[ids], UNDER_CLOTH_REACH)):
+        for i, nb in zip(ids, tree.query_ball_point(V[ids], UNDER_CLOTH_REACH + rad)):
             if not nb:
                 continue
-            d = G[nb] - V[i]
-            a = d @ N[i]
-            r = np.linalg.norm(d - a[:, None] * N[i], axis=1)
-            covered[i] = bool(((a > 0) & (r < UNDER_CLOTH_TUBE)).any())
+            nb = np.asarray(nb)
+            d = N[i]  # Moller-Trumbore: the ray from the vertex along its normal against the nearby cloth triangles
+            pv = np.cross(d, E2[nb])
+            det = (E1[nb] * pv).sum(1)
+            ok = np.abs(det) > 1e-12
+            inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+            tv = V[i] - A[nb]
+            u = (tv * pv).sum(1) * inv
+            qv = np.cross(tv, E1[nb])
+            v = (qv @ d) * inv
+            t = (E2[nb] * qv).sum(1) * inv
+            eps = 1e-4  # (a ray through a shared edge or vertex hits)
+            hit = ok & (u >= -eps) & (v >= -eps) & (u + v <= 1 + eps) & (t > -0.002) & (t < UNDER_CLOTH_REACH)
+            covered[i] = bool(hit.any())
     open_ = used[~covered[used]]
     if len(open_):
         near = cKDTree(V[open_]).query(V[used], distance_upper_bound=UNDER_CLOTH_RIM)[0] < UNDER_CLOTH_RIM
@@ -1918,6 +1935,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         from . import cloth as clothmod
         cparts = clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048), log=log.append)
         n_c = sum(len(cp["corner_vert"]) // 3 for _, cp, _ in cparts)
+        cover_by = [cp for _, cp, _ in cparts]  # (the sim's own mesh: what covers the skin, before any decimation)
         if cloth_triangles and n_c > cloth_triangles:  # the sim's 1 cm mesh (two-sided) is far over a game budget:
             # decimated like a LOD (patches with their borders held: seams, hems, the pattern's uv)
             from . import lods as lodmod
@@ -1940,7 +1958,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_c]["triangles"]
         if cull_under_cloth and cparts:  # skin the garments cover: never seen, and a bent limb pokes it through
-            cl = [parts[pn_c] for pn_c, _, _ in cparts]
+            cl = cover_by
             skin_pn = (spec.get("skin") or {}).get("part", "body")
             under = {skin_pn} | {p_ for p_, d_ in defs.items() if (d_ or {}).get("shell") == skin_pn
                                  and not (d_ or {}).get("garment")}  # (the skin and paint-like shells: socks)

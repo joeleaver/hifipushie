@@ -19,6 +19,7 @@ from scipy.spatial import cKDTree
 
 LOD_RATIOS = (0.5, 0.25, 0.12)  # share of LOD0's triangles per level (Joe's call: budgets per tier)
 MIN_PATCH = 12  # triangles: smaller patches are kept as they are
+CARDS_MIN = 0.2  # a hair LOD keeps at least this share of its card layer's triangles (the biggest cards)
 
 
 def _split(p: dict, tri_mesh: np.ndarray | None):
@@ -183,6 +184,30 @@ def card_lod(p: dict, ranges: dict, ratio: float) -> tuple[dict, dict]:
         if i > 0 and keep.sum() + c > ratio * n:
             break
         keep[s:s + c] = True
+    if keep.sum() > 1.05 * ratio * n and layers:
+        # still over (a one-layer groom: tied hair): thin the top kept layer by whole cards, the biggest kept
+        top = [nm for nm in layers if keep[ranges[nm][0]]][-1]
+        s, c = ranges[top]
+        T = np.asarray(p["corner_vert"], np.int64).reshape(-1, 3)[s:s + c]
+        vs, Tl = np.unique(T, return_inverse=True)
+        Tl = Tl.reshape(-1, 3)
+        e = np.r_[Tl[:, [0, 1]], Tl[:, [1, 2]]]
+        _, lab = connected_components(coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(len(vs), len(vs))),
+                                      directed=False)
+        card = lab[Tl[:, 0]]
+        V = np.asarray(p["verts"], np.float64)
+        area = 0.5 * np.linalg.norm(np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]), axis=1)
+        csum = np.bincount(card, area)
+        ccount = np.bincount(card)
+        room = max(ratio * n - (keep.sum() - c), CARDS_MIN * c)  # (the cap alone loses the tail's silhouette)
+        chosen = np.zeros(len(csum), bool)
+        tot = 0
+        for k in np.argsort(-csum):
+            if tot + ccount[k] > room:
+                continue
+            chosen[k] = True
+            tot += ccount[k]
+        keep[s:s + c] = chosen[card]
     cm = np.repeat(keep, 3)
     q = {**p, "corner_vert": p["corner_vert"][cm], "uv": p["uv"][cm], "normal": p["normal"][cm],
          "tangent": p["tangent"][cm], "sign": p["sign"][cm]}

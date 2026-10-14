@@ -67,13 +67,22 @@ func _materials(scene: Node, info: Dictionary, glb_dir: String) -> void:
 		var r: Dictionary = parts[pn]
 		var at: Dictionary = info["atlases"].get(r["atlas"], {})
 		var maps: Dictionary = at.get("maps", {})
-		if r.get("cards", false) or r.get("curves", false):
+		if (r.get("cards", false) or r.get("curves", false)) and OS.get_environment("GR_HAIR_STD") != "":
+			for k in m.mesh.get_surface_count():  # (comparison: the importer's own material, vertex colour on)
+				var mt = m.get_active_material(k)
+				if mt is BaseMaterial3D:
+					mt.vertex_color_use_as_albedo = true
+			print("mesh ", m.name, ": hair, importer material")
+		elif r.get("cards", false) or r.get("curves", false):
 			var sm := ShaderMaterial.new()
 			sm.shader = hair_shader
 			sm.set_shader_parameter("albedo_tex", _tex(maps.get("basecolor", "")))
 			sm.set_shader_parameter("normal_tex", _tex(maps.get("normal", "")))
 			if maps.has("aux"):
 				sm.set_shader_parameter("aux_tex", _tex(maps["aux"]))
+			var hp = JSON.parse_string(OS.get_environment("GR_HAIR_PARAMS")) if OS.get_environment("GR_HAIR_PARAMS") != "" else {}
+			for k in hp:  # (tuning: shader parameters over the defaults)
+				sm.set_shader_parameter(k, hp[k])
 			for k in m.mesh.get_surface_count():
 				m.set_surface_override_material(k, sm)
 			print("mesh ", m.name, ": hair cards shader")
@@ -88,6 +97,9 @@ func _materials(scene: Node, info: Dictionary, glb_dir: String) -> void:
 				sm.set_shader_parameter("has_blink", true)
 			for k in m.mesh.get_surface_count():
 				m.set_surface_override_material(k, sm)
+			var sp = JSON.parse_string(OS.get_environment("GR_SKIN_PARAMS")) if OS.get_environment("GR_SKIN_PARAMS") != "" else {}
+			for k in sp:
+				sm.set_shader_parameter(k, sp[k])
 			skin_mats.append(sm)
 			print("mesh ", m.name, ": skin shader (blink map ", maps.has("blink"), ")")
 		else:
