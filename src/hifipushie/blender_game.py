@@ -37,9 +37,9 @@ def clear():
         bpy.data.objects.remove(ob, do_unlink=True)
 
 
-def import_glb(path):
+def import_glb(path, **kw):
     before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=path)
+    bpy.ops.import_scene.gltf(filepath=path, **kw)
     new = [o for o in bpy.data.objects if o not in before]
     arm = next((o for o in new if o.type == "ARMATURE"), None)
     return new, arm
@@ -246,7 +246,7 @@ else:  # the importer's own, cards dithered, the blink map hooked in
 # ---- the clip source
 src_arm, src_objs = None, []
 if job.get("anim"):
-    src_objs, src_arm = import_glb(job["anim"])
+    src_objs, src_arm = import_glb(job["anim"], **({"guess_original_bind_pose": bool(job["src_bind_guess"])} if "src_bind_guess" in job else {}))
     src_roots = [(o, o.location.copy()) for o in src_objs if o.parent is None]
 
 
@@ -311,7 +311,7 @@ def align(bn):
     return C
 
 
-REST_POSED = ("Shoulder", "Arm", "Hand", "Leg", "Foot", "Toe")  # limbs (ForeArm, fingers, UpLeg incl.): A-pose vs T-pose
+REST_POSED = ("Shoulder", "Arm", "Hand", "Leg", "Foot", "Toe", "Hips", "Spine")  # limbs (A-pose vs T-pose) and the trunk below the neck (its lean is the clip's); the neck and head keep our posture (aligned, our forward neck tipped the head back)
 
 
 def rot(M):
@@ -378,7 +378,7 @@ def direction_errors():
         if a is None or s_ is None:
             continue
         err = math.degrees(a.angle(s_))
-        if job.get("debug") and ("UpLeg" in bn or "ForeArm" in bn):
+        if job.get("debug") and ("UpLeg" in bn or "ForeArm" in bn or bn.endswith(("Hips", "Spine", "Spine2", "Neck"))):
             print(f"@@dbg {bn}: ours {tuple(round(x, 3) for x in a)} src {tuple(round(x, 3) for x in s_)}", flush=True)
         if not any(k in bn for k in REST_POSED):  # trunk: against the rest offset
             err = abs(err - math.degrees(rest_dir(arm, bn).angle(rest_dir(src_arm, bn))))
@@ -391,6 +391,24 @@ def direction_errors():
     rs = (src_arm.matrix_world @ src_arm.pose.bones[P + "RightUpLeg"].head - src_arm.matrix_world @ src_arm.pose.bones[P + "LeftUpLeg"].head)
     ra.z = rs.z = 0
     out["Hips.yaw"] = round(math.degrees(ra.angle(rs)), 1) if ra.length > 1e-6 and rs.length > 1e-6 else 0.0
+
+    def body(o):  # world: trunk lean (hips -> neck from vertical), hips over the lower ankle / leg length, knee bends
+        W = o.matrix_world
+        pb = o.pose.bones
+        hp, nk = W @ pb[P + "Hips"].head, W @ pb[P + "Neck"].head
+        lean = math.degrees((nk - hp).angle(Vector((0, 0, 1))))
+        legs = [(W @ o.data.bones[P + s + "UpLeg"].head_local - W @ o.data.bones[P + s + "Foot"].head_local).length
+                for s in ("Left", "Right")]
+        ank = min((W @ pb[P + s + "Foot"].head).z for s in ("Left", "Right"))
+        knees = []
+        for s in ("Left", "Right"):
+            a, k, f = (W @ pb[P + s + n].head for n in ("UpLeg", "Leg", "Foot"))
+            knees.append(round(180 - math.degrees((a - k).angle(f - k)), 1))
+        return round(lean, 1), round((hp.z - ank) / max(legs), 3), knees
+    lo, ls_ = body(arm), body(src_arm)
+    out["trunk_lean_deg ours|src"] = f"{lo[0]}|{ls_[0]}"
+    out["hips_over_ankle/leg ours|src"] = f"{lo[1]}|{ls_[1]}"
+    out["knee_bend_LR ours|src"] = f"{lo[2]}|{ls_[2]}"
     return out
 
 
@@ -435,6 +453,41 @@ def turn(bn, axis, deg):
     T = Matrix.Translation(M.translation)
     pb.matrix = T @ R @ T.inverted() @ M
     bpy.context.view_layer.update()
+
+
+def sticks(o, color, src=False, r=0.012):
+    """the posed skeleton of armature o as boxes along its bones (head -> the chain child's head), parented to o's
+    first root so it moves with it when placed beside: what the bones say, independent of the meshes."""
+    import bmesh
+    bm = bmesh.new()
+    for pb in o.pose.bones:
+        if "Twist" in pb.name or "_End" in pb.name:
+            continue
+        cn = chain_child(pb.name) if pb.name in arm.pose.bones else None
+        kids = [o.pose.bones[cn]] if cn and cn in o.pose.bones else [c for c in pb.children if "Twist" not in c.name]
+        for c in kids[:1]:
+            a, b = o.matrix_world @ pb.head, o.matrix_world @ c.head
+            d = b - a
+            if d.length < 1e-4:
+                continue
+            q = Vector((0, 0, 1)).rotation_difference(d.normalized())
+            res = bmesh.ops.create_cone(bm, cap_ends=True, segments=6, radius1=r, radius2=r * 0.5, depth=d.length)
+            M = Matrix.Translation((a + b) / 2) @ q.to_matrix().to_4x4()
+            bmesh.ops.transform(bm, matrix=M, verts=res["verts"])
+    me = bpy.data.meshes.new("_sticks")
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new("_sticks" + ("_src" if src else ""), me)
+    mat = bpy.data.materials.new("_sticks")
+    mat.use_nodes = True
+    mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*color, 1)
+    mat.node_tree.nodes["Principled BSDF"].inputs["Emission Color"].default_value = (*color, 1)
+    mat.node_tree.nodes["Principled BSDF"].inputs["Emission Strength"].default_value = 0.6
+    me.materials.append(mat)
+    scene.collection.objects.link(ob)
+    if src:  # (moved with the source when it is placed beside)
+        ob["_src_offset"] = 1
+    return ob
 
 
 def set_action(o, clip):
@@ -517,8 +570,9 @@ for pz in job.get("shots", []):
         set_action(src_arm, pz["anim"][0])
         nret = retarget(int(round(float(pz["anim"][1]) * scene.render.fps)))
         de = direction_errors()
+        body_ = {k: de.pop(k) for k in list(de) if not isinstance(de[k], (int, float))}
         worst = sorted(de.items(), key=lambda kv: -kv[1])[:6]
-        print(f"@@direction {pz['name']}: max {worst[0][1]} deg; worst {worst}", flush=True)
+        print(f"@@direction {pz['name']}: max {worst[0][1]} deg; worst {worst}; {body_}", flush=True)
     for bn, t in (pz.get("turns") or {}).items():
         turn(P + bn if not bn.startswith(P) else bn, t[0], float(t[1]))
     if pz.get("hips_drop"):
@@ -537,7 +591,11 @@ for pz in job.get("shots", []):
     for v in blink_nodes:
         v.outputs[0].default_value = (1.0 - blink) if pz.get("blink_map", True) else 0.0
     for ob in meshes:
-        ob.hide_render = any(ob.name.endswith("_" + h) for h in pz.get("hide", []))
+        ob.hide_render = any(ob.name.endswith("_" + h) for h in pz.get("hide", [])) or bool(pz.get("sticks_only"))
+    if src_arm is not None and pz.get("sticks_only"):
+        for o in src_objs:
+            if o.type == "MESH":
+                o.hide_render = True
     bpy.context.view_layer.update()
     fb = arm.pose.bones[P + pz.get("focus", "Spine2")]
     at = arm.matrix_world @ fb.head + Vector((0, 0, float(pz.get("lift", 0.0))))
@@ -556,6 +614,12 @@ for pz in job.get("shots", []):
                 o.location = l0 + right * float(job.get("beside", 0.9))
             bpy.context.view_layer.update()
             shift = right * float(job.get("beside", 0.9)) / 2
+        for o in [o for o in bpy.data.objects if o.name.startswith("_sticks")]:
+            bpy.data.objects.remove(o, do_unlink=True)
+        if pz.get("sticks") or pz.get("sticks_only"):  # the posed SKELETONS drawn (what the bones say, not the meshes)
+            sticks(arm, (0.1, 0.5, 1.0))
+            if src_arm is not None and pz.get("anim") and pz.get("beside"):
+                sticks(src_arm, (1.0, 0.4, 0.1), src=True)
         eye = at + d * float(pz.get("dist", 1.5)) + shift
         look = at + shift
         cam.matrix_world = Matrix.Translation(eye) @ (look - eye).to_track_quat("-Z", "Y").to_matrix().to_4x4()
