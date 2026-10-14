@@ -194,6 +194,25 @@ def test_tuck_leaves_what_shows_bit_identical():
     assert np.abs(Vf[~cov_f] - under["V"][~cov_f]).max() > 1e-4  # (the old feather moves uncovered cloth)
 
 
+def test_tuck_never_lays_the_under_garment_into_the_body():
+    """cloth_layers.tucked: where the outer cloth lies ON the skin (a jacket's forepart pressed onto the chest under a
+    rolled lapel), the under garment is laid on the skin, never through it (Garrett's right chest, cloth12: shirt moved
+    38 mm into the body, the skin drew over it in the production cut); `hold` vertices never move."""
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+    under = _shell(V, F, 0.104)
+    outer = dict(_shell(V, F, 0.1005, zmax=0.05), body=body)  # (on the skin: `gap` under it is inside the body)
+    Vt, cov = cloth_layers.tucked(under, outer)
+    assert cov.sum() > 100
+    moved = np.linalg.norm(Vt - under["V"], axis=1) > 1e-6
+    assert moved.sum() > 100
+    assert body.clearance(Vt[moved]).min() >= cloth_layers.TUCK_BODY - 1e-4, body.clearance(Vt[moved]).min()
+    hold = under["V"][:, 2] < -0.05
+    Vh, cov_h = cloth_layers.tucked(under, outer, hold=hold)
+    assert np.array_equal(Vh[hold], under["V"][hold]) and not cov_h[hold].any()
+    assert np.linalg.norm(Vh[~hold] - under["V"][~hold], axis=1).max() > 1e-3
+
+
 def test_occluded_by_a_shell_from_every_side():
     """cloth_layers.occluded / view_dirs: a point inside a closed shell is hidden from every direction; one outside
     it is not; gaps + front_only see only the shell's outer side."""

@@ -2350,3 +2350,41 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
     crossings); best notch shape = out/c12_n4c.pkl (+ collar point 0.015; 13 skin px). Commands as in gate 2's
     RESTART; notch closes: HL=0 bash vw.sh <tag> <pair> notch=1; sheet: NOTCH=1 uv run python sheet.py ...
     NEXT: the right front's swing, n4's 13 skin px, the left notch end, a test for the tuck's body guard.
+- Gate 4 (coordinator: (1) why the wearer's right front swings, (2) the collar point with 0 skin px, (3) the left
+  notch squarish, (4) a test for the production-cut fix; then merge-ready).
+  - (1) RIGHT FRONT SWING, split by elimination (edges.py <npz>: each front's innermost edge, start X0 and end, by
+    height). Pattern: front.L / front.R mirror images (uv match). Shirt and body under them: symmetric within 3 mm
+    (body mirror distance p50 2.8 / p99 5.4 mm; shirt depth at x +-40 / +-80 equal to 1-4 mm). Sim inputs mirrored
+    (stiff, fold, rest, start): equal up to the meshes' difference. Closure layering: c12_n5 (closure over front.R
+    instead of .L, $0.039): BOTH fronts swing further out, the right still more (-101..-162 vs 64..84 mm): not the
+    lap. Start: c12_n6 (open_lap false: both fronts start alike, $0.049): the right ends EXACTLY as before (-81..-94
+    mm off centre, 45 mm further forward than the left at the hem), the left 15-73. So neither start nor closure.
+    Remaining asymmetric input: the MESH: each piece is meshed on its own (cloth.mesh), front.R 540 vertices vs
+    front.L 538, a different triangulation (mirror match up to 14 mm), and every sim so far (gc1, b0, n1-n6) has
+    the right front out: a triangulation bias in bending is the suspect. NEXT TEST (not done: re-keys every cached
+    sim of every garment): mesh each .R piece as the mirror of its .L piece, one sim.
+  - (2) COLLAR POINT 15 mm (c12_n4c) and the 13 skin px: in the close three-quarter camera at the wearer's left shirt
+    collar point. Cut alone (tuck=0): 0 px; so it is the TUCK: shirt front cloth beside its collar point taken under
+    the longer collar point (by the collar's end) opens a slit at the band. Tried in the harness: the shirt collar
+    never split by the tuck (collar_whole, kept: no change), the shirt within 2 cm of its collar never cut (no
+    change), held from the tuck within 1.5 cm (37 px), 2.5 cm (0 px but 32 visible crossings there), 4 cm (0 px,
+    82 crossings). NOT clean yet: the shirt by its collar point and the jacket's collar point compete for the same
+    place; c12_n1c (no point) stays the passing best. cloth_layers.tucked gained `hold` (per vertex: never moved).
+  - (3) LEFT NOTCH squarish: the collar end's corner (end edge vs seam) is 125 deg on the right, 105 deg on the left
+    (pattern 111): the end is laid on each forepart's own drape and the fronts hang differently: tied to (1).
+  - (4) test_cloth_layers::test_tuck_never_lays_the_under_garment_into_the_body (outer cloth on the skin; without the
+    guard the tuck leaves the under garment 4 mm inside the body) + `hold`.
+  - Merge-ready: the cloth test set one file per process (tests.sh, HIFIPUSHIE_ASSETS set): 15 files, all rc 0, 0
+    skipped (folds 13, cloth 26, cloth_layers 13, closures 12, cloth_check 1, cloth_workflow 12, pattern_draft 9,
+    pattern_styles 8, pattern_tailor 17, collar 4, seams 5, cloth_reference 12, suit7 5, suit8 6, cloth_made 13).
+    Spend this agent: $0.322 (n5 $0.039, n6 $0.049 this gate).
+  - STATE: best passing c12_n1c (gorge_drop 0.10; construction: pattern-length fall, Hermite transition from inside
+    the end, end at its cut width and over the lapel, 7 mm roll); best notch c12_n4c (+ collar point 15 mm; 13 skin px).
+    NEXT: (a) mirrored .R meshes, one sim, to settle the right front's swing; (b) the shirt-by-its-collar-point vs
+    jacket collar point clash (point 10 mm, or hold + a local press of the shirt's front under the lapel);
+    (c) shoulders (item 3), CB collar crossings (item 4); (d) the shirt on the final measures.
+  - RESTART: scratch /mnt/data/hifipushie/cloth12 (env.sh: BLAS 4 threads, shadows off; bl.sh = oxidegen's client).
+    Rebuild construct on a sim: SRC=con_<t> BASE=c12_<t> bash cv.sh c12_<t>c [construct key=json ...]; judge: bash
+    j2.sh <t>; renders: HL=0 bash vw.sh c12_<t>c c12_<t> fig=1 notch=1; sheet: NOTCH=1 uv run python sheet.py <now>
+    <before> <png> <title>; fronts: uv run python edges.py out/c12_<t>.npz; sims: bash stage.sh <queue> 3 (one at a
+    time; q_n*.txt are the lines used; check `ps aux | grep stage.sh` first).

@@ -209,7 +209,7 @@ TUCK_BODY = 0.001  # m: a tucked vertex stops this far outside the body (where t
 
 
 def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | None = None,
-           keep_shown: bool = True) -> tuple:
+           keep_shown: bool = True, hold: np.ndarray | None = None) -> tuple:
     """The under garment's FINISHED surface as it is worn with the outer one over it: (V, covered per vertex).
     What shows of it (collar, the front in the jacket's V, cuffs) stays exactly as finished (relief, bands, made
     pieces: the surface the buttons and maps were made for); only vertices the outer garment lies over, and that
@@ -223,7 +223,9 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
     Drawn pressed everywhere instead (the collider the outer garment was simulated over: cloth.pressed), the shirt
     front in a jacket's V was a crumpled surface with no band and no buttons (the user: "where the placket?").
     `rigid` (per vertex group id, -1 none: made pieces, closure bands): a group moves by ONE vector (the mean of its
-    members' moves), so a collar or a placket keeps its shape."""
+    members' moves), so a collar or a placket keeps its shape. `hold` (per vertex): never moved (a shirt's front by its
+    own collar point: tucked under a jacket's collar point it opened skin beside the shirt collar, cloth12 n4).
+    Nothing is ever laid into the body (TUCK_BODY)."""
     from .closures import _closest_on
     Vu, Mu = np.asarray(under["V"], float), under["mesh"]
     Vo, Mo = np.asarray(outer["V"], float), outer["mesh"]
@@ -311,6 +313,9 @@ def tucked(under: dict, outer: dict, gap: float = TUCK_GAP, rigid: np.ndarray | 
                 if fixed[m].any():
                     D[m] = D[m][fixed[m]].mean(0) if fixed[m].mean() > 0.5 else 0.0
         V = V + D
+    if hold is not None:
+        V = np.where(np.asarray(hold, bool)[:, None], Vu, V)
+        covered = covered & ~np.asarray(hold, bool)
     if tree is not None and hasattr(body, "clearance"):
         # never into the body: each move cut back to where the vertex still clears it (a start already inside keeps
         # its place)
