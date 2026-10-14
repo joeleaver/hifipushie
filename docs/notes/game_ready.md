@@ -121,6 +121,26 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
   one point at the part, face-framing wisps missing, crown pale patch from behind, card-edge patchwork; re-seat: tail
   longer / looser, face wisps shorter than th_W18's.
 
+## Motion: feet and the mannequin's "lean" (after motion_r4)
+- Feet and toes now keep their own rest (both rests stand flat; our ankle -> toe-joint line is steeper than the
+  mannequin's ankle -> ball, and aligning it stood the foot toe-down). ToeBase / Toe_End are in the rig and weighted (a
+  30 deg toe turn moves the shoe front 34 mm, the sole 31).
+- The mannequin's mesh vs its skeleton (bl_xbotlean.py: trunk centroid line vs Hips -> Neck): walk 1.5 / 3.5 deg,
+  3.7 / 5.2, idle 2.2 / 1.8: its MESH does not lean more than its bones in walk; the forward read is its shape (a big
+  chest ahead of the spine). (Run: 24 vs 12, but the hip band there includes the raised thigh.)
+
+## Rig bends (checklist tess_rig; reviews rig_r1..r3; STUCK reported with gr_03)
+- Bend helpers (rig.py `BEND`, half-angle joints, see the code comment) carry the hinge blend zone (166 vertices at an
+  elbow, 199 at a knee, max weight 1.0) and are driven by the recipe (json rig.bend, bend_recipe; game render drives
+  them). The game render's turns were adding to an already bent rest (MakeHuman's rest elbow is 38.7 deg): rig_r1 / r2
+  judged 82 / 123 deg as "45 / 90"; now the asked joint angle is reported (@@turn) and the shots ask the true angle.
+- rig_r3 (true angles): elbow 45 and 90, wrist 60, head turn 40 PASS; still MAJOR: elbow 120 crease pinch, knee 90 /
+  120 back pinch + flat front, shoulder raised (deltoid tube, sharp armpit), seated hip (buttock bag, placeholder briefs
+  dragged). Dual quaternion skinning and a delta mush (Corrective Smooth) over the same weights barely change these
+  (sheet human_renders/gr_03_tess_rig_bends_stuck.png): the fix is pose correctives (corrective morph targets per
+  joint angle, MetaHuman-style) and / or hand-painted hip / shoulder weights + more loops at the knee in the body
+  topology. Not built.
+
 ## STATE / NEXT
 STATE (Tess v3, 89k LOD0 incl. 40k hero hair; LOD1 45.6k / LOD2 27.7k / LOD3 20.8k): motion directions exact, review
 disputes recorded; hair cards improved by numbers but FAIL review (STUCK sent); skin draft; undressed.
