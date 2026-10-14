@@ -2407,3 +2407,34 @@ values; one head's saturation note (~1.25x) kept anonymous; hair-garrett r4 stra
 round four's shaved temple; tesshair6's ear from the brow; th_30's 2-bounce Cycles sheets. The golfer's locks numbers
 (face-only camera 10 mm off, IoU 0.60 -> 0.73 with an ear point; crest 0.025; parting.full 12 mm; 10-14 mm too tall;
 hair_t13 47 locks back bare 0.07; workspace/hair_r3 hr01-hr04; hierarchy 0.8/0.2/0 -> 0.64/0.27/0.09) are generic now.
+
+## hair-cards (2026-10-14, "hair-cards" agent, branch `worktree-agent-a54a66de6d6970c0b` = main + the assembly branch)
+Goal: Tess's approved strand groom th_W18 re-seated on her approved head tp_h3, then game cards that look as good.
+Scratch DURABLE /mnt/data/hifipushie/haircards/: env.sh, run.sh <gb> <script> (heavy: capped + resources.heavy),
+runl.sh (light slot), tests.sh, mk_reseat.py (tie_hair carry_from: the REGROW), mk_seat.py (hair.reseat: lock for lock),
+shots_hc.py (shots7 + an id pass = exact hair masks; `like=th_W18` = W18's cameras moved and scaled with the head),
+measure_hc.py (IoU / area / tail / wisps / ear cover / colour vs W18), probe.py, wisps.py, ears.py, mont.py, crops.py +
+rv.sh (review crops / bin/review), seat_round.sh <model> (build, render, measure, montage). Checklist
+workspace/checklists/tess_hair_reseat.json (copy in scratch checklists/).
+
+### Re-seat: why the regrow failed, and the fix
+- tp_h3's scalp is 81.5 mm median radius vs tess_a1's 71.0 (x1.149), and its face is bigger still for its skull
+  (chin-nose 80 vs 66 mm). tie_hair(carry_from th_W18) REGROWS from the words: (1) fit_to_head scaled the tail length
+  but not the tie's other absolute metres (dome stand-off, wisp lengths, strays, sway: hair_flow.style writes them),
+  so the tail grew 15 % and the wisps didn't; (2) a new head re-rolls which wisp / curl gets which length (W18's long
+  face-framing wisps came out short); (3) tp_h3's own fitted cameras frame the face smaller for its skull, so
+  picture-space pairs mixed head shape into the hair (the assembly review's "longer tail").
+- `_TIE_KEYS` + `fit.abs_r` (carry stamps the head the tie metres were grown at): those keys now scale too; a groom on
+  its own head is unchanged (test_carried_tie_scales_its_absolute_metres).
+- `hair.seat_locks` / `hair.reseat` / tie_hair(carry_from, reseat=True): the GROWN locks lock for lock. Near the scalp
+  a point keeps (az, el) and h x k; > 9 cm off (a hanging tail) it moves rigidly with the head, scaled about its centre;
+  widths / strand metre dials x k. `_ear_warp`: elevations near the ears remapped so hair over A's ear top passes over
+  B's (tp_h3's ear top is 0.15 R higher: without it the hair lifted into a LEDGE at both temples, hc_s1).
+- Numbers (measure_hc, W18 | ours, cameras moved with the head): regrow hc_r1 IoU 0.79 / 0.78 / 0.82 / 0.85
+  (front / 3q / profile / back), wisps 680 | 571 px; reseat hc_s2 IoU 0.86 / 0.89 / 0.93 / 0.94, area 0.94-0.99,
+  tail tip 830 | 828 (profile), 810 | 808 (back), tail width 287 | 276, 295 | 296, 308 | 309, wisps 680 | 669, 764 | 727,
+  ear cover 0.455 | 0.45, 0.178 | 0.178, front colour L* 29.0 | 28.9, chroma 12.3 | 12.5, hue 63.6 | 64.4.
+- REVIEW reseat_r1 (/mnt/data/hifipushie/haircards/review/reseat_r1): PASS, no in-stage MAJOR. MINORs: the hair edge
+  above the ear sits a little higher (more helix shows in 3q), front wisps hang in front of the ear rather than
+  across it. OTHER STAGES (not hair): face / skin / neck seam / bust cut (the ga_tess stage's draft skin).
+STATE: re-seat hc_s2 PASSES review; sent to the coordinator for approval. NEXT: the cards on the approved re-seat.
