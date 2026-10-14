@@ -105,6 +105,19 @@ def turned(f, lt, deg, C):
     return g, l2
 
 
+def tipped(f, lt, deg, C):
+    """The frame rotated about the head's left-right axis through C: the camera rises over the top (the lights keep)."""
+    a = np.radians(deg)
+    a = -a  # (positive deg: the camera rises)
+    R = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
+    g = dict(f)
+    for k in ("eye", "center"):
+        g[k] = (C + R @ (np.asarray(f[k], float) - C)).tolist()
+    for k in ("dir", "up"):
+        g[k] = (R @ np.asarray(f[k], float)).tolist()
+    return g, copy.deepcopy(lt)
+
+
 with resources.heavy(f"hair-garrett shots {m}", gb=8):
     # ONE stage for every groom on the same head (stage=<head model>, default the model's source head hg_g0 / the
     # model): a stage per groom model cost a sync each and its ~0.33 GB pushed other agents' stages (the regression's
@@ -119,6 +132,9 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
             i = int(v[1:])
             f = stage.fitted_frame(refs["cameras"][i], BOX, v)
             lt = stage.photo_light(m, i)
+        elif v[0] == "t":  # t<deg>: the front camera tipped <deg> over the top (60 = looking down on the parting)
+            f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
+            f, lt = tipped(f0, stage.photo_light(m, 0), float(v[1:]), C)
         else:
             f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
             f, lt = turned(f0, stage.photo_light(m, 0), float(v[1:]), C)

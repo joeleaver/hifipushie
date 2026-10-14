@@ -2251,6 +2251,14 @@ most of the cheek-level difference is the head / camera scale, not the hair. Com
 skull's own width at that height), not the outline's width, before tuning width on this head.
 Garrett's back whorl: still open. It has been in every loose groom's back view since the first rounds (a pit at the back
 in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
+### hair-heads2 (branch from main 118bf2f): lt19's part, Garrett's front hairline, thickness, the whorl
+- lt19's "bald stripe" (Joe): isolated from the front and from ABOVE (hgshots view `t60`: the front camera tipped 60 deg
+  over the top). Above showed the real cause: the whole top was a patchwork of flat lock ribbons with scalp between
+  (loose spacing 18 mm, width 1.5); the part was only its worst line, and every root next to it was combed sideways off
+  it (the away comb), opening a V toward the forehead. New `groom.loose.part_soft` (roots beside the part not combed
+  away, the away comb over 15 mm, 25 % crossing; test) + spacing 10 mm, width 2.4, 220k strands + scalp_tint 0.15: hair
+  runs up to the part from both sides, a few gaps left at the crown from above. Sheet human_renders/hg_lt19_part.jpg
+  (REFERENCE | now | before; front crop + from above).
 ### hair-heads STATE (merge-ready, 2026-10-14)
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.
 New words: loose.inset, loose.tuck.from, loose.face per side, strands.wave_from; guards HALO_MAX; reader: scalp_tint 0.15
