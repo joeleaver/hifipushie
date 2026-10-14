@@ -18,6 +18,27 @@ other things from flat pieces: a tablecloth is one piece laid flat and draped on
 How garment makers and artists work, sources, worked examples (the skirt, suit trousers) and where each lesson
 lives: guide(topic="cloth_background").
 
+## Rules first (read these before dressing anything)
+
+Each has its fault, measure and fix in "What goes wrong, and the fix" and the stage it belongs to.
+1. **Fix the construction, never the solver.** A fault in the cloth is a pattern / sewing / made-piece fault first.
+2. **Lopsided result = an asymmetric input.** Before any draft change, run a place-only build and check every sim
+   input for mirror symmetry (pattern, body, poses, start, carried made pieces). Garrett's right front swung open
+   because one collar end started on his chest (`cloth._end_points`).
+3. **Measure what you name, both sides, one build per report.** A "notch" number was the collar tip; two reports
+   grepped together were read swapped. Run-to-run noise is ~2 mm: over ~5 mm is the change.
+4. **Made pieces at their cut length and width,** laid on the drape, never on eased cloth (collar ends, fall, lapels:
+   "Made pieces constructed after the drape").
+5. **Buttons, trims and made details are constructed on the finished drape; never re-simulate for them.** Buttons are
+   built after the sim (`closures.buttons_mesh`) and drawn by look_cloth / export. (Today their marks are mesh
+   vertices, so ADDING or MOVING a button re-keys the sim; changing their look does not.)
+6. **Judge clay with shadows off,** in close cameras for small features (notch, side neck), and beside the reference.
+7. **Front-view widths are what sticks out** (shoulder width = the sleeve heads: cap ease, not the block's shoulder);
+   an open jacket's fronts tent from the side panels' hem spring.
+8. **A tuck never moves the under garment into the body;** what no view direction sees is cut, not pushed.
+9. **Sims cost money:** one stage run at a time; a normal ZOZO job takes 1-3 min: one past ~5 min is broken: cancel it,
+   never resubmit it (a tight chest ease made Garrett's jacket crawl at 10x and cost $0.66 in two tries).
+
 ## The stages and their tools
 
 | Stage | What a maker does | Tool | You get |
@@ -438,6 +459,13 @@ come last. The reference sections below cover each part.
   height on BOTH sides. One side wrong while the other is right is an asymmetric input, not a draft fault: find it
   with a place-only mirror check of every sim input before any sim (see "What goes wrong").
 - **One stage run at a time.** Overlapping runs of the same queue submit the same sim twice.
+- **Know the noise before reading a change.** ZOZO repeats closely: Garrett's jacket re-keyed by a no-op change
+  matched within 2 mm on every checklist number. So a single-sim difference over ~5 mm is the change; under 2 mm is
+  nothing. One change per sim, and read each build's numbers from its own report (two checklists grepped together
+  were read swapped once: a working measure got blamed).
+- **A front-view width is what sticks out, not the seam it is named after.** Shoulder width read from the front is
+  the sleeve heads: narrowing the block's shoulder moved the shoulder points in 13 mm a side and the front-view width
+  UP; less sleeve cap ease (0.045 -> 0.03) brought it into tolerance.
 - **Surfaces in clay, or the exported GLB through `asset.preview`.** Textured EEVEE looks show pale grainy shards on
   cloth that the GLB doesn't have. A pale zigzag down a seam in a render you made yourself from raw arrays is the
   seam's two rows of vertices drawn unwelded; `look_cloth` welds closed seams.
@@ -612,7 +640,7 @@ The same maps go into `scene.blend` and the export.
 | `ccd failed` at frame 0, or the fine settle refuses its start, with a triangle 3-4x stretched next to a placket | A roll fold's line ends just past the band's inner row and crosses it at a shallow angle: a sliver | End the roll a few cm above the fastening (the over front's 2 cm above button 1, the under front's 6 cm) |
 | The fine settle's start fails on one body and not another, or with a small change of a collar number: `ccd failed` with "made pieces start 300-600% stretched past their rest", or the start check refuses a front 3-11x by the roll's end; or the result is CORRUPT with a made piece crumpled (an open collar's wing curled) | The made pieces were constructed twice, on the coarse sim's mesh and on the fine mesh, and came out different (a fall turns as far as clears what is under it, which the mesh samples; collar p90 8-38 mm apart). The fine start was then built from two shapes | Fixed: ONE construction (`made_from`, default "fine"): the fine mesh is placed first and the coarse sim carries a sampled copy of its made pieces. Read `made_reshaped` in the result's `constructed` (must be empty) and the log's "made pieces start N% stretched past their rest" (under ~100%). `made_from: "each"` is the old behaviour |
 | `dress` says NOT simulated | Stages 1-3 fail | Read the failures, fix the sheet or the pattern; `force=True` only to look at the fault |
-| An open jacket's fronts bow forward to the hem (a tent from the side) | The side panel's hem spring (`contour` +16 mm per edge at the hem = 64 mm of flare a side), not the canvas, not front balance | Panel seams straight below the waist (`contour` [["waist", 0], ["hem", 0]]); hip room from `hips_ease` |
+| An open jacket's fronts bow forward to the hem (a tent from the side) | The side panel's hem spring (`contour` +16 mm per edge at the hem = 64 mm of flare a side), not the canvas, not front balance | Panel seams straight below the waist (`contour` [["waist", 0], ["hem", 0]]); hip room from `hips_ease`. Even 6 mm of spring per edge stood Garrett's fronts 54 mm off the body; 0 brought them to 46 and the hem sweep into tolerance; 12 mm narrowed the hem 48 mm without helping (front_hang in `check`) |
 | Both lapels unroll into a funnel round the neck | The collar stand was lowered (to show more shirt collar): the roll line comes down from it and the collar's turn pulls the lapels up | Keep the stand (shirt stand + a few mm); lower the back neck (`neckline` op first) and the notch (`gorge_drop`, `break_y`) |
 | Lapels stand off the front (gap over 10 mm) | The roll line's fold is soft | `lapel` op `roll_radius` 0.003, `roll_strength` 1.0. Not `made_folds` (no gain, crossings at the gorge) |
 | A notched collar is a fat roll round the neck | The collar marked draped: a stiff strip resting on the flat pattern, bent round the neck | Leave the collar made (the default) |
@@ -622,7 +650,6 @@ The same maps go into `scene.blend` and the export.
 | A layered start: a piece pushed far out, a sleeve started 11 cm down the arm, ZOZO "ccd failed" at frame 0 | The padded body folded in a hollow (the neck under an open collar, the pit) and clearances read it backwards | Unfolded automatically now; if it recurs, the pad (`under_cap`, the under garment's collar) |
 | A jacket's collar stands as wings 4-6 cm over the shoulders beside the neck, a thick roll behind | The shirt under it: its open stand stood 2 cm off the neck and its fall floated 15-20 mm over the shoulder; the body the jacket is built on was padded as high as that collar for 4-5 cm out along the shoulder (a point 3 cm up a shoulder vertex's normal padded it), the forepart's neck point was laid on top and the made collar bridged outward | A stand that hugs the neck (the shirt's job: ~10 mm off the skin). Under a worn top the shirt's fall is pressed onto the shoulder (`under_fall`) and a standing collar pads only the body it stands against (`pad_over` 1.1). Measure the ridge beside the neck: jacket's lowest cloth over what is under it should be 5-12 mm, not 30-50 |
 | A notched collar's ends crumple or stand off where they meet the lapels | The whole collar was held as laid while the fronts it is sewn to settled 14 mm (10 out, 4-8 down) | Not solved. `collar_ends` "draped" (only the band behind the neck's side held) gave the best front (lapel gap 5.7 / 7.0, the notch reads) but flaps behind the neck when started open, and a solver failure when started closed; the default stays "made" |
-| White flecks of shirt through a jacket's sleeves / armholes | The clean-up moved jacket cloth through the shirt under it | Fixed: crossings with the under garment send those vertices back to the sim's surface |
 | A shirt worn without a tie shows two buttons open | The old wear rule also undid the top front button | Only the collar button opens now (`tie` false); Simon's `extraTopButton` stays false (a stray top button draws as a hole) |
 | The top front button of an open-collared shirt ends 2 cm open, a slit of skin beside the band | The stand is made (it ends as it starts) and its centre-front points started further apart than the fronts can follow: a front's neck corner lies ~3 cm from its roll line, so the two corners part by at most ~5.3 cm x (1 - cos roll), 7-8 cm at a soft roll; gap 0.10 + spread 25 deg started them 167 mm apart. And the fronts started on the torso cylinder 10 cm from the stand | The wear rule's numbers must be consistent: collar `gap` 0.03 (the stand hugs the neck), spread 18 / 14 / 65 (centre-front points ~80 mm apart); the kind's `worn_top`: the fronts' tops start ON the body with their neck seam pinned to the stand. Button 1: 19 -> 3 mm |
 | An open collar stands 2 cm off the nape and the neck's sides; a jacket's collar rides up over it as a shelf | The stand was laid round the neck at its length + `gap`: every cm of gap is 1.6 mm of radius | An open stand still hugs the neck; only its fronts part: small `gap` (0.03; at 0.008 the ends lap before the spread and one body's fine collar start came out 3x stretched), the opening from `collar_spread` (which turns each half by its PATTERN side: ends lapping past the centre front were swung with the wrong side and crossed) |
@@ -632,7 +659,6 @@ The same maps go into `scene.blend` and the export.
 | A worn top on the bare body: 'contact starts overlapping' at frame 0 | Body.clearance over-reads; a worn back's edge started 1.5 mm off a shoulder blade | place() ends a worn start with `_clear_exact` against the body's triangles |
 | An open shirt collar stands up round the neck like a ring | A made stand is carried as constructed: laid ring-like, it stays a ring | `collar_spread` (default [18, 14, 65]): the front swings out and down onto the collarbones. More (40 / 20) drags the fronts' top corners apart: button 1 ended 36 mm open; a narrower collar gap (6 cm) made the fronts gape between buttons 1 and 2 |
 | A second, undone-looking button beside a closed one | The solver left that fastening's two sides 1-2 cm apart and the maps drew the under front's button, which peeked out beside the real one | The maps draw no button under a closed lap (`closures.covered_buttons`); the report still says `!! closure ... sides N mm apart` |
-| A cached build or a look killed for memory (exit 137) with one huge start triangle | `_piece_crossings` searched every edge against every triangle at the largest triangle's radius | Fixed (per-size search, chunked); a start with a huge triangle is still worth reading (st.py-style: worst start triangles) |
 | A shirt's placket doesn't show (plain cloth with dots for buttons) | The band was a 0.8 mm lift on one 1 cm triangle; maps drew a hem, outlined slots, rivet buttons | Closure `finish` (box over, french under for shirts): band edge in the mesh, rows, buttonholes, flat 4-hole buttons. A jacket front is `facing` with holes `across` |
 | A shirt collar's fall stands up (won't turn) | The stand is taller than the neck between trapezius and jaw, so it is pushed off the chin | `collar_rule` sizes it from the neck (stand = neck height - 13 mm, >= 20 mm); or Simon `collarStandWidth` 0.055 (20 mm) |
 | A buttoned collar starts 17-30 mm open | Too little collar ease at the neck's base | Simon `collarEase` 0.115 (13 mm over the neck base) |
@@ -643,16 +669,12 @@ The same maps go into `scene.blend` and the export.
 | Back darts read as open tucks | Straight dart legs end in a poke | `dart_taper` 0.6 (the suit_trousers default) |
 | No belt shows on trousers with belt loops | The shirt hangs free over the waistband | Tuck it: the trousers `over: "shirt"` |
 | A skirt or trousers' waistband open at CB, a V down the back | The made band started open on a cylinder at the hips and was held so | Fixed: self-closed bands start closed at their closed girth on the narrowest level; stage 4 fails a band that doesn't. Give 2-3% waist ease |
-| A jacket front reads open "0 stitches" in stage 2 | A front worn open has its buttons as a closure with no stitches | Fixed (closures' fastenings count); state "open" is fine |
 | A sleeve sewn in rotated (the top notch 27 mm off the shoulder seam) | The armhole's seam chain started at the front pitch, not the shoulder | Start an armhole chain where the sleeve's top meets the shoulder seam |
-| ZOZO "ccd failed", max_sigma ~11 at frame 0 | A sliver edge (under 1 mm) in the mesh: a fold row or a mark next to the outline | Fixed in the mesher; the fine start check names the place if one comes back |
 | An open jacket hangs CLOSED and stands 5-12 cm forward of the body below the chest (a tent) | (1) It was started lapped like a buttoned one: the fronts stay lapped, the sides hug the hips and all the ease stands in front. (2) A stiff front (canvas bands + a lapel roll at strength 1) is a board that carries the upper chest's slope down to the break | A front closure worn `open` starts the fronts apart (`open_gap`, default 0.16 m at the hem: the loose tube an open jacket is). Keep the roll soft (`roll_strength` ~0.3) and the canvas light; read `section.py`-style numbers: where the two front edges are, and the stand-off by height |
 | A layered job stops at frame 0: "contact starts overlapping" / "newton stalled ... a prescribed pin driven into geometry that cannot yield" | The start is laid on the PADDED body, but the collider is the body + the under garment's own mesh: a pressed sleeve fold, a placket ridge under a 2 cm triangle's middle, an open collar's wing under a made (held) jacket collar | Fixed: the start is cleared against the collider's triangles both ways (3 mm), made pieces are lifted over the garment under them. If it comes back: look at the job's in.npz against its frame-0 collider (`bodyV0`), not the bent body |
 | Trousers over a shirt fail before the sim ("the fine settle's start is stretched ... back 3.9x at the waist corner") or the band sits under the shirt tail | The waist was taped on the bare body, and the start was cleared against the shirt read as a closed body | Fixed: a garment hung from the waist (`over`) is drafted from the waist taped over the tucked garment + the layer gap; give the trousers `under_cap` ~0.003 (the shirt pressed close) |
-| ZOZO builder: assertion `left > right` 0.0 / 0.0 while "computing constraints" | A collider vertex whose faces have no area (an under garment's welded seam slivers), or none at all | Fixed in the collider (faces under 0.0005 mm2 and the vertices they orphan are left out) |
 | Trousers read high-waisted; the belt sits far above the concept's | The block puts its top at the NATURAL waist | Block option `waist_drop` (m under the waist; men's tailored trousers 0.04-0.08): girth there, rise, lengths and placement follow |
 | On another body the same jacket's sleeves start 3-6 cm down the arm, seams 10-12 cm open, and the sim stalls in the first frames | The armhole is too high for that body's shoulder line (hps lower: armhole depth from hps 263 mm where 294 worked): the under sleeve crosses back / side panel at the pit and is sent down the arm round after round | A jacket's armhole sits ~3 cm under the pit: bodice option `armhole_depth` 0.12-0.14 (default 0.02 is a shirt's); check `sleeve_down` <= 0.02 and armhole start gaps ~9 cm at the start |
-| A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |
 | An open jacket's fronts hang together below the button where the reference's hang 12-15 cm apart | The pose: the reference's arms are raised further (45 deg vs 25): raised arms lift the sleeves and pull the fronts round to the sides | Judge against a reference in ITS pose (turn the arm joints about the shoulder on a copy of the model and dress that): same jacket, arms 25 -> 45 deg: front edges 2 -> 12 cm apart at the hips. Sleeve length and cuff show are read in that pose too |
 | One side of a symmetric garment wrong (one front swings open, one lapel or collar end differs) and draft changes don't move it | An input of the sim is not mirror-symmetric. cloth12: the made collar's right END started on the chest by CF (133 mm from the left's mirror image), dragged the right front open through the sew; the end's selection (a half-plane past the roll line's meeting point) also took the other end round the back. Pattern, body, shirt, closure lap, start and mesh were all ruled out first, one test each | BEFORE touching the draft or the solver: a place-only build (no GPU) and a mirror check of every sim input: pattern, body / padded collider, poses, start X, carried made pieces (`carryPoses`), stiffness and fold arrays (scratch: collchain.py, edges.py). Fixed (`cloth._end_points`). Garment key `mirror_mesh` (opt-in) meshes .R pieces as the exact mirror of .L when the mesh is the suspect |
 | A number that disagrees with the eye (a notch "12 mm low" that looks fine, or fine that looks wrong) | The measure names something else: the trace's "notch" was the made collar's TIP, 30 mm from the notch's apex (the collar's gorge end) | Measure what you name: the notch = the apex where collar end and lapel top meet; heights both below the chin AND from the shoulder line (a short neck moves one, not the other); across as a fraction of the half shoulder width |
@@ -662,6 +684,8 @@ The same maps go into `scene.blend` and the export.
 | An open jacket too closed (or open) below the break, the shirt V the wrong width at the button | The button stance (lapel `stand`): the extension sets where the fronts' edges sit; more stance closes them | Lapel `stand` (Garrett: 0.02 -> 0.012 gave the concept's ~131 mm at the button). Measure each front's edge from centre by height (edges.py), both sides |
 | Skin through an under garment where an outer garment lies on the skin (a rolled lapel's forepart on the chest) | The tuck laid the shirt `gap` under the outer cloth's inner face even where that face is on the skin: up to 38 mm INTO the body, the skin drew over it | Fixed: `cloth_layers.tucked` never moves a vertex closer than TUCK_BODY (1 mm) to the body; `hold` keeps chosen vertices where they are |
 | Jagged, torn-looking white edges on a shirt under a jacket in clay renders | NOT the cut: Workbench stencil shadows of a coarse (2 cm draft) jacket mesh | Judge with shadows off: `cloth.render(shadows=False)` / HIFIPUSHIE_CLOTH_SHADOWS=0 |
+| A detail (buttons, a trim) missing and a sim queued to add it | Buttons are constructed after the sim on the drape; a render that leaves them out is the renderer's fault | No sim: look_cloth / export draw `res["buttons"]`; a scratch render must draw them too (anchored to their vertex `at`, moved with the constructed jacket). Adding / moving one re-keys the sim (marks are mesh vertices) |
+| A ZOZO job runs 10x longer than usual and fails (frame 116/150 after 21 min) | A draft that leaves the cloth no room (Garrett's jacket at chest_ease 0.03: contact-heavy); the stall guard never fires because the GPU is busy | Cancel at ~5 min, never resubmit the same job (scratch stage.sh records what it sent); go back to the previous ease |
 | A sim billed twice | Two stage runs over the same queue overlapped (the first one's upload failed but the script carried on) | One stage run at a time: check for a running stage.sh before starting one; a failed upload ends the run |
 
 ## Designing a garment that doesn't exist: block + operations
@@ -839,121 +863,4 @@ there: per kind (`garment_reference(kind="jacket")` -> `lessons`: read them befo
 detail choice, and the general list at the end. Add every new lesson to the narrowest of those and to the table
 "What goes wrong, and the fix" above.
 
-## Tool reference
-
-The full documentation of this topic's tools: their MCP descriptions are the short form. guide(topic="<tool name>") returns one section. These tools are the `cloth` toolset: enable_toolset("cloth") turns it on.
-
-### `design_garment`
-
-`design_garment(name, garment, design=None, spec=None, replace=False, note='')`
-
-Stage 1 of the clothing workflow (guide(topic="cloth")): the design sheet, decided before any drafting, as a
-pattern maker does. Stored in spec["cloth"][garment]["design"] (merged key by key, null deletes; replace=True
-replaces the garment). design: {"kind": shirt | blouse | tee | hoodie | jacket | coat | trousers | shorts | skirt |
-dress | flat, "from": a draft source that can make it (simon, carlton, skirt_block; or DESIGN it: "block":
-bodice | knit | trouser | skirt, "block_options": {...}, "ops": [pattern operations] (garment_reference(principles=
-"operations" | "derivations"): a garment with no ready-made draft is a block + operations); or leave out and give own
-pieces + seams in spec), "fit": the kind's fit (slim, regular, a_line...), "fabric": a fabric (cotton_shirting,
-oxford, linen, cotton_twill, denim, wool_suiting, wool_coating, jersey, rib_knit, french_terry) or a solver preset,
-"details": {collar: shirt_collar | band | convertible | notched_lapel | shawl | hood | rib_neckband | ...,
-cuff: barrel | french | rib | hemmed | ..., sleeve_placket, front_closure, placket, waistband, skirt_closure, hem,
-darts, ...: a choice or {"type": choice, "options": {raw draft options}}}, "pattern": {draft words: ease, length,
-options...}, "notes"}. Left-out details take the kind's defaults (garment_reference(kind=...)).
-spec: other garment keys (color, state, quality, backend, resolution...), merged the same way.
-Returns the resolved sheet (every choice, where it came from, the dimensions to work to) with hard failures first:
-a choice the source can't make, a choice that needs another (a barrel cuff needs a sleeve placket). Next:
-look_pattern.
-
-### `look_pattern`
-
-`look_pattern(name, garment, save=None)`
-
-Stage 2 of the clothing workflow: the garment drafted to the body and laid out flat on a pattern sheet (every
-piece at one scale with its name, role, size, grain arrow, notches, buttons/buttonholes, fold lines (blue dashed,
-with angle), interfacing (hatched), each seam in its own colour numbered on both sides S3a/S3b, a 10 cm bar, the
-seam list with each seam's ease), plus the checks before any sim, failures first: every design-sheet choice
-evidenced in the pieces and seam table (a turned collar has a fold line, a barrel cuff is closed and interfaced,
-the fall covers the stand...), every seam's ease in its band (sleeve cap by kind, bands, plain seams), notches
-aligned, ease against the body per girth inside the fit's band, every piece sewn to something, the details'
-dimensions. Fix failures in the design sheet (design_garment) or the garment's pattern options before going on.
-Next: check_garment(stages=["construction", "place"]).
-
-### `check_garment`
-
-`check_garment(name, garment, stages=None, images=True, save=None)`
-
-Run the clothing workflow's checks (guide(topic="cloth")), failures first. stages (default all, in order):
-"design" (the sheet), "pattern" (the draft vs the sheet and the body), "construction" (sewing order, layers and
-lap, fold/press lines with angles, interfacing and what rests as made, the sim's stage schedule; fails when
-something that must roll is frozen as made), "place" (the pieces arranged round the body before any sim: pieces
-through each other, pushed off the body, start stretch past the solver's strain limit, layer gaps; renders the
-start), "sim" (after dress: the verdict plus the numeric targets: layer gaps, collar cover and points, hem level,
-waistband height, sleeves on a hanger, crest radius, strain; each judged at the quality it belongs to).
-images: the pattern sheet and the placed start as images (save=path writes them with _pattern/_place suffixes).
-
-### `dress`
-
-`dress(name, garment=None, spec=None, state=None, quality=None, replace=False, wait=50.0, note='', force=False)`
-
-Put a garment on the model and simulate it: drafted to the body's measurements, sewn, settled by Blender's
-cloth, cleaned up (guide(topic="cloth") is the workflow). Garments live in spec["cloth"][garment].
-spec: the garment (merged into the stored one key by key, null deletes; replace=True replaces it), e.g.
-  {"pattern": {"from": "simon", "ease": {"chest": 0.12}, "length": 0.15}, "fabric": "shirting", "color": "#8fb3d9"}
-  Keys: pattern (from: a design in cloth_designs.json: simon (shirt), carlton (coat); ease per girth, length,
-  sleeve_length, options, measurements (a fixed size instead of made to measure), alterations), or own pieces +
-  seams (a tablecloth is one piece wrapped "flat"), fabric (preset: shirting, jersey, linen, denim, wool_coating,
-  or {"preset", overrides}), color, roughness, state, quality, resolution (final triangle size, 0.01), coarse
-  (the blocking sim's, 0.02), cleanup ({smooth, weld, clear, keep, seams (welded seams pressed flat)} or false),
-  detail (seam/stitch/hem maps: {seam, topstitch, stitch, hem, buttons, thread} or false), closures (how its
-  openings are fastened AND worn: an entry of a name is laid over the design's own key by key, so
-  [{"name": "collar", "state": "open"}] is a shirt with the top button undone, [{"name": "front", "state":
-  "open"}] a jacket hanging open, {"open_above": mark} undoes the fastenings above a mark; see the guide).
-state: "worn" (default: sewn on the body and settled), "draped" (laid flat and dropped on the model's surface: a
-  tablecloth, a blanket; {"drape": {"over": "model" | "body"}}), or "hung" (dressed first, a hanger put inside
-  it under the shoulders with its hook through the neck opening, the body taken away: it settles onto the hanger,
-  nothing pinned; {"hang": {"hanger": {"kind": "wood" | "wire", "width", "bar", "slope", "clear", "rise"},
-  "rail": {"length", "radius", "posts"} | false}}). The report's "hanger" line says what carries it.
-quality: "draft" (one coarse 2 cm sim, ~1 min: judge fit and big shape) or "final" (default: the coarse sim, then
-  refined at 1 cm and cleaned up, ~3-5 min).
-backend (spec key): "blender" (default, local) or "zozo" (ZOZO's contact solver: intersection-free, strain
-  limited; one sim at `resolution`, placement "smooth"; on this machine's GPU, ~2 s/frame at 2 cm, or on a GPU box
-  via $HIFIPUSHIE_ZOZO_REMOTE; `zozo` = solver options). Judge ZOZO at "resolution": 0.02 locally.
-The sim runs in the background (one at a time on the machine); this waits up to `wait` s and returns either the
-report (when done) or the progress. Call dress(name) again (no spec) or look_cloth to see where it is: a sim
-already running or cached isn't started again. Returns the save, then per garment: status, report.
-Before a sim starts, the workflow's stages 1-3 are checked (design sheet, pattern, construction: the same as
-check_garment); hard failures stop it (the spec is still saved) unless force=True. A day of solver tuning once
-chased what were construction faults: fix the pattern first.
-
-### `look_cloth`
-
-`look_cloth(name, garments=None, views=None, strain=True, size=640, focus=None, zoom=0.4, textured=False, body=True, save=None, result=None)`
-
-Look at the model's simulated garments (10-40 s): clay renders on the body (views from front, side, back,
-three (3/4 front), three_back, side_r; default front, side, back, three) and a strain map row (blue slack, green
-fine, yellow at the fabric's limit, red twice it), with each garment's report: the verdict (CORRUPT = tangled or
-crumpled cloth, TOO SMALL = negative ease, STRAINED = past the fabric's limit on the body), ease per girth from
-the pattern and on the body, integrity (crossings, crumpled pieces, where), surface numbers (crinkle, fold
-depth: sim -> after the clean-up) and the clean-up.
-focus: [x, y, z] or "garment:piece" (e.g. "shirt:collar") for a close-up `zoom` m across. textured: EEVEE with
-the sewing detail maps (seam grooves, topstitching, hems, buttons) instead of clay; use it with focus.
-A garment still simulating reports its progress instead (dress starts sims).
-result: a cloth job's out.npz (e.g. from a GPU box) applied to the one garment named instead of its cached sim
-(clean-up, report and renders as usual; not cached).
-
-### `garment_reference`
-
-`garment_reference(kind=None, detail=None, principles=None)`
-
-The clothing knowledge base (garment_kb.json): garment kinds (fit ease bands, default details, sewing order),
-detail choices (collar, cuff, sleeve_placket, front_closure, placket, waistband, fly, skirt_closure, pockets, hem,
-yoke, darts, pleats, back_vent, belt, lining, shoulder, topstitch) with what each is made of, its seams, fold
-lines, interfacing, the dimensions a tailor works to and the evidence checks that prove it's in a pattern; fabrics
-with physical numbers; what each draft source (simon, carlton, skirt_block) can and can't make; the numeric
-targets a simulated garment is judged by. kind: one kind's entry; detail: one detail kind's choices. No args: the
-index.
-principles: how to DESIGN a garment that has no ready-made draft (block + operations): "blocks" (the basic
-patterns and the rules they are drafted by), "operations" (dart moves, slash and spread, style lines, extensions,
-facings, collars from the neckline, sleeves into the armhole: what each does and what it keeps matched),
-"derivations" (per garment category: which block, which operations, why; or one name, e.g. "blazer"), "rules"
-(ease, balance, grain, shaping, seams, proportions), "all".
+Each cloth tool's full parameters: guide(topic="<tool name>") (the sections live in cloth_tools.md, topic "cloth_tools").

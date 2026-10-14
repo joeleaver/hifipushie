@@ -487,7 +487,8 @@ def render(job, d):
         if o.get("thickness"):
             m = ob.modifiers.new("solid", "SOLIDIFY")
             m.thickness = float(o["thickness"])
-            m.offset = 1.0
+            m.offset = float(o.get("offset", 1.0))  # (0: the sheet is the cloth's middle; a lapel's real 3-4 mm
+            # edge without lifting its face into what lies on it)
         if nm + "_C" in d.files:
             C = d[nm + "_C"]
             attr = ob.data.color_attributes.new("col", "FLOAT_COLOR", "POINT")

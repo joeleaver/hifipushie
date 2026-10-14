@@ -2510,3 +2510,87 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - STATE: best c12_n12c (gorge_drop 0.10, collar point 15 mm, stance 12 mm, break_y 0.455, notch 27 mm) or n10
     (break 35 mm low, notch at height); gates pass on both. NEXT: the notch's arms (collar end width), the chest V
     (roll line top), shoulders, CB crossings, the shirt re-sim.
+- Gate 9 (branch cloth12c off main c755cbc; Joe's standing rule: a sheet + blunt read each gate, carry on).
+  - GUIDE CUT: 6 closed-bug fault rows (the code prevents them: white flecks from the clean-up, crossing-search
+    memory, "0 stitches" for open fronts, mesher slivers, ZOZO zero-area collider faces, the broken-start memory blow)
+    moved to cloth_background "## Closed faults (history)"; rows with live advice kept (made_reshaped check, band ease,
+    frame-0 collider check, trousers' under_cap). Tool reference -> cloth_tools.md (topic cloth_tools; every
+    guide(topic=<tool>) still resolves: guidechk.py). cloth_guide 102 -> 91 KB.
+  - Render: cloth.render objects take "offset" (Solidify; 0 = the sheet is the cloth's middle). The jacket at 3.5 mm
+    centred (c10ship jk_th / jk_off): the lapel edges gain a faint rim, the collar end's own step reads LESS (the
+    shell's thickness meets it). Not adopted; the notch's read is the draft's.
+  - Sims (one batch, $0.064): n13 = n12 + collar height_front 0.028 (the END 28 mm wide, the back stays 39) + notch
+    0.025 + gorge_drop 0.095; n14 = n13 + lapel roll_stand 0.028.
+    n13: notch 61 / 59 mm below the chin (concept 63 / 56), break 396 / 404 (398), collar end edge 29 mm, V 79-84 deg
+    front view, mouth 47-49 mm; gates pass. The collar END reads as a collar's end, not a strap; the V still not a crisp
+    dark gap (the lapel's top edge beyond the collar end lies flush on its forepart).
+    n14 (roll_stand 0.028): the chest opening did NOT widen; the right front closed (43-68 mm from centre vs left
+    59-82): rejected. The chest V (~155 vs ~182 mm) is open.
+  - Sheet workspace/cloth_renders/c12_g9_sheet.png (concept | n13 | n12). Spend this agent: $0.605.
+  - STATE: best c12_n13c (q_n13.txt line 1). NEXT: shoulders, CB collar crossings, the shirt re-sim; chest V (the
+    neckline's front width / roll line top), the notch gap's depth.
+- Gate 10 (shoulders). Checklist (ck.sh <t> -> out/check_<t>.txt) on n13: shoulder_width 514 mm front view (concept
+  482, +6.7%), chest 435 (397), front_hang 53 mm (rule -40..10), hem_sweep -14%, cuff_show 12 mm (18), pockets none
+  (the concept has flap pockets). Three single-change sims ($0.128):
+  - n15 block shoulder_ease -0.04: the shoulder POINTS came in 13 mm a side but the front-view width went UP (519):
+    the width is the sleeve heads, not the shoulder seam; front_hang 75. Rejected.
+  - n16 sleeve cap_ease 0.045 -> 0.03 (CHOSEN): shoulder width 509 (within tolerance), hem_sweep -9%, gates pass, notch
+    61 / 59, break 396 / 402; cuff_show 6 mm (the sleeve hangs lower: next, sleeve length_bonus).
+  - n17 flap pockets (run.py addop=<json op>, a pocket op type flap on the front): the fronts got heavier and wavier,
+    front_hang 90, notch asymmetric: rejected for now (the checklist still says "pockets none": it reads
+    design.details, not the ops).
+  - The "spike at a shoulder seam" was the MADE COLLAR's top at the side neck, seen edge-on from behind: the final
+    settle pushed each transition point off the shirt's stand on its own, a ragged silhouette. Fix: the transition
+    smoothed and settled again after the final settle (collar_options settle_smooth, default 2): a rounded top
+    (out/spike*.png). No-op where there is no transition.
+  - Sheet workspace/cloth_renders/c12_g10_sheet.png (concept | n16 | n13), shoulders c12_g10_shoulders.png.
+    Spend this agent: $0.733.
+  - CB collar crossings (item 4): 0 visible shirt x made collar on every build since cloth11's stand clearance; closed.
+  - STATE: best c12_n16c (q_n16.txt line 1). NEXT: cuff show (sleeve length_bonus), front_hang (side panel hem spring:
+    run.py can only patch every contour op at once: add an index), the shirt re-sim, pockets (with a front check).
+- Gate 11 (front hang, cuff show, run-to-run variance). run.py gained op:<name>@<k>.<field> (only the k-th op of
+  that name: the jacket has two contour ops, centre back and the side panels). Four sims ($0.183 with n21):
+  - VARIANCE: n21 = n16 re-keyed by a no-op (layer_gap 0.005 -> 0.0051): every checklist number within 2 mm of n16
+    (front_hang 54.2 / 53.7, cuff 5.5 / 6.2, hem 435 / 437, chest 440 / 439, shoulders 509 / 509, notch +-2 mm). So a
+    one-sim difference over ~5 mm is the change, not the solver.
+  - n18 side-panel hem spring 6 -> 0 mm (the guide's tent fix): front_hang 54 -> 66, hem sweep 437 -> 425: worse here.
+  - n20 hem spring 6 -> 12 mm: front_hang 55 (same), hem sweep 389 (-48 mm): the side panels' spring is not this
+    jacket's front-hang lever. Rejected.
+  - n19 sleeve length_bonus 0.018 -> 0.008: cuff show 6 -> 4 mm (WORSE: the cuff_show measure does not move with the
+    sleeve's length the way its hint says), front_hang 46, hem sweep 454 (in tolerance), but 8 visible shirt x jacket
+    crossings (n16: 0). Not adopted.
+  - The shirt: simulated on current main this session (c12_b0's shirt, job d038...); alone it reads clean (collar,
+    band ends under the points, top button open): out c11_w_<t>.png top rows. No re-sim needed.
+  - Sheet workspace/cloth_renders/c12_g11_sheet.png (concept | n19 | n16): visually the same at every scale.
+  - Spend this agent: $0.916.
+  - STATE: best still c12_n16c. NEXT: front_hang (53 mm; levers left: canvas / chest ease / the fronts' balance at the
+    shoulder), chest width +10% (chest_ease 0.06 -> 0.03), the cuff_show measure, pockets.
+  - CORRECTION (gate 11): I read n18 and n19 SWAPPED off a combined grep. Per file (ck.sh, one at a time):
+    n18 side-panel hem spring 6 -> 0 mm: front_hang 54 -> 46, hem sweep 437 -> 454 (within tolerance), cuff 4.3,
+    0 visible crossings: the guide's tent rule holds here too. n19 sleeve length_bonus 0.018 -> 0.008: cuff show 6 -> 10
+    mm (the measure DOES track the sleeve: nothing to fix in it), front_hang 66, 8 visible crossings. n20 spring 12 mm:
+    front_hang 55, hem sweep 389. So: best = n18 (q_n18.txt line 1). Lesson: one file per reading (the grep -h of
+    several checklists interleaved their lines; read each build's numbers from its own file).
+- WRAP (2026-10-14; Joe: the jacket is done for now). Best = out/c12_n18c.pkl (q_n18.txt line 1: gorge_drop 0.095,
+  break_y 0.455, lapel notch 0.025 / stand 0.012, collar point 0.015 / height_front 0.028, sleeve cap_ease 0.03, side
+  panels' hem spring 0); gates pass (0 skin px, 0 visible crossings), notch 61 / 59 mm below the chin (concept 63 / 56),
+  break 398 / 403 (398), fronts symmetric, front_hang 46 mm, shoulders 504 mm (482), hem sweep 454 (482).
+  - Chest-width batch n22 (chest_ease 0.06 -> 0.03) COST $0.664: the job did not stall, it crawled (frame 116/150 at
+    21 min, ~10x normal) and failed at 22 min ($0.397); stage.sh's next round resubmitted it ($0.267 until cancelled).
+    stage.sh now never resubmits a job it sent before (sent.txt) and times jobs out at 8 min. Same ease that hung
+    cloth11's gc2: on this jacket a tighter chest makes ZOZO crawl.
+  - Buttons: built on the finished drape (closures.buttons_mesh, after the sim), drawn by look_cloth and export; the
+    jacket had both all along at the stance on the wearer's right front (closure front.L over front.R); only the
+    scratch harness didn't draw them (c10ship now does, jbtn=1). No sim. Note: their MARKS are mesh vertices, so adding /
+    moving buttons re-keys the sim; anchoring open closures' buttons by pattern position instead would change every
+    buttoned garment's mesh once (a default for Joe).
+  - Guide: "Rules first" list at the top of cloth_guide.md (9 rules, each pointing at its fault row / stage), fault
+    rows for a detail queued for a sim and for a crawling ZOZO job; front hang / noise / front-view width lessons.
+  - FINAL sheet workspace/cloth_renders/c12_final_sheet.png (concept | n18 | c11_gc1, shadows off).
+  - STILL OFF vs the concept: the notch V is an edge, not an open dark gap; the chest opening ~2.5 cm narrow (~155 vs
+    ~182 mm at the chest); the chest +10% wide (440 vs 397; a tighter ease makes the sim crawl); the fronts still 46 mm
+    forward of the body (rule <= 10); cuff show 4-6 mm (18); no flap pockets or breast welt (one try made the fronts
+    heavy); buttonholes only in the textured maps; a small ridge where the collar stand turns at the side neck.
+  - Spend this agent: $1.58 (of it $0.66 the n22 chest batch).
+  - STATE: done, merge-ready. NEXT (when the jacket comes back): the notch gap's depth, the chest opening (neckline
+    front width), pockets with a front-hang check, button marks without re-keying (decision).
