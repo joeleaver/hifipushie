@@ -1,5 +1,7 @@
 # hifipushie tools: toolsets and the core reference
 
+Read the playbook (guide(topic="")) and the domain's guide before working: each starts with describing the reference.
+
 The server's tools are grouped in toolsets. A session starts with the core; `enable_toolset(name)` adds a set (the
 client refreshes its tool list on the server's list_changed notification: Claude Code does, within the same turn;
 in Claude Code a new tool may be deferred: find it with ToolSearch), `enable_toolset("")` lists them and which are
@@ -359,7 +361,8 @@ property; the json's parts.<p>.material names that material).
 Atlases: texel_density (texels per metre, e.g. 512) opens as many atlases as that needs at `texture`^2 at most
 (a prefab's parts stay on one), each the smallest power of two that holds its parts; the log says if any
 part falls short. Without it, atlases=n splits the parts over n atlases of `texture`^2 by texture load.
-preview: render the exported GLB with Cycles (as an engine would load it) to check the textures; hide:
+preview: render the exported GLB (currently with Cycles) to check the textures; the judging render is the GLB
+re-imported into Blender EEVEE set up like a game (its own materials, no ray tracing); hide:
 parts, instances or prefabs left out of it (e.g. roof and walls, to see an interior).
 rig: the export rig (the `rig` tool's: Mixamo's skeleton for humanoids, named chains otherwise) and the parts
 skinned to it, 4 weights per vertex: characters. Humanoids also get twist bones (extra leaf joints after the
@@ -391,7 +394,7 @@ spec["face_shapes"] (kit_reference FACE SHAPES). The slit's part is meshed fine 
 The log lists each skin part's most uneven shapes (a vertex moving outside its neighbours' range; smooth ~0) and
 WARNs over 0.2: a sawtooth in whatever is painted there. Check blinks posed: rig(glb=, shapes={"eyeBlinkLeft": 1}).
 asset_name: what the exported files, nodes, meshes and materials are called (default the model's name; a game
-that already loads "garrett.glb" with garrett_body etc. gets the same names from a model saved as rg_garrett).
+that already loads "hero.glb" with hero_body etc. gets the same names from a model saved under another name).
 Takes one to a few minutes at 2048 for a prop or creature (texture=1024 for quick checks), ~25 min for a
 furnished building; progress in workspace/<model>/progress.log.
 
