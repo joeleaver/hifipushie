@@ -2651,3 +2651,29 @@ MISSING / WRONG (fixed in code, or written into the guide):
   band reads as a folded roll, not ribbed (no rib texture: detail maps have no rib), the neckband ruffles at the back,
   armhole holes and ruffled cuffs (both hidden under the coat). Sweater: 4 sims (s7 cancelled, s8 fine start refused,
   s9, s10), 11 design passes.
+- Coordinator after the sweater sheet: don't leave the sweater's faults (the figure is seen without the coat too):
+  (1) armhole / underarm seams 30-48 mm open, (2) band starts (cut ~10-20% short and stretched on, distributed),
+  (3) the back neckband ruffle; rib texture is paint (missing).
+- (17) FOUND: ZOZO held EVERY fabric to its 5% strain limit (cloth_zozo default), knits too (only declared bands
+  got more): a knit couldn't stretch onto the arm or take its bands. AND the start: a knit sleeve 12% narrower than
+  the deltoid (knits have negative ease) was laid as a bigger cylinder 12 mm off the arm (`gap`), so its underarm
+  seam started 79-116 mm open; then the start relaxation took every triangle back to 3% / 2%. FIXED (7355361):
+  `cloth.strain_limit_of(g)` (the fabric's own limit, French terry 20%; wovens keep 5%; the garment's zozo wins; in
+  the job, the key (knits only), the stage-4 check, the fine settle), knit sleeves clear the arm by 4 mm and wrap
+  each row's own girth (stretched on up to 0.8 x the limit), the start relaxed to 0.6 / 0.5 x the knit's limit.
+  Underarm start 79 -> 12-20 mm.
+- (18) knitted_rib (KB: collar, cuff, hem): a KNITTED sweater's rib is single-layer, knitted on, not a folded strip;
+  laid stretched ON the edge (wrap seam stretch_on; hem dir down). The folded strip's flap turned on a cone was what
+  started 97-146% stretched. Rings at the start: neckband 76 -> 27 mm, hem band 310 -> 38. The cuff ring still starts
+  96 mm open (the arm's radius at the wrist reads the hand: 51 mm).
+- s15 (knitted_rib everywhere, length_bonus 0, NICO-TOP $0): 0 crossings, bands not crumpled, underarm / cuff / hem
+  seams closed (<= 2 mm), the neckband smooth at the back (no ruffle); still open: the sleeve CAP at the underarm
+  (9 of 54 pairs, max 20 mm: small holes at the front armpit; the cap starts 62 / 113 mm off the armhole), cuffs 5%
+  "crumpled" (the report's metric on a single-layer band at a bent wrist). The neckband now reads flush (no rib, no
+  thickness): it wants rib texture (paint) to read as a band.
+- (19) The coat's stage-4 FAIL "front.L through itself": a lapel pressed onto its own forepart is construction:
+  sewn_crossings now also excuses a piece crossing itself where it has a fold line (my rule 11 was too strict).
+- Coat: c3 refused locally twice ("start inside the standoff from the garment under it", back at the waist): the
+  coat at 18% chest ease had no room over a sweater that is itself +17.5% (the guide: body girths stay the bare
+  body's, give the ease for what's under it): chest 0.26 (seat +30%, the regular band's top; hips_ease does
+  nothing on an unfitted block: same rule as the knit). layer_gap 0.006.

@@ -323,6 +323,8 @@ def test_a_piece_through_itself_is_only_excused_where_it_is_sewn_to_itself():
     M = {"names": ["front.L", "cuff.L"], "piece": np.array([0, 0, 1, 1]),
          "sew": np.array([[2, 3]]), "stitch": np.zeros((0, 2), np.int64)}
     assert wf.sewn_crossings([("front.L", "front.L"), ("cuff.L", "cuff.L")], M) == [("cuff.L", "cuff.L")]
+    M["folds"] = [{"piece": "front.L", "name": "lapel roll"}]  # (a lapel pressed onto its own forepart is construction)
+    assert wf.sewn_crossings([("front.L", "front.L")], M) == [("front.L", "front.L")]
 
 
 if __name__ == "__main__":  # (at the END: tests defined after it never ran as a script, until dress-tess)

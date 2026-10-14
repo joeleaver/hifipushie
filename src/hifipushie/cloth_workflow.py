@@ -690,6 +690,8 @@ def sewn_crossings(cr: list, M: dict) -> list:
     for key in ("sew", "stitch"):
         pr = np.asarray(M.get(key, []), np.int64).reshape(-1, 2)
         jn |= {tuple(sorted((M["names"][M["piece"][a]], M["names"][M["piece"][b]]))) for a, b in pr}
+    # (and a piece folded over itself by construction: a lapel pressed onto its forepart, a band folded in half)
+    jn |= {(f["piece"], f["piece"]) for f in M.get("folds") or [] if f.get("piece")}
     return [p for p in cr if tuple(sorted(p)) in jn]
 
 
