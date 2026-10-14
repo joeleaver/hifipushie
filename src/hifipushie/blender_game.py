@@ -173,7 +173,8 @@ def build(m):
         pb.inputs["Coat Roughness"].default_value = float(P.get("clearcoat_roughness", 0.03))
     elif kind in ("hair_cards", "lashes"):
         alpha = bc.outputs["Alpha"]
-        if kind == "hair_cards":  # albedo * COLOR_0, then the aux shade (root, clump depth, a value per strand)
+        if kind == "hair_cards":  # albedo * COLOR_0; an aux shade only if the notes ask for one (they don't: the
+            # atlas and COLOR_0 already hold root, clump depth and the value per strand: shading.HAIR_ALBEDO_TERMS)
             va = nt.nodes.new("ShaderNodeVertexColor")
             mul = nt.nodes.new("ShaderNodeMix")
             mul.data_type, mul.blend_type = "RGBA", "MULTIPLY"
@@ -181,7 +182,8 @@ def build(m):
             nt.links.new(albedo, mul.inputs["A"])
             nt.links.new(va.outputs["Color"], mul.inputs["B"])
             albedo = mul.outputs["Result"]
-            if "aux" in m["maps"]:
+            ash = P.get("aux_shade", "legacy" if "albedo_terms" not in P else None)
+            if "aux" in m["maps"] and ash is not None:  # (notes written before the fix: their formula, as written)
                 ax = tex(nt, m, "aux", "linear")
                 sepx = nt.nodes.new("ShaderNodeSeparateColor")
                 nt.links.new(ax.outputs["Color"], sepx.inputs["Color"])
