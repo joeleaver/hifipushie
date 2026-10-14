@@ -6319,3 +6319,21 @@ camsearch.py (a camera's yaw / pitch swept, outline rigid rms per setting).
 9. Judge-only reference views as a first-class option (add a picture, camera fitted with the head held, never read by
    the solve), with a yaw prior for a clicked profile.
 10. (gap 1 again) the nose LOBULE's volume / roundness with projection held: Tess's rounder tip with visible nostrils.
+
+## Guide rewrite (2026-10-14, "guides" agent): blockin_guide.md
+
+671 -> ~130-line core (describe the references and the person first, the loop in 9 steps, the feature pass,
+craft rules, self-review loop, what goes wrong). Detail moved, lightly scrubbed, to blockin_solve (the joint solve),
+blockin_steps (step vocabulary, coupling, vocabulary gaps, the control atlas), blockin_features (orbit, eye step,
+eye ruler, brows / iris, lips, expression), blockin_tools. Removed from the product (kept here): the Joe quotes that
+headed sections ("focus more on each feature, then zoom back out", "we shouldn't really ever use our 'fix' [lidfold]",
+"We are treating the crease as if it's different from the eyelid", "as good as it has to get" for recipe A, "still
+don't have her lip line", "I notice some measurement errors", "the eyebrows sit on top the crease", "makes me wonder
+if we're measuring enough things there"); every dated "(2026-10-1x)" and "the default since"; docs/notes pointers
+(readmix, gnm_atlas ## refread / ## solvereads / ## eyelid); spikes/refread/rsheet.py (the judging sheet),
+spikes/chinread/bt.py; faces6 newdirs.py; workspace atlas paths; Tess / Garrett / tess_a1 numbers (now "one head",
+"e.g."): Tess from the class mean |c| 5.4 -> ~11; Garrett eye depth read 0.52 moved 7.3 mm; good Garrett set's
+square lower face; Tess "profile" at 67 deg; Garrett's frown and squint; Tess 0.85 of GNM's size; size drift Tess -3 %,
+tess_a1 +3.4 %; lid step on Tess (er_s4: turn 16 -> 44, platform 1.6 -> 1.4 mm); Tess ball 0.0101; lips gd_T12 borders
+1.96 / 3.80 -> 0.20 / 0.22; Garrett age_nasolabial 0.5 (22 -> 19 %, 28 -> 20 %); Garrett narrow bridge sculpt
+(walls 0.746 -> 0.590). Driving-test numbers (8 / 42 vs 19 / 42 with the manual; ruler 11 / 14) stay only here.
