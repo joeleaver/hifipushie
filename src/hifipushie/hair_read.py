@@ -296,9 +296,21 @@ def hairness(img, hair_p, bg_p, mm: float) -> dict:
     hc = np.median(a[core], 0) if core.any() else np.array([90.0, 85, 80])
     bgm = np.asarray(bg_p, float) > 0.95
     bg = np.median(a[bgm], 0) if bgm.sum() > 50 else np.median(a[:40, :40].reshape(-1, 3), 0)
-    ax = hc - bg
-    t = np.clip(((a - bg) @ ax) / max(float(ax @ ax), 1e-6), -0.5, 1.5)
-    near = ndi.binary_dilation(hp > 0.5, iterations=max(1, int(round(3.0 / mm))))
+    # the backdrop LOCALLY (a room: a warm wall, a dark couch, a lamp): the backdrop pixels' colour averaged over
+    # ~12 mm, filled in under the head from further out; one global backdrop colour made a dark couch "hair"
+    w = bgm.astype(float)
+    s_ = max(12.0 / mm, 2.0)
+    loc = np.stack([ndi.gaussian_filter(a[..., k] * w, s_) for k in range(3)], -1)
+    ww = ndi.gaussian_filter(w, s_)
+    far = np.stack([ndi.gaussian_filter(a[..., k] * w, 4 * s_) for k in range(3)], -1)
+    wf = ndi.gaussian_filter(w, 4 * s_)
+    bgl = np.where((ww > 0.05)[..., None], loc / np.maximum(ww, 1e-6)[..., None],
+                   np.where((wf > 0.01)[..., None], far / np.maximum(wf, 1e-6)[..., None], bg))
+    ax = hc - bgl
+    t = np.clip(((a - bgl) * ax).sum(-1) / np.maximum((ax * ax).sum(-1), 100.0), -0.5, 1.5)
+    # the pixels may refine the parser's edge by a little (1.5 mm), never claim what it calls something else (a
+    # black shirt or a dark couch beside dark hair)
+    near = ndi.binary_dilation(hp > 0.5, iterations=max(1, int(round(1.5 / mm)))) & (hp > 0.15)
     solid = near & (ndi.gaussian_filter(t, 0.5) > 0.5)
     solid = ndi.binary_fill_holes(solid)
     solid = ndi.binary_opening(solid, iterations=max(1, int(round(0.4 / mm))))
@@ -652,6 +664,10 @@ def read(name: str, spec: dict | None = None, authority: int | None = None, log=
             nn = sc.normal(az, el)
             face = ((eye - P) / np.linalg.norm(eye - P, axis=1, keepdims=True) * nn).sum(1)
             ok = hit & (face > 0.35)
+            # long hair hanging over the cheeks / jaw meets skin there too: that is not the hairline. A hairline point
+            # in front of the ears sits above the sideburns' bottom (~ -12 deg); round the back the nape may go low
+            fa_ = np.abs(((az + 180) % 360) - 180)
+            ok &= (fa_ > 110) | (el > -12.0)
             for k in np.nonzero(ok)[0]:
                 hl.append((float(((az[k] + 180) % 360) - 180), float(el[k]), float(P[k, 2]), k))
             soft = {}
@@ -917,6 +933,13 @@ def start(r: dict, spec: dict) -> dict:
         side = "left" if p["x_m"] > 0 else "right"
         g["parting"] = {"side": side, "offset": round(abs(float(p["x_m"])), 3)}
         put("groom.parting", g["parting"], f"MEASURED (front view: strand flip {p.get('strength')}, scalp line {p.get('scalp')})")
+    elif long_ and p.get("sweep") is not None and abs(float(p["sweep"])) > 0.25:
+        # long hair combed over to one side falls AWAY from a part on the other (front view: image right = the
+        # person's left, +x): a side part there, its offset a guess
+        side = "left" if float(p["sweep"]) < 0 else "right"
+        g["parting"] = {"side": side, "offset": 0.025}
+        put("groom.parting", g["parting"], f"INFERRED from the front's sweep {p['sweep']} (the hair falls away from a part on "
+                                           f"the other side); no part line seen: place it by eye")
     else:
         g["parting"] = {"side": "none"}
         put("groom.parting", g["parting"], "INFERRED: no part seen in the front-ish views (combed through)")
