@@ -83,7 +83,7 @@ BODICE_DEFAULTS = {"chest_ease": 0.10, "waist_ease": 0.10, "hips_ease": 0.08, "c
                    "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open", "front_balance": 0.0}
 KNIT_DEFAULTS = dict(BODICE_DEFAULTS, chest_ease=0.0, waist_ease=0.02, hips_ease=0.0, biceps_ease=0.05,
                      armhole_depth=0.0, collar_ease=0.12, cf="fold", underarm=None)
-# (underarm None keeps the old rule for the kinds drafted before; the sweater kind sets 0.025: KB kinds.sweater)
+UNDERARM_DEFAULT = 0.025  # m below the armpit, down the back's tape: a set-in sleeve's underarm
 
 
 def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
@@ -110,10 +110,15 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
     sy = (sx - nw) * math.tan(slope)
     wy = mm("hpsToWaistBack")
     ay = wy - mm("waistToArmpit") * (1 - o["armhole_depth"] - o["biceps_ease"] / 2)
-    if knit and "hpsToArmpitBack" in m and o.get("underarm") is not None:
-        # a knit's underarm `underarm` m below the armpit, down the back's own tape (a set-in knit crewneck 0.025, a
-        # dropped shoulder 0.05-0.08): from the waist by waistToArmpit, a curved back put it ~4 cm low (dress-tess)
-        ay = mm("hpsToArmpitBack") + float(o["underarm"])
+    if o.get("underarm_rule", "back_tape") != "waist_tape_legacy" and "hpsToArmpitBack" in m:
+        # the underarm `underarm` m below the armpit, down the back's own tape (a set-in sleeve 0.025, a dropped
+        # shoulder 0.05-0.08); without it, 2.5 cm plus what armhole_depth asks past the block's own default (a jacket's
+        # 0.12: ~2.3 cm more). From the waist by waistToArmpit (the rule before 2026-10-14, block option underarm_rule
+        # "waist_tape_legacy"), a curved back put it ~4 cm low on Tess (dress-tess; the coordinator made this the default)
+        ua_ = o.get("underarm")
+        if ua_ is None:
+            ua_ = UNDERARM_DEFAULT + (float(o["armhole_depth"]) - (0.0 if knit else 0.02)) * mm("waistToArmpit")
+        ay = mm("hpsToArmpitBack") + float(ua_)
     cx = chest * (1 + o["chest_ease"]) / 4
     wq = waist * (1 + o["waist_ease"]) / 4
     hq = max(hips * (1 + o["hips_ease"]) / 4, wq)

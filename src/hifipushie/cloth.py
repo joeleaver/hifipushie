@@ -4407,7 +4407,7 @@ def _assembly(Bp: dict, M: dict, body: Body, set_sleeves=None) -> dict | None:
     # setting a sleeve: the cap's underarm starts ~8 cm down an A-posed arm, and closing it dragged one sleeve's cuff
     # up to the elbow (marginal: one side of a symmetric pair did, the other not)
     hold = [k for k, nm in enumerate(M["names"]) if wraps[nm].startswith("arm.") and _closed_girth(M, nm)]
-    if set_sleeves == "into_armhole":
+    if set_sleeves in (None, "into_armhole"):  # (the default since 2026-10-14; "free" = the old assembly)
         # (garment key set_sleeves "into_armhole": the bodice is held while the sleeves are sewn, so the sleeve comes up
         # to the armhole as a maker sets it, instead of the stitches dragging the armhole down to a cap that starts
         # down the arm. dress-tess: a knit sweater's armhole started 17 mm under the armpit and ended 62 mm under it)

@@ -416,6 +416,21 @@ def test_jeans_are_construction():
     assert Bp["pieces"]["back_pocket.L"]["wrap"].get("lies_on")
 
 
+def test_the_underarm_lands_below_the_armpit_down_the_back_tape():
+    """dress-tess / coordinator 2026-10-14: every block places the underarm `underarm` (2.5 cm) below the armpit down
+    the back's own tape (hpsToArmpitBack); the old rule (waistToArmpit up from the waist along the whole back's tape,
+    ~4 cm low on a curved back) only when pinned (underarm_rule waist_tape_legacy)."""
+    mm_ = dict(MM, hpsToArmpitBack=250.0)
+    for block in ("bodice", "knit"):
+        D = pd.start(block, mm_, {})
+        assert abs(-D["meta"]["chest_y"] - (0.250 + 0.025)) < 1e-6, (block, D["meta"]["chest_y"])
+        D2 = pd.start(block, mm_, {"underarm_rule": "waist_tape_legacy"})
+        D0 = pd.start(block, MM, {})  # (a body measured before the new tape: the old rule)
+        assert abs(D2["meta"]["chest_y"] - D0["meta"]["chest_y"]) < 1e-9
+    D3 = pd.start("bodice", mm_, {"armhole_depth": 0.12})  # (a jacket's deeper armhole keeps its extra drop)
+    assert abs(-D3["meta"]["chest_y"] - (0.275 + 0.10 * 0.2307)) < 1e-6
+
+
 def test_a_pocket_on_one_side_after_unfold_is_tacked():
     """dress-tess: a chest pocket on front.L after `unfold` was 'sewn to nothing' (its tacks went to sym_stitches,
     which unfold had already written)."""
