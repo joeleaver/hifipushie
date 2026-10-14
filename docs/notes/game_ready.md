@@ -102,6 +102,25 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
   card-edge patchwork. These are the card cut's craft (hair_cards.clump_cards / atlas tiles): the hair thread's code.
 - Hair LODs = the groom's own card TIERS (main / npc / far: one atlas for all), not thinned LOD0 cards.
 
+## Hair export handover (to the hair-cards agent; the assembly agent keeps off hair_cards.py from here)
+- Branch `worktree-agent-ad0815704f43e0e00`, commit f994fea (hair.py: CUT_GROUPS / CUT_SHARE coarsen the card cut to
+  fit a tier; PRIO_FLY / PRIO_FREE budget order; full_look card_sat = eevee_sat ** CARD_SAT_EXP 0.55 when the look has
+  eevee_sat and no card_sat) + asset.py (hair LODs = the groom's card tiers main / npc / far, lods.HAIR_TIERS) +
+  tests/test_game_ready.py (test_cards_take_the_strands_desaturation, test_card_lod_thins_one_layer_by_whole_cards).
+- Model ga_tess (tp_h3 head + th_W18 style / look through tie_hair carry_from th_W18). Re-seat strands: shots7 renders
+  /mnt/data/hifipushie/assembly/hair/s_ga_tess_{v0,v1,v2,backl}.png beside th_W18's (tesshair7/out/s_th_W18_*).
+- check_tiers (hair.export_hair check=True; tables in <dir>/ga_tess_hair.json "checks_text", sheets check_sheet.png):
+  exp1 (before) /mnt/data/hifipushie/assembly/hair/exp1: hero iou 0.65-0.77, bare 0.20-0.34, sat 1.72-1.91, straight
+  0.33-0.35; exp2 (cut + card_sat): iou 0.79-0.86, bare 0.11-0.18, sat 0.65-0.89; exp3 (+ priorities, sat exponent):
+  hero iou 0.80-0.87, bare 0.10-0.17, value 0.81-1.12, sat 1.02-1.21, straight 0.19-0.37; main iou 0.78-0.86.
+- Card cut before / after by family (hdiag.py: hair_cards.fit_budget patched to report): before, 7,123 cards / 243k
+  triangles for 32k; kept gather layer 0 only, 0 tail cards, 420 halo. After: kept g hairline/dense layers 0-1, 85 tail
+  dense + 11 medium (then tail first by PRIO_FREE), halo last.
+- Reviews: /mnt/data/hifipushie/assembly/review/hair_r1/review.md, hair_r2/review.md (script hair_review.sh <export
+  dir> 1 <out>): open MAJORs = tail darker / narrower, top "helmet" lighter with a seam to the side cards, cards fan from
+  one point at the part, face-framing wisps missing, crown pale patch from behind, card-edge patchwork; re-seat: tail
+  longer / looser, face wisps shorter than th_W18's.
+
 ## STATE / NEXT
 STATE (Tess v3, 89k LOD0 incl. 40k hero hair; LOD1 45.6k / LOD2 27.7k / LOD3 20.8k): motion directions exact, review
 disputes recorded; hair cards improved by numbers but FAIL review (STUCK sent); skin draft; undressed.
