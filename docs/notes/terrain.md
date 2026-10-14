@@ -1461,3 +1461,9 @@ Pushieworld's. NEXT: what their re-export finds (the lip in the game, water trim
   fall lips (vale [1512, 1201], crown's pond [1297, 1497], pencil): their remaining 7 m patch above the tall fall.
   tests/test_streams::test_water_design_covers_the_water checks the meta keys and the report line.
   (tests/test_island_sites.py fails on HEAD before this work too: crown_camp 70.40 vs 69.9; their spec moved.)
+
+## Guide rewrite (2026-10-14, "guides" agent)
+terrain_guide 903 -> 87-line core (describe the brief first: kind, size and drama, big shapes, places and routes,
+sight lines as intent checks, cover, what cannot be built; stages with gates; ask-the-designer rule; self-review;
+common mistakes). The vocabulary moved unchanged to terrain_world / shapes / places / streams / styles / running /
+tools. Removed: the stream reference photo path workspace/level_refs/streams/.

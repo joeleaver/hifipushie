@@ -91,7 +91,7 @@ alpha MASK (the dome is opaque: a far bush never thins to nothing; scale alpha b
 
 `sedge`, `tussock` and `tallgrass` rows map to the grass tuft's groundcover grade (`<style>_grass_ground`).
 
-Engine cost measured (Godot 4.7.2, `spikes/godot_veg/clutter_field.gd`, 1280 x 720, a Radeon 890M, shadows on): 5,000
+Engine cost measured (1280 x 720, an integrated GPU, shadows on): 5,000
 boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull = 6,900 drawn, 462k triangles, GPU
 4.5 ms; everything at LOD 0 with no cull = 7.0M triangles, 15-17 ms. Use the LODs and the cull.
 
@@ -100,8 +100,7 @@ boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull
 - 2.5 m: does it read as rock (or wood, or a bush) of THAT style, the same family as the style's cliffs?
 - 10 m / 40 m: does the LOD keep the outline (the report's IoU: under 0.9 pops)?
 - side by side: do the four variants differ in proportion? On terrain: are they IN the ground?
-- Reference photos: `workspace/level_refs/boulders/` (erratics, field boulders, driftwood; licences in fetched.txt).
-  Erratics and field boulders in them: height / width 0.5-0.75 (two tall eggs at 1.1), 5-7 outline corners, arrises
+- Real boulders (erratics, field boulders): height / width 0.5-0.75 (two tall eggs at 1.1), 5-7 outline corners, arrises
   rounded over about a tenth of the size, narrower at the top than at the base, sunk in the turf.
 
 ## Lessons
@@ -116,7 +115,6 @@ boulders + 20,000 bushes over 400 x 400 m with the json's LOD distances and cull
 - Fracture lines from a noise's isolines are closed loops (worm doodles). A crack is where a wandering PLANE meets
   the stone. Lichen as small bright dots is confetti: big, thin, merging crusts in two or three dull colours.
 - Mineral tints of +-10% made brown and blue stones; +-5%.
-- A script error in Godot under a hidden compositor leaves the process idle for ever: run with a timeout, log to a file.
 - A closed leafy dome with sprigs on it is a moss-covered rock, whatever its texture (the first clutter bush). A shrub
   is OPEN: thin stems from the ground, foliage in separate sprays with sky and ground between them (60% of its side
   view is gaps), darker inside. Build it from a grown shrub: sprays on the plant's own twig clusters; the middle LOD is

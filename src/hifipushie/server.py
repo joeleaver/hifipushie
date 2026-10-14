@@ -367,7 +367,11 @@ GUIDE_TOPICS = {"": "guide.md", "tools": "tools_guide.md", "hair": "hair_guide.m
                 "game_export": "guide_export.md", "rigging": "guide_rigging.md",
                 "human_shape": "human_shape.md", "human_tools": "human_tools.md",
                 "likeness_reading": "likeness_reading.md", "likeness_profile": "likeness_profile.md",
-                "likeness_references": "likeness_references.md", "likeness_tools": "likeness_tools.md"}
+                "likeness_references": "likeness_references.md", "likeness_tools": "likeness_tools.md",
+                "terrain_world": "terrain_world.md", "terrain_shapes": "terrain_shapes.md",
+                "terrain_places": "terrain_places.md", "terrain_streams": "terrain_streams.md",
+                "terrain_styles": "terrain_styles.md", "terrain_running": "terrain_running.md",
+                "terrain_tools": "terrain_tools.md"}
 
 
 def _tool_section(name: str) -> str:
