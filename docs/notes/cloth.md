@@ -2242,3 +2242,19 @@ NO SIM WAS RUN.
     chest width; (6) front_hang 112 mm (the fronts swing open: hem spring / front balance), hem_sweep -21%;
     the 32 visible crossings gc1 brought back. Spend this agent: $0.28 + $0.24 + gc batch $0.70 = ~$1.22.
 - 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed; since prod v132 its box time is billed). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.
+
+## cloth12 (2026-10-13, "cloth12" agent; continues cloth11 on Garrett's jacket, model su_gc)
+Scratch DURABLE in /mnt/data/hifipushie/cloth12/: cloth11's tools retargeted to this worktree (env.sh: BLAS/OMP 4
+threads; stage.sh: --timeout-minutes 30; bl.sh: oxidegen's maintained scripts/bundle/bundle_client.py), + run_c11.sh /
+q_c11.sh (the same on cloth11's code, src_c11 = `git archive 2770134 src`: reproduces c11_gc1's sim keys for a construct
+dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: out/<tag>_snR.png / _snL.png).
+- Re-check on current main: c11_gc1 does NOT rebuild from the pulled results: the SHIRT's coarse job re-keyed
+  (job_d038170a001a4e2d; tess2's coarse-start clearance, dae08b3 / 7708de2). Baseline re-sim c12_b0 queued (3 stages).
+- Broker: uploads failed (JSONDecodeError on the PUT): signed upload links now go straight to the object store, which
+  answers with an empty body. spikes/gpu_cloth/bundle_client.py put() no longer parses it; cloth12's bl.sh uses
+  oxidegen's client. Nothing was submitted (no cost).
+- cloth.render passes Blender `-t` (HIFIPUSHIE_BLENDER_THREADS, default 6): the machine is shared.
+- (1) TABS, looked at on c11_gc1 (out/c12_v_gc1_snR/L.png, made collar orange): the made collar's END is a ~20 mm strap
+  along the gorge from the side neck to the notch; where it meets the back collar (the transition, stations 8-17 /
+  47-51) the wearer's right is a KNOT, the left a sharp elbow; kinks.py: quads folded > 100 deg across stations 8, 9,
+  12, 13, 15, 17 and 48-49. In the front view the outer corner of that elbow pokes up above the shoulder line: the "tab".

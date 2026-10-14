@@ -9225,8 +9225,9 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
            "box": [list(map(float, box[0])), list(map(float, box[1]))] if box is not None else None}
     jp = d / f"_{tag}_render.json"
     jp.write_text(json.dumps(job))
-    r = subprocess.run([rmod.BLENDER, "-b", "--factory-startup", "--python", str(SCRIPT), "--", str(jp)],
-                       capture_output=True, text=True, timeout=900)
+    # (render threads capped: the machine is shared; HIFIPUSHIE_BLENDER_THREADS, default 6)
+    r = subprocess.run([rmod.BLENDER, "-b", "--factory-startup", "-t", os.environ.get("HIFIPUSHIE_BLENDER_THREADS", "6"),
+                        "--python", str(SCRIPT), "--", str(jp)], capture_output=True, text=True, timeout=900)
     (d / f"_{tag}_render.npz").unlink(missing_ok=True)
     jp.unlink(missing_ok=True)
     if r.returncode != 0:
