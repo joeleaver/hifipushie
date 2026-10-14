@@ -2282,6 +2282,11 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   0.6-1): it covers the scalp under the lengths, the lengths are the locks' (lt19 E5: face and profile clean). Dense
   narrow Python locks instead (spacing 6 mm, width 1.3, even 0: E4) kept the face clean but from above read as ribbed
   ribbons with scalp along the part.
+- Coverage, the long head (magenta, % of the hair region; lock-rooted r14 -> even cover layer E5): from above 4.83 -> 0.87,
+  behind 0.3 -> 0.0, 3/4 back 0.08 -> 0.0, profile 0 -> 0. The rest is one patch beside the part's front half (comb
+  direction parting the cover layer there, not missing roots). The reader's loose start now sets even 0.5 + out by
+  region (dbf260f). STATE: coverage gate in the guide; NEXT: the part-front patch, then even roots on jw and Garrett
+  (whorl), Garrett's hairline, the widths thickness / scale measure.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
