@@ -63,7 +63,7 @@ def rects(T, c, box=None) -> list[dict]:
     out = []
     for name, w in (getattr(T, "river_water_lines", None) or {}).items():
         xy = np.asarray(w["xy"], float)[:, :2]
-        hw = 0.5 * np.asarray(w.get("width", 0.0), float)
+        hw = np.asarray(w.get("width", 0.0), float)  # (a HALF width: forms.water's wet = d <= width)
         hw = np.broadcast_to(np.nan_to_num(hw), (len(xy),))
         pad = np.minimum(hw + buf, 0.5 * size)
         out += _chunks(xy, pad, size, f"river {name}")
@@ -197,8 +197,51 @@ def top(field, region, x, y, g=None):
     return out
 
 
-def write(T, field, region, out, cfg, box=None, log=print) -> dict | None:
-    """Every corridor rect sampled and written (corridors/corridor_<n>.npy); the manifest's "corridors" entry."""
+DRAWN_MAX = 0.5  # m: the drawn LOD 0 cliff surface stands in for the field's top only this close to it
+
+
+def _tile_surface(path):
+    """World-space triangles (n, 3, 3) of a tile LOD's "surface" primitive (the visible cliff shell), or None."""
+    from .terrain_mesh import read_glb, _from_gltf
+    try:
+        t, prims = read_glb(path)
+    except FileNotFoundError:
+        return None
+    tris = [_from_gltf(np.asarray(p["POSITION"], float) + t)[p["indices"]] for p in prims
+            if (p.get("extras") or {}).get("role") == "surface"]
+    return np.concatenate(tris) if tris else None
+
+
+def drawn_top(tris, x0, y1, sp, rows, cols):
+    """The topmost up-facing triangle's height at each sample of a corridor grid (row 0 at y1, column 0 at x0, `sp`
+    apart); -inf where no triangle covers a sample."""
+    out = np.full((rows, cols), -np.inf)
+    n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+    tris = tris[n[:, 2] > 1e-9]
+    for a, b, c in tris:
+        lo = np.minimum(np.minimum(a, b), c)
+        hi = np.maximum(np.maximum(a, b), c)
+        c0, c1 = max(int(np.ceil((lo[0] - x0) / sp)), 0), min(int(np.floor((hi[0] - x0) / sp)), cols - 1)
+        r0, r1 = max(int(np.ceil((y1 - hi[1]) / sp)), 0), min(int(np.floor((y1 - lo[1]) / sp)), rows - 1)
+        if c0 > c1 or r0 > r1:
+            continue
+        X, Y = np.meshgrid(x0 + sp * np.arange(c0, c1 + 1), y1 - sp * np.arange(r0, r1 + 1))
+        v0, v1 = b[:2] - a[:2], c[:2] - a[:2]
+        den = v0[0] * v1[1] - v0[1] * v1[0]
+        u = ((X - a[0]) * v1[1] - (Y - a[1]) * v1[0]) / den
+        v = (v0[0] * (Y - a[1]) - v0[1] * (X - a[0])) / den
+        ins = (u >= -1e-9) & (v >= -1e-9) & (u + v <= 1 + 1e-9)
+        z = np.where(ins, a[2] + u * (b[2] - a[2]) + v * (c[2] - a[2]), -np.inf)
+        sub = out[r0:r1 + 1, c0:c1 + 1]
+        np.maximum(sub, z, out=sub)
+    return out
+
+
+def write(T, field, region, out, cfg, box=None, log=print, grid=None) -> dict | None:
+    """Every corridor rect sampled and written (corridors/corridor_<n>.npy); the manifest's "corridors" entry.
+    `grid` (terrain_mesh.Grid, with the tiles already written in `out`): where a cliff shell is on top, the samples are
+    its drawn LOD 0 surface (within DRAWN_MAX of the field), so the water solved on a corridor stands on what the game
+    draws (pushieworld note 125: up to 10-20 cm apart under a fall, more than the water was deep)."""
     import time
     c = config(cfg)
     if c is None:
@@ -206,7 +249,7 @@ def write(T, field, region, out, cfg, box=None, log=print) -> dict | None:
     t0 = time.time()
     sp = c["spacing"]
     (out / "corridors").mkdir(exist_ok=True)
-    entries, n_pts = [], 0
+    entries, n_pts, n_drawn, surf = [], 0, 0, {}
     for n, r in enumerate(rects(T, c, box)):
         (x0, y0), (x1, y1) = r["lo"], r["hi"]
         cols, rows = int(round((x1 - x0) / sp)) + 1, int(round((y1 - y0) / sp)) + 1
@@ -215,6 +258,21 @@ def write(T, field, region, out, cfg, box=None, log=print) -> dict | None:
         X, Y = np.meshgrid(xs, ys)
         g = pushed_grid(region, xs, ys) if region is not None else None
         h = top(field, region, X.ravel(), Y.ravel(), None if g is None else g.ravel()).reshape(rows, cols)
+        if grid is not None and g is not None:
+            gg = g.reshape(rows, cols)
+            for i in range(max(0, int((x0 - grid.origin[0]) // grid.tile)), min(grid.ni, int((x1 - grid.origin[0]) // grid.tile) + 1)):
+                for j in range(max(0, int((y0 - grid.origin[1]) // grid.tile)), min(grid.nj, int((y1 - grid.origin[1]) // grid.tile) + 1)):
+                    key = (i, j)
+                    if key not in surf:
+                        surf[key] = _tile_surface(out / f"tile_{i}_{j}_lod0.glb")
+                    if surf[key] is None:
+                        continue
+                    D = drawn_top(surf[key], x0, y1, sp, rows, cols)
+                    # (where the shell is drawn over the ground tile and close to the field's top: not a cave's roof
+                    # over a passage, nor a face's foot where the vertical triangles' raster is meaningless)
+                    use = np.isfinite(D) & (D > gg + 1e-3) & (np.abs(D - h) < DRAWN_MAX)
+                    h = np.where(use, D, h)
+                    n_drawn += int(use.sum())
         h = h.astype(np.float32)
         fn = f"corridors/corridor_{n}.npy"
         np.save(out / fn, np.ascontiguousarray(h))
@@ -224,10 +282,14 @@ def write(T, field, region, out, cfg, box=None, log=print) -> dict | None:
                         "cols": cols, "rows": rows, "spacing": sp, "follows": r["what"]})
     took = time.time() - t0
     mb = 4 * n_pts / 2 ** 20
-    log(f"corridors: {len(entries)} rects at {sp:g} m ({n_pts / 1e6:.1f} M samples, {mb:.0f} MB) in {took:.0f} s")
+    log(f"corridors: {len(entries)} rects at {sp:g} m ({n_pts / 1e6:.1f} M samples, {mb:.0f} MB, {n_drawn} from the drawn "
+        f"LOD 0 cliff surface) in {took:.0f} s")
     return {"rects": entries, "spacing": sp, "buffer_m": c["buffer"], "max_side_m": c["size"],
             "format": "float32 .npy absolute metres, row 0 north (the extent's y1), column 0 west (x0); extent = the "
                       "outer samples' centres",
             "what": "the top surface as the tiles build it (ground with its stream beds, banks and fall faces; the "
-                    "cliff meshes' rock where it stands higher), sampled from the export's field, no clutter",
+                    "cliff meshes' rock where it stands higher), sampled from the export's field, no clutter; where a cliff "
+                    "shell is on top, its drawn LOD 0 surface (within drawn_max_m of the field), so water solved here "
+                    "stands on what is drawn",
+            "drawn_samples": n_drawn, "drawn_max_m": DRAWN_MAX,
             "seconds": round(took, 1), "megabytes": round(mb, 1)}

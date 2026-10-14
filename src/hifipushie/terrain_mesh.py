@@ -3907,7 +3907,7 @@ def _export_tiles(T, out_dir, cfg: dict | None = None, log=print, peak=None) -> 
             (i0, j0), (i1, j1) = cfg["only"]
             cbox = [G.bounds(i0, j0)[0][:2], G.bounds(i1, j1)[1][:2]]
         with prof.stage("corridors (parent)"):
-            cm = terrain_corridors.write(T, field, region, out, cfg, box=cbox, log=log)
+            cm = terrain_corridors.write(T, field, region, out, cfg, box=cbox, log=log, grid=G)
         if cm:
             manifest["corridors"] = cm
     if getattr(T, "falls", None):  # (waterfalls: for the engine's falling sheet and spray; terrain_falls)
