@@ -1030,8 +1030,14 @@ def notched_collar(chain_P: np.ndarray, into: np.ndarray, gorge: np.ndarray, bod
                 if r0 >= m - 2:
                     r0 = 0
                 seglen, Lr = fr_of(int(i), r0)
-                ends[int(i)] = h00 * Oa + h10 * Ta + h01 * Ob + h11 * Tb
-                cols[int(i)] = (1.0, r0, G[i, r0].copy(), seglen / max(Lr, 1e-9))
+                Hc = h00 * Oa + h10 * Ta + h01 * Ob + h11 * Tb
+                top_ = G[i, r0].copy()
+                if p.get("transition_length", True):
+                    # (toward the curve, at the column's CUT length: straight to the curve the columns ran up to 1.5x
+                    # their pattern by the end's corner and folded against the end lay beside them, cloth12 n10)
+                    Hc = top_ + _unit(Hc - top_) * Lr
+                ends[int(i)] = Hc
+                cols[int(i)] = (1.0, r0, top_, seglen / max(Lr, 1e-9))
         if ends and sm:
             ks = np.array(sorted(ends))
             Ee = np.array([ends[k] for k in ks])

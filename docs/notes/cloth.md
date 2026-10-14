@@ -2244,6 +2244,26 @@ NO SIM WAS RUN.
 - 2026-10-10 (coordinator): job_f5a18a2711f675af_sim (cloth11's gc2, su_gc jacket with chest ease 0.03) HANGS at setup ("3447 verts ... mode sim") on the fleet twice (batches 7b86783e and fb37002d); both cancelled. Reproducible: inspect that scene's inputs before resubmitting. Broker now has a stall watchdog (no output and no GPU use for stall_minutes, default 10: the job is killed and marked failed; since prod v132 its box time is billed). Submit with timeout_minutes ~30, and don't cancel quiet jobs by hand: a cancel is billed for the time held.
 
 ## cloth12 (2026-10-13, "cloth12" agent; continues cloth11 on Garrett's jacket, model su_gc)
+SUMMARY (one page; details per gate below). Garrett's jacket (su_gc) from "a strap with a tab" to reading as the
+concept at figure scale; 9 broker sims + 1 duplicate, $0.47; construction worked on cached sims (con.py, seconds).
+- Side-neck tabs: the made collar's outer edge was squeezed to 0.35-0.5 of its cut length where the end turns into
+  the back: fall boarded at its pattern length + the transition as one smooth outer edge (Hermite), straight columns.
+- Collar end a strap: laid on the forepart's eased cloth (21-33 of 39 mm): end columns at their cut width.
+- Notch: measured the wrong point before (the collar tip); the apex was 13-17 mm low -> lapel gorge_drop 0.12 -> 0.10.
+  Rim: the collar end lies on the lapel by its thickness. Shape: collar point 15 mm.
+- Lapel: canvassed roll graded 2 -> 7 mm from break to gorge (made_lapel roll_top).
+- "Jagged cut edges": Workbench stencil shadows, not the cut (render shadows switch; judge with shadows off).
+- Production cut: the tuck moved the shirt up to 38 mm into the body (skin showing): never closer than 1 mm now.
+- Right front swinging open: ruled out pattern, body, shirt, closure lap, start, mesh (opt-in mirror_mesh) one test
+  each; cause was the made collar's carried START: one end's lay took points of the other end round the back
+  (cloth._end_points). Then the button stance 20 -> 12 mm put both fronts at the concept's opening at the button.
+- Best: out/c12_n10c.pkl (gorge_drop 0.10, collar point 0.015, lapel stand 0.012); gates pass (0 skin px, 0 visible
+  crossings), notch 57 / 55 mm below the chin (concept 63 / 56), fronts symmetric, 132-138 mm apart at the button.
+- Rules distilled into cloth_guide.md ("What goes wrong", "Judging what you see", "Made pieces constructed after the
+  drape"); background split to cloth_background.md (guide topic cloth_background).
+- Open: notch V crispness, chest V ~2 cm narrow, a ridge at the left side neck, shoulders, CB collar crossings, the
+  shirt re-sim on the final measures.
+
 Scratch DURABLE in /mnt/data/hifipushie/cloth12/: cloth11's tools retargeted to this worktree (env.sh: BLAS/OMP 4
 threads; stage.sh: --timeout-minutes 30; bl.sh: oxidegen's maintained scripts/bundle/bundle_client.py), + run_c11.sh /
 q_c11.sh (the same on cloth11's code, src_c11 = `git archive 2770134 src`: reproduces c11_gc1's sim keys for a construct
@@ -2437,3 +2457,56 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
     little closed below the break; shoulders; CB crossings; the shirt on the final measures.
   - RESTART: as gate 4's, plus: place-only collar check: BROKER=1 bash run.sh collchain.py [key=json]; the fronts:
     uv run python edges.py out/c12_<t>.npz.
+- Gate 7 (branch cloth12b off main 17974ff; coordinator: the collar point on n8 + the shirt-collar slit, the left
+  notch 9 mm high, the fronts slightly closed below the button). One broker batch, two sims ($0.076):
+  n9 = n8 + collar point 15 mm; n10 = n9 + button stance (lapel stand) 0.02 -> 0.012.
+  - Left notch high, diagnosed first on n8: the SIM put the left gorge end 14 mm higher and 17 mm further in than
+    the right (constructed = simulated there), while the fronts' upper parts agree within 2 mm: a residual front
+    asymmetry, not construction.
+  - n9: gates PASS with the point (0 skin px: the 13 px slit of n4 came with the old asymmetric collar start), notch
+    62 / 53 mm below the chin, fronts as n8 (R 54-76 / L 48-61 mm from centre).
+  - n10 (CHOSEN): gates PASS (0 skin px, 0 visible crossings), notch 57 / 55 mm below the chin (concept 63 / 56) and
+    across -127 / +131 mm: both sides now alike; fronts R 64-77 / L 65-81 mm from centre at 1150-1400 (symmetric),
+    gap 158 mm at the chest, 132-138 at the button (concept ~182 / ~131); collar-end corners 108 / 112 deg (drafted
+    111); lapels 63 / 63 mm; collar folds > 100 deg: 0. The narrower stance let the fronts sit back to the concept's
+    opening at the button (and evened the two sides, with them the notches).
+  - Sheet workspace/cloth_renders/c12_g7_sheet.png (concept | n10 | n8, + notch closes). My read: the fronts and the
+    shirt V now match the concept's proportions at the button; both collar ends are pointed alike over their lapels;
+    still weak: the notch V reads only as an edge in clay, the chest V is narrower than the concept's (158 vs ~182 mm:
+    the lapels' roll lines sit in), a small lump at the wearer's left side neck in the front neck view.
+  - Spend this agent: $0.472 (this gate $0.076).
+  - STATE: best = out/c12_n10c.pkl (q_n9.txt line 2: gorge_drop 0.10, collar point 0.015, lapel stand 0.012).
+    NEXT: shoulders (item 3), CB collar crossings, the shirt re-sim on the final measures; the chest V width.
+- Gate 8 (coordinator: (1) the notch V, (2) the chest V ~2 cm narrow, (3) the left side-neck lump; + DISTIL). One
+  batch, two sims ($0.069): n11 = n10 + break_y 0.49 -> 0.455 + lapel notch 0.035 -> 0.020; n12 = the same with notch
+  0.027. notchv.py <pkl>: the V per side (apex = collar gorge end, collar point, lapel point; angle 3D / front view,
+  mouth, both edges).
+  - (1) NOTCH V. n10: V 74-77 deg (3D), mouth 47-50 mm, collar end edge 40 mm, lapel top edge 38 mm (= the draft's
+    notch 35 mm). n11 (notch 20 mm): 67-73 deg, mouth 37-39, lapel top 20 mm, but the apex 10-15 mm LOW (a shorter
+    notch runs the collar further down the gorge). n12 (27 mm): 81-86 deg, mouth 50-53, apex 5-9 mm low. A 10-15 mm
+    mouth with a 40 mm collar end edge is not geometry: the concept's notch has short arms (~20 mm each); ours has
+    the collar's full end width as one arm. In clay the lapel's top edge past the collar end is a faint line (the
+    lapel lies 3 mm over its forepart, same normal, a 0.8 mm rendered sheet): the step that reads is the collar end's.
+    Not yet crisp. Levers left: a narrower collar END (the draft's end width / point), a lapel edge rendered at the
+    cloth's real thickness (3-4 mm: wool + canvas + facing).
+  - (2) CHEST V: the break raised to the concept's (396-404 vs 398 mm below the chin; was 430-436) but the chest
+    opening stayed ~160 mm (concept ~182): the roll lines' top sits in. Not fixed; lever: the roll line's top
+    (lapel roll_stand) or the neckline width.
+  - (3) LEFT SIDE NECK: in the front neck view the collar's stand turning the side neck reads as a ridge with a gap
+    under it (closes: clean). Per-station check: no fold > 100 deg; one 93 deg crease at the station where the
+    transition starts (st 57 / 8), outer edge 0.4-0.5 of its cut length there. Transition columns now at their cut
+    length (transition_length, default on): no visible change. Left as is.
+  - Sheet workspace/cloth_renders/c12_g8_sheet.png (concept | n12 | n10). At figure scale n12 ~ n10.
+  - DISTIL (Joe's question, via the coordinator): cloth_guide.md gained the cloth12 rules (fault table: lopsided
+    result -> mirror check of every sim input place-only; measure what you name; made pieces at their cut length /
+    width; transition one smooth edge; lapel roll; notch rim; button stance; tuck never into the body; stencil
+    shadows; one stage run at a time), "Judging what you see" (shadows off, both sides, one run) and a new section
+    "Made pieces constructed after the drape (construct)" (the construct key was undocumented). Background (how
+    artists work, sources, the skirt and suit-trouser walk-throughs, where each lesson lives) moved to
+    cloth_background.md (guide topic cloth_background): guide 112 -> 102 KB. PROPOSED further cut (not mechanical):
+    the fault table's rows whose fix is "Fixed: ..." (closed bugs, ~40% of its 25 KB) to the background as history,
+    and "Tool reference" (9.6 KB) folded into each tool's guide(topic=<tool>).
+  - Spend this agent: $0.541 (this gate $0.069).
+  - STATE: best c12_n12c (gorge_drop 0.10, collar point 15 mm, stance 12 mm, break_y 0.455, notch 27 mm) or n10
+    (break 35 mm low, notch at height); gates pass on both. NEXT: the notch's arms (collar end width), the chest V
+    (roll line top), shoulders, CB crossings, the shirt re-sim.
