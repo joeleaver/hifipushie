@@ -2274,7 +2274,7 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   masks fixed most of it. lt19 E2 (even 0.7, lift 12 mm, out top 0.25 / front 0.2, stiff 0.35): from above an even
   cover with a clean thin centre part (the crossing ribbons and crown gaps gone), volume from the arc. A few stray
   interpolated hairs still cross the forehead.
-- spikes/hair_garrett/coverage.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
+- spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
 Regression hg7: all eleven identical. Tests: test_hair_loose 19, test_hair_read 17, test_hair_strands 26, test_toolsets 8.

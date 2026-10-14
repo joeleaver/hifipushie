@@ -15,7 +15,7 @@ Why the tools are built this way (practice, sources, engines, what went wrong): 
    a whorl is the COMB DIRECTION of strands from roots on both sides, never an absence of roots. Locks / clumps steer
    direction. Knob: `strands.even` (0..0.95: that share of the strands grows from the even sampling, shaped by the
    nearest lock guides; 0.7 on a long head closed the crown gaps and the "bald stripe" the lock-rooted layout left).
-   Measure: the MAGENTA COVERAGE check (spikes/hair_garrett/coverage.py: the scalp painted magenta, the share of it
+   Measure: the MAGENTA COVERAGE check (spikes/hair_garrett/hcover.py: the scalp painted magenta, the share of it
    showing inside the hair region from above / behind / 3-4; target ~0 outside the part line).
 2. **Hair ARCS UP from the scalp, then falls; flat-from-the-root is a style choice (slicked, wet, tight), never the
    default.** Every strand leaves the scalp at an angle, rises by its root lift + the hair under it, turns and falls;

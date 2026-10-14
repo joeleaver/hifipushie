@@ -1,4 +1,4 @@
-"""coverage.py <model> [views=t60,y180,y125,v1] [stage=<head>] [ss=2]: the hair's COVERAGE (Joe: "bald spots"): render
+"""hcover.py <model> [views=t60,y180,y125,v1] [stage=<head>] [ss=2]: the hair's COVERAGE (Joe: "bald spots"): render
 the groom with the scalp inside the hairline painted MAGENTA (look scalp #ff00ff at full tint), then count the magenta
 pixels that show through, per view, as a share of the hair's own area (hair = not backdrop, not skin outside the
 hairline, not magenta). Target ~0 outside a part line. Tiles $TOUT/s_<model>_mag_<view>.png + $TOUT/coverage_<model>.png
