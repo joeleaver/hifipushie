@@ -2565,3 +2565,9 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - Spend this agent: $0.916.
   - STATE: best still c12_n16c. NEXT: front_hang (53 mm; levers left: canvas / chest ease / the fronts' balance at the
     shoulder), chest width +10% (chest_ease 0.06 -> 0.03), the cuff_show measure, pockets.
+  - CORRECTION (gate 11): I read n18 and n19 SWAPPED off a combined grep. Per file (ck.sh, one at a time):
+    n18 side-panel hem spring 6 -> 0 mm: front_hang 54 -> 46, hem sweep 437 -> 454 (within tolerance), cuff 4.3,
+    0 visible crossings: the guide's tent rule holds here too. n19 sleeve length_bonus 0.018 -> 0.008: cuff show 6 -> 10
+    mm (the measure DOES track the sleeve: nothing to fix in it), front_hang 66, 8 visible crossings. n20 spring 12 mm:
+    front_hang 55, hem sweep 389. So: best = n18 (q_n18.txt line 1). Lesson: one file per reading (the grep -h of
+    several checklists interleaved their lines; read each build's numbers from its own file).
