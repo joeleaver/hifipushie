@@ -77,7 +77,7 @@ def _front(base: dict, cam: dict):
 
 def landmark_cues(base: dict) -> dict:
     """The mass cues on the model's OWN 3D landmarks (68 + eye centres; mm on the face's front plane, x across / z
-    up): exact and linear, where MediaPipe on the clay drifts 1-1.5 mm with unrelated shading (jw's note; the first
+    up): exact and linear, where MediaPipe on the clay drifts 1-1.5 mm with unrelated shading (a block-in finding; the first
     synthetic plan on the clay detector got every lip / nose sign wrong). Definitions follow the photo readers'
     (vermilion heights at the midline, subnasale -> upper lip top, ...): their DELTAS compare, not their levels."""
     from . import humanfit
