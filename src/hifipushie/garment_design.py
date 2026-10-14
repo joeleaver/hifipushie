@@ -401,6 +401,16 @@ def _band_height(pc: dict) -> float:
     return _extent_at_x(P, 0.5 * (P[:, 0].min() + P[:, 0].max()))
 
 
+def _finished_height(Bp: dict, nm: str) -> float:
+    """A band's FINISHED height: a band folded in half lengthwise (a generated rib band: fold line "fold" turned
+    under, 360 deg) shows half its cut height. (dress-tess: the neckband's 22 mm cut was reported as a 22 mm
+    neckband_width and passed; it showed as an 11 mm rim, invisible at outfit distance.)"""
+    h = _band_height(Bp["pieces"][nm])
+    if any(f.get("piece") == nm and f.get("line") == "fold" and float(f.get("angle", 180)) >= 359 for f in Bp.get("folds") or []):
+        return 0.5 * h
+    return h
+
+
 def _closed_girth(Bp: dict, nm: str) -> float:
     pc = Bp["pieces"][nm]
     best = 0.0
@@ -439,7 +449,7 @@ def dims(Bp: dict, meas_mm: dict) -> dict:
         if st:
             out["fall_cover"] = (_band_height(pcs[fa]) - _roll_rise(Bp, fa) - _band_height(pcs[st])) * 1000
     if cu:
-        out["cuff_height"] = _band_height(pcs[cu]) * 1000
+        out["cuff_height"] = _finished_height(Bp, cu) * 1000
         cg = _closed_girth(Bp, cu)
         if cg and meas_mm.get("wrist"):
             out["cuff_over_wrist"] = cg * 1000 - meas_mm["wrist"]
@@ -467,7 +477,10 @@ def dims(Bp: dict, meas_mm: dict) -> dict:
                 out["neckband_ratio"] = s["len_a_mm"] / max(s["len_b_mm"], 1e-9)
             elif names[1] == [nb] and nb not in names[0]:
                 out["neckband_ratio"] = s["len_b_mm"] / max(s["len_a_mm"], 1e-9)
-        out["neckband_width"] = _band_height(pcs[nb]) * 1000
+        out["neckband_width"] = _finished_height(Bp, nb) * 1000
+    hb = first("hem_band")
+    if hb:
+        out["band_height"] = _finished_height(Bp, hb) * 1000
     return out
 
 

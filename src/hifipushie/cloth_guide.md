@@ -159,6 +159,9 @@ make their own bands (the KB's `draft.generate`: neckband laid up from the neckl
 round each arm following the sleeve's wrist; hem band from CB on the torso, aligned on the front's centre). Override
 one band with a garment `generate` entry of the same `band` name (it replaces the design's), or a detail's
 `{"type": "rib", "generate": {"height": 0.06}}`. Rules:
+- A band's `height` is its CUT height: folded in half it shows half (stage 2's neckband_width / cuff_height /
+  band_height are the finished heights now). KB defaults: neckband 44 mm cut (22 finished), cuffs and hem band
+  100 (50). Tess's first neckband (22 cut) was an 11 mm rim nobody could see.
 - `worn_top: true`: the body pieces laid on the form, so the seam-laid neckband starts round the neck (on a loose
   tube it started 2x stretched). The armhole then sits at the true armpit: `sleeve` `length_bonus` ~ +0.06.
 - `block_options.hips_ease` only acts with `"fitted": true`; unfitted, the knit hangs straight from the chest.
