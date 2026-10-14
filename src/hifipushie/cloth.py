@@ -9241,7 +9241,7 @@ def render(objects: list, prefix: str, views=("front", "side", "back"), resoluti
         if o.get("uv_corner") is not None:  # (per corner: welded faces whose seam vertices are shared keep each
             # side's own uv)
             data[o["name"] + "_UVC"] = np.asarray(o["uv_corner"], np.float32)
-        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "maps", "roughness")})
+        objs.append({k: v for k, v in o.items() if k in ("name", "color", "thickness", "offset", "maps", "roughness")})
     tag = Path(prefix).name
     np.savez(d / f"_{tag}_render.npz", **data)
     job = {"mode": "render", "data": f"_{tag}_render.npz", "objects": objs, "out_prefix": prefix,

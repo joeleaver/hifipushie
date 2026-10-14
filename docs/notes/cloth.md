@@ -2510,3 +2510,22 @@ dump), c10ship.py side=1 (each side neck close, made collar orange with hl=1: ou
   - STATE: best c12_n12c (gorge_drop 0.10, collar point 15 mm, stance 12 mm, break_y 0.455, notch 27 mm) or n10
     (break 35 mm low, notch at height); gates pass on both. NEXT: the notch's arms (collar end width), the chest V
     (roll line top), shoulders, CB crossings, the shirt re-sim.
+- Gate 9 (branch cloth12c off main c755cbc; Joe's standing rule: a sheet + blunt read each gate, carry on).
+  - GUIDE CUT: 6 closed-bug fault rows (the code prevents them: white flecks from the clean-up, crossing-search
+    memory, "0 stitches" for open fronts, mesher slivers, ZOZO zero-area collider faces, the broken-start memory blow)
+    moved to cloth_background "## Closed faults (history)"; rows with live advice kept (made_reshaped check, band ease,
+    frame-0 collider check, trousers' under_cap). Tool reference -> cloth_tools.md (topic cloth_tools; every
+    guide(topic=<tool>) still resolves: guidechk.py). cloth_guide 102 -> 91 KB.
+  - Render: cloth.render objects take "offset" (Solidify; 0 = the sheet is the cloth's middle). The jacket at 3.5 mm
+    centred (c10ship jk_th / jk_off): the lapel edges gain a faint rim, the collar end's own step reads LESS (the
+    shell's thickness meets it). Not adopted; the notch's read is the draft's.
+  - Sims (one batch, $0.064): n13 = n12 + collar height_front 0.028 (the END 28 mm wide, the back stays 39) + notch
+    0.025 + gorge_drop 0.095; n14 = n13 + lapel roll_stand 0.028.
+    n13: notch 61 / 59 mm below the chin (concept 63 / 56), break 396 / 404 (398), collar end edge 29 mm, V 79-84 deg
+    front view, mouth 47-49 mm; gates pass. The collar END reads as a collar's end, not a strap; the V still not a crisp
+    dark gap (the lapel's top edge beyond the collar end lies flush on its forepart).
+    n14 (roll_stand 0.028): the chest opening did NOT widen; the right front closed (43-68 mm from centre vs left
+    59-82): rejected. The chest V (~155 vs ~182 mm) is open.
+  - Sheet workspace/cloth_renders/c12_g9_sheet.png (concept | n13 | n12). Spend this agent: $0.605.
+  - STATE: best c12_n13c (q_n13.txt line 1). NEXT: shoulders, CB collar crossings, the shirt re-sim; chest V (the
+    neckline's front width / roll line top), the notch gap's depth.
