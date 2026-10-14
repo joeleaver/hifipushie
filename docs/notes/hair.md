@@ -2083,3 +2083,9 @@ spikes/tesshair7/styles/W05_*.json; `cd /mnt/data/hifipushie/tesshair7 && ./r8.s
   BEST = th_W17 (styles/W17_*.json; `./r8.sh W17 v0,v1,v2,backl 1024`). Cards: tips' alpha is in the atlas; gloss /
   backscatter / scatter are card-material terms (anisotropic two-lobe spec on the cards' tangents, a transmission /
   wrap term, depth already in the cards' vertex colour): written in the checklist, NOT built into the card export.
+
+## Joe on th_63 (2026-10-13): the references disagree on colour
+Joe: the back-view reference's highlights are a different colour from the front view's, and the FRONT view is the one he has
+been judging. Tess's references are generated concept views and are not colour-consistent across views, so colour measures
+averaged over all views chase a mix. NEXT (whoever tunes colour again): take hair colour targets from the front view only (the
+3/4 as a check), say which view each target came from, and do not judge the back view's colour against its own reference.
