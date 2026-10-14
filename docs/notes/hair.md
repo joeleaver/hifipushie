@@ -2402,3 +2402,24 @@ own height and shape (a fade needs the line lower and tapered at the corners); t
 - Short cuts: the STRAND groom owns the shape and the look (it is what the reader and the sheets judge); the game
   export of a short cut stays the guide's baked cap + sparse cards, baked FROM the strands (export_hair's SHORT_TIERS):
   one source of truth, the cap / cards are its LOD, not a second groom.
+
+## Guide rewrite (2026-10-14, "guides" agent): what left the hair guides
+
+hair_guide.md 678 -> 131 lines: describe-the-hairstyle-first (9 items incl. coverage), stages with gates, the two
+principles, craft rules, self-review loop, common mistakes, limits. Details moved to hair_checklist (15 rules +
+strand dials), hair_tied, hair_loose, hair_short, hair_colour, hair_export, hair_tools (tool sections; test_toolsets
+now checks groom_hair there). hair_locks_guide 413 -> 273 (describe-first and self-review added at the top; hairline
+/ fins / hand-shaping / material / cards detail -> hair_locks_detail; the card-makers' method -> hair_background).
+Provenance removed from the product (kept here): the two principles are Joe's (hair-heads); step 0 is from Joe on
+three heads ("a completely different hairstyle"); the checklist is tesshair7's from seven rounds of Tess's ponytail;
+the studio measures named in it: spikes/hair_garrett/hcover.py (MAGENTA coverage gate: no head ships with magenta off
+the part line from above, t60; ~1.2 % for a clean part on a long head; nothing from behind), spikes/tesshair7/
+standoff.py, spikes/hair_garrett/widths.py, flowlines.py, lockplot.py, hgshots ss=2, shots7.py drop= / S= / LS= /
+look=@file, the regression sheet (run.sh regress.py run / sheet / accept, accepted.json: Tess's best + ten riffs,
+MOVED over 0.3 mean difference), spikes/tesshair5/cyccal.py. Tess numbers (L_sd 7.5, strand_sd 4.2, ribbon_sd 3.0,
+chroma 8-9 hue ~69, eevee_sat 0.38, gloss 0.6, tail.wave 0.35, cycles_width 1.8 / cycles_sat 0.65, sun_length 0.06,
+tip_alpha / backscatter / scatter 0.5 / 0.6 / 0.8, eevee 0.3 / 1.4, stand-off 17-19 / 17-24 / 30+ mm) are now "e.g."
+values; jw's saturation note (~1.25x) kept anonymous; hair-garrett r4 strand_sd 9.3 vs 6.8; hair-heads r11 density;
+round four's shaved temple; tesshair6's ear from the brow; th_30's 2-bounce Cycles sheets. The golfer's locks numbers
+(face-only camera 10 mm off, IoU 0.60 -> 0.73 with an ear point; crest 0.025; parting.full 12 mm; 10-14 mm too tall;
+hair_t13 47 locks back bare 0.07; workspace/hair_r3 hr01-hr04; hierarchy 0.8/0.2/0 -> 0.64/0.27/0.09) are generic now.

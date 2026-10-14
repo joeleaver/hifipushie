@@ -91,7 +91,8 @@ def test_short_descriptions_point_at_the_guide():
             if p != "ctx":
                 assert p in doc or p in sec, (name, p)
     # a domain topic still returns the whole guide; a tool name returns just its section
-    assert server.guide("hair").startswith("#") and "### `groom_hair`" in server.guide("hair")
+    assert server.guide("hair").startswith("#") and 'guide(topic=...)' in server.guide("hair")
+    assert "### `groom_hair`" in server.guide("hair_tools")  # domain cores are rules first; tool sections in <domain>_tools
     assert server.guide("look").startswith("### `look`") and "paint_layer" in server.guide("look")
     assert "Tool reference" in server.guide("tools")
 
