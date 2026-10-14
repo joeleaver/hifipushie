@@ -2419,7 +2419,7 @@ look=@file, the regression sheet (run.sh regress.py run / sheet / accept, accept
 MOVED over 0.3 mean difference), spikes/tesshair5/cyccal.py. Tess numbers (L_sd 7.5, strand_sd 4.2, ribbon_sd 3.0,
 chroma 8-9 hue ~69, eevee_sat 0.38, gloss 0.6, tail.wave 0.35, cycles_width 1.8 / cycles_sat 0.65, sun_length 0.06,
 tip_alpha / backscatter / scatter 0.5 / 0.6 / 0.8, eevee 0.3 / 1.4, stand-off 17-19 / 17-24 / 30+ mm) are now "e.g."
-values; jw's saturation note (~1.25x) kept anonymous; hair-garrett r4 strand_sd 9.3 vs 6.8; hair-heads r11 density;
+values; one head's saturation note (~1.25x) kept anonymous; hair-garrett r4 strand_sd 9.3 vs 6.8; hair-heads r11 density;
 round four's shaved temple; tesshair6's ear from the brow; th_30's 2-bounce Cycles sheets. The golfer's locks numbers
 (face-only camera 10 mm off, IoU 0.60 -> 0.73 with an ear point; crest 0.025; parting.full 12 mm; 10-14 mm too tall;
 hair_t13 47 locks back bare 0.07; workspace/hair_r3 hr01-hr04; hierarchy 0.8/0.2/0 -> 0.64/0.27/0.09) are generic now.
