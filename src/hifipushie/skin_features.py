@@ -293,6 +293,60 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     return ctx["smooth"]
 
 
+INNER_LIP_COLOR = [0.5, 0.2, 0.2]  # the wet inner lip (mucosa): redder and darker than the vermilion, lighter than the bag
+
+
+def _inner_lip_cloud(head, mp, g):
+    """The lips' inner rolls as a painted-mask cloud (verts, normals, values, spacing): GNM's skin rings from the open
+    mouth loop (where the sock joins) out to the contact ring (base.LIP_RING), 1 there, half on the next ring. With the
+    lips closed these rings are hidden, so the bake filled them from the skin beside them; a shape that parts the
+    lips (jawOpen, smiles) showed them as a ragged brown fringe round the opening (review expr_r1)."""
+    import collections
+    from . import base as _base
+    W = np.asarray(head.get("gnm_world"), float) if head.get("gnm_world") is not None else None
+    if W is None:
+        return None
+    skin = np.asarray(g["skin"], bool)
+    sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
+    Q = np.asarray(g["quads"])
+    Q = Q[skin[Q].all(1)]
+    adj = collections.defaultdict(set)
+    for q in Q:
+        for k in range(4):
+            a, b = int(q[k]), int(q[(k + 1) % 4])
+            adj[a].add(b), adj[b].add(a)
+    own = sock[mp["sock"]["ids"]]
+    rim = [int(v) for v in mp["sock"]["ids"][~own]]
+    if not rim:
+        return None
+    lev = {v: 0 for v in rim}
+    front = list(rim)
+    ring = _base.LIP_RING
+    while front and min(lev[v] for v in front) < ring + 2:
+        nxt = []
+        for v in front:
+            for u in adj[v]:
+                if u not in lev and not sock[u]:
+                    lev[u] = lev[v] + 1
+                    nxt.append(u)
+        front = nxt
+    val = np.zeros(len(W))
+    for v, lv in lev.items():
+        val[v] = 1.0 if lv <= ring else 0.5 if lv == ring + 1 else 0.0
+    keep = Q[np.isin(Q, list(lev)).all(1)]
+    if not len(keep):
+        return None
+    ids = np.unique(keep)
+    loc = np.full(len(W), -1)
+    loc[ids] = np.arange(len(ids))
+    V, F = W[ids], [list(map(int, f)) for f in loc[keep]]
+    vv = val[ids][:, None].repeat(3, 1)
+    V2, F2 = _base._catmull_clark(V, F)
+    vv = _base._catmull_clark(vv, F)[0]
+    N, _ = _base._normals_and_h(V2, F2)
+    return V2, N, np.clip(vv[:, 0], 0, 1), 0.0008
+
+
 def _gnm_mouth(spec, out, part) -> None:
     """GNM's OWN MOUTH, dressed (minimal, 2026-10-12; Joe: "we'll figure out the dressing as we go along"): the mouth
     bag dark wet red on the skin's part, the gums on the teeth's part. Both masks are point clouds made from GNM's own
@@ -320,6 +374,10 @@ def _gnm_mouth(spec, out, part) -> None:
     # printed the bag's near-black red onto the outer skin at the mouth corners: two black "curls" on every GNM head)
     sp_ = float(np.median(cKDTree(sk["verts"]).query(sk["verts"], k=2)[0][:, 1]))
     pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
+    il = _inner_lip_cloud(head, mp, g)
+    if il is not None:  # (before the bag: the bag's colour wins where they meet)
+        out["skin:inner_lip"] = {"part": part, "color": list(INNER_LIP_COLOR), "roughness": 0.22, "specular": 0.55,
+                                 "mask": [{"painted": _paint.save_painted(*il)}]}
     out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
                              "mask": [{"painted": pid}]}
     for k, tpart in (("teeth_upper", _base.TEETH_PARTS[0]), ("teeth_lower", _base.TEETH_PARTS[1])):

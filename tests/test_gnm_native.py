@@ -302,3 +302,17 @@ def test_size_is_held_and_the_iris_is_its_weak_ruler():
     w = psd ** 2 / (psd ** 2 + sr.SIZE_IRIS_SIG ** 2)
     comb = 1 / np.sqrt(1 / psd ** 2 + 1 / sr.SIZE_IRIS_SIG ** 2)
     assert 0.03 < w < 0.6 and comb < min(psd, sr.SIZE_IRIS_SIG)
+
+
+def test_inner_lip_paint_covers_the_rolls_not_the_outer_lips():
+    """The inner rolls (GNM's rings from the mouth loop to the contact ring) get the wet inner-lip colour: hidden in
+    the closed neutral, the bake filled them with skin and every parting shape showed a brown fringe."""
+    from scipy.spatial import cKDTree
+    from hifipushie import skin_features as sf
+    sp = _spec()
+    head = base.head_of({"joints": specmod.expand_mirror(sp)["joints"]}, sp["base"])
+    V, N, val, s = sf._inner_lip_cloud(head, base.gnm_mouth(head), base._gnm_data())
+    on = cKDTree(V[val > 0.99])
+    lm = head["lm68"]
+    assert max(on.query(lm[i])[0] for i in (61, 62, 63, 65, 66, 67)) < 0.002   # the contact ring: inner lip
+    assert min(on.query(lm[i])[0] for i in (50, 51, 52, 56, 57, 58)) > 0.003   # the outer vermilion: not
