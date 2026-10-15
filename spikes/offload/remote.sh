@@ -11,6 +11,9 @@
 set -e
 R=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 runner=$1; outs=$2; ram=$3; cpus=$4; gpu=$5; shift 5
+# NICO-TOP's slot cap is ~14 GB: a bigger request never starts and blocks the queue for every job behind it
+# (hp-lashes2, 20 GB, 2026-10-15). Split the job instead.
+[ "${ram%.*}" -le 12 ] || { echo "remote.sh: ram_gb $ram > 12 never starts on NICO-TOP and blocks the queue; split the job" >&2; exit 2; }
 A=${XDG_RUNTIME_DIR:-/tmp}/hp_repo_$(git -C "$R" rev-parse --short HEAD).tar.gz
 [ -f "$A" ] || git -C "$R" archive --format=tar.gz --prefix=repo/ -o "$A" HEAD
 ln -sf "$A" repo.tar.gz
