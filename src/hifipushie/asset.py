@@ -902,6 +902,28 @@ def _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel
     return out, done, int(ok.sum())
 
 
+INNER_PAINT_ROUGHNESS = 0.25  # the wet inner lip
+
+
+def inner_paint(parts: dict, topo: dict, head: dict, log: list) -> None:
+    """A GNM head's inner lip rolls (skin_features.inner_lip_values by GNM vertex) as each low-poly corner's
+    "inner_paint" weight, which bake() lays over the scene's colour: the scene's surface has no rolls with the lips
+    closed (the fill behind the seam), so what the bake found there was the skin beside the seam."""
+    from . import skin_features as sfe
+    val = sfe.inner_lip_values(head)
+    if val is None:
+        return
+    for pn, (tp, _) in topo.items():
+        z = np.load(tp)
+        if pn not in parts or "gnm" not in z.files or len(z["verts"]) != len(parts[pn]["verts"]):
+            continue
+        gi = np.asarray(z["gnm"], int)
+        v = np.where((gi >= 0) & (gi < len(val)), val[np.clip(gi, 0, len(val) - 1)], 0.0)
+        parts[pn]["inner_paint"] = v[parts[pn]["corner_vert"]][:, None].astype(np.float32)
+        log.append(f"{pn}: the lips' inner rolls painted on {int((v > 0.99).sum())} vertices (GNM's rings to the "
+                   f"contact ring)")
+
+
 def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given: dict) -> dict:
     """Every map of one atlas (None: all parts) as float arrays (size, size, k), plus the height range. Each
     texel is projected onto its export part's own field (normal, height); given: the maps Cycles baked from the
@@ -1008,6 +1030,17 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     def put_given(name, img):
         maps[name] = _dilate(img.astype(np.float64), own)
     lin = given["color"][..., :3].astype(np.float64)
+    if any("inner_paint" in p for p in parts.values()):  # (inner_paint: the lips' rolls, hidden in the scene)
+        from . import skin_features as sfe
+        for pn_, p_ in parts.items():
+            p_.setdefault("inner_paint", np.zeros((len(p_["corner_vert"]), 1), np.float32))
+        w_ = np.zeros(lin.shape[:2])
+        w_[ys, xs] = np.clip(interp("inner_paint")[:, 0], 0, 1)
+        w_ = _dilate(w_[..., None], own)[..., 0]
+        lin = lin * (1 - w_[..., None]) + np.asarray(sfe.INNER_LIP_COLOR, float) * w_[..., None]
+        rms = given["rms"].astype(np.float64).copy()
+        rms[..., 0] = rms[..., 0] * (1 - w_) + INNER_PAINT_ROUGHNESS * w_
+        given = {**given, "rms": rms}
     put_given("basecolor", np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055))
     put_given("roughness", given["rms"][..., :1])
     put_given("metallic", given["rms"][..., 1:2])
@@ -1942,6 +1975,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
             log.append("skin: micro detail left out of the baked maps and written as tiling normal maps ("
                        + ", ".join(d["normal"] for d in skin_recipe["detail"]) + "): the recipe is in the json and the skin "
                        "material's extras")
+    if face_shapes and getattr(fface, "gnm_mouth", False):  # the lips' inner rolls: hidden in the closed scene,
+        inner_paint(parts, topo, fface.head, log)            # painted on the low poly's own triangles
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     for ai, an in enumerate(names):
         stem = aname if len(names) == 1 else f"{aname}_{an}"

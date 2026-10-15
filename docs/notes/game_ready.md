@@ -167,8 +167,34 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
 - v7 (rows, prior, 22 deg, smile): a full upper row in the smile-with-teeth, lower teeth at jawOpen, wider smile.
   Still: brown fringe (fixed in v8), the neutral slit shows tooth tips, nostrils ragged (skin draft), the hair.
 
+## Handover 2026-10-14 evening (assembly agent, context limit)
+- Branch worktree-agent-ad0815704f43e0e00 (this worktree), not pushed; last commits: hair-card shading once
+  (13e1d85), GNM mouth rows / jaw prior / 22 deg / smile (5832618), inner lip (1c249a3, 8d13770, + uncommitted ->
+  committed with this note: inner lip painted IN THE BAKE by GNM index, asset.inner_paint / bake "inner_paint",
+  skin_features.inner_lip_values; the scene-layer version painted the outer lips, v8).
+- Scratch /mnt/data/hifipushie/assembly (env.sh, run.sh = light slot, heavy.sh, chain_exp.sh '<model>:<out>:<json>'
+  = one export after another, ge.sh <glb> <json> <out prefix> <shots.json> = game-like EEVEE renders). Expression
+  tools: shots_expr.json (neutral, blink, jaw 1.0, smile, smile+teeth, clay close-ups), crops.py (same crop of
+  several renders), expr_review.sh <render prefix> <review dir> (bin/review against refs/tess_head_front*.png),
+  shapediag.py (stretched edges per shape), flipdiag.py, teethshow.py (teeth seen from the front by ray),
+  ridge.py / lipexp.py / coefs.py (GNM solve experiments), crosstest.py (A2F combos per jaw angle).
+- Checklists: workspace/checklists/tess_*.json. Reviews: review/motion_r4 PASS; hair_r1..2 FAIL (handed to the
+  hair-cards agent); rig_r1..3 (STUCK: knee / elbow 120 / shoulder / seated hip; MakeHuman's own skeleton is the
+  same under LBS, see "Rig bends"); expr_r1 FAIL (round 2 not yet run).
+- Exports: exp/ga_tess_v6 (approved head, before mouth fixes), v7 (rows + prior), v8 (scene inner-lip layer: WRONG,
+  lipstick lips), v9 (layer tightened: no effect, the scene has no rolls), v10 RUNNING (bake inner paint).
+  Renders eevee/x6..x9 (mouths.png = crop sheet per version).
+- Open MAJORs (expressions): brown fringe at the parted lips (v10 should fix: check eevee/x10 mouths.png), neutral
+  slit shows grey bits (teethshow: 0 teeth triangles visible at neutral, so it is the rolls' colour: v10 too),
+  jaw-open inner upper lip shards (lip roll geometry; JAW_PRIOR cut creases 37 -> 2 on GNM's quads but the export
+  still shows some), cheek raise / squint with the smile (cheekSquint is in the shots at 0.6: judge), no lash line
+  at neutral (lashes: white glints on the cards in close-ups). Not ours: nostril rings, neck colour band, hair.
+- Budget gate on v7+: eyes_mouth_lashes 8.2k of 5k (teeth 2 x 1200 + lashes 4880: lashes are never decimated in
+  LODs either: a gap), hair 40k of 25k, body 16.9k of 15k, accessories 5.5k of 5k.
+- NEXT: (1) render v10 (ge.sh ... eevee/x10/x shots_expr.json), crops, then expr_review.sh eevee/x10/x
+  review/expr_r2; fix the worst MAJOR each round. (2) rig bends: repaint hip / shoulder / knee weights, more loops at
+  knee / elbow / hip, then correctives in <asset>_rig.md/.json (seated hip first). (3) separate texture set for the
+  head. (4) lashes in LODs. Garrett after Tess passes.
+
 ## STATE / NEXT
-STATE (Tess v3, 89k LOD0 incl. 40k hero hair; LOD1 45.6k / LOD2 27.7k / LOD3 20.8k): motion directions exact, review
-disputes recorded; hair cards improved by numbers but FAIL review (STUCK sent); skin draft; undressed.
-NEXT: rig bends (tess_rig) and expressions (tess_expressions) review loops in blender_game; engine skin Lab boxes;
-Garrett only after Tess passes.
+STATE: see the handover above (expressions mid-loop, v10 exporting).

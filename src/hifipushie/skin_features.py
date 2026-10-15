@@ -293,19 +293,22 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     return ctx["smooth"]
 
 
-INNER_LIP_COLOR = [0.5, 0.2, 0.2]  # the wet inner lip (mucosa): redder and darker than the vermilion, lighter than the bag
+INNER_LIP_COLOR = [0.38, 0.11, 0.11]  # linear: the wet inner lip (mucosa): redder and darker than the vermilion, lighter than the bag
 
 
-def _inner_lip_cloud(head, mp, g):
-    """The lips' inner rolls as a painted-mask cloud (verts, normals, values, spacing): GNM's skin rings from the open
-    mouth loop (where the sock joins) out to the contact ring (base.LIP_RING), 1 there, half on the next ring. With the
-    lips closed these rings are hidden, so the bake filled them from the skin beside them; a shape that parts the
-    lips (jawOpen, smiles) showed them as a ragged brown fringe round the opening (review expr_r1)."""
+def inner_lip_values(head) -> np.ndarray | None:
+    """Per GNM vertex, how much of the wet inner lip (mucosa) colour it takes: GNM's skin rings from the open mouth
+    loop (where the sock joins) to the contact ring (base.LIP_RING) 1, the next ring INNER_LIP_FADE, else 0. With the
+    lips closed the scene's surface has no rolls, so the bake filled them from the skin beside them and every shape
+    that parts the lips (jawOpen, smiles) showed a ragged brown fringe round the opening (review expr_r1). The export
+    paints these values onto the low poly's own triangles (asset.bake, "inner_paint")."""
     import collections
     from . import base as _base
-    W = np.asarray(head.get("gnm_world"), float) if head.get("gnm_world") is not None else None
-    if W is None:
+    if head is None or head.get("gnm_world") is None:
         return None
+    g = _base._gnm_data()
+    mp = _base.gnm_mouth(head)
+    n = len(np.asarray(head["gnm_world"]))
     skin = np.asarray(g["skin"], bool)
     sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
     Q = np.asarray(g["quads"])
@@ -322,7 +325,7 @@ def _inner_lip_cloud(head, mp, g):
     lev = {v: 0 for v in rim}
     front = list(rim)
     ring = _base.LIP_RING
-    while front and min(lev[v] for v in front) < ring + 2:
+    while front and min(lev[v] for v in front) <= ring:
         nxt = []
         for v in front:
             for u in adj[v]:
@@ -330,21 +333,13 @@ def _inner_lip_cloud(head, mp, g):
                     lev[u] = lev[v] + 1
                     nxt.append(u)
         front = nxt
-    val = np.zeros(len(W))
+    val = np.zeros(n)
     for v, lv in lev.items():
-        val[v] = 1.0 if lv < ring else 0.35 if lv == ring else 0.0  # (to the contact ring itself at 1, the outer lips read lipstick red, v8)
-    keep = Q[np.isin(Q, list(lev)).all(1)]
-    if not len(keep):
-        return None
-    ids = np.unique(keep)
-    loc = np.full(len(W), -1)
-    loc[ids] = np.arange(len(ids))
-    V, F = W[ids], [list(map(int, f)) for f in loc[keep]]
-    vv = val[ids][:, None].repeat(3, 1)
-    V2, F2 = _base._catmull_clark(V, F)
-    vv = _base._catmull_clark(vv, F)[0]
-    N, _ = _base._normals_and_h(V2, F2)
-    return V2, N, np.clip(vv[:, 0], 0, 1), 0.0008
+        val[v] = 1.0 if lv <= ring else INNER_LIP_FADE if lv == ring + 1 else 0.0
+    return val
+
+
+INNER_LIP_FADE = 0.3  # the ring outside the contact ring: the wet line fading into the vermilion
 
 
 def _gnm_mouth(spec, out, part) -> None:
@@ -374,10 +369,9 @@ def _gnm_mouth(spec, out, part) -> None:
     # printed the bag's near-black red onto the outer skin at the mouth corners: two black "curls" on every GNM head)
     sp_ = float(np.median(cKDTree(sk["verts"]).query(sk["verts"], k=2)[0][:, 1]))
     pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
-    il = _inner_lip_cloud(head, mp, g)
-    if il is not None:  # (before the bag: the bag's colour wins where they meet)
-        out["skin:inner_lip"] = {"part": part, "color": list(INNER_LIP_COLOR), "roughness": 0.22, "specular": 0.55,
-                                 "mask": [{"painted": _paint.save_painted(*il)}]}
+    # (the inner rolls are NOT a scene layer: with the lips closed the scene's surface has no rolls (the fill behind the
+    # seam), so a painted cloud there found the outer lips instead (v8: lipstick red). The export paints them on the
+    # low poly's own triangles by GNM index: asset.bake's "inner_paint", values from inner_lip_values)
     out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
                              "mask": [{"painted": pid}]}
     for k, tpart in (("teeth_upper", _base.TEETH_PARTS[0]), ("teeth_lower", _base.TEETH_PARTS[1])):
