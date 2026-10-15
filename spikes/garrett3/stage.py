@@ -159,7 +159,7 @@ def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=F
         if hair_on and st.get("hair"):
             job.update(mode="hair_look", hair=hair.job(sn, st), clay_views=[], id_views=[], look_engine=engine)
         else:
-            job.update(mode="render")
+            job.update(mode="render", hide_hair=True)   # (the stage's blend may hold an earlier sync's groom: hidden)
             if engine == "cycles":
                 job.update(engine="cycles", samples=64)
         if layer:

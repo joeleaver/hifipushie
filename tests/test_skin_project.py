@@ -45,7 +45,7 @@ def test_atlas_and_lookup():
     px = (u - u0) / (u1 - u0) * W
     py = (v1 - v) / (v1 - v0) * H
     ok = w > 0.99
-    assert ok.mean() > 0.93, ok.mean()
+    assert ok.mean() > 0.88, ok.mean()   # (0.93 before the head fades in over 15 mm from the body: the neck texels now partial)
     err = np.hypot(px - (at["jj"][idx] + 0.5), py - (at["ii"][idx] + 0.5))
     assert np.percentile(err[ok], 99) < 0.75, np.percentile(err[ok], 99)
     # off the head (the chest) and inside the mouth's sock: no weight

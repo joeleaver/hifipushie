@@ -47,8 +47,9 @@ VERSION = 1
 P0 = 0.8                 # a layer's default opacity: its stored multiplier is exact at P0 and leaves room to 1.0 (x 1.25)
 LAYERS = (  # name, axes (m melanin, h haemoglobin, d neutral), support, scale mm
     ("pigment", "m", "all", 4.0),
-    ("redness", "h", "all", 2.5),
-    ("periorbital", "mhd", "orbit", 1.2),
+    ("redness", "h", "all", 4.5),   # (2.5: cheek blush as round saturated patches; real flush is an even warmth)
+    ("periorbital", "mh", "orbit", 1.2),   # (no neutral: the socket's own shading, under-lit by the de-lighting, read as a
+                                           # purple-brown ring round the orbit, above the crease and under the eye)
     ("brows", "md", "brow", 0.7),
     ("lips", "mh", "lips", 0.3),     # (pigment only: its neutral darkness was the lower lip's own shading, a grey-brown lip)
     ("beard", "dm", "beard", 2.0),
@@ -62,14 +63,16 @@ BLEMISH_FLOOR = 0.03         # a p99 under this: no blemishes (an even skin's ow
 FINE_FULL = 0.12         # rms log luminance under 1.2 mm that our fine generator gives at full strength (FINE_TINT, two scales)
 FINE_TINT = (0.84, 0.77, 0.74)   # the fine generator's colour (a multiply: darker, a little redder: pores, mottle, fine vessels)
 FINE_FLOOR = 0.35        # the fine generator's least strength on plain skin (see decompose)
-FINE_SCALES = (0.0012,)   # m: its two noise scales
+FINE_SCALES = (0.0012,)   # m: (old) its noise scale
+PORE_SCALE, PORE_TINT = 0.00045, (0.8, 0.68, 0.64)   # the pore grain's noise scale (m) and its multiply colour
+MOTTLE_SCALE, MOTTLE_TINT = 0.004, (0.95, 0.86, 0.86)
 FILL_REACH = (0.8, 2.0, 5.0, 15.0, 40.0)   # mm: unmeasured texels take each layer from measured skin within these, nearest first
 CAVITY = (0.85, 0.45, 1.3, 0.5)   # unmeasured texels with ambient occlusion under the first: + neutral (up to the third) and
                                   # haemoglobin (up to the fourth) at occlusion first - second: nostrils, the lip seam, the
                                   # socket's edge read dark and warm, not as the lightest skin
 LIP_REACH = 1.0          # mm: the lips layer's support reaches this far past GNM's lips (a Gaussian's sigma)
 LIP_FADE = 0.12          # ... and is full where that blur is over this (about 3 mm out), fading to nothing beyond
-OPACITY = {"brows": 0.4, "periorbital": 0.5}   # (periorbital: a bag's shadow the head has no form for was taken as pigment: a
+OPACITY = {"brows": 0.4, "periorbital": 0.4}   # (periorbital: a bag's shadow the head has no form for was taken as pigment: a
                           # heavy orange-brown under an older eye and on the closed lid; Stage 2's bags take the rest as form)  # a layer's own default: the brows' map is the SKIN-LEVEL darkness under our brow hairs (at full
                           # strength map + hairs doubled: heavier brows than the photograph's)
 FRECKLE_REF = 0.2        # the fine melanin band's 3 mm mean (melanin x) that is a full freckle field
@@ -86,6 +89,10 @@ OCC_STRENGTH = 1.0        # the occlusion layer's default opacity (eyecmp / occf
 OCC_WEIGHTS = (0.5, 0.8, 1.0)   # per channel share of the occlusion's darkening (R, G, B) without an atlas: warm
 OCC_WARMTH = 0.6          # how much of the measured shadow hue the occlusion keeps (1 = all of it)
 OCC_SOFT_MM = 1.2         # the bake's softness (a Gaussian's sigma, mm)
+ORBIT_SHADE_CUT = 0.7      # share of the shade layer kept off the orbit (see decompose)
+COVER_SOFT_MM = 6.0        # the coverage fade's softness (mm)
+COVER_EDGE_MM = 12.0       # the stack's coverage fades over this inside the head island's atlas border
+LIPS_VENOUS = 0.5         # the lips' blood colour: share of the venous axis (the rest arterial)
 BASE_MAX = 0.9            # linear: the lightest skin's brightest channel at most this (see decompose)
 LOW_PCT = 3.0            # the maps' zero: this percentile of each amount over the measured plain skin (the lightest skin there is)
 Y = sp.Y
@@ -435,6 +442,8 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
         # lips and a pale lower-lip band on the test heads' full stacks; the indications route's lips are a ratio to
         # the skin beside them, so they need the skin under them too.)
         hole = (lips_core > 0.2) if lname in ("redness", "shade") else None
+        if lname == "shade":   # the socket's neutral darkness is the form's (the fold, the bag, the baked occlusion make it):
+            S = S * (1 - ORBIT_SHADE_CUT * sup["orbit"])   # laid as paint too it doubled into a dark ring round the eye
         amt = {}
         od = np.zeros((n, 3))
         for a in axs:
@@ -454,14 +463,21 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
                 # the NEAREST measured skin first (a lid margin, a lip border, a nostril rim continue the colour next to
                 # them): a 6 mm first reach averaged in the lighter cheek and the near-base colour showed as a pale ring
                 fill_ = _fill_soft(at, v, w, mean) * Sa
-                if lname in ("pigment", "redness", "shade"):   # the broad layers: measured skin eased into the fill over
-                    # ~1.5 mm inside its edge (the hair line's own texels are the least trustworthy): no seam where it stops
-                    kb = sp._blur(at, known.astype(float), None, 1.5)
+                if lname in ("pigment", "redness", "shade", "periorbital"):   # measured skin eased into the fill over
+                    # ~2 mm inside its edge (edge texels are the least trustworthy: the hair line's, the lid band's): no
+                    # seam where it stops (a thin dark line ran down from Tess's outer eye corner along the lid band's edge)
+                    kb = sp._blur(at, known.astype(float), None, 2.0)
                     tk = np.clip((kb - 0.5) / 0.5, 0, 1)
                     tk = tk * tk * (3 - 2 * tk)
                     v = np.where(known, tk * v + (1 - tk) * fill_, fill_)
                 else:
                     v = np.where(known, v, fill_)
+            if lname in ("pigment", "redness"):   # the orbit no warmer than the face round it: the lids' and sockets'
+                # de-lit colour carries the shading residue as warmth (an orange-peach band across the upper lids that read
+                # as eyeshadow, on every head); capped at the plain skin's 75th percentile there
+                cap_ = float(np.percentile(v[plain], 75)) if plain.any() else float(np.median(v))
+                ow = np.clip(sup["orbit"], 0, 1)
+                v = v * (1 - ow) + np.minimum(v, cap_) * ow
             amt[a] = v
             if lname in ("periorbital", "lips") and a == "h":   # (lips: mucosa over venous-rich blood reads pink, the arterial axis orange)   # the lids' redness laid with venous blood's colour (pink-violet, not orange)
                 od += v[:, None] * venous_axis(tone) * (float(np.linalg.norm(V[k])) / max(float(np.linalg.norm(venous_axis(tone))), 1e-9))
@@ -479,7 +495,10 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
                 for a in axs:
                     cap = float(np.percentile(amt[a][body], 60))
                     amt[a] = np.minimum(amt[a], cap)
-                    od += amt[a][:, None] * (venous_axis(tone) * (float(np.linalg.norm(V[1])) / max(float(np.linalg.norm(venous_axis(tone))), 1e-9)) if a == "h" else V[ax[a]])
+                    # (the lips' blood half venous, half arterial: all venous read mauve-grey to a blind review, all
+                    # arterial read orange)
+                    vax = venous_axis(tone) * (float(np.linalg.norm(V[1])) / max(float(np.linalg.norm(venous_axis(tone))), 1e-9))
+                    od += amt[a][:, None] * ((LIPS_VENOUS * vax + (1 - LIPS_VENOUS) * V[1]) if a == "h" else V[ax[a]])
         out_l[lname] = {"amount": amt, "od": od, "support": sname, "mm": mm}
     # THE PARTING: where the closed lips meet, a photograph shows a soft dark line ~1 mm wide (the stomion's shadow and wet
     # inner lip); the mesh's seam alone is a hairline, jagged at any voxel. A soft neutral line along GNM's own seam, as dark
@@ -506,6 +525,9 @@ def decompose(name: str, spec: dict | None = None, log=print, lips: str = "texel
     from . import likeness as lk
     ao = np.clip(sp.interp(at, lk.ambient_occlusion(lk.model_mesh(spec["base"]))), 0, 1)
     cav = np.where(~meas, np.clip((CAVITY[0] - ao) / CAVITY[1], 0, 1), 0.0)
+    # only inside an unmeasured REGION (a nostril, the seam's inner faces), never along a sliver of unmeasured texels (a
+    # UV seam or a thin gap between views on open skin drew a thin dark scratch on a jaw)
+    cav = cav * np.clip((sp._blur(at, (~meas).astype(float), None, 1.0) - 0.6) / 0.3, 0, 1)
     # never on the lids: the skin tucked under a fold is occluded at rest but a blink shows it (a dark patch on a closed
     # lid); only surfaces that stay hidden (nostril interiors, the lip seam) take the dark-warm term
     X_ = sp.interp(at, at["V"])
@@ -645,6 +667,14 @@ def apply(name: str, out: str | None = None, note: str = "", freckles: bool = Tr
     H, W = at["shape"]
     valid = sp.image(at, np.ones(len(at["ii"]), bool), False)
     fade = np.clip(sp.interp(at, at["fade"]), 0, 1)
+    # every map fades out toward the head island's own border in the atlas (where the body's mesh takes over): at the raw
+    # fade the stack stopped on the island's ragged edge, a soft band and a jagged line across the neck
+    from scipy import ndimage as _nd
+    dist_mm = _nd.distance_transform_edt(valid)[at["ii"], at["jj"]] * at["mm"]
+    edge = np.clip(dist_mm / COVER_EDGE_MM, 0, 1)
+    fade = fade * edge * edge * (3 - 2 * edge)
+    # ... and the fade itself softened: per vertex it stepped ring by ring (a ragged colour edge across the neck)
+    fade = np.clip(sp._blur(at, fade, None, COVER_SOFT_MM), 0, 1)
 
     def save_rgb(lin_or_mult, fname, alpha=None, srgb=True):
         a = np.zeros((H, W, 4), np.uint8)
@@ -776,10 +806,14 @@ def layers(spec: dict, st: dict, out: dict, part: str) -> None:
                                     "opacity": round(min(cs, 1.0) * (1 - wb), 4), "image": img(st["crease"])}
     fs = float(st.get("fine_strength", 1.0)) * k
     if st.get("fine") and fs > 0:   # OUR fine texture (noise at two scales), as strong as the reference's fine band is there
-        for i, sc in enumerate(FINE_SCALES):
-            out[f"skin:stack_fine{i}"] = {"part": part, "color": list(FINE_TINT), "mix": "multiply", "opacity": round(min(0.35 * fs, 1.0), 4),   # (0.75 x a darker tint at 0.7 / 1.9 mm: coarse brown mottle round an older man's eyes)
-                                          "mask": [{"noise": {"scale": sc, "range": [0.3, 0.9], "seed": 31 + i}},
-                                                   {"image": {"id": st["fine"], "wrap": "uv", "box": box, "channel": "luma"}, "blend": "multiply"}]}
+        # PORE GRAIN: small dark speckles at the scale a photograph resolves pores (~0.4-0.5 mm, a few pixels at a face
+        # close-up; the swatch pores are ~0.15 mm, sub-pixel there: a blind review read the stacked face as wax), and a
+        # broad soft warm mottle; both as strong as the reference's fine band (the map) allows
+        fm = {"image": {"id": st["fine"], "wrap": "uv", "box": box, "channel": "luma"}, "blend": "multiply"}
+        out["skin:stack_fine0"] = {"part": part, "color": list(PORE_TINT), "mix": "multiply", "opacity": round(min(0.22 * fs, 1.0), 4),
+                                   "mask": [{"noise": {"scale": PORE_SCALE, "range": [0.63, 0.72], "seed": 31}}]}   # (everywhere: the map kept it off the cheeks)
+        out["skin:stack_fine1"] = {"part": part, "color": list(MOTTLE_TINT), "mix": "multiply", "opacity": round(min(0.6 * fs, 1.0), 4),
+                                   "mask": [{"noise": {"scale": MOTTLE_SCALE, "range": [0.35, 0.85], "seed": 32}}, fm]}
 
 
 # named edits: {layer: strength}, strength in units of the layer as measured (1 = as it is, 2 = twice the pigment, 0 = off)

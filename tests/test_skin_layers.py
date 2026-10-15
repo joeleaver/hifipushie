@@ -41,7 +41,7 @@ def test_stack_layers_and_edit():
     st2 = {**st, "fine": "f" * 16}
     out3 = {}
     sl.layers({"skin": {"stack": st2}}, st2, out3, "body")
-    assert "skin:stack_fine0" in out3 and out3["skin:stack_fine0"]["mask"][1]["image"]["channel"] == "luma" and out3["skin:stack_fine0"]["mix"] == "multiply"
+    assert "skin:stack_fine0" in out3 and out3["skin:stack_fine1"]["mask"][1]["image"]["channel"] == "luma" and out3["skin:stack_fine0"]["mix"] == "multiply"   # (fine0: pore grain everywhere; fine1: the mottle, by the map)
     e = sl.edit(spec, "blush", "no_stubble")
     op = {l["name"]: l["opacity"] for l in e["skin"]["stack"]["layers"]}
     assert op["pigment"] == 0.8 and op["redness"] == 1.0 and op["beard"] == 0.0 and 0.7 < op["redness+"] < 0.8   # 2.2 x: a second pass

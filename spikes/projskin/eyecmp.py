@@ -40,8 +40,20 @@ for d in sys.argv[1:]:
             orb.append(round(float(1 - A[ring].mean() / max(A[cheek].mean(), 1e-6)), 3) if ring.any() and cheek.any() else None)
         row[nm] = [[{"tps": None if not np.isfinite(c.get("tps", np.nan)) else round(float(c["tps"]), 2), "dark": round(float(c.get("dark", 0.0)), 3)} for c in eye] for eye in rd]
         row[nm + "_orbit"] = orb
+        # the crease's SMOOTHNESS on the image: 11 columns along each eye, the read heights' rms second difference
+        # (misreads > 2 mm off the median dropped)
+        from hifipushie import gnm_fold as _gf
+        rd11 = lidfold.read_lid(img, P, fractions=tuple(np.linspace(0.2, 0.8, 11)))
+        rgh = []
+        for eye in rd11:
+            h_ = np.array([c.get("tps", np.nan) for c in eye], float)
+            ok_ = np.isfinite(h_)
+            if ok_.sum() >= 6:
+                med = np.nanmedian(h_); ok_ &= np.abs(h_ - med) < 2.0
+            rgh.append(_gf.crease_roughness(h_[ok_]) if ok_.sum() >= 6 else None)
+        row[nm + "_rough"] = rgh
     res[d] = row
     for nm in ("photo", "ours"):
         if row[nm]:
-            print(f"{d.split('/')[-2]}/{d.split('/')[-1]} {nm:5s}", "  ".join("eye%d tps %s dark %s" % (i, [c["tps"] for c in e], [c["dark"] for c in e]) for i, e in enumerate(row[nm])), " orbit", row[nm + "_orbit"])
+            print(f"{d.split('/')[-2]}/{d.split('/')[-1]} {nm:5s}", "  ".join("eye%d tps %s dark %s" % (i, [c["tps"] for c in e], [c["dark"] for c in e]) for i, e in enumerate(row[nm])), " orbit", row[nm + "_orbit"], " rough", row[nm + "_rough"])
 json.dump(res, open(sys.argv[1] + "/eyecmp.json", "w"), indent=1)

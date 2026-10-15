@@ -242,6 +242,8 @@ def implied_parts(spec: dict) -> dict:
                                       "specular": 0.6, "voxel": 0.0003, "rig_bone": None}
     if mouth_mode(b) == "gnm":
         out.update({k: dict(v) for k, v in MOUTH_PARTS.items()})
+    if b.get("eyes"):   # the eyeballs meshed fine (the scene voxel left the iris / pupil edge and the cornea in visible
+        out.setdefault(b["eyes"], {})["voxel"] = EYE_PART_VOXEL   # polygon steps in every close-up)
     return out
 
 
@@ -2068,6 +2070,7 @@ def gnm_eyes(V: np.ndarray, g: dict) -> list:
 
 MOUTH_PUSHED = 0.001  # m: lips a style moved this far off GNM's own surface no longer fit GNM's teeth (the kit's interior)
 MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (the bag is cut; closed, a fill)
+EYE_PART_VOXEL = 0.00025   # m: the eyes part's own voxel (see implied_parts)
 # GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
 # piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
 # min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips.

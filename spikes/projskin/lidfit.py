@@ -22,10 +22,47 @@ p = skin.params(spec)
 ag = float(np.clip((p["age"] - 25.0) / 40.0, 0.0, 1.0))
 ov0 = 0.5 + 2.0 * ag
 cfg = {"thick": round(0.7 + 0.8 * ag, 2)}
-for s_, key in ((0, "R"), (1, "L")):      # read_lid: subject's right first; columns inner -> outer
+# GUARDS on the read (a subject's eye: one column read the brow's underside, not the crease; the
+# crease trace then followed the brow line and the fold sat 13-16 mm up): a column's crease must lie in the lower
+# CREASE_FRAC of the lid-to-brow distance, agree with its eye's other columns within COL_TOL, and each eye's median
+# with the other eye's within EYE_TOL (else WARNING and the other eye's columns stand in)
+CREASE_FRAC, COL_TOL, EYE_TOL = 0.6, 3.0, 2.5
+clean = {}
+for s_, key in ((0, "R"), (1, "L")):
     tps = [c.get("tps") for c in rd[s_]]
+    vals = []
+    for i, c in enumerate(rd[s_]):
+        t, b = c.get("tps"), c.get("brow")
+        if t is None or not np.isfinite(t):
+            vals.append(None)
+        elif b is not None and np.isfinite(b) and t > CREASE_FRAC * b:
+            print(f"WARNING eye {key} column {i}: crease read {t:.2f} mm is above {CREASE_FRAC} of the lid-to-brow {b:.2f} mm: dropped (the brow's edge?)")
+            vals.append(None)
+        else:
+            vals.append(float(t))
+    ok_ = [v for v in vals if v is not None]
+    if len(ok_) >= 2:
+        med = float(np.median(ok_))
+        for i, v in enumerate(vals):
+            if v is not None and abs(v - med) > COL_TOL and len(ok_) >= 3:
+                print(f"WARNING eye {key} column {i}: {v:.2f} mm vs its eye's median {med:.2f}: dropped")
+                vals[i] = None
+    clean[key] = vals
+for key, other in (("R", "L"), ("L", "R")):
+    a = [v for v in clean[key] if v is not None]
+    b = [v for v in clean[other] if v is not None]
+    if a and b and abs(np.median(a) - np.median(b)) > EYE_TOL:
+        # the eye whose columns agree better stands in for the other (faces are near symmetric here; a read is not)
+        worse = key if np.ptp(a + [np.median(a)]) > np.ptp(b + [np.median(b)]) else other
+        if worse == key:
+            print(f"WARNING eyes disagree: {key} median {np.median(a):.2f} vs {other} {np.median(b):.2f} mm: {key} takes {other}'s columns")
+            clean[key] = list(clean[other])
+read_bad = {}
+for s_, key in ((0, "R"), (1, "L")):      # read_lid: subject's right first; columns inner -> outer
+    tps = clean[key]
     dark = [c.get("dark") for c in rd[s_]]
-    print(f"eye {key}: visible platform mm (inner, middle, outer) {[None if t is None else round(float(t), 2) for t in tps]}, line darkness {[None if d is None else round(float(d), 2) for d in dark]}")
+    print(f"eye {key}: visible platform mm (inner, middle, outer) {[None if t is None else round(float(t), 2) for t in [c.get('tps') for c in rd[s_]]]} -> kept {[None if t is None else round(t, 2) for t in tps]}, line darkness {[None if d is None else round(float(d), 2) for d in dark]}")
+    read_bad[key] = [c.get("tps") for c in rd[s_]] != tps
     ok = [t for t in tps if t is not None and np.isfinite(t)]
     if not ok:
         continue
@@ -164,10 +201,28 @@ try:
                 dr2.line([tuple(q) for q in tq], fill=(0, 80, 255), width=2)
             box = (int(cen[0] - 25 / mmpx), int(cen[1] - 25 / mmpx), int(cen[0] + 25 / mmpx), int(cen[1] + 25 / mmpx))
             im2.crop(box).resize((600, 600)).save(os.environ["LIDFIT_DEBUG"] + f"_{key}.png")
+        # the INNER end fades out flat toward the inner canthus: no chain there higher than the middle's crease (the
+        # trace climbed beside the nose toward the brow: a curl at the fold's medial end)
+        mid_ = [o[1] for o in out if -30.0 <= o[0] <= 30.0]
+        if mid_:
+            cap_ = float(np.median(mid_))
+            out = [[o[0], round(min(o[1], cap_), 2)] if o[0] < -30.0 else o for o in out]
+        # the TRACE's guard: a traced crossing far above the (cleaned) column read is the brow's line, not the crease
+        lim = max(cfg.get(key, {}).get("crease", [6.0] * 3)) + COL_TOL
+        bad_ = [o for o in out if o[1] > lim]
+        if bad_:
+            print(f"WARNING eye {key}: {len(bad_)} traced crease crossings above {lim:.1f} mm (the read's crease + {COL_TOL}): dropped")
+            out = [o for o in out if o[1] <= lim]
         if len(out) >= 4:
+            # the trace's own roughness (it is seated as gnm_fold.smooth_crease's arc, never point by point)
+            a_ = np.asarray(sorted(out), float)
+            rr = gf.crease_roughness(np.interp(np.linspace(a_[0, 0], a_[-1, 0], 24), a_[:, 0], a_[:, 1]))
+            print(f"eye {key}: traced crease roughness {rr}" + ("  (WARNING: noisy trace; seated as one smooth arc)" if rr["sign_changes"] or rr["d2_rms"] > 0.08 else ""))
             cfg.setdefault(key, {})["crease_by_angle"] = out
             # the wrap reaches as far round the outer corner as the crease was traced (+ its fade)
-            cfg[key]["wrap"] = round(float(np.clip(max(o[0] for o in out) - 90.0 + 25.0, 15.0, 70.0)), 1)
+            # the wrap reaches round the outer corner only as far as the TRACE went (+ 5 deg to fade): with + 25 the fold
+            # turned DOWN past a crease that ran on level (a near-vertical segment at a young eye's outer end)
+            cfg[key]["wrap"] = round(float(np.clip(max(o[0] for o in out) - 90.0 + 5.0, 0.0, 70.0)), 1)
             # the fold's last ring: far enough out for the traced crease (rings ~0.55 mm apart near the eye, wider out;
             # at 10 the fold stopped ~5 mm out round the outer corner whatever the trace said)
             cfg["last"] = int(np.clip(10 + (max(o[1] for o in out) - 6.0) / 0.9, 10, 14))

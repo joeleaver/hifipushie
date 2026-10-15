@@ -547,6 +547,35 @@ def slit_ids(cfg: dict) -> dict:
     return out
 
 
+CREASE_ROW_PASSES = 3   # passes of smoothing the crease rows' FINAL positions along their rings
+
+
+def _smooth_crease_rows(out: np.ndarray, Vm: np.ndarray, side: int, t: dict, ka: int) -> None:
+    """The crease's own rows (rings ka-1 .. ka+3: platform edge, slit, roll edge) made smooth curves: each moved vertex's
+    final position averaged with its ring neighbours', only ALONG the ring (the component across it, i.e. the section,
+    kept). GNM's ring rows are not smooth curves at the fold's heights and the vertices between the chains took
+    interpolated displacements: the crease line wobbled and kinked above the pupil. In place, mm, this side only."""
+    ring = t["ring"] if side == 1 else t["ring"][t["mir"]]
+    T = gc.gnm()["T"] * 1000.0
+    J = gc.gnm()["J"][2] * 1000.0
+    up = (T[:, 1] > J[1] - 1.0) | (np.abs(T[:, 0]) - abs(J[0]) > 3.0)
+    on = (T[:, 0] > 0) == (side == 1)
+    for _ in range(CREASE_ROW_PASSES):
+        X = Vm + out
+        for k in range(max(ka - 1, 1), ka + 4):
+            mv = np.flatnonzero((ring == k) & up & on & (np.abs(out).sum(1) > 0))
+            for v in mv:
+                nb = [b for b in t["nb"][v] if ring[b] == k and up[b] and on[b]]
+                if len(nb) != 2:
+                    continue
+                tng = X[nb[1]] - X[nb[0]]
+                tng /= max(np.linalg.norm(tng), 1e-9)
+                mid = 0.5 * (X[nb[0]] + X[nb[1]])
+                d = mid - X[v]
+                d_perp = d - (d @ tng) * tng            # toward the neighbours' chord, across the tangent only
+                out[v] += 0.5 * d_perp
+
+
 def mesh_delta(V0: np.ndarray, En: np.ndarray | None, cfg: dict) -> np.ndarray:
     """The upper lids' fold as a displacement of GNM's OWN vertices (m, GNM frame; added to the head as built):
     base.head.lid_fold = {"crease": mm over the margin where the fold's slit sits (6.5), "overhang": mm of drape
@@ -587,9 +616,7 @@ def mesh_delta(V0: np.ndarray, En: np.ndarray | None, cfg: dict) -> np.ndarray:
                 return lambda a: f(np.interp(a, [-60.0, 0.0, 90.0], [-9.0, 0.0, 9.0]))
             crf = by_ang(c.get("crease"), 6.5)
             if c.get("crease_by_angle"):   # [[deg, mm], ...]: the crease's height along each chain, traced in a picture
-                cba = np.asarray(c["crease_by_angle"], float)
-                cba = cba[np.argsort(cba[:, 0])]
-                crf = lambda a, cba=cba: np.interp(a, cba[:, 0], cba[:, 1])  # noqa: E731
+                crf = smooth_crease(c["crease_by_angle"])
             tgw = design_wrap(Vm, crf, by_ang(c.get("overhang"), 0.6), traced=bool(c.get("crease_by_angle")), thick=float(c.get("thick", 0.9)),
                               standoff=float(c.get("standoff", 1.3)), ka=ka, kt=kt, umax=reach, wrap_deg=wrap,
                               depth=float(c.get("depth", 1.0)))
@@ -602,6 +629,7 @@ def mesh_delta(V0: np.ndarray, En: np.ndarray | None, cfg: dict) -> np.ndarray:
             if c.get("tail"):
                 out += _tail(Vm, c["tail"], side) * amount * gain
             _smooth_along_rings(out, side, t, int(c.get("smooth", RING_SMOOTH)))
+            _smooth_crease_rows(out, Vm, side, t, ka)
             continue
         levels = np.unique(np.round(ovs, 2))
         tg_by = {float(o): design(Vm, crease=cr, overhang=float(o), thick=float(c.get("thick", 0.9)), standoff=float(c.get("standoff", 1.3)),
@@ -620,6 +648,65 @@ def mesh_delta(V0: np.ndarray, En: np.ndarray | None, cfg: dict) -> np.ndarray:
 WRAP_DEG = 25.0     # deg below the eye's horizontal the fold's chains reach round the OUTER corner (the hood wraps it). At
                     # 70 the crease turned straight down at the corner and ran back under the eye (a roll under the lower
                     # lid; the photos' creases run on 4-11 mm LATERALLY past the canthus and drop only 0-5 mm)
+
+
+CREASE_DEG = 2   # the crease's height along the lid: a polynomial of this degree in the chain angle (one maximum at most)
+
+
+def smooth_crease(cba) -> callable:
+    """[[deg, mm], ...] (traced / read, noisy) -> a smooth height function of the chain angle: a least-squares
+    polynomial of CREASE_DEG (a quadratic has one extremum: a real crease is one smooth arc between the canthi), held flat
+    past the data's ends. Interpolating the points themselves seated their noise: a wobbly, kinked crease."""
+    a = np.asarray(cba, float)
+    a = a[np.argsort(a[:, 0])]
+    if len(a) < CREASE_DEG + 2:
+        return lambda x, a=a: np.interp(x, a[:, 0], a[:, 1])
+    k = np.polyfit(a[:, 0], a[:, 1], CREASE_DEG)
+    lo, hi = float(a[0, 0]), float(a[-1, 0])
+    return lambda x, k=k, lo=lo, hi=hi: np.polyval(k, np.clip(x, lo, hi))
+
+
+def crease_roughness(heights: np.ndarray) -> dict:
+    """A crease line's smoothness, heights (mm) sampled evenly along the arc: the rms second difference (mm) and how
+    often the curvature changes sign (a smooth arc: 0)."""
+    h = np.asarray(heights, float)
+    d2 = np.diff(h, 2)
+    sg = np.sign(d2[np.abs(d2) > 0.02])
+    return {"d2_rms": round(float(np.sqrt(np.mean(d2 ** 2))) if len(d2) else 0.0, 3),
+            "sign_changes": int((np.diff(sg) != 0).sum()) if len(sg) > 1 else 0}
+
+
+def seated_roughness(V0: np.ndarray, cfg: dict) -> dict:
+    """The SEATED crease line's smoothness per side (GNM frame, m in): the slit ring's vertices (ring + 1) on the upper lid,
+    ordered round the eye, their distance from the eye's centre in the front plane resampled every 3 deg and taken
+    through crease_roughness. The gate for a wobbly crease (a curve's parameters, not its vertices)."""
+    t = topo()
+    T = gc.gnm()["T"] * 1000.0
+    J = gc.gnm()["J"][2] * 1000.0
+    X = (np.asarray(V0, float) + mesh_delta(V0, None, cfg)) * 1000.0
+    out = {}
+    for side, key in ((1, "L"), (-1, "R")):
+        c = {**{k: v for k, v in (cfg or {}).items() if k not in ("L", "R")}, **((cfg or {}).get(key) or {})}
+        ka = int(c.get("ring", 5))
+        ring = t["ring"] if side == 1 else t["ring"][t["mir"]]
+        cx = J[0] if side == 1 else -J[0]
+        on = ((T[:, 0] > 0) == (side == 1)) & (ring == ka + 1)
+        ids = np.flatnonzero(on)
+        dx, dy = (X[ids, 0] - cx) * side, X[ids, 1] - J[1]
+        ang = np.degrees(np.arctan2(dx, dy))
+        sel = (ang > -60) & (ang < 75)
+        if sel.sum() < 6:
+            continue
+        o = np.argsort(ang[sel])
+        P = np.c_[dx[sel][o], dy[sel][o]]
+        # the polyline's TURNING per vertex (deg): a smooth arc turns the same way everywhere, a wobble flips
+        e = np.diff(P, axis=0)
+        th = np.degrees(np.unwrap(np.arctan2(e[:, 1], e[:, 0])))
+        turn = np.diff(th)
+        sg = np.sign(turn[np.abs(turn) > 2.0])
+        out[key] = {"turn_rms_deg": round(float(np.sqrt(np.mean((turn - turn.mean()) ** 2))), 2),
+                    "sign_changes": int((np.diff(sg) != 0).sum()) if len(sg) > 1 else 0, "n": int(len(P))}
+    return out
 
 
 def chains_wrap(umax: float = 15.5, k1: int = NR, wrap_deg: float = WRAP_DEG) -> tuple:
@@ -709,8 +796,11 @@ def design_wrap(V: np.ndarray, crease, overhang, thick: float = 0.9, standoff: f
             # the slit only as deep as there is drape over it: with little overhang (a young lid, the wrap's fading end) a
             # full slit showed as a dark CRACK at Tess's outer corner
             tg[ka + 1] = (min(cr[j] + 0.35, dmax), -0.7 * depth * float(np.clip(ov[j] / 1.0, 0.25, 1.0)))
-            tg[ka + 2] = (min(cr[j] - ov[j], dmax), 0.4 + 0.6 * thick)
-            tg[ka + 3] = (min(cr[j] - ov[j] + 0.8, dmax), 0.5 + thick)
+            # the roll only as proud as the drape it is: a young lid with little overhang has a soft crease, not a ridge
+            # (at full height a pale ridge and a dark line, "hard" on a young face's crease)
+            rk = float(np.clip(ov[j] / 1.0, 0.4, 1.0))
+            tg[ka + 2] = (min(cr[j] - ov[j], dmax), (0.4 + 0.6 * thick) * rk)
+            tg[ka + 3] = (min(cr[j] - ov[j] + 0.8, dmax), (0.5 + thick) * rk)
             pts = {}
             for k, (h, dz) in tg.items():
                 q2 = base + rad * h

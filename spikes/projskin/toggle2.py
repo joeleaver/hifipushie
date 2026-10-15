@@ -20,5 +20,5 @@ bi._save(cp, s, f"toggle2 drop {drops}", rj)
 out = f"/mnt/data/hifipushie/projskin/out/toggle2/{tag}"
 rest = sys.argv[4:]
 for flat in ("0", "1"):
-    sys.argv = ["cu.py", cp, out, "only=mouth", "views=0", f"flat={flat}"] + rest
+    sys.argv = ["cu.py", cp, out, "only=" + __import__("os").environ.get("TG_ONLY", "mouth"), "views=0", f"flat={flat}"] + rest
     runpy.run_path("spikes/projskin/cu.py", run_name="__main__")

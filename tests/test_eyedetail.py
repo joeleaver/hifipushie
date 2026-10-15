@@ -137,7 +137,7 @@ def test_clear_cornea():
     assert 0.0055 < np.sqrt(R * R - plane * plane) < 0.0068
     d = base.part_defs({"base": b, "parts": {"eyes_cornea": {"roughness": 0.05}}})
     assert d["eyes_cornea"]["transmission"] == 1.0 and d["eyes_cornea"]["roughness"] == 0.05
-    assert base.implied_parts({"base": {"eyes": "eyes", "cornea": True}}) == {}
+    assert base.implied_parts({"base": {"eyes": "eyes", "cornea": True}}) == {"eyes": {"voxel": base.EYE_PART_VOXEL}}   # (only the eyes' own fine voxel)
 
 
 def test_lashes_default_and_off():

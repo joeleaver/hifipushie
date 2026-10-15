@@ -71,7 +71,7 @@ import numpy as np
 
 from .spec import SpecError
 
-VERSION = 9  # 9: pores at full strength under a measured stack (projskin); 8: the face microrelief (cells network base, sparser pores; projskin); 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
+VERSION = 10  # 10: stacked faces: pores everywhere the photos show them, cells' colour faint; 9: pores at full strength under a measured stack (projskin); 8: the face microrelief (cells network base, sparser pores; projskin); 4: lash_roots, eye film / occlusion (eyedetail); 5: the face's base map (skin4); 6: lower lip (gnmdetail2); 7: the vermilion's gradient and soft border (skinfolds)
 LOWER_LIP = {"melanin": 0.72, "blood": 3.8, "epidermis": 0.0, "oxygenation": 0.66}  # x the lips' melanin / blood (see _build)
 # the face's base map layers (skin_marks.base_map): opacities of blood up, blood or melanin down, melanin up; relief depth (m).
 # x sqrt(variation) / sqrt(detail): tuned on Tess (variation .6, detail .45); linear, Garrett's 1.3 / 1.8 read as sandpaper
@@ -883,7 +883,10 @@ def _build(spec: dict, J: dict) -> dict:
             micro.append(("cells", "lines", 0.0003 * d * age_k, _z("face") + [{"zone": "lips", "blend": "subtract"},
                                                                                 {"mask": _z("eyelid", "under_eye", grow=1.2), "blend": "subtract"}]))
             micro.append(("cells_fine", "lines_fine", 0.00022 * d * age_k, _z("eyelid", "under_eye", grow=1.2)))
-            micro.append(("pores", "pores", 0.00013 * d * (0.8 + 0.4 * p["oil"]), _z("nose_tip", "nose_wing", "cheek", grow=1.0) +
+            # (under a measured stack the pores are the face's visible grain everywhere the photographs show it: forehead,
+            # cheeks, nose, chin; a blind review read the stacked face as wax with only the nose and cheeks pored)
+            pz = ("nose_tip", "nose_wing", "cheek", "forehead", "chin", "upper_lip", "cheekbone", "temple") if p.get("stack") else ("nose_tip", "nose_wing", "cheek")
+            micro.append(("pores", "pores", 0.00013 * d * (0.8 + 0.4 * p["oil"]), _z(*pz, grow=1.0) +
                           [{"zone": "lips", "blend": "subtract"}]))
             micro.append(("lip_lines", "lips", 0.00014 * d * (1 + p["lips"]["dry"]), _z("lips")))
             micro.append(("lines", "lines", 0.00013 * d * body_k, [{"mask": _z("face"), "invert": True}]))
@@ -895,7 +898,7 @@ def _build(spec: dict, J: dict) -> dict:
             tile = {"swatch": "lines", "size": round(0.45 * 0.016, 5)} if sw == "lines_fine" else {"swatch": sw}   # (lids: cells ~0.2-0.5 mm)
             stack = [{"tile": tile}] + ([{"mask": mask, "blend": "multiply", "vertex": True}] if mask else []) + copy.deepcopy(no_pores)
             out[f"skin:micro_{name}"] = {"part": part, "_detail": True, "height": -round(depth, 7), "color": [0.7, 0.55, 0.5] if name == "pores" else [0.8, 0.66, 0.62], "mix": "multiply",
-                                         "opacity": round(min(((0.15 if base_map is not None and not p.get("stack") else 0.3) if name == "pores" else 0.45 if name == "lip_lines" else 0.22 if name.startswith("cells") else 0.3) * d, 1), 3), "roughness": round(min(base_r + 0.22, 0.95), 3),
+                                         "opacity": round(min(((0.15 if base_map is not None and not p.get("stack") else 0.6 if p.get("stack") else 0.3) if name == "pores" else 0.45 if name == "lip_lines" else (0.03 if p.get("stack") else 0.22) if name.startswith("cells") else 0.3) * d, 1), 3),   # (stacked: the cells' colour read as hatch strokes) "roughness": round(min(base_r + 0.22, 0.95), 3),
                                          "mask": stack}
         if base_map is not None:  # the face's own relief: baked into the export's unique normal map (not a tiling detail)
             out["skin:micro_map"] = {"part": part, "height": -round(BASE_MAP["depth"] * d ** 0.5, 7), "mask": [base_map("r")] + copy.deepcopy(no_pores)}

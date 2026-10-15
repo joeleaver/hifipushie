@@ -1181,6 +1181,8 @@ def render(job):
         ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
         if job.get("clip") or L.get("shadow") is False:  # a section: what's cut away would still cast the
             ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
+        if "diffuse" in L:  # a highlight-only light (a catchlight: its window reflects, the sun itself lights nothing)
+            ld.diffuse_factor = float(L["diffuse"])
         if "specular" in L:  # a fill that lights without its own highlight (two round catchlights in an eye: a toy)
             ld.specular_factor = float(L["specular"])
         sun = bpy.data.objects.new(f"hp_sun{i}", ld)

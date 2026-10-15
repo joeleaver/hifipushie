@@ -156,7 +156,7 @@ def mesh_uv(base: dict) -> dict:
     (their atlas coordinates), "other" (the template's remaining triangles: body, mouth sock), "gid", "fid", "fade",
     "head", "is_new", "state"}."""
     from . import humanfit, onemesh
-    key = hashlib.sha1(json.dumps([base, VERSION], sort_keys=True, default=str).encode()).hexdigest()
+    key = hashlib.sha1(json.dumps([base, VERSION, "lookup3"], sort_keys=True, default=str).encode()).hexdigest()
     if _MESH.get("key") == key:
         return _MESH["m"]
     st = humanfit.state(base)
@@ -1396,6 +1396,7 @@ def report_text(rep: dict) -> str:
 
 _LOOK: dict = {}
 SEAM = (0.0015, 0.003)   # m: no picture within the first of the atlas' cut, full from the first + the second
+BODY_FADE = 0.015          # m: the head atlas fades in this far from the body's triangles
 REACH = (0.003, 0.004)   # m: full weight within the first of the head's own mesh, none past first + second
 
 
@@ -1437,7 +1438,7 @@ def lookup(base: dict, pos: np.ndarray, k: int = 8) -> tuple:
     (the template at rest), its triangle's atlas coordinates. weight: 0 off the head (REACH) and along the atlas' cut
     (SEAM: per-vertex coordinates cannot cross it; the layer under shows there)."""
     from scipy.spatial import cKDTree
-    key = hashlib.sha1(json.dumps([base, VERSION], sort_keys=True, default=str).encode()).hexdigest()
+    key = hashlib.sha1(json.dumps([base, VERSION, "lookup3"], sort_keys=True, default=str).encode()).hexdigest()
     if _LOOK.get("key") != key:
         at = mesh_uv(base)
         V, T, uvT = at["V"], at["T"], at["uvT"]
@@ -1483,7 +1484,34 @@ def lookup(base: dict, pos: np.ndarray, k: int = 8) -> tuple:
         own[m] = inat[m]
         mm_ = m & inat
         bu[mm_] = (b[mm_, :, None] * L["uvT"][t[mm_]]).sum(1)
+    # every point gets the head atlas' coordinates of its nearest HEAD triangle, even off the head (weight 0 there): a
+    # vertex left at (-1, -1) dragged the interpolated coordinates of its triangles across the atlas (a ragged colour
+    # band where the head met the neck)
+    miss = ~own
+    if miss.any():
+        hc = L.get("htree")
+        if hc is None:
+            L["htree"] = hc = cKDTree(L["V"][L["T"][:L["nT"]]].mean(1))
+        _, hcand = hc.query(Pn[miss], k=k)
+        hb = np.full(int(miss.sum()), np.inf)
+        for j in range(k):
+            t = hcand[:, j]
+            A, B, C = (L["V"][L["T"][t, i]] for i in range(3))
+            b = _closest(Pn[miss], A, B, C)
+            Q = b[:, :1] * A + b[:, 1:2] * B + b[:, 2:] * C
+            d = np.linalg.norm(Q - Pn[miss], axis=1)
+            m = d < hb
+            hb[m] = d[m]
+            sub = np.flatnonzero(miss)[m]
+            bu[sub] = (b[m, :, None] * L["uvT"][t[m]]).sum(1)
     wt = (1 - _sstep((best - REACH[0]) / REACH[1])) * own      # (the body, the mouth's sock: not the head's atlas)
+    # ... faded in from the body's triangles over BODY_FADE (a per-vertex 1 / 0 step there drew a jagged colour line
+    # where the head met the neck, whatever the image's own alpha did)
+    if L.get("otree") is None and len(L["T"]) > L["nT"]:
+        L["otree"] = cKDTree(L["V"][L["T"][L["nT"]:]].mean(1))
+    if L.get("otree") is not None:
+        do = L["otree"].query(Pn)[0]
+        wt *= _sstep(do / BODY_FADE)
     if L["seam"] is not None:
         ds = L["seam"].query(Pn)[0]
         wt *= _sstep((ds - SEAM[0]) / SEAM[1])
@@ -1504,7 +1532,10 @@ def layers(spec: dict, pj: dict, out: dict, part: str) -> None:
         out["skin:projection"] = {"part": part, "color": "image", "opacity": round(op, 4),
                                   "image": {"id": pj["albedo"], "wrap": "uv", "box": box, "channel": "alpha"}}
     d = float(pj.get("detail_depth", DETAIL_DEPTH))
-    if pj.get("detail") and d > 0:
+    # the projected RELIEF goes with the projected colour: with the atlas as a measuring instrument (opacity 0), the photo's
+    # fine relief is photo pixels too, and it carried their accidents as shaded grooves (a hair strand across a jaw: a
+    # "scratch"; a strand at an outer eye corner: a "crack"). Our own microrelief stands in.
+    if pj.get("detail") and d > 0 and op > 0:
         out["skin:projection_detail"] = {"part": part, "height": -round(d, 7),
                                          "mask": [{"image": {"id": pj["detail"], "wrap": "uv", "box": box, "channel": "luma"}}]}
 
@@ -1628,7 +1659,7 @@ def stage_light(light: dict, n: int = 24, angle: float = 55.0) -> dict:
     for i in range(n):
         if x[i] > 0.01 * float(x[:n].max() + 1e-9):
             lights.append({"dir": [round(float(v), 4) for v in D[i]], "energy": round(float(np.pi * x[i] * cm), 4),
-                           "color": [round(float(v), 4) for v in dc / cm], "angle": angle, "specular": 0.3})
+                           "color": [round(float(v), 4) for v in dc / cm], "angle": angle, "specular": 0.0})   # (no highlight from the soft fills: their broad discs lay in the cornea as grey polygonal patches over every iris, EEVEE and Cycles; the key keeps its catchlight)
     X = np.zeros((n + 1, 3))
     X[n] = x[n] * dc
     k = light.get("key")

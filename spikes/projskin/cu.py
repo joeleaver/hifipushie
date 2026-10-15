@@ -21,6 +21,7 @@ F.setdefault("cu_eye", {"lm": list(range(42, 48)), "pairs": [], "lines": [], "st
 F.setdefault("cu_cheek", {"lm": [46, 47, 35, 13, 14, 54, 45], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.15})
 F.setdefault("cu_face", {"lm": list(range(0, 68)), "pairs": [], "lines": [], "stages": (), "squint_mm": 6.0, "pad": 1.25})
 F.setdefault("cu_eyes", {"lm": list(range(42, 48)) + [22, 23, 24, 25, 26], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.35})
+F.setdefault("cu_eyesR", {"lm": list(range(36, 42)) + [17, 18, 19, 20, 21], "pairs": [], "lines": [], "stages": (), "squint_mm": 2.0, "pad": 1.35})
 VI = [int(x) for x in kw.get("views", "0,1").split(",")][: len(rj["views"])]
 meshes = bi._per_view(store.load(ref)["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
 rp = store._dir(own) / "skin_projection" / "report.json"
@@ -44,6 +45,15 @@ for vi in VI:
         for l_ in light["lights"]:
             l_["color"] = [1.0, 1.0, 1.0]
         light["world"] = {**light.get("world", {}), "color": [1.0, 1.0, 1.0]}
+    if kw.get("catch", "1") == "1" and kw.get("rake") != "1" and frames:
+        # ONE catchlight and the face's sheen, as a studio photograph has (the fills carry no highlight): a soft box a little above the camera,
+        # specular only, no shadow, weak (a strong one silvered the lashes and the nostrils)
+        _d, _u = np.asarray(frames[0]["dir"], float), np.asarray(frames[0]["up"], float)
+        _r = np.cross(_u, _d)
+        dv = _d + 1.2 * _u + float(kw.get("catch_x", -0.9)) * _r   # (up and to the side: on the iris' edge, not on the pupil)
+        dv /= np.linalg.norm(dv)
+        light = {**light, "lights": list(light["lights"]) + [{"dir": dv.tolist(), "energy": 0.6, "color": [1, 1, 1], "angle": 3,
+                 "specular": 0.0, "diffuse": 0.0, "shadow": False, "window": {"size": [0.25, 0.3], "distance": 2.5, "gain": float(kw.get("sheen", 1.0))}}]}
     flat = kw.get("flat") == "1"
     for k, im in stage.shoot(m, frames, None if flat else light, size=T, hair_on=hair, posed=pose or False, flat=flat, engine=kw.get("engine", "eevee"), samples=int(kw.get("samples", 24))).items():
         k = k + ("_flat" if flat else "")

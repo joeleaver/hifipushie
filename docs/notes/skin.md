@@ -1552,3 +1552,97 @@ area, brows, creases, facial hair, cosmetics), the stages as a table, craft rule
 common mistakes. The stages in detail + sources -> skin_layers; tool sections -> skin_tools. Removed provenance:
 "Before 2026-10-10 melanin 0 stopped at ITA 52 and very fair people rendered tan"; "eyeballs in the default groups
 since 2026-10-13"; the "(projskin)" label on the eye-forms paragraph.
+
+2026-10-14 (branch projskin2 from main 34346fc): lidfit GUARDS on the lid read: a column's crease must lie in the lower
+0.6 of the lid-to-brow distance, within 3 mm of its eye's other columns, the two eyes' medians within 2.5 mm (else the
+better eye's columns stand in), and traced crease crossings above the read + 3 mm are dropped; each prints a WARNING. (A
+read caught a brow's underside as one column's crease and the trace then followed the brow line: a fold 13-16 mm up.)
+Periorbital layer eased into the fill over 2 mm (a thin dark line along the lid band's edge).
+2026-10-14 RENDER RULES adopted (machine): every Blender only under bin/capped (the GPU lock script loads there); check
+renders sized to the feature (eye / crease / lip close-ups ~512 px, whole head ~768 px; the smallest judged thing >= 3-4
+px); supersampled multi-view sheets only for gate sheets; reader-based measures keep their resolution (cu.py size=700).
+Sheets wrap their captions (/mnt/data/hifipushie/projskin/sheets/wrapsheet.py).
+
+## Handover 2026-10-14 17:45 (projskin agent; successor: start here, then docs/notes/gates.md)
+BRANCH projskin2 (worktree /home/joe/dev/hifipushie/.claude/worktrees/projskin2, .venv symlinked from ../projskin), from main
+34346fc + main's gates merged in; last commit 2fab2e3 (see git log). NOT pushed, NOT merged. The old branch `projskin` holds
+per-picture history: NEVER push it. Per-person / family notes: workspace/private_notes/skin_notes_projskin_full.md (git-ignored).
+
+SCRATCH /mnt/data/hifipushie/projskin (env.sh points W at projskin2):
+- run.sh <script> [args] = LIGHT job (bin/slot); heavy.sh <gb> <script> = HEAVY (resources.heavy + bin/capped, GPU lock) via hv.py.
+- tests.sh <test file>: one pytest file per process, assets set; log out/test_<name>.log.
+- rset.sh <model> <ref model> <own (fitted-light model)> <out dir> [views] <checklist>: the GATE RENDER SET (faces at the photo
+  cameras 768, eyes / eyesR / mouth / cheek close-ups 512, closed eyes, all WITHOUT the groom), eyecmp, skincheck + review pairs.
+- rev.sh <render dir> <tag>: bin/review on <dir>/pairs (skin stage: --stage skin..., --not "head shape and proportions; hair").
+- fn21.sh: reseat_tail() (stack -> iris -> caruncle -> occfit -> renders), used by s21-s24.
+- out/private/gate/<head>_<round>/: renders, skincheck.md (item | ref | ours | pass), pairs/, review1/review.md.
+Spikes (worktree spikes/projskin): cu.py (close-ups at the photo cameras; size=, hair=0, views=, only=face,eyes,eyesR,mouth,cheek,
+pose=, flat=1, engine=cycles; one highlight-only soft box = sheen + catchlight: sheen=, catch_x=), skincheck.py (the skin
+checklist measured + review crops), eyecmp.py (lid reader on render vs photo: crease height / darkness, orbit, roughness),
+eyefit.py (one fold-adjust step; young lids lower the crease), lidfit.py (fold + tail + bags from the front photo, with read
+guards), smoothfold.py (crease as one arc + seated gate), occfit.py (crease / occlusion strength from eyecmp), famstack.py
+(full stack from an atlas), takestack.py (head + another model's stack, re-crease), recrease.py (crease + occlusion maps),
+tweak.py (THE HAND PASS: occ= crease= fine= <layer>=strength (edit is absolute from measured: pass ALL edits in one call)
+brows.k= eyes.k= skin.k= base.k=), seteyes.py, setop.py, atlas_model.py / atlas_picture.py + tonefit.py (forms-first atlases),
+necktone.py, toggle2.py <model> <tag> <prefixes> (TG_ONLY=face|eyes|mouth: renders with skin layers dropped: "which layer
+draws this"), iris1.py, exptest.py (export; needs CAP=20G).
+CAREFUL: stage caches (workspace/_g3_<model>) keep mesh attributes: after code changes to uv lookup / attributes delete them.
+pkill patterns must not match your own command line.
+
+PER HEAD
+- Tess: approved head tp_h3 (shape NOT to be changed). Current skin candidate tp_h3_s6 (= stack from tp_h3_lef2 atlas on
+  tp_h3_q3 forms + hand pass: occ 0.5, fine 1.0, lips 4.0, shade 0.6, periorbital 1.0, brows 0.6, oil 0.2, brows #4a3020 soft
+  .35 tail .85 thick .85 arch 1.3, eye occlusion .4 waterline .3, iris #4f4c38 / inner #5c4a2e, lip roughness .28, lower lashes
+  90 x 4.5 mm #2a221e). Checklist workspace/checklists/tess_skin.json. Latest COMPLETE round: out/private/gate/tess_s5
+  (skincheck 19/27; review1 MAJORs: brows too dark/blocky/cool [s6 lightens], orange lid band [s6: orbit warmth cap],
+  lips flat mauve decal + parting runs past corners, skin yellow-beige going grey at jaw/mouth, pin catchlight + big black pupil,
+  closed seam = cut (pale sliver, red corners [s6 fades corner reds]), grey bruise ring round closed socket, cheek no red
+  blotching / pores). IN FLIGHT: s6 round (rset + rev.sh) -> out/private/gate/tess_s6 (collect: skincheck.md, review1/review.md;
+  if review1 is missing run $S/rev.sh $O/private/gate/tess_s6 review1).
+- Garrett: frozen head gp_h6c (never edit). Skin gp_h6c_s (ps_39 gate; closed-lid mask reverted for blink-faded layers).
+  Queued from the hair agent: skin too dark / saturated vs photo (their EEVEE: /mnt/data/hifipushie/hair_garrett/out/
+  review_hg_G6/pair_1.png) and a light vertical stripe down the back of the neck (same family as the neck-join fix: delete
+  his _g3 stage caches and re-render first). Checklist workspace/checklists/garrett_skin.json; no gates round yet.
+- The private subjects: see workspace/private_notes (pointer). No gates round yet; their checklists are git-ignored.
+- Out-of-stage findings already sent to the coordinator: Tess jaw / chin / ears / eye openings / nose / profile, hair.
+
+TRIED AND FAILED (one line each)
+- blink_still mask on crease/occlusion: killed the open-eye crease (reverted to blink-faded layers + export map).
+- fills' specular via a soft box in stage_light: metallic nostrils, silver brows (reverted; Cycles hides broad suns from glossy).
+- along-ring displacement smoothing of the fold (6 passes): flattened the hood (RING_SMOOTH 0).
+- periorbital neutral axis + shade in the socket: purple-brown ring (colour-only periorbital, shade 70 % off the orbit).
+- swatch pores / cells for texture: sub-pixel or hatch strokes at face close-ups (now pore-scale speckle + mottle noise).
+- fine noise at 1.2 mm: stubble-like stipple. eyelid fold depth x2-3: no visible change in EEVEE (Cycles shows it).
+- iris hand colours greener: Joe had approved Tess's iris; measured front view matches (dE 3): keep near measured.
+- upper-lip L 54 vs 47.6: photo top-light shading; dispute with evidence, don't darken further (coordinator).
+
+DECISIONS (coordinator / Joe)
+- A private subject's crease frozen; the slit ring has ~9 vertices across the lid (a small kink can remain); more crease
+  rows = GNM topology / export change: NOT now.
+- An iris may need hand-setting when the photo's iris pixels read blue-black from the light. Tess's iris: Joe "eye colors look great".
+- Review scope: skin crops without the groom; --stage skin / --not head shape + hair; out-of-stage list to coordinator only.
+- No shape changes on approved heads (tp_h3, gp_h6c). Approval only via bin/approve (Joe / coordinator).
+- Crease line + lid occlusion: full on the open eye, faded by pose; export ships <atlas>_blink_multiply.png.
+- Heavy renders (full sheets, bakes): offload via spikes/offload/remote.sh + job_skintour.py on NICO-TOP (pack with
+  spikes/tour/pack_model.py; NOTE: stacked models reference workspace/_images ids, pack_model does not copy them yet).
+  Keep only light checks local; log per-frame wall time (> ~5 s risky on the laptop GPU).
+
+NEXT, in order
+1. Collect tess_s6; fix the worst skin MAJOR, rerun rset + rev.sh; loop until review PASS (nothing to coordinator before
+   PASS / Joe decision / STUCK after 3 approaches). Likely next: lips (colour split upper/lower, sheen, parting ends), grey jaw
+   / mouth cast (shade + occlusion under the jaw), closed seam (lens gap is geometry: list as out-of-stage if it persists).
+2. Garrett: dark / saturated skin under the hair agent's light + neck stripe; full gates round.
+3. The private subjects' gates rounds (private notes).
+4. Make the offload route carry stacked models (copy referenced _images ids into the job) and move rset there.
+
+## projskin successor 2026-10-14 evening (rounds s6r+)
+- OFFLOAD WORKS for stacked heads (f5fd389): spikes/tour/pack_model.py <model> <job> [ref own ...] copies every model's folder
+  (minus history / scene caches: skin_projection/report.json = the fitted lights travels), the pictures (@refs), and every
+  content-store file the specs name (16-hex ids in _images / _painted); unpack() on the machine. job_skintour.py runs one
+  cu.py per line of <job>/cu.txt. Test tests/test_pack_model.py. Scratch: $S/rset_remote.sh = rset.sh with the renders on
+  NICO-TOP (pack + 3 cu lines + remote.sh, eyecmp / skincheck locally). Tess s6: 13 min round trip, stage build 210 s there
+  (531 s on the laptop), renders match the laptop's (mean |diff| 0.9 / 255) EXCEPT:
+- RED DOTS on NICO-TOP renders (61 on face_v0 at 768, one side only; laptop 0): EEVEE without the soft-box catchlight
+  (catch=0) shows none, flat none: they are glints of the blemish cores (blemish_bump: roughness base - 0.14) under the
+  specular-only window light, which NVIDIA EEVEE shows and the laptop's AMD EEVEE didn't. The reviewer reads them as red
+  dots the reference doesn't have. Fix in the CONTENT (Tess's reference shows no papules), not the renderer.

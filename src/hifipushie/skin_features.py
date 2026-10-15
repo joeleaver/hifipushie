@@ -278,6 +278,13 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
                   mask=m, **({"height": round(0.0005 * old * min(a, 1.5), 6)} if sx and old > 0.2 else {}))
 
     _eyes(spec, p, J, out, layer, T, ctx)
+    # the eye corners' wet red (caruncle, canthus) fades as the lid closes: on a closed eye it showed as red lines at the
+    # seam's ends (a blind review read the closed lid as a cut)
+    wb_ = float(np.clip(float((((spec.get("base") or {}).get("head") or {}).get("pose") or {}).get("lid_upper", 0.0) or 0.0) / 0.0095, 0.0, 1.0))
+    if wb_ > 0:
+        for k_ in [k for k in out if any(t in k for t in ("caruncle", "canthus", "eye_shade"))]:
+            if out[k_].get("opacity") is not None:
+                out[k_]["opacity"] = round(float(out[k_]["opacity"]) * (1 - wb_), 4)
     _gnm_mouth(spec, out, part)
     _wrinkles(p, J, layer, T, ctx)
     from . import skin_folds
