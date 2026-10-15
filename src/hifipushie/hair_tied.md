@@ -17,7 +17,8 @@ tie_hair(name, style={"tail": {"tousle": 0.9}})                                 
 tie_hair(name, style={"front": {"looseness": 0.6, "drape": 0.6}})                  # riff: a held-back head with a LOOSE front
 tie_hair(name, style={"volume": 0.6})                                              # riff: BODY: the hair stands up from the part and arcs over
 tie_hair(name, look={"sun": 0.8, "highlights": 0.4})                               # riff: sun-lightened lengths, lighter ribbons
-tie_hair(other, carry_from=name)                                                   # the same hair on another head
+tie_hair(other, carry_from=name)                                                   # the same hair on another head (regrown)
+tie_hair(other, carry_from=name, reseat=True)                                      # an approved groom on a changed head, lock for lock
 look_hair(name, views=["around"])                                                  # six sides with the bust
 ```
 

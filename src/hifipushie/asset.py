@@ -50,6 +50,23 @@ def _blender(job: dict, timeout: float = 600):
             raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
 
 
+GAME_SCRIPT = Path(__file__).with_name("blender_game.py")
+
+
+def game(glb: Path, timeout: float = 900, **job) -> str:
+    """The game-like EEVEE render of an exported GLB (blender_game.py): job keys frames / poses / size / hide
+    (asset.preview) or shots / anim / out (the engine-stage checks). Returns Blender's log."""
+    with tempfile.TemporaryDirectory(prefix="hifipushie-game-") as tmp:
+        p = Path(tmp) / "job.json"
+        p.write_text(json.dumps({"glb": str(glb), **{k: v for k, v in job.items() if v is not None}}))
+        from . import resources
+        r = resources.run([render.BLENDER, "-b", *render._threads(), "--factory-startup", "--python-exit-code", "1",
+                           "--python", str(GAME_SCRIPT), "--", str(p)], capture_output=True, text=True, timeout=timeout)
+        if r.returncode:
+            raise RuntimeError(f"blender failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
+        return r.stdout
+
+
 def margin_px(texture: int) -> int:
     """Gap between UV islands in texels: enough for bilinear filtering and the first mips (dilation fills it)."""
     return max(2, texture // 512)
@@ -556,6 +573,60 @@ def topology_parts(spec: dict, ctx: dict, out_dir: Path, log: list) -> dict:
 
 HIDDEN_RIM = 0.012  # m: buried skin and cloth is kept this far in from what shows
 OWN_SURFACE = 0.0012  # m: a GNM mouth part's meshed vertex this near GNM's own (subdivided) vertices is its surface
+
+
+UNDER_CLOTH_REACH = 0.06  # m: skin with a garment this close along its normal is covered
+UNDER_CLOTH_TUBE = 0.012  # m: ... within this radius of the normal's line (the sim mesh is ~1 cm)
+UNDER_CLOTH_RIM = 0.04  # m: covered skin this close to uncovered skin stays (a sleeve's cuff, a collar, a hem
+# lifting in a pose: what the opening shows)
+
+
+def under_cloth_keep(p: dict, cloth: list[dict]) -> np.ndarray:
+    """Per triangle of an export part (the skin): False where all three corners are covered by a garment (one of
+    `cloth`'s export parts lies within UNDER_CLOTH_REACH along the vertex normal, inside a UNDER_CLOTH_TUBE line) and
+    no uncovered vertex is within UNDER_CLOTH_RIM: the skin under clothes, which games leave out (never seen; in a pose
+    it pokes through the cloth)."""
+    from scipy.spatial import cKDTree
+    V = np.asarray(p["verts"], np.float64)
+    cv = np.asarray(p["corner_vert"], np.int64)
+    N = np.zeros_like(V)
+    np.add.at(N, cv, np.asarray(p["normal"], np.float64))
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    tris = []
+    for c in cloth:
+        Vc = np.asarray(c["verts"], np.float64)
+        tris.append(Vc[np.asarray(c["corner_vert"], np.int64).reshape(-1, 3)])
+    T = np.concatenate(tris)  # (m, 3, 3)
+    A, E1, E2 = T[:, 0], T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+    cen = T.mean(1)
+    rad = np.linalg.norm(T - cen[:, None], axis=2).max()
+    tree = cKDTree(cen)
+    used = np.unique(cv)
+    covered = np.zeros(len(V), bool)
+    for s in range(0, len(used), 20000):
+        ids = used[s:s + 20000]
+        for i, nb in zip(ids, tree.query_ball_point(V[ids], UNDER_CLOTH_REACH + rad)):
+            if not nb:
+                continue
+            nb = np.asarray(nb)
+            d = N[i]  # Moller-Trumbore: the ray from the vertex along its normal against the nearby cloth triangles
+            pv = np.cross(d, E2[nb])
+            det = (E1[nb] * pv).sum(1)
+            ok = np.abs(det) > 1e-12
+            inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+            tv = V[i] - A[nb]
+            u = (tv * pv).sum(1) * inv
+            qv = np.cross(tv, E1[nb])
+            v = (qv @ d) * inv
+            t = (E2[nb] * qv).sum(1) * inv
+            eps = 1e-4  # (a ray through a shared edge or vertex hits)
+            hit = ok & (u >= -eps) & (v >= -eps) & (u + v <= 1 + eps) & (t > -0.002) & (t < UNDER_CLOTH_REACH)
+            covered[i] = bool(hit.any())
+    open_ = used[~covered[used]]
+    if len(open_):
+        near = cKDTree(V[open_]).query(V[used], distance_upper_bound=UNDER_CLOTH_RIM)[0] < UNDER_CLOTH_RIM
+        covered[used[near]] = False
+    return ~covered[cv.reshape(-1, 3)].all(1)
 
 
 def _deep_hidden(V: np.ndarray, hidden: np.ndarray, part: np.ndarray, rim: float = HIDDEN_RIM) -> np.ndarray:
@@ -1589,7 +1660,9 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
 
 def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
-            fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None) -> dict:
+            fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
+            lods: bool | list | None = None, cloth_triangles: int | None = None,
+            cull_under_cloth: bool = True) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1605,7 +1678,12 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     movable asset (a prefab of one instance too), as in the Blender scene. The paint and AO maps are baked by
     Cycles from the model's Blender scene (`scene_maps`; AO is each asset's own, as an engine expects).
     face_shapes: True (every ARKit shape faceshapes.py makes) or a list of names: morph targets on the parts that
-    move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json."""
+    move with the face (faceshapes.apply), the neutral's mouth closed; listed per part in the json.
+    lods: True (lods.LOD_RATIOS) or a list of shares of LOD0's triangles: <asset>_LOD<k>.glb beside the GLB, the same
+    skeleton, weights, face shapes and atlas (they reference LOD0's maps by file name); hair cards by whole layers.
+    cloth_triangles: the simulated garments together decimated to this many triangles (their sim mesh, two-sided, is
+    10-40k each: Tess's jeans 38k, sweater 28k); None keeps the sim mesh. cull_under_cloth: the skin (and shells on
+    it without a garment fit, socks) the garments cover is left out (under_cloth_keep), a rim kept at the openings."""
     log = _Log(name)
     t = time.time()
     spec = store.load(name)
@@ -1872,8 +1950,20 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 "KHR_materials_sheen": {"sheenColorFactor": sheen, "sheenRoughnessFactor": 0.35}}
     if spec.get("cloth"):  # simulated garments (cloth.py): their settled meshes, the flat pattern as the uv
         from . import cloth as clothmod
-        for pn_c, cpart, cfiles in clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048),
-                                                         log=log.append):
+        cparts = clothmod.export_part(name, spec, out_dir, texture=min(texture, 2048), log=log.append)
+        n_c = sum(len(cp["corner_vert"]) // 3 for _, cp, _ in cparts)
+        cover_by = [cp for _, cp, _ in cparts]  # (the sim's own mesh: what covers the skin, before any decimation)
+        if cloth_triangles and n_c > cloth_triangles:  # the sim's 1 cm mesh (two-sided) is far over a game budget:
+            # decimated like a LOD (patches with their borders held: seams, hems, the pattern's uv)
+            from . import lods as lodmod
+            dec = []
+            for pn_c, cpart, cfiles in cparts:
+                q, _, r_ = lodmod.lod_part(cpart, None, cloth_triangles / n_c)
+                log.append(f"cloth {pn_c}: {r_['triangles0']} -> {r_['triangles']} triangles (cloth_triangles "
+                           f"{cloth_triangles} over {n_c})")
+                dec.append((pn_c, q, cfiles))
+            cparts = dec
+        for pn_c, cpart, cfiles in cparts:
             cpart["atlas"] = len(atlas_files)
             parts[pn_c] = cpart
             origin[pn_c] = pn_c
@@ -1884,6 +1974,29 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             names.append(pn_c)
             sizes[len(names) - 1] = min(texture, 2048)
             ntri += report[pn_c]["triangles"]
+        if cull_under_cloth and cparts:  # skin the garments cover: never seen, and a bent limb pokes it through
+            cl = cover_by
+            skin_pn = (spec.get("skin") or {}).get("part", "body")
+            under = {skin_pn} | {p_ for p_, d_ in defs.items() if (d_ or {}).get("shell") == skin_pn
+                                 and not (d_ or {}).get("garment")}  # (the skin and paint-like shells: socks)
+            for pn in list(parts):
+                if report.get(pn, {}).get("cloth") or report.get(pn, {}).get("curves") or pn in pf_of:
+                    continue
+                if origin.get(pn) not in under:
+                    continue
+                n0 = len(parts[pn]["corner_vert"]) // 3
+                keep = under_cloth_keep(parts[pn], cl)
+                if keep.all():
+                    continue
+                cm = np.repeat(keep, 3)
+                for k_ in ("corner_vert", "uv", "normal", "tangent", "sign"):
+                    parts[pn][k_] = parts[pn][k_][cm]
+                report[pn]["triangles"] = int(keep.sum())
+                report[pn]["under_cloth_dropped"] = int(n0 - keep.sum())
+                ntri -= int(n0 - keep.sum())
+                log.append(f"{pn}: {n0 - int(keep.sum())} of {n0} triangles under the garments dropped (covered "
+                           f"within {UNDER_CLOTH_REACH * 1000:.0f} mm along the normal, {UNDER_CLOTH_RIM * 1000:.0f} mm "
+                           "rim kept at every opening)")
     from . import lashes as lashmod
     lash = lashmod.export_part(spec, out_dir, log=log.append)
     if lash:  # eyelash ribbons (lashes.py): their own mesh and tiny maps, two-sided; face shapes turn them with the lids
@@ -2007,12 +2120,60 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     if seam:
         report[seam["part"]]["meshes"] = seam["report"]
     write_glb(glb, aname, parts, atlas_files, ctx["prefabs"], looks, rigged, extra_ext)
+    lod_info = []
+    if lods:
+        from . import lods as lodmod
+        ratios = list(lodmod.LOD_RATIOS) if lods is True else [float(r) for r in lods]
+        cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
+        tier_parts = {}
+        if locals().get("hair_cards") and rigged:  # hair LODs are the groom's own card TIERS (one atlas for all:
+            # hair.export_hair), cut for their budget; thinning LOD0's cards dropped the tail first
+            from . import hair as hairmod
+            hb_ = next((i for i, b in enumerate(rigged["bones"]) if b["name"].endswith("Head")), 0)
+            for k, r in enumerate(ratios, 1):
+                tier_ = lodmod.HAIR_TIERS[min(k, len(lodmod.HAIR_TIERS)) - 1]
+                sp_ = {**spec, "hair": {**spec["hair"], "export": {**(spec["hair"].get("export") or {}), "tier": tier_}}}
+                try:
+                    tp_, _tf = hairmod.export_cards(name, out_dir / f"_lod{k}", sp_, log)
+                except Exception as e:  # (LOD0 hair kept)
+                    log.append(f"WARNING LOD{k}: hair tier {tier_} failed ({type(e).__name__}: {e}); LOD0's cards kept")
+                    continue
+                tp_.pop("hair", None)
+                tp_["atlas"] = parts[pn_h]["atlas"]
+                nv_ = len(tp_["verts"])
+                Jh = np.zeros((nv_, 4), np.int64)
+                Jh[:, 0] = hb_
+                Wh = np.zeros((nv_, 4), np.float32)
+                Wh[:, 0] = 1.0
+                tier_parts[k] = (tp_, (Jh, Wh), tier_)
+        for k, r in enumerate(ratios, 1):
+            tl = time.time()
+            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards,
+                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None)
+            if k in tier_parts:
+                tp_, w_, tier_ = tier_parts[k]
+                lp[pn_h] = tp_
+                if lr is not None:
+                    lr["weights"][pn_h] = w_
+                rep_l[pn_h] = {"triangles0": len(parts[pn_h]["corner_vert"]) // 3,
+                               "triangles": len(tp_["corner_vert"]) // 3, "tier": tier_}
+            lg = out_dir / f"{aname}_LOD{k}.glb"
+            write_glb(lg, aname, lp, atlas_files, {}, looks, lr, extra_ext, external=True)
+            tri_k = sum(v["triangles"] for v in rep_l.values())
+            lod_info.append({"lod": k, "ratio": r, "glb": str(lg), "triangles": tri_k,
+                             "parts": {pn: v["triangles"] for pn, v in rep_l.items()}})
+            log.append(f"LOD{k} ({r:g} of LOD0): {tri_k} triangles in {time.time() - tl:.1f}s -> {lg.name} (maps "
+                       f"by file name beside it); " + ", ".join(f"{pn} {v['triangles']}" for pn, v in rep_l.items()))
+        import shutil
+        for k in tier_parts:  # (the tiers' own copies of the shared hair atlas)
+            shutil.rmtree(out_dir / f"_lod{k}", ignore_errors=True)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
         log.append(f"wrote {glb.with_suffix('.fbx').name} in {time.time() - tf:.1f}s")
     for _, f in atlas_files:
-        f["specular"].unlink()
+        if not lods:  # (the LODs' GLBs read it by name)
+            f["specular"].unlink()
     (out_dir / "lowpoly.npz").unlink()
     high.unlink()
     out_dir.joinpath("high_focus.npz").unlink(missing_ok=True)
@@ -2040,7 +2201,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             "atlases": {an: {"size": sizes[ai], "maps": maps_info[an], "height_range_m": heights[an],
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
-            "parts": report, "prefabs": prefabs, **({"skin": skin_recipe} if skin_recipe else {}),
+            "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}), **({"skin": skin_recipe} if skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
                         "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
                         "layers_seated": rigged.get("layers_seated", []),
@@ -2072,14 +2233,26 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                             "prefabs": "one mesh per prefab (a primitive per part, in the prefab's frame), a node "
                                        "per instance with extras.prefab"},
             "seconds": round(time.time() - t, 1), "log": log}
+    try:  # the engine-agnostic shading notes beside the GLB (shading.py): what each material is meant to do
+        from . import shading
+        from .hair import look_of as _hlook
+        sj, sm = shading.write(info, out_dir, aname, looks=looks,
+                               hair_look=_hlook(spec) if spec.get("hair") else None, eyes_part=ek[0] if ek else None)
+        info["shading"] = {"json": str(sj), "md": str(sm)}
+    except Exception as e:  # (notes never fail an export; said in the log)
+        log.append(f"WARNING shading notes not written: {type(e).__name__}: {e}")
     (out_dir / f"{aname}.json").write_text(json.dumps(info, indent=1))
     return info
 
 
 def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, focus=None, zoom: float = 1.0,
             hide: list[str] | None = None, lighting: dict | None = None, cameras: list | None = None,
-            denoise: bool = True, poses: list[dict] | None = None):
-    """Render the exported GLB (as an engine would load it) with Cycles: checks the textures, not the model.
+            denoise: bool = True, poses: list[dict] | None = None, engine: str = "game"):
+    """Render the exported GLB as a game draws it: re-imported by Blender's glTF importer and rendered in EEVEE set up
+    like a game (no ray tracing, alpha-tested cards, shadow maps), its materials built from the export's shading notes
+    (<asset>_shading.json: blender_game.py, the engine stage of docs/notes/gates.md), face shapes and the blink map
+    driven as an engine drives them. engine="cycles": the old path-traced look of the importer's materials (lighting,
+    samples, denoise apply to it only).
     Views as in look; the GLB is Y up, so the cameras are turned to match. hide: parts left out (the roof and
     walls, to see an interior). lighting: a style look ({"lights", "world", "look", "exposure", "view"}, as scene.look
     takes), so the preview compares with the painted look; default a neutral studio under Standard. cameras:
@@ -2092,9 +2265,12 @@ def preview(glb: Path, views: list[str], size: int = 512, samples: int = 24, foc
             render.camera_frame(c, i) for i, c in enumerate(cameras or [])]  # perspective: {"eye", "target", "fov"}
         for f in frames:  # Blender's glTF importer converts back to Z up, so the look cameras apply as they are
             f["out"] = str(Path(tmp) / f"{f['name']}.png")
-        _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
-                  "hide": list(hide or []), "lighting": lighting, "denoise": denoise, "poses": poses},
-                 timeout=600 + 60 * len(poses or []))
+        if engine == "game":
+            game(glb, frames=frames, size=size, hide=hide, poses=poses, timeout=600 + 60 * len(poses or []))
+        else:
+            _blender({"mode": "preview", "glb": str(glb), "views": frames, "size": size, "samples": samples,
+                      "hide": list(hide or []), "lighting": lighting, "denoise": denoise, "poses": poses},
+                     timeout=600 + 60 * len(poses or []))
         if poses is None:
             return render.contact_sheet([Image.open(f["out"]).convert("RGB") for f in frames], frames)
         return [render.contact_sheet([Image.open(f"{f['out'][:-4]}_p{i}.png").convert("RGB") for f in frames], frames)

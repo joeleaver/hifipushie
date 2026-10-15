@@ -154,6 +154,7 @@ LOOK = {"gap": "#221310", "lit": "#56352d", "sheen": "#86524a", "grey": "#9a948d
 # and eevee_sat = seen's saturation / lit's (EEVEE then draws seen exactly; Cycles gets what the gamut allows).
 # Keys given in the look still win.
 SEEN = {"gap": 0.3, "sheen": 1.45, "tip": 1.12}  # x lit (linear)
+CARD_SAT_EXP = 0.55  # card_sat = eevee_sat ** this when the look has eevee_sat and no card_sat (full_look)
 
 
 def _lin(c) -> np.ndarray:
@@ -194,6 +195,13 @@ def full_look(look: dict | None) -> dict:
     lk = dict(look or {})
     if lk.get("seen"):
         lk = {**seen_look(lk["seen"], float(lk.get("eevee_sat", LOOK["eevee_sat"]))), **lk}
+    if "card_sat" not in lk and "eevee_sat" in lk:
+        # the cards are drawn by a plain material, as EEVEE draws the strands: the same desaturation of the look's
+        # colours (asked for Cycles' hair BSDF). Tess's W18 look sets eevee_sat 0.3 and no card_sat: her cards came
+        # out 1.8x the strands' saturation (check_tiers), orange beside the approved strand look
+        # measured (check_tiers on Tess's W18 hero cards: card_sat 1.0 -> 1.8x the strands' saturation, 0.3 -> 0.7x):
+        # the cards' atlas is not the strands' colour pipeline, so not the same factor: eevee_sat ** CARD_SAT_EXP
+        lk["card_sat"] = round(float(lk["eevee_sat"]) ** CARD_SAT_EXP, 3)
     return {**LOOK, **lk}
 LOCK_KEYS = {"pts", "width", "thickness", "cup", "taper", "belly", "root", "twist", "flip", "grey", "radius", "tilt",
              "handles", "tier", "edge", "hand", "free", "space", "core", "strands", "swoop", "hairs"}
@@ -879,6 +887,17 @@ _METRE_KEYS = {("length",), ("volume",), ("hairline", "temples"), ("hairline", "
                ("tie", "tail", "length"), ("tie", "tail", "fullness"), ("tie", "curtain", "lift"),
                ("tie", "frame", "length"), ("tie", "frame", "width")}
 _UNITLESS = {"across", "ramp"}  # (volume.across / ramp are shares, not metres)
+# The tie's own geometry that a tied STYLE writes in absolute metres (hair_flow.style: the dome's stand-off, wisp and
+# stray lengths, the tail's sway / air / lock waves). Until 2026-10-14 fit_to_head did not scale these: th_W18 carried
+# onto tp_h3 (a 15 % bigger scalp) kept its dome and face wisps at the old head's size while its tail scaled (review:
+# "shorter face wisps", a flatter top). They scale by this head over the one they were last GROWN at (`fit.abs_r`,
+# stamped by carry), so a groom regrown on its own head is unchanged. Value: the dict's keys that are NOT metres.
+_TIE_KEYS = {("tie", "gather", "volume"): {"arc", "layers", "locks", "cross", "hold"}, ("tie", "gather", "puff"): set(),
+             ("tie", "gather", "zig"): set(), ("tie", "gather", "above"): set(), ("tie", "wisps", "length"): set(),
+             ("tie", "wisps", "over"): set(), ("tie", "tail", "stray_length"): set(), ("tie", "tail", "sway"): set(),
+             ("tie", "tail", "sway_length"): set(), ("tie", "tail", "flick"): set(), ("tie", "tail", "air"): set(),
+             ("tie", "tail", "lock_wave"): set(), ("tie", "tail", "lock_wavelength"): set(),
+             ("tie", "tail", "coil_radius"): set(), ("tie", "escaped", "length"): set()}
 
 
 def head_ref(sc: Scalp) -> dict:
@@ -895,12 +914,13 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
     if not ref:
         return g
     k = float(np.median(sc.R)) / float(ref["r"])
-    if abs(k - 1.0) < 2e-4 and np.allclose(sc.C, ref["c"], rtol=0, atol=2e-5):  # (head_ref rounds to 0.01 mm)
-        return g
+    k_tie = float(np.median(sc.R)) / float(ref["abs_r"]) if ref.get("abs_r") else 1.0
+    if abs(k - 1.0) < 2e-4 and abs(k_tie - 1.0) < 2e-4 and np.allclose(sc.C, ref["c"], rtol=0, atol=2e-5):
+        return g  # (head_ref rounds to 0.01 mm)
     import copy as _copy
     g = _copy.deepcopy(g)
 
-    def scale(d, path):
+    def scale(d, path, k=k, unitless=_UNITLESS):
         node = d
         for key in path[:-1]:
             node = node.get(key) if isinstance(node, dict) else None
@@ -910,7 +930,8 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
             return
         v = node[path[-1]]
         if isinstance(v, dict):
-            node[path[-1]] = {a: (b * k if isinstance(b, (int, float)) and a not in _UNITLESS else b) for a, b in v.items()}
+            node[path[-1]] = {a: (b * k if isinstance(b, (int, float)) and not isinstance(b, bool) and a not in unitless
+                                  else b) for a, b in v.items()}
         elif isinstance(v, (int, float)) and not isinstance(v, bool):
             node[path[-1]] = v * k
         elif isinstance(v, list) and all(isinstance(x, (int, float)) for x in v):
@@ -918,6 +939,9 @@ def fit_to_head(g: dict, sc: Scalp) -> dict:
 
     for path in _METRE_KEYS:
         scale(g, path)
+    if abs(k_tie - 1.0) >= 2e-4:
+        for path, unitless in _TIE_KEYS.items():
+            scale(g, path, k_tie, unitless)
     fp = (g.get("hairline") or {}).get("front_points")
     if fp:
         c0, c1 = float(ref["c"][2]), float(sc.C[2])
@@ -936,9 +960,114 @@ def carry(src: str, src_spec: dict | None = None, sc: Scalp | None = None) -> di
     sp = store.load(src) if src_spec is None else src_spec
     h = _copy.deepcopy(sp.get("hair") or {})
     g = h.get("groom")
-    if g is not None and not g.get("fit"):
-        g["fit"] = head_ref(sc if sc is not None else scalp(src, sp))
+    if g is not None and (not g.get("fit") or not g["fit"].get("abs_r")):
+        sc = sc if sc is not None else scalp(src, sp)
+        # abs_r: the head the tie's absolute metres (_TIE_KEYS) were grown at; kept once stamped (they stay relative
+        # to that head through later carries)
+        g["fit"] = {**(g.get("fit") or head_ref(sc)), "abs_r": round(float(np.median(sc.R)), 5)}
     return h
+
+
+SEAT_NEAR, SEAT_FAR = 0.03, 0.09  # m off the source scalp: closer, a point keeps its scalp address (az, el, h x k);
+# further (a hanging tail, wisps below the jaw), it moves rigidly with the head (scaled about its centre); between, a blend
+SEAT_STRAND_M = ("wave", "wavelength", "roots_m", "clump_size", "curl")  # lock strand dials in metres
+
+
+SEAT_EAR_FADE = (25.0, 35.0)  # deg: the ear warp fades out this far above the ear's top / round the ear's azimuths
+
+
+def _ear_warp(sa: Scalp, sb: Scalp):
+    """(az, el) on head A -> (az, el) on head B that carries A's ear onto B's (both sides): hair that passed over the
+    top of A's ear passes over B's. Without it, tp_h3's ear (its top 0.15 R higher than tess_a1's) stood in the way of
+    W18's hair and lifted it into a ledge at the temples. Identity where an ear isn't found."""
+    ea, eb = ear(sa), ear(sb)
+    if not ea or not eb:
+        return lambda a, e: (a, e)
+    ca, cb = np.asarray(ea["cells"], float), np.asarray(eb["cells"], float)
+    a_mid, b_mid = 0.5 * (ea["front"] + ea["back"]), 0.5 * (eb["front"] + eb["back"])
+    half = 0.5 * max(ea["back"] - ea["front"], eb["back"] - eb["front"]) + 10.0
+    ta, la, tb, lb = ca[:, 1].max(), ca[:, 1].min(), cb[:, 1].max(), cb[:, 1].min()
+    mid_a = 0.5 * (a_mid + b_mid)
+
+    def warp(a, e):  # (elevation only: the ears' azimuths differ by a degree or two)
+        a, e = np.asarray(a, float), np.asarray(e, float)
+        g = np.interp(e, [la, ta, ta + SEAT_EAR_FADE[0]], [lb - la, tb - ta, 0.0])
+        de = np.zeros_like(e)
+        for mid in (mid_a, 360.0 - mid_a):
+            dz = np.abs((a - mid + 180.0) % 360.0 - 180.0)
+            w = np.clip(1.0 - (dz - half) / SEAT_EAR_FADE[1], 0.0, 1.0)
+            de += w * w * (3 - 2 * w) * g
+        return a, np.clip(e + de, -89.0, 89.0)
+    return warp
+
+
+def seat_locks(src_spec: dict, sa: Scalp, sb: Scalp) -> dict:
+    """The source's GROWN locks worn on another head, every lock kept (the same wisps, curls, tail locks and their
+    lengths, which a regrow re-rolls: tie_hair(carry_from) on a new head gave other wisps their long lengths and the
+    approved face-framing ones came out short, hair-cards 2026-10-14). Near the scalp a point keeps its address on the
+    scalp (az, el) at its height x k (k = the new scalp's median radius over the old one's), so the hair sits on the
+    new skull's own shape; points far off the scalp move with the head as a whole (C_new + k (P - C_old)); widths,
+    thicknesses and the strands' metre dials scale by k."""
+    import copy as _copy
+    k = float(np.median(sb.R)) / float(np.median(sa.R))
+    out = {}
+    warp = _ear_warp(sa, sb)
+
+    def move(P):
+        P = np.asarray(P, float).reshape(-1, 3)
+        a, e, hh = sa.coords(P)
+        a2, e2 = warp(a, e)
+        near = sb.point(a2, e2, hh * k)
+        far = np.asarray(sb.C, float) + k * (P - np.asarray(sa.C, float))
+        w = np.clip((hh - SEAT_NEAR) / (SEAT_FAR - SEAT_NEAR), 0.0, 1.0)
+        w = (w * w * (3 - 2 * w))[:, None]
+        return (1 - w) * near + w * far
+
+    for n, lk in (hair_of(src_spec).get("locks") or {}).items():
+        lk = _copy.deepcopy(lk)
+        lk["pts"] = lock_address(sb, lk, move(lock_world(sa, lk, lk["pts"])))
+        if lk.get("core"):
+            lk["core"] = lock_address(sb, lk, move(lock_world(sa, lk, lk["core"])))
+        if lk.get("handles"):
+            hs = []
+            for hd in lk["handles"]:
+                if hd:
+                    ab = lock_address(sb, lk, move(lock_world(sa, lk, [hd[:3], hd[3:]])))
+                    hs.append(ab[0] + ab[1])
+                else:
+                    hs.append(hd)
+            lk["handles"] = hs
+        for key in ("width", "thickness", "cup"):
+            if isinstance(lk.get(key), (int, float)):
+                lk[key] = round(float(lk[key]) * k, 5)
+        if isinstance(lk.get("radius"), list):
+            lk["radius"] = [round(float(r) * k, 5) for r in lk["radius"]]
+        st = lk.get("strands")
+        if isinstance(st, dict):
+            for key in SEAT_STRAND_M:
+                if isinstance(st.get(key), (int, float)):
+                    st[key] = round(float(st[key]) * k, 5)
+        out[n] = lk
+    return out
+
+
+def reseat(name: str, src: str, note: str = "") -> dict:
+    """Wear model `src`'s APPROVED hair on `name`'s head as it is, lock for lock (seat_locks), instead of regrowing it
+    from its style (tie_hair carry_from: same words, but a new head re-rolls which lock gets which length, and the
+    approved look is lost). The groom (style words, look, strand dials, hairline) comes along via carry, so later
+    riffs regrow from the same words on this head. Returns {"version", "locks", "k"}."""
+    sp = store.load(src)
+    spec = store.load(name)
+    sa, sb = scalp(src, sp), scalp(name, spec)
+    h = carry(src, sp, sa)
+    h["locks"] = seat_locks(sp, sa, sb)
+    h.pop("removed", None)
+    spec["hair"] = h
+    if (sp.get("parts") or {}).get("hair"):
+        spec.setdefault("parts", {})["hair"] = json.loads(json.dumps(sp["parts"]["hair"]))
+    validate(spec)
+    v = store.save(name, spec, note or f"hair: {src}'s locks re-seated")
+    return {"version": v, "locks": len(h["locks"]), "k": round(float(np.median(sb.R) / np.median(sa.R)), 4)}
 
 
 def tie_style(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
@@ -2331,6 +2460,13 @@ SHORT_TIERS = {"hero": {"triangles": 16000, "cap_step": 6.0, "group": "pair", "l
 SHORT_TOP = 0.6  # x a clump's spread along its normal: a short cut's card stands at the top of its clump
 SHORT_TIP = 0.0015  # m: how far a short cut's card tips rise off the cap (x 0.2-1.6 per card)
 SWOOP_CARDS = 3  # a swoop's dedicated cards (one lock)
+CUT_GROUPS = ["sub", "pair", "lock", "free"][:3]  # finer -> coarser card cuts (clump_cards' groups; "free" drops lying hair)
+PRIO_FLY = 2.0  # budget priority offsets (lower = kept first): single hairs after every coverage layer
+PRIO_FREE = -0.6  # hanging hair (free locks: a tail) before the second layer of hair lying on the head
+PRIO_HALO = 0.35  # pooled single hairs (the halo as ~30 fly cards, ~400 triangles): kept just before a tail's second layer
+PRIO_FACE = -0.8  # face-framing hair (wisps, curls at the temples) before anything but the coverage layer's core
+FACE_IN, FACE_AZ = 0.02, 115.0  # m inside the hairline, deg from the front: where a free lock's root counts as face-framing
+CUT_SHARE = 0.45  # the coverage layer of every lock must fit this share of a tier's triangles, else the cut coarsens
 SWOOP_WIDTH = 0.026  # m: their width
 SWOOP_BACK = 0.003  # m inside the hairline where they start
 SWOOP_LAYERS = 3  # each swoop card is this many stacked cards of the fine short tiles
@@ -2342,15 +2478,30 @@ SHORT_EDGE = 0.0  # m inside the hairline where a short cut's cards end (past it
 SHORT_GREY = 0.45  # a short cut's card is darker by this x (the greyest locks' grey share - its own lock's)
 SHORT_ATLAS = 2048
 CARD_TIERS = {
-    "hero": {"triangles": 40000, "cap_step": 4.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
+    "hero": {"cap_step": 6.0, "group": "sub", "layers": 3, "card_width": 0.012, "segment": 0.008,
              "fly": 2, "baby": 2.0, "core_sides": 12, "mass": 5000},
-    "main": {"triangles": 16000, "cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
+    "main": {"cap_step": 5.0, "group": "pair", "layers": 2, "card_width": 0.02, "segment": 0.012,
              "baby": 0.6, "core_sides": 10, "mass": 3500},
-    "npc": {"triangles": 6000, "cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
+    "npc": {"cap_step": 8.0, "group": "lock", "layers": 1, "card_width": 0.028, "segment": 0.025,
             "baby": 0.0, "core_sides": 8, "mass": 1800},
-    "far": {"triangles": 1500, "cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
+    "far": {"cap_step": 14.0, "cap": "mass", "group": "free", "layers": 1, "card_width": 0.07, "segment": 0.05,
             "baby": 0.0, "core_sides": 6, "mass": 800},
 }
+# the tiers ARE the hair's LODs: their triangles come from the export budgets (budgets.json, a hero character's
+# hair_cards at LOD0..3: sourced, not chosen here; it was a made-up 40k / 16k / 6k / 1.5k). A groom's own
+# hair.export.tier_triangles {tier: n} or hair.export.role (hero / main_npc / secondary_npc / crowd) overrides
+CARD_TIER_LOD = {"hero": 0, "main": 1, "npc": 2, "far": 3}
+
+
+def tier_triangles(tier: str, role: str = "hero", own: dict | None = None) -> int:
+    from . import budgets
+    if own and tier in own:
+        return int(own[tier])
+    return budgets.triangles(role, "hair_cards", CARD_TIER_LOD[tier])
+
+
+for _t in CARD_TIERS:
+    CARD_TIERS[_t]["triangles"] = tier_triangles(_t)
 
 
 def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budget: int | None = None,
@@ -2369,7 +2520,8 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             raise HairError(f"hair cards: tier is one of {', '.join(CARD_TIERS)} (or a triangle count)")
         tier = {**CARD_TIERS[budget], **(SHORT_TIERS[budget] if short else {})}
         S = {**S, **{k: v for k, v in tier.items() if k not in ("triangles", "cap_step", "cap")}}
-        budget = int(tier["triangles"])
+        ex_ = h.get("export") or {}
+        budget = tier_triangles(budget, ex_.get("role", "hero"), ex_.get("tier_triangles"))
     if short:
         S = {**S, "atlas": max(int(S["atlas"]), SHORT_ATLAS), "fly": int(S.get("fly", 0)) if tier_given else 0,
              "short": True}
@@ -2402,13 +2554,57 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     bands = [k_ for k_ in locks if re.fullmatch(r"t\d*band", k_["name"])]  # the tie is its own mesh, not hair
     line = hairline(sc, g)
     for k_ in locks:  # locks rooted at the hairline wear the thin-rooted tile there
+        a0, e0, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
         if not k_.get("free"):
-            a0, e0, h0 = sc.coords(np.asarray(k_["pts"][0], float)[None])
             k_["at_hairline"] = bool(h0[0] < 0.01 and inside(sc, line, a0, e0)[0] < 0.008)
+        # FACE-FRAMING: hair off the head rooted near the hairline in front of the ears (wisps, curls, loose locks
+        # at the temples): the budget keeps it with the coverage. Ranked as single hairs, Tess's W18 lost every
+        # face wisp at every tier (the assembly review, hair_r2)
+        k_["face"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] < 0.02 and inside(sc, line, a0, e0)[0] < FACE_IN
+                          and abs(((float(a0[0]) + 180.0) % 360.0) - 180.0) < FACE_AZ)
+        k_["off_head"] = bool(float(k_.get("free", 0.0)) > 0.5 and h0[0] > 0.02)  # (rooted in hanging hair: a tail's strays)
     hair_locks = [k_ for k_ in locks if k_ not in bands]
     core = None
     if D is not None:  # cards cut from the groom's own strands, clustered as coarsely as the tier asks
         cards = hc.clump_cards(D, hair_locks, sc.C, S, lk, int(g.get("seed", 0)))
+        if budget and not short:
+            # a groom with many locks (tesshair7's volume rows, halo, curls: Tess's W18 cut 7,123 cards / 243k
+            # triangles for a 40k hero) left the budget to drop whole layers AND whole regions (the tail's cards, every
+            # layer over the coverage one: 34 % of her silhouette bare). Cut coarser instead, as an artist would: the
+            # coverage layer of every lock must fit in CUT_SHARE of the budget, else the next coarser group, wider cards
+            S_ = S
+            for _ in range(len(CUT_GROUPS)):
+                cov_ = [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"]
+                if hc.triangles(cov_, S_, float(S_["segment"]) * 1.5) <= CUT_SHARE * int(budget):
+                    break
+                gi_ = CUT_GROUPS.index(S_.get("group", "sub")) if S_.get("group", "sub") in CUT_GROUPS else 0
+                if gi_ + 1 >= len(CUT_GROUPS):
+                    break
+                S_ = {**S_, "group": CUT_GROUPS[gi_ + 1], "card_width": float(S_["card_width"]) * 1.4}
+                cards = hc.clump_cards(D, hair_locks, sc.C, S_, lk, int(g.get("seed", 0)))
+            if S_ is not S:
+                print(f"hair cards: cut as group {S_['group']!r}, card_width {S_['card_width'] * 1000:.0f} mm (the tier's "
+                      f"{S.get('group')!r} cut's coverage layer alone was over {CUT_SHARE:.0%} of {int(budget)} triangles)",
+                      flush=True)
+                S = {**S, "group": S_["group"], "card_width": S_["card_width"]}
+            # what the budget keeps first: hanging hair (a tail, loose lengths) is the silhouette and goes before the
+            # second layer of hair lying on the head; single hairs (halo, curls, strays) go before both, except the
+            # face-framing wisps at the hairline. Tess's W18 kept 420 halo cards and 85 tail cards (a thin black tail)
+            by_ = {k_["name"]: k_ for k_ in hair_locks}
+            for c_ in cards:
+                lk_ = by_.get(c_.get("lock")) or {}
+                p_ = float(c_.get("prio", c_["layer"]))
+                if c_.get("pooled"):  # cheap and it is the outline's soft edge: before any second layer
+                    p_ = PRIO_HALO
+                elif lk_.get("face"):
+                    p_ += PRIO_FACE
+                elif lk_.get("off_head"):  # a tail's strays are its ragged outline, not single hairs on the head
+                    p_ += PRIO_FREE
+                elif c_["kind"] == "fly":
+                    p_ += 0.2 if lk_.get("at_hairline") else PRIO_FLY
+                elif float(lk_.get("free", 0.0)) > 0.5:
+                    p_ += PRIO_FREE
+                c_["prio"] = p_
         if short:  # cards wherever the groom has length, lying just over the cap (which stands at the hair's mid
             # height), on the open tiles (a few thick strands, no opaque base). The budget thins them EVENLY: what
             # stands off the cap (the lifted front, the outline) and the hairline's cards stay longest, the rest go
@@ -2525,6 +2721,10 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     Vc = np.asarray(V, float)
     lift = 0.1 * (1 - np.cos(np.radians(cap_step) / 2)) * 1.6 + 0.002  # (+ the scalp grid vs the skin mesh: ~1 mm)
     Vc = Vc + lift * _unit(Vc - sc.C)
+    if D is not None and not short and cards:  # the cap is UNDER the cards: it is the scalp's tint between them, never
+        # the surface. The groom's envelope stood 25 mm off the top of Tess's W18 where the coverage cards lie at 17:
+        # a lighter, flatter helmet over the cards with a seam where they came out from under it (hair_r2)
+        Vc = cap_under_cards(sc, Vc, [c_ for c_ in cards if c_["layer"] == 0 and c_["kind"] != "fly"], lift)
     if short and D is not None:  # the cap is the hair's MASS: it stands at the hair's mid height, easing down to the
         # skin at the hairline (on the scalp itself the head's profile was a bald dome under a fringe of cards)
         ca_, ce_, _ch = sc.coords(Vc)
@@ -2547,8 +2747,12 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
     if budget:  # the budget is the whole hair's: the cap, the baby hairs and the tie come off it first
         fixed = (len(cap["tris"]) + len(mb["tris"]) + sum(len(b["tris"]) for b in band)
                  + (len(core["tris"]) if core is not None else 0))
+        before_ = cards
         cards, seg, info = hc.fit_budget(cards, S, max(int(budget) - fixed, 200))
         info["asked"], info["fixed"] = int(budget), int(fixed)
+        info["fixed_parts"] = {"cap": len(cap["tris"]), "core": len(core["tris"]) if core is not None else 0,
+                               "baby": len(mb["tris"]), "tie": sum(len(b["tris"]) for b in band)}
+        info["by_class"] = card_classes(before_, cards, S, seg, {k_["name"]: k_ for k_ in hair_locks})
     mc = hc.mesh(cards, S, lk, at["tiles"], segment=seg)
     # against the body's own signed distance (hair_loose.collider), not the scalp's rays: a ray from the head's centre
     # meets the EAR first, so cards lying on the head behind and over the ear read 5-6 cm "under the skin" and were
@@ -2576,6 +2780,51 @@ def cards_job(sc: Scalp, g: dict, spec: dict, locks: list, tmp: Path, V, F, budg
             "triangles": int(len(m["tris"])),
             "cap_triangles": int(len(cap["tris"])), "cards": len(cards), "baby": len(baby), "budget": info,
             "coverage": at["coverage"], "clearance": clearance}
+
+
+def card_classes(before: list, after: list, S: dict, seg, locks: dict) -> dict:
+    """Where a budget's cards went: per class of lock (face-framing, hanging hair, head hair, single hairs) and card
+    layer, cards and triangles cut vs kept. The export report carries it, so a tier that loses a region says so."""
+    from . import hair_cards as hc
+
+    def cls(c):
+        lk = locks.get(c.get("lock")) or {}
+        if lk.get("face"):
+            return "face"
+        if lk.get("off_head"):
+            return "hanging"
+        if int(lk.get("hairs") or 0) > 0 or c["kind"] == "fly":
+            return "single"
+        return "hanging" if float(lk.get("free", 0.0)) > 0.5 else "head"
+    out: dict = {}
+    for tag, cs in (("cut", before), ("kept", after)):
+        for c in cs:
+            k = f"{cls(c)}/L{int(c['layer'])}"
+            d = out.setdefault(k, {"cut": [0, 0], "kept": [0, 0]})
+            d[tag][0] += 1
+            d[tag][1] += hc.triangles([c], S, seg)
+    return dict(sorted(out.items()))
+
+
+CAP_UNDER = 0.0025  # m: the cap stays this far under the lowest coverage card over it
+CAP_REACH = 4.0  # deg: the cards over a cap vertex are those within this angle of it (seen from the head's centre)
+
+
+def cap_under_cards(sc: Scalp, V, cards: list, floor: float = 0.0015):
+    """Cap vertices pushed down (toward the head's centre) to CAP_UNDER under the lowest coverage card within
+    CAP_REACH, never under `floor` off the scalp; where no card passes over a vertex it keeps its height."""
+    from scipy.spatial import cKDTree
+    V = np.asarray(V, float)
+    if not cards:
+        return V
+    P = np.concatenate([np.asarray(c["P"], float) for c in cards])
+    pa, pe, ph = sc.coords(P)
+    va, ve, vh = sc.coords(V)
+    tree = cKDTree(dirs(pa, pe))
+    near = tree.query_ball_point(dirs(va, ve), 2 * np.sin(np.radians(CAP_REACH) / 2))
+    lo = np.array([ph[n].min() if n else np.inf for n in near])
+    h = np.where(np.isfinite(lo), np.minimum(vh, np.maximum(lo - CAP_UNDER, floor)), vh)
+    return V + (h - vh)[:, None] * _unit(V - sc.C)
 
 
 CARD_CLEAR = 0.0015  # m: every card vertex stays this far outside the head (None: measure only)

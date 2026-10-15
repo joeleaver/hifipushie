@@ -1226,6 +1226,24 @@ def render(job):
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ rot
         scene.render.filepath = v["out"]
         scene.render.resolution_x = scene.render.resolution_y = v.get("size", job.get("size", 512))
+        for i, L in enumerate(v.get("lights") or []):  # a view's own light rig (the same suns re-aimed / re-weighted:
+            # several views in ONE Blender start; a start compiles shaders for ~1 min on the offload machine)
+            sun = bpy.data.objects.get(f"hp_sun{i}")
+            if sun is None:
+                continue
+            sun.data.energy = float(L.get("energy", sun.data.energy))
+            sun.data.color = _lin(L.get("color", list(sun.data.color)))
+            sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
+            ao = bpy.data.objects.get(f"hp_window{i}")
+            if ao is not None and L.get("window"):
+                w = L["window"]
+                dist = float(w.get("distance", 2.5))
+                ao.data.energy = 4 * np.pi * float(L.get("energy", 3.5)) * dist ** 2 * float(w.get("gain", 1.0))
+                dv = Vector(L["dir"]).normalized()
+                ao.location = Vector(w.get("target", v.get("center", [0, 0, 0]))) + dv * dist
+                ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
+            elif ao is not None:
+                ao.data.energy = 0.0
         t = time.time()
         bpy.ops.render.render(write_still=True)
         print(f"@@frame {time.time() - t:.2f}", flush=True)
@@ -1667,6 +1685,42 @@ def hair_glb_look(job):
     new = [o for o in bpy.data.objects if o not in before]
     info = {"objects": [], "materials": {}}
     mode = job.get("alpha", "test")
+    if job.get("only_tris"):  # [[first, count], ...] of the export's triangle ranges (its report's "layers"): the rest
+        # deleted, to isolate a layer (cap / layer0 / layer1 / tie) as an engine draws it
+        import bmesh
+        keep_ = set()
+        for a_, n_ in job["only_tris"]:
+            keep_.update(range(int(a_), int(a_) + int(n_)))
+        for ob in new:
+            if ob.type != "MESH":
+                continue
+            bm = bmesh.new()
+            bm.from_mesh(ob.data)
+            bm.faces.ensure_lookup_table()
+            bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep_], context="FACES")
+            bm.to_mesh(ob.data)
+            bm.free()
+    if mode == "game":  # the export's shading notes in nodes (blender_cards): what an engine is told to draw
+        import blender_cards
+        aux = bpy.data.images.load(job["aux"]) if job.get("aux") else None
+        built, bases = {}, {}
+        for ob in new:
+            if ob.type != "MESH":
+                continue
+            ca = ob.data.color_attributes[0].name if len(ob.data.color_attributes) else None
+            for ms in ob.material_slots:
+                m = ms.material
+                if m is None:
+                    continue
+                img = next((n.image for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image
+                            and n.outputs["Alpha"].is_linked), None) or next(
+                    (n.image for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image), None)
+                key = (m.name, ca)
+                if key not in built:
+                    built[key] = blender_cards.game_material(f"hp_game_{m.name}", img, aux, ca,
+                                                             float(job.get("cutoff", 0.33)), job.get("card_params"))
+                    bases[built[key].name] = img
+                ms.material = built[key]
     for ob in new:
         if ob.type != "MESH":
             continue
@@ -1699,6 +1753,33 @@ def hair_glb_look(job):
             del tex
     print("@@glb", json.dumps(info), flush=True)
     render({**job, "opened": True, "engine": job.get("look_engine", "eevee")})
+    if job.get("id_views"):  # the cards' coverage as a mask (red where alpha passes the cutoff), everything else black
+        import blender_cards
+        black = bpy.data.materials.new("hp_id_black")
+        black.use_nodes = True
+        bnt = black.node_tree
+        bnt.nodes.clear()
+        be = bnt.nodes.new("ShaderNodeEmission")
+        be.inputs["Color"].default_value = (0, 0, 0, 1)
+        bnt.links.new(be.outputs[0], bnt.nodes.new("ShaderNodeOutputMaterial").inputs["Surface"])
+        ids = {}
+        for ob in bpy.data.objects:
+            if ob.type != "MESH":
+                continue
+            for ms in ob.material_slots:
+                m = ms.material
+                if ob in new and m is not None:
+                    img = next((n.image for n in m.node_tree.nodes if n.type == "TEX_IMAGE" and n.image
+                                and n.outputs["Alpha"].is_linked), None)
+                    if img is not None:
+                        ids.setdefault(img.name, blender_cards.id_material(img, float(job.get("cutoff", 0.33))))
+                        ms.material = ids[img.name]
+                        continue
+                ms.material = black
+        for ob in list(bpy.data.objects):
+            if ob.type == "LIGHT" or ob.name.startswith("hp_cam"):
+                bpy.data.objects.remove(ob)
+        render({**job, "views": job["id_views"], "opened": True, "flat": False, "samples": 1})
 
 
 def hair_sync(job):

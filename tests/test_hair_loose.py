@@ -380,7 +380,7 @@ def test_carried_groom_keeps_its_hairline_on_the_head():
     groom = {"hairline": {"front_points": [[0, 1.66], [20, 1.659], [35, 1.655]]}}
     src = {"hair": {"groom": groom, "locks": {}}}
     h = hair.carry("src", src, sc=sc)
-    assert h["groom"]["fit"] == hair.head_ref(sc) and "fit" not in src["hair"]["groom"]
+    assert h["groom"]["fit"] == {**hair.head_ref(sc), "abs_r": 0.095} and "fit" not in src["hair"]["groom"]
     as_written = hair.hairline(low, hair._merge(hair.GROOM, groom))
     carried = hair.hairline(low, hair._merge(hair.GROOM, h["groom"]))
     own = hair.hairline(sc, hair._merge(hair.GROOM, groom))
@@ -388,7 +388,50 @@ def test_carried_groom_keeps_its_hairline_on_the_head():
         assert abs(carried[a] - own[a]) < 0.3, (a, carried[a], own[a])
         assert as_written[a] - own[a] > 2.0, (a, as_written[a], own[a])  # (the bug: the line climbs ~2.6 deg)
     fitted = {"hair": {"groom": {**groom, "fit": {"r": 0.1, "c": [0, 0, 1.7]}}}}
-    assert hair.carry("src", fitted, sc=sc)["groom"]["fit"] == {"r": 0.1, "c": [0, 0, 1.7]}
+    # (a groom already fitted keeps its fit, and gains abs_r: the head its tie metres were grown at, see below)
+    assert hair.carry("src", fitted, sc=sc)["groom"]["fit"] == {"r": 0.1, "c": [0, 0, 1.7], "abs_r": 0.095}
+    twice = {"hair": {"groom": {**groom, "fit": {"r": 0.1, "c": [0, 0, 1.7], "abs_r": 0.09}}}}
+    assert hair.carry("src", twice, sc=sc)["groom"]["fit"]["abs_r"] == 0.09
+
+
+def test_carried_tie_scales_its_absolute_metres():
+    """A tied style writes the dome, wisp lengths and tail sways in absolute metres (hair_flow.style); fit_to_head
+    scaled only the older metre keys, so th_W18 on a 15 % bigger head kept its dome and wisps at the old size while
+    its tail grew. Now they scale by this head over fit.abs_r (the head they were grown at), shares stay, and a groom
+    on its own head (abs_r = its radius) is unchanged."""
+    sc, _ = _ball_head()
+    big = hair.Scalp(sc.C, sc.R * 1.15, {})
+    tie = {"gather": {"volume": {"crown": 0.012, "side": 0.008, "rise": 0.02, "arc": 0.5, "hold": 1.0, "locks": 0.4}},
+           "wisps": {"length": [0.05, 0.14], "count": 9}, "tail": {"length": 0.2, "sway": 0.004, "locks": 39}}
+    g = hair._merge(hair.GROOM, {"tie": tie, "fit": {**hair.head_ref(sc), "abs_r": 0.095}})
+    f = hair.fit_to_head(g, big)
+    v = f["tie"]["gather"]["volume"]
+    assert abs(v["crown"] - 0.0138) < 1e-9 and abs(v["rise"] - 0.023) < 1e-9
+    assert v["arc"] == 0.5 and v["hold"] == 1.0 and v["locks"] == 0.4
+    assert np.allclose(f["tie"]["wisps"]["length"], [0.0575, 0.161]) and f["tie"]["wisps"]["count"] == 9
+    assert abs(f["tie"]["tail"]["length"] - 0.23) < 1e-9 and abs(f["tie"]["tail"]["sway"] - 0.0046) < 1e-9
+    assert f["tie"]["tail"]["locks"] == 39
+    assert hair.fit_to_head(g, sc) is g  # (its own head: as written)
+    old = hair._merge(hair.GROOM, {"tie": tie, "fit": hair.head_ref(sc)})  # (no abs_r: grown before; as it was)
+    assert hair.fit_to_head(old, big)["tie"]["wisps"]["length"] == [0.05, 0.14]
+
+
+def test_reseat_keeps_every_lock_on_a_bigger_head():
+    """hair.seat_locks wears the grown locks on another head lock for lock: near the scalp a point keeps its (az, el)
+    and its height x k; far off it (a hanging tail) it moves with the head, scaled about its centre; widths scale; the
+    lengths of every lock grow by k (the regrow re-rolled which wisp was long)."""
+    sc, _ = _ball_head()
+    big = hair.Scalp(sc.C + [0, 0.002, -0.015], sc.R * 1.15, {})
+    near = {"tier": "tie", "width": 0.01, "thickness": 0.005, "pts": [[30.0, 40.0, 0.002], [60.0, 20.0, 0.004]],
+            "strands": {"wave": 0.008, "density": 1.3}}
+    tail = {"tier": "tie", "space": "xyz", "width": 0.012, "thickness": 0.006, "pts": [[0.0, 0.11, -0.05], [0.0, 0.13, -0.2]]}
+    out = hair.seat_locks({"hair": {"locks": {"a": near, "t": tail}}}, sc, big)
+    a = np.asarray(out["a"]["pts"])
+    assert np.allclose(a[:, :2], [[30, 40], [60, 20]], atol=0.02) and np.allclose(a[:, 2], [0.0023, 0.0046], atol=1e-4)
+    assert abs(out["a"]["width"] - 0.0115) < 1e-9 and abs(out["a"]["strands"]["wave"] - 0.0092) < 1e-9
+    assert out["a"]["strands"]["density"] == 1.3
+    assert np.allclose(out["t"]["pts"], (np.asarray(tail["pts"]) * 1.15).round(4), atol=1e-4)
+    assert near["pts"][0] == [30.0, 40.0, 0.002]  # (the source is not changed)
 
 
 def test_default_grey_follows_age():

@@ -8039,6 +8039,13 @@ def validate(spec: dict) -> None:
         where = f"cloth {gn!r}"
         if not isinstance(g, dict):
             raise ClothError(f"{where}: a garment is an object (pattern or pieces + seams, fabric, state...)")
+        if g.get("frozen"):  # a frozen drape (cloth.freeze): only its look may be changed here
+            bad = set(g) - FROZEN_KEYS
+            if bad:
+                raise ClothError(f"{where}: a frozen garment takes only {sorted(FROZEN_KEYS)} (got {sorted(bad)})")
+            if not Path(g["frozen"]).expanduser().exists():
+                raise ClothError(f"{where}: frozen drape {g['frozen']} not found")
+            continue
         bad = set(g) - GARMENT_KEYS
         if bad:
             raise ClothError(f"{where}: unknown keys {sorted(bad)} (have {', '.join(sorted(GARMENT_KEYS - {'_trace'}))})")
@@ -8203,8 +8210,9 @@ def model_body(name: str, spec: dict, g: dict, simulate: bool = True) -> dict:
             if ug not in (spec.get("cloth") or {}):
                 raise ClothError(f"over: no garment {ug!r} in this model's cloth (have {', '.join(spec.get('cloth') or {})})")
             u = spec["cloth"][ug]
-            ures = build(_garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
-                         log=lambda *_: None, cached_only=not simulate)
+            ures = thaw(spec, u)[1] if u.get("frozen") else build(
+                _garment_for_sim(u), model_body(name, spec, u, simulate), f"{name}:{ug}",
+                log=lambda *_: None, cached_only=not simulate)
             src = dict(src, under=None if ures is None else {"V": ures["V"], "F": ures["mesh"]["F"], "key": ures["key"],
                                                               "name": ug, "res": ures})
             if ures is None:
@@ -8335,10 +8343,140 @@ def _run_job(name: str, gname: str, g: dict, jid: str) -> None:
 
 
 def cached(name: str, spec: dict, gname: str):
-    """The garment's built result if its sim is cached, else None (never simulates)."""
+    """The garment's built result if its sim is cached, else None (never simulates). A frozen garment (garment key
+    "frozen") is its frozen drape carried onto this model's body."""
     g = spec["cloth"][gname]
+    if g.get("frozen"):
+        return thaw(spec, g)[1]
     src = model_body(name, spec, g, simulate=False)
     return build(_garment_for_sim(g), src, f"{name}:{gname}", log=lambda *_: None, cached_only=True)
+
+
+# ---------------------------------------------------------------- frozen garments (an approved drape as an asset)
+# A finished drape is the garment's asset: the character that wears it is assembled from it as it was approved, not
+# re-keyed by every later edit of the head, the skin or the cloth code (a head-only edit changes the body's key, and
+# a re-draft under newer code another mesh: both used to mean a new sim). `freeze` writes the built result + the
+# garment as it was expanded; a model's garment {"frozen": path} wears it, carried onto this model's body when that
+# differs (same topology: each garment vertex moves with the body vertices under it; the carry is reported).
+
+FROZEN_VERSION = 1
+FROZEN_KEYS = {"frozen", "color", "roughness", "detail", "note", "export_hidden", "hidden_margin", "hidden_rule"}
+FROZEN_DROP = ("collider", "under", "coarse_mesh", "V_prev", "V_coarse", "hanger", "hanger_meshes")
+CARRY_K = 8  # body vertices a garment vertex moves with (inverse-distance weights)
+CARRY_INSIDE = 0.0015  # m: a carried vertex closer to the new body than this (or inside it) is pushed out to it
+
+
+def freeze(res: dict, g: dict, path, model: str = "", garment: str = "") -> dict:
+    """Write a built garment (`build` / `cached` result) and the garment it was built from as a frozen drape (a
+    pickle): what export, looks and the scene need, without the colliders / under garments it was simulated on."""
+    import pickle
+    gx = dict(expanded(g))
+    gx.pop("design", None)  # (compiled: the frozen garment never re-drafts)
+    slim = {k: v for k, v in res.items() if k not in FROZEN_DROP}
+    pcs = slim.get("pieces")
+    if isinstance(pcs, dict):
+        slim["pieces"] = {k: v for k, v in pcs.items() if not isinstance(v, Body)}
+    under = res.get("under")
+    d = {"version": FROZEN_VERSION, "model": model, "garment": garment, "g": gx, "res": slim,
+         "fabric": res.get("fabric"), "key": res.get("key"),
+         "under": {"name": under.get("name"), "key": under.get("key")} if isinstance(under, dict) else None}
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(d, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return {"path": str(path), "bytes": path.stat().st_size, "key": d["key"], "vertices": int(len(res["V"]))}
+
+
+_THAWED: dict = {}
+
+
+def thaw(spec: dict, g: dict, log=None) -> tuple[dict, dict]:
+    """(garment, result) of a frozen garment worn by the model of `spec`: the frozen garment (its colour, roughness,
+    detail overridden by the model's garment keys) and its drape carried onto the model's body (`carry`)."""
+    import pickle
+    path = Path(g["frozen"]).expanduser()
+    if not path.exists():
+        raise ClothError(f"frozen garment {path}: no such file (cloth.freeze writes it)")
+    st = path.stat()
+    k0 = (str(path), st.st_mtime, st.st_size)
+    if k0 not in _THAWED:
+        with open(path, "rb") as f:
+            _THAWED.clear()  # (one model's garments at a time: they are big)
+            _THAWED[k0] = pickle.load(f)
+    d = _THAWED[k0]
+    if d.get("version") != FROZEN_VERSION:
+        raise ClothError(f"frozen garment {path}: version {d.get('version')}, this code reads {FROZEN_VERSION}")
+    gx = dict(d["g"], **{k: v for k, v in g.items() if k in FROZEN_KEYS - {"frozen", "note"}})
+    res = dict(d["res"])
+    if spec.get("base"):
+        res = carry(res, Body(body_mesh(spec=spec)), log=log)
+    res["frozen"] = {"path": str(path), "from_model": d.get("model"), "garment": d.get("garment"), "key": d.get("key"),
+                     **(res.get("carried") or {})}
+    return gx, res
+
+
+def carry(res: dict, body: "Body", log=None) -> dict:
+    """A built garment moved from the body it was simulated on (res["body"]) onto `body`: every array of the result
+    shaped like its vertices (V, V_sim, the drape...), its made parts and buttons move with the body vertices nearest
+    them (CARRY_K, inverse-distance weights over the displacement field). Needs the two bodies to share topology
+    (the same base: a head edit, another stature or weight); vertices that end inside the new body are pushed out.
+    res["carried"] says how far it moved."""
+    B0 = np.asarray(res["body"].V, float)
+    B1 = np.asarray(body.V, float)
+    if B0.shape != B1.shape:
+        raise ClothError(f"frozen garment: its body has {len(B0)} vertices, this model's {len(B1)} (another topology): "
+                         "only a body of the same base can wear it")
+    D = B1 - B0
+    moved = np.linalg.norm(D, axis=1)
+    out = dict(res, body=body)
+    V = np.asarray(res["V"], float)
+    if moved.max() < 1e-7:
+        out["carried"] = {"body_max_mm": 0.0, "max_mm": 0.0, "p95_mm": 0.0, "pushed": 0}
+        return out
+    tree = cKDTree(B0)
+
+    def field(P):
+        P = np.asarray(P, float)
+        dist, idx = tree.query(P, k=CARRY_K)
+        w = 1.0 / np.maximum(dist, 1e-4) ** 2
+        w /= w.sum(1, keepdims=True)
+        return (D[idx] * w[..., None]).sum(1)
+    dV = field(V)
+    for k, a in res.items():  # every per-vertex array of the drape (V, V_sim, the drape before clean-up...)
+        if isinstance(a, np.ndarray) and a.shape == V.shape and k not in ("uv",):
+            out[k] = a + dV
+    made = res.get("made")
+    if isinstance(made, dict) and made.get("parts"):
+        out["made"] = dict(made, parts=[dict(pt, V=np.asarray(pt["V"], float) + field(pt["V"]))
+                                        if len(pt.get("V", [])) else pt for pt in made["parts"]])
+    bt = res.get("buttons")
+    if isinstance(bt, dict) and len(bt.get("V", [])):
+        out["buttons"] = dict(bt, V=np.asarray(bt["V"], float) + field(bt["V"]))
+    # what ends inside the new body (or within CARRY_INSIDE of it) is pushed out along the body's normal
+    Vn = out["V"]
+    T = np.asarray(body.T)
+    fn = np.cross(B1[T[:, 1]] - B1[T[:, 0]], B1[T[:, 2]] - B1[T[:, 0]])
+    vn = np.zeros_like(B1)
+    for c in range(3):
+        np.add.at(vn, T[:, c], fn)
+    vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+    _, j = cKDTree(B1).query(Vn)
+    h = ((Vn - B1[j]) * vn[j]).sum(1)
+    near = (h < CARRY_INSIDE) & (np.linalg.norm(dV, axis=1) > 1e-6)  # (only where the carry moved it)
+    if near.any():
+        push = (CARRY_INSIDE - h[near])[:, None] * vn[j[near]]
+        for k in list(out):
+            a = out[k]
+            if isinstance(a, np.ndarray) and a.shape == V.shape and k != "uv" and k in res:
+                a = a.copy()
+                a[near] += push
+                out[k] = a
+    dm = np.linalg.norm(out["V"] - V, axis=1)
+    out["carried"] = {"body_max_mm": round(float(moved.max()) * 1e3, 2), "max_mm": round(float(dm.max()) * 1e3, 2),
+                      "p95_mm": round(float(np.percentile(dm, 95)) * 1e3, 2), "pushed": int(near.sum())}
+    if log:
+        log(f"frozen garment carried onto this body: {out['carried']}")
+    return out
 
 
 def dress(name: str, which: list | None = None, wait: float = 0.0) -> dict:
@@ -9011,6 +9149,12 @@ def garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
     result) for those whose sim is cached (dress runs them); simulate=True runs the missing ones here (export)."""
     out = []
     for gname, g in (spec.get("cloth") or {}).items():
+        if g.get("frozen"):  # an approved drape worn as it is (carried onto this body): never re-drafted or simulated
+            gx, res = thaw(spec, g, log=log)
+            log(f"cloth {gname}: frozen drape {res['frozen']['path']} (from {res['frozen'].get('from_model')}), "
+                f"carried max {res['frozen'].get('max_mm', 0)} mm")
+            out.append((gname, gx, res))
+            continue
         src = model_body(name, spec, g, simulate=simulate)
         res = build(_garment_for_sim(g), src, f"{name}:{gname}", log=log, cached_only=not simulate)
         if res is None:

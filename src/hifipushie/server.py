@@ -1129,15 +1129,17 @@ def export(name: str, path: str, resolution: int = 256) -> str:
 def export_asset(name: str, out_dir: str, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
                  atlases: int = 1, texel_density: float | None = None, instancing: bool = True, preview: bool = True,
                  hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
-                 face_shapes: bool | list[str] = False, asset_name: str | None = None):
+                 face_shapes: bool | list[str] = False, asset_name: str | None = None,
+                 lods: bool | list[float] = False, cloth_triangles: int | None = None):
     """Game-ready export into out_dir: low poly (~`triangles`, a mesh per part), UV atlases and PBR maps (`texture` px;
     normal/height from the exact model, paint and AO baked by Cycles), GLB (+ fbx=True). Key options: texel_density
     / atlases, instancing (prefabs once), rig=True (skinned, Mixamo for humanoids), face_shapes (ARKit morphs),
-    preview (Cycles check), hide, asset_name. Minutes; progress in progress.log. Details:
-    guide(topic="export_asset")."""
+    preview (the GLB re-imported and rendered as a game draws it: EEVEE, materials from the shading notes), hide, asset_name, lods (True or shares of LOD0's triangles: <asset>_LOD<k>.glb sharing
+    the maps), cloth_triangles (garments decimated to that many). Minutes; progress in progress.log. Details: guide(topic="export_asset")."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
-                        instancing, rig, fbx, face_shapes or None, asset_name=asset_name)
+                        instancing, rig, fbx, face_shapes or None, asset_name=asset_name, lods=lods or None,
+                        cloth_triangles=cloth_triangles)
     sizes = ", ".join(f"{a['size']}^2" for a in info["atlases"].values())
     text = (f"wrote {info['glb']}: {info['triangles_placed']} triangles drawn ({info['triangles']} in the file), "
             f"atlases {sizes}, height range +-{info['height_range_m'] * 1000:.1f} mm, {info['seconds']}s\n"
@@ -1307,14 +1309,23 @@ def groom_hair(name: str, groom: dict | None = None, replace: bool = False, stag
 
 @mcp.tool(structured_output=False)
 def tie_hair(name: str, style: dict | None = None, carry_from: str | None = None, look: dict | None = None,
-             note: str = ""):
+             note: str = "", reseat: bool = False):
     """A tied-back hairstyle (ponytail, bun, plait, half up) from a few words: style {tie: nape|low|mid|high|top,
     side, tightness 0..1, volume 0..1 (body: the hair stands up from the roots / the part and arcs over; 0 = a cap),
     part: centre|left|right|none, ears, tail {kind, length, fullness, wave, tousle, to}, wisps 0..1, front, hairline
     0..1, escaped, neatness 0..1, half}; a riff names only what changes. carry_from: wear another model's hair first.
     look: the colour {variation, sun (sun-lightened lengths), highlights, grey_amount: all 0..1}. Then
-    look_hair(views="around"). Details: guide(topic="tie_hair")."""
+    look_hair(views="around"). reseat=True + carry_from: an approved groom onto a new head lock for lock. Details:
+    guide(topic="tie_hair")."""
     from . import hair
+    if reseat:
+        if not carry_from or style or look:
+            raise ValueError("reseat=True wears carry_from's grown locks as they are: give carry_from and no style / look "
+                             "(riff afterwards with tie_hair(name, style=...), which regrows)")
+        r = hair.reseat(name, carry_from, note=note)
+        return (f"saved {name} v{r['version']}: {r['locks']} locks of {carry_from} re-seated (head x{r['k']:.3f})\n"
+                f"{_hair_counts(store.load(name))}\nnext: look_hair(name, views=['around']) beside {carry_from}'s "
+                f"approved renders at the same views of the head")
     r = hair.tie_style(name, _spec_arg(style) if style else None, carry_from=carry_from,
                        look=_spec_arg(look) if look else None, note=note)
     m = r["made"]["tie"]

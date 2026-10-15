@@ -24,6 +24,11 @@ different haircut. When a groom is wrong, rewrite the description and rebuild fr
 re-seated and re-checked against the reference after any head change (hairline height, stand-off per region,
 coverage, the part, the ears): `tie_hair(other, carry_from=name)` carries the style words and look, not a check.
 Never carry a groom across heads, or re-tie one with defaults, without describing and judging it again.
+An APPROVED groom onto the final head: `tie_hair(other, carry_from=name, reseat=True)` wears its grown locks lock
+for lock (scaled with the head, the hair over the ears carried onto the new ears); a regrow from the same words
+re-rolls which wisp is long and how the tail falls (Tess's W18 on tp_h3: short face wisps, a different tail). Judge
+it through the original's cameras moved and scaled with the head (the same view OF THE HEAD), not the new head's own
+fitted cameras, which frame a differently proportioned face.
 
 ## Stage 0: describe the hairstyle (before any groom)
 
