@@ -1131,12 +1131,11 @@ def export_asset(name: str, out_dir: str, triangles: int | None = None, texture:
                  hide: list[str] | None = None, save: str | None = None, rig: bool | dict = False, fbx: bool = False,
                  face_shapes: bool | list[str] = False, asset_name: str | None = None,
                  lods: bool | list[float] = False, cloth_triangles: int | None = None, role: str | None = None):
-    """Game-ready export into out_dir: low poly (~`triangles`, a mesh per part), UV atlases and PBR maps (`texture` px;
-    normal/height from the exact model, paint and AO baked by Cycles), GLB (+ fbx=True). Key options: texel_density
-    / atlases, instancing (prefabs once), rig=True (skinned, Mixamo for humanoids), face_shapes (ARKit morphs),
-    preview (the GLB re-imported and rendered as a game draws it: EEVEE, materials from the shading notes), hide, asset_name, lods (True or shares of LOD0's triangles: <asset>_LOD<k>.glb sharing
-    the maps), cloth_triangles (garments decimated to that many), role (hero / main_npc / secondary_npc / crowd: budgets
-    from budgets.json, explicit arguments win; LODs by part, a budget gate line per part). Minutes; progress in progress.log. Details: guide(topic="export_asset")."""
+    """Game-ready export into out_dir: low poly per part, UV atlases and PBR maps, GLB (+ fbx=True). Key options:
+    role (hero / main_npc / secondary_npc / crowd: budgets from budgets.json; explicit arguments win), triangles,
+    texture / texel_density, lods, rig=True (Mixamo for humanoids), face_shapes (ARKit), cloth_triangles, preview
+    (the GLB rendered as a game draws it), hide, asset_name. Minutes; progress in progress.log. Details:
+    guide(topic="export_asset")."""
     from . import asset
     info = asset.export(name, Path(out_dir).expanduser(), triangles, texture, resolution, atlases, texel_density,
                         instancing, rig, fbx, face_shapes or None, asset_name=asset_name, lods=lods or None,

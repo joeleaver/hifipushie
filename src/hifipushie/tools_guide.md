@@ -334,7 +334,14 @@ bpy.ops.wm.obj_import(filepath=..., forward_axis='Y', up_axis='Z').
 
 ### `export_asset`
 
-`export_asset(name, out_dir, triangles=15000, texture=2048, resolution=256, atlases=1, texel_density=None, instancing=True, preview=True, hide=None, save=None, rig=False, fbx=False, face_shapes=False, asset_name=None)`
+`export_asset(name, out_dir, triangles=None (role or 15000), texture=2048, resolution=256, atlases=1, texel_density=None, instancing=True, preview=True, hide=None, save=None, rig=False, fbx=False, face_shapes=False, asset_name=None)`
+
+Budgets: `role` = "hero" | "main_npc" | "secondary_npc" | "crowd" fills triangles, per-part weights, texel density
+and LOD ratios from budgets.json (a mainstream PC target, every number sourced: guide(topic="game_export")); explicit
+arguments win; the reply carries one budget line per part (OVER flagged). `lods` = True or shares of LOD0 (by part:
+head / hair halve, below the neck drops faster; face shapes on LOD0 only, hero LOD0-1). `cloth_triangles` decimates
+garments like a LOD. `preview` renders the exported GLB re-imported in EEVEE as a game draws it (materials from the
+shading notes <asset>_shading.json/.md written beside it).
 
 Export a game-ready asset: a low-poly mesh (about `triangles` drawn, one mesh per part), UV atlases and PBR
 textures baked from the exact model: basecolor, normal (tangent space, MikkTSpace, OpenGL/glTF green-up),
