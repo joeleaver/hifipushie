@@ -332,7 +332,7 @@ def _inner_lip_cloud(head, mp, g):
         front = nxt
     val = np.zeros(len(W))
     for v, lv in lev.items():
-        val[v] = 1.0 if lv <= ring else 0.5 if lv == ring + 1 else 0.0
+        val[v] = 1.0 if lv < ring else 0.35 if lv == ring else 0.0  # (to the contact ring itself at 1, the outer lips read lipstick red, v8)
     keep = Q[np.isin(Q, list(lev)).all(1)]
     if not len(keep):
         return None

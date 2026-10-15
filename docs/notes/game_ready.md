@@ -151,6 +151,22 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
   drives it: Mixamo clips don't; our ArmBend helper is that joint, driven. So the seated buttock bag and knee pinch are
   MakeHuman's own weights under plain LBS: the fix stays weights / loops in the file, then correctives.
 
+## Expressions (checklist tess_expressions; reviews expr_r1..; shots shots_expr.json, crops.py)
+- expr_r1 FAIL. Measured on the GLB (shapediag.py: stretched edges per shape; flipdiag.py: folded triangles;
+  lipexp.py / ridge.py: GNM's own skin quads):
+  - teeth: ONE part held both GNM rows; at the bite the field joined them, so jawOpen (lower row 20 mm, upper 0)
+    stretched the joining triangles x5: the "shards". Now parts teeth / teeth_lower (base.TEETH_PARTS), each its
+    own field and mesh, 1200 triangles a row (600 for both made a 1.6 mm max error; now 0.5).
+  - lips: jawOpen solved its landmark turn with a near-free ridge (1e-6): coefficients to 6-10 sd, 31 flipped /
+    37 >120 deg creases on GNM's skin. JAW_PRIOR 1e-4 on the jaw shapes: norm 5.7, the chin drops FURTHER (30 mm
+    at 22 deg), 2 creases. GNM_OPEN 14 -> 22 deg (reviewer: "the jaw barely drops"). jawOpen_mouthClose now closes
+    the gap jawOpen AS SOLVED opens (against the rigid turn the A2F combo warm f31 crossed the lips 3.8 mm).
+  - smile targets 0.08 / 0.15 -> 0.12 / 0.21 mouth widths (corner out / up): "far too small".
+  - the inner rolls are hidden in the closed neutral, so the bake filled them with skin: a brown fringe round
+    every parted mouth. skin_features paints them (skin:inner_lip, GNM rings mouth loop .. contact ring).
+- v7 (rows, prior, 22 deg, smile): a full upper row in the smile-with-teeth, lower teeth at jawOpen, wider smile.
+  Still: brown fringe (fixed in v8), the neutral slit shows tooth tips, nostrils ragged (skin draft), the hair.
+
 ## STATE / NEXT
 STATE (Tess v3, 89k LOD0 incl. 40k hero hair; LOD1 45.6k / LOD2 27.7k / LOD3 20.8k): motion directions exact, review
 disputes recorded; hair cards improved by numbers but FAIL review (STUCK sent); skin draft; undressed.

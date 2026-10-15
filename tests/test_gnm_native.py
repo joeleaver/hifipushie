@@ -312,7 +312,7 @@ def test_inner_lip_paint_covers_the_rolls_not_the_outer_lips():
     sp = _spec()
     head = base.head_of({"joints": specmod.expand_mirror(sp)["joints"]}, sp["base"])
     V, N, val, s = sf._inner_lip_cloud(head, base.gnm_mouth(head), base._gnm_data())
-    on = cKDTree(V[val > 0.99])
+    on = cKDTree(V[val > 0.3])
     lm = head["lm68"]
     assert max(on.query(lm[i])[0] for i in (61, 62, 63, 65, 66, 67)) < 0.002   # the contact ring: inner lip
     assert min(on.query(lm[i])[0] for i in (50, 51, 52, 56, 57, 58)) > 0.003   # the outer vermilion: not
