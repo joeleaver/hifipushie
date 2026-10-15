@@ -293,6 +293,55 @@ def build(spec: dict, p: dict, J: dict, out: dict, T, ctx: dict) -> list:
     return ctx["smooth"]
 
 
+INNER_LIP_COLOR = [0.38, 0.11, 0.11]  # linear: the wet inner lip (mucosa): redder and darker than the vermilion, lighter than the bag
+
+
+def inner_lip_values(head) -> np.ndarray | None:
+    """Per GNM vertex, how much of the wet inner lip (mucosa) colour it takes: GNM's skin rings from the open mouth
+    loop (where the sock joins) to the contact ring (base.LIP_RING) 1, the next ring INNER_LIP_FADE, else 0. With the
+    lips closed the scene's surface has no rolls, so the bake filled them from the skin beside them and every shape
+    that parts the lips (jawOpen, smiles) showed a ragged brown fringe round the opening (review expr_r1). The export
+    paints these values onto the low poly's own triangles (asset.bake, "inner_paint")."""
+    import collections
+    from . import base as _base
+    if head is None or head.get("gnm_world") is None:
+        return None
+    g = _base._gnm_data()
+    mp = _base.gnm_mouth(head)
+    n = len(np.asarray(head["gnm_world"]))
+    skin = np.asarray(g["skin"], bool)
+    sock = np.asarray(g["groups"]["mouth_sock"]) > 0.5
+    Q = np.asarray(g["quads"])
+    Q = Q[skin[Q].all(1)]
+    adj = collections.defaultdict(set)
+    for q in Q:
+        for k in range(4):
+            a, b = int(q[k]), int(q[(k + 1) % 4])
+            adj[a].add(b), adj[b].add(a)
+    own = sock[mp["sock"]["ids"]]
+    rim = [int(v) for v in mp["sock"]["ids"][~own]]
+    if not rim:
+        return None
+    lev = {v: 0 for v in rim}
+    front = list(rim)
+    ring = _base.LIP_RING
+    while front and min(lev[v] for v in front) <= ring:
+        nxt = []
+        for v in front:
+            for u in adj[v]:
+                if u not in lev and not sock[u]:
+                    lev[u] = lev[v] + 1
+                    nxt.append(u)
+        front = nxt
+    val = np.zeros(n)
+    for v, lv in lev.items():
+        val[v] = 1.0 if lv <= ring else INNER_LIP_FADE if lv == ring + 1 else 0.0
+    return val
+
+
+INNER_LIP_FADE = 0.3  # the ring outside the contact ring: the wet line fading into the vermilion
+
+
 def _gnm_mouth(spec, out, part) -> None:
     """GNM's OWN MOUTH, dressed (minimal, 2026-10-12; Joe: "we'll figure out the dressing as we go along"): the mouth
     bag dark wet red on the skin's part, the gums on the teeth's part. Both masks are point clouds made from GNM's own
@@ -320,10 +369,12 @@ def _gnm_mouth(spec, out, part) -> None:
     # printed the bag's near-black red onto the outer skin at the mouth corners: two black "curls" on every GNM head)
     sp_ = float(np.median(cKDTree(sk["verts"]).query(sk["verts"], k=2)[0][:, 1]))
     pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
+    # (the inner rolls are NOT a scene layer: with the lips closed the scene's surface has no rolls (the fill behind the
+    # seam), so a painted cloud there found the outer lips instead (v8: lipstick red). The export paints them on the
+    # low poly's own triangles by GNM index: asset.bake's "inner_paint", values from inner_lip_values)
     out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
                              "mask": [{"painted": pid}]}
-    pos, nrm, val = [], [], []
-    for k in ("teeth_upper", "teeth_lower"):
+    for k, tpart in (("teeth_upper", _base.TEETH_PARTS[0]), ("teeth_lower", _base.TEETH_PARTS[1])):
         V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
         gum = mp[k]["gum"].astype(float)[:, None].repeat(3, 1)
         for _ in range(_base.MOUTH_SUBDIVIDE):
@@ -331,10 +382,9 @@ def _gnm_mouth(spec, out, part) -> None:
             gum = _base._catmull_clark(gum, F)[0]  # (the group's weight subdivided like the positions)
             V, F = V2, F2
         N, h = _base._normals_and_h(V, F)
-        pos.append(V), nrm.append(N), val.append(np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1))
-    pid = _paint.save_painted(np.concatenate(pos), np.concatenate(nrm), np.concatenate(val), 0.0012)
-    out["skin:gums"] = {"part": "teeth", "color": list(_base.GUM_COLOR), "roughness": 0.25, "specular": 0.6,
-                        "mask": [{"painted": pid}]}
+        pid = _paint.save_painted(V, N, np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1), 0.0012)
+        out["skin:gums" + ("" if tpart == "teeth" else "_lower")] = {
+            "part": tpart, "color": list(_base.GUM_COLOR), "roughness": 0.25, "specular": 0.6, "mask": [{"painted": pid}]}
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",

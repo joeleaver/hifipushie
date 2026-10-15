@@ -102,8 +102,99 @@ NOT enough for the export's detail maps (marks, border, sew_seam, stitch lines, 
   card-edge patchwork. These are the card cut's craft (hair_cards.clump_cards / atlas tiles): the hair thread's code.
 - Hair LODs = the groom's own card TIERS (main / npc / far: one atlas for all), not thinned LOD0 cards.
 
+## Hair export handover (to the hair-cards agent; the assembly agent keeps off hair_cards.py from here)
+- Branch `worktree-agent-ad0815704f43e0e00`, commit f994fea (hair.py: CUT_GROUPS / CUT_SHARE coarsen the card cut to
+  fit a tier; PRIO_FLY / PRIO_FREE budget order; full_look card_sat = eevee_sat ** CARD_SAT_EXP 0.55 when the look has
+  eevee_sat and no card_sat) + asset.py (hair LODs = the groom's card tiers main / npc / far, lods.HAIR_TIERS) +
+  tests/test_game_ready.py (test_cards_take_the_strands_desaturation, test_card_lod_thins_one_layer_by_whole_cards).
+- Model ga_tess (tp_h3 head + th_W18 style / look through tie_hair carry_from th_W18). Re-seat strands: shots7 renders
+  /mnt/data/hifipushie/assembly/hair/s_ga_tess_{v0,v1,v2,backl}.png beside th_W18's (tesshair7/out/s_th_W18_*).
+- check_tiers (hair.export_hair check=True; tables in <dir>/ga_tess_hair.json "checks_text", sheets check_sheet.png):
+  exp1 (before) /mnt/data/hifipushie/assembly/hair/exp1: hero iou 0.65-0.77, bare 0.20-0.34, sat 1.72-1.91, straight
+  0.33-0.35; exp2 (cut + card_sat): iou 0.79-0.86, bare 0.11-0.18, sat 0.65-0.89; exp3 (+ priorities, sat exponent):
+  hero iou 0.80-0.87, bare 0.10-0.17, value 0.81-1.12, sat 1.02-1.21, straight 0.19-0.37; main iou 0.78-0.86.
+- Card cut before / after by family (hdiag.py: hair_cards.fit_budget patched to report): before, 7,123 cards / 243k
+  triangles for 32k; kept gather layer 0 only, 0 tail cards, 420 halo. After: kept g hairline/dense layers 0-1, 85 tail
+  dense + 11 medium (then tail first by PRIO_FREE), halo last.
+- Reviews: /mnt/data/hifipushie/assembly/review/hair_r1/review.md, hair_r2/review.md (script hair_review.sh <export
+  dir> 1 <out>): open MAJORs = tail darker / narrower, top "helmet" lighter with a seam to the side cards, cards fan from
+  one point at the part, face-framing wisps missing, crown pale patch from behind, card-edge patchwork; re-seat: tail
+  longer / looser, face wisps shorter than th_W18's.
+
+## Motion: feet and the mannequin's "lean" (after motion_r4)
+- Feet and toes now keep their own rest (both rests stand flat; our ankle -> toe-joint line is steeper than the
+  mannequin's ankle -> ball, and aligning it stood the foot toe-down). ToeBase / Toe_End are in the rig and weighted (a
+  30 deg toe turn moves the shoe front 34 mm, the sole 31).
+- The mannequin's mesh vs its skeleton (bl_xbotlean.py: trunk centroid line vs Hips -> Neck): walk 1.5 / 3.5 deg,
+  3.7 / 5.2, idle 2.2 / 1.8: its MESH does not lean more than its bones in walk; the forward read is its shape (a big
+  chest ahead of the spine). (Run: 24 vs 12, but the hip band there includes the raised thigh.)
+
+## Rig bends (checklist tess_rig; reviews rig_r1..r3; STUCK reported with gr_03)
+- Bend helpers (rig.py `BEND`, half-angle joints, see the code comment) carry the hinge blend zone (166 vertices at an
+  elbow, 199 at a knee, max weight 1.0) and are driven by the recipe (json rig.bend, bend_recipe; game render drives
+  them). The game render's turns were adding to an already bent rest (MakeHuman's rest elbow is 38.7 deg): rig_r1 / r2
+  judged 82 / 123 deg as "45 / 90"; now the asked joint angle is reported (@@turn) and the shots ask the true angle.
+- rig_r3 (true angles): elbow 45 and 90, wrist 60, head turn 40 PASS; still MAJOR: elbow 120 crease pinch, knee 90 /
+  120 back pinch + flat front, shoulder raised (deltoid tube, sharp armpit), seated hip (buttock bag, placeholder briefs
+  dragged). Dual quaternion skinning and a delta mush (Corrective Smooth) over the same weights barely change these
+  (sheet human_renders/gr_03_tess_rig_bends_stuck.png): the fix is pose correctives (corrective morph targets per
+  joint angle, MetaHuman-style) and / or hand-painted hip / shoulder weights + more loops at the knee in the body
+  topology. Not built.
+
+- Would MakeHuman's own skeleton do better (A: default.mhskel + unfolded default_weights.mhw, B: our folded Mixamo
+  rig)? Not for these bends, by construction: every bone the fold merges is a serial split of one segment
+  (pelvis.L -> upperleg01 -> upperleg02 -> lowerleg01 -> lowerleg02 -> foot; clavicle -> shoulder01 -> upperarm01 ->
+  upperarm02 -> lowerarm01) and turns rigidly with it in a hinge bend, so folding sums weights onto one bone with the
+  same transform; LBS is linear in the weights, so A = B to the vertex. pelvis.L (buttock) and breast.L stay still in
+  a hip / arm turn in MH too (they fold into Hips / Spine2). MH's extra bones only add (a) twist spread along the
+  split segments (our twist joints) and (b) shoulder01 as a half-way clavicle joint, which only helps if something
+  drives it: Mixamo clips don't; our ArmBend helper is that joint, driven. So the seated buttock bag and knee pinch are
+  MakeHuman's own weights under plain LBS: the fix stays weights / loops in the file, then correctives.
+
+## Expressions (checklist tess_expressions; reviews expr_r1..; shots shots_expr.json, crops.py)
+- expr_r1 FAIL. Measured on the GLB (shapediag.py: stretched edges per shape; flipdiag.py: folded triangles;
+  lipexp.py / ridge.py: GNM's own skin quads):
+  - teeth: ONE part held both GNM rows; at the bite the field joined them, so jawOpen (lower row 20 mm, upper 0)
+    stretched the joining triangles x5: the "shards". Now parts teeth / teeth_lower (base.TEETH_PARTS), each its
+    own field and mesh, 1200 triangles a row (600 for both made a 1.6 mm max error; now 0.5).
+  - lips: jawOpen solved its landmark turn with a near-free ridge (1e-6): coefficients to 6-10 sd, 31 flipped /
+    37 >120 deg creases on GNM's skin. JAW_PRIOR 1e-4 on the jaw shapes: norm 5.7, the chin drops FURTHER (30 mm
+    at 22 deg), 2 creases. GNM_OPEN 14 -> 22 deg (reviewer: "the jaw barely drops"). jawOpen_mouthClose now closes
+    the gap jawOpen AS SOLVED opens (against the rigid turn the A2F combo warm f31 crossed the lips 3.8 mm).
+  - smile targets 0.08 / 0.15 -> 0.12 / 0.21 mouth widths (corner out / up): "far too small".
+  - the inner rolls are hidden in the closed neutral, so the bake filled them with skin: a brown fringe round
+    every parted mouth. skin_features paints them (skin:inner_lip, GNM rings mouth loop .. contact ring).
+- v7 (rows, prior, 22 deg, smile): a full upper row in the smile-with-teeth, lower teeth at jawOpen, wider smile.
+  Still: brown fringe (fixed in v8), the neutral slit shows tooth tips, nostrils ragged (skin draft), the hair.
+
+## Handover 2026-10-14 evening (assembly agent, context limit)
+- Branch worktree-agent-ad0815704f43e0e00 (this worktree), not pushed; last commits: hair-card shading once
+  (13e1d85), GNM mouth rows / jaw prior / 22 deg / smile (5832618), inner lip (1c249a3, 8d13770, + uncommitted ->
+  committed with this note: inner lip painted IN THE BAKE by GNM index, asset.inner_paint / bake "inner_paint",
+  skin_features.inner_lip_values; the scene-layer version painted the outer lips, v8).
+- Scratch /mnt/data/hifipushie/assembly (env.sh, run.sh = light slot, heavy.sh, chain_exp.sh '<model>:<out>:<json>'
+  = one export after another, ge.sh <glb> <json> <out prefix> <shots.json> = game-like EEVEE renders). Expression
+  tools: shots_expr.json (neutral, blink, jaw 1.0, smile, smile+teeth, clay close-ups), crops.py (same crop of
+  several renders), expr_review.sh <render prefix> <review dir> (bin/review against refs/tess_head_front*.png),
+  shapediag.py (stretched edges per shape), flipdiag.py, teethshow.py (teeth seen from the front by ray),
+  ridge.py / lipexp.py / coefs.py (GNM solve experiments), crosstest.py (A2F combos per jaw angle).
+- Checklists: workspace/checklists/tess_*.json. Reviews: review/motion_r4 PASS; hair_r1..2 FAIL (handed to the
+  hair-cards agent); rig_r1..3 (STUCK: knee / elbow 120 / shoulder / seated hip; MakeHuman's own skeleton is the
+  same under LBS, see "Rig bends"); expr_r1 FAIL (round 2 not yet run).
+- Exports: exp/ga_tess_v6 (approved head, before mouth fixes), v7 (rows + prior), v8 (scene inner-lip layer: WRONG,
+  lipstick lips), v9 (layer tightened: no effect, the scene has no rolls), v10 RUNNING (bake inner paint).
+  Renders eevee/x6..x9 (mouths.png = crop sheet per version).
+- Open MAJORs (expressions): brown fringe at the parted lips (v10 should fix: check eevee/x10 mouths.png), neutral
+  slit shows grey bits (teethshow: 0 teeth triangles visible at neutral, so it is the rolls' colour: v10 too),
+  jaw-open inner upper lip shards (lip roll geometry; JAW_PRIOR cut creases 37 -> 2 on GNM's quads but the export
+  still shows some), cheek raise / squint with the smile (cheekSquint is in the shots at 0.6: judge), no lash line
+  at neutral (lashes: white glints on the cards in close-ups). Not ours: nostril rings, neck colour band, hair.
+- Budget gate on v7+: eyes_mouth_lashes 8.2k of 5k (teeth 2 x 1200 + lashes 4880: lashes are never decimated in
+  LODs either: a gap), hair 40k of 25k, body 16.9k of 15k, accessories 5.5k of 5k.
+- NEXT: (1) render v10 (ge.sh ... eevee/x10/x shots_expr.json), crops, then expr_review.sh eevee/x10/x
+  review/expr_r2; fix the worst MAJOR each round. (2) rig bends: repaint hip / shoulder / knee weights, more loops at
+  knee / elbow / hip, then correctives in <asset>_rig.md/.json (seated hip first). (3) separate texture set for the
+  head. (4) lashes in LODs. Garrett after Tess passes.
+
 ## STATE / NEXT
-STATE (Tess v3, 89k LOD0 incl. 40k hero hair; LOD1 45.6k / LOD2 27.7k / LOD3 20.8k): motion directions exact, review
-disputes recorded; hair cards improved by numbers but FAIL review (STUCK sent); skin draft; undressed.
-NEXT: rig bends (tess_rig) and expressions (tess_expressions) review loops in blender_game; engine skin Lab boxes;
-Garrett only after Tess passes.
+STATE: see the handover above (expressions mid-loop, v10 exporting).

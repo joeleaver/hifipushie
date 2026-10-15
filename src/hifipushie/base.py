@@ -233,7 +233,7 @@ def clear_cornea(b: dict, c, gz, R: float, rc: float, bulge: float, sd: str = ".
 
 def implied_parts(spec: dict) -> dict:
     """Parts the base makes that the spec needn't list, with their channels (a listed part's keys win, merged by
-    scene / asset): the clear cornea's lens; GNM's own mouth ("teeth": both rows with their gums, "tongue")."""
+    scene / asset): the clear cornea's lens; GNM's own mouth ("teeth" / "teeth_lower": the rows with their gums, "tongue")."""
     b = spec.get("base") or {}
     co = b.get("cornea")
     out = {}
@@ -2068,7 +2068,12 @@ def gnm_eyes(V: np.ndarray, g: dict) -> list:
 
 MOUTH_PUSHED = 0.001  # m: lips a style moved this far off GNM's own surface no longer fit GNM's teeth (the kit's interior)
 MOUTH_PARTED = 0.0015  # m: inner lips further apart than this = an open mouth (the bag is cut; closed, a fill)
-MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 600},
+# GNM's two tooth rows are separate parts: in one part's field the rows touch at the bite and were meshed as ONE
+# piece, so jawOpen (the lower row's move, the upper row's none) stretched the triangles joining them into shards.
+# min_triangles per row: at 600 for both rows a decimated row bulged out through the closed lips.
+TEETH_PARTS = ("teeth", "teeth_lower")  # (upper row, lower row), each with its gums
+MOUTH_PARTS = {"teeth": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 1200},
+               "teeth_lower": {"color": [0.86, 0.83, 0.74], "roughness": 0.3, "voxel": 0.0004, "min_triangles": 1200},
                "tongue": {"color": [0.62, 0.3, 0.3], "roughness": 0.45, "voxel": 0.0008}}
 GUM_COLOR = [0.68, 0.32, 0.33]
 BAG_COLOR = [0.2, 0.07, 0.07]
@@ -2164,17 +2169,17 @@ def _piece_points(V, faces, rounds: int = MOUTH_SUBDIVIDE) -> dict:
     return {"verts": V, "normals": N, "h": h, "hmax": float(h.max()), "tree": cKDTree(V), "seam": None}
 
 
-MOUTH_SHELL = {"teeth": 0.003, "tongue": 0.008}  # m: how deep under GNM's surface a piece's solid reaches
+MOUTH_SHELL = {"teeth": 0.003, "teeth_lower": 0.003, "tongue": 0.008}  # m: how deep under GNM's surface a piece's solid reaches
 
 
 def gnm_mouth_field(head: dict) -> list:
     """GNM's mouth as field elements for spec.compile_prims: [{"name", "part", "op", "kind", "blend", "layer",
-    "params", "lo", "hi"}]: the two tooth rows with their gums (part "teeth") and the tongue (part "tongue"), each the
+    "params", "lo", "hi"}]: the two tooth rows with their gums (parts "teeth" = upper, "teeth_lower") and the tongue (part "tongue"), each the
     solid under GNM's own surface (sd_gnm_piece). The mouth BAG is not an element: with the lips parted GNM's mouth
     sock joins the head's own point set (surface: sock_points), as it joins GNM's skin."""
     mp = gnm_mouth(head)
     out = []
-    for name, part in (("teeth_upper", "teeth"), ("teeth_lower", "teeth"), ("tongue", "tongue")):
+    for name, part in (("teeth_upper", TEETH_PARTS[0]), ("teeth_lower", TEETH_PARTS[1]), ("tongue", "tongue")):
         pr = _piece_points(mp[name]["verts"], mp[name]["faces"])
         pr["t"] = MOUTH_SHELL[part]
         pad = 2 * pr["hmax"]

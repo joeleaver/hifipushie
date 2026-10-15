@@ -332,7 +332,94 @@ def humanoid(spec: dict) -> list[dict] | None:
         fwd[2] = 0
         fwd /= max(np.linalg.norm(fwd), 1e-9)
         add(f"{S}Toe_End", _surface_along(spec, toe, fwd, 0.5), f"{S}ToeBase", True)
-    return _add_twist(bones, twist_counts(spec))
+    return _add_bend(_add_twist(bones, twist_counts(spec)), bend_on(spec))
+
+
+# ---- bend helpers (half-angle joints) -----------------------------------------------------------------------------
+# Linear blend skinning across a hinge averages two rotations: at 90 deg the skin between them collapses toward the
+# chord (the elbow's and knee's flat "squared" corner, the pinched crease, the deltoid that flattens when the arm
+# rises: rig_r1's review). Games add a HELPER joint at the hinge that turns HALF the joint's rotation (Unreal's
+# "corrective" / "half-angle" bones, Maya's "twist/bend helpers"): the blend zone's skin rides it, so it is carried
+# round the arc instead of across the chord. A leaf bone after the Mixamo set (and after the twist chains), a child of
+# the joint's PARENT, standing at the joint's head; driven: local rotation = slerp(identity, the joint's local rotation
+# from rest, share). Undriven it sits on its parent: the skin is what it was only if the driver is at rest, so an
+# engine MUST drive it (the json's rig.bend and node extras.hifipushie_bend carry driver and share).
+BEND = {"ForeArm": "Arm", "Leg": "UpLeg", "Arm": "Shoulder", "UpLeg": "Hips"}  # joint: its parent
+BEND_SHARE = 0.5   # the helper turns this share of its joint's rotation
+BEND_TAKE = 1.0    # share of a vertex's overlap min(w parent, w joint) x 2 the helper takes (the blend zone)
+
+
+def bend_on(spec: dict) -> list[str]:
+    """spec["rig"]["bend"]: false (none), true / left out (all: elbow, knee, shoulder, hip), or a list of joints."""
+    b = (spec.get("rig") or {}).get("bend", True)
+    if b is False:
+        return []
+    if b is True or b is None:
+        return list(BEND)
+    bad = [x for x in b if x not in BEND]
+    if bad:
+        raise ValueError(f"rig.bend: unknown joint(s) {bad} (have {', '.join(BEND)})")
+    return list(b)
+
+
+def _add_bend(bones: list[dict], joints: list[str]) -> list[dict]:
+    idx = {b["name"]: i for i, b in enumerate(bones)}
+    extra = []
+    for S in ("Left", "Right"):
+        for jn in joints:
+            par = BEND[jn]
+            i = idx.get(PREFIX + S + jn)
+            pi = idx.get(PREFIX + (par if par == "Hips" else S + par))
+            if i is None or pi is None:
+                continue
+            extra.append({"name": f"{PREFIX}{S}{jn}Bend", "head": np.asarray(bones[i]["head"], float).copy(),
+                          "parent": pi, "end": False, "src": f"bend helper at {S}{jn}",
+                          "bend": {"driver": bones[i]["name"], "share": BEND_SHARE, "of": bones[pi]["name"]}})
+    return bones + extra
+
+
+def bend_table(bones: list[dict]) -> list[dict]:
+    return [{"bone": b["name"], "parent": b["bend"]["of"], "driver": b["bend"]["driver"], "share": b["bend"]["share"]}
+            for b in bones if b.get("bend")]
+
+
+def _share_bend(rb: list[dict], J: np.ndarray, W: np.ndarray):
+    """The bend helpers take each vertex's overlap between a hinge's two bones (parent and joint, their twist joints
+    counted as them): 2 x min(w parent, w joint) x BEND_TAKE, half from each side."""
+    hs = [(i, b) for i, b in enumerate(rb) if b.get("bend")]
+    if not hs:
+        return J, W
+    names = [b["name"] for b in rb]
+    fam = np.arange(len(rb))
+    for i, b in enumerate(rb):
+        if b.get("twist"):
+            fam[i] = b["parent"]
+    J = np.asarray(J).copy()
+    W = np.asarray(W, np.float64).copy()
+    kk = J.shape[1]
+    J2 = np.concatenate([J, np.zeros((len(J), 1), J.dtype)], 1)
+    W2 = np.concatenate([W, np.zeros((len(W), 1))], 1)
+    FJ = fam[J]
+    for hi, hb in hs:
+        jd, jp = names.index(hb["bend"]["driver"]), names.index(hb["bend"]["of"])
+        wd = np.where(FJ == jd, W, 0).sum(1)
+        wp = np.where(FJ == jp, W, 0).sum(1)
+        take = 2 * np.minimum(wd, wp) * BEND_TAKE
+        sel = np.flatnonzero((take > 1e-4) & (W2[:, kk] == 0))
+        if not len(sel):
+            continue
+        for fb, wf in ((jd, wd), (jp, wp)):  # half from each side, in proportion over its (twist) bones
+            m = (FJ[sel] == fb)
+            frac = np.where(m, W[sel] / np.maximum(wf[sel, None], 1e-12), 0.0)
+            W2[sel, :kk] -= frac * (take[sel, None] / 2)
+        J2[sel, kk], W2[sel, kk] = hi, take[sel]
+    W2 = np.maximum(W2, 0.0)
+    order = np.argsort(-W2, axis=1, kind="stable")[:, :kk]  # (the smallest of five goes; renormalised)
+    Jk = np.take_along_axis(J2, order, 1)
+    Wk = np.take_along_axis(W2, order, 1)
+    Wk /= np.maximum(Wk.sum(1, keepdims=True), 1e-12)
+    Jk[Wk <= 0] = 0
+    return Jk, Wk
 
 
 # ---- twist bones ------------------------------------------------------------------------------------------------
@@ -424,6 +511,7 @@ def _spread_twist(rb: list[dict], verts: np.ndarray, J: np.ndarray, W: np.ndarra
     """Each twisted segment's weight shared out along it: a vertex's weight on the segment's bone is split between
     the two stations it lies between (the bone itself is the station at the undriven end), linearly. Undriven, the
     twist bones move with their parent, so the skin is what it was; driven, the roll runs linearly joint to joint."""
+    J, W = _share_bend(rb, J, W)
     chains: dict = {}
     for i, b in enumerate(rb):
         if b.get("twist"):
@@ -520,6 +608,10 @@ def drive_twist(bones: list[dict], turns: dict) -> dict:
             ang = tw["share"] * roll_about(tw["axis"], turns[tw["driver"]])
             if abs(ang) > 1e-9:
                 out[b["name"]] = (tw["axis"], ang)
+        bd = b.get("bend")
+        if bd and bd["driver"] in turns and b["name"] not in turns:  # half of the joint's own turn
+            ax, deg = turns[bd["driver"]]
+            out[b["name"]] = (ax, bd["share"] * float(deg))
     return out
 
 
@@ -914,7 +1006,7 @@ def drop_joints(rb: list[dict], names: list[str], what: str = "rig_drop") -> np.
     import re
 
     def base(n):  # "mixamorig:LeftLegTwist1" -> ("Left", "Leg")
-        n = re.sub(r"Twist\d+$", "", n[len(PREFIX):] if n.startswith(PREFIX) else n)
+        n = re.sub(r"(Twist\d+|Bend)$", "", n[len(PREFIX):] if n.startswith(PREFIX) else n)  # (its twist joints and bend helper with it)
         m = re.match(r"(Left|Right)(.+)", n)
         return (m.group(1), m.group(2)) if m else ("", n)
     have = [base(b["name"]) for b in rb]
@@ -1242,7 +1334,7 @@ def _segments(rb: list[dict]):
             kids.setdefault(b["parent"], []).append(i)
     seg = {}
     for i, b in enumerate(rb):
-        if b["end"] or b.get("noweight") or b.get("twist"):  # twist bones take their share after (_spread_twist)
+        if b["end"] or b.get("noweight") or b.get("twist") or b.get("bend"):  # twist bones take their share after (_spread_twist)
             continue
         if "tail" in b:
             seg[i] = (b["head"], b["tail"])

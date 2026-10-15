@@ -53,6 +53,31 @@ def _blender(job: dict, timeout: float = 600):
 GAME_SCRIPT = Path(__file__).with_name("blender_game.py")
 
 
+def budget_check(rb: dict, report: dict, spec: dict) -> dict:
+    """LOD0 triangles by budget part (budgets.json's parts: head, body, clothing, hair_cards, eyes_mouth_lashes,
+    accessories) against the role's defaults: {"parts": {part: [count, budget]}, "total": [count, budget], "lines"}."""
+    skin_pn = (spec.get("skin") or {}).get("part", "body")
+    have: dict = {}
+    for pn, r in report.items():
+        n = int(r.get("triangles", 0))
+        if pn == skin_pn and r.get("meshes"):
+            have["head"] = have.get("head", 0) + int(r["meshes"].get("head", {}).get("triangles", 0))
+            have["body"] = have.get("body", 0) + int(r["meshes"].get("body", {}).get("triangles", 0))
+            continue
+        k = ("body" if pn == skin_pn else "clothing" if r.get("cloth") else "hair_cards" if (r.get("curves") or r.get("cards"))
+             else "eyes_mouth_lashes" if (r.get("lashes") or pn in ("eyes", "teeth", "teeth_lower", "tongue", "brows")) else "accessories")
+        have[k] = have.get(k, 0) + n
+    bp = rb["parts"]
+    parts = {k: [have.get(k, 0), int(bp[k]["default"]) if k in bp else None] for k in sorted(set(have) | set(bp))}
+    tot = [sum(have.values()), int(rb["lod0_triangles"]["default"])]
+    lines = []
+    for k, (n, b) in parts.items():
+        over = b is not None and n > b
+        lines.append(("WARNING budget: " if over else "budget: ") + f"{k} {n} of {b}" + (" (OVER)" if over else ""))
+    lines.append(("WARNING budget: " if tot[0] > tot[1] else "budget: ") + f"total {tot[0]} of {tot[1]} (LOD0)")
+    return {"parts": parts, "total": tot, "lines": lines}
+
+
 def game(glb: Path, timeout: float = 900, **job) -> str:
     """The game-like EEVEE render of an exported GLB (blender_game.py): job keys frames / poses / size / hide
     (asset.preview) or shots / anim / out (the engine-stage checks). Returns Blender's log."""
@@ -877,6 +902,28 @@ def _across_seams(parts, given, baked, share, ys, xs, tri, P, fill, tpart, texel
     return out, done, int(ok.sum())
 
 
+INNER_PAINT_ROUGHNESS = 0.25  # the wet inner lip
+
+
+def inner_paint(parts: dict, topo: dict, head: dict, log: list) -> None:
+    """A GNM head's inner lip rolls (skin_features.inner_lip_values by GNM vertex) as each low-poly corner's
+    "inner_paint" weight, which bake() lays over the scene's colour: the scene's surface has no rolls with the lips
+    closed (the fill behind the seam), so what the bake found there was the skin beside the seam."""
+    from . import skin_features as sfe
+    val = sfe.inner_lip_values(head)
+    if val is None:
+        return
+    for pn, (tp, _) in topo.items():
+        z = np.load(tp)
+        if pn not in parts or "gnm" not in z.files or len(z["verts"]) != len(parts[pn]["verts"]):
+            continue
+        gi = np.asarray(z["gnm"], int)
+        v = np.where((gi >= 0) & (gi < len(val)), val[np.clip(gi, 0, len(val) - 1)], 0.0)
+        parts[pn]["inner_paint"] = v[parts[pn]["corner_vert"]][:, None].astype(np.float32)
+        log.append(f"{pn}: the lips' inner rolls painted on {int((v > 0.99).sum())} vertices (GNM's rings to the "
+                   f"contact ring)")
+
+
 def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given: dict) -> dict:
     """Every map of one atlas (None: all parts) as float arrays (size, size, k), plus the height range. Each
     texel is projected onto its export part's own field (normal, height); given: the maps Cycles baked from the
@@ -983,6 +1030,17 @@ def bake(parts: dict, size: int, ctx: dict, log: list, atlas: int | None, given:
     def put_given(name, img):
         maps[name] = _dilate(img.astype(np.float64), own)
     lin = given["color"][..., :3].astype(np.float64)
+    if any("inner_paint" in p for p in parts.values()):  # (inner_paint: the lips' rolls, hidden in the scene)
+        from . import skin_features as sfe
+        for pn_, p_ in parts.items():
+            p_.setdefault("inner_paint", np.zeros((len(p_["corner_vert"]), 1), np.float32))
+        w_ = np.zeros(lin.shape[:2])
+        w_[ys, xs] = np.clip(interp("inner_paint")[:, 0], 0, 1)
+        w_ = _dilate(w_[..., None], own)[..., 0]
+        lin = lin * (1 - w_[..., None]) + np.asarray(sfe.INNER_LIP_COLOR, float) * w_[..., None]
+        rms = given["rms"].astype(np.float64).copy()
+        rms[..., 0] = rms[..., 0] * (1 - w_) + INNER_PAINT_ROUGHNESS * w_
+        given = {**given, "rms": rms}
     put_given("basecolor", np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055))
     put_given("roughness", given["rms"][..., :1])
     put_given("metallic", given["rms"][..., 1:2])
@@ -1310,6 +1368,16 @@ def _head_share(rigged: dict, pn: str, bone: int) -> np.ndarray:
     return (np.asarray(W) * (np.asarray(J) == bone)).sum(1)
 
 
+BEND_RECIPE = ("Bend helpers (<joint>Bend: ForeArmBend at the elbow, LegBend at the knee, ArmBend at the shoulder, "
+               "UpLegBend at the hip) are leaf joints after the Mixamo set, children of the joint's PARENT, standing at the "
+               "joint. Drive each every frame after the animation: local rotation = slerp(identity, the driver joint's "
+               "local rotation from its rest, share) (share 0.5: half the elbow's bend). The blend zone of the hinge's "
+               "skin rides them, so a bent elbow / knee keeps its volume instead of collapsing to the chord. Undriven they "
+               "stay on the parent and the hinge's skin lags: they MUST be driven (Unreal: a Control Rig / AnimBP "
+               "'Copy Bone' with weight 0.5 or a pose driver; Unity: a Multi-Rotation Constraint at 0.5; Godot: copy "
+               "the slerped rotation in _process).")
+
+
 TWIST_RECIPE = {
     "what": "Twist bones are extra leaf joints after the Mixamo set (children of the Arm / ForeArm / UpLeg / Leg "
             "joints, named <segment>Twist<k>, k counted away from the body). Nothing animates them: left alone they "
@@ -1504,6 +1572,9 @@ def write_glb(path: Path, name: str, parts: dict, atlases: list[tuple[str, dict[
                     "axis_local": [0.0, 1.0, 0.0], "axis_parent": [round(float(x), 6) for x in a]}}
                 ibm[i, :3, :3] = R.T
                 ibm[i, :3, 3] = -R.T @ head[i]
+            bd = b.get("bend")
+            if bd:  # a bend helper (rig.py): rests unrotated like the joint it follows; driven by BEND_RECIPE
+                nodes[-1]["extras"] = {"hifipushie_bend": {"driver": bd["driver"], "share": bd["share"]}}
         for i, b in enumerate(bones):
             if b["parent"] >= 0:
                 nodes[base + b["parent"]].setdefault("children", []).append(base + i)
@@ -1658,11 +1729,11 @@ def export(name: str, out_dir: Path, *args, **kw) -> dict:
         return _export(name, out_dir, *args, **kw)
 
 
-def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 2048, resolution: int = 256,
+def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int = 2048, resolution: int = 256,
             atlases: int = 1, texel_density: float | None = None, instancing: bool = True, rig: bool | dict = False,
             fbx: bool = False, face_shapes: bool | list | None = None, asset_name: str | None = None,
             lods: bool | list | None = None, cloth_triangles: int | None = None,
-            cull_under_cloth: bool = True) -> dict:
+            cull_under_cloth: bool = True, role: str | None = None) -> dict:
     """Build, decimate + unwrap, bake every map, write PNGs, <name>.glb and <name>.json into out_dir.
     asset_name: what the files, nodes, meshes and materials are called (default: the model's name): an engine's
     importer and tools key on them (s0urc3's Garrett is model rg_garrett, asset "garrett": garrett_body, ...).
@@ -1686,6 +1757,27 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     it without a garment fit, socks) the garments cover is left out (under_cloth_keep), a rim kept at the openings."""
     log = _Log(name)
     t = time.time()
+    rb = None
+    if role:  # the budgets profile (budgets.json, docs/notes/budgets.md): what this role may cost; explicit arguments win
+        from . import budgets as budgetmod
+        rb = budgetmod.role(role)
+        bp_ = rb["parts"]
+        if triangles is None:  # what the joint decimation spends: the body (head + body meshes) and the small parts
+            triangles = sum(int(bp_[k]["default"]) for k in ("head", "body", "eyes_mouth_lashes", "accessories") if k in bp_)
+        if cloth_triangles is None and "clothing" in bp_:
+            cloth_triangles = int(bp_["clothing"]["default"])
+        texture = min(texture, int((rb.get("textures") or {}).get("max_map", texture)))
+        if texel_density is None:  # atlases sized by the role's texel density (the face's higher density is the
+            # model's parts.<skin>.texel_focus; separate head / body texture SETS need the native head unwrapped as its
+            # own part: not built, the two meshes share one atlas)
+            texel_density = float(((rb.get("textures") or {}).get("texel_density_px_per_m") or {}).get("body", 1024))
+        if lods is None:
+            lods = True
+        log.append(f"budgets: role {role!r}: triangles {triangles} (head + body + eyes/mouth/lashes + accessories), "
+                   f"clothing {cloth_triangles}, maps <= {texture}, LOD0 total {rb['lod0_triangles']['default']}")
+    if triangles is None:
+        triangles = 15000
+        log.append("WARNING budgets: no role given and no triangles: 15000 (not a stated budget; pass role=)")
     spec = store.load(name)
     aname = asset_name or name
     from .base import part_defs
@@ -1714,7 +1806,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         from . import base as basemod
         mp = basemod.gnm_mouth(fface.head)
         pts = {k: basemod._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
-        own_surface = {"teeth": np.r_[pts["teeth_upper"], pts["teeth_lower"]], "tongue": pts["tongue"]}
+        own_surface = {basemod.TEETH_PARTS[0]: pts["teeth_upper"], basemod.TEETH_PARTS[1]: pts["teeth_lower"],
+                       "tongue": pts["tongue"]}
     prune_hidden(ctx, high, log, own_surface)
     if texel_density:
         split_big(high, ctx, {pn: _weight(defs, origin[pn], "texel_density") * texel_density for pn in ctx["streams"]},
@@ -1882,6 +1975,8 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             log.append("skin: micro detail left out of the baked maps and written as tiling normal maps ("
                        + ", ".join(d["normal"] for d in skin_recipe["detail"]) + "): the recipe is in the json and the skin "
                        "material's extras")
+    if face_shapes and getattr(fface, "gnm_mouth", False):  # the lips' inner rolls: hidden in the closed scene,
+        inner_paint(parts, topo, fface.head, log)            # painted on the low poly's own triangles
     given = scene_maps(name, parts, sizes, ctx, resolution, log)
     for ai, an in enumerate(names):
         stem = aname if len(names) == 1 else f"{aname}_{an}"
@@ -2124,6 +2219,14 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
     if lods:
         from . import lods as lodmod
         ratios = list(lodmod.LOD_RATIOS) if lods is True else [float(r) for r in lods]
+        ratio_of, mesh_r, shape_lods = None, None, None
+        if rb is not None and lods is True:
+            from . import budgets as budgetmod
+            above, below = budgetmod.lod_ratios("head"), budgetmod.lod_ratios("body")
+            ratios = budgetmod.lod_ratios(None)[1:]
+            shape_lods = set((rb.get("face_shapes") or {}).get("lods") or [0])
+
+            ratio_of = True
         cards = [pn for pn in parts if report[pn].get("curves") or report[pn].get("lashes")]
         tier_parts = {}
         if locals().get("hair_cards") and rigged:  # hair LODs are the groom's own card TIERS (one atlas for all:
@@ -2148,8 +2251,20 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                 tier_parts[k] = (tp_, (Jh, Wh), tier_)
         for k, r in enumerate(ratios, 1):
             tl = time.time()
-            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, r, skip=cards,
-                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None)
+            if ratio_of is not None:  # above the neck holds detail longer than below it (budgets.lod_ratios)
+                kk_ = min(k, len(above) - 1)
+                skin_pn_ = (spec.get("skin") or {}).get("part", "body")
+
+                def r_part(pn, kk_=kk_):  # head parts (the skin's head mesh by mesh_ratios) above, the rest below
+                    if pn == skin_pn_ or pn in ("eyes", "teeth", "teeth_lower", "tongue"):
+                        return above[kk_]
+                    return below[min(kk_, len(below) - 1)]
+                rr_, mesh_r = r_part, {"head": above[kk_], "body": below[min(kk_, len(below) - 1)]}
+            else:
+                rr_ = r
+            lp, lr, rep_l = lodmod.lod_parts({pn: p for pn, p in parts.items() if pn not in pf_of}, rigged, rr_, skip=cards,
+                                             cards={pn_h: hair_cards["layers"]} if locals().get("hair_cards") and k not in tier_parts else None,
+                                             mesh_ratios=mesh_r, shapes=(shape_lods is None or k in shape_lods))
             if k in tier_parts:
                 tp_, w_, tier_ = tier_parts[k]
                 lp[pn_h] = tp_
@@ -2167,6 +2282,11 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
         import shutil
         for k in tier_parts:  # (the tiers' own copies of the shared hair atlas)
             shutil.rmtree(out_dir / f"_lod{k}", ignore_errors=True)
+    budget_gate = None
+    if rb is not None:  # each part's count against the role's budget (a gate line; over = WARNING)
+        budget_gate = budget_check(rb, report, spec)
+        for ln in budget_gate["lines"]:
+            log.append(ln)
     if fbx:  # the same asset as FBX, for engines' skinned-mesh import
         tf = time.time()
         write_fbx(glb, glb.with_suffix(".fbx"))
@@ -2201,9 +2321,10 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
             "atlases": {an: {"size": sizes[ai], "maps": maps_info[an], "height_range_m": heights[an],
                              "coverage": round(cover[an], 3),
                              "parts": [pn for pn, r in report.items() if r["atlas"] == an]} for ai, an in enumerate(names)},
-            "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}), **({"skin": skin_recipe} if skin_recipe else {}),
+            "parts": report, "prefabs": prefabs, **({"lods": lod_info} if lod_info else {}),
+            **({"role": role, "budget": budget_gate} if rb is not None else {}), **({"skin": skin_recipe} if skin_recipe else {}),
             **({"rig": {"bones": [b["name"] for b in rigged["bones"]],
-                        "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist")),
+                        "base_bones": sum(1 for b in rigged["bones"] if not b.get("twist") and not b.get("bend")),
                         "layers_seated": rigged.get("layers_seated", []),
                         "rest": "every base joint unrotated at its head, pose as modelled; twist joints rotated so "
                                 "local +Y runs along their segment",
@@ -2211,6 +2332,7 @@ def _export(name: str, out_dir: Path, triangles: int = 15000, texture: int = 204
                         "twist_axes": "Blender axes here (Z up, faces -Y); the GLB's node extras.hifipushie_twist "
                                       "carry the same per joint in glTF axes (axis_parent) and local (+Y)",
                         "twist_recipe": TWIST_RECIPE,
+                        "bend": rigmod.bend_table(rigged["bones"]), "bend_recipe": BEND_RECIPE,
                         "head": (f"rigid: {hf['how']}; falloff to the neck over {hf['band'] * 1e3:.0f} mm below; "
                                  "face-shape vertices, teeth, tongue and eyes Head 1.0") if hf else "not rigid"}}
                if rigged else {}),

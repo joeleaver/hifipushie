@@ -210,7 +210,7 @@ def test_shading_notes_cover_every_material():
         assert set(kinds) == {"skin", "eye", "hair_cards"}
         assert "blink" in kinds["skin"]["maps"] and "blink" not in kinds["eye"]["maps"]
         assert any("lerp(1, blink, 1 - eyeBlink)" in f for f in kinds["skin"]["formulas"])
-        assert n["lods"][1]["switch_m"] > 0 and "unreal" in kinds["hair_cards"]["engines"]
+        assert 0 < n["lods"][1]["screen_size"] < 1 and "unreal" in kinds["hair_cards"]["engines"]
         assert "## LODs" in open(m).read()
         # a hair card's albedo terms are applied ONCE: clump depth and the value per strand are in the atlas, the
         # root ramp / tip / lock tone in COLOR_0; the shader adds no aux shade (it darkened the cards twice)
@@ -235,6 +235,40 @@ def test_hair_atlas_bakes_what_the_notes_say():
     assert deep.any() and high.any() and lum[deep].mean() < 0.97 * lum[high].mean()  # (sRGB)
     lo, hi = on & (aux[..., 2] > 0.8) & (aux[..., 1] < 0.3), on & (aux[..., 2] > 0.8) & (aux[..., 1] > 0.7)
     assert lum[lo].mean() < lum[hi].mean()  # the value per strand (id)
+
+
+def test_budget_gate_maps_parts_and_flags_over():
+    from hifipushie import asset, budgets
+    rb = budgets.role("hero")
+    report = {"body": {"triangles": 41000, "meshes": {"head": {"triangles": 23000}, "body": {"triangles": 18000}}},
+              "hair": {"triangles": 40000, "curves": True}, "lashes": {"triangles": 4900, "lashes": True},
+              "eyes": {"triangles": 350}, "cloth_jeans": {"triangles": 9000, "cloth": True}, "shoes": {"triangles": 745}}
+    g = asset.budget_check(rb, report, {})
+    assert g["parts"]["head"][0] == 23000 and g["parts"]["body"][0] == 18000
+    assert g["parts"]["eyes_mouth_lashes"][0] == 5250 and g["parts"]["accessories"][0] == 745
+    over = [ln for ln in g["lines"] if "OVER" in ln]
+    assert any("hair_cards" in ln for ln in over) and any("body" in ln for ln in over)
+    assert not any(ln.startswith("WARNING budget: head") for ln in g["lines"])
+
+
+def test_bend_helper_takes_the_hinge_overlap_and_is_driven_by_half():
+    from hifipushie import rig
+    P = rig.PREFIX
+    rb = [{"name": P + "Hips", "head": np.zeros(3), "parent": -1, "end": False},
+          {"name": P + "LeftUpLeg", "head": np.array([0.1, 0, 0]), "parent": 0, "end": False},
+          {"name": P + "LeftLeg", "head": np.array([0.1, 0, -0.4]), "parent": 1, "end": False},
+          {"name": P + "LeftFoot", "head": np.array([0.1, 0, -0.8]), "parent": 2, "end": False}]
+    rb = rig._add_bend(rb, ["Leg"])
+    assert rb[-1]["name"] == P + "LeftLegBend" and rb[-1]["parent"] == 1
+    J = np.array([[1, 2, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0]])
+    W = np.array([[0.6, 0.4, 0, 0], [1.0, 0, 0, 0], [1.0, 0, 0, 0]])
+    J2, W2 = rig._share_bend(rb, J, W)
+    assert np.allclose(W2.sum(1), 1.0)
+    h = len(rb) - 1
+    wh = np.where(J2 == h, W2, 0).sum(1)
+    assert abs(wh[0] - 0.8) < 1e-9 and wh[1] == 0 and wh[2] == 0  # 2 x min(0.6, 0.4)
+    t = rig.drive_twist(rb, {P + "LeftLeg": ([1, 0, 0], 90.0)})
+    assert t[P + "LeftLegBend"] == ([1, 0, 0], 45.0)
 
 
 if __name__ == "__main__":

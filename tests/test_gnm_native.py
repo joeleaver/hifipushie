@@ -161,7 +161,7 @@ def test_mouth_mode_and_fallback():
     b = sp["base"]
     ht = _head(sp)
     assert base.mouth_mode(b) == "gnm" and base.mouth_mode(b, ht) == "gnm" and ht["mouth_off"] < 1e-6
-    assert set(base.implied_parts(sp)) >= {"teeth", "tongue"}
+    assert set(base.implied_parts(sp)) >= {"teeth", "teeth_lower", "tongue"}
     kit = {**b, "head": {**b["head"], "interior": {"teeth": True, "tongue": True}}}
     assert base.mouth_mode(kit) == "kit"                             # an old spec's interior keeps its meaning
     assert base.mouth_mode({**b, "head": {**kit["head"], "mouth": "gnm"}}) == "gnm"
@@ -186,6 +186,7 @@ def test_gnm_mouth_pieces_in_the_field():
     prims = {p.name: p for p in specmod.compile_prims(sp)}
     assert {"gnm_teeth_upper", "gnm_teeth_lower", "gnm_tongue"} <= set(prims)
     assert prims["gnm_teeth_upper"].part == "teeth" and prims["gnm_tongue"].part == "tongue"
+    assert prims["gnm_teeth_lower"].part == "teeth_lower"  # (one part: the rows met at the bite and jawOpen tore them)
     assert "mouth_fill" in specmod.expand_mirror(sp)["blobs"]        # closed lips: the fill behind them, as before
     ht = base.head_of({"joints": specmod.expand_mirror(sp)["joints"]}, sp["base"])
     mp = base.gnm_mouth(ht)
@@ -241,12 +242,13 @@ def test_face_shapes_on_gnms_own_mouth():
     Du = face.displacements(upv, upv, np.zeros_like(upv), "teeth", names)
     Dt = face.displacements(tgv, tgv, np.zeros_like(tgv), "tongue", names)
     assert (Dl["jawOpen"] @ face.up).min() < -0.006 and np.abs(Du["jawOpen"]).max() < 0.0006
-    # near-rigid: GNM's jaw turns the lower row ~17 deg, through a LINEAR basis: off a true rotation by r (1 - cos) ~ 1.6 mm
+    # near-rigid: GNM's jaw turns the lower row ~22 deg (GNM_OPEN), through a LINEAR basis: off a true rotation by
+    # r (1 - cos) ~ 2.6 mm (1.6 at the old 14 deg)
     X0, X1 = lowv, lowv + Dl["jawOpen"]
     a, b = X0.mean(0), X1.mean(0)
     U, _, Vt = np.linalg.svd((X0 - a).T @ (X1 - b))
     Rr = (U @ Vt).T
-    assert np.abs((X0 - a) @ Rr.T + b - X1).max() < 0.0025
+    assert np.abs((X0 - a) @ Rr.T + b - X1).max() < 0.0032
     assert np.abs(Dl["eyeBlinkLeft"]).max() < 1e-6 and np.abs(Dt["eyeBlinkLeft"]).max() < 1e-6
     assert np.abs(Du["mouthSmileLeft"]).max() < 0.0006               # a smile does not move the upper teeth
     # the tongue: out past the lips' front with GNM's own tongue components (not a stretched blob)
@@ -258,7 +260,14 @@ def test_face_shapes_on_gnms_own_mouth():
     assert any(k.startswith("tongue_") for k in cf) and max(abs(v) for k, v in cf.items() if k.startswith("tongue_")) < 4.5
     assert face.shape_coeffs("eyeLookUpLeft") == {} and face.shape_coeffs("cheekPuff") == {}
     # the parts the export will find, and how fine it meshes the teeth
-    assert face.parts_teeth == {"teeth"} and face.parts_tongue == {"tongue"} and face.voxels()["teeth"] <= 0.0005
+    assert face.parts_teeth == {"teeth", "teeth_lower"} and face.parts_tongue == {"tongue"}
+    assert face.voxels()["teeth"] <= 0.0005 and face.voxels()["teeth_lower"] <= 0.0005
+    # a row's part says which row it is: the lower row's vertices nearest the UPPER row's (at the bite) still ride
+    # the jaw, the upper row's nearest the lower row stay
+    D2 = face.displacements(upv, upv, np.zeros_like(upv), "teeth", ["jawOpen"], np.ones(len(upv), bool))
+    assert (D2["jawOpen"] @ face.up).min() < -0.006
+    D3 = face.displacements(lowv, lowv, np.zeros_like(lowv), "teeth", ["jawOpen"], np.zeros(len(lowv), bool))
+    assert np.abs(D3["jawOpen"]).max() < 0.0006
     # a blink's lid clears GNM's corneal bulge too
     assert face.eyes["Left"].get("cornea") is not None
 
@@ -293,3 +302,21 @@ def test_size_is_held_and_the_iris_is_its_weak_ruler():
     w = psd ** 2 / (psd ** 2 + sr.SIZE_IRIS_SIG ** 2)
     comb = 1 / np.sqrt(1 / psd ** 2 + 1 / sr.SIZE_IRIS_SIG ** 2)
     assert 0.03 < w < 0.6 and comb < min(psd, sr.SIZE_IRIS_SIG)
+
+
+def test_inner_lip_paint_covers_the_rolls_not_the_outer_lips():
+    """The inner rolls (GNM's rings from the mouth loop to the contact ring) get the wet inner-lip colour by GNM
+    vertex: hidden in the closed neutral, the bake filled them with skin and every parting shape showed a brown
+    fringe. The outer vermilion stays the skin's."""
+    from scipy.spatial import cKDTree
+    from hifipushie import skin_features as sf
+    sp = _spec()
+    head = base.head_of({"joints": specmod.expand_mirror(sp)["joints"]}, sp["base"])
+    val = sf.inner_lip_values(head)
+    W = np.asarray(head["gnm_world"], float)
+    t = cKDTree(W)
+    lm = head["lm68"]
+    inner = [t.query(lm[i])[1] for i in (61, 62, 63, 65, 66, 67)]
+    outer = [t.query(lm[i])[1] for i in (50, 51, 52, 56, 57, 58)]
+    assert val[inner].min() > 0.25 and val[outer].max() == 0.0
+    assert 100 < (val > 0.99).sum() < 2000
