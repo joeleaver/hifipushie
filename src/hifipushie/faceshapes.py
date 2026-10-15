@@ -847,7 +847,10 @@ def apply(spec: dict, parts: dict, face_shapes, log: list) -> dict:
             p["normal"] = turn(np.asarray(p["normal"], np.float64), n0m[cv], n0[cv]).astype(p["normal"].dtype)
             p["tangent"] = turn(np.asarray(p["tangent"], np.float64), n0m[cv], n0[cv]).astype(p["tangent"].dtype)
         lower = None
-        if kind == "teeth":  # each connected piece whose middle is under the parting line is the lower row
+        if kind == "teeth" and getattr(face, "gnm_mouth", False):  # GNM's rows are parts of their own
+            from . import base as basemod
+            lower = np.full(len(Xm), base == basemod.TEETH_PARTS[1])
+        elif kind == "teeth":  # each connected piece whose middle is under the parting line is the lower row
             from scipy.sparse import coo_matrix
             from scipy.sparse.csgraph import connected_components
             e = np.concatenate([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]])
@@ -963,7 +966,17 @@ LID_EDGE = (0.0025, 0.0015)  # m from its lid's posed edge within which a vertex
 LID_OVER_FADE = True  # the upper lid's overlap fades out toward the corners (one skin there, not two sheets)
 LID_FADE = (0.36, 0.46)  # of the eye's width from its middle: where that fade starts and ends
 LID_PINCH = 3     # how hard that band is drawn to the line: linear (1) parked the margins ~0.5 mm either side of it, a 1.2 mm slit
-GNM_OPEN = 14.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16)
+GNM_OPEN = 22.0  # deg: jawOpen at 1.0, about the line through the ears' landmarks (0, 16). (14 opened the incisors
+# ~17 mm: "the jaw barely drops", review expr_r1; ARKit's jawOpen 1 is a wide open mouth. 22 with JAW_PRIOR: chin
+# down 30 mm, the inner lips 24 mm apart, two creases past 120 deg on GNM's skin.)
+JAW_PRIOR = 1e-4  # ridge on the GNM coefficients of the jaw shapes (jawOpen, jawForward / Left /
+# Right, tongueOut). A rigid turn of the jaw's landmarks is not a move GNM's lower-face basis makes: the near-free
+# solve (SOLVE_RIDGE) met it with coefficients to 6-10 sd (norm 12-20) and folded the lips' rolls into shards (37
+# creases past 120 deg at 22 deg; 31 flipped triangles at 14). At 1e-4: norm 5.7, the chin drops further, 2 creases.
+SOLVE_RIDGE = 1e-6  # the other shapes' solve (as before)
+JAW_PRIORED = ("jawOpen", "jawForward", "jawLeft", "jawRight", "tongueOut")
+# (not jawOpen_mouthClose: it holds the jaw line still while the lips close, and with the prior that hold slipped:
+# A2F's "warm f31" pushed the chin 7 mm forward)
 
 
 def lid_seal_options(v) -> dict:
@@ -1097,7 +1110,7 @@ class GnmFace(Face):
         own = np.asarray(g["groups"]["mouth_sock"])[mp["sock"]["ids"]] > 0.5
         P = (mp["sock"]["verts"][own] - self.M) @ np.stack([self.side, self.out, self.up], 1)
         self.bag = 0.5 * (P.max(0) - P.min(0))
-        self.parts_teeth, self.parts_tongue = {"teeth"}, {"tongue"}
+        self.parts_teeth, self.parts_tongue = set(basemod.TEETH_PARTS), {"tongue"}
         self.teeth_t = 3 * float(basemod.MOUTH_PARTS["teeth"]["voxel"])
         self.tongue = None
 
@@ -1124,7 +1137,7 @@ class GnmFace(Face):
                      "tree": cKDTree(self.head["verts"])}
         return self._gnm
 
-    def _solve(self, moves: dict, region: str, hold: float = HOLD) -> np.ndarray:
+    def _solve(self, moves: dict, region: str, hold: float = HOLD, prior: float = SOLVE_RIDGE) -> np.ndarray:
         """GNM vertex offsets (its frame) that move landmarks by `moves` ({id: [x, y, z] in mouth widths}) holding
         the rest: ridge least squares over the region's expression components (linear in them, as pose_expression)."""
         G = self._setup()
@@ -1138,7 +1151,7 @@ class GnmFace(Face):
             w[i] = 1.0
         w, t = w.ravel(), t.ravel()
         Aw = A * w[:, None]
-        cf = np.linalg.solve(Aw.T @ Aw + 1e-6 * np.eye(len(comps)), Aw.T @ (t * w))
+        cf = np.linalg.solve(Aw.T @ Aw + prior * np.eye(len(comps)), Aw.T @ (t * w))
         self._last = dict(zip(comps, cf))  # (shape_coeffs: a shape IS these expression coefficients)
         return np.tensordot(cf, B, 1)
 
@@ -1172,16 +1185,17 @@ class GnmFace(Face):
         mv, region = self._gnm_moves(name)
         if region is None:
             return {}
-        self._solve(mv, region)
+        self._solve(mv, region, prior=JAW_PRIOR if name in JAW_PRIORED else SOLVE_RIDGE)
         out = {names[i]: float(v) for i, v in self._last.items()}
         if name == "tongueOut" and self.gnm_mouth:
             out.update({names[i]: float(v) for i, v in self._tongue_out()[1].items()})
         return {k: round(v * self.amount.get(name, 1.0), 5) for k, v in out.items() if abs(v) > 1e-6}
 
-    def _piece_onto(self, X: np.ndarray, dV: np.ndarray, kind: str) -> np.ndarray:
+    def _piece_onto(self, X: np.ndarray, dV: np.ndarray, kind: str, lower=None) -> np.ndarray:
         """World offsets of a GNM mouth part's export vertices X (kind "teeth" | "tongue" | "sock") from GNM's own
-        offsets dV: inverse distance over the 4 nearest vertices of the GNM piece the vertex belongs to (the nearest
-        piece: a tooth row never takes the other row's move)."""
+        offsets dV: inverse distance over the 4 nearest vertices of the GNM piece the vertex belongs to (teeth:
+        `lower` (per vertex, True = the lower row) when the part says which row it is, else the nearest piece: a
+        tooth row never takes the other row's move)."""
         from scipy.spatial import cKDTree
 
         from . import base as basemod
@@ -1193,7 +1207,12 @@ class GnmFace(Face):
         for n in names:
             if n not in trees:
                 trees[n] = cKDTree(mp[n]["verts"])
-        best = np.argmin(np.stack([trees[n].query(X)[0] for n in names]), 0) if len(names) > 1 else np.zeros(len(X), int)
+        if kind == "teeth" and lower is not None:
+            best = np.asarray(lower, bool).astype(int)
+        elif len(names) > 1:
+            best = np.argmin(np.stack([trees[n].query(X)[0] for n in names]), 0)
+        else:
+            best = np.zeros(len(X), int)
         out = np.zeros_like(X)
         for j, n in enumerate(names):
             m = best == j
@@ -1246,12 +1265,18 @@ class GnmFace(Face):
             hold(mv, CHIN)
             return mv, "mouth"
         if name == "jawOpen_mouthClose":  # against a full jawOpen: the lower lip back up most of the way, the upper
-            # down the rest
-            jo = self._jaw_moves(self.open)
+            # down the rest. Against jawOpen as SOLVED (its prior leaves the lips short of the rigid turn): against
+            # the turn itself, the lips closed past each other (A2F's warm f31: 4.2 mm)
+            G = self._setup()
+            dVj = self._solve(self._jaw_moves(self.open), "mouth", prior=JAW_PRIOR)
+            Lj = np.einsum("ln,nd->ld", G["Wlm"], dVj) / G["wg"]
+            # the GAP it opened (its lower lip's move less its upper lip's: the solve moves the upper lip a little too)
+            pair = dict(zip([59, 58, 57, 56, 55, 67, 66, 65], UPPER_LIP))
+            gap = {i: Lj[i] - (Lj[pair[i]] if i in pair else 0.0) for i in range(68)}
             for i in LOWER_LIP:
-                mv[i] = -CLOSE_LOWER * jo[i]
-            for u, l in zip(UPPER_LIP, [59, 58, 57, 56, 55, 67, 66, 65]):
-                mv[u] = (1 - CLOSE_LOWER) * jo[l]
+                mv[i] = -CLOSE_LOWER * gap[i]
+            for lo_, up_ in pair.items():
+                mv[up_] = (1 - CLOSE_LOWER) * gap[lo_]
             for i in JAW:
                 mv[i] = np.zeros(3)
             return mv, "mouth"
@@ -1271,7 +1296,9 @@ class GnmFace(Face):
                 mv[i] = np.array([0.12 * sx, 0, 0])
             return mv, "mouth"
         if name.startswith("mouthSmile"):
-            put(mv, [54], [0.08, 0.15, -0.05]), put(mv, [53, 55, 64], [0.04, 0.08, -0.03])
+            # (0.08 out / 0.15 up read "far too small" beside a full smile, review expr_r1: the mouth widens ~25%,
+            # i.e. each corner ~0.12 of the mouth's width out, and lifts well up)
+            put(mv, [54], [0.12, 0.21, -0.06]), put(mv, [53, 55, 64], [0.06, 0.11, -0.04])
             return mv, "mouth"
         if name.startswith("mouthFrown"):
             put(mv, [54], [0.0, -0.09, 0.0]), put(mv, [55, 64], [0, -0.04, 0])
@@ -1886,7 +1913,8 @@ class GnmFace(Face):
             dVs = []
             for name in todo:
                 mv, region = self._gnm_moves(name)
-                dV = mv if region is None else self._solve(mv, region)
+                dV = mv if region is None else self._solve(mv, region,
+                                                           prior=JAW_PRIOR if name in JAW_PRIORED else SOLVE_RIDGE)
                 if name == "tongueOut" and self.gnm_mouth:  # GNM's own tongue components on top of the jaw's opening
                     dV = dV + self._tongue_out()[0]
                 dVs.append(dV)
@@ -1908,7 +1936,7 @@ class GnmFace(Face):
             if self.gnm_mouth and kind in ("teeth", "tongue"):
                 # GNM's own teeth and tongue: the shape's expression coefficients on THEIR vertices (the lower row
                 # and the tongue go with the lower-face components, the tongue with its own; the upper row stays)
-                res[name] = self._piece_onto(Xn, G["dV"][name], kind) * self.amount.get(name, 1.0)
+                res[name] = self._piece_onto(Xn, G["dV"][name], kind, lower) * self.amount.get(name, 1.0)
                 continue
             if self.gnm_mouth:  # what isn't near the skin's own vertices is GNM's mouth sock: its own offsets
                 rigid = self._piece_onto(Xn, G["dV"][name], "sock") if kind == "skin" else np.zeros_like(Xn)

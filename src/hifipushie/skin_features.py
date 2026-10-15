@@ -322,8 +322,7 @@ def _gnm_mouth(spec, out, part) -> None:
     pid = _paint.save_painted(sk["verts"], sk["normals"], (d_own < d_rim - 0.0008).astype(float), float(np.clip(sp_, 0.0005, 0.0015)))
     out["skin:mouth_bag"] = {"part": part, "color": list(_base.BAG_COLOR), "roughness": 0.3, "specular": 0.5,
                              "mask": [{"painted": pid}]}
-    pos, nrm, val = [], [], []
-    for k in ("teeth_upper", "teeth_lower"):
+    for k, tpart in (("teeth_upper", _base.TEETH_PARTS[0]), ("teeth_lower", _base.TEETH_PARTS[1])):
         V, F = mp[k]["verts"], [list(map(int, f)) for f in mp[k]["faces"]]
         gum = mp[k]["gum"].astype(float)[:, None].repeat(3, 1)
         for _ in range(_base.MOUTH_SUBDIVIDE):
@@ -331,10 +330,9 @@ def _gnm_mouth(spec, out, part) -> None:
             gum = _base._catmull_clark(gum, F)[0]  # (the group's weight subdivided like the positions)
             V, F = V2, F2
         N, h = _base._normals_and_h(V, F)
-        pos.append(V), nrm.append(N), val.append(np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1))
-    pid = _paint.save_painted(np.concatenate(pos), np.concatenate(nrm), np.concatenate(val), 0.0012)
-    out["skin:gums"] = {"part": "teeth", "color": list(_base.GUM_COLOR), "roughness": 0.25, "specular": 0.6,
-                        "mask": [{"painted": pid}]}
+        pid = _paint.save_painted(V, N, np.clip((gum[:, 0] - 0.35) / 0.3, 0, 1), 0.0012)
+        out["skin:gums" + ("" if tpart == "teeth" else "_lower")] = {
+            "part": tpart, "color": list(_base.GUM_COLOR), "roughness": 0.25, "specular": 0.6, "mask": [{"painted": pid}]}
 
 
 EYE_KEYS = ("iris", "iris_size", "pupil", "veins", "sclera", "tear", "waterline", "limbal", "limbal_width",

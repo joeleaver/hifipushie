@@ -65,7 +65,7 @@ def budget_check(rb: dict, report: dict, spec: dict) -> dict:
             have["body"] = have.get("body", 0) + int(r["meshes"].get("body", {}).get("triangles", 0))
             continue
         k = ("body" if pn == skin_pn else "clothing" if r.get("cloth") else "hair_cards" if (r.get("curves") or r.get("cards"))
-             else "eyes_mouth_lashes" if (r.get("lashes") or pn in ("eyes", "teeth", "tongue", "brows")) else "accessories")
+             else "eyes_mouth_lashes" if (r.get("lashes") or pn in ("eyes", "teeth", "teeth_lower", "tongue", "brows")) else "accessories")
         have[k] = have.get(k, 0) + n
     bp = rb["parts"]
     parts = {k: [have.get(k, 0), int(bp[k]["default"]) if k in bp else None] for k in sorted(set(have) | set(bp))}
@@ -1773,7 +1773,8 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
         from . import base as basemod
         mp = basemod.gnm_mouth(fface.head)
         pts = {k: basemod._piece_points(mp[k]["verts"], mp[k]["faces"])["verts"] for k in ("teeth_upper", "teeth_lower", "tongue")}
-        own_surface = {"teeth": np.r_[pts["teeth_upper"], pts["teeth_lower"]], "tongue": pts["tongue"]}
+        own_surface = {basemod.TEETH_PARTS[0]: pts["teeth_upper"], basemod.TEETH_PARTS[1]: pts["teeth_lower"],
+                       "tongue": pts["tongue"]}
     prune_hidden(ctx, high, log, own_surface)
     if texel_density:
         split_big(high, ctx, {pn: _weight(defs, origin[pn], "texel_density") * texel_density for pn in ctx["streams"]},
@@ -2220,7 +2221,7 @@ def _export(name: str, out_dir: Path, triangles: int | None = None, texture: int
                 skin_pn_ = (spec.get("skin") or {}).get("part", "body")
 
                 def r_part(pn, kk_=kk_):  # head parts (the skin's head mesh by mesh_ratios) above, the rest below
-                    if pn == skin_pn_ or pn in ("eyes", "teeth", "tongue"):
+                    if pn == skin_pn_ or pn in ("eyes", "teeth", "teeth_lower", "tongue"):
                         return above[kk_]
                     return below[min(kk_, len(below) - 1)]
                 rr_, mesh_r = r_part, {"head": above[kk_], "body": below[min(kk_, len(below) - 1)]}
