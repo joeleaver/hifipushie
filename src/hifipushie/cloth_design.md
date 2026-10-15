@@ -100,8 +100,9 @@ Design-sheet keys go in `design`; garment keys in `spec` (`design_garment(..., s
 | `made`, `made_folds` | garment / sheet | Override made / draped per piece; `made_folds` didn't pay on lapels. Leave them off |
 | `collide` | garment | Model parts the cloth rests on besides the body: `["shoes", "soles"]` so a trouser hem lands on the shoe |
 | `interfaced` | garment | Whole pieces or bands: `{"piece": "front.L", "near": ["break", "lapelPoint"], "within": 0.1}` is a jacket's chest canvas |
-| `zozo.stitch_stiffness` | garment | 1 default. 8 closes trouser / skirt seams ZOZO leaves 3-15 mm open, at ~3x the time. Does NOT fix seams that start far apart |
+| `zozo.stitch_stiffness` | garment | 1 default. 8 closes trouser / skirt seams ZOZO leaves 3-15 mm open, at ~3x the time. Does NOT fix seams that start far apart (a jacket's pit seams); on a KNIT held to its own strain limit it closed a sleeve cap that started 62-113 mm off the armhole |
 | `fine_settle` | garment | false skips the fine settle (a garment whose fine start fails the start check) |
+| `move` | garment | `{"knees": 40, "steps": 3}`: the body curls each lower leg back and returns before gravity. PARKED: left no memory folds on jeans (our cloth is elastic and springs back); worn-in folds need plastic set or authored folds |
 | `mirror_mesh` | garment | Opt-in: .R pieces meshed as the exact mirror of .L (when the mesh is the suspect in an asymmetry) |
 
 **Stale options.** `design_garment` merges the sheet key by key, so an option set rounds ago is still there
@@ -110,6 +111,9 @@ Read the sheet back in the reply; give `false`, null, or `replace=True` to clear
 
 ## Knits (a sweater, a sweatshirt, a tee)
 
+A KNITTED sweater (fully fashioned) takes `knitted_rib` for collar, cuff and hem: single-layer rib knitted on, laid
+stretched onto its edge; a cut-and-sew sweatshirt takes the folded `rib_neckband` / `rib` / `rib_band`. A folded band's
+`height` is its CUT height (stage 2 reports finished heights; KB: neckband 44 mm cut, cuffs and hem 100).
 `"block": "knit"` (0-2% ease, no darts, a looser neck, a cap without ease) + `{"op": "sleeve"}`. The rib details
 make their own bands (`draft.generate`: the neckband laid up from the neckline, `wrap: seam`, 3 mm out; cuffs round
 each arm following the sleeve's wrist; the hem band from CB on the torso, aligned on the front's centre). Override

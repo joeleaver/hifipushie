@@ -157,6 +157,32 @@ def seam_rows(c: Ctx) -> list:
     return rows
 
 
+UNDERARM_DRAFT = (0, 35)  # mm the draft's underarm may land below the armpit (a set-in sleeve; jackets lower it)
+
+
+def draft_underarm(c: Ctx):
+    """Where a bodice / knit block's armhole bottom (meta chest_y, down the back's tape from the HPS) lands on this
+    body, in mm below the armpit (the tape's waist level + waistToArmpit), the back's tape scaled to the vertical (it
+    runs down the back's curve: Tess 447 mm HPS to waist against 380 vertical). None without a drafted block.
+    dress-tess: Tess's sweater's armscye was ~4 cm deep in the world (7 cm after a knit's sag) and nothing said so."""
+    meta = ((c.Bp.get("draft") or {}).get("meta") or {})
+    mm_, at = c.body.m.get("mm") or {}, c.body.m.get("at") or {}
+    if "chest_y" not in meta or "hpsToWaistBack" not in mm_ or "waistToArmpit" not in mm_ or "hps.L" not in at \
+            or "waist_z" not in at:
+        return None
+    hz, wz = float(at["hps.L"][2]), float(at["waist_z"])
+    tape = np.asarray((c.body.m.get("loops") or {}).get("hpsToWaistBack", []), float)
+    if len(tape) >= 2:
+        # (down the back's own tape: the upper back runs far flatter than the waist's average, Tess 220 mm of tape to
+        # the armpit's 152 mm of drop; one scale for the whole back put a draft 2 cm off)
+        s_ = np.r_[0, np.cumsum(np.linalg.norm(np.diff(tape, axis=0), axis=1))]
+        z_ua = float(np.interp(-float(meta["chest_y"]), s_, tape[:, 2]))
+    else:
+        scale = (hz - wz) / (float(mm_["hpsToWaistBack"]) / 1000.0)
+        z_ua = hz + float(meta["chest_y"]) * scale
+    return 1000.0 * (wz + float(mm_["waistToArmpit"]) / 1000.0 - z_ua)
+
+
 def stage_pattern(c: Ctx, image: bool = True) -> dict:
     o = _out("pattern")
     Bp = c.Bp
@@ -220,6 +246,21 @@ def stage_pattern(c: Ctx, image: bool = True) -> dict:
         (o["info"] if ok else o["fail"]).append(line)
     if D:
         o["info"].append("dimensions: " + ", ".join(f"{k} {v:.2f}" if "ratio" in k else f"{k} {v:.1f} mm" for k, v in D.items() if not k.startswith("_")))
+    ua = draft_underarm(c)
+    if ua is not None:
+        lo_, hi_ = ((c.res or {}).get("kind_kb") or {}).get("underarm_mm") or UNDERARM_DRAFT
+        ok_ = lo_ <= ua <= hi_
+        # (an ESTIMATE down the back's tape: the placement doesn't lay the back exactly along it (Tess: estimate 2.1 cm,
+        # placed 6.0); stage 4 measures where the start puts it and warns there)
+        o["info"].append(f"underarm (estimate, down the back's tape): the draft's armhole bottom ~{ua / 10:.1f} cm below "
+                         f"the body's armpit (this kind {lo_ / 10:.1f}-{hi_ / 10:.1f} cm; stage 4 measures it as placed)")
+    # the draft's own warnings ("!!" in its log) are stage 2's: Tess's knit sleeve logged "the cap stands higher than the
+    # armhole is deep" (201 mm, 108%) and nobody saw it; its short underarm seam dragged the armhole 5 cm down the arm
+    for l_ in (Bp.get("draft") or {}).get("log") or []:
+        if str(l_).lstrip().startswith("!!"):
+            o["warn"].append("draft: " + str(l_).lstrip("! ").strip())
+        elif "cap height" in str(l_):
+            o["info"].append("draft: " + str(l_)[:200])
     if (Bp.get("draft") or {}).get("derived_mm"):
         o["info"].append("draft: " + json.dumps(Bp["draft"]["derived_mm"]))
     if image:
@@ -690,6 +731,8 @@ def sewn_crossings(cr: list, M: dict) -> list:
     for key in ("sew", "stitch"):
         pr = np.asarray(M.get(key, []), np.int64).reshape(-1, 2)
         jn |= {tuple(sorted((M["names"][M["piece"][a]], M["names"][M["piece"][b]]))) for a, b in pr}
+    # (and a piece folded over itself by construction: a lapel pressed onto its forepart, a band folded in half)
+    jn |= {(f["piece"], f["piece"]) for f in M.get("folds") or [] if f.get("piece")}
     return [p for p in cr if tuple(sorted(p)) in jn]
 
 
@@ -703,7 +746,19 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     M = cloth.mesh(Bp, h)
     smooth = cloth.placement_of(c.gx) == "smooth"
     body_p = c.body.straight_arms()[0] if smooth else c.body
+    Bp["stretch_limit"] = cloth.strain_limit_of(c.gx)
     X = cloth.place(Bp, M, body_p, smooth=smooth)
+    try:  # the armhole's bottom where the start lays it on this body (the honest version of stage 2's estimate)
+        ua_ = cloth.underarm_drop_at(M, X, Bp, c.body)
+    except Exception:
+        ua_ = {}
+    if ua_:
+        lo_, hi_ = ((c.res or {}).get("kind_kb") or {}).get("underarm_mm") or UNDERARM_DRAFT
+        bad_ = {k: v for k, v in ua_.items() if not (lo_ <= v <= hi_)}
+        (o["warn"] if bad_ else o["info"]).append(
+            "underarm as placed: " + ", ".join(f"{k} {v / 10:.1f} cm" for k, v in ua_.items())
+            + f" below the body's armpit (this kind {lo_ / 10:.1f}-{hi_ / 10:.1f} cm)"
+            + (": WARNING the armscye is placed too deep / high (side lines down the body)" if bad_ else ""))
     cr = sorted(cloth._piece_crossings(X, M))
     if cr and smooth:
         # pieces sewn or stitched to each other (or a piece to itself: a cuff's lap) crossing where they join start
@@ -776,7 +831,7 @@ def stage_place(c: Ctx, image: bool = True) -> dict:
     stiff = cloth.interfacing(Bp, M)
     if smooth:
         tri, _ = cloth.edge_strain(X, M["uv"], M["F"])  # the rest is the flat pattern (made pieces left out below)
-        lim = float((c.gx.get("zozo") or {}).get("strain_limit", 0.05))
+        lim = cloth.strain_limit_of(c.gx)
         madep = np.isin(M["piece"][M["F"][:, 0]], [M["names"].index(n) for n in cloth.made_pieces(M, stiff)])
         allow = cloth.declared_stretch(Bp, M)  # (a rib band stretched on starts stretched by design)
         over = (tri > lim + allow) & ~madep

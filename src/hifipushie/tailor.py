@@ -370,6 +370,11 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     loops["hpsToSeatFront"], loops["hpsToSeatBack"] = tf, tb
     zmin = float(V[:, 2].min())
     mm["waistToArmpit"] = arm_z - W
+    # the same back tape stopped at the armpit's level: where an underarm lands down the back, measured as the pattern
+    # is (the back's curve makes HPS-to-waist 18% longer than the vertical on Tess: an armpit placed from the waist
+    # by waistToArmpit landed ~4 cm low in the world, dress-tess)
+    ta_ = down(arm_z, hps[0], hps[0], 1)
+    mm["hpsToArmpitBack"] = length(ta_)
     mm["waistToHips"] = W - zh
     mm["waistToSeat"] = W - at["seat_z"]
     mm["waistToFloor"] = W - zmin

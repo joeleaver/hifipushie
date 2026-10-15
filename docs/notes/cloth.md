@@ -2693,6 +2693,220 @@ MISSING / WRONG (fixed in code, or written into the guide):
   dead end, j2t, j4, j5).
 - Sweater s7: s6 + over jeans + fabric {jersey, physical 0.30 / 8e-6}; pre-sim stages pass (hem band closing seam
   starts 30 cm open: WARN, as tess2's). Sim on NICO-TOP.
+- (14) Joe: "use the real cloth values": ZOZO now gets the KB fabric's numbers by default (commit 5cccb4f, alone for
+  merging): density = gsm / 1000, B = w g c^3 (garment_design.kb_physical via cloth.fabric); presets only as a
+  fallback with a stage-3 WARN; test test_cloth::test_a_kb_fabrics_real_numbers_reach_the_job.
+- BODY SWITCH: Joe picked tess_n1 (GNM-native head). dt_tess now has tess_n1's `base` (v22, to_n1.py). The body is
+  NOT the same below the neck: neck 297 -> 330 mm round, neckHeight 40 -> 45, shoulders 350 -> 336, chest 847 -> 838,
+  HPS 24 mm lower and 27 mm further forward (1.426 -> 1.402 m). Every garment re-drafts from it.
+- j6 (= j5, fabric "denim" from the KB: 395 g/m2, B 6.81e-5) on n1: fits, 0 crossings, folds 3.3 mm.
+- MOVEMENT SETTLE (Joe: one try): garment key `move` {"knees": 40, "steps": 3} (cloth.knee_bend / _move_poses: after
+  the pose stage's arms the collider curls each lower leg back 40 deg and returns, then gravity). dj6m: fits, 0
+  crossings, folds 3.3 -> 3.4 mm, NO memory folds to see (out/move_cmp.png). Why: the cloth rests on its flat pattern
+  and is elastic (no plasticity in our ZOZO jobs): it springs back once the knee straightens; and in method "settle"
+  the pose stage was 30 frames (fixed: 72 with a move). Worn-in folds need plastic set (ZOZO has a plastic_state) or
+  authored folds (detail.folds / a Blender hand pass). Test test_cloth::test_a_knee_move_curls_the_shins_and_comes_back.
+- BODY: Tess's head frozen at tp_h3 (tess_n1 + jaw / chin): dt_tess v26 carries tp_h3's base (neck 331.7 mm round,
+  +1.7 over n1; HPS +2 mm). Jeans and sweater re-simmed on it (dj7, ds9).
+- Sweater s8 (on n1; fabric french_terry from the KB: 315 g/m2, B 8.5e-6; length 0.487 m from the HPS so the band's
+  lower edge lies ~2 cm under the jeans' front top; over jeans; worn_top): coarse sim fine (NICO-TOP $0); the FINE
+  start was refused locally (31 triangles over 1.6x, neckband 2.0x, hem band 1.9x): tess2's open item (folded bands'
+  fold rows cross themselves when the coarse sim is carried onto the fine mesh) is still open. s9 = s8 +
+  fine_settle false (tess2's interim: the coarse drape carried to 1 cm).
+- stage.sh: a layered garment's build writes its under garment's job too; the same job came up in two logs and the
+  broker refused the batch ("appears twice"): de-duplicated.
+- Rounds so far: jeans 7 (j1, j2, j3 dead end, j2t, j4, j5, j6/j7 re-sims on new bodies), sweater 9 design passes (s1-s9;
+  s1-s5 pre-sim only), 1 sim before the body switch.
+- s9 (tp_h3, over jeans, fine_settle false; NICO-TOP $0): CORRUPT (neckband 29% / cuffs 9% / hem band 11% crumpled,
+  armhole seams 24 mm and cuff seams 36 mm open). Close-ups: the neckband was INVISIBLE: (15) a generated band's
+  `height` is its CUT height; folded in half it shows half: tess2's 22 mm neckband was an 11 mm rim, and stage 2's
+  neckband_width reported 22 and passed. FIXED (bad56b4): stage 2 reports folded bands' finished heights
+  (neckband_width, cuff_height, band_height), KB cuts 44 / 100 / 100 mm (22 / 50 / 50 finished).
+- s10 = KB band sizes + armhole_depth 0.06 + sleeve length_bonus 0: neckband and hem band now READ (sheet); still
+  CORRUPT (neckband 15% crumpled, cuffs 5%), armhole seams 30 mm open, cuff ring seams 48 mm open. Start gaps
+  (sg.py: per seam, place_only): sleeve caps 76 / 143 mm, underarms 79, neckband ring 76, cuff rings 92-103, hem band
+  ring 310 (!): the rings are laid at their CUT length round a bigger girth, the sim can't close them.
+- (16) `wrap` "seam" + `stretch_on: true` (lay a band stretched ON the edge it is sewn to) and `dir: "down"` (a hem
+  band runs down): ring closing seams 76 -> 4 mm (neckband), 310 -> 2 mm (hem band), but the start is 97-146%
+  stretched and lies inside the contact standoff (neckband stands up the neck like a turtleneck, hem band flares):
+  NOT usable yet (s11, not simmed). Kept as opt-in keys.
+- SWEATER SHEET workspace/cloth_renders/dt_02_sweater_sheet.png (s10). My read: reads as a mustard crew-neck
+  sweater from the front, relaxed, blousing over the band like hers, the band at the right height; WRONG: the hem
+  band reads as a folded roll, not ribbed (no rib texture: detail maps have no rib), the neckband ruffles at the back,
+  armhole holes and ruffled cuffs (both hidden under the coat). Sweater: 4 sims (s7 cancelled, s8 fine start refused,
+  s9, s10), 11 design passes.
+- Coordinator after the sweater sheet: don't leave the sweater's faults (the figure is seen without the coat too):
+  (1) armhole / underarm seams 30-48 mm open, (2) band starts (cut ~10-20% short and stretched on, distributed),
+  (3) the back neckband ruffle; rib texture is paint (missing).
+- (17) FOUND: ZOZO held EVERY fabric to its 5% strain limit (cloth_zozo default), knits too (only declared bands
+  got more): a knit couldn't stretch onto the arm or take its bands. AND the start: a knit sleeve 12% narrower than
+  the deltoid (knits have negative ease) was laid as a bigger cylinder 12 mm off the arm (`gap`), so its underarm
+  seam started 79-116 mm open; then the start relaxation took every triangle back to 3% / 2%. FIXED (7355361):
+  `cloth.strain_limit_of(g)` (the fabric's own limit, French terry 20%; wovens keep 5%; the garment's zozo wins; in
+  the job, the key (knits only), the stage-4 check, the fine settle), knit sleeves clear the arm by 4 mm and wrap
+  each row's own girth (stretched on up to 0.8 x the limit), the start relaxed to 0.6 / 0.5 x the knit's limit.
+  Underarm start 79 -> 12-20 mm.
+- (18) knitted_rib (KB: collar, cuff, hem): a KNITTED sweater's rib is single-layer, knitted on, not a folded strip;
+  laid stretched ON the edge (wrap seam stretch_on; hem dir down). The folded strip's flap turned on a cone was what
+  started 97-146% stretched. Rings at the start: neckband 76 -> 27 mm, hem band 310 -> 38. The cuff ring still starts
+  96 mm open (the arm's radius at the wrist reads the hand: 51 mm).
+- s15 (knitted_rib everywhere, length_bonus 0, NICO-TOP $0): 0 crossings, bands not crumpled, underarm / cuff / hem
+  seams closed (<= 2 mm), the neckband smooth at the back (no ruffle); still open: the sleeve CAP at the underarm
+  (9 of 54 pairs, max 20 mm: small holes at the front armpit; the cap starts 62 / 113 mm off the armhole), cuffs 5%
+  "crumpled" (the report's metric on a single-layer band at a bent wrist). The neckband now reads flush (no rib, no
+  thickness): it wants rib texture (paint) to read as a band.
+- (19) The coat's stage-4 FAIL "front.L through itself": a lapel pressed onto its own forepart is construction:
+  sewn_crossings now also excuses a piece crossing itself where it has a fold line (my rule 11 was too strict).
+- Coat: c3 refused locally twice ("start inside the standoff from the garment under it", back at the waist): the
+  coat at 18% chest ease had no room over a sweater that is itself +17.5% (the guide: body girths stay the bare
+  body's, give the ease for what's under it): chest 0.26 (seat +30%, the regular band's top; hips_ease does
+  nothing on an unfitted block: same rule as the knit). layer_gap 0.006.
+- MACHINE RULES (coordinator / Joe, 2026-10-14): every Blender runs under /mnt/data/hifipushie/bin/capped, which loads
+  a GPU lock around each render call (the desktop froze sharing the GPU); "gpulock: waited N s" is queueing, not a
+  hang; never start Blender outside capped, never take the lock around whole scripts. Size check renders to what is
+  judged: ~512 px close-ups for an armpit / cuff / band / collar, ~768 px for a whole garment; the smallest thing judged
+  spans 3-4 px or more; don't read sheets over ~1600 px when a crop answers; full multi-view sheets only for the gate
+  sheets sent to the coordinator.
+- Coat (lab coat over the sweater, c9 -> c10): chest ease 26% (an unfitted block's seat follows the chest: 30%);
+  armhole_depth 0.16; layer_gap 0.006, under_cap 0.004. The coarse start was refused locally 3x (1.2-2.3 mm inside the
+  standoff from the sweater at the back armpit): (20) the exact clear's 8 rounds weren't enough; 24 clear it (5ab54fa,
+  also in the fine start). The coat's coarse sim ran (NICO-TOP); its FINE settle died at frame 0 on NICO-TOP
+  ("contact starts overlapping", a coat vertex vs the sweater collider; the fine start's separation from the collider
+  was 0.00 mm with its made pieces held): c10 = fine_settle false (re-keys the coarse: rented, to save time).
+- (21) A chain of layered garments re-sims from the bottom whenever anything upstream re-keys (a code change to the
+  jeans' key re-simmed jeans, sweater and coat in turn): batch upstream changes before simming the outer layer.
+- PROCESS (2026-10-14, docs/notes/gates.md on main): every piece DESCRIBED first as a checklist
+  (workspace/checklists/tess_sweater.json, git-ignored), every item MEASURED every round (table on every sheet),
+  LOOKED at by the blind reviewer (/mnt/data/hifipushie/bin/review, pairs per region) until it PASSES, APPROVED only
+  by Joe / the coordinator (workspace/approved.json). No sim until the pattern passes its checklist items. Sims go to
+  the RENTED fleet by default (Joe: cloth budget $5/day), NICO-TOP (LOCAL=1 in stage.sh) as the fallback; never
+  resubmit a failed job; timeouts set.
+- Joe on the sweater (ds17): "These arm holes make no sense": the armscye ran deep, its seams read as side lines to
+  the hem. Measured (armpit.py on the results): the sleeve's lowest seam point was 66-79 mm under the body's armpit
+  in every round (ds9 66, ds10 79, ds15 72, ds17 74). CAUSE (22): the bodice / knit block places the underarm
+  `waistToArmpit` up from the waist along the BACK's tape (chest_y -227 mm under the HPS), but on Tess the back's tape
+  is 18% longer than the vertical (447 HPS to waist against 380): the draft's underarm lands ~41 mm under the armpit in
+  the world, and the knit sags ~30 mm more in the sim. Not the hoodie kind and not the armpit-hole fix. GATES added:
+  stage 2 `draft_underarm` (where the draft's armhole bottom lands on this body, WARN outside 0-35 mm) and the report's
+  `underarm` line on the result (`underarm_drop`, 10-45 mm). s19: armhole_depth -0.15 -> the draft lands 10 mm under
+  the armpit.
+- The first table (ds17 against tess_sweater.json): neckline_drop_cf 12 mm (ref 35-60) FAIL (a mock neck); neckband
+  17 mm (18-30) FAIL; hem band bottom 456 (465-505) FAIL; hem band height 47 PASS; blousing 1.10 (1.00-1.06) FAIL;
+  side lines seen from the front FAIL; underarm 74 (15-45) FAIL; chest ease +17.5% PASS; knit surface / neck rib /
+  hem rib FAIL (none); colour #b07a26 vs #946a2a FAIL; clean: 0 crossings but cuff ring seams 43 mm open FAIL.
+- (23) Knit surface: detail "surface": "knit" (cloth.knit_surface: stockinette V columns, wale 4.5 / course 3.6 mm,
+  k2p2 rib on the band roles, yarn fuzz in the shade); fabric sweater_knit (KB: 375 g/m2, bending length 13 mm, 30%
+  stretch). The hoodie kind's seams are topstitched: a knit's are pressed_to_side.
+- (24) The coordinator made the back-tape underarm the DEFAULT for every block (block option underarm_rule
+  "waist_tape_legacy" = the old rule) and sleeves set into the armhole by default (set_sleeves "free" = old); Garrett's
+  approved su_gc garments pinned to both. Garrett's jacket c12_n18 measured: the under sleeve's armhole bottom 73-77 mm
+  under his armpit at the start, 79-80 in the result (for Joe).
+- s19 -> s22: placed 17-19 mm, the RESULT still 62-67 mm under the armpit: the underarm point slides 45 mm out and
+  down the A-posed arm in the sim (x 0.167 -> 0.212). Not the stitches alone (set_sleeves hold: no change), not
+  biceps ease (0.18: no change). CAUSE (25): the knit sleeve's cap was 201 mm tall, 108% of the armhole depth (the
+  draft LOGGED "!! the cap stands higher than the armhole is deep" and no gate printed it): its underarm seam was
+  292 mm for an arm that needs ~350, and with the cuff held at the wrist the short underarm hauled the armhole down
+  the arm. FIX: stage 2 now prints every "!!" line of the draft log as a WARNING and the cap height as info; s24 =
+  biceps ease 35%, cap eased 6% onto the armhole (knit), chest ease 12% -> cap 143 mm (77%), underarm seam 353 mm.
+- s22's fine settle failed on the rented box (exit 1, "the step is held by dynamic edge 13512, time of impact
+  1.5e-4": a collision stall); not resubmitted.
+- Spend $0.70 (s19 0.077, s21 0.19, s22 0.12, c11 chain 0.11 before it was stopped: the sweater changed under it).
+
+## Handover 2026-10-14 17:30 (dress-tess, Tess's outfit; model dt_tess)
+Branch `worktree-agent-ac06d0eb5553e576b`, worktree /home/joe/dev/hifipushie/.claude/worktrees/agent-ac06d0eb5553e576b,
+last commit = the one adding this handover (after b7b8e7f). Commits not merged: 5cccb4f (KB fabric numbers, standalone,
+mergeable alone), the rest of the branch since 118bf2f. Cloth test set last run rc 0 at f964c2e; the LAST change (knit
+sleeve cap left at its armhole, cloth.place) is committed WITHOUT a full test run: run tests.sh first.
+
+### Scratch /mnt/data/hifipushie/dress_tess (DURABLE)
+- env.sh / run.sh <script> [args] (worktree code, capped, peak RSS) / q.sh <queue> (each line "<tag> dt_tess <garment>
+  [key=json ...]" -> run.py: build, report, renders cloth_renders/<tag>*.png, out/<tag>.npz + .pkl).
+- stage.sh <queue> [rounds]: broker batches per round; RENTED fleet by default (8 min), LOCAL=1 = NICO-TOP (30 min);
+  TMIN overrides; NEVER resubmits a job in sent.txt (remove a line only for a job that never ran); de-dups jobs.
+- bl.sh (oxidegen bundle client: list / status <batch> / cancel), have.sh (hands pulled results back), spend.py
+  (sum of this agent's batches: python3 spend.py).
+- dg.py <model> <garment> <json> [stages]: design sheet + checks, images out/<model>_<garment>_<tag>_*.
+- Measures: msw.py <npz> (sweater checklist numbers), armpit.py <pkl> (underarm, side seams), ua_job.py <job key>
+  (underarm in a coarse job's start vs result: cheapest check, no fine needed), slide.py <job key> (piece motion),
+  sg.py <garment> (per-seam START gaps, place_only), cpt.py (a start point vs the collider), ua_other.py (another
+  model), capvar.py '<design patch>' (sleeve cap height per variant), meta.py, front.py, pieces2d.py.
+- Review: rv_renders.py <garments> <tag> region=x,y,z,zoom,views... (textured look_cloth close-ups out/rv_<tag>_*),
+  rvpairs.py <tag> <dir> region=x0,y0,x1,y1@tile (ref | ours crops), then /mnt/data/hifipushie/bin/review <dir> pairs
+  --context "..." --stage "the sweater: construction, fit, drape, fabric surface, colour" --not "the body and head;
+  hair; other garments". sheet.py (gate sheets), lanyard.py (stand-in lanyard + badge parts), shoe.py (trainer tongue),
+  to_n1.py (body base swap), pin_legacy.py (legacy pins).
+- Designs: j1..j6 (jeans), s1..s24 (sweater; s24 = current), c1..c11 (coat; c11 = current).
+
+### Model dt_tess
+tp_h3's base (approved head, its body: neck 332 mm, NOT tess_a1's body), stand-in trainers with a tongue, lanyard +
+clip + badge as model parts (lanyard / clip / badge / badge_card), garments jeans / sweater / coat (sweater "over" jeans,
+coat "over" sweater: a change upstream re-sims the chain).
+
+### Sweater (checklist workspace/checklists/tess_sweater.json; NOT approved)
+- Current design s24 (kind `sweater`: knit block + set-in sleeve, knitted_rib bands, sweater_knit fabric; underarm
+  -0.018, chest_ease 0.12, side seams contoured 15 mm back, sleeve biceps 0.35 / cap_ease -0.06 (cap 143 mm, 77%),
+  low crew (neckline front 0.035), hem welt 0.88, set_sleeves into_armhole, stitch_stiffness 8, detail surface knit,
+  #9a6a1f). Pattern checks pass; placed underarm 1.8 cm.
+- In flight: NONE. Last: tag ds24b, coarse job_ba36176220f63d04 SUCCEEDED (underarm 38-39 mm in the result: PASS);
+  its fine settle job_ba36176220f63d04_fine_settle FAILED (exit 1) and is in sent.txt: do NOT resubmit. s22 / s24 fine
+  settles failed the same way ("step held by dynamic edge", collision stall). To get a usable result: add garment key
+  `fine_settle: false` (re-keys the coarse: one new rented sim, ~$0.10) OR find the stall (results/<job>_fine_settle/
+  failure/output.log; s21's fine settle worked, s22+ didn't: suspect the knit sleeve start or cap ease).
+- Item table (best result per item): neckline top 36 mm under HPS (35-60 pass, s19); neckband 20 (18-30 pass);
+  hem band bottom 499 (465-505 pass); hem band 48 (pass); blousing 1.03 (pass); underarm 39 mm (15-45 PASS, s24b coarse
+  only); chest ease +15.6 (pass); knit surface present (review: too fine / printed-stripe ribs, v2 since); colour
+  #9a6a1f vs #946a2a (not re-measured); clean: cuffs 18-41% "crumpled" (s21), cuff rings start ~100 mm open (the arm
+  radius at the wrist reads the hand). Side lines from the front: not re-judged since s19.
+- Last review: rv/s19/review.md FAIL. Open MAJORs: boxy / hem wider than chest (s24: chest 12%, welt 0.88 since);
+  horizontal ripples across the chest; ribs read as printed stripes, body knit as a fine grid (knit v2 since: k1p1 by
+  relief, wale 5.5 / course 4.5 mm, jitter); neckband stands up + faceted + a line round it (lean -20, hem 0 since);
+  hem band flares, ledge at the join. NONE of these re-reviewed after s19: next round renders + reviews s24.
+
+### Lab coat (NOT approved; no checklist written yet: write workspace/checklists/tess_labcoat.json first)
+- Current design c11 (kind coat, bodice block, cotton_twill (KB), chest_ease 0.26, armhole_depth 0.16, length 0.89,
+  lapel break 0.25, tailored collar, 4 buttons worn open, hip pockets + chest pocket on front.L, sleeve +0.06,
+  layer_gap 0.006, under_cap 0.004, fine_settle false, open_lap false, construct collar). NOTE: with the new defaults
+  its underarm rule changed (armhole_depth 0.16 -> 2.5 cm + 0.14 x waistToArmpit ~ 5.7 cm): re-check stage 4.
+- Best result c10 (rented): reads as a white knee lab coat; CORRUPT (made collar x fronts 145 crossings), over front
+  swings across (fixed by open_lap false in c11, unsimmed), collar stands up at the back, lapels 16 mm off, sweater cuffs
+  show 4-5 cm. c11's own sim never ran (its chain re-simmed the sweater first; stopped).
+
+### Jeans (NOT approved; checklist not written: tess_jeans.json)
+- j6 = kind jeans straight, KB denim, waist_drop 0.07, length floor, knee 0.20 / hem 0.19 (half girths), collide shoes
+  + soles, thread #b8843a. Result: fits, 0 crossings, seams closed. Coordinator's "slacks" faults: no folds (elastic
+  cloth: no memory; a stack length went CORRUPT), no denim surface / wear paint, hardware missing (arcuate stitching,
+  rivets, coin pocket), thread too faint, a sock sliver at the front hem.
+
+### Findings for the guide (all in the notes above and cloth_guide.md)
+- Underarm: blocks put it waistToArmpit up from the waist along the BACK's tape (18% longer than vertical on Tess):
+  ~4 cm low. Now default for every block: hpsToArmpitBack (new tailor tape) + `underarm` (2.5 cm); legacy pins
+  `block_options.underarm_rule: "waist_tape_legacy"` and `set_sleeves: "free"` written into su_gc's jacket + shirt
+  (Garrett's approved c12_n18 measured 73-80 mm under his armpit: Joe's call; his redraft waits on Joe).
+- The result's underarm drop (6 cm in every sweater round) was the SLEEVE START: sent 1 cm at a time down the arm to
+  clear the bodice, the cap started 6-11 cm off and the stitches hauled the armhole down. Knits now keep the cap at the
+  armhole (sewn crossings allowed): 6.4 -> 3.9 cm. Wovens unchanged (same fault likely: Garrett's 8 cm).
+- Gates added: stage 2 underarm ESTIMATE + every "!!" draft-log line (the tall cap was logged, never shown), stage 4
+  underarm AS PLACED with WARNING, report underarm on the result; KB kind `sweater`; knit strain limit from the fabric;
+  KB fabric physics to ZOZO by default; folded bands report finished heights; knitted_rib choices; knit surface.
+- Tried and failed (one line each): folded rib bands on a cone laid stretched (97-146% start); wrap seam hem band
+  (135%); jeans stack length 1.05 m (CORRUPT at 2 cm); raised shoe collar box (upward cap, hem folded through itself);
+  move {"knees"} settle (no memory folds: elastic cloth; parked, opt-in); biceps ease alone for the underarm; a
+  lower cap alone for the underarm; layer_gap up for the coat's standoff (worse); NICO-TOP before oxidegen v143
+  (leftover solver killed jobs).
+
+### Decisions / rules
+Rented GPU by default via oxidegen, NICO-TOP fallback; $5/day cloth budget; a pattern passes its checklist items
+before any sim; never resubmit a failed job; Garrett's jacket redraft waits on Joe; Oxidegen still wants ONE batch of
+4 real sims (run_s per job vs solo, spend) when 4 are ready; only Joe / the coordinator approve (bin/approve).
+Spend so far: $0.93 (python3 /mnt/data/hifipushie/dress_tess/spend.py).
+
+### NEXT, in order
+1. tests.sh (cloth test set) on the last commit; fix if red.
+2. Sweater: get a result for s24 (fine_settle false or fix the fine stall), measure (msw.py, armpit.py), render
+   review crops (rv_renders.py front / neck / hem; add a side / underarm crop), review, fix the worst MAJOR, loop.
+3. Write tess_labcoat.json and tess_jeans.json checklists; coat c11 pattern checks with the new defaults, then sim
+   (with 3 other ready sims as Oxidegen's 4-at-once batch if possible).
+4. Rib texture reads as paint/maps only; denim surface + wear paint for cloth are not built.
 
 ## Guide rewrite (2026-10-14, "guides" agent): history moved out of the cloth guides
 

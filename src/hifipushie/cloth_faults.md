@@ -70,6 +70,7 @@ listed so you recognise the symptom if it comes back.
 | A cuff or collar crumpled into a ball | Rest shape and start disagree on a stiff band | If it persists: `resolution` 0.01, not finer |
 | A made piece crumpled, or "made pieces start 300-600% stretched past their rest" | Made pieces constructed twice (coarse and fine) and different | Automatic (`made_from` "fine"); check `made_reshaped` is empty |
 | Patch pockets through the cloth they're sewn on (CORRUPT) | Held by tacks only, they slid in the sim | Automatic: seated after the sim |
+| A knit's sleeves, armholes and rib bands end 20-50 mm OPEN (holes under the arms, ruffled cuffs) | The knit held to 5% strain; its sleeves laid as cylinders off the arm; ring bands laid at cut length | Automatic: a knit is held to its fabric's limit, sleeves stretched on round the arm, `knitted_rib` laid stretched on. Read the per-seam start gaps on every knit |
 | Puffy, inflated look | Draft quality or thick collision buffers | Final quality |
 | Fine crinkle all over | Frozen buckles a triangle or two across | Clean-up (`cleanup.smooth`); a stiffer fabric; a Blender sculpt + pull |
 | Shrink-wrapped (body forms show through) | Too little ease or a too-light, stretchy fabric | More ease in the pattern; a heavier or stiffer fabric |
