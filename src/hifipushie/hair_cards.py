@@ -619,6 +619,17 @@ def strand_grid(D: dict, locks: list, n: int = GRID) -> dict:
             "u": U}
 
 
+def _transport(v, t0, t1):
+    """v (normal to t0) carried to t1 by the smallest rotation taking t0 onto t1."""
+    c = float(t0 @ t1)
+    ax = np.cross(t0, t1)
+    sn = float(np.linalg.norm(ax))
+    if sn < 1e-9:
+        return v if c > 0 else v
+    ax = ax / sn
+    return v * c + np.cross(ax, v) * sn + ax * float(ax @ v) * (1 - c)
+
+
 def _nan_smooth(x, k: int = 2):
     out = x.copy()
     for i in range(len(x)):
@@ -663,9 +674,14 @@ def _clump(A, U, cen_of, min_share: float = 0.3, start_share: float = 0.04, end_
     prev = _unit(perp[i0])
     for rng_ in (range(i0, len(P)), range(i0 - 1, -1, -1)):
         prev_ = prev
+        j_ = i0
         for i in rng_:
             w = float(np.clip((np.linalg.norm(perp[i]) - 0.35) / 0.4, 0.0, 1.0))
-            pt = prev_ - (prev_ @ T[i]) * T[i]
+            # carried by the turn of the flow (a rotation-minimising frame), not projected: where the hair rises
+            # straight off the part T turns INTO the old normal and the projection was ~0, a random way: the cards
+            # stood on edge over the part as planks
+            pt = prev_ if j_ is None else _transport(prev_, T[j_], T[i])
+            j_ = i
             v = w * _unit(perp[i]) + (1 - w) * _unit(pt)
             N[i] = v / max(np.linalg.norm(v), 1e-9)
             prev_ = N[i]
