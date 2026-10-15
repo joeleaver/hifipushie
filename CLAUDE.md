@@ -245,6 +245,8 @@ representations it reasons well in (skeletons, named parts, numbers) and feedbac
   seam ring, body fitted (stature, neck); two-mesh export. -> full notes: docs/notes/headbody.md
 - `budgets.py` + `budgets.json` (2026-10-14): export budgets by role (hero / main NPC / secondary / crowd) for a mainstream PC,
   every number with sources and basis (sourced / derived / thin). Budgets follow from role and target, never invented. -> docs/notes/budgets.md
+- Session audits (2026-10-15): `bin/audit <agent-id>` digests a worker transcript and grades it (one claude -p, rubric
+  `docs/notes/audit_rubric.md`: adherence / process / tooling); `bin/audit-summary` rolls up. -> docs/notes/audit.md
 - `resources.py` (2026-09-29, after two OOM crashes of the user's desktop: a terrain export's 16 fork workers x ~2 GB
   plus other agents' jobs): heavy jobs take the machine-wide slot `resources.heavy` (a file lock in $XDG_RUNTIME_DIR;
   $HIFIPUSHIE_HEAVY_SLOTS, default 1) and wait for it; pools are sized by free memory (`resources.workers(per_gb)`:
