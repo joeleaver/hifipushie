@@ -108,13 +108,14 @@ from spec.hair.groom) -> look_hair (renders + gates: outline dents, bare volume,
 edit_model kind "hair.locks" ... ; hair_reference matches a reference picture (camera from face landmarks, traced part,
 hairline and clumps carried onto the head); sync(hair_only=True) puts the locks in scene.blend, pull brings hand edits back.
 
-Clothes are sewn, not sculpted: spec["cloth"] garments are drafted to the body's measurements (FreeSewing designs or
+Clothes are sewn, then finished: spec["cloth"] garments are drafted to the body's measurements (FreeSewing designs or
 your own pattern pieces), sewn and settled by Blender's cloth sim, cleaned up, with seams/stitching/hems from the
 pattern. Work in a maker's stages (guide(topic="cloth")): design_garment (the design sheet: kind, fabric, fit, every
 construction choice; garment_reference lists them) -> look_pattern (the flat pattern sheet + checks: seams, ease, each
 choice evidenced) -> check_garment (construction plan, arrangement on the body) -> dress (quality "draft" first; it
 refuses to simulate over construction failures) -> look_cloth (renders, strain map, report, numeric targets) -> final.
-Fix faults in the pattern, never in the solver. States worn / draped (tablecloths, blankets) / hung;
+Fit and hang are fixed in the pattern, never in the solver; made pieces are built on the drape; local faults (a
+band's lay, a lapel's roll, a fold too many) are finished by hand on the draped result, as studios do. States worn / draped (tablecloths, blankets) / hung;
 sync(cloth_only=True) puts garments in scene.blend, pull brings colour and sculpt edits back.
 
 Terrain (landscapes and game levels) is separate: a height field described in a level designer's words (a basin, a

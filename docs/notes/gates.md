@@ -81,6 +81,10 @@ Garments (per garment)
   placement, how it's worn (open, tucked, layered over what). Folds the reference shows (knees, stacks,
   elbows). Surface details that make it read (rib, topstitching, hardware). Pattern gates measure the DRAFT
   against these before any sim.
+- Simulation judges fit, silhouette, hang and main folds only (about 3 draft + 2 final sims per garment). Then a
+  FINISH stage: made pieces built on the drape, local faults finished by hand on the draped mesh (recorded edits on
+  top of the sim), fine detail in maps. A review fault that a sculptor would fix in minutes is a finishing job,
+  never another sim (2026-10-15, Joe: "Are we depending too much on simulation?").
 
 Assembly (game-ready export)
 - Inputs: the approved head, skin, hair and garments by name. Budgets (triangles per part, LOD shares,

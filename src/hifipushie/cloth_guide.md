@@ -2,7 +2,8 @@
 
 Garments here are made the way garment makers make them: decided on a design sheet, drafted to the body's
 measurements, checked flat, constructed (folds, interfacing, closures), arranged round the body, then simulated
-coarse before fine. Nothing is sculpted as a shell and nothing is warped from one body onto another. A tablecloth or
+coarse before fine, then FINISHED by hand on the drape (as game studios do after Marvelous Designer: the sim gives the
+base, the artist finishes). Nothing is sculpted as a shell and nothing is warped from one body onto another. A tablecloth or
 a blanket is the same machinery: one flat piece draped on a prop.
 
 **The two rules everything else follows:**
@@ -13,6 +14,13 @@ a blanket is the same machinery: one flat piece draped on a prop.
 2. **Construction before solver.** A fault in the cloth is a pattern, sewing or made-piece fault until shown
    otherwise. Measure the DRAFT against the description before any simulation; never tune solver settings
    (stiffness, mesh size, contact) to hide a pattern fault. `dress` refuses to simulate while stages 1-3 fail.
+3. **Simulate for the big read, finish by hand.** The sim answers fit, silhouette, how it hangs and the main folds.
+   Once those pass, stop simulating: made pieces (collars, cuffs, bands, plackets, lapels) are built on the drape, and
+   local faults (a band standing up, a lapel's roll, a fold too many or too sharp) are finished on the draped mesh
+   (sculpt in the scene, then `pull`: kept as `cloth.<g>.sculpt` offsets on top of that sim). Re-simulate only when the drape
+   itself is wrong (length, ease, a box that should hang). Budget: about 3 draft and 2 final sims per garment; past
+   that, it is a finishing job or a pattern rethink, not another sim. Fine detail (rib, stitching, small creases)
+   goes in the normal map.
 
 Enable the tools with `enable_toolset("cloth")`. Sub-topics (guide(topic=...)): `cloth_reference` (reading a
 reference item by item), `cloth_design` (design-sheet keys, tailoring numbers, knits, jeans, wear rules),
@@ -31,7 +39,8 @@ worked examples), `cloth_tools` (every cloth tool's parameters).
 | 3 | Construction | Plans sewing order, layers, folds, interfacing, made pieces | `check_garment(stages=["construction"])` | Passes |
 | 4 | Arrange | Pins the pieces round the body | `check_garment(stages=["place"])` | No crossings, start stretch under the limit, seam gaps small |
 | 5 | Draft sim | Blocks at 2 cm, judges fit and big shape only | `dress(quality="draft")`, `look_cloth` | Verdict "fits", draft targets pass, self-review has no MAJOR in shape |
-| 6 | Final | Refines, cleans up, details, exports | `dress(quality="final")`, `look_cloth(textured=True)`, `export_asset` | Self-review passes at every region |
+| 6 | Final sim | Refines and cleans up the drape | `dress(quality="final")`, `look_cloth` | Fit, hang and main folds pass the self-review |
+| 7 | Finish | Builds made pieces on the drape, finishes local faults by hand, details in maps | `sync(cloth_only=True)`, sculpt, `pull`; `look_cloth(textured=True)`, `export_asset` | Self-review passes at every region |
 
 `check_garment(name, garment)` with no stages runs 1-4 (and "sim" after a dress) in order, failures first. A model
 needs a `base` body first (the draft is measured off it); a drape over a prop needs none.
@@ -96,7 +105,8 @@ dress a garment whose draft misses its description.
 ## Craft rules (each once; the reasons and numbers are in the sub-topics)
 
 Pattern and construction
-- Fix fit in the pattern (ease, length, a detail's options), never by sculpting, never by solver settings.
+- Fix FIT in the pattern (ease, length, a detail's options), never by sculpting, never by solver settings. Sculpting
+  is for finishing the drape (lay, roll, folds), never for changing fit.
 - Made pieces (collars, stands, cuffs, waistbands, plackets, lapels) are constructed, not simulated into shape; they
   are laid at their CUT length and width, never on eased cloth. Buttons and trims are built on the finished drape:
   never re-simulate to add one.

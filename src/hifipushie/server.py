@@ -40,7 +40,8 @@ Toolsets: the core is always on; enable_toolset(name) adds one of plan, scene, e
 cloth, terrain, plants, clutter (enable_toolset("") lists them and what is on). Domains have a guide topic (hair,
 cloth, cloth_reference, skin, human, block_in, likeness, terrain, vegetation, clutter): read it before working there.
 A person's head from pictures: the artist block-in (guide topic block_in) is the default.
-Clothes are sewn, not sculpted: fix faults in the pattern, never in the solver. Terrain tools may return questions
+Clothes are sewn, then finished: fit and hang come from the pattern (never tune the solver); made pieces
+(collars, cuffs, bands, lapels) are built on the drape; small faults are finished by hand on the drape. Terrain tools may return questions
 for the designer: ask them, don't answer them yourself.
 """
 
