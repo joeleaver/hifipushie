@@ -341,6 +341,14 @@ def scalp_mesh(sc, g: dict, line, S: dict, step: float = 3.0) -> dict:
         # ramp, no inset (the inset was for children of guides 1+ cm away hanging over the face; at a guide spacing of a
         # few mm a child follows its guides' face rule)
         dens_even = dens.copy()
+        fd_ = (g.get("loose") or {}).get("fade")
+        if fd_:  # a FADE thins the even roots toward the nape hairline too (it thinned only lock strands: the even layer
+            # ended in a level blunt row, Garrett E9-E11), as hair_loose's own fade: back of the head, over `width` m
+            from .hair_loose import FADE
+            fd_ = {**FADE, **(fd_ if isinstance(fd_, dict) else {})}
+            backw_ = _ss((fa_ - 100.0) / 30.0)
+            ramp_ = _ss(d_in / max(float(fd_["width"]), 1e-3))
+            dens_even = dens_even * (1 - backw_ * (1 - (float(fd_["density"]) + (1 - float(fd_["density"])) * ramp_)))
     # the SPLIT ZONE (strands.even 1): where neighbouring guides comb opposite ways, a child averaging them takes the
     # middle path (over the cheek at a tuck's edge; down the face where the face rule turns hair aside): there a
     # child copies its NEAREST guide; everywhere else it blends three (copies of one guide on short dense hair were
@@ -436,6 +444,12 @@ def collide_mesh(sc, step: float = 4.0) -> dict:
     top = idx[:, -1]
     fan = np.stack([top, np.roll(top, -1), np.full(na, pole)], 1)
     return {"verts": V.astype(np.float32), "faces": np.concatenate([q[:, [0, 1, 2]], q[:, [0, 2, 3]], fan]).astype(np.int32)}
+
+
+def _longest(g: dict) -> float:
+    """The loose groom's longest length (m), 0 without one."""
+    ln = (g.get("loose") or {}).get("length", 0.0)
+    return max(float(v) for v in ln.values()) if isinstance(ln, dict) else float(ln or 0.0)
 
 
 def _split_zone(sc, g: dict, AA, EE, d_in, fa):
@@ -562,7 +576,7 @@ def under_guides(sc, g: dict, line, locks: list, S: dict, seed: int = 0, n: int 
 
 def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, seed: int = 0, n_wisp: float = 0.0,
            tail: bool = True, n_even: float = 0.0, even_all: bool = False, banks: bool = False,
-           even_objs: list | None = None) -> dict:
+           even_objs: list | None = None, short_even: bool = False) -> dict:
     """Each object's modifier stack: [[node group, {input: value}], ...]. {"part": name} = the scene object of that
     part (the body: strands are kept out of it), {"attribute": name} = a named attribute as a field."""
     body = {"object": "hair_collide"}
@@ -622,13 +636,14 @@ def stacks(S: dict, n_head: float, n_free: float, n_under: float, area: float, s
         else:
             # interpolated children are smooth and evenly spaced: no clumps, a helmet. Blender's Clump
             # (its own guide map: one guide every clump_size m) draws neighbours together toward the tips
-            out["hair_even"].append(["Clump Hair Curves", {"Factor": float(np.clip(ph["clump"], 0.0, 1.0)), "Shape": 0.5,
-                                                           "Tip Spread": 0.002 * float(ph["tip_spread01"]),
-                                                           "Clump Offset": 0.0, "Distance Falloff": 0.0,
-                                                           "Distance Threshold": 0.0, "Seed": int(seed) + 9,
-                                                           "Preserve Length": True,
-                                                           "Guide Distance": float(ph["clump_size"]),
-                                                           "Guide Mask": 1.0, "Existing Guide Map": False}])
+            # (on short hair too: the nape starbursts once blamed on it (E6) were the collider pushing short locks up the
+            # scalp (E7 kept them without Clump); a crop without clumps read as a uniform bristle carpet, G6)
+            if True:
+                out["hair_even"].append(["Clump Hair Curves", {
+                    "Factor": float(np.clip(ph["clump"], 0.0, 1.0)), "Shape": 0.5,
+                    "Tip Spread": 0.002 * float(ph["tip_spread01"]), "Clump Offset": 0.0, "Distance Falloff": 0.0,
+                    "Distance Threshold": 0.0, "Seed": int(seed) + 9, "Preserve Length": True,
+                    "Guide Distance": float(ph["clump_size"]), "Guide Mask": 1.0, "Existing Guide Map": False}])
             # ... and the colour model's per-lock numbers (lock lightness, highlight ribbons) from the root's cell:
             # without them every child shaded alike, one solid black hood
             out["hair_even"].append(["hp_cells", {"Seed": int(seed)}])
@@ -810,7 +825,7 @@ def job(sc, g: dict, spec: dict, locks: list, tmp: Path, count: int | None = Non
         S = {**S, "free": {**(S.get("free") or {}), **fw}}
     st = stacks(S, amount.get("hair_guides", 0.0), amount.get("hair_guides_free", 0.0), n_under, area, seed,
                 n_wisp=amount.get(WISPS, 0.0), tail=tail, n_even=n_even, even_all=even_all, banks=banks,
-                even_objs=even_objs or None)
+                even_objs=even_objs or None, short_even=_longest(g) <= 0.1)
     for grp in groups:
         grp["stack"] = st[grp["name"]]
     out = {"scalp": str(tmp / "strand_scalp.npz"), "collide": str(tmp / "strand_collide.npz"), "groups": groups, "look": look, "physical": ph,

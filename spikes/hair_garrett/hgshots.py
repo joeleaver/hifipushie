@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +28,9 @@ N0 = int(kw.get("size", 1536))
 # scale (~0.3 mm a pixel) a 0.05 mm hair became a 0.3 mm wire (hair-garrett r4: strand_sd 9.3 vs the photo's 6.8)
 SS = int(kw.get("ss", 1))
 N = N0 * SS
+# samples a frame (default 24): check renders use fewer (the iGPU wedges on long hair frames: a heavy EEVEE frame of
+# ~6.6 M strand points ran past the driver timeout, 2026-10-14); wall time is printed per frame (> ~5 s is a risk)
+SAMPLES = int(kw.get("samples", 24))
 views = kw.get("views", "v0,v1,v2,y125,y180").split(",")
 OUT = os.environ["TOUT"]
 TAG = kw.get("tag", "")
@@ -79,7 +83,7 @@ BOX = [-(H - W) / 2, 0, W + (H - W) / 2, H]
 def shoot(sn, st, f, lt):
     with tempfile.TemporaryDirectory() as tmp:
         fr = {**f, "out": str(Path(tmp) / "a.png")}
-        job = {"blend": str(scene.blend_path(sn)), "views": [fr], "size": N, "samples": 24, "hide": [], "flat": False,
+        job = {"blend": str(scene.blend_path(sn)), "views": [fr], "size": N, "samples": SAMPLES, "hide": [], "flat": False,
                "transparent": True, "lighting": {**lt, "target": fr["center"]}, "eevee": stage.STAGE_EEVEE,
                "mode": "hair_look", "hair": hair.job(sn, st), "clay_views": [], "id_views": [], "look_engine": eng}
         scene._blender(job, 3600)
@@ -138,7 +142,9 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
         else:
             f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
             f, lt = turned(f0, stage.photo_light(m, 0), float(v[1:]), C)
+        t0_ = time.time()
         im = shoot(sn, st, f, lt)
+        print(f"frame {v}: {time.time() - t0_:.1f} s (incl. scene load)", flush=True)
         if SS > 1:  # supersampled: rendered SS x larger, averaged down (strands thinner than a pixel blend as in a photo)
             im = im.resize((N0, N0), Image.LANCZOS)
         im.save(f"{OUT}/s_{m}{TAG}_{v}.png")

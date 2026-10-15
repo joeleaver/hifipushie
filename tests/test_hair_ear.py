@@ -77,6 +77,18 @@ def test_overrides_still_work_and_never_root_on_the_ear():
     assert abs(_z(sc, line, 100) - 0.01) < 0.004
 
 
+def test_nape_v_brings_the_nape_centre_down_to_a_point():
+    """hairline.nape_v: the nape line's centre comes down below its sides (a rounded point); 0 keeps the old line."""
+    sc = _head(-0.03)
+    z = lambda hl, a: _z(sc, hair.hairline(sc, hair._merge(hair.GROOM, {"hairline": hl})), a)  # noqa: E731
+    assert abs(z({"nape_v": 0.0}, 180) - z({}, 180)) < 1e-9
+    v = 0.02
+    # (on the test ball the nape sits near the scalp grid's bottom row, which caps how far the centre can go down)
+    assert z({"nape_v": v}, 180) < z({}, 180) - 0.002  # the centre lower
+    assert z({"nape_v": v}, 150) > z({}, 150) + 0.004  # the sides higher
+    assert z({"nape_v": v}, 180) < z({"nape_v": v}, 165) < z({"nape_v": v}, 150)
+
+
 def test_a_head_without_landmarks_uses_its_ear_only_on_a_human_base():
     sc = _head(-0.02, lm=False)
     g = hair._merge(hair.GROOM, {})

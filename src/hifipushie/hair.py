@@ -567,6 +567,9 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
         brow_top = lm["lm_brow_outer.L"][2] + 0.004  # (the old guess of the ear's top: 1-3 cm over the real one)
         ear_bot = lm["lm_nose_base"][2] - 0.01
         nape = ear_bot - 0.015 + float(hl.get("nape", 0.0))
+        # nape_v: m the nape line's CENTRE comes down below its sides (a rounded point, not a level cut; Garrett's
+        # back photo, the blind review: "narrows to a rounded point at the centre"); 0 = the old near-level line
+        nv = float(hl.get("nape_v", 0.0) or 0.0)
         front = [(0, zf), (18, zf - 0.002), (az_j - 44, zf - 0.004 + tmp * 0.5), (az_j - 36, zf - 0.006 + tmp),
                  (az_j - 28, zf - float(hl.get("temple_dip", 0.02)) + tmp), (az_j - 18, brow_top + 0.012)]
         er = ear(sc) if str(hl.get("ear_from") or "mesh") == "mesh" else None
@@ -575,7 +578,7 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
             clear = float(0.01 if hl.get("ear") is None else hl["ear"])
             sb = ear_top - float(0.028 if hl.get("sideburns") is None else hl["sideburns"])
             ctrl = front + [(az_j - 10, sb + 0.006), (az_j - 7, sb), (az_j - 3, sb + 0.006), (az_j + 3, ear_top + clear),
-                            (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006), (180, nape)]
+                            (az_j + 22, ear_top + clear), (az_j + 34, ear_bot + 0.006), (150, nape + 0.006 + 0.5 * nv), (165, nape + 0.2 * nv), (180, nape - 0.5 * nv)]
         else:
             # THE EAR AS IT IS ON THIS HEAD (tesshair6): the line passes `ear` m over the found ear's top from its
             # front to its back, the sideburn hangs `sideburns` m below that top just in front of the ear's front
@@ -591,7 +594,7 @@ def hairline(sc: Scalp, g: dict) -> np.ndarray:
             ctrl = [c for c in front if c[0] < af - 16] + [
                 (af - 11, sb + 0.007), (af - 7.5, sb), (af - 3.5, sb + 0.003), (af + 0.5, ear_top + clear),
                 (ab - 1, ear_top + clear), (ab + 4, ear_top + clear - 0.4 * (ear_top + clear - lob)),
-                (ab + 11, lob + 0.006), (150, nape + 0.006), (180, nape)]
+                (ab + 11, lob + 0.006), (150, nape + 0.006 + 0.5 * nv), (165, nape + 0.2 * nv), (180, nape - 0.5 * nv)]
     if hl.get("front_points"):  # traced (e.g. from the reference through the matched camera): [[az, z], ...] over the
         fp = sorted((float(x), float(z)) for x, z in hl["front_points"])  # front; the rest of the line kept
         # ...eased onto the traced end (HAIRLINE_JOIN deg): joined as it was, the default temple stood ~4 mm off the

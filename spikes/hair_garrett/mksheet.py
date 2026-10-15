@@ -84,6 +84,10 @@ hl = [e for a, z, e, n in [] ]
 cl = [("hairline (front)", "v0", at("v0", 0.0, 38.0, size_mm=95.0)),
       ("temple (his left)", "v1", at("v1", 62.0, 28.0, size_mm=75.0)),
       ("temple (his right)", "v0", at("v0", -55.0, 30.0, size_mm=75.0))]
+if kw.get("direction", "1") == "1":  # tight top-front crops where strand LINES show (the blind review contradicted itself
+    # on comb direction from whole-head pairs, Garrett G6-G9): the three-quarter and the profile, front of the top
+    cl += [("direction (three-quarter, top-front)", "v1", at("v1", float(kw.get("dir_az1", 30.0)), 60.0, size_mm=85.0)),
+           ("direction (profile, top-front)", "v2", at("v2", float(kw.get("dir_az2", 45.0)), 58.0, size_mm=85.0))]
 for nm, v, b in cl:
     rows.append((nm, [crop(ref(v), b), crop(tile(m, v), b)] + ([crop(tile(prev, v), b)] if prev else [])))
 for nm, v, fy in (("crown (back)", "y180", (0.0, 0.5)), ("nape (back)", "y180", (0.45, 0.95))):
@@ -91,6 +95,14 @@ for nm, v, fy in (("crown (back)", "y180", (0.0, 0.5)), ("nape (back)", "y180", 
     s = b0[2] - b0[0]
     b = (b0[0] + 0.2 * s, b0[1] + fy[0] * s, b0[0] + 0.8 * s, b0[1] + fy[0] * s + 0.6 * s)
     rows.append((nm, [crop(ref(v), b), crop(tile(m, v), b)] + ([crop(tile(prev, v), b)] if prev else [])))
+if kw.get("pairs"):  # the gates' LOOK step (docs/notes/gates.md): each region's reference and result crop as files
+    pd = kw["pairs"]
+    os.makedirs(pd, exist_ok=True)
+    for nm, ims in rows:
+        slug = "".join(ch if ch.isalnum() else "_" for ch in nm.split(" (picture")[0]).strip("_")
+        ims[0].save(f"{pd}/{slug}_ref.png")
+        ims[1].save(f"{pd}/{slug}_res.png")
+        print("PAIR", nm.split(" (picture")[0], f"{pd}/{slug}_ref.png", f"{pd}/{slug}_res.png")
 ncol = max(len(r[1]) for r in rows)
 heads = ["REFERENCE", m] + ([prev] if prev else [])
 sheet = Image.new("RGB", (ncol * T, 40 + len(rows) * (T + 30)), (245, 245, 245))

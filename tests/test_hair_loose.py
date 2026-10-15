@@ -241,6 +241,70 @@ def test_face_over_one_holds_the_hair_back_to_the_ear():
     assert cheek(1.5) < 0.5 * max(cheek(1.0), 1), (cheek(1.5), cheek(1.0))
 
 
+def test_face_rule_leaves_short_front_hair_alone():
+    """The face rule steers LENGTHS that reach the face; short front hair combed forward (ending at the hairline)
+    keeps its comb instead of being turned aside into a swirl (Garrett G3, the coordinator)."""
+    def turned(length):
+        loose = {"length": length, "spacing": 0.02, "messy": 0.0, "uneven": 0.0, "face": 1.0, "stiff": 0.9,
+                 "flow": {"front": [0.0, -1.0, -0.2]}}
+        sc, _c, locks = _grow(loose, parting="none")
+        dev = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            az, el = hair.az_el(P[:1] - sc.C)
+            if abs(((az[0] + 180) % 360) - 180) < 20:  # rooted over the front centre
+                d = P[-1] - P[0]
+                dev.append(abs(d[0]) / max(np.linalg.norm(d), 1e-9))  # sideways share of the way it went
+        return float(np.mean(dev)) if dev else 0.0
+    assert turned(0.035) < 0.3, turned(0.035)
+
+
+def test_whorl_core_grows_the_hair_radially():
+    """whorl.core: a spiral within `core`, a straight radial spread beyond it out to `radius` (the hair grows out of
+    the whorl): roots between core and radius comb away from the whorl, not round it."""
+    loose = {"length": 0.04, "spacing": 0.012, "messy": 0.0, "uneven": 0.0, "stiff": 0.95,
+             "whorl": {"at": [180.0, 60.0], "radius": 0.12, "turn": 1.0, "spiral": 70.0, "core": 0.015}}
+    sc, _c, locks = _grow(loose, parting="none")
+    W = sc.point(np.array([180.0]), np.array([60.0]), 0.0)[0]
+    out_, tan_ = [], []
+    for lk in locks.values():
+        P = np.asarray(lk["pts"]) + sc.C
+        r = P[0] - W
+        if 0.03 < np.linalg.norm(r) < 0.05 and P[0][2] > sc.C[2] + 0.03:
+            n = (P[0] - sc.C) / np.linalg.norm(P[0] - sc.C)
+            rh = r - np.dot(r, n) * n
+            rh = rh / np.linalg.norm(rh)
+            d = P[1] - P[0]
+            d = d / np.linalg.norm(d)
+            out_.append(float(np.dot(d, rh)))
+            tan_.append(abs(float(np.dot(d, np.cross(n, rh)))))
+    assert len(out_) >= 4, len(out_)
+    assert np.mean(out_) > 0.5 and np.mean(tan_) < 0.45, (np.mean(out_), np.mean(tan_))
+
+
+def test_whorl_turns_the_roots_round_one_point():
+    """groom.loose.whorl: roots near the whorl comb round it (all one way: the swirl's tangential share has one sign),
+    turn -1 reverses it."""
+    def swirl(turn):
+        loose = {"length": 0.04, "spacing": 0.012, "messy": 0.0, "uneven": 0.0, "stiff": 0.9,
+                 "whorl": {"at": [180.0, 60.0], "radius": 0.04, "turn": turn, "spiral": 70.0}}
+        sc, _c, locks = _grow(loose, parting="none")
+        W = sc.point(np.array([180.0]), np.array([60.0]), 0.0)[0]
+        sg = []
+        for lk in locks.values():
+            P = np.asarray(lk["pts"]) + sc.C
+            r = P[0] - W
+            if 0.006 < np.linalg.norm(r) < 0.018:  # (the inner ring: by the rim it fades into the comb)
+                n = (P[0] - sc.C) / np.linalg.norm(P[0] - sc.C)
+                d = P[1] - P[0]
+                sg.append(float(np.dot(np.cross(n, r / np.linalg.norm(r)), d)))
+        return np.asarray(sg)
+    a, b = swirl(1.0), swirl(-1.0)
+    assert len(a) >= 4, len(a)
+    assert (np.sign(a) == np.sign(a.mean())).mean() >= 0.75 and (np.sign(b) == np.sign(b.mean())).mean() >= 0.75
+    assert np.sign(a.mean()) == -np.sign(b.mean()), (a, b)
+
+
 def test_soft_halo_is_denser_shorter_and_closer():
     from hifipushie import hair_strands as hs
     S = hc.strands_of({"hair": {"strands": {"halo": 0.5}}})

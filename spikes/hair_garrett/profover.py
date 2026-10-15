@@ -40,7 +40,7 @@ if n:
 cx, cy = fr["c"]
 mm = fr["mm"]
 rows = []
-for ang in range(-90, 91, 15):  # 0 = straight up, + = image right
+for ang in range(-150, 151, 15):  # 0 = straight up, + = image right (past 90: below the centre, the cheeks)
     t = np.radians(ang)
     dx, dy = np.sin(t), -np.cos(t)
     def edge(mask):

@@ -2321,6 +2321,62 @@ in r2 too); the roots' sampler is uniform on the sphere (no seam at az 180).
   across the neck and chest (the shoulders are a split too); a crop blends everywhere except round a tuck. Garrett E4
   (blend): the top and sides a fine combed surface; left: a starburst of scalp at the back above the nape (0.96 %
   behind: guides combed apart there, the whorl hunt) and the nape hairline's speckles. groom.loose.body by region.
+- Front width on a private subject: measure the outline through the fitted front camera (profover rays now reach
+  +-150 deg, the cheeks) before trusting a sheet's impression of "too narrow": a photo's asymmetry (hair behind one
+  shoulder) reads as narrowness. Side body and side lift change the mass inside, not the silhouette (outline
+  unchanged to 0.1 mm).
+- Garrett on the frozen head (hg_h6 = gp_h6c), the hairline round: the groom's hairline front_points are WORLD heights
+  measured on the old head: on gp_h6c ours sat 8-24 mm above his (hlinetrace, forehead corners worst): lowered by ~85 %
+  of it (E5: the temple corners filled). The even layer stands lower than lock strands did (the lens spread each lock's
+  strands over its thickness): E4 4-6 mm off the skull vs his 11-13: lift up (E5 top -0.3 mm, crown +3, back -2). But
+  9 mm of lift on 2 cm back hair stood its ends up as fur with swirls; the reader's "light share" counts lit hair, not
+  only grey (setting grey from it made him silver: E5). E6: lift by region (top 10, front 6, sides / back 4, nape 2 mm),
+  the grey back to the read regions. STATE: Garrett E6 rendering. NEXT: judge E6 (front edge ridge, back combed),
+  then subject A lock separation, subject B on (private model) (part starburst, colour range).
+- THE WHORL, FOUND (Garrett's back rosette / bare spot, every round since hair-garrett): the loose march's collider push.
+  Over the back of the head the body field's gradient tilts ~10 deg up from the scalp normal; on short hair the march
+  steps ~0.5 mm and the push to the clearance outweighed the step (the step's direction is unit(step + push)), so crop
+  locks there CLIMBED the scalp: 19 of 66 back-centre locks ended above their roots with the collider, 0 without
+  (spikes/hair_garrett/guidefield.py plots the roots' comb from behind, red = upward). Fix (hair_loose.grow): over the
+  scalp the clearance is pushed along the scalp's own rays; the collider only where the body intrudes well inside it
+  (an ear) or off the scalp (neck, shoulders): 0 of 66 rise. Also: no Blender Clump on short even hair (end-on its tips
+  read as starbursts). The scalp layer (hair_under) was not the cause (the rosette stayed without it).
+- Render sizes (coordinator / Joe, 2026-10-14: EEVEE renders share the laptop GPU with the compositor): adopted. Checks
+  are cropped to the feature (~768 px, the smallest judged thing 3-4 px+), sheets read as crops (< ~1600 px), full
+  supersampled multi-view sheets only for gate sheets; coverage-by-hue and profile overlays keep their resolution
+  (1024 x ss 2) because their numbers depend on it. All Blender through run.sh (capped: the GPU lock). Note: 360k strands
+  with the scalp layer off put 11.5 M points in one object: amdgpu context loss: keep an object under ~6 M points.
+- Garrett E8-E10 (frozen head): E8 (collider fix): the rosette gone (magenta behind 1.15 -> 0.01 %), the back a fine combed
+  crop; the back's stand-off fell (no climbing locks: -5 mm). E9 longer back + a fade: the crown step stays (the top's
+  4 cm ends lie on the back), the nape stays blunt (a fade shortens guides; the even children follow them, the edge
+  row still ends level). E10: grey by region x 0.6 (the photo's salt-and-pepper, not silver), top 3.4 / back 2.8 cm (a
+  smaller crown step), soft back to 4.5 mm: the best so far (sheet human_renders/hg_garrett_E10_*), told the assembly
+  agent (copy groom / strands / look, regrow with groom_hair, front_points z by the head's height). Open: the front edge
+  a blunt lip (his thins out), the nape's straight bottom row, sides -6.7 mm.
+- Garrett E11: front lift 3 mm, inset 2 mm, soft 6 mm: the front edge a little sparser, still a line. The fade thinned
+  only lock strands: the even roots now get it too (hair_strands.scalp_mesh: the even mask x the fade's density ramp
+  over the back): E12's nape sparser and ragged at the bottom, a softer taper.
+- GATES (docs/notes/gates.md, from main): every round DESCRIBE (workspace/checklists/<piece>.json, git-ignored),
+  MEASURE (spikes/hair_garrett/gatetable.py: item | reference | ours | pass from cmp.py, hlinetrace.py, hcover.py),
+  LOOK (mksheet.py pairs=<dir>: each region's reference and result crop; /mnt/data/hifipushie/bin/review, blind),
+  APPROVE (coordinator / Joe only). Scratch gateround.sh runs a full round. Nothing goes to the coordinator before
+  the review PASSES on every region (or STUCK after 3 honest attempts, or a decision of Joe's).
+- Gate rounds G1-G9 (Garrett, short crop; per-picture notes private): what generalises:
+  - the hairline item measures the VISIBLE boundary, so it moves with the comb (combed forward the line read 8 mm
+    lower than combed back): read it with the comb you mean to keep; tolerance 2 mm, plus a brow-relative item;
+  - front_points must be ONE smooth curve: a dip left by stacked corrections made the "sharp notched M" every review
+    flagged; carry a temple recession on through the temple (to ~70 deg) before the sideburn drops;
+  - a whorl small against the region combs makes a SECOND whorl and a seam where the combs part: whorl.core (spiral
+    within it, radial beyond, large radius) when the hair grows out of it; small and off-centre for a crop;
+  - the face rule must only steer hair that reaches the face (FACE_MIN_LEN 6 cm);
+  - hairline.nape_v gives the nape a rounded point; 1.5 cm hung a V 3-4 cm down the spine: keep it small (~4 mm);
+  - THE BLIND REVIEW CONTRADICTED ITSELF on comb direction: forward when we combed back, back when we combed
+    forward. Settle a contradicted item from the photos themselves, the view that shows it best (direction: the
+    three-quarter and profile), and say so with the crops (no overruling by opinion).
+  - the even-roots surface Joe liked (G6): colour by region x 0.6, mid-grey grey strands, no Clump; Clump is now on
+    for short hair too (the starbursts were the collider), small factor.
+STATE: Garrett G10 (G6 + front crest, temple recession carried to 70 deg, whorl off-centre low, gentle nape) running.
+NEXT: G10's review; front / three-quarter / top pairs to the coordinator once direction passes; then subject A, subject B.
 - spikes/hair_garrett/hcover.py: the MAGENTA check (scalp #ff00ff at full tint; magenta share of the hair region per
   view: t60, y180, y125, v1).
 ### hair-heads STATE (merge-ready, 2026-10-14)
@@ -2517,3 +2573,103 @@ at HEAD; batch views per Blender start: shader compile 50-90 s).
    garments"); report to the coordinator the triangles the approved look needs per tier vs 25k (Joe's decision).
 6. Then main / npc / far, the checklist workspace/checklists/tess_hair_cards.json (NOT written yet), the shading notes'
    game terms (root-to-tip, per-strand tint, th_63 colour), docs.
+
+## Handover 2026-10-14 17:40 (hair-garrett agent -> successor)
+Branch `hair-heads2`, worktree /home/joe/dev/hifipushie/.claude/worktrees/agent-a9414ffa57394154a (main merged in at
+f630998; last commit: see `git log -1`). Repo rule: stage by path, never `git add -A`; nothing of Garrett's photos or
+the family in git (Garrett per-picture notes: /mnt/data/hifipushie/hair_garrett/notes_private.md; family:
+workspace/private_notes/). No jobs in flight.
+
+### Process (docs/notes/gates.md): describe -> measure -> blind LOOK review -> approve (coordinator / Joe only)
+- Checklists (git-ignored): workspace/checklists/garrett_hair.json (19 items), and the private subjects' (git-ignored).
+- Groom only on approved heads: Garrett = gp_h6c (copy hg_h6, stage hg_h6). the private subjects' heads (private notes): not yet approved, check `bin/approve get head <name>`.
+- Nothing to the coordinator until the review PASSES every region, except Joe's decisions or STUCK (3 honest
+  attempts). Send front / three-quarter / top pairs as soon as DIRECTION passes (coordinator's ask).
+- Review scope flags: --stage "hair: hairline, part, comb direction, volume and stand-off, lengths, separation,
+  colour, coverage" --not "head shape and proportions; skin". Out-of-stage faults: one short list to the coordinator.
+
+### GPU rules (2026-10-14: hair frames wedged Joe's laptop iGPU for everyone)
+- A heavy EEVEE strand frame (~6.6 M curve points: 360k strands even layer + scalp layer) runs past the driver timeout
+  ("ring gfx timeout ... device wedged"). Never retry into resets: stop and tell the coordinator.
+- Laptop: LIGHT checks only (checkround.sh: half count 180k, 768 px, ss 1, 12 samples; wall time per frame printed).
+  Light renders draw strands as thick speckled ribbons: the reviewer then calls texture / colour wrong (G10) and the
+  colour items fail to measure: judge DIRECTION and SHAPE from them, never texture or colour.
+- Full-count gate renders: NICO-TOP (RTX 3070 Ti) via spikes/offload/remote.sh (main). COMMIT FIRST (the env is the
+  repo at HEAD). New runner spikes/offload/job_hairshots.py (committed, NOT yet run): job folder = ws/<model>/ +
+  ws/<stage>/ (spikes/tour/pack_model.py <model> <job> for each: spec + refs; the projected skin is stripped by
+  hgshots, so its images need not travel), model.txt, stage.txt, args.txt (one hgshots run per line, e.g.
+  `views=v0,v1,v2,y125,y180 size=1024 ss=2` and `views=t60,y180,y125,v1 size=1024 ss=2 tag=_mag look={"scalp":
+  "#ff00ff", "scalp_tint": 1.0}`). Call: `spikes/offload/remote.sh spikes/offload/job_hairshots.py tiles.tar,log.txt
+  16 8 gpu <job dir>`; untar tiles into $TOUT, then gatetable / mksheet pairs / review locally. Untested: if the
+  stage sync or strand eval fails there, read log.txt.
+- Every local Blender through run.sh (bin/capped + the GPU lock); light jobs runl.sh (bin/slot).
+
+### Tools
+Scratch /mnt/data/hifipushie/hair_garrett/ (env.sh sets W = this worktree, HIFIPUSHIE_HOME = main workspace,
+PYTHONPATH spikes): run.sh <script> (heavy), runl.sh <script> (light; looks in spikes/hair_garrett, tesshair7 ...),
+styles/*.json (Garrett g_G1..g_G11, the private subjects'), out/ (Garrett tiles, tables, reviews), fam/ (family).
+- gateround.sh <h> <tag> <style> <stage> <src head> <checklist> [prev]: FULL round (groom, renders 1024 ss2 + magenta,
+  table, pairs, review). Too heavy for the laptop now: use for remote-rendered tiles only (skip its render steps).
+- checkround.sh <same, count>: LIGHT round (see GPU rules).
+- evround.sh: groom + 5 views + coverage (old, heavy). hround.py <src head> <new> patch=@<style.json> (ABSOLUTE path):
+  copy head + the reader's start + patch through server.groom_hair.
+spikes/hair_garrett (in git):
+- hgshots.py <model> views= stage= size= ss= samples= tag= look= S=: EEVEE tiles $TOUT/s_<model><tag>_<view>.png;
+  views v<i> (fitted cameras), y<deg> (front camera turned: y180 back, y125 back-3/4), t<deg> (tipped over the top).
+- hcover.py <model> [render=0]: magenta-scalp coverage %, by HUE (t60 above, y180 behind, y125, v1).
+- mksheet.py <model> [prev=] [pairs=<dir>]: REFERENCE | ours sheet + per-region crop pairs for the review, incl. the
+  tight top-front DIRECTION crops (three-quarter, profile): whole-head pairs made the reviewer contradict itself.
+- gatetable.py <model> <checklist>: MEASURE table (cmp.py stand-off / colour, hlinetrace.py hairline, hcover).
+- hlinetrace.py (hairline photo vs ours by |az|: it measures the VISIBLE boundary, so it moves with the comb),
+  profover.py (our outline on the photo through the fitted camera, rays +-150 deg; blue = whole render: checks head
+  registration), widths.py, guidefield.py (guide comb plotted from behind: red = starts upward), veileval.py,
+  cmp.py (hair_read.compare), copyhead.py <src> <hg_/hj_/hl_ dst>.
+
+### Garrett: state
+- Joe on G6: "I don't hate the look, could almost be there, if we can get it facing the right way". KEEP G6's look
+  (colour, coverage, density, surface: styles/g_G6.json; colour measured L* 42.3 vs photo 42.4, grey share 0.464 vs
+  0.466, coverage 0.24 % above / 0.10 % behind). G6 ran WITHOUT Clump: set strands.clump 0 to reproduce it.
+- Direction and shape as read from his photos (the coordinator agreed): in notes_private.md, section
+  "Handover 2026-10-14 photo reads" (never in git), and in the checklist's style_in_words.
+- G10 (g_G10.json) = G6 + front crest (out front 0.25, lift 1 cm) + temple line carried to 67.5 deg + whorl
+  [215, 42] r 4 cm spiral 75 + nape 0.01 / nape_v 0.004. Light review (out/review_hg_G10/review.md): crest = spiky
+  forward fringe (drop it), temples now TOO deep (+18.7 mm), centre +0.6 PASS; texture / colour notes are light-render
+  artefacts.
+- G11 (g_G11.json, GROOMED as hg_G11, NOT rendered) = G10 without the crest (G6's out / lift) + temples halfway
+  (front_points 42.5: 1.735 ... 67.5: 1.705). Render it (remote, full count) and review next.
+- Open MAJORs (latest full reviews G6-G9): temple M shape; nape a blunt straight cut (want a rounded taper, not a
+  V); whorl reads as a starburst (want a soft off-centre spiral with slight scalp show); hard hairline edge (sparse
+  roots, no lip); a seam / tier where top meets sides; flat "slicked" top in some rounds. Stand-off: photo measures
+  say sides / back / nape 3-7 mm under; trust them over the reviewer's "too bulky", re-check in the reviewer's view.
+- Assembly agent (ad0815704f43e0e00) builds game-ready Garrett: told to copy groom / strands / look (not locks) from
+  the latest good hg_ model and regrow with groom_hair; tell it when a groom passes.
+
+### General code added this thread (all tested)
+- strands.even 1 (every strand a child of dense lock guides 4 mm apart; banks per part side; nearest guide on long
+  hair, blend 3 on crops; hp_cells colour numbers; Clump on all even hair); scalp-ray clearance push (the collider's
+  tilted gradient made short back hair climb: the old whorl / rosette); fade thins the even roots.
+- hair_loose: face up to 1.6; face rule only for hair >= FACE_MIN_LEN 6 cm; body / lift per region; whorl {at,
+  radius, turn, spiral, core} (core > 0: spiral inside, radial beyond); hairline.nape_v (nape centre lowered).
+- hair_read start: even 1, spacing 4 mm, out by region (arc up then fall) for loose long hair.
+
+### Tried and failed (one line each)
+- Forward comb (G3, G7-G9): reads as a fringe / bowl cut; the photos show up-and-back.
+- A forward baby-hair fringe for the hard edge: rejected (nothing lies forward in the photo).
+- Density ramp 6 -> 15 mm alone for the hard edge: the line still reads hard.
+- Shorter sides / back (G3): cap and ledge seams, bare nape.
+- Whole-top whorl r 13 cm (G9): pinpoint starburst, radial bristles.
+- Grey from the reader's light share (E5): silver; light share counts lit hair too.
+- nape_v 1.5 cm: a V hanging 3-4 cm down the spine (keep ~4 mm). hairline.nape +2 cm: still "blunt".
+- Nearest-guide children on a crop: "pine needle" bundles (blend 3 on crops).
+
+### Family heads
+State, best rounds and open faults: workspace/private_notes/ (git-ignored) and the fam/ sheets;
+their checklists are in workspace/checklists/.
+
+### NEXT, in order
+1. Garrett G11 full-count render on NICO-TOP (job_hairshots.py; commit first), gatetable + mksheet pairs + review;
+   fix the worst MAJOR; loop. Send front / three-quarter / top pairs once direction passes.
+2. Temple M, then nape shape, whorl softness, edge.
+3. Then the two family heads (their open items: workspace/private_notes/), same gates.
+4. Coordinator also asked: a garrett_hair_export checklist (card export beside the strand groom at the same cameras,
+   now in game-like EEVEE per gates.md) once Garrett's groom is checkpointed.

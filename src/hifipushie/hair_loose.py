@@ -42,6 +42,12 @@ capability, `groom.loose`:
    "tuck": "left" | {"side": "left" | "right" | "both", "amount": 1.0},
                             hair over and in front of the (found) ear combed back and passing BEHIND it
    "fade": {"width": 0.02, "length": 0.009, "density": 0.25},
+   "whorl": {"at": [az, el], "radius": 0.035, "turn": 1, "spiral": 60}: the CROWN WHORL (every head has one): roots
+                            within `radius` m of the scalp point at (az deg, 0 = the face's centre, + toward the head's
+                            left; el deg) comb in a spiral round it (`spiral` deg off straight outward; `turn` +1 =
+                            clockwise seen from above, -1 = anticlockwise), fading into the comb by the rim;
+                            "core": m (> 0): the spiral only within it, a straight RADIAL spread beyond (a large
+                            `radius` then governs the whole top: the hair grows out of the whorl)
                             the back's locks shorten and thin out over `width` m toward the nape hairline (a fade)
    "halo": 0..1, "flyaway": 0..1}
                             loose hair's own halo / fly-aways (the strands' dials for its free locks; a TAIL's halo
@@ -66,7 +72,8 @@ import numpy as np
 LOOSE = {"length": 0.25, "level": None, "spacing": 0.026, "body": 0.02, "lift": 0.006, "stiff": 0.3, "out": 0.0, "lay": 0.0,
          "back": 0.0, "messy": 0.15, "uneven": 0.3, "ends": 0.0, "fringe": None, "face": 1.0, "width": 1.5, "thickness": 0.006,
          "flow": None, "swoop": None, "below": None, "tuck": None, "fade": None, "halo": None, "flyaway": None,
-         "inset": None, "part_soft": None}
+         "inset": None, "part_soft": None, "whorl": None}
+WHORL = {"at": [180.0, 62.0], "radius": 0.035, "turn": 1.0, "spiral": 60.0, "core": 0.0}  # (see the doc at the top)
 TUCK = {"side": "both", "amount": 1.0, "from": None}  # hair over the ear combed back BEHIND it (one side, or both);
 # from: deg of azimuth from which hair is tucked (default 45 deg in front of the ear: the temple; 10-15: the front
 # hair from the part too, swept back over the ear on that side)
@@ -77,6 +84,7 @@ SWOOP = {"at": 0.0, "span": 30.0, "depth": 0.03, "rise": 0.35, "sweep": 0.0, "st
          "lay": 0.06}
 DOWN = np.array([0.0, 0.0, -1.0])
 FACE_AZ = 58.0  # deg either side of the face's centre line that hair (not a fringe) is kept out of
+FACE_MIN_LEN = 0.06  # m: shorter hair (ending about at the hairline: forehead height) is not steered by the face rule
 LAY_EL = (48.0, 66.0)  # deg of scalp elevation over which the "top" region's lay comes in (below: the sides' lay)
 STEP = 0.005  # m: the collider grid's cell
 BOX = ((-0.34, -0.3, -0.72), (0.34, 0.32, 0.2))  # round the head centre: down to the small of the back
@@ -114,7 +122,7 @@ def params(lo) -> dict:
         if bad:
             raise ValueError(f"hair loose swoop: unknown keys {sorted(bad)} (have {', '.join(sorted(SWOOP))})")
         p["swoop"] = {**SWOOP, **sw}
-    for key, dflt in (("tuck", TUCK), ("fade", FADE)):
+    for key, dflt in (("tuck", TUCK), ("fade", FADE), ("whorl", WHORL)):
         if p.get(key):
             v = {} if p[key] is True else ({"side": p[key]} if key == "tuck" and isinstance(p[key], str) else p[key])
             bad = set(v) - set(dflt)
@@ -291,6 +299,25 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
                 w_ = W[:, i_:i_ + 1]
                 comb = comb * (1 - w_) + w_ * _unit(np.asarray(p["flow"][r_], float))[None]
 
+    wh = p.get("whorl")
+    if wh:  # the CROWN WHORL: a spiral out of one point, faded into the comb over `radius` (Garrett's back photo, the
+        # blind review: "the crown has no whorl")
+        a0, e0 = float(wh["at"][0]), float(wh["at"][1])
+        Wc = sc.point(np.array([a0 % 360.0]), np.array([e0]), 0.0005)[0]
+        rv = P0 - Wc
+        rv = rv - (rv * nrm).sum(1, keepdims=True) * nrm  # (in the scalp's tangent plane)
+        dist = np.linalg.norm(rv, axis=1)
+        rh = rv / np.maximum(dist, 1e-9)[:, None]
+        th = np.radians(float(wh["spiral"]))
+        if float(wh.get("core") or 0.0) > 0:  # the hair GROWS RADIALLY from the whorl: a spiral within `core` m opening
+            # into a straight radial spread out to `radius` (the whole top: region combs fighting a small whorl made
+            # a second whorl and a seam where they parted, Garrett G8)
+            th = th * (1 - _ss(dist / float(wh["core"])))[:, None]
+        # (clockwise seen from above: on top of the head the normal points up, n x r turns r anticlockwise)
+        spv = np.cos(th) * rh - float(wh["turn"]) * np.sin(th) * np.cross(nrm, rh)
+        ww = (1 - _ss(dist / max(float(wh["radius"]), 1e-3)))[:, None]
+        comb = comb * (1 - ww) + ww * spv
+
     def by_region(v, default):  # a number, or {region: number} (others: the mean of those given)
         if isinstance(v, dict):
             base = float(np.mean([float(x) for x in v.values()])) if v else default
@@ -403,6 +430,10 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
     else:
         face_l = np.full(m, float(p["face"]))
     face_l = np.clip(face_l, 0, 1.6)  # (over 1: further back than the cheek, to the ear at ~1.5)
+    # ... and only for hair long enough to reach the face: the rule steers face-framing LENGTHS; short front hair that
+    # ends at the hairline (a crop's forward-lying front) was turned aside into a swirl (Garrett G3). Off below
+    # FACE_MIN_LEN, full from FACE_MIN_LEN + 2 cm
+    face_l = face_l * _ss((L - FACE_MIN_LEN) / 0.02)
     face = float(face_l.max())
     side0 = np.where(away != 0, away, np.where(rng.uniform(size=m) < 0.5, -1.0, 1.0))
     axis_xy = sc.C[:2] + np.array([0.0, 0.02])
@@ -458,7 +489,20 @@ def grow(sc, g: dict, line, rng, col: Collider | None = None) -> dict:
         if col is not None:
             low = q[:, 2] < sc.C[2] - 0.12
             rest = low & (col.at(q) < clear + 0.002) & (col.grad(q)[:, 2] > 0.45) & ~is_fr
-            q = col.push(q, clear)
+            # over the SCALP the clearance is the scalp's own (out along its rays); the body's field only where
+            # something else is still inside it (an ear) or off the scalp (neck, shoulders). The collider's gradient
+            # over the back of the head tilts ~10 deg up, and on short hair (0.5 mm steps) the push outweighed the
+            # step: crop locks there climbed the scalp, a rosette / bare whorl seen from behind (Garrett, every round
+            # since hair-garrett; 19 of 66 back-centre locks rose, none without the collider)
+            a_, e_, h_ = sc.coords(q)
+            from .hair import dirs
+            over = (e_ > sc.EL[0] + 3) & ~low
+            qs = q + (np.maximum(clear - h_, 0) * over)[:, None] * dirs(a_, e_)
+            # (the body sits ~1 mm outside the scalp rays everywhere: only a real intrusion, an ear, hands over to it)
+            need = ~over | (col.at(qs) < 0.3 * clear - 0.001)
+            if need.any():
+                qs[need] = col.push(qs[need], clear[need] if np.ndim(clear) else clear)
+            q = qs
         else:
             a_, e_, h_ = sc.coords(q)
             from .hair import dirs
