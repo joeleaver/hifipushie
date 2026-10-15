@@ -32,6 +32,11 @@ The faults were in the PROCESS, at four points:
    line>"`: a blind art-director review (a separate headless Claude) that sees ONLY reference | result pairs per
    checklist region, no captions, numbers or claims, and lists every fault MAJOR / MINOR with a "needs:" line,
    ending VERDICT PASS (no MAJOR) or FAIL. ~1 min. The agent fixes the worst MAJOR fault and loops.
+   - When a round trip is long (renders on NICO-TOP: ~1 h), one fault per round means one round per session. Fix
+     EVERY independent MAJOR you can address in the same round (one change per region, each listed in the notes),
+     then re-review all regions. "Worst first" orders the work; it is not one fix per round. Before fixing, group
+     the MAJORs by cause (light / shader / paint / geometry / pattern); a cause shared by many faults goes first.
+     (2026-10-15 audit of the skin sessions: ~30 MAJORs per review, one round per session, no passes.)
    - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
      the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
      routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the
