@@ -44,6 +44,10 @@ The faults were in the PROCESS, at four points:
    - A checklist that passes while the result still looks wrong is INCOMPLETE. Name what the eye sees that no item
      measures, add a measured item with a target from the reference, and only then change the model. (2026-10-16
      Garrett hair G56r: every item passed, but it read as a bristly crew cut; lay, length, tips and striping were unmeasured.)
+   - Prove a lever moves its row BEFORE a round depends on it. Run a cheap local check (flat or ID pass, the fast proxy)
+     with the lever at two values: if the measured row doesn't move, the lever is dead (plumbing, layer order, a cached
+     attribute, a mask). Fix that first, and never send a dead lever to a batch. (2026-10-16 skin r5 / r6: lid_shade was
+     dropped under a stack, then painted over; sheen moved nothing; assembly TONGUE_DOME. Each one cost a full round.)
    - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
      the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
      routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the
