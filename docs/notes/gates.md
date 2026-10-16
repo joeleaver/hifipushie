@@ -37,6 +37,10 @@ The faults were in the PROCESS, at four points:
      then re-review all regions. "Worst first" orders the work; it is not one fix per round. Before fixing, group
      the MAJORs by cause (light / shader / paint / geometry / pattern); a cause shared by many faults goes first.
      (2026-10-15 audit of the skin sessions: ~30 MAJORs per review, one round per session, no passes.)
+   - Many changes per round need a MEASURED target for each: a ratio or colour read from the reference crop
+     against ours. The value comes from that measurement, not by eye. A row with no measure gets a small crop
+     statistic first. Record target / before / after per row; revert a change that made its row worse.
+     (2026-10-16 skin r3: ten hand-picked values per head; brows overshot to near-black, one head went 29 -> 42 MAJORs.)
    - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
      the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
      routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the
