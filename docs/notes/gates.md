@@ -136,6 +136,12 @@ identical at 1 m and 3 m at 1080p. A game character is seen at game distances, s
   MAJORs first, grouped by cause. Close-up-only MAJORs are recorded in the notes but do NOT block the gate, unless
   they are also visible at 1 m. Hero cut-scene close-ups, when a game needs them, are a separate declared target.
 - The 1 m / 3 m sheet goes to Joe every round (reference | best result | others).
+- LIGHT (coordinator, 2026-10-16): LIKENESS is judged under the REFERENCE's light, game READABILITY under the game rig.
+  Likeness views (front close-ups, the review pairs that ask "same person?") render under the reference's fitted light
+  (stage.photo_light, the light the head was approved in); the 1 m / 3 m game-distance reads keep the game rig (hard key
+  + fill + back suns). Both sets go on the sheet, each labelled with its light. Why: Tess's expression sheets rendered
+  under the game rig's hard 3:1 side key while the approved head was judged under the photo's soft fitted light; the
+  reviewer named the lighting a MAJOR ("a different person", nose / neck cast shadows), which is not a model fault.
 
 ## Source-asset scope: LOD and conversion stages are judged against their source (2026-10-16)
 Why: the hair-cards gate swung 19-29 game-visible MAJORs over six rounds (g3-g8) because every review mixed two
