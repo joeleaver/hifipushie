@@ -6997,6 +6997,11 @@ def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: in
     gs = {k: v for k, v in g.items() if k not in NOT_SIM}
     gs.pop("backend", None)
     gs.pop("uncrush", None)  # (it changes only the placed start, keyed in `inputs`: on by env var or key, one key)
+    if isinstance(gs.get("pattern"), dict) and "kind" in gs["pattern"]:
+        # (a design's pattern "kind" picks drafting defaults: what it changes is the draft, keyed in `inputs` (uv, F,
+        # sew). Keyed here too it re-keyed every design-drafted sim when the design compile began writing it, with
+        # identical inputs: dress-tess dj11 / ds37 / dc19 after the main 43dcdf5a merge)
+        gs["pattern"] = {k_: v_ for k_, v_ in gs["pattern"].items() if k_ != "kind"}
     if construct:  # the sim is the coarse one whatever the fine mesh: its size isn't in the key
         gs.pop("resolution", None)
     keyed = [VERSION, gs, body_src.get("key"), frames, code, inputs, fab_s, fab_s if construct else fab]
