@@ -133,6 +133,20 @@ identical at 1 m and 3 m at 1080p. A game character is seen at game distances, s
   they are also visible at 1 m. Hero cut-scene close-ups, when a game needs them, are a separate declared target.
 - The 1 m / 3 m sheet goes to Joe every round (reference | best result | others).
 
+## Source-asset scope: LOD and conversion stages are judged against their source (2026-10-16)
+Why: the hair-cards gate swung 19-29 game-visible MAJORs over six rounds (g3-g8) because every review mixed two
+questions: do the CARDS reproduce the GROOM (the cards stage), and does the groom match the PHOTO (the approved groom's
+stage, decided with Joe). Card changes could not move photo-vs faults that the groom itself has (thin cap / open
+forehead, narrow silhouette, colour vs the photo, side volume, centre part, face-framing locks), so the count measured
+noise between reviews, not the cards.
+- A stage that converts an approved asset (hair cards / LODs from a strand groom, a game mesh from a sculpt, baked maps
+  from a high poly, a decimated LOD from LOD0) is judged against its SOURCE asset, rendered with the same camera, light
+  and head: the blind review takes the source render as the reference, scoped "<this> reproduces this <source>".
+- The photo / concept may stay on the sheet as a context column only. A photo-vs fault that the source also shows goes
+  to the coordinator's list for the source's stage, never into this stage's count. A fault where the conversion is
+  worse than the source and that makes it read further from the photo counts here (it is a cards-vs-groom fault).
+- Game-distance rules (above) apply unchanged: 1 m and 3 m, native pixels.
+
 ## Reviewer brief (the LOOK step)
 Spawn a fresh agent per gate sheet. Give it: the reference crops and result crops as image paths, the stage's
 checklist item NAMES (not values), and this instruction: "You are a senior art director. You have no stake in
