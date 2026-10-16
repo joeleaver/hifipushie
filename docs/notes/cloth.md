@@ -3045,3 +3045,14 @@ Faults the code now prevents; kept as the record of what was seen and why.
 | ZOZO "ccd failed", max_sigma ~11 at frame 0 | A sliver edge (under 1 mm) in the mesh: a fold row or a mark next to the outline | Fixed in the mesher; the fine start check names the place if one comes back |
 | ZOZO builder: assertion `left > right` 0.0 / 0.0 while "computing constraints" | A collider vertex whose faces have no area (an under garment's welded seam slivers), or none at all | Fixed in the collider (faces under 0.0005 mm2 and the vertices they orphan are left out) |
 | A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |
+
+## Pre-placement cache (2026-10-16, render1b agent)
+cloth.build caches its finished result under a key of its inputs BEFORE placement (`cloth.pre_key`: garment, body
+mesh + joints + key, the garment under it (sim key, pressed verts, its own pre_key), worn colliders, frames, the
+source of the whole package + json): `_cache/cloth/pre_<key>.pkl`, used only while the sim npz it names exists; a
+cached_only build that found no sim leaves `pre_<key>.miss` (that sim key), so an unsimulated garment isn't placed
+again. garments() / cached() memoise builds and body meshes for the call (the jeans were built 3x, body_mesh 6x).
+dt_tess COPY (jeans simulated, sweater + coat not): cloth-only garments() 464-657 s cold -> 13 s warm; jeans V,
+V_sim, X0, rest, mesh F/uv/piece and sim key identical to the old path. Any edit under src/hifipushie re-keys every
+pre entry once (the sim npz keys are unchanged); renders, `result=` and place_only always run; a pre hit doesn't
+replay build()'s log lines; HIFIPUSHIE_CLOTH_PRE=0 turns it off. tests/test_cloth_precache.py. Agents: merge main.

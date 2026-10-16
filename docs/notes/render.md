@@ -39,12 +39,20 @@ then 5 frames at 70-88 s each, every frame a fresh Blender: blend load + groom b
 - Measured locally (laptop, scratch copy of jf_G48r): the stage sync cold = 291 s (mesh 285.0, blender 5.8, peak RSS
   3.7 GB); with the packed stage the same run got past ensure with no sync (51 s to the hair build, which then failed:
   see below).
-- NOT DONE (handover): the phase split and old-vs-new pixel equality on the real groom. hg_G48r's spec uses groom keys
-  this branch (main) lacks (`loose.length.top_el`, `loose.fade.front`, ...: hair-garrett's branch): run on that branch
-  after cherry-picking e40d4b76: /mnt/data/hifipushie/render1b/after.sh (scratch jf/jf2, run.sh <worktree|old>,
-  oldkey.py for the old code's stage key; drop fixspec.py there). Expected from the G48r log: frames 2..5 lose
-  scene load + groom + compile (~65 s each of ~71), so a 5-view job ~ 1 x 88 + 4 x (render only) instead of 5 x ~75,
-  plus the 178 s sync gone: ~581 s -> ~110-130 s (estimate, not timed).
+- VERIFIED (2026-10-16, render1b): on a throwaway worktree of hair-heads2 (aed19793) + e40d4b76 (cherry-picks
+  clean), the scratch hg_G48r job (jf, jf2), views v0,v1 at 256 px / 4 samples, laptop, heavy slot + capped:
+  old code (hair-heads2 alone) vs new one=0 vs new one=1: mean abs diff 0.0, max 0.0 on both views (pixel-identical,
+  not just within noise); packed stage vs local stage: 0.0 too. Phase split (one=1): Blender start + open ~8-30 s
+  (open itself 0.2-0.4 s, the rest process start / imports, contention-dependent), groom 0.2 s (Geometry Nodes set-up
+  only: the strands are evaluated at render), setup 0.0 s, each frame 16-37 s; the SECOND frame is not much cheaper
+  than the first (21.5 / 16.0; 36.5 / 37.6 while a cloth job competed): EEVEE re-syncs the strand curves on every
+  render.render, so frames, not set-up, dominate a hair job here. Two views: old 73 + 61 = 134 s of Blender, one=1
+  88.7 s (-45 s, i.e. ~20-30 s per extra view, NOT the ~65 s estimated above). Whole job: old 6:43 and one=1 4:03
+  with a stage sync each (a new key); packed stage 2:21 first run (hair build ~75 s), 1:07 warm (no sync).
+  The packed G48r folder is now 126 MB (cap 128 MiB): one more image or reference and it won't fit.
+- HOW AGENTS USE IT: merge main (or cherry-pick e40d4b76 into an older branch); send every view in ONE shoot call
+  (hgshots one=1, default); pack jobs with `pack_model.py --stage _g3_<model>` after a local stage.ensure, from a
+  clean tree at the commit the job runs.
 - Cloth-only sync (coordinator's item, dt_tess COPY in /mnt/data/hifipushie/render1b/cloth, prof.py): scene_job
   464 s for ONE simulated garment (jeans; sweater / coat unsimulated), blender cloth_sync 0.5 s. cProfile: 6
   `cloth.build(cached_only=True)` calls = 418 s; `place` 361 s of it (`_relax_strain` 303 s, numpy svd 243 s over
@@ -53,4 +61,4 @@ then 5 frames at 70-88 s each, every frame a fresh Blender: blend load + groom b
   under garment for every layered garment (jeans built for itself, under sweater, under coat), and unsimulated
   garments pay placement just to find no cache. Fixes to do: memoise a pre-placement key (garment spec + body mesh
   hash + code) -> sim key file in _cache/cloth, so cached_only loads without placing; memoise build / body_mesh
-  within one garments() call. Not implemented here.
+  within one garments() call. DONE 2026-10-16: see docs/notes/cloth.md "## Pre-placement cache".
