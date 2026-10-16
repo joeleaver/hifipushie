@@ -858,6 +858,18 @@ def body_mesh(spec: dict | None = None, params: dict | None = None) -> dict:
             faces.append(list(L[k:k + s]))
             k += s
         return {"V": b["P"], "F": faces, "J": b["J"], "key": json.dumps(params, sort_keys=True)}
+    import pickle
+    bodies = getattr(_MEMO, "bodies", None)
+    mk = hashlib.sha1(json.dumps(spec, sort_keys=True, default=str).encode()).hexdigest() if bodies is not None else None
+    if mk is not None and mk in bodies:
+        return pickle.loads(bodies[mk])
+    out = _body_mesh_spec(spec)
+    if mk is not None:
+        bodies[mk] = pickle.dumps(out, protocol=pickle.HIGHEST_PROTOCOL)
+    return out
+
+
+def _body_mesh_spec(spec: dict) -> dict:
     from . import base as basemod, spec as specmod
     se = specmod.expand_mirror(spec)
     srf = basemod.surface(se, spec["base"])
@@ -6374,9 +6386,109 @@ def placement_of(g: dict) -> str:
     return g.get("placement") or ("smooth" if cloth_job_backend(g) == "zozo" else "fitted")
 
 
+# Pre-placement cache (2026-10-16): a build's sim key (above, `build`) hashes the PLACED start, so even a cached build
+# ran the whole placement (dt_tess: 361 s of a 464 s cloth-only sync). A finished build is also stored under a key of
+# its inputs BEFORE placement: the garment, the body (mesh + joints + key), the garment under it (its key + pressed
+# verts), worn colliders, frames, and the source of the whole package (+ blender_cloth.py: anything that may change the
+# result). Its pickle names the sim key it was made from and is used only while that sim's result is cached.
+_PRE_CODE: str | None = None
+_MEMO = threading.local()  # within one garments() / cached() call: built results and body meshes (pickled bytes)
+
+
+def _pre_code() -> str:
+    global _PRE_CODE
+    if _PRE_CODE is None:
+        d = Path(__file__).parent
+        h = hashlib.sha1()
+        for f in sorted(list(d.glob("*.py")) + list(d.glob("*.json"))):
+            h.update(f.name.encode() + f.read_bytes())
+        _PRE_CODE = h.hexdigest()
+    return _PRE_CODE
+
+
+def _arr_hash(*arrs) -> str:
+    h = hashlib.sha1()
+    for a in arrs:
+        a = np.ascontiguousarray(np.asarray(a, float))
+        h.update(str(a.shape).encode() + a.tobytes())
+    return h.hexdigest()
+
+
+def pre_key(g: dict, body_src: dict, frames: int | None = None) -> str:
+    """The pre-placement key of build(g, body_src, frames=...): see _PRE_CODE."""
+    under = body_src.get("under")
+    keyed = [VERSION, _pre_code(), g, frames, body_src.get("key"),
+             _arr_hash(body_src["V"]), hashlib.sha1(json.dumps(body_src["F"], default=int).encode()).hexdigest(),
+             _arr_hash(*[body_src["J"][k] for k in sorted(body_src["J"])]), sorted(body_src["J"]),
+             body_src.get("under_missing"),
+             None if under is None else [under.get("key"), under.get("name"), _arr_hash(under["V"]),
+                                         _arr_hash(under["F"]), (under.get("res") or {}).get("pre_key")],
+             None if not body_src.get("worn") else body_src["worn"].get("key")]
+    return hashlib.sha1(json.dumps(keyed, sort_keys=True, default=str).encode()).hexdigest()[:20]
+
+
+class _memo_scope:
+    """`with _memo_scope():` builds and body meshes are memoised until the outermost scope exits."""
+    def __enter__(self):
+        if getattr(_MEMO, "depth", 0) == 0:
+            _MEMO.builds, _MEMO.bodies = {}, {}
+        _MEMO.depth = getattr(_MEMO, "depth", 0) + 1
+
+    def __exit__(self, *a):
+        _MEMO.depth -= 1
+        if _MEMO.depth == 0:
+            _MEMO.builds = _MEMO.bodies = None
+
+
 def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int | None = None,
           render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None,
           result: str | Path | None = None, place_only: bool = False) -> dict | None:
+    """_build (below), with its finished results also cached under the pre-placement key (pre_key): a garment whose
+    sim is cached loads without being placed again. Renders, hand-carried results and place_only always run."""
+    import pickle
+    if render or result is not None or place_only or os.environ.get("HIFIPUSHIE_CLOTH_PRE") == "0":
+        return _build(g, body_src, name, log=log, frames=frames, render=render, out_dir=out_dir,
+                      cached_only=cached_only, progress=progress, result=result, place_only=place_only)
+    pk = pre_key(g, body_src, frames)
+    memo = getattr(_MEMO, "builds", None)
+    if memo is not None and pk in memo:
+        return pickle.loads(memo[pk])
+    pf = _cache_dir() / f"pre_{pk}.pkl"
+    mf = pf.with_suffix(".miss")  # cached_only found no sim: its sim key (an unsimulated garment isn't placed again)
+    if cached_only and not pf.exists() and mf.exists() and not (_cache_dir() / f"{mf.read_text().strip()}.npz").exists():
+        return None
+    blob = None
+    if pf.exists():
+        try:
+            blob = pf.read_bytes()
+            res = pickle.loads(blob)
+            if not (_cache_dir() / f"{res['key']}.npz").exists():  # its sim isn't cached any more
+                blob = None
+        except Exception:
+            blob = None
+    if blob is None:
+        _MEMO.miss = None
+        res = _build(g, body_src, name, log=log, frames=frames, render=render, out_dir=out_dir,
+                     cached_only=cached_only, progress=progress, result=result, place_only=place_only)
+        if res is None:
+            miss, _MEMO.miss = getattr(_MEMO, "miss", None), None
+            if cached_only and miss:
+                mf.write_text(miss)
+            return None
+        res["pre_key"] = pk
+        blob = pickle.dumps(res, protocol=pickle.HIGHEST_PROTOCOL)
+        if (_cache_dir() / f"{res['key']}.npz").exists():
+            tmp = pf.with_suffix(f".tmp{os.getpid()}")
+            tmp.write_bytes(blob)
+            tmp.replace(pf)
+    if memo is not None:
+        memo[pk] = blob
+    return pickle.loads(blob)
+
+
+def _build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int | None = None,
+           render: dict | None = None, out_dir: Path | None = None, cached_only: bool = False, progress=None,
+           result: str | Path | None = None, place_only: bool = False) -> dict | None:
     """Draft, mesh, place and simulate one garment on one body, then clean it up. Returns {"V" final verts, "V_sim"
     the sim's own, "mesh", "fit", "integrity", "sizing", "shape", ...}; the sim is cached by content (keys that only
     change the look or the clean-up never re-simulate). cached_only: None when it hasn't been simulated.
@@ -6630,6 +6742,7 @@ def build(g: dict, body_src: dict, name: str = "garment", log=print, frames: int
         res["V_prev"] = d["Vprev"] if "Vprev" in d else None
         res["log"] = str(d["log"])
     elif cached_only:
+        _MEMO.miss = key  # (build: remembered under the pre-placement key until this sim is cached)
         return None
     else:
         t = time.time()
@@ -8343,6 +8456,13 @@ def _run_job(name: str, gname: str, g: dict, jid: str) -> None:
 
 
 def cached(name: str, spec: dict, gname: str):
+    """_cached (below) with builds and body meshes memoised for the call (a layered garment rebuilt the one under it
+    for every garment over it)."""
+    with _memo_scope():
+        return _cached(name, spec, gname)
+
+
+def _cached(name: str, spec: dict, gname: str):
     """The garment's built result if its sim is cached, else None (never simulates). A frozen garment (garment key
     "frozen") is its frozen drape carried onto this model's body."""
     g = spec["cloth"][gname]
@@ -9145,6 +9265,13 @@ def worn_together(results: list) -> list:
 
 
 def garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
+    """_garments (below) with builds and body meshes memoised for the call (a layered garment rebuilt the one under it
+    for every garment over it)."""
+    with _memo_scope():
+        return _garments(name, spec, log=log, simulate=simulate)
+
+
+def _garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
     """Every garment of a model (spec["cloth"]: {name: garment}) settled on the model's body: (name, garment,
     result) for those whose sim is cached (dress runs them); simulate=True runs the missing ones here (export)."""
     out = []
