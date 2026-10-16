@@ -9231,7 +9231,90 @@ def worn_parts(name: str, spec: dict, parts: list) -> dict:
     # (dt_tess's lanyard, 2026-10-16) re-keyed every garment resting on the shoes, and the garments over them, with
     # byte-identical sim inputs
     ck = hashlib.sha1(np.round(V_, 7).tobytes() + np.ascontiguousarray(F_, np.int64).tobytes()).hexdigest()[:12]
-    return {"V": V_, "F": F_, "key": f"worn:{ck}:{','.join(parts)}"}
+    # "part": each vertex's part (index into "parts"), so a look draws the shoes, soles and outsoles in their own
+    # colours (dress-tess s13: one dark "worn" object, L* 29 against the concept's grey trainers' 62); not in the key
+    pv = np.asarray(z["part"])[keep]
+    return {"V": V_, "F": F_, "key": f"worn:{ck}:{','.join(parts)}", "parts": [names_[i] for i in range(len(names_))],
+            "part": pv}
+
+
+PROP_VOXEL = (0.0004, 0.0015)  # m: the finest / coarsest voxel props are meshed at for look (4 voxels across the thinnest)
+
+
+def _part_elements(se: dict, parts: list) -> list:
+    """(kind, element, centre-ish points, thinnest size) of the expanded spec's elements on `parts`."""
+    J = {k: np.asarray(v["pos"], float) for k, v in se.get("joints", {}).items() if isinstance(v.get("pos"), list)}
+    out = []
+    for kind in ("blobs", "bones"):
+        for e in (se.get(kind) or {}).values():
+            if e.get("part") not in parts:
+                continue
+            if kind == "blobs":
+                at = e.get("at")
+                c = np.asarray(at, float) if isinstance(at, list) else J.get(at) if isinstance(at, str) else None
+                if c is None:
+                    continue
+                sz = np.atleast_1d(np.asarray(e.get("size", [0.05]), float))
+                r = float(sz.max()) * 1.8 + float(e.get("blend", 0.0)) + 0.01
+                out.append((e["part"], [c - r, c + r], float(sz.min())))
+            else:
+                rr = float(max(e.get("r_a", 0.05), e.get("r_b", 0.05)))
+                pts = [J[e[j]] + sg * (rr + 0.01) for j in ("a", "b") if e.get(j) in J for sg in (-1, 1)]
+                if pts:
+                    out.append((e["part"], pts, float(min(e.get("r_a", 0.05), e.get("r_b", 0.05)))))
+    return out
+
+
+def prop_parts(spec: dict, garments: list | None = None) -> list:
+    """The model's parts worn OVER or beside the clothes that a cloth look draws (a lanyard, its clip and badge, laces):
+    parts with elements of their own that are neither shells (under the clothes: top, briefs, socks) nor a drawn
+    garment's "collide" parts (drawn already, as the cloth's collider)."""
+    from . import spec as specmod
+    parts = spec.get("parts") or {}
+    collide = set()
+    for gn, g in (spec.get("cloth") or {}).items():
+        if garments is None or gn in garments:
+            collide |= set(expanded(g).get("collide") or [])
+    se = specmod.expand_mirror(spec)
+    own = {p_ for p_, _, _ in _part_elements(se, list(parts))}
+    return [p_ for p_, pd in parts.items() if p_ in own and p_ != "body" and p_ not in collide
+            and not (isinstance(pd, dict) and pd.get("shell"))]
+
+
+def prop_meshes(name: str, spec: dict, parts: list) -> list:
+    """Each prop part meshed in a close-up box round its own elements, at a voxel a quarter of its thinnest element
+    (PROP_VOXEL): render objects {"name": "prop_<part>", V, F, color, roughness}. In the whole-figure build they are
+    sub-voxel (dt_tess: lanyard 36 vertices, the 1.6 mm badge card none: missing from every look_cloth until b01)."""
+    from . import spec as specmod, store
+    se = specmod.expand_mirror(spec)
+    els = _part_elements(se, parts)
+    out = []
+    for p_ in parts:
+        mine = [(pts, th) for q, pts, th in els if q == p_]
+        if not mine:
+            continue
+        P = np.array([q for pts, _ in mine for q in pts])
+        lo, hi = P.min(0) - 0.005, P.max(0) + 0.005
+        vox = float(np.clip(2 * min(th for _, th in mine) / 4, *PROP_VOXEL))
+        res = int(min(400, np.ceil(float((hi - lo).max()) / vox)))
+        info = store.build(name, res, box=(lo, hi))
+        with np.load(info["mesh"]) as z:  # (box builds share one close-up file: read it now)
+            names_ = [str(n) for n in z["part_names"]]
+            if p_ not in names_:
+                continue
+            on = np.asarray(z["part"]) == names_.index(p_)
+            Fz = np.asarray(z["faces"], np.int64)
+            Vz = np.asarray(z["verts"], float)
+        Fz = Fz[on[Fz].all(1)]
+        if not len(Fz):
+            continue
+        keep = np.unique(Fz)
+        remap = np.full(len(on), -1)
+        remap[keep] = np.arange(len(keep))
+        pd = (spec.get("parts") or {}).get(p_) or {}
+        out.append({"name": f"prop_{p_}", "V": Vz[keep], "F": remap[Fz], "color": pd.get("color") or "#888888",
+                    "roughness": float(pd.get("roughness", 0.6))})
+    return out
 
 
 def _garment_for_sim(g: dict) -> dict:
@@ -9635,7 +9718,8 @@ def report(gname: str, res: dict) -> str:
 DETAIL = {"thread": None, "button": None, "seam_finish": None, "seam_finishes": None,
           "seam": None, "seam_width": None, "allowance": None, "topstitch": None, "stitch": 0.003,
           "stitch_gap": 0.0015, "stitch_depth": 0.0003, "hem": 0.02, "hem_height": 0.0007, "buttons": True,
-          "texture": 2048, "folds": None, "fold_gain": 1.0, "fold_opts": None, "surface": None, "knit": None}
+          "texture": 2048, "folds": None, "fold_gain": 1.0, "fold_opts": None, "surface": None, "knit": None,
+          "woven": None}
 # seam_finish / seam_finishes: how seams are finished (garment_kb.json seam_finishes; seam_kinds); seam, seam_width,
 # allowance: override every finish's groove depth, groove half width, allowance rise (m; None = the finish's own);
 # topstitch: the row on free edges (hems), None = the garment kind's hem default (hem_topstitch)
@@ -9961,6 +10045,10 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     if o.get("surface") == "knit":  # the fabric's own surface: knitted stitches (dress-tess: "a smooth sweatshirt")
         Hk, knit_v = knit_surface(M, uv, side, T, mpt, o)
         H += Hk
+    Hw = None
+    if o.get("surface") in WEAVES:  # a woven fabric's own surface: weave + the crush of a worn, washed cloth
+        Hw = woven_surface(M, uv, side, T, mpt, o)
+        H += Hw
     if extra is not None:  # authored fine folds (fine_folds), under the sewing details
         H += np.asarray(extra, np.float32)
     H *= inside
@@ -9971,12 +10059,77 @@ def detail_maps(M: dict, uv: np.ndarray, side: float, g: dict, texture: int | No
     n /= np.linalg.norm(n, axis=2, keepdims=True)
     N = ((n * 0.5 + 0.5) * 255).round().astype(np.uint8)
     Hc = H - (np.asarray(extra, np.float32) * inside if extra is not None else 0)  # (folds don't darken like grooves)
+    if Hw is not None:  # (nor does the cloth's crush)
+        Hc = Hc - Hw * inside
     cav = (np.clip(1 + Hc / 0.004, 0.7, 1.0) * np.where(inside, shadow, 1)).astype(np.float32)
     if knit_v is not None:  # (yarn: the troughs between stitches darker, the fibre's fuzz a fine mottle)
         cav = (cav * np.where(inside, knit_v, 1.0)).astype(np.float32)
     btn *= inside
     return {"height": H, "normal": N, "cavity": cav, "thread": thread.astype(np.float32), "button": btn, "inside": inside,
             "texels_per_m": T / side}
+
+
+WEAVES = ("twill", "plain")
+WOVEN = {"pitch": 0.0008, "angle": 63.0, "weave_depth": 0.00004, "crush": 0.0003, "crush_size": [0.02, 0.05],
+         "crush_stretch": 3.0, "crush_sharp": 2.5, "crush_dir": 90.0, "crush_spread": 35.0,
+         "crush_patch": 0.04, "seed": 5}
+# a woven cloth's surface (garment detail "surface": "twill" | "plain", detail "woven" overrides). Two things, by scale:
+# - the weave: twill's diagonal ribs (`pitch` apart, `angle` deg from the weft, `weave_depth`); plain weave has none
+#   that read. Drawn only where the atlas resolves it (pitch >= 4 texels; fades out from 4 down to 2): at a coat's
+#   0.76 mm texel a 0.8 mm drill twill is sub-texel and left out (it would alias into moire), it lives in roughness.
+# - the crush: the short sharp creases a worn, washed cotton takes everywhere (not the drape's folds: those are in the
+#   mesh / fine_folds), a ridged band-limited noise, `crush_size` [fine, coarse] wavelengths (m), elongated
+#   `crush_stretch` x along `crush_dir` +- `crush_spread` deg (smooth over `crush_patch` m), `crush_sharp` > 1 = narrow
+#   crests, `crush` = height (m).
+#   dress-tess s14: the concept's lab coat panels have 5x our fine (3-6 mm) contrast; what made the coat read
+#   "rubbery / puffy" at 1 m and 3 m was this, not sheen (sheen 0 vs 0.3: mean |diff| 0.002).
+
+
+def woven_surface(M: dict, uv: np.ndarray, side: float, T: int, mpt: float, o: dict) -> np.ndarray:
+    """Height (m) of a woven cloth's surface on the flat-pattern atlas: twill ribs where resolvable + the crush."""
+    wp = dict(WOVEN, **(o.get("woven") or {}))
+    yy, xx = np.mgrid[0:T, 0:T].astype(np.float64)
+    X, Y = xx * mpt, (T - yy) * mpt  # metres in the atlas (pattern x = weft, y = warp: islands keep the grain)
+    H = np.zeros((T, T), np.float64)
+    if o.get("surface") == "twill":
+        p = float(wp["pitch"])
+        fade = float(np.clip((p / mpt - 2.0) / 2.0, 0.0, 1.0))
+        if fade > 0:
+            a = np.radians(float(wp["angle"]))
+            ph = (X * np.sin(a) - Y * np.cos(a)) / p  # across the ribs
+            H += fade * float(wp["weave_depth"]) * (np.abs(((ph % 1.0) - 0.5)) * 4 - 1)
+    if float(wp["crush"]) > 0:
+        rng = np.random.default_rng(int(wp["seed"]))
+        f, c = (float(v) for v in wp["crush_size"])
+        st = max(float(wp["crush_stretch"]), 1.0)
+        # orientation field: the creases lie along `crush_dir` (deg from the weft; 90 = down the warp, as cloth hangs)
+        # +- `crush_spread` (deg, the field's std), varying over ~`crush_patch` m
+        th = ndimage_gaussian(rng.standard_normal((T, T)), float(wp["crush_patch"]) / mpt)
+        th = np.radians(float(wp["crush_dir"])) + np.radians(float(wp["crush_spread"])) * th / max(float(th.std()), 1e-9)
+        Hc = np.zeros((T, T))
+        for lam, wgt in ((f, 0.45), (c, 1.0)):
+            out = np.zeros((T, T))
+            # anisotropic: noise filtered in the frequency domain (periodic: no edges) along 4 axes, each weighted by
+            # how near the local direction is (cos^8, normalised: 8 axes, no visible steps)
+            ky = np.fft.fftfreq(T)[:, None] * 2 * np.pi
+            kx = np.fft.fftfreq(T)[None, :] * 2 * np.pi
+            sig_l, sig_w = st * lam / (2 * np.pi) / mpt, lam / (2 * np.pi) / mpt
+            wsum = np.zeros((T, T))
+            for k in range(8):
+                ak = np.pi * k / 8
+                ku, kv = kx * np.cos(ak) + ky * np.sin(ak), -kx * np.sin(ak) + ky * np.cos(ak)
+                filt = np.exp(-0.5 * ((ku * sig_l) ** 2 + (kv * sig_w) ** 2))
+                r = np.fft.ifft2(np.fft.fft2(rng.standard_normal((T, T))) * filt).real
+                r /= max(float(r.std()), 1e-12)
+                ridge = 1.0 - np.minimum(np.abs(r), 2.5) / 2.5  # crests where the noise crosses 0
+                ridge = ridge ** float(wp["crush_sharp"])
+                wk = np.cos(th - ak) ** 8
+                out += wk * (ridge - ridge.mean())
+                wsum += wk
+            out /= wsum
+            Hc += wgt * out / max(float(out.std()), 1e-12)
+        H += float(wp["crush"]) * Hc / max(float(Hc.std()), 1e-12) / 2.0
+    return H.astype(np.float32)
 
 
 KNIT = {"wale": 0.0055, "course": 0.0045, "depth": 0.0009, "rib": ["neckband", "cuff", "hem_band"], "rib_knit": 1,
@@ -10147,46 +10300,93 @@ def untuck_crossings(V0: np.ndarray, V: np.ndarray, M: dict, outer: dict, rounds
     return V
 
 
+def _worn_objects(name: str, spec: dict, wn: dict) -> list:
+    """The body's worn parts (shoes under a hem) as look objects, one per part in that part's own colour / roughness.
+    A worn mesh cached before per-vertex parts existed is relabelled from worn_parts (store.build's cached close-up),
+    or drawn as one object in the first part's colour when that mesh no longer matches."""
+    V, F = np.asarray(wn["V"], float), np.asarray(wn["F"], np.int64)
+    parts_ = str(wn.get("key", "")).split(":")[-1].split(",") if wn.get("key") else []
+    pv, names_ = wn.get("part"), wn.get("parts")
+    if pv is None and parts_:
+        try:
+            w2 = worn_parts(name, spec, parts_)
+            if len(w2["V"]) == len(V) and np.allclose(w2["V"], V, atol=1e-6):
+                pv, names_ = w2["part"], w2["parts"]
+        except Exception:
+            pv = None
+    P = spec.get("parts") or {}
+    def obj(nm, p_, F_):
+        d = P.get(p_) or {}
+        return {"name": nm, "V": V, "F": F_, "color": d.get("color", "#3a3634"),
+                **({"roughness": float(d["roughness"])} if d.get("roughness") is not None else {})}
+    if pv is None:
+        return [obj("worn", parts_[0] if parts_ else "", F)]
+    pv = np.asarray(pv)
+    fp = pv[F[:, 0]]
+    return [obj(f"worn_{names_[i]}", names_[i], F[fp == i]) for i in np.unique(fp)]
+
+
 def worn_together(results: list) -> list:
     """[(name, garment, result)] with every garment that another in the list is worn `over` shown as it is worn
     UNDER it: its own finished surface (relief, bands, made pieces) with only the covered cloth laid under the outer
     garment (cloth_layers.tucked), its buttons made again on that surface, those under the outer garment left out.
     One rule for looks, the scene and the export (drawn as the pressed collider instead, a shirt's front in a jacket's
-    V had no placket, no buttons and ragged edges)."""
-    from . import cloth_layers
-    from . import closures as closuremod
+    V had no placket, no buttons and ragged edges).
+    Transitive: a garment is laid under EVERY garment above it in its `over` chain, nearest first (jeans under the
+    sweater, then under the coat). A garment is simulated over the one directly under it only (model_body), so the
+    cloth further down is not in its collider: dt_tess's coat (over the sweater) hangs over the thighs where only the
+    jeans are, and the drawn jeans came out through its lower fronts at 437-450 vertices, up to +23 mm (b01)."""
     out = list(results)
     by_ = {gn: k for k, (gn, _, _) in enumerate(out)}
-    for gn, g, res in results:
-        ov = expanded(g).get("over") if isinstance(g, dict) else None
-        if ov not in by_:
-            continue
-        k = by_[ov]
+    over_ = {gn: (expanded(g).get("over") if isinstance(g, dict) else None) for gn, g, _ in results}
+
+    def below(gn):  # the garments under gn, nearest first
+        ch, ov = [], over_.get(gn)
+        while ov in by_ and ov not in ch and ov != gn:
+            ch.append(ov)
+            ov = over_.get(ov)
+        return ch
+    had_buttons = {gn: bool(r.get("buttons")) for gn, _, r in results}
+    # nearest pairs first (as before: every under garment against its outer garment's own result), then the deeper
+    # ones, each against the drawn surface of the garment over it
+    pairs = [(gn, u, d) for gn in by_ for d, u in enumerate(below(gn))]
+    for gn, u, d in sorted(pairs, key=lambda p: p[2]):
+        res = results[by_[gn]][2] if d == 0 else out[by_[gn]][2]
+        k = by_[u]
         ogn, og, ores = out[k]
-        M = ores["mesh"]
-        # what keeps its shape: each made piece, each closure band (a group moves by one vector)
-        rigid = np.full(len(ores["V"]), -1, np.int64)
-        for j, nm in enumerate(made_pieces(M, interfacing(ores["pieces"], M))):
-            if nm in M["names"]:
-                rigid[np.asarray(M["piece"]) == M["names"].index(nm)] = j
-        V, cov = cloth_layers.tucked(ores, res, rigid=rigid)
-        V = untuck_crossings(np.asarray(ores["V"], float), V, M, res)
-        new = dict(ores, V=V, covered=cov)
-        if ores.get("buttons"):
-            bt = closuremod.buttons_mesh(V, M, ores["body"])
-            if bt is not None and len(bt.get("at", [])):
-                # a button the outer garment covers is not drawn (2 mm of button under 4 mm of air pokes through)
-                kv = ~cov[np.asarray(bt["at"], np.int64)]  # (per button vertex: the cloth vertex it sits on)
-                if not kv.any():
-                    bt = None
-                elif not kv.all():
-                    kf = kv[bt["F"]].all(1)
-                    remap = np.cumsum(kv) - 1
-                    bt = dict(bt, V=bt["V"][kv], F=remap[bt["F"][kf]], at=np.asarray(bt["at"])[kv],
-                              mark=np.asarray(bt["mark"])[kv])
-            new["buttons"] = bt
-        out[k] = (ogn, og, new)
+        out[k] = (ogn, og, _laid_under(ores, res, had_buttons.get(u, False)))
     return out
+
+
+def _laid_under(ores: dict, res: dict, buttons: bool) -> dict:
+    """worn_together's one step: the under garment's drawn result `ores` laid under the outer garment's `res`."""
+    from . import cloth_layers
+    from . import closures as closuremod
+    M = ores["mesh"]
+    # what keeps its shape: each made piece, each closure band (a group moves by one vector)
+    rigid = np.full(len(ores["V"]), -1, np.int64)
+    for j, nm in enumerate(made_pieces(M, interfacing(ores["pieces"], M))):
+        if nm in M["names"]:
+            rigid[np.asarray(M["piece"]) == M["names"].index(nm)] = j
+    V, cov = cloth_layers.tucked(ores, res, rigid=rigid)
+    V = untuck_crossings(np.asarray(ores["V"], float), V, M, res)
+    if ores.get("covered") is not None:
+        cov = cov | np.asarray(ores["covered"], bool)
+    new = dict(ores, V=V, covered=cov)
+    if buttons:
+        bt = closuremod.buttons_mesh(V, M, ores["body"])
+        if bt is not None and len(bt.get("at", [])):
+            # a button the outer garment covers is not drawn (2 mm of button under 4 mm of air pokes through)
+            kv = ~cov[np.asarray(bt["at"], np.int64)]  # (per button vertex: the cloth vertex it sits on)
+            if not kv.any():
+                bt = None
+            elif not kv.all():
+                kf = kv[bt["F"]].all(1)
+                remap = np.cumsum(kv) - 1
+                bt = dict(bt, V=bt["V"][kv], F=remap[bt["F"][kf]], at=np.asarray(bt["at"])[kv],
+                          mark=np.asarray(bt["mark"])[kv])
+        new["buttons"] = bt
+    return new
 
 
 def garments(name: str, spec: dict, log=print, simulate: bool = False) -> list:
@@ -10464,13 +10664,15 @@ def _cylinder(a, b, r, n=20):
 
 def look(name: str, which: list | None = None, views=("front", "side", "back", "three"), strain: bool = True,
          size: int = 640, focus=None, zoom: float = 0.4, body: bool = True, textured: bool = False,
-         result: str | None = None):
+         result: str | None = None, props: list | None = None):
     """Renders of the model's simulated garments on their body (clay, each garment its colour) + the strain map, and
     the text report per garment. focus: [x, y, z] or "garment:piece" (that piece's middle) with zoom m across: a
     close-up. textured: EEVEE with the detail maps (seams, topstitching, hems, buttons) instead of clay.
     result: an out.npz from a cloth job folder (any solver) shown for the FIRST garment named, instead of its cached
     sim: a result whose cache key has moved can still be judged (the others named are their cached sims: a sweater's
     hand-carried result beside the cached jeans under it).
+    props: the model's parts drawn with the body (a lanyard, its badge, laces), each meshed fine enough to show
+    (prop_meshes); None = prop_parts (every non-shell part with its own elements), [] = none.
     Returns (sheet PIL image, text)."""
     from PIL import Image, ImageDraw
     from . import store
@@ -10516,8 +10718,10 @@ def look(name: str, which: list | None = None, views=("front", "side", "back", "
         objs.append({"name": "body", "V": bod.V, "F": bod.T, "color": "#d9c3b0"})
         wn = getattr(bod, "worn", None)
         if wn is not None and len(wn.get("V", [])):  # what the cloth rests on besides the body (shoes under a hem)
-            objs.append({"name": "worn", "V": np.asarray(wn["V"], float), "F": np.asarray(wn["F"], np.int64),
-                         "color": "#3a3634"})
+            objs.extend(_worn_objects(name, spec, wn))
+        pp_ = prop_parts(spec, [gn for gn, _, _ in results]) if props is None else list(props)
+        if pp_:  # what is worn over or beside the clothes (lanyard, badge, laces), each part meshed fine enough to show
+            objs.extend(prop_meshes(name, spec, pp_))
     tmp = store._dir(name) / "_cloth_look"
     tmp.mkdir(exist_ok=True)
     for gn, g, res in results:

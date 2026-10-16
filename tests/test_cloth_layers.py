@@ -231,6 +231,41 @@ def test_occluded_by_a_shell_from_every_side():
     assert 0.0005 < gp[0, 2] < 0.004  # 2 mm in front of the shell's near (outer) side, looking +y
 
 
+def test_worn_together_lays_under_every_garment_above():
+    """cloth.worn_together is transitive: a garment is laid under EVERY garment over it in the `over` chain, not just
+    the next one. A garment is simulated over the one directly under it only (model_body), so cloth further down is
+    not in its collider (dt_tess b01: the coat, over the sweater, hung over the thighs where only the jeans are; the
+    drawn jeans came out through its lower fronts at 437-450 vertices, up to +23 mm). Drawn: 0 crossings with
+    every garment above."""
+    V, F = _sphere()
+    body = cloth.Body({"V": V, "F": [list(f) for f in F], "J": {}})
+
+    def res(sh):
+        n_ = len(sh["V"])
+        return dict(sh, body=body, pieces={"interfaced": []}, mesh=dict(sh["mesh"], names=["p"], piece=np.zeros(n_, np.int64),
+                                                        uv=np.zeros((n_, 2))))
+    Vj, Fj_ = _sphere(seed=2)  # (its own triangulation: on the same one every crossing lies on a shared edge)
+    jeans = res(_shell(Vj, Fj_, 0.104))
+    # the jeans stand out at the bottom, where only the coat is over them (its collider never had them)
+    lowj = jeans["V"][:, 2] < -0.04
+    jeans["V"] = np.where(lowj[:, None], jeans["V"] * (0.111 / 0.104), jeans["V"])
+    sweater = res(_shell(V, F, 0.106))
+    sweater["mesh"]["F"] = sweater["mesh"]["F"][(sweater["V"][sweater["mesh"]["F"]][:, :, 2] > 0.0).all(1)]
+    coat = res(_shell(V, F, 0.109, zmax=0.06))
+    items = [("jeans", {}, jeans), ("sweater", {"over": "jeans"}, sweater), ("coat", {"over": "sweater"}, coat)]
+    J0, Fj = jeans["V"], np.asarray(jeans["mesh"]["F"])
+    Vc, Fc = coat["V"], np.asarray(coat["mesh"]["F"])
+    assert cloth._layer_crossing_verts(J0, Fj, Vc, Fc).sum() > 5  # (it did come through the coat)
+    assert (np.linalg.norm(J0, axis=1) > 0.109).sum() > 50
+    out = {gn: r for gn, _, r in cloth.worn_together(items)}
+    Jd = np.asarray(out["jeans"]["V"])
+    assert cloth._layer_crossing_verts(Jd, Fj, Vc, Fc).sum() == 0
+    Sd = np.asarray(out["sweater"]["V"])
+    assert cloth._layer_crossing_verts(Jd, Fj, Sd, np.asarray(sweater["mesh"]["F"])).sum() == 0
+    assert out["jeans"]["covered"][lowj].mean() > 0.9
+    assert (np.linalg.norm(Jd[lowj & (J0[:, 2] < -0.05)], axis=1) < 0.109).all()  # under the coat's cloth
+
+
 if __name__ == "__main__":
     for k, v in list(globals().items()):
         if k.startswith("test_"):

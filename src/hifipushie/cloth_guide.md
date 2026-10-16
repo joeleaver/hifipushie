@@ -170,8 +170,11 @@ Full fault table with causes and fixes: guide(topic="cloth_faults").
 
 ## Known gaps (decide them in the description, don't discover them at the end)
 
-- Knit surface texture (stitch gauge, rib texture on bands) isn't in the detail maps: a knit reads from its drape,
-  bands and silhouette only.
+- Fabric surface in the detail maps: `detail.surface` "knit" (stockinette V stitches, rib on the band roles;
+  `detail.knit` wale / course / depth / trough) or "twill" / "plain" (a woven cloth: twill ribs only where the atlas
+  resolves them, plus the crush, the short creases a worn cotton takes everywhere; `detail.woven` crush (m, 0.0003) /
+  crush_size / crush_dir / crush_spread). A woven garment with no surface reads smooth and rubbery at game distance:
+  measure fine (3-6 mm) contrast on a flat panel against the reference before tuning `crush`.
 - Jeans: arcuate back-pocket stitching, rivets, coin pocket and indigo wear / fades aren't built; garments take one
   colour plus the sewing detail maps.
 - A fitted jacket's side-back and underarm seams start far open (one start cylinder at the widest level): read their

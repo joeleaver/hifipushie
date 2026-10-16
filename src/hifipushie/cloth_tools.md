@@ -92,7 +92,9 @@ chased what were construction faults: fix the pattern first.
 
 ### `look_cloth`
 
-`look_cloth(name, garments=None, views=None, strain=True, size=640, focus=None, zoom=0.4, textured=False, body=True, save=None, result=None)`
+`look_cloth(name, garments=None, views=None, strain=True, size=640, focus=None, zoom=0.4, textured=False, body=True, save=None, result=None, props=None)`
+
+Garments worn under another are drawn laid under EVERY garment above them (jeans under the sweater and the coat). props: the model's parts drawn with the body (default every non-shell part with its own elements: a lanyard, its badge, laces), each meshed in its own close-up box fine enough to show a 1.6 mm card; [] = none.
 
 Look at the model's simulated garments (10-40 s): clay renders on the body (views from front, side, back,
 three (3/4 front), three_back, side_r; default front, side, back, three) and a strain map row (blue slack, green

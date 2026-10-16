@@ -5715,3 +5715,197 @@ the coordinator. (c) collar vs lanyard strap on the side / 3/4 renders. (d) no c
   __main__ (pytest runs only the unit parts) and needs workspace/dg_garrett (in a worktree set HIFIPUSHIE_HOME);
   test_cloth_inputs_cache took 181 s on main the first time (the one-time backfill of kept job folders).
 - STATE: main has the dress-tess tooling. NEXT: cloth agents (dress-garrett, others) merge main.
+
+### dress-tess 2026-10-16 (session 11): b01's render job fixed, relaunched with props and the game camera
+- b01 FAILED (dt-b01 a2fa80f3, $0) because the wrong runner was used, not because of a stale pickle. rr/b01/run.sh
+  submitted spikes/offload/job_clothrender.py, which reads sheets.pkl. rvpack's packs are r_<tag>_<region>/ folders
+  (cloth.render's own job.json + data.npz + maps), and those are read by job_clothjobs.py. The "nothing packed
+  (look_cloth didn't call cloth.render)" warnings in that log were from the 08:40 run, when no garment was cached. The
+  09:32 relaunch packed all 7 regions, waist included.
+- FIX (f782f6d8): both cloth runners got `--check <job dir>`. Each one validates its own pack: job.json, mode, data
+  arrays, folder-local maps, views. job_clothrender also checks that the pickle unpickles. Each names the other runner
+  when it is handed that runner's pack. remote.sh now runs the runner's --check before queueing, with HEAD's code
+  (what the archive carries). It refuses a failing pack (exit 3) and warns when src / spikes/offload edits are
+  uncommitted. Test: tests/test_offload_packs.py covers both packs, a pickle naming a missing module, and the runner
+  from `git archive HEAD`.
+- GAME CAMERA (blender_cloth textured renders): a view dict with "dist" (m), "fov" (vertical deg, default 59), "at"
+  and "res" (default 1920x1080) renders with a perspective camera. The sensor fit is set before the angle (main's
+  b32d303f lesson). Everything else stays orthographic. fin/rvpack2.py has tokens g<m><f|t> (g1f, g1t, g3f, g3t): the eye
+  is at ~1.6 m, aimed at the chest (1 m) or mid-figure (3 m). b01 has a "game" region per coat.
+- PROPS WERE MISSING FROM EVERY look_cloth RENDER. look draws the body plus the garments' "collide" parts (shoes) only,
+  so the lanyard, clip, badge and laces were absent: the reviews could not judge the strap, and nobody had noticed.
+  The whole-figure build has them sub-voxel anyway (lanyard 36 verts, badge none). rvpack2 now adds them as their own
+  objects from close-up box builds (chest ~2 mm voxels, feet ~1 mm; read eagerly, because box builds share one
+  closeup file). badge_card is still missing at 2 mm (a thin card). Tooling gap: look_cloth should draw the model's
+  other parts, or at least the props worn over the garments.
+- COLLAR vs STRAP, measured (strapcollar.py on the torso packs): no crossing on either coat. Under the collar's
+  footprint (same height, within 4 deg round the neck) dc22 has 1040 strap verts and dci 1049, and 0 of them sit
+  outside the collar's inner surface. The closest is -0.3 / -0.2 mm (touching). Nothing to fix numerically. Check it in
+  the 3/4 render.
+- b01 relaunched as ONE offload (dt-b01 ada83d89, job_clothjobs.py, preflight ok, 150 MB served): both coats x fig /
+  torso / coat / game + jeans waist. run.sh then unpacks and runs the blind reviews.
+- Joe's sheet numbers ($G/joesheet_m.py -> joesheet_m.json, mm; concept from the A-pose sheet at 1.24 mm/px):
+  | z | concept width / gap | dc22 width / gap | dci width / gap |
+  | 0.45 | below its hem (hem z0.50: 537 / 268) | 450 / +25 | 401 / +117 |
+  | 0.62 | 496 / 248 | 455 / +34 | 421 / +111 |
+  | 0.85 | 441 / 202 | 450 / +53 | 480 / +97 |
+  | 0.90 | 427 / 191 | 432 / +55 | 461 / +98 |
+  | chest 1.38 | gap 130 | gap +105 | gap +103 |
+- b01 RESULT (dt-b01 ada83d89, 9 renders, 160 s on NICO-TOP, $0). Blind reviews in rv/b01/<dc22|dci>/<fig|torso|coat>/review.md
+  (bin/review exits 3 for each, but every review.md was written). Game crops at native pixels are in
+  rv/b01/game_1m_native.png and game_3m_native.png (dc22 front | 3/4, dci front | 3/4).
+  MAJORs by distance (my look at the 1 m / 3 m frames):
+  GAME-VISIBLE at 1 m AND 3 m:
+  (a) FAIL, the worst one: dark jagged holes in the coat's lower fronts on both coats. The jeans come through the coat.
+      pokecoat.py on the fig packs: jeans verts outside the coat by >2 mm. dc22: 19 at z 0.42-0.7 (max +15 mm), 44 at
+      z 0.7-1.0 (max +24 mm). dci: 60 (max +29 mm) and 12. The garments are drawn worn together (cloth.worn_together:
+      the jeans' finished surface under the coat), and the coat build itself reported 0 crossings. So either the
+      jeans that are drawn are not the ones the coat was simulated over, or the lay-under step fails. NOT fixed yet.
+  (b) The front is almost closed (buttoned look, a narrow sweater strip). The concept is open to the hem.
+  (c) The hem silhouette. dc22 reads as a cone; dci is pegged / bell-shaped. This is Joe's decision (sheet below).
+  (d) The collar stands high and the lapels are short (they break at the upper chest; the concept breaks at mid-chest).
+  (e) The fabric reads as puffy or satin. It is clear at 1 m and weaker at 3 m.
+  CLOSE-UP-ONLY or misread: the orange specks at dci's chest pocket (not seen at 1 m). "Sweater buttons" (dci fig)
+  are the coat's own buttons at the narrow gap. "Coat too short" (dc22 coat) is the crop's edge. "Strap not under
+  the collar" (dci coat) is contradicted by strapcollar.py (0 crossings) and by the 1 m frames, where the strap runs
+  up under the collar.
+  Not garments: bald head, face, shoe colour, A-pose, background.
+- Joe's sheet: $G/joe_coat_sheet.png (concept | dc22 | dci, front + 3/4, with the table above). Sent to the coordinator.
+
+### Handover 2026-10-16 10:45 (dress-tess session 11; 70-tool-call stop)
+STATE: render job fixed (f782f6d8: --check preflight in remote.sh, tests/test_offload_packs.py); game camera in
+blender_cloth (view dist / fov / at / res); rvpack2 packs props. b01 landed ($0) and has been reviewed. Strap vs
+collar: no crossing. Joe's sheet has been sent.
+NEXT: (1) the jeans poke-through in the drawn worn-together coat (a). Measure it first: compare the jeans the coat
+job was simulated over (the coat job's in.npz under-mesh) with the jeans look draws, on the same verts. It is look /
+lay-under tooling, so no sim is needed. (2) Wait for Joe's flare vs twill decision; no coat sims until then. (3) Tooling
+gap: look_cloth should draw the props worn over the garments (now done only in $G/fin/rvpack2.py). badge_card is
+missing at 2 mm voxels.
+
+### dress-tess 2026-10-16 (session 12): jeans poke-through fixed (drawing), props in look_cloth, b02 launched
+- POKE-THROUGH ROOT CAUSE (pokedraw.py in $G): a garment is simulated over the garment DIRECTLY under it only
+  (model_body: coat collider = body + sweater). The jeans below the sweater hem were never in the coat's collider, and
+  worn_together laid each garment only under its direct outer one, so the drawn jeans crossed the drawn coat at 437
+  (dc22) / 450 (dci) vertices, z 0.41-0.89, up to +23 / +18 mm outside it (the b01 dark holes). Not a tuck/finish
+  mismatch: the coat build's "0 crossings" was against its own collider, which had no jeans.
+- FIX (e1ec0df6): worn_together is transitive (nearest pairs first, then each deeper garment laid under the drawn
+  surface of every garment above; covered flags OR'd; _laid_under helper). jeans under coat: 0 / 0 crossings, radial
+  max -3 / -2 mm. Test test_worn_together_lays_under_every_garment_above (tests/test_cloth_layers.py, all pass).
+  The sim-side fix (the coat's collider should hold the whole stack under it) changes sim keys: hold it for the next
+  coat sim after Joe's decision.
+- RESIDUAL (pre-existing, covered, not game-visible): direct pairs still cross where hidden: sweater under coat 42
+  (dc22) / 107 (dci) verts at z 1.10-1.25, x +-0.19 (side seams under the arms, 97 of 107 covered); jeans under sweater
+  20 / 27 at the front welt (z 0.89-0.98, all covered). So "0 crossings for every drawn pair" is NOT yet true: FAIL for
+  those pairs, PASS for the poke-through.
+- PROPS (e1ec0df6): cloth.look(props=None) / look_cloth(props=) draws prop_parts (non-shell parts with their own
+  elements: eyes, lanyard, clip, badge, badge_card, laces), each meshed in its own box at 1/4 of its thinnest element
+  (PROP_VOXEL 0.4-1.5 mm, res <= 400). badge_card (1.6 mm) now 38.6k verts (was missing). ~70 s and ~8 GB peak (the
+  model build, not the voxels) per look: heavy for the laptop; rvpack2 runs it with PROPS="" (its own props off).
+- PUFFY, measured on the b01 dc22 pack: coat solidify 0.6 mm (not it); coat normal map nearly flat (tilt p50 0.3 deg,
+  p90 4.7: no twill relief at all; sweater p90 20.7); mesh 10 mm edges smooth-shaded; sheen 0.3 by default (no sheen key:
+  textured default) in white. Read at 1 m: broad soft swells + padded-looking pocket and lapel rims. b02 carries an A/B
+  of the 1 m / 3 m game frames with the coat's sheen 0 (b02s0) vs default (b02dc22). Rims/swells = drape geometry and
+  made-piece edges: not fixed.
+- COLLAR / LAPELS vs the concept (A-pose sheet, 1.24 mm/px, z = 1030 - (z-0.465)/0.00124 rows): collar top at the side
+  neck ~z 1.40 (just over the shoulder line), notch ~1.32, lapel break (lapel edge meets the front edge) ~1.18-1.20,
+  i.e. notch -> break ~130 mm, collar top -> break ~210 mm. Ours (dc22 design): break_y 0.24 under the HPS, collar stand
+  24 mm / fall 38 mm. Measure ours on the b02 torso front at the same ruler before choosing the pattern change
+  (likely: lower stand ~15 mm, break_y deeper so the break sits at z ~1.19). Needs a sim: hold for Joe's decision.
+- b02 (dt-b02, NICO-TOP, $0): dc22 fig / torso / coat / game + game with sheen 0; rr/b02/run.sh, log chain_b02.log (ends
+  B02_DONE or ERROR), reviews in rv/b02/dc22/<fig|torso|coat>/review.md. Queued at handover time.
+
+### Handover 2026-10-16 (dress-tess session 12; 70-tool-call stop)
+STATE: poke-through fixed in drawing (e1ec0df6), props drawn by look_cloth, b02 in flight (detached).
+NEXT: (a) when chain_b02.log says B02_DONE: game crops rr/b02 unpacked (b02dc22 vs b02s0, 1 m / 3 m), classify the
+MAJORs by distance, confirm no dark holes; sheet path to the coordinator. (b) sheen verdict from the A/B (set coat
+"sheen" in the spec or a cotton_twill default if 0 reads closer to the concept). (c) the residual hidden direct-pair
+crossings (sides under the arms, welt). (d) collar/lapel: measure ours vs the numbers above; pattern change waits for
+Joe's coat decision. (e) sim-side: coat collider with the whole stack under it, at the next coat sim.
+
+### dress-tess 2026-10-16 (session 13): b02 read, holes gone, the sheen A/B never ran, Joe's sheet 2
+- CHAIN LABEL: rr/b02/run.sh printed "B01_DONE" (copied from b01). Chains now print their own name:
+  `DONE=$(basename $R | tr a-z A-Z)_DONE` (b02, b03). Copy that line into new chains.
+- JEANS HOLES: PASS at 1 m and at 3 m. I checked the b02 game frames g1f / g1t / g3f / g3t for dark islands inside the
+  filled coat silhouette: 0 on the coat surface. The few hits were coat-edge shadows on the sweater in the opening.
+- RESIDUAL VISIBLE AT 1 m: a 10 px mustard speck at the wearer's left underarm in g1f (x 1157, y 402). This is the
+  sweater-under-coat direct-pair crossing (42 verts, sides under the arms), so it is NOT fully hidden.
+- SHEEN A/B: FAIL, never ran. b02s0 == b02dc22 pixel for pixel (mean |diff| 0.0000 on the coat in all 4 frames).
+  Neither job.json had a sheen. Cause: in rvpack2, COATSHEEN wrapped store.load first, then COATV replaced
+  the whole coat, so the sheen was dropped. Fixed: COATSHEEN now comes after COATV, plus a generic
+  `PATCH='{"dotted.path": value}'` env that is applied last, asserted, and printed ("PATCH applied ..."). The lesson is
+  the gates rule: check that the lever moved (the pack's job.json / one diff) before the batch.
+- b02 REVIEWS by distance (dc22; rv/b02/dc22/{fig,torso,coat}/review.md; all FAIL). Coat MAJORs, game-visible at 3 m and 1 m:
+  - The front is closed. Measured gap +25..+55 mm against the concept's 191..268 mm (joesheet_m), and all 3 reviews flag it.
+  - Short lapels with a high break; the collar stands up.
+  - Silhouette: the reviews contradict each other (fig: "narrow tube"; torso and coat: "A-line flare"). Use the
+    measured widths instead: dc22 450-455 mm against the concept's 427-496.
+  - Coat too short (fig 74% vs 77% of figure height).
+  - Pockets prominent, flapped, padded (fig / coat MAJOR, torso MINOR). Mostly 1 m.
+  - Surface smooth / rubbery with no fine creases (all 3). Both 1 m and 3 m.
+  All of these wait for Joe's coat call, except the surface: the coat's normal map is flat (tilt p90 4.7 deg), and no
+  "twill" surface exists in detail_maps (only "knit"). That is a no-sim lever still to build.
+- Sweater / jeans MAJORs at 1 m:
+  - Torso review: "no knit, no ribbed hem". The hem is hidden by the closed coat.
+  - Badge = plain white card, not a blue printed holder (props, 1 m).
+  - Measured on the review crops: the sweater colour matches (mean rgb 152,108,46 against the reference's 150,109,50).
+    Knit fine contrast (luminance high-pass CV, sigma 1.5 / 3 px) is 0.029 / 0.045 for ours against 0.037 / 0.052 for
+    the reference, so the knit reads about 20% weak.
+  - Jeans: MINOR only ("too dark, no wash"; the coat review says the colour is close).
+- HELD for Joe's coat decision (re-sims): the coat's collider becomes the whole stack under it (body + sweater + jeans).
+  That fixes the direct-pair crossings still left: sweater under coat 42 / 107 verts at the underarm sides (see the
+  speck above), and jeans under sweater 20 / 27 at the welt. The same sim takes the collar/lapel numbers from session 12.
+- b03 (NICO-TOP, no sim; rr/b03/run.sh, measure.py -> rr/b03/measure.txt, log chain_b03.log ends B03_DONE):
+  (a) coat sheen 0 against b02dc22, game frames; (b) sweater knit depth 0.0006 -> 0.00075, trough 0.08 -> 0.10, torso
+  front/three + game g1f/g1t, measured against b02dc22 for the same CV.
+- JOE'S SHEET 2: $G/joe_coat_sheet2.png (joesheet2.py): concept | dc22 (b02) | dci (b01, OLD drawing, labelled: its jeans
+  holes are the fixed bug). The widths and gaps are unchanged because the sims are unchanged. Path sent to the coordinator.
+- SHOES (coordinator, after sheet 2: "dark clog-like shoes"): the spec was right (shoes #a6a29c, soles #c4baab, outsole
+  #414142, laces #b4aea6, hides). cloth.look drew every collide part as ONE object "worn" in a hard-coded #3a3634.
+  Measured L* on the b02 fig front: ours p10/p50/p90 16.5 / 28.7 / 39.2 against the concept's 36.8 / 62.3 / 74.6.
+  FIX 86a222e6: worn_parts returns per-vertex "part" / "parts" (not in the key: sim keys unchanged), and
+  `_worn_objects` draws one object per part in that part's colour and roughness. An older cached worn mesh is relabelled
+  from worn_parts when V matches, otherwise it is drawn as one object in the first part's colour. Check: $G/wornchk.py
+  (outsole / shoes / soles = 8072 / 14680 / 10144 F = 32896 total; the legacy path gives the same).
+- PACKER DROPPED SHEEN: rvpack2's object whitelist (name, color, thickness, offset, maps, roughness) had no "sheen", so
+  NO packed NICO-TOP render ever carried a sheen. The coat (no key) and the jeans (0.1) rendered at blender_cloth's
+  default of 0.3 for textured objects. Fixed in fin/rvpack2.py.
+- b03 RELAUNCHED 12:33 (the first b03 was killed after its packs showed no sheen). It now has its own baseline b03base
+  (fixed packer + shoes; fig / torso / game), plus b03s0 (coat sheen 0) and b03k (knit 0.00075 / trough 0.10).
+  measure.py prints the sheen rows, the knit CV and the shoe L* (FAIL if the b03base median is below 45). The first pack
+  re-keys the pre-placement cache after the src edit (slow, ~10+ min a pack).
+
+### Handover 2026-10-16 12:45 (dress-tess session 13; 70-tool-call stop)
+STATE: b02 read (holes PASS at 1 m / 3 m; coat MAJORs by distance above; a 10 px sweater speck at the left underarm at
+1 m). Joe's sheet 2 sent ($G/joe_coat_sheet2.png). Shoe colour bug fixed (86a222e6). Packer sheen bug fixed. b03 in
+flight (chain_b03.log ends B03_DONE / B03_DONE ERROR; then rr/b03/measure.txt).
+NEXT: (a) read rr/b03/measure.txt. If shoe L* p50 is about 62, rebuild sheet 2 with b03base's fig for dc22
+(joesheet2.py: strip("dc22", "b03base")). (b) Sheen: if sheen 0 moves the coat rows toward matte, set coat "sheen" in
+dt_tess (a non-sim key). Knit: if b03k's CV gets closer to the reference's 0.037 / 0.052 without "waffle", set
+sweater.detail.knit depth / trough. Otherwise record FAIL. (c) dci's column on the sheet is still the old drawing;
+re-render it with b03's setup if Joe wants it. (d) Held for Joe's coat call (re-sims): the coat collider = the whole
+stack under it (the speck, sweater-under-coat 42 / 107, jeans-under-sweater 20 / 27), the collar / lapel numbers, and
+a "twill" surface in detail_maps (the coat's normal map is flat, and every review says "rubbery").
+
+### dress-tess session 14 (2026-10-16)
+- b03 READ ($G/rr/b03/measure.txt). SHOES PASS: L* p10/p50/p90 15.7 / 62.6 / 70.9 (concept 36.8 / 62.3 / 74.6; b02 28.7
+  p50). SHEEN = DEAD LEVER FOR THE READ: sheen 0 vs default, mean |diff| 0.001-0.002 at g1f/g1t/g3f/g3t; the default
+  sheen stays (it is not what makes the coat read puffy). KNIT PASS: b03k (depth 0.0006 -> 0.00075, trough 0.08 ->
+  0.10) game g1f fine-scale CV .034/.047 -> .040/.053, g1t .027/.040 -> .032/.043 (ref crop .037/.052 at review
+  scale); torso crops side by side: wales a touch crisper, no waffle. ADOPTED: dt_tess v107 (sweater.detail.knit).
+  STATE: knit adopted. NEXT: puffy coat (normal relief / faceting / swollen edges), twill normal proven on a flat crop.
+- PUFFY, MEASURED (rr/s14/puffy_measure.py): luminance high-pass CV at a common 3 mm/px, 3 / 6 / 12 mm. Concept A-pose
+  coat panels: front L .011/.016/.021, front R .014/.023/.031, sleeve .014/.021/.031. Ours b03base fig: front L
+  .002/.003/.008 (5x too smooth at 3-6 mm), front R .008/.018/.037 and sleeve .026/.051/.083 (drape folds, 12 mm). Coat
+  atlas 1.56 m / 2048 = 0.76 mm texel; normal tilt p50/p90/p99 0.3/4.7/17.6 deg. Read beside the concept: its coat is
+  covered in short crumple creases (2-6 cm, mostly along the hang); ours has none, only broad swells + padded rims.
+- WOVEN SURFACE (cloth.woven_surface, detail "surface": "twill" | "plain", detail "woven" overrides): twill ribs drawn
+  only where resolvable (pitch >= 2-4 texels: a 0.8 mm drill at 0.76 mm texels is left out, it would moire) + the crush
+  (ridged FFT-filtered noise, 8 axes, creases along crush_dir 90 +- 35 deg, sizes 20 / 50 mm, stretch 3, sharp 2.5,
+  height 0.3 mm; not in the cavity/albedo). FLAT LIT PROOF (rr/s14/woven_flat.py: 39 cm patch at 0.76 mm, Lambert key
+  45 up / 30 side, averaged to 3 mm/px): crush 0 -> CV 0; 0.3 mm -> .012/.017/.019 (concept .011-.014 / .016-.023 /
+  .021-.031: PASS at 3 / 6 mm; 12 mm a bit low, the drape adds there). Lever linear in crush. Rejected looks (by eye on
+  rr/s14/woven_flat.png): 4-12 mm sizes = leather pebble; 10-30 mm stretch 5 sharp 4 = fur strokes; 4 axes = herringbone.
+  Test tests/test_cloth.py::test_woven_surface_crush_moves_and_sub_texel_twill_is_left_out. ADOPTED: dt_tess v108 coat
+  detail {"surface": "twill"} (detail is NOT_SIM). NOT YET SEEN IN A RENDER: the next coat look / NICO-TOP pack shows it.
+  NOT ADDRESSED (geometry, wait for the coat call): smooth-shaded 10 mm faces and the swollen made-piece rims (pockets,
+  lapels) — the 12 mm row on flat panels (.008 vs .021) is partly these.

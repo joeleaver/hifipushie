@@ -1651,13 +1651,15 @@ def dress(name: str, garment: str | None = None, spec: dict | None = None, state
 @mcp.tool(structured_output=False)
 def look_cloth(name: str, garments: list[str] | None = None, views: list[str] | None = None, strain: bool = True,
                size: int = 640, focus: str | list[float] | None = None, zoom: float = 0.4, textured: bool = False,
-               body: bool = True, save: str | None = None, result: str | None = None):
+               body: bool = True, save: str | None = None, result: str | None = None, props: list[str] | None = None):
     """Renders of the simulated garments on the body plus strain map and per-garment report (verdict, ease, integrity).
     garments, views, strain, focus ([x,y,z] | "garment:piece") + zoom, textured, body, size, save; result = apply a
-    cloth job's out.npz. Details: guide(topic="look_cloth")."""
+    cloth job's out.npz; props = parts drawn with the body (default: every non-shell part with its own elements, e.g.
+    a lanyard and badge; [] none). Details: guide(topic="look_cloth")."""
     from . import cloth
     sheet, text = cloth.look(name, garments, views=tuple(views or ("front", "side", "back", "three")), strain=strain,
-                             size=size, focus=focus, zoom=zoom, body=body, textured=textured, result=result)
+                             size=size, focus=focus, zoom=zoom, body=body, textured=textured, result=result,
+                             props=props)
     if sheet is None:
         return text
     from . import cloth_workflow

@@ -14,6 +14,16 @@ runner=$1; outs=$2; ram=$3; cpus=$4; gpu=$5; shift 5
 # NICO-TOP's slot cap is ~14 GB: a bigger request never starts and blocks the queue for every job behind it
 # (hp-lashes2, 20 GB, 2026-10-15). Split the job instead.
 [ "${ram%.*}" -le 12 ] || { echo "remote.sh: ram_gb $ram > 12 never starts on NICO-TOP and blocks the queue; split the job" >&2; exit 2; }
+# Preflight on the laptop, with the code the archive carries (HEAD): a runner with a --check mode checks every job
+# folder's pack before anything is queued (dt-b01, 2026-10-16: job_clothrender.py was sent job_clothjobs.py's
+# r_*/ folders and failed on NICO-TOP after the queue). Uncommitted edits are NOT in the archive: said here.
+D=$(git -C "$R" status --porcelain -- src spikes/offload "$runner" 2>/dev/null | head -5)
+[ -z "$D" ] || echo "remote.sh: WARNING uncommitted changes are not in the job's archive (HEAD):"$'\n'"$D" >&2
+if grep -q -- '"--check"' "$runner"; then
+  for j in "$@"; do
+    (cd "$R" && PYTHONPATH="$R/src" uv run --frozen python "$runner" --check "$j") >&2 || { echo "remote.sh: $j fails $(basename "$runner") --check: not submitted" >&2; exit 3; }
+  done
+fi
 H=$(git -C "$R" rev-parse --short HEAD)
 A=${XDG_RUNTIME_DIR:-/tmp}/hp_repo_$H.tar.gz
 [ -f "$A" ] || git -C "$R" archive --format=tar.gz --prefix=repo/ -o "$A" HEAD

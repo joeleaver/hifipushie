@@ -134,7 +134,8 @@ one band with a garment `generate` entry of the same `band` name, or a detail's 
   starts ~30 cm open at the back (stage 4 WARN): the declared rib stretch lets the solver close it.
 - A sweatshirt (kind hoodie, french_terry, drop shoulder, deep armhole, boxy) is a different garment from a fitted
   knit sweater (jersey / rib knit, set-in sleeve near the armpit, close body): the description decides which.
-- Not built: knit surface texture (gauge, rib texture). The knit reads from drape, bands and silhouette.
+- Fabric surface: `detail.surface` "knit" (gauge, rib texture on bands) or "twill" / "plain" (woven crush relief;
+  twill ribs where the atlas resolves them). See the cloth guide.
 
 ## What makes jeans read as jeans, not slacks
 

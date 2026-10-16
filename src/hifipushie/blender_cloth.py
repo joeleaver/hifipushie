@@ -659,7 +659,21 @@ def _render_textured(job, d):
         dirv = np.asarray(v["dir"] if isinstance(v, dict) else views[v], float)
         name = v["name"] if isinstance(v, dict) else v
         dirv = dirv / np.linalg.norm(dirv)
-        cam.location = tuple(c + dirv * 5)
+        # a GAME camera (docs/notes/gates.md, game distance): {"dist": m, "fov": vertical deg, "at": [x, y, z],
+        # "res": [w, h]}: perspective from `dist` metres, a 1920x1080 frame by default; else the orthographic view
+        game = isinstance(v, dict) and v.get("dist") is not None
+        at = np.asarray(v.get("at", c), float) if game else c
+        if game:
+            w, h = v.get("res", (1920, 1080))
+            sc.render.resolution_x, sc.render.resolution_y = int(w), int(h)
+            cam_d.type = "PERSP"
+            cam_d.sensor_fit = "VERTICAL"  # (the fit before the angle: set after, the angle went to the wrong axis)
+            cam_d.angle_y = float(np.radians(v.get("fov", 59.0)))
+            cam_d.clip_start, cam_d.clip_end = 0.02, 100.0
+        else:
+            sc.render.resolution_x, sc.render.resolution_y = int(res * job.get("aspect", 0.62)), res
+            cam_d.type = "ORTHO"
+        cam.location = tuple(at + dirv * (float(v["dist"]) if game else 5))
         cam.rotation_mode = "QUATERNION"
         cam.rotation_quaternion = Vector(tuple(-dirv)).to_track_quat("-Z", "Y")
         sc.render.filepath = job["out_prefix"] + f"_{name}.png"

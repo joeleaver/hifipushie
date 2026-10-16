@@ -1,7 +1,45 @@
 """Compute job: cloth.render jobs packed on the laptop (each subfolder r_<name>/ = cloth.render's job.json + its data
-npz + the maps it names, paths made local by the packer; e.g. /mnt/data/hifipushie/dress_tess/fin/rvpack.py), rendered
+npz + the maps it names, paths made local by the packer; e.g. spikes/offload/rvpack_cloth.py), rendered
 with this machine's Blender (blender_cloth.py at this commit) -> renders.tar (r_<name>/<view>.png) + log.txt."""
 import glob, json, os, subprocess, sys, tarfile, time
+
+
+def check(job):
+    """The pack this runner reads, checked on the laptop before a submit (remote.sh runs `<runner> --check <dir>`):
+    dt-b01 went to job_clothrender.py (sheets.pkl) with job_clothjobs folders and failed on NICO-TOP after the queue.
+    -> list of problems (empty = ok)."""
+    import numpy as np
+    dirs = sorted(glob.glob(os.path.join(job, "r_*")))
+    if not dirs:
+        return [f"{job}: no r_<name>/ folders (job_clothjobs packs; a sheets.pkl job is job_clothrender.py's)"]
+    bad = []
+    for d in dirs:
+        jp = os.path.join(d, "job.json")
+        if not os.path.exists(jp):
+            bad.append(f"{d}: no job.json"); continue
+        j = json.load(open(jp))
+        if j.get("mode") != "render":
+            bad.append(f"{d}: mode {j.get('mode')!r}, not 'render'")
+        dp = os.path.join(d, j.get("data", ""))
+        if not os.path.isfile(dp):
+            bad.append(f"{d}: data {j.get('data')!r} missing"); continue
+        keys = set(np.load(dp).files)
+        for o in j.get("objects", []):
+            for s in ("_V", "_F"):
+                if o["name"] + s not in keys:
+                    bad.append(f"{d}: {o['name']}{s} not in {j['data']}")
+            for k, v in (o.get("maps") or {}).items():
+                if isinstance(v, str) and (os.path.isabs(v) or not os.path.isfile(os.path.join(d, v))):
+                    bad.append(f"{d}: map {o['name']}.{k} = {v!r} is not a file in the folder")
+        if not j.get("views"):
+            bad.append(f"{d}: no views")
+    return bad
+
+
+if sys.argv[1] == "--check":
+    b = check(os.path.abspath(sys.argv[2]))
+    print("\n".join(b) or "ok")
+    sys.exit(1 if b else 0)
 job = os.path.abspath(sys.argv[1]); env = os.environ["HP_DIR"]
 bl = os.environ.get("OXIDEGEN_BLENDER", "blender")
 script = os.path.join(env, "src/hifipushie/blender_cloth.py")

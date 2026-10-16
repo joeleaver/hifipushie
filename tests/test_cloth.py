@@ -736,6 +736,17 @@ def test_mirror_mesh_meshes_a_mirrored_piece_as_the_mirror():
     assert res[False][2] > 1e-3, res  # (off: the old meshes, every cached sim's key unchanged)
 
 
+def test_woven_surface_crush_moves_and_sub_texel_twill_is_left_out():
+    """detail "surface": "twill": the crush relief scales with "crush" (0 = flat), is deterministic, and a twill whose
+    pitch is under 2 texels adds nothing (it would alias); at 4+ texels the ribs are drawn."""
+    T, mpt = 256, 0.00076
+    f = lambda **w: cloth.woven_surface(None, None, T * mpt, T, mpt, {"surface": "twill", "woven": w})
+    assert np.abs(f(crush=0.0)).max() == 0.0  # 0.8 mm pitch at 0.76 mm texels: no ribs
+    a, b = f(crush=0.0002), f(crush=0.0004)
+    assert np.allclose(a, f(crush=0.0002)) and 1.9 < b.std() / a.std() < 2.1, (a.std(), b.std())
+    assert np.abs(f(crush=0.0, pitch=0.004)).max() > 1e-5  # resolvable: drawn
+
+
 if __name__ == "__main__":
     for k, fn in list(globals().items()):
         if k.startswith("test_"):

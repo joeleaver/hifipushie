@@ -11,6 +11,32 @@ import tarfile
 
 from PIL import Image
 
+
+
+def check(job):
+    """The pack this runner reads (sheets.pkl), checked before a submit (remote.sh: `<runner> --check <dir>`)."""
+    p = os.path.join(job, "sheets.pkl")
+    if not os.path.isfile(p):
+        r = [n for n in os.listdir(job) if n.startswith("r_")] if os.path.isdir(job) else []
+        return [f"{job}: no sheets.pkl" + (f" ({len(r)} r_*/ folders: that pack is spikes/offload/job_clothjobs.py's)"
+                                            if r else "")]
+    try:
+        S = pickle.load(open(p, "rb"))
+    except Exception as e:  # (a pickle naming classes the archive's code lacks)
+        return [f"{p}: does not unpickle: {e!r}"]
+    bad = []
+    for s in S:
+        for o in s.get("objs", []):
+            for k, v in (o.get("maps") or {}).items():
+                if not os.path.isfile(os.path.join(job, v)):
+                    bad.append(f"{s.get('out')}: map {k} = {v!r} is not in the job folder")
+    return bad
+
+
+if sys.argv[1] == "--check":
+    b = check(os.path.abspath(sys.argv[2]))
+    print("\n".join(b) or "ok")
+    sys.exit(1 if b else 0)
 job = os.path.abspath(sys.argv[1])
 # (as job_hairshots: the machine's Blender, and a runtime dir of the job's own for resources' lock files)
 os.environ["HIFIPUSHIE_BLENDER"] = os.environ.get("OXIDEGEN_BLENDER", os.environ.get("HIFIPUSHIE_BLENDER", "blender"))
