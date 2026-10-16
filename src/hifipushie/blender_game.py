@@ -32,6 +32,16 @@ job = json.load(open(sys.argv[sys.argv.index("--") + 1]))
 P = "mixamorig:"
 
 
+def set_fov(cam_d, deg, fit="VERTICAL"):
+    """A perspective camera's field of view along `fit` (VERTICAL / HORIZONTAL). The fit is set FIRST: Blender's
+    `angle` setter turns the angle into a lens through the sensor size of the CURRENT fit (AUTO = sensor_width 36 mm),
+    so `angle` then `sensor_fit = "VERTICAL"` rendered through the 24 mm sensor height: 1.5x narrower than asked
+    (every game shot's "fov" before 2026-10-16; a fitted photo camera framed the head ~1.45x too large)."""
+    cam_d.type = "PERSP"
+    cam_d.sensor_fit = fit
+    cam_d.angle = math.radians(float(deg))
+
+
 def clear():
     for ob in list(bpy.data.objects):
         bpy.data.objects.remove(ob, do_unlink=True)
@@ -569,8 +579,7 @@ def preview_frames():
             right = up.cross(d).normalized()
             up = d.cross(right).normalized()
             if v.get("eye") is not None:
-                cam_d.type, cam_d.angle = "PERSP", math.radians(v["fov"])
-                cam_d.sensor_fit = "HORIZONTAL"
+                set_fov(cam_d, v["fov"], "HORIZONTAL")
                 cam.matrix_world = Matrix.Translation(Vector(v["eye"])) @ Matrix((right, up, d)).transposed().to_4x4()
             else:
                 cam_d.type = "ORTHO"
@@ -649,8 +658,7 @@ for pz in job.get("shots", []):
     fb = arm.pose.bones[P + pz.get("focus", "Spine2")]
     at = arm.matrix_world @ fb.head + Vector((0, 0, float(pz.get("lift", 0.0))))
     scene.render.resolution_x, scene.render.resolution_y = int(pz.get("w", 640)), int(pz.get("h", 640))
-    cam_d.angle = math.radians(float(pz.get("fov", 30)))
-    cam_d.sensor_fit = "VERTICAL"
+    set_fov(cam_d, pz.get("fov", 30), "VERTICAL")
     cam_d.type = "ORTHO" if pz.get("ortho") else "PERSP"
     if pz.get("ortho"):
         cam_d.ortho_scale = float(pz["ortho"]) * max(1.0, scene.render.resolution_x / scene.render.resolution_y)
