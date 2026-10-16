@@ -5702,3 +5702,16 @@ NEXT: (a) when B01_DONE: rv/b01/<dc22|dci>/<region>/review.md, MAJORs classified
 orthographic stand-ins; add a 1 m / 3 m perspective game camera to rvpack if that is small). (b) $G/joe_coat_sheet.png:
 concept | dc22 | dci, front + 3/4, widths and gaps at z 0.45 / 0.62 / 0.85 / 0.90 + chest vs the concept; path to
 the coordinator. (c) collar vs lanyard strap on the side / 3/4 renders. (d) no coat sims until Joe decides.
+
+### Merge dress-tess -> main (2026-10-16, merge agent)
+- Squash-merged the dress-tess branch at 33a1f7b5 (origin/main 0e76482e was already in it: nothing to resolve) as
+  1aa7d3ea: inputs-hash sim cache + worn_parts content key, fused facings stiffening, facing "interfaced": false,
+  start_through_under refusal, made_band clearing the finished under-garment, untuck_crossings, finish "collider": false,
+  sheen, straighten / cleanup.pockets, J-stitch basecolor, body_check, tests.
+- Tests one file per process (/mnt/data/hifipushie/merge_tests/dt.sh <repo> <tag>), branch and main: all pass
+  (body_check, cloth, cloth_check/finish/heldcollar/inputs_cache/layers/made/precache/reference/workflow, pattern_draft/
+  styles/tailor, tooling). test_cloth_spec_durable with HIFIPUSHIE_CLOTH_PRE=0: j17b 7aca63ae26eb8a5c, 0.0000 mm on every
+  piece. Notes: precache fails if HIFIPUSHIE_CLOTH_PRE=0 is set for it (expected); spec_durable's j17b check is its
+  __main__ (pytest runs only the unit parts) and needs workspace/dg_garrett (in a worktree set HIFIPUSHIE_HOME);
+  test_cloth_inputs_cache took 181 s on main the first time (the one-time backfill of kept job folders).
+- STATE: main has the dress-tess tooling. NEXT: cloth agents (dress-garrett, others) merge main.
