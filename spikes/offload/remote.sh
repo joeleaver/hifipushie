@@ -14,14 +14,17 @@ runner=$1; outs=$2; ram=$3; cpus=$4; gpu=$5; shift 5
 # NICO-TOP's slot cap is ~14 GB: a bigger request never starts and blocks the queue for every job behind it
 # (hp-lashes2, 20 GB, 2026-10-15). Split the job instead.
 [ "${ram%.*}" -le 12 ] || { echo "remote.sh: ram_gb $ram > 12 never starts on NICO-TOP and blocks the queue; split the job" >&2; exit 2; }
-A=${XDG_RUNTIME_DIR:-/tmp}/hp_repo_$(git -C "$R" rev-parse --short HEAD).tar.gz
+H=$(git -C "$R" rev-parse --short HEAD)
+A=${XDG_RUNTIME_DIR:-/tmp}/hp_repo_$H.tar.gz
 [ -f "$A" ] || git -C "$R" archive --format=tar.gz --prefix=repo/ -o "$A" HEAD
-ln -sf "$A" repo.tar.gz
+# One link per commit: a shared repo.tar.gz was repointed by a later submit from the same folder while an earlier
+# batch was still queued, and the machine's fetch failed its hash (hc-b14, 2026-10-15).
+ln -sf "$A" "repo_$H.tar.gz"
 PACKS=${PACKS:-gnm makehuman faceid hbm}
 K=hp_assets_$(cat "$R/src/hifipushie/assets.json" <(echo "$PACKS") | sha256sum | cut -c1-12)
 # (asset packs live in the machine's per-user cache, keyed by assets.json + the pack list: a new commit costs only uv sync)
 SETUP='uv sync --frozen && A=$OXIDEGEN_CACHE/'"$K"' && { [ -f $A/.done ] || { HIFIPUSHIE_ASSETS=$A .venv/bin/hifipushie-assets fetch '"$PACKS"' && touch $A/.done; }; } && ln -sfn $A _assets'
-B='{"archive": "repo.tar.gz", "dir": "repo", "setup": ["sh", "-c", "'"$SETUP"'"], "shared": true, "command": ["{dir}/.venv/bin/python", "{runner}", "jobs/{job}"], "env": {"PYTHONPATH": "{dir}/src:{dir}/spikes/garrett3:{dir}/spikes/tour", "HP_DIR": "{dir}"}, "progress_prefix": "step:"}'
+B='{"archive": "repo_'"$H"'.tar.gz", "dir": "repo", "setup": ["sh", "-c", "'"$SETUP"'"], "shared": true, "command": ["{dir}/.venv/bin/python", "{runner}", "jobs/{job}"], "env": {"PYTHONPATH": "{dir}/src:{dir}/spikes/garrett3:{dir}/spikes/tour", "HP_DIR": "{dir}"}, "progress_prefix": "step:"}'
 G=""; [ "$gpu" = gpu ] && G=--gpu
 OXIDEGEN_TOKEN=$(cat ~/.config/oxidegen/hifipushie-cloth-token) exec python3 /home/joe/dev/oxidegen/scripts/bundle/bundle_client.py run \
   --local --ram-gb "$ram" --cpus "$cpus" $G --bundle "$B" --runner "$runner" --outputs "$outs" \
