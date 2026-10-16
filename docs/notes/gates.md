@@ -121,6 +121,18 @@ eevee built like a game would work is enough")
   driven as an engine would, LODs at their switch distances. Beside the approved pieces' own sheets and the
   reference. No Godot or other engine in any gate.
 
+## Game distance (assets judged as game assets: expressions, faces, hair cards, lashes; 2026-10-16)
+Why: Tess's expression rounds ran ~14 reviews in a day on close-ups and the MAJOR count did not fall; many faults were
+sub-millimetre (a 1 px dark seam at the lip-teeth line, a corner fragment). The lash work showed cards and ribbons
+identical at 1 m and 3 m at 1080p. A game character is seen at game distances, so close-up-only faults can't block it.
+- Every round on such an asset adds a GAME-DISTANCE set: each pose / expression at 1 m and 3 m from the camera in a
+  1920x1080 frame (vertical fov ~59 deg, a 90 deg horizontal game camera), in the game-like EEVEE, crops at NATIVE
+  pixels (never upscaled), the reference scaled to the same pixels per metre beside it. The photo-lit close-up stays.
+- Each MAJOR is classified: GAME-VISIBLE (seen in the 1 m or 3 m crop) or CLOSE-UP-ONLY. Fix order: game-visible
+  MAJORs first, grouped by cause. Close-up-only MAJORs are recorded in the notes but do NOT block the gate, unless
+  they are also visible at 1 m. Hero cut-scene close-ups, when a game needs them, are a separate declared target.
+- The 1 m / 3 m sheet goes to Joe every round (reference | best result | others).
+
 ## Reviewer brief (the LOOK step)
 Spawn a fresh agent per gate sheet. Give it: the reference crops and result crops as image paths, the stage's
 checklist item NAMES (not values), and this instruction: "You are a senior art director. You have no stake in
