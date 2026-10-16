@@ -41,6 +41,9 @@ The faults were in the PROCESS, at four points:
      against ours. The value comes from that measurement, not by eye. A row with no measure gets a small crop
      statistic first. Record target / before / after per row; revert a change that made its row worse.
      (2026-10-16 skin r3: ten hand-picked values per head; brows overshot to near-black, one head went 29 -> 42 MAJORs.)
+   - A checklist that passes while the result still looks wrong is INCOMPLETE. Name what the eye sees that no item
+     measures, add a measured item with a target from the reference, and only then change the model. (2026-10-16
+     Garrett hair G56r: every item passed, but it read as a bristly crew cut; lay, length, tips and striping were unmeasured.)
    - Scope the review to the stage: `--stage "<what this stage owns>" --not "<other stages>"`. Faults outside
      the stage come back under OTHER STAGES, don't count toward the verdict, and go to the coordinator (who
      routes them; an approved piece is reopened only with Joe). Hide other stages' parts when they cover the
