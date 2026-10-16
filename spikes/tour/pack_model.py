@@ -4,7 +4,8 @@ skin_projection/, skin_layers/ ...), the reference pictures copied to <job>/ws/_
 ("@refs/<file>"), and every content-store file the specs name (16-hex image ids in workspace/_images, painted clouds in
 workspace/_painted: a skin stack's layer maps, a projection's albedo / detail / confidence) copied to <job>/ws/_images|
 _painted. On the machine, `unpack(job)` turns "@refs/" back into absolute paths; the job runs with HIFIPUSHIE_HOME =
-<job>/ws. The first model is the job's model (model.txt). Model folders are small (stage caches are rebuilt there)."""
+<job>/ws. The first model is the job's model (model.txt). Model folders are small. --stage <name> ships a built head
+stage as well (pack_stage: the machine then skips its ~3 min sync)."""
 import json, os, re, shutil, sys
 
 SKIP = {"history", "scene_cache", "scene.blend", "scene.blend1", "progress.log", "build.npz", "closeup.npz"}
@@ -81,6 +82,63 @@ def unpack(job):
     return ws
 
 
+# A built head stage (spikes/garrett3/stage.py: _g3_<model>[_posed][_texN]) shipped WITH the job, so the machine skips its
+# sync (remeshing + paint measuring: 170-180 s a stage on NICO-TOP, 2026-10-15): scene.blend re-saved zstd-compressed
+# (162 -> ~50 MB) with its images pointed at "//../_images/<file>" (the job's ws/_images, copied there), plus the stage's
+# spec / key and hair caches. stage.ensure on the machine finds key == g3_stage.key and returns at once. The key holds a
+# hash of the pipeline's source files, so pack from a clean tree at the commit the job runs (remote.sh archives HEAD):
+# a stale key only costs the old sync, never wrong pictures.
+STAGE_FILES = ("spec.json", "g3_stage.key")
+_RESAVE = r"""
+import bpy, json, os, sys
+out, imgs = sys.argv[sys.argv.index("--") + 1:][:2]
+got = []
+for im in bpy.data.images:
+    if im.source != "FILE" or im.packed_file is not None or not im.filepath:
+        continue
+    p = bpy.path.abspath(im.filepath)
+    got.append(p)
+    im.filepath = "//../_images/" + os.path.basename(p)
+json.dump(got, open(imgs, "w"))
+bpy.context.preferences.filepaths.save_version = 0
+bpy.ops.wm.save_as_mainfile(filepath=out, compress=True, relative_remap=False, copy=True)
+"""
+
+
+def pack_stage(stage, job, home=None, blender=None):
+    """Copy the built stage `stage` into <job>/ws/<stage> (see above). Returns {"stage", "mb"} or None when the stage
+    isn't built here (the machine syncs it, as before)."""
+    import subprocess, tempfile
+    home = home or _home(); src, dst = os.path.join(home, stage), os.path.join(job, "ws", stage)
+    if not all(os.path.isfile(os.path.join(src, f)) for f in STAGE_FILES + ("scene.blend",)):
+        return None
+    os.makedirs(dst, exist_ok=True)
+    for f in os.listdir(src):
+        if f in STAGE_FILES or (f.startswith("hair_") and f.endswith(".npz")):
+            shutil.copy(os.path.join(src, f), os.path.join(dst, f))
+    if blender is None:
+        from hifipushie import render
+        blender = render.BLENDER
+    with tempfile.TemporaryDirectory() as tmp:
+        scr, imgs = os.path.join(tmp, "resave.py"), os.path.join(tmp, "images.json")
+        open(scr, "w").write(_RESAVE)
+        subprocess.run([blender, "-b", "--factory-startup", os.path.join(src, "scene.blend"), "--python-exit-code", "1",
+                        "--python", scr, "--", os.path.join(dst, "scene.blend"), imgs], check=True, capture_output=True)
+        for p in json.load(open(imgs)):
+            q = os.path.join(job, "ws", "_images", os.path.basename(p))
+            if os.path.isfile(p) and not os.path.isfile(q):
+                os.makedirs(os.path.dirname(q), exist_ok=True)
+                shutil.copy(p, q)
+    mb = sum(os.path.getsize(os.path.join(dst, f)) for f in os.listdir(dst)) / 2 ** 20
+    return {"stage": stage, "mb": round(mb, 1)}
+
+
 if __name__ == "__main__":
-    r = pack([sys.argv[1]] + sys.argv[3:], sys.argv[2])
+    # pack_model.py <model> <job dir> [more models...] [--stage <stage>]...: --stage ships a built head stage too
+    a, stages = sys.argv[1:], []
+    while "--stage" in a:
+        i = a.index("--stage"); stages.append(a[i + 1]); del a[i:i + 2]
+    r = pack([a[0]] + a[2:], a[1])
     print(r["job"], ",".join(r["models"]), r["store_files"], "store files", r["kb"], "KB")
+    for s_ in stages:
+        print("stage", s_, pack_stage(s_, a[1]) or "not built here: the machine syncs it")

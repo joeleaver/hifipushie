@@ -1,4 +1,5 @@
-"""hgshots.py <model> [size=1536] [views=v0,v1,v2,y125,y180] [tag=] [look=@file] [S=<json>] [engine=eevee]
+"""hgshots.py <model> [size=1536] [views=v0,v1,v2,y125,y180] [tag=] [look=@file] [S=<json>] [engine=eevee] [one=1]
+(one=1: every view in ONE Blender, each under its own light; one=0: a Blender per view, the old way)
 The model's CURRENT hair (its spec, in memory) on its dressed head stage (spikes/garrett3/stage.py), EEVEE:
   v<i>     through the i-th reference's fitted camera under the picture's fitted light (the whole picture, squared)
   y<deg>   the FRONT fitted camera turned <deg> round the head's vertical axis (+ = toward his left: y125 = the back
@@ -80,18 +81,28 @@ W, H = refs["cameras"][0]["size"]
 BOX = [-(H - W) / 2, 0, W + (H - W) / 2, H]
 
 
-def shoot(sn, st, f, lt):
+def shoot(sn, st, shots):
+    """shots: [(frame, lighting)] -> [RGB image], every view in ONE Blender (one scene load, groom build and shader
+    compile; each view's own photo-fitted light swapped in between frames, blender_scene._light_rig). one=0: a Blender
+    per view (the old way: ~70 s a frame on NICO-TOP, all of it set-up)."""
     with tempfile.TemporaryDirectory() as tmp:
-        fr = {**f, "out": str(Path(tmp) / "a.png")}
-        job = {"blend": str(scene.blend_path(sn)), "views": [fr], "size": N, "samples": SAMPLES, "hide": [], "flat": False,
-               "transparent": True, "lighting": {**lt, "target": fr["center"]}, "eevee": stage.STAGE_EEVEE,
+        fr = [{**f, "out": str(Path(tmp) / f"{i}.png"), "lighting": {**lt, "target": f["center"]}}
+              for i, (f, lt) in enumerate(shots)]
+        job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": N, "samples": SAMPLES, "hide": [], "flat": False,
+               "transparent": True, "lighting": fr[0]["lighting"], "eevee": stage.STAGE_EEVEE,
                "mode": "hair_look", "hair": hair.job(sn, st), "clay_views": [], "id_views": [], "look_engine": eng}
-        scene._blender(job, 3600)
-        im = Image.open(fr["out"])
-        if im.mode == "RGBA":
-            bg = Image.new("RGBA", im.size, tuple(int(255 * min(1.0, x)) for x in lt.get("backdrop", [0.86, 0.86, 0.86])) + (255,))
-            im = Image.alpha_composite(bg, im)
-        return im.convert("RGB")
+        out = scene._blender(job, 3600 + 900 * len(fr))
+        for ln in out.splitlines():
+            if ln.startswith(("@@phase", "@@frame")):
+                print(ln, flush=True)
+        ims = []
+        for f, (_, lt) in zip(fr, shots):
+            im = Image.open(f["out"])
+            if im.mode == "RGBA":
+                bg = Image.new("RGBA", im.size, tuple(int(255 * min(1.0, x)) for x in lt.get("backdrop", [0.86, 0.86, 0.86])) + (255,))
+                im = Image.alpha_composite(bg, im)
+            ims.append(im.convert("RGB"))
+        return ims
 
 
 def turned(f, lt, deg, C):
@@ -131,6 +142,7 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     st["hair"] = spec["hair"]
     C = hair.scalp(m, spec).C
+    shots = []
     for v in views:
         if v[0] == "v":
             i = int(v[1:])
@@ -142,11 +154,15 @@ with resources.heavy(f"hair-garrett shots {m}", gb=8):
         else:
             f0 = stage.fitted_frame(refs["cameras"][0], BOX, v)
             f, lt = turned(f0, stage.photo_light(m, 0), float(v[1:]), C)
+        shots.append((v, f, lt))
+    groups = [shots] if kw.get("one", "1") == "1" else [[x] for x in shots]
+    for g in groups:
         t0_ = time.time()
-        im = shoot(sn, st, f, lt)
-        print(f"frame {v}: {time.time() - t0_:.1f} s (incl. scene load)", flush=True)
-        if SS > 1:  # supersampled: rendered SS x larger, averaged down (strands thinner than a pixel blend as in a photo)
-            im = im.resize((N0, N0), Image.LANCZOS)
-        im.save(f"{OUT}/s_{m}{TAG}_{v}.png")
-        print("done", v, flush=True)
+        ims = shoot(sn, st, [(f, lt) for _, f, lt in g])
+        print(f"frames {','.join(v for v, _, _ in g)}: {time.time() - t0_:.1f} s (one Blender, incl. scene load)", flush=True)
+        for (v, _, _), im in zip(g, ims):
+            if SS > 1:  # supersampled: rendered SS x larger, averaged down (strands thinner than a pixel blend as in a photo)
+                im = im.resize((N0, N0), Image.LANCZOS)
+            im.save(f"{OUT}/s_{m}{TAG}_{v}.png")
+            print("done", v, flush=True)
 print("done", m)

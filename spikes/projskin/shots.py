@@ -59,13 +59,19 @@ def save(d, tag):
         im.save(f"{out}/{k}_{tag}.png")
 allf = [own[vi] for vi in VI] + unseen
 only = kw.get("lights", "photo,side,top").split(",")
+lit = []   # every lit set in ONE Blender (each frame carries its light; one scene load and shader compile)
 if "photo" in only:
     for vi in VI:
-        save(stage.shoot(m, [own[vi]] + (unseen if vi == front else []), photo(vi), size=T, hair_on=hair), "photo")
+        pv = photo(vi)  # (one dict per set: stage.shoot aims a set's windows at its first frame, as one call did)
+        lit += [(f, pv, "photo") for f in [own[vi]] + (unseen if vi == front else [])]
 if "side" in only:
-    save(stage.shoot(m, allf, SIDE, size=T, hair_on=hair), "side")
+    lit += [(f, SIDE, "side") for f in allf]
 if "top" in only:
-    save(stage.shoot(m, allf, TOP, size=T, hair_on=hair), "top")
+    lit += [(f, TOP, "top") for f in allf]
+if lit:
+    got = stage.shoot(m, [{**f, "name": f"{f['name']}@{tg}", "lighting": lt} for f, lt, tg in lit], lit[0][1], size=T, hair_on=hair)
+    for tg in ("photo", "side", "top"):
+        save({k.rsplit("@", 1)[0]: im for k, im in got.items() if k.endswith("@" + tg)}, tg)
 if "flat" in only:
     save(stage.shoot(m, allf, None, size=T, hair_on=False, flat=True), "flat")
 print("tiles ->", out, "yaws", [round(y) for y in yaws], "sgn", sgn)

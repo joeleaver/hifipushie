@@ -1061,9 +1061,79 @@ RENDER_SAMPLES = 64  # EEVEE's default
 RT_SCALE = 1
 
 
+def _light_rig(scene, lt, job, base):
+    """The job's (or one view's) lighting: view transform, look, exposure, world and the suns (+ windows). Any rig
+    already made (hp_sun* / hp_window*) is removed first, so every view of one Blender session can carry its own
+    "lighting" (a render per view in a fresh Blender cost a scene load, a groom build and a shader compile: ~70 s a frame
+    on NICO-TOP, 2026-10-16). base: the scene's own (view transform, look, exposure) before any rig, restored first."""
+    for ob in list(bpy.data.objects):
+        if ob.name.startswith(("hp_sun", "hp_window")) and ob.type == "LIGHT":
+            ld = ob.data
+            bpy.data.objects.remove(ob)
+            if ld.users == 0:
+                bpy.data.lights.remove(ld)
+    vs = scene.view_settings
+    vs.view_transform = base[0]
+    try:
+        vs.look = base[1]
+    except TypeError:
+        pass
+    vs.exposure = base[2]
+    # lt: a style's look preset (spec["style"]["look"]): key/fill/rim suns, world, view
+    # "view": the view transform (AgX by default; "Khronos PBR Neutral" keeps albedo hue and saturation, as glTF
+    # viewers show an export: AgX rolled lit skin off to V 0.78 whatever its colour)
+    scene.view_settings.view_transform = "Standard" if job.get("flat") else lt.get("view", "AgX")
+    if lt.get("look") and not job.get("flat"):
+        try:
+            scene.view_settings.look = lt["look"]
+        except TypeError:  # names differ between Blender versions ("AgX - Punchy" / "Punchy")
+            scene.view_settings.look = lt["look"].split(" - ")[-1]
+    if "exposure" in lt:
+        scene.view_settings.exposure = float(lt["exposure"])
+    scene.world = scene.world or bpy.data.worlds.new("w")
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get("Background")
+    wc = (lt.get("world") or {})
+    bg.inputs["Color"].default_value = (*_lin(wc.get("color", [0.77, 0.81, 0.86])), 1)
+    bg.inputs["Strength"].default_value = float(wc.get("strength", 0.6))
+    lights = lt.get("lights") or [{"dir": job.get("sun", [-0.4, -0.7, 0.6]), "energy": 3.5, "angle": 3.0}]
+    for i, L in enumerate(lights):  # each a sun: "dir" points from the model toward the light
+        ld = bpy.data.lights.new(f"hp_sun{i}", "SUN")
+        ld.energy, ld.angle = float(L.get("energy", 3.5)), np.radians(float(L.get("angle", 3.0)))
+        ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
+        if job.get("clip") or L.get("shadow") is False:  # a section: what's cut away would still cast the
+            ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
+        if "diffuse" in L:  # a highlight-only light (a catchlight: its window reflects, the sun itself lights nothing)
+            ld.diffuse_factor = float(L["diffuse"])
+        if "specular" in L:  # a fill that lights without its own highlight (two round catchlights in an eye: a toy)
+            ld.specular_factor = float(L["specular"])
+        sun = bpy.data.objects.new(f"hp_sun{i}", ld)
+        scene.collection.objects.link(sun)
+        if job.get("engine") == "cycles" and float(L.get("angle", 3.0)) > 20.0:   # (Cycles reflects a broad sun's whole
+            sun.visible_glossy = False   # disc: big grey patches over the irises in the cornea; EEVEE's soft highlight kept)
+        sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
+        if L.get("window"):  # the light's HIGHLIGHT comes from a rectangle (a window, a soft box) instead of the sun's
+            # disc: the sun keeps the diffuse light and shadows; an area light of the same irradiance at the target
+            # gives only the reflection (P = 4 pi S d^2)
+            w = L["window"]
+            size, dist = w.get("size", [1.0, 1.4]), float(w.get("distance", 2.5))
+            ld.specular_factor = 0.0
+            al = bpy.data.lights.new(f"hp_window{i}", "AREA")
+            al.shape, al.size, al.size_y = "RECTANGLE", float(size[0]), float(size[1])
+            al.energy = 4 * np.pi * float(L.get("energy", 3.5)) * dist ** 2 * float(w.get("gain", 1.0))
+            al.color, al.diffuse_factor, al.use_shadow = ld.color, 0.0, False
+            ao = bpy.data.objects.new(f"hp_window{i}", al)
+            scene.collection.objects.link(ao)
+            dv = Vector(L["dir"]).normalized()
+            ao.location = Vector(w.get("target", lt.get("target", [0, 0, 0]))) + dv * dist
+            ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
+
+
 def render(job):
+    T0 = time.time()
     if not job.get("opened"):
         _open(job["blend"])
+        print(f"@@phase open {time.time() - T0:.2f}", flush=True)
     scene = bpy.context.scene
     if job.get("show_layer"):  # one layer's mask on every part (not saved)
         prog = job["program"]
@@ -1157,54 +1227,10 @@ def render(job):
     alpha = bool(job.get("show_layer") or job.get("transparent"))  # alpha: surface vs sky, for coverage; or a look
     scene.render.film_transparent = alpha                            # to be laid on a backdrop of the caller's
     scene.render.image_settings.color_mode = "RGBA" if alpha else "RGB"
-    lt = job.get("lighting") or {}  # a style's look preset (spec["style"]["look"]): key/fill/rim suns, world, view
-    # "view": the view transform (AgX by default; "Khronos PBR Neutral" keeps albedo hue and saturation, as glTF
-    # viewers show an export: AgX rolled lit skin off to V 0.78 whatever its colour)
-    scene.view_settings.view_transform = "Standard" if job.get("flat") else lt.get("view", "AgX")
-    if lt.get("look") and not job.get("flat"):
-        try:
-            scene.view_settings.look = lt["look"]
-        except TypeError:  # names differ between Blender versions ("AgX - Punchy" / "Punchy")
-            scene.view_settings.look = lt["look"].split(" - ")[-1]
-    if "exposure" in lt:
-        scene.view_settings.exposure = float(lt["exposure"])
-    scene.world = scene.world or bpy.data.worlds.new("w")
-    scene.world.use_nodes = True
-    bg = scene.world.node_tree.nodes.get("Background")
-    wc = (lt.get("world") or {})
-    bg.inputs["Color"].default_value = (*_lin(wc.get("color", [0.77, 0.81, 0.86])), 1)
-    bg.inputs["Strength"].default_value = float(wc.get("strength", 0.6))
-    lights = lt.get("lights") or [{"dir": job.get("sun", [-0.4, -0.7, 0.6]), "energy": 3.5, "angle": 3.0}]
-    for i, L in enumerate(lights):  # each a sun: "dir" points from the model toward the light
-        ld = bpy.data.lights.new(f"hp_sun{i}", "SUN")
-        ld.energy, ld.angle = float(L.get("energy", 3.5)), np.radians(float(L.get("angle", 3.0)))
-        ld.color = _lin(L.get("color", [1.0, 1.0, 1.0]))
-        if job.get("clip") or L.get("shadow") is False:  # a section: what's cut away would still cast the
-            ld.use_shadow = False  # sun's shadow (EEVEE's shadow pass doesn't see the clip)
-        if "diffuse" in L:  # a highlight-only light (a catchlight: its window reflects, the sun itself lights nothing)
-            ld.diffuse_factor = float(L["diffuse"])
-        if "specular" in L:  # a fill that lights without its own highlight (two round catchlights in an eye: a toy)
-            ld.specular_factor = float(L["specular"])
-        sun = bpy.data.objects.new(f"hp_sun{i}", ld)
-        scene.collection.objects.link(sun)
-        if job.get("engine") == "cycles" and float(L.get("angle", 3.0)) > 20.0:   # (Cycles reflects a broad sun's whole
-            sun.visible_glossy = False   # disc: big grey patches over the irises in the cornea; EEVEE's soft highlight kept)
-        sun.rotation_euler = Vector(L["dir"]).to_track_quat("Z", "Y").to_euler()
-        if L.get("window"):  # the light's HIGHLIGHT comes from a rectangle (a window, a soft box) instead of the sun's
-            # disc: the sun keeps the diffuse light and shadows; an area light of the same irradiance at the target
-            # gives only the reflection (P = 4 pi S d^2)
-            w = L["window"]
-            size, dist = w.get("size", [1.0, 1.4]), float(w.get("distance", 2.5))
-            ld.specular_factor = 0.0
-            al = bpy.data.lights.new(f"hp_window{i}", "AREA")
-            al.shape, al.size, al.size_y = "RECTANGLE", float(size[0]), float(size[1])
-            al.energy = 4 * np.pi * float(L.get("energy", 3.5)) * dist ** 2 * float(w.get("gain", 1.0))
-            al.color, al.diffuse_factor, al.use_shadow = ld.color, 0.0, False
-            ao = bpy.data.objects.new(f"hp_window{i}", al)
-            scene.collection.objects.link(ao)
-            dv = Vector(L["dir"]).normalized()
-            ao.location = Vector(w.get("target", lt.get("target", [0, 0, 0]))) + dv * dist
-            ao.rotation_euler = dv.to_track_quat("Z", "Y").to_euler()
+    base = (scene.view_settings.view_transform, scene.view_settings.look, scene.view_settings.exposure)
+    per_view = any(v.get("lighting") is not None for v in job["views"])
+    print(f"@@phase setup {time.time() - T0:.2f}", flush=True)
+    _light_rig(scene, job.get("lighting") or {}, job, base)
     cam_data = bpy.data.cameras.new("hp_cam")
     cam_data.clip_start, cam_data.clip_end = 0.01, 1000
     cam = bpy.data.objects.new("hp_cam", cam_data)
@@ -1228,6 +1254,10 @@ def render(job):
             cam.matrix_world = Matrix.Translation(Vector(v["center"]) + d * 50) @ rot
         scene.render.filepath = v["out"]
         scene.render.resolution_x = scene.render.resolution_y = v.get("size", job.get("size", 512))
+        if v.get("lighting") is not None:  # the view's own whole rig (else the job's, or the last view's re-aimed one)
+            _light_rig(scene, v["lighting"], job, base)
+        elif per_view:  # views without their own go back to the job's
+            _light_rig(scene, job.get("lighting") or {}, job, base)
         for i, L in enumerate(v.get("lights") or []):  # a view's own light rig (the same suns re-aimed / re-weighted:
             # several views in ONE Blender start; a start compiles shaders for ~1 min on the offload machine)
             sun = bpy.data.objects.get(f"hp_sun{i}")
@@ -1641,8 +1671,12 @@ def hair_stage(job):
 
 def hair_look(job):
     """Render the hair stage file with the job's hair shown (nothing saved)."""
+    t = time.time()
     _open(job["blend"])
+    print(f"@@phase open {time.time() - t:.2f}", flush=True)
+    t = time.time()
     blender_hair.show(job.get("hair") or {})
+    print(f"@@phase groom {time.time() - t:.2f}", flush=True)
     if job.get("dump"):  # the hair's evaluated vertices (world): the silhouette gate measures them
         names = []
         np.save(job["dump"], blender_hair.hair_points(names=names))

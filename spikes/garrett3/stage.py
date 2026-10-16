@@ -141,13 +141,21 @@ def view_frames(spec, names=("front", "three_quarter", "profile_right", "profile
 
 def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=False, samples=24, layer=None, posed=False,
           tex=None, eevee=None):
-    """Render frames of the stage (one lighting). Returns {frame name: RGB image}. eevee: scene.eevee overrides by name
-    (blender_scene; default STAGE_EEVEE)."""
+    """Render frames of the stage in ONE Blender. Returns {frame name: RGB image}. lighting: the job's; a frame may carry
+    its own "lighting" (each view under its picture's fitted light: one scene load, groom and shader compile for all of
+    them, blender_scene._light_rig). eevee: scene.eevee overrides by name (blender_scene; default STAGE_EEVEE)."""
     sn = ensure(name, posed=posed, tex=tex)
     st = json.loads((store._dir(sn) / "spec.json").read_text())
     out = {}
     with tempfile.TemporaryDirectory() as tmp:
         fr = [{**f, "out": str(Path(tmp) / f"{f['name']}.png")} for f in frames]
+        first = {}  # a frame's own light: its windows aimed at the centre of the FIRST frame sharing that light (as when
+        for f in fr:  # each light was its own call: the pictures stay the same)
+            if f.get("lighting") and not flat:
+                c = first.setdefault(id(f["lighting"]), f["center"])
+                f["lighting"] = {**f["lighting"], "target": f["lighting"].get("target", c)}
+            else:
+                f.pop("lighting", None)
         lt = {**lighting, "target": fr[0]["center"]} if lighting else None
         job = {"blend": str(scene.blend_path(sn)), "views": fr, "size": size, "samples": samples, "hide": [], "flat": flat,
                "transparent": True}
@@ -169,11 +177,12 @@ def shoot(name, frames, lighting, size=768, hair_on=True, engine="eevee", flat=F
             job.update(mode="render", show_layer=full, program=paintnodes.compile(st),
                        bases={p: {"color": [0.5] * 3, "roughness": 0.6, "metallic": 0.0, "specular": 0.5}
                               for p in list(st.get("parts") or {}) + ["body"]})
-        scene._blender(job, 2400)
+        out_ = scene._blender(job, 2400 + 600 * len(fr))
+        shoot.phases = [ln for ln in out_.splitlines() if ln.startswith(("@@phase", "@@frame"))]
         for f in fr:
             im = Image.open(f["out"])
             if im.mode == "RGBA":
-                bg = Image.new("RGBA", im.size, tuple(int(255 * min(1.0, c * 1.0)) for c in (lighting or {}).get("backdrop", [0.86, 0.86, 0.86])) + (255,))
+                bg = Image.new("RGBA", im.size, tuple(int(255 * min(1.0, c * 1.0)) for c in (f.get("lighting") or lighting or {}).get("backdrop", [0.86, 0.86, 0.86])) + (255,))
                 im = Image.alpha_composite(bg, im)
             out[f["name"]] = im.convert("RGB").copy()
     return out

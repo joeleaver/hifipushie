@@ -27,6 +27,8 @@ meshes = bi._per_view(store.load(ref)["base"], rj, VI, lambda b: bi.presented_me
 rp = store._dir(own) / "skin_projection" / "report.json"
 rep = json.loads(rp.read_text()) if rp.exists() else None
 pose = json.loads(kw["pose"]) if kw.get("pose") else None
+flat = kw.get("flat") == "1"
+shots, first = [], None   # every view's close-ups, each under its own view's light: ONE Blender for the run
 for vi in VI:
     cam = rj["cameras"][vi]
     L2 = humanfit.project(cam, meshes[vi]["state"]["L"])
@@ -54,8 +56,10 @@ for vi in VI:
         dv /= np.linalg.norm(dv)
         light = {**light, "lights": list(light["lights"]) + [{"dir": dv.tolist(), "energy": 0.6, "color": [1, 1, 1], "angle": 3,
                  "specular": 0.0, "diffuse": 0.0, "shadow": False, "window": {"size": [0.25, 0.3], "distance": 2.5, "gain": float(kw.get("sheen", 1.0))}}]}
-    flat = kw.get("flat") == "1"
-    for k, im in stage.shoot(m, frames, None if flat else light, size=T, hair_on=hair, posed=pose or False, flat=flat, engine=kw.get("engine", "eevee"), samples=int(kw.get("samples", 24))).items():
+    first = first or light
+    shots += [{**f, "lighting": light} for f in frames] if not flat else frames
+if shots:
+    for k, im in stage.shoot(m, shots, None if flat else first, size=T, hair_on=hair, posed=pose or False, flat=flat, engine=kw.get("engine", "eevee"), samples=int(kw.get("samples", 24))).items():
         k = k + ("_flat" if flat else "")
         im.save(f"{out}/{k}{'_pose' if pose else ''}{'_rake' if kw.get('rake') == '1' else ''}{'_cy' if kw.get('engine') == 'cycles' else ''}.png")
 print("close-ups ->", out)

@@ -24,15 +24,20 @@ rj = bi._refs(m)
 VI = list(range(len(rj["views"])))
 meshes = bi._per_view(store.load(m)["base"], rj, VI, lambda b: bi.presented_mesh(b, rj=rj))
 order = [i for i in VI if i != bi._front(rj)] + [bi._front(rj)]
+BOXES, FRAMES = {}, []   # every view's features in ONE Blender (each frame under its own view's light)
 for vi in VI:
-    v, cam = rj["views"][vi], rj["cameras"][vi]
+    cam = rj["cameras"][vi]
     L2 = humanfit.project(cam, meshes[vi]["state"]["L"])
-    boxes = {f: [float(x) for x in bi._feature_box(f, L2)] for f in feats}
-    frames = [stage.fitted_frame(cam, b, f) for f, b in boxes.items()]
+    BOXES[vi] = {f: [float(x) for x in bi._feature_box(f, L2)] for f in feats}
     light = stage.photo_light(m, vi)
-    with resources.heavy(f"skin tour {m} view {vi}", gb=6):
-        own = stage.shoot(m, frames, light, size=T, hair_on=False)
-        prj = stage.shoot(m, frames, light, size=T, hair_on=False, tex=order) if proj else {}
+    FRAMES += [{**stage.fitted_frame(cam, b, f"{f}@{vi}"), "lighting": light} for f, b in BOXES[vi].items()]
+with resources.heavy(f"skin tour {m}", gb=6):
+    OWN = stage.shoot(m, FRAMES, FRAMES[0]["lighting"], size=T, hair_on=False)
+    PRJ = stage.shoot(m, FRAMES, FRAMES[0]["lighting"], size=T, hair_on=False, tex=order) if proj else {}
+for vi in VI:
+    v, boxes = rj["views"][vi], BOXES[vi]
+    own = {f: OWN[f"{f}@{vi}"] for f in boxes}
+    prj = {f: PRJ[f"{f}@{vi}"] for f in boxes} if proj else {}
     img = Image.open(v["image"]).convert("RGB")
     for f, b in boxes.items():
         ph = img.crop(tuple(int(round(x)) for x in b)).resize((T, T), Image.LANCZOS)
