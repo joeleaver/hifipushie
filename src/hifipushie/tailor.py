@@ -19,6 +19,8 @@ Definitions (FreeSewing's measurement names; https://freesewing.dev/reference/me
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 from scipy.spatial import ConvexHull
 
@@ -164,6 +166,108 @@ def _leg_girths(V: np.ndarray, T: np.ndarray, J: dict, at: dict, zmin: float) ->
     return {k: v for k, v in out.items() if v > 0}
 
 
+def _side_neck(V, T, L) -> tuple:
+    """The side neck point (hps) on the neck loop `L`: where the shoulder's crest (the trapezius ridge) meets the
+    neck, not the loop's widest point. On a deep neck section (GNM: 14 cm front to back, the throat under the jaw
+    in it) the widest point sits on the sternocleidomastoid 2-4 cm in front of the ridge, and every back tape from
+    it first crossed the neck's top: gp_h6c read hps -> armpit down the back 258 mm for a 187 mm drop (su_gc 228 /
+    180), so the jacket's underarm was drafted 3 cm low. The ridge's y is read in a section along y 1 cm outside the
+    widest point (the top of the shoulder there, below the loop's height); the hps is the loop's outer crossing of
+    that y. Falls back to the widest point when the section misses. Returns (hps, the crest's height or None)."""
+    L = np.asarray(L, float)
+    w = L[np.argmax(L[:, 0])]
+    x = float(w[0]) + 0.01
+    try:
+        S = section(V, T, [x, w[1], w[2]], [1.0, 0, 0], [x, w[1], w[2] - 0.03])
+    except Exception:
+        S = None
+    if S is None:
+        return w, None
+    S = S[(S[:, 2] < w[2]) & (np.abs(S[:, 1] - w[1]) < 0.12)]
+    if not len(S):
+        return w, None
+    yc, zc = float(S[np.argmax(S[:, 2]), 1]), float(S[:, 2].max())
+    yc = float(np.clip(yc, L[:, 1].min() + 1e-4, L[:, 1].max() - 1e-4))
+    # the loop's crossings of y = yc on the left side (x > 0), the outermost one
+    best = None
+    for i in range(len(L)):
+        a, b = L[i], L[(i + 1) % len(L)]
+        if (a[1] - yc) * (b[1] - yc) > 0 or a[1] == b[1]:
+            continue
+        p = a + (b - a) * (yc - a[1]) / (b[1] - a[1])
+        if p[0] > 0 and (best is None or p[0] > best[0]):
+            best = p
+    return (w, None) if best is None else (best, zc)
+
+
+NECK_BASE_TILT = 32.0  # deg: the base-of-neck tape falls this much toward the front (ANSUR II: cervicale ~79 mm (men) /
+# 66 (women) above suprasternale over a ~110-120 mm deep neck base)
+NECK_BASE_GIRTH = 1.06  # the base ring is the lowest tilted section within this much of the narrowest one
+# (ANSUR II neck base / neck circumference p5 1.05 men, 1.08 women: past it the section runs out onto the shoulders)
+
+
+def _neck_base(V, T, neck_j, nd, neck_girth, tilt=NECK_BASE_TILT, ratio=NECK_BASE_GIRTH):
+    """The base-of-neck line (ANSUR II 5.2.29: a tape laid round the base of the neck, over the anterior neck point,
+    lower in front) as the lowest section of a plane tilted `tilt` deg from square to the neck (front down) that is
+    still the neck's own loop: one closed loop round the neck's axis with girth <= ratio x the narrowest such loop.
+    Returns (ring, plane normal) or (None, None)."""
+    nd = np.asarray(nd, float)
+    side = np.cross(nd, [0.0, -1.0, 0.0])  # the body's left (+x for an upright neck)
+    side /= np.linalg.norm(side)
+    a = np.radians(tilt)
+    # rotate nd about the side axis so the plane's front edge drops (normal tips forward: -y)
+    n = nd * np.cos(a) + np.cross(side, nd) * np.sin(a)
+    if n[1] > 0:
+        n = nd * np.cos(a) - np.cross(side, nd) * np.sin(a)
+    rows = []
+    for h in np.arange(0.04, -0.12, -0.004):
+        o_ = np.asarray(neck_j, float) + nd * h
+        try:
+            L_ = section(V, T, o_, n, o_)
+        except Exception:
+            L_ = None
+        rows.append((L_, girth(L_, n)) if L_ is not None and _encloses(L_, o_, n) else (None, np.inf))
+    g_ = np.array([g for _, g in rows])
+    if not np.isfinite(g_).any():
+        return None, None
+    # from the neck's narrowest tilted section down, while the girth stays within `ratio` of it (a tilted plane's
+    # section is longer than the square one 2 cm up: it is compared with its own narrowest, not with neck_girth)
+    i = int(np.argmin(g_))
+    best = rows[i][0]
+    while i + 1 < len(rows) and g_[i + 1] <= ratio * g_[int(np.argmin(g_))]:
+        i += 1
+        best = rows[i][0]
+    return (best, n) if best is not None else (None, None)
+
+
+NECK_BASE_DROP = None  # opt-in (e.g. 0.0445) x stature: solve the tilt for this drop. WIP, dress-garrett r: the base ring's centre back above its centre front (ANSUR II cervicale -
+# suprasternale p50 79 mm men of 1770 (0.0446), ~66 women (0.041); men p5-p95 61-98). At a fixed 32 deg tilt the ring
+# fell 99 mm on dg_garrett and 122 on dg_mh (its centre back 110 mm over the shoulder point, p95 100): the GNM neck
+# runs into the trapezius at the back, so the ring is deeper than the standard's 110-120 mm
+
+
+def _neck_base_level(V, T, neck_j, nd, neck_girth, stature, drop=None):
+    """_neck_base with its tilt solved so the ring's centre back stands `drop` x stature above its centre front: the
+    drop read at a few tilts (from square to the neck, which leans forward ~10 deg) and interpolated. (ring, normal)."""
+    drop = NECK_BASE_DROP if drop is None else drop
+    if not drop:
+        return _neck_base(V, T, neck_j, nd, neck_girth)
+    want, rows = drop * stature, []
+    for t in (12.0, 20.0, 28.0, 36.0):
+        R_, n_ = _neck_base(V, T, neck_j, nd, neck_girth, tilt=t)
+        if R_ is not None:
+            rows.append((t, float(R_[np.argmax(R_[:, 1]), 2] - R_[np.argmin(R_[:, 1]), 2]), R_, n_))
+    if not rows:
+        return None, None
+    ts, ds = np.array([r[0] for r in rows]), np.array([r[1] for r in rows])
+    if len(rows) < 2 or np.any(np.diff(ds) <= 0):
+        k = int(np.argmin(np.abs(ds - want)))
+        return rows[k][2], rows[k][3]
+    t = float(np.interp(want, ds, ts))
+    R_, n_ = _neck_base(V, T, neck_j, nd, neck_girth, tilt=t)
+    return (R_, n_) if R_ is not None else (rows[int(np.argmin(np.abs(ds - want)))][2], rows[int(np.argmin(np.abs(ds - want)))][3])
+
+
 def measure(V: np.ndarray, faces, J: dict) -> dict:
     V = np.asarray(V, float)
     T = triangles(faces) if not isinstance(faces, np.ndarray) or faces.shape[1] != 3 else faces
@@ -208,7 +312,37 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
         if jaw:
             top_ = min(top_, min(float((p - neck_j) @ nd) for p in jaw))
         mm["neckHeight"] = max(top_ - float(hs_[lo_]), 0.0)
-    at["hps.L"] = L[np.argmax(L[:, 0])]
+    # hps = the side neck point by the measurement standards' definition (ANSUR II 5.2.43 trapezius point, ISO 8559-1
+    # side neck point): where the trapezius' front border crosses the BASE-of-neck line, the lateral point of the
+    # base-of-neck tape (5.2.29). With no muscles to palpate it is the base ring's outermost point. The two earlier
+    # definitions sat on the loop 2 cm UP the neck: its widest point (on the sternocleidomastoid, in front) and the
+    # shoulder crest's crossing of it (`_side_neck`, 40 mm further back and 16 mm in on dg_garrett: shoulder length
+    # hps -> shoulder point 187 mm, ANSUR II men of his stature p95 166; every hps tape moved ~35 mm, back shorter,
+    # front longer, and the jacket's fronts swung open).
+    # DEFAULT "widest" (coordinator, 2026-10-15 s: back to the last known good). j8 (the one jacket that hung right) was
+    # drafted on the widest point of the loop up the neck; every session after the switch to "base" chased a knock-on
+    # fault (length, balance, armhole, neckline, start strain past ZOZO's limiter). HP_HPS=base (the ANSUR definition,
+    # with the ring neckline "ring", the tilt solve NECK_BASE_DROP) and HP_HPS=crest are OPT-IN RESEARCH, parked with
+    # open questions in docs/notes/cloth.md "## HPS research (parked)".
+    hmode = os.environ.get("HP_HPS", "widest")
+    zc_ = None
+    base_, bn_ = _neck_base_level(V, T, neck_j, nd, mm["neck"], float(np.ptp(V[:, 2]))) if hmode == "base" else (None, None)
+    if base_ is not None:
+        loops["neck_base"] = base_
+        mm["neckBase"] = girth(base_, bn_)
+        at["hps.L"] = base_[np.argmax(base_[:, 0])]
+        # the ring's centre back (the cervicale's level) and centre front (the suprasternal notch): a neckline sewn on
+        # the base of the neck runs through these and the hps (dress-garrett r: drafted from the loop 2 cm up the
+        # neck, the front was cut 13 mm deep and the back 15 mm low, the start over ZOZO's strain limit at the neck)
+        at["cb_neck_base"] = base_[np.argmax(base_[:, 1])]
+        at["cf_neck_base"] = base_[np.argmin(base_[:, 1])]
+    elif hmode == "widest":
+        at["hps.L"] = L[np.argmax(L[:, 0])]
+    else:
+        at["hps.L"], zc_ = _side_neck(V, T, L)
+    if zc_ is not None:
+        at["neck_base_z"] = zc_  # the shoulder's crest beside the neck: tapes from the hps start below it
+    at["neck_side.L"] = L[np.argmax(L[:, 0])]  # the loop's widest point (the neck's half width; was the hps)
     at["cf_neck"] = L[np.argmin(L[:, 1])]
     at["cb_neck"] = L[np.argmax(L[:, 1])]
     # shoulder point: top of the shoulder 1.5 cm out from the joint (a section across the body there)
@@ -291,6 +425,12 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     zw = pelvis[2] + 0.7 * (chest_j[2] - pelvis[2])
     L = torso(zw)
     at["waist_z"], loops["waist"], mm["waist"] = float(zw), L, girth(L, Z)
+    # depths (front to back, the y extent of the section), as ANSUR II's chestdepth / waistdepth: their difference is
+    # the abdomen's own measure (cloth.ALTERATIONS large_abdomen), free of the hps (the front - back tapes from it moved
+    # with the hps landmark: dg_mh +76 crest, -50 base, 2026-10-15)
+    mm["chestDepth"] = float(np.ptp(np.asarray(loops["chest"])[:, 1]))
+    if L is not None:
+        mm["waistDepth"] = float(np.ptp(np.asarray(L)[:, 1]))
     zh = hip[2] + 0.02
     L = torso(zh)
     mm["hips"], at["hips_z"], loops["hips"] = girth(L, Z), float(zh), L
@@ -321,14 +461,18 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     # surface lengths: hps down the back to the waist (a section along x = hps.x), hps to the bust point
     W = at["waist_z"]
 
-    def down(z1, x0, x1, sign):
-        """A tape down the back (sign +1) or front (-1) from hps to height z1, drifting from x0 to x1."""
-        pts = [hps]
-        for z in np.arange(hps[2] - 0.01, z1 - 1e-6, -0.01):
+    def down(z1, x0, x1, sign, start=None):
+        """A tape down the back (sign +1) or front (-1) from hps (or `start`) to height z1, drifting from x0 to x1."""
+        top_ = hps if start is None else np.asarray(start, float)
+        pts = [top_]
+        # (from the crest beside the neck down: above it a slice at the hps's x is the neck itself, and on a deep
+        # neck (GNM's, the throat in it) the tape ran round the neck's front or back before it went down)
+        z0 = min(hps[2] - 0.01, at.get("neck_base_z", hps[2]) - 0.005) if start is None else top_[2] - 0.01
+        for z in np.arange(z0, z1 - 1e-6, -0.01):
             L = torso(z)
             if L is None:
                 continue
-            xt = x0 + (x1 - x0) * (hps[2] - z) / max(hps[2] - z1, 1e-6)
+            xt = x0 + (x1 - x0) * (top_[2] - z) / max(top_[2] - z1, 1e-6)
             near = L[np.abs(L[:, 0] - xt) < 0.015]
             if len(near):
                 pts.append(near[np.argmax(sign * near[:, 1])])
@@ -354,6 +498,28 @@ def measure(V: np.ndarray, faces, J: dict) -> dict:
     tape = down(W, hps[0], hps[0], 1)
     mm["hpsToWaistBack"] = length(tape)
     loops["hpsToWaistBack"] = tape
+    # nape (the neck loop's centre back) to the waist down the centre back: a garment's LENGTH is drafted from it,
+    # the way tailors take "nape to waist", so where the hps is defined never moves the hem (the side-neck hps cut
+    # the hps tape 38 mm on gp_h6c and the jacket was drafted 32 mm short: it rode up and its fronts swung round the
+    # sides, dress-garrett j12, 2026-10-15)
+    cbn = np.asarray(at["cb_neck"], float)
+    tape = down(W, float(cbn[0]), float(cbn[0]), 1, start=cbn)
+    mm["napeToWaistBack"] = length(tape)
+    loops["napeToWaistBack"] = tape
+    if "cb_neck_base" in at:
+        # the same tapes from the base ring's centre back and centre front, and the hps's own front tape: the draft
+        # reads the back neck's rise (hpsToWaistBack - napeBaseToWaistBack) and the front neck's depth
+        # (hpsToWaistFront - cfBaseToWaistFront) from them, as a pattern maker measures them on the body
+        cbb, cfb = (np.asarray(at[k], float) for k in ("cb_neck_base", "cf_neck_base"))
+        tape = down(W, float(cbb[0]), float(cbb[0]), 1, start=cbb)
+        mm["napeBaseToWaistBack"], loops["napeBaseToWaistBack"] = length(tape), tape
+        tape = down(W, float(cfb[0]), float(cfb[0]), -1, start=cfb)
+        mm["cfBaseToWaistFront"], loops["cfBaseToWaistFront"] = length(tape), tape
+        tape = down(W, hps[0], hps[0], -1)
+        mm["hpsToWaistFront"], loops["hpsToWaistFront"] = length(tape), tape
+        # the ring's centre front below the hps (the throat is near vertical there: its drop is the front neck's depth;
+        # the hps-minus-cf tapes differ by the chest's prominence too, 85 mm on Garrett against a 48.5 mm drop)
+        mm["neckBaseFrontDrop"] = float(hps[2]) - float(cfb[2])
     C = loops["chest"]
     bust = C[np.argmin(np.abs(C[:, 0] - 0.095) + 0.5 * C[:, 1])]  # front of the chest, 9.5 cm out
     at["bust.L"] = bust

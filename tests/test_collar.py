@@ -205,6 +205,30 @@ def test_worn_forepart():
     assert endv.sum() > 6 and err.max() < 0.025, (int(endv.sum()), err.max())
 
 
+def test_a_woven_sleeve_set_into_its_armhole_is_not_sent_down_the_arm():
+    """dress-garrett: a woven sleeve whose cap started through the bodice it is sewn to went 1 cm at a time down the
+    arm (Garrett's jacket: 2 rounds), as a knit's did; set into the armhole (set_sleeves into_armhole, the default)
+    the sewn crossings stay and the sewing pulls it up. set_sleeves "free" keeps the old start."""
+    from hifipushie import cloth, stylesheet
+    spec = stylesheet.resolve(json.loads(FIXTURE.read_text()))
+    g = json.loads(json.dumps(spec["cloth"]["jacket"]))
+    try:
+        cloth.Body(cloth.model_body("ga_suit", spec, dict(g, over=None)))
+    except Exception as e:  # (the base body's template assets aren't installed)
+        print("   (no base body:", repr(e)[:120], ")")
+        return
+    g.update({"over": None, "made": {}})
+    rounds = {}
+    for ss in (None, "free"):
+        gg = dict(g, set_sleeves=ss) if ss else {k: v for k, v in g.items() if k != "set_sleeves"}
+        r = cloth.build(cloth._garment_for_sim(gg), cloth.model_body("ga_suit", spec, gg), "ga_suit:jacket",
+                        log=lambda *a: None, place_only=True)
+        rounds[ss] = len(r["pieces"].get("sleeve_hits") or [])
+        assert r["pieces"].get("sleeves_set") is (ss is None)
+    print("   sleeve placement rounds: into_armhole", rounds[None], "free", rounds["free"])
+    assert rounds[None] <= rounds["free"]
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

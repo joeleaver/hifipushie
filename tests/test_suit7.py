@@ -76,6 +76,26 @@ def test_cloth_collider_pushes_away_on_the_side_the_point_is_on():
     assert (Y2[:, 2] < 0).all()
 
 
+def test_a_cloth_edge_over_a_collider_ridge_is_cleared_edge_to_edge():
+    # a 45 deg roof (an armpit's crease); a cloth edge crosses its ridge 1.5 mm up, away from the ridge's vertices and
+    # middle, at 0.4 of its length: every vertex and edge sample of the cloth is over 3 mm off the roof's triangles,
+    # but the two edges are 1.5 mm apart (dress-garrett j4: ZOZO "contact starts overlapping: a edge-edge pair")
+    A, B = [-0.05, 0, 0], [0.05, 0, 0]
+    C, D, G, H = [-0.05, -0.03, -0.03], [0.05, -0.03, -0.03], [-0.05, 0.03, -0.03], [0.05, 0.03, -0.03]
+    bV = np.array([A, B, C, D, G, H], float)
+    bT = np.array([[0, 2, 3], [0, 3, 1], [0, 1, 5], [0, 5, 4]])
+    fn = np.cross(bV[bT[:, 1]] - bV[bT[:, 0]], bV[bT[:, 2]] - bV[bT[:, 0]])
+    bT = np.where((fn[:, 2] < 0)[:, None], bT[:, ::-1], bT)  # wound outward (up)
+    X = np.array([[0.02, -0.016, 0.0015], [0.02, 0.024, 0.0015], [0.02, 0.004, 0.05]])
+    F = np.array([[0, 1, 2]])
+    _, _, d0 = cloth._seg_seg(X[:1], X[1:2], bV[:1], bV[1:2])
+    assert d0[0] < 0.002, d0
+    Y, n = cloth._clear_exact(X, F, np.ones(3, bool), bV, bT)
+    _, _, d1 = cloth._seg_seg(Y[:1], Y[1:2], bV[:1], bV[1:2])
+    assert n >= 2 and d1[0] > 0.9 * cloth.EXACT_GAP, (n, d1)
+    assert np.abs(Y - X).max() < 0.004
+
+
 def test_a_broken_start_is_refused_not_searched():
     X, F = _grid(12, 0.2, 1.0)
     M = {"F": F, "piece": np.zeros(len(X), int), "names": ["front"]}

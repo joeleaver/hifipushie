@@ -68,14 +68,20 @@ def _solver_said(session: Path, n: int = 12) -> str:
         lines = (session / "stdout.log").read_text(errors="replace").splitlines()
         diag = [ln[:300] for ln in lines if ln.startswith("###")]
         at = [ln for ln in lines if ln.startswith("* time =") or ln.startswith("------ newton step")]
-        out += [f"solver: {at[-2:]}" if at else "solver: no frame reached"] + diag[-n:]
+        # the batch status keeps only the END of this text: the generic advice lines first, the ones that name the
+        # pair (with numbers: which vertices / elements, how far) last (dress-garrett j4: the tail was the advice
+        # and the panic, the pair had been cut off)
+        diag = diag[-n:]
+        diag = [ln for ln in diag if not any(ch.isdigit() for ch in ln)] + [ln for ln in diag if any(ch.isdigit() for ch in ln)]
+        at_ = [f"solver: {at[-2:]}" if at else "solver: no frame reached"]
     except OSError:
-        out.append("solver: no stdout.log")
+        diag, at_ = [], ["solver: no stdout.log"]
     try:
         err = [ln for ln in (session / "error.log").read_text(errors="replace").splitlines() if ln.strip()]
         out += [f"error.log: {ln[:300]}" for ln in err[-3:]]
     except OSError:
         pass
+    out += at_ + diag
     print("\n".join(out), flush=True)
     return "\n".join(out)
 

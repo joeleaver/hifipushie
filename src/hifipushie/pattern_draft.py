@@ -1013,6 +1013,13 @@ def op_sleeve(D: dict, **o) -> None:
     opts = dict({"biceps_ease": D["meta"].get("biceps_ease", 0.15)}, **o)
     if D["meta"].get("knit"):
         opts.setdefault("cap_ease", 0.0)
+    # the armhole depth as a tailor measures it for the cap: vertical, shoulder point to underarm (front and back mean)
+    dep = []
+    for ch in (D["edges"]["armhole_front"], D["edges"]["armhole_back"]):
+        Pc = np.concatenate(edge_points(D, ch))
+        dep.append(float(Pc[:, 1].max() - Pc[:, 1].min()))
+    opts["_depth"] = float(np.mean(dep))
+    opts.setdefault("cap_height", pb.CAP_HEIGHT_BY_KIND.get(D["meta"].get("kind") or ""))
     mate = list(D["edges"]["armhole_front"]) + [_rev(e) for e in reversed(D["edges"]["armhole_back"])]
     S = pb.sleeve(D["meta"]["measurements"], {"meta": D["meta"]}, opts, armhole=(af, ab), mate=mate)
     D["pieces"].update(S["pieces"])
@@ -1751,6 +1758,7 @@ def unfold(D: dict) -> dict:
 def build(meas_mm: dict, pat: dict) -> dict:
     """pattern {"from": "draft", "block": ..., "block_options": {...}, "ops": [...]} -> what cloth.pieces takes."""
     D = start(pat.get("block", "bodice"), meas_mm, pat.get("block_options"))
+    D["meta"]["kind"] = pat.get("kind")  # (the kind's drafting defaults: a jacket's cap height)
     apply(D, pat.get("ops"))
     unfold(D)
     for nm, pc in D["pieces"].items():

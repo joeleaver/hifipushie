@@ -172,6 +172,68 @@ def test_goes_through_cloth_pieces_and_meshes():
     assert len(M["sew"]) > 200
 
 
+def test_front_balance_auto_from_the_body_tapes():
+    # dress-garrett 2026-10-15: with the hps on the shoulder crest a man's front tape (hps -> seat) is longer than the
+    # back's; a front cut as long as the back swung an open jacket apart at the hem. "auto" drafts the difference.
+    from hifipushie import pattern_blocks as pb
+    assert abs(pb.front_balance({"hpsToSeatFront": 713.0, "hpsToSeatBack": 673.0}) - 0.040) < 1e-9
+    assert pb.front_balance({"hpsToSeatFront": 678.0, "hpsToSeatBack": 711.0}) == 0.0  # old hps: the old cut
+    assert pb.front_balance({}) == 0.0
+    assert pb.front_balance({"hpsToSeatFront": 713.0, "hpsToSeatBack": 673.0}, 0.0) == 0.0  # explicit wins
+
+
+def test_large_abdomen_reads_the_excess_over_the_population_norm():
+    """The belly is the waist's depth over the chest's past ANSUR II's median man (-17 mm), measured on the body, not
+    from the hps (dress-garrett 2026-10-15 n): flat bodies don't fire it, a deeper waist gets only the excess, and the
+    hps tapes play no part (they moved with the landmark: dg_mh +76 / -50)."""
+    from hifipushie import cloth
+    la = cloth.ALTERATIONS["large_abdomen"]
+    for c, w in ((233, 201), (231, 200), (234, 190)):  # dg_garrett, gp_A01, MakeHuman's default male
+        assert la({"chestDepth": c, "waistDepth": w}) == 0.0
+    assert abs(la({"chestDepth": 263, "waistDepth": 249}) - 0.003) < 1e-9  # dg_mh: 3 mm past the norm
+    assert abs(la({"chestDepth": 250, "waistDepth": 263}) - 0.030) < 1e-9  # waist 13 deeper than chest: 30 past it
+    assert la({"hpsToSeatFront": 790, "hpsToSeatBack": 690}) == 0.0  # the old tape proxy is not read
+    assert la({}) == 0.0
+
+
+def test_hem_height_does_not_move_with_the_hps():
+    """A garment's length comes from a fixed body level (nape to waist + waist to hips), never from the hps tape: the
+    side-neck hps cut the back tape 32 mm on gp_h6c and the jacket rode up, its fronts swinging round the sides
+    (dress-garrett j12, 2026-10-15). Moving the hps tapes must leave the back's hem where it was."""
+    def hem(m):
+        D = pd.start("bodice", m, {"length": "hips", "length_bonus": 0.12})
+        b = D["pieces"]["back"]
+        return float(b["P"][:, 1].min())
+    m0 = dict(MM, napeToWaistBack=489.0, hpsToArmpitBack=258.0)
+    m1 = dict(m0, hpsToWaistBack=m0["hpsToWaistBack"] - 32.0, hpsToArmpitBack=222.6)  # the hps moved
+    assert abs(hem(m0) - hem(m1)) < 1e-9
+    bn = 0.05 * m0["neck"] / 1000
+    assert abs(-hem(m0) - (bn + 0.489 + 0.1452 + 0.12)) < 1e-6  # nape tape + back neck depth + waist-hips + bonus
+
+
+def test_jacket_cap_height_from_the_armhole_depth():
+    """A jacket's cap stands 3/4 of the armhole depth (shoulder point to underarm; Pattern Principles 2005: 2/3-3/4,
+    tailored the high end): cap ease first (inside the coat band 3-6%), then a narrower sleeve; a shirt keeps the solve."""
+    for kind, want in (("jacket", 0.75), (None, None)):
+        D = pd.start("bodice", MM, {"armhole_depth": 0.0})
+        D["meta"]["kind"] = kind
+        pd.apply(D, [{"op": "sleeve", "cap_ease": 0.03}])
+        S = D["meta"]["sleeve"]
+        r = S["cap"]["h"] / S["depth"]
+        if want:
+            assert abs(r - want) < 0.015 or S["biceps_ease"] <= pb.CAP_BICEPS_EASE_MIN + 1e-9, r
+            assert 0.03 <= S["cap_ease"] <= 0.06 + 1e-9 and S["biceps_ease"] >= pb.CAP_BICEPS_EASE_MIN - 1e-9
+            af, ab = _len(D, D["edges"]["armhole_front"]), _len(D, D["edges"]["armhole_back"])
+            assert abs(S["cap"]["front"] - af * (1 + S["cap_ease"])) < 3e-4  # still sewn into its armhole
+        else:
+            assert S["cap_ease"] == 0.03 and abs(S["biceps_ease"] - 0.15) < 1e-9
+        _ok(D)
+    # never lower than the plain solve: a cap already high enough is left alone
+    o = dict(pb.SLEEVE_DEFAULTS, cap_height=0.3)
+    W, e, c = pb.cap_for_height(MM, 0.24, 0.23, o, 0.25)
+    assert e == o["cap_ease"] and abs(W - 0.3402 * 1.15) < 1e-9
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

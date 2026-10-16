@@ -68,7 +68,8 @@ def test_open_front_lap_offset():
     """Suit 9: the over front of a closure worn open can start without its lap's layers (garment key open_lap)."""
     torso = ["front.L", "front.R", "back"]
     cl = [{"name": "front", "state": "open", "over": "front.L", "under": "front.R"}]
-    assert cloth.open_unlapped({"closures": cl}, torso) == (set() if cloth.OPEN_LAP else {"front.L"})
+    assert not cloth.OPEN_LAP  # the default: a front worn open is not lapped as if buttoned
+    assert cloth.open_unlapped({"closures": cl}, torso) == {"front.L"}
     assert cloth.open_unlapped({"closures": cl, "open_lap": False}, torso) == {"front.L"}
     assert cloth.open_unlapped({"closures": cl, "open_lap": True}, torso) == set()
     shut = [dict(cl[0], state="closed")]

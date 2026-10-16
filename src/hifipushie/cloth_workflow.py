@@ -80,7 +80,7 @@ class Ctx:
     @property
     def body(self) -> "cloth.Body":
         if self._body is None:
-            self._src = cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', True))
+            self._src = cloth.model_body(self.name, self.spec, self.g, simulate=getattr(self, 'simulate', False))  # (measuring never simulates: an under garment not dressed yet is warned about)
             self._body = cloth.Body(self._src)
         return self._body
 

@@ -2,7 +2,7 @@
 with a buckle; belt loops). Garment / design key `trims`:
 
   {"kind": "belt", "on": piece (default the piece of role waistband), "width": m (0.032), "thickness": m (0.0035),
-   "color": "#1b1a19", "buckle": true | false, "buckle_color": "#8a8a88", "name"}
+   "color": "#1b1a19", "roughness": 0.45 (leather's sheen), "buckle": true | false (a frame buckle, prong and keeper), "buckle_color": "#8a8a88", "name"}
   {"kind": "belt_loops", "on": piece, "count": 7, "width": m (0.01), "stand": m (how far a loop stands off the band:
    default a belt's thickness + 1.5 mm when the garment has a belt, else 1 mm), "color" (default the garment's)}
 
@@ -20,7 +20,7 @@ from __future__ import annotations
 import numpy as np
 
 KINDS = ("belt", "belt_loops")
-KEYS = {"kind", "on", "name", "width", "thickness", "color", "buckle", "buckle_color", "count", "stand", "inset", "lift"}
+KEYS = {"kind", "on", "name", "width", "thickness", "color", "roughness", "buckle", "buckle_color", "count", "stand", "inset", "lift"}
 
 
 class TrimError(ValueError):
@@ -111,28 +111,59 @@ class _Chart:
 
 def _strip(C: np.ndarray, N: np.ndarray, S: np.ndarray, lift: float, th: float) -> tuple[np.ndarray, np.ndarray]:
     """A strap of rectangular section: C (k, 3) its middle line on the surface, N outward normals, S (k, 3) the half
-    width vector across it; standing `lift` off the surface, `th` thick. Closed at both ends."""
+    width vector across it; standing `lift` off the surface, `th` thick. Closed at both ends. Each of the four sides
+    has its own vertices, so a smooth-shaded render keeps the strap's square edges (shared corners rounded it into a
+    tube: dress-garrett's trousers review t4, "a round tube with rings around it")."""
     k = len(C)
     ring = [C - S + N * lift, C + S + N * lift, C + S + N * (lift + th), C - S + N * (lift + th)]
-    V = np.concatenate(ring)
-    F = []
+    V, F = [], []
     for a in range(4):
         b = (a + 1) % 4
+        o = 2 * a * k
+        V += [ring[a], ring[b]]
         for i in range(k - 1):
-            p, q, r, s = a * k + i, a * k + i + 1, b * k + i + 1, b * k + i
-            F += [[p, q, r], [p, r, s]]
+            p, q, r, s_ = o + i, o + i + 1, o + k + i + 1, o + k + i
+            F += [[p, q, r], [p, r, s_]]
     for i, flip in ((0, False), (k - 1, True)):
-        q = [a * k + i for a in range(4)]
+        base = sum(len(v) for v in V)
+        V.append(np.array([ring[a][i] for a in range(4)]))
+        q = [base + a for a in range(4)]
         F += [[q[0], q[2], q[1]], [q[0], q[3], q[2]]] if not flip else [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]
-    return V, np.asarray(F)
+    return np.concatenate(V), np.asarray(F)
 
 
 def _box(c: np.ndarray, ax: np.ndarray, ay: np.ndarray, az: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """A box at c with half-size vectors ax, ay, az."""
-    V = np.array([c + sx * ax + sy * ay + sz * az for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)])
-    F = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6],
-                  [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]])
-    return V, F
+    """A box at c with half-size vectors ax, ay, az; each face its own four vertices (square edges when rendered
+    smooth: a box of 8 shared corners shades as a blob)."""
+    V, F = [], []
+    for u, v, w in ((ax, ay, az), (ay, az, ax), (az, ax, ay)):
+        for sg in (-1, 1):
+            o = len(V)
+            ctr = c + sg * u
+            V += [ctr - v - w, ctr + v - w, ctr + v + w, ctr - v + w]
+            F += [[o, o + 1, o + 2], [o, o + 2, o + 3]] if sg > 0 else [[o, o + 2, o + 1], [o, o + 3, o + 2]]
+    return np.asarray(V), np.asarray(F)
+
+
+def _join(parts: list) -> tuple[np.ndarray, np.ndarray]:
+    V, F, n = [], [], 0
+    for v, f in parts:
+        V.append(v)
+        F.append(np.asarray(f) + n)
+        n += len(v)
+    return np.concatenate(V), np.concatenate(F)
+
+
+def _buckle(c: np.ndarray, tg: np.ndarray, s: np.ndarray, n: np.ndarray, w: float, th: float) -> tuple[np.ndarray, np.ndarray]:
+    """A frame buckle seen on the belt: a rectangular frame of four bars round the strap (outer 38 x (w + 8) mm for a
+    belt w wide), a prong lying on the strap from the frame's middle bar, the frame standing a belt's thickness out
+    (c: its middle on the strap's outer face; tg along the belt toward the free end, s across it, n outward)."""
+    bw, hw, ht, d = 0.0025, 0.019, w / 2 + 0.004, 0.0016  # bar half width, frame half length / half height, half depth
+    parts = [_box(c + tg * hw, tg * bw, s * ht, n * d), _box(c - tg * hw, tg * bw, s * ht, n * d),
+             _box(c + s * ht, tg * hw, s * bw, n * d), _box(c - s * ht, tg * hw, s * bw, n * d),
+             _box(c - tg * hw * 0.15, tg * bw * 0.6, s * (ht - bw), n * d * 0.8),  # the bar the prong turns on
+             _box(c + tg * hw * 0.42, tg * hw * 0.57, s * 0.0011, n * 0.0009)]  # the prong
+    return _join(parts)
 
 
 def meshes(res: dict, g: dict) -> list:
@@ -165,7 +196,8 @@ def meshes(res: dict, g: dict) -> list:
             ramp = np.clip((xs - (x1 - 0.06)) / 0.03, 0, 1) if (pcs[nm].get("wrap") or {}).get("over") != "low" else \
                 np.clip(((x0 + 0.06) - xs) / 0.03, 0, 1)
             V, F = _strip(C + N * (ramp * (th + 0.0008))[:, None], N, S * (w / 2), lift, th)
-            out.append({"name": t.get("name", "belt"), "kind": "belt", "V": V, "F": F, "color": t.get("color", "#1b1a19")})
+            out.append({"name": t.get("name", "belt"), "kind": "belt", "V": V, "F": F, "color": t.get("color", "#1b1a19"),
+                        "roughness": float(t.get("roughness", 0.45))})
             if t.get("buckle", True):
                 mk = pcs[nm].get("marks") or {}
                 bx = float(np.asarray(mk["buttonhole1"])[0]) if "buttonhole1" in mk else (x0 + 0.02)
@@ -174,8 +206,15 @@ def meshes(res: dict, g: dict) -> list:
                 tg = (c2 - c)[0]
                 tg /= np.linalg.norm(tg) + 1e-12
                 s = np.cross(n[0], tg)
-                Vb, Fb = _box(c[0] + n[0] * (lift + 2 * th + 0.002), tg * 0.019, s * (w / 2 + 0.005), n[0] * 0.0022)
-                out.append({"name": "buckle", "kind": "buckle", "V": Vb, "F": Fb, "color": t.get("buckle_color", "#8a8a88")})
+                Vb, Fb = _buckle(c[0] + n[0] * (lift + th + 0.0016), tg, s, n[0], w, th)
+                # the keeper: a leather loop round both layers of the strap just past the frame
+                Vk, Fk = _join([_box(c[0] + tg * 0.032 + n[0] * (lift + th + 0.0012), tg * 0.005, s * (w / 2 + 0.0012), n[0] * 0.0006),
+                                _box(c[0] + tg * 0.032 + s * (w / 2 + 0.0012) + n[0] * (lift + th * 0.5), tg * 0.005, s * 0.0006, n[0] * (th * 0.5 + 0.0012)),
+                                _box(c[0] + tg * 0.032 - s * (w / 2 + 0.0012) + n[0] * (lift + th * 0.5), tg * 0.005, s * 0.0006, n[0] * (th * 0.5 + 0.0012))])
+                out.append({"name": "buckle", "kind": "buckle", "V": Vb, "F": Fb, "color": t.get("buckle_color", "#8a8a88"),
+                            "roughness": 0.3})
+                out.append({"name": "keeper", "kind": "keeper", "V": Vk, "F": Fk, "color": t.get("color", "#1b1a19"),
+                            "roughness": float(t.get("roughness", 0.45))})
         else:
             n_ = int(t.get("count", 7))
             w = float(t.get("width", 0.01))

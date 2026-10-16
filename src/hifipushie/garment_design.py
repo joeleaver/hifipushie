@@ -240,7 +240,7 @@ def compile_sheet(sheet: dict) -> dict:
             for op in (info["kb"].get("draft") or {}).get("ops", []):
                 if (op["op"], op.get("name")) not in have and (op["op"], None) not in have:
                     ops.append(_merge(op, info["params"].get("op") or {}))
-        out["pattern"] = {"from": "draft", "block": block, "block_options": bo, "ops": ops}
+        out["pattern"] = {"from": "draft", "block": block, "block_options": bo, "ops": ops, "kind": r["kind"]}
     elif r["from"]:
         pat = {"from": rec.get("pattern_from", r["from"])}
         fo = (rec.get("fit_options") or {}).get(r["fit"]) or {}

@@ -601,6 +601,210 @@ def test_hidden_faces_are_cut_inside_the_rim():
     assert deep2[part == 1].all() and not deep2[(part == 0) & (x < 0.061)].any()
 
 
+def test_rented_sims_need_an_explicit_opt_in():
+    """dress-garrett 2026-10-15: model_body(simulate=True) in a measuring script built a layered garment's under garment
+    and submitted it to the rented fleet, twice. A rented submit now needs cloth_job.submitting() or HP_SUBMIT_SIMS=1;
+    free remotes (have.sh: the broker's pulled results) are never gated."""
+    import os, tempfile
+    from pathlib import Path
+    from hifipushie import cloth_job
+    sent = []
+    real = cloth_job.run_external
+    cloth_job.run_external = lambda jd, b, p, t, cmd=None: sent.append(cmd) or ({}, [])
+    old = {k: os.environ.get(k) for k in ("HIFIPUSHIE_ZOZO_REMOTE", "HIFIPUSHIE_GPU", "HP_SUBMIT_SIMS")}
+    try:
+        os.environ.pop("HP_SUBMIT_SIMS", None)
+        jd = Path(tempfile.mkdtemp()) / "sim"
+        for remote, gpu in (("/x/spikes/gpu_cloth/bundle.sh", ""), ("", "bundle"), ("/x/remote.sh --box a", "")):
+            os.environ["HIFIPUSHIE_ZOZO_REMOTE"] = remote
+            os.environ["HIFIPUSHIE_GPU"] = gpu
+            try:
+                cloth_job.run_zozo(jd, lambda *_: None)
+                raise AssertionError(f"{remote or gpu}: submitted without an opt-in")
+            except cloth_job.SimNotSubmitted:
+                pass
+            with cloth_job.submitting():
+                cloth_job.run_zozo(jd, lambda *_: None)
+        assert len(sent) == 3, sent
+        assert not cloth_job.may_submit()  # the opt-in ends with its block
+        os.environ["HP_SUBMIT_SIMS"] = "1"
+        cloth_job.run_zozo(jd, lambda *_: None)
+        os.environ.pop("HP_SUBMIT_SIMS")
+        os.environ["HIFIPUSHIE_ZOZO_REMOTE"] = "/mnt/data/x/have.sh"  # the broker's results: free, never gated
+        cloth_job.run_zozo(jd, lambda *_: None)
+        assert len(sent) == 5, sent
+    finally:
+        cloth_job.run_external = real
+        for k, v in old.items():
+            os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+
+
+def test_start_self_check_catches_a_crushed_sheet_not_a_fold():
+    """dress-garrett 2026-10-15, shirt s7 (frame 0, "ccd failed (toi 0)"): the back's armhole started CRUSHED, a vertex
+    0.22 mm off its own sheet, facing the same way; the body preflight passed it. A crease (lapel roll: the sheet back on
+    itself, facing the other way, 0.04 mm in dg_j8, which ran) and fold rows are not faults."""
+    import numpy as np
+    from hifipushie import cloth_job
+    n = 6  # a flat 6 x 6 grid of 10 mm squares, one piece
+    g = np.stack(np.meshgrid(np.arange(n), np.arange(n), indexing="ij"), -1).reshape(-1, 2) * 0.01
+    F = []
+    for i in range(n - 1):
+        for j in range(n - 1):
+            a, b, c, d = i * n + j, (i + 1) * n + j, (i + 1) * n + j + 1, i * n + j + 1
+            F += [(a, b, c), (a, c, d)]
+    F = np.array(F)
+    uv = g.copy()
+    X = np.c_[g, np.zeros(len(g))]
+    base = dict(X=X, F=F, piece=np.zeros(len(X), int), uv=uv, fold=np.zeros(len(X)))
+    assert cloth_job.start_self_check(base)["ok"]
+    # crushed in plane: vertex (2, 2) pushed 0.3 mm short of the far side of a triangle it doesn't belong to
+    Xc = X.copy()
+    Xc[2 * n + 2, :2] = [0.0297, 0.0297]  # next to the triangle (3,3)-(3,4)... diagonal: inside its neighbour's cell
+    r = cloth_job.start_self_check(dict(base, X=Xc))
+    assert not r["ok"] and r["pairs"][0][0] < 1.0, r
+    # a crease: the grid folded back onto itself along row 3 (facing the other way), 0.3 mm apart: not a fault
+    Xf = X.copy()
+    top = g[:, 0] > 0.0305
+    Xf[top, 0] = 0.06 - g[top, 0]
+    Xf[top, 2] = 0.0003
+    r = cloth_job.start_self_check(dict(base, X=Xf))
+    assert r["ok"], r["pairs"][:3]
+    # the same crush ON a fold row's ring is a designed fold's business: not counted
+    fo = np.zeros(len(X)); fo[2 * n + 2] = 0.8
+    assert cloth_job.start_self_check(dict(base, X=Xc, fold=fo))["ok"]
+    # the real starts, when this machine has them (workspace caches are not in the repo): s7 refused, j8 / j12 passed
+    import os
+    c = os.path.expanduser("~/dev/hifipushie/workspace/_cache/cloth/")
+    # + dress-tess's knit sweater starts s30 / s31 that ran (186 / 194 pairs at 0.0 mm before the seam exemption: a
+    # one-piece sleeve tube's underarm seam placed closed)
+    for job, ok in (("job_59811cc701ce1e71", False), ("job_b02017380c494b19", True), ("job_f16cb8554d8a4585", True),
+                    ("job_36691414a12d4957", True), ("job_de98b675f1d137fa", True)):
+        if os.path.exists(c + job + "/sim/in.npz"):
+            assert cloth_job.start_self_check(dict(np.load(c + job + "/sim/in.npz")))["ok"] == ok, job
+
+
+
+def test_start_self_check_lets_a_tube_close_on_its_own_seam():
+    """A one-piece tube (a knit sleeve) placed with its seam closed: each sewn edge vertex sits ON the faces at its
+    partner's side, 0 mm off, facing the same way. The seam closing is not a crush (dress-tess s30 / s31 ran with
+    186 / 194 such pairs); the same vertex on a face NOT next to its partner is still caught."""
+    import numpy as np
+    from hifipushie import cloth_job
+    n = 12
+    th = np.linspace(0, 2 * np.pi, n + 1)  # the last column lands on the first: the seam
+    X, uv = [], []
+    for j in range(3):
+        for i in range(n + 1):
+            X.append([0.05 * np.cos(th[i]), 0.05 * np.sin(th[i]), 0.03 * j])
+            uv.append([0.05 * th[i], 0.03 * j])
+    X, uv = np.array(X), np.array(uv)
+    idx = lambda i, j: j * (n + 1) + i
+    F = []
+    for j in range(2):
+        for i in range(n):
+            F += [[idx(i, j), idx(i + 1, j), idx(i + 1, j + 1)], [idx(i, j), idx(i + 1, j + 1), idx(i, j + 1)]]
+    F = np.array(F)
+    sew = np.array([[idx(0, j), idx(n, j)] for j in range(3)])
+    base = {"X": X, "F": F, "piece": np.zeros(len(X), int), "uv": uv, "sew": sew}
+    assert not cloth_job.start_self_check(dict(base, sew=np.zeros((0, 2), int)))["ok"]  # unexempted: seam pairs
+    assert cloth_job.start_self_check(base)["ok"]
+
+
+def test_preflight_skips_the_self_check_on_fine_settles():
+    """dress-garrett 2026-10-15 (j14): a fine settle starts from a sim's REST, cloth folded on itself at the contact
+    gap (the fine settles that ran read 39-55 crushed pairs), so the preflight's self check is for first sims only; the
+    body clearance floor is 2 mm for a first sim, 1 mm for a fine settle."""
+    import numpy as np
+    from hifipushie import cloth_job
+    n = 6
+    g = np.stack(np.meshgrid(np.arange(n), np.arange(n), indexing="ij"), -1).reshape(-1, 2) * 0.01
+    F = []
+    for i in range(n - 1):
+        for j in range(n - 1):
+            a, b, c, d = i * n + j, (i + 1) * n + j, (i + 1) * n + j + 1, i * n + j + 1
+            F += [(a, b, c), (a, c, d)]
+    F = np.array(F)
+    X = np.c_[g, np.zeros(len(g))]
+    X[2 * n + 2, :2] = [0.0297, 0.0297]  # the crushed vertex of test_start_self_check_catches_a_crushed_sheet_not_a_fold
+    bV = np.array([[0, 0, -0.0015], [0.05, 0, -0.0015], [0, 0.05, -0.0015]])  # a body triangle 1.5 mm under the cloth
+    arr = dict(X=X, F=F, piece=np.zeros(len(X), int), uv=g.copy(), fold=np.zeros(len(X)), bodyV=bV,
+               bodyT=np.array([[0, 1, 2]]))
+    r = cloth_job.preflight(arr, {"mode": "sim"})
+    assert not r["ok"] and r["body_pairs"] > 0 and not r["self"]["ok"], r
+    r = cloth_job.preflight(arr, {"mode": "fine_settle"})
+    assert r["ok"] and r["self"] is None and r["body_pairs"] == 0 and abs(r["body_mm"] - 1.5) < 0.01, r
+    r = cloth_job.preflight(dict(arr, bodyV=bV - [0, 0, 0.0035]), {"mode": "sim"})  # body 5 mm away: only the crush
+    assert not r["ok"] and r["body_pairs"] == 0 and not r["self"]["ok"], r
+
+def test_set_in_sleeve_is_set_by_its_underarm_notch():
+    """dress-garrett j15: a jacket cap lower than its armhole was laid from the crown, its underarm above the armhole
+    bottom, through the bodice; the crossing loop then sent it 10 cm down the arm (the aligned under sleeve twice that).
+    cloth._sleeve_notches moves the anchor sleeve down so its underarm point is level with the bodice point it is sewn
+    to, never up (a high cap keeps its crown at the shoulder point)."""
+    import types
+    import numpy as np
+    from hifipushie import cloth
+    names = ["front", "top", "under"]
+    pcs = {"front": {"wrap": {"to": "torso"}}, "top": {"wrap": {"to": "arm.L"}},
+           "under": {"wrap": {"to": "arm.L", "align": ["a", "top", "b"]}}}
+    uv = np.array([[0.0, 0.0], [0.0, 0.20], [0.0, 0.05]])  # front's armhole bottom; top's crown; under's underarm
+    M = {"piece": np.array([0, 1, 2]), "uv": uv, "points": {"under:underarm": 2, "top:capTop": 1}, "sew": np.array([[2, 0]])}
+    body = types.SimpleNamespace(J={"shoulder.L": np.array([0.2, 0, 1.4]), "elbow.L": np.array([0.2, 0, 1.1])})
+    for t_bottom, want in ((0.20, 0.05), (0.10, 0.0)):
+        X = np.array([[0.25, 0.0, 1.4 - t_bottom], [0, 0, 0], [0, 0, 0]])
+        placed = {"top": {"t": lambda Q: 0.0 + (0.20 - Q[..., 1])}, "under": {"t": lambda Q: 0.0 + (0.20 - Q[..., 1])}}
+        got = cloth._sleeve_notches(M, body, X, names, pcs, placed, uv)
+        assert set(got) == {"top"} and abs(got["top"] - want) < 1e-9, (t_bottom, got)
+
+
+def test_aligned_under_sleeve_is_not_pushed_out_alone():
+    """dress-garrett j15: a two-piece sleeve's under sleeve (wrap "align" to its top sleeve) was pushed out round the
+    arm by its corner at the armpit, 59 -> 121 mm, while the top stayed at 88: both sleeve seams started 120 mm open.
+    The push-out rounds move only the sleeve pieces that own their cylinder."""
+    import numpy as np
+    from hifipushie import cloth
+    names = ["front", "top", "under"]
+    pcs = {"front": {"wrap": {"to": "torso"}}, "top": {"wrap": {"to": "arm.L"}},
+           "under": {"wrap": {"to": "arm.L", "align": ["usF", "top", "tsF"]}}}
+    M = {"names": names, "piece": np.array([0, 1, 2]), "uv": np.zeros((3, 2)), "stitch": np.zeros((0, 2), int)}
+    pid = M["piece"]
+    got = cloth._sleeve_push_out(M, names, pcs, np.array([0.05, 0.0, 0.02]), pid, 0.0015)
+    assert got == {}, got  # the torso is never pushed out round an arm; the aligned under sleeve not alone
+    got = cloth._sleeve_push_out(M, names, pcs, np.array([0.0, 0.004, 0.02]), pid, 0.0015)
+    assert set(got) == {"top"} and abs(got["top"] - 0.005) < 1e-9, got
+
+
+def test_preflight_fails_a_start_past_the_strain_limiter():
+    """dress-garrett 2026-10-15: the base-hps jacket j15 failed at frame 0 ("ccd failed (toi 0)", strain limiting toi
+    0): 3.47% of its triangles started over the 5% limit, above the runner's 3% start_over, so none got a local
+    limit. The preflight replays cloth_zozo's limits: over 3% fails, under it passes (local limit)."""
+    import numpy as np
+    from hifipushie import cloth_job
+    n = 20
+    gx, gy = np.meshgrid(np.arange(n + 1) * 0.01, np.arange(n + 1) * 0.01)
+    uv = np.c_[gx.ravel(), gy.ravel()]
+    idx = lambda i, j: i * (n + 1) + j
+    F = np.array([t for i in range(n) for j in range(n)
+                  for t in ((idx(i, j), idx(i, j + 1), idx(i + 1, j + 1)), (idx(i, j), idx(i + 1, j + 1), idx(i + 1, j)))])
+    cfg = {"placement": "smooth", "pieces": ["front"], "made": [], "strain_limit": 0.05}
+
+    def start(rows):  # the first `rows` rows of cells stretched 20% across
+        X = np.c_[uv, np.zeros(len(uv))]
+        X[:, 0] *= np.where(uv[:, 1] < rows * 0.01 - 1e-9, 1.2, 1.0)
+        return {"X": X, "F": F, "uv": uv, "piece": np.zeros(len(uv), int), "bodyV": np.zeros((3, 3)) + 9,
+                "bodyT": np.array([[0, 1, 2]])}
+    a = cloth_job.start_strain_check(start(0), cfg)
+    assert a["ok"] and a["over"] == 0, a
+    b = cloth_job.start_strain_check(start(1), cfg)  # one row of 20: ~2.5-5% of the faces? count says
+    many = cloth_job.start_strain_check(start(4), cfg)  # 4 of 20 rows: far over 3%
+    assert not many["ok"] and not many["local"] and many["past"] == many["over"] > 0, many
+    assert b["over_frac"] <= 0.03 or not b["ok"], b
+    few = dict(cfg, start_over=0.5)  # the same start under a looser rule: local limit, passes
+    assert cloth_job.start_strain_check(start(4), few)["ok"]
+    assert cloth_job.start_strain_check(start(4), dict(cfg, placement="placed"))["ok"]  # rest = start: n/a
+    assert not cloth_job.preflight(start(4), cfg)["ok"]
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

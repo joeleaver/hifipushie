@@ -29,7 +29,9 @@ BLOCKS = ("skirt_block", "draft")
 WORDS = {"skirt_block": ("length", "ease", "flare", "darts", "waistband", "overlap", "closure", "front_dart_length",
                          "back_dart_length"),
          # "draft": a block + pattern-making operations (pattern_draft.py): a garment that has no ready-made draft
-         "draft": ("block", "block_options", "ops")}
+         # ("kind": the garment kind whose drafting defaults apply, e.g. a jacket's cap height: what a design sheet
+         # compiles in and pattern_draft.build reads)
+         "draft": ("block", "block_options", "ops", "kind")}
 
 
 def _curve(p0, p1, p2, n=12):

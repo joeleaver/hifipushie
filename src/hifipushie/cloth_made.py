@@ -1324,13 +1324,92 @@ def options(g: dict) -> dict | None:
     lapel laid as a ruled strip first, board_lapel; default OFF, experimental: on Garrett it straightened the roll line
     (18-34 -> 8-9 mm) but folded pouches at the breaks and bulges under the lapels), "lapel": "made" (the lapel
     constructed, made_lapel: straight roll line and outer edge, laid on the drape; the default) | "pressed" (press_flap:
-    the simulated flap mirrored onto its forepart), "press" (fold-name prefixes whose
+    the simulated flap mirrored onto its forepart), "mirror": "mean" | "L" (both lapels, the drape within
+    `mirror_reach` (0.10 m) of them and the made collar pressed to one mirror-symmetric shape: open fronts), "press" (fold-name prefixes whose
     flaps are pressed, default ["lapel"]; EXPERIMENTAL for others: ["open neck"] on a shirt chose the wrong side of
     front.R's weak roll and cut the V, cloth10 c10_dbg_steps (c))}."""
     c = g.get("construct", True)
     if c is False or c is None:
         return None
     return dict(CONSTRUCT, **(c if isinstance(c, dict) else {}))
+
+
+def mirror_pairs(M: dict, names_: tuple | None = None, tol: float = 2e-4) -> tuple:
+    """Vertex correspondence between each ".L" piece and its ".R" mirror (pieces cut from one pattern piece: the same
+    pattern points, the R piece's uv equal, or flipped in u about 0 or the piece's centre) -> (iL, iR) index arrays; a pair whose
+    points don't match within `tol` (m, in the pattern) is left out."""
+    names, piece, uv = list(M["names"]), np.asarray(M["piece"]), np.asarray(M["uv"], float)
+    iL, iR = [], []
+    for n in names:
+        if not n.endswith(".L") or (names_ is not None and n not in names_) or n[:-2] + ".R" not in names:
+            continue
+        a = np.where(piece == names.index(n))[0]
+        b = np.where(piece == names.index(n[:-2] + ".R"))[0]
+        if len(a) != len(b):
+            continue
+        best = None
+        for flip in (None, 0.0, "centre"):  # (as cut / mirrored about u = 0 / about the left piece's centre)
+            ub = uv[b].copy()
+            if flip == "centre":
+                ub[:, 0] = uv[a][:, 0].min() + uv[a][:, 0].max() - ub[:, 0]
+            elif flip is not None:
+                ub[:, 0] = -ub[:, 0]
+            d, j = cKDTree(ub).query(uv[a])
+            if best is None or np.median(d) < best[0]:
+                best = (float(np.median(d)), float(d.max()), j)
+        if best[1] < tol and len(np.unique(best[2])) == len(a):
+            iL.append(a)
+            iR.append(b[best[2]])
+    if not iL:
+        return np.zeros(0, np.int64), np.zeros(0, np.int64)
+    return np.concatenate(iL), np.concatenate(iR)
+
+
+def symmetrize(V: np.ndarray, iL: np.ndarray, iR: np.ndarray, x0: float, w: np.ndarray | None = None,
+               keep: str = "mean") -> np.ndarray:
+    """Left and right made one shape (mirror symmetry across x = x0, the way a tailor presses both lapels to one
+    template): each pair goes to the mean of the left and the mirrored right ("mean"), or the right becomes the
+    mirrored left ("L"); w (per pair, 0-1) blends from the drape as it was (0) to symmetric (1)."""
+    V = np.array(V, float)
+    A, B = V[iL].copy(), V[iR].copy()
+    Bm = B.copy()
+    Bm[:, 0] = 2 * x0 - Bm[:, 0]
+    T = 0.5 * (A + Bm) if keep == "mean" else A
+    Tm = T.copy()
+    Tm[:, 0] = 2 * x0 - Tm[:, 0]
+    w = np.ones(len(iL)) if w is None else np.clip(np.asarray(w, float), 0, 1)
+    V[iL] = A + w[:, None] * (T - A)
+    V[iR] = B + w[:, None] * (Tm - B)
+    return V
+
+
+def _mirror_weight(V: np.ndarray, iL: np.ndarray, core: np.ndarray, reach: float) -> np.ndarray:
+    """Per pair: 1 on the core (left-side vertices: the lapels' pieces above the break), smoothstep to 0 at `reach`."""
+    if not len(core):
+        return np.zeros(len(iL))
+    d = cKDTree(V[core]).query(V[iL])[0]
+    t = np.clip(1 - d / max(reach, 1e-6), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def mirror_part(P: np.ndarray, grid: tuple, x0: float, keep: str = "mean", tol: float = 0.03) -> tuple:
+    """A made part on a (stations x rows) grid running side to side (a collar): station i pairs with n-1-i; made
+    mirror symmetric across x = x0. -> (P, median mirrored mismatch before, m); unchanged when the grid isn't
+    side-to-side (mismatch over `tol`)."""
+    n, m = grid
+    P = np.asarray(P, float)
+    idx = np.arange(n * m).reshape(n, m)
+    a, b = idx[: n // 2].ravel(), idx[::-1][: n // 2].ravel()
+    Pb = P[b].copy()
+    Pb[:, 0] = 2 * x0 - Pb[:, 0]
+    mis = float(np.median(np.linalg.norm(P[a] - Pb, axis=1)))
+    if mis > tol:
+        return P, mis
+    P = symmetrize(P, a, b, x0, keep=keep)
+    if n % 2:
+        c = idx[n // 2]
+        P[c, 0] = x0
+    return P, mis
 
 
 def lapel_flaps(M: dict, prefixes: tuple = ("lapel",)) -> list:
@@ -1368,6 +1447,25 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
     uv = np.asarray(M["uv"])
     bFo = outward(np.asarray(bV, float), np.asarray(bT))
     made = {"lapels": [], "parts": [], "info": {}}
+    # mirror (open fronts): both lapels and the collar pressed to ONE shape, as a tailor works both sides from one
+    # template; the drape round them made symmetric first (eased out over `mirror_reach`), so each side is built on
+    # the same base (dg_j10: a symmetric start simulated to rolls of 51 / 142 deg, then built into two lapels)
+    mir = opt.get("mirror")
+    x0 = 0.5 * (float(np.min(np.asarray(bV)[:, 0])) + float(np.max(np.asarray(bV)[:, 0]))) if mir else 0.0
+    if mir:
+        iL, iR = mirror_pairs(M)
+        core = np.concatenate([np.r_[L["flap"], L["row"]] for L in flaps if str(L["piece"]).endswith(".L")] or [np.zeros(0, np.int64)])
+        wm = _mirror_weight(V, iL, core.astype(np.int64), float(opt.get("mirror_reach", 0.10)))
+        if len(iL) and wm.any():
+            d0 = V[iR].copy()
+            d0[:, 0] = 2 * x0 - d0[:, 0]
+            mis0 = np.linalg.norm(V[iL] - d0, axis=1)[wm > 0.5]
+            V = symmetrize(V, iL, iR, x0, wm, keep=mir if mir in ("mean", "L") else "mean")
+            made["info"]["mirror"] = {"pairs": int((wm > 0).sum()), "x0": round(x0, 4),
+                                      "drape_mismatch_mm": {"p50": round(float(np.median(mis0)) * 1000, 1) if len(mis0) else 0.0,
+                                                            "max": round(float(mis0.max()) * 1000, 1) if len(mis0) else 0.0}}
+        else:
+            mir = None
     for L in flaps:
         if opt.get("board", False) and len(L.get("row", [])) >= 3:
             und_l = []
@@ -1499,6 +1597,10 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
                 V[L["flap"]] = Pf + np.where(hit[:, None], dl, ease)
         made["lapels"].append({"piece": L["piece"], "vertices": int(len(L["flap"])), "lifted_over_under": lifted, "lifted_over_own": self_lift,
                                "moved_mm": round(float(np.median(np.linalg.norm(V[L["flap"]] - before, axis=1))) * 1000, 1)})
+    if mir:
+        Vb_ = V.copy()
+        V = symmetrize(V, iL, iR, x0, wm, keep=mir if mir in ("mean", "L") else "mean")
+        made["info"]["mirror"]["lapels_moved_mm"] = round(float(np.linalg.norm(V - Vb_, axis=1).max()) * 1000, 1)
     names, piece = list(M["names"]), np.asarray(M["piece"])
     if opt["collar"] and "collar" in names and M.get("sew") is not None and any("Fb" in L for L in flaps):
         mj = piece == names.index("collar")
@@ -1560,6 +1662,9 @@ def construct(V: np.ndarray, M: dict, bV: np.ndarray, bT: np.ndarray, g: dict, u
         nc = notched_collar(P, into_cloth(V, F, ch["idx"]), flap_all[ch["idx"]], {"V": np.asarray(bV, float), "F": bFo}, inner,
                             [{"V": V, "F": own}], (c, ax), top_z=top_z, pattern=pat, ends=ends, **kw)
         pt = nc["parts"][0]
+        if mir and pt.get("grid"):
+            pt["V"], mis_ = mirror_part(pt["V"], pt["grid"], x0, keep=mir if mir in ("mean", "L") else "mean")
+            made["info"]["mirror"]["collar_mismatch_mm"] = round(mis_ * 1000, 1)
         made["parts"].append({"name": "collar", "V": pt["V"], "F": pt["F"], "uv": pt["uv"], "grid": pt["grid"],
                               "thickness": float(nc["info"]["params"]["thickness"]), "replaces": ["collar"]})
         made["info"]["collar"] = {k: v for k, v in nc["info"].items() if k != "params"}

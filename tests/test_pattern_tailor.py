@@ -455,6 +455,142 @@ def test_jeans_legs_start_on_their_tubes():
     assert lowest == "front.L", lowest
 
 
+def test_side_neck_point_on_the_shoulder_crest(monkeypatch=None):
+    """The hps is where the shoulder's crest meets the neck loop, not the loop's widest point: a deep neck section
+    (widest 3 cm in front of the ridge) put the back tape over the neck's top (gp_h6c: 258 mm to the armpit for a
+    187 mm drop)."""
+    import numpy as np
+    from hifipushie import tailor
+    a = np.linspace(0, 2 * np.pi, 200, endpoint=False)
+    # an egg-shaped neck loop, widest at y = -0.03, deeper at the front
+    y = np.where(np.sin(a) < 0, 0.08, 0.04) * np.sin(a)
+    x = 0.06 * np.cos(a) * (1 - 0.4 * np.clip((y + 0.03) / 0.07, 0, 1) ** 2)
+    L = np.c_[x, y, np.full_like(x, 1.55)]
+    w = L[np.argmax(L[:, 0])]
+    crest = np.array([[w[0] + 0.01, yy, 1.52 - 3 * (yy - 0.005) ** 2] for yy in np.linspace(-0.1, 0.1, 81)])
+    orig = tailor.section
+    try:
+        tailor.section = lambda V, T, o, n, near: crest
+        h, zc = tailor._side_neck(None, None, L)
+        assert abs(zc - 1.52) < 1e-3  # the crest's height: the tapes start below it
+        assert abs(h[1] - 0.005) < 1e-3 and h[0] > 0  # on the ridge's y, on the loop's outer side
+        assert np.min(np.linalg.norm(L[:, :2] - h[:2], axis=1)) < 0.003  # on the loop
+        tailor.section = lambda V, T, o, n, near: None
+        h, zc = tailor._side_neck(None, None, L)
+        assert np.allclose(h, w) and zc is None  # the section missed: the widest point
+    finally:
+        tailor.section = orig
+
+
+def test_neck_base_is_the_lowest_ring_of_the_neck():
+    """The base-of-neck ring: from the neck's narrowest tilted section down while the girth stays within the ratio
+    (past it the plane runs out onto the shoulders). Synthetic: circles whose radius grows below the neck."""
+    import numpy as np
+    from hifipushie import tailor
+    nj, nd = np.array([0.0, 0.0, 1.5]), np.array([0.0, 0.0, 1.0])
+    a = np.linspace(0, 2 * np.pi, 120, endpoint=False)
+
+    def fake(V, T, o, n, near):
+        h = float(o[2] - nj[2])
+        r = 0.06 + (0.0 if h > -0.03 else 0.02 * (-0.03 - h) / 0.004)  # flat neck, then shoulders flare
+        u = np.cross(n, [1.0, 0, 0]); u /= np.linalg.norm(u); w = np.cross(n, u)
+        return o + r * (np.cos(a)[:, None] * w + np.sin(a)[:, None] * u)
+    orig = tailor.section
+    try:
+        tailor.section = fake
+        L, n = tailor._neck_base(None, None, nj, nd, 0.37)
+        assert L is not None and n[1] < 0 < n[2]  # tipped forward: the front of the ring is lower
+        z = float(L[:, 2].mean() - nj[2])
+        assert -0.034 < z < -0.026, z  # the last ring before the flare
+        tailor.section = lambda V, T, o, n, near: None
+        assert tailor._neck_base(None, None, nj, nd, 0.37) == (None, None)
+    finally:
+        tailor.section = orig
+
+
+# ANSUR II (2012) men, shoulder length (trapezius point -> acromion) p5 / p95: / stature 0.076 / 0.095,
+# / biacromial breadth 0.330 / 0.391 (headbody/ansur/ANSUR_II_MALE_Public.csv)
+_SL_MEN = {"st": (0.076, 0.095), "bia": (0.330, 0.391)}
+
+
+def test_side_neck_point_meets_the_population_shoulder_length():
+    """On real bodies the hps (on the base-of-neck line) -> shoulder point falls in ANSUR II's p5-p95 band for men,
+    as a ratio of stature and of the shoulder breadth. The shoulder-crest hps read 187 mm on dg_garrett (0.106 of
+    stature, 0.432 of the breadth): far outside both. Skipped where the workspace models are absent."""
+    import os
+    import numpy as np
+    from hifipushie import cloth, store, tailor
+    done = 0
+    for m in ("dg_garrett", "dg_mh", "gp_A01"):
+        try:
+            s = store.load(m)
+        except Exception:
+            continue
+        os.environ["HP_HPS"] = "base"  # opt-in research path (the default is "widest")
+        b = cloth.model_body(m, s, {})
+        R = tailor.measure(b["V"], b["F"], b["J"])
+        h, sh = np.asarray(R["at"]["hps.L"]), np.asarray(R["at"]["shoulder.L"])
+        st = float(np.ptp(np.asarray(b["V"])[:, 2]))
+        sl = float(np.linalg.norm(sh - h))
+        assert "neck_base" in R["loops"], m
+        assert _SL_MEN["st"][0] <= sl / st <= _SL_MEN["st"][1], (m, sl / st)
+        assert _SL_MEN["bia"][0] <= sl / (2 * sh[0]) <= _SL_MEN["bia"][1], (m, sl / (2 * sh[0]))
+        done += 1
+    os.environ.pop("HP_HPS", None)
+    if not done:
+        print("skip: no workspace bodies")
+
+
+# ANSUR II men within 40 mm of 1770 stature (n 1742), mm: cervicale - acromion, suprasternale - acromion,
+# cervicale - suprasternale, p5 / p95 (the base ring's centre back / centre front against the shoulder point)
+_RING_MEN = {"cb_sp": (56.0, 100.0), "cf_sp": (-25.0, 21.0), "cb_cf": (61.0, 98.0)}
+
+
+def test_neckline_is_drafted_on_the_base_ring():
+    """The bodice's neckline lies on the base-of-neck ring the hps sits on (dress-garrett r): the front neck's depth is
+    the ring's centre front below the hps, the back neck's drop the hps tape less the ring's centre-back tape, and the
+    neckline (front + back per half) the ring's girth + 1% (or the neck's + the collar ease if longer). Drafted from
+    the loop 2 cm up the neck, Garrett's front was 13 mm deep and his back 15 mm low; the start stretched past ZOZO's
+    strain limit at the neck (3.47% of faces). On men the ring's centre back / front sit in ANSUR II's p5-p95 against
+    the shoulder point. Skipped where the workspace models are absent."""
+    import os
+    import numpy as np
+    from hifipushie import cloth, store, tailor, pattern_blocks as pb
+    done, keep = 0, tailor.NECK_BASE_DROP
+    tailor.NECK_BASE_DROP = 0.0445  # the opt-in tilt solve (WIP)
+    for m, man in (("dg_garrett", True), ("dt_tess_frz", False), ("dg_mh", True)):
+        try:
+            s = store.load(m)
+        except Exception:
+            continue
+        os.environ["HP_HPS"] = "base"  # opt-in research path (the default is "widest")
+        b = cloth.model_body(m, s, {})
+        R = tailor.measure(b["V"], b["F"], b["J"])
+        mm, at = R["mm"], R["at"]
+        h, cb, cf, sp = (np.asarray(at[k]) * 1000 for k in ("hps.L", "cb_neck_base", "cf_neck_base", "shoulder.L"))
+        if man:
+            for k, v in (("cb_sp", cb[2] - sp[2]), ("cf_sp", cf[2] - sp[2]), ("cb_cf", cb[2] - cf[2])):
+                assert _RING_MEN[k][0] - 2 <= v <= _RING_MEN[k][1] + 2, (m, k, v)
+        mm2 = cloth.length_level(dict(mm))
+        B = pb.bodice(mm2, {"neckline": "ring"})
+        fr, bk = B["pieces"]["front"], B["pieces"]["back"]
+        pt = lambda P, k: np.asarray(P["P"][P["names"][k]]) * 1000
+        fn = -pt(fr, "cfNeck")[1]
+        bn = -pt(bk, "cbNeck")[1]
+        nw = pt(fr, "hps")[0]
+        assert abs(fn - (h[2] - cf[2])) < 3, (m, fn, h[2] - cf[2])
+        assert abs(bn - float(np.clip(mm["hpsToWaistBack"] - mm["napeBaseToWaistBack"], -30, 50))) < 3, (m, bn)
+        ln = (B["meta"]["neck_front"] + B["meta"]["neck_back"]) * 1000
+        want = max(1.01 * mm["neckBase"], 1.05 * mm["neck"]) / 2
+        assert abs(ln - want) < 3, (m, ln, want)
+        assert nw > h[0], (m, nw, h[0])  # the flat neck is the arc round the body, wider than the ring's half width
+        done += 1
+    tailor.NECK_BASE_DROP = keep
+    os.environ.pop("HP_HPS", None)
+    if not done:
+        print("skip: no workspace bodies")
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):

@@ -54,6 +54,8 @@ Backends (garment key "backend", or $HIFIPUSHIE_CLOTH_BACKEND; default "blender"
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import hashlib
 import json
 import os
@@ -64,6 +66,37 @@ import time
 from pathlib import Path
 
 import numpy as np
+
+# Submitting a sim to a RENTED solver (the GPU fleet, a rented box) costs money, so it is opt-in at the call site
+# (dress-garrett 2026-10-15: model_body(simulate=True) from a measuring script built a layered garment's under
+# garment and submitted it, twice). Allowed only inside `submitting()` (cloth.dress's worker, export's
+# garments(simulate=True)) or with HP_SUBMIT_SIMS=1 in the environment; anything else raises SimNotSubmitted, the job
+# folder already written. Free remotes (have.sh: the broker's pulled results; nobox.sh) are never gated.
+_SUBMIT = contextvars.ContextVar("hp_submit_sims", default=False)
+FREE_REMOTES = ("have.sh", "nobox.sh")
+
+
+class SimNotSubmitted(RuntimeError):
+    """A rented sim was asked for without an explicit opt-in (submitting() / HP_SUBMIT_SIMS=1)."""
+
+
+@contextlib.contextmanager
+def submitting():
+    """Allow rented sims inside this block (the call site's explicit opt-in)."""
+    tok = _SUBMIT.set(True)
+    try:
+        yield
+    finally:
+        _SUBMIT.reset(tok)
+
+
+def may_submit() -> bool:
+    return bool(_SUBMIT.get()) or os.environ.get("HP_SUBMIT_SIMS") == "1"
+
+
+def _paid(remote: str) -> bool:
+    return Path(shlex.split(remote)[0]).name not in FREE_REMOTES + tuple(
+        x for x in os.environ.get("HP_FREE_REMOTES", "").split(":") if x)
 
 FORMAT = 1
 FPS = 24
@@ -351,6 +384,25 @@ def run_zozo(job_dir: Path, progress, log=print, timeout: float | None = None) -
     if not remote and os.environ.get("HIFIPUSHIE_GPU") == "bundle":  # oxidegen's GPU fleet (bundle jobs), the default remote
         remote = str(Path(__file__).resolve().parents[2] / "spikes" / "gpu_cloth" / "bundle.sh")
     if remote:
+        if _paid(remote) and not may_submit():
+            raise SimNotSubmitted(f"cloth job {job_dir}: not submitted to the rented solver ({Path(shlex.split(remote)[0]).name}):"
+                                  " no opt-in at the call site (run it under cloth_job.submitting(), or HP_SUBMIT_SIMS=1;"
+                                  " measuring / drafting never submits). The job folder is written.")
+        if _paid(remote) and os.environ.get("HP_SKIP_PREFLIGHT") != "1":
+            # (dress-garrett 2026-10-15: j15 was paid for and failed at frame 0 on a start the strain check refuses)
+            jd_ = Path(job_dir)
+            try:
+                arr_ = dict(np.load(jd_ / "in.npz", allow_pickle=False))
+                cfg_ = json.loads((jd_ / "job.json").read_text())
+            except Exception:
+                arr_ = None
+            if arr_ is not None:
+                pf_ = preflight(arr_, cfg_)
+                if not pf_["ok"]:
+                    raise SimNotSubmitted(f"cloth job {job_dir}: not submitted, its start fails the preflight (body "
+                                          f"{pf_['body_mm']:.2f} mm / {pf_['body_pairs']} pairs, self "
+                                          f"{(pf_['self'] or {}).get('ok')}, strain {pf_['strain']}): fix the start "
+                                          "(HP_SKIP_PREFLIGHT=1 overrides)")
         return run_external(job_dir, "remote", progress, timeout, cmd=remote)
     from . import resources
     cmd, env = zozo_command(job_dir)
@@ -395,3 +447,203 @@ def run_external(job_dir: Path, backend: str, progress, timeout: float = 7200, c
             time.sleep(2.0)
         time.sleep(1.0)  # let the writer finish
     return read_out(out)
+
+
+def _pt_tri(p: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """Distance from points p to triangles abc, row-wise (exact: the face, else its nearest edge)."""
+    ab, ac = b - a, c - a
+    n = np.cross(ab, ac)
+    nn = np.maximum(np.einsum("ij,ij->i", n, n), 1e-30)
+    t = np.einsum("ij,ij->i", p - a, n) / nn
+    q = p - t[:, None] * n
+    v2 = q - a
+    d00, d01, d11 = (np.einsum("ij,ij->i", x, y) for x, y in ((ab, ab), (ab, ac), (ac, ac)))
+    d20, d21 = np.einsum("ij,ij->i", v2, ab), np.einsum("ij,ij->i", v2, ac)
+    den = np.where(np.abs(d00 * d11 - d01 * d01) > 1e-30, d00 * d11 - d01 * d01, 1e-30)
+    v = (d11 * d20 - d01 * d21) / den
+    w = (d00 * d21 - d01 * d20) / den
+    inside = (v >= 0) & (w >= 0) & (v + w <= 1)
+
+    def seg(a_, b_):
+        d = b_ - a_
+        s = np.clip(np.einsum("ij,ij->i", p - a_, d) / np.maximum(np.einsum("ij,ij->i", d, d), 1e-30), 0, 1)
+        return np.linalg.norm(p - (a_ + s[:, None] * d), axis=1)
+    return np.where(inside, np.abs(t) * np.sqrt(nn), np.minimum(np.minimum(seg(a, b), seg(b, c)), seg(c, a)))
+
+
+def self_proximity(X: np.ndarray, F: np.ndarray, piece: np.ndarray, below: float,
+                   skip: np.ndarray | None = None) -> list:
+    """A start's cloth against ITSELF, within each piece: (distance, vertex, face) for every vertex closer than `below`
+    to a triangle of its own piece that doesn't contain it, nearest first. dress-garrett 2026-10-15: shirt s7 failed at
+    frame 0 ("ccd failed (toi 0)") with the back's left armhole folded at the start, a vertex 0.22 mm from its own
+    piece's cloth (rest fine, 15.6 mm), inside the contact gap; the body-clearance preflight passed it. Cross-piece
+    contacts (lapped fronts, collar on stand) are normal in a start and not counted. `skip`: vertices not checked
+    (carried made pieces, pinned as constructed)."""
+    from scipy.spatial import cKDTree
+    X, F, piece = np.asarray(X, float), np.asarray(F), np.asarray(piece)
+    cen = X[F].mean(1)
+    rad = float(np.linalg.norm(X[F] - cen[:, None], axis=2).max())
+    vs = np.arange(len(X)) if skip is None else np.where(~np.asarray(skip, bool))[0]
+    L = cKDTree(cen).query_ball_point(X[vs], rad + below)
+    I = np.array([(v, f) for v, fs in zip(vs, L) for f in fs], np.int64).reshape(-1, 2)
+    if not len(I):
+        return []
+    I = I[(F[I[:, 1]] != I[:, :1]).all(1) & (piece[F[I[:, 1], 0]] == piece[I[:, 0]])]
+    d = _pt_tri(X[I[:, 0]], *(X[F[I[:, 1], k]] for k in range(3)))
+    m = d < below
+    o = np.argsort(d[m])
+    return [(float(d[m][i]), int(I[m][i, 0]), int(I[m][i, 1])) for i in o]
+
+
+def start_self_check(arrays: dict, gap: float = 1e-3, crush: float = 0.25) -> dict:
+    """A job's start checked against itself, before any money is spent: a same-piece vertex inside the cloth contact
+    gap of its own sheet, CRUSHED in plane (the vertex's one-ring facing the same way as the triangle it nearly
+    touches), and (reported, NOT a fault) edges squeezed under `crush` x their pattern length: dg_j8's undercollar
+    started at 0.13 x and ran, s7's back at 0.14 x failed, so squeeze alone doesn't decide. Designed folds are not faults: vertices on (or
+    next to) a fold row, and folded-over sheets (a crease brings the cloth back facing the other way: lapel roll
+    lines at 0.04 mm ran fine in dg_j8). Calibrated on dress-garrett's starts: shirt s7 (frame-0 failure) has its back's
+    armhole vertex 0.22 mm off its own sheet facing +0.42; the two shirts and the jackets (j8, j12, j13) that ran have
+    none. Returns {"ok", "pairs": [(mm, vertex, face, facing)], "edges":
+    [(ratio, a, b)]}."""
+    X, F, P = np.asarray(arrays["X"], float), np.asarray(arrays["F"]), np.asarray(arrays["piece"])
+    skip = np.zeros(len(X), bool)
+    if "carryIdx" in arrays:
+        skip[np.asarray(arrays["carryIdx"], int)] = True
+    if "releaseIdx" in arrays:
+        skip[np.asarray(arrays["releaseIdx"], int)] = False
+    if "fold" in arrays:
+        fo = np.asarray(arrays["fold"]) > 0
+        fo[F[fo[F].any(1)].ravel()] = True  # one ring round each fold row
+        skip |= fo
+    else:
+        fo = np.zeros(len(X), bool)
+    # a seam closing on itself is not a crush: a sewn vertex at its partner's side of the seam (a one-piece tube's
+    # underarm seam, placed closed: dress-tess's knit sweater starts s30 / s31 ran with 186 / 194 such pairs at 0.0 mm,
+    # every one a sleeve vertex against a face one ring from its own sew partner, ~235 mm away in the pattern)
+    sw_ = [np.asarray(arrays[k], int).reshape(-1, 2) for k in ("sew", "stitch") if k in arrays]
+    sw_ = np.concatenate(sw_) if sw_ else np.zeros((0, 2), int)
+    mate = {}
+    for a_, b_ in sw_:
+        mate.setdefault(int(a_), set()).add(int(b_))
+        mate.setdefault(int(b_), set()).add(int(a_))
+    ring = {}
+    if mate:
+        for t in F:
+            for i in t:
+                if int(i) in mate:
+                    ring.setdefault(int(i), set()).update(map(int, t))
+
+    def across_own_seam(v, f):
+        near_ = set()
+        for u in ring.get(v, {v}):
+            for m_ in mate.get(u, ()):
+                near_ |= ring.get(m_, {m_})
+        return bool(near_ & set(map(int, F[f])))
+
+    pairs = []
+    for d, v, f in self_proximity(X, F, P, gap, skip):
+        if fo[F[f]].any():
+            continue
+        if mate and across_own_seam(int(v), int(f)):
+            continue
+        t = F[f]
+        nt = np.cross(X[t[1]] - X[t[0]], X[t[2]] - X[t[0]])
+        inc = F[(F == v).any(1)]
+        nv = np.cross(X[inc[:, 1]] - X[inc[:, 0]], X[inc[:, 2]] - X[inc[:, 0]]).sum(0)
+        c = float(nt @ nv / max(np.linalg.norm(nt) * np.linalg.norm(nv), 1e-30))
+        if c > 0:
+            pairs.append((1000 * d, v, f, round(c, 2)))
+    edges = []
+    if "uv" in arrays:
+        uv = np.asarray(arrays["uv"], float)
+        E = np.unique(np.sort(np.r_[F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], 1), axis=0)
+        E = E[~(skip[E[:, 0]] & skip[E[:, 1]])]
+        r = np.linalg.norm(X[E[:, 0]] - X[E[:, 1]], axis=1) / np.maximum(np.linalg.norm(uv[E[:, 0]] - uv[E[:, 1]], axis=1), 1e-9)
+        o = np.argsort(r)
+        edges = [(float(r[i]), int(E[i, 0]), int(E[i, 1])) for i in o if r[i] < crush]
+    return {"ok": not pairs, "pairs": pairs, "edges": edges}
+
+
+def start_strain_check(arrays: dict, cfg: dict | None = None) -> dict:
+    """A smooth-placement start against ZOZO's strain limiter, set up exactly as cloth_zozo.py sets it (rest = the flat
+    pattern, made / carried pieces rest as made / placed; draped triangles past the limit get a local limit only while
+    they are at most `start_over` (3%) of the cloth). A face that STARTS at or past its own limit makes the limiter's
+    line search return 0 (strain_toi.kernel) unless the first Newton step happens to take it back under: frame 0
+    "### ccd failed (toi: 0)" + "strain limiting toi: 0". dress-garrett 2026-10-15: the base-hps jacket j15 (3.47% of
+    its triangles over 5%, so no local limit: 217 faces past it) and the base-hps shirt probe (3.04%) failed so; j8
+    (2.27%, 0 past) and shirts s5 / s6 (2.6%, local limit on) ran. Faces past even the local limit's 100% cap (s5 / s6
+    ran with 26-28, s8 failed with 31) are reported, not failed: alone they don't decide. Returns {"ok", "over",
+    "over_frac", "local", "past": faces past their limit with the local limit applied, "capped": faces past the cap,
+    "worst": [(stretch, face, piece)]}. Non-smooth jobs (rest = the start) are always ok."""
+    from . import cloth_zozo as cz
+    cfg = cfg or {}
+    if cfg.get("placement") != "smooth" or cfg.get("rest", "flat") != "flat" or cfg.get("mode") == "fine_settle":
+        return {"ok": True, "skipped": True}
+    X, F, pid, uv = (np.asarray(arrays[k]) for k in ("X", "F", "piece", "uv"))
+    X = X.astype(float)
+    pieces = list(cfg.get("pieces") or [])
+    flat3 = np.c_[np.asarray(uv, float), np.zeros(len(uv))]
+    made = np.isin(pid, [pieces.index(n) for n in cfg.get("made", []) if n in pieces])
+    flat3[made] = np.asarray(arrays["rest"] if "rest" in arrays else X, float)[made]
+    lifted = made.copy()
+    if "releaseIdx" in arrays:
+        lifted[np.asarray(arrays["releaseIdx"], np.int64)] = True
+    if "carryIdx" in arrays:
+        ci = np.asarray(arrays["carryIdx"], np.int64)
+        flat3[ci] = X[ci]
+    lim = float(cfg.get("strain_limit", 0.05))
+    sig = cz._start_stretch(flat3, X, F)
+    over = (sig > 1.0 + lim) & ~lifted[F].all(1)
+    frac = float(over.mean()) if len(F) else 0.0
+    local = 0 < frac <= float(cfg.get("start_over", 0.03))
+    if local:
+        lifted[np.unique(F[over])] = True
+    fm = lifted[F].all(1) | over
+    need = float(sig[fm].max()) - 1.0 if fm.any() else 0.0
+    tgt = min(1.0, 1.3 * need + 0.02) if need > 0.8 * lim else None
+    lv = cz.vertex_limits(pid, pieces, lim, lifted, tgt, np.zeros(len(pid), bool), lim, cfg.get("declared"))
+    past = sig - 1.0 >= lv[F].min(1)
+    capped = int((sig - 1.0 >= 1.0).sum())
+    o = np.argsort(-sig)[:5]
+    worst = [(round(float(sig[i]), 3), int(i), pieces[int(pid[F[i, 0]])] if pieces else int(pid[F[i, 0]])) for i in o]
+    # past the garment's limit with no local limit = certain frame-0 failure; with it, only faces past the cap remain
+    ok = not (over.any() and not local)
+    return {"ok": ok, "over": int(over.sum()), "over_frac": round(frac, 4), "local": local, "past": int(past.sum()),
+            "capped": capped, "worst": worst}
+
+
+def preflight(arrays: dict, cfg: dict | None = None) -> dict:
+    """A job's start checked before it is submitted (dress-garrett 2026-10-15; was the scratch preflight.py): free
+    cloth edges against the collider's edges, closer than the body contact offset (2 mm for a first sim: dg_j4 1.71 mm
+    failed at frame 0, dg_j5 0.26 mm crawled 14 s a frame; 1 mm for a fine settle, which starts from a sim's rest lying
+    at the offset), then `start_self_check` for FIRST sims only. A fine settle starts from a sim's REST, cloth folded
+    on itself at the contact gap: the fine settles that ran (6fbc9b50, 7813e7ca, 0c06de36) all read 39-55 crushed pairs
+    at 0.3-0.8 mm, so the self check skips them (it refused j14's shirt fine settle). Carried made pieces (pinned as
+    constructed) are not checked, released flaps are. Then `start_strain_check` (the start against the strain limiter: j15's
+    frame-0 failure). Returns {"ok", "body_mm", "body_pairs", "self": None (skipped) or start_self_check's dict,
+    "strain": start_strain_check's dict}."""
+    from scipy.spatial import cKDTree
+    from .cloth import _seg_seg
+    cfg = cfg or {}
+    fine = cfg.get("mode") == "fine_settle"
+    X, F = np.asarray(arrays["X"], float), np.asarray(arrays["F"])
+    bV = np.asarray(arrays["bodyV0"] if "bodyV0" in arrays else arrays["bodyV"], float)
+    bT = np.asarray(arrays["bodyT"])
+    edges_ = lambda T: np.unique(np.sort(np.r_[T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], 1), axis=0)
+    E, bE = edges_(F), edges_(bT)
+    ex = np.zeros(len(X), bool)
+    if "carryIdx" in arrays:
+        ex[np.asarray(arrays["carryIdx"], int)] = True
+    if "releaseIdx" in arrays:
+        ex[np.asarray(arrays["releaseIdx"], int)] = False
+    E = E[~ex[E].all(1)]
+    L = cKDTree(bV[bE].mean(1)).query_ball_point(X[E].mean(1), 0.03)
+    I = np.array([(i, k) for i, ks in enumerate(L) for k in ks], np.int64).reshape(-1, 2)
+    body_mm, body_pairs = float("inf"), 0
+    if len(I):
+        _, _, dd = _seg_seg(X[E[I[:, 0], 0]], X[E[I[:, 0], 1]], bV[bE[I[:, 1], 0]], bV[bE[I[:, 1], 1]])
+        body_mm, body_pairs = 1000 * float(dd.min()), int((dd < (0.001 if fine else 0.002)).sum())
+    sc = None if fine else start_self_check(arrays, float((cfg.get("zozo") or {}).get("contact_gap", 1e-3)))
+    st = start_strain_check(arrays, cfg) if all(k in arrays for k in ("uv", "piece")) else {"ok": True, "skipped": True}
+    return {"ok": body_pairs == 0 and (sc is None or sc["ok"]) and st["ok"], "body_mm": body_mm,
+            "body_pairs": body_pairs, "self": sc, "strain": st}

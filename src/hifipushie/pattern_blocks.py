@@ -80,10 +80,23 @@ def edge_length(pc: dict, arc: str) -> float:
 BODICE_DEFAULTS = {"chest_ease": 0.10, "waist_ease": 0.10, "hips_ease": 0.08, "collar_ease": 0.05,
                    "shoulder_ease": 0.0, "biceps_ease": 0.15, "armhole_depth": 0.02, "length": "hips",
                    "length_bonus": 0.0, "fitted": False, "darts": False, "bust_dart": None, "across_back": 0.98,
-                   "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open", "front_balance": 0.0}
+                   "across_front": 0.93, "back_neck": 0.05, "cb": "fold", "cf": "open", "front_balance": "auto"}
 KNIT_DEFAULTS = dict(BODICE_DEFAULTS, chest_ease=0.0, waist_ease=0.02, hips_ease=0.0, biceps_ease=0.05,
                      armhole_depth=0.0, collar_ease=0.12, cf="fold", underarm=None)
 UNDERARM_DEFAULT = 0.025  # m below the armpit, down the back's tape: a set-in sleeve's underarm
+
+
+def front_balance(m: dict, opt="auto") -> float:
+    """The front's extra length over the back from the neck point (m). "auto" measures it on the body: hps -> seat
+    over the front minus over the back (tailor tapes), never below 0. With the hps on the base-of-neck line (the
+    standards' side neck point) a flat-bellied body reads -14 to -31 mm: 0, the cut that hung right (dress-garrett j8);
+    a belly that makes the front longer than the back lengthens the front. (Under the shoulder-crest hps every body
+    read +32 to +40 and the fronts were drafted 40 mm long: Garrett's open jacket swung apart, j10-j13.)"""
+    if opt != "auto":
+        return float(opt or 0.0)
+    if "hpsToSeatFront" not in m or "hpsToSeatBack" not in m:
+        return 0.0
+    return float(np.clip((float(m["hpsToSeatFront"]) - float(m["hpsToSeatBack"])) / 1000.0, 0.0, 0.08))
 
 
 def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
@@ -103,6 +116,27 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         fn = 0.5 * (lo_ + hi_)
         ln_ = pattern.length(np.r_[[[0, -fn]], bez([0, -fn], [nw * 0.75, -fn], [nw, -fn * 0.45], [nw, 0])])
         lo_, hi_ = (fn, hi_) if ln_ < target else (lo_, fn)
+    ring_ = None
+    if o.get("neckline", "upper_loop") == "ring" and all(k in m for k in ("neckBase", "napeBaseToWaistBack", "hpsToWaistBack",
+                                                                   "neckBaseFrontDrop")):
+        # the neckline ON the base-of-neck ring the hps sits on (dress-garrett r): the back neck's drop below the hps
+        # line is the body's own (the hps tape minus the ring's centre-back tape, down the back), the front neck's depth
+        # the ring's centre front below the hps, and the neck width is solved so the neckline is the ring's girth (+1%), or the neck's with
+        # the collar ease if that is longer. Drafted from the loop 2 cm up the neck (the rule's neck / 4.8 and a back
+        # neck of 5% of it), Garrett's front was 13 mm deep and his back 15 mm low; the start stretched past ZOZO's
+        # strain limit at the neck and shoulders (3.47% of the faces). OPT-IN (block option neckline "ring"; default
+        # "upper_loop", the old rule) until a placed start passes the strain preflight: WIP, docs/notes/cloth.md handover r
+        bn = float(np.clip(mm("hpsToWaistBackRaw" if "hpsToWaistBackRaw" in m else "hpsToWaistBack")
+                           - mm("napeBaseToWaistBack"), -0.03, 0.05))
+        fn = float(np.clip(mm("neckBaseFrontDrop"), 0.02, 0.15))
+        target = max(mm("neckBase") * 1.01, neck * (1 + o["collar_ease"])) / 2
+        blen = lambda w: pattern.length(np.r_[[[0, -bn]], bez([0, -bn], [w * 0.6, -bn], [w * 0.92, -bn * 0.25], [w, 0])])
+        flen = lambda w: pattern.length(np.r_[[[0, -fn]], bez([0, -fn], [w * 0.75, -fn], [w, -fn * 0.45], [w, 0])])
+        lo_, hi_ = 0.01, 0.25
+        for _ in range(50):
+            nw = 0.5 * (lo_ + hi_)
+            lo_, hi_ = (nw, hi_) if blen(nw) + flen(nw) < target else (lo_, nw)
+        ring_ = (bn, fn, target)
     if o.get("front_neck") is not None:
         fn = float(o["front_neck"])
     sx = mm("shoulderToShoulder") / 2 * (1 + o["shoulder_ease"])
@@ -125,6 +159,13 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
     hy = wy + mm("waistToHips") if "waistToHips" in m else wy + 0.15
     to_hips = o["length"] != "waist"
     ly = (hy if to_hips else wy) * 1.0
+    if "napeToWaistBack" in m:
+        # the LENGTH from a fixed body level: the nape's tape to the waist (+ waist to hips), plus the back neck's own
+        # depth (the nape sits bn under the hps line on the pattern). The hps tape gave the hem a shoulder-point
+        # definition: the side-neck hps cut it 32 mm on gp_h6c, the jacket rode up and its fronts swung round the
+        # sides (dress-garrett j12, 2026-10-15). The waist line (darts, pockets) stays on the hps tape.
+        lw_ = bn + mm("napeBaseToWaistBack" if ring_ is not None else "napeToWaistBack")
+        ly = lw_ + (hy - wy) if to_hips else lw_
     if isinstance(o["length"], (int, float)):  # metres below the hps at centre back
         ly, to_hips = float(o["length"]), float(o["length"]) > wy + 0.03
     ly += float(o["length_bonus"])
@@ -136,6 +177,9 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
                f"{sx * 1000:.0f}, {sy * 1000:.0f} down (slope {math.degrees(slope):.0f} deg), armhole depth {ay * 1000:.0f}, "
                f"chest quarter {cx * 1000:.0f} (ease {o['chest_ease'] * 100:.0f}%), waist quarter {wq * 1000:.0f}; front neck "
                f"depth {fn * 1000:.0f} mm (solved: the neckline is half the neck girth + {o['collar_ease'] * 100:.0f}%)")
+    if ring_ is not None:
+        log.append(f"neckline on the base ring: back neck {bn * 1000:.0f} mm below the hps line, front {fn * 1000:.0f} "
+                   f"(body), width {nw * 1000:.0f} solved for a neckline of {2 * ring_[2] * 1000:.0f} mm")
     log.append(f"waist suppression {supp * 1000:.0f} mm per quarter: side seam {side * 1000:.0f}, dart {dart * 1000:.0f}, "
                f"left as ease / for panel seams {left * 1000:.0f}")
     bust = None
@@ -212,7 +256,7 @@ def bodice(m: dict, opts: dict | None = None, knit: bool = False) -> dict:
         marks = {}
         if front and bust is not None:
             marks["bust"] = [bust[0], Y(bust[1])]
-        fb = float(o.get("front_balance", 0.0)) if front else 0.0
+        fb = front_balance(m, o.get("front_balance", "auto")) if front else 0.0
         if fb:
             # front balance: the front longer between the neck point and the chest line than the back (a man's
             # chest stands forward of his neck point: cut as long as the back there, an open front is pulled up
@@ -295,7 +339,42 @@ def solve_cap(W: float, ah_front: float, ah_back: float, ease: float) -> dict:
 
 
 SLEEVE_DEFAULTS = {"biceps_ease": 0.15, "cap_ease": 0.015, "wrist_ease": 0.25, "length_bonus": 0.0, "length": None,
-                   "hem_width": None}
+                   "hem_width": None, "cap_height": None}
+# The cap height as a share of the armhole depth (vertical, shoulder point to underarm, mean of front and back) by garment
+# kind. A fitted / tailored sleeve: "approximately 2/3 to 3/4 of the armhole depth measured vertically from the shoulder
+# point to the underarm" (Pattern Principles, Oct/Nov 2005, quoted on the Threads Magazine pattern drafting forum);
+# tailored jackets take the high end for a clean line, shirts and sportswear a lower cap for movement (Minerva, "the
+# sleeve block and armhole relationship"); a basic set-in sleeve's cap ~2 cm short of the armhole depth (US4894918A).
+# None = the old rule (the height solved from the biceps width + ease and the cap length alone).
+CAP_HEIGHT_BY_KIND = {"jacket": 0.75, "coat": 0.75, "blazer": 0.75}
+CAP_EASE_MAX = 0.05  # a coat / jacket cap's ease may rise this far (guide band 3-6%) before the sleeve is narrowed
+CAP_BICEPS_EASE_MIN = 0.08  # ... and the biceps ease no lower than this (a tailored sleeve still has to move)
+
+
+def cap_for_height(m: dict, af: float, ab: float, o: dict, depth: float) -> tuple:
+    """(biceps width W, cap ease, cap) so the cap stands o["cap_height"] x depth: the cap ease first (up to CAP_EASE_MAX),
+    then a narrower sleeve (biceps ease down to CAP_BICEPS_EASE_MIN). Never lower than the plain solve's cap."""
+    W0 = float(m["biceps"]) / 1000.0 * (1 + o["biceps_ease"])
+    cap0 = solve_cap(W0, af, ab, o["cap_ease"])
+    want = float(o["cap_height"]) * depth
+    if not cap0["ok"] or cap0["h"] >= want:
+        return W0, o["cap_ease"], cap0
+    hi_e = max(o["cap_ease"], CAP_EASE_MAX)
+    c = solve_cap(W0, af, ab, hi_e)
+    if c["ok"] and c["h"] >= want:
+        lo, hi = o["cap_ease"], hi_e
+        for _ in range(30):
+            e = 0.5 * (lo + hi)
+            lo, hi = (e, hi) if solve_cap(W0, af, ab, e)["h"] < want else (lo, e)
+        return W0, hi, solve_cap(W0, af, ab, hi)
+    Wmin = float(m["biceps"]) / 1000.0 * (1 + min(CAP_BICEPS_EASE_MIN, o["biceps_ease"]))
+    lo, hi = Wmin, W0  # narrower = higher cap
+    if solve_cap(Wmin, af, ab, hi_e)["h"] < want:
+        return Wmin, hi_e, solve_cap(Wmin, af, ab, hi_e)
+    for _ in range(30):
+        Wm = 0.5 * (lo + hi)
+        lo, hi = (Wm, hi) if solve_cap(Wm, af, ab, hi_e)["h"] >= want else (lo, Wm)
+    return lo, hi_e, solve_cap(lo, af, ab, hi_e)
 
 
 def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None = None, mate: list | None = None) -> dict:
@@ -305,7 +384,12 @@ def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None 
     mm = lambda k: float(m[k]) / 1000.0
     af, ab = armhole if armhole is not None else armhole_lengths(body)
     W = mm("biceps") * (1 + o["biceps_ease"])
-    cap = solve_cap(W, af, ab, o["cap_ease"])
+    depth = o.get("_depth")
+    if o.get("cap_height") and depth:
+        W, o["cap_ease"], cap = cap_for_height(m, af, ab, o, depth)
+        o["biceps_ease"] = W / mm("biceps") - 1
+    else:
+        cap = solve_cap(W, af, ab, o["cap_ease"])
     L = float(o["length"]) if o["length"] else mm("shoulderToWrist") * (1 + o["length_bonus"])
     hw = float(o["hem_width"]) if o["hem_width"] else mm("wrist") * (1 + o["wrist_ease"])
     hem_y = -(L - cap["h"])
@@ -324,7 +408,12 @@ def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None 
     log = [f"sleeve: biceps width {W * 1000:.0f} mm (ease {o['biceps_ease'] * 100:.0f}%), armhole front {af * 1000:.0f} + back "
            f"{ab * 1000:.0f} mm, cap ease {o['cap_ease'] * 100:.1f}% -> cap height {cap['h'] * 1000:.0f} mm "
            f"({cap['h'] / max(body['meta']['armhole_depth'], 1e-6) * 100:.0f}% of the armhole depth), top shifted "
-           f"{cap['xt'] * 1000:+.0f} mm; cap front {cap['front'] * 1000:.0f}, back {cap['back'] * 1000:.0f} mm"]
+           f"{cap['xt'] * 1000:+.0f} mm; cap front {cap['front'] * 1000:.0f}, back {cap['back'] * 1000:.0f} mm"
+           + (f"; {cap['h'] / depth * 100:.0f}% of the shoulder point to underarm depth {depth * 1000:.0f} mm"
+              + (f" (target {o['cap_height'] * 100:.0f}%)" if o.get("cap_height") else "") if depth else "")]
+    if o.get("cap_height") and depth and cap["h"] < 0.98 * o["cap_height"] * depth:
+        log.append(f"!! the cap reaches only {cap['h'] / depth * 100:.0f}% of the armhole depth (target "
+                   f"{o['cap_height'] * 100:.0f}%) at the ease limits: a shallower armhole, or a longer armhole")
     if not cap["ok"]:
         log.append("!! " + cap["why"])
     elif cap["h"] > 1.05 * body["meta"]["armhole_depth"]:
@@ -332,7 +421,8 @@ def sleeve(m: dict, body: dict, opts: dict | None = None, armhole: tuple | None 
                    "(more biceps ease, or a shallower armhole)")
     seams = [["sleeve:underarmF>capTop>underarmB", mate if mate is not None else cap_mate(body)],
              ["sleeve:underarmF>wristF", "sleeve:underarmB>wristB"]]
-    return {"pieces": {"sleeve": pc}, "seams": seams, "meta": {"cap": cap, "width": W, "length": L, "hem_width": hw, "cap_ease": o["cap_ease"]},
+    return {"pieces": {"sleeve": pc}, "seams": seams, "meta": {"cap": cap, "width": W, "length": L, "hem_width": hw, "cap_ease": o["cap_ease"],
+                                                           "biceps_ease": o["biceps_ease"], "depth": depth},
             "log": log}
 
 

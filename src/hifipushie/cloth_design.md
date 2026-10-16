@@ -77,6 +77,7 @@ Design-sheet keys go in `design`; garment keys in `spec` (`design_garment(..., s
 | `tie` | garment / sheet | false (default): a shirt worn with only its collar button open; true: closed to the top |
 | `closures` `[{"name", "state"}]` | garment | How an opening is worn: `{"name": "front", "state": "open"}` hangs a jacket open (buttons stay on); laid over the design's entry by name |
 | `collar_spread` | garment | An open shirt collar's spread [out, down, from] deg (default [18, 14, 65]); false keeps it a ring |
+| `wrap` `{piece: {wrap keys}}` | garment | Laid over a drafted table's piece wraps: how THIS body wears a piece, e.g. `{"stand": {"tilt": 15, "pivot": "back"}, "collar": {"tilt": 15}}` tips the neck bands' front down about the nape (a forward neck under a low jaw) |
 | closure `finish`, `topstitch`, `hole`, `button` | closure entry | How the placket / faced edge, buttonholes and buttons look (guide(topic="cloth_sim"), "Closures and bands") |
 | `block_options.leg` | sheet (trousers) | skinny, slim, tapered, straight, wide: the leg's cut from the leg's own girths |
 | `block_options.length` | sheet (trousers) | `"break"` (suit trousers' default): 30 mm over the floor, back 12 mm longer, the hem resting on the shoe with one soft break |

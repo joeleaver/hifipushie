@@ -3046,6 +3046,618 @@ Faults the code now prevents; kept as the record of what was seen and why.
 | ZOZO builder: assertion `left > right` 0.0 / 0.0 while "computing constraints" | A collider vertex whose faces have no area (an under garment's welded seam slivers), or none at all | Fixed in the collider (faces under 0.0005 mm2 and the vertices they orphan are left out) |
 | A build eats 12+ GB before any sim | A broken start (one triangle 10-30 cm across) searched for crossings with one radius | Fixed: such a start raises "the start is broken: a triangle of <piece> is X m across" |
 
+## dress-garrett (2026-10-14, "dress-garrett" agent, branch `worktree-agent-a772e41978c43cfa6`; Garrett's suit on gp_h6c)
+Goal (Joe): the suit on Garrett's FINAL body (approved head gp_h6c): the jacket redrafted with the corrected armhole
+(back-tape underarm, set_sleeves into_armhole; c12_n18c's underarm was 73-80 mm under the armpit), the shirt, new
+flat-front creased trousers; checked standing AND seated. Model `dg_garrett` = gp_h6c + su_om_garrett's shoes stand-in
+(socks / shoes / soles: the feet are identical) + cloth shirt (su_gc's simon) / jacket (su_gc + q_n18's patches baked
+in, legacy pins dropped) / trousers (suit_trousers). Checklists workspace/checklists/garrett_{jacket,shirt,trousers}.json
+(items from clothlist's garrett_refs.json readings of the concept + the approved sheets). Scratch DURABLE in
+/mnt/data/hifipushie/dress_garrett/: cloth12's + dress_tess's tools retargeted (env.sh, run.sh, q.sh, stage.sh with
+sent.txt, run.py, check.py (the concept checklist), armpit.py, ua_job.py, spend.py: batches stage_q_dg*), mk.py (makes
+the model), upd.py (sets garment keys in the saved spec), chk.py (check_garment with patches), bodies.py (tapes).
+- The underarm default and set_sleeves into_armhole were only on dress-tess's branch: merged here (8a3bbe7f); its guide
+  hunks folded into the split guides by hand.
+- Body: gp_h6c vs su_gc (old): neck 406 (370), shoulders 482 (468), hpsToWaistBack 515 (496), hpsToArmpitBack 258
+  (228), chest / waist / legs within 1 cm. The first check_garment on a new model took 24 min (the body build).
+- Jacket j0 (c12_n18c as is, pins dropped): stage 2 FAILS chest ease +5.2% (fit relaxed 8-18%: the approved jacket's
+  0.06 was never stage-2 checked) and the underarm estimate 4.6 cm (kind 0-3.5): the default 2.5 cm + armhole_depth's
+  extra (0.14 - 0.02) x waistToArmpit = 5.5 cm down the back tape. j1: block_options.underarm 0.035 (~3 cm vertical),
+  chest_ease 0.08 (the band's floor; tighter made ZOZO crawl in cloth12).
+- Trousers t0: suit_trousers tailored, leg tapered (concept knee 146 / opening 114 mm front-view = knee 459 / hem 367
+  round: tapered on his 353 knee), waist_drop 0.07, over shirt, collide shoes + soles, #2f2e2e.
+- STATE: model + checklists made; j1 / s0 / t0 checks running. NEXT: shirt sim (rented), then jacket + trousers over it.
+- Shirt dg_s1 (su_gc's simon, set_sleeves default): stage 4 FAILS the same way the APPROVED shirt does on su_gc
+  (sg0: collar/stand crossings, "stand 44-46 mm inside the neck/jaw", fronts 62-83% stretched on 1.6% of triangles):
+  pre-existing, it simulated clean before. Sim rented ($0.048, coarse + fine): fits, strain p95 0.6%, 2 cuff
+  crossings (0 before the clean-up), collar open with the points spread 137 mm, band ends under the points; renders
+  workspace/cloth_renders/dg_s1*.png. NOT reviewed yet. Its result is what the jacket / trousers lay on.
+- Jacket: j2 = underarm 0.035 + chest_ease 0.09: stage 2 PASSES (underarm estimate 2.8 cm, ease 8%+). Stage 4 (j3):
+  ok, but the under sleeve AS PLACED 6.6 cm under the armpit (top sleeve 1-1.8 cm above). pl.py: the two-piece sleeve
+  crossed the back / side panel it is sewn to and went down the arm 2 rounds (2 cm). FIX (commit "cloth: a woven
+  sleeve set into its armhole ..."): with set_sleeves into_armhole (the default; `B["sleeves_set"]`) a woven keeps its
+  sewn sleeve/bodice crossings at the start as knits do; test test_collar::test_a_woven_sleeve_set_into_its_armhole_
+  is_not_sent_down_the_arm (ga_suit: 1 round vs 3 free; PASS). pl.py after the fix: no rounds down, but the under
+  sleeve's lowest sewn point still reads 68 / 87 mm (the measure reads the SLEEVE as laid on its arm cylinder; with the
+  bodice held the sewing should pull it up: only a result tells).
+- Trousers t1 (suit_trousers tailored, leg tapered, waist_drop 0.07, over shirt): stages 2-4 pass.
+
+## Handover 2026-10-15 (dress-garrett; context full)
+- Branch `worktree-agent-a772e41978c43cfa6` (main 76b62922 + dress-tess merged at 10ca1cd7 + 3 commits: notes, the
+  woven set-in sleeve start fix, its test). Not pushed; main merges. Scratch /mnt/data/hifipushie/dress_garrett/ (see
+  the section head; spend.py counts batches stage_q_dg*).
+- Model dg_garrett (v4+): gp_h6c + shoes stand-in + cloth shirt / jacket (n18 baked, underarm 0.035, chest_ease 0.09,
+  pins dropped) / trousers. Checklists workspace/checklists/garrett_{jacket,shirt,trousers}.json (also in scratch
+  checklists/). Concept readings: /mnt/data/hifipushie/clothlist/garrett_refs.json; check.py <tag> <jacket npz>
+  [trousers npz] [shirt npz] dg_garrett = the concept checklist; vw.sh <pkl tag> <pair tag> fig=1 + sheet.py <now>
+  c12_n18c <out> = the approved sheet's layout (concept | now | approved; the approved tiles copied to out/).
+- BATCH stage_q_dg_b1 (4 jobs, ONE rented batch, 8 min limit) ALL FAILED, $0.162 (not resubmitted):
+  dg_j4 (jacket, underarm 0.035): exit 1 at 4 s, ZOZO "failed to advance" (a pair in contact at the start, no
+  allowance; allow-existing-intersection is on, the bodice is pinned while sewing: suspect the kept sewn crossings
+  meeting the held bodice / the shirt collider); dg_j5 (underarm 0.025): CRAWLED, 14 s a frame (frame 23/150 at 7 min,
+  ~40 min to go: like cloth12's n22 chest-ease crawl); dg_t1 / dg_t2 (trousers, drop 0.07 / 0.045): 4.5-4.9 s a frame,
+  frames 79-89 of 150 at the limit (a 150-frame trousers sim needs ~12 min there: give trousers 15 min).
+  OXIDEGEN MEASUREMENT: in the batch, trousers 4.5-4.9 s/frame; no solo run of the same sims exists to compare (the
+  shirt ran alone, 2 stages, $0.048). Owed: run t1 alone with the same limit and report run_s beside the batch's.
+- Spend this agent: $0.210 (shirt $0.048 + batch $0.162). dress-tess's own: $0.76 at its spend.py (2026-10-14).
+- Decisions: chest ease raised to the KB band's floor (8%: the approved 6% fails stage 2; concept chest reads narrower,
+  441 vs 397 front view on the approved); underarm via block option `underarm` (not armhole_depth); trousers leg
+  tapered from the concept's knee / opening; no authored folds besides the crease.
+- NEXT: (1) jacket: find dg_j4's start contact before any resubmit (run its job on NICO-TOP, where local, free, to get
+  the full log, or check the start for sleeve x shirt-collider / pinned-bodice contact); if the kept crossings cause it,
+  keep them only for pairs not on held pieces, or don't pin the bodice where a sleeve crosses it. Then the jacket's
+  crawl (j5): compare its job with c12_n18's (chest ease, underarm). (2) trousers t1 with timeout 15 min (stage.sh TMIN=15),
+  then judge rise / length / crease against the checklist. (3) review per garment (bin/review, --stage/--not as the
+  brief), seated check: export_asset's rig layers_seated (rig_audit.seated) + a seated render. (4) shirt review.
+
+## dress-garrett, 2026-10-15 (continued)
+- Merged main (7f472faf). Shirt review r1 on dg_s1 (simon defaults): FAIL. MAJORs: the collar a ring standing off the
+  neck, points like wings; baggy (flat-pattern ease chest +15%, waist +22%); cuffs deep, standing off; surface smooth.
+- Start faults found (all cost money before): ZOZO's batch error keeps only the TAIL of its log, and the pair line was
+  cut off. cloth_zozo._solver_said now puts the lines that name the pair last. dg_j4 = jacket side.L top edge 1.71 mm
+  from the body's LEFT armpit crease, EDGE TO EDGE (contact offset 2 mm; every vertex / edge sample > 3 mm: the old
+  clearance samples points). dg_j5 = the same edge at 0.26 mm: crawled 14 s / frame. Fix: `_clear_exact` ends with
+  an exact cloth-edge x collider-edge pass, outward only (`_seg_seg`, `_clear_edges`; test_suit7). Cloth tests: all 15
+  files pass.
+- Batch vs solo (Oxidegen's question): trousers t1 ALONE on a rented 4090 ran 4.4-4.6 s / frame (frame 94/150 at
+  7:53), the same as in the 4-job batch. A trousers sim needs ~12 min: TMIN=15.
+- Shirt s2 (ease chest 0.105 / waist 0.08 = flat +10% / +15%; collarEase 0.03): the coarse sim was fine, and the FINE SETTLE
+  crawled (60-90 s / frame, $0.19): the smaller collar seats higher on the tapering neck and rested on the jaw
+  (collar edges 0.12 mm off). Scratch stage.sh now runs preflight.py on every batch: refuse if FREE cloth (not carried
+  made pieces, plus released flaps) has an edge within 2 mm of a collider edge. It separates every past pass / fail.
+- Garment key `wrap` {piece: {wrap keys}} (cloth.py; cloth_design.md): a drafted piece's wrap set per garment (neck
+  band tilt).
+- Collar attempts (review "collar stands up / off the neck" MAJOR): s3 collarEase 0.07 + neck bands tilt 15 about
+  the nape (the V opens, fit slimmer; collar still upright); s4 + collar_spread [30,22,55] without tilt (worse: tall,
+  crumpled, points folded in); s5 s3 + collarStandWidth 0.045 + collarWidth 1.8 (as s3); s6 s5 + collar_spread
+  [26,20,60] (wider, lower, points out: best so far; review r3 still MAJOR "stands up like a funnel, gap round the
+  neck"). Saved into dg_garrett as the shirt. The guide's own rule: a tucked under garment is judged with what's over
+  it. So NEXT: jacket j6 + trousers t3 over s6 (batch stage_q_dg_b2), then the shirt reviewed as worn.
+- Textured renders show dark smudges at the shoulders beside the collar (clay is clean; the maps are clean): a render
+  issue, still open.
+- Spend (this agent, 2026-10-15): ~$0.70 (failures $0.35: the s2 fine settle $0.19, the t1 solo control $0.15).
+- Coordinator's decision on the collar (STUCK sent): judge the shirt AS WORN under the jacket. If it still reads as a
+  funnel / off the neck there, it gets a dedicated general fix to how open collars are laid. If it reads right
+  worn, it's a known gap. Cuff, shoulder smudges and untucked flare are judged worn too. Fix the jacket's real faults
+  first.
+- NICO-TOP first (coordinator, pending Joe): `LOCAL=1` in stage.sh when bl.sh machines shows NICO-TOP gpu_free;
+  rented when it's busy. It was busy (1 job) all day.
+- Jacket j6 (underarm 0.035, over shirt s6; batch stage_q_dg_b2): SIMULATES now (447 s, 3 s / frame: the start fix
+  works). But the check says CORRUPT: 80 crossings in front.L / front.R, all made by the clean-up (0 in the sim). The lapel roll
+  ended at 44-46 deg (n18c on su_gc: 146-150), so the lapels unrolled in the sim, and "lapel pressed" then moved
+  them 50-51 mm (n18c: 9-17 mm) through the fronts. The collar-to-neck seam (seams 6 / 7) is open 104 mm after the
+  clean-up (n18c 41 mm). The jacket collar floats over the shoulders in dg_j6_collar.png. Under sleeve still 61-62 mm
+  under the armpit (top sleeve -10 / -13). Suspect: the s6 shirt's spread collar points (wider, out onto the
+  collarbones) push the lapels / gorge open. Test it: the jacket over the s1-style shirt (collar_spread default), one
+  change.
+- Trousers t3 (tapered leg, waist_drop 0.07, over s6): sim 496 s ($0.08 share), fine settle ran in 2 s on rented
+  ($0.046) although preflight refused it (1.2 mm over the shirt / shoes). Preflight now uses 1 mm for fine settles
+  and 2 mm for first sims. 0 crossings, fits, crease pressed (15-18 / 35 deg). Review r1 (out/rv_t3/r1): FAIL. MAJORs:
+  no break, hem short; the crease fades below the thigh; legs taper (the concept reads straight); smooth fabric; belt
+  sits on top of the waist as a tube, no buckle, no waistband visible. t4 = leg "straight" + length "floor"
+  (stage_q_dg_t4) running.
+- Review crops: rvshirt.sh <tag> <round> (shirt); out/rv_t3 (trousers: concept boxes whole 400,780,860,1720 / hem
+  400,1450,860,1720 / waist 440,760,820,960 vs tile 0 of <tag>.png, _hem, _waist_tex).
+- Spend (this agent, 2026-10-15): ~$1.15.
+- NEXT: (1) t4 result -> review; then the belt / waistband (belt is a trim: cloth_trims), the crease below the knee.
+  (2) Jacket: the lapel unrolling and the collar seam opening (the shirt-collar test above), then the 62 mm under
+  sleeve. (3) The shirt reviewed WORN (jacket + trousers on). (4) Seated checks for all three.
+
+## Handover 2026-10-15 b (dress-garrett; context full)
+- Spec dg_garrett's shirt is now s5's config (= s6 WITHOUT collar_spread: default spread). Results for s3-s6 are cached
+  in /mnt/data/hifipushie/dress_garrett/results. To go back to s6: upd.py dg_garrett shirt 'collar_spread=[26,20,60]'.
+- Jacket j7 = j6 over that shirt: still CORRUPT, but only 22 crossings, all front.L. Lapel roll end: R 155 deg (rolled,
+  like n18c), L 67.5 deg (unrolled). Collar-to-neck seam L open 128 mm. ONE SIDE WRONG = an asymmetric input (the
+  guide). The left side is also where the side.L top edge started on the armpit crease (j4 / j5). NEXT: compare L / R
+  start inputs (check_garment stages=["place"]; the body's left vs right armpit / shoulder on gp_h6c; the pieces' starts
+  mirrored) before touching the draft. Then the 61-62 mm under sleeve (top sleeve -6 / -13: the under sleeve hangs
+  low after the sim too; the set-in start fix didn't pull it up).
+- Trousers t4 (leg straight, length floor): sim 374 s + fine settle, both ok ($0.10). Renders were being written at
+  handover (stage_q_dg_t4 round 3 build): dg_t4*.png. NEXT: review it with out/rv_t3's crops (swap res_* for dg_t4
+  tiles), then the belt / waistband MAJORs (the belt is a trim) and the crease below the knee.
+- Spend this agent 2026-10-15: ~$1.30 (spend.py sums stage_q_dg* batches; the diag / solo / t3f batches are named
+  dg_j4diag2, stage_q_dg_t1solo, stage_q_dg_t3f).
+
+## dress-garrett, 2026-10-15 c (fresh session)
+- Trousers t4 (leg straight, length floor; renders finished): review out/rv_t4/r1 FAIL. MAJORs: the leg flares below the
+  knee (hem reads 15-20% wider than the knee; the concept's is ~10% narrower), no crease below the thigh, cloth reads
+  knit / fleece, belt sticks out past the trousers at the hips, hem stands off the instep (no break), belt a round tube
+  with ring loops, buckle a featureless block, no visible waistband / fly. Floor length made the hem pile out and flare.
+- Trims (cloth_trims.py, general): a strap's four sides and a box's six faces have their own vertices (square edges in a
+  smooth-shaded render: shared corners shaded the belt as a tube and the buckle as a blob); the buckle is a FRAME (four
+  bars, the bar the prong turns on, a prong) and a leather keeper beside it; trims carry `roughness` (belt 0.45,
+  buckle 0.3) into cloth.look.
+- t5 (running, rented, TMIN 15): leg straight + hem 0.205 flat (410 round, 88% of the 466 knee), length back to the
+  kind's "break", crease op angle 240 / strength 0.8 (design.ops overrides the detail's 205 / 0.6: the pressed ridge is
+  sharpened to 60 deg, was 35), belt {"type": "leather", "trim": {color #2b1e16, width 0.03, roughness 0.4}}.
+- JACKET one-sided lapel: the INPUT difference found. asym.py <model> <garment> [k=json] (place only: L vs mirrored R per
+  piece, collider / under / body mirror distances). The pattern is mirror-exact (lrpat.py), body and padded collider
+  symmetric below 1.3 m (p95 < 1 mm). The start is not: front.L (the closure's OVER side) starts 10 mm further out
+  (y -10 mm mean at every height 0.85-1.25 m; p50 15 mm from the mirrored front.R): the lap offset (OPEN_LAP default
+  True) for a front worn OPEN, with nothing between the fronts. open_lap false: the offset is gone (mean y within
+  2-3 mm; p50 8-9 mm = the meshes' lattice noise: front.L 548 vs front.R 553 vertices, side 143 / 144; mirror_mesh true
+  does NOT equalise them: the outline / fold-row sampling differs too). j8 = j7 + open_lap false (running, rented).
+- Jacket UNDERARM 61 mm (j7, under sleeve; already 57 mm at the START, so not sim sag). Root: the draft puts the
+  underarm at hpsToArmpitBack + underarm down the back pattern, and gp_h6c's back tape reads 258 mm (su_gc 228, bodies
+  otherwise within 1 cm): GNM's neck section is 14 cm deep (su_gc 12), its widest-x point (= HPS, tailor.py) sits at
+  y -0.037 (su_gc -0.017), and the taut tape first crosses 5 cm of neck top before it goes down (hps.py, neckloop.py).
+  In the world the start's armhole bottom is 244 mm under the HPS for 293 mm of pattern; the armpit 187 mm under it.
+  Not changed in tailor.py (every draft on every body would re-key; a coordinator call): recorded as a known bias of the
+  back tape on thick-necked GNM bodies. Place-only (pl.py, open_lap false): underarm 0.0 -> under sleeve 42 / 43 mm
+  placed, 0.01 -> 32 / 35 (placement noise ~10 mm: the under sleeve's push varies 52-82 mm); target 10-45.
+- Spend 2026-10-15 (this session): t5 sim $0.098, j8 sim $0.057.
+- j8 = j7 + open_lap false (rented $0.057, 167 s): crossings 22 -> 2 (collar / front.L), lapel roll ends 112 / 143 deg
+  (j7: 67.5 / 155), lapel_gap 15.5 mm, collar_show 22, underarm still 62 / 63. Render dg_j8.png: the wearer's left
+  lapel still stands off the chest as a board in the side view. Better, still one-sided.
+- The other asymmetric input: the MESH. mirror_mesh never reached the sim mesh: cloth.build meshed (Ms) BEFORE
+  place_keys copied the garment keys onto the pieces (so front.L / front.R 548 / 553 with it on). With the key set,
+  cloth.mesh gives mirror-exact pieces (lrmesh.py: front 98 + 449 border + interior, every vertex with a mirror match,
+  side and back too). FIX: place_keys before the first mesh (commit "cloth.build: garment keys set before ...").
+  j9 = j8 + mirror_mesh true + underarm 0.01 (running, rented).
+- t5's fine settle refused by preflight (back.L 0.72 mm < 1 mm): re-run on NICO-TOP (LOCAL=1, free; stage.sh now
+  honours NOPREFLIGHT=1, used only for free local runs).
+- j9 (j8 + mirror_mesh + underarm 0.01): CRAWLED (18-28 s / frame, frame 19 at 480 s; $0.162). The raised armhole
+  crawls ZOZO as j5 (underarm 0.025) did: a tight underarm in contact under the arm. Keep 0.035 until the start's
+  underarm contact is understood (preflight passes it: > 2 mm edge to edge, so it's not the edge rule).
+- j10 (j8 + mirror_mesh only): ran 2.3-3.4 s / frame but hit the 8 min limit at frame 101 / 150 ($0.160; j8 needed
+  167 s, j6 447 s: the mirror mesh's run is slower). Removed from sent.txt: RESUBMIT with TMIN=12 (not a crawl).
+
+## Handover 2026-10-15 c (dress-garrett; coordinator's tool-call clock: 100 calls)
+- Branch worktree-agent-a772e41978c43cfa6, not pushed. This session's commits: cloth_trims (square-edged strap / boxes,
+  frame buckle + prong + keeper, trim roughness into cloth.look); cloth.build place_keys before the first mesh
+  (mirror_mesh reaches the sim mesh: before it never did); notes.
+- Spend this session: $0.48 (t5 sim 0.098, j8 0.057, j9 crawl 0.162, j10 limit 0.160). Day total ~ $1.78.
+- TROUSERS: t4 review r1 FAIL (out/rv_t4; MAJORs above). t5 (straight, hem 0.205, length "break", crease 240 / 0.8,
+  brown leather belt 30 mm) sim done; its fine settle was refused by preflight (back.L 0.72 mm) and is QUEUED on
+  NICO-TOP (stage_t5b.out, LOCAL=1 NOPREFLIGHT=1, free). When it returns, stage.sh's next round renders dg_t5*.png
+  (check dg_t5.log ends DONE 0). NEXT: crops as out/rv_t4 (tile 0 of dg_t5.png 0,0,396,640; _hem and _waist_tex
+  0,0,640,640; concept crops copied there), bin/review with the same --stage / --not; the hem / break, crease below
+  the knee, belt / buckle / keeper, waistband and fly visibility. Fabric surface (knit vs worsted) is the fine-fold /
+  detail maps: not touched yet.
+- JACKET: L / R input asymmetry = (1) the open front's lap offset (front.L 10 mm out: open_lap false fixes it), (2)
+  the mesh (mirror_mesh, now actually applied). j8 (open_lap only) is better (lapel roll 112 / 143, 2 crossings) but the
+  left lapel still stands off as a board. NEXT: resubmit q_dg_j10.txt with TMIN=12 (open_lap false + mirror_mesh true),
+  then compare the lapel roll ends (FOLD lapel roll lines in the log) and the collar seam gap; if symmetric, save both
+  keys into dg_garrett (upd.py dg_garrett jacket open_lap=false mirror_mesh=true) and consider making open_lap False
+  the default for fronts worn open (a coordinator call: re-keys open garments).
+- UNDERARM: root found (GNM's deep neck puts HPS 2 cm forward; the back tape reads 258 vs su_gc 228). Lowering the
+  draft's underarm (0.01) brings the placed under sleeve to 32-35 mm but the sim crawls. Open: why a raised armhole
+  crawls (look at the start's underarm contact with the shirt collider, ua_job.py / startprox.py).
+- Scripts added in scratch: asym.py (L / R start), lrpat.py (pattern L / R), lrmesh.py (mesh L / R), hps.py,
+  neckloop.py, ua2.py / ua3.py (armhole seam z start / result).
+- STATE: jacket asymmetry partly fixed (open_lap), mesh fix committed but unsimmed; trousers t5 waiting on NICO-TOP.
+  NEXT: j10 with TMIN=12, t5 review, then shirt worn review.
+
+## dress-garrett, 2026-10-15 d (coordinator calls: open_lap default, side-neck point)
+- `cloth.OPEN_LAP = False` (coordinator): a front worn OPEN starts its over side level with the under side; open_lap
+  true keeps the old lapped start. Re-keys open garments' cached sims (accepted). test_suit8 asserts the default.
+- HPS fix (`tailor._side_neck`, coordinator): the hps is where the shoulder's CREST (trapezius ridge, read in a
+  section along y 1 cm outside the loop's widest point, below the loop) meets the neck loop, not the loop's widest-x
+  point; `at["neck_side.L"]` keeps the widest point (the neck's half width: cloth's worn-collar filter reads it).
+  The tapes from the hps (`tailor.measure.down`) now start below the crest (`at["neck_base_z"]`): with the hps moved
+  back, the FRONT tape ran round GNM's deep neck front instead (hpsToBust 249 -> 326 on gp_h6c, and the shirt's draft
+  failed: buttonholes outside front.L, the front 7 cm wider). Test: test_pattern_tailor
+  test_side_neck_point_on_the_shoulder_crest (synthetic loop + crest, fallback).
+- Draft numbers before -> after (mm; default bodice, underarm 0.035; hpsfix.py / mmdiff.py in scratch):
+  | body | hps y | hpsToArmpitBack | armhole depth | vertical hps-armpit | hpsToWaistBack | hpsToBust |
+  | dg_garrett (gp_h6c) | -0.037 -> +0.004 | 258.0 -> 222.6 | 264 -> 231 | 187 -> 194 | 515 -> 483 | 249 -> 281 |
+  | su_gc (old body)    | -0.017 -> -0.009 | 228.0 -> 218.5 | 233 -> 223 | 180 -> 181 | 496 -> 490 | 277 -> 275 |
+  | dt_tess             | -0.039 -> -0.004 | 222.4 -> 198.3 | 239 -> 209 | 154 -> 164 | 447 -> 431 | 238 -> 271 |
+  Back tape / vertical drop: 1.38 / 1.27 / 1.44 -> 1.15 / 1.21 / 1.21 (one ratio now, the three bodies alike); the
+  front tape on gp_h6c now matches su_gc's (281 vs 275: bodies within 1 cm, as measured before). Tess's shoulderSlope
+  11.0 -> 14.1 (her hps rose 1 cm), gp_h6c 10.9 -> 9.9. The approved c12_n18c (su_gc) is NOT re-simulated: its draft
+  would move 10 mm on the back tape to the armpit, 6 mm on hps->waist back, armhole depth -10 mm.
+- Cloth test set on the final code (tests.sh, one file per process): all 15 files rc 0 (folds 13, cloth 30, layers 13,
+  closures 13, check 1, workflow 20, pattern_draft 9, styles 8, tailor 21, collar 6, seams 5, reference 12, suit7 6,
+  suit8 6, made 13).
+- The raised-armhole question resolved THROUGH THE DRAFT: place-only (pl.py, default underarm 0.035) under sleeve
+  57 / 59 -> 35 / 36 mm; j10's sim 33 / 40 (target 10-45; j8 62 / 63). No hand-set underarm.
+- j10 (open_lap default false + mirror_mesh + hps fix; rented $0.100, 294 s, no crawl): NEW fault: the collar /
+  neckline seams open (OPEN SEAM 6 / 7: 9 of 17 pairs, final max 59 / 84 mm, sim max 20 / 21), crossings 22 -> 67
+  (front.L 28, front.R 26: now both sides alike), lapel roll ends 51 / 142 deg (j8 112 / 143), lapel_gap 9.5 / 9.7,
+  collar_show 20.8. Likely cause: the hps moved 1.6 cm in and 4 cm back on gp_h6c; the jacket's neckline / collar
+  placement reads `at["hps.L"]` (cloth.py support kinds ~5908, worn placement `hps`, collar draping from the neck's
+  side) while the front's draft gained 3 cm of hps->bust. Look at the START (place-only: collar seam gap per pair,
+  front neck point vs body hps) before any resubmit. Renders dg_j10*.png were made by stage.sh locally (before the
+  new render rule reached me): NOT reviewed.
+- An old j10 stage.sh round (previous session, 8-min limit) was resubmitting to rented at 16:14: cancelled (SIGINT ->
+  the client cancels its batch). t5's round 2 re-ran its SIM on NICO-TOP (the code change re-keyed it; free, queued).
+
+## Handover 2026-10-15 d (dress-garrett; 70-call limit)
+- Branch worktree-agent-a772e41978c43cfa6, not pushed. Commits this session: tailor side-neck hps + tapes below the
+  crest, OPEN_LAP False, tests, notes.
+- Spend this session: j10 $0.100 (+ the cancelled stale j10 batch, cents). Day ~ $1.88 of $5.
+- RULE (Joe, via coordinator, 2026-10-15): ALL renders go to NICO-TOP via spikes/offload/remote.sh (<= 12 GB, own
+  folder per submit, detached, many frames per submit); laptop only for small check crops (< ~5 s) and flat / ID
+  passes; CPU cap 10 cores for all agents. stage.sh / q.sh still render dg_*.png locally after a sim: route those
+  through remote.sh before the next round.
+- STATE: both coordinator calls done and tested; underarm fixed by the draft; j10 has a NEW collar-seam fault from
+  the hps move; t5 re-simming on NICO-TOP (stage_t5b.out); shirt not reviewed (its draft also moved: re-sim needed).
+- NEXT: (1) j10 collar seam: place-only start, the neckline / collar pairs' gap and where front / back hps land vs
+  `at["hps.L"]`; fix in placement or draft, not the solver; (2) t5 review when NICO-TOP returns it (crops as out/rv_t4);
+  (3) shirt re-sim on the new draft, then review AS WORN; renders on NICO-TOP.
+
+## dress-garrett, 2026-10-15 e
+- j10's "collar seams open" (OPEN SEAM 6 / 7, 59 / 84 mm; j8 had it too: 80 / 137) is NOT a fault of the start or the
+  hps move: those pairs belong to the SIMULATED collar, which the made (constructed) notched collar replaces and which
+  never ships (cloth.py export: `cloth_made.drawn`). The made collar is built on `seam_chain(V)` after the lapels are
+  pressed, so it sits on the neckline: madegap.py dg_j10 / dg_j8: neckline vertices to the made collar 0.0 / 0.0 mm
+  both sides. FIX (reporting): `cloth.seam_gaps(..., made=)` leaves out pairs of pieces a made part `replaces` and
+  reports `made_seam` (shipped part to the seam's other side, p50 / max) + `replaced_pairs`; check prints it. On j10:
+  open 18 -> 0, made_seam 0.0 / 0.0 over 34 pairs. Scratch run.py's OPEN SEAM skips replaced pieces too (sgchk.py
+  <tag> re-reads a saved result). Test: test_cloth_made test_seam_gaps_leave_out_pieces_a_made_part_replaces.
+- Still real on j10: crossings 67 (front.L 28 / front.R 26 after the clean-up; the sim left 8) and the lapel roll
+  one-sided at the end (51 / 142 deg) from a symmetric start (165.1 / 165.0, gap 5.0 / 5.0). The press then moves the
+  unrolled left flap 53 mm (right 39) through its forepart: the crossings follow from the unroll.
+STATE: collar-seam report fixed. NEXT: asym.py on the current code (open_lap false default, mirror_mesh) for what is
+still L / R different at the start (the shirt under it: its closure laps left over right).
+
+## dress-garrett, 2026-10-15 f (fresh session; method change: sim for the big read, finish by hand)
+- Merged main (de23ee7b: guide rule 3 / stage 7 Finish).
+- `cloth_made.construct` key `mirror` ("mean" | "L"): open fronts finished as ONE shape, the way a tailor presses both
+  lapels from one template. `mirror_pairs(M)` (L/R vertex correspondence by pattern point: the R piece's uv is the
+  left's with u negated on body pieces, identical on sleeves), `symmetrize` (each pair to the mean of left and mirrored
+  right, weight 0-1), applied to the drape within `mirror_reach` (0.10 m) of the left lapel BEFORE the lapels are made
+  (both built on the same base) and again after; the made collar (`mirror_part`, station i <-> n-1-i on its grid).
+  Mirror plane x0 = the body's x centre. Test: test_cloth_made test_mirror_pairs_and_symmetrize_make_left_and_right_one_shape.
+- On j10's drape (con.py replay of the dumped construct inputs, out/con_j10.pkl; symchk.py): lapel flaps L vs mirrored
+  R 0.0 / 0.2 mm (was p50 47 / max 146 mm in the drape), made collar 0.0 mm (was 3.8 mm), both flaps over the shirt
+  (0 of 61 below it each side; without mirror the right flap had 11 below, down to -17.6 mm).
+- BIG READ FAILS ON j10 (looked at dg_j10.png beside dg_j8.png; hang.py): the fronts SWING OPEN in the sim: front edge
+  |x| at the hem 254 / 261 mm (j8 59 / 74), moved back 8-12 cm in y, while both starts are alike (edge |x| 50, no
+  front-to-front contact: lapx.py min 70 mm). So j10 is not a base to finish on (mirroring can't fix a hang). Drape L/R
+  mismatch outside the lapels is 43 mm p50 at the chest (uvdbg2.py), so this is the hang, not a local fault.
+  Suspect: the start change (open_lap false, the coordinator's default) or the hps move. j11 = j10 + open_lap=true +
+  construct.mirror="mean" submitted to NICO-TOP (stage.sh LOCAL=1, free): one sim answers which.
+- Scratch (/mnt/data/hifipushie/dress_garrett): symchk.py <pkl tag> under=<tag> (mirror mismatch, flaps vs the shirt),
+  hang.py <npz tags> (front hang at start / sim / finish), lapx.py (fronts' start gap), con.py replays (m1 = no mirror,
+  m2 = mirror on j10). run.py dumpcon=<name> writes into the WORKTREE dir (run.sh cd's to $W): move it to out/<name>.pkl.
+STATE: mirror construct in and tested; jacket hang regressed in j10; j11 on NICO-TOP.
+NEXT: j11 hang.py + front crop (rr.sh on NICO-TOP); if it hangs like j8 with j10's underarm, it is the base: then
+finish (sync cloth_only, sculpt, pull) and set construct.mirror in the spec; else the hps / neckline is the suspect.
+
+## Handover 2026-10-15 f (dress-garrett; 70-call limit)
+- Branch worktree-agent-a772e41978c43cfa6 (main merged at de23ee7b), not pushed. Commit 719357f5: construct `mirror`.
+- Sims IN FLIGHT (detached, nothing to babysit): `stage.sh q_dg_r1.txt` (stage_r1.out) = t5 (trousers, unchanged
+  line) + j11 (jacket = j10 + open_lap=true + construct.mirror="mean") as ONE RENTED batch. NICO-TOP was blocked by other
+  agents' jobs (t5 had sat "queued" there 15:20-17:15), so both moved to rented per the rule (t5's old job name
+  removed from sent.txt). stage.sh runs the fine settle round, then rr.sh sends the sheets to NICO-TOP
+  (rr_q_dg_r1.out) -> workspace/cloth_renders/dg_t5*.png, dg_j11*.png.
+- Spend: this session's rented batch is still running (expect ~$0.10-0.30: 2 sims + settles); day was ~$1.90 before it.
+- Jacket sim count is far past the 3 + 2 budget (j1-j11). j11 is a regression check (j10's fronts swing open), not a
+  tuning round: if j11 hangs like j8 it is THE base; stop simulating the jacket and finish.
+NEXT, in order:
+1. j11: `bash run.sh hang.py dg_j11` (hem edge |x| should be ~60-75 mm like j8, not 250), underarm from dg_j11.log
+   (10-45), then symchk.py dg_j11 (flaps 0 mm mirror, 0 below the shirt). Look at dg_j11.png front beside dg_j8.
+   If it hangs: set `construct.mirror: "mean"` + `open_lap: true` in workspace/dg_garrett/spec.json (jacket), and
+   flag open_lap to the coordinator (their default false broke this open jacket's hang).
+   If it still swings: the hps move is the suspect (place-only start of j10 vs j8: front neck vs hps), a pattern
+   question, not another sim.
+2. Finish the jacket on that drape: sync(cloth_only=True), scripted bpy sculpt (smooth / grab on vertex groups by
+   region), pull -> cloth.jacket.sculpt; record each edit here.
+3. t5: hang.py-style review of the big read only (straight leg, break, crease line); belt and crease are finish detail.
+4. Shirt: one re-sim on the new draft (hps fix), then the collar finished by hand and judged AS WORN (V and points).
+
+## dress-garrett, 2026-10-15 g (fresh session)
+- Coordinator audit: the old t5 settle job on NICO-TOP (job_1d6508bd8bee8848_sim, batch dbd1d0c2 =
+  stage_q_dg_t5_151803.r2, its client killed by SIGINT while queued so never cancelled) was still QUEUED: cancelled
+  (`bundle_client.py cancel <batch>`, token ~/.config/oxidegen/hifipushie-cloth-token). Lesson: after interrupting a
+  stage.sh round, check `bundle_client.py status <batch>`; the client cancels only when it is running.
+- Rented batch r1 (t5 + j11): $0.143 sims + $0.015 j11 fine settle = $0.158. Day ~ $2.06 of $5.
+- j11 (j10 + open_lap=true + construct.mirror) STILL SWINGS OPEN (hang.py; front edge |x| at the hem, mm):
+  | run | start X0 L / R | sim L / R | finish L / R |
+  | j8  | 48 / 49 | 59 / 74 | 59 / 74 |
+  | j10 | 49 / 50 | 261 / 254 | 261 / 254 |
+  | j11 | 49 / 50 | 142 / 254 | 157 / 255 |
+  The starts are alike in all three: open_lap is NOT the cause, so the coordinator's open_lap:false default stands
+  (no revert). Underarm j11 32 / 39 (target 10-45); fronts CORRUPT flag 104 / 102 crossings (open_lap start).
+- THE CAUSE IS THE DRAFT'S FRONT BALANCE (drcmp.py: the jacket draft and the body tapes, side-neck hps vs the old
+  widest-x hps, mm):
+  | | old hps (j8) | side-neck hps (j10, j11) |
+  | body hpsToSeatFront / hpsToSeatBack | 678 / 711 | 713 / 673 |
+  | body front - back | -33 | +40 |
+  | jacket front.L / back.L piece height | 783 / 783 | 751 / 751 |
+  The jacket block drafts the front as long as the back (`pattern_blocks` option `front_balance`, default 0, never
+  set from the body). With the hps on the shoulder crest the body's front tape grew 35 mm and the back's shrank 38,
+  but both pieces shrank 32: the front is ~7 cm short against the body relative to j8. A short front balance is the
+  textbook cause of fronts swinging apart at the hem (the erect-figure fault: the front is pulled up over the chest).
+  FIX PROPOSED (pattern, not solver): front_balance from the body, (hpsToSeatFront - hpsToSeatBack) or the same at the
+  chest, ~40 mm here; it raises the front's neck point and shoulder over the back's (pattern_blocks.py ~215). Needs a
+  sim to confirm: over the jacket's sim budget, so the coordinator's call.
+- Renders dg_j11 / dg_t5 submitted to NICO-TOP by stage.sh (rr_q_dg_r1.out, batch dgrr-180515), queued 40+ min
+  behind other agents' jobs: t5's review waits on them.
+- Scratch: drcmp.py <model> <garment> (body tapes and piece extents, old vs new hps; ~10 min, runs the draft twice).
+STATE: j11 not a base (front balance short since the hps fix); old t5 job cancelled; t5 renders queued on NICO-TOP.
+NEXT: coordinator decision on front_balance from the body (+ one jacket sim); then t5 review (bin/review) when the
+renders land; shirt re-sim.
+- Coordinator approved the fix (its own HPS fix, `tailor._side_neck`, moved the front / back tapes: that is where this
+  regression came from). `pattern_blocks.front_balance(m, opt)`: bodice option `front_balance` now defaults to
+  "auto" = clip(hpsToSeatFront - hpsToSeatBack, 0, 80 mm); an explicit number wins. Test:
+  test_pattern_draft test_front_balance_auto_from_the_body_tapes (10 passed). gp_h6c: 40 mm.
+- Other readers of the same tapes: `cloth.ALTERATIONS["large_abdomen"]` (front minus back past 25 mm, spread at the
+  waist). Since the hps fix every man's body reads ~+40, so an opted-in large_abdomen now fires on a flat belly AND
+  double-counts with auto front_balance. Not used by dg_garrett. TODO: re-baseline its 25 mm threshold on side-neck
+  tapes (or subtract front_balance). Trousers (`trouser`, `leg_cut`) and skirt do not read hps tapes; the shirt and
+  Tess's coat are bodice blocks, so they get "auto" too (their drafts move: re-key their sims).
+
+## Handover 2026-10-15 g (dress-garrett; 70-call limit)
+- Commits: f5cb7d2e (notes), front_balance auto + test. Not pushed.
+- IN FLIGHT (detached): `stage.sh q_dg_j12.txt 3` (stage_j12.out), ONE rented jacket sim j12 = current code (auto front
+  balance 40 mm, open_lap default false) + mirror_mesh + construct.mirror="mean". The coordinator approved ONE sim. If
+  the hang matches j8 (hang.py dg_j12: hem edge |x| ~60-75 mm), it is THE BASE: no more jacket sims, finish on the drape.
+  If not, report STUCK with the numbers; do not re-sim.
+- Renders dg_j11 / dg_t5: NICO-TOP batch dgrr-180515 (rr_q_dg_r1.out), queued for 1 h+. Wait with
+  `/mnt/data/hifipushie/bin/offload wait <batch>` (coordinator), not a poll loop. j12's sheets go the same way once its rounds finish.
+- RULE (coordinator audit): run /mnt/data/hifipushie/bin/review on every result judged, every round (reference | result crops).
+  The last session ran none. t5 and j12 each need one.
+- Spend: rented r1 $0.158 + j12 (~$0.10, pending). Day ~$2.16 of $5.
+NEXT: (1) j12 hang.py + symchk.py + bin/review of the front; (2) PASS -> finish (sync cloth_only, sculpt, pull ->
+cloth.jacket.sculpt; set construct.mirror in the spec); (3) t5 bin/review when the renders land; (4) shirt: one re-sim
+(its draft moved twice: hps + auto front balance), collar finished by hand, judged as worn; (5) large_abdomen threshold.
+
+## dress-garrett, 2026-10-15 h (fresh session)
+- Cherry-picked main bef0229c (remote.sh per-commit archive link) as f142d82d: a j12 render submit from the same
+  folder would otherwise have swapped dgrr-180515's queued archive.
+- large_abdomen re-based (6c1f7f79): `cloth.FRONT_BACK_NORM_MM` = 40, the alteration takes only the excess. Side-neck
+  tapes (fbnorm.py, mm, F-B): dg_garrett +40, ga_garrett +40, dt_tess +40, ga_tess +32, dg_mh (waist / chest 0.88)
+  +76 -> 37 mm. FOUND: the shirt is FreeSewing `simon`, which lists large_abdomen, so since the hps fix the OLD rule
+  fired 15 mm on Garrett's flat belly; it is 0 now. (So the shirt's draft moved by THIS, not by front_balance: bodice
+  blocks get front_balance, FreeSewing tables get fit_alterations, never both.) test_pattern_draft: __main__ moved last,
+  script runs now include the two new tests.
+- Review scripts: rvjacket.sh / rvtrousers.sh <tag> <round> (concept crops | sheet front panels; ERROR file when
+  renders are missing). chain_t5.sh (detached): offload wait dgrr-180515, then rr.sh's unpack, then rvtrousers dg_t5.
+- Shirt s7 (= spec shirt, current code) launched on rented: stage_s7.out.
+- j12 (auto front_balance 40 mm, open_lap false, mirror_mesh, construct.mirror "mean"; rented $0.082): FAIL, STUCK.
+  The fronts swing open MORE than j11 (hang.py, front edge |x| mm, chest / waist / hem):
+  | run | X0 L / R hem | finish L chest / waist / hem | finish R chest / waist / hem |
+  | j8  | 48 / 49 | 74 / 51 / 59 | 78 / 60 / 74 |
+  | j11 | 49 / 50 | - / - / 157 | - / - / 255 |
+  | j12 | 52 / 51 | 119 / 171 / 247 | 120 / 173 / 245 |
+  Hem front edge y: L -67, R -210 (j8 -172 / -177): the left front swings back round the side. Starts alike (X0)
+  again, so the swing comes in the sim. Symmetry (symchk): lapel flaps p95 0.2 mm, made collar 0.0, front above z 1.15
+  p95 28 / max 60 mm (the drape itself is asymmetric; construct.mirror moved the lapels 10 mm). Seams: 3 of 342 sewn
+  pairs OPEN (top.L / under.L); underarm under.L / R 48 / 47 mm (target 10-45: FAIL), top 21 / 24; integrity 101
+  crossings (fronts 43 / 43) after the clean-up; start pushed off the body up to 70 mm (under.R).
+  CONCLUSION: raising the front's neck by the body's front-minus-back did NOT bring back j8's hang, so front balance
+  is not the (whole) cause of the j10+ swing. No re-sim (rule). For the coordinator: what else changed j8 -> j10
+  besides the hps (the draft diff of every piece, drcmp.py extended to the j8 vs j12 jacket pieces: neck point, shoulder
+  slope, side seam lengths, armhole), or take j8 as the base and finish it by hand.
+- MY ERROR (cost $0.003): committing the large_abdomen re-base while j12's stage.sh was between rounds changed the
+  shirt draft, so round 2 (the jacket is drafted over the shirt) wrote a NEW shirt job, which failed at frame 0
+  (job_59811cc701ce1e71: "ccd failed (toi 0)" at newton step 1). j12 was finished with the old rule restored
+  temporarily (uncommitted, restored after). Lesson: never change code under an in-flight multi-round stage.sh.
+- s7 (the shirt on the re-based draft) = that same failed job: stage.sh refused to resend it, rightly. Its start is clear
+  of the start body (3.0 mm, preflight passes); startprox on the END pose body shows 25 vertices per sleeve and 7 per
+  cuff inside it (the body moves up to 78 mm; the j12 jacket's start shows the same kind of thing and ran, so this is
+  NOT proven to be the cause; an "inside" check in preflight false-fired on the jacket: reverted). Shirt NOT simulated.
+- Spend today ~ $2.15 of $5 (j12 $0.082 + s7 $0.003).
+- Renders: dg_j12 -> NICO-TOP dgrr-192421; chain_j12rv.sh runs rvjacket dg_j12 r1 when it lands (rv_j12.out,
+  out/rv_dg_j12/r1). dg_t5 / dg_j11: dgrr-180515 still queued (80 min); chain_t5.sh runs rvtrousers dg_t5 r1
+  (rv_t5.out). Test set: tests.sh launched (tests.log).
+STATE: j12 FAIL (STUCK, numbers above); shirt s7 failed at frame 0 (draft re-based); reviews chained on NICO-TOP renders.
+NEXT: coordinator: j8-as-base vs a draft diff j8 -> j12; read rv_t5 / rv_j12 when they land; shirt start (why the
+re-based draft fails at newton step 1) before any shirt sim.
+- Cloth test set (tests.sh, one file per process, capped): all 15 files rc 0 (pattern_draft 11 ok incl. the new tests).
+
+## Handover 2026-10-15 h (dress-garrett)
+- Commits (not pushed): f142d82d (cherry-pick bef0229c), 6c1f7f79 (large_abdomen re-base + test), 447b04d7 (test main
+  block last), notes 6ca9b695 / 9ed7a88a / this.
+- j12 = FAIL, STUCK (table above): front_balance auto did not restore j8's hang. Jacket gets no more sims without the
+  coordinator. Not finished by hand; construct.mirror not set in the spec (only for a passing base).
+- Shirt s7 failed at frame 0 on rented (job_59811cc701ce1e71, never resend). Its draft moved because the large_abdomen
+  re-base stopped a 15 mm spread that had been firing on Garrett's flat belly.
+- IN FLIGHT (detached, NICO-TOP queue backed up 80+ min): dgrr-180515 (dg_t5, dg_j11) -> chain_t5.sh -> rvtrousers.sh
+  dg_t5 r1 (rv_t5.out, out/rv_dg_t5/r1); dgrr-192421 (dg_j12) -> chain_j12rv.sh -> rvjacket.sh dg_j12 r1 (rv_j12.out).
+  A review with missing renders writes out/rv_<tag>/ERROR.
+- Spend: ~$2.15 of $5 today.
+NEXT: (1) read both reviews; answer every MAJOR in these notes; (2) coordinator: j8 as the jacket base (finish by hand)
+or a j8 -> j12 draft diff first; (3) shirt: find why the re-based start fails at newton step 1 (compare its in.npz with
+the last shirt job that ran) before one re-sim.
+- j8 -> j12 DRAFT DIFF (coordinator's call, no sims; pdiff.py <A> <B>: per piece the flat uv size / area / perimeter,
+  X0 start and sim-end centroids, mm). Same body (bbox identical).
+  | piece | uv height j8 / j12 | area cm2 | start centroid z | SIM-END centroid (x, y, z) j8 -> j12 |
+  | back.L | 783 / 751 (-32) | 1679 / 1606 | 1199 / 1214 | (110, 82, 1215) -> (111, 72, 1248): +33 up |
+  | front.L | 783 / 791 (+8) | 1710 / 1721 | 1211 / 1211 | (133, -103, 1194) -> (220, -120, 1248): +54 up, +87 out |
+  | front.R | 783 / 791 | | 1205 / 1216 | (-140, -105, 1193) -> (-212, -117, 1245) |
+  | side.L | 544 / 540 | 416 / 417 | 1051 / 1067 | (199, 23, 1064) -> (220, -5, 1125): +61 up, 28 forward |
+  | under.L | 498 / 530 (+32) | 604 / 632 | 1115 / 1074 | start x 166..360 -> 101..296 (65 mm further in) |
+  Widths, collar, top sleeves unchanged (<= 1 mm). RANKED by how much each can swing the fronts open:
+  1. THE BACK IS 32 mm SHORTER (the side-neck hps's back tape, 711 -> 673, cut straight into the back length) and the
+     front only +8 (front_balance 40 minus the same tape loss). The whole jacket hangs 33-61 mm HIGHER at the end of the
+     sim, the side panels most (+61) and they move forward 28 mm: the short back hangs the jacket from the shoulders,
+     lifts the side seams, and they pull the fronts' side edges up and round. That fits the coordinator's reading
+     (both fronts ~245, the left hem round the side, y -67). The length is drafted as hps tape + "hips" + bonus, so
+     moving the hps shortened the GARMENT, not just the balance.
+  2. Under sleeve 32 mm taller (deeper armhole; underarm 48 / 47 vs 10-45) and started 65 mm further in: start pushed
+     off the body 60-70 mm (rest stretch at the side / underarm, pulling the side seam).
+  3. Front balance itself: +40 drafted, but net front length only +8 vs j8.
+  NAMED CAUSE: the jacket's back length (back balance) fell 32 mm with the hps move; the hem level is referenced to
+  the hps tape. Single pattern change proposed: draft the length to the same hem LEVEL as j8 (back length = the old
+  back tape's length, i.e. reference the hem to the waist / seat z, not to the hps tape), keeping front_balance auto
+  on top. Not tested (no sim without approval). Lapel break / roll line and darts: not separable from uv stats
+  (darts false in the spec; collar unchanged); a per-seam diff of the armhole curve is still owed.
+STATE: cause named (back length -32 mm, jacket rides up 33-61 mm). NEXT: coordinator approval for the one sim.
+
+## dress-garrett, 2026-10-15 i (fresh session; coordinator approved ONE jacket sim for the length rule)
+- LENGTH RULE (commit 63ad77ce, coordinator's call): a garment's length comes from a fixed body level, never from the
+  hps tape. `tailor`: `napeToWaistBack` = the taut tape from the neck loop's centre back (`at["cb_neck"]`) down the
+  centre back to the waist; it doesn't depend on where the hps is (nape.py dg_garrett: 489.2 mm under both the side-neck
+  and the old widest-x hps, while hpsToWaistBack reads 482.7 / 515.0). `pattern_blocks.bodice`: length = 0.05 neck (the
+  back neck's own depth on the pattern) + napeToWaistBack (+ waistToHips for "hips"); the waist line (darts, pockets)
+  and the armhole stay on the hps tapes; a numeric length is still metres below the hps. Every bodice block takes it
+  (the jacket, and Tess's coat if it is a bodice block: its draft moves, re-key its sims). FreeSewing drafts
+  (`cloth.length_level`, the shirt is `simon`): hpsToWaistBack set to the same nape level and waistToArmpit shifted by
+  the same amount, so FS's armhole (hpsToWaistBack - waistToArmpit) stays: on the test body (+26 mm) simon's armhole
+  moved 3 mm, waist 26, hem 32 (FS scales its hem). Test: test_pattern_draft test_hem_height_does_not_move_with_the_hps.
+- j13 = j12 + the length rule ONLY (pdiff.py job_f16cb855 (j12) vs job_1888662c (j13)): every body piece +29 mm at the
+  hem, nothing else moved; back 780 (j8 783), front 820 (+40 front balance on top). The UNDER SLEEVE (+32 mm taller,
+  start 65 mm further in) does NOT follow from the length: it is the deeper/raised armhole of the hps fix (hpsToArmpitBack
+  258 -> 223): separate, left as is. The shirt under it is j12's EXACTLY (collider bodyV max diff 0.0): run with
+  XPATH=$G/j13src (a copy of the source with the shirt drafted as for j12: FRONT_BACK_NORM 25, length_level off for
+  FreeSewing), because the shirt on the current code needs its own sim (s7 frame-0 cause unknown). run.sh now puts
+  $XPATH before $G on PYTHONPATH.
+- MY ERROR ($0.006): nape.py called cloth.model_body(..., simulate=True) for the jacket, which re-drafted the shirt and
+  resubmitted the failed shirt job (job_59811cc701ce1e71) to rented (failed again, ccd toi 0). Measurement scripts must
+  pass simulate=False (and HIFIPUSHIE_GPU=none).
+- SHIRT s7 FRAME-0 ("ccd failed (toi 0)", job_59811cc701ce1e71) vs the last shirt jobs that ran (job_6fbc9b50,
+  job_ee5cb7d8): selfprox.py / selfx.py <jobs> (start self-proximity, edge x triangle crossings, slivers).
+  Cross-piece crossings and near-contacts are about the same in all three (fronts lapped 37 / 65, collar / stand 65 / 61,
+  collar / yoke 33 / 35, cuffs folded 3 / 3), so the collar / placket stack is NOT what changed. NEW in s7, and only on
+  the wearer's left: a SLIVER in the BACK's mesh at the left armhole (outline vertex v27 at uv (244, -231) and an interior
+  vertex v775 2.21 mm apart; a 2.39 mm edge next to it; 2 faces under 10 mm2; the good jobs' shortest edge is 4.05 mm,
+  no face under 18 mm2). At the START it has folded: v775 is 0.22 mm from a non-incident triangle of its own piece
+  (rest: fine), which is inside the 2 mm contact offset at time 0: the likeliest cause of toi 0. preflight.py checks only
+  cloth vs body, so it passed. Not proven by a run (no shirt sim without the cause fixed + approval).
+  FIX DIRECTION (code, not yet done): the mesher must not put an interior point closer than ~half an edge to the outline
+  (the back's armhole moved with the hps fix / re-drafts, so an interior lattice point landed 2 mm off it); and preflight
+  should add same-piece non-incident pairs < contact offset at the start (selfprox's check), cheap.
+
+## Handover 2026-10-15 i (dress-garrett; 70-call clock)
+- Commits (not pushed): 63ad77ce (length rule + test), notes. Worktree clean except scratch-only files.
+- IN FLIGHT (detached): `XPATH=$G/j13src stage.sh q_dg_j13.txt 3` (stage_j13.out, stage_q_dg_j13_194915.r*.out,
+  dg_j13.log): the ONE approved rented jacket sim. Round 1 was still drafting at handover; it writes job_1888662c5e641270
+  and submits it. DON'T commit code that changes the shirt / jacket drafts while it is between rounds (it reads $G/j13src
+  for the package, but scripts are in $G). Renders then go to NICO-TOP via rr.sh (rr_q_dg_j13.out).
+- Reviews: dgrr-180515 (t5 / j11, queued 106 min) -> chain_t5.sh -> rv_t5.out / out/rv_dg_t5/r1; dgrr-192421 (j12) ->
+  chain_j12rv.sh -> rv_j12.out / out/rv_dg_j12/r1. Not landed yet: no verdicts to record.
+- Spend: ~$2.16 + j13 (~$0.10, pending) + my $0.006 shirt resubmit (error above).
+NEXT: (1) `bash run.sh hang.py dg_j13` beside j8 (hem edge |x| 59 / 74, y -172 / -177; j12 247 / 245): PASS -> the
+base, finish on the drape; FAIL -> report STUCK with the table, no re-sim. (2) bin/review for j13 (rvjacket.sh dg_j13 r1)
+when its renders land; read rv_t5 / rv_j12 and answer every MAJOR. (3) shirt: mesher sliver fix + preflight self check,
+then ask for one shirt sim (the shirt now also takes length_level: its hem drops ~33 mm on gp_h6c). (4) Tess's coat: if
+it is a bodice block its length changes with 63ad77ce: tell dress-tess.
+
+## Handover 2026-10-15 j (dress-garrett; 70-call clock)
+- j13 (napeToWaistBack length, job_1888662c5e641270, rented $0.0825): FAIL, STUCK, reported to main, no re-sim.
+  hang.py front-edge |x| (finished V, L / R mm): hem j8 59 / 74 vs j13 244 / 239 (j12 247 / 245); waist 51 / 60 vs
+  188 / 192; chest 74 / 78 vs 130 / 130; hem off body 128 / 111 (j8 26 / 34). Starts match j8 (X0 hem |x| 52 / 51), so the
+  swing happens in the sim. 50 crossings after clean-up (6 in sim); lapel roll ends 38 deg (from 167). So the length
+  rule was NOT the cause.
+- (3) DONE a0a615df: rented submits need cloth_job.submitting() or HP_SUBMIT_SIMS=1 (cloth.dress's worker and
+  garments(simulate=True) opt in; cloth_workflow's measuring body now simulate=False). Free remotes (have.sh,
+  nobox.sh, $HP_FREE_REMOTES) are not gated. Otherwise run_zozo raises SimNotSubmitted. Test:
+  test_tooling.test_rented_sims_need_an_explicit_opt_in. stage.sh needs no change (BROKER=1 + bl.sh).
+- (2) Mesher: NOT changed, and the diagnosis was wrong. s7's v775 is 15.6 mm (0.78 h) off the outline in the pattern,
+  and the lattice already keeps 0.6 h. The sliver is a PLACEMENT crush: that back edge starts at 0.14 x its pattern
+  length (good shirts 0.48 x at the same armhole spot). cloth_job.start_self_check (a0a615df, test reproduces s7 on a
+  synthetic grid + the real jobs when cached) fails a same-piece vertex inside the contact gap of its own sheet facing
+  the same way (a crush). Fold rows +1 ring and fold-overs (opposite facing: lapel creases at 0.04 mm ran in j8) are
+  exempt. Squeezed edges are reported only: j8's undercollar started at 0.13 x and ran. $G/preflight.py now runs it
+  (skips on snapshots without it, e.g. j13src). Calibrated: s7 FAIL; s6-era shirts, j8, j12, j13 ok.
+- s8 (shirt on current code incl. length_level, job_af3ca3e0866feb40): body preflight 3.00 mm, self check ok, no edge
+  under 0.25 x. Submitted (the ONE approved). FAILED at frame 0 on rented in 2 s: ppf-cts-solver backend.rs:1347
+  "failed to advance", $0.0020. Never resend. So the self check is necessary but not sufficient: s8's frame-0 cause
+  is still unknown. Next: compare s8 vs the last good shirt job (job_6fbc9b50) with selfx.py (edge x triangle
+  crossings by piece pair: s7's cross-piece counts matched the good ones) and stitches (297 vs ?), before asking for
+  any sim.
+- (4) armhole, measured from j13's log (no draft change): underarm below the body's armpit top.L / R 19 / 19 mm,
+  under.L / R 47 / 45 (the check's range 10-45; guide: jacket ~3 cm). The top sleeve is a little shallow and the under
+  sleeve a little deep, 27 mm apart, so the fault is the two-piece sleeve's under-seam placement, not the armhole
+  depth. Left for after the HPS A/B: the HPS change moves this too.
+- (5) t5 review (out/rv_dg_t5/r1/review.md): VERDICT FAIL. Trousers MAJORs: legs barely taper (thigh -> hem ~140 ->
+  115-120 px vs ref 165 -> 100); front crease lost below the knee; no hem break (soft collar on the shoe); white flecks
+  at the front hems (something shows through); no fly placket / crotch drag folds; belt missing. OTHER STAGES: shoes
+  crude with holes at the toes; shirt pale blue, ragged placket. No answers yet. j12 review (dgrr-192421) still queued.
+- Spend today ~$2.27 + j13 $0.0825 + s8 $0.002 = ~$2.36 of $5.
+STATE: j13 FAIL/STUCK; s8 FAIL at frame 0; guard + self check committed (a0a615df).
+NEXT (coordinator APPROVED, one rented sim): j14 = j13's exact code + settings with ONLY the HPS definition back to
+the old widest-x point. Add a flag, don't revert: tailor.py:245 `at["hps.L"], zc_ = _side_neck(V, T, L)`. The old
+value is `at["neck_side.L"]` (L[argmax x]). Make it e.g. pattern measurements / env hps="crest"|"widest", defaulting
+to crest so no cached key moves. Run with `stage.sh q_dg_j14.txt 3` (same line as q_dg_j13 + the flag). If j14 hangs
+like j8: NO sim, diff the drafted lines that read the hps (shoulder seam, neck point, back neck width, lapel break /
+roll line, front shoulder slope), j13 vs j14 per line, and report which lines move the fronts. If j14 still swings:
+pdiff the job inputs j8 vs j14 (placement, settings, mirror_mesh / construct.mirror: j12 / j13 added mirror_mesh=true
++ construct.mirror="mean", j10 / j11 had neither) and report before any further sim.
+
+## Handover 2026-10-15 k (dress-garrett; 70-call clock)
+- (1) j14 A/B (df7a9208: `HP_HPS=widest` env in tailor.measure = the old hps, the neck loop's widest point, no
+  neck_base_z; default "crest", no cached key moves). Run `HP_HPS=widest stage.sh q_dg_j14.txt 3`. The env reaches the
+  SHIRT under the jacket too, so the build first wrote a new shirt: sim job_354254cf1a529fe6 SUCCEEDED (44 s, $0.0203)
+  and its fine settle succeeded ($0.0112). The JACKET start (job_5c4f11ea993b2572) was REFUSED by preflight: self check
+  FAIL, 2 same-piece crushed pairs, under.R 0.15 mm / under.L 0.27 mm (most squeezed edges under.L 0.12 x, under.R
+  0.14 x their pattern length). Not submitted. So no jacket verdict: the A/B is BLOCKED at the start, the widest hps
+  crushes the under sleeves in placement (j13's crest start passed the check).
+- Preflight fix (scratch $G/preflight.py): the self check skips fine settles. They start from a sim's rest, cloth
+  folded on itself at the contact gap: the fine settles that ran (6fbc9b50, 7813e7ca, 0c06de36) all read 39-55
+  crushed pairs at 0.3-0.8 mm, so the check is for first sims' starts only (it first refused j14's shirt fine settle).
+- (2) Shirt frame 0. backend.rs:1347 panics when `advance` fails; the solver log says `### ccd failed (toi 0)` at time
+  0, Newton step 1 (driver/step.rs:2389: the line-search toi = min(contact CCD, strain-limit CCD) <= f32 eps). No
+  OverlappingStart record was printed. ccd.rs's notes say ACCD returns 0 without a record when the first advance
+  underflows, i.e. a pair essentially touching that the step drives together. The failed job's full log isn't kept
+  (the batch status holds only the tail). Static measures on the runner's start (part_stitches applied:
+  $G/startgap.py, eegap.py, slim.py (the strain-limit set-up replayed), stdiff.py, sewthru.py) do NOT separate s7 / s8
+  from the shirts that ran: v-t 0.01 mm and e-e 0.002-0.01 mm cross-piece pairs (fronts, stand / collar) in all of
+  them, body 3.0-3.6 mm, ~2.5% of triangles over the strain limit in all of them, no stitch through the body.
+  ONE difference: the sleeve underarm seam starts open 103-105 mm in s7 / s8 and 91-92 mm in every shirt that ran,
+  including j14's shirt, which is s8's code with ONLY the hps switched. So the crest hps is what makes the shirt fail
+  at frame 0 (s7 / s8 are the only shirts drafted with it). The mechanism is still unknown, and NO preflight was
+  written: I couldn't reproduce the cause, only correlate it.
+- (3) Sleeve underarm: the check's "top 19 / under 47" is NOT a placement fault. underarm_drop_at reads the TORSO
+  vertices sewn to each sleeve piece. The under sleeve is sewn to the armhole's bottom, so its number is the armhole
+  depth; the top sleeve's is only where its seams end on the armhole (the pitch points), always higher. $G/ua_jk.py on
+  j13: under -68 vs top -94 (same 26 mm in the start, -67 / -137). The fault is the armhole bottom at 45-47 mm under
+  the armpit (guide ~30, j8 62). Fix = the jacket block's armhole_depth about -15 mm, on the next approved jacket sim,
+  measured by the same check. Not changed.
+- (4) t5 trousers plan (no sim; needs approval): pattern = leg cut "tapered" (knee +30%, hem 0.80 x knee) -> "slim" or an
+  explicit hem ~36-37 cm (ref taper 165 -> 100 px vs ours 140 -> 117); crease = a pressed fold line along the
+  draft's crease (folds.py) to the hem; length = length "break" (sloped hem, BREAK_BACK) so one break sits on the vamp;
+  flecks = render / material (probe with $G/fleckprobe.py before any sim); fly placket + belt in the waistband = made
+  pieces after the drape.
+- Spend: j14 shirt $0.0203 + fine settle $0.0112; day ~$2.39 of $5.
+STATE: j14 BLOCKED (jacket start crushes the under sleeves, not submitted); shirt frame 0 correlates with the crest
+hps, cause unknown; preflight skips fine settles.
+NEXT (coordinator's call): (a) j14's under-sleeve crush is a placement fault. Fix it, or exempt it, before any A/B
+sim. (b) For the shirt: with NO sim, diff the shirt draft crest vs widest (sleeve seam, armhole, cap) to find the
+line that opens the sleeve underseam 12 mm more. Or keep the failing log: a free NICO-TOP frame-0 probe (frames 1,
+full solver log) of s8 would name the pair.
+
+## Handover 2026-10-15 l (dress-garrett; 70-call clock reached, STOPPED)
+Coordinator decisions after k: (1) drop the j14 A/B. With NO sim, diff crest vs widest (jacket AND shirt) for every
+drafted quantity downstream of the hps, find which tape feeds the armhole, and re-derive it from an hps-independent
+landmark (armpit level, as 63ad77ce did for the length rule with the nape), with a test. Target: armhole bottom about
+30 mm below the armpit by the underarm check. Then ONE jacket sim j15 = crest + the armhole fix (APPROVED); if it
+still swings, report it with the diff numbers. (2) APPROVED: a free NICO-TOP 1-frame probe of s8 that keeps the full
+solver log. If the pair it names sits at the underarm seam, the preflight check can test for that. (4) APPROVED: probe
+the trouser flecks first (no sim), then ONE rented trousers sim with taper + crease line + hem-break length.
+Also: port the scratch preflight's fine-settle skip into the repo's preflight, with a test.
+- Body tapes, crest vs widest ($G/mmab.py dg_garrett, tailor.measure under HP_HPS): the hps moves from
+  [61, -36, 1549] to [45, 4, 1556] mm, 40 mm BACK and 16 mm in. Every tape from the hps moves by about 35 mm, back
+  and front in opposite directions:
+  - hpsToArmpitBack 258.0 -> 222.6 (-35.4)
+  - hpsToWaistBack 515.0 -> 482.7 (-32.3)
+  - hpsToSeatBack 710.7 -> 673.3 (-37.4)
+  - hpsToBust 249.0 -> 280.9 (+31.9)
+  - hpsToSeatFront 678.4 -> 713.2 (+34.8)
+  - shoulderSlope 10.9 -> 9.9
+  Nothing else moves. So the crest moves front / back BALANCE by about 67 mm (front about 33 longer, back about 35
+  shorter), and the armhole's back depth tape (hpsToArmpitBack) by 35 mm. That is the likeliest common cause of the
+  jacket swing, the deeper armhole and the shirt's wider underseam opening. Not yet checked: which block lines read
+  these tapes (pattern_blocks: armhole depth from hpsToArmpitBack? front length from hpsToBust / hpsToSeatFront?).
+NEXT: grep pattern_blocks / tailor for these five tapes. Make the armhole depth (and, if the fronts read hpsToBust /
+hpsToSeatFront, the front balance) come from the armpit / waist levels, not the hps. Add a test that the draft's
+armhole depth and front / back balance do not move when the hps moves 40 mm. Measure with the underarm check
+(target about 30 mm), then j15 (approved). The s8 probe and the trouser fleck probe need no money.
+
 ## Pre-placement cache (2026-10-16, render1b agent)
 cloth.build caches its finished result under a key of its inputs BEFORE placement (`cloth.pre_key`: garment, body
 mesh + joints + key, the garment under it (sim key, pressed verts, its own pre_key), worn colliders, frames, the
@@ -3056,3 +3668,592 @@ dt_tess COPY (jeans simulated, sweater + coat not): cloth-only garments() 464-65
 V_sim, X0, rest, mesh F/uv/piece and sim key identical to the old path. Any edit under src/hifipushie re-keys every
 pre entry once (the sim npz keys are unchanged); renders, `result=` and place_only always run; a pre hit doesn't
 replay build()'s log lines; HIFIPUSHIE_CLOTH_PRE=0 turns it off. tests/test_cloth_precache.py. Agents: merge main.
+
+## Handover 2026-10-15 m (dress-garrett; 70-call clock)
+- Merged main (one Blender per job 01917898, pre-placement cache b9551475; d4cac458). Cloth tests one file per
+  process: all pass (before and after the change below).
+- HPS by the standards. ANSUR II measurer's handbook (TR11-017, downloaded to /mnt/data/hifipushie/standards/
+  ansur2_tr15007/; DTIC was down, openlab.psu.edu mirrors it): 5.2.43 trapezius point = where the trapezius' anterior
+  border crosses the LATERAL NECK landmark, which (5.2.29) is the bottom of a tape laid round the BASE of the neck over
+  the anterior neck point. ISO 8559-1's side neck point is the same idea (text paywalled, not read). Both old hps sat
+  on the loop 2 cm UP the neck: neither is on the base line.
+- New default (4e6be7bb): tailor._neck_base = the lowest section of a plane tilted 32 deg (front down; ANSUR
+  cervicale - suprasternale 79 mm men / 66 women) that is still the neck's loop (girth within 1.06 of the narrowest
+  such loop); hps = its outermost point (no muscles to palpate). HP_HPS=crest / widest keep the old ones.
+- Population check: shoulder length (hps -> shoulder point, chord) against ANSUR II p5-p95 men, / stature 0.076-0.095,
+  / biacromial 0.330-0.391 ($G/m/hpsab.py):
+  - dg_garrett: widest 170 mm (0.096 OUT / 0.391), crest 187 (0.106 OUT / 0.432 OUT), base 159 (0.090 / 0.366 ok).
+  - dg_mh: widest 159 ok, crest 185 OUT / OUT, base 148 ok. gp_A01: widest 168 ok, crest 170 OUT, base 152 ok.
+  - Tess (dt_tess, ga_tess; women p5-p95 0.074-0.093 / 0.339-0.405): base 99-103 mm OUT, widest 111 OUT, crest
+    125 ok. But her shoulder breadth itself (2 x shoulder point x = 313 mm) is under the women's p5: the shoulder
+    point, not the hps, is the outlier there (crest passes only by moving 15 mm in). FAIL on Tess, reported.
+  - Fore-aft: no standard number exists for it (ANSUR has none); base sits at y -30 on Garrett, near widest (-36),
+    crest +4. Front minus back to the seat: widest -32, crest +40, base -31.
+- FRONT_BACK_NORM_MM re-read on the base hps: -14 (largest of the flat bodies: garrett -31, dt_tess -26, ga_tess -18,
+  gp_A01 -14). dg_mh read +76 (crest) and -50 (base): the base tapes don't show his belly; open question.
+  front_balance "auto" kept: 0 on Garrett with the base hps (as j8).
+- Jacket redraft, no sim ($G/m/drab.py dg_garrett jacket), widest (j8's hps) | crest (j10-j14) | base:
+  - front balance 0 | 40 | 0; armhole front + back 282 + 273 | 289 + 241 | 264 + 255 mm (front - back 9 | 48 | 9);
+    sleeve top shifted -7 | -35 | -7 mm; cap height 206 | 188 | 181.
+  - armhole depth (from hps on the pattern) 293 | 258 | 276 = the back tape to the armpit 258 | 223 | 241 + 35.
+    So the base draft's BALANCE is j8's; the crest's 40 mm front balance and 48 mm armhole asymmetry were the swing.
+  - Armhole depth in the world is NOT fixed by the hps: every draft puts the underarm 35 mm down the tape below the
+    armpit, and the hang lost 27 (j8: 62 below) / 11 (j13 crest: 46). The ~30 mm target needs the block's underarm
+    allowance (UNDERARM_DEFAULT + armhole_depth share) cut, measured on a placement. Not changed.
+- Shirt: its FreeSewing log isn't in P["log"] (drab printed only tapes). hpsToWaistBack is forced from the nape in
+  all three; hpsToArmpitBack 258 | 223 | 241. The underseam opening (91 good vs 104 crest) needs a placement: NOT measured.
+STATE: hps landmark fixed (base-of-neck), tests pass, jacket balance back to j8's in the draft. No sim run, $0 spent.
+NEXT: (1) place_only the jacket and shirt on the base hps: underarm check ($G/ua_jk.py) and the sleeve underseam
+opening; (2) if the shirt opens ~91 mm, j15 = base hps jacket (approved) with the underarm allowance cut ~25 mm if the
+placement still reads ~60 below; (3) s8 probe only if the shirt still opens >100; (4) trousers flecks + t5;
+(5) port the preflight fine-settle skip ($G/preflight.py) with a test. Tess's shoulder point to the dress-tess thread.
+
+## Handover 2026-10-15 n (dress-garrett; 70-call clock)
+- (1) Underarm allowance, measured on PLACEMENTS (BROKER=1 run.py: the start is written, nothing submitted; jacket over
+  the shirt pinned to out/dg_s6.npz). Garrett's armpit z = 1.362 (tailor; ua_jk.py's default 1.252 is not this body:
+  pass 1.362). The jacket's allowance is the SPEC's block_options.underarm 0.035 (the code default 0.025 doesn't reach
+  it). Start numbers ($G/uastart.py, ua_jk.py, stdiff.py, preflight.py), armhole bottom below the armpit | cap height |
+  longest stitch gap at the start | preflight:
+  - j8 (ran): 60 | - | 92 mm | ok.  underarm 0.035 (base hps): 58 | 178 (73% of depth) | 126 (top-under) | self FAIL 2
+    crushed pairs side.R 0.8 mm.  0.020: 48 | - | 184 (under-back) | ok.  0.010: 41 | 143 (65%) | 257 | ok.
+    0.010 + biceps_ease 0.08: 41 | - | 198 | ok.
+  - The cut WORKS on the torso (draft: armhole depth 276 -> 251, the world armhole 17 mm up; target ~30 below, 41
+    reached at 0.010). But the cap drops faster than the armhole rises (fixed biceps, shorter armhole: 178 -> 143),
+    so the sleeve crosses the bodice and place() pushes both sleeve pieces down the arm (the _down loop, up to 10 cm):
+    the under sleeve starts 18-26 cm off its armhole seam. Every cut tried (0.020, 0.010, 0.010 with a narrower
+    sleeve) does this. NO j15 sim: its start is a placement fault, not worth $ (the sew stage would haul 20+ cm).
+  - Fix needed (placement, not pattern): the cap-height / armhole-depth match the push-down loop assumes, or align
+    the sleeve's underarm to the armhole bottom instead of its cap top to the shoulder point for a set-in jacket
+    sleeve. Not changed (the coordinator's call: placement code shared by every garment).
+- (3) Shirt start on the base hps (job_8d54e01c87f818d4): underseam opens 101 mm (s8 103, failed; good shirts 91-92):
+  NOT the good shirts. Draft diff widest -> base ($G/shdiff.py): only waistToArmpit (240 -> 260, derived so the forced
+  nape length holds) and hpsToArmpitBack (258 -> 241) move: sleeve 408 -> 399 mm wide, yoke 122 -> 117 high. The
+  narrower sleeve on the same arm cylinder opens ~10 mm more: the likeliest link to frame 0. Preflight passes it.
+  Free NICO-TOP probe submitted (batch dg_probe_s8_base, $G/probe/: s8 + this shirt, a copy of the runner that keeps
+  solver_stdout.log, 6 frames): QUEUED behind ~9 batches when this session stopped. Pull with
+  `offload wait dg_probe_s8_base`; logs land in $G/probe/results/.
+- (4) large_abdomen now reads the body directly: tailor mm chestDepth / waistDepth (section y extents),
+  ALTERATIONS large_abdomen = excess of waistDepth - chestDepth over ABDOMEN_NORM_MM -17 (ANSUR II men's median;
+  p5 -47, p75 -4, p95 +18; women's median -35, bust in the chest). Bodies: dg_garrett -32, gp_A01 -31, MakeHuman
+  default male (workspace dg_mh0) -45, dg_mh -14 -> 3 mm. So dg_mh's belly is a median man's by the population
+  (wd/cd 0.95 vs ANSUR p50 0.93): the alteration barely fires on him. The deepest band below the waist is the seat,
+  not the belly (useless as a measure). Test updated (tests/test_pattern_draft.py).
+- (5) Trouser flecks, no sim ($G/fleck2.py on workspace/dg_garrett/build/closeup.npz): BODY SKIN through the
+  footwear, not the trousers: 73 skin vertices at the shoe's throat (z 0.10-0.105, 2.4-4.5 mm outside the shoes,
+  nearest cover = shoes, not socks) and 115 at the toes (up to 9 mm out, shoes / soles). OTHER STAGE (footwear: the
+  shoes and socks must cover the foot); no trousers sim fixes it. Trousers sim NOT run (taper/crease/break untested).
+- (6) cloth_job.preflight(arrays, cfg): body clearance (2 mm first sims, 1 mm fine settles) + start_self_check for
+  first sims only (fine settles skipped); tests/test_tooling.py test_preflight_skips_the_self_check_on_fine_settles.
+- For the coordinator (Tess): her shoulder breadth (2 x shoulder point x) 313 mm is under ANSUR II women's p5, so on
+  the base hps her shoulder length reads 99-103 mm (women p5-p95 / stature 0.074-0.093 OUT; crest 125 passed only by
+  moving the hps 15 mm in). The outlier is her shoulder point, not the hps.
+- Spend: $0 this session (day ~$2.39 of $5).
+STATE: allowance cut verified on the torso (58 -> 41 mm under the armpit) but every cut start has the sleeves pushed
+10 cm down the arm (stitch gaps 184-257 mm): j15 NOT run, STUCK at placement. Shirt start = the failing class (101 mm).
+NEXT: (a) placement: keep a set-in sleeve's underarm on the armhole bottom when the cap is lower than the armhole
+(or raise the cap: cap ease / a higher cap for tailored jackets, 80%+ of depth), then re-place 0.010 and expect the
+gap <= j8's 92 mm; (b) read the probe logs when dg_probe_s8_base ends; (c) footwear coverage to its stage owner.
+
+## Handover 2026-10-15 o (dress-garrett; 70-call clock reached, STOPPED)
+- (b) Cap height by garment kind (pattern_blocks.CAP_HEIGHT_BY_KIND jacket / coat / blazer 0.75; cap_for_height;
+  pattern_draft.op_sleeve measures the armhole depth as a tailor does: vertical, shoulder point to underarm, front/back
+  mean; the design's kind reaches the draft through garment_design's pattern dict -> D["meta"]["kind"]). Source: "about
+  2/3 to 3/4 of the armhole depth measured vertically from the shoulder point to the underarm" for a fitted sleeve
+  (Pattern Principles Oct/Nov 2005, quoted on the Threads Magazine pattern-drafting forum; secondhand, original not
+  read); tailored = the high end, shirts lower (minervapatterns.com, sleeve block and armhole); a basic cap ~2 cm short
+  of the armhole depth (US4894918A). Order: cap ease up to CAP_EASE_MAX 0.05 (coat band 3-6%), then the biceps ease down
+  to CAP_BICEPS_EASE_MIN 0.08; never below the plain solve. Shirts / knits unchanged (kind not listed).
+  Jacket drafts ($G/capdraft.py): underarm 0.035: depth 245, cap 184 (75%), cap ease 4.5%, biceps 15%.
+  underarm 0.010: depth 220, cap 162 (74%), cap ease 5.0%, biceps ease 8% (at the floor: a slim jacket sleeve, 342 mm).
+  Test: tests/test_pattern_draft.py test_jacket_cap_height_from_the_armhole_depth (all draft tests pass).
+- (a) Placement by notches (cloth._sleeve_notches + place(_set=)): with sleeves_set, after the torso is laid, each arm's
+  anchor sleeve moves DOWN so its underarm point(s) (underarm / underarmF / underarmB) are level along the arm with the
+  torso point they are sewn to (only down; a high cap keeps its crown at the shoulder point). The _down loop stays as
+  a last resort and now warns (B["place_warnings"] + warnings.warn). Bug fixed in it: an "align"ed piece (two-piece
+  under sleeve) took its own _down ON TOP of its anchor's, so it went down twice as far (the 18-26 cm). Test:
+  tests/test_tooling.py test_set_in_sleeve_is_set_by_its_underarm_notch.
+- j15 start with both (underarm 0.010, over pinned dg_s6; job_86b74bac2c965b50, BROKER, nothing submitted):
+  armhole bottom 1321 = 41 mm under the armpit (1.362; target ~30: NOT reached, the allowance cut is unchanged by this),
+  under sleeve top 1310; longest sew gap 184.6 mm under.L-back.L (180 R), top.L-under.L 173 (was 257; j8 92: NOT
+  reached); preflight body ok (7.8 mm) + self ok. No place warning in the log (the _down loop did not fire?). FAIL.
+  Not diagnosed (out of calls): the top/under gap of 173 mm says the two sleeve pieces are not set together; check
+  B["sleeve_set"] (is under aligned in this jacket, or its own anchor?) and whether the crown, now set down the arm by
+  (shoulder point -> armhole bottom) - cap, leaves the back armhole's upper stitches (vertex 57) far off.
+- j15 sim NOT run ($0; day ~$2.39 of $5). Shirt probe dg_probe_s8_base still QUEUED (45 min). Footwear flecks not touched.
+- Regression running detached ($G/regr.sh: $G/regr.py on dg_garrett:shirt, dt_tess:jeans/sweater/coat, old code
+  = 7f41b098 archive in $G/oldsrc via XPATH, then new): read $G/regr_old.out vs regr_new.out (RES lines: gap max,
+  crossings, set/down, warnings). wf_/pd_/ga_ gates not run (gates.py needs the garments env; not tried).
+STATE: cap-height-by-kind + notch setting + align double-down fix in, tests pass, j15 start FAILS (41 mm, gap 185 vs 92).
+Regression unread. NOT MERGEABLE until regr_new is no worse than regr_old.
+NEXT: (1) read regr outputs; (2) print B["sleeve_set"] / wraps for the jacket (add to run.py) and fix the top-under
+separation; (3) then j15 placement again, sim only if gap <= ~100 and underarm ~30; (4) probe logs; (5) footwear.
+
+## Handover 2026-10-15 p (dress-garrett; 70-call clock)
+- (1) j15 start = base hps + notch placement + cap rule + underarm 0.035 (the j8 allowance), placement only (BROKER
+  run.py, jacket over pinned dg_s6; $G/runp.py = run.py printing B["sleeve_set"]; HP_DEBUG_ARM=1 for the cylinders):
+  - sleeve_set {top: 0.0}: at 0.035 the cap (75%) is high enough, so notch placement does nothing here (as asked).
+  - As handed over (job_1a286cd4581c6256): longest gap 126 mm top.L-under.L, self check FAIL (side.R 0.78 / 0.88 mm):
+    notch placement did NOT cure the self check. Armhole bottom 1300 = 62 mm under the armpit (j8's 62).
+  - (2) the sleeve pairing, diagnosed ($G/tu.py: seam pairs by angle round the arm): the UNDER sleeve was pushed out
+    round the arm on its own by the push-out rounds (its corner at the armpit; the body isn't radial to the arm there):
+    R 59 -> 78 -> 97 -> 121 mm while the top stayed at Rp 88, both sleeve seams ~75 deg apart (j8: ~55 deg, 82 mm).
+    FIX (cloth._sleeve_push_out): a piece aligned to another on its arm is never pushed out alone; its local push is
+    left to the clearance pass. Test tests/test_tooling.py test_aligned_under_sleeve_is_not_pushed_out_alone.
+    After: sleeve seams 83-86 mm (j8 90-92). Longest gap now back.L-side.L 111 mm (j8 100): a torso seam, from the
+    base-hps draft (present before the fix too). Per pair: $G/pairgap.py <job keys>.
+  - Self check: the crushed pairs are the side panel's armhole bottom (z 1.30, edges at 0.11 x) and, after the fix,
+    the under sleeve's front corner at the armpit (0.66 mm, a Z-press). Added cloth._self_crushed / _uncrush /
+    _unstack after the clearance pass (open crushed edges to 0.5 x, lift same-facing pairs to 1.5 mm, only round the
+    self check's pairs). On the jacket: self check ok. But on Tess's jeans (whose start RAN) it raised the start
+    stretch 0.04 -> 0.35 even when local: their sub-1 mm pairs (my mask is ~made_v, the preflight also skips
+    carryIdx / fold rings: that difference is the next thing to read) are harmless. So it is OFF by default:
+    HP_UNCRUSH=1 turns it on. Underarm 0.040 (not asked): sleeves 84, back-side 93, one pair at 0.96 mm.
+- (4) Regression (place_only, $G/regr.py; old = 7f41b098 in $G/oldsrc): defaults on the new code = old on
+  dg_garrett:shirt (101 mm, p95 92, stretch 1.067) and dt_tess:jeans (185 / 157 / 0.04); jeans' start arrays
+  byte-identical (only the key, which hashes the code, moved: I copied job_0b4e1e25's out.npz into job_8be5228f so
+  the layers over them can place). Sweater / coat need the jeans' / sweater's sims under the new key: the sweater's
+  new start NOT compared (old: 119 mm cuff-cuff, p95 74). wf_/pd_/ga_ gates not run. ga_tess has no cloth key.
+- (5) probe dg_probe_s8_base: still QUEUED on NICO-TOP (~1 h) when this session stopped. Not read.
+- No sim run, $0 (day ~$2.39 of $5).
+STATE: j15 start (HP_UNCRUSH=1, underarm 0.035): longest gap 111 mm (<= 120), preflight body 7.1 mm ok + self ok,
+armhole 62 mm under the armpit (= j8). Ready for the ONE approved rented sim; not submitted (calls).
+NEXT: (a) submit j15 with HP_UNCRUSH=1 (same command as dg_j15j35 in $G, without BROKER, under the submit opt-in),
+measure the hang against j8 (hem |x| 59/74, waist 51/60, chest 74/78): PASS -> j15 base, finish by hand; FAIL ->
+STUCK; (b) the sweater regression (needs the jeans sim under the new key, or pin); (c) why the jeans' pairs are
+harmless (mask vs preflight skips), then UNCRUSH on by default; (d) probe logs; (e) armhole depth later.
+- Late check: with the defaults (HP_UNCRUSH off) jeans read 220 / 165 / 0.045, but dt_tess/spec.json was edited at
+  22:53 by dress-tess mid-run (history 0086): not comparable. The align-fix-only run on the unedited spec matched old
+  exactly. Re-run regr.py on a frozen copy of dt_tess next time. HP_UNCRUSH=1 jacket start = job_8d2453a84a44a9d7.
+
+## dress-garrett 2026-10-15 q (in progress)
+- j15 rented sim (HP_UNCRUSH=1, job_8d2453a84a44a9d7) FAILED at frame 0, $0.0014: "ccd failed (toi 0)". Cause = ZOZO's
+  strain limiter (strain_toi.kernel: a face starting at / past its limit returns SL_toi 0), not a contact pair.
+  cloth_zozo gives over-limit draped triangles a local limit only while they are <= start_over 3% of the cloth: j15
+  3.47% over 5% (217 faces; worst side.R armhole bottom 1.42x, front shoulders z 1.47-1.50 1.26-1.39x) -> no local
+  limit -> fail. Every base-hps j15 variant 3.23-3.47% (uncrush adds ~14 faces). j8 (ran) 2.27%, 0 past.
+- Shirt probe dg_probe_s8_base, the frame-0 "pair": the same limiter. Base-hps shirt 3.04% (OFF), worst front.R at the
+  neckline z 1.52, 4.25x = the solver's max_sigma 4.252; s8 2.50% (on) with 31 faces past the 100% cap (s5 / s6 ran with
+  26-28: s8 is marginal there). Tool: $G/slstart.py <job dirs>.
+- cloth_job.start_strain_check (replays cloth_zozo's limits without editing it) in preflight; run_zozo now refuses a
+  PAID submit whose start fails preflight (HP_SKIP_PREFLIGHT=1 overrides). Test test_preflight_fails_a_start_past_the_
+  strain_limiter. On real jobs: j15 FAIL, base shirt FAIL, j8 / s6 ok.
+- Coordinator: NOT start_over (solver tuning); the base-hps draft no longer fits at the shoulders / neckline / armhole
+  bottom: diagnose pattern edge vs body path, fix in the draft from the base-of-neck ring, relax only a residual.
+
+## Handover 2026-10-15 q (dress-garrett; 70-call clock)
+- (1) j15 rented sim submitted as approved (HP_UNCRUSH=1, $G/q_dg_j15s.sh, job_8d2453a84a44a9d7): FAILED at frame 0,
+  $0.0014 (day ~$2.39 of $5); not resubmitted. No hang to measure: verdict FAIL / STUCK sent to the coordinator.
+  Cause (no contact pair): ZOZO's strain limiter (see q above): 3.47% of the start's triangles > 5% stretched, over
+  cloth_zozo's start_over 3%, so no local limit. Every base-hps j15 variant 3.23-3.47%; j8 2.27%.
+- (5) Probe dg_probe_s8_base read ($G/probe/results/*/solver_stdout.log: both fail at newton step 1, SL_toi 0): the
+  frame-0 "pair" is the strain limiter at the FRONT NECKLINE (front.R tri 2349, z 1.525, x -0.07: 4.25x = the solver's
+  max_sigma). Preflight check written (cloth_job.start_strain_check, in preflight; run_zozo refuses a paid submit that
+  fails it; test test_preflight_fails_a_start_past_the_strain_limiter). Commit 22d53eda.
+- Coordinator's decision: NO start_over raise (solver tuning). Fix the draft where it no longer fits the base hps;
+  relax_strain only for a small residual afterwards; then ONE approved j15 if preflight passes; shirt gets the same fix.
+- Diagnosis so far (no sim; $G/overmap.py <job dirs>, $G/necks.py <model> <garment>):
+  - Over-limit faces are stretched LENGTHWISE (pattern v) at z 1.45-1.55 (shoulders / neck), fronts and backs.
+    j15 vs j8: fronts ~70 vs ~35 faces (front.L/R 1.5 v 23/24 vs 4/11), backs about the same (~100 both). The FRONT
+    is what the base hps broke; the backs were over in j8 too.
+  - dg_garrett body, base hps: hps.L [62.6, -30.2, 1519.4] mm = the base-of-neck ring's lateral point; the ring is
+    tilted 99 mm: cb (nape) 1569.8 = 50 mm ABOVE the hps, cf 1470.9 = 48.5 below. Ring girth 430.8 (the loop up the
+    neck 406.5); quarter arcs front 105, back 108.
+  - Draft (pattern_blocks.bodice, all from mm["neck"] = the UPPER loop): neck width nw 89 mm (ring half width 62.6:
+    the pattern is 26 mm WIDER), front neck depth 62 below the hps line (body 48.5), back neck bn = 0.05 x neck = 20
+    BELOW the hps (body: 50 ABOVE: 70 mm short at CB). Neckline length 427 (406.5 x 1.05) vs ring 431: NOT short.
+  - So the neckline girth is fine; its SHAPE does not match the ring the base hps sits on: wider and with the hps at
+    the ring's mid height, the back neck rises 50 mm above it on the body. Not yet checked: the front's path hps ->
+    chest over the shoulder vs the pattern (hpsToBust is not read by the draft's front length, only by a bust dart),
+    and the shoulder seam (pattern nw -> sx, 152 mm, vs the body hps -> shoulder point).
+  - Suspicion to test first: nw / fn / bn should come from the ring (half width, cf / cb drop from the hps), i.e.
+    `neckBase` + the ring's points from tailor (loops["neck_base"]), not mm["neck"]; and/or the base hps itself is too
+    low (50 under the nape; real side neck points sit near the cervicale's height): check ANSUR (cervicale height -
+    trapezius-point height) before changing either.
+- (4) Regression on a FROZEN copy: workspace/dt_tess_frz (spec.json + cloth_*.npz + history copied 2026-10-15 ~23:00,
+  from dt_tess history 0086). $G/regr2.sh -> regr2_old.out (7f41b098) / regr2_new.out / regr2_unc.out (HP_UNCRUSH=1)
+  on dt_tess_frz:jeans/sweater/coat + dg_garrett:shirt, unders pinned to their own START when no finished result
+  matches the mesh (regr2.py prints "pin ... <- its start (sha ..)": the shas must match old vs new). RUNNING when
+  this session stopped; first line (old): jeans 220 / 164 / stretch 0.042. Read all three; notch placement mergeable
+  only if new == old on jeans / sweater / coat / shirt. wf_/pd_/ga_ gates not run.
+- (3) HP_UNCRUSH safe-default work NOT started (it is not the j15 blocker: uncrush adds ~14 of 217 over faces). Plan:
+  the mask = the preflight's (skip carryIdx + fold rings via folds.weights), and a stretch cap (revert the uncrush
+  where the local max strain rises past max(before, 1.10)); test on the jacket and dt_tess_frz:jeans (0.04 must hold).
+- Not merged origin/main yet (b32d303f game camera): merge before any render.
+STATE: preflight strain check in (22d53eda); j15 FAIL at frame 0 (start 3.47% over the limit), STUCK on the draft
+under the base hps: the neckline is drafted from the upper neck loop, not the base ring (width +26 mm, CB 70 mm low).
+NEXT: (a) finish the diagnosis (front hps -> chest path vs pattern; shoulder seam; ANSUR check of the base hps height);
+(b) fix the draft from the ring, with a test; re-place; preflight strain < 3% (aim j8's 2.27%, 0 past); (c) ONE
+approved j15; (d) shirt same fix + check; (e) read regr2_*; (f) UNCRUSH default; (g) merge main before renders.
+
+## Handover 2026-10-15 r (dress-garrett; 70-call clock reached, STOPPED)
+- Merged origin/main (b32d303f camera fix) -> 1fb97d66. Cloth tests one file per process ($G/tests.sh): all green
+  except test_collar::test_made_lay (collar far-edge ratio median 0.896, wants |1 - m| < 0.03): it failed BEFORE any
+  edit of this session (log 23:10, edits from 23:13), i.e. at 9d47997d + main. Not investigated.
+- (1) Base ring vs ANSUR II (men within 40 mm of 1770, n 1742; $G/ansurchk/ansur_neck.py, python3 -I, latin-1):
+  cervicale p5/50/95 1512/1530/1548, suprasternale 1432/1450/1470, acromial 1426/1453/1480; cerv - supra 61/79/98,
+  cerv - acrom 56/77/100, supra - acrom -25/-2/21; neck base girth 397/434/478; shoulder length 135/150/166.
+  - Absolute heights: Garrett's ring cb 1569.8 (> p95 by 22), cf 1470.9 (p95), but his shoulder point 1484 is over p95
+    too: head + neck above the shoulders are ~20-40 mm short of the population (GNM head). Judge RELATIVE to the
+    shoulder point: Garrett at the fixed 32 deg tilt cb - sp 85 (ok), cf - sp -13.5 (ok), cb - cf 99 (p95 98: edge);
+    dg_mh cb - sp 110 (OUT, p95 100), cb - cf 122 (OUT). Verdict: the 32 deg ring is too steep (the neck leans ~10 deg
+    forward on top of it: dg_garrett nd y -0.175, dg_mh -0.213); back too high on dg_mh.
+  - tailor._neck_base_level: tilt solved (drop read at 12/20/28/36 deg, interpolated) so cb - cf = NECK_BASE_DROP x
+    stature. 0.0445 (men p50): Garrett cb - cf 79, ring girth 416 (was 431), hps z 1518 (was 1519.4); dg_mh 81, all
+    three ANSUR items in band. BUT dg_mh's hps -> shoulder point then reads 0.0754 of stature (test_side_neck_point_
+    meets_the_population_shoulder_length wants >= 0.076; at 0.0425: biacromial ratio 0.3287 < 0.330): the two
+    population checks pull dg_mh's ring opposite ways by < 1%. So NECK_BASE_DROP = None (OFF) by default: opt-in.
+- (2) Neckline draft from the ring: pattern_blocks.bodice block option neckline "ring" (default "upper_loop" = old
+  rule; OPT-IN until a placed start passes the strain preflight). front depth = the ring's cf drop under the hps
+  (mm neckBaseFrontDrop), back drop = raw hps tape - the ring's cb tape (napeBaseToWaistBack; cloth.length_level keeps
+  hpsToWaistBackRaw), width solved so the neckline = max(1.01 ring, 1.05 neck); CB length from the ring's cb tape.
+  New tailor tapes: napeBaseToWaistBack, cfBaseToWaistFront, hpsToWaistFront (at cb_neck_base / cf_neck_base).
+  Test test_pattern_tailor::test_neckline_is_drafted_on_the_base_ring (Garrett, dt_tess_frz, dg_mh; drop 0.0445).
+  Numbers at drop 0.0445 (per half front / back vs the ring's quarter arcs): Garrett 115 / 99 vs 109 / 101 (old draft
+  121 / 92 vs 105 / 108), width 98, front 41, back -8; Tess 99 / 87 vs 94 / 92; dg_mh 124 / 117 vs 126 / 118.
+  - FINDINGS that block it: (a) the back drop from tapes is UNSTABLE: Garrett's ring-cb tape read 523 / 453 / ~490
+    for rings 4-22 mm apart (bn +34 .. -22): the taut tape from a start on the neck (down() at x = 0 from cb - 1 cm)
+    must be checked before bn can come from it; (b) hpsToWaistFront - cfBaseToWaistFront is NOT the front depth (85
+    on Garrett vs a 48.5 drop: the chest's prominence), so the front uses the z drop; (c) the worn placement maps
+    pattern y to world z below the hps (cloth.py ~3236), so a pattern cb at -bn lands bn under the hps while the
+    body's ring cb is 35-50 ABOVE it: the brief's "back neck rise" would be -35..-50 mm, which no flat block has.
+    Decide (coordinator): bn from the placement's geometry (rise) or from a fixed tape, before re-placing.
+  - The handover-q claim "neck width 26 mm too wide" was wrong: the flat width is the arc round the body (the ring's
+    horizontal quarter arcs ~93-95 on Garrett), not the ring's 3D half width 62.6; the real fault in the old draft was
+    the split: front neckline 121 vs the ring's 105, back 92 vs 108.
+- (3) NOT done: j15 / shirt not re-placed, no preflight, (4) no sim (spend unchanged, ~$2.39 of $5).
+- Coordinator's extra: start_self_check exempts a sewn vertex on faces one ring from its own sew partner (a tube's
+  seam placed closed). s30 / s31 sweater starts that ran: 186 / 194 -> 0 pairs; s7 still 2 (fails), j8 / j12 pass.
+  Commit 9b6a7a24, tests in test_tooling (synthetic tube + the real starts).
+- (5) Regression on dt_tess_frz (regr2_old by the old code, regr2_new / _unc by a SNAPSHOT of 9d47997d + main in
+  $G/newsrc via $G/regr3.sh, so this session's edits don't leak in): jeans new == old (220 / 164 / 0 crossings /
+  0.042), sweater new == old (120 / 67 / 5 / 0.508; new also reports set sleeve 0.0); coat ERRORED in the OLD code
+  (TypeError float(list)) so no baseline; shirt and the UNCRUSH run were still running at the stop. Mergeable on
+  jeans + sweater; coat and shirt not yet shown.
+STATE: self check fix in (9b6a7a24); ring neckline + ring tilt solve in as OPT-IN, tested, not default; j15 still STUCK.
+NEXT: (a) make the ring-cb tape stable (or define bn from the placement) - coordinator's call on (c); (b) with
+neckline "ring" + NECK_BASE_DROP 0.0445 re-place j15 / shirt (BROKER=1 run.py) and run $G/strchk.py on the job;
+(c) only if < 3% over and 0 past: one approved j15; (d) read regr2_new / regr2_unc tails (shirt, unc) and the coat.
+
+## HPS research (parked, 2026-10-15 s; coordinator: back to the last known good)
+`tailor.measure`'s hps is "widest" again by default (the widest point of the loop 2 cm up the neck: j8's definition,
+the one jacket that hung right). Since the switch to "base" a dozen sessions chased knock-on faults (length, balance,
+armhole, neckline, start strain past ZOZO's limiter: j15 3.23-3.47% vs j8 2.27%); each fix exposed the next.
+OPT-IN RESEARCH, kept and tested, not used by any default draft:
+- `HP_HPS=base`: the ANSUR II / ISO side neck point on the base-of-neck ring (`tailor._neck_base_level`), with the
+  ring's cb / cf (`cb_neck_base`, `cf_neck_base`), the ring tapes (napeBaseToWaistBack, cfBaseToWaistFront,
+  hpsToWaistFront), the tilt solve `tailor.NECK_BASE_DROP` (None = fixed 32 deg) and the bodice block option
+  `neckline: "ring"`. `HP_HPS=crest` (`_side_neck`, the shoulder crest's crossing) is older research.
+- Tests pin HP_HPS=base: test_side_neck_point_meets_the_population_shoulder_length, test_neckline_is_drafted_on_the_base_ring.
+Open questions before it can come back (handover r): (a) the back neck drop from the ring-cb tape is unstable (523 / 453
+/ ~490 mm for rings 4-22 mm apart); (b) the worn placement maps pattern y to world z under the hps, so a ring whose cb is
+35-50 mm ABOVE the hps needs a back neck RISE no flat block has: bn from the placement's geometry or a fixed tape is
+undecided (the back-drop decision is deferred); (c) NECK_BASE_DROP 0.0445 puts dg_mh's shoulder length at 0.0754 of
+stature (ANSUR p5 0.076) while 0.0425 fails the biacromial ratio: the two population checks pull opposite ways;
+(d) everything drafted on it (length, balance, armhole depth) was retuned against base-hps starts and must be re-checked.
+
+## dress-garrett 2026-10-15 s (back to the last known good)
+- a8bef17a: HP_HPS default "widest" (see "## HPS research (parked)"). Cloth tests one file per process: all 15 green,
+  incl. test_collar::test_made_lay (it failed under the base-hps default only: the collar's lay rides the hps).
+- j15 = widest + current code + underarm 0.035 ($G/q_dg_j15w.sh / q_dg_j15u.sh, place only; $G/pfs.py = preflight +
+  sew gaps): without HP_UNCRUSH the self check FAILS (under.L / side.R underarm corner edges crushed 9 -> 0.16-0.18 mm,
+  1 pair 0.51 mm); with HP_UNCRUSH=1 preflight passes: strain 2.55% (j8 2.27%), 0 past, self ok, sew gap max 105 (j8 100).
+- ONE rented sim (approved; $G/q_dg_j15us.sh, job_7aca63ae26eb8a5c, 460 s GPU): 0 crossings after clean-up, layered 42 (j8
+  30). Hang (V, front edge |x| L/R mm) j15 vs j8: hem 47/80 vs 59/74, waist 60/61 vs 51/60, chest 84/83 vs 74/78.
+  front.R within 6 mm; front.L's hem 27 mm HIGHER (z 858 vs 831), 60 mm FORWARD (y min -230 vs -168), 45 mm off the
+  body (j8 26): the over front flares. X0 equals j8's both sides: the sim makes it. VERDICT FAIL (partial), STUCK.
+- pdiff j8 / j15 ($G/pdiff.py, fixed for numpy 2's 2D cross): the pattern is j8's within 3 mm (length -3, all seams
+  equal, collar carry 87 -> 79). Differences are the run's: the under (s6 result vs j8's own), mirror_mesh + mirror
+  "mean", HP_UNCRUSH, sleeve placement code, collar carry. Untested which; needs a sim (coordinator's call).
+- Shirt on widest (current code, s6's args, $G/dg_s9w.log job_e0d416238156d398): preflight ok, strain 2.71% (s6 2.65%),
+  29 past all capped (s6 28), self ok, gap max 92 (s6 91).
+- Regression (dt_tess_frz): jeans / sweater new == old; shirt new == old; UNCRUSH jeans == old (rest running at the time
+  of writing: $G/regr2_unc.out). Coat: no baseline, its frozen spec has open_gap [0.15, 0.26] (a list) which no
+  cloth.open_gap accepts (TypeError in old and new): a dress-tess spec question.
+STATE: widest default in; j15 sim ran, front.L hem flares (FAIL), pattern = j8's. NEXT: coordinator picks the variable
+(suggested: j15 without mirror_mesh / mirror "mean", front.L being the over side); armhole round (3) only after a PASS.
+
+## Handover 2026-10-15 s (dress-garrett; 70-call clock)
+- Coordinator: j15 IS the base (pattern = j8's, front.R within 6 mm of j8). No more jacket sims.
+- Hand finish of front.L's hem on a COPY of the drape ($G/fg.py <tag>, dress-tess's guarded fin/finish.py: seams carried,
+  clearance vs body + shirt surfaces, crossings / seam gaps checked). Move "match_side": front.L + side.L blended to the
+  MIRROR of front.R + side.R (mirror_mesh gives a vertex-for-vertex match in uv), weight 1 below z 0.95, 0 above 1.15.
+  - f1 (move + 3 smoothing iterations): accepted by the guard, but side.L crushed (faces < 70% of pattern area 3% -> 38%;
+    side.R 11%): the smoothing pulls a small piece in. f2 (+ back.L) is no better.
+  - f3 (NO smoothing; NOSMOOTH=1): 320 verts, max 109 mm; side.L 6.7%, front.L 1.6%; crossings body 0 -> 0, shirt and self
+    unchanged, seams unchanged. front.L hem z 858 -> 840, y min -230 -> -153 (= front.R), off 45 -> 41 (R 38).
+  - Applied as the garment's sculpt (offsets over the sim's V: $G/out/dg_j15us_sculpt_f3.npz, key 7aca63ae26eb8a5c),
+    passed as a run.py override (NOT yet written into dg_garrett's spec): dg_j15f3 builds from the cache: 0 crossings,
+    nothing crumpled, "hand sculpt applied (320 vertices moved)". Hang V |x| L/R: hem 74/80, waist 60/61, chest 84/83.
+  - run.py GOTCHA: under_pin's pin-cache key reads the LAST argument's value (late-bound `v`): keep the arg order of the
+    sim's run (underarm=0.035 last), or the shirt pin rebuilds and the jacket gets a new sim key.
+- Renders: ONE NICO-TOP batch (rr.sh dg_j15f3, dgrr-235203, $0): cloth_renders/dg_j15f3*.png. They show jacket + shirt +
+  body only (run.py's sheets have no trousers).
+- Blind review ($G/rvjacket.sh dg_j15f3 r1 -> $G/rv_dg_j15f3.out): FAIL. MAJORs grouped by cause:
+  - DESIGN / DRAFT (pattern): no waist suppression and the hem wider than the chest (box, flares); one button, low (the
+    reference has two: waist + pocket line); no pockets (2 flap + chest welt); sleeves wide to the cuff with a soft,
+    drooping shoulder (no sleeve head or pad); no visible notch, lapels long down to the low button. (MINOR: square
+    hem corners, where the reference has a cutaway curve.)
+  - HANG / FINISH (by hand on the drape): fronts a hand's width apart along the whole length (open_gap placement); a
+    loose wing behind the right arm, armpit to hem (side.R: 11% of faces crushed; candidate for the next finish
+    move); the collar stands up behind the neck (collar lay).
+  - MATERIAL: white button; flat black cloth (charcoal weave in the reference) [other stage].
+  - OTHER STAGES: shirt placket and collar crumpled or torn, the shirt tail gathered between the legs, shirt colour;
+    body / head untextured.
+  My own look agrees: the fronts are symmetric now; the side view shows the front hem still kicking forward, plus
+  white flecks at the back neck.
+- (3) SUSPECT, to A/B only if another jacket ever needs a sim: mirror_mesh + construct.mirror "mean" for j15's
+  one-sided front.L flare (the start was symmetric; the flare came from the sim).
+- (4) The coat's open_gap [0.15, 0.26] is dress-tess's placement extension (80c27897 on their branch). It is not on this
+  branch, so it is not a bug here; left alone.
+- UNCRUSH regression run (dt_tess_frz): jeans == old (0.042); sweater crossings 5 -> 4, rest equal; coat n/a.
+STATE: j15 base + hand finish f3 (sculpt override) rendered and reviewed: FAIL, with 9 jacket MAJORs (5 design, 3 hang, 1 material).
+NEXT: (a) write the f3 sculpt into dg_garrett spec cloth.jacket.sculpt (key 7aca63ae26eb8a5c); (b) finish moves for the
+right-side wing (side.R) and the fronts' gap, measured against the concept's front-edge spacing; (c) the design MAJORs
+(waist suppression, two buttons + heights, pockets, sleeve taper / head, notch) are a pattern round: the coordinator
+decides whether it is worth a new sim; (d) armhole round (3) is still pending.
+
+## dress-garrett 2026-10-16 t (the carry of the approved jacket)
+- (1) Design diff, no sim: the j-series jacket has NOT drifted from the approved c12_n18c. su_gc's jacket + q_n18 line 1 vs
+  dg_garrett's jacket: darts False; suppression = the same take_in (sideF 8, sideB 10 mm) + CB contour 12 mm + side hem
+  spring 0; buttons n 2 (stance on front.R, closure front.L over, open); lapel break_y 0.455 / notch 0.025 / stand 0.012 /
+  width 0.064 / gorge_drop 0.095 / roll 0.8; collar 0.011 / 0.028 / point 0.015 / height_front 0.028; sleeve cap_ease 0.03,
+  hem_width 0.32, two_piece elbow 0.05; pockets "none", shoulder pad_and_head: ALL identical. Only differences: chest_ease
+  0.06 (n18's override) -> 0.09 (stage 2 gate), underarm legacy -> 0.035, set_sleeves free -> into_armhole (the hang fixes).
+  pdiff job_ddb2eb8a (n18c) vs job_7aca63ae (j15): same pieces / seams, body pieces +7 mm wide, +18 long (sides +27).
+  The approved jacket had no pockets either (cloth12 wrap). Coordinator: NO sim, chest_ease stays 0.09, no pocket tool;
+  j15 + finish = the carry; review target = the approved look (concept-level items = a design list for Joe, below).
+- (d) "One low button": a construct-order fault. buttons_mesh ran BEFORE cloth_made.construct, whose lapel press moves
+  front.R round the break: j15's top button anchor moved 22 mm up and ~2 cm forward after the button was built, so the
+  button sat 2-4 cm behind the pressed front (hidden). n18c / j8: anchors unmoved, both buttons show. FIX cloth.build:
+  after construct, buttons rebuilt on the final V if any anchor moved > 1 mm.
+- Carry measures ($G/fin_t/meas.py; n18c | j15f3): fronts' edge |x| L+R at 15/35/55/75% of height 133/128/134/151 |
+  151/112/122/160 (carried within ~2 cm); collar at CB 8 | 9 mm over the back neckline, off the body 22 | 14 mm (j15's
+  collar sits CLOSER than the approved: no move); side panels' |x| max 228/232 | 260/260: the wing. j15us (sim) side.L 193
+  / side.R 259 at the hem: f3 (front.L + side.L <- mirror of R) had copied the wing to BOTH sides.
+- Finish t3 ($G/fin_t/fgt.py, guarded finish.py, no smoothing): front.L <- mirror front.R below 0.95..1.15 (f3), side +
+  back pieces both <- mean(L, mirrored R) below 1.15..1.27, the fronts blended to that mean within 16 cm (uv) of the side
+  seam (sewn groups move together: without it front.L's mirrored side seam dragged side.L back out, t1 260 mm). Result
+  side |x| max 223 / 224 (approved 228 / 232), off body p90 54 / 54 (n18c 65 / 66); crossings body 0 -> 0, self 41 = 41,
+  seam gap max unchanged, moved 1231 verts max 109 mm. COST: faces under 70% of pattern area front.L 5.8%, front.R 8.7%
+  (from 2.7 / 0.6: the side-seam blend compresses the excess instead of folding it), side.R 10.8% (unchanged).
+- The sculpt is NOT written into dg_garrett's spec: its key is the j15us sim key, which depends on run.py's under_pin (the
+  pinned s6 shirt), so a plain spec build reports it stale. It rides as a run.py override ($G/q_dg_j16t.sh).
+- run.py ($G, scratch): buttons drawn in cloth.button_color (jacket: tone 0.55 x cloth = charcoal horn, the approved
+  one's), TROUSERS=<pkl> adds a finished trousers result (dg_t5) to every sheet. rvcarry.sh = the carry review
+  (approved c12_n18 sheet | result, panel for panel + lapels) and carry_pairs.png for Joe.
+- j16t = j15us drape (cache, NO sim, $0) + finish t3 + the button fix + trousers dg_t5 ($G/q_dg_j16t.sh): 0 crossings,
+  "hand sculpt applied (1231 vertices moved)"; both buttons on the cloth now (top z 1.134 at the pressed front's
+  surface, lower 1.024), drawn charcoal horn (#1f1e1d, kb jacket tone 0.55 = c12_n18c's own button data; the approved
+  SHEET's white buttons were run.py's hard-coded shirt pearl). Hang (j16t | j8 | n18c): fronts' edge |x| L/R at 15%
+  74/77 | 56/73 | 60/73; hem z 839 | 831 | 845; side |x| max 223/224 | 215/253 | 228/232. The swing did not come back
+  (fronts symmetric, front hem y -153 both sides).
+- Renders ONE NICO-TOP batch (dgrr-000213, $0): cloth_renders/dg_j16t*.png WITH trousers; pair sheet for Joe
+  cloth_renders/dg_j16t_carry_pairs.png (approved c12_n18c | j16t: front, side, back, three-quarter).
+- CARRY review ($G/rvcarry.sh dg_j16t r1 -> out/rv_dg_j16t/r1/review.md): FAIL, 2 jacket MAJORs + 1 other-stage:
+  - MAJOR side profile: the fronts swing BACK below the top button (a kink at the top button, the hem 40-60 px behind the
+    button line): reads as a cutaway; the approved falls plumb. My look agrees. Likely the pressed front round the break
+    standing ~2 cm proud (the top button's anchor moved 22 mm up / 2 cm forward in construct) over a front that hangs
+    to the body below; not measured further.
+  - MAJOR back: white shirt specks through the jacket just below the collar at CB (also in j15f3). Jacket-side finish
+    REFUSED twice ($G/fin_t/fgt2.py: finish.clear of the upper back off the shirt surface, 197 of 251 vertices under the
+    shirt's margin by up to 22 mm; full and SHALLOW=8 mm both add 19 self crossings with the collar). The shirt's back
+    neck sits OUTSIDE the jacket there: fix it on the SHIRT (its collar band / yoke pulled in under the jacket), not the
+    jacket.
+  - Other stage (reviewer MAJOR, not mine): dark buttons vs the approved sheet's white: per the coordinator's material
+    call (horn); if Joe wants contrast, closure button.color.
+  - MINORs: top of the opening wider (fronts further from the placket), collar ends stand up at the side neck / far
+    collar, a dark spot on the near lapel, the back hem boxier, shirt collar crumpled, a shirt fragment at the fly.
+- DESIGN LIST for Joe (concept items the approved c12_n18c also lacks; not carry faults): waist suppression (darts off,
+  side take-ins 8 / 10 mm only) with the hem wider than the chest; flap pockets + a breast welt (no made-pocket builder:
+  op_pocket drafts them as sim pieces, which made the fronts heavy in cloth12); sleeve taper / a firmer sleeve head;
+  the notch read as an open gap; a cutaway curve at the front hem corners; charcoal weave instead of flat black.
+STATE: j16t (carry: j15 drape + finish t3 + button fix) rendered with trousers; carry review FAIL (front swing-back
+under the top button; shirt through the back neck). Sculpt t3 rides as a run.py override, not in the spec.
+NEXT: (a) the shirt's back neck pulled in under the jacket (shirt finish, pinned dg_s6); (b) the pressed front round
+the break: measure how far front.R/L stand off the shirt at the top button vs n18c, then a guarded move that lays it
+back plumb to the hem; (c) Joe's call on the design list and button colour.
+
+## dress-garrett 2026-10-16 u (finish of the carry j16t, no sims; scripts $G/fin_u/, $G = /mnt/data/hifipushie/dress_garrett)
+- run.py ($G, scratch) now saves `under_V` (the shirt as pressed under the jacket, what the sheets draw) and
+  `sculpt_offset` in <tag>.pkl, and takes three new keys: `under_sculpt=<npz offset, key>` (a hand finish of the shirt
+  as drawn, applied AFTER the build: the jacket's sim key is untouched), `under_collar=<npz>` (made shirt collar + stand
+  drawn instead of the simulated ones) and CACHED_ONLY=1 (env: cloth.build(cached_only=True), so a key slip can never
+  start a sim). `freeze=<dir>` writes the shirt AS DRAWN (under_V + made collar parts in res["made"]).
+- (1a) Shirt back neck ($G/fin_u/shm.py = measure; fgu.py shirt part = move). Shirt-vs-jacket crossings 99 (j16t) -> 7;
+  shirt points outside the jacket at the back neck 20 -> 6. The shirt was pulled in toward the body (body-normal
+  direction), clamped to the room above the body (>= 0.8 mm + its thickness), the displacement smoothed and carried
+  across sewn pairs: 584 verts, max 5.2 mm; body crossings 100 = 100, self 750 = 750, seam gaps unchanged. A 3.5 mm
+  target REFUSED (body crossings 100 -> 111): the jacket sits within ~3 mm of the body there, so there is no more room.
+  -> $G/out/dg_j16_under_sculpt_u2.npz (key 7aca63ae26eb8a5c).
+- (1b) Shirt collar / placket crumpling (shm.py, % interior edges with dihedral > 30 / 60 deg, % faces < 70% pattern
+  area; pressed under the jacket | shirt alone s6): collar 22.5 / 15.4 / 9.1 | 17.2 / 11.0 / 4.3; fronts crushed 13.3
+  / 9.5 | 1.5 / 1.4 (pressing compresses); stand 0 / 0 both. The sim collar is the crumple. REBUILT as a MADE piece:
+  cloth_made.shirt_collar on the pressed shirt's neckline (seam_chain stand/collar, neck axis by SVD; SHIRT defaults),
+  $G/fin_u/mc.py c1 -> out/dg_j16_shirtcollar_c1.npz: stand 0 / 0, collar 16.1 / 3.7 (> 60 deg 13.9 -> 3.7: the
+  rest is the roll fold), crossings jacket 0, body 7 verts. shirt_collar is NOT wired into construct (only tests and
+  cloth10 spikes call it): the run.py override draws it. The placket (part of front.L/R) is not rebuilt; its crush is
+  the pressing (13% faces under 70%); not finished by hand this session.
+- (2) Fronts plumb (fgu.py front part; prof.py = profile): the most forward y of each front per height, relative to the
+  top button (mm behind it, button -> hem):
+  n18c (approved) L 0 0 0 +5 +9 +10 +13 +16 +22, R 0 0 +2 +5 +8 +9 +12 +16 +33
+  j16t            L 0 -10 -8 +1 +22 +32 +47 +54 +59, R 0 +3 +44 +26 +33 +39 +46 +54 +58
+  j16w            L 0 -12 -2 +2 +5 +8 +11 +19 +25,   R 0 +1 +25 +1 +5 +4 +5 +19 +26
+  Hem y min L/R -188 / -194 (n18c -189 / -194). Move: y per height band toward the approved's profile (median-filtered:
+  n18c's own one-band blip is not a target), full at the edge, 0 at 18 cm toward the side seam, 0 at the top button
+  (3 cm ease), 3 re-measured passes, ONE guarded apply: crossings body 0 = 0, shirt 22 = 22, self 41 = 41, seam gaps
+  unchanged, clearance >= 8.8 mm. Squashed faces DOWN: front.L 6.3 -> 4.0%, front.R 8.7 -> 4.1%, side.R 10.8 -> 8.1%.
+  LEFT: front.R's edge between the buttons (z 1.06) +25 mm (approved ~+2): the edge curls out and back there (|x| 89 vs
+  68 at the lower button); band moves don't reach it (an edge-line straightening move would).
+  -> sculpt $G/out/dg_j15us_sculpt_u4.npz = t3 + this move (offsets over the j15us sim V, key 7aca63ae26eb8a5c).
+- (3) HOW TO REBUILD j16w (the carry candidate; NO sim, ~60 s from the cache): `bash $G/q_dg_j16w.sh`, i.e.
+  CACHED_ONLY=1 RJOB=$G/rjobs/dg_j16w HP_UNCRUSH=1 TROUSERS=$G/out/dg_t5.pkl bash run.sh run.py dg_garrett jacket dg_j16w
+  mirror_mesh=true 'construct.mirror="mean"' under_pin=$G/out/dg_s6.npz
+  'sculpt={"file": "$G/out/dg_j15us_sculpt_u4.npz", "key": "7aca63ae26eb8a5c"}' under_sculpt=$G/out/dg_j16_under_sculpt_u2.npz
+  under_collar=$G/out/dg_j16_shirtcollar_c1.npz freeze=$G/frozen_j16w design.block_options.underarm=0.035
+  ARG ORDER: design.block_options.underarm=0.035 must stay LAST (under_pin's pin-cache key reads the last argument's
+  value: any other order rebuilds the shirt pin and gives the jacket a new sim key; CACHED_ONLY then fails instead of
+  simulating). The log must say "key 7aca63ae26eb8a5c", "hand sculpt applied (1317 vertices moved)", "under sculpt
+  applied (584 vertices moved)". FROZEN for the assembly stage (once approved): $G/frozen_j16w/garrett_jacket.pkl and
+  garrett_shirt.pkl (shirt AS DRAWN: under_V + made collar/stand in res["made"]["parts"], info.hides ["stand", "collar"]:
+  the export must hide those sim pieces; untested in export_asset).
+- TOOLING ITEM (why the spec can't hold it): dg_garrett's spec `cloth.jacket.sculpt` is keyed on the sim key, which
+  depends on the under garment; the jacket was simulated over a PINNED shirt (run.py under_pin = dg_s6's finished V,
+  not the spec's own shirt build), so a plain spec build sees another under, another key, and reports the sculpt stale.
+  The spec also has no place for a hand finish of the under garment as pressed under the over one (under_sculpt), nor
+  for a made shirt collar (cloth_made.shirt_collar is not called by construct). Needed: (a) a spec key
+  `cloth.<g>.under = {"pin": <finished result>}` read by cloth.build (so the pin is part of the spec and its key),
+  (b) `cloth.<over>.under_sculpt` applied to res["under_V"] after the build, (c) construct option `shirt_collar: "made"`.
+- (4) Renders: ONE NICO-TOP batch (dgrr-003931, $0): cloth_renders/dg_j16w*.png with trousers; pair sheet for Joe
+  cloth_renders/dg_j16w_carry_pairs.png (approved c12_n18c | j16w). CARRY review ($G/rvcarry.sh dg_j16w r1 ->
+  $G/rv_dg_j16w.out): FAIL, but BOTH target MAJORs of j16t are gone. Side: "front edge projection at the button, the curve
+  to the hem, hem height match within tolerance". Back: no shirt through the jacket (my look agrees: clean back neck).
+  Remaining jacket MAJOR (was a MINOR on j16t): the fronts sit further apart at the chest (shirt gap ~42% of the chest
+  width vs ~30%; carry measure: edge |x| at 75% height 80 / 80 mm vs n18c 73 / 78, the lapels sweep out toward the
+  armholes). Buttons dark = Joe's call (unchanged). MINORs: lower fronts rippled below the lower button, a vertical
+  fold near the near side seam, the far collar point standing up, a weak notch, the back hem wavy at the side panel.
+  OTHER STAGE MAJOR (shirt): the MADE shirt collar stands open and up round the neck above the jacket collar (reference:
+  folded points lying down). My look agrees: it reads ragged at the stand top; the made collar is WORSE to the eye than
+  its numbers (dihedral) said. Not yet checked: whether the mixed faces kept on the shirt (front/stand faces with some
+  verts in stand/collar) draw a sim remnant beside the made stand, and SHIRT params (open 22 deg, points 70 mm) vs the
+  approved look (button-down points lying on the shirt front). The placket ruffle is in the approved sheet too.
+- DESIGN LIST for Joe (unchanged, short): (1) button colour: horn (spec data) or light (the approved sheet's look);
+  (2) waist suppression (darts off; hem wider than chest); (3) flap pockets + breast welt; (4) sleeve taper / firmer
+  sleeve head; (5) a cutaway curve at the front hem corners; (6) charcoal weave instead of flat black.
+STATE: j16w = j16t + fronts plumb (sculpt u4) + shirt back neck in (under sculpt u2) + made shirt collar (c1); carry
+review FAIL on 1 jacket MAJOR (chest opening wider) + the shirt collar (other stage); side swing and back specks FIXED.
+NEXT: (a) the chest opening: lay the lapels / fronts from the break up toward the approved (edge |x| at 75% height and
+the lapel's outer edge vs n18c), guarded; (b) the made shirt collar: check the leftover mixed faces, then SHIRT params
+(open, points, lay) toward lying points, or fall back to the sim collar (j16w without under_collar) if it doesn't
+improve; (c) front.R's edge curl between the buttons (+25 mm at z 1.06); (d) wire the three run.py keys into the spec
+(tooling item above).
+
+## Handover 2026-10-16 u (dress-garrett; 70-call clock)
+- Coordinator round 2: (1) the chest opening + front.R's curl, (2) made vs sim shirt collar, (3) one batch + review.
+- (1) $G/fin_u/fgx.py x1 (on j16w): the measured front EDGE at the chest is only 0-8 mm wider than n18c's (|x| L 53..78 vs
+  58..70 mm from the top button up 20 cm; R already under the approved), so the review's "42% vs 30% gap" is mostly the
+  lapel's outer sweep (made by construct's press AFTER the sculpt) and the broader chest, not the edge. x1 laid the
+  edge in (<= 8 mm) and front.R's edge onto the line between its buttons: guarded OK (crossings equal, front.R crushed
+  4.1 -> 4.5%), but the curl only went from +25 to +20 mm, and BOTH reviews of x1 builds see a NEW MAJOR: a kink / point at
+  the top button (the move's 3 cm ease above the button meets construct's lapel press). REVERT x1: u4 stays the jacket.
+- (2) Made-collar tries ($G/fin_u/mc.py; edges > 30 / 60 deg %, crossings jacket / body): c1 (defaults) 16.1 / 3.7, 0 / 7;
+  c2 (open 6, stand 24 mm, points 62, spread 20) 16.1 / 4.4, 0 / 5; c3 (open 2, stand 22, points 65, spread 15, fall_hug
+  1.5 mm) 13.0 / 3.2, 0 / 12. Sim collar 21.9 / 13.9. One batch dgrr (NICO-TOP, $0): j16x = x1 + SIM collar, j16y = x1 +
+  made c3. Reviews ($G/rv_dg_j16x.out, rv_dg_j16y.out): j16x's shirt MAJOR "collar broken up and jagged, points fold in
+  on each other"; j16y raised NO shirt-collar fault. So c3 beats the sim collar; KEEP the made collar (c3), not the fallback.
+  (j16w's c1 had "popped open, stands up": c3 lies lower.) j16y's review also says "shirt too short, ends at the waist"
+  (other stage; not seen in the j16w review of the same shirt: check the crop before acting).
+- Pair sheets: cloth_renders/dg_j16w_carry_pairs.png (best jacket: u4), dg_j16x_ / dg_j16y_carry_pairs.png (x1, rejected).
+STATE: best = sculpt u4 + under sculpt u2 + made shirt collar c3 (NOT rendered as that combination: j16w had c1);
+side swing and back specks fixed; jacket MAJORs left: the lapels' sweep at the chest (construct's press, not the edge),
+front.R's edge curl (+25 mm at z 1.06); buttons = Joe's call.
+NEXT: (a) q_dg_j16w.sh with shirtcollar_c3 -> render + carry review (that's the candidate); (b) the chest opening at the
+LAPEL: measure the lapel's outer edge / roll line vs n18c and move it via construct's lapel options (lapel_lay / wedge)
+or a post-construct sculpt hook (none exists: the sculpt is applied BEFORE construct - a tooling item), never with an
+edge move that ends at the top button; (c) front.R's curl the same way (post-construct).
+
+## dress-garrett 2026-10-16 v (baseline j16z, post-construct finish hook)
+- (1) j16z = u4 + u2 + made shirt collar c3 (`bash $G/q_dg_j16z.sh`, cache only, key 7aca63ae26eb8a5c, 1317 / 584
+  vertices moved as in j16w; freeze -> $G/frozen_j16z/; NOTE the j16w script's freeze dir was overwritten by this
+  build (renamed to frozen_j16z): re-run q_dg_j16w.sh to get j16w's frozen pieces back). ONE NICO-TOP batch ($0),
+  carry review ($G/rv_dg_j16z.out): FAIL on ONE jacket MAJOR: the FAR-side collar / lapel top stands up to ear level
+  in the three-quarter view (popped collar; j16w's review had it as a MINOR). The chest-opening MAJOR of j16w is NOT
+  raised (front: "front opening ... close to the reference"; my look agrees, the shirt gap at the chest is about the
+  approved's). MINORs: collar ends standing at the neck sides (front / back / lapels), top button partly in the fold,
+  hem narrower than the shoulders, a curl below the break on the wearer's left front, back without the hem kick.
+  OTHER STAGES: buttons dark (Joe's call); "shirt too short" = DISPUTED with the crop: the shirt is tucked into the
+  trousers (present only in the result; the approved sheet has no trousers, so its shirt runs to the crotch); shirt
+  collar MINOR (crumpled), no MAJOR. Pair sheet: $G/out/rv_dg_j16z/carry_pairs.png. j16z = the baseline.
+- (2) TOOLING: post-construct finish. `cloth.<g>.finish = {"file": npz with "offset", "key": <finish_key>}` is applied
+  in _build right AFTER cloth_made.construct (lapel press, made pieces) and before the buttons are re-seated.
+  `cloth.finish_key(V)` = sha1 of the constructed V at 0.01 mm (res["finish_key"] on every build: make the offset on
+  that result and store that key; another construct result = "finish_stale", not applied). `cloth.finish_apply`
+  = the guarded finish in the package (was scratch dress_tess/fin/finish.py): closed seam groups move by their
+  largest member's move, crossings the move makes (self, body, the garment under) go back (alone, a ring, two rings,
+  their seam groups with them); refused whole if crossings remain or a made part's seam opens > 0.5 mm. In NOT_SIM,
+  GARMENT_KEYS and the scene's detail key. Test: tests/test_cloth_finish.py (synthetic sheets).
+- (2b) The finish on j16z ($G/fin_v/fv.py v3 -> out/dg_j16z_finish_v3.npz, key 6a0f1933154fe18b = finish_key of j16z's
+  constructed V). MEASURE FIRST: the "front.R curl +25 mm" of handover u was a SAMPLING ARTEFACT: the fronts have ~545
+  verts, rows staggered ~2-3 cm, so a +-6 mm z slab often holds no edge vertex and min |x| picks an interior one (j16z
+  slab readings alternate 53 / 87 / 53 mm). Measured on the piece's BOUNDARY vertices (|x| < 10 cm): front.R between the
+  buttons is straight within 5 mm; front.L stands up to 11 mm FORWARD of the line between its buttons at z 1.08-1.11
+  (the review's "curl below the break, wearer's left"). Chest opening on the front crops (shirt px / chest span, rows
+  at 25-35% of the frame): approved 0.24 / 0.23 / 0.22, j16z 0.25 / 0.26 / 0.24 (~10% wider, NOT 42 vs 30%).
+  Move: fronts + lapels from the top button up to the gorge laid 5 mm toward CF (vertical smoothstep ramp over 8 cm
+  from the button, full within 9 cm of the edge, fading over 7 cm; the gorge / made collar seam out of it); each
+  front's edge between the buttons onto the button line where it stands off > 3 mm (full at the edge, 0 at 10 cm).
+  Guard (cloth.finish_apply): 439 verts, max 9.6 mm, crossings 41 = 41 (incl. body + shirt), made collar seam max 1.3 =
+  1.3 mm. Chest edge |x| at +6/10/14/18 cm above the top button 58 63 69 76 -> 54 58 64 71 mm (both). front.L edge y
+  laid back 4-9 mm between the buttons. EDGE CURVATURE at the top button (boundary polyline +-4 cm, 5 mm resampled):
+  L 70.1 -> 69.9, R 70.2 -> 69.9 1/m: no kink (x1's kink came from a pre-construct move meeting the lapel press).
+  j17a = j16z + finish v3 through the hook (`bash $G/q_dg_j17a.sh`, `finish=` before underarm): log "post-construct
+  finish applied (439 vertices moved)", key 7aca63ae26eb8a5c.
+- (3) TOOLING: the j16w/j17 setup is SPEC-DURABLE. New garment keys (all in NOT_SIM + GARMENT_KEYS: the sim key is unchanged
+  by them): `under = {"pin": <pickled finished under result>}` (model_body: `under_pinned` loads it instead of building
+  the spec's own shirt; its key "pin_..." is what goes into the jacket's sim key, so the key no longer depends on
+  run.py's argument order / pin_cache file name); `under_sculpt = {"file", "key": <this garment's sim key>}` (added to
+  res["under_V"] right where it is set; res["under_sculpted"] / "under_sculpt_stale"); `under_collar = {shirt_collar
+  options}` (cloth.under_collar: the under garment's collar + stand made on its pressed neckline, neck axis by SVD of the
+  seam chain; res["under_made"] = {"parts", "hides", "info"}); `finish` (step 2). dg_garrett's spec v7 holds them
+  ($G/fin_v/spec_j17.py; pin = $G/out/dg_s6_pinned_under.pkl = the pin_cache file j16w/j17a used; c3 = open 2, stand
+  0.022, points 0.065, spread 15, fall_hug 0.0015). TEST tests/test_cloth_spec_durable.py: the jacket built from the
+  spec alone (cached_only) vs frozen_j17a: key 7aca63ae26eb8a5c, jacket V, jacket made collar, shirt as pressed, shirt
+  made stand + collar all 0.0000 mm. run.py ($G, scratch) draws / freezes res["under_made"]; q_dg_j17b.sh = the spec
+  alone (no garment overrides): frozen_j17b == frozen_j17a (0.0 mm). q_dg_j16w.sh's overrides are RETIRED (kept only to
+  rebuild old tags).
+  TOOLING LEFT: (a) HP_UNCRUSH=1 is still an ENV switch of the start (cloth.UNCRUSH / UNSTACK at import): a build
+  without it places another start; should become a garment key. (b) store.save(checked=True) refuses dg_garrett's
+  stored spec: the jacket's design compiles pattern key "kind", which the draft validator doesn't allow (pre-existing;
+  saved with checked=False).
+- (4) ONE NICO-TOP batch (dgrr-010144, $0): j17b (= j17a, the spec alone) -> cloth_renders/dg_j17b*.png; CARRY review
+  ($G/rv_dg_j17b.out) vs approved c12_n18c: VERDICT PASS, no jacket MAJOR (the only MAJOR is OTHER STAGE: dark buttons =
+  Joe's call). Pair sheet: $G/out/rv_dg_j17b/carry_pairs.png (approved | j17b). MINORs: notches soft; collar ends /
+  far collar top stand a little high beside the jaw; side panel seam ridge heavier; lower fronts recede a bit more below
+  the bottom button (33 vs 25 px); no hem flare; far front bows at hip / hem; near lapel rolls off the chest a little.
+  CAVEAT: j16z's MAJOR (far collar standing up) is a MINOR here, but finish v3 did NOT touch the made jacket collar
+  (made seam 1.3 = 1.3 mm): that flip is reviewer variance on the same collar; the collar ends are the next jacket item.
+  My look agrees with the PASS at the sheet's scale: same jacket, comparable chest opening, side profile and hem.
+
+## Handover 2026-10-16 v (dress-garrett; steps 1-4 done)
+STATE: best jacket = j17b = dg_garrett spec v7 alone (under.pin s6, sculpt u4, under_sculpt u2, under_collar c3 options,
+post-construct finish v3; `bash $G/q_dg_j17b.sh`, cache only, ~60 s; frozen $G/frozen_j17b/). Carry review PASS (no
+jacket MAJOR); buttons = Joe's call. New tooling: cloth.<g>.finish (post-construct, keyed on the constructed result,
+guarded), under.pin / under_sculpt / under_collar garment keys, tests test_cloth_finish + test_cloth_spec_durable.
+NEXT: (a) approval of j17b for the assembly (coordinator / Joe; frozen_j17b holds the shirt as drawn: made collar +
+stand in res["made"], hides ["stand", "collar"] - export_asset untested with it); (b) jacket MINORs: collar ends sitting
+high at the neck sides (construct collar_options / show), lower fronts' recede below the bottom button, hem flare -
+each through the finish hook or construct options, measured first ON BOUNDARY VERTICES (slab sampling lies on this mesh);
+(c) tooling: HP_UNCRUSH -> garment key; the draft validator vs the design's pattern "kind".
+
+## Handover 2026-10-16 w (dress-garrett; tooling cleanup, merge to main)
+- `uncrush` is a GARMENT KEY (cloth.uncrush_on: key, else env HP_UNCRUSH as a fallback, else off). Default off keeps
+  the jeans' start unchanged. Out of the sim key (it changes only the placed start, already keyed in `inputs`), so
+  j17b's cached sim key 7aca63ae26eb8a5c holds. dg_garrett spec v8: jacket + shirt `"uncrush": true`;
+  q_dg_j17b.sh no longer sets HP_UNCRUSH. test_cloth_spec_durable unsets the env var and reproduces frozen_j17b
+  (0.0000 mm, jacket / made collar / shirt as pressed / made stand + collar), plus key-over-env and validator checks.
+- The validator was wrong, not the producer: garment_design compiles pattern {"from": "draft", ..., "kind"}, which
+  pattern_draft.build reads (the kind's drafting defaults). garment_blocks.WORDS["draft"] now has "kind";
+  dg_garrett saves CHECKED (store.save v8).
+- Full cloth / pattern set, one file per process ($G/tests.sh, now incl. finish, spec_durable, precache, tooling):
+  19 files, all rc 0, no failures (test_tooling's notch-set sleeve tests pass).
+- Merged to main squashed (see RESTART.txt for the commit). STATE: j17b waits on Joe's look. NEXT: jacket MINORs
+  (handover v (b)).

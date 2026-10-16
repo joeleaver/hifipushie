@@ -331,8 +331,50 @@ def test_hug_neckline_draws_the_seam_to_what_is_under_it():
     assert info["seam_pull_mm"]["max"] <= 30.0 + 1e-6
 
 
+def test_seam_gaps_leave_out_pieces_a_made_part_replaces():
+    """dg_j8 / j10: the simulated collar (replaced by the made one, never shipped) read as the collar seam open 59-137
+    mm; the shipped collar met the neckline at 0.0 mm. seam_gaps(made=) measures the shipped part instead."""
+    from hifipushie import cloth
+    V = np.array([[0, 0, 0], [0, 0, 0], [1, 0, 0], [1, 0.1, 0], [2, 0, 0], [2, 0, 0]], float)
+    M = {"sew": [[0, 1], [2, 3], [4, 5]], "names": ["front", "collar", "back"], "piece": [0, 0, 0, 1, 2, 2]}
+    g0 = cloth.seam_gaps(V, V, M)
+    assert g0["open"] == 1 and g0["worst"] == "collar / front"
+    made = {"parts": [{"name": "collar", "V": np.array([[1, 0, 0.001]]), "F": [[0, 0, 0]], "replaces": ["collar"]}]}
+    g1 = cloth.seam_gaps(V, V, M, made)
+    assert g1["open"] == 0 and g1["pairs"] == 2 and g1["replaced_pairs"] == 1
+    assert g1["made_seam"]["pairs"] == 1 and abs(g1["made_seam"]["max"] - 1.0) < 1e-6
+
+
 if __name__ == "__main__":
     for k, f in list(globals().items()):
         if k.startswith("test_"):
             f()
             print("ok", k)
+
+
+def test_mirror_pairs_and_symmetrize_make_left_and_right_one_shape():
+    # (dress-garrett 2026-10-15: j10's lapels rolled 51 / 142 deg from a symmetric start; construct mirror="mean"
+    # presses both sides to one shape. R pieces are cut mirrored: their uv is the left's with u negated)
+    import numpy as np
+    from hifipushie import cloth_made as cm
+    rng = np.random.default_rng(1)
+    uvL = rng.uniform([0.0, -0.5], [0.25, 0.0], (40, 2))
+    order = rng.permutation(40)
+    uvR = uvL[order] * [-1, 1]
+    M = {"names": ["front.L", "front.R"], "piece": np.r_[np.zeros(40, int), np.ones(40, int)], "uv": np.r_[uvL, uvR]}
+    iL, iR = cm.mirror_pairs(M)
+    assert len(iL) == 40 and np.allclose(M["uv"][iR] * [-1, 1], M["uv"][iL])
+    VL = np.c_[0.05 + uvL[:, 0], np.full(40, -0.15), 1.2 + uvL[:, 1]]
+    VR = (VL * [-1, 1, 1])[order] + rng.normal(0, 0.01, (40, 3))  # the right side off by ~1 cm
+    V = cm.symmetrize(np.r_[VL, VR], iL, iR, 0.0)
+    assert np.allclose(V[iL], V[iR] * [-1, 1, 1])
+    w = np.zeros(40)
+    V0 = np.r_[VL, VR]
+    assert np.allclose(cm.symmetrize(V0, iL, iR, 0.0, w), V0)  # weight 0 leaves the drape as it was
+    # a side-to-side grid (a collar): station i pairs with n-1-i
+    n, m = 7, 3
+    xs = np.linspace(-0.1, 0.1, n)
+    P = np.array([[x, 0.05 + 0.2 * x * x, 1.5 + 0.01 * j] for x in xs for j in range(m)])
+    P[: m, 2] += 0.004
+    Q, mis = cm.mirror_part(P, (n, m), 0.0)
+    assert mis < 0.03 and np.allclose(Q.reshape(n, m, 3)[:, :, 2], Q.reshape(n, m, 3)[::-1, :, 2])
